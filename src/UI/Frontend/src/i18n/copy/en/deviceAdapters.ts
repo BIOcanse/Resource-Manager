@@ -1,4 +1,5 @@
 import type { AppCopy } from "../zh/index.ts";
+import { plural } from "../../plural.ts";
 
 export const enDeviceAdaptersCopy: Pick<
   AppCopy,
@@ -111,7 +112,7 @@ export const enDeviceAdaptersCopy: Pick<
     videoFunctionBadge: "Video function",
     uvcInterfaceDescriptor: "USB Video Class interface descriptor",
     windowsPnpCameraFunction: "Windows PnP camera function",
-    modeGroupCount: (count: number) => `${count} groups`,
+    modeGroupCount: (count: number) => plural("en-US", count, { one: "{count} group", other: "{count} groups" }),
     supported: "Supported",
     notReported: "Not reported",
     externalDevice: "External device",
@@ -126,8 +127,8 @@ export const enDeviceAdaptersCopy: Pick<
     dock: "Port dock",
     dockBadge: "Dock",
     hubSummary: (total: number, connected: number) =>
-      `${total} downstream ports · ${connected} connected`,
-    hubDownstreamSummary: (total: number) => `${total} downstream ports`,
+      `${plural("en-US", total, { one: "{count} downstream port", other: "{count} downstream ports" })} · ${plural("en-US", connected, { one: "{count} connected", other: "{count} connected" })}`,
+    hubDownstreamSummary: (total: number) => plural("en-US", total, { one: "{count} downstream port", other: "{count} downstream ports" }),
     externalGpuDock: "External GPU dock",
     gpuDock: "GPU dock",
     externalGraphicsDevice: "External graphics device",
@@ -151,7 +152,7 @@ export const enDeviceAdaptersCopy: Pick<
     internalInterface: "Internal interface",
     controller: "Controller",
     deviceFunction: "Device function",
-    directDeviceSummary: (count: number, protocol: string) => `${count} direct devices · ${protocol}`,
+    directDeviceSummary: (count: number, protocol: string) => `${plural("en-US", count, { one: "{count} direct device", other: "{count} direct devices" })} · ${protocol}`,
     hdAudioInterface: "HD Audio internal interface",
     bluetoothInterface: "Bluetooth internal interface",
     pciInterface: "PCI internal interface",

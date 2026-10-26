@@ -1,4 +1,5 @@
 import type { AppCopy } from "../zh/index.ts";
+import { plural } from "../../plural.ts";
 
 export const enSoftwareCopy: Pick<
   AppCopy,
@@ -10,7 +11,7 @@ export const enSoftwareCopy: Pick<
     pageLabel: (kind: string) => `${kind} management`,
     searchLabel: (kind: string) => `Search ${kind}`,
     search: "Search",
-    itemCount: (count: number) => `${count} items`,
+    itemCount: (count: number) => plural("en-US", count, { one: "{count} item", other: "{count} items" }),
     softwareRegistrySupplement: "Software registry additions",
     softwareRegistrySupplementDisabled: "This startup profile only shows the component catalog and does not load software registry additions.",
     operationState: "Operation state",

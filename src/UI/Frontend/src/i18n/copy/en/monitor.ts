@@ -1,5 +1,6 @@
 import type { ResourceTableViewMode } from "../../../types.ts";
 import type { AppCopy } from "../zh/index.ts";
+import { plural } from "../../plural.ts";
 
 export const enMonitorCopy: Pick<
   AppCopy,
@@ -88,8 +89,8 @@ export const enMonitorCopy: Pick<
     empty: "Free",
     emptyPercent: "Free share",
     systemPercent: "System share",
-    categoryCount: (count: number) => `${count} categories`,
-    processCount: (count: number) => `${count} processes`,
+    categoryCount: (count: number) => plural("en-US", count, { one: "{count} category", other: "{count} categories" }),
+    processCount: (count: number) => plural("en-US", count, { one: "{count} process", other: "{count} processes" }),
     noAttributableProcess: "No attributable process",
     noPidCategory: "No PID category",
     residualVram: "GPU / WDDM / desktop composition (unclassified)",

@@ -1,4 +1,5 @@
 import type { AppCopy } from "../zh/index.ts";
+import { plural } from "../../plural.ts";
 
 export const enControlPresentationCopy: AppCopy["control"]["presentation"] = {
   labels: {
@@ -105,8 +106,8 @@ export const enControlPresentationCopy: AppCopy["control"]["presentation"] = {
 },
   clockRangeRejected: (minimum: number, maximum: number, unit: string) => `The driver rejected the clock range [${minimum}, ${maximum}] ${unit}.`,
   readbackMismatch: (requested: number, observed: number, unit: string) => `Requested ${requested} ${unit}; read back ${observed} ${unit}. Application was not verified.`,
-  presetNameLimit: (limit: number) => `The preset name must contain 1 to ${limit} characters.`,
-  presetCountLimit: (limit: number) => `Each device can have at most ${limit} presets. Delete one first.`,
+  presetNameLimit: (limit: number) => plural("en-US", limit, { one: "The preset name must contain 1 to {count} character.", other: "The preset name must contain 1 to {count} characters." }),
+  presetCountLimit: (limit: number) => plural("en-US", limit, { one: "Each device can have at most {count} preset. Delete one first.", other: "Each device can have at most {count} presets. Delete one first." }),
   powerLimitPl1: "Sustained power limit (PL1)",
   fanName: (index: string) => `Fan ${index}`,
   gpuFanControllerName: (index: string) => `GPU ${index} fan controller`,

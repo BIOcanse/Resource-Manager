@@ -1,4 +1,5 @@
 import type { AppCopy } from "../zh/index.ts";
+import { plural } from "../../plural.ts";
 
 export const enDetailsCopy: Pick<AppCopy, "cpuTopology" | "cpuBaseline" | "gpuScheduling"> = {
   cpuTopology: {
@@ -22,8 +23,8 @@ export const enDetailsCopy: Pick<AppCopy, "cpuTopology" | "cpuBaseline" | "gpuSc
     coreName: (index: number) => `Core ${index}`,
     scoreInputLabel: "Perf",
     ringBus: "Ring bus",
-    coreCount: (count: number) => `${count} cores`,
-    selectedCount: (count: number) => `${count} selected`,
+    coreCount: (count: number) => plural("en-US", count, { one: "{count} core", other: "{count} cores" }),
+    selectedCount: (count: number) => plural("en-US", count, { one: "{count} selected", other: "{count} selected" }),
     clear: "Clear",
     coreAriaLabel: (core: string, usage: string, performance: string, executionTime: string) =>
       `${core}, usage ${usage}, performance ${performance}, execution time ${executionTime}`,
@@ -49,7 +50,7 @@ export const enDetailsCopy: Pick<AppCopy, "cpuTopology" | "cpuBaseline" | "gpuSc
     cacheLevel: (level: string, size: string) => `L${level} ${size}`,
     cacheLevelShort: (level: string) => `L${level}`,
     cacheCapacityUnknown: "Capacity not read",
-    cacheSharedBy: (count: number) => `shared by ${count} physical cores`,
+    cacheSharedBy: (count: number) => plural("en-US", count, { one: "shared by {count} physical core", other: "shared by {count} physical cores" }),
     cacheSingleCore: "single physical core",
     cacheDetail: (level: string, size: string, scope: string, logicalIds: string) =>
       `L${level} cache ${size} · ${scope} · logical processors ${logicalIds}`,
@@ -112,14 +113,14 @@ export const enDetailsCopy: Pick<AppCopy, "cpuTopology" | "cpuBaseline" | "gpuSc
     telemetryLoading: "Loading",
     modelLabel: "GPU scheduling model",
     summary: (gpuCount: string, gpuPercent: number, vramPercent: number, telemetry: string) =>
-      `${gpuCount} GPUs · GPU ${gpuPercent}% / VRAM ${vramPercent}% · ${telemetry}`,
+      `${plural("en-US", gpuCount, { one: "{count} GPU", other: "{count} GPUs" })} · GPU ${gpuPercent}% / VRAM ${vramPercent}% · ${telemetry}`,
     edit: "Edit",
     cancel: "Cancel",
     reset: "Reset",
     save: "Save",
     observationLabel: "GPU scheduling data",
     noPositions: "No GPU scheduling positions detected.",
-    positionSummary: (softwareCount: number) => `${softwareCount} software · Process details not requested`,
+    positionSummary: (softwareCount: number) => `${plural("en-US", softwareCount, { one: "{count} software", other: "{count} software" })} · Process details not requested`,
     schedulable: "Schedulable",
     performanceScore: (value: string) => `Performance score ${value}`,
     defaultScore: (value: string) => `default ${value}`,

@@ -1,5 +1,6 @@
 import { enControlPresentationCopy } from "./controlPresentation.ts";
 import type { AppCopy } from "../zh/index.ts";
+import { plural } from "../../plural.ts";
 
 export const enShellCopy: Pick<AppCopy, "reportRules" | "common" | "feedback" | "page" | "control" | "diskUsage" | "shell"> = {
   common: {
@@ -323,10 +324,10 @@ export const enShellCopy: Pick<AppCopy, "reportRules" | "common" | "feedback" | 
     collapseSetup: "Hide options",
     expandSetup: "Scan options",
     scanTotals: (size: string, files: number, folders: number) =>
-      `${size} · this root · ${files} files · ${folders} folders across this scan`,
-    fileCount: (count: number) => `${count} files`,
+      `${size} · this root · ${plural("en-US", files, { one: "{count} file", other: "{count} files" })} · ${plural("en-US", folders, { one: "{count} folder", other: "{count} folders" })} across this scan`,
+    fileCount: (count: number) => plural("en-US", count, { one: "{count} file", other: "{count} files" }),
     omitted: (count: number) =>
-      `${count} more tiles are too small or off-screen right now. Zoom in to see them.`,
+      plural("en-US", count, { one: "{count} more tile is too small or off-screen right now. Zoom in to see it.", other: "{count} more tiles are too small or off-screen right now. Zoom in to see them." }),
     copied: "Copied",
     menuOpenLocation: "Open file location",
     menuProperties: "Properties",

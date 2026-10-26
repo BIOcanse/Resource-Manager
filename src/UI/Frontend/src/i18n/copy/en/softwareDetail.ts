@@ -1,4 +1,5 @@
 import type { AppCopy } from "../zh/index.ts";
+import { plural } from "../../plural.ts";
 
 export const enSoftwareDetailCopy: Pick<AppCopy, "softwareDetail" | "performanceOverlay"> = {
   performanceOverlay: {
@@ -115,7 +116,7 @@ export const enSoftwareDetailCopy: Pick<AppCopy, "softwareDetail" | "performance
       l1Cache: "L1 cache --",
       l2Cache: (value: string) => `L2 cache ${value}`,
       l3Cache: (value: string) => `L3 cache ${value}`,
-      coreCount: (count: number) => `${count} cores`,
+      coreCount: (count: number) => plural("en-US", count, { one: "{count} core", other: "{count} cores" }),
       corePerformance: (score: string, processors: string) =>
         `Performance ${score} · logical processors ${processors}`,
       exclusiveDisabled: "All cores or all CCDs cannot be made exclusive",
@@ -135,7 +136,7 @@ export const enSoftwareDetailCopy: Pick<AppCopy, "softwareDetail" | "performance
       observationCount: "Times observed",
       firstObserved: "First observed",
       lastObserved: "Last observed",
-      observedTimes: (count: number) => `Observed ${count} times`,
+      observedTimes: (count: number) => plural("en-US", count, { one: "Observed {count} time", other: "Observed {count} times" }),
       lastSeen: (time: string) => `Last ${time}`
     },
     gpuLaunchOutcome: {

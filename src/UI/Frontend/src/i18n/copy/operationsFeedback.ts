@@ -1,3 +1,5 @@
+import { plural } from "../plural.ts";
+
 export const operationsFeedback = {
   "zh-CN": {
     stageDownload: "正在下载",
@@ -32,8 +34,8 @@ export const operationsFeedback = {
     processExited: "The process does not exist or has exited.",
     processNativeFailure: "The Windows process operation failed.",
     processFileFailure: "The process dump file could not be written.",
-    processTerminateSummary: (done: number, total: number) => `Terminated ${done} / ${total} processes.`,
-    processDumpSummary: (done: number, total: number) => `Created ${done} / ${total} dump files.`
+    processTerminateSummary: (done: number, total: number) => plural("en-US", total, { one: `Terminated ${done} / {count} process.`, other: `Terminated ${done} / {count} processes.` }),
+    processDumpSummary: (done: number, total: number) => plural("en-US", total, { one: `Created ${done} / {count} dump file.`, other: `Created ${done} / {count} dump files.` })
   },
   "de-DE": {
     stageDownload: "Wird heruntergeladen",
@@ -44,8 +46,8 @@ export const operationsFeedback = {
     processExited: "Der Prozess existiert nicht oder wurde bereits beendet.",
     processNativeFailure: "Der Windows-Prozessvorgang ist fehlgeschlagen.",
     processFileFailure: "Das Prozessabbild konnte nicht geschrieben werden.",
-    processTerminateSummary: (done: number, total: number) => `${done} / ${total} Prozesse beendet.`,
-    processDumpSummary: (done: number, total: number) => `${done} / ${total} Speicherabbilder erstellt.`
+    processTerminateSummary: (done: number, total: number) => plural("de-DE", total, { one: `${done} / {count} Prozess beendet.`, other: `${done} / {count} Prozesse beendet.` }),
+    processDumpSummary: (done: number, total: number) => plural("de-DE", total, { one: `${done} / {count} Speicherabbild erstellt.`, other: `${done} / {count} Speicherabbilder erstellt.` })
   },
   "es-ES": {
     stageDownload: "Descargando",
@@ -56,8 +58,8 @@ export const operationsFeedback = {
     processExited: "El proceso no existe o ya finalizó.",
     processNativeFailure: "La operación del proceso de Windows falló.",
     processFileFailure: "No se pudo escribir el archivo de volcado del proceso.",
-    processTerminateSummary: (done: number, total: number) => `Se finalizaron ${done} / ${total} procesos.`,
-    processDumpSummary: (done: number, total: number) => `Se crearon ${done} / ${total} archivos de volcado.`
+    processTerminateSummary: (done: number, total: number) => `Procesos finalizados: ${done} / ${total}.`,
+    processDumpSummary: (done: number, total: number) => `Archivos de volcado creados: ${done} / ${total}.`
   },
   "fr-FR": {
     stageDownload: "Téléchargement en cours",
@@ -68,8 +70,8 @@ export const operationsFeedback = {
     processExited: "Le processus n’existe pas ou est déjà arrêté.",
     processNativeFailure: "L’opération sur le processus Windows a échoué.",
     processFileFailure: "Impossible d’écrire le fichier d’image mémoire du processus.",
-    processTerminateSummary: (done: number, total: number) => `${done} / ${total} processus arrêtés.`,
-    processDumpSummary: (done: number, total: number) => `${done} / ${total} fichiers d’image mémoire créés.`
+    processTerminateSummary: (done: number, total: number) => plural("fr-FR", total, { one: `${done} / {count} processus arrêté.`, many: `${done} / {count} de processus arrêtés.`, other: `${done} / {count} processus arrêtés.` }),
+    processDumpSummary: (done: number, total: number) => plural("fr-FR", total, { one: `${done} / {count} fichier d’image mémoire créé.`, many: `${done} / {count} de fichiers d’image mémoire créés.`, other: `${done} / {count} fichiers d’image mémoire créés.` })
   },
   "ja-JP": {
     stageDownload: "ダウンロード中",

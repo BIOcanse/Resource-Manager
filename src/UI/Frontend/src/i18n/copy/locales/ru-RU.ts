@@ -5,6 +5,7 @@ import { softwareFactsCopy } from "../softwareFacts.ts";
 import type { AppCopy } from "../index.ts";
 import { targetedReport } from "./ru-RU-targetedReport.ts";
 import { fieldLabel, fieldValueLabel } from "./ru-RU-fieldLabels.ts";
+import { plural } from "../../plural.ts";
 
 const ruRuAppCopy: AppCopy = {
   softwareFacts: softwareFactsCopy["ru-RU"],
@@ -384,8 +385,8 @@ const ruRuAppCopy: AppCopy = {
       },
       clockRangeRejected: (minimum: number, maximum: number, unit: string) => `Драйвер отклонил диапазон частоты [${minimum}, ${maximum}] ${unit}.`,
   readbackMismatch: (requested: number, observed: number, unit: string) => `Запрошено ${requested} ${unit}; прочитано ${observed} ${unit}. Применение не подтверждено.`,
-      presetNameLimit: (limit: number) => `Имя профиля должно содержать от 1 до ${limit} символов.`,
-      presetCountLimit: (limit: number) => `На устройстве может быть не более ${limit} профилей. Сначала удалите один.`,
+      presetNameLimit: (limit: number) => plural("ru-RU", limit, { one: "Имя профиля должно содержать от 1 до {count} символа.", few: "Имя профиля должно содержать от 1 до {count} символов.", many: "Имя профиля должно содержать от 1 до {count} символов.", other: "Имя профиля должно содержать от 1 до {count} символа." }),
+      presetCountLimit: (limit: number) => plural("ru-RU", limit, { one: "На устройстве может быть не более {count} профиля. Сначала удалите один.", few: "На устройстве может быть не более {count} профилей. Сначала удалите один.", many: "На устройстве может быть не более {count} профилей. Сначала удалите один.", other: "На устройстве может быть не более {count} профиля. Сначала удалите один." }),
       "powerLimitPl1": "Лимит длительной мощности (PL1)",
       "fanName": (index        ) => `Вентилятор ${index}`,
       "gpuFanControllerName": (index        ) => `Контроллер вентилятора видеокарты (GPU${index})`,
@@ -451,9 +452,9 @@ const ruRuAppCopy: AppCopy = {
     resetView: "Сбросить вид",
     collapseSetup: "Скрыть параметры",
     expandSetup: "Параметры сканирования",
-    scanTotals: (size        , files        , folders        ) => `${size} · выбранный корень · весь скан: файлов ${files} · папок ${folders}`,
+    scanTotals: (size        , files        , folders        ) => `${size} · выбранный корень · весь скан: ${plural("ru-RU", files, { one: "{count} файл", few: "{count} файла", many: "{count} файлов", other: "{count} файла" })} · ${plural("ru-RU", folders, { one: "{count} папка", few: "{count} папки", many: "{count} папок", other: "{count} папки" })}`,
     fileCount: (count        ) => `Файлов: ${count}`,
-    omitted: (count        ) => `Ещё ${count} элементов слишком малы или находятся за пределами экрана. Увеличьте масштаб, чтобы увидеть их.`,
+    omitted: (count        ) => plural("ru-RU", count, { one: "Ещё {count} элемент слишком мал или находится за пределами экрана. Увеличьте масштаб, чтобы увидеть его.", few: "Ещё {count} элемента слишком малы или находятся за пределами экрана. Увеличьте масштаб, чтобы увидеть их.", many: "Ещё {count} элементов слишком малы или находятся за пределами экрана. Увеличьте масштаб, чтобы увидеть их.", other: "Ещё {count} элемента слишком малы или находятся за пределами экрана. Увеличьте масштаб, чтобы увидеть их." }),
     copied: "Скопировано",
     menuOpenLocation: "Открыть расположение файла",
     menuProperties: "Свойства",
@@ -490,7 +491,7 @@ const ruRuAppCopy: AppCopy = {
     pageLabel: (kind: string) => `Управление: ${kind}`,
     searchLabel: (kind: string) => `Поиск: ${kind}`,
     search: "Поиск",
-    itemCount: (count: number) => `${count} элементов`,
+    itemCount: (count: number) => plural("ru-RU", count, { one: "{count} элемент", few: "{count} элемента", many: "{count} элементов", other: "{count} элемента" }),
     softwareRegistrySupplement: "Дополнения реестра программ",
     softwareRegistrySupplementDisabled: "Этот профиль запуска показывает только каталог компонентов и не загружает дополнения реестра программ.",
     operationState: "Состояние операций",
@@ -659,8 +660,8 @@ const ruRuAppCopy: AppCopy = {
     empty: "Свободно",
     emptyPercent: "Доля свободного",
     systemPercent: "Доля системы",
-    categoryCount: (count: number) => `${count} категорий`,
-    processCount: (count: number) => `${count} процессов`,
+    categoryCount: (count: number) => plural("ru-RU", count, { one: "{count} категория", few: "{count} категории", many: "{count} категорий", other: "{count} категории" }),
+    processCount: (count: number) => plural("ru-RU", count, { one: "{count} процесс", few: "{count} процесса", many: "{count} процессов", other: "{count} процесса" }),
     noAttributableProcess: "Нет процессов, которым можно отнести использование",
     noPidCategory: "Категория без PID",
     residualVram: "GPU / WDDM / композиция рабочего стола (без детализации)",
@@ -729,7 +730,7 @@ const ruRuAppCopy: AppCopy = {
     gpuVramLabel: (index: string) => `Резидентная видеопамять GPU${index}`
   },
   resourceBreakdownView: {
-    itemCount: (count: number) => `${count} элементов`,
+    itemCount: (count: number) => plural("ru-RU", count, { one: "{count} элемент", few: "{count} элемента", many: "{count} элементов", other: "{count} элемента" }),
     cancelEditLabel: "Отменить изменение элементов использования ресурсов",
     cancel: "Отмена",
     saveLabel: "Сохранить элементы использования ресурсов",
@@ -1083,7 +1084,7 @@ const ruRuAppCopy: AppCopy = {
       lastObserved: "Последний раз замечено",
       duration: "Длительность",
       occurrences: "Число обнаружений",
-      occurrenceTimes: (count: number) => `${count} раз`
+      occurrenceTimes: (count: number) => plural("ru-RU", count, { one: "{count} раз", few: "{count} раза", many: "{count} раз", other: "{count} раза" })
     },
     strayProcess: {
       title: (name: string) => `Возможно оставшийся процесс: ${name}`,
@@ -1206,7 +1207,7 @@ const ruRuAppCopy: AppCopy = {
     unavailable: "Топология устройств недоступна",
     loading: "Чтение топологии устройств...",
     listLabel: (scope: string) => `Список: ${scope}`,
-    itemCount: (count: number) => `${count} элементов`,
+    itemCount: (count: number) => plural("ru-RU", count, { one: "{count} элемент", few: "{count} элемента", many: "{count} элементов", other: "{count} элемента" }),
     searchPlaceholder: (scope: string) => `Поиск: ${scope}`,
     noMatch: "Подходящих элементов нет.",
     noneFound: (scope: string) => `Не обнаружено: ${scope}.`,
@@ -1624,7 +1625,7 @@ const ruRuAppCopy: AppCopy = {
     videoFunctionBadge: "Видеофункция",
     uvcInterfaceDescriptor: "Дескриптор интерфейса USB Video Class",
     windowsPnpCameraFunction: "Функция камеры PnP Windows",
-    modeGroupCount: (count: number) => `${count} групп`,
+    modeGroupCount: (count: number) => plural("ru-RU", count, { one: "{count} группа", few: "{count} группы", many: "{count} групп", other: "{count} группы" }),
     supported: "Поддерживается",
     notReported: "Не сообщено",
     externalDevice: "Внешнее устройство",
@@ -1707,7 +1708,7 @@ const ruRuAppCopy: AppCopy = {
     coreName: (index: number) => `Ядро ${index}`,
     scoreInputLabel: "Произв.",
     ringBus: "Кольцевая шина",
-    coreCount: (count: number) => `${count} ядер`,
+    coreCount: (count: number) => plural("ru-RU", count, { one: "{count} ядро", few: "{count} ядра", many: "{count} ядер", other: "{count} ядра" }),
     selectedCount: (count: number) => `Выбрано: ${count}`,
     clear: "Очистить",
     coreAriaLabel: (core: string, usage: string, performance: string, executionTime: string) =>
@@ -1734,7 +1735,7 @@ const ruRuAppCopy: AppCopy = {
     cacheLevel: (level: string, size: string) => `L${level} ${size}`,
     cacheLevelShort: (level: string) => `L${level}`,
     cacheCapacityUnknown: "Объём не считан",
-    cacheSharedBy: (count: number) => `используется совместно ${count} физическими ядрами`,
+    cacheSharedBy: (count: number) => plural("ru-RU", count, { one: "используется совместно {count} физическим ядром", few: "используется совместно {count} физическими ядрами", many: "используется совместно {count} физическими ядрами", other: "используется совместно {count} физического ядра" }),
     cacheSingleCore: "одно физическое ядро",
     cacheDetail: (level: string, size: string, scope: string, logicalIds: string) =>
       `Кэш L${level} ${size} · ${scope} · логические процессоры ${logicalIds}`,
@@ -1804,7 +1805,7 @@ const ruRuAppCopy: AppCopy = {
     save: "Сохранить",
     observationLabel: "Данные планирования GPU",
     noPositions: "Позиции планирования GPU не обнаружены.",
-    positionSummary: (softwareCount: number) => `${softwareCount} программ · Сведения о процессах не запрошены`,
+    positionSummary: (softwareCount: number) => `${plural("ru-RU", softwareCount, { one: "{count} программа", few: "{count} программы", many: "{count} программ", other: "{count} программы" })} · Сведения о процессах не запрошены`,
     schedulable: "Можно планировать",
     performanceScore: (value: string) => `Оценка производительности ${value}`,
     defaultScore: (value: string) => `по умолчанию ${value}`,
@@ -1950,7 +1951,7 @@ const ruRuAppCopy: AppCopy = {
       l1Cache: "Кэш L1 --",
       l2Cache: (value: string) => `Кэш L2 ${value}`,
       l3Cache: (value: string) => `Кэш L3 ${value}`,
-      coreCount: (count: number) => `${count} ядер`,
+      coreCount: (count: number) => plural("ru-RU", count, { one: "{count} ядро", few: "{count} ядра", many: "{count} ядер", other: "{count} ядра" }),
       corePerformance: (score: string, processors: string) =>
         `Производительность ${score} · логические процессоры ${processors}`,
       exclusiveDisabled: "Нельзя сделать монопольными все ядра или все CCD",
@@ -1970,7 +1971,7 @@ const ruRuAppCopy: AppCopy = {
       observationCount: "Число наблюдений",
       firstObserved: "Первое наблюдение",
       lastObserved: "Последнее наблюдение",
-      observedTimes: (count: number) => `Наблюдалось ${count} раз`,
+      observedTimes: (count: number) => plural("ru-RU", count, { one: "Наблюдалось {count} раз", few: "Наблюдалось {count} раза", many: "Наблюдалось {count} раз", other: "Наблюдалось {count} раза" }),
       lastSeen: (time: string) => `Последний раз ${time}`
     },
     gpuLaunchOutcome: {
@@ -2031,7 +2032,7 @@ const ruRuAppCopy: AppCopy = {
     endTaskFailed: "Не удалось снять задачу",
     noDumpProcess: "Нет процесса, для которого можно создать дамп памяти.",
     dumpTitle: (name: string) => `Создать дамп памяти: ${name}`,
-    dumpMessage: (count: number) => `Будет создан полный дамп памяти для ${count} процессов; файлы могут быть большими.`,
+    dumpMessage: (count: number) => plural("ru-RU", count, { one: "Будет создан полный дамп памяти для {count} процесса; файл может быть большим.", few: "Будет создан полный дамп памяти для {count} процессов; файлы могут быть большими.", many: "Будет создан полный дамп памяти для {count} процессов; файлы могут быть большими.", other: "Будет создан полный дамп памяти для {count} процесса; файлы могут быть большими." }),
     dumpDone: "Дамп памяти создан",
     dumpFailed: "Не удалось создать дамп памяти",
     markedProcesses: (name: string) => `Выполнен переход к представлению по процессам, процессы ${name} отмечены.`,
@@ -2044,7 +2045,7 @@ const ruRuAppCopy: AppCopy = {
     openedProperties: "Окно свойств открыто",
     openPropertiesFailed: "Не удалось открыть свойства",
     processActionDone: "Действие с процессом выполнено",
-    processActionResult: (succeeded: number, total: number) => `Выполнено ${succeeded} / ${total} действий с процессами.`,
+    processActionResult: (succeeded: number, total: number) => `Выполнено действий с процессами: ${succeeded} / ${total}.`,
     criticalProcessProtected: "Этот критический процесс Windows защищён и не может быть завершён.",
     processActionNeedsElevation: "Для этого действия с процессом требуется разрешение администратора.",
     uninstallerLaunchRequested: "Запрошен запуск программы удаления на вашем рабочем столе. При необходимости Windows запросит повышение прав. По завершении обновите список программ.",
@@ -2109,7 +2110,7 @@ const ruRuAppCopy: AppCopy = {
     noRestorableRecord: "У этой программы нет записей о переносе, которые можно восстановить.",
     restoreSoftwareRecordsTitle: "Восстановить записи о переносе программы",
     restoreSoftwareRecordsMessage: (count: number) =>
-      `Будет восстановлено ${count} записей о переносе этой программы, а текущие данные скопированы обратно.`,
+      plural("ru-RU", count, { one: "Будет восстановлена {count} запись о переносе этой программы, а текущие данные скопированы обратно.", few: "Будут восстановлены {count} записи о переносе этой программы, а текущие данные скопированы обратно.", many: "Будет восстановлено {count} записей о переносе этой программы, а текущие данные скопированы обратно.", other: "Будет восстановлено {count} записи о переносе этой программы, а текущие данные скопированы обратно." }),
     restoringSoftwareRecords: "Восстановление записей о переносе программы",
     restoredRecords: (count: number) => `Восстановлено записей о переносе: ${count}.`,
     restoreUncertain: "Результат восстановления неоднозначен; сначала проверьте фактическое состояние.",
@@ -2284,7 +2285,7 @@ const ruRuAppCopy: AppCopy = {
     inUse: "Используется",
     installedBrowsersTitle: "Установленные браузеры",
     installedBrowsersDescription: "Программы с поддержкой внешних браузеров могут их использовать.",
-    itemCount: (count: number) => `${count} элементов`,
+    itemCount: (count: number) => plural("ru-RU", count, { one: "{count} элемент", few: "{count} элемента", many: "{count} элементов", other: "{count} элемента" }),
     noBrowsers: "Пригодных для повторного использования браузеров не найдено.",
     currentFallback: "Текущий запасной вариант",
     fallbackRuntimeName: "Среда выполнения",

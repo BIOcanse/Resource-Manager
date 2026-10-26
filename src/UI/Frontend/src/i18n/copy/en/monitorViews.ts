@@ -1,11 +1,12 @@
 import type { AppCopy } from "../zh/index.ts";
+import { plural } from "../../plural.ts";
 
 export const enMonitorViewsCopy: Pick<
   AppCopy,
   "resourceBreakdownView" | "resourceTableView" | "contextMenu" | "metricPicker" | "manualSoftwareModal" | "observationNotice"
 > = {
   resourceBreakdownView: {
-    itemCount: (count: number) => `${count} items`,
+    itemCount: (count: number) => plural("en-US", count, { one: "{count} item", other: "{count} items" }),
     cancelEditLabel: "Cancel resource usage item editing",
     cancel: "Cancel",
     saveLabel: "Save resource usage items",
@@ -81,7 +82,7 @@ export const enMonitorViewsCopy: Pick<
     searchPlaceholder: "Search by name or category",
     searchLabel: "Search monitoring items",
     clearSearchLabel: "Clear the monitoring item search",
-    count: (count: number) => `${count} monitoring items`,
+    count: (count: number) => plural("en-US", count, { one: "{count} monitoring item", other: "{count} monitoring items" }),
     listLabel: "Monitoring items",
     empty: "No matching monitoring item",
     needsInstall: (name: string) => `Needs installing: ${name}`,
@@ -103,7 +104,7 @@ export const enMonitorViewsCopy: Pick<
     rootPlaceholder: "One directory per line, for example D:\\Tools\\App",
     cancel: "Cancel",
     saving: "Saving",
-    additionalRoots: (count: number) => `${count} more directories`
+    additionalRoots: (count: number) => plural("en-US", count, { one: "{count} more directory", other: "{count} more directories" })
   },
   observationNotice: {
     loading: (label: string) => `Loading ${label}`,

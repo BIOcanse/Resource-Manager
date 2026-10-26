@@ -1,4 +1,5 @@
 import type { AppCopy } from "../zh/index.ts";
+import { plural } from "../../plural.ts";
 
 export const enSoftwareActionsCopy: Pick<AppCopy, "softwareActions"> = {
   softwareActions: {
@@ -7,12 +8,12 @@ export const enSoftwareActionsCopy: Pick<AppCopy, "softwareActions"> = {
     policySoftwareMissing: "The software for this policy was not found in the software list.",
     noRunningProcess: "No matching running process.",
     endTaskTitle: (name: string) => `End task: ${name}`,
-    endTaskMessage: (count: number) => `This will end ${count} matching processes.`,
+    endTaskMessage: (count: number) => plural("en-US", count, { one: "This will end {count} matching process.", other: "This will end {count} matching processes." }),
     endTaskDone: "Task ended",
     endTaskFailed: "Ending the task failed",
     noDumpProcess: "No process available for a memory dump.",
     dumpTitle: (name: string) => `Create memory dump: ${name}`,
-    dumpMessage: (count: number) => `This creates a full memory dump for ${count} processes; the files can be large.`,
+    dumpMessage: (count: number) => plural("en-US", count, { one: "This creates a full memory dump for {count} process; the file can be large.", other: "This creates a full memory dump for {count} processes; the files can be large." }),
     dumpDone: "Memory dump created",
     dumpFailed: "Creating the memory dump failed",
     markedProcesses: (name: string) => `Switched to the process view and marked the processes of ${name}.`,
@@ -25,7 +26,7 @@ export const enSoftwareActionsCopy: Pick<AppCopy, "softwareActions"> = {
     openedProperties: "Opened the properties window",
     openPropertiesFailed: "Opening properties failed",
     processActionDone: "The process action completed",
-    processActionResult: (succeeded: number, total: number) => `Completed ${succeeded} / ${total} process actions.`,
+    processActionResult: (succeeded: number, total: number) => plural("en-US", total, { one: `Completed ${succeeded} / {count} process action.`, other: `Completed ${succeeded} / {count} process actions.` }),
     criticalProcessProtected: "This critical Windows process is protected and cannot be ended.",
     processActionNeedsElevation: "This process action requires administrator approval.",
     uninstallerLaunchRequested: "Requested the uninstaller on your desktop; Windows will prompt if elevation is needed. Refresh the software list when finished.",
@@ -90,9 +91,9 @@ export const enSoftwareActionsCopy: Pick<AppCopy, "softwareActions"> = {
     noRestorableRecord: "This software has no migration record to restore.",
     restoreSoftwareRecordsTitle: "Restore software migration records",
     restoreSoftwareRecordsMessage: (count: number) =>
-      `This restores ${count} migration records for this software and copies the current data back.`,
+      plural("en-US", count, { one: "This restores {count} migration record for this software and copies the current data back.", other: "This restores {count} migration records for this software and copies the current data back." }),
     restoringSoftwareRecords: "Restoring software migration records",
-    restoredRecords: (count: number) => `Restored ${count} migration records.`,
+    restoredRecords: (count: number) => plural("en-US", count, { one: "Restored {count} migration record.", other: "Restored {count} migration records." }),
     restoreUncertain: "The restore result is uncertain; check the actual state first.",
     restoreFailed: "Restore failed"
   }

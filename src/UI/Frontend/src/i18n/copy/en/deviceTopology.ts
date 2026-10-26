@@ -1,4 +1,5 @@
 import type { AppCopy } from "../zh/index.ts";
+import { plural } from "../../plural.ts";
 
 export const enDeviceTopologyCopy: Pick<AppCopy, "deviceTopology"> = {
   deviceTopology: {
@@ -99,7 +100,7 @@ export const enDeviceTopologyCopy: Pick<AppCopy, "deviceTopology"> = {
     internalScope: "Internal interfaces",
     externalSummary: (host: number, downstream: number) => `${host} on device · ${downstream} expansion`,
     internalSummary: (interfaces: number, controllers: number, devices: number) =>
-      `${interfaces} interfaces · ${controllers} controllers · ${devices} devices`,
+      `${plural("en-US", interfaces, { one: "{count} interface", other: "{count} interfaces" })} · ${plural("en-US", controllers, { one: "{count} controller", other: "{count} controllers" })} · ${plural("en-US", devices, { one: "{count} device", other: "{count} devices" })}`,
     scopeNav: "Device management categories",
     panel: "Device topology",
     brandLoading: "Loading",
@@ -107,7 +108,7 @@ export const enDeviceTopologyCopy: Pick<AppCopy, "deviceTopology"> = {
     unavailable: "Device topology unavailable",
     loading: "Reading device topology...",
     listLabel: (scope: string) => `${scope} list`,
-    itemCount: (count: number) => `${count} items`,
+    itemCount: (count: number) => plural("en-US", count, { one: "{count} item", other: "{count} items" }),
     searchPlaceholder: (scope: string) => `Search ${scope}`,
     noMatch: "No matching items.",
     noneFound: (scope: string) => `No ${scope} detected.`,

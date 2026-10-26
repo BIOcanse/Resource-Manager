@@ -1,4 +1,5 @@
 import type { AppCopy } from "../zh/index.ts";
+import { plural } from "../../plural.ts";
 
 export const enRuntimeAndReportsCopy: Pick<AppCopy, "smartReport" | "browserRuntime"> = {
   smartReport: {
@@ -63,7 +64,7 @@ export const enRuntimeAndReportsCopy: Pick<AppCopy, "smartReport" | "browserRunt
     inUse: "In use",
     installedBrowsersTitle: "Installed browsers",
     installedBrowsersDescription: "Software that supports external browsers can use these.",
-    itemCount: (count: number) => `${count} items`,
+    itemCount: (count: number) => plural("en-US", count, { one: "{count} item", other: "{count} items" }),
     noBrowsers: "No reusable browser found.",
     currentFallback: "Current fallback",
     fallbackRuntimeName: "Runtime",

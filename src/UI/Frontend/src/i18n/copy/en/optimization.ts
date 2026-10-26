@@ -1,4 +1,5 @@
 import type { AppCopy } from "../zh/index.ts";
+import { plural } from "../../plural.ts";
 
 export const enOptimizationCopy: Pick<AppCopy, "optimization" | "optimizationReport"> = {
   optimization: {
@@ -16,8 +17,8 @@ export const enOptimizationCopy: Pick<AppCopy, "optimization" | "optimizationRep
     scheduleStateUnknown: "Scheduling state unknown",
     smartSchedulerRunning: "Scheduling running",
     smartSchedulerStopped: "Scheduling stopped",
-    pendingChanges: (count: number) => `${count} changes awaiting confirmation`,
-    appliedTargets: (count: number) => `${count} items optimized`,
+    pendingChanges: (count: number) => plural("en-US", count, { one: "{count} change awaiting confirmation", other: "{count} changes awaiting confirmation" }),
+    appliedTargets: (count: number) => plural("en-US", count, { one: "{count} item optimized", other: "{count} items optimized" }),
     search: "Search",
     searchLabel: "Search optimization reports",
     reportPanel: "Optimization reports",
@@ -116,7 +117,7 @@ export const enOptimizationCopy: Pick<AppCopy, "optimization" | "optimizationRep
       lastObserved: "Last seen",
       duration: "Duration",
       occurrences: "Times seen",
-      occurrenceTimes: (count: number) => `${count} times`
+      occurrenceTimes: (count: number) => plural("en-US", count, { one: "{count} time", other: "{count} times" })
     },
     strayProcess: {
       title: (name: string) => `Suspected stray process: ${name}`,

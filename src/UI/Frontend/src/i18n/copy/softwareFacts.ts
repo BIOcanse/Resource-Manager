@@ -1,3 +1,5 @@
+import { plural } from "../plural.ts";
+
 // Each bundle selects its own static copy; facts remain independent of language.
 export const softwareFactsCopy = {
   "zh-CN": {
@@ -19,9 +21,9 @@ export const softwareFactsCopy = {
   "en-US": {
     endpointState: { online: "Online", unreachable: "Unreachable", unsupported: "Unsupported" },
     source: { dependency: "Component dependency", windows_registry: "Windows uninstall registry", self: "Built-in adaptation and local resource management", adapter: "Adapter registration and control endpoint", controlled: "L0 controlled registration", portable: "Runtime portable software", manual: "Manual classification and registration", identity_catalog: "Software identity catalog", policy: "Local policy group", runtime: "Runtime discovery" },
-    processCount: (count: number) => `${count} recognized processes`,
-    serviceCount: (count: number) => `${count} services`,
-    executableCount: (count: number) => `${count} portable executables`,
+    processCount: (count: number) => plural("en-US", count, { one: "{count} recognized process", other: "{count} recognized processes" }),
+    serviceCount: (count: number) => plural("en-US", count, { one: "{count} service", other: "{count} services" }),
+    executableCount: (count: number) => plural("en-US", count, { one: "{count} portable executable", other: "{count} portable executables" }),
     rootConfirmed: "Portable software root confirmed"
   },
   "ja-JP": {
@@ -43,25 +45,25 @@ export const softwareFactsCopy = {
   "fr-FR": {
     endpointState: { online: "En ligne", unreachable: "Inaccessible", unsupported: "Non pris en charge" },
     source: { dependency: "Dépendance de composant", windows_registry: "Registre de désinstallation Windows", self: "Adaptation intégrée et gestion locale des ressources", adapter: "Inscription de l’adaptateur et point de contrôle", controlled: "Inscription contrôlée L0", portable: "Logiciel portable détecté à l’exécution", manual: "Classification et inscription manuelles", identity_catalog: "Catalogue d’identité des logiciels", policy: "Groupe de stratégie locale", runtime: "Détection à l’exécution" },
-    processCount: (count: number) => `${count} processus reconnus`,
-    serviceCount: (count: number) => `${count} services associés`,
-    executableCount: (count: number) => `${count} exécutables portables`,
+    processCount: (count: number) => plural("fr-FR", count, { one: "{count} processus reconnu", many: "{count} de processus reconnus", other: "{count} processus reconnus" }),
+    serviceCount: (count: number) => plural("fr-FR", count, { one: "{count} service associé", many: "{count} de services associés", other: "{count} services associés" }),
+    executableCount: (count: number) => plural("fr-FR", count, { one: "{count} exécutable portable", many: "{count} d’exécutables portables", other: "{count} exécutables portables" }),
     rootConfirmed: "Racine du logiciel portable confirmée"
   },
   "de-DE": {
     endpointState: { online: "Verbunden", unreachable: "Nicht erreichbar", unsupported: "Nicht unterstützt" },
     source: { dependency: "Komponentenabhängigkeit", windows_registry: "Windows-Deinstallationsregistrierung", self: "Integrierte Anpassung und lokale Ressourcenverwaltung", adapter: "Adapterregistrierung und Steuerungsendpunkt", controlled: "Kontrollierte L0-Registrierung", portable: "Zur Laufzeit erkannte portable Software", manual: "Manuelle Klassifizierung und Registrierung", identity_catalog: "Softwareidentitätskatalog", policy: "Lokale Richtliniengruppe", runtime: "Laufzeiterkennung" },
-    processCount: (count: number) => `${count} erkannte Prozesse`,
-    serviceCount: (count: number) => `${count} Dienste`,
-    executableCount: (count: number) => `${count} portable Programmdateien`,
+    processCount: (count: number) => plural("de-DE", count, { one: "{count} erkannter Prozess", other: "{count} erkannte Prozesse" }),
+    serviceCount: (count: number) => plural("de-DE", count, { one: "{count} Dienst", other: "{count} Dienste" }),
+    executableCount: (count: number) => plural("de-DE", count, { one: "{count} portable Programmdatei", other: "{count} portable Programmdateien" }),
     rootConfirmed: "Stammverzeichnis der portablen Software bestätigt"
   },
   "es-ES": {
     endpointState: { online: "En línea", unreachable: "Inaccesible", unsupported: "No compatible" },
     source: { dependency: "Dependencia de componente", windows_registry: "Registro de desinstalación de Windows", self: "Adaptación integrada y gestión local de recursos", adapter: "Registro de adaptador y punto de control", controlled: "Registro controlado L0", portable: "Software portátil detectado en ejecución", manual: "Clasificación y registro manuales", identity_catalog: "Catálogo de identidad de software", policy: "Grupo de directivas locales", runtime: "Detección en ejecución" },
-    processCount: (count: number) => `${count} procesos reconocidos`,
-    serviceCount: (count: number) => `${count} servicios`,
-    executableCount: (count: number) => `${count} ejecutables portátiles`,
+    processCount: (count: number) => plural("es-ES", count, { one: "{count} proceso reconocido", many: "{count} de procesos reconocidos", other: "{count} procesos reconocidos" }),
+    serviceCount: (count: number) => plural("es-ES", count, { one: "{count} servicio", many: "{count} de servicios", other: "{count} servicios" }),
+    executableCount: (count: number) => plural("es-ES", count, { one: "{count} ejecutable portátil", many: "{count} de ejecutables portátiles", other: "{count} ejecutables portátiles" }),
     rootConfirmed: "Directorio raíz del software portátil confirmado"
   },
   "ru-RU": {
