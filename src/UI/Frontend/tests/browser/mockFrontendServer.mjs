@@ -57,6 +57,7 @@ const defaultScenario = {
   deviceTopologyExternalMachine: false,
   deviceTopologyNumericUsb: false,
   deviceTopologyWireless: null,
+  deviceTopologyTransport: false,
   displayEdid: "off",
   gpuGrade: "normal",
   cpuGrade: "normal",
@@ -2120,6 +2121,7 @@ function applyTopologyFactScenarios(state) {
     } };
   }
   if (scenario.deviceTopologyNumericUsb) snapshot.ports = fixtureNumericUsbPorts();
+  if (scenario.deviceTopologyTransport) snapshot.ports = fixtureTransportPorts();
   if (scenario.deviceTopologyWireless !== null)
     snapshot.ports = [...snapshot.ports, fixtureWirelessPort(scenario.deviceTopologyWireless)];
   if (scenario.deviceTopologyExternalMachine) {
@@ -2130,6 +2132,7 @@ function applyTopologyFactScenarios(state) {
     }];
     snapshot.ports = [...snapshot.ports, { ...fixtureWirelessPort("unknown"), id: "fixture-peer-link",
       displayName: "Fixture USB4 network link", deviceId: externalMachineLink, protocol: "USB4NET",
+      transport: fixtureKnownTransport("usb4", "enumerator-usb4", externalMachineLink, "USB4"),
       compatibleIds: [String.raw`USB4\USB4NET`],
       network: { interfaceName: "USB4NET", connectionState: "connected", transmitLinkSpeed: null,
           receiveLinkSpeed: null, permanentAddress: null, activeMtuBytes: null,
@@ -2143,6 +2146,7 @@ function fixtureWirelessPort(variant) {
   return { ...fixtureHdmiPort(), id: "fixture-wireless", isPhysicalConnector: false,
     displayName: "Misleading Wi-Fi 7 Name", connectorKind: "internal", busKind: "network", hardwareKind: "Network Adapter",
     protocol: "Wi-Fi 7", speed: null, physicalMaximumSpeed: null, deviceId: String.raw`PCI\FIXTURE_WLAN`, pnpClass: "Net",
+    transport: fixtureKnownTransport("pci", "enumerator-pci", String.raw`PCI\FIXTURE_WLAN`, "PCI"),
     display: null, network: { interfaceName: "Misleading Wi-Fi 7 Name", connectionState: "connected",
       transmitLinkSpeed: null, receiveLinkSpeed: null, permanentAddress: null, activeMtuBytes: null,
       hardwareInterface: true, connectorPresent: null,
@@ -2168,6 +2172,9 @@ function fixtureNumericUsbPorts() {
     const port = { ...fixtureHdmiPort(), id: `fixture-usb-${kind}`, displayName: `Fixture ${kind}`,
       deviceId: `USBPORT\\FIXTURE_${kind}`, connectorKind: "usb-a", busKind: "usb", hardwareKind: "USB Device",
       protocol: "USB 3.x", speed: "5 Gbps", physicalMaximumSpeed: "5 Gbps", display: null,
+      transport: { code: "usb", reason: null, ruleId: "usb-hub-port", evidence: [{ source: "usb-hub-ioctl",
+        deviceId: String.raw`\\?\usb#root_hub30#fixture`, depth: 0, enumeratorName: null,
+        busTypeGuid: null, service: null, parentDeviceId: null }] },
       topologyPath: { domain: 5, code: 64, args: [`root/fixture-usb-${kind}`] },
       usb: { hubDevicePath: String.raw`\\?\usb#root_hub30#fixture`, portNumber: index + 1,
         deviceConnected: true, connectionStatus: { domain: 5, code: 47, args: [] }, negotiatedSpeed: "5 Gbps",
@@ -2190,6 +2197,39 @@ function fixtureNumericUsbPorts() {
       standardCapabilitySource: { domain: 5, code: 60, args: [] }, vendorCapabilitySource: null };
     return port;
   });
+}
+
+function fixtureKnownTransport(code, ruleId, deviceId, enumeratorName) {
+  return { code, reason: null, ruleId, evidence: [{ source: "setupapi-cfgmgr32", deviceId, depth: 0,
+    enumeratorName, busTypeGuid: null, service: null, parentDeviceId: null }] };
+}
+
+// Transport facts are supplied independently of the deliberately misleading device properties.
+function fixtureTransportPorts() {
+  const childId = String.raw`HID\FIXTURE_TRANSPORT_CHILD`;
+  const parentId = String.raw`ACPI\FIXTURE_TRANSPORT_PARENT`;
+  const samples = [
+    ["code", "Misleading NVMe USB4 transport name", String.raw`PCI\FIXTURE_TRANSPORT_CODE`, "stornvme",
+      fixtureKnownTransport("acpi", "enumerator-acpi", String.raw`PCI\FIXTURE_TRANSPORT_CODE`, "ACPI")],
+    ["unknown", "Misleading Bluetooth NVMe transport name", String.raw`PCI\FIXTURE_TRANSPORT_UNKNOWN`, "stornvme",
+      { code: null, reason: "not-queried", ruleId: null, evidence: [] }],
+    ["pci", "Fixture ordinary PCI transport", String.raw`PCI\FIXTURE_TRANSPORT_PCI`, null,
+      fixtureKnownTransport("pci", "enumerator-pci", String.raw`PCI\FIXTURE_TRANSPORT_PCI`, "PCI")],
+    ["parent", "Fixture parent-chain transport", childId, null,
+      { code: "i2c_hid", reason: null, ruleId: "service-hidi2c", evidence: [
+        { source: "setupapi-cfgmgr32", deviceId: childId, depth: 0, enumeratorName: "HID",
+          busTypeGuid: "eeaf37d0-1963-47c4-aa48-72476db7cf49", service: null, parentDeviceId: parentId },
+        { source: "setupapi-cfgmgr32", deviceId: parentId, depth: 1, enumeratorName: "ACPI",
+          busTypeGuid: "d7b46895-001a-4942-891f-a7d46610a843", service: "hidi2c", parentDeviceId: null }
+      ] }]
+  ];
+  return samples.map(([kind, displayName, deviceId, service, transport]) => ({ ...fixtureHdmiPort(),
+    id: `fixture-transport-${kind}`, displayName, deviceId, service, transport,
+    isPhysicalConnector: false, connectorKind: "internal", busKind: "internal", hardwareKind: "Fixture Device",
+    pnpClass: "FixtureDevice", protocol: "Misleading legacy protocol", display: null,
+    speed: null, physicalMaximumSpeed: null,
+    topologyPath: { domain: 5, code: 64, args: [`root/fixture-transport-${kind}`] }
+  }));
 }
 
 function createResourceSoftwareRows(

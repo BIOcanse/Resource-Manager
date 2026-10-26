@@ -2,14 +2,15 @@
 export async function checkDeviceTopologyWireFacts(page, app, language, baseUrl) {
   const topology = page.locator(".device-topology-panel");
   const keys = ["deviceTopologyMachineIdentity", "deviceTopologyGraphicsDock", "deviceTopologyExternalMachine",
-    "deviceTopologyNumericUsb", "deviceTopologyWireless"];
+    "deviceTopologyNumericUsb", "deviceTopologyWireless", "deviceTopologyTransport"];
   const before = await (await fetch(`${baseUrl}/__test/scenario`)).json();
   const restore = Object.fromEntries(keys.map(key => [key, before[key]]));
   const scope = await topology.locator('.device-scope-tabs [role="radio"][aria-checked="true"]').textContent();
-  const result = { attachments: null, usb: [], wireless: [] };
+  const result = { attachments: null, usb: [], wireless: [], transport: [] };
   try {
     await publish({ deviceTopologyMachineIdentity: "laptop", deviceTopologyGraphicsDock: true,
-      deviceTopologyExternalMachine: true, deviceTopologyNumericUsb: true, deviceTopologyWireless: "standards" });
+      deviceTopologyExternalMachine: true, deviceTopologyNumericUsb: true, deviceTopologyWireless: "standards",
+      deviceTopologyTransport: false });
     const figure = topology.locator('.device-machine-figure[data-form-factor="laptop"]');
     await figure.waitFor();
     const formName = topology.locator(".device-machine-form strong");
@@ -76,6 +77,38 @@ export async function checkDeviceTopologyWireFacts(page, app, language, baseUrl)
         `${language}: ${variant} WLAN facts were replaced by the device name: ${actual}`);
       result.wireless.push({ variant, actual });
     }
+
+    await publish({ deviceTopologyGraphicsDock: false, deviceTopologyExternalMachine: false,
+      deviceTopologyNumericUsb: false, deviceTopologyWireless: null, deviceTopologyTransport: true });
+    const transportCases = [
+      ["Misleading NVMe USB4 transport name", "ACPI"],
+      ["Misleading Bluetooth NVMe transport name", `${app.deviceTopology.deviceCategory.unknown} (not-queried)`],
+      ["Fixture ordinary PCI transport", "PCI"],
+      ["Fixture parent-chain transport", "I2C HID"]
+    ];
+    for (const [name, expected] of transportCases) {
+      const node = topology.locator(".device-port-item.device-node").filter({ hasText: name }).first();
+      await node.click();
+      const summary = topology.locator(".device-detail-summary-item")
+        .filter({ has: page.getByText(app.deviceAdapters.label.internalTransport, { exact: true }) }).locator("strong");
+      await summary.getByText(expected, { exact: true }).waitFor();
+      const actual = (await summary.textContent()).trim();
+      assert(actual === expected, `${language}: ${name} replaced its transport fact: ${actual}`);
+      await topology.locator(".device-details-button").click();
+      const dialog = page.locator(".user-details-modal:visible");
+      const transport = dialog.locator(".user-details-row")
+        .filter({ has: page.getByText(app.deviceAdapters.label.internalTransport, { exact: true }) }).locator("dd");
+      await transport.getByText(expected, { exact: true }).waitFor();
+      assert((await transport.textContent()).trim() === expected,
+        `${language}: ${name} lost authoritative transport in the details dialog`);
+      assert(!/PCI Express|PCIe/i.test(await dialog.textContent()),
+        `${language}: ${name} invented PCI Express from ordinary PCI or a device ID`);
+      result.transport.push({ name, actual, dialog: (await transport.textContent()).trim() });
+      await page.keyboard.press("Escape");
+      await dialog.waitFor({ state: "hidden" });
+    }
+    assert(!/PCI Express|PCIe/i.test(await topology.locator(".device-port-list").textContent()),
+      `${language}: the transport tree invented a PCI Express interface`);
     return result;
   } finally {
     const dialog = page.locator(".user-details-modal:visible");
