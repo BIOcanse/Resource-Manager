@@ -245,6 +245,7 @@ export default createSettingsLocale("ru-RU", {
     },
     "uiStyleOptions": {
       "standard": "Стандартный",
+      "classic": "Классический",
       "soft": "Мягкий",
       "outline": "Контурный",
       "terminal": "Терминал"

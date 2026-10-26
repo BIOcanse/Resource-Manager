@@ -37,6 +37,22 @@
         color-scheme: light;
         --preboot-background: rgb(230, 233, 230);
       }
+      html[data-ui-style="classic"][data-theme="system"] {
+        color-scheme: light;
+        --preboot-background: rgb(244, 247, 248);
+      }
+      html[data-ui-style="classic"][data-theme="light"] {
+        color-scheme: light;
+        --preboot-background: rgb(244, 247, 248);
+      }
+      html[data-ui-style="classic"][data-theme="dark"] {
+        color-scheme: dark;
+        --preboot-background: rgb(20, 22, 23);
+      }
+      html[data-ui-style="classic"][data-theme="lowContrast"] {
+        color-scheme: light;
+        --preboot-background: rgb(230, 233, 230);
+      }
       html[data-ui-style="soft"][data-theme="system"] {
         color-scheme: light;
         --preboot-background: rgb(238, 242, 247);
@@ -79,6 +95,10 @@
       }
       @media (prefers-color-scheme: dark) {
         html[data-ui-style="standard"][data-theme="system"] {
+          color-scheme: dark;
+          --preboot-background: rgb(20, 22, 23);
+        }
+        html[data-ui-style="classic"][data-theme="system"] {
           color-scheme: dark;
           --preboot-background: rgb(20, 22, 23);
         }

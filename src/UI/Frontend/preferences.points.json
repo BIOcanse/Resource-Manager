@@ -1,6 +1,6 @@
 {
   "points": [
-    {"group":0,"name":"appearance-ui_style","symbol":"UiStyle","type":"choice","options":["standard","soft","outline","terminal"],"value":"standard"},
+    {"group":0,"name":"appearance-ui_style","symbol":"UiStyle","type":"choice","options":["standard","classic","soft","outline","terminal"],"value":"standard"},
     {"group":0,"name":"appearance-theme","symbol":"Theme","type":"choice","options":["system","light","dark","lowContrast","paper","graphite","blueprint","phosphor","amber","ice"],"value":"system"},
     {"group":0,"name":"appearance-animation_mode","symbol":"AnimationMode","type":"choice","options":["auto","none","normal","ultra"],"value":"auto"},
     {"group":0,"name":"appearance-motion_feel","symbol":"MotionFeel","type":"choice","options":["standard","smooth","crisp"],"value":"standard"},

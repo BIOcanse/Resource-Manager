@@ -13,6 +13,7 @@ export interface UiStyleDefinition {
 // 目录顺序用于列出选项；默认风格由前端点声明。
 export const uiStyles: readonly UiStyleDefinition[] = [
   { id: "standard", palettes: ["system", "light", "dark", "lowContrast"] },
+  { id: "classic", palettes: ["system", "light", "dark", "lowContrast"] },
   { id: "soft", palettes: ["system", "light", "dark"] },
   { id: "outline", palettes: ["system", "paper", "graphite", "blueprint"] },
   { id: "terminal", palettes: ["phosphor", "amber", "ice"] }

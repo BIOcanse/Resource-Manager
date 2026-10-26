@@ -118,6 +118,7 @@ const zhCnSettingsCopy: SettingsCopy = {
     motionFeelOptions: { standard: "标准", smooth: "平滑", crisp: "利落" },
     uiStyleOptions: {
       standard: "标准",
+      classic: "经典",
       soft: "柔和",
       outline: "线框",
       terminal: "终端"
@@ -508,6 +509,7 @@ const enSettingsCopy: SettingsCopy = {
     motionFeelOptions: { standard: "Standard", smooth: "Smooth", crisp: "Crisp" },
     uiStyleOptions: {
       standard: "Standard",
+      classic: "Classic",
       soft: "Soft",
       outline: "Outline",
       terminal: "Terminal"

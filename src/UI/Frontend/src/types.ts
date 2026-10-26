@@ -36,7 +36,7 @@ export type ManualSoftwareKind = "adapted" | "game" | "high_performance" | "othe
 export type ResourceScaleMode = "capacity" | "active";
 export type ResourceTableViewMode = "software" | "process" | "performance";
 // 界面风格和配色的目录在 presentation/uiStyles.ts，规则见 docs/ui_styles.md。
-export type AppUiStyle = "standard" | "soft" | "outline" | "terminal";
+export type AppUiStyle = "standard" | "classic" | "soft" | "outline" | "terminal";
 
 export type AppPalette =
   | "system" | "light" | "dark" | "lowContrast"

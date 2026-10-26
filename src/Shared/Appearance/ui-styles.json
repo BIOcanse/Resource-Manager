@@ -25,6 +25,30 @@
       ]
     },
     {
+      "id": "classic",
+      "palettes": [
+        {
+          "id": "system",
+          "follows": {
+            "light": "light",
+            "dark": "dark"
+          }
+        },
+        {
+          "id": "light",
+          "startupBackground": "#F4F7F8"
+        },
+        {
+          "id": "dark",
+          "startupBackground": "#141617"
+        },
+        {
+          "id": "lowContrast",
+          "startupBackground": "#E6E9E6"
+        }
+      ]
+    },
+    {
       "id": "soft",
       "palettes": [
         {

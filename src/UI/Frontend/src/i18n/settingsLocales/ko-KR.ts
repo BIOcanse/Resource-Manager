@@ -245,6 +245,7 @@ export default createSettingsLocale("ko-KR", {
     },
     "uiStyleOptions": {
       "standard": "표준",
+      "classic": "클래식",
       "soft": "부드럽게",
       "outline": "윤곽선",
       "terminal": "터미널"

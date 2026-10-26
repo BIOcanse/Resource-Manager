@@ -245,6 +245,7 @@ export default createSettingsLocale("es-ES", {
     },
     "uiStyleOptions": {
       "standard": "Estándar",
+      "classic": "Clásico",
       "soft": "Suave",
       "outline": "Contorno",
       "terminal": "Terminal"

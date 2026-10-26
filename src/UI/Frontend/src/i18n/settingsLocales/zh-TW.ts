@@ -244,6 +244,7 @@ export default createSettingsLocale("zh-TW", {
     },
     "uiStyleOptions": {
       "standard": "標準",
+      "classic": "經典",
       "soft": "柔和",
       "outline": "線框",
       "terminal": "終端"

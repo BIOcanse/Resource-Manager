@@ -35,6 +35,8 @@ assert.deepEqual(normalizeUiAppearance("unknown", "dark"), { uiStyle: "standard"
 assert.deepEqual(normalizeUiAppearance("terminal", "system"), { uiStyle: "terminal", theme: "phosphor" });
 assert.deepEqual(normalizeUiAppearance("soft", "dark"), { uiStyle: "soft", theme: "dark" });
 assert.deepEqual(normalizeUiAppearance("soft", "lowContrast"), { uiStyle: "soft", theme: "system" });
+assert.deepEqual(normalizeUiAppearance("classic", "lowContrast"), { uiStyle: "classic", theme: "lowContrast" });
+assert.deepEqual(normalizeUiAppearance("classic", "paper"), { uiStyle: "classic", theme: "system" });
 
 execFileSync(process.execPath, [resolve(frontendRoot, "scripts/generatePrebootAppearance.mjs"), "--check"], { stdio: "inherit" });
 

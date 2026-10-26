@@ -3,20 +3,20 @@ import { waitForStableRendering } from "./journeyWaits.js";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 
 /**
- * 选择项一致，四种界面风格下逐组比对未选中项和选中项的样子：
+ * 选择项一致，五种界面风格下逐组比对未选中项和选中项的样子：
  * - 分页（styles/page-tabs.css 的 .page-tab）：组件与软件、详细信息的子页签，设置导航，软件详情，任务中心，都和一级页签一样。
  * - 分段选择（styles/segmented.css 的 .segment）：设备拓扑的外部／内部、设置→外观的分段，都和监视页资源表的软件级／进程级／性能一样。
  * 只比样子：底色、文字色、边框、圆角、字号字重、投影；尺寸和排列各处自己定，不比，分段的字号也是各处自己定。
  * 带选中指示条的组（docs/page_motion_2026-10-25.md）：项本身只有文字，未选中的样子画在项的 ::before 上，选中的样子是组里那条指示条，
  * 三处都比：项、项的 ::before，以及选中项所在组的指示条。
- * 基准先在监视页按四种风格各记一次，切到别的页后不再读它（离开的页面可能已卸载）。
+ * 基准先在监视页按每种风格各记一次，切到别的页后不再读它（离开的页面可能已卸载）。
  * 风格直接写到根元素的 data-ui-style 上（外观的唯一发布点，见 presentation/documentAppearance.ts）：
  * 这里验的是样式表，不是外观设置的保存流程。
  */
 export default async function pageTabsConsistencyJourney(page, baseUrl) {
   const app = await loadAppCopy("zh-CN");
   const settingsText = await loadSettingsText("zh-CN");
-  const styles = [["standard", "light"], ["soft", "light"], ["outline", "paper"], ["terminal", "phosphor"]];
+  const styles = [["standard", "light"], ["classic", "light"], ["soft", "light"], ["outline", "paper"], ["terminal", "phosphor"]];
   const properties = ["backgroundColor", "color", "borderTopColor", "borderTopStyle", "borderTopWidth", "borderTopLeftRadius", "fontSize", "fontWeight", "boxShadow"];
   const segmentProperties = properties.filter((name) => name !== "fontSize");
   const failures = [];
@@ -57,7 +57,7 @@ export default async function pageTabsConsistencyJourney(page, baseUrl) {
     active: scope.locator(`${item}.active:visible`).first(),
     inactive: scope.locator(`${item}:not(.active):visible`).first()
   });
-  /** 四种风格下一组的样子：{ 风格: { active, inactive } }。 */
+  /** 每种风格下一组的样子：{ 风格: { active, inactive } }。 */
   const record = async (scope, item) => {
     const items = pair(scope, item);
     await items.active.waitFor({ state: "visible", timeout: 7000 });

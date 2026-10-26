@@ -231,7 +231,7 @@ export default async function metricCardStatesJourney(page, baseUrl) {
   // 最后回到中文、宽窗口：运行器收尾的可用性检查按中文区域名找资源列表。
   await page.setViewportSize({ width: 1280, height: 900 });
   const gaps = {};
-  for (const [uiStyle, theme] of [["standard", "light"], ["soft", "light"], ["outline", "paper"], ["terminal", "phosphor"]]) {
+  for (const [uiStyle, theme] of [["standard", "light"], ["classic", "light"], ["soft", "light"], ["outline", "paper"], ["terminal", "phosphor"]]) {
     await writeFrontendPreferences(page, (value) => { value.appearance.language = "zh-CN"; value.appearance.uiStyle = uiStyle; value.appearance.theme = theme; });
     await page.reload({ waitUntil: "domcontentloaded" });
     await openMonitor(zh);

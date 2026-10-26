@@ -172,7 +172,7 @@ export default async function resourceTableColumnEditorJourney(page, baseUrl) {
   // 四种界面风格：选中的芯片底色和文字色都和未选中的不同。
   const styles = [];
   const originalLook = await page.evaluate(() => ({ uiStyle: document.documentElement.dataset.uiStyle, theme: document.documentElement.dataset.theme }));
-  for (const [uiStyle, theme] of [["standard", "light"], ["standard", "dark"], ["soft", "dark"], ["terminal", "phosphor"], ["outline", "paper"], ["outline", "blueprint"]]) {
+  for (const [uiStyle, theme] of [["standard", "light"], ["standard", "dark"], ["classic", "light"], ["soft", "dark"], ["terminal", "phosphor"], ["outline", "paper"], ["outline", "blueprint"]]) {
     await page.evaluate(([style, palette]) => { document.documentElement.dataset.uiStyle = style; document.documentElement.dataset.theme = palette; }, [uiStyle, theme]);
     await waitForStableRendering(page, [".resource-table-column-option", ".resource-table-column-select"], { timeoutMs: 3000 });
     const look = async (label) => chip(label).evaluate((element) => {

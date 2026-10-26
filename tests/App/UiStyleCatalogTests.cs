@@ -7,6 +7,8 @@ public sealed class UiStyleCatalogTests
     [Theory]
     [InlineData(null, null, "standard", "system")]
     [InlineData("standard", "lowContrast", "standard", "lowContrast")]
+    [InlineData("classic", "dark", "classic", "dark")]
+    [InlineData("classic", "paper", "classic", "system")]
     [InlineData("soft", "paper", "soft", "system")]
     [InlineData("terminal", "ice", "terminal", "ice")]
     [InlineData("Terminal", "ice", "standard", "system")]

@@ -245,6 +245,7 @@ export default createSettingsLocale("de-DE", {
     },
     "uiStyleOptions": {
       "standard": "Standard",
+      "classic": "Klassisch",
       "soft": "Weich",
       "outline": "Kontur",
       "terminal": "Terminal"

@@ -274,7 +274,7 @@ export default async function controlSliderInteractionJourney(page, baseUrl) {
   await box.press("Enter");
   await applyAndSettle(65, "Screenshot value");
   const looks = [];
-  for (const uiStyle of ["standard", "soft", "outline", "terminal"]) {
+  for (const uiStyle of ["standard", "classic", "soft", "outline", "terminal"]) {
     await writeFrontendPreferences(page, value => { value.appearance.uiStyle = uiStyle; });
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForFunction(style => document.documentElement.dataset.uiStyle === style, uiStyle);

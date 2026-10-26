@@ -126,7 +126,7 @@ export const loadingSettingsText: SettingsTextBundle = {
     settingsLanguageTitle: "",
     settingsLanguageDescription: "",
     languageSelectLabel: "",
-    uiStyleOptions: { standard: "", soft: "", outline: "", terminal: "" },
+    uiStyleOptions: { standard: "", classic: "", soft: "", outline: "", terminal: "" },
     themeOptions: {
       system: "", light: "", dark: "", lowContrast: "",
       paper: "", graphite: "", blueprint: "",

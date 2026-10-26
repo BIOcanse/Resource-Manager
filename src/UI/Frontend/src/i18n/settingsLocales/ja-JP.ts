@@ -245,6 +245,7 @@ export default createSettingsLocale("ja-JP", {
     },
     "uiStyleOptions": {
       "standard": "標準",
+      "classic": "クラシック",
       "soft": "ソフト",
       "outline": "アウトライン",
       "terminal": "ターミナル"
