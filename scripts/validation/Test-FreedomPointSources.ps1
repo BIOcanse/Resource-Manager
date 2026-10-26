@@ -46,7 +46,7 @@ try {
     $taskBuildProperties = @('-p:BuildInParallel=false','-maxcpucount:1',
         '-p:SkipPerformanceOverlayNativeBuild=true','-p:SkipGpuPlacementNativeBuild=true',
         '-p:SkipGpuPlacementPreparationNativeBuild=true','-p:SkipGpuLaunchBrokerNativeBuild=true',
-        '-p:SkipAdlxBridgeBuild=true','-p:SkipNativeCoreBuild=true',
+        '-p:SkipAdlxBridgeBuild=true',
         '-p:SkipGpuWindowActionNativeBuild=true','-p:SkipGpuPlacementExternalNativeBuild=true',
         '-p:SkipClientAppBuild=true',('-p:ArtifactsPath='+$taskArtifacts),
         ('-p:CustomAfterMicrosoftCommonTargets='+(Join-Path $PSScriptRoot 'FreedomPointCompilerCapture.targets'))) + $AdditionalBuildProperties
