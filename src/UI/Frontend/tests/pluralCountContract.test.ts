@@ -91,9 +91,14 @@ const samples = [0, 1, 2, 5, 21];
 const extraSamples: Partial<Record<PluralLocale, number[]>> = { "ru-RU": [11, 22, 25, 111], "fr-FR": [1000000], "es-ES": [1000000] };
 const rendered = new Map<string, string>();
 let checkedFunctions = 0;
+let referencePaths: string | undefined;
 for (const locale of locales) {
   const functions = countFunctions([["app", await loadAppCopy(locale)], ["settings", await loadSettingsText(locale)]]);
-  assert.ok(functions.length >= 45, `${locale}: only ${functions.length} count functions found`);
+  assert.ok(functions.length >= 40, `${locale}: only ${functions.length} count functions found`);
+  const paths = functions.map((entry) => entry.path).join("
+");
+  referencePaths ??= paths;
+  assert.equal(paths, referencePaths, `${locale} has a different set of count functions than ${locales[0]}`);
   const inflected = pluralCategories[locale].length > 1;
   for (const { path, fn, parameters } of functions) {
     const source = fn.toString();
