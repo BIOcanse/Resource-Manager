@@ -131,7 +131,9 @@ export function userFacingDateTime(value: unknown, fallback = uiText.status.unkn
   }
 
   const date = new Date(text);
-  return Number.isNaN(date.getTime()) ? fallback : date.toLocaleString(currentLanguage());
+  return Number.isNaN(date.getTime()) ? fallback : new Intl.DateTimeFormat(currentLanguage(), {
+    year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric"
+  }).format(date);
 }
 
 /**

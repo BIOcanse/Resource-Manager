@@ -2,9 +2,20 @@ import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 import { formatBytes } from "../../src/presentation/byteUnits.ts";
+import { applyLanguage, currentLanguage as numberLanguage } from "../../src/text.ts";
 import { customRefresh, frontendPreferencesKey, readFrontendPreferences, writeFrontendPreferences } from "./frontendPreferencesFixture.js";
 
 export default async function diskUsageFeedbackRefreshJourney(page, baseUrl) {
+  const previous = numberLanguage();
+  try {
+    return await checkDiskUsageFeedbackRefresh(page, baseUrl);
+  } finally {
+    await applyLanguage(previous);
+  }
+}
+
+async function checkDiskUsageFeedbackRefresh(page, baseUrl) {
+  await applyLanguage("zh-CN");
   const failures = [];
   const settingsPatchBodies = [];
   const scanResponses = [];
@@ -169,6 +180,7 @@ export default async function diskUsageFeedbackRefreshJourney(page, baseUrl) {
     await rootSelector.waitFor({ state: "visible", timeout: 7000 });
     assert(await rootSelector.getAttribute("aria-label") === app.diskUsage.rootSelectorLabel,
       `${option.id}: root selector did not expose the localized accessible name`);
+    await applyLanguage(option.id);
     const cTotals = diskRootTotals(app, 18_000_000);
     const dTotals = diskRootTotals(app, 73_000_000);
     const scanWideTotal = formatBytes(91_000_000, "storage", "native");

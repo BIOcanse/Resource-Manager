@@ -1,3 +1,4 @@
+import { formatFixedDigits } from "./presentation/interfaceNumbers.ts";
 import type { ManagedComponent, SoftwareRecord } from "./types";
 import { getHostMessageTransport } from "./host/hostMessageTransport.ts";
 import { uiText } from "./text.ts";
@@ -110,7 +111,7 @@ export function formatBoolean(value: unknown) {
 
 export function formatPercent(value: unknown) {
   const numeric = Number(value);
-  return Number.isFinite(numeric) ? `${numeric.toFixed(1)}%` : "0.0%";
+  return `${formatFixedDigits(Number.isFinite(numeric) ? numeric : 0, 1)}%`;
 }
 
 export function isHttpUrl(value: unknown) {

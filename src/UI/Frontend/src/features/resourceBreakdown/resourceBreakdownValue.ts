@@ -1,3 +1,4 @@
+import { formatFixedDigits } from "../../presentation/interfaceNumbers.ts";
 import { formatBytes, formatBytesPerSecond } from "../../presentation/byteUnits.ts";
 import { byteQuantityKindForMetric } from "../../presentation/metricLabels.ts";
 import type { ResourceBreakdownBar } from "../../types";
@@ -20,5 +21,5 @@ export function formatResourceBarValue(
   }
 
   const digits = Math.abs(value) >= 10 ? 1 : 2;
-  return `${value.toFixed(digits)}${bar.unit ? ` ${bar.unit}` : ""}`;
+  return `${formatFixedDigits(value, digits)}${bar.unit ? ` ${bar.unit}` : ""}`;
 }

@@ -1,3 +1,4 @@
+import { formatInterfaceNumber } from "../../../presentation/interfaceNumbers.ts";
 import { renderBackendMessage } from "../../../presentation/backendMessage.ts";
 import {
   capabilityLabels,
@@ -11,7 +12,7 @@ import {
   usbInterfaceCapability
 } from "./adapterEvidence.ts";
 import type { CameraDeviceModel, DeviceAdapter } from "./types";
-import { uiText, currentLanguage } from "../../../text.ts";
+import { uiText } from "../../../text.ts";
 
 export const cameraAdapter: DeviceAdapter<CameraDeviceModel> = {
   id: "camera",
@@ -82,6 +83,6 @@ export const cameraAdapter: DeviceAdapter<CameraDeviceModel> = {
 
 function formatCameraMode(mode: import("../../../types").DeviceTopologyCameraMode | null | undefined) {
   if (!mode) return "--";
-  const frameRate = mode.maximumFrameRate.toLocaleString(currentLanguage(), { maximumFractionDigits: 2 });
+  const frameRate = formatInterfaceNumber(mode.maximumFrameRate, { maximumFractionDigits: 2 });
   return `${mode.width} x ${mode.height} @ ${frameRate} fps · ${mode.pixelFormat}`;
 }

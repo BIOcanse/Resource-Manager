@@ -1,6 +1,7 @@
+import { formatFixedDigits, formatInterfaceNumber, formatSignificantDigits, formatTrimmedDigits } from "./interfaceNumbers.ts";
 import type { MetricFieldValue } from "../data/metricFields/metricFieldSource.ts";
 import { formatBytes, formatBytesPerSecond, type ByteQuantityKind } from "./byteUnits.ts";
-import { uiText, currentLanguage } from "../text.ts";
+import { uiText } from "../text.ts";
 
 /*
  * 规范字段数值的统一显示：按字段自带的单位格式化。
@@ -23,8 +24,8 @@ export function formatFieldValue(value: MetricFieldValue, quantityKind: ByteQuan
     // NVMe 数据单位：1 个单位 = 512000 字节。
     case "512000 B": return formatBytes(number * 512000, "storage");
     case "B/s": return formatBytesPerSecond(number);
-    case "%": return `${number.toFixed(1)}%`;
-    case "°C": return `${number.toFixed(1)} °C`;
+    case "%": return `${formatFixedDigits(number, 1)}%`;
+    case "°C": return `${formatFixedDigits(number, 1)} °C`;
     case "MHz":
     case "RPM":
     case "mV": return `${Math.round(number)} ${value.unit}`;
@@ -34,16 +35,16 @@ export function formatFieldValue(value: MetricFieldValue, quantityKind: ByteQuan
     case "s":
     case "ms":
     case "min":
-    case "h": return `${trimmed(number, 1)} ${value.unit}`;
-    case "A": return `${trimmed(number, 2)} A`;
+    case "h": return `${formatTrimmedDigits(number, 1)} ${value.unit}`;
+    case "A": return `${formatTrimmedDigits(number, 2)} A`;
     case "µs": return `${integer !== null ? integer.toString() : Math.round(number)} µs`;
     case "count":
     case "generation":
     case "lanes":
-    case "enum": return integer !== null ? integer.toLocaleString(currentLanguage()) : trimmed(number, 2);
+    case "enum": return integer !== null ? formatInterfaceNumber(integer) : formatTrimmedDigits(number, 2);
     case "bitmask64": return `0x${(integer ?? BigInt(Math.trunc(number))).toString(16).toUpperCase()}`;
     case "1":
-    case "ratio": return trimmed(number, 3);
+    case "ratio": return formatTrimmedDigits(number, 3);
     default: return `${integer !== null ? integer.toString() : plain(number)} ${value.unit}`.trim();
   }
 }
@@ -74,10 +75,7 @@ function decodedFieldValue(name: string, code: bigint): string | null {
 
 /** 很小的数（例如每计数焦耳）用有效数字，避免定点格式把它显示成 0。 */
 function plain(value: number): string {
-  return value !== 0 && Math.abs(value) < 0.01 ? value.toPrecision(4) : trimmed(value, 3);
-}
-
-/** 定点小数去掉末尾的 0，例如 12.50 → 12.5，3.0 → 3。 */
-function trimmed(value: number, digits: number): string {
-  return Number(value.toFixed(digits)).toString();
+  return value !== 0 && Math.abs(value) < 0.01
+    ? formatSignificantDigits(value, 4)
+    : formatTrimmedDigits(value, 3);
 }

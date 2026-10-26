@@ -1,3 +1,4 @@
+import { formatInterfaceNumber } from "../../../presentation/interfaceNumbers.ts";
 import { renderBackendMessage } from "../../../presentation/backendMessage.ts";
 import { portProtocol } from "../deviceVocabulary.ts";
 import { connectedDisplay } from "../deviceTopologyDisplay.ts";
@@ -10,7 +11,7 @@ import {
 } from "./adapterEvidence.ts";
 import type { DeviceAdapter, MonitorDeviceModel } from "./types";
 import type { DeviceTopologyDisplayConnection } from "../../../types";
-import { uiText, currentLanguage } from "../../../text.ts";
+import { uiText } from "../../../text.ts";
 
 export const monitorAdapter: DeviceAdapter<MonitorDeviceModel> = {
   id: "monitor",
@@ -30,13 +31,13 @@ export const monitorAdapter: DeviceAdapter<MonitorDeviceModel> = {
     const displayTechnology = renderBackendMessage(display.displayTechnology, "--");
     const panelTechnology = displayValue(display.panelTechnology, uiText.deviceAdapters.edidNotReported);
     const sdrWhiteLevel = display.sdrWhiteLevelNits
-      ? `${display.sdrWhiteLevelNits.toLocaleString(currentLanguage())} nits`
+      ? `${formatInterfaceNumber(display.sdrWhiteLevelNits)} nits`
       : "--";
     const peakLuminance = display.maximumLuminanceNits
-      ? `${display.maximumLuminanceNits.toLocaleString(currentLanguage())} nits`
+      ? `${formatInterfaceNumber(display.maximumLuminanceNits)} nits`
       : "--";
     const fullFrameLuminance = display.maximumFullFrameLuminanceNits
-      ? `${display.maximumFullFrameLuminanceNits.toLocaleString(currentLanguage())} nits`
+      ? `${formatInterfaceNumber(display.maximumFullFrameLuminanceNits)} nits`
       : "--";
     const physicalSize = displayValue(display.physicalSize);
     const connection = connectionFacts(context);

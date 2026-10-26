@@ -1,3 +1,5 @@
+import { interfaceDecimalSeparator } from "./interfaceNumbers.ts";
+
 /** Shipped aliases used .NET custom 0 / 0.# / 0.## / 0.### formatting, whose decimal
  * buffer has 15 significant digits and rounds decimal midpoints away from zero.
  * Work on that decimal buffer so binary toFixed rounding cannot change a reading.
@@ -17,5 +19,8 @@ export function formatLegacyMetricNumber(value: number, scale: 0 | 1 | 2 | 3): s
   const digits = rounded.toString().padStart(scale + 1, "0");
   const fixed = scale === 0 ? digits
     : `${digits.slice(0, -scale)}.${digits.slice(-scale)}`.replace(/\.?0+$/, "");
-  return sign + fixed;
+  // Keep the exact decimal buffer, including large integer digits, and use the
+  // interface language's decimal separator without rounding the number again.
+  const decimal = interfaceDecimalSeparator();
+  return sign + fixed.replace(".", decimal);
 }

@@ -6,7 +6,7 @@ export default async function usabilityProbe(page) {
     const table = document.querySelector(".resource-table-frame[role='treegrid']");
     const resourcePerformancePanel = document.querySelector(".resource-performance-panel");
     const resourceListRegion = document.querySelector(
-      '.monitor-work-region[aria-label="资源列表"]');
+      ".resource-table-panel, .resource-performance-panel")?.closest(".monitor-work-region");
     const resourceListObservation = resourceListRegion?.querySelector(".observation-state");
     const resourceListContentState = resourceListRegion?.querySelector(
       ".content-state.empty, .content-state.waiting, .content-state.unavailable");

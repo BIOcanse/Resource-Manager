@@ -1,3 +1,4 @@
+import { formatTrimmedDigits } from "../../presentation/interfaceNumbers.ts";
 import { createSignal, onCleanup, Show } from "solid-js";
 import {
   getCpuBaselineRatio,
@@ -42,7 +43,7 @@ export function CpuBaselineRatioPanel(props: { runtimeEffectsEnabled: boolean })
   load();
 
   function startEditing(current: CpuBaselineRatioSettings) {
-    setDraft(formatRatio(current.ratio));
+    setDraft(String(Number(current.ratio.toFixed(4))));
     setCommandError(null);
     setNotice(null);
     setEditing(true);
@@ -198,9 +199,9 @@ function BaselineTile(props: { label: string; value: string }) {
 }
 
 function formatRatio(value: number) {
-  return String(Number(value.toFixed(4)));
+  return formatTrimmedDigits(value, 4);
 }
 
 function formatMultiplier(value: number) {
-  return String(Number(value.toFixed(3)));
+  return formatTrimmedDigits(value, 3);
 }

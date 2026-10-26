@@ -1,3 +1,4 @@
+import { formatFixedDigits } from "../../presentation/interfaceNumbers.ts";
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
 import { RuntimePolicyDeliveryNotice } from "../../components/RuntimePolicyDeliveryNotice";
 import {
@@ -1051,7 +1052,7 @@ function resolveSelectedLogicalIds(
 }
 
 function formatUsage(value?: number | null) {
-  return typeof value === "number" ? `${value.toFixed(1)}%` : "--";
+  return typeof value === "number" ? `${formatFixedDigits(value, 1)}%` : "--";
 }
 
 function formatScore(value: number) {
@@ -1327,7 +1328,8 @@ function formatRuntimeDuration(
 function formatDuration(value: number) {
   const milliseconds = sanitizeDuration(value);
   if (milliseconds >= 1000) {
-    return `${(milliseconds / 1000).toFixed(milliseconds >= 10_000 ? 1 : 2)} s`;
+    const digits = milliseconds >= 10_000 ? 1 : 2;
+    return `${formatFixedDigits(milliseconds / 1000, digits)} s`;
   }
 
   if (milliseconds >= 100) {
@@ -1335,10 +1337,10 @@ function formatDuration(value: number) {
   }
 
   if (milliseconds >= 10) {
-    return `${milliseconds.toFixed(1)} ms`;
+    return `${formatFixedDigits(milliseconds, 1)} ms`;
   }
 
-  return `${milliseconds.toFixed(2)} ms`;
+  return `${formatFixedDigits(milliseconds, 2)} ms`;
 }
 
 function sanitizeDuration(value?: number | null) {

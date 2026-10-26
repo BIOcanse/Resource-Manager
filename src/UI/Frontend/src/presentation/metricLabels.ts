@@ -1,3 +1,4 @@
+import { formatFixedDigits, formatSignificantDigits } from "./interfaceNumbers.ts";
 import { uiText } from "../text.ts";
 import { isPhysicalMemoryResidualKind, physicalMemoryResidualKindName } from "./physicalMemoryResidual.ts";
 import {
@@ -336,7 +337,7 @@ export function resourceTableCellText(
   if (!cell.unit) {
     if (cell.displayValue) return cell.displayValue;
     return typeof cell.value === "number" && Number.isFinite(cell.value)
-      ? String(cell.value)
+      ? formatSignificantDigits(cell.value, 21)
       : "--";
   }
   if (typeof cell.value !== "number" || !Number.isFinite(cell.value)) {
@@ -345,12 +346,12 @@ export function resourceTableCellText(
 
   switch (cell.unit) {
     case "%":
-      return `${cell.value.toFixed(1)}%`;
+      return `${formatFixedDigits(cell.value, 1)}%`;
     case "B":
       return formatBytes(cell.value, byteQuantityKindForMetric(metricId));
     case "B/s":
       return formatBytesPerSecond(cell.value);
     default:
-      return `${cell.value.toFixed(1)} ${cell.unit}`.trim();
+      return `${formatFixedDigits(cell.value, 1)} ${cell.unit}`.trim();
   }
 }

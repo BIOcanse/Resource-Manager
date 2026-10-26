@@ -99,6 +99,7 @@ const defaultScenario = {
   metricFieldDevices: [],
   // SamplingObservationStatus overrides for current-value/placeholder contract tests.
   metricStatuses: {},
+  metricCpuUsage: 12,
   // 指标目录里额外的部件地址："none" 没有；"reading-source" 加一个带候选来源的核显温度地址
   // （gpu.5.temperature，候选是 metricFieldsProbe 的 readingSourceDevices 字段，后端当前选中 ADLX 次选）。
   metricCatalogAddresses: "none",
@@ -1722,7 +1723,7 @@ function resourceFactItemsKnown(url) {
 
 function metricSnapshot(requestedIds) {
   const allItems = {
-    "cpu.usage": { id: "cpu.usage", unit: "%", status: 1, numericValue: 12, percent: 12 },
+    "cpu.usage": { id: "cpu.usage", unit: "%", status: 1, numericValue: scenario.metricCpuUsage, percent: scenario.metricCpuUsage },
     "cpu.frequency": { id: "cpu.frequency", unit: "MHz", status: 1, numericValue: 4200 },
     "cpu.frequencyPercent": { id: "cpu.frequencyPercent", unit: "%", status: 1, numericValue: 88, percent: 88 },
     "memory.usage": { id: "memory.usage", unit: "B", status: 1, numericValue: 8 * 1024 ** 3, percent: 25 },

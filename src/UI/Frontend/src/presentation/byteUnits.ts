@@ -1,3 +1,4 @@
+import { formatFixedDigits } from "./interfaceNumbers.ts";
 /**
  * 字节单位的唯一所有者。
  *
@@ -95,7 +96,8 @@ export function byteUnitScale(
 }
 
 export function formatByteUnitValue(scaled: ByteUnitValue) {
-  return `${scaled.value.toFixed(byteDigits(scaled))} ${scaled.unit}`;
+  const digits = byteDigits(scaled);
+  return `${formatFixedDigits(scaled.value, digits)} ${scaled.unit}`;
 }
 
 /** 单个容量。 */
@@ -146,7 +148,7 @@ export function formatBytePair(
     ? usedBytes / divisor
     : 0;
   const digits = byteDigits(total);
-  return `${used.toFixed(digits)} / ${total.value.toFixed(digits)} ${total.unit}`;
+  return `${formatFixedDigits(used, digits)} / ${formatFixedDigits(total.value, digits)} ${total.unit}`;
 }
 
 /**
@@ -169,7 +171,8 @@ export function formatBitsPerSecond(
     value /= 1000;
     index += 1;
   }
-  return `${value.toFixed(value >= 100 ? 0 : value >= 10 ? 1 : 2)} ${units[index]}`;
+  const digits = value >= 100 ? 0 : value >= 10 ? 1 : 2;
+  return `${formatFixedDigits(value, digits)} ${units[index]}`;
 }
 
 /** 字节吞吐率：数值部分按容量规则走，后面加 /s。 */

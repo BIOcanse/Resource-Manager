@@ -1,3 +1,4 @@
+import { formatFixedDigits } from "../../presentation/interfaceNumbers.ts";
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
 import { userFacingErrorMessage } from "../../presentation/userFacingText";
 import { RuntimePolicyDeliveryNotice } from "../../components/RuntimePolicyDeliveryNotice";
@@ -823,7 +824,7 @@ function sanitizePercent(value?: number | null) {
 }
 
 function formatPercent(value: number | null) {
-  return value === null ? uiText.gpuScheduling.noData : `${value.toFixed(1)}%`;
+  return value === null ? uiText.gpuScheduling.noData : `${formatFixedDigits(value, 1)}%`;
 }
 
 function formatProcessCount(position: GpuSchedulingPosition) {

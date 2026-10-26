@@ -1,3 +1,4 @@
+import { formatInterfaceNumber } from "../../../presentation/interfaceNumbers.ts";
 import { mountStateLabel } from "../deviceVocabulary.ts";
 import { For, Index, Match, Show, Switch } from "solid-js";
 import type {
@@ -21,7 +22,7 @@ import type {
 } from "../adapters/types";
 import { formatBytes } from "../adapters/adapterEvidence";
 import "./specialized-device-details.css";
-import { uiText, currentLanguage } from "../../../text.ts";
+import { uiText } from "../../../text.ts";
 import type { DeviceTopologyInformationSnapshot } from "../../../types.ts";
 import { currentVolumeFreeBytes } from "../deviceTopologyLiveInformation.ts";
 
@@ -249,7 +250,7 @@ function CameraDetails(props: { model: CameraDeviceModel }) {
         <div class="device-camera-modes" role="group" aria-label={uiText.deviceSpecialized.cameraNativeModes}>
           <Index each={props.model.nativeModes}>
             {(mode) => (
-              <span>{mode().width} x {mode().height} @ {mode().maximumFrameRate.toLocaleString(currentLanguage(), { maximumFractionDigits: 2 })} fps · {mode().pixelFormat}</span>
+              <span>{mode().width} x {mode().height} @ {formatInterfaceNumber(mode().maximumFrameRate, { maximumFractionDigits: 2 })} fps · {mode().pixelFormat}</span>
             )}
           </Index>
         </div>

@@ -1,3 +1,4 @@
+import { formatInterfaceNumber } from "../../../presentation/interfaceNumbers.ts";
 import { hidTypeLabel } from "../deviceVocabulary.ts";
 import {
   capabilityLabels,
@@ -13,7 +14,7 @@ import {
   summaryFields
 } from "./adapterEvidence.ts";
 import type { DeviceAdapter, KeyboardDeviceModel, MouseDeviceModel } from "./types";
-import { uiText, currentLanguage } from "../../../text.ts";
+import { uiText } from "../../../text.ts";
 
 export const keyboardAdapter: DeviceAdapter<KeyboardDeviceModel> = {
   id: "keyboard",
@@ -81,7 +82,7 @@ export const mouseAdapter: DeviceAdapter<MouseDeviceModel> = {
     const pollingInterval = formatPollingInterval(context.port.hid?.inputPollingIntervalMicroseconds);
     const reportRate = formatRate(context.port.hid?.theoreticalReportRateHz, "Hz");
     const dpi = context.port.hid?.reportedDpi
-      ? `${context.port.hid.reportedDpi.toLocaleString(currentLanguage())} DPI`
+      ? `${formatInterfaceNumber(context.port.hid.reportedDpi)} DPI`
       : uiText.deviceAdapters.standardHidNotReported;
     const inputProtocol = hidTypeLabel(context.port.hid?.hidType)
       ?? displayValue(context.port.protocol, uiText.deviceAdapters.hidMouse);

@@ -3,10 +3,10 @@ import { createSignal, For, Show } from "solid-js";
 import { createAiGatewayCredential, revokeAiGatewayCredential } from "../../../api";
 import { useFrontendRuntime } from "../../../frontendRuntime/FrontendRuntimeContext.tsx";
 import { useSource } from "../../../frontendRuntime/source/useSource.ts";
-import { userFacingErrorMessage } from "../../../presentation/userFacingText";
+import { userFacingDateTime, userFacingErrorMessage } from "../../../presentation/userFacingText";
 import type { AiGatewayCompatibilityProfile, AiGatewayCredentialCreatedView } from "../../../types";
 import { SegmentedControl } from "../../../ui/primitives/SegmentedControl.tsx";
-import { currentLanguage, uiText } from "../../../text.ts";
+import { uiText } from "../../../text.ts";
 
 interface AiGatewayKeyManagerLabels {
   aiGatewayTitle: string;
@@ -174,7 +174,7 @@ export function AiGatewayKeyManager(props: AiGatewayKeyManagerProps) {
                   {credential.compatibilityProfile === "openai"
                     ? props.labels.aiGatewayOpenAiProfile
                     : props.labels.aiGatewayAnthropicProfile}
-                  {" · "}{new Date(credential.createdAt).toLocaleString(currentLanguage())}
+                  {" · "}{userFacingDateTime(credential.createdAt)}
                 </span>
                 <code>{credential.baseUrl}</code>
               </div>

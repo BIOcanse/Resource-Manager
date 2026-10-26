@@ -82,7 +82,7 @@ export async function enableMetricFields(baseUrl) {
 export async function checkCpuMetricFields(page, app, language) {
   await page.getByRole("tab", { name: app.misc.detailsTab.cpu, exact: true }).click();
   const cpu = app.cpuTopology;
-  const numa = cpu.numaNode(0, [cpu.numaCapacity("32.0 GiB"), cpu.numaAvailable(cpu.fieldUnavailable)].join(" · "));
+  const numa = cpu.numaNode(0, [cpu.numaCapacity(`${(32).toLocaleString(language, { useGrouping: false, minimumFractionDigits: 1 })} GiB`), cpu.numaAvailable(cpu.fieldUnavailable)].join(" · "));
   // CPU 拓扑沿原 60 秒订阅，首个对齐回调最长要等一分钟。
   // CPU 页同时有 CPU 型号区和基线比例区，两者共用 cpu-topology-* 样式；按型号区的可访问名称限定。
   const model = page.getByRole("region", { name: cpu.modelLabel, exact: true });
@@ -113,10 +113,10 @@ export async function checkDeviceMetricFields(page, app, language) {
   await topology.locator(".device-details-button").click();
   const dialog = page.locator(".user-details-modal:visible");
   const npu = dialog.locator(".user-details-section").filter({ has: page.getByRole("heading", { name: text.npuTitle, exact: true }) });
-  await npu.locator(".user-details-row").filter({ hasText: app.fieldLabel.npu_all_engine_busy_percent.label }).filter({ hasText: "137.5%" }).waitFor();
+  await npu.locator(".user-details-row").filter({ hasText: app.fieldLabel.npu_all_engine_busy_percent.label }).filter({ hasText: `${(137.5).toLocaleString(language, { useGrouping: false })}%` }).waitFor();
   const amd = dialog.locator(".user-details-section").filter({ has: page.getByRole("heading", { name: text.amdNpuTitle, exact: true }) });
   await amd.getByText(text.amdNpuHint, { exact: true }).waitFor();
-  await amd.locator(".user-details-row").filter({ hasText: app.fieldLabel.gpu_amd_npu_activity_percent.label }).filter({ hasText: "0.0%" }).waitFor();
+  await amd.locator(".user-details-row").filter({ hasText: app.fieldLabel.gpu_amd_npu_activity_percent.label }).filter({ hasText: `${(0).toLocaleString(language, { useGrouping: false, minimumFractionDigits: 1 })}%` }).waitFor();
   await amd.locator(".user-details-row").filter({ hasText: app.fieldLabel.gpu_amd_npu_frequency_mhz.label }).filter({ hasText: "1800 MHz" }).waitFor();
   const result = { language, npuRows: await npu.locator(".user-details-row").count(), amdRows: await amd.locator(".user-details-row").count() };
   await page.keyboard.press("Escape");
@@ -140,7 +140,7 @@ export async function checkFieldCardDisplay(page, app, language) {
   await page.getByRole("navigation").getByRole("button", { name: app.page.monitor, exact: true }).click();
   const card = page.locator(".metric-card").filter({ hasText: app.fieldLabel.npu_all_engine_busy_percent.label }).first();
   const main = card.locator(".metric-main-content");
-  await main.locator(".metric-value").filter({ hasText: "137.5%" }).waitFor({ timeout: 15_000 });
+  await main.locator(".metric-value").filter({ hasText: `${(137.5).toLocaleString(language, { useGrouping: false })}%` }).waitFor({ timeout: 15_000 });
   const device = app.dashboard.namedDevice(app.dashboard.deviceKind.npu, "Fixture NPU");
   await main.locator(".metric-device").filter({ hasText: device }).waitFor();
   const absent = card.locator(".metric-small-row");

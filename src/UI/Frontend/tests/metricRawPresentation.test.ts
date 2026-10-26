@@ -88,6 +88,7 @@ applyByteUnitMode("native");
 for (const language of languages) {
   await applyLanguage(language.id);
   const copy = await loadAppCopy(language.id as Parameters<typeof loadAppCopy>[0]);
+  const decimal = (1.1).toLocaleString(language.id, { useGrouping: false }).replace(/[0-9]/g, "");
   for (const [pattern, names] of Object.entries(recordedLabels)) {
     const id = pattern.replaceAll("{index}", "2");
     assert.equal(aliasCatalog.find(item => item.id === id)?.label, names[language.id].replaceAll("{index}", "2"), `${language.id}: ${id}`);
@@ -95,9 +96,10 @@ for (const language of languages) {
   for (const [id, , , display, group] of readings) {
     const definition = catalog.find(item => item.id === id)!;
     const metric = snapshot.items[id];
-    assert.equal(metricDisplayValue(metric), display, `${language.id}: ${id} display`);
+    const localizedDisplay = display.replace(".", decimal);
+    assert.equal(metricDisplayValue(metric), localizedDisplay, `${language.id}: ${id} display`);
     const reading = metricCardReading(definition, metric);
-    assert.equal(reading.value + reading.gap + reading.unit, display);
+    assert.equal(reading.value + reading.gap + reading.unit, localizedDisplay);
     assert.equal(reading.missing, false);
     assert.equal(definition.group, group);
     assert.equal(metric.group, group);
@@ -122,7 +124,7 @@ for (const language of languages) {
       const frame = metricSnapshotDecoder.decode({ ...rawSnapshot, items: {
         [alias.id]: { id: alias.id, unit: alias.unit, status: 1, numericValue: Number(fixture.input) }
       } });
-      const expected = `${fixture.expected[index]} ${alias.unit}`.trimEnd();
+      const expected = `${fixture.expected[index].replace(".", decimal)} ${alias.unit}`.trimEnd();
       const actual = frame.items[alias.id];
       assert.equal(metricDisplayValue(actual), expected, `${language.id}: ${alias.id} ${fixture.input}`);
       const card = metricCardReading(null, actual);

@@ -1,3 +1,4 @@
+import { formatInterfaceNumber } from "../../presentation/interfaceNumbers.ts";
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import { frontendWorkIds } from "../../frontendWork/frontendWorkIds";
@@ -12,7 +13,7 @@ import { smartPlacementTarget } from "../../presentation/smartScheduling.ts";
 import { softwareRecordName } from "../../presentation/softwareFacts.ts";
 import type { SoftwareRecord, HostManagerAppliedRecord, HostManagerRollbackStateDocument } from "../../types";
 import { UserDetailsDialog } from "../../components/UserDetailsDialog";
-import { uiText, currentLanguage } from "../../text.ts";
+import { uiText } from "../../text.ts";
 import { CurrentPageHeading, useCurrentPageName } from "../../app/navigation/currentPageName.tsx";
 
 
@@ -153,7 +154,7 @@ function detailRecordSections(record: DetailRecord) {
 }
 
 function formatNumber(value: number) {
-  return new Intl.NumberFormat(currentLanguage()).format(value);
+  return formatInterfaceNumber(value);
 }
 
 

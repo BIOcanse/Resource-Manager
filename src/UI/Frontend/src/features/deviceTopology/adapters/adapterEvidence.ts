@@ -1,3 +1,4 @@
+import { formatInterfaceNumber } from "../../../presentation/interfaceNumbers.ts";
 import { formatBytes as formatBytesInUnits } from "../../../presentation/byteUnits.ts";
 import { transportLabel } from "../deviceVocabulary.ts";
 import type { DeviceTopologyPort } from "../../../types";
@@ -6,7 +7,7 @@ import type {
   SpecializedDeviceSummaryField,
   SpecializedInternalDeviceFacts
 } from "./types";
-import { uiText, currentLanguage } from "../../../text.ts";
+import { uiText } from "../../../text.ts";
 
 export function firstText(...values: Array<string | null | undefined>) {
   return values.map((value) => value?.trim()).find(Boolean);
@@ -142,7 +143,7 @@ export function formatBytes(value: number | null | undefined, fallback = "--") {
 
 export function formatRate(value: number | null | undefined, unit: string, fallback = "--") {
   return typeof value === "number" && Number.isFinite(value)
-    ? `${value.toLocaleString(currentLanguage(), { maximumFractionDigits: 2 })} ${unit}`
+    ? `${formatInterfaceNumber(value, { maximumFractionDigits: 2 })} ${unit}`
     : fallback;
 }
 
@@ -151,6 +152,6 @@ export function formatPollingInterval(value: number | null | undefined) {
     return "--";
   }
   return value >= 1000
-    ? `${(value / 1000).toLocaleString(currentLanguage(), { maximumFractionDigits: 3 })} ms`
-    : `${value.toLocaleString(currentLanguage(), { maximumFractionDigits: 1 })} us`;
+    ? `${formatInterfaceNumber(value / 1000, { maximumFractionDigits: 3 })} ms`
+    : `${formatInterfaceNumber(value, { maximumFractionDigits: 1 })} us`;
 }
