@@ -7,6 +7,8 @@ export default async function targetedRecordingsJourney(page, baseUrl) {
   const assert = (value, message) => { if (!value) throw new Error(message); };
   const failures = [];
   page.on("pageerror", error => failures.push(String(error)));
+  // Deletion must go through the app confirm dialog; any browser dialog is a failure.
+  page.on("dialog", dialog => { failures.push(`browser dialog: ${dialog.message()}`); void dialog.dismiss(); });
   await page.setViewportSize({ width: 1200, height: 900 });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   let previous = "zh-CN";
@@ -125,8 +127,19 @@ export default async function targetedRecordingsJourney(page, baseUrl) {
       await listError.waitFor({ state: "detached" });
       assert(await visibleTarget() === targetName, "Retry changed the visible recording target");
     }
-    page.once("dialog", dialog => dialog.accept());
+    // Deletion is confirmed in the app's own confirm dialog (title, recording, consequence), not a browser dialog.
+    const confirmDelete = page.getByRole("dialog", { name: copy.confirmDelete, exact: true });
+    if (language === "zh-CN") {
+      await row.getByRole("button", { name: copy.delete, exact: true }).click();
+      await confirmDelete.getByRole("button", { name: app.feedback.cancel, exact: true }).click();
+      await confirmDelete.waitFor({ state: "detached" });
+      assert(await row.count() === 1, "Cancelling the delete confirmation removed the recording");
+    }
     await row.getByRole("button", { name: copy.delete, exact: true }).click();
+    const confirmText = await confirmDelete.textContent();
+    assert(confirmText.includes("示例软件") && confirmText.includes(copy.deleteDetail),
+      `${language}: delete confirmation does not name the recording and its consequence`);
+    await confirmDelete.getByRole("button", { name: copy.delete, exact: true }).click();
     await panel.getByText(copy.empty, { exact: true }).waitFor();
     assert(await panel.locator(".targeted-report-detail").count() === 0, `${language}: deleted report remained visible`);
     checked.push(language);

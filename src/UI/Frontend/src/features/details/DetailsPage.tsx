@@ -8,6 +8,7 @@ import { GpuSchedulingModel } from "../gpuScheduling/GpuSchedulingModel";
 import { HostManagerSmartCoordinatorDetailsReport } from "./HostManagerSmartCoordinatorDetailsReport";
 import { TargetedReportsPage } from "../targetedReport/TargetedReportsPage.tsx";
 import type { SoftwareRecord } from "../../types.ts";
+import type { ConfirmDialogRequest } from "../../components/AppFeedback";
 
 interface DetailsPageProps {
   /** 选中的二级分页（分页树，app/navigation/detailsNavigation.ts）；分页条由外壳画。 */
@@ -15,6 +16,8 @@ interface DetailsPageProps {
   software: readonly SoftwareRecord[];
   runtimeCapabilities: RuntimeCapabilitiesStore;
   onOpenSoftwareSettings: (softwareId: string, softwareName: string) => void;
+  /** 应用统一的确认对话框；定向报告删除录制时用它确认。 */
+  confirmDialog: (request: ConfirmDialogRequest) => Promise<boolean>;
 }
 
 export function DetailsPage(props: DetailsPageProps) {
@@ -49,7 +52,7 @@ export function DetailsPage(props: DetailsPageProps) {
             </div>
           </Match>
           <Match when={props.activeTab === "targeted"}>
-            <div class="details-resource-region"><TargetedReportsPage /></div>
+            <div class="details-resource-region"><TargetedReportsPage confirmDialog={props.confirmDialog} /></div>
           </Match>
         </Switch>
       </div>

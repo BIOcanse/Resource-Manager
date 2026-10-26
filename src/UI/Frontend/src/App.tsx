@@ -423,6 +423,7 @@ export default function App() {
         })}
         onInspectOptimizationTarget={(report) => void softwareActions.inspectOptimizationTarget(report)}
         onActionError={showErrorToast}
+        confirmDialog={confirmDialog}
         />
       </AppShell>
 

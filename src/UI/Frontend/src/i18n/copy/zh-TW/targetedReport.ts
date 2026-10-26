@@ -24,6 +24,7 @@ export const zhTwTargetedReportCopy: Pick<AppCopy, "targetedReport"> = {
     failed: "錄製報告操作失敗。",
     delete: "刪除報告",
     confirmDelete: "確定刪除這份錄製報告？",
+    deleteDetail: "報告及其影格間隔與資源資料將被永久刪除，無法復原。",
     exportJson: "匯出 JSON",
     exportCsv: "匯出 CSV",
     frameTime: "影格時間曲線",

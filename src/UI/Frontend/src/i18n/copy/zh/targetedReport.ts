@@ -22,6 +22,7 @@ export const zhTargetedReportCopy = {
     failed: "录制报告操作失败。",
     delete: "删除报告",
     confirmDelete: "确定删除这份录制报告？",
+    deleteDetail: "报告及其帧间隔和资源数据将被永久删除，无法恢复。",
     exportJson: "导出 JSON",
     exportCsv: "导出 CSV",
     frameTime: "帧时间曲线",

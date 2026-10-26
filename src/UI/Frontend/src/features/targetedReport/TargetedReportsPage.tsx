@@ -22,12 +22,16 @@ import { CurrentPageHeading, useCurrentPageName } from "../../app/navigation/cur
 import { TargetedRecordingControl } from "./TargetedRecordingControl.tsx";
 import { StandardSelect, type StandardSelectOption } from "../../components/StandardSelect.tsx";
 import { ContentState } from "../../ui/patterns/ContentState.tsx";
+import type { ConfirmDialogRequest } from "../../components/AppFeedback";
 
 interface ResourceCurve { scope: "software" | "system"; metric: string }
 
 const activeRecordingRefreshIntervalMs = 2_000;
 
-export function TargetedReportsPage() {
+export function TargetedReportsPage(props: {
+  /** 应用统一的确认对话框（由路由层经详细信息页传入）。 */
+  confirmDialog: (request: ConfirmDialogRequest) => Promise<boolean>;
+}) {
   const runtime = useFrontendRuntime();
   const frontendWork = useFrontendWork();
   const demandId = "targeted-reports.page";
@@ -167,8 +171,16 @@ export function TargetedReportsPage() {
     setReportFailed(false);
   };
 
-  const remove = async (id: string) => {
-    if (!window.confirm(uiText.targetedReport.confirmDelete)) return;
+  const remove = async (recording: RecordingHeader) => {
+    const id = recording.id;
+    const confirmed = await props.confirmDialog({
+      title: uiText.targetedReport.confirmDelete,
+      message: `${recording.softwareName} · ${dateTime(recording.startedAt)}`,
+      details: [uiText.targetedReport.deleteDetail],
+      tone: "warning",
+      confirmLabel: uiText.targetedReport.delete
+    });
+    if (!confirmed) return;
     setActionFailed(false);
     try {
       await deleteRecording(runtime.requestClient, id);
@@ -290,7 +302,7 @@ export function TargetedReportsPage() {
                         onClick={() => void stop(item.id)}>{uiText.targetedReport.stop}</button>
                     </Show>
                     <Show when={item.status === "completed"}>
-                      <button class="secondary panel-refresh-button" type="button" onClick={() => void remove(item.id)}>
+                      <button class="secondary panel-refresh-button" type="button" onClick={() => void remove(item)}>
                         {uiText.targetedReport.delete}
                       </button>
                     </Show>
@@ -360,6 +372,7 @@ export function TargetedReportsPage() {
                     x: Date.parse(sample.capturedAt), y: sample[curve.scope][curve.metric] ?? null
                   }));
                   const latest = () => current().resourceSamples.at(-1)?.[curve.scope][curve.metric] ?? null;
+                  const scale = () => curveScale(curve.metric, points());
                   const label = () => `${curve.scope === "software" ? uiText.targetedReport.software : uiText.targetedReport.system} · ${localizedMetricLabel(curve.metric)}`;
                   return <section class="targeted-report-card">
                     <h5><span class="targeted-report-card-label">{label()}</span> <span class="targeted-report-card-value">{latest() === null ? "–" : scale().format(latest() as number)}</span></h5>
@@ -372,7 +385,6 @@ export function TargetedReportsPage() {
           </div>
         )}
       </Show>
-                  const scale = () => curveScale(curve.metric, points());
     </section>
   );
 }

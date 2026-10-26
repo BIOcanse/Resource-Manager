@@ -24,6 +24,7 @@ export const enTargetedReportCopy: Pick<AppCopy, "targetedReport"> = {
     failed: "Recording report operation failed.",
     delete: "Delete report",
     confirmDelete: "Delete this recording report?",
+    deleteDetail: "The report and its frame intervals and resource data will be permanently deleted. This cannot be undone.",
     exportJson: "Export JSON",
     exportCsv: "Export CSV",
     frameTime: "Frame time during the recording",

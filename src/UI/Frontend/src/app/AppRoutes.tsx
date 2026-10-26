@@ -11,6 +11,7 @@ import type { ProductUpdateStore } from "../stores/productUpdateStore";
 import type { RuntimeCapabilitiesStore } from "../stores/runtimeCapabilitiesStore";
 import type { AppAnimationMode, ManagedComponent, OptimizationReportItem, PageId, SoftwareRecord } from "../types";
 import { uiText } from "../text.ts";
+import type { ConfirmDialogRequest } from "../components/AppFeedback";
 import type { DetailsTab } from "./navigation/detailsNavigation.ts";
 
 // 首屏是监视控制台；其余页面各自一个分包，首屏脚本只含监视页。
@@ -64,6 +65,8 @@ interface AppRoutesProps {
   onNotice: (message: string) => void;
   /** 页面动作失败时的错误提示。 */
   onActionError: (error: unknown, fallback: string) => void;
+  /** 应用统一的确认对话框（useGlobalFeedback）；页面里不可撤销的操作用它确认。 */
+  confirmDialog: (request: ConfirmDialogRequest) => Promise<boolean>;
 }
 
 export function AppRoutes(props: AppRoutesProps) {
@@ -109,6 +112,7 @@ export function AppRoutes(props: AppRoutesProps) {
                   software={props.management.software()}
                   runtimeCapabilities={props.runtimeCapabilities}
                   onOpenSoftwareSettings={props.onOpenSoftwareSettingsById}
+                  confirmDialog={props.confirmDialog}
                 />
               </PageBoundary>
             </Show>
