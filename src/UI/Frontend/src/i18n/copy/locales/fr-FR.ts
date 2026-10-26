@@ -683,7 +683,8 @@ const frFrAppCopy: AppCopy = {
       stale: "Mesure non actuelle",
       failed: "Échec de l’échantillonnage",
       invalid: "Mesure non valide",
-      attributionUnavailable: "Répartition par logiciel momentanément impossible"
+      attributionUnavailable: "Répartition par logiciel momentanément impossible",
+      sampleException: (type: string) => `Erreur d’échantillonnage du matériel (${type})`
     },
     etwSupplement: "Processus identifiés, mais pas encore attribués à un logiciel précis.",
     softwareInnerPercent: "Part au sein du logiciel",

@@ -683,7 +683,8 @@ const deDeAppCopy: AppCopy = {
       stale: "Messwert nicht aktuell",
       failed: "Messung fehlgeschlagen",
       invalid: "Ungültiger Messwert",
-      attributionUnavailable: "Derzeit nicht nach Software aufteilbar"
+      attributionUnavailable: "Derzeit nicht nach Software aufteilbar",
+      sampleException: (type: string) => `Fehler bei der Hardwaremessung (${type})`
     },
     etwSupplement: "Prozesse erkannt, aber noch keiner bestimmten Software zugeordnet.",
     softwareInnerPercent: "Anteil innerhalb der Software",

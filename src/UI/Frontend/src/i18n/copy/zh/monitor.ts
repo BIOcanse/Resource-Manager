@@ -108,7 +108,8 @@ export const zhMonitorCopy = {
       stale: "读数未更新",
       failed: "采样失败",
       invalid: "读数无效",
-      attributionUnavailable: "暂时无法按软件拆分"
+      attributionUnavailable: "暂时无法按软件拆分",
+      sampleException: (type: string) => `硬件采样出错（${type}）`
     },
     etwSupplement: "已识别到进程，但尚未归到具体软件。",
     softwareInnerPercent: "软件内占比",

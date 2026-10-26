@@ -1,41 +1,30 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { loadAppCopy } from "../src/i18n/copy/appCopyLoader.ts";
 import { uiText } from "../src/text.ts";
 import {
+  resourceBarHardwareSamplePrefix,
   resourceBarUnavailableReasonFamilies,
   resourceBarUnavailableText,
   type ResourceBarUnavailableFamily
 } from "../src/features/resourceBreakdown/resourceBarUnavailableReason.ts";
 
-// 资源条无读数的原因（b14fc21a 的显式无读数合同）：后端会发的每个代码都有对应的一类，每一类九种语言都有正式的一句。
+// 资源条无读数的原因：前端的对应表里每个代码都归到一类，每一类（含带参数的 hardware-sample-* 家族）九种语言都有正式的一句。
+// 只用仓库里提交的文件，哪里跑结果都一样。对应表和后端权威列表是否完全一致，由开发工作副本里的
+// tests/resourceBarReasonCodesAuthority.test.ts（npm run test:reason-codes-authority）核对，不在这里。
 
-// 1. 后端会发的代码就是这些：从发出或透传这些代码的后端源文件里取出来，和前端的对应表逐个相等（新增代码要先补文字）。
-const repository = new URL("../../../../", import.meta.url);
-const backendSources = [
-  "src/Core/Endpoints/Transport/ResourceBreakdownCurrentBars.cs",
-  "src/Core/Infrastructure/ResourceBreakdown/WindowsResourceBreakdownSampler.Bars.cs",
-  "src/Core/Infrastructure/ResourceBreakdown/WindowsResourceBreakdownSampler.Bars.Throughput.cs",
-  "src/Core/Infrastructure/ResourceBreakdown/WindowsResourceBreakdownSampler.GpuAllocations.cs",
-  "src/Core/Infrastructure/ResourceBreakdown/ResourceBreakdownSnapshotState.cs",
-  "src/ReadWriteCore/Native/Snapshots/NativeMetricSnapshotCommittedProjection.cs",
-  "src/ReadWriteCore/Windows/Metrics/Current/LastSuccessfulHardwareMetricSnapshot.cs"
-];
-const emitted = new Set<string>();
-for (const source of backendSources) {
-  const text = readFileSync(new URL(source, repository), "utf8");
-  for (const match of text.matchAll(/"((?:resource-breakdown|disk-io|hardware|gpu-dedicated-memory)-[a-z0-9-]+)"/g)) emitted.add(match[1]);
-}
-assert.ok(emitted.size >= 20, `found the backend reason codes (${emitted.size})`);
-assert.deepEqual([...emitted].sort(), Object.keys(resourceBarUnavailableReasonFamilies).sort(),
-  "every reason code the backend emits has a family, and the table lists no code the backend does not emit");
-
-// 2. 每一类九种语言都有一句：非空、同一语言里各类不重复、非英语的不照抄英语。
 const families: readonly ResourceBarUnavailableFamily[] = [
   "warming", "sourceUnavailable", "incomplete", "unsupported", "totalUnavailable",
   "missing", "stale", "failed", "invalid", "attributionUnavailable"
 ];
+
+// 1. 每个代码都归到已知的一类，每一类都有代码用到。
+for (const [code, family] of Object.entries(resourceBarUnavailableReasonFamilies)) {
+  assert.ok(families.includes(family), `${code}: maps to a known family (${family})`);
+  assert.ok(!code.startsWith(resourceBarHardwareSamplePrefix), `${code}: the hardware-sample family is not a literal code`);
+}
 assert.deepEqual([...new Set(Object.values(resourceBarUnavailableReasonFamilies))].sort(), [...families].sort(), "every family is used");
+
+// 2. 九种语言：每一类非空、同一语言里各类不重复、非英语的不照抄英语；家族那句带上异常类型名。
 const languages = ["zh-CN", "zh-TW", "en-US", "ja-JP", "ko-KR", "fr-FR", "de-DE", "es-ES", "ru-RU"] as const;
 const english = (await loadAppCopy("en-US")).resourceBreakdown.unavailableReason;
 for (const language of languages) {
@@ -46,12 +35,18 @@ for (const language of languages) {
     if (language !== "en-US") assert.notEqual(copy[family], english[family], `${language}: ${family} translated`);
   }
   assert.equal(new Set(families.map((family) => copy[family])).size, families.length, `${language}: each family reads differently`);
+  const sample = copy.sampleException("<Type>");
+  assert.ok(sample.includes("<Type>") && sample.trim().length > "<Type>".length, `${language}: the sampling-error sentence shows the type name`);
+  if (language !== "en-US") assert.notEqual(sample, english.sampleException("<Type>"), `${language}: sampling-error sentence translated`);
 }
 
-// 3. 显示：认识的代码给这一类的话，不认识的代码原样显示。
+// 3. 显示：认识的代码给这一类的话；家族把后缀原样写进句子；不认识的代码（包括只有前缀的）原样显示。
 assert.equal(resourceBarUnavailableText("hardware-source-unavailable"), uiText.resourceBreakdown.unavailableReason.sourceUnavailable);
-assert.equal(resourceBarUnavailableText("disk-io-window-incomplete"), uiText.resourceBreakdown.unavailableReason.incomplete);
+assert.equal(resourceBarUnavailableText("system-total-unavailable"), uiText.resourceBreakdown.unavailableReason.totalUnavailable);
+assert.equal(resourceBarUnavailableText("hardware-sample-InvalidOperationException"),
+  uiText.resourceBreakdown.unavailableReason.sampleException("InvalidOperationException"));
+assert.equal(resourceBarUnavailableText("hardware-sample-"), "hardware-sample-");
 assert.equal(resourceBarUnavailableText("some-future-reason"), "some-future-reason");
 assert.equal(resourceBarUnavailableText("constructor"), "constructor");
 
-console.log(`resourceBarUnavailableReason: ${emitted.size} codes, ${families.length} families, ${languages.length} languages ok`);
+console.log(`resourceBarUnavailableReason: ${Object.keys(resourceBarUnavailableReasonFamilies).length} codes and the hardware-sample family, ${families.length} families, ${languages.length} languages ok`);

@@ -683,7 +683,8 @@ const esEsAppCopy: AppCopy = {
       stale: "La lectura no está actualizada",
       failed: "Error de muestreo",
       invalid: "Lectura no válida",
-      attributionUnavailable: "No se puede desglosar por software en este momento"
+      attributionUnavailable: "No se puede desglosar por software en este momento",
+      sampleException: (type: string) => `Error al muestrear el hardware (${type})`
     },
     etwSupplement: "Procesos identificados, pero aún no atribuidos a un software concreto.",
     softwareInnerPercent: "Proporción dentro del software",

@@ -683,7 +683,8 @@ const jaJpAppCopy: AppCopy = {
       stale: "計測値が最新ではありません",
       failed: "サンプリングに失敗しました",
       invalid: "計測値が無効です",
-      attributionUnavailable: "現在ソフトウェア別に分けられません"
+      attributionUnavailable: "現在ソフトウェア別に分けられません",
+      sampleException: (type: string) => `ハードウェアのサンプリングでエラーが発生しました（${type}）`
     },
     etwSupplement: "プロセスは特定されましたが、まだ特定のソフトウェアに帰属していません。",
     softwareInnerPercent: "ソフトウェア内の割合",

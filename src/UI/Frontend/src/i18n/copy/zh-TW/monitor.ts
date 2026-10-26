@@ -108,7 +108,8 @@ export const zhMonitorCopy = {
       stale: "讀數未更新",
       failed: "取樣失敗",
       invalid: "讀數無效",
-      attributionUnavailable: "暫時無法依軟體拆分"
+      attributionUnavailable: "暫時無法依軟體拆分",
+      sampleException: (type: string) => `硬體取樣發生錯誤（${type}）`
     },
     etwSupplement: "已識別到程序，但尚未歸到具體軟體。",
     softwareInnerPercent: "軟體內佔比",

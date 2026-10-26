@@ -682,7 +682,8 @@ const koKrAppCopy: AppCopy = {
       stale: "측정값이 최신이 아님",
       failed: "샘플링 실패",
       invalid: "잘못된 측정값",
-      attributionUnavailable: "현재 소프트웨어별로 나눌 수 없음"
+      attributionUnavailable: "현재 소프트웨어별로 나눌 수 없음",
+      sampleException: (type: string) => `하드웨어 샘플링 오류 (${type})`
     },
     etwSupplement: "프로세스는 확인했지만 아직 특정 소프트웨어에 귀속되지 않았습니다.",
     softwareInnerPercent: "소프트웨어 내 비율",

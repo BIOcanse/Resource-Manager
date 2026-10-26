@@ -112,7 +112,8 @@ export const enMonitorCopy: Pick<
       stale: "Reading not current",
       failed: "Sampling failed",
       invalid: "Invalid reading",
-      attributionUnavailable: "Cannot be split by software at the moment"
+      attributionUnavailable: "Cannot be split by software at the moment",
+      sampleException: (type: string) => `Hardware sampling error (${type})`
     },
     etwSupplement: "Processes identified, but not yet attributed to specific software.",
     softwareInnerPercent: "Share within software",

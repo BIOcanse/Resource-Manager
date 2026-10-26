@@ -683,7 +683,8 @@ const ruRuAppCopy: AppCopy = {
       stale: "Показания устарели",
       failed: "Сбой выборки",
       invalid: "Недопустимые показания",
-      attributionUnavailable: "Сейчас нельзя разделить по программам"
+      attributionUnavailable: "Сейчас нельзя разделить по программам",
+      sampleException: (type: string) => `Ошибка выборки оборудования (${type})`
     },
     etwSupplement: "Процессы определены, но пока не отнесены к конкретной программе.",
     softwareInnerPercent: "Доля внутри программы",
