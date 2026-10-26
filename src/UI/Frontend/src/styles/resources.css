@@ -958,7 +958,8 @@
   width: 100%;
   height: var(--segment-render-height, calc(100% - 2px));
   overflow: hidden;
-  border-radius: 5px;
+  /* 跟着轨道的内圆角走：轨道圆角减去 1px 边线；直角风格就是直角。 */
+  border-radius: max(0px, calc(var(--radius-sm) - 1px));
   background: transparent;
   pointer-events: none;
 }

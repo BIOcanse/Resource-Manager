@@ -365,8 +365,3 @@
   border-color: transparent;
   border-radius: 999px;
 }
-
-/* ---------- 资源条：轨道内的绘制平面跟着轨道的内圆角走 ---------- */
-:root[data-ui-style="soft"] .resource-segment-visual-plane {
-  border-radius: calc(var(--radius-sm) - 1px);
-}
