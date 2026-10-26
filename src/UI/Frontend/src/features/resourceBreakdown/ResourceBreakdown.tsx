@@ -970,9 +970,15 @@ function resourceSegmentTooltipParts(bar: ResourceBarView, segment: ResourceSele
       hatched: isReservedSegment(segment)
     },
     kind: segment.isEmpty || isReservedSegment(segment) ? null : softwareDisplayKindLabel(segment.kind, segment.displayKind),
-    lines: [`${percentLabel} ${formatPercent(segment.systemPercent)}`, resourceValueLine(bar, segment)],
+    lines: [`${percentLabel} ${formatPercent(segment.systemPercent)}`, resourceValueLine(bar, segment), ...residualLeafLines(bar, segment)],
     notes: []
   };
+}
+
+// 条上说明保留量已拆成分项（residualSource 为 counters）时，保留量下面的分项按后端顺序各占一行；分项不是进程。
+function residualLeafLines(bar: ResourceBarView, segment: ResourceSelectableSegment) {
+  if (segment.isEmpty || bar.residualSource !== "counters" || !isReservedSegment(segment)) return [];
+  return (segment.processes ?? []).map((leaf) => `${resourceProcessDisplayName(leaf, bar.metricId)} ${formatResourceBarValue(bar, leaf.value)}`);
 }
 
 function resourceValueLine(bar: ResourceBarView, segment: { value: number; sharedValue?: number | null }) {

@@ -5,6 +5,7 @@ import {
   type ResourceBreakdownQuery,
   type ResourceMonitorQuery
 } from "../data/resourceMonitor/resourceMonitorApi.ts";
+import { resourceBarDetailSoftwareIds } from "../features/resourceBreakdown/resourceBarSources.ts";
 import type { PushValueSourceFamily } from "../frontendRuntime/push/PushValueSourceFamily.ts";
 import type { SourceSnapshot } from "../frontendRuntime/source/SourceSnapshot.ts";
 import type { ResourceMonitorSnapshot, ResourceProcessDetailsSnapshot } from "../types.ts";
@@ -23,7 +24,7 @@ export function createResourceBreakdownBindings(options: {
   const barsKey = createMemo(() => JSON.stringify({
     active: options.active(), intervalMs: options.intervalMs(),
     query: normalizeResourceMonitorQuery({
-      scope: "bars", bars: options.bars(), processDetailSoftwareIds: [],
+      scope: "bars", bars: options.bars(), processDetailSoftwareIds: resourceBarDetailSoftwareIds(options.bars() ?? []),
       sampleMetricIds: null, visibleColumnIds: [], sortColumnId: "impact",
       sortDirection: "desc", tableMode: "software"
     })

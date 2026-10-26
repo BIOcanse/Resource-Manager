@@ -54,6 +54,16 @@ export function resourceBarSource(bar: Pick<ResourceBarSettings, "metricId" | "s
  */
 export const physicalMemoryResidualSoftwareId = "resource-residual:memory.usage";
 
+/**
+ * 资源条订阅（scope=bars）里要列出进程行的软件：有物理内存条时带上它的保留量，条上的提示才能列出分项。
+ * 每条资源条无论 processDetails 怎样都带全部软件行；processDetails 只决定哪些软件行同时列出进程（分项），
+ * 其余软件行保留 processCount、进程数组为空（权威 Bar software rows and process lists）。
+ * 后端只在 scope=details 时读页帧明细，资源条订阅带这个 id 只多发保留量下面的计数器分项，不触发页帧读取。
+ */
+export function resourceBarDetailSoftwareIds(bars: readonly Pick<ResourceBarQuery, "metricId">[]): string[] {
+  return bars.some((bar) => bar.metricId === "memory.usage") ? [physicalMemoryResidualSoftwareId] : [];
+}
+
 /** 资源条在订阅里的样子：指标 id、缩放和来源（自动选择为 null，按 ids= 订阅；选了来源按这个字段的 measures= 订阅）。 */
 export function resourceBarQuery(bar: ResourceBarSettings): ResourceBarQuery {
   return { metricId: bar.metricId, scaleMode: normalizeResourceBarScaleMode(bar.metricId, bar.scaleMode), source: resourceBarSource(bar) };

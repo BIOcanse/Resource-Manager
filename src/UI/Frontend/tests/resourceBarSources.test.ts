@@ -10,6 +10,7 @@ import {
 } from "../src/data/resourceMonitor/resourceMonitorApi.ts";
 import { decodeResourceBreakdownWireSnapshot } from "../src/api/resourceBreakdownWire.ts";
 import {
+  resourceBarDetailSoftwareIds,
   resourceBarQuery,
   resourceBarSourceChoices,
   resourceBarSourceLabel,
@@ -113,5 +114,9 @@ assert.equal(resourceBarText({ metricId: "memory.usage", source: "process_all_un
   uiText.resourceTable.memoryColumnBySource("process_all_unknown"));
 const _typed: ResourceBreakdownBar = views[0];
 void _typed;
+
+// 条订阅只为物理内存条带上它的保留量（自动选择和选了来源都是 memory.usage 这一项）；别的条不带。
+assert.deepEqual(resourceBarDetailSoftwareIds([{ metricId: "cpu.usage" }, { metricId: "memory.usage" }]), ["resource-residual:memory.usage"]);
+assert.deepEqual(resourceBarDetailSoftwareIds([{ metricId: "cpu.usage" }, { metricId: "virtualMemory.usage" }]), []);
 
 console.log("resourceBarSources: bar sources, measures query, bar views, text and wire decode passed");

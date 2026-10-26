@@ -39,7 +39,8 @@ const root = createRoot(dispose => {
 await Promise.resolve();
 assert.equal(bars.calls.length, 1);
 assert.equal(bars.calls[0].query.scope, "bars");
-assert.deepEqual(bars.calls[0].query.processDetailSoftwareIds, []);
+// 物理内存条的条订阅带上它的保留量，后端在条上附计数器分项（scope=bars 不读页帧明细）。
+assert.deepEqual(bars.calls[0].query.processDetailSoftwareIds, ["resource-residual:memory.usage"]);
 assert.equal(details.calls.length, 0);
 assert.equal(root.binding.bars()?.data, null);
 const barValue = decodeResourceMonitorWireSnapshot(readyResourceMonitorWire());
