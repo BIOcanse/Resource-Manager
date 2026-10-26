@@ -157,15 +157,24 @@
   color: var(--danger);
 }
 
-.version-selector { display: grid; gap: 14px; min-width: 0; }
+/* 版本列表（VersionSelector.tsx）：原因只在顶上说一次；固定项和系列里的每一版都是同样的卡片；系列标题是低调的折叠标题。 */
+.version-selector { display: grid; gap: 12px; min-width: 0; }
+.version-selector-notes { display: grid; gap: 2px; margin: 0; padding: 0 4px; list-style: none; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .version-selector-pinned { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
-.version-selector-groups { display: grid; gap: 8px; }
-.version-selector-group { border: 1px solid var(--divider-soft); border-radius: var(--radius-sm); padding: 8px; }
-.version-selector-expand { display: flex; justify-content: space-between; width: 100%; margin-bottom: 5px; }
-.version-selector-item { display: flex; align-items: flex-start; gap: 8px; padding: 8px; border: 1px solid var(--divider-soft); border-radius: var(--radius-sm); min-width: 0; }
+.version-selector-groups { display: grid; gap: 6px; }
+.version-selector-group { display: grid; gap: 6px; min-width: 0; }
+.version-selector-group .ui-disclosure-content { padding-top: 6px; }
+.version-selector-series { display: block; padding: 0 8px 0 22px; color: var(--text); font-size: 13px; font-weight: 600; line-height: var(--control-height-compact); }
+.version-selector-rest { display: grid; gap: 6px; }
+.version-selector-item { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border: 1px solid var(--divider-soft); border-radius: var(--radius-sm); min-width: 0; }
+/* 单选圆点和标题第一行居中对齐：圆点 14 px，标题行高 20 px。 */
+.version-selector-item > input[type="radio"],
+.version-selector-radio-space { width: 14px; height: 14px; flex: 0 0 auto; margin: 3px 0 0; }
 .version-selector-item[aria-disabled="true"] { opacity: .65; }
-.version-selector-item-text { display: grid; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
-.version-selector-item-text small { color: var(--muted); }
+.version-selector-empty { border-style: dashed; }
+.version-selector-item-text { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.version-selector-item-text strong { line-height: 20px; }
+.version-selector-item-text small { color: var(--muted); font-variant-numeric: tabular-nums; }
 
 .settings-credits-panel {
   min-height: 0;

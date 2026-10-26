@@ -281,8 +281,11 @@ export default async function localizationJourney(page, baseUrl) {
     await page.getByText(settings.updates.latest, { exact: true }).waitFor();
     await page.getByText(settings.updates.latestStable, { exact: true }).waitFor();
     const oldVersion = page.locator('input[value="version:0.3.1"]');
-    if (await oldVersion.count() !== 0) throw new Error(`${option.id}: minor versions were not collapsed`);
+    // 收起的系列：旧版本在折叠内容里，内容 inert（不能聚焦、辅助技术读不到）。
+    const collapsed = async () => oldVersion.evaluate(element => element.closest("[inert]") !== null);
+    if (!await collapsed()) throw new Error(`${option.id}: minor versions were not collapsed`);
     await page.locator(".version-selector-expand").click();
+    if (await collapsed()) throw new Error(`${option.id}: expanding the series left its versions inert`);
     if (!await oldVersion.isDisabled()) throw new Error(`${option.id}: an old version can be selected`);
     await page.getByText(settings.updates.unavailableReasons["notNewer"], { exact: true }).waitFor();
     await page.locator('input[value="latest"]').check();

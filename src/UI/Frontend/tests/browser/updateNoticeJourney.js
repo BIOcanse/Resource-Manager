@@ -135,6 +135,11 @@ export default async function updateNoticeJourney(page, baseUrl) {
   await page.getByRole("radiogroup", { name: text.modeTitle }).waitFor();
   assert.equal(await notices().count(), 0, "the notice stayed after its entry was used");
   await page.getByRole("button", { name: copy.apply, exact: true }).waitFor();
+  // 从提示打开的更新区：没有稳定版时，空状态在固定项的格子里；没有不能选的版本，顶上不写原因。
+  const versionList = page.locator(".version-selector");
+  await versionList.locator(".version-selector-pinned > .version-selector-empty").filter({ hasText: text.noStable }).waitFor();
+  assert.equal(await versionList.locator(".version-selector-notes").count(), 0, "a reason note without an unavailable version");
+  assert.equal(await versionList.locator('input[value="latest"]').isEnabled(), true);
 
   // 界面内提示关掉后不提示，也不记下版本；系统通知开关只保存偏好。
   await page.getByRole("checkbox", { name: text.inAppNoticeTitle, exact: true }).uncheck();
