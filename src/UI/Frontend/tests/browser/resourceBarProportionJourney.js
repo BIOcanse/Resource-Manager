@@ -2,6 +2,8 @@ import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { seedFrontendPreferences } from "./frontendPreferencesFixture.js";
 
+const DEFAULT_ARTIFACT_DIRECTORY = resolve("../../../.local/browser-gate/resource-bar-proportion");
+
 export default async function resourceBarProportionJourney(page, baseUrl) {
   const results = [];
   // 配色是前端偏好：首次加载前写入深色。
@@ -53,7 +55,7 @@ export default async function resourceBarProportionJourney(page, baseUrl) {
       }
       return { sharedStart: yellow[0], sharedEnd: yellow.at(-1) + 1, width: canvas.width };
     }));
-    const output = resolve(process.env.RM_BROWSER_ARTIFACT_DIR ?? "tests/browser/artifacts");
+    const output = resolve(process.env.RM_BROWSER_ARTIFACT_DIR || DEFAULT_ARTIFACT_DIRECTORY);
     mkdirSync(output, { recursive: true });
     await page.screenshot({ path: resolve(output, `shared-${width}.png`) });
   }
