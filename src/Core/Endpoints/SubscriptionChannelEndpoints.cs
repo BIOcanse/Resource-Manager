@@ -531,7 +531,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                         ResourceProcessDetailsWireSnapshot.Create(
                             sampledBreakdown,
                             metricIds,
-                            processDetailSoftwareIds, ReadResourceFoundations(sampleRequest, services), scaleModes),
+                            processDetailSoftwareIds, ReadResourceFoundations(sampleRequest, services), scaleModes, measures),
                         cancellationToken);
                 }
             });
@@ -549,7 +549,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     sampledBreakdown,
                     metricIds,
                     processDetailSoftwareIds,
-                    ReadResourceFoundations(sampleRequest, services), scaleModes);
+                    ReadResourceFoundations(sampleRequest, services), scaleModes, measures);
                 await writer.WriteAsync(
                     subscription.Id,
                     new ResourceMonitorWireSnapshot(

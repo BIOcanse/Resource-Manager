@@ -8,7 +8,7 @@ public static class ResourceBreakdownMetricIds
     {
         if (string.IsNullOrWhiteSpace(metricId)) return false;
         var id = metricId.Trim().ToLowerInvariant();
-        if (id is CpuUsage or MemoryUsage or VirtualMemoryUsage or DiskIo or DiskRead or DiskWrite
+        if (id is CpuUsage or MemoryUsage or "virtualmemory.usage" or DiskIo or DiskRead or DiskWrite
             or NetworkTraffic or NetworkReceive or NetworkSend or NetworkRawTraffic or NetworkRawReceive or NetworkRawSend) return true;
         var parts = id.Split('.');
         return parts.Length == 3 && parts[0] == "gpu" && int.TryParse(parts[1], out var index)

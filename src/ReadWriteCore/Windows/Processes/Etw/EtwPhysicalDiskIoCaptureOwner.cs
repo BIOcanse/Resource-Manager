@@ -66,9 +66,13 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
     {
         ObjectDisposedException.ThrowIf(disposed, this);
         EnsureStarted();
+        var currentSubscription = Volatile.Read(ref subscription);
+        if (currentSubscription is null)
+            return new(DateTimeOffset.UtcNow, new Dictionary<int, PhysicalDiskProcessAttribution>(),
+                new("etw-fileio-disk", state, message));
         var now = DateTimeOffset.UtcNow;
         var tick = clock();
-        var before = (Volatile.Read(ref subscription)?.GetSnapshot() ?? broker.GetSnapshot());
+        var before = currentSubscription.GetSnapshot();
         RefreshBrokerState(before);
         var selected = SelectWindow(tick);
         var legacy = new Dictionary<int, PhysicalDiskProcessAttribution>();
@@ -79,9 +83,13 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
         var after = (Volatile.Read(ref subscription)?.GetSnapshot() ?? broker.GetSnapshot());
         lock (eventGate)
         {
+            // Process churn is not ETW loss. BuildObserved verifies each PID's
+            // creation identity twice; an unrelated lifecycle event must not
+            // discard all the other processes' completed disk transfers.
             if (!before.IsRunning || !after.IsRunning || before.Generation != after.Generation
                 || before.EventsLost != after.EventsLost || after.Generation != generation || after.EventsLost != observedLoss
-                || selected.ProcessRevision != processRevision || !selected.Complete)
+                || !ReferenceEquals(currentSubscription, Volatile.Read(ref subscription))
+                || selected.StartedTick != startedTick || !selected.Complete)
             {
                 legacy = new();
                 observed = includeObservedTraffic && after.IsRunning && after.Generation == selected.Generation
@@ -225,7 +233,7 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
         if (processBirths.EnsureCapacity(0) > Math.Max(16, processBirths.Count * 4)) processBirths.TrimExcess();
         if (disks.EnsureCapacity(0) > Math.Max(16, disks.Count * 4)) disks.TrimExcess();
     }
-    private (DiskEvent[] Events, bool Complete, long Generation, long ProcessRevision, uint[] Disks) SelectWindow(long now)
+    private (DiskEvent[] Events, bool Complete, long Generation, long ProcessRevision, uint[] Disks, long StartedTick) SelectWindow(long now)
     {
         lock (eventGate)
         {
@@ -246,7 +254,7 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
                 if (count != 0 || invalid) selected.Add(new(pair.Key.Pid, pair.Key.Disk, bytes, pair.Key.Write, pair.Key.Birth, count, invalid));
             }
             return (selected.ToArray(), incompleteThroughTick < cutoff && (startedTick == long.MinValue || now - startedTick >= WindowMilliseconds), generation, processRevision,
-                disks.Where(pair => pair.Value <= now).Select(pair => pair.Key).Order().ToArray());
+                disks.Where(pair => pair.Value <= now).Select(pair => pair.Key).Order().ToArray(), startedTick);
         }
     }
     private void ClearTotals()

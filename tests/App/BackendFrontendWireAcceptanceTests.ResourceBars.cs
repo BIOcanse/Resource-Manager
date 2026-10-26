@@ -15,6 +15,90 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class BackendFrontendWireAcceptanceTests
 {
     [Theory]
+    [InlineData("disk.io", "running")]
+    [InlineData("disk.io", "warming")]
+    [InlineData("disk.io", "unavailable")]
+    [InlineData("network.traffic", "running")]
+    [InlineData("network.traffic", "warming")]
+    [InlineData("network.traffic", "unavailable")]
+    public async Task ZeroAndNotCurrentThroughputStayPresentInBarsAndFacts(string id, string state)
+    {
+        var readable = state == "running";
+        var snapshot = BuildSamplerBars([id], true, throughputMultiplier: 0, throughputState: state);
+        var sourceBar = Assert.Single(snapshot.Bars);
+        Assert.Equal(readable ? SamplingObservationStatus.Current : state == "warming"
+                ? SamplingObservationStatus.Warming : SamplingObservationStatus.Unavailable,
+            sourceBar.ObservationStatus);
+        Assert.Equal("active", sourceBar.ScaleMode);
+        var wire = ResourceBreakdownWireSnapshot.Create(snapshot, [id],
+            scaleModes: new Dictionary<string, string> { [id] = "active" });
+        Assert.Equal("active", Assert.Single(wire.Bars).ScaleMode);
+        object[] payloads = [new ResourceMonitorWireSnapshot(ResourceMonitorWireSnapshot.CurrentVersion, wire.CapturedAt, wire),
+            ResourceFactsSnapshot.Create(snapshot, [id])];
+        string[] kinds = ["monitor", "facts"];
+        for (var index = 0; index < kinds.Length; index++)
+        {
+            var decoded = await DecodeAsync(kinds[index], payloads[index], [id]);
+            AssertDecodedMetrics(decoded, [id], 1);
+            var value = Assert.Single(decoded.GetProperty("decodedValues").EnumerateArray());
+            Assert.Equal(0, value.GetProperty("segments").GetInt32());
+            if (readable)
+            {
+                Assert.Equal(0, value.GetProperty("total").GetDouble());
+                Assert.Equal(1, value.GetProperty("capacity").GetDouble());
+                Assert.Equal(0, value.GetProperty("percent").GetDouble());
+                Assert.Equal(System.Text.Json.JsonValueKind.Null, value.GetProperty("reason").ValueKind);
+            }
+            else
+            {
+                Assert.Equal(System.Text.Json.JsonValueKind.Null, value.GetProperty("total").ValueKind);
+                Assert.Equal(System.Text.Json.JsonValueKind.Null, value.GetProperty("capacity").ValueKind);
+                Assert.Equal(System.Text.Json.JsonValueKind.Null, value.GetProperty("percent").ValueKind);
+                Assert.Equal(sourceBar.UnavailableReason, value.GetProperty("reason").GetString());
+                Assert.False(string.IsNullOrWhiteSpace(sourceBar.UnavailableReason));
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("warming")]
+    [InlineData("failed")]
+    [InlineData("missing")]
+    public async Task UnreadableDatasetsKeepRequestedItemsInBothProductionDecoders(string status)
+    {
+        string[] ids = ["disk.io", "network.traffic", "virtualMemory.usage"];
+        var snapshot = BuildSamplerBars(ids, true);
+        snapshot = snapshot with { Bars = [], Datasets = status == "missing" ? []
+            : snapshot.Datasets.Select(dataset => dataset with { Status = status,
+                CapturedAt = null, FailureCode = status == "failed" ? "resource-breakdown-dataset-sample-failed" : null }).ToArray() };
+        var wire = ResourceBreakdownWireSnapshot.Create(snapshot, ids);
+        object[] payloads = [new ResourceMonitorWireSnapshot(ResourceMonitorWireSnapshot.CurrentVersion, wire.CapturedAt, wire),
+            ResourceFactsSnapshot.Create(snapshot, ids)];
+        string[] kinds = ["monitor", "facts"];
+        for (var index = 0; index < kinds.Length; index++)
+        {
+            var decoded = await DecodeAsync(kinds[index], payloads[index], ids);
+            AssertDecodedMetrics(decoded, ids, ids.Length);
+            Assert.All(decoded.GetProperty("decodedValues").EnumerateArray(), value =>
+            {
+                Assert.Equal(System.Text.Json.JsonValueKind.Null, value.GetProperty("total").ValueKind);
+                Assert.Equal(0, value.GetProperty("segments").GetInt32());
+                Assert.Equal(status == "warming" ? "resource-breakdown-warming"
+                    : status == "failed" ? "resource-breakdown-dataset-sample-failed"
+                    : "resource-breakdown-total-unavailable", value.GetProperty("reason").GetString());
+            });
+        }
+    }
+
+    [Fact]
+    public void MissingGpuSegmentsKeepKnownTotalAndPublishTheirReason()
+    {
+        var bar = Assert.Single(BuildSamplerBars(["gpu.0.usage"], available: true).Bars);
+        Assert.NotNull(bar.TotalValue);
+        Assert.Empty(bar.Software);
+        Assert.Equal("resource-breakdown-attribution-unavailable", bar.UnavailableReason);
+    }
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task ResidualProvidersFeedProductionDecodersAndLocalizedNames(bool etwEvidence)
@@ -86,6 +170,7 @@ public sealed partial class BackendFrontendWireAcceptanceTests
         var snapshot = BuildSamplerBars(metricIds, available);
         Assert.Equal(metricIds, snapshot.Bars.Select(bar => bar.MetricId));
         Assert.All(snapshot.Bars, bar => Assert.Equal(available, bar.TotalValue.HasValue));
+        if (!available) Assert.All(snapshot.Bars, bar => Assert.False(string.IsNullOrEmpty(bar.UnavailableReason)));
         Assert.All(snapshot.Bars.SelectMany(bar => bar.Software)
             .Where(software => software.SoftwareId == RuntimeAttributionIds.ResourceManagerSelf),
             software => Assert.Empty(software.Name));
@@ -93,14 +178,27 @@ public sealed partial class BackendFrontendWireAcceptanceTests
             .Select(software => software.SoftwareId).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         // These are the same three payload factories used by CompileResourceSubscription
-        // and CompileResourceFactsSubscription. Unavailable bars are omitted by monitor wire v8.
+        // and CompileResourceFactsSubscription. Empty bars retain their identity and reason.
         var wire = ResourceBreakdownWireSnapshot.Create(snapshot, metricIds, softwareIds);
         using var json = System.Text.Json.JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(wire, WebJson));
         Assert.All(json.RootElement.GetProperty("bars").EnumerateArray(),
             bar => Assert.False(bar.TryGetProperty("label", out _)));
         var monitor = await DecodeAsync("monitor", new ResourceMonitorWireSnapshot(
             ResourceMonitorWireSnapshot.CurrentVersion, wire.CapturedAt, wire), metricIds);
-        AssertDecodedMetrics(monitor, available ? metricIds : [], metricIds.Length);
+        AssertDecodedMetrics(monitor, metricIds, metricIds.Length);
+        if (!available)
+        {
+            var emptyBars = monitor.GetProperty("decodedEmptyBars").EnumerateArray().ToArray();
+            Assert.Equal(metricIds.Length, emptyBars.Length);
+            Assert.All(emptyBars, bar =>
+            {
+                Assert.False(string.IsNullOrWhiteSpace(bar.GetProperty("reason").GetString()));
+                Assert.Equal(System.Text.Json.JsonValueKind.Null, bar.GetProperty("total").ValueKind);
+                Assert.Equal(System.Text.Json.JsonValueKind.Null, bar.GetProperty("capacity").ValueKind);
+                Assert.Equal(System.Text.Json.JsonValueKind.Null, bar.GetProperty("percent").ValueKind);
+                Assert.Equal(0, bar.GetProperty("segments").GetInt32());
+            });
+        }
 
         // Facts retain metrics with null totals. The production facts decoder must accept them.
         var facts = await DecodeAsync("facts", ResourceFactsSnapshot.Create(snapshot, metricIds), metricIds);
@@ -129,7 +227,8 @@ public sealed partial class BackendFrontendWireAcceptanceTests
         }
     }
 
-    internal static ResourceBreakdownSnapshot BuildSamplerBars(string[] metricIds, bool available)
+    internal static ResourceBreakdownSnapshot BuildSamplerBars(string[] metricIds, bool available,
+        double throughputMultiplier = 1, string? throughputState = null)
     {
         var scores = new CompiledBaseScorePlan(new Dictionary<string, double>(), new Dictionary<string, double>());
         var process = new WindowsResourceBreakdownSampler.ProcessResourceSample(
@@ -161,11 +260,11 @@ public sealed partial class BackendFrontendWireAcceptanceTests
                     1, CapturedAt.UtcTicks, 1, 1, 1, 1))
         };
         var disk = new PhysicalDiskIoAttributionSnapshot(CapturedAt,
-            new Dictionary<int, PhysicalDiskProcessAttribution> { [4242] = new(4242, 10, 20, 1, 1) { ProcessStartKey = 123456 } },
-            new PhysicalDiskIoProviderState("fixture", available ? PhysicalDiskIoProviderStates.Running : PhysicalDiskIoProviderStates.Unavailable, ""));
+            new Dictionary<int, PhysicalDiskProcessAttribution> { [4242] = new(4242, 10 * throughputMultiplier, 20 * throughputMultiplier, 1, 1) { ProcessStartKey = 123456 } },
+            new PhysicalDiskIoProviderState("fixture", throughputState ?? (available ? PhysicalDiskIoProviderStates.Running : PhysicalDiskIoProviderStates.Unavailable), ""));
         var network = new NetworkAttributionSnapshot(CapturedAt,
-            new Dictionary<int, NetworkProcessAttribution> { [4242] = new(4242, 10, 20, 1, 1, false) },
-            new NetworkAttributionProviderState("fixture", available ? NetworkAttributionProviderStates.Running : NetworkAttributionProviderStates.Unavailable, ""));
+            new Dictionary<int, NetworkProcessAttribution> { [4242] = new(4242, 10 * throughputMultiplier, 20 * throughputMultiplier, 1, 1, false) },
+            new NetworkAttributionProviderState("fixture", throughputState ?? (available ? NetworkAttributionProviderStates.Running : NetworkAttributionProviderStates.Unavailable), ""));
         var bars = metricIds.Select(id => WindowsResourceBreakdownSampler.CreateBar(id,
             ResourceBreakdownScaleModes.Normalize(id, null), attribution, scores, hardware,
             ProcessGpuBreakdownRead.NotRequested, disk, network, null, new StaticResourceResidualBreakdownProvider())

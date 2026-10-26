@@ -43,7 +43,8 @@ public sealed class ResourceBreakdownWireSnapshot
         IReadOnlyList<string> visibleMetricIds,
         IReadOnlySet<string>? processDetailSoftwareIds = null,
         SchedulingProcessFactSnapshot? foundations = null,
-        IReadOnlyDictionary<string, string>? scaleModes = null)
+        IReadOnlyDictionary<string, string>? scaleModes = null,
+        IReadOnlyList<string>? processMeasureIds = null)
     {
         var visibleIds = visibleMetricIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var currentDatasets = source.Datasets
@@ -53,23 +54,10 @@ public sealed class ResourceBreakdownWireSnapshot
             .ToDictionary(
                 static dataset => dataset.DatasetId,
                 StringComparer.OrdinalIgnoreCase);
-        // **只发布有数的条目。**
-        //
-        // 线上的合同是"条目带着数值总量"，消费端据此直接用，不做空值判断。
-        // 读不到的指标不是"一条总量为 null 的条目"，而是**没有这一条** ——
-        // 发一条空的出去，消费端解码就会失败，而那不是失败一条，是整帧作废：
-        // 一个指标不可用会把同一帧里其它所有指标一起带走。
-        // 实测就这么炸过：核显那条不可用，GPU 调度页整页无限加载。
-        var bars = visibleIds.Count == 0
-            ? []
-            : ProjectResourceBars(source, visibleMetricIds, foundations, scaleModes)
-                .Where(bar => visibleIds.Contains(bar.MetricId)
-                && currentDatasets.ContainsKey(
-                    SamplingDatasetIds.ForProcessMetric(bar.MetricId))
-                && bar.TotalValue is not null
-                && bar.CapacityValue is not null
-                && bar.TotalSystemPercent is not null)
-                .ToArray();
+        var bars = ProjectResourceBars(source, visibleMetricIds, foundations, scaleModes, processMeasureIds)
+            .Select(bar => bar.TotalValue is null || bar.CapacityValue is null || bar.TotalSystemPercent is null
+                ? ResourceBreakdownCurrentBars.WithoutReading(bar, bar.UnavailableReason!) : bar)
+            .ToArray();
         var catalog = new List<ResourceSoftwareSegment>();
         var indexes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         foreach (var segment in bars.SelectMany(static bar => bar.Software))
@@ -106,13 +94,21 @@ public sealed class ResourceBreakdownWireSnapshot
 
     internal static IEnumerable<ResourceBreakdownBar> ProjectResourceBars(
         ResourceBreakdownSnapshot source, IReadOnlyList<string> ids, SchedulingProcessFactSnapshot? foundations,
-        IReadOnlyDictionary<string, string>? scaleModes = null)
+        IReadOnlyDictionary<string, string>? scaleModes = null,
+        IReadOnlyList<string>? processMeasureIds = null)
     {
-        var facts = ResourceFactsSnapshot.Create(source, ids, foundations);
+        // Raw field ids and resource measures share names, but only measure demand produces bars.
+        // Direct callers that omit request context retain the captured-fact projection contract.
+        var measures = (processMeasureIds ?? source.ProcessMemoryFacts.Select(static fact => fact.MetricId).ToArray())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var barIds = ids.Where(id => ProcessMemoryFactFields.TotalMetricId(id) is null || measures.Contains(id)).ToArray();
+        var facts = ResourceFactsSnapshot.Create(source, barIds, foundations);
         var owners = facts.Software.ToDictionary(static owner => owner.SoftwareId, StringComparer.Ordinal);
-        return facts.Metrics.Select(metric => new ResourceBreakdownBar(metric.MetricId, metric.Unit,
+        return facts.Metrics.Select(metric =>
+        {
+            var bar = new ResourceBreakdownBar(metric.MetricId, metric.Unit,
             ResourceBreakdownScaleModes.Normalize(metric.TotalMetricId, scaleModes?.GetValueOrDefault(metric.MetricId)
-                ?? scaleModes?.GetValueOrDefault(metric.TotalMetricId!)
+                ?? (metric.TotalMetricId is { } totalId ? scaleModes?.GetValueOrDefault(totalId) : null)
                 ?? source.Bars.FirstOrDefault(bar => bar.MetricId == metric.MetricId)?.ScaleMode),
             metric.TotalValue, metric.CapacityValue, metric.TotalSystemPercent, metric.Software.Select(owner =>
             {
@@ -135,6 +131,8 @@ public sealed class ResourceBreakdownWireSnapshot
             WindowMilliseconds = metric.WindowMilliseconds, GpuEngine = metric.GpuEngine, EngineClass = metric.EngineClass,
             SharedValue = metric.SharedValue, Quantity = metric.Quantity, UnavailableReason = metric.UnavailableReason,
             ResidualSource = metric.ResidualSource
+            };
+            return bar;
         });
     }
 }

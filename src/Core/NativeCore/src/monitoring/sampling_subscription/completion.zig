@@ -76,7 +76,8 @@ pub fn complete(
                 item.last_sampled_milliseconds = input.completed_at_milliseconds;
                 item.retry_at_milliseconds = 0;
                 if (session.scratch_source_counts[item_index] != 0) {
-                    item.scheduled_due_milliseconds = alignment.nextDue(
+                    item.scheduled_due_milliseconds = alignment.advanceDue(
+                        item.scheduled_due_milliseconds,
                         input.completed_at_milliseconds,
                         session.scratch_effective_intervals[item_index],
                     );

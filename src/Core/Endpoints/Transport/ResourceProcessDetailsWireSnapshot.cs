@@ -29,7 +29,8 @@ internal sealed class ResourceProcessDetailsWireSnapshot
         IReadOnlyList<string> metricIds,
         IReadOnlySet<string> requestedSoftwareIds,
         SchedulingProcessFactSnapshot? foundations = null,
-        IReadOnlyDictionary<string, string>? scaleModes = null)
+        IReadOnlyDictionary<string, string>? scaleModes = null,
+        IReadOnlyList<string>? processMeasureIds = null)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(metricIds);
@@ -44,15 +45,11 @@ internal sealed class ResourceProcessDetailsWireSnapshot
             return new ResourceProcessDetailsWireSnapshot(null, []);
         }
 
-        var currentDatasets = source.Datasets
-            .Where(static dataset =>
-                dataset.Status == ResourceBreakdownSamplingStatuses.Ready
-                && dataset.CapturedAt is not null)
-            .ToDictionary(
-                static dataset => dataset.DatasetId,
-                StringComparer.OrdinalIgnoreCase);
+        var currentDatasets = source.Datasets.Where(static dataset =>
+                dataset.Status == ResourceBreakdownSamplingStatuses.Ready && dataset.CapturedAt is not null)
+            .Select(static dataset => dataset.DatasetId).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var barsByMetric = ResourceBreakdownWireSnapshot.ProjectResourceBars(
-            source, metricIds, foundations, scaleModes).ToDictionary(
+            source, metricIds, foundations, scaleModes, processMeasureIds).ToDictionary(
             static bar => bar.MetricId,
             StringComparer.OrdinalIgnoreCase);
         var metrics = new List<ResourceProcessDetailsMetric>();
@@ -64,9 +61,7 @@ internal sealed class ResourceProcessDetailsWireSnapshot
             if (string.IsNullOrWhiteSpace(requestedMetricId)
                 || !seenMetricIds.Add(requestedMetricId)
                 || !barsByMetric.TryGetValue(requestedMetricId, out var bar)
-                || !currentDatasets.TryGetValue(
-                    SamplingDatasetIds.ForProcessMetric(bar.MetricId),
-                    out var dataset))
+                || !currentDatasets.Contains(SamplingDatasetIds.ForProcessMetric(bar.MetricId)))
             {
                 continue;
             }
@@ -86,9 +81,9 @@ internal sealed class ResourceProcessDetailsWireSnapshot
                 ProcessSumValue = bar.ProcessSumValue, ResidualValue = bar.ResidualValue,
                 AdditiveAcrossProcesses = bar.AdditiveAcrossProcesses, CapturedAt = bar.CapturedAt
             });
-            if (capturedAt is null || dataset.CapturedAt > capturedAt)
+            if (capturedAt is null || bar.CapturedAt > capturedAt)
             {
-                capturedAt = dataset.CapturedAt;
+                capturedAt = bar.CapturedAt;
             }
         }
 

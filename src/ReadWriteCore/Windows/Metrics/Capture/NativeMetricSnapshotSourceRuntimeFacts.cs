@@ -218,7 +218,8 @@ public sealed class NativeMetricSnapshotSourceRuntimeFacts
     public void RecordCompletion(
         ulong sourceHandle,
         NativeMetricSnapshotSourceStatus status,
-        DateTimeOffset completedAt)
+        DateTimeOffset completedAt,
+        bool applyUnavailableCooldown = true)
     {
         lock (gate)
         {
@@ -231,6 +232,7 @@ public sealed class NativeMetricSnapshotSourceRuntimeFacts
             }
             state.UnavailableUntil = status
                 == NativeMetricSnapshotSourceStatus.Unavailable
+                    && applyUnavailableCooldown
                     ? completedAt + transientUnavailableDuration
                     : null;
         }

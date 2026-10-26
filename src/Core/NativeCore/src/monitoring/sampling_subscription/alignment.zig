@@ -25,6 +25,23 @@ pub fn nextDue(completed_at_milliseconds: u64, interval_milliseconds: u64) u64 {
         std.math.maxInt(u64);
 }
 
+// Keep the item's own phase. Skip elapsed deadlines instead of accumulating
+// collection time or issuing a burst of catch-up samples.
+pub fn advanceDue(due: u64, completed: u64, interval: u64) u64 {
+    std.debug.assert(interval != 0);
+    const anchor = if (due == 0) completed else due;
+    const periods = if (completed < anchor) 0 else (completed - anchor) / interval +| 1;
+    return anchor +| (periods *| interval);
+}
+
+test "capture duration does not move the next scheduled boundary" {
+    try std.testing.expectEqual(@as(u64, 2_000), advanceDue(1_000, 1_325, 1_000));
+    try std.testing.expectEqual(@as(u64, 3_000), advanceDue(2_000, 2_200, 1_000));
+    try std.testing.expectEqual(@as(u64, 2_000), advanceDue(2_000, 1_550, 1_000));
+    try std.testing.expectEqual(@as(u64, 5_000), advanceDue(2_000, 4_100, 1_000));
+    try std.testing.expectEqual(std.math.maxInt(u64), advanceDue(std.math.maxInt(u64) - 1, std.math.maxInt(u64), 5));
+}
+
 test "next due keeps the item's own completion phase" {
     try std.testing.expectEqual(@as(u64, 2_001), nextDue(1_001, 1_000));
     try std.testing.expectEqual(@as(u64, 2_999), nextDue(1_999, 1_000));

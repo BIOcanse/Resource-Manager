@@ -57,7 +57,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             return Results.Ok(ResourceBreakdownWireSnapshot.Create(
                 snapshot,
                 metricIds,
-                processDetailSoftwareIds));
+                processDetailSoftwareIds, scaleModes: scaleModes, processMeasureIds: []));
         }).AllowAnonymous();
 
         app.MapGet("/api/resource-monitor/snapshot", async (
@@ -86,14 +86,14 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 return Results.Ok(ResourceProcessDetailsWireSnapshot.Create(
                     sampledBreakdown,
                     metricIds,
-                    processDetailSoftwareIds, foundations, scaleModes));
+                    processDetailSoftwareIds, foundations, scaleModes, measures));
             }
 
             var breakdownWire = ResourceBreakdownWireSnapshot.Create(
                 sampledBreakdown,
                 metricIds,
                 processDetailSoftwareIds,
-                foundations, scaleModes);
+                foundations, scaleModes, measures);
             return Results.Ok(new ResourceMonitorWireSnapshot(
                 ResourceMonitorWireSnapshot.CurrentVersion,
                 breakdownWire.CapturedAt,

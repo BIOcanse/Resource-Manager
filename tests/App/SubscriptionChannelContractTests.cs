@@ -268,7 +268,17 @@ public sealed partial class ResourceMonitorDetailsSubscriptionTests
         else
         {
             var bars = direct.RootElement.GetProperty("breakdown").GetProperty("bars");
-            if (missingTotal) Assert.Empty(bars.EnumerateArray());
+            if (missingTotal)
+            {
+                var bar = Assert.Single(bars.EnumerateArray());
+                Assert.Equal(field, bar.GetProperty("metricId").GetString());
+                Assert.Equal(totalId, bar.GetProperty("totalMetricId").GetString());
+                Assert.Equal(mode, bar.GetProperty("scaleMode").GetString());
+                Assert.Equal("system-total-unavailable", bar.GetProperty("unavailableReason").GetString());
+                foreach (var name in new[] { "totalValue", "capacityValue", "totalSystemPercent", "processSumValue", "residualValue" })
+                    Assert.Equal(JsonValueKind.Null, bar.GetProperty(name).ValueKind);
+                Assert.Empty(bar.GetProperty("software").EnumerateArray());
+            }
             else
             {
                 var bar = Assert.Single(bars.EnumerateArray());

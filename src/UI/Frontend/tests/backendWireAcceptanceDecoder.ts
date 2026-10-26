@@ -68,6 +68,15 @@ process.stdout.write(JSON.stringify({
   topologySnapshot: request.kind === "device-topology"
     ? deviceTopologyStateDecoder.decode(request.payload).snapshot ?? null : null,
   decodedMetricIds: decodedMetrics.map(metric => metric.metricId),
+  decodedValues: decodedMetrics.map(metric => ({ metricId: metric.metricId,
+    total: "totalValue" in metric ? metric.totalValue : null,
+    capacity: "capacityValue" in metric ? metric.capacityValue : null,
+    percent: "totalSystemPercent" in metric ? metric.totalSystemPercent : null,
+    reason: "unavailableReason" in metric ? metric.unavailableReason : null,
+    segments: metric.software.length })),
+  decodedEmptyBars: (monitor?.breakdown.bars ?? []).filter(bar => bar.totalValue === null)
+    .map(bar => ({ metricId: bar.metricId, scaleMode: bar.scaleMode, reason: bar.unavailableReason,
+      total: bar.totalValue, capacity: bar.capacityValue, percent: bar.totalSystemPercent, segments: bar.software.length })),
   localizedNames,
   decodedProcesses,
   localizedProcessNames,

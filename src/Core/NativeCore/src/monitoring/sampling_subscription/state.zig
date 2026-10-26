@@ -455,7 +455,8 @@ pub const Session = struct {
             }
 
             const interval = self.scratch_effective_intervals[item_index];
-            if (item.effective_interval_milliseconds != interval) {
+            const interval_changed = item.effective_interval_milliseconds != interval;
+            if (interval_changed) {
                 item.retry_at_milliseconds = if (item.effective_interval_milliseconds != 0 and
                     item.retry_at_milliseconds != 0)
                     alignment.nextDue(command_at_milliseconds, interval)
@@ -464,7 +465,7 @@ pub const Session = struct {
                 item.effective_interval_milliseconds = interval;
             }
             if (item.last_sampled_milliseconds == 0) {
-                item.scheduled_due_milliseconds = 0;
+                if (item.last_planned_epoch == 0) item.scheduled_due_milliseconds = 0;
                 continue;
             }
             const next_due = alignment.nextDue(
@@ -472,7 +473,7 @@ pub const Session = struct {
                 interval,
             );
             if (item.scheduled_due_milliseconds == 0 or
-                item.scheduled_due_milliseconds > command_at_milliseconds)
+                (interval_changed and item.scheduled_due_milliseconds > command_at_milliseconds))
             {
                 item.scheduled_due_milliseconds = next_due;
             }

@@ -8,6 +8,33 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class ResourceBreakdownSnapshotStateTests
 {
+    [Fact]
+    public void RequestedWireShapeAndScaleSurviveAvailabilityFlipsAndCaptureFailure()
+    {
+        string[] ids = ["cpu.usage", "disk.io", "gpu.0.usage"];
+        var request = new ResourceBreakdownSampleRequest(ids,
+            new Dictionary<string, string> { ["cpu.usage"] = "active", ["gpu.0.usage"] = "active" },
+            ProcessSampleDetailLevel.ResourceTableBasic);
+        var state = new ResourceBreakdownSnapshotState();
+        foreach (var available in new[] { true, false, true, false, true })
+        {
+            ApplyDirect(state, request, BackendFrontendWireAcceptanceTests.BuildSamplerBars(ids, available));
+            var wire = ResourceManager.App.Endpoints.Transport.ResourceBreakdownWireSnapshot.Create(
+                state.ReadOrCreate(DateTimeOffset.UtcNow, request), ids, scaleModes: request.ScaleModes);
+            using var json = System.Text.Json.JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(wire));
+            var bars = json.RootElement.GetProperty("bars").EnumerateArray().ToArray();
+            Assert.Equal(ids, bars.Select(bar => bar.GetProperty("metricId").GetString()));
+            Assert.All(bars, bar => Assert.Equal("active", bar.GetProperty("scaleMode").GetString()));
+            Assert.All(bars, bar => Assert.Equal(available, bar.GetProperty("totalValue").ValueKind != System.Text.Json.JsonValueKind.Null));
+            if (!available) Assert.All(bars, bar => Assert.False(string.IsNullOrEmpty(bar.GetProperty("unavailableReason").GetString())));
+        }
+        state.MarkFailed(request, DateTimeOffset.UtcNow, new InvalidOperationException("capture failure"));
+        var failedWire = ResourceManager.App.Endpoints.Transport.ResourceBreakdownWireSnapshot.Create(
+            state.ReadOrCreate(DateTimeOffset.UtcNow, request), ids, scaleModes: request.ScaleModes);
+        Assert.Equal(ids, failedWire.Bars.Select(bar => bar.MetricId));
+        Assert.All(failedWire.Bars, bar => { Assert.Null(bar.TotalValue); Assert.Empty(bar.Software);
+            Assert.Equal("resource-breakdown-dataset-sample-failed", bar.UnavailableReason); Assert.Equal("active", bar.ScaleMode); });
+    }
     private static readonly TimeSpan DefaultInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan FreshnessGrace = TimeSpan.FromSeconds(5);
 
@@ -217,7 +244,7 @@ public sealed class ResourceBreakdownSnapshotStateTests
     }
 
     [Fact]
-    public void UnavailableObservationClearsItsDatasetInsteadOfRetainingPayload()
+    public void UnavailableObservationReplacesItsPayloadWithAnEmptyBarAndReason()
     {
         var state = new ResourceBreakdownSnapshotState();
         var request = Request("disk.io");
@@ -233,7 +260,13 @@ public sealed class ResourceBreakdownSnapshotStateTests
                 { ObservationStatus = SamplingObservationStatus.Unavailable }));
 
         var snapshot = state.ReadOrCreate(DateTimeOffset.UtcNow, request);
-        Assert.Empty(snapshot.Bars);
+        var empty = Assert.Single(snapshot.Bars);
+        Assert.Equal("disk.io", empty.MetricId);
+        Assert.Null(empty.TotalValue);
+        Assert.Null(empty.CapacityValue);
+        Assert.Null(empty.TotalSystemPercent);
+        Assert.Empty(empty.Software);
+        Assert.Equal("resource-breakdown-dataset-observation-not-current", empty.UnavailableReason);
         Assert.Equal(ResourceBreakdownSamplingStatuses.Failed, snapshot.Sampling.Status);
         Assert.Null(snapshot.Sampling.LastSuccessAt);
     }

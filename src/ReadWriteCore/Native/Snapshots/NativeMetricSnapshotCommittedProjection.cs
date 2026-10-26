@@ -300,7 +300,9 @@ public static class NativeMetricSnapshotCommittedProjection
         if (reading.Status == NativeMetricSnapshotMetricStatus.Skipped
             && source.Status == (uint)NativeMetricSnapshotSourceStatus.Complete
             && frame.Catalog.MetricBindings.TryGetValue(reading.Output.MetricHandle, out var binding)
-            && binding.MetricKind == (uint)NativeMetricSnapshotMetricKind.CpuUsage)
+            && (binding.MetricKind == (uint)NativeMetricSnapshotMetricKind.CpuUsage
+                || (binding.SourceId == NativeMetricSnapshotSources.PdhGpuEngine
+                    && binding.FieldCode == MetricFieldCode.GpuUsage)))
             return "hardware-counter-baseline";
         return DatasetFailureCode(Status(reading.Status));
     }

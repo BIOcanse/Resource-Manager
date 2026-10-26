@@ -13,6 +13,93 @@ namespace Resource_Manager_APP.Tests;
 public sealed class ResourceMeasureFactsTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RawFieldDemandNeverBecomesABarButExplicitMeasureDemandAlwaysDoes(bool captured)
+    {
+        const string field = "process_all_private_commit_actual";
+        var source = FieldSnapshot(field, 100, 60);
+        if (!captured) source = source with { ProcessMemoryFacts = [] };
+        Assert.Empty(ResourceBreakdownWireSnapshot.Create(source, [field], processMeasureIds: []).Bars);
+        var bar = Assert.Single(ResourceBreakdownWireSnapshot.Create(source, [field], processMeasureIds: [field]).Bars);
+        Assert.Equal(field, bar.MetricId);
+        Assert.Equal(captured ? 100 : (double?)null, bar.TotalValue);
+        if (!captured) Assert.False(string.IsNullOrWhiteSpace(bar.UnavailableReason));
+    }
+
+    [Theory]
+    [InlineData("process_all_cpu_usage_actual", "%")]
+    [InlineData("process_all_network_receive_rate_attributed", "B/s")]
+    [InlineData("process_all_physical_disk_read_bytes_attributed", "B")]
+    [InlineData("process_all_private_working_set_actual", "B")]
+    [InlineData("process_all_working_set_actual", "B")]
+    public void MissingMeasuresRetainTheirOwnMetadataAndFailureInBarsAndFacts(string field, string unit)
+    {
+        var source = FieldSnapshot(field, 100, 60);
+        source = source with { ProcessMemoryFacts = [], Datasets = [source.Datasets[0] with
+            { Status = "failed", CapturedAt = null, FailureCode = "resource-breakdown-dataset-sample-failed" }] };
+        var definition = ProcessMetricFieldRegistry.Find(field)!;
+        var fact = Assert.Single(ResourceFactsSnapshot.Create(source, [field]).Metrics);
+        Assert.Equal(unit, fact.Unit);
+        Assert.Equal(definition.ResourceFactTotalMetricId, fact.TotalMetricId);
+        Assert.Equal(definition.Reading?.Quantity, fact.Quantity);
+        Assert.Equal(definition.AdditiveAcrossProcesses == true, fact.AdditiveAcrossProcesses);
+        Assert.Equal("resource-breakdown-dataset-sample-failed", fact.UnavailableReason);
+        Assert.Null(fact.ProcessSumValue); Assert.Null(fact.ResidualValue); Assert.Empty(fact.Software);
+        var bar = Assert.Single(ResourceBreakdownWireSnapshot.Create(source, [field], processMeasureIds: [field]).Bars);
+        Assert.Equal(unit, bar.Unit); Assert.Equal(fact.Quantity, bar.Quantity);
+        Assert.Equal(fact.UnavailableReason, bar.UnavailableReason);
+        Assert.Null(bar.TotalValue); Assert.Null(bar.CapacityValue); Assert.Empty(bar.Software);
+        // Process details keep their current-dataset boundary; unavailable identities live in bars/facts.
+        Assert.Empty(ResourceProcessDetailsWireSnapshot.Create(source, [field],
+            new HashSet<string>(["example"]), processMeasureIds: [field]).Metrics);
+    }
+
+    [Theory]
+    [InlineData("disk.io", "B/s", "disk-io-window-incomplete")]
+    [InlineData("cpu.usage", "%", "hardware-counter-baseline")]
+    [InlineData("gpu.1.vram", "B", "gpu-dedicated-memory-total-unavailable")]
+    [InlineData("gpu.1.vram", "B", "gpu-dedicated-memory-metrics-unsupported")]
+    public void SourceFailureCodeIsPublishedExactlyOnceWithoutBeingReplaced(string id, string unit, string reason)
+    {
+        var source = ResourceFactsPublicationTests.Snapshot() with
+        {
+            Bars = [new(id, unit, "active", null, null, null, [])
+                { UnavailableReason = reason, Quantity = "fixture-quantity" }],
+            Datasets = [ResourceFactsPublicationTests.Snapshot().Datasets[0] with
+                { DatasetId = SamplingDatasetIds.ForProcessMetric(id) }]
+        };
+        var fact = Assert.Single(ResourceFactsSnapshot.Create(source, [id]).Metrics);
+        Assert.Equal(reason, fact.UnavailableReason); Assert.Equal("fixture-quantity", fact.Quantity);
+        var wire = ResourceBreakdownWireSnapshot.Create(source, [id]);
+        Assert.Equal(reason, Assert.Single(wire.Bars).UnavailableReason);
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(wire));
+        var bar = Assert.Single(json.RootElement.GetProperty("bars").EnumerateArray());
+        Assert.Equal(reason, bar.GetProperty("unavailableReason").GetString());
+        Assert.Single(bar.EnumerateObject(), property => property.Name == "unavailableReason");
+    }
+
+    [Fact]
+    public void CurrentProcessFactsSurviveAMissingTotalWhileTheBarIsExplicitlyUnreadable()
+    {
+        const string field = "process_all_private_commit_actual";
+        var source = FieldSnapshot(field, 100, 60);
+        source = source with { ProcessMemoryFacts = [source.ProcessMemoryFacts[0] with { TotalValue = null }] };
+        var foundations = ResourceFactsPublicationTests.Foundations();
+        var fact = Assert.Single(ResourceFactsSnapshot.Create(source, [field], foundations).Metrics);
+        Assert.Equal(60, fact.ProcessSumValue); Assert.NotEmpty(fact.Software); Assert.Null(fact.ResidualValue);
+        var bar = Assert.Single(ResourceBreakdownWireSnapshot.Create(source, [field], foundations: foundations).Bars);
+        Assert.Equal(fact.UnavailableReason, bar.UnavailableReason);
+        Assert.False(string.IsNullOrWhiteSpace(bar.UnavailableReason));
+        Assert.Null(bar.TotalValue); Assert.Null(bar.CapacityValue); Assert.Null(bar.TotalSystemPercent);
+        Assert.Null(bar.ProcessSumValue); Assert.Null(bar.ResidualValue); Assert.Empty(bar.Software);
+        var details = Assert.Single(ResourceProcessDetailsWireSnapshot.Create(source, [field],
+            new HashSet<string>(["example"]), foundations).Metrics);
+        Assert.Null(details.TotalValue); Assert.Equal(60, details.ProcessSumValue);
+        Assert.Equal(60, Assert.Single(Assert.Single(details.Software).Processes).Value);
+    }
+
+    [Theory]
     [InlineData("memory.usage")]
     [InlineData("MEMORY.USAGE")]
     public void AutomaticCounterPartsKeepCaseInsensitiveMetricIdentity(string id)

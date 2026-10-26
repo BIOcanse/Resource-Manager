@@ -9,6 +9,58 @@ namespace Resource_Manager_APP.Tests;
 public sealed class PhysicalDiskIoWindowTests
 {
     [Fact]
+    public void FailedLeaseCannotReadAnUnrelatedRunningBrokerAsAZeroWindow()
+    {
+        using var reader = NewReader(new Broker { FailSubscribe = true });
+        var snapshot = reader.Read();
+        Assert.Equal(PhysicalDiskIoProviderStates.Unavailable, snapshot.ProviderState.State);
+        Assert.Empty(snapshot.Processes);
+    }
+
+    [Fact]
+    public void RebindingWithinTheSameKernelGenerationInvalidatesTheSelectedWindow()
+    {
+        var broker = new Broker();
+        long tick = 1000;
+        using var owner = new EtwPhysicalDiskIoCaptureOwner(broker, new(), () => tick, pid => new ProcessLease(pid));
+        owner.Read();
+        var source = new KernelEtwEventSource();
+        broker.Request!.Bind(source, new(0, DateTimeOffset.UnixEpoch));
+        source.Activate();
+        tick = 3100;
+        owner.ObserveDiskTransfer(41, (ulong)4096, false, tick, null, 100);
+        var reads = 0;
+        broker.OnSnapshot = () =>
+        {
+            if (++reads != 2) return;
+            var replacement = new KernelEtwEventSource();
+            broker.Request.Bind(replacement, new(0, DateTimeOffset.UnixEpoch));
+            replacement.Activate();
+        };
+        var snapshot = owner.Read();
+        Assert.Equal(PhysicalDiskIoProviderStates.Warming, snapshot.ProviderState.State);
+        Assert.Empty(snapshot.Processes);
+    }
+
+    [Fact]
+    public void ProcessLifecycleDuringSnapshotDoesNotInvalidateUnrelatedDiskWindow()
+    {
+        var broker = new Broker();
+        long tick = 1000;
+        using var owner = new EtwPhysicalDiskIoCaptureOwner(broker, new(), () => tick, pid => new ProcessLease(pid));
+        owner.Read();
+        var source = new KernelEtwEventSource();
+        broker.Request!.Bind(source, new(0, DateTimeOffset.UnixEpoch));
+        source.Activate();
+        tick = 3100;
+        owner.ObserveDiskTransfer(41, (ulong)4096, false, tick, null, 100);
+        var reads = 0;
+        broker.OnSnapshot = () => { if (++reads == 2) owner.ObserveProcessIdentityChange(999); };
+        var snapshot = owner.Read();
+        Assert.Equal(PhysicalDiskIoProviderStates.Running, snapshot.ProviderState.State);
+        Assert.Equal(2048, Assert.Single(snapshot.Processes).Value.ReadBytesPerSecond);
+    }
+    [Fact]
     public void DisposeReleasesReadAcquiredLeaseAndPreventsReacquisition()
     {
         var broker = new Broker();
@@ -193,7 +245,12 @@ public sealed class PhysicalDiskIoWindowTests
         internal string State = "Running";
         internal Action? OnSnapshot;
         internal Action? OnRelease;
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request) { Request = request; return new Lease(this); }
+        internal bool FailSubscribe;
+        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
+        {
+            if (FailSubscribe) throw new InvalidOperationException("fixture subscribe failure");
+            Request = request; return new Lease(this);
+        }
         public KernelEtwSessionSnapshot GetSnapshot()
         {
             OnSnapshot?.Invoke();

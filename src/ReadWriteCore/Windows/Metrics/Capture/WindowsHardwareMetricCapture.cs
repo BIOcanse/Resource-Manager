@@ -159,7 +159,11 @@ internal sealed partial class WindowsHardwareMetricCapture
                 {
                     var completedAt = DateTimeOffset.UtcNow;
                     var accepted = CompleteSource(workspace, plan, completion, completedAt);
-                    sourceRuntimeFacts.RecordCompletion(accepted.SourceHandle, accepted.Status, completedAt);
+                    // The persistent PDH query can recover on its next collect.
+                    // Its transient read failure does not make that source ineligible
+                    // for five seconds while other readers continue collecting it.
+                    sourceRuntimeFacts.RecordCompletion(accepted.SourceHandle, accepted.Status, completedAt,
+                        applyUnavailableCooldown: plan.Catalog.SourceIds[accepted.SourceHandle] != NativeMetricSnapshotSources.PdhGpuEngine);
                     committedCompletions.Add(accepted);
                     if (accepted.PdhGpuEngineUsage is { } engineUsage)
                         pdhGpuEngineUsage = engineUsage;

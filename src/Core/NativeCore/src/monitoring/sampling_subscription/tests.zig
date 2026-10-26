@@ -860,7 +860,28 @@ test "cold items share the current boundary while retaining independent handles"
     );
 }
 
-test "different items with equal intervals retain different completion phases" {
+test "fresh queries before a regular deadline do not skip the regular sampling phase" {
+    var config = testConfig();
+    const session = try session_module.Session.create(&config);
+    defer session.destroy();
+    const highest = protocol.SourceFlags.persistent | protocol.SourceFlags.explicit_interval;
+    const fresh = highest | protocol.SourceFlags.periodic_triggers | protocol.SourceFlags.fresh_on_trigger;
+    try std.testing.expectEqual(ResultCode.ok, track(session, 1, 1_000, 1_000, 100, highest, 1_000, &.{10}));
+    _ = runPlan(session, 2, 1, 1_500);
+    try std.testing.expectEqual(ResultCode.ok, complete(session, 3, 1, 1_550, 1_550, .sampled, &.{10}).code);
+    try std.testing.expectEqual(ResultCode.ok, trackWithFlags(session, 4, 1_600, 1_600, 200, fresh, 500, &.{10}));
+    const query = runPlan(session, 5, 2, 2_100);
+    try std.testing.expectEqual(@as(u32, 1), query.result.header.due_item_count);
+    try std.testing.expectEqual(@as(u32, 1), query.result.header.trigger_count);
+    const settled = completeWithTriggers(session, 6, 2, 2_130, 2_130, .sampled, &.{10}, query.result.triggers[0..1]);
+    try std.testing.expectEqual(ResultCode.ok, settled.code);
+    try std.testing.expectEqual(@as(u64, 2_500), settled.output.next_wake_milliseconds);
+    const regular = runPlan(session, 7, 3, 2_500);
+    try std.testing.expectEqual(@as(u32, 1), regular.result.header.due_item_count);
+    try std.testing.expectEqual(@as(u64, 2_500), regular.result.due[0].scheduled_due_milliseconds);
+}
+
+test "different items retain their own planned phases regardless of capture duration" {
     var config = testConfig();
     const session = try session_module.Session.create(&config);
     defer session.destroy();
@@ -879,20 +900,20 @@ test "different items with equal intervals retain different completion phases" {
     const early = runPlan(session, 7, 3, 1_999);
     try std.testing.expectEqual(ResultCode.ok, early.code);
     try std.testing.expectEqual(@as(u32, 0), early.result.header.due_item_count);
-    try std.testing.expectEqual(@as(u64, 2_101), early.result.header.next_wake_milliseconds);
-    const first_due = runPlan(session, 8, 4, 2_101);
+    try std.testing.expectEqual(@as(u64, 2_000), early.result.header.next_wake_milliseconds);
+    const first_due = runPlan(session, 8, 4, 2_000);
     try std.testing.expectEqual(ResultCode.ok, first_due.code);
     try std.testing.expectEqual(@as(u32, 1), first_due.result.header.due_item_count);
-    try std.testing.expectEqual(@as(u64, 2_101), first_due.result.due[0].scheduled_due_milliseconds);
+    try std.testing.expectEqual(@as(u64, 2_000), first_due.result.due[0].scheduled_due_milliseconds);
     try std.testing.expectEqual(@as(u64, 10), first_due.result.due[0].item_handle);
     try std.testing.expectEqual(
         ResultCode.ok,
-        complete(session, 9, 4, 2_101, 2_101, .sampled, &.{10}).code,
+        complete(session, 9, 4, 2_000, 2_200, .sampled, &.{10}).code,
     );
-    const second_due = runPlan(session, 10, 5, 2_701);
+    const second_due = runPlan(session, 10, 5, 2_500);
     try std.testing.expectEqual(ResultCode.ok, second_due.code);
     try std.testing.expectEqual(@as(u32, 1), second_due.result.header.due_item_count);
-    try std.testing.expectEqual(@as(u64, 2_701), second_due.result.due[0].scheduled_due_milliseconds);
+    try std.testing.expectEqual(@as(u64, 2_500), second_due.result.due[0].scheduled_due_milliseconds);
     try std.testing.expectEqual(@as(u64, 20), second_due.result.due[0].item_handle);
 }
 
@@ -1727,7 +1748,9 @@ test "removed items stay reserved until query or trigger-only plans settle" {
         const session = try session_module.Session.create(&config);
         defer session.destroy();
         try std.testing.expectEqual(ResultCode.ok, track(session, 1, 1_000, 1_000, 1, protocol.SourceFlags.persistent | protocol.SourceFlags.periodic_triggers, 0, &.{10}));
-        var pending = runPlan(session, 2, 1, 1_000);
+        // A late first query keeps its own sampling phase, independently of
+        // the source's delivery phase. Completion duration no longer shifts it.
+        var pending = runPlan(session, 2, 1, if (mode == 1) 1_500 else 1_000);
         var operation: u64 = 3;
         var now: u64 = 1_000;
         if (mode == 1) {

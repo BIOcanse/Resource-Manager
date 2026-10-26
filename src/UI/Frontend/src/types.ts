@@ -559,6 +559,7 @@ export interface ResourceSoftwareSegment {
 
 export interface ResourceBreakdownBar {
   residualSource?: "counters" | null;
+  unavailableReason?: string | null;
   sharedValue?: number | null;
   metricId: string;
   /** 这一条实际读的进程字段（后端只给进程内存类的条）；没有为 null。 */

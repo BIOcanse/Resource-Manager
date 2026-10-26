@@ -388,6 +388,10 @@ internal sealed class ResourceBreakdownSnapshotState
                         $"Dataset '{requestedDataset.Key}' produced an unavailable or incomplete observation."),
                     "resource-breakdown-dataset-observation-not-current",
                     "资源数据集本轮观测不完整，当前数据集已置空。");
+                foreach (var bar in replacement)
+                    dataset.Bars.Add(bar.MetricId, bar with { TotalValue = null, CapacityValue = null,
+                        TotalSystemPercent = null, SharedValue = null, Software = [],
+                        UnavailableReason = bar.UnavailableReason ?? "resource-breakdown-dataset-observation-not-current" });
                 continue;
             }
 

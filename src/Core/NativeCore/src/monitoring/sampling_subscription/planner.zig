@@ -200,6 +200,8 @@ pub fn plan(
     for (due[0..due_count]) |selected| {
         const item_index = session.findItem(selected.item_handle) orelse unreachable;
         session.items[item_index].last_planned_epoch = header.plan_epoch;
+        if (session.items[item_index].scheduled_due_milliseconds == 0)
+            session.items[item_index].scheduled_due_milliseconds = selected.scheduled_due_milliseconds;
     }
 
     var trigger_count: usize = 0;

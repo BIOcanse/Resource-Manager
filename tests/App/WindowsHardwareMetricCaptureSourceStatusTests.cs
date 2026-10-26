@@ -13,6 +13,42 @@ namespace Resource_Manager_APP.Tests;
 public sealed class WindowsHardwareMetricCaptureSourceStatusTests
 {
     [Theory]
+    [InlineData(NativePdhResultCode.NoData, NativeMetricSnapshotSourceStatus.Complete)]
+    [InlineData(NativePdhResultCode.PdhError, NativeMetricSnapshotSourceStatus.Unavailable)]
+    public void GpuBaselineDoesNotStartSourceFailureCooldown(NativePdhResultCode result,
+        NativeMetricSnapshotSourceStatus expected)
+    {
+        var compiled = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
+        using var workspace = NativeMetricSnapshotHostConfiguration.CreateWorkspace(compiled,
+            Path.Combine(Path.GetTempPath(), $"gpu-baseline-{Guid.NewGuid():N}.bin"));
+        var catalog = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(compiled,
+            [new(0, "GPU", "gpu", 0x10de, 1, 2, false)], [], [], workspace.CreateCatalogHandleMap());
+        var binding = catalog.MetricBindings.Values.Single(row => row.LegacyMetricId == "gpu.0.usage");
+        var at = DateTimeOffset.UtcNow;
+        workspace.ReplaceCatalog(catalog, at);
+        var facts = new NativeMetricSnapshotSourceRuntimeFacts(static _ => NativeMetricSnapshotZoneMode.Normal, TimeSpan.FromSeconds(5));
+        var plan = workspace.PlanCollection([binding.MetricHandle], facts.CaptureModes(catalog, at), false, at.AddMilliseconds(1));
+        var source = Assert.Single(plan.Sources);
+        var completion = WindowsHardwareMetricCapture.CreatePdhGpuCompletion(plan, source,
+            new(source.SourceHandle, 1, 1), at.AddMilliseconds(1),
+            new(new Dictionary<int, double>(), NativePdhProviderAvailability.WarmingUp, null) { ResultCode = result });
+        Assert.Equal(expected, completion.Status);
+        workspace.CompleteSource(plan, completion, at.AddMilliseconds(2));
+        Assert.Equal(result == NativePdhResultCode.NoData ? "hardware-counter-baseline" : "hardware-source-unavailable",
+            NativeMetricSnapshotCommittedProjection.Create(workspace.ReadCommitted(), 1).Datasets["gpu.0.usage"].FailureCode);
+        facts.RecordCompletion(source.SourceHandle, completion.Status, at.AddMilliseconds(2), applyUnavailableCooldown: false);
+        Assert.Equal(NativeMetricSnapshotSourceAvailability.Available,
+            facts.CaptureModes(catalog, at.AddSeconds(1)).Single(row => row.SourceHandle == source.SourceHandle).Availability);
+        var next = workspace.PlanCollection([binding.MetricHandle], facts.CaptureModes(catalog, at.AddSeconds(1)), false, at.AddSeconds(1));
+        var nextSource = Assert.Single(next.Sources);
+        var recovered = WindowsHardwareMetricCapture.CreatePdhGpuCompletion(next, nextSource,
+            new(source.SourceHandle, 1, 2), at.AddSeconds(1),
+            new(new Dictionary<int, double> { [0] = 25 }, NativePdhProviderAvailability.Available, at.AddSeconds(1)));
+        workspace.CompleteSource(next, recovered, at.AddSeconds(1).AddMilliseconds(1));
+        Assert.Equal((uint)NativeMetricSnapshotMetricStatus.Current,
+            workspace.ReadCommitted().Metrics.Single(row => row.MetricHandle == binding.MetricHandle).Status);
+    }
+    [Theory]
     [InlineData(false, null, NativeMetricSnapshotObservationStatus.Unavailable)]
     [InlineData(true, 1, NativeMetricSnapshotObservationStatus.Unsupported)]
     public void UnroutedSmuCollectionDistinguishesInventoryGapFromKnownWrongAdapter(

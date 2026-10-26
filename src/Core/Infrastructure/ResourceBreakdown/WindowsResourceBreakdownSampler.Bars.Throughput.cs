@@ -16,7 +16,9 @@ public sealed partial class WindowsResourceBreakdownSampler
     {
         if (diskAttribution.ProviderState.ObservationStatus != ResourceManager.App.Domain.Metrics.SamplingObservationStatus.Current)
             return CreateUnavailableBar(metricId, "B/s", ResourceBreakdownScaleModes.Active,
-                diskAttribution.ProviderState.ObservationStatus, diskAttribution.ProviderState.ObservationStatus);
+                diskAttribution.ProviderState.ObservationStatus, diskAttribution.ProviderState.ObservationStatus) with
+            { UnavailableReason = diskAttribution.ProviderState.State == PhysicalDiskIoProviderStates.Warming
+                ? "disk-io-window-incomplete" : "disk-io-source-unavailable" };
         var valuesByProcess = CreateDiskProcessValues(metricId, diskAttribution, processAttribution);
         var total = valuesByProcess
             .Where(static item => item.Value > 0)

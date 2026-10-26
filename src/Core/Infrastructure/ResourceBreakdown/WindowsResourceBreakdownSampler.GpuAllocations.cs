@@ -35,7 +35,8 @@ public sealed partial class WindowsResourceBreakdownSampler
             : [];
         return new(metricId, "B", scaleMode, usedBytes, capacityBytes, percent, segments,
             usedBytes.HasValue ? SamplingObservationStatus.Current : SamplingObservationStatus.Unavailable,
-            SamplingObservationStatus.Unavailable);
+            SamplingObservationStatus.Unavailable)
+        { UnavailableReason = usedBytes.HasValue && capacityBytes is > 0 ? null : "gpu-dedicated-memory-total-unavailable" };
     }
 
     private static ResourceBreakdownBar CreateGpuResidentPartition(ResourceBreakdownBar bar,

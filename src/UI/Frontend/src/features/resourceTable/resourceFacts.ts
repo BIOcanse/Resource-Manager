@@ -60,6 +60,8 @@ export function decodeResourceFacts(value: unknown): ResourceMonitorSnapshot {
       processFieldName: requireNullable(metric.processFieldName, `${path}.processFieldName`, requireNonEmptyString),
       totalValue: nullableNumber(metric, "totalValue", path), capacityValue: nullableNumber(metric, "capacityValue", path),
       totalSystemPercent: nullableNumber(metric, "totalSystemPercent", path), sharedValue: nullableNumber(metric, "sharedValue", path),
+      unavailableReason: metric.unavailableReason == null ? null
+        : requireNonEmptyString(metric.unavailableReason, `${path}.unavailableReason`),
       software: requireArray(metric.software, `${path}.software`).map((value, index) => {
         const childPath = `${path}.software[${index}]`;
         const child = requireRecord(value, childPath);

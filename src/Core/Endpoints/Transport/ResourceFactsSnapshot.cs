@@ -95,8 +95,7 @@ internal sealed record ResourceFactsSnapshot(
                     rows));
             }
             return metric with { ProcessSumValue = sum, ResidualValue = residual,
-                AdditiveAcrossProcesses = additive, Software = values,
-                UnavailableReason = metric.TotalValue is null ? "system-total-unavailable" : null };
+                AdditiveAcrossProcesses = additive, Software = values };
         }
 
         static ResourceMetricFacts Unavailable(string id, string totalId, string unit, DateTimeOffset? capturedAt,
@@ -105,16 +104,23 @@ internal sealed record ResourceFactsSnapshot(
             { TotalMetricId = totalId, CapturedAt = capturedAt, Quantity = quantity,
                 ProcessFieldName = field, UnavailableReason = reason, AdditiveAcrossProcesses = additive };
 
-        foreach (var bar in source.Bars)
+        foreach (var bar in ResourceBreakdownCurrentBars.Select(source, items))
         {
-            if (!requested.Contains(bar.MetricId) || !current.TryGetValue(SamplingDatasetIds.ForProcessMetric(bar.MetricId), out var dataset)) continue;
+            var dataset = current.GetValueOrDefault(SamplingDatasetIds.ForProcessMetric(bar.MetricId));
             var isGpuMemory = bar.MetricId.StartsWith("gpu.", StringComparison.OrdinalIgnoreCase)
                 && bar.MetricId.EndsWith(".vram", StringComparison.OrdinalIgnoreCase);
-            if (isGpuMemory && (bar.TotalValue is null || bar.UnavailableReason is not null))
+            if (bar.UnavailableReason is not null)
             {
-                metrics.Add(Unavailable(bar.MetricId, bar.MetricId, bar.Unit, dataset.CapturedAt,
-                    bar.Quantity ?? "dedicated_memory_used", bar.ProcessFieldName,
-                    bar.UnavailableReason ?? "gpu-dedicated-memory-total-unavailable"));
+                metrics.Add(new(bar.MetricId, bar.Unit, bar.TotalValue, bar.CapacityValue,
+                    bar.TotalSystemPercent, null, [])
+                {
+                    TotalMetricId = bar.MetricId, CapturedAt = dataset?.CapturedAt,
+                    Quantity = bar.Quantity ?? (isGpuMemory ? "dedicated_memory_used" : ProcessMetricFieldRegistry.Find(bar.ProcessFieldName ?? string.Empty)?.Reading?.Quantity),
+                    ProcessFieldName = bar.ProcessFieldName, UnavailableReason = bar.UnavailableReason,
+                    AdditiveAcrossProcesses = bar.ProcessFieldName is null
+                        || ProcessMetricFieldRegistry.Find(bar.ProcessFieldName)?.AdditiveAcrossProcesses != false,
+                    ResidualSource = bar.MetricId.Equals(ResourceBreakdownMetricIds.MemoryUsage, StringComparison.OrdinalIgnoreCase) ? bar.ResidualSource : null
+                });
                 continue;
             }
             var values = new List<ResourceSoftwareFacts>();
@@ -142,15 +148,25 @@ internal sealed record ResourceFactsSnapshot(
             var additive = field is null || ProcessMetricFieldRegistry.Find(field)?.AdditiveAcrossProcesses != false;
             metrics.Add(Balance(new(bar.MetricId, bar.Unit, bar.TotalValue, bar.CapacityValue,
                 bar.TotalSystemPercent, bar.SharedValue is null ? null : values.Sum(static owner => owner.SharedValue ?? 0), values)
-            { ProcessFieldName = field, TotalMetricId = bar.MetricId, CapturedAt = dataset.CapturedAt,
+            { ProcessFieldName = field, TotalMetricId = bar.MetricId, CapturedAt = dataset?.CapturedAt,
                 ResidualSource = bar.MetricId.Equals(ResourceBreakdownMetricIds.MemoryUsage, StringComparison.OrdinalIgnoreCase) ? bar.ResidualSource : null,
                 Quantity = bar.Quantity ?? (isGpuMemory ? "dedicated_memory_used" : ProcessMetricFieldRegistry.Find(field ?? string.Empty)?.Reading?.Quantity) }, additive,
                 bar.Software.Where(static owner => owner.SoftwareId.Equals("resource-residual:memory.usage", StringComparison.OrdinalIgnoreCase)).ToArray()));
         }
         foreach (var fact in source.ProcessMemoryFacts)
         {
-            if (!requested.Contains(fact.MetricId) || !current.TryGetValue(SamplingDatasetIds.ForProcessMetric(fact.MetricId), out var dataset)) continue;
+            if (!requested.Contains(fact.MetricId)) continue;
             var definition = ProcessMetricFieldRegistry.Find(fact.MetricId);
+            if (!current.TryGetValue(SamplingDatasetIds.ForProcessMetric(fact.MetricId), out var dataset))
+            {
+                metrics.Add(Unavailable(fact.MetricId, fact.TotalMetricId, fact.Unit, null,
+                    definition?.Reading?.Quantity, fact.MetricId,
+                    ResourceBreakdownCurrentBars.UnavailableReason(source, fact.MetricId),
+                    definition?.AdditiveAcrossProcesses ?? fact.AdditiveAcrossProcesses) with
+                { GpuEngine = fact.GpuEngine ?? definition?.GpuEngine, EngineClass = fact.EngineClass ?? definition?.EngineClass,
+                    ResidualSource = fact.MetricId == "process_all_private_working_set_actual" ? "counters" : null });
+                continue;
+            }
             if (definition?.GpuIndex is not null && (fact.CapturedAt is null || fact.TotalValue is null))
             {
                 metrics.Add(Unavailable(fact.MetricId, fact.TotalMetricId, fact.Unit, fact.CapturedAt,
@@ -188,13 +204,27 @@ internal sealed record ResourceFactsSnapshot(
                 TotalMetricId = fact.TotalMetricId, ProcessFieldName = fact.MetricId,
                 ResidualSource = fact.MetricId == "process_all_private_working_set_actual" ? "counters" : null,
                 CapturedAt = fact.CapturedAt ?? dataset.CapturedAt, WindowMilliseconds = fact.WindowMilliseconds,
-                GpuEngine = fact.GpuEngine, EngineClass = fact.EngineClass, Quantity = definition?.Reading?.Quantity
+                GpuEngine = fact.GpuEngine, EngineClass = fact.EngineClass, Quantity = definition?.Reading?.Quantity,
+                UnavailableReason = fact.TotalValue is null || fact.CapacityValue is not > 0
+                    ? ResourceBreakdownCurrentBars.UnavailableReason(source, fact.MetricId, fallbackReason: "system-total-unavailable") : null
             }, ProcessMetricFieldRegistry.Find(fact.MetricId)?.AdditiveAcrossProcesses ?? fact.AdditiveAcrossProcesses, fact.Residuals));
         }
+        var published = metrics.Select(static metric => metric.MetricId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var id in items.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var definition = ProcessMetricFieldRegistry.Find(id);
+            if (published.Contains(id) || definition?.ResourceFactTotalMetricId is not { } totalId) continue;
+            metrics.Add(Unavailable(id, totalId, definition.Unit, null, definition.Reading?.Quantity, id,
+                ResourceBreakdownCurrentBars.UnavailableReason(source, id), definition.AdditiveAcrossProcesses == true) with
+            { GpuEngine = definition.GpuEngine, EngineClass = definition.EngineClass,
+                ResidualSource = definition.Name == "process_all_private_working_set_actual" ? "counters" : null });
+        }
         var capturedAt = metrics.Select(static metric => metric.CapturedAt).DefaultIfEmpty(null).Max();
-        if (hasFoundations && metrics.Count == 0 && foundations!.ObservedAtUtcTicks > 0 && attributions.Count > 0)
+        if (hasFoundations && capturedAt is null && foundations!.ObservedAtUtcTicks > 0 && attributions.Count > 0)
             capturedAt = new DateTimeOffset(foundations.ObservedAtUtcTicks, TimeSpan.Zero);
-        return new(2, capturedAt, software.Values.ToArray(), processes, metrics, attributions);
+        var byMetric = metrics.ToDictionary(static metric => metric.MetricId, StringComparer.OrdinalIgnoreCase);
+        var ordered = items.Distinct(StringComparer.OrdinalIgnoreCase).Where(byMetric.ContainsKey).Select(id => byMetric[id]).ToArray();
+        return new(2, capturedAt, software.Values.ToArray(), processes, ordered, attributions);
     }
 
     private static double Percent(double value, double? capacity) => capacity is > 0 ? value * 100 / capacity.Value : 0;

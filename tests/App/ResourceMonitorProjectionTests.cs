@@ -50,7 +50,9 @@ public sealed class ResourceMonitorProjectionTests
             ResourceBreakdownWireSnapshot.CurrentVersion,
             root.GetProperty("version").GetInt32());
         Assert.Equal(JsonValueKind.Null, root.GetProperty("capturedAt").ValueKind);
-        Assert.Empty(root.GetProperty("bars").EnumerateArray());
+        var bar = Assert.Single(root.GetProperty("bars").EnumerateArray());
+        Assert.Equal("cpu.usage", bar.GetProperty("metricId").GetString());
+        Assert.Equal("resource-breakdown-warming", bar.GetProperty("unavailableReason").GetString());
         Assert.False(root.TryGetProperty("sampling", out _));
         Assert.False(root.TryGetProperty("datasets", out _));
         Assert.DoesNotContain("stateRevision", json, StringComparison.OrdinalIgnoreCase);
@@ -58,7 +60,7 @@ public sealed class ResourceMonitorProjectionTests
     }
 
     [Fact]
-    public void WireSnapshot_EmptyDatasetDoesNotPublishABarOrFailureState()
+    public void WireSnapshot_EmptyDatasetPublishesEmptyBarWithReason()
     {
         var snapshot = new ResourceBreakdownSnapshot(
             DateTimeOffset.UnixEpoch,
@@ -95,10 +97,13 @@ public sealed class ResourceMonitorProjectionTests
             ResourceBreakdownWireSnapshot.Create(snapshot, ["gpu.0.usage"]));
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
-        Assert.Empty(root.GetProperty("bars").EnumerateArray());
+        var bar = Assert.Single(root.GetProperty("bars").EnumerateArray());
+        Assert.Equal("gpu.0.usage", bar.GetProperty("metricId").GetString());
+        Assert.Equal("fixture-failure", bar.GetProperty("unavailableReason").GetString());
+        Assert.Equal(JsonValueKind.Null, bar.GetProperty("totalValue").ValueKind);
+        Assert.Empty(bar.GetProperty("software").EnumerateArray());
         Assert.False(root.TryGetProperty("sampling", out _));
         Assert.False(root.TryGetProperty("datasets", out _));
-        Assert.DoesNotContain("failure", json, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

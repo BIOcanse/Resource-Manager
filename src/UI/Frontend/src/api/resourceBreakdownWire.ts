@@ -61,6 +61,7 @@ interface ResourceBreakdownBarWire {
   capacityValue: number | null;
   totalSystemPercent: number | null;
   sharedValue?: number | null;
+  unavailableReason?: string | null;
   software: SoftwareValueRow[];
 }
 
@@ -154,9 +155,13 @@ function decodeBar(
     bar.totalSystemPercent,
     `${path}.totalSystemPercent`,
     requireFiniteNumber);
-  if (totalValue === null || capacityValue === null || totalSystemPercent === null) {
-    throw new ResponseDecodeError(path, "published bar with numeric totals");
-  }
+  const unavailableReason = bar.unavailableReason == null ? null
+    : requireNonEmptyString(bar.unavailableReason, `${path}.unavailableReason`);
+  const software = requireArray(bar.software, `${path}.software`);
+  if ((totalValue === null || capacityValue === null || totalSystemPercent === null)
+    && (totalValue !== null || capacityValue !== null || totalSystemPercent !== null
+      || unavailableReason === null || software.length !== 0))
+    throw new ResponseDecodeError(path, "empty bar with null totals, reason and no segments");
 
   // 后端只在进程内存类的条上写这两项（自动的整机内存条写 processFieldName，按字段订阅的条两项都写）；
   // 写了就必须是非空字符串。
@@ -172,8 +177,9 @@ function decodeBar(
     totalValue,
     capacityValue,
     totalSystemPercent,
+    unavailableReason,
     sharedValue: optionalNullableFiniteNumber(bar.sharedValue, `${path}.sharedValue`),
-    software: requireArray(bar.software, `${path}.software`)
+    software: software
       .map((row, index) => decodeSoftware(
         row,
         softwareCatalog,

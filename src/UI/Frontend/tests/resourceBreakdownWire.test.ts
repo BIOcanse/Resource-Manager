@@ -83,6 +83,23 @@ const unavailable = decodeResourceBreakdownWireSnapshot(unavailableWire);
 assert.equal(unavailable.capturedAt, undefined);
 assert.deepEqual(unavailable.bars, []);
 
+const emptyBarWire: ResourceBreakdownWireSnapshot = {
+  ...unavailableWire,
+  bars: [{ metricId: "disk.io", unit: "B/s", scaleMode: "active",
+    totalValue: null, capacityValue: null, totalSystemPercent: null,
+    unavailableReason: "disk-io-window-incomplete", software: [] }]
+};
+const emptyBar = decodeResourceBreakdownWireSnapshot(emptyBarWire).bars![0];
+assert.equal(emptyBar.metricId, "disk.io");
+assert.equal(emptyBar.scaleMode, "active");
+assert.equal(emptyBar.unavailableReason, "disk-io-window-incomplete");
+assert.equal(emptyBar.totalValue, null);
+assert.deepEqual(emptyBar.software, []);
+assert.throws(() => decodeResourceBreakdownWireSnapshot({ ...emptyBarWire,
+  bars: [{ ...emptyBarWire.bars[0], unavailableReason: null }] }));
+assert.throws(() => decodeResourceBreakdownWireSnapshot({ ...emptyBarWire,
+  bars: [{ ...emptyBarWire.bars[0], totalValue: 0 }] }));
+
 // 展示串已经从线上去掉：条形自带 unit，数值由前端按用户选的进制格式化。
 assert.equal("totalDisplay" in (bar as object), false);
 assert.equal("displayValue" in (software as object), false);

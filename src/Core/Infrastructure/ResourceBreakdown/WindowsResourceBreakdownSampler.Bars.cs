@@ -32,7 +32,8 @@ public sealed partial class WindowsResourceBreakdownSampler
                     "%",
                     scaleMode,
                     CpuObservationStatus(hardwareSnapshot.Cpu))
-                    with { ProcessFieldName = "process_all_cpu_usage_actual" };
+                    with { ProcessFieldName = "process_all_cpu_usage_actual",
+                        UnavailableReason = HardwareUnavailableReason(hardwareSnapshot, metricId) };
             }
 
             return CreateBar(
@@ -60,7 +61,8 @@ public sealed partial class WindowsResourceBreakdownSampler
                     "B",
                     scaleMode,
                     NormalizeObservationStatus(hardwareSnapshot.Memory.ObservationStatus))
-                    with { ProcessFieldName = "process_all_private_working_set_actual", ResidualSource = "counters" };
+                    with { ProcessFieldName = "process_all_private_working_set_actual", ResidualSource = "counters",
+                        UnavailableReason = HardwareUnavailableReason(hardwareSnapshot, metricId) };
             }
 
             return CreateBar(
@@ -89,7 +91,8 @@ public sealed partial class WindowsResourceBreakdownSampler
                     "B",
                     scaleMode,
                     NormalizeObservationStatus(hardwareSnapshot.VirtualMemory.ObservationStatus))
-                    with { ProcessFieldName = "process_all_private_commit_actual" };
+                    with { ProcessFieldName = "process_all_private_commit_actual",
+                        UnavailableReason = HardwareUnavailableReason(hardwareSnapshot, metricId) };
             }
 
             return CreateBar(
@@ -222,7 +225,8 @@ public sealed partial class WindowsResourceBreakdownSampler
                         hardwareSnapshot,
                         gpuIndex,
                         usage: true),
-                    gpuAttribution.UsageStatus);
+                    gpuAttribution.UsageStatus) with
+                { UnavailableReason = HardwareUnavailableReason(hardwareSnapshot, metricId) };
             }
 
             var usageByProcess =
@@ -260,6 +264,11 @@ public sealed partial class WindowsResourceBreakdownSampler
              * 归属拿不到是归属的事，由 attributionStatus 如实说，不牵连读数本身。
              */
             var attributionTotal = gpuAttribution.GetUsagePercentTotal(gpuIndex);
+            if (attributionTotal is null)
+                return new ResourceBreakdownBar(metricId, "%", scaleMode,
+                    Math.Clamp(gpu.UsagePercent, 0, 100), 100, Math.Clamp(gpu.UsagePercent, 0, 100), [],
+                    SamplingObservationStatus.Current, SamplingObservationStatus.Unavailable)
+                { UnavailableReason = "resource-breakdown-attribution-unavailable" };
             var canScale = attributionTotal is { } total && total > 0;
 
             return CreateBar(
@@ -275,9 +284,7 @@ public sealed partial class WindowsResourceBreakdownSampler
                 isBytes: false,
                 scaleProcessValues: canScale,
                 attributionTotalValue: attributionTotal,
-                attributionStatus: attributionTotal is null
-                    ? SamplingObservationStatus.Unavailable
-                    : gpuAttribution.UsageStatus);
+                attributionStatus: gpuAttribution.UsageStatus);
         }
 
         if (gpuMetricName.Equals("vram", StringComparison.OrdinalIgnoreCase))
@@ -304,6 +311,10 @@ public sealed partial class WindowsResourceBreakdownSampler
 
         return null;
     }
+
+    private static string HardwareUnavailableReason(HardwareMetricSnapshot snapshot, string metricId)
+        => snapshot.Datasets.GetValueOrDefault(SamplingDatasetIds.ForSystemMetric(metricId))?.FailureCode
+            ?? "hardware-dataset-missing";
 
     private static bool TryGetCurrentHardwareMetric(
         HardwareMetricSnapshot snapshot,
@@ -342,7 +353,8 @@ public sealed partial class WindowsResourceBreakdownSampler
             null,
             [],
             NormalizeObservationStatus(observationStatus),
-            NormalizeObservationStatus(attributionStatus));
+            NormalizeObservationStatus(attributionStatus))
+        { UnavailableReason = "resource-breakdown-total-unavailable" };
     }
 
     private static SamplingObservationStatus CpuObservationStatus(CpuMetrics cpu)

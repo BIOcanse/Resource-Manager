@@ -10,6 +10,24 @@ namespace Resource_Manager_APP.Tests;
 public sealed class ItemSamplingSubscriptionTrackerTests
 {
     [Fact]
+    public void CaptureDurationBelowIntervalKeepsTheOriginalItemPhase()
+    {
+        using var fixture = new HostManagerSamplingSubscriptionTestFixture();
+        var tracker = CreateMetricTracker(fixture);
+        var at = DateTimeOffset.Parse("2026-10-25T00:00:00Z");
+        tracker.TrackPersistent("bars", MetricSampleRequest.ForIds(["cpu.usage"]), at, TimeSpan.FromSeconds(1));
+        var first = tracker.CreatePlan(at);
+        var initial = ReadNativeState(fixture).Items.Single();
+        tracker.MarkSampled(first.Request!, at.AddMilliseconds(325));
+        var due = ReadNativeState(fixture).Items.Single().ScheduledDueMilliseconds;
+        Assert.Equal(initial.ScheduledDueMilliseconds + 1000, due);
+        var secondAt = DateTimeOffset.FromUnixTimeMilliseconds(checked((long)due));
+        var second = tracker.CreatePlan(secondAt);
+        Assert.NotNull(second.Request);
+        tracker.MarkSampled(second.Request!, secondAt.AddMilliseconds(200));
+        Assert.Equal(due + 1000, ReadNativeState(fixture).Items.Single().ScheduledDueMilliseconds);
+    }
+    [Fact]
     public async Task NormalDeadlineAndNewDemandWakeWithoutCancellationExceptionsOrOrphanWaits()
     {
         using var fixture = new HostManagerSamplingSubscriptionTestFixture();

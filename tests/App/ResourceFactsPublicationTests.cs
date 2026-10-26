@@ -64,7 +64,11 @@ public sealed class ResourceFactsPublicationTests
         Assert.Empty(ResourceFactsSnapshot.Create(source, []).Processes);
         source = source with { Datasets = [source.Datasets[0] with { Status = "failed" }] };
         var failed = ResourceFactsSnapshot.Create(source, [field], foundations);
-        Assert.Empty(failed.Metrics);
+        var failedMetric = Assert.Single(failed.Metrics);
+        Assert.Equal(field, failedMetric.MetricId);
+        Assert.Null(failedMetric.TotalValue);
+        Assert.Empty(failedMetric.Software);
+        Assert.Equal("resource-breakdown-total-unavailable", failedMetric.UnavailableReason);
         Assert.Single(failed.Processes);
         Assert.Single(failed.Attributions);
         Assert.Equal(new DateTimeOffset(foundations.ObservedAtUtcTicks, TimeSpan.Zero), failed.CapturedAt);
@@ -108,12 +112,34 @@ public sealed class ResourceFactsPublicationTests
         var source = Snapshot();
         source = source with { Datasets = source.Datasets.Select((state, index) => index == 0 ? state with { Status = "failed" } : state).ToArray() };
         var facts = ResourceFactsSnapshot.Create(source, ["cpu.usage", "gpu.1.vram"]);
-        Assert.Equal("gpu.1.vram", Assert.Single(facts.Metrics).MetricId);
+        Assert.Equal(new[] { "cpu.usage", "gpu.1.vram" }, facts.Metrics.Select(metric => metric.MetricId));
+        Assert.Null(facts.Metrics[0].TotalValue);
+        Assert.NotNull(facts.Metrics[1].TotalValue);
         var empty = ResourceFactsSnapshot.Create(source, ["cpu.usage"]);
-        Assert.Empty(empty.Metrics);
+        var metric = Assert.Single(empty.Metrics);
+        Assert.Null(metric.TotalValue);
+        Assert.Equal("resource-breakdown-total-unavailable", metric.UnavailableReason);
         Assert.Empty(empty.Software);
         Assert.Empty(empty.Processes);
         Assert.Null(empty.CapturedAt);
+    }
+
+    [Fact]
+    public void EveryRequestedFactRemainsPresentAcrossAvailabilityFlips()
+    {
+        string[] ids = ["disk.io", "network.traffic", "process_all_private_commit_actual"];
+        var current = BackendFrontendWireAcceptanceTests.BuildSamplerBars(ids[..2], true, throughputMultiplier: 0);
+        foreach (var available in new[] { true, false, true, false })
+        {
+            var source = available ? current : current with { Bars = [], Datasets = [] };
+            var facts = ResourceFactsSnapshot.Create(source, ids);
+            Assert.Equal(ids, facts.Metrics.Select(metric => metric.MetricId));
+            Assert.All(facts.Metrics, metric =>
+            {
+                if (metric.TotalValue is null) Assert.False(string.IsNullOrWhiteSpace(metric.UnavailableReason));
+                else Assert.Equal(0, metric.TotalValue);
+            });
+        }
     }
 
     internal static SchedulingProcessFactSnapshot Foundations(long startKey = long.MaxValue)

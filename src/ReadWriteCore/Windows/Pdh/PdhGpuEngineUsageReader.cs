@@ -42,7 +42,7 @@ public sealed class PdhGpuEngineUsageReader
             return new PdhGpuEngineUsageRead(
                 new Dictionary<int, double>(),
                 ProviderAvailability,
-                null);
+                null) { ResultCode = read.ResultCode, NativeStatus = read.NativeStatus };
         }
 
         var result = new Dictionary<int, double>();
@@ -66,7 +66,9 @@ public sealed class PdhGpuEngineUsageReader
             ProviderAvailability,
             observation?.ObservedAt)
         {
-            UsageByEngine = exactEngineUsage
+            UsageByEngine = exactEngineUsage,
+            ResultCode = read.ResultCode,
+            NativeStatus = read.NativeStatus
         };
     }
 
@@ -158,6 +160,8 @@ public sealed record PdhGpuEngineUsageRead(
     NativePdhProviderAvailability ProviderAvailability,
     DateTimeOffset? ObservedAt)
 {
+    public NativePdhResultCode ResultCode { get; init; } = NativePdhResultCode.Ok;
+    public int NativeStatus { get; init; }
     public IReadOnlyDictionary<NativePdhGpuEngineIdentity, double> UsageByEngine { get; init; } =
         new Dictionary<NativePdhGpuEngineIdentity, double>();
 

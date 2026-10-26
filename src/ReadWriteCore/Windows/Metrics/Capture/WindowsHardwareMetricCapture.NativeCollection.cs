@@ -342,6 +342,24 @@ internal sealed partial class WindowsHardwareMetricCapture
         var usage =
             resources.ReadGpuUsage(
                 inventory.Adapters);
+        var completion = CreatePdhGpuCompletion(plan, sourcePlan, identity, capturedAt, usage);
+        if (completion.Status == NativeMetricSnapshotSourceStatus.Unavailable)
+            logFailure?.Invoke(new InvalidOperationException(
+                $"GPU engine capture unavailable: {usage.ProviderAvailability}, {usage.ResultCode}, native status 0x{usage.NativeStatus:X8}."),
+                NativeMetricSnapshotSources.PdhGpuEngine);
+        return completion;
+    }
+
+    internal static NativeMetricSnapshotSourceCompletion CreatePdhGpuCompletion(
+        NativeMetricSnapshotCollectionPlan plan, NativeMetricSnapshotSourcePlanOutput sourcePlan,
+        NativeMetricSnapshotSourceObservationIdentity identity, DateTimeOffset capturedAt, PdhGpuEngineUsageRead usage)
+    {
+        // Collecting a query baseline is a successful query without a rate yet.
+        // It must not disable the source for the transient-failure cooldown.
+        if (usage.ResultCode == NativePdhResultCode.NoData)
+            return CompleteWithValues(plan, sourcePlan, identity, capturedAt, static _ => null,
+                NativeMetricSnapshotObservationStatus.Skipped)
+                with { PdhGpuEngineUsage = usage };
         if (usage.ProviderAvailability
                 != NativePdhProviderAvailability.Available
             || usage.ObservedAt is not { } observedAt)
