@@ -84,6 +84,7 @@ const allJourneys = [
   ["live-keyboard-focus", async (...args) => (await import("./liveKeyboardFocusJourney.js")).default(...args)],
   ["resource-table-totals-locale", async (...args) => (await import("./resourceTableTotalsLocaleJourney.js")).default(...args)],
   ["interface-number-locale", async (...args) => (await import("./interfaceNumberLocaleJourney.js")).default(...args)],
+  ["automatic-animation", async (...args) => (await import("./automaticAnimationJourney.js")).default(...args)],
   ["dashboard-preferences", async (...args) => (await import("./dashboardPreferencesJourney.js")).default(...args)],
   ["service-recovery-settings", serviceRecoverySettingsJourney],
   ["product-updates", productUpdatesJourney],

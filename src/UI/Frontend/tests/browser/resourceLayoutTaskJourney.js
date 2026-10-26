@@ -1,4 +1,5 @@
 import { writeFrontendPreferences } from "./frontendPreferencesFixture.js";
+import { AUTO_ANIMATION_OPTIMIZE_MODE } from "../../src/app/selfScheduling/createAnimationModeSelection.ts";
 
 const normalSettleMinimumMs = 400;
 const disabledMotionObservationMs = 600;
@@ -130,7 +131,11 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
     window.__resourceLayoutMotionProbe?.events.some((event) => event.moving === true),
   null,
   { timeout: 3000 });
-  await page.waitForFunction(() => document.body.dataset.animations === "ultra", null, {
+  await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+  assert(await page.getAttribute("body", "data-animations") === "normal",
+    "Entering the background must retain the selected animation tier");
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await page.waitForFunction(tier => document.body.dataset.animations === tier, AUTO_ANIMATION_OPTIMIZE_MODE, {
     timeout: 3000
   });
   await page.waitForFunction(() => {
@@ -148,9 +153,9 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
     && reactiveMoving
     && reactiveSettled
     && modeSwitch?.movingBefore === true
-    && modeSwitch.modeAfter === "ultra"
+    && modeSwitch.modeAfter === AUTO_ANIMATION_OPTIMIZE_MODE
     && modeSwitch.movingAfter === false,
-  `Reactive animation-mode change did not settle before dispatch returned: ${JSON.stringify(reactive)}`);
+  `Animation-mode change on foreground return did not settle before dispatch returned: ${JSON.stringify(reactive)}`);
   await disposeMotionObserver();
 
   await setScenario({ resourceBreakdownGeneration: 2 });
