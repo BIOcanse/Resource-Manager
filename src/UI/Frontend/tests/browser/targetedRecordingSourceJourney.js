@@ -137,11 +137,16 @@ export default async function targetedRecordingSourceJourney(page, baseUrl) {
   assert(listReads === readsBeforeHidden,
     `The mounted recording control kept polling while the document was hidden: ${readsBeforeHidden} -> ${listReads}`);
   assert(await control.isVisible(), "The recording control was unmounted for the hidden-page check");
-  // Count from before visibility returns: the resume read starts at once and may be observed before this line continues.
-  const readsBeforeVisible = listReads;
+  const resumedList = page.waitForResponse(response => response.request().method() === "GET"
+    && new URL(response.url()).pathname === "/api/targeted-recordings");
   await page.evaluate(() => window.setDocumentVisibilityForJourney(true));
+  await (await resumedList).finished();
+  // SourceRegistry schedules the next poll after the resumed request settles.
+  // Let its completion microtasks run before advancing the unchanged polling window.
+  await page.evaluate(() => Promise.resolve());
+  const readsAfterVisible = listReads;
   await passPollWindow();
-  assert(listReads > readsBeforeVisible,
+  assert(listReads > readsAfterVisible,
     "The recording list did not resume polling when document visibility returned");
   await detail.locator("button.icon-button[aria-label='关闭']").click();
   await detail.waitFor({ state: "hidden", timeout: 3000 });
