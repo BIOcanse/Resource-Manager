@@ -1,5 +1,8 @@
 import { writeFrontendPreferences } from "./frontendPreferencesFixture.js";
 
+const normalSettleMinimumMs = 400;
+const disabledMotionObservationMs = 600;
+
 export default async function resourceLayoutTaskJourney(page, baseUrl = "http://127.0.0.1:4177") {
   const pageErrors = [];
   const consoleErrors = [];
@@ -32,23 +35,37 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
     const value = item?.querySelector(".resource-breakdown-header span")?.textContent?.trim();
     return Number.parseFloat(value ?? "") === Number.parseFloat(expected);
   }, displayValue, { timeout: 6000 });
-  const installMotionObserver = async () => page.evaluate(() => {
+  const installMotionObserver = async (switchWhenMoving = false) => page.evaluate((switchOnMoving) => {
     const track = document.querySelector('[data-metric-id="cpu.usage"].resource-bar-track');
     if (!(track instanceof HTMLElement)) {
       throw new Error("CPU resource track is unavailable.");
     }
     const events = [];
+    const probe = { track, events, observer: null, modeSwitch: null };
     const observer = new MutationObserver(() => {
-      events.push({ moving: track.classList.contains("moving"), at: performance.now() });
+      const moving = track.classList.contains("moving");
+      events.push({ moving, at: performance.now() });
+      if (switchOnMoving && moving && !probe.modeSwitch) {
+        // 在真正开始运动的浏览器回调中切换，排除 Playwright 往返和轮询延迟。
+        probe.modeSwitch = { startedAt: performance.now(), movingBefore: moving };
+        window.dispatchEvent(new Event("blur"));
+        Object.assign(probe.modeSwitch, {
+          returnedAt: performance.now(),
+          movingAfter: track.classList.contains("moving"),
+          modeAfter: document.body.dataset.animations
+        });
+      }
     });
     observer.observe(track, { attributes: true, attributeFilter: ["class"] });
-    window.__resourceLayoutMotionProbe = { track, events, observer };
-  });
+    probe.observer = observer;
+    window.__resourceLayoutMotionProbe = probe;
+  }, switchWhenMoving);
   const readMotion = () => page.evaluate(() => {
     const probe = window.__resourceLayoutMotionProbe;
     return {
       events: probe?.events ?? [],
-      moving: probe?.track?.classList.contains("moving") ?? null
+      moving: probe?.track?.classList.contains("moving") ?? null,
+      modeSwitch: probe?.modeSwitch ?? null
     };
   });
   // 动画效果是前端偏好：像用户保存过一样写前端缓存，随后 reload 生效。
@@ -91,7 +108,7 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
   assert(normal.moving === false
     && movingEvent
     && settledEvent
-    && settledEvent.at - movingEvent.at >= 400,
+    && settledEvent.at - movingEvent.at >= normalSettleMinimumMs,
   `Normal layout transition did not settle through the task lifecycle: ${JSON.stringify(normal)}`);
   await disposeMotionObserver();
 
@@ -106,14 +123,13 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
     timeout: 6500
   });
   await page.waitForFunction(() => document.body.dataset.animations === "normal");
-  await installMotionObserver();
+  await installMotionObserver(true);
   await setScenario({ resourceBreakdownGeneration: 5 });
   await waitForCpuTotal("38%");
   await page.waitForFunction(() =>
     window.__resourceLayoutMotionProbe?.events.some((event) => event.moving === true),
   null,
   { timeout: 3000 });
-  await page.evaluate(() => window.dispatchEvent(new Event("blur")));
   await page.waitForFunction(() => document.body.dataset.animations === "ultra", null, {
     timeout: 3000
   });
@@ -124,14 +140,17 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
       && events.slice(movingIndex + 1).some((event) => event.moving === false);
   }, null, { timeout: 3000 });
   const reactive = await readMotion();
+  const modeSwitch = reactive.modeSwitch;
   const reactiveMoving = reactive.events.find((event) => event.moving === true);
   const reactiveSettled = reactive.events.find(
     (event) => reactiveMoving && event.at > reactiveMoving.at && event.moving === false);
   assert(reactive.moving === false
     && reactiveMoving
     && reactiveSettled
-    && reactiveSettled.at - reactiveMoving.at < 400,
-  `Reactive animation-mode change did not settle immediately: ${JSON.stringify(reactive)}`);
+    && modeSwitch?.movingBefore === true
+    && modeSwitch.modeAfter === "ultra"
+    && modeSwitch.movingAfter === false,
+  `Reactive animation-mode change did not settle before dispatch returned: ${JSON.stringify(reactive)}`);
   await disposeMotionObserver();
 
   await setScenario({ resourceBreakdownGeneration: 2 });
@@ -142,7 +161,7 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
   await installMotionObserver();
   await setScenario({ resourceBreakdownGeneration: 3 });
   await waitForCpuTotal("55%");
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(disabledMotionObservationMs);
   const disabled = await readMotion();
   assert(disabled.moving === false
     && disabled.events.every((event) => event.moving === false),
@@ -155,5 +174,5 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
 
   assert(pageErrors.length === 0 && consoleErrors.length === 0,
     `Resource layout browser errors: ${JSON.stringify({ pageErrors, consoleErrors })}`);
-  return { normal, reactive, disabled, pageErrors, consoleErrors };
+  return { normal, reactive, modeSwitch, disabled, pageErrors, consoleErrors };
 }

@@ -24,9 +24,9 @@ assert.equal(
   true,
   "A real layout change still starts the transition selected by the new mode.");
 
-{
+for (const disabledMode of ["none", "ultra"] as const) {
   const registry = new TaskRegistry();
-  const scope = registry.openScope("resource-layout-reactive-mode");
+  const scope = registry.openScope(`resource-layout-reactive-mode:${disabledMode}`);
   const gate = deferred();
   const mutations: boolean[] = [];
   const update = createResourceLayoutSettleController(
@@ -48,7 +48,7 @@ assert.equal(
   const animated = update(changedLayout, "normal", barDurationMs);
   assert.ok(animated);
   assert.deepEqual(mutations, [true]);
-  const disabled = update(changedLayout, "none", barDurationMs);
+  const disabled = update(changedLayout, disabledMode, barDurationMs);
   assert.ok(disabled);
   assert.equal((await animated.completion).status, "superseded");
   assert.deepEqual(await disabled.completion, {
