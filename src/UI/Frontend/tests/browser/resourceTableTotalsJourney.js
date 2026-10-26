@@ -39,9 +39,13 @@ export default async function resourceTableTotalsJourney(page, baseUrl) {
     return values;
   };
   const software = await verify("software");
-  await panel.getByRole("searchbox").fill("no-match-anywhere");
+  await panel.getByRole("searchbox").fill("示例软件");
   await panel.getByText(app.resourceTable.filteredRows, { exact: true }).waitFor();
-  // The hidden bucket is visible even when the search has no matching peers.
+  await verify("software");
+  await panel.getByRole("searchbox").fill("no-match-anywhere");
+  await panel.locator(":scope > .content-state").getByText(app.resourceTableView.noMatchTitle, { exact: true }).waitFor();
+  // With no matching peers the table shows its empty state; retained accounting still closes.
+  await panel.getByText(app.resourceTable.filteredRows, { exact: true }).waitFor({ state: "attached" });
   const hidden = await panel.locator('.filtered-row[aria-hidden="false"] .value-cell').allTextContents();
   const totals = await panel.locator('.summary-row[aria-hidden="false"] .value-cell').allTextContents();
   if (JSON.stringify(hidden) !== JSON.stringify(totals)) throw new Error(`Filtered rows lost values: ${JSON.stringify({ hidden, totals })}`);
@@ -58,9 +62,12 @@ export default async function resourceTableTotalsJourney(page, baseUrl) {
   const summaryTitles = await panel.locator('.summary-row[aria-hidden="false"] .value-cell').evaluateAll(cells => cells.map(cell => cell.title));
   if (summaryTitles.some(title => title.includes(app.resourceTable.factsWindow("2")))) throw new Error(`An automatic metric invented a sampling window: ${JSON.stringify(summaryTitles)}`);
   if ((await panel.locator('[aria-hidden="false"] .resource-table-cell').allTextContents()).some(text => text.trim() === "-1")) throw new Error("Placeholder PID leaked into output");
-  await panel.getByRole("searchbox").fill("no-match-anywhere");
-  const bucket = panel.getByRole("row", { name: app.resourceTable.filteredRows, exact: true });
+  await panel.getByRole("searchbox").fill("example-");
+  const bucket = panel.getByRole("row", { name: app.resourceTable.filteredRows, exact: true, includeHidden: true });
   await bucket.waitFor();
+  await verify("process");
+  await panel.getByRole("searchbox").fill("no-match-anywhere");
+  await panel.locator(":scope > .content-state").getByText(app.resourceTableView.noMatchTitle, { exact: true }).waitFor();
   if (await panel.locator('.filtered-row[aria-hidden="false"]').count() !== 1) throw new Error("Hidden values counted twice");
   const processHidden = await bucket.locator('.value-cell').allTextContents();
   const processTotals = await panel.locator('.summary-row[aria-hidden="false"] .value-cell').allTextContents();
@@ -99,8 +106,11 @@ export default async function resourceTableTotalsJourney(page, baseUrl) {
   await page.getByRole("button", { name: app.resourceBreakdownView.editLabel, exact: true }).click();
   const gpuLabel = app.metricLabel["gpu.0.usage"] ?? app.resourceTable.gpuUsageLabel("0");
   await page.locator(".resource-bar-option").filter({ hasText: gpuLabel }).getByRole("checkbox").check();
+  const barEditor = page.getByRole("group", { name: app.resourceBreakdownView.editorLabel, exact: true });
+  await barEditor.getByRole("button", { name: app.metricLabel["cpu.usage"], exact: true }).click();
   const cpuSources = page.getByRole("radiogroup", { name: app.resourceTable.columnSourceLabel(app.metricLabel["cpu.usage"]), exact: true });
   await cpuSources.getByRole("radio", { name: cpuSourceName, exact: true }).click();
+  await barEditor.getByRole("button", { name: gpuLabel, exact: true }).click();
   const gpuSources = page.getByRole("radiogroup", { name: app.resourceTable.columnSourceLabel(gpuLabel), exact: true });
   await gpuSources.getByRole("radio", { name: engineSourceName, exact: true }).click();
   await page.getByRole("button", { name: app.resourceBreakdownView.saveLabel, exact: true }).click();

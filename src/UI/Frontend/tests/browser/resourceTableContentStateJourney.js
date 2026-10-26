@@ -66,16 +66,22 @@ export default async function resourceTableContentStateJourney(
     throw new Error(`Frontend summary did not retain authoritative totals: ${JSON.stringify(summary)}`);
   }
   await page.locator('.resource-table-panel').screenshot({ path: resolve(process.env.RM_BROWSER_ARTIFACT_ROOT ?? 'tests/browser/artifacts', 'resource-table-shared.png') });
+  await setScenario(page, baseUrl, { resourceTableRowCount: 2 });
+  await page.getByRole("button", { name: "更多操作：示例软件 1", exact: true }).waitFor();
+  await page.getByRole("searchbox", { name: "搜索名称、PID、状态" }).fill("示例软件 1");
+  await page.locator('.resource-table-row[aria-hidden="false"]').filter({ hasText: "筛选隐藏项" }).waitFor({ timeout: 3000 });
   await page.getByRole("searchbox", { name: "搜索名称、PID、状态" })
     .fill("no-such-resource");
-  await page.locator('.resource-table-row[aria-hidden="false"]').filter({ hasText: "筛选隐藏项" }).waitFor({ timeout: 3000 });
+  await assertContentStateLayout(page, "filtered-empty");
+  await page.setViewportSize(viewports[1]);
+  await assertContentStateLayout(page, "filtered-empty-wide");
   if (await page.locator('.resource-table-row.summary-row[aria-hidden="false"]').count() !== 1) throw new Error("Search hid the authoritative total");
 
   if (failures.length > 0) {
     throw new Error(`Resource-table content-state page errors: ${JSON.stringify(failures)}`);
   }
   return {
-    variants: ["empty", "filtered-accounted"],
+    variants: ["empty", "filtered-accounted", "filtered-empty"],
     viewports,
     retainedTableHidden: true,
     maximumHeatVerified: heat,

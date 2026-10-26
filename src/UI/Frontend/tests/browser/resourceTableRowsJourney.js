@@ -376,7 +376,7 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
   await visibleRows().first().waitFor({ timeout: 15_000 });
   await panel.evaluate((element) => element.scrollIntoView({ block: "start" }));
   await panel.locator(".resource-table-mode-button").nth(1).click();
-  const leafPrefix = "process:resource-residual:memory.usage:";
+  const leafPrefix = "attribution:resource-residual:memory.usage:";
   const nameHead = panel.locator('.resource-table-head-cell[data-column-id="name"]');
   for (let attempt = 0; attempt < 3 && await nameHead.getAttribute("aria-sort") !== "ascending"; attempt += 1) {
     await nameHead.locator(".resource-table-sort-button").click();
