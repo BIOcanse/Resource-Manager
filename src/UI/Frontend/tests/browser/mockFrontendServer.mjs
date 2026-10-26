@@ -96,6 +96,14 @@ const defaultScenario = {
   // 指标目录里额外的部件地址："none" 没有；"reading-source" 加一个带候选来源的核显温度地址
   // （gpu.5.temperature，候选是 metricFieldsProbe 的 readingSourceDevices 字段，后端当前选中 ADLX 次选）。
   metricCatalogAddresses: "none",
+  // 额外指标与默认目录一同进入 GET 和订阅信封，不能只改写 GET 响应。
+  metricCatalogExtra: [],
+  // 后端认定的 GPU 专用显存指标能力（hasDedicatedMemoryMetrics）：true／false／null（不知道）。
+  // 写在指标目录的每条 gpu.N.* 定义和 /api/gpu/performance-scores 的条目上，后端总是写这个键。
+  gpuDedicatedMemoryMetrics: true,
+  // cpu.frequency 的组件安装信息："none" 不需要组件；"missing" 需要传感器组件且未安装；"installed" 已安装但还没有有效读数。
+  // 安装信息变化时后端不换目录修订号（MetricCatalogPushTests），目录订阅照样推新的一帧。
+  metricCatalogComponent: "none",
   // 资源条按进程字段订阅（measures=）时，这些字段的整机总量读不到：后端不发这一条（其余条照常）。
   resourceBarMeasureTotalsMissing: [],
   // 监视控制台卡片设置：保存（PUT）后读回保存的内容；null 时是夹具默认值。
@@ -698,12 +706,7 @@ async function handleApi(request, response, url) {
     return json(response, 200, { recording: {}, summary: null, frameIntervals: [], fpsDistribution: [], resourceSamples: [] });
   }
   if (path === "/api/metrics/catalog") {
-    return json(response, 200, [...metricCatalog,
-      ...(scenario.gpuPressureFixture ? [
-        metric("gpu.0.usage", "GPU 占用", "GPU", "%"),
-        metric("gpu.0.vram", "GPU 显存", "GPU", "B"),
-        metric("gpu.0.vramPercent", "GPU 显存占用", "GPU", "%")] : []),
-      ...(scenario.metricCatalogAddresses === "reading-source" ? [readingSourceAddress()] : [])]);
+    return json(response, 200, metricCatalogBody());
   }
   if (path === "/api/resource-breakdown/fields/catalog" && request.method === "GET") {
     return json(response, 200, processFieldCatalog);
@@ -715,7 +718,7 @@ async function handleApi(request, response, url) {
     return json(response, 200, metricFieldsSnapshot(selections));
   }
   if (path === "/api/metrics/fields/catalog") {
-    return json(response, 200, metricFieldCatalog());
+    return json(response, 200, metricFieldCatalogBody());
   }
   if (path === "/api/metrics/snapshot") {
     return json(response, 200, metricSnapshot(url.searchParams.getAll("ids")));
@@ -748,7 +751,8 @@ async function handleApi(request, response, url) {
         isIntegrated: false,
         source: "unavailable:steel-nomad-dx12",
         matchedPreset: null,
-        isPresetMatch: false
+        isPresetMatch: false,
+        hasDedicatedMemoryMetrics: scenario.gpuDedicatedMemoryMetrics
       }] : [],
       storagePath: "frontend-harness"
     });
@@ -1317,7 +1321,9 @@ const scenarioChoices = {
   deviceTopologyMachineIdentity: [null, "workstation", "mobile_workstation", "laptop", "desktop", "unknown"],
   deviceTopologyWireless: [null, "standards", "unknown"],
   metricCatalogAddresses: ["none", "reading-source"],
-  settingsRuntimeDisposition: ["committedAndApplied", "committedWithCapabilityConstraints", "committedWithDeliveryFailures", "savedNotApplied"]
+  settingsRuntimeDisposition: ["committedAndApplied", "committedWithCapabilityConstraints", "committedWithDeliveryFailures", "savedNotApplied"],
+  gpuDedicatedMemoryMetrics: [true, false, null],
+  metricCatalogComponent: ["none", "missing", "installed"]
 };
 
 function applyScenarioPatch(patch) {
@@ -1353,6 +1359,8 @@ function applyScenarioPatch(patch) {
     appSettings.debug.debugModeEnabled = patch.debugMode;
   }
   if (Object.hasOwn(patch, "productUpdateStatus")) publishProductUpdateStatus();
+  if (["metricFieldDevices", "metricCatalogAddresses", "metricCatalogExtra", "gpuPressureFixture", "gpuDedicatedMemoryMetrics", "metricCatalogComponent"]
+    .some((key) => Object.hasOwn(patch, key))) publishMetricCatalogNow();
 }
 
 // 后端合同：update.mode 三档，间隔检查开关，间隔 24–168 小时；旧的 autoUpdateEnabled 与已取消的联网等待开关不存在。
@@ -1496,7 +1504,70 @@ async function serveStatic(response, pathname) {
 }
 
 function metric(id, label, group, unit, candidateSources = []) {
-  return { id, unit, selectable: true, candidateSources };
+  return { id, unit, selectable: true, candidateSources, hasDedicatedMemoryMetrics: null };
+}
+
+/*
+ * 指标目录（后端 MetricCatalog）：GET /api/metrics/catalog 的响应体，也是目录订阅信封里的 metrics（两者逐字相同）。
+ * gpu.N.* 定义带后端认定的专用显存指标能力；componentState 是 cpu.frequency 的组件安装信息。
+ */
+function metricCatalogBody(componentState = scenario.metricCatalogComponent) {
+  return [...metricCatalog,
+    ...(scenario.gpuPressureFixture ? [
+      metric("gpu.0.usage", "GPU 占用", "GPU", "%"),
+      metric("gpu.0.vram", "GPU 显存", "GPU", "B"),
+      metric("gpu.0.vramPercent", "GPU 显存占用", "GPU", "%")] : []),
+    ...(scenario.metricCatalogAddresses === "reading-source" ? [readingSourceAddress()] : []),
+    ...scenario.metricCatalogExtra]
+    .map((definition) => {
+      const next = /^gpu\.\d+\./u.test(definition.id)
+        ? { ...definition, hasDedicatedMemoryMetrics: scenario.gpuDedicatedMemoryMetrics }
+        : definition;
+      if (definition.id !== "cpu.frequency" || componentState === "none") return next;
+      return componentState === "missing"
+        ? { ...next, selectable: false, requiredComponentId: "hardware-sensors-pawnio-provider",
+          disabledReason: { domain: 3, code: 2, args: [] } }
+        : { ...next, selectable: false, requiredComponentId: null, disabledReason: { domain: 3, code: 3, args: [] } };
+    });
+}
+
+// 字段目录（后端 MetricDeviceFieldCatalog）：GET /api/metrics/fields/catalog 的响应体，也是信封里的 fields。
+function metricFieldCatalogBody() {
+  return scenario.metricFieldDevices.map(({ deviceIdentity, device, fields }) => ({
+    deviceIdentity,
+    device,
+    // 读取项和值上的相同；夹具没写的字段为 null（后端合同里 reading 可空）。
+    fields: fields.map(({ name, unit, valueKind, reading }) => ({ name: normalizeFieldName(name), unit, valueKind, meaning: "", reading: reading ?? null }))
+  }));
+}
+
+/*
+ * 目录修订号（后端 HardwareMetricCatalogState.Revision）：不透明字符串，目录内容（设备、字段、指标定义、能力）
+ * 变化时换新；组件安装信息不算在内。指标快照帧和目录订阅帧带同一个值。
+ */
+let metricCatalogRevisionSerial = 0;
+let metricCatalogRevisionIdentity = null;
+function metricCatalogRevision() {
+  const identity = JSON.stringify({ fields: metricFieldCatalogBody(), metrics: metricCatalogBody("none") });
+  if (identity !== metricCatalogRevisionIdentity) {
+    metricCatalogRevisionIdentity = identity;
+    metricCatalogRevisionSerial += 1;
+  }
+  return `mock-catalog-${metricCatalogRevisionSerial}`;
+}
+
+// 目录订阅的一帧（后端 MetricCatalogWireSnapshot）：同一份目录的修订号、字段目录和指标目录。
+function metricCatalogPush() {
+  return { catalogRevision: metricCatalogRevision(), fields: metricFieldCatalogBody(), metrics: metricCatalogBody() };
+}
+
+// 后端在目录提交时立即唤醒目录订阅（不等下一次发现探测）；场景改动就是这里的提交。
+function publishMetricCatalogNow() {
+  const publishedAt = now();
+  for (const [key, publisher] of ndjsonPublishers) {
+    if (!key.startsWith("/api/metrics/fields/catalog/subscribe?")) continue;
+    for (const subscriber of [...publisher.subscribers]) subscriber.publish(publishedAt);
+  }
 }
 
 // 部件地址的候选来源，形状同后端 MetricSourceCandidate；按后端排序（rank，再按请求地址）。
@@ -1583,7 +1654,7 @@ function metricSnapshot(requestedIds) {
   return {
     version: 5,
     capturedAt: Object.values(items).some(item => item.status === 1) ? metricSlot.observedAt : null,
-    catalogRevision: "mock-catalog-1",
+    catalogRevision: metricCatalogRevision(),
     items
   };
 }
@@ -2599,13 +2670,6 @@ function metricFieldsSnapshot(selections) {
   return [...projected.values()];
 }
 
-function metricFieldCatalog() {
-  return scenario.metricFieldDevices.map(({ deviceIdentity, device, fields }) => ({
-    deviceIdentity, device,
-    fields: fields.map(({ name, unit, valueKind, reading }) => ({ name: normalizeFieldName(name), unit, valueKind, meaning: "", reading: reading ?? null }))
-  }));
-}
-
 function subscriptionPayloadFactory(url) {
   switch (url.pathname) {
     case "/api/access-requests/subscribe":
@@ -2628,7 +2692,8 @@ function subscriptionPayloadFactory(url) {
       };
     }
     case "/api/metrics/fields/catalog/subscribe":
-      return () => metricFieldCatalog();
+      // 和后端一样：订阅时推一帧，之后每次发现探测（这里是推送周期）和每次目录提交（publishMetricCatalogNow）各推一帧。
+      return () => metricCatalogPush();
     case "/api/metrics/gpu-specialized/subscribe":
       return (publishedAt) => ({
         version: 2,

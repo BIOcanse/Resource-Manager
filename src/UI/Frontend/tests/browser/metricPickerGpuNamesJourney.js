@@ -9,19 +9,14 @@ export default async function metricPickerGpuNamesJourney(page, baseUrl) {
     body: JSON.stringify({ metricFieldDevices: [
       { deviceIdentity: "opaque-b", device: { kind: "gpu_adapter", address: null, displayName: "Second GPU", ordinal: 0 }, fields: [] },
       { deviceIdentity: "opaque-a", device: { kind: "gpu_adapter", address: null, displayName: "First GPU", ordinal: 1 }, fields: [] }
-    ] })
-  });
-  assert.equal(response.status, 200);
-  await page.route("**/api/metrics/catalog", async route => {
-    const original = await route.fetch();
-    const catalog = await original.json();
-    return route.fulfill({ json: [...catalog,
+    ], metricCatalogExtra: [
       { id: "gpu.0.usage", unit: "%", deviceIdentity: "opaque-a", selectable: true, detail: "untrusted old detail", candidateSources: [] },
       { id: "gpu.0.vram", unit: "B", deviceIdentity: "opaque-a", selectable: true, candidateSources: [] },
       { id: "gpu.1.usage", unit: "%", deviceIdentity: "opaque-b", selectable: true, candidateSources: [] },
       { id: "gpu.2.usage", unit: "%", deviceIdentity: "absent", selectable: true, candidateSources: [] }
-    ] });
+    ] })
   });
+  assert.equal(response.status, 200);
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await page.getByRole("navigation").getByRole("button", { name: app.page.monitor, exact: true }).click();
   await page.getByRole("button", { name: app.monitorPage.editLayoutLabel, exact: true }).click();
