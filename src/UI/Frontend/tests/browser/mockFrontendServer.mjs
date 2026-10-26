@@ -305,6 +305,23 @@ const server = createServer(async (request, response) => {
     if (url.pathname === "/__test/requests") {
       return json(response, 200, requestTelemetry);
     }
+    if (url.pathname === "/__test/metrics/publish" && request.method === "POST") {
+      // A journey can release one original subscription payload at a time while
+      // periodic publication is paused, so pending/reading transitions are observable.
+      const { kind } = JSON.parse(await readBody(request));
+      if (!["catalog", "ids", "fields"].includes(kind)) return json(response, 400, { error: "invalid metric publication kind" });
+      const queries = [];
+      for (const publisher of ndjsonPublishers.values()) {
+        for (const subscriber of publisher.subscribers) {
+          const target = subscriber.requestUrl;
+          const selected = kind === "catalog"
+            ? target.pathname === "/api/metrics/fields/catalog/subscribe"
+            : target.pathname === "/api/metrics/subscribe" && target.searchParams.has("fields") === (kind === "fields");
+          if (selected && subscriber.publish(now(), { force: true })) queries.push(`${target.pathname}${target.search}`);
+        }
+      }
+      return json(response, 200, { publications: queries.length, queries });
+    }
     if (url.pathname === "/__test/elevated-backend-request" && request.method === "POST") {
       const command = JSON.parse(await readBody(request));
       const result = { type: "backend.elevatedRequest.result", requestId: command.requestId, statusCode: null, body: null, error: null };
@@ -1446,6 +1463,7 @@ function resetScenario() {
   if (targetedRecordingCompletionTimer) clearTimeout(targetedRecordingCompletionTimer);
   diskScanCompletionTimer = null;
   targetedRecordingCompletionTimer = null;
+  targetedRecordingCompletionId = null;
   diskScanOperation = null;
   diskScanSequence = 0;
   targetedRecordingSequence = 0;
@@ -2584,17 +2602,18 @@ async function subscriptionChannelStream(request, response) {
       createPayload: subscription.createPayload,
       detailsReadyAt: Date.now() + (subscription.requestUrl.pathname === "/api/resource-monitor/subscribe"
         && subscription.requestUrl.searchParams.get("scope") === "details" ? scenario.resourceDetailsDelayMs : 0),
-      publish(publishedAt) {
+      publish(publishedAt, { force = false } = {}) {
         if (response.destroyed || response.writableEnded
           || Date.now() < this.detailsReadyAt
-          || scenario.pausedSubscriptionPaths.includes(subscription.requestUrl.pathname)) {
-          return;
+          || (!force && scenario.pausedSubscriptionPaths.includes(subscription.requestUrl.pathname))) {
+          return false;
         }
         writeSubscriptionChannelFrame(
           response,
           subscription.id,
           subscription.createPayload(publishedAt));
         recordLogicalPublication(subscription.requestUrl);
+        return true;
       }
     };
     const publisherKey = sharedPublisherKey(subscription.requestUrl);

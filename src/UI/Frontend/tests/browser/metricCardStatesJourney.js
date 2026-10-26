@@ -3,6 +3,8 @@ import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { pointPreferences } from "../../src/preferences/frontendPreferences.ts";
 import { frontendPreferencesKey, writeFrontendPreferences } from "./frontendPreferencesFixture.js";
 import { metricFieldDevices, npuBusyCardId, readingSourceDevices, readingSourceIds } from "./metricFieldsProbe.js";
+import { publishMetricPhase, readMetricSlotStates, waitForMetricHover } from "./metricCardStatesProbe.js";
+import { waitForCondition } from "./journeyWaits.js";
 
 /**
  * 监视卡片的读数状态和排版：
@@ -60,14 +62,30 @@ export default async function metricCardStatesJourney(page, baseUrl) {
     await card("cpu").waitFor();
   };
 
-  // 1. 首个读数：指标推送暂停时只有目录到了。
-  await patch({ metricFieldDevices: [...metricFieldDevices, ...readingSourceDevices], pausedSubscriptionPaths: ["/api/metrics/subscribe"] });
+  // 1. 首个读数：依次放行目录、设备字段、原有指标，确保真实的每个阶段都被检查。
+  // 不依赖两个 server 对齐计时器在浏览器中恰巧分成几次 MutationObserver 回调。
+  const publications = [];
+  const phases = [];
+  const slotsFor = (values) => values.map((value, index) => ({
+    slot: ["cpu:0", "cpu:1", "cpu:2", "fields:0", "fields:1", "fields:2", "sources:0", "sources:1"][index], value
+  }));
+  const waiting = "<pending>";
+  await patch({ metricFieldDevices: [...metricFieldDevices, ...readingSourceDevices],
+    pausedSubscriptionPaths: ["/api/metrics/subscribe", "/api/metrics/fields/catalog/subscribe"] });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await openMonitor(zh);
+  await waitForCondition(page, async () => (await readMetricSlotStates(page)).length === 8,
+    { description: "all eight metric slots have mounted" });
+  phases.push({ name: "before-catalog", slots: await readMetricSlotStates(page) });
+  assert.deepEqual(phases.at(-1).slots, slotsFor(Array(8).fill(waiting)), "all eight slots wait before the field catalog arrives");
+  publications.push(await publishMetricPhase(page, baseUrl, "catalog"));
   // 字段目录 5 秒推一次：目录到了，不在目录里的设备照常写「设备不在」，不当作在等读数。
   await card("fields").locator(".metric-small-row").first().locator(".metric-value")
     .filter({ hasText: zh.dashboard.deviceAbsent }).waitFor({ timeout: 15_000 });
+  phases.push({ name: "catalog-only", slots: await readMetricSlotStates(page) });
+  assert.deepEqual(phases.at(-1).slots, slotsFor([waiting, waiting, waiting, waiting, zh.dashboard.deviceAbsent, waiting, waiting, waiting]),
+    "the catalog identifies the absent device while every existing slot still waits for its first reading");
   const pending = page.locator(".dashboard .metric-value.pending");
   assert.equal(await pending.count(), 7, "every slot without a delivered value shows the waiting placeholder");
   for (const element of await pending.all()) {
@@ -79,12 +97,29 @@ export default async function metricCardStatesJourney(page, baseUrl) {
   const pendingMain = await boxHeight(card("cpu").locator(".metric-main-content .metric-value"));
   const pendingRow = await boxHeight(card("cpu").locator(".metric-small-row").first());
 
+  // 保留基线已观察到的 fields-first 中间态：CPU 仍在等，设备字段逐项显示读数／不可用。
+  publications.push(await publishMetricPhase(page, baseUrl, "fields"));
+  await card("fields").locator(".metric-main-content .metric-value").filter({ hasText: "137.5%" }).waitFor({ timeout: 15_000 });
+  await waitForCondition(page, async () => {
+    const states = await readMetricSlotStates(page);
+    return ["fields:0", "fields:2", "sources:0", "sources:1"].every(slot =>
+      states.some(state => state.slot === slot && state.value !== waiting));
+  }, { timeoutMs: 15_000, description: "all four device-field slots consume their first reading frames" });
+  phases.push({ name: "fields-before-ids", slots: await readMetricSlotStates(page) });
+  assert.deepEqual(phases.at(-1).slots, slotsFor([waiting, waiting, waiting, "137.5%", zh.dashboard.deviceAbsent,
+    zh.dashboard.valueUnavailable, "51.0 °C", "40.0 °C"]), "field readings do not end the CPU slots' pending state");
+  publications.push(await publishMetricPhase(page, baseUrl, "ids"));
   await patch({ pausedSubscriptionPaths: [] });
   await card("cpu").locator(".metric-main-content .metric-value").filter({ hasText: "12%" }).waitFor({ timeout: 15_000 });
   await card("fields").locator(".metric-main-content .metric-value").filter({ hasText: "137.5%" }).waitFor({ timeout: 15_000 });
   await card("fields").locator(".metric-small-row").nth(1).locator(".metric-value")
     .filter({ hasText: zh.dashboard.valueUnavailable }).waitFor({ timeout: 15_000 });
   await card("sources").locator(".metric-main-content .metric-value").filter({ hasText: "°C" }).waitFor({ timeout: 15_000 });
+  await waitForCondition(page, async () => (await pending.count()) === 0,
+    { timeoutMs: 15_000, description: "all metric slots consume their first reading frames" });
+  phases.push({ name: "all-readings", slots: await readMetricSlotStates(page) });
+  assert.deepEqual(phases.at(-1).slots, slotsFor(["12%", "4200 MHz", "88%", "137.5%", zh.dashboard.deviceAbsent,
+    zh.dashboard.valueUnavailable, "51.0 °C", "40.0 °C"]), "every slot has its exact final reading, absent-device or unavailable state");
   assert.equal(await pending.count(), 0);
   assert.ok(Math.abs(await boxHeight(card("cpu").locator(".metric-main-content .metric-value")) - pendingMain) < 0.5,
     "the main value takes the placeholder's height: the card does not move when the reading arrives");
@@ -106,18 +141,31 @@ export default async function metricCardStatesJourney(page, baseUrl) {
   const restingSlot = await borderOf(slots.nth(2));
   const restingCard = await borderOf(card("cpu"));
   await slots.nth(1).hover();
-  await page.waitForTimeout(400);
+  await waitForMetricHover(page, "slot");
   assert.notEqual(await borderOf(slots.nth(1)), restingSlot, "a draggable slot lights up under the pointer");
   assert.equal(await borderOf(card("cpu")), restingCard, "the card does not light up while a slot is the drag target");
   assert.equal(await slots.nth(1).locator(".slot-actions").evaluate((actions) => getComputedStyle(actions).opacity), "1");
   const cardBox = await card("cpu").boundingBox();
   await page.mouse.move(cardBox.x + cardBox.width - 6, cardBox.y + cardBox.height - 4);
-  await page.waitForTimeout(400);
+  await waitForMetricHover(page, "card");
   assert.notEqual(await borderOf(card("cpu")), restingCard, "the card lights up when pressing would drag the whole card");
   assert.match(await slots.nth(1).locator(".slot-actions").evaluate((actions) => getComputedStyle(actions).transitionProperty), /opacity/);
-  await page.evaluate(() => { document.body.dataset.animations = "none"; });
+  // 动画档的所有者是前端偏好；直接写 body 会被 App 的运行方案 effect
+  // 在两次样式读取之间改回。用已保存偏好重新加载，让两条原断言处于同一个真实 none 状态。
+  let animationsBeforeNoMotion;
+  await writeFrontendPreferences(page, (value) => {
+    animationsBeforeNoMotion = value.appearance.animations;
+    value.appearance.animations = "none";
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await openMonitor(zh);
+  await card("cpu").locator(".metric-main-content .metric-value").filter({ hasText: "12%" }).waitFor({ timeout: 15_000 });
+  await page.getByRole("button", { name: zh.monitorPage.editLayoutLabel, exact: true }).click();
+  await slots.nth(1).waitFor();
+  await page.waitForFunction(() => document.body.dataset.animations === "none", undefined, { timeout: 5000 });
   assert.equal(await slots.nth(1).locator(".slot-actions").evaluate((actions) => getComputedStyle(actions).transitionDuration), "0s");
   assert.equal(await card("cpu").locator(".metric-main-content .metric-value").evaluate((value) => getComputedStyle(value).animationDuration), "0s");
+  await writeFrontendPreferences(page, (value) => { value.appearance.animations = animationsBeforeNoMotion; });
   await page.getByRole("button", { name: zh.monitorPage.cancelEditLabel, exact: true }).click();
 
   // 4. 强制配色。
@@ -193,5 +241,5 @@ export default async function metricCardStatesJourney(page, baseUrl) {
   }
 
   assert.deepEqual(errors, []);
-  return { pendingSlots: 7, timelineSteps: shown.length, gaps, wrapping };
+  return { pendingSlots: 7, timelineSteps: shown.length, timeline: shown, phases, publications, gaps, wrapping };
 }
