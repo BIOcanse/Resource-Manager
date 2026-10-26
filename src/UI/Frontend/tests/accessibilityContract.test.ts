@@ -73,10 +73,16 @@ const settingsSources = [
 ];
 
 assert.doesNotMatch(theme, /--workspace-min-width/);
-assert.match(theme, /:root\[data-ui-style="standard"\]\[data-theme="dark"\]/);
-assert.match(theme, /:root\[data-ui-style="standard"\]\[data-theme="lowContrast"\]/);
+// classic 的配色在 theme.css，standard 的在 ui-styles/standard.css；分隔线一律写成 display-p3（theme-consistency 旅程按通道读取）。
+const standardStyle = readSource("styles/ui-styles/standard.css");
+assert.match(theme, /:root\[data-ui-style="classic"\]\[data-theme="dark"\]/);
+assert.match(theme, /:root\[data-ui-style="classic"\]\[data-theme="lowContrast"\]/);
 assert.match(theme, /--divider:\s*color\(display-p3/);
 assert.match(theme, /--divider-soft:\s*color\(display-p3/);
+assert.match(standardStyle, /:root\[data-ui-style="standard"\]\[data-theme="dark"\]/);
+assert.match(standardStyle, /:root\[data-ui-style="standard"\]\[data-theme="lowContrast"\]/);
+assert.match(standardStyle, /--divider:\s*color\(display-p3/);
+assert.match(standardStyle, /--divider-soft:\s*color\(display-p3/);
 assert.doesNotMatch(theme, /body\[data-theme=/);
 assert.match(base, /html,\s*\nbody,\s*\n#root\s*\{[\s\S]*?background:\s*var\(--bg\);/);
 assert.match(documentAppearance, /document\.documentElement/);
