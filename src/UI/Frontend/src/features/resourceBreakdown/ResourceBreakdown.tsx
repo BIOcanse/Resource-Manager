@@ -48,6 +48,7 @@ import { ObservationStateNotice } from "../../components/ObservationStateNotice"
 import type { ObservationState } from "../../observation/observationState";
 import type { ProcessMetricField } from "../../data/resourceMonitor/processFieldCatalog.ts";
 import { RadioGroupItem, RadioGroupRoot } from "../../ui/primitives/RadioGroup.tsx";
+import { moveRovingFocus } from "../../ui/primitives/RovingFocus.ts";
 import {
   resourceBarSourceChoices,
   resourceBarSourceLabel,
@@ -243,11 +244,19 @@ function ResourceBarEditor(props: {
   onSourceChange: (metricId: string, source: string | null) => void;
 }) {
   const barByMetric = () => new Map(props.bars.map((bar) => [bar.metricId, bar]));
-  // 先选项目、再选来源：已勾选、且有不止一个来源的资源条在选项后面摆“来源”，第一项是自动选择。
-  const sourceBars = createMemo(() => resourceBarOptions(props.catalog)
-    .filter((metric) => barByMetric().has(metric.id))
-    .map((metric) => ({ metric, choices: resourceBarSourceChoices(metric.id, props.processFields) }))
-    .filter((item) => item.choices.length > 0));
+  const options = createMemo(() => resourceBarOptions(props.catalog));
+  // 按指标 id 排芯片：目录每次刷新都是新对象，按对象排会重建芯片，键盘焦点随之丢失。
+  const optionIds = createMemo(() => options().map((metric) => metric.id));
+  const optionById = createMemo(() => new Map(options().map((metric) => [metric.id, metric])));
+  // 先选项目、再选来源：点芯片的方格子只切换这一条显示与否；点芯片其他位置是选中这一条（同时只有一个，进入编辑时没有），
+  // 下面只摆选中这一条的“来源”，第一项是自动选择。再点一次选中的芯片取消选中。缩放下拉框是它自己的控件，不选中也不切换。
+  const [selectedMetricId, setSelectedMetricId] = createSignal<string | null>(null);
+  // 来源行属于哪一条：选中的这一条已勾选、而且有不止一个来源时就是它，否则不摆来源行（来源存在已勾选的那一条上）。
+  const sourceMetricId = createMemo(() => {
+    const id = selectedMetricId();
+    return id !== null && optionById().has(id) && barByMetric().has(id) && resourceBarSourceChoices(id, props.processFields).length > 0 ? id : null;
+  });
+  const metricLabel = (metricId: string) => localizedMetricLabel(metricId, optionById().get(metricId)?.label ?? metricId);
   // 自动选择这一项写出后端这次实际读的字段：只有这一条现在就是自动选择时，显示中的那条的字段才是它。
   const automaticField = (metricId: string) => {
     const shown = props.snapshotBars.find((bar) => bar.metricId === metricId);
@@ -259,54 +268,73 @@ function ResourceBarEditor(props: {
       class="resource-bar-editor"
       role="group"
       aria-label={uiText.resourceBreakdownView.editorLabel}
+      // 左右方向键在芯片之间移动焦点，只移动、不选中；Home/End 到头尾。
+      onKeyDown={(event) => {
+        if ((event.target as Element).classList.contains("resource-bar-select")) {
+          moveRovingFocus(event, { selector: ".resource-bar-select", previousKeys: ["ArrowLeft"], nextKeys: ["ArrowRight"] });
+        }
+      }}
     >
-      <For each={resourceBarOptions(props.catalog)}>
-        {(metric) => {
-          const bar = () => barByMetric().get(metric.id);
-          const supportsCapacity = resourceBarSupportsCapacity(metric.id);
+      <For each={optionIds()}>
+        {(metricId) => {
+          const bar = () => barByMetric().get(metricId);
+          const supportsCapacity = resourceBarSupportsCapacity(metricId);
+          const label = () => metricLabel(metricId);
+          const selected = () => selectedMetricId() === metricId;
           return (
-            <label class="resource-bar-option">
+            // 芯片里除了方格子和缩放下拉框都是“选中”：按钮之外的内边距也算，按钮的点击（含键盘 Enter/空格）冒泡到这里处理。
+            <div
+              class="resource-bar-option"
+              classList={{ selected: selected() }}
+              onClick={(event) => {
+                const target = event.target as Element;
+                if (!event.currentTarget.contains(target) || target.closest("input, .standard-select")) return;
+                setSelectedMetricId(selected() ? null : metricId);
+              }}
+            >
               <input
                 type="checkbox"
+                aria-label={uiText.resourceBreakdownView.showBar(label())}
                 checked={Boolean(bar())}
-                onChange={(event) => props.onToggleBar(metric.id, event.currentTarget.checked)}
+                onChange={(event) => props.onToggleBar(metricId, event.currentTarget.checked)}
               />
-              <span class="resource-bar-option-copy" title={resourceMetricBasis(metric.id)}>
-                <span>{localizedMetricLabel(metric.id, metric.label)}</span>
-              </span>
+              <button type="button" class="resource-bar-select" aria-pressed={selected()} title={resourceMetricBasis(metricId)}>
+                {label()}
+              </button>
               <StandardSelect<"capacity" | "active">
-                value={normalizeResourceBarScaleMode(metric.id, bar()?.scaleMode)}
+                value={normalizeResourceBarScaleMode(metricId, bar()?.scaleMode)}
                 disabled={!bar() || !supportsCapacity}
-                ariaLabel={uiText.resourceBreakdownView.scaleModeLabel(localizedMetricLabel(metric.id, metric.label))}
+                ariaLabel={uiText.resourceBreakdownView.scaleModeLabel(label())}
                 options={[
                   ...(supportsCapacity ? [{ value: "capacity" as const, label: uiText.resourceBreakdown.scaleCapacity }] : []),
                   { value: "active" as const, label: uiText.resourceBreakdown.scaleActive }
                 ]}
-                onChange={(value) => props.onScaleModeChange(metric.id, value)}
+                onChange={(value) => props.onScaleModeChange(metricId, value)}
               />
-            </label>
+            </div>
           );
         }}
       </For>
-      <For each={sourceBars()}>
-        {(item) => {
-          const label = () => uiText.resourceTable.columnSourceLabel(localizedMetricLabel(item.metric.id, item.metric.label));
-          const current = () => barByMetric().get(item.metric.id)?.source ?? null;
+      <Show when={sourceMetricId()} keyed>
+        {(metricId) => {
+          const choices = () => resourceBarSourceChoices(metricId, props.processFields);
+          const label = () => uiText.resourceTable.columnSourceLabel(metricLabel(metricId));
+          const current = () => barByMetric().get(metricId)?.source ?? null;
           return (
             <div class="resource-bar-source">
               <strong>{label()}</strong>
               <RadioGroupRoot class="segmented resource-bar-source-choices" ariaLabel={label()}
                 // 存的来源不在目录里（目录变了）时不勾任何一项，不把它显示成自动选择。
-                value={(() => { const index = item.choices.indexOf(current()); return index < 0 ? "" : `source-${index}`; })()}
+                value={(() => { const index = choices().indexOf(current()); return index < 0 ? "" : `source-${index}`; })()}
                 onChange={(value) => {
                   const index = Number(value.slice("source-".length));
-                  if (index >= 0 && index < item.choices.length) props.onSourceChange(item.metric.id, item.choices[index]);
+                  if (index >= 0 && index < choices().length) props.onSourceChange(metricId, choices()[index]);
                 }}>
-                <Index each={item.choices}>
+                <Index each={choices()}>
                   {(source, index) => (
                     <RadioGroupItem value={`source-${index}`} class="segment"
-                      title={resourceBarText({ metricId: item.metric.id, source: source(), processFieldName: null }, props.processFields).basis}>
-                      {resourceBarSourceLabel(source(), props.processFields, automaticField(item.metric.id))}
+                      title={resourceBarText({ metricId, source: source(), processFieldName: null }, props.processFields).basis}>
+                      {resourceBarSourceLabel(source(), props.processFields, automaticField(metricId))}
                     </RadioGroupItem>
                   )}
                 </Index>
@@ -314,7 +342,7 @@ function ResourceBarEditor(props: {
             </div>
           );
         }}
-      </For>
+      </Show>
     </div>
   );
 }

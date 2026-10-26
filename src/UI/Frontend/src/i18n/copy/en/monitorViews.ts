@@ -16,6 +16,7 @@ export const enMonitorViewsCopy: Pick<
     emptyDetail: "Enter edit mode to choose which resource metrics to show.",
     noDataDetail: "No displayable data has arrived yet; it updates automatically once the data source is ready.",
     editorLabel: "Resource usage item editor",
+    showBar: (metric: string) => `Show ${metric}`,
     scaleModeLabel: (metric: string) => `${metric} scale mode`,
     moveUp: (label: string) => `Move ${label} up`,
     moveUpTitle: "Move up",

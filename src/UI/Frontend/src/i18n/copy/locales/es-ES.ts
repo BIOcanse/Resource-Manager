@@ -742,6 +742,7 @@ const esEsAppCopy: AppCopy = {
     emptyDetail: "Entra en el modo de edición para elegir las métricas de recursos que quieres ver.",
     noDataDetail: "Todavía no ha llegado ningún dato que mostrar; se actualizará automáticamente cuando la fuente de datos esté lista.",
     editorLabel: "Editor de elementos de uso de recursos",
+    showBar: (metric: string) => `Mostrar ${metric}`,
     scaleModeLabel: (metric: string) => `Modo de escala de ${metric}`,
     moveUp: (label: string) => `Mover ${label} hacia arriba`,
     moveUpTitle: "Mover hacia arriba",

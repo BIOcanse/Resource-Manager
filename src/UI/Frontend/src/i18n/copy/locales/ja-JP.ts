@@ -742,6 +742,7 @@ const jaJpAppCopy: AppCopy = {
     emptyDetail: "編集モードに入って、表示するリソース メトリックを選んでください。",
     noDataDetail: "表示できるデータがまだ届いていません。データ ソースの準備ができ次第、自動的に更新されます。",
     editorLabel: "リソース使用量項目のエディター",
+    showBar: (metric: string) => cjkText`${metric}を表示`,
     scaleModeLabel: (metric: string) => cjkText`${metric}のスケール モード`,
     moveUp: (label: string) => cjkText`${label}を上へ移動`,
     moveUpTitle: "上へ移動",

@@ -742,6 +742,7 @@ const deDeAppCopy: AppCopy = {
     emptyDetail: "Wechseln Sie in den Bearbeitungsmodus, um die anzuzeigenden Ressourcenmetriken auszuwählen.",
     noDataDetail: "Es sind noch keine anzeigbaren Daten eingetroffen; die Anzeige wird automatisch aktualisiert, sobald die Datenquelle bereit ist.",
     editorLabel: "Editor für Einträge zur Ressourcennutzung",
+    showBar: (metric: string) => `${metric} anzeigen`,
     scaleModeLabel: (metric: string) => `Skalenmodus für ${metric}`,
     moveUp: (label: string) => `${label} nach oben verschieben`,
     moveUpTitle: "Nach oben verschieben",

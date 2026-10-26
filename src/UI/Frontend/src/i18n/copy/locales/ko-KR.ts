@@ -741,6 +741,7 @@ const koKrAppCopy: AppCopy = {
     emptyDetail: "편집 모드로 들어가 표시할 리소스 메트릭을 선택하세요.",
     noDataDetail: "표시할 데이터가 아직 도착하지 않았습니다. 데이터 원본이 준비되면 자동으로 갱신됩니다.",
     editorLabel: "리소스 사용량 항목 편집기",
+    showBar: (metric: string) => `${metric} 표시`,
     scaleModeLabel: (metric: string) => `${metric} 눈금 모드`,
     moveUp: (label: string) => `${label} 위로 이동`,
     moveUpTitle: "위로 이동",

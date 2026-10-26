@@ -45,6 +45,9 @@ export default async function resourceBarSourceChoiceJourney(page, baseUrl) {
   const saveButton = page.getByRole("button", { name: view.saveLabel, exact: true });
   const sources = page.getByRole("radiogroup", { name: table.columnSourceLabel(memoryLabel), exact: true });
   const scale = page.getByRole("combobox", { name: view.scaleModeLabel(memoryLabel), exact: true });
+  // 来源行只给选中的那一条摆：进入编辑后先点物理内存芯片上的名字选中它。
+  const selectMemory = () => page.getByRole("group", { name: view.editorLabel, exact: true })
+    .getByRole("button", { name: memoryLabel, exact: true }).click();
   const automatic = app.metricPicker.sourceAutomatic(table.memoryQuantities.private_working_set);
 
   await setScenario({ resourceBarMeasureTotalsMissing: [] });
@@ -57,6 +60,7 @@ export default async function resourceBarSourceChoiceJourney(page, baseUrl) {
   }
 
   await editButton.click();
+  await selectMemory();
   await sources.waitFor();
   const radios = sources.getByRole("radio");
   const labels = (await radios.allTextContents()).map((label) => label.trim());
@@ -122,6 +126,7 @@ export default async function resourceBarSourceChoiceJourney(page, baseUrl) {
 
   // 自动选择恢复后端的选择。
   await editButton.click();
+  await selectMemory();
   await sources.waitFor();
   await sources.getByRole("radio").nth(0).click();
   await saveButton.click();
@@ -140,7 +145,7 @@ export default async function resourceBarSourceChoiceJourney(page, baseUrl) {
 /**
  * 九语检查（localizationJourney 调用，调用前已在监视控制台）：编辑资源占用条目时物理内存的“来源”名称、
  * 三个选项（自动选择写出实际读的私有工作集，然后是整机比较指标为物理内存的工作集、私有工作集）和说明按当前语言显示；取消编辑，不保存。
- * 来源只给已勾选的资源条摆，而九语旅程前面的字段卡检查把资源条清空了（metricFieldsProbe 写 resourceBars: []）：
+ * 来源只给选中、且已勾选的资源条摆（先点芯片上的名字选中物理内存），而九语旅程前面的字段卡检查把资源条清空了（metricFieldsProbe 写 resourceBars: []）：
  * 这时先勾上物理内存并保存，等后端发来这一条（自动选择才写得出实际读的字段），检查完再取消勾选保存，还原成原样。
  */
 export async function checkResourceBarSourceText(page, app, language) {
@@ -149,7 +154,8 @@ export async function checkResourceBarSourceText(page, app, language) {
   const memoryLabel = app.metricLabel["memory.usage"];
   const editButton = page.getByRole("button", { name: view.editLabel, exact: true });
   const saveButton = page.getByRole("button", { name: view.saveLabel, exact: true });
-  const memoryOption = page.locator(".resource-bar-option").filter({ hasText: memoryLabel }).getByRole("checkbox");
+  const editor = page.getByRole("group", { name: view.editorLabel, exact: true });
+  const memoryOption = editor.getByRole("checkbox", { name: view.showBar(memoryLabel), exact: true });
   const memoryBar = page.locator('.resource-breakdown-item .resource-bar-track[data-metric-id="memory.usage"]');
   await editButton.scrollIntoViewIfNeeded();
   await editButton.click();
@@ -161,6 +167,8 @@ export async function checkResourceBarSourceText(page, app, language) {
     await memoryBar.waitFor({ timeout: 15_000 });
     await editButton.click();
   }
+  // 来源行只给选中的那一条摆：点物理内存芯片上的名字选中它。
+  await editor.getByRole("button", { name: memoryLabel, exact: true }).click();
   const sources = page.getByRole("radiogroup", { name: table.columnSourceLabel(memoryLabel), exact: true });
   await sources.waitFor({ timeout: 15_000 });
   const radios = sources.getByRole("radio");

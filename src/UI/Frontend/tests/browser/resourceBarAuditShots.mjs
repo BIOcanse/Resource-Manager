@@ -90,6 +90,27 @@ try {
     });
   }
 
+  // 资源占用条目编辑栏：进入编辑时的样子；有“选中”按钮的版本再截一张选中物理内存（下面只摆它的来源）。
+  for (const [name, options] of [
+    ["editor-standard-light-wide-zh-CN", { uiStyle: "standard", theme: "light", language: "zh-CN", viewport: viewports.wide }],
+    ["editor-standard-dark-narrow-de-DE", { uiStyle: "standard", theme: "dark", language: "de-DE", viewport: viewports.narrow }]
+  ]) {
+    if (only && !name.includes(only)) continue;
+    await withPage(options, async page => {
+      await page.locator('[data-focus-key="resource-breakdown-edit"]').click();
+      const editor = page.locator(".resource-bar-editor");
+      await editor.waitFor();
+      await page.waitForTimeout(300);
+      await shot(page, `${name}-entry`);
+      const memory = editor.locator(".resource-bar-select").filter({ hasText: /^\s*(物理内存实际占用|Physisch belegter Arbeitsspeicher)\s*$/ });
+      if (await memory.count() === 1) {
+        await memory.click();
+        await page.waitForTimeout(300);
+        await shot(page, `${name}-memory-selected`);
+      }
+    });
+  }
+
   if (!only || "motion".includes(only) || only === "motion") {
     for (const animations of ["normal", "none"]) {
       await withPage({ uiStyle: "standard", theme: "light", language: "zh-CN", viewport: viewports.wide, animations }, async page => {

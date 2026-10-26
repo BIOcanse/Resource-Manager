@@ -742,6 +742,7 @@ const frFrAppCopy: AppCopy = {
     emptyDetail: "Passez en mode modification pour choisir les métriques de ressources à afficher.",
     noDataDetail: "Aucune donnée affichable n'est encore arrivée ; l'affichage se met à jour dès que la source de données est prête.",
     editorLabel: "Éditeur des éléments d'utilisation des ressources",
+    showBar: (metric: string) => `Afficher ${metric}`,
     scaleModeLabel: (metric: string) => `Mode d'échelle de ${metric}`,
     moveUp: (label: string) => `Déplacer ${label} vers le haut`,
     moveUpTitle: "Déplacer vers le haut",

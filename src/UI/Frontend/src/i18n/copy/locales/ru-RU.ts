@@ -742,6 +742,7 @@ const ruRuAppCopy: AppCopy = {
     emptyDetail: "Перейдите в режим изменения, чтобы выбрать отображаемые метрики ресурсов.",
     noDataDetail: "Отображаемые данные ещё не поступили; они обновятся автоматически, когда источник данных будет готов.",
     editorLabel: "Редактор элементов использования ресурсов",
+    showBar: (metric: string) => `Показывать «${metric}»`,
     scaleModeLabel: (metric: string) => `Режим шкалы: ${metric}`,
     moveUp: (label: string) => `Переместить ${label} вверх`,
     moveUpTitle: "Переместить вверх",

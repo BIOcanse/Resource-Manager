@@ -782,20 +782,37 @@
   border-radius: var(--radius-sm);
   padding: 8px 10px;
   background: var(--surface-soft);
+  color: var(--text);
 }
 
 .resource-bar-option input {
   margin: 0;
 }
 
-.resource-bar-option-copy {
+/* 芯片上的名字是“选中这一条”的按钮：去掉全局按钮的底色、边框、高度和按压缩放，芯片外观不变；占满中间一栏，点名字右边的空白也是选中。 */
+.resource-bar-option .resource-bar-select,
+.resource-bar-option .resource-bar-select:hover,
+.resource-bar-option .resource-bar-select:active {
   min-width: 0;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: inherit;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  text-align: start;
+  overflow-wrap: anywhere;
+  transform: none;
 }
 
-.resource-bar-option-copy span {
-  color: var(--text);
-  font-weight: 600;
-  overflow-wrap: anywhere;
+/* 选中的那一条（下面摆它的来源）：和资源表列编辑栏、分段、分页当前项一样用强调色。 */
+.resource-bar-option.selected {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 /* 资源条的来源（先选项目、再选来源）：占编辑区一整行，选项是统一分段样式，和资源表列的来源一样。 */

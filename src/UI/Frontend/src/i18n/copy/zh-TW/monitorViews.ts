@@ -11,6 +11,7 @@ export const zhMonitorViewsCopy = {
     emptyDetail: "進入編輯模式後可選擇需要顯示的資源指標。",
     noDataDetail: "當前尚未收到可顯示資料；資料來源準備完成後會自動更新。",
     editorLabel: "資源佔用條目編輯器",
+    showBar: (metric: string) => `顯示 ${metric}`,
     scaleModeLabel: (metric: string) => `${metric} 縮放模式`,
     moveUp: (label: string) => `上移 ${label}`,
     moveUpTitle: "上移",
