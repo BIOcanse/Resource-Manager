@@ -126,7 +126,7 @@ for (const locale of locales) {
 // 4. 具体写法：德语不再出现 "1 Einträge"，俄语三种形式，法语 0 用单数，中日韩照常。
 const expect = (locale: string, path: string, n: number, text: string) =>
   assert.equal(rendered.get(`${locale} ${path} ${n}`), text, `${locale} ${path}(${n})`);
-for (const path of ["app.managementPage.itemCount", "app.deviceTopology.itemCount", "app.smartReport.itemCount",
+for (const path of ["app.managementPage.itemCount", "app.deviceTopology.itemCount", "app.browserRuntime.itemCount",
   "app.resourceBreakdownView.itemCount"]) {
   expect("de-DE", path, 1, "1 Eintrag");
   expect("de-DE", path, 2, "2 Einträge");
