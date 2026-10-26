@@ -200,14 +200,20 @@ export default async function reorderInteractionJourney(page, baseUrl) {
 
   // ---- 资源条 ----
   let barsCommitted = null;
+  let barDragGeometry = null;
   const bars0 = await barOrder();
   if (bars0.length >= 2) {
     await page.locator('[data-focus-key="resource-breakdown-edit"]').click();
     await page.locator(".resource-breakdown-item.editing").first().waitFor({ state: "visible", timeout: 3000 });
     const bar = (index) => page.locator(".resource-breakdown-item").nth(index);
-    const fromBox = await box(bar(0).locator(".resource-breakdown-header strong"));
-    from = { x: fromBox.x + 4, y: fromBox.y + fromBox.height / 2 };
+    const grip = bar(0).locator(".resource-breakdown-header strong");
+    const beforeTargetScroll = await box(grip);
     const barBox = await box(bar(1));
+    // Scrolling the target can move the source; sample both endpoints after it.
+    const fromBox = await grip.boundingBox();
+    if (!fromBox) throw new Error("Resource bar source has no box after target scroll");
+    barDragGeometry = { beforeTargetScroll, afterTargetScroll: fromBox, target: barBox };
+    from = { x: fromBox.x + 4, y: fromBox.y + fromBox.height / 2 };
     to = { x: barBox.x + barBox.width / 2, y: barBox.y + barBox.height / 2 };
     await page.mouse.move(from.x, from.y);
     await page.mouse.down();
@@ -219,5 +225,5 @@ export default async function reorderInteractionJourney(page, baseUrl) {
     await waitOrder(barOrder, bars0, "Cancelling the resource bar edit");
   }
 
-  return { cards: { before: cards0, committed: cards1 }, columns: { before: columns0, committed: columns1, buttons: columns3 }, bars: { before: bars0, committed: barsCommitted } };
+  return { cards: { before: cards0, committed: cards1 }, columns: { before: columns0, committed: columns1, buttons: columns3 }, bars: { before: bars0, committed: barsCommitted, dragGeometry: barDragGeometry } };
 }
