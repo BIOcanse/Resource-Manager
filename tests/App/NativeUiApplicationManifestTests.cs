@@ -31,7 +31,9 @@ public sealed class NativeUiApplicationManifestTests
 #else
         const string configuration = "Release";
 #endif
-        var executablePath = Path.Combine(
+        // A registered validation workset supplies its exact built apphost;
+        // ordinary in-tree builds keep their existing output location.
+        var executablePath = Environment.GetEnvironmentVariable("RESOURCE_MANAGER_NATIVE_UI_TEST_APPHOST") ?? Path.Combine(
             FindNativeUiRoot(),
             "bin",
             configuration,
