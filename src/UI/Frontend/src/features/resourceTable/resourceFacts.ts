@@ -191,7 +191,8 @@ export function projectResourceFacts(facts: ResourceFacts, settings: readonly Re
     for (const key of Object.keys(item.values)) if (isResourceTableMetricColumn(key) && !visibleIds.has(key)) delete item.values[key];
   }
   // CurrentCultureIgnoreCase distinguishes accents, ignores case and leaves equal keys stable.
-  const textOrder = new Intl.Collator(locale, { sensitivity: "accent" });
+  // Digit runs compare by value, as Explorer orders names: "App 2" comes before "App 10".
+  const textOrder = new Intl.Collator(locale, { sensitivity: "accent", numeric: true });
   const compare = (textKeys: boolean) => (left: ResourceTableRow, right: ResourceTableRow) => {
     const key = (item: ResourceTableRow): string | number => textKeys && sortColumnId === "name" ? item.name : textKeys && sortColumnId === "status" ? item.status : sortColumnId === "impact" ? item.impactScore : textKeys && ["user", "architecture"].includes(sortColumnId) ? item.values[sortColumnId]?.displayValue ?? "" : item.values[sortColumnId]?.value ?? -Number.MAX_VALUE;
     const a = key(left), b = key(right);

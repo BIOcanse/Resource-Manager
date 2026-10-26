@@ -102,7 +102,7 @@ export default async function resourceTableScrollStabilityJourney(
   await page.locator(".resource-table-sort-button", { hasText: "名称" }).click();
   await page.waitForTimeout(50);
   const sortedNames = await page.locator('.resource-table-row.software-row[aria-hidden="false"]').evaluateAll(rows => rows.map(row => row.getAttribute("aria-label")));
-  if (sortedNames.length < 2 || sortedNames.some((name, index) => index > 0 && sortedNames[index - 1].localeCompare(name, undefined, { sensitivity: "base" }) > 0)) {
+  if (sortedNames.length < 2 || sortedNames.some((name, index) => index > 0 && sortedNames[index - 1].localeCompare(name, undefined, { sensitivity: "base", numeric: true }) > 0)) {
     throw new Error(`Name sorting did not reorder the frontend rows: ${JSON.stringify(sortedNames)}`);
   }
   await page.locator('.resource-table-row.software-row[aria-hidden="false"] .resource-row-expander').first().click();

@@ -36,6 +36,12 @@ assert.equal(resized.rows.length, 5);
 assert.equal(resized.rows[1].name, "App A");
 assert.equal(resized.rows[1].impactScore, ascending.rows[1].impactScore);
 assert.equal(resized.rows[1].values.memory, undefined);
+// 名称按自然顺序：带编号的名字按数值排（“示例软件 2”在“示例软件 10”前面），和资源管理器一样，不按逐字符。
+const numbered = decodeResourceFacts({ ...raw, software: [{ ...raw.software[0], name: "Sample 10" }, { ...raw.software[1], name: "Sample 2" }] }).facts!;
+assert.deepEqual(projectResourceFacts(numbered, columns, "software", "name", "asc").rows.filter(row => row.kind === "software").map(row => row.name),
+  ["Sample 2", "Sample 10"]);
+assert.deepEqual(projectResourceFacts(numbered, columns, "software", "name", "desc").rows.filter(row => row.kind === "software").map(row => row.name),
+  ["Sample 10", "Sample 2"]);
 const empty = projectResourceFacts(decodeResourceFacts({ version: 2, capturedAt: null, software: [], processes: [], metrics: [], attributions: [] }).facts!, columns, "software", "impact", "desc");
 assert.equal(empty.rows[0].status, "empty");
 assert.equal(empty.rows[0].values.memory, undefined);
