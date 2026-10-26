@@ -2,7 +2,7 @@
 // 用法：node --experimental-transform-types tests/browser/capturePageMotion.mjs <输出目录> [--style smooth|desktop|terminal|none|ultra]
 // 先 vite build；起 mock 服务（mockFrontendServer.mjs），用 RM_PLAYWRIGHT_MODULE / RM_PLAYWRIGHT_BROWSER 指的 Playwright 和浏览器。
 // 输出：
-//   shots/<名>.png          每页、每个二级分页、任务中心每个筛选分页的静止截图（视口）
+//   shots/<名>.png          每页、设置的外观分区、每个二级分页、任务中心每个筛选分页的静止截图（视口）
 //   frames/<序号>.jpg        换页序列的 screencast 帧，frames.json 记每帧的时间戳和那一刻在做哪一次切换
 //   measurements.json       每次切换：点击到二级分页条出现的毫秒数、内容起始 y、逐帧的内容位置和不透明度、长任务；任务中心各分页的对话框高度
 import { seedFrontendPreferences } from "./frontendPreferencesFixture.js";
@@ -12,6 +12,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
+import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 
 const projectRoot = fileURLToPath(new URL("../..", import.meta.url));
 const outRoot = resolve(process.argv[2] ?? "");
@@ -22,6 +23,7 @@ if (!["smooth", "desktop", "terminal", "none", "ultra"].includes(style)) throw n
 for (const sub of ["shots", "frames"]) mkdirSync(resolve(outRoot, sub), { recursive: true });
 
 const app = await loadAppCopy("zh-CN");
+const settingsText = await loadSettingsText("zh-CN");
 const port = await reservePort();
 const baseUrl = `http://127.0.0.1:${port}`;
 const server = spawn(process.execPath, [resolve(projectRoot, "tests/browser/mockFrontendServer.mjs")], {
@@ -139,6 +141,13 @@ try {
     await primary(name).click();
     await page.waitForTimeout(900);
     await shot(`page-${id}`);
+    if (id === "settings") {
+      // 设置 → 外观：动画风格一行和下面的自动关闭开关。
+      await page.getByRole("button", { name: settingsText.sections.appearance, exact: true }).click();
+      await page.getByRole("radiogroup", { name: settingsText.appearance.animationStyleTitle, exact: true }).scrollIntoViewIfNeeded();
+      await page.waitForTimeout(900);
+      await shot("settings-appearance");
+    }
   }
   for (const [id, name] of [["gpu", app.misc.detailsTab.gpu], ["cpu", app.misc.detailsTab.cpu]]) {
     await page.locator(".page-subnav").getByRole("tab", { name, exact: true }).click();
