@@ -9,6 +9,7 @@ import { readFrontendPreferences, seedFrontendPreferences, writeFrontendPreferen
 // 6. Windows 高对比下焦点和选中用系统颜色外框；
 // 7. 提示挂在页面最顶层：资源条下面紧挨着另一条时，提示整个看得见（四角和中心取到的都是提示本身）、在视口里、
 //    不盖住悬停的那一段；1100 和 1920 宽、简体中文和德语都查，德语的读数各占一行。
+// 5 里还有：过渡没走完时下一次更新就到了（软件刚退出就又回来），新的过渡从画面当前的位置接着走，不直接跳到末帧、不露底。
 export default async function resourceBarInteractionJourney(page, baseUrl) {
   const errors = [];
   page.on("pageerror", (error) => errors.push(String(error)));
@@ -92,6 +93,16 @@ export default async function resourceBarInteractionJourney(page, baseUrl) {
   assert(leave.positions.length >= 5 && leave.holeFrames === 0, `Leaving software left a hole or jumped: ${JSON.stringify(leave)}`);
   const back = await recordTransition(page, baseUrl, 4);
   assert(back.positions.length >= 5 && back.holeFrames === 0, `Returning software left a hole or jumped: ${JSON.stringify(back)}`);
+  // 过渡中途又来一次更新：软件退出（第 11 代）的过渡刚动起来，就把数据换成它回来的第 12 代。
+  // 只在这个画布上把 --motion-bar 拉长到 1500 ms，让第二次更新一定落在第一次过渡里；画布的段数（data-resource-segment-count）
+  // 标出两次更新各自到达的那一帧。
+  const interrupted = await recordTransition(page, baseUrl, 11, { interruptWith: 12, durationMs: 1500, windowMs: 5000 });
+  assert(interrupted.leftAt !== null && interrupted.returnedAt !== null, `The leave and return updates did not both arrive: ${JSON.stringify(interrupted)}`);
+  assert(interrupted.returnedAt - interrupted.leftAt < 1500,
+    `The second update arrived after the first transition had ended, so nothing was interrupted: ${JSON.stringify(interrupted)}`);
+  assert(interrupted.holeFrames === 0, `An interrupted transition left a hole: ${JSON.stringify(interrupted)}`);
+  assert(interrupted.positionsAfterReturn >= 5,
+    `The transition after an interrupting update jumped to its end instead of moving on from the current frame: ${JSON.stringify(interrupted)}`);
   await writeFrontendPreferences(page, (value) => { value.appearance.animations = "none"; });
   await page.reload({ waitUntil: "domcontentloaded" });
   await waitForBar(page);
@@ -216,18 +227,27 @@ function proxyState(page) {
 }
 
 // 数据变到第 generation 代，记下 3 s 内每帧第一段右边界的位置（最左两段是纯色，不受斜纹影响）和露底的像素。
-async function recordTransition(page, baseUrl, generation, { rewriteAppearance = false } = {}) {
-  await page.evaluate((rewrite) => {
+// interruptWith：第一段边界开始动的那一帧之后马上换成这一代，记下两次更新到达的时刻（画布段数变化的那一帧）。
+// durationMs：只在这块画布上覆盖 --motion-bar，记录完恢复。
+async function recordTransition(page, baseUrl, generation, { rewriteAppearance = false, interruptWith = null, durationMs = null, windowMs = 3000 } = {}) {
+  await page.evaluate(({ rewrite, duration, windowLength }) => {
     const canvas = document.querySelector('.resource-bar-track[data-metric-id="memory.usage"] canvas');
+    if (duration !== null) canvas.style.setProperty("--motion-bar", `${duration}ms`);
     const context = canvas.getContext("2d");
     const ratio = canvas.width / canvas.getBoundingClientRect().width;
     const overscan = Number.parseFloat(getComputedStyle(canvas.parentElement).getPropertyValue("--segment-paint-overscan")) * ratio;
     const frames = [];
     let rewritten = !rewrite;
     window.__barTransition = frames;
+    window.__barTransitionMoved = false;
+    window.__barTransitionDone = false;
     const started = performance.now();
     const sample = (now) => {
-      if (now - started > 3000) return;
+      if (now - started > windowLength) {
+        canvas.style.removeProperty("--motion-bar");
+        window.__barTransitionDone = true;
+        return;
+      }
       const data = context.getImageData(0, Math.floor(canvas.height - overscan - 3 * ratio), canvas.width, 1).data;
       let boundary = -1;
       let lastPainted = -1;
@@ -237,7 +257,8 @@ async function recordTransition(page, baseUrl, generation, { rewriteAppearance =
         if (boundary < 0 && x > 0 && (data[x * 4] !== data[0] || data[x * 4 + 1] !== data[1] || data[x * 4 + 2] !== data[2])) boundary = x;
       }
       for (let x = 0; x < lastPainted; x++) if (data[x * 4 + 3] === 0) holes++;
-      frames.push({ boundary, holes });
+      frames.push({ boundary, holes, at: now - started, count: Number(canvas.dataset.resourceSegmentCount) });
+      if (frames.length > 1 && boundary !== frames[0].boundary) window.__barTransitionMoved = true;
       if (!rewritten && frames.length > 1 && boundary !== frames[0].boundary) {
         rewritten = true;
         document.body.dataset.animations = document.body.dataset.animations;
@@ -246,9 +267,13 @@ async function recordTransition(page, baseUrl, generation, { rewriteAppearance =
       requestAnimationFrame(sample);
     };
     requestAnimationFrame(sample);
-  }, rewriteAppearance);
+  }, { rewrite: rewriteAppearance, duration: durationMs, windowLength: windowMs });
   await setScenario(page, baseUrl, { resourceBreakdownGeneration: generation });
-  await page.waitForTimeout(3100);
+  if (interruptWith !== null) {
+    await page.waitForFunction(() => window.__barTransitionMoved === true, null, { polling: "raf", timeout: windowMs });
+    await setScenario(page, baseUrl, { resourceBreakdownGeneration: interruptWith });
+  }
+  await page.waitForFunction(() => window.__barTransitionDone === true, null, { timeout: windowMs + 5000 });
   const frames = await page.evaluate(() => window.__barTransition);
   const positions = [];
   for (let index = 1; index < frames.length; index++) {
@@ -258,7 +283,21 @@ async function recordTransition(page, baseUrl, generation, { rewriteAppearance =
   const direction = positions.length ? Math.sign(positions.at(-1) - start) : 0;
   const reversals = positions.filter((value, index) =>
     direction !== 0 && Math.sign(value - (index === 0 ? start : positions[index - 1])) === -direction).length;
-  return { start, positions, reversals, holeFrames: frames.filter((frame) => frame.holes > 0).length, frames: frames.length };
+  const result = { start, positions, reversals, holeFrames: frames.filter((frame) => frame.holes > 0).length, frames: frames.length };
+  if (interruptWith === null) return result;
+  const initialCount = frames[0]?.count;
+  const leftIndex = frames.findIndex((frame) => frame.count < initialCount);
+  const returnedIndex = leftIndex < 0 ? -1 : frames.findIndex((frame, index) => index > leftIndex && frame.count === initialCount);
+  let positionsAfterReturn = 0;
+  for (let index = Math.max(returnedIndex, 1); returnedIndex > 0 && index < frames.length; index++) {
+    if (frames[index].boundary !== frames[index - 1].boundary) positionsAfterReturn++;
+  }
+  return {
+    ...result,
+    leftAt: leftIndex < 0 ? null : Math.round(frames[leftIndex].at),
+    returnedAt: returnedIndex < 0 ? null : Math.round(frames[returnedIndex].at),
+    positionsAfterReturn
+  };
 }
 
 async function setScenario(page, baseUrl, patch) {
