@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { reconcileResourceSelection } from "../src/features/resourceBreakdown/resourceSelection.ts";
+import {
+  reconcileResourceSelection,
+  resourceEmptySegmentId,
+  selectableResourceSegmentIds
+} from "../src/features/resourceBreakdown/resourceSelection.ts";
 import {
   resourceSegmentAtTrackX,
   resourceSegmentHitRanges
@@ -43,6 +47,21 @@ assert.equal(reconcileResourceSelection([], {
   softwareId: "software-a",
   index: 0
 }), null);
+
+// 空余段（前端造的最后一段）选中后，数据更新时照样保留，位置排在所有软件段后面；现有占用模式或已满时没有空余段。
+{
+  const memory = { ...bar("memory.usage", ["software-a", "software-b"]), capacityValue: 32, totalValue: 8 };
+  const emptyId = resourceEmptySegmentId("memory.usage");
+  assert.deepEqual(selectableResourceSegmentIds(memory), ["software-a", "software-b", emptyId]);
+  assert.deepEqual(reconcileResourceSelection([memory], { metricId: "memory.usage", softwareId: emptyId, index: 2 }),
+    { metricId: "memory.usage", softwareId: emptyId, index: 2 });
+  assert.equal(reconcileResourceSelection([{ ...memory, scaleMode: "active" }], { metricId: "memory.usage", softwareId: emptyId, index: 2 }), null);
+  assert.equal(reconcileResourceSelection([{ ...memory, totalValue: 32 }], { metricId: "memory.usage", softwareId: emptyId, index: 2 }), null);
+  // 值为 0 的软件不在条上，也不占位置。
+  const withZero = { ...memory, software: [{ ...memory.software[0], value: 0 }, memory.software[1]] };
+  assert.deepEqual(reconcileResourceSelection([withZero], { metricId: "memory.usage", softwareId: "software-b", index: 1 }),
+    { metricId: "memory.usage", softwareId: "software-b", index: 0 });
+}
 
 const ranges = [
   { segment: { value: 20, id: "first" }, index: 0, left: 0, right: 20, width: 20 },

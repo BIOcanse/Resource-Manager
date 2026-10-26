@@ -41,6 +41,7 @@ import {
 import { positionResourceTooltip } from "./resourceTooltipPlacement.ts";
 import { readMotionDurationMs } from "../../presentation/motionTokens.ts";
 import { resourceSegmentAtTrackX } from "./resourceTrackInteraction.ts";
+import { resourceEmptyCapacityValue, selectableResourceSegmentIds } from "./resourceSelection.ts";
 import { useInlineEditorFocus } from "../../interactions/inlineEditorFocus";
 import { formatResourceBarValue } from "./resourceBreakdownValue";
 import { ObservationStateNotice } from "../../components/ObservationStateNotice";
@@ -902,44 +903,29 @@ function resourceMetric(id: string, label: string, group: string, unit: string):
   };
 }
 
+// 能选的段由 resourceSelection.ts 的 selectableResourceSegmentIds 定（数据更新后保留选择也按它），这里只补上呈现要的字段。
 function resourceSelectableSoftwareSegments(bar: ResourceBreakdownBar): ResourceSelectableSegment[] {
-  const segments: ResourceSelectableSegment[] = (bar.software ?? [])
-    .filter((segment) => segment?.softwareId && Number(segment.value) > 0)
-    .map((segment) => ({
-      ...segment,
-      className: `resource-segment ${resourceSoftwareBucket(segment.displayKind)}`,
-      isEmpty: false as const
-    }));
-
-  const empty = resourceEmptyCapacitySegment(bar);
-  if (empty) {
-    segments.push(empty);
-  }
-
-  return segments;
-}
-
-function resourceEmptyCapacitySegment(bar: ResourceBreakdownBar): ResourceEmptySegment | null {
+  const software = new Map((bar.software ?? []).map((segment) => [segment.softwareId, segment]));
   const denominator = resourceBarDenominator(bar);
-  const emptyValue = bar.scaleMode !== "active" && denominator > 0
-    ? Math.max(0, Number(bar.capacityValue) - Number(bar.totalValue))
-    : 0;
-  if (!Number.isFinite(emptyValue) || emptyValue <= 0) {
-    return null;
-  }
-
-  return {
-    softwareId: `__resource-empty:${bar.metricId}`,
-    name: uiText.resourceBreakdown.empty,
-    kind: "Empty",
-    displayKind: uiText.resourceBreakdown.empty,
-    value: emptyValue,
-    systemPercent: resourceSegmentPercent(emptyValue, denominator),
-    processCount: 0,
-    processes: [],
-    className: "resource-segment-empty",
-    isEmpty: true
-  };
+  return selectableResourceSegmentIds(bar).map((softwareId): ResourceSelectableSegment => {
+    const segment = software.get(softwareId);
+    if (segment) {
+      return { ...segment, className: `resource-segment ${resourceSoftwareBucket(segment.displayKind)}`, isEmpty: false };
+    }
+    const emptyValue = resourceEmptyCapacityValue(bar);
+    return {
+      softwareId,
+      name: uiText.resourceBreakdown.empty,
+      kind: "Empty",
+      displayKind: uiText.resourceBreakdown.empty,
+      value: emptyValue,
+      systemPercent: resourceSegmentPercent(emptyValue, denominator),
+      processCount: 0,
+      processes: [],
+      className: "resource-segment-empty",
+      isEmpty: true
+    };
+  });
 }
 
 // 空白段的名字是前端自己造的，直接用；软件段按共用规则出名。
