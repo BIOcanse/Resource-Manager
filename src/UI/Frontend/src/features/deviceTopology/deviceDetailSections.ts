@@ -37,6 +37,19 @@ export interface DeviceTopologyListNode {
   specializedDevice?: SpecializedDeviceModel;
 }
 
+/**
+ * 详情头名称下面的一句概括：设备写设备类型，接口写外部／内部接口，连接状态明确时跟在后面。
+ * 速率、描述这类完整内容只在下面对应的格子里，不在这里和清单副标题里再写一遍。
+ */
+export function nodeHeadline(node: DeviceTopologyListNode, scope: DeviceTopologyScope): string {
+  const category = isDeviceRole(node.role)
+    ? node.specializedDevice?.deviceTypeLabel ?? uiText.deviceTopology.connectedDevice
+    : scope === "external" ? uiText.deviceTopology.externalScope : uiText.deviceTopology.internalScope;
+  return node.connectionState === "connected" || node.connectionState === "disconnected"
+    ? `${category} · ${connectionStateLabel(node.connectionState)}`
+    : category;
+}
+
 /** 侧栏「关键信息」：接口按接口摘要，设备优先用专用适配器的摘要。 */
 export function nodeSummaryFields(node: DeviceTopologyListNode, childCount: number, scope: DeviceTopologyScope) {
   if (isInterfaceRole(node.role)) {
@@ -141,7 +154,7 @@ export function deviceUserDetailSections(
       userDetailItem(uiText.deviceTopology.label.portCapability, reportedDeviceValue(formatUsbCapability(usb))),
       userDetailItem(uiText.deviceTopology.label.deviceSpecification, reportedDeviceValue(usb.deviceSpecification)),
       userDetailItem(uiText.deviceTopology.label.deviceRevision, reportedDeviceValue(usb.deviceRevision)),
-      userDetailItem(uiText.deviceTopology.label.usbClass, reportedDeviceValue(usb.deviceClass)),
+      userDetailItem(uiText.deviceTopology.label.usbClass, usb.deviceClassCode === null ? uiText.deviceTopology.machine.unknown : String(usb.deviceClassCode)),
       userDetailItem("VID / PID", reportedDeviceValue(formatUsbVidPid(usb))),
       userDetailItem(uiText.deviceTopology.label.serialNumber, reportedDeviceValue(usb.serialNumber))
     ]) : null,

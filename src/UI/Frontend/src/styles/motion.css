@@ -292,6 +292,12 @@ body[data-animations="normal"] .management-settings-button:not(:disabled):active
   animation: motion-rise-in var(--motion-medium) var(--ease-decel);
 }
 
+/* 设备拓扑的整机示意：后端判定的形态变了才换一张（DeviceMachineView），换上时上浮淡入；
+   有位移，只在 normal；无动画、极简直接到终态。 */
+body[data-animations="normal"] .device-machine-figure {
+  animation: motion-rise-in var(--motion-medium) var(--ease-decel);
+}
+
 /* --- 无动画 / 超高性能：一切瞬时 --- */
 body[data-animations="none"] *,
 body[data-animations="none"] *::before,

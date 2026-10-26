@@ -1,5 +1,5 @@
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
-import { createEffect, createMemo, createSignal, For, Index, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, createUniqueId, For, Index, onCleanup, Show } from "solid-js";
 import {
   Bluetooth,
   BatteryCharging,
@@ -35,6 +35,7 @@ import {
   attachedDisplay,
   deviceUserDetailSections,
   isDeviceRole,
+  nodeHeadline,
   nodeSummaryFields,
   type DeviceTopologyListNode,
   type DeviceTopologyScope
@@ -52,6 +53,7 @@ import { DisplayEdidDetails } from "./components/DisplayEdidDetails.tsx";
 import { DeviceSpecializedDetails } from "./components/DeviceSpecializedDetails";
 import { DeviceMetricFieldDetails } from "./components/DeviceMetricFieldDetails";
 import { DeviceSpecializedSummary } from "./components/DeviceSpecializedSummary";
+import { DeviceMachineView } from "./components/DeviceMachineView";
 import { ObservationStateNotice } from "../../components/ObservationStateNotice";
 import { UserDetailsDialog } from "../../components/UserDetailsDialog";
 import { SegmentedControl } from "../../ui/primitives/SegmentedControl";
@@ -66,6 +68,7 @@ interface DeviceTopologyViewProps {
 
 export function DeviceTopologyView(props: DeviceTopologyViewProps) {
   const demandId = "details.device-topology";
+  const headingId = createUniqueId();
   useFrontendVisibilityDemand(demandId, [frontendWorkIds.detailsDeviceTopology]);
   const topology = useDeviceTopologyState();
   const runtime = useFrontendRuntime();
@@ -182,23 +185,13 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
     <section
       {...frontendVisibilitySurface("visible.details.device-topology.surface", [demandId])}
       class="device-topology-panel"
+      aria-labelledby={headingId}
     >
+      {/* 所在分页已经叫“设备拓扑”（分页树 2026-10-26），看得见的标题不再重复；标题只留给读屏，
+          区域顶部是整机的识别名。 */}
       <header class="device-topology-header">
-        <div class="device-topology-heading">
-          <h2>{uiText.deviceTopology.panel}</h2>
-          <span>{snapshot()?.system.brandDisplayName ?? uiText.deviceTopology.brandLoading}</span>
-        </div>
-        <SegmentedControl
-          value={props.scope}
-          ariaLabel={uiText.deviceTopology.scopeNav}
-          class="device-scope-tabs"
-          itemClass="device-scope-tab"
-          options={[
-            { id: "external", label: uiText.deviceTopology.externalScope },
-            { id: "internal", label: uiText.deviceTopology.internalScope }
-          ]}
-          onChange={(scope) => props.onScopeRequested?.(scope)}
-        />
+        <h2 class="sr-only" id={headingId}>{uiText.deviceTopology.panel}</h2>
+        <span class="device-topology-identity">{snapshot()?.system.brandDisplayName ?? uiText.deviceTopology.brandLoading}</span>
       </header>
 
       <ObservationStateNotice
@@ -217,8 +210,19 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
         {(data) => (
             <div class="device-topology-layout">
               <aside class="device-port-list" aria-label={uiText.deviceTopology.listLabel(scopeTitle())}>
+                {/* 左栏标题就是内外切换（用户 2026-10-25）：选中的一项说明当前清单，不再另写一遍。 */}
                 <div class="device-port-list-title">
-                  <strong>{scopeTitle()}</strong>
+                  <SegmentedControl
+                    value={props.scope}
+                    ariaLabel={uiText.deviceTopology.scopeNav}
+                    class="device-scope-tabs"
+                    itemClass="device-scope-tab"
+                    options={[
+                      { id: "external", label: uiText.deviceTopology.externalScope },
+                      { id: "internal", label: uiText.deviceTopology.internalScope }
+                    ]}
+                    onChange={(scope) => props.onScopeRequested?.(scope)}
+                  />
                   <span>
                     {!searchQuery().trim()
                       ? scopeStatistics()
@@ -255,21 +259,26 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                           aria-pressed={selectedNode()?.id === nodeId}
                           style={`--device-tree-depth:${Math.min(node().depth, 8)}`}
                           onClick={() => setSelectedNodeId(nodeId)}
-                          title={node().path?.join(" → ") ?? (node().subtitle ? `${node().title} · ${node().subtitle}` : node().title)}
+                          title={node().subtitle
+                            ? `${node().path?.join(" → ") ?? node().title} · ${node().subtitle}`
+                            : node().path?.join(" → ") ?? node().title}
                         >
                           <DeviceConnectorIcon kind={node().iconKind ?? node().connectorKind} />
                           <span class="device-port-main">
-                            <strong>{node().title}</strong>
+                            {/* 标签和标题同一行；放不下时标签换到标题下面，标签文字从不截断（协调者 10-26）。 */}
+                            <span class="device-port-heading">
+                              <strong>{node().title}</strong>
+                              <span
+                                class="device-port-protocol"
+                                classList={{
+                                  connected: node().connectionState === "connected",
+                                  disconnected: node().connectionState === "disconnected"
+                                }}
+                              >
+                                {node().badge}
+                              </span>
+                            </span>
                             <small>{node().subtitle}</small>
-                          </span>
-                          <span
-                            class="device-port-protocol"
-                            classList={{
-                              connected: node().connectionState === "connected",
-                              disconnected: node().connectionState === "disconnected"
-                            }}
-                          >
-                            {node().badge}
                           </span>
                         </button>
                       );
@@ -278,27 +287,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                 </Show>
               </aside>
 
-              <div class="device-top-view" role="group" aria-label={uiText.deviceTopology.topView}>
-                <div class="device-laptop">
-                  <div class="device-laptop-lid">
-                    <span class="device-brand-logo">{data().system.brandLogoText}</span>
-                    <strong>{data().system.manufacturer}</strong>
-                    <small>{data().system.model}</small>
-                  </div>
-                  <div class="device-laptop-hinge" />
-                  <div class="device-laptop-base">
-                    <span>CPU</span>
-                    <span>GPU</span>
-                    <span>MEM</span>
-                    <span>IO</span>
-                  </div>
-                </div>
-                <div class="device-system-meta">
-                  <span>{data().system.baseBoardManufacturer ?? uiText.deviceTopology.baseBoardManufacturerUnknown}</span>
-                  <span>{data().system.baseBoardProduct ?? uiText.deviceTopology.baseBoardProductUnknown}</span>
-                  <span>{data().system.biosVersion ?? uiText.deviceTopology.biosUnknown}</span>
-                </div>
-              </div>
+              <DeviceMachineView system={data().system} machineIdentity={data().machineIdentity} gpuInformation={data().gpuInformation} externalMachines={data().externalMachines} />
 
               <aside class="device-port-detail" aria-label={uiText.deviceTopology.detailPane}>
                 <Show
@@ -311,7 +300,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                         <DeviceConnectorIcon kind={selectedNode()?.iconKind ?? selectedNode()?.connectorKind ?? port().connectorKind} large />
                         <div>
                           <strong>{selectedNode()?.title ?? selectedPortPresentation()?.title ?? port().displayName}</strong>
-                          <span>{selectedNode()?.subtitle || selectedPortPresentation()?.subtitle || port().hardwareKind}</span>
+                          <span>{nodeHeadline(selectedNode()!, props.scope)}</span>
                           </div>
                       </div>
                       <Show when={selectedNode()?.path && (selectedNode()?.path?.length ?? 0) > 1}>
@@ -339,7 +328,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                         {(model) => <DeviceSpecializedSummary model={model()} />}
                       </Show>
                       <button class="secondary details-button device-details-button" type="button" onClick={() => setDetailsOpen(true)}>
-                        {uiText.deviceTopology.details}
+                        {uiText.deviceTopology.allInformation}
                       </button>
                     </>
                   )}

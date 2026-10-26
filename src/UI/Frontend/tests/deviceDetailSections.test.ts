@@ -4,6 +4,7 @@ import { portProtocol } from "../src/features/deviceTopology/deviceVocabulary.ts
 import {
   attachedDisplay,
   deviceUserDetailSections,
+  nodeHeadline,
   nodeSummaryFields,
   type DeviceTopologyListNode
 } from "../src/features/deviceTopology/deviceDetailSections.ts";
@@ -22,7 +23,7 @@ const hubPath = String.raw`\\?\usb#vid_1a40&pid_0101#hub`;
 const keyboardHost = usbPort({
   id: "kbd-host", connectorKind: "usb-a", hubPath: rootHub, portNumber: 1, connected: true,
   productName: "HERO 99 HE", speed: "USB Full-Speed / 12Mbps",
-  interfaceProtocols: ["HID Boot Keyboard [03/01/01]"],
+  interfaces: [{ interfaceNumber: 0, alternateSetting: 0, classCode: 0x03, subClassCode: 0x01, protocolCode: 0x01 }],
   hid: { hidType: "keyboard", hidSpecification: "HID 1.11", inputPollingIntervalMicroseconds: 1_000, theoreticalReportRateHz: 1_000,
     standardCapabilitySource: { domain: 5, code: 60, args: [] } }
 });
@@ -33,7 +34,11 @@ const hubHost = usbPort({
 const audioPort = usbPort({
   id: "audio", connectorKind: "usb-a", hubPath, portNumber: 2, connected: true,
   productName: "AB USB Audio", speed: "USB Full-Speed / 12Mbps",
-  interfaceProtocols: ["Audio Control [01/01/00]", "Audio Streaming [01/02/00]", "HID [03/00/00]"]
+  interfaces: [
+    { interfaceNumber: 0, alternateSetting: 0, classCode: 0x01, subClassCode: 0x01, protocolCode: 0x00 },
+    { interfaceNumber: 1, alternateSetting: 0, classCode: 0x01, subClassCode: 0x02, protocolCode: 0x00 },
+    { interfaceNumber: 2, alternateSetting: 0, classCode: 0x03, subClassCode: 0x00, protocolCode: 0x00 }
+  ]
 });
 const rj45: DeviceTopologyPort = {
   ...basePort("rj45", "rj45", "network"),
@@ -97,6 +102,11 @@ assert.equal(ethernetRows.filter((row) => row.endsWith(`| ${t.label.connectionSt
   `the connection state is shown once: ${ethernetRows.join("\n")}`);
 assert.ok(section(ethernet, t.section.network)?.items.some((item) => item.label === t.label.networkInterface), "the network section stays");
 
+// 详情头的概括：接口写外部／内部接口，设备写设备类型，连接状态明确时跟在后面；不带速率和清单副标题（协调者 10-26）。
+assert.equal(nodeHeadline(ethernet, "external"), `${t.externalScope} · ${t.connectionState.disconnected}`);
+assert.equal(nodeHeadline(keyboard, "external"), `${uiText.deviceAdapters.keyboard} · ${t.connectionState.connected}`);
+assert.ok(!nodeHeadline(audio, "external").includes("12Mbps") && nodeHeadline(audio, "external") !== audio.subtitle, "the headline carries no speed");
+assert.equal(nodeHeadline({ ...ethernet, connectionState: "unknown" }, "internal"), t.internalScope, "an unknown state is left out");
 // 没接显示器的 HDMI：不列显示节，EDID 详情也不渲染（attachedDisplay 为 null）。
 const hdmi = nodeTitled(uiText.deviceInterface.connector.hdmi);
 assert.equal(attachedDisplay(hdmi.port), null, "an empty port has no attached display");
@@ -181,7 +191,7 @@ function usbPort(options: {
   downstreamHubPath?: string;
   productName?: string;
   speed?: string;
-  interfaceProtocols?: string[];
+  interfaces?: DeviceTopologyUsbConnection["interfaces"];
   hid?: DeviceTopologyPort["hid"];
 }): DeviceTopologyPort {
   const usb: DeviceTopologyUsbConnection = {
@@ -199,8 +209,11 @@ function usbPort(options: {
     deviceRevision: "1.0",
     deviceClass: options.isHub ? "Hub" : "Device",
     productName: options.productName,
-    interfaceProtocols: options.interfaceProtocols ?? [],
-    deviceClassCode: null, deviceSubClassCode: null, deviceProtocolCode: null, interfaces: null,
+    interfaceProtocols: [],
+    deviceClassCode: options.isHub ? 0x09 : null,
+    deviceSubClassCode: null,
+    deviceProtocolCode: null,
+    interfaces: options.interfaces ?? null,
     downstreamHubDevicePath: options.downstreamHubPath
   };
   return {

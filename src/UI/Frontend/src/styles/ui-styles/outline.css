@@ -292,8 +292,8 @@
 }
 
 :root[data-ui-style="outline"] .device-port-icon.large,
-:root[data-ui-style="outline"] .device-laptop-lid,
-:root[data-ui-style="outline"] .device-laptop-base,
+:root[data-ui-style="outline"] .device-machine-body,
+:root[data-ui-style="outline"] .device-machine-deck,
 :root[data-ui-style="outline"] .cpu-ring-cache-region,
 :root[data-ui-style="outline"] .component-acquisition-versions {
   border-radius: var(--radius-lg);
@@ -303,7 +303,8 @@
 :root[data-ui-style="outline"] .cpu-core-meter,
 :root[data-ui-style="outline"] .gpu-pressure-track,
 :root[data-ui-style="outline"] .gpu-specialized-track,
-:root[data-ui-style="outline"] .device-laptop-hinge,
+:root[data-ui-style="outline"] .device-machine-hinge,
+:root[data-ui-style="outline"] .device-machine-feet,
 :root[data-ui-style="outline"] .control-capability-level,
 :root[data-ui-style="outline"] .control-capability-live {
   border-radius: 1px;

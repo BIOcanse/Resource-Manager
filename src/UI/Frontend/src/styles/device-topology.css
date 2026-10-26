@@ -34,35 +34,24 @@
   min-width: 0;
 }
 
-.device-topology-heading {
+/* 区域顶部是整机的识别名（标题和所在分页同名，只留给读屏）。 */
+.device-topology-identity {
   flex: 1 1 auto;
   min-width: 0;
-  display: grid;
-  gap: 3px;
-}
-
-.device-topology-header .device-scope-tabs {
-  flex: none;
-}
-
-.device-topology-heading h2 {
-  margin: 0;
-  font-size: 18px;
-  line-height: 1.2;
-}
-
-.device-topology-heading span {
-  min-width: 0;
   overflow: hidden;
-  color: var(--muted);
-  font-size: 12px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* 右栏是整机，内容固定、不随选择变：给它一个窄的上限，空出来的宽度给清单（用户 2026-10-25「右边太空了，所以建议缩减大小给左边信息腾位置」）。
+   清单每行有标题、副标题和类别标签，比只放几格事实的详情更缺宽度，所以清单比详情宽（协调者 10-26）。 */
 .device-topology-layout {
   display: grid;
-  grid-template-columns: minmax(280px, 340px) minmax(260px, 340px) minmax(420px, 1fr);
+  grid-template-columns: minmax(320px, 1.3fr) minmax(300px, 1fr) minmax(260px, 320px);
   grid-template-areas:
     "ports detail top"
     "notes notes notes";
@@ -83,6 +72,8 @@
 .device-port-list {
   grid-area: ports;
   display: grid;
+  /* 一列，宽度就是栏宽：标题、搜索和条目都不能把清单撑得比栏宽。 */
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
   /* 清单比面板高时 auto 行只按条目的 min-height 分配高度，换行的副标题会溢出卡片；按内容定行高。 */
   grid-auto-rows: max-content;
@@ -91,18 +82,40 @@
   overflow: auto;
 }
 
+/* 标题是内外切换加计数；放不下时计数换到下一行。清单滚动时标题停在顶上，切换随时够得着（原来在页头）。 */
 .device-port-list-title {
+  position: sticky;
+  /* 吸顶按清单的内容框算（在 10px 内边距里面）：-10px 让它贴着清单的上边，静止时也不被往下推。 */
+  top: -10px;
+  z-index: 1;
+  margin: -10px -10px 0;
+  padding: 10px 10px 2px;
+  background: inherit;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px 8px;
   color: var(--muted);
   font-size: 12px;
 }
 
-.device-port-list-title strong {
-  color: var(--text);
-  font-size: 13px;
+/* 栏窄、标签长（德语等）时分段跟着收窄，标签在按钮里换行，不撑宽清单。 */
+.device-port-list-title .device-scope-tabs {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.device-port-list-title .device-scope-tab {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 10px;
+  line-height: 1.2;
+  white-space: normal;
+}
+
+.device-port-list-title > span {
+  margin-left: auto;
 }
 
 .device-port-search {
@@ -126,7 +139,7 @@
   width: 100%;
   min-height: 54px;
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
+  grid-template-columns: 34px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   border: 1px solid var(--line);
@@ -180,15 +193,23 @@
   gap: 3px;
 }
 
-.device-port-main strong,
-.device-port-protocol {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* 标题行：标题占满剩下的宽度，类别标签在右端；两者放不下时标签换到标题下面（左对齐），不截断。
+   标签自己一行还放不下时在词间折行（窄栏、德语），仍然完整可读。 */
+.device-port-heading {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 8px;
 }
 
 .device-port-main strong {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
   font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .device-port-main small,
@@ -197,19 +218,25 @@
   font-size: 11px;
 }
 
+/* 副标题只占一行；完整内容在条目的悬停提示和详情的格子里。 */
 .device-port-main small {
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
   line-height: 1.3;
-  white-space: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .device-port-protocol {
-  max-width: 86px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
   padding: 2px 6px;
   border: 1px solid var(--line-soft);
-  border-radius: 999px;
+  border-radius: 10px;
   background: var(--surface-soft);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .device-port-protocol.connected {
@@ -248,25 +275,31 @@
   align-content: center;
   gap: 14px;
   min-height: 420px;
-  padding: 18px;
+  padding: 16px;
+  overflow: auto;
 }
 
-.device-laptop {
+/* 整机示意：按后端判定的形态换外形（data-form-factor），只用边框和底色画，各风格的颜色跟着令牌走。 */
+.device-machine-figure {
   display: grid;
-  gap: 6px;
-  place-items: center;
+  justify-items: center;
+  gap: 5px;
   min-width: 0;
 }
 
-.device-laptop-lid {
-  width: min(520px, 92%);
+.device-machine-body {
+  /* 品牌字号按机身宽度缩放：右栏变窄、台式机身更窄时不溢出。 */
+  container-type: inline-size;
+  position: relative;
+  width: 92%;
+  max-width: 420px;
   aspect-ratio: 1.6;
   display: grid;
   place-items: center;
   align-content: center;
-  gap: 8px;
+  gap: 6px;
   border: 2px solid color-mix(in oklab, var(--accent) 58%, var(--line));
-  border-radius: 18px;
+  border-radius: 14px;
   background:
     linear-gradient(145deg, color-mix(in oklab, var(--accent) 10%, transparent), transparent 54%),
     var(--surface);
@@ -274,10 +307,10 @@
 }
 
 .device-brand-logo {
-  max-width: 78%;
+  max-width: 84%;
   overflow: hidden;
   color: var(--text);
-  font-size: clamp(30px, 5vw, 58px);
+  font-size: clamp(16px, 13cqi, 52px);
   font-weight: 900;
   letter-spacing: 0;
   line-height: 1;
@@ -285,51 +318,210 @@
   white-space: nowrap;
 }
 
-.device-laptop-lid strong,
-.device-laptop-lid small {
-  max-width: 82%;
+.device-machine-manufacturer,
+.device-machine-model {
+  max-width: 86%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.device-laptop-lid strong {
+.device-machine-manufacturer {
   color: var(--text);
-  font-size: 14px;
+  font-size: 13px;
 }
 
-.device-laptop-lid small {
+.device-machine-model {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
 }
 
-.device-laptop-hinge {
-  width: min(460px, 82%);
-  height: 8px;
+/* 笔记本、移动工作站：屏幕、转轴、底座。移动工作站的底座更厚，带进风格栅，转轴用强调色。 */
+.device-machine-hinge {
+  width: 78%;
+  max-width: 360px;
+  height: 6px;
   border-radius: 999px;
   background: var(--line);
 }
 
-.device-laptop-base {
-  width: min(560px, 98%);
-  min-height: 92px;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  padding: 12px;
+.device-machine-deck {
+  width: 100%;
+  max-width: 456px;
+  height: 14px;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 3px 3px 12px 12px;
   background: var(--surface);
 }
 
-.device-laptop-base span {
+.device-machine-figure[data-form-factor="mobile_workstation"] .device-machine-hinge {
+  background: color-mix(in oklab, var(--accent) 62%, var(--line));
+}
+
+.device-machine-figure[data-form-factor="mobile_workstation"] .device-machine-deck {
+  height: 24px;
+  border-color: color-mix(in oklab, var(--accent) 46%, var(--line));
+  background:
+    repeating-linear-gradient(90deg, var(--line) 0 2px, transparent 2px 7px) center / 46% 6px no-repeat,
+    var(--surface);
+}
+
+/* 工作站：矮而宽的机箱，正面一排接口。 */
+.device-machine-figure[data-form-factor="workstation"] .device-machine-body {
+  width: 84%;
+  max-width: 380px;
+  aspect-ratio: 1.45;
+  border-radius: 22px;
+}
+
+.device-machine-figure[data-form-factor="workstation"] .device-machine-body::after {
+  content: "";
+  position: absolute;
+  bottom: 10%;
+  left: 50%;
+  width: 34%;
+  height: 4px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: repeating-linear-gradient(90deg, var(--line) 0 8px, transparent 8px 13px);
+}
+
+/* 桌面主机：竖立的塔式机箱，顶部两条光驱位，下方电源键。 */
+.device-machine-figure[data-form-factor="desktop"] .device-machine-body {
+  width: 50%;
+  max-width: 200px;
+  aspect-ratio: 0.64;
+  border-radius: 10px;
+}
+
+.device-machine-figure[data-form-factor="desktop"] .device-machine-body::before {
+  content: "";
+  position: absolute;
+  top: 8%;
+  left: 18%;
+  right: 18%;
+  height: 12px;
+  border-block: 1px solid var(--line);
+}
+
+.device-machine-figure[data-form-factor="desktop"] .device-machine-body::after {
+  content: "";
+  position: absolute;
+  bottom: 9%;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translateX(-50%);
+  border: 2px solid color-mix(in oklab, var(--accent) 58%, var(--line));
+  border-radius: 50%;
+}
+
+.device-machine-feet {
+  width: 62%;
+  max-width: 260px;
+  height: 5px;
+  border-radius: 0 0 6px 6px;
+  background: var(--line);
+}
+
+.device-machine-figure[data-form-factor="desktop"] .device-machine-feet {
+  width: 40%;
+  max-width: 160px;
+}
+
+/* 未识别：中性的虚线外框，不暗示任何形态。 */
+.device-machine-figure[data-form-factor="unknown"] .device-machine-body {
+  width: 74%;
+  max-width: 340px;
+  aspect-ratio: 1.3;
+  border-style: dashed;
+  border-color: var(--line);
+  background: var(--surface);
+}
+
+/* 形态和判定依据 */
+.device-machine-identity {
   display: grid;
-  place-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px;
   border: 1px solid var(--line-soft);
   border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.device-machine-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 8px;
+  min-width: 0;
+}
+
+.device-machine-form span,
+.device-machine-evidence-title {
   color: var(--muted);
   font-size: 11px;
-  font-weight: 800;
+}
+
+.device-machine-form strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.device-machine-form strong[data-form-factor="unknown"] {
+  color: var(--muted);
+}
+
+.device-machine-evidence-title {
+  font-weight: 700;
+}
+
+.device-machine-evidence {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.device-machine-evidence li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 8px;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  font-size: 12px;
+}
+
+.device-machine-evidence li span {
+  color: var(--muted);
+}
+
+.device-machine-evidence li span:only-child {
+  color: var(--text);
+}
+
+.device-machine-evidence li strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.device-machine-evidence-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .device-system-meta {
@@ -340,17 +532,24 @@
   min-width: 0;
 }
 
+/* 标签写明是什么（主板型号、BIOS）再写取值；长标签（俄语等）折行，不截断。 */
 .device-system-meta span {
   max-width: 100%;
-  overflow: hidden;
   padding: 3px 8px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 12px;
   background: var(--surface);
-  color: var(--muted);
+  color: var(--text);
   font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.device-system-meta small {
+  margin-right: 5px;
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .device-port-detail {
@@ -418,9 +617,10 @@
   font-weight: 700;
 }
 
+/* 详情栏变宽后一行放得下几格就放几格。 */
 .device-detail-summary {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 8px;
 }
 
@@ -538,9 +738,10 @@
   margin: 0;
 }
 
-@media (max-width: 1180px) {
+/* 三栏放不下时整机移到下面占满一行：示意图和识别信息左右并排。 */
+@media (max-width: 1040px) {
   .device-topology-layout {
-    grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+    grid-template-columns: minmax(280px, 1.3fr) minmax(0, 1fr);
     grid-template-areas:
       "ports detail"
       "top top"
@@ -550,6 +751,17 @@
   .device-port-detail {
     height: auto;
     max-height: 680px;
+  }
+
+  .device-top-view {
+    height: auto;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+  }
+
+  .device-system-meta {
+    grid-column: 1 / -1;
   }
 }
 
@@ -578,8 +790,7 @@
   }
 
   .device-top-view {
-    height: auto;
-    min-height: 420px;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .device-port-detail {
