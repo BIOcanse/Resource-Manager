@@ -30,6 +30,7 @@ let logDir = resolve(projectRoot, "../../../.local/test-results/browser-parallel
 const specs = [];
 for (let index = 0; index < args.length; index += 1) {
   if (args[index] === "--jobs") workers = args[++index];
+  else if (args[index] === "--keep-going") keepGoing = true;
   else if (args[index] === "--logs") logDir = resolve(args[++index]);
   else if (args[index] === "--keep-going") keepGoing = true;
   else specs.push(args[index]);

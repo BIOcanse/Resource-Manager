@@ -92,6 +92,8 @@ const defaultScenario = {
     browserRuntimeRevision: "0"
   },
   cpuTopologyEmpty: false,
+  cpuTopologyUsageOffset: 0,
+  cpuTopologyLayoutKind: "grid",
   // 规范字段的设备值（/api/metrics/subscribe?fields=）。默认没有任何设备绑定。
   // 字段目录（/api/metrics/fields/catalog/subscribe）由同一份设备值生成。
   metricFieldDevices: [],
@@ -1796,7 +1798,7 @@ function fixtureCpuTopology(capturedAt = now()) {
     topologySource: "frontend-harness",
     usageSource: "frontend-harness",
     affinityTargetKind: "logical_processor_mask",
-    visualLayoutKind: "grid",
+    visualLayoutKind: scenario.cpuTopologyLayoutKind,
     visualLayoutSource: "frontend-harness",
     physicalCoreCount: 2,
     logicalProcessorCount: 4,
@@ -1805,7 +1807,7 @@ function fixtureCpuTopology(capturedAt = now()) {
     ccds: [{
       id: "ccd:0",
       index: 0,
-      usagePercent: 31,
+      usagePercent: 31 + scenario.cpuTopologyUsageOffset,
       physicalCoreIndexes: [0, 1],
       logicalProcessorIds: [0, 1, 2, 3],
       source: "frontend-harness"
@@ -1816,7 +1818,7 @@ function fixtureCpuTopology(capturedAt = now()) {
       ccdId: "ccd:0",
       efficiencyClass: 0,
       performanceScore: 100 - index * 5,
-      usagePercent: index === 0 ? 42 : 20,
+      usagePercent: (index === 0 ? 42 : 20) + scenario.cpuTopologyUsageOffset,
       logicalProcessorIds: [index * 2, index * 2 + 1],
       cacheLevels: [
         { level: 1, sizeKb: 64, logicalProcessorIds: [index * 2, index * 2 + 1], scope: "private" },

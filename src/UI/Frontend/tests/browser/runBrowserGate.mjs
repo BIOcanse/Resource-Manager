@@ -80,6 +80,7 @@ import accessibilitySemanticsJourney from "./accessibilitySemanticsJourney.js";
 const allJourneys = [
   ["management-source-states", managementSourceStatesJourney],
   ["monitor-page-task", async (...args) => (await import("./monitorPageTaskJourney.js")).default(...args)],
+  ["live-keyboard-focus", async (...args) => (await import("./liveKeyboardFocusJourney.js")).default(...args)],
   ["dashboard-preferences", async (...args) => (await import("./dashboardPreferencesJourney.js")).default(...args)],
   ["service-recovery-settings", serviceRecoverySettingsJourney],
   ["product-updates", productUpdatesJourney],

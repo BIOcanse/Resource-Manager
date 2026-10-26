@@ -1,4 +1,4 @@
-import { createEffect, onCleanup, type Accessor } from "solid-js";
+import { createEffect, createMemo, on, onCleanup, type Accessor } from "solid-js";
 import { restoreFocusTarget } from "./focusReturn.ts";
 
 interface ModalFocusOptions {
@@ -17,8 +17,10 @@ interface InertRecord {
 const modalStack: symbol[] = [];
 
 export function useModalFocus(options: ModalFocusOptions) {
-  createEffect(() => {
-    if (!options.open()) {
+  // Only a closed/open transition owns setup and cleanup. An accessor may read
+  // live data to determine openness; equal booleans must keep the same lifecycle.
+  createEffect(on(createMemo(options.open), (open) => {
+    if (!open) {
       return;
     }
 
@@ -95,7 +97,7 @@ export function useModalFocus(options: ModalFocusOptions) {
 
       restoreFocusTarget(opener, openerFocusKey);
     });
-  });
+  }));
 }
 
 export function getFocusableDialogElements(dialog: HTMLElement) {

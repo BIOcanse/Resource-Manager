@@ -1,6 +1,7 @@
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
 import { RuntimePolicyDeliveryNotice } from "../../components/RuntimePolicyDeliveryNotice";
 import {
+  createComputed,
   createEffect,
   createMemo,
   createSignal,
@@ -40,6 +41,7 @@ import {
   numaNodeRows
 } from "./cpuMetricFields.ts";
 import { CurrentPageHeading } from "../../app/navigation/currentPageName.tsx";
+import { createStore, reconcile } from "solid-js/store";
 
 type CpuSelectionKind = "ccd" | "core" | "logical";
 
@@ -129,10 +131,16 @@ export function CpuTopologyDiagram(props: {
       refreshIntervalMs: null
     }));
   const [scoreDraft, setScoreDraft] = createSignal<Record<number, string>>({});
-  const snapshot = () => {
+  // The view owns row identity. Publications replace facts, while stable ids
+  // preserve CCD/core/logical processor objects and their existing DOM nodes.
+  const [model, setModel] = createStore<{ current: CpuTopologySnapshot | undefined }>({ current: undefined });
+  createComputed(() => {
     const source = topology();
-    return source && sourceCanRender(source) ? source.data ?? undefined : undefined;
-  };
+    const current = source && sourceCanRender(source) ? source.data ?? undefined : undefined;
+    // Reconcile mutates its target; the view must own it rather than a shared source snapshot.
+    setModel("current", reconcile(structuredClone(current), { key: "id" }));
+  });
+  const snapshot = () => model.current;
   const residencySnapshot = () => {
     const source = residency();
     return source && sourceCanRender(source) ? source.data ?? undefined : undefined;
