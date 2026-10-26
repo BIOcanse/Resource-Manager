@@ -1,3 +1,4 @@
+import { bindPushSource } from "../frontendRuntime/push/usePushSource.ts";
 import { createEffect, onCleanup } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { ManagementInventoryRevisionSnapshot } from "../data/managementInventoryRevision.ts";
@@ -21,7 +22,7 @@ export function bindManagementInventoryRevisions(options: ManagementInventoryRev
   createEffect(() => {
     if (!options.components.active() && !options.software.active() && !options.browserRuntimes.active()) return;
     let previous: ManagementInventoryRevisionSnapshot | null = null;
-    const unsubscribe = options.inventoryRevisionSource.subscribeSnapshot(snapshot => {
+    const unsubscribe = bindPushSource(options.inventoryRevisionSource, { active: true }, snapshot => {
       const next = snapshot.data;
       if (!next) return;
       const before = previous;

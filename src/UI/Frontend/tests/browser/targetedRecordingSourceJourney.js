@@ -137,10 +137,11 @@ export default async function targetedRecordingSourceJourney(page, baseUrl) {
   assert(listReads === readsBeforeHidden,
     `The mounted recording control kept polling while the document was hidden: ${readsBeforeHidden} -> ${listReads}`);
   assert(await control.isVisible(), "The recording control was unmounted for the hidden-page check");
+  // Count from before visibility returns: the resume read starts at once and may be observed before this line continues.
+  const readsBeforeVisible = listReads;
   await page.evaluate(() => window.setDocumentVisibilityForJourney(true));
-  const readsAfterVisible = listReads;
   await passPollWindow();
-  assert(listReads > readsAfterVisible,
+  assert(listReads > readsBeforeVisible,
     "The recording list did not resume polling when document visibility returned");
   await detail.locator("button.icon-button[aria-label='关闭']").click();
   await detail.waitFor({ state: "hidden", timeout: 3000 });

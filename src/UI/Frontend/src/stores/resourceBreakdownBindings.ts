@@ -1,4 +1,5 @@
-import { createEffect, createMemo, createSignal, onCleanup, untrack, type Accessor } from "solid-js";
+import { usePushSource } from "../frontendRuntime/push/usePushSource.ts";
+import { createEffect, createMemo, untrack, type Accessor } from "solid-js";
 import {
   normalizeResourceBreakdownQuery,
   normalizeResourceMonitorQuery,
@@ -49,18 +50,15 @@ function bindCurrent<TQuery, TValue>(
   needed: (query: TQuery) => boolean,
   onValue?: (value: TValue) => void
 ): Accessor<SourceSnapshot<TValue> | null> {
-  const [current, setCurrent] = createSignal<{ key: string; snapshot: SourceSnapshot<TValue> } | null>(null);
-  createEffect(() => {
-    const bindingKey = key();
-    const binding = JSON.parse(bindingKey) as { active: boolean; intervalMs: number | null; query: TQuery };
-    if (!binding.active || binding.intervalMs === null || !needed(binding.query)) return;
-    let accepting = true;
-    const unsubscribe = source.subscribeSnapshot(binding.query, binding.intervalMs, snapshot => {
-      if (!accepting) return;
-      setCurrent({ key: JSON.stringify(binding.query), snapshot });
-      if (snapshot.data) untrack(() => onValue?.(snapshot.data!));
-    });
-    onCleanup(() => { accepting = false; unsubscribe(); });
+  const binding = createMemo(() => JSON.parse(key()) as {
+    active: boolean; intervalMs: number | null; query: TQuery
   });
-  return createMemo(() => current()?.key === JSON.stringify(JSON.parse(key()).query) ? current()!.snapshot : null);
+  const { snapshot } = usePushSource(source, () => ({
+    ...binding(), active: binding().active && needed(binding().query)
+  }));
+  createEffect(() => {
+    const value = snapshot().data;
+    if (value) untrack(() => onValue?.(value));
+  });
+  return snapshot;
 }

@@ -10,9 +10,13 @@ import { readyResourceMonitorWire } from "./resourceMonitorFixture.ts";
 
 function source<TQuery, TValue>() {
   const calls: { query: TQuery; interval: number; stopped: boolean; emit: (snapshot: SourceSnapshot<TValue>) => void }[] = [];
-  const family: PushValueSourceFamily<TQuery, TValue> = { key: "test", subscribeSnapshot(query, interval, emit) {
+  const current = new Map<string, SourceSnapshot<TValue>>();
+  const family: PushValueSourceFamily<TQuery, TValue> = { key: "test",
+    readSnapshot(query) { return current.get(JSON.stringify(query)) ?? snapshot<TValue>(null); },
+    subscribeSnapshot(query, interval, listener) {
+    const emit = (value: SourceSnapshot<TValue>) => { current.set(JSON.stringify(query), value); listener(value); };
     const call = { query, interval, emit, stopped: false }; calls.push(call);
-    emit(snapshot<TValue>(null));
+    listener(family.readSnapshot(query));
     return () => { call.stopped = true; };
   } };
   return { family, calls };
@@ -84,6 +88,6 @@ assert.strictEqual(root.binding.bars()?.data, barValue, "Hidden region keeps its
 assert.equal(root.binding.details()?.status, "loading");
 assert(bars.calls.every(call => call.stopped)); assert(details.calls.every(call => call.stopped));
 root.setActive(true); await Promise.resolve();
-assert.equal(root.binding.bars()?.data, null, "Test transport has not delivered a value for the new query");
+assert.strictEqual(root.binding.bars()?.data, barValue, "Reactivation reads the same entry current value");
 root.dispose();
 console.log("Resource bars and process details use independent current bindings.");

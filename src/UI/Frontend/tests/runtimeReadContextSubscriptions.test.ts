@@ -55,7 +55,7 @@ function source<T>(key: string): PushValueSource<T> {
     key, channel, buildUrl: interval => `/api/${key}/subscribe?intervalMs=${interval}`,
     decoder: defineResponseDecoder(key, value => value as T)
   });
-  return { key, subscribeSnapshot(intervalMs, listener) {
+  return { key, readSnapshot: () => shared.readSnapshot(), subscribeSnapshot(intervalMs, listener) {
     const binding = { key, intervalMs, released: false };
     bindings.push(binding);
     const unsubscribe = shared.subscribeSnapshot(intervalMs, listener);

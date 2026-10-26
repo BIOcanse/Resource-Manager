@@ -1,6 +1,7 @@
+import { usePushSource } from "../../frontendRuntime/push/usePushSource.ts";
 import { localizedMetricLabel, metricUnitLabel } from "../../presentation/metricLabels";
 import { PackagePlus, Search, X } from "lucide-solid";
-import { createEffect, createMemo, createSelector, createSignal, For, Index, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSelector, createSignal, For, Index, Show } from "solid-js";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext.tsx";
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
 import type { MetricFieldCatalogDevice } from "../../data/metricFields/metricFieldSource.ts";
@@ -86,14 +87,10 @@ function optionTitle(metric: MetricDefinition, dependency: MetricDependencyState
 export function MetricModal(props: MetricModalProps) {
   const runtime = useFrontendRuntime();
   const readIntervals = useFrontendReadIntervals();
-  const [devices, setDevices] = createSignal<readonly MetricFieldCatalogDevice[]>([]);
-  createEffect(() => {
-    const intervalMs = readIntervals.current()?.monitor;
-    if (!props.open || intervalMs === undefined) return;
-    const unsubscribe = runtime.sources.metricFieldCatalog.subscribeSnapshot(intervalMs,
-      (snapshot) => setDevices(snapshot.data?.fields ?? []));
-    onCleanup(unsubscribe);
-  });
+  const catalogSource = usePushSource(runtime.sources.metricFieldCatalog, () => ({
+    active: props.open, intervalMs: readIntervals.current()?.monitor
+  }));
+  const devices = () => catalogSource.snapshot().data?.fields ?? [];
   const listboxId = "metric-modal-options";
   let searchInput: HTMLInputElement | undefined;
   let listbox: HTMLDivElement | undefined;

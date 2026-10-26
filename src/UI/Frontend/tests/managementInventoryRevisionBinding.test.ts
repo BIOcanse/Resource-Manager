@@ -25,7 +25,7 @@ const state = createRoot(dispose => {
   const [inventoryActive, setInventoryActive] = createSignal(false);
   const [browserActive, setBrowserActive] = createSignal(false);
   const sources = { ...createFrontendSources(client, registry, channel), managementInventoryRevision: {
-    key: "revision", subscribeSnapshot(listener: typeof revisionListener) { revisionListener = listener; publish(); return () => { revisionListener = null; }; }
+    key: "revision", readSnapshot: () => ({ key: "revision", status: "ready" as const, data: revisions, error: null, backendEpoch: "standalone", revision: 1, acceptedAttempt: 1, domainRevision: null, capturedAt: null }), subscribeSnapshot(listener: typeof revisionListener) { revisionListener = listener; publish(); return () => { revisionListener = null; }; }
   } };
   const view = useManagementInventory({ sources, inventoryActive, browserRuntimesActive: browserActive, mutablePersistenceEnabled: () => true,
     operations: { subscribeInvalidations(listener) { invalidationListener = listener; return () => { invalidationListener = null; }; } } });

@@ -57,8 +57,8 @@ assert.match(details, /GpuSchedulingModel runtimeEffectsEnabled=/);
 assert.doesNotMatch(
   gpuModel,
   /createSignal<MetricSnapshot>\(\{[\s\S]*capturedAt:\s*null,[\s\S]*items:\s*\{\}/);
-assert.match(gpuModel, /createSignal<\{ key: string; source: SourceSnapshot<MetricSnapshot> \} \| null>\(null\)/);
-assert.match(gpuModel, /metricBinding\(\)\?\.key === gpuIndexKey\(\)/);
+assert.match(gpuModel, /const metricSnapshot = usePushSource\(runtime\.sources\.metricSnapshot,/);
+assert.match(gpuModel, /query: \{ ids: gpuIndexes\(\)\.flatMap/);
 assert.match(
   gpuModel,
   /metric && sourceCanRender\(metric\)[\s\S]*resource && sourceCanRender\(resource\)/);
@@ -126,10 +126,10 @@ assert.match(monitorStore, /function applyCatalogPush\(push: MetricCatalogPush\)
 assert.match(monitorStore, /if \(JSON\.stringify\(catalog\(\)\) !== JSON\.stringify\(push\.metrics\)\) setCatalog\(push\.metrics\);/);
 assert.match(monitorStore, /if \(push\.catalogRevision !== backendCatalogRevision\) \{\s*backendCatalogRevision = push\.catalogRevision;\s*if \(dashboardUsesFactoryDefaults\) void refreshSettings\(\);/);
 assert.match(monitorStore, /source: SourceSnapshot<MetricDefinition\[\]>\s*\): void \{\s*if \(catalogFromPush\) \{\s*return;/);
-assert.match(monitorStore, /if \(value\.data\) applyCatalogPush\(value\.data\);/);
+assert.match(monitorStore, /on\(fieldCatalogSnapshot, value => \{[\s\S]*?options\.metricSnapshotActive\(\) && options\.metricSnapshotIntervalMs\(\) !== null && value\.data\) \{\s*applyCatalogPush\(value\.data\);/);
 // 订阅没收到帧时（或没有订阅），快照帧的目录修订号第一次出现或变化时重取目录；还是出厂布局时再重取看板设置。
 assert.match(monitorStore, /dashboardUsesFactoryDefaults = settings\.usesFactoryDefaults === true;/);
-assert.match(monitorStore, /if \(value\.data && !catalogFromPush && value\.data\.catalogRevision !== backendCatalogRevision\) \{\s*backendCatalogRevision = value\.data\.catalogRevision;\s*void followBackendCatalog\(value\.data\.catalogRevision\);/);
+assert.match(monitorStore, /if \(value\.data\) \{[\s\S]*?if \(!catalogFromPush && value\.data\.catalogRevision !== backendCatalogRevision\) \{\s*backendCatalogRevision = value\.data\.catalogRevision;\s*void followBackendCatalog\(value\.data\.catalogRevision\);/);
 assert.match(monitorStore, /if \(!await refreshCatalog\(\)\) \{\s*if \(backendCatalogRevision === revision\) \{\s*backendCatalogRevision = null;/);
 assert.match(monitorStore, /if \(dashboardUsesFactoryDefaults\) \{\s*await refreshSettings\(\);/);
 // 看板布局由后端按本机目录生成，设置到达前不画前端自带的占位卡。
@@ -147,14 +147,14 @@ for (const retiredMonitorRefresh of [
 }
 
 // Device topology and smart reports render only values received from backend callbacks.
-assert.match(deviceStore, /runtime\.sources\.deviceTopology\.subscribe/);
+assert.match(deviceStore, /usePushSource\(runtime\.sources\.deviceTopology,/);
 assert.doesNotMatch(deviceStore, /getDeviceTopologyState|setObservation|pollRequest|useFrontendWorkPoll/);
 assert.match(deviceStore, /projectDeviceTopologyObservation/);
 assert.match(deviceObservation, /state\.state === "ready"/);
 assert.match(deviceObservation, /state\.state === "failed"/);
 assert.match(deviceObservation, /status: "stale"/);
 assert.match(deviceView, /state=\{topology\.observation\(\)\}/);
-assert.match(smartReport, /sources\.smartCoordinatorState\.subscribe/);
+assert.match(smartReport, /usePushSource\(frontendRuntime\.sources\.smartCoordinatorState,/);
 assert.doesNotMatch(
   smartReport,
   /getHostManagerRollbackState|useFrontendWorkPoll|setObservation|ObservationStateBoundary|onRetry/);
@@ -163,17 +163,17 @@ assert.doesNotMatch(
 assert.match(gpuModel, /runtime\.sources\.metricCatalog\.acquire/);
 assert.match(gpuModel, /runtime\.sources\.gpuSchedulingModel\.acquire/);
 assert.match(gpuModel, /modelBinding\.switch/);
-assert.match(gpuModel, /runtime\.sources\.metricSnapshot\.subscribe/);
-assert.match(gpuModel, /runtime\.sources\.resourceMonitor\.subscribe/);
-assert.match(gpuModel, /runtime\.sources\.gpuSpecializedTelemetry\.subscribe/);
+assert.match(gpuModel, /usePushSource\(runtime\.sources\.metricSnapshot,/);
+assert.match(gpuModel, /usePushSource\(runtime\.sources\.resourceMonitor,/);
+assert.match(gpuModel, /usePushSource\(runtime\.sources\.gpuSpecializedTelemetry,/);
 assert.doesNotMatch(gpuModel, /backendEpoch|useFrontendWorkPoll|sourceTracker\.run|\.latest/);
 assert.match(gpuModel, /ObservationStateBoundary/);
 assert.match(gpuModel, /props\.runtimeEffectsEnabled && observation\(\)\.status === "ready"/);
 assert.doesNotMatch(gpuModel, /SourceLeaseHandoff|modelHandoff/);
 
 // CPU topology and residency render only their independent backend callback values.
-assert.match(cpuModel, /frontendRuntime\.sources\.cpuTopology\.subscribe/);
-assert.match(cpuModel, /frontendRuntime\.sources\.cpuResidency\.subscribe/);
+assert.match(cpuModel, /usePushSource\(frontendRuntime\.sources\.cpuTopology,/);
+assert.match(cpuModel, /usePushSource\(frontendRuntime\.sources\.cpuResidency,/);
 assert.match(cpuModel, /frontendRuntime\.sources\.cpuExclusiveBindings/);
 assert.doesNotMatch(cpuModel, /getCpuTopologySource|getCpuResidencySource|refreshAll/);
 assert.match(cpuModel, /exclusiveBindingsSource\.snapshot\(\)/);

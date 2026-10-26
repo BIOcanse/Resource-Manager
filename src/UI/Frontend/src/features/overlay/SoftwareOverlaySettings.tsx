@@ -1,5 +1,6 @@
+import { usePushSource } from "../../frontendRuntime/push/usePushSource.ts";
 import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
-import { createEffect, createMemo, createSignal, For, Index, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Index, Show } from "solid-js";
 import { getPerformanceOverlayMetricCatalog, getPerformanceOverlaySettings, OverlayPreferencesSaveError, savePerformanceOverlaySettings, resetPerformanceOverlayPresentation } from "../../api.ts";
 import { expectedOverlayInjectionModules } from "./startupModuleSelection.ts";
 import { localizedMetricLabel } from "../../presentation/metricLabels.ts";
@@ -8,7 +9,7 @@ import { MetricModal } from "../monitor/MetricModal.tsx";
 import { StandardSelect } from "../../components/StandardSelect.tsx";
 import { uiText, currentSettingsText } from "../../text.ts";
 import type { MetricDefinition, PerformanceOverlaySettings } from "../../types.ts";
-import type { MetricFieldCatalogDevice } from "../../data/metricFields/metricFieldSource.ts";
+
 import { useSource } from "../../frontendRuntime/source/useSource.ts";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext.tsx";
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
@@ -32,14 +33,10 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
   const readError = () => error() || (componentSource.snapshot().error
     ? userFacingErrorMessage(componentSource.snapshot().error, uiText.status.actionFailed) : "");
   const readIntervals = useFrontendReadIntervals();
-  const [fieldDevices, setFieldDevices] = createSignal<readonly MetricFieldCatalogDevice[]>([]);
-  createEffect(() => {
-    const intervalMs = readIntervals.current()?.monitor;
-    if (!props.active || intervalMs === undefined) return;
-    const unsubscribe = runtime.sources.metricFieldCatalog.subscribeSnapshot(intervalMs,
-      (snapshot) => setFieldDevices(snapshot.data?.fields ?? []));
-    onCleanup(unsubscribe);
-  });
+  const fieldCatalogSource = usePushSource(runtime.sources.metricFieldCatalog, () => ({
+    active: props.active, intervalMs: readIntervals.current()?.monitor
+  }));
+  const fieldDevices = () => fieldCatalogSource.snapshot().data?.fields ?? [];
   const sourceCatalog = createMemo(() => [...catalog(), ...fieldCardDefinitions(fieldDevices())]);
   let requestId = 0;
   const dirty = createMemo(() => JSON.stringify(saved()) !== JSON.stringify(draft()));

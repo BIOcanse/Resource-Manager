@@ -1,11 +1,6 @@
+import { usePushSource } from "../../frontendRuntime/push/usePushSource.ts";
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  onCleanup,
-  type Accessor
-} from "solid-js";
+import { createMemo, type Accessor } from "solid-js";
 import { frontendWorkIds } from "../../frontendWork/frontendWorkIds";
 import { useFrontendWork } from "../../frontendWork/FrontendWorkContext";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
@@ -49,19 +44,12 @@ export function useDeviceTopologyState(): DeviceTopologyStoreView {
   const runtime = useFrontendRuntime();
   const readIntervals = useFrontendReadIntervals();
   const frontendWork = useFrontendWork();
-  const [source, setSource] = createSignal<SourceSnapshot<DeviceTopologySnapshotState> | null>(null);
-  const state = () => source()?.data ?? initialDeviceTopologyState;
+  const source = usePushSource(runtime.sources.deviceTopology, () => ({
+    active: frontendWork.isNeeded(frontendWorkIds.detailsDeviceTopology),
+    intervalMs: readIntervals.current()?.monitor
+  })).snapshot;
+  const state = () => source().data ?? initialDeviceTopologyState;
 
-  createEffect(() => {
-    const intervalMs = readIntervals.current()?.monitor;
-    if (!frontendWork.isNeeded(frontendWorkIds.detailsDeviceTopology) || intervalMs === undefined) {
-      return;
-    }
-    const unsubscribe = runtime.sources.deviceTopology.subscribeSnapshot(
-      intervalMs,
-      setSource);
-    onCleanup(unsubscribe);
-  });
   const observation = createMemo<ObservationState>(() => {
     const current = source();
     if (current?.status === "error" || current?.status === "unavailable") {

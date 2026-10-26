@@ -1,8 +1,9 @@
+import { usePushSource } from "../frontendRuntime/push/usePushSource.ts";
 import { StableLabel } from "../ui/primitives/StableLabel.tsx";
 import { formatGpuProviderCapability, formatGpuLaunchOutcome } from "./gpuPlacementPresentation.ts";
 import { useFrontendReadIntervals } from "../app/FrontendReadIntervalsContext.tsx";
 import { RuntimePolicyDeliveryNotice } from "./RuntimePolicyDeliveryNotice";
-import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import { AlertTriangle, FolderOpen } from "lucide-solid";
 import { getDefaultGpuPlacementSoftwarePolicy } from "../api";
 import { useFrontendRuntime } from "../frontendRuntime/FrontendRuntimeContext";
@@ -387,18 +388,10 @@ function GpuPlacementPolicySection(props: {
   const frontendRuntime = useFrontendRuntime();
   const frontendWork = useFrontendWork();
   const readIntervals = useFrontendReadIntervals();
-  const [cpuTopology, setCpuTopology] = createSignal<CpuTopologySnapshot | null>(null);
-  createEffect(() => {
-    const intervalMs = readIntervals.current()?.monitor;
-    if (!frontendWork.frontendVisible() || intervalMs === undefined) {
-      return;
-    }
-    const unsubscribe = frontendRuntime.sources.cpuTopology.subscribeSnapshot(intervalMs,
-      (snapshot) => setCpuTopology(snapshot.data));
-    onCleanup(() => {
-      unsubscribe();
-          });
-  });
+  const cpuTopologySource = usePushSource(frontendRuntime.sources.cpuTopology, () => ({
+    active: frontendWork.frontendVisible(), intervalMs: readIntervals.current()?.monitor
+  }));
+  const cpuTopology = () => cpuTopologySource.snapshot().data;
   const [draft, setDraft] = createSignal<GpuPlacementSoftwarePolicy | null>(null);
   const [actionInProgress, setActionInProgress] = createSignal(false);
   const [localError, setLocalError] = createSignal<string | null>(null);

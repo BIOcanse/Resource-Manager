@@ -1,3 +1,4 @@
+import { usePushSource } from "../../frontendRuntime/push/usePushSource.ts";
 import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
 import { controlReasonText } from "../../presentation/controlReasonText.ts";
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
@@ -165,16 +166,10 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
    * 和期望值并排显示 —— 它不是期望的回声：固件会按温度自己调度，
    * 用户也可能用别的软件改过，两者对不上是常态，而且正是要让用户看见的信息。
    */
-  const [actualSource, setActualSource] = createSignal<SourceSnapshot<ControlActualState> | null>(null);
-  const actual = () => actualSource()?.data ?? null;
-  createEffect(() => {
-    const intervalMs = readIntervals.current()?.monitor;
-    if (!visible() || intervalMs === undefined) { return; }
-    const unsubscribe = runtime.sources.controlActualState.subscribeSnapshot(
-      intervalMs,
-      setActualSource);
-    onCleanup(unsubscribe);
-  });
+  const actualSource = usePushSource(runtime.sources.controlActualState, () => ({
+    active: visible(), intervalMs: readIntervals.current()?.monitor
+  })).snapshot;
+  const actual = () => actualSource().data;
 
   const apply = async (objectId: string) => {
     if (saving() || stateLoad() !== "ready") return;

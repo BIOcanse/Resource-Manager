@@ -1,5 +1,6 @@
+import { usePushSource } from "../../frontendRuntime/push/usePushSource.ts";
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
-import { createEffect, createMemo, createSignal, createUniqueId, For, Index, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, createUniqueId, For, Index, Show } from "solid-js";
 import {
   Bluetooth,
   BatteryCharging,
@@ -47,7 +48,7 @@ import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisib
 import { useFrontendWork } from "../../frontendWork/FrontendWorkContext";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
 import type { SourceSnapshot } from "../../frontendRuntime/source/SourceSnapshot.ts";
-import type { MetricFieldDevice } from "../../data/metricFields/metricFieldSource.ts";
+
 import { deviceMetricFieldNames } from "./deviceMetricFields.ts";
 import { DisplayEdidDetails } from "./components/DisplayEdidDetails.tsx";
 import { DeviceSpecializedDetails } from "./components/DeviceSpecializedDetails";
@@ -74,19 +75,13 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
   const runtime = useFrontendRuntime();
   const readIntervals = useFrontendReadIntervals();
   const frontendWork = useFrontendWork();
-  const [metricFieldSource, setMetricFieldSource] = createSignal<SourceSnapshot<readonly MetricFieldDevice[]> | null>(null);
-  const metricFieldDevices = () => metricFieldSource()?.data ?? null;
-  // NPU／AMD NPU 实时数值和设备拓扑同一生命周期订阅：所有订阅共用一条推送流，
-  // 跟着弹窗开关订阅会让整条流（含设备拓扑）反复重连。
-  createEffect(() => {
-    const intervalMs = readIntervals.current()?.monitor;
-    if (!frontendWork.isNeeded(frontendWorkIds.detailsDeviceTopology) || intervalMs === undefined) {
-      return;
-    }
-    const unsubscribe = runtime.sources.metricFields.subscribeSnapshot(
-      { fields: deviceMetricFieldNames }, intervalMs, setMetricFieldSource);
-    onCleanup(unsubscribe);
-  });
+  // Device fields share the topology view demand, independently of its dialog.
+  const metricFieldSource = usePushSource(runtime.sources.metricFields, () => ({
+    active: frontendWork.isNeeded(frontendWorkIds.detailsDeviceTopology),
+    intervalMs: readIntervals.current()?.monitor,
+    query: { fields: deviceMetricFieldNames }
+  })).snapshot;
+  const metricFieldDevices = () => metricFieldSource().data;
   const snapshot = createMemo(() => topology.state().snapshot ?? null);
   const [selectedNodeId, setSelectedNodeId] = createSignal<string | null>(null);
   const [detailsOpen, setDetailsOpen] = createSignal(false);

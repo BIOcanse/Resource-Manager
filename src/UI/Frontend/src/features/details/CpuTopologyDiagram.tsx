@@ -1,15 +1,8 @@
+import { usePushSource } from "../../frontendRuntime/push/usePushSource.ts";
 import { formatFixedDigits } from "../../presentation/interfaceNumbers.ts";
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
 import { RuntimePolicyDeliveryNotice } from "../../components/RuntimePolicyDeliveryNotice";
-import {
-  createComputed,
-  createEffect,
-  createMemo,
-  createSignal,
-  For,
-  onCleanup,
-  Show
-} from "solid-js";
+import { createComputed, createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import {
   resetCpuCorePerformanceOverrides,
   saveCpuCorePerformanceOverrides
@@ -83,41 +76,17 @@ export function CpuTopologyDiagram(props: {
   const frontendWork = useFrontendWork();
   const frontendRuntime = useFrontendRuntime();
   const readIntervals = useFrontendReadIntervals();
-  const [topology, setTopology] =
-    createSignal<SourceSnapshot<CpuTopologySnapshot | null> | null>(null);
-  const [residency, setResidency] =
-    createSignal<SourceSnapshot<CpuCoreResidencySnapshot | null> | null>(null);
-  const [numaFields, setNumaFields] =
-    createSignal<SourceSnapshot<readonly MetricFieldDevice[]> | null>(null);
-  const [frequencyFields, setFrequencyFields] =
-    createSignal<SourceSnapshot<readonly MetricFieldDevice[]> | null>(null);
-  createEffect(() => {
-    const intervalMs = readIntervals.current()?.monitor;
-    if (!frontendWork.isNeeded(frontendWorkIds.detailsCpuModel) || intervalMs === undefined) {
-      return;
-    }
-    const stopTopology = frontendRuntime.sources.cpuTopology.subscribeSnapshot(
-      intervalMs,
-      setTopology);
-    const stopResidency = frontendRuntime.sources.cpuResidency.subscribeSnapshot(
-      intervalMs,
-      setResidency);
-    const stopNuma = frontendRuntime.sources.metricFields.subscribeSnapshot(
-      { fields: numaFieldNames },
-      intervalMs,
-      setNumaFields);
-    // 有效频率随拓扑视图订阅一次，弹窗只负责显示：订阅集合变化会让整条推送流重连。
-    const stopFrequency = frontendRuntime.sources.metricFields.subscribeSnapshot(
-      { fields: [effectiveFrequencyFieldName] },
-      intervalMs,
-      setFrequencyFields);
-    onCleanup(() => {
-      stopFrequency();
-      stopNuma();
-      stopResidency();
-      stopTopology();
-    });
+  const demand = () => ({
+    active: frontendWork.isNeeded(frontendWorkIds.detailsCpuModel),
+    intervalMs: readIntervals.current()?.monitor
   });
+  const topology = usePushSource(frontendRuntime.sources.cpuTopology, demand).snapshot;
+  const residency = usePushSource(frontendRuntime.sources.cpuResidency, demand).snapshot;
+  const numaFields = usePushSource(frontendRuntime.sources.metricFields,
+    () => ({ ...demand(), query: { fields: numaFieldNames } })).snapshot;
+  // Effective frequency shares the topology view demand, independently of its dialog.
+  const frequencyFields = usePushSource(frontendRuntime.sources.metricFields,
+    () => ({ ...demand(), query: { fields: [effectiveFrequencyFieldName] } })).snapshot;
   const [commandError, setCommandError] = createSignal<string | null>(null);
   const [selected, setSelected] = createSignal<CpuSelection[]>([]);
   const [editing, setEditing] = createSignal(false);

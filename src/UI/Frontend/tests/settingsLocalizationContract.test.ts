@@ -38,8 +38,8 @@ assert.match(updatesSettings, /notificationSwitch\("accessRequestSystem", text\(
 
 // Trusted-access requests use the shared backend subscription source; the caller facts are informational,
 // scopes shown for approval come only from the request, and the default secret has no frontend read path.
-assert.match(accessRequestSnapshotContext, /runtime\.sources\.accessRequests\.subscribeSnapshot\(setSnapshot\)/);
-assert.equal((accessRequestSnapshotContext.match(/runtime\.sources\.accessRequests\.subscribeSnapshot/g) ?? []).length, 1);
+assert.match(accessRequestSnapshotContext, /usePushSource\(runtime\.sources\.accessRequests,/);
+assert.equal((accessRequestSnapshotContext.match(/usePushSource\(runtime\.sources\.accessRequests/g) ?? []).length, 1);
 assert.match(trustedAccessManager, /useAccessRequestSnapshot\(\)/);
 assert.match(trustedAccessBanner, /useAccessRequestSnapshot\(\)/);
 assert.match(trustedAccessBanner, /reviewRequests/);

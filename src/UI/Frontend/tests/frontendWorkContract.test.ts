@@ -109,19 +109,19 @@ assert.match(gpuSchedulingSource, /frontendVisibilitySurface/);
 assert.match(
   gpuSchedulingSource,
   /frontendWork\.isNeeded\(frontendWorkIds\.detailsGpuModel\)/);
-assert.match(gpuSchedulingSource, /gpuSpecializedTelemetry\.subscribe/);
-assert.match(gpuSchedulingSource, /metricSnapshot\.subscribe/);
-assert.match(gpuSchedulingSource, /resourceMonitor\.subscribe/);
+assert.match(gpuSchedulingSource, /usePushSource\(runtime\.sources\.gpuSpecializedTelemetry,/);
+assert.match(gpuSchedulingSource, /usePushSource\(runtime\.sources\.metricSnapshot,/);
+assert.match(gpuSchedulingSource, /usePushSource\(runtime\.sources\.resourceMonitor,/);
 
 const smartReportSource = readSource(
   "features/details/HostManagerSmartCoordinatorDetailsReport.tsx");
 assert.doesNotMatch(smartReportSource, /setInterval\s*\(|useFrontendWorkPoll|getHostManagerRollbackState|\.refresh\s*\(/);
-assert.match(smartReportSource, /sources\.smartCoordinatorState\.subscribe/);
+assert.match(smartReportSource, /usePushSource\(frontendRuntime\.sources\.smartCoordinatorState,/);
 
 const cpuTopologySource = readSource("features/details/CpuTopologyDiagram.tsx");
 assert.doesNotMatch(cpuTopologySource, /setInterval\s*\(|useFrontendWorkPoll|createResource\s*\(/);
-assert.match(cpuTopologySource, /frontendRuntime\.sources\.cpuTopology\.subscribe/);
-assert.match(cpuTopologySource, /frontendRuntime\.sources\.cpuResidency\.subscribe/);
+assert.match(cpuTopologySource, /usePushSource\(frontendRuntime\.sources\.cpuTopology,/);
+assert.match(cpuTopologySource, /usePushSource\(frontendRuntime\.sources\.cpuResidency,/);
 assert.doesNotMatch(
   cpuTopologySource,
   /useSource\(frontendRuntime\.sources\.(?:cpuTopology|cpuResidency)/);
@@ -129,7 +129,7 @@ assert.match(cpuTopologySource, /frontendWork\.isNeeded\(frontendWorkIds\.detail
 
 const deviceTopologyStoreSource = readSource("features/deviceTopology/deviceTopologyStore.ts");
 assert.doesNotMatch(deviceTopologyStoreSource, /setInterval\s*\(|useFrontendWorkPoll/);
-assert.match(deviceTopologyStoreSource, /runtime\.sources\.deviceTopology\.subscribe/);
+assert.match(deviceTopologyStoreSource, /usePushSource\(runtime\.sources\.deviceTopology,/);
 assert.doesNotMatch(deviceTopologyStoreSource, /useSource\(|refreshIntervalMs/);
 assert.match(
   deviceTopologyStoreSource,
@@ -192,15 +192,15 @@ assert.doesNotMatch(
 const refreshSchedulerSource = readSource("app/useRuntimeReadContext.ts");
 assert.match(
   refreshSchedulerSource,
-  /options\.selfSchedulingSource\.subscribeSnapshot\(\s*intervalMs/,
+  /usePushSource\(options\.selfSchedulingSource,/,
   "self-scheduling must be one backend current-value subscription");
 assert.match(
   refreshSchedulerSource,
-  /options\.localSystemSource\.subscribeSnapshot\(\s*intervalMs/,
+  /usePushSource\(options\.localSystemSource,/,
   "local system status must be one independent backend current-value subscription");
 assert.match(
   refreshSchedulerSource,
-  /if \(!performanceSettingsAvailable\(\)\) \{\s*return;/,
+  /active: performanceSettingsAvailable\(\) && frontendVisible\(\)/,
   "configured subscriptions must not start with a provisional pre-settings frequency");
 assert.doesNotMatch(
   refreshSchedulerSource,
@@ -210,7 +210,7 @@ assert.doesNotMatch(refreshSchedulerSource, /scheduleVisiblePageRefresh|refreshV
 // 隐藏即暂停：本机状态订阅和其他数据源一样按 frontendVisible() 停止，没有按设置分支的“隐藏也刷新”。
 assert.match(
   refreshSchedulerSource,
-  /if \(!frontendVisible\(\) \|\| intervalMs === null\) \{\s*return;\s*\}\s*const unsubscribe = options\.localSystemSource\.subscribe/,
+  /usePushSource\(options\.localSystemSource,[\s\S]*?active: performanceSettingsAvailable\(\) && frontendVisible\(\)/,
   "local system status must stop with the hidden window like every other source");
 assert.doesNotMatch(
   refreshSchedulerSource,
@@ -242,8 +242,8 @@ for (const relativePath of [
 }
 
 const monitorStoreSource = readSource("stores/monitorStore.ts");
-assert.match(monitorStoreSource, /options\.resourceMonitorSource\.subscribe/);
-assert.match(monitorStoreSource, /options\.metricSnapshotSource\.subscribe/);
+assert.match(monitorStoreSource, /usePushSource\(options\.resourceMonitorSource,/);
+assert.match(monitorStoreSource, /usePushSource\(options\.metricSnapshotSource,/);
 assert.doesNotMatch(
   monitorStoreSource,
   /resourceMonitorDemand|monitorResourceBarsNeeded|monitorResourceTableNeeded|monitorSnapshotNeeded|paused/);

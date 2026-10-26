@@ -1,3 +1,4 @@
+import { usePushSource } from "../frontendRuntime/push/usePushSource.ts";
 import { dashboardMetricAvailable } from "../preferences/dashboardPreferences.ts";
 import { subscribeFrontendPreferencesReset } from "../preferences/frontendPreferences.ts";
 import { createEffect, createMemo, createSignal, on, onCleanup, untrack } from "solid-js";
@@ -207,11 +208,6 @@ export interface MonitorStore {
   cancelAllMonitorEdits: () => void;
 }
 
-interface MonitorSourceBinding<T> {
-  readonly queryKey: string;
-  readonly source: SourceSnapshot<T>;
-}
-
 export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   const [dashboardSettingsState, setDashboardSettingsState] = createSignal<DashboardSettingsLoadState>("loading");
   const [dashboardSaveState, setDashboardSaveState] = createSignal<"idle" | "saving" | "error">("idle");
@@ -221,7 +217,6 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   const [catalog, setCatalog] = createSignal<MetricDefinition[]>([]);
   const [catalogObservation, setCatalogObservation] =
     createSignal<ObservationState>(loadingObservation());
-  const [metricSourceSnapshot, setMetricSourceSnapshot] = createSignal<MonitorSourceBinding<MetricSnapshot> | null>(null);
   // 当前显示的指标帧回答了哪些指标：带数据的那一帧的查询里的指标，查询不限指标时是全部。
   const [answeredMetricIds, setAnsweredMetricIds] = createSignal<ReadonlySet<string> | "all">(new Set());
   // 布局由前端缓存或本次构建的点值产生；加载前不制造第二份占位默认值。
@@ -232,7 +227,6 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   const [resourceTableMode, setResourceTableMode] = createSignal<ResourceTableViewMode>("software");
   const [resourceTableEditMode, setResourceTableEditMode] = createSignal(false);
   const [resourceBarEditMode, setResourceBarEditMode] = createSignal(false);
-  const [tableSourceSnapshot, setTableSourceSnapshot] = createSignal<MonitorSourceBinding<ResourceMonitorSnapshot> | null>(null);
   const [resourceTableSort, setResourceTableSort] = createSignal<{ columnId: string; direction: "asc" | "desc" }>({ columnId: "impact", direction: "desc" });
   const [expandedResourceTableRows, setExpandedResourceTableRows] = createSignal<Record<string, boolean>>({});
   const [resourceSelection, setResourceSelection] = createSignal<ResourcePrecisionSelection | null>(null);
@@ -348,12 +342,15 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     query: normalizeResourceMonitorQuery(createResourceTableQuery()),
     intervalMs: options.resourceTableIntervalMs()
   }));
+  const metricSourceSnapshot = usePushSource(options.metricSnapshotSource,
+    () => JSON.parse(metricSubscriptionKey()) as { active: boolean; query: MetricSnapshotQuery; intervalMs: number | null }).snapshot;
+  const tableSourceSnapshot = usePushSource(options.resourceMonitorSource,
+    () => JSON.parse(resourceTableSubscriptionKey()) as { active: boolean; query: ResourceMonitorQuery; intervalMs: number | null }).snapshot;
   // 指标查询只含可见卡片的读数，滚动、换页重挂载时会随可见性变化；换了查询不清掉已接受的读数，
   // 卡片按指标 ID 取值，沿用到新查询的帧到来为止（与下方表格事实同一口径）。
   const snapshot = createMemo((previous: MetricSnapshot | null) =>
-    metricSourceSnapshot()?.source.data ?? previous, null);
-  const snapshotObservation = createMemo(() => snapshotMetricIds().length === 0 ? readyObservation() : metricSourceSnapshot()?.queryKey === JSON.stringify(normalizeMetricSnapshotQuery(createMetricSnapshotQuery()))
-    ? pushObservation(metricSourceSnapshot()?.source ?? null) : loadingObservation());
+    metricSourceSnapshot().data ?? previous, null);
+  const snapshotObservation = createMemo(() => snapshotMetricIds().length === 0 ? readyObservation() : pushObservation(metricSourceSnapshot()));
   const resourceBreakdownSnapshot = createMemo(() => breakdownBindings.bars()?.data?.breakdown ?? null);
   const resourceProcessDetails = createMemo(() => breakdownBindings.details()?.data ?? null);
   const resourceProcessDetailsObservation = createMemo(() => pushObservation(breakdownBindings.details()));
@@ -361,31 +358,30 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   // accepted facts. Local columns/mode project that value until the next frame;
   // a received empty frame still replaces it immediately.
   const resourceTableFacts = createMemo((previous: NonNullable<ResourceMonitorSnapshot["facts"]> | null) =>
-    tableSourceSnapshot()?.source.data?.facts ?? previous, null);
+    tableSourceSnapshot().data?.facts ?? previous, null);
   const resourceTableSnapshot = createResourceFactsProjection(resourceTableFacts,
     activeResourceTableColumns, resourceTableMode, resourceTableSort);
   const resourceBarsObservation = createMemo(() => pushObservation(breakdownBindings.bars()));
   const resourceTableObservation = createMemo(() => {
-    const observation = pushObservation(tableSourceSnapshot()?.source ?? null);
+    const observation = pushObservation(tableSourceSnapshot() ?? null);
     return observation.status === "loading" && resourceTableFacts()
       ? readyObservation(resourceTableFacts()?.capturedAt ?? undefined) : observation;
   });
   const orderedSnapshotBars = createMemo(() => resourceBarViews(resourceBreakdownSnapshot()?.bars ?? [], activeResourceBars(), processFields()));
   // 目录订阅每个探测周期推一次，内容通常不变；内容相同就不算变化，卡片目录和指标选择器不跟着重建。
-  const [fieldCatalogSnapshot, setFieldCatalogSnapshot] = createSignal<SourceSnapshot<MetricCatalogPush> | null>(null);
-  const [fieldDevicesSnapshot, setFieldDevicesSnapshot] = createSignal<MonitorSourceBinding<readonly MetricFieldDevice[]> | null>(null);
+  const fieldCatalogSnapshot = usePushSource(options.metricFieldCatalogSource, () => ({
+    active: options.metricSnapshotActive(), intervalMs: options.metricSnapshotIntervalMs()
+  })).snapshot;
   const fieldCatalog = createMemo(() => fieldCatalogSnapshot()?.data?.fields ?? null, null, { equals: sameMetricFieldCatalog });
   const fieldSlots = createMemo(() => fieldCardSlots(visibleCards()));
   const fieldQuery = createMemo(() => ({
     fields: [...new Set(fieldSlots().map((slot) => slot.fieldName))].sort()
   }));
-  const fieldDevices = createMemo(() => fieldDevicesSnapshot()?.queryKey === JSON.stringify(fieldQuery())
-    ? fieldDevicesSnapshot()?.source.data ?? null : null);
-  const fieldSubscriptionKey = createMemo(() => JSON.stringify({
-    active: options.metricSnapshotActive(),
-    fields: fieldQuery().fields,
-    intervalMs: options.metricSnapshotIntervalMs()
-  }));
+  const fieldDevicesSnapshot = usePushSource(options.metricFieldsSource, () => ({
+    active: options.metricSnapshotActive() && fieldQuery().fields.length > 0,
+    intervalMs: options.metricSnapshotIntervalMs(), query: fieldQuery()
+  })).snapshot;
+  const fieldDevices = createMemo(() => fieldDevicesSnapshot().data);
   const cardCatalog = createMemo(() => [...catalog(), ...fieldCardDefinitions(fieldCatalog() ?? [])]);
   // 卡片上已经放了的字段照常从 cardCatalog 取设备名和标记；只有选择器按设置少列。
   const pickerCatalog = createMemo(() => cardCatalog().filter(metricOfferedInPicker));
@@ -406,7 +402,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     const items = cardSnapshot()?.items ?? {};
     const answered = answeredMetricIds();
     const legacyFailed = snapshotObservation().status === "error";
-    const fieldsFailed = pushObservation(fieldDevicesSnapshot()?.source ?? null).status === "error";
+    const fieldsFailed = pushObservation(fieldDevicesSnapshot() ?? null).status === "error";
     const pending = new Set<string>();
     for (const card of activeCards()) {
       for (const { metricId, binding } of card.slots) {
@@ -432,99 +428,22 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
       : legacy !== null && legacy !== previousLegacy, items));
   }));
 
-  createEffect(() => {
-    const binding = JSON.parse(metricSubscriptionKey()) as {
-      active: boolean;
-      query: MetricSnapshotQuery;
-      intervalMs: number | null;
-    };
-    const queryKey = JSON.stringify(binding.query);
-    if (!binding.active || binding.intervalMs === null) {
-      return;
+  createEffect(on(metricSourceSnapshot, value => {
+    const query = (JSON.parse(metricSubscriptionKey()) as { query: MetricSnapshotQuery }).query;
+    if (value.data) {
+      setAnsweredMetricIds(query.ids === null ? "all" : new Set(query.ids));
+      if (!catalogFromPush && value.data.catalogRevision !== backendCatalogRevision) {
+        backendCatalogRevision = value.data.catalogRevision;
+        void followBackendCatalog(value.data.catalogRevision);
+      }
     }
-    let accepting = true;
-    const unsubscribe = options.metricSnapshotSource.subscribeSnapshot(
-      binding.query,
-      binding.intervalMs,
-      (value) => {
-        if (accepting) {
-          setMetricSourceSnapshot({ queryKey, source: value });
-          if (value.data) {
-            setAnsweredMetricIds(binding.query.ids === null ? "all" : new Set(binding.query.ids));
-          }
-          if (value.data && !catalogFromPush && value.data.catalogRevision !== backendCatalogRevision) {
-            backendCatalogRevision = value.data.catalogRevision;
-            void followBackendCatalog(value.data.catalogRevision);
-          }
-        }
-      });
-    onCleanup(() => {
-      accepting = false;
-      unsubscribe();
-    });
-  });
-  // 字段目录和监视读数共用后端发布的间隔。
-  createEffect(() => {
-    const intervalMs = options.metricSnapshotIntervalMs();
-    if (!options.metricSnapshotActive() || intervalMs === null) {
-      return;
+  }));
+  createEffect(on(fieldCatalogSnapshot, value => {
+    catalogFromPush = false;
+    if (options.metricSnapshotActive() && options.metricSnapshotIntervalMs() !== null && value.data) {
+      applyCatalogPush(value.data);
     }
-    const unsubscribe = options.metricFieldCatalogSource.subscribeSnapshot(intervalMs, (value) => {
-      setFieldCatalogSnapshot(value);
-      if (value.data) applyCatalogPush(value.data);
-    });
-    onCleanup(() => {
-      unsubscribe();
-      catalogFromPush = false;
-    });
-  });
-  createEffect(() => {
-    const binding = JSON.parse(fieldSubscriptionKey()) as {
-      active: boolean;
-      fields: string[];
-      intervalMs: number | null;
-    };
-    if (!binding.active || binding.intervalMs === null || binding.fields.length === 0) {
-      return;
-    }
-    let accepting = true;
-    const unsubscribe = options.metricFieldsSource.subscribeSnapshot(
-      { fields: binding.fields },
-      binding.intervalMs,
-      (value) => {
-        if (accepting) {
-          setFieldDevicesSnapshot({ queryKey: JSON.stringify({ fields: binding.fields }), source: value });
-        }
-      });
-    onCleanup(() => {
-      accepting = false;
-      unsubscribe();
-    });
-  });
-  createEffect(() => {
-    const binding = JSON.parse(resourceTableSubscriptionKey()) as {
-      active: boolean;
-      query: ResourceMonitorQuery;
-      intervalMs: number | null;
-    };
-    const queryKey = JSON.stringify(binding.query);
-    if (!binding.active || binding.intervalMs === null) {
-      return;
-    }
-    let accepting = true;
-    const unsubscribe = options.resourceMonitorSource.subscribeSnapshot(
-      binding.query,
-      binding.intervalMs,
-      (value) => {
-        if (accepting) {
-          setTableSourceSnapshot({ queryKey, source: value });
-        }
-      });
-    onCleanup(() => {
-      accepting = false;
-      unsubscribe();
-    });
-  });
+  }));
   onCleanup(() => {
     unsubscribeMetricCatalog();
     unsubscribeDashboardSettings();

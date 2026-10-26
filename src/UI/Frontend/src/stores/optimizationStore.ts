@@ -1,4 +1,5 @@
-import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
+import { usePushSource } from "../frontendRuntime/push/usePushSource.ts";
+import { createComputed, createMemo, createSignal, on } from "solid-js";
 import type { Accessor } from "solid-js";
 import {
   dismissOptimizationReport,
@@ -102,26 +103,19 @@ export function createOptimizationStore(options: OptimizationStoreOptions): Opti
   let optimizationModeApplyTimer: number | undefined;
   let optimizationModeCountdownTimer: number | undefined;
 
-  // 调度状态由后端协调器持有：循环里的模式、运行、故障关闭和计数随时会变，只靠进页读取一次会停在旧值。
-  createEffect(() => {
-    const intervalMs = options.statusIntervalMs();
-    if (!options.enabled() || !options.statusActive() || intervalMs === null) {
-      return;
+  const statusSource = usePushSource(options.statusSource, () => ({
+    active: options.enabled() && options.statusActive(), intervalMs: options.statusIntervalMs()
+  }));
+  createComputed(on(statusSource.snapshot, snapshot => {
+    if (!options.enabled()) return;
+    if (snapshot.data) {
+      acceptHostManagerStatus(snapshot.data);
+    } else {
+      setHostManagerStatus(null);
+      setHostManagerObservation(snapshot.status === "loading"
+        ? loadingObservation() : { status: "error", source: "none" });
     }
-    const unsubscribe = options.statusSource.subscribeSnapshot(
-      intervalMs,
-      (snapshot) => {
-        if (snapshot.data) {
-          acceptHostManagerStatus(snapshot.data);
-        } else {
-          setHostManagerStatus(null);
-          setHostManagerObservation(snapshot.status === "loading"
-            ? loadingObservation()
-            : { status: "error", source: "none" });
-        }
-      });
-    onCleanup(unsubscribe);
-  });
+  }));
 
   async function changeHostManagerSmartCoordinatorMode(mode: AppOptimizationMode) {
     if (!options.enabled()) {

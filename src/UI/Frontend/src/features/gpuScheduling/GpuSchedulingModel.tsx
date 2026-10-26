@@ -1,3 +1,4 @@
+import { usePushSource } from "../../frontendRuntime/push/usePushSource.ts";
 import { formatFixedDigits } from "../../presentation/interfaceNumbers.ts";
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
 import { userFacingErrorMessage } from "../../presentation/userFacingText";
@@ -34,15 +35,7 @@ import {
   readyObservation,
   type ObservationState
 } from "../../observation/observationState";
-import type {
-  GpuPerformanceScoreItem,
-  GpuSpecializedTelemetrySnapshot,
-  MetricDefinition,
-  MetricSnapshot,
-  ResourceBreakdownSnapshot,
-  ResourceMonitorSnapshot,
-  ResourceSoftwareSegment
-} from "../../types";
+import type { GpuPerformanceScoreItem, GpuSpecializedTelemetrySnapshot, MetricDefinition, MetricSnapshot, ResourceBreakdownSnapshot, ResourceSoftwareSegment } from "../../types";
 import { ObservationStateBoundary } from "../../components/ObservationStateNotice";
 import { uiText } from "../../text.ts";
 import { CurrentPageHeading } from "../../app/navigation/currentPageName.tsx";
@@ -121,12 +114,6 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
   const modelBinding = new SourceLeaseBinding<GpuSchedulingModelSnapshot>(
     setModelSource);
   let modelLease: SourceLease<GpuSchedulingModelSnapshot> | null = null;
-  const [metricBinding, setMetricSnapshot] =
-    createSignal<{ key: string; source: SourceSnapshot<MetricSnapshot> } | null>(null);
-  const [resourceBinding, setResourceSnapshot] =
-    createSignal<{ key: string; source: SourceSnapshot<ResourceMonitorSnapshot> } | null>(null);
-  const [specializedBinding, setSpecializedTelemetry] =
-    createSignal<{ key: string; source: SourceSnapshot<GpuSpecializedTelemetrySnapshot> } | null>(null);
   const unsubscribeCatalog = catalogLease.subscribe(setCatalogSource);
   const catalog = createMemo(() => {
     const source = catalogSource();
@@ -137,9 +124,30 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
     .split(",")
     .filter(Boolean)
     .map((value) => Number(value)));
-  const metricSnapshot = createMemo(() => metricBinding()?.key === gpuIndexKey() ? metricBinding()?.source : null);
-  const resourceSnapshot = createMemo(() => resourceBinding()?.key === gpuIndexKey() ? resourceBinding()?.source : null);
-  const specializedTelemetry = createMemo(() => specializedBinding()?.key === gpuIndexKey() ? specializedBinding()?.source : null);
+  const pushDemand = () => ({
+    active: frontendWork.isNeeded(frontendWorkIds.detailsGpuModel) && gpuIndexes().length > 0,
+    intervalMs: readIntervals.current()?.monitor
+  });
+  const metricSnapshot = usePushSource(runtime.sources.metricSnapshot, () => ({
+    ...pushDemand(), query: { ids: gpuIndexes().flatMap(index => [
+      `gpu.${index}.usage`, `gpu.${index}.vram`, `gpu.${index}.vramPercent`,
+      `gpu.${index}.graphicsClock`, `gpu.${index}.memoryClock`
+    ]) }
+  })).snapshot;
+  const resourceSnapshot = usePushSource(runtime.sources.resourceMonitor, () => ({
+    ...pushDemand(), query: {
+      scope: "bars" as const,
+      bars: gpuIndexes().flatMap(index => [
+        { metricId: `gpu.${index}.usage`, scaleMode: "active" as const },
+        { metricId: `gpu.${index}.vram`, scaleMode: "capacity" as const }
+      ]),
+      sampleMetricIds: [], visibleColumnIds: [], sortColumnId: "impact",
+      sortDirection: "desc" as const, tableMode: "software" as const, processDetailSoftwareIds: []
+    }
+  })).snapshot;
+  const specializedTelemetry = usePushSource(runtime.sources.gpuSpecializedTelemetry, () => ({
+    ...pushDemand(), query: { counterIds: buildGpuSpecializedCounterIds(gpuIndexes()) }
+  })).snapshot;
   const pressureThresholds = createMemo(() => {
     const settingsSnapshot = appSettingsSource.snapshot();
     const performanceSettings = settingsSnapshot.status === "ready"
@@ -174,54 +182,6 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
         { gpuIndexes: indexes },
         { active: false, refreshIntervalMs: null }));
     modelLease.setDemand({ active, refreshIntervalMs: null });
-  });
-
-  createEffect(() => {
-    const intervalMs = readIntervals.current()?.monitor;
-    const indexes = gpuIndexes();
-    const queryKey = gpuIndexKey();
-    const active = frontendWork.isNeeded(frontendWorkIds.detailsGpuModel);
-    if (!active || indexes.length === 0) {
-      return;
-    }
-
-    const metricIds = indexes.flatMap((index) => [
-      `gpu.${index}.usage`,
-      `gpu.${index}.vram`,
-      `gpu.${index}.vramPercent`,
-      `gpu.${index}.graphicsClock`,
-      `gpu.${index}.memoryClock`
-    ]);
-    if (intervalMs === undefined) return;
-    const stopMetric = runtime.sources.metricSnapshot.subscribeSnapshot(
-      { ids: metricIds },
-      intervalMs,
-      source => setMetricSnapshot({ key: queryKey, source }));
-    const stopResource = runtime.sources.resourceMonitor.subscribeSnapshot(
-      {
-        scope: "bars",
-        bars: indexes.flatMap((index) => [
-          { metricId: `gpu.${index}.usage`, scaleMode: "active" as const },
-          { metricId: `gpu.${index}.vram`, scaleMode: "capacity" as const }
-        ]),
-        sampleMetricIds: [],
-        visibleColumnIds: [],
-        sortColumnId: "impact",
-        sortDirection: "desc",
-        tableMode: "software",
-        processDetailSoftwareIds: []
-      },
-      intervalMs,
-      source => setResourceSnapshot({ key: queryKey, source }));
-    const stopSpecialized = runtime.sources.gpuSpecializedTelemetry.subscribeSnapshot(
-      { counterIds: buildGpuSpecializedCounterIds(indexes) },
-      intervalMs,
-      source => setSpecializedTelemetry({ key: queryKey, source }));
-    onCleanup(() => {
-      stopMetric();
-      stopResource();
-      stopSpecialized();
-    });
   });
 
   onCleanup(() => {

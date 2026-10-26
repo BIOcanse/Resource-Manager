@@ -1,4 +1,5 @@
-import { createContext, createEffect, onCleanup, useContext, createSignal, type JSX } from "solid-js";
+import { usePushSource } from "../../frontendRuntime/push/usePushSource.ts";
+import { createContext, useContext, type JSX } from "solid-js";
 import { useFrontendWork } from "../../frontendWork/FrontendWorkContext.tsx";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext.tsx";
 import type { SourceSnapshot } from "../../frontendRuntime/source/SourceSnapshot.ts";
@@ -11,12 +12,8 @@ const AccessRequestSnapshotContext = createContext<() => AccessRequestSnapshot>(
 export function AccessRequestSnapshotProvider(props: { children: JSX.Element }) {
   const runtime = useFrontendRuntime();
   const frontendWork = useFrontendWork();
-  const [snapshot, setSnapshot] = createSignal<AccessRequestSnapshot>(null);
-  createEffect(() => {
-    if (!frontendWork.frontendVisible()) return;
-    const unsubscribe = runtime.sources.accessRequests.subscribeSnapshot(setSnapshot);
-    onCleanup(unsubscribe);
-  });
+  const { snapshot } = usePushSource(runtime.sources.accessRequests,
+    () => ({ active: frontendWork.frontendVisible() }));
 
   return (
     <AccessRequestSnapshotContext.Provider value={snapshot}>

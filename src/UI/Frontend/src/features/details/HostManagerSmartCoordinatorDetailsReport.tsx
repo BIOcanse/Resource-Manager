@@ -1,6 +1,7 @@
+import { usePushSource } from "../../frontendRuntime/push/usePushSource.ts";
 import { formatInterfaceNumber } from "../../presentation/interfaceNumbers.ts";
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
 import { frontendWorkIds } from "../../frontendWork/frontendWorkIds";
 import { frontendVisibilitySurface } from "../../frontendWork/frontendVisibilitySurface";
 import { useFrontendWork } from "../../frontendWork/FrontendWorkContext";
@@ -31,8 +32,10 @@ export function HostManagerSmartCoordinatorDetailsReport(props: { software: read
   const frontendRuntime = useFrontendRuntime();
   const readIntervals = useFrontendReadIntervals();
   const [selectedRecord, setSelectedRecord] = createSignal<DetailRecord | null>(null);
-  const [stateSource, setStateSource] =
-    createSignal<SourceSnapshot<HostManagerRollbackStateDocument> | null>(null);
+  const stateSource = usePushSource(frontendRuntime.sources.smartCoordinatorState, () => ({
+    active: frontendWork.isNeeded(frontendWorkIds.detailsSmartReport),
+    intervalMs: readIntervals.current()?.monitor
+  })).snapshot;
   const state = createMemo(() => {
     const source = stateSource();
     return source && sourceCanRender(source) ? source.data ?? undefined : undefined;
@@ -46,17 +49,6 @@ export function HostManagerSmartCoordinatorDetailsReport(props: { software: read
         : uiText.smartReport.empty;
   });
   const records = createMemo(() => collectDetailRecords(state(), props.software));
-
-  createEffect(() => {
-    const intervalMs = readIntervals.current()?.monitor;
-    if (!frontendWork.isNeeded(frontendWorkIds.detailsSmartReport) || intervalMs === undefined) {
-      return;
-    }
-    const unsubscribe = frontendRuntime.sources.smartCoordinatorState.subscribeSnapshot(
-      intervalMs,
-      setStateSource);
-    onCleanup(unsubscribe);
-  });
 
   const pageName = useCurrentPageName();
   return (

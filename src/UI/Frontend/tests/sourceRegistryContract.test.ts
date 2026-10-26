@@ -66,11 +66,11 @@ assert.match(sources, /gpuSpecializedTelemetry:\s*new BackendPushValueSourceFami
 // 规范字段的设备目录和设备值同样走统一订阅通道。
 assert.match(sources, /metricFieldCatalog:\s*new BackendPushValueSource</);
 assert.match(sources, /metricFields:\s*new BackendPushValueSourceFamily/);
-assert.match(monitorStore, /options\.metricFieldCatalogSource\.subscribe/);
-assert.match(monitorStore, /options\.metricFieldsSource\.subscribe/);
+assert.match(monitorStore, /usePushSource\(options\.metricFieldCatalogSource/);
+assert.match(monitorStore, /usePushSource\(options\.metricFieldsSource/);
 assert.doesNotMatch(sources, /getMetricSnapshotSource|getResourceMonitorState/);
-assert.match(monitorStore, /options\.metricSnapshotSource\.subscribe/);
-assert.match(monitorStore, /options\.resourceMonitorSource\.subscribe/);
+assert.match(monitorStore, /usePushSource\(options\.metricSnapshotSource/);
+assert.match(monitorStore, /usePushSource\(options\.resourceMonitorSource/);
 assert.doesNotMatch(
   monitorStore,
   /SourceLeaseBinding|metricSnapshotSourceSnapshot|resourceMonitorSourceSnapshot|resourceMonitorDemand|monitorSnapshotNeeded/);
@@ -90,7 +90,7 @@ assert.doesNotMatch(specializedGpuSource, /retainLastGood|retryPolicy|refreshInt
 assert.doesNotMatch(optimizationStore, /reportSource\.acceptAuthoritative/);
 // 优化页的调度状态跟随后端推送；可见时订阅，刷新按钮同时重新读取调度状态。
 assert.match(sources, /smartCoordinatorStatus:\s*new BackendPushValueSource/);
-assert.match(optimizationStore, /options\.statusSource\.subscribeSnapshot\(/);
+assert.match(optimizationStore, /usePushSource\(options\.statusSource,/);
 assert.match(app, /statusSource:\s*frontendRuntime\.sources\.smartCoordinatorStatus/);
 assert.match(
   app,
@@ -104,15 +104,15 @@ assert.match(
   readSource("features/optimization/OptimizationWorkspace.tsx"),
   /onRefresh=\{\(\) => \{[\s\S]*refreshReports\(true\)[\s\S]*refreshHostManagerStatus\(\)/);
 
-assert.match(scheduler, /options\.localSystemSource\.subscribe/);
-assert.match(scheduler, /options\.selfSchedulingSource\.subscribe/);
+assert.match(scheduler, /usePushSource\(options\.localSystemSource/);
+assert.match(scheduler, /usePushSource\(options\.selfSchedulingSource/);
 assert.doesNotMatch(
   scheduler,
   /useSource\(|SourceSnapshot|\.refresh\(|setInterval\(|selfSchedulingObservation|localSystemObservation/);
 assert.doesNotMatch(scheduler, /getLocalSystemStatus|refreshLocalSystemStatus/);
 assert.doesNotMatch(scheduler, /getResourceManagerSelfScheduling|refreshSelfScheduling/);
 
-assert.match(deviceStore, /runtime\.sources\.deviceTopology\.subscribe/);
+assert.match(deviceStore, /usePushSource\(runtime\.sources\.deviceTopology/);
 assert.match(deviceStore, /frontendWork\.isNeeded\(frontendWorkIds\.detailsDeviceTopology\)/);
 assert.doesNotMatch(deviceStore, /useSource\(|refreshIntervalMs|setInterval\s*\(/);
 assert.doesNotMatch(deviceStore, /getDeviceTopologyState|\.refresh\(/);

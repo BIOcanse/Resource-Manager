@@ -1,4 +1,5 @@
-import { createEffect, createSignal, onCleanup } from "solid-js";
+import { usePushSource } from "../frontendRuntime/push/usePushSource.ts";
+import { createComputed, createSignal } from "solid-js";
 import type { Accessor } from "solid-js";
 import { postJson } from "../api.ts";
 import type { CurrentValueSource } from "../frontendRuntime/push/PushValueSourceFamily.ts";
@@ -33,17 +34,15 @@ export function createProductUpdateStore(options: {
   const [status, setStatus] = createSignal<ProductUpdateState | null>(null);
   const [statusFailed, setStatusFailed] = createSignal(false);
   const [applyPending, setApplyPending] = createSignal(false);
-  createEffect(() => {
-    if (!options.active()) return;
-    const unsubscribe = options.source.subscribeSnapshot((snapshot) => {
-      if (snapshot.data && (snapshot.status === "ready" || snapshot.status === "refreshing")) {
-        setStatus(snapshot.data);
-        setStatusFailed(false);
-      } else if (snapshot.status === "error" || snapshot.status === "unavailable" || snapshot.status === "stale") {
-        setStatusFailed(true);
-      }
-    });
-    onCleanup(unsubscribe);
+  const source = usePushSource(options.source, () => ({ active: options.active() }));
+  createComputed(() => {
+    const snapshot = source.snapshot();
+    if (snapshot.data && (snapshot.status === "ready" || snapshot.status === "refreshing")) {
+      setStatus(snapshot.data);
+      setStatusFailed(false);
+    } else if (snapshot.status === "error" || snapshot.status === "unavailable" || snapshot.status === "stale") {
+      setStatusFailed(true);
+    }
   });
 
   async function apply(confirm: (targetVersion: string) => boolean, language: string) {
