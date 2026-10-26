@@ -207,7 +207,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                         null,
                         publication.HasDeliveryFailures
                             ? "committedWithDeliveryFailures"
-                            : "committedAndApplied",
+                            : "committedAndPublished",
                         "applyFailed",
                         publication.Plan.Version,
                         publication.PublicationSequence,
@@ -221,7 +221,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 interception,
                 publication.HasDeliveryFailures
                     ? "committedWithDeliveryFailures"
-                    : "committedAndApplied",
+                    : "committedAndPublished",
                 "applied",
                 publication.Plan.Version,
                 publication.PublicationSequence,
@@ -269,7 +269,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 
         var result = new RuntimePolicySaveResult<T>(
             saved, null,
-            publication.HasDeliveryFailures ? "committedWithDeliveryFailures" : "committedAndApplied",
+            publication.HasDeliveryFailures ? "committedWithDeliveryFailures" : "committedAndPublished",
             "notAttempted", publication.Plan.Version, publication.PublicationSequence,
             publication.DeliveryFailures.Count, null);
         return publication.HasDeliveryFailures

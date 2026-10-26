@@ -6,6 +6,10 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     internal static void ConfigureJsonSerializerOptions(JsonSerializerOptions options)
         => options.TypeInfoResolver = BackendHttpJsonContext.Default;
     [JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
+    [JsonSerializable(typeof(global::ResourceManager.App.Application.Optimization.RuntimeCpuLeaseRequest))]
+    [JsonSerializable(typeof(global::ResourceManager.App.Application.Optimization.RuntimeCpuLeaseSnapshot))]
+    [JsonSerializable(typeof(global::ResourceManager.App.Endpoints.Transport.CpuObservationUnavailable))]
+    [JsonSerializable(typeof(global::ResourceManager.App.Endpoints.Transport.CpuCoreLoadSnapshot))]
     [JsonSerializable(typeof(global::ResourceManager.Shared.Packages.PackageRuntimeAsset))]
     [JsonSerializable(typeof(global::ResourceManager.Shared.Packages.PackageStartupModule))]
     [JsonSerializable(typeof(global::ResourceManager.Shared.Packages.PackageStartupModule[]))]

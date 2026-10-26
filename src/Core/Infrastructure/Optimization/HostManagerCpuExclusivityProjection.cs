@@ -11,13 +11,24 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 
 internal sealed record HostManagerCpuReservations(IReadOnlyDictionary<string, IReadOnlySet<string>> BySoftware)
 {
-    internal IReadOnlySet<string> ExcludedFor(string softwareId)
+    internal IReadOnlyDictionary<string, IReadOnlySet<string>> LeaseTargets { get; init; }
+        = new Dictionary<string, IReadOnlySet<string>>();
+    internal IReadOnlySet<string> ExcludedFor(string softwareId, string? targetId = null)
     {
-        BySoftware.TryGetValue(softwareId, out var own);
-        return BySoftware.Values.SelectMany(static cores => cores)
-            .Where(core => own?.Contains(core) != true).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var own = OwnCores(softwareId, targetId);
+        return BySoftware.Values.SelectMany(static cores => cores).Where(core => !own.Contains(core))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
-    internal bool IsOwner(string softwareId) => BySoftware.TryGetValue(softwareId, out var own) && own.Count != 0;
+    internal bool IsOwner(string softwareId, string? targetId = null) => OwnCores(softwareId, targetId).Count != 0;
+    private HashSet<string> OwnCores(string softwareId, string? targetId)
+    {
+        var own = BySoftware.TryGetValue(softwareId, out var cores)
+            ? cores.ToHashSet(StringComparer.OrdinalIgnoreCase) : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (targetId is not null)
+            foreach (var pair in LeaseTargets)
+                if (pair.Value.Contains(targetId) && BySoftware.TryGetValue(pair.Key, out var reserved)) own.UnionWith(reserved);
+        return own;
+    }
 }
 
 internal sealed class HostManagerCpuExclusivityProjection

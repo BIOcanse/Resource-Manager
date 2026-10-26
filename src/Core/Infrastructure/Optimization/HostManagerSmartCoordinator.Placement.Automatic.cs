@@ -53,7 +53,11 @@ public sealed partial class HostManagerSmartCoordinator
         }
 
         var idealReads = processPolicyWriter.CreateThreadIdealProcessorReadCycle();
+        var leases = runtimeCpuLeases.Capture();
+        cpuPlacementWriteFailures.Clear();
         IReadOnlyList<HostManagerPlacementDesired> fullDesired = [];
+        IReadOnlyList<HostManagerAutomaticPlacementProcess> leaseProcesses = [];
+        HostManagerCpuReservations? leaseReservations = null;
         var cpuReservationsAvailable = true;
         if (cpuPlacementEnabled || gpuPlacementEnabled)
         {
@@ -66,8 +70,24 @@ public sealed partial class HostManagerSmartCoordinator
                     process.ProcessId,
                     process.ProcessStartKey))
                 .ToArray();
+            if (!desiredRuntime.RuntimePlan.OptimizationMode.CpuPlacementEnabled)
+            {
+                // Explicit leases remain meaningful in Normal/GPU-only mode, without enabling score balancing.
+                processes = processes.Select(process => process with { CanonicalCpuScore = null, SoftwareKind = null,
+                    Policy = process.Policy with { CpuMaximumOccupancyMode = CpuMaximumOccupancyModes.AllCores,
+                        CpuManualLockedPositionIds = leases.Any(lease => MatchesCpuLease(lease.Snapshot.Request.Target, process))
+                            ? process.Policy.CpuManualLockedPositionIds : [],
+                        CpuManualExclusivePositionIds = leases.Any(lease => MatchesCpuLease(lease.Snapshot.Request.Target, process))
+                            ? process.Policy.CpuManualExclusivePositionIds : [] } }).ToArray();
+            }
+            processes = MergeCpuLeaseLocks(processes, leases);
             var cpuReservations = cpuPlacementEnabled && topology is not null
-                ? PlanCpuReservations(topology, sample, processes) : null;
+                ? PlanCpuReservations(topology, sample, processes, leases) : null;
+            leaseProcesses = leases.Length == 0 ? [] : CreateAutomaticPlacementProcesses(sample, computeScoring,
+                state.AppliedPlacements, protectionLevels, includeProtected: true)
+                .Select(raw => processes.FirstOrDefault(process => process.TargetId == raw.TargetId)
+                    ?? raw with { CanApplyPhysicalPlacement = false }).ToArray();
+            leaseReservations = cpuReservations;
             cpuReservationsAvailable = !cpuPlacementEnabled || cpuReservations is not null;
             if (gpuPlacementEnabled)
             {
@@ -104,8 +124,12 @@ public sealed partial class HostManagerSmartCoordinator
                 desiredRuntime.HostPlan.HostRecreate.PlacementCoordinator.MaximumDesiredCount);
         }
 
-        return await RunPreparedAutomaticPlacementCycleAsync(effectAdmission, state, fullDesired,
+        var completed = await RunPreparedAutomaticPlacementCycleAsync(effectAdmission, state, fullDesired,
             placementEffects, cancellationToken, idealReads);
+        if (leases.Length != 0)
+            PublishCpuLeaseEffects(leases, leaseProcesses, leaseReservations,
+                (await LoadRollbackStateAsync(cancellationToken)).AppliedPlacements, sample);
+        return completed;
     }
 
     private async Task<bool> RunPreparedAutomaticPlacementCycleAsync(
@@ -255,6 +279,11 @@ public sealed partial class HostManagerSmartCoordinator
                     action,
                     projected,
                     cancellationToken);
+                if (projected.Record.Kind == HostManagerAppliedRecordKinds.CpuAffinity
+                    && applied.Feedback.Status is (uint)NativePlacementFeedbackStatus.RetryableFailure
+                        or (uint)NativePlacementFeedbackStatus.InvalidReceipt
+                        or (uint)NativePlacementFeedbackStatus.OwnershipLost)
+                    cpuPlacementWriteFailures[projected.Placement.TargetId] = applied.Feedback.SystemErrorCode;
                 state = applied.State;
                 workspace.SetFeedback(index, applied.Feedback);
                 canContinue = applied.CanContinue;
@@ -280,14 +309,15 @@ public sealed partial class HostManagerSmartCoordinator
         HostManagerSample sample,
         HostManagerComputeScoringCycleResult? computeScoring,
         IReadOnlyList<HostManagerAppliedPlacementReceipt> existingPlacements,
-        IReadOnlyDictionary<string, int> protectionLevels)
+        IReadOnlyDictionary<string, int> protectionLevels, bool includeProtected = false)
     {
         var scoreProjection = CreateNativeComputeScoreProjection(computeScoring);
         var processes = new List<HostManagerAutomaticPlacementProcess>(sample.Targets.Count);
         foreach (var target in sample.Targets)
         {
-            if (protectionLevels.GetValueOrDefault(target.TargetId,
-                    protectionLevels.GetValueOrDefault(target.SoftwareId)) >= OptimizationProtectionLevels.Level2NoOptimization)
+            var protectedProcess = protectionLevels.GetValueOrDefault(target.TargetId,
+                    protectionLevels.GetValueOrDefault(target.SoftwareId)) >= OptimizationProtectionLevels.Level2NoOptimization;
+            if (protectedProcess && !includeProtected)
                 continue;
             if (target.ProcessIds.Count != 1)
             {
@@ -337,7 +367,7 @@ public sealed partial class HostManagerSmartCoordinator
                 processStartKey,
                 target.ProcessNames.Count == 1 ? target.ProcessNames[0] : string.Empty,
                 target.ExecutablePaths.Count == 1 ? target.ExecutablePaths[0] : null,
-                target.CanApplyPhysicalCorePlacement,
+                target.CanApplyPhysicalCorePlacement && !protectedProcess,
                 target.GpuPlacementPolicy,
                 cpuScore?.Score,
                 gpuScores,
@@ -584,6 +614,7 @@ public sealed partial class HostManagerSmartCoordinator
             }
             if (targetIds.Length == 0)
             {
+                cpuLeaseTargetFailures[planned.Process.TargetId] = "cpu-placement-outside-original-range";
                 return null;
             }
             if (existing is null && CpuSetIdsEqual(targetIds, previousCpuSetIds))
@@ -598,6 +629,7 @@ public sealed partial class HostManagerSmartCoordinator
             var targetMask = planned.Selector.AffinityMask!.Value & previousAffinityMask!.Value;
             if (targetMask == 0)
             {
+                cpuLeaseTargetFailures[planned.Process.TargetId] = "cpu-placement-outside-original-range";
                 return null;
             }
             if (existing is null && targetMask == previousAffinityMask.Value)

@@ -31,18 +31,20 @@ public sealed partial class HostManagerSmartCoordinator
     }
 
     private HostManagerCpuReservations? PlanCpuReservations(CpuTopologySnapshot topology, HostManagerSample sample,
-        IReadOnlyList<HostManagerAutomaticPlacementProcess> processes)
+        IReadOnlyList<HostManagerAutomaticPlacementProcess> processes, RuntimeCpuLeaseStore.Entry[] leases)
     {
         // A missing authoritative process dataset is not evidence that an owner exited.
-        if (!sample.ProcessFacts.IsInventoryCurrentComplete() || !sample.ProcessFacts.IsCpuCurrentComplete()) return null;
+        if (!sample.ProcessFacts.IsInventoryCurrentComplete()) return null;
         EnsurePlacementCoordinatorWorkspace();
         var plan = appliedPlacementCoordinatorPlan!;
-        var projection = HostManagerCpuExclusivityProjection.Create(topology, sample.CpuResidency, processes,
+        var reservationProcesses = AddCpuLeaseReservationFacts(processes, leases, out var owners);
+        var projection = HostManagerCpuExclusivityProjection.Create(topology,
+            sample.ProcessFacts.IsCpuCurrentComplete() ? sample.CpuResidency : null, reservationProcesses,
             plan.HotPublish.ConfigurationGeneration, sample.RoundNumber, plan.Recreate);
         var frame = projection.Frame;
         var status = placementCoordinatorSession!.PlanCpuExclusivity(ref frame, projection.Cores,
             projection.Software, projection.Usage, projection.Manual, projection.Output);
         RequirePlacementStatus(status, NativePlacementCoordinatorStatus.Ok, "CPU exclusivity plan");
-        return projection.Map(frame.OutputCount);
+        return projection.Map(frame.OutputCount) with { LeaseTargets = owners };
     }
 }

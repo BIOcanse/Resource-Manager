@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using ResourceManager.App.Application.CpuTopology;
+using ResourceManager.App.Domain.CpuTopology;
 using ResourceManager.App.Endpoints;
 using ResourceManager.App.Hosting;
 using ResourceManager.App.Hosting.StartupCapabilities;
@@ -19,7 +20,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed class CpuTopologyEndpointTests
 {
     [Fact]
-    public async Task OrdinaryHttpReadsReturnJsonNullWithoutCapturing()
+    public async Task OrdinaryHttpReadsReturnExplicitUnavailableWithoutCapturing()
     {
         await using var fixture = new CpuTopologyProviderTestFixture();
         await using var app = await StartEndpointsAsync(fixture.Reader);
@@ -28,7 +29,9 @@ public sealed class CpuTopologyEndpointTests
         {
             using var response = await client.GetAsync(path);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-            Assert.Equal("null", await response.Content.ReadAsStringAsync());
+            using var unavailable = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.Equal("unavailable", unavailable.RootElement.GetProperty("state").GetString());
+            Assert.Equal("cpu-topology-not-published", unavailable.RootElement.GetProperty("reasonCode").GetString());
         }
         using var fieldsResponse = await client.GetAsync("/api/cpu/topology/fields");
         Assert.Equal(HttpStatusCode.OK, fieldsResponse.StatusCode);
@@ -37,6 +40,35 @@ public sealed class CpuTopologyEndpointTests
         Assert.Empty(fields.RootElement.GetProperty("devices").EnumerateArray());
         Assert.Equal(0, fixture.Sampler.CaptureCount);
         Assert.Equal(0u, fixture.ReadDemand().SourceCount);
+        await app.StopAsync();
+    }
+
+    [Fact]
+    public async Task ResidencyReadsExplainMissingWindowAndSummarizeTheSamePublishedWindow()
+    {
+        await using var fixture = new CpuTopologyProviderTestFixture();
+        CpuCoreResidencySnapshot? value = null;
+        var residency = new RecordingCpuCoreResidencyReader(() => value);
+        await using var app = await StartEndpointsAsync(fixture.Reader, residency);
+        using var client = CreateClient(app);
+        foreach (var path in new[] { "/api/cpu/residency", "/api/cpu/residency/cores" })
+        {
+            var empty = await client.GetFromJsonAsync<JsonElement>(path);
+            Assert.Equal("unavailable", empty.GetProperty("state").GetString());
+            Assert.Equal("cpu-residency-window-unavailable", empty.GetProperty("reasonCode").GetString());
+        }
+        value = CpuCoreResidencyTestValues.Create(19, DateTimeOffset.UtcNow,
+            CpuCoreResidencyTestValues.Process(1, 10, ("core:0", 20), ("core:1", 10)),
+            CpuCoreResidencyTestValues.Process(2, 20, ("core:0", 30))) with
+            { LogicalProcessorScopes = [new(0, "core:0", "ccd:0", "fixture"), new(1, "core:2", "ccd:0", "fixture")] };
+        var summary = await client.GetFromJsonAsync<JsonElement>("/api/cpu/residency/cores");
+        Assert.Equal(value.MeasuredFrom, summary.GetProperty("measuredFrom").GetDateTimeOffset());
+        Assert.Equal(value.MeasuredThrough, summary.GetProperty("measuredThrough").GetDateTimeOffset());
+        var cores = summary.GetProperty("cores").EnumerateArray().ToArray();
+        Assert.Equal(50, cores.Single(core => core.GetProperty("physicalCoreId").GetString() == "core:0").GetProperty("usagePercent").GetDouble());
+        Assert.Equal(0, cores.Single(core => core.GetProperty("physicalCoreId").GetString() == "core:2").GetProperty("usagePercent").GetDouble());
+        Assert.Empty(residency.Subscriptions);
+        Assert.Equal(0, fixture.Sampler.CaptureCount);
         await app.StopAsync();
     }
 
@@ -188,14 +220,15 @@ public sealed class CpuTopologyEndpointTests
         return frames;
     }
 
-    private static async Task<WebApplication> StartEndpointsAsync(ICpuTopologyReader reader)
+    private static async Task<WebApplication> StartEndpointsAsync(ICpuTopologyReader reader, ICpuCoreResidencyReader? residency = null)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Services.AddResourceManagerApp(["--no-native-ui"], StartupCapabilitySet.NormalReadOnly);
-        TrustedAccessEndpointTestAuthentication.Add(builder.Services, "read");
+        TrustedAccessEndpointTestAuthentication.Add(builder.Services, "read", "processes.read");
         builder.Services.RemoveAll<IHostedService>();
         builder.Services.AddSingleton(reader);
+        if (residency is not null) builder.Services.AddSingleton(residency);
         var app = TrustedAccessEndpointTestAuthentication.Build(builder);
         var endpoints = typeof(ResourceManagerEndpointRouteBuilderExtensions);
         endpoints.GetMethod("MapSystemEndpoints", BindingFlags.Static | BindingFlags.NonPublic)!

@@ -144,6 +144,9 @@ internal static class TrustedAccessHttpPolicy
             "POST /api/access-requests/{requestId}/deny",
             "POST /api/ai-gateway/credentials");
         Add(Protected(AccessKeyScopes.MachineWrite),
+            "POST /api/cpu/leases",
+            "GET /api/cpu/leases/{leaseId}",
+            "DELETE /api/cpu/leases/{leaseId}",
             "DELETE /api/adapters/{id}",
             "DELETE /api/control/instances/{instanceId}",
             "DELETE /api/control/presets/{presetId}",
@@ -220,6 +223,7 @@ internal static class TrustedAccessHttpPolicy
             "GET /api/cpu/topology",
             "GET /api/cpu/topology/exclusive-bindings",
             "GET /api/cpu/topology/fields",
+            "GET /api/cpu/residency/cores",
             "GET /api/debug/amd-smu",
             "GET /api/debug/business-blocks",
             "GET /api/debug/cpu-residency",

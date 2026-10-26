@@ -5730,7 +5730,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
              ResourceManager.App.Infrastructure.GpuPlacement.Preparation.WindowsGpuCallbackPreparationRuntime? gpuCallbackRuntime = null,
              Microsoft.Extensions.Logging.ILogger<HostManagerSmartCoordinator>? coordinatorLogger = null,
              ResourceManagerSelfLocalResourceManager? selfLocalResourceManager = null,
-             IReadOnlyList<string>? singleCcdSoftwareIds = null)
+             IReadOnlyList<string>? singleCcdSoftwareIds = null,
+             RuntimeCpuLeaseStore? cpuLeaseStore = null)
         {
             var root = Path.Combine(
                 Path.GetTempPath(),
@@ -5974,7 +5975,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                             "process-effect-validation-scope.json"),
                         timeProvider,
                         new WindowsJobMembershipProbe(),
-                        WindowsHostManagerProcessEffectValidationScopeFileCommitter.Instance));
+                        WindowsHostManagerProcessEffectValidationScopeFileCommitter.Instance), cpuLeaseStore);
             }
             catch
             {

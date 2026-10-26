@@ -78,7 +78,7 @@ public sealed class GpuPlacementSchedulingExclusionEndpointTests
             using var saved = await client.PutAsJsonAsync("/api/gpu-placement/software/app/policy", defaults);
             Assert.Equal(deliveryMode == 0 ? HttpStatusCode.OK : deliveryMode == 1 ? HttpStatusCode.Accepted : HttpStatusCode.Conflict, saved.StatusCode);
             var envelope = (await saved.Content.ReadFromJsonAsync<JsonObject>())!;
-            Assert.Equal(deliveryMode == 0 ? "committedAndApplied" : deliveryMode == 1 ? "committedWithDeliveryFailures" : "savedNotApplied", envelope["runtimeApplicationDisposition"]!.GetValue<string>());
+            Assert.Equal(deliveryMode == 0 ? "committedAndPublished" : deliveryMode == 1 ? "committedWithDeliveryFailures" : "savedNotApplied", envelope["runtimeApplicationDisposition"]!.GetValue<string>());
             Assert.Equal(deliveryMode == 1 ? 1 : 0, envelope["runtimeDeliveryFailureCount"]!.GetValue<int>());
             var echoed = envelope["policy"]!;
             Assert.True(echoed["cpuSchedulingExcluded"]!.GetValue<bool>());

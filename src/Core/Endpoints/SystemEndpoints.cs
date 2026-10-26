@@ -59,7 +59,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             CancellationToken cancellationToken) =>
         {
             DisableResponseCache(response);
-            await response.WriteAsJsonAsync(topologyReader.GetSnapshot(), cancellationToken);
+            await response.WriteAsJsonAsync<object>(topologyReader.GetSnapshot() is { } topology
+                ? topology : new CpuObservationUnavailable("unavailable", "cpu-topology-not-published"), cancellationToken);
         }).AllowAnonymous();
 
         app.MapGet("/api/cpu/topology/fields", (
@@ -84,7 +85,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     topology,
                     await policyStore.GetAsync(cancellationToken),
                     DateTimeOffset.UtcNow);
-            await response.WriteAsJsonAsync(snapshot, cancellationToken);
+            await response.WriteAsJsonAsync<object>(snapshot is not null ? snapshot
+                : new CpuObservationUnavailable("unavailable", "cpu-topology-not-published"), cancellationToken);
         }).AllowAnonymous();
 
         if (startupCapabilities.Allows(StartupCapability.RuntimeEffectOwners))
@@ -198,7 +200,15 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             ICpuCoreResidencyReader residencyReader) =>
         {
             DisableResponseCache(response);
-            return Results.Ok(residencyReader.Read());
+            return Results.Ok<object>(residencyReader.Read() is { } snapshot ? snapshot
+                : new CpuObservationUnavailable("unavailable", "cpu-residency-window-unavailable"));
+        }).AllowAnonymous();
+
+        app.MapGet("/api/cpu/residency/cores", (HttpResponse response, ICpuCoreResidencyReader residencyReader) =>
+        {
+            DisableResponseCache(response);
+            return Results.Ok<object>(residencyReader.Read() is { } snapshot ? CpuObservationProjection.Summarize(snapshot)
+                : new CpuObservationUnavailable("unavailable", "cpu-residency-window-unavailable"));
         }).AllowAnonymous();
 
         if (startupCapabilities.Allows(StartupCapability.RuntimeEffectOwners))

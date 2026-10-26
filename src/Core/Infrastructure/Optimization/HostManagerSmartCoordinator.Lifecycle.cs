@@ -150,10 +150,19 @@ public sealed partial class HostManagerSmartCoordinator
     }
 
     private void OnRuntimePlanPublished(CompiledRuntimePlan _)
-        => schedulingWakeDeadline.PublishForeground(TimeSpan.Zero);
+        => WakeFromRunningPublication();
 
     private void OnHostResourcePublished()
-        => schedulingWakeDeadline.PublishForeground(TimeSpan.Zero);
+        => WakeFromRunningPublication();
+
+    private void WakeFromRunningPublication()
+    {
+        lock (lifecycleSync)
+        {
+            if (LifecycleState != HostManagerSmartCoordinatorLifecycleState.Running) return;
+            schedulingWakeDeadline.PublishForeground(TimeSpan.Zero);
+        }
+    }
 
     private void UnsubscribeActivationSignals()
     {
@@ -181,6 +190,7 @@ public sealed partial class HostManagerSmartCoordinator
             failure = exception;
         }
         ObserveShutdownPoint(HostManagerSmartCoordinatorShutdownPoint.ExactWorkerJoined);
+        PublishCpuLeasesUnavailable("scheduler-stopped");
 
         Task foregroundCompletion;
         lock (lifecycleSync)

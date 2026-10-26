@@ -27,11 +27,14 @@ public sealed partial class HostManagerSmartCoordinator
     {
         cycleFactExclusions.Clear();
         ArgumentNullException.ThrowIfNull(runtimePlan);
-        var mode = runtimePlan.OptimizationMode;
+        var mode = runtimeCpuLeases.HasLeases && !runtimePlan.OptimizationMode.CpuSchedulingEnabled
+            ? runtimePlan.OptimizationMode with { Domains = runtimePlan.OptimizationMode.Domains | OptimizationDomains.Cpu }
+            : runtimePlan.OptimizationMode;
         var hardware = metricSnapshotSource.ReadLatest(
             CreateSmartSchedulingMetricRequest(mode, HasAvailablePublicResourceLifecycle()));
         if (hardware is null)
         {
+            PublishCpuLeasesUnavailable("hardware-snapshot-unavailable");
             return Task.FromResult(HostManagerSampleCaptureResult.Unavailable(
                 "hardware-snapshot-unavailable"));
         }
@@ -57,9 +60,11 @@ public sealed partial class HostManagerSmartCoordinator
                 hardware.GpuInventory));
         if (processFacts is null)
         {
+            PublishCpuLeasesUnavailable("scheduling-process-snapshot-unavailable");
             return Task.FromResult(HostManagerSampleCaptureResult.Unavailable(
                 "scheduling-process-snapshot-unavailable"));
         }
+        ExpireExitedCpuLeases(processFacts);
         var residency = mode.MemorySchedulingEnabled || mode.CpuSchedulingEnabled
             ? cpuCoreResidencyReader.Read()
             : null;

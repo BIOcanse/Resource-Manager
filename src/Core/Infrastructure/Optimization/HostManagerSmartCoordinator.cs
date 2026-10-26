@@ -58,11 +58,13 @@ public sealed partial class HostManagerSmartCoordinator(
     IHostPublicResourceSelfManager hostPublicResourceSelfManager,
     HostManagerSchedulingAuthority schedulingAuthority,
     HostManagerMemoryModePolicyAuthority memoryModePolicyAuthority,
-    HostManagerProcessEffectValidationScopeAuthority processEffectValidationScopeAuthority)
+    HostManagerProcessEffectValidationScopeAuthority processEffectValidationScopeAuthority,
+    RuntimeCpuLeaseStore? cpuLeaseStore = null)
     : BackgroundService,
         IHostManagerSmartCoordinator,
         IHostManagerProcessEffectValidationScopeControl,
-        IHostManagerMemoryCleanupValidationEvidenceControl
+        IHostManagerMemoryCleanupValidationEvidenceControl,
+        IRuntimeCpuLeaseService
 {
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly HostManagerVersionedWakeDeadline schedulingWakeDeadline =

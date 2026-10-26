@@ -78,6 +78,7 @@ public sealed partial class HostManagerSmartCoordinator
         }
         catch
         {
+            PublishCpuLeasesUnavailable("scheduler-cycle-failed");
             ObserveOuterLoop(
                 outerLoopContext,
                 HostManagerSmartCoordinatorOuterLoopPhase.WrapperCompleted,
@@ -125,6 +126,7 @@ public sealed partial class HostManagerSmartCoordinator
         }
         catch
         {
+            PublishCpuLeasesUnavailable("scheduler-cycle-failed");
             ObserveOuterLoop(
                 outerLoopContext,
                 HostManagerSmartCoordinatorOuterLoopPhase.WrapperCompleted,
@@ -158,6 +160,9 @@ public sealed partial class HostManagerSmartCoordinator
         var effectAdmission = HostManagerCycleEffectAdmission.CreateForValidation(
             desired.RuntimePlan.Diagnostics.HostManagerSmartCoordinatorScoreOnlyEnabled,
             processEffectValidationScope);
+        PublishCpuLeasesUnavailable(effectAdmission.IsScoreOnly ? "score-only"
+            : !hostManagerSmartControlZones.CanRun(HostManagerSmartControlZoneIds.HardwarePlacement) ? "cpu-placement-disabled"
+            : desired.RuntimePlan.CpuPlacementTopology is null ? "cpu-topology-unavailable" : "scheduler-cycle-in-progress");
         using var cycleDiagnostics = HostManagerSmartCoordinatorCycleDiagnostics.Create(
             this,
             desired.RuntimePlan,
@@ -363,6 +368,15 @@ public sealed partial class HostManagerSmartCoordinator
         }
         if (!modePlan.SchedulingEnabled)
         {
+            if (runtimeCpuLeases.HasLeases && placementStateAvailable)
+            {
+                var leaseCapture = await CaptureHostManagerSampleAsync(runtimePlan, cancellationToken);
+                if (leaseCapture.Sample is { } leaseSample && runtimePlan.CpuPlacementTopology is not null
+                    && hostManagerSmartControlZones.CanRun(HostManagerSmartControlZoneIds.HardwarePlacement))
+                    normalRestorationComplete &= await RunAutomaticPlacementCycleAsync(effectAdmission,
+                        processEffectValidationScope, desired, leaseSample, null, true, false,
+                        cancellationToken, gpuControlAvailable: gpuControlAvailable);
+            }
             if (scoreOnlyEnabled)
                 RunNormalModePublicResourceLifecycle(effectAdmission, desired, normalCapacitySample);
             if (normalRestorationComplete) cycleDiagnostics?.Complete();
@@ -403,7 +417,7 @@ public sealed partial class HostManagerSmartCoordinator
             HostManagerSmartControlZoneIds.PolicyExecution);
         var hardwareExecutionAvailable = hostManagerSmartControlZones.CanRun(
             HostManagerSmartControlZoneIds.HardwarePlacement);
-        var cpuPlacementEnabled = modePlan.CpuPlacementEnabled
+        var cpuPlacementEnabled = (modePlan.CpuPlacementEnabled || runtimeCpuLeases.HasLeases)
             && desired.RuntimePlan.CpuPlacementTopology is not null
             && hardwareExecutionAvailable;
         if (!cpuPlacementEnabled) ResetCpuExclusivityState();

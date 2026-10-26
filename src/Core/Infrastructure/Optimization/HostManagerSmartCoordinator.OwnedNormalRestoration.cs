@@ -33,7 +33,7 @@ public sealed partial class HostManagerSmartCoordinator
                 "Owner-only restoration requires Normal mode or the admitted shutdown cleanup.");
         }
 
-        ResetCpuExclusivityState();
+        if (forShutdown || !runtimeCpuLeases.HasLeases) ResetCpuExclusivityState();
         var placementsRestored = false;
         var snapshot = await nativeActionTransactions.AppliedOwnership.ReadSnapshotAsync(cancellationToken);
         authoritativeAppliedFactsRequired |= snapshot.Records.Count != 0;
@@ -79,6 +79,12 @@ public sealed partial class HostManagerSmartCoordinator
             }
             if (item.Kind == NormalRestoreWorkKind.Placement)
             {
+                if (!forShutdown && runtimeCpuLeases.HasLeases)
+                {
+                    // The same placement transaction below reconciles lease CPU effects and restores unwanted GPU effects.
+                    placementsRestored = true;
+                    continue;
+                }
                 if (placementStateAvailable)
                 {
                     var placementState = await LoadRollbackStateAsync(cancellationToken);
@@ -349,7 +355,7 @@ public sealed partial class HostManagerSmartCoordinator
 
     private async Task<bool> CanParkNormalSchedulingAsync(CancellationToken cancellationToken)
     {
-        if (HasPendingGpuOwnerWork()
+        if (runtimeCpuLeases.HasLeases || HasPendingGpuOwnerWork()
             || lastCycleActionBudget?.DeferredReason is not null
             || publicResourceNotifications is null
             || HasAvailablePublicResourceLifecycle()

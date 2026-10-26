@@ -97,7 +97,8 @@ internal static partial class HostManagerAutomaticPlacementPlanner
         var candidates = processes
             .Where(static process => process.CanApplyPhysicalPlacement)
             .Where(static process => !process.Policy.CpuSchedulingExcluded)
-            .Where(process => process.CanonicalCpuScore is >= 0 || reservations?.ExcludedFor(process.SoftwareId).Count > 0)
+            .Where(process => process.CanonicalCpuScore is >= 0 || process.Policy.CpuManualLockedPositionIds.Count > 0
+                || reservations?.ExcludedFor(process.SoftwareId, process.TargetId).Count > 0)
             .OrderByDescending(static process => process.CanonicalCpuScore ?? 0)
             .ThenBy(static process => process.TargetId, StringComparer.OrdinalIgnoreCase)
             .ThenBy(static process => process.ProcessId)
@@ -105,7 +106,7 @@ internal static partial class HostManagerAutomaticPlacementPlanner
 
         foreach (var process in candidates)
         {
-            var excluded = reservations?.ExcludedFor(process.SoftwareId);
+            var excluded = reservations?.ExcludedFor(process.SoftwareId, process.TargetId);
             var lockedCoreIds = process.Policy.CpuManualLockedPositionIds
                 .Where(core => excluded?.Contains(core) != true).ToArray();
             if (lockedCoreIds.Length == 0)
@@ -131,9 +132,9 @@ internal static partial class HostManagerAutomaticPlacementPlanner
         foreach (var process in candidates)
         {
             if (process.Policy.CpuManualLockedPositionIds.Count != 0) continue;
-            var excluded = reservations?.ExcludedFor(process.SoftwareId);
+            var excluded = reservations?.ExcludedFor(process.SoftwareId, process.TargetId);
             var availableCores = topology.PhysicalCores.Where(core => excluded?.Contains(core.Id) != true).ToArray();
-            var singleCcd = ccds.Length > 1 && reservations?.IsOwner(process.SoftwareId) != true
+            var singleCcd = ccds.Length > 1 && reservations?.IsOwner(process.SoftwareId, process.TargetId) != true
                 && process.Policy.CpuMaximumOccupancyMode.Equals(CpuMaximumOccupancyModes.SingleCcd, StringComparison.OrdinalIgnoreCase);
             if (!singleCcd && excluded is not { Count: > 0 }) continue;
             var selected = singleCcd ? ccds

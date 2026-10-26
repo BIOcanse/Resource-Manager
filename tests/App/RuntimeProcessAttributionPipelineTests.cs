@@ -13,7 +13,7 @@ using ResourceManager.Shared.Runtime;
 namespace Resource_Manager_APP.Tests;
 
 [Collection(SoftwareIdentityCatalogProcessStateCollection.Name)]
-public sealed class RuntimeProcessAttributionPipelineTests
+public sealed partial class RuntimeProcessAttributionPipelineTests
 {
     [Fact]
     public async Task SharedSessionSerializesFrameAllocationAcrossPipelinesAndParallelObservations()

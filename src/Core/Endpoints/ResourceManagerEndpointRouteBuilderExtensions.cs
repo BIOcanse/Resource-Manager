@@ -45,6 +45,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         if (startupCapabilities.Allows(StartupCapability.OptimizationRuntime))
         {
             app.MapOptimizationEndpoints(loopbackApiPipelineMode);
+            app.MapCpuLeaseEndpoints();
         }
         app.MapComponentEndpoints(startupCapabilities);
         app.MapBrowserRuntimeEndpoints();

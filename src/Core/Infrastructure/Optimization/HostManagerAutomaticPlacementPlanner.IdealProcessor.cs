@@ -94,7 +94,7 @@ internal static partial class HostManagerAutomaticPlacementPlanner
         foreach (var orderedInput in workspace.OrderedInputs)
         {
             var input = orderedInput.Input;
-            FillExcludedCoreIds(reservations, input.Process.SoftwareId, workspace.ExcludedCoreIds);
+            FillExcludedCoreIds(reservations, input.Process.SoftwareId, input.Process.TargetId, workspace.ExcludedCoreIds);
             workspace.OrderedThreads.Clear();
             for (var threadIndex = 0; threadIndex < input.Threads.Count; threadIndex++)
             {
@@ -146,10 +146,16 @@ internal static partial class HostManagerAutomaticPlacementPlanner
     private static void FillExcludedCoreIds(
         HostManagerCpuReservations? reservations,
         string softwareId,
+        string targetId,
         HashSet<string> excludedCoreIds)
     {
         excludedCoreIds.Clear();
         if (reservations is null) return;
+        if (reservations.LeaseTargets.Count != 0)
+        {
+            excludedCoreIds.UnionWith(reservations.ExcludedFor(softwareId, targetId));
+            return;
+        }
         reservations.BySoftware.TryGetValue(softwareId, out var own);
         if (reservations.BySoftware is Dictionary<string, IReadOnlySet<string>> reservationMap)
         {
