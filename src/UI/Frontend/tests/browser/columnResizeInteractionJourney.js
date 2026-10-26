@@ -7,6 +7,16 @@ import { waitForNextPaint, waitForStableRendering } from "./journeyWaits.js";
  * 方向键一步 12 px；不在编辑模式时拖不动。不保存布局。
  */
 export default async function columnResizeInteractionJourney(page, baseUrl) {
+  await page.addInitScript(() => {
+    window.__columnGeometryReads = 0;
+    const measure = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function (...args) {
+      if (this.classList.contains("resource-table-header") || this.classList.contains("resource-table-head-cell")) {
+        window.__columnGeometryReads++;
+      }
+      return measure.apply(this, args);
+    };
+  });
   const scenario = await page.request.post(`${baseUrl}/__test/scenario`, { data: { resourceTableVariant: "many", resourceTableRowCount: 20 } });
   if (!scenario.ok()) throw new Error(`Unable to configure resource-table fixture: ${scenario.status()}`);
   await page.setViewportSize({ width: 1400, height: 900 });
@@ -53,6 +63,8 @@ export default async function columnResizeInteractionJourney(page, baseUrl) {
   await steps(start, 40);
   await page.mouse.up();
   if (await width() !== idle) throw new Error(`Dragging outside edit mode changed the width: ${idle} -> ${await width()}`);
+  const idleGeometryReads = await page.evaluate(() => window.__columnGeometryReads);
+  if (idleGeometryReads !== 0) throw new Error(`Inactive column handles measured geometry ${idleGeometryReads} times`);
 
   await page.locator('[data-focus-key="resource-table-edit"]').click();
 

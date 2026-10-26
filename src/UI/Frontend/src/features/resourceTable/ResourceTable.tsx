@@ -767,7 +767,7 @@ function VirtualResourceTable(props: {
               const storedWidth = () => clampColumnWidth(baseColumns()[columnIndex()].width);
               // 这次拖动前存的宽度：第一次连续调用时记下，取消时回到它，最终调用或取消后清掉。
               let widthBeforeDrag: number | null = null;
-              useInteraction(`列宽把手「${columnId}」`, columnResizeHandleDefinition, () => columnResizeView(resizeHandle), solidHost<number>({
+              useInteraction(`列宽把手「${columnId}」`, columnResizeHandleDefinition, () => columnResizeView(resizeHandle, () => props.editMode), solidHost<number>({
                 value: () => columnRightEdge(columnIndex(), storedWidth()),
                 enabled: () => props.editMode,
                 call: (port, args) => {
@@ -1362,11 +1362,13 @@ function gpuResourceTableColumns(catalog: MetricDefinition[]): ResourceTableColu
  * 几何就是表头左边缘两侧各一个边界远的两点（1 个单位 = 1 px），表头横向滚动时跟着表头走。
  * 列宽由表格按宿主值画，把手自己不另画；无障碍的当前宽度由表格按存的宽度写在把手上。
  */
-function columnResizeView(handle: HTMLElement): Presentation {
+function columnResizeView(handle: HTMLElement, editing: () => boolean): Presentation {
   return {
     element: handle,
     bindingLabel: "右边缘位置",
     geometry: () => {
+      // 非编辑模式没有可拖把手；宿主列宽更新不需要把屏幕坐标换成通道值。
+      if (!editing()) return null;
       const header = handle.closest(".resource-table-header");
       const cell = handle.parentElement;
       if (!header || !cell) return null;
