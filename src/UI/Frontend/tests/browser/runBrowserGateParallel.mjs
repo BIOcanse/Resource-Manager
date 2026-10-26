@@ -10,13 +10,14 @@ import { fileURLToPath } from "node:url";
  * 拆开，所以这里只把旧参数翻译成它的环境变量，跑一次。
  * 删除条件：.local 下的命令文件和项目文档都不再调用本脚本后删除。
  *
- *   node tests/browser/runBrowserGateParallel.mjs [--jobs N] [--logs DIR] 任务...
+ *   node tests/browser/runBrowserGateParallel.mjs [--jobs N] [--logs DIR] [--keep-going] 任务...
  *
  * 任务写法：
  *   旅程名                          例如 metric-field-cards
  *   localization=语言,语言          九语旅程只跑这几种语言（RM_LOCALIZATION_LANGUAGES；几个这样的任务合并）
  *
  * --jobs：工作进程数（RM_BROWSER_WORKERS）；不给就用 runBrowserGate 的默认值。
+ * --keep-going：转交 runner，失败后仍覆盖剩余任务；失败仍以 1 退出。
  * --logs：完整输出写到 DIR/browser-gate.log，默认 .local/test-results/browser-parallel。
  * 调用前先 npm run build；本脚本不构建。屏幕上只输出每个任务一行结果和汇总，任一失败则以 1 退出。
  */
@@ -24,11 +25,13 @@ import { fileURLToPath } from "node:url";
 const projectRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const args = process.argv.slice(2);
 let workers = null;
+let keepGoing = false;
 let logDir = resolve(projectRoot, "../../../.local/test-results/browser-parallel");
 const specs = [];
 for (let index = 0; index < args.length; index += 1) {
   if (args[index] === "--jobs") workers = args[++index];
   else if (args[index] === "--logs") logDir = resolve(args[++index]);
+  else if (args[index] === "--keep-going") keepGoing = true;
   else specs.push(args[index]);
 }
 if (specs.length === 0) {
@@ -56,7 +59,8 @@ const code = await new Promise((resolveCode) => {
   // 与 package.json 的 test:browser 相同：旅程导入 .ts 源码，需要 --experimental-transform-types。
   const nodeFlags = process.execArgv.includes("--experimental-transform-types")
     ? process.execArgv : [...process.execArgv, "--experimental-transform-types"];
-  const child = spawn(process.execPath, [...nodeFlags, resolve(projectRoot, "tests/browser/runBrowserGate.mjs")], {
+  const child = spawn(process.execPath, [...nodeFlags, resolve(projectRoot, "tests/browser/runBrowserGate.mjs"),
+    ...(keepGoing ? ["--keep-going"] : [])], {
     cwd: projectRoot,
     env,
     stdio: ["ignore", "pipe", "pipe"]

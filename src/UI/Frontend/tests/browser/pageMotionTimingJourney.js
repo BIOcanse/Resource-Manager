@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
@@ -11,8 +11,11 @@ const INSTANT_SAMPLE_MS = 300;
 const INITIAL_SETTLE_MS = 1200;
 /** 与 page-motion 的共同切换序列相同；帧探针只记时间，不读取 DOM，避免测试自身强制布局。外观仍由 page-motion 验证。 */
 export default async function pageMotionTimingJourney(page, baseUrl) {
-  const evidenceDirectory = process.env.RM_PAGE_MOTION_EVIDENCE_DIR;
-  if (!evidenceDirectory) throw new Error("page-motion-timing requires RM_PAGE_MOTION_EVIDENCE_DIR");
+  const evidenceRoot = process.env.RM_PAGE_MOTION_EVIDENCE_DIR;
+  if (!evidenceRoot) throw new Error("page-motion-timing requires RM_PAGE_MOTION_EVIDENCE_DIR");
+  // 全旅程 gate 可以与 page-motion 并发；各探针拥有独立的 profile 和汇总文件。
+  const evidenceDirectory = resolve(evidenceRoot, "page-motion-timing");
+  mkdirSync(evidenceDirectory, { recursive: true });
   const startedOn = new Date().toISOString();
   const failures = [];
   page.on("pageerror", error => failures.push(String(error)));
