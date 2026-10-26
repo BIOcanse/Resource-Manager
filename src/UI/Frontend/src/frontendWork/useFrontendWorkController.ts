@@ -10,14 +10,9 @@ import {
   readFrontendVisibilitySurface
 } from "./frontendVisibilitySurface.ts";
 import {
-  isFrontendSurfaceVisible,
-  resolveFrontendVisibilityBounds,
   sameOrderedValues,
-  visibleFrontendDemandIds,
-  type FrontendVisibilityBounds
+  visibleFrontendDemandIds
 } from "./frontendVisibility.ts";
-
-const repairIntervalMilliseconds = 5_000;
 
 interface FrontendVisibilitySurfaceRuntime {
   element: HTMLElement;
@@ -51,7 +46,7 @@ export function useFrontendWorkController(): FrontendWorkController {
   let root: HTMLElement | null = null;
   let intersectionObserver: IntersectionObserver | null = null;
   let mutationObserver: MutationObserver | null = null;
-  let repairTimer = 0;
+
   let hostVisible = true;
   // 每项工作的“是否需要”只在这一项变化时通知：消费端在 effect 里读它决定是否持有订阅，
   // 跟踪整份列表会让无关工作变化或同一需求的注销再注册（卡片重建）把订阅退掉重订，合并通道随之整条重建。
@@ -93,7 +88,7 @@ export function useFrontendWorkController(): FrontendWorkController {
         publishControllerState();
       };
     },
-    refreshVisibilitySurfaces: repairVisibilitySurfaces
+    refreshVisibilitySurfaces
   };
 
   onMount(() => {
@@ -124,7 +119,7 @@ export function useFrontendWorkController(): FrontendWorkController {
     const handleDocumentVisibility = () => {
       syncFrontendVisibility();
       if (frontendVisible()) {
-        repairVisibilitySurfaces();
+        refreshVisibilitySurfaces();
       }
     };
     const unsubscribeHostMessages = subscribeShellHostMessages((message) => {
@@ -135,23 +130,19 @@ export function useFrontendWorkController(): FrontendWorkController {
         hostVisible = true;
         syncFrontendVisibility();
         if (frontendVisible()) {
-          repairVisibilitySurfaces();
+          refreshVisibilitySurfaces();
         }
       }
     });
 
     document.addEventListener("visibilitychange", handleDocumentVisibility);
-    repairTimer = window.setInterval(
-      repairVisibilitySurfaces,
-      repairIntervalMilliseconds);
-    repairVisibilitySurfaces();
+    refreshVisibilitySurfaces();
 
     onCleanup(() => {
       document.removeEventListener("visibilitychange", handleDocumentVisibility);
       unsubscribeHostMessages();
       intersectionObserver?.disconnect();
       mutationObserver?.disconnect();
-      window.clearInterval(repairTimer);
       for (const demandController of visibilityDemandControllers.values()) {
         demandController.dispose();
       }
@@ -174,23 +165,10 @@ export function useFrontendWorkController(): FrontendWorkController {
     }
 
     setFrontendVisible(nextVisible);
-    if (!nextVisible) {
-      let changed = false;
-      for (const surface of visibilitySurfaces.values()) {
-        if (surface.visible) {
-          surface.visible = false;
-          changed = true;
-        }
-      }
-      if (changed || visibleDemandIds.size > 0) {
-        publishSurfaceVisibility();
-      }
-    }
+    // 保留几何观察结果；宿主/文档可见性单独门控需求，恢复时不必同步量框。
+    publishSurfaceVisibility();
   }
-
-  function syncVisibilitySurfaces(
-    visibilityBounds: FrontendVisibilityBounds = resolveFrontendVisibilityBounds(root)
-  ) {
+  function syncVisibilitySurfaces() {
     if (!root) {
       return false;
     }
@@ -222,7 +200,7 @@ export function useFrontendWorkController(): FrontendWorkController {
         visibilitySurfaces.set(element, {
           element,
           demandIds: parsed.demandIds,
-          visible: frontendVisible() && isFrontendSurfaceVisible(element, visibilityBounds)
+          visible: false
         });
         intersectionObserver?.observe(element);
         changed = true;
@@ -242,7 +220,7 @@ export function useFrontendWorkController(): FrontendWorkController {
         continue;
       }
 
-      const visible = frontendVisible() && entry.isIntersecting;
+      const visible = entry.isIntersecting;
       if (runtime.visible !== visible) {
         runtime.visible = visible;
         changed = true;
@@ -253,22 +231,13 @@ export function useFrontendWorkController(): FrontendWorkController {
     }
   }
 
-  function repairVisibilitySurfaces() {
-    const visibilityBounds = resolveFrontendVisibilityBounds(root);
-    let changed = syncVisibilitySurfaces(visibilityBounds);
-    for (const runtime of visibilitySurfaces.values()) {
-      const visible = frontendVisible()
-        && isFrontendSurfaceVisible(runtime.element, visibilityBounds);
-      if (runtime.visible !== visible) {
-        runtime.visible = visible;
-        changed = true;
-      }
-    }
-    if (changed) {
-      publishSurfaceVisibility();
-    }
+  function refreshVisibilitySurfaces() {
+    // 只同步标记和消费已交付的观察；新元素等待浏览器布局后的首个相交结果。
+    const changed = syncVisibilitySurfaces();
+    if (changed) publishSurfaceVisibility();
+    const entries = intersectionObserver?.takeRecords() ?? [];
+    if (entries.length) handleSurfaceIntersections(entries);
   }
-
   function publishSurfaceVisibility() {
     visibleDemandIds = new Set(visibleFrontendDemandIds(visibilitySurfaces.values()));
     for (const demandController of visibilityDemandControllers.values()) {

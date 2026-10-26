@@ -14,8 +14,8 @@ class FakeSurface {
   readonly isConnected = true;
   constructor(private readonly attributes: Record<string, string>) {}
   getAttribute(name: string) { return this.attributes[name] ?? null; }
-  getClientRects() { return [{}]; }
-  getBoundingClientRect() { return { top: 0, left: 0, right: 10, bottom: 10 }; }
+  getClientRects() { throw new Error("synchronous geometry read"); }
+  getBoundingClientRect() { throw new Error("synchronous geometry read"); }
 }
 // 卡片 ID 里带需要编码的字符：消费端拿到的必须是原样的卡片 ID。
 const cardDemand = frontendVisibilitySourceDemand(frontendVisibilitySourceKinds.monitorCard, "gpu 0/usage");
@@ -29,21 +29,34 @@ const root = {
     assert.equal(selector, frontendVisibilitySurfaceSelector);
     return surfaces;
   },
-  getBoundingClientRect() { return { top: 0, left: 0, right: 1000, bottom: 1000 }; }
+  getBoundingClientRect() { throw new Error("synchronous geometry read"); }
 };
 class InertObserver { observe() {} unobserve() {} disconnect() {} }
+let intersections!: FakeIntersections;
+class FakeIntersections {
+  targets = new Set<FakeSurface>();
+  constructor(readonly callback: (entries: unknown[]) => void) { intersections = this; }
+  observe(target: FakeSurface) { this.targets.add(target); }
+  unobserve(target: FakeSurface) { this.targets.delete(target); }
+  disconnect() { this.targets.clear(); }
+  takeRecords() { return []; }
+  deliver(visible: boolean) {
+    this.callback([...this.targets].map((target) => ({ target, isIntersecting: visible })));
+  }
+}
+let documentVisibilityChanged = () => {};
 Object.assign(globalThis, {
   document: {
     visibilityState: "visible",
     querySelector: (selector: string) => selector === ".app-shell" ? root : null,
-    addEventListener() {},
+    addEventListener(name: string, listener: () => void) { if (name === "visibilitychange") documentVisibilityChanged = listener; },
     removeEventListener() {}
   },
   window: Object.assign(globalThis.window ?? {}, {
     innerWidth: 1000, innerHeight: 1000,
     setInterval: () => 0, clearInterval: () => undefined
   }),
-  IntersectionObserver: InertObserver,
+  IntersectionObserver: FakeIntersections,
   MutationObserver: InertObserver
 });
 
@@ -66,7 +79,21 @@ const dispose = createRoot((disposeRoot) => {
   return disposeRoot;
 });
 await flush();
+assert.equal(metricsNeeded, false, "new surfaces wait for the browser intersection result");
+controller.refreshVisibilitySurfaces();
+assert.equal(metricsNeeded, false, "explicit refresh must not measure or invent visibility");
+intersections.deliver(true);
+await flush();
 assert.equal(metricsNeeded, true, "visible card needs metrics");
+Object.assign(document, { visibilityState: "hidden" });
+documentVisibilityChanged();
+assert.equal(controller.isNeeded(frontendWorkIds.monitorMetrics), false);
+Object.assign(document, { visibilityState: "visible" });
+documentVisibilityChanged();
+assert.equal(controller.isNeeded(frontendWorkIds.monitorMetrics), true, "restore uses the latest observer state without a geometry read");
+intersections.deliver(false);
+assert.equal(controller.isNeeded(frontendWorkIds.monitorMetrics), false, "offscreen surfaces release work");
+intersections.deliver(true);
 assert.deepEqual(controller.activeVisibilitySourceIds(frontendVisibilitySourceKinds.monitorCard), ["gpu 0/usage"],
   "only the visible card is handed over, with its own id");
 assert.deepEqual(controller.activeWorkIds(), [frontendWorkIds.monitorMetrics, frontendWorkIds.monitorTable]);
@@ -95,6 +122,7 @@ assert.equal(metricsRuns, baseline + 1);
 assert.deepEqual(controller.activeVisibilitySourceIds(frontendVisibilitySourceKinds.monitorCard), []);
 
 dispose();
+assert.equal(intersections.targets.size, 0, "cleanup disconnects observations");
 
 async function flush() {
   await Promise.resolve();

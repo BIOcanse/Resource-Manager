@@ -56,15 +56,8 @@ assert.match(
   /requires at least one work ID/);
 assert.match(controllerSource, /new IntersectionObserver/);
 assert.match(controllerSource, /new MutationObserver/);
-assert.match(controllerSource, /repairIntervalMilliseconds = 5_000/);
-assert.match(
-  controllerSource,
-  /window\.setInterval\(\s*repairVisibilitySurfaces,\s*repairIntervalMilliseconds\)/,
-  "the bounded repair pass must preserve direct visibility occupancy after observer loss");
-assert.match(
-  controllerSource,
-  /resolveFrontendVisibilityBounds\(root\)[\s\S]*syncVisibilitySurfaces\(visibilityBounds\)[\s\S]*isFrontendSurfaceVisible/,
-  "the repair pass must re-evaluate every registered visibility surface");
+assert.doesNotMatch(controllerSource, /getBoundingClientRect|getClientRects|setInterval/,
+  "visibility is observer-owned, without synchronous geometry repair or polling");
 assert.match(
   controllerSource,
   /if \(!parsed\) \{[\s\S]*visibilitySurfaces\.delete\(element\)[\s\S]*unobserve\(element\)/,
