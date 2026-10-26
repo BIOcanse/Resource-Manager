@@ -634,12 +634,12 @@ export function managementActionKey(type: string, id: unknown) {
 }
 
 export function managementActionKeyFromOperation(operation: OperationSnapshot) {
-  const domainId = operation.domainKey?.split(":").slice(1).join(":");
-  if (operation.kind === "component.install" && domainId) {
-    return managementActionKey("component", domainId);
+  const targetId = operation.subject?.targetId;
+  if (operation.kind === "component.install" && targetId) {
+    return managementActionKey("component", targetId);
   }
-  if (operation.kind === "software.uninstall" && domainId) {
-    return managementActionKey("software", domainId);
+  if (operation.kind === "software.uninstall" && targetId) {
+    return managementActionKey("software", targetId);
   }
 
   return null;
