@@ -18,8 +18,7 @@ export default async function stableButtonLabelsJourney(page, baseUrl) {
   await page.setViewportSize({ width: 1280, height: 860 });
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
   let previous = "zh-CN";
-  const checked = [];
-  for (const option of languageOptions.filter(option => option.id !== "system")) {
+  const switchLanguage = async (option) => {
     const oldApp = await loadAppCopy(previous);
     const oldSettings = await loadSettingsText(previous);
     await page.getByRole("navigation").getByRole("button", { name: oldApp.page.settings, exact: true }).click();
@@ -29,6 +28,10 @@ export default async function stableButtonLabelsJourney(page, baseUrl) {
     if (option.id !== previous) await page.getByRole("button", { name: oldSettings.actions.save, exact: true }).click();
     await page.waitForFunction(language => document.documentElement.lang === language, option.id);
     previous = option.id;
+  };
+  const checked = [];
+  for (const option of languageOptions.filter(option => option.id !== "system")) {
+    await switchLanguage(option);
     const app = await loadAppCopy(option.id);
     // 每页等到它自己的那颗按钮出现再量，免得量到上一页正在退场的按钮。
     const pages = [
@@ -70,6 +73,8 @@ export default async function stableButtonLabelsJourney(page, baseUrl) {
       checked.push(`${option.id}/${pageId}:${buttons.length}`);
     }
   }
+  // 结束时回到开始时的简体中文，后续检查看到的页面和进来时一样。
+  await switchLanguage(languageOptions.find(option => option.id === "zh-CN"));
   if (failures.length) throw new Error(failures.join("\n"));
   return { checked };
 }
