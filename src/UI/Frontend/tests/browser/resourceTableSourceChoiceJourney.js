@@ -126,11 +126,13 @@ export async function checkResourceTableSourceText(page, app, language) {
   }
   await editor.getByRole("button", { name: table.columns.memory, exact: true }).click();
   const sources = panel.getByRole("radiogroup", { name: table.columnSourceLabel(table.columns.memory), exact: true });
-  await sources.waitFor({ timeout: 15_000 });
   const radios = sources.getByRole("radio");
-  const labels = (await radios.allTextContents()).map((label) => label.trim());
   const expected = [app.metricPicker.sourceAutomatic(table.memoryQuantities.private_working_set), table.memoryQuantities.working_set_including_shared,
     table.memoryQuantities.private_working_set, table.memoryQuantities.private_commit];
+  // The editor can render before resource-facts supplies the actual automatic source.
+  await waitForCondition(page, async () => (await radios.allTextContents())[0]?.trim() === expected[0],
+    { timeoutMs: 15_000, description: `${language}: resolved automatic memory source` });
+  const labels = (await radios.allTextContents()).map((label) => label.trim());
   if (JSON.stringify(labels) !== JSON.stringify(expected)) throw new Error(`${language}: memory sources ${JSON.stringify(labels)}, expected ${JSON.stringify(expected)}`);
   if (await radios.nth(1).getAttribute("title") !== table.memorySourceBasis.working_set_including_shared
     || await radios.nth(3).getAttribute("title") !== table.memorySourceBasis.private_commit) {
