@@ -195,12 +195,19 @@ export default createSettingsLocale("fr-FR", {
     "uiStyleDescription": "Modifie les coins, les lignes, les ombres et les polices des contrôles ; la disposition ne change pas. Chaque style a ses propres palettes.",
     "themeTitle": "Palette",
     "themeDescription": "Choisissez une palette du style actuel. Système suit le réglage clair ou sombre de Windows.",
-    "animationTitle": "Animations",
-    "animationDescription": "Choisissez des animations complètes, aucune animation ou des effets simplifiés pour réduire le coût de l’interface.",
-    "motionFeelTitle": "Ressenti des animations",
-    "motionFeelDescription": "Modifie le rythme et les courbes de toutes les animations de l’interface, y compris la façon dont les contrôles déplacés se placent et reviennent. Sans animation, rien ne bouge.",
+    "animationStyleTitle": "Style d’animation",
+    "animationStyleDescription": "Choisit la manière dont les transitions se déroulent et dont les commandes se mettent en place. Très hautes performances supprime en outre les ombres, les reflets et le flou.",
+    "autoDisableAnimationsTitle": "Désactiver les animations selon l’auto-ordonnancement",
+    "autoDisableAnimationsDescription": "Lorsque cette option est activée et que l’interface revient au premier plan sans saisie récente, un résultat de l’auto-ordonnancement qui demande des économies applique Aucune animation ; sinon, le style choisi s’applique. Aucun changement n’a lieu pendant l’utilisation de l’interface. Sans effet avec Aucune animation ou Très hautes performances.",
+    "animationStyleOptions": {
+      "smooth": { "label": "Fluide", "description": "Comme macOS et les systèmes mobiles : mouvement à ressort qui conserve la vitesse du geste, peut être rattrapé à tout moment et rebondit en bord de défilement" },
+      "desktop": { "label": "Bureau classique", "description": "Comme les logiciels de bureau Windows courants : transitions courtes et décélérées, sans vitesse conservée ni rebond" },
+      "terminal": { "label": "Terminal par paliers", "description": "Atteint la fin en un nombre fixe de paliers, sans courbe d’accélération, comme le rafraîchissement d’un terminal en mode texte" },
+      "none": { "label": "Aucune animation", "description": "Toutes les transitions et apparitions se terminent dans la même image ; l’apparence reste inchangée" },
+      "ultra": { "label": "Très hautes performances", "description": "Aucune animation, sans ombres, reflets ni flou, pour un coût d’affichage minimal" }
+    },
     "resourceBarFrameRateTitle": "Fréquence d’images des barres de ressources",
-    "resourceBarFrameRateDescription": "Nombre d’images par seconde dessinées pendant les transitions des barres. Suivre l’écran utilise la fréquence de rafraîchissement du moniteur ; Personnalisé limite les images pour réduire la charge. S’applique uniquement avec les animations normales.",
+    "resourceBarFrameRateDescription": "Nombre d’images par seconde dessinées pendant les transitions des barres. Suivre l’écran utilise la fréquence de rafraîchissement du moniteur ; Personnalisé limite les images pour réduire la charge. Sans effet avec Aucune animation ou Très hautes performances.",
     "resourceBarFrameRateModeOptions": [
       {
         "id": "display",
@@ -239,11 +246,6 @@ export default createSettingsLocale("fr-FR", {
     "settingsLanguageTitle": "Langue de l’interface",
     "settingsLanguageDescription": "Change la langue de toute l’interface, y compris la zone de notification et le titre de fenêtre. Le mode système utilise la langue d’affichage Windows.",
     "languageSelectLabel": "Langue",
-    "motionFeelOptions": {
-      "standard": "Standard",
-      "smooth": "Fluide",
-      "crisp": "Vif"
-    },
     "uiStyleOptions": {
       "standard": "Standard",
       "classic": "Classique",
@@ -262,24 +264,6 @@ export default createSettingsLocale("fr-FR", {
       "phosphor": "Phosphore",
       "amber": "Ambre",
       "ice": "Glace"
-    },
-    "animationOptions": {
-      "auto": {
-        "label": "Automatique",
-        "description": "Sélectionne le niveau d’animation selon le niveau GPU de l’auto-ordonnancement uniquement lorsque la fenêtre visible reprend le focus sans saisie récente, puis le conserve jusqu’au prochain retour admissible."
-      },
-      "normal": {
-        "label": "Animations normales",
-        "description": "Activer des transitions discrètes dans toute l’interface"
-      },
-      "none": {
-        "label": "Aucune animation",
-        "description": "Désactiver les transitions et animations tout en conservant l’aspect soigné"
-      },
-      "ultra": {
-        "label": "Très hautes performances",
-        "description": "Désactiver les animations, ombres, reflets et flous pour réduire au minimum le coût d’affichage"
-      }
     },
     "barColorOptions": {
       "type": {

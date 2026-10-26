@@ -9,7 +9,8 @@ import type { OptimizationStore } from "../stores/optimizationStore";
 import type { SettingsStore } from "../stores/settingsStore";
 import type { ProductUpdateStore } from "../stores/productUpdateStore";
 import type { RuntimeCapabilitiesStore } from "../stores/runtimeCapabilitiesStore";
-import type { AppAnimationMode, ManagedComponent, OptimizationReportItem, PageId, SoftwareRecord } from "../types";
+import type { ManagedComponent, OptimizationReportItem, PageId, SoftwareRecord } from "../types";
+import type { AnimationStyleId } from "../presentation/animationStyle.ts";
 import { uiText } from "../text.ts";
 import type { ConfirmDialogRequest } from "../components/AppFeedback";
 import type { DetailsTab } from "./navigation/detailsNavigation.ts";
@@ -42,7 +43,7 @@ function preloadRoutePages(): Promise<unknown> {
 }
 
 interface AppRoutesProps {
-  animationMode: Exclude<AppAnimationMode, "auto">;
+  animationStyle: AnimationStyleId;
   activePage: Accessor<PageId>;
   /** 详细信息选中的二级分页（分页树）。 */
   detailsTab: Accessor<DetailsTab>;

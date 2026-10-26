@@ -16,7 +16,7 @@ export default async function resourceBarInteractionJourney(page, baseUrl) {
   await setScenario(page, baseUrl, { resourceSoftwareMix: "audit", resourceBreakdownGeneration: 0 });
   await seedFrontendPreferences(page, (value) => {
     value.appearance.theme = "light";
-    value.appearance.animations = "normal";
+    value.appearance.animationStyle = "desktop"; value.appearance.autoDisableAnimations = false;
   });
   await page.setViewportSize({ width: 1100, height: 800 });
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
@@ -103,7 +103,7 @@ export default async function resourceBarInteractionJourney(page, baseUrl) {
   assert(interrupted.holeFrames === 0, `An interrupted transition left a hole: ${JSON.stringify(interrupted)}`);
   assert(interrupted.positionsAfterReturn >= 5,
     `The transition after an interrupting update jumped to its end instead of moving on from the current frame: ${JSON.stringify(interrupted)}`);
-  await writeFrontendPreferences(page, (value) => { value.appearance.animations = "none"; });
+  await writeFrontendPreferences(page, (value) => { value.appearance.animationStyle = "none"; });
   await page.reload({ waitUntil: "domcontentloaded" });
   await waitForBar(page);
   const reduced = await recordTransition(page, baseUrl, 5);
@@ -134,10 +134,10 @@ export default async function resourceBarInteractionJourney(page, baseUrl) {
   const layer = [];
   const original = (await readFrontendPreferences(page)).appearance;
   const originalLanguage = original.language;
-  const originalAnimations = original.animations;
+  const originalAnimations = original.animationStyle;
   for (const [width, height] of [[1100, 800], [1920, 1080]]) {
     for (const language of ["zh-CN", "de-DE"]) {
-      await writeFrontendPreferences(page, (value) => { value.appearance.language = language; value.appearance.animations = "none"; });
+      await writeFrontendPreferences(page, (value) => { value.appearance.language = language; value.appearance.animationStyle = "none"; });
       await page.setViewportSize({ width, height });
       await page.reload({ waitUntil: "domcontentloaded" });
       await waitForBar(page);
@@ -158,7 +158,7 @@ export default async function resourceBarInteractionJourney(page, baseUrl) {
     }
   }
 
-  await writeFrontendPreferences(page, (value) => { value.appearance.language = originalLanguage; value.appearance.animations = originalAnimations; });
+  await writeFrontendPreferences(page, (value) => { value.appearance.language = originalLanguage; value.appearance.animationStyle = originalAnimations; });
   await page.setViewportSize({ width: 1100, height: 800 });
   await page.reload({ waitUntil: "domcontentloaded" });
   await waitForBar(page);

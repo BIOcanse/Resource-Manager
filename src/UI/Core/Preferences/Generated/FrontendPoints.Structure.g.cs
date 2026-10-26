@@ -24,9 +24,9 @@ public static class @FrontendPoints
     [global::FreedomPoint.FreedomPointBinding(0x0001000200290001UL)]
     public static readonly string @Theme = @FrontendPointsValues.@__fpValue_Theme;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200290002UL)]
-    public static readonly string @AnimationMode = @FrontendPointsValues.@__fpValue_AnimationMode;
+    public static readonly string @AnimationStyle = @FrontendPointsValues.@__fpValue_AnimationStyle;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200290003UL)]
-    public static readonly string @MotionFeel = @FrontendPointsValues.@__fpValue_MotionFeel;
+    public static readonly bool @AutoDisableAnimations = @FrontendPointsValues.@__fpValue_AutoDisableAnimations;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200290004UL)]
     public static readonly string @BarFrameRateMode = @FrontendPointsValues.@__fpValue_BarFrameRateMode;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200290005UL)]

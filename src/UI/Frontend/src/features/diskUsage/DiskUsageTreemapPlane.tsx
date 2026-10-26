@@ -396,11 +396,9 @@ export function DiskUsageTreemapPlane(props: {
           const point = localPoint(event);
           const { width, height } = size();
           // 每格 1.2 倍，向上放大、向下缩小；目标按格累积，视图用 fast + decel 带过去。
-          // 无动画、极简档（body[data-animations] 不是 normal）和窗口缩放中（令牌为 0）直接到目标。
+          // 无动画、超高性能（令牌为 0）和窗口缩放中（令牌为 0）直接到目标；终端顿挫的 --ease-decel 是 steps，视图按步跳。
           const target = event.currentTarget;
-          const durationMs = document.body.dataset.animations === "normal"
-            ? readMotionDurationMs(target, "--motion-fast")
-            : 0;
+          const durationMs = readMotionDurationMs(target, "--motion-fast");
           const zoom = accumulateWheelZoom(
             wheelZoom, viewport(), width, height, point.x, point.y, notches, performance.now(), durationMs);
           if (durationMs <= 0) {

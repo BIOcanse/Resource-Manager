@@ -194,12 +194,19 @@ export default createSettingsLocale("zh-TW", {
     "uiStyleDescription": "改變控制項的圓角、線條、陰影和字型，版面不變。每種風格有自己的配色。",
     "themeTitle": "配色",
     "themeDescription": "選擇目前風格提供的配色。跟隨系統會依 Windows 的淺色或深色設定切換。",
-    "animationTitle": "動畫效果",
-    "animationDescription": "選擇完整動畫、關閉動畫，或進一步簡化視覺以降低介面開銷。",
-    "motionFeelTitle": "手感",
-    "motionFeelDescription": "改變整個介面動畫的節奏和曲線，拖曳控制項的到位、回彈也一起變。動畫效果選無動畫時仍然不動。",
+    "animationStyleTitle": "動畫風格",
+    "animationStyleDescription": "選擇介面過渡與控制項到位的方式。超高效能在無動畫之外，再去除陰影、高光與模糊。",
+    "autoDisableAnimationsTitle": "依自動排程自動關閉動畫",
+    "autoDisableAnimationsDescription": "開啟時，介面回到前景的那一刻若近期沒有操作、自動排程結果為需要節省，就改用無動畫，否則使用所選風格；在前景操作期間不切換。選擇無動畫或超高效能時不起作用。",
+    "animationStyleOptions": {
+      "smooth": { "label": "流暢平滑", "description": "類似 macOS 與行動裝置系統：彈簧動畫，保留手勢的速度，隨時可以接住，捲動到邊緣時回彈" },
+      "desktop": { "label": "一般桌面", "description": "一般 Windows 桌面軟體的動畫：短促的減速過渡，不保留速度，沒有回彈" },
+      "terminal": { "label": "終端頓挫", "description": "依固定步數跳到終點，沒有緩動，類似字元終端機的重新整理" },
+      "none": { "label": "無動畫", "description": "所有過渡與進場都在同一影格完成，外觀不變" },
+      "ultra": { "label": "超高效能", "description": "無動畫，並去除陰影、高光與模糊，開銷最低" }
+    },
     "resourceBarFrameRateTitle": "資源條動畫幀率",
-    "resourceBarFrameRateDescription": "資源條過渡動畫每秒繪製幾幀。跟隨螢幕依顯示器更新率繪製；自定義可限制幀數以降低開銷。只在正常動畫下生效。",
+    "resourceBarFrameRateDescription": "資源條過渡動畫每秒繪製幾幀。跟隨螢幕依顯示器更新率繪製；自定義可限制幀數以降低開銷。無動畫、超高效能下不生效。",
     "resourceBarFrameRateModeOptions": [
       {
         "id": "display",
@@ -238,11 +245,6 @@ export default createSettingsLocale("zh-TW", {
     "settingsLanguageTitle": "介面語言",
     "settingsLanguageDescription": "切換整個介面的語言，包括桌面外殼的托盤與視窗標題；跟隨系統會使用 Windows 顯示語言。",
     "languageSelectLabel": "語言",
-    "motionFeelOptions": {
-      "standard": "標準",
-      "smooth": "平滑",
-      "crisp": "俐落"
-    },
     "uiStyleOptions": {
       "standard": "標準",
       "classic": "經典",
@@ -261,24 +263,6 @@ export default createSettingsLocale("zh-TW", {
       "phosphor": "磷綠",
       "amber": "琥珀",
       "ice": "冰藍"
-    },
-    "animationOptions": {
-      "auto": {
-        "label": "自動排程",
-        "description": "僅在視窗可見且重新取得焦點、近期無操作時，依自動排程 GPU 檔位選擇動畫效果，並維持至下次符合條件時。"
-      },
-      "normal": {
-        "label": "正常動畫",
-        "description": "啟用流暢的全域過渡動畫"
-      },
-      "none": {
-        "label": "無動畫",
-        "description": "關閉全部過渡與動畫，追求極致效能"
-      },
-      "ultra": {
-        "label": "超高效能",
-        "description": "關閉動畫並簡化視覺（去除陰影 / 高光 / 模糊），開銷最低"
-      }
     },
     "barColorOptions": {
       "type": {

@@ -1,7 +1,7 @@
 import { retryableLocaleImport } from "./retryableLocaleImport.ts";
-import type { AppAnimationMode, AppBarColorMode, AppFontSmoothing, ByteUnitMode } from "../types.ts";
+import type { AppBarColorMode, AppFontSmoothing, ByteUnitMode } from "../types.ts";
 import { uiStyles } from "../presentation/uiStyles.ts";
-import { motionFeels } from "../presentation/motionFeel.ts";
+import { animationStyles } from "../presentation/animationStyle.ts";
 import { createCreditGroups } from "./settingsCredits.ts";
 import { resolveLanguageMode } from "./settingsLanguages.ts";
 import { createSettingsLocale } from "./settingsLocaleFactory.ts";
@@ -104,10 +104,17 @@ export const loadingSettingsText: SettingsTextBundle = {
     uiStyleDescription: "",
     themeTitle: "",
     themeDescription: "",
-    animationTitle: "",
-    animationDescription: "",
-    motionFeelTitle: "",
-    motionFeelDescription: "",
+    animationStyleTitle: "",
+    animationStyleDescription: "",
+    autoDisableAnimationsTitle: "",
+    autoDisableAnimationsDescription: "",
+    animationStyleOptions: {
+      smooth: { label: "", description: "" },
+      desktop: { label: "", description: "" },
+      terminal: { label: "", description: "" },
+      none: { label: "", description: "" },
+      ultra: { label: "", description: "" }
+    },
     resourceBarFrameRateTitle: "",
     resourceBarFrameRateDescription: "",
     resourceBarFrameRateModeOptions: [],
@@ -132,13 +139,6 @@ export const loadingSettingsText: SettingsTextBundle = {
       paper: "", graphite: "", blueprint: "",
       phosphor: "", amber: "", ice: ""
     },
-    animationOptions: {
-      auto: { label: "", description: "" },
-      normal: { label: "", description: "" },
-      none: { label: "", description: "" },
-      ultra: { label: "", description: "" }
-    },
-    motionFeelOptions: { standard: "", smooth: "", crisp: "" },
     barColorOptions: {
       type: { label: "", description: "" },
       distinct: { label: "", description: "" }
@@ -365,8 +365,7 @@ export const loadingSettingsText: SettingsTextBundle = {
     dependencyColumns: { name: "", version: "", license: "", source: "" }
   },
   uiStyleOptions: [],
-  animationOptions: [],
-  motionFeelOptions: [],
+  animationStyleOptions: [],
   barColorOptions: [],
   byteUnitOptions: [],
   fontSmoothingOptions: [],
@@ -393,9 +392,7 @@ function createSettingsTextBundle(language: ConcreteAppLanguageMode, copy: Setti
     ...copy,
     language,
     uiStyleOptions: uiStyles.map((style) => ({ id: style.id, label: copy.appearance.uiStyleOptions[style.id] })),
-    animationOptions: (Object.entries(copy.appearance.animationOptions) as Array<[AppAnimationMode, { label: string; description: string }]>)
-      .map(([id, option]) => ({ id, label: option.label, description: option.description })),
-    motionFeelOptions: motionFeels.map((feel) => ({ id: feel.id, label: copy.appearance.motionFeelOptions[feel.id] })),
+    animationStyleOptions: animationStyles.map((style) => ({ id: style.id, ...copy.appearance.animationStyleOptions[style.id] })),
     barColorOptions: (Object.entries(copy.appearance.barColorOptions) as Array<[AppBarColorMode, { label: string; description: string }]>)
       .map(([id, option]) => ({ id, label: option.label, description: option.description })),
     byteUnitOptions: (Object.entries(copy.appearance.byteUnitOptions) as Array<[ByteUnitMode, { label: string; description: string }]>)

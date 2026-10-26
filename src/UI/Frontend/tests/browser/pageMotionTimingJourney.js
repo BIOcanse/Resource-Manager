@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
-import { installProbe, sampleClick, setAnimations } from "./pageMotionJourney.js";
+import { installProbe, sampleClick, setAnimationStyle } from "./pageMotionJourney.js";
 import { startMotionProfile, stopMotionProfile } from "./pageMotionEvidence.js";
 import { assessInteractionLongTasks } from "./interactionLongTaskBudget.js";
 
@@ -21,7 +21,6 @@ export default async function pageMotionTimingJourney(page, baseUrl) {
   page.on("pageerror", error => failures.push(String(error)));
   const app = await loadAppCopy("zh-CN");
   const settings = await loadSettingsText("zh-CN");
-  const animationLabel = id => settings.animationOptions.find(option => option.id === id).label;
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   const nav = page.getByRole("navigation", { name: app.shell.pageNav, exact: true });
@@ -39,8 +38,8 @@ export default async function pageMotionTimingJourney(page, baseUrl) {
   const subscriptionStreamsOpened = {};
   let streamOpens = 0;
   page.on("request", request => { if (new URL(request.url()).pathname === "/api/subscriptions/stream") streamOpens++; });
-  for (const mode of ["normal", "none", "ultra"]) {
-    await setAnimations(page, app, settings, animationLabel, mode);
+  for (const mode of ["smooth", "none", "ultra"]) {
+    await setAnimationStyle(page, app, settings, mode);
     await primary("details").click();
     await details.getByRole("tab", { name: app.misc.detailsTab.device, exact: true }).click();
     await primary(mode === "ultra" ? "components" : "monitor").click();

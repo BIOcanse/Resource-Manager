@@ -50,7 +50,7 @@ export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.
     resourceBreakdownGeneration: 0
   });
   // 动画效果是前端偏好：首次加载前写入常规动画。
-  await seedFrontendPreferences(page, (value) => { value.appearance.animations = "normal"; });
+  await seedFrontendPreferences(page, (value) => { value.appearance.animationStyle = "desktop"; value.appearance.autoDisableAnimations = false; });
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
 
   const taskButton = page.locator("#taskCenterButton");

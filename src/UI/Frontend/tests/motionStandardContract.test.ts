@@ -1,5 +1,5 @@
 // 动效标准（docs/ui_interaction_kit.md 第 3 节）在样式表里的落点：
-// 过渡只写在 motion.css；颜色反馈不按动画档门控（无动画、超高性能下瞬时变色），只有位移类留在 normal；
+// 过渡只写在 motion.css；颜色反馈不按动画风格门控（无动画、超高性能下瞬时变色），只有位移类留在会动的风格里；
 // 右键菜单和下拉一样有小弹层入场，页内页签内容淡入。
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
@@ -18,7 +18,7 @@ const rules: Rule[] = [...motionCss.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((matc
     const colon = part.indexOf(":");
     if (colon >= 0) declarations.set(part.slice(0, colon).trim(), part.slice(colon + 1).replace(/\s+/g, " ").trim());
   }
-  return { selectors: match[1].split(",").map((selector) => selector.trim()), declarations };
+  return { selectors: match[1].split(/,(?![^(]*\))/).map((selector) => selector.trim()), declarations };
 });
 
 function declarationsOf(selector: string): Map<string, string> {
@@ -29,13 +29,14 @@ function declarationsOf(selector: string): Map<string, string> {
   return merged;
 }
 
-// 门控在 normal 下的规则只能写位移类（transform、box-shadow 抬起）和过渡，不写颜色。
+// 门控在会动的风格（流畅平滑、桌面常规、终端顿挫）下的规则只能写位移类（transform、box-shadow 抬起）和过渡，不写颜色。
+const MOVING = 'body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"])';
 const colorProperties = ["background", "background-color", "border-color", "color", "fill", "opacity"];
 for (const rule of rules) {
-  if (!rule.selectors.some((selector) => selector.includes('data-animations="normal"'))) continue;
+  if (!rule.selectors.some((selector) => selector.includes(MOVING))) continue;
   for (const property of colorProperties) {
     assert.ok(!rule.declarations.has(property),
-      `${rule.selectors.join(", ")} gates the colour ${property} to normal; none/ultra must still show it`);
+      `${rule.selectors.join(", ")} gates the colour ${property} to the moving styles; none/ultra must still show it`);
   }
 }
 
@@ -77,7 +78,7 @@ for (const selector of [".has-selection-indicator .page-tab", ".has-selection-in
   const transition = declarationsOf(selector).get("transition") ?? "";
   assert.doesNotMatch(transition, /(^|,\s*)color\s/, `${selector} must not transition color; it follows the indicator`);
 }
-assert.equal(declarationsOf(':where(body[data-animations="normal"]) .has-selection-indicator .page-tab:active').get("transform"), "none");
+assert.equal(declarationsOf(`:where(${MOVING}) .has-selection-indicator .page-tab:active`).get("transform"), "none");
 
 // 监视卡片：等首个读数的占位条呼吸，读数到了数值淡入（分区入场的节奏）；之后的更新不做过渡。
 // 槽内按钮淡入；卡片只过渡真会变的属性（拖动源的半透明、阴影、悬停边框），没有不生效的 padding、transform。

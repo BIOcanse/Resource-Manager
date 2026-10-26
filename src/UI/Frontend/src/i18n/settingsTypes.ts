@@ -1,6 +1,6 @@
 import type { KnownAccessScope } from "../features/trustedAccess/trustedAccessTypes.ts";
-import type { AppAnimationMode, AppBarColorMode, AppFontSmoothing, AppLanguageMode, AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset, AppPresetNumericSettingMode, AppPalette, AppReadingSourceMode, AppResourceBarFrameRateMode, AppUiStyle, AppUpdateMode, ByteUnitMode, SettingsSection } from "../types.ts";
-import type { MotionFeelId } from "../presentation/motionFeel.ts";
+import type { AppBarColorMode, AppFontSmoothing, AppLanguageMode, AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset, AppPresetNumericSettingMode, AppPalette, AppReadingSourceMode, AppResourceBarFrameRateMode, AppUiStyle, AppUpdateMode, ByteUnitMode, SettingsSection } from "../types.ts";
+import type { AnimationStyleId } from "../presentation/animationStyle.ts";
 
 export type ConcreteAppLanguageMode = Exclude<AppLanguageMode, "system">;
 
@@ -128,10 +128,11 @@ export interface SettingsCopy {
     uiStyleDescription: string;
     themeTitle: string;
     themeDescription: string;
-    animationTitle: string;
-    animationDescription: string;
-    motionFeelTitle: string;
-    motionFeelDescription: string;
+    animationStyleTitle: string;
+    animationStyleDescription: string;
+    autoDisableAnimationsTitle: string;
+    autoDisableAnimationsDescription: string;
+    animationStyleOptions: Record<AnimationStyleId, { label: string; description: string }>;
     resourceBarFrameRateTitle: string;
     resourceBarFrameRateDescription: string;
     resourceBarFrameRateModeOptions: Array<{ id: AppResourceBarFrameRateMode; label: string; description: string }>;
@@ -153,8 +154,6 @@ export interface SettingsCopy {
     uiStyleOptions: Record<AppUiStyle, string>;
     // 所有风格的配色名称；每个风格列出哪些配色见 presentation/uiStyles.ts。
     themeOptions: Record<AppPalette, string>;
-    animationOptions: Record<AppAnimationMode, { label: string; description: string }>;
-    motionFeelOptions: Record<MotionFeelId, string>;
     barColorOptions: Record<AppBarColorMode, { label: string; description: string }>;
     byteUnitOptions: Record<ByteUnitMode, { label: string; description: string }>;
     fontSmoothingOptions: Record<AppFontSmoothing, { label: string; description: string }>;
@@ -448,9 +447,8 @@ export interface SettingsTextBundle extends SettingsCopy {
   language: ConcreteAppLanguageMode;
   // 按目录顺序排好的风格选项。
   uiStyleOptions: Array<{ id: AppUiStyle; label: string }>;
-  animationOptions: Array<{ id: AppAnimationMode; label: string; description: string }>;
-  // 按手感目录顺序排好的选项。
-  motionFeelOptions: Array<{ id: MotionFeelId; label: string }>;
+  // 按动画风格目录顺序排好的选项。
+  animationStyleOptions: Array<{ id: AnimationStyleId; label: string; description: string }>;
   barColorOptions: Array<{ id: AppBarColorMode; label: string; description: string }>;
   byteUnitOptions: Array<{ id: ByteUnitMode; label: string; description: string }>;
   fontSmoothingOptions: Array<{ id: AppFontSmoothing; label: string; description: string }>;

@@ -56,8 +56,8 @@ import columnResizeInteractionJourney from "./columnResizeInteractionJourney.js"
 import fanCurveInteractionJourney from "./fanCurveInteractionJourney.js";
 import switchInteractionJourney from "./switchInteractionJourney.js";
 import reorderInteractionJourney from "./reorderInteractionJourney.js";
-import motionFeelJourney from "./motionFeelJourney.js";
-import pageMotionJourney from "./pageMotionJourney.js";
+import animationStyleJourney from "./animationStyleJourney.js";
+import pageMotionJourney, { pageMotionJourneyIn } from "./pageMotionJourney.js";
 import settingsSourceJourney from "./settingsSourceJourney.js";
 import aiGatewayKeysJourney from "./aiGatewayKeysJourney.js";
 import gpuOverflowSettingsJourney from "./gpuOverflowSettingsJourney.js";
@@ -176,8 +176,10 @@ const allJourneys = [
   ["switch-interaction", switchInteractionJourney],
   ["wheel-accumulation", async (...args) => (await import("./wheelAccumulationJourney.js")).default(...args)],
   ["reorder-interaction", reorderInteractionJourney],
-  ["motion-feel", motionFeelJourney],
+  ["animation-style", animationStyleJourney],
   ["page-motion", pageMotionJourney],
+  ["page-motion-desktop", pageMotionJourneyIn("desktop")],
+  ["page-motion-terminal", pageMotionJourneyIn("terminal")],
   ["page-motion-timing", async (...args) => (await import("./pageMotionTimingJourney.js")).default(...args)],
   ["r2-remediation", r2RemediationJourney],
   ["accessibility-semantics", accessibilitySemanticsJourney]

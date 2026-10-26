@@ -1,5 +1,5 @@
 import { writeFrontendPreferences } from "./frontendPreferencesFixture.js";
-import { AUTO_ANIMATION_OPTIMIZE_MODE } from "../../src/app/selfScheduling/createAnimationModeSelection.ts";
+import { AUTO_ANIMATION_OPTIMIZE_STYLE } from "../../src/app/selfScheduling/createAnimationStyleSelection.ts";
 
 const normalSettleMinimumMs = 400;
 const disabledMotionObservationMs = 600;
@@ -69,8 +69,11 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
       modeSwitch: probe?.modeSwitch ?? null
     };
   });
-  // 动画效果是前端偏好：像用户保存过一样写前端缓存，随后 reload 生效。
-  const setAnimations = (mode) => writeFrontendPreferences(page, (value) => { value.appearance.animations = mode; });
+  // 动画风格和自动关闭是前端偏好：像用户保存过一样写前端缓存，随后 reload 生效。这里用桌面常规（固定时长）。
+  const setAnimations = (style, autoDisable = false) => writeFrontendPreferences(page, (value) => {
+    value.appearance.animationStyle = style;
+    value.appearance.autoDisableAnimations = autoDisable;
+  });
   const disposeMotionObserver = () => page.evaluate(() => {
     window.__resourceLayoutMotionProbe?.observer?.disconnect();
     delete window.__resourceLayoutMotionProbe;
@@ -83,12 +86,12 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
     settings: "ready",
     resourceBreakdownGeneration: 0
   });
-  await setAnimations("normal");
+  await setAnimations("desktop");
   await page.reload({ waitUntil: "domcontentloaded" });
 
   const track = page.locator('[data-metric-id="cpu.usage"].resource-bar-track');
   await track.waitFor({ state: "visible", timeout: 7000 });
-  await page.waitForFunction(() => document.body.dataset.animations === "normal");
+  await page.waitForFunction(() => document.body.dataset.animations === "desktop");
   await installMotionObserver();
   await setScenario({ resourceBreakdownGeneration: 1 });
   await waitForCpuTotal("38%");
@@ -117,13 +120,13 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
     gpuGrade: "optimize",
     resourceBreakdownGeneration: 4
   });
-  await setAnimations("auto");
+  await setAnimations("desktop", true);
   await page.reload({ waitUntil: "domcontentloaded" });
   await track.waitFor({ state: "visible", timeout: 7000 });
   await page.waitForFunction(() => document.body.dataset.selfGpuGrade === "optimize", null, {
     timeout: 6500
   });
-  await page.waitForFunction(() => document.body.dataset.animations === "normal");
+  await page.waitForFunction(() => document.body.dataset.animations === "desktop");
   await installMotionObserver(true);
   await setScenario({ resourceBreakdownGeneration: 5 });
   await waitForCpuTotal("38%");
@@ -132,10 +135,10 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
   null,
   { timeout: 3000 });
   await page.evaluate(() => window.dispatchEvent(new Event("blur")));
-  assert(await page.getAttribute("body", "data-animations") === "normal",
+  assert(await page.getAttribute("body", "data-animations") === "desktop",
     "Entering the background must retain the selected animation tier");
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-  await page.waitForFunction(tier => document.body.dataset.animations === tier, AUTO_ANIMATION_OPTIMIZE_MODE, {
+  await page.waitForFunction(tier => document.body.dataset.animations === tier, AUTO_ANIMATION_OPTIMIZE_STYLE, {
     timeout: 3000
   });
   await page.waitForFunction(() => {
@@ -153,7 +156,7 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
     && reactiveMoving
     && reactiveSettled
     && modeSwitch?.movingBefore === true
-    && modeSwitch.modeAfter === AUTO_ANIMATION_OPTIMIZE_MODE
+    && modeSwitch.modeAfter === AUTO_ANIMATION_OPTIMIZE_STYLE
     && modeSwitch.movingAfter === false,
   `Animation-mode change on foreground return did not settle before dispatch returned: ${JSON.stringify(reactive)}`);
   await disposeMotionObserver();

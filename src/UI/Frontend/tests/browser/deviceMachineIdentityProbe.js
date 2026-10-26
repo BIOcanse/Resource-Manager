@@ -146,11 +146,11 @@ export async function checkMachineIdentity(page, topology, publish) {
       const style = getComputedStyle(figure);
       return { name: style.animationName, duration: style.animationDuration };
     };
-    const result = { normal: read("normal"), none: read("none"), ultra: read("ultra") };
+    const result = { desktop: read("desktop"), none: read("none"), ultra: read("ultra") };
     if (before === undefined) delete body.dataset.animations; else body.dataset.animations = before;
     return result;
   });
-  assert(motion.normal.name === "motion-rise-in" && motion.normal.duration !== "0s"
+  assert(motion.desktop.name === "motion-rise-in" && motion.desktop.duration !== "0s"
     && motion.none.duration === "0s" && motion.ultra.duration === "0s",
   `The machine figure entrance does not have a normal and a reduced version: ${JSON.stringify(motion)}`);
 

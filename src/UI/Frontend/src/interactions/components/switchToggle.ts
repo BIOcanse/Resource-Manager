@@ -7,6 +7,7 @@
 import { LANDING, STOP_POINT } from "../protocol/definition.ts";
 import type { Definition } from "../protocol/definition.ts";
 import { SPRING } from "../protocol/field.ts";
+import { springOrEaseToPoints } from "./springOrEase.ts";
 import { call, CLAIM, dragBasics, stopAt } from "./common.ts";
 
 const drag = dragBasics();
@@ -26,9 +27,10 @@ export const switchToggleDefinition: Definition = {
     { from: ["拖动"], on: ["pointer.left↓"], to: "静止", out: [CLAIM, stopAt(LANDING)], note: "认领：这次松开不再产生点击" },
     ...drag.rows
   ],
-  // 两端是输出映射点，也是可能的终态。回点弹簧：松手时拉向离得近的一端，宿主值变了拉向终态。
+  // 两端是输出映射点，也是可能的终态。流畅平滑用回点弹簧：松手时拉向离得近的一端（带着速度，甩得够快越过中点就到另一端），
+  // 宿主值变了拉向终态；桌面常规、终端顿挫用缓动，松手按位置到近的一端，不接速度（springOrEase.ts 的开关）。
   channel: {
-    id: "openness", label: "开度", unit: "", min: 0, max: 1, step: 1, mappingPoints: [0, 1], hand: drag.hand, field: SPRING,
+    id: "openness", label: "开度", unit: "", min: 0, max: 1, step: 1, mappingPoints: [0, 1], hand: drag.hand, field: springOrEaseToPoints(SPRING),
     stopCall: call("select", STOP_POINT)
   },
   ports: [{ name: "select", params: ["value"], continuous: false }],

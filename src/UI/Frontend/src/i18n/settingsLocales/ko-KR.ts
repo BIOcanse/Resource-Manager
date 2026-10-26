@@ -195,12 +195,19 @@ export default createSettingsLocale("ko-KR", {
     "uiStyleDescription": "컨트롤의 모서리, 선, 그림자, 글꼴을 바꿉니다. 레이아웃은 그대로입니다. 스타일마다 고유한 색 구성이 있습니다.",
     "themeTitle": "색 구성",
     "themeDescription": "현재 스타일의 색 구성 중에서 선택합니다. 시스템은 Windows의 밝게/어둡게 설정을 따릅니다.",
-    "animationTitle": "애니메이션",
-    "animationDescription": "전체 애니메이션, 애니메이션 없음 또는 UI 부하를 줄이는 간소화된 효과를 선택합니다.",
-    "motionFeelTitle": "조작감",
-    "motionFeelDescription": "인터페이스 전체 애니메이션의 속도와 곡선을 바꿉니다. 끌어서 움직이는 컨트롤이 자리 잡고 되돌아가는 방식도 함께 바뀝니다. 애니메이션 없음을 선택하면 움직이지 않습니다.",
+    "animationStyleTitle": "애니메이션 스타일",
+    "animationStyleDescription": "전환이 재생되는 방식과 컨트롤이 제자리에 놓이는 방식을 선택합니다. 초고성능은 애니메이션 없음에 더해 그림자, 하이라이트, 흐림 효과도 끕니다.",
+    "autoDisableAnimationsTitle": "자체 스케줄링에 따라 애니메이션 자동 끄기",
+    "autoDisableAnimationsDescription": "켜면 화면이 전면으로 돌아온 순간 최근 입력이 없고 자체 스케줄링 결과가 절약이 필요하다고 판단하면 애니메이션 없음으로 바꾸고, 그렇지 않으면 선택한 스타일을 사용합니다. 전면에서 사용하는 동안에는 바꾸지 않습니다. 애니메이션 없음이나 초고성능을 선택하면 효과가 없습니다.",
+    "animationStyleOptions": {
+      "smooth": { "label": "부드러움", "description": "macOS와 모바일 운영체제처럼 스프링 동작으로 조작 속도를 이어 가고, 언제든 붙잡을 수 있으며, 스크롤 끝에서 튕겨 돌아옵니다" },
+      "desktop": { "label": "데스크톱 표준", "description": "일반적인 Windows 데스크톱 소프트웨어처럼 짧게 감속하는 전환이며, 속도를 이어 가지 않고 튕김도 없습니다" },
+      "terminal": { "label": "터미널 단계", "description": "완급 없이 정해진 단계 수로 끝까지 이동합니다. 문자 터미널이 다시 그려지는 것과 비슷합니다" },
+      "none": { "label": "애니메이션 없음", "description": "모든 전환과 등장이 같은 프레임에서 끝납니다. 모양은 그대로입니다" },
+      "ultra": { "label": "초고성능", "description": "애니메이션 없음에 더해 그림자, 하이라이트, 흐림 효과를 꺼서 부담을 최소화합니다" }
+    },
     "resourceBarFrameRateTitle": "리소스 막대 애니메이션 프레임 속도",
-    "resourceBarFrameRateDescription": "리소스 막대 전환 애니메이션을 초당 몇 프레임 그릴지 정합니다. 화면에 맞춤은 모니터 주사율로 그리고, 사용자 지정은 프레임 수를 제한해 부하를 줄입니다. 일반 애니메이션일 때만 적용됩니다.",
+    "resourceBarFrameRateDescription": "리소스 막대 전환 애니메이션을 초당 몇 프레임 그릴지 정합니다. 화면에 맞춤은 모니터 주사율로 그리고, 사용자 지정은 프레임 수를 제한해 부하를 줄입니다. 애니메이션 없음과 초고성능에서는 적용되지 않습니다.",
     "resourceBarFrameRateModeOptions": [
       {
         "id": "display",
@@ -239,11 +246,6 @@ export default createSettingsLocale("ko-KR", {
     "settingsLanguageTitle": "인터페이스 언어",
     "settingsLanguageDescription": "트레이와 창 제목을 포함한 전체 인터페이스의 언어를 변경합니다. 시스템을 선택하면 Windows 표시 언어를 사용합니다.",
     "languageSelectLabel": "언어",
-    "motionFeelOptions": {
-      "standard": "표준",
-      "smooth": "부드럽게",
-      "crisp": "경쾌하게"
-    },
     "uiStyleOptions": {
       "standard": "표준",
       "classic": "클래식",
@@ -262,24 +264,6 @@ export default createSettingsLocale("ko-KR", {
       "phosphor": "형광 녹색",
       "amber": "호박색",
       "ice": "아이스"
-    },
-    "animationOptions": {
-      "auto": {
-        "label": "자동",
-        "description": "창이 표시되고 최근 입력 없이 포커스를 다시 얻는 시점에만 자체 스케줄링의 GPU 등급에 따라 애니메이션 단계를 선택하며, 다음에 조건을 충족할 때까지 유지합니다."
-      },
-      "normal": {
-        "label": "일반 애니메이션",
-        "description": "절제된 전역 전환을 사용합니다"
-      },
-      "none": {
-        "label": "애니메이션 없음",
-        "description": "모든 전환과 애니메이션을 끕니다"
-      },
-      "ultra": {
-        "label": "초고성능",
-        "description": "애니메이션, 그림자, 하이라이트, 흐림 효과를 끄고 렌더링 비용을 최소화합니다"
-      }
     },
     "barColorOptions": {
       "type": {

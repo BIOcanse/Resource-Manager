@@ -7,7 +7,6 @@ import { createReorderGroup } from "../../interactions/solid/reorderGroup.ts";
 import { createWheelStepAccumulator, wheelNotches } from "../../interactions/wheelNotches.ts";
 import type { ReorderGroup } from "../../interactions/solid/reorderGroup.ts";
 import type {
-  AppAnimationMode,
   MetricDefinition,
   ResourceBarSettings,
   ResourceBreakdownBar,
@@ -43,6 +42,7 @@ import { ResourceTooltipOverlay } from "./ResourceTooltipOverlay.tsx";
 import { isReservedProcess, isReservedSegment, resourceProcessKey } from "./resourceProcessIdentity.ts";
 import { resourceBarUnavailableText } from "./resourceBarUnavailableReason.ts";
 import { readMotionDurationMs } from "../../presentation/motionTokens.ts";
+import type { AnimationStyleId } from "../../presentation/animationStyle.ts";
 import { resourceSegmentAtTrackX } from "./resourceTrackInteraction.ts";
 import { resourceEmptyCapacityValue, selectableResourceSegmentIds } from "./resourceSelection.ts";
 import { useInlineEditorFocus } from "../../interactions/inlineEditorFocus";
@@ -70,7 +70,7 @@ export interface ResourcePrecisionSelection {
 }
 
 interface ResourceBreakdownProps {
-  animationMode: Exclude<AppAnimationMode, "auto">;
+  animationStyle: AnimationStyleId;
   catalog: MetricDefinition[];
   editMode: boolean;
   editingAvailable: boolean;
@@ -205,7 +205,7 @@ export function ResourceBreakdown(props: ResourceBreakdownProps) {
                 <Show when={bar()}>
                   {(currentBar) => (
                     <ResourceBreakdownItem
-                      animationMode={props.animationMode}
+                      animationStyle={props.animationStyle}
                       bar={currentBar()}
                       processDetails={props.processDetails}
                       processDetailsObservation={props.processDetailsObservation}
@@ -356,7 +356,7 @@ function ResourceBarEditor(props: {
 }
 
 function ResourceBreakdownItem(props: {
-  animationMode: Exclude<AppAnimationMode, "auto">;
+  animationStyle: AnimationStyleId;
   bar: ResourceBarView;
   processDetails: ResourceProcessDetailsSnapshot | null;
   processDetailsObservation: ObservationState;
@@ -421,9 +421,9 @@ function ResourceBreakdownItem(props: {
     layoutTaskScope,
     setMoving);
   createEffect(() => {
-    // 时长读 body 上的令牌：手感在根元素上，窗口缩放时 body 把它置 0，画布读到的是同一个值。
+    // 时长读 body 上的令牌：动画风格写在 body 上，窗口缩放时 body 把它置 0，画布读到的是同一个值。
     // 首次布局、不变的布局和减弱档不启动动画，不为未使用的时长强制刷新整页样式。
-    updateLayoutSettle(layout(), props.animationMode, () => readMotionDurationMs(document.body, "--motion-bar"));
+    updateLayoutSettle(layout(), props.animationStyle, () => readMotionDurationMs(document.body, "--motion-bar"));
   });
 
   const selectAtPoint = (event: MouseEvent) => {

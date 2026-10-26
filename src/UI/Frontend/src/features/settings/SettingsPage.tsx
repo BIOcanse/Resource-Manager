@@ -12,9 +12,8 @@ import { UpdatesSettingsSection } from "./components/UpdatesSettingsSection";
 import { uiText, currentSettingsText, isRightToLeftLanguage } from "../../text.ts";
 import { useSelectionIndicator } from "../../interactions/solid/selectionIndicator.ts";
 import { useContentTransition } from "../../interactions/solid/contentTransition.ts";
-import type { MotionFeelId } from "../../presentation/motionFeel.ts";
+import type { AnimationStyleId } from "../../presentation/animationStyle.ts";
 import type {
-  AppAnimationMode,
   AppBarColorMode,
   ByteUnitMode,
   AppEditableHotkeySettings,
@@ -64,8 +63,8 @@ interface SettingsPageProps {
   onLogicRefreshIntervalChange: (key: AppLogicRefreshIntervalKey, setting: AppPresetNumericSetting) => void;
   onUiStyleChange: (uiStyle: AppUiStyle) => void;
   onThemeChange: (theme: AppPalette) => void;
-  onAnimationsChange: (animations: AppAnimationMode) => void;
-  onMotionFeelChange: (feel: MotionFeelId) => void;
+  onAnimationStyleChange: (style: AnimationStyleId) => void;
+  onAutoDisableAnimationsChange: (enabled: boolean) => void;
   onResourceBarFrameRateModeChange: (mode: AppResourceBarFrameRateMode) => void;
   onResourceBarFrameRateChange: (framesPerSecond: number) => void;
   onBarColorModeChange: (barColorMode: AppBarColorMode) => void;
@@ -318,8 +317,8 @@ export function SettingsPage(props: SettingsPageProps) {
               text={text()}
               onUiStyleChange={props.onUiStyleChange}
               onThemeChange={props.onThemeChange}
-              onAnimationsChange={props.onAnimationsChange}
-              onMotionFeelChange={props.onMotionFeelChange}
+              onAnimationStyleChange={props.onAnimationStyleChange}
+              onAutoDisableAnimationsChange={props.onAutoDisableAnimationsChange}
               onResourceBarFrameRateModeChange={props.onResourceBarFrameRateModeChange}
               onResourceBarFrameRateChange={props.onResourceBarFrameRateChange}
               onBarColorModeChange={props.onBarColorModeChange}

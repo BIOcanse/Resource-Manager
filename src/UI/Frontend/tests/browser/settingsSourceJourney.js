@@ -38,11 +38,11 @@ export default async function settingsSourceJourney(page, baseUrl) {
   await page.getByRole("radiogroup", { name: "资源条动画帧率" }).getByRole("radio", { name: "自定义", exact: true }).click();
   const fps = page.getByRole("textbox", { name: "资源条动画帧率 帧率 (FPS)" });
   await fps.fill("90"); await fps.press("Enter");
-  await page.getByRole("radiogroup", { name: "动画效果" }).getByRole("radio", { name: "无动画", exact: true }).click();
+  await page.getByRole("radiogroup", { name: "动画风格" }).getByRole("radio", { name: "无动画", exact: true }).click();
   await page.getByRole("radiogroup", { name: "文字平滑" }).getByRole("radio", { name: "灰度平滑", exact: true }).click();
   await save();
   await page.waitForFunction(() => document.body.dataset.resourceBarFrameRate === "90");
-  assert.equal((await cache()).appearance.animations, "none");
+  assert.equal((await cache()).appearance.animationStyle, "none");
   assert.equal((await cache()).appearance.fontSmoothing, "grayscale");
   await page.getByRole("button", { name: "性能", exact: true }).click();
   const cadence = page.getByRole("radiogroup", { name: "资源表", exact: true });

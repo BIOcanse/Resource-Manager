@@ -7,8 +7,8 @@ import { useRuntimeReadContext } from "./app/useRuntimeReadContext";
 import { useShellResizeBinding } from "./app/useShellResizeBinding";
 import { useManagementInventory } from "./features/management/useManagementInventory";
 import { resolveSelfGpuRuntimePlan } from "./app/selfScheduling/resolveSelfGpuRuntimePlan";
-import { createAnimationModeSelection } from "./app/selfScheduling/createAnimationModeSelection";
-import { setInteractionAnimationMode, subscribeInteractionInput } from "./interactions/solid/lodestone.ts";
+import { createAnimationStyleSelection } from "./app/selfScheduling/createAnimationStyleSelection";
+import { subscribeInteractionInput } from "./interactions/solid/lodestone.ts";
 import { useSoftwareActions } from "./app/useSoftwareActions";
 import { ConfirmDialogHost, ToastHost } from "./components/AppFeedback";
 import { ManualSoftwareModal } from "./features/management/components/ManualSoftwareModal";
@@ -22,16 +22,16 @@ import type { ManagementSubpageId } from "./features/management/managementNaviga
 import { createNavigationTree } from "./app/navigation/navigationTree.ts";
 import { createManagementNavigation } from "./app/navigation/managementNavigation.ts";
 import { createDetailsNavigation } from "./app/navigation/detailsNavigation.ts";
-import { publishCommittedDocumentAppearance } from "./presentation/documentAppearance";
+import { publishAnimationStyle, publishCommittedDocumentAppearance } from "./presentation/documentAppearance";
 import { normalizeUiAppearance } from "./presentation/uiStyles";
-import { motionFeel } from "./presentation/motionFeel.ts";
+import { animationStyle, animationStyleMoves } from "./presentation/animationStyle.ts";
 import { resolveResourceBarFrameRate } from "./presentation/resourceBarFrameRate.ts";
 import { createManagementStore } from "./stores/managementStore";
 import { createMonitorStore, type MonitorStore } from "./stores/monitorStore";
 import { createOptimizationStore } from "./stores/optimizationStore";
 import {
   createSettingsStore,
-  normalizeAnimationMode,
+  normalizeAutoDisableAnimations,
   normalizeBarColorMode
 } from "./stores/settingsStore";
 import { createRuntimeCapabilitiesStore } from "./stores/runtimeCapabilitiesStore";
@@ -241,8 +241,9 @@ export default function App() {
   const preciseGpuPlacementEnabled = createMemo(() => settings.settings().performance?.preciseGpuPlacementEnabled === true);
   const systemUptime = readContext.systemUptime;
   const currentSelfScheduling = readContext.selfScheduling;
-  const animationSelection = createAnimationModeSelection({
-    mode: () => normalizeAnimationMode(settings.settings().appearance?.animations),
+  const animationSelection = createAnimationStyleSelection({
+    style: () => animationStyle(settings.settings().appearance?.animationStyle).id,
+    autoDisable: () => normalizeAutoDisableAnimations(settings.settings().appearance?.autoDisableAnimations),
     foreground: readContext.foregroundInteractive,
     gpuGrade: () => currentSelfScheduling()?.gpuGrade ?? "normal",
     now: () => performance.now()
@@ -250,7 +251,7 @@ export default function App() {
   onCleanup(subscribeInteractionInput(animationSelection.recordInput));
   const gpuRuntimePlan = createMemo(() => resolveSelfGpuRuntimePlan(
     settings.settings().appearance,
-    animationSelection.effectiveMode()));
+    animationSelection.effectiveStyle()));
 
   createEffect(() => {
     const page = activePage();
@@ -285,13 +286,11 @@ export default function App() {
     }
 
     const appearance = settings.settings().appearance;
-    publishCommittedDocumentAppearance(normalizeUiAppearance(appearance?.uiStyle, appearance?.theme), motionFeel(appearance?.motionFeel));
+    publishCommittedDocumentAppearance(normalizeUiAppearance(appearance?.uiStyle, appearance?.theme));
   });
 
   createEffect(() => {
-    const animations = animationSelection.effectiveMode();
-    document.body.dataset.animations = animations;
-    setInteractionAnimationMode(animations);
+    publishAnimationStyle(animationStyle(animationSelection.effectiveStyle()));
   });
 
   createEffect(() => {
@@ -386,7 +385,7 @@ export default function App() {
         onPageTargetFocused={(title) => {
           title.scrollIntoView({
             block: "start",
-            behavior: gpuRuntimePlan().animations === "normal" ? "smooth" : "auto"
+            behavior: animationStyleMoves(gpuRuntimePlan().animations) ? "smooth" : "auto"
           });
           setAccessRequestsFocusRequested(false);
         }}
@@ -402,7 +401,7 @@ export default function App() {
       >
         <AppRoutes
           onTrustedAccessHeadingChange={setTrustedAccessHeading}
-          animationMode={gpuRuntimePlan().animations}
+          animationStyle={gpuRuntimePlan().animations}
           activePage={activePage}
           detailsTab={detailsNavigation.selected}
           monitor={monitor}

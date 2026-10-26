@@ -512,7 +512,7 @@ function toCanvasSupportedColor(color: string) {
 
 function readResourceBarPresentation(): ResourceBarPresentation {
   return {
-    animations: document.body.dataset.animations ?? "normal",
+    animations: document.body.dataset.animations ?? "",
     barColor: document.body.dataset.barColor ?? "type",
     frameRate: parseResourceBarFrameRate(document.body.dataset.resourceBarFrameRate),
     uiStyle: document.documentElement.dataset.uiStyle ?? "",

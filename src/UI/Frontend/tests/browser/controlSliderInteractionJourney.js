@@ -53,7 +53,7 @@ export default async function controlSliderInteractionJourney(page, baseUrl) {
    * （按在滑块上是抓住，保持按下时相对圆心的偏移，滑块没停在 65 时拖到 30 处得到 35），
    * 截图之间也会落在过渡的不同时刻。手感和动效由 motion-feel、switch-interaction 等旅程覆盖。
    */
-  await seedFrontendPreferences(page, value => { value.appearance.animations = "none"; });
+  await seedFrontendPreferences(page, value => { value.appearance.animationStyle = "none"; });
   await page.setViewportSize({ width: 1400, height: 1000 });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   const openControl = async () => {

@@ -25,7 +25,6 @@ import { normalizeByteUnitMode } from "../presentation/byteUnits.ts";
 import { normalizeReadingSourceMode } from "../presentation/readingSources.ts";
 import { normalizeLanguageMode } from "../i18n/settingsLanguages.ts";
 import type {
-  AppAnimationMode,
   AppAiModelServiceSettings,
   AppAppearanceSettings,
   AppEditableHotkeySettings,
@@ -53,8 +52,8 @@ import type {
   SettingsSection
 } from "../types";
 import { normalizeUiAppearance } from "../presentation/uiStyles.ts";
-import { motionFeel } from "../presentation/motionFeel.ts";
-import type { MotionFeelId } from "../presentation/motionFeel.ts";
+import { animationStyle } from "../presentation/animationStyle.ts";
+import type { AnimationStyleId } from "../presentation/animationStyle.ts";
 import {
   normalizeResourceBarFrameRate,
   normalizeResourceBarFrameRateMode
@@ -114,8 +113,8 @@ export interface SettingsStore {
   updateLogicRefreshInterval: (key: AppLogicRefreshIntervalKey, setting: AppPresetNumericSetting) => void;
   updateUiStyle: (uiStyle: AppUiStyle) => void;
   updateTheme: (theme: AppPalette) => void;
-  updateAnimations: (animations: AppAnimationMode) => void;
-  updateMotionFeel: (feel: MotionFeelId) => void;
+  updateAnimationStyle: (style: AnimationStyleId) => void;
+  updateAutoDisableAnimations: (enabled: boolean) => void;
   updateResourceBarFrameRateMode: (mode: AppResourceBarFrameRateMode) => void;
   updateResourceBarFrameRate: (framesPerSecond: number) => void;
   updateBarColorMode: (barColorMode: AppBarColorMode) => void;
@@ -546,21 +545,21 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
         };
       });
     },
-    updateAnimations: (animations) => {
+    updateAnimationStyle: (style) => {
       updateDraft((currentSettings) => ({
         ...currentSettings,
         appearance: {
           ...normalizeAppSettings(currentSettings).appearance!,
-          animations
+          animationStyle: animationStyle(style).id
         }
       }));
     },
-    updateMotionFeel: (feel) => {
+    updateAutoDisableAnimations: (enabled) => {
       updateDraft((currentSettings) => ({
         ...currentSettings,
         appearance: {
           ...normalizeAppSettings(currentSettings).appearance!,
-          motionFeel: motionFeel(feel).id
+          autoDisableAnimations: enabled
         }
       }));
     },
@@ -938,22 +937,9 @@ function assignLogicRefreshInterval(
 }
 
 
-export function normalizeAnimationMode(animations?: string | null): AppAnimationMode {
-  if (animations === "auto") {
-    return "auto";
-  }
-
-  if (animations === "none") {
-    return "none";
-  }
-
-  if (animations === "ultra") {
-    return "ultra";
-  }
-
-  return animations === "normal" ? "normal" : ResourceManager.FrontendPoints.AnimationMode;
+export function normalizeAutoDisableAnimations(enabled?: boolean | null): boolean {
+  return typeof enabled === "boolean" ? enabled : ResourceManager.FrontendPoints.AutoDisableAnimations;
 }
-
 
 export function normalizeBarColorMode(barColorMode?: string | null): AppBarColorMode {
   return barColorMode === "distinct" || barColorMode === "type" ? barColorMode : ResourceManager.FrontendPoints.BarColorMode;
@@ -969,7 +955,7 @@ export function normalizeFontSmoothing(fontSmoothing?: string | null): AppFontSm
 
 export function resolveEffectiveFontSmoothing(
   fontSmoothing: string | null | undefined,
-  animations: Exclude<AppAnimationMode, "auto">
+  animations: AnimationStyleId
 ): Exclude<AppFontSmoothing, "auto"> {
   const mode = normalizeFontSmoothing(fontSmoothing);
   if (mode !== "auto") {
@@ -996,8 +982,8 @@ function normalizeAppearanceSettings(
 ): AppAppearanceSettings {
   return {
     ...normalizeUiAppearance(settings?.uiStyle, settings?.theme),
-    animations: normalizeAnimationMode(settings?.animations),
-    motionFeel: motionFeel(settings?.motionFeel).id,
+    animationStyle: animationStyle(settings?.animationStyle).id,
+    autoDisableAnimations: normalizeAutoDisableAnimations(settings?.autoDisableAnimations),
     resourceBarFrameRateMode: normalizeResourceBarFrameRateMode(settings?.resourceBarFrameRateMode),
     resourceBarFrameRate: normalizeResourceBarFrameRate(settings?.resourceBarFrameRate),
     barColorMode: normalizeBarColorMode(settings?.barColorMode),

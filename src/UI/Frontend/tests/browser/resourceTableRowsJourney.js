@@ -20,7 +20,7 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
     for (const column of columns) if (column.id === "memory") column.source = "process_all_private_commit_actual";
   }
   preferences.dashboard = dashboard;
-  preferences.appearance.animations = "normal";
+  preferences.appearance.animationStyle = "desktop"; preferences.appearance.autoDisableAnimations = false;
   await page.addInitScript(([key, text]) => {
     if (location.origin !== "null" && localStorage.getItem(key) === null) localStorage.setItem(key, text);
   }, ["resource-manager:frontend-preferences:v1", JSON.stringify(preferences)]);
@@ -208,10 +208,10 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
     || reveal.chevronAfter !== "matrix(0, 1, -1, 0, 0, 0)") {
     throw new Error(`Expanded process rows do not reveal once: ${JSON.stringify(reveal)}`);
   }
-  // 动画档的所有者是前端偏好；直接写 body 会被 App 的运行方案 effect 在测量窗口里改回 normal。
+  // 动画风格的所有者是前端偏好；直接写 body 会被 App 的运行方案 effect 在测量窗口里改回。
   // 用已保存偏好重新加载，让无动画的展开处于真实的 none 状态，测完恢复原偏好。
   const reloadWithAnimations = async (animations) => {
-    await writeFrontendPreferences(page, (value) => { value.appearance.animations = animations; });
+    await writeFrontendPreferences(page, (value) => { value.appearance.animationStyle = animations; value.appearance.autoDisableAnimations = false; });
     await page.reload({ waitUntil: "domcontentloaded" });
     await visibleRows("software").first().waitFor({ timeout: 15_000 });
     await panel.evaluate((element) => element.scrollIntoView({ block: "start" }));
@@ -219,7 +219,7 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
   };
   await reloadWithAnimations("none");
   const instant = await expandAndWatch("示例软件 6");
-  await reloadWithAnimations("normal");
+  await reloadWithAnimations("desktop");
   // 时长为 0 的入场两帧内多半已经结束、类已清掉；还在的话时长必须是 0。
   if ((instant.count > 0 && instant.duration !== "0s") || instant.after !== 0 || instant.expanded !== "true"
     || instant.chevronTransition.includes("transform")) {

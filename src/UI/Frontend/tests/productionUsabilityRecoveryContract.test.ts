@@ -78,7 +78,8 @@ assert.doesNotMatch(componentCard, /onContextMenu|MoreActionsButton|softwareCont
 assert.match(settingsWorkspace, /onCleanup\(settings\.discardDraftChanges\)/);
 assert.match(settingsPage, /settingsReady\(\) && props\.activeSection !== "credits"/);
 for (const control of [
-  "onAnimationsChange",
+  "onAnimationStyleChange",
+  "onAutoDisableAnimationsChange",
   "onFontSmoothingChange"
 ]) {
   assert.match(appearanceSettings, new RegExp(`onChange=\\{props\\.${control}\\}`));
@@ -91,7 +92,7 @@ assert.match(appearanceSettings, /value=\{appearance\(\)\.barColorMode \?\? poin
 assert.match(appearanceSettings, /options=\{props\.text\.barColorOptions\}/);
 assert.match(appearanceSettings, /onChange=\{props\.onBarColorModeChange\}/);
 assert.match(app, /document\.body\.dataset\.barColor = normalizeBarColorMode\(settings\.settings\(\)\.appearance\?\.barColorMode\)/);
-// The settings owner resolves Auto from focus and GPU scheduling into data-animations.
+// The app publishes the effective animation style (the auto switch resolved at foreground return) into data-animations.
 assert.match(resourcePaintPlane, /attributeFilter: \["data-animations", "data-bar-color", "data-resource-bar-frame-rate"\]/);
 assert.match(resourcePaintPlane, /presentation\.barColor === "distinct"\s*\? segment\.distinctColor \?\? segment\.color\s*: segment\.color/);
 // 两种配色都画分隔线（异色区分时相邻两种颜色也要分开），不按配色关掉。

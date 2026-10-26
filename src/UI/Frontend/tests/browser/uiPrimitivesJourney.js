@@ -144,7 +144,7 @@ export default async function uiPrimitivesJourney(page, baseUrl = "http://127.0.
   // 普通按钮按下缩放；带选中指示条的组（页签、分段）按下不缩放（缩放会把未选中的底盖到滑过来的指示条上，docs/page_motion_2026-10-25.md）。
   // 按住的是窗口的最小化按钮：浏览器里它不做事。
   const pressTarget = page.locator(".window-actions .window-button").first();
-  for (const [label, mode] of [["无动画", "none"], ["超高性能", "ultra"], ["正常动画", "normal"]]) {
+  for (const [label, mode] of [["无动画", "none"], ["超高性能", "ultra"], ["终端顿挫", "terminal"], ["流畅平滑", "smooth"], ["桌面常规", "desktop"]]) {
     await page.getByRole("radio", { name: label, exact: true }).click();
     await page.getByRole("button", { name: "保存", exact: true }).click();
     await page.waitForFunction(value => document.body.dataset.animations === value, mode);
@@ -157,7 +157,7 @@ export default async function uiPrimitivesJourney(page, baseUrl = "http://127.0.
         const target = document.querySelector(".window-actions .window-button");
         if (!target) return false;
         const style = getComputedStyle(target);
-        return mode === "normal"
+        return mode !== "none" && mode !== "ultra"
           ? style.transform !== "none"
           : style.transform === "none" && style.transitionDuration.split(",").every(value => parseFloat(value) === 0);
       }, { mode }, { timeout: 3000 });
@@ -186,7 +186,7 @@ export default async function uiPrimitivesJourney(page, baseUrl = "http://127.0.
     cpuTopology: { selection: true, focus: coreFocus },
     managementSearch: true,
     settingsNavigation: true,
-    animationModes: ["none", "ultra", "normal"],
+    animationModes: ["none", "ultra", "terminal", "smooth", "desktop"],
     manualDialog: { backdropPreserved: true, escapeDismissed: true, focusRestored: true },
     pageErrors,
     consoleErrors

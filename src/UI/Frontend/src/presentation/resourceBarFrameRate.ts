@@ -4,7 +4,7 @@ import { ResourceManager } from "../preferences/generated/frontendPoints.values.
 // 资源条动画帧率。设置里两项：resourceBarFrameRateMode（display = 跟随屏幕，custom = 自选）
 // 和 resourceBarFrameRate（custom 时的帧/秒）。范围和默认值与后端 AppSettingsDefaults 一致。
 // App 把生效值写到 body 的 data-resource-bar-frame-rate 上（跟随屏幕写 "display"，自选写帧数），
-// 资源条画布读它决定过渡中哪些帧要画。只在资源条有过渡（正常动画）时起作用。
+// 资源条画布读它决定过渡中哪些帧要画。只在资源条有过渡（会动的动画风格）时起作用。
 export const resourceBarFrameRateMin = 10;
 export const resourceBarFrameRateMax = 240;
 export const resourceBarFrameRateDefault = ResourceManager.FrontendPoints.BarFrameRate;

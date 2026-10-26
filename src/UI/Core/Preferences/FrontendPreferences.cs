@@ -8,8 +8,8 @@ internal sealed record FrontendAppearance
 {
     public string UiStyle { get; init; } = FrontendPoints.UiStyle;
     public string Theme { get; init; } = FrontendPoints.Theme;
-    public string Animations { get; init; } = FrontendPoints.AnimationMode;
-    public string MotionFeel { get; init; } = FrontendPoints.MotionFeel;
+    public string AnimationStyle { get; init; } = FrontendPoints.AnimationStyle;
+    public bool AutoDisableAnimations { get; init; } = FrontendPoints.AutoDisableAnimations;
     public string ResourceBarFrameRateMode { get; init; } = FrontendPoints.BarFrameRateMode;
     public int ResourceBarFrameRate { get; init; } = FrontendPoints.BarFrameRate;
     public string BarColorMode { get; init; } = FrontendPoints.BarColorMode;
@@ -22,8 +22,7 @@ internal sealed record FrontendAppearance
     {
         var style = UiStyleCatalog.Normalize(UiStyle, Theme);
         if (style.UiStyle != UiStyle || style.Theme != Theme
-            || Animations is not ("auto" or "none" or "normal" or "ultra")
-            || MotionFeel is not ("standard" or "smooth" or "crisp")
+            || AnimationStyle is not ("smooth" or "desktop" or "terminal" or "none" or "ultra")
             || ResourceBarFrameRateMode is not ("display" or "custom")
             || ResourceBarFrameRate is < 10 or > 240
             || BarColorMode is not ("type" or "distinct")

@@ -24,7 +24,7 @@ export default async function wheelAccumulationJourney(page, baseUrl) {
       return draw.apply(this, args);
     };
   });
-  await seedFrontendPreferences(page, (value) => { value.appearance.animations = "normal"; });
+  await seedFrontendPreferences(page, (value) => { value.appearance.animationStyle = "desktop"; value.appearance.autoDisableAnimations = false; });
   const copy = await loadAppCopy("zh-CN");
 
   // ---------- 磁盘方格图 ----------
@@ -96,13 +96,13 @@ export default async function wheelAccumulationJourney(page, baseUrl) {
   const notch = checkSmooth(await wheel(canvas, [-100], 0, 400), "Mouse notch", 2, 0.85);
 
   // 无动画：一格直接到位，之后每一帧都是 1.2 倍。
-  await writeFrontendPreferences(page, (value) => { value.appearance.animations = "none"; });
+  await writeFrontendPreferences(page, (value) => { value.appearance.animationStyle = "none"; });
   canvas = await openTreemap();
   await page.waitForFunction(() => document.body.dataset.animations === "none");
   const still = await wheel(canvas, [-100], 0, 300);
   assert(still.draws.length > 0 && still.draws.every((entry) => Math.abs(entry.scale - 1.2) < 0.012),
     `No motion still animates the wheel zoom: ${describe(still)}`);
-  await writeFrontendPreferences(page, (value) => { value.appearance.animations = "normal"; });
+  await writeFrontendPreferences(page, (value) => { value.appearance.animationStyle = "desktop"; value.appearance.autoDisableAnimations = false; });
 
   // ---------- 资源条 ----------
   const bars = await page.request.post(`${baseUrl}/__test/scenario`, { data: { diskUsageMultiRoot: false, resourceSegmentCount: 8 } });

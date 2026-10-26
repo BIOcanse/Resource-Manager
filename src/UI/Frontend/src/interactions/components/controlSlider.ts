@@ -4,7 +4,7 @@
 // 按在滑块上（指针在组件内=是）是抓住：按下时手所在处取滑块圆心，拖动中保持按下时指针相对圆心的偏移，和原生 range 一样不跳；
 // 按在滑轨别处（否）记下指针处，不改值，离开拖动框起滑块圆心在指针下。拖动中连续调用 select(位置, 否)，宿主只拿来预览；
 // 松开停在落点，调用一次 select(停住点, 是)，这才写期望状态。单击（没离开拖动框就松开）：滑块上不改值，滑轨上到那里（指针处）。
-// Esc、右键、指针离开响应区取消：调用 cancel()，什么都不写，宿主值没变，三次曲线把滑块带回拖动前的值。
+// Esc、右键、指针离开响应区取消：调用 cancel()，什么都不写，宿主值没变，动画风格选的弹簧或缓动把滑块带回拖动前的值。
 // 键照原生 range：左、下减一步，右、上加一步，PageDown / PageUp 减、加一大步，调用 step(方向, 是否大步)，
 // 由宿主按当前值算（一步和一大步取决于量程，宿主才知道）；Home / End 停在两端。
 // 通道是滑块在量程里的比例（0–1，几何两端是值最小、最大时的滑块圆心，换算是直线），一份定义给所有量程用；
@@ -12,9 +12,10 @@
 
 import { CURRENT, LANDING, STOP_POINT } from "../protocol/definition.ts";
 import type { Definition } from "../protocol/definition.ts";
-import { CUBIC, NO_FIELD, toTerminal } from "../protocol/field.ts";
+import { NO_FIELD, toTerminal } from "../protocol/field.ts";
 import { POINTER_AT } from "../protocol/values.ts";
 import { call, CLAIM, dragBasics, FOCUS, JUMP_TO_POINTER, stopAt } from "./common.ts";
+import { carryField } from "./springOrEase.ts";
 
 /**
  * 原生 range 滑块的半宽（px，Chromium 的滑块宽 16 px）：值最小、最大时滑块圆心离两端各这么远，
@@ -56,9 +57,9 @@ export const controlSliderDefinition: Definition = {
     { from: ["拖动"], on: ["pointer.left↓"], to: "静止", out: [stopAt(LANDING)], note: "松开：写一次" },
     ...drag.rows
   ],
-  // 没有输出映射点，没有力场：松手不带速度，停在松手处；宿主按档位取整后由三次曲线带过去。
+  // 没有输出映射点，平时没有力场：松手不带速度，停在松手处；宿主按档位取整后由动画风格选的弹簧或缓动带过去。
   channel: {
-    id: "ratio", label: "量程里的位置", unit: "", min: 0, max: 1, hand: drag.hand, field: toTerminal(NO_FIELD, CUBIC),
+    id: "ratio", label: "量程里的位置", unit: "", min: 0, max: 1, hand: drag.hand, field: toTerminal(NO_FIELD, carryField("control")),
     stopCall: select(STOP_POINT, true)
   },
   ports: [

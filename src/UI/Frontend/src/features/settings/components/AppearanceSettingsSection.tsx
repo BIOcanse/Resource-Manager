@@ -9,7 +9,6 @@ import {
 } from "../../../presentation/resourceBarFrameRate.ts";
 import type { SettingsTextBundle } from "../../../text.ts";
 import type {
-  AppAnimationMode,
   AppBarColorMode,
   AppFontSmoothing,
   AppLanguageMode,
@@ -21,9 +20,10 @@ import type {
   ByteUnitMode
 } from "../../../types";
 import { NumberField, SegmentedControl } from "./SettingsControls";
+import { SwitchControl } from "../../../ui/primitives/Switch.tsx";
 import { pointPreferences } from "../../../preferences/frontendPreferences.ts";
-import { motionFeel } from "../../../presentation/motionFeel.ts";
-import type { MotionFeelId } from "../../../presentation/motionFeel.ts";
+import { animationStyle, animationStyleMoves } from "../../../presentation/animationStyle.ts";
+import type { AnimationStyleId } from "../../../presentation/animationStyle.ts";
 
 interface AppearanceSettingsSectionProps {
   onResetPreferences: () => void;
@@ -31,8 +31,8 @@ interface AppearanceSettingsSectionProps {
   text: SettingsTextBundle;
   onUiStyleChange: (uiStyle: AppUiStyle) => void;
   onThemeChange: (theme: AppPalette) => void;
-  onAnimationsChange: (animations: AppAnimationMode) => void;
-  onMotionFeelChange: (feel: MotionFeelId) => void;
+  onAnimationStyleChange: (style: AnimationStyleId) => void;
+  onAutoDisableAnimationsChange: (enabled: boolean) => void;
   onResourceBarFrameRateModeChange: (mode: AppResourceBarFrameRateMode) => void;
   onResourceBarFrameRateChange: (framesPerSecond: number) => void;
   onBarColorModeChange: (barColorMode: AppBarColorMode) => void;
@@ -83,26 +83,27 @@ export function AppearanceSettingsSection(props: AppearanceSettingsSectionProps)
       </div>
       <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>{props.text.appearance.animationTitle}</strong>
-          <span>{props.text.appearance.animationDescription}</span>
+          <strong>{props.text.appearance.animationStyleTitle}</strong>
+          <span>{props.text.appearance.animationStyleDescription}</span>
         </div>
         <SegmentedControl
-          value={appearance().animations ?? pointPreferences().appearance.animations!}
-          options={props.text.animationOptions}
-          ariaLabel={props.text.appearance.animationTitle}
-          onChange={props.onAnimationsChange}
+          value={animationStyle(appearance().animationStyle).id}
+          options={props.text.animationStyleOptions}
+          ariaLabel={props.text.appearance.animationStyleTitle}
+          onChange={props.onAnimationStyleChange}
         />
       </div>
+      {/* 选中的风格不会动（无动画、超高性能）时这一项不起作用，停用。 */}
       <div class="settings-row">
         <div class="settings-row-copy">
-          <strong>{props.text.appearance.motionFeelTitle}</strong>
-          <span>{props.text.appearance.motionFeelDescription}</span>
+          <strong>{props.text.appearance.autoDisableAnimationsTitle}</strong>
+          <span>{props.text.appearance.autoDisableAnimationsDescription}</span>
         </div>
-        <SegmentedControl
-          value={motionFeel(appearance().motionFeel).id}
-          options={props.text.motionFeelOptions}
-          ariaLabel={props.text.appearance.motionFeelTitle}
-          onChange={props.onMotionFeelChange}
+        <SwitchControl
+          ariaLabel={props.text.appearance.autoDisableAnimationsTitle}
+          checked={appearance().autoDisableAnimations ?? pointPreferences().appearance.autoDisableAnimations!}
+          disabled={!animationStyleMoves(animationStyle(appearance().animationStyle).id)}
+          onChange={props.onAutoDisableAnimationsChange}
         />
       </div>
       <div class="settings-row">

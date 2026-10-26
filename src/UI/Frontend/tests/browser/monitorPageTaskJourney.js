@@ -7,7 +7,7 @@ import { beginMonitorEvidence, endMonitorEvidence, overlappingQueueJobs } from "
 
 const SETTLE_MS = 700;
 const TRIALS = [1, 2, 3];
-const MODES = ["normal", "none", "ultra"];
+const MODES = ["smooth", "desktop", "terminal", "none", "ultra"];
 const SWITCHES = [["control", "monitor"], ["details", "monitor"], ["monitor", "details"]];
 
 // 与 page-motion 相同的点击窗口相交规则；帧内只记时间，不读布局。
@@ -25,7 +25,7 @@ export default async function monitorPageTaskJourney(page, baseUrl) {
   const trials = requestedTrial === undefined ? TRIALS : [Number(requestedTrial)];
   const results = [];
   for (const mode of MODES) {
-    await writeFrontendPreferences(page, preferences => { preferences.appearance.animations = mode; });
+    await writeFrontendPreferences(page, preferences => { preferences.appearance.animationStyle = mode; preferences.appearance.autoDisableAnimations = false; });
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.locator(`body[data-animations='${mode}']`).waitFor();
     for (const id of ["monitor", "control", "details", "monitor"]) {

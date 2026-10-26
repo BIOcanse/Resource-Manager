@@ -195,12 +195,19 @@ export default createSettingsLocale("ja-JP", {
     "uiStyleDescription": "コントロールの角丸、線、影、フォントを変えます。レイアウトは変わりません。スタイルごとに配色があります。",
     "themeTitle": "配色",
     "themeDescription": "現在のスタイルの配色から選びます。「システム」は Windows のライト/ダーク設定に従います。",
-    "animationTitle": "アニメーション",
-    "animationDescription": "通常のアニメーション、アニメーションなし、または負荷を抑えた簡易表示を選びます。",
-    "motionFeelTitle": "操作感",
-    "motionFeelDescription": "画面全体のアニメーションの速さとカーブを変えます。ドラッグする部品の収まり方や戻り方も変わります。アニメーションなしを選んでいるときは動きません。",
+    "animationStyleTitle": "アニメーションスタイル",
+    "animationStyleDescription": "画面の切り替えやコントロールが収まるときの動き方を選びます。超高性能は、アニメーションなしに加えて影、ハイライト、ぼかしも無効にします。",
+    "autoDisableAnimationsTitle": "自己スケジューリングでアニメーションを自動的に無効化",
+    "autoDisableAnimationsDescription": "オンの場合、画面が前面に戻った時点で最近の操作がなく、自己スケジューリングの結果が節約を求めているときはアニメーションなしに切り替え、それ以外は選択したスタイルを使います。前面で操作している間は切り替えません。アニメーションなしまたは超高性能を選んでいる場合は効果がありません。",
+    "animationStyleOptions": {
+      "smooth": { "label": "なめらか", "description": "macOS やモバイル端末の OS のように、ばねの動きで操作の速度を引き継ぎ、いつでも受け止められ、スクロールの端で跳ね返ります" },
+      "desktop": { "label": "デスクトップ標準", "description": "一般的な Windows デスクトップソフトウェアと同じく、短い減速トランジションで、速度を引き継がず跳ね返りもありません" },
+      "terminal": { "label": "ターミナル風", "description": "緩急をつけず、決まった段数で終点まで進みます。文字端末の再描画のような動きです" },
+      "none": { "label": "アニメーションなし", "description": "すべてのトランジションと表示開始が同じフレームで完了します。見た目は変わりません" },
+      "ultra": { "label": "超高性能", "description": "アニメーションなしに加え、影、ハイライト、ぼかしを無効にして負荷を最小にします" }
+    },
     "resourceBarFrameRateTitle": "リソースバーのアニメーションのフレームレート",
-    "resourceBarFrameRateDescription": "リソースバーの切り替えアニメーションを 1 秒間に何フレーム描くかを決めます。画面に合わせるとディスプレイのリフレッシュレートで描きます。カスタムではフレーム数を抑えて負荷を減らせます。標準アニメーションのときだけ有効です。",
+    "resourceBarFrameRateDescription": "リソースバーの切り替えアニメーションを 1 秒間に何フレーム描くかを決めます。画面に合わせるとディスプレイのリフレッシュレートで描きます。カスタムではフレーム数を抑えて負荷を減らせます。アニメーションなしと超高性能では効果がありません。",
     "resourceBarFrameRateModeOptions": [
       {
         "id": "display",
@@ -239,11 +246,6 @@ export default createSettingsLocale("ja-JP", {
     "settingsLanguageTitle": "表示言語",
     "settingsLanguageDescription": "トレイとウィンドウタイトルを含む画面全体の言語を変更します。システム設定では Windows の表示言語を使用します。",
     "languageSelectLabel": "言語",
-    "motionFeelOptions": {
-      "standard": "標準",
-      "smooth": "なめらか",
-      "crisp": "きびきび"
-    },
     "uiStyleOptions": {
       "standard": "標準",
       "classic": "クラシック",
@@ -262,24 +264,6 @@ export default createSettingsLocale("ja-JP", {
       "phosphor": "蛍光グリーン",
       "amber": "アンバー",
       "ice": "アイス"
-    },
-    "animationOptions": {
-      "auto": {
-        "label": "自動",
-        "description": "ウィンドウが表示され、最近の操作がない状態でフォーカスを再取得した時点に限り、自己スケジューリングの GPU 等級に基づいてアニメーションを選択し、次に条件を満たすまで維持します。"
-      },
-      "normal": {
-        "label": "標準アニメーション",
-        "description": "控えめな全体トランジションを有効化します"
-      },
-      "none": {
-        "label": "アニメーションなし",
-        "description": "すべてのトランジションとアニメーションを無効化します"
-      },
-      "ultra": {
-        "label": "超高性能",
-        "description": "アニメーションと影、ハイライト、ぼかしを無効化し、描画コストを最小化します"
-      }
     },
     "barColorOptions": {
       "type": {

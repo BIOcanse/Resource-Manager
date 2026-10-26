@@ -88,12 +88,19 @@ const zhCnSettingsCopy: SettingsCopy = {
     uiStyleDescription: "改变控件的圆角、线条、阴影和字体，布局不变。每种风格有自己的配色。",
     themeTitle: "配色",
     themeDescription: "选择当前风格提供的配色。跟随系统会按 Windows 的浅色或深色设置切换。",
-    animationTitle: "动画效果",
-    animationDescription: "选择完整动画、关闭动画，或进一步简化视觉以降低界面开销。",
-    motionFeelTitle: "手感",
-    motionFeelDescription: "改变整个界面动画的节奏和曲线，拖动控件的到位、回弹也一起变。动画效果选无动画时仍然不动。",
+    animationStyleTitle: "动画风格",
+    animationStyleDescription: "选择界面过渡和控件到位的方式。超高性能在无动画之外，再去掉阴影、高光和模糊。",
+    autoDisableAnimationsTitle: "按自调度自动关闭动画",
+    autoDisableAnimationsDescription: "打开时，界面回到前台的那一刻若近期没有操作、自调度结果为需要节省，就改用无动画，否则使用选中的风格；在前台操作期间不切换。选中无动画或超高性能时不起作用。",
+    animationStyleOptions: {
+      smooth: { label: "流畅平滑", description: "类似 macOS 与移动设备系统：弹簧动画，保留手势的速度，随时可以接住，滚动到边缘时回弹" },
+      desktop: { label: "桌面常规", description: "一般 Windows 桌面软件的动画：短促的减速过渡，不保留速度，没有回弹" },
+      terminal: { label: "终端顿挫", description: "按固定几步跳到终点，没有缓动，类似字符终端的刷新" },
+      none: { label: "无动画", description: "所有过渡和入场都在同一帧完成，外观不变" },
+      ultra: { label: "超高性能", description: "无动画，并去掉阴影、高光和模糊，开销最低" }
+    },
     resourceBarFrameRateTitle: "资源条动画帧率",
-    resourceBarFrameRateDescription: "资源条过渡动画每秒画几帧。跟随屏幕按显示器刷新率画；自定义可限制帧数以降低开销。只在正常动画下生效。",
+    resourceBarFrameRateDescription: "资源条过渡动画每秒画几帧。跟随屏幕按显示器刷新率画；自定义可限制帧数以降低开销。无动画、超高性能下不生效。",
     resourceBarFrameRateModeOptions: [
       { id: "display", label: "跟随屏幕", description: "每次屏幕刷新都画一帧。" },
       { id: "custom", label: "自定义", description: "每秒最多画设定的帧数（10–240）。" }
@@ -116,7 +123,6 @@ const zhCnSettingsCopy: SettingsCopy = {
     settingsLanguageTitle: "界面语言",
     settingsLanguageDescription: "切换整个界面的语言，包括桌面外壳的托盘与窗口标题；跟随系统会使用 Windows 显示语言。",
     languageSelectLabel: "语言",
-    motionFeelOptions: { standard: "标准", smooth: "平滑", crisp: "利落" },
     uiStyleOptions: {
       standard: "标准",
       classic: "经典",
@@ -135,12 +141,6 @@ const zhCnSettingsCopy: SettingsCopy = {
       phosphor: "磷绿",
       amber: "琥珀",
       ice: "冰蓝"
-    },
-    animationOptions: {
-      auto: { label: "自动调度", description: "仅在窗口可见且重新获得焦点、近期无操作时，按自调度 GPU 档位选择动画效果，并保持至下次符合条件时。" },
-      normal: { label: "正常动画", description: "全局过渡动画" },
-      none: { label: "无动画", description: "关掉动画，外观不变" },
-      ultra: { label: "超高性能", description: "关动画并去掉阴影、高光、模糊，开销最低" }
     },
     barColorOptions: {
       type: { label: "类型固定色", description: "按系统、适配和一般应用上色，相邻分段用分隔线区分" },
@@ -480,12 +480,19 @@ const enSettingsCopy: SettingsCopy = {
     uiStyleDescription: "Changes the corners, lines, shadows and fonts of controls; the layout stays the same. Each style has its own palettes.",
     themeTitle: "Palette",
     themeDescription: "Choose one of the current style's palettes. System follows the Windows light or dark setting.",
-    animationTitle: "Motion",
-    animationDescription: "Choose full motion, no motion, or simplified visuals for lower interface overhead.",
-    motionFeelTitle: "Motion feel",
-    motionFeelDescription: "Changes the pace and curves of every animation in the interface, including how dragged controls settle and spring back. With No motion selected, nothing moves.",
+    animationStyleTitle: "Animation style",
+    animationStyleDescription: "Choose how transitions play and how controls settle. Ultra performance also removes shadows, highlights and blur.",
+    autoDisableAnimationsTitle: "Turn off animation by self-scheduling",
+    autoDisableAnimationsDescription: "When on, at the moment the interface returns to the foreground without recent input, a self-scheduling result that calls for saving switches to No animation; otherwise the selected style applies. It never switches while you are using the interface. Has no effect with No animation or Ultra performance.",
+    animationStyleOptions: {
+      smooth: { label: "Smooth", description: "Like macOS and mobile systems: spring motion that keeps the speed of your gesture, can be caught at any time and bounces at scroll edges" },
+      desktop: { label: "Desktop", description: "Like typical Windows desktop software: short decelerating transitions without carried speed or bounce" },
+      terminal: { label: "Terminal", description: "Jumps to the end in a fixed number of steps without easing, like a character terminal redrawing" },
+      none: { label: "No animation", description: "Every transition and entrance completes in the same frame; the look is unchanged" },
+      ultra: { label: "Ultra performance", description: "No animation, and no shadows, highlights or blur, for the lowest overhead" }
+    },
     resourceBarFrameRateTitle: "Resource Bar Frame Rate",
-    resourceBarFrameRateDescription: "How many frames per second resource-bar transitions draw. Follow display uses the monitor refresh rate; Custom caps the frames to lower the cost. Applies only with Normal motion.",
+    resourceBarFrameRateDescription: "How many frames per second resource-bar transitions draw. Follow display uses the monitor refresh rate; Custom caps the frames to lower the cost. Has no effect with No animation or Ultra performance.",
     resourceBarFrameRateModeOptions: [
       { id: "display", label: "Follow display", description: "Draw a frame on every screen refresh." },
       { id: "custom", label: "Custom", description: "Draw at most the set number of frames per second (10–240)." }
@@ -508,7 +515,6 @@ const enSettingsCopy: SettingsCopy = {
     settingsLanguageTitle: "Interface language",
     settingsLanguageDescription: "Changes the language of the whole interface, including the desktop shell tray and window title. System uses the Windows display language.",
     languageSelectLabel: "Language",
-    motionFeelOptions: { standard: "Standard", smooth: "Smooth", crisp: "Crisp" },
     uiStyleOptions: {
       standard: "Standard",
       classic: "Classic",
@@ -527,12 +533,6 @@ const enSettingsCopy: SettingsCopy = {
       phosphor: "Phosphor",
       amber: "Amber",
       ice: "Ice"
-    },
-    animationOptions: {
-      auto: { label: "Automatic", description: "Select an animation tier from the self-scheduling GPU grade only when the visible window regains focus without recent input, then retain it until the next eligible return." },
-      normal: { label: "Normal motion", description: "Enable restrained global transitions" },
-      none: { label: "No motion", description: "Disable all transitions and animations, keep the refined look" },
-      ultra: { label: "Ultra performance", description: "Disable motion and flatten visuals (no shadows / highlights / blur) for the lowest overhead" }
     },
     barColorOptions: {
       type: { label: "Fixed by type", description: "Colour by system, adapted, and general software; adjacent segments use dividers" },

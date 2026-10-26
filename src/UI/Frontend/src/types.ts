@@ -1,5 +1,5 @@
 import type { MetricFieldReading } from "./data/metricFields/metricFieldSource.ts";
-import type { MotionFeelId } from "./presentation/motionFeel.ts";
+import type { AnimationStyleId } from "./presentation/animationStyle.ts";
 
 export type PageId =
   | "monitor"
@@ -43,7 +43,6 @@ export type AppPalette =
   | "paper" | "graphite" | "blueprint"
   | "phosphor" | "amber" | "ice";
 // 只有开、关两档（按需监控用）；旧设置里的 auto 由归一化读成 enabled。
-export type AppAnimationMode = "auto" | "normal" | "none" | "ultra";
 // 资源条动画帧率：display = 跟随屏幕，custom = 按 resourceBarFrameRate 限帧；见 presentation/resourceBarFrameRate.ts。
 export type AppResourceBarFrameRateMode = "display" | "custom";
 export type AppBarColorMode = "type" | "distinct";
@@ -411,9 +410,9 @@ export interface AppAppearanceSettings {
   uiStyle: AppUiStyle;
   // 当前风格下的配色。
   theme: AppPalette;
-  animations?: AppAnimationMode;
-  // 手感：动画怎么走（目录 presentation/motionFeel.ts）；动画档位决定走不走。
-  motionFeel?: MotionFeelId;
+  // 动画风格（目录 presentation/animationStyle.ts）和“按自调度自动关闭动画”（docs/animation_style_2026-10-26.md）。
+  animationStyle?: AnimationStyleId;
+  autoDisableAnimations?: boolean;
   resourceBarFrameRateMode?: AppResourceBarFrameRateMode;
   // custom 时的帧/秒（10–240）；display 时保留不用。
   resourceBarFrameRate?: number;

@@ -1,4 +1,6 @@
-// The settings owner has already resolved Auto using focus and GPU scheduling.
-export function canAnimateResourceBar(resolvedAnimationMode: string): boolean {
-  return resolvedAnimationMode === "normal";
+import { animationStyleMoves, isAnimationStyleId } from "../../presentation/animationStyle.ts";
+
+// body[data-animations] holds the effective animation style, already chosen by the automatic selection.
+export function canAnimateResourceBar(effectiveStyle: string): boolean {
+  return isAnimationStyleId(effectiveStyle) && animationStyleMoves(effectiveStyle);
 }

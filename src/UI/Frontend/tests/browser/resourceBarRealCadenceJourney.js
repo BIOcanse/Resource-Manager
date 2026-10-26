@@ -25,7 +25,7 @@ export default async function resourceBarRealCadenceJourney(page, baseUrl) {
   await setScenario(page, baseUrl, { resourceSoftwareMix: "audit", resourceBreakdownGeneration: 6, resourceUnavailableBarIds: [] });
   await seedFrontendPreferences(page, (value) => {
     value.appearance.theme = "light";
-    value.appearance.animations = "normal";
+    value.appearance.animationStyle = "desktop"; value.appearance.autoDisableAnimations = false;
     value.appearance.language = "zh-CN";
   });
   await page.setViewportSize({ width: 1440, height: 900 });

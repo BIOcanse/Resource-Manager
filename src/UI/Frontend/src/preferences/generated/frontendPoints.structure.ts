@@ -31,8 +31,8 @@ export namespace ResourceManager {
       readonly BarFrameRate: number;
       readonly UiStyle: __fpDeepReadonly<"standard" | "classic" | "soft" | "outline" | "terminal">;
       readonly Theme: __fpDeepReadonly<"system" | "light" | "dark" | "lowContrast" | "paper" | "graphite" | "blueprint" | "phosphor" | "amber" | "ice">;
-      readonly AnimationMode: __fpDeepReadonly<"auto" | "none" | "normal" | "ultra">;
-      readonly MotionFeel: __fpDeepReadonly<"standard" | "smooth" | "crisp">;
+      readonly AnimationStyle: __fpDeepReadonly<"smooth" | "desktop" | "terminal" | "none" | "ultra">;
+      readonly AutoDisableAnimations: __fpDeepReadonly<boolean>;
       readonly BarFrameRateMode: __fpDeepReadonly<"display" | "custom">;
       readonly BarColorMode: __fpDeepReadonly<"type" | "distinct">;
       readonly FontSmoothing: __fpDeepReadonly<"auto" | "system" | "grayscale" | "disabled">;

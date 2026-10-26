@@ -154,3 +154,29 @@ test("access-request notification titles and descriptions are translated in all 
   assert.equal(titles.size, 9);
   assert.equal(descriptions.size, 9);
 });
+
+test("animation choices saved before the animation style migrate once (docs/animation_style_2026-10-26.md)", async () => {
+  // auto → 自动关闭开，normal → 关，风格按原手感（smooth → smooth；standard、crisp、没有手感 → desktop）；none、ultra 照搬。
+  const cases: Array<[string, string | undefined, string, boolean]> = [
+    ["auto", "standard", "desktop", true], ["auto", "crisp", "desktop", true], ["auto", "smooth", "smooth", true], ["auto", undefined, "desktop", true],
+    ["normal", "standard", "desktop", false], ["normal", "smooth", "smooth", false], ["normal", undefined, "desktop", false],
+    ["none", "smooth", "none", points.AutoDisableAnimations], ["ultra", "crisp", "ultra", points.AutoDisableAnimations]
+  ];
+  for (const [animations, motionFeel, style, autoDisable] of cases) {
+    const disk = storage();
+    const { animationStyle: _style, autoDisableAnimations: _auto, ...appearance } = { ...pointPreferences().appearance, theme: "dark" as const };
+    disk.setItem("resource-manager:frontend-preferences:v1",
+      JSON.stringify({ ...pointPreferences(), appearance: { ...appearance, animations, ...(motionFeel ? { motionFeel } : {}) } }));
+    const loaded = (await createFrontendPreferencesClient(disk).read()).appearance;
+    assert.equal(loaded.animationStyle, style, `${animations}/${motionFeel}`);
+    assert.equal(loaded.autoDisableAnimations, autoDisable, `${animations}/${motionFeel}`);
+    assert.equal(loaded.theme, "dark");
+    assert.equal("animations" in loaded || "motionFeel" in loaded, false, "old fields are dropped");
+  }
+  // A cache that already has the style only loses the old fields.
+  const disk = storage();
+  disk.setItem("resource-manager:frontend-preferences:v1", JSON.stringify({ ...pointPreferences(),
+    appearance: { ...pointPreferences().appearance, animationStyle: "terminal", autoDisableAnimations: false, animations: "auto", motionFeel: "smooth" } }));
+  const kept = (await createFrontendPreferencesClient(disk).read()).appearance;
+  assert.deepEqual([kept.animationStyle, kept.autoDisableAnimations, "animations" in kept], ["terminal", false, false]);
+});

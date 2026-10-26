@@ -128,6 +128,9 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         var imported = Owner().Read();
         Assert.Equal("dark", imported.Appearance.Theme);
         Assert.Equal("all", imported.Appearance.ReadingSourceMode);
+        // The legacy "animations":"normal" goes through the animation-style migration: desktop, switch off.
+        Assert.Equal("desktop", imported.Appearance.AnimationStyle);
+        Assert.False(imported.Appearance.AutoDisableAnimations);
         Assert.Equal(4321, imported.Refresh.Monitor.CustomValue);
         Assert.DoesNotContain("smartMonitoringMode", File.ReadAllText(Cache));
         Assert.Equal(24, imported.Overlays["game"].FontSizePx);
@@ -224,21 +227,49 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
     }
 
     [Fact]
-    public void MotionFeelIsAFrontendChoiceThatSurvivesRestartAndOlderCachesReadTheDefault()
+    public void AnimationStyleAndAutoDisableSurviveRestartAndInvalidStylesAreRejected()
     {
-        // 手感是 2026-10-25 加的前端自由点：之前写下的缓存没有这一项，读成点的默认值，其余选择不变。
+        // 动画风格和按自调度自动关闭动画是 2026-10-26 的前端自由点（docs/animation_style_2026-10-26.md）。
+        var owner = Owner();
+        Assert.Equal(FrontendPoints.AnimationStyle, owner.Read().Appearance.AnimationStyle);
+        Assert.Equal(FrontendPoints.AutoDisableAnimations, owner.Read().Appearance.AutoDisableAnimations);
+        owner.SaveGlobal(owner.Read() with { Appearance = new() { AnimationStyle = "terminal", AutoDisableAnimations = false } });
+        Assert.Equal("terminal", Owner().Read().Appearance.AnimationStyle);
+        Assert.False(Owner().Read().Appearance.AutoDisableAnimations);
+        Assert.Throws<InvalidDataException>(() => owner.Save(new() { Appearance = new() { AnimationStyle = "normal" } }));
+        Assert.Equal("terminal", Owner().Read().Appearance.AnimationStyle);
+    }
+
+    [Theory]
+    [InlineData("auto", "standard", "desktop", true)]
+    [InlineData("auto", "crisp", "desktop", true)]
+    [InlineData("auto", "smooth", "smooth", true)]
+    [InlineData("auto", null, "desktop", true)]
+    [InlineData("normal", "standard", "desktop", false)]
+    [InlineData("normal", "smooth", "smooth", false)]
+    [InlineData("normal", null, "desktop", false)]
+    [InlineData("none", "smooth", "none", null)]
+    [InlineData("ultra", "crisp", "ultra", null)]
+    public void CacheFromBeforeTheAnimationStyleMigratesOnceAndKeepsItsOtherChoices(
+        string animations, string? motionFeel, string style, bool? autoDisable)
+    {
+        // Migration frontend-preferences-animation-style-v1: auto → 自动关闭开，normal → 关，风格按原手感；none、ultra 照搬。
         var saved = JsonSerializer.SerializeToNode(new FrontendPreferences { Appearance = new() { Theme = "dark" } },
             FrontendPreferencesOwner.Json)!.AsObject();
-        saved["appearance"]!.AsObject().Remove("motionFeel");
+        var appearance = saved["appearance"]!.AsObject();
+        appearance.Remove("animationStyle");
+        appearance.Remove("autoDisableAnimations");
+        appearance["animations"] = animations;
+        if (motionFeel is not null) appearance["motionFeel"] = motionFeel;
         File.WriteAllText(Cache, saved.ToJsonString(FrontendPreferencesOwner.Json));
-        var owner = Owner();
-        Assert.Equal(FrontendPoints.MotionFeel, owner.Read().Appearance.MotionFeel);
-        Assert.Equal("dark", owner.Read().Appearance.Theme);
-
-        owner.SaveGlobal(owner.Read() with { Appearance = new() { Theme = "dark", MotionFeel = "smooth" } });
-        Assert.Equal("smooth", Owner().Read().Appearance.MotionFeel);
-        Assert.Throws<InvalidDataException>(() => owner.Save(new() { Appearance = new() { MotionFeel = "bouncy" } }));
-        Assert.Equal("smooth", Owner().Read().Appearance.MotionFeel);
+        var current = Owner().Read();
+        Assert.Equal(style, current.Appearance.AnimationStyle);
+        Assert.Equal(autoDisable ?? FrontendPoints.AutoDisableAnimations, current.Appearance.AutoDisableAnimations);
+        Assert.Equal("dark", current.Appearance.Theme);
+        var text = File.ReadAllText(Cache);
+        Assert.DoesNotContain("\"animations\"", text);
+        Assert.DoesNotContain("motionFeel", text);
+        Assert.Equal(Serialize(current), Serialize(Owner().Read()));
     }
 
     [Fact]

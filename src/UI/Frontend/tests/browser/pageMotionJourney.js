@@ -4,6 +4,7 @@ import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { assessInteractionLongTasks } from "./interactionLongTaskBudget.js";
 import { startMotionProfile, stopMotionProfile } from "./pageMotionEvidence.js";
+import { TERMINAL_STEPS } from "../../src/presentation/animationStyle.ts";
 
 const SWITCH_SAMPLE_MS = 700;
 
@@ -19,18 +20,24 @@ const SWITCH_SAMPLE_MS = 700;
  * - 指示条停下来时和选中项重合：一级页签、二级分页、任务中心的分页、分段选择。
  * - 任务中心：换分页时高度一帧都不变。
  * - 无动画、超高性能（设置里选）：第一帧就是终态，没有副本、没有位移，指示条已经到位。
+ * - 每种会动的风格各跑一遍（docs/animation_style_2026-10-26.md）：page-motion 是流畅平滑，page-motion-desktop、page-motion-terminal 是另外两种；
+ *   终端顿挫的进出按固定步数跳（新内容的位移最多 TERMINAL_STEPS 个不同的值），退出副本和新内容同一步走完。
  * - 鼠标点完没有焦点环（:focus-visible 不成立）；按 Tab 进去有。
  * - 预热后按点击窗口归因长任务；超过 50 ms 必须匹配具名动效登记和容差；正常动画、无动画走同一串切换，动画不引起重连。
  * 帧都在页面里用 requestAnimationFrame 逐帧读（无头浏览器不节流）。
  */
-export default async function pageMotionJourney(page, baseUrl) {
+export function pageMotionJourneyIn(style) {
+  return (page, baseUrl) => pageMotionJourney(page, baseUrl, style);
+}
+export default pageMotionJourneyIn("smooth");
+
+async function pageMotionJourney(page, baseUrl, style) {
   const startedOn = new Date().toISOString();
   const failures = [];
   const fail = (message) => failures.push(message);
   page.on("pageerror", (error) => { failures.push(`pageerror: ${String(error)}`); process.stderr.write(`PAGE_ERROR ${String(error)}\n`); });
   const app = await loadAppCopy("zh-CN");
   const settings = await loadSettingsText("zh-CN");
-  const animationLabel = (id) => settings.animationOptions.find((option) => option.id === id).label;
   let streamOpens = 0;
   page.on("request", (request) => {
     if (new URL(request.url()).pathname === "/api/subscriptions/stream") streamOpens += 1;
@@ -41,13 +48,14 @@ export default async function pageMotionJourney(page, baseUrl) {
   const nav = page.getByRole("navigation", { name: app.shell.pageNav, exact: true });
   await nav.waitFor();
   await page.waitForTimeout(1200);
+  await setAnimationStyle(page, app, settings, style);
   await installProbe(page);
   const primary = (id) => nav.getByRole("button", { name: app.page[id], exact: true });
   const groupOf = (id) => page.locator(`.page-subnav-group[data-page-id="${id}"]`);
   const settle = () => page.waitForTimeout(700);
   const interactionRuns = [];
   const evidenceDirectory = process.env.RM_PAGE_MOTION_EVIDENCE_DIR;
-  let animationMode = "normal";
+  let animationMode = style;
   const sampleSwitch = async (step, locator, durationMs) => {
     const index = interactionRuns.length;
     const profile = evidenceDirectory
@@ -181,6 +189,14 @@ export default async function pageMotionJourney(page, baseUrl) {
     const first = run.frames[0];
     if (!(first.leaving.length >= 1)) fail(`${label}: no leaving copy in the first frame`);
     if (!(Math.sign(first.stage.x) === direction)) fail(`${label}: content enters from ${first.stage.x} (expected sign ${direction})`);
+    if (style === "terminal") {
+      // 按步跳：位移只取几个值，单调走向 0；退出副本只会变暗，最后一步和新内容一起走完。
+      const xs = run.frames.map((frame) => frame.stage.x);
+      const distinct = [...new Set(xs)];
+      if (distinct.length < 3 || distinct.length > TERMINAL_STEPS + 1) fail(`${label}: terminal content takes ${distinct.length} positions, not up to ${TERMINAL_STEPS} steps: ${JSON.stringify(distinct)}`);
+      if (xs.some((x, index) => index > 0 && Math.abs(x) > Math.abs(xs[index - 1]) + 0.01)) fail(`${label}: terminal content moves back: ${JSON.stringify(distinct)}`);
+      contentRuns[label].positions = distinct;
+    }
     let lastLeaving = Infinity;
     let leavingGoneAt = null;
     let settledAt = null;
@@ -192,7 +208,9 @@ export default async function pageMotionJourney(page, baseUrl) {
       if (settledAt === null && frame.stage.x === 0 && frame.stage.opacity === 1) settledAt = frame.dt;
     }
     // 退出看得见（不是一两帧就没了），并且在新内容停下之前走完：降到 5% 以下的时刻在进来用时的 25%～75% 之间。
-    if (leavingGoneAt === null || settledAt === null || leavingGoneAt < settledAt * 0.25 || leavingGoneAt > settledAt * 0.75) {
+    const exitEarly = style === "terminal" ? leavingGoneAt !== null && leavingGoneAt <= settledAt + 1
+      : leavingGoneAt !== null && leavingGoneAt >= settledAt * 0.25 && leavingGoneAt <= settledAt * 0.75;
+    if (settledAt === null || !exitEarly) {
       fail(`${label}: the exit fades out at ${leavingGoneAt} ms, the enter settles at ${settledAt} ms`);
     }
     const last = run.frames.at(-1);
@@ -290,7 +308,7 @@ export default async function pageMotionJourney(page, baseUrl) {
   const keyboardBack = await focusState(page);
   if (!keyboardBack.activeVisible || !keyboardBack.ring) fail(`Shift+Tab does not show a focus ring: ${JSON.stringify(keyboardBack)}`);
 
-  // ---- 长任务和订阅（正常动画） ----
+  // ---- 长任务和订阅（这种会动的风格） ----
   const sequence = ["details", "components", "diskUsage", "control", "monitor", "settings", "details", "monitor"];
   const runSequence = async () => {
     // Normalize the remembered details tab before counting streams in either mode.
@@ -323,7 +341,7 @@ export default async function pageMotionJourney(page, baseUrl) {
   const instant = {};
   let noneOpens = null;
   for (const mode of ["none", "ultra"]) {
-    await setAnimations(page, app, settings, animationLabel, mode);
+    await setAnimationStyle(page, app, settings, mode);
     animationMode = mode;
     await primary("components").click();
     await settle();
@@ -347,19 +365,20 @@ export default async function pageMotionJourney(page, baseUrl) {
   for (const run of interactionRuns) for (const task of run.overruns) {
     if (!task.passed) fail(`${run.mode} ${task.message}`);
   }
-  await setAnimations(page, app, settings, animationLabel, "normal");
+  await setAnimationStyle(page, app, settings, style);
   await page.evaluate(() => window.__pm.observer.disconnect());
 
   // Persist before throwing: an empty registry is expected to expose existing waste.
-  if (evidenceDirectory) writeFileSync(resolve(evidenceDirectory, "page-motion.json"), JSON.stringify({
+  if (evidenceDirectory) writeFileSync(resolve(evidenceDirectory, `page-motion-${style}.json`), JSON.stringify({
     startedOn, measuredOn: new Date().toISOString(), browser: page.context().browser().version(),
-    node: process.version, baseUrl, subscriptionStreamsOpened: { normal: normalOpens, none: noneOpens },
+    node: process.version, baseUrl, style, subscriptionStreamsOpened: { [style]: normalOpens, none: noneOpens },
     interactionRuns, failures
   }, null, 2));
   process.stdout.write(`PAGE_MOTION_INTERACTIONS ${JSON.stringify(interactionRuns)}\n`);
 
   if (failures.length) throw new Error(failures.join("\n"));
   return {
+    style,
     pages: pageFacts.map(({ id, contentTop }) => ({ id, contentTop })),
     repeatsOwnedElsewhere,
     barAppearMs,
@@ -369,7 +388,7 @@ export default async function pageMotionJourney(page, baseUrl) {
     focusAfterMouse: focusAfterMouse.map(({ label, anyVisible }) => ({ label, anyVisible })),
     keyboard: { forward: keyboard, back: keyboardBack },
     instant,
-    subscriptionStreamsOpened: { normal: normalOpens, none: noneOpens },
+    subscriptionStreamsOpened: { [style]: normalOpens, none: noneOpens },
     interactionRuns,
     longestTaskMs: Math.max(0, ...interactionRuns.flatMap((run) => run.longTasks.map((task) => task.duration)))
   };
@@ -512,13 +531,17 @@ async function focusState(page) {
   });
 }
 
-async function setAnimations(page, app, settings, animationLabel, mode) {
+/** 设置 → 外观 → 动画风格，真实点击并保存，等 body[data-animations] 换成这种风格（模拟后端的自调度结果是正常，自动关闭不改它）。 */
+async function setAnimationStyle(page, app, settings, style) {
   await page.getByRole("navigation", { name: app.shell.pageNav, exact: true }).getByRole("button", { name: app.page.settings, exact: true }).click();
   await page.getByRole("button", { name: settings.sections.appearance, exact: true }).click();
-  await page.getByRole("radiogroup", { name: settings.appearance.animationTitle, exact: true })
-    .getByRole("radio", { name: animationLabel(mode), exact: true }).click();
-  await page.getByRole("button", { name: settings.actions.save, exact: true }).click();
-  await page.waitForFunction((value) => document.body.dataset.animations === value, mode, { timeout: 5000 });
+  const label = settings.animationStyleOptions.find((option) => option.id === style).label;
+  const radio = page.getByRole("radiogroup", { name: settings.appearance.animationStyleTitle, exact: true }).getByRole("radio", { name: label, exact: true });
+  if (!(await radio.isChecked())) {
+    await radio.click();
+    await page.getByRole("button", { name: settings.actions.save, exact: true }).click();
+  }
+  await page.waitForFunction((value) => document.body.dataset.animations === value, style, { timeout: 5000 });
 }
 
-export { installProbe, sampleClick, setAnimations };
+export { installProbe, sampleClick, setAnimationStyle };

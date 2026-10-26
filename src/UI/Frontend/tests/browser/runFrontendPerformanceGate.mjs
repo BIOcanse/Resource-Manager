@@ -543,7 +543,7 @@ function renderReport(assessment) {
 async function createMeasuredContext(browserHandle, diagnostics) {
   const context = await browserHandle.newContext({ viewport: scenario.viewport });
   // 动画效果是前端偏好：每个测量上下文首次加载前写入常规动画。
-  await seedFrontendPreferences(context, (value) => { value.appearance.animations = "normal"; });
+  await seedFrontendPreferences(context, (value) => { value.appearance.animationStyle = "desktop"; value.appearance.autoDisableAnimations = false; });
   await context.addInitScript(({ capacity }) => {
     globalThis.__resourceManagerFrontendPerformanceBootstrap = {
       schemaVersion: 1,

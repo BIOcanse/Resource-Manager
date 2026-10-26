@@ -153,6 +153,7 @@ internal static partial class Program
         var valid = type switch
         {
             "choice" => value.ValueKind == JsonValueKind.String && definition.GetProperty("options").EnumerateArray().Any(option => option.GetString() == value.GetString()),
+            "boolean" => value.ValueKind is JsonValueKind.True or JsonValueKind.False,
             "refresh" => value.ValueKind == JsonValueKind.Object && value.GetProperty("mode").GetString() is "aotu" or "preset" or "custom"
                 && value.GetProperty("preset").GetString() is "responsive" or "balanced" or "lowPower" or "quiet"
                 && value.GetProperty("customValue").GetInt32() is >= 500 and <= 300000,
@@ -175,6 +176,7 @@ internal static partial class Program
     private static ComplexDeclarationProjection CSharpDeclaration(string type) => type switch
     {
         "choice" => new("string", "[]const u8", "", ""),
+        "boolean" => new("bool", "bool", "", ""),
         "refresh" => new("PointRefreshSetting", "void", "public sealed record PointRefreshSetting(string Mode, string Preset, int CustomValue);", ""),
         "presets" => new("PointRefreshPresets", "void", "public sealed record PointRefreshPresets(int Responsive, int Balanced, int LowPower, int Quiet);", ""),
         "metricOrder" => new("ImmutableArray<string>", "void", "", ""),
@@ -185,6 +187,7 @@ internal static partial class Program
     private static string CSharpValue(string type, JsonElement value) => type switch
     {
         "choice" => JsonSerializer.Serialize(value.GetString()),
+        "boolean" => value.GetBoolean() ? "true" : "false",
         "refresh" => "new(" + string.Join(",", JsonSerializer.Serialize(value.GetProperty("mode").GetString()),
             JsonSerializer.Serialize(value.GetProperty("preset").GetString()), value.GetProperty("customValue").GetRawText()) + ")",
         "presets" => "new(" + string.Join(",", new[] { "responsive", "balanced", "lowPower", "quiet" }.Select(name => value.GetProperty(name).GetRawText())) + ")",
@@ -196,6 +199,7 @@ internal static partial class Program
     private static string TypeScriptType(string type, JsonElement definition) => type switch
     {
         "choice" => string.Join(" | ", definition.GetProperty("options").EnumerateArray().Select(value => JsonSerializer.Serialize(value.GetString()))),
+        "boolean" => "boolean",
         "refresh" => "{ readonly mode: \"aotu\" | \"preset\" | \"custom\"; readonly preset: \"responsive\" | \"balanced\" | \"lowPower\" | \"quiet\"; readonly customValue: number }",
         "presets" => "{ readonly responsive: number; readonly balanced: number; readonly lowPower: number; readonly quiet: number }",
         "metricOrder" => "readonly string[]",

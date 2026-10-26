@@ -12,15 +12,15 @@ import {
 const barDurationMs = 480;
 
 assert.equal(
-  shouldRunResourceLayoutSettleTransition(false, "normal", "none"),
+  shouldRunResourceLayoutSettleTransition(false, "desktop", "none"),
   true,
   "Disabling motion must replace an active settle task without a layout change.");
 assert.equal(
-  shouldRunResourceLayoutSettleTransition(false, "none", "normal"),
+  shouldRunResourceLayoutSettleTransition(false, "none", "desktop"),
   false,
   "Enabling motion must not animate an unchanged historical layout.");
 assert.equal(
-  shouldRunResourceLayoutSettleTransition(true, "none", "normal"),
+  shouldRunResourceLayoutSettleTransition(true, "none", "desktop"),
   true,
   "A real layout change still starts the transition selected by the new mode.");
 
@@ -43,12 +43,12 @@ for (const disabledMode of ["none", "ultra"] as const) {
 
   let durationReads = 0;
   const readDuration = () => { durationReads += 1; return barDurationMs; };
-  assert.equal(update(firstLayout, "normal", readDuration), null);
-  assert.equal(update(structuredClone(firstLayout), "normal", readDuration), null,
+  assert.equal(update(firstLayout, "desktop", readDuration), null);
+  assert.equal(update(structuredClone(firstLayout), "desktop", readDuration), null,
     "An unchanged callback must not hide fixed-type dividers");
   assert.deepEqual(mutations, []);
   assert.equal(durationReads, 0, "Mount and unchanged layouts must not read computed style");
-  const animated = update(changedLayout, "normal", readDuration);
+  const animated = update(changedLayout, "desktop", readDuration);
   assert.ok(animated);
   assert.deepEqual(mutations, [true]);
   assert.equal(durationReads, 1, "An animated layout change reads its current token once");

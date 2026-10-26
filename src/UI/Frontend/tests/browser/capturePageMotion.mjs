@@ -1,10 +1,11 @@
 // 换页动效的取证：截图、CDP screencast 帧序列和逐帧测量，改前改后用同一份脚本，只截页面。
-// 用法：node --experimental-transform-types tests/browser/capturePageMotion.mjs <输出目录> [--animations normal|none]
+// 用法：node --experimental-transform-types tests/browser/capturePageMotion.mjs <输出目录> [--style smooth|desktop|terminal|none|ultra]
 // 先 vite build；起 mock 服务（mockFrontendServer.mjs），用 RM_PLAYWRIGHT_MODULE / RM_PLAYWRIGHT_BROWSER 指的 Playwright 和浏览器。
 // 输出：
 //   shots/<名>.png          每页、每个二级分页、任务中心每个筛选分页的静止截图（视口）
 //   frames/<序号>.jpg        换页序列的 screencast 帧，frames.json 记每帧的时间戳和那一刻在做哪一次切换
 //   measurements.json       每次切换：点击到二级分页条出现的毫秒数、内容起始 y、逐帧的内容位置和不透明度、长任务；任务中心各分页的对话框高度
+import { seedFrontendPreferences } from "./frontendPreferencesFixture.js";
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -14,9 +15,10 @@ import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 
 const projectRoot = fileURLToPath(new URL("../..", import.meta.url));
 const outRoot = resolve(process.argv[2] ?? "");
-if (!process.argv[2]) throw new Error("usage: capturePageMotion.mjs <output dir> [--animations normal|none]");
-const animationsArg = process.argv.indexOf("--animations");
-const animations = animationsArg > 0 ? process.argv[animationsArg + 1] : "normal";
+if (!process.argv[2]) throw new Error("usage: capturePageMotion.mjs <output dir> [--style smooth|desktop|terminal|none|ultra]");
+const styleArg = process.argv.indexOf("--style");
+const style = styleArg > 0 ? process.argv[styleArg + 1] : "smooth";
+if (!["smooth", "desktop", "terminal", "none", "ultra"].includes(style)) throw new Error(`unknown animation style ${style}`);
 for (const sub of ["shots", "frames"]) mkdirSync(resolve(outRoot, sub), { recursive: true });
 
 const app = await loadAppCopy("zh-CN");
@@ -33,19 +35,18 @@ const modulePath = [process.env.RM_PLAYWRIGHT_MODULE, resolve(projectRoot, "node
 const { chromium } = await import(pathToFileURL(modulePath).href);
 const executablePath = [process.env.RM_PLAYWRIGHT_BROWSER, "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"].filter(Boolean).find((p) => existsSync(p));
 let browser;
-const result = { animations, switches: [], taskCenter: [], longTasks: [] };
+const result = { style, switches: [], taskCenter: [], longTasks: [] };
 try {
   await waitForServer();
   browser = await chromium.launch({ headless: true, executablePath });
   const context = await browser.newContext({ locale: "zh-CN", viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
+  // 动画风格：像用户在设置里保存过一样写前端偏好缓存（自动关闭关掉，模拟后端的自调度结果不影响取证）。
+  await seedFrontendPreferences(context, (value) => { value.appearance.animationStyle = style; value.appearance.autoDisableAnimations = false; });
   const page = await context.newPage();
   await page.goto(baseUrl);
   await page.locator(".shell-pages").waitFor();
   await page.waitForTimeout(1500);
-  if (animations !== "normal") {
-    // 动画档位：直接写 body 和磁石（App 解析后写的同一处），只用于取证；旅程里走设置。
-    await page.evaluate((mode) => { document.body.dataset.animations = mode; }, animations);
-  }
+  await page.waitForFunction((value) => document.body.dataset.animations === value, style);
   // 长任务：从这里起全程记。
   await page.evaluate(() => {
     window.__captureLongTasks = [];
@@ -182,7 +183,7 @@ try {
   writeFileSync(resolve(outRoot, "frames.json"), JSON.stringify(frames, null, 1));
   writeFileSync(resolve(outRoot, "measurements.json"), JSON.stringify(result, null, 1));
   const summary = {
-    animations,
+    style,
     subnavAppearMs: Object.fromEntries(result.switches.map((s) => [s.label, s.subnavAppearMs])),
     contentTop: Object.fromEntries(result.switches.map((s) => [s.label, s.settled?.contentTop ?? null])),
     subnavNodeStable: result.switches.map((s) => s.settled?.subnavNode ?? null),

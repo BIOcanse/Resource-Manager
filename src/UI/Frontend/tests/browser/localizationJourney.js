@@ -156,12 +156,14 @@ export default async function localizationJourney(page, baseUrl, options = {}) {
     const settings = await loadSettingsText(option.id);
     await page.getByText(settings.appearance.settingsLanguageDescription, { exact: true }).waitFor();
     await page.getByRole("button", { name: settings.appearance.languageSelectLabel, exact: true }).waitFor();
-    // 手感这一行：标题、说明和三个选项名都是这种语言的。
-    await page.getByText(settings.appearance.motionFeelDescription, { exact: true }).waitFor();
-    const feelGroup = page.getByRole("radiogroup", { name: settings.appearance.motionFeelTitle, exact: true });
-    const feelLabels = (await feelGroup.getByRole("radio").allTextContents()).map(text => text.trim());
-    if (JSON.stringify(feelLabels) !== JSON.stringify(settings.motionFeelOptions.map(option => option.label))) {
-      throw new Error(`${option.id}: motion feel options are ${JSON.stringify(feelLabels)}`);
+    // 动画风格这一行和自动关闭开关：标题、说明和五个风格名都是这种语言的。
+    await page.getByText(settings.appearance.animationStyleDescription, { exact: true }).waitFor();
+    await page.getByText(settings.appearance.autoDisableAnimationsDescription, { exact: true }).waitFor();
+    await page.getByRole("checkbox", { name: settings.appearance.autoDisableAnimationsTitle, exact: true }).waitFor();
+    const styleGroup = page.getByRole("radiogroup", { name: settings.appearance.animationStyleTitle, exact: true });
+    const styleLabels = (await styleGroup.getByRole("radio").allTextContents()).map(text => text.trim());
+    if (JSON.stringify(styleLabels) !== JSON.stringify(settings.animationStyleOptions.map(option => option.label))) {
+      throw new Error(`${option.id}: animation style options are ${JSON.stringify(styleLabels)}`);
     }
 
     await page.getByRole("button", { name: settings.sections.performance, exact: true }).click();

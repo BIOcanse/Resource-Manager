@@ -135,7 +135,7 @@ export function useSelectionIndicator(options: SelectionIndicatorOptions): void 
       const container = options.container();
       return container ? [container, ...options.items()] : [];
     };
-    // 仅正常动画需要缓存几何。重订阅获得下一次浏览器布局的初始通知，不强制布局。
+    // 仅会动的风格（磁石档位 normal）需要缓存几何。重订阅获得下一次浏览器布局的初始通知，不强制布局。
     createEffect(on(interactionAnimationMode, (mode) => {
       const normal = mode === "normal";
       measured = false;

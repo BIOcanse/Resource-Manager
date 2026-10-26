@@ -1,25 +1,26 @@
 import type { TaskRun, TaskScope } from "../../frontendRuntime/task/TaskScope.ts";
 import { defineTaskKey } from "../../frontendRuntime/task/TaskDescriptor.ts";
 import type { ResourceSegmentLayout } from "./resourceSegmentLayout.ts";
+import { animationStyleMoves } from "../../presentation/animationStyle.ts";
+import type { AnimationStyleId } from "../../presentation/animationStyle.ts";
 import {
   waitForTaskDelay,
   type TaskDelay
 } from "../../frontendRuntime/task/waitForTaskDelay.ts";
 
-// 分段过渡走 --motion-bar（随手感变），分隔线等它走完再多等这一段余量才回来。
+// 分段过渡走 --motion-bar（随动画风格变），分隔线等它走完再多等这一段余量才回来。
 export const resourceLayoutSettleMarginMs = 80;
 export const resourceLayoutSettleTaskKey = defineTaskKey<void>(
   "resource-breakdown.layout-settle");
 
-export type ResourceLayoutAnimationMode = "normal" | "none" | "ultra";
 type Layout = readonly ResourceSegmentLayout<{ softwareId: string; value: number }>[];
 
 export function shouldRunResourceLayoutSettleTransition(
   layoutChanged: boolean,
-  previousMode: ResourceLayoutAnimationMode,
-  nextMode: ResourceLayoutAnimationMode
+  previousStyle: AnimationStyleId,
+  nextStyle: AnimationStyleId
 ): boolean {
-  return layoutChanged || (previousMode === "normal" && nextMode !== "normal");
+  return layoutChanged || (animationStyleMoves(previousStyle) && !animationStyleMoves(nextStyle));
 }
 
 export function createResourceLayoutSettleController(
@@ -28,18 +29,18 @@ export function createResourceLayoutSettleController(
   delay: TaskDelay = waitForTaskDelay
 ): (
   layout: Layout,
-  animationMode: ResourceLayoutAnimationMode,
+  animationStyle: AnimationStyleId,
   readBarDurationMs: () => number
 ) => TaskRun<void> | null {
   let initialized = false;
   let previousLayout: Layout = [];
-  let previousMode: ResourceLayoutAnimationMode = "normal";
+  let previousStyle: AnimationStyleId = "desktop";
 
-  return (layout, animationMode, readBarDurationMs) => {
+  return (layout, animationStyle, readBarDurationMs) => {
     if (!initialized) {
       initialized = true;
       previousLayout = layout;
-      previousMode = animationMode;
+      previousStyle = animationStyle;
       return null;
     }
 
@@ -49,15 +50,16 @@ export function createResourceLayoutSettleController(
         return !previous || item.segment.softwareId !== previous.segment.softwareId
           || item.left !== previous.left || item.right !== previous.right;
       }),
-      previousMode,
-      animationMode);
+      previousStyle,
+      animationStyle);
     previousLayout = layout;
-    previousMode = animationMode;
+    previousStyle = animationStyle;
+    const moves = animationStyleMoves(animationStyle);
     return shouldRun
       ? startResourceLayoutSettleTransition(
           scope,
-          animationMode === "normal",
-          animationMode === "normal" ? readBarDurationMs() : 0,
+          moves,
+          moves ? readBarDurationMs() : 0,
           setMoving,
           delay)
       : null;

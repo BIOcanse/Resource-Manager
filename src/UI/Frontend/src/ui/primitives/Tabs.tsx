@@ -16,7 +16,7 @@ import { useContentTransition } from "../../interactions/solid/contentTransition
 /*
  * 页签组：一组页签（TabsList / TabsTrigger）和它们的面板（TabsPanel）。
  * 动效（docs/page_motion_2026-10-25.md）：页签组自带选中指示条，面板换的时候旧面板出去、新面板从序号增大的一侧进来，
- * 都是磁石组件，跟手感和动画档位走。页签组的序号就是页签的次序。
+ * 都是磁石组件，跟动画风格走。页签组的序号就是页签的次序。
  */
 
 interface TabsContextValue {

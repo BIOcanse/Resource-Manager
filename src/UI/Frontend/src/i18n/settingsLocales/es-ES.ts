@@ -195,12 +195,19 @@ export default createSettingsLocale("es-ES", {
     "uiStyleDescription": "Cambia las esquinas, líneas, sombras y fuentes de los controles; el diseño no cambia. Cada estilo tiene sus propias paletas.",
     "themeTitle": "Paleta",
     "themeDescription": "Elige una paleta del estilo actual. Sistema sigue el ajuste claro u oscuro de Windows.",
-    "animationTitle": "Animaciones",
-    "animationDescription": "Elige animaciones completas, ninguna animación o efectos simplificados para reducir la carga de la interfaz.",
-    "motionFeelTitle": "Sensación de movimiento",
-    "motionFeelDescription": "Cambia el ritmo y las curvas de todas las animaciones de la interfaz, incluido cómo se asientan y vuelven los controles que se arrastran. Sin animaciones, nada se mueve.",
+    "animationStyleTitle": "Estilo de animación",
+    "animationStyleDescription": "Elige cómo se reproducen las transiciones y cómo se colocan los controles. Máximo rendimiento elimina además las sombras, los reflejos y el desenfoque.",
+    "autoDisableAnimationsTitle": "Desactivar animaciones según la autoplanificación",
+    "autoDisableAnimationsDescription": "Si está activado, en el momento en que la interfaz vuelve al primer plano sin entradas recientes y el resultado de la autoplanificación requiere ahorro, se usa Sin animaciones; en caso contrario, se aplica el estilo elegido. No cambia mientras se usa la interfaz. No tiene efecto con Sin animaciones o Máximo rendimiento.",
+    "animationStyleOptions": {
+      "smooth": { "label": "Fluido", "description": "Como macOS y los sistemas móviles: movimiento de resorte que conserva la velocidad del gesto, se puede detener en cualquier momento y rebota en los bordes del desplazamiento" },
+      "desktop": { "label": "Escritorio estándar", "description": "Como el software de escritorio habitual de Windows: transiciones breves con desaceleración, sin conservar la velocidad ni rebotes" },
+      "terminal": { "label": "Terminal por pasos", "description": "Llega al final en un número fijo de pasos, sin curva de aceleración, como el refresco de un terminal de texto" },
+      "none": { "label": "Sin animaciones", "description": "Todas las transiciones y apariciones terminan en el mismo fotograma; el aspecto no cambia" },
+      "ultra": { "label": "Máximo rendimiento", "description": "Sin animaciones y sin sombras, reflejos ni desenfoque, para el menor coste de visualización" }
+    },
     "resourceBarFrameRateTitle": "Fotogramas de las barras de recursos",
-    "resourceBarFrameRateDescription": "Cuántos fotogramas por segundo dibujan las transiciones de las barras. Seguir la pantalla usa la frecuencia de actualización del monitor; Personalizado limita los fotogramas para reducir la carga. Solo se aplica con animaciones normales.",
+    "resourceBarFrameRateDescription": "Cuántos fotogramas por segundo dibujan las transiciones de las barras. Seguir la pantalla usa la frecuencia de actualización del monitor; Personalizado limita los fotogramas para reducir la carga. No tiene efecto con Sin animaciones o Máximo rendimiento.",
     "resourceBarFrameRateModeOptions": [
       {
         "id": "display",
@@ -239,11 +246,6 @@ export default createSettingsLocale("es-ES", {
     "settingsLanguageTitle": "Idioma de la interfaz",
     "settingsLanguageDescription": "Cambia el idioma de toda la interfaz, incluida la bandeja y el título de ventana. Sistema usa el idioma de visualización de Windows.",
     "languageSelectLabel": "Idioma",
-    "motionFeelOptions": {
-      "standard": "Estándar",
-      "smooth": "Suave",
-      "crisp": "Ágil"
-    },
     "uiStyleOptions": {
       "standard": "Estándar",
       "classic": "Clásico",
@@ -262,24 +264,6 @@ export default createSettingsLocale("es-ES", {
       "phosphor": "Fósforo",
       "amber": "Ámbar",
       "ice": "Hielo"
-    },
-    "animationOptions": {
-      "auto": {
-        "label": "Automático",
-        "description": "Selecciona el nivel de animación según el nivel de GPU de la autoplanificación solo cuando la ventana visible recupera el foco sin entradas recientes y lo mantiene hasta el siguiente retorno que cumpla estas condiciones."
-      },
-      "normal": {
-        "label": "Animaciones normales",
-        "description": "Activa transiciones moderadas en toda la interfaz"
-      },
-      "none": {
-        "label": "Sin animaciones",
-        "description": "Desactiva transiciones y animaciones y conserva el aspecto cuidado"
-      },
-      "ultra": {
-        "label": "Máximo rendimiento",
-        "description": "Desactiva animaciones, sombras, reflejos y desenfoque para minimizar el coste de visualización"
-      }
     },
     "barColorOptions": {
       "type": {

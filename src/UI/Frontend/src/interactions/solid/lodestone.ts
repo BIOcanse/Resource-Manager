@@ -87,14 +87,14 @@ export function interactionRuntime(): Runtime {
   return runtime;
 }
 
-/** 动画档位沿用 body[data-animations]，由 App 按外观设置解析后交给这里。 */
+/** 磁石的动画档位：实际生效的动画风格（presentation/animationStyle.ts）的 engineMode，由 publishAnimationStyle 交给这里。 */
 export function setInteractionAnimationMode(mode: AnimationMode): void {
   setAnimationMode(mode);
   interactionRuntime().setAnimationMode(mode, performance.now());
 }
 
 /**
- * 全局层整层换成这一组覆盖（协议第 5 节“整层替换”）：手感切换用它，由 presentation/documentAppearance.ts 和动效令牌一起发布。
+ * 全局层整层换成这一组覆盖（协议第 5 节“整层替换”）：动画风格用它，由 presentation/documentAppearance.ts 的 publishAnimationStyle 和动效令牌一起发布。
  * 组件定义写的值在本部件这一层，不受影响。
  */
 export function setInteractionGlobalOverrides(overrides: Readonly<ParamOverrides>): void {

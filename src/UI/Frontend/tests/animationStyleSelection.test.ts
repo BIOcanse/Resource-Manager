@@ -1,33 +1,38 @@
+// 按自调度自动关闭动画（docs/animation_style_2026-10-26.md「设置」）：在选中的风格和 none 之间选，只在回到前台、不活跃时重新选。
 import assert from "node:assert/strict";
 import { createComputed, createRoot, createSignal } from "solid-js";
-import { AUTO_ANIMATION_OPTIMIZE_MODE, AUTO_ANIMATION_RECENT_INPUT_MS, createAnimationModeSelection } from "../src/app/selfScheduling/createAnimationModeSelection.ts";
-import type { AppAnimationMode, ResourceManagerSelfGpuGrade } from "../src/types.ts";
+import { AUTO_ANIMATION_OPTIMIZE_STYLE, AUTO_ANIMATION_RECENT_INPUT_MS, createAnimationStyleSelection } from "../src/app/selfScheduling/createAnimationStyleSelection.ts";
+import type { AnimationStyleId } from "../src/presentation/animationStyle.ts";
+import type { ResourceManagerSelfGpuGrade } from "../src/types.ts";
+
+assert.equal(AUTO_ANIMATION_OPTIMIZE_STYLE, "none", "Saving selects no animation");
 
 createRoot(dispose => {
   let now = 0;
-  const [mode, setMode] = createSignal<AppAnimationMode>("auto");
+  const [style, setStyle] = createSignal<AnimationStyleId>("smooth");
+  const [autoDisable, setAutoDisable] = createSignal(true);
   const [foreground, setForeground] = createSignal(false);
   const [gpuGrade, setGrade] = createSignal<ResourceManagerSelfGpuGrade>("optimize");
-  const selection = createAnimationModeSelection({ mode, foreground, gpuGrade, now: () => now });
+  const selection = createAnimationStyleSelection({ style, autoDisable, foreground, gpuGrade, now: () => now });
   let changes = 0;
-  let previous = selection.effectiveMode();
+  let previous = selection.effectiveStyle();
   createComputed(() => {
-    const value = selection.effectiveMode();
+    const value = selection.effectiveStyle();
     if (value !== previous) changes++;
     previous = value;
   });
-  assert.equal(previous, "normal", "Auto explicitly starts normal before first foreground");
+  assert.equal(previous, "smooth", "The selected style applies before the first foreground");
   setForeground(true);
-  assert.equal(previous, AUTO_ANIMATION_OPTIMIZE_MODE, "First foreground counts as a return");
+  assert.equal(previous, "none", "First foreground counts as a return");
   const beforeFlips = changes;
   for (let index = 0; index < 100; index++) setGrade(index % 2 ? "normal" : "optimize");
-  assert.equal(changes, beforeFlips, "Foreground grade flips cause zero tier changes/dispatches");
+  assert.equal(changes, beforeFlips, "Foreground grade flips cause zero style changes/dispatches");
   setForeground(false);
   setGrade("optimize");
   setGrade("normal");
-  assert.equal(changes, beforeFlips, "Background grade changes cause zero tier changes");
+  assert.equal(changes, beforeFlips, "Background grade changes cause zero style changes");
   setForeground(true);
-  assert.equal(previous, "normal", "Inactive return samples the current grade");
+  assert.equal(previous, "smooth", "Inactive return samples the current grade and picks the selected style");
 
   // All input kinds use this same callback from the existing input stream.
   selection.recordInput();
@@ -35,44 +40,58 @@ createRoot(dispose => {
   setGrade("optimize");
   now = AUTO_ANIMATION_RECENT_INPUT_MS - 1;
   setForeground(true);
-  assert.equal(previous, "normal", "Recent input forbids automatic changes on return");
+  assert.equal(previous, "smooth", "Recent input forbids automatic changes on return");
   now = AUTO_ANIMATION_RECENT_INPUT_MS;
-  assert.equal(previous, "normal", "Activity expiry alone never changes the tier");
+  assert.equal(previous, "smooth", "Activity expiry alone never changes the style");
   setForeground(false);
   setForeground(true);
-  assert.equal(previous, AUTO_ANIMATION_OPTIMIZE_MODE, "Input expires at the named interval");
+  assert.equal(previous, "none", "Input expires at the named interval");
   setForeground(false);
   setGrade("normal");
   selection.recordInput();
   setForeground(true);
-  assert.equal(previous, "normal", "Input before the foreground signal (the activating click) is not activity");
+  assert.equal(previous, "smooth", "Input before the foreground signal (the activating click) is not activity");
+  const beforeSameGradeReturn = changes;
+  setForeground(false);
+  setForeground(true);
+  assert.equal(changes, beforeSameGradeReturn, "Same effective style is not published again");
+
+  // Choosing another moving style keeps the latched decision and swaps the style it falls back to.
+  setStyle("terminal");
+  assert.equal(previous, "terminal");
   setForeground(false);
   setGrade("optimize");
   now += AUTO_ANIMATION_RECENT_INPUT_MS;
   setForeground(true);
-  assert.equal(previous, AUTO_ANIMATION_OPTIMIZE_MODE);
-  const beforeSameGradeReturn = changes;
-  setForeground(false);
-  setForeground(true);
-  assert.equal(changes, beforeSameGradeReturn, "Same selected tier is not published again");
+  assert.equal(previous, "none");
+  setStyle("desktop");
+  assert.equal(previous, "none", "A style change in the foreground does not re-sample the grade");
 
-  for (const manual of ["normal", "none", "ultra"] as const) {
-    selection.recordInput();
-    setMode(manual);
-    assert.equal(previous, manual, "Manual tiers apply directly despite recent input");
+  // none and ultra apply directly; the switch has no effect on them.
+  for (const manual of ["none", "ultra"] as const) {
+    setStyle(manual);
+    assert.equal(previous, manual);
     setForeground(false);
     setGrade("normal");
-    setGrade("optimize");
     setForeground(true);
-    assert.equal(previous, manual, "Manual tiers ignore foreground and grade");
+    assert.equal(previous, manual, "none and ultra ignore foreground and grade");
   }
-  setMode("none");
-  setMode("auto");
-  assert.equal(previous, "none", "Entering auto retains the selected tier until an eligible return");
-  now += AUTO_ANIMATION_RECENT_INPUT_MS;
+
+  // Switched off: the selected style applies directly, also in an optimize grade.
+  setStyle("smooth");
+  setAutoDisable(false);
+  assert.equal(previous, "smooth");
   setForeground(false);
+  setGrade("optimize");
+  now += AUTO_ANIMATION_RECENT_INPUT_MS;
   setForeground(true);
-  assert.equal(previous, AUTO_ANIMATION_OPTIMIZE_MODE);
+  assert.equal(previous, "smooth", "Switched off: the grade is never sampled");
+  setAutoDisable(true);
+  assert.equal(previous, "smooth", "Switching on retains the selected style until an eligible return");
+  setForeground(false);
+  now += AUTO_ANIMATION_RECENT_INPUT_MS;
+  setForeground(true);
+  assert.equal(previous, "none");
   dispose();
 });
 
@@ -83,14 +102,14 @@ for (const reduced of [false, true]) {
   createRoot(dispose => {
     const [foreground, setForeground] = createSignal(true);
     const [gpuGrade, setGrade] = createSignal<ResourceManagerSelfGpuGrade>("optimize");
-    const selection = createAnimationModeSelection({ mode: () => "auto", foreground, gpuGrade, now: () => 0 });
-    assert.equal(selection.effectiveMode(), AUTO_ANIMATION_OPTIMIZE_MODE);
+    const selection = createAnimationStyleSelection({ style: () => "desktop", autoDisable: () => true, foreground, gpuGrade, now: () => 0 });
+    assert.equal(selection.effectiveStyle(), "none");
     setForeground(false);
     setGrade("normal");
     setForeground(true);
-    assert.equal(selection.effectiveMode(), "normal");
+    assert.equal(selection.effectiveStyle(), "desktop");
     assert.equal(mediaReads, 0, "prefers-reduced-motion is not an input");
     dispose();
   });
 }
-console.log("PASS animation mode selection: startup, transitions, activity, manual tiers, OS preference, change counts");
+console.log("PASS animation style selection: startup, transitions, activity, style changes, none/ultra, switch off, OS preference, change counts");

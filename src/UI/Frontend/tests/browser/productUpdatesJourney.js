@@ -48,10 +48,10 @@ export default async function productUpdatesJourney(page, baseUrl) {
   const notice = page.locator(".toast").filter({ hasText: text.noticeTitle });
   await notice.getByRole("button", { name: "关闭", exact: true }).click();
   await page.getByText("已选择目标版本：1.1.0", { exact: true }).waitFor();
-  const versionList = [await checkVersionList(page, region, text, "normal")];
+  const versionList = [await checkVersionList(page, region, text, "desktop")];
   await setAnimation(page, "none");
   versionList.push(await checkVersionList(page, region, text, "none"));
-  await setAnimation(page, "normal");
+  await setAnimation(page, "desktop");
   await page.locator('input[value="latest"]').check();
   assert.equal(await page.getByRole("button", { name: "准备所选更新", exact: true }).isDisabled(), true,
     "A pending package must prevent preparing a replacement while Apply now remains available");
@@ -85,13 +85,13 @@ export default async function productUpdatesJourney(page, baseUrl) {
   return { statusReads, applyCalls, intervalSaves: patches.filter(patch => patch.changes?.update).map(patch => patch.changes.update.checkIntervalHours), versionList, recoveredInitialFailure: true, recoveredStaleStatus: true };
 }
 
-/** 设置 → 外观 → 动画档位，保存后回到“更新与版本”。 */
+/** 设置 → 外观 → 动画风格，保存后回到“更新与版本”。 */
 async function setAnimation(page, id) {
   const settings = await loadSettingsText("zh-CN");
   await page.getByRole("button", { name: settings.sections.appearance, exact: true }).click();
-  const label = settings.animationOptions.find(option => option.id === id).label;
-  await page.getByRole("radiogroup", { name: settings.appearance.animationTitle, exact: true }).getByRole("radio", { name: label, exact: true }).click();
-  // 动画档位是前端偏好：保存后直接写进前端偏好缓存，不发后端设置请求。
+  const label = settings.animationStyleOptions.find(option => option.id === id).label;
+  await page.getByRole("radiogroup", { name: settings.appearance.animationStyleTitle, exact: true }).getByRole("radio", { name: label, exact: true }).click();
+  // 动画风格是前端偏好：保存后直接写进前端偏好缓存，不发后端设置请求。
   await page.getByRole("button", { name: settings.actions.save, exact: true }).click();
   await page.waitForFunction(mode => document.body.dataset.animations === mode, id, { timeout: 5000 });
   await page.getByRole("button", { name: settings.sections.updates, exact: true }).click();
@@ -163,13 +163,13 @@ async function checkVersionList(page, region, text, mode) {
   const full = opened.heights.at(-1);
   const between = heights => heights.filter(height => height > 1 && height < full - 1).length;
   assert.ok(full > 20 && opened.expanded === "true" && Number(opened.openness) === 1 && !await inert(), `Series did not expand: ${JSON.stringify(opened)}`);
-  if (mode === "normal") assert.ok(between(opened.heights) >= 3, `Normal motion: expanding has no in-between frames: ${opened.heights}`);
+  if (mode === "desktop") assert.ok(between(opened.heights) >= 3, `Normal motion: expanding has no in-between frames: ${opened.heights}`);
   else assert.ok(opened.heights[1] === full && between(opened.heights.slice(1)) === 0, `No motion: expanding still animates: ${opened.heights.slice(0, 6)}`);
   assert.ok(await older.isDisabled(), "An older version can be selected");
   const closed = await toggle();
   assert.ok(closed.heights.at(-1) === 0 && closed.expanded === "false" && Number(closed.openness) === 0 && await inert(),
     `Series did not collapse: ${JSON.stringify(closed)}`);
-  if (mode === "normal") assert.ok(between(closed.heights) >= 3, `Normal motion: collapsing has no in-between frames: ${closed.heights}`);
+  if (mode === "desktop") assert.ok(between(closed.heights) >= 3, `Normal motion: collapsing has no in-between frames: ${closed.heights}`);
   else assert.ok(closed.heights[1] === 0, `No motion: collapsing still animates: ${closed.heights.slice(0, 6)}`);
   return { mode, openFrames: opened.heights.length, full };
 }

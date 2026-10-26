@@ -7,7 +7,7 @@ import { ResourceTable } from "../resourceTable/ResourceTable";
 import type { SoftwareContextMenuTarget } from "../../components/SoftwareContextMenu";
 import { MonitorWorkRegion } from "./MonitorWorkRegion";
 import type { MonitorStore } from "../../stores/monitorStore";
-import type { AppAnimationMode } from "../../types";
+import type { AnimationStyleId } from "../../presentation/animationStyle.ts";
 import { uiText } from "../../text.ts";
 import {
   ObservationStateBoundary,
@@ -16,7 +16,7 @@ import {
 import { useInlineEditorFocus } from "../../interactions/inlineEditorFocus";
 
 interface MonitorPageProps {
-  animationMode: Exclude<AppAnimationMode, "auto">;
+  animationStyle: AnimationStyleId;
   monitor: MonitorStore;
   highlightedSoftwareId: Accessor<string | null>;
   onResourceTableSoftwareContextMenu: (event: MouseEvent, target: SoftwareContextMenuTarget) => void;
@@ -139,7 +139,7 @@ export function MonitorPage(props: MonitorPageProps) {
               renderWhenUnavailable
             >
               <ResourceBreakdown
-                animationMode={props.animationMode}
+                animationStyle={props.animationStyle}
                 catalog={monitor.catalog()}
                 editMode={monitor.resourceBarEditing()}
                 editingAvailable={dashboardAvailable()}

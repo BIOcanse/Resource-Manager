@@ -161,14 +161,14 @@ export default async function creditsJourney(page, baseUrl) {
   /** 设置 → 外观 → 动画，保存后回到致谢页（致谢组件重新挂上，依赖表回到收起）。 */
   const setAnimation = async (id) => {
     await page.getByRole("button", { name: settings.sections.appearance, exact: true }).click();
-    const label = settings.animationOptions.find((option) => option.id === id).label;
-    await page.getByRole("radiogroup", { name: settings.appearance.animationTitle, exact: true }).getByRole("radio", { name: label, exact: true }).click();
+    const label = settings.animationStyleOptions.find((option) => option.id === id).label;
+    await page.getByRole("radiogroup", { name: settings.appearance.animationStyleTitle, exact: true }).getByRole("radio", { name: label, exact: true }).click();
     await page.getByRole("button", { name: settings.actions.save, exact: true }).click();
     await page.waitForFunction((mode) => document.body.dataset.animations === mode, id, { timeout: 5000 });
     await openCredits();
     await header.waitFor();
   };
-  if (await page.evaluate(() => document.body.dataset.animations) !== "normal") await setAnimation("normal");
+  if (await page.evaluate(() => document.body.dataset.animations) !== "desktop") await setAnimation("desktop");
   const opened = await toggleHeights();
   const full = opened.heights.at(-1);
   const between = (heights, top) => heights.filter((height) => height > 1 && height < top - 1).length;
@@ -222,7 +222,7 @@ export default async function creditsJourney(page, baseUrl) {
   const instantClose = await toggleHeights();
   assert(instantClose.heights[1] === 0 && instantClose.heights.at(-1) === 0, `No motion: closing still animates: ${instantClose.heights.slice(0, 6)}`);
   // 恢复正常档，后面的旅程从默认状态开始。
-  await setAnimation("normal");
+  await setAnimation("desktop");
 
   assert(errors.length === 0, `Page errors: ${errors.join("; ")}`);
   return {

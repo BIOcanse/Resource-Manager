@@ -136,7 +136,7 @@ try {
   }
 
   if (!only || "motion".includes(only) || only === "motion") {
-    for (const animations of ["normal", "none"]) {
+    for (const animations of ["desktop", "none"]) {
       await withPage({ uiStyle: "standard", theme: "light", language: "zh-CN", viewport: viewports.wide, animations }, async page => {
         for (const [step, generation] of [["values", 2], ["leave", 3], ["return", 4]]) {
           const frames = await recordTransition(page, generation);
@@ -166,7 +166,7 @@ async function withPage(options, run) {
   preferences.appearance.theme = options.theme;
   preferences.appearance.language = options.language;
   if (options.barColorMode) preferences.appearance.barColorMode = options.barColorMode;
-  if (options.animations) preferences.appearance.animations = options.animations;
+  if (options.animations) { preferences.appearance.animationStyle = options.animations; preferences.appearance.autoDisableAnimations = false; }
   await context.addInitScript(([key, text]) => {
     if (location.origin !== "null" && localStorage.getItem(key) === null) localStorage.setItem(key, text);
   }, [frontendPreferencesKey, JSON.stringify(preferences)]);

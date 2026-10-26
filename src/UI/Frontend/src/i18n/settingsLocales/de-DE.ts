@@ -195,12 +195,19 @@ export default createSettingsLocale("de-DE", {
     "uiStyleDescription": "Ändert Ecken, Linien, Schatten und Schriften der Bedienelemente; das Layout bleibt gleich. Jeder Stil hat eigene Farbschemata.",
     "themeTitle": "Farbschema",
     "themeDescription": "Wählen Sie ein Farbschema des aktuellen Stils. System folgt der hellen oder dunklen Windows-Einstellung.",
-    "animationTitle": "Animationen",
-    "animationDescription": "Wählen Sie volle Animationen, keine Animationen oder vereinfachte Effekte für geringere Oberflächenlast.",
-    "motionFeelTitle": "Bewegungsgefühl",
-    "motionFeelDescription": "Ändert Tempo und Kurven aller Animationen der Oberfläche, auch wie gezogene Bedienelemente einrasten und zurückfedern. Ohne Animationen bewegt sich nichts.",
+    "animationStyleTitle": "Animationsstil",
+    "animationStyleDescription": "Legt fest, wie Übergänge ablaufen und wie Bedienelemente an ihren Platz gelangen. Höchste Leistung entfernt zusätzlich Schatten, Glanz und Unschärfe.",
+    "autoDisableAnimationsTitle": "Animationen durch Selbstplanung automatisch deaktivieren",
+    "autoDisableAnimationsDescription": "Wenn aktiviert: Kehrt die Oberfläche ohne kürzliche Eingabe in den Vordergrund zurück und verlangt das Ergebnis der Selbstplanung Einsparungen, wird Keine Animationen verwendet, andernfalls der gewählte Stil. Während der Bedienung im Vordergrund wird nicht gewechselt. Bei Keine Animationen oder Höchste Leistung ohne Wirkung.",
+    "animationStyleOptions": {
+      "smooth": { "label": "Fließend", "description": "Wie macOS und mobile Systeme: Federbewegung, die die Geschwindigkeit der Geste übernimmt, jederzeit abgefangen werden kann und an Bildlaufrändern zurückfedert" },
+      "desktop": { "label": "Desktop-Standard", "description": "Wie übliche Windows-Desktopsoftware: kurze, abbremsende Übergänge ohne übernommene Geschwindigkeit und ohne Zurückfedern" },
+      "terminal": { "label": "Terminal-Stufen", "description": "Springt in einer festen Anzahl von Stufen ohne Beschleunigungskurve zum Ziel, wie die Bildschirmaktualisierung eines Textterminals" },
+      "none": { "label": "Keine Animationen", "description": "Alle Übergänge und Einblendungen sind im selben Bild abgeschlossen; das Erscheinungsbild bleibt unverändert" },
+      "ultra": { "label": "Höchste Leistung", "description": "Keine Animationen und zusätzlich keine Schatten, kein Glanz und keine Unschärfe für den geringsten Darstellungsaufwand" }
+    },
     "resourceBarFrameRateTitle": "Bildrate der Ressourcenleisten",
-    "resourceBarFrameRateDescription": "Wie viele Bilder pro Sekunde die Übergänge der Ressourcenleisten zeichnen. Bildschirm folgen nutzt die Bildwiederholrate des Monitors; Benutzerdefiniert begrenzt die Bilder und senkt die Last. Gilt nur bei normalen Animationen.",
+    "resourceBarFrameRateDescription": "Wie viele Bilder pro Sekunde die Übergänge der Ressourcenleisten zeichnen. Bildschirm folgen nutzt die Bildwiederholrate des Monitors; Benutzerdefiniert begrenzt die Bilder und senkt die Last. Bei Keine Animationen oder Höchste Leistung ohne Wirkung.",
     "resourceBarFrameRateModeOptions": [
       {
         "id": "display",
@@ -239,11 +246,6 @@ export default createSettingsLocale("de-DE", {
     "settingsLanguageTitle": "Oberflächensprache",
     "settingsLanguageDescription": "Ändert die Sprache der gesamten Oberfläche einschließlich Infobereich und Fenstertitel. System verwendet die Windows-Anzeigesprache.",
     "languageSelectLabel": "Sprache",
-    "motionFeelOptions": {
-      "standard": "Standard",
-      "smooth": "Weich",
-      "crisp": "Knackig"
-    },
     "uiStyleOptions": {
       "standard": "Standard",
       "classic": "Klassisch",
@@ -262,24 +264,6 @@ export default createSettingsLocale("de-DE", {
       "phosphor": "Phosphor",
       "amber": "Bernstein",
       "ice": "Eis"
-    },
-    "animationOptions": {
-      "auto": {
-        "label": "Automatisch",
-        "description": "Wählt die Animationsstufe anhand der GPU-Stufe der Selbstplanung nur dann, wenn das sichtbare Fenster ohne kürzliche Eingabe den Fokus wiedererlangt, und behält sie bis zur nächsten zulässigen Rückkehr bei."
-      },
-      "normal": {
-        "label": "Normale Animationen",
-        "description": "Zurückhaltende Übergänge in der gesamten Oberfläche aktivieren"
-      },
-      "none": {
-        "label": "Keine Animationen",
-        "description": "Alle Übergänge und Animationen deaktivieren, das Erscheinungsbild beibehalten"
-      },
-      "ultra": {
-        "label": "Höchste Leistung",
-        "description": "Animationen, Schatten, Glanz und Unschärfe für möglichst geringen Darstellungsaufwand deaktivieren"
-      }
     },
     "barColorOptions": {
       "type": {

@@ -2,8 +2,8 @@
   "points": [
     {"group":0,"name":"appearance-ui_style","symbol":"UiStyle","type":"choice","options":["standard","classic","soft","outline","terminal"],"value":"standard"},
     {"group":0,"name":"appearance-theme","symbol":"Theme","type":"choice","options":["system","light","dark","lowContrast","paper","graphite","blueprint","phosphor","amber","ice"],"value":"system"},
-    {"group":0,"name":"appearance-animation_mode","symbol":"AnimationMode","type":"choice","options":["auto","none","normal","ultra"],"value":"auto"},
-    {"group":0,"name":"appearance-motion_feel","symbol":"MotionFeel","type":"choice","options":["standard","smooth","crisp"],"value":"standard"},
+    {"group":0,"name":"appearance-animation_style","symbol":"AnimationStyle","type":"choice","options":["smooth","desktop","terminal","none","ultra"],"value":"smooth"},
+    {"group":0,"name":"appearance-auto_disable_animations","symbol":"AutoDisableAnimations","type":"boolean","value":true},
     {"group":0,"name":"appearance-bar_frame_rate_mode","symbol":"BarFrameRateMode","type":"choice","options":["display","custom"],"value":"display"},
     {"group":0,"name":"appearance-bar_frame_rate","symbol":"BarFrameRate","type":"integer","min":10,"max":240,"value":60},
     {"group":0,"name":"appearance-bar_color_mode","symbol":"BarColorMode","type":"choice","options":["type","distinct"],"value":"type"},

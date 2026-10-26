@@ -52,7 +52,7 @@ internal sealed partial class FrontendPreferencesOwner
     {
         lock (gate)
         {
-            RemoveRetiredCacheFields();
+            MigrateCacheFields();
             InitializeImport();
             ImportLegacyOverlayChoices();
             InitializeDashboardImport();
@@ -159,16 +159,19 @@ internal sealed partial class FrontendPreferencesOwner
         get { Read(); lock (gate) return revision; }
     }
 
-    // Migration frontend-preferences-retired-v1. The user retired the smart monitoring switch on
-    // 2026-10-25; caches written before that still carry refresh.smartMonitoringMode, which the
-    // strict reader rejects. Remove that one field once and rewrite the cache atomically; every
-    // other value, and a cache that does not parse, is left to the normal read. Delete together
-    // with frontend-preferences-v1 once every supported upgrade starts after this release.
-    private bool retiredFieldsRemoved;
+    // Read-time cache migrations, applied once per owner and written back atomically when they
+    // change something; every other value, and a cache that does not parse, is left to the
+    // normal strict read.
+    // - frontend-preferences-retired-v1: the user retired the smart monitoring switch on
+    //   2026-10-25; caches written before that still carry refresh.smartMonitoringMode, which the
+    //   strict reader rejects. Delete together with frontend-preferences-v1 once every supported
+    //   upgrade starts after this release.
+    // - frontend-preferences-animation-style-v1: see MigrateAnimationAppearance.
+    private bool cacheFieldsMigrated;
 
-    private void RemoveRetiredCacheFields()
+    private void MigrateCacheFields()
     {
-        if (retiredFieldsRemoved) return;
+        if (cacheFieldsMigrated) return;
         if (File.Exists(cachePath))
         {
             JsonNode? root = null;
@@ -178,10 +181,38 @@ internal sealed partial class FrontendPreferencesOwner
                 root = JsonNode.Parse(stream);
             }
             catch (JsonException) { } // The strict read below reports a damaged cache.
-            if (root?["refresh"] is JsonObject refresh && refresh.Remove("smartMonitoringMode"))
-                WriteAtomic(cachePath, JsonSerializer.SerializeToUtf8Bytes(root, Json));
+            var changed = root?["refresh"] is JsonObject refresh && refresh.Remove("smartMonitoringMode");
+            changed |= root?["appearance"] is JsonObject appearance && MigrateAnimationAppearance(appearance);
+            if (changed) WriteAtomic(cachePath, JsonSerializer.SerializeToUtf8Bytes(root, Json));
         }
-        retiredFieldsRemoved = true;
+        cacheFieldsMigrated = true;
+    }
+
+    // Migration frontend-preferences-animation-style-v1 (docs/animation_style_2026-10-26.md).
+    // Appearance written before 2026-10-26 carries animations (auto, normal, none, ultra) and
+    // motionFeel (standard, smooth, crisp). They become animationStyle and autoDisableAnimations:
+    // auto -> switch on, normal -> switch off, style from the feel (smooth -> smooth; standard,
+    // crisp or no feel -> desktop); none and ultra are copied as the style with the switch at its
+    // point default. A value that already has animationStyle only loses the old fields. The
+    // frontend's browser-storage reader applies the same mapping. Delete with the next release
+    // that no longer reads caches older than this one.
+    private static bool MigrateAnimationAppearance(JsonObject appearance)
+    {
+        if (!appearance.ContainsKey("animations") && !appearance.ContainsKey("motionFeel")) return false;
+        var animations = appearance["animations"] is JsonValue a && a.TryGetValue<string>(out var mode) ? mode : null;
+        var feel = appearance["motionFeel"] is JsonValue f && f.TryGetValue<string>(out var feelId) ? feelId : null;
+        appearance.Remove("animations");
+        appearance.Remove("motionFeel");
+        if (appearance.ContainsKey("animationStyle")) return true;
+        if (animations is "none" or "ultra")
+        {
+            appearance["animationStyle"] = animations;
+            appearance["autoDisableAnimations"] = FrontendPoints.AutoDisableAnimations;
+            return true;
+        }
+        appearance["animationStyle"] = feel == "smooth" ? "smooth" : "desktop";
+        appearance["autoDisableAnimations"] = animations != "normal";
+        return true;
     }
 
     // Migration frontend-preferences-v1 (frontend half). Delete only when every supported
@@ -204,6 +235,7 @@ internal sealed partial class FrontendPreferencesOwner
         {
             if (app["appearance"] is JsonObject appearance)
             {
+                MigrateAnimationAppearance(appearance);
                 CopyKnown(appearance, node["appearance"]!.AsObject());
                 imported = true;
             }

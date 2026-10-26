@@ -1,6 +1,7 @@
 /* ============================================================
-   动画 / Motion（body[data-animations] 控制；风格对齐 Windows
-   原生组件：快速、克制、强减速、小位移、无弹跳）
+   动画 / Motion：令牌由动画风格定（目录 presentation/animationStyle.ts 是唯一来源，
+   tests/animationStyleContract.test.ts 核对这里和目录一致）。
+   :root 是桌面常规；实际生效的风格写在 body[data-animations]，值就是风格标识。
    ============================================================ */
 
 :root {
@@ -15,9 +16,8 @@
   --ease-bar: cubic-bezier(0.35, 0, 0.15, 1);
 }
 
-/* --- 手感：一组动效参数（目录 presentation/motionFeel.ts，标准就是上面的 :root）。
-   --ease-bar 三种手感都不变：数据条连续更新，换曲线会在每次更新时起步发顿。 --- */
-:root[data-motion-feel="smooth"] {
+/* --- 流畅平滑：还用 CSS 过渡的地方节奏放慢、曲线更柔。--ease-bar 不变：数据条连续更新，换曲线会在每次更新时起步发顿。 --- */
+body[data-animations="smooth"] {
   --motion-fast: 150ms;
   --motion-medium: 260ms;
   --motion-page: 380ms;
@@ -25,16 +25,53 @@
   --motion-bar: 480ms;
   --ease-decel: cubic-bezier(0.32, 0.72, 0, 1);
   --ease-standard: cubic-bezier(0.4, 0, 0.1, 1);
+  --ease-bar: cubic-bezier(0.35, 0, 0.15, 1);
 }
 
-:root[data-motion-feel="crisp"] {
-  --motion-fast: 70ms;
-  --motion-medium: 120ms;
-  --motion-page: 170ms;
-  --motion-panel: 200ms;
-  --motion-bar: 240ms;
+/* --- 桌面常规：就是 :root 的令牌。 --- */
+body[data-animations="desktop"] {
+  --motion-fast: 100ms;
+  --motion-medium: 180ms;
+  --motion-page: 260ms;
+  --motion-panel: 300ms;
+  --motion-bar: 360ms;
   --ease-decel: cubic-bezier(0.1, 0.9, 0.2, 1);
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-bar: cubic-bezier(0.35, 0, 0.15, 1);
+}
+
+/* --- 终端顿挫：时长同桌面常规，按固定步数跳到终点（步数 TERMINAL_STEPS）。 --- */
+body[data-animations="terminal"] {
+  --motion-fast: 100ms;
+  --motion-medium: 180ms;
+  --motion-page: 260ms;
+  --motion-panel: 300ms;
+  --motion-bar: 360ms;
+  --ease-decel: steps(4, end);
+  --ease-standard: steps(4, end);
+  --ease-bar: steps(4, end);
+}
+
+/* --- 无动画、超高性能：所有时长 0（下面还有把过渡和入场清零的规则）。 --- */
+body[data-animations="none"],
+body[data-animations="ultra"] {
+  --motion-fast: 0ms;
+  --motion-medium: 0ms;
+  --motion-page: 0ms;
+  --motion-panel: 0ms;
+  --motion-bar: 0ms;
+  --ease-decel: cubic-bezier(0.1, 0.9, 0.2, 1);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-bar: cubic-bezier(0.35, 0, 0.15, 1);
+}
+
+/* 窗口缩放时清零时长：放在风格之后，同样的特指度下它赢。 */
+body[data-window-resizing="yes"] {
+  --motion-fast: 0ms;
+  --motion-medium: 0ms;
+  --motion-page: 0ms;
+  --motion-panel: 0ms;
+  --motion-bar: 0ms;
 }
 
 /* --- 入场关键帧：小位移 + 淡入 --- */
@@ -65,7 +102,7 @@ button {
     transform var(--motion-fast) var(--ease-standard);
 }
 
-:where(body[data-animations="normal"]) button:not(:disabled):active {
+:where(body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"])) button:not(:disabled):active {
   transform: scale(0.98);
 }
 
@@ -88,8 +125,8 @@ button {
     border-color var(--motion-fast) var(--ease-standard);
 }
 
-:where(body[data-animations="normal"]) .has-selection-indicator .page-tab:active,
-:where(body[data-animations="normal"]) .has-selection-indicator .segment:active {
+:where(body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"])) .has-selection-indicator .page-tab:active,
+:where(body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"])) .has-selection-indicator .segment:active {
   transform: none;
 }
 
@@ -153,15 +190,15 @@ textarea {
   transition: box-shadow var(--motion-medium) var(--ease-standard);
 }
 
-body[data-animations="normal"] .resource-segment-layer.motion-segment {
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .resource-segment-layer.motion-segment {
   transition:
     transform var(--motion-bar) var(--ease-bar),
     width var(--motion-bar) var(--ease-bar);
 }
 
-body[data-animations="normal"] .resource-segment-layer.motion-segment > .resource-segment,
-body[data-animations="normal"] .resource-segment-layer.motion-segment > .resource-process-segment,
-body[data-animations="normal"] .resource-segment-layer.motion-segment > .resource-segment-empty {
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .resource-segment-layer.motion-segment > .resource-segment,
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .resource-segment-layer.motion-segment > .resource-process-segment,
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .resource-segment-layer.motion-segment > .resource-segment-empty {
   transition: box-shadow var(--motion-medium) var(--ease-standard);
 }
 
@@ -192,7 +229,7 @@ body[data-animations="normal"] .resource-segment-layer.motion-segment > .resourc
   from { opacity: 0; transform: translateY(-6px); }
 }
 
-body[data-animations="normal"] .resource-row-expander svg {
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .resource-row-expander svg {
   transition: transform var(--motion-medium) var(--ease-standard);
 }
 
@@ -205,14 +242,14 @@ body[data-animations="normal"] .resource-row-expander svg {
   transition: opacity var(--motion-fast) var(--ease-standard);
 }
 
-body[data-animations="normal"] .resource-table-sort-indicator {
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .resource-table-sort-indicator {
   transition:
     opacity var(--motion-fast) var(--ease-standard),
     transform var(--motion-medium) var(--ease-standard);
 }
 
 /* --- 监视卡片读数 ---
-   等首个读数时占位条缓慢明暗呼吸（持续循环，自己的周期，不随手感）；读数到了，数值淡入替换占位。
+   等首个读数时占位条缓慢明暗呼吸（持续循环，自己的周期，不随动画风格）；读数到了，数值淡入替换占位。
    数值之后的每次更新原地换字，不做过渡：读数一秒一变，渐变会让数字一直发虚。
    无动画、超高性能档由下面的全局规则清零时长：占位条静止，数值直接出现。 */
 @keyframes motion-pending-pulse {
@@ -253,12 +290,12 @@ body[data-animations="normal"] .resource-table-sort-indicator {
   background: color-mix(in oklab, var(--surface-soft) 88%, var(--accent-soft));
 }
 
-body[data-animations="normal"] .management-card:hover {
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .management-card:hover {
   box-shadow: var(--elev-2), var(--edge-highlight);
 }
 
-body[data-animations="normal"] .management-action-button:not(:disabled),
-body[data-animations="normal"] .management-settings-button:not(:disabled) {
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .management-action-button:not(:disabled),
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .management-settings-button:not(:disabled) {
   transition:
     background var(--motion-fast) var(--ease-standard),
     border-color var(--motion-fast) var(--ease-standard),
@@ -267,13 +304,13 @@ body[data-animations="normal"] .management-settings-button:not(:disabled) {
     opacity var(--motion-fast) var(--ease-standard);
 }
 
-body[data-animations="normal"] .management-action-button:not(:disabled):hover,
-body[data-animations="normal"] .management-settings-button:not(:disabled):hover {
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .management-action-button:not(:disabled):hover,
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .management-settings-button:not(:disabled):hover {
   transform: none;
 }
 
-body[data-animations="normal"] .management-action-button:not(:disabled):active,
-body[data-animations="normal"] .management-settings-button:not(:disabled):active {
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .management-action-button:not(:disabled):active,
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .management-settings-button:not(:disabled):active {
   transform: none;
 }
 
@@ -292,7 +329,7 @@ body[data-animations="normal"] .management-settings-button:not(:disabled):active
 
 /* 设备拓扑的整机示意：后端判定的形态变了才换一张（DeviceMachineView），换上时上浮淡入；
    有位移，只在 normal；无动画、极简直接到终态。 */
-body[data-animations="normal"] .device-machine-figure {
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .device-machine-figure {
   animation: motion-rise-in var(--motion-medium) var(--ease-decel);
 }
 
@@ -327,14 +364,6 @@ body[data-animations="ultra"] *::after {
   animation-delay: 0s !important;
 }
 
-body[data-window-resizing="yes"] {
-  --motion-fast: 0ms;
-  --motion-medium: 0ms;
-  --motion-page: 0ms;
-  --motion-panel: 0ms;
-  --motion-bar: 0ms;
-}
-
 /* --- 超高性能：额外抹平精修视觉层（阴影 / 高光 / 毛玻璃），回到最精简观感、
    最低渲染开销。只重指向令牌，不改布局；边框改回实线以保持分隔清晰。
    用透明零阴影而非 none，避免 box-shadow 列表里出现非法的 none。 --- */
@@ -366,17 +395,17 @@ body[data-animations="ultra"] {
   background: color-mix(in oklab, var(--surface-soft) 92%, var(--accent-soft));
 }
 
-body[data-animations="normal"] .device-port-item:not(:disabled):hover,
-body[data-animations="normal"] .optimization-report:hover {
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .device-port-item:not(:disabled):hover,
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .optimization-report:hover {
   transform: translateY(-1px);
   box-shadow: var(--elev-1), var(--edge-highlight);
 }
 
-body[data-animations="normal"] .device-port-item:not(:disabled):active {
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .device-port-item:not(:disabled):active {
   transform: translateY(1px);
 }
 
-body[data-animations="normal"] .modal-header .icon-button:not(:disabled):hover {
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) .modal-header .icon-button:not(:disabled):hover {
   transform: rotate(4deg);
 }
 

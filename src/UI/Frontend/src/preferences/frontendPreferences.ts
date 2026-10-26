@@ -43,8 +43,8 @@ export function cachedOverlay(preferences: FrontendPreferencesCache, softwareId:
 export function pointPreferences(): FrontendPreferencesCache {
   return {
     overlaySelectionVersion: 1, appearance: {
-      uiStyle: points.UiStyle, theme: points.Theme, animations: points.AnimationMode,
-      motionFeel: points.MotionFeel,
+      uiStyle: points.UiStyle, theme: points.Theme,
+      animationStyle: points.AnimationStyle, autoDisableAnimations: points.AutoDisableAnimations,
       resourceBarFrameRateMode: points.BarFrameRateMode, resourceBarFrameRate: points.BarFrameRate,
       barColorMode: points.BarColorMode, fontSmoothing: points.FontSmoothing, language: points.Language,
       byteUnitMode: points.ByteUnitMode, readingSourceMode: points.ReadingSourceMode
@@ -56,6 +56,25 @@ export function pointPreferences(): FrontendPreferencesCache {
     notifications: { updateInApp: points.UpdateInApp, updateSystem: points.UpdateSystem, accessRequestSystem: points.AccessRequestSystem, updateInAppNotifiedVersion: null },
     overlays: {}, dashboard: null
   };
+}
+
+/**
+ * Migration frontend-preferences-animation-style-v1（docs/animation_style_2026-10-26.md「归属」）。
+ * 2026-10-26 之前写下的外观段有 animations（auto、normal、none、ultra）和 motionFeel（standard、smooth、crisp），
+ * 一次换成 animationStyle 和 autoDisableAnimations：auto → 自动关闭开、风格按原手感；normal → 自动关闭关、风格按原手感；
+ * none、ultra 照搬（自动关闭取点的默认，对它们不起作用）。原手感 smooth → smooth，standard、crisp 和没有手感（手感之前的缓存，当时就是标准）→ desktop。
+ * 原生壳的 FrontendPreferencesOwner 对它的缓存文件做同一份迁移。删除条件：下一个不再读旧版本缓存的发行。
+ */
+export function migrateAnimationAppearance(appearance: AppAppearanceSettings): AppAppearanceSettings {
+  const legacy = appearance as AppAppearanceSettings & { animations?: unknown; motionFeel?: unknown };
+  if (!("animations" in legacy) && !("motionFeel" in legacy)) return appearance;
+  const { animations, motionFeel, ...rest } = legacy;
+  if (rest.animationStyle !== undefined) return rest;
+  const feelStyle = motionFeel === "smooth" ? "smooth" : "desktop";
+  if (animations === "none" || animations === "ultra") {
+    return { ...rest, animationStyle: animations, autoDisableAnimations: points.AutoDisableAnimations };
+  }
+  return { ...rest, animationStyle: feelStyle, autoDisableAnimations: animations !== "normal" };
 }
 
 export function pointOverlayPresentation(): OverlayPresentation {
@@ -149,8 +168,9 @@ export function createFrontendPreferencesClient(storage?: Pick<Storage, "getItem
     const text = browserStorage?.getItem(key);
     if (text == null) return pointPreferences();
     const value = JSON.parse(text) as FrontendPreferencesCache;
-    // 与原生壳相同：旧缓存缺少的通知字段按本次构建的点值读取，保留已有选择和记录。
-    return { ...value, notifications: { ...pointPreferences().notifications, ...value.notifications } };
+    // 与原生壳相同：旧缓存缺少的通知字段按本次构建的点值读取，保留已有选择和记录；旧的动画两项按迁移换成动画风格。
+    return { ...value, ...(value.appearance ? { appearance: migrateAnimationAppearance(value.appearance) } : {}),
+      notifications: { ...pointPreferences().notifications, ...value.notifications } };
   };
   let writes = Promise.resolve();
   const save = (value: FrontendPreferencesCache, scope?: "global" | "dashboard" | { overlay: string }) => {

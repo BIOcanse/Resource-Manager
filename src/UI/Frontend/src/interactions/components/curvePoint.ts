@@ -4,8 +4,9 @@
 
 import { CURRENT, LANDING, ORIGIN, STOP_POINT } from "../protocol/definition.ts";
 import type { Definition } from "../protocol/definition.ts";
-import { CUBIC, NO_FIELD, toTerminal } from "../protocol/field.ts";
+import { NO_FIELD, toTerminal } from "../protocol/field.ts";
 import { call, CLAIM, dragBasics, FOCUS, JUMP_TO_POINTER, stopAt } from "./common.ts";
+import { carryField } from "./springOrEase.ts";
 
 const STEP = 1;
 const BIG_STEP = 10;
@@ -38,9 +39,9 @@ export const curvePointDefinition: Definition = {
     { from: ["拖动"], on: ["pointer.left↓"], to: "静止", out: [stopAt(LANDING)] },
     ...drag.rows,
   ],
-  // 没有输出映射点，没有力场：松手不带速度，停在松手处。
+  // 没有输出映射点，平时没有力场：松手不带速度，停在松手处；带向终态（键盘一步、取消回起点）时由动画风格选的弹簧或缓动带过去。
   channel: {
-    id: "percent", label: "转速", unit: "%", min: 0, max: 100, step: STEP, hand: drag.hand, field: toTerminal(NO_FIELD, CUBIC),
+    id: "percent", label: "转速", unit: "%", min: 0, max: 100, step: STEP, hand: drag.hand, field: toTerminal(NO_FIELD, carryField("control")),
     stopCall: select(STOP_POINT),
   },
   ports: [{ name: "select", params: ["percent"], continuous: true }],

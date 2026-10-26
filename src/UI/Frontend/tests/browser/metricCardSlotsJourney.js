@@ -26,17 +26,18 @@ export default async function metricCardSlotsJourney(page, baseUrl) {
     { id: "big", slots: [{ metricId: "cpu.usage", size: "large" }, { metricId: "memory.usage", size: "medium" }] },
     { id: "full", slots: [{ metricId: "cpu.frequencyPercent", size: "full" }] }
   ];
-  const seed = (animations) => {
+  const seed = (style) => {
     const preferences = pointPreferences();
     preferences.appearance.uiStyle = "standard";
     preferences.appearance.theme = "light";
-    preferences.appearance.animations = animations;
+    preferences.appearance.animationStyle = style;
+    preferences.appearance.autoDisableAnimations = false;
     preferences.dashboard = { ...preferences.dashboard, version: 16, cards, resourceBars: [],
       resourceTableColumns: tableColumns, resourceTableProcessColumns: tableColumns };
     return JSON.stringify(preferences);
   };
-  const load = async (animations) => {
-    await page.evaluate(([key, value]) => localStorage.setItem(key, value), [frontendPreferencesKey, seed(animations)]);
+  const load = async (style) => {
+    await page.evaluate(([key, value]) => localStorage.setItem(key, value), [frontendPreferencesKey, seed(style)]);
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.getByRole("navigation").getByRole("button", { name: zh.page.monitor, exact: true }).click();
     await card("legacy").locator(".metric-main-content .metric-value").filter({ hasText: "%" }).waitFor({ timeout: 15_000 });
@@ -64,7 +65,7 @@ export default async function metricCardSlotsJourney(page, baseUrl) {
 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
-  await load("normal");
+  await load("desktop");
 
   // 1. 旧布局迁移前后渲染一致。
   const legacy = await geometry("legacy");
@@ -166,7 +167,7 @@ export default async function metricCardSlotsJourney(page, baseUrl) {
   assert.deepEqual(errors, []);
 
   // 回到正常档，运行器收尾的可用性检查按默认页面走。
-  await load("normal");
+  await load("desktop");
   return { cards: cardHeights.length, legacy, normalFrames: heights.length };
 }
 

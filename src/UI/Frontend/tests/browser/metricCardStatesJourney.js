@@ -150,12 +150,12 @@ export default async function metricCardStatesJourney(page, baseUrl) {
   await waitForMetricHover(page, "card");
   assert.notEqual(await borderOf(card("cpu")), restingCard, "the card lights up when pressing would drag the whole card");
   assert.match(await slots.nth(1).locator(".slot-actions").evaluate((actions) => getComputedStyle(actions).transitionProperty), /opacity/);
-  // 动画档的所有者是前端偏好；直接写 body 会被 App 的运行方案 effect
+  // 动画风格的所有者是前端偏好；直接写 body 会被 App 的运行方案 effect
   // 在两次样式读取之间改回。用已保存偏好重新加载，让两条原断言处于同一个真实 none 状态。
   let animationsBeforeNoMotion;
   await writeFrontendPreferences(page, (value) => {
-    animationsBeforeNoMotion = value.appearance.animations;
-    value.appearance.animations = "none";
+    animationsBeforeNoMotion = value.appearance.animationStyle;
+    value.appearance.animationStyle = "none";
   });
   await page.reload({ waitUntil: "domcontentloaded" });
   await openMonitor(zh);
@@ -165,7 +165,7 @@ export default async function metricCardStatesJourney(page, baseUrl) {
   await page.waitForFunction(() => document.body.dataset.animations === "none", undefined, { timeout: 5000 });
   assert.equal(await slots.nth(1).locator(".slot-actions").evaluate((actions) => getComputedStyle(actions).transitionDuration), "0s");
   assert.equal(await card("cpu").locator(".metric-main-content .metric-value").evaluate((value) => getComputedStyle(value).animationDuration), "0s");
-  await writeFrontendPreferences(page, (value) => { value.appearance.animations = animationsBeforeNoMotion; });
+  await writeFrontendPreferences(page, (value) => { value.appearance.animationStyle = animationsBeforeNoMotion; });
   await page.getByRole("button", { name: zh.monitorPage.cancelEditLabel, exact: true }).click();
 
   // 4. 强制配色。
