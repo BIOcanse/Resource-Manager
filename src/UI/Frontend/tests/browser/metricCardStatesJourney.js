@@ -7,6 +7,7 @@ import { metricFieldDevices, npuBusyCardId, readingSourceDevices, readingSourceI
 /**
  * 监视卡片的读数状态和排版：
  * 1. 首个读数到之前画“读取中”占位（不先写“无读数”再跳成数值），占位和数值同高，数值淡入；设备不在照常直接写；
+ * 2. 德文窄卡片上小行标签最多两行、不截成省略号，没有值时那句话靠右折行、不挤掉标签；
  * 3. 四种风格里数值和单位之间的空格按单位字号排（终端风格的等宽大字号下不宽出一截）；
  */
 export default async function metricCardStatesJourney(page, baseUrl) {
@@ -95,6 +96,31 @@ export default async function metricCardStatesJourney(page, baseUrl) {
     assert.ok(!signature.split(" | ").includes("--"), `a slot showed "--" before its first reading: ${signature}`);
   }
 
+  // 2. 德文窄卡片：小行标签和没有值时的那句话都完整显示。
+  const de = await loadAppCopy("de-DE");
+  await writeFrontendPreferences(page, (value) => { value.appearance.language = "de-DE"; value.appearance.uiStyle = "standard"; value.appearance.theme = "light"; });
+  await page.setViewportSize({ width: 560, height: 900 });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await openMonitor(de);
+  const absentRow = card("fields").locator(".metric-small-row").first();
+  await absentRow.locator(".metric-value").filter({ hasText: de.dashboard.deviceAbsent }).waitFor({ timeout: 15_000 });
+  await card("fields").locator(".metric-small-row").nth(1).locator(".metric-value").filter({ hasText: de.dashboard.valueUnavailable }).waitFor({ timeout: 15_000 });
+  const wrapping = [];
+  for (const row of await card("fields").locator(".metric-small-row").all()) {
+    wrapping.push(await row.evaluate((element) => {
+      const fits = (node) => node.scrollWidth <= node.clientWidth + 1 && node.scrollHeight <= node.clientHeight + 1;
+      const label = element.querySelector(".metric-label-text");
+      const value = element.querySelector(".metric-value");
+      return { label: label.textContent, labelFits: fits(label), value: value.textContent, valueFits: fits(value),
+        cardWidth: element.closest(".metric-card").getBoundingClientRect().width };
+    }));
+  }
+  for (const row of wrapping) {
+    assert.ok(row.cardWidth < 330, "the narrow card uses the one-line small rows");
+    assert.ok(row.labelFits, `label "${row.label}" is cut off next to "${row.value}"`);
+    assert.ok(row.valueFits, `value "${row.value}" is cut off`);
+  }
+
   // 3. 数值和单位之间的空格：四种风格都在数值字号的 0.1–0.4 倍之间。
   const gapRatio = () => card("sources").locator(".metric-main .metric-value").evaluate((value) => {
     const number = value.querySelector(".metric-number");
@@ -117,5 +143,5 @@ export default async function metricCardStatesJourney(page, baseUrl) {
   }
 
   assert.deepEqual(errors, []);
-  return { pendingSlots: 7, timelineSteps: shown.length, gaps };
+  return { pendingSlots: 7, timelineSteps: shown.length, gaps, wrapping };
 }

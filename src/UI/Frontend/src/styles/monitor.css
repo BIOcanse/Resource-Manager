@@ -88,13 +88,18 @@ body.reordering * {
   line-height: 1.25;
 }
 
-/* 主标签最多两行。 */
-.metric-main-content .metric-label-text {
+/*
+ * 标签最多两行（主标签和小行标签一样），悬停看全名。德文、俄文的长复合词按界面语言（html lang）断字加连字符，
+ * 断字词典没有的词才在任意处折行。
+ */
+.metric-main-content .metric-label-text,
+.metric-small-row .metric-label-text {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow-wrap: anywhere;
+  hyphens: auto;
 }
 
 .metric-value {
@@ -144,13 +149,6 @@ body.reordering * {
   flex: 1 1 auto;
 }
 
-.metric-small-row .metric-label-text {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .metric-small-row .metric-value {
   flex: 0 0 auto;
   max-width: 70%;
@@ -165,6 +163,16 @@ body.reordering * {
 .metric-small-row .metric-value.missing {
   font-size: 13px;
   font-weight: 500;
+}
+
+/* 小行没有值时写的是一句话（设备不在、不可用……）：最多占一半宽度，放不下就靠右折行，不把标签挤成省略号。 */
+.metric-small-row .metric-value.missing {
+  max-width: 50%;
+  line-height: 1.25;
+  text-align: end;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  hyphens: auto;
 }
 /*
  * 首个读数还没到：一条圆角占位，字号、行高沿用数值本身，读数到了换成数值时这一行高度不变。
@@ -204,8 +212,10 @@ body.reordering * {
     gap: 2px;
   }
 
-  .metric-small-row .metric-value {
+  .metric-small-row .metric-value,
+  .metric-small-row .metric-value.missing {
     max-width: none;
+    text-align: start;
   }
 }
 
