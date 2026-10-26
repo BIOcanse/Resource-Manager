@@ -41,6 +41,9 @@ export default async function frontendRefreshIntervalsJourney(page, baseUrl) {
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("resource-manager:frontend-preferences:v1") ?? "null")?.refresh.monitor.customValue === 1700);
   await wait(telemetry => activeAt(telemetry["/api/adapters/resource-manager/scheduling/subscribe"], 1700));
+  // This check needs cards, bars and the table to own visible demand together.
+  // A short viewport legitimately retires the offscreen table subscription.
+  await page.setViewportSize({ width: 1280, height: 1600 });
   await navigation.getByRole("button", { name: "监视控制台", exact: true }).click();
   for (const foreground of [false, true]) {
     await page.evaluate(value => window.dispatchEvent(new Event(value ? "focus" : "blur")), foreground);
