@@ -604,7 +604,7 @@ const ruRuAppCopy: AppCopy = {
     slotSize: { small: "Маленький", medium: "Средний", large: "Большой", full: "Во всю карточку" },
     slotSizeHint: { small: "1 единица", medium: "2 единицы", large: "3 единицы", full: "Занимает всю карточку" },
     currentSize: "Текущий размер",
-    trendLabel: (label: string, count: number) => `${label}: динамика последних ${count} показаний`,
+    trendLabel: (label: string, count: number) => plural("ru-RU", count, { one: `${label}: динамика последнего {count} показания`, few: `${label}: динамика последних {count} показаний`, many: `${label}: динамика последних {count} показаний`, other: `${label}: динамика последних {count} показаний` }),
     trendLow: "Мин.",
     trendHigh: "Макс.",
     replaceMetric: (slot: string, metric: string) => `Заменить ${slot}: ${metric}`,

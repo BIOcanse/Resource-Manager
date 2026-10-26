@@ -33,7 +33,7 @@ export const enMonitorCopy: Pick<
     slotSize: { small: "Small", medium: "Medium", large: "Large", full: "Full" },
     slotSizeHint: { small: "1 unit", medium: "2 units", large: "3 units", full: "Fills the card" },
     currentSize: "Current size",
-    trendLabel: (label: string, count: number) => `${label}: trend of the last ${count} readings`,
+    trendLabel: (label: string, count: number) => plural("en-US", count, { one: `${label}: trend of the last {count} reading`, other: `${label}: trend of the last {count} readings` }),
     trendLow: "Low",
     trendHigh: "High",
     replaceMetric: (slot: string, metric: string) => `Replace ${slot}: ${metric}`,

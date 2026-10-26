@@ -604,7 +604,7 @@ const frFrAppCopy: AppCopy = {
     slotSize: { small: "Petit", medium: "Moyen", large: "Grand", full: "Plein" },
     slotSizeHint: { small: "1 unité", medium: "2 unités", large: "3 unités", full: "Occupe toute la carte" },
     currentSize: "Taille actuelle",
-    trendLabel: (label: string, count: number) => `${label} : évolution des ${count} dernières mesures`,
+    trendLabel: (label: string, count: number) => plural("fr-FR", count, { one: `${label} : évolution sur {count} mesure récente`, many: `${label} : évolution des {count} dernières mesures`, other: `${label} : évolution des {count} dernières mesures` }),
     trendLow: "Min.",
     trendHigh: "Max.",
     replaceMetric: (slot: string, metric: string) => `Remplacer ${slot} : ${metric}`,

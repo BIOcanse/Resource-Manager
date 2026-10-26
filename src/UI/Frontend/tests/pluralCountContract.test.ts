@@ -157,6 +157,10 @@ expect("de-DE", "app.gpuScheduling.summary", 1, "1 GPU · GPU «gpuPercent» % /
 // GPU 数量读不到时传 null，照旧显示 "--"，不经过单复数。
 assert.equal((await loadAppCopy("en-US")).gpuScheduling.summary(null, 80, 70, "ok"), "-- GPUs · GPU 80% / VRAM 70% · ok");
 assert.equal((await loadAppCopy("zh-CN")).gpuScheduling.summary(null, 80, 70, "ok"), "-- 张 GPU · GPU 80% / 显存 70% · ok");
+expect("de-DE", "app.dashboard.trendLabel", 1, "«label»: Verlauf des letzten 1 Messwerts");
+expect("de-DE", "app.dashboard.trendLabel", 21, "«label»: Verlauf der letzten 21 Messwerte");
+expect("ru-RU", "app.dashboard.trendLabel", 21, "«label»: динамика последнего 21 показания");
+expect("ru-RU", "app.dashboard.trendLabel", 5, "«label»: динамика последних 5 показаний");
 expect("zh-CN", "app.diskUsage.fileCount", 1, "1 个文件");
 expect("ja-JP", "app.diskUsage.fileCount", 1, "ファイル 1 件");
 expect("ko-KR", "app.diskUsage.fileCount", 1, "파일 1개");

@@ -604,7 +604,7 @@ const esEsAppCopy: AppCopy = {
     slotSize: { small: "Pequeño", medium: "Mediano", large: "Grande", full: "Completo" },
     slotSizeHint: { small: "1 unidad", medium: "2 unidades", large: "3 unidades", full: "Ocupa toda la tarjeta" },
     currentSize: "Tamaño actual",
-    trendLabel: (label: string, count: number) => `${label}: tendencia de las últimas ${count} lecturas`,
+    trendLabel: (label: string, count: number) => plural("es-ES", count, { one: `${label}: tendencia de {count} lectura reciente`, many: `${label}: tendencia de las últimas {count} lecturas`, other: `${label}: tendencia de las últimas {count} lecturas` }),
     trendLow: "Mín.",
     trendHigh: "Máx.",
     replaceMetric: (slot: string, metric: string) => `Sustituir ${slot}: ${metric}`,

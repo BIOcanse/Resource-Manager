@@ -604,7 +604,7 @@ const deDeAppCopy: AppCopy = {
     slotSize: { small: "Klein", medium: "Mittel", large: "Groß", full: "Voll" },
     slotSizeHint: { small: "1 Einheit", medium: "2 Einheiten", large: "3 Einheiten", full: "Füllt die ganze Karte" },
     currentSize: "Aktuelle Größe",
-    trendLabel: (label: string, count: number) => `${label}: Verlauf der letzten ${count} Messwerte`,
+    trendLabel: (label: string, count: number) => plural("de-DE", count, { one: `${label}: Verlauf des letzten {count} Messwerts`, other: `${label}: Verlauf der letzten {count} Messwerte` }),
     trendLow: "Min.",
     trendHigh: "Max.",
     replaceMetric: (slot: string, metric: string) => `${slot} ersetzen: ${metric}`,
