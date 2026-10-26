@@ -1,6 +1,7 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { pointPreferences } from "../../src/preferences/frontendPreferences.ts";
 import { dashboardPointValues } from "../../src/preferences/dashboardPreferences.ts";
+import { writeFrontendPreferences } from "./frontendPreferencesFixture.js";
 
 /**
  * 资源表的行和表头的呈现（docs/resource_table_rows_2026-10-25.md）。
@@ -207,9 +208,18 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
     || reveal.chevronAfter !== "matrix(0, 1, -1, 0, 0, 0)") {
     throw new Error(`Expanded process rows do not reveal once: ${JSON.stringify(reveal)}`);
   }
-  await page.evaluate(() => { document.body.dataset.animations = "none"; });
+  // 动画档的所有者是前端偏好；直接写 body 会被 App 的运行方案 effect 在测量窗口里改回 normal。
+  // 用已保存偏好重新加载，让无动画的展开处于真实的 none 状态，测完恢复原偏好。
+  const reloadWithAnimations = async (animations) => {
+    await writeFrontendPreferences(page, (value) => { value.appearance.animations = animations; });
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await visibleRows("software").first().waitFor({ timeout: 15_000 });
+    await panel.evaluate((element) => element.scrollIntoView({ block: "start" }));
+    await page.waitForFunction((expected) => document.body.dataset.animations === expected, animations, { timeout: 5000 });
+  };
+  await reloadWithAnimations("none");
   const instant = await expandAndWatch("示例软件 6");
-  await page.evaluate(() => { document.body.dataset.animations = "normal"; });
+  await reloadWithAnimations("normal");
   // 时长为 0 的入场两帧内多半已经结束、类已清掉；还在的话时长必须是 0。
   if ((instant.count > 0 && instant.duration !== "0s") || instant.after !== 0 || instant.expanded !== "true"
     || instant.chevronTransition.includes("transform")) {
