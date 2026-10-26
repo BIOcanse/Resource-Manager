@@ -14,11 +14,13 @@ export interface ResourcePaintSegment {
   left: number;
   right: number;
   color: string;
+  /** 共享部分占本段的比例，画在本段右端，用 --resource-shared-tint 提亮。 */
   sharedFraction?: number;
   distinctColor?: string;
+  /** 斜纹：系统/驱动保留这类不是软件的段。 */
+  hatched?: boolean;
   label?: string;
   labelColor?: string;
-  distinctLabelColor?: string;
 }
 
 interface ResourceSegmentPaintPlaneProps {
@@ -28,7 +30,7 @@ interface ResourceSegmentPaintPlaneProps {
   segmentHeight: number;
   contentWidth: number;
   devicePixelRatio: number;
-  drawTypeDividers?: boolean;
+  drawDividers?: boolean;
   moving?: boolean;
 }
 
@@ -51,6 +53,9 @@ interface PaintOptions {
 
 const paintOverscanPx = 4;
 const dividerColor = "var(--divider)";
+const sharedTintColor = "var(--resource-shared-tint)";
+const hatchStripeColor = "var(--resource-reserved-stripe)";
+const hatchSpacingPx = 6;
 
 export function ResourceSegmentPaintPlane(props: ResourceSegmentPaintPlaneProps) {
   let canvas: HTMLCanvasElement | undefined;
@@ -82,7 +87,7 @@ export function ResourceSegmentPaintPlane(props: ResourceSegmentPaintPlaneProps)
     const targetSegments = normalizePaintSegments(props.segments);
     const geometry = normalizePaintGeometry(props.contentWidth, props.segmentHeight, props.devicePixelRatio, paintOverscanPx);
     const paintOptions = {
-      drawDividers: shouldDrawTypeDividers(targetSegments, currentPresentation, Boolean(props.drawTypeDividers), moving)
+      drawDividers: shouldDrawDividers(targetSegments, Boolean(props.drawDividers), moving)
     };
     const signature = paintSegmentSignature(targetSegments);
     const geometrySignature = `${geometry.width}|${geometry.height}|${geometry.devicePixelRatio}|${geometry.overscan}`;
@@ -237,27 +242,58 @@ function drawSegments(
     if (rightPx <= leftPx) {
       continue;
     }
-
-    context.fillStyle = paintStyle.color(segmentPaintColor(segment, presentation));
-    context.fillRect(leftPx / geometry.devicePixelRatio, 0, (rightPx - leftPx) / geometry.devicePixelRatio, height);
-    if (segment.sharedFraction) {
-      const sharedLeft = Math.floor(rightPx - (rightPx - leftPx) * segment.sharedFraction);
-      context.fillStyle = "rgb(211 171 48)";
-      context.fillRect(sharedLeft / geometry.devicePixelRatio, 0, (rightPx - sharedLeft) / geometry.devicePixelRatio, height);
-    }
+    paintSegmentBody(context, segment, leftPx, rightPx, height, geometry.devicePixelRatio, presentation, paintStyle);
   }
 
   if (paintOptions.drawDividers) {
     drawSegmentDividers(context, segments, geometry, pixelWidth, pixelHeight, paintStyle);
   }
 
-  drawSegmentLabels(context, segments, presentation, geometry, pixelWidth, pixelHeight, paintStyle);
+  drawSegmentLabels(context, segments, geometry, pixelWidth, pixelHeight, paintStyle);
+}
+
+function paintSegmentBody(
+  context: CanvasRenderingContext2D,
+  segment: ResourcePaintSegment,
+  leftPx: number,
+  rightPx: number,
+  height: number,
+  devicePixelRatio: number,
+  presentation: ResourceBarPresentation,
+  paintStyle: CanvasPaintStyle)
+{
+  const left = leftPx / devicePixelRatio;
+  const width = (rightPx - leftPx) / devicePixelRatio;
+  context.fillStyle = paintStyle.color(segmentPaintColor(segment, presentation));
+  context.fillRect(left, 0, width, height);
+  if (segment.hatched) {
+    context.save();
+    context.beginPath();
+    context.rect(left, 0, width, height);
+    context.clip();
+    context.strokeStyle = paintStyle.color(hatchStripeColor);
+    context.lineWidth = 2;
+    context.beginPath();
+    // 45° 斜纹，从轨道左端起按固定间距排：纹路不跟着段的宽度变化滑动。
+    let x = Math.floor((left - height) / hatchSpacingPx) * hatchSpacingPx;
+    while (x < left + width) {
+      context.moveTo(x, height);
+      context.lineTo(x + height, 0);
+      x += hatchSpacingPx;
+    }
+    context.stroke();
+    context.restore();
+  }
+  if (segment.sharedFraction) {
+    const sharedLeftPx = Math.floor(rightPx - (rightPx - leftPx) * segment.sharedFraction);
+    context.fillStyle = paintStyle.color(sharedTintColor);
+    context.fillRect(sharedLeftPx / devicePixelRatio, 0, (rightPx - sharedLeftPx) / devicePixelRatio, height);
+  }
 }
 
 function drawSegmentLabels(
   context: CanvasRenderingContext2D,
   segments: ResourcePaintSegment[],
-  presentation: ResourceBarPresentation,
   geometry: PaintGeometry,
   pixelWidth: number,
   pixelHeight: number,
@@ -294,7 +330,7 @@ function drawSegmentLabels(
       width,
       pixelHeight / devicePixelRatio);
     context.clip();
-    context.fillStyle = paintStyle.color(segmentPaintLabelColor(segment, presentation));
+    context.fillStyle = paintStyle.color(segmentPaintLabelColor(segment));
     context.fillText(
       label,
       (leftPx + rightPx) / (2 * devicePixelRatio),
@@ -393,7 +429,7 @@ function segmentPixelKey(segments: ResourcePaintSegment[], pixelWidth: number) {
 
 function paintSegmentSignature(segments: ResourcePaintSegment[]) {
   return segments
-    .map((segment) => `${segment.key}:${segment.left.toFixed(4)}:${segment.right.toFixed(4)}:${segment.color}:${segment.distinctColor ?? ""}:${segment.sharedFraction ?? 0}`)
+    .map((segment) => `${segment.key}:${segment.left.toFixed(4)}:${segment.right.toFixed(4)}:${segment.color}:${segment.distinctColor ?? ""}:${segment.sharedFraction ?? 0}:${segment.hatched ? 1 : 0}`)
     .join("|");
 }
 
@@ -403,21 +439,18 @@ function segmentPaintColor(segment: ResourcePaintSegment, presentation: Resource
     : segment.color;
 }
 
-function segmentPaintLabelColor(segment: ResourcePaintSegment, presentation: ResourceBarPresentation) {
-  return presentation.barColor === "distinct"
-    ? segment.distinctLabelColor ?? segment.labelColor ?? "var(--text)"
-    : segment.labelColor ?? "var(--text)";
+function segmentPaintLabelColor(segment: ResourcePaintSegment) {
+  return segment.labelColor ?? "var(--text)";
 }
 
-function shouldDrawTypeDividers(
+// 两种配色都画分隔线：类型固定色里同组的段同色，异色区分的散列色也可能让相邻两段撞色。
+function shouldDrawDividers(
   segments: ResourcePaintSegment[],
-  presentation: ResourceBarPresentation,
-  drawTypeDividers: boolean,
+  drawDividers: boolean,
   moving: boolean)
 {
-  return drawTypeDividers
+  return drawDividers
     && !moving
-    && presentation.barColor !== "distinct"
     && segments.length > 1;
 }
 

@@ -25,9 +25,6 @@ import {
   normalizeResourceBarScaleMode,
   resourceBarSupportsCapacity
 } from "./resourceBarScaleCapabilities";
-import type {
-  ResourceSegmentCssVars as CssVars
-} from "./resourceSegmentLayout";
 import { ResourceSegmentPaintPlane, type ResourcePaintSegment } from "./ResourceSegmentPaintPlane";
 import { createResourceTrackGeometry } from "./useResourceTrackGeometry";
 import {
@@ -533,7 +530,7 @@ function ResourceBreakdownItem(props: {
             segmentHeight={trackGeometry.segmentHeight()}
             contentWidth={trackGeometry.contentWidth()}
             devicePixelRatio={trackGeometry.devicePixelRatio()}
-            drawTypeDividers
+            drawDividers
             moving={moving()}
           />
           <Show when={interactionEntry()}>
@@ -544,7 +541,7 @@ function ResourceBreakdownItem(props: {
                   "motion-segment": shouldAnimateResourceSegment(item().width)
                 }}
                 role="presentation"
-                style={resourceSegmentLayerStyle(item(), resourceSegmentStyle(item().segment), {
+                style={resourceSegmentLayerStyle(item(), {
                   contentWidth: trackGeometry.contentWidth(),
                   devicePixelRatio: trackGeometry.devicePixelRatio(),
                   segmentHeight: trackGeometry.segmentHeight(),
@@ -701,6 +698,7 @@ function ResourceProcessPanel(props: {
             segmentHeight={trackGeometry.segmentHeight()}
             contentWidth={trackGeometry.contentWidth()}
             devicePixelRatio={trackGeometry.devicePixelRatio()}
+            drawDividers
           />
           <Show when={interactionEntry()}>
             {(item) => (
@@ -710,7 +708,7 @@ function ResourceProcessPanel(props: {
                   "motion-segment": shouldAnimateResourceSegment(item().width)
                 }}
                 role="presentation"
-                style={resourceSegmentLayerStyle(item(), processSegmentStyle(hashKey(processKey(item().segment))), {
+                style={resourceSegmentLayerStyle(item(), {
                   contentWidth: trackGeometry.contentWidth(),
                   devicePixelRatio: trackGeometry.devicePixelRatio(),
                   segmentHeight: trackGeometry.segmentHeight(),
@@ -927,9 +925,9 @@ function resourceSoftwarePaintSegments(items: ResourceSegmentLayout<ResourceSele
     right: item.right,
     color: resourceSegmentPaintColor(item.segment, "type"),
     distinctColor: resourceSegmentPaintColor(item.segment, "distinct"),
+    hatched: isReservedSegment(item.segment),
     label: item.width >= 8 ? segmentLabel(item.segment) : undefined,
-    labelColor: resourceSegmentPaintTextColor(item.segment, "type"),
-    distinctLabelColor: resourceSegmentPaintTextColor(item.segment, "distinct")
+    labelColor: item.segment.isEmpty ? "var(--text)" : segmentTextColor
   }));
 }
 
@@ -939,9 +937,10 @@ function resourceProcessPaintSegments(items: ResourceSegmentLayout<ResourceProce
     sharedFraction: item.segment.value > 0 ? (item.segment.sharedValue ?? 0) / item.segment.value : 0,
     left: item.left,
     right: item.right,
-    color: distinctPalette[hashKey(processKey(item.segment)) % distinctPalette.length].bg,
+    color: distinctPalette[hashKey(processKey(item.segment)) % distinctPalette.length],
+    hatched: isSystemResidualProcess(item.segment),
     label: item.width >= 10 ? resourceProcessDisplayName(item.segment, metricId) : undefined,
-    labelColor: distinctPalette[hashKey(processKey(item.segment)) % distinctPalette.length].text
+    labelColor: segmentTextColor
   }));
 }
 
@@ -949,24 +948,12 @@ function resourceSegmentPaintColor(segment: ResourceSelectableSegment, mode: "ty
   if (segment.isEmpty) {
     return "var(--resource-empty)";
   }
-
-  if (mode === "distinct") {
-    return distinctPalette[hashKey(segment.softwareId) % distinctPalette.length].bg;
+  if (isReservedSegment(segment)) {
+    return reservedColor;
   }
-
-  return resourceTypeColor(segment.displayKind).bg;
-}
-
-function resourceSegmentPaintTextColor(segment: ResourceSelectableSegment, mode: "type" | "distinct") {
-  if (segment.isEmpty) {
-    return "var(--text)";
-  }
-
-  if (mode === "distinct") {
-    return distinctPalette[hashKey(segment.softwareId) % distinctPalette.length].text;
-  }
-
-  return resourceTypeColor(segment.displayKind).text;
+  return mode === "distinct"
+    ? distinctPalette[hashKey(segment.softwareId) % distinctPalette.length]
+    : bucketColors[resourceSoftwareBucket(segment.displayKind)];
 }
 
 function resourceEntryAtTrackPoint<T extends { value: number }>(
@@ -1007,61 +994,22 @@ function resourceSoftwareBucket(displayKind: string): ResourceSoftwareBucket {
   return displayKind === "adapted" ? "adapted" : "other";
 }
 
-// Wide-gamut (display-p3) segment palette. Each entry carries its own foreground
-// so we never need a runtime contrast calculation. Shared by the distinct
-// software mode and the process breakdown.
-interface SegmentColor {
-  bg: string;
-  text: string;
-}
+// 分段颜色全是 CSS 变量（styles/theme.css 的 --resource-*），画布按当前风格和配色解析，风格文件可以改；
+// 这里只决定哪一段用哪个变量。区分色按 softwareId 散列，同一个软件始终同一个颜色。
+const distinctPalette = Array.from({ length: 8 }, (_, index) => `var(--resource-segment-${index + 1})`);
+const segmentTextColor = "var(--resource-segment-text)";
+const reservedColor = "var(--resource-reserved)";
 
-const white = "color(display-p3 1 1 1)";
-const ink = "color(display-p3 0.110 0.083 0.031)";
-
-const distinctPalette: SegmentColor[] = [
-  { bg: "color(display-p3 0.310 0.498 0.847)", text: white },
-  { bg: "color(display-p3 0.184 0.620 0.435)", text: white },
-  { bg: "color(display-p3 0.816 0.581 0.161)", text: ink },
-  { bg: "color(display-p3 0.541 0.388 0.820)", text: white },
-  { bg: "color(display-p3 0.784 0.365 0.478)", text: white },
-  { bg: "color(display-p3 0.290 0.627 0.659)", text: white },
-  { bg: "color(display-p3 0.902 0.494 0.246)", text: ink },
-  { bg: "color(display-p3 0.447 0.553 0.267)", text: white }
-];
-
-// 按展示分组配色（系统 / 已适配 / 其它）。分组本身由上面那一个函数定，
-// 不在这里再判一遍 —— 先前这两处各写了一份一模一样的判断。
-const bucketColors: Record<ResourceSoftwareBucket, SegmentColor> = {
-  system: { bg: "color(display-p3 0.541 0.388 0.820)", text: white },
-  adapted: { bg: "color(display-p3 0.184 0.620 0.435)", text: white },
-  other: { bg: "color(display-p3 0.816 0.651 0.220)", text: ink }
+// 按展示分组配色（系统 / 已适配 / 其它）。分组本身由上面那一个函数定，不在这里再判一遍。
+const bucketColors: Record<ResourceSoftwareBucket, string> = {
+  system: "var(--resource-kind-system)",
+  adapted: "var(--resource-kind-adapted)",
+  other: "var(--resource-kind-other)"
 };
 
-function resourceTypeColor(displayKind: string): SegmentColor {
-  return bucketColors[resourceSoftwareBucket(displayKind)];
-}
-
-function resourceSegmentStyle(segment: ResourceSelectableSegment): CssVars {
-  if (segment.isEmpty) {
-    return { "--segment-bg": "var(--resource-empty)", "--segment-text": "var(--text)" };
-  }
-
-  const type = resourceTypeColor(segment.displayKind);
-  const distinct = distinctPalette[hashKey(segment.softwareId) % distinctPalette.length];
-  return {
-    "--segment-bg": type.bg,
-    "--segment-text": type.text,
-    "--segment-distinct": distinct.bg,
-    "--segment-distinct-text": distinct.text
-  };
-}
-
-function processSegmentStyle(index: number): CssVars {
-  const color = distinctPalette[index % distinctPalette.length];
-  return {
-    "--process-color": color.bg,
-    "--process-text": color.text
-  };
+/** 系统/驱动保留：后端把整机量减去各软件之和的差额记在 resource-residual:<指标> 下，它不是软件，单独画。 */
+function isReservedSegment(segment: { softwareId?: string | null }) {
+  return segment.softwareId?.startsWith("resource-residual:") === true;
 }
 
 function processKey(process: ResourceProcessSegment) {

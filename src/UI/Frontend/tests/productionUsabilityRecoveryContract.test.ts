@@ -94,7 +94,8 @@ assert.match(app, /document\.body\.dataset\.barColor = normalizeBarColorMode\(se
 // The settings owner resolves Auto from focus and GPU scheduling into data-animations.
 assert.match(resourcePaintPlane, /attributeFilter: \["data-animations", "data-bar-color", "data-resource-bar-frame-rate"\]/);
 assert.match(resourcePaintPlane, /presentation\.barColor === "distinct"\s*\? segment\.distinctColor \?\? segment\.color\s*: segment\.color/);
-assert.match(resourcePaintPlane, /presentation\.barColor !== "distinct"/);
+// 两种配色都画分隔线（异色区分时相邻两种颜色也要分开），不按配色关掉。
+assert.doesNotMatch(resourcePaintPlane, /barColor !== "distinct"/);
 assert.match(systemIntegrationSettings, /uiText\.misc\.publicServicesNotRunning/);
 
 // Monitor actions and copy must reflect actual available behavior.

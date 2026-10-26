@@ -50,6 +50,23 @@
   /* 磁盘占用图的目录 / 文件方格色相，风格可以改。 */
   --treemap-directory-hue: 168;
   --treemap-file-hue: 205;
+  /* 资源条分段色，画布从这里取，风格可以改。深浅两种底上都看得清，分段上的字统一用墨色，对比度都不低于 4.5:1；
+     八个区分色两两在 OKLab 里至少差 0.10。系统/驱动保留不是软件，用中性灰加斜纹；共享部分在本段颜色上提亮。 */
+  --resource-kind-system: rgb(149 110 210);
+  --resource-kind-adapted: rgb(53 178 118);
+  --resource-kind-other: rgb(223 166 53);
+  --resource-segment-1: rgb(82 142 217);
+  --resource-segment-2: rgb(53 178 118);
+  --resource-segment-3: rgb(223 166 53);
+  --resource-segment-4: rgb(149 110 210);
+  --resource-segment-5: rgb(210 96 136);
+  --resource-segment-6: rgb(65 176 188);
+  --resource-segment-7: rgb(226 118 65);
+  --resource-segment-8: rgb(123 137 53);
+  --resource-segment-text: rgb(28 21 8);
+  --resource-reserved: rgb(127 135 147);
+  --resource-reserved-stripe: rgb(255 255 255 / 0.30);
+  --resource-shared-tint: rgb(255 255 255 / 0.42);
   /* 顶栏和二级分页条的背景模糊；不透明的风格可以设成 none，省掉合成开销。 */
   --shell-backdrop: blur(14px);
 

@@ -58,13 +58,11 @@ export function shouldAnimateResourceSegment(width: number) {
 
 export function resourceSegmentLayerStyle<T extends { value: number }>(
   item: ResourceSegmentLayout<T>,
-  segmentStyle: ResourceSegmentCssVars,
   geometry?: ResourceSegmentPixelGeometry)
 : ResourceSegmentCssVars {
   const width = clampNumber(item.width, 0, 100);
   const pixelVars = resourceSegmentPixelVars(item, geometry);
   return {
-    ...segmentStyle,
     ...pixelVars,
     "--segment-left": `${item.left}%`,
     "--segment-width": `${width}%`

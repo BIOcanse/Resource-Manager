@@ -1033,24 +1033,6 @@
   z-index: 6;
 }
 
-/* Software segments — two colour modes, switched by body[data-bar-color]:
-   • type (default): fixed colour by kind (system / adapted / other)
-   • distinct: a distinct colour per software from a hashed palette */
-.resource-segment.adapted,
-.resource-segment.other,
-.resource-segment.system {
-  color: var(--segment-text, color(display-p3 1 1 1));
-}
-
-body[data-bar-color="distinct"] .resource-segment.adapted,
-body[data-bar-color="distinct"] .resource-segment.other,
-body[data-bar-color="distinct"] .resource-segment.system {
-  color: var(--segment-distinct-text, var(--segment-text, color(display-p3 1 1 1)));
-}
-
-.resource-segment-empty {
-  color: var(--text);
-}
 
 .resource-process-track.empty {
   display: flex;
@@ -1061,10 +1043,6 @@ body[data-bar-color="distinct"] .resource-segment.system {
 .resource-process-empty {
   color: var(--muted);
   font-size: 12px;
-}
-
-.resource-process-segment {
-  color: var(--process-text, var(--text));
 }
 
 .resource-process-segment.process-selected {

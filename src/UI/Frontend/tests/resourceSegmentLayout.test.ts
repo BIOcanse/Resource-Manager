@@ -11,9 +11,9 @@ assert.deepEqual(widths([0]), []);
 assert.equal(widths([10, 20], true).reduce((a, b) => a + b), 100);
 for (const dpr of [1, 1.25, 2]) {
   const layout = resourceSegmentLayout([{ value: 99.9 }, { value: 0.1 }], 100);
-  const style = resourceSegmentLayerStyle(layout[0], {}, { contentWidth: 400, devicePixelRatio: dpr, segmentHeight: 24, segmentTop: 0 });
+  const style = resourceSegmentLayerStyle(layout[0], { contentWidth: 400, devicePixelRatio: dpr, segmentHeight: 24, segmentTop: 0 });
   assert.ok(parseFloat(style["--segment-render-width"]!) < 400);
-  const empty = resourceSegmentLayerStyle(layout[1], {}, { contentWidth: 400, devicePixelRatio: dpr, segmentHeight: 24, segmentTop: 0 });
+  const empty = resourceSegmentLayerStyle(layout[1], { contentWidth: 400, devicePixelRatio: dpr, segmentHeight: 24, segmentTop: 0 });
   assert.ok(parseFloat(empty["--segment-render-width"]!) > 0);
 }
 console.log("resourceSegmentLayout: ok");

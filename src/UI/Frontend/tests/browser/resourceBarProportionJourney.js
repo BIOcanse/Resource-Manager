@@ -43,18 +43,26 @@ export default async function resourceBarProportionJourney(page, baseUrl) {
     const canvas = page.locator('.resource-bar-track[data-metric-id="memory.usage"] canvas');
     await canvas.waitFor({ state: "visible" });
     await waitForBarPaint(page, "memory.usage");
+    // 共享部分画在本段右端，是本段颜色提亮（--resource-shared-tint）：从段的颜色变亮处起，到下一次变色止。
     results.push(await canvas.evaluate(canvas => {
       const pixels = canvas.getContext("2d").getImageData(0, Math.floor(canvas.height / 4), canvas.width, 1).data;
-      const yellow = [];
-      for (let x = 0; x < canvas.width; x++) {
-        if (pixels[x * 4] === 211 && pixels[x * 4 + 1] === 171 && pixels[x * 4 + 2] === 48) yellow.push(x);
-      }
+      const at = (x) => [pixels[x * 4], pixels[x * 4 + 1], pixels[x * 4 + 2]];
+      const same = (a, b) => a.every((value, index) => value === b[index]);
+      const own = at(1);
+      let sharedStart = 1;
+      while (sharedStart < canvas.width && same(at(sharedStart), own)) sharedStart++;
+      const shared = at(sharedStart);
+      let sharedEnd = sharedStart;
+      while (sharedEnd < canvas.width && same(at(sharedEnd), shared)) sharedEnd++;
       const expectedStart = Math.floor(canvas.width * .125);
       const expectedEnd = Math.floor(canvas.width * .25);
-      if (!yellow.length || Math.abs(yellow[0] - expectedStart) > 1 || Math.abs(yellow.at(-1) + 1 - expectedEnd) > 1) {
-        throw new Error(`Shared fraction painted incorrectly: ${yellow[0]}..${yellow.at(-1)} / ${canvas.width}`);
+      if (Math.abs(sharedStart - expectedStart) > 1 || Math.abs(sharedEnd - expectedEnd) > 1) {
+        throw new Error(`Shared fraction painted incorrectly: ${sharedStart}..${sharedEnd} / ${canvas.width}`);
       }
-      return { sharedStart: yellow[0], sharedEnd: yellow.at(-1) + 1, width: canvas.width };
+      if (!shared.every((value, index) => value >= own[index]) || shared.reduce((a, b) => a + b) - own.reduce((a, b) => a + b) < 60) {
+        throw new Error(`Shared part is not a visibly lighter tint of its segment: ${own} -> ${shared}`);
+      }
+      return { sharedStart, sharedEnd, width: canvas.width, own, shared };
     }));
     const output = resolve(process.env.RM_BROWSER_ARTIFACT_DIR || DEFAULT_ARTIFACT_DIRECTORY);
     mkdirSync(output, { recursive: true });
