@@ -1,6 +1,6 @@
+import { useHorizontalReveal } from "../../interactions/solid/horizontalReveal.ts";
 import {
   Show,
-  createEffect,
   createContext,
   createSignal,
   createUniqueId,
@@ -84,13 +84,10 @@ export function TabsList(props: {
   const context = requireTabsContext();
   let listElement: HTMLDivElement | undefined;
   let indicatorElement: HTMLSpanElement | undefined;
-  createEffect(() => {
-    const value = context.value();
-    const trigger = listElement?.querySelector<HTMLElement>(
-      `[role='tab'][data-tab-value='${CSS.escape(value)}']`);
-    if (trigger && listElement) {
-      ensureTabVisible(trigger, listElement);
-    }
+  useHorizontalReveal({
+    container: () => listElement,
+    selected: () => listElement?.querySelector<HTMLElement>("[role='tab'][aria-selected='true']") ?? null,
+    change: context.value
   });
   useSelectionIndicator({
     name: `页签组 ${context.idPrefix}`,
@@ -111,7 +108,6 @@ export function TabsList(props: {
         selector: "[role='tab']:not(:disabled)",
         previousKeys: ["ArrowLeft"],
         nextKeys: ["ArrowRight"],
-        ensureVisible: ensureTabVisible,
         activate: (element) => element.click()
       })}
     >
@@ -119,16 +115,6 @@ export function TabsList(props: {
       {props.children}
     </div>
   );
-}
-
-function ensureTabVisible(element: HTMLElement, container: HTMLElement): void {
-  const elementRect = element.getBoundingClientRect();
-  const containerRect = container.getBoundingClientRect();
-  if (elementRect.left < containerRect.left) {
-    container.scrollLeft -= containerRect.left - elementRect.left;
-  } else if (elementRect.right > containerRect.right) {
-    container.scrollLeft += elementRect.right - containerRect.right;
-  }
 }
 
 export function TabsTrigger(props: {

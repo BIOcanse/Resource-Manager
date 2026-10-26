@@ -142,3 +142,27 @@
 .has-selection-indicator .page-tab:disabled::before {
   opacity: 0.55;
 }
+
+/* 无动画档由选中项的定位盒铺满同一块指示条，无 JS 几何或锚点布局依赖。 */
+body:is([data-animations="none"], [data-animations="ultra"]) .selection-indicator {
+  inset: 0;
+  width: auto !important;
+  height: auto !important;
+  transform: none !important;
+  opacity: 1 !important;
+  visibility: hidden !important;
+}
+body:is([data-animations="none"], [data-animations="ultra"]) .selection-indicator-target > .selection-indicator {
+  visibility: visible !important;
+}
+body:is([data-animations="none"], [data-animations="ultra"]) .page-tab > .selection-indicator {
+  inset: -1px;
+}
+body:is([data-animations="none"], [data-animations="ultra"]) .page-tab.active:not(:disabled):hover > .page-tab-indicator {
+  border-color: var(--page-tab-active-border-hover);
+  background: var(--page-tab-active-bg-hover);
+}
+body:is([data-animations="none"], [data-animations="ultra"]) .segment.active:disabled > .segment-indicator {
+  background: var(--segment-active-disabled-bg);
+  box-shadow: none;
+}

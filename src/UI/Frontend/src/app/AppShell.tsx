@@ -1,4 +1,6 @@
-﻿import { For, Show, createEffect, createMemo, on, onCleanup, onMount } from "solid-js";
+import { observeLayout } from "../interactions/solid/layoutObservation.ts";
+import { useHorizontalReveal } from "../interactions/solid/horizontalReveal.ts";
+import { For, Show, createEffect, createMemo, on, onCleanup } from "solid-js";
 import type { Accessor, JSX } from "solid-js";
 import { ListTodo } from "lucide-solid";
 import { ObservationStateNotice } from "../components/ObservationStateNotice";
@@ -62,6 +64,18 @@ export function AppShell(props: AppShellProps) {
 
   // 换一级页：正文回到顶部，焦点交给页标题。只换二级分页：正文回到顶部，焦点留在分页条上（←/→ 接着切）。
   // 深层导航（可信访问待处理横幅）由已挂载的视图交出焦点目标，焦点交给它；消费请求或卸载目标不会再次抢回焦点。
+  let pendingPageFocus: (() => void) | null = null;
+  const pageLayout = observeLayout({
+    read: () => {},
+    write: () => {
+      const apply = pendingPageFocus;
+      pendingPageFocus = null;
+      pageLayout.update([]);
+      apply?.();
+    }
+  });
+  onCleanup(() => pageLayout.dispose());
+  let viewportScrolled = false;
   let displayedPage = props.activePage();
   createEffect(on([routeIdentity, () => props.pageFocusTarget?.()], ([route, target], previous) => {
     const routeChanged = route !== previous?.[0];
@@ -70,9 +84,9 @@ export function AppShell(props: AppShellProps) {
     displayedPage = props.activePage();
     let cancelled = false;
     onCleanup(() => { cancelled = true; });
-    queueMicrotask(() => {
+    pendingPageFocus = () => {
       if (cancelled) return;
-      if (routeChanged) mainViewport?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      if (routeChanged && viewportScrolled) mainViewport?.scrollTo({ top: 0, left: 0, behavior: "auto" });
       if (target) {
         if (target.isConnected) {
           target.focus({ preventScroll: true });
@@ -81,23 +95,22 @@ export function AppShell(props: AppShellProps) {
       } else if (pageChanged) {
         pageHeading?.focus({ preventScroll: true });
       }
-    });
+    };
+    pageLayout.update([]);
+    if (mainViewport) pageLayout.update([mainViewport]);
   }, { defer: true }));
 
-  // 页签放不下时分页条横向滚动：切页后、分页条变宽变窄后，把选中项滚回可见范围。
-  createEffect(on(routeIdentity, () => queueMicrotask(revealSelected), { defer: true }));
-  onMount(() => {
-    const observer = new ResizeObserver(revealSelected);
-    if (pageNav) observer.observe(pageNav);
-    if (subnav) observer.observe(subnav);
-    onCleanup(() => observer.disconnect());
+  // 滚动定位和指示条共享布局后的读/写边界。
+  useHorizontalReveal({
+    container: () => pageNav,
+    selected: () => pageNav?.querySelector<HTMLElement>(".shell-page.active") ?? null,
+    change: routeIdentity
   });
-
-  function revealSelected() {
-    reveal(pageNav, pageNav?.querySelector<HTMLElement>(".shell-page.active") ?? null);
-    reveal(subnav, subnavSlot?.querySelector<HTMLElement>(".page-subnav-group:not([hidden]) [role='tab'][aria-selected='true']") ?? null);
-  }
-
+  useHorizontalReveal({
+    container: () => subnav,
+    selected: () => subnavSlot?.querySelector<HTMLElement>(".page-subnav-group:not([hidden]) [role='tab'][aria-selected='true']") ?? null,
+    change: routeIdentity
+  });
   // 一级页签的指示条：序号是一级次序。
   useSelectionIndicator({
     name: "一级页签",
@@ -193,6 +206,7 @@ export function AppShell(props: AppShellProps) {
       <div ref={(element) => { pageLayer = element; }} class="page-leaving-layer" aria-hidden="true" />
       <main
         ref={(element) => { mainViewport = element; }}
+        onScroll={(event) => { viewportScrolled = Boolean(event.currentTarget.scrollTop || event.currentTarget.scrollLeft); }}
         class="app-shell"
         aria-labelledby="activePageTitle"
       >
@@ -263,18 +277,6 @@ function secondaryTabsId(page: PageId): string {
 function secondaryTabElementId(page: PageId, navigation: SecondaryNavigation): string {
   const selected = navigation.selected();
   return navigation.tabs().find((tab) => tab.id === selected)?.elementId ?? `${secondaryTabsId(page)}-tab-${selected}`;
-}
-
-/** 选中项在横向滚动的条里放不下时，把它滚回可见范围。 */
-function reveal(container: HTMLElement | undefined, active: HTMLElement | null) {
-  if (!container || !active) return;
-  const containerRect = container.getBoundingClientRect();
-  const activeRect = active.getBoundingClientRect();
-  if (activeRect.left < containerRect.left) {
-    container.scrollLeft -= containerRect.left - activeRect.left;
-  } else if (activeRect.right > containerRect.right) {
-    container.scrollLeft += activeRect.right - containerRect.right;
-  }
 }
 
 function taskCenterTitle(state: TaskCenterOperationState): string {

@@ -1,4 +1,4 @@
-import { createEffect, on, onCleanup, onMount } from "solid-js";
+import { createEffect, createSignal, on, onCleanup, onMount } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { Definition } from "../protocol/definition.ts";
 import type { ParamOverrides } from "../protocol/params.ts";
@@ -20,6 +20,8 @@ import type { Value } from "../protocol/vec.ts";
 
 let runtime: Runtime | null = null;
 let frameRequested = false;
+const [interactionAnimationMode, setAnimationMode] = createSignal<AnimationMode>("normal");
+export { interactionAnimationMode };
 
 type Rect = { left: number; top: number; right: number; bottom: number };
 
@@ -75,6 +77,7 @@ export function interactionRuntime(): Runtime {
 
 /** 动画档位沿用 body[data-animations]，由 App 按外观设置解析后交给这里。 */
 export function setInteractionAnimationMode(mode: AnimationMode): void {
+  setAnimationMode(mode);
   interactionRuntime().setAnimationMode(mode, performance.now());
 }
 

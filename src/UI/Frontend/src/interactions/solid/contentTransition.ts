@@ -2,7 +2,7 @@ import { createComputed, createEffect, on, onCleanup, untrack } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { Presentation } from "../protocol/runtime.ts";
 import { contentTransitionDefinition } from "../components/contentTransition.ts";
-import { interactionRuntime, useInteraction } from "./lodestone.ts";
+import { interactionAnimationMode, interactionRuntime, useInteraction } from "./lodestone.ts";
 import { createOrderHost } from "./orderHost.ts";
 
 /*
@@ -109,6 +109,8 @@ export function useContentTransition(options: ContentTransitionOptions): void {
   // 1. 换之前：旧内容还在原处。
   createComputed(on(options.key, () => {
     pending = null;
+    // 无动画档没有退出副本，不读取旧几何，也不克隆即刻丢弃的节点。
+    if (untrack(interactionAnimationMode) !== "normal") return;
     const current = stage ?? untrack(options.stage);
     const layer = untrack(options.layer);
     if (!handle.instance || !current || !layer || !current.isConnected) return;
