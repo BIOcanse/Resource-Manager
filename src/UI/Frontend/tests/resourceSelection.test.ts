@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { reconcileResourceSelection } from "../src/features/resourceBreakdown/resourceSelection.ts";
 import {
-  resourceSegmentAtPercent,
-  resourceTrackPercentAtClientX
+  resourceSegmentAtTrackX,
+  resourceSegmentHitRanges
 } from "../src/features/resourceBreakdown/resourceTrackInteraction.ts";
+import { resourceSegmentMinimumTargetPx } from "../src/features/resourceBreakdown/resourceSegmentLayout.ts";
 import type { ResourceBreakdownBar } from "../src/types.ts";
 
 const bars = [
@@ -47,14 +48,43 @@ const ranges = [
   { segment: { value: 20, id: "first" }, index: 0, left: 0, right: 20, width: 20 },
   { segment: { value: 30, id: "second" }, index: 1, left: 20, right: 50, width: 30 }
 ];
-assert.equal(resourceSegmentAtPercent(ranges, -10)?.segment.id, "first");
-assert.equal(resourceSegmentAtPercent(ranges, 20)?.segment.id, "first");
-assert.equal(resourceSegmentAtPercent(ranges, 21)?.segment.id, "second");
-assert.equal(resourceSegmentAtPercent(ranges, 95)?.segment.id, "second");
-assert.equal(resourceSegmentAtPercent([], 50), null);
-assert.equal(resourceTrackPercentAtClientX(150, 100, 200), 25);
-assert.equal(resourceTrackPercentAtClientX(20, 100, 200), 0);
-assert.equal(resourceTrackPercentAtClientX(500, 100, 200), 100);
+// 200 px 宽的轨道：0–40 px 是第一段，40–100 px 是第二段，右边没有段时取最近的一段。
+assert.equal(resourceSegmentAtTrackX(ranges, -10, 200)?.segment.id, "first");
+assert.equal(resourceSegmentAtTrackX(ranges, 39, 200)?.segment.id, "first");
+assert.equal(resourceSegmentAtTrackX(ranges, 41, 200)?.segment.id, "second");
+assert.equal(resourceSegmentAtTrackX(ranges, 190, 200)?.segment.id, "second");
+assert.equal(resourceSegmentAtTrackX([], 50, 200), null);
+
+// 很窄的段（这里 1000 px 里 0.3 px、0.2 px）指针也能指到：一串窄段一起向两边紧挨着的宽段借宽度，
+// 每段至少 resourceSegmentMinimumTargetPx；离得远的分界和画出来的一样。
+const layout = (values: [string, number][]) => {
+  let left = 0;
+  return values.map(([id, width], index) => {
+    const item = { segment: { value: width, id }, index, left, right: left + width, width };
+    left += width;
+    return item;
+  });
+};
+const tiny = layout([["big", 40], ["middle", 30], ["tinyA", 0.03], ["tinyB", 0.02], ["after", 29.95]]);
+const hits = resourceSegmentHitRanges(tiny, 1000);
+assert.deepEqual(hits[0], [0, 400], "boundaries away from the narrow run stay where they are drawn");
+for (const index of [2, 3]) {
+  assert.ok(hits[index][1] - hits[index][0] >= resourceSegmentMinimumTargetPx - 1e-9,
+    `narrow segment ${index} must get a ${resourceSegmentMinimumTargetPx} px target: ${JSON.stringify(hits[index])}`);
+}
+assert.ok(Math.abs(hits[4][1] - 1000) < 1e-9, "the last range still ends at the track end");
+for (let index = 1; index < hits.length; index++) {
+  assert.ok(Math.abs(hits[index][0] - hits[index - 1][1]) < 1e-9, "hit ranges stay contiguous");
+}
+const centre = (index: number) => (hits[index][0] + hits[index][1]) / 2;
+assert.equal(resourceSegmentAtTrackX(tiny, centre(2), 1000)?.segment.id, "tinyA");
+assert.equal(resourceSegmentAtTrackX(tiny, centre(3), 1000)?.segment.id, "tinyB");
+assert.equal(resourceSegmentAtTrackX(tiny, 690, 1000)?.segment.id, "middle");
+// 段多到放不下时按段数均分，不借成负宽。
+const crowded = layout(Array.from({ length: 50 }, (_, index) => [`s${index}`, 2] as [string, number]));
+for (const [left, right] of resourceSegmentHitRanges(crowded, 100)) {
+  assert.ok(right - left > 0, "every crowded segment keeps a positive range");
+}
 
 function bar(metricId: string, softwareIds: string[]): ResourceBreakdownBar {
   return {

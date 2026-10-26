@@ -40,10 +40,7 @@ import {
 } from "../../ui/primitives/activeDescendantListbox.ts";
 import { positionResourceTooltip } from "./resourceTooltipPlacement.ts";
 import { readMotionDurationMs } from "../../presentation/motionTokens.ts";
-import {
-  resourceSegmentAtPercent,
-  resourceTrackPercentAtClientX
-} from "./resourceTrackInteraction.ts";
+import { resourceSegmentAtTrackX } from "./resourceTrackInteraction.ts";
 import { useInlineEditorFocus } from "../../interactions/inlineEditorFocus";
 import { formatResourceBarValue } from "./resourceBreakdownValue";
 import { ObservationStateNotice } from "../../components/ObservationStateNotice";
@@ -966,9 +963,7 @@ function resourceEntryAtTrackPoint<T extends { value: number }>(
   const width = rect.width
     - Number.parseFloat(style.borderLeftWidth || "0")
     - Number.parseFloat(style.borderRightWidth || "0");
-  return resourceSegmentAtPercent(
-    ranges,
-    resourceTrackPercentAtClientX(clientX, left, width));
+  return resourceSegmentAtTrackX(ranges, clientX - left, width);
 }
 
 /*

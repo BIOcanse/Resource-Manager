@@ -54,6 +54,8 @@ const dividerColor = "var(--divider)";
 const sharedTintColor = "var(--resource-shared-tint)";
 const hatchStripeColor = "var(--resource-reserved-stripe)";
 const hatchSpacingPx = 6;
+// 比这窄（设备像素）的段本身就是一条细线，两边不再画分隔线，免得把它盖掉。
+const sliverDevicePx = 3;
 
 export function ResourceSegmentPaintPlane(props: ResourceSegmentPaintPlaneProps) {
   let canvas: HTMLCanvasElement | undefined;
@@ -244,13 +246,19 @@ function drawSegments(
   context.clearRect(0, 0, width, height);
   context.imageSmoothingEnabled = false;
 
+  // 不足一个设备像素的段取整后宽 0，会被后面的段盖掉：先画其余的段，再给它们各画 1 个设备像素。
+  const slivers: [number, ResourcePaintSegment][] = [];
   for (const segment of segments) {
     const leftPx = Math.floor(clampNumber(segment.left, 0, 100) * pixelWidth / 100);
     const rightPx = Math.floor(clampNumber(segment.right, 0, 100) * pixelWidth / 100);
     if (rightPx <= leftPx) {
+      slivers.push([Math.min(leftPx, pixelWidth - 1), segment]);
       continue;
     }
     paintSegmentBody(context, segment, leftPx, rightPx, height, geometry.devicePixelRatio, presentation, paintStyle);
+  }
+  for (const [leftPx, segment] of slivers) {
+    paintSegmentBody(context, segment, leftPx, leftPx + 1, height, geometry.devicePixelRatio, presentation, paintStyle);
   }
 
   if (paintOptions.drawDividers) {
@@ -391,9 +399,12 @@ function drawSegmentDividers(
 
   context.fillStyle = paintStyle.color(dividerColor);
 
+  const devicePxWidth = (segment: ResourcePaintSegment) =>
+    Math.floor(clampNumber(segment.right, 0, 100) * pixelWidth / 100) - Math.floor(clampNumber(segment.left, 0, 100) * pixelWidth / 100);
   for (let index = 0; index < segments.length - 1; index++) {
     const boundaryPx = Math.floor(clampNumber(segments[index].right, 0, 100) * pixelWidth / 100);
-    if (boundaryPx <= 0 || boundaryPx >= pixelWidth || drawnBoundaries.has(boundaryPx)) {
+    if (boundaryPx <= 0 || boundaryPx >= pixelWidth || drawnBoundaries.has(boundaryPx)
+      || devicePxWidth(segments[index]) < sliverDevicePx || devicePxWidth(segments[index + 1]) < sliverDevicePx) {
       continue;
     }
 
