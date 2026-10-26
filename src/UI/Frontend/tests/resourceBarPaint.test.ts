@@ -122,7 +122,11 @@ assert.equal(fitCanvasLabel(width, "Microsoft Edge", 77, 3), "Microsoft…", "no
 const resources = stripComments(read("styles/resources.css"));
 assert.match(resources, /\.resource-bar-track:focus-visible,\s*\.resource-process-track:focus-visible\s*\{\s*outline:\s*var\(--focus-ring\);/,
   "keyboard focus on a resource track draws the shared focus ring");
-const forced = /@media \(forced-colors: active\) \{([\s\S]*?)\n\}/.exec(resources)?.[1] ?? "";
+// resources.css 有不止一段强制颜色规则（资源表也有自己的一段），取写资源条的那一段。
+const forcedBlocks = [...resources.matchAll(/@media \(forced-colors: active\) \{([\s\S]*?)\n\}/g)].map((match) => match[1]);
+const forcedBarBlocks = forcedBlocks.filter((block) => block.includes(".resource-bar-track"));
+assert.equal(forcedBarBlocks.length, 1, "the resource bar forced-colour rules sit in one block");
+const forced = forcedBarBlocks[0];
 assert.match(forced, /\.resource-bar-track:focus-visible[\s\S]*?outline: 2px solid Highlight/);
 assert.match(forced, /\.resource-segment-interaction-proxy\.pointer-active\s*\{[^}]*outline:/);
 assert.match(forced, /\.resource-segment\.precision-selected[\s\S]*?outline: 3px solid Highlight/);
