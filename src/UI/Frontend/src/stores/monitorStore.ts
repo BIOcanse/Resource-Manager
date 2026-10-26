@@ -11,6 +11,7 @@ import { resourceTableMetricId } from "../features/resourceTable/resourceTableSo
 import type { ProcessMetricField } from "../data/resourceMonitor/processFieldCatalog.ts";
 import type { ResourcePrecisionSelection } from "../features/resourceBreakdown/ResourceBreakdown";
 import { reconcileResourceSelection } from "../features/resourceBreakdown/resourceSelection";
+import { isReservedSegment } from "../features/resourceBreakdown/resourceProcessIdentity.ts";
 import type {
   DashboardCardSettings,
   DashboardSlotSize,
@@ -230,7 +231,10 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   const [resourceTableSort, setResourceTableSort] = createSignal<{ columnId: string; direction: "asc" | "desc" }>({ columnId: "impact", direction: "desc" });
   const [expandedResourceTableRows, setExpandedResourceTableRows] = createSignal<Record<string, boolean>>({});
   const [resourceSelection, setResourceSelection] = createSignal<ResourcePrecisionSelection | null>(null);
-  const [expandedResourceSegments, setExpandedResourceSegments] = createSignal<Record<string, string>>({});
+  // 每条资源条展开的段（按条的 metricId），记着选中时这一段的类型化身份。
+  const [expandedResourceSelections, setExpandedResourceSelections] = createSignal<Record<string, ResourcePrecisionSelection>>({});
+  const expandedResourceSegments = createMemo(() => Object.fromEntries(Object.entries(expandedResourceSelections())
+    .map(([metricId, selection]) => [metricId, selection.softwareId])));
   const [metricModalTarget, setMetricModalTarget] = createSignal<MetricModalTarget | null>(null);
   const [selectedMetricId, setSelectedMetricId] = createSignal<string | null>(null);
   const metricCatalogLease = options.metricCatalogSource.acquire({
@@ -299,17 +303,13 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     return [...ids];
   });
   const snapshotMetricIds = currentMetricIds;
-  const resourceBreakdownProcessDetailSoftwareIds = createMemo(() => {
-    const ids = new Set(
-      Object.values(expandedResourceSegments())
-        .filter((softwareId) => softwareId.length > 0));
-    const selectedSoftwareId = resourceSelection()?.softwareId;
-    if (selectedSoftwareId) {
-      ids.add(selectedSoftwareId);
-    }
-
-    return [...ids];
-  });
+  // 明细订阅：展开或选中的真实软件按 id 进 processDetails；系统/驱动保留按所属资源条的指标 id 进 residualDetails。
+  const resourceBreakdownDetailSelections = createMemo(() => [...Object.values(expandedResourceSelections()), resourceSelection()]
+    .filter((selection): selection is ResourcePrecisionSelection => selection !== null && selection.softwareId.length > 0));
+  const resourceBreakdownProcessDetailSoftwareIds = createMemo(() => [...new Set(resourceBreakdownDetailSelections()
+    .filter((selection) => !isReservedSegment(selection)).map((selection) => selection.softwareId))]);
+  const resourceBreakdownResidualDetailMetricIds = createMemo(() => [...new Set(resourceBreakdownDetailSelections()
+    .filter(isReservedSegment).map((selection) => selection.metricId))]);
 
   const unsubscribeMetricCatalog = metricCatalogLease.subscribe(
     applyMetricCatalogSourceSnapshot);
@@ -333,6 +333,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     intervalMs: options.resourceBarsIntervalMs,
     bars: requestedResourceBars,
     detailSoftwareIds: resourceBreakdownProcessDetailSoftwareIds,
+    detailResidualMetricIds: resourceBreakdownResidualDetailMetricIds,
     barsSource: options.resourceMonitorSource,
     detailsSource: options.resourceProcessDetailsSource,
     onBars: value => pruneResourceSelection(resourceBarViews(value.breakdown.bars ?? [], activeResourceBars(), processFields()))
@@ -473,6 +474,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
       sortColumnId: "",
       sortDirection: "desc",
       processDetailSoftwareIds: [],
+      residualDetailMetricIds: [],
       tableMode: "software"
     };
   }
@@ -958,7 +960,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
 
   function selectResourceSegment(selection: ResourcePrecisionSelection, hideCursor: boolean) {
     setResourceSelection(selection);
-    setExpandedResourceSegments((current) => ({ ...current, [selection.metricId]: selection.softwareId }));
+    setExpandedResourceSelections((current) => ({ ...current, [selection.metricId]: selection }));
     if (hideCursor) {
       document.body.classList.add("resource-precision-cursor-hidden");
       window.setTimeout(() => document.body.classList.remove("resource-precision-cursor-hidden"), 900);
@@ -967,7 +969,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
 
   function clearResourceSelection() {
     setResourceSelection(null);
-    setExpandedResourceSegments({});
+    setExpandedResourceSelections({});
     document.body.classList.remove("resource-precision-cursor-hidden");
   }
 
@@ -978,15 +980,15 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
       current);
     setResourceSelection(next);
     if (!next) {
-      setExpandedResourceSegments({});
+      setExpandedResourceSelections({});
       return;
     }
-    setExpandedResourceSegments((expanded) => {
+    setExpandedResourceSelections((expanded) => {
       const nextExpanded = { ...expanded };
       if (current && current.metricId !== next.metricId) {
         delete nextExpanded[current.metricId];
       }
-      nextExpanded[next.metricId] = next.softwareId;
+      nextExpanded[next.metricId] = next;
       return nextExpanded;
     });
   }

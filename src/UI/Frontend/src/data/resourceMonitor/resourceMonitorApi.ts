@@ -28,7 +28,13 @@ export interface ResourceBarQuery {
 
 export interface ResourceBreakdownQuery {
   readonly bars: readonly ResourceBarQuery[] | null;
+  /** processDetails：要列出进程的真实软件 id（不透明，原样比较）。 */
   readonly processDetailSoftwareIds: readonly string[];
+  /**
+   * residualDetails：要列出分项的“系统/驱动保留”所属的指标 id（资源条 id，或后端声明可加的度量）。
+   * 后端只在已请求的条和度量里挑选，不额外增加采样；为空时不写这个参数，什么也不选。
+   */
+  readonly residualDetailMetricIds: readonly string[];
 }
 
 export interface ResourceMonitorQuery extends ResourceBreakdownQuery {
@@ -61,6 +67,7 @@ export function buildResourceProcessDetailsSubscriptionUrl(
   params.set("scope", "details");
   appendBars(params, query.bars);
   appendValues(params, "processDetails", query.processDetailSoftwareIds);
+  appendResidualDetails(params, query.residualDetailMetricIds);
   params.set("intervalMs", String(Math.max(1, Math.round(intervalMs))));
   return appendQuery("/api/resource-monitor/subscribe", params);
 }
@@ -99,6 +106,7 @@ export function buildResourceBreakdownUrl(query: ResourceBreakdownQuery): string
   const params = new URLSearchParams();
   appendBars(params, query.bars);
   appendValues(params, "processDetails", query.processDetailSoftwareIds);
+  appendResidualDetails(params, query.residualDetailMetricIds);
   return appendQuery("/api/resource-breakdown/snapshot", params);
 }
 
@@ -137,6 +145,7 @@ function buildResourceMonitorParams(query: ResourceMonitorQuery): URLSearchParam
     : "combined";
   params.set("scope", scope);
   appendValues(params, "processDetails", query.processDetailSoftwareIds);
+  appendResidualDetails(params, query.residualDetailMetricIds);
   return params;
 }
 
@@ -146,7 +155,7 @@ export function normalizeResourceMonitorQuery(
   const breakdown = normalizeResourceBreakdownQuery(query);
   if (query.scope === "table") {
     return Object.freeze({ bars: [], scope: "table", processDetailLevel: query.processDetailLevel ?? "basic", sampleMetricIds: normalizeSet(query.sampleMetricIds),
-      visibleColumnIds: [], sortColumnId: "", sortDirection: "desc", processDetailSoftwareIds: [], tableMode: "software" });
+      visibleColumnIds: [], sortColumnId: "", sortDirection: "desc", processDetailSoftwareIds: [], residualDetailMetricIds: [], tableMode: "software" });
   }
   return Object.freeze({
     bars: breakdown.bars,
@@ -158,6 +167,7 @@ export function normalizeResourceMonitorQuery(
     sortColumnId: query.sortColumnId.trim(),
     sortDirection: query.sortDirection === "asc" ? "asc" : "desc",
     processDetailSoftwareIds: breakdown.processDetailSoftwareIds,
+    residualDetailMetricIds: breakdown.residualDetailMetricIds,
     tableMode: query.tableMode
   });
 }
@@ -179,7 +189,9 @@ export function normalizeResourceBreakdownQuery(query: ResourceBreakdownQuery): 
   return Object.freeze({
     bars,
     processDetailSoftwareIds:
-      normalizeSet(query.processDetailSoftwareIds) ?? []
+      normalizeSet(query.processDetailSoftwareIds) ?? [],
+    residualDetailMetricIds:
+      normalizeSet(query.residualDetailMetricIds) ?? []
   });
 }
 
@@ -220,6 +232,12 @@ function appendValues(
   }
   for (const value of values) {
     params.append(name, value);
+  }
+}
+
+function appendResidualDetails(params: URLSearchParams, metricIds: readonly string[]): void {
+  for (const metricId of metricIds) {
+    params.append("residualDetails", metricId);
   }
 }
 

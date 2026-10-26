@@ -31,20 +31,23 @@ const root = createRoot(dispose => {
   const [active, setActive] = createSignal(true);
   const [intervalMs, setInterval] = createSignal<number | null>(1000);
   const [selected, select] = createSignal<string[]>([]);
+  const [residuals, selectResiduals] = createSignal<string[]>([]);
   const [scaleMode, setScale] = createSignal<"capacity" | "active">("capacity");
   let pruned = 0;
-  const binding = createResourceBreakdownBindings({ active, intervalMs, detailSoftwareIds: selected,
+  const binding = createResourceBreakdownBindings({ active, intervalMs, detailSoftwareIds: selected, detailResidualMetricIds: residuals,
     bars: () => [{ metricId: "memory.usage", scaleMode: scaleMode() }],
     barsSource: bars.family, detailsSource: details.family,
     onBars: () => { selected(); pruned++; }
   });
-  return { binding, select, setActive, setInterval, setScale, dispose, pruned: () => pruned };
+  return { binding, select, selectResiduals, setActive, setInterval, setScale, dispose, pruned: () => pruned };
 });
 await Promise.resolve();
 assert.equal(bars.calls.length, 1);
 assert.equal(bars.calls[0].query.scope, "bars");
-// 物理内存条的条订阅带上它的保留量，后端在条上附计数器分项（scope=bars 不读页帧明细）。
-assert.deepEqual(bars.calls[0].query.processDetailSoftwareIds, ["resource-residual:memory.usage"]);
+// 物理内存条的条订阅用 residualDetails 选它的保留量，后端在条上附计数器分项（scope=bars 不读页帧明细）；
+// processDetails 只写真实软件，不写残差的软件 id。
+assert.deepEqual(bars.calls[0].query.residualDetailMetricIds, ["memory.usage"]);
+assert.deepEqual(bars.calls[0].query.processDetailSoftwareIds, []);
 assert.equal(details.calls.length, 0);
 assert.equal(root.binding.bars()?.data, null);
 const barValue = decodeResourceMonitorWireSnapshot(readyResourceMonitorWire());
@@ -76,6 +79,16 @@ assert.strictEqual(root.binding.bars()?.data, barValue, "Detail failure is local
 
 root.select(["software:b", "software:a"]); await Promise.resolve();
 assert.equal(bars.calls.length, 1, "Expanding additional software changes only details");
+// 展开系统/驱动保留：明细按所属资源条的指标 id 选它，不经过 processDetails。
+const beforeResidual = details.calls.length;
+root.select([]); root.selectResiduals(["memory.usage"]); await Promise.resolve();
+assert.equal(bars.calls.length, 1, "Expanding the reserved segment changes only details");
+assert.deepEqual(details.calls.at(-1)?.query.residualDetailMetricIds, ["memory.usage"]);
+assert.deepEqual(details.calls.at(-1)?.query.processDetailSoftwareIds, []);
+assert.ok(details.calls.length > beforeResidual, "A residual-only selection still opens the details binding");
+root.selectResiduals([]); await Promise.resolve();
+assert(details.calls.every(call => call.stopped), "Collapsing the reserved segment releases the details binding");
+root.select(["software:b", "software:a"]); await Promise.resolve();
 root.setScale("active"); await Promise.resolve();
 assert.equal(bars.calls.length, 2, "Scale is part of the bars identity");
 assert.equal(root.binding.bars()?.data, null, "A new bars binding cannot retain the old value");

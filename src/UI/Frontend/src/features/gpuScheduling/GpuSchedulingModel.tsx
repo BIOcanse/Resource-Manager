@@ -143,7 +143,8 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
         { metricId: `gpu.${index}.vram`, scaleMode: "capacity" as const }
       ]),
       sampleMetricIds: [], visibleColumnIds: [], sortColumnId: "impact",
-      sortDirection: "desc" as const, tableMode: "software" as const, processDetailSoftwareIds: []
+      sortDirection: "desc" as const, tableMode: "software" as const, processDetailSoftwareIds: [],
+      residualDetailMetricIds: []
     }
   })).snapshot;
   const specializedTelemetry = usePushSource(runtime.sources.gpuSpecializedTelemetry, () => ({

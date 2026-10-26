@@ -20,12 +20,13 @@ const client = new RequestClient(owner);
 
 {
   const query = normalizeResourceBreakdownQuery({ bars: [{ metricId: "memory.usage", scaleMode: "capacity" }],
-    processDetailSoftwareIds: [" software:b ", "software:a", "software:b"] });
+    processDetailSoftwareIds: [" software:b ", "software:a", "software:b"], residualDetailMetricIds: [" memory.usage ", "memory.usage"] });
   const url = new URL(buildResourceProcessDetailsSubscriptionUrl(query, 1700), "http://localhost");
   assert.equal(url.pathname, "/api/resource-monitor/subscribe");
   assert.equal(url.searchParams.get("scope"), "details");
   assert.equal(url.searchParams.get("intervalMs"), "1700");
   assert.deepEqual(url.searchParams.getAll("processDetails"), ["software:a", "software:b"]);
+  assert.deepEqual(url.searchParams.getAll("residualDetails"), ["memory.usage"]);
   for (const key of ["columns", "sort", "mode", "sampleIds", "includeProcesses"]) assert.equal(url.searchParams.has(key), false);
 }
 
@@ -49,6 +50,7 @@ try {
     sortColumnId: "impact",
     sortDirection: "desc",
     processDetailSoftwareIds: [],
+    residualDetailMetricIds: [],
     tableMode: "software"
   });
   const value = await getResourceMonitorState(client, query);
@@ -59,6 +61,7 @@ try {
   assert.equal(url.searchParams.get("scope"), "combined");
   assert.equal(url.searchParams.has("includeProcesses"), false);
   assert.deepEqual(url.searchParams.getAll("expanded"), []);
+  assert.equal(url.searchParams.has("residualDetails"), false, "An empty residual selection is not written");
   assert.equal(value.capturedAt, "2026-08-22T15:20:30.000Z");
 
   const invalid = readyResourceMonitorWire();

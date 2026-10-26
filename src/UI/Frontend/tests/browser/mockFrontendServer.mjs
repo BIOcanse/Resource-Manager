@@ -856,10 +856,12 @@ async function handleApi(request, response, url) {
   if (path === "/api/resource-monitor/snapshot") {
     const capturedAt = resourceSlotCapturedAt;
     if (!resourceMeasuresKnown(url)) return json(response, 400, { error: "One or more subscription queries are invalid." });
-    if (url.searchParams.get("scope") === "details") return json(response, 200, resourceProcessDetails(url, capturedAt));
+    const residualMetricIds = residualDetailMetricIds(url);
+    if (residualMetricIds === null) return residualDetailsRejected(response, url);
+    if (url.searchParams.get("scope") === "details") return json(response, 200, resourceProcessDetails(url, capturedAt, residualMetricIds));
     const breakdown = resourceBreakdown(
       capturedAt,
-      new Set(normalizeMetricIds(url.searchParams.getAll("processDetails")).map(id => id.toLowerCase())),
+      processDetailSelection(url, residualMetricIds),
       url.searchParams.getAll("measures"),
       url.searchParams.getAll("modes"), { ids: url.searchParams.getAll("ids") });
     return json(response, 200, {
@@ -869,12 +871,14 @@ async function handleApi(request, response, url) {
     });
   }
   if (path === "/api/resource-breakdown/snapshot") {
+    const residualMetricIds = residualDetailMetricIds(url);
+    if (residualMetricIds === null) return residualDetailsRejected(response, url);
     return json(
       response,
       200,
       resourceBreakdown(
         resourceSlotCapturedAt,
-        new Set(normalizeMetricIds(url.searchParams.getAll("processDetails")).map(id => id.toLowerCase())), [], url.searchParams.getAll("modes"),
+        processDetailSelection(url, residualMetricIds), [], url.searchParams.getAll("modes"),
         { ids: url.searchParams.getAll("ids") }));
   }
   if (path === "/api/resource-facts/snapshot") {
@@ -1763,6 +1767,44 @@ function resourceMeasuresKnown(url) {
   return normalizeMetricIds(url.searchParams.getAll("measures")).every(field => Object.hasOwn(processMemoryFacts, field.toLowerCase()));
 }
 
+// 后端 ParseResourceResidualDetailMetricIds：residualDetails 逗号分隔或重复，去空白、丢空项、不分大小写去重；
+// 值是资源条 id（ResourceBreakdownMetricIds.IsSupported），或声明可加且有整机比较指标的进程字段（解析为那个整机指标）。
+// 其余值（未知指标、不可加的度量、页帧项 memory.residual.details）整条请求 400；返回 null 表示拒绝。
+const residualDetailBarIds = new Set(["cpu.usage", "memory.usage", "virtualmemory.usage", "disk.io", "disk.read", "disk.write",
+  "network.traffic", "network.receive", "network.send", "network.raw.traffic", "network.raw.receive", "network.raw.send"]);
+function residualDetailMetricIds(url) {
+  const ids = new Set();
+  for (const metricId of url.searchParams.getAll("residualDetails").flatMap(value => value.split(",")).map(value => value.trim()).filter(Boolean)) {
+    const id = metricId.toLowerCase();
+    if (residualDetailBarIds.has(id) || /^gpu\.\d+\.(usage|vram)$/.test(id)) { ids.add(id); continue; }
+    const field = processFieldCatalog.find(candidate => candidate.name.toLowerCase() === id);
+    if (!field?.resourceFactTotalMetricId || field.additiveAcrossProcesses !== true) return null;
+    ids.add(field.resourceFactTotalMetricId.toLowerCase());
+  }
+  return ids;
+}
+
+// 后端 IncludesProcessDetails：一条的系统/驱动保留行（软件 id 是 resource-residual:<这条的整机指标>）只由 residualDetails 选，
+// 其余软件行只由 processDetails 选；processDetails 里写保留行的软件 id 就是一个不认识的软件，什么也不选。
+// 只在已请求的条和度量里挑，不增加任何采样。
+const residualSoftwarePrefix = "resource-residual:";
+function processDetailSelection(url, residualMetricIds) {
+  const softwareIds = new Set(normalizeMetricIds(url.searchParams.getAll("processDetails")).map(id => id.toLowerCase()));
+  return { size: softwareIds.size + residualMetricIds.size, residualMetricIds,
+    // resourceBreakdown 按调用参数分开记最近发出的条，选择要能区分。
+    toJSON: () => ({ processDetails: [...softwareIds].sort(), residualDetails: [...residualMetricIds].sort() }),
+    has: softwareId => {
+      const id = softwareId.toLowerCase();
+      return id.startsWith(residualSoftwarePrefix) ? residualMetricIds.has(id.slice(residualSoftwarePrefix.length)) : softwareIds.has(id);
+    } };
+}
+
+function residualDetailsRejected(response, url) {
+  const invalid = url.searchParams.getAll("residualDetails").flatMap(value => value.split(",")).map(value => value.trim()).filter(Boolean)
+    .find(value => residualDetailMetricIds(new URL(`http://mock/?residualDetails=${encodeURIComponent(value)}`)) === null);
+  return json(response, 400, { error: `Resource residual details metric '${invalid}' is unsupported.` });
+}
+
 function resourceFactItemsKnown(url) {
   return url.searchParams.getAll("items").every(id => ["process.inventory", "process.attribution", "cpu.usage", "memory.usage", "disk.io", "network.traffic"].includes(id)
     || Object.hasOwn(processMemoryFacts, id) || /^gpu\.\d+\.(usage|vram)$/.test(id));
@@ -2011,8 +2053,8 @@ function fixtureCpuResidency(capturedAt = now()) {
   };
 }
 
-function resourceProcessDetails(url, capturedAt) {
-  const requested = new Set(normalizeMetricIds(url.searchParams.getAll("processDetails")).map(id => id.toLowerCase()));
+function resourceProcessDetails(url, capturedAt, residualMetricIds) {
+  const requested = processDetailSelection(url, residualMetricIds);
   if (requested.size === 0) return { version: 1, capturedAt: null, metrics: [] };
   const measures = url.searchParams.getAll("measures");
   // 明细按 measures 给出这个字段的进程，整机总量读不到也照样给。
@@ -2025,12 +2067,12 @@ function resourceProcessDetails(url, capturedAt) {
       software: bar.software
       .filter(row => requested.has(breakdown.softwareCatalog[row[0]][0].toLowerCase()))
       .map(row => ({ softwareId: breakdown.softwareCatalog[row[0]][0], processes: row[5] })) }));
-  // 和后端 r3 一样：明细带上 resource-residual:memory.usage，且选了 memory.usage、物理私有内存度量或页帧项
+  // 和后端一样：明细的 residualDetails 选了 memory.usage 的保留量，且选了 memory.usage、物理私有内存度量或页帧项
   // memory.residual.details 时才附上最近发布的页帧帧，带它自己的采集时间和状态；"absent" 是还没有发布过帧。
   const selected = new Set(normalizeMetricIds([...url.searchParams.getAll("ids"), ...measures]).map(id => id.toLowerCase()));
   const physicalPrivate = ["memory.usage", "memory.residual.details", "process_all_private_working_set_actual"].some(id => selected.has(id));
   const frame = scenario.physicalMemoryResidual !== "off" && scenario.physicalMemoryResidual !== "absent"
-    && requested.has(physicalMemoryResidualSoftwareId) && physicalPrivate
+    && residualMetricIds.has("memory.usage") && physicalPrivate
     ? physicalMemoryResidualFrame(scenario.physicalMemoryResidualCapturedAt) : null;
   return { version: 1, capturedAt: metrics.length ? capturedAt : frame?.capturedAt ?? null, ...(frame ? { physicalMemoryResidual: frame } : {}), metrics };
 }
@@ -2267,7 +2309,10 @@ function auditResourceBreakdown(capturedAt, generation, processDetailSoftwareIds
         null, value, value * 100 / capacity, 100, "测试用户", "x64", "direct", 0, String(132000000000000000n + BigInt(5000 + index))]] : [];
       return [index, value, value * 100 / capacity, processes.length || 1, 0, processes];
     });
-    return [...software, [residualIndex, residualValue, residualValue * 100 / capacity, 0, 0, []]];
+    // 后端的残差行下面是一项 PID -1 的 system-residual；只在 residualDetails 选了这条的整机指标时写出。
+    const residual = processDetailSoftwareIds.has(softwareCatalog[residualIndex][0])
+      ? [[-1, "", null, residualValue, residualValue * 100 / capacity, 100, null, null, "system-residual", 0, null]] : [];
+    return [...software, [residualIndex, residualValue, residualValue * 100 / capacity, 0, 0, residual]];
   };
   const memory = rows(4, 32, auditSoftware.length, 6.8 + 0.6 * Math.sin(generation));
   const cpu = rows(5, 100, auditSoftware.length + 1, 4 + 1.5 * Math.cos(generation));
@@ -3134,10 +3179,13 @@ function subscriptionPayloadFactory(url) {
         adapters: []
       });
     case "/api/resource-monitor/subscribe": {
-      // 和后端一样，不支持的 measures（例如峰值提交量）在条和明细上都拒绝。
+      // 和后端一样，不支持的 measures（例如峰值提交量）和 residualDetails 在条和明细上都拒绝。
       if (!resourceMeasuresKnown(url)) return null;
-      if (url.searchParams.get("scope") === "details") return publishedAt => resourceProcessDetails(url, publishedAt);
-      const processDetails = new Set(normalizeMetricIds(url.searchParams.getAll("processDetails")).map(id => id.toLowerCase()));
+      const residualMetricIds = residualDetailMetricIds(url);
+      // 后端解析 residualDetails 时抛出，整个订阅通道回 400「One or more subscription queries are invalid.」。
+      if (residualMetricIds === null) throw new Error("Resource residual details metric is unsupported.");
+      if (url.searchParams.get("scope") === "details") return publishedAt => resourceProcessDetails(url, publishedAt, residualMetricIds);
+      const processDetails = processDetailSelection(url, residualMetricIds);
       return (publishedAt) => {
         resourceSlotCapturedAt = publishedAt;
         const capturedAt = resourceSlotCapturedAt;

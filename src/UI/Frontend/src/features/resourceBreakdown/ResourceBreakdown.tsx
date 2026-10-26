@@ -57,7 +57,6 @@ import {
   resourceBarSourceChoices,
   resourceBarSourceLabel,
   resourceBarText,
-  physicalMemoryResidualSoftwareId,
   processSourceAdditivity,
   type ResourceBarView
 } from "./resourceBarSources.ts";
@@ -65,6 +64,8 @@ import {
 export interface ResourcePrecisionSelection {
   metricId: string;
   softwareId: string;
+  /** 选中这一段时它的 displayKind：系统/驱动保留按所属资源条的指标订阅分项，软件 id 不透明。 */
+  displayKind: string | null;
   index: number;
 }
 
@@ -432,6 +433,7 @@ function ResourceBreakdownItem(props: {
       props.onSelect({
         metricId: props.bar.metricId,
         softwareId: entry.segment.softwareId,
+        displayKind: entry.segment.displayKind ?? null,
         index: entry.index
       }, false);
     }
@@ -455,7 +457,7 @@ function ResourceBreakdownItem(props: {
     const currentIndex = segments.findIndex((segment) => segment.softwareId === currentId);
     const fallbackIndex = props.selected?.index ?? (step > 0 ? -1 : segments.length);
     const resolved = clampNumber((currentIndex >= 0 ? currentIndex : fallbackIndex) + step, 0, segments.length - 1);
-    props.onSelect({ metricId: props.bar.metricId, softwareId: segments[resolved].softwareId, index: resolved }, true);
+    props.onSelect({ metricId: props.bar.metricId, softwareId: segments[resolved].softwareId, displayKind: segments[resolved].displayKind ?? null, index: resolved }, true);
   };
 
   const selectByKey = (key: string) => {
@@ -470,6 +472,7 @@ function ResourceBreakdownItem(props: {
     props.onSelect({
       metricId: props.bar.metricId,
       softwareId: target.id,
+      displayKind: segments[target.index].displayKind ?? null,
       index: target.index
     }, true);
     return true;
@@ -770,8 +773,8 @@ function ResourceProcessPanel(props: {
           </p>
         )}
       </Show>
-      {/* 物理内存类的条（residualSource 为 counters）展开保留量时，明细订阅带着它的 id，后端另给页帧明细帧。 */}
-      <Show when={props.software.softwareId === physicalMemoryResidualSoftwareId && props.bar.residualSource === "counters"}>
+      {/* 物理内存类的条（residualSource 为 counters）展开保留量时，明细订阅用 residualDetails 选它，后端另给页帧明细帧。 */}
+      <Show when={isReservedSegment(props.software) && props.bar.residualSource === "counters"}>
         <PhysicalMemoryResidualDetails frame={props.physicalMemoryResidual} />
       </Show>
     </div>

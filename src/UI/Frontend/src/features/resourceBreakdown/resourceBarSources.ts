@@ -48,19 +48,14 @@ export function resourceBarSource(bar: Pick<ResourceBarSettings, "metricId" | "s
 }
 
 /**
- * 物理内存条的“系统/驱动保留”在后端的软件 id。物理内存类的条（自动选择或选了来源，整机比较指标都是 memory.usage）
- * 都把保留量放在这一行，分项是它下面 PID 为 -1 的行；进程明细（scope=details）带上这个 id 时，后端另外给出页帧明细帧。
- */
-export const physicalMemoryResidualSoftwareId = "resource-residual:memory.usage";
-
-/**
- * 资源条订阅（scope=bars）里要列出进程行的软件：有物理内存条时带上它的保留量，条上的提示才能列出分项。
- * 每条资源条无论 processDetails 怎样都带全部软件行；processDetails 只决定哪些软件行同时列出进程（分项），
+ * 资源条订阅（scope=bars）的 residualDetails：有物理内存条时选 memory.usage 的“系统/驱动保留”，条上的提示才能列出分项。
+ * 物理内存类的条（自动选择或选了来源，整机比较指标都是 memory.usage）都把保留量放在这一行，分项是它下面 PID 为 -1 的行。
+ * 每条资源条都带全部软件行；processDetails 和 residualDetails 只决定哪些行同时列出进程或分项，
  * 其余软件行保留 processCount、进程数组为空（权威 Bar software rows and process lists）。
- * 后端只在 scope=details 时读页帧明细，资源条订阅带这个 id 只多发保留量下面的计数器分项，不触发页帧读取。
+ * 后端只在 scope=details 时读页帧明细，资源条订阅选这个保留量只多发计数器分项，不触发页帧读取。
  */
-export function resourceBarDetailSoftwareIds(bars: readonly Pick<ResourceBarQuery, "metricId">[]): string[] {
-  return bars.some((bar) => bar.metricId === "memory.usage") ? [physicalMemoryResidualSoftwareId] : [];
+export function resourceBarResidualDetailMetricIds(bars: readonly Pick<ResourceBarQuery, "metricId">[]): string[] {
+  return bars.some((bar) => bar.metricId === "memory.usage") ? ["memory.usage"] : [];
 }
 
 /** 资源条在订阅里的样子：指标 id、缩放和来源（自动选择为 null，按 ids= 订阅；选了来源按这个字段的 measures= 订阅）。 */

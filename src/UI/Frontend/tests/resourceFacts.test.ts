@@ -52,7 +52,7 @@ assert.equal(empty.rows[0].status, "empty");
 assert.equal(empty.rows[0].values.memory.availability, "Unavailable");
 assert.throws(() => decodeResourceFacts({ ...raw, processes: [{ ...raw.processes[0], processStartKey: 9223372036854775807 }] }), ResponseDecodeError);
 assert.throws(() => decodeResourceFacts({ ...raw, processes: [] }), ResponseDecodeError);
-const query = { scope: "table" as const, bars: [], sampleMetricIds: ["memory.usage"], visibleColumnIds: ["name", "memory"], sortColumnId: "memory", sortDirection: "asc" as const, tableMode: "process" as const, processDetailSoftwareIds: [] };
+const query = { scope: "table" as const, bars: [], sampleMetricIds: ["memory.usage"], visibleColumnIds: ["name", "memory"], sortColumnId: "memory", sortDirection: "asc" as const, tableMode: "process" as const, processDetailSoftwareIds: [], residualDetailMetricIds: [] };
 const normalized = normalizeResourceMonitorQuery(query);
 assert.deepEqual(normalized, normalizeResourceMonitorQuery({ ...query, sortColumnId: "name", sortDirection: "desc", tableMode: "software", visibleColumnIds: ["memory", "name"] }));
 const url = new URL(buildResourceMonitorSubscriptionUrl(normalized, 1700), "http://localhost");

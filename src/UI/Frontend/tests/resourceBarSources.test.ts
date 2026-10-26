@@ -10,7 +10,7 @@ import {
 } from "../src/data/resourceMonitor/resourceMonitorApi.ts";
 import { decodeResourceBreakdownWireSnapshot } from "../src/api/resourceBreakdownWire.ts";
 import {
-  resourceBarDetailSoftwareIds,
+  resourceBarResidualDetailMetricIds,
   resourceBarQuery,
   resourceBarSourceChoices,
   resourceBarSourceLabel,
@@ -73,7 +73,7 @@ assert.deepEqual(resourceBarQuery(memory), { metricId: "memory.usage", scaleMode
 assert.deepEqual(resourceBarQuery({ ...memory, source: null }), { metricId: "memory.usage", scaleMode: "active", source: null });
 assert.deepEqual(resourceBarQuery({ ...cpu, source: "cpu_field" }).source, "cpu_field", "Any bar can keep its explicit catalog source");
 const query = (bars: ResourceBarSettings[]) => new URL(buildResourceMonitorSubscriptionUrl(normalizeResourceMonitorQuery({
-  scope: "bars", bars: bars.map(resourceBarQuery), processDetailSoftwareIds: [], sampleMetricIds: null, visibleColumnIds: [],
+  scope: "bars", bars: bars.map(resourceBarQuery), processDetailSoftwareIds: [], residualDetailMetricIds: [], sampleMetricIds: null, visibleColumnIds: [],
   sortColumnId: "impact", sortDirection: "desc", tableMode: "software" }), 1000), "http://local").searchParams;
 const mixed = query([cpu, memory]);
 assert.deepEqual(mixed.getAll("ids"), ["cpu.usage"]);
@@ -87,11 +87,12 @@ assert.deepEqual(query([memory, { ...memory, id: "resource-virtual-memory", metr
 
 // 进程明细和条一样带 measures：选了来源的资源条展开后按这个字段取进程。
 const details = new URL(buildResourceProcessDetailsSubscriptionUrl(normalizeResourceBreakdownQuery({
-  bars: [cpu, memory].map(resourceBarQuery), processDetailSoftwareIds: ["example"] }), 1000), "http://local").searchParams;
+  bars: [cpu, memory].map(resourceBarQuery), processDetailSoftwareIds: ["example"], residualDetailMetricIds: [] }), 1000), "http://local").searchParams;
 assert.equal(details.get("scope"), "details");
 assert.deepEqual(details.getAll("measures"), ["process_all_private_commit_actual"]);
 assert.deepEqual(details.getAll("ids"), ["cpu.usage"]);
 assert.deepEqual(details.getAll("processDetails"), ["example"]);
+assert.equal(details.has("residualDetails"), false, "No residual is selected unless one is asked for");
 
 // 条上的 processFieldName / totalMetricId：后端只给进程内存类的条；写了就必须是非空字符串。
 const wireBar = (metricId: string, extra: Record<string, unknown> = {}) => ({ metricId, unit: "B", scaleMode: "capacity",
@@ -143,8 +144,16 @@ assert.equal(frameViews[1].sourceBasis, undefined, "Static source text never inh
 const _typed: ResourceBreakdownBar = views[0];
 void _typed;
 
-// 条订阅只为物理内存条带上它的保留量（自动选择和选了来源都是 memory.usage 这一项）；别的条不带。
-assert.deepEqual(resourceBarDetailSoftwareIds([{ metricId: "cpu.usage" }, { metricId: "memory.usage" }]), ["resource-residual:memory.usage"]);
-assert.deepEqual(resourceBarDetailSoftwareIds([{ metricId: "cpu.usage" }, { metricId: "virtualMemory.usage" }]), []);
+// 条订阅只为物理内存条用 residualDetails 选它的保留量（自动选择和选了来源都是 memory.usage 这一项）；别的条不带。
+assert.deepEqual(resourceBarResidualDetailMetricIds([{ metricId: "cpu.usage" }, { metricId: "memory.usage" }]), ["memory.usage"]);
+assert.deepEqual(resourceBarResidualDetailMetricIds([{ metricId: "cpu.usage" }, { metricId: "virtualMemory.usage" }]), []);
+{
+  const bars = new URL(buildResourceMonitorSubscriptionUrl(normalizeResourceMonitorQuery({ scope: "bars", bars: [cpu, memory].map(resourceBarQuery),
+    processDetailSoftwareIds: [], residualDetailMetricIds: resourceBarResidualDetailMetricIds([cpu, memory].map(resourceBarQuery)),
+    sampleMetricIds: null, visibleColumnIds: [], sortColumnId: "impact", sortDirection: "desc", tableMode: "software" }), 1000), "http://local").searchParams;
+  assert.deepEqual(bars.getAll("residualDetails"), ["memory.usage"]);
+  assert.deepEqual(bars.getAll("processDetails"), [""], "processDetails only names real software");
+  assert.ok(!bars.toString().includes("resource-residual"), "The residual software id is never sent");
+}
 
 console.log("resourceBarSources: bar sources, measures query, bar views, text and wire decode passed");

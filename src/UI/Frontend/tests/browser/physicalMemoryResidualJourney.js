@@ -6,9 +6,10 @@ import { formatPercent } from "../../src/utils.ts";
  * 物理内存“系统/驱动保留”的分项与页帧明细（docs/runtime_process_attribution_and_io_network_telemetry.md，
  * Physical memory residual；简体中文）。
  *
- * 条订阅（scope=bars）为物理内存条带上 resource-residual:memory.usage，条上的保留量这一段的提示按后端顺序
+ * 条订阅（scope=bars）为物理内存条带上 residualDetails=memory.usage，条上的保留量这一段的提示按后端顺序
  * 列出计数器分项的名称（池标记还原成四个字符，含不可打印字节的显示十六进制）。选中这一段就展开它：
- * 明细订阅（scope=details）带上这个 id，展开面板写“N 个类别”、分项不显示成进程（没有 PID），面板下方是页帧明细：
+ * 明细订阅（scope=details）同样用 residualDetails=memory.usage 选它；任何订阅都不把残差的软件 id 写进 processDetails。
+ * 展开面板写“N 个类别”、分项不显示成进程（没有 PID），面板下方是页帧明细：
  * 就绪时列出各类别（非分页池下的标记归在一组）、未分类、保留量合计、已用和已归属的进程私有内存，并写出采集时间；
  * 按 Esc 收起后这条明细订阅随即释放。不可用的帧写出原因说明和代码；没有帧时写“尚未采集”。
  */
@@ -24,14 +25,21 @@ export default async function physicalMemoryResidualJourney(page, baseUrl) {
     const response = await fetch(`${baseUrl}/__test/scenario`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
     if (!response.ok) throw new Error(`Scenario ${JSON.stringify(patch)} was rejected`);
   };
-  const subscriptions = async () => {
+  const everySubscription = async () => {
     const telemetry = await (await fetch(`${baseUrl}/__test/requests`)).json();
     return Object.entries(telemetry["/api/resource-monitor/subscribe"]?.inFlightByQuery ?? {})
-      .filter(([, count]) => count > 0)
       .map(([query, count]) => ({ params: new URLSearchParams(query), count }));
   };
+  const subscriptions = async () => (await everySubscription()).filter(({ count }) => count > 0);
+  const listed = (params, name) => params.getAll(name).flatMap((value) => value.split(",")).map((value) => value.trim()).filter(Boolean);
+  const selectsResidual = (params) => listed(params, "residualDetails").includes("memory.usage");
+  // 后端 processDetails 只认真实软件：残差的软件 id 写在那里什么也选不到，前端任何时候都不能这样请求。
+  const assertNoResidualSoftwareId = async () => {
+    const offending = (await everySubscription()).filter(({ params }) => listed(params, "processDetails").some((id) => id.toLowerCase().startsWith("resource-residual:")));
+    if (offending.length) throw new Error(`A subscription names the residual software id in processDetails: ${offending.map(({ params }) => params.toString())}`);
+  };
   const residualDetailsOpen = async () => (await subscriptions())
-    .filter(({ params }) => params.get("scope") === "details" && params.getAll("processDetails").includes(residualId))
+    .filter(({ params }) => params.get("scope") === "details" && selectsResidual(params))
     .reduce((sum, { count }) => sum + count, 0);
   const waitFor = async (check, what) => {
     const deadline = Date.now() + 15_000;
@@ -62,10 +70,12 @@ export default async function physicalMemoryResidualJourney(page, baseUrl) {
   await track.waitFor({ timeout: 15_000 });
   await track.scrollIntoViewIfNeeded();
 
-  // 条订阅带着保留量的 id；收起状态下没有任何明细订阅。
+  // 条订阅用 residualDetails 选保留量，processDetails 不写任何软件；收起状态下没有任何明细订阅。
   await waitFor(async () => (await subscriptions()).some(({ params }) => params.get("scope") === "bars"
-    && JSON.stringify(params.getAll("processDetails")) === JSON.stringify([residualId])) || await subscriptions().then((items) => items.map(({ params }) => params.toString())),
+    && JSON.stringify(listed(params, "residualDetails")) === JSON.stringify(["memory.usage"]) && listed(params, "processDetails").length === 0)
+    || await subscriptions().then((items) => items.map(({ params }) => params.toString())),
     "Bars subscription with the residual leaves");
+  await assertNoResidualSoftwareId();
   if (await residualDetailsOpen() !== 0) throw new Error("A residual details subscription was open before the segment was expanded");
 
   // 选中保留量这一段：提示列出分项的名称和大小，名称由前端按标识给出。
@@ -130,7 +140,8 @@ export default async function physicalMemoryResidualJourney(page, baseUrl) {
   await details.waitFor();
   await waitFor(async () => await details.getAttribute("data-residual-state") === "ready" || await details.getAttribute("data-residual-state"), "Ready page frame breakdown");
   // 后端 r3 只在明细选了 memory.usage、物理私有内存度量或页帧项时附页帧帧；前端的明细订阅满足这个条件。
-  const detailsQueries = (await subscriptions()).filter(({ params }) => params.get("scope") === "details" && params.getAll("processDetails").includes(residualId));
+  const detailsQueries = (await subscriptions()).filter(({ params }) => params.get("scope") === "details" && selectsResidual(params));
+  if (detailsQueries.length === 0) throw new Error("No details subscription selects the residual through residualDetails");
   if (!detailsQueries.every(({ params }) => params.getAll("ids").flatMap((value) => value.split(",")).includes("memory.usage")
       || params.getAll("measures").includes("process_all_private_working_set_actual"))) {
     throw new Error(`The residual details request selects no physical memory metric: ${detailsQueries.map(({ params }) => params.toString())}`);
@@ -166,6 +177,7 @@ export default async function physicalMemoryResidualJourney(page, baseUrl) {
     throw new Error("Used or attributed private bytes are not shown as sent");
   }
   if (!(await details.innerText()).includes(copy.panel.identity)) throw new Error("The parts + unclassified = residual statement is missing");
+  await assertNoResidualSoftwareId();
 
   // 收起：明细订阅释放，页帧明细消失。
   await page.keyboard.press("Escape");
@@ -236,5 +248,6 @@ export default async function physicalMemoryResidualJourney(page, baseUrl) {
     }
   }
 
+  await assertNoResidualSoftwareId();
   return { leaves: expectedLeaves.length, pfnRows: expectedKinds.length };
 }

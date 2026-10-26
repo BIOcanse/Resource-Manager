@@ -164,15 +164,20 @@ test("M01 PFN details retain the published frame time and require a physical sel
   // 场景只选帧的状态、原因和它自己的采集时间，帧由 mock 按后端形状给出，和这里写出的整帧逐字段相同。
   await server.scenario({ physicalMemoryResidual: "unavailable", physicalMemoryResidualReason: physical.reasonCode,
     physicalMemoryResidualCapturedAt: physical.capturedAt });
+  // 保留量按 residualDetails 的指标选：资源条 id，或可加的度量（解析为它的整机指标）；processDetails 里写残差的软件 id 什么也不选。
   for (const [selection, owner, attached] of [
-    ["ids=memory.usage", "resource-residual:memory.usage", true],
-    ["measures=process_all_private_working_set_actual", "resource-residual:memory.usage", true],
-    ["ids=memory.residual.details", "resource-residual:memory.usage", true],
-    ["ids=cpu.usage", "resource-residual:memory.usage", false],
-    ["measures=process_all_working_set_actual", "resource-residual:memory.usage", false],
-    ["ids=memory.usage", "frontend-harness.software", false]
+    ["ids=memory.usage", "residualDetails=memory.usage", true],
+    ["measures=process_all_private_working_set_actual", "residualDetails=memory.usage", true],
+    ["measures=process_all_private_working_set_actual", "residualDetails=process_all_private_working_set_actual", true],
+    ["ids=memory.residual.details", "residualDetails=memory.usage", true],
+    ["ids=cpu.usage", "residualDetails=memory.usage", false],
+    ["measures=process_all_working_set_actual", "residualDetails=memory.usage", false],
+    ["ids=memory.usage", "residualDetails=cpu.usage", false],
+    ["ids=memory.usage", "residualDetails=", false],
+    ["ids=memory.usage", "processDetails=resource-residual:memory.usage", false],
+    ["ids=memory.usage", "processDetails=frontend-harness.software", false]
   ]) {
-    const frames = await server.frames([{ id: "details", path: `/api/resource-monitor/subscribe?scope=details&${selection}&processDetails=${owner}&intervalMs=100` }], frames => frames.length > 0);
+    const frames = await server.frames([{ id: "details", path: `/api/resource-monitor/subscribe?scope=details&${selection}&${owner}&intervalMs=100` }], frames => frames.length > 0);
     const details = frames[0].value;
     assert.deepEqual(details.physicalMemoryResidual, attached ? physical : undefined, selection + owner);
     if (selection.startsWith("measures=process_all_private")) {
@@ -180,9 +185,51 @@ test("M01 PFN details retain the published frame time and require a physical sel
       assert.equal(metric.metricId, "process_all_private_working_set_actual");
       assert.equal(metric.totalMetricId, "memory.usage");
       assert.notEqual(metric.capturedAt, physical.capturedAt);
-      assert(metric.software.some(row => row.softwareId === owner));
+      assert(metric.software.some(row => row.softwareId === "resource-residual:memory.usage"));
+    }
+    if (owner === "processDetails=resource-residual:memory.usage") {
+      // 和后端一样：processDetails 非空就照常给出所选指标，但残差的软件 id 是一个不认识的软件，没有任何软件行和分项。
+      assert.deepEqual(details.metrics.map(metric => [metric.metricId, metric.software]), [["memory.usage", []]], "the old residual software id is an unknown software");
     }
   }
   await server.scenario({ physicalMemoryResidual: "off", physicalMemoryResidualReason: "capture-time-limit",
     physicalMemoryResidualCapturedAt: "2026-10-26T05:59:50.000Z" });
+});
+
+test("M01 residualDetails selects a metric's residual rows like the backend and rejects unsupported metrics", async () => {
+  await server.scenario({ resourceSoftwareMix: "audit", resourceUnavailableBarIds: [] });
+  try {
+    const residualRows = (breakdown, metricId) => {
+      const bar = breakdown.bars.find(item => item.metricId === metricId);
+      return bar.software.find(row => breakdown.softwareCatalog[row[0]][0] === `resource-residual:${metricId}`)[5];
+    };
+    for (const path of ["/api/resource-monitor/snapshot", "/api/resource-breakdown/snapshot"]) {
+      for (const [selector, selected] of [
+        ["residualDetails=memory.usage", ["memory.usage"]],
+        ["residualDetails= MEMORY.USAGE ,,memory.usage&residualDetails=cpu.usage", ["cpu.usage", "memory.usage"]],
+        ["residualDetails=", []],
+        ["", []],
+        ["processDetails=resource-residual:memory.usage", []]
+      ]) {
+        const { status, value } = await server.json(`${path}?ids=cpu.usage,memory.usage&${selector}`);
+        assert.equal(status, 200, path + selector);
+        const breakdown = value.breakdown ?? value;
+        for (const metricId of ["cpu.usage", "memory.usage"]) {
+          assert.equal(residualRows(breakdown, metricId).length > 0, selected.includes(metricId), `${path}?${selector}: ${metricId}`);
+        }
+      }
+      for (const invalid of ["unknown.metric", "process_all_working_set_actual", "memory.residual.details", "memory.usage,unknown.metric"]) {
+        const { status, value } = await server.json(`${path}?ids=memory.usage&residualDetails=${invalid}`);
+        assert.equal(status, 400, path + invalid);
+        assert.match(value.error, /Resource residual details metric/);
+      }
+    }
+    const { status, value } = await server.json("/api/subscriptions/stream", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ version: 1, subscriptions: [{ id: "valid", path: "/api/resource-monitor/subscribe?scope=bars&ids=cpu.usage" },
+        { id: "invalid", path: "/api/resource-monitor/subscribe?scope=bars&ids=memory.usage&residualDetails=unknown.metric" }] }) });
+    assert.equal(status, 400);
+    assert.equal(value.error, "One or more subscription queries are invalid.");
+  } finally {
+    await server.scenario({ resourceSoftwareMix: "uniform", resourceUnavailableBarIds: [] });
+  }
 });
