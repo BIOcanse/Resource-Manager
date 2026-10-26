@@ -114,3 +114,13 @@ assert.equal(fitCanvasLabel(width, "Microsoft Edge", 50, 3), "Micros…");
 assert.equal(fitCanvasLabel(width, "Microsoft Edge", 20, 3), "", "a label cut to fewer than three characters is not drawn");
 assert.equal(fitCanvasLabel(width, "Microsoft Edge", 77, 3), "Microsoft…", "no space is left before the ellipsis");
 
+// ---- 焦点和高对比 ----
+// 键盘焦点有外框；Windows 高对比下焦点、悬停、选中改用系统颜色的外框。
+const resources = stripComments(read("styles/resources.css"));
+assert.match(resources, /\.resource-bar-track:focus-visible,\s*\.resource-process-track:focus-visible\s*\{\s*outline:\s*var\(--focus-ring\);/,
+  "keyboard focus on a resource track draws the shared focus ring");
+const forced = /@media \(forced-colors: active\) \{([\s\S]*?)\n\}/.exec(resources)?.[1] ?? "";
+assert.match(forced, /\.resource-bar-track:focus-visible[\s\S]*?outline: 2px solid Highlight/);
+assert.match(forced, /\.resource-segment-interaction-proxy\.pointer-active\s*\{[^}]*outline:/);
+assert.match(forced, /\.resource-segment\.precision-selected[\s\S]*?outline: 3px solid Highlight/);
+

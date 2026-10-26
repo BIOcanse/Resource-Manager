@@ -69,7 +69,6 @@ button {
   transform: scale(0.98);
 }
 
-/* 数据分段、表头排序、编辑槽整体不参与按压缩放（与拖拽/精确选择冲突） */
 /* 带选中指示条的组：文字颜色跟着指示条走（--tab-cover 每帧变），不再加 CSS 过渡；
    按压不缩放：缩放会让这一项变成独立的层，未选中的底就盖到指示条上面。 */
 .has-selection-indicator .page-tab,
@@ -91,12 +90,6 @@ button {
 
 :where(body[data-animations="normal"]) .has-selection-indicator .page-tab:active,
 :where(body[data-animations="normal"]) .has-selection-indicator .segment:active {
-  transform: none;
-}
-
-button.resource-segment:active,
-button.resource-segment-empty:active,
-button.resource-process-segment:active {
   transform: none;
 }
 
@@ -387,13 +380,6 @@ body[data-animations="ultra"] .resource-table-row,
 body[data-animations="ultra"] .resource-segment-layer,
 body[data-animations="ultra"] .resource-segment-canvas {
   will-change: auto;
-}
-
-body[data-animations="ultra"] .resource-segment:hover,
-body[data-animations="ultra"] .resource-process-segment:hover,
-body[data-animations="ultra"] .resource-segment-empty:hover,
-body[data-animations="ultra"] .resource-segment.precision-selected {
-  filter: none;
 }
 
 body[data-animations="ultra"] .device-port-item:hover,

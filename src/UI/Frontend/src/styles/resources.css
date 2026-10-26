@@ -895,12 +895,17 @@
   font-size: 12px;
 }
 
+/* 精确选择中：边线换成强调色。键盘焦点另加一圈 --focus-ring 外框，和其它控件的焦点一样看得清。 */
 .resource-bar-track:focus-visible,
 .resource-process-track:focus-visible,
 .resource-bar-track.precision-active {
-  outline: none;
   border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent-soft);
+}
+
+.resource-bar-track:focus-visible,
+.resource-process-track:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
 }
 
 /* 交互层按设备像素对齐后的 translateX + 真实宽度定位；没有像素几何时退回百分比位置。 */
@@ -924,9 +929,10 @@
   pointer-events: none;
 }
 
+/* 悬停：外圈一道深色细线、里面一道浅色细线，浅色段、空余段和深色底上都看得出；比选中框（下面）细一档。 */
 .resource-segment-interaction-proxy.pointer-active {
   z-index: 6;
-  box-shadow: inset 0 0 0 1px color(display-p3 1 1 1 / 0.52);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.42), inset 0 0 0 2px rgb(255 255 255 / 0.78);
 }
 
 .resource-breakdown-header .resource-breakdown-order-actions {
@@ -1000,15 +1006,10 @@
 /* Selection: high-contrast white inner ring + faint dark outer ring for
    definition on any segment colour; empty (light) uses a text-coloured ring.
    Drawn on the transparent interaction layer above the single painted bar. */
-.resource-segment.precision-selected {
-  z-index: 5;
-  box-shadow: inset 0 0 0 2px color(display-p3 1 1 1 / 0.92), inset 0 0 0 3px color(display-p3 0 0 0 / 0.22);
-  filter: brightness(1.05);
-}
-
+.resource-segment.precision-selected,
 .resource-segment-empty.precision-selected {
   z-index: 5;
-  box-shadow: inset 0 0 0 2px var(--text);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.55), inset 0 0 0 3px rgb(255 255 255 / 0.94), inset 0 0 0 4px rgb(0 0 0 / 0.28);
 }
 
 .resource-segment > span:not(.resource-tooltip),
@@ -1026,13 +1027,6 @@
   transform-origin: center;
 }
 
-.resource-segment:hover,
-.resource-process-segment:hover,
-.resource-segment-empty:hover {
-  filter: brightness(0.95);
-  z-index: 6;
-}
-
 
 .resource-process-track.empty {
   display: flex;
@@ -1047,7 +1041,7 @@
 
 .resource-process-segment.process-selected {
   z-index: 5;
-  box-shadow: inset 0 0 0 2px color(display-p3 1 1 1 / 0.92), inset 0 0 0 3px color(display-p3 0 0 0 / 0.22);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.55), inset 0 0 0 3px rgb(255 255 255 / 0.94), inset 0 0 0 4px rgb(0 0 0 / 0.28);
 }
 
 .resource-selection-detail,
@@ -1102,6 +1096,30 @@
 .resource-segment-empty:hover .resource-tooltip,
 .resource-tooltip.visible {
   z-index: 80;
+}
+
+/* Windows 高对比（强制颜色）：阴影会被去掉，焦点、悬停和选中都改用系统颜色的外框。画布里的分段不受影响。 */
+@media (forced-colors: active) {
+  .resource-bar-track:focus-visible,
+  .resource-process-track:focus-visible {
+    outline: 2px solid Highlight;
+  }
+
+  .resource-segment-interaction-proxy.pointer-active {
+    outline: 2px solid CanvasText;
+    outline-offset: -2px;
+  }
+
+  .resource-segment.precision-selected,
+  .resource-segment-empty.precision-selected,
+  .resource-process-segment.process-selected {
+    outline: 3px solid Highlight;
+    outline-offset: -3px;
+  }
+
+  .resource-tooltip {
+    outline: 1px solid CanvasText;
+  }
 }
 
 body.resource-precision-cursor-hidden .resource-breakdown-panel,
