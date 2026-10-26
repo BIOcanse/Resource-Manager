@@ -162,7 +162,7 @@ public sealed class ManagementOperationFeedbackTests
     {
         var now = DateTimeOffset.UtcNow;
         return new("00000000000000000000000000000001", "component.install", "component:shared-webview2-runtime",
-            new HostManagerOperationSubject(TargetId: "shared-webview2-runtime"), error is null ? "succeeded" : "failed", 1, 1, 1, 3, now, now, now, false, null, result, error);
+            new HostManagerOperationSubject(HostManagerOperationTargetKind.Component, TargetId: "shared-webview2-runtime"), error is null ? "succeeded" : "failed", 1, 1, 1, 3, now, now, now, false, null, result, error);
     }
 
     private static HostManagerOperationActionTicket Ticket(bool install)

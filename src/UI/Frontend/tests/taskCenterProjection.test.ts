@@ -46,7 +46,7 @@ class FakeOperationSource {
   const resultMessage = { domain: 1, code: 22, args: [] };
   const errorMessage = { domain: 6, code: 1, args: [] };
   source.snapshot = operationRegistrySnapshot(1, [operation({
-    subject: { targetId: "runtime", scope: null, mode: null, targetPath: null }, domainKey: "component:runtime", resultCode: "InstallerLaunched",
+    subject: { targetKind: "Component", targetName: null, targetId: "runtime", scope: null, mode: null, targetPath: null }, domainKey: "component:runtime", resultCode: "InstallerLaunched",
     resultMessage, errorMessage,
     progress: { sequence: "1", percent: 50, bytesDone: "5", bytesTotal: "10", speedBytesPerSecond: null, stage: "Download" }
   })]);
@@ -315,7 +315,7 @@ function operation(
     id: "00000000000000000000000000000001",
     kind: "component.install",
     domainKey: "component.example",
-    subject: { targetId: "internal-component-id", scope: null, mode: null, targetPath: null },
+    subject: { targetKind: "Component", targetName: null, targetId: "internal-component-id", scope: null, mode: null, targetPath: null },
     state: "running",
     configurationGeneration: "1",
     stateRevision: "1",

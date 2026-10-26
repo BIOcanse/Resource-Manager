@@ -28,7 +28,7 @@ public sealed class JsonMetadataContractTests
         var time = DateTimeOffset.UnixEpoch;
         var operation = new ResourceManager.App.Domain.Operations.HostManagerOperationSnapshot(
             "00000000000000000000000000000001", "component.install", "component:example",
-            new ResourceManager.App.Domain.Operations.HostManagerOperationSubject(TargetId: "example"),
+            new ResourceManager.App.Domain.Operations.HostManagerOperationSubject(ResourceManager.App.Domain.Operations.HostManagerOperationTargetKind.Component, TargetId: "example"),
             "failed", 1, 1, 1, 1, time, time, time, false, null, null,
             ResourceManager.App.Infrastructure.Operations.HostManagerOperationFeedback.Failure(new IOException(diagnostic)));
         var state = new ResourceManager.App.Domain.Operations.HostManagerOperationsPublishedState(time, 1, 1,

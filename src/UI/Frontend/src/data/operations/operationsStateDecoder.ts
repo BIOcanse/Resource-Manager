@@ -222,11 +222,21 @@ function decodeProgress(value: unknown, path: string): OperationProgress {
 function decodeSubject(value: unknown, path: string): OperationSubject {
   const record = requireRecord(value, path);
   return Object.freeze({
-    targetId: requireNullable(record.targetId, `${path}.targetId`, requireNonEmptyString),
+    targetKind: requireOneOf(record.targetKind, `${path}.targetKind`, ["Component", "Dependency", "Software", "Path", "AllVolumes"] as const),
+    targetName: requireNullable(record.targetName, `${path}.targetName`, requireRecordedText),
+    targetId: requireNullable(record.targetId, `${path}.targetId`, requireRecordedText),
     scope: requireNullable(record.scope, `${path}.scope`, requireNonEmptyString),
     mode: requireNullable(record.mode, `${path}.mode`, requireNonEmptyString),
-    targetPath: requireNullable(record.targetPath, `${path}.targetPath`, requireNonEmptyString)
+    targetPath: requireNullable(record.targetPath, `${path}.targetPath`, requireRecordedText)
   });
+}
+
+function requireRecordedText(value: unknown, path: string): string {
+  const text = requireString(value, path);
+  if (!text.trim() || text.includes("\0")) {
+    throw new ResponseDecodeError(path, "non-empty recorded text without NUL");
+  }
+  return text;
 }
 
 function requireUInt64Decimal(value: unknown, path: string): string {

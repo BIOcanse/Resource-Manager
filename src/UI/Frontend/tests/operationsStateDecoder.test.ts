@@ -15,7 +15,7 @@ const operation = {
   id: "00000000000000000000000000000001",
   kind: "component.install",
   domainKey: "component.example",
-  subject: { targetId: "example", scope: null, mode: null, targetPath: null },
+  subject: { targetKind: "Component", targetName: null, targetId: "example", scope: null, mode: null, targetPath: null },
   state: "running",
   configurationGeneration: "18446744073709551615",
   stateRevision: "42",
@@ -54,6 +54,12 @@ assert.equal(
 assert.notEqual(decoded, envelope);
 assert.notEqual(decoded.operations[0], operation);
 assert.equal(operationSnapshotDecoder.decode(operation).id, operation.id);
+assert.deepEqual(decoded.operations[0].subject, operation.subject);
+for (const targetKind of ["Component", "Dependency", "Software", "Path", "AllVolumes"] as const) {
+  const subject = { ...operation.subject, targetKind, targetName: "  Recorded 产品名称  " };
+  assert.deepEqual(operationSnapshotDecoder.decode({ ...operation, subject }).subject, subject);
+  assert.ok(Object.isFrozen(operationSnapshotDecoder.decode({ ...operation, subject }).subject));
+}
 const withUnrecognizedDiagnostics = operationsStateDecoder.decode({ ...envelope, faultMessage: "internal fault",
   operations: [{ ...operation, diagnostic: "internal exception" }] });
 assert.equal("faultMessage" in withUnrecognizedDiagnostics, false);
@@ -70,6 +76,12 @@ assert.equal(formatUInt64Bytes("1024"), "1.02 kB");
 assert.equal(formatUInt64Bytes("1000"), "1.00 kB");
 
 const invalidCases: Array<[unknown, string]> = [
+  [{ ...envelope, operations: [{ ...operation, subject: { ...operation.subject, targetKind: undefined } }] }, "$.operations[0].subject.targetKind"],
+  [{ ...envelope, operations: [{ ...operation, subject: { ...operation.subject, targetKind: "component" } }] }, "$.operations[0].subject.targetKind"],
+  [{ ...envelope, operations: [{ ...operation, subject: { ...operation.subject, targetKind: 1 } }] }, "$.operations[0].subject.targetKind"],
+  [{ ...envelope, operations: [{ ...operation, subject: { ...operation.subject, targetName: undefined } }] }, "$.operations[0].subject.targetName"],
+  [{ ...envelope, operations: [{ ...operation, subject: { ...operation.subject, targetName: "" } }] }, "$.operations[0].subject.targetName"],
+  [{ ...envelope, operations: [{ ...operation, subject: { ...operation.subject, targetName: 42 } }] }, "$.operations[0].subject.targetName"],
   [[], "$"],
   [{ ...envelope, schema: "host-manager.operations.state.v0" }, "$.schema"],
   [{ ...envelope, publicationRevision: 1 }, "$.publicationRevision"],

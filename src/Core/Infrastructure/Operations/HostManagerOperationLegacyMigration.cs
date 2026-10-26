@@ -36,7 +36,7 @@ internal static class HostManagerOperationLegacyMigration
             {
                 throw new InvalidDataException($"Legacy operation {record.OperationId.High:x16}{record.OperationId.Low:x16} cannot recover target/caller facts for kind {kind}, request schema {request.SchemaId:x}: {error.Message}", error);
             }
-            record.SubjectHandle = payloads.Add(HostManagerOperationRequestSchemas.Subject, HostManagerOperationRequestSchemas.Version,
+            record.SubjectHandle = payloads.Add(HostManagerOperationRequestSchemas.Subject, HostManagerOperationRequestSchemas.SubjectVersion,
                 HostManagerOperationPayloadRole.Subject, legacy.SessionInstanceId, record.OperationId, default,
                 HostManagerOperationRequestCodec.EncodeSubject(subject)).Handle;
             record.Flags |= (ulong)NativeOperationFlags.SubjectValid;
@@ -95,23 +95,23 @@ internal static class HostManagerOperationLegacyMigration
         if (kind == HostManagerOperationKinds.DiskUsageScan && request.SchemaId == HostManagerOperationRequestSchemas.DiskUsageScan)
         {
             var (scan, _) = HostManagerOperationRequestCodec.DecodeDiskUsageScan(request.Payload);
-            return new(Scope: scan.Scope, Mode: scan.Mode, TargetPath: string.IsNullOrEmpty(scan.Target) ? null : scan.Target);
+            return new(HostManagerOperationRequestCodec.TargetKindFor(kind, scan.Scope), Scope: scan.Scope, Mode: scan.Mode, TargetPath: string.IsNullOrEmpty(scan.Target) ? null : scan.Target);
         }
         if (kind == HostManagerOperationKinds.SoftwareUninstall)
         {
             if (request.SchemaId == HostManagerOperationRequestSchemas.UserSoftwareUninstall)
-                return new(TargetId: HostManagerOperationRequestCodec.DecodeUserSoftwareUninstall(request.Payload).Request.Id);
+                return new(HostManagerOperationRequestCodec.TargetKindFor(kind), TargetId: HostManagerOperationRequestCodec.DecodeUserSoftwareUninstall(request.Payload).Request.Id);
             if (request.SchemaId == HostManagerOperationRequestSchemas.SoftwareUninstall)
-                return new(TargetId: HostManagerOperationRequestCodec.DecodeBooleanRequest(request.Payload).Id);
+                return new(HostManagerOperationRequestCodec.TargetKindFor(kind), TargetId: HostManagerOperationRequestCodec.DecodeBooleanRequest(request.Payload).Id);
         }
         if ((kind == HostManagerOperationKinds.ComponentInstall && request.SchemaId == HostManagerOperationRequestSchemas.UserComponentInstall)
             || (kind == HostManagerOperationKinds.DependencyLaunchInstaller && request.SchemaId == HostManagerOperationRequestSchemas.UserDependencyInstaller))
-            return new(TargetId: HostManagerOperationRequestCodec.DecodeUserAcquisitionRequest(request.Payload).Id);
+            return new(HostManagerOperationRequestCodec.TargetKindFor(kind), TargetId: HostManagerOperationRequestCodec.DecodeUserAcquisitionRequest(request.Payload).Id);
         if ((kind == HostManagerOperationKinds.ComponentDownload && request.SchemaId == HostManagerOperationRequestSchemas.ComponentDownload)
             || (kind == HostManagerOperationKinds.ComponentInstall && request.SchemaId == HostManagerOperationRequestSchemas.ComponentInstall)
             || (kind == HostManagerOperationKinds.DependencyDownload && request.SchemaId == HostManagerOperationRequestSchemas.DependencyDownload)
             || (kind == HostManagerOperationKinds.DependencyLaunchInstaller && request.SchemaId == HostManagerOperationRequestSchemas.DependencyInstaller))
-            return new(TargetId: HostManagerOperationRequestCodec.DecodeAcquisitionRequest(request.Payload).Id);
+            return new(HostManagerOperationRequestCodec.TargetKindFor(kind), TargetId: HostManagerOperationRequestCodec.DecodeAcquisitionRequest(request.Payload).Id);
         throw new InvalidDataException("The operation kind and canonical request schema do not identify supported recovery facts.");
     }
 

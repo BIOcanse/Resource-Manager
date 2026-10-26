@@ -5,6 +5,7 @@ internal static class HostManagerOperationRequestSchemas
     public const uint KindName = 0x0001;
     public const uint DomainKey = 0x0002;
     public const uint Subject = 0x0003;
+    public const uint SubjectVersion = 2;
     // 0x01x1 / 0x02x1 是只带"是否确认条款"的旧载荷；0x01x2 / 0x02x2 在其后追加了版本选择。
     // 载荷格式按 schema id 区分，其余动作仍用布尔载荷，不受影响。
     public const uint ComponentDownload = 0x0111;

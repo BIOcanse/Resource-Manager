@@ -125,6 +125,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             SoftwareOperationRequest request,
             HttpContext context,
             IHostManagerOperationCommandService operationService,
+            ISoftwareRegistryView softwareRegistry,
             CancellationToken cancellationToken) =>
         {
             if (!ResourceManager.App.Infrastructure.Security.WindowsLoopbackApiAdministratorReader.TryReadCallerIdentity(context, out var caller)
@@ -136,8 +137,10 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             {
                 return Results.Ok(HostManagerOperationWireProjection.Project(
                     await operationService.SubmitAsync(
-                    HostManagerOperationRequestCodec.SoftwareUninstall(request,
-                        new(caller.WindowsSid, checked((uint)caller.WindowsSessionId))),
+                    await CreateSoftwareUninstallCommandAsync(request,
+                        new(caller.WindowsSid, checked((uint)caller.WindowsSessionId)), softwareRegistry,
+                        context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("OperationTargetCapture"),
+                        cancellationToken),
                     cancellationToken)));
             }
             catch (UnauthorizedAccessException)
@@ -151,5 +154,25 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         });
 
         return app;
+    }
+
+    internal static async Task<ResourceManager.App.Domain.Operations.HostManagerOperationSubmitCommand> CreateSoftwareUninstallCommandAsync(
+        SoftwareOperationRequest request, SoftwareOperationCaller caller, ISoftwareRegistryView registry,
+        ILogger logger, CancellationToken cancellationToken)
+    {
+        string? name = null;
+        try
+        {
+            var records = await registry.GetSoftwareAsync(caller.WindowsSid, cancellationToken);
+            name = records.FirstOrDefault(record =>
+                string.Equals(record.Id, request.Id, StringComparison.OrdinalIgnoreCase))?.Name;
+            if (name is null)
+                logger.LogInformation("No software name was recorded for operation target {TargetId} in the caller's catalog.", request.Id);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            logger.LogWarning(error, "The software catalog was unavailable when accepting operation target {TargetId}; its recorded name is null.", request.Id);
+        }
+        return HostManagerOperationRequestCodec.SoftwareUninstall(request, caller, name);
     }
 }

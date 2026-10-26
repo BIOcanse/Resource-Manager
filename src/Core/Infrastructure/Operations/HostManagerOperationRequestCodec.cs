@@ -42,7 +42,7 @@ internal static class HostManagerOperationRequestCodec
         ComponentActionRequest request)
         => CreateAcquisitionRequest(
             HostManagerOperationKinds.ComponentDownload,
-            new HostManagerOperationSubject(TargetId: ValidateText(id, nameof(id))),
+            new HostManagerOperationSubject(HostManagerOperationTargetKind.Component, TargetId: ValidateText(id, nameof(id))),
             $"component:{id}",
             HostManagerOperationRequestSchemas.ComponentDownload,
             id,
@@ -54,7 +54,7 @@ internal static class HostManagerOperationRequestCodec
         ComponentActionRequest request)
         => CreateAcquisitionRequest(
             HostManagerOperationKinds.ComponentInstall,
-            new HostManagerOperationSubject(TargetId: ValidateText(id, nameof(id))),
+            new HostManagerOperationSubject(HostManagerOperationTargetKind.Component, TargetId: ValidateText(id, nameof(id))),
             $"component:{id}",
             HostManagerOperationRequestSchemas.ComponentInstall,
             id,
@@ -67,7 +67,7 @@ internal static class HostManagerOperationRequestCodec
         SoftwareOperationCaller caller)
         => CreateUserAcquisitionRequest(
             HostManagerOperationKinds.ComponentInstall,
-            new HostManagerOperationSubject(TargetId: ValidateText(id, nameof(id))),
+            new HostManagerOperationSubject(HostManagerOperationTargetKind.Component, TargetId: ValidateText(id, nameof(id))),
             $"component:{id}",
             HostManagerOperationRequestSchemas.UserComponentInstall,
             id,
@@ -80,7 +80,7 @@ internal static class HostManagerOperationRequestCodec
         OptionalDependencyDownloadRequest request)
         => CreateAcquisitionRequest(
             HostManagerOperationKinds.DependencyDownload,
-            new HostManagerOperationSubject(TargetId: ValidateText(id, nameof(id))),
+            new HostManagerOperationSubject(HostManagerOperationTargetKind.Dependency, TargetId: ValidateText(id, nameof(id))),
             $"dependency:{id}",
             HostManagerOperationRequestSchemas.DependencyDownload,
             id,
@@ -92,7 +92,7 @@ internal static class HostManagerOperationRequestCodec
         OptionalDependencyInstallRequest request)
         => CreateAcquisitionRequest(
             HostManagerOperationKinds.DependencyLaunchInstaller,
-            new HostManagerOperationSubject(TargetId: ValidateText(id, nameof(id))),
+            new HostManagerOperationSubject(HostManagerOperationTargetKind.Dependency, TargetId: ValidateText(id, nameof(id))),
             $"dependency:{id}",
             HostManagerOperationRequestSchemas.DependencyInstaller,
             id,
@@ -105,7 +105,7 @@ internal static class HostManagerOperationRequestCodec
         SoftwareOperationCaller caller)
         => CreateUserAcquisitionRequest(
             HostManagerOperationKinds.DependencyLaunchInstaller,
-            new HostManagerOperationSubject(TargetId: ValidateText(id, nameof(id))),
+            new HostManagerOperationSubject(HostManagerOperationTargetKind.Dependency, TargetId: ValidateText(id, nameof(id))),
             $"dependency:{id}",
             HostManagerOperationRequestSchemas.UserDependencyInstaller,
             id,
@@ -114,10 +114,10 @@ internal static class HostManagerOperationRequestCodec
             caller);
 
     internal static HostManagerOperationSubmitCommand SoftwareUninstall(
-        SoftwareOperationRequest request, SoftwareOperationCaller caller)
+        SoftwareOperationRequest request, SoftwareOperationCaller caller, string? targetName = null)
         => new(
             HostManagerOperationKinds.SoftwareUninstall,
-            new HostManagerOperationSubject(TargetId: ValidateText(request.Id, nameof(request.Id))),
+            new HostManagerOperationSubject(HostManagerOperationTargetKind.Software, TargetId: ValidateText(request.Id, nameof(request.Id)), TargetName: targetName),
             $"software:{request.Id}",
             HostManagerOperationRequestSchemas.UserSoftwareUninstall,
             HostManagerOperationRequestSchemas.Version,
@@ -156,6 +156,8 @@ internal static class HostManagerOperationRequestCodec
         DiskUsageResultOwner? owner)
     {
         ArgumentNullException.ThrowIfNull(request);
+        if (request.Scope is not (DiskUsageScanScopes.AllVolumes or DiskUsageScanScopes.Volume or DiskUsageScanScopes.Folder))
+            throw new ArgumentException("The disk-usage scan scope does not identify a supported target.", nameof(request));
         var payload = Encode(writer =>
         {
             WriteString(writer, request.Scope);
@@ -171,7 +173,7 @@ internal static class HostManagerOperationRequestCodec
         // 同一时刻只允许一个磁盘扫描：域键固定，协调器自己会挡掉重复提交。
         return new HostManagerOperationSubmitCommand(
             HostManagerOperationKinds.DiskUsageScan,
-            new HostManagerOperationSubject(Scope: request.Scope, Mode: request.Mode, TargetPath: request.Target),
+            new HostManagerOperationSubject(TargetKindFor(HostManagerOperationKinds.DiskUsageScan, request.Scope), Scope: request.Scope, Mode: request.Mode, TargetPath: string.IsNullOrEmpty(request.Target) ? null : request.Target, TargetName: request.Scope == DiskUsageScanScopes.AllVolumes ? null : request.Target),
             "disk-usage:scan",
             HostManagerOperationRequestSchemas.DiskUsageScan,
             HostManagerOperationRequestSchemas.Version,
@@ -241,11 +243,16 @@ internal static class HostManagerOperationRequestCodec
     internal static byte[] EncodeSubject(HostManagerOperationSubject subject)
         => Encode(writer =>
         {
+            if (!Enum.IsDefined(subject.TargetKind))
+                throw new ArgumentOutOfRangeException(nameof(subject));
             foreach (var value in new[] { subject.TargetId, subject.Scope, subject.Mode, subject.TargetPath })
             {
                 writer.Write(!string.IsNullOrEmpty(value));
                 if (!string.IsNullOrEmpty(value)) WriteString(writer, value);
             }
+            writer.Write((byte)subject.TargetKind);
+            writer.Write(subject.TargetName is not null);
+            if (subject.TargetName is not null) WriteString(writer, subject.TargetName);
         });
 
     internal static HostManagerOperationSubject DecodeSubject(ReadOnlySpan<byte> payload)
@@ -255,9 +262,36 @@ internal static class HostManagerOperationRequestCodec
         var values = new string?[4];
         for (var index = 0; index < values.Length; index++)
             values[index] = reader.ReadBoolean() ? ReadString(reader) : null;
+        var targetKind = (HostManagerOperationTargetKind)reader.ReadByte();
+        if (!Enum.IsDefined(targetKind))
+            throw new InvalidDataException("The operation target kind is invalid.");
+        var targetName = reader.ReadBoolean() ? ReadString(reader) : null;
         RequireEnd(stream);
-        return new(values[0], values[1], values[2], values[3]);
+        return new(targetKind, values[0], values[1], values[2], values[3], targetName);
     }
+
+    // A v1 subject recorded identity only. Never backfill its name from a current catalog.
+    internal static HostManagerOperationSubject DecodeLegacySubject(ReadOnlySpan<byte> payload, string kind)
+    {
+        using var stream = new MemoryStream(payload.ToArray(), writable: false);
+        using var reader = new BinaryReader(stream, StrictUtf8, leaveOpen: true);
+        var values = new string?[4];
+        for (var index = 0; index < values.Length; index++)
+            values[index] = reader.ReadBoolean() ? ReadString(reader) : null;
+        RequireEnd(stream);
+        return new(TargetKindFor(kind, values[1]), values[0], values[1], values[2], values[3], null);
+    }
+
+    internal static HostManagerOperationTargetKind TargetKindFor(string kind, string? scope = null)
+        => kind switch
+        {
+            HostManagerOperationKinds.ComponentDownload or HostManagerOperationKinds.ComponentInstall => HostManagerOperationTargetKind.Component,
+            HostManagerOperationKinds.DependencyDownload or HostManagerOperationKinds.DependencyLaunchInstaller => HostManagerOperationTargetKind.Dependency,
+            HostManagerOperationKinds.SoftwareUninstall => HostManagerOperationTargetKind.Software,
+            HostManagerOperationKinds.DiskUsageScan when scope == DiskUsageScanScopes.AllVolumes => HostManagerOperationTargetKind.AllVolumes,
+            HostManagerOperationKinds.DiskUsageScan when scope is DiskUsageScanScopes.Folder or DiskUsageScanScopes.Volume => HostManagerOperationTargetKind.Path,
+            _ => throw new InvalidDataException("The operation kind and scope do not identify a target kind.")
+        };
 
     internal static byte[] EncodeStage(HostManagerOperationStage stage)
         => Enum.IsDefined(stage) ? [(byte)stage] : throw new ArgumentOutOfRangeException(nameof(stage));

@@ -572,7 +572,7 @@ async function handleApi(request, response, url) {
     return;
   }
   if (path === "/api/disk-usage/scan" && request.method === "POST") {
-    await readBody(request);
+    const scan = JSON.parse(await readBody(request));
     if (scenario.diskUsageScanFailure) {
       return json(response, 503, { error: "fixture scan submission failure" });
     }
@@ -583,8 +583,10 @@ async function handleApi(request, response, url) {
     diskScanOperation = {
       id: `d5${(++diskScanSequence).toString(16).padStart(30, "0")}`,
       kind: "disk-usage.scan",
-      domainKey: null,
-      subject: { targetId: null, scope: "global", mode: "fast", targetPath: null },
+      domainKey: "disk-usage:scan",
+      subject: { targetKind: scan.scope === "allVolumes" ? "AllVolumes" : "Path",
+        targetName: scan.scope === "allVolumes" ? null : scan.target,
+        targetId: null, scope: scan.scope, mode: scan.mode, targetPath: scan.target || null },
       state: "running",
       configurationGeneration: "1",
       stateRevision: "1",
@@ -987,7 +989,7 @@ function fixtureOperations() {
     id: "000000000000000000000000000000a1",
     kind: "component.install",
     domainKey: "component.frontend-harness",
-    subject: { targetId: "frontend-harness", scope: null, mode: null, targetPath: null },
+    subject: { targetKind: "Component", targetName: null, targetId: "frontend-harness", scope: null, mode: null, targetPath: null },
     state: scenario.operationCanceled ? "canceled" : scenario.operationQueued ? "queued" : "running",
     configurationGeneration: "1",
     stateRevision: scenario.operationCanceled ? "2" : scenario.operationQueued ? "0" : "1",
@@ -1014,7 +1016,7 @@ function fixtureOperations() {
       id: "000000000000000000000000000000a2",
       kind: "software.uninstall",
       domainKey: "software.frontend-harness",
-      subject: { targetId: "frontend-harness", scope: null, mode: null, targetPath: null },
+      subject: { targetKind: "Software", targetName: "Frontend Harness", targetId: "frontend-harness", scope: null, mode: null, targetPath: null },
       state: "succeeded",
       configurationGeneration: "1",
       stateRevision: "3",
@@ -1031,6 +1033,7 @@ function fixtureOperations() {
     },
     {
       ...active, id: "000000000000000000000000000000a3", domainKey: "component:failed-runtime",
+      subject: { targetKind: "Component", targetName: null, targetId: "failed-runtime", scope: null, mode: null, targetPath: null },
       state: "failed", completedAt: active.updatedAt, cancelRequested: false, progress: null,
       errorMessage: scenario.componentPayloadFailure
         ? { domain: 1, code: 24, args: [] }
@@ -1044,7 +1047,7 @@ function fixtureManyOperations() {
     id: `0000000000000000000000000000${(index + 16).toString(16).padStart(4, "0")}`,
     kind: "component.install",
     domainKey: `component.frontend-harness.${index + 1}`,
-    subject: { targetId: `frontend-harness-${index + 1}`, scope: null, mode: null, targetPath: null },
+    subject: { targetKind: "Component", targetName: null, targetId: `frontend-harness-${index + 1}`, scope: null, mode: null, targetPath: null },
     state: "succeeded",
     configurationGeneration: "1",
     stateRevision: "3",

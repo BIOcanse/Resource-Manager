@@ -49,7 +49,7 @@ export default async function managementFeedbackJourney(page, baseUrl) {
     id: "000000000000000000000000000000a3",
     kind: "component.install",
     domainKey: "component:failed-runtime",
-    subject: { targetId: "failed-runtime", scope: null, mode: null, targetPath: null },
+    subject: { targetKind: "Component", targetName: null, targetId: "failed-runtime", scope: null, mode: null, targetPath: null },
     state: "failed",
     configurationGeneration: "1",
     stateRevision: "1",

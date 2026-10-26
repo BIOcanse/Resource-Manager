@@ -1911,6 +1911,9 @@ export interface OptimizationReportOverview {
 export type SystemProcessOutcome = 'Terminated' | 'DumpCreated' | 'BackendProtected' | 'CriticalProcessProtected' | 'IdentityChanged' | 'ProcessExited' | 'AccessDenied' | 'NativeFailure' | 'FileFailure' | 'RequestRejected';
 
 export interface OperationSubject {
+  targetKind: "Component" | "Dependency" | "Software" | "Path" | "AllVolumes";
+  /** Target data recorded at acceptance; null means no name was recorded. */
+  targetName: string | null;
   targetId: string | null;
   scope: string | null;
   mode: string | null;

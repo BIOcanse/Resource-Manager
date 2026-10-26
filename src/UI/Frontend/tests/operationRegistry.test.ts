@@ -118,7 +118,7 @@ class FakeRequestClient {
   assert.deepEqual(selectOperations(fixture.registry.snapshot, { active: true }), [running]);
 
   const replacement = operation({
-    subject: { targetId: "changed-target", scope: null, mode: null, targetPath: null },
+    subject: { targetKind: "Component", targetName: null, targetId: "changed-target", scope: null, mode: null, targetPath: null },
     stateRevision: "2",
     updatedAt: "2026-08-22T12:00:02.000Z"
   });
@@ -247,7 +247,7 @@ function operation(
     id: "00000000000000000000000000000001",
     kind: "component.install",
     domainKey: "component.example",
-    subject: { targetId: "example", scope: null, mode: null, targetPath: null },
+    subject: { targetKind: "Component", targetName: null, targetId: "example", scope: null, mode: null, targetPath: null },
     state: stateValue,
     configurationGeneration: "1",
     stateRevision: "1",

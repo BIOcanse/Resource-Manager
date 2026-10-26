@@ -107,7 +107,10 @@ internal sealed class HostManagerOperationCanonicalStore : IDisposable
                 return converted with { FullEnvelopeSha256 = envelope.FullEnvelopeSha256.ToArray() };
             }
             if (originalManifestSha256 is not null) _ = HostManagerDurableRootManifest.ValidateForTransfer(envelopePath);
-            return envelope;
+            var migrated = HostManagerOperationSubjectMigration.Convert(envelope, out var subjectsChanged);
+            if (subjectsChanged)
+                logger?.LogInformation("Operation bank {Path} subject-v1 identities were migrated to subject-v2 with no recorded target names; the owner will atomically persist them at initial publication.", envelopePath);
+            return migrated;
         }
         catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
         {

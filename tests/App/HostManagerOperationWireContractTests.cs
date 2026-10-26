@@ -12,7 +12,7 @@ public sealed class HostManagerOperationWireContractTests
     [Fact]
     public void SubjectAndStagePayloadsContainTypedFactsAndRejectText()
     {
-        var subject = new HostManagerOperationSubject(TargetId: "component-id");
+        var subject = new HostManagerOperationSubject(HostManagerOperationTargetKind.Component, TargetId: "component-id");
         Assert.Equal(subject, ResourceManager.App.Infrastructure.Operations.HostManagerOperationRequestCodec.DecodeSubject(
             ResourceManager.App.Infrastructure.Operations.HostManagerOperationRequestCodec.EncodeSubject(subject)));
         Assert.Equal(new byte[] { 1 }, ResourceManager.App.Infrastructure.Operations.HostManagerOperationRequestCodec.EncodeStage(HostManagerOperationStage.Download));
@@ -28,7 +28,7 @@ public sealed class HostManagerOperationWireContractTests
             "00000000000000000000000000000001",
             "component.install",
             "component.example",
-            new HostManagerOperationSubject(TargetId: "example"),
+            new HostManagerOperationSubject(HostManagerOperationTargetKind.Component, TargetId: "example"),
             HostManagerOperationStates.Succeeded,
             ulong.MaxValue,
             ulong.MaxValue - 1,

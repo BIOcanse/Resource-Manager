@@ -30,7 +30,7 @@ public sealed class DiskUsageScanEndpointWireTests
             "00000000000000000000000000000001",
             "disk-usage.scan",
             "disk-usage:scan",
-            new HostManagerOperationSubject(Scope: "global"),
+            new HostManagerOperationSubject(HostManagerOperationTargetKind.AllVolumes, Scope: "global"),
             HostManagerOperationStates.Running,
             ulong.MaxValue,
             ulong.MaxValue - 1,

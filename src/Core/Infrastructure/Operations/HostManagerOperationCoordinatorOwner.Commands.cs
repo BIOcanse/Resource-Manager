@@ -43,7 +43,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 HostManagerOperationRequestCodec.EncodeText(command.Kind));
             var subject = candidatePayloads.Add(
                 HostManagerOperationRequestSchemas.Subject,
-                HostManagerOperationRequestSchemas.Version,
+                HostManagerOperationRequestSchemas.SubjectVersion,
                 HostManagerOperationPayloadRole.Subject,
                 workspace.SessionInstanceId,
                 operationId,
