@@ -47,9 +47,12 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
       const moving = track.classList.contains("moving");
       events.push({ moving, at: performance.now() });
       if (switchOnMoving && moving && !probe.modeSwitch) {
-        // 在真正开始运动的浏览器回调中切换，排除 Playwright 往返和轮询延迟。
+        // 在真正开始运动的浏览器回调中切到后台再回到前台，排除 Playwright 往返和轮询延迟：
+        // 进后台不改风格，回到前台（不活跃、需要节省）的那一刻选无动画，正在走的过渡当场走完。
         probe.modeSwitch = { startedAt: performance.now(), movingBefore: moving };
         window.dispatchEvent(new Event("blur"));
+        probe.modeSwitch.modeInBackground = document.body.dataset.animations;
+        window.dispatchEvent(new Event("focus"));
         Object.assign(probe.modeSwitch, {
           returnedAt: performance.now(),
           movingAfter: track.classList.contains("moving"),
@@ -134,10 +137,6 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
     window.__resourceLayoutMotionProbe?.events.some((event) => event.moving === true),
   null,
   { timeout: 3000 });
-  await page.evaluate(() => window.dispatchEvent(new Event("blur")));
-  assert(await page.getAttribute("body", "data-animations") === "desktop",
-    "Entering the background must retain the selected animation tier");
-  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await page.waitForFunction(tier => document.body.dataset.animations === tier, AUTO_ANIMATION_OPTIMIZE_STYLE, {
     timeout: 3000
   });
@@ -156,6 +155,7 @@ export default async function resourceLayoutTaskJourney(page, baseUrl = "http://
     && reactiveMoving
     && reactiveSettled
     && modeSwitch?.movingBefore === true
+    && modeSwitch.modeInBackground === "desktop"
     && modeSwitch.modeAfter === AUTO_ANIMATION_OPTIMIZE_STYLE
     && modeSwitch.movingAfter === false,
   `Animation-mode change on foreground return did not settle before dispatch returned: ${JSON.stringify(reactive)}`);

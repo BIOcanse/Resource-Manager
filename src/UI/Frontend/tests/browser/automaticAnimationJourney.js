@@ -110,6 +110,8 @@ export default async function automaticAnimationJourney(page, baseUrl) {
   await choose("desktop");
   await expectTier("desktop");
   assert.equal(await autoSwitch.isDisabled(), false);
+  // 选风格、保存的点击是前台的操作：过了“最近有操作”的时长再回到前台，才是不活跃的返回。
+  await page.waitForTimeout(AUTO_ANIMATION_RECENT_INPUT_MS + 20);
   await focus(false);
   await patchGrade("optimize"); await observedGrade("optimize");
   await focus(true);

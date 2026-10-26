@@ -1,4 +1,8 @@
 export default async function usabilityProbe(page) {
+  // 版面量的是停下来的样子：等磁石的内容过渡走完（退出副本撤掉、新内容上的 will-change 清掉）。
+  // 流畅平滑的换页是弹簧，比桌面常规的 260 ms 缓动久，旅程刚点完换页就结束时还在动。
+  await page.waitForFunction(() => !document.querySelector(".content-transition-leaving")
+    && !document.querySelector("#pageStage[style*='will-change'], #pageStage [style*='will-change']"), undefined, { timeout: 5000 });
   const result = await page.evaluate(() => {
     const pageId = document.body.dataset.page ?? "unknown";
     const shell = document.querySelector(".app-shell");

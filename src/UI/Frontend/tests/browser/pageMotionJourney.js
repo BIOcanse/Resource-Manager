@@ -208,7 +208,10 @@ async function pageMotionJourney(page, baseUrl, style) {
       if (settledAt === null && frame.stage.x === 0 && frame.stage.opacity === 1) settledAt = frame.dt;
     }
     // 退出看得见（不是一两帧就没了），并且在新内容停下之前走完：降到 5% 以下的时刻在进来用时的 25%～75% 之间。
+    // 流畅平滑的换页是临界阻尼弹簧，停下的时刻由停下距离定，最后一段是看不见的尾巴：退出降到 5% 时（1 − p³ < 0.05，
+    // 还剩一段的 1.7%）新内容只差不到 0.5 px，到停下距离（0.5%）还要约 90 ms，所以这里只要求在 25% 之后、停下之前走完（10-26 实测约 390 / 478 ms）。
     const exitEarly = style === "terminal" ? leavingGoneAt !== null && leavingGoneAt <= settledAt + 1
+      : style === "smooth" ? leavingGoneAt !== null && leavingGoneAt >= settledAt * 0.25 && leavingGoneAt < settledAt
       : leavingGoneAt !== null && leavingGoneAt >= settledAt * 0.25 && leavingGoneAt <= settledAt * 0.75;
     if (settledAt === null || !exitEarly) {
       fail(`${label}: the exit fades out at ${leavingGoneAt} ms, the enter settles at ${settledAt} ms`);
