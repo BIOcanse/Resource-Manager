@@ -19,6 +19,51 @@ export default async function targetedRecordingSourceJourney(page, baseUrl) {
   const assert = (condition, message) => {
     if (!condition) throw new Error(message);
   };
+  // 录制列表和报告在有进行中的录制时每 2 s 刷新一次。每个检查窗口原来真等 2250 ms；现在把页面时钟推进
+  // 2250 ms（runFor 依次触发这段时间里到期的全部页面计时器，与真等时页面会做的事相同），再等本进程收到
+  // 页面在窗口里发出的每个请求，然后做原来的断言。窗口长度、断言和请求计数方式都不变，只是不再真等。
+  const pollWindowMs = 2250;
+  const observedRequestTimeoutMs = 5000;
+  const requestWaiters = new Set();
+  page.on("request", () => { for (const check of [...requestWaiters]) check(); });
+  await page.clock.install();
+  await page.addInitScript(() => {
+    // 页面里同步记下每个 GET：推进时钟结束时，页面发出的请求数就是确定的。
+    const issued = { list: 0, reports: {} };
+    window.__targetedRecordingRequestsIssued = issued;
+    const pageFetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const href = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+      if (method === "GET") {
+        const path = new URL(href, location.href).pathname;
+        if (path === "/api/targeted-recordings") issued.list++;
+        const report = path.match(/^\/api\/targeted-recordings\/([^/]+)$/);
+        if (report) issued.reports[report[1]] = (issued.reports[report[1]] ?? 0) + 1;
+      }
+      return pageFetch(input, init);
+    };
+  });
+  const passPollWindow = async () => {
+    await page.clock.runFor(pollWindowMs);
+    const issued = await page.evaluate(() => structuredClone(window.__targetedRecordingRequestsIssued));
+    const caughtUp = () => listReads >= issued.list
+      && Object.entries(issued.reports).every(([id, count]) => (reportReads.get(id) ?? 0) >= count);
+    if (caughtUp()) return;
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        requestWaiters.delete(check);
+        reject(new Error(`Requests the page issued in the poll window never reached the journey within ${observedRequestTimeoutMs} ms: ${JSON.stringify({ issued, listReads, reportReads: Object.fromEntries(reportReads) })}`));
+      }, observedRequestTimeoutMs);
+      const check = () => {
+        if (!caughtUp()) return;
+        clearTimeout(timer);
+        requestWaiters.delete(check);
+        resolve();
+      };
+      requestWaiters.add(check);
+    });
+  };
   const app = await loadAppCopy("zh-CN");
   let unrelatedRecording = true;
   const recordingList = async route => {
@@ -53,7 +98,7 @@ export default async function targetedRecordingSourceJourney(page, baseUrl) {
   assert(listReads > conflictReads, "Another software finishing must release the start button without a manual refresh");
   await page.unroute("**/api/targeted-recordings", recordingList);
   const idleReadCount = listReads;
-  await page.waitForTimeout(2250);
+  await passPollWindow();
   assert(listReads === idleReadCount,
     `The shared recording list polled without an active recording: ${idleReadCount} -> ${listReads}`);
 
@@ -61,8 +106,13 @@ export default async function targetedRecordingSourceJourney(page, baseUrl) {
   await startButton.click();
   await detail.locator(".targeted-recording-actions [role='status']")
     .waitFor({ state: "visible", timeout: 5000 });
+  // start() 先提交录制状态再刷新列表；等刷新结束才推进轮询时钟，避免把尚在飞行的请求算进窗口。
+  await page.waitForFunction(() => {
+    const stop = document.querySelector(".targeted-recording-actions button");
+    return stop && !stop.disabled;
+  }, null, { timeout: 5000 });
   const readsAtStart = listReads;
-  await page.waitForTimeout(2250);
+  await passPollWindow();
   assert(listReads > readsAtStart,
     "The shared recording list did not refresh while a recording was active");
 
@@ -83,13 +133,13 @@ export default async function targetedRecordingSourceJourney(page, baseUrl) {
   await page.evaluate(() => window.setDocumentVisibilityForJourney(false));
   assert(await page.evaluate(() => document.visibilityState) === "hidden",
     "The fixture did not hide document visibility");
-  await page.waitForTimeout(2250);
+  await passPollWindow();
   assert(listReads === readsBeforeHidden,
     `The mounted recording control kept polling while the document was hidden: ${readsBeforeHidden} -> ${listReads}`);
   assert(await control.isVisible(), "The recording control was unmounted for the hidden-page check");
   await page.evaluate(() => window.setDocumentVisibilityForJourney(true));
   const readsAfterVisible = listReads;
-  await page.waitForTimeout(2250);
+  await passPollWindow();
   assert(listReads > readsAfterVisible,
     "The recording list did not resume polling when document visibility returned");
   await detail.locator("button.icon-button[aria-label='关闭']").click();
@@ -104,14 +154,14 @@ export default async function targetedRecordingSourceJourney(page, baseUrl) {
   const detailPanel = page.locator(".targeted-report-detail");
   await detailPanel.waitFor({ state: "visible", timeout: 5000 });
   const id = "recording-fixture-1";
-  await page.waitForTimeout(2250);
+  await passPollWindow();
   assert((reportReads.get(id) ?? 0) >= 2,
     `The selected active report did not refresh: ${reportReads.get(id) ?? 0} reads`);
 
   await navigation.getByRole("button", { name: app.page.monitor, exact: true }).click();
   const listReadsBeforeHidden = listReads;
   const reportReadsBeforeHidden = reportReads.get(id) ?? 0;
-  await page.waitForTimeout(2250);
+  await passPollWindow();
   assert(listReads === listReadsBeforeHidden,
     `The list source polled while the targeted report page was hidden: ${listReadsBeforeHidden} -> ${listReads}`);
   assert((reportReads.get(id) ?? 0) === reportReadsBeforeHidden,
@@ -124,6 +174,10 @@ export default async function targetedRecordingSourceJourney(page, baseUrl) {
   await reopenedRow.waitFor({ state: "visible", timeout: 5000 });
   await reopenedRow.locator(".targeted-report-open").click();
   await detailPanel.waitFor({ state: "visible", timeout: 5000 });
+  // 夹具录制原来在开始 15 s 后由服务端计时器以「达到最长时长」结束；现在由旅程在同一处立即触发同一个结束。
+  const completion = await fetch(`${baseUrl}/__test/targeted-recordings/complete-pending`, { method: "POST" });
+  assert(completion.ok, `The fixture recording could not be completed: ${completion.status}`);
+  await passPollWindow();
   await detailPanel.locator(".targeted-report-note")
     .filter({ hasText: app.targetedReport.stopReasons.maxDuration })
     .waitFor({ state: "visible", timeout: 10000 });
@@ -133,7 +187,7 @@ export default async function targetedRecordingSourceJourney(page, baseUrl) {
     .waitFor({ state: "visible", timeout: 5000 });
   const listReadsAfterCompletion = listReads;
   const reportReadsAfterCompletion = reportReads.get(id) ?? 0;
-  await page.waitForTimeout(2250);
+  await passPollWindow();
   assert(listReads === listReadsAfterCompletion,
     `The list source kept polling after the recording completed: ${listReadsAfterCompletion} -> ${listReads}`);
   assert((reportReads.get(id) ?? 0) === reportReadsAfterCompletion,

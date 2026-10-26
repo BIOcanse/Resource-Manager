@@ -180,6 +180,8 @@ let diskScanOperation = null;
 let diskScanSequence = 0;
 let diskScanCompletionTimer = null;
 let targetedRecordingCompletionTimer = null;
+// 计时器要结束的那条录制；/__test/targeted-recordings/complete-pending 用它立即触发同一个结束。
+let targetedRecordingCompletionId = null;
 let targetedRecordingSequence = 0;
 let cpuBaselineOverrideRatio = null;
 const targetedRecordings = new Map();
@@ -323,6 +325,15 @@ const server = createServer(async (request, response) => {
       }
       const saved = await saveStartupModuleSelection(decodeURIComponent(match[1]), settings);
       return json(response, 200, { ...result, statusCode: saved.statusCode, body: saved.body === null ? "" : JSON.stringify(saved.body) });
+    }
+    if (url.pathname === "/__test/targeted-recordings/complete-pending" && request.method === "POST") {
+      // 立即做 15 s 计时器本来要做的事：以「达到最长时长」结束计时器等待的那条录制。
+      // 旅程用它代替真等 15 s；没有等待中的计时器时返回 409，不猜要结束哪条。
+      if (!targetedRecordingCompletionTimer) return json(response, 409, { error: "no pending recording completion" });
+      clearTimeout(targetedRecordingCompletionTimer);
+      targetedRecordingCompletionTimer = null;
+      completeTargetedRecording(targetedRecordingCompletionId, "max-duration");
+      return json(response, 200, targetedRecordings.get(targetedRecordingCompletionId)?.header ?? null);
     }
     if (url.pathname === "/__test/management-inventory-revisions/publish"
       && request.method === "POST") {
@@ -681,6 +692,7 @@ async function handleApi(request, response, url) {
     };
     targetedRecordings.set(id, entry);
     if (targetedRecordingCompletionTimer) clearTimeout(targetedRecordingCompletionTimer);
+    targetedRecordingCompletionId = id;
     targetedRecordingCompletionTimer = setTimeout(() => {
       targetedRecordingCompletionTimer = null;
       completeTargetedRecording(id, "max-duration");
