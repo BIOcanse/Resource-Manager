@@ -20,6 +20,9 @@ import type {
   DeviceTopologyInformationSnapshot
 } from "../../types.ts";
 import { decodePort, decodeSystemIdentity } from "./deviceTopologyNestedDecoder.ts";
+import { decodeExternalMachines } from "./externalMachineDecoder.ts";
+import { decodeMachineIdentity } from "./machineIdentityDecoder.ts";
+import { decodeGpuInformation } from "./gpuInformationDecoder.ts";
 import { findDeviceTopologyRelationCycle } from "./deviceTopologyRelations.ts";
 
 const currentSchemaVersion = "4.0.0";
@@ -136,6 +139,9 @@ function decodeSnapshot(value: unknown, path: string): DeviceTopologySnapshot {
   }
   return {
     capturedAt: requireTimestamp(record.capturedAt, `${path}.capturedAt`),
+    gpuInformation: decodeGpuInformation(record.gpuInformation, `${path}.gpuInformation`),
+    machineIdentity: decodeMachineIdentity(record.machineIdentity, `${path}.machineIdentity`),
+    externalMachines: decodeExternalMachines(record.externalMachines, `${path}.externalMachines`),
     system: decodeSystemIdentity(record.system, `${path}.system`),
     ports,
     notes: requireArray(record.notes, `${path}.notes`)

@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { deviceTopologyStateDecoder } from "../src/features/deviceTopology/deviceTopologyStateDecoder.ts";
 import assert from "node:assert/strict";
 import {
   decodeResourceMonitorWireSnapshot,
@@ -11,7 +12,7 @@ import { metricSnapshotDecoder } from
   "../src/data/monitor/monitorSourceDecoders.ts";
 
 type DecodeRequest = {
-  kind: "metric" | "monitor" | "facts" | "details";
+  kind: "metric" | "monitor" | "facts" | "details" | "device-topology";
   payload: unknown;
   metricIds?: string[];
 };
@@ -62,6 +63,10 @@ for (const language of languageOptions.filter(option => option.id !== "system"))
 }
 
 process.stdout.write(JSON.stringify({
+  machineIdentity: request.kind === "device-topology"
+    ? deviceTopologyStateDecoder.decode(request.payload).snapshot?.machineIdentity ?? null : null,
+  topologySnapshot: request.kind === "device-topology"
+    ? deviceTopologyStateDecoder.decode(request.payload).snapshot ?? null : null,
   decodedMetricIds: decodedMetrics.map(metric => metric.metricId),
   localizedNames,
   decodedProcesses,

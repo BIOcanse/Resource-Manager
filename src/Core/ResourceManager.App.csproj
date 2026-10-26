@@ -93,6 +93,8 @@
                       LogicalName="ResourceManager.Configuration.FreedomPoints.backend.json" />
     <EmbeddedResource Include="Configuration\Cpu\baseline-defaults.json"
                       LogicalName="ResourceManager.Configuration.Cpu.baseline-defaults.json" />
+    <EmbeddedResource Include="Configuration\DeviceTopology\form-factor-rules.json"
+                      LogicalName="ResourceManager.Configuration.DeviceTopology.form-factor-rules.json" />
     <!--
       随发行版提供的软件策略档案（mergeOrder 里 OfficialResourceManagerProfile 那一层）。
       它是产品数据，不是运行时状态 —— 所以随程序集发出去，

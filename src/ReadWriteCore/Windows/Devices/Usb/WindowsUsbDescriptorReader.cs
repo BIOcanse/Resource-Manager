@@ -45,7 +45,9 @@ internal static class WindowsUsbDescriptorReader
             hidDescriptors,
             cameraModes,
             bosCapabilities.DeclaredMaximumLinkSpeedMegabitsPerSecond,
-            bosCapabilities.SuperSpeedPlusCapability);
+            bosCapabilities.SuperSpeedPlusCapability,
+            header.DeviceClass, header.DeviceSubClass, header.DeviceProtocol,
+            configuration is null ? null : UsbDescriptorParser.ParseInterfaces(configuration));
     }
 
     internal static double? ReadDeclaredMaximumLinkSpeed(

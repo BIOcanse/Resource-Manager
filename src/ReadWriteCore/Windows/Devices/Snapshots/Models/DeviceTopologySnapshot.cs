@@ -11,6 +11,9 @@ public sealed record DeviceTopologySnapshot(
     IReadOnlyList<DeviceTopologyPort> Ports,
     IReadOnlyList<BackendMessage> Notes)
 {
+    public DeviceTopologyMachineIdentity MachineIdentity { get; init; } = DeviceTopologyMachineIdentity.Unknown;
+    // Null means no usable peer result; empty means no connected peer confirmed by the supported USB4NET source.
+    public IReadOnlyList<DeviceTopologyExternalMachine>? ExternalMachines { get; init; }
     // Source failures belong to this capture; healthy sources still publish their current facts.
     public IReadOnlyList<DeviceTopologySourceDiagnostic> SourceDiagnostics { get; init; } = [];
     // Null means unqueried/unavailable (including older persisted snapshots); Empty confirms no hardware NPUs.
@@ -169,6 +172,7 @@ public sealed record DeviceTopologyNetworkConnection(
 {
     public string? InterfaceGuid { get; init; }
     public string? InterfaceDescription { get; init; }
+    public DeviceTopologyWirelessConnection? Wireless { get; init; }
 }
 
 public sealed record DeviceTopologyIdResolution(
@@ -215,7 +219,11 @@ public sealed record DeviceTopologyUsbConnection(
     IReadOnlyList<DeviceTopologyUsbEndpoint>? Endpoints = null,
     string? ActualParentPortIdentity = null,
     double? NegotiatedLinkSpeedMegabitsPerSecond = null,
-    double? DeclaredMaximumLinkSpeedMegabitsPerSecond = null);
+    double? DeclaredMaximumLinkSpeedMegabitsPerSecond = null,
+    byte? DeviceClassCode = null,
+    byte? DeviceSubClassCode = null,
+    byte? DeviceProtocolCode = null,
+    IReadOnlyList<ResourceManager.ReadWrite.Windows.Devices.Usb.DeviceTopologyUsbInterfaceDescriptor>? Interfaces = null);
 
 public sealed record DeviceTopologyUsbEndpoint(
     byte InterfaceNumber,

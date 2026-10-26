@@ -105,6 +105,13 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
         }
 
         var networkAdapters = WindowsNetworkAdapterTopologyReader.ReadSnapshot();
+        var wireless = new WindowsWlanInformationReader().Read();
+        if (wireless.Error is not null)
+        {
+            AddSourceFailure(diagnostics, notes, "wlan-api", "device-topology-wlan-incomplete",
+                BackendMessageCodes.DeviceTopology.NetworkAdapterPropertiesFailed, wireless.Error);
+        }
+        networkAdapters = ApplyWirelessInformation(networkAdapters, wireless);
         if (networkAdapters.Error is not null)
         {
             AddSourceFailure(
@@ -210,6 +217,7 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
 
         var firmware = SmbiosFirmwareInformationReader.Read();
         var gpu = ReadGpuDeclarations(nvidiaZone, gpuInventoryZone, amdZone);
+        var batteryRead = batteryZone.ReadDeclarations();
         return new DeviceTopologySnapshot(
             DateTimeOffset.Now,
             system,
@@ -217,9 +225,11 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
             notes)
         {
             SourceDiagnostics = diagnostics.ToArray(),
+            MachineIdentity = ReadMachineIdentity(firmware, batteryRead, gpu.Inventory),
+            ExternalMachines = DeviceTopologyExternalMachineProjector.Project(nativeDevices, networkAdapters),
             MemoryModules = firmware?.Modules ?? [],
             FirmwareDeclarations = firmware?.Declarations,
-            Batteries = ReadBatteryDeclarations(batteryZone),
+            Batteries = ReadBatteryDeclarations(batteryRead),
             StorageInformation = storageZone.ReadInformationDeclarations(),
             NvidiaGpuInformation = gpu.Nvidia,
             AmdGpuInformation = gpu.Amd,
@@ -246,23 +256,25 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
     }
 
     internal static (IReadOnlyList<DeviceTopologyGpuInformation>? Windows, IReadOnlyList<DeviceTopologyNvidiaGpuInformation>? Nvidia,
-        IReadOnlyList<DeviceTopologyAmdGpuInformation>? Amd)
+        IReadOnlyList<DeviceTopologyAmdGpuInformation>? Amd, WindowsGpuAdapterInventoryRead? Inventory)
         ReadGpuDeclarations(NvidiaNvmlMonitoringZone zone, WindowsGpuAdapterOrderMonitoringZone inventory, AmdAdlxMonitoringZone? amd = null)
     {
         WindowsGpuAdapterInventoryRead read;
         try { read = inventory.ReadInventory(requested: true); }
-        catch (Exception) { return (null, null, null); }
+        catch (Exception) { return (null, null, null, null); }
         var windows = WindowsGpuInformationProjection.Create(read);
         IReadOnlyList<DeviceTopologyNvidiaGpuInformation>? nvidia;
         IReadOnlyList<DeviceTopologyAmdGpuInformation>? amdDeclarations;
         try { nvidia = zone.ReadDeclarations(read); } catch (Exception) { nvidia = null; }
         try { amdDeclarations = amd?.ReadDeclarations(read); } catch (Exception) { amdDeclarations = null; }
-        return (windows, nvidia, amdDeclarations);
+        return (windows, nvidia, amdDeclarations, read);
     }
 
     internal static IReadOnlyList<DeviceTopologyBattery>? ReadBatteryDeclarations(WindowsBatteryMonitoringZone zone)
+        => ReadBatteryDeclarations(zone.ReadDeclarations());
+
+    private static IReadOnlyList<DeviceTopologyBattery>? ReadBatteryDeclarations(BatteryTopologyRead read)
     {
-        var read = zone.ReadDeclarations();
         return read.Status != NativeMetricSnapshotCatalogTopologyStatus.Complete ? null : read.Identities
             .Select(static identity => new DeviceTopologyBattery(identity.ExactIdentityKey,
                 identity.Manufacturer, identity.SerialNumber, identity.Information.Chemistry)).ToArray();
@@ -887,9 +899,22 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
             adapter.MediaConnectState)
         {
             InterfaceGuid = adapter.InterfaceGuid,
-            InterfaceDescription = adapter.InterfaceDescription
+            InterfaceDescription = adapter.InterfaceDescription,
+            Wireless = adapter.Wireless
         };
     }
+
+    internal static DeviceTopologyNetworkAdapterSnapshot ApplyWirelessInformation(
+        DeviceTopologyNetworkAdapterSnapshot adapters, WindowsWlanInformationSnapshot wireless)
+        => adapters with
+        {
+            Adapters = adapters.Adapters.ToDictionary(static pair => pair.Key, pair => pair.Value with
+            {
+                Wireless = Guid.TryParse(pair.Value.InterfaceGuid, out var guid)
+                    && wireless.Interfaces is { } interfaces
+                    && interfaces.TryGetValue(guid, out var value) ? value : null
+            }, StringComparer.OrdinalIgnoreCase)
+        };
 
     /// <summary>收发速率不同时前端会分行显示两者，这里只给较高的那个；都没有则返回 null。</summary>
     internal static string? FormatNetworkLinkSpeed(DeviceTopologyNetworkAdapter adapter)
@@ -985,7 +1010,11 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
                 ? DeviceTopologyUsbConnectorGrouper.CreatePortIdentity(port.HubDevicePath, port.PortNumber)
                 : null,
             port.NegotiatedLinkSpeedMegabitsPerSecond,
-            port.DeclaredMaximumLinkSpeedMegabitsPerSecond);
+            port.DeclaredMaximumLinkSpeedMegabitsPerSecond,
+            port.DeviceConnected ? port.Descriptor.DeviceClassCode : null,
+            port.DeviceConnected ? port.Descriptor.DeviceSubClassCode : null,
+            port.DeviceConnected ? port.Descriptor.DeviceProtocolCode : null,
+            port.DeviceConnected ? port.Descriptor.Interfaces : null);
     }
 
     internal static string RefineUsbConnectorKind(

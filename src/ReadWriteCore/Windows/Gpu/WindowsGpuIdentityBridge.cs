@@ -14,7 +14,7 @@ public sealed partial class WindowsGpuIdentityBridge
         try
         {
             uint type = 0;
-            return NativeMethods.Query(open.AdapterHandle, 15, ref type) == NativeMethods.StatusSuccess ? type : null;
+            return NativeMethods.Query(open.AdapterHandle, NativeMethods.QueryAdapterType, ref type) == NativeMethods.StatusSuccess ? type : null;
         }
         finally
         {
@@ -48,6 +48,10 @@ public sealed partial class WindowsGpuIdentityBridge
 
         try
         {
+            // Independent of physical identity binding; reuse this exact logical adapter handle.
+            uint adapterType = 0;
+            uint? adapterTypeFlags = NativeMethods.Query(open.AdapterHandle, NativeMethods.QueryAdapterType,
+                ref adapterType) == NativeMethods.StatusSuccess ? adapterType : null;
             var count = new NativeMethods.PhysicalAdapterCount();
             var countStatus = NativeMethods.Query(
                 open.AdapterHandle,
@@ -57,7 +61,7 @@ public sealed partial class WindowsGpuIdentityBridge
                 || count.Count == 0
                 || count.Count > maximumPhysicalAdapterCount)
             {
-                return WindowsGpuIdentityRead.Unavailable(countStatus);
+                return WindowsGpuIdentityRead.Unavailable(countStatus) with { AdapterTypeFlags = adapterTypeFlags };
             }
 
             var logicalAddress = new NativeMethods.AdapterAddress();
@@ -90,7 +94,7 @@ public sealed partial class WindowsGpuIdentityBridge
                         SamplingObservationStatus.Unavailable,
                         row.NativeStatus,
                         [],
-                        1);
+                        1) { AdapterTypeFlags = adapterTypeFlags };
                 }
                 rows.Add(row);
             }
@@ -99,7 +103,7 @@ public sealed partial class WindowsGpuIdentityBridge
                 SamplingObservationStatus.Current,
                 NativeMethods.StatusSuccess,
                 rows,
-                0);
+                0) { AdapterTypeFlags = adapterTypeFlags };
         }
         finally
         {
@@ -419,6 +423,7 @@ public sealed partial class WindowsGpuIdentityBridge
         internal const uint CrNoSuchValue = 37;
         internal const uint DevPropTypeUint32 = 7;
         internal const uint QueryAdapterAddress = 6;
+        internal const uint QueryAdapterType = 15;
         internal const uint QueryPhysicalAdapterCount = 30;
         internal const uint QueryPhysicalAdapterDeviceIds = 31;
         internal const uint QueryPhysicalAdapterPnpKeyType = 41;
@@ -575,6 +580,8 @@ public sealed record WindowsGpuIdentityRead(
     IReadOnlyList<WindowsGpuPhysicalIdentity> Identities,
     uint SkippedCount)
 {
+    public uint? AdapterTypeFlags { get; init; }
+
     public static WindowsGpuIdentityRead Invalid { get; } =
         new(SamplingObservationStatus.Unavailable, -1, [], 1);
 

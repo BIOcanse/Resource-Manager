@@ -1,0 +1,16 @@
+{
+  "portableChassisCodes": [8, 9, 10, 11, 14, 30, 31, 32],
+  "desktopChassisCodes": [3, 4, 5, 6, 7, 13, 15, 16, 35, 36],
+  "stationaryChassisCodes": [3, 4, 5, 6, 7, 13, 15, 16, 17, 23, 25, 28, 29, 35, 36],
+  "workstationRules": [
+    {"id": "amd-threadripper-pro", "component": "cpu", "pattern": "\\bAMD\\b.*\\bThreadripper\\b.*\\bPRO\\b"},
+    {"id": "amd-threadripper", "component": "cpu", "pattern": "\\bAMD\\b.*\\bThreadripper\\b"},
+    {"id": "amd-epyc", "component": "cpu", "pattern": "\\bAMD\\b.*\\bEPYC\\b"},
+    {"id": "intel-xeon", "component": "cpu", "pattern": "\\bIntel\\b.*\\bXeon\\b"},
+    {"id": "nvidia-rtx-pro", "component": "gpu", "pattern": "\\bNVIDIA\\b.*\\bRTX(?:\\(TM\\)|\\(R\\)|[®™])?\\s+PRO\\b"},
+    {"id": "nvidia-rtx-a", "component": "gpu", "pattern": "\\bNVIDIA\\b.*\\bRTX(?:\\(TM\\)|\\(R\\)|[®™])?\\s+A[0-9]+\\b"},
+    {"id": "nvidia-rtx-ada", "component": "gpu", "pattern": "^NVIDIA\\s+RTX\\s+(?:500|1000|2000|3000|3500|4000|4500|5000|5880|6000)\\s+(?:SFF\\s+)?Ada\\b"},
+    {"id": "nvidia-quadro", "component": "gpu", "pattern": "\\bNVIDIA\\b.*\\bQuadro\\b"},
+    {"id": "amd-radeon-pro", "component": "gpu", "pattern": "\\bAMD\\b.*\\bRadeon(?:\\(TM\\)|\\(R\\)|[®™])?\\s+Pro\\b"}
+  ]
+}

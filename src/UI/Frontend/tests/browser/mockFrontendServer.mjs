@@ -1928,6 +1928,13 @@ function fixtureDeviceTopologyState(capturedAt = now()) {
         baseBoardManufacturer: null,
         baseBoardProduct: null
       },
+      gpuInformation: [],
+      externalMachines: null,
+      machineIdentity: { formFactor: "desktop", evidence: {
+        chassisTypes: { value: [3], reason: null }, systemBatteryPresent: { value: false, reason: null },
+        cpuModels: { value: [], reason: null }, gpuModels: { value: [], reason: null },
+        gpuAttachments: { value: [], reason: null }, workstationComponents: []
+      } },
       ports: Number.isSafeInteger(scenario.deviceTopologyPortCount) ? fixtureManyHdmiPorts(scenario.deviceTopologyPortCount)
         : scenario.deviceTopologyNullProtocol ? [fixtureHdmiPort(), {
         ...fixtureHdmiPort(), id: "fixture-null-protocol", deviceId: "DISPLAY\\FIXTURE_NULL_PROTOCOL", protocol: null

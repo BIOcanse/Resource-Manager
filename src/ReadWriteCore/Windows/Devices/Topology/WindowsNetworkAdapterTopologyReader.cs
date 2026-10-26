@@ -83,4 +83,5 @@ public sealed record DeviceTopologyNetworkAdapter(
 {
     public string? InterfaceGuid { get; init; }
     public string? InterfaceDescription { get; init; }
+    public ResourceManager.ReadWrite.Windows.Devices.Models.DeviceTopologyWirelessConnection? Wireless { get; init; }
 }

@@ -417,6 +417,7 @@ function usbConnection(options: {
     deviceClass: options.isHub ? "Hub" : "Device",
     productName: options.productName,
     interfaceProtocols: options.interfaceProtocols ?? [],
+    deviceClassCode: null, deviceSubClassCode: null, deviceProtocolCode: null, interfaces: null,
     downstreamHubDevicePath: options.downstreamHubPath
   };
 }

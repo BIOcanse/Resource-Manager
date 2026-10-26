@@ -30,7 +30,7 @@ public static class WindowsGpuInformationProjection
                     adapter.PhysicalIdentities.Count == 1 ? adapter.Name : null,
                     pci && physical.VendorId <= ushort.MaxValue ? physical.VendorId.ToString("X4", CultureInfo.InvariantCulture) : null,
                     pci && physical.DeviceId <= ushort.MaxValue ? physical.DeviceId.ToString("X4", CultureInfo.InvariantCulture) : null,
-                    physical.DriverVersion);
+                    physical.DriverVersion) { AdapterTypeFlags = adapter.AdapterTypeFlags };
                 if (!devices.TryAdd(pnp, information)) return null;
             }
         }

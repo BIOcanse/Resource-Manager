@@ -67,7 +67,8 @@ const port = {
     permanentAddress: "00-11-22-33-44-55",
     activeMtuBytes: 1500,
     hardwareInterface: true,
-    connectorPresent: true
+    connectorPresent: true,
+    wireless: null
   },
   idResolution: {
     database: "pci.ids",
@@ -109,6 +110,8 @@ const port = {
     productName: "Fixture Device",
     serialNumber: null,
     interfaceProtocols: ["HID"],
+    deviceClassCode: 3, deviceSubClassCode: 1, deviceProtocolCode: 1,
+    interfaces: [{ interfaceNumber: 0, alternateSetting: 0, classCode: 3, subClassCode: 1, protocolCode: 1 }],
     downstreamHubDevicePath: null,
     endpoints: [{
       interfaceNumber: 0,
@@ -195,6 +198,20 @@ const source = {
   state: "ready",
   snapshot: {
     capturedAt: "2026-08-22T15:20:30.000Z",
+    gpuInformation: [],
+    externalMachines: null,
+    machineIdentity: {
+      formFactor: "mobile_workstation",
+      evidence: {
+        chassisTypes: { value: [10], reason: null },
+        systemBatteryPresent: { value: true, reason: null },
+        cpuModels: { value: ["Intel Core i9"], reason: null },
+        gpuModels: { value: ["NVIDIA RTX PRO 6000"], reason: null },
+        gpuAttachments: { value: [{ model: "NVIDIA RTX PRO 6000", isDetachable: false,
+          adapterTypeFlags: 0, attachmentKind: null, evidenceSource: "d3dkmt-adapter-type" }], reason: null },
+        workstationComponents: [{ component: "gpu", model: "NVIDIA RTX PRO 6000", ruleId: "nvidia-rtx-pro" }]
+      }
+    },
     system: {
       manufacturer: "Example",
       model: "Fixture PC",
@@ -218,6 +235,35 @@ const source = {
 };
 
 const decoded = deviceTopologyStateDecoder.decode(source);
+const wireless = { source: "wlan-api", interfaceStateRaw: 1, supportedPhyTypesRaw: [7, 10, 11],
+  supportedStandards: ["802.11n", "802.11ax", "802.11be"], negotiatedPhyTypeRaw: 7, negotiatedStandard: "802.11n" };
+const decodeWireless = (value: unknown) => deviceTopologyStateDecoder.decode({ ...source, snapshot: {
+  ...source.snapshot, ports: [{ ...port, network: { ...port.network, wireless: value } }]
+} }).snapshot?.ports[0].network?.wireless;
+assert.deepEqual(decodeWireless(wireless), wireless);
+assert.deepEqual(decodeWireless({ ...wireless, supportedPhyTypesRaw: [0xffffffff], supportedStandards: null,
+  negotiatedPhyTypeRaw: null, negotiatedStandard: null }), { ...wireless, supportedPhyTypesRaw: [0xffffffff],
+  supportedStandards: null, negotiatedPhyTypeRaw: null, negotiatedStandard: null });
+for (const invalid of [undefined, { ...wireless, source: "adapter-name" }, { ...wireless, negotiatedPhyTypeRaw: -1 },
+  { ...wireless, supportedPhyTypesRaw: [0x100000000] }]) assert.throws(() => decodeWireless(invalid), ResponseDecodeError);
+assert.deepEqual(decoded.snapshot?.machineIdentity, source.snapshot.machineIdentity);
+assert.equal(deviceTopologyStateDecoder.decode({ ...source, snapshot: { ...source.snapshot,
+  ports: [{ ...port, usb: { ...port.usb, supportedProtocols: null } }]
+} }).snapshot?.ports[0].usb?.supportedProtocols, null);
+// The consumer preserves authoritative results even when raw facts could tempt it to infer a shape.
+assert.equal(deviceTopologyStateDecoder.decode({ ...source, snapshot: { ...source.snapshot,
+  machineIdentity: { ...source.snapshot.machineIdentity, formFactor: "unknown" }
+} }).snapshot?.machineIdentity.formFactor, "unknown");
+for (const invalid of [
+  { ...source.snapshot.machineIdentity, formFactor: "notebook" },
+  { ...source.snapshot.machineIdentity, evidence: { ...source.snapshot.machineIdentity.evidence,
+    chassisTypes: { value: [128], reason: null } } },
+  { ...source.snapshot.machineIdentity, evidence: { ...source.snapshot.machineIdentity.evidence,
+    systemBatteryPresent: { value: null, reason: null } } }
+]) {
+  assert.throws(() => deviceTopologyStateDecoder.decode({ ...source,
+    snapshot: { ...source.snapshot, machineIdentity: invalid } }), ResponseDecodeError);
+}
 assert.equal(decoded.schemaVersion, "4.0.0");
 assert.equal(decoded.snapshot?.ports[0].usb?.endpoints?.[0].theoreticalReportRateHz, 8000);
 assert.equal(decoded.snapshot?.ports[0].storage?.partitions[0].volumes[0].driveLetter, "E:");

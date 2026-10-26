@@ -2,6 +2,19 @@
   "schemaVersion": "4.0.0",
   "state": "ready",
   "snapshot": {
+      "gpuInformation": [],
+      "externalMachines": null,
+      "machineIdentity": {
+      "formFactor": "unknown",
+      "evidence": {
+        "chassisTypes": { "value": null, "reason": "not-queried" },
+        "systemBatteryPresent": { "value": null, "reason": "not-queried" },
+        "cpuModels": { "value": null, "reason": "not-queried" },
+        "gpuModels": { "value": null, "reason": "not-queried" },
+        "gpuAttachments": { "value": null, "reason": "not-queried" },
+        "workstationComponents": []
+      }
+    },
     "capturedAt": "2030-01-02T03:04:05+00:00",
     "system": {
       "manufacturer": "Frontend Harness",

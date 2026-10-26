@@ -368,6 +368,7 @@ function usbConnection(id: string, userConnectable: boolean): DeviceTopologyUsbC
     deviceRevision: "1.0",
     deviceClass: "Per-interface class",
     productName: id === "external" ? "External Keyboard" : "Integrated Camera",
+    deviceClassCode: null, deviceSubClassCode: null, deviceProtocolCode: null, interfaces: null,
     interfaceProtocols: id === "external"
       ? ["HID Boot Keyboard [03/01/01]"]
       : ["Video Control [0E/01/00]", "Video Streaming [0E/02/00]"]

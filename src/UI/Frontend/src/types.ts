@@ -1069,9 +1069,58 @@ export interface DeviceTopologyInformationSnapshot {
 
 export interface DeviceTopologySnapshot {
   capturedAt: string;
+  gpuInformation: DeviceTopologyGpuInformation[] | null;
+  machineIdentity: DeviceTopologyMachineIdentity;
+  externalMachines: DeviceTopologyExternalMachine[] | null;
   system: DeviceTopologySystemIdentity;
   ports: DeviceTopologyPort[];
   notes: BackendMessage[];
+}
+
+export interface DeviceTopologyGpuInformation {
+  pnpInstanceId: string;
+  adapterLuid: string | null;
+  name: string | null;
+  pciVendorId: string | null;
+  pciDeviceId: string | null;
+  driverVersion: string | null;
+  adapterTypeFlags: number | null;
+  isDetachable: boolean | null;
+  attachmentKind: "graphics_dock" | null;
+  attachmentEvidenceSource: "d3dkmt-adapter-type" | null;
+}
+
+export interface DeviceTopologyExternalMachine {
+  localLinkDeviceId: string;
+  peerIdentity: string | null;
+  formFactor: "workstation";
+  model: string | null;
+  components: { component: "soc"; model: string | null }[];
+  evidence: {
+    source: "windows-usb4net";
+    compatibleId: "USB4\\USB4NET";
+    mediaConnectStateRaw: 1;
+    peerPropertiesReason: string;
+  };
+}
+export interface DeviceTopologyIdentityFact<T> {
+  value: T | null;
+  reason: string | null;
+}
+
+export interface DeviceTopologyMachineIdentity {
+  formFactor: "mobile_workstation" | "laptop" | "workstation" | "desktop" | "unknown";
+  evidence: {
+    chassisTypes: DeviceTopologyIdentityFact<number[]>;
+    systemBatteryPresent: DeviceTopologyIdentityFact<boolean>;
+    cpuModels: DeviceTopologyIdentityFact<string[]>;
+    gpuModels: DeviceTopologyIdentityFact<string[]>;
+    gpuAttachments: DeviceTopologyIdentityFact<{
+      model: string; isDetachable: boolean | null; adapterTypeFlags: number | null;
+      attachmentKind: "graphics_dock" | null; evidenceSource: string | null;
+    }[]>;
+    workstationComponents: { component: "cpu" | "gpu"; model: string; ruleId: string }[];
+  };
 }
 
 export interface DeviceTopologySystemIdentity {
@@ -1269,6 +1318,16 @@ export interface DeviceTopologyNetworkConnection {
   activeMtuBytes?: number | null;
   hardwareInterface?: boolean | null;
   connectorPresent?: boolean | null;
+  wireless?: DeviceTopologyWirelessConnection | null;
+}
+
+export interface DeviceTopologyWirelessConnection {
+  source: string;
+  interfaceStateRaw: number;
+  supportedPhyTypesRaw: number[] | null;
+  supportedStandards: string[] | null;
+  negotiatedPhyTypeRaw: number | null;
+  negotiatedStandard: string | null;
 }
 
 export interface DeviceTopologyIdResolution {
@@ -1296,7 +1355,7 @@ export interface DeviceTopologyUsbConnection {
   vendorId?: string | null;
   productId?: string | null;
   deviceIsHub: boolean;
-  supportedProtocols: string;
+  supportedProtocols: string | null;
   operatingAtSuperSpeedOrHigher?: boolean | null;
   superSpeedCapableOrHigher?: boolean | null;
   operatingAtSuperSpeedPlusOrHigher?: boolean | null;
@@ -1313,6 +1372,11 @@ export interface DeviceTopologyUsbConnection {
   productName?: string | null;
   serialNumber?: string | null;
   interfaceProtocols: string[];
+  deviceClassCode: number | null;
+  deviceSubClassCode: number | null;
+  deviceProtocolCode: number | null;
+  interfaces: { interfaceNumber: number; alternateSetting: number;
+    classCode: number; subClassCode: number; protocolCode: number }[] | null;
   downstreamHubDevicePath?: string | null;
   endpoints?: DeviceTopologyUsbEndpoint[] | null;
 }

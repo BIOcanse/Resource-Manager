@@ -67,6 +67,29 @@ public static class UsbDescriptorParser
         return totalLength >= 9;
     }
 
+    public static IReadOnlyList<DeviceTopologyUsbInterfaceDescriptor>? ParseInterfaces(ReadOnlySpan<byte> descriptor)
+    {
+        if (!TryReadConfigurationHeader(descriptor, out var declaredLength, out _)
+            || descriptor.Length < declaredLength) return null;
+        var interfaces = new List<DeviceTopologyUsbInterfaceDescriptor>();
+        var offset = 0;
+        while (offset < declaredLength)
+        {
+            if (offset + 2 > declaredLength) return null;
+            var length = descriptor[offset];
+            if (length < 2 || offset + length > declaredLength) return null;
+            if (descriptor[offset + 1] == InterfaceDescriptorType)
+            {
+                if (length < 9) return null;
+                interfaces.Add(new(descriptor[offset + 2], descriptor[offset + 3],
+                    descriptor[offset + 5], descriptor[offset + 6], descriptor[offset + 7]));
+            }
+            offset += length;
+        }
+        return interfaces.Select(static item => item.InterfaceNumber).Distinct().Count() == descriptor[4]
+            ? interfaces : null;
+    }
+
     public static IReadOnlyList<string> ParseInterfaceProtocols(ReadOnlySpan<byte> descriptor)
     {
         if (!TryReadConfigurationHeader(descriptor, out var declaredLength, out _))

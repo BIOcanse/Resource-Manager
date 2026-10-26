@@ -7,9 +7,11 @@ import {
   requireNonNegativeFiniteNumber,
   requireNonNegativeSafeInteger,
   requireNullable,
+  requireOneOf,
   requireRecord,
   requireString,
-  requireStringArray
+  requireStringArray,
+  ResponseDecodeError
 } from "../../frontendRuntime/request/ResponseDecoder.ts";
 import type {
   DeviceTopologyAdvancedInterconnect,
@@ -208,7 +210,19 @@ function decodeNetworkConnection(
     hardwareInterface: nullableBoolean(
       record.hardwareInterface,
       `${path}.hardwareInterface`),
-    connectorPresent: nullableBoolean(record.connectorPresent, `${path}.connectorPresent`)
+    connectorPresent: nullableBoolean(record.connectorPresent, `${path}.connectorPresent`),
+    wireless: nullableObject(record.wireless, `${path}.wireless`, (value, path) => {
+      const wireless = requireRecord(value, path);
+      return {
+        source: requireOneOf(wireless.source, `${path}.source`, ["wlan-api"]),
+        interfaceStateRaw: decodeEdidUInt32(wireless.interfaceStateRaw, `${path}.interfaceStateRaw`),
+        supportedPhyTypesRaw: requireNullable(wireless.supportedPhyTypesRaw, `${path}.supportedPhyTypesRaw`,
+          (value, path) => requireArray(value, path).map((item, index) => decodeEdidUInt32(item, `${path}[${index}]`))),
+        supportedStandards: requireNullable(wireless.supportedStandards, `${path}.supportedStandards`, requireStringArray),
+        negotiatedPhyTypeRaw: requireNullable(wireless.negotiatedPhyTypeRaw, `${path}.negotiatedPhyTypeRaw`, decodeEdidUInt32),
+        negotiatedStandard: nullableString(wireless.negotiatedStandard, `${path}.negotiatedStandard`)
+      };
+    })
   };
 }
 
@@ -248,7 +262,7 @@ function decodeUsbConnection(value: unknown, path: string): DeviceTopologyUsbCon
     vendorId: nullableString(record.vendorId, `${path}.vendorId`),
     productId: nullableString(record.productId, `${path}.productId`),
     deviceIsHub: requireBoolean(record.deviceIsHub, `${path}.deviceIsHub`),
-    supportedProtocols: requireString(record.supportedProtocols, `${path}.supportedProtocols`),
+    supportedProtocols: nullableString(record.supportedProtocols, `${path}.supportedProtocols`),
     operatingAtSuperSpeedOrHigher: nullableBoolean(
       record.operatingAtSuperSpeedOrHigher,
       `${path}.operatingAtSuperSpeedOrHigher`),
@@ -280,6 +294,21 @@ function decodeUsbConnection(value: unknown, path: string): DeviceTopologyUsbCon
       `${path}.deviceSpecification`),
     deviceRevision: requireString(record.deviceRevision, `${path}.deviceRevision`),
     deviceClass: requireString(record.deviceClass, `${path}.deviceClass`),
+    deviceClassCode: nullableUsbByte(record.deviceClassCode, `${path}.deviceClassCode`),
+    deviceSubClassCode: nullableUsbByte(record.deviceSubClassCode, `${path}.deviceSubClassCode`),
+    deviceProtocolCode: nullableUsbByte(record.deviceProtocolCode, `${path}.deviceProtocolCode`),
+    interfaces: requireNullable(record.interfaces, `${path}.interfaces`, (value, path) =>
+      requireArray(value, path).map((value, index) => {
+        const itemPath = `${path}[${index}]`;
+        const item = requireRecord(value, itemPath);
+        return {
+          interfaceNumber: usbByte(item.interfaceNumber, `${itemPath}.interfaceNumber`),
+          alternateSetting: usbByte(item.alternateSetting, `${itemPath}.alternateSetting`),
+          classCode: usbByte(item.classCode, `${itemPath}.classCode`),
+          subClassCode: usbByte(item.subClassCode, `${itemPath}.subClassCode`),
+          protocolCode: usbByte(item.protocolCode, `${itemPath}.protocolCode`)
+        };
+      })),
     manufacturerName: nullableString(record.manufacturerName, `${path}.manufacturerName`),
     productName: nullableString(record.productName, `${path}.productName`),
     serialNumber: nullableString(record.serialNumber, `${path}.serialNumber`),
@@ -486,6 +515,16 @@ function decodeStorageVolume(
       record.volumeSerialNumber,
       `${path}.volumeSerialNumber`)
   };
+}
+
+function usbByte(value: unknown, path: string): number {
+  const code = requireNonNegativeSafeInteger(value, path);
+  if (code > 255) throw new ResponseDecodeError(path, "byte (0-255)");
+  return code;
+}
+
+function nullableUsbByte(value: unknown, path: string): number | null {
+  return requireNullable(value, path, usbByte);
 }
 
 function nullableString(value: unknown, path: string): string | null {

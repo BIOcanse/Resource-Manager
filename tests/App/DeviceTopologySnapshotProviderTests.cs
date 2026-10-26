@@ -10,6 +10,29 @@ namespace ResourceManager.App.Tests;
 public sealed class DeviceTopologySnapshotProviderTests
 {
     [Fact]
+    public async Task MachineIdentityUsesExistingStateSubscriptionAndOnlyChangesStructuralGenerationWhenFactsChange()
+    {
+        var first = CreateSnapshot(DateTimeOffset.UtcNow) with {
+            MachineIdentity = DeviceTopologyMachineIdentityTests.Resolve([10], true)
+        };
+        var changed = first with { MachineIdentity = DeviceTopologyMachineIdentityTests.Resolve([7], false, ["Intel Xeon W-2495X"]) };
+        var store = new FakeStore();
+        using var fixture = CreateProvider(new FakeReader(first, first with { CapturedAt = first.CapturedAt.AddSeconds(1) }, changed), store);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var subscription = fixture.Provider.SubscribeAsync("identity-test", TimeSpan.FromSeconds(1), cancellation.Token).GetAsyncEnumerator();
+        Assert.True(await subscription.MoveNextAsync());
+        for (var capture = 0; capture < 3; capture++)
+        {
+            var next = subscription.MoveNextAsync().AsTask();
+            await fixture.Provider.SampleNowAsync(cancellation.Token);
+            Assert.True(await next);
+            Assert.Equal(capture == 2 ? "workstation" : "laptop", subscription.Current.Snapshot!.MachineIdentity.FormFactor);
+            Assert.Equal(capture == 2 ? 2 : 1, subscription.Current.ContentGeneration);
+        }
+        Assert.Equal(2, store.SaveCount);
+    }
+
+    [Fact]
     public async Task SharedSmbiosFailureClearsSlotBiosDateAndDimmWhileKeepingDeclarationsThenRecovers()
     {
         var first = CreateSnapshot(DateTimeOffset.UtcNow) with {

@@ -59,7 +59,8 @@ public sealed class WindowsGpuAdapterOrderReader
                 {
                     PhysicalIdentityStatus = identity.Status,
                     PhysicalIdentities = identity.Identities,
-                    PhysicalIdentityNativeStatus = identity.NativeStatus
+                    PhysicalIdentityNativeStatus = identity.NativeStatus,
+                    AdapterTypeFlags = identity.AdapterTypeFlags
                 };
             })
             .ToArray();
@@ -508,6 +509,12 @@ public sealed record WindowsGpuAdapter(
     ulong DedicatedVideoMemoryBytes,
     WindowsGpuAdapterKind Kind)
 {
+    // Raw D3DKMT_ADAPTERTYPE.Value. Null means the independent query was unavailable.
+    public uint? AdapterTypeFlags { get; init; }
+    public bool? IsDetachable => AdapterTypeFlags is { } flags ? (flags & (1u << 10)) != 0 : null;
+    public string? AttachmentKind => IsDetachable == true ? "graphics_dock" : null;
+    public string? AttachmentEvidenceSource => AdapterTypeFlags.HasValue ? "d3dkmt-adapter-type" : null;
+
     public WindowsGpuPublicIndexSource PublicIndexSource { get; init; } =
         WindowsGpuPublicIndexSource.DxgiFallback;
 

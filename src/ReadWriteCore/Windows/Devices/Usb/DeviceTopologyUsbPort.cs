@@ -81,7 +81,15 @@ public sealed record DeviceTopologyUsbDescriptor(
     IReadOnlyList<DeviceTopologyUsbHidDescriptor> HidDescriptors,
     IReadOnlyList<DeviceTopologyUsbCameraModeDescriptor> CameraModes,
     double? DeclaredMaximumLinkSpeedMegabitsPerSecond = null,
-    DeviceTopologyUsbSuperSpeedPlusCapability? SuperSpeedPlusCapability = null);
+    DeviceTopologyUsbSuperSpeedPlusCapability? SuperSpeedPlusCapability = null,
+    byte? DeviceClassCode = null,
+    byte? DeviceSubClassCode = null,
+    byte? DeviceProtocolCode = null,
+    IReadOnlyList<DeviceTopologyUsbInterfaceDescriptor>? Interfaces = null);
+
+/// <summary>Raw interface descriptor; includes alternate settings and interfaces without endpoints.</summary>
+public sealed record DeviceTopologyUsbInterfaceDescriptor(
+    byte InterfaceNumber, byte AlternateSetting, byte ClassCode, byte SubClassCode, byte ProtocolCode);
 
 /// <summary>
 /// Raw device-declared SuperSpeedPlus BOS capability. Sublink attributes describe

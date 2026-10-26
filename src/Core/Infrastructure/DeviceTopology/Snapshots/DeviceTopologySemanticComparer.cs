@@ -16,6 +16,25 @@ public sealed partial class DeviceTopologySemanticComparer
         var normalized = snapshot with
         {
             CapturedAt = DateTimeOffset.UnixEpoch,
+            ExternalMachines = snapshot.ExternalMachines?.Select(static machine => machine with {
+                Components = machine.Components.OrderBy(static component => component.Component, StringComparer.Ordinal)
+                    .ThenBy(static component => component.Model, StringComparer.Ordinal).ToArray()
+            }).OrderBy(static machine => machine.LocalLinkDeviceId, StringComparer.Ordinal).ToArray(),
+            MachineIdentity = snapshot.MachineIdentity with { Evidence = snapshot.MachineIdentity.Evidence with {
+                ChassisTypes = snapshot.MachineIdentity.Evidence.ChassisTypes with {
+                    Value = snapshot.MachineIdentity.Evidence.ChassisTypes.Value?.Order().ToArray() },
+                CpuModels = snapshot.MachineIdentity.Evidence.CpuModels with {
+                    Value = snapshot.MachineIdentity.Evidence.CpuModels.Value?.Order(StringComparer.Ordinal).ToArray() },
+                GpuModels = snapshot.MachineIdentity.Evidence.GpuModels with {
+                    Value = snapshot.MachineIdentity.Evidence.GpuModels.Value?.Order(StringComparer.Ordinal).ToArray() },
+                GpuAttachments = snapshot.MachineIdentity.Evidence.GpuAttachments with {
+                    Value = snapshot.MachineIdentity.Evidence.GpuAttachments.Value?
+                        .OrderBy(static gpu => gpu.Model, StringComparer.Ordinal)
+                        .ThenBy(static gpu => gpu.AdapterTypeFlags).ToArray() },
+                WorkstationComponents = snapshot.MachineIdentity.Evidence.WorkstationComponents
+                    .OrderBy(static row => row.Component, StringComparer.Ordinal)
+                    .ThenBy(static row => row.Model, StringComparer.Ordinal).ThenBy(static row => row.RuleId, StringComparer.Ordinal).ToArray()
+            } },
             DriverInformation = snapshot.DriverInformation?.OrderBy(static row => row.DeviceIdentity, StringComparer.Ordinal).ToArray(),
             NpuInformation = snapshot.NpuInformation?.Select(static row => row with {
                 LocationPathsDeclared = row.LocationPathsDeclared?.Order(StringComparer.Ordinal).ToArray()
@@ -57,6 +76,14 @@ public sealed partial class DeviceTopologySemanticComparer
             LocationPaths = NormalizeStrings(port.LocationPaths),
             HardwareIds = NormalizeStrings(port.HardwareIds),
             CompatibleIds = NormalizeStrings(port.CompatibleIds),
+            Network = port.Network is not { Wireless: { } wireless } network ? port.Network : network with
+            {
+                Wireless = wireless with
+                {
+                    SupportedPhyTypesRaw = wireless.SupportedPhyTypesRaw?.Distinct().Order().ToArray(),
+                    SupportedStandards = wireless.SupportedStandards?.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray()
+                }
+            },
             Usb = port.Usb is null
                 ? null
                 : port.Usb with
@@ -67,6 +94,9 @@ public sealed partial class DeviceTopologySemanticComparer
                         .ThenBy(static companion => companion.HubSymbolicLinkName, StringComparer.OrdinalIgnoreCase)
                         .ToArray(),
                     InterfaceProtocols = NormalizeStrings(port.Usb.InterfaceProtocols),
+                    Interfaces = port.Usb.Interfaces?.OrderBy(static item => item.InterfaceNumber)
+                        .ThenBy(static item => item.AlternateSetting).ThenBy(static item => item.ClassCode)
+                        .ThenBy(static item => item.SubClassCode).ThenBy(static item => item.ProtocolCode).ToArray(),
                     Endpoints = port.Usb.Endpoints?
                         .OrderBy(static endpoint => endpoint.InterfaceNumber)
                         .ThenBy(static endpoint => endpoint.AlternateSetting)

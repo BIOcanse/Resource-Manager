@@ -7,7 +7,7 @@ using ResourceManager.ReadWrite.Windows.Devices;
 
 namespace ResourceManager.ReadWrite.Windows.Devices;
 
-/// <summary>One passive RSMB capture supplies Type 0/4/9 declarations and existing Type 17 modules.</summary>
+/// <summary>One passive RSMB capture supplies Type 0/3/4/9 declarations and existing Type 17 modules.</summary>
 public static class SmbiosFirmwareInformationReader
 {
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
@@ -40,6 +40,8 @@ public static class SmbiosFirmwareInformationReader
         var biosCount = 0;
         string? releaseDate = null;
         var slots = new List<FirmwareSystemSlot>();
+        var chassisTypes = new List<byte>();
+        var incompleteChassis = false;
         var processorRecords = new List<(ushort Handle, FirmwareProcessorSocket? Socket)>();
         while (offset < end)
         {
@@ -59,6 +61,11 @@ public static class SmbiosFirmwareInformationReader
                 var minimum = AtLeast(raw, 3, 1) ? 0x1a : AtLeast(raw, 2, 4) ? 0x18
                     : AtLeast(raw, 2, 3) ? 0x14 : AtLeast(raw, 2, 1) ? 0x13 : 0x12;
                 if (length >= minimum) releaseDate = ParseReleaseDate(StringAt(strings, formatted[8]), raw[1], raw[2]);
+            }
+            else if (formatted[0] == 3)
+            {
+                if (length < 9) incompleteChassis = true;
+                else chassisTypes.Add((byte)(formatted[5] & 0x7f));
             }
             else if (formatted[0] == 4)
             {
@@ -88,7 +95,8 @@ public static class SmbiosFirmwareInformationReader
             .Select(static group => group.Single().Socket!)
             .OrderBy(static socket => socket.DeviceIdentity, StringComparer.Ordinal).ToArray();
         return new(SmbiosMemoryReader.ParseModules(raw), new(biosCount == 1 ? releaseDate : null,
-            Array.AsReadOnly(uniqueSlots)) { ProcessorSockets = Array.AsReadOnly(sockets) });
+            Array.AsReadOnly(uniqueSlots)) { ProcessorSockets = Array.AsReadOnly(sockets) })
+        { ChassisTypes = incompleteChassis || chassisTypes.Count == 0 ? null : chassisTypes.AsReadOnly() };
     }
 
     private static int ProcessorMinimumLength(byte[] raw)

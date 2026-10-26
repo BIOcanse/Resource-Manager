@@ -10,6 +10,21 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class SmbiosFirmwareInformationCollectorTests
 {
+    [Fact]
+    public void ChassisTypesComeFromTheSameRawReadAndExcludeLockBit()
+    {
+        byte[] chassis = [3, 9, 1, 0, 0, 0x8a, 0, 0, 0, 0, 0];
+        var reads = 0;
+        var capture = SmbiosFirmwareInformationReader.Read(() => { reads++; return Table(3, 10, chassis, Bios("09/30/2026")); });
+        Assert.Equal(1, reads);
+        Assert.Equal(new byte[] { 10 }, capture!.ChassisTypes);
+        Assert.Equal("2026-09-30", capture.Declarations.BiosReleaseDate);
+        Assert.Null(SmbiosFirmwareInformationReader.Parse(Table(3, 10, Bios("09/30/2026")))!.ChassisTypes);
+        Assert.Null(SmbiosFirmwareInformationReader.Parse(Table(3, 10, [3, 5, 1, 0, 0, 0, 0]))!.ChassisTypes);
+        byte[] tower = [3, 9, 2, 0, 0, 7, 0, 0, 0, 0, 0];
+        Assert.Equal(new byte[] { 10, 7 }, SmbiosFirmwareInformationReader.Parse(Table(3, 10, chassis, tower))!.ChassisTypes);
+    }
+
     [Theory]
     [InlineData("09/30/2026", 3, 10, "2026-09-30")]
     [InlineData("01/02/99", 2, 2, "1999-01-02")]

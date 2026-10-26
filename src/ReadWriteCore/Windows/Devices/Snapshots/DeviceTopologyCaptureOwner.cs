@@ -162,7 +162,7 @@ public sealed partial class DeviceTopologyCaptureOwner(
             {
                 snapshot = snapshot with { GpuInformation = (ReadState().Snapshot?.GpuInformation ?? [])
                     .Select(static gpu => gpu with { AdapterLuid = null, Name = null, PciVendorId = null,
-                        PciDeviceId = null, DriverVersion = null }).ToArray() };
+                        PciDeviceId = null, DriverVersion = null, AdapterTypeFlags = null }).ToArray() };
             }
             if (snapshot.AmdGpuInformation is null)
             {
