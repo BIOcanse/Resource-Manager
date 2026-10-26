@@ -41,14 +41,18 @@ for (const disabledMode of ["none", "ultra"] as const) {
     { segment: { softwareId: "b", value: 1 }, index: 1, left: 50, right: 100, width: 50 }
   ];
 
-  assert.equal(update(firstLayout, "normal", barDurationMs), null);
-  assert.equal(update(structuredClone(firstLayout), "normal", barDurationMs), null,
+  let durationReads = 0;
+  const readDuration = () => { durationReads += 1; return barDurationMs; };
+  assert.equal(update(firstLayout, "normal", readDuration), null);
+  assert.equal(update(structuredClone(firstLayout), "normal", readDuration), null,
     "An unchanged callback must not hide fixed-type dividers");
   assert.deepEqual(mutations, []);
-  const animated = update(changedLayout, "normal", barDurationMs);
+  assert.equal(durationReads, 0, "Mount and unchanged layouts must not read computed style");
+  const animated = update(changedLayout, "normal", readDuration);
   assert.ok(animated);
   assert.deepEqual(mutations, [true]);
-  const disabled = update(changedLayout, disabledMode, barDurationMs);
+  assert.equal(durationReads, 1, "An animated layout change reads its current token once");
+  const disabled = update(changedLayout, disabledMode, readDuration);
   assert.ok(disabled);
   assert.equal((await animated.completion).status, "superseded");
   assert.deepEqual(await disabled.completion, {
@@ -56,10 +60,14 @@ for (const disabledMode of ["none", "ultra"] as const) {
     value: undefined
   });
   assert.deepEqual(mutations, [true, false]);
+  const instant = update(firstLayout, disabledMode, readDuration);
+  assert.ok(instant);
+  await instant.completion;
+  assert.equal(durationReads, 1, "None and ultra never consume an animation duration");
 
   gate.resolve();
   await flushPromises();
-  assert.deepEqual(mutations, [true, false]);
+  assert.deepEqual(mutations, [true, false, false]);
   scope.close();
   registry.dispose();
 }

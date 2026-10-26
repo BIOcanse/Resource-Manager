@@ -29,13 +29,13 @@ export function createResourceLayoutSettleController(
 ): (
   layout: Layout,
   animationMode: ResourceLayoutAnimationMode,
-  barDurationMs: number
+  readBarDurationMs: () => number
 ) => TaskRun<void> | null {
   let initialized = false;
   let previousLayout: Layout = [];
   let previousMode: ResourceLayoutAnimationMode = "normal";
 
-  return (layout, animationMode, barDurationMs) => {
+  return (layout, animationMode, readBarDurationMs) => {
     if (!initialized) {
       initialized = true;
       previousLayout = layout;
@@ -57,7 +57,7 @@ export function createResourceLayoutSettleController(
       ? startResourceLayoutSettleTransition(
           scope,
           animationMode === "normal",
-          barDurationMs,
+          animationMode === "normal" ? readBarDurationMs() : 0,
           setMoving,
           delay)
       : null;

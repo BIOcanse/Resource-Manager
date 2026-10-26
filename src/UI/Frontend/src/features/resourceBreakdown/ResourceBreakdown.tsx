@@ -419,7 +419,8 @@ function ResourceBreakdownItem(props: {
     setMoving);
   createEffect(() => {
     // 时长读 body 上的令牌：手感在根元素上，窗口缩放时 body 把它置 0，画布读到的是同一个值。
-    updateLayoutSettle(layout(), props.animationMode, readMotionDurationMs(document.body, "--motion-bar"));
+    // 首次布局、不变的布局和减弱档不启动动画，不为未使用的时长强制刷新整页样式。
+    updateLayoutSettle(layout(), props.animationMode, () => readMotionDurationMs(document.body, "--motion-bar"));
   });
 
   const selectAtPoint = (event: MouseEvent) => {
