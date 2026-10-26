@@ -1816,6 +1816,12 @@ const frFrAppCopy: AppCopy = {
     vram: "VRAM résidente",
     shared: "Partagée",
     noData: "Aucune donnée",
+    dedicatedMemoryUnknown: "Non déterminé",
+    dedicatedMemoryHint: {
+      supported: "Ce GPU fournit des mesures de mémoire vidéo dédiée.",
+      unsupported: "Ce GPU ne fournit pas de mesures de mémoire vidéo dédiée.",
+      unknown: "Il n’a pas encore été déterminé si ce GPU fournit des mesures de mémoire vidéo dédiée."
+    },
     specializedStrip: "Utilisation des unités spécialisées",
     specializedUsage: "Utilisation spécialisée",
     sharedMemory: "Mémoire partagée résidente",

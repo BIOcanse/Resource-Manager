@@ -1816,6 +1816,12 @@ const koKrAppCopy: AppCopy = {
     vram: "VRAM 실제 상주량",
     shared: "공유",
     noData: "데이터 없음",
+    dedicatedMemoryUnknown: "알 수 없음",
+    dedicatedMemoryHint: {
+      supported: "이 GPU는 전용 VRAM 지표를 제공합니다.",
+      unsupported: "이 GPU는 전용 VRAM 지표를 제공하지 않습니다.",
+      unknown: "이 GPU가 전용 VRAM 지표를 제공하는지 아직 확인되지 않았습니다."
+    },
     specializedStrip: "전용 유닛 사용량",
     specializedUsage: "전용 유닛 사용률",
     sharedMemory: "공유 메모리 실제 상주량",

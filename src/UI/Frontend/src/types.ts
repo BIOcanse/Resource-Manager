@@ -1638,6 +1638,8 @@ export interface GpuPerformanceScoreItem {
   source: string;
   matchedPreset?: string | null;
   isPresetMatch: boolean;
+  /** 后端认定这块 GPU 是否有专用显存指标：true 有，false 没有（只有共享内存），null 后端还不知道。 */
+  hasDedicatedMemoryMetrics: boolean | null;
 }
 
 export interface CpuSpecificationModel {

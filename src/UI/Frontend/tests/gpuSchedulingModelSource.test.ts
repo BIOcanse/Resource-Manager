@@ -85,6 +85,29 @@ assert.throws(
   }),
   /finite number/);
 
+// 专用显存指标能力：后端总是写这个键；true／false／null 原样保留，缺键或类型不对直接拒绝，不补默认值。
+for (const capability of [true, false, null]) {
+  const decoded = gpuPerformanceScoreSnapshotDecoder.decode({
+    ...scorePayload(),
+    gpus: [{ ...scorePayload().gpus[0], hasDedicatedMemoryMetrics: capability }]
+  });
+  assert.equal(decoded.gpus[0]!.hasDedicatedMemoryMetrics, capability);
+}
+{
+  const { hasDedicatedMemoryMetrics: _omitted, ...withoutCapability } = scorePayload().gpus[0]!;
+  assert.throws(
+    () => gpuPerformanceScoreSnapshotDecoder.decode({ ...scorePayload(), gpus: [withoutCapability] }),
+    /hasDedicatedMemoryMetrics/);
+}
+for (const invalid of ["true", 1, {}]) {
+  assert.throws(
+    () => gpuPerformanceScoreSnapshotDecoder.decode({
+      ...scorePayload(),
+      gpus: [{ ...scorePayload().gpus[0], hasDedicatedMemoryMetrics: invalid }]
+    }),
+    /hasDedicatedMemoryMetrics/);
+}
+
 console.log("gpu scheduling model source tests passed");
 
 function fakeClient(epochForUrl: (url: string) => string) {
@@ -147,7 +170,8 @@ function scorePayload() {
       isIntegrated: false,
       source: "test",
       matchedPreset: null,
-      isPresetMatch: true
+      isPresetMatch: true,
+      hasDedicatedMemoryMetrics: true
     }]
   };
 }

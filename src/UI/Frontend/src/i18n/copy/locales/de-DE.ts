@@ -1816,6 +1816,12 @@ const deDeAppCopy: AppCopy = {
     vram: "Residenter VRAM",
     shared: "Gemeinsam",
     noData: "Keine Daten",
+    dedicatedMemoryUnknown: "Unbekannt",
+    dedicatedMemoryHint: {
+      supported: "Diese GPU liefert Messwerte für dedizierten Videospeicher.",
+      unsupported: "Diese GPU liefert keine Messwerte für dedizierten Videospeicher.",
+      unknown: "Ob diese GPU Messwerte für dedizierten Videospeicher liefert, ist noch nicht ermittelt."
+    },
     specializedStrip: "Auslastung der spezialisierten Einheiten",
     specializedUsage: "Auslastung spezialisierter Einheiten",
     sharedMemory: "Residenter gemeinsamer Speicher",

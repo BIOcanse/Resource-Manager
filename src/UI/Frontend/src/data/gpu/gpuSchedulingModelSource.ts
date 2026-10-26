@@ -9,6 +9,7 @@ import {
   requireNonEmptyString,
   requireNonNegativeFiniteNumber,
   requireNonNegativeSafeInteger,
+  requireNullable,
   requireRecord,
   requireSafeInteger,
   requireString
@@ -210,7 +211,12 @@ function decodeGpuPerformanceScoreItem(
     isIntegrated: requireBoolean(item.isIntegrated, `${path}.isIntegrated`),
     source: requireString(item.source, `${path}.source`),
     matchedPreset: optionalNullableString(item.matchedPreset, `${path}.matchedPreset`),
-    isPresetMatch: requireBoolean(item.isPresetMatch, `${path}.isPresetMatch`)
+    isPresetMatch: requireBoolean(item.isPresetMatch, `${path}.isPresetMatch`),
+    // 后端总是写这个键；null 是「不知道」，原样保留，不按显存读数推断。
+    hasDedicatedMemoryMetrics: requireNullable(
+      item.hasDedicatedMemoryMetrics,
+      `${path}.hasDedicatedMemoryMetrics`,
+      requireBoolean)
   });
 }
 

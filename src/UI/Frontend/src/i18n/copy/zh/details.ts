@@ -128,6 +128,12 @@ export const zhDetailsCopy = {
     vram: "显存（实际驻留）",
     shared: "共享",
     noData: "暂无数据",
+    dedicatedMemoryUnknown: "未知",
+    dedicatedMemoryHint: {
+      supported: "此 GPU 提供专用显存指标。",
+      unsupported: "此 GPU 不提供专用显存指标。",
+      unknown: "尚未确定此 GPU 是否提供专用显存指标。"
+    },
     specializedStrip: "专用核心占用",
     specializedUsage: "专用占用",
     sharedMemory: "共享内存（实际驻留）",

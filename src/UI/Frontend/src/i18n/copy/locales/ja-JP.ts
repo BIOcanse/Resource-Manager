@@ -1816,6 +1816,12 @@ const jaJpAppCopy: AppCopy = {
     vram: "VRAM（実常駐量）",
     shared: "共有",
     noData: "データなし",
+    dedicatedMemoryUnknown: "不明",
+    dedicatedMemoryHint: {
+      supported: "この GPU は専用 VRAM の指標を提供します。",
+      unsupported: "この GPU は専用 VRAM の指標を提供しません。",
+      unknown: "この GPU が専用 VRAM の指標を提供するかどうかは、まだ確定していません。"
+    },
     specializedStrip: "専用ユニットの使用量",
     specializedUsage: "専用ユニット使用率",
     sharedMemory: "共有メモリ（実常駐量）",

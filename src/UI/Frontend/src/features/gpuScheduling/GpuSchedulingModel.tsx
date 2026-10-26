@@ -45,6 +45,13 @@ import type {
 import { ObservationStateBoundary } from "../../components/ObservationStateNotice";
 import { uiText } from "../../text.ts";
 import { CurrentPageHeading } from "../../app/navigation/currentPageName.tsx";
+import {
+  dedicatedMemoryEmptyLabel,
+  dedicatedMemoryHint,
+  dedicatedMemoryState,
+  gpuFullClassification,
+  type DedicatedMemoryState
+} from "./gpuDedicatedMemory.ts";
 
 interface GpuSchedulingPosition {
   id: string;
@@ -65,7 +72,8 @@ interface GpuSchedulingPosition {
   matchedPreset?: string | null;
   full: boolean | null;
   fullReason: string | null;
-  hasDedicatedMemoryMetrics: boolean;
+  /** 后端的专用显存指标能力（性能分条目原样）：true 有，false 没有，null 不知道；没有这块 GPU 的条目时也是 null。 */
+  hasDedicatedMemoryMetrics: boolean | null;
   softwareIds: string[];
   softwareScoreTotal: number;
   specializedUsages: GpuSpecializedUsage[];
@@ -429,8 +437,10 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
                   <PressureMeter label="GPU" value={position.usagePercent} />
                   <PressureMeter
                     label={uiText.gpuScheduling.vram}
-                    value={position.hasDedicatedMemoryMetrics ? position.vramPercent : null}
-                    emptyLabel={position.hasDedicatedMemoryMetrics ? uiText.gpuScheduling.noData : uiText.gpuScheduling.shared}
+                    value={position.hasDedicatedMemoryMetrics === true ? position.vramPercent : null}
+                    emptyLabel={dedicatedMemoryEmptyLabel(position.hasDedicatedMemoryMetrics)}
+                    hint={dedicatedMemoryHint(position.hasDedicatedMemoryMetrics)}
+                    dedicatedMemory={dedicatedMemoryState(position.hasDedicatedMemoryMetrics)}
                   />
                 </div>
 
@@ -518,10 +528,16 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
   }
 }
 
-function PressureMeter(props: { label: string; value?: number | null; emptyLabel?: string }) {
+function PressureMeter(props: {
+  label: string;
+  value?: number | null;
+  emptyLabel?: string;
+  hint?: string;
+  dedicatedMemory?: DedicatedMemoryState;
+}) {
   const value = () => sanitizePercent(props.value);
   return (
-    <div class="gpu-pressure-meter">
+    <div class="gpu-pressure-meter" title={props.hint} data-dedicated-memory={props.dedicatedMemory}>
       <div>
         <span>{props.label}</span>
         <strong>{value() === null ? props.emptyLabel ?? uiText.gpuScheduling.noData : formatPercent(value())}</strong>
@@ -609,11 +625,12 @@ function buildGpuPositions(
     const defaultPerformanceScore = scoreItem?.defaultPerformanceScore ?? fallbackScore;
     const performanceScore = scoreItem?.performanceScore ?? fallbackScore;
     const usagePercent = sanitizePercent(usage?.percent ?? usage?.numericValue);
-    const dedicatedMemory = vram !== undefined || vramPercent !== undefined;
-    const usedVramPercent = dedicatedMemory
+    // 能力由后端认定，不按有没有显存读数推断；null 就按「不知道」显示和判断。
+    const dedicatedMemory = scoreItem?.hasDedicatedMemoryMetrics ?? null;
+    const usedVramPercent = dedicatedMemory === true
       ? sanitizePercent(vramPercent?.percent ?? vramPercent?.numericValue ?? vram?.percent)
       : null;
-    const fullClassification = fullReasonFor(
+    const fullClassification = gpuFullClassification(
       usagePercent,
       usedVramPercent,
       gpuUsageFullPressurePercent,
@@ -633,7 +650,7 @@ function buildGpuPositions(
       usagePercent,
       vramPercent: usedVramPercent,
       vramDisplay: metricDisplayValue(vram, "")
-        || (dedicatedMemory ? null : uiText.gpuScheduling.sharedMemory),
+        || (dedicatedMemory === false ? uiText.gpuScheduling.sharedMemory : null),
       graphicsClockDisplay: graphicsClockDisplay ? uiText.gpuScheduling.clock(graphicsClockDisplay) : null,
       memoryClockDisplay: memoryClockDisplay ? uiText.gpuScheduling.memoryClock(memoryClockDisplay) : null,
       scoreSource: scoreItem?.source ?? "unknown",
@@ -786,41 +803,6 @@ function parseGpuBreakdownMetric(metricId?: string | null) {
 function isRealProcessSoftwareSegment(segment: ResourceSoftwareSegment) {
   return Boolean(segment.softwareId)
     && !segment.softwareId.startsWith("resource-residual:");
-}
-
-function fullReasonFor(
-  usagePercent: number | null,
-  vramPercent: number | null,
-  gpuUsageFullPressurePercent: number | null,
-  gpuVramFullPressurePercent: number | null,
-  hasDedicatedMemoryMetrics: boolean): {
-    full: boolean | null;
-    reason: string | null;
-  } {
-  const reasons = [
-    gpuUsageFullPressurePercent !== null
-        && usagePercent !== null
-        && usagePercent >= gpuUsageFullPressurePercent
-      ? uiText.gpuScheduling.gpuFull
-      : "",
-    hasDedicatedMemoryMetrics
-        && gpuVramFullPressurePercent !== null
-        && vramPercent !== null
-        && vramPercent >= gpuVramFullPressurePercent
-      ? uiText.gpuScheduling.vramFull
-      : ""
-  ].filter(Boolean);
-  if (reasons.length > 0) {
-    return { full: true, reason: reasons.join(" / ") };
-  }
-
-  const canClassify = gpuUsageFullPressurePercent !== null
-    && usagePercent !== null
-    && (!hasDedicatedMemoryMetrics
-      || (gpuVramFullPressurePercent !== null && vramPercent !== null));
-  return canClassify
-    ? { full: false, reason: null }
-    : { full: null, reason: null };
 }
 
 function normalizePressureThreshold(value: number | undefined): number | null {

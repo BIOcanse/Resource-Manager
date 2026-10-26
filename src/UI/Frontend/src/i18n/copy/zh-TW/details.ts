@@ -128,6 +128,12 @@ export const zhDetailsCopy = {
     vram: "視訊記憶體（實際駐留）",
     shared: "共享",
     noData: "暫無資料",
+    dedicatedMemoryUnknown: "未知",
+    dedicatedMemoryHint: {
+      supported: "此 GPU 提供專用視訊記憶體指標。",
+      unsupported: "此 GPU 不提供專用視訊記憶體指標。",
+      unknown: "尚未確定此 GPU 是否提供專用視訊記憶體指標。"
+    },
     specializedStrip: "專用核心佔用",
     specializedUsage: "專用佔用",
     sharedMemory: "共享記憶體（實際駐留）",

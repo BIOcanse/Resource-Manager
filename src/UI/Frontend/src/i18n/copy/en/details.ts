@@ -131,6 +131,12 @@ export const enDetailsCopy: Pick<AppCopy, "cpuTopology" | "cpuBaseline" | "gpuSc
     vram: "Resident VRAM",
     shared: "Shared",
     noData: "No data",
+    dedicatedMemoryUnknown: "Unknown",
+    dedicatedMemoryHint: {
+      supported: "This GPU reports dedicated video memory metrics.",
+      unsupported: "This GPU does not report dedicated video memory metrics.",
+      unknown: "It has not yet been determined whether this GPU reports dedicated video memory metrics."
+    },
     specializedStrip: "Specialized unit usage",
     specializedUsage: "Specialized usage",
     sharedMemory: "Resident shared memory",

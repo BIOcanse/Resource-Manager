@@ -1816,6 +1816,12 @@ const ruRuAppCopy: AppCopy = {
     vram: "Резидентная видеопамять",
     shared: "Общая",
     noData: "Нет данных",
+    dedicatedMemoryUnknown: "Не определено",
+    dedicatedMemoryHint: {
+      supported: "Этот GPU предоставляет показатели выделенной видеопамяти.",
+      unsupported: "Этот GPU не предоставляет показатели выделенной видеопамяти.",
+      unknown: "Ещё не определено, предоставляет ли этот GPU показатели выделенной видеопамяти."
+    },
     specializedStrip: "Загрузка специализированных блоков",
     specializedUsage: "Загрузка специализированных блоков",
     sharedMemory: "Резидентная общая память",
