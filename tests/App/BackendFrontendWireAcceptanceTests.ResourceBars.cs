@@ -137,10 +137,15 @@ public sealed partial class BackendFrontendWireAcceptanceTests
         Assert.All(processes, process => Assert.Equal(
             process.AttributionKind == ResourceProcessAttributionKinds.SystemResidual ? "" : "evidence-worker", process.Name));
         Assert.Equal(etwEvidence ? 2 : 4, processes.Length);
-        var softwareIds = bars.SelectMany(bar => bar.Software).Select(software => software.SoftwareId).ToHashSet();
-        var wire = ResourceBreakdownWireSnapshot.Create(snapshot, metricIds, softwareIds);
+        // Real software is selected by id and each bar's residual by its metric id, as the request sends them.
+        var softwareIds = bars.SelectMany(bar => bar.Software)
+            .Where(software => software.Processes.All(process => process.AttributionKind != ResourceProcessAttributionKinds.SystemResidual))
+            .Select(software => software.SoftwareId).ToHashSet();
+        var residualIds = metricIds.ToHashSet();
+        var wire = ResourceBreakdownWireSnapshot.Create(snapshot, metricIds, softwareIds, residualDetailMetricIds: residualIds);
         object[] payloads = [new ResourceMonitorWireSnapshot(ResourceMonitorWireSnapshot.CurrentVersion, wire.CapturedAt, wire),
-            ResourceFactsSnapshot.Create(snapshot, metricIds), ResourceProcessDetailsWireSnapshot.Create(snapshot, metricIds, softwareIds)];
+            ResourceFactsSnapshot.Create(snapshot, metricIds),
+            ResourceProcessDetailsWireSnapshot.Create(snapshot, metricIds, softwareIds, residualDetailMetricIds: residualIds)];
         string[] kinds = ["monitor", "facts", "details"];
         for (var index = 0; index < kinds.Length; index++)
         {

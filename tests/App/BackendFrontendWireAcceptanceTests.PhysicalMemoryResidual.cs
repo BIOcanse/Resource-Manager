@@ -30,10 +30,13 @@ public sealed partial class BackendFrontendWireAcceptanceTests
             ProcessMemoryFacts = privateField ? [new(metricId, "memory.usage", 1000, 2000, 0, []) { Residuals = bar.Software }] : []
         };
         string[] ids = [metricId];
-        var owners = bar.Software.Select(software => software.SoftwareId).ToHashSet();
-        var wire = ResourceBreakdownWireSnapshot.Create(snapshot, ids, owners);
+        // The bar holds only the residual, so the request selects it by its total metric and no software.
+        var noSoftware = new HashSet<string>();
+        var residuals = new HashSet<string>(["memory.usage"]);
+        var wire = ResourceBreakdownWireSnapshot.Create(snapshot, ids, noSoftware, residualDetailMetricIds: residuals);
         object[] payloads = [new ResourceMonitorWireSnapshot(ResourceMonitorWireSnapshot.CurrentVersion, wire.CapturedAt, wire),
-            ResourceFactsSnapshot.Create(snapshot, ids), ResourceProcessDetailsWireSnapshot.Create(snapshot, ids, owners)];
+            ResourceFactsSnapshot.Create(snapshot, ids),
+            ResourceProcessDetailsWireSnapshot.Create(snapshot, ids, noSoftware, residualDetailMetricIds: residuals)];
         string[] kinds = ["monitor", "facts", "details"];
         var expected = bar.Software.SelectMany(software => software.Processes).ToArray();
         for (var index = 0; index < kinds.Length; index++)
