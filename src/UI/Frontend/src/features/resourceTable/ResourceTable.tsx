@@ -16,6 +16,7 @@ import { createEffect, createMemo, createSignal, For, Index, onCleanup, onMount,
 import type { JSX } from "solid-js";
 import { ArrowDown, ArrowLeft, ArrowRight, ChevronRight, MoreHorizontal } from "lucide-solid";
 import { userFacingLabel } from "../../presentation/userFacingText";
+import { isReservedSegment } from "../resourceBreakdown/resourceProcessIdentity.ts";
 import { ResourcePerformancePanel } from "./ResourcePerformancePanel";
 import type { SoftwareContextMenuTarget } from "../../components/SoftwareContextMenu";
 import type { MetricDefinition, MetricSnapshot, ResourceTableColumn, ResourceTableColumnSettings, ResourceTableRow, ResourceTableSnapshot, ResourceTableViewMode } from "../../types";
@@ -1409,6 +1410,11 @@ function rowStatus(row: ResourceTableRow | undefined) {
     if (value === "empty") return uiText.status.noData;
     const copy = uiText.resourceTable.summaryRow.status as Record<string, string | undefined>;
     return copy[value] ?? uiText.resourceTableView.unknownStatus;
+  }
+
+  // 系统/驱动保留下面的每一项（例如物理内存的 PID -1 分项）不是进程：按所属条目判断，状态与保留量那一行相同。
+  if (row?.kind === "process" && isReservedSegment(row)) {
+    return uiText.softwareKind.system_residual;
   }
 
   if (value === "running") {
