@@ -96,7 +96,7 @@ export default async function managementFeedbackJourney(page, baseUrl) {
     requiresRootPathConfirmation: false, identityConfirmed: true,
     softwareIdentityId: "feedback-app", rootPaths: [],
     operations: { canUninstall: false, uninstallKind: "None", uninstallConstraint: "manual_registration" } };
-  await page.route("**/api/software", route => route.fulfill({ json: [record] }));
+  await page.route(url => url.pathname === "/api/software", route => route.fulfill({ json: [record] }));
   let metadataReady = false;
   await page.route("**/api/software/metadata/feedback-app?*", route => {
     if (!metadataReady) return route.fulfill({ status: 503, json: { error: "fixture metadata failure" } });

@@ -33,8 +33,7 @@ const managementCopy = readSource("../src/i18n/copy/zh/software.ts");
 const workspace = readSource("../src/features/management/ManagementWorkspace.tsx");
 const browserRuntimePage = readSource("../src/features/browserRuntimes/BrowserRuntimePage.tsx");
 const softwareActions = readSource("../src/app/useSoftwareActions.ts");
-const refreshScheduler = readSource("../src/app/usePageRefreshScheduler.ts");
-const managementSnapshotCache = readSource("../src/features/management/managementSnapshotCache.ts");
+const app = readSource("../src/App.tsx");
 const responsiveCss = readSource("../src/styles/responsive.css");
 
 // 二级分页条由外壳按分页树画（docs/navigation_tree_2026-10-25.md），组件与软件页只登记清单，不自己画分页条。
@@ -60,16 +59,8 @@ assert.doesNotMatch(browserRuntimePage, /<code[^>]*runtimeDirectory/);
 assert.doesNotMatch(workspace, /MigrationPanel|migrationWorkbenchPage/);
 assert.doesNotMatch(workspace, /<details|management-extra-panels/);
 assert.doesNotMatch(softwareActions, /openManagementSubpage\("Migration"\)|migrationRestoreCommand/);
-assert.match(refreshScheduler, /options\.frontendWork\.isNeeded\(frontendWorkIds\.managementInventory\)/);
-assert.doesNotMatch(refreshScheduler, /setInterval|scheduleNextRefresh/);
-assert.match(refreshScheduler, /browserRuntimeManagementSubpageId/);
-assert.match(refreshScheduler, /frontendWorkIds\.managementBrowserRuntimes/);
-assert.doesNotMatch(refreshScheduler, /management\.activeSubpage\(\) === "Migration"/);
-assert.match(managementSnapshotCache, /resource-manager:management-snapshot:v4/);
-assert.match(managementSnapshotCache, /const cacheVersion = 4/);
-assert.match(managementSnapshotCache, /map\(withoutIssueState\)/);
-assert.match(managementSnapshotCache, /issues: undefined/);
-assert.doesNotMatch(managementSnapshotCache, /management-snapshot:v[123]/);
+assert.match(app, /frontendWorkIds\.managementInventory/);
+assert.match(app, /frontendWorkIds\.managementBrowserRuntimes/);
 assert.match(responsiveCss, /body\[data-page="components"\] \.page-stage > #componentsPage/);
 assert.match(responsiveCss, /body\[data-page="components"\] \.page-stage > #browserRuntimePage/);
 assert.match(managementPage, /createEffect\(on\(\(\) => props\.activeKind, \(\) => setSearchQuery\(""\)/);

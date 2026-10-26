@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createRoot, createSignal } from "solid-js";
-import { usePageRefreshScheduler } from "../src/app/usePageRefreshScheduler.ts";
+import { useRuntimeReadContext } from "../src/app/useRuntimeReadContext.ts";
 import { BackendSubscriptionChannel } from "../src/frontendRuntime/push/BackendSubscriptionChannel.ts";
 import { BackendPushValueSource } from "../src/frontendRuntime/push/PushValueSourceFamily.ts";
 import { BackendSessionOwner } from "../src/frontendRuntime/session/BackendSessionOwner.ts";
@@ -56,17 +56,11 @@ const [settings, setSettings] = createSignal<FrontendRefreshIntervals | null>(fr
 let dispose = () => {};
 const scheduler = createRoot(stop => {
   dispose = stop;
-  return usePageRefreshScheduler({
-    operations: { subscribeInvalidations: () => () => {} },
-    activePage: () => "settings",
+  return useRuntimeReadContext({
     selfSchedulingSource: source<ResourceManagerSelfSchedulingSnapshot>("scheduling"),
     localSystemSource: source<LocalSystemStatus>("local-system"),
-    frontendWork: { frontendVisible: visible, activeWorkIds: () => [], isNeeded: () => false },
-    runtimeCapabilities: { runtimeEffectsEnabled: () => false, optimizationEnabled: () => false },
-    refreshIntervals: settings,
-    management: { activeSubpage: () => "Dependency", refreshState() {},
-      refreshBrowserRuntimes() {}, refreshComponents() {}, refreshSoftware() {} },
-    optimization: { refreshReports() {}, refreshHostManagerStatus() {} }
+    frontendWork: { frontendVisible: visible },
+    refreshIntervals: settings
   });
 });
 const flush = async () => {
@@ -114,4 +108,4 @@ try {
   dispose(); channel.dispose(); session.dispose();
 }
 assert.equal(inFlight, 0);
-console.log("Page refresh subscriptions: equivalent settings retain one stream; cadence and visibility replace current bindings.");
+console.log("Runtime read subscriptions: equivalent settings retain one stream; cadence and visibility replace current bindings.");

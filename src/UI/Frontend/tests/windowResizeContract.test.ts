@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const appShell = readSource("../src/app/AppShell.tsx");
-const refreshScheduler = readSource("../src/app/usePageRefreshScheduler.ts");
+const refreshScheduler = readSource("../src/app/useShellResizeBinding.ts");
 const motionCss = readSource("../src/styles/motion.css");
 
 assert.doesNotMatch(appShell, /beginShellWindowResize/);

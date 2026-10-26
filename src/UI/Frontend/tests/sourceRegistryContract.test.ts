@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 
 const readSource = (relativePath: string) =>
   readFileSync(new URL(`../src/${relativePath}`, import.meta.url), "utf8");
@@ -10,7 +10,7 @@ const subscriptionChannel = readSource(
   "frontendRuntime/push/BackendSubscriptionChannel.ts");
 const pushValueSources = readSource(
   "frontendRuntime/push/PushValueSourceFamily.ts");
-const scheduler = readSource("app/usePageRefreshScheduler.ts");
+const scheduler = readSource("app/useRuntimeReadContext.ts");
 const deviceStore = readSource("features/deviceTopology/deviceTopologyStore.ts");
 const deviceApi = readSource("features/deviceTopology/deviceTopologyApi.ts");
 const sourceRegistry = readSource("frontendRuntime/source/SourceRegistry.ts");
@@ -99,7 +99,7 @@ assert.match(
 assert.match(
   app,
   /reportsActive:\s*\(\)\s*=>\s*frontendWork\.isNeeded\(frontendWorkIds\.optimizationReports\)/);
-assert.match(optimizationStore, /sampleIntervalSeconds[\s\S]*?refreshIntervalMs:\s*options\.reportsActive\(\)/);
+assert.match(optimizationStore, /active: options\.enabled\(\) && options\.reportsActive\(\)/);
 assert.match(
   readSource("features/optimization/OptimizationWorkspace.tsx"),
   /onRefresh=\{\(\) => \{[\s\S]*refreshReports\(true\)[\s\S]*refreshHostManagerStatus\(\)/);
@@ -134,3 +134,13 @@ assert.doesNotMatch(optimizationStore, /refreshSettings|getCurrentOptimizationMo
 assert.doesNotMatch(app, /getCurrentOptimizationMode|refreshSettings:\s*settings\.refresh/);
 // 隐藏即暂停后，刷新调度不再看优化模式；优化模式只由优化存储持有，App 也不再转交给调度器。
 assert.doesNotMatch(scheduler, /optimizationMode/);
+
+assert.equal(existsSync(new URL("../src/app/usePageRefreshScheduler.ts", import.meta.url)), false);
+assert.equal(existsSync(new URL("../src/features/management/managementSnapshotCache.ts", import.meta.url)), false);
+assert.doesNotMatch(scheduler, /activePage|management|optimization|setTimeout|requestAnimationFrame/);
+const inventory = readSource("features/management/useManagementInventory.ts");
+assert.equal((inventory.match(/useSource\(/g) ?? []).length, 3);
+assert.doesNotMatch(readSource("stores/managementStore.ts"), /getComponents|getSoftware|RefreshPromise|RefreshPending|SnapshotCache/);
+for (const name of ["Components", "Software", "BrowserRuntimes"]) {
+  assert.match(sources, new RegExp("management" + name + ": sourceRegistry\\.define\\([\\s\\S]*?retainLastGood: false"));
+}

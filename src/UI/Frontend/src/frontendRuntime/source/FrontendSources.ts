@@ -1,3 +1,6 @@
+import { getManagementComponents, getManagementSoftware, getManagementBrowserRuntimes } from "../../data/managementInventory.ts";
+import type { ManagedComponent, SoftwareRecord } from "../../types.ts";
+import type { BrowserRuntimeSnapshot } from "../../features/browserRuntimes/browserRuntimeTypes.ts";
 import {
   buildProductUpdateStatusSubscriptionUrl,
   productUpdateStatusDecoder
@@ -160,6 +163,9 @@ import {
 } from "./SourceRegistry.ts";
 
 export interface FrontendSources {
+  readonly managementComponents: SourceHandle<ManagedComponent[]>;
+  readonly managementSoftware: SourceHandle<SoftwareRecord[]>;
+  readonly managementBrowserRuntimes: SourceHandle<BrowserRuntimeSnapshot>;
   readonly aiGatewayCredentials: SourceHandle<AiGatewayCredentialView[]>;
   readonly resourceProcessDetails: PushValueSourceFamily<ResourceBreakdownQuery, ResourceProcessDetailsSnapshot>;
   readonly appSettings: SourceHandle<CommittedAppSettingsResult>;
@@ -219,6 +225,22 @@ export function createFrontendSources(
   subscriptionChannel: BackendSubscriptionChannel
 ): FrontendSources {
   return Object.freeze({
+    managementComponents: sourceRegistry.define({
+      key: "management.components",
+      load: signal => getManagementComponents(requestClient, signal),
+      retainLastGood: false
+    }),
+    managementSoftware: sourceRegistry.define({
+      key: "management.software",
+      load: (signal, options) => getManagementSoftware(requestClient, signal, options),
+      retainLastGood: false
+    }),
+    managementBrowserRuntimes: sourceRegistry.define({
+      key: "management.browser-runtimes",
+      load: (signal, options) => getManagementBrowserRuntimes(requestClient, signal, options),
+      retainLastGood: false,
+      selectCapturedAt: value => value.capturedAt
+    }),
     aiGatewayCredentials: sourceRegistry.define<AiGatewayCredentialView[]>({
       key: "ai-gateway.credentials",
       load: signal => getAiGatewayCredentials(requestClient, signal),

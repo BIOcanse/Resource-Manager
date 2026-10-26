@@ -6,13 +6,15 @@ import {
 } from "solid-js";
 import type {
   SourceDemand,
+  SourceRefreshOptions,
   SourceHandle
 } from "./SourceDescriptor.ts";
 import type { SourceSnapshot } from "./SourceSnapshot.ts";
 
 export interface SourceView<T> {
   readonly snapshot: Accessor<SourceSnapshot<T>>;
-  refresh(): Promise<SourceSnapshot<T>>;
+  refresh(options?: SourceRefreshOptions): Promise<SourceSnapshot<T>>;
+  invalidate(): Promise<SourceSnapshot<T>>;
   acceptAuthoritative(value: T): SourceSnapshot<T>;
 }
 
@@ -32,7 +34,8 @@ export function useSource<T>(
 
   return {
     snapshot,
-    refresh: () => lease.refresh(),
+    refresh: options => lease.refresh(options),
+    invalidate: () => lease.invalidate(),
     acceptAuthoritative: (value) => lease.acceptAuthoritative(value)
   };
 }

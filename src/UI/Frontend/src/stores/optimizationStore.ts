@@ -10,6 +10,7 @@ import { refreshOptimizationReports } from
   "../data/optimization/optimizationReportsApi.ts";
 import type { RequestClient } from
   "../frontendRuntime/request/RequestClient.ts";
+import { useSource, type SourceView } from "../frontendRuntime/source/useSource.ts";
 import type { SourceHandle } from
   "../frontendRuntime/source/SourceDescriptor.ts";
 import type { PushValueSource } from
@@ -72,12 +73,12 @@ export interface OptimizationStore {
 }
 
 export function createOptimizationStore(options: OptimizationStoreOptions): OptimizationStore {
-  const reportSource = options.reportSource.acquire({
-    active: false,
-    refreshIntervalMs: null
-  });
-  const [reportSnapshot, setReportSnapshot] = createSignal(reportSource.snapshot);
-  const unsubscribeReportSource = reportSource.subscribe(setReportSnapshot);
+  const reportSource: SourceView<OptimizationReportOverview> = useSource(options.reportSource, () => ({
+    active: options.enabled() && options.reportsActive(),
+    refreshIntervalMs: reportSource.snapshot().data?.status.sampleIntervalSeconds !== undefined
+      ? reportSource.snapshot().data!.status.sampleIntervalSeconds * 1000 : null
+  }));
+  const reportSnapshot = reportSource.snapshot;
   const overview = createMemo<OptimizationReportOverview | null>(() => {
     const snapshot = reportSnapshot();
     return options.enabled() && sourceCanRender(snapshot)
@@ -100,17 +101,6 @@ export function createOptimizationStore(options: OptimizationStoreOptions): Opti
   const [optimizationModeApplyRemainingSeconds, setOptimizationModeApplyRemainingSeconds] = createSignal(0);
   let optimizationModeApplyTimer: number | undefined;
   let optimizationModeCountdownTimer: number | undefined;
-
-  // 报告由后端按固定周期评估，随时会出现或消失；列表可见时按同一周期重读，只靠进页读取一次会停在旧值。
-  createEffect(() => {
-    const evaluationSeconds = overview()?.status.sampleIntervalSeconds;
-    reportSource.setDemand({
-      active: options.enabled(),
-      refreshIntervalMs: options.reportsActive() && evaluationSeconds !== undefined
-        ? evaluationSeconds * 1000
-        : null
-    });
-  });
 
   // 调度状态由后端协调器持有：循环里的模式、运行、故障关闭和计数随时会变，只靠进页读取一次会停在旧值。
   createEffect(() => {
@@ -216,18 +206,18 @@ export function createOptimizationStore(options: OptimizationStoreOptions): Opti
       return;
     }
 
+    if (!userInitiated) {
+      await reportSource.refresh({ afterCurrent: true });
+      return;
+    }
     if (loading()) {
       return;
     }
 
     setLoading(true);
     try {
-      if (userInitiated) {
-        await refreshOptimizationReports(options.requestClient);
-        await reportSource.refresh();
-      } else {
-        await reportSource.refresh();
-      }
+      await refreshOptimizationReports(options.requestClient);
+      await reportSource.refresh({ afterCurrent: true });
     } catch (error) {
       if (userInitiated) {
         showErrorToast(error, uiText.stores.optimizationReportRefreshFailed);
@@ -304,8 +294,6 @@ export function createOptimizationStore(options: OptimizationStoreOptions): Opti
 
   function dispose() {
     clearPendingOptimizationMode();
-    unsubscribeReportSource();
-    reportSource.release();
   }
 
   return {

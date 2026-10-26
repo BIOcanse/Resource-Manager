@@ -47,14 +47,17 @@ export default async function managementInventoryRevisionJourney(page, baseUrl) 
   await hiddenHeldRead.captured;
   await publishRevisions(baseUrl, { componentRevision: "5" });
   await delay(100);
+  const cancelledRead = page.waitForEvent("requestfailed", { predicate: request => new URL(request.url()).pathname === componentsPath });
   await page.getByRole("navigation", { name: "页面切换" })
     .getByRole("button", { name: "监视控制台", exact: true }).click();
   await waitForLogicalSubscription(baseUrl, 0);
   hiddenHeldRead.release();
-  await waitForReadCompletion(baseUrl, componentsPath, 1);
+  const cancelled = await cancelledRead;
+  assert.match(cancelled.failure()?.errorText ?? "", /ABORTED|CANCELLED/i, "withdrawn demand cancels its safe read");
   await delay(200);
   const hiddenQueuedRead = await readTelemetry(baseUrl);
-  assert.equal(hiddenQueuedRead[componentsPath].started, 1,
+  assert.equal(hiddenQueuedRead[componentsPath]?.inFlight ?? 0, 0);
+  assert.ok((hiddenQueuedRead[componentsPath]?.started ?? 0) <= 1,
     `A queued inventory reread should be dropped after the list becomes hidden: ${JSON.stringify(hiddenQueuedRead)}`);
   await page.unroute("**/api/components");
 

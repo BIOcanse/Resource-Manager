@@ -196,7 +196,7 @@ assert.doesNotMatch(
   /useFrontendVisibilityDemand|FrontendVisibilityDemandBinding|frontendVisibilitySurface/,
   "settings sections with no continuous work must not register empty visibility owners");
 
-const refreshSchedulerSource = readSource("app/usePageRefreshScheduler.ts");
+const refreshSchedulerSource = readSource("app/useRuntimeReadContext.ts");
 assert.match(
   refreshSchedulerSource,
   /options\.selfSchedulingSource\.subscribeSnapshot\(\s*intervalMs/,
@@ -213,8 +213,7 @@ assert.doesNotMatch(
   refreshSchedulerSource,
   /window\.setInterval|schedulerTickMs|lastRunAt|shouldRun\(|\.refresh\(|useSource\(|ObservationState/,
   "page data must not regain frontend polling or continuous-value state machines");
-assert.match(refreshSchedulerSource, /scheduleVisiblePageRefresh/);
-assert.match(refreshSchedulerSource, /refreshVisiblePageData/);
+assert.doesNotMatch(refreshSchedulerSource, /scheduleVisiblePageRefresh|refreshVisiblePageData|activePage/);
 // 隐藏即暂停：本机状态订阅和其他数据源一样按 frontendVisible() 停止，没有按设置分支的“隐藏也刷新”。
 assert.match(
   refreshSchedulerSource,
@@ -230,7 +229,7 @@ for (const relativePath of [
   "types.ts",
   "App.tsx",
   "stores/settingsStore.ts",
-  "app/usePageRefreshScheduler.ts",
+  "app/useRuntimeReadContext.ts",
   "app/selfScheduling/resolveSelfCpuRuntimePlan.ts",
   "app/selfScheduling/resolveSelfGpuRuntimePlan.ts",
   "features/settings/SettingsPage.tsx",
@@ -262,8 +261,8 @@ assert.match(appSource, /frontendWork\.isNeeded\(frontendWorkIds\.monitorBars\)/
 assert.match(appSource, /frontendWork\.isNeeded\(frontendWorkIds\.monitorTable\)/);
 assert.match(monitorStoreSource, /options\.resourceTableActive\(\)\s*&& resourceTableMode\(\) !== "performance"/);
 // 监控和资源表按刷新调度器算好的间隔订阅，“自动调度”才看得到本程序 CPU 档位和窗口前台状态。
-assert.match(appSource, /pageRefresh\.cpuRuntimePlan\(\)\?\.monitor/);
-assert.match(appSource, /pageRefresh\.cpuRuntimePlan\(\)\?\.resourceTable/);
+assert.match(appSource, /readContext\.cpuRuntimePlan\(\)\?\.monitor/);
+assert.match(appSource, /readContext\.cpuRuntimePlan\(\)\?\.resourceTable/);
 
 for (const relativePath of [
   "types.ts",

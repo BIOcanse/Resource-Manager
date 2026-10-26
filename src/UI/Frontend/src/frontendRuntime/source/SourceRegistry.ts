@@ -9,6 +9,7 @@ import type {
   SourceFamilyDescriptor,
   SourceHandle,
   SourceLease,
+  SourceRefreshOptions,
   SourceRetryPolicy
 } from "./SourceDescriptor.ts";
 import type {
@@ -71,6 +72,7 @@ interface LeaseState {
 }
 
 interface InFlightState {
+  readonly force: boolean;
   readonly token: number;
   readonly attempt: number;
   readonly trigger: SourceRefreshTrigger;
@@ -180,7 +182,7 @@ export class SourceRegistry {
         const sourceKey = parameterizedSourceKey(familyKey, queryKey);
         const instanceDescriptor: SourceDescriptor<TValue> = Object.freeze({
           key: sourceKey,
-          load: (signal: AbortSignal) => normalizedDescriptor.load(canonical.value, signal),
+          load: (signal: AbortSignal, options: SourceRefreshOptions) => normalizedDescriptor.load(canonical.value, signal, options),
           retryPolicy: normalizedDescriptor.retryPolicy,
           mergeValue: normalizedDescriptor.mergeValue,
           selectDomainRevision: normalizedDescriptor.selectDomainRevision,
@@ -272,10 +274,27 @@ export class SourceRegistry {
         leaseState.demand = normalizedDemand;
         this.reconcileDemand(record!, wasActive);
       },
-      refresh: () => {
+      refresh: (options = {}) => {
         if (released) {
           return Promise.reject(
             new Error(`Source lease '${descriptor.key}' is released.`));
+        }
+        // A rescan cannot join an ordinary GET: wait for it, then use the same single-flight owner.
+        const flight = record!.inFlight;
+        if (flight && (options.afterCurrent || (options.force && !flight.force))) {
+          return flight.promise.then(() => released || this.disposed || flight.controller.signal.aborted
+            ? record!.snapshot as SourceSnapshot<T>
+            : this.startRefresh(record!, "manual", options) as Promise<SourceSnapshot<T>>);
+        }
+        return this.startRefresh(record!, "manual", options) as Promise<SourceSnapshot<T>>;
+      },
+      invalidate: async () => {
+        if (released || !this.hasActiveDemand(record!)) return record!.snapshot as SourceSnapshot<T>;
+        const flight = record!.inFlight;
+        const epoch = record!.backendEpoch;
+        if (flight) await flight.promise;
+        if (released || this.disposed || flight?.controller.signal.aborted || record!.backendEpoch !== epoch || !this.hasActiveDemand(record!)) {
+          return record!.snapshot as SourceSnapshot<T>;
         }
         return this.startRefresh(record!, "manual") as Promise<SourceSnapshot<T>>;
       },
@@ -366,7 +385,8 @@ export class SourceRegistry {
 
   private startRefresh(
     record: SourceRecord,
-    reason: Exclude<SourceRefreshTrigger, "authoritative">
+    reason: Exclude<SourceRefreshTrigger, "authoritative">,
+    options: SourceRefreshOptions = {}
   ): Promise<SourceSnapshot<unknown>> {
     if (this.disposed) {
       return Promise.resolve(record.snapshot);
@@ -392,12 +412,34 @@ export class SourceRegistry {
         && session.status !== "disposed"
         && this.backendSession.retry) {
         return this.backendSession.retry()
-          .then(() => this.startRefresh(record, "backend-ready"))
+          .then(() => {
+            const flight = record.inFlight;
+            // Recovery can already have started the demanded ordinary read.
+            // Preserve an explicit rescan after that read without retrying recursively.
+            if (options.force && flight && !flight.force) {
+              return flight.promise.then(() => flight.controller.signal.aborted
+                ? record.snapshot
+                : this.startReadyRefresh(record, "backend-ready", options));
+            }
+            return this.startReadyRefresh(record, "backend-ready", options);
+          })
           .catch(() => record.snapshot);
       }
       return Promise.resolve(record.snapshot);
     }
 
+    return this.startReadyRefresh(record, reason, options);
+  }
+
+  private startReadyRefresh(
+    record: SourceRecord,
+    reason: Exclude<SourceRefreshTrigger, "authoritative">,
+    options: SourceRefreshOptions
+  ): Promise<SourceSnapshot<unknown>> {
+    if (this.disposed) return Promise.resolve(record.snapshot);
+    if (record.inFlight) return record.inFlight.promise;
+    const session = this.backendSession.snapshot;
+    if (session.status !== "ready" || !session.session) return Promise.resolve(record.snapshot);
     if (record.backendEpoch !== session.session.epoch) {
       this.resetForEpoch(record, session.session.epoch);
     }
@@ -420,7 +462,7 @@ export class SourceRegistry {
 
     let flight!: InFlightState;
     const promise = Promise.resolve()
-      .then(() => record.descriptor.load(controller.signal))
+      .then(() => record.descriptor.load(controller.signal, options))
       .then((incoming) => {
         if (!this.canCommit(record, token)) {
           return record.snapshot;
@@ -495,7 +537,7 @@ export class SourceRegistry {
           }
         }
       });
-    flight = { token, attempt, trigger: reason, startedAt, controller, promise };
+    flight = { token, attempt, trigger: reason, startedAt, controller, promise, force: options.force === true };
     record.inFlight = flight;
     this.observeSourceActivity(record, flight, "started", null, 1);
     return promise;

@@ -8,7 +8,7 @@ const sources = {
   softwareActions: readSource("../src/app/useSoftwareActions.ts"),
   page: readSource("../src/features/management/components/ManagementPage.tsx"),
   app: readSource("../src/App.tsx"),
-  scheduler: readSource("../src/app/usePageRefreshScheduler.ts"),
+  scheduler: readSource("../src/stores/managementInventoryRevisionBinding.ts"),
   decoder: readSource("../src/data/operations/operationsStateDecoder.ts"),
   operationsApi: readSource("../src/data/operations/operationsApi.ts"),
   operationCommands: readSource("../src/data/operations/operationCommands.ts"),

@@ -11,8 +11,8 @@ assert.ok(workspace.indexOf("<ComponentAcquisitionDialog") > workspace.lastIndex
   "One shared acquisition dialog must remain outside both management branches");
 const store = read("stores/managementStore.ts");
 // The runtime page shows its install component: entering it reads the components too.
-assert.match(read("app/usePageRefreshScheduler.ts"),
-  /refreshBrowserRuntimes\(false\),\s*options\.management\.refreshComponents\(\)/);
+assert.match(read("features/management/useManagementInventory.ts"),
+  /options\.inventoryActive\(\) \|\| options\.browserRuntimesActive\(\)/);
 const remove = store.slice(store.indexOf("async function removeManualRegistration"), store.indexOf("async function uninstallSoftware"));
 assert.match(remove, /record\.registrationFacts\?\.kind !== "manual"/);
 assert.ok(remove.indexOf("confirmDialog") < remove.indexOf("await removeManualSoftware"));

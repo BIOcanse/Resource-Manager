@@ -5,7 +5,7 @@ import type {
 
 export interface SourceDescriptor<T> {
   readonly key: string;
-  readonly load: (signal: AbortSignal) => Promise<T>;
+  readonly load: (signal: AbortSignal, options: SourceRefreshOptions) => Promise<T>;
   readonly retryPolicy?: SourceRetryPolicy;
   readonly mergeValue?: (previous: T | null, incoming: T) => T;
   readonly selectDomainRevision?: (value: T) => SourceDomainRevision;
@@ -23,7 +23,7 @@ export interface CanonicalSourceQuery<TQuery> {
 export interface SourceFamilyDescriptor<TQuery, TValue> {
   readonly key: string;
   readonly canonicalizeQuery?: (query: TQuery) => CanonicalSourceQuery<TQuery>;
-  readonly load: (query: TQuery, signal: AbortSignal) => Promise<TValue>;
+  readonly load: (query: TQuery, signal: AbortSignal, options: SourceRefreshOptions) => Promise<TValue>;
   readonly retryPolicy?: SourceRetryPolicy;
   readonly mergeValue?: (previous: TValue | null, incoming: TValue) => TValue;
   readonly selectDomainRevision?: (value: TValue) => SourceDomainRevision;
@@ -40,6 +40,13 @@ export interface SourceRetryPolicy {
   readonly jitterRatio?: number;
 }
 
+export interface SourceRefreshOptions {
+  /** Explicit backend rescan; never part of the source identity. */
+  readonly force?: boolean;
+  /** Read after a mutation instead of joining a request that preceded it. */
+  readonly afterCurrent?: boolean;
+}
+
 export interface SourceDemand {
   readonly active: boolean;
   readonly refreshIntervalMs?: number | null;
@@ -50,7 +57,8 @@ export interface SourceLease<T> {
   readonly snapshot: SourceSnapshot<T>;
   subscribe(listener: (snapshot: SourceSnapshot<T>) => void): () => void;
   setDemand(demand: SourceDemand): void;
-  refresh(): Promise<SourceSnapshot<T>>;
+  refresh(options?: SourceRefreshOptions): Promise<SourceSnapshot<T>>;
+  invalidate(): Promise<SourceSnapshot<T>>;
   acceptAuthoritative(value: T): SourceSnapshot<T>;
   release(): void;
 }

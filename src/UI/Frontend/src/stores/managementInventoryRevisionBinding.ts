@@ -2,78 +2,45 @@ import { createEffect, onCleanup } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { ManagementInventoryRevisionSnapshot } from "../data/managementInventoryRevision.ts";
 import type { CurrentValueSource } from "../frontendRuntime/push/PushValueSourceFamily.ts";
-import type { PageId } from "../types.ts";
-import {
-  browserRuntimeManagementSubpageId,
-  type ManagementSubpageId
-} from "../features/management/managementNavigation.ts";
+import type { OperationRegistry } from "../frontendRuntime/operations/OperationRegistry.ts";
 
+interface InventoryRead {
+  readonly active: Accessor<boolean>;
+  invalidate(): Promise<unknown>;
+}
 export interface ManagementInventoryRevisionBindingOptions {
-  readonly activePage: Accessor<PageId>;
-  readonly activeSubpage: Accessor<ManagementSubpageId>;
   readonly inventoryRevisionSource: CurrentValueSource<ManagementInventoryRevisionSnapshot>;
-  readonly inventoryActive: Accessor<boolean>;
-  readonly browserRuntimesActive: Accessor<boolean>;
-  readonly mutablePersistenceEnabled: Accessor<boolean>;
-  readonly refreshComponents: () => Promise<unknown>;
-  readonly refreshSoftware: () => Promise<unknown>;
-  readonly refreshBrowserRuntimes: () => Promise<unknown>;
+  readonly operations: Pick<OperationRegistry, "subscribeInvalidations">;
+  readonly components: InventoryRead;
+  readonly software: InventoryRead;
+  readonly browserRuntimes: InventoryRead;
 }
 
-export function bindManagementInventoryRevisions(
-  options: ManagementInventoryRevisionBindingOptions
-): void {
+/** Revision and operation owners invalidate sources directly; the store is not a read owner. */
+export function bindManagementInventoryRevisions(options: ManagementInventoryRevisionBindingOptions): void {
   createEffect(() => {
-    const managementVisible = options.activePage() === "components";
-    const subpage = options.activeSubpage();
-    const inventoryVisible = managementVisible
-      && options.inventoryActive()
-      && subpage !== browserRuntimeManagementSubpageId;
-    const browserRuntimeVisible = managementVisible
-      && options.browserRuntimesActive()
-      && subpage === browserRuntimeManagementSubpageId;
-    if (!inventoryVisible && !browserRuntimeVisible) {
-      return;
-    }
-
+    if (!options.components.active() && !options.software.active() && !options.browserRuntimes.active()) return;
     let previous: ManagementInventoryRevisionSnapshot | null = null;
-    const unsubscribe = options.inventoryRevisionSource.subscribeSnapshot((snapshot) => {
+    const unsubscribe = options.inventoryRevisionSource.subscribeSnapshot(snapshot => {
       const next = snapshot.data;
-      if (!next) {
-        return;
-      }
+      if (!next) return;
       const before = previous;
       previous = next;
-      if (!before) {
-        return;
-      }
-
-      if (inventoryVisible && options.inventoryActive()) {
-        const wantsComponentList = subpage === "Dependency" || subpage === "Support";
-        if (wantsComponentList
-          && before.componentRevision !== next.componentRevision) {
-          refreshWithoutEscapingStoreFailure(options.refreshComponents);
-        }
-        if (options.mutablePersistenceEnabled()
-          && before.softwareRevision !== next.softwareRevision) {
-          refreshWithoutEscapingStoreFailure(options.refreshSoftware);
-        }
-      }
-
-      if (browserRuntimeVisible && options.browserRuntimesActive()) {
-        if (before.browserRuntimeRevision !== next.browserRuntimeRevision) {
-          refreshWithoutEscapingStoreFailure(options.refreshBrowserRuntimes);
-        }
-        // The page's Download button reflects its install component.
-        if (before.componentRevision !== next.componentRevision) {
-          refreshWithoutEscapingStoreFailure(options.refreshComponents);
-        }
-      }
+      // Initial reads belong to demand, never to this baseline.
+      if (!before) return;
+      if (before.componentRevision !== next.componentRevision) invalidate(options.components);
+      if (before.softwareRevision !== next.softwareRevision) invalidate(options.software);
+      if (before.browserRuntimeRevision !== next.browserRuntimeRevision) invalidate(options.browserRuntimes);
     });
     onCleanup(unsubscribe);
   });
+  const unsubscribe = options.operations.subscribeInvalidations(event => {
+    if (event.targets.includes("components")) invalidate(options.components);
+    if (event.targets.includes("software")) invalidate(options.software);
+    if (event.targets.includes("dependencies")) invalidate(options.browserRuntimes);
+  });
+  onCleanup(unsubscribe);
 }
-
-function refreshWithoutEscapingStoreFailure(refresh: () => Promise<unknown>): void {
-  void refresh().catch(() => undefined);
+function invalidate(source: InventoryRead): void {
+  if (source.active()) void source.invalidate();
 }

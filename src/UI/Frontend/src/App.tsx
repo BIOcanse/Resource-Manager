@@ -3,7 +3,9 @@ import { batch, createEffect, createMemo, createSignal, lazy, onCleanup, onMount
 import { useGlobalFeedback } from "./app/useGlobalFeedback";
 import { AppRoutes } from "./app/AppRoutes";
 import { AppShell } from "./app/AppShell";
-import { usePageRefreshScheduler } from "./app/usePageRefreshScheduler";
+import { useRuntimeReadContext } from "./app/useRuntimeReadContext";
+import { useShellResizeBinding } from "./app/useShellResizeBinding";
+import { useManagementInventory } from "./features/management/useManagementInventory";
 import { resolveSelfGpuRuntimePlan } from "./app/selfScheduling/resolveSelfGpuRuntimePlan";
 import { setInteractionAnimationMode } from "./interactions/solid/lodestone.ts";
 import { useSoftwareActions } from "./app/useSoftwareActions";
@@ -108,11 +110,22 @@ export default function App() {
       });
     }
   });
-  const management = createManagementStore({
-    activePage,
-    inventoryRevisionSource: frontendRuntime.sources.managementInventoryRevision,
+  useShellResizeBinding();
+  const readContext = useRuntimeReadContext({
+    localSystemSource: frontendRuntime.sources.localSystemStatus,
+    selfSchedulingSource: frontendRuntime.sources.selfScheduling,
+    frontendWork,
+    refreshIntervals: settings.frontendRefreshIntervals
+  });
+  const managementInventory = useManagementInventory({
+    sources: frontendRuntime.sources,
+    operations: frontendRuntime.operationRegistry,
     inventoryActive: () => frontendWork.frontendVisible() && frontendWork.isNeeded(frontendWorkIds.managementInventory),
     browserRuntimesActive: () => frontendWork.frontendVisible() && frontendWork.isNeeded(frontendWorkIds.managementBrowserRuntimes),
+    mutablePersistenceEnabled: runtimeCapabilities.mutablePersistenceEnabled
+  });
+  const management = createManagementStore({
+    inventory: managementInventory,
     confirmDialog,
     showToast,
     mutablePersistenceEnabled: runtimeCapabilities.mutablePersistenceEnabled,
@@ -125,36 +138,14 @@ export default function App() {
     reportSource: frontendRuntime.sources.optimizationReports,
     statusSource: frontendRuntime.sources.smartCoordinatorStatus,
     statusActive: () => frontendWork.isNeeded(frontendWorkIds.optimizationSmartStatus),
-    statusIntervalMs: () => pageRefresh.cpuRuntimePlan()?.monitor ?? null,
+    statusIntervalMs: () => readContext.cpuRuntimePlan()?.monitor ?? null,
     reportsActive: () => frontendWork.isNeeded(frontendWorkIds.optimizationReports),
     requestClient: frontendRuntime.requestClient
   });
-  // 后端已展开刷新间隔；这里按本程序 CPU 档位和本地前台状态选择已发布的上下文。
-  // 调度器先于监控存储创建，所有读数消费者直接使用选中的间隔。
-  const pageRefresh = usePageRefreshScheduler({
-    operations: frontendRuntime.operationRegistry,
-    activePage,
-    localSystemSource: frontendRuntime.sources.localSystemStatus,
-    selfSchedulingSource: frontendRuntime.sources.selfScheduling,
-    frontendWork,
-    runtimeCapabilities,
-    refreshIntervals: settings.frontendRefreshIntervals,
-    management: {
-      activeSubpage: management.activeSubpage,
-      refreshState: management.refreshState,
-      refreshComponents: management.refreshComponents,
-      refreshSoftware: management.refreshSoftware,
-      refreshBrowserRuntimes: management.refreshBrowserRuntimes
-    },
-    optimization: {
-      refreshReports: optimization.refreshReports,
-      refreshHostManagerStatus: optimization.refreshHostManagerStatus
-    }
-  });
   const metricSnapshotIntervalMs = createMemo(() =>
-    pageRefresh.cpuRuntimePlan()?.monitor ?? null);
+    readContext.cpuRuntimePlan()?.monitor ?? null);
   const resourceTableIntervalMs = createMemo(() =>
-    pageRefresh.cpuRuntimePlan()?.resourceTable ?? null);
+    readContext.cpuRuntimePlan()?.resourceTable ?? null);
   const monitor: MonitorStore = createMonitorStore({
     visibleDashboardCardIds: () =>
       frontendWork.activeVisibilitySourceIds(frontendVisibilitySourceKinds.monitorCard),
@@ -199,6 +190,8 @@ export default function App() {
       components: createManagementNavigation({
         components: management.components,
         software: management.software,
+        componentsObservation: management.componentsObservation,
+        softwareObservation: management.softwareObservation,
         mutablePersistenceEnabled: runtimeCapabilities.mutablePersistenceEnabled,
         selected: management.activeSubpage,
         select: selectManagementSubpage
@@ -244,12 +237,12 @@ export default function App() {
   // 页名的唯一来源是分页树：页标题（读屏、焦点落点）和窗口标题都读它。
   const pageTitle = createMemo(() => navigation.page(activePage()).label());
   const preciseGpuPlacementEnabled = createMemo(() => settings.settings().performance?.preciseGpuPlacementEnabled === true);
-  const systemUptime = pageRefresh.systemUptime;
-  const currentSelfScheduling = pageRefresh.selfScheduling;
+  const systemUptime = readContext.systemUptime;
+  const currentSelfScheduling = readContext.selfScheduling;
   const gpuRuntimePlan = createMemo(() => resolveSelfGpuRuntimePlan(
     settings.settings().appearance,
     currentSelfScheduling()?.gpuGrade ?? "normal",
-    pageRefresh.foregroundInteractive()));
+    readContext.foregroundInteractive()));
 
   createEffect(() => {
     const page = activePage();
@@ -274,7 +267,7 @@ export default function App() {
   });
 
   createEffect(() => {
-    document.body.dataset.frontendFocused = pageRefresh.frontendFocused() ? "yes" : "no";
+    document.body.dataset.frontendFocused = readContext.frontendFocused() ? "yes" : "no";
   });
 
   createEffect(() => {
@@ -370,7 +363,7 @@ export default function App() {
   return (
     <FrontendWorkProvider controller={frontendWork}>
       <AccessRequestSnapshotProvider>
-      <FrontendReadIntervalsProvider configuration={settings.frontendRefreshIntervals} current={pageRefresh.cpuRuntimePlan}>
+      <FrontendReadIntervalsProvider configuration={settings.frontendRefreshIntervals} current={readContext.cpuRuntimePlan}>
       <>
       <AppShell
         activePage={activePage}

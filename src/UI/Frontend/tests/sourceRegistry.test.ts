@@ -721,6 +721,33 @@ function createRegistry(session: FakeBackendSession, clock = new FakeClock()) {
   assert.throws(() => canonicalizeSourceQuery({ nested: { value: () => 1 } }), /Unsupported/);
 }
 
+
+for (const active of [false, true]) {
+  const session = new FakeBackendSession();
+  session.snapshot = unavailableSnapshot(1);
+  session.retryHandler = async () => { session.publish(readySnapshot("epoch-recovered", 2)); };
+  const { registry } = createRegistry(session);
+  const ordinary = deferred<void>();
+  const forces: boolean[] = [];
+  const source = registry.define({
+    key: "forced-session-retry",
+    load: async (_signal, options) => {
+      forces.push(options.force === true);
+      if (!options.force) await ordinary.promise;
+      return { rescanned: options.force === true };
+    }
+  });
+  const lease = source.acquire({ active });
+  const refreshed = lease.refresh({ force: true });
+  await flushPromises();
+  if (active) assert.deepEqual(forces, [false], "recovery demand owns the ordinary read");
+  ordinary.resolve();
+  await refreshed;
+  assert.deepEqual(forces, active ? [false, true] : [true], "explicit rescan survives recovery");
+  assert.deepEqual(lease.snapshot.data, { rescanned: true });
+  lease.release(); registry.dispose();
+}
+
 function readySnapshot(epoch: string, revision: number): BackendSessionSnapshot {
   return {
     status: "ready",

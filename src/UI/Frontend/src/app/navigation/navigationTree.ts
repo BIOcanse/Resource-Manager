@@ -12,7 +12,7 @@ import { uiText } from "../../text.ts";
 export interface SecondaryTab {
   readonly id: string;
   readonly name: string;
-  readonly count?: number;
+  readonly count?: number | "--";
   readonly elementId?: string;
 }
 

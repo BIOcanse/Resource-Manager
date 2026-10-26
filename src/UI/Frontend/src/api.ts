@@ -7,9 +7,7 @@ import {
   startupModuleSelectionDecoder,
   type StartupModuleSelection
 } from "./features/overlay/startupModuleSelection.ts";
-import { decodeSoftwareRecords } from "./features/management/softwareRecordDecoder.ts";
 import { frontendPreferencesClient, pointOverlayPresentation, cachedOverlay } from "./preferences/frontendPreferences.ts";
-import { decodeManagedComponents } from "./features/management/componentDecoder.ts";
 import type {
   BackendMessage,
   AiGatewayCompatibilityProfile,
@@ -309,18 +307,10 @@ export async function getResourceBreakdown(
   return decodeResourceBreakdownWireSnapshot(snapshot);
 }
 
-export async function getComponents() {
-  return decodeManagedComponents(await getJson<unknown>("/api/components"));
-}
-
 export async function verifyComponent(id: string) {
   return postJson<{ state: string; message: BackendMessage }>(
     `/api/components/${encodeURIComponent(id)}/verify`, {}, uiText.stores.actionFailed, false,
     { timeoutMs: 120_000 }); // The explicit verification can fetch a component archive.
-}
-
-export async function getSoftware(refresh = false) {
-  return decodeSoftwareRecords(await getJson<unknown>(refresh ? "/api/software?refresh=true" : "/api/software"));
 }
 
 export async function removeManualSoftware(id: string) {

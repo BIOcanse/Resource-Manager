@@ -3,12 +3,9 @@ import {
   addManualSoftware,
   removeManualSoftware,
   fetchComponentVersionOptions,
-  getComponents,
-  getSoftware,
   openPath,
   verifyComponent as requestComponentVerification,
 } from "../api";
-import { getBrowserRuntimeSnapshot } from "../features/browserRuntimes/browserRuntimeApi";
 import {
   sharedBrowserRuntimeComponentId,
   type BrowserRuntimeSnapshot
@@ -17,19 +14,15 @@ import type { ComponentAcquisitionRequest } from "../features/management/compone
 import type { ConfirmDialogRequest, ToastInput } from "../components/AppFeedback";
 import { managementActionKey, managementActionKeyFromOperation } from "../features/management/components/ManagementPage";
 import {
-  browserRuntimeManagementSubpageId,
   type ManagementSubpageId
 } from "../features/management/managementNavigation";
-import { readManagementSnapshotCache, writeManagementSnapshotCache } from "../features/management/managementSnapshotCache";
 import { uiText } from "../text.ts";
 import { softwareRecordName, softwareUninstallDescription } from "../presentation/softwareFacts.ts";
 import {
-  cachedObservation,
   failedObservation,
   loadingObservation,
   profileDisabledObservation,
   readyObservation,
-  refreshingObservation,
   type ObservationState
 } from "../observation/observationState";
 import { renderBackendMessage } from "../presentation/backendMessage.ts";
@@ -47,9 +40,6 @@ import type {
   OperationRegistry,
   OperationRegistrySnapshot
 } from "../frontendRuntime/operations/OperationRegistry";
-import type { CurrentValueSource } from "../frontendRuntime/push/PushValueSourceFamily.ts";
-import type { ManagementInventoryRevisionSnapshot } from "../data/managementInventoryRevision.ts";
-import { bindManagementInventoryRevisions } from "./managementInventoryRevisionBinding.ts";
 import { isTerminalOperation } from "../frontendRuntime/operations/operationMerge";
 import type {
   ManagedComponent,
@@ -59,13 +49,10 @@ import type {
   OperationSnapshot,
   SoftwareRecord
 } from "../types";
-import type { PageId } from "../types";
+import type { ManagementInventory } from "../features/management/useManagementInventory.ts";
 
 export interface ManagementStoreOptions {
-  activePage: Accessor<PageId>;
-  inventoryRevisionSource: CurrentValueSource<ManagementInventoryRevisionSnapshot>;
-  inventoryActive: Accessor<boolean>;
-  browserRuntimesActive: Accessor<boolean>;
+  inventory: ManagementInventory;
   confirmDialog: (request: ConfirmDialogRequest) => Promise<boolean>;
   showToast: (input: ToastInput) => void;
   mutablePersistenceEnabled: Accessor<boolean>;
@@ -113,23 +100,9 @@ export interface ManagementStore {
 }
 
 export function createManagementStore(options: ManagementStoreOptions): ManagementStore {
-  const cachedSnapshot = readManagementSnapshotCache();
   const [activeSubpage, setActiveSubpage] = createSignal<ManagementSubpageId>("Dependency");
-  const [components, setComponents] = createSignal<ManagedComponent[]>(cachedSnapshot?.components ?? []);
-  const [software, setSoftware] = createSignal<SoftwareRecord[]>(cachedSnapshot?.software ?? []);
-  const cachedState = cachedSnapshot
-    ? cachedObservation(cachedSnapshot.capturedAt)
-    : loadingObservation();
-  const [componentsObservation, setComponentsObservation] =
-    createSignal<ObservationState>(cachedState);
-  const [softwareObservation, setSoftwareObservation] =
-    createSignal<ObservationState>(options.mutablePersistenceEnabled()
-      ? cachedState
-      : profileDisabledObservation(
-        uiText.stores.writableRegistryDisabled));
-  const [browserRuntimes, setBrowserRuntimes] = createSignal<BrowserRuntimeSnapshot | null>(null);
-  const [browserRuntimesObservation, setBrowserRuntimesObservation] =
-    createSignal<ObservationState>(loadingObservation());
+  const { components, software, browserRuntimes, componentsObservation, softwareObservation,
+    browserRuntimesObservation, refreshComponents, refreshSoftware } = options.inventory;
   const [browserRuntimeRefreshInProgress, setBrowserRuntimeRefreshInProgress] = createSignal(false);
   const [refreshInProgress, setRefreshInProgress] = createSignal(false);
   const [temporaryActionLabels, setTemporaryActionLabels] =
@@ -139,18 +112,6 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
   const [manualSoftwareSource, setManualSoftwareSource] = createSignal<SoftwareRecord | null>(null);
   const [manualSoftwareKind, setManualSoftwareKind] = createSignal<ManualSoftwareKind | null>(null);
   const [manualSoftwareActionInProgress, setManualSoftwareActionInProgress] = createSignal(false);
-  let componentRefreshPromise: Promise<void> | null = null;
-  let componentRefreshPending: { readonly visibleOnly: boolean } | null = null;
-  let softwareRefreshPromise: Promise<void> | null = null;
-  let softwareRefreshPending: {
-    readonly visibleOnly: boolean;
-    readonly portable: boolean;
-  } | null = null;
-  let browserRuntimeRefreshPromise: Promise<void> | null = null;
-  let browserRuntimeRefreshPending: {
-    readonly visibleOnly: boolean;
-    readonly force: boolean;
-  } | null = null;
   const operationsObservation = createMemo<ObservationState>(() =>
     operationObservation(
       operationProjection(),
@@ -173,17 +134,6 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
   });
   const unsubscribeOperations = options.operations.subscribe(setOperationProjection);
 
-  bindManagementInventoryRevisions({
-    activePage: options.activePage,
-    activeSubpage,
-    inventoryRevisionSource: options.inventoryRevisionSource,
-    inventoryActive: options.inventoryActive,
-    browserRuntimesActive: options.browserRuntimesActive,
-    mutablePersistenceEnabled: options.mutablePersistenceEnabled,
-    refreshComponents: refreshComponentsForRevision,
-    refreshSoftware: () => requestSoftwareRefresh(false, true),
-    refreshBrowserRuntimes: () => requestBrowserRuntimeRefresh(false, true)
-  });
 
   function openManualSoftwareModal(kind: ManagementKind) {
     if (!options.mutablePersistenceEnabled() || !isManualSoftwareKind(kind)) {
@@ -224,234 +174,18 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
     }
   }
 
-  function refreshComponents(): Promise<void> {
-    return requestComponentRefresh(false);
-  }
-
-  function refreshComponentsForRevision(): Promise<void> {
-    return requestComponentRefresh(true);
-  }
-
-  function requestComponentRefresh(visibleOnly: boolean): Promise<void> {
-    if (componentRefreshPromise) {
-      componentRefreshPending = {
-        visibleOnly: (componentRefreshPending?.visibleOnly ?? true) && visibleOnly
-      };
-      return componentRefreshPromise;
-    }
-
-    let tracked: Promise<void>;
-    componentRefreshPending = null;
-    tracked = Promise.resolve().then(async () => {
-      try {
-        await refreshComponentsCore();
-        while (componentRefreshPending) {
-          const pending = componentRefreshPending;
-          componentRefreshPending = null;
-          if (pending.visibleOnly && !componentListIsDemanded()) {
-            continue;
-          }
-          await refreshComponentsCore();
-        }
-      } finally {
-        if (componentRefreshPromise === tracked) {
-          componentRefreshPromise = null;
-        }
-      }
-    });
-    componentRefreshPromise = tracked;
-    return tracked;
-  }
-
-  // The browser runtime page shows its install component, so it demands the component list too.
-  function componentListIsDemanded(): boolean {
-    const subpage = activeSubpage();
-    return options.activePage() === "components"
-      && ((options.inventoryActive() && (subpage === "Dependency" || subpage === "Support"))
-        || (options.browserRuntimesActive() && subpage === browserRuntimeManagementSubpageId));
-  }
-
-  async function refreshComponentsCore() {
-    setComponentsObservation(refreshingObservation);
-    try {
-      const next = await getComponents();
-      setComponents(next);
-      writeManagementSnapshotCache(next, software());
-      setComponentsObservation(readyObservation());
-    } catch (error) {
-      setComponentsObservation((previous) => failedObservation(
-        previous,
-        userFacingErrorMessage(error, uiText.stores.componentCatalogRefreshFailed)));
-    }
-  }
-
-  function refreshSoftware(refreshPortableRegistrations = false): Promise<void> {
-    return requestSoftwareRefresh(refreshPortableRegistrations, false);
-  }
-
-  // 合并进行中的刷新时，只有要求刷新便携登记的调用方会收到便携刷新的失败；
-  // 普通读取的失败已经写进 softwareObservation，它的调用方不会因为别人的便携刷新失败而失败。
-  function requestSoftwareRefresh(
-    refreshPortableRegistrations: boolean,
-    visibleOnly: boolean
-  ): Promise<void> {
-    const forCaller = (shared: Promise<void>) => refreshPortableRegistrations
-      ? shared
-      : shared.catch(() => undefined);
-    if (softwareRefreshPromise) {
-      softwareRefreshPending = {
-        visibleOnly: (softwareRefreshPending?.visibleOnly ?? true) && visibleOnly,
-        portable: (softwareRefreshPending?.portable ?? false) || refreshPortableRegistrations
-      };
-      return forCaller(softwareRefreshPromise);
-    }
-
-    softwareRefreshPending = null;
-    let tracked: Promise<void>;
-    tracked = Promise.resolve().then(async () => {
-      let firstError: unknown;
-      let hasError = false;
-      const refreshAndCaptureError = async (portable: boolean) => {
-        try {
-          await refreshSoftwareCore(portable);
-        } catch (error) {
-          if (!hasError) {
-            firstError = error;
-            hasError = true;
-          }
-        }
-      };
-
-      try {
-        await refreshAndCaptureError(refreshPortableRegistrations);
-        while (softwareRefreshPending) {
-          const pending = softwareRefreshPending;
-          softwareRefreshPending = null;
-          if (pending.visibleOnly && !softwareListIsDemanded()) {
-            continue;
-          }
-          await refreshAndCaptureError(pending.portable);
-        }
-        if (hasError) {
-          throw firstError;
-        }
-      } finally {
-        if (softwareRefreshPromise === tracked) {
-          softwareRefreshPromise = null;
-        }
-      }
-    });
-    softwareRefreshPromise = tracked;
-    return forCaller(tracked);
-  }
-
-  function softwareListIsDemanded(): boolean {
-    return options.activePage() === "components"
-      && options.inventoryActive()
-      && activeSubpage() !== browserRuntimeManagementSubpageId
-      && options.mutablePersistenceEnabled();
-  }
-
-  async function refreshSoftwareCore(refreshPortableRegistrations: boolean) {
-    if (!options.mutablePersistenceEnabled()) {
-      setSoftwareObservation(profileDisabledObservation(
-        uiText.stores.writableRegistryDisabled));
-      return;
-    }
-
-    setSoftwareObservation(refreshingObservation);
-    try {
-      const next = await getSoftware(refreshPortableRegistrations);
-      setSoftware(next);
-      writeManagementSnapshotCache(components(), next);
-      setSoftwareObservation(readyObservation());
-    } catch (error) {
-      setSoftwareObservation((previous) => failedObservation(
-        previous,
-        userFacingErrorMessage(error, uiText.stores.softwareRegistryRefreshFailed)));
-      if (refreshPortableRegistrations) {
-        throw error;
-      }
-    }
-  }
-
-  function refreshBrowserRuntimes(forceRefresh = false): Promise<void> {
-    return requestBrowserRuntimeRefresh(forceRefresh, false);
-  }
-
-  function requestBrowserRuntimeRefresh(
-    forceRefresh: boolean,
-    visibleOnly: boolean
-  ): Promise<void> {
-    if (browserRuntimeRefreshPromise) {
-      browserRuntimeRefreshPending = {
-        visibleOnly: (browserRuntimeRefreshPending?.visibleOnly ?? true) && visibleOnly,
-        force: (browserRuntimeRefreshPending?.force ?? false) || forceRefresh
-      };
-      return browserRuntimeRefreshPromise;
-    }
-
-    browserRuntimeRefreshPending = null;
-    let tracked: Promise<void>;
-    tracked = Promise.resolve().then(async () => {
-      setBrowserRuntimeRefreshInProgress(true);
-      try {
-        let nextForceRefresh = forceRefresh;
-        while (true) {
-          setBrowserRuntimesObservation(refreshingObservation);
-          try {
-            const next = await getBrowserRuntimeSnapshot(nextForceRefresh);
-            setBrowserRuntimes(next);
-            setBrowserRuntimesObservation(readyObservation(next.capturedAt));
-          } catch (error) {
-            setBrowserRuntimesObservation((previous) => failedObservation(
-              previous,
-              userFacingErrorMessage(error, uiText.stores.browserRuntimeRefreshFailed)));
-          }
-
-          const pending = browserRuntimeRefreshPending;
-          browserRuntimeRefreshPending = null;
-          if (!pending || (pending.visibleOnly && !browserRuntimeListIsDemanded())) {
-            break;
-          }
-          nextForceRefresh = pending.force;
-        }
-      } finally {
-        setBrowserRuntimeRefreshInProgress(false);
-        if (browserRuntimeRefreshPromise === tracked) {
-          browserRuntimeRefreshPromise = null;
-        }
-      }
-    });
-    browserRuntimeRefreshPromise = tracked;
-    return tracked;
-  }
-
-  function browserRuntimeListIsDemanded(): boolean {
-    return options.activePage() === "components"
-      && options.browserRuntimesActive()
-      && activeSubpage() === browserRuntimeManagementSubpageId;
+  async function refreshBrowserRuntimes(forceRefresh = false) {
+    setBrowserRuntimeRefreshInProgress(true);
+    try { await options.inventory.refreshBrowserRuntimes(forceRefresh); }
+    finally { setBrowserRuntimeRefreshInProgress(false); }
   }
 
   async function refreshState(userInitiated: boolean) {
-    if (refreshInProgress()) {
-      return;
-    }
-
     setRefreshInProgress(true);
     try {
-      const refreshes: Promise<void>[] = [refreshComponents()];
-      if (options.mutablePersistenceEnabled()) {
-        refreshes.push(refreshSoftware(userInitiated));
-      } else {
-        setSoftwareObservation(profileDisabledObservation(
-          uiText.stores.writableRegistryDisabled));
-      }
-      await Promise.all(refreshes);
+      await Promise.all([refreshComponents(), refreshSoftware(userInitiated)]);
     } catch (error) {
-      if (userInitiated) {
-        showErrorToast(error, uiText.stores.refreshFailed);
-      }
+      if (userInitiated) showErrorToast(error, uiText.stores.refreshFailed);
     } finally {
       setRefreshInProgress(false);
     }

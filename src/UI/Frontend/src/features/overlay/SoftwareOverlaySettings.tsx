@@ -1,14 +1,15 @@
 import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
 import { createEffect, createMemo, createSignal, For, Index, onCleanup, Show } from "solid-js";
-import { getComponents, getPerformanceOverlayMetricCatalog, getPerformanceOverlaySettings, OverlayPreferencesSaveError, savePerformanceOverlaySettings, resetPerformanceOverlayPresentation } from "../../api.ts";
+import { getPerformanceOverlayMetricCatalog, getPerformanceOverlaySettings, OverlayPreferencesSaveError, savePerformanceOverlaySettings, resetPerformanceOverlayPresentation } from "../../api.ts";
 import { expectedOverlayInjectionModules } from "./startupModuleSelection.ts";
 import { localizedMetricLabel } from "../../presentation/metricLabels.ts";
 import { userFacingErrorMessage } from "../../presentation/userFacingText.ts";
 import { MetricModal } from "../monitor/MetricModal.tsx";
 import { StandardSelect } from "../../components/StandardSelect.tsx";
 import { uiText, currentSettingsText } from "../../text.ts";
-import type { ManagedComponent, MetricDefinition, PerformanceOverlaySettings } from "../../types.ts";
+import type { MetricDefinition, PerformanceOverlaySettings } from "../../types.ts";
 import type { MetricFieldCatalogDevice } from "../../data/metricFields/metricFieldSource.ts";
+import { useSource } from "../../frontendRuntime/source/useSource.ts";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext.tsx";
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
 import { fieldCardDefinitions } from "../monitor/fieldCards.ts";
@@ -19,7 +20,6 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
   const [saved, setSaved] = createSignal<PerformanceOverlaySettings | null>(null);
   const [draft, setDraft] = createSignal<PerformanceOverlaySettings | null>(null);
   const [catalog, setCatalog] = createSignal<MetricDefinition[]>([]);
-  const [components, setComponents] = createSignal<ManagedComponent[]>([]);
   const [loading, setLoading] = createSignal(false);
   const [saving, setSaving] = createSignal(false);
   const [pickerOpen, setPickerOpen] = createSignal(false);
@@ -27,6 +27,10 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
   const [error, setError] = createSignal("");
   // 先选项目、再选来源：来源是部件地址的后端候选，候选字段要在字段目录里（和卡片选择器一样）。
   const runtime = useFrontendRuntime();
+  const componentSource = useSource(runtime.sources.managementComponents, () => ({ active: props.active }));
+  const components = () => componentSource.snapshot().data ?? [];
+  const readError = () => error() || (componentSource.snapshot().error
+    ? userFacingErrorMessage(componentSource.snapshot().error, uiText.status.actionFailed) : "");
   const readIntervals = useFrontendReadIntervals();
   const [fieldDevices, setFieldDevices] = createSignal<readonly MetricFieldCatalogDevice[]>([]);
   createEffect(() => {
@@ -57,13 +61,12 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
     const id = ++requestId;
     setLoading(true);
     setError("");
-    void Promise.all([getPerformanceOverlaySettings(props.softwareId), getPerformanceOverlayMetricCatalog(), getComponents()])
-      .then(([settings, definitions, installed]) => {
+    void Promise.all([getPerformanceOverlaySettings(props.softwareId), getPerformanceOverlayMetricCatalog()])
+      .then(([settings, definitions]) => {
         if (id !== requestId) return;
         setSaved(settings);
         setDraft({ ...settings, metrics: [...settings.metrics] });
         setCatalog(definitions);
-        setComponents(installed);
       })
       .catch((cause: unknown) => {
         if (id === requestId) setError(userFacingErrorMessage(cause, uiText.status.actionFailed));
@@ -143,7 +146,7 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
           <StableLabel labels={{ idle: uiText.softwareDetail.save, busy: uiText.softwareDetail.processing }} current={saving() ? "busy" : "idle"} />
         </button>
       </div>
-      <Show when={error()}>{(message) => <p class="software-detail-hint error" role="alert">{message()}</p>}</Show>
+      <Show when={readError()}>{(message) => <p class="software-detail-hint error" role="alert">{message()}</p>}</Show>
       <Show when={!loading() && draft()} fallback={<p class="software-detail-empty">{uiText.softwareDetail.loadingPolicy}</p>}>
         {(current) => <div class="overlay-settings-fields">
           <label class="overlay-settings-check">

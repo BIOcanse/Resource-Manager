@@ -1,3 +1,4 @@
+import managementSourceStatesJourney from "./managementSourceStatesJourney.js";
 import fanManagementModesJourney from "./fanManagementModesJourney.js";
 import frontendRefreshIntervalsJourney from "./frontendRefreshIntervalsJourney.js";
 import productUpdatesJourney from "./productUpdatesJourney.js";
@@ -77,6 +78,7 @@ import accessibilitySemanticsJourney from "./accessibilitySemanticsJourney.js";
 // 旅程登记表：[名称, (page, baseUrl, options) => 结果]。运行机制（工作进程、按语言拆分、输出和计时）在
 // browserGateRunner.mjs，用法见那里的说明。
 const allJourneys = [
+  ["management-source-states", managementSourceStatesJourney],
   ["dashboard-preferences", async (...args) => (await import("./dashboardPreferencesJourney.js")).default(...args)],
   ["service-recovery-settings", serviceRecoverySettingsJourney],
   ["product-updates", productUpdatesJourney],
