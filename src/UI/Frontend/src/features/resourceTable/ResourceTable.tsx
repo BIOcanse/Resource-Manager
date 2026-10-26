@@ -856,6 +856,7 @@ function VirtualResourceTable(props: {
                   expandedSoftwareIds={() => props.expandedSoftwareIds}
                   highlightedSoftwareId={props.highlightedSoftwareId}
                   activeRowId={activeRowId}
+                  contextRowId={pinnedRowId}
                   onActivateRow={activateRow}
                   onRowKeyDown={handleRowKeyDown}
                   onToggleExpand={props.onToggleExpand}
@@ -881,6 +882,8 @@ function ResourceTableRowSlot(props: {
   expandedSoftwareIds: () => Record<string, boolean>;
   highlightedSoftwareId?: string | null;
   activeRowId: () => string | null;
+  /** 右键菜单打开时它所属的那一行（菜单关掉为 null）：这一行显示成当前行，看得出菜单是对谁的。 */
+  contextRowId: () => string | null;
   onActivateRow: (rowId: string, focus: boolean) => void;
   onRowKeyDown: (event: KeyboardEvent, row: ResourceTableRow, element: HTMLElement) => void;
   onToggleExpand: (softwareId: string) => void;
@@ -917,7 +920,8 @@ function ResourceTableRowSlot(props: {
         "software-row": row()?.kind === "software",
         "summary-row": row()?.kind === "summary",
         "empty-row": !hasRow(),
-        highlighted: isHighlighted()
+        highlighted: isHighlighted(),
+        "context-target": hasRow() && row()?.id === props.contextRowId()
       }}
       aria-hidden={hasRow() ? "false" : "true"}
       onFocus={() => {

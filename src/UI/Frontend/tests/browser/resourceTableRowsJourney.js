@@ -42,6 +42,61 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
   }
   results.residualStatus = residualStatus;
 
+
+  // 3. 行位复用：展开时换成进程行的行位底色直接换，不经过中间色；状态色（悬停）才有过渡。
+  const expandFrames = await panel.evaluate(async () => {
+    const slots = [...document.querySelectorAll(".resource-table-row")].slice(0, 16);
+    const read = () => slots.map((slot) => getComputedStyle(slot).backgroundColor);
+    const start = read();
+    const expander = [...document.querySelectorAll('.resource-table-row.software-row[aria-hidden="false"] .resource-row-expander')]
+      .find((button) => button.getAttribute("aria-expanded") === "false");
+    expander.click();
+    const frames = [];
+    for (let frame = 0; frame < 12; frame += 1) {
+      await new Promise((resolveFrame) => requestAnimationFrame(resolveFrame));
+      frames.push(read());
+    }
+    const final = frames.at(-1);
+    const intermediate = new Set();
+    frames.forEach((colors) => colors.forEach((color, index) => {
+      if (color !== start[index] && color !== final[index]) intermediate.add(`${index}:${color}`);
+    }));
+    return { changed: final.filter((color, index) => color !== start[index]).length, intermediate: [...intermediate],
+      transition: getComputedStyle(slots[0]).transitionProperty };
+  });
+  if (expandFrames.changed === 0 || expandFrames.intermediate.length > 0 || !expandFrames.transition.includes("--row-tint-amount")
+    || expandFrames.transition.includes("background")) {
+    throw new Error(`Recycled row slots fade their base colour: ${JSON.stringify(expandFrames)}`);
+  }
+  results.expandFrames = expandFrames;
+
+  // 4. 底色、悬停、当前行三种状态的颜色各不相同；右键菜单打开时它对着的那一行显示成当前行。
+  await page.mouse.move(5, 5);
+  const ordinary = panel.locator('.resource-table-row[aria-label="示例软件 3"]');
+  const background = () => ordinary.evaluate((row) => getComputedStyle(row).backgroundColor);
+  await page.waitForTimeout(250);
+  const baseColor = await background();
+  await ordinary.hover();
+  await page.waitForTimeout(250);
+  const hoverColor = await background();
+  await ordinary.locator(".status-cell").click();
+  await page.mouse.move(5, 5);
+  await page.waitForTimeout(250);
+  const currentColor = await background();
+  if (new Set([baseColor, hoverColor, currentColor]).size !== 3) {
+    throw new Error(`Row states are not distinct: ${JSON.stringify({ baseColor, hoverColor, currentColor })}`);
+  }
+  await panel.locator('.resource-table-row[aria-label="示例软件 4"]').click({ button: "right" });
+  await page.locator(".standard-context-menu").waitFor();
+  const contextTarget = await panel.locator('.resource-table-row[aria-label="示例软件 4"]')
+    .evaluate((row) => ({ target: row.classList.contains("context-target"), color: getComputedStyle(row).backgroundColor }));
+  await page.keyboard.press("Escape");
+  await page.locator(".standard-context-menu").waitFor({ state: "detached" });
+  if (!contextTarget.target || contextTarget.color === baseColor) {
+    throw new Error(`The context menu's row is not shown as current: ${JSON.stringify(contextTarget)}`);
+  }
+  results.rowStates = { baseColor, hoverColor, currentColor, contextTarget };
+
   if (errors.length > 0) throw new Error(`Page errors: ${errors.join("\n")}`);
   return results;
 }

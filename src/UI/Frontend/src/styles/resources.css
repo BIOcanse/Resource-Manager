@@ -346,7 +346,23 @@
   min-width: 0;
 }
 
+/*
+  行的底色 = 按行的种类定的底（--row-base）里混进状态色（--row-tint 占 --row-tint-amount）。
+  虚拟滚动的行位是复用的：同一个行位换成另一种行（展开、滚动、排序）时底色直接换，不渐变；
+  只有状态的深浅（悬停、当前行、高亮）有过渡（motion.css）。
+  状态：悬停是中性色的浅一档；当前行（焦点在行上或行里的按钮上，或右键菜单正对着它）和资源条高亮是强调色，
+  高亮另有左侧强调条；键盘焦点再加焦点环。
+*/
+@property --row-tint-amount {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 0%;
+}
+
 .resource-table-row {
+  --row-base: var(--surface);
+  --row-tint: var(--text);
+  --row-tint-amount: 0%;
   position: absolute;
   top: 0;
   left: 0;
@@ -355,12 +371,31 @@
   display: grid;
   contain: layout paint style;
   border-bottom: 1px solid var(--divider-soft);
-  background: var(--surface);
+  background-color: color-mix(in oklab, var(--row-tint) var(--row-tint-amount), var(--row-base));
   will-change: transform;
 }
 
 .resource-table-row.process-row {
-  background: var(--surface-soft);
+  --row-base: var(--surface-soft);
+}
+
+.resource-table-row.summary-row {
+  --row-base: var(--surface-strong);
+  box-shadow: inset 0 -1px 0 var(--divider);
+}
+
+.resource-table-row:hover {
+  --row-tint-amount: 6%;
+}
+
+.resource-table-row:focus-within,
+.resource-table-row.context-target {
+  --row-tint: var(--accent);
+  --row-tint-amount: 12%;
+}
+
+.resource-table-row:is(:focus-within, .context-target):hover {
+  --row-tint-amount: 16%;
 }
 
 .resource-table-row:focus-visible {
@@ -368,23 +403,16 @@
   outline-offset: -2px;
 }
 
-.resource-table-row.summary-row {
-  background: var(--surface-strong);
-  box-shadow: inset 0 -1px 0 var(--divider);
-}
-
-.resource-table-row:hover {
-  background: var(--hover-bg);
-}
-
 .resource-table-row.highlighted {
-  background: color-mix(in oklab, var(--accent-soft) 72%, var(--surface));
+  --row-tint: var(--accent);
+  --row-tint-amount: 14%;
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .resource-table-row.highlighted:hover {
-  background: color-mix(in oklab, var(--accent-soft) 84%, var(--surface));
+  --row-tint-amount: 20%;
 }
+
 
 .resource-table-row.empty-row {
   border-bottom: 0;

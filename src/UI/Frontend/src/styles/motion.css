@@ -183,8 +183,9 @@ body[data-animations="normal"] .resource-segment-layer.motion-segment > .resourc
 }
 
 /* --- 资源表格 --- */
+/* 只过渡状态色的深浅（悬停、当前行、高亮）；行位换成另一种行时底色直接换（styles/resources.css）。 */
 .resource-table-row {
-  transition: background var(--motion-fast) var(--ease-standard);
+  transition: --row-tint-amount var(--motion-fast) var(--ease-standard);
 }
 
 .resource-table-head-cell small {
