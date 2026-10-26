@@ -185,28 +185,20 @@
 /* ---- 顶栏与二级分页 ---- */
 
 /* 未选中的页签是透明的字，当前页是反显的强调色块加微光。 */
-:root[data-ui-style="terminal"] .page-tab {
-  border-color: transparent;
-  background: transparent;
-  color: var(--muted);
-}
-
-:root[data-ui-style="terminal"] .page-tab:not(.active):not(:disabled):hover {
-  border-color: var(--line);
-  background: var(--accent-soft);
-  color: var(--accent-strong);
-}
-
-:root[data-ui-style="terminal"] .page-tab.active {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--on-accent);
-  box-shadow: var(--terminal-glow);
-}
-
-:root[data-ui-style="terminal"] .page-tab.active:hover {
-  border-color: var(--accent-hover);
-  background: var(--accent-hover);
+/* 分页：只改分页的变量（page-tabs.css），页签和选中指示条都读它们。 */
+:root[data-ui-style="terminal"] {
+  --page-tab-bg: transparent;
+  --page-tab-border: transparent;
+  --page-tab-fg: var(--muted);
+  --page-tab-border-hover: var(--line);
+  --page-tab-bg-hover: var(--accent-soft);
+  --page-tab-fg-hover: var(--accent-strong);
+  --page-tab-active-border: var(--accent);
+  --page-tab-active-bg: var(--accent);
+  --page-tab-active-fg: var(--on-accent);
+  --page-tab-active-shadow: var(--terminal-glow);
+  --page-tab-active-border-hover: var(--accent-hover);
+  --page-tab-active-bg-hover: var(--accent-hover);
 }
 
 /* ---- 面板与卡片 ---- */
@@ -258,9 +250,9 @@
 }
 
 /* 分段按钮悬停：和页签一样给一层淡强调色，实心强调色只留给当前项。 */
-:root[data-ui-style="terminal"] .segment:not(.active):not(:disabled):hover {
-  background: var(--accent-soft);
-  color: var(--accent-strong);
+:root[data-ui-style="terminal"] {
+  --segment-bg-hover: var(--accent-soft);
+  --segment-fg-hover: var(--accent-strong);
 }
 
 /* 资源条提示：标准风格写死了半透明深底白字，这里换成本配色的表面、文字和细线。 */

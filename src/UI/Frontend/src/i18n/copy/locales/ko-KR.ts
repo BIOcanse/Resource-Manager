@@ -1647,7 +1647,6 @@ const koKrAppCopy: AppCopy = {
   },
   cpuTopology: {
     modelLabel: "CPU 토폴로지 모델",
-    panel: "CPU 스케줄링 모델",
     summary: (cores: number, threads: number, ccd: number, residency: string) =>
       `${cores}C / ${threads}T · ${ccd} CCD · ${residency}`,
     unavailable: "CPU 토폴로지를 사용할 수 없음",
@@ -1756,7 +1755,6 @@ const koKrAppCopy: AppCopy = {
     telemetryUnavailable: "데이터를 사용할 수 없음",
     telemetryLoading: "불러오는 중",
     modelLabel: "GPU 스케줄링 모델",
-    panel: "GPU 스케줄링 모델",
     summary: (gpuCount: string, gpuPercent: number, vramPercent: number, telemetry: string) =>
       `GPU ${gpuCount}개 · GPU ${gpuPercent}% / VRAM ${vramPercent}% · ${telemetry}`,
     edit: "편집",
@@ -2122,14 +2120,11 @@ const koKrAppCopy: AppCopy = {
     tabAll: "전체",
     tabDiagnostics: "진단",
     title: "작업 센터",
-    activeCount: (count: number) => `진행 중 ${count}개`,
-    noActiveTasks: "지금 실행 중인 작업이 없습니다",
     backendSyncing: "백엔드 작업을 동기화하는 중입니다.",
     backendResyncing: "로컬 서비스가 다시 동기화하는 중이라 지금은 백엔드 작업을 변경할 수 없습니다.",
     backendUnavailable: "백엔드 작업 상태를 읽을 수 없습니다. 인터페이스 작업은 계속 동작합니다.",
     filterLabel: "작업 필터",
     noTasksInFilter: "이 필터에 해당하는 작업이 없습니다",
-    close: "닫기",
     sourceOperation: "백엔드 작업",
     sourceFrontend: "인터페이스 작업",
     progressLabel: (title: string) => `${title} 진행률`,
@@ -2182,7 +2177,6 @@ const koKrAppCopy: AppCopy = {
   },
   smartReport: {
     processTarget: (name: string, pid: number) => `${name} (프로세스 ${pid})`,
-    panel: "스마트 스케줄링 보고서",
     loading: "불러오는 중",
     unavailable: "상태를 사용할 수 없음",
     refresh: "새로 고침",
@@ -2231,7 +2225,6 @@ const koKrAppCopy: AppCopy = {
     }
   },
   browserRuntime: {
-    title: "런타임 관리",
     description: "웹 인터페이스 런타임과 이 PC에 설치된 브라우저를 확인합니다.",
     downloadShared: "공유 런타임 다운로드",
     refreshing: "새로 고치는 중",
@@ -2479,10 +2472,10 @@ const koKrAppCopy: AppCopy = {
     retry: "다시 시도",
     lastGoodContent: (name: string) => `${name}의 마지막으로 사용할 수 있던 내용`,
     detailsTab: {
-      device: "장치 관리",
-      gpu: "GPU 스케줄링",
-      cpu: "CPU 토폴로지",
-      report: "보고서",
+      device: "장치 토폴로지",
+      gpu: "GPU 스케줄링 모델",
+      cpu: "CPU 스케줄링 모델",
+      report: "스마트 스케줄링 보고서",
       tabsLabel: "세부 정보 탭"
     },
     settingsConflict: "설정이 다른 곳에서 업데이트되었습니다. 다시 저장하기 전에 새로 불러오세요",

@@ -31,7 +31,6 @@ import {
   type TaskCenterView
 } from "../../frontendRuntime/taskCenter/taskCenterSelectors.ts";
 import {
-  DialogActions,
   DialogBody,
   DialogHeader,
   DialogRoot
@@ -100,7 +99,6 @@ export function TaskCenterDialog(props: {
     <DialogRoot
       open={props.open}
       labelledBy="taskCenterTitle"
-      describedBy="taskCenterSummary"
       backdropClass="task-center-backdrop"
       class="task-center-modal"
       initialFocus={() => closeButton}
@@ -111,13 +109,7 @@ export function TaskCenterDialog(props: {
         titleId="taskCenterTitle"
         closeButtonRef={(element) => { closeButton = element; }}
         onDismiss={props.onClose}
-      >
-        <p id="taskCenterSummary" class="task-center-summary">
-          {props.snapshot().activeUserCount > 0
-            ? uiText.taskCenter.activeCount(props.snapshot().activeUserCount)
-            : uiText.taskCenter.noActiveTasks}
-        </p>
-      </DialogHeader>
+      />
       <DialogBody class="task-center-body">
         <Show when={props.snapshot().operationState === "loading"}>
           <div class="task-center-session-warning" role="status">
@@ -148,7 +140,7 @@ export function TaskCenterDialog(props: {
               {(tab) => (
                 <TabsTrigger class="ui-tabs-trigger page-tab" value={tab.value}>
                   <span>{tab.label}</span>
-                  <span class="task-center-tab-count" aria-hidden="true">
+                  <span class="task-center-tab-count">
                     {itemsFor(tab.value).length}
                   </span>
                 </TabsTrigger>
@@ -169,9 +161,6 @@ export function TaskCenterDialog(props: {
           </For>
         </TabsRoot>
       </DialogBody>
-      <DialogActions>
-        <button class="secondary" type="button" onClick={props.onClose}>{uiText.taskCenter.close}</button>
-      </DialogActions>
     </DialogRoot>
   );
 }

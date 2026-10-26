@@ -29,7 +29,7 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
   await page.locator('body[data-page="details"]').waitFor({ state: "attached", timeout: 5_000 });
   await topology.waitFor({ state: "visible", timeout: 5_000 });
   const topologyHeader = topology.locator(".device-topology-header");
-  await topologyHeader.locator("span").filter({ hasText: "Frontend Harness" })
+  await topologyHeader.locator(".device-topology-heading > span").filter({ hasText: "Frontend Harness" })
     .waitFor({ state: "visible", timeout: 5_000 });
   const firstActivation = await waitForTelemetry(page, subscriptionPath, (value) =>
     value.logicalInFlight === 1 && value.publications >= 1);
@@ -44,7 +44,7 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
   const dom = {
     heading: (await topology.getByRole("heading", { name: "设备拓扑", exact: true })
       .textContent())?.trim(),
-    brand: (await topologyHeader.locator("span").textContent())?.trim(),
+    brand: (await topologyHeader.locator(".device-topology-heading > span").textContent())?.trim(),
     manufacturer: (await topology.getByLabel("电脑俯视图").locator("strong")
       .textContent())?.trim(),
     model: (await topology.getByLabel("电脑俯视图").locator("small")
@@ -196,7 +196,7 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
   await metricDialog.getByText("137.5%", { exact: true }).waitFor();
   await setScenario(page, { invalidMetricFields: true });
   await metricDialog.getByText("137.5%", { exact: true }).waitFor({ state: "detached" });
-  assert(await topologyHeader.locator("span").textContent() === "Frontend Harness", "Metric failure affects only its own data");
+  assert(await topologyHeader.locator(".device-topology-heading > span").textContent() === "Frontend Harness", "Metric failure affects only its own data");
   await setScenario(page, { invalidMetricFields: false });
   await metricDialog.getByText("137.5%", { exact: true }).waitFor();
   await page.keyboard.press("Escape");
@@ -217,7 +217,7 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
   await topology.locator(".observation-state.error").waitFor();
   assert(await topology.locator(".device-port-item").count() === 0, "Decode failure clears the current topology");
   await setScenario(page, { deviceTopologyInvalid: false, deviceTopologyNullProtocol: false });
-  await topologyHeader.locator("span").filter({ hasText: "Frontend Harness" }).waitFor();
+  await topologyHeader.locator(".device-topology-heading > span").filter({ hasText: "Frontend Harness" }).waitFor();
   await page.evaluate(() => {
     Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
     document.dispatchEvent(new Event("visibilitychange"));
@@ -235,7 +235,7 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
   await topology.locator(".observation-state.error").waitFor();
   assert(await topology.locator(".device-port-item").count() === 0, "Resuming cannot replay last-good topology");
   await setScenario(page, { deviceTopologyInvalid: false });
-  await topologyHeader.locator("span").filter({ hasText: "Frontend Harness" }).waitFor();
+  await topologyHeader.locator(".device-topology-heading > span").filter({ hasText: "Frontend Harness" }).waitFor();
 
   await pageNavigation.getByRole("button", { name: "监视控制台", exact: true }).click();
   await topology.waitFor({ state: "detached", timeout: 3_000 });

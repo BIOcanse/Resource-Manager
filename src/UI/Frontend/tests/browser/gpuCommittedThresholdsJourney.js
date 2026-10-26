@@ -87,7 +87,7 @@ export default async function gpuCommittedThresholdsJourney(page, baseUrl) {
 
 async function openGpuModel(page) {
   await page.getByRole("navigation").getByRole("button", { name: "详细信息", exact: true }).click();
-  await page.getByRole("tab", { name: "GPU 调度", exact: true }).click();
+  await page.getByRole("tab", { name: "GPU 调度模型", exact: true }).click();
   await page.locator(".gpu-scheduling-panel").waitFor();
 }
 

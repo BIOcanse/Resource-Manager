@@ -36,8 +36,8 @@ export default async function targetedRecordingSourceJourney(page, baseUrl) {
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
   const navigation = page.locator(".shell-pages");
   await navigation.getByRole("button", { name: app.page.components, exact: true }).click();
-  const categoryNavigation = page.getByRole("navigation", { name: app.management.categoryNav });
-  await categoryNavigation.getByRole("button", { name: /一般应用/ }).click();
+  const categoryNavigation = page.getByRole("tablist", { name: app.management.categoryNav });
+  await categoryNavigation.getByRole("tab", { name: /一般应用/ }).click();
   const software = page.locator(".software-item").filter({ hasText: "示例软件" }).first();
   await software.getByRole("button", { name: app.management.softwareSettings, exact: true }).click();
   const detail = page.getByRole("dialog", { name: "示例软件", exact: true });

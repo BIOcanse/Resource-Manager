@@ -11,6 +11,7 @@ const app = readSource("App.tsx");
 const frontendSources = readSource("frontendRuntime/source/FrontendSources.ts");
 const appShell = readSource("app/AppShell.tsx");
 const details = readSource("features/details/DetailsPage.tsx");
+const detailsNavigation = readSource("app/navigation/detailsNavigation.ts");
 const managementWorkspace = readSource("features/management/ManagementWorkspace.tsx");
 const managementPage = readSource("features/management/components/ManagementPage.tsx");
 const settingsWorkspace = readSource("features/settings/SettingsWorkspace.tsx");
@@ -49,7 +50,9 @@ assert.match(appShell, /label=\{uiText\.shell\.runtimeCapability\}/);
 assert.match(appShell, /runtimeCapabilities\.refresh\(\)/);
 
 // Read-only detail surfaces stay available while effectful reports and edits follow capabilities.
-assert.match(details, /tab\.id !== "report" \|\| props\.runtimeCapabilities\.optimizationEnabled\(\)/);
+// 详细信息的二级分页清单在分页树里（app/navigation/detailsNavigation.ts）：报告跟着优化能力走。
+assert.match(detailsNavigation, /id !== "report" \|\| options\.optimizationEnabled\(\)/);
+assert.match(app, /optimizationEnabled: runtimeCapabilities\.optimizationEnabled,/);
 assert.match(details, /GpuSchedulingModel runtimeEffectsEnabled=/);
 assert.doesNotMatch(
   gpuModel,

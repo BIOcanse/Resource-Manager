@@ -33,7 +33,7 @@ export default async function softwareParticipationJourney(page, baseUrl) {
 
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "组件与软件", exact: true }).click();
-  await page.getByRole("navigation", { name: "组件和软件分类" }).getByRole("button", { name: /一般应用/ }).click();
+  await page.getByRole("tablist", { name: "组件和软件分类" }).getByRole("tab", { name: /一般应用/ }).click();
   await page.locator(".software-item").filter({ hasText: "示例软件" }).getByRole("button", { name: "软件设置", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "示例软件" });
   await dialog.getByRole("tab", { name: "策略", exact: true }).click();

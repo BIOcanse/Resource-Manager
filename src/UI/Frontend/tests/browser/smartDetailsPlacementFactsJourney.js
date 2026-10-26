@@ -24,7 +24,7 @@ export default async function smartDetailsPlacementFactsJourney(page, baseUrl) {
 
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
   await page.getByRole("navigation").getByRole("button", { name: "详细信息", exact: true }).click();
-  await page.getByRole("tab", { name: "报告", exact: true }).click();
+  await page.getByRole("tab", { name: "智能调度报告", exact: true }).click();
 
   const report = page.locator(".smart-details-report");
   const record = report.locator(".smart-details-record");

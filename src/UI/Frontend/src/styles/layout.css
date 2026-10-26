@@ -1,7 +1,9 @@
 /* Page Layout */
+/* 二级分页条在每一页都占着同一条位置（没有二级分页的页这一条是空的），所有页的正文从同一个 y 开始
+   （docs/navigation_tree_2026-10-25.md）。 */
 .app-shell {
   position: fixed;
-  top: var(--shellbar-height);
+  top: calc(var(--shellbar-height) + var(--managementbar-height));
   left: 0;
   right: 0;
   bottom: 0;
@@ -14,17 +16,29 @@
   scrollbar-gutter: stable;
 }
 
-/* 有二级分页条的页面，正文从分页条下面开始。 */
-.app-shell.has-page-subnav {
-  top: calc(var(--shellbar-height) + var(--managementbar-height));
-}
-
-.app-shell > * {
+.app-shell > *,
+.page-stage > * {
   width: 100%;
   min-width: 0;
   max-width: var(--workspace-max-width);
   margin-left: auto;
   margin-right: auto;
+}
+
+/* 换页时旧内容的退出副本放在这一层（磁石内容过渡，interactions/solid/contentTransition.ts）：
+   和正文同一块位置，不随正文滚动，排在正文下面、不接收指针。 */
+.page-leaving-layer {
+  position: fixed;
+  top: calc(var(--shellbar-height) + var(--managementbar-height));
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.page-leaving-layer:empty {
+  display: none;
 }
 
 /*

@@ -16,6 +16,7 @@ import {
   type RecordingHeader, type RecordingReport
 } from "./targetedRecordingApi.ts";
 import { TargetedReportChart, type ChartPoint } from "./TargetedReportCharts.tsx";
+import { CurrentPageHeading, useCurrentPageName } from "../../app/navigation/currentPageName.tsx";
 
 interface ResourceCurve { scope: "software" | "system"; metric: string }
 
@@ -186,16 +187,15 @@ export function TargetedReportsPage() {
     }
   };
 
+  const pageName = useCurrentPageName();
   return (
     <section
       class="targeted-reports-page"
-      aria-label={uiText.targetedReport.title}
+      aria-label={pageName()}
       {...frontendVisibilitySurface("visible.targeted-reports.page", [demandId])}
     >
       <div class="panel-header targeted-report-header">
-        <div class="optimization-heading">
-          <h2>{uiText.targetedReport.title}</h2>
-        </div>
+        <CurrentPageHeading />
         <button class="secondary panel-refresh-button" type="button" onClick={() => void refresh()}>{uiText.targetedReport.refresh}</button>
       </div>
       <Show when={failed()}><div class="targeted-report-note error" role="alert">

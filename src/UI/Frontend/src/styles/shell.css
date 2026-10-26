@@ -20,6 +20,7 @@
 
 .shell-pages {
   min-width: 0;
+  align-self: stretch;
   height: 100%;
   display: flex;
   align-items: center;
@@ -63,14 +64,6 @@
   text-overflow: ellipsis;
 }
 
-#shellPageName {
-  color: var(--muted);
-  font-size: 13px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .shell-uptime {
   flex: 0 0 auto;
   display: inline-flex;
@@ -85,11 +78,10 @@
   font-size: 12px;
 }
 
-/* 页签把拖动区挤窄时，先去掉与高亮页签重复的产品名/页名，再去掉"开机时长"前缀
-   （完整说明仍在 title 里），不留下"资源… 监视…"这种截断字。 */
+/* 页签把拖动区挤窄时，先去掉产品名，再去掉"开机时长"前缀（完整说明仍在 title 里），
+   不留下"资源…"这种截断字。顶栏不写当前页名：页签已经高亮着（用户 10-25「不要重复一遍当前所在的分页」）。 */
 @container shell-title (max-width: 340px) {
-  .window-drag-region strong,
-  #shellPageName {
+  .window-drag-region strong {
     display: none;
   }
 }

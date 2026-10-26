@@ -17,13 +17,18 @@ const segmentedControl = readSource("ui/primitives/SegmentedControl.tsx");
 const radioGroup = readSource("ui/primitives/RadioGroup.tsx");
 const tabs = readSource("ui/primitives/Tabs.tsx");
 
-// 顶栏一级分页：监视控制台、组件与软件、性能优化、磁盘占用、控制面、详细信息、设置。
-assert.equal(appShell.match(/aria-current=/g)?.length, 7);
+// 顶栏一级分页：监视控制台、组件与软件、性能优化、磁盘占用、控制面、详细信息、设置。按分页树逐项画，每项一个 aria-current。
+const navigationTree = readSource("app/navigation/navigationTree.ts");
+const detailsNavigation = readSource("app/navigation/detailsNavigation.ts");
+assert.match(navigationTree, /primaryPageOrder: readonly PageId\[\] = \["monitor", "components", "optimization", "diskUsage", "control", "details", "settings"\]/);
+assert.match(appShell, /<For each=\{visiblePages\(\)\}>[\s\S]*?aria-current=\{props\.activePage\(\) === page\.id \? "page" : undefined\}/);
 assert.equal(optimization.match(/<SegmentedControl/g)?.length, 1);
 assert.match(optimization, /aria-pressed=\{selectedOptimizationMode\(\) === "normal"\}/);
 assert.match(optimization, /aria-pressed=\{optimizationModeHasDomain\(selectedOptimizationMode\(\), domain\)\}/);
-assert.match(details, /<TabsRoot/);
-assert.equal(details.match(/<TabsPanel/g)?.length, 5);
+// 详细信息的五个二级分页由外壳的二级分页条（页签组）画，页面只按选中项换内容。
+assert.match(appShell, /<TabsRoot value=\{props\.navigation\.selected\(\)\}/);
+assert.match(detailsNavigation, /ids: \["device", "gpu", "cpu", "report", "targeted"\]/);
+assert.equal(details.match(/<Match when=\{props\.activeTab === /g)?.length, 5);
 assert.match(settings, /aria-current=\{props\.activeSection === section/);
 assert.match(topology, /<SegmentedControl/);
 assert.equal(topology.match(/aria-pressed=/g)?.length, 1);
@@ -33,7 +38,7 @@ assert.match(cpuTopology, /aria-pressed=\{isSelected\(selected\(\), "ccd", ccd\.
 assert.match(cpuTopology, /aria-pressed=\{props\.selected\}/);
 assert.match(cpuTopology, /aria-pressed=\{isSelected\(selected\(\), "logical", String\(logical\.id\)\)\}/);
 assert.doesNotMatch(cpuTopology, /role="button"/);
-assert.match(settings, /<nav class="settings-nav"/);
+assert.match(settings, /<nav ref=\{nav\} class="settings-nav/);
 assert.match(softwareDetail, /role="listbox"/);
 assert.match(softwareDetail, /role="option"/);
 assert.match(softwareDetail, /aria-selected=\{props\.selectedProcessKey === process\.processKey\}/);

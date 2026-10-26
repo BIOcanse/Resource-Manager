@@ -1647,7 +1647,6 @@ const frFrAppCopy: AppCopy = {
   },
   cpuTopology: {
     modelLabel: "Modèle de topologie du processeur",
-    panel: "Modèle de planification processeur",
     summary: (cores: number, threads: number, ccd: number, residency: string) =>
       `${cores} C / ${threads} T · ${ccd} CCD · ${residency}`,
     unavailable: "Topologie du processeur indisponible",
@@ -1756,7 +1755,6 @@ const frFrAppCopy: AppCopy = {
     telemetryUnavailable: "Données indisponibles",
     telemetryLoading: "Chargement",
     modelLabel: "Modèle de planification GPU",
-    panel: "Modèle de planification GPU",
     summary: (gpuCount: string, gpuPercent: number, vramPercent: number, telemetry: string) =>
       `${gpuCount} GPU · GPU ${gpuPercent} % / VRAM ${vramPercent} % · ${telemetry}`,
     edit: "Modifier",
@@ -2122,14 +2120,11 @@ const frFrAppCopy: AppCopy = {
     tabAll: "Tout",
     tabDiagnostics: "Diagnostics",
     title: "Centre de tâches",
-    activeCount: (count: number) => `${count} en cours`,
-    noActiveTasks: "Aucune tâche n'est en cours pour l'instant",
     backendSyncing: "Les tâches du service se synchronisent.",
     backendResyncing: "Le service local se resynchronise ; les tâches du service ne peuvent pas être modifiées pour l'instant.",
     backendUnavailable: "L'état des tâches du service ne peut pas être lu ; les tâches de l'interface fonctionnent toujours.",
     filterLabel: "Filtre des tâches",
     noTasksInFilter: "Aucune tâche dans ce filtre",
-    close: "Fermer",
     sourceOperation: "Opération du service",
     sourceFrontend: "Tâche de l'interface",
     progressLabel: (title: string) => `Progression de ${title}`,
@@ -2182,7 +2177,6 @@ const frFrAppCopy: AppCopy = {
   },
   smartReport: {
     processTarget: (name: string, pid: number) => `${name} (processus ${pid})`,
-    panel: "Rapport de planification intelligente",
     loading: "Chargement",
     unavailable: "État indisponible",
     refresh: "Actualiser",
@@ -2231,7 +2225,6 @@ const frFrAppCopy: AppCopy = {
     }
   },
   browserRuntime: {
-    title: "Gestion des runtimes",
     description: "Examinez le runtime de l'interface web et les navigateurs installés sur ce PC.",
     downloadShared: "Télécharger le runtime partagé",
     refreshing: "Actualisation",
@@ -2479,10 +2472,10 @@ const frFrAppCopy: AppCopy = {
     retry: "Réessayer",
     lastGoodContent: (name: string) => `Dernier contenu disponible de ${name}`,
     detailsTab: {
-      device: "Gestion des appareils",
-      gpu: "Planification GPU",
-      cpu: "Topologie du processeur",
-      report: "Rapports",
+      device: "Topologie des appareils",
+      gpu: "Modèle de planification GPU",
+      cpu: "Modèle de planification processeur",
+      report: "Rapport de planification intelligente",
       tabsLabel: "Onglets de détails"
     },
     settingsConflict: "Les paramètres ont été mis à jour ailleurs ; rechargez avant d'enregistrer à nouveau",

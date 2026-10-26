@@ -1,18 +1,35 @@
 /* ============================================================
    分页项：一级页签和所有二级分页用同一套样子
    （用户 10-25「一级分页选择始终可见，二级分页选择各有各的，有的跟一级分页很像，有的差很大」）。
-   挂 .page-tab 的有：顶栏页签、管理和详情的子页签、设置导航、软件详情页签、任务中心页签、设备拓扑的外部／内部。
-   这里只管样子（底色、边框、圆角、文字、悬停、选中）；位置和尺寸（高度、内边距、对齐、竖排）留在各处自己的类里。
-   分页项都是 button：焦点环、过渡和按压用全局按钮那一套（motion.css），不另写。
-   四种界面风格各自在 ui-styles/*.css 里覆盖 .page-tab，一处覆盖对所有分页生效。
-   分段选择（设置里选一个值的那种）不是分页，样子另算。
+   挂 .page-tab 的有：顶栏页签、二级分页条、设置导航、软件详情页签、任务中心页签。
+   样子是一组变量（--page-tab-*），定义在根元素上；四种界面风格各自在 ui-styles/*.css 里只改这些变量，
+   页签和选中指示条读同一组变量，所以一处改动对所有分页和它们的指示条都生效。
+   这里只管样子（底色、边框、圆角、文字、投影、悬停、选中）；位置和尺寸（高度、内边距、对齐、竖排）留在各处自己的类里。
+   分页项都是 button：焦点环、按压用全局按钮那一套（motion.css），不另写。
+   分段选择（设置里选一个值的那种）不是分页，样子另算（segmented.css）。
    ============================================================ */
 
+:root {
+  --page-tab-radius: var(--radius-sm);
+  --page-tab-bg: var(--surface-strong);
+  --page-tab-border: transparent;
+  --page-tab-fg: var(--text);
+  --page-tab-bg-hover: var(--accent-soft);
+  --page-tab-border-hover: color-mix(in oklab, var(--accent) 40%, var(--line));
+  --page-tab-fg-hover: var(--text);
+  --page-tab-active-bg: var(--accent);
+  --page-tab-active-border: var(--accent-soft);
+  --page-tab-active-fg: var(--on-accent);
+  --page-tab-active-shadow: none;
+  --page-tab-active-bg-hover: var(--accent-hover);
+  --page-tab-active-border-hover: var(--accent-hover);
+}
+
 .page-tab {
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: var(--surface-strong);
-  color: var(--text);
+  border: 1px solid var(--page-tab-border);
+  border-radius: var(--page-tab-radius);
+  background: var(--page-tab-bg);
+  color: var(--page-tab-fg);
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
@@ -20,23 +37,108 @@
 }
 
 .page-tab:not(.active):not(:disabled):hover {
-  border-color: color-mix(in oklab, var(--accent) 40%, var(--line));
-  background: var(--accent-soft);
-  color: var(--text);
+  border-color: var(--page-tab-border-hover);
+  background: var(--page-tab-bg-hover);
+  color: var(--page-tab-fg-hover);
 }
 
 /* 实心强调色只留给当前所在的那一页。 */
 .page-tab.active {
-  border-color: var(--accent-soft);
-  background: var(--accent);
-  color: var(--on-accent);
+  border-color: var(--page-tab-active-border);
+  background: var(--page-tab-active-bg);
+  color: var(--page-tab-active-fg);
+  box-shadow: var(--page-tab-active-shadow);
 }
 
 .page-tab.active:hover {
-  border-color: var(--accent-hover);
-  background: var(--accent-hover);
+  border-color: var(--page-tab-active-border-hover);
+  background: var(--page-tab-active-bg-hover);
 }
 
 .page-tab:disabled {
+  opacity: 0.55;
+}
+
+/* ============================================================
+   选中指示条（docs/page_motion_2026-10-25.md；磁石组件 interactions/components/selectionIndicator.ts）。
+   带指示条的组（.has-selection-indicator）：选中的样子画在一块会滑的 .page-tab-indicator 上，
+   每一项自己只画未选中的样子（画在 ::before 上，压在指示条下面），文字颜色按指示条盖住它多少（--tab-cover）混合。
+   层次：组是独立的层叠上下文；未选中的底（-2）< 指示条（-1）< 文字。
+   ============================================================ */
+
+.has-selection-indicator {
+  position: relative;
+  isolation: isolate;
+}
+
+.selection-indicator {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: -1;
+  box-sizing: border-box;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.page-tab-indicator {
+  border: 1px solid var(--page-tab-active-border);
+  border-radius: var(--page-tab-radius);
+  background: var(--page-tab-active-bg);
+  box-shadow: var(--page-tab-active-shadow);
+}
+
+.has-selection-indicator:has(.page-tab.active:not(:disabled):hover) > .page-tab-indicator {
+  border-color: var(--page-tab-active-border-hover);
+  background: var(--page-tab-active-bg-hover);
+}
+
+.has-selection-indicator .page-tab {
+  --tab-cover: 0;
+  position: relative;
+  color: color-mix(in oklab, var(--page-tab-active-fg) calc(var(--tab-cover) * 100%), var(--page-tab-fg));
+}
+
+.has-selection-indicator .page-tab.active {
+  --tab-cover: 1;
+}
+
+.has-selection-indicator .page-tab,
+.has-selection-indicator .page-tab.active,
+.has-selection-indicator .page-tab.active:hover,
+.has-selection-indicator .page-tab:not(.active):not(:disabled):hover {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.has-selection-indicator .page-tab:not(.active):not(:disabled):hover {
+  color: color-mix(in oklab, var(--page-tab-active-fg) calc(var(--tab-cover) * 100%), var(--page-tab-fg-hover));
+}
+
+/* 未选中的底：每一项都有，选中项的底压在指示条下面看不见；指示条滑开时露出来。 */
+.has-selection-indicator .page-tab::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -2;
+  border: 1px solid var(--page-tab-border);
+  border-radius: inherit;
+  background: var(--page-tab-bg);
+  pointer-events: none;
+}
+
+.has-selection-indicator .page-tab:not(.active):not(:disabled):hover::before {
+  border-color: var(--page-tab-border-hover);
+  background: var(--page-tab-bg-hover);
+}
+
+/* 禁用：项本身不变透明（透明会把它变成独立的层，未选中的底就盖到指示条上面），底和文字各自变淡。 */
+.has-selection-indicator .page-tab:disabled {
+  opacity: 1;
+  color: color-mix(in oklab, color-mix(in oklab, var(--page-tab-active-fg) calc(var(--tab-cover) * 100%), var(--page-tab-fg)) 55%, transparent);
+}
+
+.has-selection-indicator .page-tab:disabled::before {
   opacity: 0.55;
 }

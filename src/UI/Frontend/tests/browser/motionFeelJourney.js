@@ -83,6 +83,35 @@ export default async function motionFeelJourney(page, baseUrl) {
     return travels;
   };
 
+  /**
+   * 换设置分区：从点下去到旧分区的副本清掉、新分区不留位移和不透明度的毫秒数。
+   * 设置分区和换页、页签面板是同一个磁石内容过渡（docs/page_motion_2026-10-25.md），时长是手感的换页时间（260 / 380 / 170 ms）。
+   */
+  const sectionTravel = async (section) => {
+    await page.evaluate(() => {
+      const probe = { clicked: null, travel: undefined };
+      window.__sectionProbe = probe;
+      window.addEventListener("click", () => {
+        probe.clicked = performance.now();
+        const deadline = probe.clicked + 3000;
+        const tick = () => {
+          const now = performance.now();
+          const stage = document.querySelector(".settings-content > fieldset");
+          const settled = stage !== null && document.querySelector(".settings-content > .content-transition-leaving") === null
+            && stage.style.transform === "" && stage.style.opacity === "";
+          if (settled) { probe.travel = now - probe.clicked; return; }
+          if (now > deadline) { probe.travel = null; return; }
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }, { once: true, capture: true });
+    });
+    await openSection(section);
+    await page.waitForFunction(() => window.__sectionProbe.travel !== undefined, undefined, { timeout: 5000 });
+    return page.evaluate(() => window.__sectionProbe.travel);
+  };
+  const pageEaseMs = { standard: 260, smooth: 380, crisp: 170 };
+
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await page.getByRole("navigation").getByRole("button", { name: app.page.settings, exact: true }).click();
   await openSection("appearance");
@@ -121,7 +150,17 @@ export default async function motionFeelJourney(page, baseUrl) {
         throw new Error(`${feel}: knob travel ${travel} ms does not follow the Lodestone spring time ${ms} ms (${JSON.stringify(travels)})`);
       }
     }
-    results.push({ feel, ...durations, travels });
+    const sections = [await sectionTravel("updates"), await sectionTravel("appearance")];
+    for (const travel of sections) {
+      if (travel === null || travel < pageEaseMs[feel] * 0.75 || travel > pageEaseMs[feel] + 120) {
+        throw new Error(`${feel}: settings section change ${travel} ms does not follow the page ease ${pageEaseMs[feel]} ms (${JSON.stringify(sections)})`);
+      }
+    }
+    results.push({ feel, ...durations, travels, sections });
+  }
+  const sectionMean = (feel) => { const { sections } = results.find((entry) => entry.feel === feel); return (sections[0] + sections[1]) / 2; };
+  if (!(sectionMean("crisp") < sectionMean("standard") && sectionMean("standard") < sectionMean("smooth"))) {
+    throw new Error(`Section changes are not ordered crisp < standard < smooth: ${JSON.stringify(results.map(({ feel, sections }) => ({ feel, sections })))}`);
   }
   const mean = (feel) => { const { travels } = results.find((entry) => entry.feel === feel); return (travels[0] + travels[1]) / 2; };
   if (!(mean("crisp") < mean("standard") && mean("standard") < mean("smooth"))) {
@@ -141,6 +180,10 @@ export default async function motionFeelJourney(page, baseUrl) {
   const instant = await knobTravel();
   if (instant.some((travel) => travel === null || travel > 50)) {
     throw new Error(`No motion: the knob still travels: ${JSON.stringify(instant)}`);
+  }
+  const instantSections = [await sectionTravel("updates"), await sectionTravel("appearance")];
+  if (instantSections.some((travel) => travel === null || travel > 50)) {
+    throw new Error(`No motion: settings sections still transition: ${JSON.stringify(instantSections)}`);
   }
 
   // 刷新后手感保持（前端偏好缓存），动画档位也照旧。
@@ -163,5 +206,5 @@ export default async function motionFeelJourney(page, baseUrl) {
   if (cached !== "crisp") throw new Error(`Frontend preference cache holds ${cached}`);
 
   if (failures.length) throw new Error(failures.join("\n"));
-  return { results, noMotion: { ...still, travels: instant }, reloaded: { ...reloaded, travels: reloadedTravel } };
+  return { results, noMotion: { ...still, travels: instant, sections: instantSections }, reloaded: { ...reloaded, travels: reloadedTravel } };
 }

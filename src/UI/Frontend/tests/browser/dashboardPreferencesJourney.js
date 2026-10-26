@@ -1,3 +1,4 @@
+import { waitForContentSettled } from "./contentSettled.js";
 import assert from "node:assert/strict";
 import { pointPreferences } from "../../src/preferences/frontendPreferences.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
@@ -36,6 +37,7 @@ export default async function dashboardPreferencesJourney(page, baseUrl) {
   await page.getByRole("button", { name: "设置", exact: true }).click();
   await waitIds([]);
   await page.getByRole("button", { name: "监视控制台", exact: true }).click();
+  await waitForContentSettled(page);
   await page.locator('[data-focus-key="monitor-dashboard-edit"]').click();
   await cards.first().locator(".slot-delete").first().click();
   await page.locator('[data-focus-key="monitor-dashboard-edit"]').click();

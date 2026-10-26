@@ -3,7 +3,6 @@ import type { AppCopy } from "../zh/index.ts";
 export const enDetailsCopy: Pick<AppCopy, "cpuTopology" | "cpuBaseline" | "gpuScheduling"> = {
   cpuTopology: {
     modelLabel: "CPU topology model",
-    panel: "CPU scheduling model",
     summary: (cores: number, threads: number, ccd: number, residency: string) =>
       `${cores}C / ${threads}T · ${ccd} CCD · ${residency}`,
     unavailable: "CPU topology unavailable",
@@ -112,7 +111,6 @@ export const enDetailsCopy: Pick<AppCopy, "cpuTopology" | "cpuBaseline" | "gpuSc
     telemetryUnavailable: "Data unavailable",
     telemetryLoading: "Loading",
     modelLabel: "GPU scheduling model",
-    panel: "GPU scheduling model",
     summary: (gpuCount: string, gpuPercent: number, vramPercent: number, telemetry: string) =>
       `${gpuCount} GPUs · GPU ${gpuPercent}% / VRAM ${vramPercent}% · ${telemetry}`,
     edit: "Edit",

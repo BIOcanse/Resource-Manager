@@ -3,8 +3,11 @@
   max-width: 620px;
 }
 
+/* 高度固定：搜索筛掉一些指标、选中项多出“来源”一行时，对话框不跟着内容跳（用户 10-25「高度不固定，手感差」）；
+   列表在中间那一行里自己滚动。 */
 .metric-modal {
   max-width: min(1040px, calc(100vw - 36px));
+  height: min(760px, calc(100vh - var(--modal-viewport-top) - 36px));
 }
 
 .manual-software-body {

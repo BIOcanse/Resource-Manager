@@ -135,10 +135,10 @@ export const enRuntimeErrorsCopy: Pick<
     retry: "Retry",
     lastGoodContent: (name: string) => `Last available content of ${name}`,
     detailsTab: {
-      device: "Device management",
-      gpu: "GPU scheduling",
-      cpu: "CPU topology",
-      report: "Reports",
+      device: "Device topology",
+      gpu: "GPU scheduling model",
+      cpu: "CPU scheduling model",
+      report: "Smart scheduling report",
       tabsLabel: "Detail tabs"
     },
     settingsConflict: "The settings were updated elsewhere; reload before saving again",

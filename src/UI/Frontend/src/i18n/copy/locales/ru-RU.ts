@@ -1647,7 +1647,6 @@ const ruRuAppCopy: AppCopy = {
   },
   cpuTopology: {
     modelLabel: "Модель топологии процессора",
-    panel: "Модель планирования процессора",
     summary: (cores: number, threads: number, ccd: number, residency: string) =>
       `${cores} я / ${threads} п · ${ccd} CCD · ${residency}`,
     unavailable: "Топология процессора недоступна",
@@ -1756,7 +1755,6 @@ const ruRuAppCopy: AppCopy = {
     telemetryUnavailable: "Данные недоступны",
     telemetryLoading: "Загрузка",
     modelLabel: "Модель планирования GPU",
-    panel: "Модель планирования GPU",
     summary: (gpuCount: string, gpuPercent: number, vramPercent: number, telemetry: string) =>
       `GPU: ${gpuCount} · GPU ${gpuPercent} % / видеопамять ${vramPercent} % · ${telemetry}`,
     edit: "Изменить",
@@ -2122,14 +2120,11 @@ const ruRuAppCopy: AppCopy = {
     tabAll: "Все",
     tabDiagnostics: "Диагностика",
     title: "Центр задач",
-    activeCount: (count: number) => `Выполняется: ${count}`,
-    noActiveTasks: "Сейчас нет выполняющихся задач",
     backendSyncing: "Задачи службы синхронизируются.",
     backendResyncing: "Локальная служба повторно синхронизируется; задачи службы сейчас изменить нельзя.",
     backendUnavailable: "Не удаётся прочитать состояние задач службы; задачи интерфейса продолжают работать.",
     filterLabel: "Фильтр задач",
     noTasksInFilter: "В этом фильтре нет задач",
-    close: "Закрыть",
     sourceOperation: "Операция службы",
     sourceFrontend: "Задача интерфейса",
     progressLabel: (title: string) => `Ход выполнения: ${title}`,
@@ -2182,7 +2177,6 @@ const ruRuAppCopy: AppCopy = {
   },
   smartReport: {
     processTarget: (name: string, pid: number) => `${name} (процесс ${pid})`,
-    panel: "Отчёт умного планирования",
     loading: "Загрузка",
     unavailable: "Состояние недоступно",
     refresh: "Обновить",
@@ -2231,7 +2225,6 @@ const ruRuAppCopy: AppCopy = {
     }
   },
   browserRuntime: {
-    title: "Управление средами выполнения",
     description: "Проверьте среду выполнения веб-интерфейса и браузеры, установленные на этом компьютере.",
     downloadShared: "Скачать общую среду выполнения",
     refreshing: "Обновление",
@@ -2479,10 +2472,10 @@ const ruRuAppCopy: AppCopy = {
     retry: "Повторить",
     lastGoodContent: (name: string) => `Последнее доступное содержимое: ${name}`,
     detailsTab: {
-      device: "Управление устройствами",
-      gpu: "Планирование GPU",
-      cpu: "Топология процессора",
-      report: "Отчёты",
+      device: "Топология устройств",
+      gpu: "Модель планирования GPU",
+      cpu: "Модель планирования процессора",
+      report: "Отчёт умного планирования",
       tabsLabel: "Вкладки сведений"
     },
     settingsConflict: "Параметры были изменены в другом месте; перезагрузите их перед повторным сохранением",

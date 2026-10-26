@@ -1,6 +1,6 @@
 import type { AppCopy } from "../index.ts";
 export const targetedReport: AppCopy["targetedReport"] = {
-  tab: "対象別レポート", title: "対象ソフトウェアの監視レポート",
+  tab: "対象ソフトウェアの監視レポート", title: "対象ソフトウェアの監視レポート",
   intro: "このソフトウェアの全プロセスについて、アプリの Present 間隔とリソース使用量を記録します。",
   maximumSeconds: "録画の最長時間（秒）", start: "記録開始", stop: "記録停止",
   recording: "記録中", completed: "完了", refresh: "レポートを更新",

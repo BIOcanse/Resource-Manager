@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { waitForContentSettled } from "./contentSettled.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
@@ -37,8 +38,9 @@ export default async function softwareUnclassifiedJourney(page, baseUrl) {
   });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "组件与软件", exact: true }).click();
-  const nav = page.getByRole("navigation", { name: "组件和软件分类" });
-  await nav.getByRole("button", { name: /^未归类/ }).click();
+  const nav = page.getByRole("tablist", { name: "组件和软件分类" });
+  await nav.getByRole("tab", { name: /^未归类/ }).click();
+  await waitForContentSettled(page);
   await page.locator(".software-item").filter({ hasText: "Runtime App 2" }).waitFor();
   assert.equal(await page.locator(".software-item").count(), 3);
   for (const method of ["通过程序产品名称识别", "通过运行中的应用包识别", "通过运行中的安装根目录识别"])
@@ -66,7 +68,8 @@ export default async function softwareUnclassifiedJourney(page, baseUrl) {
   await page.getByRole("dialog").waitFor({ state: "hidden" });
   await page.waitForFunction(() => document.querySelectorAll(".software-item").length === 2);
   assert.deepEqual(writes, [{ name: "Runtime App 0", kind: "other", rootPaths: [], sourceSoftwareId: "runtime:0" }]);
-  await nav.getByRole("button", { name: /^一般应用/ }).click();
+  await nav.getByRole("tab", { name: /^一般应用/ }).click();
+  await waitForContentSettled(page);
   await page.locator(".software-item").filter({ hasText: "Runtime App 0" }).waitFor();
   assert.equal(await page.locator(".software-item .software-issue-tag").count(), 0);
 
@@ -96,8 +99,8 @@ export default async function softwareUnclassifiedJourney(page, baseUrl) {
     await page.waitForFunction(language => document.documentElement.lang === language, option.id);
     const app = await loadAppCopy(option.id);
     await page.getByRole("navigation").getByRole("button", { name: app.page.components, exact: true }).click();
-    await page.getByRole("navigation", { name: app.management.categoryNav })
-      .getByRole("button", { name: new RegExp(app.softwareKind.game) }).click();
+    await page.getByRole("tablist", { name: app.management.categoryNav })
+      .getByRole("tab", { name: new RegExp(app.softwareKind.game) }).click();
     await page.locator(".software-item").filter({ hasText: "Windows Game" })
       .getByRole("button", { name: app.management.softwareSettings, exact: true }).click();
     const details = page.getByRole("dialog", { name: "Windows Game", exact: true });

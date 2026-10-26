@@ -44,6 +44,7 @@ import type {
 } from "../../types";
 import { ObservationStateBoundary } from "../../components/ObservationStateNotice";
 import { uiText } from "../../text.ts";
+import { CurrentPageHeading } from "../../app/navigation/currentPageName.tsx";
 
 interface GpuSchedulingPosition {
   id: string;
@@ -324,7 +325,7 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
     >
       <div class="panel-header gpu-scheduling-header">
         <div class="optimization-heading">
-          <h2>{uiText.gpuScheduling.panel}</h2>
+          <CurrentPageHeading />
           <span>{(() => {
             const thresholds = summaryThresholds();
             return thresholds

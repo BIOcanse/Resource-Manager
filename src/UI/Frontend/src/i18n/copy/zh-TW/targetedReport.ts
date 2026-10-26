@@ -2,7 +2,7 @@ import type { AppCopy } from "../zh/index.ts";
 
 export const zhTwTargetedReportCopy: Pick<AppCopy, "targetedReport"> = {
   targetedReport: {
-    tab: "定向報告",
+    tab: "定向監控報告",
     title: "定向監控報告",
     intro: "記錄此軟體所有處理程序的應用程式提交影格時間與資源用量。",
     maximumSeconds: "最長錄製時間（秒）",

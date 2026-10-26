@@ -6,6 +6,8 @@ import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
  * - 分页（styles/page-tabs.css 的 .page-tab）：组件与软件、详细信息的子页签，设置导航，软件详情，任务中心，都和一级页签一样。
  * - 分段选择（styles/segmented.css 的 .segment）：设备拓扑的外部／内部、设置→外观的分段，都和监视页资源表的软件级／进程级／性能一样。
  * 只比样子：底色、文字色、边框、圆角、字号字重、投影；尺寸和排列各处自己定，不比，分段的字号也是各处自己定。
+ * 带选中指示条的组（docs/page_motion_2026-10-25.md）：项本身只有文字，未选中的样子画在项的 ::before 上，选中的样子是组里那条指示条，
+ * 三处都比：项、项的 ::before，以及选中项所在组的指示条。
  * 基准先在监视页按四种风格各记一次，切到别的页后不再读它（离开的页面可能已卸载）。
  * 风格直接写到根元素的 data-ui-style 上（外观的唯一发布点，见 presentation/documentAppearance.ts）：
  * 这里验的是样式表，不是外观设置的保存流程。
@@ -28,7 +30,16 @@ export default async function pageTabsConsistencyJourney(page, baseUrl) {
   };
   const look = (locator) => locator.evaluate((element, names) => {
     const computed = getComputedStyle(element);
-    return Object.fromEntries(names.map((name) => [name, computed[name]]));
+    const before = getComputedStyle(element, "::before");
+    const indicator = element.classList.contains("active")
+      ? element.closest(".has-selection-indicator")?.querySelector(":scope > .selection-indicator")
+      : null;
+    const indicatorStyle = indicator ? getComputedStyle(indicator) : null;
+    return Object.fromEntries([
+      ...names.map((name) => [name, computed[name]]),
+      ...names.map((name) => [`::before ${name}`, before[name]]),
+      ...names.map((name) => [`indicator ${name}`, indicatorStyle ? indicatorStyle[name] : null])
+    ]);
   }, properties);
   const applyStyle = async (uiStyle, theme) => {
     await page.evaluate(([style, palette]) => {
@@ -61,7 +72,7 @@ export default async function pageTabsConsistencyJourney(page, baseUrl) {
     const actual = await record(scope, item);
     for (const [uiStyle] of styles) {
       for (const state of ["active", "inactive"]) {
-        for (const name of names) {
+        for (const name of names.flatMap((property) => [property, `::before ${property}`, `indicator ${property}`])) {
           if (actual[uiStyle][state][name] !== expected[uiStyle][state][name]) {
             failures.push(`${group} ${uiStyle} ${state} ${name}: ${actual[uiStyle][state][name]} (reference: ${expected[uiStyle][state][name]})`);
           }
@@ -79,13 +90,13 @@ export default async function pageTabsConsistencyJourney(page, baseUrl) {
   const tabs = (group, scope) => compare(group, scope, ".page-tab", pageTabs, properties);
   const segmentGroup = (group, scope) => compare(group, scope, ".segment", segments, segmentProperties);
 
-  // 组件与软件的子页签（导航按钮）。
+  // 组件与软件的二级分页（外壳的二级分页条，页签组）。
   await navigation.getByRole("button", { name: app.page.components, exact: true }).click();
-  const categories = page.getByRole("navigation", { name: app.management.categoryNav });
+  const categories = page.getByRole("tablist", { name: app.management.categoryNav });
   await tabs("components subnav", categories);
 
   // 软件详情的分页（对话框里的 tablist）。
-  await categories.getByRole("button", { name: new RegExp(app.softwareKind.other) }).click();
+  await categories.getByRole("tab", { name: new RegExp(app.softwareKind.other) }).click();
   await page.locator(".software-item").filter({ hasText: "示例软件" }).first()
     .getByRole("button", { name: app.management.softwareSettings, exact: true }).click();
   const details = page.getByRole("dialog", { name: "示例软件" });
@@ -96,7 +107,7 @@ export default async function pageTabsConsistencyJourney(page, baseUrl) {
 
   // 详细信息的子页签（tablist）和设备拓扑的外部／内部（分段）。
   await navigation.getByRole("button", { name: app.page.details, exact: true }).click();
-  await tabs("details subnav", page.locator(".page-subnav[role='tablist']"));
+  await tabs("details subnav", page.getByRole("tablist", { name: app.misc.detailsTab.tabsLabel, exact: true }));
   await segmentGroup("device topology scope", page.locator(".device-scope-tabs"));
 
   // 设置导航（竖排）和外观的分段。

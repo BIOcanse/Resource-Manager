@@ -155,11 +155,13 @@ async function settingsLayout(page) {
   return page.evaluate(() => {
     const entries = {};
     // 只比结构区域：换字体后控件宽度和说明文字换行可以不同。
+    // 按正文滚动区（.app-shell）里的位置比：点击前 Playwright 会把目标滚进视口，滚动位置不算布局。
+    const shell = document.querySelector(".app-shell");
     const selectors = [".settings-content", ".settings-content-header", ".settings-nav-item"];
     for (const selector of selectors) {
       document.querySelectorAll(selector).forEach((element, index) => {
         const rect = element.getBoundingClientRect();
-        entries[`${selector}#${index}`] = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+        entries[`${selector}#${index}`] = { x: rect.x + shell.scrollLeft, y: rect.y + shell.scrollTop, width: rect.width, height: rect.height };
       });
     }
     return entries;

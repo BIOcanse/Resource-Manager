@@ -8,6 +8,8 @@ import { motionFeels, motionFeelIds, motionFeel } from "../src/presentation/moti
 import { globalLayer, PARAM_SPECS, partLayer, resolveParams } from "../src/interactions/protocol/params.ts";
 import { columnResizeHandleDefinition } from "../src/interactions/components/columnResizeHandle.ts";
 import { switchToggleDefinition } from "../src/interactions/components/switchToggle.ts";
+import { contentTransitionDefinition, CONTENT_TRANSITION_CURVE, CONTENT_TRANSITION_EASE_MS } from "../src/interactions/components/contentTransition.ts";
+import { declaredSpecs } from "../src/interactions/protocol/definition.ts";
 import { loadSettingsText } from "../src/i18n/settingsLoader.ts";
 import type { ConcreteAppLanguageMode } from "../src/i18n/settingsTypes.ts";
 
@@ -64,10 +66,24 @@ for (const [index, feel] of motionFeels.entries()) {
     assert.equal(engineSource("settleTime"), medium, "engine settleTime source equals the standard --motion-medium");
     assert.equal(engineSource("springTime"), medium, "engine springTime source equals the standard --motion-medium");
   } else {
-    assert.deepEqual(Object.keys(feel.lodestone).sort(), ["settleTime", "springTime"], `${feel.id} overrides only the settle and spring times`);
+    assert.deepEqual(Object.keys(feel.lodestone).sort(),
+      ["pageEaseMs", "pageEaseX1", "pageEaseX2", "pageEaseY1", "pageEaseY2", "settleTime", "springTime"],
+      `${feel.id} overrides only the settle and spring times and the content transition ease`);
     assert.equal(feel.lodestone.settleTime, medium, `${feel.id} Lodestone settleTime equals --motion-medium`);
     assert.equal(feel.lodestone.springTime, medium, `${feel.id} Lodestone springTime equals --motion-medium`);
   }
+}
+
+// 内容过渡（换页、二级分页、页签面板、设置分区）的换页缓动：组件给的默认就是标准的 --motion-page 和 --ease-decel，
+// 其余手感在全局层换成自己的 --motion-page 和 --ease-decel。
+assert.equal(CONTENT_TRANSITION_EASE_MS, motionFeels[0].durationsMs["--motion-page"], "content transition default = standard --motion-page");
+assert.deepEqual([...CONTENT_TRANSITION_CURVE], [...motionFeels[0].easings["--ease-decel"]], "content transition default curve = standard --ease-decel");
+for (const feel of motionFeels) {
+  const table = resolveParams(null, [globalLayer({ ...feel.lodestone }), partLayer("内容过渡", contentTransitionDefinition.params ?? {})],
+    declaredSpecs(contentTransitionDefinition));
+  assert.equal(table.pageEaseMs.value, feel.durationsMs["--motion-page"], `${feel.id}: content transition time follows --motion-page`);
+  assert.deepEqual([table.pageEaseX1.value, table.pageEaseY1.value, table.pageEaseX2.value, table.pageEaseY2.value],
+    [...feel.easings["--ease-decel"]], `${feel.id}: content transition curve follows --ease-decel`);
 }
 
 // 范围小的覆盖大的：手感只在全局层，组件定义写的值不受它影响（列宽把手的到位时间 0、开关的松手吸能 0），

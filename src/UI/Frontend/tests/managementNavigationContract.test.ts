@@ -25,7 +25,9 @@ for (const kind of managementInventoryKinds) {
 }
 
 const appShell = readSource("../src/app/AppShell.tsx");
+const managementNavigation = readSource("../src/app/navigation/managementNavigation.ts");
 const managementPage = readSource("../src/features/management/components/ManagementPage.tsx");
+const managementItems = readSource("../src/features/management/managementItems.ts");
 // 文案已经移到语言包里，中文基底是这项断言的来源。
 const managementCopy = readSource("../src/i18n/copy/zh/software.ts");
 const workspace = readSource("../src/features/management/ManagementWorkspace.tsx");
@@ -35,7 +37,11 @@ const refreshScheduler = readSource("../src/app/usePageRefreshScheduler.ts");
 const managementSnapshotCache = readSource("../src/features/management/managementSnapshotCache.ts");
 const responsiveCss = readSource("../src/styles/responsive.css");
 
-assert.match(appShell, /ManagementSubpageBar/);
+// 二级分页条由外壳按分页树画（docs/navigation_tree_2026-10-25.md），组件与软件页只登记清单，不自己画分页条。
+assert.match(appShell, /<SecondaryTabs page=\{page\.id\} navigation=\{page\.secondary!\} \/>/);
+assert.match(managementNavigation, /export function createManagementNavigation/);
+assert.match(managementNavigation, /ids: \[\.\.\.managementInventoryKinds, browserRuntimeManagementSubpageId\]/);
+assert.doesNotMatch(managementPage, /ManagementSubpageBar/);
 assert.match(workspace, /when=\{activeInventoryKind\(\)\}/);
 assert.match(workspace, /<BrowserRuntimePage/);
 assert.match(workspace, /FrontendVisibilityDemandBinding/);
@@ -47,7 +53,7 @@ assert.doesNotMatch(
 assert.match(workspace, /sharedBrowserRuntimeComponentId/);
 // 依赖列表去重要用该角色的全部组件名（含只在运行时管理里列的共享运行时），
 // 不能只用过滤后的卡片，否则同名软件记录会带着后端原名回到依赖列表。
-assert.match(managementPage, /const componentNameSet = new Set\(roleComponents/);
+assert.match(managementItems, /const componentNameSet = new Set\(roleComponents/);
 assert.match(browserRuntimePage, /<UserDetailsDialog/);
 assert.match(browserRuntimePage, /runtimeDetailSections/);
 assert.doesNotMatch(browserRuntimePage, /<code[^>]*runtimeDirectory/);
@@ -64,8 +70,8 @@ assert.match(managementSnapshotCache, /const cacheVersion = 4/);
 assert.match(managementSnapshotCache, /map\(withoutIssueState\)/);
 assert.match(managementSnapshotCache, /issues: undefined/);
 assert.doesNotMatch(managementSnapshotCache, /management-snapshot:v[123]/);
-assert.match(responsiveCss, /body\[data-page="components"\] \.app-shell > #componentsPage/);
-assert.match(responsiveCss, /body\[data-page="components"\] \.app-shell > #browserRuntimePage/);
+assert.match(responsiveCss, /body\[data-page="components"\] \.page-stage > #componentsPage/);
+assert.match(responsiveCss, /body\[data-page="components"\] \.page-stage > #browserRuntimePage/);
 assert.match(managementPage, /createEffect\(on\(\(\) => props\.activeKind, \(\) => setSearchQuery\(""\)/);
 assert.match(managementPage, /normalizedSearchQuery\(\)[\s\S]*?uiText\.management\.noSearchResults/);
 assert.match(managementPage, /uiText\.management\.clearSearch/);

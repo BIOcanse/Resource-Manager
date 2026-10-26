@@ -1,7 +1,6 @@
 export const zhDetailsCopy = {
   cpuTopology: {
     modelLabel: "CPU 拓撲模型",
-    panel: "CPU 排程模型",
     summary: (cores: number, threads: number, ccd: number, residency: string) =>
       `${cores}C / ${threads}T · ${ccd} CCD · ${residency}`,
     unavailable: "CPU 拓撲不可用",
@@ -109,7 +108,6 @@ export const zhDetailsCopy = {
     telemetryUnavailable: "資料不可用",
     telemetryLoading: "讀取中",
     modelLabel: "GPU 排程模型",
-    panel: "GPU 排程模型",
     summary: (gpuCount: string, gpuPercent: number, vramPercent: number, telemetry: string) =>
       `${gpuCount} 張 GPU · GPU ${gpuPercent}% / 視訊記憶體 ${vramPercent}% · ${telemetry}`,
     edit: "編輯",

@@ -28,7 +28,7 @@ export default async function overlaySourceChoiceJourney(page, baseUrl) {
   const editor = page.locator(".overlay-settings");
   const open = async (copy) => {
     await page.getByRole("button", { name: copy.page.components, exact: true }).click();
-    await page.getByRole("navigation", { name: copy.management.categoryNav }).getByRole("button", { name: new RegExp(copy.softwareKind.other) }).click();
+    await page.getByRole("tablist", { name: copy.management.categoryNav }).getByRole("tab", { name: new RegExp(copy.softwareKind.other) }).click();
     await page.locator(".software-item").filter({ hasText: "示例软件" }).first().getByRole("button", { name: copy.management.softwareSettings }).click();
     await page.getByRole("tab", { name: copy.performanceOverlay.tab, exact: true }).click();
     await page.locator(".overlay-settings-fields").waitFor({ state: "visible" });

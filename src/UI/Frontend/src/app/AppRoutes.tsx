@@ -11,6 +11,7 @@ import type { ProductUpdateStore } from "../stores/productUpdateStore";
 import type { RuntimeCapabilitiesStore } from "../stores/runtimeCapabilitiesStore";
 import type { AppAnimationMode, ManagedComponent, OptimizationReportItem, PageId, SoftwareRecord } from "../types";
 import { uiText } from "../text.ts";
+import type { DetailsTab } from "./navigation/detailsNavigation.ts";
 
 // 首屏是监视控制台；其余页面各自一个分包，首屏脚本只含监视页。
 // 分包在首屏渲染后由 preloadRoutePages 预先载入，换页时已就绪，不出现空白帧。
@@ -42,6 +43,8 @@ function preloadRoutePages(): Promise<unknown> {
 interface AppRoutesProps {
   animationMode: Exclude<AppAnimationMode, "auto">;
   activePage: Accessor<PageId>;
+  /** 详细信息选中的二级分页（分页树）。 */
+  detailsTab: Accessor<DetailsTab>;
   monitor: MonitorStore;
   management: ManagementStore;
   optimization: OptimizationStore;
@@ -101,6 +104,7 @@ export function AppRoutes(props: AppRoutesProps) {
             >
               <PageBoundary name={uiText.page.details}>
                 <DetailsPage
+                  activeTab={props.detailsTab()}
                   software={props.management.software()}
                   runtimeCapabilities={props.runtimeCapabilities}
                   onOpenSoftwareSettings={props.onOpenSoftwareSettingsById}

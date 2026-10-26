@@ -34,8 +34,8 @@ export default async function overlaySettingsJourney(page, baseUrl) {
     assert(denied.error === "unavailable" || denied.statusCode === 400, "Native fixture accepted an invalid mutation route/body");
   }
   await page.getByRole("button", { name: "组件与软件", exact: true }).click();
-  await page.getByRole("navigation", { name: "组件和软件分类" })
-    .getByRole("button", { name: /一般应用/ }).click();
+  await page.getByRole("tablist", { name: "组件和软件分类" })
+    .getByRole("tab", { name: /一般应用/ }).click();
   const card = page.locator(".software-item").filter({ hasText: "示例软件" }).first();
   const open = async () => {
     await card.getByRole("button", { name: "软件设置" }).click();
@@ -125,7 +125,7 @@ export default async function overlaySettingsJourney(page, baseUrl) {
   assert(await save.isDisabled(), "Successful retry left the editor dirty");
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: "组件与软件", exact: true }).click();
-  await page.getByRole("navigation", { name: "组件和软件分类" }).getByRole("button", { name: /一般应用/ }).click();
+  await page.getByRole("tablist", { name: "组件和软件分类" }).getByRole("tab", { name: /一般应用/ }).click();
   await open();
   await installElevatedBackendBridge(page);
   assert(await font.inputValue() === "27", "Frontend overlay cache did not survive page restart");
@@ -149,7 +149,7 @@ export default async function overlaySettingsJourney(page, baseUrl) {
   const globallyReset = await page.evaluate(() => JSON.parse(localStorage.getItem("resource-manager:frontend-preferences:v1")));
   assert(globallyReset.overlays["frontend-harness.software"].enabled === false, "Global presentation reset changed local enable choice");
   await page.getByRole("button", { name: copy.page.components, exact: true }).click();
-  await page.getByRole("navigation", { name: "组件和软件分类" }).getByRole("button", { name: /一般应用/ }).click();
+  await page.getByRole("tablist", { name: "组件和软件分类" }).getByRole("tab", { name: /一般应用/ }).click();
   await open();
   await editor.getByRole("checkbox").check();
   await save.click();

@@ -1647,7 +1647,6 @@ const jaJpAppCopy: AppCopy = {
   },
   cpuTopology: {
     modelLabel: "CPU トポロジ モデル",
-    panel: "CPU スケジューリング モデル",
     summary: (cores: number, threads: number, ccd: number, residency: string) =>
       `${cores}C / ${threads}T · ${ccd} CCD · ${residency}`,
     unavailable: "CPU トポロジを取得できません",
@@ -1756,7 +1755,6 @@ const jaJpAppCopy: AppCopy = {
     telemetryUnavailable: "データを取得できません",
     telemetryLoading: "読み込み中",
     modelLabel: "GPU スケジューリング モデル",
-    panel: "GPU スケジューリング モデル",
     summary: (gpuCount: string, gpuPercent: number, vramPercent: number, telemetry: string) =>
       `GPU ${gpuCount} 基 · GPU ${gpuPercent}% / VRAM ${vramPercent}% · ${telemetry}`,
     edit: "編集",
@@ -2122,14 +2120,11 @@ const jaJpAppCopy: AppCopy = {
     tabAll: "すべて",
     tabDiagnostics: "診断",
     title: "タスク センター",
-    activeCount: (count: number) => `進行中 ${count} 件`,
-    noActiveTasks: "現在実行中のタスクはありません",
     backendSyncing: "バックエンド タスクを同期中です。",
     backendResyncing: "ローカル サービスが再同期中のため、バックエンド タスクは今変更できません。",
     backendUnavailable: "バックエンド タスクの状態を読み取れません。インターフェイスのタスクは引き続き動作します。",
     filterLabel: "タスクのフィルター",
     noTasksInFilter: "このフィルターに該当するタスクはありません",
-    close: "閉じる",
     sourceOperation: "バックエンド操作",
     sourceFrontend: "インターフェイスのタスク",
     progressLabel: (title: string) => `${title} の進捗`,
@@ -2182,7 +2177,6 @@ const jaJpAppCopy: AppCopy = {
   },
   smartReport: {
     processTarget: (name: string, pid: number) => `${name}（プロセス ${pid}）`,
-    panel: "スマート スケジューリング レポート",
     loading: "読み込み中",
     unavailable: "状態を取得できません",
     refresh: "更新",
@@ -2231,7 +2225,6 @@ const jaJpAppCopy: AppCopy = {
     }
   },
   browserRuntime: {
-    title: "ランタイム管理",
     description: "Web インターフェイスのランタイムと、この PC にインストールされたブラウザーを確認します。",
     downloadShared: "共有ランタイムをダウンロード",
     refreshing: "更新中",
@@ -2479,10 +2472,10 @@ const jaJpAppCopy: AppCopy = {
     retry: "再試行",
     lastGoodContent: (name: string) => `${name}の最後に利用できた内容`,
     detailsTab: {
-      device: "デバイス管理",
-      gpu: "GPU スケジューリング",
-      cpu: "CPU トポロジ",
-      report: "レポート",
+      device: "デバイス トポロジ",
+      gpu: "GPU スケジューリング モデル",
+      cpu: "CPU スケジューリング モデル",
+      report: "スマート スケジューリング レポート",
       tabsLabel: "詳細のタブ"
     },
     settingsConflict: "設定が別の場所で更新されました。保存し直す前に再読み込みしてください",

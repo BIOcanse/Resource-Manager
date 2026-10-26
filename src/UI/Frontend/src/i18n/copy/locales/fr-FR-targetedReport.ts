@@ -1,6 +1,6 @@
 import type { AppCopy } from "../index.ts";
 export const targetedReport: AppCopy["targetedReport"] = {
-  tab: "Rapports ciblés", title: "Rapports de surveillance ciblée",
+  tab: "Rapports de surveillance ciblée", title: "Rapports de surveillance ciblée",
   intro: "Enregistre les temps des trames Present et les ressources de tous les processus de ce logiciel.",
   maximumSeconds: "Durée maximale d’enregistrement (secondes)", start: "Démarrer l’enregistrement", stop: "Arrêter l’enregistrement",
   recording: "Enregistrement", completed: "Terminé", refresh: "Actualiser les rapports",

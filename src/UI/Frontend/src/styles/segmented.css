@@ -2,38 +2,119 @@
    分段选择：在一个面板里选一个值或一种显示方式（资源表的软件级／进程级／性能，设备拓扑的外部／内部，
    设置里的各个分段，优化模式，报告筛选，热键关系）。和分页（page-tabs.css）分开：分页是去另一页，分段是改这一块。
    这里只管样子：轨道、分段的底色、文字、悬停、选中、焦点。高度、内边距、字号、排列（含热键关系的两列网格）留在各处自己的类里。
-   四种界面风格各自在 ui-styles/*.css 里覆盖 .segmented / .segment，一处覆盖对所有分段生效。
+   样子是一组变量（--segment-*），定义在根元素上；四种界面风格各自在 ui-styles/*.css 里只改这些变量，
+   分段和选中指示条读同一组变量。
    ============================================================ */
 
+:root {
+  --segment-track-bg: var(--line);
+  --segment-track-border: var(--line);
+  --segment-track-radius: var(--radius-sm);
+  --segment-radius: 0;
+  --segment-bg: var(--surface);
+  --segment-fg: var(--muted);
+  --segment-bg-hover: var(--surface-strong);
+  --segment-fg-hover: var(--text);
+  --segment-active-bg: var(--accent);
+  --segment-active-fg: var(--on-accent);
+  --segment-active-shadow: none;
+  --segment-disabled-bg: var(--control-disabled-bg);
+  --segment-disabled-fg: var(--control-disabled-text);
+  --segment-active-disabled-bg: var(--control-disabled-bg);
+  --segment-active-disabled-fg: var(--control-disabled-text);
+}
+
 .segmented {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--segment-track-border);
+  border-radius: var(--segment-track-radius);
   overflow: hidden;
-  background: var(--line);
+  background: var(--segment-track-bg);
 }
 
 /* 分段之间 1px 的缝露出轨道色，就是分隔线。 */
 .segment {
   border: 0;
-  border-radius: 0;
-  background: var(--surface);
-  color: var(--muted);
+  border-radius: var(--segment-radius);
+  background: var(--segment-bg);
+  color: var(--segment-fg);
   font-weight: 700;
   white-space: nowrap;
   box-shadow: none;
 }
 
 .segment:not(.active):not(:disabled):hover {
-  background: var(--surface-strong);
-  color: var(--text);
+  background: var(--segment-bg-hover);
+  color: var(--segment-fg-hover);
 }
 
 .segment.active {
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--segment-active-bg);
+  color: var(--segment-active-fg);
+  box-shadow: var(--segment-active-shadow);
 }
 
 /* 轨道裁掉溢出，焦点环画在分段内侧。 */
 .segment:focus-visible {
   outline-offset: -2px;
+}
+
+/* ============================================================
+   选中指示条（单选的分段，ui/primitives/SegmentedControl.tsx；磁石组件 interactions/components/selectionIndicator.ts）。
+   和分页一样：选中的样子画在会滑的 .segment-indicator 上，每一段自己的底画在 ::before 上，压在指示条下面，
+   文字颜色按指示条盖住它多少（--tab-cover）混合。层次和规则见 page-tabs.css 的同一节。
+   ============================================================ */
+
+.segment-indicator {
+  border-radius: var(--segment-radius);
+  background: var(--segment-active-bg);
+  box-shadow: var(--segment-active-shadow);
+}
+
+.has-selection-indicator:has(.segment.active:disabled) > .segment-indicator {
+  background: var(--segment-active-disabled-bg);
+  box-shadow: none;
+}
+
+.has-selection-indicator .segment {
+  --tab-cover: 0;
+  position: relative;
+  color: color-mix(in oklab, var(--segment-active-fg) calc(var(--tab-cover) * 100%), var(--segment-fg));
+}
+
+.has-selection-indicator .segment.active {
+  --tab-cover: 1;
+}
+
+.has-selection-indicator .segment,
+.has-selection-indicator .segment.active,
+.has-selection-indicator .segment:not(.active):not(:disabled):hover,
+.has-selection-indicator .segment:disabled:disabled {
+  background: transparent;
+  box-shadow: none;
+}
+
+.has-selection-indicator .segment:not(.active):not(:disabled):hover {
+  color: color-mix(in oklab, var(--segment-active-fg) calc(var(--tab-cover) * 100%), var(--segment-fg-hover));
+}
+
+.has-selection-indicator .segment:disabled:disabled {
+  color: color-mix(in oklab, var(--segment-active-disabled-fg) calc(var(--tab-cover) * 100%), var(--segment-disabled-fg));
+}
+
+.has-selection-indicator .segment::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  border-radius: inherit;
+  background: var(--segment-bg);
+  pointer-events: none;
+}
+
+.has-selection-indicator .segment:not(.active):not(:disabled):hover::before {
+  background: var(--segment-bg-hover);
+}
+
+.has-selection-indicator .segment:disabled::before {
+  background: var(--segment-disabled-bg);
 }

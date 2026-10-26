@@ -22,7 +22,7 @@ assert.doesNotMatch(settingsLoader, /return fallbackSettingsText;|return loadSet
 assert.match(settingsLoader, /createLanguageBundleLoader<SettingsTextBundle>/);
 assert.match(settingsLoader, /throw error;/);
 assert.match(settingsLoader, /createSettingsLocale\("zh-CN"\)/);
-assert.match(settingsPage, /<nav class="settings-nav" aria-label=\{text\(\)\.navigationLabel\}>/);
+assert.match(settingsPage, /<nav ref=\{nav\} class="settings-nav has-selection-indicator" aria-label=\{text\(\)\.navigationLabel\}>/);
 assert.match(settingsLoader, /navigationLabel: ""/);
 assert.match(appearanceSettings, /appearance\.settingsLanguageTitle/);
 assert.match(appearanceSettings, /appearance\.settingsLanguageDescription/);

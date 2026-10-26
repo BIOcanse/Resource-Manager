@@ -3,7 +3,6 @@ import type { AppCopy } from "../zh/index.ts";
 export const enRuntimeAndReportsCopy: Pick<AppCopy, "smartReport" | "browserRuntime"> = {
   smartReport: {
     processTarget: (name: string, pid: number) => `${name} (process ${pid})`,
-    panel: "Smart scheduling report",
     loading: "Loading",
     unavailable: "State unavailable",
     refresh: "Refresh",
@@ -52,7 +51,6 @@ export const enRuntimeAndReportsCopy: Pick<AppCopy, "smartReport" | "browserRunt
     }
   },
   browserRuntime: {
-    title: "Runtime management",
     description: "Review the web interface runtime and the browsers installed on this PC.",
     downloadShared: "Download the shared runtime",
     refreshing: "Refreshing",

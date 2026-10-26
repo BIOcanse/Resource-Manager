@@ -286,9 +286,10 @@ assert.match(diskSearch[0].title, /^PCIe 内部接口/);
 const controllerSearch = filterInternalInterfaceTree(tree.nodes, "Standard NVM Express Controller");
 assert.ok(controllerSearch.some((node) => node.title === "Internal NVMe"));
 
-const detailsPageSource = readFileSync(new URL("../src/features/details/DetailsPage.tsx", import.meta.url), "utf8");
-assert.match(detailsPageSource, /\{ id: "device", label: uiText\.[\w.]+ \}[\s\S]*\{ id: "gpu"[\s\S]*\{ id: "cpu"[\s\S]*\{ id: "report"/);
-assert.doesNotMatch(detailsPageSource, /\{ id: "external", label: uiText\.deviceTopology\.externalScope \}|\{ id: "internal", label: uiText\.deviceTopology\.internalScope \}/);
+// 详细信息的二级分页清单在分页树里（app/navigation/detailsNavigation.ts）：设备拓扑排第一，外部、内部只是拓扑里的范围，不是二级分页。
+const detailsNavigationSource = readFileSync(new URL("../src/app/navigation/detailsNavigation.ts", import.meta.url), "utf8");
+assert.match(detailsNavigationSource, /\{ id: "device", name: uiText\.[\w.]+ \}[\s\S]*\{ id: "gpu"[\s\S]*\{ id: "cpu"[\s\S]*\{ id: "report"/);
+assert.doesNotMatch(detailsNavigationSource, /id: "external"|id: "internal"/);
 const topologyViewSource = readFileSync(new URL("../src/features/deviceTopology/DeviceTopologyView.tsx", import.meta.url), "utf8");
 assert.doesNotMatch(topologyViewSource, /device-port-section-tabs/);
 assert.match(topologyViewSource, /device-scope-tabs[\s\S]*uiText\.deviceTopology\.externalScope[\s\S]*uiText\.deviceTopology\.internalScope/);

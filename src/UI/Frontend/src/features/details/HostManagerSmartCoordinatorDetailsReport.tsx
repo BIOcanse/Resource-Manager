@@ -13,6 +13,7 @@ import { softwareRecordName } from "../../presentation/softwareFacts.ts";
 import type { SoftwareRecord, HostManagerAppliedRecord, HostManagerRollbackStateDocument } from "../../types";
 import { UserDetailsDialog } from "../../components/UserDetailsDialog";
 import { uiText, currentLanguage } from "../../text.ts";
+import { CurrentPageHeading, useCurrentPageName } from "../../app/navigation/currentPageName.tsx";
 
 
 interface DetailRecord {
@@ -56,17 +57,14 @@ export function HostManagerSmartCoordinatorDetailsReport(props: { software: read
     onCleanup(unsubscribe);
   });
 
+  const pageName = useCurrentPageName();
   return (
     <section
       {...frontendVisibilitySurface("visible.details.smart-report.surface", [demandId])}
       class="smart-details-report"
-      aria-label={uiText.smartReport.panel}
+      aria-label={pageName()}
     >
-      <div class="panel-header smart-details-header">
-        <div class="optimization-heading">
-          <h2>{uiText.smartReport.panel}</h2>
-        </div>
-      </div>
+      <CurrentPageHeading />
       <Show
         when={state()}
         fallback={<div class="optimization-empty">{stateMessage()}</div>}

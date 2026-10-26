@@ -12,8 +12,8 @@
 }
 
 @media (max-width: 900px) {
-  body[data-page="components"] .app-shell > #componentsPage,
-  body[data-page="components"] .app-shell > #browserRuntimePage {
+  body[data-page="components"] .page-stage > #componentsPage,
+  body[data-page="components"] .page-stage > #browserRuntimePage {
     width: 100%;
     min-width: 0;
   }

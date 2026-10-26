@@ -39,6 +39,7 @@ import {
   numaFieldNames,
   numaNodeRows
 } from "./cpuMetricFields.ts";
+import { CurrentPageHeading } from "../../app/navigation/currentPageName.tsx";
 
 type CpuSelectionKind = "ccd" | "core" | "logical";
 
@@ -191,7 +192,7 @@ export function CpuTopologyDiagram(props: {
     >
       <div class="panel-header cpu-topology-header">
         <div class="optimization-heading">
-          <h2>{uiText.cpuTopology.panel}</h2>
+          <CurrentPageHeading />
           <span>
             <Show when={topologySummary()} fallback="-">
               {(summary) => summary()}

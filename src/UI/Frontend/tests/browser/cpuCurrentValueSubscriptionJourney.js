@@ -20,7 +20,7 @@ export default async function cpuCurrentValueSubscriptionJourney(
   const pageNavigation = page.getByRole("navigation", { name: "页面切换" });
   await pageNavigation.getByRole("button", { name: "详细信息", exact: true }).click();
   const tabs = page.getByRole("tablist", { name: "详细信息分页" });
-  await tabs.getByRole("tab", { name: "CPU 拓扑", exact: true }).click();
+  await tabs.getByRole("tab", { name: "CPU 调度模型", exact: true }).click();
   const cpuPanel = page.getByLabel("CPU 拓扑模型");
   assert(!/读取中|正在加载|线程活动暂时不可用/.test(await cpuPanel.innerText()),
     "CPU subscription values were replaced with a frontend sampling status");
@@ -122,7 +122,7 @@ export default async function cpuCurrentValueSubscriptionJourney(
   `CPU callbacks continued without demand: ${JSON.stringify({ retired, inactive })}`);
 
   await pageNavigation.getByRole("button", { name: "详细信息", exact: true }).click();
-  await tabs.getByRole("tab", { name: "CPU 拓扑", exact: true }).click();
+  await tabs.getByRole("tab", { name: "CPU 调度模型", exact: true }).click();
   await cpuPanel.getByText("Frontend Harness CPU", { exact: true })
     .waitFor({ state: "visible", timeout: 65_000 });
   const reactivated = {

@@ -38,6 +38,11 @@
   padding: 0 11px;
 }
 
+/* 页签组：面板换的时候旧面板的副本放在这里（磁石内容过渡）。 */
+.ui-tabs-root {
+  position: relative;
+}
+
 .ui-tabs-panel {
   min-height: 0;
   outline: 0;

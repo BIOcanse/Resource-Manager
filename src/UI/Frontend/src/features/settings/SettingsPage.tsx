@@ -8,6 +8,8 @@ import { PerformanceSettingsSection } from "./components/PerformanceSettingsSect
 import { SystemIntegrationSettingsSection } from "./components/SystemIntegrationSettingsSection";
 import { UpdatesSettingsSection } from "./components/UpdatesSettingsSection";
 import { uiText, currentSettingsText, isRightToLeftLanguage } from "../../text.ts";
+import { useSelectionIndicator } from "../../interactions/solid/selectionIndicator.ts";
+import { useContentTransition } from "../../interactions/solid/contentTransition.ts";
 import type { MotionFeelId } from "../../presentation/motionFeel.ts";
 import type {
   AppAnimationMode,
@@ -96,6 +98,30 @@ export function SettingsPage(props: SettingsPageProps) {
   // 不再自己按草稿里的语言另外载入一份，否则设置页会先于其他页面变语言。
   const text = () => currentSettingsText();
   const sectionLabel = (section: SettingsSection) => text().sections[section] ?? section;
+  // 导航的指示条和分区内容的进出（磁石，docs/page_motion_2026-10-25.md）：序号是导航里的次序，竖排，往下的分区从下面进来。
+  let nav: HTMLElement | undefined;
+  let navIndicator: HTMLElement | undefined;
+  let content: HTMLDivElement | undefined;
+  let sectionStage: HTMLFieldSetElement | undefined;
+  const sectionOrder = () => Math.max(0, settingSections.indexOf(props.activeSection));
+  useSelectionIndicator({
+    name: "设置导航",
+    container: () => nav,
+    indicator: () => navIndicator,
+    selected: () => nav?.querySelector<HTMLElement>(".settings-nav-item.active") ?? null,
+    items: () => [...(nav?.querySelectorAll<HTMLElement>(".settings-nav-item") ?? [])],
+    order: sectionOrder
+  });
+  useContentTransition({
+    name: "设置分区",
+    key: () => props.activeSection,
+    order: sectionOrder,
+    stage: () => sectionStage,
+    layer: () => content,
+    snapshot: () => "move",
+    axis: "y",
+    distance: 16
+  });
   const statusText = () => {
     if (props.saveState === "saving") {
       return text().saveState.saving;
@@ -139,7 +165,8 @@ export function SettingsPage(props: SettingsPageProps) {
       lang={text().language}
       dir={isRightToLeftLanguage(text().language) ? "rtl" : "ltr"}
     >
-      <nav class="settings-nav" aria-label={text().navigationLabel}>
+      <nav ref={nav} class="settings-nav has-selection-indicator" aria-label={text().navigationLabel}>
+        <span ref={navIndicator} class="selection-indicator page-tab-indicator" aria-hidden="true" />
         <For each={settingSections}>
           {(section) => (
             <button
@@ -156,6 +183,7 @@ export function SettingsPage(props: SettingsPageProps) {
         </For>
       </nav>
       <div
+        ref={content}
         class="settings-content"
         aria-busy={props.loadState === "loading" || props.loadState === "refreshing"}
       >
@@ -247,6 +275,7 @@ export function SettingsPage(props: SettingsPageProps) {
           }
         >
           <fieldset
+            ref={sectionStage}
             class="settings-readonly-boundary"
             disabled={!settingsReady()}
             aria-disabled={!settingsReady()}

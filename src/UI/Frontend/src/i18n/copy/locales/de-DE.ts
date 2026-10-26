@@ -1647,7 +1647,6 @@ const deDeAppCopy: AppCopy = {
   },
   cpuTopology: {
     modelLabel: "Modell der Prozessortopologie",
-    panel: "Modell der Prozessorplanung",
     summary: (cores: number, threads: number, ccd: number, residency: string) =>
       `${cores} K / ${threads} T · ${ccd} CCD · ${residency}`,
     unavailable: "Prozessortopologie nicht verfügbar",
@@ -1756,7 +1755,6 @@ const deDeAppCopy: AppCopy = {
     telemetryUnavailable: "Daten nicht verfügbar",
     telemetryLoading: "Wird geladen",
     modelLabel: "Modell der GPU-Planung",
-    panel: "Modell der GPU-Planung",
     summary: (gpuCount: string, gpuPercent: number, vramPercent: number, telemetry: string) =>
       `${gpuCount} GPUs · GPU ${gpuPercent} % / VRAM ${vramPercent} % · ${telemetry}`,
     edit: "Bearbeiten",
@@ -2122,14 +2120,11 @@ const deDeAppCopy: AppCopy = {
     tabAll: "Alle",
     tabDiagnostics: "Diagnose",
     title: "Aufgabencenter",
-    activeCount: (count: number) => `${count} laufend`,
-    noActiveTasks: "Derzeit werden keine Aufgaben ausgeführt",
     backendSyncing: "Die Dienstaufgaben werden synchronisiert.",
     backendResyncing: "Der lokale Dienst synchronisiert erneut; Dienstaufgaben können derzeit nicht geändert werden.",
     backendUnavailable: "Der Status der Dienstaufgaben kann nicht gelesen werden; Aufgaben der Oberfläche funktionieren weiterhin.",
     filterLabel: "Aufgabenfilter",
     noTasksInFilter: "Keine Aufgaben in diesem Filter",
-    close: "Schließen",
     sourceOperation: "Dienstvorgang",
     sourceFrontend: "Aufgabe der Oberfläche",
     progressLabel: (title: string) => `Fortschritt von ${title}`,
@@ -2182,7 +2177,6 @@ const deDeAppCopy: AppCopy = {
   },
   smartReport: {
     processTarget: (name: string, pid: number) => `${name} (Prozess ${pid})`,
-    panel: "Bericht der intelligenten Planung",
     loading: "Wird geladen",
     unavailable: "Status nicht verfügbar",
     refresh: "Aktualisieren",
@@ -2231,7 +2225,6 @@ const deDeAppCopy: AppCopy = {
     }
   },
   browserRuntime: {
-    title: "Runtime-Verwaltung",
     description: "Prüfen Sie die Runtime der Weboberfläche und die auf diesem PC installierten Browser.",
     downloadShared: "Gemeinsame Runtime herunterladen",
     refreshing: "Wird aktualisiert",
@@ -2479,10 +2472,10 @@ const deDeAppCopy: AppCopy = {
     retry: "Wiederholen",
     lastGoodContent: (name: string) => `Zuletzt verfügbarer Inhalt von ${name}`,
     detailsTab: {
-      device: "Geräteverwaltung",
-      gpu: "GPU-Planung",
-      cpu: "Prozessortopologie",
-      report: "Berichte",
+      device: "Gerätetopologie",
+      gpu: "Modell der GPU-Planung",
+      cpu: "Modell der Prozessorplanung",
+      report: "Bericht der intelligenten Planung",
       tabsLabel: "Detail-Registerkarten"
     },
     settingsConflict: "Die Einstellungen wurden anderswo aktualisiert; laden Sie neu, bevor Sie erneut speichern",

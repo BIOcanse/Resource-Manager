@@ -1,3 +1,4 @@
+import { waitForContentSettled } from "./contentSettled.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
@@ -113,7 +114,7 @@ export default async function softwareIssueJourney(page, baseUrl) {
     await page.waitForFunction(language => document.documentElement.lang === language, option.id);
     const app = await loadAppCopy(option.id);
     await page.getByRole("navigation").getByRole("button", { name: app.page.components, exact: true }).click();
-    await page.getByRole("navigation", { name: app.management.categoryNav }).getByRole("button", { name: new RegExp(app.softwareKind.other) }).click();
+    await page.getByRole("tablist", { name: app.management.categoryNav }).getByRole("tab", { name: new RegExp(app.softwareKind.other) }).click();
     const localizedCard = page.locator(".software-item").filter({ hasText: "示例软件" }).first();
     await localizedCard.getByText(app.management.issueText.abnormal_memory_usage, { exact: true }).waitFor();
     await localizedCard.getByRole("button", { name: app.management.softwareSettings, exact: true }).click();
@@ -143,11 +144,12 @@ export default async function softwareIssueJourney(page, baseUrl) {
 
 async function openSoftwareInventory(page) {
   await page.getByRole("button", { name: "组件与软件", exact: true }).click();
-  const navigation = page.getByRole("navigation", { name: "组件和软件分类" });
+  const navigation = page.getByRole("tablist", { name: "组件和软件分类" });
   await navigation.waitFor({ state: "visible", timeout: 5000 });
-  await navigation.getByRole("button", { name: /一般应用/ }).click();
+  await navigation.getByRole("tab", { name: /一般应用/ }).click();
   await page.getByText("示例软件", { exact: true }).first()
     .waitFor({ state: "visible", timeout: 5000 });
+  await waitForContentSettled(page);
 }
 
 async function readTagThemeSnapshot(page) {

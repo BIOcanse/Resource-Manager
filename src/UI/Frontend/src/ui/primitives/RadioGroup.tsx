@@ -35,6 +35,8 @@ export function RadioGroupRoot(props: {
   readonly class?: string;
   readonly disabled?: boolean;
   readonly orientation?: "horizontal" | "vertical";
+  /** 组元素（分段选择的指示条按它量）。 */
+  readonly ref?: (element: HTMLDivElement) => void;
   readonly children: JSX.Element;
 }) {
   const generatedId = createUniqueId();
@@ -59,6 +61,7 @@ export function RadioGroupRoot(props: {
   return (
     <RadioGroupContext.Provider value={context}>
       <div
+        ref={(element) => props.ref?.(element)}
         class={props.class}
         role="radiogroup"
         aria-label={props.ariaLabel}

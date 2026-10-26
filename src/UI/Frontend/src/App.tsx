@@ -16,6 +16,9 @@ import { useFrontendWorkController } from "./frontendWork/useFrontendWorkControl
 import { frontendVisibilitySourceKinds, frontendWorkIds } from "./frontendWork/frontendWorkIds";
 import { useFrontendRuntime } from "./frontendRuntime/FrontendRuntimeContext";
 import type { ManagementSubpageId } from "./features/management/managementNavigation";
+import { createNavigationTree } from "./app/navigation/navigationTree.ts";
+import { createManagementNavigation } from "./app/navigation/managementNavigation.ts";
+import { createDetailsNavigation } from "./app/navigation/detailsNavigation.ts";
 import { publishCommittedDocumentAppearance } from "./presentation/documentAppearance";
 import { normalizeUiAppearance } from "./presentation/uiStyles";
 import { motionFeel } from "./presentation/motionFeel.ts";
@@ -182,6 +185,26 @@ export default function App() {
     management.setActiveSubpage(subpage);
   }
 
+  // 分页树（docs/navigation_tree_2026-10-25.md）：一级选中项是 activePage，二级选中项各有各的所有者。
+  const detailsNavigation = createDetailsNavigation({
+    activePage,
+    optimizationEnabled: runtimeCapabilities.optimizationEnabled,
+    mutablePersistenceEnabled: runtimeCapabilities.mutablePersistenceEnabled
+  });
+  const navigation = createNavigationTree({
+    optimizationVisible: runtimeCapabilities.optimizationEnabled,
+    secondary: {
+      components: createManagementNavigation({
+        components: management.components,
+        software: management.software,
+        mutablePersistenceEnabled: runtimeCapabilities.mutablePersistenceEnabled,
+        selected: management.activeSubpage,
+        select: selectManagementSubpage
+      }),
+      details: detailsNavigation
+    }
+  });
+
   const softwareActions = useSoftwareActions({
     management,
     monitor,
@@ -216,28 +239,8 @@ export default function App() {
     applyReadingSourceMode(settings.settings().appearance?.readingSourceMode);
   });
 
-  const pageTitle = createMemo(() => {
-    if (activePage() === "components") {
-      return uiText.page.components;
-    }
-    if (activePage() === "optimization") {
-      return uiText.page.optimization;
-    }
-    if (activePage() === "diskUsage") {
-      return uiText.page.diskUsage;
-    }
-    if (activePage() === "control") {
-      return uiText.page.control;
-    }
-    if (activePage() === "details") {
-      return uiText.page.details;
-    }
-    if (activePage() === "settings") {
-      return uiText.page.settings;
-    }
-
-    return uiText.page.monitor;
-  });
+  // 页名的唯一来源是分页树：页标题（读屏、焦点落点）和窗口标题都读它。
+  const pageTitle = createMemo(() => navigation.page(activePage()).label());
   const preciseGpuPlacementEnabled = createMemo(() => settings.settings().performance?.preciseGpuPlacementEnabled === true);
   const systemUptime = pageRefresh.systemUptime;
   const currentSelfScheduling = pageRefresh.selfScheduling;
@@ -371,22 +374,24 @@ export default function App() {
         activePage={activePage}
         pageTitle={pageTitle}
         systemUptime={systemUptime}
-        management={management}
+        navigation={navigation}
         runtimeCapabilities={runtimeCapabilities}
         taskCenterActiveCount={() => taskCenterSnapshot().activeUserCount}
         taskCenterOperationState={() => taskCenterSnapshot().operationState}
         onPageSelect={selectPage}
-        onManagementSubpageSelect={selectManagementSubpage}
         onTaskCenterOpen={() => setTaskCenterOpen(true)}
+        notices={<>
+          <TrustedAccessPendingBanner
+            hidden={() => activePage() === "settings" && settings.activeSection() === "systemIntegration"}
+            onReview={openAccessRequests}
+          />
+          <LanguageLoadNotice />
+        </>}
       >
-        <TrustedAccessPendingBanner
-          hidden={() => activePage() === "settings" && settings.activeSection() === "systemIntegration"}
-          onReview={openAccessRequests}
-        />
-        <LanguageLoadNotice />
         <AppRoutes
           animationMode={gpuRuntimePlan().animations}
           activePage={activePage}
+          detailsTab={detailsNavigation.selected}
           monitor={monitor}
           management={management}
           optimization={optimization}

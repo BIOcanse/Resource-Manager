@@ -208,7 +208,7 @@ export default async function localizationJourney(page, baseUrl) {
     await page.getByRole("radio", { name: app.control.ownership.firmware, exact: true }).click();
 
     await page.getByRole("navigation").getByRole("button", { name: app.page.components, exact: true }).click();
-    await page.getByRole("button", { name: `${app.managementRole.dependency} 1`, exact: true }).click();
+    await page.getByRole("tab", { name: `${app.managementRole.dependency} 1`, exact: true }).click();
     const verify = page.getByRole("button", { name: app.management.verify, exact: true });
     const beforeRequests = verificationRequests;
     verificationFails = false;
@@ -218,8 +218,8 @@ export default async function localizationJourney(page, baseUrl) {
     verificationFails = true;
     await verifyWhileResponsePending(verify, `${option.id}: failed verification allows duplicate clicks while pending`, app.backendMessage.dependency.runtimeFilesUnavailable);
     if (verificationRequests !== beforeRequests + 2) throw new Error(`${option.id}: wrong verification request count`);
-    await page.getByRole("navigation", { name: app.management.categoryNav })
-      .getByRole("button", { name: new RegExp(app.softwareKind.other) }).click();
+    await page.getByRole("tablist", { name: app.management.categoryNav })
+      .getByRole("tab", { name: new RegExp(app.softwareKind.other) }).click();
     const card = page.locator(".software-item").filter({ hasText: "示例软件" }).first();
     await card.getByRole("button", { name: app.management.softwareSettings, exact: true }).click();
     const details = page.getByRole("dialog", { name: "示例软件" });

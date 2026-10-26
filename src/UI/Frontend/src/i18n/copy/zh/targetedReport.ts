@@ -1,6 +1,6 @@
 export const zhTargetedReportCopy = {
   targetedReport: {
-    tab: "定向报告",
+    tab: "定向监控报告",
     title: "定向监控报告",
     intro: "记录此软件所有进程的应用提交帧时间和资源用量。",
     maximumSeconds: "最长录制时间（秒）",

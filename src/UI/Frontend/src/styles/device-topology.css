@@ -558,7 +558,8 @@
     overflow-x: hidden;
   }
 
-  body[data-page="details"] .app-shell > * {
+  body[data-page="details"] .app-shell > *,
+  body[data-page="details"] .page-stage > * {
     width: 100%;
     min-width: 0;
   }

@@ -2,16 +2,12 @@
   z-index: 74;
 }
 
+/* 高度固定：切筛选分页时对话框不跟着内容跳（用户 10-25「高度不固定，手感差」），列表在面板里自己滚动。 */
 .task-center-modal {
   width: min(860px, calc(100vw - 36px));
   max-width: 860px;
-  height: auto;
+  height: min(620px, calc(100vh - var(--modal-viewport-top) - 36px));
   max-height: calc(100vh - var(--modal-viewport-top) - 36px);
-}
-
-.task-center-summary {
-  color: var(--muted);
-  font-size: 12px;
 }
 
 .task-center-body {
@@ -19,7 +15,7 @@
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
-  max-height: calc(100vh - var(--modal-viewport-top) - 154px);
+  min-height: 0;
   overflow: hidden;
   padding: 12px 14px;
 }
@@ -55,7 +51,7 @@
 }
 
 .task-center-panel {
-  max-height: min(510px, calc(100vh - var(--modal-viewport-top) - 220px));
+  min-height: 0;
   overflow: auto;
 }
 
@@ -192,6 +188,7 @@
 }
 
 .task-center-empty {
+  height: 100%;
   min-height: 112px;
   display: grid;
   place-items: center;

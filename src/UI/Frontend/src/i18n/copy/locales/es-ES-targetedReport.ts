@@ -1,6 +1,6 @@
 import type { AppCopy } from "../index.ts";
 export const targetedReport: AppCopy["targetedReport"] = {
-  tab: "Informes dirigidos", title: "Informes de supervisión dirigida",
+  tab: "Informes de supervisión dirigida", title: "Informes de supervisión dirigida",
   intro: "Registra los tiempos de fotogramas Present y los recursos de todos los procesos de este programa.",
   maximumSeconds: "Duración máxima de la grabación (segundos)", start: "Iniciar grabación", stop: "Detener grabación",
   recording: "Grabando", completed: "Finalizado", refresh: "Actualizar informes",

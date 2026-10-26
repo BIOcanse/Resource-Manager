@@ -1,7 +1,6 @@
 import { componentCapabilityLabel, componentInstallNote, componentNeedsUpdate, componentVerifyLabel } from "../../../presentation/componentPresentation.ts";
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import { AlertTriangle, Check, Info, MoreHorizontal, Settings } from "lucide-solid";
-import { sharedBrowserRuntimeComponentId } from "../../browserRuntimes/browserRuntimeTypes";
 import { frontendWorkIds } from "../../../frontendWork/frontendWorkIds";
 import {
   frontendVisibilityDemandId,
@@ -13,14 +12,12 @@ import {
 } from "../../../frontendWork/useFrontendVisibilityDemand";
 import { componentDisplayName, componentPurpose, userFacingState } from "../../../presentation/userFacingText";
 import type { SoftwareContextMenuTarget } from "../../../components/SoftwareContextMenu";
-import {
-  browserRuntimeManagementSubpageId,
-  managementInventoryKinds,
-  type ManagementSubpageId
-} from "../managementNavigation";
-import type { ManagedComponent, ManagementKind, ManagementRole, OperationSnapshot, SoftwareRecord } from "../../../types";
-import { managementKindLabel, softwareDisplayKindLabel, uiText } from "../../../text.ts";
-import { isComponentInstalled, normalizeName, normalizeSoftwareKind } from "../../../utils";
+import { getManagementItems, managementKinds, type ManagementItem } from "../managementItems.ts";
+import { CurrentPageHeading } from "../../../app/navigation/currentPageName.tsx";
+export { managementKinds, type ManagementItem } from "../managementItems.ts";
+import type { ManagedComponent, ManagementKind, OperationSnapshot, SoftwareRecord } from "../../../types";
+import { softwareDisplayKindLabel, uiText } from "../../../text.ts";
+import { isComponentInstalled, normalizeName } from "../../../utils";
 import {
   observationCanRender,
   type ObservationState
@@ -34,19 +31,6 @@ import { isUnclassifiedSoftware, runtimeDiscoveryLabel, softwareIssueLabel, soft
 import { renderBackendMessage } from "../../../presentation/backendMessage.ts";
 import { softwareRecordName, softwareSourceLabels, softwareUninstallDescription, softwareSummary } from "../../../presentation/softwareFacts.ts";
 export { softwareSummary } from "../../../presentation/softwareFacts.ts";
-
-// 分类名按当前语言求值，不能在模块顶层固化。
-export function managementKinds(): Array<{ id: ManagementKind; label: string }> {
-  return managementInventoryKinds.map((id) => ({
-    id,
-    label: managementKindLabel(id)
-  }));
-}
-
-export interface ManagementItem {
-  type: "component" | "software";
-  value: ManagedComponent | SoftwareRecord;
-}
 
 interface ManagementPageProps {
   activeKind: ManagementKind;
@@ -68,49 +52,6 @@ interface ManagementPageProps {
   onUninstallSoftware: (software: SoftwareRecord, actionKey?: string) => void;
   onOpenDetail: (type: "component" | "software", value: ManagedComponent | SoftwareRecord) => void;
   onSoftwareContextMenu: (event: MouseEvent, target: SoftwareContextMenuTarget) => void;
-}
-
-interface ManagementSubpageBarProps {
-  activeSubpage: ManagementSubpageId;
-  components: ManagedComponent[];
-  software: SoftwareRecord[];
-  mutablePersistenceEnabled: boolean;
-  runtimeEffectsEnabled: boolean;
-  onSubpageChange: (subpage: ManagementSubpageId) => void;
-}
-
-export function ManagementSubpageBar(props: ManagementSubpageBarProps) {
-  const countForKind = (kind: ManagementKind) => getManagementItems(kind, props.components, props.software).length;
-  const visibleKinds = () => managementKinds().filter((kind) =>
-    props.mutablePersistenceEnabled || kind.id === "Dependency" || kind.id === "Support");
-  return (
-    <nav class="page-subnav" aria-label={uiText.management.categoryNav}>
-      <For each={visibleKinds()}>
-        {(kind) => (
-          <button
-            id={`managementTab-${kind.id}`}
-            class="page-subnav-tab page-tab"
-            classList={{ active: props.activeSubpage === kind.id }}
-            type="button"
-            aria-current={props.activeSubpage === kind.id ? "page" : undefined}
-            onClick={() => props.onSubpageChange(kind.id)}
-          >
-            {kind.label} {countForKind(kind.id)}
-          </button>
-        )}
-      </For>
-      <button
-        id="managementTab-BrowserRuntime"
-        class="page-subnav-tab page-tab"
-        classList={{ active: props.activeSubpage === browserRuntimeManagementSubpageId }}
-        type="button"
-        aria-current={props.activeSubpage === browserRuntimeManagementSubpageId ? "page" : undefined}
-        onClick={() => props.onSubpageChange(browserRuntimeManagementSubpageId)}
-      >
-        {uiText.managementPage.browserRuntimeTab}
-      </button>
-    </nav>
-  );
 }
 
 export function ManagementPage(props: ManagementPageProps) {
@@ -138,7 +79,7 @@ export function ManagementPage(props: ManagementPageProps) {
             [headerDemandId])}
           class="panel-header"
         >
-          <h2>{activeKind().label}</h2>
+          <CurrentPageHeading />
           <div class="panel-header-actions">
             <label class="toolbar-search">
               <input
@@ -514,54 +455,6 @@ function softwareContextTargetFromSoftware(software: SoftwareRecord): SoftwareCo
     softwareName: softwareRecordName(software),
     rootPaths: software.rootPaths ?? []
   };
-}
-
-function getManagementItems(kind: ManagementKind, components: ManagedComponent[], software: SoftwareRecord[]): ManagementItem[] {
-  if (kind === "Dependency" || kind === "Support") {
-    return getManagementRoleItems(kind, components, software);
-  }
-
-  if (kind === "Unclassified") {
-    return software.filter(isUnclassifiedSoftware).map((item) => ({ type: "software", value: item }));
-  }
-
-  if (kind === "Unconfirmed") {
-    return software
-      .filter(isUnconfirmedSoftware)
-      .map((item) => ({ type: "software", value: item }));
-  }
-
-  return software
-    .filter((item) => !isUnconfirmedSoftware(item) && !isUnclassifiedSoftware(item) && normalizeSoftwareKind(item) === kind)
-    .map((item) => ({ type: "software", value: item }));
-}
-
-function isUnconfirmedSoftware(software: SoftwareRecord) {
-  return software.identityConfirmed === false || software.requiresRootPathConfirmation === true;
-}
-
-function getManagementRoleItems(
-  role: "Dependency" | "Support",
-  components: ManagedComponent[],
-  software: SoftwareRecord[]
-): ManagementItem[] {
-  const wireRole: ManagementRole = role === "Dependency" ? "dependency" : "support";
-  const roleComponents = components
-    .filter((component) => component.definition?.managementRole === wireRole);
-  const componentItems = roleComponents
-    .filter((component) => component.definition?.id !== sharedBrowserRuntimeComponentId)
-    .map((component) => ({ type: "component" as const, value: component }));
-  // 共享 WebView2 运行时只在「运行时管理」里列；它在软件清单里的同名记录也要一起去掉，
-  // 否则会以后端原名的软件卡片回到依赖列表。
-  const componentIds = new Set(roleComponents.map((component) => component.definition?.id));
-  const componentNameSet = new Set(roleComponents
-    .map((component) => normalizeName(componentDisplayName(component.definition?.id)))
-    .filter(Boolean));
-  const extraSoftwareItems = software
-    .filter((item) => !isUnconfirmedSoftware(item) && item.managementRole === wireRole)
-    .filter((item) => !componentIds.has(item.id.replace(/^dependency:/, "")) && !componentNameSet.has(normalizeName(item.name)))
-    .map((item) => ({ type: "software" as const, value: item }));
-  return [...componentItems, ...extraSoftwareItems];
 }
 
 function filterManagementItems(items: ManagementItem[], query: string) {

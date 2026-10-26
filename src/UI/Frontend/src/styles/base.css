@@ -39,15 +39,11 @@ body {
   height: 100%;
   color: var(--text);
   overflow: hidden;
-  --modal-viewport-top: var(--shellbar-height);
-  --toast-viewport-top: calc(var(--shellbar-height) + 12px);
+  --modal-viewport-top: calc(var(--shellbar-height) + var(--managementbar-height));
+  --toast-viewport-top: calc(var(--shellbar-height) + var(--managementbar-height) + 12px);
 }
 
 #root {
   min-height: 100%;
 }
 
-body[data-page="components"] {
-  --modal-viewport-top: calc(var(--shellbar-height) + var(--managementbar-height));
-  --toast-viewport-top: calc(var(--shellbar-height) + var(--managementbar-height) + 12px);
-}

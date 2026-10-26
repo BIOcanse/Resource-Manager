@@ -1,6 +1,6 @@
 import type { AppCopy } from "../index.ts";
 export const targetedReport: AppCopy["targetedReport"] = {
-  tab: "대상 보고서", title: "대상 소프트웨어 모니터링 보고서",
+  tab: "대상 소프트웨어 모니터링 보고서", title: "대상 소프트웨어 모니터링 보고서",
   intro: "이 소프트웨어의 모든 프로세스에서 앱 Present 프레임 시간과 리소스 사용량을 기록합니다.",
   maximumSeconds: "최대 기록 시간(초)", start: "기록 시작", stop: "기록 중지",
   recording: "기록 중", completed: "완료", refresh: "보고서 새로 고침",

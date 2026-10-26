@@ -15,13 +15,13 @@ export default async function frontendRefreshIntervalsJourney(page, baseUrl) {
   const checks = [];
   await check("monitor", ["/api/metrics/subscribe", "/api/resource-monitor/subscribe"]);
   await navigation.getByRole("button", { name: "详细信息", exact: true }).click();
-  await page.getByRole("tab", { name: "CPU 拓扑", exact: true }).click();
+  await page.getByRole("tab", { name: "CPU 调度模型", exact: true }).click();
   await check("cpu", ["/api/cpu/topology/subscribe", "/api/cpu/residency/subscribe", "/api/metrics/subscribe"]);
-  await page.getByRole("tab", { name: "GPU 调度", exact: true }).click();
+  await page.getByRole("tab", { name: "GPU 调度模型", exact: true }).click();
   await check("gpu", ["/api/metrics/subscribe", "/api/resource-monitor/subscribe", "/api/metrics/gpu-specialized/subscribe"]);
-  await page.getByRole("tab", { name: "设备管理", exact: true }).click();
+  await page.getByRole("tab", { name: "设备拓扑", exact: true }).click();
   await check("topology", ["/api/device-topology/state/subscribe", "/api/metrics/subscribe"]);
-  await page.getByRole("tab", { name: "报告", exact: true }).click();
+  await page.getByRole("tab", { name: "智能调度报告", exact: true }).click();
   await check("smart-report", ["/api/optimization/smart/state/subscribe"]);
   await navigation.getByRole("button", { name: "性能优化", exact: true }).click();
   await check("optimization", ["/api/optimization/smart/status/subscribe"]);

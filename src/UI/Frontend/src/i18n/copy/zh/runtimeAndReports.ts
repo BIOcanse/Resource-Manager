@@ -1,7 +1,6 @@
 export const zhRuntimeAndReportsCopy = {
   smartReport: {
     processTarget: (name: string, pid: number) => `${name}（进程 ${pid}）`,
-    panel: "智能调度报告",
     loading: "正在读取",
     unavailable: "状态不可用",
     refresh: "刷新",
@@ -50,7 +49,6 @@ export const zhRuntimeAndReportsCopy = {
     }
   },
   browserRuntime: {
-    title: "运行时管理",
     description: "查看 Web 界面运行环境和已安装的浏览器。",
     downloadShared: "下载共享运行时",
     refreshing: "正在刷新",

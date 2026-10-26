@@ -66,7 +66,18 @@ for (const selector of [".standard-select-popover", ".standard-context-menu", ".
   assert.equal(declarationsOf(selector).get("animation"), "motion-rise-in var(--motion-fast) var(--ease-decel)",
     `${selector} enters like the other small popovers`);
 }
-assert.equal(declarationsOf(".ui-tabs-panel").get("animation"), "motion-fade-in var(--motion-fast) var(--ease-standard)");
+// 换页、二级分页、页签面板、设置分区的进出由磁石内容过渡带（docs/page_motion_2026-10-25.md），样式表不给它们写入场动画，
+// 否则每次挂上都重播一遍，和运行时带的进出叠在一起。
+for (const selector of [".page", ".ui-tabs-panel", ".settings-section-panel", ".page-subnav", ".page-stage"]) {
+  assert.ok(!rules.some((rule) => rule.selectors.includes(selector) && rule.declarations.has("animation")),
+    `${selector} enters through the Lodestone content transition, not a CSS animation`);
+}
+// 带选中指示条的组：文字颜色每帧跟着指示条（--tab-cover），不能再加颜色过渡；按压不缩放（缩放会把这一项变成独立的层）。
+for (const selector of [".has-selection-indicator .page-tab", ".has-selection-indicator .segment"]) {
+  const transition = declarationsOf(selector).get("transition") ?? "";
+  assert.doesNotMatch(transition, /(^|,\s*)color\s/, `${selector} must not transition color; it follows the indicator`);
+}
+assert.equal(declarationsOf(':where(body[data-animations="normal"]) .has-selection-indicator .page-tab:active').get("transform"), "none");
 
 // 监视卡片：等首个读数的占位条呼吸，读数到了数值淡入（分区入场的节奏）；之后的更新不做过渡。
 // 槽内按钮淡入；卡片只过渡真会变的属性（拖动源的半透明、阴影、悬停边框），没有不生效的 padding、transform。

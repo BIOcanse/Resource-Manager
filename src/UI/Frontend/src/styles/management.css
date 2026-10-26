@@ -25,7 +25,7 @@
   color: var(--text);
 }
 
-/* 二级分页（组件与软件、详细信息共用）：固定在顶栏下面的一条，页签与顶栏页签同一口径。 */
+/* 二级分页条（外壳，分页树）：固定在顶栏下面的一条，每一页都有；换一级页时只换里面的一组分页。页签与顶栏页签同一口径。 */
 .page-subnav {
   position: fixed;
   top: var(--shellbar-height);
@@ -35,7 +35,6 @@
   height: var(--managementbar-height);
   display: flex;
   align-items: center;
-  gap: 8px;
   padding: 0 14px;
   background: var(--shell-bg);
   border-bottom: 1px solid var(--divider);
@@ -54,6 +53,25 @@
 .page-subnav::-webkit-scrollbar-thumb {
   background: var(--line);
   border-radius: 999px;
+}
+
+.page-subnav-slot,
+.page-subnav-group,
+.page-subnav-root,
+.page-subnav-tabs {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+/* 每个一级页一组分页，常驻；不是当前页的那几组隐藏。 */
+.page-subnav-group[hidden] {
+  display: none;
+}
+
+.page-subnav-tabs {
+  gap: 8px;
 }
 
 /* 样子在 page-tabs.css（.page-tab），这里只管尺寸。 */

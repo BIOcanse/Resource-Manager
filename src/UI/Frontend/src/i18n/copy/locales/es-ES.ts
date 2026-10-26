@@ -1647,7 +1647,6 @@ const esEsAppCopy: AppCopy = {
   },
   cpuTopology: {
     modelLabel: "Modelo de topología del procesador",
-    panel: "Modelo de planificación del procesador",
     summary: (cores: number, threads: number, ccd: number, residency: string) =>
       `${cores} N / ${threads} H · ${ccd} CCD · ${residency}`,
     unavailable: "Topología del procesador no disponible",
@@ -1756,7 +1755,6 @@ const esEsAppCopy: AppCopy = {
     telemetryUnavailable: "Datos no disponibles",
     telemetryLoading: "Cargando",
     modelLabel: "Modelo de planificación de GPU",
-    panel: "Modelo de planificación de GPU",
     summary: (gpuCount: string, gpuPercent: number, vramPercent: number, telemetry: string) =>
       `${gpuCount} GPU · GPU ${gpuPercent} % / VRAM ${vramPercent} % · ${telemetry}`,
     edit: "Editar",
@@ -2122,14 +2120,11 @@ const esEsAppCopy: AppCopy = {
     tabAll: "Todas",
     tabDiagnostics: "Diagnóstico",
     title: "Centro de tareas",
-    activeCount: (count: number) => `${count} en curso`,
-    noActiveTasks: "Ahora mismo no hay ninguna tarea en ejecución",
     backendSyncing: "Las tareas del servicio se están sincronizando.",
     backendResyncing: "El servicio local se está resincronizando; ahora mismo no se pueden cambiar las tareas del servicio.",
     backendUnavailable: "No se puede leer el estado de las tareas del servicio; las tareas de la interfaz siguen funcionando.",
     filterLabel: "Filtro de tareas",
     noTasksInFilter: "No hay tareas en este filtro",
-    close: "Cerrar",
     sourceOperation: "Operación del servicio",
     sourceFrontend: "Tarea de la interfaz",
     progressLabel: (title: string) => `Progreso de ${title}`,
@@ -2182,7 +2177,6 @@ const esEsAppCopy: AppCopy = {
   },
   smartReport: {
     processTarget: (name: string, pid: number) => `${name} (proceso ${pid})`,
-    panel: "Informe de planificación inteligente",
     loading: "Cargando",
     unavailable: "Estado no disponible",
     refresh: "Actualizar",
@@ -2231,7 +2225,6 @@ const esEsAppCopy: AppCopy = {
     }
   },
   browserRuntime: {
-    title: "Gestión de entornos de ejecución",
     description: "Revisa el entorno de ejecución de la interfaz web y los navegadores instalados en este equipo.",
     downloadShared: "Descargar el entorno de ejecución compartido",
     refreshing: "Actualizando",
@@ -2479,10 +2472,10 @@ const esEsAppCopy: AppCopy = {
     retry: "Reintentar",
     lastGoodContent: (name: string) => `Último contenido disponible de ${name}`,
     detailsTab: {
-      device: "Gestión de dispositivos",
-      gpu: "Planificación de GPU",
-      cpu: "Topología del procesador",
-      report: "Informes",
+      device: "Topología de dispositivos",
+      gpu: "Modelo de planificación de GPU",
+      cpu: "Modelo de planificación del procesador",
+      report: "Informe de planificación inteligente",
       tabsLabel: "Pestañas de detalles"
     },
     settingsConflict: "La configuración se actualizó en otro sitio; vuelve a cargarla antes de guardar de nuevo",

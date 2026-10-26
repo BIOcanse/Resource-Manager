@@ -35,19 +35,19 @@ export default async function uiPrimitivesJourney(page, baseUrl = "http://127.0.
   await assertRouteEntry(page, "详细信息");
   const detailsTabs = page.getByRole("tablist", { name: "详细信息分页" });
   await detailsTabs.waitFor({ state: "visible", timeout: 5000 });
-  const deviceTab = detailsTabs.getByRole("tab", { name: "设备管理", exact: true });
+  const deviceTab = detailsTabs.getByRole("tab", { name: "设备拓扑", exact: true });
   await deviceTab.focus();
   await page.keyboard.press("ArrowRight");
   const selectedAfterArrow = (await detailsTabs.locator("[role='tab'][aria-selected='true']")
     .textContent())?.trim();
-  assert(selectedAfterArrow === "GPU 调度",
+  assert(selectedAfterArrow === "GPU 调度模型",
     `Details tabs did not activate the next item: ${selectedAfterArrow}`);
-  await page.getByRole("tabpanel", { name: "GPU 调度" })
+  await page.getByRole("tabpanel", { name: "GPU 调度模型" })
     .waitFor({ state: "visible", timeout: 3000 });
   await page.keyboard.press("Home");
   const selectedAfterHome = (await detailsTabs.locator("[role='tab'][aria-selected='true']")
     .textContent())?.trim();
-  assert(selectedAfterHome === "设备管理",
+  assert(selectedAfterHome === "设备拓扑",
     `Details tabs did not return to the first item: ${selectedAfterHome}`);
 
   const deviceScope = page.getByRole("radiogroup", { name: "设备管理分类" });
@@ -62,7 +62,7 @@ export default async function uiPrimitivesJourney(page, baseUrl = "http://127.0.
   assert(await deviceScope.locator("[role='radio'][tabindex='0']").count() === 1,
     "Device scope does not expose exactly one keyboard tab stop.");
 
-  await detailsTabs.getByRole("tab", { name: "CPU 拓扑", exact: true }).click();
+  await detailsTabs.getByRole("tab", { name: "CPU 调度模型", exact: true }).click();
   const cpuPanel = page.getByLabel("CPU 拓扑模型");
   await cpuPanel.getByText("Frontend Harness CPU", { exact: true })
     .waitFor({ state: "visible", timeout: 65000 });
@@ -96,9 +96,9 @@ export default async function uiPrimitivesJourney(page, baseUrl = "http://127.0.
 
   await pageNavigation.getByRole("button", { name: "组件与软件", exact: true }).click();
   await assertRouteEntry(page, "组件与软件");
-  const managementNavigation = page.getByRole("navigation", { name: "组件和软件分类" });
+  const managementNavigation = page.getByRole("tablist", { name: "组件和软件分类" });
   await managementNavigation.waitFor({ state: "visible", timeout: 5000 });
-  await managementNavigation.getByRole("button", { name: /一般应用/ }).click();
+  await managementNavigation.getByRole("tab", { name: /一般应用/ }).click();
   const managementSearch = page.getByRole("searchbox", { name: /一般应用搜索/ });
   await managementSearch.fill("不存在的前端测试条目");
   await page.getByText("没有与“不存在的前端测试条目”匹配的记录。", { exact: true })
@@ -106,12 +106,12 @@ export default async function uiPrimitivesJourney(page, baseUrl = "http://127.0.
   await page.getByRole("button", { name: "清除搜索", exact: true }).click();
   await page.getByText("示例软件", { exact: true }).first().waitFor({ state: "visible", timeout: 3000 });
   await managementSearch.fill("示例");
-  await managementNavigation.getByRole("button", { name: /^游戏/ }).click();
+  await managementNavigation.getByRole("tab", { name: /^游戏/ }).click();
   assert(await page.getByRole("searchbox", { name: /游戏搜索/ }).inputValue() === "",
     "Management search was not reset when the category changed.");
   await page.getByText("当前分类没有记录。", { exact: true })
     .waitFor({ state: "visible", timeout: 3000 });
-  await managementNavigation.getByRole("button", { name: /一般应用/ }).click();
+  await managementNavigation.getByRole("tab", { name: /一般应用/ }).click();
   assert(await page.getByRole("searchbox", { name: /一般应用搜索/ }).inputValue() === "",
     "Management search leaked back into a previous category.");
   const addButton = page.getByRole("button", { name: "添加", exact: true });
@@ -141,7 +141,9 @@ export default async function uiPrimitivesJourney(page, baseUrl = "http://127.0.
 
   // Exercise the saved setting, including a held press: zero transition time
   // alone must not leave an instantaneous scale transform in motion-free modes.
-  const pressTarget = pageNavigation.getByRole("button", { name: "设置", exact: true });
+  // 普通按钮按下缩放；带选中指示条的组（页签、分段）按下不缩放（缩放会把未选中的底盖到滑过来的指示条上，docs/page_motion_2026-10-25.md）。
+  // 按住的是窗口的最小化按钮：浏览器里它不做事。
+  const pressTarget = page.locator(".window-actions .window-button").first();
   for (const [label, mode] of [["无动画", "none"], ["超高性能", "ultra"], ["正常动画", "normal"]]) {
     await page.getByRole("radio", { name: label, exact: true }).click();
     await page.getByRole("button", { name: "保存", exact: true }).click();
@@ -152,13 +154,24 @@ export default async function uiPrimitivesJourney(page, baseUrl = "http://127.0.
     await page.mouse.down();
     try {
       await page.waitForFunction(({ mode }) => {
-        const target = document.querySelector('.shell-page.active');
+        const target = document.querySelector(".window-actions .window-button");
         if (!target) return false;
         const style = getComputedStyle(target);
         return mode === "normal"
           ? style.transform !== "none"
           : style.transform === "none" && style.transitionDuration.split(",").every(value => parseFloat(value) === 0);
       }, { mode }, { timeout: 3000 });
+    } finally {
+      await page.mouse.up();
+    }
+    const tab = pageNavigation.getByRole("button", { name: "设置", exact: true });
+    const tabBox = await tab.boundingBox();
+    await page.mouse.move(tabBox.x + tabBox.width / 2, tabBox.y + tabBox.height / 2);
+    await page.mouse.down();
+    try {
+      await page.waitForTimeout(150);
+      const tabTransform = await page.evaluate(() => getComputedStyle(document.querySelector(".shell-page.active")).transform);
+      assert(tabTransform === "none", `${mode}: a pressed tab in an indicator list scales (${tabTransform})`);
     } finally {
       await page.mouse.up();
     }

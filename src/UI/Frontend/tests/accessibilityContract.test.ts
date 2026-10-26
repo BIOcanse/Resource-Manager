@@ -98,7 +98,7 @@ assert.match(
 );
 assert.match(resourceSegmentPaintPlane, /const dividerColor = "var\(--divider\)";/);
 assert.match(layout, /\.app-shell\s*\{[\s\S]*?overflow-x:\s*hidden;/);
-assert.match(layout, /\.app-shell\s*>\s*\*\s*\{[\s\S]*?width:\s*100%;[\s\S]*?min-width:\s*0;/);
+assert.match(layout, /\.app-shell\s*>\s*\*,\s*\.page-stage\s*>\s*\*\s*\{[\s\S]*?width:\s*100%;[\s\S]*?min-width:\s*0;/);
 
 for (const semanticMarker of [
   'role="treegrid"',
@@ -213,9 +213,11 @@ assert.match(settingsControls, /<PrimitiveSegmentedControl/);
 assert.match(aiGatewayKeyManager, /<SegmentedControl/);
 assert.match(resourceTable, /<SegmentedControl/);
 assert.doesNotMatch(resourceTable, /resource-table-mode-switch" role="tablist"/);
-assert.match(managementPage, /<nav class="page-subnav" aria-label=\{uiText\.management\.categoryNav\}>/);
-assert.match(managementPage, /aria-current=\{props\.activeSubpage === kind\.id \? "page" : undefined\}/);
-assert.doesNotMatch(managementPage, /<TabsRoot|role="tab"|role="tabpanel"/);
+// 二级分页条由外壳按分页树画（docs/navigation_tree_2026-10-25.md）：一组页签，内容区是它的面板；页面自己不画分页条。
+assert.match(appShell, /<TabsList class="page-subnav-tabs" ariaLabel=\{props\.navigation\.label\(\)\}>/);
+assert.match(appShell, /controls="pageStage"/);
+assert.match(appShell, /role=\{secondary\(\) \? "tabpanel" : undefined\}/);
+assert.doesNotMatch(managementPage, /page-subnav|<TabsRoot|role="tab"/);
 assert.match(softwareDetailModal, /<TabsRoot/);
 assert.match(pageBoundary, /<ErrorBoundary/);
 assert.match(pageBoundary, /role="alert"/);
@@ -239,7 +241,7 @@ assert.doesNotMatch(taskCenterDialog, /onClose[\s\S]{0,120}cancel\(/);
 assert.doesNotMatch(app, /document\.documentElement\.(lang|dir)/);
 assert.match(settingsPage, /lang=\{text\(\)\.language\}/);
 assert.match(settingsPage, /dir=\{isRightToLeftLanguage\(text\(\)\.language\)/);
-assert.match(settingsPage, /<nav class="settings-nav" aria-label=\{text\(\)\.navigationLabel\}>/);
+assert.match(settingsPage, /<nav ref=\{nav\} class="settings-nav has-selection-indicator" aria-label=\{text\(\)\.navigationLabel\}>/);
 assert.doesNotMatch(settingsPage, /<aside class="settings-nav"/);
 assert.match(cpuTopology, /function CpuCoreSelectionButton/);
 assert.match(cpuTopology, /class=\{props\.variant === "ring" \? "cpu-ring-core-main" : "cpu-core-main"\}/);

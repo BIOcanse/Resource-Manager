@@ -1,3 +1,4 @@
+import { waitForContentSettled } from "./contentSettled.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
@@ -73,6 +74,7 @@ export default async function diskUsageReadRecoveryJourney(page, baseUrl) {
     await patch({ diskUsageVolumesEmpty: false, diskUsageMultiRoot: true });
     await navigation.getByRole("button", { name: copy.page.monitor, exact: true }).click();
     await navigation.getByRole("button", { name: copy.page.diskUsage, exact: true }).click();
+    await waitForContentSettled(page);
     await workspace.locator(".disk-usage-result").waitFor();
     await workspace.locator(".disk-usage-volume").first().waitFor();
     await patch({ diskUsageVolumesFailure: true, diskUsageResultFailure: true });

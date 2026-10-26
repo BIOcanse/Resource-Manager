@@ -1,4 +1,5 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
+import { waitForContentSettled } from "./contentSettled.js";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
 import { seedFrontendPreferences } from "./frontendPreferencesFixture.js";
@@ -68,6 +69,18 @@ export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.
   }));
   assert(initialFocus.inside && initialFocus.label === "关闭",
     `Task Center initial focus is invalid: ${JSON.stringify(initialFocus)}`);
+  // 关闭只有一处（标题栏的 ×，Esc 照样关）；对话框不另外描述，筛选分页带数量，不再重复一句“几项正在进行”。
+  assert(await dialog.getByRole("button", { name: "关闭", exact: true }).count() === 1, "Task Center has more than one close control");
+  assert(await dialog.getAttribute("aria-describedby") === null, "Task Center still has a describing summary");
+  // 高度固定：换筛选分页、有无任务都不变（用户 10-25「高度不固定，手感差」）。入场（0.97 缩放）走完再量。
+  await settleDialog(dialog);
+  const filledHeight = (await dialogGeometry(page, dialog)).dialog.height;
+  for (const name of [/历史/, /全部/, /进行中/]) {
+    await dialog.getByRole("tab", { name }).click();
+    const height = (await dialogGeometry(page, dialog)).dialog.height;
+    assert(Math.abs(height - filledHeight) <= 1, `Task Center height changes with the tab: ${height} vs ${filledHeight}`);
+  }
+  await waitForContentSettled(page);
 
   const activeTab = dialog.getByRole("tab", { name: /进行中/ });
   await activeTab.focus();
@@ -79,6 +92,7 @@ export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.
   const selectedAfterHome = await dialog.locator("[role='tab'][aria-selected='true']").textContent();
   assert(selectedAfterHome?.includes("进行中"),
     `Task Center Home did not activate Active: ${selectedAfterHome}`);
+  await waitForContentSettled(page);
 
   await dialog.locator(".task-center-item-title-row strong").filter({ hasText: /^安装组件: frontend-harness$/ }).waitFor({ state: "visible" });
   await dialog.getByText("40%", { exact: true }).waitFor({ state: "visible" });
@@ -170,9 +184,11 @@ export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.
   await dialog.waitFor({ state: "visible", timeout: 3000 });
   await dialog.getByText("此筛选下没有任务", { exact: true }).first()
     .waitFor({ state: "visible", timeout: 3000 });
+  await settleDialog(dialog);
   const emptyDesktopGeometry = await dialogGeometry(page, dialog);
-  assert(emptyDesktopGeometry.dialog.height < 430,
-    `Empty Task Center is not content-sized: ${JSON.stringify(emptyDesktopGeometry)}`);
+  assert(Math.abs(emptyDesktopGeometry.dialog.height - filledHeight) <= 1,
+    `Empty Task Center changes height: ${JSON.stringify(emptyDesktopGeometry)} vs ${filledHeight}`);
+  assert(await dialog.getByText("此筛选下没有任务", { exact: true }).count() === 1, "The empty state is said more than once");
   assertDialogContained(emptyDesktopGeometry, "desktop empty Task Center");
   await page.setViewportSize({ width: 800, height: 500 });
   const emptyNarrowGeometry = await dialogGeometry(page, dialog);
@@ -263,11 +279,16 @@ export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.
   };
 }
 
+/** 对话框和遮罩的入场动画都走完。 */
+async function settleDialog(dialog) {
+  await dialog.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)));
+}
+
 async function dialogGeometry(page, dialog) {
   return dialog.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     const header = element.querySelector(".modal-header")?.getBoundingClientRect();
-    const actions = element.querySelector(".modal-actions")?.getBoundingClientRect();
+    const body = element.querySelector(".task-center-body")?.getBoundingClientRect();
     const panel = element.querySelector(".task-center-panel:not([hidden])");
     return {
       viewport: { width: window.innerWidth, height: window.innerHeight },
@@ -282,7 +303,7 @@ async function dialogGeometry(page, dialog) {
         scrollWidth: element.scrollWidth
       },
       header: header ? { top: header.top, bottom: header.bottom } : null,
-      actions: actions ? { top: actions.top, bottom: actions.bottom } : null,
+      body: body ? { top: body.top, bottom: body.bottom } : null,
       panel: panel
         ? { clientHeight: panel.clientHeight, scrollHeight: panel.scrollHeight }
         : null
@@ -293,13 +314,13 @@ async function dialogGeometry(page, dialog) {
 function assertDialogContained(geometry, label) {
   const epsilon = 1;
   if (!geometry.header
-    || !geometry.actions
+    || !geometry.body
     || geometry.dialog.top < -epsilon
     || geometry.dialog.left < -epsilon
     || geometry.dialog.right > geometry.viewport.width + epsilon
     || geometry.dialog.bottom > geometry.viewport.height + epsilon
     || geometry.header.top < geometry.dialog.top - epsilon
-    || geometry.actions.bottom > geometry.dialog.bottom + epsilon
+    || geometry.body.bottom > geometry.dialog.bottom + epsilon
     || geometry.dialog.scrollWidth > geometry.dialog.clientWidth + epsilon) {
     throw new Error(`${label} escaped its viewport or surface: ${JSON.stringify(geometry)}`);
   }

@@ -91,7 +91,7 @@ export default async function currentValueSubscriptionJourney(
   await page.getByRole("navigation", { name: "页面切换" })
     .getByRole("button", { name: "详细信息", exact: true }).click();
   await page.getByRole("tablist", { name: "详细信息分页" })
-    .getByRole("tab", { name: "报告", exact: true }).click();
+    .getByRole("tab", { name: "智能调度报告", exact: true }).click();
   const smartPanel = page.getByLabel("智能调度报告", { exact: true });
   await smartPanel.locator(".smart-details-summary").waitFor({ state: "visible" });
   const smartPath = "/api/optimization/smart/state/subscribe";

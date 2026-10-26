@@ -175,29 +175,21 @@
   border-bottom-color: var(--divider-soft);
 }
 
-:root[data-ui-style="soft"] .page-tab {
-  border-color: transparent;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text);
-}
-
-:root[data-ui-style="soft"] .page-tab:not(.active):not(:disabled):hover {
-  border-color: transparent;
-  background: var(--accent-soft);
-  color: var(--accent-strong);
-}
-
-:root[data-ui-style="soft"] .page-tab.active {
-  border-color: transparent;
-  background: var(--accent);
-  color: var(--on-accent);
-  box-shadow: var(--elev-1), var(--edge-highlight);
-}
-
-:root[data-ui-style="soft"] .page-tab.active:hover {
-  border-color: transparent;
-  background: var(--accent-hover);
+/* 分页：只改分页的变量（page-tabs.css），页签和选中指示条都读它们。 */
+:root[data-ui-style="soft"] {
+  --page-tab-radius: 999px;
+  --page-tab-bg: transparent;
+  --page-tab-border: transparent;
+  --page-tab-fg: var(--text);
+  --page-tab-border-hover: transparent;
+  --page-tab-bg-hover: var(--accent-soft);
+  --page-tab-fg-hover: var(--accent-strong);
+  --page-tab-active-border: transparent;
+  --page-tab-active-bg: var(--accent);
+  --page-tab-active-fg: var(--on-accent);
+  --page-tab-active-shadow: var(--elev-1), var(--edge-highlight);
+  --page-tab-active-border-hover: transparent;
+  --page-tab-active-bg-hover: var(--accent-hover);
 }
 
 /* ---------- 输入框：浅填充、淡描边；搜索框是胶囊形 ---------- */
@@ -277,30 +269,22 @@
 /* ---------- 分段控件：圆角轨道 + 轨道里的选中胶囊 ----------
    轨道用 --surface-strong 铺底、边框透明；分段之间原来 1px 的缝和透明边框露出的都是轨道色，
    选中段因此四周留出 1px 轨道。不用同色内描边假装内边距：圆角边缘会透出一圈强调色。 */
-:root[data-ui-style="soft"] .segmented {
-  border-color: transparent;
-  border-radius: 999px;
-  background: var(--surface-strong);
-}
-
-:root[data-ui-style="soft"] .segment {
-  border-radius: 999px;
-}
-
-:root[data-ui-style="soft"] .segment:not(:disabled) {
-  background: transparent;
-  color: var(--muted);
-}
-
-:root[data-ui-style="soft"] .segment:not(.active):not(:disabled):hover {
-  background: color-mix(in oklab, var(--surface) 70%, var(--surface-strong));
-  color: var(--text);
-}
-
-:root[data-ui-style="soft"] .segment.active:not(:disabled) {
-  background: var(--accent);
-  color: var(--on-accent);
-  box-shadow: var(--elev-1);
+:root[data-ui-style="soft"] {
+  --segment-track-bg: var(--surface-strong);
+  --segment-track-border: transparent;
+  --segment-track-radius: 999px;
+  --segment-radius: 999px;
+  --segment-bg: transparent;
+  --segment-fg: var(--muted);
+  --segment-bg-hover: color-mix(in oklab, var(--surface) 70%, var(--surface-strong));
+  --segment-fg-hover: var(--text);
+  --segment-active-bg: var(--accent);
+  --segment-active-fg: var(--on-accent);
+  --segment-active-shadow: var(--elev-1);
+  /* 禁用的分段（只读的控制项）：不铺禁用底色，只把文字压淡，选中段保留淡强调色。 */
+  --segment-disabled-bg: transparent;
+  --segment-active-disabled-bg: color-mix(in oklab, var(--accent) 22%, var(--surface-strong));
+  --segment-active-disabled-fg: var(--text);
 }
 
 /* 键盘焦点：轨道 overflow: hidden 会裁掉外扩的焦点轮廓，改画在胶囊内侧；选中段上用强调色上的文字色。 */
@@ -322,14 +306,14 @@
   box-shadow: inset 0 0 0 2px var(--warn);
 }
 
-/* 禁用的分段（只读的控制项）：不铺禁用底色，只把文字压淡，选中段保留淡强调色。 */
-:root[data-ui-style="soft"] .segment:disabled {
-  background: transparent;
+/* 没有指示条的分段（多选）：禁用时同样不铺禁用底色。 */
+:root[data-ui-style="soft"] .segment:disabled:disabled {
+  background: var(--segment-disabled-bg);
 }
 
-:root[data-ui-style="soft"] .segment.active:disabled {
-  background: color-mix(in oklab, var(--accent) 22%, var(--surface-strong));
-  color: var(--text);
+:root[data-ui-style="soft"] .segment.active:disabled:disabled {
+  background: var(--segment-active-disabled-bg);
+  color: var(--segment-active-disabled-fg);
 }
 
 /* ---------- 开关：轨道不描边，滑块是带柔和阴影的白点 ---------- */

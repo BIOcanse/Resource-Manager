@@ -1,13 +1,13 @@
 /* Settings Page */
 .settings-page {
-  min-height: calc(100vh - var(--shellbar-height) - 52px);
+  min-height: calc(100vh - var(--shellbar-height) - var(--managementbar-height) - 52px);
   display: grid;
   grid-template-columns: 210px minmax(0, 1fr);
   align-items: start;
   gap: 16px;
 }
 
-.app-shell > .settings-page.active-page {
+.page-stage > .settings-page.active-page {
   width: 100%;
 }
 
@@ -31,8 +31,9 @@
 }
 
 .settings-content {
+  position: relative;
   min-width: 0;
-  min-height: calc(100vh - var(--shellbar-height) - 52px);
+  min-height: calc(100vh - var(--shellbar-height) - var(--managementbar-height) - 52px);
   display: flex;
   flex-direction: column;
   border: 1px solid var(--hairline);

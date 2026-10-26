@@ -130,10 +130,10 @@ export const zhRuntimeErrorsCopy = {
     retry: "重试",
     lastGoodContent: (name: string) => `${name}上次可用内容`,
     detailsTab: {
-      device: "设备管理",
-      gpu: "GPU 调度",
-      cpu: "CPU 拓扑",
-      report: "报告",
+      device: "设备拓扑",
+      gpu: "GPU 调度模型",
+      cpu: "CPU 调度模型",
+      report: "智能调度报告",
       tabsLabel: "详细信息分页"
     },
     settingsConflict: "设置已被其他操作更新，请重新加载后再保存",

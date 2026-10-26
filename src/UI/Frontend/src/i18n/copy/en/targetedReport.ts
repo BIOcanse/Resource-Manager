@@ -2,7 +2,7 @@ import type { AppCopy } from "../zh/index.ts";
 
 export const enTargetedReportCopy: Pick<AppCopy, "targetedReport"> = {
   targetedReport: {
-    tab: "Targeted reports",
+    tab: "Targeted monitoring reports",
     title: "Targeted monitoring reports",
     intro: "Record application Present frame times and resources for all processes of this software.",
     maximumSeconds: "Maximum recording duration (seconds)",

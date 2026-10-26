@@ -1,6 +1,6 @@
 import type { AppCopy } from "../index.ts";
 export const targetedReport: AppCopy["targetedReport"] = {
-  tab: "Целевые отчёты", title: "Отчёты по целевому мониторингу",
+  tab: "Отчёты по целевому мониторингу", title: "Отчёты по целевому мониторингу",
   intro: "Записывает время кадров Present и использование ресурсов всеми процессами этого приложения.",
   maximumSeconds: "Максимальная длительность записи (секунды)", start: "Начать запись", stop: "Остановить запись",
   recording: "Идёт запись", completed: "Завершено", refresh: "Обновить отчёты",

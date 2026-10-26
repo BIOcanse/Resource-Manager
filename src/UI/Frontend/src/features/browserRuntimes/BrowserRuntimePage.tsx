@@ -5,6 +5,7 @@ import type { ManagedComponent } from "../../types";
 import type { BrowserRuntimeEntry, BrowserRuntimeSnapshot } from "./browserRuntimeTypes";
 import { browserRuntimeKindLabel, browserRuntimeSourceLabel } from "./browserRuntimePresentation";
 import { uiText } from "../../text.ts";
+import { CurrentPageHeading } from "../../app/navigation/currentPageName.tsx";
 
 interface BrowserRuntimePageProps {
   snapshot: BrowserRuntimeSnapshot | null;
@@ -28,7 +29,7 @@ export function BrowserRuntimePage(props: BrowserRuntimePageProps) {
     <>
       <header class="browser-runtime-header">
         <div>
-          <h2>{uiText.browserRuntime.title}</h2>
+          <CurrentPageHeading />
           <p>{uiText.browserRuntime.description}</p>
         </div>
         <div class="browser-runtime-actions">

@@ -169,26 +169,17 @@
 }
 
 /* 顶栏页签和二级分页：未选中是线框，选中是实心。 */
-:root[data-ui-style="outline"] .page-tab {
-  border-color: var(--line);
-  background: transparent;
+/* 分页：只改分页的变量（page-tabs.css），页签和选中指示条都读它们。 */
+:root[data-ui-style="outline"] {
+  --page-tab-bg: transparent;
+  --page-tab-border: var(--line);
+  --page-tab-border-hover: var(--accent);
+  --page-tab-bg-hover: var(--accent-soft);
+  --page-tab-active-border: var(--accent);
+  --page-tab-active-bg: var(--accent);
+  --page-tab-active-border-hover: var(--accent-hover);
+  --page-tab-active-bg-hover: var(--accent-hover);
 }
-
-:root[data-ui-style="outline"] .page-tab.active {
-  border-color: var(--accent);
-  background: var(--accent);
-}
-
-:root[data-ui-style="outline"] .page-tab:not(.active):not(:disabled):hover {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-:root[data-ui-style="outline"] .page-tab.active:hover {
-  border-color: var(--accent-hover);
-  background: var(--accent-hover);
-}
-
 
 /* 开关是方的：轨道和滑块都只留很小的圆角。 */
 :root[data-ui-style="outline"] .settings-switch .settings-switch-track {

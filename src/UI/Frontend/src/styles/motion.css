@@ -46,10 +46,6 @@
   from { opacity: 0; transform: translateY(4px); }
 }
 
-@keyframes motion-page-enter {
-  from { opacity: 0; transform: translateY(8px); }
-}
-
 @keyframes motion-dialog-in {
   from { opacity: 0; transform: translateY(6px) scale(0.97); }
 }
@@ -74,6 +70,30 @@ button {
 }
 
 /* 数据分段、表头排序、编辑槽整体不参与按压缩放（与拖拽/精确选择冲突） */
+/* 带选中指示条的组：文字颜色跟着指示条走（--tab-cover 每帧变），不再加 CSS 过渡；
+   按压不缩放：缩放会让这一项变成独立的层，未选中的底就盖到指示条上面。 */
+.has-selection-indicator .page-tab,
+.has-selection-indicator .segment {
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+
+.has-selection-indicator .page-tab::before,
+.has-selection-indicator .segment::before,
+.page-tab-indicator,
+.segment-indicator {
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+
+:where(body[data-animations="normal"]) .has-selection-indicator .page-tab:active,
+:where(body[data-animations="normal"]) .has-selection-indicator .segment:active {
+  transform: none;
+}
+
 button.resource-segment:active,
 button.resource-segment-empty:active,
 button.resource-process-segment:active {
@@ -110,15 +130,8 @@ textarea {
   transition: fill var(--motion-fast) var(--ease-standard);
 }
 
-/* --- 页面与分区入场 --- */
-.page {
-  animation: motion-page-enter var(--motion-page) var(--ease-decel);
-}
-
-.settings-section-panel {
-  animation: motion-rise-in var(--motion-medium) var(--ease-decel);
-}
-
+/* --- 页面与分区入场 ---
+   换页、切二级分页、页签面板的进出由磁石内容过渡带（interactions/solid/contentTransition.ts），不写 CSS 动画。 */
 /* --- 弹窗与 Toast --- */
 .modal-backdrop {
   animation: motion-fade-in var(--motion-medium) var(--ease-standard);
@@ -136,11 +149,6 @@ textarea {
 .standard-context-menu,
 .disk-usage-context-menu {
   animation: motion-rise-in var(--motion-fast) var(--ease-decel);
-}
-
-/* 页内页签切换内容：只淡入，不位移 */
-.ui-tabs-panel {
-  animation: motion-fade-in var(--motion-fast) var(--ease-standard);
 }
 
 /* --- 资源条形图交互层 --- */
@@ -369,12 +377,9 @@ body[data-animations="ultra"] .page-subnav {
    细节打磨 / Polish（不改布局与配色令牌，只加系统级观感细节）
    ============================================================ */
 
-/* 统一键盘焦点环：克制的 accent 描边，仅键盘可见，不影响鼠标态 */
-button:focus-visible,
-.icon-button:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible {
+/* 统一键盘焦点环：全局一条，只按 :focus-visible 画（键盘、读屏挪过去的焦点），鼠标点下去不画。
+   :where 不占优先级：组件自己画焦点的规则（行内描边、内阴影、外框 focus-within）都盖过它。 */
+:where(:focus-visible) {
   outline: var(--focus-ring);
   outline-offset: 2px;
 }
