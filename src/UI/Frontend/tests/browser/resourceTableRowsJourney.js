@@ -357,6 +357,41 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
   }
   results.heatBar = heatBar;
 
+  // 14. 整机内存残差拆成计数器叶子后，叶子的 PID 都是 -1、名字大多为空，行身份带叶子 kind（后端合同）：进程级里每个叶子各占一行，
+  //     按名称排序时空名字的叶子不合并、顺序不跳；选中一个叶子只有它是当前行。叶子的名字和呈现归残差那边，这里只看身份、排序和选中。
+  const leafScenario = await page.request.post(`${baseUrl}/__test/scenario`, { data: { resourceMemoryResidualLeaves: true } });
+  if (!leafScenario.ok()) throw new Error(`Unable to configure memory residual leaves: ${leafScenario.status()}`);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await visibleRows().first().waitFor({ timeout: 15_000 });
+  await panel.evaluate((element) => element.scrollIntoView({ block: "start" }));
+  await panel.locator(".resource-table-mode-button").nth(1).click();
+  const leafPrefix = "process:resource-residual:memory.usage:";
+  const nameHead = panel.locator('.resource-table-head-cell[data-column-id="name"]');
+  for (let attempt = 0; attempt < 3 && await nameHead.getAttribute("aria-sort") !== "ascending"; attempt += 1) {
+    await nameHead.locator(".resource-table-sort-button").click();
+  }
+  const leafRowIds = () => panel.evaluate((element, prefix) => [...element.querySelectorAll('.resource-table-row[aria-hidden="false"]')]
+    .map((row) => row.dataset.resourceRowId).filter((id) => id?.startsWith(prefix)), leafPrefix);
+  await page.waitForFunction((prefix) => document.querySelectorAll(`.resource-table-row[aria-hidden="false"][data-resource-row-id^="${prefix}"]`).length >= 4,
+    leafPrefix, { timeout: 15_000 });
+  const leafOrder = await leafRowIds();
+  const leafNames = await panel.evaluate((element, prefix) => [...element.querySelectorAll(`.resource-table-row[aria-hidden="false"][data-resource-row-id^="${prefix}"]`)]
+    .map((row) => row.querySelector(".resource-row-name")?.textContent?.trim() ?? ""), leafPrefix);
+  const target = panel.locator(`.resource-table-row[aria-hidden="false"][data-resource-row-id="${leafOrder[1]}"]`);
+  await target.locator(".resource-table-cell").nth(await headerIndex(panel, "memory")).click();
+  await page.waitForTimeout(300);
+  const leafSelection = await panel.evaluate((element, prefix) => [...element.querySelectorAll(`.resource-table-row[aria-hidden="false"][data-resource-row-id^="${prefix}"]`)]
+    .map((row) => ({ id: row.dataset.resourceRowId, tabIndex: row.tabIndex, current: row.matches(":focus-within") })), leafPrefix);
+  const focusedLeaf = await page.evaluate(() => document.activeElement?.closest(".resource-table-row")?.dataset.resourceRowId ?? null);
+  const orderAfter = await leafRowIds();
+  const leaves = { leafOrder, leafNames, leafSelection, focusedLeaf, orderAfter };
+  if (leafOrder.length !== 4 || new Set(leafOrder).size !== 4 || leafNames.filter((name) => name === "").length < 2
+    || JSON.stringify(orderAfter) !== JSON.stringify(leafOrder) || focusedLeaf !== leafOrder[1]
+    || leafSelection.filter((row) => row.tabIndex === 0 || row.current).map((row) => row.id).join() !== leafOrder[1]) {
+    throw new Error(`Memory residual leaves must be distinct rows with one selection: ${JSON.stringify(leaves)}`);
+  }
+  results.residualLeaves = leaves;
+
   if (errors.length > 0) throw new Error(`Page errors: ${errors.join("\n")}`);
   return results;
 }

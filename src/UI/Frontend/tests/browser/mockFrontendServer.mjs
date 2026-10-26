@@ -56,6 +56,8 @@ const defaultScenario = {
   resourceCpuValue: null,
   resourceTableVariant: "normal",
   resourceTableRowCount: null,
+  // 整机内存的系统/驱动残差按后端计数器叶子拆开（PhysicalMemoryResidualKinds）：PID -1，名字为空，池标签例外。
+  resourceMemoryResidualLeaves: false,
   debugMode: false,
   runtimeEffectOwners: false,
   optimizationRuntime: false,
@@ -1939,15 +1941,33 @@ function resourceFacts(url, capturedAt = now()) {
     const memory = metricId === "memory.usage" || metricId.endsWith(".vram");
     const value = memory ? 536870912 : 12;
     const sharedValue = memory ? 134217728 : null;
+    const residualRows = metricId === "memory.usage" && scenario.resourceMemoryResidualLeaves ? memoryResidualLeafRows(software, processes, residualAttributions) : [];
     return { metricId, unit: memory ? "B" : metricId.startsWith("disk.") ? "B/s" : metricId.startsWith("network.") ? "bps" : "%",
       totalMetricId: null, processFieldName: automaticProcessFields[metricId] ?? null, residualSource: physicalResidualSource(metricId), totalValue: value, capacityValue: memory ? 1073741824 : 100, totalSystemPercent: 12, processSumValue: null, sharedValue,
       software: software.slice(0, count).map((identity, index) => ({ softwareId: identity.softwareId, value: value / Math.max(1, count), systemPercent: 12 / Math.max(1, count), processCount: 1,
         baseScore: 0, sharedValue: sharedValue === null ? null : sharedValue / Math.max(1, count),
-        processes: [{ processIndex: index, value: value / Math.max(1, count), systemPercent: 12 / Math.max(1, count), softwarePercent: 100, baseScore: 0, sharedValue: sharedValue === null ? null : sharedValue / Math.max(1, count) }] })) };
+        processes: [{ processIndex: index, value: value / Math.max(1, count), systemPercent: 12 / Math.max(1, count), softwarePercent: 100, baseScore: 0, sharedValue: sharedValue === null ? null : sharedValue / Math.max(1, count) }] })).concat(residualRows) };
   });
     const attributions = [...(items.has("process.attribution") ? software.slice(0, count).map((identity, index) => ({ softwareId: identity.softwareId, processIndex: index, baseScore: 0 })) : []),
       ...residualAttributions];
     return { version: 2, capturedAt, software, processes, metrics, attributions };
+}
+
+// 后端 PhysicalMemoryResidualBreakdownProvider 的形状：残差软件 processCount 0，每个计数器叶子一个 PID -1 的进程段，
+// attributionKind 是叶子 kind，名字为空，只有池标签带四字节标签名。
+function memoryResidualLeafRows(software, processes, residualAttributions) {
+  const softwareId = "resource-residual:memory.usage";
+  const capacity = 1073741824;
+  const leaves = [["system-memory/nonpaged-pool/tag/4346744E", "NtFC", 25165824], ["system-memory/paged-pool-resident", "", 16777216],
+    ["system-memory/driver-resident", "", 16777216], ["system-memory/unclassified", "", 8388608]];
+  const total = leaves.reduce((sum, leaf) => sum + leaf[2], 0);
+  if (!software.some(identity => identity.softwareId === softwareId)) software.push({ softwareId, name: "", kind: "windows_system", attributionKind: "system-residual" });
+  const segments = leaves.map(([kind, name, bytes]) => {
+    const processIndex = processes.push({ processId: -1, processStartKey: null, name, executablePath: null, userName: null, architecture: null, attributionKind: kind }) - 1;
+    residualAttributions.push({ softwareId, processIndex, baseScore: 0 });
+    return { processIndex, value: bytes, systemPercent: bytes * 100 / capacity, softwarePercent: bytes * 100 / total, baseScore: 0, sharedValue: null };
+  });
+  return [{ softwareId, value: total, systemPercent: total * 100 / capacity, processCount: 0, baseScore: 0, sharedValue: null, processes: segments }];
 }
 
 function fixtureDisplayEdid() {
