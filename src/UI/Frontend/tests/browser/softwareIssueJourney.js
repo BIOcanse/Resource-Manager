@@ -100,7 +100,7 @@ export default async function softwareIssueJourney(page, baseUrl) {
     assert(snapshot.warningMatchesTokens
       && snapshot.criticalMatchesTokens
       && snapshot.infoMatchesTokens,
-    `Issue tags did not use theme tokens in ${snapshot.theme}: ${JSON.stringify(snapshot)}`);
+    `Issue tags did not use their severity tone (or used the accent) in ${snapshot.theme}: ${JSON.stringify(snapshot)}`);
   }
   let previous = "zh-CN";
   for (const option of languageOptions.filter(option => option.id !== "system")) {
@@ -160,22 +160,30 @@ async function readTagThemeSnapshot(page) {
       throw new Error("Software card is unavailable for issue theme inspection");
     }
     const tags = Array.from(card.querySelectorAll(".software-issue-tag"));
-    const resolveToken = (name) => {
+    // 颜色由 styles/status-tone.css 按 data-tone 统一给出：标签的文字和底必须等于同一级探针的值。
+    const resolve = (attributes, property) => {
       const probe = document.createElement("span");
-      probe.style.color = `var(${name})`;
+      for (const [name, value] of Object.entries(attributes)) probe.setAttribute(name, value);
       document.body.append(probe);
-      const value = getComputedStyle(probe).color;
+      const value = getComputedStyle(probe)[property];
       probe.remove();
       return value;
     };
-    const matches = (selector, colorToken, backgroundToken) => {
-      const element = card.querySelector(selector);
+    const toneColor = (tone, token, property) =>
+      resolve({ "data-tone": tone, style: `${property === "color" ? "color" : "background-color"}: var(${token})` }, property);
+    const accent = resolve({ style: "color: var(--accent-strong)" }, "color");
+    const accentFill = resolve({ style: "background-color: var(--accent-soft)" }, "backgroundColor");
+    const toneOf = (severity) => card.querySelector(`.software-issue-tag[data-tone="${severity}"]`);
+    const matches = (tone) => {
+      const element = toneOf(tone);
       if (!(element instanceof HTMLElement)) {
         return false;
       }
       const style = getComputedStyle(element);
-      return style.color === resolveToken(colorToken)
-        && style.backgroundColor === resolveToken(backgroundToken);
+      return style.color === toneColor(tone, "--tone-text", "color")
+        && style.backgroundColor === toneColor(tone, "--tone-fill", "backgroundColor")
+        && style.color !== accent
+        && style.backgroundColor !== accentFill;
     };
     const cardRect = card.getBoundingClientRect();
     const tagRects = tags.map((tag) => tag.getBoundingClientRect());
@@ -185,9 +193,9 @@ async function readTagThemeSnapshot(page) {
       withinCard: tagRects.every((rect) => rect.left >= cardRect.left - 1
         && rect.right <= cardRect.right + 1),
       horizontalOverflow: card.scrollWidth > card.clientWidth + 1,
-      warningMatchesTokens: matches(".software-issue-tag.warning", "--warn", "--warn-soft"),
-      criticalMatchesTokens: matches(".software-issue-tag.critical", "--danger", "--danger-soft"),
-      infoMatchesTokens: matches(".software-issue-tag.info", "--accent-strong", "--accent-soft")
+      warningMatchesTokens: matches("warning"),
+      criticalMatchesTokens: matches("error"),
+      infoMatchesTokens: matches("info")
     };
   });
 }

@@ -1,3 +1,4 @@
+import { softwareIssueTone } from "../presentation/statusTone.ts";
 import { softwareIssueLabel, softwareIssueMessage, softwareIssueReferenceLabel } from "../presentation/softwareClassification.ts";
 import { uiText } from "../text.ts";
 import { For, Show } from "solid-js";
@@ -13,7 +14,8 @@ export function SoftwareIssueTagStrip(props: {
         <For each={props.issues ?? []}>
           {(issue) => (
             <span
-              class={`software-issue-tag ${issueToneClass(issue.severity)}`}
+              class="software-issue-tag"
+              data-tone={softwareIssueTone(issue.severity)}
               title={softwareIssueMessage(issue)}
             >
               {softwareIssueLabel(issue)}
@@ -37,7 +39,7 @@ export function SoftwareIssueDetailSection(props: {
             {(issue) => (
               <article class="software-issue-detail-item">
                 <div class="software-issue-detail-heading">
-                  <span class={`software-issue-tag ${issueToneClass(issue.severity)}`}>
+                  <span class="software-issue-tag" data-tone={softwareIssueTone(issue.severity)}>
                     {softwareIssueLabel(issue)}
                   </span>
                   <span class="software-issue-source">
@@ -65,13 +67,3 @@ export function SoftwareIssueDetailSection(props: {
   );
 }
 
-function issueToneClass(severity: string) {
-  switch (severity) {
-    case "critical":
-      return "critical";
-    case "warning":
-      return "warning";
-    default:
-      return "info";
-  }
-}

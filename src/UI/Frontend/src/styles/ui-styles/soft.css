@@ -38,6 +38,8 @@
   --danger: color(display-p3 0.690 0.234 0.250);
   --danger-soft: color(display-p3 0.973 0.920 0.926);
   --shell-bg: color(display-p3 0.989 0.992 0.999 / 0.94);
+  --ok: color(display-p3 0.190 0.500 0.270);
+  --info: color(display-p3 0.060 0.470 0.540);
   --badge-bg: color(display-p3 0.902 0.921 0.953);
   --empty-bg: color(display-p3 0.989 0.992 0.999 / 0.6);
   --resource-empty: color(display-p3 0.989 0.992 0.999);
@@ -76,6 +78,8 @@
   --danger: color(display-p3 0.882 0.510 0.513);
   --danger-soft: color(display-p3 0.213 0.130 0.149);
   --shell-bg: color(display-p3 0.102 0.117 0.150 / 0.94);
+  --ok: color(display-p3 0.450 0.780 0.520);
+  --info: color(display-p3 0.380 0.760 0.800);
   --badge-bg: color(display-p3 0.171 0.195 0.250);
   --empty-bg: color(display-p3 0.102 0.117 0.150 / 0.56);
   --resource-empty: color(display-p3 0.090 0.105 0.134);
@@ -115,6 +119,8 @@
     --danger: color(display-p3 0.882 0.510 0.513);
     --danger-soft: color(display-p3 0.213 0.130 0.149);
     --shell-bg: color(display-p3 0.102 0.117 0.150 / 0.94);
+    --ok: color(display-p3 0.450 0.780 0.520);
+    --info: color(display-p3 0.380 0.760 0.800);
     --badge-bg: color(display-p3 0.171 0.195 0.250);
     --empty-bg: color(display-p3 0.102 0.117 0.150 / 0.56);
     --resource-empty: color(display-p3 0.090 0.105 0.134);

@@ -30,6 +30,7 @@ import {
   initialSettingFor
 } from "./ControlCapabilityEditor";
 import { ControlFirstRunNotice } from "./ControlFirstRunNotice";
+import { controlItemTone } from "../../presentation/statusTone.ts";
 import { controlCapabilityLabel, controlDisplayText, controlOutcomeReason, controlObjectName } from "./controlPresentation.ts";
 import {
   controlItemStatusOf,
@@ -312,7 +313,7 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
             <p class="control-capability-reason">{uiText.control.overclock.body}</p>
             <div class="control-overclock-consent-actions">
               <Show when={overclockAccepted()}>
-                <span class="control-capability-tag">
+                <span class="control-capability-tag" data-tone="neutral">
                   {uiText.control.overclock.accepted}
                 </span>
               </Show>
@@ -1013,14 +1014,7 @@ function ControlObjectCard(props: {
                     // 失败或不支持时，后端给的原因停在标签上就有（交还固件失败也走这里）。
                     title={itemStatus(capability.id) === "failed" || itemStatus(capability.id) === "unsupported"
                       ? controlOutcomeReason(outcomes().find(outcome => outcome.capabilityId === capability.id)) ?? undefined : undefined}
-                    classList={{
-                      "control-capability-tag-live":
-                        itemStatus(capability.id) === "edited"
-                        || itemStatus(capability.id) === "applying",
-                      "control-capability-tag-bad":
-                        itemStatus(capability.id) === "failed"
-                        || itemStatus(capability.id) === "unsupported"
-                    }}
+                    data-tone={controlItemTone(itemStatus(capability.id))}
                   >
                     {uiText.control.status[itemStatus(capability.id)]}
                   </span>

@@ -54,6 +54,8 @@
   --danger: #ff6159;
   --danger-soft: #331312;
   --shell-bg: #070b09;
+  --ok: #b6e86a;
+  --info: #6cc8ff;
   --badge-bg: #15281c;
   --empty-bg: rgba(10, 15, 12, 0.56);
   --resource-empty: #08100b;
@@ -86,6 +88,8 @@
   --danger: #ff5a6c;
   --danger-soft: #351219;
   --shell-bg: #0a0704;
+  --ok: #8fe08a;
+  --info: #82c8ff;
   --badge-bg: #2a1f0e;
   --empty-bg: rgba(15, 11, 6, 0.56);
   --resource-empty: #0c0905;
@@ -117,6 +121,8 @@
   --danger: #ff6470;
   --danger-soft: #351319;
   --shell-bg: #060a0f;
+  --ok: #7ee6a0;
+  --info: #c0aaff;
   --badge-bg: #142636;
   --empty-bg: rgba(9, 17, 26, 0.56);
   --resource-empty: #070e15;

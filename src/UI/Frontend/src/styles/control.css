@@ -261,23 +261,11 @@
 .control-capability-tag {
   padding: 1px 6px;
   border-radius: 999px;
-  background: var(--surface-strong);
+  background: var(--tone-fill);
   font-size: 11px;
   font-weight: 400;
   white-space: nowrap;
-  color: var(--muted);
-}
-
-/* 改动还没应用、正在应用：这是要用户接着做点什么的状态，给强调色。 */
-.control-capability-tag-live {
-  background: var(--accent-soft);
-  color: var(--accent-strong);
-}
-
-/* 没应用上、控不了：安静的红，不是警报。 */
-.control-capability-tag-bad {
-  background: var(--danger-soft);
-  color: var(--danger);
+  color: var(--tone-text);
 }
 
 /*

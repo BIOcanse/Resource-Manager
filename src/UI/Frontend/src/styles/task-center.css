@@ -109,11 +109,10 @@
 
 .task-center-state {
   flex: 0 0 auto;
-  color: var(--muted);
+  color: var(--tone-text);
   font-size: 11px;
 }
 
-.task-center-state.error,
 .task-center-error,
 .task-center-inline-warning {
   color: var(--danger);

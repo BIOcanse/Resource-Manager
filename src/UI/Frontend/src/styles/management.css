@@ -161,33 +161,15 @@
   max-width: 100%;
   align-items: center;
   min-height: 22px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--tone-edge);
   border-radius: var(--radius-sm);
   padding: 2px 7px;
-  color: var(--text);
-  background: var(--surface-strong);
+  color: var(--tone-text);
+  background: var(--tone-fill);
   font-size: 12px;
   font-weight: 700;
   line-height: 1.3;
   overflow-wrap: anywhere;
-}
-
-.software-issue-tag.warning {
-  border-color: color-mix(in oklab, var(--warn) 58%, var(--line));
-  color: var(--warn);
-  background: var(--warn-soft);
-}
-
-.software-issue-tag.critical {
-  border-color: color-mix(in oklab, var(--danger) 58%, var(--line));
-  color: var(--danger);
-  background: var(--danger-soft);
-}
-
-.software-issue-tag.info {
-  border-color: color-mix(in oklab, var(--accent) 48%, var(--line));
-  color: var(--accent-strong);
-  background: var(--accent-soft);
 }
 
 .component-actions {
@@ -229,15 +211,10 @@
   gap: 4px;
   min-height: 32px;
   padding: 0 6px;
-  color: var(--accent-strong);
+  color: var(--tone-text);
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
-}
-
-/* 正在进行的操作（安装中、卸载中）用弱化色，等结果出来再换成确定的状态。 */
-.management-status-tag.pending {
-  color: var(--muted);
 }
 
 .management-settings-button {

@@ -42,6 +42,7 @@ import {
   TabsTrigger
 } from "../primitives/Tabs.tsx";
 import { uiText } from "../../text.ts";
+import { taskStatusTone } from "../../presentation/statusTone.ts";
 
 type TaskCenterTab = TaskCenterView | "diagnostics";
 
@@ -193,7 +194,7 @@ function TaskCenterList(props: {
               <div class="task-center-item-content">
                 <div class="task-center-item-title-row">
                   <strong>{taskTitle(item())}</strong>
-                  <span class="task-center-state" classList={{ error: isErrorState(item()) }}>
+                  <span class="task-center-state" data-tone={taskStatusTone(item().status, item().stateUncertain)}>
                     {taskStatusLabel(item().status)}
                   </span>
                 </div>
@@ -337,10 +338,6 @@ function taskStatusLabel(status: string): string {
     stateUncertain: uiText.taskCenter.status.stateUncertain
   };
   return labels[status] ?? uiText.taskCenter.status.unknown;
-}
-
-function isErrorState(item: TaskCenterItem): boolean {
-  return item.status === "failed" || item.stateUncertain;
 }
 
 function formatPercent(value: number | null): string {

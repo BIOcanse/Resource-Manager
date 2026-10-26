@@ -1,0 +1,27 @@
+/*
+  状态标签的颜色：严重度到颜色令牌的唯一映射。
+
+  标签只声明自己是哪一级（data-tone，取值见 presentation/statusTone.ts），
+  这里把它换成三种颜色：文字 --tone-text、底 --tone-fill、边 --tone-edge。
+  各标签只管自己的形状和尺寸，颜色一律读这三个变量，不在调用处另写颜色。
+
+  normal  正常（已安装、已应用）       --ok
+  info    提示（有更新、改动未应用）   --info
+  warning 警告（需要留意的问题）       --warn
+  error   错误（失败、严重问题）       --danger
+  neutral 中性（进行中、未分类、已同意）--muted
+
+  强调色 --accent 只表示选中和可操作，不当作任何一级状态。
+  文字向正文色混一部分，浅色配色里变深、深色配色里变亮，四种风格的每个配色都对底和表面保持 4.5:1。
+*/
+[data-tone="normal"] { --tone: var(--ok); }
+[data-tone="info"] { --tone: var(--info); }
+[data-tone="warning"] { --tone: var(--warn); }
+[data-tone="error"] { --tone: var(--danger); }
+[data-tone="neutral"] { --tone: var(--muted); }
+
+[data-tone] {
+  --tone-text: color-mix(in oklab, var(--tone) 72%, var(--text));
+  --tone-fill: color-mix(in oklab, var(--tone) 13%, var(--surface));
+  --tone-edge: color-mix(in oklab, var(--tone) 48%, var(--line));
+}

@@ -29,6 +29,7 @@ import {
 import { SoftwareIssueTagStrip } from "../../../components/SoftwareIssuePresentation";
 import { isUnclassifiedSoftware, runtimeDiscoveryLabel, softwareIssueLabel, softwareIssueMessage } from "../../../presentation/softwareClassification.ts";
 import { renderBackendMessage } from "../../../presentation/backendMessage.ts";
+import { componentStateTone, type StatusTone } from "../../../presentation/statusTone.ts";
 import { softwareRecordName, softwareSourceLabels, softwareUninstallDescription, softwareSummary } from "../../../presentation/softwareFacts.ts";
 export { softwareSummary } from "../../../presentation/softwareFacts.ts";
 
@@ -203,14 +204,14 @@ function ComponentCard(props: {
         </strong>
         <div class="management-card-purpose">{componentPurpose(props.component.definition?.id)}</div>
         <Show when={props.component.state === "payload_missing" || props.component.state === "update_available"}>
-          <ManagementStatusTag label={userFacingState(props.component.state)} />
+          <ManagementStatusTag label={userFacingState(props.component.state)} tone={componentStateTone(props.component.state)} />
           <div class="management-card-purpose">{renderBackendMessage(props.component.message)}</div>
         </Show>
       </div>
       <div class="component-actions">
         <Show
           when={!activeLabel()}
-          fallback={<ManagementStatusTag label={activeLabel()} pending />}
+          fallback={<ManagementStatusTag label={activeLabel()} tone="neutral" />}
         >
           <Show
             when={!componentNeedsUpdate(props.component) && isComponentInstalled(props.component)}
@@ -228,7 +229,7 @@ function ComponentCard(props: {
           >
             <Show
               when={dependencySoftware()?.operations?.canUninstall}
-              fallback={<Show when={props.component.state !== "payload_missing" && props.component.state !== "update_available"}><ManagementStatusTag label={uiText.management.installed} /></Show>}
+              fallback={<Show when={props.component.state !== "payload_missing" && props.component.state !== "update_available"}><ManagementStatusTag label={uiText.management.installed} tone="normal" /></Show>}
             >
               <button class="management-action-button" type="button" disabled={!props.runtimeEffectsEnabled} title={props.runtimeEffectsEnabled ? undefined : uiText.managementPage.viewOnly} onClick={() => props.onUninstall(dependencySoftware()!, key())}>
                 {uiText.management.uninstall}
@@ -270,6 +271,8 @@ function SoftwareCard(props: {
   const canUninstall = () => Boolean(props.software.operations?.canUninstall) && !activeLabel();
   // 右侧状态标签的文字；能卸载时由"卸载"按钮表达，没有标签。
   const statusLabel = () => activeLabel() || (isUnclassifiedSoftware(props.software) ? uiText.softwareKind.Unclassified : canUninstall() ? "" : uiText.management.installed);
+  // 进行中的操作和未分类是中性的；只有"已安装"是正常。
+  const statusTone = (): StatusTone => activeLabel() || isUnclassifiedSoftware(props.software) ? "neutral" : "normal";
   // 这张卡要不要说话：状态已经由右侧表达，只复述状态的消息一律不显示。
   const cardPurpose = () => {
     if (isUnclassifiedSoftware(props.software)) {
@@ -329,7 +332,7 @@ function SoftwareCard(props: {
         </Show>
         <Show
           when={canUninstall()}
-          fallback={<ManagementStatusTag label={statusLabel()} pending={Boolean(activeLabel())} />}
+          fallback={<ManagementStatusTag label={statusLabel()} tone={statusTone()} />}
         >
           <button class="management-action-button" type="button" disabled={!props.runtimeEffectsEnabled} title={props.runtimeEffectsEnabled ? undefined : uiText.managementPage.viewOnly} onClick={() => props.onUninstall(props.software, key())}>
             {uiText.management.uninstall}
@@ -346,11 +349,11 @@ function SoftwareCard(props: {
   );
 }
 
-// 状态只是告知，不是可点的动作，所以用标签而不是禁用按钮。
-function ManagementStatusTag(props: { label: string; pending?: boolean }) {
+// 状态只是告知，不是可点的动作，所以用标签而不是禁用按钮。勾号只跟着"正常"一级。
+function ManagementStatusTag(props: { label: string; tone: StatusTone }) {
   return (
-    <span class="management-status-tag" classList={{ pending: props.pending === true }}>
-      <Show when={!props.pending}>
+    <span class="management-status-tag" data-tone={props.tone}>
+      <Show when={props.tone === "normal"}>
         <Check aria-hidden="true" size={14} strokeWidth={2.5} />
       </Show>
       {props.label}
