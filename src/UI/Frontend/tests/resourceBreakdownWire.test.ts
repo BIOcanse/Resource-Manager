@@ -114,4 +114,7 @@ const breakdownSource = readFileSync(
   new URL("../src/features/resourceBreakdown/ResourceBreakdown.tsx", import.meta.url),
   "utf8");
 assert.match(breakdownSource, /import \{ formatResourceBarValue \} from "\.\/resourceBreakdownValue"/);
-assert.match(breakdownSource, /formatResourceBarValue\(props\.bar, props\.bar\.totalValue\)/);
+// 条头的总量（含空余时还有容量）也按用户选的进制格式化：都经 resourceBarTotalText 交给 formatResourceBarValue。
+assert.match(breakdownSource, /\{resourceBarTotalText\(props\.bar\)\}/);
+assert.match(breakdownSource, /formatResourceBarValue\(bar, bar\.totalValue\)/);
+assert.match(breakdownSource, /formatResourceBarValue\(bar, capacity\)/);

@@ -81,6 +81,8 @@ export const zhMonitorCopy = {
     statusFallback: "暫無資料",
     scaleCapacity: "含空餘",
     scaleActive: "現有佔用",
+    scaleCapacityHint: "整條是總容量，空白部分是空餘",
+    scaleActiveHint: "整條是現有總佔用，各段是其中的份額",
     selectionLabel: (metric: string) => `${metric} 軟體佔用選擇`,
     empty: "空餘",
     emptyPercent: "空餘佔比",

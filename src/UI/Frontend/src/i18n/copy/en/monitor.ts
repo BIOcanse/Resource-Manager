@@ -85,6 +85,8 @@ export const enMonitorCopy: Pick<
     statusFallback: "No data",
     scaleCapacity: "Including free",
     scaleActive: "Current usage",
+    scaleCapacityHint: "The full bar is the total capacity; the blank part is free",
+    scaleActiveHint: "The full bar is the current total usage; each segment is its share",
     selectionLabel: (metric: string) => `${metric} software usage selection`,
     empty: "Free",
     emptyPercent: "Free share",

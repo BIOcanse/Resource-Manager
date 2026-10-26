@@ -656,6 +656,8 @@ const esEsAppCopy: AppCopy = {
     statusFallback: "Sin datos",
     scaleCapacity: "Incluye lo libre",
     scaleActive: "Uso actual",
+    scaleCapacityHint: "La barra completa es la capacidad total; la parte vacía está libre",
+    scaleActiveHint: "La barra completa es el uso total actual; cada segmento es una parte de él",
     selectionLabel: (metric: string) => `Selección del uso por software de ${metric}`,
     empty: "Libre",
     emptyPercent: "Proporción libre",

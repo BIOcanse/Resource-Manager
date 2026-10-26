@@ -656,6 +656,8 @@ const jaJpAppCopy: AppCopy = {
     statusFallback: "データなし",
     scaleCapacity: "空きを含む",
     scaleActive: "現在の使用量",
+    scaleCapacityHint: "バー全体が総容量で、空白の部分が空きです",
+    scaleActiveHint: "バー全体が現在の総使用量で、各区分はその内訳です",
     selectionLabel: (metric: string) => cjkText`${metric}のソフトウェア使用量の選択`,
     empty: "空き",
     emptyPercent: "空きの割合",

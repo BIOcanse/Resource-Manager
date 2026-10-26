@@ -656,6 +656,8 @@ const deDeAppCopy: AppCopy = {
     statusFallback: "Keine Daten",
     scaleCapacity: "Inklusive frei",
     scaleActive: "Aktuelle Nutzung",
+    scaleCapacityHint: "Der ganze Balken ist die Gesamtkapazität, der leere Teil ist frei",
+    scaleActiveHint: "Der ganze Balken ist die aktuelle Gesamtnutzung, jedes Segment ist ein Anteil daran",
     selectionLabel: (metric: string) => `Auswahl der Softwarenutzung für ${metric}`,
     empty: "Frei",
     emptyPercent: "Freier Anteil",

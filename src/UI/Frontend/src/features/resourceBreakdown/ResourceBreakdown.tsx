@@ -457,8 +457,8 @@ function ResourceBreakdownItem(props: {
     >
       <div class="resource-breakdown-header">
         <strong title={props.bar.basis}>{label()}</strong>
-        <span>
-          {formatResourceBarValue(props.bar, props.bar.totalValue)} · {props.bar.scaleMode === "active" ? uiText.resourceBreakdown.scaleActive : uiText.resourceBreakdown.scaleCapacity}
+        <span title={props.bar.scaleMode === "active" ? uiText.resourceBreakdown.scaleActiveHint : uiText.resourceBreakdown.scaleCapacityHint}>
+          {resourceBarTotalText(props.bar)} · {props.bar.scaleMode === "active" ? uiText.resourceBreakdown.scaleActive : uiText.resourceBreakdown.scaleCapacity}
         </span>
         <Show when={props.editMode}>
           <span class="resource-breakdown-order-actions">
@@ -973,6 +973,15 @@ function resourceValueLine(bar: ResourceBarView, segment: { value: number; share
       formatResourceBarValue(bar, segment.value - segment.sharedValue),
       formatResourceBarValue(bar, segment.sharedValue))
     : `${bar.label}: ${formatResourceBarValue(bar, segment.value)}`;
+}
+
+// 含空余时整条是容量：总量后面写上容量，一眼看出条有多长。百分比的容量就是 100%，不重复写。
+function resourceBarTotalText(bar: ResourceBarView) {
+  const total = formatResourceBarValue(bar, bar.totalValue);
+  const capacity = Number(bar.capacityValue);
+  return bar.scaleMode !== "active" && bar.unit !== "%" && Number.isFinite(capacity) && capacity > 0
+    ? `${total} / ${formatResourceBarValue(bar, capacity)}`
+    : total;
 }
 
 function resourceBarDenominator(bar: ResourceBreakdownBar) {

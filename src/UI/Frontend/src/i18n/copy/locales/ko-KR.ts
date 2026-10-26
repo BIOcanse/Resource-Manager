@@ -655,6 +655,8 @@ const koKrAppCopy: AppCopy = {
     statusFallback: "데이터 없음",
     scaleCapacity: "여유 포함",
     scaleActive: "현재 사용량",
+    scaleCapacityHint: "막대 전체가 총용량이고, 빈 부분이 여유 공간입니다",
+    scaleActiveHint: "막대 전체가 현재 총사용량이고, 각 구간은 그 안의 비중입니다",
     selectionLabel: (metric: string) => `${metric} 소프트웨어 사용량 선택`,
     empty: "여유",
     emptyPercent: "여유 비율",

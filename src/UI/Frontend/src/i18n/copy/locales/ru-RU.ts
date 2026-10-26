@@ -656,6 +656,8 @@ const ruRuAppCopy: AppCopy = {
     statusFallback: "Нет данных",
     scaleCapacity: "Включая свободное",
     scaleActive: "Текущее использование",
+    scaleCapacityHint: "Вся полоса — общий объём, пустая часть свободна",
+    scaleActiveHint: "Вся полоса — текущее общее использование, каждый сегмент — доля в нём",
     selectionLabel: (metric: string) => `Выбор использования программами: ${metric}`,
     empty: "Свободно",
     emptyPercent: "Доля свободного",

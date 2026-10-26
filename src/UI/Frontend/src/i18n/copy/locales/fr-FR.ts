@@ -656,6 +656,8 @@ const frFrAppCopy: AppCopy = {
     statusFallback: "Aucune donnée",
     scaleCapacity: "Libre inclus",
     scaleActive: "Utilisation actuelle",
+    scaleCapacityHint: "La barre entière représente la capacité totale ; la partie vide est libre",
+    scaleActiveHint: "La barre entière représente l’utilisation totale actuelle ; chaque segment en est une part",
     selectionLabel: (metric: string) => `Sélection de l'utilisation logicielle de ${metric}`,
     empty: "Libre",
     emptyPercent: "Part libre",
