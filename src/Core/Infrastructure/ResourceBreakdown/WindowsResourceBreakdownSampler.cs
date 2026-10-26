@@ -251,17 +251,27 @@ public sealed partial class WindowsResourceBreakdownSampler(
             yield break;
         }
 
-        using var publication = publicationSignal.Subscribe(datasetIds);
-        using var lease = AcquireSubscription(
-            subscriptionId,
-            subscriptionRequest,
-            interval);
-
-        while (!cancellationToken.IsCancellationRequested)
+        cancellationToken.ThrowIfCancellationRequested();
+        subscriptions.ValidatePeriod(interval);
+        ResourceManager.Subscription.NativeCurrentValueSubscriptionDelivery<ResourceBreakdownSnapshot>.Registration registration;
+        IDisposable lease;
+        lock (lifecycleGate)
         {
-            await publication.WaitAsync(cancellationToken);
-            yield return ReadLatest(subscriptionRequest);
+            ValidateFieldSubscriptionAdmission();
+            var sourceKey = CreateFieldSubscriptionSourceKey(subscriptionId);
+            registration = snapshotSubscriptionDelivery.Register(sourceKey,
+                subscriptions.GetDeliveryItemIds(subscriptionRequest), () => ReadLatest(subscriptionRequest));
+            try
+            {
+                lease = AcquireHostedSubscription(sourceKey, subscriptionRequest, interval,
+                    NativeSamplingSubscriptionSourceFlags.PeriodicTriggers, null);
+            }
+            catch { registration.Dispose(); throw; }
         }
+        using (lease)
+        using (registration)
+            await foreach (var snapshot in registration.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+                yield return snapshot;
     }
 
     public IDisposable AcquireSubscription(
@@ -419,6 +429,7 @@ public sealed partial class WindowsResourceBreakdownSampler(
                         "Resource breakdown owner stopped."));
             }
             fieldSubscriptionDelivery.RetireAll();
+            snapshotSubscriptionDelivery.RetireAll();
             pendingFieldCollectionResult = null;
             if (samplingTask is null)
             {
@@ -458,6 +469,7 @@ public sealed partial class WindowsResourceBreakdownSampler(
             if (firstDisposal)
             {
                 fieldSubscriptionDelivery.RetireAll();
+                snapshotSubscriptionDelivery.RetireAll();
                 pendingFieldCollectionResult = null;
             }
             if (samplingTask is not null)
@@ -554,7 +566,10 @@ public sealed partial class WindowsResourceBreakdownSampler(
                         throw new OperationCanceledException(cancellationToken);
                     }
                     if (plan.Request is null)
+                    {
                         fieldSubscriptionDelivery.Deliver(plan.Triggers, null, freshOnly: false);
+                        snapshotSubscriptionDelivery.Deliver(plan.Triggers);
+                    }
                 }, collectionCompleted: (plan, _) =>
                 {
                     var result = pendingFieldCollectionResult;
@@ -563,6 +578,8 @@ public sealed partial class WindowsResourceBreakdownSampler(
                         ImmutableHashSet<string>.Empty.WithComparer(StringComparer.OrdinalIgnoreCase), committed: false);
                     fieldSubscriptionDelivery.Deliver(plan.Triggers, result,
                         freshOnly: plan.Request is null ? true : null);
+                    if (plan.Request is not null)
+                        snapshotSubscriptionDelivery.Deliver(plan.Triggers);
                 });
         }
         catch (Exception) when (ownerRevoked) { }

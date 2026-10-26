@@ -13,6 +13,7 @@ namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 public sealed partial class WindowsResourceBreakdownSampler
 {
     private readonly NativeFieldSubscriptionDelivery fieldSubscriptionDelivery = new();
+    private readonly NativeCurrentValueSubscriptionDelivery<ResourceBreakdownSnapshot> snapshotSubscriptionDelivery = new();
     private FieldCollectionResult? pendingFieldCollectionResult;
 
     internal IDisposable AcquireFieldSubscription(string subscriptionId,

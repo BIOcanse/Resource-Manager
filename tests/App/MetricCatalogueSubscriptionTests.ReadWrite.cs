@@ -55,17 +55,19 @@ public sealed partial class MetricCatalogueSubscriptionTests
         value = 0;
         using (var observerCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
         {
-            // The existing typed notification stream can observe explicit direct
-            // captures without a worker; canonical field streams use periodic triggers.
+            // Explicit collection updates current without starting the periodic
+            // worker. It must not impersonate a snapshot subscription deadline.
             var address = backend.ResolveBindings([field])[0].Binding.RequestAddress;
             await using var observer = sampler.SubscribeAsync("direct-result-observer", MetricSampleRequest.ForIds([address]), TimeSpan.FromSeconds(1),
                 observerCancellation.Token).GetAsyncEnumerator(observerCancellation.Token);
             var next = observer.MoveNextAsync().AsTask();
             Assert.False(next.IsCompleted);
             Assert.Equal(0, Assert.Single(await core.CollectAsync([field])).Value!.Number);
-            Assert.True(await next);
-            Assert.Equal(0, observer.Current.Items[address].NumericValue);
+            Assert.False(next.IsCompleted);
+            Assert.Equal(0, sampler.ReadLatest(MetricSampleRequest.ForIds([address]))!.Items[address].NumericValue);
             Assert.Equal(0, core.ReadCached(field).Value!.Number);
+            observerCancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => next);
         }
         Assert.Equal(0, core.ReadCached(field).Value!.Number);
         Assert.Null(sampler.CaptureSamplingWorkerTask());

@@ -205,11 +205,10 @@ public sealed class IntelPsysOwnerIntegrationTests
         await sampler.StartAsync(timeout.Token);
         try
         {
-            await using (var stream = sampler.SubscribeAsync("psys-host", request, TimeSpan.FromMinutes(1),
-                timeout.Token).GetAsyncEnumerator())
+            using (sampler.AcquireSubscription("psys-host", request, TimeSpan.FromMinutes(1)))
             {
-                Assert.True(await stream.MoveNextAsync());
-                var fields = Assert.Single(MetricDeviceFields.Read(stream.Current, Identity)).Fields;
+                var current = await HardwareMetricCurrentTestWait.ReadAsync(sampler, request, timeout.Token);
+                var fields = Assert.Single(MetricDeviceFields.Read(current, Identity)).Fields;
                 Assert.Equal(MetricInteger.Parse("0"), fields.Single(static field => field.Name == Raw).IntegerValue);
                 Assert.Equal(Math.ScaleB(1d, -14), fields.Single(static field => field.Name == Unit).NumericValue);
             }

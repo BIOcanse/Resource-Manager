@@ -59,39 +59,58 @@ public sealed partial class IntelMsrThermalCollectorTests
         await sampler.StartAsync(timeout.Token);
         try
         {
-            await using (var stream = sampler.SubscribeAsync("ratio-first", request, TimeSpan.FromMilliseconds(100), timeout.Token).GetAsyncEnumerator(timeout.Token))
+            var observed = ObservationTime(sampler.ReadLatest(request));
+            using (sampler.AcquireSubscription("ratio-first", request, TimeSpan.FromMilliseconds(100)))
             {
-                Assert.True(await stream.MoveNextAsync()); Assert.Null(Value(stream.Current));
-                Assert.True(await stream.MoveNextAsync()); Assert.Equal(1.5, Value(stream.Current));
+                await AssertNewInterval(observed);
             }
             await Task.Delay(150, timeout.Token); var reads = hardware.Reads.Count;
             var cached = await sampler.GetSnapshotAsync(request, timeout.Token); Assert.Equal(1.5, Value(cached));
             sampler.ReadLatest(request); await Task.Delay(150, timeout.Token); Assert.Equal(reads, hardware.Reads.Count);
-            await using (var stream = sampler.SubscribeAsync("ratio-second", request, TimeSpan.FromMilliseconds(100), timeout.Token).GetAsyncEnumerator(timeout.Token))
+            observed = ObservationTime(sampler.ReadLatest(request));
+            using (sampler.AcquireSubscription("ratio-second", request, TimeSpan.FromMilliseconds(100)))
             {
-                Assert.True(await stream.MoveNextAsync()); Assert.Null(Value(stream.Current));
-                Assert.True(await stream.MoveNextAsync()); Assert.Equal(1.5, Value(stream.Current));
+                await AssertNewInterval(observed);
                 await sampler.StopAsync(CancellationToken.None);
                 var stoppedReads = hardware.Reads.Count;
                 Assert.Equal(1.5, Value(await sampler.GetSnapshotAsync(request, timeout.Token)));
                 Assert.Equal(stoppedReads, hardware.Reads.Count);
             }
             // Stop drains the worker and clears demand. Restart requires a new
-            // subscription; it must not resurrect the stopped stream's lease.
+            // subscription; it must not resurrect the stopped sampling lease.
             await sampler.StartAsync(timeout.Token);
             var restartReads = hardware.Reads.Count;
             await Task.Delay(150, timeout.Token);
             Assert.Equal(restartReads, hardware.Reads.Count);
-            await using (var stream = sampler.SubscribeAsync("ratio-after-restart", request, TimeSpan.FromMilliseconds(100), timeout.Token).GetAsyncEnumerator(timeout.Token))
+            observed = ObservationTime(sampler.ReadLatest(request));
+            using (sampler.AcquireSubscription("ratio-after-restart", request, TimeSpan.FromMilliseconds(100)))
             {
-                Assert.True(await stream.MoveNextAsync()); Assert.Null(Value(stream.Current));
-                Assert.True(await stream.MoveNextAsync()); Assert.Equal(1.5, Value(stream.Current));
+                await AssertNewInterval(observed);
             }
             Assert.All(hardware.Reads, read => Assert.Equal(target.Processor, read.Address)); Assert.Equal(0, hardware.Writes);
         }
         finally { await sampler.StopAsync(CancellationToken.None); }
         double? Value(HardwareMetricSnapshot snapshot) => MetricDeviceFields.Read(snapshot, target.ExactIdentityKey).Single().Fields
             .Single(field => field.Name == "cpu_intel_aperf_mperf_interval_ratio").NumericValue;
+        long ObservationTime(HardwareMetricSnapshot? snapshot)
+            => snapshot?.Datasets.GetValueOrDefault(request.Ids.Single())?.LastAttemptAtUtcTicks ?? 0;
+        async Task<HardwareMetricSnapshot> NextObservation(long previous)
+        {
+            while (true)
+            {
+                timeout.Token.ThrowIfCancellationRequested();
+                var current = sampler.ReadLatest(request);
+                var at = ObservationTime(current);
+                if (at != 0 && at != previous) return current!;
+                await Task.Delay(10, timeout.Token);
+            }
+        }
+        async Task AssertNewInterval(long previous)
+        {
+            var initial = await NextObservation(previous);
+            Assert.Null(Value(initial));
+            Assert.Equal(1.5, Value(await NextObservation(ObservationTime(initial))));
+        }
     }
 
     [Theory]
@@ -140,8 +159,8 @@ public sealed partial class IntelMsrThermalCollectorTests
         await sampler.StartAsync(timeout.Token);
         try
         {
-            await using var stream = sampler.SubscribeAsync("intel-temperature-consumer", request, TimeSpan.FromMinutes(10), timeout.Token).GetAsyncEnumerator(timeout.Token);
-            Assert.True(await stream.MoveNextAsync()); AssertSelected(stream.Current);
+            using var demand = sampler.AcquireSubscription("intel-temperature-consumer", request, TimeSpan.FromMinutes(10));
+            AssertSelected(await HardwareMetricCurrentTestWait.ReadAsync(sampler, request, timeout.Token));
             Assert.Equal(family switch { 1 or 4 => new uint[] { 0x611 }, 2 => [0xE8], 3 => [0x614], 5 or 6 => [0x19C], _ => [0x1A2, 0x19C] }, hardware.Reads.Select(static read => read.Register));
             Assert.All(hardware.Reads, read => Assert.Equal(target.Processor, read.Address));
             AssertSelected(await sampler.GetSnapshotAsync(request, timeout.Token));

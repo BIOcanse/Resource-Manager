@@ -182,7 +182,7 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
     }
 
     [Fact]
-    public async Task BoundPublicationWakesOppositeAddressSubscriberWithSameCurrent()
+    public async Task BoundCurrentIsDeliveredAtSubscriberTriggerForOppositeAddresses()
     {
         const string canonical = "recorded-memory-used-field";
         const string legacy = "memory.usage";
@@ -223,10 +223,53 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
             Assert.False(next.IsCompleted);
             owner.Publish(frame, MetricSampleRequest.ForIds([published]));
             sampler.PublishCompletedDatasets([published]);
+            Assert.False(next.IsCompleted); // A dataset completion is not a subscription deadline.
+            var tracker = Assert.IsType<NativeItemSamplingSubscriptionTracker<MetricSampleRequest>>(
+                typeof(WindowsHardwareMetricSampler).GetField("subscriptions", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(sampler));
+            var now = DateTimeOffset.UtcNow.AddSeconds(1);
+            var plan = tracker.CreatePlan(now);
+            tracker.CompletePlan(plan, now, ResourceManager.Subscription.Native.NativeSamplingSubscriptionCompletionStatus.Sampled);
+            var delivery = Assert.IsType<ResourceManager.Subscription.NativeCurrentValueSubscriptionDelivery<HardwareMetricSnapshot>>(
+                typeof(WindowsHardwareMetricSampler).GetField("snapshotSubscriptionDelivery", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(sampler));
+            delivery.Deliver(plan.Triggers);
             Assert.True(await next.WaitAsync(timeout.Token));
             Assert.Equal(512d, stream.Current.Items[subscribed].NumericValue);
             Assert.Equal(512d, owner.Read()!.Items[canonical].NumericValue);
         }
+    }
+
+    [Fact]
+    public async Task SnapshotSubscribersHaveIndependentDeliveryIntervalsWhileSharingSampling()
+    {
+        using var fixture = new MetricSnapshotOwnerTestFixture.Fixture(MetricSnapshotOwnerTestFixture.Topology([]));
+        var reads = 0;
+        var memory = new WindowsMemoryMonitoringZone(_ => throw new InvalidOperationException("No NUMA demand"),
+            () => new MemoryMetrics((ulong)Interlocked.Increment(ref reads), 10000, 50, true)
+            { ObservationStatus = SamplingObservationStatus.Current });
+        using var sampler = CreateSampler(fixture.Slots, fixture.Catalog, fixture.Owner, memory);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        await sampler.CaptureSnapshotAsync(MetricSampleRequest.CatalogProbe, timeout.Token);
+        await sampler.StartAsync(timeout.Token);
+        try
+        {
+            var request = MetricSampleRequest.ForIds(["memory.percent"]);
+            async Task Observe(string id, int interval, int count)
+            {
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                await using var stream = sampler.SubscribeAsync(id, request, TimeSpan.FromMilliseconds(interval), timeout.Token)
+                    .GetAsyncEnumerator(timeout.Token);
+                for (var index = 1; index <= count; index++)
+                {
+                    Assert.True(await stream.MoveNextAsync());
+                    Assert.True(clock.Elapsed.TotalMilliseconds >= interval * index - 80,
+                        $"{id} delivered frame {index} at {clock.Elapsed.TotalMilliseconds} ms");
+                    Assert.NotNull(stream.Current.Items["memory.percent"].NumericValue);
+                }
+            }
+            await Task.WhenAll(Observe("fast", 250, 6), Observe("slow", 750, 2));
+            Assert.InRange(Volatile.Read(ref reads), 4, 10);
+        }
+        finally { await sampler.StopAsync(CancellationToken.None); }
     }
 
     [Fact]

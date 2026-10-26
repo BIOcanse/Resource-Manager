@@ -50,11 +50,16 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var request = new ResourceBreakdownSampleRequest([], new Dictionary<string, string>(),
             ProcessSampleDetailLevel.SmartSchedulingLite, SchedulingProcessMetricMask.GpuDedicatedMemory);
-        await using var output = sampler.SubscribeAsync("smart.gpu", request,
-            TimeSpan.FromSeconds(30), stop.Token).GetAsyncEnumerator();
+        using var demand = sampler.AcquireSubscription("smart.gpu", request, TimeSpan.FromSeconds(30));
+        var factRequest = new SchedulingProcessFactRequest(SchedulingProcessMetricMask.GpuDedicatedMemory, hardware.GpuInventory);
+        async Task WaitForCurrentRundown()
+        {
+            while (sampler.ReadLatest(factRequest)?.CurrentMetricMask.HasFlag(SchedulingProcessMetricMask.GpuDedicatedMemory) != true)
+                await Task.Delay(10, stop.Token);
+        }
         try
         {
-            var round = output.MoveNextAsync().AsTask();
+            var round = WaitForCurrentRundown();
             await capturePayloadsApplied.Task.WaitAsync(stop.Token);
             Assert.Equal(1, factory.Current.Captures);
             Assert.False(factory.Current.FirstEndScanQueued.IsCompleted);
@@ -66,7 +71,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             await factory.Current.FirstEndScanQueued.WaitAsync(stop.Token);
             Assert.False(round.IsCompleted);
             factory.Current.DeliverEnd();
-            Assert.True(await round.WaitAsync(stop.Token));
+            await round.WaitAsync(stop.Token);
             Assert.Empty(factory.Current.Enabled);
             var facts = sampler.ReadLatest(new SchedulingProcessFactRequest(SchedulingProcessMetricMask.GpuDedicatedMemory, hardware.GpuInventory));
             Assert.NotNull(facts);
@@ -74,8 +79,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             Assert.Equal(1024, Assert.Single(fact.Gpus).ResidentMemoryBytes);
             Assert.Equal(1, factory.Current.Captures);
         }
-        finally { allowCaptureReturn.Set(); }
-        await sampler.StopAsync(default);
+        finally { allowCaptureReturn.Set(); await sampler.StopAsync(default); }
     }
 
     [Theory]

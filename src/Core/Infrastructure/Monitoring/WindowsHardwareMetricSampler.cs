@@ -355,18 +355,30 @@ public sealed partial class WindowsHardwareMetricSampler :
             yield break;
         }
 
-        using var publication = publicationSignal.Subscribe(publicationDatasetIds);
-        using var lease = AcquireSubscription(
-            subscriptionId,
-            subscriptionRequest,
-            interval);
-
-        while (!cancellationToken.IsCancellationRequested)
+        cancellationToken.ThrowIfCancellationRequested();
+        subscriptions.ValidatePeriod(interval);
+        NativeCurrentValueSubscriptionDelivery<HardwareMetricSnapshot>.Registration registration;
+        IDisposable lease;
+        lock (lifecycleGate)
         {
-            await publication.WaitAsync(cancellationToken);
-            yield return ReadLatest(subscriptionRequest)
-                ?? CreateWarmingSnapshot(subscriptionRequest);
+            ValidateFieldSubscriptionAdmission();
+            var sourceKey = CreateFieldSubscriptionSourceKey(subscriptionId);
+            registration = snapshotSubscriptionDelivery.Register(sourceKey,
+                subscriptions.GetDeliveryItemIds(subscriptionRequest),
+                () => ReadLatest(subscriptionRequest) ?? CreateWarmingSnapshot(subscriptionRequest));
+            try
+            {
+                subscriptions.TrackPersistent(sourceKey, subscriptionRequest, DateTimeOffset.UtcNow,
+                    interval, ResourceManager.Subscription.Native.NativeSamplingSubscriptionSourceFlags.PeriodicTriggers);
+                SignalDemand(demandSignal);
+                lease = new ObservationSubscriptionLease(this, sourceKey);
+            }
+            catch { registration.Dispose(); throw; }
         }
+        using (lease)
+        using (registration)
+            await foreach (var snapshot in registration.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+                yield return snapshot;
     }
 
     internal Task? CaptureSamplingWorkerTask()
@@ -425,7 +437,10 @@ public sealed partial class WindowsHardwareMetricSampler :
                     {
                         completedFieldResult = null;
                         if (plan.Request is null)
+                        {
                             fieldSubscriptionDelivery.Deliver(plan.Triggers, null, freshOnly: false);
+                            snapshotSubscriptionDelivery.Deliver(plan.Triggers);
+                        }
                     },
                     collectionCompleted: (plan, _) =>
                     {
@@ -437,6 +452,7 @@ public sealed partial class WindowsHardwareMetricSampler :
                         var result = completedFieldResult;
                         completedFieldResult = null;
                         fieldSubscriptionDelivery.Deliver(plan.Triggers, result);
+                        snapshotSubscriptionDelivery.Deliver(plan.Triggers);
                     }),
                 CancellationToken.None);
         }
@@ -449,6 +465,7 @@ public sealed partial class WindowsHardwareMetricSampler :
         lock (lifecycleGate)
         {
             fieldSubscriptionDelivery.RetireAll();
+            snapshotSubscriptionDelivery.RetireAll();
             if (samplingRunId is { } activeRun)
             {
                 _ = publishedSnapshot.CloseHostedRun(
@@ -486,6 +503,7 @@ public sealed partial class WindowsHardwareMetricSampler :
             if (firstDisposal)
             {
                 fieldSubscriptionDelivery.RetireAll();
+                snapshotSubscriptionDelivery.RetireAll();
                 if (samplingRunId is { } activeRun)
                 {
                     _ = publishedSnapshot.CloseHostedRun(

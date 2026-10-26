@@ -11,6 +11,7 @@ namespace ResourceManager.App.Infrastructure.Monitoring;
 public sealed partial class WindowsHardwareMetricSampler
 {
     private readonly NativeFieldSubscriptionDelivery fieldSubscriptionDelivery = new();
+    private readonly NativeCurrentValueSubscriptionDelivery<HardwareMetricSnapshot> snapshotSubscriptionDelivery = new();
 
     internal IDisposable AcquireFieldSubscription(string subscriptionId,
         ImmutableArray<FieldReference> fields, MetricFieldSelection[] selections, TimeSpan interval,

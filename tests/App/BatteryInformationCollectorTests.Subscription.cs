@@ -44,10 +44,9 @@ public sealed partial class BatteryInformationCollectorTests
         await sampler.StartAsync(timeout.Token);
         try
         {
-            await using var stream = sampler.SubscribeAsync("battery-consumer", request, TimeSpan.FromMinutes(10), timeout.Token)
-                .GetAsyncEnumerator(timeout.Token);
-            Assert.True(await stream.MoveNextAsync());
-            var value = Assert.Single(Assert.Single(MetricDeviceFields.Read(stream.Current, devices[1].ExactIdentityKey,
+            using var demand = sampler.AcquireSubscription("battery-consumer", request, TimeSpan.FromMinutes(10));
+            var current = await HardwareMetricCurrentTestWait.ReadAsync(sampler, request, timeout.Token);
+            var value = Assert.Single(Assert.Single(MetricDeviceFields.Read(current, devices[1].ExactIdentityKey,
                 new HashSet<string> { "battery_all_remaining_capacity_actual_relative_units" })).Fields);
             Assert.Equal(SamplingObservationStatus.Current, value.Status);
             Assert.Equal(25000, value.NumericValue);

@@ -275,12 +275,6 @@ public sealed class NvidiaVideoMetricsRecordedTests
         Assert.All(ReadFields(warm, device), value => Assert.Null(value.NumericValue));
         Assert.Equal(0, readerCalls);
 
-        await using var stream = sampler.SubscribeAsync(
-            "nvml-video-recorded",
-            request,
-            TimeSpan.FromSeconds(1),
-            timeout.Token).GetAsyncEnumerator(timeout.Token);
-
         // An empty whole-source result marks NVML unavailable for the existing
         // five-second cooldown, so exercise valid zero before that terminal phase.
         var phases = new[] { 0, 1, 2, 4, 3 };
@@ -288,9 +282,7 @@ public sealed class NvidiaVideoMetricsRecordedTests
         {
             var currentPhase = phases[phaseIndex];
             Volatile.Write(ref phase, currentPhase);
-            var next = stream.MoveNextAsync().AsTask();
             var captured = await sampler.CaptureSnapshotAsync(request, timeout.Token);
-            Assert.True(await next.WaitAsync(timeout.Token));
             Assert.Equal(phaseIndex + 1, readerCalls);
 
             var expected = currentPhase switch
@@ -312,7 +304,6 @@ public sealed class NvidiaVideoMetricsRecordedTests
                 4 => VideoCodes.ToDictionary(static code => code, static _ => (double?)0),
                 _ => VideoCodes.ToDictionary(static code => code, static _ => (double?)null)
             };
-            AssertVideoFields(captured, stream.Current, device, expected);
             AssertVideoFields(captured, sampler.ReadLatest(request)!, device, expected);
             AssertVideoFields(captured, await sampler.GetSnapshotAsync(request, timeout.Token), device, expected);
         }

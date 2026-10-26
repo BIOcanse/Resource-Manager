@@ -44,11 +44,10 @@ public sealed partial class NumaMemoryInformationCollectorTests
         await sampler.StartAsync(timeout.Token);
         try
         {
-            await using var stream = sampler.SubscribeAsync("numa-consumer", request, TimeSpan.FromMinutes(10), timeout.Token)
-                .GetAsyncEnumerator(timeout.Token);
-            Assert.True(await stream.MoveNextAsync());
-            AssertNode(stream.Current, "windows-numa-node|9", "9007199254740993");
-            AssertCapacityNode(stream.Current, "windows-numa-node|9", "123");
+            using var demand = sampler.AcquireSubscription("numa-consumer", request, TimeSpan.FromMinutes(10));
+            var current = await HardwareMetricCurrentTestWait.ReadAsync(sampler, request, timeout.Token);
+            AssertNode(current, "windows-numa-node|9", "9007199254740993");
+            AssertCapacityNode(current, "windows-numa-node|9", "123");
             Assert.Equal(new ushort[] { 9 }, reads);
             Assert.Equal(new ushort[] { 9 }, capacityReads);
             var snapshot = await sampler.GetSnapshotAsync(request, timeout.Token);
