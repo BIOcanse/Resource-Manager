@@ -63,6 +63,9 @@ const defaultScenario = {
   cpuGrade: "normal",
   resourceBreakdownGeneration: 0,
   resourceSegmentCount: 1,
+  // "audit"：资源条换成一组混合数据（各展示分组、很小的段、系统/驱动保留残差），值随 resourceBreakdownGeneration 变；
+  // 默认 "uniform" 是 resourceSegmentCount 个等值的“其它”软件。
+  resourceSoftwareMix: "uniform",
   resourceDetailsDelayMs: 0,
   resourceCpuValue: null,
   resourceTableVariant: "normal",
@@ -1505,6 +1508,7 @@ function resetScenario() {
 function settleMockValueSlots(patch) {
   if (Object.hasOwn(patch, "resourceBreakdownGeneration")
     || Object.hasOwn(patch, "resourceSegmentCount")
+    || Object.hasOwn(patch, "resourceSoftwareMix")
     || Object.hasOwn(patch, "resourceTableVariant")) {
     resourceSlotCapturedAt = now();
   }
@@ -1940,6 +1944,9 @@ function resourceBreakdown(capturedAt = now(), processDetailSoftwareIds = new Se
   const generation = Math.max(
     0,
     Math.floor(Number(scenario.resourceBreakdownGeneration) || 0));
+  if (scenario.resourceSoftwareMix === "audit") {
+    return auditResourceBreakdown(capturedAt, generation, processDetailSoftwareIds, measures, modes, keepMissingTotals);
+  }
   const cpuValue = scenario.resourceCpuValue ?? [12, 38, 21, 55][generation % 4];
   const segmentCount = normalizeFixtureCount(scenario.resourceSegmentCount, 1, 1000);
   const softwareCatalog = Array.from({ length: segmentCount }, (_, index) => [
@@ -2004,6 +2011,56 @@ function resourceBreakdown(capturedAt = now(), processDetailSoftwareIds = new Se
     return [indexes.get(row[0]), ...row.slice(1)];
   });
   return { version: 8, capturedAt: bars.length ? capturedAt : null, softwareCatalog: selectedCatalog, bars };
+}
+
+// 混合数据（resourceSoftwareMix: "audit"）：各展示分组都有、最后几段很小、末尾是系统/驱动保留残差；
+// 每一代按各自的相位小幅变化，顺序不变，用来看配色、小段、分隔线和数据更新时的过渡；代数除以 4 余 3 时第三个软件退出。
+const auditSoftware = [
+  ["frontend-harness.audit.browser", "Microsoft Edge", "other", "other", 4.2, 9.5],
+  ["frontend-harness.audit.editor", "Visual Studio Code", "adapted", "adapted", 2.6, 6.1],
+  ["frontend-harness.audit.game", "Steam Client Bootstrapper", "other", "other", 1.4, 3.2],
+  ["frontend-harness.audit.service", "", "windows_service", "windows_service", 1.1, 2.4],
+  ["frontend-harness.audit.shell", "Windows Explorer", "windows_system", "windows_system", 0.6, 1.8],
+  ["frontend-harness.audit.defender", "Microsoft Defender", "windows_component", "windows_component", 0.45, 1.1],
+  ["frontend-harness.audit.chat", "Discord", "adapted", "adapted", 0.12, 0.4],
+  ["frontend-harness.audit.tray", "Logitech G HUB", "other", "other", 0.05, 0.15],
+  ["frontend-harness.audit.tiny", "OneDrive", "other", "other", 0.02, 0.06],
+  ["frontend-harness.audit.tiniest", "Everything", "adapted", "adapted", 0.008, 0.02]
+];
+
+function auditResourceBreakdown(capturedAt, generation, processDetailSoftwareIds, measures, modes, keepMissingTotals) {
+  const softwareCatalog = [
+    ...auditSoftware.map(([id, name, kind, displayKind]) => [id, name, kind, displayKind]),
+    ["resource-residual:memory.usage", "", "windows_system", "windows_system"],
+    ["resource-residual:cpu.usage", "", "windows_system", "windows_system"]
+  ];
+  const factor = index => 1 + 0.28 * Math.sin(generation * 1.7 + index * 0.9);
+  const rows = (column, capacity, residualIndex, residualValue) => {
+    const software = auditSoftware.flatMap((entry, index) => generation % 4 === 3 && index === 2 ? [] : [entry]).map((entry) => {
+      const index = auditSoftware.indexOf(entry);
+      const value = entry[column] * factor(index);
+      const processes = processDetailSoftwareIds.has(entry[0]) ? [[5000 + index, `${entry[0].split(".").pop()}.exe`,
+        null, value, value * 100 / capacity, 100, "测试用户", "x64", "direct", 0, String(132000000000000000n + BigInt(5000 + index))]] : [];
+      return [index, value, value * 100 / capacity, processes.length || 1, 0, processes];
+    });
+    return [...software, [residualIndex, residualValue, residualValue * 100 / capacity, 0, 0, []]];
+  };
+  const memory = rows(4, 32, auditSoftware.length, 6.8 + 0.6 * Math.sin(generation));
+  const cpu = rows(5, 100, auditSoftware.length + 1, 4 + 1.5 * Math.cos(generation));
+  const total = items => items.reduce((sum, row) => sum + row[1], 0);
+  return {
+    version: 8,
+    capturedAt,
+    softwareCatalog,
+    bars: [
+      { metricId: "cpu.usage", unit: "%", scaleMode: "capacity", totalValue: total(cpu), capacityValue: 100,
+        totalSystemPercent: total(cpu), totalDisplay: `${total(cpu).toFixed(1)}%`, software: cpu },
+      { metricId: "memory.usage", processFieldName: automaticProcessFields["memory.usage"], unit: "GB", scaleMode: "capacity",
+        totalValue: total(memory), capacityValue: 32, totalSystemPercent: total(memory) * 100 / 32,
+        totalDisplay: `${total(memory).toFixed(1)} GB`, software: memory },
+      ...resourceMeasureBars(softwareCatalog, measures, modes, processDetailSoftwareIds, keepMissingTotals)
+    ]
+  };
 }
 
 // 按进程字段订阅的资源条（后端 ResourceBreakdownWireSnapshot.ProjectProcessMemoryBars 的形状）：
