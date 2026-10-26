@@ -13,7 +13,7 @@ function networkPort(state) {
     display: null,
     network: { interfaceName: "Fixture Ethernet", connectionState: state,
       transmitLinkSpeed: null, receiveLinkSpeed: null, permanentAddress: null,
-      activeMtuBytes: null, hardwareInterface: true, connectorPresent: true },
+      activeMtuBytes: null, hardwareInterface: true, connectorPresent: true, wireless: null },
     transport: { code: null, reason: "not-queried", ruleId: null, evidence: [] },
     idResolution: null, advancedInterconnect: null, usb: null, hardwareIds: [], compatibleIds: [],
     devNodeStatus: null, problemCode: null, hid: null, camera: null, smartDevice: null, storage: null
