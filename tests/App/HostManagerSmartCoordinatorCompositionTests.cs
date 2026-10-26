@@ -25,26 +25,32 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
             descriptor.ServiceType == typeof(HostManagerSmartCoordinator));
         var contract = Assert.Single(services, static descriptor =>
             descriptor.ServiceType == typeof(IHostManagerSmartCoordinator));
-        var hosted = Assert.Single(services, static descriptor =>
-            descriptor.ServiceType == typeof(IHostedService)
-            && descriptor.ImplementationType != typeof(BusinessBlockDependencyLifetime));
         var dependencyLifetime = Assert.Single(services, static descriptor =>
             descriptor.ServiceType == typeof(IHostedService)
             && descriptor.ImplementationType == typeof(BusinessBlockDependencyLifetime));
 
-        Assert.Equal(ServiceLifetime.Singleton, concrete.Lifetime);
-        Assert.Equal(ServiceLifetime.Singleton, contract.Lifetime);
-        Assert.Equal(ServiceLifetime.Singleton, hosted.Lifetime);
-        Assert.Equal(ServiceLifetime.Singleton, dependencyLifetime.Lifetime);
-        Assert.Equal(typeof(HostManagerSmartCoordinator), concrete.ImplementationType);
-
         var owner = (HostManagerSmartCoordinator)RuntimeHelpers.GetUninitializedObject(
             typeof(HostManagerSmartCoordinator));
         var provider = new SingleServiceProvider(owner);
+        // Other branches have hosted adapters too; only the coordinator's alias
+        // must be unique and must reuse the concrete/interface owner.
+        var hosted = Assert.Single(services
+            .Where(static descriptor => descriptor.ServiceType == typeof(IHostedService)
+                && descriptor.ImplementationFactory is not null)
+            .Select(descriptor => (Descriptor: descriptor,
+                Service: descriptor.ImplementationFactory!(provider))),
+            static entry => entry.Service is NonOwningHostedService<HostManagerSmartCoordinator>);
+
+        Assert.Equal(ServiceLifetime.Singleton, concrete.Lifetime);
+        Assert.Equal(ServiceLifetime.Singleton, contract.Lifetime);
+        Assert.Equal(ServiceLifetime.Singleton, hosted.Descriptor.Lifetime);
+        Assert.Equal(ServiceLifetime.Singleton, dependencyLifetime.Lifetime);
+        Assert.Equal(typeof(HostManagerSmartCoordinator), concrete.ImplementationType);
+
         Assert.Same(owner, contract.ImplementationFactory!(provider));
         var hostedAlias = Assert.IsType<
             NonOwningHostedService<HostManagerSmartCoordinator>>(
-                hosted.ImplementationFactory!(provider));
+                hosted.Service);
         Assert.Same(owner, hostedAlias.Service);
 
         Assert.DoesNotContain(services, static descriptor =>
@@ -741,8 +747,12 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
 
     private sealed class SingleServiceProvider(HostManagerSmartCoordinator owner) : IServiceProvider
     {
+        private NativeEtwLifetimeService? nativeLifetime;
+
         public object? GetService(Type serviceType)
-            => serviceType == typeof(HostManagerSmartCoordinator) ? owner : null;
+            => serviceType == typeof(HostManagerSmartCoordinator) ? owner
+                : serviceType == typeof(NativeEtwLifetimeService)
+                    ? nativeLifetime ??= new NativeEtwLifetimeService(this) : null;
     }
 
     private static MethodInfo RequireSinglePrivateMethod(string name)
