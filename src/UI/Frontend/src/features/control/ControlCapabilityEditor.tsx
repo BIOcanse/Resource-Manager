@@ -20,6 +20,7 @@ import type { ControlCapability, ControlSetting } from "./controlTypes.ts";
  */
 import {
   decimalsForStep,
+  actualRepeatsNumberEditor,
   formatActualNumber,
   formatControlNumber,
   snapControlNumber,
@@ -28,6 +29,7 @@ import {
 } from "./controlNumber.ts";
 
 export {
+  actualRepeatsNumberEditor,
   decimalsForStep,
   formatActualNumber,
   formatControlNumber,

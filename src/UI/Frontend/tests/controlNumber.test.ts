@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  actualRepeatsNumberEditor,
   decimalsForStep,
   effectiveStep,
   formatActualNumber,
@@ -94,3 +95,14 @@ assert.equal(formatActualNumber(115), "115");
 assert.equal(formatActualNumber(0), "0");
 
 console.log("controlNumber 契约通过");
+
+/*
+ * **同一个值只显示一次。** 没设定时数字框显示的就是实际读数；设定值读出来和实际相同也是同一个数，
+ * 这两种情况旁边不再写"• 0 mV"。设定值和实际不同才写出实际读数。
+ */
+assert.equal(actualRepeatsNumberEditor(undefined, 0), true);
+assert.equal(actualRepeatsNumberEditor(undefined, 12.34), true);
+assert.equal(actualRepeatsNumberEditor(0, 0), true);
+assert.equal(actualRepeatsNumberEditor(-25, -25.04), true);
+assert.equal(actualRepeatsNumberEditor(-25, -30), false);
+assert.equal(actualRepeatsNumberEditor(115, 114.6), false);

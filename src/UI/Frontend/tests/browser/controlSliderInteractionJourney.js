@@ -62,7 +62,10 @@ export default async function controlSliderInteractionJourney(page, baseUrl) {
   const card = page.locator(".control-object").filter({ hasText: "Fan A" });
   await openControl();
   await card.getByRole("radio", { name: "软件管理", exact: true }).click();
-  await card.locator(".control-capability-actual").filter({ hasText: "40" }).waitFor();
+  // 没设定时数字框显示的就是实际读数 40：只画滑轨刻度，旁边不再写第二遍。
+  await card.locator('.control-editor-actual-mark[aria-label*="40"]').first().waitFor();
+  assert.equal(await card.locator(".control-capability-actual").filter({ hasText: "40" }).count(), 0,
+    "An unset number item must not show its actual value twice");
   await card.getByRole("checkbox", { name: "固定转速", exact: true }).check();
 
   const slider = card.getByRole("slider", { name: "固定转速", exact: true });

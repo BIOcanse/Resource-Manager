@@ -61,6 +61,17 @@ export function formatActualNumber(value: number): string {
 }
 
 /**
+ * 数字项旁边的实际读数要不要再写一遍。
+ *
+ * 没有设定值时，数字框里显示的就是实际读数；设定值和实际读数显示出来相同时，也是同一个数。
+ * 这两种情况数字框和滑轨上的实际刻度已经说清楚，旁边再写一遍就是同一个值出现两次。
+ * 只有设定值和实际读数不同，旁边那行才有新信息。
+ */
+export function actualRepeatsNumberEditor(setting: number | undefined, actual: number): boolean {
+  return setting === undefined || formatActualNumber(setting) === formatActualNumber(actual);
+}
+
+/**
  * 对齐到步长，**不夹范围**。
  *
  * 档位是硬件的真实约束（这些寄存器就是一个字节，半瓦根本设不出来），

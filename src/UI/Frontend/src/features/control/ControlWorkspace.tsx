@@ -27,6 +27,7 @@ import {
 } from "./controlApi.ts";
 import {
   ControlCapabilityEditor,
+  actualRepeatsNumberEditor,
   formatActualNumber,
   initialSettingFor
 } from "./ControlCapabilityEditor";
@@ -545,6 +546,13 @@ function ControlObjectCard(props: {
         || typeof value.toggle === "boolean") ? value : null;
   };
 
+  const actualReadoutOf = (capability: ControlCapability) => {
+    const value = actualOf(capability.id);
+    if (!value || capability.valueKind !== "number" || typeof value.number !== "number") return value;
+    const setting = edited().find((entry) => entry.capabilityId === capability.id)?.number;
+    return actualRepeatsNumberEditor(setting, value.number) ? null : value;
+  };
+
   const actualText = (value: ControlActualValue) => typeof value.toggle === "boolean"
     ? (value.toggle ? uiText.control.presentation.toggleOn : uiText.control.presentation.toggleOff)
     : `${formatActualNumber(value.number!)}${value.unit ? ` ${controlDisplayText(value.unit)}` : ""}`;
@@ -1031,7 +1039,11 @@ function ControlObjectCard(props: {
                   同一个值还标在滑轨上，一眼就看得出设定值和实际差多少。
                   文字只留给读屏 —— 看得见的人从形状读得出来，读不见的人需要那句话。
                 */}
-                <Show when={actualOf(capability.id)}>
+                {/*
+                  数字项的数字框已经显示这个值时（没设定，或设定值读出来相同）不再写第二遍，
+                  规则见 controlNumber.ts 的 actualRepeatsNumberEditor。
+                */}
+                <Show when={actualReadoutOf(capability)}>
                   {(value) => (
                     <span
                       class="control-capability-actual"

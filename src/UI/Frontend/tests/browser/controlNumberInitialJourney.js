@@ -34,9 +34,12 @@ export default async function controlNumberInitialJourney(page, baseUrl) {
     "An unsupported capability remains read-only when software ownership is selected");
   for (const card of [a, b]) {
     await card.getByRole("radio", { name: "软件管理", exact: true }).click();
-    if (card === a) await a.locator(".control-capability-actual").filter({ hasText: "47" }).waitFor();
+    // 实际读数 47 画在滑轨刻度上、显示在数字框里；数字框已经显示它，旁边不再写第二遍。
+    if (card === a) await a.locator('.control-editor-actual-mark[aria-label*="47"]').first().waitFor();
     await card.getByRole("checkbox", { name: "固定转速", exact: true }).check();
   }
+  assert.equal(await a.locator(".control-capability-actual").filter({ hasText: "47" }).count(), 0,
+    "The actual value the number box already shows must not be repeated beside it");
   assert.equal(await a.getByRole("spinbutton").inputValue(), "47");
   assert.equal(await b.getByRole("spinbutton").inputValue(), "");
   assert.equal(await b.getByRole("button", { name: "应用", exact: true }).isEnabled(), false);
