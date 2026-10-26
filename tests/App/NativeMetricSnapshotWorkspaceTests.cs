@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Buffers.Binary;
 using System.Diagnostics;
@@ -12,6 +13,17 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class NativeMetricSnapshotWorkspaceTests
 {
+    // Trace is process-global; other test classes can write during our assertions.
+    // Queue snapshots are safe even when an already-dispatched callback finishes.
+    private sealed class ConcurrentTraceCapture : TraceListener
+    {
+        private readonly ConcurrentQueue<string> messages = new();
+        public override bool IsThreadSafe => true;
+        public override void Write(string? message) { if (message is not null) messages.Enqueue(message); }
+        public override void WriteLine(string? message) => Write(message + Environment.NewLine);
+        internal string Read() => string.Concat(messages.ToArray());
+    }
+
     [Fact]
     public void CompletionFrameUsesCommandTimeWithoutReplacingObservationTime()
     {
@@ -159,8 +171,7 @@ public sealed class NativeMetricSnapshotWorkspaceTests
             $"metric-corrupt-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
         var path = Path.Combine(root, "state.bin");
-        using var messages = new StringWriter();
-        using var listener = new TextWriterTraceListener(messages);
+        using var listener = new ConcurrentTraceCapture();
         Trace.Listeners.Add(listener);
         var warnings = new List<string>();
         try
@@ -181,10 +192,10 @@ public sealed class NativeMetricSnapshotWorkspaceTests
                 DateTimeOffset.UtcNow);
 
             Assert.False(File.Exists(path));
-            var diagnostics = useWarningCallback ? Assert.Single(warnings) : messages.ToString();
+            var diagnostics = useWarningCallback ? Assert.Single(warnings) : listener.Read();
             Assert.Contains("Discarding invalid metric-snapshot catalog persistence", diagnostics);
             Assert.Contains("persistence envelope is truncated", diagnostics);
-            if (useWarningCallback) Assert.DoesNotContain("Discarding invalid metric-snapshot catalog persistence", messages.ToString());
+            if (useWarningCallback) Assert.DoesNotContain("Discarding invalid metric-snapshot catalog persistence", listener.Read());
             Assert.Equal(
                 NativeMetricSnapshotPhase.CatalogReady,
                 (NativeMetricSnapshotPhase)header.Phase);
@@ -204,8 +215,7 @@ public sealed class NativeMetricSnapshotWorkspaceTests
         var root = Path.Combine(Path.GetTempPath(), $"metric-v2-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
         var path = Path.Combine(root, "state.bin");
-        using var messages = new StringWriter();
-        using var listener = new TextWriterTraceListener(messages);
+        using var listener = new ConcurrentTraceCapture();
         Trace.Listeners.Add(listener);
         var warnings = new List<string>();
         try
@@ -236,10 +246,10 @@ public sealed class NativeMetricSnapshotWorkspaceTests
             Assert.Empty(restarted.CreateCatalogHandleMap().Entries);
             var header = restarted.ReplaceCatalog(CreateProjection(plan, restarted.CreateCatalogHandleMap(), []), DateTimeOffset.UtcNow);
             Assert.Equal(NativeMetricSnapshotPhase.CatalogReady, (NativeMetricSnapshotPhase)header.Phase);
-            var diagnostics = useWarningCallback ? Assert.Single(warnings) : messages.ToString();
+            var diagnostics = useWarningCallback ? Assert.Single(warnings) : listener.Read();
             Assert.Contains($"envelope version 2 at '{path}'", diagnostics);
             Assert.Contains("Sampling values will start empty", diagnostics);
-            if (useWarningCallback) Assert.DoesNotContain($"envelope version 2 at '{path}'", messages.ToString());
+            if (useWarningCallback) Assert.DoesNotContain($"envelope version 2 at '{path}'", listener.Read());
         }
         finally
         {

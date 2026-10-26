@@ -149,9 +149,18 @@ public sealed class HostedResourcePublicationStateTests
             90,
             published.Bars.Single(static bar =>
                 bar.MetricId == ResourceBreakdownMetricIds.CpuUsage).TotalValue);
-        Assert.DoesNotContain(
-            published.Bars,
-            static bar => bar.MetricId == ResourceBreakdownMetricIds.MemoryUsage);
+        // runtime_process_attribution_and_io_network_telemetry.md,
+        // "Resource bar and fact unavailable reasons": requested items remain
+        // present with null readings and a reason, independently of healthy datasets.
+        var unavailable = Assert.Single(published.Bars, static bar =>
+            bar.MetricId == ResourceBreakdownMetricIds.MemoryUsage);
+        Assert.Null(unavailable.TotalValue);
+        Assert.Null(unavailable.CapacityValue);
+        Assert.Null(unavailable.TotalSystemPercent);
+        Assert.Null(unavailable.SharedValue);
+        Assert.Empty(unavailable.Software);
+        Assert.Equal(SamplingObservationStatus.Unavailable, unavailable.ObservationStatus);
+        Assert.Equal("resource-breakdown-dataset-observation-not-current", unavailable.UnavailableReason);
         Assert.Equal(ResourceBreakdownSamplingStatuses.Ready, published.Sampling.Status);
         Assert.Equal(
             ResourceBreakdownSamplingStatuses.Failed,

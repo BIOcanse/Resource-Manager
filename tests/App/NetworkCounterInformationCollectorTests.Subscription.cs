@@ -43,22 +43,36 @@ public sealed partial class NetworkCounterInformationCollectorTests
         {
             await using(var stream=sampler.SubscribeAsync("network-first",request,TimeSpan.FromMilliseconds(100),timeout.Token).GetAsyncEnumerator(timeout.Token))
             {
-                Assert.True(await stream.MoveNextAsync()); Check(stream.Current,null);
-                Assert.True(await stream.MoveNextAsync()); Check(stream.Current,200);
+                await ReadCurrentRateAsync(stream);
             }
             await Task.Delay(150,timeout.Token);var reads=api.Reads.Count;
             Check(await sampler.GetSnapshotAsync(request,timeout.Token),200);sampler.ReadLatest(request);
             await Task.Delay(150,timeout.Token);Assert.Equal(reads,api.Reads.Count);
             await using(var stream=sampler.SubscribeAsync("network-second",request,TimeSpan.FromMilliseconds(100),timeout.Token).GetAsyncEnumerator(timeout.Token))
             {
-                Assert.True(await stream.MoveNextAsync());Check(stream.Current,null);
-                Assert.True(await stream.MoveNextAsync());Check(stream.Current,200);
+                await ReadCurrentRateAsync(stream);
                 await sampler.StopAsync(CancellationToken.None);var stopped=api.Reads.Count;
                 Check(await sampler.GetSnapshotAsync(request,timeout.Token),200);Assert.Equal(stopped,api.Reads.Count);
             }
         }
         finally { await sampler.StopAsync(CancellationToken.None); }
         Assert.All(api.Reads,luid=>Assert.Equal(target.Luid,luid));Assert.Equal(1,api.DirectoryReads);
+        // subscription_core_implementation_2026-10-07.md, "当前合同", first
+        // paragraph: each period delivers the latest completed current value.
+        // Baseline publications can be repeated or superseded before delivery;
+        // a message's ordinal is not a counter-sampling acknowledgement.
+        async Task ReadCurrentRateAsync(IAsyncEnumerator<HardwareMetricSnapshot> stream)
+        {
+            while (true)
+            {
+                Assert.True(await stream.MoveNextAsync());
+                var speed = MetricDeviceFields.Read(stream.Current, target.ExactIdentityKey).Single().Fields
+                    .Single(field => field.Name == "network_all_rx_bytes_per_second_actual");
+                if (speed.NumericValue is null) { Check(stream.Current, null); continue; }
+                Check(stream.Current, 200);
+                return;
+            }
+        }
         void Check(HardwareMetricSnapshot snapshot,double? rate)
         {
             var fields=MetricDeviceFields.Read(snapshot,target.ExactIdentityKey).Single().Fields;

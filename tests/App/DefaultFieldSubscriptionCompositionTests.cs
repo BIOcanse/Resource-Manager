@@ -77,7 +77,7 @@ public sealed class DefaultFieldSubscriptionCompositionTests
         var tracker = new NativeItemSamplingSubscriptionTracker<string[], SubscriptionRunPermit>(owner, 1,
             static fields => string.Join(',', fields), fields => fields.Select(Item),
             (due, sources) => sources.SelectMany(static source => source.Request)
-                .Where(field => due.Contains(Item(field))).Distinct().Order().ToArray(), false);
+                .Where(field => due.Contains(Item(field))).Distinct().Order().ToArray(), false, clock: new FrozenClock());
         var now = DateTimeOffset.FromUnixTimeMilliseconds(59_900);
         tracker.TrackPersistent("image-fast", ["image"], now, TimeSpan.FromSeconds(1));
         tracker.TrackPersistent("sid-slow", ["sid"], now, TimeSpan.FromMinutes(1));
@@ -86,9 +86,8 @@ public sealed class DefaultFieldSubscriptionCompositionTests
         var completion = tracker.MarkSampled(initial.Request!, now);
         Assert.Equal(new[] { "image", "rx", "sid" }, initial.Request!);
         Assert.Equal(now.AddSeconds(1), completion.Schedule.NextWakeAt);
-        // Poll just after the returned deadline; the production tracker also
-        // advances its native monotonic clock while these commands execute.
-        var fastAt = completion.Schedule.NextWakeAt!.Value.AddMilliseconds(100);
+        // Both time inputs are controlled: plan exactly at the returned deadline.
+        var fastAt = completion.Schedule.NextWakeAt!.Value;
         var fastOnly = tracker.CreatePlan(fastAt);
         if (fastOnly.Request is { } fast) tracker.MarkSampled(fast, fastAt);
         Assert.Equal(new[] { "basic" }, fastOnly.DueItemIds);
@@ -231,6 +230,11 @@ public sealed class DefaultFieldSubscriptionCompositionTests
         var configuration = Configuration();
         return new(scope, Settings(), in configuration, failure => throw new InvalidOperationException("Unexpected worker failure", failure.Error), TimeSpan.FromMilliseconds(1));
     }
+    private sealed class FrozenClock : TimeProvider
+    {
+        public override long GetTimestamp() => 0;
+    }
+
     private sealed class RecordedScope : IReadWriteCollectionBorrow, IReadWriteBackend
     {
         internal readonly FieldReference A = new("recorded-process", "image");

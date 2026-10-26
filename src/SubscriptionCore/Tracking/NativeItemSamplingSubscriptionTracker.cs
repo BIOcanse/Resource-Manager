@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using System.Diagnostics;
 using System.Collections.Immutable;
 
 using ResourceManager.Subscription.Native;
@@ -42,7 +41,8 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
     private ulong planEpoch;
     private ulong replayOperationEpoch;
     private ulong lastCommandMilliseconds;
-    private long lastCommandStopwatchTimestamp;
+    private long lastCommandTimestamp;
+    private readonly TimeProvider clock = TimeProvider.System;
 
     public NativeItemSamplingSubscriptionTracker(
         ISamplingSubscriptionSessionOwner<TContext> owner,
@@ -62,6 +62,15 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
         this.createRequest = createRequest;
         this.coalesceItemsIntoLatestCapture = coalesceItemsIntoLatestCapture;
     }
+
+    // Tests controlling UTC must also control the elapsed monotonic time.
+    internal NativeItemSamplingSubscriptionTracker(
+        ISamplingSubscriptionSessionOwner<TContext> owner, int roleId,
+        Func<TRequest, string> createSourceKey, Func<TRequest, IEnumerable<string>> getItemIds,
+        Func<IReadOnlyList<string>, IReadOnlyList<NativeItemSamplingSubscriptionSourceView<TRequest>>, TRequest?> createRequest,
+        bool coalesceItemsIntoLatestCapture, TimeProvider clock)
+        : this(owner, roleId, createSourceKey, getItemIds, createRequest, coalesceItemsIntoLatestCapture)
+        => this.clock = clock ?? throw new ArgumentNullException(nameof(clock));
 
     /// <summary>Returns the exact native trigger item identities represented by this request.</summary>
     public IReadOnlyList<string> GetDeliveryItemIds(TRequest request)
@@ -1162,23 +1171,23 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
     private ulong CommandTimestamp(DateTimeOffset value)
     {
         var raw = RawTimestamp(value);
-        var currentStopwatchTimestamp = Stopwatch.GetTimestamp();
+        var currentTimestamp = clock.GetTimestamp();
         if (lastCommandMilliseconds == 0)
         {
             lastCommandMilliseconds = raw;
-            lastCommandStopwatchTimestamp = currentStopwatchTimestamp;
+            lastCommandTimestamp = currentTimestamp;
             return raw;
         }
 
-        var elapsed = Stopwatch.GetElapsedTime(
-            lastCommandStopwatchTimestamp,
-            currentStopwatchTimestamp);
+        var elapsed = clock.GetElapsedTime(
+            lastCommandTimestamp,
+            currentTimestamp);
         var elapsedMilliseconds = checked((ulong)(
             elapsed.Ticks / TimeSpan.TicksPerMillisecond));
         var monotonicCandidate = checked(
             lastCommandMilliseconds + elapsedMilliseconds);
         lastCommandMilliseconds = Math.Max(raw, monotonicCandidate);
-        lastCommandStopwatchTimestamp = currentStopwatchTimestamp;
+        lastCommandTimestamp = currentTimestamp;
         return lastCommandMilliseconds;
     }
 

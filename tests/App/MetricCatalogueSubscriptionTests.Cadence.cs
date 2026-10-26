@@ -40,7 +40,20 @@ public sealed partial class MetricCatalogueSubscriptionTests
     public async Task ComponentRevisionCapturesOnceAndPublishesChangedCatalogRevision()
     {
         var revisions = new ManagementInventoryRevisionOwner();
-        using var fixture = new Fixture(Topology([]), readComponentRevision: () => revisions.Current.ComponentRevision);
+        using var releaseRevisionRead = new ManualResetEventSlim();
+        var revisionReadEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var holdNextRevisionRead = 0;
+        using var fixture = new Fixture(Topology([]), readComponentRevision: () =>
+        {
+            var revision = revisions.Current.ComponentRevision;
+            if (Interlocked.Exchange(ref holdNextRevisionRead, 0) != 0)
+            {
+                revisionReadEntered.TrySetResult();
+                if (!releaseRevisionRead.Wait(TimeSpan.FromSeconds(15)))
+                    throw new TimeoutException("The test did not release the component revision read.");
+            }
+            return revision;
+        });
         using var sampler = Sampler(fixture.Slots, fixture.Catalog, fixture.Owner);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         Assert.Equal(1, fixture.TopologyReads);
@@ -52,9 +65,17 @@ public sealed partial class MetricCatalogueSubscriptionTests
             Assert.True(await stream.MoveNextAsync());
             var originalRevision = fixture.Catalog.Revision;
             Assert.Equal(1, fixture.TopologyReads);
+            // Pin an unchanged round already in progress before the revision changes.
+            // Its delivery is valid, but cannot acknowledge the new catalog yet.
+            Interlocked.Exchange(ref holdNextRevisionRead, 1);
+            await revisionReadEntered.Task.WaitAsync(timeout.Token);
             fixture.Topology = Topology([new(7, "component-disk", 2) { SupportsNvmeHealth = true }]);
             revisions.ObserveComponentContentChanged();
-            Assert.True(await stream.MoveNextAsync());
+            releaseRevisionRead.Set();
+            // Deliveries may already be queued, and each period reads the latest
+            // completed current value. Wait for the published catalog content.
+            do { Assert.True(await stream.MoveNextAsync()); }
+            while (!stream.Current.FieldBindings.Values.Any(binding => binding.DeviceIdentity == "component-disk"));
             Assert.Equal(2, fixture.TopologyReads);
             Assert.NotEqual(originalRevision, fixture.Catalog.Revision);
             Assert.Contains(fixture.Catalog.Current!.FieldBindings.Values,
@@ -70,7 +91,7 @@ public sealed partial class MetricCatalogueSubscriptionTests
             Assert.True(await stream.MoveNextAsync());
             Assert.Equal(2, fixture.TopologyReads);
         }
-        finally { await sampler.StopAsync(CancellationToken.None); }
+        finally { releaseRevisionRead.Set(); await sampler.StopAsync(CancellationToken.None); }
     }
 
     [Fact]
