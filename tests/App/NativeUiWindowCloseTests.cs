@@ -25,8 +25,9 @@ public sealed class NativeUiWindowCloseTests
     [InlineData("dispose")]
     public void EveryClosePathHidesBeforeSurfaceTeardown(string path) => RunSta(() =>
     {
+        using var root = new TestRoot();
         using var proxy = CreateOfflineProxy();
-        using var form = CreateForm(proxy);
+        using var form = CreateForm(proxy, root.Path);
         var handle = form.Handle;
         var bounds = form.Bounds;
         var restoreBounds = form.RestoreBounds;
@@ -95,14 +96,15 @@ public sealed class NativeUiWindowCloseTests
     [Fact]
     public void ClosingOneMainFormAllowsANewWindowOnTheSameUiThread() => RunSta(() =>
     {
+        using var root = new TestRoot();
         using var proxy = CreateOfflineProxy();
-        using (var first = CreateForm(proxy))
+        using (var first = CreateForm(proxy, root.Path))
         {
             SendFrontendCommand(first, "window.close");
             Application.DoEvents();
             Assert.True(first.IsDisposed);
         }
-        using var reopened = CreateForm(proxy);
+        using var reopened = CreateForm(proxy, root.Path);
         Assert.True(reopened.Visible);
         Assert.True(IsWindowVisible(reopened.Handle));
         reopened.Close();
@@ -132,15 +134,12 @@ public sealed class NativeUiWindowCloseTests
         new Uri("http://127.0.0.1:19421/"),
         (_, _) => throw new InvalidOperationException("Close-order tests must not start a browser or contact a backend."));
 
-    private static MainForm CreateForm(FrontendLoopbackProxy proxy)
+    private static MainForm CreateForm(FrontendLoopbackProxy proxy, string root)
     {
-        // The runner sets this before NativeUiPaths' lazy initialization. Never
-        // resolve the installed package, initialize WebView2, or register an instance.
-        var packageRoot = Environment.GetEnvironmentVariable("RESOURCE_MANAGER_PACKAGE_ROOT");
-        Assert.False(string.IsNullOrWhiteSpace(packageRoot));
-        Assert.StartsWith(Path.Combine(RepositoryRoot(), ".local") + Path.DirectorySeparatorChar,
-            Path.GetFullPath(packageRoot!), StringComparison.OrdinalIgnoreCase);
-        var form = new MainForm(_ => { }, () => { }, proxy)
+        // The form gets its WebView paths from this test's own folder. It never
+        // resolves the installed package, initializes WebView2, or registers an instance.
+        var form = new MainForm(_ => { }, () => { }, new WebView2HostConfiguration(
+            Path.Combine(root, "webview"), Path.Combine(root, "frontend-preferences.cache.json"), proxy))
         {
             ShowInTaskbar = false,
             Location = new Point(OffscreenCoordinate, OffscreenCoordinate)
@@ -148,6 +147,20 @@ public sealed class NativeUiWindowCloseTests
         form.ShowPassively();
         Assert.True(form.Visible);
         return form;
+    }
+
+    // One folder per test under the repository's .local, removed when the test ends.
+    private sealed class TestRoot : IDisposable
+    {
+        public TestRoot()
+        {
+            Path = System.IO.Path.Combine(RepositoryRoot(), ".local", "native-window-close-tests", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path);
+        }
+
+        public string Path { get; }
+
+        public void Dispose() => Directory.Delete(Path, recursive: true);
     }
 
     private static void SendFrontendCommand(MainForm form, string command) =>

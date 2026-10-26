@@ -329,7 +329,8 @@ public sealed class ResourceManagerApplicationContext : ApplicationContext
         var form = new MainForm(
             taskManagerShortcutReplacement.SetEnabledFromUi,
             forceTerminateHotkey.Reload,
-            frontendProxy,
+            new WebView2HostConfiguration(
+                NativeUiPaths.WebViewUserDataFolder, NativeUiPaths.FrontendPreferencesPath, frontendProxy),
             batch => backendReady && backendSession is { } session
                 ? session.ExecuteElevatedProcessActionAsync(batch, shutdown.Token)
                 : Task.FromException<string>(new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady)),

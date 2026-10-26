@@ -32,7 +32,7 @@ public sealed partial class MainForm : Form
     internal MainForm(
         Action<bool> taskManagerShortcutReplacementChanged,
         Action editableHotkeysChanged,
-        FrontendLoopbackProxy frontendProxy,
+        WebView2HostConfiguration hostConfiguration,
         Func<ResourceManager.Shared.Runtime.ProcessActionBatch, Task<string>>? elevatedProcessAction = null,
         Func<ResourceManager.Shared.Runtime.ElevatedBackendMutation,
             Task<ResourceManager.Shared.Runtime.ElevatedBackendResponse>>? elevatedBackendRequest = null)
@@ -41,11 +41,7 @@ public sealed partial class MainForm : Form
         this.editableHotkeysChanged = editableHotkeysChanged;
         this.elevatedProcessAction = elevatedProcessAction;
         this.elevatedBackendRequest = elevatedBackendRequest;
-        frontendHost = new WebView2FrontendHost(
-            new WebView2HostConfiguration(
-                NativeUiPaths.WebViewUserDataFolder,
-                NativeUiPaths.FrontendPreferencesPath,
-                frontendProxy));
+        frontendHost = new WebView2FrontendHost(hostConfiguration);
         frontendHost.MessageReceived += HandleFrontendMessageReceived;
         frontendHost.NavigationCompleted += HandleFrontendNavigationCompleted;
         Text = NativeUiText.Current.AppName;
