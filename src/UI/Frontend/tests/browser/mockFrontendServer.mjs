@@ -2892,6 +2892,9 @@ async function subscriptionChannelStream(request, response) {
   response.writeHead(200, {
     "Content-Type": "application/x-ndjson; charset=utf-8",
     "Cache-Control": "no-store",
+    // A canceled POST must close its streaming connection, not leave an unread
+    // response on a reusable socket with live logical subscriptions.
+    "Connection": "close",
     "X-Content-Type-Options": "nosniff"
   });
   for (const rejection of rejections) writeSubscriptionChannelFrame(response, rejection.id, rejection.value);
