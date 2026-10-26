@@ -97,6 +97,19 @@ export const zhMonitorCopy = {
     residualSystem: "系統 / 驅動程式",
     etwResidualProcess: (name: string) => `${name} · 未歸屬 GPU 程序（DXGKrnl/VidMm）`,
     providerNotSplit: "系統共享佔用，無法歸到單個程序。",
+    // 资源条读不到时后端带的原因，一类一句（代码到类的对应在 resourceBarUnavailableReason.ts）。
+    unavailableReason: {
+      warming: "正在建立讀數基準",
+      sourceUnavailable: "讀數來源無法使用",
+      incomplete: "讀數不完整",
+      unsupported: "本機不支援此讀數",
+      totalUnavailable: "整機總量暫時無法取得",
+      missing: "未收到讀數",
+      stale: "讀數未更新",
+      failed: "取樣失敗",
+      invalid: "讀數無效",
+      attributionUnavailable: "暫時無法依軟體拆分"
+    },
     etwSupplement: "已識別到程序，但尚未歸到具體軟體。",
     softwareInnerPercent: "軟體內佔比",
     memoryBasis: "整機：實體記憶體實際用量 / 實體容量。程序分項：私有駐留位元組；共享頁面和系統用量保留在未歸屬部分。讀數無法取得時不顯示程序分項。",

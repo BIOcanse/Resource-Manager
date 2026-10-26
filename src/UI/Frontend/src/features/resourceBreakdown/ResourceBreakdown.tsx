@@ -40,6 +40,7 @@ import {
 } from "../../ui/primitives/activeDescendantListbox.ts";
 import { ResourceTooltipOverlay } from "./ResourceTooltipOverlay.tsx";
 import { isReservedProcess, isReservedSegment, resourceProcessKey } from "./resourceProcessIdentity.ts";
+import { resourceBarUnavailableText } from "./resourceBarUnavailableReason.ts";
 import { readMotionDurationMs } from "../../presentation/motionTokens.ts";
 import { resourceSegmentAtTrackX } from "./resourceTrackInteraction.ts";
 import { resourceEmptyCapacityValue, selectableResourceSegmentIds } from "./resourceSelection.ts";
@@ -477,7 +478,7 @@ function ResourceBreakdownItem(props: {
       <div class="resource-breakdown-header">
         <strong title={props.bar.basis}>{label()}</strong>
         <span title={props.bar.scaleMode === "active" ? uiText.resourceBreakdown.scaleActiveHint : uiText.resourceBreakdown.scaleCapacityHint}>
-          {resourceBarTotalText(props.bar)} · {props.bar.scaleMode === "active" ? uiText.resourceBreakdown.scaleActive : uiText.resourceBreakdown.scaleCapacity}
+          {resourceBarValueText(props.bar)} · {props.bar.scaleMode === "active" ? uiText.resourceBreakdown.scaleActive : uiText.resourceBreakdown.scaleCapacity}
         </span>
         <Show when={props.editMode}>
           <span class="resource-breakdown-order-actions">
@@ -972,6 +973,14 @@ function resourceValueLine(bar: ResourceBarView, segment: { value: number; share
       formatResourceBarValue(bar, segment.value - segment.sharedValue),
       formatResourceBarValue(bar, segment.sharedValue))
     : `${bar.label}: ${formatResourceBarValue(bar, segment.value)}`;
+}
+
+// 条头的读数。后端读不到时带原因（无读数合同）：没有读数就用原因代替数值；总量有但拆不到软件时写在数值后面。
+// 原因按类翻译，不认识的代码原样显示。
+function resourceBarValueText(bar: ResourceBarView) {
+  const reason = bar.unavailableReason ? resourceBarUnavailableText(bar.unavailableReason) : null;
+  if (reason === null) return resourceBarTotalText(bar);
+  return bar.totalValue === null ? reason : `${resourceBarTotalText(bar)} · ${reason}`;
 }
 
 // 含空余时整条是容量：总量后面写上容量，一眼看出条有多长。百分比的容量就是 100%，不重复写。

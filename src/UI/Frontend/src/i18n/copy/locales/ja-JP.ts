@@ -672,6 +672,19 @@ const jaJpAppCopy: AppCopy = {
     residualSystem: "システム / ドライバー",
     etwResidualProcess: (name: string) => `${name} · 未帰属の GPU プロセス（DXGKrnl/VidMm）`,
     providerNotSplit: "単一のプロセスに帰属できない、システム共有の使用量です。",
+    // 资源条读不到时后端带的原因，一类一句（代码到类的对应在 resourceBarUnavailableReason.ts）。
+    unavailableReason: {
+      warming: "計測の基準値を取得中",
+      sourceUnavailable: "計測元を利用できません",
+      incomplete: "計測値が不完全です",
+      unsupported: "このコンピューターでは非対応",
+      totalUnavailable: "システム全体の値を一時的に取得できません",
+      missing: "計測値を受信していません",
+      stale: "計測値が最新ではありません",
+      failed: "サンプリングに失敗しました",
+      invalid: "計測値が無効です",
+      attributionUnavailable: "現在ソフトウェア別に分けられません"
+    },
     etwSupplement: "プロセスは特定されましたが、まだ特定のソフトウェアに帰属していません。",
     softwareInnerPercent: "ソフトウェア内の割合",
     memoryBasis: "システム：物理メモリ実使用量 / 容量。プロセス別の区分：プライベート常駐バイト。共有ページとシステム使用量は未帰属部分に残ります。読み取り値を取得できない場合、プロセス別の区分は表示しません。",

@@ -101,6 +101,19 @@ export const enMonitorCopy: Pick<
     residualSystem: "System / drivers",
     etwResidualProcess: (name: string) => `${name} · Unattributed GPU process (DXGKrnl/VidMm)`,
     providerNotSplit: "Shared system usage that cannot be attributed to a single process.",
+    // 资源条读不到时后端带的原因，一类一句（代码到类的对应在 resourceBarUnavailableReason.ts）。
+    unavailableReason: {
+      warming: "Establishing a reading baseline",
+      sourceUnavailable: "Reading source unavailable",
+      incomplete: "Reading incomplete",
+      unsupported: "Not supported on this computer",
+      totalUnavailable: "System total temporarily unavailable",
+      missing: "No reading received",
+      stale: "Reading not current",
+      failed: "Sampling failed",
+      invalid: "Invalid reading",
+      attributionUnavailable: "Cannot be split by software at the moment"
+    },
     etwSupplement: "Processes identified, but not yet attributed to specific software.",
     softwareInnerPercent: "Share within software",
     memoryBasis: "System: physical memory used / capacity. Process segments: private resident bytes; shared pages and system usage remain unattributed. Process segments are not shown when readings are unavailable.",

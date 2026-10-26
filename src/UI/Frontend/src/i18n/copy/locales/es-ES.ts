@@ -672,6 +672,19 @@ const esEsAppCopy: AppCopy = {
     residualSystem: "Sistema / controladores",
     etwResidualProcess: (name: string) => `${name} · Proceso de GPU sin atribuir (DXGKrnl/VidMm)`,
     providerNotSplit: "Uso compartido del sistema que no puede atribuirse a un único proceso.",
+    // 资源条读不到时后端带的原因，一类一句（代码到类的对应在 resourceBarUnavailableReason.ts）。
+    unavailableReason: {
+      warming: "Estableciendo la referencia de lectura",
+      sourceUnavailable: "Fuente de lectura no disponible",
+      incomplete: "Lectura incompleta",
+      unsupported: "No compatible con este equipo",
+      totalUnavailable: "Total del sistema no disponible temporalmente",
+      missing: "No se recibió ninguna lectura",
+      stale: "La lectura no está actualizada",
+      failed: "Error de muestreo",
+      invalid: "Lectura no válida",
+      attributionUnavailable: "No se puede desglosar por software en este momento"
+    },
     etwSupplement: "Procesos identificados, pero aún no atribuidos a un software concreto.",
     softwareInnerPercent: "Proporción dentro del software",
     memoryBasis: "Sistema: memoria física ocupada / capacidad. Segmentos de procesos: bytes residentes privados; las páginas compartidas y el uso del sistema quedan sin atribuir. Si no hay lecturas disponibles, no se muestran los segmentos de procesos.",

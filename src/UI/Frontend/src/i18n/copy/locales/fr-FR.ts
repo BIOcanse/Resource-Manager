@@ -672,6 +672,19 @@ const frFrAppCopy: AppCopy = {
     residualSystem: "Système / pilotes",
     etwResidualProcess: (name: string) => `${name} · Processus GPU non attribué (DXGKrnl/VidMm)`,
     providerNotSplit: "Utilisation système partagée qui ne peut pas être attribuée à un seul processus.",
+    // 资源条读不到时后端带的原因，一类一句（代码到类的对应在 resourceBarUnavailableReason.ts）。
+    unavailableReason: {
+      warming: "Établissement de la référence de mesure",
+      sourceUnavailable: "Source de mesure indisponible",
+      incomplete: "Mesure incomplète",
+      unsupported: "Non pris en charge sur cet ordinateur",
+      totalUnavailable: "Total du système temporairement indisponible",
+      missing: "Aucune mesure reçue",
+      stale: "Mesure non actuelle",
+      failed: "Échec de l’échantillonnage",
+      invalid: "Mesure non valide",
+      attributionUnavailable: "Répartition par logiciel momentanément impossible"
+    },
     etwSupplement: "Processus identifiés, mais pas encore attribués à un logiciel précis.",
     softwareInnerPercent: "Part au sein du logiciel",
     memoryBasis: "Système : mémoire physique occupée / capacité. Segments des processus : octets résidents privés ; les pages partagées et l’usage système restent non attribués. Les segments des processus ne sont pas affichés lorsque les mesures sont indisponibles.",

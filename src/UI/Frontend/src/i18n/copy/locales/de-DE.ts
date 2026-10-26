@@ -672,6 +672,19 @@ const deDeAppCopy: AppCopy = {
     residualSystem: "System / Treiber",
     etwResidualProcess: (name: string) => `${name} · Nicht zugeordneter GPU-Prozess (DXGKrnl/VidMm)`,
     providerNotSplit: "Gemeinsam genutzte Systemauslastung, die keinem einzelnen Prozess zugeordnet werden kann.",
+    // 资源条读不到时后端带的原因，一类一句（代码到类的对应在 resourceBarUnavailableReason.ts）。
+    unavailableReason: {
+      warming: "Messbasis wird ermittelt",
+      sourceUnavailable: "Messquelle nicht verfügbar",
+      incomplete: "Messwert unvollständig",
+      unsupported: "Auf diesem Computer nicht unterstützt",
+      totalUnavailable: "Systemgesamtwert vorübergehend nicht verfügbar",
+      missing: "Kein Messwert empfangen",
+      stale: "Messwert nicht aktuell",
+      failed: "Messung fehlgeschlagen",
+      invalid: "Ungültiger Messwert",
+      attributionUnavailable: "Derzeit nicht nach Software aufteilbar"
+    },
     etwSupplement: "Prozesse erkannt, aber noch keiner bestimmten Software zugeordnet.",
     softwareInnerPercent: "Anteil innerhalb der Software",
     memoryBasis: "System: physisch belegter Speicher / Kapazität. Prozessanteile: private residente Bytes; gemeinsame Seiten und Systemverbrauch bleiben ohne Zuordnung. Wenn keine Messwerte verfügbar sind, werden keine Prozessanteile angezeigt.",

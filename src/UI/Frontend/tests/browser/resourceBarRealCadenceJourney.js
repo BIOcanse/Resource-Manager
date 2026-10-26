@@ -1,12 +1,13 @@
 import { seedFrontendPreferences } from "./frontendPreferencesFixture.js";
+import { zhMonitorCopy } from "../../src/i18n/copy/zh/monitor.ts";
 
 // 资源条按真机的帧间隔更新时每一帧都有过渡（混合数据 resourceSoftwareMix: "audit"）：
 // - 资源条帧改成手动发（manualPublishPaths），按 10-26 抓到的已安装 .23 版本的真实帧间隔回放 13 帧
 //   （real-wire/20261026T001848Z 第 10–17 和 60–63 个间隔，含最长的 2084 ms 和最短的 934 ms）；
 //   前端在帧到达时开始过渡，不按自己的 1 s 时钟，所以间隔不齐也要每帧都动；
 // - 每第三帧在过渡开始后约 120 ms 把外观属性原样再写一遍（同一时刻到达的自调度流会这样写），过渡不能被打断；
-// - 第 6、7 帧 CPU 条按后端的“无读数”形状发（总量为空、没有软件、带原因），它这一行不卸载、不消失，
-//   下面物理内存那一行的位置一点都不动。
+// - 第 6、7 帧 CPU 条按后端的“无读数”形状发（总量为空、没有软件、带原因 hardware-source-unavailable），它这一行不卸载、
+//   不消失，条头的读数换成这条原因的话（简体中文），下面物理内存那一行的位置一点都不动；数据回来后原因不再显示。
 // 其他订阅照常按 1 s 对齐发帧，和回放的帧错开落在过渡里。
 // 第二段按 10-26 抓到的 0.3.1-beta.20261026.1 的半帧回放（real-wire/20261026T075120Z-rhythm 的前 14 个间隔，
 // 约 350/650 ms 交替，每帧只有一半的条变）：A 帧只变物理内存，B 帧只变 CPU，没变的条原样重发。
@@ -25,6 +26,7 @@ export default async function resourceBarRealCadenceJourney(page, baseUrl) {
   await seedFrontendPreferences(page, (value) => {
     value.appearance.theme = "light";
     value.appearance.animations = "normal";
+    value.appearance.language = "zh-CN";
   });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
@@ -85,7 +87,10 @@ export default async function resourceBarRealCadenceJourney(page, baseUrl) {
             document.documentElement.dataset.theme = document.documentElement.dataset.theme;
           }, 120);
         }
-        frames.push({ index, at, published, rewrite, unavailable: unavailable.includes(index) });
+        const frame = { index, at, published, rewrite, unavailable: unavailable.includes(index), cpuHeader: null };
+        // 帧到后 300 ms 记下 CPU 条头的读数文字（无读数时应是原因）。
+        setTimeout(() => { frame.cpuHeader = cpuRow.querySelector(".resource-breakdown-header > span")?.textContent ?? null; }, 300);
+        frames.push(frame);
       }
       await sleep(1100);
       sampling = false;
@@ -192,6 +197,13 @@ export default async function resourceBarRealCadenceJourney(page, baseUrl) {
     `A resource bar frame at the real cadence did not animate (fewer than ${minimumPositions} positions): ${JSON.stringify(still)} of ${JSON.stringify(result.frames)}`);
   assert(result.topRange <= 0.5, `The memory bar row moved while a bar above it had no reading: ${result.topRange}px`);
   assert(result.cpuAlwaysConnected && result.cpuSameElement, `The CPU bar row was removed or replaced while it had no reading: ${JSON.stringify(result)}`);
+  const reasonText = zhMonitorCopy.resourceBreakdown.unavailableReason.sourceUnavailable;
+  const reasonFrames = result.frames.filter((frame) => frame.unavailable);
+  assert(reasonFrames.length === 2 && reasonFrames.every((frame) => frame.cpuHeader?.includes(reasonText)),
+    `A no-reading CPU bar did not show its reason "${reasonText}" in the header: ${JSON.stringify(reasonFrames.map((frame) => frame.cpuHeader))}`);
+  const recovered = result.frames.filter((frame) => frame.index > Math.max(...unavailableFrames));
+  assert(recovered.every((frame) => frame.cpuHeader !== null && !frame.cpuHeader.includes(reasonText)),
+    `The reason stayed in the CPU header after its reading came back: ${JSON.stringify(recovered.map((frame) => frame.cpuHeader))}`);
   // 半帧：物理内存每一段（两个 A 帧之间，中间夹着它没变的 B 帧）都在动、不回头（B 帧没让它重来），
   // 任何一帧的跳动都不超过总行程的 35%（没有跳到末帧，下一个 A 帧从当前位置接着走）；CPU 每个 B 帧都有过渡。
   // 最后一个 A 帧后面不再有 B 帧，只查前面的段。

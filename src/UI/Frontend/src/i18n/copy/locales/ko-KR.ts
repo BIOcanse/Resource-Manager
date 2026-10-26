@@ -671,6 +671,19 @@ const koKrAppCopy: AppCopy = {
     residualSystem: "시스템 / 드라이버",
     etwResidualProcess: (name: string) => `${name} · 미귀속 GPU 프로세스 (DXGKrnl/VidMm)`,
     providerNotSplit: "단일 프로세스에 귀속할 수 없는 시스템 공유 사용량입니다.",
+    // 资源条读不到时后端带的原因，一类一句（代码到类的对应在 resourceBarUnavailableReason.ts）。
+    unavailableReason: {
+      warming: "측정 기준값을 설정하는 중",
+      sourceUnavailable: "측정 원본을 사용할 수 없음",
+      incomplete: "측정값이 불완전함",
+      unsupported: "이 컴퓨터에서는 지원되지 않음",
+      totalUnavailable: "시스템 전체 값을 일시적으로 사용할 수 없음",
+      missing: "측정값을 받지 못함",
+      stale: "측정값이 최신이 아님",
+      failed: "샘플링 실패",
+      invalid: "잘못된 측정값",
+      attributionUnavailable: "현재 소프트웨어별로 나눌 수 없음"
+    },
     etwSupplement: "프로세스는 확인했지만 아직 특정 소프트웨어에 귀속되지 않았습니다.",
     softwareInnerPercent: "소프트웨어 내 비율",
     memoryBasis: "시스템: 물리 메모리 실제 사용량 / 용량. 프로세스 구간: 전용 상주 바이트. 공유 페이지와 시스템 사용량은 미귀속 부분에 남습니다. 측정값을 사용할 수 없으면 프로세스 구간을 표시하지 않습니다.",
