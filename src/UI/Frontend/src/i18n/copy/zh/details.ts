@@ -118,7 +118,7 @@ export const zhDetailsCopy = {
     save: "保存",
     observationLabel: "GPU 调度数据",
     noPositions: "未识别到 GPU 调度位置。",
-    positionSummary: (softwareCount: number, processCount: number) => `${softwareCount} 软件 · ${processCount} 进程`,
+    positionSummary: (softwareCount: number) => `${softwareCount} 软件 · 未请求进程明细`,
     schedulable: "可调度",
     performanceScore: (value: string) => `性能分 ${value}`,
     defaultScore: (value: string) => `默认 ${value}`,
@@ -142,7 +142,6 @@ export const zhDetailsCopy = {
     rdnaUsage: "RDNA 占用",
     cdnaUsage: "CDNA 占用",
     gpuFull: "GPU 爆满",
-    vramFull: "显存爆满",
-    noProcessAttribution: "无进程归因"
+    vramFull: "显存爆满"
   }
 };

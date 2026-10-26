@@ -1764,7 +1764,7 @@ const frFrAppCopy: AppCopy = {
     save: "Enregistrer",
     observationLabel: "Données de planification GPU",
     noPositions: "Aucune position de planification GPU détectée.",
-    positionSummary: (softwareCount: number, processCount: number) => `${softwareCount} logiciels · ${processCount} processus`,
+    positionSummary: (softwareCount: number) => `${softwareCount} logiciels · Détails des processus non demandés`,
     schedulable: "Planifiable",
     performanceScore: (value: string) => `Score de performance ${value}`,
     defaultScore: (value: string) => `par défaut ${value}`,
@@ -1788,8 +1788,7 @@ const frFrAppCopy: AppCopy = {
     rdnaUsage: "Utilisation RDNA",
     cdnaUsage: "Utilisation CDNA",
     gpuFull: "GPU saturé",
-    vramFull: "VRAM saturée",
-    noProcessAttribution: "Aucune attribution de processus"
+    vramFull: "VRAM saturée"
   },
   performanceOverlay: {
     tab: "Superposition et surveillance",

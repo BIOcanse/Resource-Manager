@@ -17,6 +17,7 @@ export default async function gpuCommittedThresholdsJourney(page, baseUrl) {
   const panel = page.locator(".gpu-scheduling-panel");
   const position = panel.locator(".gpu-position");
   await position.waitFor();
+  await position.getByText(/^\d+ 软件 · 未请求进程明细$/).waitFor();
   await page.waitForFunction(() => {
     const positionState = document.querySelector(".gpu-position-main em")?.textContent?.trim();
     const pressureValues = [...document.querySelectorAll(".gpu-pressure-grid .gpu-pressure-meter strong")]

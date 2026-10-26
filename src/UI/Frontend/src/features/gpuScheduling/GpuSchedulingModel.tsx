@@ -66,14 +66,12 @@ interface GpuSchedulingPosition {
   full: boolean | null;
   fullReason: string | null;
   hasDedicatedMemoryMetrics: boolean;
-  processKeys: string[];
   softwareIds: string[];
   softwareScoreTotal: number;
   specializedUsages: GpuSpecializedUsage[];
 }
 
 interface GpuProcessLoad {
-  processKeys: string[];
   softwareIds: string[];
   softwareScoreTotal: number;
 }
@@ -643,7 +641,6 @@ function buildGpuPositions(
       full: fullClassification.full,
       fullReason: fullClassification.reason,
       hasDedicatedMemoryMetrics: dedicatedMemory,
-      processKeys: processLoad?.processKeys ?? [],
       softwareIds: processLoad?.softwareIds ?? [],
       softwareScoreTotal: processLoad?.softwareScoreTotal ?? 0,
       specializedUsages: specializedUsages.get(index) ?? []
@@ -749,22 +746,17 @@ function buildGpuProcessLoads(snapshot: ResourceBreakdownSnapshot | undefined) {
       load.softwareIds.add(segment.softwareId);
       const currentScore = load.softwareScores.get(segment.softwareId) ?? 0;
       load.softwareScores.set(segment.softwareId, Math.max(currentScore, resolveSegmentBaseScore(segment)));
-      for (const process of segment.processes ?? []) {
-        load.processKeys.add(`${process.processId}|${process.name}`);
-      }
     }
 
   }
 
   return new Map([...byGpu.entries()].map(([index, load]) => [index, {
-    processKeys: [...load.processKeys],
     softwareIds: [...load.softwareIds],
     softwareScoreTotal: [...load.softwareScores.values()].reduce((total, value) => total + value, 0)
   } satisfies GpuProcessLoad]));
 }
 
 interface MutableGpuProcessLoad {
-  processKeys: Set<string>;
   softwareIds: Set<string>;
   softwareScores: Map<string, number>;
 }
@@ -775,7 +767,6 @@ function getMutableGpuProcessLoad(
   let load = loads.get(index);
   if (!load) {
     load = {
-      processKeys: new Set<string>(),
       softwareIds: new Set<string>(),
       softwareScores: new Map<string, number>()
     };
@@ -862,13 +853,8 @@ function formatPercent(value: number | null) {
 }
 
 function formatProcessCount(position: GpuSchedulingPosition) {
-  const processCount = position.processKeys.length;
-  const softwareCount = position.softwareIds.length;
-  if (processCount === 0 && softwareCount === 0) {
-    return uiText.gpuScheduling.noProcessAttribution;
-  }
-
-  return uiText.gpuScheduling.positionSummary(softwareCount, processCount);
+  // This source requests software attribution without processDetails.
+  return uiText.gpuScheduling.positionSummary(position.softwareIds.length);
 }
 
 function formatScore(value: number) {

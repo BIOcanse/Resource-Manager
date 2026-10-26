@@ -121,7 +121,7 @@ export const enDetailsCopy: Pick<AppCopy, "cpuTopology" | "cpuBaseline" | "gpuSc
     save: "Save",
     observationLabel: "GPU scheduling data",
     noPositions: "No GPU scheduling positions detected.",
-    positionSummary: (softwareCount: number, processCount: number) => `${softwareCount} software · ${processCount} processes`,
+    positionSummary: (softwareCount: number) => `${softwareCount} software · Process details not requested`,
     schedulable: "Schedulable",
     performanceScore: (value: string) => `Performance score ${value}`,
     defaultScore: (value: string) => `default ${value}`,
@@ -145,7 +145,6 @@ export const enDetailsCopy: Pick<AppCopy, "cpuTopology" | "cpuBaseline" | "gpuSc
     rdnaUsage: "RDNA usage",
     cdnaUsage: "CDNA usage",
     gpuFull: "GPU saturated",
-    vramFull: "VRAM saturated",
-    noProcessAttribution: "No process attribution"
+    vramFull: "VRAM saturated"
   }
 };

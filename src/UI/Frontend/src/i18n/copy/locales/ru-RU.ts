@@ -1764,7 +1764,7 @@ const ruRuAppCopy: AppCopy = {
     save: "Сохранить",
     observationLabel: "Данные планирования GPU",
     noPositions: "Позиции планирования GPU не обнаружены.",
-    positionSummary: (softwareCount: number, processCount: number) => `${softwareCount} программ · ${processCount} процессов`,
+    positionSummary: (softwareCount: number) => `${softwareCount} программ · Сведения о процессах не запрошены`,
     schedulable: "Можно планировать",
     performanceScore: (value: string) => `Оценка производительности ${value}`,
     defaultScore: (value: string) => `по умолчанию ${value}`,
@@ -1788,8 +1788,7 @@ const ruRuAppCopy: AppCopy = {
     rdnaUsage: "Загрузка RDNA",
     cdnaUsage: "Загрузка CDNA",
     gpuFull: "GPU загружен полностью",
-    vramFull: "Видеопамять заполнена",
-    noProcessAttribution: "Отнесение процессов отсутствует"
+    vramFull: "Видеопамять заполнена"
   },
   performanceOverlay: {
     tab: "Наложение и мониторинг",

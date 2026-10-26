@@ -118,7 +118,7 @@ export const zhDetailsCopy = {
     save: "儲存",
     observationLabel: "GPU 排程資料",
     noPositions: "未識別到 GPU 排程位置。",
-    positionSummary: (softwareCount: number, processCount: number) => `${softwareCount} 軟體 · ${processCount} 程序`,
+    positionSummary: (softwareCount: number) => `${softwareCount} 軟體 · 未請求程序詳細資料`,
     schedulable: "可排程",
     performanceScore: (value: string) => `效能分 ${value}`,
     defaultScore: (value: string) => `預設 ${value}`,
@@ -142,7 +142,6 @@ export const zhDetailsCopy = {
     rdnaUsage: "RDNA 佔用",
     cdnaUsage: "CDNA 佔用",
     gpuFull: "GPU 爆滿",
-    vramFull: "視訊記憶體爆滿",
-    noProcessAttribution: "無程序歸因"
+    vramFull: "視訊記憶體爆滿"
   }
 };

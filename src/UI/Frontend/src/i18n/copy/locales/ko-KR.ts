@@ -1764,7 +1764,7 @@ const koKrAppCopy: AppCopy = {
     save: "저장",
     observationLabel: "GPU 스케줄링 데이터",
     noPositions: "GPU 스케줄링 위치가 검색되지 않았습니다.",
-    positionSummary: (softwareCount: number, processCount: number) => `소프트웨어 ${softwareCount} · 프로세스 ${processCount}`,
+    positionSummary: (softwareCount: number) => `소프트웨어 ${softwareCount} · 프로세스 세부 정보 미요청`,
     schedulable: "스케줄 가능",
     performanceScore: (value: string) => `성능 점수 ${value}`,
     defaultScore: (value: string) => `기본값 ${value}`,
@@ -1788,8 +1788,7 @@ const koKrAppCopy: AppCopy = {
     rdnaUsage: "RDNA 사용률",
     cdnaUsage: "CDNA 사용률",
     gpuFull: "GPU 포화",
-    vramFull: "VRAM 포화",
-    noProcessAttribution: "프로세스 귀속 정보 없음"
+    vramFull: "VRAM 포화"
   },
   performanceOverlay: {
     tab: "오버레이 및 모니터링",

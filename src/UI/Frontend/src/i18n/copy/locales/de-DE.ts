@@ -1764,7 +1764,7 @@ const deDeAppCopy: AppCopy = {
     save: "Speichern",
     observationLabel: "Daten der GPU-Planung",
     noPositions: "Es wurden keine GPU-Planungspositionen erkannt.",
-    positionSummary: (softwareCount: number, processCount: number) => `${softwareCount} Software · ${processCount} Prozesse`,
+    positionSummary: (softwareCount: number) => `${softwareCount} Software · Prozessdetails nicht angefordert`,
     schedulable: "Planbar",
     performanceScore: (value: string) => `Leistungsbewertung ${value}`,
     defaultScore: (value: string) => `Standard ${value}`,
@@ -1788,8 +1788,7 @@ const deDeAppCopy: AppCopy = {
     rdnaUsage: "RDNA-Auslastung",
     cdnaUsage: "CDNA-Auslastung",
     gpuFull: "GPU ausgelastet",
-    vramFull: "VRAM ausgelastet",
-    noProcessAttribution: "Keine Prozesszuordnung"
+    vramFull: "VRAM ausgelastet"
   },
   performanceOverlay: {
     tab: "Overlay und Überwachung",

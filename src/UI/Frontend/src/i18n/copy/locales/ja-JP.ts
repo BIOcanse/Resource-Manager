@@ -1764,7 +1764,7 @@ const jaJpAppCopy: AppCopy = {
     save: "保存",
     observationLabel: "GPU スケジューリング データ",
     noPositions: "GPU スケジューリングの位置は検出されませんでした。",
-    positionSummary: (softwareCount: number, processCount: number) => `ソフトウェア ${softwareCount} · プロセス ${processCount}`,
+    positionSummary: (softwareCount: number) => `ソフトウェア ${softwareCount} · プロセス詳細は未要求`,
     schedulable: "スケジュール可能",
     performanceScore: (value: string) => `パフォーマンス スコア ${value}`,
     defaultScore: (value: string) => `既定 ${value}`,
@@ -1788,8 +1788,7 @@ const jaJpAppCopy: AppCopy = {
     rdnaUsage: "RDNA 使用率",
     cdnaUsage: "CDNA 使用率",
     gpuFull: "GPU 飽和",
-    vramFull: "VRAM 飽和",
-    noProcessAttribution: "プロセス帰属情報なし"
+    vramFull: "VRAM 飽和"
   },
   performanceOverlay: {
     tab: "オーバーレイと監視",
