@@ -69,7 +69,9 @@ export function formatActualNumber(value: number): string {
  */
 export function actualRepeatsNumberEditor(setting: number | null | undefined, actual: number): boolean {
   // 设定里没有数（undefined 或 null）时，数字框和 NumberEditor 一样显示实际读数。
-  return setting === undefined || setting === null || formatActualNumber(setting) === formatActualNumber(actual);
+  // 比较显示出来的数值（-25 和 -25.04 都显示为 -25），不比较字符串（"-25" 对 "-25.0"）。
+  return setting === undefined || setting === null
+    || Number(formatActualNumber(setting)) === Number(formatActualNumber(actual));
 }
 
 /**
