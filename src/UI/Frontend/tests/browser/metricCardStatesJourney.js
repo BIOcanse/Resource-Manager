@@ -9,6 +9,7 @@ import { metricFieldDevices, npuBusyCardId, readingSourceDevices, readingSourceI
  * 1. 首个读数到之前画“读取中”占位（不先写“无读数”再跳成数值），占位和数值同高，数值淡入；设备不在照常直接写；
  * 2. 德文窄卡片上小行标签最多两行、不截成省略号，没有值时那句话靠右折行、不挤掉标签；
  * 3. 四种风格里数值和单位之间的空格按单位字号排（终端风格的等宽大字号下不宽出一截）；
+ * 4. 强制配色下读数来源标记有边框、没有值的读数用系统灰字；
  */
 export default async function metricCardStatesJourney(page, baseUrl) {
   const errors = [];
@@ -95,6 +96,22 @@ export default async function metricCardStatesJourney(page, baseUrl) {
     assert.ok(!signature.split(" | ").includes(zh.dashboard.noReading), `a slot claimed "no reading" before its first reading: ${signature}`);
     assert.ok(!signature.split(" | ").includes("--"), `a slot showed "--" before its first reading: ${signature}`);
   }
+
+  // 4. 强制配色。
+  await page.emulateMedia({ forcedColors: "active" });
+  const mark = card("sources").locator(".reading-source-mark").first();
+  assert.equal(await mark.evaluate((element) => getComputedStyle(element).borderTopStyle), "solid", "the reading-source mark keeps an outline in forced colours");
+  const grayText = await page.evaluate(() => {
+    const probe = document.createElement("span");
+    probe.style.cssText = "forced-color-adjust:none;color:GrayText";
+    document.body.append(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  });
+  assert.equal(await card("fields").locator(".metric-value.missing").first().evaluate((value) => getComputedStyle(value).color), grayText,
+    "a value without a reading uses the system grey text in forced colours");
+  await page.emulateMedia({ forcedColors: "none" });
 
   // 2. 德文窄卡片：小行标签和没有值时的那句话都完整显示。
   const de = await loadAppCopy("de-DE");

@@ -256,6 +256,21 @@ body.reordering * {
   color: color-mix(in oklab, var(--warn) 60%, var(--text));
 }
 
+/*
+ * 强制配色（Windows 高对比）会抹掉浅底：标记加一圈系统字色的边，仍是一个看得出的小字块。
+ * 没有值的读数改用系统的灰色字（GrayText），和真实读数分开，不只靠字号区分。
+ */
+@media (forced-colors: active) {
+  .reading-source-mark {
+    border: 1px solid CanvasText;
+  }
+
+  .metric-value.missing {
+    forced-color-adjust: none;
+    color: GrayText;
+  }
+}
+
 .metric-option-aside .reading-source-mark {
   margin-inline-end: 0;
 }
