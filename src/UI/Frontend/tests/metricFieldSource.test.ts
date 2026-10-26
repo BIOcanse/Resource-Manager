@@ -117,11 +117,11 @@ const deviceFields = metricFieldDevicesDecoder.decode([
     value("npu_all_dedicated_memory_committed", "B", "unsigned64", { integerValue: "1048576" }),
     value("npu_all_shared_memory_resident", "B", "unsigned64", { integerValue: "7", status: unavailable })
   ] },
-  { deviceIdentity: "gpu|y", device: { kind: "gpu_adapter", address: { kind: "gpu_adapter", pnpInstanceId: gpuPnp }, displayName: null, ordinal: 0 }, fields: [
+  { deviceIdentity: "gpu|y", device: { kind: "gpu_adapter", address: { kind: "gpu_adapter", pnpInstanceId: gpuPnp, adapterLuid: "00000000000000A1" }, displayName: null, ordinal: 0 }, fields: [
     value("gpu_amd_npu_activity_percent", "%", "float64", { numericValue: 0 }),
     value("gpu_amd_npu_frequency_mhz", "MHz", "float64", { numericValue: 1800.4 })
   ] },
-  { deviceIdentity: "gpu|z", device: { kind: "gpu_adapter", address: { kind: "gpu_adapter", pnpInstanceId: "PCI\\OTHER" }, displayName: null, ordinal: 1 }, fields: [] }
+  { deviceIdentity: "gpu|z", device: { kind: "gpu_adapter", address: { kind: "gpu_adapter", pnpInstanceId: "PCI\\OTHER", adapterLuid: "00000000000000A2" }, displayName: null, ordinal: 1 }, fields: [] }
 ]);
 const npuSections = deviceMetricSections(deviceFields, pnp);
 assert.equal(npuSections.length, 1);

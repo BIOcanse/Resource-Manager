@@ -83,7 +83,7 @@ assert.equal(definitions[3].label, "unknown_future_field", "a field without copy
 assert.equal(definitions[3].group, "future_kind 3", "a kind without copy shows its kind name, visibly");
 assert.equal(deviceLabel({ kind: "gpu_adapter", displayName: null, ordinal: 0, address: null }, []), "显卡 0");
 
-// 显卡引擎没有自己的名字：同一 PnP 实例的显卡在目录里时带上显卡名；对不上时只写种类和序号。
+// 显卡引擎没有自己的名字：同一 LUID 的显卡在目录里时带上显卡名；对不上时只写种类和序号。
 const gpuCatalog = metricFieldCatalogDecoder.decode([
   { deviceIdentity: "gpu|nv", device: { kind: "gpu_adapter", address: { kind: "gpu_adapter", pnpInstanceId: "PCI\\VEN_10DE&DEV_2D19\\NV", adapterLuid: "E4A6" }, displayName: "NVIDIA GeForce RTX 5060 Laptop GPU", ordinal: 1 }, fields: [] },
   { deviceIdentity: "gpu-engine|E4A6|0|3|0", device: { kind: "gpu_engine", address: { kind: "gpu_engine", pnpInstanceId: "PCI\\VEN_10DE&DEV_2D19\\NV", physicalIndex: 0, engineIndex: 3, engineClass: 0, adapterLuid: "E4A6" }, displayName: null, ordinal: 3 }, fields: [
@@ -93,7 +93,10 @@ const gpuCatalog = metricFieldCatalogDecoder.decode([
     { name: "gpu_all_engine_busy_percent", unit: "%", valueKind: "float64" }
   ] }
 ]);
-assert.deepEqual(gpuCatalog[1].address, { kind: "gpu_engine", pnpInstanceId: "PCI\\VEN_10DE&DEV_2D19\\NV" }, "the engine keeps its adapter's PnP instance ID");
+assert.deepEqual(gpuCatalog[1].address, {
+  kind: "gpu_engine", pnpInstanceId: "PCI\\VEN_10DE&DEV_2D19\\NV",
+  adapterLuid: "E4A6", physicalIndex: 0, engineIndex: 3, engineClass: 0
+}, "the engine preserves the complete adapter and engine address");
 const engineGroups = fieldCardDefinitions(gpuCatalog).map((metric) => metric.group);
 assert.deepEqual(engineGroups, ["显卡引擎 0", "显卡引擎 3 · NVIDIA GeForce RTX 5060 Laptop GPU"],
   "an engine is named after its adapter when the adapter is in the catalog, otherwise by kind and ordinal");

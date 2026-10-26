@@ -29,7 +29,7 @@ export const metricFieldDevices = [
   { deviceIdentity: "npu|fixture", device: { kind: "npu", address: { kind: "npu", pnpInstanceId: fixtureDeviceId }, displayName: "Fixture NPU", ordinal: 0 }, fields: [
     field("npu_all_engine_busy_percent", "%", "float64", { numericValue: 137.54 })
   ] },
-  { deviceIdentity: "gpu|fixture", device: { kind: "gpu_adapter", address: { kind: "gpu_adapter", pnpInstanceId: fixtureDeviceId }, displayName: "Fixture GPU", ordinal: 0 }, fields: [
+  { deviceIdentity: "gpu|fixture", device: { kind: "gpu_adapter", address: { kind: "gpu_adapter", pnpInstanceId: fixtureDeviceId, adapterLuid: "00000000000000F1" }, displayName: "Fixture GPU", ordinal: 0 }, fields: [
     field("gpu_amd_npu_activity_percent", "%", "float64", { numericValue: 0 }),
     field("gpu_amd_npu_frequency_mhz", "MHz", "float64", { numericValue: 1800.4 })
   ] }

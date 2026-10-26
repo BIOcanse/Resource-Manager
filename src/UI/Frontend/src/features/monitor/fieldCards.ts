@@ -5,6 +5,7 @@ import type {
   MetricValue
 } from "../../types.ts";
 import type {
+  MetricFieldAddress,
   MetricFieldCatalogDevice,
   MetricFieldDevice,
   MetricFieldDeviceInfo
@@ -171,12 +172,19 @@ export function deviceLabel(
     return uiText.dashboard.namedDevice(kind, device.displayName);
   }
   const numbered = singletonKinds.has(device.kind) ? kind : uiText.dashboard.numberedDevice(kind, device.ordinal);
-  const adapterName = device.address?.kind === "gpu_engine" ? gpuAdapterName(catalog, device.address.pnpInstanceId) : null;
+  const adapterName = device.address?.kind === "gpu_engine" ? gpuAdapterName(catalog, device.address) : null;
   return adapterName ? uiText.dashboard.namedDevice(numbered, adapterName) : numbered;
 }
 
-function gpuAdapterName(catalog: readonly Pick<MetricFieldDeviceInfo, "displayName" | "address">[], pnpInstanceId: string): string | null {
-  const adapter = catalog.find((device) => device.address?.kind === "gpu_adapter" && device.address.pnpInstanceId === pnpInstanceId);
+function gpuAdapterName(
+  catalog: readonly Pick<MetricFieldDeviceInfo, "displayName" | "address">[],
+  engine: Extract<MetricFieldAddress, { kind: "gpu_engine" }>
+): string | null {
+  const adapter = catalog.find((device) => {
+    const address = device.address;
+    return (address?.kind === "gpu_adapter" || address?.kind === "gpu_adapter_group")
+      && address.adapterLuid === engine.adapterLuid;
+  });
   return adapter?.displayName ?? null;
 }
 

@@ -26,9 +26,16 @@ export type MetricFieldAddress =
   | { readonly kind: "cpu_logical_processor"; readonly processorGroup: number; readonly groupRelativeIndex: number }
   | { readonly kind: "numa_node"; readonly nodeNumber: number }
   | { readonly kind: "npu"; readonly pnpInstanceId: string }
-  | { readonly kind: "gpu_adapter"; readonly pnpInstanceId: string }
-  /** 显卡引擎的地址带所属显卡的 PnP 实例 ID（后端 MetricDeviceAddress.GpuEngine 从显卡地址复制），卡片名用它找显卡名。 */
-  | { readonly kind: "gpu_engine"; readonly pnpInstanceId: string };
+  /** 显卡地址按后端 MetricDeviceAddress.GpuAdapter：一个物理成员是 gpu_adapter，多个是 gpu_adapter_group，都带 LUID。 */
+  | { readonly kind: "gpu_adapter"; readonly adapterLuid: string; readonly pnpInstanceId: string }
+  | { readonly kind: "gpu_adapter_group"; readonly adapterLuid: string; readonly pnpInstanceIds: readonly string[] }
+  /** 显卡引擎地址按后端 MetricDeviceAddress.GpuEngine：复制所属显卡的成员，再加 LUID 和引擎坐标；卡片名用 LUID 找显卡名。 */
+  | ({ readonly kind: "gpu_engine"; readonly adapterLuid: string;
+      readonly physicalIndex: number; readonly engineIndex: number; readonly engineClass: number } & MetricFieldGpuMembers);
+
+type MetricFieldGpuMembers =
+  | { readonly pnpInstanceId: string; readonly pnpInstanceIds?: never }
+  | { readonly pnpInstanceIds: readonly string[]; readonly pnpInstanceId?: never };
 
 /*
  * 字段属于哪个读取项（同一台设备的同一物理量），以及它在这个读取项里是哪个来源。
@@ -179,15 +186,41 @@ function decodeAddress(value: unknown, path: string): MetricFieldAddress | null 
     case "numa_node":
       return { kind, nodeNumber: requireNonNegativeSafeInteger(record.nodeNumber, `${path}.nodeNumber`) };
     case "npu":
+      return { kind, pnpInstanceId: requireString(record.pnpInstanceId, path + ".pnpInstanceId") };
     case "gpu_adapter":
+      return { kind, adapterLuid: requireString(record.adapterLuid, `${path}.adapterLuid`),
+        pnpInstanceId: requireString(record.pnpInstanceId, `${path}.pnpInstanceId`) };
+    case "gpu_adapter_group":
+      return { kind, adapterLuid: requireString(record.adapterLuid, `${path}.adapterLuid`),
+        pnpInstanceIds: decodeGpuMemberList(record.pnpInstanceIds, `${path}.pnpInstanceIds`) };
     case "gpu_engine":
-      return { kind, pnpInstanceId: requireString(record.pnpInstanceId, `${path}.pnpInstanceId`) };
+      return { kind, adapterLuid: requireString(record.adapterLuid, `${path}.adapterLuid`),
+        physicalIndex: requireNonNegativeSafeInteger(record.physicalIndex, `${path}.physicalIndex`),
+        engineIndex: requireNonNegativeSafeInteger(record.engineIndex, `${path}.engineIndex`),
+        engineClass: requireNonNegativeSafeInteger(record.engineClass, `${path}.engineClass`),
+        ...decodeEngineMembers(record, path) };
     default:
       // 后端以后给别的设备种类加地址时，这里还没有消费者：当作没有地址。
       return null;
   }
 }
 
+
+// 后端只发其中一种：单个物理成员写 pnpInstanceId，多个写 pnpInstanceIds。
+function decodeEngineMembers(record: Record<string, unknown>, path: string): MetricFieldGpuMembers {
+  if ((record.pnpInstanceId == null) === (record.pnpInstanceIds == null)) {
+    throw new ResponseDecodeError(path, "exactly one of pnpInstanceId or pnpInstanceIds");
+  }
+  return record.pnpInstanceId != null
+    ? { pnpInstanceId: requireString(record.pnpInstanceId, `${path}.pnpInstanceId`) }
+    : { pnpInstanceIds: decodeGpuMemberList(record.pnpInstanceIds, `${path}.pnpInstanceIds`) };
+}
+
+function decodeGpuMemberList(value: unknown, path: string): string[] {
+  const members = requireArray(value, path).map((member, index) => requireString(member, `${path}[${index}]`));
+  if (members.length < 2) throw new ResponseDecodeError(path, "two or more physical members");
+  return members;
+}
 function decodeValue(value: unknown, path: string): MetricFieldValue {
   const record = requireRecord(value, path);
   const current = record.status === currentStatus;
