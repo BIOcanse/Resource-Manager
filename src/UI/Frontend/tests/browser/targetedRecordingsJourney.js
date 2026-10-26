@@ -46,6 +46,9 @@ export default async function targetedRecordingsJourney(page, baseUrl) {
       await page.route("**/api/software", emptyTargets);
       await panel.getByRole("button", { name: copy.refresh, exact: true }).click();
       await panel.getByText(copy.noSoftware, { exact: true }).waitFor();
+      // Refresh reads targets and recordings independently. Finish both before
+      // changing the list fixture, or the next refresh can join the old list read.
+      await panel.getByText(copy.empty, { exact: true }).waitFor();
       await page.unroute("**/api/software", emptyTargets);
       const otherRecording = route => route.fulfill({ json: [{
         id: "other", softwareId: "other-software", softwareName: "Other software",
