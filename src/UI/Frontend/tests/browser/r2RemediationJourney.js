@@ -48,9 +48,9 @@ export default async function r2RemediationJourney(page, baseUrl = "http://127.0
   await activeRow.waitFor({ state: "visible", timeout: 7000 });
   await activeRow.focus();
   // 资源表由前端按资源事实排序：夹具 80 个软件的值相同，默认按影响排序打平后按名称的界面语言排序
-  // （zh-CN，区分重音、不区分大小写，不按数字大小），所以第 36 行不是编号 35。
+  // （zh-CN，区分重音、不区分大小写，数字段按数值比较），所以第 36 行不是编号 35。
   const startRowId = await page.evaluate(() => document.activeElement?.getAttribute("data-resource-row-id"));
-  const nameOrder = new Intl.Collator("zh-CN", { sensitivity: "accent" });
+  const nameOrder = new Intl.Collator("zh-CN", { sensitivity: "accent", numeric: true });
   const softwareRowIds = Array.from({ length: 80 }, (_, index) => ({
     id: `software:frontend-harness.software${index === 0 ? "" : `.${index}`}`,
     name: index === 0 ? "示例软件" : `示例软件 ${index}`

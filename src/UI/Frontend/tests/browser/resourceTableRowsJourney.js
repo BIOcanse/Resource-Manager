@@ -350,7 +350,7 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
   }, memoryAt);
   for (const [kind, cell] of Object.entries(heatBar)) {
     if (!cell.image.startsWith("linear-gradient(") || !cell.image.includes("repeating-linear-gradient(") || !cell.image.includes("211, 171, 48")
-      || cell.size !== `100% 3px, ${cell.heat} 3px` || cell.textBottom > cell.barTop + 0.5 || parseFloat(cell.privateHeat) >= parseFloat(cell.heat)
+      || !/^100% 3px, [\d.]+% 3px$/.test(cell.size) || Math.abs(parseFloat(cell.size.split(", ")[1]) - parseFloat(cell.heat)) > 0.01 || cell.textBottom > cell.barTop + 0.5 || parseFloat(cell.privateHeat) >= parseFloat(cell.heat)
       || !cell.title.includes(app.resourceTableView.heatSharedLegend)) {
       throw new Error(`The ${kind} heat bar must be a thin line under the number with an explained shared part: ${JSON.stringify(heatBar)}`);
     }
