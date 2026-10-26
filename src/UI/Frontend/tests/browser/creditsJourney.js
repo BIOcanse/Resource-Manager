@@ -63,24 +63,35 @@ export default async function creditsJourney(page, baseUrl) {
     && link.rel.includes("noopener") && link.rel.includes("noreferrer")), "Credits contain unsafe or broken link attributes");
   assert(await panel.getByRole("link", { name: /star|点星|點星/i }).count() === 0, "No Star buttons");
 
-  /** 主列表：每个按钮列里所有按钮的左边 x 相同、宽相同，所有按钮等高；整块不溢出。 */
+  /** 主列表：每种按钮一列，同一种按钮在所有分组、所有行里左边 x 相同、宽相同；列按固定的种类顺序排；所有按钮等高；整块不溢出。 */
+  const kindOrder = ["official", "github", "docs", "nuget", "npm", "license"];
   const mainColumns = () => panel.evaluate((element) => {
-    const columns = new Map();
+    const kinds = new Map();
     const heights = new Set();
-    for (const link of element.querySelectorAll(".settings-credit-list .settings-credit-link")) {
+    for (const link of element.querySelectorAll(".settings-credit-table .settings-credit-link")) {
       const rect = link.getBoundingClientRect();
-      const column = getComputedStyle(link).getPropertyValue("--credit-link-column").trim();
-      const entry = columns.get(column) ?? { lefts: new Set(), widths: new Set() };
+      const entry = kinds.get(link.dataset.kind) ?? { lefts: new Set(), widths: new Set(), count: 0 };
       entry.lefts.add(Math.round(rect.left));
       entry.widths.add(Math.round(rect.width));
-      columns.set(column, entry);
+      entry.count += 1;
+      kinds.set(link.dataset.kind, entry);
       heights.add(Math.round(rect.height));
     }
     return {
       width: element.clientWidth,
       scrollWidth: element.scrollWidth,
       overflowingItems: Array.from(element.querySelectorAll(".settings-credit-item")).filter((item) => item.scrollWidth > item.clientWidth + 1).length,
-      columns: [...columns].map(([column, entry]) => ({ column, lefts: [...entry.lefts], widths: [...entry.widths] })),
+      // 名称与分组的文字不能压到子项目文字上（按文字实际占的范围量，不按格子）。
+      overlaps: Array.from(element.querySelectorAll(".settings-credit-item")).filter((item) => {
+        const range = document.createRange();
+        range.selectNodeContents(item.querySelector(".settings-credit-title"));
+        const title = range.getBoundingClientRect();
+        return Array.from(item.querySelectorAll(".settings-credit-subject")).some((subject) => {
+          const box = subject.getBoundingClientRect();
+          return title.right > box.left + 1 && title.left < box.right - 1 && title.bottom > box.top + 1 && title.top < box.bottom - 1;
+        });
+      }).map((item) => item.querySelector(".settings-credit-title strong").textContent),
+      kinds: [...kinds].map(([kind, entry]) => ({ kind, count: entry.count, lefts: [...entry.lefts], widths: [...entry.widths] })),
       heights: [...heights]
     };
   });
@@ -90,11 +101,28 @@ export default async function creditsJourney(page, baseUrl) {
     await page.waitForTimeout(100);
     const layout = await mainColumns();
     assert(layout.scrollWidth <= layout.width + 1 && layout.overflowingItems === 0, `Credits overflow at ${width}px: ${JSON.stringify(layout)}`);
-    assert(layout.columns.length >= 2 && layout.columns.every((column) => column.lefts.length === 1 && column.widths.length === 1),
-      `Credit buttons do not line up in columns at ${width}px: ${JSON.stringify(layout.columns)}`);
+    assert(layout.overlaps.length === 0, `Credit names run into the descriptions at ${width}px: ${layout.overlaps}`);
+    assert(layout.kinds.length >= 3 && layout.kinds.every((kind) => kind.lefts.length === 1 && kind.widths.length === 1),
+      `The same kind of credit button sits at different x at ${width}px: ${JSON.stringify(layout.kinds)}`);
+    const byX = [...layout.kinds].sort((a, b) => a.lefts[0] - b.lefts[0]).map((kind) => kind.kind);
+    assert(JSON.stringify(byX) === JSON.stringify(kindOrder.filter((kind) => byX.includes(kind))),
+      `Credit button columns are not in the fixed kind order at ${width}px: ${byX}`);
+    assert(new Set(layout.kinds.map((kind) => kind.lefts[0])).size === layout.kinds.length, `Two kinds share one column at ${width}px`);
     assert(layout.heights.length === 1, `Credit buttons differ in height at ${width}px: ${layout.heights}`);
     layouts.push({ viewportWidth: width, ...layout });
   }
+  // 页面上没有任何一行用到的种类不出列。
+  const usedKinds = new Set(creditSources.flatMap((item) => item.subjects.flatMap((subject) => subject.links.map((link) => link.kind))));
+  assert(JSON.stringify(layouts[0].kinds.map((kind) => kind.kind).sort()) === JSON.stringify([...usedKinds].sort()),
+    `Button columns must be exactly the kinds in use: ${layouts[0].kinds.map((kind) => kind.kind)}`);
+  // 来源是文字链接，和原文隔开、颜色不同于原文。
+  const source = await panel.evaluate((element) => {
+    const link = element.querySelector(".settings-credit-source");
+    const quote = link.parentElement.querySelector("q");
+    return { linkColor: getComputedStyle(link).color,
+      quoteColor: getComputedStyle(quote).color, underline: getComputedStyle(link).textDecorationLine };
+  });
+  assert(source.linkColor !== source.quoteColor && source.underline.includes("underline"), `The source link reads as part of the quote: ${JSON.stringify(source)}`);
   await page.setViewportSize({ width: 1280, height: 800 });
 
   // 焦点：鼠标点开后不留焦点；键盘焦点有焦点环。

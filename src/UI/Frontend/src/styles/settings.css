@@ -221,15 +221,16 @@
 }
 
 /*
- * 主列表是一张表（docs/credits_sources.md）：名称与分组 | 官方原文 | 按钮列 1..N。
- * 列定义在 .settings-credit-table 上，分组、列表、每一项逐层用 subgrid 继承，所以按钮列在所有分组的所有行之间对齐；
- * 按钮撑满本列，同一列的按钮等宽、x 相同。每个子项目一行：子项目的文字放 text 列，它的第 k 个按钮放第 k 个按钮列；
+ * 主列表是一张表（docs/credits_sources.md）：名称与分组 | 官方原文 | 每种按钮一列。
+ * 按钮列由组件按页面上用到的种类写进 --credit-link-tracks（例如 "[official] max-content [github] max-content"），
+ * 链接的 grid-column 就是自己的种类名。列定义在 .settings-credit-table 上，分组、列表、每一项逐层用 subgrid 继承，
+ * 所以同一种按钮在所有分组的所有行里 x 相同、等宽；缺这种按钮的格子空着。每个子项目一行：文字放 text 列，
  * 下一个子项目的文字自动换到下一行。
  */
 .settings-credit-table {
   min-width: 0;
   display: grid;
-  grid-template-columns: [title] minmax(160px, 0.4fr) [text] minmax(0, 1fr) repeat(var(--credit-link-columns, 3), [link] max-content);
+  grid-template-columns: [title] minmax(160px, 0.4fr) [text] minmax(0, 1fr) var(--credit-link-tracks);
   column-gap: 6px;
   row-gap: 14px;
 }
@@ -285,6 +286,7 @@
   color: var(--muted);
   font-size: 12px;
   line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .settings-credit-subject {
@@ -314,11 +316,13 @@
   quotes: none;
 }
 
+/* 来源是普通文字链接（和软件详情里的链接一样用 --accent-strong 加下划线），和原文隔开，不读成引文的一部分。 */
 .settings-credit-source {
-  color: var(--muted);
+  display: inline-block;
+  margin-inline-start: 10px;
+  color: var(--accent-strong);
   font-size: 11px;
   text-decoration: underline;
-  text-decoration-color: var(--line);
   text-underline-offset: 2px;
   white-space: nowrap;
 }
@@ -330,7 +334,6 @@
 .settings-credit-link {
   min-width: 0;
   min-height: 28px;
-  grid-column: link var(--credit-link-column, 1);
   justify-self: stretch;
   display: inline-flex;
   align-items: center;
@@ -365,10 +368,11 @@
   outline-offset: 2px;
 }
 
-/* 窄时按钮整体换到文字下面，仍按列对齐：按钮列在前，文字和名称占满一行。 */
-@container settings-credits (max-width: 620px) {
+/* 窄时按钮整体换到文字下面，仍按种类对齐：按钮列在前，文字和名称占满一行。
+   860 px 以下五种按钮（德语等长词）会把说明列挤到一百多像素，所以在这里就换。 */
+@container settings-credits (max-width: 860px) {
   .settings-credit-table {
-    grid-template-columns: repeat(var(--credit-link-columns, 3), [link] max-content) minmax(0, 1fr);
+    grid-template-columns: var(--credit-link-tracks) minmax(0, 1fr);
   }
 
   .settings-credit-title,
