@@ -49,6 +49,7 @@
     <PackageReference Include="System.Management" Version="10.0.2" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\FreedomPointContracts\ResourceManager.FreedomPointContracts.csproj" />
     <ProjectReference Include="..\ReadWriteCore\ResourceManager.ReadWriteCore.csproj" />
     <ProjectReference Include="..\SubscriptionCore\ResourceManager.SubscriptionCore.csproj" />
     <ProjectReference Include="..\..\sdk\csharp\ResourceManager.Adapter.Abstractions\ResourceManager.Adapter.Abstractions.csproj" />

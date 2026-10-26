@@ -10,6 +10,7 @@
   <ItemGroup>
     <PackageReference Include="FreedomPoint.Generators" Version="0.1.0-dev.45" />
     <PackageReference Include="FreedomPoint.SourceTracking" Version="0.1.0-dev.45" />
-    <ProjectReference Include="../../Core/ResourceManager.App.csproj" />
+    <ProjectReference Include="../../FreedomPointContracts/ResourceManager.FreedomPointContracts.csproj" />
+    <ProjectReference Include="../../Shared/ResourceManager.Shared.csproj" />
   </ItemGroup>
 </Project>

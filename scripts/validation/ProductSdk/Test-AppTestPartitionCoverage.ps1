@@ -144,8 +144,8 @@ try {
     $baseline=Read-Json $plan.originalCompileMetadata.path
     Check ($original.SetEquals((New-Set @($baseline.Items.Compile|ForEach-Object FullPath)))) 'Plan original sources differ from original evaluated Compile.'
     $repo=[IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetDirectoryName($plan.projectPath)) '../..'))
-    $baseProductionRoots=@('src/Core','src/ReadWriteCore','src/SubscriptionCore','src/Shared','sdk/csharp/ResourceManager.Adapter.Abstractions','sdk/csharp/ResourceManager.Adapter.SharedMemory')
-    $fullProductionRoots=@('src/UI/Core','src/UI/Launcher','src/SessionAgent','src/Installer','src/Updater','src/Shared','src/Core','src/ReadWriteCore','src/SubscriptionCore','src/UI/Frontend/src','src/UI/Frontend/tests')
+    $baseProductionRoots=@('src/Core','src/FreedomPointContracts','src/ReadWriteCore','src/SubscriptionCore','src/Shared','sdk/csharp/ResourceManager.Adapter.Abstractions','sdk/csharp/ResourceManager.Adapter.SharedMemory')
+    $fullProductionRoots=@('src/UI/Core','src/UI/Launcher','src/SessionAgent','src/Installer','src/Updater','src/Shared','src/Core','src/FreedomPointContracts','src/ReadWriteCore','src/SubscriptionCore','src/UI/Frontend/src','src/UI/Frontend/tests')
     $productionPrefixes=@(@($baseProductionRoots)+@('src/UI/Core','src/UI/Launcher','src/SessionAgent','src/Installer','src/Updater','src/UI/Frontend')|ForEach-Object {[IO.Path]::GetFullPath((Join-Path $repo $_))+[IO.Path]::DirectorySeparatorChar})
     $productionFiles=@(& rg --files @($baseProductionRoots|ForEach-Object {Join-Path $repo $_}));Check ($LASTEXITCODE -eq 0) 'Cannot enumerate current production inputs.'
     $productionFiles=@($productionFiles|Where-Object {$_ -notmatch '(^|[\\/])(bin|obj|node_modules)([\\/]|$)' -and $_ -match '\.(cs|csproj|props|targets|json|ps1|mjs|rsp|runsettings)$'})

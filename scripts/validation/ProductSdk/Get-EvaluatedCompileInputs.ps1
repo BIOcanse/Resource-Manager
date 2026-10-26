@@ -21,7 +21,7 @@ if(-not [IO.File]::Exists($Dotnet)){throw "dotnet is missing: $Dotnet"}
 if(-not [IO.Directory]::Exists($repo) -or -not [IO.Directory]::Exists($scratch)){throw 'RepositoryRoot and ScratchRoot must be existing directories.'}
 
 $projectPaths=switch($Stage) {
-    'Sources' { @('src/ReadWriteCore/ResourceManager.ReadWriteCore.csproj','src/SubscriptionCore/ResourceManager.SubscriptionCore.csproj','src/Core/ResourceManager.App.csproj') }
+    'Sources' { @('src/FreedomPointContracts/ResourceManager.FreedomPointContracts.csproj','src/ReadWriteCore/ResourceManager.ReadWriteCore.csproj','src/SubscriptionCore/ResourceManager.SubscriptionCore.csproj','src/Core/ResourceManager.App.csproj') }
     'Pack' { @('src/ReadWriteCore/ResourceManager.ReadWriteCore.csproj','src/SubscriptionCore/ResourceManager.SubscriptionCore.csproj') }
     'Consumers' { @('tests/ReadWriteCore/PackageConsumer/PackageConsumer.csproj','tests/SubscriptionCore/PackageConsumer/PackageConsumer.csproj') }
 }

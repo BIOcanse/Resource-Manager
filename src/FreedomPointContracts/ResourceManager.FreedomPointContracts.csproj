@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="FreedomPoint.Core" Version="0.1.0-dev.45" />
+    <InternalsVisibleTo Include="ResourceManager" />
+    <InternalsVisibleTo Include="ResourceManager.FrontendPreferencesBuild" />
+    <InternalsVisibleTo Include="ResourceManager.FreedomPointCheck" />
+    <InternalsVisibleTo Include="Resource Manager-APP.Tests" />
+  </ItemGroup>
+</Project>

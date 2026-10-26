@@ -30,7 +30,7 @@ try
     var host = FreedomPointRegistry.Parse(File.ReadAllBytes(Path.Combine(root, "src/Core/Configuration/FreedomPoints/backend.json")));
     var registry = host.Sdk.Registry;
     var issues = new List<VerificationIssue>();
-    var bindingFile = Path.Combine(root, "src/Core/Domain/RuntimeSpecialization/FreedomPoints/BackendFreedomPointPositions.cs");
+    var bindingFile = Path.Combine(root, "src/FreedomPointContracts/Domain/BackendFreedomPointPositions.cs");
     var generated = GeneratePositions(host.Declarations);
     File.WriteAllText(Path.Combine(output, "BackendFreedomPointPositions.cs"), generated);
     if (File.ReadAllText(bindingFile).Replace("\r\n", "\n") != generated)
@@ -71,7 +71,7 @@ try
         // Compile items, without scanning its task's tools, logs or caches.
         additionalRoots.Add(new("ledger-generated", ledgerRoots[0], ["."], ImmutableHashSet<string>.Empty));
     }
-    var scan = new SourceScanOptions(root, ["src/Core", "src/ReadWriteCore", "src/SubscriptionCore"],
+    var scan = new SourceScanOptions(root, ["src/Core", "src/FreedomPointContracts", "src/ReadWriteCore", "src/SubscriptionCore"],
         ImmutableHashSet.Create(StringComparer.OrdinalIgnoreCase, "bin", "obj", "third_party", "node_modules", ".zig-cache", "zig-out", "Config", "UserData"),
         MaximumFiles: 20_000, MaximumFileBytes: 32 * 1024 * 1024)
     {
@@ -165,7 +165,7 @@ catch (Exception exception) when (exception is FreedomPointException or InvalidD
     var failure = JsonSerializer.Serialize(new { passed = false, error = exception.GetType().Name, detail = exception.Message }, json);
     File.WriteAllText(Path.Combine(output, "source-result.json"), failure);
     File.WriteAllText(Path.Combine(output, "failure.json"), failure);
-    Console.Error.WriteLine(exception.Message);
+    Console.Error.WriteLine(exception.ToString());
     return 1;
 }
 
@@ -179,6 +179,7 @@ static SourceRole Classify(string path)
     if (path.StartsWith("artifacts/", StringComparison.Ordinal)) return SourceRole.Compiler;
     if (path.StartsWith("ledger-generated/", StringComparison.Ordinal)) return SourceRole.Compiler;
     if (path.StartsWith("source/", StringComparison.Ordinal)) path = path[7..];
+    if (path.StartsWith("src/FreedomPointContracts/", StringComparison.Ordinal)) return SourceRole.Compiler;
     if (path.StartsWith("src/Core/Domain/RuntimeSpecialization/", StringComparison.Ordinal)) return SourceRole.Compiler;
     if (path.StartsWith("src/Core/Infrastructure/RuntimeSpecialization/", StringComparison.Ordinal)) return SourceRole.Compiler;
     return SourceRole.Production;

@@ -7,12 +7,12 @@ using System.Text.Json.Nodes;
 using FreedomPoint;
 using FreedomPoint.Generators;
 using ResourceManager.App.Domain.RuntimeSpecialization;
-using ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints;
+using FreedomPointRegistry = ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints.BackendFreedomPointRegistry;
 using ResourceManager.Shared.Appearance;
 
 namespace ResourceManager.FrontendPreferencesBuild;
 
-internal static class Program
+internal static partial class Program
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
     public static int Main(string[] args)
@@ -47,9 +47,9 @@ internal static class Program
 
         using var profile = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(root, "src/Core/Configuration/HostManager/default.json")));
         using var cpuDefaults = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(root, "src/Core/Configuration/Cpu/baseline-defaults.json")));
-        var cpu = JsonSerializer.SerializeToElement(new FreedomPointRegistry.CpuScoringInput(
+        var cpu = JsonSerializer.SerializeToElement(new CpuScoringInput(
             cpuDefaults.RootElement.GetProperty("unmatchedRatio").GetDouble(), CompiledCpuCoreWeights.Empty),
-            FreedomPointRegistry.CreateSerializerOptions());
+            new CpuSourceJsonContext(new JsonSerializerOptions()).Options);
         var inherited = host.Sdk.Resolve(profile.RootElement, cpu);
         var declarationPath = Path.Combine(root, "src/UI/Frontend/preferences.points.json");
         using var document = JsonDocument.Parse(File.ReadAllBytes(declarationPath));
@@ -229,4 +229,10 @@ internal static class Program
         }
         return true;
     }
+
+    private sealed record CpuScoringInput(double baseline_ratio, CompiledCpuCoreWeights core_performance_weights);
+
+    [System.Text.Json.Serialization.JsonSerializable(typeof(CpuScoringInput))]
+    [System.Text.Json.Serialization.JsonSourceGenerationOptions(GenerationMode = System.Text.Json.Serialization.JsonSourceGenerationMode.Metadata)]
+    private partial class CpuSourceJsonContext : System.Text.Json.Serialization.JsonSerializerContext;
 }

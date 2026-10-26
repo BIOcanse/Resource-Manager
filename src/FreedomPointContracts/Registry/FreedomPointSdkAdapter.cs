@@ -2,7 +2,6 @@ using System.Collections.Frozen;
 using System.Collections.Immutable;
 using System.Text.Json;
 using FreedomPoint;
-using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Domain.RuntimeSpecialization.FreedomPoints;
 
 namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints;
@@ -107,7 +106,7 @@ internal sealed class FreedomPointSdkAdapter
                     if (value.ValueKind != JsonValueKind.Object || !value.TryGetProperty(name, out value))
                         throw new InvalidDataException($"Freedom point '{point.Address}' source '{point.SourcePath}' is missing.");
             }
-            FreedomPointRegistry.ValidateValue(value, point.ValueType, point.Address);
+            BackendFreedomPointRegistry.ValidateValue(value, point.ValueType, point.Address);
             return point.ValueType switch
             {
                 "positive_int32" => PointValueSet.Simple(PointValue.FromInteger(value.GetInt32())),
@@ -130,35 +129,38 @@ internal sealed class FreedomPointSdkAdapter
         };
     }
 
+    // Target identities belong to the declaration contract; loading the compiled host would make
+    // build tools depend on the product. ActualCompiledMembersBindEveryActivePositionAndNoPendingPosition
+    // verifies these identities against the attributed host properties.
     private static ImmutableArray<GenerationTarget> HostTargets(CompiledFreedomPoint point)
     {
-        var (type, symbol) = point.Path.Raw switch
+        var (scope, symbol) = point.Path.Raw switch
         {
-            BackendFreedomPointPositions.MachineBaselineRatio => (typeof(CompiledCpuScoringPlan), nameof(CompiledCpuScoringPlan.BaselineRatio)),
-            BackendFreedomPointPositions.CorePerformanceWeights => (typeof(CompiledCpuScoringPlan), nameof(CompiledCpuScoringPlan.CoreWeights)),
-            BackendFreedomPointPositions.ObservationWindowMs => (typeof(CompiledCpuCoreResidencyPlan), nameof(CompiledCpuCoreResidencyPlan.ObservationWindowMilliseconds)),
-            BackendFreedomPointPositions.ExecutionTimeSource => (typeof(CompiledCpuCoreResidencyPlan), nameof(CompiledCpuCoreResidencyPlan.ExecutionTimeSource)),
-            BackendFreedomPointPositions.SmtAccounting => (typeof(CompiledCpuCoreResidencyPlan), nameof(CompiledCpuCoreResidencyPlan.PhysicalCoreByLogicalProcessor)),
-            BackendFreedomPointPositions.CrashCounterResetSeconds => (typeof(CompiledHostManagerPlan), nameof(CompiledHostManagerPlan.ServiceRecoveryResetPeriodSeconds)),
-            BackendFreedomPointPositions.TrustedAccessRequestLifetimeMilliseconds => (typeof(CompiledHostManagerPlan), nameof(CompiledHostManagerPlan.TrustedAccessRequestLifetimeMilliseconds)),
-            BackendFreedomPointPositions.SubscriptionIntervalMs => (typeof(CompiledHostManagerPlan), nameof(CompiledHostManagerPlan.SchedulerSamplingInterval)),
-            BackendFreedomPointPositions.ActionTimeoutMs => (typeof(CompiledHostManagerPlacementCoordinatorHotPublishPlan), nameof(CompiledHostManagerPlacementCoordinatorHotPublishPlan.ActionTimeoutMilliseconds)),
-            BackendFreedomPointPositions.GpuWindowExecutionLimits => (typeof(CompiledHostManagerPlacementCoordinatorHotPublishPlan), nameof(CompiledHostManagerPlacementCoordinatorHotPublishPlan.WindowExecution)),
-            BackendFreedomPointPositions.GpuApiObservationWindowMs => (typeof(CompiledHostManagerPlacementCoordinatorHotPublishPlan), nameof(CompiledHostManagerPlacementCoordinatorHotPublishPlan.ApiObservationWindowMilliseconds)),
-            BackendFreedomPointPositions.AutomaticExclusivity => (typeof(CompiledHostManagerPlacementCoordinatorHotPublishPlan), nameof(CompiledHostManagerPlacementCoordinatorHotPublishPlan.CpuAutomaticExclusivity)),
-            BackendFreedomPointPositions.GameStartGraceMs => (typeof(CompiledHostManagerSmartCoordinatorHotPublishPlan), nameof(CompiledHostManagerSmartCoordinatorHotPublishPlan.GameStartGraceMilliseconds)),
-            BackendFreedomPointPositions.RequiredConsecutiveDecisions => (typeof(CompiledHostManagerSmartCoordinatorHotPublishPlan), nameof(CompiledHostManagerSmartCoordinatorHotPublishPlan.RequiredConsecutiveDecisions)),
-            BackendFreedomPointPositions.FailureRetryMs => (typeof(CompiledHostManagerSmartCoordinatorHotPublishPlan), nameof(CompiledHostManagerSmartCoordinatorHotPublishPlan.FailureRetryMilliseconds)),
-            BackendFreedomPointPositions.SoftwareWelfare => (typeof(CompiledHostManagerSmartCoordinatorHotPublishPlan), nameof(CompiledHostManagerSmartCoordinatorHotPublishPlan.WelfareBaseScore)),
-            BackendFreedomPointPositions.StateMultipliers => (typeof(CompiledHostManagerSmartCoordinatorHotPublishPlan), nameof(CompiledHostManagerSmartCoordinatorHotPublishPlan.ProcessStateMultipliers)),
-            BackendFreedomPointPositions.BaseScoreTiers => (typeof(CompiledHostManagerSmartCoordinatorHotPublishPlan), nameof(CompiledHostManagerSmartCoordinatorHotPublishPlan.BaseScoreTiers)),
+            BackendFreedomPointPositions.MachineBaselineRatio => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledCpuScoringPlan", "BaselineRatio"),
+            BackendFreedomPointPositions.CorePerformanceWeights => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledCpuScoringPlan", "CoreWeights"),
+            BackendFreedomPointPositions.ObservationWindowMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledCpuCoreResidencyPlan", "ObservationWindowMilliseconds"),
+            BackendFreedomPointPositions.ExecutionTimeSource => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledCpuCoreResidencyPlan", "ExecutionTimeSource"),
+            BackendFreedomPointPositions.SmtAccounting => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledCpuCoreResidencyPlan", "PhysicalCoreByLogicalProcessor"),
+            BackendFreedomPointPositions.CrashCounterResetSeconds => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "ServiceRecoveryResetPeriodSeconds"),
+            BackendFreedomPointPositions.RequestLifetimeMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "TrustedAccessRequestLifetimeMilliseconds"),
+            BackendFreedomPointPositions.SubscriptionIntervalMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "SchedulerSamplingInterval"),
+            BackendFreedomPointPositions.ActionTimeoutMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlacementCoordinatorHotPublishPlan", "ActionTimeoutMilliseconds"),
+            BackendFreedomPointPositions.GpuWindowExecutionLimits => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlacementCoordinatorHotPublishPlan", "WindowExecution"),
+            BackendFreedomPointPositions.GpuApiObservationWindowMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlacementCoordinatorHotPublishPlan", "ApiObservationWindowMilliseconds"),
+            BackendFreedomPointPositions.AutomaticExclusivity => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlacementCoordinatorHotPublishPlan", "CpuAutomaticExclusivity"),
+            BackendFreedomPointPositions.GameStartGraceMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerSmartCoordinatorHotPublishPlan", "GameStartGraceMilliseconds"),
+            BackendFreedomPointPositions.RequiredConsecutiveDecisions => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerSmartCoordinatorHotPublishPlan", "RequiredConsecutiveDecisions"),
+            BackendFreedomPointPositions.FailureRetryMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerSmartCoordinatorHotPublishPlan", "FailureRetryMilliseconds"),
+            BackendFreedomPointPositions.SoftwareWelfare => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerSmartCoordinatorHotPublishPlan", "WelfareBaseScore"),
+            BackendFreedomPointPositions.StateMultipliers => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerSmartCoordinatorHotPublishPlan", "ProcessStateMultipliers"),
+            BackendFreedomPointPositions.BaseScoreTiers => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerSmartCoordinatorHotPublishPlan", "BaseScoreTiers"),
             _ => throw new InvalidDataException($"Active freedom point '{point.Path}' has no compiled host member.")
         };
         return [new GenerationTarget
         {
             Language = GenerationLanguage.HostArtifact,
             Form = point.Path.Family == PointFamily.Build ? GenerationForm.BuildConstant : GenerationForm.RuntimeImmutable,
-            Scope = type.FullName!, Symbol = symbol
+            Scope = scope, Symbol = symbol
         }];
     }
 

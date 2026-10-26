@@ -3,7 +3,7 @@ param(
     [Parameter(Mandatory)][string]$ArtifactsPath,
     [Parameter(Mandatory)][string]$OutputPath,
     [string[]]$BuildProperties = @(),
-    [string[]]$ProjectRelativePaths = @('src/ReadWriteCore/ResourceManager.ReadWriteCore.csproj','src/SubscriptionCore/ResourceManager.SubscriptionCore.csproj','src/Core/ResourceManager.App.csproj'),
+    [string[]]$ProjectRelativePaths = @('src/FreedomPointContracts/ResourceManager.FreedomPointContracts.csproj','src/ReadWriteCore/ResourceManager.ReadWriteCore.csproj','src/SubscriptionCore/ResourceManager.SubscriptionCore.csproj','src/Core/ResourceManager.App.csproj'),
     [string]$Dotnet = 'dotnet'
 )
 Set-StrictMode -Version Latest

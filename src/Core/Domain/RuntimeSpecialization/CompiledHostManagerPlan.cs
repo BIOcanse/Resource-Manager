@@ -45,7 +45,7 @@ public sealed record CompiledHostManagerPlan(
     [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.CrashCounterResetSeconds)]
     public int ServiceRecoveryResetPeriodSeconds { get; init; }
 
-    [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.TrustedAccessRequestLifetimeMilliseconds)]
+    [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.RequestLifetimeMs)]
     public int TrustedAccessRequestLifetimeMilliseconds { get; init; }
 
     public const int CurrentSchemaVersion = 42;

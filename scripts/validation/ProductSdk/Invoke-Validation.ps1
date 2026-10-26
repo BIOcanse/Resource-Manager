@@ -160,13 +160,13 @@ try {
         [IO.Path]::GetFullPath([string]$taskWorkset.IsolatedScratchRoot) -ine (Join-Path $taskExpectedBatch 'scratch')){throw 'Prepared workset does not belong to this fresh invocation.'}
 [IO.File]::WriteAllText((Join-Path $taskRun 'workset.json'),($taskWorkset|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))
 $taskWorksetRecorded=$true
-$taskInputs=@(& rg --files src/Core src/ReadWriteCore src/SubscriptionCore src/Shared sdk/csharp/ResourceManager.Adapter.Abstractions sdk/csharp/ResourceManager.Adapter.SharedMemory tests/App tests/ReadWriteCore/PackageConsumer tests/SubscriptionCore/PackageConsumer scripts/validation scripts/build)
+$taskInputs=@(& rg --files src/Core src/FreedomPointContracts src/ReadWriteCore src/SubscriptionCore src/Shared sdk/csharp/ResourceManager.Adapter.Abstractions sdk/csharp/ResourceManager.Adapter.SharedMemory tests/App tests/ReadWriteCore/PackageConsumer tests/SubscriptionCore/PackageConsumer scripts/validation scripts/build)
 if($LASTEXITCODE -ne 0){throw 'Could not enumerate backend inputs.'}
 $taskInputs=@($taskInputs|Where-Object {$_ -notmatch '(^|[\\/])(bin|obj|node_modules)([\\/]|$)' -and $_ -notlike 'src\UI\Frontend\*' -and $_ -match '\.(cs|csproj|props|targets|json|ps1|mjs|rsp|runsettings)$'})
 if($taskExplicitTestProject) {
     # Seal the complete managed project graph and copied/embedded resources,
     # including xaml/resx, instead of applying the focused C# extension filter.
-    $taskAppInputs=@(& rg --files src/UI/Core src/UI/Launcher src/SessionAgent src/Installer src/Updater src/Shared src/Core src/ReadWriteCore src/SubscriptionCore tests/App src/UI/Frontend/src src/UI/Frontend/tests)
+    $taskAppInputs=@(& rg --files src/UI/Core src/UI/Launcher src/SessionAgent src/Installer src/Updater src/Shared src/Core src/FreedomPointContracts src/ReadWriteCore src/SubscriptionCore tests/App src/UI/Frontend/src src/UI/Frontend/tests)
     if($LASTEXITCODE -ne 0){throw 'Could not enumerate full App inputs.'}
     $taskInputs+=@($taskAppInputs|Where-Object {
         $_ -notmatch '(^|[\\/])(bin|obj|node_modules|zig-out|\.zig-cache)([\\/]|$)' -and

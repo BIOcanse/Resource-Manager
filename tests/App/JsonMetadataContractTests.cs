@@ -383,7 +383,9 @@ public sealed class JsonMetadataContractTests
             "ResourceManager.App.Infrastructure.NetworkTelemetry.KnownNetworkProxyCatalog" => "ProxySignatureDocument",
             _ => throw new InvalidOperationException(owner)
         };
-        return App.GetTypes().Concat(ReadWrite.GetTypes()).Where(t => t.Name == name).Take(1);
+        return App.GetTypes()
+            .Concat(typeof(ResourceManager.App.Domain.RuntimeSpecialization.FreedomPoints.CompiledFreedomPointTree).Assembly.GetTypes())
+            .Concat(ReadWrite.GetTypes()).Where(t => t.Name == name).Take(1);
     }
     private static IEnumerable<Type> RootTypes(Type context) => context.GetCustomAttributesData()
         .Where(a => a.AttributeType == typeof(JsonSerializableAttribute)).Select(a => (Type)a.ConstructorArguments[0].Value!).Distinct();

@@ -110,7 +110,7 @@
       "description": "Bounded local authorization request lifetime.",
       "order": 4,
       "points": [
-        "0001000200210000"
+        "0001000200240000"
       ]
     }
   ]

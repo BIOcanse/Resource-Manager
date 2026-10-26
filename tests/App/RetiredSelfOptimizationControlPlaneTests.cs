@@ -22,8 +22,8 @@ public sealed class RetiredSelfOptimizationControlPlaneTests
 
         var backendSource = string.Join(
             '\n',
-            Directory.EnumerateFiles(appRoot, "*.cs", SearchOption.AllDirectories)
-                .Where(static path => !IsGeneratedPath(path))
+            EnumerateSourceFiles(appRoot, "*.cs")
+                .Concat(EnumerateSourceFiles(Path.GetFullPath(Path.Combine(appRoot, "..", "FreedomPointContracts")), "*.cs"))
                 .Where(static path => !path.EndsWith(
                     Path.Combine("Application", "Settings", "AppSettingsMigrator.cs"),
                     StringComparison.OrdinalIgnoreCase))
@@ -40,7 +40,7 @@ public sealed class RetiredSelfOptimizationControlPlaneTests
         var clientSourceRoot = Path.GetFullPath(Path.Combine(appRoot, "..", "..", "src", "UI", "Frontend", "src"));
         var clientSource = string.Join(
             '\n',
-            Directory.EnumerateFiles(clientSourceRoot, "*.*", SearchOption.AllDirectories)
+            EnumerateSourceFiles(clientSourceRoot, "*.*")
                 .Where(static path =>
                     path.EndsWith(".ts", StringComparison.OrdinalIgnoreCase)
                     || path.EndsWith(".tsx", StringComparison.OrdinalIgnoreCase))
@@ -49,15 +49,38 @@ public sealed class RetiredSelfOptimizationControlPlaneTests
         Assert.DoesNotContain("selfOptimization", clientSource, StringComparison.Ordinal);
     }
 
-    private static bool IsGeneratedPath(string path)
+    // Prune build output before descending. Committed Generated/generated source remains covered.
+    private static IEnumerable<string> EnumerateSourceFiles(string root, string pattern)
     {
-        var segments = path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        return segments.Any(static segment =>
-            string.Equals(segment, "bin", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(segment, "obj", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(segment, "wwwroot", StringComparison.OrdinalIgnoreCase));
+        var pending = new Stack<string>();
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var files = 0;
+        pending.Push(root);
+        while (pending.TryPop(out var directory))
+        {
+            if (!visited.Add(directory)) continue;
+            if (visited.Count > 20_000)
+                throw new InvalidOperationException("Production source scan exceeded its traversal bound.");
+            foreach (var path in Directory.EnumerateFiles(directory, pattern))
+            {
+                if (++files > 100_000)
+                    throw new InvalidOperationException("Production source scan exceeded its file bound.");
+                yield return path;
+            }
+            foreach (var child in Directory.EnumerateDirectories(directory))
+            {
+                var name = Path.GetFileName(child);
+                if (name.Equals("bin", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("obj", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("wwwroot", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("node_modules", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("dist", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals(".zig-cache", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("zig-out", StringComparison.OrdinalIgnoreCase)) continue;
+                pending.Push(child);
+            }
+        }
     }
-
     private static string FindAppRoot(
         [System.Runtime.CompilerServices.CallerFilePath] string sourceFilePath = "")
     {
