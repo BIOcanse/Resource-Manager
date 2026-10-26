@@ -89,7 +89,7 @@ const component = readFileSync(new URL("../src/features/resourceBreakdown/Resour
 // 进程段的名字照样交给画布，放不放得下由画布按像素宽度决定。
 assert.match(component, /label: resourceProcessDisplayName\(item\.segment, metricId\)/);
 assert.match(component, /\$\{resourceProcessDisplayName\(process, bar\.metricId\)\}/);
-assert.match(component, /aria-label=\{resourceProcessTooltip\(props\.bar, item\(\)\.segment\)\}/);
+assert.match(component, /aria-label=\{resourceProcessTooltip\(props\.bar, props\.software, item\(\)\.segment\)\}/);
 const table = readFileSync(new URL("../src/features/resourceTable/ResourceTable.tsx", import.meta.url), "utf8");
 assert.match(table, /resourceTableRowName as rowName/);
 assert.match(table, /title=\{rowName\(row\(\)\)\}/);

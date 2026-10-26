@@ -39,6 +39,7 @@ import {
   resolveActiveDescendantTarget
 } from "../../ui/primitives/activeDescendantListbox.ts";
 import { ResourceTooltipOverlay } from "./ResourceTooltipOverlay.tsx";
+import { isReservedProcess, isReservedSegment, resourceProcessKey } from "./resourceProcessIdentity.ts";
 import { readMotionDurationMs } from "../../presentation/motionTokens.ts";
 import { resourceSegmentAtTrackX } from "./resourceTrackInteraction.ts";
 import { resourceEmptyCapacityValue, selectableResourceSegmentIds } from "./resourceSelection.ts";
@@ -626,11 +627,11 @@ function ResourceProcessPanel(props: {
   const layoutIndex = createMemo(() => {
     const map = new Map<string, ReturnType<typeof layout>[number]>();
     for (const item of layout()) {
-      map.set(processKey(item.segment), item);
+      map.set(resourceProcessKey(item.segment), item);
     }
     return map;
   });
-  const keys = createMemo(() => layout().map((item) => processKey(item.segment)));
+  const keys = createMemo(() => layout().map((item) => resourceProcessKey(item.segment)));
   const [activeProcessKey, setActiveProcessKey] = createSignal<string | null>(null);
   const [hoveredProcessKey, setHoveredProcessKey] = createSignal<string | null>(null);
   const interactionProcessKey = () => hoveredProcessKey() ?? activeProcessKey();
@@ -646,7 +647,7 @@ function ResourceProcessPanel(props: {
   const interactionOptionId = () => activeDescendantOptionId(processTrackId(), "active-segment");
   const interactionFollowsData = createSegmentChangeJump(() => {
     const entry = interactionEntry();
-    return entry ? processKey(entry.segment) : null;
+    return entry ? resourceProcessKey(entry.segment) : null;
   });
   const activeProcessOptionId = () => interactionEntry() ? interactionOptionId() : undefined;
   const trackGeometry = createResourceTrackGeometry();
@@ -654,7 +655,7 @@ function ResourceProcessPanel(props: {
   const hoveredEntry = () => hoveredProcessKey() ? interactionEntry() : null;
   const hasProcesses = () => layout().length > 0;
   const hasResidualCategories = () => {
-    if (props.software.softwareId?.startsWith("resource-residual:")) {
+    if (isReservedSegment(props.software)) {
       return true;
     }
 
@@ -678,13 +679,13 @@ function ResourceProcessPanel(props: {
         aria-activedescendant={activeProcessOptionId()}
         onPointerMove={(event) => {
           const entry = resourceEntryAtTrackPoint(layout(), event.currentTarget, event.clientX);
-          setHoveredProcessKey(entry ? processKey(entry.segment) : null);
+          setHoveredProcessKey(entry ? resourceProcessKey(entry.segment) : null);
         }}
         onPointerLeave={() => setHoveredProcessKey(null)}
         onClick={(event) => {
           const entry = resourceEntryAtTrackPoint(layout(), event.currentTarget, event.clientX);
           if (entry) {
-            setActiveProcessKey(processKey(entry.segment));
+            setActiveProcessKey(resourceProcessKey(entry.segment));
           }
         }}
         onKeyDown={(event) => {
@@ -703,7 +704,7 @@ function ResourceProcessPanel(props: {
           </Show>}
         >
           <ResourceSegmentPaintPlane
-            segments={resourceProcessPaintSegments(layout(), props.bar.metricId)}
+            segments={resourceProcessPaintSegments(layout(), props.bar.metricId, props.software)}
             logicalSegmentCount={layout().length}
             segmentTop={trackGeometry.segmentTop()}
             segmentHeight={trackGeometry.segmentHeight()}
@@ -731,13 +732,13 @@ function ResourceProcessPanel(props: {
                   id={interactionOptionId()}
                   class="resource-process-segment resource-segment-interaction-proxy"
                   classList={{
-                    "process-selected": activeProcessKey() === processKey(item().segment),
-                    "pointer-active": hoveredProcessKey() === processKey(item().segment)
+                    "process-selected": activeProcessKey() === resourceProcessKey(item().segment),
+                    "pointer-active": hoveredProcessKey() === resourceProcessKey(item().segment)
                   }}
                   role="option"
                   tabIndex={-1}
-                  aria-selected={activeProcessKey() === processKey(item().segment) ? "true" : "false"}
-                  aria-label={resourceProcessTooltip(props.bar, item().segment)}
+                  aria-selected={activeProcessKey() === resourceProcessKey(item().segment) ? "true" : "false"}
+                  aria-label={resourceProcessTooltip(props.bar, props.software, item().segment)}
                   aria-posinset={item().index + 1}
                   aria-setsize={layout().length}
                 />
@@ -747,7 +748,7 @@ function ResourceProcessPanel(props: {
           <Show when={hoveredEntry()}>
             {(item) => (
               <ResourceTooltipOverlay anchor={() => interactionProxy}>
-                <ResourceTooltipContent parts={resourceProcessTooltipParts(props.bar, item().segment)} />
+                <ResourceTooltipContent parts={resourceProcessTooltipParts(props.bar, props.software, item().segment)} />
               </ResourceTooltipOverlay>
             )}
           </Show>
@@ -756,7 +757,7 @@ function ResourceProcessPanel(props: {
       <Show when={activeProcess()}>
         {(process) => (
           <p class="resource-process-selection-detail" aria-hidden="true">
-            {resourceProcessTooltip(props.bar, process())}
+            {resourceProcessTooltip(props.bar, props.software, process())}
           </p>
         )}
       </Show>
@@ -813,11 +814,11 @@ function resourceTooltipText(parts: ResourceTooltipParts) {
   return [parts.title, ...(parts.kind ? [parts.kind] : []), ...parts.lines, ...parts.notes].join("\n");
 }
 
-function resourceProcessTooltip(bar: ResourceBarView, process: ResourceProcessSegment) {
-  return resourceTooltipText(resourceProcessTooltipParts(bar, process));
+function resourceProcessTooltip(bar: ResourceBarView, software: ResourceSoftwareSegment, process: ResourceProcessSegment) {
+  return resourceTooltipText(resourceProcessTooltipParts(bar, software, process));
 }
 
-function resourceProcessTooltipParts(bar: ResourceBarView, process: ResourceProcessSegment): ResourceTooltipParts {
+function resourceProcessTooltipParts(bar: ResourceBarView, software: ResourceSoftwareSegment, process: ResourceProcessSegment): ResourceTooltipParts {
   const identity = isSystemResidualProcess(process) || Number(process.processId) <= 0
     ? uiText.resourceBreakdown.noPidCategory
     : `PID ${process.processId}`;
@@ -826,10 +827,10 @@ function resourceProcessTooltipParts(bar: ResourceBarView, process: ResourceProc
     : isEtwResidualProcess(process)
       ? uiText.resourceBreakdown.etwSupplement
       : null;
-  const color = distinctPalette[hashKey(processKey(process)) % distinctPalette.length];
+  const color = distinctPalette[hashKey(resourceProcessKey(process)) % distinctPalette.length];
   return {
     title: `${resourceProcessDisplayName(process, bar.metricId)} (${identity})`,
-    swatch: { color, distinctColor: color, hatched: isSystemResidualProcess(process) },
+    swatch: { color, distinctColor: color, hatched: isReservedProcess(software, process) },
     kind: null,
     lines: [
       `${uiText.resourceBreakdown.systemPercent} ${formatPercent(process.systemPercent)}`,
@@ -1013,14 +1014,18 @@ function resourceSoftwarePaintSegments(items: ResourceSegmentLayout<ResourceSele
   }));
 }
 
-function resourceProcessPaintSegments(items: ResourceSegmentLayout<ResourceProcessSegment>[], metricId: string): ResourcePaintSegment[] {
+function resourceProcessPaintSegments(
+  items: ResourceSegmentLayout<ResourceProcessSegment>[],
+  metricId: string,
+  software: ResourceSoftwareSegment
+): ResourcePaintSegment[] {
   return items.map((item) => ({
-    key: processKey(item.segment),
+    key: resourceProcessKey(item.segment),
     sharedFraction: item.segment.value > 0 ? (item.segment.sharedValue ?? 0) / item.segment.value : 0,
     left: item.left,
     right: item.right,
-    color: distinctPalette[hashKey(processKey(item.segment)) % distinctPalette.length],
-    hatched: isSystemResidualProcess(item.segment),
+    color: distinctPalette[hashKey(resourceProcessKey(item.segment)) % distinctPalette.length],
+    hatched: isReservedProcess(software, item.segment),
     label: resourceProcessDisplayName(item.segment, metricId),
     labelColor: segmentTextColor
   }));
@@ -1087,14 +1092,7 @@ const bucketColors: Record<ResourceSoftwareBucket, string> = {
   other: "var(--resource-kind-other)"
 };
 
-/** 系统/驱动保留：后端把整机量减去各软件之和的差额记在 resource-residual:<指标> 下，它不是软件，单独画。 */
-function isReservedSegment(segment: { softwareId?: string | null }) {
-  return segment.softwareId?.startsWith("resource-residual:") === true;
-}
 
-function processKey(process: ResourceProcessSegment) {
-  return `${process.processId}|${process.name}`;
-}
 
 function resourceProxyClass(base: string, states: Record<string, boolean>) {
   return [base, "resource-segment-interaction-proxy", ...Object.keys(states).filter((name) => states[name])].join(" ");

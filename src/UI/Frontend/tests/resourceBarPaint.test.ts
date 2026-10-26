@@ -71,8 +71,11 @@ for (const path of ["features/resourceBreakdown/ResourceBreakdown.tsx", "feature
   assert.doesNotMatch(stripComments(read(path)), /color\(display-p3|rgba?\(\s*\d|#[0-9a-f]{3,8}\b/i, `${path} hard-codes a colour; use a --resource-* token`);
 }
 const breakdown = read("features/resourceBreakdown/ResourceBreakdown.tsx");
-assert.match(breakdown, /startsWith\("resource-residual:"\)/, "system/driver reserved segments are recognised by their residual id");
+const identity = read("features/resourceBreakdown/resourceProcessIdentity.ts");
+assert.match(identity, /startsWith\("resource-residual:"\)/, "system/driver reserved segments are recognised by their residual id");
+assert.match(breakdown, /import \{[^}]*isReservedSegment[^}]*\} from "\.\/resourceProcessIdentity\.ts"/, "one owner decides the reserved treatment");
 assert.match(breakdown, /hatched: isReservedSegment\(item\.segment\)/);
+assert.match(breakdown, /hatched: isReservedProcess\(software, item\.segment\)/, "every process under the reserved entry is hatched");
 const plane = read("features/resourceBreakdown/ResourceSegmentPaintPlane.tsx");
 assert.doesNotMatch(plane, /barColor !== "distinct"/, "dividers are drawn in the distinct colour mode too");
 
