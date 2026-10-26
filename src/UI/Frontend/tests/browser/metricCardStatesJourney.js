@@ -7,6 +7,7 @@ import { metricFieldDevices, npuBusyCardId, readingSourceDevices, readingSourceI
 /**
  * 监视卡片的读数状态和排版：
  * 1. 首个读数到之前画“读取中”占位（不先写“无读数”再跳成数值），占位和数值同高，数值淡入；设备不在照常直接写；
+ * 3. 四种风格里数值和单位之间的空格按单位字号排（终端风格的等宽大字号下不宽出一截）；
  */
 export default async function metricCardStatesJourney(page, baseUrl) {
   const errors = [];
@@ -94,6 +95,27 @@ export default async function metricCardStatesJourney(page, baseUrl) {
     assert.ok(!signature.split(" | ").includes("--"), `a slot showed "--" before its first reading: ${signature}`);
   }
 
+  // 3. 数值和单位之间的空格：四种风格都在数值字号的 0.1–0.4 倍之间。
+  const gapRatio = () => card("sources").locator(".metric-main .metric-value").evaluate((value) => {
+    const number = value.querySelector(".metric-number");
+    const unitText = value.querySelector(".metric-unit").firstChild;
+    const range = document.createRange();
+    range.setStart(unitText, unitText.textContent.length - unitText.textContent.trimStart().length);
+    range.setEnd(unitText, unitText.textContent.length);
+    return (range.getBoundingClientRect().left - number.getBoundingClientRect().right) / parseFloat(getComputedStyle(number).fontSize);
+  });
+  // 最后回到中文、宽窗口：运行器收尾的可用性检查按中文区域名找资源列表。
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const gaps = {};
+  for (const [uiStyle, theme] of [["standard", "light"], ["soft", "light"], ["outline", "paper"], ["terminal", "phosphor"]]) {
+    await writeFrontendPreferences(page, (value) => { value.appearance.language = "zh-CN"; value.appearance.uiStyle = uiStyle; value.appearance.theme = theme; });
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await openMonitor(zh);
+    await card("sources").locator(".metric-main .metric-value").filter({ hasText: "°C" }).waitFor({ timeout: 15_000 });
+    gaps[uiStyle] = Number((await gapRatio()).toFixed(3));
+    assert.ok(gaps[uiStyle] > 0.1 && gaps[uiStyle] < 0.4, `${uiStyle}: number-unit gap is ${gaps[uiStyle]} em`);
+  }
+
   assert.deepEqual(errors, []);
-  return { pendingSlots: 7, timelineSteps: shown.length };
+  return { pendingSlots: 7, timelineSteps: shown.length, gaps };
 }

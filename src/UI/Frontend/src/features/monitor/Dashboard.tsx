@@ -270,7 +270,8 @@ function MetricView(props: {
       >
         <div class="metric-value" classList={{ missing: reading().missing }} title={reading().title}>
           <Show when={reading().unit} fallback={reading().value}>
-            <span class="metric-number">{reading().value}</span>{reading().gap}<span class="metric-unit">{reading().unit}</span>
+            {/* 数值和单位之间的空格放在单位里，按单位的字号排：终端风格的等宽大字号下空格不会宽出一截。 */}
+            <span class="metric-number">{reading().value}</span><span class="metric-unit">{reading().gap}{reading().unit}</span>
           </Show>
         </div>
       </Show>
