@@ -193,10 +193,30 @@ export interface GpuSpecializedTelemetryCounter {
   engineName?: string | null;
 }
 
+/** 卡片上一个槽位的大小：最小 1 个单位、中 2、大 3、超大占满整张卡片（features/monitor/cardSlots.ts）。 */
+export type DashboardSlotSize = "small" | "medium" | "large" | "full";
+
+/** 卡片上的一个槽位：一个监控项和它的大小；设备字段和显卡指标带绑定。 */
+export interface DashboardCardSlot {
+  metricId: string;
+  binding?: DashboardMetricBinding | null;
+  size: DashboardSlotSize;
+}
+
 export interface DashboardCardSettings {
   id: string;
+  /** 从上到下的槽位，单位之和的规则见 features/monitor/cardSlots.ts。 */
+  slots: DashboardCardSlot[];
+}
+
+/**
+ * 有槽位之前的卡片缓存：一个主读数加若干行。读缓存时转换成槽位（features/monitor/cardSlots.ts 的 legacyCardSlots），
+ * 保存只写槽位。等支持的缓存里不会再有这种格式时，连同原生壳 FrontendDashboardCache 的旧格式校验一起删掉。
+ */
+export interface LegacyDashboardCardSettings {
+  id: string;
   main?: string | null;
-  small: string[];
+  small?: string[] | null;
   mainBinding?: DashboardMetricBinding | null;
   smallBindings?: Array<DashboardMetricBinding | null> | null;
 }

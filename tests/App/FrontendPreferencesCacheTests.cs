@@ -408,6 +408,34 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
     }
 
     [Fact]
+    public void DashboardCardSlotsSurviveTheCacheWithinTheUnitsACardCanHold()
+    {
+        // A card is a list of slots, each a metric and a size of 1, 2, 3 or all units; the legacy main/small layout is still read.
+        static JsonElement Layout(string card) => JsonDocument.Parse($$"""{"cards":[{{card}}]}""").RootElement.Clone();
+        var owner = Owner();
+        Assert.Equal(6, FrontendPoints.DashboardLayoutLimits.CardUnits);
+        owner.Save(new() { Dashboard = Layout("""{"id":"cpu","slots":[{"metricId":"cpu.usage","size":"medium"},{"metricId":"npu_all_engine_busy_percent@npu|0","size":"large","binding":{"scopeKind":"device-field","scopeKey":"npu|0"}},{"metricId":"cpu.frequency","size":"small","binding":null}]}""") });
+        var slots = Owner().Read().Dashboard!.Value.GetProperty("cards")[0].GetProperty("slots");
+        Assert.Equal(new string?[] { "medium", "large", "small" }, slots.EnumerateArray().Select(slot => slot.GetProperty("size").GetString()).ToArray());
+        Assert.Equal("npu|0", slots[1].GetProperty("binding").GetProperty("scopeKey").GetString());
+        owner.Save(new() { Dashboard = Layout("""{"id":"wide","slots":[{"metricId":"gpu.0.usage","size":"full"}]}""") });
+        // Migrated from the legacy layout: a main reading (2 units) and six rows is the most a card can still hold.
+        owner.Save(new() { Dashboard = Layout("""{"id":"old","slots":[{"metricId":"a","size":"medium"},{"metricId":"b","size":"small"},{"metricId":"c","size":"small"},{"metricId":"d","size":"small"},{"metricId":"e","size":"small"},{"metricId":"f","size":"small"},{"metricId":"g","size":"small"}]}""") });
+        owner.Save(new() { Dashboard = Layout("""{"id":"legacy","main":"cpu.usage","small":["cpu.frequency"]}""") });
+        foreach (var invalid in new[]
+        {
+            """{"id":"x","slots":[{"metricId":"cpu.usage","size":"huge"}]}""",
+            """{"id":"x","slots":[{"metricId":"cpu.usage"}]}""",
+            """{"id":"x","slots":[{"metricId":"  ","size":"small"}]}""",
+            """{"id":"x","slots":[{"metricId":"cpu.usage","size":"small","binding":"gpu"}]}""",
+            """{"id":"x","slots":{"metricId":"cpu.usage","size":"small"}}""",
+            """{"id":"x","slots":[{"metricId":"a","size":"full"},{"metricId":"b","size":"large"}]}"""
+        })
+            Assert.Throws<InvalidDataException>(() => owner.Save(new() { Dashboard = Layout(invalid) }));
+        Assert.Equal("legacy", Owner().Read().Dashboard!.Value.GetProperty("cards")[0].GetProperty("id").GetString());
+    }
+
+    [Fact]
     public void OverlayMetricSourcesSurviveTheCacheAndMustBelongToAnItem()
     {
         // An overlay item's chosen source is frontend data next to the item order; absent means automatic.

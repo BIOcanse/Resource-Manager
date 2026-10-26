@@ -1,5 +1,5 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
-import { metricFieldDevices, readingSourceDevices, readingSourceIds } from "./metricFieldsProbe.js";
+import { addCardSlot, metricFieldDevices, readingSourceDevices, readingSourceIds } from "./metricFieldsProbe.js";
 
 /**
  * 先选项目、再选来源（docs/metric_item_source_choice_2026-10-25.md，简体中文）：
@@ -19,7 +19,7 @@ export default async function metricSourceChoiceJourney(page, baseUrl) {
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await page.getByRole("navigation").getByRole("button", { name: app.page.monitor, exact: true }).click();
   await page.getByRole("button", { name: app.monitorPage.editLayoutLabel, exact: true }).click();
-  await page.getByRole("button", { name: app.dashboard.addMetric(app.dashboard.detailSlot(1, 3)), exact: true }).click();
+  await addCardSlot(page, app, 1);
 
   const picker = page.locator("#metricModal");
   const option = (id) => picker.locator(`[data-metric-id="${id}"]`);

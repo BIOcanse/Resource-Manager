@@ -147,7 +147,7 @@
    行高 19px，Segoe UI Variable 是 21px，换了西文标题会变矮、下面的内容上移（中文落到雅黑看不出来）。
    行高同为 21px、又不改中文字形的 Windows 无衬线字体只有 Segoe UI 系列，和标准一样，所以不换。 */
 
-/* 读数：等宽字只给宽度由外层决定的盒子（卡片主读数、定宽表格列），等宽字更宽，
+/* 读数：等宽字只给宽度由外层决定的盒子（卡片中、大、超大槽位的读数，定宽表格列），等宽字更宽，
    放进按内容定宽的位置会挤动旁边的标签。表格各列数字统一等宽对齐。 */
 :root[data-ui-style="terminal"] .metric-main-content .metric-value,
 :root[data-ui-style="terminal"] .resource-table-cell.value-cell {
@@ -158,7 +158,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 卡片主读数用更亮的强调色，像仪表的读数；没有值时保持标准风格的灰色。 */
+/* 卡片中、大、超大槽位的读数用更亮的强调色，像仪表的读数；没有值时保持标准风格的灰色。 */
 :root[data-ui-style="terminal"] .metric-main-content .metric-value:not(.missing) {
   color: var(--accent-strong);
 }

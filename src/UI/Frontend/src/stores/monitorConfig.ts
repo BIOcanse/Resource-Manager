@@ -4,90 +4,105 @@ export { dashboardSettingsVersion } from "../preferences/dashboardPreferences.ts
 import type { DashboardSlotRef } from "../features/monitor/Dashboard";
 import type {
   DashboardCardSettings,
+  DashboardCardSlot,
   DashboardMetricBinding,
+  DashboardSlotSize,
   MetricDefinition,
   ResourceBarSettings,
   ResourceTableColumnSettings,
   ResourceTableViewMode
 } from "../types";
-import { normalizeResourceBarScaleMode } from "../features/resourceBreakdown/resourceBarScaleCapabilities";
+import { normalizeResourceBarScaleMode } from "../features/resourceBreakdown/resourceBarScaleCapabilities.ts";
 import { deviceFieldScopeKind, fieldCardSlot } from "../features/monitor/fieldCards.ts";
-import { textOrEmpty } from "../utils";
+import { isDashboardSlotSize, remainingUnits, sizesThatFit, slotUnits } from "../features/monitor/cardSlots.ts";
+import { textOrEmpty } from "../utils.ts";
 
 const limits = ResourceManager.FrontendPoints.DashboardLayoutLimits;
-export const dashboardSmallMetricLimit = limits.smallMetricLimit;
 export const defaultCards: DashboardCardSettings[] = dashboardPointValues().cards;
-export function readDashboardSlot(card: DashboardCardSettings, slot: DashboardSlotRef) {
-  if (slot.slot === "main") {
-    return card.main ?? null;
-  }
+/*
+ * 卡片槽位的编辑（规则见 features/monitor/cardSlots.ts）。每个函数拿到整份卡片列表，返回新的列表；
+ * 放不下、找不到卡片或槽位时原样返回同一份列表，调用方不另做判断。
+ */
 
-  return card.small?.[slot.index] ?? null;
+function updateCard(cards: readonly DashboardCardSettings[], cardId: string, change: (slots: DashboardCardSlot[]) => DashboardCardSlot[] | null) {
+  const index = cards.findIndex((card) => card.id === cardId);
+  if (index < 0) return cards as DashboardCardSettings[];
+  const slots = change([...cards[index].slots]);
+  if (!slots) return cards as DashboardCardSettings[];
+  const next = [...cards];
+  next[index] = { ...cards[index], slots };
+  return next;
 }
 
-export function readDashboardSlotBinding(
-  card: DashboardCardSettings,
-  slot: DashboardSlotRef
-): DashboardMetricBinding | null {
-  if (slot.slot === "main") {
-    return card.mainBinding ?? null;
-  }
-
-  return card.smallBindings?.[slot.index] ?? null;
+/** 在卡片末尾加一个槽位：大小要在剩余放得下的大小里。 */
+export function addCardSlot(cards: readonly DashboardCardSettings[], cardId: string, slot: DashboardCardSlot) {
+  return updateCard(cards, cardId, (slots) => sizesThatFit(slots).includes(slot.size) ? [...slots, slot] : null);
 }
 
-export function writeDashboardSlot(
-  card: DashboardCardSettings,
-  slot: DashboardSlotRef,
-  metricId: string | null,
-  binding: DashboardMetricBinding | null
-) {
-  if (slot.slot === "main") {
-    card.main = metricId;
-    card.mainBinding = metricId ? binding : null;
-    return;
-  }
-
-  const small = [...(card.small ?? [])];
-  const smallBindings = [...(card.smallBindings ?? [])];
-  if (metricId) {
-    small[slot.index] = metricId;
-    smallBindings[slot.index] = binding;
-  } else {
-    small.splice(slot.index, 1);
-    smallBindings.splice(slot.index, 1);
-  }
-  card.small = small;
-  card.smallBindings = smallBindings;
+/** 换掉槽位里的监控项，大小不变。 */
+export function replaceCardSlotMetric(cards: readonly DashboardCardSettings[], ref: DashboardSlotRef, metricId: string, binding: DashboardMetricBinding | null) {
+  return updateCard(cards, ref.cardId, (slots) => {
+    if (!slots[ref.index]) return null;
+    slots[ref.index] = { ...slots[ref.index], metricId, binding };
+    return slots;
+  });
 }
 
+/** 改槽位的大小：新大小要在“剩余 + 这个槽位自己的单位”放得下的大小里。 */
+export function resizeCardSlot(cards: readonly DashboardCardSettings[], ref: DashboardSlotRef, size: DashboardSlotSize) {
+  return updateCard(cards, ref.cardId, (slots) => {
+    if (!slots[ref.index] || slots[ref.index].size === size || !sizesThatFit(slots, ref.index).includes(size)) return null;
+    slots[ref.index] = { ...slots[ref.index], size };
+    return slots;
+  });
+}
+
+export function removeCardSlot(cards: readonly DashboardCardSettings[], ref: DashboardSlotRef) {
+  return updateCard(cards, ref.cardId, (slots) => slots[ref.index] ? slots.filter((_, index) => index !== ref.index) : null);
+}
+
+/**
+ * 把一个槽位拖到另一个槽位上：同一张卡片里移到目标的位置；拖到别的卡片时放到目标槽位前面，
+ * 那张卡片的剩余要放得下这个槽位，否则不动。
+ */
+export function moveCardSlot(cards: readonly DashboardCardSettings[], source: DashboardSlotRef, target: DashboardSlotRef) {
+  const from = cards.find((card) => card.id === source.cardId);
+  const to = cards.find((card) => card.id === target.cardId);
+  const moving = from?.slots[source.index];
+  if (!from || !to || !moving || (source.cardId === target.cardId && source.index === target.index)) {
+    return cards as DashboardCardSettings[];
+  }
+  if (from === to) {
+    return updateCard(cards, from.id, (slots) => {
+      slots.splice(source.index, 1);
+      slots.splice(Math.min(target.index, slots.length), 0, moving);
+      return slots;
+    });
+  }
+  if (remainingUnits(to.slots) < slotUnits(moving.size)) {
+    return cards as DashboardCardSettings[];
+  }
+  const withoutSource = removeCardSlot(cards, source);
+  return updateCard(withoutSource, to.id, (slots) => {
+    slots.splice(Math.min(target.index, slots.length), 0, moving);
+    return slots;
+  });
+}
+
+/** 整理要保存的卡片：去掉没有监控项或大小不认识的槽位，没有槽位的卡片不保存。单位之和不在这里截：迁移来的卡片原样保留。 */
 export function normalizeCards(candidateCards?: DashboardCardSettings[] | null): DashboardCardSettings[] {
-  const normalized = (candidateCards ?? [])
+  return (candidateCards ?? [])
     .filter(Boolean)
-    .map((card) => {
-      const main = textOrEmpty(card.main) || null;
-      const small: string[] = [];
-      const smallBindings: Array<DashboardMetricBinding | null> = [];
-      for (let index = 0; index < (card.small ?? []).length && small.length < dashboardSmallMetricLimit; index += 1) {
-        const metricId = textOrEmpty(card.small[index]);
-        if (!metricId) {
-          continue;
-        }
-        small.push(metricId);
-        smallBindings.push(normalizeMetricBinding(metricId, card.smallBindings?.[index]));
-      }
-
-      return {
-        id: textOrEmpty(card.id) || crypto.randomUUID(),
-        main,
-        small,
-        mainBinding: normalizeMetricBinding(main, card.mainBinding),
-        smallBindings
-      };
-    })
-    .filter((card) => Boolean(card.main) || card.small.length > 0);
-
-  return normalized;
+    .map((card) => ({
+      id: textOrEmpty(card.id) || crypto.randomUUID(),
+      slots: (card.slots ?? []).flatMap((slot) => {
+        const metricId = textOrEmpty(slot?.metricId);
+        return metricId && isDashboardSlotSize(slot.size)
+          ? [{ metricId, size: slot.size, binding: normalizeMetricBinding(metricId, slot.binding) }]
+          : [];
+      })
+    }))
+    .filter((card) => card.slots.length > 0);
 }
 
 export function metricBindingForDefinition(

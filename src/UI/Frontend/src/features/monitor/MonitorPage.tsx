@@ -114,10 +114,12 @@ export function MonitorPage(props: MonitorPageProps) {
                   catalog={monitor.cardCatalog()}
                   snapshot={monitor.cardSnapshot()}
                   pendingMetricIds={monitor.cardPendingMetricIds()}
+                  trends={monitor.cardTrends()}
                   editMode={monitor.editMode()}
                   metricSelectionAvailable={metricSelectionAvailable()}
                   onOpenMetricModal={monitor.openMetricModal}
                   onClearSlot={monitor.clearMetricSlot}
+                  onResizeSlot={monitor.resizeMetricSlot}
                   onMoveCard={monitor.moveDashboardCard}
                   onMoveMetricSlot={monitor.moveDashboardMetricSlot}
                 />

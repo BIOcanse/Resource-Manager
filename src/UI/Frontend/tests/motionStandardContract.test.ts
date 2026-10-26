@@ -78,6 +78,10 @@ assert.equal(declarationsOf(".slot-actions").get("transition"), "opacity var(--m
 assert.equal(declarationsOf(".metric-card").get("transition"),
   "opacity var(--motion-fast) var(--ease-standard), box-shadow var(--motion-medium) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard)");
 
+// 卡片槽位的上边和高度由磁石的卡片槽位组件按通道带（interactions/components/cardSlotLayout.ts），CSS 不另写过渡。
+assert.ok(!rules.some((rule) => rule.selectors.some((selector) => /\.card-slot|\.metric-slots/.test(selector)) && rule.declarations.has("transition")),
+  "card slots move and resize with the Lodestone field; a CSS transition would fight it");
+
 // 组件样式不写过渡；持续循环的加载转圈是唯一写在组件里的动画。
 const cssFiles: string[] = [];
 const pending = [srcRoot];

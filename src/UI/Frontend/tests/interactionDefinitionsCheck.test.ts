@@ -8,6 +8,7 @@ import { columnEdgeBound, columnResizeHandleDefinition } from "../src/interactio
 import { curvePointDefinition } from "../src/interactions/components/curvePoint.ts";
 import { REORDER_BOUND, reorderItemDefinition } from "../src/interactions/components/reorderItem.ts";
 import { switchToggleDefinition } from "../src/interactions/components/switchToggle.ts";
+import { CARD_SLOT_LAYOUT_BOUND, cardSlotLayoutDefinition } from "../src/interactions/components/cardSlotLayout.ts";
 
 // 产品里每份磁石定义都过一遍机器检查（协议第 4.3 节）：发行用“优化”执行方式，不跑检查，所以开发期在这里跑。
 // 系统参数和产品一样不读（null）；几何取和产品呈现层同方向的两端，只为几何那几项检查，像素数不影响完备和确定。
@@ -16,7 +17,9 @@ const definitions: readonly [Definition, Geometry][] = [
   [controlSliderDefinition, { center: "滑块圆心", atMin: { x: 8, y: 0 }, atMax: { x: 192, y: 0 } }],
   [curvePointDefinition, { center: "点的圆心", atMin: { x: 0, y: 240 }, atMax: { x: 0, y: 0 } }],
   [columnResizeHandleDefinition, { center: "列的右边缘", atMin: { x: -columnEdgeBound, y: 0 }, atMax: { x: columnEdgeBound, y: 0 } }],
-  [reorderItemDefinition as unknown as Definition, { center: "指针（排序项不跟手）", atMin: { x: -REORDER_BOUND, y: -REORDER_BOUND }, atMax: { x: REORDER_BOUND, y: REORDER_BOUND } }]
+  [reorderItemDefinition as unknown as Definition, { center: "指针（排序项不跟手）", atMin: { x: -REORDER_BOUND, y: -REORDER_BOUND }, atMax: { x: REORDER_BOUND, y: REORDER_BOUND } }],
+  // 卡片槽位不读输入，呈现层不报几何；这里给一份只为几何那几项检查。
+  [cardSlotLayoutDefinition as unknown as Definition, { center: "槽位上边", atMin: { x: 0, y: 0 }, atMax: { x: CARD_SLOT_LAYOUT_BOUND * 40, y: CARD_SLOT_LAYOUT_BOUND * 40 } }]
 ];
 
 for (const [definition, geometry] of definitions) {

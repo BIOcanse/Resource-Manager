@@ -171,6 +171,14 @@ export async function setDashboardSettings(page, cards) {
   if (page.url().startsWith("http")) await page.evaluate(seed, { value, marker });
 }
 
+/**
+ * 编辑布局时在第 cardOrdinal 张卡片末尾加一个槽位：点“+”，在大小菜单里选 size，随后打开选监控项的弹窗。
+ */
+export async function addCardSlot(page, app, cardOrdinal, size = "small") {
+  await page.getByRole("button", { name: app.dashboard.addSlot(cardOrdinal), exact: true }).click();
+  await page.getByRole("menuitem", { name: `${app.dashboard.slotSize[size]} · ${app.dashboard.slotSizeHint[size]}`, exact: true }).click();
+}
+
 export async function readDashboardCache(page) {
   return await page.evaluate(() => JSON.parse(localStorage.getItem("resource-manager:frontend-preferences:v1") ?? "null")?.dashboard);
 }

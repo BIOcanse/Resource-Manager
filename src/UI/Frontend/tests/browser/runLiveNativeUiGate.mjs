@@ -247,7 +247,7 @@ async function observeCoreMetrics(page, durationMilliseconds) {
   do {
     const sample = await page.evaluate(() => {
       const element = id => document.querySelector(
-        `.metric-card[data-card-id='${id}'] .metric-main .metric-value`);
+        `.metric-card[data-card-id='${id}'] .metric-main-content .metric-value`);
       const value = id => element(id)?.textContent?.trim() ?? "";
       // 没有读数时卡片显示界面语言的短话并带 missing 标记；按标记判断，不按某种语言的文字。
       const missing = id => element(id)?.classList.contains("missing") ?? true;

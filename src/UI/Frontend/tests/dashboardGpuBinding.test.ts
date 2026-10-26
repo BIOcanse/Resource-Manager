@@ -12,21 +12,19 @@ const types = readSource("../src/types.ts");
 
 assert.match(types, /scopeKind\?: string \| null/);
 assert.match(types, /scopeKey\?: string \| null/);
-assert.match(types, /mainBinding\?: DashboardMetricBinding \| null/);
-assert.match(types, /smallBindings\?: Array<DashboardMetricBinding \| null>/);
+// 绑定跟着槽位：每个槽位自己带它的绑定（types.ts DashboardCardSlot）。
+assert.match(types, /interface DashboardCardSlot[\s\S]*?binding\?: DashboardMetricBinding \| null/);
 assert.match(types, /interface ResourceBarSettings[\s\S]*?binding\?: DashboardMetricBinding \| null/);
 assert.match(types, /interface ResourceTableColumnSettings[\s\S]*?binding\?: DashboardMetricBinding \| null/);
 assert.match(config, /metricBindingForDefinition/);
 assert.match(config, /binding: normalizeMetricBinding\(bar\.metricId, bar\.binding\)/);
 assert.match(config, /binding: normalizeMetricBinding\(column\.id, column\.binding\)/);
-assert.match(config, /readDashboardSlotBinding/);
-assert.match(config, /card\.smallBindings\?\.\[index\]/);
-assert.match(store, /const sourceBinding = readDashboardSlotBinding/);
-assert.match(store, /const targetBinding = readDashboardSlotBinding/);
-assert.match(store, /writeDashboardSlot\(sourceCard, source, targetValue, targetBinding\)/);
-assert.match(store, /writeDashboardSlot\(targetCard, target, sourceValue, sourceBinding\)/);
-assert.match(store, /mainBinding: binding/);
-assert.match(store, /smallBindings\[target\.index\] = binding/);
+// 拖动移的是整个槽位对象（监控项、大小、绑定一起走）；选监控项时新绑定写进那个槽位。
+assert.match(config, /const moving = from\?\.slots\[source\.index\]/);
+assert.match(config, /slots\.splice\(Math\.min\(target\.index, slots\.length\), 0, moving\)/);
+assert.match(config, /slots\[ref\.index\] = \{ \.\.\.slots\[ref\.index\], metricId, binding \}/);
+assert.match(store, /replaceCardSlotMetric\(items, target, metricId, binding\)/);
+assert.match(store, /addCardSlot\(items, target\.cardId, \{ metricId, binding, size: target\.size \}\)/);
 assert.match(store, /binding: metricBindingForDefinition\([\s\S]*?catalog\(\)\.find/);
 assert.match(store, /resourceBarSaveState/);
 assert.match(store, /resourceTableSaveState/);

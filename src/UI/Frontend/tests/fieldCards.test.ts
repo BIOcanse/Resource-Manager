@@ -36,8 +36,12 @@ assert.equal(fieldCardSlot("@gpu|a", binding("gpu|a")), null, "an empty field na
 assert.equal(fieldCardSlot("gpu.0.usage", { scopeKind: "gpu", scopeKey: "luid" }), null, "legacy GPU bindings stay legacy");
 assert.equal(fieldCardSlot("x@y", null), null);
 assert.deepEqual(fieldCardSlots([
-  { id: "a", main: "f1@d1", mainBinding: binding("d1"), small: ["cpu.usage", "f2@d2"], smallBindings: [null, binding("d2")] },
-  { id: "b", main: "cpu.usage", small: [] }
+  { id: "a", slots: [
+    { metricId: "f1@d1", binding: binding("d1"), size: "medium" },
+    { metricId: "cpu.usage", binding: null, size: "small" },
+    { metricId: "f2@d2", binding: binding("d2"), size: "large" }
+  ] },
+  { id: "b", slots: [{ metricId: "cpu.usage", size: "full" }] }
 ]).map((slot) => slot.metricId), ["f1@d1", "f2@d2"]);
 
 const excluded = Object.keys(cardExcludedFields)[0];
@@ -93,7 +97,7 @@ assert.deepEqual(gpuCatalog[1].address, { kind: "gpu_engine", pnpInstanceId: "PC
 const engineGroups = fieldCardDefinitions(gpuCatalog).map((metric) => metric.group);
 assert.deepEqual(engineGroups, ["显卡引擎 0", "显卡引擎 3 · NVIDIA GeForce RTX 5060 Laptop GPU"],
   "an engine is named after its adapter when the adapter is in the catalog, otherwise by kind and ordinal");
-const engineSlots = fieldCardSlots([{ id: "e", main: "gpu_all_engine_busy_percent@gpu-engine|E4A6|0|3|0", mainBinding: binding("gpu-engine|E4A6|0|3|0"), small: [] }]);
+const engineSlots = fieldCardSlots([{ id: "e", slots: [{ metricId: "gpu_all_engine_busy_percent@gpu-engine|E4A6|0|3|0", binding: binding("gpu-engine|E4A6|0|3|0"), size: "medium" }] }]);
 assert.equal(fieldCardValues(engineSlots, gpuCatalog, [])["gpu_all_engine_busy_percent@gpu-engine|E4A6|0|3|0"].group,
   "显卡引擎 3 · NVIDIA GeForce RTX 5060 Laptop GPU", "the card shows the same name as the picker");
 
@@ -114,10 +118,12 @@ const devices = metricFieldDevicesDecoder.decode([
 ]);
 const slots = fieldCardSlots([{
   id: "card",
-  main: "cpu_intel_effective_frequency_mhz@cpu|t0",
-  mainBinding: binding("cpu|t0"),
-  small: ["cpu_intel_effective_frequency_mhz@cpu|t1", "storage_all_data_units_written@disk|1", "cpu_intel_effective_frequency_mhz@cpu|gone"],
-  smallBindings: [binding("cpu|t1"), binding("disk|1"), binding("cpu|gone")]
+  slots: [
+    { metricId: "cpu_intel_effective_frequency_mhz@cpu|t0", binding: binding("cpu|t0"), size: "medium" },
+    { metricId: "cpu_intel_effective_frequency_mhz@cpu|t1", binding: binding("cpu|t1"), size: "small" },
+    { metricId: "storage_all_data_units_written@disk|1", binding: binding("disk|1"), size: "small" },
+    { metricId: "cpu_intel_effective_frequency_mhz@cpu|gone", binding: binding("cpu|gone"), size: "small" }
+  ]
 }]);
 assert.deepEqual(fieldCardValues(slots, null, null), {}, "nothing is claimed before the catalog or the values arrive");
 const items = fieldCardValues(slots, catalog, devices);
@@ -189,7 +195,7 @@ assert.match(config, /if \(metric\?\.scopeKind === deviceFieldScopeKind && metri
 assert.match(config, /if \(fieldCardSlot\(metricId, binding\)\)/);
 const store = readFileSync(new URL("../src/stores/monitorStore.ts", import.meta.url), "utf8");
 assert.match(store, /metricBindingForDefinition\(\s*cardCatalog\(\)\.find/, "the picker's own catalog gives the binding");
-assert.match(store, /!fieldCardSlot\(card\.main, card\.mainBinding\)/, "device fields stay out of the legacy metric subscription");
+assert.match(store, /!fieldCardSlot\(slot\.metricId, slot\.binding\)/, "device fields stay out of the legacy metric subscription");
 
 console.log("fieldCards: ok");
 

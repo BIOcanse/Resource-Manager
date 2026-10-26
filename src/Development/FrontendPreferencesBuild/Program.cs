@@ -162,6 +162,7 @@ internal static class Program
                 && value.EnumerateArray().Select(item => item.GetString()).Distinct(StringComparer.OrdinalIgnoreCase).Count() == value.GetArrayLength(),
             "dashboardDefaults" => ValidateDashboardDefaults(value),
             "dashboardLimits" => value.GetProperty("smallMetricLimit").GetInt32() is >= 0 and <= 64
+                && value.GetProperty("cardUnits").GetInt32() is >= 3 and <= 64
                 && value.GetProperty("minimumColumnWidth").GetInt32() > 0
                 && value.GetProperty("maximumColumnWidth").GetInt32() >= value.GetProperty("minimumColumnWidth").GetInt32()
                 && value.GetProperty("defaultColumnWidth").GetInt32() >= value.GetProperty("minimumColumnWidth").GetInt32()
@@ -178,7 +179,7 @@ internal static class Program
         "presets" => new("PointRefreshPresets", "void", "public sealed record PointRefreshPresets(int Responsive, int Balanced, int LowPower, int Quiet);", ""),
         "metricOrder" => new("ImmutableArray<string>", "void", "", ""),
         "dashboardDefaults" => new("global::System.Text.Json.JsonElement", "void", "", ""),
-        "dashboardLimits" => new("PointDashboardLayoutLimits", "void", "public sealed record PointDashboardLayoutLimits(int SmallMetricLimit, int MinimumColumnWidth, int MaximumColumnWidth, int DefaultColumnWidth);", ""),
+        "dashboardLimits" => new("PointDashboardLayoutLimits", "void", "public sealed record PointDashboardLayoutLimits(int SmallMetricLimit, int CardUnits, int MinimumColumnWidth, int MaximumColumnWidth, int DefaultColumnWidth);", ""),
         _ => throw new InvalidDataException(type)
     };
     private static string CSharpValue(string type, JsonElement value) => type switch
@@ -189,7 +190,7 @@ internal static class Program
         "presets" => "new(" + string.Join(",", new[] { "responsive", "balanced", "lowPower", "quiet" }.Select(name => value.GetProperty(name).GetRawText())) + ")",
         "metricOrder" => "ImmutableArray.Create<string>(" + string.Join(",", value.EnumerateArray().Select(item => JsonSerializer.Serialize(item.GetString()))) + ")",
         "dashboardDefaults" => "global::System.Text.Json.JsonSerializer.Deserialize<global::System.Text.Json.JsonElement>(" + JsonSerializer.Serialize(value.GetRawText()) + ")",
-        "dashboardLimits" => "new(" + string.Join(",", new[] { "smallMetricLimit", "minimumColumnWidth", "maximumColumnWidth", "defaultColumnWidth" }.Select(name => value.GetProperty(name).GetRawText())) + ")",
+        "dashboardLimits" => "new(" + string.Join(",", new[] { "smallMetricLimit", "cardUnits", "minimumColumnWidth", "maximumColumnWidth", "defaultColumnWidth" }.Select(name => value.GetProperty(name).GetRawText())) + ")",
         _ => throw new InvalidDataException(type)
     };
     private static string TypeScriptType(string type, JsonElement definition) => type switch
@@ -199,7 +200,7 @@ internal static class Program
         "presets" => "{ readonly responsive: number; readonly balanced: number; readonly lowPower: number; readonly quiet: number }",
         "metricOrder" => "readonly string[]",
         "dashboardDefaults" => "{ readonly builtInMetricIds: readonly string[]; readonly cards: readonly { readonly id: string; readonly main: string; readonly small: readonly string[]; readonly scope: \"system\" | \"gpu\"; readonly required: boolean }[]; readonly resourceBars: readonly { readonly id: string; readonly metricId: string; readonly scaleMode: \"capacity\" | \"active\"; readonly scope: \"system\" | \"gpu\"; readonly required: boolean }[]; readonly softwareColumns: readonly { readonly id: string; readonly visible: boolean; readonly width: number; readonly scope: \"system\" | \"gpu\" }[]; readonly processColumns: readonly { readonly id: string; readonly visible: boolean; readonly width: number; readonly scope: \"system\" | \"gpu\" }[] }",
-        "dashboardLimits" => "{ readonly smallMetricLimit: number; readonly minimumColumnWidth: number; readonly maximumColumnWidth: number; readonly defaultColumnWidth: number }",
+        "dashboardLimits" => "{ readonly smallMetricLimit: number; readonly cardUnits: number; readonly minimumColumnWidth: number; readonly maximumColumnWidth: number; readonly defaultColumnWidth: number }",
         _ => throw new InvalidDataException(type)
     };
 

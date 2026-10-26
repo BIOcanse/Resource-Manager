@@ -277,7 +277,8 @@ assert.match(inlineEditorFocus, /focusTarget\?\.focus\(\{ preventScroll: true \}
 assert.match(monitorPage, /aria-label=\{uiText\.monitorPage\.cancelEditLabel\}/);
 assert.match(resourceBreakdown, /aria-label=\{uiText\.resourceBreakdownView\.editorLabel\}/);
 assert.match(resourceTable, /aria-label=\{uiText\.resourceTableView\.columnEditorLabel\}/);
-assert.match(dashboard, /aria-label=\{uiText\.dashboard\.addMetric\(slotLabel\(\)\)\}/);
+assert.match(dashboard, /aria-label=\{uiText\.dashboard\.addSlot\(ordinal\(\)\)\}/);
+assert.match(dashboard, /aria-label=\{uiText\.dashboard\.resizeSlot\(slotLabel\(\), metricLabel\(\)\)\}/);
 assert.match(dashboard, /aria-label=\{uiText\.dashboard\.replaceMetric\(slotLabel\(\), metricLabel\(\)\)\}/);
 assert.match(dashboard, /aria-label=\{uiText\.dashboard\.removeMetric\(slotLabel\(\), metricLabel\(\)\)\}/);
 assert.match(metricModal, /role="combobox"/);

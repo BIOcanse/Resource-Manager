@@ -76,21 +76,21 @@ export default async function metricCardStatesJourney(page, baseUrl) {
     assert.equal(await element.locator(".metric-pending-bar").evaluate((bar) => getComputedStyle(bar).animationName), "motion-pending-pulse");
   }
   const boxHeight = (locator) => locator.evaluate((element) => element.getBoundingClientRect().height);
-  const pendingMain = await boxHeight(card("cpu").locator(".metric-main .metric-value"));
+  const pendingMain = await boxHeight(card("cpu").locator(".metric-main-content .metric-value"));
   const pendingRow = await boxHeight(card("cpu").locator(".metric-small-row").first());
 
   await patch({ pausedSubscriptionPaths: [] });
-  await card("cpu").locator(".metric-main .metric-value").filter({ hasText: "12%" }).waitFor({ timeout: 15_000 });
-  await card("fields").locator(".metric-main .metric-value").filter({ hasText: "137.5%" }).waitFor({ timeout: 15_000 });
+  await card("cpu").locator(".metric-main-content .metric-value").filter({ hasText: "12%" }).waitFor({ timeout: 15_000 });
+  await card("fields").locator(".metric-main-content .metric-value").filter({ hasText: "137.5%" }).waitFor({ timeout: 15_000 });
   await card("fields").locator(".metric-small-row").nth(1).locator(".metric-value")
     .filter({ hasText: zh.dashboard.valueUnavailable }).waitFor({ timeout: 15_000 });
-  await card("sources").locator(".metric-main .metric-value").filter({ hasText: "°C" }).waitFor({ timeout: 15_000 });
+  await card("sources").locator(".metric-main-content .metric-value").filter({ hasText: "°C" }).waitFor({ timeout: 15_000 });
   assert.equal(await pending.count(), 0);
-  assert.ok(Math.abs(await boxHeight(card("cpu").locator(".metric-main .metric-value")) - pendingMain) < 0.5,
+  assert.ok(Math.abs(await boxHeight(card("cpu").locator(".metric-main-content .metric-value")) - pendingMain) < 0.5,
     "the main value takes the placeholder's height: the card does not move when the reading arrives");
   assert.ok(Math.abs(await boxHeight(card("cpu").locator(".metric-small-row").first()) - pendingRow) < 0.5,
     "a small row keeps its height when its reading arrives");
-  assert.equal(await card("cpu").locator(".metric-main .metric-value").evaluate((value) => getComputedStyle(value).animationName), "motion-fade-in");
+  assert.equal(await card("cpu").locator(".metric-main-content .metric-value").evaluate((value) => getComputedStyle(value).animationName), "motion-fade-in");
   const shown = await page.evaluate(() => window.__metricCardValues);
   assert.ok(shown.length > 1, "the value timeline was recorded");
   for (const signature of shown) {
@@ -117,7 +117,7 @@ export default async function metricCardStatesJourney(page, baseUrl) {
   assert.match(await slots.nth(1).locator(".slot-actions").evaluate((actions) => getComputedStyle(actions).transitionProperty), /opacity/);
   await page.evaluate(() => { document.body.dataset.animations = "none"; });
   assert.equal(await slots.nth(1).locator(".slot-actions").evaluate((actions) => getComputedStyle(actions).transitionDuration), "0s");
-  assert.equal(await card("cpu").locator(".metric-main .metric-value").evaluate((value) => getComputedStyle(value).animationDuration), "0s");
+  assert.equal(await card("cpu").locator(".metric-main-content .metric-value").evaluate((value) => getComputedStyle(value).animationDuration), "0s");
   await page.getByRole("button", { name: zh.monitorPage.cancelEditLabel, exact: true }).click();
 
   // 4. 强制配色。
@@ -136,7 +136,7 @@ export default async function metricCardStatesJourney(page, baseUrl) {
     "a value without a reading uses the system grey text in forced colours");
   await page.emulateMedia({ forcedColors: "none" });
 
-  // 2. 德文窄卡片：小行标签和没有值时的那句话都完整显示。
+  // 2. 德文窄卡片：小行标签和没有值时的那句话都完整显示，在最小一档的高度里放得下。
   const de = await loadAppCopy("de-DE");
   await writeFrontendPreferences(page, (value) => { value.appearance.language = "de-DE"; value.appearance.uiStyle = "standard"; value.appearance.theme = "light"; });
   await page.setViewportSize({ width: 560, height: 900 });
@@ -151,18 +151,28 @@ export default async function metricCardStatesJourney(page, baseUrl) {
       const fits = (node) => node.scrollWidth <= node.clientWidth + 1 && node.scrollHeight <= node.clientHeight + 1;
       const label = element.querySelector(".metric-label-text");
       const value = element.querySelector(".metric-value");
-      return { label: label.textContent, labelFits: fits(label), value: value.textContent, valueFits: fits(value),
+      // 槽位是固定的单位高度：标签和数值都要落在槽位框里，不被裁掉。
+      const frame = element.closest(".card-slot").getBoundingClientRect();
+      const inside = [element.querySelector(".metric-label"), value].every((node) => {
+        const box = node.getBoundingClientRect();
+        return box.top >= frame.top - 1 && box.bottom <= frame.bottom + 1;
+      });
+      return { label: label.textContent, labelFits: fits(label), value: value.textContent, valueFits: fits(value), inside,
+        device: element.classList.contains("with-device"), title: element.querySelector(".metric-label").title,
         cardWidth: element.closest(".metric-card").getBoundingClientRect().width };
     }));
   }
   for (const row of wrapping) {
     assert.ok(row.cardWidth < 330, "the narrow card uses the one-line small rows");
-    assert.ok(row.labelFits, `label "${row.label}" is cut off next to "${row.value}"`);
+    // 带设备名的最小行：一个单位放不下两行标签再加设备名，标签留一行，全名在悬停说明里（要完整标签就改成中）。
+    if (row.device) assert.ok(row.title.startsWith(row.label), `row "${row.label}" keeps its full label in the hover title`);
+    else assert.ok(row.labelFits, `label "${row.label}" is cut off next to "${row.value}"`);
     assert.ok(row.valueFits, `value "${row.value}" is cut off`);
+    assert.ok(row.inside, `row "${row.label}" / "${row.value}" overflows its slot`);
   }
 
   // 3. 数值和单位之间的空格：四种风格都在数值字号的 0.1–0.4 倍之间。
-  const gapRatio = () => card("sources").locator(".metric-main .metric-value").evaluate((value) => {
+  const gapRatio = () => card("sources").locator(".metric-main-content .metric-value").evaluate((value) => {
     const number = value.querySelector(".metric-number");
     const unitText = value.querySelector(".metric-unit").firstChild;
     const range = document.createRange();
@@ -177,7 +187,7 @@ export default async function metricCardStatesJourney(page, baseUrl) {
     await writeFrontendPreferences(page, (value) => { value.appearance.language = "zh-CN"; value.appearance.uiStyle = uiStyle; value.appearance.theme = theme; });
     await page.reload({ waitUntil: "domcontentloaded" });
     await openMonitor(zh);
-    await card("sources").locator(".metric-main .metric-value").filter({ hasText: "°C" }).waitFor({ timeout: 15_000 });
+    await card("sources").locator(".metric-main-content .metric-value").filter({ hasText: "°C" }).waitFor({ timeout: 15_000 });
     gaps[uiStyle] = Number((await gapRatio()).toFixed(3));
     assert.ok(gaps[uiStyle] > 0.1 && gaps[uiStyle] < 0.4, `${uiStyle}: number-unit gap is ${gaps[uiStyle]} em`);
   }

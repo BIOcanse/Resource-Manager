@@ -179,8 +179,13 @@ for (const relativePath of [
 }
 
 const dashboardSource = readSource("features/monitor/Dashboard.tsx");
-assert.match(dashboardSource, /frontendVisibilitySourceDemand\(frontendVisibilitySourceKinds\.monitorCard, card\.id\)/,
+assert.match(dashboardSource, /frontendVisibilitySourceDemand\(frontendVisibilitySourceKinds\.monitorCard, cardId\)/,
   "each dashboard card must declare its own visible demand");
+// 卡片按 id 渲染（改槽位时卡片不重建）：cardId 就是这张卡片的 card.id，由下面两条锁住。
+assert.match(dashboardSource, /const cardIds = createMemo\(\(\) => props\.cards\.map\(\(card\) => card\.id\)\);/,
+  "the card loop iterates the cards' own ids");
+assert.match(dashboardSource, /<For each=\{cardIds\(\)\}>\s*\{\(cardId, cardIndex\) =>/,
+  "each card's demand is keyed by the id its loop item carries");
 assert.match(dashboardSource, /useFrontendVisibilityDemand/);
 assert.match(dashboardSource, /frontendVisibilitySurface/);
 assert.doesNotMatch(dashboardSource, /setInterval|IntersectionObserver/,

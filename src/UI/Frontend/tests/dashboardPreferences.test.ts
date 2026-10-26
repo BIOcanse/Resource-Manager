@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { dashboardMetricAvailable, dashboardPointValues, readDashboardPreferences, resetDashboardPreferences, resolveDashboardBindings, saveDashboardPreferences } from "../src/preferences/dashboardPreferences.ts";
+import { dashboardMetricAvailable, dashboardPointValues, dashboardSettingsVersion, readDashboardPreferences, resetDashboardPreferences, resolveDashboardBindings, saveDashboardPreferences } from "../src/preferences/dashboardPreferences.ts";
 import { createFrontendPreferencesClient, pointPreferences } from "../src/preferences/frontendPreferences.ts";
-import type { DashboardSettings, MetricDefinition } from "../src/types.ts";
+import { legacyCardSlots } from "../src/features/monitor/cardSlots.ts";
+import type { DashboardSettings, LegacyDashboardCardSettings, MetricDefinition } from "../src/types.ts";
 
 type Case = { name: string; ids: string[] | null; identities?: Record<string, string> | null; settings: DashboardSettings };
 const cases = JSON.parse(readFileSync(new URL("../../../../tests/Fixtures/FrontendPreferencesLegacy/dashboard-default-cases.json", import.meta.url), "utf8")) as Case[];
@@ -11,9 +12,12 @@ const catalog = (item: Case): MetricDefinition[] | undefined => item.ids?.map(id
   return { id, label: id, group: "", unit: "", selectable: true,
     ...(index && item.identities?.[index] ? { scopeKind: "gpu", scopeKey: item.identities[index] } : {}) };
 }) ?? undefined;
+// 固定样例记的是有槽位之前的出厂卡片（一个主读数加若干行）：展开成槽位后要和现在的出厂值一致，主读数是“中”在最前，每行是“最小”。
 for (const item of cases) {
   const actual = dashboardPointValues(catalog(item));
-  assert.deepEqual({ ...actual, usesFactoryDefaults: false }, item.settings, item.name);
+  const legacyCards = item.settings.cards as unknown as LegacyDashboardCardSettings[];
+  assert.deepEqual({ ...actual, usesFactoryDefaults: false },
+    { ...item.settings, version: dashboardSettingsVersion, cards: legacyCards.map(card => ({ id: card.id, slots: legacyCardSlots(card) })) }, item.name);
 }
 
 const contents = new Map<string, string>();
@@ -58,8 +62,8 @@ const gpu = cases.find(item => item.identities)!;
 const bound = dashboardPointValues(catalog(gpu));
 const moved = catalog(gpu)!.map(metric => ({ ...metric, id: metric.id.replace(/^gpu\.0\./, "gpu.4.") }));
 const resolved = resolveDashboardBindings(bound, moved);
-assert.equal(resolved.cards.find(card => card.id === "gpu0")?.main, "gpu.4.usage");
-assert.equal(bound.cards.find(card => card.id === "gpu0")?.main, "gpu.0.usage", "Resolution cannot mutate cached choices");
+assert.equal(resolved.cards.find(card => card.id === "gpu0")?.slots[0].metricId, "gpu.4.usage");
+assert.equal(bound.cards.find(card => card.id === "gpu0")?.slots[0].metricId, "gpu.0.usage", "Resolution cannot mutate cached choices");
 assert.equal(dashboardMetricAvailable("gpu.0.usage", { scopeKind: "gpu", scopeKey: "gpu-a" }, moved), false);
 assert.equal(dashboardMetricAvailable("gpu.4.usage", { scopeKind: "gpu", scopeKey: "gpu-a" }, moved), true);
 console.log("Dashboard HEAD defaults, cache loss/restart/reset/scopes and stable bindings passed");

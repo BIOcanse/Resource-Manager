@@ -249,9 +249,9 @@
 
 /* ---- 字体与数字 ---- */
 
-/* 监视卡片的主数值用 Bahnschrift：比 Segoe 窄，行高沿用标准风格的固定倍数，盒子尺寸不变。
+/* 监视卡片中、大、超大槽位的数值用 Bahnschrift：比 Segoe 窄，行高沿用标准风格的固定倍数，盒子尺寸不变。
    中文字形仍落到雅黑。小行数值不换，它们按内容定宽，换字体会让标签宽度跟着变。 */
-:root[data-ui-style="outline"] .metric-main .metric-value {
+:root[data-ui-style="outline"] .metric-main-content .metric-value {
   font-family: "Bahnschrift", "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
 }
 

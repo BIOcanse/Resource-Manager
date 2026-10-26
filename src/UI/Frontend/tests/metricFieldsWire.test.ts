@@ -60,7 +60,7 @@ assert.equal(definitions.length, catalog.reduce((count, device) => count + devic
 const fan = definitions.find((metric) => metric.id === "fan_all_speed_rpm@wire-fan");
 assert.equal(fan?.group, "风扇 0");
 const cards = definitions.map((metric, index) => ({
-  id: `c${index}`, main: metric.id, small: [], mainBinding: { scopeKind: metric.scopeKind!, scopeKey: metric.scopeKey! }
+  id: `c${index}`, slots: [{ metricId: metric.id, size: "medium" as const, binding: { scopeKind: metric.scopeKind!, scopeKey: metric.scopeKey! } }]
 }));
 const values = fieldCardValues(fieldCardSlots(cards), catalog, devices);
 assert.equal(values["fan_all_speed_rpm@wire-fan"].displayValue, "1200 RPM");

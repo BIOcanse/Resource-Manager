@@ -1,8 +1,10 @@
 import { ResourceManager } from "./generated/frontendPoints.values.ts";
 import { frontendPreferencesClient, type FrontendPreferencesClient } from "./frontendPreferences.ts";
-import type { DashboardMetricBinding, DashboardSettings, DashboardSettingsResult, MetricDefinition, ResourceTableColumnSettings } from "../types.ts";
+import type { DashboardCardSettings, DashboardMetricBinding, DashboardSettings, DashboardSettingsResult, LegacyDashboardCardSettings,
+  MetricDefinition, ResourceTableColumnSettings } from "../types.ts";
+import { cardUnitLimit, isDashboardSlotSize, legacyCardSlots, slotUnits } from "../features/monitor/cardSlots.ts";
 
-export const dashboardSettingsVersion = 16;
+export const dashboardSettingsVersion = 17;
 const points = ResourceManager.FrontendPoints;
 
 function gpuIndex(id: string): number | null {
@@ -27,7 +29,14 @@ function validateDashboardCache(value: DashboardSettings): void {
       if (!item || typeof item.id !== "string" || !item.id.trim() || ids.has(item.id)) throw new Error("Invalid frontend dashboard cache");
       ids.add(item.id);
       if (name === "cards") {
-        const card = item as DashboardSettings["cards"][number];
+        const card = item as Partial<DashboardCardSettings> & LegacyDashboardCardSettings;
+        if (card.slots != null) {
+          // 槽位：监控项非空、大小认识，单位之和不超过 cardUnitLimit（features/monitor/cardSlots.ts）。
+          if (!Array.isArray(card.slots) || card.slots.some(slot => !slot || typeof slot.metricId !== "string" || !slot.metricId.trim()
+            || !isDashboardSlotSize(slot.size) || slot.binding != null && typeof slot.binding !== "object")
+            || card.slots.reduce((units, slot) => units + slotUnits(slot.size), 0) > cardUnitLimit) throw new Error("Invalid frontend dashboard cache");
+        }
+        // 有槽位之前的格式（types.ts 的 LegacyDashboardCardSettings），读入时转换。
         if (card.main != null && typeof card.main !== "string" || card.small != null && (!Array.isArray(card.small)
           || card.small.length > limits.smallMetricLimit || card.small.some(id => typeof id !== "string" || !id.trim()))) throw new Error("Invalid frontend dashboard cache");
       } else if (name === "resourceBars") {
@@ -77,9 +86,9 @@ export function dashboardPointValues(catalog?: readonly MetricDefinition[]): Das
     const main = expand(template.main, index);
     if (!template.required && !available.has(main)) return [];
     const small = template.small.map(id => expand(id, index)).filter(id => available.has(id));
-    const mainBinding = binding(main);
-    return [{ id: expand(template.id, index), main, small, mainBinding,
-      smallBindings: template.scope === "gpu" ? small.map(id => binding(id)) : null }];
+    // 出厂模板仍写成一个主读数加若干行，和旧缓存一样展开成槽位（主读数是“中”，每行是“最小”）。
+    return [{ id: expand(template.id, index), slots: legacyCardSlots({ id: template.id, main, small, mainBinding: binding(main),
+      smallBindings: template.scope === "gpu" ? small.map(id => binding(id)) : null }) }];
   }));
   const resourceBars = defaults.resourceBars.flatMap(template => (template.scope === "gpu" ? indexes : [null]).flatMap(index => {
     const metricId = expand(template.metricId, index);
@@ -120,8 +129,7 @@ export function resolveDashboardBindings(settings: DashboardSettings, catalog: r
     return device ? id.replace(/^gpu\.\d+\./i, `gpu.${gpuIndex(device.id)}.`) : id;
   };
   return { ...settings,
-    cards: settings.cards.map(card => ({ ...card, main: resolve(card.main, card.mainBinding),
-      small: (card.small ?? []).map((id, index) => resolve(id, card.smallBindings?.[index])!) })),
+    cards: settings.cards.map(card => ({ ...card, slots: card.slots.map(slot => ({ ...slot, metricId: resolve(slot.metricId, slot.binding)! })) })),
     resourceBars: settings.resourceBars.map(bar => ({ ...bar, metricId: resolve(bar.metricId, bar.binding)! })),
     resourceTableColumns: settings.resourceTableColumns.map(column => ({ ...column, id: resolve(column.id, column.binding)! })),
     resourceTableProcessColumns: settings.resourceTableProcessColumns.map(column => ({ ...column, id: resolve(column.id, column.binding)! }))
@@ -142,11 +150,18 @@ export async function readDashboardPreferences(catalog?: readonly MetricDefiniti
   const pointValues = () => defaults ??= dashboardPointValues(catalog);
   // Missing entries in an older frontend/legacy cache use the point's entry;
   // explicit empty arrays remain empty.
-  return dashboardCacheResult(resolveDashboardBindings({ ...cached, cards: cached.cards ?? pointValues().cards,
+  return dashboardCacheResult(resolveDashboardBindings({ ...cached, cards: cached.cards?.map(dashboardCardFromCache) ?? pointValues().cards,
     resourceBars: cached.resourceBars ?? pointValues().resourceBars,
     resourceTableColumns: columnValues(cached.resourceTableColumns ?? pointValues().resourceTableColumns, "software"),
     resourceTableProcessColumns: columnValues(cached.resourceTableProcessColumns ?? pointValues().resourceTableProcessColumns, "process"),
     usesFactoryDefaults: false }, catalog ?? []));
+}
+
+/** 缓存里的一张卡片：有槽位就用槽位，否则是有槽位之前的格式，转换成槽位。 */
+function dashboardCardFromCache(card: DashboardCardSettings | LegacyDashboardCardSettings): DashboardCardSettings {
+  return "slots" in card && Array.isArray(card.slots)
+    ? { id: card.id, slots: card.slots }
+    : { id: card.id, slots: legacyCardSlots(card as LegacyDashboardCardSettings) };
 }
 
 export async function saveDashboardPreferences(settings: DashboardSettings, client: FrontendPreferencesClient = frontendPreferencesClient()): Promise<DashboardSettingsResult> {

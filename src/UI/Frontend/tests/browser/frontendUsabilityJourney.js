@@ -137,7 +137,7 @@ export default async function frontendUsabilityJourney(page, baseUrl = "http://1
 
   const dashboardEdit = page.getByRole("button", { name: "编辑监控面板布局", exact: true });
   await dashboardEdit.click();
-  const metricChange = page.getByRole("button", { name: /^更换第 1 张卡片主指标/ });
+  const metricChange = page.getByRole("button", { name: /^更换第 1 张卡片第 1 项/ });
   await metricChange.waitFor({ state: "visible", timeout: 3000 });
   await metricChange.click();
   const metricDialog = page.getByRole("dialog", { name: "选择监控项" });

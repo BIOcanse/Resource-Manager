@@ -6,7 +6,7 @@ export default async function monitorDemandRetentionProbe(page, baseUrl) {
   const dashboard = page.locator('[data-frontend-visibility-surface="monitor.metrics"]');
   const table = page.locator('[data-frontend-visibility-surface="monitor.table"]');
   await dashboard.scrollIntoViewIfNeeded();
-  await page.waitForFunction(() => document.querySelector(".metric-main .metric-value")?.textContent?.includes("%"));
+  await page.waitForFunction(() => document.querySelector(".metric-main-content .metric-value")?.textContent?.includes("%"));
   await patch({ pausedSubscriptionPaths: [path] });
   const before = (await telemetry())[path].publications;
   await page.evaluate(() => {
@@ -20,7 +20,7 @@ export default async function monitorDemandRetentionProbe(page, baseUrl) {
         const rect = region?.getBoundingClientRect();
         if (rect && rect.bottom > 0 && rect.top < innerHeight && rect.width > 0) {
           probe.frames++;
-          const value = region.querySelector(".metric-main .metric-value")?.textContent;
+          const value = region.querySelector(".metric-main-content .metric-value")?.textContent;
           if (!value?.includes("%")) probe.failures.push({ value, text: region.textContent?.slice(0, 200) });
         }
       }
@@ -69,7 +69,7 @@ export default async function monitorDemandRetentionProbe(page, baseUrl) {
 export async function monitorFirstTableValueProbe(page, baseUrl) {
   const table = page.locator('[data-frontend-visibility-surface="monitor.table"]');
   await table.waitFor({ state: "attached" });
-  await page.waitForFunction(() => document.querySelector(".metric-main .metric-value")?.textContent?.includes("%"));
+  await page.waitForFunction(() => document.querySelector(".metric-main-content .metric-value")?.textContent?.includes("%"));
   const before = await (await page.request.get(`${baseUrl}/__test/requests`)).json();
   assert.equal(before["/api/resource-facts/subscribe"]?.publications ?? 0, 0,
     "No table facts may have been published before this first-load probe");

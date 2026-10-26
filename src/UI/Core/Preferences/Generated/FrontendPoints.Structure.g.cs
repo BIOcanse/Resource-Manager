@@ -87,6 +87,6 @@ public sealed class @FrontendPointsRuntime
     }
     public static @FrontendPointsRuntime Create() => new();
 }
-public sealed record PointDashboardLayoutLimits(int SmallMetricLimit, int MinimumColumnWidth, int MaximumColumnWidth, int DefaultColumnWidth);
+public sealed record PointDashboardLayoutLimits(int SmallMetricLimit, int CardUnits, int MinimumColumnWidth, int MaximumColumnWidth, int DefaultColumnWidth);
 public sealed record PointRefreshPresets(int Responsive, int Balanced, int LowPower, int Quiet);
 public sealed record PointRefreshSetting(string Mode, string Preset, int CustomValue);

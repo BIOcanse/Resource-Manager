@@ -20,10 +20,6 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--elev-1), var(--edge-highlight);
   padding: 12px 14px;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  gap: 10px;
 }
 
 .metric-card.editing {
@@ -67,18 +63,67 @@ body.reordering * {
   user-select: none !important;
 }
 
-.metric-main {
+/*
+ * 卡片主体纵向 --card-units 个单位（至少 6 个；旧布局迁移来的卡片可能更多，原样排下）。槽位按 --slot-top、--slot-units
+ * 绝对定位，这两个变量由磁石的卡片槽位组件按通道写（features/monitor/Dashboard.tsx 的 SlotFrame），改大小、增删、换位置时
+ * 由它带到终态。一个单位的步长含槽位间距；浏览和编辑用同一个步长，进出编辑时卡片不变高。
+ */
+.metric-slots {
+  --slot-step: 42px;
+  --slot-gap: 4px;
+  position: relative;
   min-width: 0;
-  min-height: 64px;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
+  height: calc(var(--card-units) * var(--slot-step) - var(--slot-gap));
 }
 
+/* 长高、变矮的途中内容被裁在区域里；留出拖动目标虚线框（outline 2px、偏移 2px）的位置。 */
+.card-slot {
+  position: absolute;
+  inset-inline: 0;
+  top: calc(var(--slot-top, 0) * var(--slot-step));
+  height: max(0px, calc(var(--slot-units, 0) * var(--slot-step) - var(--slot-gap)));
+  min-width: 0;
+  overflow: clip;
+  overflow-clip-margin: 4px;
+}
+
+.card-slot > .metric-small-row,
+.card-slot > .metric-main-content,
+.card-slot > .edit-slot {
+  height: 100%;
+}
+
+/* 浏览时第二个起的槽位上面有一条分隔线。 */
+.card-slot + .card-slot > .metric-small-row,
+.card-slot + .card-slot > .metric-main-content {
+  border-top: 1px solid var(--divider);
+  padding-top: 4px;
+}
+
+/* 中、大、超大：标签在上、数值在下；大和超大的数值更大，下面是趋势。 */
 .metric-main-content {
   min-width: 0;
-  display: grid;
-  gap: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* 标签和数值按内容定高、不被压缩（数值盒子 overflow: hidden，压缩会把字裁掉）；剩下的高度给趋势。 */
+.metric-main-content > .metric-label,
+.metric-main-content > .metric-value {
+  flex: 0 0 auto;
+}
+
+.metric-size-large .metric-value {
+  font-size: clamp(30px, 14cqi, 44px);
+}
+
+.metric-size-full .metric-value {
+  font-size: clamp(36px, 18cqi, 60px);
+}
+
+.metric-size-full .metric-label {
+  font-size: 14px;
 }
 
 .metric-label {
@@ -128,21 +173,13 @@ body.reordering * {
   font-weight: 600;
 }
 
-.metric-small-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 4px;
-}
-
+/* 最小：一行，标签在左、数值在右。 */
 .metric-small-row {
   min-width: 0;
-  min-height: 30px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  border-top: 1px solid var(--divider);
-  padding-top: 6px;
 }
 
 .metric-small-row .metric-label {
@@ -199,24 +236,84 @@ body.reordering * {
   }
 }
 
-/* 卡片够宽时小指标排多列，每格标签在上、值在下。 */
-@container (min-width: 330px) {
-  .metric-small-grid {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    column-gap: 14px;
+/* 有设备名时最小、中的标签只占一行，设备名在下面一行，高度放得下。 */
+.metric-small-row.with-device .metric-label-text,
+.metric-size-medium.with-device .metric-label-text {
+  -webkit-line-clamp: 1;
+}
+
+.metric-small-row .metric-device {
+  margin-top: 0;
+  line-height: 1.15;
+}
+
+/*
+ * 趋势（大、超大）：最近的读数画成折线和线下的浅面，占满数值下面剩下的高度；线宽不随拉伸变。
+ * 超大下面再写最低、最高。颜色只取主题变量；强制配色下线用系统字色、不画面。
+ */
+.metric-trend {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.metric-trend-chart {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  overflow: visible;
+}
+
+.metric-trend-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.metric-trend-area {
+  fill: color-mix(in oklab, var(--accent) 14%, transparent);
+}
+
+.metric-trend-range {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.3;
+}
+
+.metric-trend-range > div {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+}
+
+.metric-trend-range dd {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (forced-colors: active) {
+  .metric-trend-line {
+    forced-color-adjust: none;
+    stroke: CanvasText;
   }
 
-  .metric-small-row {
-    flex-direction: column;
-    align-items: stretch;
-    justify-content: flex-start;
-    gap: 2px;
-  }
-
-  .metric-small-row .metric-value,
-  .metric-small-row .metric-value.missing {
-    max-width: none;
-    text-align: start;
+  .metric-trend-area {
+    forced-color-adjust: none;
+    fill: none;
   }
 }
 
@@ -283,16 +380,27 @@ body.reordering * {
 .edit-slot {
   position: relative;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
   border: 1px dashed var(--line);
   border-radius: var(--radius-sm);
   background: var(--surface-soft);
-  padding: 6px 8px;
+  padding: 4px 8px;
 }
 
-.edit-slot .metric-small-row {
-  min-height: 24px;
-  border-top: 0;
-  padding-top: 0;
+.edit-slot > .metric-small-row,
+.edit-slot > .metric-main-content {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* 编辑时槽位有自己的框和内边距，最小一档的标签只留一行。 */
+.edit-slot .metric-small-row .metric-label-text {
+  -webkit-line-clamp: 1;
+}
+
+.edit-slot .metric-small-row .metric-label {
+  line-height: 1.2;
 }
 
 .edit-slot.has-metric {
@@ -316,13 +424,6 @@ body.reordering * {
   cursor: grabbing;
 }
 
-/* 空槽只留一个虚线的添加按钮，不再套一层虚线框。 */
-.edit-slot:not(.has-metric) {
-  border: 0;
-  background: none;
-  padding: 0;
-}
-
 /* 操作按钮在槽内右侧，不压分隔线；平时隐藏，悬停或聚焦这一槽时盖在数值右端显示。 */
 .slot-actions {
   position: absolute;
@@ -336,7 +437,7 @@ body.reordering * {
   opacity: 0;
 }
 
-.metric-small-grid .slot-actions {
+.size-small .slot-actions {
   top: 50%;
   transform: translateY(-50%);
 }
@@ -353,6 +454,7 @@ body.reordering * {
 }
 
 .slot-change,
+.slot-resize,
 .slot-delete {
   width: 20px;
   height: 20px;
@@ -374,9 +476,11 @@ body.reordering * {
   background: color-mix(in oklab, var(--danger) 82%, black);
 }
 
+/* 剩余的单位：一整块虚线的添加按钮，高度就是剩下的单位。 */
 .slot-add {
   width: 100%;
-  min-height: 30px;
+  height: 100%;
+  min-height: 0;
   display: grid;
   place-items: center;
   border: 1px dashed var(--line);
@@ -385,10 +489,6 @@ body.reordering * {
   background-image: none;
   color: var(--accent-strong);
   box-shadow: none;
-}
-
-.metric-main .slot-add {
-  min-height: 64px;
 }
 
 .slot-add:not(:disabled):hover {

@@ -84,12 +84,10 @@ export function fieldCardSlot(
 export function fieldCardSlots(cards: readonly DashboardCardSettings[]): FieldCardSlot[] {
   const slots: FieldCardSlot[] = [];
   for (const card of cards) {
-    const main = fieldCardSlot(card.main, card.mainBinding);
-    if (main) slots.push(main);
-    (card.small ?? []).forEach((metricId, index) => {
-      const slot = fieldCardSlot(metricId, card.smallBindings?.[index]);
+    for (const cardSlot of card.slots) {
+      const slot = fieldCardSlot(cardSlot.metricId, cardSlot.binding);
       if (slot) slots.push(slot);
-    });
+    }
   }
   return slots;
 }

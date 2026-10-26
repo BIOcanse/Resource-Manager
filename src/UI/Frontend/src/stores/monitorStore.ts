@@ -1,6 +1,6 @@
 import { dashboardMetricAvailable } from "../preferences/dashboardPreferences.ts";
 import { subscribeFrontendPreferencesReset } from "../preferences/frontendPreferences.ts";
-import { createEffect, createMemo, createSignal, onCleanup } from "solid-js";
+import { createEffect, createMemo, createSignal, on, onCleanup, untrack } from "solid-js";
 import type { Accessor, Setter } from "solid-js";
 import { saveDashboardSettings } from "../api";
 import type { DashboardSlotRef } from "../features/monitor/Dashboard";
@@ -12,7 +12,7 @@ import type { ResourcePrecisionSelection } from "../features/resourceBreakdown/R
 import { reconcileResourceSelection } from "../features/resourceBreakdown/resourceSelection";
 import type {
   DashboardCardSettings,
-  DashboardMetricBinding,
+  DashboardSlotSize,
   DashboardSettings,
   DashboardSettingsResult,
   MetricDefinition,
@@ -28,7 +28,6 @@ import type {
 } from "../types";
 import { normalizeResourceBarScaleMode } from "../features/resourceBreakdown/resourceBarScaleCapabilities";
 import { resourceBarQuery, resourceBarViews, type ResourceBarView } from "../features/resourceBreakdown/resourceBarSources.ts";
-import { textOrEmpty } from "../utils";
 import {
   failedObservation,
   loadingObservation,
@@ -67,26 +66,29 @@ import {
   fieldCardSlots,
   fieldCardValues
 } from "../features/monitor/fieldCards.ts";
+import { appendCardTrends, type CardTrends } from "../features/monitor/cardTrends.ts";
 import {
+  addCardSlot,
   clampResourceTableColumnWidth,
   dashboardSettingsVersion,
-  dashboardSmallMetricLimit,
   isProcessDetailResourceTableColumn,
+  moveCardSlot,
   normalizeCards,
   normalizeResourceBars,
   normalizeResourceTableColumns,
   metricBindingForDefinition,
-  readDashboardSlot,
-  readDashboardSlotBinding,
-  writeDashboardSlot
+  removeCardSlot,
+  replaceCardSlotMetric,
+  resizeCardSlot
 } from "./monitorConfig";
 import { uiText } from "../text.ts";
 import { createResourceBreakdownBindings } from "./resourceBreakdownBindings.ts";
 
+/** 选监控项弹窗为哪个槽位打开：序号等于槽位数时是在末尾新加一个这个大小的槽位，否则换掉那个槽位的监控项。 */
 export interface MetricModalTarget {
   cardId: string;
-  slot: "main" | "small";
   index: number;
+  size: DashboardSlotSize;
 }
 
 export interface OpenMetricModalTarget extends MetricModalTarget {
@@ -141,6 +143,8 @@ export interface MonitorStore {
    * （设备字段的值或目录未到；原有指标的这次查询还在加载）。卡片据此画“读取中”，不写“无读数”。
    */
   cardPendingMetricIds: Accessor<ReadonlySet<string>>;
+  /** 大、超大槽位里监控项最近的读数（features/monitor/cardTrends.ts）。 */
+  cardTrends: Accessor<CardTrends>;
   activeCards: Accessor<DashboardCardSettings[]>;
   resourceBarEditing: Accessor<boolean>;
   activeResourceBars: Accessor<ResourceBarSettings[]>;
@@ -173,7 +177,8 @@ export interface MonitorStore {
   openMetricModal: (target: OpenMetricModalTarget) => void;
   closeMetricModal: () => void;
   confirmMetricSelection: () => void;
-  clearMetricSlot: (cardId: string, slot: "main" | "small", index: number) => void;
+  clearMetricSlot: (cardId: string, index: number) => void;
+  resizeMetricSlot: (cardId: string, index: number, size: DashboardSlotSize) => void;
   moveDashboardCard: (sourceCardId: string, targetCardId: string) => void;
   moveDashboardMetricSlot: (source: DashboardSlotRef, target: DashboardSlotRef) => void;
   toggleResourceBarEditMode: () => void;
@@ -279,14 +284,11 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     const ids = new Set<string>();
     for (const card of options.metricSnapshotActive() ? visibleCards() : []) {
       // 设备字段走按字段订阅，不进原有指标订阅。
-      if (card.main && !fieldCardSlot(card.main, card.mainBinding) && dashboardMetricAvailable(card.main, card.mainBinding, catalog())) {
-        ids.add(card.main);
-      }
-      (card.small ?? []).forEach((metricId, index) => {
-        if (metricId && !fieldCardSlot(metricId, card.smallBindings?.[index]) && dashboardMetricAvailable(metricId, card.smallBindings?.[index], catalog())) {
-          ids.add(metricId);
+      for (const slot of card.slots) {
+        if (!fieldCardSlot(slot.metricId, slot.binding) && dashboardMetricAvailable(slot.metricId, slot.binding, catalog())) {
+          ids.add(slot.metricId);
         }
-      });
+      }
     }
     if (options.resourceTableActive() && resourceTableMode() === "performance") {
       for (const metricId of defaultPerformanceMetricIds(catalog())) {
@@ -401,12 +403,8 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     const fieldsFailed = pushObservation(fieldDevicesSnapshot()?.source ?? null).status === "error";
     const pending = new Set<string>();
     for (const card of activeCards()) {
-      const slots: [string | null | undefined, DashboardMetricBinding | null | undefined][] = [
-        [card.main, card.mainBinding],
-        ...(card.small ?? []).map((metricId, index): [string, DashboardMetricBinding | null | undefined] => [metricId, card.smallBindings?.[index]])
-      ];
-      for (const [metricId, binding] of slots) {
-        if (!metricId || items[metricId]) continue;
+      for (const { metricId, binding } of card.slots) {
+        if (items[metricId]) continue;
         const waiting = fieldCardSlot(metricId, binding)
           ? !fieldsFailed
           : !legacyFailed && answered !== "all" && !answered.has(metricId);
@@ -415,6 +413,18 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     }
     return pending;
   });
+  // 大、超大槽位的趋势：送这个监控项的那一路每来一帧（原有指标帧或设备字段帧）记一点，另一路的帧不记，时间轴不重复。
+  const trendMetricIds = createMemo(() => new Set(activeCards().flatMap((card) => card.slots
+    .filter((slot) => slot.size === "large" || slot.size === "full").map((slot) => slot.metricId))));
+  const [cardTrends, setCardTrends] = createSignal<CardTrends>(new Map());
+  createEffect(on([snapshot, fieldDevices, trendMetricIds], ([legacy, devices, ids], previous) => {
+    const [previousLegacy, previousDevices] = previous ?? [null, null];
+    const fieldIds = new Set(untrack(fieldSlots).map((slot) => slot.metricId));
+    const items = untrack(cardSnapshot)?.items ?? {};
+    setCardTrends((current) => appendCardTrends(current, ids, (metricId) => fieldIds.has(metricId)
+      ? devices !== null && devices !== previousDevices
+      : legacy !== null && legacy !== previousLegacy, items));
+  }));
 
   createEffect(() => {
     const binding = JSON.parse(metricSubscriptionKey()) as {
@@ -627,13 +637,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   }
 
   function addCard() {
-    updateCards((items) => [...items, {
-      id: crypto.randomUUID(),
-      main: null,
-      small: [],
-      mainBinding: null,
-      smallBindings: []
-    }]);
+    updateCards((items) => [...items, { id: crypto.randomUUID(), slots: [] }]);
   }
 
   function enterEditMode() {
@@ -714,7 +718,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   }
 
   function openMetricModal(target: OpenMetricModalTarget) {
-    setMetricModalTarget({ cardId: target.cardId, slot: target.slot, index: target.index });
+    setMetricModalTarget({ cardId: target.cardId, index: target.index, size: target.size });
     setSelectedMetricId(target.currentMetricId);
     if (catalog().some((metric) => metric.requiredComponentId)) {
       options.onMetricDependenciesRequested();
@@ -735,48 +739,21 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     const binding = metricBindingForDefinition(
       cardCatalog().find((metric) => metric.id === metricId));
 
-    updateCards((items) => items.map((card) => {
-      if (card.id !== target.cardId) {
-        return card;
-      }
-
-      if (target.slot === "main") {
-        return {
-          ...card,
-          main: metricId,
-          mainBinding: binding
-        };
-      }
-
-      const small = [...(card.small ?? [])];
-      const smallBindings = [...(card.smallBindings ?? [])];
-      small[target.index] = metricId;
-      smallBindings[target.index] = binding;
-      return normalizeCards([{
-        ...card,
-        small,
-        smallBindings: smallBindings.slice(0, dashboardSmallMetricLimit)
-      }])[0];
-    }));
+    updateCards((items) => {
+      const card = items.find((candidate) => candidate.id === target.cardId);
+      return card && target.index < card.slots.length
+        ? replaceCardSlotMetric(items, target, metricId, binding)
+        : addCardSlot(items, target.cardId, { metricId, binding, size: target.size });
+    });
     closeMetricModal();
   }
 
-  function clearMetricSlot(cardId: string, slot: "main" | "small", index: number) {
-    updateCards((items) => items.map((card) => {
-      if (card.id !== cardId) {
-        return card;
-      }
+  function clearMetricSlot(cardId: string, index: number) {
+    updateCards((items) => removeCardSlot(items, { cardId, index }));
+  }
 
-      if (slot === "main") {
-        return { ...card, main: null, mainBinding: null };
-      }
-
-      const small = [...(card.small ?? [])];
-      const smallBindings = [...(card.smallBindings ?? [])];
-      small.splice(index, 1);
-      smallBindings.splice(index, 1);
-      return { ...card, small, smallBindings };
-    }));
+  function resizeMetricSlot(cardId: string, index: number, size: DashboardSlotSize) {
+    updateCards((items) => resizeCardSlot(items, { cardId, index }, size));
   }
 
   function moveDashboardCard(sourceCardId: string, targetCardId: string) {
@@ -799,48 +776,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   }
 
   function moveDashboardMetricSlot(source: DashboardSlotRef, target: DashboardSlotRef) {
-    if (source.cardId === target.cardId && source.slot === target.slot && source.index === target.index) {
-      return;
-    }
-
-    updateCards((items) => {
-      const next = items.map((card) => ({
-        ...card,
-        small: [...(card.small ?? [])],
-        smallBindings: [...(card.smallBindings ?? [])]
-      }));
-      const sourceCard = next.find((card) => card.id === source.cardId);
-      const targetCard = next.find((card) => card.id === target.cardId);
-      if (!sourceCard || !targetCard) {
-        return items;
-      }
-
-      const sourceValue = readDashboardSlot(sourceCard, source);
-      const sourceBinding = readDashboardSlotBinding(sourceCard, source);
-      if (!sourceValue) {
-        return items;
-      }
-
-      const targetValue = readDashboardSlot(targetCard, target);
-      const targetBinding = readDashboardSlotBinding(targetCard, target);
-      if (source.cardId === target.cardId && source.slot === "small" && target.slot === "small" && targetValue) {
-        const small = sourceCard.small.map(textOrEmpty).filter(Boolean);
-        const smallBindings = [...(sourceCard.smallBindings ?? [])];
-        if (source.index < small.length && target.index < small.length) {
-          const [moved] = small.splice(source.index, 1);
-          const [movedBinding] = smallBindings.splice(source.index, 1);
-          small.splice(target.index, 0, moved);
-          smallBindings.splice(target.index, 0, movedBinding ?? null);
-          sourceCard.small = small.slice(0, dashboardSmallMetricLimit);
-          sourceCard.smallBindings = smallBindings.slice(0, dashboardSmallMetricLimit);
-          return next;
-        }
-      }
-
-      writeDashboardSlot(sourceCard, source, targetValue, targetBinding);
-      writeDashboardSlot(targetCard, target, sourceValue, sourceBinding);
-      return normalizeCards(next);
-    });
+    updateCards((items) => moveCardSlot(items, source, target));
   }
 
   function toggleResourceBarEditMode() {
@@ -1149,6 +1085,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     pickerCatalog,
     cardSnapshot,
     cardPendingMetricIds,
+    cardTrends,
     activeCards,
     resourceBarEditing,
     activeResourceBars,
@@ -1180,6 +1117,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     closeMetricModal,
     confirmMetricSelection,
     clearMetricSlot,
+    resizeMetricSlot,
     moveDashboardCard,
     moveDashboardMetricSlot,
     toggleResourceBarEditMode,

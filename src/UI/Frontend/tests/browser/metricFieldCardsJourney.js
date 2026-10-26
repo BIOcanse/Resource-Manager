@@ -8,6 +8,7 @@ import {
   npuBusyCardId,
   readingSourceDevices,
   readingSourceIds,
+  addCardSlot,
   readDashboardCache,
   seedFieldCards,
   setDashboardSettings
@@ -27,7 +28,7 @@ export default async function metricFieldCardsJourney(page, baseUrl) {
   await page.getByRole("navigation").getByRole("button", { name: app.page.monitor, exact: true }).click();
 
   await page.getByRole("button", { name: app.monitorPage.editLayoutLabel, exact: true }).click();
-  await page.getByRole("button", { name: app.dashboard.addMetric(app.dashboard.detailSlot(2, 2)), exact: true }).click();
+  await addCardSlot(page, app, 2);
   const picker = page.locator("#metricModal");
   // 字段目录 5 秒推一次，首个推送最长等一个周期。
   const option = picker.locator(`[data-metric-id="${npuBusyCardId}"]`);
@@ -50,9 +51,10 @@ export default async function metricFieldCardsJourney(page, baseUrl) {
 
   const saved = await readDashboardCache(page);
   const memory = saved?.cards?.find((card) => card.id === "memory");
-  if (memory?.small?.[1] !== npuBusyCardId
-    || memory.smallBindings?.[1]?.scopeKind !== "device-field"
-    || memory.smallBindings?.[1]?.scopeKey !== "npu|fixture") {
+  const added = memory?.slots?.at(-1);
+  if (added?.metricId !== npuBusyCardId || added.size !== "small"
+    || added.binding?.scopeKind !== "device-field"
+    || added.binding?.scopeKey !== "npu|fixture") {
     throw new Error(`saved card lacks the device-field binding: ${JSON.stringify(memory)}`);
   }
 
@@ -83,7 +85,7 @@ export default async function metricFieldCardsJourney(page, baseUrl) {
   });
   if (!response.ok) throw new Error("Unable to remove the NPU fixture");
   await row().locator(".metric-value").filter({ hasText: app.dashboard.deviceAbsent }).waitFor({ timeout: 15_000 });
-  if ((await readDashboardCache(page))?.cards?.find((card) => card.id === "memory")?.small?.[1] !== npuBusyCardId) {
+  if (!(await readDashboardCache(page))?.cards?.find((card) => card.id === "memory")?.slots?.some((slot) => slot.metricId === npuBusyCardId)) {
     throw new Error("the absent device's card setting was dropped");
   }
 
@@ -93,7 +95,7 @@ export default async function metricFieldCardsJourney(page, baseUrl) {
   await page.reload({ waitUntil: "domcontentloaded" });
   const display = await checkFieldCardDisplay(page, app, "zh-CN");
   const readingSources = await checkReadingSources(page, baseUrl, app);
-  return { picker: { group, label }, savedBinding: memory.smallBindings[1], legacyPaths: legacyPaths.length, display, readingSources };
+  return { picker: { group, label }, savedBinding: added.binding, legacyPaths: legacyPaths.length, display, readingSources };
 }
 
 /**
@@ -140,7 +142,7 @@ async function checkReadingSources(page, baseUrl, app) {
   const option = (id) => picker.locator(`[data-metric-id="${id}"]`);
   const openPicker = async () => {
     await page.getByRole("button", { name: app.monitorPage.editLayoutLabel, exact: true }).click();
-    await page.getByRole("button", { name: app.dashboard.addMetric(app.dashboard.detailSlot(1, 3)), exact: true }).click();
+    await addCardSlot(page, app, 1);
     // 字段目录 5 秒推一次。
     await option(readingSourceIds.preferred).waitFor({ timeout: 15_000 });
   };

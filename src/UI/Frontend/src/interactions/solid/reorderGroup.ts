@@ -19,7 +19,7 @@ import { useInteraction } from "./lodestone.ts";
  */
 
 /** 项里交给浏览器的原生控件：可用的按钮、输入框、下拉框、链接、可编辑区。 */
-const NATIVE_CONTROL = "button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],[contenteditable='true']";
+export const NATIVE_CONTROL = "button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],[contenteditable='true']";
 
 export interface ReorderGroup {
   /**

@@ -25,7 +25,9 @@ export default async function metricPickerGpuNamesJourney(page, baseUrl) {
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await page.getByRole("navigation").getByRole("button", { name: app.page.monitor, exact: true }).click();
   await page.getByRole("button", { name: app.monitorPage.editLayoutLabel, exact: true }).click();
+  // 第一张还有剩余单位的卡片：点“+”，大小选最小，再打开选监控项的弹窗。
   await page.locator(".slot-add").first().click();
+  await page.getByRole("menuitem").first().click();
   const picker = page.locator("#metricModal");
   await picker.getByRole("group", { name: "GPU0 · First GPU", exact: true }).waitFor();
   await picker.getByRole("group", { name: "GPU1 · Second GPU", exact: true }).waitFor();

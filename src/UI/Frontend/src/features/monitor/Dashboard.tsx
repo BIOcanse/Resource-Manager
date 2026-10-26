@@ -1,19 +1,26 @@
 import { localizedMetricLabel, metricCardReading, resourceMetricBasis
 } from "../../presentation/metricLabels";
-import { Plus, Replace, X } from "lucide-solid";
-import { For, Show } from "solid-js";
-import { createReorderGroup } from "../../interactions/solid/reorderGroup.ts";
+import { Plus, Replace, UnfoldVertical, X } from "lucide-solid";
+import { createMemo, createSignal, For, onMount, Show, untrack } from "solid-js";
+import type { JSX } from "solid-js";
+import { createReorderGroup, NATIVE_CONTROL } from "../../interactions/solid/reorderGroup.ts";
 import type { ReorderGroup } from "../../interactions/solid/reorderGroup.ts";
-import type { DashboardCardSettings, MetricDefinition, MetricSnapshot } from "../../types";
-import { dashboardSmallMetricLimit } from "../../stores/monitorConfig";
+import { solidHost, useInteraction } from "../../interactions/solid/lodestone.ts";
+import { cardSlotLayoutDefinition } from "../../interactions/components/cardSlotLayout.ts";
+import type { Vec } from "../../interactions/protocol/vec.ts";
+import type { DashboardCardSettings, DashboardCardSlot, DashboardMetricBinding, DashboardSlotSize, MetricDefinition, MetricSnapshot } from "../../types";
 import { uiText } from "../../text.ts";
 import { deviceFieldScopeKind } from "./fieldCards.ts";
+import { cardUnits, remainingUnits, sizesThatFit, slotUnits, usedUnits } from "./cardSlots.ts";
+import { cardTrendCapacity, cardTrendPaths, cardTrendRange } from "./cardTrends.ts";
+import type { CardTrendPoint, CardTrends } from "./cardTrends.ts";
 import { ReadingSourceMark } from "../../components/ReadingSourceMark.tsx";
+import { StandardContextMenu } from "../../components/StandardContextMenu.tsx";
+import type { StandardContextMenuModel } from "../../components/StandardContextMenu.tsx";
 import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand";
 import { frontendVisibilitySourceDemand, frontendVisibilitySurface } from "../../frontendWork/frontendVisibilitySurface";
 import { frontendVisibilitySourceKinds, frontendWorkIds } from "../../frontendWork/frontendWorkIds";
 import { dashboardMetricAvailable } from "../../preferences/dashboardPreferences.ts";
-import type { DashboardMetricBinding } from "../../types";
 
 interface DashboardProps {
   cards: DashboardCardSettings[];
@@ -21,26 +28,45 @@ interface DashboardProps {
   snapshot: MetricSnapshot | null;
   /** 还在等首个读数的指标（monitorStore.cardPendingMetricIds）。 */
   pendingMetricIds: ReadonlySet<string>;
+  /** 大、超大槽位里监控项最近的读数（monitorStore.cardTrends）。 */
+  trends: CardTrends;
   editMode: boolean;
   metricSelectionAvailable: boolean;
-  onOpenMetricModal: (target: { cardId: string; slot: "main" | "small"; index: number; currentMetricId: string | null }) => void;
-  onClearSlot: (cardId: string, slot: "main" | "small", index: number) => void;
+  /** 序号等于槽位数时是在末尾新加一个这个大小的槽位，否则换掉那个槽位的监控项。 */
+  onOpenMetricModal: (target: { cardId: string; index: number; size: DashboardSlotSize; currentMetricId: string | null }) => void;
+  onClearSlot: (cardId: string, index: number) => void;
+  onResizeSlot: (cardId: string, index: number, size: DashboardSlotSize) => void;
   onMoveCard: (sourceCardId: string, targetCardId: string) => void;
   onMoveMetricSlot: (source: DashboardSlotRef, target: DashboardSlotRef) => void;
 }
 
 export interface DashboardSlotRef {
   cardId: string;
-  slot: "main" | "small";
   index: number;
 }
 
-function slotKey(slot: DashboardSlotRef) {
-  return `${slot.cardId}|${slot.slot}|${slot.index}`;
+/** 一个槽位此刻在卡片里的位置：上边在第几个单位；key 是“监控项#它在这张卡片里第几次出现”，改大小、换位置时不变。 */
+interface SlotPlace {
+  key: string;
+  index: number;
+  top: number;
+  slot: DashboardCardSlot;
+}
+
+function slotPlaces(slots: readonly DashboardCardSlot[]): SlotPlace[] {
+  const seen = new Map<string, number>();
+  let top = 0;
+  return slots.map((slot, index) => {
+    const occurrence = seen.get(slot.metricId) ?? 0;
+    seen.set(slot.metricId, occurrence + 1);
+    const place = { key: `${slot.metricId}#${occurrence}`, index, top, slot };
+    top += slotUnits(slot.size);
+    return place;
+  });
 }
 
 export function Dashboard(props: DashboardProps) {
-  // 编辑时拖动排序：卡片一组，指标槽一组（槽在卡片里，按在有指标的槽上拖的是槽）。
+  // 编辑时拖动排序：卡片一组，槽位一组（槽在卡片里，按在槽上拖的是槽）。
   const cardReorder = createReorderGroup("仪表盘卡片", (source, target) => props.onMoveCard(source, target));
   const slotReorder = createReorderGroup("仪表盘指标槽", (sourceKey, targetKey) => {
     const source = parseSlotKey(sourceKey);
@@ -49,158 +75,227 @@ export function Dashboard(props: DashboardProps) {
       props.onMoveMetricSlot(source, target);
     }
   });
+  // 选大小的菜单：“+”和槽位的改大小按钮共用一个。
+  const [sizeMenu, setSizeMenu] = createSignal<StandardContextMenuModel | null>(null);
+  const openSizeMenu = (button: HTMLElement, id: string, sizes: readonly DashboardSlotSize[], current: DashboardSlotSize | null,
+    choose: (size: DashboardSlotSize) => void) => {
+    const rect = button.getBoundingClientRect();
+    setSizeMenu({
+      id,
+      x: rect.left,
+      y: rect.bottom + 4,
+      returnFocusTarget: button,
+      items: sizes.map((size) => ({
+        id: size,
+        label: `${uiText.dashboard.slotSize[size]} · ${uiText.dashboard.slotSizeHint[size]}`,
+        disabled: size === current,
+        title: size === current ? uiText.dashboard.currentSize : undefined,
+        onSelect: () => choose(size)
+      }))
+    });
+  };
+  // 卡片按 id 渲染：改槽位时卡片不重建，槽位的过渡才接得上。
+  const cardIds = createMemo(() => props.cards.map((card) => card.id));
 
   return (
     <section class="dashboard" aria-label={uiText.dashboard.panel}>
-      <For each={props.cards}>
-        {(card, cardIndex) => {
-          const demand = frontendVisibilitySourceDemand(frontendVisibilitySourceKinds.monitorCard, card.id);
+      <For each={cardIds()}>
+        {(cardId, cardIndex) => {
+          // 卡片被移除时 For 先于这里收到新列表的时刻，沿用上一份。
+          const card = createMemo<DashboardCardSettings>((previous) => props.cards.find((item) => item.id === cardId) ?? previous!);
+          const demand = frontendVisibilitySourceDemand(frontendVisibilitySourceKinds.monitorCard, cardId);
           useFrontendVisibilityDemand(demand, [frontendWorkIds.monitorMetrics]);
+          const places = createMemo(() => slotPlaces(card().slots));
+          const keys = createMemo(() => places().map((place) => place.key));
+          const used = createMemo(() => usedUnits(card().slots));
+          const remaining = createMemo(() => remainingUnits(card().slots));
+          // 卡片挂上之后才出现的槽位（新增、换了监控项、拖进来、进入编辑时的“+”）从高度 0 长出来；随卡片一起出现的直接在位。
+          let mounted = false;
+          onMount(() => { mounted = true; });
+          const ordinal = () => cardIndex() + 1;
+          const addSlot = (button: HTMLElement) => openSizeMenu(button, `add|${cardId}|${card().slots.length}`, sizesThatFit(card().slots), null,
+            (size) => props.onOpenMetricModal({ cardId, index: card().slots.length, size, currentMetricId: null }));
           return (
-          <article
-            {...frontendVisibilitySurface(demand.demandId, [demand.demandId])}
-            class="metric-card"
-            classList={{ editing: props.editMode }}
-            data-card-id={card.id}
-            ref={cardReorder.item({ id: () => card.id, enabled: () => props.editMode })}
-          >
-            <div class="metric-main">
-              <MetricSlot
-                card={card}
-                cardOrdinal={cardIndex() + 1}
-                slot="main"
-                index={0}
-                metricId={card.main ?? null}
-                editMode={props.editMode}
-                metricSelectionAvailable={props.metricSelectionAvailable}
-                catalog={props.catalog}
-                snapshot={props.snapshot}
-                pendingMetricIds={props.pendingMetricIds}
-                reorder={slotReorder}
-                onOpenMetricModal={props.onOpenMetricModal}
-                onClearSlot={props.onClearSlot}
-              />
-            </div>
-            <div class="metric-small-grid">
-              <For each={smallSlots(card, props.editMode)}>
-                {(metricId, index) => (
-                  <MetricSlot
-                    card={card}
-                    cardOrdinal={cardIndex() + 1}
-                    slot="small"
-                    index={index()}
-                    metricId={metricId}
-                    editMode={props.editMode}
-                    metricSelectionAvailable={props.metricSelectionAvailable}
-                    catalog={props.catalog}
-                    snapshot={props.snapshot}
-                    pendingMetricIds={props.pendingMetricIds}
-                    reorder={slotReorder}
-                    onOpenMetricModal={props.onOpenMetricModal}
-                    onClearSlot={props.onClearSlot}
-                  />
-                )}
-              </For>
-            </div>
-          </article>
+            <article
+              {...frontendVisibilitySurface(demand.demandId, [demand.demandId])}
+              class="metric-card"
+              classList={{ editing: props.editMode }}
+              data-card-id={cardId}
+              ref={cardReorder.item({ id: () => cardId, enabled: () => props.editMode })}
+            >
+              <div class="metric-slots" style={{ "--card-units": String(Math.max(cardUnits, used())) }}>
+                <For each={keys()}>
+                  {(key) => {
+                    const place = createMemo<SlotPlace>((previous) => places().find((item) => item.key === key) ?? previous!);
+                    const slot = () => place().slot;
+                    return (
+                      <SlotFrame name={`${cardId}|${key}`} top={place().top} units={slotUnits(slot().size)} grow={mounted}
+                        class={`card-slot size-${slot().size}`}>
+                        <MetricSlot
+                          cardId={cardId}
+                          cardOrdinal={ordinal()}
+                          index={place().index}
+                          slot={slot()}
+                          canResize={sizesThatFit(card().slots, place().index).length > 1}
+                          editMode={props.editMode}
+                          metricSelectionAvailable={props.metricSelectionAvailable}
+                          catalog={props.catalog}
+                          snapshot={props.snapshot}
+                          pending={props.pendingMetricIds.has(slot().metricId)}
+                          trend={props.trends.get(slot().metricId) ?? []}
+                          reorder={slotReorder}
+                          onOpenMetricModal={props.onOpenMetricModal}
+                          onClearSlot={props.onClearSlot}
+                          onOpenResize={(button) => openSizeMenu(button, `resize|${cardId}|${place().index}`,
+                            sizesThatFit(card().slots, place().index), slot().size,
+                            (size) => props.onResizeSlot(cardId, place().index, size))}
+                        />
+                      </SlotFrame>
+                    );
+                  }}
+                </For>
+                {/* 编辑时剩余的单位是一块“+”：先选大小，再选监控项。没有剩余时不显示。 */}
+                <Show when={props.editMode && remaining() >= 1}>
+                  <SlotFrame name={`${cardId}|+`} top={used()} units={remaining()} grow={mounted} class="card-slot card-slot-add">
+                    <button
+                      type="button"
+                      class="slot-add"
+                      aria-label={uiText.dashboard.addSlot(ordinal())}
+                      aria-haspopup="menu"
+                      disabled={!props.metricSelectionAvailable}
+                      title={!props.metricSelectionAvailable ? uiText.dashboard.catalogUnavailable : uiText.dashboard.addSlot(ordinal())}
+                      onClick={(event) => addSlot(event.currentTarget)}
+                    >
+                      <Plus size={16} aria-hidden="true" />
+                    </button>
+                  </SlotFrame>
+                </Show>
+              </div>
+            </article>
           );
         }}
       </For>
+      <StandardContextMenu model={sizeMenu()} onClose={() => setSizeMenu(null)} />
     </section>
   );
 }
 
-function smallSlots(card: DashboardCardSettings, editMode: boolean) {
-  const metrics = card.small ?? [];
-  if (!editMode) {
-    return metrics;
-  }
-
-  // 编辑时在已有指标后面留一个空槽，满了就不留。
-  const count = Math.min(metrics.length + 1, dashboardSmallMetricLimit);
-  return Array.from({ length: count }, (_, index) => metrics[index] ?? null);
+/**
+ * 卡片里一块区域（一个槽位，或编辑时的“+”）：上边和高度由磁石的卡片槽位组件带（interactions/components/cardSlotLayout.ts），
+ * 这里只把它的通道写成 CSS 变量 --slot-top、--slot-units（styles/monitor.css 按单位步长换算）。
+ * grow 为 true 时从高度 0 出发，挂上后的下一帧才给实际高度。
+ * 它是包含里面按钮的最内层组件（“+”的按钮外面没有别的组件），所以和拖动排序项一样声明可用的原生控件，
+ * 否则按在“+”上会交给外面的卡片拖动、点击被引擎拦下（协议第 4.2 节第 2 项）。
+ */
+function SlotFrame(props: { name: string; top: number; units: number; grow: boolean; class: string; children: JSX.Element }) {
+  let element!: HTMLDivElement;
+  const grow = untrack(() => props.grow);
+  const [grown, setGrown] = createSignal(!grow);
+  if (grow) onMount(() => requestAnimationFrame(() => setGrown(true)));
+  const top = createMemo(() => props.top);
+  const units = createMemo(() => (grown() ? props.units : 0));
+  const write = (value: Vec) => {
+    element.style.setProperty("--slot-top", value.x.toFixed(4));
+    element.style.setProperty("--slot-units", value.y.toFixed(4));
+  };
+  useInteraction(`卡片槽位「${props.name}」`, cardSlotLayoutDefinition, () => ({
+    element,
+    bindingLabel: "上边和高度",
+    geometry: () => null,
+    nativeControl: (target) => {
+      const control = target instanceof Element ? target.closest(NATIVE_CONTROL) : null;
+      return control !== null && element.contains(control);
+    },
+    render: ({ x }) => write(x),
+    aria: () => ""
+  }), solidHost<Vec>({
+    value: () => ({ x: top(), y: units() }),
+    enabled: () => false,
+    call: () => undefined
+  }));
+  return (
+    <div
+      ref={(node) => {
+        element = node;
+        // 运行时下一帧才画：先按宿主值放好，第一帧不会叠在卡片顶上。
+        write(untrack(() => ({ x: top(), y: units() })));
+      }}
+      class={props.class}
+    >
+      {props.children}
+    </div>
+  );
 }
 
 function MetricSlot(props: {
-  card: DashboardCardSettings;
+  cardId: string;
   cardOrdinal: number;
-  slot: "main" | "small";
   index: number;
-  metricId: string | null;
+  slot: DashboardCardSlot;
+  canResize: boolean;
   editMode: boolean;
   metricSelectionAvailable: boolean;
   catalog: MetricDefinition[];
   snapshot: MetricSnapshot | null;
-  pendingMetricIds: ReadonlySet<string>;
+  pending: boolean;
+  trend: readonly CardTrendPoint[];
   reorder: ReorderGroup;
   onOpenMetricModal: DashboardProps["onOpenMetricModal"];
   onClearSlot: DashboardProps["onClearSlot"];
+  onOpenResize: (button: HTMLElement) => void;
 }) {
-  const isMain = () => props.slot === "main";
-  const slotRef = (): DashboardSlotRef => ({ cardId: props.card.id, slot: props.slot, index: props.index });
-  const key = () => slotKey(slotRef());
+  const key = () => `${props.cardId}|${props.index}`;
   const metricLabel = () => localizedMetricLabel(
-    props.metricId,
-    props.catalog.find((metric) => metric.id === props.metricId)?.label)
-    ?? props.metricId
-    ?? uiText.dashboard.emptyMetric;
-  const slotLabel = () => props.slot === "main"
-    ? uiText.dashboard.primarySlot(props.cardOrdinal)
-    : uiText.dashboard.detailSlot(props.cardOrdinal, props.index + 1);
+    props.slot.metricId,
+    props.catalog.find((metric) => metric.id === props.slot.metricId)?.label)
+    ?? props.slot.metricId;
+  const slotLabel = () => uiText.dashboard.slotLabel(props.cardOrdinal, props.index + 1);
+  const view = () => (
+    <MetricView metricId={props.slot.metricId} binding={props.slot.binding} size={props.slot.size} catalog={props.catalog}
+      snapshot={props.snapshot} pending={props.pending} trend={props.trend} />
+  );
   return (
-    <Show
-      when={props.editMode}
-      fallback={<MetricView metricId={props.metricId} isMain={isMain()} catalog={props.catalog} snapshot={props.snapshot}
-        pending={Boolean(props.metricId && props.pendingMetricIds.has(props.metricId))} />}
-    >
+    <Show when={props.editMode} fallback={view()}>
       <div
-        class="edit-slot"
-        classList={{ "has-metric": Boolean(props.metricId) }}
-        ref={props.reorder.item({ id: key, enabled: () => props.editMode && Boolean(props.metricId) })}
+        class="edit-slot has-metric"
+        ref={props.reorder.item({ id: key, enabled: () => props.editMode })}
       >
-        <Show
-          when={props.metricId}
-          fallback={
-            <button
-              type="button"
-              class="slot-add"
-              aria-label={uiText.dashboard.addMetric(slotLabel())}
-              disabled={!props.metricSelectionAvailable}
-              title={!props.metricSelectionAvailable ? uiText.dashboard.catalogUnavailable : undefined}
-              onClick={() => props.onOpenMetricModal({ cardId: props.card.id, slot: props.slot, index: props.index, currentMetricId: null })}
-            >
-              <Plus size={16} aria-hidden="true" />
-            </button>
-          }
-        >
-          <MetricView metricId={props.metricId} binding={props.slot === "main" ? props.card.mainBinding : props.card.smallBindings?.[props.index]}
-            isMain={isMain()} catalog={props.catalog} snapshot={props.snapshot}
-            pending={Boolean(props.metricId && props.pendingMetricIds.has(props.metricId))} />
-          {/* 槽内操作：悬停或聚焦这一槽时显示。 */}
-          <span class="slot-actions">
-            <button
-              type="button"
-              class="slot-change"
-              aria-label={uiText.dashboard.replaceMetric(slotLabel(), metricLabel())}
-              disabled={!props.metricSelectionAvailable}
-              title={!props.metricSelectionAvailable
-                ? uiText.dashboard.catalogUnavailable
-                : uiText.dashboard.replaceMetric(slotLabel(), metricLabel())}
-              onClick={() => props.onOpenMetricModal({ cardId: props.card.id, slot: props.slot, index: props.index, currentMetricId: props.metricId })}
-            >
-              <Replace size={13} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              class="slot-delete"
-              aria-label={uiText.dashboard.removeMetric(slotLabel(), metricLabel())}
-              title={uiText.dashboard.removeMetric(slotLabel(), metricLabel())}
-              onClick={() => props.onClearSlot(props.card.id, props.slot, props.index)}
-            >
-              <X size={13} aria-hidden="true" />
-            </button>
-          </span>
-        </Show>
+        {view()}
+        {/* 槽内操作：悬停或聚焦这一槽时显示。 */}
+        <span class="slot-actions">
+          <button
+            type="button"
+            class="slot-change"
+            aria-label={uiText.dashboard.replaceMetric(slotLabel(), metricLabel())}
+            disabled={!props.metricSelectionAvailable}
+            title={!props.metricSelectionAvailable
+              ? uiText.dashboard.catalogUnavailable
+              : uiText.dashboard.replaceMetric(slotLabel(), metricLabel())}
+            onClick={() => props.onOpenMetricModal({ cardId: props.cardId, index: props.index, size: props.slot.size, currentMetricId: props.slot.metricId })}
+          >
+            <Replace size={13} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            class="slot-resize"
+            aria-label={uiText.dashboard.resizeSlot(slotLabel(), metricLabel())}
+            aria-haspopup="menu"
+            disabled={!props.canResize}
+            title={uiText.dashboard.resizeSlot(slotLabel(), metricLabel())}
+            onClick={(event) => props.onOpenResize(event.currentTarget)}
+          >
+            <UnfoldVertical size={13} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            class="slot-delete"
+            aria-label={uiText.dashboard.removeMetric(slotLabel(), metricLabel())}
+            title={uiText.dashboard.removeMetric(slotLabel(), metricLabel())}
+            onClick={() => props.onClearSlot(props.cardId, props.index)}
+          >
+            <X size={13} aria-hidden="true" />
+          </button>
+        </span>
       </div>
     </Show>
   );
@@ -208,14 +303,15 @@ function MetricSlot(props: {
 
 function MetricView(props: {
   binding?: DashboardMetricBinding | null;
-  metricId: string | null;
-  isMain: boolean;
+  metricId: string;
+  size: DashboardSlotSize;
   catalog: MetricDefinition[];
   snapshot: MetricSnapshot | null;
   pending: boolean;
+  trend: readonly CardTrendPoint[];
 }) {
-  const absent = () => props.metricId && props.catalog.length > 0 && !dashboardMetricAvailable(props.metricId, props.binding, props.catalog);
-  const metric = () => props.metricId && !absent() ? props.snapshot?.items?.[props.metricId] : null;
+  const absent = () => props.catalog.length > 0 && !dashboardMetricAvailable(props.metricId, props.binding, props.catalog);
+  const metric = () => !absent() ? props.snapshot?.items?.[props.metricId] : null;
   const definition = () => props.catalog.find((item) => item.id === props.metricId);
   const snapshotLabel = () => {
     const label = metric()?.label?.trim();
@@ -223,20 +319,14 @@ function MetricView(props: {
   };
   // 目录和文案都认不出名字时写「指标不可用」，原 id 放悬停说明。
   const knownLabel = () => {
-    if (!props.metricId) {
-      return null;
-    }
     const label = localizedMetricLabel(props.metricId, definition()?.label ?? snapshotLabel());
     return label && label !== props.metricId ? label : null;
   };
-  const label = () => props.metricId ? knownLabel() ?? uiText.dashboard.metricUnavailable : "--";
+  const label = () => knownLabel() ?? uiText.dashboard.metricUnavailable;
   // 设备字段：标签下面写是哪台设备，悬停看字段说明。
   const deviceName = () => definition()?.scopeKind === deviceFieldScopeKind ? definition()!.group : null;
   // 标签可能被截断：悬停总能看到全名，再加设备与字段说明，或量纲说明。
   const labelTitle = () => {
-    if (!props.metricId) {
-      return undefined;
-    }
     if (!knownLabel()) {
       return props.metricId;
     }
@@ -245,13 +335,14 @@ function MetricView(props: {
       : [resourceMetricBasis(props.metricId)];
     return [label(), ...extra].filter(Boolean).join("\n");
   };
-  const reading = () => absent() ? { value: uiText.dashboard.deviceAbsent, gap: "", unit: "", missing: true, title: uiText.dashboard.deviceAbsentHint } : props.metricId
-    ? metricCardReading(definition(), metric())
-    : { value: "--", gap: "", unit: "", missing: true, title: undefined };
+  const reading = () => absent()
+    ? { value: uiText.dashboard.deviceAbsent, gap: "", unit: "", missing: true, title: uiText.dashboard.deviceAbsentHint }
+    : metricCardReading(definition(), metric());
   // 首个读数还没到：画一条占位，不先写「无读数」再跳成数值。设备不在照常直接写。
   const waiting = () => props.pending && !absent();
+  const withTrend = () => props.size === "large" || props.size === "full";
   return (
-    <div class={props.isMain ? "metric-main-content" : "metric-small-row"}>
+    <div class={`${props.size === "small" ? "metric-small-row" : `metric-main-content metric-size-${props.size}`}${deviceName() ? " with-device" : ""}`}>
       <div class="metric-label" title={labelTitle()}>
         <span class="metric-label-text">{label()}</span>
         {/* 设备名前面是读数来源标记（首选／待确认），设备名过长时只截设备名。 */}
@@ -275,14 +366,44 @@ function MetricView(props: {
           </Show>
         </div>
       </Show>
+      <Show when={withTrend() && !absent()}>
+        <CardTrend label={label()} points={props.trend} percent={reading().unit.trim() === "%"} showRange={props.size === "full"} />
+      </Show>
+    </div>
+  );
+}
+
+/** 大、超大槽位的趋势：最近 cardTrendCapacity 次读数的折线和线下的面；超大槽位再写最低、最高。 */
+function CardTrend(props: { label: string; points: readonly CardTrendPoint[]; percent: boolean; showRange: boolean }) {
+  const paths = createMemo(() => cardTrendPaths(props.points, props.percent));
+  const range = createMemo(() => cardTrendRange(props.points));
+  const count = () => props.points.filter((point) => point.value !== null).length;
+  return (
+    <div class="metric-trend">
+      <svg class="metric-trend-chart" viewBox="0 0 100 100" preserveAspectRatio="none" role="img"
+        aria-label={uiText.dashboard.trendLabel(props.label, Math.min(count(), cardTrendCapacity))}>
+        <path class="metric-trend-area" d={paths().area} />
+        <path class="metric-trend-line" d={paths().line} />
+      </svg>
+      <Show when={props.showRange}>
+        <dl class="metric-trend-range">
+          <div>
+            <dt>{uiText.dashboard.trendLow}</dt>
+            <dd>{range()?.low.display ?? "--"}</dd>
+          </div>
+          <div>
+            <dt>{uiText.dashboard.trendHigh}</dt>
+            <dd>{range()?.high.display ?? "--"}</dd>
+          </div>
+        </dl>
+      </Show>
     </div>
   );
 }
 
 function parseSlotKey(value: string): DashboardSlotRef | null {
-  const [cardId, slot, indexText] = value.split("|");
-  const index = Number(indexText);
-  return cardId && (slot === "main" || slot === "small") && Number.isInteger(index)
-    ? { cardId, slot, index }
-    : null;
+  const separator = value.lastIndexOf("|");
+  const cardId = value.slice(0, separator);
+  const index = Number(value.slice(separator + 1));
+  return separator > 0 && Number.isInteger(index) ? { cardId, index } : null;
 }

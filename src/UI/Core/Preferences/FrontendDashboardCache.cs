@@ -23,6 +23,10 @@ internal static class FrontendDashboardCache
                     || !ids.Add(id.GetString()!)) throw Invalid();
                 if (name == "cards")
                 {
+                    if (item.TryGetProperty("slots", out var slots) && slots.ValueKind != JsonValueKind.Null) ValidateSlots(slots);
+                    // Legacy layout (one main reading and up to SmallMetricLimit rows), written before card slots.
+                    // The frontend converts it to slots when it reads the cache and saves only slots, so this check
+                    // can go once no supported cache can still hold the legacy layout.
                     if (item.TryGetProperty("main", out var main) && main.ValueKind is not (JsonValueKind.String or JsonValueKind.Null)) throw Invalid();
                     if (item.TryGetProperty("small", out var small) && small.ValueKind != JsonValueKind.Null)
                     {
@@ -50,6 +54,34 @@ internal static class FrontendDashboardCache
                 }
             }
         }
+    }
+
+    // A card's slots, top to bottom: each holds a metric id and one of four sizes, which take 1, 2, 3 or all of
+    // the card's units (frontend features/monitor/cardSlots.ts). Editing keeps a card within CardUnits; a card
+    // migrated from the legacy layout keeps its readings and can hold up to what that layout could (a main reading
+    // as a medium slot plus SmallMetricLimit small slots) until the user shrinks it.
+    private static void ValidateSlots(JsonElement slots)
+    {
+        var limits = FrontendPoints.DashboardLayoutLimits;
+        if (slots.ValueKind != JsonValueKind.Array) throw Invalid();
+        var units = 0;
+        foreach (var slot in slots.EnumerateArray())
+        {
+            if (slot.ValueKind != JsonValueKind.Object
+                || !slot.TryGetProperty("metricId", out var metric) || metric.ValueKind != JsonValueKind.String
+                || string.IsNullOrWhiteSpace(metric.GetString())
+                || !slot.TryGetProperty("size", out var size) || size.ValueKind != JsonValueKind.String) throw Invalid();
+            if (slot.TryGetProperty("binding", out var binding) && binding.ValueKind is not (JsonValueKind.Object or JsonValueKind.Null)) throw Invalid();
+            units += size.GetString() switch
+            {
+                "small" => 1,
+                "medium" => 2,
+                "large" => 3,
+                "full" => limits.CardUnits,
+                _ => throw Invalid()
+            };
+        }
+        if (units > Math.Max(limits.CardUnits, 2 + limits.SmallMetricLimit)) throw Invalid();
     }
 
     // A bar's or column's source: absent or null is automatic, otherwise a non-empty backend
