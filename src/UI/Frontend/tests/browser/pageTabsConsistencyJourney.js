@@ -33,7 +33,7 @@ export default async function pageTabsConsistencyJourney(page, baseUrl) {
     const computed = getComputedStyle(element);
     const before = getComputedStyle(element, "::before");
     const indicator = element.classList.contains("active")
-      ? element.closest(".has-selection-indicator")?.querySelector(":scope > .selection-indicator")
+      ? element.closest(".has-selection-indicator")?.querySelector(".selection-indicator")
       : null;
     const indicatorStyle = indicator ? getComputedStyle(indicator) : null;
     return Object.fromEntries([

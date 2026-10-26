@@ -168,6 +168,7 @@ const allJourneys = [
   ["reorder-interaction", reorderInteractionJourney],
   ["motion-feel", motionFeelJourney],
   ["page-motion", pageMotionJourney],
+  ["page-motion-timing", async (...args) => (await import("./pageMotionTimingJourney.js")).default(...args)],
   ["r2-remediation", r2RemediationJourney],
   ["accessibility-semantics", accessibilitySemanticsJourney]
 ];

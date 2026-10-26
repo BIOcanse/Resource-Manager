@@ -27,7 +27,7 @@ export default async function pageMotionJourney(page, baseUrl) {
   const startedOn = new Date().toISOString();
   const failures = [];
   const fail = (message) => failures.push(message);
-  page.on("pageerror", (error) => failures.push(`pageerror: ${String(error)}`));
+  page.on("pageerror", (error) => { failures.push(`pageerror: ${String(error)}`); process.stderr.write(`PAGE_ERROR ${String(error)}\n`); });
   const app = await loadAppCopy("zh-CN");
   const settings = await loadSettingsText("zh-CN");
   const animationLabel = (id) => settings.animationOptions.find((option) => option.id === id).label;
@@ -61,6 +61,9 @@ export default async function pageMotionJourney(page, baseUrl) {
     }
     const window = { step, start: run.t0, end: run.t1 };
     interactionRuns.push({ mode: animationMode, ...window, longTasks: run.longTasks,
+      frameTimes: run.frames.map((frame) => frame.t), firstFrameMs: run.frames[0].dt,
+      rafGaps: run.rafGaps, longAnimationFrames: run.longAnimationFrames,
+      frameGaps: run.frames.map((frame, index) => frame.t - (index ? run.frames[index - 1].t : run.t0)),
       overruns: assessInteractionLongTasks(run.longTasks, [window]), cpuProfile });
     return run;
   };
@@ -373,8 +376,8 @@ export default async function pageMotionJourney(page, baseUrl) {
 }
 
 /** 页面里的探针：每帧一份快照（二级分页条、内容、退出副本、指示条、对话框高度）。 */
-async function installProbe(page) {
-  await page.evaluate(() => {
+async function installProbe(page, captureGeometry = true) {
+  await page.evaluate((captureGeometry) => {
     let seq = 0;
     const nodeId = (element) => {
       if (!element) return null;
@@ -391,7 +394,7 @@ async function installProbe(page) {
     };
     const indicatorOffset = (list) => {
       if (!list) return null;
-      const indicator = list.querySelector(":scope > .selection-indicator");
+      const indicator = list.querySelector(".selection-indicator");
       const selected = [...list.querySelectorAll(".active, [aria-selected='true'], [aria-checked='true'], [aria-current='page']")]
         .find((element) => element !== indicator && element.closest(".has-selection-indicator") === list);
       if (!indicator || !selected) return null;
@@ -425,38 +428,64 @@ async function installProbe(page) {
       };
     };
     window.__pmLongTasks = [];
+    window.__pmLoafs = [];
+    const loafSupported = PerformanceObserver.supportedEntryTypes.includes("long-animation-frame");
+    const recordLoafs = (entries) => {
+      for (const entry of entries) window.__pmLoafs.push(entry.toJSON());
+    };
+    const loafObserver = loafSupported ? new PerformanceObserver((list) => recordLoafs(list.getEntries())) : null;
+    loafObserver?.observe({ type: "long-animation-frame" });
     const recordTasks = (entries) => {
       for (const entry of entries) window.__pmLongTasks.push({ start: entry.startTime, duration: entry.duration });
     };
     const observer = new PerformanceObserver((list) => recordTasks(list.getEntries()));
     observer.observe({ type: "longtask", buffered: false });
-    window.__pm = { snapshot, indicatorOffset, observer, recordTasks };
-  });
+    window.__pm = { captureGeometry, snapshot: captureGeometry ? snapshot : () => ({ t: performance.now() }), indicatorOffset, observer, recordTasks, loafObserver, recordLoafs };
+  }, captureGeometry);
 }
 
 /** 点一下，从点下去之后的第一帧起逐帧记 durationMs。 */
 async function sampleClick(page, locator, durationMs) {
   await locator.waitFor({ state: "visible" });
   await page.evaluate((duration) => {
-    const run = { t0: null, frames: [], done: false };
+    const ARM_TIMEOUT_MS = 5000;
+    const AFTER_RENDER_TASK_DELAY_MS = 0;
+    const armedAt = performance.now();
+    const run = { t0: null, frames: [], rafGaps: [], done: false };
+    let previousRaf = null;
     window.__pmRun = run;
-    const tick = () => {
+    const tick = (timestamp) => {
       const now = performance.now();
-      run.frames.push({ ...window.__pm.snapshot(), dt: now - run.t0 });
-      if (now - run.t0 < duration) requestAnimationFrame(tick);
-      else { run.t1 = performance.now(); run.done = true; }
+      if (run.t0 === null) {
+        previousRaf = timestamp;
+        if (now - armedAt < ARM_TIMEOUT_MS) requestAnimationFrame(tick);
+        return;
+      }
+      if (previousRaf !== null) run.rafGaps.push(timestamp - previousRaf);
+      previousRaf = timestamp;
+      const lastFrame = now - run.t0 >= duration;
+      const capture = () => {
+        run.frames.push({ ...window.__pm.snapshot(), dt: performance.now() - run.t0 });
+        if (lastFrame) { run.t1 = performance.now(); run.done = true; }
+      };
+      // 外观快照等该帧的浏览器渲染更新完成再读；rAF 时间戳仍在原回调记录，CDP 覆盖整个窗口。
+      // 只计时的探针不读 DOM，继续在 rAF 中采样，不把产品工作挪到另一个任务。
+      if (window.__pm.captureGeometry) setTimeout(capture, AFTER_RENDER_TASK_DELAY_MS);
+      else capture();
+      if (!lastFrame) requestAnimationFrame(tick);
     };
     window.addEventListener("click", () => {
       run.t0 = performance.now();
-      requestAnimationFrame(tick);
     }, { once: true, capture: true });
+    requestAnimationFrame(tick);
   }, durationMs);
   await locator.click();
   await page.waitForFunction(() => window.__pmRun.done, undefined, { timeout: durationMs + 5000 });
   return page.evaluate(() => {
     window.__pm.recordTasks(window.__pm.observer.takeRecords());
+    window.__pm.recordLoafs(window.__pm.loafObserver?.takeRecords() ?? []);
     const run = window.__pmRun;
-    return { ...run, longTasks: window.__pmLongTasks.filter((task) => task.start < run.t1 && task.start + task.duration > run.t0) };
+    return { ...run, longAnimationFrames: window.__pmLoafs.filter((frame) => frame.startTime < run.t1 && frame.startTime + frame.duration > run.t0), longTasks: window.__pmLongTasks.filter((task) => task.start < run.t1 && task.start + task.duration > run.t0) };
   });
 }
 
@@ -491,3 +520,5 @@ async function setAnimations(page, app, settings, animationLabel, mode) {
   await page.getByRole("button", { name: settings.actions.save, exact: true }).click();
   await page.waitForFunction((value) => document.body.dataset.animations === value, mode, { timeout: 5000 });
 }
+
+export { installProbe, sampleClick, setAnimations };

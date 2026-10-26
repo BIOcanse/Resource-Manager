@@ -3,11 +3,16 @@ import { resolve } from "node:path";
 
 export const CPU_PROFILE_SAMPLE_INTERVAL_US = 1000;
 export const CPU_PROFILE_TOP_FUNCTIONS = 8;
+const LAYOUT_METRICS = ["LayoutDuration", "RecalcStyleDuration", "LayoutCount", "RecalcStyleCount"];
 
 /** Explicit opt-in: caller supplies an existing registered output directory. */
 export async function startMotionProfile(page, outputDirectory, name) {
   const cdp = await page.context().newCDPSession(page);
+  let threadCdp;
   try {
+    threadCdp = await page.context().newCDPSession(page);
+    await threadCdp.send("Performance.enable", { timeDomain: "threadTicks" });
+    const { metrics: threadMetrics } = await threadCdp.send("Performance.getMetrics");
     await cdp.send("Performance.enable");
     const { metrics } = await cdp.send("Performance.getMetrics");
     const navigationStart = metrics.find((item) => item.name === "NavigationStart")?.value;
@@ -15,8 +20,9 @@ export async function startMotionProfile(page, outputDirectory, name) {
     await cdp.send("Profiler.enable");
     await cdp.send("Profiler.setSamplingInterval", { interval: CPU_PROFILE_SAMPLE_INTERVAL_US });
     await cdp.send("Profiler.start");
-    return { cdp, navigationStart, path: resolve(outputDirectory, `${name}.cpuprofile`) };
+    return { cdp, threadCdp, threadMetrics, navigationStart, metrics, path: resolve(outputDirectory, `${name}.cpuprofile`) };
   } catch (error) {
+    await threadCdp?.detach();
     await cdp.detach();
     throw error;
   }
@@ -25,10 +31,18 @@ export async function startMotionProfile(page, outputDirectory, name) {
 export async function stopMotionProfile(session, tasks) {
   try {
     const { profile } = await session.cdp.send("Profiler.stop");
+    const [{ metrics }, { metrics: threadMetrics }] = await Promise.all([
+      session.cdp.send("Performance.getMetrics"), session.threadCdp.send("Performance.getMetrics")
+    ]);
+    const delta = (after, before) => Object.fromEntries(LAYOUT_METRICS.map((name) =>
+      [name, after.find((m) => m.name === name).value - before.find((m) => m.name === name).value]));
+    const layoutMetrics = delta(metrics, session.metrics);
+    const layoutCpuMetrics = delta(threadMetrics, session.threadMetrics);
     writeFileSync(session.path, JSON.stringify(profile));
-    return { path: session.path, navigationStart: session.navigationStart,
+    return { path: session.path, navigationStart: session.navigationStart, layoutMetrics, layoutCpuMetrics,
       tasks: tasks.map((task) => ({ ...task, cpu: summarizeTaskCpu(profile, session.navigationStart, task) })) };
   } finally {
+    await session.threadCdp.detach();
     await session.cdp.detach();
   }
 }
