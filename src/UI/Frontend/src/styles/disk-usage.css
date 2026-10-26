@@ -5,10 +5,6 @@
   align-content: start;
 }
 
-.disk-usage-setup .settings-row:last-of-type {
-  border-bottom: none;
-}
-
 .disk-usage-setup .settings-row {
   min-height: 52px;
   padding: 6px 4px;
@@ -265,10 +261,17 @@
   display: none;
 }
 
+/* 设置之后的操作行：和控制面的"应用"一样靠右；最后一行设置的分隔线把它和设置隔开。 */
 .disk-usage-setup-actions {
   display: flex;
-  flex: 0 0 auto;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
+  margin-top: 10px;
+}
+
+.disk-usage-setup.collapsed .disk-usage-setup-actions {
+  margin-top: 0;
 }
 
 /* 视图操作：复位 / 上一层。挨在标题右侧。 */
@@ -278,8 +281,23 @@
   align-items: center;
 }
 
-/* Result placeholders use the existing treemap viewport budget. */
+/*
+  结果还没有时的占位：占住方格图的位置和高度，用页面里统一的空区域样子（虚线框、空区域底色），
+  图标和文字居中在框里 —— 它说明的是"扫描结果会出现在这里"，不是一行飘在空白里的注释。
+*/
 .disk-usage-result > .content-state {
   min-height: 420px;
   height: clamp(420px, 58vh, 900px);
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  align-content: center;
+  text-align: center;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-md);
+  background: var(--empty-bg);
+  padding: 20px 16px;
+}
+
+.disk-usage-result > .content-state .content-state-copy {
+  max-width: 560px;
 }

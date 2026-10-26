@@ -78,34 +78,6 @@ export function DiskUsagePage(props: {
   return (
     <div class="disk-usage-page">
       <div class="panel disk-usage-setup" classList={{ collapsed: collapsed() }}>
-        <div class="panel-header">
-          <div class="disk-usage-setup-actions">
-            <Show when={props.hasResult}>
-              <button
-                class="secondary"
-                type="button"
-                aria-expanded={setupOpen()}
-                onClick={() => setSetupOpen((open) => !open)}
-              >
-                <StableLabel
-                  labels={{ expand: uiText.diskUsage.expandSetup, collapse: uiText.diskUsage.collapseSetup }}
-                  current={setupOpen() ? "collapse" : "expand"}
-                />
-              </button>
-            </Show>
-            <button
-              type="button"
-              disabled={!canScan()}
-              onClick={() => props.onScan(scope(), mode(), target())}
-            >
-              <StableLabel
-                labels={{ scan: uiText.diskUsage.scan, rescan: uiText.diskUsage.rescan, scanning: uiText.diskUsage.scanning }}
-                current={props.scanning ? "scanning" : props.hasResult ? "rescan" : "scan"}
-              />
-            </button>
-          </div>
-        </div>
-
         <div class="settings-row">
           <div class="settings-row-copy">
             <strong>{uiText.diskUsage.scopeLabel}</strong>
@@ -169,6 +141,33 @@ export function DiskUsagePage(props: {
         <Show when={fastUnreachable()}>
           <p class="disk-usage-warning" role="alert">{uiText.diskUsage.fastUnsupported}</p>
         </Show>
+
+        {/* 扫描作用于上面的范围和方式，所以排在它们之后；收起设置时只剩这一行。 */}
+        <div class="disk-usage-setup-actions">
+          <Show when={props.hasResult}>
+            <button
+              class="secondary"
+              type="button"
+              aria-expanded={setupOpen()}
+              onClick={() => setSetupOpen((open) => !open)}
+            >
+              <StableLabel
+                labels={{ expand: uiText.diskUsage.expandSetup, collapse: uiText.diskUsage.collapseSetup }}
+                current={setupOpen() ? "collapse" : "expand"}
+              />
+            </button>
+          </Show>
+          <button
+            type="button"
+            disabled={!canScan()}
+            onClick={() => props.onScan(scope(), mode(), target())}
+          >
+            <StableLabel
+              labels={{ scan: uiText.diskUsage.scan, rescan: uiText.diskUsage.rescan, scanning: uiText.diskUsage.scanning }}
+              current={props.scanning ? "scanning" : props.hasResult ? "rescan" : "scan"}
+            />
+          </button>
+        </div>
       </div>
 
       <Show when={scope() !== "folder" && !collapsed()}>
