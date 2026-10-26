@@ -21,6 +21,7 @@ const copies = {
   "es-ES": es,
   "ru-RU": ru
 };
+const indexSentinel = "7319";
 const ids = Object.keys(zhAppCopy.metricLabel).sort();
 const labels = {};
 for (const id of ids) {
@@ -28,7 +29,15 @@ for (const id of ids) {
   for (const [language, copy] of Object.entries(copies)) {
     const entry = copy.metricLabel[id];
     if (entry === undefined) throw new Error(`${language}: missing metric ${id}`);
-    labels[id][language] = typeof entry === "function" ? entry("{index}") : entry;
+    // The overlay fills {index} with a number, so render with a number and swap it back: the copy's own spacing rule
+    // (i18n/cjkSpacing.ts puts a space between a CJK character and a digit) then applies exactly as at run time.
+    if (typeof entry === "function") {
+      const rendered = entry(indexSentinel);
+      if (rendered.split(indexSentinel).length !== 2) throw new Error(`${language}: ${id} must contain the index exactly once`);
+      labels[id][language] = rendered.replace(indexSentinel, "{index}");
+    } else {
+      labels[id][language] = entry;
+    }
   }
 }
 const output = JSON.stringify(labels, null, 2) + "\n";
