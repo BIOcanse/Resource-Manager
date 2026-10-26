@@ -122,6 +122,16 @@ export default async function taskCenterJourney(page, baseUrl = "http://127.0.0.
   }, cancelPath, { timeout: 4000 });
   await dialog.getByRole("tab", { name: /历史/ }).click();
   await dialog.getByText("已取消", { exact: true }).waitFor({ state: "visible", timeout: 3000 });
+  // The history item's native "详情" disclosure must be reachable with Tab inside the modal focus trap.
+  const historySummary = dialog.getByRole("tabpanel", { name: /历史/ }).locator("details > summary").first();
+  await historySummary.waitFor({ state: "visible", timeout: 3000 });
+  await dialog.getByRole("tab", { name: /历史/ }).focus();
+  let reachedSummary = false;
+  for (let step = 0; step < 12 && !reachedSummary; step += 1) {
+    await page.keyboard.press("Tab");
+    reachedSummary = await historySummary.evaluate((element) => element === document.activeElement);
+  }
+  assert(reachedSummary, "Tab never reached the history item's details summary in Task Center");
 
   await page.keyboard.press("Escape");
   await dialog.waitFor({ state: "hidden", timeout: 3000 });

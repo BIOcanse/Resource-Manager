@@ -101,7 +101,9 @@ export function useModalFocus(options: ModalFocusOptions) {
 export function getFocusableDialogElements(dialog: HTMLElement) {
   const candidates = dialog.querySelectorAll<HTMLElement>(
     "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), "
-      + "textarea:not([disabled]), [tabindex]:not([tabindex='-1'])");
+      + "textarea:not([disabled]), [tabindex]:not([tabindex='-1']), "
+      // 原生展开详情的第一个 summary 本身可聚焦；漏了它，Tab 会在它之前绕回对话框开头（10-26 扫描发现）。
+      + "details > summary:first-of-type:not([tabindex='-1'])");
   return Array.from(candidates).filter((element) =>
     !element.inert
     && !element.closest("[inert]")
