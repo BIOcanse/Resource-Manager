@@ -25,6 +25,7 @@ const defaultScenario = {
   capabilities: "ready",
   settings: "ready",
   settingsConflict: false,
+  settingsRuntimeDisposition: "committedAndApplied",
   settingsGetDelayMs: 0,
   settingsPatchDelayMs: 0,
   settingsRevision: "frontend-harness-r1",
@@ -170,6 +171,7 @@ const defaultAppSettings = {
   update: { mode: "automatic", periodicCheckEnabled: false, checkIntervalHours: 24 }
 };
 const appSettings = structuredClone(defaultAppSettings);
+let appSettingsRuntimeDisposition = "committedAndApplied";
 let metricSlot = {
   observedAt: now()
 };
@@ -183,7 +185,7 @@ const metricCatalog = [
   metric("memory.usage", "内存", "Memory", "B"),
   metric("memory.percent", "内存占用", "Memory", "%")
 ];
-const appSettingsResult = (runtimeApplicationDisposition = "committedAndApplied") => {
+const appSettingsResult = (runtimeApplicationDisposition = appSettingsRuntimeDisposition) => {
   const settings = structuredClone(appSettings);
   if (scenario.gpuOverflowThresholdsMissing) {
     delete settings.performance?.gpuOverflowUsagePercent;
@@ -192,9 +194,16 @@ const appSettingsResult = (runtimeApplicationDisposition = "committedAndApplied"
   return {
     settings,
     revision: scenario.settingsRevision,
-    runtimeApplicationDisposition
+    runtimeApplicationDisposition,
+    runtimePlanVersion: runtimeApplicationDisposition === "savedNotApplied" ? null : 1,
+    runtimePublicationSequence: runtimeApplicationDisposition === "savedNotApplied" ? null : 1,
+    runtimeDeliveryFailureCount: runtimeApplicationDisposition === "committedWithDeliveryFailures" ? 1 : 0,
+    runtimeCapabilityConstrainedPaths: runtimeApplicationDisposition === "committedWithCapabilityConstraints" ? ["performance.preciseGpuPlacementEnabled"] : [],
+    runtimeFailureCode: runtimeApplicationDisposition === "savedNotApplied" ? "runtime-plan-publication-failed"
+      : runtimeApplicationDisposition === "revisionConflict" ? "settings-revision-conflict" : null
   };
 };
+const settingsResultStatus = disposition => ["savedNotApplied", "committedWithDeliveryFailures"].includes(disposition) ? 202 : 200;
 const mockSoftware = {
   id: "frontend-harness.software",
   name: "示例软件",
@@ -586,7 +595,19 @@ async function handleApi(request, response, url) {
       mergeRecord(appSettings, patch.changes);
       scenario.settingsRevision = nextSettingsRevision(scenario.settingsRevision);
       scenario.debugMode = appSettings.debug?.debugModeEnabled === true;
-      return json(response, 200, appSettingsResult());
+      appSettingsRuntimeDisposition = scenario.settingsRuntimeDisposition;
+      return json(response, settingsResultStatus(appSettingsRuntimeDisposition), appSettingsResult());
+    }
+    if (request.method === "PUT") {
+      const settings = JSON.parse(await readBody(request));
+      const updateProblem = invalidUpdateSettingsPatch(settings.update);
+      if (updateProblem) return json(response, 400, { error: updateProblem });
+      for (const key of Object.keys(appSettings)) delete appSettings[key];
+      Object.assign(appSettings, settings);
+      scenario.settingsRevision = nextSettingsRevision(scenario.settingsRevision);
+      scenario.debugMode = appSettings.debug?.debugModeEnabled === true;
+      appSettingsRuntimeDisposition = scenario.settingsRuntimeDisposition;
+      return json(response, settingsResultStatus(appSettingsRuntimeDisposition), appSettingsResult());
     }
     return json(response, 405, { error: "settings method not supported" });
   }
@@ -595,8 +616,10 @@ async function handleApi(request, response, url) {
       ? json(response, 503, { errorCode: "update.statusUnavailable" })
       : json(response, 200, currentProductUpdateStatus());
   }
-  if (path === "/api/settings/app/reapply") {
-    return json(response, 200, appSettingsResult());
+  if (path === "/api/settings/app/reapply" && request.method === "POST") {
+    if (scenario.settingsRuntimeDisposition === "savedNotApplied") return json(response, 500, { error: "runtime-plan-publication-failed" });
+    appSettingsRuntimeDisposition = scenario.settingsRuntimeDisposition;
+    return json(response, settingsResultStatus(appSettingsRuntimeDisposition), appSettingsResult());
   }
   if (path === "/api/targeted-recordings" && request.method === "GET") {
     return json(response, 200, [...targetedRecordings.values()].map((entry) => entry.header));
@@ -1275,7 +1298,10 @@ function delay(milliseconds) {
 // 外观、动效和刷新选择是前端偏好（docs/frontend_preferences_2026-10-24.md），后端设置不携带，
 // mock 也就没有这些开关；旅程改用 frontendPreferencesFixture.js 写前端缓存。传入旧开关直接报错，免得静默无效。
 const frontendPreferenceScenarioKeys = ["settingsTheme", "settingsUiStyle", "animations", "localSystemIntervalMs", "performanceMonitorRefreshIntervalMs"];
-const scenarioChoices = { metricCatalogAddresses: ["none", "reading-source"] };
+const scenarioChoices = {
+  metricCatalogAddresses: ["none", "reading-source"],
+  settingsRuntimeDisposition: ["committedAndApplied", "committedWithCapabilityConstraints", "committedWithDeliveryFailures", "savedNotApplied"]
+};
 
 function applyScenarioPatch(patch) {
   const presentation = frontendPreferenceScenarioKeys.filter(key => Object.hasOwn(patch, key));
@@ -1388,6 +1414,7 @@ function resetScenario() {
     delete appSettings[key];
   }
   Object.assign(appSettings, structuredClone(defaultAppSettings));
+  appSettingsRuntimeDisposition = "committedAndApplied";
   for (const key of Object.keys(requestTelemetry)) {
     delete requestTelemetry[key];
   }

@@ -72,6 +72,37 @@ export default async function settingsSourceJourney(page, baseUrl) {
   await autoStart.check();
   const operation = page.waitForResponse(response => response.ok() && response.request().method() === "PATCH" && new URL(response.url()).pathname === "/api/settings/app");
   await save(); await operation;
+  // A durable save can still be pending runtime delivery or capability constrained.
+  const runtimeOutcomes = [];
+  for (const disposition of ["savedNotApplied", "committedWithDeliveryFailures", "committedWithCapabilityConstraints"]) {
+    await scenario({ settingsRuntimeDisposition: disposition });
+    const checked = !await autoStart.isChecked();
+    await autoStart.setChecked(checked);
+    const saved = page.waitForResponse(response => response.request().method() === "PATCH" && new URL(response.url()).pathname === "/api/settings/app");
+    await save();
+    const response = await saved;
+    assert.equal(response.status(), disposition === "committedWithCapabilityConstraints" ? 200 : 202);
+    assert.equal((await response.json()).runtimeApplicationDisposition, disposition);
+    const message = disposition === "committedWithCapabilityConstraints" ? text.saveState.constrained : text.saveState.partial;
+    await page.locator(".settings-save-state").filter({ hasText: message }).waitFor();
+    const stored = await (await fetch(baseUrl + "/api/settings/app")).json();
+    assert.equal(stored.settings.systemIntegration.autoStartEnabled, checked);
+    assert.equal(stored.runtimeApplicationDisposition, disposition);
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await open("系统集成");
+    await page.locator(".settings-save-state").filter({ hasText: message }).waitFor();
+    assert.equal(await autoStart.isChecked(), checked);
+    if (disposition !== "committedWithCapabilityConstraints") {
+      await scenario({ settingsRuntimeDisposition: "committedAndApplied" });
+      const reapplied = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname === "/api/settings/app/reapply");
+      await page.getByRole("button", { name: text.actions.reapply, exact: true }).click();
+      assert.equal((await reapplied).status(), 200);
+      await page.locator(".settings-save-state").filter({ hasText: text.saveState.saved }).waitFor();
+      assert.equal((await (await fetch(baseUrl + "/api/settings/app")).json()).revision, stored.revision, "Reapply must not create a new settings revision");
+    }
+    runtimeOutcomes.push(disposition);
+  }
+  await scenario({ settingsRuntimeDisposition: "committedAndApplied" });
   assert(patches.every(patch => !patch.changes.appearance && !patch.changes.performance?.resourceTableRefreshIntervalMs));
   await page.getByRole("button", { name: "外观", exact: true }).click();
   await page.getByRole("button", { name: text.appearance.resetCache, exact: true }).click();
@@ -81,5 +112,5 @@ export default async function settingsSourceJourney(page, baseUrl) {
   await open("外观");
   assert(await theme("跟随系统").isChecked(), "Cache loss did not restore point values");
   assert.deepEqual(errors, []);
-  return { missingCacheUsesPoints: true, presentationNeverSentToBackend: true, restart: true, reset: true, backendConflictPreservesDraft: true };
+  return { missingCacheUsesPoints: true, presentationNeverSentToBackend: true, restart: true, reset: true, backendConflictPreservesDraft: true, runtimeOutcomes };
 }
