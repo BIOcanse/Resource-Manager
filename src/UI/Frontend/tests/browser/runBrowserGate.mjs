@@ -52,6 +52,7 @@ import performanceHistoryJourney from "./performanceHistoryJourney.js";
 import resourceLayoutTaskJourney from "./resourceLayoutTaskJourney.js";
 import resourceTableContentStateJourney from "./resourceTableContentStateJourney.js";
 import resourceTableScrollStabilityJourney from "./resourceTableScrollStabilityJourney.js";
+import resourceTableRowsJourney from "./resourceTableRowsJourney.js";
 import columnResizeInteractionJourney from "./columnResizeInteractionJourney.js";
 import fanCurveInteractionJourney from "./fanCurveInteractionJourney.js";
 import switchInteractionJourney from "./switchInteractionJourney.js";
@@ -148,6 +149,7 @@ const allJourneys = [
   ["resource-layout-task", resourceLayoutTaskJourney],
   ["resource-table-content-state", resourceTableContentStateJourney],
   ["resource-table-scroll-stability", resourceTableScrollStabilityJourney],
+  ["resource-table-rows", resourceTableRowsJourney],
   ["column-resize-interaction", columnResizeInteractionJourney],
   ["fan-curve-interaction", fanCurveInteractionJourney],
   ["switch-interaction", switchInteractionJourney],

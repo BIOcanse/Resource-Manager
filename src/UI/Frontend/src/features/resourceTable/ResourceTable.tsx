@@ -1355,6 +1355,11 @@ function rowStatus(row: ResourceTableRow | undefined) {
     return uiText.status.state.running;
   }
 
+  // 系统/驱动保留行（软件行和它的进程行）装的是归属类型 system-residual，不是进程状态，名字和资源条的分组同一出处。
+  if (value === "system-residual") {
+    return uiText.softwareKind.system_residual;
+  }
+
   return softwareGroupLabel(value)
     ?? userFacingLabel(row?.status, uiText.resourceTableView.unknownStatus);
 }
