@@ -591,6 +591,8 @@
   color: var(--text);
   justify-content: flex-start;
   font-size: 12px;
+  /* PID 是数字：等宽数字让同一列上下对齐。 */
+  font-variant-numeric: tabular-nums;
 }
 
 .resource-table-cell.value-cell {

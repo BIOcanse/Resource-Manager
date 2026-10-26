@@ -1210,7 +1210,8 @@ function ResourceTableCell(props: {
         <Show
           when={row()?.kind === "software" && row()?.softwareId && (row()?.processCount ?? 0) > 0 ? row()!.id : undefined}
           keyed
-          fallback={<span class="resource-row-spacer" />}
+          // 软件级是树：不能展开的行留出箭头的位置，名字对齐。进程级没有树，不留空位。
+          fallback={props.mode === "software" ? <span class="resource-row-spacer" /> : undefined}
         >
           <button
             type="button"

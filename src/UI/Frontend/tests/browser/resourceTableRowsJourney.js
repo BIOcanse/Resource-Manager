@@ -100,6 +100,7 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
   }
   await panel.locator('.resource-table-row[aria-label="示例软件 4"]').click({ button: "right" });
   await page.locator(".standard-context-menu").waitFor();
+  await page.waitForTimeout(250);
   const contextTarget = await panel.locator('.resource-table-row[aria-label="示例软件 4"]')
     .evaluate((row) => ({ target: row.classList.contains("context-target"), color: getComputedStyle(row).backgroundColor }));
   await page.keyboard.press("Escape");
@@ -181,7 +182,7 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
   results.resizeHandle = { browsing, editing };
 
   // 7. 展开：箭头是图标并转到朝下；刚露出来的进程行播一次入场，播完自己清掉；无动画档直接出现，同样清掉。
-  const expandAndWatch = (name) => panel.evaluate(async (name) => {
+  const expandAndWatch = (name) => panel.evaluate(async (_panel, name) => {
     const row = document.querySelector(`.resource-table-row[aria-label="${name}"]`);
     const button = row.querySelector(".resource-row-expander");
     button.click();
@@ -235,6 +236,20 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
     throw new Error(`Narrow cells must end in an ellipsis: ${JSON.stringify(ellipsis)}`);
   }
   results.ellipsis = ellipsis;
+
+  // 11. 进程级没有树：名字前不留箭头的空位；PID 用等宽数字。
+  await panel.locator(".resource-table-mode-button").nth(1).click();
+  await visibleRows("process").first().waitFor();
+  const processView = await panel.evaluate((element) => {
+    const rows = [...element.querySelectorAll('.resource-table-row[aria-hidden="false"]')];
+    const pid = element.querySelector('.resource-table-row.process-row[aria-hidden="false"] .text-cell');
+    return { spacers: rows.reduce((sum, row) => sum + row.querySelectorAll(".resource-row-spacer, .resource-row-expander").length, 0),
+      pidNumeric: getComputedStyle(pid).fontVariantNumeric };
+  });
+  if (processView.spacers !== 0 || processView.pidNumeric !== "tabular-nums") {
+    throw new Error(`Process view presentation: ${JSON.stringify(processView)}`);
+  }
+  results.processView = processView;
 
   if (errors.length > 0) throw new Error(`Page errors: ${errors.join("\n")}`);
   return results;
