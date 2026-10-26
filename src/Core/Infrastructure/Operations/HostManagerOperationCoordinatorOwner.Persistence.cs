@@ -103,7 +103,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         CompiledHostManagerPlan hostPlan,
         CompiledHostManagerOperationCoordinatorPlan desired)
     {
-        var token = deployment.BeginInitialCreate(hostPlan);
+        var token = deployment.BeginCreate(hostPlan);
         HostManagerOperationCanonicalStore? replacementStore = null;
         NativeOperationCoordinatorWorkspace? replacementWorkspace = null;
         var settlementAttempted = false;

@@ -58,21 +58,21 @@ public sealed class ControlActualStateReader(
     {
         lock (subscriptionGate)
         {
-            ObjectDisposedException.ThrowIf(stopped, this);
+            ObjectDisposedException.ThrowIf(stopped || Volatile.Read(ref disposed) != 0, this);
             if (leases++ == 0)
             {
                 demand = new CancellationTokenSource();
                 if (demandChanged.CurrentCount == 0) demandChanged.Release();
             }
-            return new SubscriptionLease(this);
+            return new SubscriptionLease(this, demand!);
         }
     }
 
-    private void ReleaseSubscription()
+    private void ReleaseSubscription(CancellationTokenSource leaseDemand)
     {
         lock (subscriptionGate)
         {
-            if (--leases == 0) CancelDemand();
+            if (ReferenceEquals(demand, leaseDemand) && --leases == 0) CancelDemand();
         }
     }
 
@@ -82,6 +82,17 @@ public sealed class ControlActualStateReader(
         demand?.Cancel();
         demand?.Dispose();
         demand = null;
+        leases = 0;
+    }
+
+    public override Task StartAsync(CancellationToken cancellationToken)
+    {
+        lock (subscriptionGate)
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
+            stopped = false;
+        }
+        return base.StartAsync(cancellationToken);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -152,10 +163,10 @@ public sealed class ControlActualStateReader(
         }
     }
 
-    private sealed class SubscriptionLease(ControlActualStateReader owner) : IDisposable
+    private sealed class SubscriptionLease(ControlActualStateReader owner, CancellationTokenSource demand) : IDisposable
     {
         private ControlActualStateReader? current = owner;
-        public void Dispose() => Interlocked.Exchange(ref current, null)?.ReleaseSubscription();
+        public void Dispose() => Interlocked.Exchange(ref current, null)?.ReleaseSubscription(demand);
     }
 
     private async Task<ControlActualState> ReadOnceAsync(CancellationToken cancellationToken)

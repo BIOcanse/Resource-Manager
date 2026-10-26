@@ -1,5 +1,9 @@
 using System.Reflection;
 using System.Threading.Channels;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using Microsoft.Diagnostics.Tracing;
+using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Infrastructure.SoftwareDiscovery;
@@ -15,6 +19,78 @@ namespace Resource_Manager_APP.Tests;
 [Collection(SoftwareIdentityCatalogProcessStateCollection.Name)]
 public sealed class PortableSoftwareDiscoveryLossTests
 {
+    [Fact]
+    public async Task RunningDiscoveryReceivesProcessStartsAfterBrokerRestarts()
+    {
+        using var catalog = RuntimeProcessAttributionCatalog.CreateOrReuse(null, [], [], [],
+            new CandidateResolver(), new NullResolvers(), new NullResolvers(), new NullResolvers(),
+            SoftwareIdentityCatalogTestData.Empty, SoftwareIdentityCatalogTestData.Owner);
+        var factory = new DiscoveryRuntimeFactory();
+        using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance,
+            TimeSpan.FromHours(1));
+        var registry = new RecordingRegistry();
+        using var service = new PortableSoftwareDiscoveryService(broker, new CatalogProvider(catalog),
+            new MatchingCatalog(), registry, new RecordingLogger(), () => [], ReadFixtureIdentity);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await broker.StartAsync(default);
+        await service.StartAsync(default);
+        var discoveryWorker = Worker(service);
+        try
+        {
+            var firstRuntime = Assert.Single(factory.Runtimes);
+            firstRuntime.EmitProcessStart();
+            await registry.Observed.Reader.ReadAsync(deadline.Token);
+
+            await broker.StopAsync(default);
+            Assert.True(firstRuntime.Disposed);
+            Assert.False(discoveryWorker.IsCompleted);
+            await broker.StartAsync(default);
+            // An independent reader also needs the second run. It cannot restore
+            // discovery's subscription or cause discovery to enumerate inventory.
+            using var independentReader = broker.Subscribe(new("independent-process-reader",
+                KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
+            var secondRuntime = factory.Runtimes[1];
+            secondRuntime.EmitProcessStart();
+            await registry.Observed.Reader.ReadAsync(deadline.Token);
+
+            Assert.Equal(2, registry.Observations);
+            Assert.Same(discoveryWorker, Worker(service));
+            Assert.False(discoveryWorker.IsCompleted);
+        }
+        finally
+        {
+            await service.StopAsync(default);
+            await broker.StopAsync(default);
+        }
+    }
+
+    [Fact]
+    public async Task SameDiscoveryServiceRestartsAndProcessesFreshInventoryAfterStop()
+    {
+        using var catalog = RuntimeProcessAttributionCatalog.CreateOrReuse(null, [], [], [],
+            new CandidateResolver(), new NullResolvers(), new NullResolvers(), new NullResolvers(),
+            SoftwareIdentityCatalogTestData.Empty, SoftwareIdentityCatalogTestData.Owner);
+        var registry = new RecordingRegistry();
+        var broker = new Broker();
+        using var service = new PortableSoftwareDiscoveryService(broker, new CatalogProvider(catalog),
+            new MatchingCatalog(), registry, new RecordingLogger(),
+            () => [new(Environment.ProcessId, 2)], ReadFixtureIdentity);
+        for (var run = 1; run <= 2; run++)
+        {
+            await service.StartAsync(default);
+            try
+            {
+                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                while (Volatile.Read(ref registry.Observations) < run)
+                    await Task.Delay(1, deadline.Token);
+                Assert.Equal(run, registry.Observations);
+            }
+            finally { await service.StopAsync(default); }
+            Assert.True(Worker(service).IsCompletedSuccessfully);
+            Assert.Equal(run, broker.ReleaseCount);
+        }
+    }
+
     [Fact]
     public async Task InvalidAndExitedCandidatesAreDroppedAndNewCandidateCanBeObserved()
     {
@@ -242,8 +318,12 @@ public sealed class PortableSoftwareDiscoveryLossTests
     private sealed class RecordingRegistry : ResourceManager.App.Application.SoftwareDiscovery.IPortableSoftwareRegistry
     {
         internal int Observations;
+        internal Channel<bool> Observed { get; } = Channel.CreateUnbounded<bool>();
         public void Observe(ResourceManager.App.Domain.SoftwareDiscovery.PortableSoftwareObservation observation)
-            => Interlocked.Increment(ref Observations);
+        {
+            Interlocked.Increment(ref Observations);
+            Observed.Writer.TryWrite(true);
+        }
         public IReadOnlyList<ResourceManager.App.Domain.SoftwareDiscovery.PortableSoftwareRegistration> GetSnapshot() => [];
         public Task<IReadOnlyList<ResourceManager.App.Domain.SoftwareDiscovery.PortableSoftwareRegistration>> RefreshAsync(CancellationToken token)
             => Task.FromResult(GetSnapshot());
@@ -392,6 +472,80 @@ public sealed class PortableSoftwareDiscoveryLossTests
         var ids = new List<int>();
         while (queue.Reader.TryRead(out var candidate)) ids.Add(candidate.ProcessId);
         return ids.ToArray();
+    }
+
+    private sealed class DiscoveryRuntimeFactory : IKernelEtwSessionRuntimeFactory
+    {
+        internal List<DiscoveryRuntime> Runtimes { get; } = [];
+        public bool TryGetAvailability(out string state, out string message)
+        {
+            state = "Available";
+            message = "fixture";
+            return true;
+        }
+        public IKernelEtwSessionRuntime Create(string sessionName, KernelTraceEventParser.Keywords keywords,
+            KernelEtwSessionContext context, IReadOnlyList<KernelEtwSubscriptionRegistration> subscriptions)
+        {
+            var runtime = new DiscoveryRuntime();
+            runtime.Dispatcher.InitializeSubscriptions(subscriptions, context);
+            Runtimes.Add(runtime);
+            return runtime;
+        }
+    }
+
+    private sealed class DiscoveryRuntime : IKernelEtwSessionRuntime
+    {
+        internal KernelEtwSubscriptionDispatcher Dispatcher { get; } = new();
+        internal bool Disposed { get; private set; }
+        public bool IsProcessing { get; private set; }
+        public int EventsLost => 0;
+        public void StartProcessing(Action<Exception?> completed) => IsProcessing = true;
+        public void UpdateSubscriptions(IReadOnlyList<KernelEtwSubscriptionRegistration> subscriptions,
+            KernelEtwSessionContext context) => Dispatcher.UpdateSubscriptions(subscriptions, context, static _ => { });
+        public KernelEtwSessionStopResult Stop(TimeSpan waitTimeout)
+        {
+            Dispatcher.CancelAll();
+            IsProcessing = false;
+            return KernelEtwSessionStopResult.Released;
+        }
+        public void Dispose()
+        {
+            Stop(TimeSpan.Zero);
+            Disposed = true;
+        }
+
+        internal unsafe void EmitProcessStart()
+        {
+            // Version-zero process payload: the fixture needs only the process
+            // header and parent ID. No ETW session, OS event or real process is needed.
+            var data = (ProcessTraceData)RuntimeHelpers.GetUninitializedObject(typeof(ProcessTraceData));
+            var source = (ETWTraceEventSource)RuntimeHelpers.GetUninitializedObject(typeof(ETWTraceEventSource));
+            const BindingFlags fields = BindingFlags.Instance | BindingFlags.NonPublic;
+            typeof(ETWTraceEventSource).GetField("processNameForID", fields)!
+                .SetValue(source, new Dictionary<int, string> { [Environment.ProcessId] = "fixture" });
+            typeof(TraceEventSource).GetField("pointerSize", fields)!.SetValue(source, 8);
+            typeof(TraceEventSource).GetField("_QPCFreq", fields)!.SetValue(source, 1L);
+            typeof(TraceEventSource).GetField("_syncTimeUTC", fields)!.SetValue(source, DateTime.UnixEpoch);
+            var record = (byte*)NativeMemory.AllocZeroed(256);
+            var payload = (byte*)NativeMemory.AllocZeroed(32);
+            try
+            {
+                *(ushort*)(record + 4) = 0x40; // EVENT_HEADER_FLAG_64_BIT_HEADER
+                *(int*)(record + 12) = Environment.ProcessId;
+                *(ushort*)(record + 86) = 32; // EVENT_RECORD.UserDataLength
+                *(long*)(payload + 8) = 2;
+                var recordField = typeof(TraceEvent).GetField("eventRecord", fields)!;
+                recordField.SetValue(data, Pointer.Box(record, recordField.FieldType));
+                typeof(TraceEvent).GetField("userData", fields)!.SetValue(data, (IntPtr)payload);
+                typeof(TraceEvent).GetField("traceEventSource", fields)!.SetValue(data, source);
+                Dispatcher.Dispatch(data, static (callbacks, item) => callbacks.DeliverProcessStartGroup(item));
+            }
+            finally
+            {
+                NativeMemory.Free(payload);
+                NativeMemory.Free(record);
+            }
+        }
     }
 
     private sealed class Broker : IKernelEtwSessionBroker

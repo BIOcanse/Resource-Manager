@@ -21,12 +21,12 @@ internal sealed class VidMmBusinessBlockTestHarness : IAsyncDisposable
 
     private VidMmBusinessBlockTestHarness(
         ServiceProvider services,
-        BusinessBlockController controller,
+        BusinessBlockScheduler controller,
         DxgkrnlVidMmEtwTelemetryZone zone,
         VidMmEtwTestSessionFactory sessions,
         RecordingEtwConsumerThreadObserver observer,
-        RecordingLogger<BusinessBlockController> controllerLogger,
-        ProcessMetadataState processMetadata)
+        RecordingLogger<BusinessBlockDiagnosticsRegistry> controllerLogger,
+        ProcessMetadataState processMetadata, BusinessBlockDiagnosticsRegistry diagnostics, EtwTestRunRecorder recorder)
     {
         this.services = services;
         Controller = controller;
@@ -35,13 +35,18 @@ internal sealed class VidMmBusinessBlockTestHarness : IAsyncDisposable
         Observer = observer;
         ControllerLogger = controllerLogger;
         this.processMetadata = processMetadata;
+        Diagnostics = diagnostics;
+        Recorder = recorder;
     }
 
-    internal BusinessBlockController Controller { get; }
+    internal BusinessBlockScheduler Controller { get; }
     internal DxgkrnlVidMmEtwTelemetryZone Zone { get; }
     internal VidMmEtwTestSessionFactory Sessions { get; }
     internal RecordingEtwConsumerThreadObserver Observer { get; }
-    internal RecordingLogger<BusinessBlockController> ControllerLogger { get; }
+    internal RecordingLogger<BusinessBlockDiagnosticsRegistry> ControllerLogger { get; }
+    internal BusinessBlockDiagnosticsRegistry Diagnostics { get; }
+    internal EtwTestRunRecorder Recorder { get; }
+    internal Task<BusinessBlockResult> NextResultAsync() => Recorder.NextResultAsync();
     internal Func<uint, ulong?> CurrentProcessBirth
     {
         get => processMetadata.CurrentBirth;
@@ -55,30 +60,32 @@ internal sealed class VidMmBusinessBlockTestHarness : IAsyncDisposable
     {
         var services = new ServiceCollection().BuildServiceProvider();
         var sessions = new VidMmEtwTestSessionFactory();
-        var controllerLogger = new RecordingLogger<BusinessBlockController>();
+        var controllerLogger = new RecordingLogger<BusinessBlockDiagnosticsRegistry>();
         var processMetadata = new ProcessMetadataState();
         DxgkrnlVidMmEtwTelemetryZone? zone = null;
+        EtwTestRunRecorder? recorder = null;
         var registration = new BusinessBlockRegistration(
             nameof(DxgkrnlVidMmEtwTelemetryZone),
             [],
-            _ => zone ?? throw new InvalidOperationException("The VidMm test zone has not been assigned."));
-        var controller = new BusinessBlockController(
+            _ => recorder!);
+        var diagnostics = new BusinessBlockDiagnosticsRegistry([registration], controllerLogger);
+        var controller = new BusinessBlockScheduler(
             services,
             [registration],
             Options.Create(blockOptions ?? new BusinessBlockOptions()),
-            controllerLogger);
-        var observer = new RecordingEtwConsumerThreadObserver(new BusinessBlockEtwThreadObserver(controller));
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<BusinessBlockScheduler>.Instance,
+            decisions: [EtwTestRunRecorder.AvailabilityRule(DxgkrnlVidMmEtwTelemetryZone.BusinessBlockId, DxgkrnlVidMmEtwTelemetryZone.AvailabilityFact)]);
+        var observer = new RecordingEtwConsumerThreadObserver(new BusinessBlockEtwThreadObserver(diagnostics));
+        zone = new DxgkrnlVidMmEtwTelemetryZone(NullLogger<DxgkrnlVidMmEtwTelemetryZone>.Instance,
+            controller, diagnostics, processMetadata.Open, sessions.Create, observer);
+        recorder = new(zone, diagnostics, nameof(DxgkrnlVidMmEtwTelemetryZone));
+        zone.PublishAvailabilityAsync().GetAwaiter().GetResult();
         var harness = new VidMmBusinessBlockTestHarness(services, controller,
-            zone = new DxgkrnlVidMmEtwTelemetryZone(
-                NullLogger<DxgkrnlVidMmEtwTelemetryZone>.Instance,
-                controller,
-                processMetadata.Open,
-                sessions.Create,
-                observer),
+            zone,
             sessions,
             observer,
             controllerLogger,
-            processMetadata);
+            processMetadata, diagnostics, recorder);
         return harness;
     }
 
@@ -86,11 +93,12 @@ internal sealed class VidMmBusinessBlockTestHarness : IAsyncDisposable
     {
         try
         {
-            await Controller.StopDependenciesAsync(new(
+            await Controller.ShutdownAsync(new(
                 BusinessBlockRequestKind.Dependency,
                 "vidmm-test-harness",
                 "test-cleanup",
                 Controller.CurrentPlanVersion)).WaitAsync(CleanupTimeout);
+            await Recorder.DrainAsync();
         }
         finally
         {
@@ -134,6 +142,8 @@ internal sealed class VidMmEtwTestSessionFactory
     private int attempts;
 
     internal int Attempts => Volatile.Read(ref attempts);
+    internal Action? BeforeCreate { get; set; }
+    internal Action<VidMmEtwTestSession>? Configure { get; set; }
 
     internal VidMmEtwTestSession[] Snapshot()
     {
@@ -146,7 +156,9 @@ internal sealed class VidMmEtwTestSessionFactory
     internal IVidMmEtwSession Create(string sessionName)
     {
         Interlocked.Increment(ref attempts);
+        BeforeCreate?.Invoke();
         var session = new VidMmEtwTestSession(sessionName);
+        Configure?.Invoke(session);
         lock (sync) sessions.Add(session);
         return session;
     }
@@ -170,8 +182,14 @@ internal sealed class VidMmEtwTestSession(string sessionName) : IVidMmEtwSession
     internal Thread? DisposeThread => Volatile.Read(ref disposeThread);
     internal int DisposeCount => Volatile.Read(ref disposeCount);
     internal bool ConsumerWasAliveAtDispose => Volatile.Read(ref consumerWasAliveAtDispose);
+    internal Action? BeforeDispose { get; set; }
+    internal Exception? BindFailure { get; set; }
 
-    public void Bind(Action<TraceEvent> callback) => handler = callback;
+    public void Bind(Action<TraceEvent> callback)
+    {
+        if (BindFailure is { } error) throw error;
+        handler = callback;
+    }
 
     public void Process()
     {
@@ -194,7 +212,9 @@ internal sealed class VidMmEtwTestSession(string sessionName) : IVidMmEtwSession
 
     public void Dispose()
     {
+        handler = null;
         if (Interlocked.Increment(ref disposeCount) != 1) return;
+        BeforeDispose?.Invoke();
         Volatile.Write(ref disposeThread, Thread.CurrentThread);
         Volatile.Write(ref consumerWasAliveAtDispose, ConsumerThread?.IsAlive == true);
         completion.TrySetResult(null);

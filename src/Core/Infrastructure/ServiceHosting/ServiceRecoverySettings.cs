@@ -12,6 +12,7 @@ public sealed class ServiceRecoverySettings(
     ILogger<ServiceRecoverySettings> logger) : IHostedService
 {
     private readonly object gate = new();
+    private Action<CompiledRuntimePlan>? onPublished;
     private (string Revision, bool Enabled, int Delay, int Count, int Reset)? attempted;
     private bool skipLogged;
     private ServiceRecoveryDiagnostics diagnostics = new("notApplied", 0);
@@ -20,21 +21,33 @@ public sealed class ServiceRecoverySettings(
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        plans.Published += Apply;
-        if (plans.Current.Version > 0) Apply(plans.Current);
+        lock (gate)
+        {
+            if (onPublished is not null) return Task.CompletedTask;
+            Action<CompiledRuntimePlan> callback = null!;
+            callback = plan => Apply(plan, callback);
+            onPublished = callback;
+            plans.Published += callback;
+            if (plans.Current.Version > 0) callback(plans.Current);
+        }
         return Task.CompletedTask;
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
-        plans.Published -= Apply;
+        lock (gate)
+        {
+            if (onPublished is { } callback) plans.Published -= callback;
+            onPublished = null;
+        }
         return Task.CompletedTask;
     }
 
-    private void Apply(CompiledRuntimePlan plan)
+    private void Apply(CompiledRuntimePlan plan, Action<CompiledRuntimePlan> callback)
     {
         lock (gate)
         {
+            if (!ReferenceEquals(onPublished, callback)) return;
             var settings = plan.ServiceRecovery;
             var reset = plan.HostManager.ServiceRecoveryResetPeriodSeconds;
             var key = (plan.HostManager.BindingProvenance.SettingsEffectiveSha256,

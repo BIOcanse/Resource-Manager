@@ -26,13 +26,15 @@ public sealed class HostManagerStartupOrderTests
 
         var hostedServices = host.Services.GetServices<IHostedService>().Where(static service => service is not BusinessBlockDependencyLifetime).ToArray();
 
-        Assert.IsType<NonOwningHostedService<RuntimeSpecializationCoordinator>>(
+        Assert.IsType<NonOwningHostedService<NativeEtwLifetimeService>>(
             hostedServices[0]);
+        Assert.IsType<NonOwningHostedService<RuntimeSpecializationCoordinator>>(
+            hostedServices[1]);
         Assert.True(
             Array.FindIndex(
                 hostedServices,
                 static service => service
-                    is NonOwningHostedService<SqlitePortableSoftwareRegistry>) > 0);
+                    is NonOwningHostedService<SqlitePortableSoftwareRegistry>) > 1);
         var subscriptionOwnerIndex = Array.FindIndex(
             hostedServices,
             static service => service
@@ -41,7 +43,7 @@ public sealed class HostManagerStartupOrderTests
             hostedServices,
             static service => service
                 is NonOwningHostedService<WindowsHardwareMetricSampler>);
-        Assert.InRange(subscriptionOwnerIndex, 1, firstSamplingConsumerIndex - 1);
+        Assert.InRange(subscriptionOwnerIndex, 2, firstSamplingConsumerIndex - 1);
 
         var selfLocalManager = host.Services.GetRequiredService<
             ResourceManagerSelfLocalResourceManager>();

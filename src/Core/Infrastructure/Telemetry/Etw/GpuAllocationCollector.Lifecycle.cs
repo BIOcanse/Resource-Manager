@@ -7,12 +7,13 @@ namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
 public sealed partial class GpuAllocationCollector
 {
-    private const string BusinessBlockId = "gpu-allocation-etw";
+    internal const string BusinessBlockId = "gpu-allocation-etw";
+    internal const string AvailabilityFact = "native-session-available:" + BusinessBlockId;
     private const string SubscriptionCause = "gpu-allocation-subscription";
-    private static readonly string[] Outputs = ["gpu-allocation"];
 
     private readonly ILogger<GpuAllocationCollector> logger;
-    private readonly BusinessBlockController controller;
+    private readonly BusinessBlockScheduler controller;
+    private readonly BusinessBlockDiagnosticsRegistry diagnostics;
     private readonly object lifecycle = new();
     private readonly SemaphoreSlim captureGate = new(1, 1);
     private readonly IGpuAllocationSessionFactory sessionFactory;
@@ -22,15 +23,16 @@ public sealed partial class GpuAllocationCollector
     private IGpuAllocationSession? session;
     private string? sessionName;
     private Run? activeRun;
-    private TaskCompletionSource startup = NewSignal();
+    private TaskCompletionSource<Run> nextRun = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool runtimeReleaseBlocked;
-    private BusinessBlockOutcome? lastRunOutcome;
+    private bool nativeSessionAvailable = true;
 
     public GpuAllocationCollector(ILogger<GpuAllocationCollector> logger, IConfiguration configuration,
-        BusinessBlockController controller, IEtwConsumerThreadObserver? consumerThreadObserver = null)
+        BusinessBlockScheduler controller, BusinessBlockDiagnosticsRegistry diagnostics, IEtwConsumerThreadObserver? consumerThreadObserver = null)
     {
         this.logger = logger;
         this.controller = controller;
+        this.diagnostics = diagnostics;
         plan = GpuAllocationCapturePlan.Compile(configuration);
         sessionFactory = new TraceEventGpuAllocationSessionFactory(logger, consumerThreadObserver);
         timeProvider = TimeProvider.System;
@@ -38,19 +40,14 @@ public sealed partial class GpuAllocationCollector
     }
 
     internal GpuAllocationCollector(ILogger<GpuAllocationCollector> logger, IConfiguration configuration,
-        BusinessBlockController controller, IGpuAllocationSessionFactory sessionFactory,
+        BusinessBlockScheduler controller, BusinessBlockDiagnosticsRegistry diagnostics, IGpuAllocationSessionFactory sessionFactory,
         TimeProvider timeProvider, TimeSpan? deliveryBudget = null,
         IEtwConsumerThreadObserver? consumerThreadObserver = null)
-        : this(logger, configuration, controller, consumerThreadObserver)
+        : this(logger, configuration, controller, diagnostics, consumerThreadObserver)
     {
         this.sessionFactory = sessionFactory;
         this.timeProvider = timeProvider;
         this.deliveryBudget = deliveryBudget ?? TimeSpan.FromSeconds(5);
-    }
-
-    public Task Started
-    {
-        get { lock (lifecycle) return startup.Task; }
     }
 
     // Native resource subscriptions still own due times. Held intervals select
@@ -62,7 +59,7 @@ public sealed partial class GpuAllocationCollector
             controller.CurrentPlanVersion);
         lock (lifecycle)
         {
-            var dependency = controller.AcquireDependency(BusinessBlockId, reason, refreshInterval, Outputs);
+            var dependency = controller.AcquireDependency(BusinessBlockId, reason);
             var lease = new Lease(this, refreshInterval, dependency);
             leases.Add(lease);
             lease.ObserveRelease();
@@ -70,40 +67,55 @@ public sealed partial class GpuAllocationCollector
         }
     }
 
-    public Task<BusinessBlockResult> RunAsync(CancellationToken stopNotification)
+    public Task RunAsync(BusinessBlockRunContext context)
     {
         Run run;
         lock (lifecycle)
         {
             if (activeRun is not null)
                 throw new InvalidOperationException("The GPU allocation block already has an active run.");
-            run = new Run(stopNotification);
+            run = new Run(context.StopNotification);
             activeRun = run;
-            startup = run.Started;
-            lastRunOutcome = null;
+            nextRun.TrySetResult(run);
+            nextRun = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            diagnostics.BeginRun(BusinessBlockId);
         }
-        return RunSessionAsync(run, stopNotification);
+        return RunSessionAsync(run, context);
     }
 
-    private async Task<BusinessBlockResult> RunSessionAsync(Run run, CancellationToken stopNotification)
+    private async Task RunSessionAsync(Run run, BusinessBlockRunContext context)
     {
+        await Task.Yield();
+        var stopNotification = context.StopNotification;
         var result = BusinessBlockResult.Stopped;
         Exception? cleanupFailure = null;
         var started = false;
+        var stopSignal = NewSignal();
+        using var stopRegistration = stopNotification.Register(static state => ((TaskCompletionSource)state!).TrySetResult(), stopSignal);
         try
         {
-            lock (lifecycle)
-                if (runtimeReleaseBlocked)
-                    throw new InvalidOperationException("The previous GPU allocation session was not released.");
+            stopNotification.ThrowIfCancellationRequested();
+            bool releaseUnconfirmed;
+            lock (lifecycle) releaseUnconfirmed = runtimeReleaseBlocked || session is not null;
+            if (releaseUnconfirmed)
+            {
+                var error = new InvalidOperationException("The previous GPU allocation session was not released.");
+                run.Started.TrySetException(error);
+                diagnostics.ReportFailure(BusinessBlockId, error, "session-release-unconfirmed");
+                throw error;
+            }
 
-            using (controller.MeasureSegment(BusinessBlockId)) StartSession(run);
+            using (diagnostics.MeasureSegment(BusinessBlockId)) StartSession(run);
             started = true;
+            context.ReportRunning();
             run.Started.TrySetResult();
 
-            var stopSignal = NewSignal();
-            using var stopRegistration = stopNotification.Register(static state => ((TaskCompletionSource)state!).TrySetResult(), stopSignal);
             await Task.WhenAny(run.ProcessingCompletion.Task, stopSignal.Task).ConfigureAwait(false);
-            if (stopNotification.IsCancellationRequested)
+            if (run.ProcessingCompletion.Task.IsCompletedSuccessfully && run.ProcessingCompletion.Task.Result is { } failure)
+            {
+                result = BusinessBlockResult.Failed(failure);
+            }
+            else if (stopNotification.IsCancellationRequested)
             {
                 result = BusinessBlockResult.Stopped;
             }
@@ -113,10 +125,16 @@ public sealed partial class GpuAllocationCollector
                 result = error is null ? BusinessBlockResult.Done : BusinessBlockResult.Failed(error);
             }
         }
+        catch (OperationCanceledException) when (stopNotification.IsCancellationRequested)
+        {
+            run.Started.TrySetCanceled(stopNotification);
+        }
         catch (Exception error)
         {
+            ObservePermissionFailure(run, error);
             run.Started.TrySetException(error);
             result = BusinessBlockResult.Failed(error, started ? BusinessBlockFailureStage.Run : BusinessBlockFailureStage.Start);
+            if (runtimeReleaseBlocked) SetAvailability(false, "session-release-unconfirmed");
         }
         finally
         {
@@ -127,7 +145,11 @@ public sealed partial class GpuAllocationCollector
                 Task captureRequests;
                 lock (lifecycle) captureRequests = run.CaptureRequestsDrained;
                 await captureRequests.ConfigureAwait(false);
-                using (controller.MeasureSegment(BusinessBlockId)) cleanupFailure = StopSession(run);
+                using (diagnostics.MeasureSegment(BusinessBlockId)) cleanupFailure = StopSession(run);
+                // Stop can be denied while its native consumer is still alive.
+                // A failed native release never excuses leaving owned work running.
+                try { run.Session?.JoinProcessing(); }
+                catch (Exception error) { ObservePermissionFailure(run, error); cleanupFailure ??= error; }
             }
             finally
             {
@@ -135,15 +157,43 @@ public sealed partial class GpuAllocationCollector
                 lock (lifecycle)
                 {
                     if (ReferenceEquals(activeRun, run)) activeRun = null;
-                    lastRunOutcome = cleanupFailure is null ? result.Outcome : BusinessBlockOutcome.Failed;
                 }
                 run.CaptureAdmission.Dispose();
             }
         }
 
-        return cleanupFailure is null
+        var finalResult = cleanupFailure is null
             ? result
             : BusinessBlockResult.Failed(cleanupFailure, BusinessBlockFailureStage.Stop);
+        diagnostics.RecordResult(BusinessBlockId, finalResult);
+        run.Completed.TrySetResult();
+    }
+
+    internal Task PublishAvailabilityAsync()
+        => controller.SetFactAsync(AvailabilityFact, Volatile.Read(ref nativeSessionAvailable),
+            new(BusinessBlockRequestKind.Dependency, BusinessBlockId, "native-session-availability", controller.CurrentPlanVersion));
+
+    private void SetAvailability(bool available, string cause)
+    {
+        Volatile.Write(ref nativeSessionAvailable, available);
+        // The decision may wait for this run's return; only publication is synchronous.
+        _ = controller.SetFactAsync(AvailabilityFact, available,
+            new(BusinessBlockRequestKind.Dependency, BusinessBlockId, cause, controller.CurrentPlanVersion));
+    }
+
+    private void ObservePermissionFailure(Run run, Exception? error)
+    {
+        if (error is not UnauthorizedAccessException) return;
+        Volatile.Write(ref run.PermissionDenied, true);
+        SetAvailability(false, "native-session-permission");
+    }
+
+    private void ReportSessionFailure(Run run, Exception error)
+    {
+        if (error is UnauthorizedAccessException) Volatile.Write(ref run.PermissionDenied, true);
+        // Failure is ready before availability can make the parent send stop.
+        run.ProcessingCompletion.TrySetResult(error);
+        ObservePermissionFailure(run, error);
     }
 
     private void StartSession(Run run)
@@ -221,9 +271,11 @@ public sealed partial class GpuAllocationCollector
 
     private void OnSessionCompleted(Run run, IGpuAllocationSession current, Exception? error)
     {
+        if (!ReferenceEquals(Volatile.Read(ref session), current)) return;
         if (run.StopNotification.IsCancellationRequested)
         {
-            run.ProcessingCompletion.TrySetResult(null);
+            if (error is null) run.ProcessingCompletion.TrySetResult(null);
+            else ReportSessionFailure(run, error);
             return;
         }
 
@@ -235,11 +287,12 @@ public sealed partial class GpuAllocationCollector
             else
                 scan?.Completion.TrySetException(error);
         }
-        run.ProcessingCompletion.TrySetResult(error);
+        if (error is null) run.ProcessingCompletion.TrySetResult(null);
+        else ReportSessionFailure(run, error);
         if (error is null)
-            logger.LogInformation("GPU allocation event processing completed; the controller will release the owned session.");
+            logger.LogInformation("GPU allocation event processing completed; releasing the owned session.");
         else
-            logger.LogWarning(error, "GPU allocation event processing failed; the controller will apply the configured failure policy.");
+            logger.LogWarning(error, "GPU allocation event processing failed; releasing the owned session.");
     }
 
     private Exception? StopSession(Run run)
@@ -265,6 +318,7 @@ public sealed partial class GpuAllocationCollector
         catch (Exception error)
         {
             lock (lifecycle) runtimeReleaseBlocked = true;
+            SetAvailability(false, "session-release-unconfirmed");
             logger.LogError(error, "GPU allocation session release failed; the owned session handle remains retained.");
             return error;
         }
@@ -272,6 +326,7 @@ public sealed partial class GpuAllocationCollector
         if (!released.IsReleased)
         {
             lock (lifecycle) runtimeReleaseBlocked = true;
+            SetAvailability(false, "session-release-unconfirmed");
             var error = new IOException("GPU allocation session release was not confirmed: " + string.Join(" | ", released.Failures));
             logger.LogError(error, "GPU allocation session release failed; the owned session handle remains retained.");
             return error;
@@ -285,6 +340,7 @@ public sealed partial class GpuAllocationCollector
                 sessionName = null;
             }
         }
+        if (!Volatile.Read(ref run.PermissionDenied)) SetAvailability(true, "session-release-confirmed");
         return null;
     }
 
@@ -299,12 +355,32 @@ public sealed partial class GpuAllocationCollector
 
     private Lease[] ActiveSubscriptionsLocked()
     {
-        leases.RemoveWhere(static lease => lease.Released.IsCompleted);
         return leases.ToArray();
+    }
+
+    private async Task AwaitReadyAsync(Task dispatch, CancellationToken withdrawal)
+    {
+        await dispatch.WaitAsync(withdrawal).ConfigureAwait(false);
+        Task<Run> pending;
+        lock (lifecycle) pending = activeRun is { StopNotification.IsCancellationRequested: false } current
+            ? Task.FromResult(current) : nextRun.Task;
+        var run = await pending.WaitAsync(withdrawal).ConfigureAwait(false);
+        await run.Started.Task.WaitAsync(withdrawal).ConfigureAwait(false);
+    }
+
+    private async Task AwaitReleasedAsync(Task dispatch)
+    {
+        await dispatch.ConfigureAwait(false);
+        Task drain;
+        lock (lifecycle) drain = activeRun is { StopNotification.IsCancellationRequested: true } current
+            ? current.Completed.Task : Task.CompletedTask;
+        await drain.ConfigureAwait(false);
     }
 
     private sealed class Run(CancellationToken stopNotification)
     {
+        internal bool PermissionDenied;
+        internal TaskCompletionSource Completed { get; } = NewSignal();
         internal CancellationToken StopNotification { get; } = stopNotification;
         internal CancellationTokenSource CaptureAdmission { get; } = new();
         internal TaskCompletionSource Started { get; } = NewSignal();
@@ -331,17 +407,27 @@ public sealed partial class GpuAllocationCollector
     private sealed class Lease : IBusinessBlockDependency
     {
         private readonly GpuAllocationCollector owner;
+        private readonly CancellationTokenSource withdrawal = new();
+        private readonly CancellationToken withdrawalToken;
         private int disposed;
         internal TimeSpan Interval { get; }
         internal IBusinessBlockDependency Dependency { get; }
-        public Task Ready => Dependency.Ready;
-        public Task Released => Dependency.Released;
+        private Task? released;
+        public Task Ready => owner.AwaitReadyAsync(Dependency.Ready, withdrawalToken);
+        public Task Released => released ??= owner.AwaitReleasedAsync(Dependency.Released);
 
         internal Lease(GpuAllocationCollector owner, TimeSpan interval, IBusinessBlockDependency dependency)
         {
             this.owner = owner;
             Interval = interval;
             Dependency = dependency;
+            withdrawalToken = withdrawal.Token;
+        }
+
+        internal async Task AwaitCaptureReadyAsync(Task ready)
+        {
+            try { await ready.WaitAsync(withdrawalToken).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (withdrawalToken.IsCancellationRequested) { }
         }
 
         internal void ObserveRelease()
@@ -350,12 +436,15 @@ public sealed partial class GpuAllocationCollector
 
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref disposed, 1) == 0) owner.Release(this);
+            if (Interlocked.Exchange(ref disposed, 1) != 0) return;
+            owner.Release(this);
+            withdrawal.Cancel();
+            withdrawal.Dispose();
         }
         public async ValueTask DisposeAsync()
         {
             Dispose();
-            await Dependency.Released.ConfigureAwait(false);
+            await Released.ConfigureAwait(false);
         }
     }
 

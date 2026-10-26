@@ -326,7 +326,7 @@ public sealed class HostManagerDisplayCoordinatorTests
             "Hosting",
             "RuntimeSpecializationServiceRegistration.cs"));
         var ownerIndex = runtimeRegistration.IndexOf(
-            "AddHostedServiceAlias<HostManagerDisplayCoordinatorOwner>()",
+            "AddHostedServiceAlias<HostManagerDisplayCoordinatorOwner>(",
             StringComparison.Ordinal);
         Assert.True(ownerIndex >= 0);
         Assert.DoesNotContain(
@@ -380,4 +380,3 @@ public sealed class HostManagerDisplayCoordinatorTests
                 "Could not locate Resource Manager-APP from the test source path.");
     }
 }
-

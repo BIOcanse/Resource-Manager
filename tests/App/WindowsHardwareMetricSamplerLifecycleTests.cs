@@ -12,6 +12,50 @@ namespace Resource_Manager_APP.Tests;
 public sealed class WindowsHardwareMetricSamplerLifecycleTests
 {
     [Fact]
+    public async Task CapturedPlanCallbackCannotAllocateHistoryAfterStop()
+    {
+        using var subscriptions = new HostManagerSamplingSubscriptionTestFixture(
+            HostManagerTestPlanFactory.CreatePlan() with { DataHistory = CompiledDataHistoryPlan.Compile([]) });
+        var provider = subscriptions.Provider;
+        var next = provider.Current with
+        {
+            Version = provider.Current.Version + 1,
+            HostManager = provider.Current.HostManager with
+            {
+                DataHistory = CompiledDataHistoryPlan.Compile([new("cpu.usage", 4)])
+            }
+        };
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        provider.Published += plan =>
+        {
+            if (!ReferenceEquals(plan, next)) return;
+            entered.Set();
+            Assert.True(release.Wait(TimeSpan.FromSeconds(10)));
+        };
+        using var sampler = CreateSampler(subscriptions, new HardwareMetricCatalogState());
+        var owner = Assert.IsType<LastSuccessfulHardwareMetricSnapshot>(typeof(WindowsHardwareMetricSampler)
+            .GetField("publishedSnapshot", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(sampler));
+        var histories = Assert.IsAssignableFrom<System.Collections.IDictionary>(typeof(LastSuccessfulHardwareMetricSnapshot)
+            .GetField("histories", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(owner));
+        await sampler.StartAsync(CancellationToken.None);
+        var publication = Task.Run(() => provider.Publish(next));
+        try
+        {
+            Assert.True(entered.Wait(TimeSpan.FromSeconds(10)));
+            await sampler.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Empty(histories);
+        }
+        finally
+        {
+            release.Set();
+            Assert.False((await publication.WaitAsync(TimeSpan.FromSeconds(10))).HasDeliveryFailures);
+            await sampler.StopAsync(CancellationToken.None);
+        }
+        Assert.Empty(histories);
+    }
+
+    [Fact]
     public async Task MeasurementSubscriptionPublishesChangedTopologyWithoutCatalogDemand()
     {
         using var fixture = new MetricSnapshotOwnerTestFixture.Fixture(MetricSnapshotOwnerTestFixture.Topology([]));
@@ -90,6 +134,7 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
             }
         };
         using var sampler = CreateSampler(subscriptions, new HardwareMetricCatalogState(), fixture.Owner);
+        await sampler.StartAsync(CancellationToken.None);
         var delayed = Task.Run(() => provider.Publish(older));
         try
         {
@@ -100,6 +145,7 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
         {
             release.Set();
             await delayed.WaitAsync(TimeSpan.FromSeconds(10));
+            await sampler.StopAsync(CancellationToken.None);
         }
         Assert.Same(newer, provider.Current);
         var owner = Assert.IsType<LastSuccessfulHardwareMetricSnapshot>(

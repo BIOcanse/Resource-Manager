@@ -23,6 +23,14 @@ public sealed class HostManagerPlacementCoordinatorRuntime(
             plan,
             HostManagerDeploymentOperation.InitialCreate);
 
+    internal HostManagerDeploymentAttemptToken BeginCreate(CompiledHostManagerPlan plan)
+        => deploymentState.BeginAttempt(
+            HostManagerModuleKind.PlacementCoordinator,
+            plan,
+            deploymentState.Snapshot.PlacementCoordinator.AppliedPlanEpoch == 0
+                ? HostManagerDeploymentOperation.InitialCreate
+                : HostManagerDeploymentOperation.HostRecreateAndHotPublish);
+
     internal HostManagerDeploymentAttemptToken BeginHotPublish(CompiledHostManagerPlan plan)
         => deploymentState.BeginAttempt(
             HostManagerModuleKind.PlacementCoordinator,

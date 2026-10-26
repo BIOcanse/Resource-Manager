@@ -67,6 +67,28 @@ public sealed class OverlayLaunchWiringTests
     }
 
     [Fact]
+    public async Task StartupAwaitsItsSingleReconciliationBeforeReturning()
+    {
+        using var files = new StartupModuleTestCatalog();
+        var registry = new CapturingRegistry();
+        var availability = new GatedGpuSchedulingAvailability();
+        var reconciler = new GpuLaunchInterceptionReconciler(new StaticGpuPolicyStore(Document()),
+            new MemoryModuleStore(new(1, [])), files.Catalog, new StaticSoftwareView([]), registry,
+            availability, NullLogger<GpuLaunchInterceptionReconciler>.Instance);
+        var startup = reconciler.StartAsync(default);
+        try
+        {
+            await availability.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(startup.IsCompleted);
+            Assert.Null(registry.GpuDocument);
+        }
+        finally { availability.Release.TrySetResult(); }
+        await startup.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(registry.GpuDocument);
+        await reconciler.StopAsync(default);
+    }
+
+    [Fact]
     public async Task UnadmittedSelectionCannotCreateRuleOrDecision()
     {
         using var files = new StartupModuleTestCatalog();
@@ -132,6 +154,17 @@ public sealed class OverlayLaunchWiringTests
             return [];
         }
         public GpuLaunchInterceptionCleanupResult RemoveAllOwnedRules() => throw new NotSupportedException();
+    }
+    private sealed class GatedGpuSchedulingAvailability : IGpuSchedulingAvailability
+    {
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async ValueTask<GpuSchedulingAvailability> EvaluateAsync(CancellationToken cancellationToken)
+        {
+            Entered.TrySetResult();
+            await Release.Task.WaitAsync(cancellationToken);
+            return new(false, null);
+        }
     }
 
     private sealed class StaticPlanProvider : IRuntimePlanProvider

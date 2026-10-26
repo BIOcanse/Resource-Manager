@@ -201,6 +201,16 @@ public sealed partial class EtwCpuCoreResidencyReader(
         ];
     }
 
+    public override Task StartAsync(CancellationToken cancellationToken)
+    {
+        lock (subscriptionGate)
+        {
+            ObjectDisposedException.ThrowIf(ownedResourcesDisposed, this);
+            stopped = false;
+        }
+        return base.StartAsync(cancellationToken);
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var worker = new NativeSamplingSubscriptionWorker<CpuResidencySampleRequest, SamplingOwnerToken>(
@@ -270,8 +280,6 @@ public sealed partial class EtwCpuCoreResidencyReader(
     {
         BeginStop();
         await base.StopAsync(cancellationToken);
-        if (ExecuteTask is null || ExecuteTask.IsCompleted)
-            captureOwner?.Dispose();
     }
 
     public override void Dispose()
@@ -341,8 +349,17 @@ public sealed partial class EtwCpuCoreResidencyReader(
         {
             if (stopped || currentComputeMode == ResourceManagerComputeZoneMode.Freeze) return;
             if (WindowedCapture)
-                metadataSubscription ??= kernelEtwBroker.Subscribe(new("cpu-core-residency:metadata",
-                    KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread, static (_, _) => { }));
+            {
+                try
+                {
+                    metadataSubscription ??= kernelEtwBroker.Subscribe(new("cpu-core-residency:metadata",
+                        KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread, static (_, _) => { }));
+                }
+                catch (ObjectDisposedException error)
+                {
+                    logger.LogDebug(error, "The shared kernel ETW broker is unavailable for CPU residency metadata.");
+                }
+            }
         }
     }
     private void ReleaseMetadata()

@@ -39,20 +39,22 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         try
         {
             await harness.Zone.ApplyModeAsync(ResourceManagerComputeZoneMode.Normal);
+            await EtwTestRunRecorder.UntilAsync(() => harness.Sessions.Attempts == 1);
             await harness.Sessions.Current.ProcessEntered.WaitAsync(TimeSpan.FromSeconds(5));
             var running = Assert.Single(harness.Controller.Read().Blocks);
             Assert.Equal(BusinessBlockState.Running, running.State);
-            Assert.Equal(2, running.ActiveDependencies.Count);
+            Assert.Equal(2, harness.Controller.Read().Demands.Count);
             Assert.Equal(1, harness.Sessions.Attempts);
 
             first.Dispose();
             await harness.Zone.ApplyModeAsync(ResourceManagerComputeZoneMode.Normal);
-            Assert.Single(Assert.Single(harness.Controller.Read().Blocks).ActiveDependencies);
+            Assert.Single(harness.Controller.Read().Demands);
             Assert.True(harness.Sessions.Current.ConsumerThread!.IsAlive);
 
             second.Dispose();
             await harness.Zone.ApplyModeAsync(ResourceManagerComputeZoneMode.Normal);
-            Assert.Equal(BusinessBlockState.Stopped, Assert.Single(harness.Controller.Read().Blocks).State);
+            await EtwTestRunRecorder.UntilAsync(() => harness.Controller.ReadState(nameof(DxgkrnlVidMmEtwTelemetryZone)) == BusinessBlockState.Stopped);
+            await harness.Recorder.DrainAsync();
             Assert.False(harness.Sessions.Current.ConsumerThread!.IsAlive);
             Assert.Equal(1, harness.Sessions.Current.DisposeCount);
         }

@@ -2541,6 +2541,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             () => fixture.Coordinator.RunOnceAsync(CancellationToken.None));
         await Assert.ThrowsAsync<ObjectDisposedException>(
             () => fixture.Coordinator.RestoreNormalModeAsync(CancellationToken.None));
+        fixture.Coordinator.Dispose();
         await Assert.ThrowsAsync<ObjectDisposedException>(
             () => fixture.Coordinator.StartAsync(CancellationToken.None));
 

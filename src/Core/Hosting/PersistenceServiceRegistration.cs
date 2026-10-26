@@ -20,7 +20,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
             services.AddSingleton<ResourceManagerDatabase>();
             services.AddSingleton<TargetedRecordingStore>();
             services.AddSingleton<TargetedRecordingService>();
-            services.AddHostedServiceAlias<TargetedRecordingService>();
+            services.AddSerialHostedServiceAlias<TargetedRecordingService>();
             services.AddSingleton<SqliteSoftwareFileIndex>();
             services.AddSingleton<ISoftwareFileIndex>(static provider =>
                 provider.GetRequiredService<SqliteSoftwareFileIndex>());
@@ -29,8 +29,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
             services.AddSingleton<SqlitePortableSoftwareRegistry>();
             services.AddSingleton<IPortableSoftwareRegistry>(static provider =>
                 provider.GetRequiredService<SqlitePortableSoftwareRegistry>());
-            services.AddBusinessBlockHostedService<ResourceManagerDatabaseInitializer>();
-            services.AddHostedServiceAlias<SqlitePortableSoftwareRegistry>();
+            services.AddSerialHostedService<ResourceManagerDatabaseInitializer>();
+            services.AddHostedServiceAlias<SqlitePortableSoftwareRegistry>(BackendBlockIds.SqlitePortableSoftwareRegistry, [BackendBlockIds.RuntimeSpecializationCoordinator], ["portable-software-registry"]);
         }
         else
         {
@@ -40,7 +40,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
 
         if (startupCapabilities.Allows(StartupCapability.LegacyPersistenceImport))
         {
-            services.AddBusinessBlockHostedService<SqliteLegacyDataImportHostedService>();
+            services.AddSerialHostedService<SqliteLegacyDataImportHostedService>();
         }
         return services;
     }

@@ -21,6 +21,150 @@ public sealed partial class SqlitePersistenceTests : IDisposable
     private readonly ResourceManagerLedgerOwner ledgerOwner = new();
     private readonly string testRoot = Path.Combine(Path.GetTempPath(), $"rm-sqlite-{Guid.NewGuid():N}");
 
+    [Fact]
+    public async Task PortableRegistryCapturedPublicationAfterStopDoesNotReadDatabase()
+    {
+        var result = await DeliverCapturedPublicationAfterStopAsync();
+        // Loading persisted rows canonicalizes this legacy kind. The unchanged value
+        // proves the captured callback never entered the database import path.
+        Assert.Equal("Game", result.StoredKind);
+    }
+
+    [Fact]
+    public async Task PortableRegistryCapturedPublicationAfterStopDoesNotReplaceContext()
+    {
+        var result = await DeliverCapturedPublicationAfterStopAsync();
+        Assert.Same(result.Before, result.After);
+    }
+
+    private async Task<(object Before, object After, string StoredKind)> DeliverCapturedPublicationAfterStopAsync()
+    {
+        var deployment = new HostManagerDeploymentState();
+        var provider = new RuntimePlanProvider(deployment);
+        provider.Publish(CompiledRuntimePlan.Default with { Version = 1, HostManager = HostManagerTestPlanFactory.CreatePlan() });
+        var captured = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var release = new ManualResetEventSlim();
+        provider.Published += plan =>
+        {
+            if (plan.Version != 2) return;
+            captured.TrySetResult();
+            if (!release.Wait(TimeSpan.FromSeconds(15)))
+                throw new TimeoutException("The captured publication was not released.");
+        };
+        var database = CreateDatabase();
+        using var registry = new SqlitePortableSoftwareRegistry(database, provider,
+            new HostManagerPortableSoftwareRegistryRuntime(provider, deployment),
+            NullLogger<SqlitePortableSoftwareRegistry>.Instance, ledgerOwner);
+        await registry.StartAsync(default);
+        var publication = Task.Run(() => provider.Publish(CompiledRuntimePlan.Default with
+        {
+            Version = 2,
+            HostManager = HostManagerTestPlanFactory.CreatePlan(profile =>
+                profile["host_recreate"]!["portable_software_registry"]!["capacity"]!["maximum_executable_path_byte_count"] = 64,
+                planEpoch: 2)
+        }));
+        try
+        {
+            await captured.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await registry.StopAsync(default);
+            var contextField = typeof(SqlitePortableSoftwareRegistry).GetField("context",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            var before = contextField.GetValue(registry)!;
+            await InsertPortableRowAsync(database, "catalog:late", "late", "Late", "Game",
+                "c:/late/app.exe", "c:/late",
+                DateTimeOffset.FromUnixTimeMilliseconds(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()).UtcTicks, 0, 0);
+            release.Set();
+            Assert.Empty((await publication.WaitAsync(TimeSpan.FromSeconds(5))).DeliveryFailures);
+            await using var connection = await database.OpenConnectionAsync(default);
+            var kind = await ScalarStringAsync(connection, "SELECT kind FROM portable_software_executables;");
+            return (before, contextField.GetValue(registry)!, kind);
+        }
+        finally
+        {
+            release.Set();
+            await publication.WaitAsync(TimeSpan.FromSeconds(5));
+            await registry.StopAsync(default);
+        }
+    }
+
+    [Fact]
+    public async Task PortableRegistryDelayedPriorRunPublicationCannotReplaceRestartedConfiguration()
+    {
+        var deployment = new HostManagerDeploymentState();
+        var provider = new RuntimePlanProvider(deployment);
+        provider.Publish(CompiledRuntimePlan.Default with { Version = 1, HostManager = HostManagerTestPlanFactory.CreatePlan() });
+        var callbackCaptured = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var releaseCallback = new ManualResetEventSlim();
+        provider.Published += plan =>
+        {
+            if (plan.Version != 2) return;
+            callbackCaptured.TrySetResult();
+            if (!releaseCallback.Wait(TimeSpan.FromSeconds(10)))
+                throw new TimeoutException("The held publication callback was not released.");
+        };
+        using var registry = new SqlitePortableSoftwareRegistry(CreateDatabase(), provider,
+            new HostManagerPortableSoftwareRegistryRuntime(provider, deployment),
+            NullLogger<SqlitePortableSoftwareRegistry>.Instance, ledgerOwner);
+        await registry.StartAsync(default);
+        var delayed = Task.Run(() => provider.Publish(CompiledRuntimePlan.Default with
+        {
+            Version = 2, HostManager = HostManagerTestPlanFactory.CreatePlan(planEpoch: 2)
+        }));
+        try
+        {
+            await callbackCaptured.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await registry.StopAsync(default);
+            provider.Publish(CompiledRuntimePlan.Default with
+            {
+                Version = 3,
+                HostManager = HostManagerTestPlanFactory.CreatePlan(profile =>
+                    profile["host_recreate"]!["portable_software_registry"]!["capacity"]!["maximum_executable_path_byte_count"] = 64,
+                    planEpoch: 3)
+            });
+            await registry.StartAsync(default);
+            var observation = new PortableSoftwareObservation("catalog:delayed", "delayed", "Delayed", "other",
+                "c:/portable/" + new string('a', 128) + ".exe", "c:/portable");
+            Assert.Throws<ArgumentOutOfRangeException>(() => registry.Observe(observation));
+
+            releaseCallback.Set();
+            Assert.Empty((await delayed.WaitAsync(TimeSpan.FromSeconds(5))).DeliveryFailures);
+
+            // The real projection must still enforce the restarted run's shorter path limit.
+            Assert.Throws<ArgumentOutOfRangeException>(() => registry.Observe(observation));
+        }
+        finally
+        {
+            releaseCallback.Set();
+            await delayed.WaitAsync(TimeSpan.FromSeconds(5));
+            await registry.StopAsync(default);
+        }
+    }
+
+    [Fact]
+    public async Task SamePortableRegistryRestartsAndPersistsNewObservationBeforeStop()
+    {
+        var database = CreateDatabase();
+        using var registry = CreatePortableRegistry(database);
+        for (var run = 1; run <= 2; run++)
+        {
+            await registry.StartAsync(default);
+            try
+            {
+                var root = Path.Combine(testRoot, "Portable", "Restart" + run);
+                registry.Observe(new PortableSoftwareObservation("catalog:restart" + run, "restart" + run,
+                    "Restart " + run, "other", Path.Combine(root, "restart.exe"), root));
+                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                await using var connection = await database.OpenConnectionAsync(deadline.Token);
+                await using var command = connection.CreateCommand();
+                command.CommandText = "SELECT COUNT(*) FROM portable_software_executables;";
+                while ((long)(await command.ExecuteScalarAsync(deadline.Token))! < run)
+                    await Task.Delay(1, deadline.Token);
+                Assert.Equal(run, (long)(await command.ExecuteScalarAsync(deadline.Token))!);
+            }
+            finally { await registry.StopAsync(default); }
+        }
+    }
+
     [Theory]
     [InlineData("Game", SoftwareKinds.Game)]
     [InlineData("highperformance", SoftwareKinds.HighPerformance)]

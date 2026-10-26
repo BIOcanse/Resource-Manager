@@ -36,7 +36,7 @@ public sealed partial class HostManagerSmartCoordinator
         var configuration = CreatePlacementCoordinatorConfiguration(desired);
         if (placementCoordinatorSession is null || placementCoordinatorWorkspace is null)
         {
-            var attempt = placementCoordinatorRuntime.BeginInitialCreate(desired.HostPlan);
+            var attempt = placementCoordinatorRuntime.BeginCreate(desired.HostPlan);
             NativePlacementCoordinatorSession? createdSession = null;
             NativePlacementCoordinatorWorkspace? createdWorkspace = null;
             try

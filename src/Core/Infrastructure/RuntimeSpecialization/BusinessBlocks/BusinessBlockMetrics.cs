@@ -7,7 +7,7 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlock
 
 /// <summary>
 /// Collects CPU time and managed allocations for one business block. Reads return
-/// fresh cumulative facts without advancing the baselines used by explicit samples.
+/// fresh cumulative facts without changing recorded measurements.
 /// </summary>
 public sealed class BusinessBlockMetrics
 {
@@ -19,21 +19,9 @@ public sealed class BusinessBlockMetrics
 
     private long totalCpuTicks;
     private long totalAllocatedBytes;
-    private long intervalCpuTicks;
-    private long intervalAllocatedBytes;
-    private DateTimeOffset lastSampleAt;
-    private DateTimeOffset lastIntervalStartedAt;
-    private long lastSampleIntervalCpuTicks;
-    private long lastSampleIntervalAllocatedBytes;
     private bool observedSynchronousSegments;
     private bool observedDedicatedThreads;
 
-    public BusinessBlockMetrics()
-    {
-        var now = DateTimeOffset.UtcNow;
-        lastSampleAt = now;
-        lastIntervalStartedAt = now;
-    }
 
     /// <summary>
     /// Starts a synchronous-only measurement on the calling thread. The returned
@@ -137,54 +125,7 @@ public sealed class BusinessBlockMetrics
         }
     }
 
-    /// <summary>
-    /// Samples dedicated-thread CPU counters and publishes interval facts. Allocation
-    /// counters for active threads are only available when those threads unregister.
-    /// Read leaves the baselines used here unchanged.
-    /// </summary>
-    public void Sample(DateTimeOffset now)
-    {
-        lock (gate)
-        {
-            var threadSamples = activeThreads.Count == 0
-                ? Array.Empty<(RegisteredThread Thread, long CpuTicks)>()
-                : new (RegisteredThread Thread, long CpuTicks)[activeThreads.Count];
-            var sampleIndex = 0;
-            foreach (var state in activeThreads.Values)
-            {
-                var cpuTicks = NativeMethods.GetThreadCpuTicks(state.Handle);
-                if (cpuTicks < state.LastCpuTicks)
-                {
-                    throw new InvalidOperationException("A registered thread CPU counter moved backwards.");
-                }
-
-                threadSamples[sampleIndex++] = (state, cpuTicks);
-            }
-
-            foreach (var sample in threadSamples)
-            {
-                var state = sample.Thread;
-                var cpuTicks = sample.CpuTicks;
-                var delta = cpuTicks - state.LastCpuTicks;
-                state.LastCpuTicks = cpuTicks;
-                state.CpuTicks = checked(state.CpuTicks + delta);
-                AddCpuTicks(delta);
-            }
-
-            lastIntervalStartedAt = lastSampleAt;
-            lastSampleAt = now;
-            lastSampleIntervalCpuTicks = intervalCpuTicks;
-            lastSampleIntervalAllocatedBytes = intervalAllocatedBytes;
-            intervalCpuTicks = 0;
-            intervalAllocatedBytes = 0;
-        }
-    }
-
-    /// <summary>
-    /// Returns cumulative facts as of this call. Active registered-thread CPU is read
-    /// live; neither these reads nor their thread facts advance a sampling baseline.
-    /// Interval fields and SampledAt continue to describe the last explicit sample.
-    /// </summary>
+    /// <summary>Read live cumulative counters without sampling or scheduling work.</summary>
     public BusinessBlockMetricFacts Read()
     {
         lock (gate)
@@ -208,12 +149,8 @@ public sealed class BusinessBlockMetrics
             }
 
             return CreateFacts(
-                lastIntervalStartedAt,
-                lastSampleAt,
                 checked(totalCpuTicks + liveCpuTicks),
                 totalAllocatedBytes,
-                lastSampleIntervalCpuTicks,
-                lastSampleIntervalAllocatedBytes,
                 activeThreads.Count == 0 && activeSegmentThreads.Count == 0,
                 activeFacts,
                 GetCoverage());
@@ -221,7 +158,7 @@ public sealed class BusinessBlockMetrics
     }
 
     /// <summary>Clears counters when no thread or synchronous segment is active.</summary>
-    public void Reset(DateTimeOffset now)
+    public void Reset()
     {
         lock (gate)
         {
@@ -232,14 +169,8 @@ public sealed class BusinessBlockMetrics
 
             totalCpuTicks = 0;
             totalAllocatedBytes = 0;
-            intervalCpuTicks = 0;
-            intervalAllocatedBytes = 0;
             observedSynchronousSegments = false;
             observedDedicatedThreads = false;
-            lastSampleAt = now;
-            lastIntervalStartedAt = now;
-            lastSampleIntervalCpuTicks = 0;
-            lastSampleIntervalAllocatedBytes = 0;
         }
     }
 
@@ -259,8 +190,6 @@ public sealed class BusinessBlockMetrics
 
             totalCpuTicks = checked(totalCpuTicks + cpuDelta);
             totalAllocatedBytes = checked(totalAllocatedBytes + allocatedDelta);
-            intervalCpuTicks = checked(intervalCpuTicks + cpuDelta);
-            intervalAllocatedBytes = checked(intervalAllocatedBytes + allocatedDelta);
         }
     }
 
@@ -282,8 +211,6 @@ public sealed class BusinessBlockMetrics
 
                 totalCpuTicks = checked(totalCpuTicks + cpuDelta);
                 totalAllocatedBytes = checked(totalAllocatedBytes + allocatedDelta);
-                intervalCpuTicks = checked(intervalCpuTicks + cpuDelta);
-                intervalAllocatedBytes = checked(intervalAllocatedBytes + allocatedDelta);
             }
             finally
             {
@@ -293,11 +220,6 @@ public sealed class BusinessBlockMetrics
         }
     }
 
-    private void AddCpuTicks(long delta)
-    {
-        totalCpuTicks = checked(totalCpuTicks + delta);
-        intervalCpuTicks = checked(intervalCpuTicks + delta);
-    }
 
     private BusinessBlockAttributionCoverage GetCoverage()
         => (observedSynchronousSegments, observedDedicatedThreads) switch
@@ -319,22 +241,14 @@ public sealed class BusinessBlockMetrics
     }
 
     private static BusinessBlockMetricFacts CreateFacts(
-        DateTimeOffset intervalStartedAt,
-        DateTimeOffset sampledAt,
         long totalCpuTicks,
         long totalAllocatedBytes,
-        long intervalCpuTicks,
-        long intervalAllocatedBytes,
         bool allocationCoverageComplete,
         BusinessBlockThreadMetricFacts[] activeThreads,
         BusinessBlockAttributionCoverage coverage)
         => new(
-            intervalStartedAt,
-            sampledAt,
             TimeSpan.FromTicks(totalCpuTicks),
             totalAllocatedBytes,
-            TimeSpan.FromTicks(intervalCpuTicks),
-            intervalAllocatedBytes,
             allocationCoverageComplete,
             activeThreads,
             coverage);

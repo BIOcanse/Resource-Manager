@@ -17,7 +17,7 @@ public sealed class NonOwningHostedServiceTests
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
-                services.AddBusinessBlockHostedService<ProbeWorker>(_ => worker);
+                services.AddBusinessBlockHostedService<ProbeWorker>("ProbeWorker", [], ["test-output"], _ => worker);
             })
             .Build();
         var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
@@ -27,9 +27,10 @@ public sealed class NonOwningHostedServiceTests
         try
         {
             await worker.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var execution = worker.ExecuteTask!;
             worker.Fail.TrySetResult();
             var error = await Assert.ThrowsAsync<InvalidOperationException>(
-                () => worker.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(5)));
+                () => execution.WaitAsync(TimeSpan.FromSeconds(5)));
             Assert.Equal("worker failure after startup", error.Message);
             await stopping.Task.WaitAsync(TimeSpan.FromSeconds(5));
         }
@@ -47,7 +48,7 @@ public sealed class NonOwningHostedServiceTests
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
-                services.AddBusinessBlockHostedService<ProbeWorker>(_ => worker);
+                services.AddBusinessBlockHostedService<ProbeWorker>("ProbeWorker", [], ["test-output"], _ => worker);
             })
             .Build();
         try
@@ -56,9 +57,11 @@ public sealed class NonOwningHostedServiceTests
             await worker.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
             await host.StopAsync();
             Assert.True(worker.ExecuteTask!.IsCompleted);
-            var facts = Assert.Single(host.Services.GetRequiredService<IBusinessBlockQuery>().Read().Blocks);
+            var facts = Assert.Single(host.Services.GetRequiredService<IBusinessBlockQuery>().Read().Blocks,
+                block => block.Id == nameof(ProbeWorker));
             Assert.Equal(BusinessBlockState.Stopped, facts.State);
-            Assert.Equal(BusinessBlockTransitionOutcome.Stopped, facts.Outcome);
+            Assert.Equal(BusinessBlockOutcome.Stopped,
+                host.Services.GetRequiredService<BusinessBlockDiagnosticsRegistry>().Read("ProbeWorker").Result!.Outcome);
             Assert.Equal(0, worker.DisposeCount);
         }
         finally
@@ -75,7 +78,7 @@ public sealed class NonOwningHostedServiceTests
         PlainService? service = null;
         var host = Host.CreateDefaultBuilder()
             .ConfigureLogging(logging => logging.ClearProviders())
-            .ConfigureServices(services => services.AddBusinessBlockHostedService<PlainService>(_ =>
+            .ConfigureServices(services => services.AddBusinessBlockHostedService<PlainService>("PlainService", [], ["test-output"], _ =>
             {
                 created++;
                 return service = new PlainService();
@@ -83,7 +86,7 @@ public sealed class NonOwningHostedServiceTests
             .Build();
         try
         {
-            var hostedServices = host.Services.GetServices<IHostedService>().Where(static service => service is not BusinessBlockDependencyLifetime).ToArray();
+            var hostedServices = host.Services.GetServices<IHostedService>().OfType<NonOwningHostedService<PlainService>>().ToArray();
             Assert.Equal(1, created);
             var owner = Assert.IsType<NonOwningHostedService<PlainService>>(
                 Assert.Single(hostedServices));

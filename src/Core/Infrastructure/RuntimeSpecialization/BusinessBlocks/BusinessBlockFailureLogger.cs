@@ -5,7 +5,7 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlock
 /// <summary>
 /// Registration-layer observation for a legacy block that reports caught failures through ILogger.
 /// It forwards the original log and reports exception-bearing warnings/errors, without rethrowing
-/// or changing the worker's continuation. Used only for the launch reconciler in step 1.
+/// or changing the worker's continuation. Used by the launch reconciler.
 /// </summary>
 internal sealed class BusinessBlockFailureLogger<T>(ILogger<T> inner, IBusinessBlockDiagnostics diagnostics, string blockId) : ILogger<T>
 {

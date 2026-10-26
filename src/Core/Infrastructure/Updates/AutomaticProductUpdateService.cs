@@ -139,10 +139,16 @@ public sealed class AutomaticProductUpdateService : BackgroundService
         void Wake() { try { settingsChanged.Release(); } catch (SemaphoreFullException) { } }
         void Changed(CompiledRuntimePlan _) => Wake();
         AppUpdateSettings? currentSettings = null;
+        var connectivityCallbackGate = new object();
+        var acceptingConnectivityCallbacks = true;
         void ConnectivityChanged()
         {
-            if (Volatile.Read(ref currentSettings) is { } current) ConfigureSchedule(current);
-            Wake();
+            lock (connectivityCallbackGate)
+            {
+                if (!acceptingConnectivityCallbacks) return;
+                if (Volatile.Read(ref currentSettings) is { } current) ConfigureSchedule(current);
+                Wake();
+            }
         }
         plans.Published += Changed;
         coordinator.Changed += Wake;
@@ -207,6 +213,7 @@ public sealed class AutomaticProductUpdateService : BackgroundService
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
         finally
         {
+            lock (connectivityCallbackGate) acceptingConnectivityCallbacks = false;
             plans.Published -= Changed;
             coordinator.Changed -= Wake;
             connectivity.Changed -= ConnectivityChanged;

@@ -10,6 +10,36 @@ namespace Resource_Manager_APP.Tests;
 public sealed class EtwCpuResidencyWindowDemandTests
 {
     [Fact]
+    public async Task StoppedBrokerPublishesAnEmptyWindowWithoutEndingTheSamplingWorker()
+    {
+        using var sampling = new HostManagerSamplingSubscriptionTestFixture();
+        var broker = new Broker();
+        broker.Stop();
+        using var reader = new EtwCpuCoreResidencyReader(broker, sampling.Provider, sampling.Owner,
+            NullLogger<EtwCpuCoreResidencyReader>.Instance, static (_, _) => { });
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(12));
+        await using var output = reader.SubscribeAsync("test.stopped-broker", TimeSpan.FromSeconds(30), cancellation.Token)
+            .GetAsyncEnumerator(cancellation.Token);
+        var first = output.MoveNextAsync().AsTask();
+        await reader.StartAsync(cancellation.Token);
+        try
+        {
+            var completed = await Task.WhenAny(first, reader.ExecuteTask!).WaitAsync(TimeSpan.FromSeconds(9));
+            Assert.Same(first, completed);
+            Assert.True(await first);
+            Assert.Null(output.Current);
+            Assert.False(reader.ExecuteTask!.IsCompleted);
+        }
+        finally
+        {
+            cancellation.Cancel();
+            await reader.StopAsync(CancellationToken.None);
+            try { await first; }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        }
+    }
+
+    [Fact]
     public async Task MissingBoundaryDataPublishesEmptyOnceAndDoesNotRetryBeforeTheNextDue()
     {
         using var sampling = new HostManagerSamplingSubscriptionTestFixture();
@@ -157,6 +187,7 @@ public sealed class EtwCpuResidencyWindowDemandTests
         private readonly object gate = new();
         private readonly Dictionary<long, KernelTraceEventParser.Keywords> active = [];
         private long next;
+        private bool stopped;
         public Action? WindowReady { get; set; }
         public int Windows { get; private set; }
         public int SessionStarts { get; private set; }
@@ -167,6 +198,7 @@ public sealed class EtwCpuResidencyWindowDemandTests
             long id;
             lock (gate)
             {
+                ObjectDisposedException.ThrowIf(stopped, this);
                 if (active.Count == 0) SessionStarts++;
                 id = ++next; active.Add(id, request.Keywords);
             }
@@ -180,7 +212,12 @@ public sealed class EtwCpuResidencyWindowDemandTests
             return new Lease(this, id, source);
         }
         public KernelEtwSessionSnapshot GetSnapshot()
-            => new("Running", "recorded", 7, DateTimeOffset.UtcNow, Keywords, 1, 0);
+        {
+            lock (gate)
+                return new(stopped ? "Stopped" : "Running", stopped ? "recorded broker stopped" : "recorded",
+                    7, DateTimeOffset.UtcNow, Keywords, active.Count, 0);
+        }
+        public void Stop() { lock (gate) { stopped = true; active.Clear(); } }
         private sealed class Lease(Broker owner, long id, KernelEtwEventSource source) : IKernelEtwSubscription
         {
             public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();

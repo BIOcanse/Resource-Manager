@@ -14,6 +14,7 @@ internal sealed class TraceEventVidMmSession : IVidMmEtwSession
 {
     private readonly TraceEventSession session;
     private readonly TraceEventSessionProcessingRuntime cleanup;
+    private Action<TraceEvent>? eventHandler;
 
     internal TraceEventVidMmSession(string name, string provider, ulong keywords)
     {
@@ -29,11 +30,23 @@ internal sealed class TraceEventVidMmSession : IVidMmEtwSession
         }
     }
 
-    public void Bind(Action<TraceEvent> handler) => session.Source.Dynamic.All += handler;
+    public void Bind(Action<TraceEvent> handler)
+    {
+        eventHandler = handler;
+        session.Source.Dynamic.All += handler;
+    }
     public void Process() => session.Source.Process();
     public void Dispose()
     {
-        var release = cleanup.Stop(Timeout.InfiniteTimeSpan);
-        if (!release.IsReleased) throw new IOException("VidMm session release was not confirmed: " + string.Join(" | ", release.Failures));
+        try
+        {
+            if (eventHandler is { } handler) session.Source.Dynamic.All -= handler;
+            eventHandler = null;
+        }
+        finally
+        {
+            var release = cleanup.Stop(Timeout.InfiniteTimeSpan);
+            if (!release.IsReleased) throw new IOException("VidMm session release was not confirmed: " + string.Join(" | ", release.Failures));
+        }
     }
 }

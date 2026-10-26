@@ -27,7 +27,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
     private readonly RuntimePlanProvider planProvider;
     private readonly HostManagerOperationCoordinatorRuntime deployment;
     private readonly HostManagerOperationEffectRouter effectRouter;
-    private readonly HostManagerOperationAttemptArbiter attemptArbiter = new();
+    private HostManagerOperationAttemptArbiter attemptArbiter = new();
     private readonly string hostManagerDataRoot;
     private readonly ILogger<HostManagerOperationCoordinatorOwner> logger;
     private readonly TimeProvider timeProvider;

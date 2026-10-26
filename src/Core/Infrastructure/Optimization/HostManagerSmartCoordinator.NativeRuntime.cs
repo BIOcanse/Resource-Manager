@@ -756,7 +756,7 @@ public sealed partial class HostManagerSmartCoordinator
         nativeWorkspace?.RequireNoOutstandingOperation();
         if (nativeWorkspace is null)
         {
-            var attempt = smartCoordinatorRuntime.BeginInitialCreate(desired.HostPlan);
+            var attempt = smartCoordinatorRuntime.BeginCreate(desired.HostPlan);
             var configuration = desired.Configuration;
             NativeSmartCoordinatorWorkspace? created = null;
             try

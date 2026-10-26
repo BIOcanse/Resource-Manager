@@ -6,7 +6,7 @@ using ResourceManager.ReadWrite.Windows.Processes.Etw;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
-public sealed partial class GpuAllocationCollector : IBusinessBlock, IBusinessBlockStartup
+public sealed partial class GpuAllocationCollector : IBusinessBlock
 {
     internal static readonly Guid Provider = new("802ec45a-1e99-4b83-9920-87c98277ba9d");
     private static readonly Guid BoundaryProvider = EventSource.GetGuid(typeof(GpuAllocationBoundary));
@@ -46,49 +46,25 @@ public sealed partial class GpuAllocationCollector : IBusinessBlock, IBusinessBl
             if (subscriptions.Length == 0) return;
         }
 
-        try { await Task.WhenAll(subscriptions.Select(static lease => lease.Ready)).WaitAsync(cancellationToken).ConfigureAwait(false); }
+        try { await Task.WhenAll(subscriptions.Select(static lease => lease.AwaitCaptureReadyAsync(lease.Dependency.Ready))).WaitAsync(cancellationToken).ConfigureAwait(false); }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception error)
         {
-            // A dependency's Ready task records only its first queued admission. If
-            // that startup failed, an explicit controller retry can start a new run
-            // while the same dependency remains held; inspect the current run rather
-            // than treating the old Ready fault as permanent.
-            Run? currentRun;
-            lock (lifecycle)
-                currentRun = ActiveSubscriptionsLocked().Length == 0 ? null : activeRun;
-            if (currentRun is null)
-            {
-                logger.LogWarning(error, "GPU allocation dependency did not become ready; publishing an empty due value.");
-                PublishEmpty(cancellationToken);
-                return;
-            }
-
-            try { await currentRun.Started.Task.WaitAsync(cancellationToken).ConfigureAwait(false); }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-            catch (Exception runError)
-            {
-                logger.LogWarning(runError, "The current GPU allocation run did not become ready; publishing an empty due value.");
-                PublishEmpty(cancellationToken);
-                return;
-            }
+            logger.LogWarning(error, "GPU allocation dependency did not become ready; publishing an empty due value.");
+            PublishEmpty(cancellationToken);
+            return;
         }
 
         Run? run;
         CancellationToken admissionToken = default;
-        var publishEmptyForCompletedRun = false;
         lock (lifecycle)
         {
             if (ActiveSubscriptionsLocked().Length == 0) return;
-            if (activeRun is not { } currentRun)
+            // A due capture only uses the actual current run. The parent may
+            // intentionally leave the producer stopped while demand is held.
+            if (activeRun is not { } currentRun || !Volatile.Read(ref nativeSessionAvailable)
+                || currentRun.StopNotification.IsCancellationRequested || currentRun.CaptureAdmission.IsCancellationRequested)
             {
-                publishEmptyForCompletedRun = lastRunOutcome is BusinessBlockOutcome.Done or BusinessBlockOutcome.Failed;
-                run = null;
-            }
-            else if (currentRun.CaptureAdmission.IsCancellationRequested)
-            {
-                publishEmptyForCompletedRun = !currentRun.StopNotification.IsCancellationRequested
-                    && currentRun.ProcessingCompletion.Task.IsCompletedSuccessfully;
                 run = null;
             }
             else
@@ -100,7 +76,7 @@ public sealed partial class GpuAllocationCollector : IBusinessBlock, IBusinessBl
         }
         if (run is null)
         {
-            if (publishEmptyForCompletedRun) PublishEmpty(cancellationToken);
+            PublishEmpty(cancellationToken);
             return;
         }
 
@@ -108,6 +84,20 @@ public sealed partial class GpuAllocationCollector : IBusinessBlock, IBusinessBl
         {
         using var captureStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, admissionToken);
         var captureToken = captureStop.Token;
+        try
+        {
+            await Task.WhenAll(subscriptions.Select(lease => lease.AwaitCaptureReadyAsync(run.Started.Task)))
+                .WaitAsync(captureToken).ConfigureAwait(false);
+            // Every captured subscription may have withdrawn before startup.
+            if (!run.Started.Task.IsCompletedSuccessfully) return;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception error)
+        {
+            logger.LogWarning(error, "GPU allocation current run did not become ready; publishing an empty due value.");
+            PublishEmpty(cancellationToken);
+            return;
+        }
         var enteredCaptureGate = false;
         IGpuAllocationSession? current = null;
         Scan? pending = null;
@@ -128,7 +118,7 @@ public sealed partial class GpuAllocationCollector : IBusinessBlock, IBusinessBl
                 if (runtimeReleaseBlocked)
                 {
                     var error = new InvalidOperationException("The owned GPU allocation runtime was not released.");
-                    run.ProcessingCompletion.TrySetResult(error);
+                    ReportSessionFailure(run, error);
                     throw error;
                 }
                 if (!SessionControl(run, () => session?.IsProcessing == true))
@@ -213,7 +203,7 @@ public sealed partial class GpuAllocationCollector : IBusinessBlock, IBusinessBl
                     {
                         value = null;
                         logger.LogWarning(error, "GPU allocation provider could not be paused; reporting the owned session failure and publishing empty.");
-                        run.ProcessingCompletion.TrySetResult(error);
+                        ReportSessionFailure(run, error);
                     }
                 }
                 var dueSessionEnded = !run.StopNotification.IsCancellationRequested
@@ -253,15 +243,15 @@ public sealed partial class GpuAllocationCollector : IBusinessBlock, IBusinessBl
             throw new InvalidDataException("GPU live allocation events were lost; the next due time will rebuild by rundown.");
     }
 
-    private static void SessionControl(Run run, Action operation)
+    private void SessionControl(Run run, Action operation)
         => SessionControl(run, () => { operation(); return true; });
 
-    private static T SessionControl<T>(Run run, Func<T> operation)
+    private T SessionControl<T>(Run run, Func<T> operation)
     {
         try { return operation(); }
         catch (Exception error)
         {
-            run.ProcessingCompletion.TrySetResult(error);
+            ReportSessionFailure(run, error);
             throw;
         }
     }

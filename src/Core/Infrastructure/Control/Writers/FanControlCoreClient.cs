@@ -21,7 +21,8 @@ public sealed partial class FanControlCoreClient(
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly SemaphoreSlim temperatureGate = new(1, 1);
     private readonly object sessionSync = new();
-    private readonly TaskCompletionSource drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private TaskCompletionSource drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private volatile bool sessionStopped;
     private IFanControlCoreSession? session;
     private Func<string, string?, IFanControlCoreSession>? sessionFactory;
     private int activeCalls;
@@ -236,7 +237,7 @@ public sealed partial class FanControlCoreClient(
         lock (softwareCurveGate)
         {
             var needed = softwareCurves.Count > 0;
-            if (active && !disposed) softwareCurves.Add(fanIndex);
+            if (active && !disposed && !sessionStopped) softwareCurves.Add(fanIndex);
             else softwareCurves.Remove(fanIndex);
             changed = needed != (softwareCurves.Count > 0);
         }
@@ -332,7 +333,7 @@ public sealed partial class FanControlCoreClient(
         IFanControlCoreSession? current;
         lock (sessionSync)
         {
-            current = disposed ? null : session;
+            current = disposed || sessionStopped ? null : session;
             if (current is not null) { activeCalls++; temperatureInFlight = true; }
         }
         if (current is null) { temperatureGate.Release(); return false; }
@@ -366,7 +367,13 @@ public sealed partial class FanControlCoreClient(
         bool skipIfBusy = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(operation);
-        ObjectDisposedException.ThrowIf(disposed, this);
+        TaskCompletionSource runDrain;
+        lock (sessionSync)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            if (sessionStopped) return null;
+            runDrain = drained;
+        }
         if (skipIfBusy)
         {
             if (!await gate.WaitAsync(0, cancellationToken).ConfigureAwait(false)) return null;
@@ -374,7 +381,7 @@ public sealed partial class FanControlCoreClient(
         else await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
 
         // 已接下的操作真正完成前一直持有请求门；等待超时不能中止原生 I/O，也不能放进第二个硬件所有者。
-        var pending = Task.Run(() => ExecuteOwned(operation, arguments, cancellationToken));
+        var pending = Task.Run(() => ExecuteOwned(operation, arguments, cancellationToken, runDrain));
         try { return await pending.WaitAsync(RequestTimeout).ConfigureAwait(false); }
         catch (TimeoutException error)
         {
@@ -385,7 +392,7 @@ public sealed partial class FanControlCoreClient(
     }
 
     private JsonElement? ExecuteOwned(string operation, IReadOnlyDictionary<string, object?>? arguments,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, TaskCompletionSource runDrain)
     {
         var acquired = false;
         try
@@ -394,7 +401,7 @@ public sealed partial class FanControlCoreClient(
             IFanControlCoreSession? current;
             lock (sessionSync)
             {
-                if (disposed) return null;
+                if (disposed || sessionStopped || !ReferenceEquals(runDrain, drained)) return null;
                 activeCalls++;
                 commandOperation = session is null ? $"start/recovery for {operation}" : operation;
                 acquired = true;
@@ -411,7 +418,7 @@ public sealed partial class FanControlCoreClient(
                 lock (sessionSync) { session = current; commandOperation = operation; }
             }
             // 停止期间才完成创建的会话仍归本客户端收尾，不能再给它派发新命令。
-            if (disposed) return null;
+            if (disposed || sessionStopped) return null;
             var request = new Dictionary<string, object?>(arguments ?? new Dictionary<string, object?>())
             {
                 ["id"] = Interlocked.Increment(ref nextRequestId),
@@ -451,7 +458,7 @@ public sealed partial class FanControlCoreClient(
         lock (sessionSync)
         {
             activeCalls--;
-            if (disposed && activeCalls == 0)
+            if (sessionStopped && activeCalls == 0)
             {
                 closing = session; session = null; complete = true;
             }
@@ -476,18 +483,53 @@ public sealed partial class FanControlCoreClient(
         return path is not null && File.Exists(Path.Combine(path, "LibreHardwareMonitorLib.dll")) ? path : null;
     }
 
-    public void Dispose()
+    internal void StartSession()
+    {
+        lock (describeGate)
+        {
+            lock (sessionSync)
+            {
+                ObjectDisposedException.ThrowIf(disposed, this);
+                if (sessionStopped)
+                {
+                    if (!drained.Task.IsCompleted)
+                        throw new InvalidOperationException("The preceding fan session has not drained.");
+                    drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    sessionStopped = false;
+                }
+            }
+            describedFans = null;
+            unavailableReason = null;
+            refreshDetection = false;
+        }
+    }
+
+    private void BeginSessionStop()
     {
         IFanControlCoreSession? closing = null;
         var complete = false;
         lock (sessionSync)
         {
-            if (disposed) return;
-            disposed = true;
+            if (sessionStopped) return;
+            sessionStopped = true;
             if (activeCalls == 0) { closing = session; session = null; complete = true; }
         }
         ClearSoftwareCurves();
         if (complete) CloseSession(closing);
+    }
+
+    internal async ValueTask StopSessionAsync()
+    {
+        Task drain;
+        lock (sessionSync) drain = drained.Task;
+        await Task.Run(BeginSessionStop).ConfigureAwait(false);
+        await drain.ConfigureAwait(false);
+    }
+
+    public void Dispose()
+    {
+        lock (sessionSync) disposed = true;
+        BeginSessionStop();
     }
 
     // 主机正常停止时，要等已接下的命令结束并交还临时接管；外层停止期限只限制等待。

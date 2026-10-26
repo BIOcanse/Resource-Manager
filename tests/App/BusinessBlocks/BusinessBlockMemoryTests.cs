@@ -19,39 +19,38 @@ public sealed class BusinessBlockMemoryTests(ITestOutputHelper output)
             .ToArray();
         var options = Options.Create(new BusinessBlockOptions());
         var provider = new EmptyServiceProvider();
-        var logger = NullLogger<BusinessBlockController>.Instance;
+        var logger = NullLogger<BusinessBlockScheduler>.Instance;
 
         // Warm code paths and logger metadata before measuring the retained object graph.
-        await using (var warm = new BusinessBlockController(provider, registrations, options, logger))
+        await using (var warm = new BusinessBlockScheduler(provider, registrations, options, logger))
         {
             for (var index = 0; index < 128; index++)
-                warm.ReportFailure("block-0", new InvalidOperationException("warm"), "warm");
+                await warm.SetEnabledAsync("block-0", index % 2 == 0, new(BusinessBlockRequestKind.Configuration, "test", "warm", 1));
         }
 
         var beforeController = CollectLiveBytes();
-        var controllerAllocationStart = GC.GetAllocatedBytesForCurrentThread();
-        await using var controller = new BusinessBlockController(provider, registrations, options, logger);
-        var controllerAllocated = GC.GetAllocatedBytesForCurrentThread() - controllerAllocationStart;
+        var controllerAllocationStart = GC.GetTotalAllocatedBytes();
+        await using var controller = new BusinessBlockScheduler(provider, registrations, options, logger);
+        var controllerAllocated = GC.GetTotalAllocatedBytes() - controllerAllocationStart;
         var afterController = CollectLiveBytes();
         var controllerRetained = Math.Max(0, afterController - beforeController);
 
         const int historyCount = 128;
-        var error = new InvalidOperationException("memory probe");
         const string operation = "memory-probe";
         var beforeHistory = CollectLiveBytes();
-        var historyAllocationStart = GC.GetAllocatedBytesForCurrentThread();
+        var historyAllocationStart = GC.GetTotalAllocatedBytes();
         for (var index = 0; index < historyCount; index++)
         {
-            controller.ReportFailure("block-0", error, operation);
+            await controller.SetEnabledAsync("block-0", index % 2 == 0, new(BusinessBlockRequestKind.Configuration, "test", operation, 1));
         }
-        var historyAllocated = GC.GetAllocatedBytesForCurrentThread() - historyAllocationStart;
+        var historyAllocated = GC.GetTotalAllocatedBytes() - historyAllocationStart;
         var afterHistory = CollectLiveBytes();
         var historyRetained = Math.Max(0, afterHistory - beforeHistory);
 
         var snapshot = controller.Read();
         Assert.Equal(128, snapshot.HistoryLimit);
-        Assert.Equal(historyCount, snapshot.History.Count);
-        Assert.All(snapshot.History, transition => Assert.Equal("block-0", transition.BlockId));
+        Assert.Equal(historyCount, snapshot.Decisions.Count);
+        Assert.All(snapshot.Decisions, decision => Assert.Equal("test", decision.Reason.Owner));
 
         output.WriteLine($"Controller: {registrationCount} lazy registrations, history limit {snapshot.HistoryLimit}.");
         output.WriteLine($"Controller construction: {controllerAllocated:N0} B allocated; approximately {controllerRetained:N0} B retained ({controllerRetained / (double)registrationCount:N1} B per registered block).");
@@ -72,7 +71,7 @@ public sealed class BusinessBlockMemoryTests(ITestOutputHelper output)
 
     private sealed class NeverRunBlock : IBusinessBlock
     {
-        public Task<BusinessBlockResult> RunAsync(CancellationToken stopNotification)
+        public Task RunAsync(BusinessBlockRunContext context)
             => throw new InvalidOperationException("The memory test must not construct or run business blocks.");
     }
 }

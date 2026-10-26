@@ -1,20 +1,17 @@
 namespace ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 
-public enum BusinessBlockState { Stopped, Starting, Running, Stopping, Failed }
+public enum BusinessBlockState { Stopped, Starting, Running, Stopping }
 public enum BusinessBlockOutcome { Done, Stopped, Failed }
 public enum BusinessBlockRequestKind { Configuration, User, Dependency }
-public enum BusinessBlockTransitionOutcome { None, Done, Stopped, Failed, StopTimeout }
-public enum BusinessBlockTimeoutPolicy { MarkFailed, ContinueWaiting }
-public enum BusinessBlockFailurePolicy { RecordOnly, StopBlock, StopDependents }
-public enum BusinessBlockFailureStage { Start, Run, Stop, StopDeadline, StopNotification, ReportedFailure }
+public enum BusinessBlockFailureStage { Start, Run, Stop, ReportedFailure }
 
-/// <summary>The controller owns the stop token. Implementations release resources before returning.</summary>
+/// <summary>The entry reports Running and returns only after releasing its resources.</summary>
 public interface IBusinessBlock
 {
-    Task<BusinessBlockResult> RunAsync(CancellationToken stopNotification);
+    Task RunAsync(BusinessBlockRunContext context);
 }
 
-/// <summary>A counted request for a producer block to remain available.</summary>
+/// <summary>A data-need fact. Ready/Released acknowledge its parent's decision, not producer readiness.</summary>
 public interface IBusinessBlockDependency : IDisposable, IAsyncDisposable
 {
     Task Ready { get; }
@@ -23,7 +20,6 @@ public interface IBusinessBlockDependency : IDisposable, IAsyncDisposable
 
 public sealed record BusinessBlockResult(BusinessBlockOutcome Outcome, string? FailureType = null, BusinessBlockFailureStage? FailureStage = null)
 {
-    // Full errors cross the execution boundary for logging only, never the diagnostic wire.
     internal Exception? Error { get; init; }
     public static BusinessBlockResult Done { get; } = new(BusinessBlockOutcome.Done);
     public static BusinessBlockResult Stopped { get; } = new(BusinessBlockOutcome.Stopped);
@@ -34,26 +30,10 @@ public sealed record BusinessBlockResult(BusinessBlockOutcome Outcome, string? F
 public sealed record BusinessBlockReason(
     BusinessBlockRequestKind Kind, string Owner, string ConfigurationOrDependency, long PlanVersion);
 
-/// <summary>
-/// Defaults: no controller deadline; a legacy hosted service receives the host's own stop token.
-/// An explicit deadline can be configured. Failures are recorded without changing worker behavior.
-/// </summary>
-public sealed record BusinessBlockPolicy
-{
-    public TimeSpan? StopDeadline { get; init; }
-    public BusinessBlockTimeoutPolicy OnTimeout { get; init; } = BusinessBlockTimeoutPolicy.MarkFailed;
-    public BusinessBlockFailurePolicy OnFailure { get; init; } = BusinessBlockFailurePolicy.RecordOnly;
-}
-
 public sealed class BusinessBlockOptions
 {
     public const string SectionName = "BusinessBlocks";
-    // Global retained transitions, not a separate unbounded history per block. Zero disables history.
     public int HistoryLimit { get; set; } = 128;
-    // No periodic wakeup by default. Callers can compare successive cumulative reads.
-    public TimeSpan? MetricsInterval { get; set; }
-    public BusinessBlockPolicy Policy { get; set; } = new();
-    public Dictionary<string, BusinessBlockPolicy> Blocks { get; set; } = new(StringComparer.Ordinal);
 }
 
 public interface IBusinessBlockDiagnostics
@@ -67,26 +47,33 @@ public interface IBusinessBlockQuery
     BusinessBlocksSnapshot Read();
 }
 
-public sealed record BusinessBlockTransition(
-    long Sequence, DateTimeOffset At, string BlockId, BusinessBlockState From, BusinessBlockState To,
-    BusinessBlockReason Reason, BusinessBlockTransitionOutcome Outcome, string? FailureType, BusinessBlockFailureStage? FailureStage);
+public sealed record BusinessBlockFacts(string Id, BusinessBlockState State, string ParentId,
+    IReadOnlyList<string> Inputs, IReadOnlyList<string> Outputs);
+public sealed record BusinessBlockDiagnostics(string Id, BusinessBlockResult? Result, BusinessBlockMetricFacts Metrics);
+public sealed record BusinessBlockDebugSnapshot(BusinessBlocksSnapshot Scheduling, IReadOnlyList<BusinessBlockDiagnostics> Diagnostics);
 
-public sealed record BusinessBlockFacts(
-    string Id, BusinessBlockState State, IReadOnlyList<string> Dependencies, BusinessBlockPolicy Policy,
-    BusinessBlockReason? LastReason, BusinessBlockTransitionOutcome Outcome, bool ExecutionOutstanding,
-    BusinessBlockMetricFacts Metrics)
+public sealed record BusinessBlocksSnapshot(DateTimeOffset At, int HistoryLimit,
+    IReadOnlyList<BusinessBlockFacts> Blocks, IReadOnlyList<BusinessBlockControlTransition> History)
 {
-    public bool ObservationOnly { get; init; }
-    public bool Enabled { get; init; } = true;
-    public IReadOnlyList<BusinessBlockDependencyFacts> ActiveDependencies { get; init; } = Array.Empty<BusinessBlockDependencyFacts>();
+    public IReadOnlyList<BusinessBlockNode> Graph { get; init; } = [];
+    public IReadOnlyList<BusinessBlockDemand> Demands { get; init; } = [];
+    public IReadOnlyList<BusinessBlockDecision> Decisions { get; init; } = [];
+    public IReadOnlyList<BusinessBlockDecision> CurrentDecisions { get; init; } = [];
+    public IReadOnlyList<BusinessBlockFact> Facts { get; init; } = [];
+    public bool ShuttingDown { get; init; }
 }
 
-public sealed record BusinessBlockDependencyFacts(
-    BusinessBlockReason Reason, TimeSpan? Interval, IReadOnlyList<string> Outputs)
-{
-    public string Owner => Reason.Owner;
-}
-
-public sealed record BusinessBlocksSnapshot(
-    DateTimeOffset At, int HistoryLimit, TimeSpan? MetricsInterval,
-    IReadOnlyList<BusinessBlockFacts> Blocks, IReadOnlyList<BusinessBlockTransition> History);
+public sealed record BusinessBlockNode(string Id, string ParentId,
+    IReadOnlyList<string> Inputs, IReadOnlyList<string> Outputs);
+public sealed record BusinessBlockDemand(string Key, string BlockId, BusinessBlockReason Reason);
+/// <summary>Authoritative boolean conditions used by today's rules; execution details are not facts here.</summary>
+public sealed record BusinessBlockFact(string Key, bool Value, IReadOnlyList<BusinessBlockReason> Reasons);
+public sealed record BusinessBlockDecision(long Sequence, string ParentId, string Transition,
+    BusinessBlockReason Reason, IReadOnlyList<string> ShouldRun, IReadOnlyList<BusinessBlockFact> Facts);
+public sealed record BusinessBlockDecisionInput(IReadOnlyDictionary<string, BusinessBlockFact> Facts,
+    IReadOnlyDictionary<string, BusinessBlockState> Children);
+public sealed record BusinessBlockControlTransition(long Sequence, DateTimeOffset At, string BlockId,
+    BusinessBlockState From, BusinessBlockState To);
+public sealed record BusinessBlockControlSnapshot(IReadOnlyDictionary<string, BusinessBlockState> States,
+    IReadOnlyList<BusinessBlockControlTransition> History);
+public sealed record BusinessBlockRunContext(CancellationToken StopNotification, Action ReportRunning);

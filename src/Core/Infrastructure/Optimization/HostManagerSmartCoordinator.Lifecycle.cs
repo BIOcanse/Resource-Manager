@@ -68,15 +68,23 @@ public sealed partial class HostManagerSmartCoordinator
         lock (lifecycleSync)
         {
             var state = LifecycleState;
-            if (state is HostManagerSmartCoordinatorLifecycleState.Closing or
-                HostManagerSmartCoordinatorLifecycleState.Closed)
+            if (Volatile.Read(ref baseDisposeStarted) != 0 ||
+                state == HostManagerSmartCoordinatorLifecycleState.Closing)
             {
                 throw CreateLifecycleClosedException();
             }
-            if (state != HostManagerSmartCoordinatorLifecycleState.Created)
+            if (state == HostManagerSmartCoordinatorLifecycleState.Running)
             {
                 throw new InvalidOperationException(
                     "The Host Manager smart coordinator has already been started.");
+            }
+
+            // A completed hosted stop releases this run's native resources. The
+            // same singleton may start another run until DI finally disposes it.
+            if (state == HostManagerSmartCoordinatorLifecycleState.Closed)
+            {
+                shutdownTask = null;
+                schedulingWakeDeadline.PublishScheduled(null);
             }
 
             Volatile.Write(
@@ -98,7 +106,7 @@ public sealed partial class HostManagerSmartCoordinator
                 UnsubscribeActivationSignals();
                 Volatile.Write(
                     ref lifecycleState,
-                    (int)HostManagerSmartCoordinatorLifecycleState.Created);
+                    (int)state);
                 throw;
             }
         }

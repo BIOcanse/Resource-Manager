@@ -1,351 +1,257 @@
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Options;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
+using static Resource_Manager_APP.Tests.BusinessBlockTestSupport;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed class BusinessBlockDependencyTests
 {
-    private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(5);
-
     [Fact]
-    public async Task MultipleDependenciesKeepProducerUntilTheLastLeaseIsReleased()
+    public async Task ConcurrentRetargetsOfOneDemandLeaveOnlyTheFinalTargetsFactAndExecutionActive()
     {
-        var upstream = new CooperativeBlock();
-        var producer = new CooperativeBlock();
-        await using var controller = Create(
-        [
-            Registration("upstream", upstream),
-            new BusinessBlockRegistration("gpu", ["upstream"], _ => producer)
-        ]);
-
-        var first = controller.AcquireDependency("gpu", DependencyReason("present"), TimeSpan.FromMilliseconds(100), ["allocation"]);
-        var second = controller.AcquireDependency("gpu", DependencyReason("vidmm"), TimeSpan.FromSeconds(1), ["residual"]);
-        await Task.WhenAll(first.Ready, second.Ready).WaitAsync(TestTimeout);
-
-        var active = Facts(controller, "gpu").ActiveDependencies;
-        Assert.Equal(2, active.Count);
-        Assert.Contains(active, fact => fact.Owner == "present" && fact.Interval == TimeSpan.FromMilliseconds(100)
-            && fact.Outputs.SequenceEqual(["allocation"]));
-        Assert.Contains(active, fact => fact.Owner == "vidmm" && fact.Interval == TimeSpan.FromSeconds(1)
-            && fact.Outputs.SequenceEqual(["residual"]));
-        Assert.Equal(new[] { "upstream", "gpu" }, controller.Read().History
-            .Where(transition => transition.To == BusinessBlockState.Running).Select(transition => transition.BlockId));
-        Assert.Equal(1, producer.RunCount);
-        Assert.Equal(1, upstream.RunCount);
-
-        await first.DisposeAsync().AsTask().WaitAsync(TestTimeout);
-        Assert.Single(Facts(controller, "gpu").ActiveDependencies);
-        Assert.Equal(BusinessBlockState.Running, Facts(controller, "gpu").State);
-        Assert.Equal(0, producer.StopReturns);
-
-        await second.DisposeAsync().AsTask().WaitAsync(TestTimeout);
-        Assert.Empty(Facts(controller, "gpu").ActiveDependencies);
-        Assert.Equal(BusinessBlockState.Stopped, Facts(controller, "gpu").State);
-        Assert.Equal(1, producer.StopReturns);
-        Assert.Equal(BusinessBlockState.Stopped, Facts(controller, "upstream").State);
-        Assert.Equal(1, upstream.StopReturns);
-        Assert.Equal(new[] { "gpu", "upstream" }, controller.Read().History
-            .Where(transition => transition.To == BusinessBlockState.Stopping).Select(transition => transition.BlockId));
-    }
-
-    [Fact]
-    public async Task QueryDoesNotConstructOrStartAnyBusinessBlock()
-    {
-        var creations = 0;
-        await using var controller = Create(new BusinessBlockRegistration("gpu", [], _ =>
+        var ids = new[] { "first", "second", "third" };
+        await using var scheduler = Create(ids.Select(id => Register(id, new Probe())));
+        try
         {
-            Interlocked.Increment(ref creations);
-            return new CooperativeBlock();
-        }));
-
-        var first = controller.Read();
-        var second = controller.Read();
-
-        Assert.Equal(BusinessBlockState.Stopped, Assert.Single(first.Blocks).State);
-        Assert.Equal(BusinessBlockState.Stopped, Assert.Single(second.Blocks).State);
-        Assert.Equal(0, Volatile.Read(ref creations));
-    }
-
-    [Fact]
-    public async Task FailedProducerIsNotRestartedUntilAllDependencyLeasesAreWithdrawn()
-    {
-        var creations = 0;
-        await using var controller = Create(new BusinessBlockRegistration("gpu", [], _ =>
-        {
-            Interlocked.Increment(ref creations);
-            return new ImmediateFailureBlock();
-        }));
-
-        var first = controller.AcquireDependency("gpu", DependencyReason("first-consumer"));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => first.Ready.WaitAsync(TestTimeout));
-        Assert.Equal(BusinessBlockState.Failed, Facts(controller, "gpu").State);
-
-        var second = controller.AcquireDependency("gpu", DependencyReason("second-consumer"));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => second.Ready.WaitAsync(TestTimeout));
-        Assert.Equal(1, Volatile.Read(ref creations));
-
-        await first.DisposeAsync().AsTask().WaitAsync(TestTimeout);
-        await second.DisposeAsync().AsTask().WaitAsync(TestTimeout);
-        var next = controller.AcquireDependency("gpu", DependencyReason("new-first-consumer"));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => next.Ready.WaitAsync(TestTimeout));
-        Assert.Equal(2, Volatile.Read(ref creations));
-        await next.DisposeAsync().AsTask().WaitAsync(TestTimeout);
-    }
-
-    [Fact]
-    public async Task ReacquireQueuedAfterLastWithdrawalStartsAgainAfterTheStopCompletes()
-    {
-        var releaseStop = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var producer = new GatedStopBlock(releaseStop.Task);
-        await using var controller = Create(Registration("gpu", producer));
-        var first = controller.AcquireDependency("gpu", DependencyReason("first-consumer"));
-        await first.Ready.WaitAsync(TestTimeout);
-
-        first.Dispose();
-        var second = controller.AcquireDependency("gpu", DependencyReason("second-consumer"));
-        await producer.StopStarted.Task.WaitAsync(TestTimeout);
-        Assert.False(first.Released.IsCompleted);
-
-        releaseStop.TrySetResult();
-        await first.Released.WaitAsync(TestTimeout);
-        await second.Ready.WaitAsync(TestTimeout);
-        Assert.Equal(2, producer.RunCount);
-        Assert.Equal(BusinessBlockState.Running, Facts(controller, "gpu").State);
-
-        await second.DisposeAsync().AsTask().WaitAsync(TestTimeout);
-    }
-
-    [Fact]
-    public async Task ConfiguredStopBlockFailurePolicyCanStopProducerWhileLeaseRemainsActive()
-    {
-        var producer = new CooperativeBlock();
-        await using var controller = Create(
-            new BusinessBlockRegistration("gpu", [], _ => producer),
-            new BusinessBlockPolicy { OnFailure = BusinessBlockFailurePolicy.StopBlock });
-        var lease = controller.AcquireDependency("gpu", DependencyReason("present"));
-        await lease.Ready.WaitAsync(TestTimeout);
-
-        controller.ReportFailure("gpu", new InvalidOperationException("reported"), "gpu-consumer");
-        await WaitUntilAsync(() => !Facts(controller, "gpu").ExecutionOutstanding);
-
-        Assert.Equal(BusinessBlockState.Failed, Facts(controller, "gpu").State);
-        Assert.Equal(1, producer.StopReturns);
-        var later = controller.AcquireDependency("gpu", DependencyReason("vidmm"));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => later.Ready.WaitAsync(TestTimeout));
-        Assert.Equal(1, producer.RunCount);
-
-        await lease.DisposeAsync().AsTask().WaitAsync(TestTimeout);
-        await later.DisposeAsync().AsTask().WaitAsync(TestTimeout);
-    }
-
-    [Fact]
-    public async Task StopDependentsWithdrawsOnlyDynamicRootsThatDependOnTheFailedBlock()
-    {
-        var producer = new CooperativeBlock();
-        var consumer = new CooperativeBlock();
-        var peer = new CooperativeBlock();
-        await using var controller = Create(
-            [
-                Registration("producer", producer),
-                new BusinessBlockRegistration("consumer", ["producer"], _ => consumer),
-                Registration("peer", peer)
-            ],
-            new BusinessBlockPolicy { OnFailure = BusinessBlockFailurePolicy.StopDependents });
-        var dependentLease = controller.AcquireDependency("consumer", DependencyReason("consumer-owner"));
-        var peerLease = controller.AcquireDependency("peer", DependencyReason("peer-owner"));
-        await Task.WhenAll(dependentLease.Ready, peerLease.Ready).WaitAsync(TestTimeout);
-
-        controller.ReportFailure("producer", new InvalidOperationException("reported"), "fake-operation");
-        await WaitUntilAsync(() => !Facts(controller, "consumer").ExecutionOutstanding
-            && !Facts(controller, "producer").ExecutionOutstanding);
-
-        Assert.Equal(BusinessBlockState.Stopped, Facts(controller, "consumer").State);
-        Assert.Equal(BusinessBlockState.Failed, Facts(controller, "producer").State);
-        Assert.Equal(BusinessBlockState.Running, Facts(controller, "peer").State);
-        Assert.Empty(Facts(controller, "consumer").ActiveDependencies);
-        Assert.Single(Facts(controller, "peer").ActiveDependencies);
-        var released = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => dependentLease.Released.WaitAsync(TestTimeout));
-        Assert.Contains("StopDependents", released.Message);
-        Assert.Contains("producer", released.Message);
-
-        await peerLease.DisposeAsync().AsTask().WaitAsync(TestTimeout);
-    }
-
-    [Fact]
-    public async Task ConfigurationDisablePreservesLeasesAndReenableStartsTheirDemand()
-    {
-        var producer = new CooperativeBlock();
-        await using var controller = Create(Registration("present", producer));
-        var lease = controller.AcquireDependency("present", DependencyReason("consumer"));
-        await lease.Ready.WaitAsync(TestTimeout);
-
-        await controller.SetEnabledAsync("present", false, ConfigurationReason()).WaitAsync(TestTimeout);
-        Assert.False(Facts(controller, "present").Enabled);
-        Assert.Single(Facts(controller, "present").ActiveDependencies);
-        Assert.Equal(BusinessBlockState.Stopped, Facts(controller, "present").State);
-
-        var disabledLease = controller.AcquireDependency("present", DependencyReason("new-consumer"));
-        await disabledLease.Ready.WaitAsync(TestTimeout);
-        Assert.Equal(1, producer.RunCount);
-        Assert.Equal(2, Facts(controller, "present").ActiveDependencies.Count);
-
-        await disabledLease.DisposeAsync().AsTask().WaitAsync(TestTimeout);
-        await controller.SetEnabledAsync("present", true, ConfigurationReason()).WaitAsync(TestTimeout);
-        Assert.True(Facts(controller, "present").Enabled);
-        Assert.Equal(BusinessBlockState.Running, Facts(controller, "present").State);
-        Assert.Equal(2, producer.RunCount);
-
-        await lease.DisposeAsync().AsTask().WaitAsync(TestTimeout);
-        Assert.Equal(BusinessBlockState.Stopped, Facts(controller, "present").State);
-    }
-
-    [Fact]
-    public async Task AcquireAndDisposeInsideControllerStartAndStopCallbacksDoNotBlock()
-    {
-        BusinessBlockController? controller = null;
-        IBusinessBlockDependency? dependency = null;
-        var producer = new CooperativeBlock();
-        var consumer = new CallbackHostedService(
-            onStart: () =>
+            for (var round = 0; round < 32; round++)
             {
-                dependency = controller!.AcquireDependency("gpu", DependencyReason("callback-consumer"));
-            },
-            onStop: () => dependency!.Dispose());
-        await using var ownedController = Create(
-        [
-            Registration("gpu", producer),
-            new BusinessBlockRegistration("callback", [], _ => new HostedBusinessBlock(() => consumer))
-            {
-                HostedService = true
+                var releasePublishers = Signal();
+                var updates = Enumerable.Range(0, 12).Select(index => Task.Run(async () =>
+                {
+                    await releasePublishers.Task;
+                    await scheduler.SetDemandAsync("one-owner", ids[index % ids.Length], Reason(owner: "publisher-" + index));
+                })).ToArray();
+                releasePublishers.TrySetResult();
+                await Task.WhenAll(updates).WaitAsync(TestTimeout);
+                var snapshot = scheduler.Read();
+                var finalTarget = Assert.Single(snapshot.Demands).BlockId;
+                foreach (var id in ids)
+                    Assert.Equal(id == finalTarget, snapshot.Facts.Single(item => item.Key == BusinessBlockScheduler.DemandFact(id)).Value);
+                await Until(() => ids.All(id => scheduler.ReadState(id) ==
+                    (id == finalTarget ? BusinessBlockState.Running : BusinessBlockState.Stopped)));
             }
-        ]);
-        controller = ownedController;
-
-        await controller.StartAsync("callback", UserReason("callback")).WaitAsync(TestTimeout);
-        await dependency!.Ready.WaitAsync(TestTimeout);
-        await controller.StopAsync("callback", UserReason("callback")).WaitAsync(TestTimeout);
-        await dependency.Released.WaitAsync(TestTimeout);
-
-        Assert.Equal(BusinessBlockState.Stopped, Facts(controller, "gpu").State);
-        Assert.Equal(1, producer.RunCount);
-        Assert.Equal(1, producer.StopReturns);
-    }
-
-    private static BusinessBlockController Create(
-        BusinessBlockRegistration registration, BusinessBlockPolicy? policy = null)
-        => Create([registration], policy);
-
-    private static BusinessBlockController Create(
-        IEnumerable<BusinessBlockRegistration> registrations, BusinessBlockPolicy? policy = null)
-        => new(new EmptyServiceProvider(), registrations,
-            Options.Create(new BusinessBlockOptions
-            {
-                MetricsInterval = null,
-                Policy = policy ?? new BusinessBlockPolicy(),
-                HistoryLimit = 128
-            }), NullLogger<BusinessBlockController>.Instance);
-
-    private static BusinessBlockRegistration Registration(string id, IBusinessBlock block)
-        => new(id, [], _ => block);
-
-    private static BusinessBlockReason DependencyReason(string owner)
-        => new(BusinessBlockRequestKind.Dependency, owner, "test-dependency", 3);
-
-    private static BusinessBlockReason ConfigurationReason()
-        => new(BusinessBlockRequestKind.Configuration, "test", "compiled-plan", 4);
-
-    private static BusinessBlockReason UserReason(string owner)
-        => new(BusinessBlockRequestKind.User, owner, "explicit-test-request", 7);
-
-    private static BusinessBlockFacts Facts(BusinessBlockController controller, string id)
-        => controller.Read().Blocks.Single(block => block.Id == id);
-
-    private static async Task WaitUntilAsync(Func<bool> predicate)
-    {
-        var deadline = DateTime.UtcNow + TestTimeout;
-        while (!predicate())
-        {
-            if (DateTime.UtcNow >= deadline) throw new TimeoutException("The expected business-block state was not reached.");
-            await Task.Delay(5);
+            await scheduler.SetDemandAsync("one-owner", null, Reason());
+            await Until(() => scheduler.Read().Blocks.All(item => item.State == BusinessBlockState.Stopped));
         }
+        finally { await StopAll(scheduler); }
     }
 
-    private sealed class EmptyServiceProvider : IServiceProvider
+    [Fact]
+    public async Task RuleReadsItsImmediateChildStatesWithoutOrderingTheirStartup()
     {
-        public object? GetService(Type serviceType) => null;
-    }
-
-    private sealed class CooperativeBlock : IBusinessBlock
-    {
-        private int runCount;
-        private int stopReturns;
-        public int RunCount => Volatile.Read(ref runCount);
-        public int StopReturns => Volatile.Read(ref stopReturns);
-
-        public async Task<BusinessBlockResult> RunAsync(CancellationToken stopNotification)
-        {
-            Interlocked.Increment(ref runCount);
-            try
+        var first = new Probe(reportRunning: false);
+        var next = new Probe();
+        await using var scheduler = Create([Register("first", first), Register("next", next)],
+            [new(BackendBlockGraph.Program, ["requested"], input =>
             {
-                await Task.Delay(Timeout.InfiniteTimeSpan, stopNotification).ConfigureAwait(false);
-                return BusinessBlockResult.Done;
-            }
-            catch (OperationCanceledException) when (stopNotification.IsCancellationRequested)
-            {
-                Interlocked.Increment(ref stopReturns);
-                return BusinessBlockResult.Stopped;
-            }
+                Assert.Equal(new[] { "first", "next" }, input.Children.Keys.Order());
+                return input.Facts["requested"].Value ? ["first", "next"] : [];
+            })]);
+        try
+        {
+            await scheduler.SetFactAsync("requested", true, Reason());
+            await first.Entered.Task.WaitAsync(TestTimeout);
+            Assert.Equal(BusinessBlockState.Starting, scheduler.ReadState("first"));
+            await next.Entered.Task.WaitAsync(TestTimeout);
+            Assert.Equal(1, next.Runs);
+            first.Context!.ReportRunning();
+            await next.Entered.Task.WaitAsync(TestTimeout);
+            Assert.Contains(scheduler.Read().Decisions, item => item.ShouldRun.SequenceEqual(["first", "next"]));
+            var history = scheduler.Read().History.ToArray();
+            await scheduler.SetFactAsync("requested", true, Reason());
+            Assert.Equal(history, scheduler.Read().History);
+            Assert.Equal(1, first.Runs);
+            Assert.Equal(1, next.Runs);
         }
+        finally { await StopAll(scheduler); }
     }
 
-    private sealed class ImmediateFailureBlock : IBusinessBlock
+    [Fact]
+    public async Task MultipleExternalNeedsRemainFactsUntilTheLastLeaseIsReleased()
     {
-        public Task<BusinessBlockResult> RunAsync(CancellationToken stopNotification)
-            => Task.FromResult(BusinessBlockResult.Failed(new InvalidOperationException("producer failed")));
+        var producer = new Probe();
+        await using var scheduler = Create([Register("producer", producer)]);
+        var firstReason = Reason(BusinessBlockRequestKind.Dependency, "first-reader", "needs-value");
+        var secondReason = Reason(BusinessBlockRequestKind.Dependency, "second-reader", "needs-value");
+        var first = scheduler.AcquireDependency("producer", firstReason);
+        var second = scheduler.AcquireDependency("producer", secondReason);
+        try
+        {
+            await Task.WhenAll(first.Ready, second.Ready).WaitAsync(TestTimeout);
+            await producer.Entered.Task.WaitAsync(TestTimeout);
+            Assert.Equal(1, producer.Runs);
+            var fact = scheduler.Read().Facts.Single(item => item.Key == BusinessBlockScheduler.DemandFact("producer"));
+            Assert.True(fact.Value);
+            Assert.Contains(firstReason, fact.Reasons);
+            Assert.Contains(secondReason, fact.Reasons);
+            first.Dispose();
+            await first.Released.WaitAsync(TestTimeout);
+            Assert.Single(scheduler.Read().Demands);
+            Assert.Equal(BusinessBlockState.Running, scheduler.ReadState("producer"));
+            Assert.Equal(0, producer.Returns);
+            await second.DisposeAsync();
+            await State(scheduler, "producer", BusinessBlockState.Stopped);
+            Assert.Empty(scheduler.Read().Demands);
+            Assert.False(scheduler.Read().Facts.Single(item => item.Key == BusinessBlockScheduler.DemandFact("producer")).Value);
+        }
+        finally { first.Dispose(); second.Dispose(); await StopAll(scheduler); }
     }
 
-    private sealed class GatedStopBlock(Task releaseStop) : IBusinessBlock
+    [Fact]
+    public async Task CrossBranchDataInputNeverStartsItsProducerOrParent()
     {
-        private int runCount;
-        private int stopReturns;
-        public TaskCompletionSource StopStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public int RunCount => Volatile.Read(ref runCount);
-        public int StopReturns => Volatile.Read(ref stopReturns);
-
-        public async Task<BusinessBlockResult> RunAsync(CancellationToken stopNotification)
+        var producerParent = new Probe();
+        var consumerParent = new Probe();
+        var producer = new Probe();
+        var consumer = new Probe();
+        await using var scheduler = Create([
+            Register("producer-parent", producerParent), Register("consumer-parent", consumerParent),
+            Register("producer", producer, "producer-parent"), Register("consumer", consumer, "consumer-parent", inputs: ["producer"])]);
+        try
         {
-            Interlocked.Increment(ref runCount);
-            try
-            {
-                await Task.Delay(Timeout.InfiniteTimeSpan, stopNotification).ConfigureAwait(false);
-                return BusinessBlockResult.Done;
-            }
-            catch (OperationCanceledException) when (stopNotification.IsCancellationRequested)
-            {
-                StopStarted.TrySetResult();
-                await releaseStop.ConfigureAwait(false);
-                Interlocked.Increment(ref stopReturns);
-                return BusinessBlockResult.Stopped;
-            }
+            await scheduler.StartAsync("consumer", Reason());
+            await scheduler.StartAsync("consumer-parent", Reason());
+            await consumer.Entered.Task.WaitAsync(TestTimeout);
+            Assert.Equal(BusinessBlockState.Running, scheduler.ReadState("consumer"));
+            Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState("producer-parent"));
+            Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState("producer"));
+            Assert.Equal(0, producer.Runs);
+            Assert.Equal(0, producerParent.Runs);
+            Assert.Equal(["producer"], scheduler.Read().Graph.Single(item => item.Id == "consumer").Inputs);
         }
+        finally { await StopAll(scheduler); }
     }
 
-    private sealed class CallbackHostedService(Action onStart, Action onStop) : IHostedService
+    [Fact]
+    public async Task DecisionRulesSeeOnlyDeclaredFactsAndImmediateChildrenAndDoNotWakeSiblings()
     {
-        public Task StartAsync(CancellationToken cancellationToken)
+        var leftCalls = 0;
+        var rightCalls = 0;
+        var left = new Probe(); var right = new Probe();
+        BusinessBlockDecisionRegistration Rule(string parent, string child, string key, Action called)
+            => new(parent, [key], input =>
+            {
+                called();
+                Assert.Equal([child], input.Children.Keys);
+                Assert.Equal(new[] { key, BusinessBlockScheduler.EnabledFact(child) }.Order(), input.Facts.Keys.Order());
+                return input.Facts[key].Value ? [child] : [];
+            });
+        await using var scheduler = Create([
+            Register("left", new Probe()), Register("right", new Probe()), Register("left-child", left, "left"), Register("right-child", right, "right")],
+            [Rule("left", "left-child", "left-fact", () => Interlocked.Increment(ref leftCalls)),
+             Rule("right", "right-child", "right-fact", () => Interlocked.Increment(ref rightCalls))]);
+        try
         {
-            onStart();
-            return Task.CompletedTask;
+            await scheduler.StartAsync("left", Reason());
+            await scheduler.StartAsync("right", Reason());
+            await State(scheduler, "right", BusinessBlockState.Running);
+            await scheduler.SetFactAsync("left-fact", false, Reason());
+            await scheduler.SetFactAsync("right-fact", false, Reason());
+            var unrelatedCalls = Volatile.Read(ref rightCalls);
+            var unrelatedHistory = scheduler.Read().Decisions.Where(item => item.ParentId == "right").ToArray();
+            var reason = Reason(BusinessBlockRequestKind.Configuration, "authority", "left-fact", 12);
+            await scheduler.SetFactAsync("left-fact", true, reason);
+            await left.Entered.Task.WaitAsync(TestTimeout);
+            await scheduler.SetFactAsync("left-fact", true, reason);
+            Assert.Equal(1, left.Runs);
+            Assert.Equal(0, left.Returns);
+            Assert.Equal(0, right.Runs);
+            Assert.Equal(unrelatedCalls, Volatile.Read(ref rightCalls));
+            Assert.Equal(unrelatedHistory, scheduler.Read().Decisions.Where(item => item.ParentId == "right"));
+            var decision = scheduler.Read().Decisions.Last(item => item.ParentId == "left");
+            Assert.Equal(reason, decision.Reason);
+            Assert.Equal(["left-child"], decision.ShouldRun);
+            Assert.Equal(reason, Assert.Single(decision.Facts.Single(item => item.Key == "left-fact").Reasons));
         }
+        finally { await StopAll(scheduler); }
+    }
 
-        public Task StopAsync(CancellationToken cancellationToken)
+    [Fact]
+    public async Task WithdrawalAndReacquireBeforeDecisionUseCurrentFactsWithoutRestart()
+    {
+        using var releaseRule = new ManualResetEventSlim();
+        var enteredRule = Signal();
+        var blockOnce = 0;
+        var worker = new Probe();
+        var demandKey = BusinessBlockScheduler.DemandFact("worker");
+        await using var scheduler = Create([Register("worker", worker)],
+            [new(BackendBlockGraph.Program, [demandKey, "block-rule"], input =>
+            {
+                if (input.Facts["block-rule"].Value && Interlocked.Exchange(ref blockOnce, 1) == 0)
+                {
+                    enteredRule.TrySetResult();
+                    if (!releaseRule.Wait(TestTimeout)) throw new TimeoutException("The test did not release its rule.");
+                }
+                return input.Facts[demandKey].Value ? ["worker"] : [];
+            })]);
+        try
         {
-            onStop();
-            return Task.CompletedTask;
+            await scheduler.SetDemandAsync("lease", "worker", Reason());
+            await worker.Entered.Task.WaitAsync(TestTimeout);
+            var blocked = scheduler.SetFactAsync("block-rule", true, Reason());
+            await enteredRule.Task.WaitAsync(TestTimeout);
+            var withdrawal = scheduler.SetDemandAsync("lease", null, Reason());
+            var reacquire = scheduler.SetDemandAsync("lease", "worker", Reason());
+            releaseRule.Set();
+            await Task.WhenAll(blocked, withdrawal, reacquire).WaitAsync(TestTimeout);
+            Assert.Equal(1, worker.Runs);
+            Assert.Equal(0, worker.Returns);
+            Assert.False(worker.Notified.Task.IsCompleted);
+            Assert.Equal(BusinessBlockState.Running, scheduler.ReadState("worker"));
+            Assert.Single(scheduler.Read().Demands);
         }
+        finally { releaseRule.Set(); await StopAll(scheduler); }
+    }
+
+    [Fact]
+    public async Task BlockedDecisionInOneBranchDoesNotDelayAnotherBranch()
+    {
+        using var releaseRule = new ManualResetEventSlim();
+        var enteredRule = Signal();
+        var right = new Probe();
+        await using var scheduler = Create([
+            Register("left", new Probe()), Register("right", new Probe()), Register("left-child", new Probe(), "left"), Register("right-child", right, "right")],
+            [new("left", ["left-fact"], input =>
+            {
+                if (input.Facts["left-fact"].Value)
+                {
+                    enteredRule.TrySetResult();
+                    if (!releaseRule.Wait(TestTimeout)) throw new TimeoutException("The test did not release its branch.");
+                }
+                return [];
+            }), new("right", ["right-fact"], input => input.Facts["right-fact"].Value ? ["right-child"] : [])]);
+        try
+        {
+            await scheduler.StartAsync("left", Reason());
+            await scheduler.StartAsync("right", Reason());
+            await State(scheduler, "left", BusinessBlockState.Running);
+            await State(scheduler, "right", BusinessBlockState.Running);
+            var blocked = scheduler.SetFactAsync("left-fact", true, Reason());
+            await enteredRule.Task.WaitAsync(TestTimeout);
+            Assert.False(blocked.IsCompleted);
+            await scheduler.SetFactAsync("right-fact", true, Reason()).WaitAsync(TestTimeout);
+            await right.Entered.Task.WaitAsync(TestTimeout);
+            Assert.False(blocked.IsCompleted);
+            Assert.Equal(BusinessBlockState.Running, scheduler.ReadState("right-child"));
+            releaseRule.Set();
+            await blocked.WaitAsync(TestTimeout);
+        }
+        finally { releaseRule.Set(); await StopAll(scheduler); }
+    }
+
+    [Fact]
+    public async Task RuleCannotControlANonChild()
+    {
+        await using var scheduler = Create([Register("parent", new Probe()), Register("own-child", new Probe(), "parent"), Register("sibling", new Probe())],
+            [new("parent", ["bad-rule"], input => input.Facts["bad-rule"].Value ? ["sibling"] : [])]);
+        try
+        {
+            await scheduler.StartAsync("parent", Reason());
+            await State(scheduler, "parent", BusinessBlockState.Running);
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() => scheduler.SetFactAsync("bad-rule", true, Reason()));
+            Assert.Contains("non-child sibling", error.Message);
+            Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState("sibling"));
+        }
+        finally { await StopAll(scheduler); }
     }
 }

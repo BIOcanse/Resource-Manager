@@ -23,6 +23,14 @@ public sealed class HostManagerOperationCoordinatorRuntime(
             plan,
             HostManagerDeploymentOperation.InitialCreate);
 
+    internal HostManagerDeploymentAttemptToken BeginCreate(CompiledHostManagerPlan plan)
+        => deploymentState.BeginAttempt(
+            HostManagerModuleKind.OperationCoordinator,
+            plan,
+            deploymentState.Snapshot.OperationCoordinator.AppliedPlanEpoch == 0
+                ? HostManagerDeploymentOperation.InitialCreate
+                : HostManagerDeploymentOperation.HostRecreateAndHotPublish);
+
     internal HostManagerDeploymentAttemptToken BeginHotPublish(CompiledHostManagerPlan plan)
         => deploymentState.BeginAttempt(
             HostManagerModuleKind.OperationCoordinator,

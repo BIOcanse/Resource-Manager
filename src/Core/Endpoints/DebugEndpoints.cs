@@ -10,6 +10,7 @@ using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.GpuPlacement;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Infrastructure.GpuPlacement.External;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
 namespace ResourceManager.App.Endpoints;
 
@@ -17,10 +18,10 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 {
     private static IEndpointRouteBuilder MapDebugEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/debug/business-blocks", (HttpResponse response, IBusinessBlockQuery blocks) =>
+        app.MapGet("/api/debug/business-blocks", (HttpResponse response, IBusinessBlockQuery blocks, BusinessBlockDiagnosticsRegistry diagnostics) =>
         {
             response.Headers.CacheControl = "no-store";
-            return Results.Ok(blocks.Read());
+            return Results.Ok(new BusinessBlockDebugSnapshot(blocks.Read(), diagnostics.ReadAll()));
         });
 
         app.MapGet("/api/debug/gpu-renderers", (HttpResponse response,

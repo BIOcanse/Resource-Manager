@@ -247,10 +247,10 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
                 "The runtime specialization coordinator is already started.");
         }
 
+        await gate.WaitAsync(cancellationToken);
         var workerCancellation = new CancellationTokenSource();
         changedWorkerCancellation = workerCancellation;
         monitoringSourceZoneRegistry.Changed += OnMonitoringSourceZonesChanged;
-        await gate.WaitAsync(cancellationToken);
         try
         {
             if (legacySettingsMigration is not null) await legacySettingsMigration.RunAsync(cancellationToken);

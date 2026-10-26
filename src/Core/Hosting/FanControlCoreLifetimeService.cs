@@ -14,6 +14,7 @@ internal sealed class FanControlCoreLifetimeService(
     public Task StartAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        core.StartSession();
         // 风扇驱动可能很慢。只启动这一份任务，其余监控服务不依赖它的探测结果。
         StartupTask = Task.Run(() =>
         {
@@ -29,8 +30,8 @@ internal sealed class FanControlCoreLifetimeService(
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        // DisposeAsync 在工作线程上收尾，同步的原生释放也可能卡住，不能占住主机的停止调用。
-        var disposal = core.DisposeAsync().AsTask();
+        // 本轮会话在工作线程上收尾；共享客户端只在 DI 最终销毁时永久关闭。
+        var disposal = core.StopSessionAsync().AsTask();
         try { await Task.WhenAll(StartupTask, disposal).WaitAsync(cancellationToken).ConfigureAwait(false); }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

@@ -10,11 +10,25 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         await mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            ThrowIfRetiringLocked();
+            ThrowIfDisposed();
             if (started || workerCancellation is not null)
             {
                 throw new InvalidOperationException(
                     "The operation coordinator owner is already started.");
+            }
+            if (retiring)
+            {
+                // A canceled or failed stop still owns its runtime. Only a
+                // fully drained hosted run can reopen admission.
+                if (workspace is not null || pendingWorkspaceClose is not null || store is not null)
+                    ThrowIfRetiringLocked();
+                attemptArbiter = new();
+                retiring = false;
+                persistenceFaulted = false;
+                faultStage = null;
+                faultMessage = null;
+                Volatile.Write(ref pendingQuiescentRecreate, 0);
+                Volatile.Write(ref lastPlanApplicationError, null);
             }
             planProvider.Published += OnPublished;
         }
@@ -211,6 +225,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         workspace = null;
         store?.Dispose();
         store = null;
+        appliedPlan = null;
         workerCancellation?.Dispose();
         workerCancellation = null;
         attemptArbiter.Dispose();

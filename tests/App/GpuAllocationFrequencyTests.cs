@@ -17,6 +17,7 @@ public sealed class GpuAllocationFrequencyTests
         await using var harness = factory.Harness(timeProvider: new NoTimers());
         var collector = harness.Collector;
         using var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(seconds));
+        await EtwTestRunRecorder.ReadyAsync(lease);
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
         var prior = collector.ReadCurrent(GpuAllocationTestSession.Processes)!;
         Assert.Equal(live, factory.Current.Enabled.Contains(GpuAllocationCollector.Provider));
@@ -65,6 +66,7 @@ public sealed class GpuAllocationFrequencyTests
         await using var harness = factory.Harness(timeProvider: new NoTimers());
         var collector = harness.Collector;
         using var smart = collector.AcquireSubscription(TimeSpan.FromSeconds(30));
+        await EtwTestRunRecorder.ReadyAsync(smart);
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
         Assert.Empty(factory.Current.Enabled);
         var ui = collector.AcquireSubscription(TimeSpan.FromSeconds(1));
@@ -98,6 +100,7 @@ public sealed class GpuAllocationFrequencyTests
         await using var harness = factory.Harness(logger: log, timeProvider: new NoTimers());
         var collector = harness.Collector;
         using var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(1));
+        await EtwTestRunRecorder.ReadyAsync(lease);
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
         var prior = collector.ReadCurrent(GpuAllocationTestSession.Processes);
         if (malformed) factory.Current.Emit(35); else factory.Current.LoseEvent();
@@ -129,6 +132,7 @@ public sealed class GpuAllocationFrequencyTests
         var collector = harness.Collector;
         using var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(seconds));
         configuration[GpuAllocationCapturePlan.ThresholdKey] = live ? "0" : "1e100";
+        await EtwTestRunRecorder.ReadyAsync(lease);
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
         Assert.Equal(live, factory.Current.Enabled.Contains(GpuAllocationCollector.Provider));
@@ -155,6 +159,7 @@ public sealed class GpuAllocationFrequencyTests
         await using var harness = factory.Harness(timeProvider: new NoTimers());
         var collector = harness.Collector;
         var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(1));
+        await EtwTestRunRecorder.ReadyAsync(lease);
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
         var published = collector.ReadCurrent(GpuAllocationTestSession.Processes);
         lease.Dispose();
@@ -162,6 +167,7 @@ public sealed class GpuAllocationFrequencyTests
         Assert.Equal(1, factory.Current.Stops);
         Assert.Equal(Timeout.InfiniteTimeSpan, factory.Current.StopTimeout);
         Assert.Empty(factory.Current.Enabled);
+        Assert.False(factory.Current.HasBoundHandler);
         factory.Current.Emit(34, ("pDxgAdapter", 1UL), ("hVidMmGlobalAlloc", 2UL));
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
         Assert.Same(published, collector.ReadCurrent(GpuAllocationTestSession.Processes));

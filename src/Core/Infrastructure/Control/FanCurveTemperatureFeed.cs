@@ -71,6 +71,7 @@ public sealed class FanCurveTemperatureFeed(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        lock (subscriptionGate) finished = false;
         try
         {
             core.TemperatureDemandChanged += UpdateSubscription;

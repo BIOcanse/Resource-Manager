@@ -10,6 +10,61 @@ public sealed class ControlActualStateReaderTests
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(5);
 
     [Fact]
+    public async Task PreviousRunLeaseCannotCancelFreshDemandAfterRestart()
+    {
+        var clock = new ControlledClock();
+        var writer = new CountingWriter();
+        using var reader = new ControlActualStateReader(new Catalog(), [writer], clock);
+        await reader.StartAsync(default);
+        using var previous = reader.AcquireSubscription();
+        _ = await clock.NextTimerAsync();
+        await reader.StopAsync(default);
+
+        await reader.StartAsync(default);
+        try
+        {
+            using var current = reader.AcquireSubscription();
+            var startup = await clock.NextTimerAsync();
+            previous.Dispose();
+            startup.Fire();
+            _ = await clock.NextTimerAsync();
+            await WaitUntilAsync(() => reader.Current.Values.Count == 1);
+            Assert.Equal(1, writer.Reads);
+            Assert.Single(reader.Current.Values);
+        }
+        finally { await reader.StopAsync(default); }
+    }
+
+    [Fact]
+    public async Task SameReaderRestartsAndPublishesNewHardwareReadAfterStop()
+    {
+        var clock = new ControlledClock();
+        var writer = new CountingWriter();
+        using var reader = new ControlActualStateReader(new Catalog(), [writer], clock);
+        await reader.StartAsync(default);
+        using (reader.AcquireSubscription())
+        {
+            (await clock.NextTimerAsync()).Fire();
+            _ = await clock.NextTimerAsync();
+            await WaitUntilAsync(() => reader.Current.Values.Count == 1);
+            await reader.StopAsync(default);
+        }
+        var first = reader.Current;
+        writer.Read = _ => Task.FromResult<ControlActualValue?>(new("device", "power", 77));
+        await reader.StartAsync(default);
+        try
+        {
+            using var demand = reader.AcquireSubscription();
+            (await clock.NextTimerAsync()).Fire();
+            _ = await clock.NextTimerAsync();
+            await WaitUntilAsync(() => !ReferenceEquals(first, reader.Current));
+            Assert.Equal(2, writer.Reads);
+            Assert.Equal(77, Assert.Single(reader.Current.Values).Number);
+        }
+        finally { await reader.StopAsync(default); }
+    }
+
+    [Fact]
     public async Task NoSubscriptionDoesNotProbeOrReadWriters()
     {
         var clock = new ControlledClock();

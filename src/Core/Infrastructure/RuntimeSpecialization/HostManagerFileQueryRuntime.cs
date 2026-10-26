@@ -68,6 +68,7 @@ public sealed class HostManagerFileQueryOwner :
     private long nextEpoch;
     private bool started;
     private bool disposed;
+    private Action<CompiledRuntimePlan>? publishedHandler;
 
     public HostManagerFileQueryOwner(
         RuntimePlanProvider planProvider,
@@ -92,26 +93,34 @@ public sealed class HostManagerFileQueryOwner :
     public Task StartAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        ThrowIfDisposed();
-        if (started)
+        Action<CompiledRuntimePlan> handler = null!;
+        handler = plan => Apply(plan.HostManager.RequirePublished(), throwOnFailure: false, handler);
+        gate.EnterWriteLock();
+        try
         {
-            return Task.CompletedTask;
+            ThrowIfDisposed();
+            if (started) return Task.CompletedTask;
+            publishedHandler = handler;
+            planProvider.Published += handler;
+            started = true;
         }
-
-        planProvider.Published += OnPublished;
-        started = true;
-        Apply(planProvider.Current.HostManager.RequirePublished(), throwOnFailure: true);
+        finally { gate.ExitWriteLock(); }
+        try { Apply(planProvider.Current.HostManager.RequirePublished(), throwOnFailure: true, handler); }
+        catch { StopAsync(CancellationToken.None).GetAwaiter().GetResult(); throw; }
         return Task.CompletedTask;
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (started)
+        gate.EnterWriteLock();
+        try
         {
-            planProvider.Published -= OnPublished;
+            if (publishedHandler is { } handler) planProvider.Published -= handler;
+            publishedHandler = null;
             started = false;
         }
+        finally { gate.ExitWriteLock(); }
         return Task.CompletedTask;
     }
 
@@ -168,14 +177,12 @@ public sealed class HostManagerFileQueryOwner :
 
     public void Dispose()
     {
-        if (started)
-        {
-            planProvider.Published -= OnPublished;
-            started = false;
-        }
         gate.EnterWriteLock();
         try
         {
+            if (publishedHandler is { } handler) planProvider.Published -= handler;
+            publishedHandler = null;
+            started = false;
             disposed = true;
             DrainPendingRetirement();
             if (current?.Retire() == true) current = null;
@@ -201,15 +208,14 @@ public sealed class HostManagerFileQueryOwner :
         finally { gate.ExitWriteLock(); }
     }
 
-    private void OnPublished(CompiledRuntimePlan plan)
-        => Apply(plan.HostManager.RequirePublished(), throwOnFailure: false);
-
-    private void Apply(CompiledHostManagerPlan hostPlan, bool throwOnFailure)
+    private void Apply(CompiledHostManagerPlan hostPlan, bool throwOnFailure,
+        Action<CompiledRuntimePlan>? expectedHandler = null)
     {
         var desired = hostPlan.FileQuery;
         gate.EnterWriteLock();
         try
         {
+            if (expectedHandler is not null && !ReferenceEquals(publishedHandler, expectedHandler)) return;
             DrainPendingRetirement();
             if (pendingRetirement is not null)
                 throw new InvalidOperationException(

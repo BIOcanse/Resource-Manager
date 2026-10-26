@@ -11,35 +11,25 @@ namespace Resource_Manager_APP.Tests;
 public sealed class BusinessBlockHostingTests
 {
     [Fact]
-    public async Task HostedAliasesStartDependenciesFirstAndStopInReverseOrder()
+    public async Task HostedAliasesKeepHostOrderRegardlessOfDataInputs()
     {
         var events = new List<string>();
         using var host = Host.CreateDefaultBuilder()
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
-                services.AddSingleton(new BusinessBlockRegistration(
-                    nameof(ConsumerService),
-                    [nameof(DependencyService)],
-                    provider => new HostedBusinessBlock(
-                        () => provider.GetRequiredService<ConsumerService>())));
-                services.AddBusinessBlockHostedService<ConsumerService>(
+                services.AddBusinessBlockHostedService<ConsumerService>("ConsumerService", ["DependencyService"], ["test-output"],
                     _ => new ConsumerService(events));
 
-                // Deliberately register the prerequisite after its consumer. The controller
-                // must preserve dependency-first startup and reverse dependency shutdown.
-                services.AddSingleton(new BusinessBlockRegistration(
-                    nameof(DependencyService),
-                    [],
-                    provider => new HostedBusinessBlock(
-                        () => provider.GetRequiredService<DependencyService>())));
-                services.AddBusinessBlockHostedService<DependencyService>(
+                // A data input does not control another hosted service's lifecycle.
+                services.AddBusinessBlockHostedService<DependencyService>("DependencyService", [], ["test-output"],
                     _ => new DependencyService(events));
             })
             .Build();
 
         Assert.Single(host.Services.GetServices<IHostedService>().OfType<BusinessBlockDependencyLifetime>());
-        var hostedServices = host.Services.GetServices<IHostedService>().Where(static service => service is not BusinessBlockDependencyLifetime).ToArray();
+        var hostedServices = host.Services.GetServices<IHostedService>().Where(static service => service
+            is NonOwningHostedService<ConsumerService> or NonOwningHostedService<DependencyService>).ToArray();
         Assert.Collection(
             hostedServices,
             service => Assert.IsType<NonOwningHostedService<ConsumerService>>(service),
@@ -49,22 +39,51 @@ public sealed class BusinessBlockHostingTests
         await host.StopAsync();
 
         Assert.Equal(
-            new[] { "dependency:start", "consumer:start", "consumer:stop", "dependency:stop" },
+            new[] { "consumer:start", "dependency:start", "dependency:stop", "consumer:stop" },
             events);
         // The host waits for each StopAsync, not for the block's run tail that records the final state;
         // under a synchronization context that tail continues on the thread pool.
-        var controller = host.Services.GetRequiredService<BusinessBlockController>();
-        await controller.GetCompletion(nameof(ConsumerService)).WaitAsync(TimeSpan.FromSeconds(5));
-        await controller.GetCompletion(nameof(DependencyService)).WaitAsync(TimeSpan.FromSeconds(5));
+        var controller = host.Services.GetRequiredService<BusinessBlockScheduler>();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (controller.Read().Blocks.Any(block => block.State != BusinessBlockState.Stopped))
+            await Task.Delay(5, timeout.Token);
         var blocks = host.Services.GetRequiredService<IBusinessBlockQuery>()
             .Read().Blocks.ToDictionary(static block => block.Id, StringComparer.Ordinal);
         Assert.Equal(BusinessBlockState.Stopped, blocks[nameof(DependencyService)].State);
         Assert.Equal(BusinessBlockState.Stopped, blocks[nameof(ConsumerService)].State);
         Assert.Equal(
             new[] { nameof(DependencyService) },
-            blocks[nameof(ConsumerService)].Dependencies);
+            blocks[nameof(ConsumerService)].Inputs);
     }
 
+    [Fact]
+    public async Task FailedHostedStartupDoesNotStartItsDataInputs()
+    {
+        var events = new List<string>();
+        using var host = Host.CreateDefaultBuilder()
+            .ConfigureLogging(logging => logging.ClearProviders())
+            .ConfigureServices(services =>
+            {
+                services.AddBusinessBlockHostedService<ThrowingStartService>("consumer", ["input"], ["test-output"]);
+                services.AddBusinessBlockHostedService<DependencyService>("input", [], ["test-output"], _ => new DependencyService(events));
+            }).Build();
+        await Assert.ThrowsAsync<IOException>(() => host.StartAsync().WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Empty(events);
+        // The native ETW scope starts before this test's service; close the real Host
+        // even when the later service fails to start.
+        await host.StopAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
+        Assert.Empty(scheduler.Read().Demands);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (scheduler.Read().Blocks.Any(block => block.State != BusinessBlockState.Stopped))
+            await Task.Delay(5, timeout.Token);
+    }
+
+    private sealed class ThrowingStartService : IHostedService
+    {
+        public Task StartAsync(CancellationToken cancellationToken) => throw new IOException("startup failed");
+        public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
     [Fact]
     public void QueryDoesNotConstructOrStartHostedServices()
     {
@@ -72,7 +91,7 @@ public sealed class BusinessBlockHostingTests
         using var host = Host.CreateDefaultBuilder()
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
-                services.AddBusinessBlockHostedService<LazyService>(_ =>
+                services.AddBusinessBlockHostedService<LazyService>("LazyService", [], ["test-output"], _ =>
                 {
                     constructed++;
                     return new LazyService();
@@ -83,10 +102,9 @@ public sealed class BusinessBlockHostingTests
         var snapshot = query.Read();
 
         Assert.Equal(0, constructed);
-        var block = Assert.Single(snapshot.Blocks);
+        var block = Assert.Single(snapshot.Blocks, block => block.Id == nameof(LazyService));
         Assert.Equal(nameof(LazyService), block.Id);
         Assert.Equal(BusinessBlockState.Stopped, block.State);
-        Assert.False(block.ExecutionOutstanding);
     }
 
     [Fact]

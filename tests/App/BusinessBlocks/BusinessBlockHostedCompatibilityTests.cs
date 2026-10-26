@@ -3,7 +3,6 @@ using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Hosting;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
@@ -15,67 +14,56 @@ public sealed class BusinessBlockHostedCompatibilityTests
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(5);
 
     [Fact]
-    public async Task HostStopNotifiesEveryServiceInReverseOrderWithTheSameExpiredToken()
+    public async Task HostStopNotifiesEveryServiceInItsReverseHostTurnAndLetsCleanupDrain()
     {
-        using var stopToken = new CancellationTokenSource();
         var observations = new ConcurrentQueue<StopObservation>();
         using var host = BuildHost(services =>
         {
-            services.AddBusinessBlockHostedService<FirstStopService>(_ => new FirstStopService(observations));
-            services.AddBusinessBlockHostedService<SecondStopService>(_ => new SecondStopService(observations));
-            services.AddBusinessBlockHostedService<ThirdStopService>(_ =>
-                new ThirdStopService(observations, _ => stopToken.Cancel()));
+            services.AddBusinessBlockHostedService<FirstStopService>("first", [], [], _ => new(observations));
+            services.AddBusinessBlockHostedService<SecondStopService>("second", [], [], _ => new(observations));
+            services.AddBusinessBlockHostedService<ThirdStopService>("third", [], [], _ => new(observations));
         });
 
         await host.StartAsync();
-        _ = await Record.ExceptionAsync(() => host.StopAsync(stopToken.Token));
+        await host.StopAsync();
 
         var stopped = observations.ToArray();
         Assert.Equal(new[] { "third", "second", "first" }, stopped.Select(value => value.Name));
-        var sharedHostToken = stopped[0].Token;
         Assert.All(stopped, value =>
         {
-            Assert.Equal(sharedHostToken, value.Token);
-            Assert.True(value.Token.IsCancellationRequested);
+            Assert.Equal(CancellationToken.None, value.Token);
         });
     }
 
     [Fact]
-    public async Task DefaultHostedStopAwaitsTheOriginalStopTaskAfterCallerCancellation()
+    public async Task HostDeadlineReturnsWhileOriginalStopTaskStillOwnsCleanup()
     {
         using var hostDeadline = new CancellationTokenSource();
-        var releaseStop = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseStop = NewSignal();
         var service = new LifecycleService(_ => releaseStop.Task);
         using var host = BuildHost(services =>
-            services.AddBusinessBlockHostedService<LifecycleService>(_ => service));
-
+            services.AddBusinessBlockHostedService<LifecycleService>("service", [], [], _ => service));
         await host.StartAsync();
-        var facts = Assert.Single(host.Services.GetRequiredService<IBusinessBlockQuery>().Read().Blocks);
-        Assert.Null(facts.Policy.StopDeadline);
-
-        var hosted = Assert.Single(host.Services.GetServices<IHostedService>().Where(static service => service is not BusinessBlockDependencyLifetime));
-        var stopping = hosted.StopAsync(hostDeadline.Token);
+        var stopping = Hosted<LifecycleService>(host).StopAsync(hostDeadline.Token);
         try
         {
             await service.StopStarted.Task.WaitAsync(TestTimeout);
             hostDeadline.Cancel();
-            await Task.Delay(30);
-
-            Assert.False(stopping.IsCompleted);
-            Assert.Equal(hostDeadline.Token, service.LastStopToken);
-
-            releaseStop.TrySetResult();
             await stopping.WaitAsync(TestTimeout);
+            Assert.Equal(BusinessBlockState.Stopping,
+                host.Services.GetRequiredService<BusinessBlockScheduler>().ReadState("service"));
+            Assert.Equal(CancellationToken.None, service.LastStopToken);
+            releaseStop.TrySetResult();
+            await WaitUntilAsync(() => host.Services.GetRequiredService<BusinessBlockScheduler>()
+                .ReadState("service") == BusinessBlockState.Stopped);
         }
         finally
         {
-            hostDeadline.Cancel();
             releaseStop.TrySetResult();
-            try { await stopping.WaitAsync(TestTimeout); }
-            catch (OperationCanceledException) { }
+            await stopping.WaitAsync(TestTimeout);
         }
-
         Assert.Equal(1, service.StopCount);
+        await host.StopAsync().WaitAsync(TestTimeout);
     }
 
     [Fact]
@@ -84,142 +72,168 @@ public sealed class BusinessBlockHostedCompatibilityTests
         var failure = new TimeoutException("service-owned timeout");
         var service = new LifecycleService(_ => Task.FromException(failure));
         using var host = BuildHost(services =>
-            services.AddBusinessBlockHostedService<LifecycleService>(_ => service));
-
+            services.AddBusinessBlockHostedService<LifecycleService>("service", [], [], _ => service));
         await host.StartAsync();
-        var hosted = Assert.Single(host.Services.GetServices<IHostedService>().Where(static service => service is not BusinessBlockDependencyLifetime));
-        var thrown = await Assert.ThrowsAsync<TimeoutException>(() => hosted.StopAsync(CancellationToken.None));
-
+        var thrown = await Assert.ThrowsAsync<TimeoutException>(() => Hosted<LifecycleService>(host).StopAsync(CancellationToken.None));
         Assert.Same(failure, thrown);
         Assert.Equal(1, service.StopCount);
-        Assert.Equal(BusinessBlockTransitionOutcome.Failed,
-            Assert.Single(host.Services.GetRequiredService<IBusinessBlockQuery>().Read().Blocks).Outcome);
+        var result = host.Services.GetRequiredService<BusinessBlockDiagnosticsRegistry>().Read("service").Result;
+        Assert.Equal(BusinessBlockOutcome.Failed, result!.Outcome);
+        Assert.Equal(BusinessBlockFailureStage.Stop, result.FailureStage);
+        var hostStopError = await Record.ExceptionAsync(() => host.StopAsync().WaitAsync(TestTimeout));
+        Assert.Same(failure, hostStopError);
     }
 
     [Fact]
-    public async Task ContinueWaitingPropagatesATimeoutExceptionThrownAfterTheDeadline()
+    public async Task DisposeAfterCanceledBackgroundStopIsBoundedAndDoesNotIssueAnotherStop()
     {
-        var failure = new TimeoutException("late service-owned timeout");
-        var service = new LifecycleService(async _ =>
-        {
-            await Task.Delay(TimeSpan.FromMilliseconds(150));
-            throw failure;
-        });
-        using var host = BuildHost(
-            services => services.AddBusinessBlockHostedService<LifecycleService>(_ => service),
-            options => options.Blocks[nameof(LifecycleService)] = new BusinessBlockPolicy
-            {
-                StopDeadline = TimeSpan.FromMilliseconds(35),
-                OnTimeout = BusinessBlockTimeoutPolicy.ContinueWaiting
-            });
-
+        var release = NewSignal();
+        var worker = new GatedBackgroundService(release.Task);
+        using var cancellation = new CancellationTokenSource();
+        using var host = BuildHost(services =>
+            services.AddBusinessBlockHostedService<GatedBackgroundService>("worker", [], [], _ => worker));
         await host.StartAsync();
-        var hosted = Assert.Single(host.Services.GetServices<IHostedService>().Where(static service => service is not BusinessBlockDependencyLifetime));
-        var thrown = await Assert.ThrowsAsync<TimeoutException>(() => hosted.StopAsync(CancellationToken.None));
-
-        Assert.Same(failure, thrown);
-        Assert.Equal(1, service.StopCount);
-        Assert.Equal(BusinessBlockTransitionOutcome.Failed,
-            Assert.Single(host.Services.GetRequiredService<IBusinessBlockQuery>().Read().Blocks).Outcome);
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task DisposeAfterCanceledStopIsBoundedAndDoesNotIssueAnotherStop(bool useContinueWaitingDeadline)
-    {
-        var serviceStop = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var backgroundRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        LifecycleService? service = null;
-        GatedBackgroundService? backgroundService = null;
-        using var stopCancellation = new CancellationTokenSource();
-        var host = BuildHost(
-            services =>
-            {
-                if (useContinueWaitingDeadline)
-                {
-                    var created = new LifecycleService(_ => serviceStop.Task);
-                    service = created;
-                    services.AddBusinessBlockHostedService<LifecycleService>(_ => created);
-                }
-                else
-                {
-                    var created = new GatedBackgroundService(backgroundRelease.Task);
-                    backgroundService = created;
-                    services.AddBusinessBlockHostedService<GatedBackgroundService>(_ => created);
-                }
-            },
-            options => options.Blocks[useContinueWaitingDeadline
-                ? nameof(LifecycleService)
-                : nameof(GatedBackgroundService)] = new BusinessBlockPolicy
-                {
-                    StopDeadline = useContinueWaitingDeadline ? TimeSpan.FromMilliseconds(35) : null,
-                    OnTimeout = BusinessBlockTimeoutPolicy.ContinueWaiting
-                });
-        Task? stopTask = null;
-        Task? disposeTask = null;
-        BusinessBlockController? controller = null;
-
+        await worker.ExecutionStarted.Task.WaitAsync(TestTimeout);
+        var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
+        var stopping = Hosted<GatedBackgroundService>(host).StopAsync(cancellation.Token);
         try
         {
-            await host.StartAsync();
-            if (!useContinueWaitingDeadline) await backgroundService!.ExecutionStarted.Task.WaitAsync(TestTimeout);
-            var activeController = host.Services.GetRequiredService<BusinessBlockController>();
-            controller = activeController;
-            var hosted = Assert.Single(host.Services.GetServices<IHostedService>().Where(static service => service is not BusinessBlockDependencyLifetime));
-            var stopping = hosted.StopAsync(stopCancellation.Token);
-            stopTask = stopping;
-            var stopStarted = useContinueWaitingDeadline
-                ? service!.StopStarted.Task
-                : backgroundService!.StopStarted.Task;
-            await stopStarted.WaitAsync(TestTimeout);
-
-            if (useContinueWaitingDeadline)
-            {
-                await WaitUntilAsync(() => Assert.Single(activeController.Read().Blocks).Outcome == BusinessBlockTransitionOutcome.StopTimeout);
-                stopCancellation.Cancel();
-                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => stopping);
-            }
-            else
-            {
-                stopCancellation.Cancel();
-                await stopping.WaitAsync(TimeSpan.FromSeconds(1));
-                var facts = Assert.Single(activeController.Read().Blocks);
-                Assert.True(facts.ExecutionOutstanding);
-                Assert.Equal(stopCancellation.Token, backgroundService!.LastStopToken);
-            }
-
+            await worker.StopStarted.Task.WaitAsync(TestTimeout);
+            cancellation.Cancel();
+            await stopping.WaitAsync(TestTimeout);
+            Assert.False(worker.ExecuteTask!.IsCompleted);
+            Assert.Equal(BusinessBlockState.Stopping, scheduler.ReadState("worker"));
+            Assert.Equal(CancellationToken.None, worker.LastStopToken);
+            await host.StopAsync(cancellation.Token).WaitAsync(TestTimeout);
             var elapsed = Stopwatch.StartNew();
-            disposeTask = activeController.DisposeAsync().AsTask();
-            await disposeTask.WaitAsync(TimeSpan.FromSeconds(1));
-            elapsed.Stop();
+            await scheduler.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(1));
+            Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(1));
+            Assert.Equal(1, worker.StopCount);
+        }
+        finally { release.TrySetResult(); }
+        await WaitUntilAsync(() => scheduler.ReadState("worker") == BusinessBlockState.Stopped);
+        Assert.Equal(1, worker.StopCount);
+    }
 
-            Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(1), $"Controller disposal took {elapsed.Elapsed}.");
-            Assert.Equal(1, useContinueWaitingDeadline ? service!.StopCount : backgroundService!.StopCount);
+    [Fact]
+    public async Task WithdrawalDuringStartWaitsBeforeCallingOriginalStop()
+    {
+        var service = new GatedStartService();
+        using var host = BuildHost(services =>
+            services.AddBusinessBlockHostedService<GatedStartService>("service", [], [], _ => service));
+        var hosted = Hosted<GatedStartService>(host);
+        var starting = hosted.StartAsync(CancellationToken.None);
+        await service.StartEntered.Task.WaitAsync(TestTimeout);
+        var stopping = hosted.StopAsync(CancellationToken.None);
+        try
+        {
+            await Task.Delay(30);
+            Assert.Equal(0, service.StopCount);
+            Assert.False(stopping.IsCompleted);
+        }
+        finally { service.ReleaseStart.TrySetResult(); }
+        await starting.WaitAsync(TestTimeout);
+        await stopping.WaitAsync(TestTimeout);
+        Assert.Equal(1, service.StopCount);
+        Assert.False(service.StartStopOverlapped);
+    }
+
+    [Fact]
+    public async Task FailedRunCleansUpBeforeReturningAndItsLateHostTurnCannotStopTheNextRun()
+    {
+        var service = new RecoverableStartService();
+        using var host = BuildHost(services =>
+            services.AddBusinessBlockHostedService<RecoverableStartService>("service", [], [], _ => service));
+        var block = host.Services.GetRequiredService<HostedBusinessBlockRegistry>().GetOrAdd("service", () => service);
+        var first = block.PrepareStart(CancellationToken.None);
+        var firstRun = block.RunAsync(new(CancellationToken.None, () => { }));
+        try
+        {
+            await service.FirstStopEntered.Task.WaitAsync(TestTimeout);
+            Assert.False(firstRun.IsCompleted);
+            Assert.False(first.Readiness.Task.IsCompleted);
+        }
+        finally { service.ReleaseFirstStop.TrySetResult(); }
+        await firstRun.WaitAsync(TestTimeout);
+        var startupError = await Assert.ThrowsAsync<IOException>(() => first.Readiness.Task);
+        Assert.Same(service.StartupError, startupError);
+        Assert.Equal(1, service.StopCount);
+
+        using var stop = new CancellationTokenSource();
+        var second = block.PrepareStart(CancellationToken.None);
+        var secondRun = block.RunAsync(new(stop.Token, () => { }));
+        try
+        {
+            await second.Readiness.Task.WaitAsync(TestTimeout);
+            Assert.True(service.IsRunning);
+            Assert.Equal(2, service.StartCount);
+
+        block.SetHostStopTurn();
+            await first.StopCompleted.Task.WaitAsync(TestTimeout);
+
+            Assert.True(service.IsRunning);
+            Assert.False(secondRun.IsCompleted);
+            Assert.Equal(1, service.StopCount);
+        }
+        finally { stop.Cancel(); }
+        await secondRun.WaitAsync(TestTimeout);
+        Assert.Equal(2, service.StopCount);
+        Assert.False(service.IsRunning);
+    }
+
+    [Fact]
+    public async Task HostStartAdoptsAnAlreadyRunningExternalDemand()
+    {
+        var service = new LifecycleService(_ => Task.CompletedTask);
+        using var host = BuildHost(services =>
+            services.AddBusinessBlockHostedService<LifecycleService>("service", [], [], _ => service));
+        var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
+        await scheduler.SetDemandAsync("external", "service", TestReason("external-start")).WaitAsync(TestTimeout);
+        try
+        {
+            await WaitUntilAsync(() => scheduler.ReadState("service") == BusinessBlockState.Running);
+            await host.StartAsync().WaitAsync(TestTimeout);
+            Assert.Equal(1, service.StartCount);
+        }
+        finally { await host.StopAsync().WaitAsync(TestTimeout); }
+        Assert.Equal(1, service.StopCount);
+    }
+
+    [Fact]
+    public async Task HostStopAwaitsTheCurrentRunAfterItsOriginalRunReturnedAndRestarted()
+    {
+        var secondStopEntered = NewSignal();
+        var releaseSecondStop = NewSignal();
+        var stopCalls = 0;
+        var service = new LifecycleService(_ =>
+        {
+            if (Interlocked.Increment(ref stopCalls) != 2) return Task.CompletedTask;
+            secondStopEntered.TrySetResult();
+            return releaseSecondStop.Task;
+        });
+        using var host = BuildHost(services =>
+            services.AddBusinessBlockHostedService<LifecycleService>("service", [], [], _ => service));
+        var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
+        Task? stopping = null;
+        try
+        {
+            await host.StartAsync().WaitAsync(TestTimeout);
+            await scheduler.SetEnabledAsync("service", false, TestReason("first-run-stop")).WaitAsync(TestTimeout);
+            await WaitUntilAsync(() => scheduler.ReadState("service") == BusinessBlockState.Stopped);
+            await scheduler.SetEnabledAsync("service", true, TestReason("second-run-start")).WaitAsync(TestTimeout);
+            await WaitUntilAsync(() => scheduler.ReadState("service") == BusinessBlockState.Running);
+            Assert.Equal(2, service.StartCount);
+
+            stopping = host.StopAsync();
+            await secondStopEntered.Task.WaitAsync(TestTimeout);
+            Assert.False(stopping.IsCompleted);
         }
         finally
         {
-            stopCancellation.Cancel();
-            serviceStop.TrySetResult();
-            backgroundRelease.TrySetResult();
-            if (stopTask is not null)
-            {
-                try { await stopTask.WaitAsync(TestTimeout); }
-                catch (OperationCanceledException) { }
-            }
-            if (disposeTask is not null) await disposeTask.WaitAsync(TestTimeout);
-            if (controller is not null)
-            {
-                try
-                {
-                    await controller.GetCompletion(useContinueWaitingDeadline
-                        ? nameof(LifecycleService)
-                        : nameof(GatedBackgroundService)).WaitAsync(TestTimeout);
-                }
-                catch (InvalidOperationException) { }
-            }
-            host.Dispose();
+            releaseSecondStop.TrySetResult();
+            await (stopping ?? host.StopAsync()).WaitAsync(TestTimeout);
         }
+        Assert.Equal(2, service.StopCount);
     }
 
     [Fact]
@@ -228,31 +242,19 @@ public sealed class BusinessBlockHostedCompatibilityTests
         var events = new ConcurrentQueue<string>();
         using var host = BuildHost(services =>
         {
+            services.AddBusinessBlockHostedService<FirstConstructedService>("first", [], [], _ =>
+            { events.Enqueue("first:construct"); return new(events); });
             services.AddSingleton<LazyAliasService>(_ =>
-            {
-                events.Enqueue("alias:construct");
-                return new LazyAliasService(events);
-            });
-            services.AddHostedServiceAlias<LazyAliasService>();
-            services.AddBusinessBlockHostedService<FirstConstructedService>(_ =>
-            {
-                events.Enqueue("first:construct");
-                return new FirstConstructedService(events);
-            });
-            services.AddBusinessBlockHostedService<SecondConstructedService>(_ =>
-            {
-                events.Enqueue("second:construct");
-                return new SecondConstructedService(events);
-            });
+            { events.Enqueue("alias:construct"); return new(events); });
+            services.AddHostedServiceAlias<LazyAliasService>("alias", [], []);
+            services.AddBusinessBlockHostedService<SecondConstructedService>("second", [], [], _ =>
+            { events.Enqueue("second:construct"); return new(events); });
         });
-
-        var hosted = host.Services.GetServices<IHostedService>().Where(static service => service is not BusinessBlockDependencyLifetime).ToArray();
-
-        Assert.Collection(events,
-            value => Assert.Equal("first:construct", value),
-            value => Assert.Equal("second:construct", value));
+        var hosted = host.Services.GetServices<IHostedService>()
+            .Where(static service => service is NonOwningHostedService<FirstConstructedService>
+                or NonOwningHostedService<LazyAliasService> or NonOwningHostedService<SecondConstructedService>).ToArray();
+        Assert.Equal(new[] { "first:construct", "second:construct" }, events);
         Assert.Equal(3, hosted.Length);
-        Assert.DoesNotContain(events, value => value.EndsWith(":start", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -263,140 +265,102 @@ public sealed class BusinessBlockHostedCompatibilityTests
         using var host = BuildHost(services =>
         {
             services.AddSingleton<LazyAliasService>(_ =>
-            {
-                events.Enqueue("alias:construct");
-                return new LazyAliasService(events);
-            });
-            services.AddHostedServiceAlias<LazyAliasService>();
-            services.AddBusinessBlockHostedService<ThrowingConstructedService>(_ =>
-            {
-                events.Enqueue("direct:construct");
-                throw failure;
-            });
+            { events.Enqueue("alias:construct"); return new(events); });
+            services.AddHostedServiceAlias<LazyAliasService>("alias", [], []);
+            services.AddBusinessBlockHostedService<ThrowingConstructedService>("direct", [], [], _ =>
+            { events.Enqueue("direct:construct"); throw failure; });
         });
-
         var thrown = await Assert.ThrowsAsync<InvalidOperationException>(() => host.StartAsync());
-
         Assert.Same(failure, thrown);
         Assert.Equal(new[] { "direct:construct" }, events);
-        Assert.DoesNotContain(events, value => value.EndsWith(":start", StringComparison.Ordinal));
     }
 
-    private static IHost BuildHost(Action<IServiceCollection> configure,
-        Action<BusinessBlockOptions>? configureOptions = null)
-        => Host.CreateDefaultBuilder()
-            .ConfigureLogging(logging => logging.ClearProviders())
-            .ConfigureServices(services =>
-            {
-                configure(services);
-                services.Configure<BusinessBlockOptions>(options =>
-                {
-                    options.MetricsInterval = null;
-                    options.Policy = new BusinessBlockPolicy { StopDeadline = null };
-                    configureOptions?.Invoke(options);
-                });
-            })
-            .Build();
-
+    private static IHost BuildHost(Action<IServiceCollection> configure) => Host.CreateDefaultBuilder()
+        .ConfigureLogging(logging => logging.ClearProviders()).ConfigureServices(configure).Build();
+    private static NonOwningHostedService<TService> Hosted<TService>(IHost host) where TService : class, IHostedService
+        => Assert.Single(host.Services.GetServices<IHostedService>().OfType<NonOwningHostedService<TService>>());
+    private static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private static BusinessBlockReason TestReason(string cause) => new(BusinessBlockRequestKind.User,
+        "hosted-compatibility-test", cause, 0);
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
-        var deadline = DateTime.UtcNow + TestTimeout;
-        while (!condition())
-        {
-            if (DateTime.UtcNow >= deadline)
-                throw new TimeoutException("The expected business-block state was not reached.");
-            await Task.Delay(5);
-        }
+        using var timeout = new CancellationTokenSource(TestTimeout);
+        while (!condition()) await Task.Delay(5, timeout.Token);
     }
 
-    private abstract class OrderedStopService(string name, ConcurrentQueue<StopObservation> observations,
-        Action<CancellationToken>? afterStop = null) : IHostedService
+    private abstract class OrderedStopService(string name, ConcurrentQueue<StopObservation> observations) : IHostedService
     {
         public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-
         public Task StopAsync(CancellationToken cancellationToken)
-        {
-            observations.Enqueue(new StopObservation(name, cancellationToken));
-            afterStop?.Invoke(cancellationToken);
-            return Task.CompletedTask;
-        }
+        { observations.Enqueue(new(name, cancellationToken)); return Task.CompletedTask; }
     }
-
-    private sealed class FirstStopService(ConcurrentQueue<StopObservation> observations)
-        : OrderedStopService("first", observations);
-
-    private sealed class SecondStopService(ConcurrentQueue<StopObservation> observations)
-        : OrderedStopService("second", observations);
-
-    private sealed class ThirdStopService(ConcurrentQueue<StopObservation> observations,
-        Action<CancellationToken> afterStop)
-        : OrderedStopService("third", observations, afterStop);
-
+    private sealed class FirstStopService(ConcurrentQueue<StopObservation> observations) : OrderedStopService("first", observations);
+    private sealed class SecondStopService(ConcurrentQueue<StopObservation> observations) : OrderedStopService("second", observations);
+    private sealed class ThirdStopService(ConcurrentQueue<StopObservation> observations) : OrderedStopService("third", observations);
     private sealed record StopObservation(string Name, CancellationToken Token);
 
-    private sealed class LifecycleService(Func<CancellationToken, Task>? stop = null) : IHostedService
+    private sealed class LifecycleService(Func<CancellationToken, Task> stop) : IHostedService
     {
-        private readonly Func<CancellationToken, Task> stopOperation = stop ?? (_ => Task.CompletedTask);
-        private int startCount;
-        private int stopCount;
-
-        public TaskCompletionSource StopStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public int StartCount => Volatile.Read(ref startCount);
-        public int StopCount => Volatile.Read(ref stopCount);
+        public TaskCompletionSource StopStarted { get; } = NewSignal();
+        public int StartCount { get; private set; }
+        public int StopCount { get; private set; }
         public CancellationToken? LastStopToken { get; private set; }
-
-        public Task StartAsync(CancellationToken cancellationToken)
-        {
-            Interlocked.Increment(ref startCount);
-            return Task.CompletedTask;
-        }
-
+        public Task StartAsync(CancellationToken cancellationToken) { StartCount++; return Task.CompletedTask; }
         public Task StopAsync(CancellationToken cancellationToken)
-        {
-            Interlocked.Increment(ref stopCount);
-            LastStopToken = cancellationToken;
-            StopStarted.TrySetResult();
-            return stopOperation(cancellationToken);
-        }
+        { StopCount++; LastStopToken = cancellationToken; StopStarted.TrySetResult(); return stop(cancellationToken); }
     }
-
     private sealed class GatedBackgroundService(Task executionRelease) : BackgroundService
     {
-        private int stopCount;
-
-        public TaskCompletionSource StopStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public TaskCompletionSource ExecutionStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public int StopCount => Volatile.Read(ref stopCount);
+        public TaskCompletionSource StopStarted { get; } = NewSignal();
+        public TaskCompletionSource ExecutionStarted { get; } = NewSignal();
+        public int StopCount { get; private set; }
         public CancellationToken? LastStopToken { get; private set; }
-
         protected override Task ExecuteAsync(CancellationToken stoppingToken)
-        {
-            ExecutionStarted.TrySetResult();
-            // Deliberately remains gated after stoppingToken is canceled so the controller
-            // can report the outstanding execution while BackgroundService.StopAsync returns.
-            return executionRelease;
-        }
-
+        { ExecutionStarted.TrySetResult(); return executionRelease; }
         public override Task StopAsync(CancellationToken cancellationToken)
-        {
-            Interlocked.Increment(ref stopCount);
-            LastStopToken = cancellationToken;
-            StopStarted.TrySetResult();
-            return base.StopAsync(cancellationToken);
-        }
+        { StopCount++; LastStopToken = cancellationToken; StopStarted.TrySetResult(); return base.StopAsync(cancellationToken); }
     }
-
-    private abstract class ConstructionService(ConcurrentQueue<string> events, string name) : IHostedService
+    private sealed class GatedStartService : IHostedService
     {
+        public TaskCompletionSource StartEntered { get; } = NewSignal();
+        public TaskCompletionSource ReleaseStart { get; } = NewSignal();
+        public int StopCount { get; private set; }
+        public bool StartStopOverlapped { get; private set; }
+        private bool starting;
+        public async Task StartAsync(CancellationToken cancellationToken)
+        { starting = true; StartEntered.TrySetResult(); await ReleaseStart.Task; starting = false; }
+        public Task StopAsync(CancellationToken cancellationToken)
+        { StopCount++; StartStopOverlapped = starting; return Task.CompletedTask; }
+    }
+    private sealed class RecoverableStartService : IHostedService
+    {
+        public IOException StartupError { get; } = new("first startup failed");
+        public TaskCompletionSource FirstStopEntered { get; } = NewSignal();
+        public TaskCompletionSource ReleaseFirstStop { get; } = NewSignal();
+        public int StartCount { get; private set; }
+        public int StopCount { get; private set; }
+        public bool IsRunning { get; private set; }
         public Task StartAsync(CancellationToken cancellationToken)
         {
-            events.Enqueue(name + ":start");
+            StartCount++;
+            IsRunning = true;
+            if (StartCount == 1) throw StartupError;
             return Task.CompletedTask;
         }
-
+        public Task StopAsync(CancellationToken cancellationToken)
+        {
+            StopCount++;
+            IsRunning = false;
+            if (StopCount != 1) return Task.CompletedTask;
+            FirstStopEntered.TrySetResult();
+            return ReleaseFirstStop.Task;
+        }
+    }
+    private abstract class ConstructionService(ConcurrentQueue<string> events, string name) : IHostedService
+    {
+        public Task StartAsync(CancellationToken cancellationToken) { events.Enqueue(name + ":start"); return Task.CompletedTask; }
         public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }
-
     private sealed class LazyAliasService(ConcurrentQueue<string> events) : ConstructionService(events, "alias");
     private sealed class FirstConstructedService(ConcurrentQueue<string> events) : ConstructionService(events, "first");
     private sealed class SecondConstructedService(ConcurrentQueue<string> events) : ConstructionService(events, "second");

@@ -148,10 +148,10 @@ public sealed partial class LoopbackApiAccessTests
         fixture.Administrator.ThrowIfCalled = true;
         var query = fixture.App.Services.GetRequiredService<IBusinessBlockQuery>();
         var before = query.Read();
-        var metricsBefore = before.Blocks.Select(block => new
+        var diagnostics = fixture.App.Services.GetRequiredService<ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks.BusinessBlockDiagnosticsRegistry>();
+        var metricsBefore = diagnostics.ReadAll().Select(block => new
         {
             block.Id,
-            block.Metrics.SampledAt,
             block.Metrics.TotalCpuTime,
             block.Metrics.TotalAllocatedBytes,
             ActiveThreadCount = block.Metrics.ActiveThreads.Count
@@ -162,21 +162,21 @@ public sealed partial class LoopbackApiAccessTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.True(response.Headers.CacheControl?.NoStore);
         using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        var payloadBlocks = payload.RootElement.GetProperty("blocks").EnumerateArray().ToArray();
+        var scheduling = payload.RootElement.GetProperty("scheduling");
+        var payloadBlocks = scheduling.GetProperty("blocks").EnumerateArray().ToArray();
+        Assert.True(payload.RootElement.TryGetProperty("diagnostics", out _));
         var after = query.Read();
         Assert.Equal(before.History.ToArray(), after.History.ToArray());
-        Assert.Equal(after.History.Count, payload.RootElement.GetProperty("history").GetArrayLength());
+        Assert.Equal(after.History.Count, scheduling.GetProperty("history").GetArrayLength());
         Assert.Equal(before.Blocks.Select(block => block.Id).OrderBy(id => id, StringComparer.Ordinal),
             after.Blocks.Select(block => block.Id).OrderBy(id => id, StringComparer.Ordinal));
         Assert.All(after.Blocks, static block =>
         {
             Assert.Equal(BusinessBlockState.Stopped, block.State);
-            Assert.False(block.ExecutionOutstanding);
         });
-        Assert.Equal(metricsBefore, after.Blocks.Select(block => new
+        Assert.Equal(metricsBefore, diagnostics.ReadAll().Select(block => new
         {
             block.Id,
-            block.Metrics.SampledAt,
             block.Metrics.TotalCpuTime,
             block.Metrics.TotalAllocatedBytes,
             ActiveThreadCount = block.Metrics.ActiveThreads.Count
@@ -187,7 +187,7 @@ public sealed partial class LoopbackApiAccessTests
         Assert.All(payloadBlocks, static block =>
         {
             Assert.Equal((int)BusinessBlockState.Stopped, block.GetProperty("state").GetInt32());
-            Assert.False(block.GetProperty("executionOutstanding").GetBoolean());
+            Assert.False(block.TryGetProperty("metrics", out _));
         });
         Assert.Equal(0, fixture.Administrator.Calls);
         Assert.Equal(0, fixture.Sampler.Captures);

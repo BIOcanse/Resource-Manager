@@ -186,11 +186,14 @@ internal sealed class TraceEventSessionProcessingRuntime(
     IEtwConsumerThreadObserver? consumerThreadObserver = null,
     string blockId = "etw-consumer") : IKernelEtwSessionRuntime
 {
+    private Microsoft.Diagnostics.Tracing.ETWTraceEventSource? source;
     private Task? processingTask;
     private Thread? consumerThread;
     private int processing;
     private readonly object stopGate = new();
     private KernelEtwSessionStopResult? stopResult;
+    private bool stopAttempted;
+    private bool disposed;
 
     public bool IsProcessing => Volatile.Read(ref processing) != 0;
 
@@ -202,7 +205,7 @@ internal sealed class TraceEventSessionProcessingRuntime(
     {
         lock (stopGate)
         {
-            ObjectDisposedException.ThrowIf(stopResult is not null, this);
+            ObjectDisposedException.ThrowIf(disposed || stopResult is not null, this);
             if (keywordControl is null || dispatcher is null)
             {
                 throw new InvalidOperationException("This processing runtime has no kernel keyword controller.");
@@ -214,15 +217,19 @@ internal sealed class TraceEventSessionProcessingRuntime(
     public void StartProcessing(Action<Exception?> completed)
     {
         ArgumentNullException.ThrowIfNull(completed);
+        // Source is lazy and may start the native session. Capture it only when
+        // processing is requested, then retain it for terminal consumer cleanup.
+        var processingSource = session.Source;
         if (Interlocked.CompareExchange(ref processing, 1, 0) != 0)
         {
             throw new InvalidOperationException("ETW 事件处理已经启动。");
         }
 
+        source = processingSource;
         processingTask = DedicatedEtwConsumerThread.Start(
             blockId,
             session.SessionName,
-            () => session.Source.Process(),
+            () => processingSource.Process(),
             out consumerThread,
             consumerThreadObserver).ContinueWith(
                 task =>
@@ -252,6 +259,8 @@ internal sealed class TraceEventSessionProcessingRuntime(
                 return stopResult;
             }
 
+            ObjectDisposedException.ThrowIf(disposed, this);
+            stopAttempted = true;
             var failures = new List<string>();
             var sessionStopSucceeded = false;
             try
@@ -285,7 +294,7 @@ internal sealed class TraceEventSessionProcessingRuntime(
             dispatcher?.CancelAll();
             try
             {
-                session.Source.StopProcessing();
+                source?.StopProcessing();
             }
             catch (Exception ex)
             {
@@ -295,6 +304,7 @@ internal sealed class TraceEventSessionProcessingRuntime(
             var sessionDisposeSucceeded = false;
             try
             {
+                session.StopOnDispose = false;
                 session.Dispose();
                 sessionDisposeSucceeded = true;
             }
@@ -340,8 +350,40 @@ internal sealed class TraceEventSessionProcessingRuntime(
         }
     }
 
+    internal void JoinProcessing()
+    {
+        try { processingTask?.GetAwaiter().GetResult(); }
+        finally { consumerThread?.Join(); }
+    }
+
     public void Dispose()
     {
-        _ = Stop(TimeSpan.FromSeconds(2));
+        lock (stopGate)
+        {
+            if (disposed) return;
+            var failures = new List<Exception>();
+            if (!stopAttempted)
+            {
+                try { _ = Stop(TimeSpan.FromSeconds(2)); }
+                catch (Exception ex) { failures.Add(ex); }
+            }
+
+            // Terminal disposal releases this process's consumer even when native
+            // session control was denied. Closing its trace handle is safe while
+            // Process runs; StopProcessing alone may wait indefinitely for an event.
+            // This does not prove that the provider's native session was stopped.
+            try { dispatcher?.CancelAll(); }
+            catch (Exception ex) { failures.Add(ex); }
+            session.StopOnDispose = false;
+            try { source?.Dispose(); }
+            catch (Exception ex) { failures.Add(ex); }
+            try { session.Dispose(); }
+            catch (Exception ex) { failures.Add(ex); }
+            try { JoinProcessing(); }
+            catch (Exception ex) { failures.Add(ex); }
+            disposed = true;
+            if (failures.Count > 0)
+                throw new AggregateException("The local ETW consumer failed during terminal disposal.", failures);
+        }
     }
 }

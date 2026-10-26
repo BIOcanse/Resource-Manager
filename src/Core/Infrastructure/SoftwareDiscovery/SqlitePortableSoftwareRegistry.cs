@@ -26,7 +26,8 @@ public sealed class SqlitePortableSoftwareRegistry(
         throwOnInvalidBytes: true);
 
     private readonly SemaphoreSlim operationGate = new(1, 1);
-    private readonly Channel<bool> writerSignals = Channel.CreateBounded<bool>(
+    private Channel<bool> writerSignals = CreateWriterSignals();
+    private static Channel<bool> CreateWriterSignals() => Channel.CreateBounded<bool>(
         new BoundedChannelOptions(1)
         {
             SingleReader = true,
@@ -37,6 +38,7 @@ public sealed class SqlitePortableSoftwareRegistry(
     private RegistryContext? pendingContextClose;
     private CancellationTokenSource? writerCts;
     private Task? writerTask;
+    private Action<CompiledRuntimePlan>? publicationHandler;
     private bool started;
     private bool disposed;
 
@@ -44,32 +46,58 @@ public sealed class SqlitePortableSoftwareRegistry(
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        ThrowIfDisposed();
-        if (started)
+        await operationGate.WaitAsync(cancellationToken);
+        try
         {
-            return;
-        }
+            ThrowIfDisposed();
+            if (started) return;
+            if (writerTask is { IsCompleted: false })
+                throw new InvalidOperationException("The preceding portable registry writer has not drained.");
 
-        await database.EnsureInitializedAsync(cancellationToken);
-        await ApplyPlanAsync(
-            runtimePlanProvider.Current.HostManager.RequirePublished(),
-            cancellationToken,
-            throwOnFailure: true);
-        writerCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        writerTask = Task.Run(() => RunWriterAsync(writerCts.Token), CancellationToken.None);
-        runtimePlanProvider.Published += OnPublished;
-        started = true;
+            await database.EnsureInitializedAsync(cancellationToken);
+            await ApplyPlanCoreAsync(
+                runtimePlanProvider.Current.HostManager.RequirePublished(),
+                cancellationToken,
+                throwOnFailure: true);
+            writerCts?.Dispose();
+            var runSignals = writerSignals = CreateWriterSignals();
+            writerCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var writerToken = writerCts.Token;
+            writerTask = Task.Run(() => RunWriterAsync(runSignals, writerToken), CancellationToken.None);
+            Action<CompiledRuntimePlan> handler = null!;
+            handler = plan => OnPublished(plan, handler);
+            publicationHandler = handler;
+            runtimePlanProvider.Published += handler;
+            started = true;
+        }
+        finally { operationGate.Release(); }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        if (!started)
+        await operationGate.WaitAsync(cancellationToken);
+        try
         {
-            return;
+            if (!started && writerTask is null) return;
+            DetachPublication();
+            writerSignals.Writer.TryComplete();
         }
-
-        runtimePlanProvider.Published -= OnPublished;
-        started = false;
+        finally { operationGate.Release(); }
+        var cts = writerCts;
+        cts?.Cancel();
+        if (writerTask is { } task)
+        {
+            try { await task.WaitAsync(cancellationToken); }
+            catch (OperationCanceledException) when (task.IsCompleted) { }
+            finally
+            {
+                if (task.IsCompleted && ReferenceEquals(writerCts, cts))
+                {
+                    writerCts = null;
+                    cts?.Dispose();
+                }
+            }
+        }
         await operationGate.WaitAsync(cancellationToken);
         try
         {
@@ -81,19 +109,6 @@ public sealed class SqlitePortableSoftwareRegistry(
         finally
         {
             operationGate.Release();
-        }
-
-        writerSignals.Writer.TryComplete();
-        writerCts?.Cancel();
-        if (writerTask is { } task)
-        {
-            try
-            {
-                await task.WaitAsync(cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-            }
         }
     }
 
@@ -250,18 +265,19 @@ public sealed class SqlitePortableSoftwareRegistry(
 
     public void Dispose()
     {
-        if (disposed)
+        operationGate.Wait();
+        try
         {
-            return;
+            if (disposed) return;
+            DetachPublication();
+            writerSignals.Writer.TryComplete();
         }
-
-        if (started)
-        {
-            runtimePlanProvider.Published -= OnPublished;
-            started = false;
-        }
+        finally { operationGate.Release(); }
         writerCts?.Cancel();
+        try { writerTask?.GetAwaiter().GetResult(); }
+        catch (OperationCanceledException) { }
         writerCts?.Dispose();
+        writerCts = null;
         operationGate.Wait();
         try
         {
@@ -273,7 +289,8 @@ public sealed class SqlitePortableSoftwareRegistry(
         finally
         {
             operationGate.Release();
-            if (disposed) operationGate.Dispose();
+            // A publisher may still hold a captured delegate. Keep its admission
+            // gate usable so it can observe retirement without touching resources.
         }
     }
 
@@ -283,11 +300,23 @@ public sealed class SqlitePortableSoftwareRegistry(
         pendingContextClose = null;
     }
 
-    private void OnPublished(CompiledRuntimePlan plan)
+    // Called only while operationGate is held. Unsubscription alone cannot
+    // revoke a delegate already captured by RuntimePlanProvider.Publish.
+    private void DetachPublication()
     {
+        if (publicationHandler is { } handler)
+            runtimePlanProvider.Published -= handler;
+        publicationHandler = null;
+        started = false;
+    }
+
+    private void OnPublished(CompiledRuntimePlan plan, Action<CompiledRuntimePlan> handler)
+    {
+        operationGate.Wait();
         try
         {
-            ApplyPlanAsync(
+            if (disposed || !ReferenceEquals(publicationHandler, handler)) return;
+            ApplyPlanCoreAsync(
                 plan.HostManager.RequirePublished(),
                 CancellationToken.None,
                 throwOnFailure: false).GetAwaiter().GetResult();
@@ -298,14 +327,14 @@ public sealed class SqlitePortableSoftwareRegistry(
                 ex,
                 "Host Manager portable-software-registry plan apply failed; the prior native session remains active.");
         }
+        finally { operationGate.Release(); }
     }
 
-    private async Task ApplyPlanAsync(
+    private async Task ApplyPlanCoreAsync(
         CompiledHostManagerPlan hostPlan,
         CancellationToken cancellationToken,
         bool throwOnFailure)
     {
-        await operationGate.WaitAsync(cancellationToken);
         try
         {
             ClosePendingContext();
@@ -367,10 +396,6 @@ public sealed class SqlitePortableSoftwareRegistry(
                 ex,
                 "Host Manager portable-software-registry plan apply failed; the prior native session remains active.");
         }
-        finally
-        {
-            operationGate.Release();
-        }
     }
 
     private RegistryContext CreateContext(
@@ -416,13 +441,13 @@ public sealed class SqlitePortableSoftwareRegistry(
         }
     }
 
-    private async Task RunWriterAsync(CancellationToken cancellationToken)
+    private async Task RunWriterAsync(Channel<bool> runSignals, CancellationToken cancellationToken)
     {
         try
         {
-            while (await writerSignals.Reader.WaitToReadAsync(cancellationToken))
+            while (await runSignals.Reader.WaitToReadAsync(cancellationToken))
             {
-                while (writerSignals.Reader.TryRead(out _))
+                while (runSignals.Reader.TryRead(out _))
                 {
                 }
 

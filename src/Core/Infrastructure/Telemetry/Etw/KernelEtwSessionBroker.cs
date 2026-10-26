@@ -6,7 +6,10 @@ namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 /// <summary>Host retry/lifetime adapter over the single SDK session resource owner.</summary>
 public sealed class KernelEtwSessionBroker : BackgroundService, IKernelEtwSessionBroker
 {
+    private readonly object lifetimeGate = new();
     private readonly KernelEtwSessionOwner owner;
+    private bool disposed;
+    private int stoppingRuns;
     private readonly TimeSpan reconciliationInterval;
     private readonly IBusinessBlockDiagnostics? blockDiagnostics;
     public KernelEtwSessionBroker(ILogger<KernelEtwSessionBroker> logger,
@@ -44,6 +47,46 @@ public sealed class KernelEtwSessionBroker : BackgroundService, IKernelEtwSessio
         }, value.Exception, value.MessageTemplate, value.Arguments.ToArray());
     public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request) => owner.Subscribe(request);
     public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
+    public override Task StartAsync(CancellationToken cancellationToken)
+    {
+        lock (lifetimeGate)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            if (stoppingRuns != 0 || ExecuteTask is { IsCompleted: false })
+                throw new InvalidOperationException("The previous kernel ETW run has not drained.");
+            // BackgroundService can cancel its scheduled delegate before ExecuteAsync
+            // ever enters. Finish that run's resources before resuming the owner.
+            if (ExecuteTask is not null) owner.StopRun();
+            owner.ResumeRun();
+            return base.StartAsync(cancellationToken);
+        }
+    }
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        Task? execution;
+        lock (lifetimeGate)
+        {
+            execution = ExecuteTask;
+            stoppingRuns++;
+        }
+        try { await base.StopAsync(cancellationToken); }
+        finally
+        {
+            bool drainOwner;
+            lock (lifetimeGate)
+            {
+                drainOwner = ReferenceEquals(ExecuteTask, execution) && (execution is null || execution.IsCompleted);
+            }
+            try
+            {
+                if (drainOwner) owner.StopRun();
+            }
+            finally
+            {
+                lock (lifetimeGate) stoppingRuns--;
+            }
+        }
+    }
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
@@ -56,8 +99,19 @@ public sealed class KernelEtwSessionBroker : BackgroundService, IKernelEtwSessio
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+        finally { owner.StopRun(); }
+    }
+    public override void Dispose()
+    {
+        Task? execution;
+        lock (lifetimeGate)
+        {
+            disposed = true;
+            base.Dispose();
+            execution = ExecuteTask;
+        }
+        try { execution?.GetAwaiter().GetResult(); }
+        catch (OperationCanceledException) when (execution is { IsCanceled: true }) { }
         finally { owner.Dispose(); }
     }
-    public override Task StopAsync(CancellationToken cancellationToken) { owner.Dispose(); return base.StopAsync(cancellationToken); }
-    public override void Dispose() { owner.Dispose(); base.Dispose(); }
 }

@@ -48,6 +48,14 @@ public sealed class HostManagerSmartCoordinatorRuntime(
             plan,
             HostManagerDeploymentOperation.InitialCreate);
 
+    internal HostManagerDeploymentAttemptToken BeginCreate(CompiledHostManagerPlan plan)
+        => deploymentState.BeginAttempt(
+            HostManagerModuleKind.SmartCoordinator,
+            plan,
+            deploymentState.Snapshot.SmartCoordinator.AppliedPlanEpoch == 0
+                ? HostManagerDeploymentOperation.InitialCreate
+                : HostManagerDeploymentOperation.HostRecreateAndHotPublish);
+
     internal HostManagerDeploymentAttemptToken BeginHotPublish(CompiledHostManagerPlan plan)
         => deploymentState.BeginAttempt(
             HostManagerModuleKind.SmartCoordinator,

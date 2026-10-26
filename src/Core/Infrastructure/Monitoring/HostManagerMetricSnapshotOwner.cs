@@ -36,6 +36,7 @@ public sealed class HostManagerMetricSnapshotOwner :
     private ulong workspaceIdentitySequence;
     private bool started;
     private bool disposed;
+    private Action<CompiledRuntimePlan>? publishedHandler;
 
     public HostManagerMetricSnapshotOwner(
         RuntimePlanProvider planProvider,
@@ -78,35 +79,38 @@ public sealed class HostManagerMetricSnapshotOwner :
     public Task StartAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        ThrowIfDisposed();
-        if (started)
+        lock (reconfigurationGate)
         {
-            return Task.CompletedTask;
-        }
+            ThrowIfDisposed();
+            if (started) return Task.CompletedTask;
 
-        planProvider.Published += OnPublished;
-        try
-        {
-            Apply(
-                planProvider.Current.HostManager.RequirePublished(),
-                throwOnFailure: true);
-            started = true;
-            ready.TrySetResult();
-            return Task.CompletedTask;
-        }
-        catch
-        {
-            planProvider.Published -= OnPublished;
-            throw;
+            Action<CompiledRuntimePlan> handler = null!;
+            handler = plan => Apply(plan.HostManager.RequirePublished(), throwOnFailure: false, handler);
+            publishedHandler = handler;
+            planProvider.Published += handler;
+            try
+            {
+                Apply(planProvider.Current.HostManager.RequirePublished(), throwOnFailure: true, handler);
+                started = true;
+                ready.TrySetResult();
+                return Task.CompletedTask;
+            }
+            catch
+            {
+                planProvider.Published -= handler;
+                publishedHandler = null;
+                throw;
+            }
         }
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (started)
+        lock (reconfigurationGate)
         {
-            planProvider.Published -= OnPublished;
+            if (publishedHandler is { } handler) planProvider.Published -= handler;
+            publishedHandler = null;
             started = false;
         }
         return Task.CompletedTask;
@@ -324,11 +328,9 @@ public sealed class HostManagerMetricSnapshotOwner :
                 RetryWorkspaceCloses();
                 return;
             }
-            if (started)
-            {
-                planProvider.Published -= OnPublished;
-                started = false;
-            }
+            if (publishedHandler is { } handler) planProvider.Published -= handler;
+            publishedHandler = null;
+            started = false;
 
             WorkspaceHolder? previous;
             gate.EnterWriteLock();
@@ -370,14 +372,13 @@ public sealed class HostManagerMetricSnapshotOwner :
         if (failures.Count > 1) throw new AggregateException(failures);
     }
 
-    private void OnPublished(CompiledRuntimePlan plan)
-        => Apply(plan.HostManager.RequirePublished(), throwOnFailure: false);
-
-    private void Apply(CompiledHostManagerPlan hostPlan, bool throwOnFailure)
+    private void Apply(CompiledHostManagerPlan hostPlan, bool throwOnFailure,
+        Action<CompiledRuntimePlan>? expectedHandler = null)
     {
         var desired = hostPlan.MetricSnapshot;
         lock (reconfigurationGate)
         {
+            if (expectedHandler is not null && !ReferenceEquals(publishedHandler, expectedHandler)) return;
             try { RetryWorkspaceCloses(); }
             catch (Exception exception)
             {

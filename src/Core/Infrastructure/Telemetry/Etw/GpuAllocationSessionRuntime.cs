@@ -22,6 +22,7 @@ internal interface IGpuAllocationSession
     void CaptureState(Guid provider, ulong keywords);
     void Flush();
     KernelEtwSessionStopResult Stop(TimeSpan timeout);
+    void JoinProcessing();
 }
 
 internal sealed class TraceEventGpuAllocationSessionFactory(
@@ -67,16 +68,18 @@ internal sealed class TraceEventGpuAllocationSession(
         session,
         consumerThreadObserver: consumerThreadObserver,
         blockId: ConsumerBlockId);
+    private Action<TraceEvent>? eventHandler;
     public bool IsProcessing => processing.IsProcessing;
     public int EventsLost => processing.EventsLost;
     public void Bind(Action<Guid, int, IGpuAllocationPayload, DateTime> handler)
     {
         var payload = new GpuAllocationIndexedPayload();
-        session.Source.Dynamic.All += data =>
+        eventHandler = data =>
         {
             payload.SetEvent(data);
             handler(data.ProviderGuid, (int)data.ID, payload, data.TimeStamp.ToUniversalTime());
         };
+        session.Source.Dynamic.All += eventHandler;
     }
     public void StartProcessing(Action<Exception?> completed) => processing.StartProcessing(completed);
     public void EnableProvider(Guid provider, ulong keywords = 0, int[]? eventIds = null)
@@ -91,5 +94,19 @@ internal sealed class TraceEventGpuAllocationSession(
         => GpuAllocationBoundary.Instance.BeginScan(sessionName, scan, eventsLost);
     public void EndScan(string sessionName, long scan) => GpuAllocationBoundary.Instance.EndScan(sessionName, scan);
     public void Flush() => session.Flush();
-    public KernelEtwSessionStopResult Stop(TimeSpan timeout) => processing.Stop(timeout);
+    public KernelEtwSessionStopResult Stop(TimeSpan timeout)
+    {
+        KernelEtwSessionStopResult release;
+        try
+        {
+            if (eventHandler is { } handler) session.Source.Dynamic.All -= handler;
+            eventHandler = null;
+        }
+        finally
+        {
+            release = processing.Stop(timeout);
+        }
+        return release;
+    }
+    public void JoinProcessing() => processing.JoinProcessing();
 }

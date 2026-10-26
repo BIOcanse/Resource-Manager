@@ -71,8 +71,10 @@ public sealed class NormalReadOnlyServiceGraphTests
         var hostedServices = host.Services.GetServices<IHostedService>().Where(static service => service is not BusinessBlockDependencyLifetime).ToArray();
 
         Assert.Same(StartupCapabilitySet.NormalReadOnly, capabilities);
-        Assert.IsType<NonOwningHostedService<RuntimeSpecializationCoordinator>>(
+        Assert.IsType<NonOwningHostedService<NativeEtwLifetimeService>>(
             hostedServices[0]);
+        Assert.IsType<NonOwningHostedService<RuntimeSpecializationCoordinator>>(
+            hostedServices[1]);
         Assert.DoesNotContain(hostedServices, static service =>
             service is ResourceManagerDatabaseInitializer
             or SqliteLegacyDataImportHostedService
@@ -162,11 +164,11 @@ public sealed class NormalReadOnlyServiceGraphTests
         var hostedServices = host.Services.GetServices<IHostedService>().Where(static service => service is not BusinessBlockDependencyLifetime).ToArray();
 
         Assert.Contains(hostedServices, static service =>
-            service is NonOwningHostedService<ResourceManagerDatabaseInitializer>);
+            service is SerialHostedService<ResourceManagerDatabaseInitializer>);
         Assert.Contains(hostedServices, static service =>
-            service is NonOwningHostedService<SqliteLegacyDataImportHostedService>);
+            service is SerialHostedService<SqliteLegacyDataImportHostedService>);
         Assert.Contains(hostedServices, static service =>
-            service is NonOwningHostedService<GpuLaunchInterceptionReconciler>);
+            service is SerialHostedService<GpuLaunchInterceptionReconciler>);
         Assert.DoesNotContain(hostedServices, static service => service.GetType().Name == "GpuGraphicsApiDiscoveryService");
         AssertHostedAlias<SqlitePortableSoftwareRegistry>(hostedServices);
         AssertHostedAlias<HostManagerOperationCoordinatorOwner>(hostedServices);
@@ -184,7 +186,7 @@ public sealed class NormalReadOnlyServiceGraphTests
         Assert.Same(
             host.Services.GetRequiredService<SqliteSoftwareFileIndex>(),
             host.Services.GetRequiredService<ISoftwareFileIndexRefresher>());
-        AssertHostedAlias<SharedMemoryPublicResourceBroker>(hostedServices);
+        Assert.Contains(hostedServices, static service => service is SerialHostedService<SharedMemoryPublicResourceBroker>);
         AssertHostedAlias<SharedResourceSubscriptionMaintenanceService>(hostedServices);
     }
 
@@ -202,7 +204,6 @@ public sealed class NormalReadOnlyServiceGraphTests
         Assert.All(blocks, static block =>
         {
             Assert.Equal(BusinessBlockState.Stopped, block.State);
-            Assert.False(block.ExecutionOutstanding);
         });
     }
 

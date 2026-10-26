@@ -7,24 +7,28 @@ namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 public sealed partial class PresentFrameEtwSource
 {
     private PresentRun? activeRun;
-    private TaskCompletionSource startup = NewSignal();
+    internal const string AvailabilityFact = "native-session-available:" + BusinessBlockId;
+    private bool nativeSessionAvailable = true;
+    private TaskCompletionSource<PresentRun> nextRun = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public Task Started { get { lock (lifecycle) return startup.Task; } }
-
-    public Task<BusinessBlockResult> RunAsync(CancellationToken stopNotification)
+    public Task RunAsync(BusinessBlockRunContext context)
     {
         PresentRun run;
         lock (lifecycle)
         {
             if (activeRun is not null) throw new InvalidOperationException("Present already has an active run.");
-            activeRun = run = new PresentRun();
-            startup = run.Started;
+            activeRun = run = new PresentRun(context.StopNotification);
+            nextRun.TrySetResult(run);
+            nextRun = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            diagnostics.BeginRun(BusinessBlockId);
         }
-        return RunSessionAsync(run, stopNotification);
+        return RunSessionAsync(run, context);
     }
 
-    private async Task<BusinessBlockResult> RunSessionAsync(PresentRun run, CancellationToken stopNotification)
+    private async Task RunSessionAsync(PresentRun run, BusinessBlockRunContext context)
     {
+        await Task.Yield();
+        var stopNotification = context.StopNotification;
         var stop = NewSignal();
         using var notification = stopNotification.Register(() =>
         {
@@ -37,8 +41,9 @@ public sealed partial class PresentFrameEtwSource
         {
             lock (lifecycle)
             {
-                using var measurement = controller.MeasureSegment("present-etw");
+                using var measurement = diagnostics.MeasureSegment(BusinessBlockId);
                 ObjectDisposedException.ThrowIf(disposed, this);
+                stopNotification.ThrowIfCancellationRequested();
                 if (session is not null || flushTimer is not null)
                     throw new InvalidOperationException("The previous Present runtime has not been released.");
                 var name = ResourceManagerEtwSessionNames.Create(
@@ -54,14 +59,15 @@ public sealed partial class PresentFrameEtwSource
                 {
                     if (Volatile.Read(ref run.Accepting) != 0 && ReferenceEquals(Volatile.Read(ref session), current)) OnEvent(data);
                 });
-                Volatile.Write(ref frameLeases, frameSubscriptions.Count(subscription => !subscription.Released.IsCompleted));
+                Volatile.Write(ref frameLeases, frameSubscriptions.Count);
                 UpdateProviders(current, null);
-                run.Processing = DedicatedEtwConsumerThread.Start("present-etw", name, () =>
+                run.Processing = DedicatedEtwConsumerThread.Start(BusinessBlockId, name, () =>
                 {
                     try { current.Process(); }
                     catch (OperationCanceledException) when (stopNotification.IsCancellationRequested) { }
                 }, out run.ConsumerThread, consumerThreadObserver);
                 flushTimer = timeProvider.CreateTimer(_ => Flush(current), null, FlushInterval, FlushInterval);
+                context.ReportRunning();
                 run.Started.TrySetResult();
             }
             stage = BusinessBlockFailureStage.Run;
@@ -73,8 +79,15 @@ public sealed partial class PresentFrameEtwSource
                 result = BusinessBlockResult.Done;
             }
         }
+        catch (OperationCanceledException) when (stopNotification.IsCancellationRequested)
+        {
+            run.Started.TrySetCanceled(stopNotification);
+        }
         catch (Exception error)
         {
+            ObservePermissionFailure(run, error);
+            if (error is KernelEtwSessionCreationCleanupException)
+                SetAvailability(false, "session-start-unavailable");
             run.Started.TrySetException(error);
             InvalidateCurrent();
             result = BusinessBlockResult.Failed(error, stage);
@@ -91,32 +104,34 @@ public sealed partial class PresentFrameEtwSource
                 }
                 catch (Exception error)
                 {
-                    controller.ReportFailure("present-etw", error, "flush-timer-stop");
+                    SetAvailability(false, "flush-timer-release-unconfirmed");
+                    diagnostics.ReportFailure(BusinessBlockId, error, "flush-timer-stop");
                     result = BusinessBlockResult.Failed(error, BusinessBlockFailureStage.Stop);
                 }
             }
             var released = false;
             try
             {
-                using (controller.MeasureSegment("present-etw")) run.Session?.Dispose();
+                using (diagnostics.MeasureSegment(BusinessBlockId)) run.Session?.Dispose();
                 released = true;
             }
             catch (Exception error)
             {
-                controller.ReportFailure("present-etw", error, "session-stop");
+                SetAvailability(false, "session-release-unconfirmed");
+                diagnostics.ReportFailure(BusinessBlockId, error, "session-stop");
                 result = BusinessBlockResult.Failed(error, BusinessBlockFailureStage.Stop);
             }
             try
             {
                 if (run.Processing is { } processing) await processing.ConfigureAwait(false);
             }
-            catch (Exception error) { result = BusinessBlockResult.Failed(error); }
+            catch (Exception error) { ObservePermissionFailure(run, error); result = BusinessBlockResult.Failed(error); }
             // Awaiting Process completion alone does not prove that the original
-            // dedicated thread has exited. The controller owns any stop deadline.
+            // dedicated thread has exited. This block owns native thread cleanup.
             run.ConsumerThread?.Join();
             lock (lifecycle)
             {
-                using var measurement = controller.MeasureSegment("present-etw");
+                using var measurement = diagnostics.MeasureSegment(BusinessBlockId);
                 if (released && ReferenceEquals(session, run.Session)) session = null;
                 lock (gate)
                 {
@@ -133,21 +148,45 @@ public sealed partial class PresentFrameEtwSource
                     }
                 }
                 activeRun = null;
+                diagnostics.RecordResult(BusinessBlockId, result);
+                run.Completed.TrySetResult();
             }
+            if (released && run.Session is not null && flushTimer is null && !Volatile.Read(ref run.PermissionDenied))
+                SetAvailability(true, "session-release-confirmed");
         }
-        return result;
+    }
+
+    internal Task PublishAvailabilityAsync()
+        => controller.SetFactAsync(AvailabilityFact, Volatile.Read(ref nativeSessionAvailable),
+            new(BusinessBlockRequestKind.Dependency, BusinessBlockId, "native-session-availability", controller.CurrentPlanVersion));
+
+    private void SetAvailability(bool available, string cause)
+    {
+        Volatile.Write(ref nativeSessionAvailable, available);
+        _ = controller.SetFactAsync(AvailabilityFact, available,
+            new(BusinessBlockRequestKind.Dependency, BusinessBlockId, cause, controller.CurrentPlanVersion));
     }
 
     private void SignalFailure(Exception error)
     {
         var run = Volatile.Read(ref activeRun);
         if (run is null) return;
+        if (error is UnauthorizedAccessException) Volatile.Write(ref run.PermissionDenied, true);
         Interlocked.Exchange(ref run.Accepting, 0);
-        if (run.Failure.TrySetResult(error))
+        var firstFailure = run.Failure.TrySetResult(error);
+        ObservePermissionFailure(run, error);
+        if (firstFailure)
         {
             InvalidateCurrent();
-            controller.ReportFailure("present-etw", error, "present-output");
+            diagnostics.ReportFailure(BusinessBlockId, error, "present-output");
         }
+    }
+
+    private void ObservePermissionFailure(PresentRun run, Exception error)
+    {
+        if (error is not UnauthorizedAccessException) return;
+        Volatile.Write(ref run.PermissionDenied, true);
+        SetAvailability(false, "native-session-permission");
     }
 
     private void InvalidateCurrent()
@@ -172,7 +211,7 @@ public sealed partial class PresentFrameEtwSource
         {
             if (!frameSubscriptions.Remove(subscription)) return;
             var previous = frameLeases;
-            Volatile.Write(ref frameLeases, frameSubscriptions.Count(value => !value.Released.IsCompleted));
+            Volatile.Write(ref frameLeases, frameSubscriptions.Count);
             UpdateOutputDemand(previous);
         }
         subscription.Dependency.Dispose();
@@ -190,8 +229,30 @@ public sealed partial class PresentFrameEtwSource
         foreach (var subscription in subscriptions) subscription.Dispose();
     }
 
-    private sealed class PresentRun
+    private async Task AwaitReadyAsync(Task dispatch)
     {
+        await dispatch.ConfigureAwait(false);
+        Task<PresentRun> pending;
+        lock (lifecycle) pending = activeRun is { StopNotification.IsCancellationRequested: false } current
+            ? Task.FromResult(current) : nextRun.Task;
+        var run = await pending.ConfigureAwait(false);
+        await run.Started.Task.ConfigureAwait(false);
+    }
+
+    private async Task AwaitReleasedAsync(Task dispatch)
+    {
+        await dispatch.ConfigureAwait(false);
+        Task drain;
+        lock (lifecycle) drain = activeRun is { StopNotification.IsCancellationRequested: true } current
+            ? current.Completed.Task : Task.CompletedTask;
+        await drain.ConfigureAwait(false);
+    }
+
+    private sealed class PresentRun(CancellationToken stopNotification)
+    {
+        internal bool PermissionDenied;
+        internal CancellationToken StopNotification { get; } = stopNotification;
+        internal TaskCompletionSource Completed { get; } = NewSignal();
         internal int Accepting = 1;
         internal TaskCompletionSource Started { get; } = NewSignal();
         internal TaskCompletionSource<Exception> Failure { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -204,16 +265,19 @@ public sealed partial class PresentFrameEtwSource
     {
         private PresentFrameEtwSource? owner;
         private readonly IBusinessBlockDependency dependency;
+        private readonly PresentFrameEtwSource source;
+        private Task? released;
         internal FrameSubscription(PresentFrameEtwSource owner, IBusinessBlockDependency dependency)
         {
             this.owner = owner;
+            source = owner;
             this.dependency = dependency;
         }
         internal void ObserveRelease() => _ = dependency.Released.ContinueWith(_ => Dispose(), CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         internal IBusinessBlockDependency Dependency => dependency;
-        public Task Ready => dependency.Ready;
-        public Task Released => dependency.Released;
+        public Task Ready => source.AwaitReadyAsync(dependency.Ready);
+        public Task Released => released ??= source.AwaitReleasedAsync(dependency.Released);
         public void Dispose() => Interlocked.Exchange(ref owner, null)?.Release(this);
         public async ValueTask DisposeAsync() { Dispose(); await Released.ConfigureAwait(false); }
     }

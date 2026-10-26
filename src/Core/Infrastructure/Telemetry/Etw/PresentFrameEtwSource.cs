@@ -17,9 +17,10 @@ namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 /// </summary>
 public sealed partial class PresentFrameEtwSource(
     ILogger<PresentFrameEtwSource> logger,
-    BusinessBlockController controller,
+    BusinessBlockScheduler controller,
+    BusinessBlockDiagnosticsRegistry diagnostics,
     IEtwConsumerThreadObserver? consumerThreadObserver = null)
-    : IFrameTimingObservationSource, IResourceManagerSelfComputeZone, IBusinessBlock, IBusinessBlockStartup, IDisposable
+    : IFrameTimingObservationSource, IResourceManagerSelfComputeZone, IBusinessBlock, IDisposable
 {
     internal static readonly Guid DxgiProvider = new("CA11C036-0102-4A2D-A6AD-F03CFED5D3C9");
     internal static readonly Guid Direct3D9Provider = new("783ACA0A-790E-4D7F-8451-AA850511C6B9");
@@ -75,13 +76,15 @@ public sealed partial class PresentFrameEtwSource(
 
     public ulong ZoneKey => ZoneObjectKey;
     public string DisplayName => MonitoringSourceZoneIds.EtwPresentFrames;
+    internal const string BusinessBlockId = "present-etw";
     public ResourceManagerComputeZoneMode CurrentMode => mode;
 
     internal PresentFrameEtwSource(ILogger<PresentFrameEtwSource> logger,
-        BusinessBlockController controller,
+        BusinessBlockScheduler controller,
+        BusinessBlockDiagnosticsRegistry diagnostics,
         Func<string, IPresentFrameEtwSession> createSession,
         TimeProvider? timeProvider = null,
-        IEtwConsumerThreadObserver? consumerThreadObserver = null) : this(logger, controller, consumerThreadObserver)
+        IEtwConsumerThreadObserver? consumerThreadObserver = null) : this(logger, controller, diagnostics, consumerThreadObserver)
     {
         this.createSession = createSession;
         this.timeProvider = timeProvider ?? TimeProvider.System;
@@ -93,12 +96,11 @@ public sealed partial class PresentFrameEtwSource(
         {
             ObjectDisposedException.ThrowIf(disposed, this);
             var previousFrameLeases = frameLeases;
-            var dependency = controller.AcquireDependency("present-etw",
-                new(BusinessBlockRequestKind.Dependency, "frame-observation", "present-frame-subscription", controller.CurrentPlanVersion),
-                outputs: ["frame-timing"]);
+            var dependency = controller.AcquireDependency(BusinessBlockId,
+                new(BusinessBlockRequestKind.Dependency, "frame-observation", "present-frame-subscription", controller.CurrentPlanVersion));
             var subscription = new FrameSubscription(this, dependency);
             frameSubscriptions.Add(subscription);
-            Volatile.Write(ref frameLeases, frameSubscriptions.Count(value => !value.Released.IsCompleted));
+            Volatile.Write(ref frameLeases, frameSubscriptions.Count);
             UpdateOutputDemand(previousFrameLeases);
             subscription.ObserveRelease();
             return subscription;
@@ -148,8 +150,9 @@ public sealed partial class PresentFrameEtwSource(
         lock (lifecycle)
         {
             mode = next;
-            return controller.SetEnabledAsync("present-etw", next != ResourceManagerComputeZoneMode.Freeze,
+            var dispatch = controller.SetEnabledAsync(BusinessBlockId, next != ResourceManagerComputeZoneMode.Freeze,
                 new(BusinessBlockRequestKind.Configuration, "compute-zone", MonitoringSourceZoneIds.EtwPresentFrames, controller.CurrentPlanVersion));
+            return next == ResourceManagerComputeZoneMode.Freeze ? AwaitReleasedAsync(dispatch) : dispatch;
         }
     }
 
@@ -198,7 +201,7 @@ public sealed partial class PresentFrameEtwSource(
         if (run is null || Volatile.Read(ref run.Accepting) == 0 || !ReferenceEquals(run.Session, current)) return;
         try
         {
-            using (controller.MeasureSegment("present-etw"))
+            using (diagnostics.MeasureSegment(BusinessBlockId))
             {
                 current.Flush();
                 if (Volatile.Read(ref frameLeases) == 0) return;

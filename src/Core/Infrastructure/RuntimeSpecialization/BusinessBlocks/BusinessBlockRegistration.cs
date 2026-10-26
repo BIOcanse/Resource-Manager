@@ -6,12 +6,14 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlock
 public sealed record BusinessBlockRegistration(
     string Id, IReadOnlyList<string> Dependencies, Func<IServiceProvider, IBusinessBlock> Create)
 {
-    public bool ObservationOnly { get; init; }
-    internal bool HostedService { get; init; }
+    public string ParentId { get; init; } = BackendBlockGraph.Program;
+    public Type? HostedServiceType { get; init; }
+    public IReadOnlyList<string> Outputs { get; init; } = Array.Empty<string>();
 }
 
-// Legacy hosted StartAsync must finish before Generic Host advances to its next service.
-public interface IBusinessBlockStartup
-{
-    Task Started { get; }
-}
+/// <summary>A parent's rule reads only these declared facts and its immediate children's states.</summary>
+public sealed record BusinessBlockDecisionRegistration(string ParentId, IReadOnlyList<string> FactKeys,
+    Func<BusinessBlockDecisionInput, IReadOnlyCollection<string>> Decide);
+
+/// <summary>An observation-only component can publish diagnostics without being a runnable block.</summary>
+public sealed record BusinessBlockDiagnosticRegistration(string Id);

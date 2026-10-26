@@ -68,6 +68,7 @@ public sealed partial class WindowsHardwareMetricSampler :
     private Task? samplingTask;
     private Task? samplingDrainTask;
     private ulong? samplingRunId;
+    private Action<CompiledRuntimePlan>? runtimePlanPublished;
     private bool samplingStopInProgress;
     private long nextObservationLeaseId;
     private int disposed;
@@ -184,8 +185,7 @@ public sealed partial class WindowsHardwareMetricSampler :
         samplingWorker = new(subscriptions, demandSignal, SynchronizeCounterDemand,
             ReportSamplingWorkerFailure, TimeSpan.FromSeconds(1));
         this.runtimePlanProvider = runtimePlanProvider;
-        runtimePlanProvider.Published += OnRuntimePlanPublished;
-        OnRuntimePlanPublished(runtimePlanProvider.Current);
+        ConfigureHistoryFromCurrentPlan();
     }
 
     // Production DI selects this internal route explicitly; the ordinary
@@ -242,11 +242,21 @@ public sealed partial class WindowsHardwareMetricSampler :
         => new(owner, 1, static request => request.CacheKey, GetSubscriptionItemIds,
             CreateMetricSampleRequest, coalesceItemsIntoLatestCapture: false, createOutputScratch);
 
-    private void OnRuntimePlanPublished(CompiledRuntimePlan plan)
+    private void ConfigureHistoryFromCurrentPlan()
     {
-        _ = plan;
         using var publication = runtimePlanProvider.AcquirePublicationLease();
         publishedSnapshot.ConfigureHistory(publication.Plan.HostManager.DataHistory);
+    }
+
+    private void OnRuntimePlanPublished(ulong runId, CompiledRuntimePlan plan)
+    {
+        _ = plan;
+        lock (lifecycleGate)
+        {
+            if (runtimePlanPublished is null || samplingRunId != runId
+                || samplingStopInProgress || Volatile.Read(ref disposed) != 0) return;
+            ConfigureHistoryFromCurrentPlan();
+        }
     }
 
     public Task<HardwareMetricSnapshot> GetSnapshotAsync(
@@ -423,12 +433,19 @@ public sealed partial class WindowsHardwareMetricSampler :
                     "hardware-owner-abandoned");
             }
 
+            if (runtimePlanPublished is { } previousHandler)
+                runtimePlanProvider.Published -= previousHandler;
+            runtimePlanPublished = null;
+            using var publication = runtimePlanProvider.AcquirePublicationLease();
+            publishedSnapshot.ConfigureHistory(publication.Plan.HostManager.DataHistory);
             samplingCts?.Dispose();
             var cts = new CancellationTokenSource();
             var runId = publishedSnapshot.OpenHostedRun();
             FieldCollectionResult? completedFieldResult = null;
             samplingCts = cts;
             samplingRunId = runId;
+            runtimePlanPublished = plan => OnRuntimePlanPublished(runId, plan);
+            runtimePlanProvider.Published += runtimePlanPublished;
             samplingTask = Task.Run(
                 () => samplingWorker.RunAsync((plan, token) => TryRefreshCacheAsync(runId, plan.OwnerToken,
                     plan.Schedule, plan.Request!, plan.DueItemIds, plan.Triggers,
@@ -464,6 +481,9 @@ public sealed partial class WindowsHardwareMetricSampler :
         Task? drain;
         lock (lifecycleGate)
         {
+            if (runtimePlanPublished is { } handler)
+                runtimePlanProvider.Published -= handler;
+            runtimePlanPublished = null;
             fieldSubscriptionDelivery.RetireAll();
             snapshotSubscriptionDelivery.RetireAll();
             if (samplingRunId is { } activeRun)
@@ -495,11 +515,13 @@ public sealed partial class WindowsHardwareMetricSampler :
     public void Dispose()
     {
         var firstDisposal = Interlocked.Exchange(ref disposed, 1) == 0;
-        if (firstDisposal) runtimePlanProvider.Published -= OnRuntimePlanPublished;
 
         Task? drain = null;
         lock (lifecycleGate)
         {
+            if (runtimePlanPublished is { } handler)
+                runtimePlanProvider.Published -= handler;
+            runtimePlanPublished = null;
             if (firstDisposal)
             {
                 fieldSubscriptionDelivery.RetireAll();

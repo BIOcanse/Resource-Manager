@@ -47,7 +47,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
                 StartupCapability.PublicServiceCoordination)));
         services.AddSingleton(new RuntimePersistenceCapabilityPolicy(
             startupCapabilities.Allows(StartupCapability.MutablePersistence)));
-        services.AddHostedServiceAlias<RuntimeSpecializationCoordinator>();
+        services.AddHostedServiceAlias<RuntimeSpecializationCoordinator>(BackendBlockIds.RuntimeSpecializationCoordinator, [], ["compiled-runtime-plan"]);
         services.AddHttpClient();
         services.AddHttpClient(ProductUpdateSource.HttpClientName)
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
@@ -58,8 +58,12 @@ public static partial class ResourceManagerServiceCollectionExtensions
         {
             services.AddSingleton<IProductPackageUsage, ProductPackageUsage>();
             services.AddSingleton<IInternetConnectivity, WindowsInternetConnectivity>();
-            services.AddBusinessBlockHostedService<AutomaticProductUpdateService>();
+            services.AddBusinessBlockHostedService<AutomaticProductUpdateService>(BackendBlockIds.AutomaticProductUpdateService, [BackendBlockIds.RuntimeSpecializationCoordinator], ["update-decisions"]);
         }
+
+        RegisterHostedBusinessBlock<ResourceManager.App.Infrastructure.DeviceTopology.Snapshots.DeviceTopologySnapshotProvider>(services,
+            BackendBlockIds.DeviceTopologySnapshotProvider, [BackendBlockIds.HostManagerSamplingSubscriptionOwner], ["device-topology"],
+            parentId: BackendBlockIds.HostManagerSamplingSubscriptionOwner);
 
         services
             .AddResourceManagerRuntimeSpecialization(startupCapabilities)
@@ -82,7 +86,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
             .AddResourceManagerRuntimeIdentity()
             .AddResourceManagerDependencies();
 
-        services.AddObservedEtwBusinessBlocks();
+        services.AddEtwBusinessBlocks();
 
         return services;
     }
@@ -119,7 +123,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         // 这也是那两个服务图测试守着的东西。
         if (startupCapabilities.Allows(StartupCapability.RuntimeEffectOwners))
         {
-            services.AddBusinessBlockHostedService<ControlDesiredStateReassertion>();
+            services.AddBusinessBlockHostedService<ControlDesiredStateReassertion>(BackendBlockIds.ControlDesiredStateReassertion, [BackendBlockIds.RuntimeSpecializationCoordinator], ["reasserted-controls"]);
             /*
              * 给软件风扇曲线喂温度。
              *
@@ -129,14 +133,13 @@ public static partial class ResourceManagerServiceCollectionExtensions
              * 这台机器用不上的话它一次都不推（核心会在 describe 里说要不要），
              * 所以注册它不等于一定会跑起来。
              */
-            services.AddBusinessBlockHostedService<FanCurveTemperatureFeed>();
+            services.AddBusinessBlockHostedService<FanCurveTemperatureFeed>(BackendBlockIds.FanCurveTemperatureFeed, [BackendBlockIds.WindowsHardwareMetricSampler], ["fan-temperatures"]);
             // 实际状态的采样。和写入层分开的另一条路：它按自己的节奏读，
             // 结果原子替换进当前值，订阅端只取当前值、不触发采样。
             services.AddSingleton<ControlActualStateReader>();
             services.AddSingleton<IControlActualStateOwner>(static provider =>
                 provider.GetRequiredService<ControlActualStateReader>());
-            services.AddBusinessBlockHostedService(static provider =>
-                provider.GetRequiredService<ControlActualStateReader>());
+            services.AddBusinessBlockHostedService<ControlActualStateReader>(BackendBlockIds.ControlActualStateReader, [], ["actual-controls"], static provider => provider.GetRequiredService<ControlActualStateReader>());
         }
         else
         {

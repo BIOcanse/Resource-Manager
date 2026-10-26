@@ -88,6 +88,16 @@ public sealed partial class CpuTopologySnapshotProvider(
         }
     }
 
+    public override Task StartAsync(CancellationToken cancellationToken)
+    {
+        lock (publicationGate)
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref ownedResourcesDisposed) != 0, this);
+            stopped = false;
+        }
+        return base.StartAsync(cancellationToken);
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var worker = new NativeSamplingSubscriptionWorker<TopologyRequest, SamplingOwnerToken>(

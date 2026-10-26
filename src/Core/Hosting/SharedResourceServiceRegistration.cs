@@ -31,8 +31,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
             serviceProvider.GetRequiredService<SharedMemoryPublicResourceBroker>());
         if (startupCapabilities.Allows(StartupCapability.SharedResourceOwnership))
         {
-            services.AddHostedServiceAlias<SharedMemoryPublicResourceBroker>();
-            services.AddBusinessBlockHostedService<SharedResourceSubscriptionMaintenanceService>();
+            services.AddSerialHostedServiceAlias<SharedMemoryPublicResourceBroker>();
+            services.AddBusinessBlockHostedService<SharedResourceSubscriptionMaintenanceService>(BackendBlockIds.SharedResourceSubscriptionMaintenanceService, [], ["resource-expiration"]);
         }
         return services;
     }

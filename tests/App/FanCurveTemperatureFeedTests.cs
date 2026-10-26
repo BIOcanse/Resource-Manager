@@ -1,12 +1,75 @@
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Infrastructure.Control;
+using ResourceManager.App.Application.Metrics;
+using ResourceManager.App.Infrastructure.Control.Writers;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using System.Text.Json;
+using System.Threading.Channels;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed class FanCurveTemperatureFeedTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 2, 12, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public async Task SameFeedRestartsAndRestoresTemperatureSubscriptionAndPush()
+    {
+        var pushed = Channel.CreateUnbounded<double>();
+        using var core = new FanControlCoreClient(new FanTestEnvironment(), (_, _) => new DelegateFanSession(request =>
+        {
+            if (request.GetProperty("op").GetString() == "temp")
+                pushed.Writer.TryWrite(request.GetProperty("samples").GetProperty("cpu").GetDouble());
+            return JsonSerializer.SerializeToElement(new { ok = true, execution = "software",
+                curve = new[] { new { temperatureCelsius = 60, percent = 35 } } });
+        }));
+        await core.SendAsync("setcurve", new Dictionary<string, object?> { ["fan"] = 0 }, default);
+        Assert.True(core.NeedsTemperatures());
+        var metrics = new RestartTemperatureSource();
+        using var feed = new FanCurveTemperatureFeed(metrics, core, new HardwareMetricCatalogState());
+        for (var run = 1; run <= 2; run++)
+        {
+            metrics.Celsius = 40 + run;
+            await feed.StartAsync(default);
+            try
+            {
+                await metrics.Acquired.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+                double actual;
+                do { actual = await pushed.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)); }
+                while (actual != metrics.Celsius);
+                Assert.Equal(metrics.Celsius, actual);
+                Assert.Equal(1, metrics.Active);
+            }
+            finally { await feed.StopAsync(default); }
+            Assert.Equal(0, metrics.Active);
+            Assert.True(core.NeedsTemperatures());
+        }
+    }
+
+    private sealed class RestartTemperatureSource : IMetricSnapshotObservationSource
+    {
+        internal readonly Channel<bool> Acquired = Channel.CreateUnbounded<bool>();
+        internal double Celsius;
+        internal int Active;
+        public IDisposable AcquireSubscription(string id, MetricSampleRequest request, TimeSpan refreshInterval)
+        {
+            Assert.True(request.Includes("cpu.temperature"));
+            Interlocked.Increment(ref Active);
+            Acquired.Writer.TryWrite(true);
+            return new Lease(this);
+        }
+        public HardwareMetricSnapshot ReadLatest(MetricSampleRequest request)
+            => Snapshot(("cpu.temperature", Celsius, DateTimeOffset.UtcNow));
+        private sealed class Lease(RestartTemperatureSource owner) : IDisposable
+        {
+            private int disposed;
+            public void Dispose()
+            {
+                if (Interlocked.Exchange(ref disposed, 1) == 0) Interlocked.Decrement(ref owner.Active);
+            }
+        }
+    }
 
     [Fact]
     public void TemperatureRequestsAvoidThePerTickConstantArrayAllocation()

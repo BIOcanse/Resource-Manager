@@ -4,16 +4,25 @@ using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 
 namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
-/// <summary>Withdraws dependency leases after ordinary hosted consumers have stopped.</summary>
-public sealed class BusinessBlockDependencyLifetime(IServiceProvider services) : IHostedService
+/// <summary>Records terminal root shutdown before the original hosted-service stop turns.</summary>
+public sealed class BusinessBlockDependencyLifetime(IServiceProvider services) : IHostedLifecycleService
 {
-    public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-
-    public Task StopAsync(CancellationToken cancellationToken)
+    public Task StartAsync(CancellationToken cancellationToken)
     {
-        var controller = services.GetRequiredService<BusinessBlockController>();
-        return controller.StopDependenciesAsync(
-            new BusinessBlockReason(BusinessBlockRequestKind.Dependency, "host", "host-shutdown", controller.CurrentPlanVersion),
-            cancellationToken);
+        _ = services.GetRequiredService<BusinessBlockScheduler>();
+        return Task.CompletedTask;
     }
+
+    public Task StoppingAsync(CancellationToken cancellationToken)
+    {
+        services.GetRequiredService<HostedBusinessBlockRegistry>().BeginHostStopping();
+        var scheduler = services.GetRequiredService<BusinessBlockScheduler>();
+        return scheduler.ShutdownAsync(new BusinessBlockReason(BusinessBlockRequestKind.Configuration,
+            "generic-host", "host-shutdown", scheduler.CurrentPlanVersion));
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task StartingAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task StartedAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task StoppedAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

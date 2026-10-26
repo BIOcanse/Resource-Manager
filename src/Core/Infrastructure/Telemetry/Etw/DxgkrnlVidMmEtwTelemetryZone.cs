@@ -14,11 +14,12 @@ namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
 public sealed partial class DxgkrnlVidMmEtwTelemetryZone(
     ILogger<DxgkrnlVidMmEtwTelemetryZone> logger,
-    BusinessBlockController controller,
-    IEtwConsumerThreadObserver? consumerThreadObserver = null) : IBusinessBlock, IBusinessBlockStartup, IResourceManagerSelfComputeZone
+    BusinessBlockScheduler controller,
+    BusinessBlockDiagnosticsRegistry diagnostics,
+    IEtwConsumerThreadObserver? consumerThreadObserver = null) : IBusinessBlock, IResourceManagerSelfComputeZone
 {
     public const string ProviderStateId = "dxgkrnl-vidmm-etw";
-    internal const string BusinessBlockId = nameof(DxgkrnlVidMmEtwTelemetryZone);
+    internal const string BusinessBlockId = "DxgkrnlVidMmEtwTelemetryZone";
     private const string ProviderName = "Microsoft-Windows-DxgKrnl";
     private const ulong DxgKrnlKeywords = 0x40UL | 0x80UL | 0x10000UL | 0x100000UL | 0x200000UL | 0x20000000UL;
     private static readonly ulong ZoneObjectKey = AdapterResourceKey.FromString($"resource-manager:zone:{MonitoringSourceZoneIds.EtwDxgkrnlVidMm}");
@@ -36,27 +37,20 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone(
     public ulong ZoneKey => ZoneObjectKey;
     public string DisplayName => MonitoringSourceZoneIds.EtwDxgkrnlVidMm;
     public ResourceManagerComputeZoneMode CurrentMode => currentComputeMode;
-    public string State => controller.GetState(BusinessBlockId) switch
-    {
-        BusinessBlockState.Stopped => "Idle",
-        BusinessBlockState.Failed => "Unavailable",
-        var value => value.ToString()
-    };
-    public string Message => controller.GetState(BusinessBlockId) == BusinessBlockState.Failed ? "etw-session-failed" : string.Empty;
-
+    public string State => controller.ReadState(BusinessBlockId).ToString();
+    public string Message => diagnostics.Read(BusinessBlockId).Result?.Outcome == BusinessBlockOutcome.Failed ? "etw-session-failed" : string.Empty;
     internal DxgkrnlVidMmEtwTelemetryZone(ILogger<DxgkrnlVidMmEtwTelemetryZone> logger,
-        BusinessBlockController controller, Func<uint, IWindowsNetworkEndpointProcessLease?> openProcess,
+        BusinessBlockScheduler controller, BusinessBlockDiagnosticsRegistry diagnostics, Func<uint, IWindowsNetworkEndpointProcessLease?> openProcess,
         Func<string, IVidMmEtwSession>? createSession = null, IEtwConsumerThreadObserver? consumerThreadObserver = null)
-        : this(logger, controller, consumerThreadObserver)
+        : this(logger, controller, diagnostics, consumerThreadObserver)
     {
         this.openProcess = openProcess;
         if (createSession is not null) this.createSession = createSession;
     }
 
     public IBusinessBlockDependency AcquireSubscription(string owner, TimeSpan interval)
-        => controller.AcquireDependency(BusinessBlockId,
-            new(BusinessBlockRequestKind.Dependency, owner, "gpu-vram-residual-subscription", controller.CurrentPlanVersion),
-            interval, ["gpu-vram-residual"]);
+        => new Subscription(this, controller.AcquireDependency(BusinessBlockId,
+            new(BusinessBlockRequestKind.Dependency, owner, "gpu-vram-residual-subscription", controller.CurrentPlanVersion)));
 
     public IReadOnlyList<DxgkrnlVidMmEtwMemoryEvidence> ReadEvidence(TimeSpan evidenceWindow)
     {
@@ -81,8 +75,9 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone(
     internal Task ApplyModeAsync(ResourceManagerComputeZoneMode mode)
     {
         currentComputeMode = mode;
-        return controller.SetEnabledAsync(BusinessBlockId, mode != ResourceManagerComputeZoneMode.Freeze,
+        var dispatch = controller.SetEnabledAsync(BusinessBlockId, mode != ResourceManagerComputeZoneMode.Freeze,
             new(BusinessBlockRequestKind.Configuration, "compute-zone", MonitoringSourceZoneIds.EtwDxgkrnlVidMm, controller.CurrentPlanVersion));
+        return mode == ResourceManagerComputeZoneMode.Freeze ? AwaitReleasedAsync(dispatch) : dispatch;
     }
     private void OnDynamicEvent(TraceEvent data, ConcurrentDictionary<int, DxgkrnlVidMmEtwMemoryEvidence> currentEvidence)
     {

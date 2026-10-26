@@ -58,21 +58,21 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<RuntimeSpecializationCoordinator>();
         services.AddSingleton<IRuntimeSpecializationCoordinator>(static provider => provider.GetRequiredService<RuntimeSpecializationCoordinator>());
         services.AddSingleton<HostManagerSamplingSubscriptionOwner>();
-        services.AddHostedServiceAlias<HostManagerSamplingSubscriptionOwner>();
+        services.AddHostedServiceAlias<HostManagerSamplingSubscriptionOwner>(BackendBlockIds.HostManagerSamplingSubscriptionOwner, [BackendBlockIds.RuntimeSpecializationCoordinator], ["sampling-subscription-workspace"]);
         services.AddSingleton<HostManagerMetricSnapshotOwner>();
-        services.AddHostedServiceAlias<HostManagerMetricSnapshotOwner>();
+        services.AddHostedServiceAlias<HostManagerMetricSnapshotOwner>(BackendBlockIds.HostManagerMetricSnapshotOwner, [BackendBlockIds.RuntimeSpecializationCoordinator], ["metric-snapshots"]);
         services.AddSingleton<HostManagerSoftwareIdentityOwner>();
-        services.AddHostedServiceAlias<HostManagerSoftwareIdentityOwner>();
+        services.AddHostedServiceAlias<HostManagerSoftwareIdentityOwner>(BackendBlockIds.HostManagerSoftwareIdentityOwner, [BackendBlockIds.RuntimeSpecializationCoordinator], ["software-identities"]);
         services.AddSingleton<HostManagerFileQueryOwner>();
         services.AddSingleton<INativeFileQueryLeaseSource>(static provider =>
             provider.GetRequiredService<HostManagerFileQueryOwner>());
-        services.AddHostedServiceAlias<HostManagerFileQueryOwner>();
+        services.AddHostedServiceAlias<HostManagerFileQueryOwner>(BackendBlockIds.HostManagerFileQueryOwner, [BackendBlockIds.RuntimeSpecializationCoordinator], ["file-query-workspace"]);
         services.AddSingleton<HostManagerDisplayCoordinatorOwner>();
-        services.AddHostedServiceAlias<HostManagerDisplayCoordinatorOwner>();
+        services.AddHostedServiceAlias<HostManagerDisplayCoordinatorOwner>(BackendBlockIds.HostManagerDisplayCoordinatorOwner, [BackendBlockIds.RuntimeSpecializationCoordinator], ["display-topology"]);
         if (startupCapabilities.Allows(StartupCapability.PublicServiceCoordination))
         {
             services.AddSingleton<HostManagerPublicServiceCoordinatorOwner>();
-            services.AddHostedServiceAlias<HostManagerPublicServiceCoordinatorOwner>();
+            services.AddHostedServiceAlias<HostManagerPublicServiceCoordinatorOwner>(BackendBlockIds.HostManagerPublicServiceCoordinatorOwner, [BackendBlockIds.RuntimeSpecializationCoordinator], ["public-service-tasks"]);
         }
         if (startupCapabilities.Allows(StartupCapability.RuntimeEffectOwners))
         {
@@ -105,7 +105,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
                 provider.GetRequiredService<HostManagerOperationCoordinatorOwner>());
             services.AddSingleton<IHostManagerOperationQueryService>(static provider =>
                 provider.GetRequiredService<HostManagerOperationCoordinatorOwner>());
-            services.AddHostedServiceAlias<HostManagerOperationCoordinatorOwner>();
+            services.AddHostedServiceAlias<HostManagerOperationCoordinatorOwner>(BackendBlockIds.HostManagerOperationCoordinatorOwner, [BackendBlockIds.RuntimeSpecializationCoordinator], ["operation-results"]);
         }
         return services;
     }

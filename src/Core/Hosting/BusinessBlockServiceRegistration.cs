@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.ReadWrite.Windows.Processes.Etw;
@@ -9,104 +8,94 @@ namespace ResourceManager.App.Hosting;
 
 public static partial class ResourceManagerServiceCollectionExtensions
 {
-    // Policy can be overridden through BusinessBlocks in host configuration or Configure<BusinessBlockOptions>.
     internal static IServiceCollection AddBusinessBlockController(this IServiceCollection services)
     {
-        if (services.Any(value => value.ServiceType == typeof(BusinessBlockController))) return services;
+        if (services.Any(value => value.ServiceType == typeof(BusinessBlockScheduler))) return services;
         services.AddOptions<BusinessBlockOptions>().BindConfiguration(BusinessBlockOptions.SectionName);
-        services.TryAddSingleton<BusinessBlockController>();
-        services.TryAddSingleton<IBusinessBlockQuery>(provider => provider.GetRequiredService<BusinessBlockController>());
-        services.TryAddSingleton<IBusinessBlockDiagnostics>(provider => provider.GetRequiredService<BusinessBlockController>());
+        services.TryAddSingleton<BusinessBlockController>(provider => new(
+            provider.GetRequiredService<ILogger<BusinessBlockController>>(),
+            provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<BusinessBlockOptions>>().Value.HistoryLimit));
+        services.TryAddSingleton<BusinessBlockDiagnosticsRegistry>();
+        services.TryAddSingleton<HostedBusinessBlockRegistry>();
+        services.TryAddSingleton<BusinessBlockScheduler>();
+        services.TryAddSingleton<IBusinessBlockQuery>(provider => provider.GetRequiredService<BusinessBlockScheduler>());
+        services.TryAddSingleton<IBusinessBlockDiagnostics>(provider => provider.GetRequiredService<BusinessBlockDiagnosticsRegistry>());
         services.TryAddSingleton<IEtwConsumerThreadObserver, BusinessBlockEtwThreadObserver>();
-        // Registered before the producers' hosted consumers, so shutdown withdraws
-        // any remaining capture dependencies after those consumers have stopped.
         services.AddSingleton<IHostedService, BusinessBlockDependencyLifetime>();
+        services.TryAddSingleton<NativeEtwLifetimeService>();
+        AddHostedBlockDeclaration<NativeEtwLifetimeService>(services, BackendBlockIds.NativeEtwLifetimeService, [], []);
+        services.AddSingleton<IHostedService>(provider => new NonOwningHostedService<NativeEtwLifetimeService>(
+            provider, BackendBlockIds.NativeEtwLifetimeService, constructService: true));
         return services;
     }
 
-    internal static IServiceCollection AddBusinessBlockHostedService<TService>(this IServiceCollection services)
-        where TService : class, IHostedService
+    internal static IServiceCollection AddBusinessBlockHostedService<TService>(this IServiceCollection services,
+        string id, string[] inputs, string[] outputs, string parentId = BackendBlockGraph.Program) where TService : class, IHostedService
     {
         services.TryAddSingleton<TService>();
-        return services.AddHostedServiceAlias<TService>(constructService: true);
+        return services.AddHostedServiceAlias<TService>(id, inputs, outputs, constructService: true, parentId: parentId);
     }
 
-    internal static IServiceCollection AddBusinessBlockHostedService<TService>(this IServiceCollection services, Func<IServiceProvider, TService> factory)
-        where TService : class, IHostedService
+    internal static IServiceCollection AddBusinessBlockHostedService<TService>(this IServiceCollection services,
+        string id, string[] inputs, string[] outputs, Func<IServiceProvider, TService> factory,
+        string parentId = BackendBlockGraph.Program) where TService : class, IHostedService
     {
         services.TryAddSingleton(factory);
-        return services.AddHostedServiceAlias<TService>(constructService: true);
+        return services.AddHostedServiceAlias<TService>(id, inputs, outputs, constructService: true, parentId: parentId);
     }
 
-    internal static void RegisterHostedBusinessBlock<TService>(IServiceCollection services)
-        where TService : class, IHostedService
+    internal static void RegisterHostedBusinessBlock<TService>(IServiceCollection services,
+        string id, string[] inputs, string[] outputs, string parentId = BackendBlockGraph.Program) where TService : class, IHostedService
     {
         services.AddBusinessBlockController();
-        var id = typeof(TService).Name;
-        for (var index = 0; index < services.Count; index++)
-            if (services[index].ImplementationInstance is BusinessBlockRegistration existing && existing.Id == id)
-            {
-                services[index] = ServiceDescriptor.Singleton(existing with { HostedService = true });
-                return;
-            }
-        string[] dependencies = [];
-        services.AddSingleton(new BusinessBlockRegistration(id, dependencies,
-            provider => new HostedBusinessBlock(() => provider.GetRequiredService<TService>())) { HostedService = true });
+        AddHostedBlockDeclaration<TService>(services, id, inputs, outputs, parentId);
     }
 
-    private static IServiceCollection AddObservedEtwBusinessBlocks(this IServiceCollection services)
+    private static void AddHostedBlockDeclaration<TService>(IServiceCollection services,
+        string id, string[] inputs, string[] outputs, string parentId = BackendBlockGraph.Program) where TService : class, IHostedService
     {
-        services.AddSingleton(new BusinessBlockRegistration("present-etw", [],
-            provider => provider.GetRequiredService<PresentFrameEtwSource>()));
-        services.AddSingleton(new BusinessBlockRegistration("gpu-allocation-etw", [],
-            provider => provider.GetRequiredService<GpuAllocationCollector>()));
-        services.AddSingleton(new BusinessBlockRegistration(nameof(DxgkrnlVidMmEtwTelemetryZone), [],
-            provider => provider.GetRequiredService<DxgkrnlVidMmEtwTelemetryZone>()));
-        // This method is the complete production composition, after all capability-gated declarations.
-        // Standalone aliases intentionally declare no production prerequisites.
-        for (var index = 0; index < services.Count; index++)
+        services.AddSingleton(new BusinessBlockRegistration(id, inputs,
+            provider => provider.GetRequiredService<HostedBusinessBlockRegistry>().GetOrAdd(id, () => provider.GetRequiredService<TService>()))
+            { Outputs = outputs, HostedServiceType = typeof(TService), ParentId = parentId });
+    }
+
+    private static IServiceCollection AddEtwBusinessBlocks(this IServiceCollection services)
+    {
+        services.AddSingleton(new BusinessBlockRegistration(PresentFrameEtwSource.BusinessBlockId, [],
+            provider => provider.GetRequiredService<PresentFrameEtwSource>())
+            { ParentId = BackendBlockIds.NativeEtwLifetimeService, Outputs = ["frame-timing", "graphics-api"] });
+        services.AddSingleton(new BusinessBlockRegistration(GpuAllocationCollector.BusinessBlockId, [],
+            provider => provider.GetRequiredService<GpuAllocationCollector>())
+            { ParentId = BackendBlockIds.NativeEtwLifetimeService, Outputs = ["gpu-allocation"] });
+        services.AddSingleton(new BusinessBlockRegistration(DxgkrnlVidMmEtwTelemetryZone.BusinessBlockId, [],
+            provider => provider.GetRequiredService<DxgkrnlVidMmEtwTelemetryZone>())
+            { ParentId = BackendBlockIds.NativeEtwLifetimeService, Outputs = ["gpu-vram-residual"] });
+        var native = new[]
         {
-            if (services[index].ImplementationInstance is not BusinessBlockRegistration registration) continue;
-            string[] prerequisites = registration.Id switch
-            {
-                "RuntimeSpecializationCoordinator" or "present-etw" or "gpu-allocation-etw" or nameof(DxgkrnlVidMmEtwTelemetryZone) => [],
-                "WindowsHardwareMetricSampler" or "GpuTelemetryWorkerSupervisor" or "CpuTopologySnapshotProvider" or "DeviceTopologySnapshotProvider"
-                    => ["HostManagerSamplingSubscriptionOwner"],
-                "WindowsResourceBreakdownSampler" => ["WindowsHardwareMetricSampler", "HostManagerSamplingSubscriptionOwner", "KernelEtwSessionBroker"],
-                "PortableSoftwareDiscoveryService" => ["KernelEtwSessionBroker", "SqlitePortableSoftwareRegistry"],
-                "EtwCpuCoreResidencyReader" or "EtwSystemInterruptSnapshotSource" => ["KernelEtwSessionBroker", "HostManagerSamplingSubscriptionOwner"],
-                "EtwPhysicalDiskIoAttributionReader" or "EtwNetworkTcpIpAttributionReader" => ["KernelEtwSessionBroker"],
-                "HostManagerSmartCoordinator" or "HostManagerReportCoordinatorOwner" => ["WindowsResourceBreakdownSampler"],
-                "SharedResourceSubscriptionMaintenanceService" => ["SharedMemoryPublicResourceBroker"],
-                "SqliteLegacyDataImportHostedService" => ["ResourceManagerDatabaseInitializer", "SqlitePortableSoftwareRegistry"],
-                _ => []
-            };
-            if (registration.Id is not ("RuntimeSpecializationCoordinator" or "present-etw" or "gpu-allocation-etw" or nameof(DxgkrnlVidMmEtwTelemetryZone)))
-                prerequisites = ["RuntimeSpecializationCoordinator", .. prerequisites];
-            services[index] = ServiceDescriptor.Singleton(registration with { Dependencies = prerequisites });
-        }
-        // The discovery API can also be explicitly invoked in a read-only host without its hosted worker.
-        if (!services.Any(value => value.ImplementationInstance is BusinessBlockRegistration { Id: "PortableSoftwareDiscoveryService" }))
-            services.AddSingleton(new BusinessBlockRegistration("PortableSoftwareDiscoveryService", [],
-                _ => throw new InvalidOperationException("The discovery worker is disabled by startup configuration.")) { ObservationOnly = true });
+            (Id: PresentFrameEtwSource.BusinessBlockId, Fact: PresentFrameEtwSource.AvailabilityFact),
+            (Id: GpuAllocationCollector.BusinessBlockId, Fact: GpuAllocationCollector.AvailabilityFact),
+            (Id: DxgkrnlVidMmEtwTelemetryZone.BusinessBlockId, Fact: DxgkrnlVidMmEtwTelemetryZone.AvailabilityFact)
+        };
+        services.AddSingleton(new BusinessBlockDecisionRegistration(BackendBlockIds.NativeEtwLifetimeService,
+            native.SelectMany(value => new[] { BusinessBlockScheduler.DemandFact(value.Id), value.Fact }).ToArray(),
+            input => native.Where(value => input.Facts[BusinessBlockScheduler.DemandFact(value.Id)].Value
+                && input.Facts[value.Fact].Value).Select(value => value.Id).ToArray()));
         return services;
     }
 }
 
-internal sealed class BusinessBlockEtwThreadObserver(BusinessBlockController controller) : IEtwConsumerThreadObserver
+internal sealed class BusinessBlockEtwThreadObserver(BusinessBlockDiagnosticsRegistry diagnostics) : IEtwConsumerThreadObserver
 {
     public IDisposable RegisterCurrentThread(string blockId, string sessionName)
-        => controller.RegisterConsumerThread(Map(blockId), sessionName);
-
+        => diagnostics.RegisterConsumerThread(Map(blockId), sessionName);
     public void ReportFailure(string blockId, Exception error)
-        => controller.ReportFailure(Map(blockId), error, "etw-consumer");
-
+        => diagnostics.ReportFailure(Map(blockId), error, "etw-consumer");
     private static string Map(string blockId) => blockId switch
-        {
-            "kernel-etw" => "KernelEtwSessionBroker",
-            "vidmm-etw" => "DxgkrnlVidMmEtwTelemetryZone",
-            "present-etw" => "present-etw",
-            "gpu-allocation-etw" => "gpu-allocation-etw",
-            _ => throw new ArgumentOutOfRangeException(nameof(blockId), blockId, "Undeclared ETW business block.")
-        };
+    {
+        "kernel-etw" => BackendBlockIds.KernelEtwSessionBroker,
+        "vidmm-etw" => DxgkrnlVidMmEtwTelemetryZone.BusinessBlockId,
+        "present-etw" => PresentFrameEtwSource.BusinessBlockId,
+        "gpu-allocation-etw" => GpuAllocationCollector.BusinessBlockId,
+        _ => throw new ArgumentOutOfRangeException(nameof(blockId), blockId, "Undeclared ETW business block.")
+    };
 }

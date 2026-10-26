@@ -12,6 +12,28 @@ namespace Resource_Manager_APP.Tests;
 public sealed class CpuTopologySubscriptionTests
 {
     [Fact]
+    public async Task SameCpuTopologyProviderRestartsAndPublishesFreshCapture()
+    {
+        await using var fixture = new CpuTopologyProviderTestFixture();
+        for (var run = 1; run <= 2; run++)
+        {
+            await fixture.Reader.StartAsync(default);
+            try
+            {
+                await using var subscription = fixture.Subscribe("restart", TimeSpan.FromHours(1));
+                var next = subscription.Next();
+                Assert.Equal(run, await fixture.Sampler.WaitForCaptureAsync());
+                var snapshot = CpuTopologyProviderTestFixture.CreateSnapshot(run * 20);
+                fixture.Sampler.Complete(snapshot);
+                Assert.Same(snapshot, await next.WaitAsync(CpuTopologyProviderTestFixture.Deadline));
+                Assert.Same(snapshot, fixture.Reader.GetSnapshot());
+            }
+            finally { await fixture.Reader.StopAsync(default); }
+            Assert.Equal(0u, fixture.ReadDemand().SourceCount);
+        }
+    }
+
+    [Fact]
     public void RegisteredCurrentValueReaderDoesNotCaptureOnRead()
     {
         var overrides = new CountingOverrideStore();

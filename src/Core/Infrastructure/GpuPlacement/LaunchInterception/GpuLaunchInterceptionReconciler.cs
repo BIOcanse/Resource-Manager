@@ -13,17 +13,17 @@ public sealed class GpuLaunchInterceptionReconciler(
     ISoftwareRegistryView softwareRegistry,
     IGpuLaunchInterceptionRegistry registry,
     IGpuSchedulingAvailability schedulingAvailability,
-    ILogger<GpuLaunchInterceptionReconciler> logger) : BackgroundService
+    ILogger<GpuLaunchInterceptionReconciler> logger) : IHostedService
 {
     private readonly SemaphoreSlim reconciliationGate = new(1, 1);
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         try
         {
-            await ReconcileAsync(stoppingToken);
+            await ReconcileAsync(cancellationToken);
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
         }
         catch (Exception ex)
@@ -31,6 +31,8 @@ public sealed class GpuLaunchInterceptionReconciler(
             logger.LogWarning(ex, "Launch interception reconciliation failed.");
         }
     }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
     public async Task<IReadOnlyList<GpuLaunchInterceptionStatus>> ReconcileAsync(CancellationToken cancellationToken)
     {

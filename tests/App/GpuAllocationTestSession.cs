@@ -17,11 +17,13 @@ internal sealed class GpuAllocationTestSessionFactory : IGpuAllocationSessionFac
     internal int Attempts;
     internal int Failures;
     internal bool PartialCleanupFailure;
+    internal Exception? CreateFailure;
     internal Action<GpuAllocationTestSession>? Configure;
     internal GpuAllocationTestSession Current => Sessions[^1];
     public IGpuAllocationSession Create(string name)
     {
         Attempts++;
+        if (CreateFailure is { } failure) throw failure;
         if (PartialCleanupFailure) throw new KernelEtwSessionCreationCleanupException(new IOException("create"), new IOException("cleanup"));
         if (Failures-- > 0) throw new IOException("fake startup failure");
         var result = new GpuAllocationTestSession(name);
@@ -45,23 +47,31 @@ internal sealed class GpuAllocationTestHarness : IAsyncDisposable
     {
         services = new ServiceCollection().BuildServiceProvider();
         GpuAllocationCollector? collector = null;
-        var registration = new BusinessBlockRegistration("gpu-allocation-etw", [], _ => collector
-            ?? throw new InvalidOperationException("The GPU allocation test collector has not been assigned."));
-        Controller = new BusinessBlockController(services, [registration],
-            Options.Create(blockOptions ?? new BusinessBlockOptions()), NullLogger<BusinessBlockController>.Instance);
+        EtwTestRunRecorder? recorder = null;
+        var registration = new BusinessBlockRegistration("gpu-allocation-etw", [], _ => recorder!);
+        Diagnostics = new BusinessBlockDiagnosticsRegistry([registration], NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
+        Controller = new BusinessBlockScheduler(services, [registration],
+            Options.Create(blockOptions ?? new BusinessBlockOptions()), NullLogger<BusinessBlockScheduler>.Instance,
+            decisions: [EtwTestRunRecorder.AvailabilityRule(GpuAllocationCollector.BusinessBlockId, GpuAllocationCollector.AvailabilityFact)]);
         Collector = new GpuAllocationCollector(logger ?? NullLogger<GpuAllocationCollector>.Instance,
-            configuration ?? new ConfigurationBuilder().Build(), Controller, factory,
+            configuration ?? new ConfigurationBuilder().Build(), Controller, Diagnostics, factory,
             timeProvider ?? TimeProvider.System, budget, observer);
         collector = Collector;
+        Recorder = recorder = new(collector, Diagnostics, "gpu-allocation-etw");
+        Collector.PublishAvailabilityAsync().GetAwaiter().GetResult();
     }
 
     internal GpuAllocationCollector Collector { get; }
-    internal BusinessBlockController Controller { get; }
+    internal BusinessBlockScheduler Controller { get; }
+    internal BusinessBlockDiagnosticsRegistry Diagnostics { get; }
+    internal EtwTestRunRecorder Recorder { get; }
+    internal Task<BusinessBlockResult> NextResultAsync() => Recorder.NextResultAsync();
 
     public async ValueTask DisposeAsync()
     {
-        await Controller.StopDependenciesAsync(new BusinessBlockReason(BusinessBlockRequestKind.Dependency,
-            "gpu-allocation-test-harness", "test-cleanup", Controller.CurrentPlanVersion));
+        await Controller.ShutdownAsync(new BusinessBlockReason(BusinessBlockRequestKind.Dependency,
+            "gpu-allocation-test-harness", "test-cleanup", Controller.CurrentPlanVersion)).WaitAsync(TimeSpan.FromSeconds(10));
+        await Recorder.DrainAsync();
         await Controller.DisposeAsync();
         await services.DisposeAsync();
     }
@@ -88,14 +98,28 @@ internal sealed class GpuAllocationTestSession(string name) : IGpuAllocationSess
     internal bool Malformed;
     internal bool Incomplete;
     internal bool FailDisable;
+    internal Exception? EnableFailure;
+    internal Exception? CaptureFailure;
+    internal Exception? DisableFailure;
+    internal Exception? ProcessingFailureOnStart;
+    internal bool HasBoundHandler => handler is not null;
+    internal bool HoldProcessingAfterStop;
+    internal Action? BeforeJoin;
+    internal bool Joined;
     internal Action? DuringCapture;
     internal KernelEtwSessionStopResult StopResult = KernelEtwSessionStopResult.Released;
     public bool IsProcessing { get; private set; }
     public int EventsLost { get; private set; }
     public void Bind(Action<Guid, int, IGpuAllocationPayload, DateTime> callback) => handler = callback;
-    public void StartProcessing(Action<Exception?> callback) { completed = callback; IsProcessing = true; }
+    public void StartProcessing(Action<Exception?> callback)
+    {
+        completed = callback;
+        IsProcessing = true;
+        if (ProcessingFailureOnStart is { } error) End(error);
+    }
     public void EnableProvider(Guid provider, ulong keywords = 0, int[]? eventIds = null)
     {
+        if (EnableFailure is { } error) throw error;
         Enabled.Add(provider);
         // Like the real EventSource, the boundary provider writes its self-describing manifest (event 65534),
         // which has none of the boundary fields, each time a session enables it.
@@ -106,6 +130,7 @@ internal sealed class GpuAllocationTestSession(string name) : IGpuAllocationSess
     }
     public void DisableProvider(Guid provider)
     {
+        if (DisableFailure is { } error) throw error;
         if (FailDisable) throw new IOException("fake disable failure");
         Enabled.Remove(provider);
     }
@@ -134,6 +159,7 @@ internal sealed class GpuAllocationTestSession(string name) : IGpuAllocationSess
         Assert.Equal(0x41UL, keywords);
         Assert.Contains(provider, Enabled);
         Captures++;
+        if (CaptureFailure is { } error) throw error;
         if (FailCapture) throw new IOException("fake rundown failure");
         Emit(110, ("pDxgAdapter", 1UL), ("AdapterLuid", 23UL));
         Emit(78, ("pDxgAdapter", 1UL), ("ulSegmentId", 2U), ("Flags", 0U));
@@ -147,16 +173,24 @@ internal sealed class GpuAllocationTestSession(string name) : IGpuAllocationSess
     internal void Emit(int id, params (string Key, object Value)[] fields)
     {
         var payload = fields.ToDictionary(item => item.Key, item => item.Value);
-        handler!(GpuAllocationCollector.Provider, id, new GpuAllocationNamedPayload(key => payload[key]), DateTime.UtcNow);
+        handler?.Invoke(GpuAllocationCollector.Provider, id, new GpuAllocationNamedPayload(key => payload[key]), DateTime.UtcNow);
     }
     internal void LoseEvent() => EventsLost++;
     internal void End(Exception? error = null) { IsProcessing = false; completed?.Invoke(error); }
     public KernelEtwSessionStopResult Stop(TimeSpan timeout)
     {
+        handler = null;
         Stops++;
         StopTimeout = timeout;
-        IsProcessing = false;
+        if (!HoldProcessingAfterStop) IsProcessing = false;
         if (StopResult.IsReleased) Enabled.Clear();
         return StopResult;
+    }
+    public void JoinProcessing()
+    {
+        BeforeJoin?.Invoke();
+        Assert.False(IsProcessing);
+        Joined = true;
+        completed = null;
     }
 }

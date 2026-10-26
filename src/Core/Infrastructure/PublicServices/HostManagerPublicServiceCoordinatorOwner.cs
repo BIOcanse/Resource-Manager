@@ -39,6 +39,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
     private long nextSessionIncarnation;
     private bool started;
     private bool disposed;
+    private Action<CompiledRuntimePlan>? publishedHandler;
 
     public HostManagerPublicServiceCoordinatorOwner(
         RuntimePlanProvider planProvider,
@@ -82,10 +83,18 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
                 "The prior Host Manager public-service stop has not completed.");
         }
 
-        planProvider.Published += OnPublished;
+        Action<CompiledRuntimePlan> handler = null!;
+        handler = plan => Apply(plan.HostManager.RequirePublished(), throwOnFailure: false, handler);
+        gate.EnterWriteLock();
         try
         {
-            Apply(planProvider.Current.HostManager.RequirePublished(), throwOnFailure: true);
+            publishedHandler = handler;
+            planProvider.Published += handler;
+        }
+        finally { gate.ExitWriteLock(); }
+        try
+        {
+            Apply(planProvider.Current.HostManager.RequirePublished(), throwOnFailure: true, handler);
             workerCancellation = new CancellationTokenSource();
             modelWorker = Task.Run(
                 () => RunModelAcquisitionLoopAsync(workerCancellation.Token),
@@ -99,7 +108,13 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
         }
         catch
         {
-            planProvider.Published -= OnPublished;
+            gate.EnterWriteLock();
+            try
+            {
+                planProvider.Published -= handler;
+                if (ReferenceEquals(publishedHandler, handler)) publishedHandler = null;
+            }
+            finally { gate.ExitWriteLock(); }
             throw;
         }
     }
@@ -114,11 +129,14 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
             return;
         }
 
-        if (started)
+        gate.EnterWriteLock();
+        try
         {
-            planProvider.Published -= OnPublished;
+            if (publishedHandler is { } handler) planProvider.Published -= handler;
+            publishedHandler = null;
             started = false;
         }
+        finally { gate.ExitWriteLock(); }
         var cancellation = workerCancellation;
         cancellation?.Cancel();
         Signal(modelWake);
@@ -152,11 +170,6 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
             return;
         }
 
-        if (started)
-        {
-            planProvider.Published -= OnPublished;
-            started = false;
-        }
         workerCancellation?.Cancel();
         workerCancellation?.Dispose();
         workerCancellation = null;
@@ -165,6 +178,9 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
         gate.EnterWriteLock();
         try
         {
+            if (publishedHandler is { } handler) planProvider.Published -= handler;
+            publishedHandler = null;
+            started = false;
             if (pendingRetirement?.Retire() == true) pendingRetirement = null;
             if (current?.Retire() == true) current = null;
             if (pendingRetirement is not null || current is not null)
@@ -177,20 +193,20 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
         {
             gate.ExitWriteLock();
         }
-        gate.Dispose();
+        // A publication may still hold the old delegate after unsubscription.
+        // Keep its admission gate usable so that callback can enter and reject it.
         modelWake.Dispose();
         taskWake.Dispose();
     }
 
-    private void OnPublished(CompiledRuntimePlan plan)
-        => Apply(plan.HostManager.RequirePublished(), throwOnFailure: false);
-
-    private void Apply(CompiledHostManagerPlan hostPlan, bool throwOnFailure)
+    private void Apply(CompiledHostManagerPlan hostPlan, bool throwOnFailure,
+        Action<CompiledRuntimePlan>? expectedHandler = null)
     {
         var desired = hostPlan.PublicServiceCoordinator;
         gate.EnterWriteLock();
         try
         {
+            if (expectedHandler is not null && !ReferenceEquals(publishedHandler, expectedHandler)) return;
             if (pendingRetirement?.Retire() == true) pendingRetirement = null;
             if (appliedPlan?.ConfigurationSha256 == desired.ConfigurationSha256)
             {

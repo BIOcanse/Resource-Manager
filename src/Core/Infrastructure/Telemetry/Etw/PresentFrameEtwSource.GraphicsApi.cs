@@ -17,9 +17,8 @@ public sealed partial class PresentFrameEtwSource : IPresentGraphicsApiObservati
         lock (lifecycle)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
-            var dependency = controller.AcquireDependency("present-etw",
-                new(BusinessBlockRequestKind.Dependency, "graphics-api-history", "present-graphics-api-subscription", controller.CurrentPlanVersion),
-                outputs: ["graphics-api"]);
+            var dependency = controller.AcquireDependency(BusinessBlockId,
+                new(BusinessBlockRequestKind.Dependency, "graphics-api-history", "present-graphics-api-subscription", controller.CurrentPlanVersion));
             var subscription = new GraphicsApiSubscription(this, process, dependency);
             lock (gate) graphicsApiSubscriptions.Add(subscription);
             subscription.ObserveRelease();
@@ -77,10 +76,13 @@ public sealed partial class PresentFrameEtwSource : IPresentGraphicsApiObservati
     {
         private PresentFrameEtwSource? owner;
         private readonly IBusinessBlockDependency dependency;
+        private readonly PresentFrameEtwSource source;
+        private Task? released;
         internal GraphicsApiSubscription(PresentFrameEtwSource owner, GpuPlacementProcessInstance process,
             IBusinessBlockDependency dependency)
         {
             this.owner = owner;
+            source = owner;
             this.dependency = dependency;
             Process = process;
         }
@@ -89,8 +91,8 @@ public sealed partial class PresentFrameEtwSource : IPresentGraphicsApiObservati
         internal GpuPlacementProcessInstance Process { get; }
         internal bool Active { get; set; } = true;
         internal GpuGraphicsApi? Api { get; set; }
-        public Task Ready => dependency.Ready;
-        public Task Released => dependency.Released;
+        public Task Ready => source.AwaitReadyAsync(dependency.Ready);
+        public Task Released => released ??= source.AwaitReleasedAsync(dependency.Released);
 
         public GpuGraphicsApi? Read()
         {

@@ -57,20 +57,21 @@ public sealed class StaticAnalysisDefectRegressionTests
     }
 
     [Fact]
-    public async Task FirstConsumerSampleFailureRollsBackNewRegistrationAndDrainCount()
+    public async Task InvalidConsumerCounterDoesNotPreventIndependentRegistrationOrDrain()
     {
         using var services = new ServiceCollection().BuildServiceProvider();
-        await using var controller = new BusinessBlockController(services,
-            [new("consumer", [], _ => throw new NotSupportedException())],
-            Options.Create(new BusinessBlockOptions()), NullLogger<BusinessBlockController>.Instance);
+        BusinessBlockRegistration[] declarations = [new("consumer", [], _ => throw new NotSupportedException())];
+        var diagnostics = new BusinessBlockDiagnosticsRegistry(declarations, NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
+        await using var controller = new BusinessBlockScheduler(services, declarations,
+            Options.Create(new BusinessBlockOptions()), NullLogger<BusinessBlockScheduler>.Instance);
         // Keep all registration scopes on their registering threads. The corrupted
-        // prior baseline deterministically exercises Sample's existing failure path.
+        // prior baseline makes a diagnostic read fail without affecting independent registration.
         using var release = new ManualResetEventSlim();
         var entered = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
         var prior = Task.Run(() =>
         {
-            using var registration = controller.RegisterConsumerThread("consumer", "prior");
-            var entries = (IDictionary)Field(controller, "entries");
+            using var registration = diagnostics.RegisterConsumerThread("consumer", "prior");
+            var entries = (IDictionary)Field(diagnostics, "entries");
             var metrics = entries["consumer"]!.GetType().GetProperty("Metrics")!.GetValue(entries["consumer"])!;
             var threads = (IDictionary)Field(metrics, "activeThreads");
             var state = threads.Values.Cast<object>().Single();
@@ -85,13 +86,14 @@ public sealed class StaticAnalysisDefectRegressionTests
         try
         {
             // This synchronous call cannot resume on the prior registration thread.
-            Assert.Throws<InvalidOperationException>(() => controller.RegisterConsumerThread("consumer", "rejected"));
+            using var accepted = diagnostics.RegisterConsumerThread("consumer", "independent");
+            Assert.Throws<InvalidOperationException>(() => diagnostics.Read("consumer"));
+            Assert.Equal(BusinessBlockState.Stopped, Assert.Single(controller.Read().Blocks).State);
         }
         finally { release.Set(); await prior.WaitAsync(TimeSpan.FromSeconds(5)); }
-        var facts = Assert.Single(controller.Read().Blocks);
+        var facts = diagnostics.Read("consumer");
         Assert.Empty(facts.Metrics.ActiveThreads);
-        Assert.False(facts.ExecutionOutstanding);
-        Assert.Equal(BusinessBlockState.Failed, facts.State);
+        Assert.Equal(BusinessBlockState.Stopped, Assert.Single(controller.Read().Blocks).State);
     }
 
     [Fact]

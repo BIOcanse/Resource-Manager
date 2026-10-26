@@ -6,6 +6,42 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class AutomaticProductUpdateTests
 {
+    [Fact]
+    public async Task CapturedConnectivityCallbackCannotPersistScheduleAfterStop()
+    {
+        using var fixture = new Fixture { Mode = "notify", Listing = Catalog("0.2.4") };
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        fixture.Connectivity.Changed += () =>
+        {
+            entered.Set();
+            Assert.True(release.Wait(TimeSpan.FromSeconds(10)));
+        };
+        var coordinator = fixture.Coordinator();
+        using var service = fixture.Service(coordinator);
+        await service.StartAsync(CancellationToken.None);
+        await fixture.Clock.WaitForTimerAsync(TimeSpan.FromHours(24));
+        var notification = Task.Run(() => fixture.Connectivity.Set(false));
+        string? stoppedState = null;
+        var changesAfterStop = 0;
+        try
+        {
+            Assert.True(entered.Wait(TimeSpan.FromSeconds(10)));
+            await service.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+            stoppedState = File.ReadAllText(Path.Combine(fixture.Root, "Config", "product-update-state.json"));
+            coordinator.Changed += () => Interlocked.Increment(ref changesAfterStop);
+        }
+        finally
+        {
+            release.Set();
+            await notification.WaitAsync(TimeSpan.FromSeconds(10));
+            await service.StopAsync(CancellationToken.None);
+        }
+        Assert.Equal(stoppedState, File.ReadAllText(Path.Combine(fixture.Root, "Config", "product-update-state.json")));
+        Assert.Equal(0, Volatile.Read(ref changesAfterStop));
+        Assert.Equal("scheduled", coordinator.Status.AutomaticCheckStatus);
+    }
+
     private sealed class Connectivity : IInternetConnectivity
     {
         public bool IsOnline { get; private set; } = true;

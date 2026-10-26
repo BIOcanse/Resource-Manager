@@ -71,10 +71,12 @@ public static class LoopbackApiPipelineConfigurator
         services.TryAddSingleton<ITrustedAccessKeyService, TrustedAccessKeyService>();
         services.TryAddSingleton<TrustedAccessRequestOwner>();
         services.TryAddSingleton<ITrustedAccessRequestOwner>(provider => provider.GetRequiredService<TrustedAccessRequestOwner>());
-        services.AddHostedService(provider => provider.GetRequiredService<TrustedAccessRequestOwner>());
+        Hosting.NonOwningHostedServiceRegistration.AddHostedServiceAlias<TrustedAccessRequestOwner>(services,
+            Hosting.BackendBlockIds.TrustedAccessRequestOwner, [Hosting.BackendBlockIds.RuntimeSpecializationCoordinator], ["trusted-access-requests"]);
         services.AddSingleton<ILoopbackApiAdministratorReader, WindowsLoopbackApiAdministratorReader>();
         services.TryAddSingleton<IInteractiveUserSessionBroker, WindowsInteractiveUserSessionBroker>();
-        services.AddHostedService<TrustedAccessInvocationHostedService>();
+        Hosting.ResourceManagerServiceCollectionExtensions.AddBusinessBlockHostedService<TrustedAccessInvocationHostedService>(services,
+            Hosting.BackendBlockIds.TrustedAccessInvocationHostedService, [], ["trusted-invocation-results"]);
     }
 
     private static void ConfigureAuthenticationMiddleware(WebApplication application)

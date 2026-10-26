@@ -18,19 +18,24 @@ internal sealed class PresentFrameEtwTestHarness : IAsyncDisposable
 
     private PresentFrameEtwTestHarness(
         ServiceProvider services,
-        BusinessBlockController controller,
+        BusinessBlockScheduler controller,
         PresentFrameEtwSource source,
-        PresentFrameEtwTestSessionFactory sessions)
+        PresentFrameEtwTestSessionFactory sessions, BusinessBlockDiagnosticsRegistry diagnostics, EtwTestRunRecorder recorder)
     {
         this.services = services;
         Controller = controller;
         Source = source;
         Sessions = sessions;
+        Diagnostics = diagnostics;
+        Recorder = recorder;
     }
 
-    internal BusinessBlockController Controller { get; }
+    internal BusinessBlockScheduler Controller { get; }
     internal PresentFrameEtwSource Source { get; }
     internal PresentFrameEtwTestSessionFactory Sessions { get; }
+    internal BusinessBlockDiagnosticsRegistry Diagnostics { get; }
+    internal EtwTestRunRecorder Recorder { get; }
+    internal Task<BusinessBlockResult> NextResultAsync() => Recorder.NextResultAsync();
 
     internal static PresentFrameEtwTestHarness Create(
         ILogger<PresentFrameEtwSource>? logger = null,
@@ -42,30 +47,34 @@ internal sealed class PresentFrameEtwTestHarness : IAsyncDisposable
         var services = new ServiceCollection().BuildServiceProvider();
         var sessions = new PresentFrameEtwTestSessionFactory();
         PresentFrameEtwSource? source = null;
-        var registration = new BusinessBlockRegistration("present-etw", [], _ => source
-            ?? throw new InvalidOperationException("The Present ETW test source has not been assigned."));
-        var controller = new BusinessBlockController(services, [registration],
-            Options.Create(blockOptions ?? new BusinessBlockOptions()), NullLogger<BusinessBlockController>.Instance);
-        observer ??= new BusinessBlockEtwThreadObserver(controller);
+        EtwTestRunRecorder? recorder = null;
+        var registration = new BusinessBlockRegistration("present-etw", [], _ => recorder!);
+        var diagnostics = new BusinessBlockDiagnosticsRegistry([registration], NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
+        var controller = new BusinessBlockScheduler(services, [registration],
+            Options.Create(blockOptions ?? new BusinessBlockOptions()), NullLogger<BusinessBlockScheduler>.Instance,
+            decisions: [EtwTestRunRecorder.AvailabilityRule(PresentFrameEtwSource.BusinessBlockId, PresentFrameEtwSource.AvailabilityFact)]);
+        observer ??= new BusinessBlockEtwThreadObserver(diagnostics);
         var sourceLogger = logger ?? NullLogger<PresentFrameEtwSource>.Instance;
         if (useNativeSession)
         {
-            source = new PresentFrameEtwSource(sourceLogger, controller, observer);
+            source = new PresentFrameEtwSource(sourceLogger, controller, diagnostics, observer);
         }
         else
         {
-            source = new PresentFrameEtwSource(sourceLogger, controller, sessions.Create,
+            source = new PresentFrameEtwSource(sourceLogger, controller, diagnostics, sessions.Create,
                 timeProvider ?? new PresentFrameEtwManualTimeProvider(), observer);
         }
 
-        return new(services, controller, source, sessions);
+        recorder = new(source, diagnostics, "present-etw");
+        source.PublishAvailabilityAsync().GetAwaiter().GetResult();
+        return new(services, controller, source, sessions, diagnostics, recorder);
     }
 
     internal static Task ReadyAsync(IDisposable lease)
-        => Dependency(lease).Ready;
+        => EtwTestRunRecorder.ReadyAsync(Dependency(lease));
 
     internal static ValueTask ReleaseAsync(IDisposable lease)
-        => Dependency(lease).DisposeAsync();
+        => new(EtwTestRunRecorder.ReleaseAsync(Dependency(lease)));
 
     internal static IBusinessBlockDependency Dependency(IDisposable lease)
         => lease as IBusinessBlockDependency
@@ -75,8 +84,9 @@ internal sealed class PresentFrameEtwTestHarness : IAsyncDisposable
     {
         try
         {
-            await Controller.StopDependenciesAsync(new(BusinessBlockRequestKind.Dependency,
-                "present-test-harness", "test-cleanup", Controller.CurrentPlanVersion));
+            await Controller.ShutdownAsync(new(BusinessBlockRequestKind.Dependency,
+                "present-test-harness", "test-cleanup", Controller.CurrentPlanVersion)).WaitAsync(TimeSpan.FromSeconds(10));
+            await Recorder.DrainAsync();
         }
         finally
         {
@@ -84,6 +94,38 @@ internal sealed class PresentFrameEtwTestHarness : IAsyncDisposable
             await Controller.DisposeAsync();
             await services.DisposeAsync();
         }
+    }
+}
+
+internal sealed class EtwTestRunRecorder(IBusinessBlock block, BusinessBlockDiagnosticsRegistry diagnostics, string id) : IBusinessBlock
+{
+    internal static BusinessBlockDecisionRegistration AvailabilityRule(string id, string availabilityFact)
+        => new(BackendBlockGraph.Program, [BusinessBlockScheduler.DemandFact(id), availabilityFact],
+            input => input.Facts[BusinessBlockScheduler.DemandFact(id)].Value && input.Facts[availabilityFact].Value ? [id] : []);
+
+    private readonly System.Threading.Channels.Channel<BusinessBlockResult> results =
+        System.Threading.Channels.Channel.CreateBounded<BusinessBlockResult>(new System.Threading.Channels.BoundedChannelOptions(64)
+        {
+            FullMode = System.Threading.Channels.BoundedChannelFullMode.DropWrite
+        });
+    private Task running = Task.CompletedTask;
+    public Task RunAsync(BusinessBlockRunContext context) => running = ObserveAsync(context);
+    private async Task ObserveAsync(BusinessBlockRunContext context)
+    {
+        await block.RunAsync(context);
+        await results.Writer.WriteAsync(diagnostics.Read(id).Result!);
+    }
+    internal Task<BusinessBlockResult> NextResultAsync()
+        => results.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+    internal Task DrainAsync() => running.WaitAsync(TimeSpan.FromSeconds(10));
+    internal static Task ReadyAsync(IBusinessBlockDependency dependency)
+        => dependency.Ready.WaitAsync(TimeSpan.FromSeconds(10));
+    internal static Task ReleaseAsync(IBusinessBlockDependency dependency)
+        => dependency.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+    internal static async Task UntilAsync(Func<bool> condition)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while (!condition()) await Task.Delay(1, timeout.Token);
     }
 }
 
@@ -139,6 +181,7 @@ internal sealed class PresentFrameEtwRecordingSession(string name) : IPresentFra
     internal Task ProcessStarted => processStarted.Task;
     internal Thread? ConsumerThread { get; private set; }
     internal int Stops => Volatile.Read(ref stopped);
+    internal bool HasBoundHandler => handler is not null;
     internal int EventsLostReads => Volatile.Read(ref eventsLostReads);
     internal int Flushes => Volatile.Read(ref flushes);
     internal int ReportedEventsLost
@@ -149,6 +192,7 @@ internal sealed class PresentFrameEtwRecordingSession(string name) : IPresentFra
     internal (string Kind, Guid Provider)? FailTransition { get; set; }
     internal Action<Guid>? AfterEnable { get; set; }
     internal Exception? FlushFailure { get; set; }
+    internal Exception? DisposeFailure { get; set; }
     internal PresentEtwProviderOperation[] Operations
     {
         get { lock (sync) return operations.ToArray(); }
@@ -208,7 +252,9 @@ internal sealed class PresentFrameEtwRecordingSession(string name) : IPresentFra
 
     public void Dispose()
     {
+        handler = null;
         if (Interlocked.Exchange(ref stopped, 1) == 0) completed.TrySetResult(null);
+        if (DisposeFailure is { } error) throw error;
     }
 
     private void ThrowIfRequested(string kind, Guid provider)

@@ -9,6 +9,7 @@ public sealed class GpuAllocationRescanTests
         await using var harness = factory.Harness();
         var collector = harness.Collector;
         using var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(30));
+        await EtwTestRunRecorder.ReadyAsync(lease);
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
         var old = collector.ReadCurrent(GpuAllocationTestSession.Processes)!;
         Assert.Equal(1024, old.Adapters[23][41].PrivateBytes);
@@ -40,6 +41,7 @@ public sealed class GpuAllocationRescanTests
         await using var harness = factory.Harness(TimeSpan.FromMilliseconds(40));
         var collector = harness.Collector;
         using var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(30));
+        await EtwTestRunRecorder.ReadyAsync(lease);
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
         var session = factory.Current;
         session.LoseEvents = failure == "loss";
@@ -65,6 +67,7 @@ public sealed class GpuAllocationRescanTests
         await using var harness = factory.Harness();
         var collector = harness.Collector;
         using var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(1));
+        await EtwTestRunRecorder.ReadyAsync(lease);
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
         var reused = collector.ReadCurrent(new Dictionary<int, long> { [41] = 101 })!;
         Assert.Empty(reused.Adapters[23]);

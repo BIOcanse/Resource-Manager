@@ -1,64 +1,90 @@
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
+using static Resource_Manager_APP.Tests.BusinessBlockTestSupport;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class BusinessBlockControllerFailureTests
+public sealed class BusinessBlockSchedulerFailureTests
 {
-    private static readonly BusinessBlockReason Reason = new(BusinessBlockRequestKind.User, "test", "explicit", 1);
-
-    [Fact]
-    public async Task FailedRestartDoesNotExposeThePreviousRunsCompletion()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReturningEntryTriggersItsParentToRestartWhenStillDemandedWithoutFailingAnotherBlock(bool throws)
     {
-        using var services = new ServiceCollection().BuildServiceProvider();
-        var creations = 0;
-        await using var controller = Create(services, new("worker", [], _ =>
+        var releaseFirst = Signal();
+        var firstEntered = Signal();
+        var secondEntered = Signal();
+        var runs = 0;
+        var peer = new Probe();
+        BusinessBlockDiagnosticsRegistry? diagnostics = null;
+        var worker = new Block(async context =>
         {
-            if (++creations == 2) throw new IOException("creation failed");
-            return new CallbackBlock(_ => Task.FromResult(BusinessBlockResult.Done));
-        }));
-        await controller.StartAsync("worker", Reason);
-        await controller.GetCompletion("worker");
-
-        await Assert.ThrowsAsync<IOException>(() => controller.StartAsync("worker", Reason));
-
-        Assert.Throws<InvalidOperationException>(() => { _ = controller.GetCompletion("worker"); });
-        Assert.Equal(BusinessBlockState.Failed, Assert.Single(controller.Read().Blocks).State);
+            var run = Interlocked.Increment(ref runs);
+            diagnostics!.BeginRun("worker");
+            context.ReportRunning();
+            if (run == 1)
+            {
+                firstEntered.TrySetResult();
+                await releaseFirst.Task;
+                if (throws)
+                {
+                    var error = new IOException("the block's own error");
+                    diagnostics.RecordResult("worker", BusinessBlockResult.Failed(error));
+                    throw error;
+                }
+                diagnostics.RecordResult("worker", BusinessBlockResult.Done);
+                return;
+            }
+            secondEntered.TrySetResult();
+            try { await Task.Delay(System.Threading.Timeout.InfiniteTimeSpan, context.StopNotification); }
+            catch (OperationCanceledException) when (context.StopNotification.IsCancellationRequested) { }
+            diagnostics.RecordResult("worker", BusinessBlockResult.Stopped);
+        });
+        var registrations = new[] { Register("worker", worker), Register("peer", peer) };
+        diagnostics = new(registrations, NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
+        await using var scheduler = Create(registrations);
+        try
+        {
+            await scheduler.StartAsync("worker", Reason());
+            await firstEntered.Task.WaitAsync(TestTimeout);
+            var peerRequest = scheduler.StartAsync("peer", Reason(owner: "unrelated-owner"));
+            releaseFirst.TrySetResult();
+            await peerRequest.WaitAsync(TestTimeout);
+            await peer.Entered.Task.WaitAsync(TestTimeout);
+            await secondEntered.Task.WaitAsync(TestTimeout);
+            Assert.Equal(2, Volatile.Read(ref runs));
+            Assert.Equal(1, peer.Runs);
+            Assert.False(peer.Notified.Task.IsCompleted);
+            Assert.Equal(BusinessBlockState.Running, scheduler.ReadState("worker"));
+            Assert.Equal(BusinessBlockState.Running, scheduler.ReadState("peer"));
+            var workerHistory = scheduler.Read().History.Where(item => item.BlockId == "worker").ToArray();
+            Assert.Equal([BusinessBlockState.Starting, BusinessBlockState.Running, BusinessBlockState.Stopped,
+                BusinessBlockState.Starting, BusinessBlockState.Running], workerHistory.Select(item => item.To));
+        }
+        finally { releaseFirst.TrySetResult(); await StopAll(scheduler); }
     }
 
     [Fact]
-    public async Task StopNotificationFailureIsRecordedAsFailedAndPropagated()
+    public async Task DiagnosticFailureCannotCancelABlockOrWithdrawAnyDemand()
     {
-        using var services = new ServiceCollection().BuildServiceProvider();
-        await using var controller = Create(services, new("worker", [], _ => new CallbackBlock(async stop =>
+        var first = new Probe(); var peer = new Probe();
+        var registrations = new[] { Register("first", first), Register("peer", peer) };
+        var diagnostics = new BusinessBlockDiagnosticsRegistry(registrations, NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
+        await using var scheduler = Create(registrations);
+        try
         {
-            // Not disposed when the run ends: the block's continuation can observe cancellation and
-            // leave before the canceling thread reaches this callback, which would unregister it.
-            stop.Register(() => throw new IOException("callback failure"));
-            try { await Task.Delay(Timeout.InfiniteTimeSpan, stop); }
-            catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
-            return BusinessBlockResult.Stopped;
-        })));
-        await controller.StartAsync("worker", Reason);
-
-        var error = await Assert.ThrowsAsync<AggregateException>(() => controller.StopAsync("worker", Reason));
-
-        Assert.Contains(error.Flatten().InnerExceptions, item => item is IOException { Message: "callback failure" });
-        var facts = Assert.Single(controller.Read().Blocks);
-        Assert.Equal(BusinessBlockState.Failed, facts.State);
-        Assert.Equal(BusinessBlockTransitionOutcome.Failed, facts.Outcome);
-        Assert.False(facts.ExecutionOutstanding);
-    }
-
-    private static BusinessBlockController Create(IServiceProvider services, BusinessBlockRegistration registration)
-        => new(services, [registration], Options.Create(new BusinessBlockOptions { MetricsInterval = null }),
-            NullLogger<BusinessBlockController>.Instance);
-
-    private sealed class CallbackBlock(Func<CancellationToken, Task<BusinessBlockResult>> run) : IBusinessBlock
-    {
-        public Task<BusinessBlockResult> RunAsync(CancellationToken stopNotification) => run(stopNotification);
+            await scheduler.StartAsync("first", Reason());
+            await scheduler.StartAsync("peer", Reason());
+            await Task.WhenAll(first.Entered.Task, peer.Entered.Task).WaitAsync(TestTimeout);
+            var before = scheduler.Read();
+            diagnostics.ReportFailure("first", new IOException("reported by the block"), "read");
+            Assert.Equal(BusinessBlockOutcome.Failed, diagnostics.Read("first").Result!.Outcome);
+            Assert.Equal(before.History, scheduler.Read().History);
+            Assert.Equal(before.Demands.OrderBy(item => item.Key), scheduler.Read().Demands.OrderBy(item => item.Key));
+            Assert.False(first.Notified.Task.IsCompleted);
+            Assert.False(peer.Notified.Task.IsCompleted);
+        }
+        finally { await StopAll(scheduler); }
     }
 }

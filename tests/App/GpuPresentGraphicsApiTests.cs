@@ -43,11 +43,10 @@ public sealed class GpuPresentGraphicsApiTests
         Assert.Null(PresentFrameEtwSource.MapPresentGraphicsApi(Guid.NewGuid(), 42));
         await using var harness = PresentFrameEtwTestHarness.Create();
         var source = harness.Source;
-        await source.ApplyModeAsync(ResourceManagerComputeZoneMode.Freeze); // No real ETW session in recorded tests.
         var lease = source.AcquireGraphicsApiSubscription(Instance());
         await PresentFrameEtwTestHarness.ReadyAsync(lease);
         Assert.Null(lease.Read());
-        Assert.Empty(harness.Sessions.Snapshot());
+        Assert.Single(harness.Sessions.Snapshot());
         await PresentFrameEtwTestHarness.ReleaseAsync(lease);
     }
 
@@ -56,7 +55,6 @@ public sealed class GpuPresentGraphicsApiTests
     {
         await using var harness = PresentFrameEtwTestHarness.Create();
         var source = harness.Source;
-        await source.ApplyModeAsync(ResourceManagerComputeZoneMode.Freeze);
         var instance = Instance();
         var lease = source.AcquireGraphicsApiSubscription(instance);
         await PresentFrameEtwTestHarness.ReadyAsync(lease);
@@ -87,10 +85,10 @@ public sealed class GpuPresentGraphicsApiTests
         await using var harness = PresentFrameEtwTestHarness.Create();
         var lease = harness.Source.AcquireGraphicsApiSubscription(Instance());
         await PresentFrameEtwTestHarness.ReadyAsync(lease);
-        var dependency = Assert.Single(Assert.Single(harness.Controller.Read().Blocks).ActiveDependencies);
-        Assert.Equal("graphics-api-history", dependency.Owner);
+        var dependency = Assert.Single(harness.Controller.Read().Demands);
+        Assert.Equal("graphics-api-history", dependency.Reason.Owner);
         Assert.Equal("present-graphics-api-subscription", dependency.Reason.ConfigurationOrDependency);
-        Assert.Equal(new[] { "graphics-api" }, dependency.Outputs);
+        Assert.Equal("present-etw", dependency.BlockId);
         await PresentFrameEtwTestHarness.ReleaseAsync(lease);
     }
 
