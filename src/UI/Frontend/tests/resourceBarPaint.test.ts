@@ -124,3 +124,13 @@ assert.match(forced, /\.resource-bar-track:focus-visible[\s\S]*?outline: 2px sol
 assert.match(forced, /\.resource-segment-interaction-proxy\.pointer-active\s*\{[^}]*outline:/);
 assert.match(forced, /\.resource-segment\.precision-selected[\s\S]*?outline: 3px solid Highlight/);
 
+// ---- 提示 ----
+// 名字一行（前面一个和段同色的色块）、读数各一行、口径说明在下面；左对齐。出现时淡入，无动画、超高性能下直接出现。
+assert.match(breakdown, /class="resource-tooltip-swatch"/);
+assert.match(breakdown, /class="resource-tooltip-basis"/);
+assert.match(resources, /\.resource-tooltip\s*\{[^}]*text-align:\s*left;/);
+const motion = stripComments(read("styles/motion.css"));
+assert.match(motion, /\.resource-tooltip\.visible\s*\{\s*animation:\s*motion-fade-in var\(--motion-fast\) var\(--ease-standard\);/);
+assert.match(motion, /body\[data-animations="none"\] \*,[\s\S]*?animation-duration:\s*0s !important;/, "the reduced modes show the tooltip without the fade");
+
+console.log("resourceBarPaint: ok");

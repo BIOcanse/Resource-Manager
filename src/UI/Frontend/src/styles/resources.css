@@ -1055,27 +1055,81 @@
   white-space: pre-line;
 }
 
+/* 提示：名字一行加粗，读数各占一行，口径说明在下面隔一条细线、颜色淡一档。左对齐，长说明好读。 */
 .resource-tooltip {
   position: absolute;
   left: 50%;
   bottom: calc(100% + 8px);
   z-index: 40;
-  min-width: 150px;
-  max-width: 260px;
+  display: grid;
+  gap: 2px;
+  width: max-content;
+  min-width: 160px;
+  max-width: 300px;
   transform: translateX(calc(-50% + var(--resource-tooltip-shift-x, 0px)));
   transform-origin: center bottom;
   pointer-events: none;
   opacity: 0;
   border-radius: var(--radius-sm);
-  padding: 7px 9px;
-  background: color(display-p3 0.100 0.115 0.110 / 0.88);
+  padding: 7px 10px 8px;
+  background: color(display-p3 0.100 0.115 0.110 / 0.92);
   color: color(display-p3 1 1 1);
   font-size: 12px;
   font-weight: 500;
-  line-height: 1.35;
-  text-align: center;
-  white-space: pre-line;
+  line-height: 1.4;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
   box-shadow: 0 10px 24px color(display-p3 0.040 0.080 0.070 / 0.22);
+}
+
+.resource-tooltip-title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-weight: 700;
+}
+
+/* 色块和条上这一段同色；异色区分时换成区分色，系统/驱动保留带同样的斜纹。 */
+.resource-tooltip-swatch {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--swatch-color);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.55);
+}
+
+body[data-bar-color="distinct"] .resource-tooltip-swatch {
+  background: var(--swatch-distinct-color, var(--swatch-color));
+}
+
+.resource-tooltip-swatch.hatched,
+body[data-bar-color="distinct"] .resource-tooltip-swatch.hatched {
+  background: repeating-linear-gradient(-45deg, var(--resource-reserved-stripe) 0 2px, transparent 2px 4px), var(--resource-reserved);
+}
+
+.resource-tooltip-kind {
+  opacity: 0.78;
+}
+
+.resource-tooltip-line {
+  font-variant-numeric: tabular-nums;
+}
+
+.resource-tooltip-line,
+.resource-tooltip-kind,
+.resource-tooltip-basis > span {
+  display: block;
+}
+
+.resource-tooltip-basis {
+  margin-top: 4px;
+  border-top: 1px solid currentColor;
+  border-top-color: color-mix(in srgb, currentColor 22%, transparent);
+  padding-top: 5px;
+  opacity: 0.78;
+  font-size: 11px;
 }
 
 .resource-tooltip[data-placement="below"] {
@@ -1084,18 +1138,9 @@
   transform-origin: center top;
 }
 
-.resource-segment:hover .resource-tooltip,
-.resource-process-segment:hover .resource-tooltip,
-.resource-segment-empty:hover .resource-tooltip,
-.resource-tooltip.visible {
-  opacity: 1;
-}
-
-.resource-segment:hover .resource-tooltip,
-.resource-process-segment:hover .resource-tooltip,
-.resource-segment-empty:hover .resource-tooltip,
 .resource-tooltip.visible {
   z-index: 80;
+  opacity: 1;
 }
 
 /* Windows 高对比（强制颜色）：阴影会被去掉，焦点、悬停和选中都改用系统颜色的外框。画布里的分段不受影响。 */
@@ -1119,6 +1164,11 @@
 
   .resource-tooltip {
     outline: 1px solid CanvasText;
+  }
+
+  /* 色块要和画布上的段同色，不换成系统颜色。 */
+  .resource-tooltip-swatch {
+    forced-color-adjust: none;
   }
 }
 

@@ -30,7 +30,7 @@ import { createResourceTrackGeometry } from "./useResourceTrackGeometry";
 import {
   createResourceLayoutSettleController
 } from "./resourceLayoutSettleTransition";
-import { uiText } from "../../text.ts";
+import { softwareDisplayKindLabel, uiText } from "../../text.ts";
 import { formatPercent } from "../../utils";
 import { StandardSelect } from "../../components/StandardSelect";
 import { ContentState } from "../../ui/patterns/ContentState.tsx";
@@ -566,7 +566,7 @@ function ResourceBreakdownItem(props: {
                     class="resource-tooltip"
                     classList={{ visible: hoveredSoftwareId() === item().segment.softwareId }}
                   >
-                    {resourceSegmentTooltip(props.bar, item().segment)}
+                    <ResourceTooltipContent parts={resourceSegmentTooltipParts(props.bar, item().segment)} />
                   </span>
                 </div>
               </div>
@@ -735,7 +735,7 @@ function ResourceProcessPanel(props: {
                     class="resource-tooltip"
                     classList={{ visible: hoveredProcessKey() === processKey(item().segment) }}
                   >
-                    {resourceProcessTooltip(props.bar, item().segment)}
+                    <ResourceTooltipContent parts={resourceProcessTooltipParts(props.bar, item().segment)} />
                   </span>
                 </div>
               </div>
@@ -754,16 +754,77 @@ function ResourceProcessPanel(props: {
   );
 }
 
+/** 提示的内容：名字、读数各一行、口径和归因说明。aria-label 和选中后的说明行用同样的内容连成一段文字。 */
+interface ResourceTooltipParts {
+  title: string;
+  /** 名字前的小色块，和这一段在条上的颜色一样：没有图例时靠它把颜色和名字对上。 */
+  swatch: ResourceTooltipSwatch;
+  /** 软件的展示分组（类型固定色按它上色）；空余、系统/驱动保留和进程没有。 */
+  kind: string | null;
+  lines: string[];
+  notes: string[];
+}
+
+interface ResourceTooltipSwatch {
+  color: string;
+  distinctColor: string;
+  hatched: boolean;
+}
+
+function ResourceTooltipContent(props: { parts: ResourceTooltipParts }) {
+  return (
+    <>
+      <span class="resource-tooltip-title">
+        <span
+          class="resource-tooltip-swatch"
+          classList={{ hatched: props.parts.swatch.hatched }}
+          aria-hidden="true"
+          style={{ "--swatch-color": props.parts.swatch.color, "--swatch-distinct-color": props.parts.swatch.distinctColor }}
+        />
+        <span>{props.parts.title}</span>
+      </span>
+      <Show when={props.parts.kind}>
+        {(kind) => <span class="resource-tooltip-kind">{kind()}</span>}
+      </Show>
+      <For each={props.parts.lines}>{(line) => <span class="resource-tooltip-line">{line}</span>}</For>
+      <Show when={props.parts.notes.length > 0}>
+        <span class="resource-tooltip-basis">
+          <For each={props.parts.notes}>{(note) => <span>{note}</span>}</For>
+        </span>
+      </Show>
+    </>
+  );
+}
+
+function resourceTooltipText(parts: ResourceTooltipParts) {
+  return [parts.title, ...(parts.kind ? [parts.kind] : []), ...parts.lines, ...parts.notes].join("\n");
+}
+
 function resourceProcessTooltip(bar: ResourceBarView, process: ResourceProcessSegment) {
+  return resourceTooltipText(resourceProcessTooltipParts(bar, process));
+}
+
+function resourceProcessTooltipParts(bar: ResourceBarView, process: ResourceProcessSegment): ResourceTooltipParts {
   const identity = isSystemResidualProcess(process) || Number(process.processId) <= 0
     ? uiText.resourceBreakdown.noPidCategory
     : `PID ${process.processId}`;
   const extra = isSystemResidualProcess(process)
-    ? `\n${uiText.resourceBreakdown.providerNotSplit}`
+    ? uiText.resourceBreakdown.providerNotSplit
     : isEtwResidualProcess(process)
-      ? `\n${uiText.resourceBreakdown.etwSupplement}`
-      : "";
-  return `${resourceProcessDisplayName(process, bar.metricId)} (${identity})\n${uiText.resourceBreakdown.systemPercent} ${formatPercent(process.systemPercent)}\n${uiText.resourceBreakdown.softwareInnerPercent} ${formatPercent(process.softwarePercent)}\n${resourceMemoryDetail(bar, process)}${extra}`;
+      ? uiText.resourceBreakdown.etwSupplement
+      : null;
+  const color = distinctPalette[hashKey(processKey(process)) % distinctPalette.length];
+  return {
+    title: `${resourceProcessDisplayName(process, bar.metricId)} (${identity})`,
+    swatch: { color, distinctColor: color, hatched: isSystemResidualProcess(process) },
+    kind: null,
+    lines: [
+      `${uiText.resourceBreakdown.systemPercent} ${formatPercent(process.systemPercent)}`,
+      `${uiText.resourceBreakdown.softwareInnerPercent} ${formatPercent(process.softwarePercent)}`,
+      resourceValueLine(bar, process)
+    ],
+    notes: [bar.basis, extra].filter((note): note is string => Boolean(note))
+  };
 }
 
 function isSystemResidualProcess(process: ResourceProcessSegment) {
@@ -887,19 +948,31 @@ function segmentLabel(segment: ResourceSelectableSegment) {
 }
 
 function resourceSegmentTooltip(bar: ResourceBarView, segment: ResourceSelectableSegment) {
-  const percentLabel = segment.isEmpty ? uiText.resourceBreakdown.emptyPercent : uiText.resourceBreakdown.systemPercent;
-  return `${segmentLabel(segment)}\n${percentLabel} ${formatPercent(segment.systemPercent)}\n${resourceMemoryDetail(bar, segment)}`;
+  return resourceTooltipText(resourceSegmentTooltipParts(bar, segment));
 }
 
-function resourceMemoryDetail(bar: ResourceBarView, segment: { value: number; sharedValue?: number | null }) {
-  const value = bar.unit === "B" && segment.sharedValue != null
+function resourceSegmentTooltipParts(bar: ResourceBarView, segment: ResourceSelectableSegment): ResourceTooltipParts {
+  const percentLabel = segment.isEmpty ? uiText.resourceBreakdown.emptyPercent : uiText.resourceBreakdown.systemPercent;
+  return {
+    title: segmentLabel(segment),
+    swatch: {
+      color: resourceSegmentPaintColor(segment, "type"),
+      distinctColor: resourceSegmentPaintColor(segment, "distinct"),
+      hatched: isReservedSegment(segment)
+    },
+    kind: segment.isEmpty || isReservedSegment(segment) ? null : softwareDisplayKindLabel(segment.kind, segment.displayKind),
+    lines: [`${percentLabel} ${formatPercent(segment.systemPercent)}`, resourceValueLine(bar, segment)],
+    notes: bar.basis ? [bar.basis] : []
+  };
+}
+
+function resourceValueLine(bar: ResourceBarView, segment: { value: number; sharedValue?: number | null }) {
+  return bar.unit === "B" && segment.sharedValue != null
     ? uiText.resourceTableView.memoryBreakdown(bar.label,
       formatResourceBarValue(bar, segment.value),
       formatResourceBarValue(bar, segment.value - segment.sharedValue),
       formatResourceBarValue(bar, segment.sharedValue))
     : `${bar.label}: ${formatResourceBarValue(bar, segment.value)}`;
-  const basis = bar.basis;
-  return basis ? `${value}\n${basis}` : value;
 }
 
 function resourceBarDenominator(bar: ResourceBreakdownBar) {
