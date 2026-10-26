@@ -3,7 +3,7 @@ export const targetedReport: AppCopy["targetedReport"] = {
   tab: "対象ソフトウェアの監視レポート", title: "対象ソフトウェアの監視レポート",
   chooseSoftware: "記録するソフトウェアを選択",
   noSoftware: "登録済みのソフトウェアがありません。先にソフトウェア管理で対象を登録してください。",
-  oneAtATime: "同時に実行できる記録は1件です。現在の記録を先に停止してください。",
+  oneAtATime: "同時に実行できる記録は 1 件です。現在の記録を先に停止してください。",
   workflow: "登録済みで実行中のソフトウェアを選択して記録を開始します。ソフトウェア詳細の概要からも開始できます。記録時間の既定値は 600 秒で、1～3600 秒の範囲で設定できます。手動停止、プロセス終了、または最長記録時間への到達でレポートを作成します。完了した記録は最新 50 件まで保存されます。",
   heldBy: (name: string) => `現在の記録：${name}`,
   maximumDurationValue: (seconds: number) => `最長 ${seconds} 秒`,
