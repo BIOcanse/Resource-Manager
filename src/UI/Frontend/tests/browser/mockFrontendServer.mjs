@@ -109,6 +109,12 @@ const defaultScenario = {
   metricCatalogComponent: "none",
   // 资源条按进程字段订阅（measures=）时，这些字段的整机总量读不到：后端不发这一条（其余条照常）。
   resourceBarMeasureTotalsMissing: [],
+  // 物理内存“系统/驱动保留”的分项与页帧明细（docs/runtime_process_attribution_and_io_network_telemetry.md，
+  // Physical memory residual）。"off" 保持原来的夹具；其余三种让物理内存条按字节给出、带 residualSource:"counters"
+  // 和 resource-residual:memory.usage 这一行（带上这个 id 时给出计数器分项），进程明细带上这个 id 时：
+  // "ready" 给就绪的页帧帧，"unavailable" 给不可用帧（原因代码见 physicalMemoryResidualReason），"absent" 不给帧。
+  physicalMemoryResidual: "off",
+  physicalMemoryResidualReason: "capture-time-limit",
   // 监视控制台卡片设置：保存（PUT）后读回保存的内容；null 时是夹具默认值。
   dashboardSettings: null,
   gpuPlacementEnabled: false,
@@ -1389,7 +1395,8 @@ const scenarioChoices = {
   metricCatalogAddresses: ["none", "reading-source"],
   settingsRuntimeDisposition: ["committedAndApplied", "committedWithCapabilityConstraints", "committedWithDeliveryFailures", "savedNotApplied"],
   gpuDedicatedMemoryMetrics: [true, false, null],
-  metricCatalogComponent: ["none", "missing", "installed"]
+  metricCatalogComponent: ["none", "missing", "installed"],
+  physicalMemoryResidual: ["off", "ready", "unavailable", "absent"]
 };
 
 function applyScenarioPatch(patch) {
@@ -1940,7 +1947,93 @@ function resourceProcessDetails(url, capturedAt) {
       .filter(row => requested.has(breakdown.softwareCatalog[row[0]][0].toLowerCase()))
       .map(row => ({ softwareId: breakdown.softwareCatalog[row[0]][0], processes: row[5] })) }))
     .filter(metric => metric.software.length > 0);
-  return { version: 1, capturedAt: metrics.length ? capturedAt : null, metrics };
+  // 和后端一样：明细带上 resource-residual:memory.usage、且订阅里有物理私有内存类指标时才读页帧；"absent" 是还没有发布过帧。
+  const selected = new Set(normalizeMetricIds([...url.searchParams.getAll("ids"), ...measures]).map(id => id.toLowerCase()));
+  const physicalPrivate = ["memory.usage", "process_all_private_working_set_actual"].some(id => selected.has(id));
+  const frame = scenario.physicalMemoryResidual !== "off" && scenario.physicalMemoryResidual !== "absent"
+    && requested.has(physicalMemoryResidualSoftwareId) && physicalPrivate
+    ? physicalMemoryResidualFrame(capturedAt) : null;
+  return { version: 1, capturedAt: metrics.length || frame ? capturedAt : null, ...(frame ? { physicalMemoryResidual: frame } : {}), metrics };
+}
+
+// 合成的物理内存保留量（只用 1/16 GiB 的整数倍，字节数都是整数）。计数器分项是条上的 PID -1 行，
+// 标识沿用后端 PhysicalMemoryResidualKinds；池标记后缀是小端 ULONG 的八位大写十六进制：
+// 4346744E = "NtFC"，656C6946 = "File"，01020304 含不可打印字节。各分项加未分类正好等于保留量。
+const physicalMemoryResidualSoftwareId = "resource-residual:memory.usage";
+const physicalMemoryFixture = {
+  capacityBytes: 32 * GiB,
+  usedBytes: 12 * GiB,
+  attributedPrivateBytes: 4 * GiB,
+  counterLeaves: [
+    ["system-memory/nonpaged-pool/tag/4346744E", 2.5 * GiB, "NtFC"],
+    ["system-memory/nonpaged-pool/tag/656C6946", 0.5 * GiB, "File"],
+    ["system-memory/nonpaged-pool/tag/01020304", 0.25 * GiB, "01020304"],
+    ["system-memory/nonpaged-pool/other-tags", 0.25 * GiB, ""],
+    ["system-memory/nonpaged-pool/unclassified", 0.125 * GiB, ""],
+    ["system-memory/paged-pool-resident", 1 * GiB, ""],
+    ["system-memory/driver-resident", 0.375 * GiB, ""],
+    ["system-memory/code-resident", 0.125 * GiB, ""],
+    ["system-memory/unclassified", 2.875 * GiB, ""]
+  ],
+  // PhysicalMemoryPfnAggregation 的顺序：Active 各用途、非分页池分项、已修改页、未归属的进程私有内存。
+  pfnParts: [
+    ["system-memory/mapped-file", 1.5 * GiB],
+    ["system-memory/shareable", 0.75 * GiB],
+    ["system-memory/page-table", 0.25 * GiB],
+    ["system-memory/paged-pool-resident", 1 * GiB],
+    ["system-memory/system-pte", 0.125 * GiB],
+    ["system-memory/metafile", 0.0625 * GiB],
+    ["system-memory/driver-locked", 0.0625 * GiB],
+    ["system-memory/kernel-stack", 0.0625 * GiB],
+    ["system-memory/working-set-internals", 0.0625 * GiB],
+    ["system-memory/nonpaged-pool/tag/4346744E", 2.5 * GiB],
+    ["system-memory/nonpaged-pool/tag/656C6946", 0.5 * GiB],
+    ["system-memory/nonpaged-pool/tag/01020304", 0.25 * GiB],
+    ["system-memory/nonpaged-pool/other-tags", 0.25 * GiB],
+    ["system-memory/nonpaged-pool/unclassified", 0.125 * GiB],
+    ["system-memory/modified", 0.25 * GiB],
+    ["system-memory/process-private-not-attributed", 0.125 * GiB]
+  ]
+};
+
+function physicalMemoryResidualFrame(capturedAt) {
+  const fixture = physicalMemoryFixture;
+  if (scenario.physicalMemoryResidual === "unavailable") {
+    return { version: 1, source: "pfn", status: "unavailable", reasonCode: scenario.physicalMemoryResidualReason, capturedAt,
+      usedBytes: null, attributedProcessPrivateBytes: null, residualBytes: null, unclassifiedBytes: null, parts: [] };
+  }
+  const residualBytes = fixture.usedBytes - fixture.attributedPrivateBytes;
+  const partBytes = fixture.pfnParts.reduce((sum, [, bytes]) => sum + bytes, 0);
+  return { version: 1, source: "pfn", status: "ready", reasonCode: null, capturedAt,
+    usedBytes: fixture.usedBytes, attributedProcessPrivateBytes: fixture.attributedPrivateBytes, residualBytes,
+    unclassifiedBytes: residualBytes - partBytes, parts: fixture.pfnParts.map(([kind, bytes]) => ({ kind, bytes })) };
+}
+
+// 物理内存条：前面是示例软件（合计为已归属的进程私有内存），最后是保留量这一行；带上它的 id 时附计数器分项。
+function physicalMemoryBar(softwareCatalog, segmentCount, processDetailSoftwareIds) {
+  const fixture = physicalMemoryFixture;
+  const percent = (value) => value * 100 / fixture.capacityBytes;
+  let residualIndex = softwareCatalog.findIndex(row => row[0] === physicalMemoryResidualSoftwareId);
+  if (residualIndex < 0) residualIndex = softwareCatalog.push([physicalMemoryResidualSoftwareId, "", "windows_system", "system_residual"]) - 1;
+  const residual = fixture.usedBytes - fixture.attributedPrivateBytes;
+  const leaves = processDetailSoftwareIds.has(physicalMemoryResidualSoftwareId)
+    ? fixture.counterLeaves.map(([kind, bytes, name]) => [-1, name, null, bytes, percent(bytes), bytes * 100 / residual, null, null, kind, 0, null])
+    : [];
+  return {
+    metricId: "memory.usage",
+    processFieldName: automaticProcessFields["memory.usage"],
+    residualSource: "counters",
+    unit: "B",
+    scaleMode: "capacity",
+    totalValue: fixture.usedBytes,
+    capacityValue: fixture.capacityBytes,
+    totalSystemPercent: percent(fixture.usedBytes),
+    software: [
+      ...createResourceSoftwareRows(segmentCount, fixture.attributedPrivateBytes, percent(fixture.attributedPrivateBytes),
+        (value) => `${value}`, processDetailSoftwareIds),
+      [residualIndex, residual, percent(residual), 0, 0, leaves]
+    ]
+  };
 }
 
 // 后端只在物理内存条（memory.usage 和 process_all_private_working_set_actual 字段条）上写 residualSource。
@@ -2010,7 +2103,7 @@ function resourceBreakdownFixture(capturedAt = now(), processDetailSoftwareIds =
           (value) => `${value.toFixed(3)}%`,
           processDetailSoftwareIds)
       },
-      {
+      scenario.physicalMemoryResidual !== "off" ? physicalMemoryBar(softwareCatalog, segmentCount, processDetailSoftwareIds) : {
         metricId: "memory.usage",
         // 后端在自动的整机内存条上写出实际读的进程字段。
         processFieldName: automaticProcessFields["memory.usage"],
@@ -2157,13 +2250,40 @@ function resourceFacts(url, capturedAt = now()) {
         processes: [{ processIndex: index, value: share, systemPercent: percent(share), softwarePercent: 100, baseScore: 0, sharedValue: null }] }));
       if (residual > 0) {
         if (!software.some(identity => identity.softwareId === residualId)) software.push({ softwareId: residualId, name: "", kind: "windows_system", attributionKind: "system-residual" });
-        const processIndex = processes.push({ processId: -1, processStartKey: null, name: "", executablePath: null, userName: null, architecture: null, attributionKind: "system-residual" }) - 1;
-        residualAttributions.push({ softwareId: residualId, processIndex, baseScore: 0 });
+        // 物理私有内存的保留量按计数器分项给出（后端 MemoryFacts 用同一个分项提供方）：分项是 PID -1 的行，
+        // 标识在 attributionKind；最后的未分类是保留量减去其余分项。其他字段仍是一行 system-residual。
+        const leaves = scenario.physicalMemoryResidual !== "off" && metricId === "process_all_private_working_set_actual"
+          ? physicalMemoryFixture.counterLeaves.slice(0, -1).map(([kind, bytes, name]) => [kind, bytes, name]) : null;
+        if (leaves) leaves.push(["system-memory/unclassified", residual - leaves.reduce((sum, [, bytes]) => sum + bytes, 0), ""]);
+        const parts = (leaves ?? [["system-residual", residual, ""]]).map(([attributionKind, value, name]) => ({ value,
+          processIndex: processes.push({ processId: -1, processStartKey: null, name, executablePath: null, userName: null, architecture: null, attributionKind }) - 1 }));
+        for (const part of parts) residualAttributions.push({ softwareId: residualId, processIndex: part.processIndex, baseScore: 0 });
         rows.push({ softwareId: residualId, value: residual, systemPercent: percent(residual), processCount: 0, baseScore: 0, sharedValue: null,
-          processes: [{ processIndex, value: residual, systemPercent: percent(residual), softwarePercent: 100, baseScore: 0, sharedValue: null }] });
+          processes: parts.map(part => ({ processIndex: part.processIndex, value: part.value, systemPercent: percent(part.value), softwarePercent: part.value * 100 / residual, baseScore: 0, sharedValue: null })) });
       }
       return { metricId, unit: "B", totalMetricId: fact.totalMetricId, processFieldName: metricId, residualSource: physicalResidualSource(metricId), totalValue: fact.totalValue, capacityValue: fact.capacityValue,
         totalSystemPercent: percent(fact.totalValue), processSumValue: count > 0 ? fact.processSum : 0, sharedValue: null, software: rows };
+    }
+    if (metricId === "memory.usage" && scenario.physicalMemoryResidual !== "off") {
+      // 物理内存（自动选择）：示例软件合计为已归属的进程私有内存，差额是保留量这一行，下面是计数器分项（PID -1）。
+      const fixture = physicalMemoryFixture;
+      const percent = value => value * 100 / fixture.capacityBytes;
+      const share = fixture.attributedPrivateBytes / Math.max(1, count);
+      const residual = fixture.usedBytes - (count > 0 ? fixture.attributedPrivateBytes : 0);
+      if (!software.some(identity => identity.softwareId === physicalMemoryResidualSoftwareId)) {
+        software.push({ softwareId: physicalMemoryResidualSoftwareId, name: "", kind: "windows_system", attributionKind: "system-residual" });
+      }
+      const leaves = fixture.counterLeaves.slice(0, -1).map(([kind, bytes, name]) => [kind, bytes, name]);
+      leaves.push(["system-memory/unclassified", residual - leaves.reduce((sum, [, bytes]) => sum + bytes, 0), ""]);
+      const parts = leaves.map(([attributionKind, value, name]) => ({ value,
+        processIndex: processes.push({ processId: -1, processStartKey: null, name, executablePath: null, userName: null, architecture: null, attributionKind }) - 1 }));
+      for (const part of parts) residualAttributions.push({ softwareId: physicalMemoryResidualSoftwareId, processIndex: part.processIndex, baseScore: 0 });
+      return { metricId, unit: "B", totalMetricId: null, processFieldName: automaticProcessFields[metricId], totalValue: fixture.usedBytes,
+        capacityValue: fixture.capacityBytes, totalSystemPercent: percent(fixture.usedBytes), processSumValue: null, sharedValue: null, residualSource: "counters",
+        software: [...software.slice(0, count).map((identity, index) => ({ softwareId: identity.softwareId, value: share, systemPercent: percent(share), processCount: 1,
+          baseScore: 0, sharedValue: null, processes: [{ processIndex: index, value: share, systemPercent: percent(share), softwarePercent: 100, baseScore: 0, sharedValue: null }] })),
+        { softwareId: physicalMemoryResidualSoftwareId, value: residual, systemPercent: percent(residual), processCount: 0, baseScore: 0, sharedValue: null,
+          processes: parts.map(part => ({ processIndex: part.processIndex, value: part.value, systemPercent: percent(part.value), softwarePercent: part.value * 100 / residual, baseScore: 0, sharedValue: null })) }] };
     }
     const memory = metricId === "memory.usage" || metricId.endsWith(".vram");
     const value = memory ? 536870912 : 12;
