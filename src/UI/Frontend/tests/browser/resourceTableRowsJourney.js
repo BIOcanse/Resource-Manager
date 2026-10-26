@@ -251,6 +251,26 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
   }
   results.actions = { idleActions, hoveredActions };
 
+  // 10. 搜索没结果：占位有表格的外框，图标和说明作为一组居中。
+  const search = page.getByRole("searchbox", { name: app.resourceTable.searchPlaceholder });
+  await search.fill("no-such-resource");
+  const state = panel.locator(":scope > .content-state");
+  await state.waitFor();
+  const stateLayout = await state.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const parts = [...element.children].filter((child) => child.getClientRects().length > 0).map((child) => child.getBoundingClientRect());
+    const left = Math.min(...parts.map((part) => part.left));
+    const right = Math.max(...parts.map((part) => part.right));
+    const style = getComputedStyle(element);
+    return { offset: Math.abs((left + right) / 2 - (box.left + box.right) / 2), border: style.borderLeftWidth, radius: style.borderTopLeftRadius };
+  });
+  await search.fill("");
+  await panel.locator(".resource-table-frame").waitFor();
+  if (stateLayout.offset > 2 || stateLayout.border !== "1px" || stateLayout.radius === "0px") {
+    throw new Error(`Table content state is not framed and centred: ${JSON.stringify(stateLayout)}`);
+  }
+  results.contentState = stateLayout;
+
   // 11. 进程级没有树：名字前不留箭头的空位；PID 用等宽数字。
   await panel.locator(".resource-table-mode-button").nth(1).click();
   await visibleRows("process").first().waitFor();

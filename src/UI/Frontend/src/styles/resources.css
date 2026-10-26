@@ -29,8 +29,26 @@
   min-width: 0;
 }
 
+/*
+  加载中、读不到、没有资源、搜索没结果时占表格的位置：外框和表格一样（换成表格时外框不跳），
+  图标、说明和按钮作为一组放在中间，不贴在一大片空白的左边。
+*/
 .resource-table-panel > .content-state {
   min-height: calc(var(--resource-table-viewport-height) + 36px);
+  grid-template-columns: auto minmax(0, max-content) auto;
+  justify-content: center;
+  align-content: center;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--elev-1), var(--edge-highlight);
+  padding: 24px 16px;
+}
+
+@media (max-width: 720px) {
+  .resource-table-panel > .content-state {
+    grid-template-columns: auto minmax(0, max-content);
+  }
 }
 
 .resource-table-title {
