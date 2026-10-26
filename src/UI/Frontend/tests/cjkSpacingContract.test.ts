@@ -15,6 +15,16 @@ assert.equal(cjkText`${"NVIDIA"}の主な情報`, "NVIDIA の主な情報");
 assert.equal(cjkText`更换${"槽位 1"}：${"CPU"}`, "更换槽位 1：CPU");
 assert.equal(cjkText`共 ${3} 项`, "共 3 项", "an interpolation the template already spaces keeps its spacing");
 assert.equal(cjkText`正在加载${""}`, "正在加载");
+// 插值是数据：只在边界上补，内部原样保留。
+assert.equal(cjkText`正在加载${"微信WeChat"}`, "正在加载微信WeChat", "a CJK+Latin value keeps its own unspaced text");
+assert.equal(cjkText`${"WeChat微信"}管理`, "WeChat微信管理", "the value's last character is CJK, so no gap is added after it");
+assert.equal(cjkText`打开${"WeChat微信"}`, "打开 WeChat微信", "only the literal/value boundary gets the space");
+assert.equal(cjkText`${"原神 Genshin Impact"}的设置`, "原神 Genshin Impact 的设置","inner spacing is untouched; only the trailing boundary is spaced");
+assert.equal(cjkText`版本${"(beta)"}已安装`, "版本(beta)已安装", "a value starting and ending with punctuation gets no gap");
+assert.equal(cjkText`文件${"「report.txt」"}已删除`, "文件「report.txt」已删除");
+assert.equal(cjkText`正在加载${" GPU 调度数据 "}完成`, "正在加载 GPU 调度数据 完成", "an already spaced value is not spaced again");
+assert.equal(cjkText`正在加载${"D:\\Games\\原神"}`, "正在加载 D:\\Games\\原神", "a path is kept exactly; only the leading boundary is spaced");
+assert.equal(cjkText`${""}项`, "项", "an empty value adds nothing on either side");
 assert.deepEqual(cjkLatinGaps("CPU 风扇 · 1 秒平均"), []);
 assert.equal(cjkLatinGaps("CPU风扇").length, 1);
 assert.equal(cjkLatinGaps("ノートPCメーカー").length, 2);

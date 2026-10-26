@@ -16,7 +16,14 @@ function needsGap(before: string, after: string): boolean {
     || (latinCharacter.test(before) && cjkCharacter.test(after));
 }
 
-/** 模板标签：把插值拼进文案，并在汉字或假名与拉丁字母、数字直接相接的插值边界上补一个空格。 */
+/**
+ * 模板标签：把插值拼进文案，并在汉字或假名与拉丁字母、数字直接相接的插值边界上补一个空格。
+ *
+ * 边界规则：只看"模板文字的最后一个字符 | 插值的第一个字符"和"插值的最后一个字符 | 下一段模板文字的第一个字符"
+ * 这两处；一侧是汉字或假名、另一侧是拉丁字母或数字、且两者之间没有任何字符时，才在两者之间插入一个空格。
+ * 插值本身原样拼入，内部一个字符也不改：软件名、设备名、路径、用户输入的标签是数据，
+ * “微信WeChat”、游戏名、文件名保持它自己的写法。插值为空、以标点或空白开头或结尾时，那一侧不补。
+ */
 export function cjkText(strings: TemplateStringsArray, ...values: readonly unknown[]): string {
   let text = strings[0];
   for (let index = 0; index < values.length; index += 1) {
