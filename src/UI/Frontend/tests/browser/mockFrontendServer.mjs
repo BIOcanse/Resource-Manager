@@ -73,6 +73,8 @@ const defaultScenario = {
   resourceTableRowCount: null,
   // 整机内存的系统/驱动残差按后端计数器叶子拆开（PhysicalMemoryResidualKinds）：PID -1，名字为空，池标签例外。
   resourceMemoryResidualLeaves: false,
+  resourceTableAccountingFixture: false,
+  resourceTableTotalsMissing: [],
   debugMode: false,
   runtimeEffectOwners: false,
   optimizationRuntime: false,
@@ -111,7 +113,7 @@ const defaultScenario = {
   // cpu.frequency 的组件安装信息："none" 不需要组件；"missing" 需要传感器组件且未安装；"installed" 已安装但还没有有效读数。
   // 安装信息变化时后端不换目录修订号（MetricCatalogPushTests），目录订阅照样推新的一帧。
   metricCatalogComponent: "none",
-  // 资源条按进程字段订阅（measures=）时，这些字段的整机总量读不到：后端不发这一条（其余条照常）。
+  // 整机总量读不到时资源条保留为显式不可用条，明细保留该指标自己的事实。
   resourceBarMeasureTotalsMissing: [],
   // 物理内存“系统/驱动保留”的分项与页帧明细（docs/runtime_process_attribution_and_io_network_telemetry.md，
   // Physical memory residual）。"off" 保持原来的夹具；其余三种让物理内存条按字节给出、带 residualSource:"counters"
@@ -308,7 +310,7 @@ const mockSoftware = {
 
 const server = createServer(async (request, response) => {
   try {
-    const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
+    const url = new URL(request.url ?? "/", `http://127.0.0.1:${server.address().port}`);
     if (url.pathname === "/__test/scenario" && request.method === "POST") {
       const patch = JSON.parse(await readBody(request));
       applyScenarioPatch(patch);
@@ -1685,31 +1687,76 @@ function readingSourceAddress() {
   ]), fieldName: "gpu_amd_edge_temperature_celsius", deviceIdentity: "gpu|reading" };
 }
 
-// 进程字段目录（后端 ProcessMetricFieldRegistry 的形状）：内存四种口径带 reading，其余字段没有。
+// 进程字段目录（后端 ProcessMetricFieldRegistry 与 ProcessGpuResourceFieldRegistry 的 wire 形状，metric-source round 4）：
+// System.Text.Json 写全部公开属性；supportsResourceFacts = resourceFactTotalMetricId 不为 null；
+// additiveAcrossProcesses 是后端的声明（没有声明为 null）；GPU 字段按适配器和引擎展开，带 gpuEngine / engineClass。
+function catalogField(name, valueKind, unit, sourceId, { reading = null, total = null, additive = null, gpuEngine = null, engineClass = null, sourceFieldName = null } = {}) {
+  return { name, valueKind, unit, sourceId, resource: "process", vendor: "all", supportsResourceFacts: total !== null,
+    gpuEngine, engineClass, sourceFieldName, additiveAcrossProcesses: additive, resourceFactTotalMetricId: total, reading };
+}
+const fixtureGpuLuid = 0x17;
+const fixtureGpuLuidText = fixtureGpuLuid.toString(16).padStart(16, "0");
+const gpuEngineFieldName = (engine) => `process_all_gpu_residency_attributed_gpu_0_luid_${fixtureGpuLuidText}_physical_0_engine_${engine}`;
+const gpuResidentFieldName = (source) => `${source}_gpu_0_luid_${fixtureGpuLuidText}`;
 const processFieldCatalog = [
-  ["process_all_cpu_usage_actual", "float64", "%", "windows.process.cpu-interval", null],
-  ["process_all_working_set_actual", "unsigned64", "B", "windows.process.query", "working_set_including_shared"],
-  ["process_all_private_working_set_actual", "unsigned64", "B", "windows.process.query", "private_working_set"],
-  ["process_all_private_commit_actual", "unsigned64", "B", "windows.process.query", "private_commit"],
-  ["process_all_peak_private_commit_actual", "unsigned64", "B", "windows.process.query", "peak_private_commit"]
-].map(([name, valueKind, unit, sourceId, quantity]) => ({ name, valueKind, unit, sourceId, resource: "process", vendor: "all",
-  reading: quantity === null ? null : { resource: "memory", quantity },
-  // 后端：工作集、私有工作集、私有提交量能作资源事实，峰值提交量和非内存字段不能；
-  // resourceFactTotalMetricId 是作资源事实时比较的整机指标（不能作资源事实的为 null）。
-  supportsResourceFacts: quantity !== null && quantity !== "peak_private_commit",
-  resourceFactTotalMetricId: quantity === "working_set_including_shared" || quantity === "private_working_set" ? "memory.usage"
-    : quantity === "private_commit" ? "virtualMemory.usage" : null }));
+  catalogField("process_all_network_receive_bytes_attributed", "unsigned64", "B", "windows.etw.network", { total: "network.traffic", additive: true }),
+  catalogField("process_all_network_send_bytes_attributed", "unsigned64", "B", "windows.etw.network", { total: "network.traffic", additive: true }),
+  catalogField("process_all_network_receive_rate_attributed", "float64", "B/s", "windows.etw.network", { total: "network.traffic", additive: true }),
+  catalogField("process_all_network_send_rate_attributed", "float64", "B/s", "windows.etw.network", { total: "network.traffic", additive: true }),
+  catalogField("process_all_physical_disk_read_bytes_attributed", "unsigned64", "B", "windows.etw.physical-disk", { total: "disk.io", additive: true }),
+  catalogField("process_all_physical_disk_write_bytes_attributed", "unsigned64", "B", "windows.etw.physical-disk", { total: "disk.io", additive: true }),
+  catalogField("process_all_gpu_residency_attributed", "float64", "%", "windows.pdh.gpu-engine"),
+  catalogField("process_all_cpu_time_actual", "float64", "s", "windows.process.query", { additive: true }),
+  catalogField("process_all_working_set_actual", "unsigned64", "B", "windows.process.query",
+    { reading: { resource: "memory", quantity: "working_set_including_shared" }, total: "memory.usage", additive: false }),
+  catalogField("process_all_private_working_set_actual", "unsigned64", "B", "windows.process.query",
+    { reading: { resource: "memory", quantity: "private_working_set" }, total: "memory.usage", additive: true }),
+  catalogField("process_all_private_commit_actual", "unsigned64", "B", "windows.process.query",
+    { reading: { resource: "memory", quantity: "private_commit" }, total: "virtualMemory.usage", additive: true }),
+  catalogField("process_all_peak_private_commit_actual", "unsigned64", "B", "windows.process.query",
+    { reading: { resource: "memory", quantity: "peak_private_commit" }, additive: false }),
+  catalogField("process_all_handle_count_actual", "unsigned64", "count", "windows.process.query"),
+  catalogField("process_all_cpu_usage_actual", "float64", "%", "windows.process.cpu-interval", { total: "cpu.usage", additive: true }),
+  ...[[0, null], [1, "Compute"]].map(([engine, engineClass]) => catalogField(gpuEngineFieldName(engine), "float64", "%", "windows.pdh.gpu-engine", {
+    reading: { resource: "gpu", quantity: "engine_busy_percent" }, total: "gpu.0.usage", additive: true,
+    gpuEngine: { adapterLuid: fixtureGpuLuid, physicalIndex: 0, engineIndex: engine }, engineClass, sourceFieldName: "process_all_gpu_residency_attributed" })),
+  ...[["process_all_gpu_resident_bytes_attributed", "dedicated_resident_apportioned"],
+    ["process_all_gpu_resident_private_bytes_attributed", "dedicated_resident_private"],
+    ["process_all_gpu_resident_shared_bytes_attributed", "dedicated_resident_shared_apportioned"]].map(([source, quantity]) =>
+    catalogField(gpuResidentFieldName(source), "float64", "B", "windows.etw.gpu-allocation",
+      { reading: { resource: "gpu", quantity }, total: "gpu.0.vram", additive: true, sourceFieldName: source }))
+];
+const catalogFieldByName = new Map(processFieldCatalog.map(field => [field.name, field]));
 
 // 自动的整机内存指标实际读的进程字段（后端在资源事实和资源条上写的 processFieldName）。
 const automaticProcessFields = { "memory.usage": "process_all_private_working_set_actual", "virtualMemory.usage": "process_all_private_commit_actual" };
 
-// 资源事实接受的进程内存字段：整机比较事实、整机量、容量和全部进程之和（按软件平分）。
+// 资源事实接受的进程字段：整机比较事实、整机量、比较基数和全部进程之和（按软件平分）。
+// 吞吐类（网络、物理磁盘）的比较基数是本帧总量 max(1, total)，带 2 秒采样窗口；GPU 引擎带自己的窗口。
 const GiB = 1024 ** 3;
+const throughput = (total, unit) => ({ totalValue: total, capacityValue: Math.max(1, total), unit, windowMilliseconds: 2000 });
 const processMemoryFacts = {
   process_all_working_set_actual: { totalMetricId: "memory.usage", totalValue: 8 * GiB, capacityValue: 16 * GiB, processSum: 0.625 * GiB },
   process_all_private_working_set_actual: { totalMetricId: "memory.usage", totalValue: 8 * GiB, capacityValue: 16 * GiB, processSum: 0.5 * GiB },
-  process_all_private_commit_actual: { totalMetricId: "virtualMemory.usage", totalValue: 6 * GiB, capacityValue: 24 * GiB, processSum: GiB }
+  process_all_private_commit_actual: { totalMetricId: "virtualMemory.usage", totalValue: 6 * GiB, capacityValue: 24 * GiB, processSum: GiB },
+  process_all_cpu_usage_actual: { totalMetricId: "cpu.usage", totalValue: 24, capacityValue: 100, processSum: 12, unit: "%" },
+  process_all_network_receive_rate_attributed: { totalMetricId: "network.traffic", ...throughput(4096, "B/s"), processSum: 3072 },
+  process_all_network_send_rate_attributed: { totalMetricId: "network.traffic", ...throughput(2048, "B/s"), processSum: 2048 },
+  process_all_network_receive_bytes_attributed: { totalMetricId: "network.traffic", ...throughput(8192, "B"), processSum: 6144 },
+  process_all_network_send_bytes_attributed: { totalMetricId: "network.traffic", ...throughput(4096, "B"), processSum: 4096 },
+  process_all_physical_disk_read_bytes_attributed: { totalMetricId: "disk.io", ...throughput(1048576, "B"), processSum: 786432 },
+  process_all_physical_disk_write_bytes_attributed: { totalMetricId: "disk.io", ...throughput(524288, "B"), processSum: 524288 },
+  [gpuEngineFieldName(0)]: { totalMetricId: "gpu.0.usage", totalValue: 40, capacityValue: 100, processSum: 20, unit: "%", windowMilliseconds: 1000 },
+  [gpuEngineFieldName(1)]: { totalMetricId: "gpu.0.usage", totalValue: 10, capacityValue: 100, processSum: 10, unit: "%", windowMilliseconds: 1000 },
+  [gpuResidentFieldName("process_all_gpu_resident_bytes_attributed")]: { totalMetricId: "gpu.0.vram", totalValue: 2 * GiB, capacityValue: 8 * GiB, processSum: 1.5 * GiB },
+  [gpuResidentFieldName("process_all_gpu_resident_private_bytes_attributed")]: { totalMetricId: "gpu.0.vram", totalValue: 2 * GiB, capacityValue: 8 * GiB, processSum: GiB },
+  [gpuResidentFieldName("process_all_gpu_resident_shared_bytes_attributed")]: { totalMetricId: "gpu.0.vram", totalValue: 2 * GiB, capacityValue: 8 * GiB, processSum: 0.5 * GiB }
 };
+for (const [field, fact] of Object.entries(processMemoryFacts)) {
+  const definition = catalogFieldByName.get(field);
+  Object.assign(fact, { additive: definition.additiveAcrossProcesses, quantity: definition.reading?.quantity ?? null,
+    gpuEngine: definition.gpuEngine, engineClass: definition.engineClass, windowMilliseconds: fact.windowMilliseconds ?? null });
+}
 
 // 后端只接受能作资源事实的进程字段作 measures；峰值提交量、未知字段整条请求 400。
 function resourceMeasuresKnown(url) {
@@ -1966,14 +2013,18 @@ function fixtureCpuResidency(capturedAt = now()) {
 
 function resourceProcessDetails(url, capturedAt) {
   const requested = new Set(normalizeMetricIds(url.searchParams.getAll("processDetails")).map(id => id.toLowerCase()));
+  if (requested.size === 0) return { version: 1, capturedAt: null, metrics: [] };
   const measures = url.searchParams.getAll("measures");
   // 明细按 measures 给出这个字段的进程，整机总量读不到也照样给。
   const breakdown = resourceBreakdown(capturedAt, requested, measures, url.searchParams.getAll("modes"), { keepMissingTotals: true, ids: url.searchParams.getAll("ids") });
   const metrics = breakdown.bars
-    .map(bar => ({ metricId: bar.metricId, software: bar.software
+    .filter(bar => bar.capturedAt !== null)
+    .map(bar => ({ metricId: bar.metricId, totalMetricId: bar.totalMetricId ?? bar.metricId,
+      totalValue: bar.totalValue, capacityValue: bar.capacityValue, processSumValue: bar.processSumValue,
+      residualValue: bar.residualValue, additiveAcrossProcesses: bar.additiveAcrossProcesses, capturedAt: bar.capturedAt,
+      software: bar.software
       .filter(row => requested.has(breakdown.softwareCatalog[row[0]][0].toLowerCase()))
-      .map(row => ({ softwareId: breakdown.softwareCatalog[row[0]][0], processes: row[5] })) }))
-    .filter(metric => metric.software.length > 0);
+      .map(row => ({ softwareId: breakdown.softwareCatalog[row[0]][0], processes: row[5] })) }));
   // 和后端 r3 一样：明细带上 resource-residual:memory.usage，且选了 memory.usage、物理私有内存度量或页帧项
   // memory.residual.details 时才附上最近发布的页帧帧，带它自己的采集时间和状态；"absent" 是还没有发布过帧。
   const selected = new Set(normalizeMetricIds([...url.searchParams.getAll("ids"), ...measures]).map(id => id.toLowerCase()));
@@ -2038,7 +2089,7 @@ function physicalMemoryResidualFrame(capturedAt) {
 }
 
 // 物理内存条：前面是示例软件（合计为已归属的进程私有内存），最后是保留量这一行；带上它的 id 时附计数器分项。
-function physicalMemoryBar(softwareCatalog, segmentCount, processDetailSoftwareIds) {
+function physicalMemoryBar(softwareCatalog, segmentCount, processDetailSoftwareIds, capturedAt) {
   const fixture = physicalMemoryFixture;
   const percent = (value) => value * 100 / fixture.capacityBytes;
   let residualIndex = softwareCatalog.findIndex(row => row[0] === physicalMemoryResidualSoftwareId);
@@ -2056,6 +2107,7 @@ function physicalMemoryBar(softwareCatalog, segmentCount, processDetailSoftwareI
     totalValue: fixture.usedBytes,
     capacityValue: fixture.capacityBytes,
     totalSystemPercent: percent(fixture.usedBytes),
+    ...barFacts({ processSumValue: fixture.attributedPrivateBytes, residualValue: residual, additiveAcrossProcesses: true, capturedAt }),
     software: [
       ...createResourceSoftwareRows(segmentCount, fixture.attributedPrivateBytes, percent(fixture.attributedPrivateBytes),
         (value) => `${value}`, processDetailSoftwareIds),
@@ -2125,6 +2177,7 @@ function resourceBreakdownFixture(capturedAt = now(), processDetailSoftwareIds =
         capacityValue: 100,
         totalSystemPercent: cpuValue,
         totalDisplay: `${cpuValue}%`,
+        ...barFacts({ processSumValue: cpuValue, residualValue: 0, additiveAcrossProcesses: true, capturedAt }),
         software: createResourceSoftwareRows(
           segmentCount,
           cpuValue,
@@ -2132,7 +2185,7 @@ function resourceBreakdownFixture(capturedAt = now(), processDetailSoftwareIds =
           (value) => `${value.toFixed(3)}%`,
           processDetailSoftwareIds)
       },
-      scenario.physicalMemoryResidual !== "off" ? physicalMemoryBar(softwareCatalog, segmentCount, processDetailSoftwareIds) : {
+      scenario.physicalMemoryResidual !== "off" ? physicalMemoryBar(softwareCatalog, segmentCount, processDetailSoftwareIds, capturedAt) : {
         metricId: "memory.usage",
         // 后端在自动的整机内存条上写出实际读的进程字段。
         processFieldName: automaticProcessFields["memory.usage"],
@@ -2144,6 +2197,7 @@ function resourceBreakdownFixture(capturedAt = now(), processDetailSoftwareIds =
         capacityValue: scenario.resourceSharedMemory ? 32 * 1024 ** 3 : 32,
         totalSystemPercent: 25,
         totalDisplay: "8.0 GB",
+        ...barFacts({ processSumValue: scenario.resourceSharedMemory ? 8 * 1024 ** 3 : 8, residualValue: 0, additiveAcrossProcesses: true, capturedAt }),
         software: createResourceSoftwareRows(
           segmentCount,
           scenario.resourceSharedMemory ? 8 * 1024 ** 3 : 8,
@@ -2153,12 +2207,23 @@ function resourceBreakdownFixture(capturedAt = now(), processDetailSoftwareIds =
       },
       ...(scenario.gpuPressureFixture ? [
         { metricId: "gpu.0.usage", unit: "%", scaleMode: "capacity", totalValue: 96, capacityValue: 100, totalSystemPercent: 96,
+          ...barFacts({ processSumValue: 96, residualValue: 0, additiveAcrossProcesses: true, capturedAt }),
           software: createResourceSoftwareRows(segmentCount, 96, 96, value => String(value) + "%", processDetailSoftwareIds) },
         { metricId: "gpu.0.vram", unit: "B", scaleMode: "capacity", totalValue: 4 * GiB, capacityValue: 8 * GiB, totalSystemPercent: 50,
+          ...barFacts({ processSumValue: 4 * GiB, residualValue: 0, additiveAcrossProcesses: true, capturedAt, quantity: "dedicated_memory_used" }),
           software: createResourceSoftwareRows(segmentCount, 4 * GiB, 50, value => String(value) + " B", processDetailSoftwareIds) }
       ] : []),
-      ...resourceMeasureBars(softwareCatalog, processFields, modes, processDetailSoftwareIds, keepMissingTotals)
+      ...resourceMeasureBars(softwareCatalog, processFields, modes, processDetailSoftwareIds, keepMissingTotals, capturedAt)
     ].filter(bar => visibleIds.has(bar.metricId.toLowerCase()));
+  for (const metricId of visibleIds) {
+    if (bars.some(bar => bar.metricId === metricId) || !/^(?:cpu\.usage|memory\.usage|virtualmemory\.usage|disk\.(?:io|read|write)|network\.(?:raw\.)?(?:traffic|receive|send)|gpu\.\d+\.(?:usage|vram))$/.test(metricId)) continue;
+    const throughput = metricId.startsWith("disk.") || metricId.startsWith("network.");
+    const scaleMode = new Map(modes.map(value => value.split(":"))).get(metricId) ?? (throughput ? "active" : "capacity");
+    bars.push({ metricId, unit: throughput ? "B/s" : /^(?:cpu|gpu\.\d+)\.usage$/.test(metricId) ? "%" : "B",
+      scaleMode, totalValue: null, capacityValue: null, totalSystemPercent: null,
+      ...barFacts({ processSumValue: null, residualValue: null, additiveAcrossProcesses: true, capturedAt: null }),
+      unavailableReason: "resource-breakdown-total-unavailable", software: [] });
+  }
   // Only selected bars contribute software identities, as in the C# wire projection.
   const selectedCatalog = [];
   const indexes = new Map();
@@ -2169,7 +2234,7 @@ function resourceBreakdownFixture(capturedAt = now(), processDetailSoftwareIds =
     }
     return [indexes.get(row[0]), ...row.slice(1)];
   });
-  return { version: 8, capturedAt: bars.length ? capturedAt : null, softwareCatalog: selectedCatalog, bars };
+  return { version: 8, capturedAt: bars.some(bar => bar.capturedAt !== null) ? capturedAt : null, softwareCatalog: selectedCatalog, bars };
 }
 
 // 混合数据（resourceSoftwareMix: "audit"）：各展示分组都有、最后几段很小、末尾是系统/驱动保留残差；
@@ -2225,46 +2290,71 @@ function auditResourceBreakdown(capturedAt, generation, processDetailSoftwareIds
 // 按进程字段订阅的资源条（后端 ResourceBreakdownWireSnapshot.ProjectProcessMemoryBars 的形状）：
 // metricId 和 processFieldName 是字段名，totalMetricId 是它比较的整机事实；第一个软件拿全部进程之和，
 // 差额进 resource-residual:<totalMetricId>。缩放看 modes=，键可以是字段名或它的 totalMetricId，同时出现时字段名优先，
-// active 按整机已用量比较。后端只认三种能作资源事实的字段（别的在请求时已经 400）；
-// 总量读不到（resourceBarMeasureTotalsMissing）时条上不出这一条，明细照样给。
-function resourceMeasureBars(softwareCatalog, measures, modes = [], processDetailSoftwareIds = new Set(), keepMissingTotals = false) {
+// active 按整机已用量比较。后端只认目录中能作资源事实的字段（别的在请求时已经 400）；
+// 总量读不到时 bars 清空数值和片段；details 保留投影的每指标事实。
+function resourceMeasureBars(softwareCatalog, measures, modes = [], processDetailSoftwareIds = new Set(), keepMissingTotals = false, capturedAt = now()) {
   const modeByKey = new Map(modes.map(value => value.split(":")).filter(parts => parts.length === 2));
-  const known = [...new Set(measures)].filter(field => Object.hasOwn(processMemoryFacts, field)
-    && (keepMissingTotals || !(scenario.resourceBarMeasureTotalsMissing ?? []).includes(field)));
+  const known = [...new Set(measures)].filter(field => Object.hasOwn(processMemoryFacts, field));
   return known.map(field => {
     const fact = processMemoryFacts[field];
     const scaleMode = modeByKey.get(field) ?? modeByKey.get(fact.totalMetricId) ?? "capacity";
+    const missing = scenario.resourceBarMeasureTotalsMissing.includes(field);
+    const gpuMissing = missing && field.startsWith("process_all_gpu_");
+    if (missing && (!keepMissingTotals || gpuMissing)) return {
+      metricId: field, totalMetricId: fact.totalMetricId, processFieldName: field, unit: fact.unit ?? "B", scaleMode,
+      ...(physicalResidualSource(field) ? { residualSource: physicalResidualSource(field) } : {}),
+      totalValue: null, capacityValue: null, totalSystemPercent: null, sharedValue: null,
+      ...barFacts({ processSumValue: null, residualValue: null, additiveAcrossProcesses: fact.additive, capturedAt,
+        quantity: fact.quantity, windowMilliseconds: fact.windowMilliseconds, gpuEngine: fact.gpuEngine, engineClass: fact.engineClass }),
+      unavailableReason: gpuMissing ? "gpu-measure-total-unavailable" : "system-total-unavailable", software: []
+    };
     const base = scaleMode === "active" ? fact.totalValue : fact.capacityValue;
     const percent = value => value * 100 / base;
     const detailed = processDetailSoftwareIds.has(softwareCatalog[0][0].toLowerCase());
     const residualId = `resource-residual:${fact.totalMetricId}`;
     let residualIndex = softwareCatalog.findIndex(row => row[0] === residualId);
     if (residualIndex < 0) residualIndex = softwareCatalog.push([residualId, "", "windows_system", "windows_system"]) - 1;
-    const residual = fact.totalValue - fact.processSum;
+    // 不可加口径没有残差（后端 Balance），也就没有残差条目。
+    const residual = fact.additive && !missing ? fact.totalValue - fact.processSum : null;
     // 和后端 r3 一样：只选物理私有内存度量、不带 memory.usage 时，它的保留量同样按计数器分项给出（PID -1 的行，
-    // 标识在 attributionKind），分项与这个度量自己的保留量平衡，最后的未分类是余数。
+    // 标识在 attributionKind），分项与这个度量自己的保留量平衡，最后的未分类是余数；后端只在差额为正时取分项。
     const counters = scenario.physicalMemoryResidual !== "off" && field === "process_all_private_working_set_actual";
-    const leaves = counters && processDetailSoftwareIds.has(residualId) ? physicalMemoryFixture.counterLeaves.slice(0, -1) : [];
+    const leaves = counters && residual > 0 && processDetailSoftwareIds.has(residualId) ? physicalMemoryFixture.counterLeaves.slice(0, -1) : [];
     if (leaves.length) leaves.push(["system-memory/unclassified", residual - leaves.reduce((sum, [, bytes]) => sum + bytes, 0), ""]);
     return {
       metricId: field,
       totalMetricId: fact.totalMetricId,
       processFieldName: field,
       ...(physicalResidualSource(field) ? { residualSource: physicalResidualSource(field) } : {}),
-      unit: "B",
+      unit: fact.unit ?? "B",
       scaleMode,
-      totalValue: fact.totalValue,
+      totalValue: missing ? null : fact.totalValue,
       capacityValue: fact.capacityValue,
       totalSystemPercent: percent(fact.totalValue),
       sharedValue: null,
+      ...barFacts({ processSumValue: fact.processSum, residualValue: residual, additiveAcrossProcesses: fact.additive, capturedAt,
+        quantity: fact.quantity, windowMilliseconds: fact.windowMilliseconds, gpuEngine: fact.gpuEngine, engineClass: fact.engineClass }),
       software: [[0, fact.processSum, percent(fact.processSum), 1, 5, detailed ? [[4242, "example.exe", "C:\\FrontendHarness\\example.exe",
         fact.processSum, percent(fact.processSum), 100, "测试用户", "x64", "direct", 0, String(132000000000000000n + 4242n)]] : []],
-        [residualIndex, residual, percent(residual), 0, 0,
-          leaves.map(([kind, bytes, name]) => [-1, name, null, bytes, percent(bytes), bytes * 100 / residual, null, null, kind, 0, null])]]
+        ...(residual === null || residual === 0 ? [] : [[residualIndex, residual, percent(residual), 0, 0,
+          leaves.map(([kind, bytes, name]) => [-1, name, null, bytes, percent(bytes), bytes * 100 / residual, null, null, kind, 0, null])]])]
     };
   });
 }
 
+// 资源条上每个指标自己的事实（ResourceBreakdownWireSnapshotJsonConverter.WriteBars）：之和、残差、可加性、时刻总写；
+// 口径、窗口和 GPU 引擎只在有值时写，engineClass 跟 gpuEngine 一起写。
+function barFacts({ processSumValue, residualValue, additiveAcrossProcesses, capturedAt, quantity = null, windowMilliseconds = null, gpuEngine = null, engineClass = null }) {
+  return { processSumValue, residualValue, additiveAcrossProcesses, capturedAt,
+    ...(quantity === null ? {} : { quantity }), ...(windowMilliseconds === null ? {} : { windowMilliseconds }),
+    ...(gpuEngine === null ? {} : { gpuEngine, engineClass }) };
+}
+
+// 资源事实帧（后端 ResourceFactsSnapshot，version 2，metric-source round 4）。每个指标按 Balance 结算：
+// processSumValue 是本帧发布的进程之和；可加口径 residualValue = 总量 − 之和（带符号），非零时记在软件条目
+// resource-residual:<totalMetricId> 下的一个 PID -1、attributionKind 为 system-residual 的叶子，并进身份目录；
+// 不可加口径（工作集）残差为 null、没有残差条目。总量读不到（resourceTableTotalsMissing）时：GPU 显存发不可用原因
+// gpu-dedicated-memory-total-unavailable、不发行；其余指标保留进程行、没有残差，原因是 system-total-unavailable。
 function resourceFacts(url, capturedAt = now()) {
   if (scenario.readmeShowcase) return showcase.showcaseResourceFacts(new Set(url.searchParams.getAll("items")), capturedAt);
   const count = scenario.resourceTableVariant === "empty" ? 0 : normalizeFixtureCount(scenario.resourceTableRowCount, scenario.resourceTableVariant === "many" ? 80 : 1, 1000);
@@ -2273,67 +2363,80 @@ function resourceFacts(url, capturedAt = now()) {
   const processes = software.map((_, index) => ({ processId: 4242 + index, processStartKey: String(132000000000000000n + BigInt(4242 + index)),
     name: `example-${index}.exe`, executablePath: "C:\\FrontendHarness\\example.exe", userName: "测试用户", architecture: "x64", attributionKind: "process" }));
   const items = new Set(url.searchParams.getAll("items"));
-  const residualAttributions = [];
-    const metrics = [...items].filter(id => id !== "process.inventory" && id !== "process.attribution").map(metricId => {
-    const fact = processMemoryFacts[metricId];
-    if (fact) {
-      // 进程字段：总计是 totalMetricId 指向的整机事实，不是进程之和；差额进现有的系统/驱动残差行。
-      const share = fact.processSum / Math.max(1, count);
-      const percent = value => value * 100 / fact.capacityValue;
-      const residualId = `resource-residual:${fact.totalMetricId}`;
-      const residual = fact.totalValue - (count > 0 ? fact.processSum : 0);
-      const rows = software.slice(0, count).map((identity, index) => ({ softwareId: identity.softwareId, value: share, systemPercent: percent(share), processCount: 1, baseScore: 0, sharedValue: null,
-        processes: [{ processIndex: index, value: share, systemPercent: percent(share), softwarePercent: 100, baseScore: 0, sharedValue: null }] }));
-      if (residual > 0) {
-        if (!software.some(identity => identity.softwareId === residualId)) software.push({ softwareId: residualId, name: "", kind: "windows_system", attributionKind: "system-residual" });
-        // 物理私有内存的保留量按计数器分项给出（后端 MemoryFacts 用同一个分项提供方）：分项是 PID -1 的行，
-        // 标识在 attributionKind；最后的未分类是保留量减去其余分项。其他字段仍是一行 system-residual。
-        const leaves = scenario.physicalMemoryResidual !== "off" && metricId === "process_all_private_working_set_actual"
-          ? physicalMemoryFixture.counterLeaves.slice(0, -1).map(([kind, bytes, name]) => [kind, bytes, name]) : null;
-        if (leaves) leaves.push(["system-memory/unclassified", residual - leaves.reduce((sum, [, bytes]) => sum + bytes, 0), ""]);
-        const parts = (leaves ?? [["system-residual", residual, ""]]).map(([attributionKind, value, name]) => ({ value,
-          processIndex: processes.push({ processId: -1, processStartKey: null, name, executablePath: null, userName: null, architecture: null, attributionKind }) - 1 }));
-        for (const part of parts) residualAttributions.push({ softwareId: residualId, processIndex: part.processIndex, baseScore: 0 });
-        rows.push({ softwareId: residualId, value: residual, systemPercent: percent(residual), processCount: 0, baseScore: 0, sharedValue: null,
-          processes: parts.map(part => ({ processIndex: part.processIndex, value: part.value, systemPercent: percent(part.value), softwarePercent: part.value * 100 / residual, baseScore: 0, sharedValue: null })) });
-      }
-      return { metricId, unit: "B", totalMetricId: fact.totalMetricId, processFieldName: metricId, residualSource: physicalResidualSource(metricId), totalValue: fact.totalValue, capacityValue: fact.capacityValue,
-        totalSystemPercent: percent(fact.totalValue), processSumValue: count > 0 ? fact.processSum : 0, sharedValue: null, software: rows };
+  const attributions = items.has("process.attribution") ? software.slice(0, count).map((identity, index) => ({ softwareId: identity.softwareId, processIndex: index, baseScore: 0 })) : [];
+
+  function balance({ metricId, unit, totalMetricId, processFieldName, totalValue, capacityValue, processSum, additive, quantity = null,
+    windowMilliseconds = null, gpuEngine = null, engineClass = null, sharedValue = null, residualRows = null, counterLeaves = null }) {
+    const missing = scenario.resourceTableTotalsMissing.includes(metricId);
+    const total = missing ? null : totalValue;
+    const percent = value => capacityValue > 0 ? value * 100 / capacityValue : 0;
+    const facts = { totalMetricId, quantity, windowMilliseconds, gpuEngine, engineClass, capturedAt, residualSource: physicalResidualSource(metricId), additiveAcrossProcesses: additive };
+    if (total === null && (!Object.hasOwn(processMemoryFacts, metricId) || metricId.startsWith("process_all_gpu_"))) {
+      return { metricId, unit, processFieldName, totalValue: null, capacityValue: null, totalSystemPercent: null, sharedValue: null, software: [],
+        ...facts, processSumValue: null, residualValue: null,
+        unavailableReason: Object.hasOwn(processMemoryFacts, metricId) ? "gpu-measure-total-unavailable"
+          : /^gpu\.\d+\.vram$/.test(metricId) ? "gpu-dedicated-memory-total-unavailable" : "system-total-unavailable" };
     }
+    const share = count > 0 ? processSum / count : 0;
+    const shared = sharedValue === null ? null : sharedValue / Math.max(1, count);
+    const rows = software.slice(0, count).map((identity, index) => ({ softwareId: identity.softwareId, value: share, systemPercent: percent(share),
+      processCount: 1, baseScore: 0, sharedValue: shared,
+      processes: [{ processIndex: index, value: share, systemPercent: percent(share), softwarePercent: 100, baseScore: 0, sharedValue: shared }] }));
+    const sum = count > 0 ? processSum : 0;
+    const residual = additive && total !== null ? total - sum : null;
+    if (residual !== null && residual !== 0 && residualRows !== null) {
+      rows.push(...residualRows);
+    } else if (residual !== null && residual !== 0) {
+      const residualId = `resource-residual:${totalMetricId}`;
+      if (!software.some(identity => identity.softwareId === residualId)) software.push({ softwareId: residualId, name: "", kind: "windows_system", attributionKind: "system-residual" });
+      // 物理内存的保留量按计数器分项给出（后端 Balance 用同一个分项提供方）：差额为正时取除未分类以外的分项，
+      // 分项是 PID -1 的行、标识在 attributionKind；余数记为未分类。没有分项时是一个 system-residual 叶子。
+      const counted = counterLeaves !== null && residual > 0;
+      const parts = counted ? counterLeaves.filter(([kind]) => kind !== "system-memory/unclassified").map(([kind, value, name]) => ({ kind, value, name })) : [];
+      const remainder = residual - parts.reduce((total, part) => total + part.value, 0);
+      if (remainder !== 0) parts.push({ kind: counted ? "system-memory/unclassified" : "system-residual", value: remainder, name: "" });
+      const segments = parts.map(part => {
+        const processIndex = processes.push({ processId: -1, processStartKey: null, name: part.name, executablePath: null, userName: null, architecture: null, attributionKind: part.kind }) - 1;
+        attributions.push({ softwareId: residualId, processIndex, baseScore: 0 });
+        return { processIndex, value: part.value, systemPercent: percent(part.value), softwarePercent: part.value * 100 / residual, baseScore: 0, sharedValue: null };
+      });
+      rows.push({ softwareId: residualId, value: residual, systemPercent: percent(residual), processCount: 0, baseScore: 0, sharedValue: null, processes: segments });
+    }
+    return { metricId, unit, processFieldName, totalValue: total, capacityValue, totalSystemPercent: total === null ? null : percent(total),
+      sharedValue: sharedValue === null ? null : count > 0 ? sharedValue : 0, software: rows, ...facts, processSumValue: sum, residualValue: residual,
+      unavailableReason: total === null ? "system-total-unavailable" : null };
+  }
+
+  const metrics = [...items].filter(id => id !== "process.inventory" && id !== "process.attribution").map(metricId => {
+    const fact = processMemoryFacts[metricId];
+    if (fact) return balance({ metricId, unit: fact.unit ?? "B", totalMetricId: fact.totalMetricId, processFieldName: metricId, totalValue: count > 0 ? fact.totalValue : 0,
+      capacityValue: fact.capacityValue, processSum: fact.processSum, additive: fact.additive, quantity: fact.quantity,
+      windowMilliseconds: fact.windowMilliseconds, gpuEngine: fact.gpuEngine, engineClass: fact.engineClass,
+      counterLeaves: scenario.physicalMemoryResidual !== "off" && metricId === "process_all_private_working_set_actual" ? physicalMemoryFixture.counterLeaves : null });
     if (metricId === "memory.usage" && scenario.physicalMemoryResidual !== "off") {
       // 物理内存（自动选择）：示例软件合计为已归属的进程私有内存，差额是保留量这一行，下面是计数器分项（PID -1）。
       const fixture = physicalMemoryFixture;
-      const percent = value => value * 100 / fixture.capacityBytes;
-      const share = fixture.attributedPrivateBytes / Math.max(1, count);
-      const residual = fixture.usedBytes - (count > 0 ? fixture.attributedPrivateBytes : 0);
-      if (!software.some(identity => identity.softwareId === physicalMemoryResidualSoftwareId)) {
-        software.push({ softwareId: physicalMemoryResidualSoftwareId, name: "", kind: "windows_system", attributionKind: "system-residual" });
-      }
-      const leaves = fixture.counterLeaves.slice(0, -1).map(([kind, bytes, name]) => [kind, bytes, name]);
-      leaves.push(["system-memory/unclassified", residual - leaves.reduce((sum, [, bytes]) => sum + bytes, 0), ""]);
-      const parts = leaves.map(([attributionKind, value, name]) => ({ value,
-        processIndex: processes.push({ processId: -1, processStartKey: null, name, executablePath: null, userName: null, architecture: null, attributionKind }) - 1 }));
-      for (const part of parts) residualAttributions.push({ softwareId: physicalMemoryResidualSoftwareId, processIndex: part.processIndex, baseScore: 0 });
-      return { metricId, unit: "B", totalMetricId: null, processFieldName: automaticProcessFields[metricId], totalValue: fixture.usedBytes,
-        capacityValue: fixture.capacityBytes, totalSystemPercent: percent(fixture.usedBytes), processSumValue: null, sharedValue: null, residualSource: "counters",
-        software: [...software.slice(0, count).map((identity, index) => ({ softwareId: identity.softwareId, value: share, systemPercent: percent(share), processCount: 1,
-          baseScore: 0, sharedValue: null, processes: [{ processIndex: index, value: share, systemPercent: percent(share), softwarePercent: 100, baseScore: 0, sharedValue: null }] })),
-        { softwareId: physicalMemoryResidualSoftwareId, value: residual, systemPercent: percent(residual), processCount: 0, baseScore: 0, sharedValue: null,
-          processes: parts.map(part => ({ processIndex: part.processIndex, value: part.value, systemPercent: percent(part.value), softwarePercent: part.value * 100 / residual, baseScore: 0, sharedValue: null })) }] };
+      return balance({ metricId, unit: "B", totalMetricId: metricId, processFieldName: automaticProcessFields[metricId], totalValue: fixture.usedBytes,
+        capacityValue: fixture.capacityBytes, processSum: fixture.attributedPrivateBytes, additive: true, counterLeaves: fixture.counterLeaves });
     }
+    // 自动指标：内存类按字节，其余按百分比或速率；accounting 场景下总量是进程之和的两倍，差额进残差。
     const memory = metricId === "memory.usage" || metricId.endsWith(".vram");
-    const value = memory ? 536870912 : 12;
-    const sharedValue = memory ? 134217728 : null;
-    const residualRows = metricId === "memory.usage" && scenario.resourceMemoryResidualLeaves ? memoryResidualLeafRows(software, processes, residualAttributions) : [];
-    return { metricId, unit: memory ? "B" : metricId.startsWith("disk.") ? "B/s" : metricId.startsWith("network.") ? "bps" : "%",
-      totalMetricId: null, processFieldName: automaticProcessFields[metricId] ?? null, residualSource: physicalResidualSource(metricId), totalValue: value, capacityValue: memory ? 1073741824 : 100, totalSystemPercent: 12, processSumValue: null, sharedValue,
-      software: software.slice(0, count).map((identity, index) => ({ softwareId: identity.softwareId, value: value / Math.max(1, count), systemPercent: 12 / Math.max(1, count), processCount: 1,
-        baseScore: 0, sharedValue: sharedValue === null ? null : sharedValue / Math.max(1, count),
-        processes: [{ processIndex: index, value: value / Math.max(1, count), systemPercent: 12 / Math.max(1, count), softwarePercent: 100, baseScore: 0, sharedValue: sharedValue === null ? null : sharedValue / Math.max(1, count) }] })).concat(residualRows) };
+    const throughputMetric = metricId === "disk.io" || metricId === "network.traffic";
+    const processSum = count > 0 ? memory ? 536870912 : 12 : 0;
+    // 计数器叶子替代通用残差行；整机总量包含这些叶子，使 r4 的残差事实与行值一致。
+    const residualRows = metricId === "memory.usage" && scenario.resourceMemoryResidualLeaves
+      && !scenario.resourceTableTotalsMissing.includes(metricId)
+      ? memoryResidualLeafRows(software, processes, attributions) : null;
+    const totalValue = residualRows !== null
+      ? processSum + residualRows.reduce((sum, row) => sum + row.value, 0)
+      : scenario.resourceTableAccountingFixture ? processSum * 2 : processSum;
+    return balance({ metricId, unit: memory ? "B" : throughputMetric ? "B/s" : "%", totalMetricId: metricId,
+      processFieldName: automaticProcessFields[metricId] ?? null, totalValue, processSum, additive: true,
+      capacityValue: memory ? 1073741824 * (scenario.resourceTableAccountingFixture ? 2 : 1) : throughputMetric ? Math.max(1, totalValue) : 100,
+      quantity: metricId.endsWith(".vram") ? "dedicated_memory_used" : null,
+      sharedValue: memory ? 134217728 : null, residualRows });
   });
-    const attributions = [...(items.has("process.attribution") ? software.slice(0, count).map((identity, index) => ({ softwareId: identity.softwareId, processIndex: index, baseScore: 0 })) : []),
-      ...residualAttributions];
-    return { version: 2, capturedAt, software, processes, metrics, attributions };
+  return { version: 2, capturedAt, software, processes, metrics, attributions };
 }
 
 // 后端 PhysicalMemoryResidualBreakdownProvider 的形状：残差软件 processCount 0，每个计数器叶子一个 PID -1 的进程段，

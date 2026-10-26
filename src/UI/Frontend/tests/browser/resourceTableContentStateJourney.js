@@ -50,7 +50,8 @@ export default async function resourceTableContentStateJourney(
       title: cell.title
     })));
   // 默认软件列来自前端布局点（preferences.points.json 的 softwareColumns）：无 GPU 时数值列为 CPU、内存、磁盘、网络。
-  const numericTexts = ["12.0%", "512 MiB", "12 B/s", "12.0 bps"];
+  // CreateNetworkThroughputBar 与磁盘条一样发布 B/s；共享内存的 75% 私有段仍单独检查。
+  const numericTexts = ["12.0%", "512 MiB", "12 B/s", "12 B/s"];
   if (heat.length !== numericTexts.length || heat.some((cell) => cell.width !== "100%")
       || heat.some((cell, index) => !(index === 1 ? /^512 (?:MB|MiB)$/.test(cell.text) : cell.text === numericTexts[index]))) {
     throw new Error(`Single-row numeric columns must each fill their column: ${JSON.stringify(heat)}`);
@@ -67,18 +68,14 @@ export default async function resourceTableContentStateJourney(
   await page.locator('.resource-table-panel').screenshot({ path: resolve(process.env.RM_BROWSER_ARTIFACT_ROOT ?? 'tests/browser/artifacts', 'resource-table-shared.png') });
   await page.getByRole("searchbox", { name: "搜索名称、PID、状态" })
     .fill("no-such-resource");
-  const filteredState = page.locator(".resource-table-panel .content-state");
-  await filteredState.getByText("没有匹配的资源", { exact: true })
-    .waitFor({ state: "visible", timeout: 3000 });
-  await filteredState.getByRole("button", { name: "清除搜索", exact: true })
-    .waitFor({ state: "visible", timeout: 2000 });
-  await assertContentStateLayout(page, "filtered-empty");
+  await page.locator('.resource-table-row[aria-hidden="false"]').filter({ hasText: "筛选隐藏项" }).waitFor({ timeout: 3000 });
+  if (await page.locator('.resource-table-row.summary-row[aria-hidden="false"]').count() !== 1) throw new Error("Search hid the authoritative total");
 
   if (failures.length > 0) {
     throw new Error(`Resource-table content-state page errors: ${JSON.stringify(failures)}`);
   }
   return {
-    variants: ["empty", "filtered-empty"],
+    variants: ["empty", "filtered-accounted"],
     viewports,
     retainedTableHidden: true,
     maximumHeatVerified: heat,

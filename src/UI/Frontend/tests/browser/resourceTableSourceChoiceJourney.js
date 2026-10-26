@@ -9,6 +9,7 @@ import { waitForCondition } from "./journeyWaits.js";
  * （峰值提交量后端标为 false，不列）。选私有提交量并保存：资源事实只请求这个字段，表头写出口径，
  * 进程行显示私有提交量，总计行是后端给的系统提交量（不是进程之和），差额在“系统/驱动保留”行；
  * 选择存进前端布局缓存，重新载入后仍在。改回自动选择：恢复请求 memory.usage，表头和数值回到原样。
+ * 再选工作集（含共享页）：目录和本帧都说它不可按进程相加，进程值照发，总计说明写明不可相加，没有残差行。
  */
 export default async function resourceTableSourceChoiceJourney(page, baseUrl) {
   const app = await loadAppCopy("zh-CN");
@@ -107,6 +108,21 @@ export default async function resourceTableSourceChoiceJourney(page, baseUrl) {
   if (!automaticItems.includes("memory.usage") || automaticItems.includes("process_all_private_commit_actual")) {
     throw new Error(`Automatic did not request memory.usage again: ${JSON.stringify(automaticItems)}`);
   }
+  // 工作集（含共享页）不可按进程相加：进程值照发，总计说明写明不可相加，后端不发残差，也就没有残差行。
+  await editButton.click();
+  await selectMemory();
+  await sources.getByRole("radio").nth(1).click();
+  await saveButton.click();
+  await editButton.waitFor();
+  await waitForText(() => memoryCell(softwareRow()), formatBytes(0.625 * GiB, "memory"), "Working-set values are shown as sent");
+  const sharedTotal = visibleRow("summary").first().locator(".resource-table-cell").nth(await memoryIndex());
+  if (!(await sharedTotal.getAttribute("title"))?.includes(table.nonAdditiveBasis)) throw new Error("Non-additive source has no visible warning");
+  if (await residualRow().count() !== 0) throw new Error("A non-additive source shows a residual row");
+  await editButton.click();
+  await selectMemory();
+  await sources.getByRole("radio").nth(0).click();
+  await saveButton.click();
+  await editButton.waitFor();
   return { sources: labels, commitItems, automaticItems };
 }
 
@@ -134,7 +150,7 @@ export async function checkResourceTableSourceText(page, app, language) {
     { timeoutMs: 15_000, description: `${language}: resolved automatic memory source` });
   const labels = (await radios.allTextContents()).map((label) => label.trim());
   if (JSON.stringify(labels) !== JSON.stringify(expected)) throw new Error(`${language}: memory sources ${JSON.stringify(labels)}, expected ${JSON.stringify(expected)}`);
-  if (await radios.nth(1).getAttribute("title") !== table.memorySourceBasis.working_set_including_shared
+  if (await radios.nth(1).getAttribute("title") !== `${table.nonAdditiveBasis}\n${table.memorySourceBasis.working_set_including_shared}`
     || await radios.nth(3).getAttribute("title") !== table.memorySourceBasis.private_commit) {
     throw new Error(`${language}: memory source basis is not localized`);
   }

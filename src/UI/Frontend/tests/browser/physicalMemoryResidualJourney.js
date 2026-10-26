@@ -217,15 +217,19 @@ export default async function physicalMemoryResidualJourney(page, baseUrl) {
   await page.keyboard.press("Escape");
   await waitFor(async () => await residualDetailsOpen() === 0 || await residualDetailsOpen(), "Released after the absent state");
 
-  // 资源列表“按进程”：保留量下面的分项不是进程，状态写保留量（与保留量那一行相同），不写“运行中”。
+  // 资源列表“按进程”：保留量下面的分项不是进程，是归属行（attribution-row，不是 process-row），
+  // 状态写保留量（与保留量那一行相同），不写“运行中”。
   await setScenario({ physicalMemoryResidual: "ready" });
   const table = page.locator(".resource-table-panel");
   await table.scrollIntoViewIfNeeded();
   await table.locator(".resource-table-mode-button", { hasText: app.resourceTable.modes.process }).click();
-  const leafRows = async () => table.locator('.resource-table-row.process-row[aria-hidden="false"]').evaluateAll((rows, names) => rows
+  const namedRows = (selector) => table.locator(selector).evaluateAll((rows, names) => rows
     .filter((row) => names.includes(row.getAttribute("aria-label")))
     .map((row) => ({ name: row.getAttribute("aria-label"), status: row.querySelector(".status-cell")?.textContent?.trim() ?? null })), leafNames);
+  const leafRows = () => namedRows('.resource-table-row.attribution-row[aria-hidden="false"]');
   await waitFor(async () => (await leafRows()).length === leafNames.length || await leafRows(), "Residual leaves in the process view");
+  const leafProcessRows = await namedRows(".resource-table-row.process-row");
+  if (leafProcessRows.length !== 0) throw new Error(`Residual leaves are shown as process rows: ${JSON.stringify(leafProcessRows)}`);
   for (const { name, status } of await leafRows()) {
     if (status === app.status.state.running || status !== app.softwareKind.system_residual) {
       throw new Error(`Residual leaf ${name} shows status ${JSON.stringify(status)} in the process view`);

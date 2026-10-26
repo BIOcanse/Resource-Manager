@@ -80,7 +80,7 @@ export default async function resourceBarSourceChoiceJourney(page, baseUrl) {
   await editButton.waitFor();
   const sourcedLabel = table.memoryColumnBySource(table.memoryQuantities.working_set_including_shared);
   await waitFor(async () => await header("memory.usage").textContent() === sourcedLabel || await header("memory.usage").textContent(), "Working-set bar name");
-  if (await header("memory.usage").getAttribute("title") !== table.memorySourceBasis.working_set_including_shared) {
+  if (await header("memory.usage").getAttribute("title") !== `${table.nonAdditiveBasis}\n${table.memorySourceBasis.working_set_including_shared}`) {
     throw new Error("The working-set bar does not state its basis");
   }
   const memoryTotal = formatBytes(8 * GiB, "memory");
@@ -176,7 +176,7 @@ export async function checkResourceBarSourceText(page, app, language) {
   const expected = [app.metricPicker.sourceAutomatic(table.memoryQuantities.private_working_set), table.memoryQuantities.working_set_including_shared,
     table.memoryQuantities.private_working_set];
   if (JSON.stringify(labels) !== JSON.stringify(expected)) throw new Error(`${language}: bar sources ${JSON.stringify(labels)}, expected ${JSON.stringify(expected)}`);
-  if (await radios.nth(1).getAttribute("title") !== table.memorySourceBasis.working_set_including_shared
+  if (await radios.nth(1).getAttribute("title") !== `${table.nonAdditiveBasis}\n${table.memorySourceBasis.working_set_including_shared}`
     || await radios.nth(2).getAttribute("title") !== app.resourceBreakdown.memoryBasis) {
     throw new Error(`${language}: bar source basis is not localized`);
   }

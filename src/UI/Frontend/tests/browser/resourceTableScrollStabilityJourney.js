@@ -146,7 +146,7 @@ export default async function resourceTableScrollStabilityJourney(
     .some(row => row.getAttribute("aria-label") === name && row.getAttribute("aria-expanded") === "true"), expandedName);
   assertSameFactsLease("Expanding a software group");
   await page.getByRole("searchbox", { name: "搜索名称、PID、状态" }).fill("no-such-resource");
-  await page.locator(".resource-table-panel .content-state").waitFor({ state: "visible" });
+  await page.locator('.resource-table-row[aria-hidden="false"]').filter({ hasText: "筛选隐藏项" }).waitFor({ state: "visible" });
   assertSameFactsLease("Filtering");
   await page.getByRole("searchbox", { name: "搜索名称、PID、状态" }).fill("");
   await page.locator(".resource-table-frame").waitFor({ state: "visible" });
