@@ -1,5 +1,6 @@
 import { displayConnectorTechnology, portDisplayName, portHardwareKind, portProtocol } from "./deviceVocabulary.ts";
 import type { DeviceTopologyPort } from "../../types";
+import { connectedDisplay } from "./deviceTopologyDisplay.ts";
 import { uiText } from "../../text.ts";
 
 export type DeviceTopologyConnectionState = "connected" | "disconnected" | "unknown";
@@ -128,7 +129,7 @@ function resolveConnectionState(port: DeviceTopologyPort): DeviceTopologyConnect
   }
 
   if (port.display) {
-    return port.display.active && port.display.targetAvailable ? "connected" : "disconnected";
+    return connectedDisplay(port) ? "connected" : "disconnected";
   }
 
   if (port.network) {
@@ -150,8 +151,9 @@ function resolveConnectionTarget(port: DeviceTopologyPort) {
     return firstText(port.usb.productName, port.displayName);
   }
 
-  if (port.display?.active) {
-    return firstText(port.display.monitorName, port.displayName);
+  const display = connectedDisplay(port);
+  if (display) {
+    return firstText(display.monitorName, port.displayName);
   }
 
   return undefined;

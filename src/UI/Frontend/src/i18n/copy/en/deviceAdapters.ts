@@ -96,6 +96,7 @@ export const enDeviceAdaptersCopy: Pick<
     monitor: "Monitor",
     internalPanelBadge: "Built-in panel",
     activeDisplayTarget: "Active display target",
+    inactiveDisplayTarget: "Display output inactive",
     edidNotReported: "EDID not reported",
     hdrOn: "On",
     advancedColorSupported: "Advanced color supported",

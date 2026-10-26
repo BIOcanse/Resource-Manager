@@ -1,5 +1,6 @@
 import { renderBackendMessage } from "../../../presentation/backendMessage.ts";
 import { portProtocol } from "../deviceVocabulary.ts";
+import { connectedDisplay } from "../deviceTopologyDisplay.ts";
 import {
   connectionFacts,
   deviceTitle,
@@ -13,8 +14,7 @@ import { uiText, currentLanguage } from "../../../text.ts";
 
 export const monitorAdapter: DeviceAdapter<MonitorDeviceModel> = {
   id: "monitor",
-  matches: ({ port }) => port.display?.active === true
-    && port.display.targetAvailable === true,
+  matches: ({ port }) => connectedDisplay(port) !== null,
   createModel: (context) => {
     const display = context.port.display!;
     const title = deviceTitle(context, uiText.deviceAdapters.externalMonitor);
@@ -53,7 +53,9 @@ export const monitorAdapter: DeviceAdapter<MonitorDeviceModel> = {
       resolution,
       refreshRate,
       connectorTechnology,
-      displayState: uiText.deviceAdapters.activeDisplayTarget,
+      displayState: display.active
+        ? uiText.deviceAdapters.activeDisplayTarget
+        : uiText.deviceAdapters.inactiveDisplayTarget,
       hdrState,
       bitDepth,
       colorEncoding,

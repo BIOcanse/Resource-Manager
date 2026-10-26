@@ -1569,6 +1569,7 @@ const deDeAppCopy: AppCopy = {
     monitor: "Monitor",
     internalPanelBadge: "Integriertes Panel",
     activeDisplayTarget: "Aktives Anzeigeziel",
+    inactiveDisplayTarget: "Anzeigeausgabe inaktiv",
     edidNotReported: "EDID nicht gemeldet",
     hdrOn: "Ein",
     advancedColorSupported: "Erweiterte Farben unterstützt",

@@ -1569,6 +1569,7 @@ const esEsAppCopy: AppCopy = {
     monitor: "Monitor",
     internalPanelBadge: "Panel integrado",
     activeDisplayTarget: "Destino de pantalla activo",
+    inactiveDisplayTarget: "Salida de pantalla inactiva",
     edidNotReported: "EDID no informado",
     hdrOn: "Activado",
     advancedColorSupported: "Color avanzado compatible",

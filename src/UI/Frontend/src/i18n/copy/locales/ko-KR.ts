@@ -1569,6 +1569,7 @@ const koKrAppCopy: AppCopy = {
     monitor: "모니터",
     internalPanelBadge: "내장 패널",
     activeDisplayTarget: "활성 디스플레이 대상",
+    inactiveDisplayTarget: "디스플레이 출력 비활성",
     edidNotReported: "EDID가 보고되지 않음",
     hdrOn: "켜짐",
     advancedColorSupported: "고급 색 지원",

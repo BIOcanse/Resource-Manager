@@ -121,7 +121,7 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
   await setScenario(page, { displayEdid: "ready" });
   await waitForTelemetry(page, subscriptionPath, value => value.publications > beforeEdid);
   const edidDetails = await checkRecordedDisplayDialog(page, app);
-  for (const variant of ["inactive", "unknown", "empty", "emptyRaw", "legacy"]) {
+  for (const variant of ["inactive", "inactiveConnected", "unknown", "empty", "emptyRaw", "legacy"]) {
     const count = (await readTelemetry(page, subscriptionPath)).publications;
     await setScenario(page, { displayEdid: variant });
     await waitForTelemetry(page, subscriptionPath, value => value.publications > count);

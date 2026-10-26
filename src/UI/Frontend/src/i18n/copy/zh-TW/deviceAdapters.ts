@@ -91,6 +91,7 @@ export const zhDeviceAdaptersCopy = {
     monitor: "顯示器",
     internalPanelBadge: "內屏",
     activeDisplayTarget: "活動顯示目標",
+    inactiveDisplayTarget: "顯示輸出未啟用",
     edidNotReported: "EDID 未報告",
     hdrOn: "已開啟",
     advancedColorSupported: "支援高階顏色",

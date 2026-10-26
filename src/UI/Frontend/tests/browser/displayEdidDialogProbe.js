@@ -162,7 +162,15 @@ export async function checkDisplayVariant(page, app, variant) {
   const topology = page.locator(".device-topology-panel"); await topology.locator(".device-details-button").click();
   const dialog = page.locator(".user-details-modal:visible"); const declared = dialog.locator("[data-display-edid]");
   const current = dialog.locator("[data-display-current]");
-  if (variant === "inactive") {
+  if (variant === "inactive" || variant === "inactiveConnected") {
+    const connected = variant === "inactiveConnected";
+    const monitor = topology.locator(".device-port-item.nested.device-node");
+    if (await monitor.count() !== (connected ? 1 : 0))
+      throw new Error(connected ? "Connected inactive display was removed from the topology" : "A cached declaration was shown as an attached display");
+    const root = topology.locator(".device-port-item:not(.nested)").first();
+    const state = connected ? app.deviceTopology.connectionState.connected : app.deviceTopology.connectionState.disconnected;
+    if (!(await root.textContent())?.includes(state))
+      throw new Error(`${variant} display interface was not marked ${state}`);
     await current.getByText(app.deviceTopology.edid.unavailable, { exact: true }).first().waitFor();
     if (await declared.locator("details").count() !== expectedDetails) throw new Error("Inactive static EDID was hidden");
   } else if (variant === "empty") {

@@ -1,4 +1,5 @@
 import { displayConnectorTechnology } from "./deviceVocabulary.ts";
+import { connectedDisplay } from "./deviceTopologyDisplay.ts";
 import type { DeviceTopologyPort } from "../../types";
 import { resolveSpecializedDevice } from "./adapters/adapterRegistry.ts";
 import {
@@ -214,7 +215,7 @@ function createNonUsbRootNode(port: DeviceTopologyPort): PendingNode {
     children: []
   };
 
-  if (isActiveExternalDisplay(port)) {
+  if (isAttachedExternalDisplay(port)) {
     node.children.push(createAttachedDisplayNode(port, node.id));
   }
 
@@ -258,10 +259,9 @@ function applySpecializedDevicePresentation(node: PendingNode, parentTitle?: str
   }
 }
 
-function isActiveExternalDisplay(port: DeviceTopologyPort) {
-  return port.display?.active === true
-    && port.display.targetAvailable === true
-    && port.display.internal === false;
+function isAttachedExternalDisplay(port: DeviceTopologyPort) {
+  const display = connectedDisplay(port);
+  return display !== null && display.internal === false;
 }
 
 function createTreeNode(node: PendingNode, depth: number, path: string[]): ExternalInterfaceTreeNode {
@@ -356,7 +356,7 @@ function roleLabel(role: ExternalInterfaceNodeRole) {
 
 function resolveNonUsbConnectionState(port: DeviceTopologyPort): ExternalInterfaceConnectionState {
   if (port.display) {
-    return port.display.active && port.display.targetAvailable ? "connected" : "disconnected";
+    return connectedDisplay(port) ? "connected" : "disconnected";
   }
   if (port.network) {
     const state = port.network.connectionState.trim();

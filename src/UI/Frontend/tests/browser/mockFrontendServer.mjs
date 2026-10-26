@@ -1887,8 +1887,10 @@ function fixtureDisplayEdid() {
     bytes[255] = 0; bytes[255] = (-bytes.subarray(128, 255).reduce((sum, value) => sum + value, 0)) & 255;
     display.modeCapabilityDeclared = null; display.edidRawDeclaredBase64 = bytes.toString("base64");
   }
-  if (scenario.displayEdid === "inactive") {
-    display.active = false; display.targetAvailable = false; display.resolution = null; display.refreshRate = null;
+  // inactive: the monitor is gone and only its cached declaration remains; inactiveConnected: it is attached but its output is off.
+  if (scenario.displayEdid === "inactive" || scenario.displayEdid === "inactiveConnected") {
+    display.active = false; display.targetAvailable = scenario.displayEdid === "inactiveConnected";
+    display.resolution = null; display.refreshRate = null;
     for (const key of ["currentWidth", "currentHeight", "currentRefreshRateNumerator", "currentRefreshRateDenominator", "currentBitsPerColorChannel"]) display[key] = null;
   }
   if (scenario.displayEdid === "unknown") {

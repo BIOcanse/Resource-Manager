@@ -1569,6 +1569,7 @@ const ruRuAppCopy: AppCopy = {
     monitor: "Монитор",
     internalPanelBadge: "Встроенная панель",
     activeDisplayTarget: "Активная цель отображения",
+    inactiveDisplayTarget: "Вывод на дисплей неактивен",
     edidNotReported: "EDID не сообщён",
     hdrOn: "Вкл.",
     advancedColorSupported: "Расширенный цвет поддерживается",

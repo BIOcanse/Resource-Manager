@@ -1569,6 +1569,7 @@ const frFrAppCopy: AppCopy = {
     monitor: "Moniteur",
     internalPanelBadge: "Dalle intégrée",
     activeDisplayTarget: "Cible d'affichage active",
+    inactiveDisplayTarget: "Sortie d’affichage inactive",
     edidNotReported: "EDID non signalé",
     hdrOn: "Activé",
     advancedColorSupported: "Couleurs avancées prises en charge",

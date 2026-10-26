@@ -1569,6 +1569,7 @@ const jaJpAppCopy: AppCopy = {
     monitor: "モニター",
     internalPanelBadge: "内蔵パネル",
     activeDisplayTarget: "有効なディスプレイ ターゲット",
+    inactiveDisplayTarget: "ディスプレイ出力は無効",
     edidNotReported: "EDID は報告されていません",
     hdrOn: "オン",
     advancedColorSupported: "高度な色に対応",
