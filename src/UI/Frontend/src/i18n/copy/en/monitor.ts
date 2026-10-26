@@ -103,7 +103,7 @@ export const enMonitorCopy: Pick<
     providerNotSplit: "Shared system usage that cannot be attributed to a single process.",
     etwSupplement: "Processes identified, but not yet attributed to specific software.",
     softwareInnerPercent: "Share within software",
-    memoryBasis: "System: physical memory used / capacity. Process segments: private resident bytes; shared pages and system usage remain unattributed. Unavailable readings do not produce estimated process segments.",
+    memoryBasis: "System: physical memory used / capacity. Process segments: private resident bytes; shared pages and system usage remain unattributed. Process segments are not shown when readings are unavailable.",
     memoryTableBasis: "System: physical memory used / physical capacity. Processes: private working set, the resident pages that belong to that process alone, without shared pages; shared pages and system usage stay unattributed, so the processes add up to less than the system total.",
     diskBasis: "Completed physical disk transfers; cache hits and network file I/O are excluded. Transfers with unknown owners remain unattributed; write-cache flushes may belong to the system process.",
     commitBasis: "System: committed memory / current commit limit. Processes: private commit. Commit includes RAM and page-file backing, not actual page-file occupancy.",

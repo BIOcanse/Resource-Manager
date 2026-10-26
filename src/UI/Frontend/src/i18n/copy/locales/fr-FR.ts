@@ -674,7 +674,7 @@ const frFrAppCopy: AppCopy = {
     providerNotSplit: "Utilisation système partagée qui ne peut pas être attribuée à un seul processus.",
     etwSupplement: "Processus identifiés, mais pas encore attribués à un logiciel précis.",
     softwareInnerPercent: "Part au sein du logiciel",
-    memoryBasis: "Système : mémoire physique occupée / capacité. Segments des processus : octets résidents privés ; les pages partagées et l’usage système restent non attribués. Aucune estimation des segments n’est produite si les mesures sont indisponibles.",
+    memoryBasis: "Système : mémoire physique occupée / capacité. Segments des processus : octets résidents privés ; les pages partagées et l’usage système restent non attribués. Les segments des processus ne sont pas affichés lorsque les mesures sont indisponibles.",
     memoryTableBasis: "Système : mémoire physique occupée / capacité. Processus : ensemble de travail privé, c’est-à-dire les pages résidentes propres à ce processus, sans les pages partagées ; les pages partagées et l’usage système restent non attribués, la somme des processus est donc inférieure au total du système.",
     diskBasis: "Transferts physiques sur disque terminés ; les lectures en cache et les E/S de fichiers réseau sont exclues. Les transferts sans propriétaire connu restent non attribués ; la vidange du cache d’écriture peut être attribuée au processus système.",
     commitBasis: "Système : mémoire engagée / limite actuelle. Processus : engagement privé. Il inclut le support en RAM et dans le fichier de pagination, pas son occupation réelle.",

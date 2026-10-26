@@ -674,7 +674,7 @@ const esEsAppCopy: AppCopy = {
     providerNotSplit: "Uso compartido del sistema que no puede atribuirse a un único proceso.",
     etwSupplement: "Procesos identificados, pero aún no atribuidos a un software concreto.",
     softwareInnerPercent: "Proporción dentro del software",
-    memoryBasis: "Sistema: memoria física ocupada / capacidad. Segmentos de procesos: bytes residentes privados; las páginas compartidas y el uso del sistema quedan sin atribuir. Si no hay lecturas disponibles, no se estiman los segmentos de procesos.",
+    memoryBasis: "Sistema: memoria física ocupada / capacidad. Segmentos de procesos: bytes residentes privados; las páginas compartidas y el uso del sistema quedan sin atribuir. Si no hay lecturas disponibles, no se muestran los segmentos de procesos.",
     memoryTableBasis: "Sistema: memoria física ocupada / capacidad. Procesos: conjunto de trabajo privado, es decir, las páginas residentes que pertenecen solo a ese proceso, sin páginas compartidas; las páginas compartidas y el uso del sistema quedan sin atribuir, por lo que la suma de los procesos es menor que el total del sistema.",
     diskBasis: "Transferencias físicas de disco completadas; se excluyen los aciertos de caché y la E/S de archivos de red. Las transferencias sin propietario conocido quedan sin atribuir; el vaciado de la caché de escritura puede corresponder al proceso del sistema.",
     commitBasis: "Sistema: memoria comprometida / límite actual de compromiso. Procesos: compromiso privado. Incluye respaldo en RAM y archivo de paginación, no la ocupación real de dicho archivo.",

@@ -9,7 +9,7 @@ import { uiText } from "../text.ts";
  * 写字段名本身，不冒用别的口径的名字。
  *
  * “自动选择”时后端在资源事实和资源条上写出这次实际读的字段（processFieldName），这里把它写成
- * “自动选择（现在是 私有工作集）”，和选指标弹窗的自动选择同一句。
+ * “自动选择（当前为私有工作集）”，和选指标弹窗的自动选择同一句。
  */
 
 const quantityNames = (): Readonly<Partial<Record<ProcessMemoryQuantity, string>>> => uiText.resourceTable.memoryQuantities;

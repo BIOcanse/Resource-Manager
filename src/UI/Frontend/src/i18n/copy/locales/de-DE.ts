@@ -674,7 +674,7 @@ const deDeAppCopy: AppCopy = {
     providerNotSplit: "Gemeinsam genutzte Systemauslastung, die keinem einzelnen Prozess zugeordnet werden kann.",
     etwSupplement: "Prozesse erkannt, aber noch keiner bestimmten Software zugeordnet.",
     softwareInnerPercent: "Anteil innerhalb der Software",
-    memoryBasis: "System: physisch belegter Speicher / Kapazität. Prozessanteile: private residente Bytes; gemeinsame Seiten und Systemverbrauch bleiben ohne Zuordnung. Bei fehlenden Messwerten werden keine Prozessanteile geschätzt.",
+    memoryBasis: "System: physisch belegter Speicher / Kapazität. Prozessanteile: private residente Bytes; gemeinsame Seiten und Systemverbrauch bleiben ohne Zuordnung. Wenn keine Messwerte verfügbar sind, werden keine Prozessanteile angezeigt.",
     memoryTableBasis: "System: physisch belegter Speicher / Kapazität. Prozesse: privater Working Set, also nur die residenten Seiten, die allein diesem Prozess gehören, ohne gemeinsam genutzte Seiten; gemeinsame Seiten und Systemverbrauch bleiben ohne Zuordnung, daher ist die Summe der Prozesse kleiner als die Systembelegung.",
     diskBasis: "Abgeschlossene physische Datenträgerübertragungen; Cache-Treffer und Netzwerkdateizugriffe werden nicht gezählt. Übertragungen ohne bekannten Besitzer bleiben ohne Zuordnung; das Leeren des Schreibcaches kann dem Systemprozess zugerechnet werden.",
     commitBasis: "System: zugesicherter Speicher / aktuelle Zusicherungsgrenze. Prozesse: private Zusicherung. Diese umfasst RAM und Auslagerungsdatei-Backing, nicht die tatsächliche Belegung der Auslagerungsdatei.",
