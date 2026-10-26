@@ -546,6 +546,15 @@
   color: var(--text);
 }
 
+/* 展开按钮是图标，不是文字三角：各风格字体里的 ▸▾ 大小、基线都不一样。展开后转到朝下。 */
+.resource-row-expander svg {
+  display: block;
+}
+
+.resource-row-expander[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+
 .resource-row-actions {
   width: 28px;
   min-width: 28px;

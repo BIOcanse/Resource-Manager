@@ -180,6 +180,42 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
   }
   results.resizeHandle = { browsing, editing };
 
+  // 7. 展开：箭头是图标并转到朝下；刚露出来的进程行播一次入场，播完自己清掉；无动画档直接出现，同样清掉。
+  const expandAndWatch = (name) => panel.evaluate(async (name) => {
+    const row = document.querySelector(`.resource-table-row[aria-label="${name}"]`);
+    const button = row.querySelector(".resource-row-expander");
+    button.click();
+    await new Promise((resolveFrame) => requestAnimationFrame(() => requestAnimationFrame(resolveFrame)));
+    const revealing = [...document.querySelectorAll(".resource-table-row.revealing")];
+    const first = {
+      count: revealing.length,
+      kinds: [...new Set(revealing.map((element) => element.classList.contains("process-row") ? "process" : "other"))],
+      animation: revealing[0] ? getComputedStyle(revealing[0].querySelector(".resource-table-cell")).animationName : null,
+      duration: revealing[0] ? getComputedStyle(revealing[0].querySelector(".resource-table-cell")).animationDuration : null,
+      chevron: getComputedStyle(row.querySelector(".resource-row-expander svg")).transform,
+      chevronTransition: getComputedStyle(row.querySelector(".resource-row-expander svg")).transitionProperty,
+      glyphText: button.textContent.trim()
+    };
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 700));
+    return { ...first, after: document.querySelectorAll(".resource-table-row.revealing").length,
+      expanded: row.getAttribute("aria-expanded"), chevronAfter: getComputedStyle(row.querySelector(".resource-row-expander svg")).transform };
+  }, name);
+  const reveal = await expandAndWatch("示例软件 5");
+  if (reveal.count < 1 || reveal.kinds.join() !== "process" || reveal.animation !== "motion-row-reveal" || reveal.duration === "0s"
+    || reveal.glyphText !== "" || !reveal.chevronTransition.includes("transform") || reveal.after !== 0 || reveal.expanded !== "true"
+    || reveal.chevronAfter !== "matrix(0, 1, -1, 0, 0, 0)") {
+    throw new Error(`Expanded process rows do not reveal once: ${JSON.stringify(reveal)}`);
+  }
+  await page.evaluate(() => { document.body.dataset.animations = "none"; });
+  const instant = await expandAndWatch("示例软件 6");
+  await page.evaluate(() => { document.body.dataset.animations = "normal"; });
+  // 时长为 0 的入场两帧内多半已经结束、类已清掉；还在的话时长必须是 0。
+  if ((instant.count > 0 && instant.duration !== "0s") || instant.after !== 0 || instant.expanded !== "true"
+    || instant.chevronTransition.includes("transform")) {
+    throw new Error(`Without animations the rows must appear at once and leave no reveal state: ${JSON.stringify(instant)}`);
+  }
+  results.reveal = { reveal, instant };
+
   if (errors.length > 0) throw new Error(`Page errors: ${errors.join("\n")}`);
   return results;
 }

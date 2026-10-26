@@ -188,6 +188,20 @@ body[data-animations="normal"] .resource-segment-layer.motion-segment > .resourc
   transition: --row-tint-amount var(--motion-fast) var(--ease-standard);
 }
 
+/* 展开、收起：箭头转过去只在正常档（按钮按行重建，滚动换行不转）；
+   刚露出来的进程行淡入、从软件行下面落下 6 px，无动画、极简档时长清零直接出现。收起是直接移除（退场动画未决）。 */
+@keyframes motion-row-reveal {
+  from { opacity: 0; transform: translateY(-6px); }
+}
+
+body[data-animations="normal"] .resource-row-expander svg {
+  transition: transform var(--motion-medium) var(--ease-standard);
+}
+
+.resource-table-row.revealing > .resource-table-cell {
+  animation: motion-row-reveal var(--motion-medium) var(--ease-decel);
+}
+
 /* 排序箭头：出现、悬停预览是颜色类（各档都有），换方向的半圈旋转只在正常档。 */
 .resource-table-sort-indicator {
   transition: opacity var(--motion-fast) var(--ease-standard);

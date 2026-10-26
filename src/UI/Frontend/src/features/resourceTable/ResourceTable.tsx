@@ -11,9 +11,9 @@ import {
   type ResourceTableColumnText
 } from "./resourceTableSources.ts";
 import { RadioGroupItem, RadioGroupRoot } from "../../ui/primitives/RadioGroup.tsx";
-import { createEffect, createMemo, createSignal, For, Index, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Index, onCleanup, onMount, Show, untrack } from "solid-js";
 import type { JSX } from "solid-js";
-import { ArrowDown, ArrowLeft, ArrowRight, MoreHorizontal } from "lucide-solid";
+import { ArrowDown, ArrowLeft, ArrowRight, ChevronRight, MoreHorizontal } from "lucide-solid";
 import { userFacingLabel } from "../../presentation/userFacingText";
 import { ResourcePerformancePanel } from "./ResourcePerformancePanel";
 import type { SoftwareContextMenuTarget } from "../../components/SoftwareContextMenu";
@@ -433,6 +433,30 @@ function VirtualResourceTable(props: {
     }
   });
   const rows = createMemo(() => pinResourceTableRow(props.rows, pinnedRowId(), pinnedIndex()));
+  // 刚展开的软件组露出来的进程行：这些行出现时淡入、从软件行下面落下一点（motion.css）。
+  // 哪一行播完就把它去掉；收起任何一组、滚动时整个清空，滚动和排序换进行位的行不会再播。
+  const [revealingRowIds, setRevealingRowIds] = createSignal<ReadonlySet<string>>(new Set());
+  let previousExpanded: Record<string, boolean> = { ...props.expandedSoftwareIds };
+  createEffect(() => {
+    const expanded = props.expandedSoftwareIds;
+    const opened = new Set(Object.keys(expanded).filter((id) => expanded[id] && !previousExpanded[id]));
+    const closed = Object.keys(previousExpanded).some((id) => previousExpanded[id] && !expanded[id]);
+    previousExpanded = { ...expanded };
+    if (opened.size > 0) {
+      setRevealingRowIds(new Set(untrack(rows)
+        .filter((row) => row.kind === "process" && row.softwareId && opened.has(row.softwareId))
+        .map((row) => row.id)));
+    } else if (closed) {
+      setRevealingRowIds(new Set<string>());
+    }
+  });
+  const finishReveal = (rowId: string) => {
+    const current = revealingRowIds();
+    if (!current.has(rowId)) return;
+    const next = new Set(current);
+    next.delete(rowId);
+    setRevealingRowIds(next);
+  };
   const columnSettingsById = createMemo(() => new Map(props.columnSettings.map((column) => [column.id, column])));
   const columnOrderIndex = createMemo(() => new Map(props.columnSettings.map((column, index) => [column.id, index])));
   const baseColumns = createMemo(() => {
@@ -843,6 +867,7 @@ function VirtualResourceTable(props: {
         role="rowgroup"
         ref={viewport}
         onScroll={(event) => {
+          if (revealingRowIds().size > 0) setRevealingRowIds(new Set<string>());
           viewportScrollTop = event.currentTarget.scrollTop;
           if (rows().length > 0) {
             setScrollTop(event.currentTarget.scrollTop);
@@ -867,6 +892,8 @@ function VirtualResourceTable(props: {
                   highlightedSoftwareId={props.highlightedSoftwareId}
                   activeRowId={activeRowId}
                   contextRowId={pinnedRowId}
+                  revealingRowIds={revealingRowIds}
+                  onRevealed={finishReveal}
                   onActivateRow={activateRow}
                   onRowKeyDown={handleRowKeyDown}
                   onToggleExpand={props.onToggleExpand}
@@ -894,6 +921,9 @@ function ResourceTableRowSlot(props: {
   activeRowId: () => string | null;
   /** 右键菜单打开时它所属的那一行（菜单关掉为 null）：这一行显示成当前行，看得出菜单是对谁的。 */
   contextRowId: () => string | null;
+  /** 刚展开露出来、入场还没播完的行。 */
+  revealingRowIds: () => ReadonlySet<string>;
+  onRevealed: (rowId: string) => void;
   onActivateRow: (rowId: string, focus: boolean) => void;
   onRowKeyDown: (event: KeyboardEvent, row: ResourceTableRow, element: HTMLElement) => void;
   onToggleExpand: (softwareId: string) => void;
@@ -933,9 +963,16 @@ function ResourceTableRowSlot(props: {
         "residual-row": row()?.softwareId?.startsWith("resource-residual:") === true,
         "empty-row": !hasRow(),
         highlighted: isHighlighted(),
-        "context-target": hasRow() && row()?.id === props.contextRowId()
+        "context-target": hasRow() && row()?.id === props.contextRowId(),
+        revealing: hasRow() && props.revealingRowIds().has(row()!.id)
       }}
       aria-hidden={hasRow() ? "false" : "true"}
+      onAnimationEnd={(event) => {
+        const current = row();
+        if (current && event.animationName === "motion-row-reveal") {
+          props.onRevealed(current.id);
+        }
+      }}
       onFocus={() => {
         const current = row();
         if (current) {
@@ -1169,8 +1206,10 @@ function ResourceTableCell(props: {
         role="gridcell"
         aria-colindex={props.columnIndex + 1}
       >
+        {/* 按行标识重建展开按钮：行位换成另一行时箭头直接是那一行的方向，只有展开、收起同一行时箭头才转过去（motion.css）。 */}
         <Show
-          when={row()?.kind === "software" && row()?.softwareId && (row()?.processCount ?? 0) > 0}
+          when={row()?.kind === "software" && row()?.softwareId && (row()?.processCount ?? 0) > 0 ? row()!.id : undefined}
+          keyed
           fallback={<span class="resource-row-spacer" />}
         >
           <button
@@ -1181,7 +1220,7 @@ function ResourceTableCell(props: {
             aria-label={props.expandedSoftwareIds()[row()?.softwareId ?? ""] ? uiText.resourceTable.collapseProcesses : uiText.resourceTable.expandProcesses}
             aria-expanded={props.expandedSoftwareIds()[row()?.softwareId ?? ""] ? "true" : "false"}
           >
-            {props.expandedSoftwareIds()[row()?.softwareId ?? ""] ? "▾" : "▸"}
+            <ChevronRight aria-hidden="true" size={14} strokeWidth={2.25} />
           </button>
         </Show>
         <span class="resource-row-name" title={rowName(row())}>{rowName(row())}</span>
