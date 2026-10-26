@@ -77,6 +77,8 @@ public static class @FrontendPoints
     public static readonly string @UpdateInApp = @FrontendPointsValues.@__fpValue_UpdateInApp;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200390001UL)]
     public static readonly string @UpdateSystem = @FrontendPointsValues.@__fpValue_UpdateSystem;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200390002UL)]
+    public static readonly string @AccessRequestSystem = @FrontendPointsValues.@__fpValue_AccessRequestSystem;
 }
 public sealed class @FrontendPointsRuntime
 {

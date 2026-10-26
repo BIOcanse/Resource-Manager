@@ -104,17 +104,19 @@ internal sealed record FrontendOverlayPresentation
         MetricSources.TryGetValue(metricId, out var source) ? source : null;
 }
 
-// 新版本提示的两条途径（界面内提示、Windows 系统通知）各自的开关，以及界面内提示已提示过的版本。
-// 已提示版本只由网页前端写入；原生壳只校验、保存并读取 UpdateSystem。
+// 更新与访问请求的通知开关，以及界面内更新提示已提示过的版本。
+// 已提示版本只由网页前端写入；原生壳校验、保存并读取系统通知开关。
 internal sealed record FrontendNotifications
 {
     public string UpdateInApp { get; init; } = FrontendPoints.UpdateInApp;
     public string UpdateSystem { get; init; } = FrontendPoints.UpdateSystem;
+    public string AccessRequestSystem { get; init; } = FrontendPoints.AccessRequestSystem;
     public string? UpdateInAppNotifiedVersion { get; init; }
 
     internal void Validate()
     {
         if (UpdateInApp is not ("on" or "off") || UpdateSystem is not ("on" or "off")
+            || AccessRequestSystem is not ("on" or "off")
             || UpdateInAppNotifiedVersion is not null
                 && (string.IsNullOrWhiteSpace(UpdateInAppNotifiedVersion) || UpdateInAppNotifiedVersion.Length > 64))
             throw new InvalidDataException("Invalid frontend notification cache.");

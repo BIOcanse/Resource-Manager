@@ -13,6 +13,8 @@ export default createSettingsLocale("ja-JP", {
     "intervalLabel": (minimum: number, maximum: number) => `間隔（時間、${minimum}–${maximum}）`,
     "inAppNoticeTitle": "画面内で新バージョンを通知",
     "inAppNoticeDescription": "画面の実行中に新しいバージョンが見つかると 1 回通知します。同じバージョンは再通知しません。",
+    "accessRequestNoticeTitle": "新しいアクセス要求のシステム通知",
+    "accessRequestNoticeDescription": "画面が表示されていないときに、承認待ちの新しい信頼済みアクセス要求を受信すると Windows 通知を表示します。",
     "systemNoticeTitle": "Windows のシステム通知",
     "systemNoticeDescription": "アプリが表示されていないときにシステム通知を 1 回送ります。このスイッチは設定を保存するだけで、実行はデスクトップシェル（トレイ）が行います。",
     "manualCheckNote": "手動確認はインターネットを待たずにすぐ実行され、どの方式でも使えます。",

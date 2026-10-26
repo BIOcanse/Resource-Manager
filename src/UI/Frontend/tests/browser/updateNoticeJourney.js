@@ -139,13 +139,18 @@ export default async function updateNoticeJourney(page, baseUrl) {
   // 界面内提示关掉后不提示，也不记下版本；系统通知开关只保存偏好。
   await page.getByRole("checkbox", { name: text.inAppNoticeTitle, exact: true }).uncheck();
   await page.getByRole("checkbox", { name: text.systemNoticeTitle, exact: true }).uncheck();
+  assert.equal(await page.getByRole("checkbox", { name: text.accessRequestNoticeTitle, exact: true }).isChecked(), true);
+  await page.getByText(text.accessRequestNoticeDescription, { exact: true }).waitFor();
+  await page.getByRole("checkbox", { name: text.accessRequestNoticeTitle, exact: true }).uncheck();
   const patchCount = patches.length;
   await page.getByRole("button", { name: settings.actions.save, exact: true }).click();
-  await page.waitForFunction(() => JSON.parse(localStorage.getItem("resource-manager:frontend-preferences:v1") ?? "null")
-    ?.notifications?.updateSystem === "off");
+  await page.waitForFunction(() => {
+    const notifications = JSON.parse(localStorage.getItem("resource-manager:frontend-preferences:v1") ?? "null")?.notifications;
+    return notifications?.updateSystem === "off" && notifications?.accessRequestSystem === "off";
+  });
   assert.equal(patches.length, patchCount, "notification switches reached the backend settings");
   const saved = await readFrontendPreferences(page);
-  assert.deepEqual(saved.notifications, { updateInApp: "off", updateSystem: "off", updateInAppNotifiedVersion: "1.2.0" });
+  assert.deepEqual(saved.notifications, { updateInApp: "off", updateSystem: "off", accessRequestSystem: "off", updateInAppNotifiedVersion: "1.2.0" });
   await publish({ checkResult: "available", availableVersion: "1.3.0" });
   await page.getByText(`${text.availableVersion}1.3.0`, { exact: true }).waitFor();
   await page.waitForTimeout(300);
@@ -155,6 +160,7 @@ export default async function updateNoticeJourney(page, baseUrl) {
   await openUpdates();
   assert.equal(await page.getByRole("checkbox", { name: text.inAppNoticeTitle, exact: true }).isChecked(), false);
   assert.equal(await page.getByRole("checkbox", { name: text.systemNoticeTitle, exact: true }).isChecked(), false);
+  assert.equal(await page.getByRole("checkbox", { name: text.accessRequestNoticeTitle, exact: true }).isChecked(), false);
 
   // 恢复界面偏好默认值只重置偏好点；已提示版本是记录，保留，同一版本不再提示。
   await publish({ checkResult: "available", availableVersion: "1.2.0" });
@@ -163,10 +169,11 @@ export default async function updateNoticeJourney(page, baseUrl) {
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("resource-manager:frontend-preferences:v1") ?? "null")
     ?.notifications?.updateInApp === "on");
   assert.deepEqual((await readFrontendPreferences(page)).notifications,
-    { updateInApp: "on", updateSystem: "on", updateInAppNotifiedVersion: "1.2.0" });
+    { updateInApp: "on", updateSystem: "on", accessRequestSystem: "on", updateInAppNotifiedVersion: "1.2.0" });
   await page.reload({ waitUntil: "domcontentloaded" });
   await openUpdates();
   assert.equal(await page.getByRole("checkbox", { name: text.inAppNoticeTitle, exact: true }).isChecked(), true);
+  assert.equal(await page.getByRole("checkbox", { name: text.accessRequestNoticeTitle, exact: true }).isChecked(), true);
   await page.getByText(`${text.availableVersion}1.2.0`, { exact: true }).waitFor();
   await page.waitForTimeout(300);
   assert.equal(await notices().count(), 0, "the same version was noticed again after resetting the interface preferences");

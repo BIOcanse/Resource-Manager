@@ -270,8 +270,10 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         var current = Owner().Read();
         Assert.Equal(FrontendPoints.UpdateInApp, current.Notifications.UpdateInApp);
         Assert.Equal(FrontendPoints.UpdateSystem, current.Notifications.UpdateSystem);
+        Assert.Equal(FrontendPoints.AccessRequestSystem, current.Notifications.AccessRequestSystem);
         Assert.Equal("on", current.Notifications.UpdateInApp);
         Assert.Equal("on", current.Notifications.UpdateSystem);
+        Assert.Equal("on", current.Notifications.AccessRequestSystem);
         Assert.Null(current.Notifications.UpdateInAppNotifiedVersion);
         // A cache written before the section existed keeps its choices and gets the section's points.
         var saved = JsonSerializer.SerializeToNode(new FrontendPreferences { Appearance = new() { Theme = "dark" } },
@@ -289,18 +291,23 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         var owner = Owner();
         var desired = owner.Read() with
         {
-            Notifications = new() { UpdateInApp = "off", UpdateSystem = "off", UpdateInAppNotifiedVersion = "0.3.0-beta.20261026.1" }
+            Notifications = new() { UpdateInApp = "off", UpdateSystem = "off", AccessRequestSystem = "off", UpdateInAppNotifiedVersion = "0.3.0-beta.20261026.1" }
         };
         owner.SaveGlobal(desired);
         var restarted = Owner().Read();
         Assert.Equal("off", restarted.Notifications.UpdateInApp);
         Assert.Equal("off", restarted.Notifications.UpdateSystem);
+        Assert.Equal("off", restarted.Notifications.AccessRequestSystem);
         Assert.Equal("0.3.0-beta.20261026.1", restarted.Notifications.UpdateInAppNotifiedVersion);
         Assert.Contains("\"notifications\"", File.ReadAllText(Cache));
+        Assert.Contains("\"accessRequestSystem\"", File.ReadAllText(Cache));
         Assert.Contains("\"updateInAppNotifiedVersion\"", File.ReadAllText(Cache));
     }
 
     [Theory]
+    [InlineData("""{"accessRequestSystem":"yes"}""")]
+    [InlineData("""{"accessRequestSystem":""}""")]
+    [InlineData("""{"accessRequestSystem":null}""")]
     [InlineData("""{"updateInApp":"yes","updateSystem":"on","updateInAppNotifiedVersion":null}""")]
     [InlineData("""{"updateInApp":"on","updateSystem":"","updateInAppNotifiedVersion":null}""")]
     [InlineData("""{"updateInApp":"on","updateSystem":"on","updateInAppNotifiedVersion":"  "}""")]
@@ -323,17 +330,35 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
     }
 
     [Fact]
+    public void OlderNotificationSectionWithoutAccessRequestSwitchUsesItsGeneratedDefault()
+    {
+        var saved = JsonSerializer.SerializeToNode(new FrontendPreferences
+        {
+            Notifications = new() { UpdateInApp = "off", UpdateSystem = "off", UpdateInAppNotifiedVersion = "1.2.0" }
+        }, FrontendPreferencesOwner.Json)!.AsObject();
+        Assert.True(saved["notifications"]!.AsObject().Remove("accessRequestSystem"));
+        File.WriteAllText(Cache, saved.ToJsonString(FrontendPreferencesOwner.Json));
+        var current = Owner().Read().Notifications;
+        Assert.Equal(FrontendPoints.AccessRequestSystem, current.AccessRequestSystem);
+        Assert.Equal("off", current.UpdateInApp);
+        Assert.Equal("off", current.UpdateSystem);
+        Assert.Equal("1.2.0", current.UpdateInAppNotifiedVersion);
+    }
+
+    [Fact]
     public void DashboardAndOverlaySavesKeepTheNotificationSectionAndGlobalSavesKeepTheirs()
     {
         var owner = Owner();
         var old = owner.Read();
-        owner.SaveGlobal(old with { Notifications = new() { UpdateSystem = "off", UpdateInAppNotifiedVersion = "1.2.0" } });
+        owner.SaveGlobal(old with { Notifications = new() { UpdateSystem = "off", AccessRequestSystem = "off", UpdateInAppNotifiedVersion = "1.2.0" } });
         // Stale callers still hold the default section; their scopes must not write it.
         owner.SaveOverlay("game", old with { Overlays = new Dictionary<string, FrontendOverlayPresentation>
             { ["game"] = new() { FontSizePx = 26 } } });
         Assert.Equal("off", owner.Read().Notifications.UpdateSystem);
+        Assert.Equal("off", owner.Read().Notifications.AccessRequestSystem);
         Assert.Equal("1.2.0", owner.Read().Notifications.UpdateInAppNotifiedVersion);
         owner.SaveDashboard(old with { Dashboard = null });
+        Assert.Equal("off", owner.Read().Notifications.AccessRequestSystem);
         Assert.Equal("off", owner.Read().Notifications.UpdateSystem);
         Assert.Equal("1.2.0", owner.Read().Notifications.UpdateInAppNotifiedVersion);
         owner.SaveGlobal(owner.Read() with { Appearance = new() { Theme = "dark" } });
@@ -349,12 +374,13 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         owner.SaveGlobal(owner.Read() with
         {
             Appearance = new() { Theme = "dark" },
-            Notifications = new() { UpdateInApp = "off", UpdateSystem = "off", UpdateInAppNotifiedVersion = "1.2.0" }
+            Notifications = new() { UpdateInApp = "off", UpdateSystem = "off", AccessRequestSystem = "off", UpdateInAppNotifiedVersion = "1.2.0" }
         });
         var reset = owner.Reset();
         Assert.Equal(FrontendPoints.Theme, reset.Appearance.Theme);
         Assert.Equal(FrontendPoints.UpdateInApp, reset.Notifications.UpdateInApp);
         Assert.Equal(FrontendPoints.UpdateSystem, reset.Notifications.UpdateSystem);
+        Assert.Equal(FrontendPoints.AccessRequestSystem, reset.Notifications.AccessRequestSystem);
         Assert.Equal("1.2.0", reset.Notifications.UpdateInAppNotifiedVersion);
         Assert.Equal("1.2.0", Owner().Read().Notifications.UpdateInAppNotifiedVersion);
         Assert.Equal(FrontendPoints.Theme, Owner().Read().Appearance.Theme);

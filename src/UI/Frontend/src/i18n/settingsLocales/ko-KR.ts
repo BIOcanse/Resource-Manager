@@ -13,6 +13,8 @@ export default createSettingsLocale("ko-KR", {
     "intervalLabel": (minimum: number, maximum: number) => `간격(시간, ${minimum}–${maximum})`,
     "inAppNoticeTitle": "화면 내 새 버전 알림",
     "inAppNoticeDescription": "화면이 실행 중일 때 새 버전을 한 번 알립니다. 같은 버전은 다시 알리지 않습니다.",
+    "accessRequestNoticeTitle": "새 액세스 요청 시스템 알림",
+    "accessRequestNoticeDescription": "화면이 보이지 않을 때 승인을 기다리는 새 신뢰 액세스 요청이 도착하면 Windows 알림을 표시합니다.",
     "systemNoticeTitle": "Windows 시스템 알림",
     "systemNoticeDescription": "앱이 보이지 않을 때 시스템 알림을 한 번 보냅니다. 이 스위치는 설정만 저장하며 실행은 데스크톱 셸(트레이)이 합니다.",
     "manualCheckNote": "수동 확인은 인터넷을 기다리지 않고 바로 실행되며 모든 방식에서 사용할 수 있습니다.",

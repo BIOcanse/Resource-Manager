@@ -13,6 +13,8 @@ export default createSettingsLocale("es-ES", {
     "intervalLabel": (minimum: number, maximum: number) => `Intervalo (horas, ${minimum}–${maximum})`,
     "inAppNoticeTitle": "Aviso de versión nueva en la interfaz",
     "inAppNoticeDescription": "Mientras la interfaz está abierta, una versión nueva se avisa una vez; la misma versión no se vuelve a avisar.",
+    "accessRequestNoticeTitle": "Notificación del sistema de nuevas solicitudes de acceso",
+    "accessRequestNoticeDescription": "Muestra una notificación de Windows cuando llega una nueva solicitud de acceso de confianza pendiente de aprobación y la interfaz no está visible.",
     "systemNoticeTitle": "Notificación del sistema de Windows",
     "systemNoticeDescription": "Envía una notificación del sistema cuando la aplicación no está visible. Este interruptor solo guarda la preferencia; la ejecuta el shell de escritorio (bandeja).",
     "manualCheckNote": "La comprobación manual se ejecuta al momento, sin esperar a Internet, en todos los modos.",

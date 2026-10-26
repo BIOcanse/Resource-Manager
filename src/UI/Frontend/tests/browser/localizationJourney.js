@@ -272,6 +272,8 @@ export default async function localizationJourney(page, baseUrl) {
     await page.getByRole("checkbox", { name: settings.updates.inAppNoticeTitle, exact: true }).waitFor();
     await page.getByRole("checkbox", { name: settings.updates.systemNoticeTitle, exact: true }).waitFor();
     await page.getByText(settings.updates.systemNoticeDescription, { exact: true }).waitFor();
+    await page.getByRole("checkbox", { name: settings.updates.accessRequestNoticeTitle, exact: true }).waitFor();
+    await page.getByText(settings.updates.accessRequestNoticeDescription, { exact: true }).waitFor();
     await page.getByText(`${settings.updates.nextCheck}2026-10-27 08:00 UTC`, { exact: true }).waitFor();
     await page.getByText(`${settings.updates.connectedElapsed}0:01:01`, { exact: true }).waitFor();
     await page.getByText(`${settings.updates.lastChecked}2026-10-01 12:00 UTC`, { exact: true }).waitFor();

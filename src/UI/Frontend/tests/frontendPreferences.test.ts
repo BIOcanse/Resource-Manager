@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { ResourceManager } from "../src/preferences/generated/frontendPoints.values.ts";
 import { backendSettings, cachedOverlay, createFrontendPreferencesClient, pointOverlayPresentation, pointPreferences, resolveFrontendRefresh } from "../src/preferences/frontendPreferences.ts";
@@ -98,9 +99,10 @@ test("cache explanation and reset are translated in every selectable locale", as
 
 test("the notification section defaults to its points, saves with the global scope and survives the other scopes", async () => {
   assert.deepEqual(pointPreferences().notifications,
-    { updateInApp: points.UpdateInApp, updateSystem: points.UpdateSystem, updateInAppNotifiedVersion: null });
+    { updateInApp: points.UpdateInApp, updateSystem: points.UpdateSystem, accessRequestSystem: points.AccessRequestSystem, updateInAppNotifiedVersion: null });
   assert.equal(points.UpdateInApp, "on");
   assert.equal(points.UpdateSystem, "on");
+  assert.equal(points.AccessRequestSystem, "on");
   const disk = storage();
   // A cache saved before the section existed reads the section's points and keeps its other choices.
   const { notifications: _absent, ...older } = { ...pointPreferences(), appearance: { ...pointPreferences().appearance, theme: "dark" as const } };
@@ -109,14 +111,46 @@ test("the notification section defaults to its points, saves with the global sco
   const loaded = await client.read();
   assert.equal(loaded.appearance.theme, "dark");
   assert.deepEqual(loaded.notifications, pointPreferences().notifications);
-  await client.save({ ...loaded, notifications: { updateInApp: "off", updateSystem: "on", updateInAppNotifiedVersion: "1.2.0" } }, "global");
+  await client.save({ ...loaded, notifications: { updateInApp: "off", updateSystem: "on", accessRequestSystem: "off", updateInAppNotifiedVersion: "1.2.0" } }, "global");
   // Dashboard and overlay saves from views holding the old section do not write it.
   await client.save({ ...loaded, dashboard: null }, "dashboard");
   await client.save({ ...loaded, overlays: { game: pointOverlayPresentation() } }, { overlay: "game" });
   const current = await createFrontendPreferencesClient(disk).read();
-  assert.deepEqual(current.notifications, { updateInApp: "off", updateSystem: "on", updateInAppNotifiedVersion: "1.2.0" });
+  assert.deepEqual(current.notifications, { updateInApp: "off", updateSystem: "on", accessRequestSystem: "off", updateInAppNotifiedVersion: "1.2.0" });
   assert.ok(current.overlays.game);
   // The switches are frontend preferences and never enter an app-settings request.
-  const settings = { ...defaultAppSettings(), notifications: { updateInApp: "off" as const, updateSystem: "off" as const } };
+  const settings = { ...defaultAppSettings(), notifications: { updateInApp: "off" as const, updateSystem: "off" as const, accessRequestSystem: "off" as const } };
   assert.equal("notifications" in backendSettings(settings), false);
+});
+
+test("an older notification section gets the access-request point without replacing existing choices or records", async () => {
+  const disk = storage();
+  disk.setItem("resource-manager:frontend-preferences:v1", JSON.stringify({ ...pointPreferences(),
+    notifications: { updateInApp: "off", updateSystem: "off", updateInAppNotifiedVersion: "1.2.0" } }));
+  const current = await createFrontendPreferencesClient(disk).read();
+  assert.deepEqual(current.notifications, { updateInApp: "off", updateSystem: "off",
+    accessRequestSystem: points.AccessRequestSystem, updateInAppNotifiedVersion: "1.2.0" });
+});
+
+test("the access-request point uses the notification group and an enabled on/off choice", () => {
+  const declaration = JSON.parse(readFileSync(new URL("../preferences.points.json", import.meta.url), "utf8"));
+  const update = declaration.points.find((point: { symbol: string }) => point.symbol === "UpdateSystem");
+  const access = declaration.points.find((point: { symbol: string }) => point.symbol === "AccessRequestSystem");
+  assert.deepEqual(access, { group: update.group, name: "notification-access_request_system", symbol: "AccessRequestSystem",
+    type: "choice", options: ["on", "off"], value: "on" });
+});
+
+test("access-request notification titles and descriptions are translated in all selectable languages", async () => {
+  const titles = new Set<string>();
+  const descriptions = new Set<string>();
+  for (const language of languageOptions) {
+    if (language.id === "system") continue;
+    const { updates } = await loadSettingsText(language.id);
+    assert.ok(updates.accessRequestNoticeTitle.trim(), `${language.id}: title`);
+    assert.ok(updates.accessRequestNoticeDescription.trim(), `${language.id}: description`);
+    titles.add(updates.accessRequestNoticeTitle);
+    descriptions.add(updates.accessRequestNoticeDescription);
+  }
+  assert.equal(titles.size, 9);
+  assert.equal(descriptions.size, 9);
 });

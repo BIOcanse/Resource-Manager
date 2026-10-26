@@ -402,6 +402,8 @@ export interface UpdatesCopy {
   inAppNoticeDescription: string;
   systemNoticeTitle: string;
   systemNoticeDescription: string;
+  accessRequestNoticeTitle: string;
+  accessRequestNoticeDescription: string;
   manualCheckNote: string;
   waitingForInternet: string;
   availableVersion: string;

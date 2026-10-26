@@ -7,7 +7,7 @@ import type { ProductUpdateState } from "../src/features/settings/productUpdateP
 import { createFrontendPreferencesClient, type FrontendNotifications } from "../src/preferences/frontendPreferences.ts";
 
 const on = (updateInAppNotifiedVersion: string | null): FrontendNotifications =>
-  ({ updateInApp: "on", updateSystem: "on", updateInAppNotifiedVersion });
+  ({ updateInApp: "on", updateSystem: "on", accessRequestSystem: "on", updateInAppNotifiedVersion });
 
 test("the in-app notice rule: null, same version, new version and switch off", () => {
   assert.equal(shouldNoticeUpdate(null, on(null)), false, "no available version");
@@ -83,10 +83,10 @@ test("resetting the interface preferences keeps the noticed version, so the same
     setItem: (key, value) => { values.set(key, value); }, removeItem: key => { values.delete(key); } });
   const before = await client.read();
   await client.save({ ...before, appearance: { ...before.appearance, theme: "dark" },
-    notifications: { updateInApp: "off", updateSystem: "off", updateInAppNotifiedVersion: "1.2.0" } }, "global");
+    notifications: { updateInApp: "off", updateSystem: "off", accessRequestSystem: "off", updateInAppNotifiedVersion: "1.2.0" } }, "global");
   const reset = await client.reset();
   assert.equal(reset.appearance.theme, "system");
-  assert.deepEqual(reset.notifications, { updateInApp: "on", updateSystem: "on", updateInAppNotifiedVersion: "1.2.0" });
+  assert.deepEqual(reset.notifications, { updateInApp: "on", updateSystem: "on", accessRequestSystem: "on", updateInAppNotifiedVersion: "1.2.0" });
   assert.deepEqual((await client.read()).notifications, reset.notifications);
   const shown: string[] = [];
   const dispose = createRoot(dispose => {

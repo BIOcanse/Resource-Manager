@@ -840,7 +840,8 @@ const updateModes: readonly AppUpdateMode[] = ["off", "notify", "automatic"];
 export const updateCheckIntervalHours = { minimum: 24, maximum: 168, defaultValue: 24 } as const;
 
 function notificationSwitches(value: AppNotificationSettings): AppNotificationSettings {
-  return { updateInApp: value.updateInApp === "off" ? "off" : "on", updateSystem: value.updateSystem === "off" ? "off" : "on" };
+  return { updateInApp: value.updateInApp === "off" ? "off" : "on", updateSystem: value.updateSystem === "off" ? "off" : "on",
+    accessRequestSystem: value.accessRequestSystem === "off" ? "off" : "on" };
 }
 
 function normalizeLmStudioEndpoint(endpoint?: string | null): string {

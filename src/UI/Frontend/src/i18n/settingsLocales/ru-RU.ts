@@ -13,6 +13,8 @@ export default createSettingsLocale("ru-RU", {
     "intervalLabel": (minimum: number, maximum: number) => `Интервал (часы, ${minimum}–${maximum})`,
     "inAppNoticeTitle": "Уведомление о новой версии в интерфейсе",
     "inAppNoticeDescription": "Пока интерфейс открыт, о новой версии сообщается один раз; о той же версии повторно не сообщается.",
+    "accessRequestNoticeTitle": "Системное уведомление о новом запросе доступа",
+    "accessRequestNoticeDescription": "Показывает уведомление Windows, когда при скрытом интерфейсе поступает новый запрос доверенного доступа, ожидающий одобрения.",
     "systemNoticeTitle": "Системное уведомление Windows",
     "systemNoticeDescription": "Отправляет одно системное уведомление, когда приложение не видно. Переключатель только сохраняет настройку; выполняет её оболочка рабочего стола (трей).",
     "manualCheckNote": "Ручная проверка выполняется сразу, не дожидаясь интернета, в любом режиме.",

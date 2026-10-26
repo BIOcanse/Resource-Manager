@@ -12,6 +12,8 @@ export default createSettingsLocale("zh-TW", {
     "intervalLabel": (minimum: number, maximum: number) => `間隔（小時，${minimum}–${maximum}）`,
     "inAppNoticeTitle": "介面內提示新版本",
     "inAppNoticeDescription": "介面執行時發現新版本，在介面內提示一次；同一版本不再提示。",
+    "accessRequestNoticeTitle": "新存取請求的系統通知",
+    "accessRequestNoticeDescription": "介面不可見時，收到新的待核准信任存取請求會顯示 Windows 通知。",
     "systemNoticeTitle": "Windows 系統通知",
     "systemNoticeDescription": "軟體不可見時發一次系統通知。此開關只儲存偏好，由桌面外殼（工作列通知區）執行。",
     "manualCheckNote": "手動檢查立即進行，不等連網；三檔下都可用。",

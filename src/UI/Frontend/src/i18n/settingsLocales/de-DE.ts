@@ -13,6 +13,8 @@ export default createSettingsLocale("de-DE", {
     "intervalLabel": (minimum: number, maximum: number) => `Intervall (Stunden, ${minimum}–${maximum})`,
     "inAppNoticeTitle": "Hinweis auf neue Version in der Oberfläche",
     "inAppNoticeDescription": "Während die Oberfläche läuft, wird eine neue Version einmal gemeldet; dieselbe Version nicht erneut.",
+    "accessRequestNoticeTitle": "Systembenachrichtigung bei neuen Zugriffsanfragen",
+    "accessRequestNoticeDescription": "Zeigt eine Windows-Benachrichtigung an, wenn bei nicht sichtbarer Oberfläche eine neue vertrauenswürdige Zugriffsanfrage auf Genehmigung wartet.",
     "systemNoticeTitle": "Windows-Systembenachrichtigung",
     "systemNoticeDescription": "Sendet eine Systembenachrichtigung, wenn die App nicht sichtbar ist. Dieser Schalter speichert nur die Einstellung; die Desktop-Shell (Infobereich) führt sie aus.",
     "manualCheckNote": "Eine manuelle Prüfung läuft sofort, ohne auf das Internet zu warten, in jedem Modus.",

@@ -299,6 +299,7 @@ export interface AppUpdateSettings {
 export interface AppNotificationSettings {
   updateInApp: "on" | "off";
   updateSystem: "on" | "off";
+  accessRequestSystem: "on" | "off";
 }
 
 export interface AppPerformanceSettings {

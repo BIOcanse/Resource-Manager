@@ -18,7 +18,7 @@ export type FrontendRefresh = {
   localSystem: AppPresetNumericSetting;
 };
 export type OverlayPresentation = Omit<PerformanceOverlaySettings, "softwareId" | "injectionModules">;
-/** 新版本提示：两条途径的开关（设置页草稿可改）和界面内提示已提示过的版本（只由界面内提示写入）。 */
+/** 通知开关（设置页草稿可改）和界面内更新提示已提示过的版本（只由界面内提示写入）。 */
 export interface FrontendNotifications extends AppNotificationSettings {
   updateInAppNotifiedVersion: string | null;
 }
@@ -53,7 +53,7 @@ export function pointPreferences(): FrontendPreferencesCache {
       monitor: { ...points.Monitor },
       resourceTable: { ...points.ResourceTable }, localSystem: { ...points.LocalSystem }
     },
-    notifications: { updateInApp: points.UpdateInApp, updateSystem: points.UpdateSystem, updateInAppNotifiedVersion: null },
+    notifications: { updateInApp: points.UpdateInApp, updateSystem: points.UpdateSystem, accessRequestSystem: points.AccessRequestSystem, updateInAppNotifiedVersion: null },
     overlays: {}, dashboard: null
   };
 }
@@ -85,7 +85,8 @@ export function resolveFrontendRefresh(refresh: FrontendRefresh): FrontendRefres
 export function applyFrontendPreferences(settings: Omit<AppSettings, "appearance" | "performance" | "notifications"> & { performance?: Partial<AppPerformanceSettings> }, preferences: FrontendPreferencesCache): AppSettings {
   return {
     ...settings, appearance: structuredClone(preferences.appearance),
-    notifications: { updateInApp: preferences.notifications.updateInApp, updateSystem: preferences.notifications.updateSystem },
+    notifications: { updateInApp: preferences.notifications.updateInApp, updateSystem: preferences.notifications.updateSystem,
+      accessRequestSystem: preferences.notifications.accessRequestSystem },
     performance: settings.performance ? { ...settings.performance,
       monitorRefreshIntervalMs: { ...preferences.refresh.monitor },
       resourceTableRefreshIntervalMs: { ...preferences.refresh.resourceTable },
@@ -148,8 +149,8 @@ export function createFrontendPreferencesClient(storage?: Pick<Storage, "getItem
     const text = browserStorage?.getItem(key);
     if (text == null) return pointPreferences();
     const value = JSON.parse(text) as FrontendPreferencesCache;
-    // 与原生壳相同：缺少整个提示分区的旧缓存按本次构建的点值读取该分区。
-    return value.notifications ? value : { ...value, notifications: pointPreferences().notifications };
+    // 与原生壳相同：旧缓存缺少的通知字段按本次构建的点值读取，保留已有选择和记录。
+    return { ...value, notifications: { ...pointPreferences().notifications, ...value.notifications } };
   };
   let writes = Promise.resolve();
   const save = (value: FrontendPreferencesCache, scope?: "global" | "dashboard" | { overlay: string }) => {

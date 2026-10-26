@@ -58,6 +58,7 @@ export namespace ResourceManager {
       readonly DashboardLayoutLimits: __fpDeepReadonly<{ readonly smallMetricLimit: number; readonly minimumColumnWidth: number; readonly maximumColumnWidth: number; readonly defaultColumnWidth: number }>;
       readonly UpdateInApp: __fpDeepReadonly<"on" | "off">;
       readonly UpdateSystem: __fpDeepReadonly<"on" | "off">;
+      readonly AccessRequestSystem: __fpDeepReadonly<"on" | "off">;
     }
     export interface __fpRuntimeInitialValues {
     }

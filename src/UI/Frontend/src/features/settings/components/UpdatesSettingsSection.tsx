@@ -127,6 +127,7 @@ export function UpdatesSettingsSection(props: {
     </div>
     {notificationSwitch("updateInApp", text().inAppNoticeTitle, text().inAppNoticeDescription)}
     {notificationSwitch("updateSystem", text().systemNoticeTitle, text().systemNoticeDescription)}
+    {notificationSwitch("accessRequestSystem", text().accessRequestNoticeTitle, text().accessRequestNoticeDescription)}
     <div class="settings-row">
       <div class="settings-row-copy">
         <strong>{text().installedVersionTitle}</strong>
