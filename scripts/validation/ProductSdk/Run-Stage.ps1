@@ -51,6 +51,8 @@ $env:MSBUILDNODEENABLENODEREUSE='false'
 $env:DOTNET_CLI_TELEMETRY_OPTOUT='1'
 $env:DOTNET_GENERATE_ASPNET_CERTIFICATE='0'
 $env:DOTNET_CLI_HOME=Join-Path $taskScratch 'dotnet-home'
+# A fresh CLI home would otherwise download workload advertising manifests on every stage.
+$env:DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE='true'
 [void][IO.Directory]::CreateDirectory($env:DOTNET_CLI_HOME)
 if($Stage -eq 'Frontend') {
     & (Join-Path $PSScriptRoot 'Run-FrontendProductInputs.ps1') -TaskRoot $taskRoot -RunDirectory $RunDirectory -ScratchRoot $taskScratch -RepositoryRoot $taskRepo

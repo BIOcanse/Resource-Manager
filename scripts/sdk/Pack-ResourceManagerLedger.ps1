@@ -380,9 +380,12 @@ $baseProperties = @(
 )
 $previousNugetPackages = $env:NUGET_PACKAGES
 $previousDotnetCliHome = $env:DOTNET_CLI_HOME
+$previousWorkloadNotify = $env:DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE
 try {
     $env:NUGET_PACKAGES = $restorePackagesDirectory
     $env:DOTNET_CLI_HOME = $dotnetCliHome
+    # The staged CLI home is new each run; skip its workload advertising download.
+    $env:DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE = 'true'
     Invoke-DotNetPack -ProjectPath $runtimeProject -Properties ($baseProperties + @(
         'PackageId=ResourceManager.Ledger',
         'Description=Independent Resource Manager ledger runtime library.'
@@ -404,6 +407,7 @@ try {
 } finally {
     if ($null -eq $previousNugetPackages) { Remove-Item Env:NUGET_PACKAGES -ErrorAction SilentlyContinue } else { $env:NUGET_PACKAGES = $previousNugetPackages }
     if ($null -eq $previousDotnetCliHome) { Remove-Item Env:DOTNET_CLI_HOME -ErrorAction SilentlyContinue } else { $env:DOTNET_CLI_HOME = $previousDotnetCliHome }
+    if ($null -eq $previousWorkloadNotify) { Remove-Item Env:DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE -ErrorAction SilentlyContinue } else { $env:DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE = $previousWorkloadNotify }
 }
 
 $expectedPackages = @(
