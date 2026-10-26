@@ -75,6 +75,8 @@ const defaultScenario = {
   // 规范字段的设备值（/api/metrics/subscribe?fields=）。默认没有任何设备绑定。
   // 字段目录（/api/metrics/fields/catalog/subscribe）由同一份设备值生成。
   metricFieldDevices: [],
+  // SamplingObservationStatus overrides for current-value/placeholder contract tests.
+  metricStatuses: {},
   // 指标目录里额外的部件地址："none" 没有；"reading-source" 加一个带候选来源的核显温度地址
   // （gpu.5.temperature，候选是 metricFieldsProbe 的 readingSourceDevices 字段，后端当前选中 ADLX 次选）。
   metricCatalogAddresses: "none",
@@ -1509,18 +1511,24 @@ function metricSnapshot(requestedIds) {
         "gpu.0.memoryClock": { id: "gpu.0.memoryClock", unit: "MHz", status: 1, numericValue: 7000 }
     });
   }
-  const knownMetricIds = new Map(Object.keys(allItems).map(metricId =>
-    [metricId.toLowerCase(), metricId]));
-  const selectedIds = requestedIds.length > 0
-    ? [...new Set(requestedIds.map(metricId =>
-      knownMetricIds.get(metricId.toLowerCase()) ?? metricId))]
-    : Object.keys(allItems);
-  const items = Object.fromEntries(selectedIds
-    .filter(id => Object.hasOwn(allItems, id))
-    .map(id => [id, { ...allItems[id], observedAt: metricSlot.observedAt }]));
+  const definitions = [...metricCatalog, ...(scenario.metricCatalogAddresses === "reading-source" ? [readingSourceAddress()] : [])];
+  const knownMetricIds = new Map([...definitions.map(item => item.id), ...Object.keys(allItems)]
+    .map(metricId => [metricId.toLowerCase(), metricId]));
+  const selectedIds = normalizeMetricIds(requestedIds).map(id => knownMetricIds.get(id.toLowerCase()) ?? id);
+  const statuses = new Map(Object.entries(scenario.metricStatuses).map(([id, status]) => [id.toLowerCase(), status]));
+  const items = Object.fromEntries(selectedIds.map(id => {
+    const current = allItems[id];
+    const status = statuses.get(id.toLowerCase()) ?? (current ? 1 : 4);
+    if (current && status === 1) return [id, { ...current, observedAt: metricSlot.observedAt }];
+    return [id, {
+      ...(current ?? { id, unit: definitions.find(item => item.id === id)?.unit ?? "" }),
+      numericValue: null, integerValue: null, bytesValue: null, sampleDurationMilliseconds: null,
+      percent: null, booleanValue: null, total: null, observedAt: null, status
+    }];
+  }));
   return {
     version: 5,
-    capturedAt: metricSlot.observedAt,
+    capturedAt: Object.values(items).some(item => item.status === 1) ? metricSlot.observedAt : null,
     catalogRevision: "mock-catalog-1",
     items
   };
