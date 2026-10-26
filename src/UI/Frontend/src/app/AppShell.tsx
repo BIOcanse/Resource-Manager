@@ -165,7 +165,7 @@ export function AppShell(props: AppShellProps) {
           >
             <ListTodo aria-hidden="true" size={18} />
             <Show when={props.taskCenterActiveCount() > 0}>
-              <span class="shell-task-count" aria-hidden="true">
+              <span class="shell-task-count count-badge" aria-hidden="true">
                 {props.taskCenterActiveCount() > 99 ? "99+" : props.taskCenterActiveCount()}
               </span>
             </Show>

@@ -141,7 +141,7 @@ export function TaskCenterDialog(props: {
               {(tab) => (
                 <TabsTrigger class="ui-tabs-trigger page-tab" value={tab.value}>
                   <span>{tab.label}</span>
-                  <span class="task-center-tab-count">
+                  <span class="task-center-tab-count count-badge">
                     {itemsFor(tab.value).length}
                   </span>
                 </TabsTrigger>

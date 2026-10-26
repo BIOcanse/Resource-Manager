@@ -99,7 +99,7 @@ export function ManagementPage(props: ManagementPageProps) {
             <button class="panel-refresh-button secondary" type="button" disabled={props.refreshInProgress} onClick={props.onRefresh}>
               {props.refreshInProgress ? uiText.management.refreshing : uiText.management.refresh}
             </button>
-            <span id="managementCount">
+            <span id="managementCount" class="count-badge">
               {observationCanRender(props.observation) ? uiText.managementPage.itemCount(items().length) : "--"}
             </span>
           </div>

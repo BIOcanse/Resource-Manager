@@ -32,7 +32,6 @@
   --shell-bg: color(display-p3 1 1 0.995 / 0.96);
   --ok: color(display-p3 0.200 0.520 0.250);
   --info: color(display-p3 0.190 0.400 0.760);
-  --badge-bg: color(display-p3 0.940 0.934 0.900);
   --empty-bg: color(display-p3 1 1 0.995 / 0.56);
   --resource-empty: color(display-p3 1 1 0.995);
   --on-accent: color(display-p3 1 1 1);
@@ -98,7 +97,6 @@
   --shell-bg: color(display-p3 0.112 0.124 0.126 / 0.96);
   --ok: color(display-p3 0.400 0.740 0.420);
   --info: color(display-p3 0.470 0.640 0.950);
-  --badge-bg: color(display-p3 0.220 0.190 0.115);
   --empty-bg: color(display-p3 0.125 0.138 0.140 / 0.56);
   --resource-empty: color(display-p3 0.105 0.116 0.118);
   --on-accent: color(display-p3 0.040 0.060 0.056);
@@ -137,7 +135,6 @@
   --shell-bg: color(display-p3 0.936 0.946 0.932 / 0.96);
   --ok: color(display-p3 0.270 0.480 0.270);
   --info: color(display-p3 0.260 0.390 0.660);
-  --badge-bg: color(display-p3 0.862 0.842 0.752);
   --empty-bg: color(display-p3 0.936 0.946 0.932 / 0.56);
   --resource-empty: color(display-p3 0.930 0.940 0.928);
   --on-accent: color(display-p3 0.960 0.976 0.968);
@@ -174,7 +171,6 @@
     --shell-bg: color(display-p3 0.112 0.124 0.126 / 0.96);
     --ok: color(display-p3 0.400 0.740 0.420);
     --info: color(display-p3 0.470 0.640 0.950);
-    --badge-bg: color(display-p3 0.220 0.190 0.115);
     --empty-bg: color(display-p3 0.125 0.138 0.140 / 0.56);
     --resource-empty: color(display-p3 0.105 0.116 0.118);
     --on-accent: color(display-p3 0.040 0.060 0.056);

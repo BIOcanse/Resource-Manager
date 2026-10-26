@@ -25,3 +25,12 @@
   --tone-fill: color-mix(in oklab, var(--tone) 13%, var(--surface));
   --tone-edge: color-mix(in oklab, var(--tone) 48%, var(--line));
 }
+
+/*
+  计数徽标（"1 项"、页签和任务按钮上的数字）：只说有几个，不是状态，所以不分严重度，
+  全部用强调色体系的同一种底和字。各徽标只管自己的尺寸和位置。
+*/
+.count-badge {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}

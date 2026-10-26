@@ -141,21 +141,14 @@
   font-weight: 700;
 }
 
-#controlledCount,
 #managementCount,
-#resourceBreakdownStatus,
-#resourceTableStatus,
-#migrationStatus,
-#migrationRecordCount,
-#optimizationCount {
+#resourceTableStatus {
   min-width: 28px;
   height: 24px;
   display: inline-grid;
   place-items: center;
   flex: 0 0 auto;
   border-radius: 999px;
-  background: var(--badge-bg);
-  color: var(--muted);
   font-weight: 700;
   font-size: 13px;
   padding: 0 8px;

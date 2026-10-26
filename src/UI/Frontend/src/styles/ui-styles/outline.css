@@ -48,7 +48,6 @@
   --shell-bg: #f8f6f0;
   --ok: #2f6b2a;
   --info: #0f6b78;
-  --badge-bg: #e6e1d4;
   --empty-bg: #f8f6f08f;
   --resource-empty: #f8f6f0;
   --on-accent: #ffffff;
@@ -82,7 +81,6 @@
   --shell-bg: #1f2022;
   --ok: #82c77d;
   --info: #78b4f0;
-  --badge-bg: #34322d;
   --empty-bg: #2122248f;
   --resource-empty: #202123;
   --on-accent: #1b1106;
@@ -116,7 +114,6 @@
     --shell-bg: #1f2022;
     --ok: #82c77d;
     --info: #78b4f0;
-    --badge-bg: #34322d;
     --empty-bg: #2122248f;
     --resource-empty: #202123;
     --on-accent: #1b1106;
@@ -151,7 +148,6 @@
   --shell-bg: #0f2645;
   --ok: #8fe3a0;
   --info: #c8b8ff;
-  --badge-bg: #1d3d62;
   --empty-bg: #1128468f;
   --resource-empty: #102644;
   --on-accent: #08182c;
@@ -270,21 +266,13 @@
 }
 
 /* ---- 写死的大圆角：胶囊、圆点、大卡片一律收成近直角 ---- */
-:root[data-ui-style="outline"] #controlledCount,
-:root[data-ui-style="outline"] #managementCount,
-:root[data-ui-style="outline"] #resourceBreakdownStatus,
-:root[data-ui-style="outline"] #resourceTableStatus,
-:root[data-ui-style="outline"] #migrationStatus,
-:root[data-ui-style="outline"] #migrationRecordCount,
-:root[data-ui-style="outline"] #optimizationCount,
+:root[data-ui-style="outline"] .count-badge,
 :root[data-ui-style="outline"] .observation-state,
 :root[data-ui-style="outline"] .control-capability-tag,
 :root[data-ui-style="outline"] .device-port-protocol,
 :root[data-ui-style="outline"] .device-port-icon,
 :root[data-ui-style="outline"] .device-system-meta span,
 :root[data-ui-style="outline"] .device-topology-notes span,
-:root[data-ui-style="outline"] .task-center-tab-count,
-:root[data-ui-style="outline"] .shell-task-count,
 :root[data-ui-style="outline"] .slot-actions,
 :root[data-ui-style="outline"] .slot-change,
 :root[data-ui-style="outline"] .slot-delete,

@@ -1170,8 +1170,6 @@
   place-items: center;
   padding: 0 7px;
   border-radius: 999px;
-  background: var(--warn);
-  color: var(--surface);
   font-size: 12px;
   font-weight: 800;
 }

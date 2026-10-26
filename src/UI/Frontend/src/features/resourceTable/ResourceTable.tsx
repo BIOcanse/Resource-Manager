@@ -148,7 +148,7 @@ export function ResourceTable(props: ResourceTableProps) {
         <div class="resource-table-title">
           <h2>{props.mode === "performance" ? uiText.resourceTable.performance : uiText.resourceTable.panel}</h2>
           <Show when={props.mode !== "performance"}>
-            <span id="resourceTableStatus">{statusText()}</span>
+            <span id="resourceTableStatus" class="count-badge">{statusText()}</span>
           </Show>
         </div>
         <div class="panel-header-actions">

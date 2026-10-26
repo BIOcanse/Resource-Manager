@@ -56,7 +56,6 @@
   --shell-bg: #070b09;
   --ok: #b6e86a;
   --info: #6cc8ff;
-  --badge-bg: #15281c;
   --empty-bg: rgba(10, 15, 12, 0.56);
   --resource-empty: #08100b;
   --on-accent: #02130a;
@@ -90,7 +89,6 @@
   --shell-bg: #0a0704;
   --ok: #8fe08a;
   --info: #82c8ff;
-  --badge-bg: #2a1f0e;
   --empty-bg: rgba(15, 11, 6, 0.56);
   --resource-empty: #0c0905;
   --on-accent: #140c00;
@@ -123,7 +121,6 @@
   --shell-bg: #060a0f;
   --ok: #7ee6a0;
   --info: #c0aaff;
-  --badge-bg: #142636;
   --empty-bg: rgba(9, 17, 26, 0.56);
   --resource-empty: #070e15;
   --on-accent: #00121b;
@@ -209,17 +206,8 @@
 
 /* ---- 面板与卡片 ---- */
 
-/* 面板标题的计数徽标：去掉胶囊底，改成细线框。 */
-:root[data-ui-style="terminal"] #controlledCount,
-:root[data-ui-style="terminal"] #managementCount,
-:root[data-ui-style="terminal"] #resourceBreakdownStatus,
-:root[data-ui-style="terminal"] #resourceTableStatus,
-:root[data-ui-style="terminal"] #migrationStatus,
-:root[data-ui-style="terminal"] #migrationRecordCount,
-:root[data-ui-style="terminal"] #optimizationCount {
-  border-radius: 0;
-  background: var(--accent-soft);
-  color: var(--accent-strong);
+/* 计数徽标：直角之外再加一圈细线框。 */
+:root[data-ui-style="terminal"] .count-badge {
   box-shadow: inset 0 0 0 1px var(--line);
 }
 
