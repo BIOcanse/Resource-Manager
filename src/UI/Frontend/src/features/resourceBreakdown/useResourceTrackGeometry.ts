@@ -1,4 +1,5 @@
-import { createSignal, onCleanup } from "solid-js";
+import { observeLayout } from "../../interactions/solid/layoutObservation.ts";
+import { batch, createSignal, onCleanup } from "solid-js";
 
 export function createResourceTrackGeometry() {
   const [contentWidth, setContentWidth] = createSignal(0);
@@ -6,7 +7,7 @@ export function createResourceTrackGeometry() {
   const [segmentHeight, setSegmentHeight] = createSignal(0);
   const [segmentTop, setSegmentTop] = createSignal(0);
   let track: HTMLElement | null = null;
-  let observer: ResizeObserver | null = null;
+  let measured: { width: number; ratio: number; top: number; height: number } | null = null;
 
   const update = () => {
     if (!track) {
@@ -30,24 +31,27 @@ export function createResourceTrackGeometry() {
     const clampedTop = clampNumber(alignedTop, 0, contentHeight);
     const clampedHeight = Math.max(0, Math.min(alignedHeight, contentHeight - clampedTop));
 
-    setContentWidth(Math.max(0, track.clientWidth));
-    setDevicePixelRatio(ratio);
-    setSegmentTop(clampedTop);
-    setSegmentHeight(clampedHeight);
+    measured = { width: Math.max(0, track.clientWidth), ratio, top: clampedTop, height: clampedHeight };
   };
 
+  const layout = observeLayout({
+    read: update,
+    write: () => {
+      if (!measured) return;
+      const geometry = measured;
+      batch(() => {
+        setContentWidth(geometry.width);
+        setDevicePixelRatio(geometry.ratio);
+        setSegmentTop(geometry.top);
+        setSegmentHeight(geometry.height);
+      });
+    }
+  });
   const observeTrack = (element: HTMLElement) => {
     track = element;
-    update();
-
-    observer?.disconnect();
-    observer = new ResizeObserver(update);
-    observer.observe(element);
+    layout.update([element]);
   };
-
-  onCleanup(() => {
-    observer?.disconnect();
-  });
+  onCleanup(() => layout.dispose());
 
   return {
     contentWidth,

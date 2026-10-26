@@ -1,4 +1,5 @@
 import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
+import { observeLayout } from "../../interactions/solid/layoutObservation.ts";
 import {
   resourceTableCellText,
   resourceTableColumnLabel,
@@ -12,7 +13,7 @@ import {
   type ResourceTableColumnText
 } from "./resourceTableSources.ts";
 import { RadioGroupItem, RadioGroupRoot } from "../../ui/primitives/RadioGroup.tsx";
-import { createEffect, createMemo, createSignal, For, Index, onCleanup, onMount, Show, untrack } from "solid-js";
+import { batch, createEffect, createMemo, createSignal, For, Index, onCleanup, onMount, Show, untrack } from "solid-js";
 import type { JSX } from "solid-js";
 import { ArrowDown, ArrowLeft, ArrowRight, ChevronRight, MoreHorizontal } from "lucide-solid";
 import { userFacingLabel } from "../../presentation/userFacingText";
@@ -582,19 +583,28 @@ function VirtualResourceTable(props: {
   });
 
   onMount(() => {
-    const updateSize = () => {
-      if (viewport) {
-        setViewportHeight(Math.max(180, viewport.clientHeight));
-        setViewportWidth(Math.max(0, viewport.clientWidth));
-        setScrollbarWidth(Math.max(0, viewport.offsetWidth - viewport.clientWidth));
+    const MIN_VIEWPORT_HEIGHT = 180;
+    let size: { height: number; width: number; scrollbar: number } | null = null;
+    const layout = observeLayout({
+      read: () => {
+        if (!viewport) return;
+        const height = viewport.clientHeight;
+        const width = viewport.clientWidth;
+        const outerWidth = viewport.offsetWidth;
+        size = { height: Math.max(MIN_VIEWPORT_HEIGHT, height), width: Math.max(0, width), scrollbar: Math.max(0, outerWidth - width) };
+      },
+      write: () => {
+        if (!size) return;
+        const measured = size;
+        batch(() => {
+          setViewportHeight(measured.height);
+          setViewportWidth(measured.width);
+          setScrollbarWidth(measured.scrollbar);
+        });
       }
-    };
-    updateSize();
-    const observer = new ResizeObserver(updateSize);
-    if (viewport) {
-      observer.observe(viewport);
-    }
-    onCleanup(() => observer.disconnect());
+    });
+    if (viewport) layout.update([viewport]);
+    onCleanup(() => layout.dispose());
     onCleanup(() => {
       if (focusFrame) {
         cancelAnimationFrame(focusFrame);
