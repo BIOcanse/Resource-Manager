@@ -50,7 +50,10 @@ type KeyListState =
 /** 正在进行的操作对象：create、default、key:<id>、request:<id>。一次只进行一个操作。 */
 type ActionTarget = "create" | "default" | `key:${string}` | `request:${string}`;
 
-export function TrustedAccessManager(props: { copy: TrustedAccessCopy }) {
+export function TrustedAccessManager(props: {
+  copy: TrustedAccessCopy;
+  onHeadingChange?: (heading: HTMLElement | undefined) => void;
+}) {
   const runtime = useFrontendRuntime();
   const pendingSnapshot = useAccessRequestSnapshot();
   const requestList = createMemo(() => accessRequestListView(pendingSnapshot()));
@@ -69,6 +72,7 @@ export function TrustedAccessManager(props: { copy: TrustedAccessCopy }) {
   const [pending, setPending] = createSignal<ActionTarget | null>(null);
   const [confirmRequest, setConfirmRequest] = createSignal<ConfirmDialogRecord | null>(null);
   let resolveConfirm: ((confirmed: boolean) => void) | null = null;
+  let managerHeading: HTMLElement | undefined;
   let copyButton: HTMLButtonElement | undefined;
   let enableDefaultButton: HTMLButtonElement | undefined;
   let defaultHeading: HTMLElement | undefined;
@@ -96,7 +100,11 @@ export function TrustedAccessManager(props: { copy: TrustedAccessCopy }) {
       });
     }
   };
-  onMount(() => { void load(); });
+  onMount(() => {
+    props.onHeadingChange?.(managerHeading);
+    void load();
+  });
+  onCleanup(() => props.onHeadingChange?.(undefined));
 
   const ready = () => {
     const state = keyList();
@@ -331,7 +339,7 @@ export function TrustedAccessManager(props: { copy: TrustedAccessCopy }) {
     <section id="trustedAccessManager" class="settings-row settings-row-block trusted-access-manager"
       aria-labelledby="trustedAccessManagerTitle">
       <div class="settings-row-copy">
-        <strong id="trustedAccessManagerTitle" tabindex={-1}>{props.copy.title}</strong>
+        <strong ref={managerHeading} id="trustedAccessManagerTitle" tabindex={-1}>{props.copy.title}</strong>
         <span>{props.copy.description}</span>
       </div>
 

@@ -1,4 +1,4 @@
-import { For, Show, createEffect, createMemo, on, onCleanup, onMount } from "solid-js";
+﻿import { For, Show, createEffect, createMemo, on, onCleanup, onMount } from "solid-js";
 import type { Accessor, JSX } from "solid-js";
 import { ListTodo } from "lucide-solid";
 import { ObservationStateNotice } from "../components/ObservationStateNotice";
@@ -25,6 +25,9 @@ interface AppShellProps {
   runtimeCapabilities: RuntimeCapabilitiesStore;
   taskCenterActiveCount: Accessor<number>;
   taskCenterOperationState: Accessor<TaskCenterOperationState>;
+  /** 深层导航目标由已挂载视图提供；常规导航仍聚焦页面标题。 */
+  pageFocusTarget?: Accessor<HTMLElement | undefined>;
+  onPageTargetFocused?: (target: HTMLElement) => void;
   onPageSelect: (page: PageId) => void;
   onTaskCenterOpen: () => void;
   /** 页面上方、不随换页过渡的提示（可信访问待处理、语言载入失败）。 */
@@ -58,13 +61,26 @@ export function AppShell(props: AppShellProps) {
   });
 
   // 换一级页：正文回到顶部，焦点交给页标题。只换二级分页：正文回到顶部，焦点留在分页条上（←/→ 接着切）。
+  // 深层导航（可信访问待处理横幅）由已挂载的视图交出焦点目标，焦点交给它；消费请求或卸载目标不会再次抢回焦点。
   let displayedPage = props.activePage();
-  createEffect(on(routeIdentity, () => {
+  createEffect(on([routeIdentity, () => props.pageFocusTarget?.()], ([route, target], previous) => {
+    const routeChanged = route !== previous?.[0];
+    if (!routeChanged && !target) return;
     const pageChanged = props.activePage() !== displayedPage;
     displayedPage = props.activePage();
+    let cancelled = false;
+    onCleanup(() => { cancelled = true; });
     queueMicrotask(() => {
-      mainViewport?.scrollTo({ top: 0, left: 0, behavior: "auto" });
-      if (pageChanged) pageHeading?.focus({ preventScroll: true });
+      if (cancelled) return;
+      if (routeChanged) mainViewport?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      if (target) {
+        if (target.isConnected) {
+          target.focus({ preventScroll: true });
+          props.onPageTargetFocused?.(target);
+        }
+      } else if (pageChanged) {
+        pageHeading?.focus({ preventScroll: true });
+      }
     });
   }, { defer: true }));
 

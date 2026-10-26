@@ -6,6 +6,7 @@ import type { ProductUpdateStore } from "../../stores/productUpdateStore";
 
 interface SettingsWorkspaceProps {
   settings: SettingsStore;
+  onTrustedAccessHeadingChange?: (heading: HTMLElement | undefined) => void;
   productUpdates: ProductUpdateStore;
   runtimeCapabilities: RuntimeCapabilitiesStore;
 }
@@ -15,6 +16,7 @@ export function SettingsWorkspace(props: SettingsWorkspaceProps) {
   onCleanup(settings.discardDraftChanges);
   return (
     <SettingsPage
+        onTrustedAccessHeadingChange={props.onTrustedAccessHeadingChange}
         settings={settings.draftSettings()}
         loadState={settings.loadState()}
         activeSection={settings.activeSection()}

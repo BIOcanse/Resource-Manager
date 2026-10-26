@@ -11,6 +11,16 @@ const allScopes = [...defaultScopes, "machine.write", "injection.configure"];
 const iso = (offsetMs = 0) => new Date(Date.now() + offsetMs).toISOString();
 
 export default async function trustedAccessJourney(page, baseUrl) {
+  // 保持设置分包未就绪，越过旧实现的两帧窗口后才放行。
+  const coldRouteFrameCount = 3;
+  let releaseSettingsChunk;
+  const settingsChunkReady = new Promise(resolve => { releaseSettingsChunk = resolve; });
+  let settingsChunkIntercepted = false;
+  await page.route("**/assets/SettingsWorkspace-*.js", async route => {
+    settingsChunkIntercepted = true;
+    await settingsChunkReady;
+    await route.continue();
+  });
   const errors = [];
   const calls = [];
   const defaultSecret = "native-default-secret-must-never-reach-web-content";
@@ -49,7 +59,8 @@ export default async function trustedAccessJourney(page, baseUrl) {
 
   const settings = await loadSettingsText("zh-CN");
   const copy = settings.systemIntegration.trustedAccess;
-  const feedback = (await loadAppCopy("zh-CN")).feedback;
+  const appCopy = await loadAppCopy("zh-CN");
+  const feedback = appCopy.feedback;
   const activeElement = () => page.evaluate(() => ({
     id: document.activeElement?.id ?? "",
     text: document.activeElement?.textContent?.trim() ?? "",
@@ -172,10 +183,50 @@ export default async function trustedAccessJourney(page, baseUrl) {
   if (process.env.RM_TRUSTED_ACCESS_BANNER_SCREENSHOT) {
     await page.screenshot({ path: process.env.RM_TRUSTED_ACCESS_BANNER_SCREENSHOT, fullPage: true });
   }
-  await banner.getByRole("button", { name: copy.reviewRequests, exact: true }).click();
+  let coldRoute;
+  try {
+    await banner.getByRole("button", { name: copy.reviewRequests, exact: true }).click();
+    coldRoute = await page.evaluate(async frameCount => {
+      for (let frame = 0; frame < frameCount; frame++) {
+        await new Promise(resolve => requestAnimationFrame(resolve));
+      }
+      return {
+        titlePresent: Boolean(document.getElementById("trustedAccessManagerTitle")),
+        activeId: document.activeElement?.id,
+        at: performance.now()
+      };
+    }, coldRouteFrameCount);
+    assert.equal(coldRoute.titlePresent, false, "the destination stays unmounted beyond the old focus window");
+  } finally {
+    releaseSettingsChunk();
+  }
   await page.waitForFunction(() => document.body.dataset.page === "settings");
   await page.locator(".trusted-access-notification").waitFor({ state: "detached" });
+  try {
+    await page.waitForFunction(() => document.activeElement?.id === "trustedAccessManagerTitle");
+  } catch (error) {
+    const focusState = await page.evaluate(() => ({
+      activeId: document.activeElement?.id,
+      titlePresent: Boolean(document.getElementById("trustedAccessManagerTitle")),
+      titleVisible: Boolean(document.getElementById("trustedAccessManagerTitle")?.getClientRects().length)
+    }));
+    throw new Error(`Review navigation did not focus the manager: ${JSON.stringify({ coldRoute, settingsChunkIntercepted, focusState })}`, { cause: error });
+  }
+  assert.equal(settingsChunkIntercepted, true, "the journey exercises an actual cold settings chunk");
+  const coldFocus = await activeElement();
+  // 已预热分包的再次导航也必须承接焦点，普通进入设置不应请求深层目标。
+  await page.locator(".shell-page").filter({ hasText: appCopy.page.monitor }).click();
+  await page.waitForFunction(() => document.body.dataset.page === "monitor"
+    && document.activeElement?.id === "activePageTitle");
+  await page.getByRole("button", { name: appCopy.page.settings, exact: true }).click();
+  await page.locator("#trustedAccessManagerTitle").waitFor({ state: "visible" });
+  assert.equal((await activeElement()).id, "activePageTitle", "ordinary settings navigation consumes no old review focus request");
+  await page.getByRole("button", { name: appCopy.page.monitor, exact: true }).click();
+  await page.waitForFunction(() => document.body.dataset.page === "monitor"
+    && document.activeElement?.id === "activePageTitle");
+  await banner.getByRole("button", { name: copy.reviewRequests, exact: true }).click();
   await page.waitForFunction(() => document.activeElement?.id === "trustedAccessManagerTitle");
+  const warmFocus = await activeElement();
   const panel = page.getByRole("region", { name: copy.title, exact: true });
   await panel.getByText(copy.defaultEnabled, { exact: true }).waitFor();
   await panel.getByText(copy.defaultKeyName, { exact: true }).waitFor();
@@ -283,6 +334,7 @@ export default async function trustedAccessJourney(page, baseUrl) {
     "the frontend never requests the native-only default secret");
   assert.deepEqual(errors, []);
   return {
+    coldRoute, coldFocus, warmFocus,
     requests: ["approved-subset", "expired", "denied"],
     keyActions: ["create-one-time", "rotate-confirmed", "revoke-canceled", "revoke-confirmed", "regenerate-default-confirmed"],
     focus: ["banner-to-title", "decision-to-requests", "create-to-copy", "revoke-to-list"],

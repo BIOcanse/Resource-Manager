@@ -1,4 +1,4 @@
-import { Show, lazy, onCleanup, onMount } from "solid-js";
+﻿import { Show, lazy, onCleanup, onMount } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { SoftwareContextMenuTarget } from "../components/SoftwareContextMenu";
 import { MonitorPage } from "../features/monitor/MonitorPage";
@@ -45,6 +45,7 @@ interface AppRoutesProps {
   activePage: Accessor<PageId>;
   /** 详细信息选中的二级分页（分页树）。 */
   detailsTab: Accessor<DetailsTab>;
+  onTrustedAccessHeadingChange?: (heading: HTMLElement | undefined) => void;
   monitor: MonitorStore;
   management: ManagementStore;
   optimization: OptimizationStore;
@@ -127,6 +128,7 @@ export function AppRoutes(props: AppRoutesProps) {
         >
           <PageBoundary name={uiText.page.settings}>
             <SettingsWorkspace
+              onTrustedAccessHeadingChange={props.onTrustedAccessHeadingChange}
               settings={props.settings}
               productUpdates={props.productUpdates}
               runtimeCapabilities={props.runtimeCapabilities}

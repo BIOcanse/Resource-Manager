@@ -20,6 +20,7 @@ import { SwitchControl } from "../../../ui/primitives/Switch.tsx";
 
 interface SystemIntegrationSettingsSectionProps {
   settings: AppSystemIntegrationSettings | undefined;
+  onTrustedAccessHeadingChange?: (heading: HTMLElement | undefined) => void;
   publicServiceSettings: AppLocalPublicServiceSettings | undefined;
   aiModelServiceSettings: AppAiModelServiceSettings | undefined;
   text: SettingsTextBundle;
@@ -141,7 +142,8 @@ export function SystemIntegrationSettingsSection(props: SystemIntegrationSetting
         enabled={props.publicServicesAvailable && publicService().enabled && publicService().aiModelCatalogEnabled}
         labels={props.text.systemIntegration}
       />
-      <TrustedAccessManager copy={props.text.systemIntegration.trustedAccess} />
+      <TrustedAccessManager copy={props.text.systemIntegration.trustedAccess}
+        onHeadingChange={props.onTrustedAccessHeadingChange} />
     </div>
   );
 }

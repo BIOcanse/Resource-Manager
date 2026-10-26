@@ -1,5 +1,5 @@
 import { FrontendReadIntervalsProvider } from "./app/FrontendReadIntervalsContext.tsx";
-import { createEffect, createMemo, createSignal, lazy, onCleanup, onMount } from "solid-js";
+import { batch, createEffect, createMemo, createSignal, lazy, onCleanup, onMount } from "solid-js";
 import { useGlobalFeedback } from "./app/useGlobalFeedback";
 import { AppRoutes } from "./app/AppRoutes";
 import { AppShell } from "./app/AppShell";
@@ -55,6 +55,8 @@ const TaskCenterDialog = lazy(() => import("./ui/task-center/TaskCenterDialog")
 export default function App() {
   const frontendRuntime = useFrontendRuntime();
   const [activePage, setActivePage] = createSignal<PageId>("monitor");
+  const [accessRequestsFocusRequested, setAccessRequestsFocusRequested] = createSignal(false);
+  const [trustedAccessHeading, setTrustedAccessHeading] = createSignal<HTMLElement>();
   const [taskCenterOpen, setTaskCenterOpen] = createSignal(false);
   const [taskCenterSnapshot, setTaskCenterSnapshot] = createSignal(
     frontendRuntime.taskCenter.snapshot);
@@ -351,18 +353,18 @@ export default function App() {
     setActivePage(page);
   }
 
+  createEffect(() => {
+    if (activePage() !== "settings" || settings.activeSection() !== "systemIntegration") {
+      setAccessRequestsFocusRequested(false);
+    }
+  });
+
   function openAccessRequests() {
-    settings.setActiveSection("systemIntegration");
-    selectPage("settings");
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      // 横幅会随跳转卸载：焦点交给可信访问区的标题，滚动方式跟随动画设置。
-      const title = document.getElementById("trustedAccessManagerTitle");
-      title?.scrollIntoView({
-        block: "start",
-        behavior: gpuRuntimePlan().animations === "normal" ? "smooth" : "auto"
-      });
-      title?.focus({ preventScroll: true });
-    }));
+    batch(() => {
+      setAccessRequestsFocusRequested(true);
+      settings.setActiveSection("systemIntegration");
+      selectPage("settings");
+    });
   }
 
   return (
@@ -378,6 +380,14 @@ export default function App() {
         runtimeCapabilities={runtimeCapabilities}
         taskCenterActiveCount={() => taskCenterSnapshot().activeUserCount}
         taskCenterOperationState={() => taskCenterSnapshot().operationState}
+        pageFocusTarget={() => accessRequestsFocusRequested() ? trustedAccessHeading() : undefined}
+        onPageTargetFocused={(title) => {
+          title.scrollIntoView({
+            block: "start",
+            behavior: gpuRuntimePlan().animations === "normal" ? "smooth" : "auto"
+          });
+          setAccessRequestsFocusRequested(false);
+        }}
         onPageSelect={selectPage}
         onTaskCenterOpen={() => setTaskCenterOpen(true)}
         notices={<>
@@ -389,6 +399,7 @@ export default function App() {
         </>}
       >
         <AppRoutes
+          onTrustedAccessHeadingChange={setTrustedAccessHeading}
           animationMode={gpuRuntimePlan().animations}
           activePage={activePage}
           detailsTab={detailsNavigation.selected}

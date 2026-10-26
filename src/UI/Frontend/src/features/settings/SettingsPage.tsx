@@ -33,6 +33,7 @@ export { MultiSegmentedControl, SegmentedControl } from "./components/SettingsCo
 
 interface SettingsPageProps {
   settings: AppSettings;
+  onTrustedAccessHeadingChange?: (heading: HTMLElement | undefined) => void;
   loadState: "loading" | "refreshing" | "ready" | "stale" | "error";
   activeSection: SettingsSection;
   saveState: "idle" | "saving" | "saved" | "constrained" | "partial" | "error" | "conflict";
@@ -317,6 +318,7 @@ export function SettingsPage(props: SettingsPageProps) {
           </Show>
           <Show when={props.activeSection === "systemIntegration"}>
             <SystemIntegrationSettingsSection
+              onTrustedAccessHeadingChange={props.onTrustedAccessHeadingChange}
               settings={props.settings.systemIntegration}
               publicServiceSettings={props.settings.publicService}
               aiModelServiceSettings={props.settings.aiModelService}
