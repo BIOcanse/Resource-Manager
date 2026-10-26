@@ -61,6 +61,44 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         Assert.Equal(Serialize(current), Serialize(Owner().Read()));
     }
 
+    [Theory]
+    [InlineData("\"preferred\"")]
+    [InlineData("\"all\"")]
+    [InlineData("\"unknown\"")]
+    [InlineData("null")]
+    [InlineData("42")]
+    [InlineData("{}")]
+    public void RetiredReadingSourceChoiceIsDroppedBeforeStrictCacheValidation(string retiredValue)
+    {
+        foreach (var oldAnimation in new[] { false, true })
+        {
+            var expected = new FrontendPreferences
+            {
+                Appearance = new() { Theme = "dark", Language = "de-DE",
+                    AnimationStyle = "smooth", AutoDisableAnimations = false },
+                Refresh = new() { Monitor = new("custom", "quiet", 4321) }
+            };
+            var node = JsonSerializer.SerializeToNode(expected, FrontendPreferencesOwner.Json)!.AsObject();
+            var appearance = node["appearance"]!.AsObject();
+            appearance["readingSourceMode"] = System.Text.Json.Nodes.JsonNode.Parse(retiredValue);
+            if (oldAnimation)
+            {
+                appearance.Remove("animationStyle");
+                appearance.Remove("autoDisableAnimations");
+                appearance["animations"] = "normal";
+                appearance["motionFeel"] = "smooth";
+            }
+            File.WriteAllText(Cache, node.ToJsonString(FrontendPreferencesOwner.Json));
+            var owner = Owner();
+            var loaded = owner.Read();
+            Assert.Equal(Serialize(expected), Serialize(loaded));
+            Assert.DoesNotContain("readingSourceMode", File.ReadAllText(Cache));
+            owner.Save(loaded);
+            Assert.DoesNotContain("readingSourceMode", File.ReadAllText(Cache));
+            Assert.Equal(Serialize(expected), Serialize(Owner().Read()));
+        }
+    }
+
     [Fact]
     public void OverlayChoicesImportBeforeDashboardRoundTripAndResetKeepsOnlyTheChoices()
     {
@@ -127,7 +165,8 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         File.WriteAllText(Overlay, "{\"version\":2,\"software\":[{\"softwareId\":\"game\",\"enabled\":true,\"mode\":\"injected\"}]}");
         var imported = Owner().Read();
         Assert.Equal("dark", imported.Appearance.Theme);
-        Assert.Equal("all", imported.Appearance.ReadingSourceMode);
+        Assert.DoesNotContain("readingSourceMode", Serialize(imported));
+        Assert.DoesNotContain("readingSourceMode", File.ReadAllText(Cache));
         // The legacy "animations":"normal" goes through the animation-style migration: desktop, switch off.
         Assert.Equal("desktop", imported.Appearance.AnimationStyle);
         Assert.False(imported.Appearance.AutoDisableAnimations);

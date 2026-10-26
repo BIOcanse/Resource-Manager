@@ -180,3 +180,28 @@ test("animation choices saved before the animation style migrate once (docs/anim
   const kept = (await createFrontendPreferencesClient(disk).read()).appearance;
   assert.deepEqual([kept.animationStyle, kept.autoDisableAnimations, "animations" in kept], ["terminal", false, false]);
 });
+
+test("retired reading-source choices are dropped on cache read and subsequent save", async () => {
+  for (const readingSourceMode of ["preferred", "all", "unknown", null, 42, {}]) {
+    for (const oldAnimation of [false, true]) {
+      const disk = storage();
+      const expected = { ...pointPreferences(), appearance: { ...pointPreferences().appearance, theme: "dark" as const } };
+      const appearance = oldAnimation
+        ? { ...expected.appearance, animationStyle: undefined, autoDisableAnimations: undefined, animations: "normal", motionFeel: "smooth" }
+        : expected.appearance;
+      disk.setItem("resource-manager:frontend-preferences:v1", JSON.stringify({ ...expected,
+        appearance: { ...appearance, readingSourceMode } }));
+      if (oldAnimation) {
+        expected.appearance.animationStyle = "smooth";
+        expected.appearance.autoDisableAnimations = false;
+      }
+      const client = createFrontendPreferencesClient(disk);
+      const loaded = await client.read();
+      assert.equal("readingSourceMode" in loaded.appearance, false);
+      assert.deepEqual(loaded, expected);
+      await client.save(loaded, "global");
+      assert.equal(disk.getItem("resource-manager:frontend-preferences:v1")!.includes("readingSourceMode"), false);
+      assert.deepEqual(await createFrontendPreferencesClient(disk).read(), expected);
+    }
+  }
+});

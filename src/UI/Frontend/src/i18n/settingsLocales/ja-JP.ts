@@ -225,20 +225,6 @@ export default createSettingsLocale("ja-JP", {
     "barColorDescription": "ソフトウェア種別ごとの固定色、またはソフトウェアごとの個別色を選びます。",
     "byteUnitTitle": "容量の単位",
     "byteUnitDescription": "1 GiB = 1024 MiB、1 GB = 1000 MB。切り替えると単位名だけでなく数値も換算されます。",
-    "readingSourceTitle": "読み取り値のソース",
-    "readingSourceDescription": "監視コンソールとデバイスの詳細で、複数のソースがある読み取り値をどう表示するかを選びます。既定ではこのコンピューターで最も正確なソースだけを表示します。利用可能なすべてのソースを表示すると、最も正確なものに「優先」が付きます。スケジューリングは常に最も正確なソースを使い、この設定の影響を受けません。",
-    "readingSourceModeOptions": [
-      {
-        "id": "preferred",
-        "label": "最も正確なもののみ",
-        "description": "各読み取り値について、このコンピューターで最も正確なソースだけを表示します。"
-      },
-      {
-        "id": "all",
-        "label": "利用可能なすべて",
-        "description": "各読み取り値の利用可能なソースをすべて表示し、最も正確なものに印を付けます。"
-      }
-    ],
     "fontSmoothingTitle": "文字のアンチエイリアス",
     "fontSmoothingDescription": "文字の鮮明さと描画負荷を自動調整するか、描画方式を固定します。",
     "languageTitle": "表示言語",

@@ -13,7 +13,6 @@ import type {
   AppFontSmoothing,
   AppLanguageMode,
   AppPalette,
-  AppReadingSourceMode,
   AppResourceBarFrameRateMode,
   AppSettings,
   AppUiStyle,
@@ -37,7 +36,6 @@ interface AppearanceSettingsSectionProps {
   onResourceBarFrameRateChange: (framesPerSecond: number) => void;
   onBarColorModeChange: (barColorMode: AppBarColorMode) => void;
   onByteUnitModeChange: (byteUnitMode: ByteUnitMode) => void;
-  onReadingSourceModeChange: (mode: AppReadingSourceMode) => void;
   onFontSmoothingChange: (fontSmoothing: AppFontSmoothing) => void;
   onLanguageChange: (language: AppLanguageMode) => void;
 }
@@ -154,18 +152,6 @@ export function AppearanceSettingsSection(props: AppearanceSettingsSectionProps)
           options={props.text.byteUnitOptions}
           ariaLabel={props.text.appearance.byteUnitTitle}
           onChange={props.onByteUnitModeChange}
-        />
-      </div>
-      <div class="settings-row">
-        <div class="settings-row-copy">
-          <strong>{props.text.appearance.readingSourceTitle}</strong>
-          <span>{props.text.appearance.readingSourceDescription}</span>
-        </div>
-        <SegmentedControl
-          value={appearance().readingSourceMode ?? pointPreferences().appearance.readingSourceMode!}
-          options={props.text.appearance.readingSourceModeOptions}
-          ariaLabel={props.text.appearance.readingSourceTitle}
-          onChange={props.onReadingSourceModeChange}
         />
       </div>
       <div class="settings-row">

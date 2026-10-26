@@ -2,6 +2,8 @@
 // 不属于部件地址的设备字段按读取项分组；都按后端排序，不支持的来源不列。
 import assert from "node:assert/strict";
 import { metricSourceChoiceLabel, metricSourceChoices } from "../src/features/monitor/metricSources.ts";
+import { readingSourceDisplays } from "../src/presentation/readingSources.ts";
+import { metricOfferedInPicker } from "../src/presentation/metricPresentation.ts";
 import { localizedMetricLabel } from "../src/presentation/metricLabels.ts";
 import { loadAppCopy } from "../src/i18n/copy/appCopyLoader.ts";
 import { languageOptions } from "../src/i18n/settingsLanguages.ts";
@@ -38,6 +40,13 @@ const address: MetricDefinition = {
     candidate(unsupported, false), candidate(absent, false)]
 };
 const catalog = [address, unsupported, adlx, hotspot, smu, single, unverified];
+
+// 项目列表的筛选不能删掉第二步的候选；次选不在第一步单列，第二步仍有自动选择和全部可用来源。
+const display = readingSourceDisplays(catalog.map((metric) => metric.reading ?? null));
+const pickerCatalog = catalog.map((metric) => ({ ...metric, readingSource: display(metric.reading ?? null) }));
+assert.equal(metricOfferedInPicker(pickerCatalog.find((metric) => metric.id === adlx.id)!), false);
+assert.deepEqual(metricSourceChoices(address.id, pickerCatalog).map((choice) => [choice.metricId, choice.automatic, choice.preferred]),
+  [[address.id, true, false], [smu.id, false, true], [adlx.id, false, false], [unverified.id, false, false]]);
 
 const fromAddress = metricSourceChoices("gpu.0.temperature", catalog);
 assert.deepEqual(fromAddress.map((choice) => [choice.metricId, choice.automatic, choice.preferred]), [

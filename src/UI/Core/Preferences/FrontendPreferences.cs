@@ -16,7 +16,6 @@ internal sealed record FrontendAppearance
     public string FontSmoothing { get; init; } = FrontendPoints.FontSmoothing;
     public string Language { get; init; } = FrontendPoints.Language;
     public string ByteUnitMode { get; init; } = FrontendPoints.ByteUnitMode;
-    public string ReadingSourceMode { get; init; } = FrontendPoints.ReadingSourceMode;
 
     internal void Validate()
     {
@@ -28,8 +27,7 @@ internal sealed record FrontendAppearance
             || BarColorMode is not ("type" or "distinct")
             || FontSmoothing is not ("auto" or "system" or "grayscale" or "disabled")
             || string.IsNullOrWhiteSpace(Language) || Language.Length > 32
-            || ByteUnitMode is not ("native" or "binary" or "decimal")
-            || ReadingSourceMode is not ("preferred" or "all"))
+            || ByteUnitMode is not ("native" or "binary" or "decimal"))
             throw new InvalidDataException("Invalid frontend appearance cache.");
     }
 }

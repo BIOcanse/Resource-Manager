@@ -1,6 +1,5 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { uiStyles } from "../../src/presentation/uiStyles.ts";
-import { frontendPreferencesKey } from "./frontendPreferencesFixture.js";
 import {
   checkFieldCardDisplay,
   enableMetricFields,
@@ -99,9 +98,9 @@ export default async function metricFieldCardsJourney(page, baseUrl) {
 }
 
 /**
- * 读数来源：默认每个读取项只列首选来源，非首选和不支持的不列，待确认的标「待确认」；
- * 设置「读数来源」改成所有可用后，次选和跨设备别名也列出，首选标「首选」。
- * 卡片上已放的非首选字段一直显示它自己的值。最后核对标记在每种风格的各配色下都看得清。
+ * 读数来源：项目列表只列首选和待确认，不列次选、跨设备别名和不支持的来源。
+ * 全部来源和首选标记由第二步来源列表单独核对（metricSourceChoiceJourney）。
+ * 卡片上已放的非首选字段一直显示它自己的值。最后核对待确认标记在每种风格的各配色下都看得清。
  */
 async function checkReadingSources(page, baseUrl, app) {
   const response = await fetch(`${baseUrl}/__test/scenario`, {
@@ -164,38 +163,8 @@ async function checkReadingSources(page, baseUrl, app) {
   await expectCard({ main: [], alternate: [], pending: [marks.pending] }, "default");
   await openPicker();
   await expectPicker({ preferred: [], alternate: null, alias: null, pending: [marks.pending], unsupported: null }, "default");
-  await closePicker();
-
-  // 设置 → 外观 → 读数来源：所有可用。
-  await page.getByRole("navigation").getByRole("button", { name: app.page.settings, exact: true }).click();
-  await page.getByRole("button", { name: "外观", exact: true }).click();
-  const choice = page.getByRole("radiogroup", { name: "读数来源" });
-  if (await choice.getByRole("radio", { name: "仅最准确" }).getAttribute("aria-checked") !== "true") {
-    throw new Error("Reading sources do not default to the most accurate source only");
-  }
-  await choice.getByRole("radio", { name: "所有可用" }).click();
-  // 读数来源是前端呈现偏好：保存写前端缓存，不进入后端设置请求。
-  const settingsPatches = [];
-  const recordPatch = (request) => {
-    if (request.method() === "PATCH" && new URL(request.url()).pathname === "/api/settings/app") {
-      settingsPatches.push(request.postDataJSON());
-    }
-  };
-  page.on("request", recordPatch);
-  await page.getByRole("button", { name: "保存", exact: true }).click();
-  await page.waitForFunction((key) => JSON.parse(localStorage.getItem(key) ?? "null")?.appearance?.readingSourceMode === "all",
-    frontendPreferencesKey, { timeout: 5_000 });
-  page.off("request", recordPatch);
-  if (settingsPatches.some((patch) => patch.changes?.appearance)) {
-    throw new Error(`The reading-source choice was sent to the backend: ${JSON.stringify(settingsPatches)}`);
-  }
-
-  await page.getByRole("navigation").getByRole("button", { name: app.page.monitor, exact: true }).click();
-  await expectCard({ main: [marks.preferred], alternate: [], pending: [marks.pending] }, "all");
-  await openPicker();
-  await expectPicker({ preferred: [marks.preferred], alternate: [], alias: [], pending: [marks.pending], unsupported: null }, "all");
   const titles = await picker.locator(".reading-source-mark").evaluateAll((elements) => [...new Set(elements.map((element) => element.title))]);
-  if (!titles.includes(marks.preferredHint) || !titles.includes(marks.pendingHint)) {
+  if (!titles.includes(marks.pendingHint)) {
     throw new Error(`Reading-source marks lack their hints: ${JSON.stringify(titles)}`);
   }
   const contrast = await checkMarkContrast(page, picker);
@@ -203,9 +172,8 @@ async function checkReadingSources(page, baseUrl, app) {
   return { contrast };
 }
 
-/** 每种风格的每个配色（跟随系统再分浅、深两种）下，两种标记的文字与底色的对比度。 */
+/** 每种风格的每个配色（跟随系统再分浅、深两种）下，待确认标记的文字与底色的对比度。 */
 async function checkMarkContrast(page, picker) {
-  const preferred = picker.locator(`[data-metric-id="${readingSourceIds.preferred}"] .reading-source-mark`);
   const pending = picker.locator(`[data-metric-id="${readingSourceIds.pending}"] .reading-source-mark`);
   const results = [];
   for (const style of uiStyles) {
@@ -216,10 +184,8 @@ async function checkMarkContrast(page, picker) {
           document.documentElement.dataset.uiStyle = uiStyle;
           document.documentElement.dataset.theme = theme;
         }, { uiStyle: style.id, theme: palette });
-        for (const [kind, locator] of [["preferred", preferred], ["pending", pending]]) {
-          const ratio = await locator.evaluate(contrastRatio);
-          results.push({ style: style.id, palette, scheme, kind, ratio: Math.round(ratio * 100) / 100 });
-        }
+        const ratio = await pending.evaluate(contrastRatio);
+        results.push({ style: style.id, palette, scheme, kind: "pending", ratio: Math.round(ratio * 100) / 100 });
       }
     }
   }

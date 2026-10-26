@@ -47,7 +47,7 @@ export function pointPreferences(): FrontendPreferencesCache {
       animationStyle: points.AnimationStyle, autoDisableAnimations: points.AutoDisableAnimations,
       resourceBarFrameRateMode: points.BarFrameRateMode, resourceBarFrameRate: points.BarFrameRate,
       barColorMode: points.BarColorMode, fontSmoothing: points.FontSmoothing, language: points.Language,
-      byteUnitMode: points.ByteUnitMode, readingSourceMode: points.ReadingSourceMode
+      byteUnitMode: points.ByteUnitMode
     },
     refresh: {
       monitor: { ...points.Monitor },
@@ -169,7 +169,10 @@ export function createFrontendPreferencesClient(storage?: Pick<Storage, "getItem
     if (text == null) return pointPreferences();
     const value = JSON.parse(text) as FrontendPreferencesCache;
     // 与原生壳相同：旧缓存缺少的通知字段按本次构建的点值读取，保留已有选择和记录；旧的动画两项按迁移换成动画风格。
-    return { ...value, ...(value.appearance ? { appearance: migrateAnimationAppearance(value.appearance) } : {}),
+    const appearance = value.appearance ? migrateAnimationAppearance(value.appearance) : undefined;
+    // 2026-10-26 删除读数来源设置；旧缓存只丢弃这一项，后续保存不再写回。
+    if (appearance) delete (appearance as AppAppearanceSettings & { readingSourceMode?: unknown }).readingSourceMode;
+    return { ...value, ...(appearance ? { appearance } : {}),
       notifications: { ...pointPreferences().notifications, ...value.notifications } };
   };
   let writes = Promise.resolve();

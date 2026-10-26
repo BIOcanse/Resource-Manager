@@ -11,7 +11,7 @@ import { uiText } from "../../text.ts";
  * AMD 的是厂商对这块显卡报告的值，不并进 NPU 设备那一节，也不推断它对应哪个 NPU。
  * 只列这台设备实际绑定的字段；绑定了但当前没有值写「不可用」。忙碌率原值可超过 100%，不截断。
  * 每行的名字和说明用字段的九语显示名（fieldLabel），和监视控制台卡片上的一致。
- * 读数来源按设置筛选、加标记，规则和监视卡片选择器相同（presentation/readingSources.ts）。
+ * 读数来源统一筛选、加标记，规则和监视卡片选择器相同（presentation/readingSources.ts）。
  */
 
 const npuFields = [

@@ -25,6 +25,9 @@ export default async function metricSourceChoiceJourney(page, baseUrl) {
   const option = (id) => picker.locator(`[data-metric-id="${id}"]`);
   // 字段目录 5 秒推一次。
   await option(readingSourceIds.preferred).waitFor({ timeout: 15_000 });
+  for (const id of [readingSourceIds.alternate, readingSourceIds.alias, readingSourceIds.unsupported]) {
+    if (await option(id).count() !== 0) throw new Error(`A secondary source appeared in the item list: ${id}`);
+  }
   const sources = picker.getByRole("radiogroup", { name: text.sourceLabel, exact: true });
 
   // 只有一个来源：不摆“来源”。

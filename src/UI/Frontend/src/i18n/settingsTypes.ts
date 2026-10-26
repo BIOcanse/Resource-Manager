@@ -1,5 +1,5 @@
 import type { KnownAccessScope } from "../features/trustedAccess/trustedAccessTypes.ts";
-import type { AppBarColorMode, AppFontSmoothing, AppLanguageMode, AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset, AppPresetNumericSettingMode, AppPalette, AppReadingSourceMode, AppResourceBarFrameRateMode, AppUiStyle, AppUpdateMode, ByteUnitMode, SettingsSection } from "../types.ts";
+import type { AppBarColorMode, AppFontSmoothing, AppLanguageMode, AppLogicRefreshIntervalKey, AppLogicRefreshIntervalPreset, AppPresetNumericSettingMode, AppPalette, AppResourceBarFrameRateMode, AppUiStyle, AppUpdateMode, ByteUnitMode, SettingsSection } from "../types.ts";
 import type { AnimationStyleId } from "../presentation/animationStyle.ts";
 
 export type ConcreteAppLanguageMode = Exclude<AppLanguageMode, "system">;
@@ -141,9 +141,6 @@ export interface SettingsCopy {
     barColorDescription: string;
     byteUnitTitle: string;
     byteUnitDescription: string;
-    readingSourceTitle: string;
-    readingSourceDescription: string;
-    readingSourceModeOptions: Array<{ id: AppReadingSourceMode; label: string; description: string }>;
     fontSmoothingTitle: string;
     fontSmoothingDescription: string;
     languageTitle: string;

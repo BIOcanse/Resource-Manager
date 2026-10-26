@@ -10,7 +10,6 @@
     {"group":0,"name":"appearance-font_smoothing","symbol":"FontSmoothing","type":"choice","options":["auto","system","grayscale","disabled"],"value":"auto"},
     {"group":0,"name":"appearance-language","symbol":"Language","type":"choice","options":["system","zh-CN","zh-TW","en-US","ja-JP","ko-KR","fr-FR","de-DE","es-ES","es-MX","pt-BR","pt-PT","ru-RU","uk-UA","pl-PL","tr-TR","it-IT","nl-NL","sv-SE","fi-FI","da-DK","nb-NO","cs-CZ","hu-HU","ro-RO","el-GR","he-IL","ar-SA","hi-IN","id-ID","vi-VN","th-TH"],"value":"system"},
     {"group":0,"name":"appearance-byte_unit_mode","symbol":"ByteUnitMode","type":"choice","options":["native","binary","decimal"],"value":"native"},
-    {"group":0,"name":"appearance-reading_source_mode","symbol":"ReadingSourceMode","type":"choice","options":["preferred","all"],"value":"preferred"},
     {"group":1,"name":"refresh-monitor","symbol":"Monitor","type":"refresh","value":{"mode":"aotu","preset":"responsive","customValue":1000}},
     {"group":1,"name":"refresh-resource_table","symbol":"ResourceTable","type":"refresh","value":{"mode":"aotu","preset":"responsive","customValue":1000}},
     {"group":1,"name":"refresh-local_system","symbol":"LocalSystem","type":"refresh","value":{"mode":"aotu","preset":"balanced","customValue":60000}},

@@ -182,7 +182,12 @@ internal sealed partial class FrontendPreferencesOwner
             }
             catch (JsonException) { } // The strict read below reports a damaged cache.
             var changed = root?["refresh"] is JsonObject refresh && refresh.Remove("smartMonitoringMode");
-            changed |= root?["appearance"] is JsonObject appearance && MigrateAnimationAppearance(appearance);
+            if (root?["appearance"] is JsonObject appearance)
+            {
+                // 2026-10-26 删除读数来源设置，在严格读取前丢弃旧字段。
+                changed |= appearance.Remove("readingSourceMode");
+                changed |= MigrateAnimationAppearance(appearance);
+            }
             if (changed) WriteAtomic(cachePath, JsonSerializer.SerializeToUtf8Bytes(root, Json));
         }
         cacheFieldsMigrated = true;
@@ -235,6 +240,7 @@ internal sealed partial class FrontendPreferencesOwner
         {
             if (app["appearance"] is JsonObject appearance)
             {
+                appearance.Remove("readingSourceMode");
                 MigrateAnimationAppearance(appearance);
                 CopyKnown(appearance, node["appearance"]!.AsObject());
                 imported = true;

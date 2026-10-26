@@ -38,7 +38,6 @@ export namespace ResourceManager {
       readonly FontSmoothing: __fpDeepReadonly<"auto" | "system" | "grayscale" | "disabled">;
       readonly Language: __fpDeepReadonly<"system" | "zh-CN" | "zh-TW" | "en-US" | "ja-JP" | "ko-KR" | "fr-FR" | "de-DE" | "es-ES" | "es-MX" | "pt-BR" | "pt-PT" | "ru-RU" | "uk-UA" | "pl-PL" | "tr-TR" | "it-IT" | "nl-NL" | "sv-SE" | "fi-FI" | "da-DK" | "nb-NO" | "cs-CZ" | "hu-HU" | "ro-RO" | "el-GR" | "he-IL" | "ar-SA" | "hi-IN" | "id-ID" | "vi-VN" | "th-TH">;
       readonly ByteUnitMode: __fpDeepReadonly<"native" | "binary" | "decimal">;
-      readonly ReadingSourceMode: __fpDeepReadonly<"preferred" | "all">;
       readonly Monitor: __fpDeepReadonly<{ readonly mode: "aotu" | "preset" | "custom"; readonly preset: "responsive" | "balanced" | "lowPower" | "quiet"; readonly customValue: number }>;
       readonly ResourceTable: __fpDeepReadonly<{ readonly mode: "aotu" | "preset" | "custom"; readonly preset: "responsive" | "balanced" | "lowPower" | "quiet"; readonly customValue: number }>;
       readonly LocalSystem: __fpDeepReadonly<{ readonly mode: "aotu" | "preset" | "custom"; readonly preset: "responsive" | "balanced" | "lowPower" | "quiet"; readonly customValue: number }>;

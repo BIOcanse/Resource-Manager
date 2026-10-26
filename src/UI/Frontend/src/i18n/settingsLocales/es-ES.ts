@@ -225,20 +225,6 @@ export default createSettingsLocale("es-ES", {
     "barColorDescription": "Usa colores fijos por tipo de programa o un color distinto para cada programa.",
     "byteUnitTitle": "Unidades de capacidad",
     "byteUnitDescription": "1 GiB = 1024 MiB, 1 GB = 1000 MB. El cambio convierte también los valores numéricos, no solo las etiquetas.",
-    "readingSourceTitle": "Fuentes de las lecturas",
-    "readingSourceDescription": "Cómo se muestran las lecturas con más de una fuente en la consola de supervisión y en los detalles del dispositivo. De forma predeterminada solo se muestra la fuente más precisa en este equipo; al mostrar todas las fuentes disponibles, la más precisa se marca como «Preferida». La planificación siempre usa la fuente más precisa, sin importar este ajuste.",
-    "readingSourceModeOptions": [
-      {
-        "id": "preferred",
-        "label": "Solo la más precisa",
-        "description": "Mostrar solo la fuente más precisa de cada lectura en este equipo."
-      },
-      {
-        "id": "all",
-        "label": "Todas las disponibles",
-        "description": "Mostrar todas las fuentes disponibles de cada lectura y marcar la más precisa."
-      }
-    ],
     "fontSmoothingTitle": "Suavizado del texto",
     "fontSmoothingDescription": "Equilibra automáticamente la claridad del texto y la carga de la interfaz, o fija un modo de renderizado.",
     "languageTitle": "Idioma de la interfaz",

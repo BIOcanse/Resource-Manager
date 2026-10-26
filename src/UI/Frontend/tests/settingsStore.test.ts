@@ -323,19 +323,6 @@ await new Promise<void>((resolve, reject) => {
       assert.equal(store.draftSettings().appearance?.theme, "dark");
       assert.equal(store.isDirty(), false);
 
-      // 读数来源：默认只列首选；改成显示所有可用来源后只 PATCH 这一项，提交后读回；认不出的值回到只列首选。
-      await new Promise<void>(resolve => setImmediate(resolve));
-      source.publishReady(result("6", "normal", "system"));
-      assert.equal(store.settings().appearance?.readingSourceMode, "preferred");
-      store.updateReadingSourceMode("all");
-      await store.saveDraft();
-      assert.equal(requests.length, 0, "Reading-source presentation belongs only to the frontend cache");
-      store.discardDraftChanges();
-      const readingSources = result("7", "normal", "system");
-      await new Promise<void>(resolve => setImmediate(resolve));
-      source.publishReady(readingSources);
-      assert.equal(store.settings().appearance?.readingSourceMode, "all");
-      assert.equal(store.draftSettings().appearance?.readingSourceMode, "all");
       dispose();
       resolve();
     })().catch((error) => {

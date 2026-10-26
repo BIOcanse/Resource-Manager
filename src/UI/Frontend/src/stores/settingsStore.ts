@@ -22,7 +22,6 @@ import type {
 } from "../frontendRuntime/source/SourceSnapshot.ts";
 import { classifySettingsApplicationOutcome } from "../features/settings/settingsApplicationDisposition.ts";
 import { normalizeByteUnitMode } from "../presentation/byteUnits.ts";
-import { normalizeReadingSourceMode } from "../presentation/readingSources.ts";
 import { normalizeLanguageMode } from "../i18n/settingsLanguages.ts";
 import type {
   AppAiModelServiceSettings,
@@ -44,7 +43,6 @@ import type {
   AppSystemIntegrationSettings,
   ServiceRecoveryDiagnostics,
   AppPalette,
-  AppReadingSourceMode,
   AppResourceBarFrameRateMode,
   AppUiStyle,
   AppUpdateMode,
@@ -119,7 +117,6 @@ export interface SettingsStore {
   updateResourceBarFrameRate: (framesPerSecond: number) => void;
   updateBarColorMode: (barColorMode: AppBarColorMode) => void;
   updateByteUnitMode: (byteUnitMode: ByteUnitMode) => void;
-  updateReadingSourceMode: (mode: AppReadingSourceMode) => void;
   updateFontSmoothing: (fontSmoothing: AppFontSmoothing) => void;
   updateLanguage: (language: AppLanguageMode) => void;
   updateTaskManagerShortcutReplacement: (enabled: boolean) => void;
@@ -599,15 +596,6 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
         }
       }));
     },
-    updateReadingSourceMode: (mode) => {
-      updateDraft((currentSettings) => ({
-        ...currentSettings,
-        appearance: {
-          ...normalizeAppSettings(currentSettings).appearance!,
-          readingSourceMode: normalizeReadingSourceMode(mode)
-        }
-      }));
-    },
     updateFontSmoothing: (fontSmoothing) => {
       updateDraft((currentSettings) => ({
         ...currentSettings,
@@ -989,8 +977,7 @@ function normalizeAppearanceSettings(
     barColorMode: normalizeBarColorMode(settings?.barColorMode),
     byteUnitMode: normalizeByteUnitMode(settings?.byteUnitMode),
     fontSmoothing: normalizeFontSmoothing(settings?.fontSmoothing),
-    language: normalizeLanguageMode(settings?.language),
-    readingSourceMode: normalizeReadingSourceMode(settings?.readingSourceMode)
+    language: normalizeLanguageMode(settings?.language)
   };
 }
 

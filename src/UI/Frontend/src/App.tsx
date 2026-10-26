@@ -44,7 +44,6 @@ import { resolveLanguageMode } from "./i18n/settingsLanguages";
 import { applyLanguage, currentSettingsText, uiText } from "./text.ts";
 import { LanguageLoadNotice } from "./i18n/LanguageLoadNotice";
 import { applyByteUnitMode } from "./presentation/byteUnits.ts";
-import { applyReadingSourceMode } from "./presentation/readingSources.ts";
 import type {
   MetricDefinition,
   PageId
@@ -229,11 +228,6 @@ export default function App() {
   // 容量进制：设置里的选择是唯一来源，换算与单位标签都由 byteUnits 统一给出。
   createEffect(() => {
     applyByteUnitMode(settings.settings().appearance?.byteUnitMode);
-  });
-
-  // 读数来源：设置里的选择是唯一来源，选择器、卡片和设备详情都由 readingSources 统一筛选和加标记。
-  createEffect(() => {
-    applyReadingSourceMode(settings.settings().appearance?.readingSourceMode);
   });
 
   // 页名的唯一来源是分页树：页标题（读屏、焦点落点）和窗口标题都读它。

@@ -110,12 +110,6 @@ const zhCnSettingsCopy: SettingsCopy = {
     barColorDescription: "按软件类型使用固定颜色，或为每个软件分配不同颜色。",
     byteUnitTitle: "容量单位",
     byteUnitDescription: "1 GiB = 1024 MiB，1 GB = 1000 MB。切换后所有容量数字一起变，不只是改标签。",
-    readingSourceTitle: "读数来源",
-    readingSourceDescription: "监视控制台和设备详情里，同一读数有多个来源时怎么列。默认只列本机最准确的来源；显示所有可用来源时，最准确的标为“首选”。调度始终用最准确的来源，不受这里影响。",
-    readingSourceModeOptions: [
-      { id: "preferred", label: "仅最准确", description: "每个读数只列出本机最准确的来源。" },
-      { id: "all", label: "所有可用", description: "列出每个读数的所有可用来源，并标出最准确的。" }
-    ],
     fontSmoothingTitle: "文字平滑",
     fontSmoothingDescription: "自动平衡文字清晰度和界面开销，也可以固定渲染方式。",
     languageTitle: "界面语言",
@@ -502,12 +496,6 @@ const enSettingsCopy: SettingsCopy = {
     barColorDescription: "Use fixed colours by software type or assign a different colour to each software item.",
     byteUnitTitle: "Capacity Units",
     byteUnitDescription: "1 GiB = 1024 MiB, 1 GB = 1000 MB. Switching changes the numbers themselves, not just the labels.",
-    readingSourceTitle: "Reading Sources",
-    readingSourceDescription: "How readings with more than one source are listed in the monitoring console and device details. By default only the most accurate source on this computer is listed; when all available sources are shown, the most accurate one is marked Preferred. Scheduling always uses the most accurate source and is not affected by this setting.",
-    readingSourceModeOptions: [
-      { id: "preferred", label: "Most accurate only", description: "List only the most accurate source of each reading on this computer." },
-      { id: "all", label: "All available", description: "List every available source of each reading and mark the most accurate one." }
-    ],
     fontSmoothingTitle: "Text Smoothing",
     fontSmoothingDescription: "Balance text clarity and interface cost automatically, or lock a rendering mode.",
     languageTitle: "Interface language",

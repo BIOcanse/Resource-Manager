@@ -225,20 +225,6 @@ export default createSettingsLocale("ko-KR", {
     "barColorDescription": "소프트웨어 유형별 고정 색상 또는 소프트웨어별 다른 색상을 사용합니다.",
     "byteUnitTitle": "용량 단위",
     "byteUnitDescription": "1 GiB = 1024 MiB, 1 GB = 1000 MB입니다. 전환하면 단위 표시뿐 아니라 숫자 자체도 변환됩니다.",
-    "readingSourceTitle": "측정값 소스",
-    "readingSourceDescription": "모니터링 콘솔과 장치 세부 정보에서 소스가 여러 개인 측정값을 어떻게 표시할지 정합니다. 기본적으로 이 컴퓨터에서 가장 정확한 소스만 표시하며, 사용 가능한 모든 소스를 표시하면 가장 정확한 소스에 ‘우선’이 붙습니다. 스케줄링은 이 설정과 관계없이 항상 가장 정확한 소스를 사용합니다.",
-    "readingSourceModeOptions": [
-      {
-        "id": "preferred",
-        "label": "가장 정확한 것만",
-        "description": "각 측정값에 대해 이 컴퓨터에서 가장 정확한 소스만 표시합니다."
-      },
-      {
-        "id": "all",
-        "label": "사용 가능한 모두",
-        "description": "각 측정값의 사용 가능한 소스를 모두 표시하고 가장 정확한 소스를 표시합니다."
-      }
-    ],
     "fontSmoothingTitle": "텍스트 가장자리 다듬기",
     "fontSmoothingDescription": "텍스트 선명도와 UI 부하를 자동으로 조절하거나 렌더링 모드를 고정합니다.",
     "languageTitle": "인터페이스 언어",

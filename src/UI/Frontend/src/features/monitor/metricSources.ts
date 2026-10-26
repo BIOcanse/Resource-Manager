@@ -44,7 +44,7 @@ export function metricSourceChoiceLabel(choice: MetricSourceChoice): string {
 
 /**
  * 当前选中项所在项目的全部来源。只有一个来源（或没有来源）时返回空：没得选，不摆选择。
- * catalog 是卡片目录（部件地址加全部设备字段，不按读数来源设置筛过）。
+ * catalog 是卡片目录（部件地址加全部设备字段，保留全部来源字段）。
  */
 export function metricSourceChoices(
   selectedId: string | null,
