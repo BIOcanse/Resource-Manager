@@ -56,7 +56,7 @@ export default async function controlToggleChoiceJourney(page, baseUrl) {
   const apply = async () => {
     const before = writes.length;
     await page.getByRole("button", { name: "应用", exact: true }).click();
-    await page.waitForFunction(() => { const button = document.querySelector(".control-object-actions button:last-child"); return button?.disabled === true || button?.textContent === "重试"; });
+    await page.waitForFunction(() => { const button = document.querySelector(".control-object-actions button:last-child"); return button?.disabled === true || button?.innerText.trim() === "重试"; });
     assert.equal(writes.length, before + 1, "Apply must send exactly one write");
     return writes.at(-1);
   };

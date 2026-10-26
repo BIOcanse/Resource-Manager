@@ -1,3 +1,4 @@
+import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
 import { controlReasonText } from "../../presentation/controlReasonText.ts";
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
 import { createEffect, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js";
@@ -326,9 +327,10 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
                   .then(setOverclockAccepted)
                   .catch(() => props.onNotice(uiText.control.saveFailed))}
               >
-                {overclockAccepted()
-                  ? uiText.control.overclock.revoke
-                  : uiText.control.overclock.accept}
+                <StableLabel
+                  labels={{ accept: uiText.control.overclock.accept, revoke: uiText.control.overclock.revoke }}
+                  current={overclockAccepted() ? "revoke" : "accept"}
+                />
               </button>
             </div>
           </section>
@@ -356,7 +358,7 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
                 .finally(() => setDetecting(false));
             }}
           >
-            {detecting() ? uiText.control.detecting : uiText.control.detect}
+            <StableLabel labels={{ idle: uiText.control.detect, busy: uiText.control.detecting }} current={detecting() ? "busy" : "idle"} />
           </button>
 
           {/*
@@ -1069,8 +1071,12 @@ function ControlObjectCard(props: {
               return kind === "number" ? typeof setting.number !== "number" || !Number.isFinite(setting.number)
                 : kind === "curve" && !setting.curve?.length;
             })}
-          onClick={props.onApply}>{!hasPendingChanges(edited(), saved()) && canRetryControlObject(props.state, props.object.id)
-            ? uiText.control.recovery.retry : uiText.control.apply}</button>
+          onClick={props.onApply}>
+          <StableLabel
+            labels={{ apply: uiText.control.apply, retry: uiText.control.recovery.retry }}
+            current={!hasPendingChanges(edited(), saved()) && canRetryControlObject(props.state, props.object.id) ? "retry" : "apply"}
+          />
+        </button>
       </div>
     </article>
   );

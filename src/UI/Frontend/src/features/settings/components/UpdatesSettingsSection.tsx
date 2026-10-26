@@ -1,3 +1,4 @@
+import { StableLabel } from "../../../ui/primitives/StableLabel.tsx";
 import { Show, createSignal, onMount } from "solid-js";
 import { getJson, postJson } from "../../../api";
 import { ObservationStateNotice } from "../../../components/ObservationStateNotice";
@@ -135,7 +136,7 @@ export function UpdatesSettingsSection(props: {
         <small>{text().manualCheckNote}</small>
       </div>
       <button type="button" class="secondary" disabled={loading()} onClick={() => void refresh()}>
-        {loading() ? text().checking : text().checkForUpdates}
+        <StableLabel labels={{ idle: text().checkForUpdates, busy: text().checking }} current={loading() ? "busy" : "idle"} />
       </button>
     </div>
     <Show when={catalog()}>{(result) => <>

@@ -1,3 +1,4 @@
+import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
 import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import { unrecognizedGpuNames } from "../../data/gpu/gpuSchedulingModelSource";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
@@ -220,7 +221,7 @@ export function OptimizationPage(props: OptimizationPageProps) {
               props.onRefresh();
               void gpuScoresLease.refresh();
             }}>
-              {props.loading ? uiText.optimization.refreshing : uiText.optimization.refresh}
+              <StableLabel labels={{ idle: uiText.optimization.refresh, busy: uiText.optimization.refreshing }} current={props.loading ? "busy" : "idle"} />
             </button>
           </div>
         </div>

@@ -15,6 +15,7 @@ import trustedAccessJourney from "./trustedAccessJourney.js";
 import trustedAccessRecoveryJourney from "./trustedAccessRecoveryJourney.js";
 import softwareUnclassifiedJourney from "./softwareUnclassifiedJourney.js";
 import frontendAuditJourney from "./frontendAuditJourney.js";
+import stableButtonLabelsJourney from "./stableButtonLabelsJourney.js";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -100,6 +101,7 @@ const allJourneys = [
   ["credits", creditsJourney],
   ["frontend-usability", frontendUsabilityJourney],
   ["ui-primitives", uiPrimitivesJourney],
+  ["stable-button-labels", stableButtonLabelsJourney],
   ["settings-source", settingsSourceJourney],
   ["gpu-overflow-settings", gpuOverflowSettingsJourney],
   ["realtime-action-budget-settings", realtimeActionBudgetSettingsJourney],

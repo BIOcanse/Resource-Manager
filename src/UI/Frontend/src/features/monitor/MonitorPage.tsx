@@ -1,3 +1,4 @@
+import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
 import { onCleanup, Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import { Dashboard } from "./Dashboard";
@@ -82,9 +83,10 @@ export function MonitorPage(props: MonitorPageProps) {
             disabled={!dashboardAvailable() || monitor.dashboardSaveState() === "saving"}
             onClick={() => monitor.editMode() ? void monitor.saveDraftAndLeaveEditMode() : monitor.enterEditMode()}
           >
-            {monitor.editMode()
-              ? monitor.dashboardSaveState() === "saving" ? uiText.common.saving : uiText.monitorPage.save
-              : uiText.monitorPage.edit}
+            <StableLabel
+              labels={{ edit: uiText.monitorPage.edit, save: uiText.monitorPage.save, saving: uiText.common.saving }}
+              current={monitor.editMode() ? monitor.dashboardSaveState() === "saving" ? "saving" : "save" : "edit"}
+            />
           </button>
         </div>
       </div>

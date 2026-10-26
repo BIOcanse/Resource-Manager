@@ -105,3 +105,17 @@
 .ui-disclosure-body {
   min-width: 0;
 }
+
+/* 会切换文字的按钮标签：候选叠在同一格，宽度取最长的一个，切换时不挪动（ui/primitives/StableLabel.tsx）。 */
+.stable-label {
+  display: inline-grid;
+  justify-items: center;
+}
+
+.stable-label > * {
+  grid-area: 1 / 1;
+}
+
+.stable-label > .stable-label-inactive {
+  visibility: hidden;
+}

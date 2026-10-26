@@ -1,3 +1,4 @@
+import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
 import { localizedMetricLabel, resourceMetricBasis, resourceProcessDisplayName, softwareDisplayName } from "../../presentation/metricLabels.ts";
 import { createEffect, createMemo, createSignal, For, Index, Show } from "solid-js";
 import { ArrowDown, ArrowUp } from "lucide-solid";
@@ -153,9 +154,10 @@ export function ResourceBreakdown(props: ResourceBreakdownProps) {
             disabled={!props.editingAvailable || props.saveState === "saving"}
             onClick={props.onToggleEdit}
           >
-            {props.editMode
-              ? props.saveState === "saving" ? uiText.common.saving : uiText.resourceBreakdown.save
-              : uiText.resourceBreakdown.edit}
+            <StableLabel
+              labels={{ edit: uiText.resourceBreakdown.edit, save: uiText.resourceBreakdown.save, saving: uiText.common.saving }}
+              current={props.editMode ? props.saveState === "saving" ? "saving" : "save" : "edit"}
+            />
           </button>
         </div>
       </div>

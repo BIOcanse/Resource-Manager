@@ -1,3 +1,4 @@
+import { StableLabel } from "../../../ui/primitives/StableLabel.tsx";
 import { componentCapabilityLabel, componentInstallNote, componentNeedsUpdate, componentVerifyLabel } from "../../../presentation/componentPresentation.ts";
 import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
 import { AlertTriangle, Check, Info, MoreHorizontal, Settings } from "lucide-solid";
@@ -97,7 +98,7 @@ export function ManagementPage(props: ManagementPageProps) {
               </button>
             </Show>
             <button class="panel-refresh-button secondary" type="button" disabled={props.refreshInProgress} onClick={props.onRefresh}>
-              {props.refreshInProgress ? uiText.management.refreshing : uiText.management.refresh}
+              <StableLabel labels={{ idle: uiText.management.refresh, busy: uiText.management.refreshing }} current={props.refreshInProgress ? "busy" : "idle"} />
             </button>
             <span id="managementCount" class="count-badge">
               {observationCanRender(props.observation) ? uiText.managementPage.itemCount(items().length) : "--"}

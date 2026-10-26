@@ -1,3 +1,4 @@
+import { StableLabel } from "../ui/primitives/StableLabel.tsx";
 import { formatGpuProviderCapability, formatGpuLaunchOutcome } from "./gpuPlacementPresentation.ts";
 import { useFrontendReadIntervals } from "../app/FrontendReadIntervalsContext.tsx";
 import { RuntimePolicyDeliveryNotice } from "./RuntimePolicyDeliveryNotice";
@@ -490,7 +491,7 @@ function GpuPlacementPolicySection(props: {
             disabled={props.loading || actionInProgress() || !dirty()}
             onClick={() => void saveDraft()}
           >
-            {actionInProgress() ? uiText.softwareDetail.processing : uiText.softwareDetail.save}
+            <StableLabel labels={{ idle: uiText.softwareDetail.save, busy: uiText.softwareDetail.processing }} current={actionInProgress() ? "busy" : "idle"} />
           </button>
         </div>
       </div>

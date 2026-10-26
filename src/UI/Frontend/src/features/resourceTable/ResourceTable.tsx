@@ -1,3 +1,4 @@
+import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
 import {
   resourceTableCellText,
   resourceTableColumnLabel,
@@ -189,9 +190,10 @@ export function ResourceTable(props: ResourceTableProps) {
               disabled={!props.editingAvailable || props.saveState === "saving"}
               onClick={props.onToggleEdit}
             >
-              {props.editMode
-                ? props.saveState === "saving" ? uiText.common.saving : uiText.resourceTable.save
-                : uiText.resourceTable.edit}
+              <StableLabel
+                labels={{ edit: uiText.resourceTable.edit, save: uiText.resourceTable.save, saving: uiText.common.saving }}
+                current={props.editMode ? props.saveState === "saving" ? "saving" : "save" : "edit"}
+              />
             </button>
           </Show>
         </div>

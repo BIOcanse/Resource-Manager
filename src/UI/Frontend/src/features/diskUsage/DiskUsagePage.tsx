@@ -1,3 +1,4 @@
+import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
 import { createSignal, For, Show } from "solid-js";
 import type { JSX } from "solid-js";
 import { formatBytes, formatBytePair } from "../../presentation/byteUnits.ts";
@@ -86,9 +87,10 @@ export function DiskUsagePage(props: {
                 aria-expanded={setupOpen()}
                 onClick={() => setSetupOpen((open) => !open)}
               >
-                {setupOpen()
-                  ? uiText.diskUsage.collapseSetup
-                  : uiText.diskUsage.expandSetup}
+                <StableLabel
+                  labels={{ expand: uiText.diskUsage.expandSetup, collapse: uiText.diskUsage.collapseSetup }}
+                  current={setupOpen() ? "collapse" : "expand"}
+                />
               </button>
             </Show>
             <button
@@ -96,11 +98,10 @@ export function DiskUsagePage(props: {
               disabled={!canScan()}
               onClick={() => props.onScan(scope(), mode(), target())}
             >
-              {props.scanning
-                ? uiText.diskUsage.scanning
-                : props.hasResult
-                  ? uiText.diskUsage.rescan
-                  : uiText.diskUsage.scan}
+              <StableLabel
+                labels={{ scan: uiText.diskUsage.scan, rescan: uiText.diskUsage.rescan, scanning: uiText.diskUsage.scanning }}
+                current={props.scanning ? "scanning" : props.hasResult ? "rescan" : "scan"}
+              />
             </button>
           </div>
         </div>

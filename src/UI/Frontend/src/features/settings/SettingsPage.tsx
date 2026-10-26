@@ -1,3 +1,4 @@
+import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
 import { For, Show } from "solid-js";
 import { ReportRuleSettings } from "./components/ReportRuleSettings";
 import { HardwareControlSettings } from "./components/HardwareControlSettings";
@@ -239,7 +240,7 @@ export function SettingsPage(props: SettingsPageProps) {
                 disabled={props.saveState === "saving" || props.saveState === "conflict" || !props.isDirty}
                 onClick={props.onSave}
               >
-                {props.saveState === "saving" ? text().saveState.saving : text().actions.save}
+                <StableLabel labels={{ idle: text().actions.save, busy: text().saveState.saving }} current={props.saveState === "saving" ? "busy" : "idle"} />
               </button>
             </Show>
           </div>

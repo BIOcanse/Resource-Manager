@@ -1,3 +1,4 @@
+import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
 import { createEffect, createMemo, createSignal, onCleanup, Show, untrack } from "solid-js";
 import { uiText } from "../../text.ts";
 import { controlCapabilityLabel, controlDisplayText } from "./controlPresentation.ts";
@@ -466,7 +467,7 @@ function CurveEditor(props: {
           <button class="secondary" type="button"
             disabled={props.disabled || reading()}
             onClick={start}>
-            {reading() ? uiText.control.readingFirmwareCurve : uiText.control.createCurve}
+            <StableLabel labels={{ idle: uiText.control.createCurve, busy: uiText.control.readingFirmwareCurve }} current={reading() ? "busy" : "idle"} />
           </button>
         }
       >

@@ -1,3 +1,4 @@
+import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
 import { createEffect, createMemo, createSignal, For, Index, onCleanup, Show } from "solid-js";
 import { getComponents, getPerformanceOverlayMetricCatalog, getPerformanceOverlaySettings, OverlayPreferencesSaveError, savePerformanceOverlaySettings, resetPerformanceOverlayPresentation } from "../../api.ts";
 import { expectedOverlayInjectionModules } from "./startupModuleSelection.ts";
@@ -139,7 +140,7 @@ export function SoftwareOverlaySettings(props: { softwareId: string; active: boo
           {currentSettingsText().actions.restoreDefaults}
         </button>
         <button type="button" disabled={!draft() || !(dirty() || modulesMismatch()) || saving()} onClick={() => void save()}>
-          {saving() ? uiText.softwareDetail.processing : uiText.softwareDetail.save}
+          <StableLabel labels={{ idle: uiText.softwareDetail.save, busy: uiText.softwareDetail.processing }} current={saving() ? "busy" : "idle"} />
         </button>
       </div>
       <Show when={error()}>{(message) => <p class="software-detail-hint error" role="alert">{message()}</p>}</Show>

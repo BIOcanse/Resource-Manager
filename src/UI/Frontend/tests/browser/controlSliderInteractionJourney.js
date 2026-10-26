@@ -107,7 +107,7 @@ export default async function controlSliderInteractionJourney(page, baseUrl) {
     window.__sliderFrames = log;
     const tick = () => {
       const card = [...document.querySelectorAll(".control-object")].find(element => element.textContent.includes("Fan A"));
-      const button = [...(card?.querySelectorAll(".control-object-actions button") ?? [])].find(element => element.textContent.trim() === "应用");
+      const button = [...(card?.querySelectorAll(".control-object-actions button") ?? [])].find(element => element.innerText.trim() === "应用");
       if (button) log.push({ pending: !button.disabled, box: card.querySelector("input[type=number]")?.value });
       requestAnimationFrame(tick);
     };

@@ -1,3 +1,4 @@
+import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
 import { createMemo, createSignal, For, Show } from "solid-js";
 import { Download, ExternalLink, Info, RefreshCw } from "lucide-solid";
 import { UserDetailsDialog } from "../../components/UserDetailsDialog";
@@ -51,7 +52,7 @@ export function BrowserRuntimePage(props: BrowserRuntimePageProps) {
             onClick={props.onRefresh}
           >
             <RefreshCw size={16} aria-hidden="true" />
-            <span>{props.refreshInProgress ? uiText.browserRuntime.refreshing : uiText.browserRuntime.refresh}</span>
+            <StableLabel labels={{ idle: uiText.browserRuntime.refresh, busy: uiText.browserRuntime.refreshing }} current={props.refreshInProgress ? "busy" : "idle"} />
           </button>
         </div>
       </header>

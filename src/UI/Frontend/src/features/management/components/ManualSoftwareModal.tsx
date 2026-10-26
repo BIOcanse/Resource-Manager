@@ -1,3 +1,4 @@
+import { StableLabel } from "../../../ui/primitives/StableLabel.tsx";
 import { createEffect, createMemo, createSignal, Show } from "solid-js";
 import type { ManualSoftwareKind, ManualSoftwareRequest, SoftwareRecord } from "../../../types";
 import { softwareDisplayKindLabel, uiText } from "../../../text.ts";
@@ -191,7 +192,7 @@ export function ManualSoftwareModal(props: ManualSoftwareModalProps) {
             {uiText.manualSoftwareModal.cancel}
           </button>
           <button type="submit" disabled={!canSubmit()}>
-            {props.actionInProgress ? uiText.manualSoftwareModal.saving : uiText.metricPicker.confirm}
+            <StableLabel labels={{ idle: uiText.metricPicker.confirm, busy: uiText.manualSoftwareModal.saving }} current={props.actionInProgress ? "busy" : "idle"} />
           </button>
         </DialogActions>
       </form>
