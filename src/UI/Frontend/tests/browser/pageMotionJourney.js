@@ -1,5 +1,11 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
+import { writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { assessInteractionLongTasks } from "./interactionLongTaskBudget.js";
+import { startMotionProfile, stopMotionProfile } from "./pageMotionEvidence.js";
+
+const SWITCH_SAMPLE_MS = 700;
 
 /**
  * 换页动效和分页树（docs/navigation_tree_2026-10-25.md、docs/page_motion_2026-10-25.md），简体中文，真实点击。
@@ -14,10 +20,11 @@ import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
  * - 任务中心：换分页时高度一帧都不变。
  * - 无动画、超高性能（设置里选）：第一帧就是终态，没有副本、没有位移，指示条已经到位。
  * - 鼠标点完没有焦点环（:focus-visible 不成立）；按 Tab 进去有。
- * - 预热一轮之后，换页期间没有超过 50 ms 的长任务；正常动画和无动画走同一串切换，订阅流打开的次数相同（动画不引起重连）。
+ * - 预热后按点击窗口归因长任务；超过 50 ms 必须匹配具名动效登记和容差；正常动画、无动画走同一串切换，动画不引起重连。
  * 帧都在页面里用 requestAnimationFrame 逐帧读（无头浏览器不节流）。
  */
 export default async function pageMotionJourney(page, baseUrl) {
+  const startedOn = new Date().toISOString();
   const failures = [];
   const fail = (message) => failures.push(message);
   page.on("pageerror", (error) => failures.push(`pageerror: ${String(error)}`));
@@ -38,6 +45,25 @@ export default async function pageMotionJourney(page, baseUrl) {
   const primary = (id) => nav.getByRole("button", { name: app.page[id], exact: true });
   const groupOf = (id) => page.locator(`.page-subnav-group[data-page-id="${id}"]`);
   const settle = () => page.waitForTimeout(700);
+  const interactionRuns = [];
+  const evidenceDirectory = process.env.RM_PAGE_MOTION_EVIDENCE_DIR;
+  let animationMode = "normal";
+  const sampleSwitch = async (step, locator, durationMs) => {
+    const index = interactionRuns.length;
+    const profile = evidenceDirectory
+      ? await startMotionProfile(page, evidenceDirectory, `${String(index).padStart(2, "0")}-${animationMode}`) : null;
+    let run;
+    let cpuProfile;
+    try {
+      run = await sampleClick(page, locator, durationMs);
+    } finally {
+      if (profile) cpuProfile = await stopMotionProfile(profile, run?.longTasks ?? []);
+    }
+    const window = { step, start: run.t0, end: run.t1 };
+    interactionRuns.push({ mode: animationMode, ...window, longTasks: run.longTasks,
+      overruns: assessInteractionLongTasks(run.longTasks, [window]), cpuProfile });
+    return run;
+  };
 
   // ---- 分页树：名字 ----
   const primaryOrder = ["monitor", "components", "optimization", "diskUsage", "control", "details", "settings"];
@@ -114,8 +140,10 @@ export default async function pageMotionJourney(page, baseUrl) {
 
   // ---- 二级分页条：第一帧就在、A→B→A 节点不换、组不进场 ----
   const barRuns = [];
+  let barSource = "components";
   for (const id of ["details", "components", "details", "monitor", "details", "diskUsage", "components"]) {
-    const run = await sampleClick(page, primary(id), 500);
+    const run = await sampleSwitch(`primary ${barSource}→${id}`, primary(id), 500);
+    barSource = id;
     barRuns.push({ id, run });
     const first = run.frames[0];
     const target = id === "monitor" || id === "diskUsage" ? null : id;
@@ -169,16 +197,16 @@ export default async function pageMotionJourney(page, baseUrl) {
   };
   await primary("components").click();
   await settle();
-  checkContent("primary components→details", await sampleClick(page, primary("details"), 700), 1);
+  checkContent("primary components→details", await sampleSwitch("primary components→details", primary("details"), 700), 1);
   await settle();
   const detailsGroup = groupOf("details");
   await detailsGroup.getByRole("tab", { name: app.misc.detailsTab.device, exact: true }).click();
   await settle();
-  checkContent("details device→gpu", await sampleClick(page, detailsGroup.getByRole("tab", { name: app.misc.detailsTab.gpu, exact: true }), 700), 1);
+  checkContent("details device→gpu", await sampleSwitch("details device→gpu", detailsGroup.getByRole("tab", { name: app.misc.detailsTab.gpu, exact: true }), 700), 1);
   await settle();
-  checkContent("details gpu→device", await sampleClick(page, detailsGroup.getByRole("tab", { name: app.misc.detailsTab.device, exact: true }), 700), -1);
+  checkContent("details gpu→device", await sampleSwitch("details gpu→device", detailsGroup.getByRole("tab", { name: app.misc.detailsTab.device, exact: true }), 700), -1);
   await settle();
-  checkContent("primary details→components", await sampleClick(page, primary("components"), 700), -1);
+  checkContent("primary details→components", await sampleSwitch("primary details→components", primary("components"), 700), -1);
   await settle();
 
   // ---- 指示条终点 ----
@@ -210,9 +238,9 @@ export default async function pageMotionJourney(page, baseUrl) {
   await taskCenter.waitFor();
   await settle();
   const taskCenterHeights = [];
-  for (const name of [app.taskCenter.tabHistory, app.taskCenter.tabAll, app.taskCenter.tabActive]) {
+  for (const [id, name] of [["history", app.taskCenter.tabHistory], ["all", app.taskCenter.tabAll], ["active", app.taskCenter.tabActive]]) {
     const tab = taskCenter.getByRole("tab", { name: new RegExp(`^${name}`) });
-    const run = await sampleClick(page, tab, 500);
+    const run = await sampleSwitch(`task center tab→${id}`, tab, 500);
     const heights = run.frames.map((frame) => frame.dialog);
     taskCenterHeights.push({ name, min: Math.min(...heights), max: Math.max(...heights) });
     if (Math.max(...heights) - Math.min(...heights) > 0.5) fail(`task center height changes on ${name}: ${Math.min(...heights)}–${Math.max(...heights)}`);
@@ -262,30 +290,43 @@ export default async function pageMotionJourney(page, baseUrl) {
   // ---- 长任务和订阅（正常动画） ----
   const sequence = ["details", "components", "diskUsage", "control", "monitor", "settings", "details", "monitor"];
   const runSequence = async () => {
-    const opensBefore = streamOpens;
-    for (const id of sequence) {
-      await primary(id).click();
-      await page.waitForTimeout(450);
-    }
+    // Normalize the remembered details tab before counting streams in either mode.
+    await primary("details").click();
+    await detailsGroup.getByRole("tab", { name: app.misc.detailsTab.device, exact: true }).click();
+    await primary("monitor").click();
     await settle();
+    const opensBefore = streamOpens;
+    let source = "monitor";
+    for (const id of sequence) {
+      await sampleSwitch(`primary ${source}→${id}`, primary(id), SWITCH_SAMPLE_MS);
+      source = id;
+    }
+    await sampleSwitch("primary monitor→details", primary("details"), SWITCH_SAMPLE_MS);
+    await sampleSwitch("details device→gpu", detailsGroup.getByRole("tab", { name: app.misc.detailsTab.gpu, exact: true }), SWITCH_SAMPLE_MS);
+    await sampleSwitch("details gpu→device", detailsGroup.getByRole("tab", { name: app.misc.detailsTab.device, exact: true }), SWITCH_SAMPLE_MS);
+    await sampleSwitch("task center open", page.locator("#taskCenterButton"), SWITCH_SAMPLE_MS);
+    for (const [id, name] of [["history", app.taskCenter.tabHistory], ["all", app.taskCenter.tabAll], ["active", app.taskCenter.tabActive]]) {
+      await sampleSwitch(`task center tab→${id}`, taskCenter.getByRole("tab", { name: new RegExp(`^${name}`) }), SWITCH_SAMPLE_MS);
+    }
+    await sampleSwitch("task center close", taskCenter.getByRole("button", { name: app.misc.close, exact: true }), SWITCH_SAMPLE_MS);
     return streamOpens - opensBefore;
   };
   await primary("monitor").click();
   await settle();
   await page.evaluate(() => { window.__pmLongTasks.length = 0; });
   const normalOpens = await runSequence();
-  const longTasks = await page.evaluate(() => window.__pmLongTasks.slice());
 
   // ---- 无动画、超高性能：第一帧就是终态 ----
   const instant = {};
   let noneOpens = null;
   for (const mode of ["none", "ultra"]) {
     await setAnimations(page, app, settings, animationLabel, mode);
+    animationMode = mode;
     await primary("components").click();
     await settle();
-    const primaryRun = await sampleClick(page, primary("details"), 300);
+    const primaryRun = await sampleSwitch("primary components→details", primary("details"), 300);
     await settle();
-    const secondaryRun = await sampleClick(page, detailsGroup.getByRole("tab", { name: app.misc.detailsTab.cpu, exact: true }), 300);
+    const secondaryRun = await sampleSwitch("details device→cpu", detailsGroup.getByRole("tab", { name: app.misc.detailsTab.cpu, exact: true }), 300);
     instant[mode] = { primary: summarize(primaryRun), secondary: summarize(secondaryRun) };
     for (const [label, run] of [["primary", primaryRun], ["secondary", secondaryRun]]) {
       const first = run.frames[0];
@@ -300,9 +341,19 @@ export default async function pageMotionJourney(page, baseUrl) {
     }
   }
   if (normalOpens !== noneOpens) fail(`the same switches open ${normalOpens} subscription streams with motion and ${noneOpens} without`);
-  const over = longTasks.filter((task) => task.duration > 50);
-  if (over.length) fail(`long tasks over 50 ms while switching: ${JSON.stringify(over)}`);
+  for (const run of interactionRuns) for (const task of run.overruns) {
+    if (!task.passed) fail(`${run.mode} ${task.message}`);
+  }
   await setAnimations(page, app, settings, animationLabel, "normal");
+  await page.evaluate(() => window.__pm.observer.disconnect());
+
+  // Persist before throwing: an empty registry is expected to expose existing waste.
+  if (evidenceDirectory) writeFileSync(resolve(evidenceDirectory, "page-motion.json"), JSON.stringify({
+    startedOn, measuredOn: new Date().toISOString(), browser: page.context().browser().version(),
+    node: process.version, baseUrl, subscriptionStreamsOpened: { normal: normalOpens, none: noneOpens },
+    interactionRuns, failures
+  }, null, 2));
+  process.stdout.write(`PAGE_MOTION_INTERACTIONS ${JSON.stringify(interactionRuns)}\n`);
 
   if (failures.length) throw new Error(failures.join("\n"));
   return {
@@ -316,7 +367,8 @@ export default async function pageMotionJourney(page, baseUrl) {
     keyboard: { forward: keyboard, back: keyboardBack },
     instant,
     subscriptionStreamsOpened: { normal: normalOpens, none: noneOpens },
-    longestTaskMs: longTasks.reduce((max, task) => Math.max(max, task.duration), 0)
+    interactionRuns,
+    longestTaskMs: Math.max(0, ...interactionRuns.flatMap((run) => run.longTasks.map((task) => task.duration)))
   };
 }
 
@@ -373,10 +425,12 @@ async function installProbe(page) {
       };
     };
     window.__pmLongTasks = [];
-    new PerformanceObserver((list) => {
-      for (const entry of list.getEntries()) window.__pmLongTasks.push({ start: Math.round(entry.startTime), duration: Math.round(entry.duration) });
-    }).observe({ type: "longtask", buffered: false });
-    window.__pm = { snapshot, indicatorOffset };
+    const recordTasks = (entries) => {
+      for (const entry of entries) window.__pmLongTasks.push({ start: entry.startTime, duration: entry.duration });
+    };
+    const observer = new PerformanceObserver((list) => recordTasks(list.getEntries()));
+    observer.observe({ type: "longtask", buffered: false });
+    window.__pm = { snapshot, indicatorOffset, observer, recordTasks };
   });
 }
 
@@ -390,7 +444,7 @@ async function sampleClick(page, locator, durationMs) {
       const now = performance.now();
       run.frames.push({ ...window.__pm.snapshot(), dt: now - run.t0 });
       if (now - run.t0 < duration) requestAnimationFrame(tick);
-      else run.done = true;
+      else { run.t1 = performance.now(); run.done = true; }
     };
     window.addEventListener("click", () => {
       run.t0 = performance.now();
@@ -399,7 +453,11 @@ async function sampleClick(page, locator, durationMs) {
   }, durationMs);
   await locator.click();
   await page.waitForFunction(() => window.__pmRun.done, undefined, { timeout: durationMs + 5000 });
-  return page.evaluate(() => window.__pmRun);
+  return page.evaluate(() => {
+    window.__pm.recordTasks(window.__pm.observer.takeRecords());
+    const run = window.__pmRun;
+    return { ...run, longTasks: window.__pmLongTasks.filter((task) => task.start < run.t1 && task.start + task.duration > run.t0) };
+  });
 }
 
 /** 一次切换的摘要：第一帧、退出副本消失和内容停下的时刻。 */
