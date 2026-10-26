@@ -59,7 +59,8 @@ function draw(canvas: HTMLCanvasElement | undefined, points: readonly ChartPoint
   const color = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
   const left = 48;
   const right = cssWidth - 12;
-  const top = 12;
+  // 单位独占顶部一行，不与最高刻度重叠。
+  const top = 24;
   const bottom = cssHeight - 27;
   const chartWidth = Math.max(1, right - left);
   const chartHeight = Math.max(1, bottom - top);
