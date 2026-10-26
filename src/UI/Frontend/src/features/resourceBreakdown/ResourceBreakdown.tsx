@@ -547,11 +547,11 @@ function ResourceBreakdownItem(props: {
                 <div
                   ref={(element) => { interactionProxy = element; }}
                   id={interactionOptionId}
-                  class={`${item().segment.className} resource-segment-interaction-proxy`}
-                  classList={{
+                  // 类名一次写全：展示分组的类会随段变，和 classList 混用时改写 class 会抹掉 classList 加的选中类。
+                  class={resourceProxyClass(item().segment.className, {
                     "precision-selected": props.selected?.softwareId === item().segment.softwareId,
                     "pointer-active": hoveredSoftwareId() === item().segment.softwareId
-                  }}
+                  })}
                   tabIndex={-1}
                   role="option"
                   aria-label={resourceSegmentTooltip(props.bar, item().segment)}
@@ -1009,6 +1009,10 @@ function isReservedSegment(segment: { softwareId?: string | null }) {
 
 function processKey(process: ResourceProcessSegment) {
   return `${process.processId}|${process.name}`;
+}
+
+function resourceProxyClass(base: string, states: Record<string, boolean>) {
+  return [base, "resource-segment-interaction-proxy", ...Object.keys(states).filter((name) => states[name])].join(" ");
 }
 
 // Stable per-process hash so a process keeps its color regardless of sort position.
