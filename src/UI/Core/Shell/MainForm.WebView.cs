@@ -73,15 +73,16 @@ public sealed partial class MainForm
         if (backendContentEnabled) ShowFrontendUnavailable(NativeUiText.Current.WebViewInitializationFailed);
     }
 
-    private static void WriteWebViewStartupFailure(Exception exception)
+    private void WriteWebViewStartupFailure(Exception exception)
     {
         try
         {
+            var path = startupFailurePath ?? NativeUiPaths.WebViewStartupFailurePath;
             Directory.CreateDirectory(
-                Path.GetDirectoryName(NativeUiPaths.WebViewStartupFailurePath)
+                Path.GetDirectoryName(path)
                 ?? AppContext.BaseDirectory);
             File.WriteAllText(
-                NativeUiPaths.WebViewStartupFailurePath,
+                path,
                 JsonSerializer.Serialize(
                     new
                     {

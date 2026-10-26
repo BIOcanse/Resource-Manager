@@ -12,6 +12,7 @@ internal sealed class NativeUiApplicationServices
     internal string? ApiBaseAddress { get; init; }
     internal string? WebViewUserDataFolder { get; init; }
     internal string? FrontendPreferencesPath { get; init; }
+    internal string? WebViewStartupFailurePath { get; init; }
     internal FrontendPreferencesOwner? Preferences { get; init; }
     internal INativeUiHotkeys? Hotkeys { get; init; }
     internal Func<BackendServiceSession>? CreateSession { get; init; }

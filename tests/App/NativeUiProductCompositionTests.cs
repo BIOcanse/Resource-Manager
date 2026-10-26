@@ -236,7 +236,7 @@ public sealed class NativeUiProductCompositionTests
             Assert.False(browser.Initialized.Task.IsCompleted);
             Assert.Equal(1, Volatile.Read(ref attempts));
             Assert.Equal(BusinessBlockState.Starting, app.Trees.ReadState(NativeUiBlockIds.LoopbackProxy));
-            Assert.Contains("pilot3 listener failure", File.ReadAllText(NativeUiPaths.WebViewStartupFailurePath));
+            Assert.Contains("pilot3 listener failure", File.ReadAllText(app.StartupFailurePath));
             retry.PerformClick();
         });
         await browser.Initialized.Task.WaitAsync(Limit);

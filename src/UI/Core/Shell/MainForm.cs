@@ -24,6 +24,8 @@ public sealed partial class MainForm : Form
     private readonly ResizeGripMessageFilter resizeGripMessageFilter;
     private readonly Action<bool> taskManagerShortcutReplacementChanged;
     private readonly Action editableHotkeysChanged;
+    // Omitted, startup failures go to the package's per-user diagnostics file.
+    private readonly string? startupFailurePath;
     private FrontendBackendSessionProjection? backendSessionProjection;
     private readonly Func<ResourceManager.Shared.Runtime.ProcessActionBatch, Task<string>>? elevatedProcessAction;
     private readonly Func<ResourceManager.Shared.Runtime.ElevatedBackendMutation,
@@ -35,9 +37,11 @@ public sealed partial class MainForm : Form
         WebView2HostConfiguration hostConfiguration,
         Func<ResourceManager.Shared.Runtime.ProcessActionBatch, Task<string>>? elevatedProcessAction = null,
         Func<ResourceManager.Shared.Runtime.ElevatedBackendMutation,
-            Task<ResourceManager.Shared.Runtime.ElevatedBackendResponse>>? elevatedBackendRequest = null)
+            Task<ResourceManager.Shared.Runtime.ElevatedBackendResponse>>? elevatedBackendRequest = null,
+        string? startupFailurePath = null)
         : this(taskManagerShortcutReplacementChanged, editableHotkeysChanged,
-            new WebView2FrontendHost(hostConfiguration), elevatedProcessAction, elevatedBackendRequest)
+            new WebView2FrontendHost(hostConfiguration), elevatedProcessAction, elevatedBackendRequest,
+            startupFailurePath)
     {
     }
 
@@ -47,8 +51,10 @@ public sealed partial class MainForm : Form
         IFrontendHost frontendHost,
         Func<ResourceManager.Shared.Runtime.ProcessActionBatch, Task<string>>? elevatedProcessAction = null,
         Func<ResourceManager.Shared.Runtime.ElevatedBackendMutation,
-            Task<ResourceManager.Shared.Runtime.ElevatedBackendResponse>>? elevatedBackendRequest = null)
+            Task<ResourceManager.Shared.Runtime.ElevatedBackendResponse>>? elevatedBackendRequest = null,
+        string? startupFailurePath = null)
     {
+        this.startupFailurePath = startupFailurePath;
         this.taskManagerShortcutReplacementChanged = taskManagerShortcutReplacementChanged;
         this.editableHotkeysChanged = editableHotkeysChanged;
         this.elevatedProcessAction = elevatedProcessAction;

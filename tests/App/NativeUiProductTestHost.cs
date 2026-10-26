@@ -39,6 +39,7 @@ internal sealed class NativeUiProductTestHost : IAsyncDisposable
     internal NativeUiBackendConnectionBlock Connection => Field<NativeUiBackendConnectionBlock>("backendConnection");
     internal MainForm Window => Field<MainForm>("mainForm");
     internal FrontendLoopbackProxy Proxy => Field<FrontendLoopbackProxy>("frontendProxy");
+    internal string StartupFailurePath { get; private set; } = null!;
 
     private int connectionAttempts;
     private readonly Func<CancellationToken, Task>? beforeProxyStart;
@@ -89,6 +90,7 @@ internal sealed class NativeUiProductTestHost : IAsyncDisposable
                 ApiBaseAddress = "http://127.0.0.1:19421",
                 WebViewUserDataFolder = Path.Combine(root, "profile"),
                 FrontendPreferencesPath = Path.Combine(root, "preferences.json"),
+                WebViewStartupFailurePath = StartupFailurePath = Path.Combine(root, "webview-failure.json"),
                 Preferences = new FrontendPreferencesOwner(Path.Combine(root, "preferences.json")),
                 Hotkeys = new NoHotkeys(),
                 BeforeProxyStart = beforeProxyStart,

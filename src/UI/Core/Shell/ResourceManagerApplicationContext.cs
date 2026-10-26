@@ -269,7 +269,8 @@ public sealed partial class ResourceManagerApplicationContext : ApplicationConte
             mutation => backendReady && backendSession is { } current
                 ? current.ExecuteElevatedBackendRequestAsync(mutation, shutdown.Token)
                 : Task.FromException<ResourceManager.Shared.Runtime.ElevatedBackendResponse>(
-                    new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady)));
+                    new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady)),
+            services.WebViewStartupFailurePath);
         form.BackendRetryRequested += OnBackendRetryRequested;
         form.FrontendConnectionStateChanged += OnFrontendConnectionStateChanged;
         form.DiagnosticsRequested += OnDiagnosticsRequested;
