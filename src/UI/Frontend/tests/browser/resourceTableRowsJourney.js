@@ -285,6 +285,41 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
   }
   results.processView = processView;
 
+  // 12. Windows 高对比：总计行下沿加粗，系统/驱动保留用 GrayText，当前行有系统色描边，“更多操作”平时不画按钮框。
+  await page.emulateMedia({ forcedColors: "active" });
+  await page.mouse.move(5, 5);
+  await visibleRows("process").nth(2).locator(".status-cell").click();
+  await page.mouse.move(5, 5);
+  await page.waitForTimeout(250);
+  const forced = await panel.evaluate((element) => {
+    const systemColor = (name, property = "color") => {
+      const probe = document.createElement("span");
+      probe.style.setProperty(property, name);
+      element.append(probe);
+      const value = getComputedStyle(probe).getPropertyValue(property);
+      probe.remove();
+      return value;
+    };
+    const summary = element.querySelector('.resource-table-row.summary-row[aria-hidden="false"]');
+    const residualRow = element.querySelector('.resource-table-row.residual-row[aria-hidden="false"]');
+    const current = element.querySelector('.resource-table-row[aria-hidden="false"]:focus-within');
+    const idleActions = element.querySelector('.resource-table-row[aria-hidden="false"]:not(:focus-within) .resource-row-actions');
+    return {
+      summaryBorder: getComputedStyle(summary).borderBottomWidth,
+      residualColor: residualRow ? getComputedStyle(residualRow.querySelector(".resource-row-name")).color : null,
+      grayText: systemColor("GrayText"),
+      currentOutline: current ? `${getComputedStyle(current).outlineStyle} ${getComputedStyle(current).outlineWidth}` : null,
+      actionsBorder: getComputedStyle(idleActions).borderTopColor,
+      canvas: systemColor("Canvas")
+    };
+  });
+  await page.emulateMedia({ forcedColors: "none" });
+  if (forced.summaryBorder !== "2px" || forced.residualColor !== forced.grayText || forced.currentOutline !== "solid 1px"
+    || forced.actionsBorder !== forced.canvas) {
+    throw new Error(`Forced-colours presentation: ${JSON.stringify(forced)}`);
+  }
+  results.forcedColors = forced;
+
   if (errors.length > 0) throw new Error(`Page errors: ${errors.join("\n")}`);
   return results;
 }

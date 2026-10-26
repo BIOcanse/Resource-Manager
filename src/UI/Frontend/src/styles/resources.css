@@ -640,6 +640,49 @@
   background: transparent;
 }
 
+/*
+  Windows 高对比（强制颜色）：系统换掉了底色、阴影和渐变，行的状态色、高亮条、热度条、斜纹都看不见了，
+  这里用系统颜色的描边和文字色把它们补回来：当前行细描边、键盘焦点粗描边、资源条高亮虚线描边，
+  总计行下沿加粗，系统/驱动保留用 GrayText，当前排序列描边；行里的“更多操作”平时不画系统按钮框。
+*/
+@media (forced-colors: active) {
+  .resource-table-row:is(:focus-within, .context-target) {
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
+  }
+
+  .resource-table-row:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .resource-table-row.highlighted {
+    outline: 2px dashed Highlight;
+    outline-offset: -2px;
+  }
+
+  .resource-table-row.summary-row {
+    border-bottom: 2px solid CanvasText;
+  }
+
+  .resource-table-row.residual-row :is(.resource-row-name, .status-cell) {
+    color: GrayText;
+  }
+
+  .resource-table-head-cell.active {
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
+  }
+
+  .resource-row-actions {
+    border-color: Canvas;
+  }
+
+  .resource-row-actions:is(:hover, :focus-visible) {
+    border-color: ButtonText;
+  }
+}
+
 .resource-performance-panel {
   width: 100%;
   height: min(max(520px, calc(100vh - 180px)), 88vh);
