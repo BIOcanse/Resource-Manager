@@ -17,7 +17,9 @@
   padding: 0;
 }
 
+/* 页面标题只给读屏（分页条已显示页名），动作区靠右，与其他页面的标题栏一致。 */
 .targeted-report-header-actions {
+  margin-left: auto;
   display: flex;
   align-items: center;
   justify-content: flex-end;
