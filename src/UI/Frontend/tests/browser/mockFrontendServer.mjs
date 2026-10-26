@@ -2142,8 +2142,8 @@ function resourceBreakdown(...args) {
     const key = `${call}|${bar.metricId}`;
     if (frozen.has(bar.metricId) && lastServedResourceBars.has(key)) return lastServedResourceBars.get(key);
     return unavailable.has(bar.metricId)
-      ? { metricId: bar.metricId, unit: bar.unit, scaleMode: bar.scaleMode, ...(bar.processFieldName ? { processFieldName: bar.processFieldName } : {}),
-        totalValue: null, capacityValue: null, totalSystemPercent: null, sharedValue: null, software: [], unavailableReason: "hardware-source-unavailable" }
+      ? { ...bar, totalValue: null, capacityValue: null, totalSystemPercent: null, sharedValue: null,
+        processSumValue: null, residualValue: null, software: [], unavailableReason: "hardware-source-unavailable" }
       : bar;
   });
   for (const bar of bars) lastServedResourceBars.set(`${call}|${bar.metricId}`, bar);
@@ -2278,11 +2278,14 @@ function auditResourceBreakdown(capturedAt, generation, processDetailSoftwareIds
     softwareCatalog,
     bars: [
       { metricId: "cpu.usage", unit: "%", scaleMode: "capacity", totalValue: total(cpu), capacityValue: 100,
+        ...barFacts({ processSumValue: total(cpu.slice(0, -1)), residualValue: cpu.at(-1)[1], additiveAcrossProcesses: true, capturedAt }),
         totalSystemPercent: total(cpu), totalDisplay: `${total(cpu).toFixed(1)}%`, software: cpu },
       { metricId: "memory.usage", processFieldName: automaticProcessFields["memory.usage"], unit: "GB", scaleMode: "capacity",
+        residualSource: physicalResidualSource("memory.usage"),
+        ...barFacts({ processSumValue: total(memory.slice(0, -1)), residualValue: memory.at(-1)[1], additiveAcrossProcesses: true, capturedAt }),
         totalValue: total(memory), capacityValue: 32, totalSystemPercent: total(memory) * 100 / 32,
         totalDisplay: `${total(memory).toFixed(1)} GB`, software: memory },
-      ...resourceMeasureBars(softwareCatalog, measures, modes, processDetailSoftwareIds, keepMissingTotals)
+      ...resourceMeasureBars(softwareCatalog, measures, modes, processDetailSoftwareIds, keepMissingTotals, capturedAt)
     ]
   };
 }

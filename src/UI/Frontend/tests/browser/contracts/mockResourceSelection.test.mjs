@@ -1,9 +1,39 @@
 import assert from "node:assert/strict";
 import { before, after, test } from "node:test";
 import { startMockServer } from "./mockServerFixture.mjs";
+import { decodeResourceBreakdownWireSnapshot } from "../../../src/api/resourceBreakdownWire.ts";
 let server;
 before(async () => { server = await startMockServer(); });
 after(async () => { await server?.close(); });
+
+test("Audit bars and their explicit unavailable replacements publish each metric's r4 facts", async () => {
+  await server.scenario({ resourceSoftwareMix: "audit", resourceUnavailableBarIds: [] });
+  try {
+    const { value } = await server.json("/api/resource-monitor/snapshot?ids=cpu.usage,memory.usage");
+    const snapshot = decodeResourceBreakdownWireSnapshot(value.breakdown);
+    assert.equal(snapshot.bars.length, 2);
+    for (const bar of snapshot.bars) {
+      assert.equal(bar.additiveAcrossProcesses, true);
+      assert.equal(bar.capturedAt, snapshot.capturedAt);
+      assert.equal(bar.processSumValue + bar.residualValue, bar.totalValue);
+      assert.ok(bar.software.length >= 10);
+    }
+    await server.scenario({ resourceUnavailableBarIds: ["cpu.usage"] });
+    const { value: unavailable } = await server.json("/api/resource-monitor/snapshot?ids=cpu.usage,memory.usage");
+    const wire = unavailable.breakdown;
+    const decoded = decodeResourceBreakdownWireSnapshot(wire);
+    const cpu = decoded.bars.find(bar => bar.metricId === "cpu.usage");
+    assert.deepEqual([cpu.totalValue, cpu.capacityValue, cpu.totalSystemPercent, cpu.processSumValue, cpu.residualValue],
+      [null, null, null, null, null]);
+    assert.equal(cpu.additiveAcrossProcesses, true);
+    assert.equal(cpu.capturedAt, wire.capturedAt);
+    assert.equal(cpu.unavailableReason, "hardware-source-unavailable");
+    assert.deepEqual(cpu.software, []);
+    assert.ok(decoded.bars.find(bar => bar.metricId === "memory.usage").totalValue > 0);
+  } finally {
+    await server.scenario({ resourceSoftwareMix: "uniform", resourceUnavailableBarIds: [] });
+  }
+});
 
 test("M01 resource snapshots retain requested unavailable bars", async () => {
   for (const path of ["/api/resource-monitor/snapshot", "/api/resource-breakdown/snapshot"]) {

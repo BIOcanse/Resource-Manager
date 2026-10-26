@@ -117,10 +117,11 @@ export default async function resourceBarSourceChoiceJourney(page, baseUrl) {
   await page.reload({ waitUntil: "domcontentloaded" });
   await waitFor(async () => await header("memory.usage").textContent() === sourcedLabel || await header("memory.usage").textContent(), "Saved bar source after reload");
 
-  // bar-continuity：总量读不到仍保留所选条，空值不能显示成零或沿用上帧数值。
+  // bar-continuity / bars-polish：总量读不到仍保留所选条，以明确原因替换读数，不能显示零或沿用上帧数值。
   await setScenario({ resourceBarMeasureTotalsMissing: [field] });
-  await waitFor(async () => (await bar("memory.usage").locator(".resource-breakdown-header > span").first().textContent())?.startsWith("- ·")
-    || "missing total was not shown as unavailable", "An unavailable bar remains with an empty total");
+  const unavailableHeader = `${app.resourceBreakdown.unavailableReason.totalUnavailable} · ${app.resourceBreakdown.scaleActive}`;
+  await waitFor(async () => (await bar("memory.usage").locator(".resource-breakdown-header > span").first().textContent())?.trim() === unavailableHeader
+    || "missing total did not show its reason and active scale", "An unavailable bar retains its reason instead of a numeric total");
   if (await bar("memory.usage").locator('[role="option"]').count() !== 0) throw new Error("An unavailable bar retained software segments");
   if (await bar("cpu.usage").count() !== 1) throw new Error("A missing memory total removed other bars");
   await setScenario({ resourceBarMeasureTotalsMissing: [] });
