@@ -681,7 +681,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
 
     return {
       type: "software",
-      manualRegistration: record.id.startsWith("manual:"),
+      manualRegistration: record.registrationFacts?.kind === "manual",
       id: textOrEmpty(record.id),
       name,
       kind: record.kind,

@@ -376,7 +376,7 @@ function SoftwareCard(props: {
         </Show>
       </div>
       <div class="software-actions">
-        <Show when={props.mutablePersistenceEnabled && props.software.id.startsWith("manual:")}>
+        <Show when={props.mutablePersistenceEnabled && props.software.registrationFacts?.kind === "manual"}>
           <button class="management-action-button" type="button" disabled={Boolean(activeLabel())} onClick={() => props.onRemoveManual(props.software)}>
             {uiText.managementFeedback.removeManual}
           </button>

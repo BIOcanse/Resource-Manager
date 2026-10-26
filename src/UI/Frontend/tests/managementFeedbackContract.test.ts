@@ -14,11 +14,11 @@ const store = read("stores/managementStore.ts");
 assert.match(read("app/usePageRefreshScheduler.ts"),
   /refreshBrowserRuntimes\(false\),\s*options\.management\.refreshComponents\(\)/);
 const remove = store.slice(store.indexOf("async function removeManualRegistration"), store.indexOf("async function uninstallSoftware"));
-assert.match(remove, /record\.id\.startsWith\("manual:"\)/);
+assert.match(remove, /record\.registrationFacts\?\.kind !== "manual"/);
 assert.ok(remove.indexOf("confirmDialog") < remove.indexOf("await removeManualSoftware"));
 assert.ok(remove.indexOf("await removeManualSoftware") < remove.indexOf("await refreshSoftware"));
 assert.match(read("api.ts"), /\/api\/software\/manual\/\$\{encodeURIComponent\(id\)\}/);
-assert.match(read("features/management/components/ManagementPage.tsx"), /props\.software\.id\.startsWith\("manual:"\)/);
+assert.match(read("features/management/components/ManagementPage.tsx"), /props\.software\.registrationFacts\?\.kind === "manual"/);
 assert.match(read("components/SoftwareDetailModal.tsx"), /model\(\)\.manualRegistration/);
 assert.match(read("components/SoftwareDetailModal.tsx"), /metadataStale/);
 assert.match(read("components/SoftwareDetailModal.tsx"), /onClick=\{props\.onRetryMetadata\}/);

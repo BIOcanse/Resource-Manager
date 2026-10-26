@@ -22,7 +22,8 @@ export default async function softwareUnclassifiedJourney(page, baseUrl) {
   software.push({ ...software[0], id: "runtime:game", name: "Windows Game", kind: "game",
     categorySource: "Windows GameConfigStore\\Children\\MatchedExeFullPath", issues: [] });
   await page.route("**/api/software", route => route.fulfill({ json: software.map((item, index) =>
-    classified && index === 0 ? { ...item, id: "manual:0", kind: "other", issues: [] } : item).filter((_, index) => !removed || index !== 0) }));
+    classified && index === 0 ? { ...item, id: "manual:0", kind: "other", state: "manual", sourceFacts: [{ kind: "manual" }],
+      registrationFacts: { kind: "manual", processCount: 0, serviceCount: 0 }, sourceSoftwareId: "runtime:0", issues: [] } : item).filter((_, index) => !removed || index !== 0) }));
   await page.route("**/api/software/manual/*", async route => {
     assert.equal(route.request().method(), "DELETE");
     removals.push(new URL(route.request().url()).pathname);

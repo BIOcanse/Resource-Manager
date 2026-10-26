@@ -623,7 +623,7 @@ export function createManagementStore(options: ManagementStoreOptions): Manageme
   }
 
   async function removeManualRegistration(record: SoftwareRecord): Promise<boolean> {
-    if (!options.mutablePersistenceEnabled() || !record.id.startsWith("manual:")) return false;
+    if (!options.mutablePersistenceEnabled() || record.registrationFacts?.kind !== "manual") return false;
     const key = managementActionKey("software", record.id);
     if (actionLabels()[key]) return false;
     if (!await options.confirmDialog({ title: record.name, message: uiText.managementFeedback.confirmManual, tone: "warning" })) return false;
