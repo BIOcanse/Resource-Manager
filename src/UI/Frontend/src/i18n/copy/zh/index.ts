@@ -1,6 +1,7 @@
 import { componentCatalog } from "./components.ts";
 import { managementFeedback } from "./managementFeedback.ts";
 import { softwareFactsCopy } from "../softwareFacts.ts";
+import { physicalMemoryResidualCopy } from "../physicalMemoryResidual.ts";
 import { zhBackendMessagesCopy } from "./backendMessages.ts";
 import { zhDetailsCopy } from "./details.ts";
 import { zhDeviceAdaptersCopy } from "./deviceAdapters.ts";
@@ -28,6 +29,7 @@ export const zhAppCopy = {
   componentCatalog,
   managementFeedback,
   softwareFacts: softwareFactsCopy["zh-CN"],
+  physicalMemoryResidual: physicalMemoryResidualCopy["zh-CN"],
   ...zhShellCopy,
   ...zhSoftwareCopy,
   ...zhMonitorCopy,

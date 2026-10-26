@@ -2,12 +2,14 @@ import { operationsFeedback } from "../operationsFeedback.ts";
 import { componentCatalog } from "./ko-KR-components.ts";
 import type { ResourceTableViewMode } from "../../../types.ts";
 import { softwareFactsCopy } from "../softwareFacts.ts";
+import { physicalMemoryResidualCopy } from "../physicalMemoryResidual.ts";
 import type { AppCopy } from "../index.ts";
 import { targetedReport } from "./ko-KR-targetedReport.ts";
 import { fieldLabel, fieldValueLabel } from "./ko-KR-fieldLabels.ts";
 
 const koKrAppCopy: AppCopy = {
   softwareFacts: softwareFactsCopy["ko-KR"],
+  physicalMemoryResidual: physicalMemoryResidualCopy["ko-KR"],
   componentCatalog,
   managementFeedback: {
     ...operationsFeedback["ko-KR"],

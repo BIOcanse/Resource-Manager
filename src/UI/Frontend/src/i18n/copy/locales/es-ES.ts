@@ -2,6 +2,7 @@ import { operationsFeedback } from "../operationsFeedback.ts";
 import { componentCatalog } from "./es-ES-components.ts";
 import type { ResourceTableViewMode } from "../../../types.ts";
 import { softwareFactsCopy } from "../softwareFacts.ts";
+import { physicalMemoryResidualCopy } from "../physicalMemoryResidual.ts";
 import type { AppCopy } from "../index.ts";
 import { targetedReport } from "./es-ES-targetedReport.ts";
 import { fieldLabel, fieldValueLabel } from "./es-ES-fieldLabels.ts";
@@ -9,6 +10,7 @@ import { plural } from "../../plural.ts";
 
 const esEsAppCopy: AppCopy = {
   softwareFacts: softwareFactsCopy["es-ES"],
+  physicalMemoryResidual: physicalMemoryResidualCopy["es-ES"],
   componentCatalog,
   managementFeedback: {
     ...operationsFeedback["es-ES"],

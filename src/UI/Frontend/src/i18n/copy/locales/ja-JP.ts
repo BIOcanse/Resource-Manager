@@ -3,12 +3,14 @@ import { operationsFeedback } from "../operationsFeedback.ts";
 import { componentCatalog } from "./ja-JP-components.ts";
 import type { ResourceTableViewMode } from "../../../types.ts";
 import { softwareFactsCopy } from "../softwareFacts.ts";
+import { physicalMemoryResidualCopy } from "../physicalMemoryResidual.ts";
 import type { AppCopy } from "../index.ts";
 import { targetedReport } from "./ja-JP-targetedReport.ts";
 import { fieldLabel, fieldValueLabel } from "./ja-JP-fieldLabels.ts";
 
 const jaJpAppCopy: AppCopy = {
   softwareFacts: softwareFactsCopy["ja-JP"],
+  physicalMemoryResidual: physicalMemoryResidualCopy["ja-JP"],
   componentCatalog,
   managementFeedback: {
     ...operationsFeedback["ja-JP"],

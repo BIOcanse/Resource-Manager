@@ -2,6 +2,7 @@ import { operationsFeedback } from "../operationsFeedback.ts";
 import { componentCatalog } from "./ru-RU-components.ts";
 import type { ResourceTableViewMode } from "../../../types.ts";
 import { softwareFactsCopy } from "../softwareFacts.ts";
+import { physicalMemoryResidualCopy } from "../physicalMemoryResidual.ts";
 import type { AppCopy } from "../index.ts";
 import { targetedReport } from "./ru-RU-targetedReport.ts";
 import { fieldLabel, fieldValueLabel } from "./ru-RU-fieldLabels.ts";
@@ -9,6 +10,7 @@ import { plural } from "../../plural.ts";
 
 const ruRuAppCopy: AppCopy = {
   softwareFacts: softwareFactsCopy["ru-RU"],
+  physicalMemoryResidual: physicalMemoryResidualCopy["ru-RU"],
   componentCatalog,
   managementFeedback: {
     ...operationsFeedback["ru-RU"],

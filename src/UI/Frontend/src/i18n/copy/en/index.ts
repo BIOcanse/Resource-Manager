@@ -1,6 +1,7 @@
 import { componentCatalog } from "./components.ts";
 import { managementFeedback } from "./managementFeedback.ts";
 import { softwareFactsCopy } from "../softwareFacts.ts";
+import { physicalMemoryResidualCopy } from "../physicalMemoryResidual.ts";
 import { enBackendMessagesCopy } from "./backendMessages.ts";
 import { enDetailsCopy } from "./details.ts";
 import { enDeviceAdaptersCopy } from "./deviceAdapters.ts";
@@ -29,6 +30,7 @@ export const enAppCopy: AppCopy = {
   componentCatalog,
   managementFeedback,
   softwareFacts: softwareFactsCopy["en-US"],
+  physicalMemoryResidual: physicalMemoryResidualCopy["en-US"],
   ...enShellCopy,
   ...enSoftwareCopy,
   ...enMonitorCopy,

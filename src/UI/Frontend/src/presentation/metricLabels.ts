@@ -1,4 +1,5 @@
 import { uiText } from "../text.ts";
+import { isPhysicalMemoryResidualKind, physicalMemoryResidualKindName } from "./physicalMemoryResidual.ts";
 import {
   formatBytePair,
   formatBytes,
@@ -124,6 +125,10 @@ export function resourceProcessDisplayName(
   }
   if (process.attributionKind === "etw-residual-process") {
     return text.etwResidualProcess(process.name);
+  }
+  // 物理内存保留量的分项（PID -1）：名称按分项标识由 physicalMemoryResidual.ts 给出，不读后端的 name。
+  if (isPhysicalMemoryResidualKind(process.attributionKind)) {
+    return physicalMemoryResidualKindName(process.attributionKind);
   }
   return process.name;
 }

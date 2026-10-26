@@ -2,6 +2,7 @@ import { operationsFeedback } from "../operationsFeedback.ts";
 import { componentCatalog } from "./de-DE-components.ts";
 import type { ResourceTableViewMode } from "../../../types.ts";
 import { softwareFactsCopy } from "../softwareFacts.ts";
+import { physicalMemoryResidualCopy } from "../physicalMemoryResidual.ts";
 import type { AppCopy } from "../index.ts";
 import { targetedReport } from "./de-DE-targetedReport.ts";
 import { fieldLabel, fieldValueLabel } from "./de-DE-fieldLabels.ts";
@@ -9,6 +10,7 @@ import { plural } from "../../plural.ts";
 
 const deDeAppCopy: AppCopy = {
   softwareFacts: softwareFactsCopy["de-DE"],
+  physicalMemoryResidual: physicalMemoryResidualCopy["de-DE"],
   componentCatalog,
   managementFeedback: {
     ...operationsFeedback["de-DE"],
