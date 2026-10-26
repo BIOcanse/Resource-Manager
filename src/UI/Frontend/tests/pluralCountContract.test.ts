@@ -80,7 +80,8 @@ function rawUseIsLabelled(source: string, parameter: string) {
     const before = source.slice(0, match.index);
     const after = source.slice(match.index + match[0].length);
     if (/^\s*\/\s*(?:\$\{\w+\}|\{count\})/.test(after)) continue;
-    const labelled = /[:：]\s*$/.test(before) && /^(?:\s*[·.,;)/]|\s*`|\s*$)/.test(after);
+    // 标签后面可以是单个数字，也可以是"分子 / 分母"（"Procesos finalizados: 3 / 5."）。
+    const labelled = /[:：]\s*(?:\$\{\w+\}\s*\/\s*)?$/.test(before) && /^(?:\s*[·.,;)/]|\s*`|\s*$)/.test(after);
     const alone = /`$/.test(before) && /^`/.test(after);
     if (!labelled && !alone) return false;
   }
@@ -95,8 +96,7 @@ let referencePaths: string | undefined;
 for (const locale of locales) {
   const functions = countFunctions([["app", await loadAppCopy(locale)], ["settings", await loadSettingsText(locale)]]);
   assert.ok(functions.length >= 40, `${locale}: only ${functions.length} count functions found`);
-  const paths = functions.map((entry) => entry.path).join("
-");
+  const paths = functions.map((entry) => entry.path).join("\n");
   referencePaths ??= paths;
   assert.equal(paths, referencePaths, `${locale} has a different set of count functions than ${locales[0]}`);
   const inflected = pluralCategories[locale].length > 1;
