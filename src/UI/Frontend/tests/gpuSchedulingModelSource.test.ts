@@ -10,7 +10,6 @@ import {
   normalizeGpuSchedulingModelQuery,
   unrecognizedGpuNames
 } from "../src/data/gpu/gpuSchedulingModelSource.ts";
-import { defaultGpuSoftwareBaseScore } from "../src/features/gpuScheduling/gpuSoftwareBaseScore.ts";
 
 const capturedAt = "2026-08-29T12:00:00.000Z";
 
@@ -75,24 +74,6 @@ assert.deepEqual(unrecognizedGpuNames({
     { ...current.scoreSnapshot.gpus[0]!, index: 1, name: "New GPU", isPresetMatch: false }
   ]
 }), ["GPU1 New GPU"]);
-for (const [kind, expected] of Object.entries({
-  game: 95,
-  high_performance: 85,
-  windows_system: 90,
-  windows_component: 90,
-  windows_service: 90,
-  adapted: 80,
-  runtime_product: 55,
-  runtime_package: 55,
-  runtime_root: 55,
-  controlled: 45,
-  managed: 42,
-  unattributed: 30,
-  other: 35
-})) {
-  assert.equal(defaultGpuSoftwareBaseScore(kind), expected, `canonical software kind ${kind}`);
-}
-
 assert.throws(
   () => gpuPerformanceScoreSnapshotDecoder.decode({
     capturedAt,

@@ -694,6 +694,7 @@ async function handleApi(request, response, url) {
         name: "Unlisted GPU",
         defaultPerformanceScore: 0,
         performanceScore: 0,
+        rasterPerformanceScore: 0,
         hasPerformanceOverride: false,
         isIntegrated: false,
         source: "unavailable:steel-nomad-dx12",

@@ -90,7 +90,7 @@ interface ResourceBreakdownProps {
   onReorderBar: (sourceMetricId: string, targetMetricId: string) => void;
 }
 
-type ResourceEmptySegment = Omit<ResourceSoftwareSegment, "kind" | "displayKind" | "processes"> & {
+type ResourceEmptySegment = Omit<ResourceSoftwareSegment, "kind" | "displayKind" | "processes" | "baseScore"> & {
   kind: "Empty";
   displayKind: string;
   processes: [];

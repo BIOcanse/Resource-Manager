@@ -554,7 +554,7 @@ export interface ResourceSoftwareSegment {
   systemPercent: number;
   processCount: number;
   processes: ResourceProcessSegment[];
-  baseScore?: number | null;
+  baseScore: number;
 }
 
 export interface ResourceBreakdownBar {
@@ -1620,7 +1620,7 @@ export interface GpuPerformanceScoreItem {
   gpuId: string;
   index: number;
   name: string;
-  rasterPerformanceScore?: number;
+  rasterPerformanceScore: number;
   defaultPerformanceScore: number;
   performanceScore: number;
   hasPerformanceOverride: boolean;

@@ -25,7 +25,6 @@ import {
   type SourceSnapshot
 } from "../../frontendRuntime/source/SourceSnapshot";
 import { resolveGpuDeviceName } from "./gpuDeviceName";
-import { defaultGpuSoftwareBaseScore } from "./gpuSoftwareBaseScore";
 import { metricDisplayValue } from "../../presentation/metricLabels";
 import {
   failedObservation,
@@ -51,7 +50,7 @@ interface GpuSchedulingPosition {
   index: number;
   label: string;
   name: string;
-  rasterPerformanceScore: number;
+  rasterPerformanceScore: number | null;
   defaultPerformanceScore: number;
   performanceScore: number;
   hasPerformanceOverride: boolean;
@@ -626,7 +625,7 @@ function buildGpuPositions(
       index,
       label,
       name,
-      rasterPerformanceScore: scoreItem?.rasterPerformanceScore ?? defaultPerformanceScore,
+      rasterPerformanceScore: scoreItem?.rasterPerformanceScore ?? null,
       defaultPerformanceScore,
       performanceScore,
       hasPerformanceOverride: scoreItem?.hasPerformanceOverride ?? fallbackOverrideScore !== null,
@@ -745,7 +744,7 @@ function buildGpuProcessLoads(snapshot: ResourceBreakdownSnapshot | undefined) {
     for (const segment of softwareSegments) {
       load.softwareIds.add(segment.softwareId);
       const currentScore = load.softwareScores.get(segment.softwareId) ?? 0;
-      load.softwareScores.set(segment.softwareId, Math.max(currentScore, resolveSegmentBaseScore(segment)));
+      load.softwareScores.set(segment.softwareId, Math.max(currentScore, segment.baseScore));
     }
 
   }
@@ -786,14 +785,6 @@ function parseGpuBreakdownMetric(metricId?: string | null) {
 function isRealProcessSoftwareSegment(segment: ResourceSoftwareSegment) {
   return Boolean(segment.softwareId)
     && !segment.softwareId.startsWith("resource-residual:");
-}
-
-function resolveSegmentBaseScore(segment: ResourceSoftwareSegment) {
-  return sanitizeScore(segment.baseScore) ?? defaultBaseScoreForKind(segment.kind);
-}
-
-function defaultBaseScoreForKind(kind?: string | null) {
-  return defaultGpuSoftwareBaseScore(kind);
 }
 
 function fullReasonFor(
@@ -857,8 +848,8 @@ function formatProcessCount(position: GpuSchedulingPosition) {
   return uiText.gpuScheduling.positionSummary(position.softwareIds.length);
 }
 
-function formatScore(value: number) {
-  return Number.isFinite(value) ? String(value) : "0";
+function formatScore(value: number | null) {
+  return value !== null && Number.isFinite(value) ? String(value) : uiText.gpuScheduling.noData;
 }
 
 function createScoreDraft(positions: GpuSchedulingPosition[]) {

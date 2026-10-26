@@ -170,12 +170,12 @@ assert.deepEqual(metricCardReading(undefined, undefined),
   { value: "--", gap: "", unit: "", missing: true, title: uiText.dashboard.notInCatalogHint }, "an id the catalog does not list");
 const sensor = { id: "cpu.temperature", label: "CPU", group: "cpu", unit: "°C", preferredSlot: "small", selectable: false,
   requiredComponentName: "LibreHardwareMonitor", disabledReason: { domain: 3, code: 2, args: ["LibreHardwareMonitor"] } };
-const needsComponent = metricCardReading(sensor, { id: "cpu.temperature", displayValue: "N/A", numericValue: null, unit: "°C" });
+const needsComponent = metricCardReading(sensor, { id: "cpu.temperature", status: 3, numericValue: null, unit: "°C" });
 assert.deepEqual([needsComponent.missing, needsComponent.value], [true, uiText.dashboard.needsComponent]);
 assert.ok(needsComponent.title?.includes("LibreHardwareMonitor"), "the hint names the missing component");
 const noReading = metricCardReading({ ...sensor, selectable: true, disabledReason: null },
-  { id: "cpu.temperature", displayValue: "N/A", numericValue: null, unit: "°C" });
-// 后端的「N/A」不原样显示：没有读数用界面语言的短话；设备字段写好的「不可用」原样保留。
+  { id: "cpu.temperature", status: 3, numericValue: null, unit: "°C" });
+// Raw status identifies unavailable backend data; local field-card wording remains frontend-owned.
 assert.deepEqual([noReading.missing, noReading.value, noReading.title], [true, uiText.dashboard.noReading, uiText.dashboard.noReadingHint]);
 assert.notEqual(uiText.dashboard.noReading, "N/A");
 assert.equal(metricCardReading({ ...sensor, selectable: true, disabledReason: null },

@@ -6,7 +6,7 @@ import { resourceProcessDisplayName } from "../../presentation/metricLabels.ts";
 import { isResourceTableMetricColumn, resourceTableMetricId } from "./resourceTableSources.ts";
 
 type IdentityProcess = Omit<ResourceProcessSegment, "value" | "systemPercent" | "softwarePercent">;
-type IdentitySoftware = Omit<ResourceSoftwareSegment, "value" | "systemPercent" | "processes"> & { processes: IdentityProcess[] };
+type IdentitySoftware = Omit<ResourceSoftwareSegment, "value" | "systemPercent" | "processes" | "baseScore"> & { processes: IdentityProcess[] };
 
 /**
  * 资源事实的一个指标。totalValue/capacityValue 是 totalMetricId 指向的整机事实（如私有提交量对应系统提交量），

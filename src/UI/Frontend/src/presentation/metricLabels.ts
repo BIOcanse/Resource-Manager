@@ -226,7 +226,7 @@ export function metricDisplayValue(
  * - 目录里没有这一项：「--」；
  * - 需要装组件（目录给出的不可选原因是缺组件）：「需装组件」，说明写缺哪个组件；
  * - 设备不在（设备字段卡片的设备不在字段目录里）：生产端写好的「设备不在」和说明；
- * - 有这一项但没读数：设备字段的「不可用」原样显示，其余（后端的 N/A、--、空串）显示界面语言的「无读数」，说明写目录给的原因或「暂时没有读数」。
+ * - 有这一项但没读数：设备字段的「不可用」原样显示，原始指标无当前值时显示界面语言的「无读数」，说明写目录给的原因或「暂时没有读数」。
  */
 export interface MetricCardReading {
   /** 有值时是数值部分；没有值时是那句短话。 */
@@ -240,8 +240,6 @@ export interface MetricCardReading {
   title?: string;
 }
 
-// 后端用这几个显示串表示没有读数（与后端 MetricCatalog.IsMetricSelectable 同一口径）。
-const noReadingDisplays = new Set(["", "-", "--", "N/A"]);
 // 后端 BackendMessageCodes.Metric.NeedsComponent。
 const metricNeedsComponentCode = 2;
 
@@ -257,7 +255,7 @@ export function metricCardReading(
   if (display === text.deviceAbsent) {
     return missing(display, metric?.detail ?? undefined);
   }
-  if (!noReadingDisplays.has(display) && display !== text.valueUnavailable) {
+  if (display !== "" && display !== text.valueUnavailable) {
     // 值不在目录里时（例如目录还没到），说明沿用读数自带的来源说明。
     return { ...splitMetricUnit(display), missing: false, title: definition ? undefined : metric?.detail ?? undefined };
   }
@@ -276,7 +274,7 @@ export function metricCardReading(
   return missing(noReadingText(display), reasonText ?? text.noReadingHint);
 }
 
-/** 没有读数时显示的短话：设备字段生产端写好的「不可用」原样保留，后端的无读数显示串换成界面语言。 */
+/** 没有读数时显示的短话：本地设备字段卡写好的「不可用」原样保留，无当前原始读数时使用界面语言。 */
 function noReadingText(display: string) {
   return display === uiText.dashboard.valueUnavailable ? display : uiText.dashboard.noReading;
 }

@@ -195,7 +195,7 @@ function decodeGpuPerformanceScoreItem(
     gpuId: requireNonEmptyString(item.gpuId, `${path}.gpuId`),
     index: requireNonNegativeSafeInteger(item.index, `${path}.index`),
     name: requireString(item.name, `${path}.name`),
-    rasterPerformanceScore: optionalNonNegativeNumber(
+    rasterPerformanceScore: requireNonNegativeFiniteNumber(
       item.rasterPerformanceScore,
       `${path}.rasterPerformanceScore`),
     defaultPerformanceScore: requireNonNegativeFiniteNumber(
@@ -248,12 +248,6 @@ function decodeSpecializedCounter(
     isIntrusive: requireBoolean(item.isIntrusive, `${path}.isIntrusive`),
     engineName: optionalNullableString(item.engineName, `${path}.engineName`)
   });
-}
-
-function optionalNonNegativeNumber(value: unknown, path: string): number | undefined {
-  return value === undefined
-    ? undefined
-    : requireNonNegativeFiniteNumber(value, path);
 }
 
 function optionalNullableNumber(
