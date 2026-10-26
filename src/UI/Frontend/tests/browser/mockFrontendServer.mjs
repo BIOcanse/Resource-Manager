@@ -124,6 +124,8 @@ const defaultScenario = {
   manualPublishPaths: [],
   // 这些资源条按后端的“无读数”形状发：保留 id、单位和缩放，总量、容量、百分比为 null，没有软件，带 unavailableReason。
   resourceUnavailableBarIds: [],
+  // 这些资源条原样重发上一次发出的值（真机 10-26 的半帧：一帧里只有一半的条变了）。
+  resourceFrozenBarIds: [],
   // 产品更新状态（GET /api/updates/product/status 与它的推送订阅同源）：只写与默认状态不同的字段；
   // "invalid" 让推送发出不合合同的帧、GET 返回 503，模拟状态不可用。未知字段和不合合同的值直接拒绝。
   productUpdateStatus: {}
@@ -1955,17 +1957,24 @@ function normalizeMetricIds(values) {
   return [...ids.values()];
 }
 
+const lastServedResourceBars = new Map();
+
 function resourceBreakdown(...args) {
   const breakdown = resourceBreakdownFixture(...args);
   const unavailable = new Set(scenario.resourceUnavailableBarIds);
-  if (unavailable.size === 0) return breakdown;
-  return {
-    ...breakdown,
-    bars: breakdown.bars.map((bar) => unavailable.has(bar.metricId)
+  const frozen = new Set(scenario.resourceFrozenBarIds);
+  // 每种调用（资源条、明细、资源表事实）各记各的：同一条在不同调用里的形状不同。
+  const call = JSON.stringify(args.slice(1).map((value) => value instanceof Set ? [...value].sort() : value));
+  const bars = breakdown.bars.map((bar) => {
+    const key = `${call}|${bar.metricId}`;
+    if (frozen.has(bar.metricId) && lastServedResourceBars.has(key)) return lastServedResourceBars.get(key);
+    return unavailable.has(bar.metricId)
       ? { metricId: bar.metricId, unit: bar.unit, scaleMode: bar.scaleMode, ...(bar.processFieldName ? { processFieldName: bar.processFieldName } : {}),
         totalValue: null, capacityValue: null, totalSystemPercent: null, sharedValue: null, software: [], unavailableReason: "hardware-source-unavailable" }
-      : bar)
-  };
+      : bar;
+  });
+  for (const bar of bars) lastServedResourceBars.set(`${call}|${bar.metricId}`, bar);
+  return unavailable.size === 0 && frozen.size === 0 ? breakdown : { ...breakdown, bars };
 }
 
 function resourceBreakdownFixture(capturedAt = now(), processDetailSoftwareIds = new Set(), measures = [], modes = [], { keepMissingTotals = false, ids = [] } = {}) {
