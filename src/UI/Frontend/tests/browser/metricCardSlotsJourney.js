@@ -154,13 +154,15 @@ export default async function metricCardSlotsJourney(page, baseUrl) {
   assert.deepEqual(saved.find((item) => item.id === "legacy").slots.map((slot) => slot.size), ["medium", "small", "small"],
     "the migrated card is saved as slots");
 
-  // 4'. 无动画档：改大小下一帧就到终态。
-  await load("none");
-  await page.getByRole("button", { name: zh.monitorPage.editLayoutLabel, exact: true }).click();
-  await card("legacy").locator(".slot-resize").nth(1).click();
-  const instant = await sampleAfter(page, page.getByRole("menuitem", { name: option("large"), exact: true }), "legacy");
-  assert.equal(Math.round(instant[0][1].height), finalHeight, "without animation the slot is at its new size on the next frame");
-  await page.getByRole("button", { name: zh.monitorPage.cancelEditLabel, exact: true }).click();
+  // 4'. 两个减弱档：改大小下一帧就到终态。
+  for (const mode of ["none", "ultra"]) {
+    await load(mode);
+    await page.getByRole("button", { name: zh.monitorPage.editLayoutLabel, exact: true }).click();
+    await card("legacy").locator(".slot-resize").nth(1).click();
+    const instant = await sampleAfter(page, page.getByRole("menuitem", { name: option("large"), exact: true }), "legacy");
+    assert.equal(Math.round(instant[0][1].height), finalHeight, `${mode}: the slot is at its new size on the next frame`);
+    await page.getByRole("button", { name: zh.monitorPage.cancelEditLabel, exact: true }).click();
+  }
   assert.deepEqual(errors, []);
 
   // 回到正常档，运行器收尾的可用性检查按默认页面走。

@@ -79,6 +79,7 @@ import accessibilitySemanticsJourney from "./accessibilitySemanticsJourney.js";
 // browserGateRunner.mjs，用法见那里的说明。
 const allJourneys = [
   ["management-source-states", managementSourceStatesJourney],
+  ["monitor-page-task", async (...args) => (await import("./monitorPageTaskJourney.js")).default(...args)],
   ["dashboard-preferences", async (...args) => (await import("./dashboardPreferencesJourney.js")).default(...args)],
   ["service-recovery-settings", serviceRecoverySettingsJourney],
   ["product-updates", productUpdatesJourney],
