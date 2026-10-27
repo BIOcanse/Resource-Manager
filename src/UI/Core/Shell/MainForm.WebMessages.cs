@@ -106,6 +106,11 @@ public sealed partial class MainForm
                         ? languageProperty.GetString()
                         : null);
                 break;
+            case "shell.animationStyle":
+                if (message.TryGetProperty("style", out var styleProperty)
+                    && styleProperty.ValueKind == JsonValueKind.String)
+                    ApplyAnimationStyle(styleProperty.GetString());
+                break;
         }
     }
 }

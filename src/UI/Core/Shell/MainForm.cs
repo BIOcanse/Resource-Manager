@@ -6,10 +6,6 @@ namespace ResourceManager.NativeUi;
 public sealed partial class MainForm : Form
 {
     private bool showWithoutActivation;
-    private const int WsSysMenu = 0x00080000;
-    private const int WsThickFrame = 0x00040000;
-    private const int WsMinimizeBox = 0x00020000;
-    private const int WsMaximizeBox = 0x00010000;
 
     private readonly IFrontendHost frontendHost;
     private readonly BackendAvailabilityPanel backendAvailabilityPanel;

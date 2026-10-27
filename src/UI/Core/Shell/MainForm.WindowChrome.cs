@@ -4,6 +4,7 @@ public sealed partial class MainForm
 {
     private const int ResizeGripSize = 8;
     private const int WmNcCalcSize = 0x0083;
+    private const int WmGetMinMaxInfo = 0x0024;
     private const int WmNcHitTest = 0x0084;
     private const int WmNcLButtonDown = 0x00A1;
     private const int WmExitSizeMove = 0x0232;
@@ -19,13 +20,21 @@ public sealed partial class MainForm
     private const int HtBottomRight = 17;
 
     private bool restoreMaximizedAfterCaptionDrag;
+    private bool windowTransitionsDisabled;
+
+    private void ApplyAnimationStyle(string? style)
+    {
+        if (style is not ("none" or "ultra" or "smooth" or "desktop" or "terminal")) return;
+        windowTransitionsDisabled = style is "none" or "ultra";
+        NativeWindowChrome.ApplyTransitions(this, windowTransitionsDisabled);
+    }
 
     protected override CreateParams CreateParams
     {
         get
         {
             var parameters = base.CreateParams;
-            parameters.Style |= WsSysMenu | WsThickFrame | WsMinimizeBox | WsMaximizeBox;
+            parameters.Style |= NativeWindowChrome.WindowStyles;
             return parameters;
         }
     }
@@ -34,7 +43,7 @@ public sealed partial class MainForm
     {
         base.OnHandleCreated(args);
         NativeWindowChrome.ApplyBorderlessSnapChrome(this);
-        UpdateMaximizedBounds();
+        NativeWindowChrome.ApplyTransitions(this, windowTransitionsDisabled);
     }
 
     protected override void WndProc(ref Message message)
@@ -42,9 +51,17 @@ public sealed partial class MainForm
         if (TryHandleSessionEndingMessage(ref message))
             return;
 
-        if (message.Msg == WmNcCalcSize && message.WParam != IntPtr.Zero)
+        if (message.Msg == WmNcCalcSize)
         {
+            NativeWindowChrome.CalculateNonClientArea(message.HWnd, message.LParam);
             message.Result = IntPtr.Zero;
+            return;
+        }
+
+        if (message.Msg == WmGetMinMaxInfo)
+        {
+            base.WndProc(ref message);
+            NativeWindowChrome.ApplyMaximizedBounds(message.HWnd, message.LParam);
             return;
         }
 
@@ -77,6 +94,7 @@ public sealed partial class MainForm
 
     private IntPtr HitTestResizeGrip(Point cursor)
     {
+        if (WindowState != FormWindowState.Normal) return new IntPtr(HtClient);
         var left = cursor.X <= ResizeGripSize;
         var right = cursor.X >= ClientSize.Width - ResizeGripSize;
         var top = cursor.Y <= ResizeGripSize;
@@ -119,14 +137,8 @@ public sealed partial class MainForm
             return;
         }
 
-        UpdateMaximizedBounds();
         WindowState = FormWindowState.Maximized;
         BeginInvoke(new Action(() => PublishWindowResizeState(resizing: false)));
-    }
-
-    private void UpdateMaximizedBounds()
-    {
-        MaximizedBounds = WindowPlacement.GetWorkingAreaForControl(this);
     }
 
     private void BeginDragMove()
@@ -170,7 +182,6 @@ public sealed partial class MainForm
             return;
         }
 
-        UpdateMaximizedBounds();
         WindowState = FormWindowState.Maximized;
     }
 
