@@ -2,8 +2,8 @@
 param(
     [Parameter(Mandatory)][ValidateSet('Add', 'Resolve', 'Export')][string]$Action,
     [string]$Registry = (Join-Path $PSScriptRoot '../../src/Shared/StateItems/state-items.json'),
-    [ValidateSet('block', 'item')][string]$Kind,
-    [ValidateSet('backend', 'ui')][string]$Process,
+    [ValidateSet('block', 'item', 'condition')][string]$Kind,
+    [ValidateSet('backend', 'ui', 'desktop', 'window')][string]$Process,
     [string]$Name,
     [string]$Comment,
     [ValidateSet('own', 'reference')][string]$Storage,
@@ -13,6 +13,11 @@ param(
     [bool]$PerBlock,
     [ValidateSet('event', 'poll')][string]$Trigger,
     [string]$PollInterval,
+    [long]$Node,
+    [System.Collections.IDictionary[]]$ItemReads = @(),
+    [long[]]$Conditions = @(),
+    [long[]]$Children = @(),
+    [long]$Decides,
     [long]$Uid,
     [string]$Version,
     [string]$TableDirectory,
@@ -36,6 +41,12 @@ switch ($Action) {
         }
         $new = [ordered]@{ uid = $next; kind = $Kind; process = $Process; name = $Name; comment = $Comment }
         $itemParameters = @('Storage', 'Type', 'OwnerBlock', 'OwnerComponent', 'PerBlock', 'Trigger', 'PollInterval')
+        $conditionParameters = @('Node', 'ItemReads', 'Conditions', 'Children', 'Decides')
+        if ($Kind -ne 'condition') {
+            foreach ($parameter in $conditionParameters) {
+                if ($PSBoundParameters.ContainsKey($parameter)) { throw "Add $Kind cannot use -$parameter." }
+            }
+        }
         if ($Kind -eq 'item') {
             foreach ($required in @('Storage', 'Type', 'PerBlock', 'Trigger')) {
                 if (-not $PSBoundParameters.ContainsKey($required)) { throw "Add item requires -$required." }
@@ -47,6 +58,17 @@ switch ($Action) {
             $new.perBlock = $PerBlock
             $new.trigger = $Trigger
             if ($PSBoundParameters.ContainsKey('PollInterval')) { $new.pollInterval = $PollInterval }
+        } elseif ($Kind -eq 'condition') {
+            foreach ($parameter in $itemParameters | Where-Object { $_ -ne 'PerBlock' }) {
+                if ($PSBoundParameters.ContainsKey($parameter)) { throw "Add condition cannot use -$parameter." }
+            }
+            if (-not $PSBoundParameters.ContainsKey('PerBlock')) { throw 'Add condition requires -PerBlock.' }
+            $new.perBlock = $PerBlock
+            if ($PSBoundParameters.ContainsKey('Node')) { $new.node = $Node }
+            $new.items = @($ItemReads)
+            $new.conditions = @($Conditions)
+            $new.children = @($Children)
+            if ($PSBoundParameters.ContainsKey('Decides')) { $new.decides = $Decides }
         } else {
             foreach ($parameter in $itemParameters) {
                 if ($PSBoundParameters.ContainsKey($parameter)) { throw "Add block cannot use -$parameter." }

@@ -63,7 +63,7 @@ foreach ($field in @('uid','kind','process','name','comment')) {
 foreach ($uid in @(0, -1, 1.5, '1', $true)) { Assert-Invalid { param($r) $r.entries[0].uid = $uid } 'Entry.*integer' }
 Assert-Invalid { param($r) $r.entries[1].uid = 1 } 'Entry.*duplicate uid'
 Assert-Invalid { param($r) $r.entries = @($r.entries[1], $r.entries[0], $r.entries[2], $r.entries[3]) } 'Entry.*sorted'
-Assert-Invalid { param($r) $r.entries[0].kind = 'condition' } 'Entry.*kind'
+Assert-Invalid { param($r) $r.entries[0].kind = 'unknown' } 'Entry.*kind'
 Assert-Invalid { param($r) $r.entries[0].process = 'other' } 'Entry.*process'
 foreach ($name in @('', '1bad', 'bad-name', 'class', '__arglist', '@Program', "Pro$([char]0x200C)gram", 'Prögram')) { Assert-Invalid { param($r) $r.entries[0].name = $name } 'Entry.*identifier' }
 Assert-Invalid { param($r) $r.entries[2].name = 'Program' } 'Entry.*duplicate name'
