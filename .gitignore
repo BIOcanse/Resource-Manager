@@ -39,6 +39,8 @@
 # 目录本身不能整体排除，否则 git 不会再进去看 negation 规则。
 /docs/*
 !/docs/screenshots/
+# The public state-item tables (one per registry version) translate UIDs for outside readers; they ship with the repository.
+!/docs/state-items/
 /evidence/
 /output/
 # FreedomPoint values are selected afresh by the frontend build, never committed.

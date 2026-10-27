@@ -1,0 +1,557 @@
+{
+  "entries": [
+    {
+      "uid": 1,
+      "kind": "block",
+      "process": "backend",
+      "name": "Program",
+      "comment": "Root of the backend control tree: the program itself."
+    },
+    {
+      "uid": 2,
+      "kind": "block",
+      "process": "backend",
+      "name": "NativeEtwLifetimeService",
+      "comment": "Owns the lifetime of the three native ETW producer flows."
+    },
+    {
+      "uid": 3,
+      "kind": "block",
+      "process": "backend",
+      "name": "TrustedAccessRequestOwner",
+      "comment": "Maintains and publishes pending requests for trusted access."
+    },
+    {
+      "uid": 4,
+      "kind": "block",
+      "process": "backend",
+      "name": "TrustedAccessInvocationHostedService",
+      "comment": "Processes trusted invocations from external callers and publishes their results."
+    },
+    {
+      "uid": 5,
+      "kind": "block",
+      "process": "backend",
+      "name": "RuntimeSpecializationCoordinator",
+      "comment": "Publishes the compiled runtime plan used by backend services."
+    },
+    {
+      "uid": 6,
+      "kind": "block",
+      "process": "backend",
+      "name": "AutomaticProductUpdateService",
+      "comment": "Checks for automatic product updates and produces update decisions in the Windows service host."
+    },
+    {
+      "uid": 7,
+      "kind": "block",
+      "process": "backend",
+      "name": "HostManagerSamplingSubscriptionOwner",
+      "comment": "Owns the shared workspace for sampling subscriptions."
+    },
+    {
+      "uid": 8,
+      "kind": "block",
+      "process": "backend",
+      "name": "HostManagerMetricSnapshotOwner",
+      "comment": "Owns the workspace that publishes current metric snapshots."
+    },
+    {
+      "uid": 9,
+      "kind": "block",
+      "process": "backend",
+      "name": "HostManagerSoftwareIdentityOwner",
+      "comment": "Owns the workspace that produces resolved software identities."
+    },
+    {
+      "uid": 10,
+      "kind": "block",
+      "process": "backend",
+      "name": "HostManagerFileQueryOwner",
+      "comment": "Owns the workspace that provides file queries and their results."
+    },
+    {
+      "uid": 11,
+      "kind": "block",
+      "process": "backend",
+      "name": "HostManagerDisplayCoordinatorOwner",
+      "comment": "Owns the workspace that publishes display topology."
+    },
+    {
+      "uid": 12,
+      "kind": "block",
+      "process": "backend",
+      "name": "HostManagerPublicServiceCoordinatorOwner",
+      "comment": "Owns the workspace that produces public service tasks."
+    },
+    {
+      "uid": 13,
+      "kind": "block",
+      "process": "backend",
+      "name": "HostManagerOperationCoordinatorOwner",
+      "comment": "Owns the workspace that produces requested operation results."
+    },
+    {
+      "uid": 14,
+      "kind": "block",
+      "process": "backend",
+      "name": "SqlitePortableSoftwareRegistry",
+      "comment": "Maintains the persistent registry of portable software."
+    },
+    {
+      "uid": 15,
+      "kind": "block",
+      "process": "backend",
+      "name": "ServiceAutoStartSettings",
+      "comment": "Maintains the configured service automatic startup policy."
+    },
+    {
+      "uid": 16,
+      "kind": "block",
+      "process": "backend",
+      "name": "ServiceRecoverySettings",
+      "comment": "Maintains the configured service recovery policy."
+    },
+    {
+      "uid": 17,
+      "kind": "block",
+      "process": "backend",
+      "name": "ControlDesiredStateReassertion",
+      "comment": "Reapplies the desired state of hardware controls when required."
+    },
+    {
+      "uid": 18,
+      "kind": "block",
+      "process": "backend",
+      "name": "FanCurveTemperatureFeed",
+      "comment": "Feeds sampled temperatures to software fan curves."
+    },
+    {
+      "uid": 19,
+      "kind": "block",
+      "process": "backend",
+      "name": "ControlActualStateReader",
+      "comment": "Samples the actual state of hardware controls."
+    },
+    {
+      "uid": 20,
+      "kind": "block",
+      "process": "backend",
+      "name": "FanControlCoreLifetimeService",
+      "comment": "Owns and provides the native fan control runtime."
+    },
+    {
+      "uid": 21,
+      "kind": "block",
+      "process": "backend",
+      "name": "KernelEtwSessionBroker",
+      "comment": "Owns the shared kernel ETW session and provides its kernel events to consumers."
+    },
+    {
+      "uid": 22,
+      "kind": "block",
+      "process": "backend",
+      "name": "PortableSoftwareDiscoveryService",
+      "comment": "Discovers portable software from observed process activity."
+    },
+    {
+      "uid": 23,
+      "kind": "block",
+      "process": "backend",
+      "name": "EtwPhysicalDiskIoAttributionReader",
+      "comment": "Attributes physical disk activity from kernel ETW events."
+    },
+    {
+      "uid": 24,
+      "kind": "block",
+      "process": "backend",
+      "name": "EtwNetworkTcpIpAttributionReader",
+      "comment": "Attributes TCP/IP network activity from kernel ETW events."
+    },
+    {
+      "uid": 25,
+      "kind": "block",
+      "process": "backend",
+      "name": "GpuPlacementProcessHistoryObserver",
+      "comment": "Produces graphics API history for processes, used for GPU placement."
+    },
+    {
+      "uid": 26,
+      "kind": "block",
+      "process": "backend",
+      "name": "SharedResourceSubscriptionMaintenanceService",
+      "comment": "Maintains shared resource subscriptions and their expiration."
+    },
+    {
+      "uid": 27,
+      "kind": "block",
+      "process": "backend",
+      "name": "JsonDebugDiagnosticLogWriter",
+      "comment": "Writes diagnostic snapshots to the debug log."
+    },
+    {
+      "uid": 28,
+      "kind": "block",
+      "process": "backend",
+      "name": "HostManagerReportCoordinatorOwner",
+      "comment": "Owns the workspace that produces reports."
+    },
+    {
+      "uid": 29,
+      "kind": "block",
+      "process": "backend",
+      "name": "HostManagerSmartCoordinator",
+      "comment": "Coordinates the active optimization runtime and produces optimization decisions."
+    },
+    {
+      "uid": 30,
+      "kind": "block",
+      "process": "backend",
+      "name": "PresentFrameEtwSource",
+      "comment": "Produces frame timing and graphics API observations from Present ETW events."
+    },
+    {
+      "uid": 31,
+      "kind": "block",
+      "process": "backend",
+      "name": "GpuAllocationCollector",
+      "comment": "Produces GPU allocation observations from native ETW sessions."
+    },
+    {
+      "uid": 32,
+      "kind": "block",
+      "process": "backend",
+      "name": "DxgkrnlVidMmEtwTelemetryZone",
+      "comment": "Produces GPU memory residual evidence from VidMm ETW events."
+    },
+    {
+      "uid": 33,
+      "kind": "block",
+      "process": "backend",
+      "name": "DeviceTopologySnapshotProvider",
+      "comment": "Publishes current device topology snapshots."
+    },
+    {
+      "uid": 34,
+      "kind": "block",
+      "process": "backend",
+      "name": "GpuTelemetryWorkerSupervisor",
+      "comment": "Supervises native GPU sampling workers and publishes their GPU metrics."
+    },
+    {
+      "uid": 35,
+      "kind": "block",
+      "process": "backend",
+      "name": "WindowsHardwareMetricSampler",
+      "comment": "Samples hardware metrics on Windows."
+    },
+    {
+      "uid": 36,
+      "kind": "block",
+      "process": "backend",
+      "name": "CpuTopologySnapshotProvider",
+      "comment": "Publishes current CPU topology snapshots."
+    },
+    {
+      "uid": 37,
+      "kind": "block",
+      "process": "backend",
+      "name": "EtwCpuCoreResidencyReader",
+      "comment": "Samples CPU core residency from kernel ETW observations."
+    },
+    {
+      "uid": 38,
+      "kind": "block",
+      "process": "backend",
+      "name": "EtwSystemInterruptSnapshotSource",
+      "comment": "Publishes interrupt activity snapshots from kernel ETW observations."
+    },
+    {
+      "uid": 39,
+      "kind": "block",
+      "process": "backend",
+      "name": "WindowsResourceBreakdownSampler",
+      "comment": "Publishes resource use snapshots and their per-process breakdown."
+    },
+    {
+      "uid": 40,
+      "kind": "block",
+      "process": "ui",
+      "name": "Program",
+      "comment": "Root of the UI control trees: the program itself."
+    },
+    {
+      "uid": 41,
+      "kind": "block",
+      "process": "ui",
+      "name": "MainRoot",
+      "comment": "Owns the main UI service tree."
+    },
+    {
+      "uid": 42,
+      "kind": "block",
+      "process": "ui",
+      "name": "TrayRoot",
+      "comment": "Owns the independent system tray tree."
+    },
+    {
+      "uid": 43,
+      "kind": "block",
+      "process": "ui",
+      "name": "SingleInstance",
+      "comment": "Receives requests through the single-instance UI channel."
+    },
+    {
+      "uid": 44,
+      "kind": "block",
+      "process": "ui",
+      "name": "BackendConnection",
+      "comment": "Maintains the current backend session and reconnects after session loss."
+    },
+    {
+      "uid": 45,
+      "kind": "block",
+      "process": "ui",
+      "name": "MainWindow",
+      "comment": "Owns the main application window lifetime."
+    },
+    {
+      "uid": 46,
+      "kind": "block",
+      "process": "ui",
+      "name": "DesktopObservation",
+      "comment": "Observes desktop activity using the current backend session."
+    },
+    {
+      "uid": 47,
+      "kind": "block",
+      "process": "ui",
+      "name": "Overlay",
+      "comment": "Owns the performance overlay lifetime."
+    },
+    {
+      "uid": 48,
+      "kind": "block",
+      "process": "ui",
+      "name": "LoopbackProxy",
+      "comment": "Owns the loopback proxy used by the main window."
+    },
+    {
+      "uid": 49,
+      "kind": "block",
+      "process": "ui",
+      "name": "WebViewHost",
+      "comment": "Owns the embedded browser lifetime."
+    },
+    {
+      "uid": 50,
+      "kind": "block",
+      "process": "ui",
+      "name": "TrayNotifications",
+      "comment": "Observes backend notifications for the system tray."
+    },
+    {
+      "uid": 51,
+      "kind": "item",
+      "process": "backend",
+      "name": "BlockDemand",
+      "comment": "Whether a block currently has external demand. Demand updates provide the change event.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "BusinessBlockScheduler demand table"
+      },
+      "perBlock": true,
+      "trigger": "event"
+    },
+    {
+      "uid": 52,
+      "kind": "item",
+      "process": "backend",
+      "name": "ProgramShuttingDown",
+      "comment": "Whether terminal backend shutdown has begun. The host stopping turn publishes this event.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "BusinessBlockDependencyLifetime host stopping turn"
+      },
+      "perBlock": false,
+      "trigger": "event"
+    },
+    {
+      "uid": 53,
+      "kind": "item",
+      "process": "backend",
+      "name": "PresentNativeSessionAvailable",
+      "comment": "Whether the Present producer can use its native ETW session. Session lifecycle changes publish events.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "block": 30
+      },
+      "perBlock": false,
+      "trigger": "event"
+    },
+    {
+      "uid": 54,
+      "kind": "item",
+      "process": "backend",
+      "name": "GpuAllocationNativeSessionAvailable",
+      "comment": "Whether the GPU allocation producer can use its native ETW session. Session lifecycle changes publish events.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "block": 31
+      },
+      "perBlock": false,
+      "trigger": "event"
+    },
+    {
+      "uid": 55,
+      "kind": "item",
+      "process": "backend",
+      "name": "VidMmNativeSessionAvailable",
+      "comment": "Whether the VidMm producer can use its native ETW session. Session lifecycle changes publish events.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "block": 32
+      },
+      "perBlock": false,
+      "trigger": "event"
+    },
+    {
+      "uid": 56,
+      "kind": "item",
+      "process": "backend",
+      "name": "PresentUnfrozen",
+      "comment": "Whether the Present compute zone is not frozen. Applying a mode publishes the change event.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "PresentFrameEtwSource compute mode"
+      },
+      "perBlock": false,
+      "trigger": "event"
+    },
+    {
+      "uid": 57,
+      "kind": "item",
+      "process": "backend",
+      "name": "VidMmUnfrozen",
+      "comment": "Whether the VidMm compute zone is not frozen. Applying a mode publishes the change event.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "DxgkrnlVidMmEtwTelemetryZone compute mode"
+      },
+      "perBlock": false,
+      "trigger": "event"
+    },
+    {
+      "uid": 58,
+      "kind": "item",
+      "process": "ui",
+      "name": "ProgramShuttingDown",
+      "comment": "Whether terminal UI shutdown has begun. The UI exit path publishes this event.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "NativeUiBlockTrees shutdown path"
+      },
+      "perBlock": false,
+      "trigger": "event"
+    },
+    {
+      "uid": 59,
+      "kind": "item",
+      "process": "ui",
+      "name": "ProgramStarted",
+      "comment": "Whether the UI process has started its control trees. The startup path publishes this event.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "NativeUiBlockTrees startup path"
+      },
+      "perBlock": false,
+      "trigger": "event"
+    },
+    {
+      "uid": 60,
+      "kind": "item",
+      "process": "ui",
+      "name": "WindowWanted",
+      "comment": "Whether the user currently wants the main window open. Window requests publish change events.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "NativeUiBlockTrees user operation paths"
+      },
+      "perBlock": false,
+      "trigger": "event"
+    },
+    {
+      "uid": 61,
+      "kind": "item",
+      "process": "ui",
+      "name": "BackendSessionReady",
+      "comment": "Whether the current backend session is ready. The backend connection flow publishes session transition events.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "block": 44
+      },
+      "perBlock": false,
+      "trigger": "event"
+    },
+    {
+      "uid": 62,
+      "kind": "block",
+      "process": "backend",
+      "name": "HostMemoryProtection",
+      "comment": "Host memory protection: holds commit and process subscriptions and acts when commit reaches the threshold."
+    },
+    {
+      "uid": 63,
+      "kind": "item",
+      "process": "backend",
+      "name": "HostMemoryProtectionEnabled",
+      "comment": "Whether the user enabled host memory protection. Settings changes publish the event.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "HostMemoryProtectionService settings"
+      },
+      "perBlock": false,
+      "trigger": "event"
+    },
+    {
+      "uid": 64,
+      "kind": "item",
+      "process": "backend",
+      "name": "MemoryProtectionNormalRunningPointExists",
+      "comment": "Whether a normal running point exists for this service run. Creating a point publishes the event.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "HostMemoryProtectionService normal running point"
+      },
+      "perBlock": false,
+      "trigger": "event"
+    },
+    {
+      "uid": 65,
+      "kind": "item",
+      "process": "backend",
+      "name": "MemoryProtectionReserveBuilt",
+      "comment": "Whether every configured disk reserve entry is fully built. Reserve configuration and rebuild publish the event.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "HostMemoryDiskReserves"
+      },
+      "perBlock": false,
+      "trigger": "event"
+    }
+  ]
+}
