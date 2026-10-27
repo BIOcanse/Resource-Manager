@@ -47,6 +47,8 @@ export type ExitSlot = keyof typeof EXIT_SLOTS;
 const GHOST_NODE_LIMIT = 20000;
 /** 幽灵最长留多久：槽位动画没有按时结束（例如被父元素整个清空）也一定撤掉。 */
 const GHOST_LIFETIME_MS = 3000;
+/** 槽位动画最晚多久开始：过了还没有 animationstart，就是这个节点在这种风格下没有槽位（退出当场结束）。 */
+const SLOT_START_WAIT_MS = 250;
 /** 找仍在文档里的祖先时最多往上走几层。 */
 const ANCESTOR_LIMIT = 64;
 /**
@@ -237,7 +239,7 @@ function place(ghost: HTMLElement, placement: Placement, options: ExitOptions): 
         element.scrollTop = scroll.top;
       }
     }
-    // 等退出槽位的动画播完（副本里重放的进场、循环播放的转圈不算）；槽位是空的就在两帧后撤掉。
+    // 等退出槽位的动画播完（副本里重放的进场、循环播放的转圈不算）；槽位是空的就在 SLOT_START_WAIT_MS 后撤掉。
     awaitSlotAnimations(ghost, EXIT_KEYFRAMES, () => ghost.remove());
   });
 }
@@ -250,7 +252,8 @@ export const ENTER_KEYFRAMES: ReadonlySet<string> = new Set(["motion-fade-in"]);
 /**
  * 等 root 和它里面用 keyframes 里的关键帧播放的动画都结束：槽位动画由这里挂上的属性开始，所以按冒泡到 root 的
  * animationstart、animationend、animationcancel 事件数，不调用 getAnimations（它会在这一刻算整棵子树的样式）。
- * 挂上后两帧里一个都没开始，就是槽位是空的；最长等 GHOST_LIFETIME_MS。
+ * animationstart 要等动画真正开始（排进合成器）才派发，常在挂上后两三帧；SLOT_START_WAIT_MS 里一个都没开始，就是槽位是空的。
+ * 最长等 GHOST_LIFETIME_MS。
  */
 function awaitSlotAnimations(root: HTMLElement, keyframes: ReadonlySet<string>, done: () => void): void {
   let active = 0;
@@ -279,9 +282,9 @@ function awaitSlotAnimations(root: HTMLElement, keyframes: ReadonlySet<string>, 
   root.addEventListener("animationstart", onStart);
   root.addEventListener("animationend", onEnd);
   root.addEventListener("animationcancel", onEnd);
-  requestAnimationFrame(() => requestAnimationFrame(() => {
+  window.setTimeout(() => {
     if (!started) finish();
-  }));
+  }, SLOT_START_WAIT_MS);
 }
 
 /** 这一刻整块离开的内容（exitInPlace 记下，同一个任务的微任务里清掉）：里面卸下的节点由这块的幽灵带着。 */

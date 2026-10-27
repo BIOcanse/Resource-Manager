@@ -289,13 +289,16 @@ export default async function controlSliderInteractionJourney(page, baseUrl) {
   await slider.evaluate(input => {
     window.__thumbPresses = [];
     window.addEventListener("pointerdown", event => {
-      window.__thumbPresses.push({ x: event.clientX, value: Number(input.value),
-        hitsInput: document.elementFromPoint(event.clientX, event.clientY) === input });
+      const press = { x: event.clientX, value: Number(input.value),
+        hitsInput: document.elementFromPoint(event.clientX, event.clientY) === input, nextFrameValue: null };
+      window.__thumbPresses.push(press);
+      // 运行时可能在下一帧才处理这次按下：那一帧滑块还在同一步，这一次才算数。
+      requestAnimationFrame(() => { press.nextFrameValue = Number(input.value); });
     }, { capture: true });
   });
   const attempts = [];
   let caught = null;
-  for (let attempt = 0; attempt < 6 && caught === null; attempt += 1) {
+  for (let attempt = 0; attempt < 10 && caught === null; attempt += 1) {
     const from = Number(await thumb());
     const to = from < 50 ? 90 : 10;
     await page.mouse.move(xAt(to), movingY);
@@ -313,12 +316,12 @@ export default async function controlSliderInteractionJourney(page, baseUrl) {
     await page.mouse.move(xAt(drawn), movingY);
     await page.mouse.down();
     await page.mouse.up();
-    const press = await page.evaluate(() => window.__thumbPresses.at(-1));
     await page.waitForTimeout(400);
+    const press = await page.evaluate(() => window.__thumbPresses.at(-1));
     await settleRendering();
     const entry = { from, to, drawn, press, thumb: await thumb(), shown: await shown() };
     attempts.push(entry);
-    if (Math.abs(press.x - xAt(press.value)) <= 6) caught = entry;
+    if (Math.abs(press.x - xAt(press.value)) <= 6 && press.nextFrameValue === press.value) caught = entry;
   }
   assert.ok(caught, `A press landed on the thumb where it was drawn: ${JSON.stringify(attempts)}`);
   assert.equal(caught.press.hitsInput, true, `The drawn thumb is hit: ${JSON.stringify(caught)}`);
