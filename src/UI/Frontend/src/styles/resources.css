@@ -908,7 +908,9 @@
   gap: 14px;
 }
 
-.resource-breakdown-item {
+/* 加载中的占位（.resource-breakdown-slot）和有数据的资源条同一套盒子：一样高，数据到了不推动下面的内容。 */
+.resource-breakdown-item,
+.resource-breakdown-slot {
   min-width: 0;
   position: relative;
   display: grid;
@@ -956,7 +958,8 @@
   cursor: pointer;
 }
 
-.resource-bar-track.unavailable {
+.resource-bar-track.unavailable,
+.resource-bar-track.pending {
   cursor: default;
   background: var(--surface-soft);
 }

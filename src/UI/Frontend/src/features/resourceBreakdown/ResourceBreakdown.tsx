@@ -55,6 +55,7 @@ import type { ProcessMetricField } from "../../data/resourceMonitor/processField
 import { RadioGroupItem, RadioGroupRoot } from "../../ui/primitives/RadioGroup.tsx";
 import { moveRovingFocus } from "../../ui/primitives/RovingFocus.ts";
 import {
+  resourceBarSource,
   resourceBarSourceChoices,
   resourceBarSourceLabel,
   resourceBarText,
@@ -187,8 +188,9 @@ export function ResourceBreakdown(props: ResourceBreakdownProps) {
       </Show>
       <Show
         when={props.snapshotBars.length > 0}
-        fallback={
-          <ContentState
+        fallback={props.observation.status === "loading" && props.bars.length > 0
+          ? <ResourceBreakdownPlaceholder bars={props.bars} gpuNames={props.gpuNames} processFields={props.processFields} />
+          : <ContentState
             kind={props.observation.status === "loading" ? "waiting"
               : props.observation.status === "error" || props.observation.status === "profile-disabled" ? "unavailable" : "empty"}
             title={props.observation.status === "loading"
@@ -247,6 +249,45 @@ export function ResourceBreakdown(props: ResourceBreakdownProps) {
         </div>
       </Show>
     </section>
+  );
+}
+
+/**
+ * 第一批资源条数据到之前，设置里的每一条各占它有数据时的位置：条名、读数的位置（“--”）、刻度、问号和一条空轨道，
+ * 和有数据时一样高（用户 10-27：「让占位和加载后状态的逻辑占位大小相等」）。资源条区的数据跟可见区域走，
+ * 没进过视野的区一直在等第一批；数据到时下面的资源表不被推动。正在加载照旧读给读屏。
+ */
+function ResourceBreakdownPlaceholder(props: {
+  bars: ResourceBarSettings[];
+  gpuNames: ReadonlyMap<string, string>;
+  processFields: readonly ProcessMetricField[];
+}) {
+  return (
+    <div class="resource-breakdown" aria-busy="true">
+      <p class="sr-only" role="status">{uiText.observationNotice.loading(uiText.monitorPage.resourceUsage)}</p>
+      <For each={props.bars}>
+        {(setting) => {
+          const source = resourceBarSource(setting);
+          const text = () => resourceBarText({ metricId: setting.metricId, source, processFieldName: null }, props.processFields, null);
+          const active = () => normalizeResourceBarScaleMode(setting.metricId, setting.scaleMode) === "active";
+          return (
+            <article class="resource-breakdown-slot">
+              <div class="resource-breakdown-header">
+                <strong>{text().label}<GpuNameNote metricId={setting.metricId} names={props.gpuNames} /></strong>
+                <span class="with-help-hint">
+                  -- · {active() ? uiText.resourceBreakdown.scaleActive : uiText.resourceBreakdown.scaleCapacity}
+                  <HelpHint>
+                    <Show when={text().basis}>{(basis) => <p>{basis()}</p>}</Show>
+                    <p>{active() ? uiText.resourceBreakdown.scaleActiveHint : uiText.resourceBreakdown.scaleCapacityHint}</p>
+                  </HelpHint>
+                </span>
+              </div>
+              <div class="resource-bar-track pending" aria-hidden="true" />
+            </article>
+          );
+        }}
+      </For>
+    </div>
   );
 }
 

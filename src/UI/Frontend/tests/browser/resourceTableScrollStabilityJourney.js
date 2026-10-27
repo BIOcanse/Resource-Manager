@@ -30,8 +30,11 @@ export default async function resourceTableScrollStabilityJourney(
 
   await page.setViewportSize({ width: 1067, height: 667 });
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
-  await page.locator(".resource-table-frame").waitFor({ state: "visible", timeout: 7000 });
+  // 资源条区在上、资源表在下，数据都跟可见区域走；资源条的加载占位和有数据时一样高，资源表一开始在视野外。
+  // 先等资源条有数据，再把资源表滚进视野等它的行（资源条离开视野后保留数据）。
   await page.locator(".resource-breakdown-item").first().waitFor({ state: "visible", timeout: 7000 });
+  await page.locator(".resource-table-panel").scrollIntoViewIfNeeded();
+  await page.locator(".resource-table-frame").waitFor({ state: "visible", timeout: 7000 });
   await page.locator('.resource-table-row.software-row[aria-hidden="false"]').first().waitFor({ timeout: 7000 });
   await waitForCondition(page, () => factSubscriptions.length > 0, { timeoutMs: 7000, description: "Initial facts subscription" });
   await waitForStableRendering(page, ["main.app-shell", ".monitor-work-region", ".resource-table-frame", ".resource-breakdown-item"], { timeoutMs: 7000 });
