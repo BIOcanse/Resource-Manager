@@ -122,6 +122,7 @@ function policyComparableKey(policy: GpuPlacementSoftwarePolicy) {
     cpuSchedulingExcluded: policy.cpuSchedulingExcluded,
     memorySchedulingExcluded: policy.memorySchedulingExcluded,
     gpuSchedulingExcluded: policy.gpuSchedulingExcluded,
+    hostMemoryProtectionNoDump: policy.hostMemoryProtectionNoDump,
     cpuMaximumOccupancyMode: policy.cpuMaximumOccupancyMode,
     cpuManualExclusivePositionIds: sortedPolicyValues(policy.cpuManualExclusivePositionIds),
     cpuManualLockedPositionIds: sortedPolicyValues(policy.cpuManualLockedPositionIds)

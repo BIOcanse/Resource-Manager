@@ -39,16 +39,17 @@ import type {
 import {
   decodeResourceBreakdownWireSnapshot,
   type ResourceBreakdownWireSnapshot
-} from "./api/resourceBreakdownWire";
-import { decodeHostManagerRollbackState } from "./api/hostManagerRollbackWire";
+} from "./api/resourceBreakdownWire.ts";
+import { decodeHostManagerRollbackState } from "./api/hostManagerRollbackWire.ts";
 import { decodeHostManagerSmartCoordinatorStatus } from
   "./data/optimization/hostManagerSmartStatusSource.ts";
-import { ApiRequestError, requestJson, requestNoContent } from "./api/httpTransport";
+import { ApiRequestError, requestJson, requestNoContent } from "./api/httpTransport.ts";
 import { reportRuleSettingsDecoder } from "./data/appSettings/reportRuleSettingsDecoder.ts";
 import { metricCatalogDecoder } from "./data/monitor/monitorSourceDecoders.ts";
 import { metricOfferedInPicker } from "./presentation/metricPresentation.ts";
 import { cpuTopologyDecoder, cpuResidencyDecoder, cpuExclusiveBindingsDecoder } from "./data/cpu/cpuSourceDecoders.ts";
 import { decodeRuntimePolicySaveResult } from "./api/runtimePolicySaveResultDecoder.ts";
+import { decodeSoftwarePolicy } from "./data/softwarePolicy/softwarePolicyDecoder.ts";
 import { uiText } from "./text.ts";
 import { withProcessActionElevation } from "./processes/elevatedProcessAction.ts";
 
@@ -335,8 +336,9 @@ export async function getGpuPlacementSoftwareSettings(softwareId: string, softwa
   if (softwareKind) {
     params.set("softwareKind", softwareKind);
   }
-  return getJson<GpuPlacementSoftwareSettingsSnapshot>(
+  const snapshot = await getJson<GpuPlacementSoftwareSettingsSnapshot>(
     `/api/gpu-placement/software/${encodeURIComponent(softwareId)}?${params.toString()}`, { signal });
+  return { ...snapshot, softwarePolicy: decodeSoftwarePolicy(snapshot.softwarePolicy, "$.softwarePolicy") };
 }
 
 export async function getDefaultGpuPlacementSoftwarePolicy(softwareId: string, softwareName: string, softwareKind?: string) {
@@ -346,15 +348,16 @@ export async function getDefaultGpuPlacementSoftwarePolicy(softwareId: string, s
     params.set("softwareKind", softwareKind);
   }
 
-  return getJson<GpuPlacementSoftwarePolicy>(
-    `/api/gpu-placement/software/${encodeURIComponent(softwareId)}/policy/default?${params.toString()}`);
+  return decodeSoftwarePolicy(await getJson<unknown>(
+    `/api/gpu-placement/software/${encodeURIComponent(softwareId)}/policy/default?${params.toString()}`));
 }
 
 export async function saveGpuPlacementSoftwarePolicy(policy: GpuPlacementSoftwarePolicy) {
-  return saveRuntimePolicy<GpuPlacementSoftwarePolicy>(
+  const result = await saveRuntimePolicy<GpuPlacementSoftwarePolicy>(
     `/api/gpu-placement/software/${encodeURIComponent(policy.softwareId)}/policy`,
     policy,
     uiText.apiError.saveGpuSoftwarePolicyFailed);
+  return { ...result, policy: decodeSoftwarePolicy(result.policy, "$.policy") };
 }
 
 export async function saveGpuPlacementProcessPolicy(policy: GpuPlacementProcessPolicy) {

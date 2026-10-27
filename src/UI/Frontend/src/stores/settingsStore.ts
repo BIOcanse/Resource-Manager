@@ -392,7 +392,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
       : outcome === "persisted-pending" ? "partial" : "idle");
     setRuntimeCapabilityConstrainedPaths(snapshot.data.runtimeCapabilityConstrainedPaths ?? []);
     setRuntimeFailureCode(snapshot.data.runtimeFailureCode ?? null);
-    setServiceRecovery(snapshot.data.serviceRecovery);
+    setServiceRecovery(snapshot.data.serviceRecovery ?? undefined);
     setLoadState(nextLoadState);
   }
 
@@ -729,7 +729,8 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
 
 export function defaultAppSettings(): AppSettings {
   return {
-    version: "1.0.33",
+    version: "1.0.36",
+    memoryProtection: { enabled: false, thresholdPercent: 95, checkIntervalSeconds: 1, reserves: [], actionMode: "dumpThenTerminate" },
     control: { reassertionIntervalSeconds: 120 },
     reports: { ruleOverrides: [] },
     performance: {
@@ -782,7 +783,8 @@ export function defaultAppSettings(): AppSettings {
 export function normalizeAppSettings(settings?: AppSettings | null): AppSettings {
   const defaults = defaultAppSettings();
   return {
-    version: "1.0.33",
+    version: "1.0.36",
+    memoryProtection: structuredClone(settings?.memoryProtection === undefined ? defaults.memoryProtection : settings.memoryProtection),
     control: {
       reassertionIntervalSeconds: normalizeInteger(settings?.control?.reassertionIntervalSeconds, 1, 86400, defaults.control!.reassertionIntervalSeconds)
     },

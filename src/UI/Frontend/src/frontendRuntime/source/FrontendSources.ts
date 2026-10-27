@@ -156,6 +156,8 @@ import {
   type MetricFieldQuery
 } from "../../data/metricFields/metricFieldSource.ts";
 import type { SourceFamily, SourceHandle } from "./SourceDescriptor.ts";
+import { getMemoryProtectionStatus, getNormalRunningPoint } from "../../data/memoryProtection/memoryProtectionApi.ts";
+import type { HostMemoryProtectionStatus, NormalRunningPoint } from "../../data/memoryProtection/memoryProtectionTypes.ts";
 import type { AiGatewayCredentialView } from "../../types.ts";
 import { getAiGatewayCredentials } from "../../data/aiGatewayCredentials.ts";
 import {
@@ -164,6 +166,8 @@ import {
 } from "./SourceRegistry.ts";
 
 export interface FrontendSources {
+  readonly memoryProtection: SourceHandle<HostMemoryProtectionStatus>;
+  readonly normalRunningPoint: SourceHandle<NormalRunningPoint | null>;
   readonly managementComponents: SourceHandle<ManagedComponent[]>;
   readonly managementSoftware: SourceHandle<SoftwareRecord[]>;
   readonly managementBrowserRuntimes: SourceHandle<BrowserRuntimeSnapshot>;
@@ -226,6 +230,17 @@ export function createFrontendSources(
   subscriptionChannel: BackendSubscriptionChannel
 ): FrontendSources {
   return Object.freeze({
+    memoryProtection: sourceRegistry.define({
+      key: "memory-protection.status",
+      load: signal => getMemoryProtectionStatus(requestClient, signal),
+      retainLastGood: false
+    }),
+    normalRunningPoint: sourceRegistry.define({
+      key: "memory-protection.normal-running-point",
+      load: signal => getNormalRunningPoint(requestClient, signal),
+      retainLastGood: false,
+      selectCapturedAt: value => value?.at ?? null
+    }),
     managementComponents: sourceRegistry.define({
       key: "management.components",
       load: signal => getManagementComponents(requestClient, signal),

@@ -6,7 +6,7 @@ import { decodeServiceRecovery } from "../src/data/appSettings/serviceRecoveryDe
 import { defaultAppSettings, normalizeAppSettings } from "../src/stores/settingsStore.ts";
 
 const defaults = defaultAppSettings().systemIntegration!;
-assert.equal(defaultAppSettings().version, "1.0.33");
+assert.equal(defaultAppSettings().version, "1.0.36");
 assert.equal(defaults.restartAfterCrashEnabled, true);
 assert.equal(defaults.crashRestartDelaySeconds, 10);
 assert.equal(defaults.crashRestartCount, 3);

@@ -4,6 +4,8 @@ import { ResponseDecodeError } from "../src/frontendRuntime/request/ResponseDeco
 import { ApiRequestError, requestJson } from "../src/api/httpTransport.ts";
 import { isolatedSourceFunctions } from "./helpers/isolatedSourceFunctions.ts";
 import { decodeRuntimePolicySaveResult } from "../src/api/runtimePolicySaveResultDecoder.ts";
+import { decodeSoftwarePolicy } from "../src/data/softwarePolicy/softwarePolicyDecoder.ts";
+import { softwarePolicy } from "./fixtures/memoryProtection.ts";
 import { cpuTopologyDecoder, cpuResidencyDecoder, cpuExclusiveBindingsDecoder } from "../src/data/cpu/cpuSourceDecoders.ts";
 import { uiText } from "../src/text.ts";
 
@@ -20,7 +22,7 @@ const {
   "saveGpuPerformanceScoreOverrides", "resetGpuPerformanceScoreOverrides",
   "saveGpuPlacementProcessPolicy", "saveGpuPlacementSoftwarePolicy",
   "saveRuntimePolicy", "resetRuntimePolicy", "writeRuntimePolicy"
-], { URLSearchParams, requestJson, ApiRequestError, decodeRuntimePolicySaveResult,
+], { URLSearchParams, requestJson, ApiRequestError, decodeRuntimePolicySaveResult, decodeSoftwarePolicy,
   cpuTopologyDecoder, cpuResidencyDecoder, cpuExclusiveBindingsDecoder, uiText });
 
 const originalFetch = globalThis.fetch;
@@ -32,7 +34,7 @@ globalThis.fetch = async (url, options) => {
   return new Response(payload === undefined ? "" : JSON.stringify(payload), { status, headers: { "content-type": "application/json" } });
 };
 const envelope = {
-  policy: {}, startupInterception: null, runtimeApplicationDisposition: "committedAndPublished",
+  policy: softwarePolicy, startupInterception: null, runtimeApplicationDisposition: "committedAndPublished",
   startupInterceptionDisposition: "notAttempted", runtimePlanVersion: 3,
   runtimePublicationSequence: 7, runtimeDeliveryFailureCount: 0, failureCode: null
 };

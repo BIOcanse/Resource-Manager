@@ -2,6 +2,7 @@ import { componentFixture, componentVersionFixture } from "./componentFixtures.j
 import { canonicalFieldNames } from "../../src/features/monitor/canonicalFields.ts";
 import { reportRules } from "../fixtures/reportRuleSettings.ts";
 import * as showcase from "./readmeShowcaseFixture.js";
+import { createMemoryProtectionFixture, defaultMemoryProtectionSettings, memoryProtectionScenarios, defaultSoftwarePolicy, invalidMemoryProtectionPatch } from "./memoryProtectionFixture.mjs";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, resolve, sep, isAbsolute } from "node:path";
@@ -28,6 +29,7 @@ const recordedDeclarationStates = Object.fromEntries(await Promise.all(Object.en
   adaptiveSyncZero: "displayEdidAdaptiveSyncZero.json", dynamicRange: "displayEdidDynamicRange.json"
 }).map(async ([name, file]) => [name, JSON.parse(await readFile(new URL(`../fixtures/${file}`, import.meta.url), "utf8"))])));
 const defaultScenario = {
+  memoryProtection: "no-point",
   capabilities: "ready",
   settings: "ready",
   settingsConflict: false,
@@ -214,7 +216,8 @@ let targetedRecordingSequence = 0;
 let cpuBaselineOverrideRatio = null;
 const targetedRecordings = new Map();
 const defaultAppSettings = {
-  version: "1.0.33",
+  version: "1.0.36",
+  memoryProtection: defaultMemoryProtectionSettings(),
   performance: { gpuOverflowUsagePercent: 95, gpuOverflowDedicatedMemoryPercent: 80, realtimeActionBudgetMode: "fixed", realtimeActionBudgetCount: 32, realtimeActionBudgetPercent: 5 },
   reports: { ruleOverrides: [] },
   debug: {
@@ -223,6 +226,8 @@ const defaultAppSettings = {
   update: { mode: "automatic", periodicCheckEnabled: false, checkIntervalHours: 24 }
 };
 const appSettings = structuredClone(defaultAppSettings);
+const memoryProtection = createMemoryProtectionFixture(() => appSettings.memoryProtection);
+const softwarePolicies = new Map();
 let appSettingsRuntimeDisposition = "committedAndApplied";
 let metricSlot = {
   observedAt: now()
@@ -245,6 +250,12 @@ const appSettingsResult = (runtimeApplicationDisposition = appSettingsRuntimeDis
   }
   return {
     settings,
+    updatedAt: "2026-10-27T05:00:00Z",
+    serviceRecovery: null,
+    storagePath: "F:\\MockUserData\\settings.local.json",
+    source: { kind: 255, sourceVersion: settings.version, inputSha256: scenario.settingsRevision,
+      effectiveSha256: scenario.settingsRevision, rewritePerformed: false, recoveryDisposition: "none",
+      recoveryArtifactPath: null, lastKnownGoodPath: null },
     revision: scenario.settingsRevision,
     runtimeApplicationDisposition,
     runtimePlanVersion: runtimeApplicationDisposition === "savedNotApplied" ? null : 1,
@@ -676,7 +687,17 @@ async function handleApi(request, response, url) {
   if (path === "/api/settings/report-rules" && request.method === "GET") {
     return json(response, 200, { rules: reportRules });
   }
-  if (path === "/api/settings/app") {
+  if (path === "/api/memory-protection" && request.method === "GET") {
+    return json(response, 200, memoryProtection.status());
+  }
+  if (path === "/api/memory-protection/normal-running-point" && ["GET", "POST"].includes(request.method)) {
+    return json(response, 200, request.method === "GET" ? memoryProtection.readPoint() : memoryProtection.createPoint());
+  }
+  if (path === "/api/memory-protection/reserve/rebuild" && request.method === "POST") {
+    const status = memoryProtection.rebuild();
+    return json(response, status.reserve.built ? 200 : 409, status);
+  }
+  if (path === "/api/settings/app" || (path === "/api/memory-protection" && request.method === "PATCH")) {
     if (scenario.settings === "error" && request.method === "GET") {
       return text(response, 503, "settings unavailable");
     }
@@ -687,6 +708,10 @@ async function handleApi(request, response, url) {
     }
     if (request.method === "PATCH") {
       const patch = JSON.parse(await readBody(request));
+      if (path === "/api/memory-protection" && (!isRecord(patch.changes)
+        || Object.keys(patch.changes).length !== 1 || !Object.hasOwn(patch.changes, "memoryProtection"))) {
+        return json(response, 400, { error: "expected-memory-protection-settings-patch" });
+      }
       if (patch.changes?.appearance || patch.changes?.notifications || ["smartMonitoringMode", "monitorRefreshIntervalMs", "resourceTableRefreshIntervalMs", "localSystemRefreshIntervalMs"]
         .some(key => key in (patch.changes?.performance ?? {}))) {
         return json(response, 400, { error: "Presentation does not belong to the backend." });
@@ -698,7 +723,15 @@ async function handleApi(request, response, url) {
         || patch.expectedRevision !== scenario.settingsRevision) {
         return json(response, 409, appSettingsResult("revisionConflict"));
       }
+      if (Object.hasOwn(patch.changes, "memoryProtection")) {
+        const patchProblem = invalidMemoryProtectionPatch(patch.changes);
+        if (patchProblem) return json(response, 400, { error: patchProblem });
+        const memoryProblem = memoryProtection.validate({ ...appSettings.memoryProtection, ...patch.changes.memoryProtection });
+        if (memoryProblem) return json(response, 409, { ...appSettingsResult("rejectedBeforeCommit"), runtimeFailureCode: memoryProblem });
+      }
       mergeRecord(appSettings, patch.changes);
+      if (appSettings.memoryProtection) appSettings.memoryProtection.reserves ??= [];
+      if (Object.hasOwn(patch.changes, "memoryProtection")) memoryProtection.prepare();
       scenario.settingsRevision = nextSettingsRevision(scenario.settingsRevision);
       scenario.debugMode = appSettings.debug?.debugModeEnabled === true;
       appSettingsRuntimeDisposition = scenario.settingsRuntimeDisposition;
@@ -708,8 +741,13 @@ async function handleApi(request, response, url) {
       const settings = JSON.parse(await readBody(request));
       const updateProblem = invalidUpdateSettingsPatch(settings.update);
       if (updateProblem) return json(response, 400, { error: updateProblem });
+      const memoryProblem = memoryProtection.validate(settings.memoryProtection ?? defaultMemoryProtectionSettings());
+      if (memoryProblem) return json(response, 409, { ...appSettingsResult("rejectedBeforeCommit"), runtimeFailureCode: memoryProblem });
       for (const key of Object.keys(appSettings)) delete appSettings[key];
       Object.assign(appSettings, settings);
+      appSettings.memoryProtection ??= defaultMemoryProtectionSettings();
+      appSettings.memoryProtection.reserves ??= [];
+      memoryProtection.prepare();
       scenario.settingsRevision = nextSettingsRevision(scenario.settingsRevision);
       scenario.debugMode = appSettings.debug?.debugModeEnabled === true;
       appSettingsRuntimeDisposition = scenario.settingsRuntimeDisposition;
@@ -830,10 +868,21 @@ async function handleApi(request, response, url) {
     });
   }
   const softwarePolicyWrite = path.match(/^\/api\/gpu-placement\/software\/([^/]+)\/policy$/);
+  const softwarePolicyDefault = path.match(/^\/api\/gpu-placement\/software\/([^/]+)\/policy\/default$/);
+  if (softwarePolicyDefault && request.method === "GET") {
+    const policy = defaultSoftwarePolicy(decodeURIComponent(softwarePolicyDefault[1]), url.searchParams.get("softwareName") ?? "");
+    if (["game", "high_performance"].includes(url.searchParams.get("softwareKind"))) policy.runtimeHotSwitchEnabled = false;
+    return json(response, 200, policy);
+  }
   const performanceWrite = path === "/api/cpu/topology/performance-overrides" || path === "/api/gpu/performance-overrides";
   if ((request.method === "PUT" && (softwarePolicyWrite || path === "/api/gpu-placement/process-policy" || performanceWrite))
     || (request.method === "DELETE" && performanceWrite)) {
-    const input = request.method === "PUT" ? JSON.parse(await readBody(request)) : null;
+    let input = request.method === "PUT" ? JSON.parse(await readBody(request)) : null;
+    if (softwarePolicyWrite) {
+      const id = decodeURIComponent(softwarePolicyWrite[1]);
+      input = { ...defaultSoftwarePolicy(id, input.softwareName ?? ""), ...input, softwareId: id, updatedAt: now() };
+      softwarePolicies.set(id.toLowerCase(), structuredClone(input));
+    }
     const policy = path === "/api/cpu/topology/performance-overrides"
       ? { cpuName: input?.cpuName ?? url.searchParams.get("cpuName"), scoresByCoreIndex: Object.fromEntries((input?.scores ?? []).map(item => [item.coreIndex, item.performanceScore])), updatedAt: now(), storagePath: "frontend-harness" }
       : path === "/api/gpu/performance-overrides"
@@ -968,28 +1017,17 @@ async function handleApi(request, response, url) {
   if (path === "/api/gpu-placement/process-history/observe" && request.method === "POST") {
     return json(response, 200, { softwareId: mockSoftware.id, softwareName: mockSoftware.name, processes: [] });
   }
-  if (path === "/api/gpu-placement/software/frontend-harness.software") {
+  const softwareSettingsRead = path.match(/^\/api\/gpu-placement\/software\/([^/]+)$/);
+  if (softwareSettingsRead && request.method === "GET") {
+    const softwareId = decodeURIComponent(softwareSettingsRead[1]);
+    const softwareName = url.searchParams.get("softwareName") ?? mockSoftware.name;
     return json(response, 200, {
-      softwareId: mockSoftware.id,
-      softwareName: mockSoftware.name,
-      softwarePolicy: {
-        softwareId: mockSoftware.id,
-        softwareName: mockSoftware.name,
-        allowedProviders: [],
-        startupTargetGpu: "system_default_gpu",
-        runtimeHotSwitchEnabled: false,
-        preferredRuntimeSwitchMethod: "future_frame_takeover",
-        baseScoreOverride: null,
-        processOverrideAllowed: false,
-        cpuSchedulingExcluded: false,
-        memorySchedulingExcluded: false,
-        gpuSchedulingExcluded: false,
-        cpuMaximumOccupancyMode: "all_cores",
-        cpuManualExclusivePositionIds: [],
-        cpuManualLockedPositionIds: []
-      },
+      softwareId,
+      softwareName,
+      softwarePolicy: softwarePolicies.get(softwareId.toLowerCase()) ?? defaultSoftwarePolicy(softwareId, softwareName),
       processPolicies: [],
-      processHistory: { softwareId: mockSoftware.id, softwareName: mockSoftware.name, processes: [] },
+      processHistory: { softwareId, softwareName, processes: [], updatedAt: "2026-10-27T05:00:00Z" },
+      startupInterceptions: [],
       targetInventory: { state: "current", exactTargets: [] },
       processCapabilities: []
     });
@@ -1445,6 +1483,7 @@ function delay(milliseconds) {
 // mock 也就没有这些开关；旅程改用 frontendPreferencesFixture.js 写前端缓存。传入旧开关直接报错，免得静默无效。
 const frontendPreferenceScenarioKeys = ["settingsTheme", "settingsUiStyle", "animations", "localSystemIntervalMs", "performanceMonitorRefreshIntervalMs"];
 const scenarioChoices = {
+  memoryProtection: memoryProtectionScenarios,
   deviceTopologyMachineIdentity: [null, "workstation", "mobile_workstation", "laptop", "desktop", "unknown"],
   deviceTopologyWireless: [null, "standards", "unknown"],
   metricCatalogAddresses: ["none", "reading-source"],
@@ -1468,6 +1507,7 @@ function applyScenarioPatch(patch) {
   }
   if (patch.displayEdid === "typex" && !recordedTypeXState) throw new Error("TypeX requires real RM_EDID_UI_TYPEX_STATE_JSON output; no fallback");
   Object.assign(scenario, patch);
+  if (Object.hasOwn(patch, "memoryProtection")) memoryProtection.scenario(patch.memoryProtection);
   settleMockValueSlots(patch);
   if (Object.hasOwn(patch, "manualPublishPaths")) rescheduleAllNdjsonPublishers();
   if (Object.hasOwn(patch, "operations")
@@ -1572,6 +1612,8 @@ function resetScenario() {
     delete appSettings[key];
   }
   Object.assign(appSettings, structuredClone(defaultAppSettings));
+  memoryProtection.scenario("no-point");
+  softwarePolicies.clear();
   appSettingsRuntimeDisposition = "committedAndApplied";
   for (const key of Object.keys(requestTelemetry)) {
     delete requestTelemetry[key];

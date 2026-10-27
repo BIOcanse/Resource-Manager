@@ -268,6 +268,7 @@ export interface DashboardSettingsResult {
 }
 
 export interface AppSettings {
+  memoryProtection?: import("./data/memoryProtection/memoryProtectionTypes.ts").HostMemoryProtectionSettings | null;
   reports?: AppReportSettings;
   version?: string;
   control?: { reassertionIntervalSeconds: number };
@@ -472,7 +473,8 @@ export type BackendAppSettings = Omit<AppSettings, "appearance" | "performance">
 
 /** Application settings keep their own backend disposition contract. */
 export interface AppSettingsResult {
-  serviceRecovery?: ServiceRecoveryDiagnostics;
+  updatedAt?: string;
+  serviceRecovery?: ServiceRecoveryDiagnostics | null;
   settings?: BackendAppSettings;
   revision?: string;
   storagePath?: string;
@@ -889,6 +891,7 @@ export type GpuPlacementRuntimeSwitchMethod = "future_frame_takeover" | "window_
 export type CpuMaximumOccupancyMode = "single_ccd" | "all_cores";
 
 export interface GpuPlacementSoftwarePolicy {
+  hostMemoryProtectionNoDump: boolean;
   softwareId: string;
   softwareName: string;
   allowedProviders: string[];

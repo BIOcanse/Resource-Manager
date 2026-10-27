@@ -18,6 +18,7 @@ import {
 
 import { decodeServiceRecovery } from "./serviceRecoveryDecoder.ts";
 import { decodeReportSettings } from "./reportRuleSettingsDecoder.ts";
+import { decodeHostMemoryProtectionSettings } from "../memoryProtection/memoryProtectionDecoders.ts";
 
 export type AppSettingsApplicationDisposition = NonNullable<
   AppSettingsResult["runtimeApplicationDisposition"]
@@ -80,9 +81,14 @@ export const appSettingsResultDecoder =
       if (settingsRecord.reports !== undefined) {
         decodeReportSettings(settingsRecord.reports, "$.settings.reports");
       }
+      if (settingsRecord.memoryProtection !== undefined && settingsRecord.memoryProtection !== null) {
+        decodeHostMemoryProtectionSettings(settingsRecord.memoryProtection, "$.settings.memoryProtection");
+      }
 
       const result: AppSettingsResult = {
-        serviceRecovery: record.serviceRecovery === undefined ? undefined : decodeServiceRecovery(record.serviceRecovery),
+        updatedAt: optional(record.updatedAt, "$.updatedAt", requireString),
+        serviceRecovery: record.serviceRecovery === undefined ? undefined
+          : requireNullable(record.serviceRecovery, "$.serviceRecovery", decodeServiceRecovery),
         settings: deepFreezeClone(settingsRecord) as BackendAppSettings,
         revision: requireNonEmptyString(record.revision, "$.revision"),
         storagePath: optional(record.storagePath, "$.storagePath", requireString),

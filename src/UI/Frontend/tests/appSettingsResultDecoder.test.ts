@@ -31,6 +31,8 @@ for (const disposition of ["notRequested", "rejectedBeforeCommit", "committedAnd
   assert.equal(appSettingsResultDecoder.decode({ ...source, runtimeApplicationDisposition: disposition }).runtimeApplicationDisposition, disposition);
 }
 assert.equal(decoded.revision, "revision-a");
+assert.equal(appSettingsResultDecoder.decode({ ...source, serviceRecovery: null }).serviceRecovery, null,
+  "Memory-protection PATCH returns the coordinator envelope without service diagnostics");
 assert.equal(decoded.settings.version, "1.0.23");
 assert.deepEqual(
   (decoded.settings as unknown as Record<string, unknown>).futureSection,

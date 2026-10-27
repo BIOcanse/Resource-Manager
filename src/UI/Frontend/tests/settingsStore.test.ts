@@ -29,7 +29,14 @@ import { applySettingsPatch } from "../src/features/settings/settingsPatch.ts";
 import type { AppSettings } from "../src/types.ts";
 
 const canonicalDefaults = defaultAppSettings();
-assert.equal(canonicalDefaults.version, "1.0.33", "Frontend defaults must carry the backend App settings format");
+const memorySettings = { enabled: true, thresholdPercent: 87.5, checkIntervalSeconds: 3,
+  actionMode: "terminateOnly" as const, reserves: [{ location: "F:\\reserve", sizeBytes: 67108864 }] };
+assert.deepEqual(normalizeAppSettings({ memoryProtection: memorySettings }).memoryProtection, memorySettings);
+assert.equal(normalizeAppSettings({ memoryProtection: null }).memoryProtection, null);
+const clonedMemorySettings = normalizeAppSettings({ memoryProtection: memorySettings }).memoryProtection!;
+clonedMemorySettings.reserves![0].sizeBytes = 4096;
+assert.equal(memorySettings.reserves[0].sizeBytes, 67108864, "Settings drafts must own their reserve array");
+assert.equal(canonicalDefaults.version, "1.0.36", "Frontend defaults must carry the backend App settings format");
 assert.equal(canonicalDefaults.performance?.preciseGpuPlacementEnabled, false);
 assert.equal(canonicalDefaults.publicService?.enabled, false);
 assert.equal(canonicalDefaults.publicService?.fileIndexEnabled, false);
@@ -123,7 +130,7 @@ assert.equal(normalizedMissingFields.aiModelService?.autoStartEnabled, false);
     ["normalized legacy", normalizedLegacy],
     ["normalized missing", normalizedMissingFields]
   ] as const) {
-    assert.equal(settings.version, "1.0.33", `${label}: version`);
+    assert.equal(settings.version, "1.0.36", `${label}: version`);
     for (const key of retiredPerformanceKeys) {
       assert.equal(key in settings.performance!, false, `${label}: performance.${key} must be gone`);
     }
@@ -627,3 +634,31 @@ await new Promise<void>((resolve, reject) => {
   });
 });
 await verifyCacheAcknowledgementPreservesNewerDraft();
+
+// Saving an unrelated backend setting must retain the full memory protection settings in both projections.
+await new Promise<void>((resolve, reject) => {
+  createRoot(dispose => {
+    void (async () => {
+      const source = new FakeSettingsSource();
+      let committed = { ...defaultAppSettings(), memoryProtection: structuredClone(memorySettings) };
+      const patches: Array<{ changes: Record<string, unknown> }> = [];
+      const store = createSettingsStore({ source, requestClient: {
+        request: async <T>(descriptor: { request?: { body?: unknown } }) => {
+          const patch = JSON.parse(String(descriptor.request?.body));
+          patches.push(patch); committed = applySettingsPatch(committed, patch.changes);
+          return { settings: committed, revision: "memory-r2", runtimeApplicationDisposition: "committedWithDeliveryFailures" } as T;
+        }
+      } as never });
+      await new Promise<void>(complete => setImmediate(complete));
+      source.publishReady({ settings: committed, revision: "memory-r1", runtimeApplicationDisposition: "notRequested" });
+      store.updateGpuOverflowThresholds(70, 80);
+      assert.deepEqual(store.draftSettings().memoryProtection, memorySettings);
+      await store.saveDraft();
+      assert.deepEqual(patches.map(row => row.changes), [{ performance: { gpuOverflowUsagePercent: 70 } }]);
+      assert.deepEqual(store.settings().memoryProtection, memorySettings);
+      assert.deepEqual(store.draftSettings().memoryProtection, memorySettings);
+      assert.equal(store.isDirty(), false);
+      dispose(); resolve();
+    })().catch(error => { dispose(); reject(error); });
+  });
+});

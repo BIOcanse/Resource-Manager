@@ -16,6 +16,10 @@ export default async function softwareParticipationJourney(page, baseUrl) {
     body: JSON.stringify({ gpuPlacementEnabled: true, runtimeEffectOwners: true })
   });
   if (!scenario.ok) throw new Error("Unable to enable GPU placement and runtime controls");
+  const policyPath = `${baseUrl}/api/gpu-placement/software/frontend-harness.software`;
+  const initialPolicy = (await (await fetch(policyPath)).json()).softwarePolicy;
+  await fetch(`${policyPath}/policy`, { method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...initialPolicy, hostMemoryProtectionNoDump: true }) });
   const protectionWrites = [];
   await page.route("**/api/optimization/protection", route => route.fulfill({ json: [] }));
   await page.route("**/api/optimization/protection/software/*", async route => {
@@ -27,7 +31,7 @@ export default async function softwareParticipationJourney(page, baseUrl) {
     if (route.request().method() === "PUT") {
       const policy = route.request().postDataJSON();
       policyWrites.push(policy);
-      return route.fulfill({ json: policy });
+      return route.continue();
     }
     return route.continue();
   });
@@ -97,6 +101,8 @@ export default async function softwareParticipationJourney(page, baseUrl) {
   assert.equal(saved.cpuSchedulingExcluded, true);
   assert.equal(saved.memorySchedulingExcluded, false);
   assert.equal(saved.gpuSchedulingExcluded, true);
+  assert.equal(saved.hostMemoryProtectionNoDump, true, "Saving unrelated scheduling choices preserves the no-dump flag");
+  assert.equal((await (await fetch(policyPath)).json()).softwarePolicy.hostMemoryProtectionNoDump, true);
   for (const removed of ["enabledMode", "schedulingMode", "runtimeSchedulingMode", "explicitSelectionMode",
     "keepCpuProcessesOnMainCcd", "gpuExclusive", "absolutePerformanceModeEnabled", "cpuExclusiveLocksAffinity"]) {
     assert.equal(removed in saved, false, `Saved policy still carries removed field ${removed}`);
