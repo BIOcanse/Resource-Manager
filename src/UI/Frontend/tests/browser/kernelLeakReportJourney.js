@@ -128,7 +128,7 @@ async function checkScenario(page, report, app, language, name, { hints = false 
       title: copy.previousRun.title,
       rows: [
         `${copy.previousRun.reason}=${copy.failure[previous.failure]}`,
-        `${copy.previousRun.startedAt}=${previous.startedAt ? localTime(previous.startedAt) : copy.observation.notStarted}`,
+        `${copy.previousRun.startedAt}=${localTime(previous.startedAt)}`,
         `${copy.previousRun.failedAt}=${localTime(previous.failedAt)}`
       ]
     },

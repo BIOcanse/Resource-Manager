@@ -10,7 +10,6 @@ import type {
 } from "../../data/kernelLeaks/kernelLeakReport.ts";
 import type { SourceSnapshot } from "../../frontendRuntime/source/SourceSnapshot.ts";
 import { renderBackendMessage } from "../../presentation/backendMessage.ts";
-import { formatBytes, formatSignedBytes } from "../../presentation/byteUnits.ts";
 import { formatElapsedDuration } from "../../presentation/elapsedDuration.ts";
 import { formatInterfaceNumber } from "../../presentation/interfaceNumbers.ts";
 import { userFacingDateTime } from "../../presentation/userFacingText.ts";
@@ -74,15 +73,12 @@ export function kernelLeakObservationProgress(report: KernelLeakReport): readonl
   ];
 }
 
-/** 保留的上一轮失败：原因、该轮开始时间（没采到样本时写明）、失败时间。 */
+/** 保留的上一轮失败：原因、该轮开始时间、失败时间。 */
 export function kernelLeakPreviousRunFailure(failure: KernelLeakRunFailure): readonly KernelLeakLabelledValue[] {
   const copy = uiText.kernelLeakReport;
   return [
     { label: copy.previousRun.reason, value: copy.failure[failure.failure] },
-    {
-      label: copy.previousRun.startedAt,
-      value: failure.startedAt === null ? copy.observation.notStarted : userFacingDateTime(failure.startedAt)
-    },
+    { label: copy.previousRun.startedAt, value: userFacingDateTime(failure.startedAt) },
     { label: copy.previousRun.failedAt, value: userFacingDateTime(failure.failedAt) }
   ];
 }
@@ -118,13 +114,16 @@ export function kernelLeakServices(services: KernelLeakServices): { readonly nam
   return services.names.length > 0 ? { names: services.names } : { text: uiText.kernelLeakReport.holder.noServices };
 }
 
-/** 字节量是内核内存，按内存的进制写。 */
-function formatUnitValue(value: number, unit: KernelLeakUnit, signed: boolean, fractionDigits = 0): string {
-  if (unit === "bytes") return signed ? formatSignedBytes(value, "memory") : formatBytes(value, "memory");
-  return formatInterfaceNumber(value, {
+/** 每个单位一种写法；合同加单位时这里必须跟着加。当前只有个数（count）。 */
+const unitFormats: Readonly<Record<KernelLeakUnit, (value: number, signed: boolean, fractionDigits: number) => string>> = {
+  count: (value, signed, fractionDigits) => formatInterfaceNumber(value, {
     maximumFractionDigits: fractionDigits,
     ...(signed ? { signDisplay: "exceptZero" as const } : {})
-  });
+  })
+};
+
+function formatUnitValue(value: number, unit: KernelLeakUnit, signed: boolean, fractionDigits = 0): string {
+  return unitFormats[unit](value, signed, fractionDigits);
 }
 
 /** 增长证据，顺序固定：当前值、观察期间增长、增长速率、观察时长、样本数。数值按该项的单位写。 */

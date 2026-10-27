@@ -37,7 +37,7 @@ export const kernelLeakReportStatuses = ["Disabled", "Observing", "Empty", "Susp
 export const kernelLeakFailures = ["SourceUnavailable", "CapacityExceeded", "InvalidObservation"] as const;
 /** 后端对外发布的资源种类。内部样本种类 FileCachePoolBytes 只用于判据排除，出现在报告里就是解码错误。 */
 export const kernelLeakResourceKinds = ["ProcessHandles"] as const;
-export const kernelLeakUnits = ["count", "bytes"] as const;
+export const kernelLeakUnits = ["count"] as const;
 export const kernelLeakMetadataStatuses = ["Current", "Unavailable", "ProcessEnded"] as const;
 export const kernelLeakRestartPolicies = ["NextInterval"] as const;
 export const kernelLeakActionKinds = ["RestartHolder", "ForceReleaseHandles"] as const;
@@ -93,14 +93,14 @@ export interface KernelLeakItem {
 }
 
 export interface KernelLeakRunFailure {
-  /** 失败那一轮的开始时间；那一轮还没采到样本就失败时为 null。 */
-  readonly startedAt: string | null;
+  /** 失败那一轮的开始时间（该轮第一帧的采集时间）；只有真正开始过的一轮才会记成失败，所以一定有。 */
+  readonly startedAt: string;
   readonly failedAt: string;
   readonly failure: KernelLeakFailure;
 }
 
 export interface KernelLeakObservation {
-  /** 本轮第一次采样的时间；还没采样时为 null。 */
+  /** 本轮第一帧的时间；关闭、首帧前等待或预热、首帧前就不可用时为 null，此时观察时长和样本数都是 0。 */
   readonly startedAt: string | null;
   readonly elapsedSeconds: number;
   readonly sampleCount: number;
@@ -161,7 +161,7 @@ function decodeObservation(value: unknown, path: string): KernelLeakObservation 
     previousRunFailure: requireNullable(record.previousRunFailure, `${path}.previousRunFailure`, (item, itemPath) => {
       const failure = requireRecord(item, itemPath);
       return {
-        startedAt: requireNullable(failure.startedAt, `${itemPath}.startedAt`, requireTimestamp),
+        startedAt: requireTimestamp(failure.startedAt, `${itemPath}.startedAt`),
         failedAt: requireTimestamp(failure.failedAt, `${itemPath}.failedAt`),
         failure: requireOneOf(failure.failure, `${itemPath}.failure`, kernelLeakFailures)
       };

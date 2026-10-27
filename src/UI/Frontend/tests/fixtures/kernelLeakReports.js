@@ -1,5 +1,6 @@
 // 内核泄漏报告的线上帧（/api/kernel-leaks/subscribe 的 value），模拟后端和解码器测试共用。合同 v2（codex/kernel-leak-report-v2 db67b1ca）。
-// kernelLeakRecordedFrames 是后端交接里记录的线上例子原样照抄（final-message.md「Recorded wire examples」），解码器测试逐个解码。
+// kernelLeakRecordedFrames 是后端交接里记录的线上例子原样照抄（final-message.md「Recorded wire examples」），解码器测试逐个解码；
+// sourceBeforeFirstFrame 取自 codex/kernel-leak-contract 的交接（kernel-leak-contract.md「Wire shape before and after」）。
 // kernelLeakReportFrames 是 mock 场景：观察要求取生产默认值（600 秒、8 个样本，采样间隔 30 秒）；
 // 持有者取自本机 10-27 的真实例子（GCUBridge 握着 1,464 个句柄、NahimicService 1,071 个），
 // 其余几项摆出后端会发的其他形状：多个服务名、进程已结束（映像和服务都是 ProcessEnded）、映像信息读不到、文件没有产品名。
@@ -122,6 +123,22 @@ export const kernelLeakRecordedFrames = Object.freeze({
       restartPolicy: "NextInterval"
     },
     unavailableHolderCount: 0
+  },
+  sourceBeforeFirstFrame: {
+    status: "Unavailable",
+    capturedAt: "2026-10-27T19:00:01+00:00",
+    items: [],
+    failure: "SourceUnavailable",
+    observation: {
+      startedAt: null,
+      elapsedSeconds: 0,
+      sampleCount: 0,
+      requiredSeconds: 600,
+      requiredSampleCount: 8,
+      previousRunFailure: null,
+      restartPolicy: "NextInterval"
+    },
+    unavailableHolderCount: 0
   }
 });
 
@@ -221,6 +238,12 @@ export const kernelLeakReportFrames = Object.freeze({
   empty: report("Empty", {}),
   suspected: report("Suspected", { items: [gcuBridge, nahimic, sharedServiceHost, endedHolder, protectedHolder, noProductHolder] }),
   "suspected-unreadable": report("Suspected", { items: [gcuBridge, nahimic], unavailableHolderCount: 3 }),
+  // 数据源在第一帧之前就不可用：没有开始过的一轮，也就没有失败的一轮；失败只在报告的 failure 上。
+  "unavailable-before-first-frame": report("Unavailable", {
+    capturedAt: "2026-10-27T10:40:01+00:00",
+    failure: "SourceUnavailable",
+    observation: observation({ startedAt: null, elapsedSeconds: 0, sampleCount: 0 })
+  }),
   "unavailable-source": report("Unavailable", {
     failure: "SourceUnavailable",
     observation: observation({ startedAt: "2026-10-27T10:41:00+00:00", elapsedSeconds: 60, sampleCount: 3 })
@@ -242,9 +265,9 @@ export const kernelLeakReportFrames = Object.freeze({
       startedAt: "2026-10-27T10:32:00+00:00", elapsedSeconds: 210, sampleCount: 8, previousRunFailure: capacityFailure
     })
   }),
-  // 下一轮的第一次采样也失败了：显示这次失败，同时保留上一轮的失败。
+  // 下一轮的第一帧就是不可用帧：这一帧开始了新一轮（开始时间是它的采集时间），显示这次失败，同时保留上一轮的失败。
   "unavailable-after-failure": report("Unavailable", {
-    capturedAt: null,
+    capturedAt: "2026-10-27T10:32:00+00:00",
     failure: "SourceUnavailable",
     observation: observation({
       startedAt: "2026-10-27T10:32:00+00:00", elapsedSeconds: 0, sampleCount: 0, previousRunFailure: capacityFailure

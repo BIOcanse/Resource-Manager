@@ -53,6 +53,16 @@ assert.deepEqual(kernelLeakReportDecoder.decode(kernelLeakRecordedFrames.disable
   unavailableHolderCount: 0
 } satisfies KernelLeakReport);
 
+// 数据源在第一帧之前就不可用：失败只在报告的 failure 上，没有开始时间，也没有伪造的上一轮失败。
+assert.deepEqual(kernelLeakReportDecoder.decode(kernelLeakRecordedFrames.sourceBeforeFirstFrame), {
+  status: "Unavailable", capturedAt: "2026-10-27T19:00:01+00:00", failure: "SourceUnavailable",
+  observation: {
+    startedAt: null, elapsedSeconds: 0, sampleCount: 0, requiredSeconds: 600, requiredSampleCount: 8,
+    previousRunFailure: null, restartPolicy: "NextInterval"
+  },
+  unavailableHolderCount: 0
+} satisfies KernelLeakReport);
+
 // 每个模拟场景（除了故意不合合同的那一个）都能解码，状态按帧对应。
 for (const [name, frame] of Object.entries(kernelLeakReportFrames)) {
   if (name === "invalid") {
@@ -78,17 +88,6 @@ assert.deepEqual(holders[4].services, { status: "Current", names: [] });
 assert.deepEqual(holders[2].services, { status: "Current", names: ["Appinfo", "ProfSvc", "Schedule", "Winmgmt"] });
 assert.equal(holders[5].image.status === "Current" ? holders[5].image.productName : "?", null);
 
-// 字节单位：合同里有，当前种类不发；解码照收。
-const bytesFrame = structuredClone(kernelLeakRecordedFrames.suspected) as any;
-bytesFrame.items[0].unit = "bytes";
-const bytesDecoded = kernelLeakReportDecoder.decode(bytesFrame);
-assert.equal(bytesDecoded.status === "Suspected" ? bytesDecoded.items[0].unit : null, "bytes");
-
-// 上一轮失败那一轮没采到样本时，开始时间是 null。
-const unstartedFailure = structuredClone(kernelLeakRecordedFrames.nextRun) as any;
-unstartedFailure.observation.previousRunFailure.startedAt = null;
-assert.equal(kernelLeakReportDecoder.decode(unstartedFailure).observation.previousRunFailure?.startedAt, null);
-
 // 不合合同：未知枚举、缺字段、类型不对、状态与内容不一致，都在边界上报出具体路径。
 type Mutation = (frame: any) => void;
 const invalidCases: Array<[string, Mutation, string]> = [
@@ -106,10 +105,12 @@ const invalidCases: Array<[string, Mutation, string]> = [
   ["missing required seconds", frame => { delete frame.observation.requiredSeconds; }, "$.observation.requiredSeconds"],
   ["missing required samples", frame => { delete frame.observation.requiredSampleCount; }, "$.observation.requiredSampleCount"],
   ["unknown restart policy", frame => { frame.observation.restartPolicy = "Manual"; }, "$.observation.restartPolicy"],
-  ["previous failure None", frame => { frame.observation.previousRunFailure = { startedAt: null, failedAt: "1970-01-01T00:00:01+00:00", failure: "None" }; }, "$.observation.previousRunFailure.failure"],
-  ["previous failure without time", frame => { frame.observation.previousRunFailure = { startedAt: null, failedAt: null, failure: "CapacityExceeded" }; }, "$.observation.previousRunFailure.failedAt"],
+  ["previous failure None", frame => { frame.observation.previousRunFailure = { startedAt: "1970-01-01T00:00:00+00:00", failedAt: "1970-01-01T00:00:01+00:00", failure: "None" }; }, "$.observation.previousRunFailure.failure"],
+  ["previous failure without time", frame => { frame.observation.previousRunFailure = { startedAt: "1970-01-01T00:00:00+00:00", failedAt: null, failure: "CapacityExceeded" }; }, "$.observation.previousRunFailure.failedAt"],
   ["unknown resource kind", frame => { frame.items[0].resourceKind = "FileCachePoolBytes"; }, "$.items[0].resourceKind"],
   ["unknown unit", frame => { frame.items[0].unit = "pages"; }, "$.items[0].unit"],
+  ["removed unit bytes", frame => { frame.items[0].unit = "bytes"; }, "$.items[0].unit"],
+  ["previous failure without start", frame => { frame.observation.previousRunFailure = { startedAt: null, failedAt: "1970-01-01T00:00:01+00:00", failure: "CapacityExceeded" }; }, "$.observation.previousRunFailure.startedAt"],
   ["missing unit", frame => { delete frame.items[0].unit; }, "$.items[0].unit"],
   ["fractional value", frame => { frame.items[0].currentValue = 12.5; }, "$.items[0].currentValue"],
   ["text value", frame => { frame.items[0].growth = "200"; }, "$.items[0].growth"],
