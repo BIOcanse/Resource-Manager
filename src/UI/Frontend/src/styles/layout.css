@@ -107,9 +107,8 @@ body[data-page="components"] .app-header {
 
 .monitor-toolbar .panel-header-actions {
   position: static;
-  margin: 0;
-  padding: 0;
   background: transparent;
+  box-shadow: none;
 }
 
 h1,

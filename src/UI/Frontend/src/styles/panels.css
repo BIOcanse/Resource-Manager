@@ -39,17 +39,16 @@
   flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;
-  margin: -4px;
   border-radius: var(--radius-md);
   background: var(--surface);
-  padding: 4px;
+  /* 吸附在右边时盖住底下内容的底色往外多出 4px：用阴影画，不占布局，也不算进标题行的溢出（原先负外边距加内边距，标题行不换行时右边凸出 4px） */
+  box-shadow: 0 0 0 4px var(--surface);
 }
 
-/* 组件页的面板没有底色，动作区的白底和负外边距会凸出一块 */
+/* 组件页的面板没有底色，动作区的底色会凸出一块 */
 #componentsPage .panel-header-actions {
-  margin: 0;
-  padding: 0;
   background: transparent;
+  box-shadow: none;
 }
 
 .save-state {
