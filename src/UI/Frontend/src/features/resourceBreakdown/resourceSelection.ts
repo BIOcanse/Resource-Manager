@@ -29,6 +29,17 @@ export function resourceEmptyCapacityValue(bar: ResourceBreakdownBar) {
   return Number.isFinite(value) ? value : 0;
 }
 
+/**
+ * 点一段（或在条上按 Enter/空格）之后的选择：点的正是选中的那一段就取消选中、收起它的明细，否则选中点的这一段。
+ * 软件段、系统/驱动保留和空余都一样；同时只有一段选中，展开的明细就是它（见 monitorStore 的 resourceSelection）。
+ */
+export function toggledResourceSelection(
+  current: ResourcePrecisionSelection | null,
+  target: ResourcePrecisionSelection
+): ResourcePrecisionSelection | null {
+  return current !== null && current.metricId === target.metricId && current.softwareId === target.softwareId ? null : target;
+}
+
 export function reconcileResourceSelection(
   bars: readonly ResourceBreakdownBar[],
   current: ResourcePrecisionSelection | null

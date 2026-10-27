@@ -87,14 +87,17 @@ interface ResourceBreakdownProps {
   observation: ObservationState;
   processDetails: ResourceProcessDetailsSnapshot | null;
   processDetailsObservation: ObservationState;
+  /** 选中的段（全部资源条至多一段）；它所在的条展开它的明细。 */
   selection: ResourcePrecisionSelection | null;
-  expanded: Record<string, string>;
   onToggleEdit: () => void;
   onCancelEdit: () => void;
   onToggleBar: (metricId: string, enabled: boolean) => void;
   onScaleModeChange: (metricId: string, scaleMode: "capacity" | "active") => void;
   onSourceChange: (metricId: string, source: string | null) => void;
+  /** 键盘逐段走、滚轮换段：选中这一段。 */
   onSelect: (selection: ResourcePrecisionSelection, hideCursor: boolean) => void;
+  /** 点一段、Enter/空格：选中的正是它就取消选中（收起明细），否则选中它。 */
+  onToggle: (selection: ResourcePrecisionSelection, hideCursor: boolean) => void;
   onReorderBar: (sourceMetricId: string, targetMetricId: string) => void;
 }
 
@@ -217,8 +220,8 @@ export function ResourceBreakdown(props: ResourceBreakdownProps) {
                       processDetailsObservation={props.processDetailsObservation}
                       editMode={props.editMode}
                       selected={props.selection?.metricId === metricId ? props.selection : null}
-                      expandedSoftwareId={props.expanded[metricId]}
                       onSelect={props.onSelect}
+                      onToggle={props.onToggle}
                       reorder={barReorder}
                       canMoveBefore={index() > 0}
                       canMoveAfter={index() < snapshotBarIds().length - 1}
@@ -371,8 +374,8 @@ function ResourceBreakdownItem(props: {
   processDetailsObservation: ObservationState;
   editMode: boolean;
   selected: ResourcePrecisionSelection | null;
-  expandedSoftwareId?: string;
   onSelect: (selection: ResourcePrecisionSelection, hideCursor: boolean) => void;
+  onToggle: (selection: ResourcePrecisionSelection, hideCursor: boolean) => void;
   reorder: ReorderGroup;
   canMoveBefore: boolean;
   canMoveAfter: boolean;
@@ -393,13 +396,20 @@ function ResourceBreakdownItem(props: {
     return map;
   });
   const [hoveredSoftwareId, setHoveredSoftwareId] = createSignal<string | null>(null);
-  const expanded = () => (props.bar.software ?? []).find((segment) => segment.softwareId === props.expandedSoftwareId);
+  // 展开的就是选中的那一段（空余不是软件，没有明细面板）。
+  const expanded = () => (props.bar.software ?? []).find((segment) => segment.softwareId === props.selected?.softwareId);
   const precisionActive = () => props.selected?.metricId === props.bar.metricId;
   const activeSoftwareId = () => {
-    const activeId = props.selected?.softwareId ?? props.expandedSoftwareId;
+    const activeId = props.selected?.softwareId;
     return activeId && selectable().some((segment) => segment.softwareId === activeId)
       ? activeId
       : null;
+  };
+  // 键盘最近一次落到的段：Enter/空格取消选中后再按一次，选回同一段（选中和展开仍只有 props.selected 一份）。
+  let keyboardSoftwareId: string | null = null;
+  const emit = (selection: ResourcePrecisionSelection, mode: "select" | "toggle", hideCursor: boolean) => {
+    keyboardSoftwareId = selection.softwareId;
+    (mode === "toggle" ? props.onToggle : props.onSelect)(selection, hideCursor);
   };
   const interactionSoftwareId = () => hoveredSoftwareId() ?? activeSoftwareId();
   const interactionEntry = createMemo(() => {
@@ -439,12 +449,12 @@ function ResourceBreakdownItem(props: {
     const track = event.currentTarget as HTMLElement;
     const entry = resourceEntryAtTrackPoint(layout(), track, event.clientX);
     if (entry) {
-      props.onSelect({
+      emit({
         metricId: props.bar.metricId,
         softwareId: entry.segment.softwareId,
         displayKind: entry.segment.displayKind ?? null,
         index: entry.index
-      }, false);
+      }, "toggle", false);
     }
   };
 
@@ -462,28 +472,31 @@ function ResourceBreakdownItem(props: {
       return;
     }
 
-    const currentId = props.selected?.softwareId ?? props.expandedSoftwareId;
+    const currentId = props.selected?.softwareId;
     const currentIndex = segments.findIndex((segment) => segment.softwareId === currentId);
     const fallbackIndex = props.selected?.index ?? (step > 0 ? -1 : segments.length);
     const resolved = clampNumber((currentIndex >= 0 ? currentIndex : fallbackIndex) + step, 0, segments.length - 1);
-    props.onSelect({ metricId: props.bar.metricId, softwareId: segments[resolved].softwareId, displayKind: segments[resolved].displayKind ?? null, index: resolved }, true);
+    emit({ metricId: props.bar.metricId, softwareId: segments[resolved].softwareId, displayKind: segments[resolved].displayKind ?? null, index: resolved }, "select", true);
   };
 
+  // 方向键和 Home/End 从选中的段出发选中目标段（没有选中时从头或尾开始）；
+  // Enter/空格切换当前段：选中的那一段，没有选中时是最近一次落到的段。
   const selectByKey = (key: string) => {
     const segments = selectable();
-    const target = resolveActiveDescendantTarget(
-      segments.map((segment) => segment.softwareId),
-      activeSoftwareId(),
-      key);
+    const ids = segments.map((segment) => segment.softwareId);
+    const toggle = key === "Enter" || key === " ";
+    const current = activeSoftwareId()
+      ?? (toggle && keyboardSoftwareId !== null && ids.includes(keyboardSoftwareId) ? keyboardSoftwareId : null);
+    const target = resolveActiveDescendantTarget(ids, current, key);
     if (!target) {
       return false;
     }
-    props.onSelect({
+    emit({
       metricId: props.bar.metricId,
       softwareId: target.id,
       displayKind: segments[target.index].displayKind ?? null,
       index: target.index
-    }, true);
+    }, toggle ? "toggle" : "select", true);
     return true;
   };
 
@@ -620,7 +633,7 @@ function ResourceBreakdownItem(props: {
           </p>
         )}
       </Show>
-      <Show when={props.expandedSoftwareId} keyed>
+      <Show when={props.selected?.softwareId} keyed>
         {(_expandedId) => (
           <Show when={expanded()}>
             {(software) => <ResourceProcessPanel bar={props.bar} software={software()}
@@ -706,14 +719,17 @@ function ResourceProcessPanel(props: {
         onClick={(event) => {
           const entry = resourceEntryAtTrackPoint(layout(), event.currentTarget, event.clientX);
           if (entry) {
-            setActiveProcessKey(resourceProcessKey(entry.segment));
+            // 和资源条同一条规则：再点一次选中的这一项就取消选中。
+            const key = resourceProcessKey(entry.segment);
+            setActiveProcessKey((current) => current === key ? null : key);
           }
         }}
         onKeyDown={(event) => {
           const target = resolveActiveDescendantTarget(keys(), activeProcessKey(), event.key);
           if (target) {
             event.preventDefault();
-            setActiveProcessKey(target.id);
+            const toggle = event.key === "Enter" || event.key === " ";
+            setActiveProcessKey((current) => toggle && current === target.id ? null : target.id);
           }
         }}
       >

@@ -12,7 +12,7 @@ import { defaultResourceTableSort, nextResourceTableSort, type ResourceTableSort
 import { gpuAdapterNames } from "../features/monitor/gpuAdapterNames.ts";
 import type { ProcessMetricField } from "../data/resourceMonitor/processFieldCatalog.ts";
 import type { ResourcePrecisionSelection } from "../features/resourceBreakdown/ResourceBreakdown";
-import { reconcileResourceSelection } from "../features/resourceBreakdown/resourceSelection";
+import { reconcileResourceSelection, toggledResourceSelection } from "../features/resourceBreakdown/resourceSelection";
 import { isReservedSegment } from "../features/resourceBreakdown/resourceProcessIdentity.ts";
 import type {
   DashboardCardSettings,
@@ -172,7 +172,6 @@ export interface MonitorStore {
   gpuNames: Accessor<ReadonlyMap<string, string>>;
   expandedResourceTableRows: Accessor<Record<string, boolean>>;
   resourceSelection: Accessor<ResourcePrecisionSelection | null>;
-  expandedResourceSegments: Accessor<Record<string, string>>;
   metricModalTarget: Accessor<MetricModalTarget | null>;
   selectedMetricId: Accessor<string | null>;
   setSelectedMetricId: (metricId: string | null) => void;
@@ -210,6 +209,7 @@ export interface MonitorStore {
   toggleResourceTableExpand: (softwareId: string) => void;
   reorderResourceTableColumns: (sourceColumnId: string, targetColumnId: string) => void;
   selectResourceSegment: (selection: ResourcePrecisionSelection, hideCursor: boolean) => void;
+  toggleResourceSegment: (selection: ResourcePrecisionSelection, hideCursor: boolean) => void;
   clearResourceSelection: () => void;
   cancelAllMonitorEdits: () => void;
 }
@@ -234,11 +234,9 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   const [resourceBarEditMode, setResourceBarEditMode] = createSignal(false);
   const [resourceTableSort, setResourceTableSort] = createSignal<ResourceTableSort>(defaultResourceTableSort);
   const [expandedResourceTableRows, setExpandedResourceTableRows] = createSignal<Record<string, boolean>>({});
+  // 资源条上选中的那一段（全部资源条同时至多一段），记着选中时这一段的类型化身份。展开的明细就是它：
+  // 选中和展开是同一个状态，取消选中（再点一次、Enter/空格、Esc）就收起，选另一条的段时原来那条随之收起。
   const [resourceSelection, setResourceSelection] = createSignal<ResourcePrecisionSelection | null>(null);
-  // 每条资源条展开的段（按条的 metricId），记着选中时这一段的类型化身份。
-  const [expandedResourceSelections, setExpandedResourceSelections] = createSignal<Record<string, ResourcePrecisionSelection>>({});
-  const expandedResourceSegments = createMemo(() => Object.fromEntries(Object.entries(expandedResourceSelections())
-    .map(([metricId, selection]) => [metricId, selection.softwareId])));
   const [metricModalTarget, setMetricModalTarget] = createSignal<MetricModalTarget | null>(null);
   const [selectedMetricId, setSelectedMetricId] = createSignal<string | null>(null);
   const metricCatalogLease = options.metricCatalogSource.acquire({
@@ -307,8 +305,8 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     return [...ids];
   });
   const snapshotMetricIds = currentMetricIds;
-  // 明细订阅：展开或选中的真实软件按 id 进 processDetails；系统/驱动保留按所属资源条的指标 id 进 residualDetails。
-  const resourceBreakdownDetailSelections = createMemo(() => [...Object.values(expandedResourceSelections()), resourceSelection()]
+  // 明细订阅：选中的真实软件按 id 进 processDetails；系统/驱动保留按所属资源条的指标 id 进 residualDetails。
+  const resourceBreakdownDetailSelections = createMemo(() => [resourceSelection()]
     .filter((selection): selection is ResourcePrecisionSelection => selection !== null && selection.softwareId.length > 0));
   const resourceBreakdownProcessDetailSoftwareIds = createMemo(() => [...new Set(resourceBreakdownDetailSelections()
     .filter((selection) => !isReservedSegment(selection)).map((selection) => selection.softwareId))]);
@@ -949,9 +947,19 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     updateResourceTableColumns((columns) => moveItemBefore(columns, (column) => column.id, sourceColumnId, targetColumnId));
   }
 
+  // 键盘逐段走、滚轮换段：选中这一段。
   function selectResourceSegment(selection: ResourcePrecisionSelection, hideCursor: boolean) {
     setResourceSelection(selection);
-    setExpandedResourceSelections((current) => ({ ...current, [selection.metricId]: selection }));
+    hidePrecisionCursor(hideCursor);
+  }
+
+  // 点一段、Enter/空格：点的是选中的那一段就取消选中（收起明细），否则选中它（toggledResourceSelection）。
+  function toggleResourceSegment(selection: ResourcePrecisionSelection, hideCursor: boolean) {
+    setResourceSelection((current) => toggledResourceSelection(current, selection));
+    hidePrecisionCursor(hideCursor);
+  }
+
+  function hidePrecisionCursor(hideCursor: boolean) {
     if (hideCursor) {
       document.body.classList.add("resource-precision-cursor-hidden");
       window.setTimeout(() => document.body.classList.remove("resource-precision-cursor-hidden"), 900);
@@ -960,28 +968,11 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
 
   function clearResourceSelection() {
     setResourceSelection(null);
-    setExpandedResourceSelections({});
     document.body.classList.remove("resource-precision-cursor-hidden");
   }
 
   function pruneResourceSelection(bars: ResourceBreakdownBar[]) {
-    const current = resourceSelection();
-    const next = reconcileResourceSelection(
-      bars,
-      current);
-    setResourceSelection(next);
-    if (!next) {
-      setExpandedResourceSelections({});
-      return;
-    }
-    setExpandedResourceSelections((expanded) => {
-      const nextExpanded = { ...expanded };
-      if (current && current.metricId !== next.metricId) {
-        delete nextExpanded[current.metricId];
-      }
-      nextExpanded[next.metricId] = next;
-      return nextExpanded;
-    });
+    setResourceSelection((current) => reconcileResourceSelection(bars, current));
   }
 
   function updateCards(updater: (cards: DashboardCardSettings[]) => DashboardCardSettings[]) {
@@ -1048,7 +1039,6 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     gpuNames,
     expandedResourceTableRows,
     resourceSelection,
-    expandedResourceSegments,
     metricModalTarget,
     selectedMetricId,
     setSelectedMetricId,
@@ -1082,6 +1072,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     toggleResourceTableExpand,
     reorderResourceTableColumns,
     selectResourceSegment,
+    toggleResourceSegment,
     clearResourceSelection,
     cancelAllMonitorEdits
   };

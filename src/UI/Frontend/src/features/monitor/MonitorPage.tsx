@@ -152,7 +152,6 @@ export function MonitorPage(props: MonitorPageProps) {
                 processDetails={monitor.resourceProcessDetails()}
                 processDetailsObservation={monitor.resourceProcessDetailsObservation()}
                 selection={monitor.resourceSelection()}
-                expanded={monitor.expandedResourceSegments()}
                 saveState={monitor.resourceBarSaveState()}
                 onToggleEdit={monitor.toggleResourceBarEditMode}
                 onCancelEdit={monitor.cancelResourceBarEdit}
@@ -160,6 +159,7 @@ export function MonitorPage(props: MonitorPageProps) {
                 onScaleModeChange={monitor.updateResourceBarScale}
                 onSourceChange={monitor.changeResourceBarSource}
                 onSelect={monitor.selectResourceSegment}
+                onToggle={monitor.toggleResourceSegment}
                 onReorderBar={monitor.reorderResourceBars}
               />
             </ObservationStateBoundary>

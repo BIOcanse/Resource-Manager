@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import {
   reconcileResourceSelection,
   resourceEmptySegmentId,
-  selectableResourceSegmentIds
+  selectableResourceSegmentIds,
+  toggledResourceSelection
 } from "../src/features/resourceBreakdown/resourceSelection.ts";
 import {
   resourceSegmentAtTrackX,
@@ -127,6 +128,21 @@ const crowded = layout(Array.from({ length: 50 }, (_, index) => [`s${index}`, 2]
 for (const [left, right] of resourceSegmentHitRanges(crowded, 100)) {
   assert.ok(right - left > 0, "every crowded segment keeps a positive range");
 }
+
+// 点一段：点的正是选中的那一段就取消选中（收起明细），否则选中点的这一段；软件、系统/驱动保留、空余都一样，
+// 选另一条资源条的段时原来那条的选中随之换掉（只有一个选中，也就只有一个展开）。
+const software = { metricId: "memory.usage", softwareId: "software-a", displayKind: "other", index: 0 };
+const reserved = { metricId: "memory.usage", softwareId: "resource-residual:memory.usage", displayKind: "system-residual", index: 1 };
+const empty = { metricId: "memory.usage", softwareId: resourceEmptySegmentId("memory.usage"), displayKind: null, index: 2 };
+const cpuReserved = { metricId: "cpu.usage", softwareId: "resource-residual:cpu.usage", displayKind: "system-residual", index: 3 };
+for (const segment of [software, reserved, empty, cpuReserved]) {
+  assert.equal(toggledResourceSelection(null, segment), segment, `clicking ${segment.softwareId} with nothing selected selects it`);
+  assert.equal(toggledResourceSelection({ ...segment, index: segment.index + 5 }, segment), null, `clicking the selected ${segment.softwareId} again deselects it`);
+}
+assert.equal(toggledResourceSelection(software, reserved), reserved, "clicking another segment of the same bar selects it");
+assert.equal(toggledResourceSelection(reserved, cpuReserved), cpuReserved, "clicking a segment of another bar replaces the selection");
+const sameIdOtherBar = { ...cpuReserved, metricId: "gpu.0.usage" };
+assert.equal(toggledResourceSelection(cpuReserved, sameIdOtherBar), sameIdOtherBar, "the same segment id on another bar is another segment");
 
 function bar(metricId: string, softwareIds: string[]): ResourceBreakdownBar {
   return {

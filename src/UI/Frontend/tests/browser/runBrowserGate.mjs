@@ -140,6 +140,7 @@ const allJourneys = [
   ["physical-memory-residual", async (...args) => (await import("./physicalMemoryResidualJourney.js")).default(...args)],
   ["resource-bar-reserved-selection", async (...args) => (await import("./resourceBarReservedSelectionJourney.js")).default(...args)],
   ["resource-bar-pointer-geometry", async (...args) => (await import("./resourceBarPointerGeometryJourney.js")).default(...args)],
+  ["resource-bar-selection-toggle", async (...args) => (await import("./resourceBarSelectionToggleJourney.js")).default(...args)],
   ["resource-table-totals", async (...args) => (await import("./resourceTableTotalsJourney.js")).default(...args)],
   ["resource-bar-source-choice", async (...args) => (await import("./resourceBarSourceChoiceJourney.js")).default(...args)],
   ["resource-bar-editor", async (...args) => (await import("./resourceBarEditorJourney.js")).default(...args)],
