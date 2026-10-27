@@ -181,7 +181,6 @@ export default function App() {
 
   // 分页树（docs/navigation_tree_2026-10-25.md）：一级选中项是 activePage，二级选中项各有各的所有者。
   const detailsNavigation = createDetailsNavigation({
-    activePage,
     optimizationEnabled: runtimeCapabilities.optimizationEnabled,
     mutablePersistenceEnabled: runtimeCapabilities.mutablePersistenceEnabled
   });

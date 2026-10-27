@@ -245,12 +245,16 @@ export default async function pageValueRetentionJourney(page, baseUrl) {
         const returned = await page.evaluate(async options => {
           document.querySelector(options.away).click();
           document.querySelector(options.primary).click();
+          // A page keeps its selected secondary tab across a page switch; read it before re-selecting.
+          const landed = document.querySelector(`#pageSubnav .page-subnav-group[data-page-id="${options.page}"] [role="tab"][aria-selected="true"]`);
+          const landedTab = landed ? (options.tabId ? landed.id : landed.textContent.trim()) : null;
           if (options.tabId) document.getElementById(options.tabId).click();
           if (options.tab) [...document.querySelectorAll('#pageSubnav [role="tab"]')].find(n => n.textContent.trim() === options.tab).click();
           if (options.section) [...document.querySelectorAll('#pageStage .settings-nav button')].find(n => n.textContent.trim() === options.section).click();
           if (options.mode) [...document.querySelectorAll('#pageStage .resource-table-mode-switch [role="radio"]')].find(n => n.textContent.trim() === options.mode).click();
-          return new Promise(resolve => requestAnimationFrame(() => resolve(window.__retentionRead(options))));
+          return new Promise(resolve => requestAnimationFrame(() => resolve({ ...window.__retentionRead(options), landedTab })));
         }, options);
+        if (plan.tab || plan.tabId) assert.equal(returned.landedTab, plan.tabId ?? plan.tab, `${plan.name}: returning to the page keeps its selected tab`);
         const reentry = sameCurrentValues(before, returned) && returned.deliveredChunks === before.deliveredChunks;
         const secondaryReturn = (plan.tab || plan.tabId || plan.section) ? await page.evaluate(async options => {
           const buttons = options.section
