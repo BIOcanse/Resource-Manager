@@ -33,13 +33,6 @@ export function formatUtcTime(value: string): string {
     + `${pad(time.getUTCHours())}:${pad(time.getUTCMinutes())} UTC`;
 }
 
-/** 已累计的联网时长，例如 25:04:09（时:分:秒）。 */
-export function formatConnectedDuration(seconds: number): string {
-  const total = Math.floor(seconds);
-  const pad = (number: number) => String(number).padStart(2, "0");
-  return `${Math.floor(total / 3600)}:${pad(Math.floor(total / 60) % 60)}:${pad(total % 60)}`;
-}
-
 export const productUpdateStatusDecoder = defineResponseDecoder<ProductUpdateState>(
   "product-update-status.v1",
   (value) => {

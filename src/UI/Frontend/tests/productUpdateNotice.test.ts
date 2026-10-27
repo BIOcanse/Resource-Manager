@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createRoot, createSignal } from "solid-js";
 import { bindProductUpdateNotice, shouldNoticeUpdate } from "../src/stores/productUpdateNotice.ts";
-import { formatConnectedDuration, formatUtcTime, parseUtcTime, productUpdateStatusDecoder } from "../src/data/productUpdateStatus.ts";
+import { formatUtcTime, parseUtcTime, productUpdateStatusDecoder } from "../src/data/productUpdateStatus.ts";
+import { formatElapsedDuration } from "../src/presentation/elapsedDuration.ts";
 import type { ProductUpdateState } from "../src/features/settings/productUpdatePresentation.ts";
 import { createFrontendPreferencesClient, type FrontendNotifications } from "../src/preferences/frontendPreferences.ts";
 
@@ -105,7 +106,7 @@ test("status times are UTC only and are shown as UTC", () => {
   assert.equal(parseUtcTime("2026-10-26T08:00:00"), null, "no offset");
   assert.equal(parseUtcTime("2026-10-26T16:00:00+08:00"), null, "not UTC");
   assert.equal(formatUtcTime("2026-10-26T08:00:59.9Z"), "2026-10-26 08:00 UTC");
-  assert.equal(formatConnectedDuration(90249), "25:04:09");
+  assert.equal(formatElapsedDuration(90249), "25:04:09");
   const decoded = productUpdateStatusDecoder.decode({ stage: "idle", availableVersion: "1.1.0",
     nextCheckAt: "2026-10-26T08:00:00Z", lastCheckedAt: null, checkResult: "available", automaticCheckStatus: "waitingForInternet", onlineTimeSinceLastCheckSeconds: 30,
     updatedAt: "2026-10-25T19:00:00+00:00", workspace: null, error: null, checkedInstalledVersion: "0.2.4", incompatibleVersions: [] });

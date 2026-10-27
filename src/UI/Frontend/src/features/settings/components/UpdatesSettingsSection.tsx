@@ -14,7 +14,8 @@ import { VersionSelector } from "./VersionSelector";
 import { isUpdateBusy, productUpdateCopy, updateFailure, type ProductUpdateState } from "../productUpdatePresentation.ts";
 import type { ProductUpdateStore } from "../../../stores/productUpdateStore.ts";
 import { updateCheckIntervalHours } from "../../../stores/settingsStore.ts";
-import { formatConnectedDuration, formatUtcTime } from "../../../data/productUpdateStatus.ts";
+import { formatUtcTime } from "../../../data/productUpdateStatus.ts";
+import { formatElapsedDuration } from "../../../presentation/elapsedDuration.ts";
 import { NumberField, SegmentedControl } from "./SettingsControls";
 import { SwitchControl } from "../../../ui/primitives/Switch.tsx";
 
@@ -173,7 +174,7 @@ export function UpdatesSettingsSection(props: {
         : committedPeriodic() ? text().nextCheckAfterInternet : text().nextCheckOff}
     </p>}</Show>
     <Show when={!statusFailed() && typeof updateState()?.onlineTimeSinceLastCheckSeconds === "number"}>
-      <p>{text().connectedElapsed}{formatConnectedDuration(updateState()!.onlineTimeSinceLastCheckSeconds!)}</p>
+      <p>{text().connectedElapsed}{formatElapsedDuration(updateState()!.onlineTimeSinceLastCheckSeconds!)}</p>
     </Show>
     <Show when={!statusFailed() && updateState() && (updateState()?.stage !== "idle" || updateState()?.errorCode)}>
       <p role={updateState()?.errorCode ? "alert" : "status"}>
