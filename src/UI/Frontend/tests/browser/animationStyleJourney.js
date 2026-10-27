@@ -445,6 +445,22 @@ export default async function animationStyleJourney(page, baseUrl) {
     }
   }
 
+  // ---- 外壳收到实际生效的风格（窗口最小化/最大化/还原的系统过渡按它开关）----
+  // 浏览器模式下偏好客户端已在启动时选定；这里装上外壳消息口，只截获风格发布时发给外壳的消息。
+  await page.evaluate(() => {
+    window.__shellStyleMessages = [];
+    window.chrome = { webview: { postMessage: (message) => window.__shellStyleMessages.push(message) } };
+  });
+  await openSettings();
+  const shellStyles = [];
+  for (const style of ["none", "desktop"]) {
+    await choose(style);
+    const sent = await page.evaluate(() => window.__shellStyleMessages.filter((message) => message?.type === "shell.animationStyle"));
+    shellStyles.push(sent.at(-1)?.style ?? null);
+    if (sent.at(-1)?.style !== style) fail(`the shell was told ${JSON.stringify(sent.at(-1))} after choosing ${style}`);
+  }
+  await page.evaluate(() => { delete window.chrome; });
+
   // ---- 刷新后保持 ----
   await openSettings();
   await choose("terminal");
@@ -474,5 +490,5 @@ export default async function animationStyleJourney(page, baseUrl) {
   }
 
   if (failures.length) throw new Error(`${failures.join("\n")}\n${JSON.stringify(results)}`);
-  return { results, reloaded, migrations };
+  return { results, shellStyles, reloaded, migrations };
 }
