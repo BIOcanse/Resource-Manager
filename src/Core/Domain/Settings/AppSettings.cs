@@ -34,7 +34,14 @@ public sealed record AppSettings(
     AppAiModelServiceSettings AiModelService,
     AppUpdateSettings? Update = null,
     AppHardwareControlSettings? Control = null,
-    AppReportSettings? Reports = null);
+    AppReportSettings? Reports = null,
+    HostMemoryProtectionSettings? MemoryProtection = null);
+
+public sealed record HostMemoryProtectionSettings(
+    bool Enabled = false,
+    double ThresholdPercent = 95,
+    double CheckIntervalSeconds = 1,
+    string DumpDirectory = "UserData/MemorySlices");
 
 public sealed record AppHardwareControlSettings(int ReassertionIntervalSeconds = 120);
 

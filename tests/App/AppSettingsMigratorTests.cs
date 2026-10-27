@@ -160,7 +160,8 @@ public sealed class AppSettingsMigratorTests
     [InlineData("1.0.31", true)]
     [InlineData("1.0.32", true)]
     [InlineData("1.0.33", true)]
-    [InlineData("1.0.34", false)]
+    [InlineData("1.0.34", true)]
+    [InlineData("1.0.35", false)]
     [InlineData("1.0.24.0", false)]
     [InlineData("99.0.0", false)]
     public void SupportsSourceVersion_UsesTheSingleContiguousMigrationRange(
@@ -493,7 +494,7 @@ public sealed class AppSettingsMigratorTests
     private const string CurrentShapeJson =
         """
         {
-          "version": "1.0.33",
+          "version": "1.0.34",
           "performance": {
             "optimizationMode": "normal",
             "preciseGpuPlacementEnabled": false,

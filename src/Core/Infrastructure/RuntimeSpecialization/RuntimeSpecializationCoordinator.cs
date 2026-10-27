@@ -19,6 +19,7 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
     private readonly IMonitoringSourceZoneRegistry monitoringSourceZoneRegistry;
     private readonly ILogger<RuntimeSpecializationCoordinator> logger;
     private readonly LegacyDashboardFileMigration? legacySettingsMigration;
+    private readonly ResourceManager.App.Infrastructure.MemoryProtection.HostMemoryProtectionService? memoryProtection;
     private CancellationTokenSource? changedWorkerCancellation;
     private Task? changedWorker;
     private long changedSequence;
@@ -42,7 +43,8 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
         IRuntimePlanProvider planProvider,
         IMonitoringSourceZoneRegistry monitoringSourceZoneRegistry,
         ILogger<RuntimeSpecializationCoordinator> logger,
-        LegacyDashboardFileMigration? legacySettingsMigration = null)
+        LegacyDashboardFileMigration? legacySettingsMigration = null,
+        ResourceManager.App.Infrastructure.MemoryProtection.HostMemoryProtectionService? memoryProtection = null)
     {
         this.compiler = compiler;
         this.settingsStore = settingsStore;
@@ -51,6 +53,7 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
         this.monitoringSourceZoneRegistry = monitoringSourceZoneRegistry;
         this.logger = logger;
         this.legacySettingsMigration = legacySettingsMigration;
+        this.memoryProtection = memoryProtection;
     }
 
     public async Task<AppSettingsUpdateResult> ApplyAppSettingsAsync(
@@ -124,6 +127,8 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
         AppSettingsUpdateResult previous,
         CancellationToken cancellationToken)
     {
+        if (memoryProtection?.ValidateSettings(settings.MemoryProtection ?? new()) is { } memoryReason)
+            return previous with { RuntimeApplicationDisposition = "rejectedBeforeCommit", RuntimeFailureCode = memoryReason };
         if (!AppSettingsHotkeySafetyValidator.AreEnabledDestructiveHotkeysSafe(settings))
         {
             return previous with
@@ -195,7 +200,7 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
 
         try
         {
-            var publication = Publish(candidatePlan);
+            var publication = await PublishAsync(candidatePlan);
             return RecordSettingsApplication(committed with
             {
                 RuntimeApplicationDisposition =
@@ -361,7 +366,7 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
     {
         var nextVersion = Interlocked.Increment(ref version);
         var plan = await compiler.CompileAsync(nextVersion, reason, cancellationToken);
-        var publication = Publish(ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints.FreedomPointPlanApplication.Prepare(
+        var publication = await PublishAsync(ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints.FreedomPointPlanApplication.Prepare(
             planProvider.Current, plan));
         var stored = await settingsStore.LoadReadOnlyAsync(CancellationToken.None);
         RecordSettingsApplication(stored with
@@ -376,9 +381,10 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
         return publication;
     }
 
-    private RuntimePlanPublicationResult Publish(CompiledRuntimePlan plan)
+    private async Task<RuntimePlanPublicationResult> PublishAsync(CompiledRuntimePlan plan)
     {
         var publication = planProvider.Publish(plan);
+        if (memoryProtection is not null) await memoryProtection.ApplySettingsAsync(plan.MemoryProtection);
         foreach (var failure in publication.DeliveryFailures)
         {
             logger.LogError(

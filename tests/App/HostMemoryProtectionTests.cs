@@ -1,0 +1,344 @@
+using System.Collections.Concurrent;
+using System.Net;
+using System.Net.Http.Json;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Threading.Channels;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using ResourceManager.App.Application.CpuTopology;
+using ResourceManager.App.Application.MemoryProtection;
+using ResourceManager.App.Application.RuntimeSpecialization;
+using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
+using ResourceManager.App.Application.Settings;
+using ResourceManager.App.Domain.CpuTopology;
+using ResourceManager.App.Domain.Settings;
+using ResourceManager.App.Endpoints;
+using ResourceManager.App.Hosting;
+using ResourceManager.App.Hosting.StartupCapabilities;
+using ResourceManager.App.Infrastructure.MemoryProtection;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
+
+namespace Resource_Manager_APP.Tests;
+
+public sealed class HostMemoryProtectionTests
+{
+    [Fact]
+    public async Task WireDefaultsPointReplacementAndEnableRejectionUseExistingSettingsCommit()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        using var point = await fixture.Client.GetAsync("/api/memory-protection/normal-running-point");
+        Assert.Equal("null", await point.Content.ReadAsStringAsync());
+        var status = await fixture.Status();
+        using var statusWire = JsonDocument.Parse(await fixture.Client.GetStringAsync("/api/memory-protection"));
+        Assert.False(statusWire.RootElement.GetProperty("enabled").GetBoolean());
+        Assert.Equal(200UL, statusWire.RootElement.GetProperty("currentCommit").GetProperty("currentBytes").GetUInt64());
+        Assert.Equal(JsonValueKind.Null, statusWire.RootElement.GetProperty("normalRunningPoint").ValueKind);
+        Assert.False(status.Enabled);
+        Assert.Equal(95, status.ThresholdPercent);
+        Assert.Equal(1, status.CheckIntervalSeconds);
+        Assert.EndsWith(Path.Combine("UserData", "MemorySlices"), status.DumpDirectory);
+        Assert.Equal(950m, status.TriggerBytes);
+        Assert.Equal(750m, status.RemainingBytes);
+        Assert.Equal("no-normal-running-point", status.InactiveReason);
+        Assert.Equal(0, fixture.Source.Active);
+
+        using var rejected = await fixture.Patch(new { enabled = true });
+        Assert.Equal(HttpStatusCode.Conflict, rejected.StatusCode);
+        var rejection = (await rejected.Content.ReadFromJsonAsync<AppSettingsUpdateResult>())!;
+        Assert.Equal("no-normal-running-point", rejection.RuntimeFailureCode);
+        Assert.False((await fixture.Stored()).Settings.MemoryProtection!.Enabled);
+        Assert.Equal(0, fixture.Source.Active);
+
+        var first = await fixture.CreatePoint();
+        Assert.Equal(1, first.ProcessCount);
+        Assert.Equal(200UL, first.Commit.CurrentBytes);
+        fixture.Source.Publish(300, 30, [Process(10, "20", 123)]);
+        var next = await fixture.CreatePoint();
+        using var pointWire = JsonDocument.Parse(await fixture.Client.GetStringAsync("/api/memory-protection/normal-running-point"));
+        var processWire = pointWire.RootElement.GetProperty("processes")[0];
+        Assert.Equal("20", processWire.GetProperty("processStartKey").GetString());
+        Assert.Equal(123UL, processWire.GetProperty("privateCommitBytes").GetUInt64());
+        Assert.False(processWire.TryGetProperty("isResourceManager", out _));
+        Assert.Equal("20", Assert.Single(next.Processes).ProcessStartKey);
+        Assert.Equal(next.At, fixture.Protection.ReadPoint()!.At);
+        Assert.Equal(next.Processes, fixture.Protection.ReadPoint()!.Processes);
+        Assert.NotEqual(first, next);
+        using var response = await fixture.Patch(new { thresholdPercent = 90, checkIntervalSeconds = 2, dumpDirectory = "UserData/CustomSlices" });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        status = await fixture.Status();
+        Assert.Equal(900m, status.TriggerBytes);
+        Assert.Equal(600m, status.RemainingBytes);
+        Assert.Equal(2, status.CheckIntervalSeconds);
+        Assert.EndsWith("CustomSlices", status.DumpDirectory);
+    }
+
+    [Theory]
+    [InlineData(0, 1, "invalid-threshold-percent")]
+    [InlineData(101, 1, "invalid-threshold-percent")]
+    [InlineData(95, 0, "invalid-check-interval")]
+    public async Task InvalidSettingsAreRejectedBeforeCommit(double threshold, double interval, string reason)
+    {
+        await using var fixture = await Fixture.StartAsync();
+        var before = await fixture.Stored();
+        using var response = await fixture.Patch(new { thresholdPercent = threshold, checkIntervalSeconds = interval });
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal(reason, (await response.Content.ReadFromJsonAsync<AppSettingsUpdateResult>())!.RuntimeFailureCode);
+        Assert.Equal(before.Revision, (await fixture.Stored()).Revision);
+    }
+
+    [Fact]
+    public async Task ProductionParentReadsBothFactsAndSelectionUsesGrowthExactIdentityAndExclusions()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        fixture.Source.Publish(200, 20, [Process(10, "1", 900), Process(11, "1", 10), Process(12, "old", 1000)]);
+        await fixture.CreatePoint();
+        Assert.Equal(BusinessBlockState.Stopped, fixture.Scheduler.ReadState(HostMemoryProtectionService.BlockId));
+        fixture.Executor.Excluded[40] = "cannot-open";
+        fixture.Executor.Excluded[41] = "critical-process";
+        using var enabled = await fixture.Patch(new { enabled = true });
+        Assert.Equal(HttpStatusCode.OK, enabled.StatusCode);
+        await Until(() => fixture.Source.Active == 1);
+        fixture.Source.Publish(960, 96,
+            [Process(10, "1", 950), Process(11, "1", 200), Process(12, "new", 300), Process(40, "1", 5000),
+                Process(41, "1", 4000), Process(42, "1", 6000) with { IsResourceManager = true }]);
+        await Until(() => fixture.Protection.ReadStatus().Actions.Count == 1);
+        var action = Assert.Single(fixture.Protection.ReadStatus().Actions);
+        Assert.Equal(12, action.ProcessId);
+        Assert.Equal("new", action.ProcessStartKey);
+        Assert.Equal(0UL, action.BaselineBytes);
+        Assert.Equal(300m, action.GrowthBytes);
+        Assert.DoesNotContain(42, fixture.Executor.Opened);
+        var excluded = fixture.Protection.ReadStatus().ExcludedCandidates;
+        Assert.Contains(excluded, item => item.ProcessId == 40 && item.Reason == "cannot-open");
+        Assert.Contains(excluded, item => item.ProcessId == 41 && item.Reason == "critical-process");
+        Assert.Contains(excluded, item => item.ProcessId == 42 && item.Reason == "resource-manager-process");
+
+        fixture.Source.Publish(970, 97, [Process(40, "1", 8000), Process(11, "1", 210)]);
+        await Until(() => fixture.Protection.ReadStatus().Actions.Count == 2);
+        Assert.Equal(1, fixture.Executor.Opened.Count(id => id == 40));
+        Assert.Equal(11, fixture.Protection.ReadStatus().Actions[0].ProcessId);
+        var decision = fixture.Scheduler.Read().CurrentDecisions.Single(item => item.ParentId == BackendBlockGraph.Program);
+        Assert.Contains(decision.Facts, item => item.Key == HostMemoryProtectionService.EnabledFact && item.Value);
+        Assert.Contains(decision.Facts, item => item.Key == HostMemoryProtectionService.PointFact && item.Value);
+
+        using var disabled = await fixture.Patch(new { enabled = false });
+        Assert.Equal(HttpStatusCode.OK, disabled.StatusCode);
+        await Until(() => fixture.Source.Active == 0 && fixture.Scheduler.ReadState(HostMemoryProtectionService.BlockId) == BusinessBlockState.Stopped);
+        fixture.Source.Publish(999, 99, [Process(11, "1", 9000)]);
+        Assert.Equal(2, fixture.Protection.ReadStatus().Actions.Count);
+    }
+
+    [Fact]
+    public async Task SuspendFailureTriesNextCandidateAndDisableDrainsOneInFlightAction()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        await fixture.CreatePoint();
+        fixture.Executor.SuspendFailures.Add(20);
+        fixture.Executor.Block = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var enabled = await fixture.Patch(new { enabled = true });
+        await Until(() => fixture.Source.Active == 1);
+        fixture.Source.Publish(960, 96, [Process(20, "1", 800), Process(21, "1", 700), Process(22, "1", 600)]);
+        await Until(() => fixture.Executor.Executed.Contains(21));
+        using var disabled = await fixture.Patch(new { enabled = false });
+        Assert.Equal(HttpStatusCode.OK, disabled.StatusCode);
+        Assert.NotEqual(BusinessBlockState.Stopped, fixture.Scheduler.ReadState(HostMemoryProtectionService.BlockId));
+        Assert.DoesNotContain(22, fixture.Executor.Executed);
+        fixture.Executor.Block.SetResult();
+        await Until(() => fixture.Scheduler.ReadState(HostMemoryProtectionService.BlockId) == BusinessBlockState.Stopped);
+        Assert.Equal(2, fixture.Protection.ReadStatus().Actions.Count);
+        Assert.Contains(fixture.Protection.ReadStatus().Actions, item => item.Outcome == "suspend-failed");
+        Assert.Equal(1, fixture.Executor.MaxConcurrent);
+        Assert.Equal(0, fixture.Source.Active);
+    }
+
+    [Fact]
+    public async Task EachDeliveryComparesThresholdAndRecordsHaveAnUpperBound()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        await fixture.CreatePoint();
+        using var enabled = await fixture.Patch(new { enabled = true });
+        await Until(() => fixture.Source.Active == 1);
+        fixture.Source.Publish(940, 94, [Process(10, "1", 9999)]);
+        await Until(() => fixture.Source.Deliveries >= 3);
+        Assert.Empty(fixture.Executor.Executed);
+        for (var index = 0; index < HostMemoryProtectionService.RecordLimit + 2; index++)
+        {
+            fixture.Source.Publish(950, 95, [Process(100 + index, "1", (ulong)(index + 1))]);
+            var count = index + 1;
+            await Until(() => fixture.Executor.Executed.Count == count && fixture.Protection.ReadStatus().Actions.Count == Math.Min(count, HostMemoryProtectionService.RecordLimit));
+        }
+        var status = fixture.Protection.ReadStatus();
+        Assert.Equal(HostMemoryProtectionService.RecordLimit, status.Actions.Count);
+        Assert.Equal(165, status.Actions[0].ProcessId);
+        Assert.Equal(102, status.Actions[^1].ProcessId);
+    }
+
+    private static HostMemoryProcess Process(int pid, string key, ulong bytes) => new(pid, key, "fake-" + pid, bytes);
+    [Fact]
+    public async Task SavedEnablementAfterRestartDoesNotRunWithoutAnInMemoryPoint()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        // This is the production startup-publication path with a persisted switch, using only fake sources.
+        await fixture.Protection.ApplySettingsAsync(new(Enabled: true));
+        var status = fixture.Protection.ReadStatus();
+        Assert.True(status.Enabled);
+        Assert.Equal("no-normal-running-point", status.InactiveReason);
+        Assert.Equal(BusinessBlockState.Stopped, fixture.Scheduler.ReadState(HostMemoryProtectionService.BlockId));
+        Assert.Equal(0, fixture.Source.Active);
+        await fixture.CreatePoint();
+        await Until(() => fixture.Source.Active == 1);
+        Assert.Equal(BusinessBlockState.Running, fixture.Scheduler.ReadState(HostMemoryProtectionService.BlockId));
+    }
+
+    [Fact]
+    public async Task ReplacingPointClearsTheFailedOpenExclusions()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        await fixture.CreatePoint();
+        fixture.Executor.Excluded[40] = "cannot-open";
+        using var enabled = await fixture.Patch(new { enabled = true });
+        await Until(() => fixture.Source.Active == 1);
+        fixture.Source.Publish(960, 96, [Process(40, "1", 1000), Process(41, "1", 100)]);
+        await Until(() => fixture.Protection.ReadStatus().Actions.Count == 1);
+        using var disabled = await fixture.Patch(new { enabled = false });
+        await Until(() => fixture.Source.Active == 0);
+        fixture.Source.Publish(200, 20, [Process(40, "1", 1000), Process(41, "1", 100)]);
+        await fixture.CreatePoint();
+        using var reenabled = await fixture.Patch(new { enabled = true });
+        await Until(() => fixture.Source.Active == 1);
+        fixture.Source.Publish(960, 96, [Process(40, "1", 2000), Process(41, "1", 200)]);
+        await Until(() => fixture.Protection.ReadStatus().Actions.Count == 2);
+        Assert.Equal(2, fixture.Executor.Opened.Count(id => id == 40));
+    }
+
+    private static async Task Until(Func<bool> predicate)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        while (!predicate()) await Task.Delay(10, timeout.Token);
+    }
+
+    private sealed class Fixture(WebApplication app, string root, FakeSource source, FakeExecutor executor) : IAsyncDisposable
+    {
+        public HttpClient Client { get; } = new() { BaseAddress = new(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single()) };
+        public FakeSource Source => source;
+        public FakeExecutor Executor => executor;
+        public HostMemoryProtectionService Protection => app.Services.GetRequiredService<HostMemoryProtectionService>();
+        public BusinessBlockScheduler Scheduler => app.Services.GetRequiredService<BusinessBlockScheduler>();
+        public Task<AppSettingsUpdateResult> Stored() => app.Services.GetRequiredService<IAppSettingsStore>().LoadReadOnlyAsync(CancellationToken.None);
+        public async Task<HttpResponseMessage> Patch(object settings)
+            => await Client.PatchAsJsonAsync("/api/memory-protection", new { expectedRevision = (await Stored()).Revision, changes = new { memoryProtection = settings } });
+        public async Task<NormalRunningPoint> CreatePoint()
+        {
+            using var response = await Client.PostAsync("/api/memory-protection/normal-running-point", null);
+            response.EnsureSuccessStatusCode();
+            return (await response.Content.ReadFromJsonAsync<NormalRunningPoint>())!;
+        }
+        public async Task<HostMemoryProtectionStatus> Status() => (await Client.GetFromJsonAsync<HostMemoryProtectionStatus>("/api/memory-protection"))!;
+
+        public static async Task<Fixture> StartAsync()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "rm-memory-protection-host-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
+            builder.WebHost.UseUrls("http://127.0.0.1:0");
+            var capabilities = new StartupCapabilitySet("memory-protection-test", StartupCapability.RuntimeEffectOwners | StartupCapability.MutablePersistence);
+            builder.Services.AddResourceManagerApp(["--no-native-ui"], capabilities);
+            builder.Logging.ClearProviders();
+            // Keep the production DI, settings compiler, block declaration and rule. No native hosted producer runs.
+            builder.Services.RemoveAll<IHostedService>();
+            var source = new FakeSource(); var executor = new FakeExecutor();
+            builder.Services.AddSingleton<IHostMemoryProtectionSource>(source);
+            builder.Services.AddSingleton<IHostMemoryProtectionExecutor>(executor);
+            builder.Services.AddSingleton<ICpuTopologySampler>(new CpuSampler());
+            var app = builder.Build();
+            typeof(ResourceManagerEndpointRouteBuilderExtensions).GetMethod("MapHostMemoryProtectionEndpoints", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [app, capabilities]);
+            await app.StartAsync();
+            await app.Services.GetRequiredService<IRuntimeSpecializationCoordinator>().RebuildAsync("test-startup", CancellationToken.None);
+            return new(app, root, source, executor);
+        }
+        public async ValueTask DisposeAsync()
+        {
+            executor.Block?.TrySetResult();
+            await Scheduler.ShutdownAsync(new(BusinessBlockRequestKind.Configuration, "test", "shutdown", 1));
+            await Until(() => Scheduler.ReadState(HostMemoryProtectionService.BlockId) == BusinessBlockState.Stopped);
+            Client.Dispose();
+            await app.StopAsync(); await app.DisposeAsync();
+            // Only files produced by the existing settings store in this fixture's known Config directory.
+            var config = Path.Combine(root, "Config");
+            if (Directory.Exists(config))
+            {
+                foreach (var path in Directory.EnumerateFiles(config)) File.Delete(path);
+                Directory.Delete(config);
+            }
+            Directory.Delete(root);
+        }
+    }
+
+    private sealed class CpuSampler : ICpuTopologySampler
+    {
+        public void ResetUsageBaseline() { }
+        public CpuTopologySnapshot CaptureSnapshot() => throw new InvalidOperationException("No test usage sampling.");
+        public CpuTopologySnapshot CaptureTopology() => CpuBaselineRatioCatalogTests.CreateTopology("Intel Core i9-14900K", "Intel", [24]);
+    }
+    private sealed class FakeSource : IHostMemoryProtectionSource
+    {
+        private readonly ConcurrentDictionary<Guid, Channel<HostMemoryReading>> readers = new();
+        private HostMemoryReading current = new(DateTimeOffset.UtcNow, new(200, 1000, 20), [Process(10, "1", 100)]);
+        public int Active => readers.Count;
+        public int Deliveries;
+        public HostMemoryCommit? ReadCurrentCommit() => Volatile.Read(ref current).Commit;
+        public void Publish(ulong bytes, double percent, IReadOnlyList<HostMemoryProcess> processes)
+        {
+            var next = new HostMemoryReading(DateTimeOffset.UtcNow, new(bytes, 1000, percent), processes);
+            Volatile.Write(ref current, next);
+            foreach (var channel in readers.Values) channel.Writer.TryWrite(next);
+        }
+        public async IAsyncEnumerable<HostMemoryReading> SubscribeAsync(string holder, TimeSpan interval, [EnumeratorCancellation] CancellationToken token)
+        {
+            Assert.StartsWith("host-memory-protection", holder);
+            var key = Guid.NewGuid(); var channel = Channel.CreateUnbounded<HostMemoryReading>();
+            readers[key] = channel;
+            using var registration = token.Register(() => { readers.TryRemove(key, out _); channel.Writer.TryComplete(); });
+            try
+            {
+                Interlocked.Increment(ref Deliveries);
+                yield return Volatile.Read(ref current) with { At = DateTimeOffset.UtcNow };
+                await foreach (var value in channel.Reader.ReadAllAsync(token)) { Interlocked.Increment(ref Deliveries); yield return value; }
+            }
+            finally { readers.TryRemove(key, out _); }
+        }
+    }
+    private sealed class FakeExecutor : IHostMemoryProtectionExecutor
+    {
+        public ConcurrentQueue<int> Opened = new(), Executed = new();
+        public Dictionary<int, string> Excluded = new();
+        public HashSet<int> SuspendFailures = [];
+        public TaskCompletionSource? Block;
+        private int concurrent;
+        public int MaxConcurrent;
+        public IHostMemoryProtectionTarget Open(HostMemoryProcess process)
+        { Opened.Enqueue(process.ProcessId); return new Target(this, process.ProcessId); }
+        private sealed class Target(FakeExecutor owner, int pid) : IHostMemoryProtectionTarget
+        {
+            public string? ExclusionReason => owner.Excluded.GetValueOrDefault(pid);
+            public HostMemoryActionResult Execute(string directory)
+            {
+                owner.Executed.Enqueue(pid);
+                if (owner.SuspendFailures.Contains(pid)) return new("suspend-failed", "test", null, 0) { SuspendFailed = true };
+                var active = Interlocked.Increment(ref owner.concurrent);
+                owner.MaxConcurrent = Math.Max(owner.MaxConcurrent, active);
+                try { owner.Block?.Task.GetAwaiter().GetResult(); return new("completed", null, Path.Combine(directory, "test.dmp"), 123); }
+                finally { Interlocked.Decrement(ref owner.concurrent); }
+            }
+            public void Dispose() { }
+        }
+    }
+}

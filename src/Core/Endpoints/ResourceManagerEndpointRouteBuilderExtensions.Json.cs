@@ -18,6 +18,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     [JsonSerializable(typeof(FrontendSubscriptionChannelFrame<global::ResourceManager.App.Endpoints.Transport.ResourceFactsSnapshot>))]
     [JsonSerializable(typeof(FrontendSubscriptionChannelFrame<global::ResourceManager.App.Domain.Control.ControlActualState>))]
     [JsonSerializable(typeof(FrontendSubscriptionChannelFrame<global::ResourceManager.App.Infrastructure.Updates.ProductUpdateState>))]
+    [JsonSerializable(typeof(global::ResourceManager.App.Application.MemoryProtection.HostMemoryProtectionStatus))]
+    [JsonSerializable(typeof(global::ResourceManager.App.Application.MemoryProtection.NormalRunningPoint))]
     [JsonSerializable(typeof(EndpointErrorPayload))]
     [JsonSerializable(typeof(FrontendSubscriptionChannelFrame<SubscriptionChannelRejection>))]
     [JsonSerializable(typeof(Transport.MonitoringHookFrame<SubscriptionChannelRejection>))]

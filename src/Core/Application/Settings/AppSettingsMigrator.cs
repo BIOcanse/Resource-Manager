@@ -96,7 +96,11 @@ public static class AppSettingsMigrator
                 ReadInt32(root, "update", "checkIntervalHours", 24)),
             new AppHardwareControlSettings(
                 ReadInt32(root, "control", "reassertionIntervalSeconds", 120)),
-            ReadReports(root));
+            ReadReports(root),
+            root.TryGetProperty("memoryProtection", out var protection)
+                ? protection.Deserialize<HostMemoryProtectionSettings>(WebJsonOptions)
+                    ?? throw new JsonException("memoryProtection must be an object.")
+                : new HostMemoryProtectionSettings());
 
         return AppSettingsNormalizer.Normalize(settings);
     }

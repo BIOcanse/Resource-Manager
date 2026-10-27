@@ -7,6 +7,7 @@ using Microsoft.Win32.SafeHandles;
 using ResourceManager.App.Application.LocalSystem;
 using ResourceManager.App.Domain.LocalSystem;
 using ResourceManager.App.Infrastructure.Paths;
+using ResourceManager.App.Infrastructure.MemoryProtection;
 using ResourceManager.App.Infrastructure.Windows;
 using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Infrastructure.ServiceHosting;
@@ -170,17 +171,20 @@ public sealed class WindowsSystemProcessActionService(
             var fileName = $"{SanitizeFileName(processName ?? "process")}_{processId}_{DateTimeOffset.Now:yyyyMMdd_HHmmss}.dmp";
             var dumpPath = Path.Combine(dumpDirectory, fileName);
             using var file = new FileStream(dumpPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
-            var ok = NativeMethods.MiniDumpWriteDump(
-                handle,
-                processId,
-                file.SafeFileHandle.DangerousGetHandle(),
-                MiniDumpWithFullMemory,
-                IntPtr.Zero,
-                IntPtr.Zero,
-                IntPtr.Zero);
-            if (!ok)
+            lock (HostMemoryMinidumpWriter.DbgHelpGate)
             {
-                throw new Win32Exception(Marshal.GetLastWin32Error());
+                var ok = NativeMethods.MiniDumpWriteDump(
+                    handle,
+                    processId,
+                    file.SafeFileHandle.DangerousGetHandle(),
+                    MiniDumpWithFullMemory,
+                    IntPtr.Zero,
+                    IntPtr.Zero,
+                    IntPtr.Zero);
+                if (!ok)
+                {
+                    throw new Win32Exception(Marshal.GetLastWin32Error());
+                }
             }
 
             return OperationItem(target, processName, "Succeeded", SystemProcessOutcome.DumpCreated, dumpPath);

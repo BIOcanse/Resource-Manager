@@ -154,6 +154,8 @@ internal static class TrustedAccessHttpPolicy
             "DELETE /api/optimization/trust/{id}",
             "DELETE /api/software/manual/{id}",
             "PATCH /api/settings/app",
+            "PATCH /api/memory-protection",
+            "POST /api/memory-protection/normal-running-point",
             "POST /api/components/{id}/install",
             "POST /api/control/instances/refresh",
             "POST /api/control/redetect",
@@ -278,6 +280,8 @@ internal static class TrustedAccessHttpPolicy
             "POST /api/adapters/resource-manager/scheduling",
             "POST /api/controlled/register");
         Add(Protected(AccessKeyScopes.ProcessesRead, allowKeylessLocal: true),
+            "GET /api/memory-protection",
+            "GET /api/memory-protection/normal-running-point",
             "GET /api/cpu/residency",
             "GET /api/debug/frame-timing",
             "GET /api/debug/gpu-renderers",

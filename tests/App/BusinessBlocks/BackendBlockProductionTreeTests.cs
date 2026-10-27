@@ -25,7 +25,7 @@ public sealed class BackendBlockProductionTreeTests
         "EtwSystemInterruptSnapshotSource", "EtwPhysicalDiskIoAttributionReader", "EtwNetworkTcpIpAttributionReader",
         "WindowsResourceBreakdownSampler", "GpuPlacementProcessHistoryObserver",
         "SharedResourceSubscriptionMaintenanceService", "JsonDebugDiagnosticLogWriter",
-        "HostManagerReportCoordinatorOwner", "HostManagerSmartCoordinator", "DeviceTopologySnapshotProvider"
+        "HostManagerReportCoordinatorOwner", "HostManagerSmartCoordinator", "DeviceTopologySnapshotProvider", "HostMemoryProtection"
     ];
     private static readonly string[] NativeBlocks = ["present-etw", "gpu-allocation-etw", "DxgkrnlVidMmEtwTelemetryZone"];
     private static readonly string[] SamplingLifetimeConsumers =
@@ -82,8 +82,8 @@ public sealed class BackendBlockProductionTreeTests
     }
 
     [Theory]
-    [InlineData(false, 37, 49, 27)]
-    [InlineData(true, 38, 50, 28)]
+    [InlineData(false, 38, 51, 28)]
+    [InlineData(true, 39, 52, 29)]
     public async Task ProductionTreeContainsConcurrentFlowsAndDrainsChildrenBeforeTheirOwners(bool windowsService, int expectedCount, int expectedDataEdges, int expectedRoots)
     {
         var services = new ServiceCollection();
