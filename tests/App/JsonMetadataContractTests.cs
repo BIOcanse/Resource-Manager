@@ -20,6 +20,25 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class JsonMetadataContractTests
 {
+    [Theory]
+    [InlineData(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
+    [InlineData(ResourceManager.ReadWrite.ReadVolatilityKind.Sampled)]
+    [InlineData(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven)]
+    public void MetricCatalogVolatilityHasAValidWireShape(ResourceManager.ReadWrite.ReadVolatilityKind kind)
+    {
+        var volatility = new ResourceManager.ReadWrite.ReadVolatility(kind,
+            kind == ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven ? "producer transition" : null);
+        var definition = new MetricDefinition("fixture", "", volatility);
+        var options = new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions;
+        ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
+        var wire = JsonSerializer.SerializeToElement(definition, options);
+        Assert.Equal(kind == ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven,
+            wire.GetProperty("volatility").TryGetProperty("event", out _));
+        var roundTrip = JsonSerializer.Deserialize<MetricDefinition>(wire, options)!;
+        Assert.Equal(definition.Id, roundTrip.Id);
+        Assert.Equal(volatility, roundTrip.Volatility);
+    }
+
     [Fact]
     public void OrdinaryOperationAndProcessWireExcludeInternalDiagnosticText()
     {
@@ -402,6 +421,12 @@ public sealed class JsonMetadataContractTests
             Assert.True(++count <= 20000, "Fixture exceeded its node bound.");
             var type = Nullable.GetUnderlyingType(work.Type) ?? work.Type;
             if (type == typeof(MetricInteger)) { work.Set(JsonValue.Create("9007199254740993")); continue; }
+            // This declaration validates Kind/Event together; independent primitive fixtures are invalid.
+            if (type == typeof(ResourceManager.ReadWrite.ReadVolatility))
+            {
+                work.Set(JsonSerializer.SerializeToNode(ResourceManager.ReadWrite.ReadVolatility.EventDriven("producer transition"), legacy));
+                continue;
+            }
             if (type == typeof(string) || type == typeof(object)) { work.Set(JsonValue.Create("中文<&>\\\"\nBIOcanse")); continue; }
             if (type.FullName == "FreedomPoint.PointPath") { work.Set(JsonSerializer.SerializeToNode(new FreedomPoint.PointPath(FreedomPoint.PointPath.MainProgramPackage, 1, 0, FreedomPoint.PointFamily.Build, FreedomPoint.PointKind.Simple, 0), legacy)); continue; }
             if (type == typeof(JsonElement) || typeof(JsonNode).IsAssignableFrom(type)) { work.Set(JsonNode.Parse("{\"kind\":\"中文<&>\",\"n\":1}")); continue; }

@@ -7,6 +7,7 @@ public enum ReadVolatilityKind { Fixed, EventDriven, Sampled }
 public sealed record ReadVolatility
 {
     public ReadVolatilityKind Kind { get; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public string? Event { get; }
 
     public ReadVolatility(ReadVolatilityKind kind, string? @event = null)
