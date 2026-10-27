@@ -33,7 +33,9 @@ export async function observeSubscriptionFrames(page, baseUrl) {
           if (probe.error) return chunk;
           try {
             pending += decoder.decode(chunk.value, { stream: !chunk.done });
-            if (pending.length > 1_048_576) throw new Error("Subscription frame probe exceeded 1 MiB partial buffer");
+            // Real catalog publications exceed 1 MiB. Keep the same bounded
+            // frame capacity as the raw recorder without retaining frame history.
+            if (pending.length > 32 * 1024 * 1024) throw new Error("Subscription frame probe exceeded 32 MiB partial buffer");
             const lines = pending.split("\n");
             pending = lines.pop();
             if (chunk.done && pending.trim()) { lines.push(pending); pending = ""; }

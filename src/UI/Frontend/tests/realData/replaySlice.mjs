@@ -1,4 +1,6 @@
-import { readSlice, selectorKey, matchSelector } from "./sliceFormat.mjs";
+import { readSlice, selectorKey, matchSelector, resolveSliceFilePath } from "./sliceFormat.mjs";
+import { deriveProductionReadPlan } from "./productionReadPlan.mjs";
+import { stat } from "node:fs/promises";
 
 // A selector is covered only by the same query (ignoring requested cadence).
 // Known list selectors can consume a recorded superset; payload stays untouched.
@@ -22,15 +24,28 @@ function coversFieldPayload(event, path) {
   });
 }
 
-export function createSliceReplay(slice, clock = () => performance.now()) {
+export function createSliceReplay(slice, clock = () => performance.now(), observation = null) {
   const started = clock();
   const events = slice.events.toSorted((a, b) => a.atMs - b.atMs);
+  const routes = observation ? new Set([...observation.reads, ...observation.subscriptions].map(path => new URL(path, "http://localhost").pathname)) : null;
+  const groups = new Map();
+  for (const event of events) {
+    if (routes && !routes.has(new URL(event.path, "http://localhost").pathname)) continue;
+    const key = `${event.kind}:${event.path}`;
+    const group = groups.get(key) ?? [];
+    group.push(event); groups.set(key, group);
+  }
+  const selectedQueries = new Map();
   const select = (kind, path) => {
-    const matching = events.filter(event => event.kind === kind && (coversSelector(event.path, path) || (kind === "frame" && coversFieldPayload(event, path))));
+    const cacheKey = `${kind}:${path}`;
+    if (selectedQueries.has(cacheKey)) return selectedQueries.get(cacheKey);
+    const matching = [...groups.values()].filter(group => group[0].kind === kind && (coversSelector(group[0].path, path)
+      || (kind === "frame" && group.some(event => coversFieldPayload(event, path)))));
     if (!matching.length) return [];
     // Prefer an exact query; never mix frames from several recorded subscriptions.
-    const selected = matching.find(event => selectorKey(event.path) === selectorKey(path))?.path ?? matching[0].path;
-    return events.filter(event => event.kind === kind && event.path === selected);
+    const selected = matching.find(group => selectorKey(group[0].path) === selectorKey(path)) ?? matching[0];
+    selectedQueries.set(cacheKey, selected);
+    return selected;
   };
   return {
     response(path) {
@@ -52,6 +67,21 @@ export function createSliceReplay(slice, clock = () => performance.now()) {
   };
 }
 
+let cachedInput;
 export async function loadSliceReplay(path) {
-  return path ? createSliceReplay(await readSlice(path)) : null;
+  if (!path) return null;
+  const file = resolveSliceFilePath(path), info = await stat(file);
+  const key = `${file}:${info.size}:${info.mtimeMs}`;
+  if (cachedInput?.key !== key) cachedInput = { key, value: (async () => {
+    const slice = await readSlice(file);
+    const catalog = slice.events.find(event => event.kind === "frame" && event.body?.catalogRevision && Array.isArray(event.body.metrics))?.body;
+    const plan = await deriveProductionReadPlan(1000, catalog ? { metrics: catalog.metrics, metricFields: catalog.fields } : null);
+    const observation = plan.categories.observation;
+    const routes = new Set([...observation.reads, ...observation.subscriptions].map(path => new URL(path, "http://localhost").pathname));
+    // Warm-up and journey-owned payloads are not replay inputs. Retain one parsed
+    // observation dataset per worker, rather than parsing 275 MB on every reset.
+    return { slice: { durationMs: slice.durationMs, events: slice.events.filter(event => routes.has(new URL(event.path, "http://localhost").pathname)) }, observation };
+  })() };
+  const { slice, observation } = await cachedInput.value;
+  return createSliceReplay(slice, () => performance.now(), observation);
 }

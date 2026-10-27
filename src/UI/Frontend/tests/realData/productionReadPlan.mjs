@@ -36,19 +36,21 @@ export async function deriveProductionReadPlan(intervalMs = 1000, catalogs = nul
   const reads = new Set();
   const subscriptions = new Set();
   const catalogReads = {};
+  const observationReads = new Set(), observationSubscriptions = new Set();
   const resourceSelectors = catalogs ? await deriveResourceQuerySelectors(catalogs) : null;
   let discoveryPath = null;
 
-  for (const { source } of sources.readSources) {
+  for (const { source, path } of sources.readSources) {
     for (const descriptor of findGetDescriptors(source)) {
       if (!isSafeReadPath(descriptor.url) || deniedPath.test(descriptor.key ?? "")) continue;
       reads.add(descriptor.url);
+      if (isObservationSource(path, descriptor.key)) observationReads.add(descriptor.url);
       if (descriptor.key === "monitor.metric-catalog") catalogReads.metrics = descriptor.url;
       if (descriptor.key === "resource-breakdown.process-field-catalog") catalogReads.processFields = descriptor.url;
     }
   }
 
-  for (const { source, module } of sources.builderSources) {
+  for (const { source, module, path } of sources.builderSources) {
     for (const builder of findExportedSubscriptionBuilders(source)) {
       if (/AccessRequest/i.test(builder.name)) continue;
       const variants = getBuilderVariants(builder.name, catalogs, module, resourceSelectors);
@@ -64,12 +66,30 @@ export async function deriveProductionReadPlan(intervalMs = 1000, catalogs = nul
         const pathValue = module[builder.name](...args);
         if (typeof pathValue !== "string" || !isSafeSubscriptionPath(pathValue)) continue;
         subscriptions.add(pathValue);
+        if (isObservationSource(path, builder.name)) observationSubscriptions.add(pathValue);
         if (builder.name === "buildMetricFieldCatalogSubscriptionUrl") discoveryPath = pathValue;
       }
     }
   }
 
   const streamPath = await readSubscriptionEndpoint();
+  // Some GET descriptors call a pure URL builder. Their literal endpoint is
+  // discovered elsewhere (for example the legacy API facade), but its owner is
+  // the measurement builder, not that facade.
+  for (const { path, source } of sources.builderSources) {
+    if (!isObservationSource(path)) continue;
+    for (const statement of source.statements) {
+      if (!ts.isFunctionDeclaration(statement) || !statement.name || !/^build.*Url$/.test(statement.name.text)
+        || /Subscription/.test(statement.name.text)) continue;
+      const pending = [statement];
+      while (pending.length) {
+        const node = pending.pop();
+        const literal = literalString(node);
+        if (literal && reads.has(literal)) observationReads.add(literal);
+        node.forEachChild(child => { pending.push(child); });
+      }
+    }
+  }
   if (!reads.size || !subscriptions.size || !discoveryPath) {
     throw new Error("Production read plan is incomplete; expected GETs, safe subscription builders, and a metric catalog stream");
   }
@@ -79,8 +99,19 @@ export async function deriveProductionReadPlan(intervalMs = 1000, catalogs = nul
     streamPath,
     discoveryPath,
     topologyPath: [...subscriptions].find(path => path.startsWith("/api/device-topology/state/subscribe")),
-    catalogReads
+    catalogReads,
+    categories: { observation: { reads: [...observationReads].sort(), subscriptions: [...observationSubscriptions].sort() },
+      journey: { reads: [...reads].filter(path => !observationReads.has(path)).sort(),
+        subscriptions: [...subscriptions].filter(path => !observationSubscriptions.has(path)).sort() } }
   };
+}
+
+// Classify the production owners, never a second list of HTTP endpoints. Settings,
+// control, management, operations, updates, recordings and audit default to journey.
+function isObservationSource(path, key = "") {
+  const module = relative(sourceRoot, path).split(sep).join("/");
+  return /^(data\/(monitor|metricFields|resourceMonitor|cpu|gpu|localSystem)\/|features\/deviceTopology\/)/.test(module)
+    && !/override|score|binding|settings|control/i.test(key ?? "");
 }
 
 export function assertAllowedRequest(plan, method, path, body) {

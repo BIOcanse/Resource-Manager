@@ -18,6 +18,8 @@ const staticRoot = process.env.RM_FRONTEND_STATIC_ROOT
 const now = () => new Date().toISOString();
 const realDataProfile = JSON.parse(await readFile(new URL("../fixtures/realDataProfile.json", import.meta.url), "utf8"));
 let sliceReplay = await loadSliceReplay(process.env.RM_REAL_SLICE);
+const journeyControlledPaths = new Set();
+const canReplay = path => !scenario.readmeShowcase && !journeyControlledPaths.has(new URL(path, "http://mock").pathname);
 const recordedEdidState = JSON.parse(await readFile(process.env.RM_EDID_UI_STATE_JSON || new URL("../fixtures/displayEdid.json", import.meta.url), "utf8"));
 const recordedType3State = JSON.parse(await readFile(process.env.RM_EDID_UI_TYPE3_STATE_JSON || new URL("../fixtures/displayEdidType3.json", import.meta.url), "utf8"));
 const typeXWirePath = process.env.RM_EDID_UI_TYPEX_STATE_JSON;
@@ -369,6 +371,7 @@ const server = createServer(async (request, response) => {
       // periodic publication is paused, so pending/reading transitions are observable.
       const { kind } = JSON.parse(await readBody(request));
       if (!["catalog", "ids", "fields"].includes(kind)) return json(response, 400, { error: "invalid metric publication kind" });
+      journeyControlledPaths.add(kind === "catalog" ? "/api/metrics/fields/catalog/subscribe" : "/api/metrics/subscribe");
       const queries = [];
       for (const publisher of ndjsonPublishers.values()) {
         for (const subscriber of publisher.subscribers) {
@@ -415,6 +418,7 @@ const server = createServer(async (request, response) => {
     if (url.pathname === "/__test/subscriptions/publish" && request.method === "POST") {
       const body = JSON.parse(await readBody(request));
       if (typeof body.path !== "string") return json(response, 400, { error: "path" });
+      journeyControlledPaths.add(body.path);
       if (body.patch) applyScenarioPatch(body.patch);
       const publishers = [...ndjsonPublishers.values()].filter((publisher) => publisher.path === body.path);
       for (const publisher of publishers) publishNdjsonBoundary(publisher);
@@ -1526,6 +1530,7 @@ const scenarioChoices = {
 };
 
 function applyScenarioPatch(patch) {
+  for (const path of [...(patch.manualPublishPaths ?? []), ...(patch.pausedSubscriptionPaths ?? [])]) journeyControlledPaths.add(path);
   if (Object.hasOwn(patch, "generatedData")) applyGeneratedProcessFields(patch.generatedData);
   const presentation = frontendPreferenceScenarioKeys.filter(key => Object.hasOwn(patch, key));
   if (presentation.length > 0) throw new Error(`Frontend preferences are not backend scenario values: ${presentation.join(", ")}`);
@@ -1614,6 +1619,7 @@ function publishProductUpdateStatusValue(subscriber) {
 }
 
 function resetScenario() {
+  journeyControlledPaths.clear();
   applyGeneratedProcessFields(null);
   startupModuleSelections.clear();
   trustedAccessDefaultSerial = 1;
@@ -3073,8 +3079,7 @@ async function subscriptionChannelStream(request, response) {
     const operation = requestUrl.pathname === "/api/operations/subscribe";
     const managementInventoryRevision = requestUrl.pathname === "/api/management/inventory-revisions/subscribe";
     const productUpdateStatus = requestUrl.pathname === "/api/updates/product/status/subscribe";
-    const recordedFrames = !scenario.readmeShowcase && sliceReplay?.frames(requestUrl.pathname + requestUrl.search).length > 0;
-    const eventOnly = operation || managementInventoryRevision || productUpdateStatus || recordedFrames;
+    const eventOnly = operation || managementInventoryRevision || productUpdateStatus;
     let createPayload;
     try { createPayload = eventOnly ? null : subscriptionPayloadFactory(requestUrl); }
     catch { return json(response, 400, { error: "One or more subscription queries are invalid." }); }
@@ -3107,14 +3112,13 @@ async function subscriptionChannelStream(request, response) {
   for (const subscription of subscriptions) {
     const releaseTelemetry = trackLogicalSubscription(subscription.requestUrl);
     const replayPath = subscription.requestUrl.pathname + subscription.requestUrl.search;
-    if (!scenario.readmeShowcase && sliceReplay?.frames(replayPath).length) {
+    if (canReplay(replayPath) && sliceReplay?.frames(replayPath).length) {
       const release = sliceReplay.subscribe(replayPath, value => {
-        if (response.destroyed || response.writableEnded) return;
+        if (response.destroyed || response.writableEnded || !canReplay(replayPath)) return;
         writeSubscriptionChannelFrame(response, subscription.id, value);
         recordLogicalPublication(subscription.requestUrl);
       });
-      releases.push(() => { release(); releaseTelemetry(); });
-      continue;
+      releases.push(release);
     }
     if (subscription.operation) {
       const subscriber = {
@@ -3176,6 +3180,7 @@ async function subscriptionChannelStream(request, response) {
         && subscription.requestUrl.searchParams.get("scope") === "details" ? scenario.resourceDetailsDelayMs : 0),
       publish(publishedAt, { force = false } = {}) {
         if (response.destroyed || response.writableEnded
+          || (canReplay(replayPath) && sliceReplay?.frames(replayPath).length)
           || Date.now() < this.detailsReadyAt
           || (!force && scenario.pausedSubscriptionPaths.includes(subscription.requestUrl.pathname))) {
           return false;

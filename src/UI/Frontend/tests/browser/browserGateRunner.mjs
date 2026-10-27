@@ -229,7 +229,7 @@ async function runWorker(allJourneys) {
   };
 
   try {
-    server = spawn(process.execPath, [resolve(projectRoot, "tests/browser/mockFrontendServer.mjs")], {
+    server = spawn(process.execPath, ["--experimental-transform-types", resolve(projectRoot, "tests/browser/mockFrontendServer.mjs")], {
       cwd: projectRoot,
       env: { ...process.env, RM_FRONTEND_HARNESS_PORT: "0" },
       stdio: ["ignore", "pipe", "pipe", "ipc"]
@@ -391,7 +391,9 @@ async function waitForServer(processHandle, readServerOutput) {
       && message.port > 0 && message.port <= 65535) listeningPort = message.port;
   };
   processHandle.on("message", onMessage);
-  const deadline = Date.now() + 10_000;
+  // A real slice can contain hundreds of MB. Wait for the same bound-port
+  // handshake with a finite initialization allowance, not an added sleep.
+  const deadline = Date.now() + (process.env.RM_REAL_SLICE ? 60_000 : 10_000);
   try {
     while (Date.now() < deadline) {
       if (processHandle.exitCode !== null) {

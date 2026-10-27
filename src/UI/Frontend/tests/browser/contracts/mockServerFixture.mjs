@@ -5,14 +5,14 @@ import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
 
 // Exercise the real mock over HTTP, with a private port and no build/static output.
-export async function startMockServer() {
+export async function startMockServer({ env = {} } = {}) {
   const reservation = createServer();
   reservation.listen(0, "127.0.0.1");
   await once(reservation, "listening");
   const port = reservation.address().port;
   await new Promise(resolve => reservation.close(resolve));
   const child = spawn(process.execPath, ["--experimental-transform-types", fileURLToPath(new URL("../mockFrontendServer.mjs", import.meta.url))], {
-    env: { ...process.env, RM_FRONTEND_HARNESS_PORT: String(port) },
+    env: { ...process.env, ...env, RM_FRONTEND_HARNESS_PORT: String(port) },
     stdio: ["ignore", "pipe", "pipe"], windowsHide: true
   });
   let output = "";
