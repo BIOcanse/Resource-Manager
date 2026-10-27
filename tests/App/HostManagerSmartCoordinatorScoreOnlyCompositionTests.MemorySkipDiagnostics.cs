@@ -391,7 +391,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     private static void PublishMemorySkipTestSegment(HostManagerSmartCoordinator coordinator)
         => typeof(HostManagerSmartCoordinator)
             .GetMethod("PublishObservation", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(coordinator, null);
+            .Invoke(coordinator, [null]);
 
     private static async Task ReconcileMemorySkipPayloadsAsync(HostManagerSmartCoordinator coordinator,
         HostManagerTransactionJournalAdmission admission)

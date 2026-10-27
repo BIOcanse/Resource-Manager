@@ -6,6 +6,46 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EarlySegmentFailureClearsCurrentDecisionsAndCancellationRetainsPublication(bool canceled)
+    {
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true);
+        await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
+        var previous = await fixture.Coordinator.GetDecisionDiagnosticsAsync(CancellationToken.None);
+        Assert.NotNull(previous.ActionBudget);
+        Exception exception = canceled ? new OperationCanceledException() : new InvalidOperationException("before sampling");
+        fixture.Coordinator.OuterLoopProbe = new ThrowingObservationRound(exception);
+        try
+        {
+            Assert.Same(exception, await Record.ExceptionAsync(() => fixture.Coordinator.RunOnceAsync(CancellationToken.None)));
+            var current = await fixture.Coordinator.GetDecisionDiagnosticsAsync(CancellationToken.None);
+            if (canceled)
+            {
+                Assert.Same(previous, current);
+            }
+            else
+            {
+                Assert.NotSame(previous, current);
+                Assert.Equal(nameof(InvalidOperationException), current.Failure!.ExceptionType);
+                Assert.Null(current.Failure.NativePlanStatus);
+                Assert.Null(current.NativeCoordinator);
+                Assert.Null(current.ActionBudget);
+                Assert.Empty(current.FactExclusions);
+            }
+        }
+        finally { fixture.Coordinator.OuterLoopProbe = null; }
+    }
+
+    private sealed class ThrowingObservationRound(Exception exception) : IHostManagerSmartCoordinatorOuterLoopProbe
+    {
+        public void Observe(in HostManagerSmartCoordinatorOuterLoopEvent value)
+        {
+            if (value.Phase == HostManagerSmartCoordinatorOuterLoopPhase.CoreEntered) throw exception;
+        }
+    }
+
     internal static async Task<(HostManagerSmartCoordinator Coordinator, IAsyncDisposable Lifetime)> CreateDecisionSubscriptionFixtureAsync()
     {
         var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true,

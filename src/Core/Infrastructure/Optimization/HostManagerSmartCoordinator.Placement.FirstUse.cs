@@ -19,17 +19,28 @@ public sealed partial class HostManagerSmartCoordinator
         CancellationToken cancellationToken)
     {
         var firstUse = new List<HostManagerAutomaticGpuPlacement>();
+        cycleNativePlanFailure = null;
+        lastCycleActionBudget = null;
+        cycleFactExclusions.Clear();
         memoryDirectiveOutcomes.Clear();
         HostManagerNativeCycleSegmentResult completed;
         try
         {
-            completed = await RunNativeCycleSegmentAsync(trigger, realtimeCycle, outerLoopContext, cancellationToken, firstUse);
+            try
+            {
+                completed = await RunNativeCycleSegmentAsync(trigger, realtimeCycle, outerLoopContext, cancellationToken, firstUse);
+            }
+            finally
+            {
+                CompleteMemoryDirectiveDiagnostics();
+            }
+            PublishObservation();
         }
-        finally
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            CompleteMemoryDirectiveDiagnostics();
+            PublishObservation(new(exception.GetType().Name, cycleNativePlanFailure));
+            throw;
         }
-        PublishObservation();
         if (completed.CompletedAdmission is not { } admission) return completed;
 
         foreach (var planned in firstUse)

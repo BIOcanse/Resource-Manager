@@ -52,14 +52,29 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true,
             processFactsSnapshot: facts, smartCoordinatorMaximumProcesses: 2, automaticMemoryCleanupEnabled: false,
             cpuCoreReader: new RecordingCpuCoreResidencyReader(() => null));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var stream = fixture.Coordinator.SubscribeDecisionDiagnosticsAsync(timeout.Token).GetAsyncEnumerator();
+        Assert.True(await stream.MoveNextAsync());
         for (var i = 0; i < 3; i++)
         {
+            var publication = stream.MoveNextAsync().AsTask();
             fixture.ProcessFacts.SetSnapshot(CreateCompleteProcessFacts(43001 + i, (ulong)(100 + i), "software:churn", 20, 25, 10)
                 with { OverflowCount = 1 });
             if (i == 2) await Assert.ThrowsAsync<InvalidDataException>(() => fixture.Coordinator.RunOnceAsync(CancellationToken.None));
             else await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
+            Assert.True(await publication.WaitAsync(timeout.Token));
         }
         var diagnostics = await fixture.Coordinator.GetDecisionDiagnosticsAsync(CancellationToken.None);
+        Assert.Same(diagnostics, stream.Current);
+        var failure = Assert.IsType<HostManagerCycleFailureDiagnostics>(diagnostics.Failure);
+        Assert.Equal(nameof(InvalidDataException), failure.ExceptionType);
+        Assert.Equal(NativeSmartCoordinatorStatus.CapacityExceeded, failure.NativePlanStatus);
+        Assert.Null(diagnostics.NativeCoordinator);
+        Assert.Empty(diagnostics.NonAdaptedMemoryDecisions);
+        Assert.Equal("unavailable", diagnostics.SchedulingAuthority.Availability);
+        Assert.False(diagnostics.SchedulerRunning);
+        Assert.Null((await fixture.Coordinator.GetStateAsync(CancellationToken.None)).Coordinator);
+        Assert.False((await fixture.Coordinator.GetStatusAsync(CancellationToken.None)).SchedulerRunning);
         Assert.Contains(diagnostics.FactExclusionCounts, e => e.Fact == "native-plan" && e.Reason == "capacity-exceeded");
         Assert.Contains(diagnostics.FactExclusionCounts, e => e.Fact == "inventory" && e.Reason == "inventory-overflow");
         Assert.Equal(NativeSmartCoordinatorStatus.Ok, fixture.Workspace.RefreshSnapshot());
@@ -68,6 +83,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
         Assert.Equal(1U, fixture.Workspace.Snapshot.ProcessCount);
         diagnostics = await fixture.Coordinator.GetDecisionDiagnosticsAsync(CancellationToken.None);
+        Assert.Null(diagnostics.Failure);
+        Assert.NotNull(diagnostics.NativeCoordinator);
         Assert.DoesNotContain(diagnostics.FactExclusions, e => e.Fact == "native-plan");
     }
 

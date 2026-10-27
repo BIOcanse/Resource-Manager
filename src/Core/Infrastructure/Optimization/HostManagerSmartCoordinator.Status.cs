@@ -25,6 +25,7 @@ public sealed partial class HostManagerSmartCoordinator
         return new HostManagerSmartCoordinatorStatus(
             normalizedMode,
             schedulerRunning
+                && observation.Decisions.Failure is null
                 && normalizedMode != AppOptimizationModes.Normal
                 && faultClosedReason is null,
             state.LastRunAt,

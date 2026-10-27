@@ -97,35 +97,52 @@ internal sealed class HostManagerSchedulingSubscriptions(
     {
         while (true)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (output is not { } current) return await deadline.WaitAsync(cancellationToken);
             using var wake = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             var early = deadline.WaitAsync(wake.Token);
+            HostManagerWakeDeadlineSnapshot? consumedWake = null;
+            var outputDue = false;
             try
             {
-                if (await Task.WhenAny(current.Publication, early) == early) return await early;
-                await current.Publication;
-                lock (outputGate)
+                if (await Task.WhenAny(current.Publication, early) != early)
                 {
-                    if (!ReferenceEquals(current, output)) continue;
-                    current.Advance();
+                    await current.Publication;
+                    lock (outputGate)
+                    {
+                        if (ReferenceEquals(current, output))
+                        {
+                            current.Advance();
+                            outputDue = true;
+                        }
+                    }
+                    if (outputDue)
+                    {
+                        // Shared producers may publish for another, faster subscriber.
+                        // Eligibility is checked only on output, never by polling or a second timer.
+                        var elapsed = clock.GetElapsedTime(cadenceStarted);
+                        outputDue = elapsed >= nextOutputAfter;
+                        if (outputDue)
+                        {
+                            // Keep the subscription's due slots. Round execution time must
+                            // not move the next due beyond the producer's next publication.
+                            nextOutputAfter = TimeSpan.FromTicks(checked(
+                                (elapsed.Ticks / requestedInterval.Ticks + 1) * requestedInterval.Ticks));
+                        }
+                    }
                 }
-                // Shared producers may publish for another, faster subscriber.
-                // Eligibility is checked only on output, never by polling or a second timer.
-                var elapsed = clock.GetElapsedTime(cadenceStarted);
-                if (elapsed < nextOutputAfter) continue;
-                // Keep the subscription's due slots. Round execution time must
-                // not move the next due beyond the producer's next publication.
-                nextOutputAfter = TimeSpan.FromTicks(checked(
-                    (elapsed.Ticks / requestedInterval.Ticks + 1) * requestedInterval.Ticks));
-                return deadline.Snapshot;
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested
                 && !ReferenceEquals(current, output)) { }
             finally
             {
                 wake.Cancel();
-                try { await early; } catch (OperationCanceledException) when (wake.IsCancellationRequested) { }
+                try { consumedWake = await early; } catch (OperationCanceledException) when (wake.IsCancellationRequested) { }
             }
+            // Even the losing wait may already have consumed a foreground wake.
+            // Return it before discarding an output that is not yet cadence-eligible.
+            if (consumedWake is { } foreground) return foreground;
+            if (outputDue) return deadline.Snapshot;
         }
     }
 

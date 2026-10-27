@@ -321,7 +321,7 @@ public sealed partial class HostManagerSmartCoordinator(
                     HostManagerSmartCoordinatorOuterLoopPhase.GateAcquired);
                 try
                 {
-                    var mode = runtimePlanProvider.Current.OptimizationMode;
+                    var dispatchedPlan = runtimePlanProvider.Current;
                     schedulerRunning = true;
                     await SynchronizeSmartSubscriptionsAsync(stoppingToken);
                     ObserveOuterLoop(
@@ -330,15 +330,18 @@ public sealed partial class HostManagerSmartCoordinator(
                     var published = await RunScheduledNativeCycleAsync(
                         outerLoopContext,
                         stoppingToken);
-                    var currentMode = runtimePlanProvider.Current.OptimizationMode;
-                    if (!currentMode.SchedulingEnabled
+                    using var parkingPublication = runtimePlanProvider.AcquirePublicationLease();
+                    var currentPlan = parkingPublication.Plan;
+                    // A newly published plan needs a round to settle its demand.
+                    // Normal must not park while the old subscriptions are active.
+                    if (currentPlan.Version != dispatchedPlan.Version)
+                    {
+                        schedulingWakeDeadline.PublishForeground(TimeSpan.Zero);
+                    }
+                    else if (!currentPlan.OptimizationMode.SchedulingEnabled
                         && await CanParkNormalSchedulingAsync(stoppingToken))
                     {
                         schedulingWakeDeadline.ClearScheduled(published.Version);
-                    }
-                    else if (currentMode.SchedulingEnabled && !mode.SchedulingEnabled)
-                    {
-                        schedulingWakeDeadline.PublishForeground(TimeSpan.Zero);
                     }
                 }
                 catch (Exception error) when (!stoppingToken.IsCancellationRequested)

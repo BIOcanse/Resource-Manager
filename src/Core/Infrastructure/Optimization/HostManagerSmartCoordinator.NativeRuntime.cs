@@ -154,7 +154,6 @@ public sealed partial class HostManagerSmartCoordinator
         using var publicationLease =
             runtimePlanProvider.AcquirePublicationLease();
         var desired = smartCoordinatorRuntime.CaptureDesired(publicationLease);
-        lastCycleActionBudget = null;
         var processEffectValidationScope =
             processEffectValidationScopeAuthorityOwner.Capture();
         var effectAdmission = HostManagerCycleEffectAdmission.CreateForValidation(
@@ -937,7 +936,7 @@ public sealed partial class HostManagerSmartCoordinator
     {
         if (observation.NativeSnapshot is not { } snapshot)
         {
-            return state;
+            return observation.Decisions.Failure is null ? state : state with { Coordinator = null };
         }
 
         return state with

@@ -99,8 +99,11 @@ public sealed partial class HostManagerSmartCoordinator
         var previousNativeSnapshot = workspace.Snapshot;
         var planStatus = workspace.Plan(in cycle);
         if (planStatus != NativeSmartCoordinatorStatus.Ok)
+        {
+            cycleNativePlanFailure = planStatus;
             cycleFactExclusions.Add(new(null, null, null, "native-plan",
                 planStatus == NativeSmartCoordinatorStatus.CapacityExceeded ? "capacity-exceeded" : $"status-{planStatus}"));
+        }
         RequireNativePlanStatus(
             planStatus,
             workspace,

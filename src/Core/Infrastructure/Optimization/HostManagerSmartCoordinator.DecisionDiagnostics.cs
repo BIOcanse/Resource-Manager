@@ -7,6 +7,7 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 public sealed partial class HostManagerSmartCoordinator
 {
     private HostManagerCycleActionBudgetDiagnostics? lastCycleActionBudget;
+    private NativeSmartCoordinatorStatus? cycleNativePlanFailure;
     private readonly ResourceManager.ReadWrite.Publications.CurrentValuePublicationSignal decisionPublications = new();
 
     // Coordinator-owned derived current value, never a native workspace borrow.
@@ -51,12 +52,26 @@ public sealed partial class HostManagerSmartCoordinator
         }
     }
 
-    private void PublishObservation()
+    private void PublishObservation(HostManagerCycleFailureDiagnostics? failure = null)
     {
         var runtimePlan = runtimePlanProvider.Current;
         var authority = schedulingAuthorityOwner.Capture();
-        var memoryProjection = NonAdaptedMemoryModeProjection;
-        var workspace = nativeWorkspace;
+        if (failure is not null)
+        {
+            authority = authority with
+            {
+                Availability = HostManagerSchedulingAuthorityAvailability.Unavailable,
+                ObservedAt = DateTimeOffset.UtcNow,
+                Compute = null,
+                MemoryModes = null,
+                PolicyEvidence = null,
+                UnavailableReason = "scheduler-cycle-failed"
+            };
+        }
+        var memoryProjection = failure is null ? NonAdaptedMemoryModeProjection : null;
+        // Failure may leave an unvalidated or incomplete workspace snapshot.
+        // Publish its typed empty value without borrowing/projecting that data.
+        var workspace = failure is null ? nativeWorkspace : null;
         var snapshot = workspace?.Snapshot;
         var rows = workspace?.CurrentSnapshotRows.ToArray() ?? [];
         var schedulingEnabled = runtimePlan.OptimizationMode.SchedulingEnabled;
@@ -71,13 +86,14 @@ public sealed partial class HostManagerSmartCoordinator
             DateTimeOffset.UtcNow,
             runtimePlan.Version,
             runtimePlan.OptimizationMode.Mode,
-            schedulerRunning && schedulingEnabled,
+            schedulerRunning && schedulingEnabled && failure is null,
             ProjectSchedulingAuthorityDiagnostics(authority),
             native,
             ProjectNonAdaptedMemoryDiagnostics(memoryProjection))
         {
+            Failure = failure,
             ActionBudget = lastCycleActionBudget,
-            NonAdaptedMemorySkipCounts = ProjectMemoryDirectiveSkipCounts(),
+            NonAdaptedMemorySkipCounts = failure is null ? ProjectMemoryDirectiveSkipCounts() : [],
             FactExclusionCount = cycleFactExclusions.Count,
             FactExclusionCounts = cycleFactExclusions.GroupBy(e => (e.Fact, e.Reason))
                 .Select(g => new HostManagerFactExclusionCount(g.Key.Fact, g.Key.Reason, g.Count())).ToArray(),
@@ -304,12 +320,16 @@ internal sealed record HostManagerDecisionDiagnosticsSnapshot(
     IReadOnlyList<HostManagerNonAdaptedMemoryDecisionDiagnostics>
         NonAdaptedMemoryDecisions)
 {
+    public HostManagerCycleFailureDiagnostics? Failure { get; init; }
     public IReadOnlyList<HostManagerMemoryDirectiveSkipDiagnostics> NonAdaptedMemorySkipCounts { get; init; } = [];
     public HostManagerCycleActionBudgetDiagnostics? ActionBudget { get; init; }
     public int FactExclusionCount { get; init; }
     public IReadOnlyList<HostManagerFactExclusionCount> FactExclusionCounts { get; init; } = [];
     public IReadOnlyList<HostManagerFactExclusionDiagnostics> FactExclusions { get; init; } = [];
 }
+
+internal sealed record HostManagerCycleFailureDiagnostics(
+    string ExceptionType, NativeSmartCoordinatorStatus? NativePlanStatus);
 
 internal sealed record HostManagerCycleActionBudgetDiagnostics(
     uint? MaximumActionsThisCycle,

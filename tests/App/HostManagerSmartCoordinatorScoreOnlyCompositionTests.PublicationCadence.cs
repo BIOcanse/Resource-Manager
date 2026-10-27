@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Domain.CpuTopology;
 using ResourceManager.App.Domain.Optimization;
+using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.Optimization;
 
@@ -9,6 +10,69 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 {
+    [Fact]
+    public async Task CanceledSmartWaitDoesNotRequireProducerPublicationOrCancellation()
+    {
+        var reader = new PublicationControlledCpuResidencyReader();
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: false);
+        var subscriptions = new HostManagerSchedulingSubscriptions(reader, fixture.ProcessFacts, fixture.MetricSampler);
+        await subscriptions.UpdateAsync(true, SchedulingProcessMetricMask.None,
+            MetricSampleRequest.ForIds([]), TimeSpan.FromSeconds(30), CancellationToken.None);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var wait = Task.Run(() => subscriptions.WaitAsync(
+            new HostManagerVersionedWakeDeadline(TimeProvider.System), cancellation.Token));
+        try
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => wait.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.Equal(1, reader.ActiveSubscriptionCount);
+            Assert.Equal(0, reader.PublicationCount);
+        }
+        finally
+        {
+            await subscriptions.DisposeAsync();
+            try { await wait.WaitAsync(TimeSpan.FromSeconds(2)); }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        }
+    }
+
+    [Fact]
+    public async Task ReadySubscriptionBeforeItsCadenceDoesNotConsumeForegroundWake()
+    {
+        var clock = new StoppedCadenceClock();
+        var reader = new RecordingCpuCoreResidencyReader(() => null);
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: false);
+        using var cancellation = new CancellationTokenSource();
+        await using var subscriptions = new HostManagerSchedulingSubscriptions(
+            reader, fixture.ProcessFacts, fixture.MetricSampler, clock);
+        await subscriptions.UpdateAsync(true, SchedulingProcessMetricMask.None,
+            MetricSampleRequest.ForIds([]), TimeSpan.FromSeconds(30), cancellation.Token);
+        subscriptions.RoundCompleted();
+        var deadline = new HostManagerVersionedWakeDeadline(clock);
+        var published = deadline.PublishForeground(TimeSpan.Zero);
+
+        // Both tasks are ready: the subscription's initial value is too early
+        // for Smart, but the already consumed foreground wake must still win.
+        var wait = subscriptions.WaitAsync(deadline, cancellation.Token);
+        try
+        {
+            Assert.True(wait.IsCompletedSuccessfully, "The ready subscription discarded the foreground wake.");
+            Assert.Equal(published, await wait);
+        }
+        finally
+        {
+            cancellation.Cancel();
+            try { await wait; }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        }
+    }
+
+    private sealed class StoppedCadenceClock : TimeProvider
+    {
+        public override long GetTimestamp() => 0;
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+    }
+
     [Fact]
     public async Task BackgroundStartupWaitsForResidencyPublicationAndEmptyOutputUsesProcessCpuFallback()
     {
