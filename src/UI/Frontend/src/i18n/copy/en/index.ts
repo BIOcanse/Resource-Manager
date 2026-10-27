@@ -23,6 +23,7 @@ import { enStatusCopy } from "./status.ts";
 import { enStoresCopy } from "./stores.ts";
 import { enTaskCenterCopy } from "./taskCenter.ts";
 import { enTargetedReportCopy } from "./targetedReport.ts";
+import { enKernelLeakReportCopy } from "./kernelLeakReport.ts";
 import { enMemoryProtectionCopy } from "./memoryProtection.ts";
 import type { AppCopy } from "../zh/index.ts";
 
@@ -48,6 +49,7 @@ export const enAppCopy: AppCopy = {
   ...enHotkeysCopy,
   ...enTaskCenterCopy,
   ...enTargetedReportCopy,
+  ...enKernelLeakReportCopy,
   ...enMemoryProtectionCopy,
   ...enRuntimeAndReportsCopy,
   ...enStoresCopy,

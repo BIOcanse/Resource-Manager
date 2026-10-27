@@ -73,9 +73,12 @@ for (const count of [0, 1, 37]) {
   appCases.push(
     { path: `diskUsage.fileCount(${count})`, render: copy => copy.diskUsage.fileCount(count), parameters: [String(count)], requiresTranslation: true },
     { path: `diskUsage.omitted(${count})`, render: copy => copy.diskUsage.omitted(count), parameters: [String(count)], requiresTranslation: true },
-    { path: `shell.taskCenterActive(${count})`, render: copy => copy.shell.taskCenterActive(count), parameters: [String(count)], requiresTranslation: true }
+    { path: `shell.taskCenterActive(${count})`, render: copy => copy.shell.taskCenterActive(count), parameters: [String(count)], requiresTranslation: true },
+    { path: `kernelLeakReport.unavailableHolders(${count})`, render: copy => copy.kernelLeakReport.unavailableHolders(count), parameters: [String(count)], requiresTranslation: true }
   );
 }
+// 增长速率的单位写法：数字已按界面语言格式化，各语言只给“每秒”的写法（多数语言与英文同为 /s）。
+appCases.push({ path: "kernelLeakReport.ratePerSecond", render: copy => copy.kernelLeakReport.ratePerSecond("+0,42"), parameters: ["+0,42"], requiresTranslation: false });
 const settingsCases: FunctionCase<SettingsTextBundle>[] = [
   { path: "updates.confirmPrepare", render: copy => copy.updates.confirmPrepare("4.7.9-beta.8"), parameters: ["4.7.9-beta.8"], requiresTranslation: true },
   { path: "systemIntegration.trustedAccess.requestExpired", render: copy => copy.systemIntegration.trustedAccess.requestExpired, parameters: [], requiresTranslation: true },

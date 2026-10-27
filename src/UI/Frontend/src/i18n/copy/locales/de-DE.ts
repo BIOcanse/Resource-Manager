@@ -5,6 +5,7 @@ import { softwareFactsCopy } from "../softwareFacts.ts";
 import { physicalMemoryResidualCopy } from "../physicalMemoryResidual.ts";
 import type { AppCopy } from "../index.ts";
 import { targetedReport } from "./de-DE-targetedReport.ts";
+import { kernelLeakReport } from "./de-DE-kernelLeakReport.ts";
 import { memoryProtection } from "./de-DE-memoryProtection.ts";
 import { fieldLabel, fieldValueLabel } from "./de-DE-fieldLabels.ts";
 import { plural } from "../../plural.ts";
@@ -36,6 +37,7 @@ const deDeAppCopy: AppCopy = {
     uninstallerLaunchRequested: "Das Windows-Deinstallationsprogramm wurde angefordert. Aktualisieren Sie danach die Softwareliste."
   },
   targetedReport,
+  kernelLeakReport,
   memoryProtection,
   fieldLabel,
   fieldValueLabel,

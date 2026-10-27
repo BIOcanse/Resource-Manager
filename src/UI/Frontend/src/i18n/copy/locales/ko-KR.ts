@@ -5,6 +5,7 @@ import { softwareFactsCopy } from "../softwareFacts.ts";
 import { physicalMemoryResidualCopy } from "../physicalMemoryResidual.ts";
 import type { AppCopy } from "../index.ts";
 import { targetedReport } from "./ko-KR-targetedReport.ts";
+import { kernelLeakReport } from "./ko-KR-kernelLeakReport.ts";
 import { memoryProtection } from "./ko-KR-memoryProtection.ts";
 import { fieldLabel, fieldValueLabel } from "./ko-KR-fieldLabels.ts";
 
@@ -35,6 +36,7 @@ const koKrAppCopy: AppCopy = {
     uninstallerLaunchRequested: "Windows 제거 프로그램 실행을 요청했습니다. 완료 후 소프트웨어 목록을 새로 고침하세요."
   },
   targetedReport,
+  kernelLeakReport,
   memoryProtection,
   fieldLabel,
   fieldValueLabel,

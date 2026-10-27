@@ -15,6 +15,11 @@ import {
 } from "../../data/productUpdateStatus.ts";
 import type { ProductUpdateState } from "../../features/settings/productUpdatePresentation.ts";
 import {
+  buildKernelLeakReportSubscriptionUrl,
+  kernelLeakReportDecoder,
+  type KernelLeakReport
+} from "../../data/kernelLeaks/kernelLeakReport.ts";
+import {
   buildLocalSystemStatusSubscriptionUrl,
   type LocalSystemStatus
 } from "../../data/localSystem/localSystemStatusApi.ts";
@@ -194,6 +199,8 @@ export interface FrontendSources {
   readonly managementInventoryRevision: CurrentValueSource<ManagementInventoryRevisionSnapshot>;
   readonly accessRequests: CurrentValueSource<AccessRequestPendingSnapshot>;
   readonly productUpdateStatus: CurrentValueSource<ProductUpdateState>;
+  /** 内核泄漏报告：后端在报告变化时推送；只有详细信息里的内核泄漏报告页可见时订阅。 */
+  readonly kernelLeakReport: CurrentValueSource<KernelLeakReport>;
   readonly cpuTopology: PushValueSource<CpuTopologySnapshot | null>;
   readonly cpuResidency: PushValueSource<CpuCoreResidencySnapshot | null>;
   readonly smartCoordinatorState: PushValueSource<HostManagerRollbackStateDocument>;
@@ -323,6 +330,12 @@ export function createFrontendSources(
       channel: subscriptionChannel,
       buildUrl: buildProductUpdateStatusSubscriptionUrl,
       decoder: productUpdateStatusDecoder
+    }),
+    kernelLeakReport: new BackendCurrentValueSource<KernelLeakReport>({
+      key: "kernel-leaks.report",
+      channel: subscriptionChannel,
+      buildUrl: buildKernelLeakReportSubscriptionUrl,
+      decoder: kernelLeakReportDecoder
     }),
     managementInventoryRevision: new BackendCurrentValueSource<ManagementInventoryRevisionSnapshot>({
       key: "management.inventory-revision",

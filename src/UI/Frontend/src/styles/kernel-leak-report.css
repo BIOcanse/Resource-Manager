@@ -1,0 +1,206 @@
+/* 详细信息 → 内核泄漏报告。与其他报告分页（advanced-scheduling.css 的 .smart-details-report、targeted-report.css）同一种面板。
+   这里不写 transition/animation，动效统一在 motion.css。 */
+.kernel-leak-report {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--elev-1), var(--edge-highlight);
+}
+
+.kernel-leak-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.kernel-leak-note.warning {
+  color: var(--warn);
+}
+
+/* 采集时间、疑似项数：标签在上、值在下的小格，与智能调度报告的汇总格同一种样子。 */
+.kernel-leak-summary {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, max-content));
+  gap: 8px;
+}
+
+.kernel-leak-summary > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  padding: 8px 10px;
+}
+
+.kernel-leak-summary dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.kernel-leak-summary dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kernel-leak-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.kernel-leak-item {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  padding: 10px 12px;
+}
+
+.kernel-leak-item-header {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.kernel-leak-item-title {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.kernel-leak-item-title strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.kernel-leak-item-title span {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kernel-leak-kind {
+  flex: none;
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* 持有者信息：标签一列、值一列；映像路径可能很长，在任意位置换行，不撑宽面板。 */
+.kernel-leak-holder {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 14px;
+  font-size: 13px;
+}
+
+.kernel-leak-holder > div {
+  display: contents;
+}
+
+.kernel-leak-holder dt {
+  color: var(--muted);
+}
+
+.kernel-leak-holder dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.kernel-leak-path dd {
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+}
+
+/* 映像或服务信息读不到、进程已结束：显示状态本身，用次要文字色和普通字体区分于真实值。 */
+.kernel-leak-report .metadata-state {
+  color: var(--muted);
+  font-family: inherit;
+}
+
+.kernel-leak-service-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.kernel-leak-service {
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 0 6px;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+/* 增长证据：五个小格，窄窗口下自动换行。 */
+.kernel-leak-evidence {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 6px;
+}
+
+.kernel-leak-evidence > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 6px 8px;
+}
+
+.kernel-leak-evidence dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.kernel-leak-evidence dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* 第 3 期之前，处理动作的位置只放这一句说明。 */
+.kernel-leak-actions-pending {
+  margin: 0;
+  border-top: 1px solid var(--divider-soft);
+  padding-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}

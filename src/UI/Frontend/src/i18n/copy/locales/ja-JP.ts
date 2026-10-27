@@ -6,6 +6,7 @@ import { softwareFactsCopy } from "../softwareFacts.ts";
 import { physicalMemoryResidualCopy } from "../physicalMemoryResidual.ts";
 import type { AppCopy } from "../index.ts";
 import { targetedReport } from "./ja-JP-targetedReport.ts";
+import { kernelLeakReport } from "./ja-JP-kernelLeakReport.ts";
 import { memoryProtection } from "./ja-JP-memoryProtection.ts";
 import { fieldLabel, fieldValueLabel } from "./ja-JP-fieldLabels.ts";
 
@@ -36,6 +37,7 @@ const jaJpAppCopy: AppCopy = {
     uninstallerLaunchRequested: "Windows アンインストーラーの起動を要求しました。完了後に一覧を更新してください。"
   },
   targetedReport,
+  kernelLeakReport,
   memoryProtection,
   fieldLabel,
   fieldValueLabel,

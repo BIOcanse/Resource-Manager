@@ -11,6 +11,7 @@ export const frontendWorkIds = {
   detailsCpuModel: "details.cpu-model",
   detailsGpuModel: "details.gpu-model",
   detailsSmartReport: "details.smart-report",
+  detailsKernelLeaks: "details.kernel-leaks",
   targetedReportsPage: "targeted-reports.page"
 } as const;
 

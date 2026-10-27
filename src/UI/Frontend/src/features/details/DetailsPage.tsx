@@ -7,6 +7,7 @@ import { DeviceTopologyView } from "../deviceTopology/DeviceTopologyView";
 import { GpuSchedulingModel } from "../gpuScheduling/GpuSchedulingModel";
 import { HostManagerSmartCoordinatorDetailsReport } from "./HostManagerSmartCoordinatorDetailsReport";
 import { TargetedReportsPage } from "../targetedReport/TargetedReportsPage.tsx";
+import { KernelLeakReportPage } from "../kernelLeaks/KernelLeakReportPage.tsx";
 import type { SoftwareRecord } from "../../types.ts";
 import type { ConfirmDialogRequest } from "../../components/AppFeedback";
 
@@ -53,6 +54,9 @@ export function DetailsPage(props: DetailsPageProps) {
           </Match>
           <Match when={props.activeTab === "targeted"}>
             <div class="details-resource-region"><TargetedReportsPage confirmDialog={props.confirmDialog} /></div>
+          </Match>
+          <Match when={props.activeTab === "kernelLeaks"}>
+            <div class="details-resource-region"><KernelLeakReportPage /></div>
           </Match>
         </Switch>
       </div>

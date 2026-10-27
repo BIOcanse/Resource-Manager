@@ -5,6 +5,7 @@ import { softwareFactsCopy } from "../softwareFacts.ts";
 import { physicalMemoryResidualCopy } from "../physicalMemoryResidual.ts";
 import type { AppCopy } from "../index.ts";
 import { targetedReport } from "./es-ES-targetedReport.ts";
+import { kernelLeakReport } from "./es-ES-kernelLeakReport.ts";
 import { memoryProtection } from "./es-ES-memoryProtection.ts";
 import { fieldLabel, fieldValueLabel } from "./es-ES-fieldLabels.ts";
 import { plural } from "../../plural.ts";
@@ -36,6 +37,7 @@ const esEsAppCopy: AppCopy = {
     uninstallerLaunchRequested: "Se solicitó el desinstalador de Windows. Actualice la lista cuando termine."
   },
   targetedReport,
+  kernelLeakReport,
   memoryProtection,
   fieldLabel,
   fieldValueLabel,

@@ -5,6 +5,7 @@ import { softwareFactsCopy } from "../softwareFacts.ts";
 import { physicalMemoryResidualCopy } from "../physicalMemoryResidual.ts";
 import type { AppCopy } from "../index.ts";
 import { targetedReport } from "./ru-RU-targetedReport.ts";
+import { kernelLeakReport } from "./ru-RU-kernelLeakReport.ts";
 import { memoryProtection } from "./ru-RU-memoryProtection.ts";
 import { fieldLabel, fieldValueLabel } from "./ru-RU-fieldLabels.ts";
 import { plural } from "../../plural.ts";
@@ -36,6 +37,7 @@ const ruRuAppCopy: AppCopy = {
     uninstallerLaunchRequested: "Запрошен запуск программы удаления Windows. По завершении обновите список программ."
   },
   targetedReport,
+  kernelLeakReport,
   memoryProtection,
   fieldLabel,
   fieldValueLabel,

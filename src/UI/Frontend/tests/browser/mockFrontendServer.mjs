@@ -1,6 +1,7 @@
 import { componentFixture, componentVersionFixture } from "./componentFixtures.js";
 import { canonicalFieldNames } from "../../src/features/monitor/canonicalFields.ts";
 import { reportRules } from "../fixtures/reportRuleSettings.ts";
+import { kernelLeakReportFrames } from "../fixtures/kernelLeakReports.js";
 import * as showcase from "./readmeShowcaseFixture.js";
 import { createMemoryProtectionFixture, defaultMemoryProtectionSettings, memoryProtectionScenarios, defaultSoftwarePolicy, invalidMemoryProtectionPatch } from "./memoryProtectionFixture.mjs";
 import { loadSliceReplay } from "../realData/replaySlice.mjs";
@@ -170,6 +171,9 @@ const defaultScenario = {
   // 产品更新状态（GET /api/updates/product/status 与它的推送订阅同源）：只写与默认状态不同的字段；
   // "invalid" 让推送发出不合合同的帧、GET 返回 503，模拟状态不可用。未知字段和不合合同的值直接拒绝。
   productUpdateStatus: {},
+  // 内核泄漏报告（/api/kernel-leaks/subscribe）：取 tests/fixtures/kernelLeakReports.js 的一个场景名。
+  // 订阅时先发当前帧，改场景时向现有订阅再发一帧（后端在报告变化时推送）。
+  kernelLeakReport: "empty",
   // README 截图的虚构整机（readmeShowcaseFixture.js）：打开后各页改用那里的值；只给 captureReadmeScreenshots.mjs 用。
   readmeShowcase: false
 };
@@ -218,6 +222,7 @@ const operationSubscribers = new Set();
 const managementInventoryRevisionSubscribers = new Set();
 const subscriptionChannelResponses = new Set();
 const productUpdateStatusSubscribers = new Set();
+const kernelLeakReportSubscribers = new Set();
 // 后端帧的真实形状（codex/update-notice，与 GET /api/updates/product/status 相同）。
 const defaultProductUpdateStatus = Object.freeze({
   stage: "idle", targetVersion: null, workspace: null, error: null, updatedAt: "2026-10-25T19:00:00+00:00",
@@ -1531,6 +1536,7 @@ function delay(milliseconds) {
 // mock 也就没有这些开关；旅程改用 frontendPreferencesFixture.js 写前端缓存。传入旧开关直接报错，免得静默无效。
 const frontendPreferenceScenarioKeys = ["settingsTheme", "settingsUiStyle", "animations", "localSystemIntervalMs", "performanceMonitorRefreshIntervalMs"];
 const scenarioChoices = {
+  kernelLeakReport: Object.keys(kernelLeakReportFrames),
   memoryProtection: memoryProtectionScenarios,
   deviceTopologyMachineIdentity: [null, "workstation", "mobile_workstation", "laptop", "desktop", "unknown"],
   deviceTopologyWireless: [null, "standards", "unknown"],
@@ -1584,6 +1590,9 @@ function applyScenarioPatch(patch) {
     appSettings.debug.debugModeEnabled = patch.debugMode;
   }
   if (Object.hasOwn(patch, "productUpdateStatus")) publishProductUpdateStatus();
+  if (Object.hasOwn(patch, "kernelLeakReport")) {
+    for (const subscriber of [...kernelLeakReportSubscribers]) publishKernelLeakReportValue(subscriber);
+  }
   if (["metricFieldDevices", "metricCatalogAddresses", "metricCatalogExtra", "gpuPressureFixture", "gpuDedicatedMemoryMetrics", "metricCatalogComponent"]
     .some((key) => Object.hasOwn(patch, key))) publishMetricCatalogNow();
 }
@@ -1627,6 +1636,13 @@ function currentProductUpdateStatus() {
 
 function publishProductUpdateStatus() {
   for (const subscriber of [...productUpdateStatusSubscribers]) publishProductUpdateStatusValue(subscriber);
+}
+
+function publishKernelLeakReportValue(subscriber) {
+  const { response, requestUrl, write } = subscriber;
+  if (response.destroyed || response.writableEnded) return;
+  write(structuredClone(kernelLeakReportFrames[scenario.kernelLeakReport]));
+  recordLogicalPublication(requestUrl);
 }
 
 function publishProductUpdateStatusValue(subscriber) {
@@ -3135,7 +3151,8 @@ async function subscriptionChannelStream(request, response) {
     const operation = requestUrl.pathname === "/api/operations/subscribe";
     const managementInventoryRevision = requestUrl.pathname === "/api/management/inventory-revisions/subscribe";
     const productUpdateStatus = requestUrl.pathname === "/api/updates/product/status/subscribe";
-    const eventOnly = operation || managementInventoryRevision || productUpdateStatus;
+    const kernelLeakReport = requestUrl.pathname === "/api/kernel-leaks/subscribe";
+    const eventOnly = operation || managementInventoryRevision || productUpdateStatus || kernelLeakReport;
     let createPayload;
     try { createPayload = eventOnly ? null : subscriptionPayloadFactory(requestUrl); }
     catch { return json(response, 400, { error: "One or more subscription queries are invalid." }); }
@@ -3148,6 +3165,7 @@ async function subscriptionChannelStream(request, response) {
       operation,
       managementInventoryRevision,
       productUpdateStatus,
+      kernelLeakReport,
       createPayload
     });
   }
@@ -3204,6 +3222,21 @@ async function subscriptionChannelStream(request, response) {
       publishProductUpdateStatusValue(subscriber);
       releases.push(() => {
         productUpdateStatusSubscribers.delete(subscriber);
+        releaseTelemetry();
+      });
+      continue;
+    }
+
+    if (subscription.kernelLeakReport) {
+      const subscriber = {
+        response,
+        requestUrl: subscription.requestUrl,
+        write: (value) => writeSubscriptionChannelFrame(response, subscription.id, value)
+      };
+      kernelLeakReportSubscribers.add(subscriber);
+      publishKernelLeakReportValue(subscriber);
+      releases.push(() => {
+        kernelLeakReportSubscribers.delete(subscriber);
         releaseTelemetry();
       });
       continue;
@@ -3288,7 +3321,8 @@ const subscriptionChannelSelectors = new Set([
   "/api/operations/subscribe",
   "/api/management/inventory-revisions/subscribe",
   "/api/access-requests/subscribe",
-  "/api/updates/product/status/subscribe"
+  "/api/updates/product/status/subscribe",
+  "/api/kernel-leaks/subscribe"
 ]);
 
 function smartCoordinatorStatus() {

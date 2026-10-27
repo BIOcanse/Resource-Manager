@@ -179,6 +179,7 @@ const allJourneys = [
   ["disk-usage-operation-invalidation", diskUsageOperationInvalidationJourney],
   ["targeted-recording-source", targetedRecordingSourceJourney],
   ["targeted-recordings", async (...args) => (await import("./targetedRecordingsJourney.js")).default(...args)],
+  ["kernel-leak-report", async (...args) => (await import("./kernelLeakReportJourney.js")).default(...args)],
   ["cpu-baseline-ratio", cpuBaselineRatioJourney],
   ["cpu-current-value-subscription", cpuCurrentValueSubscriptionJourney],
   ["cpu-manual-placement-subscription", cpuManualPlacementSubscriptionJourney],
