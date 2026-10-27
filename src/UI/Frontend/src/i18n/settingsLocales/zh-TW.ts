@@ -318,7 +318,7 @@ export default createSettingsLocale("zh-TW", {
     "loginStartLoading": "正在讀取登入啟動設定…",
     "loginStartWriteFailed": "未能儲存登入啟動設定。開關顯示的是重新讀取到的實際狀態。",
     "loginStartRetry": "重試",
-    "taskManagerDescription": "接管 Ctrl+Shift+Esc：註冊成功時未執行也會啟動 Resource Manager，已執行時顯示或置頂主視窗；不接管 Ctrl+Alt+Del。",
+    "taskManagerDescription": "開啟後，以任何方式開啟工作管理員都會改為開啟 Resource Manager（未執行時啟動，已執行時顯示主視窗），包括 Ctrl+Shift+Esc、工作列選單、Ctrl+Alt+Del 畫面中的「工作管理員」及直接執行 taskmgr.exe；Ctrl+Alt+Del 畫面本身不變。此替換須以系統管理員身分註冊，未註冊時僅在 Resource Manager 執行期間接管 Ctrl+Shift+Esc。關閉時只刪除 Resource Manager 寫入的登錄值。",
     "forceTerminateTitle": "強制結束快捷鍵",
     "forceTerminateDescription": "結束目前前景焦點程式，以及所有具有可見無回應視窗的程式。預設關閉。",
     "forceTerminateWarning": "觸發後會立即強制結束處理程式，未儲存的內容將遺失。啟用時必須同時包含 Ctrl、Alt 或 Win 修飾鍵以及一個非修飾鍵。",

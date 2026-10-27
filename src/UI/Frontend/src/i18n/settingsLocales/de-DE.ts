@@ -319,7 +319,7 @@ export default createSettingsLocale("de-DE", {
     "loginStartLoading": "Anmeldestart-Einstellung wird gelesen…",
     "loginStartWriteFailed": "Die Anmeldestart-Einstellung konnte nicht gespeichert werden. Der Schalter zeigt den danach gelesenen Zustand.",
     "loginStartRetry": "Erneut versuchen",
-    "taskManagerDescription": "Ctrl+Shift+Esc übernehmen: Nach der Registrierung startet Resource Manager, falls nötig, oder zeigt sein bestehendes Hauptfenster im Vordergrund. Ctrl+Alt+Del bleibt unverändert.",
+    "taskManagerDescription": "Wenn aktiviert, öffnet jeder Aufruf des Task-Managers stattdessen Resource Manager (er startet bei Bedarf oder zeigt sein Hauptfenster): Ctrl+Shift+Esc, das Taskleistenmenü, „Task-Manager“ im Ctrl+Alt+Del-Bildschirm und das Ausführen von taskmgr.exe. Der Ctrl+Alt+Del-Bildschirm selbst bleibt unverändert. Die Ersetzung muss mit Administratorrechten registriert werden; ohne Registrierung wird nur Ctrl+Shift+Esc übernommen, und nur solange Resource Manager läuft. Beim Deaktivieren wird nur der von Resource Manager geschriebene Registrierungswert entfernt.",
     "forceTerminateTitle": "Tastenkürzel zum sofortigen Beenden",
     "forceTerminateDescription": "Die fokussierte Vordergrund-App und alle Apps mit sichtbaren, nicht reagierenden Fenstern beenden. Standardmäßig deaktiviert.",
     "forceTerminateWarning": "Dieses Kürzel beendet Prozesse sofort; ungespeicherte Arbeit geht verloren. Erforderlich ist Ctrl, Alt oder Win zusammen mit einer normalen Taste.",

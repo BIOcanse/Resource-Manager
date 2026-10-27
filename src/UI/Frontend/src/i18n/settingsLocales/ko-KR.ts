@@ -319,7 +319,7 @@ export default createSettingsLocale("ko-KR", {
     "loginStartLoading": "로그인 시 시작 설정을 읽는 중…",
     "loginStartWriteFailed": "로그인 시 시작 설정을 저장하지 못했습니다. 스위치에는 다시 읽은 실제 상태가 표시됩니다.",
     "loginStartRetry": "다시 시도",
-    "taskManagerDescription": "Ctrl+Shift+Esc를 대체합니다. 등록 후 Resource Manager가 실행 중이 아니면 시작하고, 실행 중이면 기본 창을 표시해 앞으로 가져옵니다. Ctrl+Alt+Del은 변경하지 않습니다.",
+    "taskManagerDescription": "켜면 어떤 방법으로 작업 관리자를 열어도 Resource Manager가 열립니다(실행 중이 아니면 시작하고, 실행 중이면 기본 창을 표시합니다). Ctrl+Shift+Esc, 작업 표시줄 메뉴, Ctrl+Alt+Del 화면의 '작업 관리자', taskmgr.exe 실행이 모두 해당합니다. Ctrl+Alt+Del 화면 자체는 바뀌지 않습니다. 대체를 등록하려면 관리자 권한이 필요하며, 등록되지 않은 동안에는 Resource Manager가 실행 중일 때만 Ctrl+Shift+Esc를 대체합니다. 끄면 Resource Manager가 기록한 레지스트리 값만 삭제합니다.",
     "forceTerminateTitle": "강제 종료 단축키",
     "forceTerminateDescription": "현재 전경 앱과 보이는 응답 없는 창이 있는 모든 앱을 종료합니다. 기본적으로 비활성화되어 있습니다.",
     "forceTerminateWarning": "이 단축키는 프로세스를 즉시 종료하며 저장하지 않은 작업은 잃게 됩니다. 활성화하려면 Ctrl, Alt 또는 Win과 일반 키를 함께 지정해야 합니다.",

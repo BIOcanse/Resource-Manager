@@ -319,7 +319,7 @@ export default createSettingsLocale("es-ES", {
     "loginStartLoading": "Leyendo la configuración de inicio al iniciar sesión…",
     "loginStartWriteFailed": "No se pudo guardar el inicio al iniciar sesión. El interruptor muestra el estado leído después.",
     "loginStartRetry": "Reintentar",
-    "taskManagerDescription": "Sustituir Ctrl+Mayús+Esc: tras registrarlo, Resource Manager se inicia si está cerrado o muestra su ventana principal en primer plano. Ctrl+Alt+Supr no cambia.",
+    "taskManagerDescription": "Al activarlo, cualquier forma de abrir el Administrador de tareas abre Resource Manager (se inicia si está cerrado o muestra su ventana principal): Ctrl+Mayús+Esc, el menú de la barra de tareas, «Administrador de tareas» en la pantalla de Ctrl+Alt+Supr y la ejecución de taskmgr.exe. La pantalla de Ctrl+Alt+Supr no cambia. La sustitución debe registrarse con permisos de administrador; sin registro, solo se sustituye Ctrl+Mayús+Esc y únicamente mientras Resource Manager está en ejecución. Al desactivarlo solo se elimina el valor del registro que escribió Resource Manager.",
     "forceTerminateTitle": "Atajo de cierre forzado",
     "forceTerminateDescription": "Cerrar la aplicación en primer plano y todas las que tengan ventanas visibles sin respuesta. Desactivado por defecto.",
     "forceTerminateWarning": "Este atajo termina los procesos inmediatamente y se pierde el trabajo sin guardar. Debe incluir Ctrl, Alt o Win y una tecla que no sea modificadora.",

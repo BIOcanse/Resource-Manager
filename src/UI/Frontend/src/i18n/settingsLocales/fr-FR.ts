@@ -319,7 +319,7 @@ export default createSettingsLocale("fr-FR", {
     "loginStartLoading": "Lecture du démarrage à la connexion…",
     "loginStartWriteFailed": "Impossible d’enregistrer le démarrage à la connexion. L’interrupteur affiche l’état relu ensuite.",
     "loginStartRetry": "Réessayer",
-    "taskManagerDescription": "Remplacer Ctrl+Maj+Échap : après enregistrement, Resource Manager démarre s’il est arrêté, sinon sa fenêtre apparaît au premier plan. Ctrl+Alt+Suppr n’est pas modifié.",
+    "taskManagerDescription": "Une fois activé, toute ouverture du Gestionnaire des tâches ouvre Resource Manager à la place (il démarre s’il est arrêté, sinon sa fenêtre principale s’affiche) : Ctrl+Maj+Échap, le menu de la barre des tâches, « Gestionnaire des tâches » sur l’écran Ctrl+Alt+Suppr et l’exécution de taskmgr.exe. L’écran Ctrl+Alt+Suppr lui-même n’est pas modifié. Le remplacement doit être enregistré avec des droits d’administrateur ; sans enregistrement, seul Ctrl+Maj+Échap est remplacé, et uniquement pendant l’exécution de Resource Manager. La désactivation supprime uniquement la valeur de registre écrite par Resource Manager.",
     "forceTerminateTitle": "Raccourci d’arrêt forcé",
     "forceTerminateDescription": "Arrêter l’application au premier plan et toutes celles avec une fenêtre visible qui ne répond plus. Désactivé par défaut.",
     "forceTerminateWarning": "Ce raccourci arrête immédiatement les processus et perd les travaux non enregistrés. Il doit contenir Ctrl, Alt ou Win avec une touche non modificatrice.",

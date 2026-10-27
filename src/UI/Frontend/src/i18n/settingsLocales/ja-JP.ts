@@ -319,7 +319,7 @@ export default createSettingsLocale("ja-JP", {
     "loginStartLoading": "サインイン時起動の設定を読み込み中…",
     "loginStartWriteFailed": "サインイン時起動の設定を保存できませんでした。スイッチには読み直した実際の状態が表示されています。",
     "loginStartRetry": "再試行",
-    "taskManagerDescription": "Ctrl+Shift+Esc を置き換えます。登録後は、未起動なら Resource Manager を起動し、起動済みならメインウィンドウを表示して前面に出します。Ctrl+Alt+Del は変更しません。",
+    "taskManagerDescription": "オンにすると、タスクマネージャーをどの方法で開いても Resource Manager が開きます (起動していなければ起動し、起動済みならメイン ウィンドウを表示します)。対象は Ctrl+Shift+Esc、タスク バーのメニュー、Ctrl+Alt+Del 画面の [タスクマネージャー]、taskmgr.exe の実行です。Ctrl+Alt+Del 画面自体は変わりません。置き換えの登録には管理者権限が必要で、未登録の間は Resource Manager の実行中に限り Ctrl+Shift+Esc だけを置き換えます。オフにすると、Resource Manager が書き込んだレジストリ値だけを削除します。",
     "forceTerminateTitle": "強制終了のショートカット",
     "forceTerminateDescription": "前面のアプリと、応答しない表示中のウィンドウを持つすべてのアプリを終了します。初期状態では無効です。",
     "forceTerminateWarning": "このショートカットは即座にプロセスを終了し、未保存の内容は失われます。有効にするには Ctrl、Alt、Win のいずれかと通常のキーの組み合わせが必要です。",
