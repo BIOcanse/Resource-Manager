@@ -16,13 +16,23 @@ const points = @import("desktop_points_values").Bound;
 const preferences = @import("preferences.zig");
 const Claim = control.state.Claim;
 const Log = struct { bytes: [1024:0]u8 = undefined, length: usize = 0 };
+/// FILE_RENAME_INFO in its FileRenameInfoEx form (flags instead of ReplaceIfExists), declared here because the MinGW headers lack the Ex class and flags.
+const RenameInformation = extern struct {
+    flags: c.DWORD,
+    root_directory: c.HANDLE,
+    file_name_length: c.DWORD,
+    file_name: [32769]u16,
+};
+const file_rename_info_ex = 22;
+const file_rename_flag_replace_if_exists = 0x1;
+const file_rename_flag_posix_semantics = 0x2;
 
 const Event = union(enum) {
     start: Run,
     stop: Run,
     returned: Run,
     command: shell.Command,
-    tray_running: usize,
+    tray_running: c.HWND,
     backend: Session,
     language: Language,
     preferences_changed,
@@ -77,7 +87,9 @@ const Host = struct {
     session: Session = .{},
     language: Language = .{},
     ending: bool = false,
-    tray_window: usize = 0,
+    // Kept as the handle itself: window handles are not 4-byte aligned, so turning an integer
+    // back into the translated HWND pointer type panics in safe builds.
+    tray_window: c.HWND = null,
     window_handle: usize = 0,
     window_pid: u32 = 0,
     show_command: window.ShowCommand = .show,
@@ -318,8 +330,8 @@ const Host = struct {
                     _ = c.SetEvent(slot.stop);
                     // TrackPopupMenu owns a nested message loop. Cancel its modal
                     // wait as part of the host's queued stop delivery.
-                    if (run.block == B.Tray and self.tray_window != 0)
-                        _ = c.PostMessageW(@ptrFromInt(self.tray_window), c.WM_CANCELMODE, 0, 0);
+                    if (run.block == B.Tray and self.tray_window != null)
+                        _ = c.PostMessageW(self.tray_window, c.WM_CANCELMODE, 0, 0);
                 }
             },
             .returned => |run| {
@@ -334,7 +346,7 @@ const Host = struct {
                     self.window_handle = 0;
                     try self.removeBackendReader();
                 }
-                if (run.block == B.Tray) self.tray_window = 0;
+                if (run.block == B.Tray) self.tray_window = null;
                 if (run.block == B.BackendConnection) try self.engine.unbind(self.ready, reason("backend-owner-stopped"), null);
                 if (run.block == B.BackendConnection) try self.engine.unbind(self.backend_session, reason("backend-owner-stopped"), null);
                 try self.engine.reportReturned(run.block, run.number);
@@ -457,31 +469,32 @@ const Host = struct {
         var quoted_reason: [1024]u8 = undefined;
         const session_reason = try window.protocol.quote(&quoted_reason, self.session.reason());
         var prefix: [1536]u8 = undefined;
-        const header = try std.fmt.bufPrint(&prefix, "{{\"pid\":{d},\"trayWindow\":{d},\"windowPid\":{d},\"windowHandle\":{d},\"ending\":{s},\"backendReady\":{s},\"backendGeneration\":{d},\"backendReason\":{s},\"controller\":", .{ c.GetCurrentProcessId(), self.tray_window, self.window_pid, self.window_handle, if (self.ending) "true" else "false", if (self.session.ready) "true" else "false", self.session.generation, session_reason });
+        const header = try std.fmt.bufPrint(&prefix, "{{\"pid\":{d},\"trayWindow\":{d},\"windowPid\":{d},\"windowHandle\":{d},\"ending\":{s},\"backendReady\":{s},\"backendGeneration\":{d},\"backendReason\":{s},\"controller\":", .{ c.GetCurrentProcessId(), @intFromPtr(self.tray_window), self.window_pid, self.window_handle, if (self.ending) "true" else "false", if (self.session.ready) "true" else "false", self.session.generation, session_reason });
         @memcpy(self.diagnostics_buffer[0..header.len], header);
         const length = try self.engine.snapshot(self.diagnostics_buffer[header.len .. self.diagnostics_buffer.len - 1]);
         if (length + header.len >= self.diagnostics_buffer.len) return error.SnapshotTooLarge;
         self.diagnostics_buffer[header.len + length] = '}';
-        var path: [32768:0]u16 = undefined;
-        const size = try std.unicode.utf8ToUtf16Le(&path, self.options.diagnostics);
-        path[size] = 0;
+        var rename: RenameInformation = undefined;
+        const size = try std.unicode.utf8ToUtf16Le(rename.file_name[0 .. rename.file_name.len - 1], self.options.diagnostics);
+        rename.file_name[size] = 0;
+        rename.flags = file_rename_flag_replace_if_exists | file_rename_flag_posix_semantics;
+        rename.root_directory = null;
+        rename.file_name_length = @intCast(size * 2);
         var temporary_text: [32768]u8 = undefined;
         const temporary_name = try std.fmt.bufPrint(&temporary_text, "{s}.tmp", .{self.options.diagnostics});
         var temporary_path: [32768:0]u16 = undefined;
         const temporary_length = try std.unicode.utf8ToUtf16Le(&temporary_path, temporary_name);
         temporary_path[temporary_length] = 0;
-        const file = c.CreateFileW(&temporary_path, c.GENERIC_WRITE, c.FILE_SHARE_READ, null, c.CREATE_ALWAYS, c.FILE_ATTRIBUTE_NORMAL, null);
+        const file = c.CreateFileW(&temporary_path, c.GENERIC_WRITE | c.DELETE, c.FILE_SHARE_READ, null, c.CREATE_ALWAYS, c.FILE_ATTRIBUTE_NORMAL, null);
         if (file == c.INVALID_HANDLE_VALUE) return error.DiagnosticsWrite;
-        var opened = true;
-        defer if (opened) {
-            _ = c.CloseHandle(file);
-        };
+        defer _ = c.CloseHandle(file);
         var written: c.DWORD = 0;
         const bytes = header.len + length + 1;
         if (c.WriteFile(file, &self.diagnostics_buffer, @intCast(bytes), &written, null) == 0 or written != bytes) return error.DiagnosticsWrite;
-        _ = c.CloseHandle(file);
-        opened = false;
-        if (c.MoveFileExW(&temporary_path, &path, c.MOVEFILE_REPLACE_EXISTING | c.MOVEFILE_WRITE_THROUGH) == 0) return error.DiagnosticsWrite;
+        // Readers open the snapshot with FILE_SHARE_DELETE. A POSIX-semantics rename replaces it while a reader
+        // still holds the old image; MoveFileExW fails with a sharing error in that case.
+        const rename_bytes = @offsetOf(RenameInformation, "file_name") + (size + 1) * 2;
+        if (c.SetFileInformationByHandle(file, file_rename_info_ex, &rename, @intCast(rename_bytes)) == 0) return error.DiagnosticsWrite;
     }
     fn runProcess(self: *Host) !void {
         try self.options.parse();

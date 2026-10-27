@@ -2,7 +2,7 @@ const std = @import("std");
 const w = @import("../win32.zig");
 const c = w.c;
 const copy = @import("../text/generated/tray.zig");
-pub const Event = union(enum) { open, exit, session_ending, running: usize };
+pub const Event = union(enum) { open, exit, session_ending, running: c.HWND };
 pub const Callback = *const fn (?*anyopaque, Event) void;
 const icon_message = c.WM_APP + 1;
 const language_message = c.WM_APP + 2;
@@ -87,7 +87,7 @@ pub const Tray = struct {
         @memcpy(icon.szTip[0..tip.len], tip);
         if (c.Shell_NotifyIconW(c.NIM_ADD, &icon) == 0) return error.TrayIcon;
         defer _ = c.Shell_NotifyIconW(c.NIM_DELETE, &icon);
-        callback(context, .{ .running = @intFromPtr(window) });
+        callback(context, .{ .running = window });
         const handles = [_]c.HANDLE{stop};
         while (true) {
             const result = c.MsgWaitForMultipleObjects(1, &handles, c.FALSE, c.INFINITE, c.QS_ALLINPUT);

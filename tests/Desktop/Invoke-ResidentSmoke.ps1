@@ -198,6 +198,8 @@ function Remember-Child([object]$Round, [object]$Snapshot) {
     $children = @([ResidentSmokeNative]::Children([uint32]$Round.entry.id))
     Assert-Smoke (@($children | Where-Object { $_.Pid -eq $childId }).Count -eq 1) 'Window process is not a direct child of this resident.'
     $child = [Diagnostics.Process]::GetProcessById($childId)
+    # A Process found by id keeps no handle of its own; open one now so its exit code is still readable after it exits.
+    $null = $child.Handle
     $entry = Register-Owned $child ('window-' + $Round.label)
     Assert-Smoke ([string]::Equals($child.MainModule.FileName, $Round.childExe, [StringComparison]::OrdinalIgnoreCase)) 'Window child executable does not match the requested development binary.'
     return $entry
