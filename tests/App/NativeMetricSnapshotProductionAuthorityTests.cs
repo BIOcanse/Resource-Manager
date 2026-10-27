@@ -136,7 +136,7 @@ public sealed class NativeMetricSnapshotProductionAuthorityTests
             monitoringRoot,
             "WindowsHardwareMetricSampler.cs"));
         Assert.Contains(
-            "BlockUids.HostManagerMetricSnapshotOwner",
+            "HostManagerMetricSnapshotOwner",
             sampler,
             StringComparison.Ordinal);
         Assert.DoesNotContain(
