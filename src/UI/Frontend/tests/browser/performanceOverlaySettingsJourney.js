@@ -60,6 +60,8 @@ export default async function performanceOverlaySettingsJourney(page, baseUrl) {
     const settings = await loadSettingsText(language);
     await page.getByRole("navigation").getByRole("button", { name: app.page.settings, exact: true }).click();
     await page.getByRole("button", { name: settings.sections.performanceOverlay, exact: true }).click();
+    // 换分区时旧分区留一层淡出的幽灵，量布局前等它走完。
+    await page.waitForFunction(() => !document.querySelector(".settings-content > [data-exit-ghost]"));
     return { app, settings, panel: page.locator(`.performance-overlay-settings${NOT_GHOST}`) };
   };
   const rowsOf = (panel) => panel.locator(".performance-overlay-row");
@@ -141,6 +143,7 @@ export default async function performanceOverlaySettingsJourney(page, baseUrl) {
     await prepare(mixed, option.id);
     const { panel } = await openSection(option.id);
     await rowsOf(panel).nth(2).waitFor();
+    await page.waitForFunction(() => !document.querySelector(".settings-content > [data-exit-ghost]"));
     for (const size of [{ width: 1280, height: 800 }, { width: 800, height: 600 }]) {
       await page.setViewportSize(size);
       const layout = await page.evaluate(() => {
