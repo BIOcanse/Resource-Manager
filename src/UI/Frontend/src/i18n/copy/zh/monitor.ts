@@ -146,7 +146,12 @@ export const zhMonitorCopy = {
     factsWindow: (seconds: string) => `采样窗口 ${seconds} 秒`,
     unavailableReasons: {
       "cpu-topology-not-published": { label: "CPU 拓扑尚未发布", hint: "后端尚未发布 CPU 拓扑快照。" },
-      "cpu-residency-window-unavailable": { label: "CPU 驻留窗口不可用", hint: "后端当前没有可用的 CPU 驻留采样窗口。" }
+      "cpu-residency-not-requested": { label: "未请求 CPU 驻留采样", hint: "目前没有功能需要 CPU 驻留数据，后端尚未开始采样。" },
+      "cpu-residency-window-warming": { label: "CPU 驻留窗口积累中", hint: "后端正在积累一个完整的采样窗口，积累完成后显示数据。" },
+      "cpu-residency-events-lost": { label: "CPU 驻留采样丢失事件", hint: "内核事件跟踪丢失了事件，已作废当前窗口并重新积累。" },
+      "cpu-residency-session-restarted": { label: "CPU 驻留采样会话已重建", hint: "内核事件跟踪会话已重新建立，正在重新积累完整窗口。" },
+      "cpu-residency-session-unavailable": { label: "CPU 驻留采样会话不可用", hint: "内核事件跟踪会话当前未运行，无法采样。" },
+      "cpu-residency-capture-failed": { label: "CPU 驻留数据生成失败", hint: "生成采样结果时出错，详细信息记录在后端日志中。" }
     } as Record<string, { label: string; hint: string } | undefined>,
     gpuQuantities: {
       dedicated_resident_apportioned: "独立显存驻留（共享部分按引用分摊）",

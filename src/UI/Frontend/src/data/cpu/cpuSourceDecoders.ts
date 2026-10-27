@@ -100,7 +100,7 @@ const cpuExclusiveBindingsSnapshotDecoder =
       };
     });
 
-/** Explicit GET absence; subscription frames retain their original nullable snapshot contract. */
+/** Explicit absence with a stable reason code. CPU residency carries it on GET and on its subscription alike; the topology subscription keeps its nullable snapshot contract. */
 export interface CpuObservationUnavailable {
   readonly state: "unavailable";
   readonly reasonCode: string;
@@ -124,8 +124,8 @@ export const cpuExclusiveBindingsDecoder = defineResponseDecoder<CpuObservationR
   "cpu.exclusive-bindings.get.v2", value => decodeObservation(value, cpuExclusiveBindingsSnapshotDecoder.decode));
 export const cpuTopologySubscriptionDecoder = defineResponseDecoder<CpuTopologySnapshot | null>(
   "cpu.topology.v1", value => value === null ? null : cpuTopologySnapshotDecoder.decode(value));
-export const cpuResidencySubscriptionDecoder = defineResponseDecoder<CpuCoreResidencySnapshot | null>(
-  "cpu.residency.v1", value => value === null ? null : cpuResidencySnapshotDecoder.decode(value));
+export const cpuResidencySubscriptionDecoder = defineResponseDecoder<CpuObservationResult<CpuCoreResidencySnapshot>>(
+  "cpu.residency.subscribe.v2", value => decodeObservation(value, cpuResidencySnapshotDecoder.decode));
 
 function decodeSpecification(value: unknown, path: string): CpuSpecificationModel {
   const record = requireRecord(value, path);

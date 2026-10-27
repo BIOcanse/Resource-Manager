@@ -726,7 +726,12 @@ const deDeAppCopy: AppCopy = {
     factsWindow: (seconds: string) => `Messfenster: ${seconds} s`,
     unavailableReasons: {
       "cpu-topology-not-published": { label: "CPU-Topologie noch nicht veröffentlicht", hint: "Das Backend hat noch keinen CPU-Topologie-Schnappschuss veröffentlicht." },
-      "cpu-residency-window-unavailable": { label: "CPU-Residenzzeitfenster nicht verfügbar", hint: "Das Backend verfügt derzeit über kein CPU-Residenzzeitfenster für die Messung." }
+      "cpu-residency-not-requested": { label: "CPU-Residenz nicht angefordert", hint: "Derzeit benötigt keine Funktion CPU-Residenzdaten; das Backend hat die Erfassung nicht gestartet." },
+      "cpu-residency-window-warming": { label: "CPU-Residenzzeitfenster wird gefüllt", hint: "Das Backend sammelt ein vollständiges Erfassungsfenster; Werte erscheinen, sobald es abgeschlossen ist." },
+      "cpu-residency-events-lost": { label: "CPU-Residenz: Ereignisse verloren", hint: "Die Kernel-Ereignisablaufverfolgung hat Ereignisse verloren; das aktuelle Fenster wurde verworfen und wird neu aufgebaut." },
+      "cpu-residency-session-restarted": { label: "CPU-Residenzsitzung neu aufgebaut", hint: "Die Sitzung der Kernel-Ereignisablaufverfolgung wurde neu aufgebaut; ein vollständiges Fenster wird neu gesammelt." },
+      "cpu-residency-session-unavailable": { label: "CPU-Residenzsitzung nicht verfügbar", hint: "Die Sitzung der Kernel-Ereignisablaufverfolgung läuft nicht; eine Erfassung ist nicht möglich." },
+      "cpu-residency-capture-failed": { label: "CPU-Residenzerfassung fehlgeschlagen", hint: "Beim Erstellen des Erfassungsergebnisses ist ein Fehler aufgetreten; Details stehen im Backend-Protokoll." }
     } as Record<string, { label: string; hint: string } | undefined>,
     gpuQuantities: {
       dedicated_resident_apportioned: "Dedizierter residenter Speicher (gemeinsame Teile aufgeteilt)",

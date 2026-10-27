@@ -181,6 +181,7 @@ const allJourneys = [
   ["targeted-recordings", async (...args) => (await import("./targetedRecordingsJourney.js")).default(...args)],
   ["kernel-leak-report", async (...args) => (await import("./kernelLeakReportJourney.js")).default(...args)],
   ["cpu-baseline-ratio", cpuBaselineRatioJourney],
+  ["cpu-residency-reasons", async (...args) => (await import("./cpuResidencyReasonsJourney.js")).default(...args)],
   ["cpu-current-value-subscription", cpuCurrentValueSubscriptionJourney],
   ["cpu-manual-placement-subscription", cpuManualPlacementSubscriptionJourney],
   ["current-value-subscription", currentValueSubscriptionJourney],

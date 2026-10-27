@@ -10,15 +10,22 @@ import {
 const capturedAt = "2026-08-22T12:00:00.000Z";
 
 assert.equal(cpuTopologySubscriptionDecoder.decode(null), null);
-assert.equal(cpuResidencySubscriptionDecoder.decode(null), null);
-for (const decoder of [cpuTopologySubscriptionDecoder, cpuResidencySubscriptionDecoder]) {
-  assert.throws(() => decoder.decode({ state: "unavailable", reasonCode: "cpu-topology-not-published" }));
+assert.throws(() => cpuTopologySubscriptionDecoder.decode({ state: "unavailable", reasonCode: "cpu-topology-not-published" }));
+
+// CPU residency: GET and the subscription carry the same typed observation; a bare null is a contract violation.
+const residencyReasons = ["cpu-residency-not-requested", "cpu-residency-window-warming", "cpu-residency-events-lost", "cpu-residency-session-restarted", "cpu-residency-session-unavailable", "cpu-residency-capture-failed"] as const;
+for (const decoder of [cpuResidencyDecoder, cpuResidencySubscriptionDecoder]) {
+  for (const reasonCode of residencyReasons) {
+    assert.deepEqual(decoder.decode({ state: "unavailable", reasonCode }), { state: "unavailable", reasonCode });
+  }
+  for (const value of [null, undefined, "", { state: "unavailable" }, { state: "unavailable", reasonCode: "" }, { state: "unknown", reasonCode: "cpu-residency-window-warming" }]) {
+    assert.throws(() => decoder.decode(value));
+  }
 }
 
 for (const [decoder, reasonCode] of [
   [cpuTopologyDecoder, "cpu-topology-not-published"],
-  [cpuExclusiveBindingsDecoder, "cpu-topology-not-published"],
-  [cpuResidencyDecoder, "cpu-residency-window-unavailable"]
+  [cpuExclusiveBindingsDecoder, "cpu-topology-not-published"]
 ] as const) {
   assert.deepEqual(decoder.decode({ state: "unavailable", reasonCode }), { state: "unavailable", reasonCode });
   for (const value of [null, undefined, "", { state: "unavailable" }, { state: "unavailable", reasonCode: "" }, { state: "unknown", reasonCode }]) {

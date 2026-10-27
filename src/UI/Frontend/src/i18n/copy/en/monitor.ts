@@ -158,7 +158,12 @@ export const enMonitorCopy: Pick<
     factsWindow: (seconds: string) => `Sampling window: ${seconds} s`,
     unavailableReasons: {
       "cpu-topology-not-published": { label: "CPU topology not published", hint: "The backend has not published a CPU topology snapshot." },
-      "cpu-residency-window-unavailable": { label: "CPU residency window unavailable", hint: "The backend currently has no available CPU residency sampling window." }
+      "cpu-residency-not-requested": { label: "CPU residency not requested", hint: "No feature currently needs CPU residency data, so the backend has not started sampling." },
+      "cpu-residency-window-warming": { label: "CPU residency window filling", hint: "The backend is filling a complete sampling window; values appear once it closes." },
+      "cpu-residency-events-lost": { label: "CPU residency events lost", hint: "Kernel event tracing lost events, so the current window was discarded and is being rebuilt." },
+      "cpu-residency-session-restarted": { label: "CPU residency session restarted", hint: "The kernel event tracing session was re-established; a complete window is being rebuilt." },
+      "cpu-residency-session-unavailable": { label: "CPU residency session unavailable", hint: "The kernel event tracing session is not running, so sampling is not possible." },
+      "cpu-residency-capture-failed": { label: "CPU residency capture failed", hint: "Building the sampling result failed; details are in the backend log." }
     } as Record<string, { label: string; hint: string } | undefined>,
     gpuQuantities: {
       dedicated_resident_apportioned: "Dedicated resident memory (shared parts divided)",

@@ -146,7 +146,12 @@ export const zhMonitorCopy = {
     factsWindow: (seconds: string) => `取樣視窗 ${seconds} 秒`,
     unavailableReasons: {
       "cpu-topology-not-published": { label: "CPU 拓撲尚未發布", hint: "後端尚未發布 CPU 拓撲快照。" },
-      "cpu-residency-window-unavailable": { label: "CPU 駐留視窗無法使用", hint: "後端目前沒有可用的 CPU 駐留取樣視窗。" }
+      "cpu-residency-not-requested": { label: "未要求 CPU 駐留取樣", hint: "目前沒有功能需要 CPU 駐留資料，後端尚未開始取樣。" },
+      "cpu-residency-window-warming": { label: "CPU 駐留視窗累積中", hint: "後端正在累積一個完整的取樣視窗，累積完成後顯示資料。" },
+      "cpu-residency-events-lost": { label: "CPU 駐留取樣遺失事件", hint: "核心事件追蹤遺失了事件，已作廢目前視窗並重新累積。" },
+      "cpu-residency-session-restarted": { label: "CPU 駐留取樣工作階段已重建", hint: "核心事件追蹤工作階段已重新建立，正在重新累積完整視窗。" },
+      "cpu-residency-session-unavailable": { label: "CPU 駐留取樣工作階段無法使用", hint: "核心事件追蹤工作階段目前未執行，無法取樣。" },
+      "cpu-residency-capture-failed": { label: "CPU 駐留資料產生失敗", hint: "產生取樣結果時發生錯誤，詳細資訊記錄在後端記錄檔中。" }
     } as Record<string, { label: string; hint: string } | undefined>,
     gpuQuantities: {
       dedicated_resident_apportioned: "獨立視訊記憶體駐留（共用部分依參照分攤）",

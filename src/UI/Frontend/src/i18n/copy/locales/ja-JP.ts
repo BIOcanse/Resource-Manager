@@ -726,7 +726,12 @@ const jaJpAppCopy: AppCopy = {
     factsWindow: (seconds: string) => `サンプリング期間 ${seconds} 秒`,
     unavailableReasons: {
       "cpu-topology-not-published": { label: "CPU トポロジーは未公開です", hint: "バックエンドは CPU トポロジーのスナップショットをまだ公開していません。" },
-      "cpu-residency-window-unavailable": { label: "CPU 常駐時間の計測ウィンドウを利用できません", hint: "バックエンドには現在、利用可能な CPU 常駐時間のサンプリングウィンドウがありません。" }
+      "cpu-residency-not-requested": { label: "CPU 常駐時間は要求されていません", hint: "現在 CPU 常駐時間を必要とする機能がないため、バックエンドは計測を開始していません。" },
+      "cpu-residency-window-warming": { label: "CPU 常駐時間の計測ウィンドウを蓄積中", hint: "バックエンドが完全な計測ウィンドウを蓄積しています。蓄積が終わると値が表示されます。" },
+      "cpu-residency-events-lost": { label: "CPU 常駐時間のイベントが失われました", hint: "カーネル イベント トレースでイベントが失われたため、現在のウィンドウを破棄して再蓄積しています。" },
+      "cpu-residency-session-restarted": { label: "CPU 常駐時間の計測セッションを再構築しました", hint: "カーネル イベント トレースのセッションが再構築されたため、完全なウィンドウを再蓄積しています。" },
+      "cpu-residency-session-unavailable": { label: "CPU 常駐時間の計測セッションを利用できません", hint: "カーネル イベント トレースのセッションが実行されていないため、計測できません。" },
+      "cpu-residency-capture-failed": { label: "CPU 常駐時間の計測結果を生成できませんでした", hint: "計測結果の生成中にエラーが発生しました。詳細はバックエンドのログに記録されています。" }
     } as Record<string, { label: string; hint: string } | undefined>,
     gpuQuantities: {
       dedicated_resident_apportioned: "専用メモリ常駐量（共有部分を按分）",

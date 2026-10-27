@@ -726,7 +726,12 @@ const ruRuAppCopy: AppCopy = {
     factsWindow: (seconds: string) => `Окно выборки: ${seconds} с`,
     unavailableReasons: {
       "cpu-topology-not-published": { label: "Топология CPU ещё не опубликована", hint: "Серверная часть ещё не опубликовала снимок топологии CPU." },
-      "cpu-residency-window-unavailable": { label: "Окно измерения резидентности CPU недоступно", hint: "Серверная часть в настоящее время не располагает окном измерения резидентности CPU." }
+      "cpu-residency-not-requested": { label: "Резидентность CPU не запрошена", hint: "Сейчас ни одной функции не нужны данные о резидентности CPU, поэтому серверная часть не начала измерение." },
+      "cpu-residency-window-warming": { label: "Окно резидентности CPU заполняется", hint: "Серверная часть собирает полное окно измерения; значения появятся после его закрытия." },
+      "cpu-residency-events-lost": { label: "Потеряны события резидентности CPU", hint: "Трассировка событий ядра потеряла события; текущее окно отброшено и собирается заново." },
+      "cpu-residency-session-restarted": { label: "Сеанс резидентности CPU создан заново", hint: "Сеанс трассировки событий ядра создан заново; полное окно собирается заново." },
+      "cpu-residency-session-unavailable": { label: "Сеанс резидентности CPU недоступен", hint: "Сеанс трассировки событий ядра не запущен, поэтому измерение невозможно." },
+      "cpu-residency-capture-failed": { label: "Ошибка формирования резидентности CPU", hint: "При формировании результата измерения произошла ошибка; подробности записаны в журнал серверной части." }
     } as Record<string, { label: string; hint: string } | undefined>,
     gpuQuantities: {
       dedicated_resident_apportioned: "Резидентная выделенная память (общие части распределены)",

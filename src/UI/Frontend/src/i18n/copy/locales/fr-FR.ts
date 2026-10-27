@@ -726,7 +726,12 @@ const frFrAppCopy: AppCopy = {
     factsWindow: (seconds: string) => `Fenêtre d’échantillonnage : ${seconds} s`,
     unavailableReasons: {
       "cpu-topology-not-published": { label: "Topologie du processeur non publiée", hint: "Le service n’a pas encore publié d’instantané de la topologie du processeur." },
-      "cpu-residency-window-unavailable": { label: "Fenêtre de résidence du processeur indisponible", hint: "Le service ne dispose actuellement d’aucune fenêtre d’échantillonnage de résidence du processeur." }
+      "cpu-residency-not-requested": { label: "Résidence du processeur non demandée", hint: "Aucune fonction n’a actuellement besoin des données de résidence du processeur ; le service n’a pas démarré l’échantillonnage." },
+      "cpu-residency-window-warming": { label: "Fenêtre de résidence du processeur en cours", hint: "Le service remplit une fenêtre d’échantillonnage complète ; les valeurs apparaîtront à sa clôture." },
+      "cpu-residency-events-lost": { label: "Événements de résidence du processeur perdus", hint: "Le suivi d’événements du noyau a perdu des événements ; la fenêtre en cours a été abandonnée et est reconstruite." },
+      "cpu-residency-session-restarted": { label: "Session de résidence du processeur rétablie", hint: "La session de suivi d’événements du noyau a été rétablie ; une fenêtre complète est en cours de reconstitution." },
+      "cpu-residency-session-unavailable": { label: "Session de résidence du processeur indisponible", hint: "La session de suivi d’événements du noyau ne s’exécute pas ; aucun échantillonnage n’est possible." },
+      "cpu-residency-capture-failed": { label: "Échec de la génération de la résidence du processeur", hint: "La génération du résultat d’échantillonnage a échoué ; les détails figurent dans le journal du service." }
     } as Record<string, { label: string; hint: string } | undefined>,
     gpuQuantities: {
       dedicated_resident_apportioned: "Mémoire dédiée résidente (parties partagées réparties)",

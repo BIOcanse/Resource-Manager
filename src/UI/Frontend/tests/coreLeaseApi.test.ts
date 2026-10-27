@@ -61,7 +61,7 @@ try {
   payload = { ...envelope, startupInterceptionDisposition: "applyFailed" };
   assert.equal((await saveGpuPlacementProcessPolicy({ processKey: "fixture" } as GpuPlacementProcessPolicy)).runtimeApplicationDisposition, "committedAndPublished");
   status = 200;
-  for (const [consume, reasonCode] of [[getCpuTopology, "cpu-topology-not-published"], [getCpuExclusiveBindings, "cpu-topology-not-published"], [getCpuResidency, "cpu-residency-window-unavailable"]] as const) {
+  for (const [consume, reasonCode] of [[getCpuTopology, "cpu-topology-not-published"], [getCpuExclusiveBindings, "cpu-topology-not-published"], [getCpuResidency, "cpu-residency-window-warming"]] as const) {
     payload = { state: "unavailable", reasonCode };
     assert.deepEqual(await consume(), payload);
     payload = null;

@@ -15,7 +15,7 @@ const calls: string[] = [];
 const client = new RequestClient(session, { transport: async url => { calls.push(url); return result; } });
 try {
   assert.deepEqual(await getCpuTopologySource(client), result);
-  result = { state: "unavailable", reasonCode: "cpu-residency-window-unavailable" };
+  result = { state: "unavailable", reasonCode: "cpu-residency-window-warming" };
   assert.deepEqual(await getCpuResidencySource(client), result);
   const source = createFrontendSources(client, registry, channel).cpuExclusiveBindings;
   const lease = source.acquire({ active: false });

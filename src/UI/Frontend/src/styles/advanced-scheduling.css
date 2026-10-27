@@ -160,6 +160,13 @@
   font-size: 12px;
 }
 
+/* 执行时长读不到时后端给的原因：原因名直接显示，说明放在问号里。 */
+.cpu-topology-residency-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .cpu-topology-diagram {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));

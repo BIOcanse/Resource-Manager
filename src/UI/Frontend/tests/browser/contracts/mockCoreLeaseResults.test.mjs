@@ -9,17 +9,17 @@ after(async () => { await server?.close(); });
 const paths = [
   ["/api/cpu/topology", cpuTopologyDecoder, "cpu-topology-not-published"],
   ["/api/cpu/topology/exclusive-bindings", cpuExclusiveBindingsDecoder, "cpu-topology-not-published"],
-  ["/api/cpu/residency", cpuResidencyDecoder, "cpu-residency-window-unavailable"]
+  ["/api/cpu/residency", cpuResidencyDecoder, "cpu-residency-window-warming"]
 ];
 test("CPU GET responses preserve explicit unavailable reasons and recover to unchanged snapshots", async () => {
-  await server.scenario({ cpuTopologyEmpty: true, cpuResidencyUnavailable: true });
+  await server.scenario({ cpuTopologyEmpty: true, cpuResidencyUnavailableReason: "cpu-residency-window-warming" });
   for (const [path, decoder, reasonCode] of paths) {
     const response = await server.json(path);
     assert.equal(response.status, 200);
     assert.deepEqual(response.value, { state: "unavailable", reasonCode });
     assert.deepEqual(decoder.decode(response.value), response.value);
   }
-  await server.scenario({ cpuTopologyEmpty: false, cpuResidencyUnavailable: false });
+  await server.scenario({ cpuTopologyEmpty: false, cpuResidencyUnavailableReason: null });
   for (const [path, decoder] of paths) assert.ok("capturedAt" in decoder.decode((await server.json(path)).value));
 });
 test("policy and performance writes use publication results; application settings retain their own disposition", async () => {

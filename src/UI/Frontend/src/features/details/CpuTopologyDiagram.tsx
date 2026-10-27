@@ -28,6 +28,7 @@ import type {
 import { UserDetailsDialog } from "../../components/UserDetailsDialog";
 import { uiText } from "../../text.ts";
 import { resourceFactUnavailableText } from "../../presentation/metricLabels.ts";
+import { HelpHint } from "../../ui/primitives/HelpHint.tsx";
 import { formatBytes } from "../../presentation/byteUnits.ts";
 import type { MetricFieldDevice } from "../../data/metricFields/metricFieldSource.ts";
 import {
@@ -113,9 +114,18 @@ export function CpuTopologyDiagram(props: {
     setModel("current", reconcile(structuredClone(current), { key: "id" }));
   });
   const snapshot = () => model.current;
-  const residencySnapshot = () => {
+  // The push value is the snapshot or a typed unavailable state with the owner's reason; never a bare null.
+  const residencyObservation = () => {
     const source = residency();
     return source && sourceCanRender(source) ? source.data ?? undefined : undefined;
+  };
+  const residencySnapshot = () => {
+    const observation = residencyObservation();
+    return observation && !("state" in observation) ? observation : undefined;
+  };
+  const residencyUnavailableReason = () => {
+    const observation = residencyObservation();
+    return observation && "state" in observation ? observation.reasonCode : null;
   };
   const numaFieldData = () => {
     const source = numaFields();
@@ -238,6 +248,14 @@ export function CpuTopologyDiagram(props: {
               {/* 容量与可用量的口径：几个节点共用一个问号。 */}
               <Show when={numaNodeRows(numaFieldData()).length > 0}>
                 <HelpHint>{uiText.cpuTopology.numaHint}</HelpHint>
+              </Show>
+              <Show when={residencyUnavailableReason()}>
+                {(reason) => (
+                  <span class="cpu-topology-residency-state" data-reason={reason()}>
+                    {resourceFactUnavailableText(reason()).label}
+                    <HelpHint>{resourceFactUnavailableText(reason()).hint}</HelpHint>
+                  </span>
+                )}
               </Show>
             </div>
             <div class="cpu-topology-diagram" classList={{ "ring-layout": model().visualLayoutKind === "ring_bus" }}>

@@ -726,7 +726,12 @@ const esEsAppCopy: AppCopy = {
     factsWindow: (seconds: string) => `Ventana de muestreo: ${seconds} s`,
     unavailableReasons: {
       "cpu-topology-not-published": { label: "Topología de CPU aún no publicada", hint: "El servidor aún no ha publicado una instantánea de la topología de CPU." },
-      "cpu-residency-window-unavailable": { label: "Ventana de residencia de CPU no disponible", hint: "El servidor no dispone actualmente de una ventana de muestreo de residencia de CPU." }
+      "cpu-residency-not-requested": { label: "Residencia de CPU no solicitada", hint: "Ninguna función necesita ahora datos de residencia de CPU, por lo que el servidor no ha iniciado el muestreo." },
+      "cpu-residency-window-warming": { label: "Ventana de residencia de CPU en curso", hint: "El servidor está completando una ventana de muestreo; los valores aparecerán cuando se cierre." },
+      "cpu-residency-events-lost": { label: "Eventos de residencia de CPU perdidos", hint: "El seguimiento de eventos del kernel perdió eventos; la ventana actual se descartó y se está reconstruyendo." },
+      "cpu-residency-session-restarted": { label: "Sesión de residencia de CPU restablecida", hint: "La sesión de seguimiento de eventos del kernel se restableció; se está reconstruyendo una ventana completa." },
+      "cpu-residency-session-unavailable": { label: "Sesión de residencia de CPU no disponible", hint: "La sesión de seguimiento de eventos del kernel no está en ejecución, por lo que no es posible muestrear." },
+      "cpu-residency-capture-failed": { label: "Error al generar la residencia de CPU", hint: "Se produjo un error al generar el resultado del muestreo; los detalles están en el registro del servidor." }
     } as Record<string, { label: string; hint: string } | undefined>,
     gpuQuantities: {
       dedicated_resident_apportioned: "Memoria dedicada residente (partes compartidas repartidas)",

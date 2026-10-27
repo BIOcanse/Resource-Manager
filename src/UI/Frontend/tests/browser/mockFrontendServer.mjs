@@ -110,7 +110,8 @@ const defaultScenario = {
     browserRuntimeRevision: "0"
   },
   cpuTopologyEmpty: false,
-  cpuResidencyUnavailable: false,
+  // CPU residency publishes a typed unavailable value with the owner's reason on GET and on its subscription alike.
+  cpuResidencyUnavailableReason: null,
   runtimePolicyDisposition: "committedAndPublished",
   runtimePolicyStartupDisposition: "applied",
   cpuTopologyUsageOffset: 0,
@@ -1014,7 +1015,7 @@ async function handleApi(request, response, url) {
     return json(response, 200, scenario.cpuTopologyEmpty ? { state: "unavailable", reasonCode: "cpu-topology-not-published" } : fixtureCpuTopology());
   }
   if (path === "/api/cpu/residency") {
-    return json(response, 200, scenario.cpuResidencyUnavailable ? { state: "unavailable", reasonCode: "cpu-residency-window-unavailable" } : fixtureCpuResidency());
+    return json(response, 200, scenario.cpuResidencyUnavailableReason ? { state: "unavailable", reasonCode: scenario.cpuResidencyUnavailableReason } : fixtureCpuResidency());
   }
   if (path === "/api/cpu/baseline-ratio") {
     if (request.method === "GET") {
@@ -3465,7 +3466,9 @@ function subscriptionPayloadFactory(url) {
     case "/api/cpu/topology/subscribe":
       return (publishedAt) => scenario.cpuTopologyEmpty ? null : fixtureCpuTopology(publishedAt);
     case "/api/cpu/residency/subscribe":
-      return (publishedAt) => fixtureCpuResidency(publishedAt);
+      return (publishedAt) => scenario.cpuResidencyUnavailableReason
+        ? { state: "unavailable", reasonCode: scenario.cpuResidencyUnavailableReason }
+        : fixtureCpuResidency(publishedAt);
     case "/api/local-system/status/subscribe":
       return (publishedAt) => ({
         capturedAt: publishedAt,

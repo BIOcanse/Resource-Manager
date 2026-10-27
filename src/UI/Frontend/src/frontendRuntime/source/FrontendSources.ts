@@ -202,7 +202,7 @@ export interface FrontendSources {
   /** 内核泄漏报告：后端在报告变化时推送；只有详细信息里的内核泄漏报告页可见时订阅。 */
   readonly kernelLeakReport: CurrentValueSource<KernelLeakReport>;
   readonly cpuTopology: PushValueSource<CpuTopologySnapshot | null>;
-  readonly cpuResidency: PushValueSource<CpuCoreResidencySnapshot | null>;
+  readonly cpuResidency: PushValueSource<CpuObservationResult<CpuCoreResidencySnapshot>>;
   readonly smartCoordinatorState: PushValueSource<HostManagerRollbackStateDocument>;
   /** 优化页的调度状态（模式、运行、故障关闭、待确认、已优化对象数），后端推送。 */
   readonly smartCoordinatorStatus: PushValueSource<HostManagerSmartCoordinatorStatus>;
@@ -355,7 +355,7 @@ export function createFrontendSources(
       buildUrl: buildCpuTopologySubscriptionUrl,
       decoder: cpuTopologySubscriptionDecoder
     }),
-    cpuResidency: new BackendPushValueSource<CpuCoreResidencySnapshot | null>({
+    cpuResidency: new BackendPushValueSource<CpuObservationResult<CpuCoreResidencySnapshot>>({
       key: "cpu.residency",
       channel: subscriptionChannel,
       buildUrl: buildCpuResidencySubscriptionUrl,

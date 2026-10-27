@@ -24,7 +24,7 @@ for (const { id } of languages) {
   assert.ok(!translated.has(text[0]), `${id}: copied policy success text from ${translated.get(text[0])}`);
   translated.set(text[0], id);
   await applyLanguage(id);
-  for (const reason of ["cpu-topology-not-published", "cpu-residency-window-unavailable"]) {
+  for (const reason of ["cpu-topology-not-published", "cpu-residency-not-requested", "cpu-residency-window-warming", "cpu-residency-events-lost", "cpu-residency-session-restarted", "cpu-residency-session-unavailable", "cpu-residency-capture-failed"]) {
     const expected = copy.resourceTable.unavailableReasons[reason];
     assert.ok(expected?.label && expected.hint, `${id}: ${reason}`);
     assert.notEqual(expected.label, reason);

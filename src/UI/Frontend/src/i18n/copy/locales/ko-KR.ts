@@ -725,7 +725,12 @@ const koKrAppCopy: AppCopy = {
     factsWindow: (seconds: string) => `샘플링 구간 ${seconds}초`,
     unavailableReasons: {
       "cpu-topology-not-published": { label: "CPU 토폴로지가 아직 게시되지 않았습니다", hint: "백엔드가 CPU 토폴로지 스냅샷을 아직 게시하지 않았습니다." },
-      "cpu-residency-window-unavailable": { label: "CPU 상주 시간 측정 구간을 사용할 수 없습니다", hint: "백엔드에 현재 사용 가능한 CPU 상주 시간 샘플링 구간이 없습니다." }
+      "cpu-residency-not-requested": { label: "CPU 상주 시간이 요청되지 않음", hint: "현재 CPU 상주 시간 데이터가 필요한 기능이 없어 백엔드가 측정을 시작하지 않았습니다." },
+      "cpu-residency-window-warming": { label: "CPU 상주 시간 측정 구간 수집 중", hint: "백엔드가 완전한 측정 구간을 수집하고 있습니다. 수집이 끝나면 값이 표시됩니다." },
+      "cpu-residency-events-lost": { label: "CPU 상주 시간 이벤트 손실", hint: "커널 이벤트 추적에서 이벤트가 손실되어 현재 구간을 폐기하고 다시 수집하고 있습니다." },
+      "cpu-residency-session-restarted": { label: "CPU 상주 시간 측정 세션 재구성됨", hint: "커널 이벤트 추적 세션이 다시 구성되어 완전한 구간을 다시 수집하고 있습니다." },
+      "cpu-residency-session-unavailable": { label: "CPU 상주 시간 측정 세션을 사용할 수 없음", hint: "커널 이벤트 추적 세션이 실행되고 있지 않아 측정할 수 없습니다." },
+      "cpu-residency-capture-failed": { label: "CPU 상주 시간 결과 생성 실패", hint: "측정 결과를 생성하는 중 오류가 발생했습니다. 자세한 내용은 백엔드 로그에 기록되어 있습니다." }
     } as Record<string, { label: string; hint: string } | undefined>,
     gpuQuantities: {
       dedicated_resident_apportioned: "전용 메모리 상주량(공유 부분 배분)",
