@@ -80,18 +80,58 @@ public sealed class TopologySingleFetchTests
     }
 
     [Fact]
-    public async Task AcpiSingleFetchRejectsOldObservationThenReleasesAfterFreshResult()
+    public async Task AcpiSingleFetchAcceptsPublishedFixedValueWithOriginalObservationTimeAndReleases()
     {
         var source = new DeviceSource();
         var pending = source.FetchAcpiOnceAsync("acpi-fields-once", CancellationToken.None);
         await source.AcpiStarted.Task.WaitAsync(Deadline);
-        source.Acpi.Writer.TryWrite(new(DateTimeOffset.UnixEpoch, []));
         Assert.False(pending.IsCompleted);
-        var fresh = new DeviceInformationSnapshot(DateTimeOffset.UtcNow, []);
-        source.Acpi.Writer.TryWrite(fresh);
-        Assert.Same(fresh, await pending.WaitAsync(Deadline));
+        var fixedValue = new DeviceInformationSnapshot(DateTimeOffset.UnixEpoch, []);
+        source.Acpi.Writer.TryWrite(fixedValue);
+        Assert.Same(fixedValue, await pending.WaitAsync(Deadline));
         Assert.Equal("acpi-fields-once", source.Holder);
         Assert.Equal(0, source.Active);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AcpiSingleFetchWaitsForOwnerAttemptThenRepublishesItsOnceReadValue(bool failed)
+    {
+        using var sampling = new HostManagerSamplingSubscriptionTestFixture();
+        var firmware = new OnceFirmware(failed);
+        using var provider = new ResourceManager.App.Infrastructure.DeviceTopology.Snapshots.DeviceTopologySnapshotProvider(
+            null!, new EmptyStore(), new(), sampling.Owner,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<ResourceManager.App.Infrastructure.DeviceTopology.Snapshots.DeviceTopologySnapshotProvider>.Instance,
+            firmware);
+        var first = provider.FetchAcpiOnceAsync("first-fixed-fetch", CancellationToken.None);
+        Assert.False(first.IsCompleted); // The unread Empty value must never escape as a requested publication.
+        await provider.SampleAcpiNowAsync(CancellationToken.None);
+        var value = await first.WaitAsync(Deadline);
+        Assert.NotNull(value);
+        Assert.Equal(failed, value.ObservedAt is null);
+        var second = provider.FetchAcpiOnceAsync("second-fixed-fetch", CancellationToken.None);
+        Assert.False(second.IsCompleted); // Even a cached fixed fact needs the named-demand publication.
+        await provider.SampleAcpiNowAsync(CancellationToken.None);
+        Assert.Same(value, await second.WaitAsync(Deadline));
+        Assert.Equal(1, firmware.Reads);
+    }
+
+    private sealed class OnceFirmware(bool failed) : ResourceManager.ReadWrite.Windows.Devices.IAcpiFirmwareTableReader
+    {
+        internal int Reads;
+        public IReadOnlyList<ResourceManager.ReadWrite.Windows.Devices.Models.AcpiFirmwareTable>? ReadTables()
+        {
+            Reads++;
+            return failed ? null : AcpiFirmwareTestData.Tables();
+        }
+    }
+
+    private sealed class EmptyStore : IDeviceTopologySnapshotStore
+    {
+        public Task<DeviceTopologyPersistedSnapshot?> LoadAsync(CancellationToken token)
+            => Task.FromResult<DeviceTopologyPersistedSnapshot?>(null);
+        public Task SaveAsync(DeviceTopologyPersistedSnapshot snapshot, CancellationToken token) => Task.CompletedTask;
     }
 
     [Theory]

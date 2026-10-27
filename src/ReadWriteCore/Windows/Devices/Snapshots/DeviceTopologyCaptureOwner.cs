@@ -38,7 +38,11 @@ public sealed partial class DeviceTopologyCaptureOwner(
         stateRevision = 1;
         Publish(new DeviceTopologySnapshotState(DeviceTopologySnapshotState.CurrentSchemaVersion,
             DeviceTopologySnapshotStatus.Ready, snapshot, contentGeneration, stateRevision,
-            DeviceTopologySnapshotSource.Persisted, snapshot.CapturedAt, null, null, []));
+            DeviceTopologySnapshotSource.Persisted, snapshot.CapturedAt, null, null, [])
+        {
+            // Loading topology does not own the independently once-read firmware value.
+            AcpiInformationFields = ReadState().AcpiInformationFields
+        });
     }
 
     public async ValueTask<DeviceInformationSnapshot> CaptureInformationAsync(CancellationToken cancellationToken,

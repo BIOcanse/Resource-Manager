@@ -10,6 +10,20 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class DeviceTopologyCaptureOwnerLibraryTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PersistedTopologyCannotReplaceTheOnceReadAcpiPublicationWithUnreadEmpty(bool failed)
+    {
+        var firmware = new FirmwareReader(() => failed ? null : AcpiFirmwareTestData.Tables());
+        using var owner = new DeviceTopologyCaptureOwner(firmware, Policy(() => Snapshot()));
+        var value = await owner.CaptureAcpiInformationAsync(default);
+        owner.InitializePersisted(Snapshot(), "persisted", 1);
+        Assert.Same(value, owner.ReadState().AcpiInformationFields);
+        Assert.Same(value, await owner.CaptureAcpiInformationAsync(default));
+        Assert.Equal(1, firmware.ReadCount);
+    }
+
     [Fact]
     public async Task LiveReadingsPublishWithoutReplacingOrPersistingUnchangedStructure()
     {
