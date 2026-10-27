@@ -147,6 +147,7 @@
 .kernel-leak-report .metadata-state {
   color: var(--muted);
   font-family: inherit;
+  font-size: inherit;
 }
 
 .kernel-leak-service-list {
