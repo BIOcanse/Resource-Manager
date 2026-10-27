@@ -54,7 +54,7 @@ public sealed class HostCpuResidencyFieldBackend : IReadWriteBackend, IFieldSubs
         var selected = backend.Select(fields); // retain original bindings through retirement
         await foreach (var snapshot in reader.SubscribeAsync(id, interval, cancellationToken))
         {
-            yield return [.. selected.Select(item => Scalar(item, snapshot))];
+            yield return [.. selected.Select(item => Scalar(item, snapshot as ResourceManager.App.Domain.CpuTopology.CpuCoreResidencySnapshot))];
         }
     }
 

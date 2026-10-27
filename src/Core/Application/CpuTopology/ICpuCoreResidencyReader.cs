@@ -6,9 +6,11 @@ public interface ICpuCoreResidencyReader
 {
     CpuCoreResidencySnapshot? Read();
 
+    CpuCoreResidencyObservation ReadObservation();
+
     IDisposable AcquireSubscription(string subscriptionId, TimeSpan refreshInterval);
 
-    IAsyncEnumerable<CpuCoreResidencySnapshot?> SubscribeAsync(
+    IAsyncEnumerable<CpuCoreResidencyObservation> SubscribeAsync(
         string subscriptionId,
         TimeSpan interval,
         CancellationToken cancellationToken);

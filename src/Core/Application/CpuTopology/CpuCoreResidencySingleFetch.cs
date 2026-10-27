@@ -7,12 +7,13 @@ public static class CpuCoreResidencySingleFetch
 {
     /// <summary>Owns named demand until a fresh residency result or explicit
     /// unavailable result arrives, then releases the subscription.</summary>
-    public static Task<CpuCoreResidencySnapshot?> FetchOnceAsync(this ICpuCoreResidencyReader source,
+    public static async Task<CpuCoreResidencyObservation> FetchOnceAsync(this ICpuCoreResidencyReader source,
         string holder, CancellationToken cancellationToken)
     {
         var started = DateTimeOffset.UtcNow;
-        return SubscriptionSingleFetch.ReadAsync(source.SubscribeAsync(holder,
+        return await SubscriptionSingleFetch.ReadAsync(source.SubscribeAsync(holder,
             SubscriptionSingleFetch.Interval, cancellationToken),
-            snapshot => snapshot is null || snapshot.CapturedAt >= started, cancellationToken);
+            value => value is not CpuCoreResidencySnapshot snapshot || snapshot.CapturedAt >= started, cancellationToken)
+            ?? throw new InvalidOperationException("The CPU residency subscription ended before publishing an observation.");
     }
 }

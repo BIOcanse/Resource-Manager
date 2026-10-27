@@ -17,7 +17,7 @@ using ResourceManager.App.Hosting.StartupCapabilities;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class CpuTopologyEndpointTests
+public sealed partial class CpuTopologyEndpointTests
 {
     [Theory]
     [InlineData("/api/cpu/topology")]
@@ -73,7 +73,7 @@ public sealed class CpuTopologyEndpointTests
         {
             var empty = await client.GetFromJsonAsync<JsonElement>(path);
             Assert.Equal("unavailable", empty.GetProperty("state").GetString());
-            Assert.Equal("cpu-residency-window-unavailable", empty.GetProperty("reasonCode").GetString());
+            Assert.Equal("cpu-residency-session-unavailable", empty.GetProperty("reasonCode").GetString());
         }
         published = true;
         var summary = await client.GetFromJsonAsync<JsonElement>("/api/cpu/residency/cores");

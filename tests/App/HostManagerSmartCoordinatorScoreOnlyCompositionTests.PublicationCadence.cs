@@ -153,7 +153,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             return new Subscription(this);
         }
 
-        public async IAsyncEnumerable<CpuCoreResidencySnapshot?> SubscribeAsync(
+        public CpuCoreResidencyObservation ReadObservation() => CpuCoreResidencyTestValues.Observe(Read());
+
+        public async IAsyncEnumerable<CpuCoreResidencyObservation> SubscribeAsync(
             string subscriptionId,
             TimeSpan interval,
             [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -164,7 +166,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             while (true)
             {
                 await subscription.WaitAsync(cancellationToken);
-                yield return Read();
+                yield return ReadObservation();
             }
         }
 

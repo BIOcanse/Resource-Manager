@@ -9,7 +9,7 @@ public sealed record CpuCoreResidencySnapshot(
     long SessionGeneration,
     DateTimeOffset MeasuredFrom,
     DateTimeOffset MeasuredThrough,
-    IReadOnlyList<CpuProcessCoreResidency> Processes)
+    IReadOnlyList<CpuProcessCoreResidency> Processes) : CpuCoreResidencyObservation
 {
     public IReadOnlyList<ResourceManager.ReadWrite.Windows.Processes.CpuLogicalProcessorResidencyScope> LogicalProcessorScopes { get; init; } = [];
     private readonly object indexGate = new();

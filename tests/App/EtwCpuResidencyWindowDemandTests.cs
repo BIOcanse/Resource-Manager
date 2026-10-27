@@ -27,7 +27,8 @@ public sealed class EtwCpuResidencyWindowDemandTests
             var completed = await Task.WhenAny(first, reader.ExecuteTask!).WaitAsync(TimeSpan.FromSeconds(9));
             Assert.Same(first, completed);
             Assert.True(await first);
-            Assert.Null(output.Current);
+            Assert.Equal("cpu-residency-session-unavailable",
+                Assert.IsType<ResourceManager.App.Domain.CpuTopology.CpuCoreResidencyUnavailable>(output.Current).ReasonCode);
             Assert.False(reader.ExecuteTask!.IsCompleted);
         }
         finally
@@ -54,7 +55,8 @@ public sealed class EtwCpuResidencyWindowDemandTests
         try
         {
             Assert.True(await first.WaitAsync(TimeSpan.FromSeconds(9)));
-            Assert.Null(output.Current);
+            Assert.Equal("cpu-residency-window-warming",
+                Assert.IsType<ResourceManager.App.Domain.CpuTopology.CpuCoreResidencyUnavailable>(output.Current).ReasonCode);
             Assert.Equal(1, reader.CanonicalRevision);
             await UntilAsync(() => !broker.Keywords.HasFlag(KernelTraceEventParser.Keywords.ContextSwitch));
             await Task.Delay(150, cancellation.Token);

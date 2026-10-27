@@ -203,17 +203,17 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             CancellationToken cancellationToken) =>
         {
             DisableResponseCache(response);
-            return Results.Ok<object>(await residencyReader.FetchOnceAsync("cpu-residency:snapshot", cancellationToken) is { } snapshot ? snapshot
-                : new CpuObservationUnavailable("unavailable", "cpu-residency-window-unavailable"));
+            return Results.Ok<object>(await residencyReader.FetchOnceAsync("cpu-residency:snapshot", cancellationToken));
         }).AllowAnonymous();
 
         app.MapGet("/api/cpu/residency/cores", async (HttpResponse response, ICpuCoreResidencyReader residencyReader,
             CancellationToken cancellationToken) =>
         {
             DisableResponseCache(response);
-            return Results.Ok<object>(await residencyReader.FetchOnceAsync("cpu-residency:cores", cancellationToken) is { } snapshot
+            var observation = await residencyReader.FetchOnceAsync("cpu-residency:cores", cancellationToken);
+            return Results.Ok<object>(observation is CpuCoreResidencySnapshot snapshot
                 ? CpuObservationProjection.Summarize(snapshot)
-                : new CpuObservationUnavailable("unavailable", "cpu-residency-window-unavailable"));
+                : observation);
         }).AllowAnonymous();
 
         if (startupCapabilities.Allows(StartupCapability.RuntimeEffectOwners))

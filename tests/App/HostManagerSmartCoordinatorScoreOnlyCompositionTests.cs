@@ -7532,13 +7532,14 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     private sealed class StaticCpuResidencyReader : ICpuCoreResidencyReader
     {
         public CpuCoreResidencySnapshot? Read() => null;
+        public CpuCoreResidencyObservation ReadObservation() => CpuCoreResidencyTestValues.Observe(null);
         public IDisposable AcquireSubscription(string subscriptionId, TimeSpan refreshInterval)
             => new NoopDisposable();
-        public IAsyncEnumerable<CpuCoreResidencySnapshot?> SubscribeAsync(
+        public IAsyncEnumerable<CpuCoreResidencyObservation> SubscribeAsync(
             string subscriptionId,
             TimeSpan interval,
             CancellationToken cancellationToken)
-            => CpuCoreResidencyTestValues.PeriodicOutput<CpuCoreResidencySnapshot?>(() => null, interval, cancellationToken);
+            => CpuCoreResidencyTestValues.PeriodicOutput(ReadObservation, interval, cancellationToken);
     }
 
     private sealed class NoopDisposable : IDisposable

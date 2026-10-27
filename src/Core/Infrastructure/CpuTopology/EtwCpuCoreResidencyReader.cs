@@ -107,6 +107,7 @@ public sealed partial class EtwCpuCoreResidencyReader(
     public ResourceManagerComputeZoneMode CurrentMode => currentComputeMode;
 
     public CpuCoreResidencySnapshot? Read() => Capture.Read();
+    public CpuCoreResidencyObservation ReadObservation() => Capture.ReadObservation();
     internal long CanonicalRevision => Capture.Revision;
     internal ProcessMetricFieldSnapshot ReadCanonical() => ReadCanonical(Read());
     internal ProcessMetricFieldSnapshot ReadCanonical(CpuCoreResidencySnapshot? snapshot)
@@ -161,7 +162,7 @@ public sealed partial class EtwCpuCoreResidencyReader(
         return new ResidencySubscriptionLease(this, sourceKey);
     }
 
-    public async IAsyncEnumerable<CpuCoreResidencySnapshot?> SubscribeAsync(
+    public async IAsyncEnumerable<CpuCoreResidencyObservation> SubscribeAsync(
         string subscriptionId,
         TimeSpan interval,
         [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -172,7 +173,7 @@ public sealed partial class EtwCpuCoreResidencyReader(
         while (!cancellationToken.IsCancellationRequested)
         {
             await publication.WaitAsync(cancellationToken);
-            yield return Read();
+            yield return ReadObservation();
         }
     }
 

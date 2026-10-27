@@ -41,7 +41,7 @@ internal sealed class HostManagerSchedulingSubscriptions(
         try
         {
             if (driver == SmartRoundOutput.Residency)
-                nextOutput = new Output<ResourceManager.App.Domain.CpuTopology.CpuCoreResidencySnapshot?>(
+                nextOutput = new Output<ResourceManager.App.Domain.CpuTopology.CpuCoreResidencyObservation>(
                     token => residency.SubscribeAsync("host-manager-smart-coordinator:cpu-cores", interval, token), cancellationToken);
             if (process != SchedulingProcessMetricMask.None)
             {

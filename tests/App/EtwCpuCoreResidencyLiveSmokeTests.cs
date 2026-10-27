@@ -37,9 +37,9 @@ public sealed class EtwCpuCoreResidencyLiveSmokeTests
             CpuCoreResidencySnapshot? complete = null;
             while (await values.MoveNextAsync())
             {
-                if (values.Current is not null)
+                if (values.Current is CpuCoreResidencySnapshot snapshot)
                 {
-                    complete = values.Current;
+                    complete = snapshot;
                     break;
                 }
             }

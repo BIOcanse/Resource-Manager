@@ -1232,8 +1232,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Publish();
         }
         public CpuCoreResidencySnapshot? Read() => read();
+        public CpuCoreResidencyObservation ReadObservation() => CpuCoreResidencyTestValues.Observe(Read());
         public IDisposable AcquireSubscription(string id, TimeSpan interval) => new Demand();
-        public async IAsyncEnumerable<CpuCoreResidencySnapshot?> SubscribeAsync(string id, TimeSpan interval,
+        public async IAsyncEnumerable<CpuCoreResidencyObservation> SubscribeAsync(string id, TimeSpan interval,
             [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
         {
             using var demand = AcquireSubscription(id, interval);
@@ -1246,13 +1247,13 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     if (publication is not null)
                     {
                         await publication.WaitAsync(cancellationToken);
-                        yield return Read();
+                        yield return ReadObservation();
                         continue;
                     }
                     Interlocked.Exchange(ref nextPublicationAt, clock.GetTimestamp()
                         + checked((long)(((Int128)interval.Ticks * clock.TimestampFrequency
                             + TimeSpan.TicksPerSecond - 1) / TimeSpan.TicksPerSecond)));
-                    yield return Read();
+                    yield return ReadObservation();
                     await Task.Delay(interval, clock, cancellationToken);
                 }
             }

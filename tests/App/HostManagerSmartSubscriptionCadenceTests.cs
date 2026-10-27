@@ -388,7 +388,9 @@ public sealed class HostManagerSmartSubscriptionCadenceTests
         public IDisposable AcquireSubscription(string subscriptionId, TimeSpan refreshInterval)
             => new TrackedLease(static () => { });
 
-        public async IAsyncEnumerable<CpuCoreResidencySnapshot?> SubscribeAsync(
+        public CpuCoreResidencyObservation ReadObservation() => CpuCoreResidencyTestValues.Observe(null);
+
+        public async IAsyncEnumerable<CpuCoreResidencyObservation> SubscribeAsync(
             string subscriptionId,
             TimeSpan interval,
             [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -402,7 +404,7 @@ public sealed class HostManagerSmartSubscriptionCadenceTests
                 while (true)
                 {
                     await subscription.WaitAsync(cancellationToken);
-                    yield return null;
+                    yield return ReadObservation();
                 }
             }
             finally

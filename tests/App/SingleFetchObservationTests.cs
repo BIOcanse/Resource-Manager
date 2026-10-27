@@ -31,8 +31,9 @@ public sealed class SingleFetchObservationTests
         var source = new ResidencySource();
         var pending = source.FetchOnceAsync("residency-unavailable", CancellationToken.None);
         await source.Started.Task.WaitAsync(Timeout);
-        source.Values.Writer.TryWrite(null);
-        Assert.Null(await pending.WaitAsync(Timeout));
+        var unavailable = new CpuCoreResidencyUnavailable(CpuCoreResidencyUnavailableReasons.EventsLost);
+        source.Values.Writer.TryWrite(unavailable);
+        Assert.Same(unavailable, await pending.WaitAsync(Timeout));
         Assert.Equal(0, source.Active);
     }
 
@@ -102,11 +103,12 @@ public sealed class SingleFetchObservationTests
         }
     }
 
-    private sealed class ResidencySource : PushSource<CpuCoreResidencySnapshot?>, ICpuCoreResidencyReader
+    private sealed class ResidencySource : PushSource<CpuCoreResidencyObservation>, ICpuCoreResidencyReader
     {
         public CpuCoreResidencySnapshot? Read() => throw new InvalidOperationException("Use the push subscription.");
+        public CpuCoreResidencyObservation ReadObservation() => throw new InvalidOperationException("Use the push subscription.");
         public IDisposable AcquireSubscription(string holder, TimeSpan interval) => throw new NotSupportedException();
-        public IAsyncEnumerable<CpuCoreResidencySnapshot?> SubscribeAsync(string holder, TimeSpan interval, CancellationToken token)
+        public IAsyncEnumerable<CpuCoreResidencyObservation> SubscribeAsync(string holder, TimeSpan interval, CancellationToken token)
             => ReadAsync(holder, token);
     }
 

@@ -312,8 +312,9 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
         {
             Assert.True(await next);
             Assert.True(broker.SubscribeCount > 0);
-            Assert.Null(subscription.Current);
-            Assert.Same(reader.Read(), subscription.Current);
+            Assert.Equal("cpu-residency-session-unavailable",
+                Assert.IsType<ResourceManager.App.Domain.CpuTopology.CpuCoreResidencyUnavailable>(subscription.Current).ReasonCode);
+            Assert.Same(reader.ReadObservation(), subscription.Current);
             await cancellation.CancelAsync();
             Assert.False(await subscription.MoveNextAsync());
         }

@@ -32,7 +32,8 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
     private long bindingEpoch;
     private long revision;
     public long Revision => Interlocked.Read(ref revision);
-    private CpuCoreResidencySnapshot? cachedSnapshot;
+    private CpuCoreResidencyObservation currentObservation = new CpuCoreResidencyUnavailable(CpuCoreResidencyUnavailableReasons.NotRequested);
+    private CpuCoreResidencySnapshot? cachedSnapshot => currentObservation as CpuCoreResidencySnapshot;
     private bool stopped, paused;
     private volatile string state = "Idle", message = "ETW CPU execution-time attribution starts on explicit demand.";
     public string State => state;
@@ -54,6 +55,11 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         {
             return cachedSnapshot;
         }
+    }
+
+    public CpuCoreResidencyObservation ReadObservation()
+    {
+        lock (snapshotGate) return currentObservation;
     }
 
     internal CpuResidencyOwnerDiagnostics GetDiagnostics()
@@ -222,6 +228,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
             }
 
             var previous = Volatile.Read(ref activeSession);
+            if (previous is not null) session.UnavailableReason = CpuCoreResidencyUnavailableReasons.SessionRestarted;
             if (previous is not null) retiredBuffers.Add(previous.Buffer);
             Volatile.Write(ref activeSession, null);
             ClearRetiredBuffersCore();
@@ -282,6 +289,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         {
             if (!IsCurrentSessionCore(session) || session.EventsLost == broker.EventsLost) return;
             session.Buffer.ResetAfterEventLoss();
+            session.UnavailableReason = CpuCoreResidencyUnavailableReasons.EventsLost;
             session.Window.Invalidate();
             Volatile.Write(ref session.EventsLost, broker.EventsLost);
             state = "Warming";
@@ -456,6 +464,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
             CpuCoreResidencySnapshot? snapshot;
             string nextState;
             string nextMessage;
+            var unavailableReason = BrokerUnavailableReason(brokerBefore, observedSession);
             var sampled = observedSession is not null
                 && brokerBefore.IsRunning
                 && brokerBefore.Generation == observedSession.Generation
@@ -482,10 +491,12 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
                     currentSession.Buffer.ResetContinuity();
                     snapshot = null;
                     (nextState, nextMessage) = BrokerDiagnostic(brokerAfter, currentSession);
+                    unavailableReason = BrokerUnavailableReason(brokerAfter, currentSession);
                     sampled = false;
                 }
                 else if (!aggregate.IsComplete)
                 {
+                    unavailableReason = currentSession.UnavailableReason;
                     snapshot = null;
                     nextState = "Warming";
                     nextMessage = WarmingMessage(currentSession);
@@ -520,6 +531,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
                 brokerBefore.EventsLost,
                 nextState,
                 nextMessage,
+                unavailableReason,
                 captureCommitted);
         }
         catch (Exception ex)
@@ -538,7 +550,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
                     logger.LogWarning(ex, "Failed to build ETW CPU execution-time snapshot.");
                     state = "Unavailable";
                     message = $"ETW CPU 执行时长快照生成失败：{ex.Message}";
-                    SetCachedSnapshot(null);
+                    SetCachedSnapshot(null, CpuCoreResidencyUnavailableReasons.CaptureFailed);
                     NotifyCaptureCommitted(captureCommitted, null, sourceQuerySucceeded: false);
                     Publications.Publish(["process.cpu.residency"]); published?.Invoke();
                 }
@@ -556,6 +568,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         int expectedEventsLost,
         string nextState,
         string nextMessage,
+        string unavailableReason,
         Action<CpuCoreResidencySnapshot?, bool>? captureCommitted)
     {
         var committed = false;
@@ -584,10 +597,13 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
                         snapshot = null;
                         committedAsSampled = false;
                         (nextState, nextMessage) = BrokerDiagnostic(broker, expectedSession);
+                        unavailableReason = BrokerUnavailableReason(broker, expectedSession);
                     }
                 }
 
-                SetCachedSnapshot(snapshot);
+                SetCachedSnapshot(snapshot, unavailableReason);
+                if (snapshot is not null && expectedSession is not null)
+                    expectedSession.UnavailableReason = CpuCoreResidencyUnavailableReasons.WindowWarming;
                 state = nextState;
                 message = nextMessage;
                 NotifyCaptureCommitted(captureCommitted, snapshot,
@@ -616,11 +632,11 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         => bindingEpoch == session.BindingEpoch
             && ReferenceEquals(Volatile.Read(ref activeSession), session);
 
-    private void SetCachedSnapshot(CpuCoreResidencySnapshot? snapshot)
+    private void SetCachedSnapshot(CpuCoreResidencySnapshot? snapshot, string unavailableReason)
     {
         lock (snapshotGate)
         {
-            cachedSnapshot = snapshot;
+            currentObservation = snapshot is not null ? snapshot : new CpuCoreResidencyUnavailable(unavailableReason);
             Interlocked.Increment(ref revision);
         }
     }
@@ -630,6 +646,11 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         => broker.IsRunning && session is not null && broker.Generation == session.Generation
             ? ("Warming", WarmingMessage(session))
             : (broker.State, broker.Message);
+
+    private static string BrokerUnavailableReason(KernelEtwSessionSnapshot broker, ResidencySessionState? session)
+        => !broker.IsRunning || session is null ? CpuCoreResidencyUnavailableReasons.SessionUnavailable
+            : broker.Generation != session.Generation ? CpuCoreResidencyUnavailableReasons.SessionRestarted
+            : session.UnavailableReason;
 
     private static string WarmingMessage(ResidencySessionState session)
         => $"ETW CPU 执行时长归因正在形成最近 {session.Plan.ObservationWindow.TotalSeconds:0.###} 秒完整窗口。";
@@ -1167,6 +1188,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         public CpuResidencyWindowCompletion Window { get; } = new(plan.PhysicalCoreByLogicalProcessor.Keys,
             checked(Stopwatch.Frequency * (long)plan.ObservationWindowMilliseconds / 1000));
         public int EventsLost;
+        public string UnavailableReason = CpuCoreResidencyUnavailableReasons.WindowWarming;
         public Task? InventorySeedTask;
     }
 
