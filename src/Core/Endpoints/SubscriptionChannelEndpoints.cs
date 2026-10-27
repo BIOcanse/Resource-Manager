@@ -100,6 +100,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     : null);
             foreach (var rejection in compilation.Rejections)
                 await writer.WriteAsync(rejection.SubscriptionId, rejection.Value, channelCancellation.Token);
+            foreach (var rejection in compilation.HookRejections ?? [])
+                await writer.WriteHookAsync(rejection, channelCancellation.Token);
             var logger = loggerFactory.CreateLogger(
                 "ResourceManager.FrontendSubscriptionChannel");
             var workers = subscriptions
@@ -192,18 +194,19 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             return Failed(statusCode, "Subscription channel version 1 is required.");
         }
-        if (request.Subscriptions is null
-            || request.Subscriptions.Count is < 1
-                or > SubscriptionChannelMaximumItemCount)
+        if ((request.Subscriptions?.Count ?? 0) > SubscriptionChannelMaximumItemCount
+            || (request.Subscriptions?.Count ?? 0) == 0 && request.Hooks.ValueKind == JsonValueKind.Undefined)
         {
             return Failed(statusCode, $"The subscription count must be from 1 through {SubscriptionChannelMaximumItemCount}.");
         }
 
         var ids = new HashSet<string>(StringComparer.Ordinal);
         var descriptors = new List<ParsedFrontendSubscription>(
-            request.Subscriptions.Count);
+            request.Subscriptions?.Count ?? 0);
         var rejections = new List<FrontendSubscriptionChannelFrame<SubscriptionChannelRejection>>();
-        foreach (var item in request.Subscriptions)
+        var hookRejections = new List<MonitoringHookFrame<SubscriptionChannelRejection>>();
+        var hooks = DecodeMonitoringHooks(request.Hooks, hookRejections);
+        foreach (var item in request.Subscriptions ?? [])
         {
             if (item is null
                 || !IsValidSubscriptionId(item.Id)
@@ -234,7 +237,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         var administratorReader = httpContext.RequestServices.GetRequiredService<ILoopbackApiAdministratorReader>();
         var authorizationLogger = httpContext.RequestServices.GetRequiredService<ILoggerFactory>()
             .CreateLogger("ResourceManager.TrustedAccessAuthorization");
-        foreach (var descriptor in descriptors)
+        foreach (var descriptor in descriptors.Concat(hooks.Select(hook =>
+            new ParsedFrontendSubscription(hook.Id, hook.AuthorizationSelector, QueryCollection.Empty))))
         {
             TrustedAccessHttpPolicy.TryGetRequiredScopesForSubscription(descriptor.Selector, out var requiredScopes);
             var hasExplicitKey = httpContext.Request.Headers.ContainsKey(TrustedAccessHeaders.KeyHeader);
@@ -271,8 +275,14 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 .Select(descriptor => CompileFrontendSubscription(
                     descriptor,
                     httpContext.RequestServices))
-                .ToArray();
-            return new(subscriptions, StatusCodes.Status200OK, string.Empty, rejections);
+                .ToList();
+            foreach (var hook in hooks)
+            {
+                try { subscriptions.Add(CompileMonitoringHook(hook, httpContext.RequestServices)); }
+                catch (Exception error) when (error is ArgumentException or InvalidOperationException or FormatException or OverflowException)
+                { hookRejections.Add(new(hook.Id, new(400, error.Message))); }
+            }
+            return new(subscriptions, StatusCodes.Status200OK, string.Empty, rejections, hookRejections);
         }
         catch (Exception exception)
             when (exception is ArgumentException
@@ -871,6 +881,20 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     {
         private readonly SemaphoreSlim gate = new(1, 1);
 
+        internal async ValueTask WriteHookAsync<T>(MonitoringHookFrame<T> frame, CancellationToken token)
+        {
+            await gate.WaitAsync(token);
+            try
+            {
+                if (validateCredential is not null && !await validateCredential(token))
+                    throw new UnauthorizedAccessException("The subscription credential is no longer valid.");
+                await NdjsonResponse.WriteAsync(response, frame, serializerOptions, token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+            catch (Exception error) { throw new FrontendSubscriptionChannelWriteException(error); }
+            finally { gate.Release(); }
+        }
+
         public async ValueTask WriteAsync<T>(
             string subscriptionId,
             T value,
@@ -914,7 +938,9 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 
 internal sealed record FrontendSubscriptionChannelRequest(
     int Version,
-    IReadOnlyList<FrontendSubscriptionChannelRequestItem?>? Subscriptions);
+    IReadOnlyList<FrontendSubscriptionChannelRequestItem?>? Subscriptions,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    JsonElement Hooks = default);
 
 internal sealed record FrontendSubscriptionChannelRequestItem(
     string? Id,
@@ -930,7 +956,8 @@ internal sealed record SubscriptionChannelCompilationResult(
     IReadOnlyList<ResourceManager.App.Endpoints.ResourceManagerEndpointRouteBuilderExtensions.CompiledFrontendSubscription> Subscriptions,
     int StatusCode,
     string Error,
-    IReadOnlyList<FrontendSubscriptionChannelFrame<SubscriptionChannelRejection>> Rejections)
+    IReadOnlyList<FrontendSubscriptionChannelFrame<SubscriptionChannelRejection>> Rejections,
+    IReadOnlyList<MonitoringHookFrame<SubscriptionChannelRejection>>? HookRejections = null)
 {
     public bool Succeeded => StatusCode == StatusCodes.Status200OK;
 }

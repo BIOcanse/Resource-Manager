@@ -265,7 +265,7 @@ public sealed partial class MetricCatalogueSubscriptionTests
         internal void ReleaseArmedRead() => releaseArmedRead.TrySetResult(true);
     }
 
-    private sealed class RecordedHostMetricFieldHarness : IDisposable
+    internal sealed class RecordedHostMetricFieldHarness : IDisposable
     {
         private readonly Fixture fixture;
         private readonly HttpClient client = new();
@@ -298,6 +298,7 @@ public sealed partial class MetricCatalogueSubscriptionTests
         }
 
         internal WindowsMemoryMonitoringZone MemoryZone { get; }
+        internal HardwareMetricCatalogState Catalog => fixture.Catalog;
         internal WindowsHardwareMetricSampler Sampler { get; }
         internal HostReadWriteBackend Backend { get; }
         internal HostFieldSubscriptionBackend Adapter { get; }

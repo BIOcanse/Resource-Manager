@@ -954,7 +954,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         }
     }
 
-    private sealed class VersionedProcessAttributionCatalogProvider(Action? observe = null)
+    internal sealed class VersionedProcessAttributionCatalogProvider(Action? observe = null)
         : IRuntimeProcessAttributionCatalogProvider,
           IDisposable
     {
