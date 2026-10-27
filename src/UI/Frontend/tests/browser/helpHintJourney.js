@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
 import { seedFrontendPreferences, writeFrontendPreferences } from "./frontendPreferencesFixture.js";
+import { waitForContentSettled } from "./contentSettled.js";
 
 /*
  * 问号说明（src/ui/primitives/HelpHint.tsx）在资源列表计数旁边：
@@ -275,7 +276,10 @@ export default async function helpHintJourney(page, baseUrl) {
       assert.ok(layout[key] <= Math.max(0, withoutHint[key]), `${language}: the question mark adds ${key} ${JSON.stringify({ layout, withoutHint })}`);
     }
     assert.ok(layout.buttonInsideHeader && layout.buttonAfterBadge && !layout.buttonUnderActions && layout.buttonWidth >= 16, `${language}: the question mark is squeezed or covered ${JSON.stringify(layout)}`);
-    const narrow = await hint.boundingBox();
+    // 重新加载后标题行还在进场，计数徽标随第一批数据变宽，问号跟着移动：等画面停下、问号位置连续几帧不变再指上去，
+    // 否则指针落在问号刚离开的位置。
+    await waitForContentSettled(page);
+    const narrow = await stableBox(page, ".resource-table-title .help-hint");
     await page.mouse.move(narrow.x + narrow.width / 2, narrow.y + narrow.height / 2, { steps: 3 });
     await page.locator(live).waitFor({ timeout: 2000 }).catch(() => assert.fail(`${language}: hovering the question mark at the narrow window does not open it`));
     assert.equal((await page.locator(live).textContent()).trim(), text.resourceTable.accountingBasis, `${language}: the explanation is in this language`);
@@ -288,4 +292,25 @@ export default async function helpHintJourney(page, baseUrl) {
 
   assert.deepEqual(failures, [], "no page errors");
   return { hover: opened.placement, selected: selected.text.length, narrow: layouts };
+}
+
+// 元素的外框连续 3 帧不变时返回它（最多等 2 秒；到时仍在动就按最后一帧，由后面的断言报错）。
+async function stableBox(page, selector) {
+  return page.evaluate(async (selector) => {
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    const read = () => {
+      const box = document.querySelector(selector).getBoundingClientRect();
+      return { x: box.x, y: box.y, width: box.width, height: box.height };
+    };
+    const deadline = performance.now() + 2000;
+    let last = read();
+    let same = 0;
+    while (same < 3 && performance.now() < deadline) {
+      await frame();
+      const next = read();
+      same = next.x === last.x && next.y === last.y && next.width === last.width && next.height === last.height ? same + 1 : 0;
+      last = next;
+    }
+    return last;
+  }, selector);
 }
