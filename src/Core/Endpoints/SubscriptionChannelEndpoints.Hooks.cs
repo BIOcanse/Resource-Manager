@@ -14,14 +14,17 @@ namespace ResourceManager.App.Endpoints;
 
 public static partial class ResourceManagerEndpointRouteBuilderExtensions
 {
-    private sealed record MonitoringHookRequest(string Id, MonitoringHookRule Rule, TimeSpan Interval)
+    private sealed record MonitoringHookRequest(string Id, MonitoringHookRule Rule, TimeSpan Interval,
+        ExpandedMonitoringHook? Expansion = null)
     {
-        internal string AuthorizationSelector => Rule.Target.Binding is "software" or "process" || Rule.TopOwners > 0
-            ? "/api/resource-monitor/subscribe" : "/api/metrics/subscribe";
+        internal string AuthorizationSelector => MonitoringHookAuthorizationSelector(Rule.Target.Binding, Rule.TopOwners);
     }
 
+    private static string MonitoringHookAuthorizationSelector(string binding, int topOwners)
+        => binding is "software" or "process" || topOwners > 0 ? "/api/resource-monitor/subscribe" : "/api/metrics/subscribe";
+
     private static IReadOnlyList<MonitoringHookRequest> DecodeMonitoringHooks(JsonElement hooks,
-        List<MonitoringHookFrame<SubscriptionChannelRejection>> rejections)
+        List<MonitoringHookFrame<SubscriptionChannelRejection>> rejections, IServiceProvider services)
     {
         var result = new List<MonitoringHookRequest>();
         if (hooks.ValueKind == JsonValueKind.Undefined) return result;
@@ -34,12 +37,23 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 && rawId.ValueKind == JsonValueKind.String ? rawId.GetString() : null;
             try
             {
-                CheckHookObject(item, ["id", "rule", "intervalMs"]);
+                CheckHookObject(item, ["id", "rule", "intervalMs", "condition"]);
                 if (!IsValidSubscriptionId(id) || !ids.Add(id!)) throw InvalidHook("hook id must be valid and unique");
+                if (item.TryGetProperty("condition", out var condition))
+                {
+                    if (condition.ValueKind != JsonValueKind.String || item.TryGetProperty("rule", out _) || item.TryGetProperty("intervalMs", out _))
+                        throw InvalidHook("condition must be a string and cannot be mixed with rule or intervalMs");
+                    var expanded = ExpandMonitoringCondition(condition.GetString()!, id!, services);
+                    result.Add(new(id!, DecodeHookRule(JsonSerializer.SerializeToElement(expanded.Rule, ConditionJsonOptions)),
+                        TimeSpan.FromMilliseconds(expanded.IntervalMs), expanded));
+                    continue;
+                }
                 if (!item.TryGetProperty("intervalMs", out var interval) || interval.ValueKind != JsonValueKind.Number
                     || !interval.TryGetInt32(out var milliseconds) || milliseconds <= 0) throw InvalidHook("intervalMs must be positive");
                 result.Add(new(id!, DecodeHookRule(item.GetProperty("rule")), TimeSpan.FromMilliseconds(milliseconds)));
             }
+            catch (MonitoringConditionParseException error)
+            { rejections.Add(new(id, new(400, error.Message, error.Position, error.Reason))); }
             catch (Exception error) when (error is ArgumentException or InvalidOperationException or KeyNotFoundException or FormatException or OverflowException)
             { Reject(id, error.Message); }
         }

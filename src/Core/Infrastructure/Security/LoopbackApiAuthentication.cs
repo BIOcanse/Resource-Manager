@@ -91,7 +91,8 @@ public sealed class LoopbackApiAuthenticationMiddleware(
 
         // The subscription endpoint authorizes every selector in the multiplexed body.
         // It cannot be authorized once at the HTTP path because one body may request several scopes.
-        if (context.Request.Path.Equals("/api/subscriptions/stream", StringComparison.OrdinalIgnoreCase))
+        if (context.Request.Path.Equals("/api/subscriptions/stream", StringComparison.OrdinalIgnoreCase)
+            || HttpMethods.IsGet(context.Request.Method) && context.Request.Path.Equals("/api/hooks/wait", StringComparison.OrdinalIgnoreCase))
         {
             await next(context);
             return;

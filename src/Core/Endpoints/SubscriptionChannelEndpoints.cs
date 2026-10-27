@@ -102,6 +102,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 await writer.WriteAsync(rejection.SubscriptionId, rejection.Value, channelCancellation.Token);
             foreach (var rejection in compilation.HookRejections ?? [])
                 await writer.WriteHookAsync(rejection, channelCancellation.Token);
+            foreach (var expansion in compilation.HookExpansions ?? [])
+                await writer.WriteHookAsync(expansion, channelCancellation.Token);
             var logger = loggerFactory.CreateLogger(
                 "ResourceManager.FrontendSubscriptionChannel");
             var workers = subscriptions
@@ -133,7 +135,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(
                 SubscriptionChannelMaximumBodyLength));
 
-        return app;
+        return MapMonitoringConditionEndpoints(app);
     }
 
     internal static async Task RunSubscriptionChannelWorkerAsync(
@@ -205,7 +207,6 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             request.Subscriptions?.Count ?? 0);
         var rejections = new List<FrontendSubscriptionChannelFrame<SubscriptionChannelRejection>>();
         var hookRejections = new List<MonitoringHookFrame<SubscriptionChannelRejection>>();
-        var hooks = DecodeMonitoringHooks(request.Hooks, hookRejections);
         foreach (var item in request.Subscriptions ?? [])
         {
             if (item is null
@@ -237,6 +238,21 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         var administratorReader = httpContext.RequestServices.GetRequiredService<ILoopbackApiAdministratorReader>();
         var authorizationLogger = httpContext.RequestServices.GetRequiredService<ILoggerFactory>()
             .CreateLogger("ResourceManager.TrustedAccessAuthorization");
+        // PID shorthand expansion reads protected published process identity.
+        // Authenticate that read before invoking the pure expander's resolver.
+        if (request.Hooks.ValueKind == JsonValueKind.Array && request.Hooks.EnumerateArray().Any(item =>
+            item.ValueKind == JsonValueKind.Object && item.TryGetProperty("condition", out var condition)
+            && condition.ValueKind == JsonValueKind.String && condition.GetString()!.TrimStart(' ').StartsWith("process ", StringComparison.Ordinal)))
+        {
+            TrustedAccessHttpPolicy.TryGetRequiredScopesForSubscription("/api/resource-monitor/subscribe", out var identityScopes);
+            var identityAccess = await TrustedAccessHttpPolicy.AuthorizeAsync(httpContext, keyService, administratorReader,
+                identityScopes, TrustedAccessHttpPolicy.AllowsKeylessSubscription("/api/resource-monitor/subscribe"), false, httpContext.RequestAborted);
+            authorizationLogger.LogInformation("Trusted access key {AccessKeyId} operation {Operation} result {Result}",
+                identityAccess.AccessKeyId ?? "none", "/api/resource-monitor/subscribe",
+                identityAccess.Allowed ? "allowed" : $"denied:{identityAccess.ErrorCode}");
+            if (!identityAccess.Allowed) return Failed(identityAccess.StatusCode, identityAccess.ErrorCode);
+        }
+        var hooks = DecodeMonitoringHooks(request.Hooks, hookRejections, httpContext.RequestServices);
         foreach (var descriptor in descriptors.Concat(hooks.Select(hook =>
             new ParsedFrontendSubscription(hook.Id, hook.AuthorizationSelector, QueryCollection.Empty))))
         {
@@ -276,13 +292,18 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     descriptor,
                     httpContext.RequestServices))
                 .ToList();
+            var expansions = new List<MonitoringHookFrame<MonitoringHookExpansion>>();
             foreach (var hook in hooks)
             {
-                try { subscriptions.Add(CompileMonitoringHook(hook, httpContext.RequestServices)); }
+                try
+                {
+                    subscriptions.Add(CompileMonitoringHook(hook, httpContext.RequestServices));
+                    if (hook.Expansion is { } expanded) expansions.Add(new(hook.Id, new("expanded", expanded)));
+                }
                 catch (Exception error) when (error is ArgumentException or InvalidOperationException or FormatException or OverflowException)
                 { hookRejections.Add(new(hook.Id, new(400, error.Message))); }
             }
-            return new(subscriptions, StatusCodes.Status200OK, string.Empty, rejections, hookRejections);
+            return new(subscriptions, StatusCodes.Status200OK, string.Empty, rejections, hookRejections, expansions);
         }
         catch (Exception exception)
             when (exception is ArgumentException
@@ -877,7 +898,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     internal sealed class FrontendSubscriptionChannelWriter(
         HttpResponse response,
         JsonSerializerOptions serializerOptions,
-        Func<CancellationToken, ValueTask<bool>>? validateCredential = null) : IDisposable
+        Func<CancellationToken, ValueTask<bool>>? validateCredential = null,
+        Func<string?, object?, CancellationToken, ValueTask>? receiveHook = null) : IDisposable
     {
         private readonly SemaphoreSlim gate = new(1, 1);
 
@@ -888,7 +910,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             {
                 if (validateCredential is not null && !await validateCredential(token))
                     throw new UnauthorizedAccessException("The subscription credential is no longer valid.");
-                await NdjsonResponse.WriteAsync(response, frame, serializerOptions, token);
+                if (receiveHook is not null) await receiveHook(frame.HookId, frame.Value, token);
+                else await NdjsonResponse.WriteAsync(response, frame, serializerOptions, token);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
             catch (Exception error) { throw new FrontendSubscriptionChannelWriteException(error); }
@@ -950,14 +973,17 @@ internal sealed record FrontendSubscriptionChannelFrame<T>(
     string SubscriptionId,
     T Value);
 
-internal sealed record SubscriptionChannelRejection(int StatusCode, string Error);
+internal sealed record SubscriptionChannelRejection(int StatusCode, string Error,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] int? Position = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? Reason = null);
 
 internal sealed record SubscriptionChannelCompilationResult(
     IReadOnlyList<ResourceManager.App.Endpoints.ResourceManagerEndpointRouteBuilderExtensions.CompiledFrontendSubscription> Subscriptions,
     int StatusCode,
     string Error,
     IReadOnlyList<FrontendSubscriptionChannelFrame<SubscriptionChannelRejection>> Rejections,
-    IReadOnlyList<MonitoringHookFrame<SubscriptionChannelRejection>>? HookRejections = null)
+    IReadOnlyList<MonitoringHookFrame<SubscriptionChannelRejection>>? HookRejections = null,
+    IReadOnlyList<MonitoringHookFrame<MonitoringHookExpansion>>? HookExpansions = null)
 {
     public bool Succeeded => StatusCode == StatusCodes.Status200OK;
 }

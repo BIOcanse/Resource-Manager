@@ -209,7 +209,8 @@ public sealed partial class ConditionSubscriptionTests
     internal sealed class ResourceSource : RecordedSource<ResourceBreakdownSnapshot>, IResourceBreakdownPushSource, ISchedulingProcessFactObservationSource
     {
         internal SchedulingProcessFactSnapshot? Foundations;
-        public SchedulingProcessFactSnapshot? ReadLatest(SchedulingProcessFactRequest request) => Foundations;
+        internal int FoundationReads;
+        public SchedulingProcessFactSnapshot? ReadLatest(SchedulingProcessFactRequest request) { Interlocked.Increment(ref FoundationReads); return Foundations; }
         public IDisposable AcquireSubscription(string id, SchedulingProcessMetricMask mask, TimeSpan interval) => throw new NotSupportedException();
         public IAsyncEnumerable<ResourceBreakdownSnapshot> SubscribeAsync(string id, ResourceBreakdownSampleRequest request, TimeSpan interval, CancellationToken token)
             => ReadAsync(id, interval, token);
@@ -230,11 +231,11 @@ public sealed partial class ConditionSubscriptionTests
         internal readonly HttpClient Client = TrustedAccessEndpointTestAuthentication.Client(app);
         internal Task<bool> RevokeAsync() => credential.Owner.RevokeAsync(credential.CredentialId, CancellationToken.None);
         internal static async Task<Host> StartAsync(IMetricSnapshotPushSource metrics, IResourceBreakdownPushSource? resources = null,
-            HardwareMetricCatalogState? catalog = null, bool realClock = false)
+            HardwareMetricCatalogState? catalog = null, bool realClock = false, string[]? scopes = null)
         {
             var builder = WebApplication.CreateBuilder();
             builder.WebHost.UseUrls("http://127.0.0.1:0"); builder.Logging.ClearProviders();
-            var credential = TrustedAccessEndpointTestAuthentication.Add(builder.Services, AccessKeyScopes.MetricsRead, AccessKeyScopes.ProcessesRead);
+            var credential = TrustedAccessEndpointTestAuthentication.Add(builder.Services, scopes ?? [AccessKeyScopes.MetricsRead, AccessKeyScopes.ProcessesRead]);
             catalog ??= new(); if (catalog.Current is null) catalog.PublishCatalogProbe(Memory(Epoch, 950));
             var clock = new HookClock();
             builder.Services.ConfigureHttpJsonOptions(options =>

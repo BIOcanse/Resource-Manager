@@ -325,7 +325,9 @@ internal static class TrustedAccessHttpPolicy
             "POST /api/runtime/interactive-desktop",
             "POST /api/runtime/interactive-desktop/publisher/select");
         Add(SubscriptionRequirement,
-            "POST /api/subscriptions/stream");
+            "POST /api/subscriptions/stream",
+            "GET /api/hooks/wait");
+        Add(TrustedAccessHttpRequirement.Anonymous, "GET /api/hooks/vocabulary");
         Add(InjectionConfigurationRequirement,
             "PUT /api/gpu-placement/process-policy",
             "PUT /api/startup-modules/software/{softwareId}");
@@ -412,7 +414,8 @@ internal static class TrustedAccessHttpPolicy
     {
         var path = request.Path.Value ?? string.Empty;
         return path.EndsWith("/subscribe", StringComparison.OrdinalIgnoreCase)
-            || path.EndsWith("/stream", StringComparison.OrdinalIgnoreCase);
+            || path.EndsWith("/stream", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("/api/hooks/wait", StringComparison.OrdinalIgnoreCase);
     }
 
     public static async ValueTask<TrustedAccessAuthorizationDecision> AuthorizeAsync(
