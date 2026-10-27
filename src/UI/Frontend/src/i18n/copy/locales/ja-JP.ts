@@ -721,11 +721,7 @@ const jaJpAppCopy: AppCopy = {
     factsWindow: (seconds: string) => `サンプリング期間 ${seconds} 秒`,
     unavailableReasons: {
       "cpu-topology-not-published": { label: "CPU トポロジーは未公開です", hint: "バックエンドは CPU トポロジーのスナップショットをまだ公開していません。" },
-      "cpu-residency-window-unavailable": { label: "CPU 常駐時間の計測ウィンドウを利用できません", hint: "バックエンドには現在、利用可能な CPU 常駐時間のサンプリングウィンドウがありません。" },
-      "gpu-dedicated-memory-total-unavailable": { label: "専用メモリなし", hint: "この GPU は共有システム メモリのみを使用し、専用メモリの合計がないため、メモリの内訳は表示しません。" },
-      "system-total-unavailable": { label: "システム値なし", hint: "この指標のシステム合計を今回の取得で読み取れなかったため、内訳は表示しません。" },
-      "gpu-measure-observation-unavailable": { label: "エンジンのサンプルなし", hint: "この GPU エンジンには今回の取得で共通期間の完全なサンプルがないため、内訳は表示しません。" },
-      "gpu-measure-total-unavailable": { label: "エンジン合計なし", hint: "この GPU エンジンのシステム合計を今回の取得で読み取れなかったため、内訳は表示しません。" }
+      "cpu-residency-window-unavailable": { label: "CPU 常駐時間の計測ウィンドウを利用できません", hint: "バックエンドには現在、利用可能な CPU 常駐時間のサンプリングウィンドウがありません。" }
     } as Record<string, { label: string; hint: string } | undefined>,
     gpuQuantities: {
       dedicated_resident_apportioned: "専用メモリ常駐量（共有部分を按分）",
@@ -2702,6 +2698,7 @@ const jaJpAppCopy: AppCopy = {
   },
   backendMessage: {
     unknown: "状態が更新されました。",
+    reasonCode: (code: string) => `理由コード: ${code}`,
     dependency: {
       payloadMissing: "ランタイムはインストールされていますが、必要なファイルが不足しています。「検証して修復」で復元してください。",
       updateAvailable: "このコンポーネントに検証済みの更新があります。「更新」を選ぶと適用されます。",

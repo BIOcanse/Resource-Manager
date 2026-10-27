@@ -721,11 +721,7 @@ const frFrAppCopy: AppCopy = {
     factsWindow: (seconds: string) => `Fenêtre d’échantillonnage : ${seconds} s`,
     unavailableReasons: {
       "cpu-topology-not-published": { label: "Topologie du processeur non publiée", hint: "Le service n’a pas encore publié d’instantané de la topologie du processeur." },
-      "cpu-residency-window-unavailable": { label: "Fenêtre de résidence du processeur indisponible", hint: "Le service ne dispose actuellement d’aucune fenêtre d’échantillonnage de résidence du processeur." },
-      "gpu-dedicated-memory-total-unavailable": { label: "Aucune mémoire dédiée", hint: "Ce GPU n’utilise que la mémoire système partagée et n’a pas de total de mémoire dédiée ; aucune ligne de mémoire n’est donc affichée." },
-      "system-total-unavailable": { label: "Aucune mesure système", hint: "Le total système de cette métrique n’a pas été lu lors de cette capture ; aucune ligne n’est donc affichée." },
-      "gpu-measure-observation-unavailable": { label: "Aucun échantillon du moteur", hint: "Ce moteur GPU n’a pas d’échantillon complet sur une fenêtre commune lors de cette capture ; aucune ligne n’est donc affichée." },
-      "gpu-measure-total-unavailable": { label: "Aucun total du moteur", hint: "Le total système de ce moteur GPU n’a pas été lu lors de cette capture ; aucune ligne n’est donc affichée." }
+      "cpu-residency-window-unavailable": { label: "Fenêtre de résidence du processeur indisponible", hint: "Le service ne dispose actuellement d’aucune fenêtre d’échantillonnage de résidence du processeur." }
     } as Record<string, { label: string; hint: string } | undefined>,
     gpuQuantities: {
       dedicated_resident_apportioned: "Mémoire dédiée résidente (parties partagées réparties)",
@@ -2702,6 +2698,7 @@ const frFrAppCopy: AppCopy = {
   },
   backendMessage: {
     unknown: "L'état a été mis à jour.",
+    reasonCode: (code: string) => `Code de motif : ${code}`,
     dependency: {
       payloadMissing: "L’environnement d’exécution est installé, mais des fichiers requis sont absents. Choisissez « Vérifier et réparer » pour les restaurer.",
       updateAvailable: "Une mise à jour vérifiée est disponible pour ce composant. Choisissez « Mettre à jour » pour l’appliquer.",

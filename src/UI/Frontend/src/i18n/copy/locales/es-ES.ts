@@ -721,11 +721,7 @@ const esEsAppCopy: AppCopy = {
     factsWindow: (seconds: string) => `Ventana de muestreo: ${seconds} s`,
     unavailableReasons: {
       "cpu-topology-not-published": { label: "Topología de CPU aún no publicada", hint: "El servidor aún no ha publicado una instantánea de la topología de CPU." },
-      "cpu-residency-window-unavailable": { label: "Ventana de residencia de CPU no disponible", hint: "El servidor no dispone actualmente de una ventana de muestreo de residencia de CPU." },
-      "gpu-dedicated-memory-total-unavailable": { label: "Sin memoria dedicada", hint: "Esta GPU solo usa memoria compartida del sistema y no tiene un total de memoria dedicada, por lo que no se muestran filas de memoria." },
-      "system-total-unavailable": { label: "Sin lectura del sistema", hint: "No se leyó el total del sistema de esta métrica en esta captura, por lo que no se muestran filas." },
-      "gpu-measure-observation-unavailable": { label: "Sin muestra del motor", hint: "Este motor de GPU no tiene una muestra completa en una ventana común en esta captura, por lo que no se muestran filas." },
-      "gpu-measure-total-unavailable": { label: "Sin total del motor", hint: "No se leyó el total del sistema de este motor de GPU en esta captura, por lo que no se muestran filas." }
+      "cpu-residency-window-unavailable": { label: "Ventana de residencia de CPU no disponible", hint: "El servidor no dispone actualmente de una ventana de muestreo de residencia de CPU." }
     } as Record<string, { label: string; hint: string } | undefined>,
     gpuQuantities: {
       dedicated_resident_apportioned: "Memoria dedicada residente (partes compartidas repartidas)",
@@ -2702,6 +2698,7 @@ const esEsAppCopy: AppCopy = {
   },
   backendMessage: {
     unknown: "El estado se ha actualizado.",
+    reasonCode: (code: string) => `Código de motivo: ${code}`,
     dependency: {
       payloadMissing: "El entorno de ejecución está instalado, pero faltan archivos necesarios. Seleccione «Verificar y reparar» para restaurarlos.",
       updateAvailable: "Hay una actualización verificada para este componente. Seleccione «Actualizar» para aplicarla.",

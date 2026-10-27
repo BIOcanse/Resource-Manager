@@ -720,11 +720,7 @@ const koKrAppCopy: AppCopy = {
     factsWindow: (seconds: string) => `샘플링 구간 ${seconds}초`,
     unavailableReasons: {
       "cpu-topology-not-published": { label: "CPU 토폴로지가 아직 게시되지 않았습니다", hint: "백엔드가 CPU 토폴로지 스냅샷을 아직 게시하지 않았습니다." },
-      "cpu-residency-window-unavailable": { label: "CPU 상주 시간 측정 구간을 사용할 수 없습니다", hint: "백엔드에 현재 사용 가능한 CPU 상주 시간 샘플링 구간이 없습니다." },
-      "gpu-dedicated-memory-total-unavailable": { label: "전용 메모리 없음", hint: "이 GPU는 공유 시스템 메모리만 사용하며 전용 메모리 총량이 없으므로 메모리 항목을 표시하지 않습니다." },
-      "system-total-unavailable": { label: "시스템 값 없음", hint: "이번 수집에서 이 지표의 시스템 합계를 읽지 못해 항목을 표시하지 않습니다." },
-      "gpu-measure-observation-unavailable": { label: "엔진 샘플 없음", hint: "이번 수집에서 이 GPU 엔진에 공통 구간의 완전한 샘플이 없어 항목을 표시하지 않습니다." },
-      "gpu-measure-total-unavailable": { label: "엔진 합계 없음", hint: "이번 수집에서 이 GPU 엔진의 시스템 합계를 읽지 못해 항목을 표시하지 않습니다." }
+      "cpu-residency-window-unavailable": { label: "CPU 상주 시간 측정 구간을 사용할 수 없습니다", hint: "백엔드에 현재 사용 가능한 CPU 상주 시간 샘플링 구간이 없습니다." }
     } as Record<string, { label: string; hint: string } | undefined>,
     gpuQuantities: {
       dedicated_resident_apportioned: "전용 메모리 상주량(공유 부분 배분)",
@@ -2701,6 +2697,7 @@ const koKrAppCopy: AppCopy = {
   },
   backendMessage: {
     unknown: "상태가 업데이트되었습니다.",
+    reasonCode: (code: string) => `원인 코드: ${code}`,
     dependency: {
       payloadMissing: "런타임은 설치되어 있지만 필요한 파일이 누락되었습니다. ‘검증 및 복구’를 선택하여 복원하세요.",
       updateAvailable: "이 구성 요소에 검증된 업데이트가 있습니다. ‘업데이트’를 선택하면 적용됩니다.",

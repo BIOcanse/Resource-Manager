@@ -721,11 +721,7 @@ const deDeAppCopy: AppCopy = {
     factsWindow: (seconds: string) => `Messfenster: ${seconds} s`,
     unavailableReasons: {
       "cpu-topology-not-published": { label: "CPU-Topologie noch nicht veröffentlicht", hint: "Das Backend hat noch keinen CPU-Topologie-Schnappschuss veröffentlicht." },
-      "cpu-residency-window-unavailable": { label: "CPU-Residenzzeitfenster nicht verfügbar", hint: "Das Backend verfügt derzeit über kein CPU-Residenzzeitfenster für die Messung." },
-      "gpu-dedicated-memory-total-unavailable": { label: "Kein dedizierter Speicher", hint: "Diese GPU nutzt nur gemeinsam genutzten Systemspeicher und hat keine Gesamtmenge an dediziertem Speicher; daher werden keine Speicherzeilen aufgeführt." },
-      "system-total-unavailable": { label: "Kein Systemwert", hint: "Der Systemgesamtwert dieser Metrik wurde in dieser Erfassung nicht gelesen; daher werden keine Zeilen aufgeführt." },
-      "gpu-measure-observation-unavailable": { label: "Keine Engine-Messung", hint: "Für diese GPU-Engine liegt in dieser Erfassung keine vollständige Messung über ein gemeinsames Fenster vor; daher werden keine Zeilen aufgeführt." },
-      "gpu-measure-total-unavailable": { label: "Kein Engine-Gesamtwert", hint: "Der Systemgesamtwert dieser GPU-Engine wurde in dieser Erfassung nicht gelesen; daher werden keine Zeilen aufgeführt." }
+      "cpu-residency-window-unavailable": { label: "CPU-Residenzzeitfenster nicht verfügbar", hint: "Das Backend verfügt derzeit über kein CPU-Residenzzeitfenster für die Messung." }
     } as Record<string, { label: string; hint: string } | undefined>,
     gpuQuantities: {
       dedicated_resident_apportioned: "Dedizierter residenter Speicher (gemeinsame Teile aufgeteilt)",
@@ -2702,6 +2698,7 @@ const deDeAppCopy: AppCopy = {
   },
   backendMessage: {
     unknown: "Der Status wurde aktualisiert.",
+    reasonCode: (code: string) => `Ursachencode: ${code}`,
     dependency: {
       payloadMissing: "Die Laufzeit ist installiert, aber benötigte Dateien fehlen. Wählen Sie „Prüfen und reparieren“, um sie wiederherzustellen.",
       updateAvailable: "Für diese Komponente ist ein geprüftes Update verfügbar. Wählen Sie „Aktualisieren“, um es anzuwenden.",

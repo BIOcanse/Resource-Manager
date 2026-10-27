@@ -55,13 +55,18 @@ export const resourceBarUnavailableReasonFamilies: Readonly<Record<string, Resou
 /** 带参数的家族：hardware-sample-{ExceptionTypeName}，后缀是采样时抛出的异常的类型名。 */
 export const resourceBarHardwareSamplePrefix = "hardware-sample-";
 
-/** 原因代码对应的这一句；家族把后缀原样写进句子；不认识的代码原样返回。 */
-export function resourceBarUnavailableText(code: string) {
+/** 认得的原因代码对应的这一句，家族把后缀原样写进句子；不认识的代码为 null，由显示的地方决定原码放在哪里。 */
+export function resourceUnavailableReasonText(code: string): string | null {
   if (Object.hasOwn(resourceBarUnavailableReasonFamilies, code)) {
     return uiText.resourceBreakdown.unavailableReason[resourceBarUnavailableReasonFamilies[code]];
   }
   if (code.startsWith(resourceBarHardwareSamplePrefix) && code.length > resourceBarHardwareSamplePrefix.length) {
     return uiText.resourceBreakdown.unavailableReason.sampleException(code.slice(resourceBarHardwareSamplePrefix.length));
   }
-  return code;
+  return null;
+}
+
+/** 条头用：不认识的代码原样写在条头。 */
+export function resourceBarUnavailableText(code: string) {
+  return resourceUnavailableReasonText(code) ?? code;
 }

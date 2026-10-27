@@ -123,8 +123,15 @@ export default async function resourceTableTotalsJourney(page, baseUrl) {
     throw new Error(`Bar source did not request ${field}: ${JSON.stringify(measures)}`);
   }
   // Automatic bars without a total publish an explicit unavailable fact with no process rows.
-  await page.request.post(`${baseUrl}/__test/scenario`, { data: { resourceTableTotalsMissing: ["memory.usage", "gpu.0.vram"] } });
-  const reasons = app.resourceTable.unavailableReasons;
+  // GPU 显存按后端给没有独立显存读数的 GPU 的原因发（用户 10-27：总计格写着 gpu-dedicated-memor…）：格子里写那句话，原因代码只在提示里。
+  await page.request.post(`${baseUrl}/__test/scenario`, { data: { resourceTableTotalsMissing: ["memory.usage", "gpu.0.vram"],
+    resourceTableTotalsReasons: { "gpu.0.vram": "gpu-dedicated-memory-metrics-unsupported" } } });
+  const reasonText = app.resourceBreakdown.unavailableReason;
+  const reasons = {
+    "system-total-unavailable": { label: reasonText.totalUnavailable, hint: app.backendMessage.reasonCode("system-total-unavailable") },
+    "gpu-dedicated-memory-metrics-unsupported": { label: reasonText.unsupported,
+      hint: app.backendMessage.reasonCode("gpu-dedicated-memory-metrics-unsupported") }
+  };
   const columnCells = (label) => page.evaluate((label) => {
     const root = document.querySelector(".resource-table-panel");
     const heads = [...root.querySelectorAll(".resource-table-head-cell")];
@@ -141,12 +148,12 @@ export default async function resourceTableTotalsJourney(page, baseUrl) {
     const text = (label) => summary[heads.findIndex(head => head.textContent.trim().startsWith(label))]?.textContent.trim();
     return text(memory) === memoryReason && text(vram) === vramReason;
   }, { memory: app.resourceTable.columns.memory, vram: app.resourceTable.gpuVramLabel("0"),
-    memoryReason: reasons["system-total-unavailable"].label, vramReason: reasons["gpu-dedicated-memory-total-unavailable"].label });
+    memoryReason: reasons["system-total-unavailable"].label, vramReason: reasons["gpu-dedicated-memory-metrics-unsupported"].label });
   const memoryCells = await columnCells(app.resourceTable.columns.memory);
-  if (!memoryCells[0].title.includes(reasons["system-total-unavailable"].hint)) throw new Error("The unavailable total lost its reason sentence");
+  if (!memoryCells[0].title.includes(reasons["system-total-unavailable"].hint)) throw new Error("The unavailable total lost its reason code on hover");
   if (memoryCells.slice(1).some(cell => /^\d/.test(cell.text))) throw new Error(`Numeric rows under an unavailable memory total: ${JSON.stringify(memoryCells)}`);
   const vramCells = await columnCells(app.resourceTable.gpuVramLabel("0"));
-  if (!vramCells[0].title.includes(reasons["gpu-dedicated-memory-total-unavailable"].hint)) throw new Error("The shared-only GPU lost its reason sentence");
+  if (!vramCells[0].title.includes(reasons["gpu-dedicated-memory-metrics-unsupported"].hint) || vramCells[0].text.includes("gpu-")) throw new Error(`The GPU without dedicated memory readings lost its reason code or shows it in the cell: ${JSON.stringify(vramCells[0])}`);
   if (vramCells.slice(1).some(cell => /^\d/.test(cell.text))) throw new Error(`Numeric rows under an unavailable GPU memory total: ${JSON.stringify(vramCells)}`);
   return { software, process, hidden, items };
 }

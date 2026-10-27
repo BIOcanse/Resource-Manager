@@ -154,11 +154,7 @@ export const enMonitorCopy: Pick<
     factsWindow: (seconds: string) => `Sampling window: ${seconds} s`,
     unavailableReasons: {
       "cpu-topology-not-published": { label: "CPU topology not published", hint: "The backend has not published a CPU topology snapshot." },
-      "cpu-residency-window-unavailable": { label: "CPU residency window unavailable", hint: "The backend currently has no available CPU residency sampling window." },
-      "gpu-dedicated-memory-total-unavailable": { label: "No dedicated memory", hint: "This GPU uses shared system memory only and has no dedicated memory total, so no memory rows are listed." },
-      "system-total-unavailable": { label: "No system reading", hint: "The system total of this metric was not read in this capture, so no rows are listed." },
-      "gpu-measure-observation-unavailable": { label: "No engine sample", hint: "This GPU engine has no complete sample over one common window in this capture, so no rows are listed." },
-      "gpu-measure-total-unavailable": { label: "No engine total", hint: "The system total of this GPU engine was not read in this capture, so no rows are listed." }
+      "cpu-residency-window-unavailable": { label: "CPU residency window unavailable", hint: "The backend currently has no available CPU residency sampling window." }
     } as Record<string, { label: string; hint: string } | undefined>,
     gpuQuantities: {
       dedicated_resident_apportioned: "Dedicated resident memory (shared parts divided)",

@@ -3,6 +3,7 @@ import type { AppCopy } from "../zh/index.ts";
 export const enBackendMessagesCopy: Pick<AppCopy, "backendMessage"> = {
   backendMessage: {
     unknown: "The state was updated.",
+    reasonCode: (code: string) => `Reason code: ${code}`,
     dependency: {
       payloadMissing: "The runtime is installed, but required payload files are missing. Choose Verify and repair to restore them.",
       updateAvailable: "A verified update is available for this component. Choose Update to apply it.",

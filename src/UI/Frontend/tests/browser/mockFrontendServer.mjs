@@ -86,6 +86,8 @@ const defaultScenario = {
   resourceMemoryResidualLeaves: false,
   resourceTableAccountingFixture: false,
   resourceTableTotalsMissing: [],
+  // 读不到总量的指标换成后端的另一个原因代码，例如没有独立显存读数的 GPU 发 gpu-dedicated-memory-metrics-unsupported。
+  resourceTableTotalsReasons: {},
   debugMode: false,
   runtimeEffectOwners: false,
   optimizationRuntime: false,
@@ -2581,8 +2583,8 @@ function resourceFacts(url, capturedAt = now()) {
     if (total === null && (!Object.hasOwn(processMemoryFacts, metricId) || metricId.startsWith("process_all_gpu_"))) {
       return { metricId, unit, processFieldName, totalValue: null, capacityValue: null, totalSystemPercent: null, sharedValue: null, software: [],
         ...facts, processSumValue: null, residualValue: null,
-        unavailableReason: Object.hasOwn(processMemoryFacts, metricId) ? "gpu-measure-total-unavailable"
-          : /^gpu\.\d+\.vram$/.test(metricId) ? "gpu-dedicated-memory-total-unavailable" : "system-total-unavailable" };
+        unavailableReason: scenario.resourceTableTotalsReasons[metricId] ?? (Object.hasOwn(processMemoryFacts, metricId) ? "gpu-measure-total-unavailable"
+          : /^gpu\.\d+\.vram$/.test(metricId) ? "gpu-dedicated-memory-total-unavailable" : "system-total-unavailable") };
     }
     const shared = sharedValue === null ? null : sharedValue / Math.max(1, count);
     const weights = scenario.generatedData?.weights;

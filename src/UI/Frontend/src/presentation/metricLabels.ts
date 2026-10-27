@@ -1,5 +1,6 @@
 import { formatFixedDigits, formatSignificantDigits } from "./interfaceNumbers.ts";
 import { isReservedSegment } from "../features/resourceBreakdown/resourceProcessIdentity.ts";
+import { resourceUnavailableReasonText } from "../features/resourceBreakdown/resourceBarUnavailableReason.ts";
 import { uiText } from "../text.ts";
 import { isPhysicalMemoryResidualKind, physicalMemoryResidualKindName } from "./physicalMemoryResidual.ts";
 import {
@@ -322,18 +323,20 @@ export function byteQuantityKindForMetric(
   return id.includes("memory") || id.includes("vram") ? "memory" : "storage";
 }
 
+/** CPU 拓扑与驻留的不可用原因码的说明；没有译文的原因码按原样写出，不换成别的说法。 */
+export function resourceFactUnavailableText(reason: string): { label: string; hint: string } {
+  return uiText.resourceTable.unavailableReasons[reason] ?? { label: reason, hint: reason };
+}
+
 /**
  * 资源表一个单元格显示什么。
  *
  * 单元格只有两种：带单位的数值单元，和纯文本单元（进程号、用户、架构）。
  * 表格由前端从资源事实生成；文本单元使用本地投影的 displayValue，数值在这里格式化。
- * 读不到时根据本地单元的 availability 显示无数据。
+ * 读不到时根据本地单元的 availability 显示无数据。后端给了原因（ResourceMetricFacts.unavailableReason）时，
+ * 原因和资源条共用一张表（resourceBarUnavailableReason.ts）：认得的写那句话，不认识的写无读数；
+ * 原因代码只放在提示里（resourceTableCellPresentation），格子里不放代码。
  */
-/** 后端不可用原因码（ResourceMetricFacts.unavailableReason）的说明；没有译文的原因码按原样写出，不换成别的说法。 */
-export function resourceFactUnavailableText(reason: string): { label: string; hint: string } {
-  return uiText.resourceTable.unavailableReasons[reason] ?? { label: reason, hint: reason };
-}
-
 export function resourceTableCellText(
   cell: ResourceTableValue | null | undefined,
   metricId?: string | null
@@ -348,7 +351,7 @@ export function resourceTableCellText(
       : "--";
   }
   if (typeof cell.value !== "number" || !Number.isFinite(cell.value)) {
-    if (cell.unavailableReason) return resourceFactUnavailableText(cell.unavailableReason).label;
+    if (cell.unavailableReason) return resourceUnavailableReasonText(cell.unavailableReason) ?? uiText.dashboard.noReading;
     return cell.availability ? uiText.dashboard.noReading : "--";
   }
 
@@ -362,6 +365,12 @@ export function resourceTableCellText(
     default:
       return `${formatFixedDigits(cell.value, 1)} ${cell.unit}`.trim();
   }
+}
+
+/** 提示里的原因：认得的那句（格子里已经写了就不重复），再加原样的原因代码。 */
+function unavailableReasonLines(code: string, display: string): string {
+  const reason = resourceUnavailableReasonText(code);
+  return (reason && reason !== display ? `\n${reason}` : "") + `\n${uiText.backendMessage.reasonCode(code)}`;
 }
 
 export interface ResourceTableCellPresentation {
@@ -386,7 +395,7 @@ export function resourceTableCellPresentation(
     : cell ? `${text.label}: ${display}` : text.label)
     + (text.basis ? `\n${text.basis}` : "")
     + (cell?.basis ? `\n${cell.basis}` : "")
-    + (cell?.unavailableReason ? `\n${resourceFactUnavailableText(cell.unavailableReason).hint}` : "");
+    + (cell?.unavailableReason ? unavailableReasonLines(cell.unavailableReason, display) : "");
   return { display, title, heat: cell?.heatPercent ?? 0,
     privateHeat: cell?.privateHeatPercent ?? cell?.heatPercent ?? 0,
     unavailable: cell?.availability === "Unavailable" };

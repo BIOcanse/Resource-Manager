@@ -1,6 +1,7 @@
 export const zhBackendMessagesCopy = {
   backendMessage: {
     unknown: "狀態已更新。",
+    reasonCode: (code: string) => `原因代碼：${code}`,
     dependency: {
       payloadMissing: "執行階段已安裝，但所需執行檔案不全。請選擇「驗證並修復」補齊檔案。",
       updateAvailable: "此元件有已驗證的更新。選擇「更新」即可套用。",

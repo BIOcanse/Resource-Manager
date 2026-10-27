@@ -142,11 +142,7 @@ export const zhMonitorCopy = {
     factsWindow: (seconds: string) => `采样窗口 ${seconds} 秒`,
     unavailableReasons: {
       "cpu-topology-not-published": { label: "CPU 拓扑尚未发布", hint: "后端尚未发布 CPU 拓扑快照。" },
-      "cpu-residency-window-unavailable": { label: "CPU 驻留窗口不可用", hint: "后端当前没有可用的 CPU 驻留采样窗口。" },
-      "gpu-dedicated-memory-total-unavailable": { label: "无独立显存", hint: "该 GPU 只使用共享系统内存，没有独立显存总量，因此不列出显存分项。" },
-      "system-total-unavailable": { label: "无整机读数", hint: "这一指标的整机总量本次没有读到，因此不列出分项。" },
-      "gpu-measure-observation-unavailable": { label: "无引擎采样", hint: "这一 GPU 引擎本次没有同一窗口的完整采样，因此不列出分项。" },
-      "gpu-measure-total-unavailable": { label: "无引擎总量", hint: "这一 GPU 引擎的整机总量本次没有读到，因此不列出分项。" }
+      "cpu-residency-window-unavailable": { label: "CPU 驻留窗口不可用", hint: "后端当前没有可用的 CPU 驻留采样窗口。" }
     } as Record<string, { label: string; hint: string } | undefined>,
     gpuQuantities: {
       dedicated_resident_apportioned: "独立显存驻留（共享部分按引用分摊）",

@@ -721,11 +721,7 @@ const ruRuAppCopy: AppCopy = {
     factsWindow: (seconds: string) => `Окно выборки: ${seconds} с`,
     unavailableReasons: {
       "cpu-topology-not-published": { label: "Топология CPU ещё не опубликована", hint: "Серверная часть ещё не опубликовала снимок топологии CPU." },
-      "cpu-residency-window-unavailable": { label: "Окно измерения резидентности CPU недоступно", hint: "Серверная часть в настоящее время не располагает окном измерения резидентности CPU." },
-      "gpu-dedicated-memory-total-unavailable": { label: "Нет выделенной памяти", hint: "Этот GPU использует только общую системную память и не имеет итога выделенной памяти, поэтому строки памяти не показываются." },
-      "system-total-unavailable": { label: "Нет системного значения", hint: "Системный итог этой метрики в этом снимке не прочитан, поэтому строки не показываются." },
-      "gpu-measure-observation-unavailable": { label: "Нет выборки движка", hint: "Для этого движка GPU в этом снимке нет полной выборки за общее окно, поэтому строки не показываются." },
-      "gpu-measure-total-unavailable": { label: "Нет итога движка", hint: "Системный итог этого движка GPU в этом снимке не прочитан, поэтому строки не показываются." }
+      "cpu-residency-window-unavailable": { label: "Окно измерения резидентности CPU недоступно", hint: "Серверная часть в настоящее время не располагает окном измерения резидентности CPU." }
     } as Record<string, { label: string; hint: string } | undefined>,
     gpuQuantities: {
       dedicated_resident_apportioned: "Резидентная выделенная память (общие части распределены)",
@@ -2702,6 +2698,7 @@ const ruRuAppCopy: AppCopy = {
   },
   backendMessage: {
     unknown: "Состояние обновлено.",
+    reasonCode: (code: string) => `Код причины: ${code}`,
     dependency: {
       payloadMissing: "Среда выполнения установлена, но необходимые файлы отсутствуют. Выберите «Проверить и восстановить», чтобы вернуть их.",
       updateAvailable: "Для этого компонента доступно проверенное обновление. Выберите «Обновить», чтобы применить его.",

@@ -193,7 +193,7 @@ for (const mode of ["software", "process"] as const) {
   assert.equal(rows[0].values["gpu.1.vram"].availability, "Unavailable");
   assert.equal(rows[0].values["gpu.1.vram"].unavailableReason, "gpu-dedicated-memory-total-unavailable");
   assert.equal(resourceTableCellText(rows[0].values["gpu.1.vram"], "gpu.1.vram"),
-    uiText.resourceTable.unavailableReasons["gpu-dedicated-memory-total-unavailable"]!.label);
+    uiText.resourceBreakdown.unavailableReason.totalUnavailable);
   assert.ok(rows.slice(1).every(row => row.values["gpu.1.vram"] === undefined), "No numeric rows under an unavailable total");
 }
 assert.equal(resourceFactUnavailableText("future-reason").label, "future-reason", "An unknown reason code is shown as sent");
