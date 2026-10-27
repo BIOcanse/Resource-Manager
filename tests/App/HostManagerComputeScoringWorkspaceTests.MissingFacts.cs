@@ -7,6 +7,25 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class HostManagerComputeScoringWorkspaceTests
 {
     [Theory]
+    [InlineData(0UL)]
+    [InlineData(9007199254740995UL)]
+    public void InvalidGpuIdentityPreservesObservedAdapterForEveryGpuFact(ulong adapterKey)
+    {
+        var inventory = CreateInventory();
+        var source = CreateFacts(inventory, 10);
+        var process = source.Processes[0];
+        var gpu = process.Gpus[0] with { AdapterKey = adapterKey, PrivateMemoryBytes = 1024, SharedMemoryBytes = 512 };
+        source = source with { Processes = [process with { Gpus = [gpu] }, source.Processes[1]] };
+
+        var projected = source.ProjectValidFacts(inventory);
+        var exclusions = projected.FactExclusions.Where(e => e.ProcessId == process.ProcessId
+            && e.Reason == SchedulingFactExclusionReason.GpuRowMissingOrInvalid).ToArray();
+        Assert.Equal(new[] { SchedulingFactCode.GpuUsage, SchedulingFactCode.GpuDedicatedMemory,
+            SchedulingFactCode.GpuPrivateMemoryBytes, SchedulingFactCode.GpuSharedMemoryBytes }, exclusions.Select(e => e.Fact));
+        Assert.All(exclusions, e => Assert.Equal(adapterKey, e.AdapterKey));
+    }
+
+    [Theory]
     [InlineData(SchedulingFactCode.GpuUsage)]
     [InlineData(SchedulingFactCode.GpuDedicatedMemory)]
     public void InvalidGpuMetricEmitsFactCodeAndSeparateAdapter(SchedulingFactCode fact)

@@ -167,7 +167,7 @@ public sealed record SchedulingProcessFactRequest(
 public readonly record struct SoftwareBaseScore(string SoftwareId, double BaseScore);
 
 public sealed record SchedulingFactExclusion(
-    int? ProcessId, ulong? ProcessStartKey, string? TargetId, SchedulingFactCode Fact, SchedulingFactExclusionReason Reason, ulong? AdapterKey = null);
+    int? ProcessId, ulong? ProcessStartKey, string? TargetId, SchedulingFactCode Fact, SchedulingFactExclusionReason Reason, ulong? AdapterKey);
 
 public sealed partial record SchedulingProcessFactSnapshot(
     SamplingObservationStatus InventoryStatus,

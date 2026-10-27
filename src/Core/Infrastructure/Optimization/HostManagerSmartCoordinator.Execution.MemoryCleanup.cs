@@ -318,14 +318,14 @@ public sealed partial class HostManagerSmartCoordinator
                 currentCandidates.Add(baseline with { CanApply = false });
                 knownFilteredCount++;
                 cycleFactExclusions.Add(new SchedulingFactExclusion(identity.ProcessId, identity.ProcessStartKey,
-                    baseline.TargetId, SchedulingFactCode.CpuScore, SchedulingFactExclusionReason.CleanupBaselineScoreMissing));
+                    baseline.TargetId, SchedulingFactCode.CpuScore, SchedulingFactExclusionReason.CleanupBaselineScoreMissing, null));
                 continue;
             }
             if (!currentProcesses.TryGetValue(identity, out var current))
             {
                 knownFilteredCount++;
                 cycleFactExclusions.Add(new SchedulingFactExclusion(identity.ProcessId, identity.ProcessStartKey,
-                    baseline.TargetId, SchedulingFactCode.MemoryCleanup, SchedulingFactExclusionReason.CleanupCurrentProcessFactsMissing));
+                    baseline.TargetId, SchedulingFactCode.MemoryCleanup, SchedulingFactExclusionReason.CleanupCurrentProcessFactsMissing, null));
                 continue;
             }
 
@@ -335,7 +335,7 @@ public sealed partial class HostManagerSmartCoordinator
                 currentCandidates.Add(baseline with { CanApply = false });
                 knownFilteredCount++;
                 cycleFactExclusions.Add(new SchedulingFactExclusion(current.ProcessId, current.ProcessStartKey,
-                    baseline.TargetId, SchedulingFactCode.BaseScore, SchedulingFactExclusionReason.CleanupSoftwareMaximumBaseScoreMissing));
+                    baseline.TargetId, SchedulingFactCode.BaseScore, SchedulingFactExclusionReason.CleanupSoftwareMaximumBaseScoreMissing, null));
                 continue;
             }
             var protectionLevel = protectionLevels.GetValueOrDefault(

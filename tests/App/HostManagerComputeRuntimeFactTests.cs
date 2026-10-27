@@ -22,8 +22,15 @@ public sealed class HostManagerComputeRuntimeFactTests
         var result = CreateFacts([first, second], exclusions);
 
         Assert.Equal(new HostManagerComputeProcessIdentity(20, 200), Assert.Single(result).Key);
-        Assert.Single(exclusions);
-        Assert.Equal(SchedulingFactCode.RuntimeState, exclusions[0].Fact);
+        var exclusion = Assert.Single(exclusions);
+        Assert.Equal(invalid switch
+        {
+            "empty" or "multiple" => SchedulingFactExclusionReason.TargetProcessCountNotOne,
+            "start-key" => SchedulingFactExclusionReason.TargetProcessIdentityMissing,
+            "target-id" => SchedulingFactExclusionReason.TargetProcessIdentityMismatch,
+            _ => SchedulingFactExclusionReason.TargetRuntimeStateInvalid
+        }, exclusion.Reason);
+        Assert.Equal(invalid == "runtime" ? SchedulingFactCode.RuntimeState : SchedulingFactCode.Identity, exclusions[0].Fact);
     }
 
     [Fact]
@@ -37,6 +44,7 @@ public sealed class HostManagerComputeRuntimeFactTests
         Assert.Equal(new HostManagerComputeProcessIdentity(20, 200), Assert.Single(result).Key);
         Assert.All(exclusions, exclusion => Assert.Equal(SchedulingFactExclusionReason.DuplicateTargetProcessIdentity, exclusion.Reason));
         Assert.Equal(2, exclusions.Count);
+        Assert.All(exclusions, exclusion => Assert.Equal(SchedulingFactCode.Identity, exclusion.Fact));
     }
 
     // The target model belongs to the coordinator. Exercise its private boundary without

@@ -112,7 +112,7 @@ public sealed partial class HostManagerSmartCoordinator
         {
             if (target.ProcessIds.Count != 1)
             {
-                Exclude(null, null, target.TargetId, SchedulingFactCode.Identity, SchedulingFactExclusionReason.TargetProcessCountNotOne);
+                Exclude(null, null, target.TargetId, SchedulingFactCode.Identity, SchedulingFactExclusionReason.TargetProcessCountNotOne, null);
                 continue;
             }
             var targetProcessId = target.ProcessIds[0];
@@ -120,13 +120,13 @@ public sealed partial class HostManagerSmartCoordinator
                 || !target.ProcessStartKeys.TryGetValue(targetProcessId, out var targetStartKey)
                 || targetStartKey == 0)
             {
-                Exclude(targetProcessId, null, target.TargetId, SchedulingFactCode.Identity, SchedulingFactExclusionReason.TargetProcessIdentityMissing);
+                Exclude(targetProcessId, null, target.TargetId, SchedulingFactCode.Identity, SchedulingFactExclusionReason.TargetProcessIdentityMissing, null);
                 continue;
             }
             if (!string.Equals(target.TargetId,
                 HostManagerTargetIdentity.CreateProcessTargetId(targetProcessId, targetStartKey), StringComparison.Ordinal))
             {
-                Exclude(targetProcessId, targetStartKey, target.TargetId, SchedulingFactCode.Identity, SchedulingFactExclusionReason.TargetProcessIdentityMismatch);
+                Exclude(targetProcessId, targetStartKey, target.TargetId, SchedulingFactCode.Identity, SchedulingFactExclusionReason.TargetProcessIdentityMismatch, null);
                 continue;
             }
             var targetKey = NativeStableIdentity.CreateCaseInsensitiveKey(target.TargetId);
@@ -154,7 +154,7 @@ public sealed partial class HostManagerSmartCoordinator
                     && !reattributedSoftwareKeys.Contains(attributedSoftwareKey);
                 if (!scoreMembershipConsistent)
                 {
-                    Exclude(processId, startKey, target.TargetId, SchedulingFactCode.ComputeScore, SchedulingFactExclusionReason.OwnershipSoftwareAttributionMismatch);
+                    Exclude(processId, startKey, target.TargetId, SchedulingFactCode.ComputeScore, SchedulingFactExclusionReason.OwnershipSoftwareAttributionMismatch, null);
                 }
                 var hasAdapterRecord = ownership.AdapterRecords.TryGetValue(
                     softwareKey,
@@ -195,13 +195,13 @@ public sealed partial class HostManagerSmartCoordinator
                     && (cpuScore!.SoftwareKey != attributedSoftwareKey
                         || !seenCpuProcessScores.Add(processScoreKey)))
                 {
-                    Exclude(processId, startKey, target.TargetId, SchedulingFactCode.CpuScore, SchedulingFactExclusionReason.CanonicalProcessMembershipMismatch);
+                    Exclude(processId, startKey, target.TargetId, SchedulingFactCode.CpuScore, SchedulingFactExclusionReason.CanonicalProcessMembershipMismatch, null);
                     processCpuMetricsComplete = false;
                 }
                 if (processCpuMetricsComplete
                     && !scoreProjection.SoftwareCpu.TryGetValue(attributedSoftwareKey, out cpuSoftwareScore))
                 {
-                    Exclude(processId, startKey, target.TargetId, SchedulingFactCode.CpuScore, SchedulingFactExclusionReason.CanonicalSoftwareScoreMissing);
+                    Exclude(processId, startKey, target.TargetId, SchedulingFactCode.CpuScore, SchedulingFactExclusionReason.CanonicalSoftwareScoreMissing, null);
                 }
                 var rawCpuAvailable = target.HasCpuMetric && IsPercent(target.CpuUsagePercent);
                 var processGpuMetricsComplete = IsProcessGpuMetricsComplete(
@@ -355,7 +355,7 @@ public sealed partial class HostManagerSmartCoordinator
                 ProcessId = checked((uint)process.ProcessId),
                 ProcessStartKey = process.ProcessStartKey
             });
-            Exclude(process.ProcessId, process.ProcessStartKey, targetId, SchedulingFactCode.DecisionTarget, SchedulingFactExclusionReason.LiveIdentityWithoutDecisionFacts);
+            Exclude(process.ProcessId, process.ProcessStartKey, targetId, SchedulingFactCode.DecisionTarget, SchedulingFactExclusionReason.LiveIdentityWithoutDecisionFacts, null);
         }
 
         foreach (var pair in ownership.ProcessRecords
@@ -449,7 +449,7 @@ public sealed partial class HostManagerSmartCoordinator
             outputRows[cursor++] = row;
         }
 
-        void Exclude(int? processId, ulong? startKey, string targetId, SchedulingFactCode fact, SchedulingFactExclusionReason reason, ulong? adapterKey = null)
+        void Exclude(int? processId, ulong? startKey, string targetId, SchedulingFactCode fact, SchedulingFactExclusionReason reason, ulong? adapterKey)
             => cycleFactExclusions.Add(new SchedulingFactExclusion(processId, startKey, targetId, fact, reason, adapterKey));
     }
 
@@ -1214,7 +1214,7 @@ public sealed partial class HostManagerSmartCoordinator
             {
                 exclusions.Add(new SchedulingFactExclusion(pair.Key.ProcessId, pair.Key.ProcessStartKey,
                     HostManagerTargetIdentity.CreateProcessTargetId(pair.Key.ProcessId, pair.Key.ProcessStartKey),
-                    SchedulingFactCode.CpuScore, SchedulingFactExclusionReason.CanonicalProcessNotProjected));
+                    SchedulingFactCode.CpuScore, SchedulingFactExclusionReason.CanonicalProcessNotProjected, null));
             }
         }
         foreach (var pair in projection.ProcessGpu)
@@ -1235,7 +1235,7 @@ public sealed partial class HostManagerSmartCoordinator
             {
                 incompleteCpuSoftware.Add(pair.Key);
                 exclusions.Add(new SchedulingFactExclusion(null, null, $"software:{pair.Key:x16}",
-                    SchedulingFactCode.CpuScore, SchedulingFactExclusionReason.CanonicalSoftwareMembershipIncomplete));
+                    SchedulingFactCode.CpuScore, SchedulingFactExclusionReason.CanonicalSoftwareMembershipIncomplete, null));
             }
         }
         foreach (var pair in projection.SoftwareGpu)

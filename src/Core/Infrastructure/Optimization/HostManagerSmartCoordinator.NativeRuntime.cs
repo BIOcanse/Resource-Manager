@@ -960,9 +960,9 @@ public sealed partial class HostManagerSmartCoordinator
         }
     }
 
-    // Native planning emits the same closed reason type as every other exclusion producer.
-    internal static SchedulingFactExclusionReason NativePlanStatusCode(NativeSmartCoordinatorStatus status)
-        => status switch
+    // Native planning produces the restricted status; exclusion rows reuse its reason.
+    internal static NativePlanFailureStatus NativePlanStatusCode(NativeSmartCoordinatorStatus status)
+        => NativePlanFailureStatus.FromReason(status switch
         {
             NativeSmartCoordinatorStatus.InvalidArgument => SchedulingFactExclusionReason.InvalidArgument,
             NativeSmartCoordinatorStatus.AbiMismatch => SchedulingFactExclusionReason.AbiMismatch,
@@ -976,7 +976,7 @@ public sealed partial class HostManagerSmartCoordinator
             NativeSmartCoordinatorStatus.FeedbackMismatch => SchedulingFactExclusionReason.FeedbackMismatch,
             NativeSmartCoordinatorStatus.RecreateRequired => SchedulingFactExclusionReason.RecreateRequired,
             _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Expected a native plan failure status.")
-        };
+        });
 
     private static void RequireNativePlanStatus(
         NativeSmartCoordinatorStatus status,

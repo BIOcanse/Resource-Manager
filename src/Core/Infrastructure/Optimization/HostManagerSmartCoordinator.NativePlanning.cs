@@ -102,7 +102,7 @@ public sealed partial class HostManagerSmartCoordinator
         if (planStatus != NativeSmartCoordinatorStatus.Ok)
         {
             cycleNativePlanFailure = planStatus;
-            cycleFactExclusions.Add(new(null, null, null, SchedulingFactCode.NativePlan, NativePlanStatusCode(planStatus)));
+            cycleFactExclusions.Add(new(null, null, null, SchedulingFactCode.NativePlan, NativePlanStatusCode(planStatus).Reason, null));
         }
         RequireNativePlanStatus(
             planStatus,

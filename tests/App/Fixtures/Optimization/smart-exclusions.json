@@ -107,7 +107,7 @@
     "processId": 42,
     "processStartKey": "9007199254740993",
     "targetId": null,
-    "fact": "runtime-state",
+    "fact": "identity",
     "reason": "duplicate-target-process-identity",
     "adapterKey": null
   },

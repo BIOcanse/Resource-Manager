@@ -90,7 +90,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var failure = Assert.IsType<HostManagerCycleFailureDiagnostics>(diagnostics.Failure);
         Assert.Equal(HostManagerCycleFailureKind.NativePlanFailed, failure.Kind);
         Assert.Equal(nameof(InvalidDataException), failure.ExceptionType);
-        Assert.Equal(SchedulingFactExclusionReason.CapacityExceeded, failure.NativePlanStatus);
+        Assert.Equal(SchedulingFactExclusionReason.CapacityExceeded, failure.NativePlanStatus!.Reason);
         Assert.Null(diagnostics.NativeCoordinator);
         Assert.Empty(diagnostics.NonAdaptedMemoryDecisions);
         Assert.Equal("unavailable", diagnostics.SchedulingAuthority.Availability);
@@ -216,7 +216,15 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             .ValidMask.HasFlag(NativeSmartCoordinatorInputValidity.ProcessScore));
         Assert.True((bool)projection.GetType().GetProperty("FullProcessSnapshot")!.GetValue(projection)!);
         var exclusions = Assert.IsType<List<SchedulingFactExclusion>>(ReadPrivateReference(fixture.Coordinator, "cycleFactExclusions"));
-        Assert.Contains(exclusions, exclusion => exclusion.Fact == SchedulingFactCode.Identity && exclusion.Reason is SchedulingFactExclusionReason.TargetProcessCountNotOne or SchedulingFactExclusionReason.TargetProcessIdentityMissing or SchedulingFactExclusionReason.TargetProcessIdentityMismatch);
+        var expectedReason = mismatch switch
+        {
+            "process-count" => SchedulingFactExclusionReason.TargetProcessCountNotOne,
+            "start-key" => SchedulingFactExclusionReason.TargetProcessIdentityMissing,
+            _ => SchedulingFactExclusionReason.TargetProcessIdentityMismatch
+        };
+        var identityExclusions = exclusions.Where(exclusion => exclusion.Reason == expectedReason).ToArray();
+        Assert.NotEmpty(identityExclusions);
+        Assert.All(identityExclusions, exclusion => Assert.Equal(SchedulingFactCode.Identity, exclusion.Fact));
     }
 
     [Theory]
@@ -377,6 +385,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var exclusions = Assert.IsType<List<SchedulingFactExclusion>>(ReadPrivateReference(fixture.Coordinator, "cycleFactExclusions"));
         Assert.Contains(exclusions, exclusion => exclusion.Fact == (gpuDomain ? SchedulingFactCode.GpuScore : SchedulingFactCode.CpuScore)
             && exclusion.Reason == SchedulingFactExclusionReason.CanonicalSoftwareMembershipIncomplete);
+        var scoreExclusions = exclusions.Where(exclusion => exclusion.Fact ==
+            (gpuDomain ? SchedulingFactCode.GpuScore : SchedulingFactCode.CpuScore)).ToArray();
+        Assert.All(scoreExclusions, exclusion => Assert.Equal(
+            gpuDomain ? facts.Processes[0].Gpus[0].AdapterKey : (ulong?)null, exclusion.AdapterKey));
     }
 
     private static NativeSmartCoordinatorWorkspace.Operation BeginNativeFactProjection(

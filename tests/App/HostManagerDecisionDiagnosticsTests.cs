@@ -14,13 +14,47 @@ public sealed class HostManagerDecisionDiagnosticsTests
         {
             if (status == NativeSmartCoordinatorStatus.Ok) continue;
             var reason = HostManagerSmartCoordinator.NativePlanStatusCode(status);
-            Assert.True(Enum.IsDefined(reason));
+            Assert.True(Enum.IsDefined(reason.Reason));
             Assert.Equal(JsonNamingPolicy.KebabCaseLower.ConvertName(status.ToString()),
                 JsonSerializer.SerializeToElement(reason).GetString());
         }
         Assert.Throws<ArgumentOutOfRangeException>(() => HostManagerSmartCoordinator.NativePlanStatusCode(NativeSmartCoordinatorStatus.Ok));
         Assert.Throws<ArgumentOutOfRangeException>(() => HostManagerSmartCoordinator.NativePlanStatusCode((NativeSmartCoordinatorStatus)int.MaxValue));
     }
+
+    [Fact]
+    public void NativeFailureStatusAdmitsExactlyTheNativeReasonSubset()
+    {
+        var nativeReasons = Enum.GetValues<NativeSmartCoordinatorStatus>()
+            .Where(status => status != NativeSmartCoordinatorStatus.Ok)
+            .Select(status => HostManagerSmartCoordinator.NativePlanStatusCode(status).Reason).ToHashSet();
+        Assert.Equal(11, nativeReasons.Count);
+        foreach (var reason in Enum.GetValues<SchedulingFactExclusionReason>())
+        {
+            if (nativeReasons.Contains(reason))
+            {
+                var value = NativePlanFailureStatus.FromReason(reason);
+                var wire = JsonSerializer.Serialize(value);
+                Assert.Equal(JsonSerializer.Serialize(reason), wire);
+                Assert.Equal(value, JsonSerializer.Deserialize<NativePlanFailureStatus>(wire));
+            }
+            else
+            {
+                Assert.Throws<ArgumentOutOfRangeException>(() => NativePlanFailureStatus.FromReason(reason));
+                Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<NativePlanFailureStatus>(JsonSerializer.Serialize(reason)));
+            }
+        }
+        foreach (var reason in new[] { (SchedulingFactExclusionReason)0, (SchedulingFactExclusionReason)int.MaxValue })
+            Assert.Throws<ArgumentOutOfRangeException>(() => NativePlanFailureStatus.FromReason(reason));
+    }
+
+    [Theory]
+    [InlineData("\"ok\"")]
+    [InlineData("\"future-status\"")]
+    [InlineData("8")]
+    [InlineData("\"8\"")]
+    public void NativeFailureStatusRejectsUnknownOrNumericWireCodes(string wire)
+        => Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<NativePlanFailureStatus>(wire));
 
     [Fact]
     public void NativeProjectionPreservesExactIdentitiesAndDecisionFields()

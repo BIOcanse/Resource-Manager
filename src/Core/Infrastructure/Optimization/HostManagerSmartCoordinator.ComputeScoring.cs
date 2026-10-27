@@ -359,7 +359,7 @@ public sealed partial class HostManagerSmartCoordinator
         {
             if (target.ProcessIds.Count != 1)
             {
-                Exclude(null, null, target.TargetId, SchedulingFactExclusionReason.TargetProcessCountNotOne);
+                Exclude(null, null, target.TargetId, SchedulingFactCode.Identity, SchedulingFactExclusionReason.TargetProcessCountNotOne);
                 continue;
             }
             var processId = target.ProcessIds[0];
@@ -367,14 +367,14 @@ public sealed partial class HostManagerSmartCoordinator
                 || !target.ProcessStartKeys.TryGetValue(processId, out var processStartKey)
                 || processStartKey == 0)
             {
-                Exclude(processId, null, target.TargetId, SchedulingFactExclusionReason.TargetProcessIdentityMissing);
+                Exclude(processId, null, target.TargetId, SchedulingFactCode.Identity, SchedulingFactExclusionReason.TargetProcessIdentityMissing);
                 continue;
             }
 
             var expectedTargetId = HostManagerTargetIdentity.CreateProcessTargetId(processId, processStartKey);
             if (!string.Equals(expectedTargetId, target.TargetId, StringComparison.Ordinal))
             {
-                Exclude(processId, processStartKey, target.TargetId, SchedulingFactExclusionReason.TargetProcessIdentityMismatch);
+                Exclude(processId, processStartKey, target.TargetId, SchedulingFactCode.Identity, SchedulingFactExclusionReason.TargetProcessIdentityMismatch);
                 continue;
             }
 
@@ -382,14 +382,14 @@ public sealed partial class HostManagerSmartCoordinator
             if (!observedIdentities.Add(identity))
             {
                 result.Remove(identity);
-                Exclude(processId, processStartKey, target.TargetId, SchedulingFactExclusionReason.DuplicateTargetProcessIdentity);
+                Exclude(processId, processStartKey, target.TargetId, SchedulingFactCode.Identity, SchedulingFactExclusionReason.DuplicateTargetProcessIdentity);
                 continue;
             }
             if (target.RuntimeState is not (HostManagerRuntimeStates.ForegroundFocused or HostManagerRuntimeStates.ForegroundUnfocused
                 or HostManagerRuntimeStates.BackgroundWindow or HostManagerRuntimeStates.TrayOnly
                 or HostManagerRuntimeStates.BackgroundProcess or HostManagerRuntimeStates.NotRunning))
             {
-                Exclude(processId, processStartKey, target.TargetId, SchedulingFactExclusionReason.TargetRuntimeStateInvalid);
+                Exclude(processId, processStartKey, target.TargetId, SchedulingFactCode.RuntimeState, SchedulingFactExclusionReason.TargetRuntimeStateInvalid);
                 continue;
             }
             result.Add(identity, new HostManagerComputeRuntimeFact(
@@ -399,8 +399,8 @@ public sealed partial class HostManagerSmartCoordinator
         }
         return result;
 
-        void Exclude(int? processId, ulong? startKey, string targetId, SchedulingFactExclusionReason reason)
-            => exclusions?.Add(new SchedulingFactExclusion(processId, startKey, targetId, SchedulingFactCode.RuntimeState, reason));
+        void Exclude(int? processId, ulong? startKey, string targetId, SchedulingFactCode fact, SchedulingFactExclusionReason reason)
+            => exclusions?.Add(new SchedulingFactExclusion(processId, startKey, targetId, fact, reason, null));
     }
 
     internal static HostManagerWelfareCapacityInput CreateWelfareCapacityInput(

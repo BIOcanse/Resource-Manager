@@ -151,7 +151,7 @@ public sealed partial class JsonMetadataContractTests
         var options = new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions;
         ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
         var detail = JsonSerializer.SerializeToNode(new HostManagerFactExclusionDiagnostics(
-            null, null, null, SchedulingFactCode.NativePlan, SchedulingFactExclusionReason.CapacityExceeded), options)!;
+            null, null, null, SchedulingFactCode.NativePlan, SchedulingFactExclusionReason.CapacityExceeded, null), options)!;
         detail[field] = JsonNode.Parse(value);
         Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<HostManagerFactExclusionDiagnostics>(detail, options));
         var count = new JsonObject { ["fact"] = detail["fact"]!.DeepClone(), ["reason"] = detail["reason"]!.DeepClone(), ["count"] = 1 };
@@ -171,7 +171,7 @@ public sealed partial class JsonMetadataContractTests
             (SchedulingFactCode.Inventory, (SchedulingFactExclusionReason)int.MaxValue)
         })
         {
-            Assert.Throws<JsonException>(() => JsonSerializer.Serialize(new HostManagerFactExclusionDiagnostics(null, null, null, fact, reason), options));
+            Assert.Throws<JsonException>(() => JsonSerializer.Serialize(new HostManagerFactExclusionDiagnostics(null, null, null, fact, reason, null), options));
             Assert.Throws<JsonException>(() => JsonSerializer.Serialize(new HostManagerFactExclusionCount(fact, reason, 1), options));
         }
     }
@@ -615,6 +615,12 @@ public sealed partial class JsonMetadataContractTests
             if (type == typeof(HostManagerSmartCoordinatorStatus))
             {
                 work.Set(JsonNode.Parse(SmartStatusFixture("native-plan-failed")));
+                continue;
+            }
+            if (type == typeof(NativePlanFailureStatus))
+            {
+                work.Set(JsonSerializer.SerializeToNode(
+                    NativePlanFailureStatus.FromReason(SchedulingFactExclusionReason.CapacityExceeded), legacy));
                 continue;
             }
             if (type == typeof(MetricInteger)) { work.Set(JsonValue.Create("9007199254740993")); continue; }

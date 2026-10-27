@@ -37,11 +37,11 @@ public enum HostManagerCycleFailureKind
 // NativePlanStatus is the native plan's status code (for example "capacity-exceeded"), the same code
 // the segment's native-plan exclusion carries as its reason; null unless Kind is NativePlanFailed.
 public sealed record HostManagerCycleFailureDiagnostics(
-    HostManagerCycleFailureKind Kind, string ExceptionType, SchedulingFactExclusionReason? NativePlanStatus);
+    HostManagerCycleFailureKind Kind, string ExceptionType, NativePlanFailureStatus? NativePlanStatus);
 
 public sealed record HostManagerFactExclusionCount(SchedulingFactCode Fact, SchedulingFactExclusionReason Reason, int Count);
 public sealed record HostManagerFactExclusionDiagnostics(
-    int? ProcessId, string? ProcessStartKey, string? TargetId, SchedulingFactCode Fact, SchedulingFactExclusionReason Reason, string? AdapterKey = null);
+    int? ProcessId, string? ProcessStartKey, string? TargetId, SchedulingFactCode Fact, SchedulingFactExclusionReason Reason, string? AdapterKey);
 
 public sealed record HostManagerCoordinatorFacts(
     [property: System.Text.Json.Serialization.JsonNumberHandling(System.Text.Json.Serialization.JsonNumberHandling.WriteAsString | System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString)] ulong Revision,

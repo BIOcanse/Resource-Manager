@@ -103,7 +103,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
             {
                 exclusions?.Add(new SchedulingFactExclusion(process.ProcessId, process.ProcessStartKey,
                     HostManagerTargetIdentity.CreateProcessTargetId(process.ProcessId, process.ProcessStartKey),
-                    SchedulingFactCode.RuntimeState, SchedulingFactExclusionReason.ComputeRuntimeStateMissing));
+                    SchedulingFactCode.RuntimeState, SchedulingFactExclusionReason.ComputeRuntimeStateMissing, null));
             }
         }
         processFacts = Narrow(processFacts, selected);
@@ -533,7 +533,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         void Exclude(SchedulingProcessFact process, SchedulingFactExclusionReason reason)
             => exclusions?.Add(new SchedulingFactExclusion(process.ProcessId, process.ProcessStartKey,
                 HostManagerTargetIdentity.CreateProcessTargetId(process.ProcessId, process.ProcessStartKey),
-                SchedulingFactCode.CpuCoreResidency, reason));
+                SchedulingFactCode.CpuCoreResidency, reason, null));
     }
 
     private static bool IsTrustedCpuResidency(CpuCoreResidencySnapshot? snapshot)
