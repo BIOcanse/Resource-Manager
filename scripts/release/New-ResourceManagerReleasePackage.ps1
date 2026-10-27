@@ -117,7 +117,12 @@ try {
         }
         files = $files
     } |
-        ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $stage 'release-manifest.json') -Encoding utf8
+        ConvertTo-Json -Depth 4 |
+        ForEach-Object {
+            # The installer's JSON reader rejects a byte order mark, and Windows PowerShell 5.1 (Release.cmd) writes
+            # one for -Encoding utf8, so write UTF-8 without a BOM on either host.
+            [IO.File]::WriteAllText((Join-Path $stage 'release-manifest.json'), $_, [Text.UTF8Encoding]::new($false))
+        }
     $preflight = Start-Process -FilePath (Join-Path $stage 'Install.exe') -ArgumentList '--plan-only' `
         -WindowStyle Hidden -Wait -PassThru
     try {
