@@ -770,7 +770,6 @@ function VirtualResourceTable(props: {
   return (
     <div
       class="resource-table-frame"
-      style={{ "--resource-table-columns": gridTemplate() } satisfies CssVars}
       // 软件行可以展开出进程行，所以是树形表格：行带层级和展开状态，焦点按行移动（方向键、Home/End、左右展开收起）。
       role="treegrid"
       aria-label={uiText.resourceTable.panel}
@@ -787,6 +786,7 @@ function VirtualResourceTable(props: {
           role="row"
           aria-rowindex={1}
           style={{
+            "grid-template-columns": gridTemplate(),
             width: `${tableWidth()}px`,
             transform: `translateX(${-scrollLeft()}px)`
           }}
@@ -922,6 +922,7 @@ function VirtualResourceTable(props: {
                   presentation={presentation}
                   columnIds={columnIds}
                   columnById={columnById}
+                  gridTemplate={gridTemplate}
                   rowIndex={rowIndex}
                   renderContents={(rowIndex() >= firstRenderedRow() && rowIndex() < lastRenderedRow())
                     || activeRowId() === row()?.id}
@@ -988,6 +989,7 @@ function ResourceTableRowSlot(props: {
   presentation: () => ResourceTableRowPresentation | undefined;
   columnIds: () => string[];
   columnById: (id: string) => ResourceTableColumn;
+  gridTemplate: () => string;
   rowIndex: () => number;
   renderContents: boolean;
   mode: ResourceTableViewMode;
@@ -1070,6 +1072,8 @@ function ResourceTableRowSlot(props: {
         props.onRowContextMenu(current, event.currentTarget);
       }}
       style={{
+        // 原生属性只影响这个网格，不让列宽自定义属性继承到每个单元格的后代。
+        "grid-template-columns": props.gridTemplate(),
         // The pool retains current DOM values in every slot. Only clipped
         // overscan descendants skip rendering; scrolling/focus enables them
         // synchronously, with one extra row at each edge and no geometry read.

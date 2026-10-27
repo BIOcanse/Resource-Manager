@@ -1,6 +1,5 @@
-import { observeLayout } from "../interactions/solid/layoutObservation.ts";
 import { useHorizontalReveal } from "../interactions/solid/horizontalReveal.ts";
-import { For, Show, createEffect, createMemo, on, onCleanup } from "solid-js";
+import { For, Show, createComputed, createEffect, createMemo, on } from "solid-js";
 import type { Accessor, JSX } from "solid-js";
 import { ListTodo } from "lucide-solid";
 import { ObservationStateNotice } from "../components/ObservationStateNotice";
@@ -64,40 +63,25 @@ export function AppShell(props: AppShellProps) {
 
   // 换一级页：正文回到顶部，焦点交给页标题。只换二级分页：正文回到顶部，焦点留在分页条上（←/→ 接着切）。
   // 深层导航（可信访问待处理横幅）由已挂载的视图交出焦点目标，焦点交给它；消费请求或卸载目标不会再次抢回焦点。
-  let pendingPageFocus: (() => void) | null = null;
-  const pageLayout = observeLayout({
-    read: () => {},
-    write: () => {
-      const apply = pendingPageFocus;
-      pendingPageFocus = null;
-      pageLayout.update([]);
-      apply?.();
-    }
-  });
-  onCleanup(() => pageLayout.dispose());
   let viewportScrolled = false;
   let displayedPage = props.activePage();
+  // 标题与主视口常驻；在换 DOM 前交付导航焦点和回顶，避免 focus 迫使新表同步布局。
+  // displayedPage 仍由后面的 effect 更新，内容过渡据它判断旧页应 move 还是 clone。
+  createComputed(on(routeIdentity, () => {
+    if (viewportScrolled) mainViewport?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    if (props.activePage() !== displayedPage) pageHeading?.focus({ preventScroll: true });
+  }, { defer: true }));
   createEffect(on([routeIdentity, () => props.pageFocusTarget?.()], ([route, target], previous) => {
     const routeChanged = route !== previous?.[0];
     if (!routeChanged && !target) return;
-    const pageChanged = props.activePage() !== displayedPage;
     displayedPage = props.activePage();
-    let cancelled = false;
-    onCleanup(() => { cancelled = true; });
-    pendingPageFocus = () => {
-      if (cancelled) return;
-      if (routeChanged && viewportScrolled) mainViewport?.scrollTo({ top: 0, left: 0, behavior: "auto" });
-      if (target) {
-        if (target.isConnected) {
-          target.focus({ preventScroll: true });
-          props.onPageTargetFocused?.(target);
-        }
-      } else if (pageChanged) {
-        pageHeading?.focus({ preventScroll: true });
+    // 深层目标是页面节点，等 Solid 挂载后再交付；常规页标题无需等待。
+    if (target) {
+      if (target.isConnected) {
+        target.focus({ preventScroll: true });
+        props.onPageTargetFocused?.(target);
       }
-    };
-    pageLayout.update([]);
-    if (mainViewport) pageLayout.update([mainViewport]);
+    }
   }, { defer: true }));
 
   // 滚动定位和指示条共享布局后的读/写边界。

@@ -196,7 +196,6 @@
 }
 
 .resource-table-header {
-  grid-template-columns: var(--resource-table-columns);
   height: 34px;
   display: grid;
   background: var(--table-header-bg);
@@ -430,7 +429,6 @@
 }
 
 .resource-table-row {
-  grid-template-columns: var(--resource-table-columns);
   --row-base: var(--surface);
   --row-tint: var(--text);
   --row-tint-amount: 0%;

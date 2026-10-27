@@ -237,7 +237,36 @@ export default async function resourceTableScrollStabilityJourney(
         && Boolean(row.querySelector(".resource-row-name")?.textContent);
     }, key);
   }
-  return { before, after, factSubscriptions, initialNames, sortedNames, widthBefore, widthAfter, nameOnlyRowsPreserved: true, scrolledPool };
+  // 切回页面的同步 DOM 已有当前数据；RO 可继续按真实尺寸校准行池。
+  await page.setViewportSize({ width: 1067, height: 800 });
+  await page.locator('.shell-page[data-page-id="control"]').click();
+  const initialPool = await page.evaluate(() => {
+    document.querySelector('.shell-page[data-page-id="monitor"]').click();
+    return [...document.querySelectorAll('#pageStage .resource-table-row[aria-hidden="false"]')]
+      .map(row => row.querySelector(".resource-row-name")?.textContent);
+  });
+  await waitForStableRendering(page, ["#pageStage .resource-table-frame"], { timeoutMs: 3000 });
+  const settledPoolSize = await page.locator('#pageStage .resource-table-row[aria-hidden="false"]').count();
+  if (!initialPool.length || initialPool.some(name => !name)) {
+    throw new Error(`Initial row contents were missing: ${JSON.stringify({ initialPool, settledPoolSize })}`);
+  }
+  // 原生列宽属性仍须让表头、行在小窗口、常规窗口、大窗口逐列对齐。
+  for (const height of [500, 800, 1080]) {
+    await page.setViewportSize({ width: 1067, height });
+    await waitForStableRendering(page, ["#pageStage .resource-table-frame"], { timeoutMs: 3000 });
+    const aligned = await page.locator("#pageStage .resource-table-frame").evaluate(frame => {
+      const header = [...frame.querySelectorAll(".resource-table-head-cell")];
+      const cells = [...frame.querySelector(".software-row").querySelectorAll(".resource-table-cell")];
+      return header.length === cells.length && header.every((cell, index) => {
+        const heading = cell.getBoundingClientRect();
+        const row = cells[index].getBoundingClientRect();
+        return Math.abs(heading.left - row.left) <= 1 && Math.abs(heading.right - row.right) <= 1;
+      });
+    });
+    if (!aligned) throw new Error(`Header and row columns diverged at viewport height ${height}`);
+  }
+  return { before, after, factSubscriptions, initialNames, sortedNames, widthBefore, widthAfter,
+    nameOnlyRowsPreserved: true, scrolledPool, initialPoolSize: initialPool.length, settledPoolSize };
 }
 
 async function waitForNameSort(page, direction, previousNames) {
