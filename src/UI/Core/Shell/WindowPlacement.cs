@@ -17,10 +17,16 @@ internal static class WindowPlacement
             ?? (Screen.AllScreens.Length > 0 ? Screen.AllScreens[0] : null);
         var workArea = screen?.WorkingArea ?? new Rectangle(Point.Empty, new Size(1280, 800));
 
+        return GetPreferredPrimaryScreenSize(minimumSize, workArea);
+    }
+
+    internal static Size GetPreferredPrimaryScreenSize(Size minimumSize, Rectangle workArea)
+    {
+        var maximumSize = GetMaximumSize(minimumSize, workArea);
         var maxWidth = Math.Min(PreferredMaximumWidth, (int)Math.Round(workArea.Width * PreferredWorkAreaWidthRatio));
         var maxHeight = Math.Min(PreferredMaximumHeight, (int)Math.Round(workArea.Height * PreferredWorkAreaHeightRatio));
-        maxWidth = Math.Clamp(maxWidth, minimumSize.Width, workArea.Width);
-        maxHeight = Math.Clamp(maxHeight, minimumSize.Height, workArea.Height);
+        maxWidth = Math.Clamp(maxWidth, minimumSize.Width, maximumSize.Width);
+        maxHeight = Math.Clamp(maxHeight, minimumSize.Height, maximumSize.Height);
 
         var width = maxWidth;
         var height = (int)Math.Round(width / PreferredAspectRatio);
@@ -31,11 +37,20 @@ internal static class WindowPlacement
         }
 
         return new Size(
-            Math.Clamp(width, minimumSize.Width, workArea.Width),
-            Math.Clamp(height, minimumSize.Height, workArea.Height));
+            Math.Clamp(width, minimumSize.Width, maximumSize.Width),
+            Math.Clamp(height, minimumSize.Height, maximumSize.Height));
     }
 
     public static void PlaceForOpenOnPrimaryScreen(Form form)
+    {
+        ArgumentNullException.ThrowIfNull(form);
+
+        var screen = Screen.PrimaryScreen
+            ?? (Screen.AllScreens.Length > 0 ? Screen.AllScreens[0] : Screen.FromControl(form));
+        PlaceForOpenOnPrimaryScreen(form, screen.WorkingArea);
+    }
+
+    internal static void PlaceForOpenOnPrimaryScreen(Form form, Rectangle workArea)
     {
         ArgumentNullException.ThrowIfNull(form);
 
@@ -44,15 +59,10 @@ internal static class WindowPlacement
             form.WindowState = FormWindowState.Normal;
         }
 
-        var screen = Screen.PrimaryScreen
-            ?? (Screen.AllScreens.Length > 0 ? Screen.AllScreens[0] : Screen.FromControl(form));
-        var workArea = screen.WorkingArea;
-        var width = Math.Min(form.Width, workArea.Width);
-        var height = Math.Min(form.Height, workArea.Height);
-
-        if (width != form.Width || height != form.Height)
+        var size = ConstrainSize(form.Size, form.MinimumSize, workArea);
+        if (size != form.Size)
         {
-            form.Size = new Size(width, height);
+            form.Size = size;
         }
 
         form.StartPosition = FormStartPosition.Manual;
@@ -69,7 +79,14 @@ internal static class WindowPlacement
             .Where(static candidate => !candidate.Primary)
             .OrderByDescending(static candidate => candidate.WorkingArea.Width * candidate.WorkingArea.Height)
             .FirstOrDefault();
-        if (screen is null)
+        return TryPlaceForPassiveValidationOnSecondaryScreen(form, screen?.WorkingArea);
+    }
+
+    internal static bool TryPlaceForPassiveValidationOnSecondaryScreen(Form form, Rectangle? workArea)
+    {
+        ArgumentNullException.ThrowIfNull(form);
+
+        if (workArea is null)
         {
             return false;
         }
@@ -80,7 +97,8 @@ internal static class WindowPlacement
         }
 
         form.StartPosition = FormStartPosition.Manual;
-        form.Bounds = screen.WorkingArea;
+        form.Bounds = new Rectangle(workArea.Value.Location,
+            ConstrainSize(workArea.Value.Size, form.MinimumSize, workArea.Value));
         return true;
     }
 
@@ -95,15 +113,21 @@ internal static class WindowPlacement
     {
         ArgumentNullException.ThrowIfNull(form);
 
+        RestoreMaximizedForCaptionDrag(form, cursor, Screen.FromPoint(cursor).WorkingArea);
+    }
+
+    internal static void RestoreMaximizedForCaptionDrag(Form form, Point cursor, Rectangle workArea)
+    {
+        ArgumentNullException.ThrowIfNull(form);
+
         var maximizedBounds = form.Bounds;
         var restoreBounds = form.RestoreBounds;
-        var cursorScreen = Screen.FromPoint(cursor);
-        var workArea = cursorScreen.WorkingArea;
 
         var restoredWidth = restoreBounds.Width > 0 ? restoreBounds.Width : form.Width;
         var restoredHeight = restoreBounds.Height > 0 ? restoreBounds.Height : form.Height;
-        restoredWidth = Math.Min(Math.Max(restoredWidth, form.MinimumSize.Width), workArea.Width);
-        restoredHeight = Math.Min(Math.Max(restoredHeight, form.MinimumSize.Height), workArea.Height);
+        var restoredSize = ConstrainSize(new Size(restoredWidth, restoredHeight), form.MinimumSize, workArea);
+        restoredWidth = restoredSize.Width;
+        restoredHeight = restoredSize.Height;
 
         var horizontalRatio = maximizedBounds.Width > 0
             ? (cursor.X - maximizedBounds.Left) / (double)maximizedBounds.Width
@@ -113,13 +137,19 @@ internal static class WindowPlacement
         var captionOffset = maximizedBounds.Height > 0
             ? cursor.Y - maximizedBounds.Top
             : 16;
-        captionOffset = Math.Clamp(captionOffset, 8, Math.Min(MaximumCaptionOffset, restoredHeight - 8));
+        var minimumCaptionOffset = Math.Min(8, restoredHeight);
+        captionOffset = Math.Clamp(captionOffset, minimumCaptionOffset,
+            Math.Max(minimumCaptionOffset, Math.Min(MaximumCaptionOffset, restoredHeight - 8)));
 
         var left = cursor.X - (int)Math.Round(restoredWidth * horizontalRatio);
         var top = cursor.Y - captionOffset;
 
-        left = Math.Clamp(left, workArea.Left - restoredWidth + MinimumVisiblePixels, workArea.Right - MinimumVisiblePixels);
-        top = Math.Clamp(top, workArea.Top, workArea.Bottom - MinimumVisiblePixels);
+        var visibleWidth = Math.Min(MinimumVisiblePixels, Math.Min(workArea.Width, restoredWidth));
+        var visibleHeight = Math.Min(MinimumVisiblePixels, Math.Min(workArea.Height, restoredHeight));
+        left = workArea.Width == 0 ? workArea.Left : Math.Clamp(left,
+            workArea.Left - restoredWidth + visibleWidth, workArea.Right - visibleWidth);
+        top = workArea.Height == 0 ? workArea.Top : Math.Clamp(top,
+            workArea.Top, workArea.Bottom - visibleHeight);
 
         form.WindowState = FormWindowState.Normal;
         form.Bounds = new Rectangle(left, top, restoredWidth, restoredHeight);
@@ -153,6 +183,20 @@ internal static class WindowPlacement
             && halfHeight
             && (touchesLeft || touchesRight)
             && (touchesTop || touchesBottom);
+    }
+
+    private static Size GetMaximumSize(Size minimumSize, Rectangle workArea)
+    {
+        // A display transition may report less space than the window minimum, including zero.
+        return new Size(Math.Max(minimumSize.Width, workArea.Width),
+            Math.Max(minimumSize.Height, workArea.Height));
+    }
+
+    private static Size ConstrainSize(Size size, Size minimumSize, Rectangle workArea)
+    {
+        var maximumSize = GetMaximumSize(minimumSize, workArea);
+        return new Size(Math.Clamp(size.Width, minimumSize.Width, maximumSize.Width),
+            Math.Clamp(size.Height, minimumSize.Height, maximumSize.Height));
     }
 
     private static bool IsNear(int value, int target)
