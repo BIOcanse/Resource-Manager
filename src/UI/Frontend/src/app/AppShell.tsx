@@ -215,6 +215,7 @@ export function AppShell(props: AppShellProps) {
         <ObservationStateNotice
           state={props.runtimeCapabilities.observation()}
           label={uiText.shell.runtimeCapability}
+          presentation="announce-loading"
           onRetry={() => void props.runtimeCapabilities.refresh()}
         />
         {props.notices}

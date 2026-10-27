@@ -94,6 +94,7 @@ const allJourneys = [
   ["resource-table-header-fit", async (...args) => (await import("./resourceTableHeaderFitJourney.js")).default(...args)],
   ["help-hint", async (...args) => (await import("./helpHintJourney.js")).default(...args)],
   ["resource-bar-placeholder", async (...args) => (await import("./resourceBarPlaceholderJourney.js")).default(...args)],
+  ["placeholder-sizes", async (...args) => (await import("./placeholderSizesJourney.js")).default(...args)],
   ["own-tooltips", async (...args) => (await import("./ownTooltipsJourney.js")).default(...args)],
   ["interface-number-locale", async (...args) => (await import("./interfaceNumberLocaleJourney.js")).default(...args)],
   ["automatic-animation", async (...args) => (await import("./automaticAnimationJourney.js")).default(...args)],

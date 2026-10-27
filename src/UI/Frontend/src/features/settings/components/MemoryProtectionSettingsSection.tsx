@@ -123,10 +123,12 @@ export function MemoryProtectionSettingsSection(props: MemoryProtectionSettingsS
             <Show when={rejection()}>
               {(code) => <p role="alert" data-full-content={code()}>{copy().rejected(memoryProtectionReasonText(code()))}</p>}
             </Show>
+            {/* 状态到之前，生效状态和阈值一行的读数按有数据时的结构占位（“--”），这里只把正在读取读给读屏，不占位置：
+                数据到时下面的行不被推动（用户 10-27：「让占位和加载后状态的逻辑占位大小相等」）。 */}
             <Show when={!view()}>
               <Show
                 when={unavailable()}
-                fallback={<ContentState kind="waiting" title={copy().statusLoading} />}
+                fallback={<p class="sr-only" role="status">{copy().statusLoading}</p>}
               >
                 <ContentState kind="unavailable" title={copy().statusUnavailable} detail={copy().statusUnavailableDetail} />
               </Show>
@@ -139,15 +141,27 @@ export function MemoryProtectionSettingsSection(props: MemoryProtectionSettingsS
               </div>
               <SwitchControl ariaLabel={copy().enabledTitle} checked={settings().enabled} onChange={(enabled) => update({ enabled })} />
             </div>
-            <Show when={statusData()}>
-              {(current) => <ProtectionState status={current()} />}
+            {/* 读不到时照旧只有上面的说明，不摆占位。 */}
+            <Show when={statusData() || !unavailable()}>
+              <ProtectionState status={statusData()} />
             </Show>
 
             <div class="settings-row">
               <div class="settings-row-copy">
                 <strong>{copy().thresholdTitle}</strong>
                 <span>{copy().thresholdDescription}</span>
-                <Show when={statusData()}>
+                <Show
+                  when={statusData()}
+                  fallback={
+                    <Show when={!unavailable()}>
+                      <dl class="memory-protection-facts">
+                        <Fact label={copy().triggerBytes}>--</Fact>
+                        <Fact label={copy().remainingBytes}>--</Fact>
+                        <Fact label={copy().currentCommit}>--</Fact>
+                      </dl>
+                    </Show>
+                  }
+                >
                   {(current) => (
                     <dl class="memory-protection-facts">
                       <Fact label={copy().triggerBytes}>
@@ -409,11 +423,9 @@ export function MemoryProtectionSettingsSection(props: MemoryProtectionSettingsS
 
 // 保护是否生效和保留区是否建成分开显示：保留区在运行中出错时 active 仍为 true、reserve.built 为 false。
 // 两项都照后端给的值显示，不由一项推出另一项。
-function ProtectionState(props: { status: HostMemoryProtectionLiveStatus }) {
+// 状态还没到（status 为 null）时同一个结构占位：标题、四项的名称照常，读数写“--”，和有数据时一样高。
+function ProtectionState(props: { status: HostMemoryProtectionLiveStatus | null }) {
   const copy = () => uiText.memoryProtection;
-  const threshold = () => props.status.atOrAboveThreshold === null
-    ? copy().thresholdStateUnknown
-    : props.status.atOrAboveThreshold ? copy().thresholdStateReached : copy().thresholdStateBelow;
   return (
     <div class="settings-row settings-row-block memory-protection-state">
       <div class="settings-row-copy" role="status">
@@ -421,33 +433,60 @@ function ProtectionState(props: { status: HostMemoryProtectionLiveStatus }) {
           <strong>{copy().effectiveTitle}</strong>
           <HelpHint label={copy().effectiveHintLabel}>{copy().effectiveHint}</HelpHint>
         </div>
-        <span class="memory-protection-effective" data-active={String(props.status.active)}
-          data-full-content={props.status.inactiveReason ?? undefined}>
-          {props.status.active ? copy().effective : copy().inactive(memoryProtectionReasonText(props.status.inactiveReason!))}
-        </span>
-        <dl class="memory-protection-facts">
-          <Fact label={copy().reserveTitle}>
-            <span class="memory-protection-built memory-protection-state-reserve" classList={{ failed: !props.status.reserve.built }}
-              data-full-content={props.status.reserve.reason ?? undefined}>
-              {builtStateText(props.status.reserve.built, props.status.reserve.reason)}
-            </span>
-          </Fact>
-          <Fact label={copy().thresholdState}>
-            <span class="memory-protection-threshold-state" data-state={String(props.status.atOrAboveThreshold)}>{threshold()}</span>
-          </Fact>
-          <Fact label={copy().currentAction}>
-            {props.status.currentActionId === null
-              ? copy().currentActionNone
-              : <code class="memory-protection-path">{props.status.currentActionId}</code>}
-          </Fact>
-          <Fact label={copy().decisionTitle} wide>
-            <span class="memory-protection-decision" data-reason={props.status.decisionReason ?? ""}>
-              {props.status.decisionReason === null ? copy().decisionNone : memoryProtectionDecisionText(props.status.decisionReason)}
-            </span>
-          </Fact>
-        </dl>
+        <Show
+          when={props.status}
+          fallback={
+            <>
+              <span>--</span>
+              <dl class="memory-protection-facts">
+                <Fact label={copy().reserveTitle}>--</Fact>
+                <Fact label={copy().thresholdState}>--</Fact>
+                <Fact label={copy().currentAction}>--</Fact>
+                <Fact label={copy().decisionTitle} wide>--</Fact>
+              </dl>
+            </>
+          }
+        >
+          {(status) => <ProtectionStateValues status={status()} />}
+        </Show>
       </div>
     </div>
+  );
+}
+
+function ProtectionStateValues(props: { status: HostMemoryProtectionLiveStatus }) {
+  const copy = () => uiText.memoryProtection;
+  const threshold = () => props.status.atOrAboveThreshold === null
+    ? copy().thresholdStateUnknown
+    : props.status.atOrAboveThreshold ? copy().thresholdStateReached : copy().thresholdStateBelow;
+  return (
+    <>
+      <span class="memory-protection-effective" data-active={String(props.status.active)}
+        data-full-content={props.status.inactiveReason ?? undefined}>
+        {props.status.active ? copy().effective : copy().inactive(memoryProtectionReasonText(props.status.inactiveReason!))}
+      </span>
+      <dl class="memory-protection-facts">
+        <Fact label={copy().reserveTitle}>
+          <span class="memory-protection-built memory-protection-state-reserve" classList={{ failed: !props.status.reserve.built }}
+            data-full-content={props.status.reserve.reason ?? undefined}>
+            {builtStateText(props.status.reserve.built, props.status.reserve.reason)}
+          </span>
+        </Fact>
+        <Fact label={copy().thresholdState}>
+          <span class="memory-protection-threshold-state" data-state={String(props.status.atOrAboveThreshold)}>{threshold()}</span>
+        </Fact>
+        <Fact label={copy().currentAction}>
+          {props.status.currentActionId === null
+            ? copy().currentActionNone
+            : <code class="memory-protection-path">{props.status.currentActionId}</code>}
+        </Fact>
+        <Fact label={copy().decisionTitle} wide>
+          <span class="memory-protection-decision" data-reason={props.status.decisionReason ?? ""}>
+            {props.status.decisionReason === null ? copy().decisionNone : memoryProtectionDecisionText(props.status.decisionReason)}
+          </span>
+        </Fact>
+      </dl>
+    </>
   );
 }
 

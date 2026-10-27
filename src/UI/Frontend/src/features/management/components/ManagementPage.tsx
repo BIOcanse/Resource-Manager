@@ -110,6 +110,7 @@ export function ManagementPage(props: ManagementPageProps) {
             state={props.softwareObservation}
             label={uiText.managementPage.softwareRegistrySupplement}
             profileDisabledMessage={uiText.managementPage.softwareRegistrySupplementDisabled}
+            presentation="announce-loading"
           />
         </Show>
         {/* 只提供查看的启动配置：安装、卸载、校验都不可用，原因在列表上方写一次。 */}
@@ -120,6 +121,7 @@ export function ManagementPage(props: ManagementPageProps) {
           <ObservationStateNotice
             state={props.operationsObservation}
             label={uiText.managementPage.operationState}
+            presentation="announce-loading"
           />
         </Show>
         <ObservationStateBoundary

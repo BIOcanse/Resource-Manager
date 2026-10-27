@@ -139,6 +139,7 @@ export function OptimizationPage(props: OptimizationPageProps) {
       <ObservationStateNotice
         state={props.hostManagerObservation}
         label={uiText.optimization.scheduleStateLabel}
+        presentation="announce-loading"
       />
       <nav
         {...frontendVisibilitySurface(

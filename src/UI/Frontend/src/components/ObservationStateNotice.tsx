@@ -11,7 +11,13 @@ interface ObservationStateNoticeProps {
   label: string;
   profileDisabledMessage?: string;
   onRetry?: () => void;
-  presentation?: "all" | "blocking-only";
+  /**
+   * all：每个非就绪状态各显示一条提示。提示站在内容的位置上：内容到之前由它占位（ObservationStateBoundary 不渲染内容时）。
+   * announce-loading：提示在已经摆着的内容上方，加载完成后这里什么也没有。加载中只读给读屏、不占位置，
+   *   数据到时下面的内容不被推动（用户 10-27：「让占位和加载后状态的逻辑占位大小相等」）；过期、读不到、未启用照常显示。
+   * blocking-only：只显示读不到和未启用。
+   */
+  presentation?: "all" | "announce-loading" | "blocking-only";
 }
 
 interface ObservationStateBoundaryProps extends ObservationStateNoticeProps {
@@ -55,24 +61,29 @@ export function ObservationStateNotice(props: ObservationStateNoticeProps) {
 
   return (
     <Show when={visible()}>
-      <div
-        class={`observation-state ${props.state.status}`}
-        role={props.state.status === "error" ? "alert" : "status"}
-        aria-live="polite"
+      <Show
+        when={!(props.presentation === "announce-loading" && props.state.status === "loading")}
+        fallback={<p class="sr-only" role="status" aria-live="polite">{title()}</p>}
       >
-        <strong>{title()}</strong>
-        <Show when={capturedAt()}>
-          {(value) => <span>{uiText.observationNotice.capturedAt(value())}</span>}
-        </Show>
-        <Show when={detail()}>
-          {(value) => <span>{value()}</span>}
-        </Show>
-        <Show when={props.state.status === "error" && props.onRetry}>
-          <button class="secondary" type="button" onClick={() => props.onRetry?.()}>
-            {uiText.observationNotice.retry}
-          </button>
-        </Show>
-      </div>
+        <div
+          class={`observation-state ${props.state.status}`}
+          role={props.state.status === "error" ? "alert" : "status"}
+          aria-live="polite"
+        >
+          <strong>{title()}</strong>
+          <Show when={capturedAt()}>
+            {(value) => <span>{uiText.observationNotice.capturedAt(value())}</span>}
+          </Show>
+          <Show when={detail()}>
+            {(value) => <span>{value()}</span>}
+          </Show>
+          <Show when={props.state.status === "error" && props.onRetry}>
+            <button class="secondary" type="button" onClick={() => props.onRetry?.()}>
+              {uiText.observationNotice.retry}
+            </button>
+          </Show>
+        </div>
+      </Show>
     </Show>
   );
 }
