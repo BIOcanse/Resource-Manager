@@ -80,7 +80,7 @@ export default createSettingsLocale("ko-KR", {
     "saving": "저장 중",
     "saved": "저장됨",
     "constrained": "저장됨. 현재 사용할 수 없는 실행 옵션은 제한되었습니다",
-    "partial": "저장되었지만 일부는 적용되지 않음",
+    "partial": "저장됨. 실행 계획의 게시 또는 전달이 완료되지 않았습니다",
     "error": "저장 실패",
     "dirty": "저장되지 않음",
     "conflict": "다른 곳에서 설정이 변경되었습니다. 저장 전에 다시 불러오세요"
@@ -97,7 +97,7 @@ export default createSettingsLocale("ko-KR", {
     "restoreDefaults": "기본값 복원",
     "retry": "다시 시도",
     "reload": "다시 불러오기",
-    "reapply": "다시 적용"
+    "reapply": "실행 계획 다시 게시"
   },
   "performance": {
     "preciseGpuPlacementTitle": "정확한 GPU 선택",

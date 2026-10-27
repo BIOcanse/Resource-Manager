@@ -16,7 +16,7 @@ const zhCnSettingsCopy: SettingsCopy = {
     saving: "保存中",
     saved: "已保存",
     constrained: "已保存；当前运行模式已限制不适用项",
-    partial: "已保存，但尚未完全应用",
+    partial: "已保存，运行计划尚未完成发布或投递",
     error: "保存失败",
     dirty: "未保存",
     conflict: "设置已在其他位置更新，请重新加载"
@@ -33,7 +33,7 @@ const zhCnSettingsCopy: SettingsCopy = {
     restoreDefaults: "恢复为默认",
     retry: "重试",
     reload: "重新加载",
-    reapply: "重新应用"
+    reapply: "重新发布运行计划"
   },
   performance: {
     preciseGpuPlacementTitle: "精确 GPU 选择",
@@ -407,7 +407,7 @@ const enSettingsCopy: SettingsCopy = {
     saving: "Saving",
     saved: "Saved",
     constrained: "Saved; unavailable runtime options were constrained",
-    partial: "Saved, but not fully applied",
+    partial: "Saved; runtime plan publication or delivery is incomplete",
     error: "Save failed",
     dirty: "Unsaved",
     conflict: "Settings changed elsewhere; reload before saving"
@@ -424,7 +424,7 @@ const enSettingsCopy: SettingsCopy = {
     restoreDefaults: "Restore Defaults",
     retry: "Retry",
     reload: "Reload",
-    reapply: "Apply Again"
+    reapply: "Republish runtime plan"
   },
   performance: {
     preciseGpuPlacementTitle: "Precise GPU selection",

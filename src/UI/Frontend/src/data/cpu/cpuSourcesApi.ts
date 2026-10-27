@@ -7,7 +7,8 @@ import type {
 import {
   cpuExclusiveBindingsDecoder,
   cpuResidencyDecoder,
-  cpuTopologyDecoder
+  cpuTopologyDecoder,
+  type CpuObservationResult
 } from "./cpuSourceDecoders.ts";
 import { uiText } from "../../text.ts";
 
@@ -26,7 +27,7 @@ export function buildCpuResidencySubscriptionUrl(intervalMs: number): string {
 export function getCpuTopologySource(
   requestClient: CpuRequestClient,
   signal?: AbortSignal
-): Promise<CpuTopologySnapshot | null> {
+): Promise<CpuObservationResult<CpuTopologySnapshot>> {
   return requestClient.request({
     key: "cpu.topology",
     url: "/api/cpu/topology",
@@ -40,7 +41,7 @@ export function getCpuTopologySource(
 export function getCpuResidencySource(
   requestClient: CpuRequestClient,
   signal?: AbortSignal
-): Promise<CpuCoreResidencySnapshot | null> {
+): Promise<CpuObservationResult<CpuCoreResidencySnapshot>> {
   return requestClient.request({
     key: "cpu.residency",
     url: "/api/cpu/residency",
@@ -54,7 +55,7 @@ export function getCpuResidencySource(
 export function getCpuExclusiveBindingsSource(
   requestClient: CpuRequestClient,
   signal?: AbortSignal
-): Promise<CpuExclusiveBindingSnapshot | null> {
+): Promise<CpuObservationResult<CpuExclusiveBindingSnapshot>> {
   return requestClient.request({
     key: "cpu.exclusive-bindings",
     url: "/api/cpu/topology/exclusive-bindings",

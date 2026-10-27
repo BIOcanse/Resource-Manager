@@ -94,6 +94,9 @@ const defaultScenario = {
     browserRuntimeRevision: "0"
   },
   cpuTopologyEmpty: false,
+  cpuResidencyUnavailable: false,
+  runtimePolicyDisposition: "committedAndPublished",
+  runtimePolicyStartupDisposition: "applied",
   cpuTopologyUsageOffset: 0,
   cpuTopologyLayoutKind: "grid",
   // 规范字段的设备值（/api/metrics/subscribe?fields=）。默认没有任何设备绑定。
@@ -826,6 +829,27 @@ async function handleApi(request, response, url) {
       adapters: []
     });
   }
+  const softwarePolicyWrite = path.match(/^\/api\/gpu-placement\/software\/([^/]+)\/policy$/);
+  const performanceWrite = path === "/api/cpu/topology/performance-overrides" || path === "/api/gpu/performance-overrides";
+  if ((request.method === "PUT" && (softwarePolicyWrite || path === "/api/gpu-placement/process-policy" || performanceWrite))
+    || (request.method === "DELETE" && performanceWrite)) {
+    const input = request.method === "PUT" ? JSON.parse(await readBody(request)) : null;
+    const policy = path === "/api/cpu/topology/performance-overrides"
+      ? { cpuName: input?.cpuName ?? url.searchParams.get("cpuName"), scoresByCoreIndex: Object.fromEntries((input?.scores ?? []).map(item => [item.coreIndex, item.performanceScore])), updatedAt: now(), storagePath: "frontend-harness" }
+      : path === "/api/gpu/performance-overrides"
+        ? { scoresByGpuId: Object.fromEntries((input?.scores ?? []).map(item => [item.gpuId, item.performanceScore])), updatedAt: now(), storagePath: "frontend-harness" }
+        : input;
+    const disposition = scenario.runtimePolicyDisposition;
+    const startup = path === "/api/gpu-placement/process-policy" ? scenario.runtimePolicyStartupDisposition : "notAttempted";
+    return json(response, disposition === "savedNotApplied" || startup === "applyFailed" ? 409 : disposition === "committedWithDeliveryFailures" ? 202 : 200, {
+      policy, startupInterception: null, runtimeApplicationDisposition: disposition,
+      startupInterceptionDisposition: startup,
+      runtimePlanVersion: disposition === "savedNotApplied" ? null : 1,
+      runtimePublicationSequence: disposition === "savedNotApplied" ? null : 1,
+      runtimeDeliveryFailureCount: disposition === "committedWithDeliveryFailures" ? 1 : 0,
+      failureCode: disposition === "savedNotApplied" ? "runtime-plan-publication-failed" : startup === "applyFailed" ? "startup-interception-apply-failed" : null
+    });
+  }
   if (path === "/api/gpu/performance-overrides") {
     return json(response, 200, {
       scoresByGpuId: {},
@@ -890,10 +914,10 @@ async function handleApi(request, response, url) {
     return json(response, 200, { capturedAt: now(), bootedAt: now(), uptimeSeconds: 3600 });
   }
   if (path === "/api/cpu/topology") {
-    return json(response, 200, scenario.cpuTopologyEmpty ? null : fixtureCpuTopology());
+    return json(response, 200, scenario.cpuTopologyEmpty ? { state: "unavailable", reasonCode: "cpu-topology-not-published" } : fixtureCpuTopology());
   }
   if (path === "/api/cpu/residency") {
-    return json(response, 200, fixtureCpuResidency());
+    return json(response, 200, scenario.cpuResidencyUnavailable ? { state: "unavailable", reasonCode: "cpu-residency-window-unavailable" } : fixtureCpuResidency());
   }
   if (path === "/api/cpu/baseline-ratio") {
     if (request.method === "GET") {
@@ -917,6 +941,7 @@ async function handleApi(request, response, url) {
     }
   }
   if (path === "/api/cpu/topology/exclusive-bindings") {
+    if (scenario.cpuTopologyEmpty) return json(response, 200, { state: "unavailable", reasonCode: "cpu-topology-not-published" });
     return json(response, 200, {
       capturedAt: now(),
       cpuName: "Frontend Harness CPU",
@@ -1423,6 +1448,8 @@ const scenarioChoices = {
   deviceTopologyMachineIdentity: [null, "workstation", "mobile_workstation", "laptop", "desktop", "unknown"],
   deviceTopologyWireless: [null, "standards", "unknown"],
   metricCatalogAddresses: ["none", "reading-source"],
+  runtimePolicyDisposition: ["committedAndPublished", "committedWithDeliveryFailures", "savedNotApplied"],
+  runtimePolicyStartupDisposition: ["applied", "notAttempted", "applyFailed"],
   settingsRuntimeDisposition: ["committedAndApplied", "committedWithCapabilityConstraints", "committedWithDeliveryFailures", "savedNotApplied"],
   gpuDedicatedMemoryMetrics: [true, false, null],
   metricCatalogComponent: ["none", "missing", "installed"],

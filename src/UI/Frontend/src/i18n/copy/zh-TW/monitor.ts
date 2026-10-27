@@ -141,6 +141,8 @@ export const zhMonitorCopy = {
     factsBalance: (processes: string, residual: string) => `程序合計 ${processes}；系統/驅動程式保留（殘差） ${residual}`,
     factsWindow: (seconds: string) => `取樣視窗 ${seconds} 秒`,
     unavailableReasons: {
+      "cpu-topology-not-published": { label: "CPU 拓撲尚未發布", hint: "後端尚未發布 CPU 拓撲快照。" },
+      "cpu-residency-window-unavailable": { label: "CPU 駐留視窗無法使用", hint: "後端目前沒有可用的 CPU 駐留取樣視窗。" },
       "gpu-dedicated-memory-total-unavailable": { label: "無獨立視訊記憶體", hint: "此 GPU 只使用共用系統記憶體，沒有獨立視訊記憶體總量，因此不列出視訊記憶體分項。" },
       "system-total-unavailable": { label: "無整機讀數", hint: "此指標的整機總量本次未讀到，因此不列出分項。" },
       "gpu-measure-observation-unavailable": { label: "無引擎取樣", hint: "此 GPU 引擎本次沒有同一視窗的完整取樣，因此不列出分項。" },

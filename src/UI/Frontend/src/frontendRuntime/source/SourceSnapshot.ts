@@ -15,6 +15,7 @@ export interface SourceSnapshot<T> {
   readonly status: SourceStatus;
   readonly data: T | null;
   readonly error: unknown | null;
+  readonly unavailableReason?: string | null;
   readonly backendEpoch: string | null;
   readonly revision: number;
   readonly acceptedAttempt: number | null;

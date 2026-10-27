@@ -470,6 +470,7 @@ export type BackendAppPerformanceSettings = Omit<AppPerformanceSettings,
   "monitorRefreshIntervalMs" | "resourceTableRefreshIntervalMs" | "localSystemRefreshIntervalMs">;
 export type BackendAppSettings = Omit<AppSettings, "appearance" | "performance"> & { performance?: BackendAppPerformanceSettings };
 
+/** Application settings keep their own backend disposition contract. */
 export interface AppSettingsResult {
   serviceRecovery?: ServiceRecoveryDiagnostics;
   settings?: BackendAppSettings;
@@ -951,11 +952,12 @@ export interface GpuLaunchExecutionReport {
   occurredAt: string;
 }
 
+/** Publication and delivery acknowledgement; scheduler execution is not observed here. */
 export interface RuntimePolicySaveResult<T> {
   policy: T;
   startupInterception?: GpuLaunchInterceptionStatus | null;
   runtimeApplicationDisposition:
-    | "committedAndApplied"
+    | "committedAndPublished"
     | "committedWithDeliveryFailures"
     | "savedNotApplied";
   startupInterceptionDisposition: "applied" | "notAttempted" | "applyFailed";
@@ -1821,7 +1823,7 @@ export type DetailValue = string | number | boolean | null | undefined | DetailV
 export type DetailRow = [string, DetailValue];
 
 export interface DetailNotice {
-  onRuntimeApplied?: () => void;
+  onRuntimePublished?: () => void;
   message: string;
   tone?: "info" | "success" | "warning" | "error" | "progress";
   details?: string[];

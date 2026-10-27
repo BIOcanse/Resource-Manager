@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { classifySettingsApplicationOutcome } from "../src/features/settings/settingsApplicationDisposition.ts";
 
-test("only a fully delivered settings publication is applied", () => {
-  assert.equal(classifySettingsApplicationOutcome("committedAndApplied"), "applied");
+test("only a fully delivered settings publication is published", () => {
+  assert.equal(classifySettingsApplicationOutcome("committedAndApplied"), "published");
   assert.equal(
     classifySettingsApplicationOutcome("committedWithCapabilityConstraints"),
     "capability-constrained");

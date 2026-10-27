@@ -6,6 +6,7 @@ import {
   requireNonEmptyString,
   requireNonNegativeSafeInteger,
   requireRecord,
+  requireOneOf,
   requireSafeInteger,
   requireStringArray,
   ResponseDecodeError
@@ -27,10 +28,9 @@ import type {
   CpuTopologySnapshot
 } from "../../types.ts";
 
-export const cpuTopologyDecoder = defineResponseDecoder<CpuTopologySnapshot | null>(
+const cpuTopologySnapshotDecoder = defineResponseDecoder<CpuTopologySnapshot>(
   "cpu.topology.v1",
   (value) => {
-    if (value === null) return null;
     const record = requireRecord(value);
     return {
       capturedAt: requireTimestamp(record.capturedAt, "$.capturedAt"),
@@ -66,10 +66,9 @@ export const cpuTopologyDecoder = defineResponseDecoder<CpuTopologySnapshot | nu
     };
   });
 
-export const cpuResidencyDecoder = defineResponseDecoder<CpuCoreResidencySnapshot | null>(
+const cpuResidencySnapshotDecoder = defineResponseDecoder<CpuCoreResidencySnapshot>(
   "cpu.residency.v1",
   (value) => {
-    if (value === null) return null;
     const record = requireRecord(value);
     return {
       capturedAt: requireTimestamp(record.capturedAt, "$.capturedAt"),
@@ -86,11 +85,10 @@ export const cpuResidencyDecoder = defineResponseDecoder<CpuCoreResidencySnapsho
     };
   });
 
-export const cpuExclusiveBindingsDecoder =
-  defineResponseDecoder<CpuExclusiveBindingSnapshot | null>(
+const cpuExclusiveBindingsSnapshotDecoder =
+  defineResponseDecoder<CpuExclusiveBindingSnapshot>(
     "cpu.exclusive-bindings.v1",
     (value) => {
-      if (value === null) return null;
       const record = requireRecord(value);
       return {
         capturedAt: requireTimestamp(record.capturedAt, "$.capturedAt"),
@@ -101,6 +99,33 @@ export const cpuExclusiveBindingsDecoder =
             `$.bindings[${index}]`))
       };
     });
+
+/** Explicit GET absence; subscription frames retain their original nullable snapshot contract. */
+export interface CpuObservationUnavailable {
+  readonly state: "unavailable";
+  readonly reasonCode: string;
+}
+export type CpuObservationResult<T> = T | CpuObservationUnavailable;
+
+function decodeObservation<T>(value: unknown, decodeSnapshot: (value: unknown) => T): CpuObservationResult<T> {
+  const record = requireRecord(value);
+  if ("state" in record) return {
+    state: requireOneOf(record.state, "$.state", ["unavailable"]),
+    reasonCode: requireNonEmptyString(record.reasonCode, "$.reasonCode")
+  };
+  return decodeSnapshot(value);
+}
+
+export const cpuTopologyDecoder = defineResponseDecoder<CpuObservationResult<CpuTopologySnapshot>>(
+  "cpu.topology.get.v2", value => decodeObservation(value, cpuTopologySnapshotDecoder.decode));
+export const cpuResidencyDecoder = defineResponseDecoder<CpuObservationResult<CpuCoreResidencySnapshot>>(
+  "cpu.residency.get.v2", value => decodeObservation(value, cpuResidencySnapshotDecoder.decode));
+export const cpuExclusiveBindingsDecoder = defineResponseDecoder<CpuObservationResult<CpuExclusiveBindingSnapshot>>(
+  "cpu.exclusive-bindings.get.v2", value => decodeObservation(value, cpuExclusiveBindingsSnapshotDecoder.decode));
+export const cpuTopologySubscriptionDecoder = defineResponseDecoder<CpuTopologySnapshot | null>(
+  "cpu.topology.v1", value => value === null ? null : cpuTopologySnapshotDecoder.decode(value));
+export const cpuResidencySubscriptionDecoder = defineResponseDecoder<CpuCoreResidencySnapshot | null>(
+  "cpu.residency.v1", value => value === null ? null : cpuResidencySnapshotDecoder.decode(value));
 
 function decodeSpecification(value: unknown, path: string): CpuSpecificationModel {
   const record = requireRecord(value, path);

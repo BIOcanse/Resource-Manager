@@ -80,7 +80,7 @@ export default createSettingsLocale("ja-JP", {
     "saving": "保存中",
     "saved": "保存済み",
     "constrained": "保存済み。現在利用できない動作オプションは制限されました",
-    "partial": "保存済みですが、一部は未適用です",
+    "partial": "保存済み。実行計画の公開または配信が完了していません",
     "error": "保存に失敗",
     "dirty": "未保存",
     "conflict": "ほかの場所で設定が変更されました。保存前に再読み込みしてください"
@@ -97,7 +97,7 @@ export default createSettingsLocale("ja-JP", {
     "restoreDefaults": "初期値に戻す",
     "retry": "再試行",
     "reload": "再読み込み",
-    "reapply": "再適用"
+    "reapply": "実行計画を再公開"
   },
   "performance": {
     "preciseGpuPlacementTitle": "GPU の正確な選択",

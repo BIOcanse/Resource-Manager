@@ -1,0 +1,52 @@
+import assert from "node:assert/strict";
+import { createFrontendSources } from "../src/frontendRuntime/source/FrontendSources.ts";
+import { SourceRegistry } from "../src/frontendRuntime/source/SourceRegistry.ts";
+import { RequestClient } from "../src/frontendRuntime/request/RequestClient.ts";
+import { BackendSessionOwner } from "../src/frontendRuntime/session/BackendSessionOwner.ts";
+import { BackendSubscriptionChannel } from "../src/frontendRuntime/push/BackendSubscriptionChannel.ts";
+import { getCpuTopologySource, getCpuResidencySource } from "../src/data/cpu/cpuSourcesApi.ts";
+import { sourceCanRender } from "../src/frontendRuntime/source/SourceSnapshot.ts";
+
+const session = new BackendSessionOwner({ transport: null, allowStandalone: true });
+const channel = new BackendSubscriptionChannel({ backendSession: session });
+const registry = new SourceRegistry(session);
+let result: unknown = { state: "unavailable", reasonCode: "cpu-topology-not-published" };
+const calls: string[] = [];
+const client = new RequestClient(session, { transport: async url => { calls.push(url); return result; } });
+try {
+  assert.deepEqual(await getCpuTopologySource(client), result);
+  result = { state: "unavailable", reasonCode: "cpu-residency-window-unavailable" };
+  assert.deepEqual(await getCpuResidencySource(client), result);
+  const source = createFrontendSources(client, registry, channel).cpuExclusiveBindings;
+  const lease = source.acquire({ active: false });
+  const ready = { capturedAt: "2026-10-27T00:00:00Z", cpuName: "Fixture CPU", bindings: [] };
+  result = ready;
+  assert.equal((await lease.refresh()).status, "ready");
+  assert.ok(sourceCanRender(lease.snapshot));
+  result = { state: "unavailable", reasonCode: "cpu-topology-not-published" };
+  const unavailable = await lease.refresh();
+  assert.equal(unavailable.status, "unavailable");
+  assert.equal(unavailable.unavailableReason, "cpu-topology-not-published");
+  assert.deepEqual(unavailable.data, result);
+  assert.equal(unavailable.error, null);
+  assert.equal(sourceCanRender(unavailable), false, "backend absence cannot render previous bindings or an empty list");
+  result = { state: "unavailable", reasonCode: "future-backend-reason" };
+  assert.equal((await lease.refresh()).unavailableReason, "future-backend-reason");
+  result = null;
+  assert.equal((await lease.refresh()).status, "error", "old null GET payload fails decoding");
+  result = ready;
+  const recovered = await lease.refresh();
+  assert.equal(recovered.status, "ready");
+  assert.equal(recovered.unavailableReason, null);
+  assert.deepEqual(recovered.data, ready);
+  const accepted = lease.acceptAuthoritative({ state: "unavailable", reasonCode: "cpu-topology-not-published" });
+  assert.equal(accepted.status, "unavailable");
+  assert.equal(accepted.unavailableReason, "cpu-topology-not-published");
+  assert.equal(calls[0], "/api/cpu/topology");
+  assert.equal(calls[1], "/api/cpu/residency");
+  assert.ok(calls.slice(2).every(path => path === "/api/cpu/topology/exclusive-bindings"));
+  lease.release();
+} finally {
+  channel.dispose(); registry.dispose(); session.dispose();
+}
+console.log("CPU GET sources preserve backend absence, reasons, decode failures and recovery");

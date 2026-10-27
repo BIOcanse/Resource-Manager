@@ -79,7 +79,7 @@ export default createSettingsLocale("zh-TW", {
     "saving": "儲存中",
     "saved": "已儲存",
     "constrained": "已儲存；當前執行模式已限制不適用項",
-    "partial": "已儲存，但尚未完全應用",
+    "partial": "已儲存，執行計畫尚未完成發布或投遞",
     "error": "儲存失敗",
     "dirty": "未儲存",
     "conflict": "設定已在其他位置更新，請重新載入"
@@ -96,7 +96,7 @@ export default createSettingsLocale("zh-TW", {
     "restoreDefaults": "恢復為預設",
     "retry": "重試",
     "reload": "重新載入",
-    "reapply": "重新應用"
+    "reapply": "重新發布執行計畫"
   },
   "performance": {
     "preciseGpuPlacementTitle": "精確 GPU 選擇",

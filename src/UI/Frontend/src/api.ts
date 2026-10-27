@@ -15,9 +15,6 @@ import type {
   ComponentVersionOptions,
   CpuCorePerformanceOverrideRequest,
   CpuCorePerformanceOverrideResult,
-  CpuExclusiveBindingSnapshot,
-  CpuCoreResidencySnapshot,
-  CpuTopologySnapshot,
   DashboardSettings,
   GpuPlacementProcessObservationRequest,
   GpuPlacementProcessPolicy,
@@ -50,6 +47,8 @@ import { ApiRequestError, requestJson, requestNoContent } from "./api/httpTransp
 import { reportRuleSettingsDecoder } from "./data/appSettings/reportRuleSettingsDecoder.ts";
 import { metricCatalogDecoder } from "./data/monitor/monitorSourceDecoders.ts";
 import { metricOfferedInPicker } from "./presentation/metricPresentation.ts";
+import { cpuTopologyDecoder, cpuResidencyDecoder, cpuExclusiveBindingsDecoder } from "./data/cpu/cpuSourceDecoders.ts";
+import { decodeRuntimePolicySaveResult } from "./api/runtimePolicySaveResultDecoder.ts";
 import { uiText } from "./text.ts";
 import { withProcessActionElevation } from "./processes/elevatedProcessAction.ts";
 
@@ -198,15 +197,15 @@ export async function getGpuSpecializedTelemetry(counterIds: string[] | null = n
 }
 
 export async function getCpuTopology() {
-  return getJson<CpuTopologySnapshot | null>("/api/cpu/topology");
+  return cpuTopologyDecoder.decode(await getJson<unknown>("/api/cpu/topology"));
 }
 
 export async function getCpuResidency() {
-  return getJson<CpuCoreResidencySnapshot>("/api/cpu/residency");
+  return cpuResidencyDecoder.decode(await getJson<unknown>("/api/cpu/residency"));
 }
 
 export async function getCpuExclusiveBindings() {
-  return getJson<CpuExclusiveBindingSnapshot>("/api/cpu/topology/exclusive-bindings");
+  return cpuExclusiveBindingsDecoder.decode(await getJson<unknown>("/api/cpu/topology/exclusive-bindings"));
 }
 
 export async function saveCpuCorePerformanceOverrides(request: CpuCorePerformanceOverrideRequest) {
@@ -373,18 +372,18 @@ function resetRuntimePolicy<T>(url: string, fallbackError: string) {
 
 async function writeRuntimePolicy<T>(url: string, method: string, body: unknown, fallbackError: string): Promise<RuntimePolicySaveResult<T>> {
   try {
-    return await requestJson<RuntimePolicySaveResult<T>>(url, {
+    return decodeRuntimePolicySaveResult<T>(await requestJson<unknown>(url, {
       method,
       headers: { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
       fallbackError
-    });
+    }));
   } catch (error) {
     const payload = error instanceof ApiRequestError
       ? error.payload as RuntimePolicySaveResult<T> | null : null;
     if (payload?.policy && (payload.runtimeApplicationDisposition === "savedNotApplied"
       || payload.startupInterceptionDisposition === "applyFailed")) {
-      return payload;
+      return decodeRuntimePolicySaveResult<T>(payload);
     }
     throw error;
   }

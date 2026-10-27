@@ -80,7 +80,7 @@ export default createSettingsLocale("de-DE", {
     "saving": "Speichern",
     "saved": "Gespeichert",
     "constrained": "Gespeichert; nicht verfügbare Laufzeitoptionen wurden eingeschränkt",
-    "partial": "Gespeichert, aber nicht vollständig angewendet",
+    "partial": "Gespeichert; Veröffentlichung oder Zustellung des Laufzeitplans ist unvollständig",
     "error": "Speichern fehlgeschlagen",
     "dirty": "Ungespeichert",
     "conflict": "Einstellungen wurden anderswo geändert; vor dem Speichern neu laden"
@@ -97,7 +97,7 @@ export default createSettingsLocale("de-DE", {
     "restoreDefaults": "Standardwerte wiederherstellen",
     "retry": "Erneut versuchen",
     "reload": "Neu laden",
-    "reapply": "Erneut anwenden"
+    "reapply": "Laufzeitplan erneut veröffentlichen"
   },
   "performance": {
     "preciseGpuPlacementTitle": "Genaue GPU-Auswahl",

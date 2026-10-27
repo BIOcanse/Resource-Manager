@@ -6,6 +6,8 @@ import type {
 export interface SourceDescriptor<T> {
   readonly key: string;
   readonly load: (signal: AbortSignal, options: SourceRefreshOptions) => Promise<T>;
+  /** Backend absence is an accepted value, with its original reason code. */
+  readonly selectUnavailableReason?: (value: T) => string | null;
   readonly retryPolicy?: SourceRetryPolicy;
   readonly mergeValue?: (previous: T | null, incoming: T) => T;
   readonly selectDomainRevision?: (value: T) => SourceDomainRevision;

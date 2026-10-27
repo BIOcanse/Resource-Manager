@@ -78,6 +78,7 @@ import accessibilitySemanticsJourney from "./accessibilitySemanticsJourney.js";
 // 旅程登记表：[名称, (page, baseUrl, options) => 结果]。运行机制（工作进程、按语言拆分、输出和计时）在
 // browserGateRunner.mjs，用法见那里的说明。
 const allJourneys = [
+  ["core-lease-contract", async (...args) => (await import("./coreLeaseContractJourney.js")).default(...args)],
   ["management-source-states", managementSourceStatesJourney],
   ["monitor-page-task", async (...args) => (await import("./monitorPageTaskJourney.js")).default(...args)],
   ["live-keyboard-focus", async (...args) => (await import("./liveKeyboardFocusJourney.js")).default(...args)],

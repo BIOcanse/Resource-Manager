@@ -80,7 +80,7 @@ export default createSettingsLocale("fr-FR", {
     "saving": "Enregistrement",
     "saved": "Enregistré",
     "constrained": "Enregistré ; les options indisponibles ont été limitées",
-    "partial": "Enregistré, mais pas entièrement appliqué",
+    "partial": "Enregistré ; la publication ou la transmission du plan d’exécution est incomplète",
     "error": "Échec de l'enregistrement",
     "dirty": "Non enregistré",
     "conflict": "Paramètres modifiés ailleurs ; rechargez avant d’enregistrer"
@@ -97,7 +97,7 @@ export default createSettingsLocale("fr-FR", {
     "restoreDefaults": "Rétablir les valeurs par défaut",
     "retry": "Réessayer",
     "reload": "Recharger",
-    "reapply": "Appliquer à nouveau"
+    "reapply": "Republier le plan d’exécution"
   },
   "performance": {
     "preciseGpuPlacementTitle": "Sélection précise du GPU",

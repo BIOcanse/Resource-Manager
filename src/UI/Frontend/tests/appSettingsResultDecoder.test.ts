@@ -26,6 +26,10 @@ const source = {
 };
 
 const decoded = appSettingsResultDecoder.decode(source);
+for (const disposition of ["notRequested", "rejectedBeforeCommit", "committedAndApplied",
+  "committedWithCapabilityConstraints", "committedWithDeliveryFailures", "savedNotApplied", "revisionConflict"]) {
+  assert.equal(appSettingsResultDecoder.decode({ ...source, runtimeApplicationDisposition: disposition }).runtimeApplicationDisposition, disposition);
+}
 assert.equal(decoded.revision, "revision-a");
 assert.equal(decoded.settings.version, "1.0.23");
 assert.deepEqual(
@@ -41,6 +45,7 @@ for (const [value, expectedPath] of [
   [{ ...source, settings: { ...source.settings, version: "" } }, "$.settings.version"],
   [{ ...source, revision: "" }, "$.revision"],
   [{ ...source, settings: { ...source.settings, appearance: [] } }, "$.settings"],
+  [{ ...source, runtimeApplicationDisposition: "committedAndPublished" }, "$.runtimeApplicationDisposition"],
   [{ ...source, runtimeApplicationDisposition: "maybe" }, "$.runtimeApplicationDisposition"],
   [{ ...source, settings: { ...source.settings, control: { reassertionIntervalSeconds: 0 } } }, "$.settings.control.reassertionIntervalSeconds"],
   [{ ...source, settings: { ...source.settings, control: { reassertionIntervalSeconds: 86401 } } }, "$.settings.control.reassertionIntervalSeconds"],

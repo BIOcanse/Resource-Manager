@@ -281,12 +281,12 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
           applySettingsPatch(settings(), newerEdits), settings()));
       });
       setRuntimeCapabilityConstrainedPaths(result.runtimeCapabilityConstrainedPaths ?? []);
-      setSaveState(outcome === "applied"
+      setSaveState(outcome === "published"
         ? isDirty() ? "idle" : "saved"
         : outcome === "capability-constrained"
           ? "constrained"
           : "partial");
-      if (outcome === "applied") {
+      if (outcome === "published") {
         window.setTimeout(() => setSaveState((state) => state === "saved" ? "idle" : state), 1600);
       }
     } catch (error) {
@@ -314,14 +314,14 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
       acceptCommitted(result, "preserve-draft");
       const outcome = classifySettingsApplicationOutcome(result.runtimeApplicationDisposition);
       setRuntimeCapabilityConstrainedPaths(result.runtimeCapabilityConstrainedPaths ?? []);
-      setSaveState(outcome === "applied"
+      setSaveState(outcome === "published"
         ? isDirty() ? "idle" : "saved"
         : outcome === "capability-constrained"
           ? "constrained"
           : outcome === "persisted-pending"
             ? "partial"
             : "error");
-      if (outcome === "applied") {
+      if (outcome === "published") {
         window.setTimeout(() => setSaveState((state) => state === "saved" ? "idle" : state), 1600);
       }
     } catch {

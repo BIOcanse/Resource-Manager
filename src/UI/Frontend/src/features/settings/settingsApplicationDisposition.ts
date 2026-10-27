@@ -1,7 +1,7 @@
 import type { AppSettingsResult } from "../../types";
 
 export type SettingsApplicationOutcome =
-  | "applied"
+  | "published"
   | "capability-constrained"
   | "persisted-pending"
   | "rejected";
@@ -10,7 +10,7 @@ export function classifySettingsApplicationOutcome(
   disposition: AppSettingsResult["runtimeApplicationDisposition"]
 ): SettingsApplicationOutcome {
   if (disposition === "committedAndApplied") {
-    return "applied";
+    return "published";
   }
   if (disposition === "committedWithCapabilityConstraints") {
     return "capability-constrained";

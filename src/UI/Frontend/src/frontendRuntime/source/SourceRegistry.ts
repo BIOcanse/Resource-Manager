@@ -36,6 +36,7 @@ export type SourceRefreshTrigger =
 
 export type SourceActivityOutcome =
   | "ready"
+  | "unavailable"
   | "stale"
   | "error"
   | "rejected-domain-revision"
@@ -486,8 +487,10 @@ export class SourceRegistry {
           : incoming;
         const capturedAt = normalizeCapturedAt(
           record.descriptor.selectCapturedAt?.(value) ?? null);
+        const unavailableReason = record.descriptor.selectUnavailableReason?.(value) ?? null;
         this.publish(record, {
-          status: "ready",
+          status: unavailableReason ? "unavailable" : "ready",
+          unavailableReason,
           data: value,
           error: null,
           backendEpoch: record.backendEpoch,
@@ -499,7 +502,7 @@ export class SourceRegistry {
         if (this.retainsLastGood(record)) {
           record.lastGood = record.snapshot;
         }
-        this.observeSourceActivity(record, flight, "settled", "ready", 0);
+        this.observeSourceActivity(record, flight, "settled", unavailableReason ? "unavailable" : "ready", 0);
         return record.snapshot;
       })
       .catch((error: unknown) => {
@@ -576,8 +579,10 @@ export class SourceRegistry {
     this.clearRefreshTimer(record);
     this.cancelAttempt(record, "Source superseded by an authoritative command result.");
     const acceptedAttempt = ++record.nextAttempt;
+    const unavailableReason = record.descriptor.selectUnavailableReason?.(value) ?? null;
     this.publish(record, {
-      status: "ready",
+      status: unavailableReason ? "unavailable" : "ready",
+      unavailableReason,
       data: value,
       error: null,
       backendEpoch: record.backendEpoch,

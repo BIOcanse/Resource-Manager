@@ -74,9 +74,9 @@ export default async function gpuCommittedThresholdsJourney(page, baseUrl) {
   assert.deepEqual(writes, ["PUT", "DELETE"]);
   writeState = "partial";
   await panel.getByRole("button", { name: "保存", exact: true }).click();
-  await panel.getByText("已保存策略，但运行调度配置尚未完全应用。", { exact: true }).waitFor();
+  await panel.getByText("策略已保存，运行计划尚未完成发布或投递。", { exact: true }).waitFor();
   assert.equal(await draft.inputValue(), "321", "Partial delivery must keep the draft");
-  await panel.getByRole("button", { name: "重新应用", exact: true }).click();
+  await panel.getByRole("button", { name: "重新发布运行计划", exact: true }).click();
   await panel.getByRole("button", { name: "编辑", exact: true }).waitFor();
   assert.equal(await panel.getByRole("alert").count(), 0);
   if (failures.length) throw new Error(failures.join("\n"));

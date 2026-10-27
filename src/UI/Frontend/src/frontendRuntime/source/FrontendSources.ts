@@ -1,3 +1,4 @@
+import type { CpuObservationResult } from "../../data/cpu/cpuSourceDecoders.ts";
 import { getManagementComponents, getManagementSoftware, getManagementBrowserRuntimes } from "../../data/managementInventory.ts";
 import type { ManagedComponent, SoftwareRecord } from "../../types.ts";
 import type { BrowserRuntimeSnapshot } from "../../features/browserRuntimes/browserRuntimeTypes.ts";
@@ -78,8 +79,8 @@ import {
   getCpuExclusiveBindingsSource,
 } from "../../data/cpu/cpuSourcesApi.ts";
 import {
-  cpuResidencyDecoder,
-  cpuTopologyDecoder
+  cpuResidencySubscriptionDecoder,
+  cpuTopologySubscriptionDecoder
 } from "../../data/cpu/cpuSourceDecoders.ts";
 import type {
   CommittedAppSettingsResult
@@ -183,7 +184,7 @@ export interface FrontendSources {
   readonly smartCoordinatorState: PushValueSource<HostManagerRollbackStateDocument>;
   /** 优化页的调度状态（模式、运行、故障关闭、待确认、已优化对象数），后端推送。 */
   readonly smartCoordinatorStatus: PushValueSource<HostManagerSmartCoordinatorStatus>;
-  readonly cpuExclusiveBindings: SourceHandle<CpuExclusiveBindingSnapshot | null>;
+  readonly cpuExclusiveBindings: SourceHandle<CpuObservationResult<CpuExclusiveBindingSnapshot>>;
   readonly metricCatalog: SourceHandle<MetricDefinition[]>;
   /** 进程字段目录（后端常量表）：资源表列的来源选择从这里来。 */
   readonly processFieldCatalog: SourceHandle<readonly ProcessMetricField[]>;
@@ -309,13 +310,13 @@ export function createFrontendSources(
       key: "cpu.topology",
       channel: subscriptionChannel,
       buildUrl: buildCpuTopologySubscriptionUrl,
-      decoder: cpuTopologyDecoder
+      decoder: cpuTopologySubscriptionDecoder
     }),
     cpuResidency: new BackendPushValueSource<CpuCoreResidencySnapshot | null>({
       key: "cpu.residency",
       channel: subscriptionChannel,
       buildUrl: buildCpuResidencySubscriptionUrl,
-      decoder: cpuResidencyDecoder
+      decoder: cpuResidencySubscriptionDecoder
     }),
     smartCoordinatorState: new BackendPushValueSource<HostManagerRollbackStateDocument>({
       key: "host-manager.smart-state",
@@ -329,10 +330,11 @@ export function createFrontendSources(
       buildUrl: buildHostManagerSmartStatusSubscriptionUrl,
       decoder: hostManagerSmartStatusDecoder
     }),
-    cpuExclusiveBindings: sourceRegistry.define<CpuExclusiveBindingSnapshot | null>({
+    cpuExclusiveBindings: sourceRegistry.define<CpuObservationResult<CpuExclusiveBindingSnapshot>>({
       key: "cpu.exclusive-bindings",
       load: (signal) => getCpuExclusiveBindingsSource(requestClient, signal),
-      selectCapturedAt: (value) => value?.capturedAt ?? null
+      selectCapturedAt: (value) => "state" in value ? null : value.capturedAt,
+      selectUnavailableReason: (value) => "state" in value ? value.reasonCode : null
     }),
     metricCatalog: sourceRegistry.define<MetricDefinition[]>({
       key: "monitor.metric-catalog",

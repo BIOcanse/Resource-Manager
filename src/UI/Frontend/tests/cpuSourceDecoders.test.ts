@@ -2,13 +2,29 @@ import assert from "node:assert/strict";
 import {
   cpuExclusiveBindingsDecoder,
   cpuResidencyDecoder,
-  cpuTopologyDecoder
+  cpuTopologyDecoder,
+  cpuTopologySubscriptionDecoder,
+  cpuResidencySubscriptionDecoder
 } from "../src/data/cpu/cpuSourceDecoders.ts";
 
 const capturedAt = "2026-08-22T12:00:00.000Z";
 
-assert.equal(cpuTopologyDecoder.decode(null), null);
-assert.equal(cpuExclusiveBindingsDecoder.decode(null), null);
+assert.equal(cpuTopologySubscriptionDecoder.decode(null), null);
+assert.equal(cpuResidencySubscriptionDecoder.decode(null), null);
+for (const decoder of [cpuTopologySubscriptionDecoder, cpuResidencySubscriptionDecoder]) {
+  assert.throws(() => decoder.decode({ state: "unavailable", reasonCode: "cpu-topology-not-published" }));
+}
+
+for (const [decoder, reasonCode] of [
+  [cpuTopologyDecoder, "cpu-topology-not-published"],
+  [cpuExclusiveBindingsDecoder, "cpu-topology-not-published"],
+  [cpuResidencyDecoder, "cpu-residency-window-unavailable"]
+] as const) {
+  assert.deepEqual(decoder.decode({ state: "unavailable", reasonCode }), { state: "unavailable", reasonCode });
+  for (const value of [null, undefined, "", { state: "unavailable" }, { state: "unavailable", reasonCode: "" }, { state: "unknown", reasonCode }]) {
+    assert.throws(() => decoder.decode(value));
+  }
+}
 
 const topology = cpuTopologyDecoder.decode({
   capturedAt,
@@ -36,7 +52,8 @@ const topology = cpuTopologyDecoder.decode({
   logicalProcessors: [{ id: 0, processorGroup: 0, groupRelativeIndex: 0, physicalCoreId: "core:0",
     ccdId: "ccd:0", performanceScore: 100, affinitySelectable: true }]
 });
-assert.ok(topology);
+assert.ok("cpuName" in topology);
+assert.deepEqual(cpuTopologySubscriptionDecoder.decode(topology), topology);
 assert.equal(topology.cpuName, "Fixture CPU");
 assert.equal("notes" in topology, false);
 assert.equal("label" in topology.ccds[0], false);
@@ -93,10 +110,10 @@ const residency = cpuResidencyDecoder.decode({
     }]
   }]
 });
-assert.ok(residency);
+assert.ok("processes" in residency);
+assert.deepEqual(cpuResidencySubscriptionDecoder.decode(residency), residency);
 assert.equal(residency.processes[0]?.executionTimeMilliseconds, 750.25);
 assert.equal(residency.processes[0]?.threads[0]?.threadInstanceId, "7:1");
-assert.equal(cpuResidencyDecoder.decode(null), null);
 assert.throws(() => cpuResidencyDecoder.decode({
   capturedAt,
   window: "00:00:05",
@@ -115,7 +132,7 @@ const bindings = cpuExclusiveBindingsDecoder.decode({
   cpuName: "Fixture CPU",
   bindings: []
 });
-assert.ok(bindings);
+assert.ok("bindings" in bindings);
 assert.deepEqual(bindings.bindings, []);
 
 console.log("CPU source decoder tests passed");

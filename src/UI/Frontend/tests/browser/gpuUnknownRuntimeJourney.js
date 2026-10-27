@@ -14,7 +14,7 @@ export default async function gpuUnknownRuntimeJourney(page, baseUrl) {
     if (route.request().method() === "PUT") {
       const policy = route.request().postDataJSON();
       writes.push(policy);
-      return route.fulfill({ status: 202, json: { policy, runtimeApplicationDisposition: "committedWithDeliveryFailures", startupInterceptionDisposition: "notAttempted", runtimeDeliveryFailureCount: 1 } });
+      return route.fulfill({ status: 202, json: { policy, runtimeApplicationDisposition: "committedWithDeliveryFailures", startupInterceptionDisposition: "notAttempted", runtimePlanVersion: 1, runtimePublicationSequence: 1, failureCode: null, runtimeDeliveryFailureCount: 1 } });
     }
     const response = await route.fetch();
     const data = await response.json();
@@ -44,9 +44,9 @@ export default async function gpuUnknownRuntimeJourney(page, baseUrl) {
     && response.url().endsWith("/policy"));
   await dialog.getByRole("button", { name: "保存", exact: true }).click();
   assert.equal((await completedSave).status(), 202);
-  await dialog.getByText("已保存策略，但运行调度配置尚未完全应用。", { exact: true }).waitFor();
-  await dialog.getByRole("button", { name: "重新应用", exact: true }).click();
-  await dialog.getByText("已保存软件级调度策略。", { exact: true }).waitFor();
+  await dialog.getByText("策略已保存，运行计划尚未完成发布或投递。", { exact: true }).waitFor();
+  await dialog.getByRole("button", { name: "重新发布运行计划", exact: true }).click();
+  await dialog.getByText("软件级调度策略已保存，运行计划已提交并发布，等待调度执行。", { exact: true }).waitFor();
   assert.equal(writes.length, 1);
   assert.equal(writes[0].startupTargetGpu, "gpu1");
   assert.equal(writes[0].runtimeHotSwitchEnabled, true);

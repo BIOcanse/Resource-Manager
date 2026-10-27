@@ -247,8 +247,8 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
           <Show when={props.notice}>
             {(notice) => (
               <div class={`software-detail-notice ${notice().tone ?? "info"}`}>
-                <Show when={notice().onRuntimeApplied} fallback={<strong>{notice().message}</strong>}>
-                  <RuntimePolicyDeliveryNotice onApplied={() => notice().onRuntimeApplied?.()} />
+                <Show when={notice().onRuntimePublished} fallback={<strong>{notice().message}</strong>}>
+                  <RuntimePolicyDeliveryNotice onPublished={() => notice().onRuntimePublished?.()} />
                 </Show>
                 <Show when={notice().details?.length}>
                   <button class="secondary details-button" type="button" onClick={() => setNoticeDetailsOpen(true)}>

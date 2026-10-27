@@ -553,11 +553,11 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
       setGpuPlacementSettings((current) => current
         ? { ...current, softwareId: saved.softwareId, softwareName: saved.softwareName, softwarePolicy: saved }
         : current);
-      const pending = result.runtimeApplicationDisposition !== "committedAndApplied";
+      const pending = result.runtimeApplicationDisposition !== "committedAndPublished";
       setSoftwareDetailNotice({
         message: pending ? uiText.softwareActions.processPolicySavedRuntimePending : uiText.softwareActions.softwarePolicySaved,
         tone: pending ? "warning" : "success",
-        onRuntimeApplied: pending ? () => setSoftwareDetailNotice({ message: uiText.softwareActions.softwarePolicySaved, tone: "success" }) : undefined
+        onRuntimePublished: pending ? () => setSoftwareDetailNotice({ message: uiText.softwareActions.softwarePolicySaved, tone: "success" }) : undefined
       });
     } catch (error) {
       setSoftwareDetailNotice({
@@ -596,7 +596,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
           startupInterceptions: nextInterceptions
         };
       });
-      const runtimePending = saved.runtimeApplicationDisposition !== "committedAndApplied";
+      const runtimePending = saved.runtimeApplicationDisposition !== "committedAndPublished";
       const interceptionPending = saved.startupInterceptionDisposition !== "applied"
         || Boolean(saved.startupInterception?.requested && !saved.startupInterception.registered);
       setSoftwareDetailNotice({

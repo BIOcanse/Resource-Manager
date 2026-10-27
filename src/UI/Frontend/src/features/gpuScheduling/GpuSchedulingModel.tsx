@@ -330,7 +330,7 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
       </div>
 
       <Show when={commandError()}>{(message) => <p role="alert">{message()}</p>}</Show>
-      <Show when={deliveryPending()}><RuntimePolicyDeliveryNotice onApplied={() => {
+      <Show when={deliveryPending()}><RuntimePolicyDeliveryNotice onPublished={() => {
         setDeliveryPending(false);
         setEditing(false);
         void refreshAll().catch(error => setCommandError(userFacingErrorMessage(error, uiText.gpuScheduling.dataReadFailed)));
@@ -450,7 +450,7 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
           performanceScore: normalizeScore(scoreDraft()[position.id], position.performanceScore)
         }))
       });
-      const pending = result.runtimeApplicationDisposition !== "committedAndApplied";
+      const pending = result.runtimeApplicationDisposition !== "committedAndPublished";
       setDeliveryPending(pending);
       if (pending) return;
       setEditing(false);
@@ -470,7 +470,7 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
     setCommandError(null);
     try {
       const result = await resetGpuPerformanceScoreOverrides();
-      const pending = result.runtimeApplicationDisposition !== "committedAndApplied";
+      const pending = result.runtimeApplicationDisposition !== "committedAndPublished";
       setDeliveryPending(pending);
       if (pending) return;
       setEditing(false);

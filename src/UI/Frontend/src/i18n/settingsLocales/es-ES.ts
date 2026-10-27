@@ -80,7 +80,7 @@ export default createSettingsLocale("es-ES", {
     "saving": "Guardando",
     "saved": "Guardado",
     "constrained": "Guardado; se limitaron las opciones de ejecución no disponibles",
-    "partial": "Guardado, pero no aplicado por completo",
+    "partial": "Guardado; la publicación o entrega del plan de ejecución está incompleta",
     "error": "Error al guardar",
     "dirty": "Sin guardar",
     "conflict": "Los ajustes cambiaron en otro lugar; recarga antes de guardar"
@@ -97,7 +97,7 @@ export default createSettingsLocale("es-ES", {
     "restoreDefaults": "Restaurar valores predeterminados",
     "retry": "Reintentar",
     "reload": "Recargar",
-    "reapply": "Aplicar de nuevo"
+    "reapply": "Volver a publicar el plan de ejecución"
   },
   "performance": {
     "preciseGpuPlacementTitle": "Selección precisa de GPU",

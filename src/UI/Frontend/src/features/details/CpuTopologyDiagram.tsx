@@ -26,6 +26,7 @@ import type {
 } from "../../types";
 import { UserDetailsDialog } from "../../components/UserDetailsDialog";
 import { uiText } from "../../text.ts";
+import { resourceFactUnavailableText } from "../../presentation/metricLabels.ts";
 import { formatBytes } from "../../presentation/byteUnits.ts";
 import type { MetricFieldDevice } from "../../data/metricFields/metricFieldSource.ts";
 import {
@@ -126,8 +127,10 @@ export function CpuTopologyDiagram(props: {
   const sourceReadFailed = createMemo(() => [
     topology(), residency(), numaFields(), frequencyFields()
   ].some((source) => source?.status === "error" || source?.status === "unavailable"));
-  const exclusiveBindingsSnapshot = () =>
-    renderableSourceData(exclusiveBindingsSource.snapshot());
+  const exclusiveBindingsSnapshot = () => {
+    const value = renderableSourceData(exclusiveBindingsSource.snapshot());
+    return value && !("state" in value) ? value : null;
+  };
   const residencyDurations = createMemo(() => buildCpuResidencyDurations(residencySnapshot()));
   const residencyHasData = () => residencyDurations().hasData;
   const topologySummary = createMemo(() => {
@@ -207,7 +210,7 @@ export function CpuTopologyDiagram(props: {
         </Show>
       </div>
 
-      <Show when={deliveryPending()}><RuntimePolicyDeliveryNotice onApplied={() => { setDeliveryPending(false); setEditing(false); }} /></Show>
+      <Show when={deliveryPending()}><RuntimePolicyDeliveryNotice onPublished={() => { setDeliveryPending(false); setEditing(false); }} /></Show>
       <Show when={commandError()}>
         {(message) => <p role="alert">{message()}</p>}
       </Show>
@@ -399,6 +402,7 @@ export function CpuTopologyDiagram(props: {
               residencyAvailable={residencyHasData()}
               bindings={exclusiveBindingsSnapshot()?.bindings ?? []}
               bindingsLoading={!sourceCanRender(exclusiveBindingsSource.snapshot())}
+              bindingsUnavailableReason={exclusiveBindingsSource.snapshot().unavailableReason ?? null}
               selectedCoreId={detailsCoreId()}
               frequencyFields={frequencyFieldData()}
               onSelectCore={setDetailsCoreId}
@@ -449,7 +453,7 @@ export function CpuTopologyDiagram(props: {
           performanceScore: normalizeScore(scoreDraft()[core.index], core.performanceScore)
         }))
       });
-      const pending = result.runtimeApplicationDisposition !== "committedAndApplied";
+      const pending = result.runtimeApplicationDisposition !== "committedAndPublished";
       setDeliveryPending(pending);
       if (pending) return;
       setEditing(false);
@@ -468,7 +472,7 @@ export function CpuTopologyDiagram(props: {
     setCommandError(null);
     try {
       const result = await resetCpuCorePerformanceOverrides(model.cpuName);
-      const pending = result.runtimeApplicationDisposition !== "committedAndApplied";
+      const pending = result.runtimeApplicationDisposition !== "committedAndPublished";
       setDeliveryPending(pending);
       if (pending) return;
       setEditing(false);
@@ -565,6 +569,7 @@ function CpuTopologyDetailsDialog(props: {
   residencyAvailable: boolean;
   bindings: CpuExclusiveBinding[];
   bindingsLoading: boolean;
+  bindingsUnavailableReason: string | null;
   selectedCoreId: string | null;
   frequencyFields: readonly MetricFieldDevice[] | null;
   onSelectCore: (coreId: string) => void;
@@ -644,7 +649,12 @@ function CpuTopologyDetailsDialog(props: {
                   <h3>{uiText.cpuTopology.exclusiveBindings}</h3>
                   <Show
                     when={!props.bindingsLoading}
-                    fallback={<p class="user-details-summary">{uiText.cpuTopology.loadingSoftwarePolicy}</p>}
+                    fallback={<p class="user-details-summary" role="status"
+                      title={props.bindingsUnavailableReason ? resourceFactUnavailableText(props.bindingsUnavailableReason).hint : undefined}>
+                      {props.bindingsUnavailableReason
+                        ? resourceFactUnavailableText(props.bindingsUnavailableReason).label
+                        : uiText.cpuTopology.loadingSoftwarePolicy}
+                    </p>}
                   >
                     <Show
                       when={bindings().length > 0}
