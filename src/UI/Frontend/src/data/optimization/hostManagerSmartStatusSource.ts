@@ -3,7 +3,6 @@ import type {
   HostManagerCycleFailure,
   HostManagerFactExclusion,
   HostManagerFactExclusionCount,
-  HostManagerNativePlanStatus,
   HostManagerSmartCoordinatorStatus
 } from "../../types.ts";
 import {
@@ -21,18 +20,16 @@ import {
 } from "../../frontendRuntime/request/ResponseDecoder.ts";
 
 import { decodeCoordinatorFacts } from "../../api/hostManagerRollbackWire.ts";
+import {
+  hostManagerNativePlanStatuses,
+  hostManagerSchedulingExclusionReasons,
+  hostManagerSchedulingFacts
+} from "./hostManagerSchedulingFactCodes.ts";
 
 const optimizationModes = [
   "normal", "limited", "cpu", "gpu",
   "memory+cpu", "memory+gpu", "cpu+gpu", "smart"
 ] as const satisfies readonly AppOptimizationMode[];
-
-/** 后端 NativeSmartCoordinatorStatus 除 Ok 外的成员，短横线写法（NativePlanStatusCode）。 */
-export const hostManagerNativePlanStatuses = [
-  "invalid-argument", "abi-mismatch", "unavailable", "no-data", "buffer-too-small",
-  "stale-generation", "out-of-memory", "capacity-exceeded", "conflicting-facts",
-  "feedback-mismatch", "recreate-required"
-] as const satisfies readonly HostManagerNativePlanStatus[];
 
 /** 后端排除明细的上限（HostManagerSmartCoordinator.DecisionDiagnostics 的 Take(64)）。 */
 const maximumFactExclusions = 64;
@@ -92,8 +89,8 @@ function decodeCycleFailure(value: unknown, path: string): HostManagerCycleFailu
 function decodeFactExclusionCount(value: unknown, path: string): HostManagerFactExclusionCount {
   const record = requireRecord(value, path);
   return {
-    fact: requireNonEmptyString(record.fact, `${path}.fact`),
-    reason: requireNonEmptyString(record.reason, `${path}.reason`),
+    fact: requireOneOf(record.fact, `${path}.fact`, hostManagerSchedulingFacts),
+    reason: requireOneOf(record.reason, `${path}.reason`, hostManagerSchedulingExclusionReasons),
     count: requireNonNegativeSafeInteger(record.count, `${path}.count`)
   };
 }
@@ -113,13 +110,14 @@ function decodeFactExclusions(value: unknown, path: string): HostManagerFactExcl
         `${itemPath}.processStartKey`,
         requireUnsignedIntegerText),
       targetId: requireNullable(record.targetId, `${itemPath}.targetId`, requireString),
-      fact: requireNonEmptyString(record.fact, `${itemPath}.fact`),
-      reason: requireNonEmptyString(record.reason, `${itemPath}.reason`)
+      fact: requireOneOf(record.fact, `${itemPath}.fact`, hostManagerSchedulingFacts),
+      reason: requireOneOf(record.reason, `${itemPath}.reason`, hostManagerSchedulingExclusionReasons),
+      adapterKey: requireNullable(record.adapterKey, `${itemPath}.adapterKey`, requireUnsignedIntegerText)
     };
   });
 }
 
-/** 进程启动标识是后端 ulong 的十进制文本，原样保留，不转成 number。 */
+/** 进程启动标识和 GPU 适配器标识都是后端 ulong 的十进制文本，原样保留，不转成 number。 */
 function requireUnsignedIntegerText(value: unknown, path: string): string {
   const text = requireString(value, path);
   if (!/^(0|[1-9][0-9]*)$/.test(text) || BigInt(text) > 18446744073709551615n) {

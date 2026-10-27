@@ -1,5 +1,12 @@
 import type { MetricFieldReading } from "./data/metricFields/metricFieldSource.ts";
 import type { AnimationStyleId } from "./presentation/animationStyle.ts";
+import type {
+  HostManagerNativePlanStatus,
+  HostManagerSchedulingExclusionReason,
+  HostManagerSchedulingFact
+} from "./data/optimization/hostManagerSchedulingFactCodes.ts";
+
+export type { HostManagerNativePlanStatus, HostManagerSchedulingExclusionReason, HostManagerSchedulingFact };
 
 export type PageId =
   | "monitor"
@@ -372,12 +379,6 @@ export interface HostManagerSmartCoordinatorStatus {
   factExclusions: HostManagerFactExclusion[];
 }
 
-/** 原生调度计划的状态码（后端 NativeSmartCoordinatorStatus 成员名的短横线写法，不含 ok）。 */
-export type HostManagerNativePlanStatus =
-  | "invalid-argument" | "abi-mismatch" | "unavailable" | "no-data" | "buffer-too-small"
-  | "stale-generation" | "out-of-memory" | "capacity-exceeded" | "conflicting-facts"
-  | "feedback-mismatch" | "recreate-required";
-
 /** exceptionType 只用于诊断，界面不显示也不解析。 */
 export type HostManagerCycleFailure =
   | { kind: "cycle-failed"; exceptionType: string; nativePlanStatus: null }
@@ -385,9 +386,10 @@ export type HostManagerCycleFailure =
 
 export type HostManagerCycleFailureKind = HostManagerCycleFailure["kind"];
 
+/** 按（事实，原因）分组；同一组可能合并了几个 GPU 适配器，所以没有适配器标识。 */
 export interface HostManagerFactExclusionCount {
-  fact: string;
-  reason: string;
+  fact: HostManagerSchedulingFact;
+  reason: HostManagerSchedulingExclusionReason;
   count: number;
 }
 
@@ -396,8 +398,10 @@ export interface HostManagerFactExclusion {
   /** 后端 ulong 的十进制文本。 */
   processStartKey: string | null;
   targetId: string | null;
-  fact: string;
-  reason: string;
+  fact: HostManagerSchedulingFact;
+  reason: HostManagerSchedulingExclusionReason;
+  /** 后端 GPU 适配器标识（ulong）的十进制文本，原样保留；与 GPU 适配器无关的排除为 null。 */
+  adapterKey: string | null;
 }
 
 export interface HostManagerRollbackStateDocument {

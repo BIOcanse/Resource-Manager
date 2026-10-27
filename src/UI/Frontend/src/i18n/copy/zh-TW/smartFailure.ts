@@ -1,5 +1,19 @@
 import type { AppCopy } from "../zh/index.ts";
 
+const nativePlanStatuses: AppCopy["smartFailure"]["nativePlanStatuses"] = {
+  "invalid-argument": "參數無效",
+  "abi-mismatch": "原生元件的介面版本不相符",
+  unavailable: "原生元件無法使用",
+  "no-data": "沒有可用資料",
+  "buffer-too-small": "緩衝區容量不足",
+  "stale-generation": "輸入資料已過期",
+  "out-of-memory": "記憶體不足",
+  "capacity-exceeded": "超出容量上限",
+  "conflicting-facts": "輸入資料相互衝突",
+  "feedback-mismatch": "執行回饋與計畫不一致",
+  "recreate-required": "需要重新建立原生工作區"
+};
+
 export const zhTwSmartFailureCopy: Pick<AppCopy, "smartFailure"> = {
   smartFailure: {
     title: {
@@ -11,19 +25,7 @@ export const zhTwSmartFailureCopy: Pick<AppCopy, "smartFailure"> = {
       "native-plan-failed": "原生排程元件未能為本段產生排程計畫，本段未執行任何調整。計畫狀態說明了失敗原因。之後的排程段成功完成時，此提示會消失。"
     },
     nativePlanStatus: (status: string) => `計畫狀態：${status}`,
-    nativePlanStatuses: {
-      "invalid-argument": "參數無效",
-      "abi-mismatch": "原生元件的介面版本不相符",
-      unavailable: "原生元件無法使用",
-      "no-data": "沒有可用資料",
-      "buffer-too-small": "緩衝區容量不足",
-      "stale-generation": "輸入資料已過期",
-      "out-of-memory": "記憶體不足",
-      "capacity-exceeded": "超出容量上限",
-      "conflicting-facts": "輸入資料相互衝突",
-      "feedback-mismatch": "執行回饋與計畫不一致",
-      "recreate-required": "需要重新建立原生工作區"
-    },
+    nativePlanStatuses,
     exclusionTotal: (count: number) => `本段排除了 ${count} 項資料`,
     exclusionsHint: "排除的資料是本段因缺少、無效或相互不一致而未參與排程決策的資料。彙總依資料項目和原因分組計數，明細列出具體物件。",
     summaryLabel: "排除彙總",
@@ -34,27 +36,29 @@ export const zhTwSmartFailureCopy: Pick<AppCopy, "smartFailure"> = {
       processId: "處理程序 ID",
       processStartKey: "處理程序啟動識別碼",
       targetId: "排程物件識別碼",
-      target: "排程物件"
+      target: "排程物件",
+      adapterKey: "GPU 介面卡識別碼"
     },
     noTarget: "不針對特定物件",
     facts: {
       inventory: "處理程序清單",
       identity: "處理程序身分",
-      "base-score": "基礎分",
       attribution: "軟體歸屬",
-      "runtime-state": "排程物件的執行狀態",
+      "base-score": "基礎分",
+      "cpu-usage": "處理程序 CPU 使用率",
+      "memory-usage": "處理程序記憶體用量",
+      "gpu-usage": "處理程序 GPU 使用率",
+      "gpu-dedicated-memory": "處理程序獨立視訊記憶體用量",
+      "gpu-private-memory-bytes": "處理程序私有 GPU 記憶體駐留量",
+      "gpu-shared-memory-bytes": "處理程序共用 GPU 記憶體駐留量",
+      "runtime-state": "處理程序執行狀態",
       "cpu-core-residency": "CPU 核心駐留",
+      "compute-score": "算力評分",
       "cpu-score": "CPU 評分",
       "gpu-score": "GPU 評分",
-      "compute-score": "算力評分",
-      "memory-cleanup": "記憶體清理",
       "decision-target": "決策物件",
-      "native-plan": "原生排程計畫",
-      CpuUsage: "處理程序 CPU 使用率",
-      MemoryUsage: "處理程序記憶體用量",
-      GpuUsage: "處理程序 GPU 使用率",
-      GpuDedicatedMemory: "處理程序獨立視訊記憶體用量",
-      RuntimeState: "處理程序執行狀態"
+      "memory-cleanup": "記憶體清理",
+      "native-plan": "原生排程計畫"
     },
     reasons: {
       "dataset-not-current": "資料不是目前的取樣",
@@ -83,7 +87,8 @@ export const zhTwSmartFailureCopy: Pick<AppCopy, "smartFailure"> = {
       "canonical-software-score-missing": "缺少軟體評分",
       "live-identity-without-decision-facts": "執行中的處理程序沒有決策資料",
       "canonical-process-not-projected": "處理程序評分未進入排程輸入",
-      "canonical-software-membership-incomplete": "軟體評分的成員不完整"
+      "canonical-software-membership-incomplete": "軟體評分的成員不完整",
+      ...nativePlanStatuses
     }
   }
 };

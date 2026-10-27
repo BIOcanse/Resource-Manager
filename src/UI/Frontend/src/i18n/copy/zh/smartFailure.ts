@@ -1,9 +1,28 @@
-import type { HostManagerCycleFailureKind, HostManagerNativePlanStatus } from "../../../types.ts";
+import type {
+  HostManagerCycleFailureKind,
+  HostManagerNativePlanStatus,
+  HostManagerSchedulingExclusionReason,
+  HostManagerSchedulingFact
+} from "../../../types.ts";
 
 // 优化页 → 调度段失败的提示（GET /api/optimization/smart/status 与其推送的 failure 和事实排除）。
-// 失败类型和原生计划状态码是封闭集合，解码器拒绝未知值，这里逐个给出文字。
-// 事实名和排除原因是后端的开放字符串：这里给出后端现有的码；没有文字的码按后端发来的原样显示。
-// 原生计划的排除原因就是计划状态码，文字取 nativePlanStatuses。
+// 失败类型、原生计划状态码、事实和排除原因都是封闭集合（码表见 data/optimization/hostManagerSchedulingFactCodes.ts），
+// 解码器拒绝未知值，这里逐个给出文字；缺一个码的文字就是类型错误。
+// 原生计划的排除原因就是计划状态码：reasons 展开同一份 nativePlanStatuses，不另写一遍。
+const nativePlanStatuses: Record<HostManagerNativePlanStatus, string> = {
+  "invalid-argument": "参数无效",
+  "abi-mismatch": "原生组件的接口版本不匹配",
+  unavailable: "原生组件不可用",
+  "no-data": "没有可用数据",
+  "buffer-too-small": "缓冲区容量不足",
+  "stale-generation": "输入数据已过期",
+  "out-of-memory": "内存不足",
+  "capacity-exceeded": "超出容量上限",
+  "conflicting-facts": "输入数据相互冲突",
+  "feedback-mismatch": "执行反馈与计划不一致",
+  "recreate-required": "需要重新建立原生工作区"
+};
+
 export const zhSmartFailureCopy = {
   smartFailure: {
     title: {
@@ -15,19 +34,7 @@ export const zhSmartFailureCopy = {
       "native-plan-failed": "原生调度组件未能为本段生成调度计划，本段未执行任何调整。计划状态说明了失败原因。之后的调度段成功完成时，此提示消失。"
     } as Record<HostManagerCycleFailureKind, string>,
     nativePlanStatus: (status: string) => `计划状态：${status}`,
-    nativePlanStatuses: {
-      "invalid-argument": "参数无效",
-      "abi-mismatch": "原生组件的接口版本不匹配",
-      unavailable: "原生组件不可用",
-      "no-data": "没有可用数据",
-      "buffer-too-small": "缓冲区容量不足",
-      "stale-generation": "输入数据已过期",
-      "out-of-memory": "内存不足",
-      "capacity-exceeded": "超出容量上限",
-      "conflicting-facts": "输入数据相互冲突",
-      "feedback-mismatch": "执行反馈与计划不一致",
-      "recreate-required": "需要重新建立原生工作区"
-    } as Record<HostManagerNativePlanStatus, string>,
+    nativePlanStatuses,
     exclusionTotal: (count: number) => `本段排除了 ${count} 项数据`,
     exclusionsHint: "排除的数据是本段因缺失、无效或相互不一致而未参与调度决策的数据。汇总按数据项和原因分组计数，明细列出具体对象。",
     summaryLabel: "排除汇总",
@@ -38,28 +45,30 @@ export const zhSmartFailureCopy = {
       processId: "进程 ID",
       processStartKey: "进程启动标识",
       targetId: "调度对象标识",
-      target: "调度对象"
+      target: "调度对象",
+      adapterKey: "GPU 适配器标识"
     },
     noTarget: "不针对具体对象",
     facts: {
       inventory: "进程清单",
       identity: "进程身份",
-      "base-score": "基础分",
       attribution: "软件归属",
-      "runtime-state": "调度对象的运行状态",
+      "base-score": "基础分",
+      "cpu-usage": "进程 CPU 使用率",
+      "memory-usage": "进程内存用量",
+      "gpu-usage": "进程 GPU 使用率",
+      "gpu-dedicated-memory": "进程独立显存用量",
+      "gpu-private-memory-bytes": "进程私有 GPU 内存驻留量",
+      "gpu-shared-memory-bytes": "进程共享 GPU 内存驻留量",
+      "runtime-state": "进程运行状态",
       "cpu-core-residency": "CPU 核心驻留",
+      "compute-score": "算力评分",
       "cpu-score": "CPU 评分",
       "gpu-score": "GPU 评分",
-      "compute-score": "算力评分",
-      "memory-cleanup": "内存清理",
       "decision-target": "决策对象",
-      "native-plan": "原生调度计划",
-      CpuUsage: "进程 CPU 使用率",
-      MemoryUsage: "进程内存用量",
-      GpuUsage: "进程 GPU 使用率",
-      GpuDedicatedMemory: "进程独立显存用量",
-      RuntimeState: "进程运行状态"
-    } as Record<string, string | undefined>,
+      "memory-cleanup": "内存清理",
+      "native-plan": "原生调度计划"
+    } satisfies Record<HostManagerSchedulingFact, string>,
     reasons: {
       "dataset-not-current": "数据不是当前采样",
       "unidentified-live-process": "存在无法识别的运行中进程",
@@ -87,7 +96,8 @@ export const zhSmartFailureCopy = {
       "canonical-software-score-missing": "缺少软件评分",
       "live-identity-without-decision-facts": "运行中的进程没有决策数据",
       "canonical-process-not-projected": "进程评分未进入调度输入",
-      "canonical-software-membership-incomplete": "软件评分的成员不完整"
-    } as Record<string, string | undefined>
+      "canonical-software-membership-incomplete": "软件评分的成员不完整",
+      ...nativePlanStatuses
+    } satisfies Record<HostManagerSchedulingExclusionReason, string>
   }
 };

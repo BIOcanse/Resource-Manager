@@ -5,7 +5,8 @@ import { seedFrontendPreferences, writeFrontendPreferences } from "./frontendPre
 // 性能优化页 → 调度段失败（GET /api/optimization/smart/status 与其推送同形，后端 tests/App 的 smart-status 夹具三例）。
 // - 调度未运行但 failure 为 null：只显示“调度未运行”，没有失败提示。
 // - cycle-failed：失败类型的文字和问号说明；没有计划状态，没有排除。
-// - native-plan-failed：失败类型、计划状态码的文字、排除总数、按（数据项，原因）的汇总，以及明细对话框里的进程与对象标识。
+// - native-plan-failed：失败类型、计划状态码的文字、排除总数、按（数据项，原因）的汇总，以及明细对话框里的进程与对象标识；
+//   GPU 排除另有一行适配器标识，原样显示；事实和原因都取文字，页面上不出现码。
 // - 故障关闭原因是另一件事：和失败提示同时出现时照旧显示，文字不变。
 // - exceptionType 只用于诊断，任何语言下都不出现在页面上。
 // 中英两种语言各走一遍；状态都由推送带来，不刷新页面。
@@ -75,13 +76,15 @@ export default async function smartFailureJourney(page, baseUrl) {
       assert.equal((await native.locator(".optimization-smart-failure-plan").textContent()).trim(), text.nativePlanStatus(capacity),
         `${language}: native plan status text`);
       const total = native.locator(".optimization-smart-failure-exclusion-total > span").first();
-      assert.equal((await total.textContent()).trim(), text.exclusionTotal(2), `${language}: exclusion total as sent`);
+      assert.equal((await total.textContent()).trim(), text.exclusionTotal(3), `${language}: exclusion total as sent`);
       const groups = native.locator(".optimization-smart-failure-counts li");
-      assert.equal(await groups.count(), 2, `${language}: one summary row per (fact, reason)`);
+      assert.equal(await groups.count(), 3, `${language}: one summary row per (fact, reason)`);
       const expectedGroups = [
         ["inventory", "inventory-overflow", `${text.facts.inventory} · ${text.reasons["inventory-overflow"]}`],
+        ["gpu-usage", "gpu-row-missing-or-invalid", `${text.facts["gpu-usage"]} · ${text.reasons["gpu-row-missing-or-invalid"]}`],
         ["native-plan", "capacity-exceeded", `${text.facts["native-plan"]} · ${capacity}`]
       ];
+      assert.equal(text.reasons["capacity-exceeded"], capacity, `${language}: a native plan reason uses the plan status text`);
       for (const [index, [fact, reason, label]] of expectedGroups.entries()) {
         const row = groups.nth(index);
         assert.equal(await row.getAttribute("data-fact"), fact);
@@ -96,23 +99,32 @@ export default async function smartFailureJourney(page, baseUrl) {
       await native.getByRole("button", { name: text.viewExclusions, exact: true }).click();
       const dialog = page.getByRole("dialog", { name: text.detailTitle, exact: true });
       await dialog.waitFor({ timeout: 2_000 });
-      assert.equal((await dialog.locator(".user-details-summary").textContent()).trim(), text.detailSummary(2, 2), `${language}: dialog summary`);
+      assert.equal((await dialog.locator(".user-details-summary").textContent()).trim(), text.detailSummary(3, 3), `${language}: dialog summary`);
       const sections = dialog.locator(".user-details-section");
-      assert.equal(await sections.count(), 2, `${language}: one section per listed exclusion`);
+      assert.equal(await sections.count(), 3, `${language}: one section per listed exclusion`);
       assert.equal((await sections.nth(0).locator("h3").textContent()).trim(), expectedGroups[0][2]);
       assert.deepEqual(await rows(sections.nth(0)), [
         [text.field.processId, "43003"],
         [text.field.processStartKey, "9007199254740993"],
         [text.field.targetId, "process:43003:9007199254740993"]
-      ], `${language}: process exclusion identities as sent`);
+      ], `${language}: process exclusion identities as sent, no adapter row without an adapter key`);
       assert.equal((await sections.nth(1).locator("h3").textContent()).trim(), expectedGroups[1][2]);
-      assert.deepEqual(await rows(sections.nth(1)), [[text.field.target, text.noTarget]], `${language}: segment-wide exclusion`);
+      assert.deepEqual(await rows(sections.nth(1)), [
+        [text.field.processId, "42"],
+        [text.field.processStartKey, "9007199254740993"],
+        [text.field.adapterKey, "9007199254740995"]
+      ], `${language}: GPU exclusion shows its adapter key as its own field, exact text`);
+      assert.equal((await sections.nth(2).locator("h3").textContent()).trim(), expectedGroups[2][2]);
+      assert.deepEqual(await rows(sections.nth(2)), [[text.field.target, text.noTarget]], `${language}: segment-wide exclusion`);
       await page.keyboard.press("Escape");
       await dialog.waitFor({ state: "detached", timeout: 2_000 });
 
       const pageText = await page.locator("#optimizationPage").innerText();
       for (const exceptionType of ["IOException", "InvalidDataException"]) {
         assert.ok(!pageText.includes(exceptionType), `${language}: exceptionType ${exceptionType} is never shown`);
+      }
+      for (const code of ["gpu-usage", "gpu-row-missing-or-invalid", "inventory-overflow", "capacity-exceeded"]) {
+        assert.ok(!pageText.includes(code), `${language}: code ${code} is shown as text, not as the code`);
       }
 
       // 下一段成功：失败提示消失。

@@ -1,6 +1,20 @@
 import { plural } from "../../plural.ts";
 import type { AppCopy } from "../zh/index.ts";
 
+const nativePlanStatuses: AppCopy["smartFailure"]["nativePlanStatuses"] = {
+  "invalid-argument": "Invalid argument",
+  "abi-mismatch": "Native component interface version mismatch",
+  unavailable: "Native component unavailable",
+  "no-data": "No data available",
+  "buffer-too-small": "Insufficient buffer capacity",
+  "stale-generation": "Input data is out of date",
+  "out-of-memory": "Insufficient memory",
+  "capacity-exceeded": "Capacity limit exceeded",
+  "conflicting-facts": "Input data is contradictory",
+  "feedback-mismatch": "Execution feedback does not match the plan",
+  "recreate-required": "The native workspace must be recreated"
+};
+
 export const enSmartFailureCopy: Pick<AppCopy, "smartFailure"> = {
   smartFailure: {
     title: {
@@ -12,19 +26,7 @@ export const enSmartFailureCopy: Pick<AppCopy, "smartFailure"> = {
       "native-plan-failed": "The native scheduling component could not produce a plan for this segment, so no adjustments were made in it. The plan status states the cause. This notice disappears once a later segment completes successfully."
     },
     nativePlanStatus: (status: string) => `Plan status: ${status}`,
-    nativePlanStatuses: {
-      "invalid-argument": "Invalid argument",
-      "abi-mismatch": "Native component interface version mismatch",
-      unavailable: "Native component unavailable",
-      "no-data": "No data available",
-      "buffer-too-small": "Insufficient buffer capacity",
-      "stale-generation": "Input data is out of date",
-      "out-of-memory": "Insufficient memory",
-      "capacity-exceeded": "Capacity limit exceeded",
-      "conflicting-facts": "Input data is contradictory",
-      "feedback-mismatch": "Execution feedback does not match the plan",
-      "recreate-required": "The native workspace must be recreated"
-    },
+    nativePlanStatuses,
     exclusionTotal: (count: number) => plural("en-US", count, {
       one: "{count} data item was excluded from this segment",
       other: "{count} data items were excluded from this segment"
@@ -38,27 +40,29 @@ export const enSmartFailureCopy: Pick<AppCopy, "smartFailure"> = {
       processId: "Process ID",
       processStartKey: "Process start key",
       targetId: "Scheduling target ID",
-      target: "Scheduling target"
+      target: "Scheduling target",
+      adapterKey: "GPU adapter key"
     },
     noTarget: "Not specific to an object",
     facts: {
       inventory: "Process inventory",
       identity: "Process identity",
-      "base-score": "Base score",
       attribution: "Software attribution",
-      "runtime-state": "Scheduling target runtime state",
+      "base-score": "Base score",
+      "cpu-usage": "Process CPU usage",
+      "memory-usage": "Process memory usage",
+      "gpu-usage": "Process GPU usage",
+      "gpu-dedicated-memory": "Process dedicated VRAM usage",
+      "gpu-private-memory-bytes": "Process private resident GPU memory",
+      "gpu-shared-memory-bytes": "Process shared resident GPU memory",
+      "runtime-state": "Process runtime state",
       "cpu-core-residency": "CPU core residency",
+      "compute-score": "Compute score",
       "cpu-score": "CPU score",
       "gpu-score": "GPU score",
-      "compute-score": "Compute score",
-      "memory-cleanup": "Memory cleanup",
       "decision-target": "Decision target",
-      "native-plan": "Native scheduling plan",
-      CpuUsage: "Process CPU usage",
-      MemoryUsage: "Process memory usage",
-      GpuUsage: "Process GPU usage",
-      GpuDedicatedMemory: "Process dedicated VRAM usage",
-      RuntimeState: "Process runtime state"
+      "memory-cleanup": "Memory cleanup",
+      "native-plan": "Native scheduling plan"
     },
     reasons: {
       "dataset-not-current": "Data is not from the current sample",
@@ -87,7 +91,8 @@ export const enSmartFailureCopy: Pick<AppCopy, "smartFailure"> = {
       "canonical-software-score-missing": "Software score missing",
       "live-identity-without-decision-facts": "A running process has no decision data",
       "canonical-process-not-projected": "The process score did not reach the scheduling input",
-      "canonical-software-membership-incomplete": "The software score's members are incomplete"
+      "canonical-software-membership-incomplete": "The software score's members are incomplete",
+      ...nativePlanStatuses
     }
   }
 };

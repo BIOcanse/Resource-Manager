@@ -1,6 +1,20 @@
 import { plural } from "../../plural.ts";
 import type { AppCopy } from "../index.ts";
 
+const nativePlanStatuses: AppCopy["smartFailure"]["nativePlanStatuses"] = {
+  "invalid-argument": "Argument non valide",
+  "abi-mismatch": "Version d’interface du composant natif incompatible",
+  unavailable: "Composant natif indisponible",
+  "no-data": "Aucune donnée disponible",
+  "buffer-too-small": "Capacité de la mémoire tampon insuffisante",
+  "stale-generation": "Les données d’entrée sont obsolètes",
+  "out-of-memory": "Mémoire insuffisante",
+  "capacity-exceeded": "Limite de capacité dépassée",
+  "conflicting-facts": "Les données d’entrée sont contradictoires",
+  "feedback-mismatch": "Le retour d’exécution ne correspond pas au plan",
+  "recreate-required": "L’espace de travail natif doit être recréé"
+};
+
 export const smartFailure: AppCopy["smartFailure"] = {
   title: {
     "cycle-failed": "Ce segment de planification a échoué",
@@ -11,19 +25,7 @@ export const smartFailure: AppCopy["smartFailure"] = {
     "native-plan-failed": "Le composant de planification natif n’a pas pu établir de plan pour ce segment ; aucun ajustement n’y a donc été effectué. L’état du plan indique la cause. Cet avis disparaît dès qu’un segment ultérieur se termine correctement."
   },
   nativePlanStatus: (status: string) => `État du plan : ${status}`,
-  nativePlanStatuses: {
-    "invalid-argument": "Argument non valide",
-    "abi-mismatch": "Version d’interface du composant natif incompatible",
-    unavailable: "Composant natif indisponible",
-    "no-data": "Aucune donnée disponible",
-    "buffer-too-small": "Capacité de la mémoire tampon insuffisante",
-    "stale-generation": "Les données d’entrée sont obsolètes",
-    "out-of-memory": "Mémoire insuffisante",
-    "capacity-exceeded": "Limite de capacité dépassée",
-    "conflicting-facts": "Les données d’entrée sont contradictoires",
-    "feedback-mismatch": "Le retour d’exécution ne correspond pas au plan",
-    "recreate-required": "L’espace de travail natif doit être recréé"
-  },
+  nativePlanStatuses,
   exclusionTotal: (count: number) => plural("fr-FR", count, {
     one: "{count} donnée a été exclue de ce segment",
     many: "{count} de données ont été exclues de ce segment",
@@ -38,27 +40,29 @@ export const smartFailure: AppCopy["smartFailure"] = {
     processId: "ID du processus",
     processStartKey: "Identifiant de démarrage du processus",
     targetId: "Identifiant de l’objet de planification",
-    target: "Objet de planification"
+    target: "Objet de planification",
+    adapterKey: "Identifiant de l’adaptateur GPU"
   },
   noTarget: "Ne concerne pas un objet précis",
   facts: {
     inventory: "Inventaire des processus",
     identity: "Identité du processus",
-    "base-score": "Score de base",
     attribution: "Attribution logicielle",
-    "runtime-state": "État d’exécution de l’objet de planification",
+    "base-score": "Score de base",
+    "cpu-usage": "Utilisation CPU du processus",
+    "memory-usage": "Utilisation mémoire du processus",
+    "gpu-usage": "Utilisation GPU du processus",
+    "gpu-dedicated-memory": "Utilisation de la VRAM dédiée par le processus",
+    "gpu-private-memory-bytes": "Mémoire GPU privée résidente du processus",
+    "gpu-shared-memory-bytes": "Mémoire GPU partagée résidente du processus",
+    "runtime-state": "État d’exécution du processus",
     "cpu-core-residency": "Résidence sur les cœurs CPU",
+    "compute-score": "Score de calcul",
     "cpu-score": "Score CPU",
     "gpu-score": "Score GPU",
-    "compute-score": "Score de calcul",
-    "memory-cleanup": "Nettoyage de la mémoire",
     "decision-target": "Objet de décision",
-    "native-plan": "Plan de planification natif",
-    CpuUsage: "Utilisation CPU du processus",
-    MemoryUsage: "Utilisation mémoire du processus",
-    GpuUsage: "Utilisation GPU du processus",
-    GpuDedicatedMemory: "Utilisation de la VRAM dédiée par le processus",
-    RuntimeState: "État d’exécution du processus"
+    "memory-cleanup": "Nettoyage de la mémoire",
+    "native-plan": "Plan de planification natif"
   },
   reasons: {
     "dataset-not-current": "Les données ne proviennent pas de l’échantillon actuel",
@@ -87,6 +91,7 @@ export const smartFailure: AppCopy["smartFailure"] = {
     "canonical-software-score-missing": "Score du logiciel manquant",
     "live-identity-without-decision-facts": "Un processus en cours d’exécution n’a pas de données de décision",
     "canonical-process-not-projected": "Le score du processus n’est pas parvenu à l’entrée de planification",
-    "canonical-software-membership-incomplete": "Les membres du score du logiciel sont incomplets"
+    "canonical-software-membership-incomplete": "Les membres du score du logiciel sont incomplets",
+    ...nativePlanStatuses
   }
 };

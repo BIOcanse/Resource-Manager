@@ -1,6 +1,20 @@
 import { plural } from "../../plural.ts";
 import type { AppCopy } from "../index.ts";
 
+const nativePlanStatuses: AppCopy["smartFailure"]["nativePlanStatuses"] = {
+  "invalid-argument": "Ungültiges Argument",
+  "abi-mismatch": "Schnittstellenversion der nativen Komponente stimmt nicht überein",
+  unavailable: "Native Komponente nicht verfügbar",
+  "no-data": "Keine Daten verfügbar",
+  "buffer-too-small": "Pufferkapazität nicht ausreichend",
+  "stale-generation": "Eingabedaten sind veraltet",
+  "out-of-memory": "Nicht genügend Arbeitsspeicher",
+  "capacity-exceeded": "Kapazitätsgrenze überschritten",
+  "conflicting-facts": "Eingabedaten widersprechen sich",
+  "feedback-mismatch": "Ausführungsrückmeldung stimmt nicht mit dem Plan überein",
+  "recreate-required": "Der native Arbeitsbereich muss neu erstellt werden"
+};
+
 export const smartFailure: AppCopy["smartFailure"] = {
   title: {
     "cycle-failed": "Dieser Steuerungsabschnitt ist fehlgeschlagen",
@@ -11,19 +25,7 @@ export const smartFailure: AppCopy["smartFailure"] = {
     "native-plan-failed": "Die native Steuerungskomponente konnte für diesen Abschnitt keinen Plan erstellen; in diesem Abschnitt wurden keine Anpassungen vorgenommen. Der Planstatus nennt die Ursache. Dieser Hinweis verschwindet, sobald ein späterer Abschnitt erfolgreich abgeschlossen wird."
   },
   nativePlanStatus: (status: string) => `Planstatus: ${status}`,
-  nativePlanStatuses: {
-    "invalid-argument": "Ungültiges Argument",
-    "abi-mismatch": "Schnittstellenversion der nativen Komponente stimmt nicht überein",
-    unavailable: "Native Komponente nicht verfügbar",
-    "no-data": "Keine Daten verfügbar",
-    "buffer-too-small": "Pufferkapazität nicht ausreichend",
-    "stale-generation": "Eingabedaten sind veraltet",
-    "out-of-memory": "Nicht genügend Arbeitsspeicher",
-    "capacity-exceeded": "Kapazitätsgrenze überschritten",
-    "conflicting-facts": "Eingabedaten widersprechen sich",
-    "feedback-mismatch": "Ausführungsrückmeldung stimmt nicht mit dem Plan überein",
-    "recreate-required": "Der native Arbeitsbereich muss neu erstellt werden"
-  },
+  nativePlanStatuses,
   exclusionTotal: (count: number) => plural("de-DE", count, {
     one: "{count} Datenelement wurde in diesem Abschnitt ausgeschlossen",
     other: "{count} Datenelemente wurden in diesem Abschnitt ausgeschlossen"
@@ -37,27 +39,29 @@ export const smartFailure: AppCopy["smartFailure"] = {
     processId: "Prozess-ID",
     processStartKey: "Prozessstartkennung",
     targetId: "Kennung des Steuerungsziels",
-    target: "Steuerungsziel"
+    target: "Steuerungsziel",
+    adapterKey: "GPU-Adapterkennung"
   },
   noTarget: "Nicht auf ein bestimmtes Objekt bezogen",
   facts: {
     inventory: "Prozessliste",
     identity: "Prozessidentität",
-    "base-score": "Basiswert",
     attribution: "Softwarezuordnung",
-    "runtime-state": "Laufzustand des Steuerungsziels",
+    "base-score": "Basiswert",
+    "cpu-usage": "CPU-Auslastung des Prozesses",
+    "memory-usage": "Speichernutzung des Prozesses",
+    "gpu-usage": "GPU-Auslastung des Prozesses",
+    "gpu-dedicated-memory": "Dedizierte VRAM-Nutzung des Prozesses",
+    "gpu-private-memory-bytes": "Residenter privater GPU-Speicher des Prozesses",
+    "gpu-shared-memory-bytes": "Residenter gemeinsam genutzter GPU-Speicher des Prozesses",
+    "runtime-state": "Laufzustand des Prozesses",
     "cpu-core-residency": "CPU-Kernbelegung",
+    "compute-score": "Rechenleistungsbewertung",
     "cpu-score": "CPU-Bewertung",
     "gpu-score": "GPU-Bewertung",
-    "compute-score": "Rechenleistungsbewertung",
-    "memory-cleanup": "Speicherbereinigung",
     "decision-target": "Entscheidungsziel",
-    "native-plan": "Nativer Steuerungsplan",
-    CpuUsage: "CPU-Auslastung des Prozesses",
-    MemoryUsage: "Speichernutzung des Prozesses",
-    GpuUsage: "GPU-Auslastung des Prozesses",
-    GpuDedicatedMemory: "Dedizierte VRAM-Nutzung des Prozesses",
-    RuntimeState: "Laufzustand des Prozesses"
+    "memory-cleanup": "Speicherbereinigung",
+    "native-plan": "Nativer Steuerungsplan"
   },
   reasons: {
     "dataset-not-current": "Daten stammen nicht aus der aktuellen Stichprobe",
@@ -86,6 +90,7 @@ export const smartFailure: AppCopy["smartFailure"] = {
     "canonical-software-score-missing": "Softwarebewertung fehlt",
     "live-identity-without-decision-facts": "Für einen laufenden Prozess fehlen Entscheidungsdaten",
     "canonical-process-not-projected": "Die Prozessbewertung ist nicht in die Steuerungseingabe eingegangen",
-    "canonical-software-membership-incomplete": "Die Mitglieder der Softwarebewertung sind unvollständig"
+    "canonical-software-membership-incomplete": "Die Mitglieder der Softwarebewertung sind unvollständig",
+    ...nativePlanStatuses
   }
 };

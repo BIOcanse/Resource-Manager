@@ -18,6 +18,8 @@ import { systemProcessResultSummary } from "../src/presentation/systemProcessRes
 import { userFacingErrorMessage, userFacingMessage, userFacingState } from "../src/presentation/userFacingText.ts";
 import { ApiRequestError } from "../src/api/httpTransport.ts";
 import { resourceMetricBasis } from "../src/presentation/metricLabels.ts";
+import { hostManagerSchedulingExclusionReasons, hostManagerSchedulingFacts } from "../src/data/optimization/hostManagerSchedulingFactCodes.ts";
+import { smartFailureFactText, smartFailureReasonText } from "../src/features/optimization/smartFailurePresentation.ts";
 import { flattenCopy, inspectCopy, inspectParameters, inspectText, inspectTraditional } from "./localizationCoverage.ts";
 import type { LocalizationIssue } from "./localizationCoverage.ts";
 
@@ -174,6 +176,14 @@ try {
     if (edid.modes[1].rows.find(row => row.label === app.deviceTopology.edid.frameRate)?.value !== "1978/33 Hz")
       throw new Error(language + ": exact EDID rate changed during localization");
     inspectFunctions(language, "app", uiText, englishApp, appCases);
+    // 调度事实排除的码表是封闭的：每个事实、每个原因（含原生计划状态码）都经展示函数取到本语言的文字，没有按码原样显示的回退。
+    for (const fact of hostManagerSchedulingFacts) {
+      issues.push(...inspectText(language, `consumer.smartFailureFactText(${fact})`, smartFailureFactText(fact), englishApp.smartFailure.facts[fact], true));
+    }
+    for (const reason of hostManagerSchedulingExclusionReasons) {
+      issues.push(...inspectText(language, `consumer.smartFailureReasonText(${reason})`, smartFailureReasonText(reason), englishApp.smartFailure.reasons[reason], true));
+    }
+    issues.push(...inspectText(language, "app.smartFailure.field.adapterKey", uiText.smartFailure.field.adapterKey, englishApp.smartFailure.field.adapterKey, true));
     inspectFunctions(language, "settings", currentSettingsText(), englishSettings, settingsCases);
     // 动画选项的名字和说明是两三个词的短句，英文散文判定抓不到，按必须翻译逐项检查（曾有四种语言漏翻）。
     for (const option of currentSettingsText().animationStyleOptions) {

@@ -3435,7 +3435,8 @@ const subscriptionChannelSelectors = new Set([
 ]);
 
 // 调度段的 failure 与事实排除，形状同后端 tests/App/Fixtures/Optimization/smart-status.json 的三例
-// （夹具的 mode 是 "cpu-only"，不是产品模式，这里不取；模式和其余字段由 smartStatus 给）。
+// （模式和其余字段由 smartStatus 给）。native-plan-failed 比夹具多一项 GPU 排除，带适配器标识
+// （码取自 tests/App/Fixtures/Optimization/smart-exclusions.json），用来检查明细里的适配器一行。
 const smartStatusSegments = {
   success: {
     failure: null,
@@ -3451,14 +3452,16 @@ const smartStatusSegments = {
   },
   "native-plan-failed": {
     failure: { kind: "native-plan-failed", exceptionType: "InvalidDataException", nativePlanStatus: "capacity-exceeded" },
-    factExclusionCount: 2,
+    factExclusionCount: 3,
     factExclusionCounts: [
       { fact: "inventory", reason: "inventory-overflow", count: 1 },
+      { fact: "gpu-usage", reason: "gpu-row-missing-or-invalid", count: 1 },
       { fact: "native-plan", reason: "capacity-exceeded", count: 1 }
     ],
     factExclusions: [
-      { processId: 43003, processStartKey: "9007199254740993", targetId: "process:43003:9007199254740993", fact: "inventory", reason: "inventory-overflow" },
-      { processId: null, processStartKey: null, targetId: null, fact: "native-plan", reason: "capacity-exceeded" }
+      { processId: 43003, processStartKey: "9007199254740993", targetId: "process:43003:9007199254740993", fact: "inventory", reason: "inventory-overflow", adapterKey: null },
+      { processId: 42, processStartKey: "9007199254740993", targetId: null, fact: "gpu-usage", reason: "gpu-row-missing-or-invalid", adapterKey: "9007199254740995" },
+      { processId: null, processStartKey: null, targetId: null, fact: "native-plan", reason: "capacity-exceeded", adapterKey: null }
     ]
   }
 };

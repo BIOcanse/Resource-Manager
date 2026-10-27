@@ -1,5 +1,19 @@
 import type { AppCopy } from "../index.ts";
 
+const nativePlanStatuses: AppCopy["smartFailure"]["nativePlanStatuses"] = {
+  "invalid-argument": "Недопустимый аргумент",
+  "abi-mismatch": "Версия интерфейса собственного компонента не совпадает",
+  unavailable: "Собственный компонент недоступен",
+  "no-data": "Нет доступных данных",
+  "buffer-too-small": "Недостаточный объём буфера",
+  "stale-generation": "Входные данные устарели",
+  "out-of-memory": "Недостаточно памяти",
+  "capacity-exceeded": "Превышен предел ёмкости",
+  "conflicting-facts": "Входные данные противоречат друг другу",
+  "feedback-mismatch": "Отчёт о выполнении не соответствует плану",
+  "recreate-required": "Требуется заново создать собственную рабочую область"
+};
+
 export const smartFailure: AppCopy["smartFailure"] = {
   title: {
     "cycle-failed": "Этот сегмент планирования завершился с ошибкой",
@@ -10,19 +24,7 @@ export const smartFailure: AppCopy["smartFailure"] = {
     "native-plan-failed": "Собственный компонент планирования не смог составить план для этого сегмента, поэтому в нём не выполнялось никаких изменений. Состояние плана указывает причину. Это уведомление исчезнет, когда один из следующих сегментов завершится успешно."
   },
   nativePlanStatus: (status: string) => `Состояние плана: ${status}`,
-  nativePlanStatuses: {
-    "invalid-argument": "Недопустимый аргумент",
-    "abi-mismatch": "Версия интерфейса собственного компонента не совпадает",
-    unavailable: "Собственный компонент недоступен",
-    "no-data": "Нет доступных данных",
-    "buffer-too-small": "Недостаточный объём буфера",
-    "stale-generation": "Входные данные устарели",
-    "out-of-memory": "Недостаточно памяти",
-    "capacity-exceeded": "Превышен предел ёмкости",
-    "conflicting-facts": "Входные данные противоречат друг другу",
-    "feedback-mismatch": "Отчёт о выполнении не соответствует плану",
-    "recreate-required": "Требуется заново создать собственную рабочую область"
-  },
+  nativePlanStatuses,
   exclusionTotal: (count: number) => `Исключено элементов данных в этом сегменте: ${count}`,
   exclusionsHint: "Исключённые данные — это данные, которые не участвовали в решениях планирования этого сегмента, поскольку отсутствовали, были недопустимыми или противоречивыми. Сводка показывает число исключений по элементу данных и причине; подробности указывают затронутые объекты.",
   summaryLabel: "Сводка исключений",
@@ -33,27 +35,29 @@ export const smartFailure: AppCopy["smartFailure"] = {
     processId: "ID процесса",
     processStartKey: "Идентификатор запуска процесса",
     targetId: "Идентификатор объекта планирования",
-    target: "Объект планирования"
+    target: "Объект планирования",
+    adapterKey: "Идентификатор адаптера GPU"
   },
   noTarget: "Не относится к конкретному объекту",
   facts: {
     inventory: "Список процессов",
     identity: "Идентичность процесса",
-    "base-score": "Базовая оценка",
     attribution: "Принадлежность программе",
-    "runtime-state": "Состояние выполнения объекта планирования",
+    "base-score": "Базовая оценка",
+    "cpu-usage": "Загрузка CPU процессом",
+    "memory-usage": "Использование памяти процессом",
+    "gpu-usage": "Загрузка GPU процессом",
+    "gpu-dedicated-memory": "Использование выделенной VRAM процессом",
+    "gpu-private-memory-bytes": "Резидентная частная память GPU процесса",
+    "gpu-shared-memory-bytes": "Резидентная общая память GPU процесса",
+    "runtime-state": "Состояние выполнения процесса",
     "cpu-core-residency": "Размещение на ядрах CPU",
+    "compute-score": "Оценка вычислительной мощности",
     "cpu-score": "Оценка CPU",
     "gpu-score": "Оценка GPU",
-    "compute-score": "Оценка вычислительной мощности",
-    "memory-cleanup": "Очистка памяти",
     "decision-target": "Объект решения",
-    "native-plan": "Собственный план планирования",
-    CpuUsage: "Загрузка CPU процессом",
-    MemoryUsage: "Использование памяти процессом",
-    GpuUsage: "Загрузка GPU процессом",
-    GpuDedicatedMemory: "Использование выделенной VRAM процессом",
-    RuntimeState: "Состояние выполнения процесса"
+    "memory-cleanup": "Очистка памяти",
+    "native-plan": "Собственный план планирования"
   },
   reasons: {
     "dataset-not-current": "Данные получены не из текущей выборки",
@@ -82,6 +86,7 @@ export const smartFailure: AppCopy["smartFailure"] = {
     "canonical-software-score-missing": "Отсутствует оценка программы",
     "live-identity-without-decision-facts": "У работающего процесса нет данных для решения",
     "canonical-process-not-projected": "Оценка процесса не попала во входные данные планирования",
-    "canonical-software-membership-incomplete": "Состав оценки программы неполон"
+    "canonical-software-membership-incomplete": "Состав оценки программы неполон",
+    ...nativePlanStatuses
   }
 };

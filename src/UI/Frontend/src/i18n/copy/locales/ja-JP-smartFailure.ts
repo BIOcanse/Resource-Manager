@@ -1,5 +1,19 @@
 import type { AppCopy } from "../index.ts";
 
+const nativePlanStatuses: AppCopy["smartFailure"]["nativePlanStatuses"] = {
+  "invalid-argument": "引数が無効です",
+  "abi-mismatch": "ネイティブコンポーネントのインターフェースのバージョンが一致しません",
+  unavailable: "ネイティブコンポーネントを利用できません",
+  "no-data": "利用できるデータがありません",
+  "buffer-too-small": "バッファーの容量が不足しています",
+  "stale-generation": "入力データが古くなっています",
+  "out-of-memory": "メモリが不足しています",
+  "capacity-exceeded": "容量の上限を超えました",
+  "conflicting-facts": "入力データが互いに矛盾しています",
+  "feedback-mismatch": "実行結果の通知が計画と一致しません",
+  "recreate-required": "ネイティブの作業領域を作り直す必要があります"
+};
+
 export const smartFailure: AppCopy["smartFailure"] = {
   title: {
     "cycle-failed": "このスケジューリング区間は失敗しました",
@@ -10,19 +24,7 @@ export const smartFailure: AppCopy["smartFailure"] = {
     "native-plan-failed": "ネイティブのスケジューリングコンポーネントがこの区間の計画を作成できなかったため、この区間では調整を実行していません。計画の状態に原因が示されています。後の区間が正常に完了すると、この通知は消えます。"
   },
   nativePlanStatus: (status: string) => `計画の状態: ${status}`,
-  nativePlanStatuses: {
-    "invalid-argument": "引数が無効です",
-    "abi-mismatch": "ネイティブコンポーネントのインターフェースのバージョンが一致しません",
-    unavailable: "ネイティブコンポーネントを利用できません",
-    "no-data": "利用できるデータがありません",
-    "buffer-too-small": "バッファーの容量が不足しています",
-    "stale-generation": "入力データが古くなっています",
-    "out-of-memory": "メモリが不足しています",
-    "capacity-exceeded": "容量の上限を超えました",
-    "conflicting-facts": "入力データが互いに矛盾しています",
-    "feedback-mismatch": "実行結果の通知が計画と一致しません",
-    "recreate-required": "ネイティブの作業領域を作り直す必要があります"
-  },
+  nativePlanStatuses,
   exclusionTotal: (count: number) => `この区間で除外されたデータ: ${count} 件`,
   exclusionsHint: "除外されたデータとは、欠落している、無効である、または互いに矛盾しているため、この区間のスケジューリングの判断に使われなかったデータです。集計はデータ項目と理由ごとに件数を示し、詳細は対象を示します。",
   summaryLabel: "除外の集計",
@@ -33,27 +35,29 @@ export const smartFailure: AppCopy["smartFailure"] = {
     processId: "プロセス ID",
     processStartKey: "プロセス起動識別子",
     targetId: "スケジューリング対象の識別子",
-    target: "スケジューリング対象"
+    target: "スケジューリング対象",
+    adapterKey: "GPU アダプターの識別子"
   },
   noTarget: "特定の対象に関するものではありません",
   facts: {
     inventory: "プロセス一覧",
     identity: "プロセスの識別情報",
-    "base-score": "基本スコア",
     attribution: "ソフトウェアへの帰属",
-    "runtime-state": "スケジューリング対象の実行状態",
+    "base-score": "基本スコア",
+    "cpu-usage": "プロセスの CPU 使用率",
+    "memory-usage": "プロセスのメモリ使用量",
+    "gpu-usage": "プロセスの GPU 使用率",
+    "gpu-dedicated-memory": "プロセスの専用 VRAM 使用量",
+    "gpu-private-memory-bytes": "プロセスの専有 GPU メモリ常駐量",
+    "gpu-shared-memory-bytes": "プロセスの共有 GPU メモリ常駐量",
+    "runtime-state": "プロセスの実行状態",
     "cpu-core-residency": "CPU コアへの常駐",
+    "compute-score": "演算スコア",
     "cpu-score": "CPU スコア",
     "gpu-score": "GPU スコア",
-    "compute-score": "演算スコア",
-    "memory-cleanup": "メモリのクリーンアップ",
     "decision-target": "判断の対象",
-    "native-plan": "ネイティブのスケジューリング計画",
-    CpuUsage: "プロセスの CPU 使用率",
-    MemoryUsage: "プロセスのメモリ使用量",
-    GpuUsage: "プロセスの GPU 使用率",
-    GpuDedicatedMemory: "プロセスの専用 VRAM 使用量",
-    RuntimeState: "プロセスの実行状態"
+    "memory-cleanup": "メモリのクリーンアップ",
+    "native-plan": "ネイティブのスケジューリング計画"
   },
   reasons: {
     "dataset-not-current": "データが現在のサンプルではありません",
@@ -82,6 +86,7 @@ export const smartFailure: AppCopy["smartFailure"] = {
     "canonical-software-score-missing": "ソフトウェアのスコアがありません",
     "live-identity-without-decision-facts": "実行中のプロセスに判断用のデータがありません",
     "canonical-process-not-projected": "プロセスのスコアがスケジューリングの入力に反映されていません",
-    "canonical-software-membership-incomplete": "ソフトウェアのスコアの構成が不完全です"
+    "canonical-software-membership-incomplete": "ソフトウェアのスコアの構成が不完全です",
+    ...nativePlanStatuses
   }
 };

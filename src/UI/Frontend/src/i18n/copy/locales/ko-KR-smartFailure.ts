@@ -1,5 +1,19 @@
 import type { AppCopy } from "../index.ts";
 
+const nativePlanStatuses: AppCopy["smartFailure"]["nativePlanStatuses"] = {
+  "invalid-argument": "인수가 잘못되었습니다",
+  "abi-mismatch": "네이티브 구성 요소의 인터페이스 버전이 일치하지 않습니다",
+  unavailable: "네이티브 구성 요소를 사용할 수 없습니다",
+  "no-data": "사용할 수 있는 데이터가 없습니다",
+  "buffer-too-small": "버퍼 용량이 부족합니다",
+  "stale-generation": "입력 데이터가 오래되었습니다",
+  "out-of-memory": "메모리가 부족합니다",
+  "capacity-exceeded": "용량 한도를 초과했습니다",
+  "conflicting-facts": "입력 데이터가 서로 모순됩니다",
+  "feedback-mismatch": "실행 결과 보고가 계획과 일치하지 않습니다",
+  "recreate-required": "네이티브 작업 영역을 다시 만들어야 합니다"
+};
+
 export const smartFailure: AppCopy["smartFailure"] = {
   title: {
     "cycle-failed": "이 스케줄링 구간이 실패했습니다",
@@ -10,19 +24,7 @@ export const smartFailure: AppCopy["smartFailure"] = {
     "native-plan-failed": "네이티브 스케줄링 구성 요소가 이 구간의 계획을 만들지 못하여 이 구간에서는 조정을 실행하지 않았습니다. 계획 상태에 원인이 표시됩니다. 이후 구간이 정상적으로 완료되면 이 알림은 사라집니다."
   },
   nativePlanStatus: (status: string) => `계획 상태: ${status}`,
-  nativePlanStatuses: {
-    "invalid-argument": "인수가 잘못되었습니다",
-    "abi-mismatch": "네이티브 구성 요소의 인터페이스 버전이 일치하지 않습니다",
-    unavailable: "네이티브 구성 요소를 사용할 수 없습니다",
-    "no-data": "사용할 수 있는 데이터가 없습니다",
-    "buffer-too-small": "버퍼 용량이 부족합니다",
-    "stale-generation": "입력 데이터가 오래되었습니다",
-    "out-of-memory": "메모리가 부족합니다",
-    "capacity-exceeded": "용량 한도를 초과했습니다",
-    "conflicting-facts": "입력 데이터가 서로 모순됩니다",
-    "feedback-mismatch": "실행 결과 보고가 계획과 일치하지 않습니다",
-    "recreate-required": "네이티브 작업 영역을 다시 만들어야 합니다"
-  },
+  nativePlanStatuses,
   exclusionTotal: (count: number) => `이 구간에서 제외된 데이터 ${count}개`,
   exclusionsHint: "제외된 데이터는 누락되었거나 유효하지 않거나 서로 일치하지 않아 이 구간의 스케줄링 판단에 사용되지 않은 데이터입니다. 요약은 데이터 항목과 원인별 개수를 보여 주고, 세부 정보는 해당 대상을 보여 줍니다.",
   summaryLabel: "제외 요약",
@@ -33,27 +35,29 @@ export const smartFailure: AppCopy["smartFailure"] = {
     processId: "프로세스 ID",
     processStartKey: "프로세스 시작 식별자",
     targetId: "스케줄링 대상 식별자",
-    target: "스케줄링 대상"
+    target: "스케줄링 대상",
+    adapterKey: "GPU 어댑터 식별자"
   },
   noTarget: "특정 대상에 해당하지 않음",
   facts: {
     inventory: "프로세스 목록",
     identity: "프로세스 식별 정보",
-    "base-score": "기본 점수",
     attribution: "소프트웨어 귀속",
-    "runtime-state": "스케줄링 대상의 실행 상태",
+    "base-score": "기본 점수",
+    "cpu-usage": "프로세스 CPU 사용률",
+    "memory-usage": "프로세스 메모리 사용량",
+    "gpu-usage": "프로세스 GPU 사용률",
+    "gpu-dedicated-memory": "프로세스 전용 VRAM 사용량",
+    "gpu-private-memory-bytes": "프로세스 비공유 GPU 메모리 상주량",
+    "gpu-shared-memory-bytes": "프로세스 공유 GPU 메모리 상주량",
+    "runtime-state": "프로세스 실행 상태",
     "cpu-core-residency": "CPU 코어 상주",
+    "compute-score": "연산 점수",
     "cpu-score": "CPU 점수",
     "gpu-score": "GPU 점수",
-    "compute-score": "연산 점수",
-    "memory-cleanup": "메모리 정리",
     "decision-target": "판단 대상",
-    "native-plan": "네이티브 스케줄링 계획",
-    CpuUsage: "프로세스 CPU 사용률",
-    MemoryUsage: "프로세스 메모리 사용량",
-    GpuUsage: "프로세스 GPU 사용률",
-    GpuDedicatedMemory: "프로세스 전용 VRAM 사용량",
-    RuntimeState: "프로세스 실행 상태"
+    "memory-cleanup": "메모리 정리",
+    "native-plan": "네이티브 스케줄링 계획"
   },
   reasons: {
     "dataset-not-current": "데이터가 현재 샘플이 아닙니다",
@@ -82,6 +86,7 @@ export const smartFailure: AppCopy["smartFailure"] = {
     "canonical-software-score-missing": "소프트웨어 점수가 없습니다",
     "live-identity-without-decision-facts": "실행 중인 프로세스에 판단용 데이터가 없습니다",
     "canonical-process-not-projected": "프로세스 점수가 스케줄링 입력에 반영되지 않았습니다",
-    "canonical-software-membership-incomplete": "소프트웨어 점수의 구성원이 불완전합니다"
+    "canonical-software-membership-incomplete": "소프트웨어 점수의 구성원이 불완전합니다",
+    ...nativePlanStatuses
   }
 };
