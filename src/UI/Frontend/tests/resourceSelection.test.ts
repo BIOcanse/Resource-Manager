@@ -99,7 +99,30 @@ const centre = (index: number) => (hits[index][0] + hits[index][1]) / 2;
 assert.equal(resourceSegmentAtTrackX(tiny, centre(2), 1000)?.segment.id, "tinyA");
 assert.equal(resourceSegmentAtTrackX(tiny, centre(3), 1000)?.segment.id, "tinyB");
 assert.equal(resourceSegmentAtTrackX(tiny, 690, 1000)?.segment.id, "middle");
-// 段多到放不下时按段数均分，不借成负宽。
+// 物理内存条的真实形状（real-slices/20261027T043049Z）：前面几个大软件、上百个很小的服务，系统/驱动保留在最后画了约三分之一，
+// 后面是空余。小服务一起借宽度时，保留量向左边至多借出最小宽度，它画出来的地方除了左边这几个像素都指到它自己，
+// 不能按段数均分把它挤成 6 px、让指针在它上面落到小服务。
+const services = Array.from({ length: 170 }, (_, index) => [`service${index}`, 0.003 + (index % 7) * 0.0005] as [string, number]);
+const servicesWidth = services.reduce((sum, [, width]) => sum + width, 0);
+const reservedItems = layout([["browser", 20], ["editor", 8], ...services, ["reserved", 32.5], ["empty", 100 - 60.5 - servicesWidth]]);
+const reservedHits = resourceSegmentHitRanges(reservedItems, 1000);
+const reservedIndex = reservedItems.findIndex((item) => item.segment.id === "reserved");
+const reservedDrawn = [reservedItems[reservedIndex].left * 10, reservedItems[reservedIndex].right * 10];
+const crowdedMinimum = Math.min(resourceSegmentMinimumTargetPx, 1000 / reservedItems.length);
+assert.ok(reservedHits[reservedIndex][0] <= reservedDrawn[0] + crowdedMinimum + 1e-9
+  && Math.abs(reservedHits[reservedIndex][1] - reservedDrawn[1]) < 1e-9,
+  `the reserved segment keeps its drawn range except at most ${crowdedMinimum} px at the narrow run: ${JSON.stringify({ drawn: reservedDrawn, hit: reservedHits[reservedIndex] })}`);
+for (let x = Math.ceil(reservedDrawn[0] + crowdedMinimum); x < reservedDrawn[1]; x += 5) {
+  assert.equal(resourceSegmentAtTrackX(reservedItems, x, 1000)?.segment.id, "reserved", `x = ${x} px is drawn as the reserved segment`);
+}
+assert.equal(resourceSegmentAtTrackX(reservedItems, 100, 1000)?.segment.id, "browser");
+assert.ok(Math.abs(reservedHits[1][0] - 200) < 1e-9 && reservedHits[1][1] >= 280 - crowdedMinimum - 1e-9,
+  `the wide segment on the other side of the narrow run also lends at most the minimum width: ${JSON.stringify(reservedHits[1])}`);
+for (const [index, [left, right]] of reservedHits.entries()) {
+  assert.ok(right - left > 0, `segment ${index} keeps a positive range`);
+}
+assert.ok(Math.abs(reservedHits.at(-1)![1] - 1000) < 1e-9, "the ranges still end at the track end");
+// 段多到放不下时各段都不借，不借成负宽。
 const crowded = layout(Array.from({ length: 50 }, (_, index) => [`s${index}`, 2] as [string, number]));
 for (const [left, right] of resourceSegmentHitRanges(crowded, 100)) {
   assert.ok(right - left > 0, "every crowded segment keeps a positive range");

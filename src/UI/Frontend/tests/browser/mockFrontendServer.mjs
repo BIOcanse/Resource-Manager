@@ -139,6 +139,15 @@ const defaultScenario = {
   physicalMemoryResidualReason: "capture-time-limit",
   // 页帧帧自己的采集时间：计数器采集不会改写它，所以它和外层明细帧的 capturedAt 不同（合成值）。
   physicalMemoryResidualCapturedAt: "2026-10-26T05:59:50.000Z",
+  // 物理内存条的软件行和保留量的计数器分项（physicalMemoryResidual 不是 "off" 时）。null 用下面 physicalMemoryFixture 的示例软件和分项；
+  // 软件给 [软件 id, 名字, kind, displayKind, 字节]，分项给 [kind, 字节, 池标记]，用来摆出后端那样上百个小服务、一个大保留量的条
+  // （real-slices/20261027T043049Z 的形状）。保留量 = 已用 − 软件之和；页帧帧不随它变。
+  physicalMemorySoftware: null,
+  physicalMemoryCounterLeaves: null,
+  // CPU 条的软件行（[软件 id, 名字, kind, displayKind, 百分比]）和最后的系统/驱动保留（百分比，它下面是一项 PID -1 的 system-residual，
+  // residualDetails 选了 cpu.usage 时才写出）。null 用示例软件、没有保留量；用来摆出真实 CPU 条那样一串细段后跟保留量的形状。
+  cpuSoftware: null,
+  cpuResidualPercent: 0,
   // 监视控制台卡片设置：保存（PUT）后读回保存的内容；null 时是夹具默认值。
   dashboardSettings: null,
   gpuPlacementEnabled: false,
@@ -2267,9 +2276,22 @@ function physicalMemoryBar(softwareCatalog, segmentCount, processDetailSoftwareI
   const percent = (value) => value * 100 / fixture.capacityBytes;
   let residualIndex = softwareCatalog.findIndex(row => row[0] === physicalMemoryResidualSoftwareId);
   if (residualIndex < 0) residualIndex = softwareCatalog.push([physicalMemoryResidualSoftwareId, "", "windows_system", "system-residual"]) - 1;
-  const residual = fixture.usedBytes - fixture.attributedPrivateBytes;
+  const software = scenario.physicalMemorySoftware === null
+    ? createResourceSoftwareRows(segmentCount, fixture.attributedPrivateBytes, percent(fixture.attributedPrivateBytes),
+      (value) => `${value}`, processDetailSoftwareIds)
+    : scenario.physicalMemorySoftware.map(([softwareId, name, kind, displayKind, bytes], index) => {
+      const catalogIndex = softwareCatalog.push([softwareId, name, kind, displayKind]) - 1;
+      const processId = 7300 + index;
+      const processes = processDetailSoftwareIds.has(softwareId.toLowerCase())
+        ? [[processId, "svchost.exe", "C:\\Windows\\System32\\svchost.exe", bytes, percent(bytes), 100, "SYSTEM", "x64", "direct", 0,
+          String(132000000000000000n + BigInt(processId))]] : [];
+      return [catalogIndex, bytes, percent(bytes), 1, 0, processes];
+    });
+  const attributed = software.reduce((sum, row) => sum + row[1], 0);
+  const residual = fixture.usedBytes - attributed;
   const leaves = processDetailSoftwareIds.has(physicalMemoryResidualSoftwareId)
-    ? fixture.counterLeaves.map(([kind, bytes, name]) => [-1, name, null, bytes, percent(bytes), bytes * 100 / residual, null, null, kind, 0, null])
+    ? (scenario.physicalMemoryCounterLeaves ?? fixture.counterLeaves)
+      .map(([kind, bytes, name]) => [-1, name, null, bytes, percent(bytes), bytes * 100 / residual, null, null, kind, 0, null])
     : [];
   return {
     metricId: "memory.usage",
@@ -2280,13 +2302,32 @@ function physicalMemoryBar(softwareCatalog, segmentCount, processDetailSoftwareI
     totalValue: fixture.usedBytes,
     capacityValue: fixture.capacityBytes,
     totalSystemPercent: percent(fixture.usedBytes),
-    ...barFacts({ processSumValue: fixture.attributedPrivateBytes, residualValue: residual, additiveAcrossProcesses: true, capturedAt }),
-    software: [
-      ...createResourceSoftwareRows(segmentCount, fixture.attributedPrivateBytes, percent(fixture.attributedPrivateBytes),
-        (value) => `${value}`, processDetailSoftwareIds),
-      [residualIndex, residual, percent(residual), 0, 0, leaves]
-    ]
+    ...barFacts({ processSumValue: attributed, residualValue: residual, additiveAcrossProcesses: true, capturedAt }),
+    software: [...software, [residualIndex, residual, percent(residual), 0, 0, leaves]]
   };
+}
+
+// CPU 条按 scenario.cpuSoftware 列出的软件行，最后是 cpuResidualPercent 的系统/驱动保留（后端的残差行下面是一项 PID -1 的 system-residual，
+// 只在 residualDetails 选了 cpu.usage 时写出）。
+function listedCpuBar(softwareCatalog, processDetailSoftwareIds, capturedAt) {
+  const residualId = "resource-residual:cpu.usage";
+  const software = scenario.cpuSoftware.map(([softwareId, name, kind, displayKind, percent], index) => {
+    const catalogIndex = softwareCatalog.push([softwareId, name, kind, displayKind]) - 1;
+    const processId = 8300 + index;
+    const processes = processDetailSoftwareIds.has(softwareId.toLowerCase())
+      ? [[processId, `${name || softwareId}.exe`, null, percent, percent, 100, "测试用户", "x64", "direct", 0, String(132000000000000000n + BigInt(processId))]] : [];
+    return [catalogIndex, percent, percent, 1, 0, processes];
+  });
+  const attributed = software.reduce((sum, row) => sum + row[1], 0);
+  const residual = scenario.cpuResidualPercent;
+  if (residual > 0) {
+    const residualIndex = softwareCatalog.push([residualId, "", "windows_system", "system-residual"]) - 1;
+    const leaves = processDetailSoftwareIds.has(residualId) ? [[-1, "", null, residual, residual, 100, null, null, "system-residual", 0, null]] : [];
+    software.push([residualIndex, residual, residual, 0, 0, leaves]);
+  }
+  const total = attributed + residual;
+  return { metricId: "cpu.usage", unit: "%", scaleMode: "capacity", totalValue: total, capacityValue: 100, totalSystemPercent: total,
+    ...barFacts({ processSumValue: attributed, residualValue: residual, additiveAcrossProcesses: true, capturedAt }), software };
 }
 
 // 后端只在物理内存条（memory.usage 和 process_all_private_working_set_actual 字段条）上写 residualSource。
@@ -2349,7 +2390,7 @@ function resourceBreakdownFixture(capturedAt = now(), processDetailSoftwareIds =
   const visibleIds = new Set(normalizeMetricIds([...ids, ...measures]).map(id => id.toLowerCase()));
   const processFields = [...visibleIds].filter(id => Object.hasOwn(processMemoryFacts, id));
   const bars = [
-      {
+      scenario.cpuSoftware !== null ? listedCpuBar(softwareCatalog, processDetailSoftwareIds, capturedAt) : {
         metricId: "cpu.usage",
         unit: "%",
         scaleMode: "capacity",

@@ -3,9 +3,13 @@ import { resourceSegmentMinimumTargetPx, type ResourceSegmentLayout } from "./re
 /**
  * 指针在轨道内容区横坐标 x（px，0 是内容区左边）时落在哪一段。
  *
- * 每段的指针范围至少 resourceSegmentMinimumTargetPx 宽（段太多放不下时按段数均分）：
- * 连着的一串窄段一起向它左右两边紧挨着的宽段借宽度，各借一半，一边不够另一边补，宽段自己至少留下这个宽度；
- * 借到的宽度按各窄段差多少分。别处的分界和画出来的一样，只有窄段两边的分界挪开几个像素。
+ * 窄段（画出来不到 min(resourceSegmentMinimumTargetPx, 轨道宽 / 段数) 的段）的指针范围放宽：
+ * 连着的一串窄段一起向它左右两边紧挨着的宽段借宽度，各借一半，一边不够另一边补；
+ * 每个宽段向每一边最多借出这个最小宽度，自己至少留下这个宽度。借到的宽度按各窄段差多少分。
+ * 所以分界只在窄段两边挪开至多几个像素，宽段画出来的地方除了边上这几个像素都指到它自己：
+ * 一长串窄段借不够时各自不到最小宽度（键盘仍按顺序逐段走），而不是把旁边的宽段挤成几个像素——
+ * 后端给物理内存条上百个很小的服务时，按段数均分会让画在条上三分之一的系统/驱动保留只剩 6 px 可指，
+ * 指针在它上面落到的全是小服务。
  * 落在所有段之外时取最近的一段；没有段时为 null。
  */
 export function resourceSegmentAtTrackX<T extends { value: number }>(
@@ -62,8 +66,9 @@ export function resourceSegmentHitRanges<T extends { value: number }>(
     for (let tiny = start; tiny <= end; tiny++) {
       need += minimum - widths[tiny];
     }
-    const spareLeft = start > 0 ? Math.max(0, hitWidths[start - 1] - minimum) : 0;
-    const spareRight = end + 1 < ranges.length ? Math.max(0, hitWidths[end + 1] - minimum) : 0;
+    // 每个宽段向每一边至多借出 minimum：左边的宽段这一边还没借过，右边的宽段还是画出来的宽度。
+    const spareLeft = start > 0 ? Math.min(minimum, Math.max(0, hitWidths[start - 1] - minimum)) : 0;
+    const spareRight = end + 1 < ranges.length ? Math.min(minimum, Math.max(0, hitWidths[end + 1] - minimum)) : 0;
     let takeLeft = Math.min(spareLeft, need / 2);
     const takeRight = Math.min(spareRight, need - takeLeft);
     takeLeft = Math.min(spareLeft, need - takeRight);
