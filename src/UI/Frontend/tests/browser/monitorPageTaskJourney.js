@@ -15,6 +15,10 @@ export default async function monitorPageTaskJourney(page, baseUrl) {
   const app = await loadAppCopy("zh-CN");
   const errors = [];
   page.on("pageerror", error => errors.push(String(error)));
+  const scenario = await page.request.post(`${baseUrl}/__test/scenario`, {
+    data: { resourceTableVariant: "many", resourceTableRowCount: 80 }
+  });
+  assert.ok(scenario.ok(), "configures enough real rows to fill the virtual row pool");
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   const primary = id => page.getByRole("navigation", { name: app.shell.pageNav, exact: true })
@@ -32,6 +36,12 @@ export default async function monitorPageTaskJourney(page, baseUrl) {
       await primary(id).click();
       await settle();
     }
+    // Warm the table's actual retained value, including when it starts below the
+    // viewport. The measured switch then mounts a full pool, never empty slots.
+    await page.locator("#pageStage .resource-table-panel").scrollIntoViewIfNeeded();
+    await page.waitForFunction(() => Number(document.querySelector("#pageStage .resource-table-frame")?.getAttribute("aria-rowcount")) > 80);
+    await page.locator("#pageStage .dashboard").scrollIntoViewIfNeeded();
+    await settle();
     const slots = await page.locator(".card-slot").count();
     assert.ok(slots > 0, "measures real dashboard slots");
     for (const trial of trials) {
@@ -70,19 +80,30 @@ export default async function monitorPageTaskJourney(page, baseUrl) {
             const slotLifecycle = performance.getEntriesByType("measure")
               .filter(entry => entry.name.startsWith("rm-slot-cost:") && entry.startTime >= state.start && entry.startTime < state.end)
               .map(entry => ({ name: entry.name, start: entry.startTime, duration: entry.duration }));
-            return { ...state, slotLifecycle, tasks: tasks.filter(task => task.start < state.end && task.start + task.duration > state.start) };
+            const table = document.querySelector("#pageStage .resource-table-frame");
+            const rowPool = table ? {
+              rows: Number(table.getAttribute("aria-rowcount")) - 1,
+              slots: table.querySelectorAll(".resource-table-row").length,
+              empty: table.querySelectorAll('.resource-table-row[aria-hidden="true"]').length
+            } : null;
+            return { ...state, slotLifecycle, rowPool, tasks: tasks.filter(task => task.start < state.end && task.start + task.duration > state.start) };
           });
         } finally { measured = await endMonitorEvidence(evidence); }
         const step = `primary ${from}→${to}`;
         const frameIntervals = run.frames.map((time, index) => time - (index === 0 ? run.start : run.frames[index - 1]));
         const result = { mode, trial, step, slots, start: run.start, end: run.end,
           longTaskCount: run.tasks.length, longestTaskMs: Math.max(0, ...run.tasks.map(task => task.duration)),
-          longTasks: run.tasks, slotLifecycle: run.slotLifecycle,
+          longTasks: run.tasks, slotLifecycle: run.slotLifecycle, rowPool: run.rowPool,
           overruns: assessInteractionLongTasks(run.tasks, [{ step, start: run.start, end: run.end }]),
           firstFrameMs: frameIntervals[0], maxFrameIntervalMs: Math.max(...frameIntervals),
           ...measured, queueOverlaps: overlappingQueueJobs(hostStart, Date.now()) };
         results.push(result);
         process.stdout.write(`MONITOR_PAGE_TASK ${JSON.stringify(result)}\n`);
+        if (to === "monitor") {
+          assert.ok(run.rowPool?.rows >= 80 && run.rowPool.slots > 0
+            && run.rowPool.rows > run.rowPool.slots && run.rowPool.empty === 0,
+          `measures a full row pool: ${JSON.stringify(run.rowPool)}`);
+        }
       }
     }
   }

@@ -18,7 +18,14 @@ export async function beginMonitorEvidence(page, name) {
       await cdp.send("Profiler.setSamplingInterval", { interval: CPU_PROFILE_SAMPLE_INTERVAL_US });
       await cdp.send("Profiler.start");
     }
-    return { cdp, before, path: directory ? resolve(directory, `${name}.cpuprofile`) : null };
+    // Long Tasks API omits tasks below 50 ms. Opt-in timeline evidence measures
+    // actual headroom without changing the interaction budget or product code.
+    const trace = process.env.RM_SLOT_TRACE === "1" ? [] : null;
+    if (trace) {
+      cdp.on("Tracing.dataCollected", ({ value }) => trace.push(...value));
+      await cdp.send("Tracing.start", { categories: "-*,toplevel,devtools.timeline", transferMode: "ReportEvents" });
+    }
+    return { cdp, before, trace, path: directory ? resolve(directory, `${name}.cpuprofile`) : null };
   } catch (error) { await cdp.detach(); throw error; }
 }
 
@@ -39,7 +46,17 @@ export async function endMonitorEvidence(session) {
       const { profile } = await session.cdp.send("Profiler.stop");
       writeFileSync(session.path, JSON.stringify(profile));
     }
-    return { cdp, profilePath: session.path, navigationStart: session.before.NavigationStart };
+    let tracePath = null;
+    if (session.trace) {
+      const complete = new Promise(resolveEnd => session.cdp.once("Tracing.tracingComplete", resolveEnd));
+      await session.cdp.send("Tracing.end");
+      await complete;
+      if (session.path) {
+        tracePath = session.path.replace(/\.cpuprofile$/, ".trace.json");
+        writeFileSync(tracePath, JSON.stringify({ traceEvents: session.trace }));
+      }
+    }
+    return { cdp, profilePath: session.path, tracePath, navigationStart: session.before.NavigationStart };
   } finally { await session.cdp.detach(); }
 }
 
