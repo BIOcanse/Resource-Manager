@@ -218,7 +218,8 @@ public sealed record GpuPlacementSoftwarePolicy(
     bool GpuSchedulingExcluded,
     string CpuMaximumOccupancyMode = CpuMaximumOccupancyModes.AllCores,
     IReadOnlyList<string>? CpuManualExclusivePositionIds = null,
-    IReadOnlyList<string>? CpuManualLockedPositionIds = null);
+    IReadOnlyList<string>? CpuManualLockedPositionIds = null,
+    bool HostMemoryProtectionNoDump = false);
 
 public sealed record GpuPlacementProcessPolicy(
     string SoftwareId,
@@ -349,7 +350,8 @@ public static class GpuPlacementPolicyDefaults
             GpuSchedulingExcluded: false,
             CpuMaximumOccupancyModes.AllCores,
             [],
-            []);
+            [],
+            HostMemoryProtectionNoDump: false);
     }
 
     public static GpuPlacementProcessPolicy CreateProcessPolicy(

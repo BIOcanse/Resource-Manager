@@ -207,8 +207,11 @@ public sealed class HostMemoryProtectionSourceTests
         await using var stream = await fixture.OpenAsync();
         var rows = (await fixture.DeliverProcessesAsync(stream, ResourceSnapshot())).Processes!.ToDictionary(row => row.ProcessId);
         Assert.False(rows[42].IsResourceManager);
+        Assert.Null(rows[42].SoftwareId);
         Assert.True(rows[43].IsResourceManager);
+        Assert.Equal(RuntimeAttributionIds.ResourceManagerSelf, rows[43].SoftwareId);
         Assert.False(rows[44].IsResourceManager);
+        Assert.Null(rows[44].SoftwareId);
         Assert.True(rows[Environment.ProcessId].IsResourceManager);
         Assert.True(rows[45].IsResourceManager);
     }

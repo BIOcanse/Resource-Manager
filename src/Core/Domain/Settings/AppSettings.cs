@@ -41,7 +41,15 @@ public sealed record HostMemoryProtectionSettings(
     bool Enabled = false,
     double ThresholdPercent = 95,
     double CheckIntervalSeconds = 1,
-    IReadOnlyList<HostMemoryReserveSettings>? Reserves = null);
+    IReadOnlyList<HostMemoryReserveSettings>? Reserves = null,
+    string ActionMode = HostMemoryProtectionActionModes.DumpThenTerminate);
+
+public static class HostMemoryProtectionActionModes
+{
+    public const string DumpThenTerminate = "dumpThenTerminate";
+    public const string TerminateOnly = "terminateOnly";
+    public static bool IsSupported(string? value) => value is DumpThenTerminate or TerminateOnly;
+}
 
 public sealed record HostMemoryReserveSettings(string Location, ulong SizeBytes);
 

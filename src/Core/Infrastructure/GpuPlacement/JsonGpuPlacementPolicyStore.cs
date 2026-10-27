@@ -260,7 +260,8 @@ public sealed partial class JsonGpuPlacementPolicyStore(
             policy.GpuSchedulingExcluded,
             CpuMaximumOccupancyModes.Normalize(policy.CpuMaximumOccupancyMode),
             NormalizeCpuPositionIds(policy.CpuManualExclusivePositionIds),
-            NormalizeCpuPositionIds(policy.CpuManualLockedPositionIds));
+            NormalizeCpuPositionIds(policy.CpuManualLockedPositionIds),
+            policy.HostMemoryProtectionNoDump);
     }
 
     // Keep legacy-token compatibility at the persistence read boundary. SaveCoreAsync uses

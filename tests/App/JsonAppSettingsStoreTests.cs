@@ -15,6 +15,21 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         "resource-manager-app-settings-tests",
         Guid.NewGuid().ToString("N"));
 
+    [Theory]
+    [InlineData("dumpThenTerminate")]
+    [InlineData("terminateOnly")]
+    public async Task MemoryProtectionActionModePersistsAcrossSettingsReload(string mode)
+    {
+        var appRoot = Directory.CreateDirectory(Path.Combine(testRoot, "Resource Manager-APP")).FullName;
+        var environment = new TestHostEnvironment(appRoot);
+        var store = new JsonAppSettingsStore(environment);
+        var initial = await store.LoadAsync(CancellationToken.None);
+        await store.SaveAsync(initial.Settings with { MemoryProtection = initial.Settings.MemoryProtection! with { ActionMode = mode } },
+            CancellationToken.None);
+        var reloaded = await new JsonAppSettingsStore(environment).LoadAsync(CancellationToken.None);
+        Assert.Equal(mode, reloaded.Settings.MemoryProtection!.ActionMode);
+    }
+
     [Fact]
     public async Task Version128LoadRewritesRetiredGpuUseCasesAndSchemaVersionOnDisk()
     {

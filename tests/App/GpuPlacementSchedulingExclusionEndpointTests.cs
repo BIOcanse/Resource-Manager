@@ -66,6 +66,7 @@ public sealed class GpuPlacementSchedulingExclusionEndpointTests
             Assert.False(defaults["cpuSchedulingExcluded"]!.GetValue<bool>());
             Assert.False(defaults["memorySchedulingExcluded"]!.GetValue<bool>());
             Assert.False(defaults["gpuSchedulingExcluded"]!.GetValue<bool>());
+            Assert.False(defaults["hostMemoryProtectionNoDump"]!.GetValue<bool>());
             foreach (var removed in new[] { "enabledMode", "schedulingMode", "runtimeSchedulingMode", "explicitSelectionMode" })
             {
                 Assert.False(defaults.ContainsKey(removed), removed);
@@ -73,6 +74,7 @@ public sealed class GpuPlacementSchedulingExclusionEndpointTests
 
             defaults["cpuSchedulingExcluded"] = true;
             defaults["gpuSchedulingExcluded"] = true;
+            defaults["hostMemoryProtectionNoDump"] = true;
             using var saved = await client.PutAsJsonAsync("/api/gpu-placement/software/app/policy", defaults);
             Assert.Equal(deliveryMode == 0 ? HttpStatusCode.OK : deliveryMode == 1 ? HttpStatusCode.Accepted : HttpStatusCode.Conflict, saved.StatusCode);
             var envelope = (await saved.Content.ReadFromJsonAsync<JsonObject>())!;
@@ -82,6 +84,7 @@ public sealed class GpuPlacementSchedulingExclusionEndpointTests
             Assert.True(echoed["cpuSchedulingExcluded"]!.GetValue<bool>());
             Assert.False(echoed["memorySchedulingExcluded"]!.GetValue<bool>());
             Assert.True(echoed["gpuSchedulingExcluded"]!.GetValue<bool>());
+            Assert.True(echoed["hostMemoryProtectionNoDump"]!.GetValue<bool>());
             Assert.Equal(1, runtime.Rebuilds);
 
             var stored = Assert.Single((await app.Services.GetRequiredService<IGpuPlacementPolicyStore>()
@@ -89,6 +92,7 @@ public sealed class GpuPlacementSchedulingExclusionEndpointTests
             Assert.True(stored.CpuSchedulingExcluded);
             Assert.False(stored.MemorySchedulingExcluded);
             Assert.True(stored.GpuSchedulingExcluded);
+            Assert.True(stored.HostMemoryProtectionNoDump);
 
             foreach (var (field, legacy) in new[]
             {

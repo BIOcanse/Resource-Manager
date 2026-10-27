@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
 using ResourceManager.App.Application.MemoryProtection;
+using ResourceManager.App.Domain.Settings;
 
 namespace ResourceManager.App.Infrastructure.MemoryProtection;
 
@@ -82,14 +83,17 @@ public sealed class WindowsHostMemoryProtectionExecutor : IHostMemoryProtectionE
         private bool executed;
         public string? ExclusionReason { get; } = exclusion;
 
-        public HostMemoryActionResult Execute(IHostMemoryProtectionReserve reserve)
+        public HostMemoryActionResult Execute(IHostMemoryProtectionReserve reserve, HostMemoryActionOptions? options = null)
         {
+            options ??= new();
+            if (!HostMemoryProtectionActionModes.IsSupported(options.ActionMode))
+                throw new ArgumentException("invalid-action-mode", nameof(options));
             // Callers normally serialize actions; keep that guarantee for direct callers and separate
             // executor instances too. The retained handle still identifies the originally opened process.
-            lock (ActionGate) return ExecuteCore(reserve);
+            lock (ActionGate) return ExecuteCore(reserve, options);
         }
 
-        private HostMemoryActionResult ExecuteCore(IHostMemoryProtectionReserve reserve)
+        private HostMemoryActionResult ExecuteCore(IHostMemoryProtectionReserve reserve, HostMemoryActionOptions options)
         {
             if (ExclusionReason is not null) return new("excluded", ExclusionReason, [], 0);
             ObjectDisposedException.ThrowIf(processHandle is null, this);
@@ -101,6 +105,9 @@ public sealed class WindowsHostMemoryProtectionExecutor : IHostMemoryProtectionE
                 return new("excluded", criticality, [], 0);
             using var lease = reserve.TryAcquire();
             if (lease is null) return new("reserve-unavailable", "reserve-unavailable", [], 0);
+            if (options.ActionMode == HostMemoryProtectionActionModes.TerminateOnly)
+                return TerminateWithoutDump("terminate-only");
+            if (options.SoftwareNoDump) return TerminateWithoutDump("software-no-dump");
             if (process.PrivateCommitBytes is not { } privateCommit)
                 return new("excluded", "private-commit-unavailable", [], 0);
             if (privateCommit > lease.RemainingBytes)

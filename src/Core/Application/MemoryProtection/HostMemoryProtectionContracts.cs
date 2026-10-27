@@ -4,6 +4,7 @@ namespace ResourceManager.App.Application.MemoryProtection;
 
 public sealed record HostMemoryProcess(int ProcessId, string ProcessStartKey, string Name, ulong? PrivateCommitBytes)
 {
+    public string? SoftwareId { get; init; }
     [System.Text.Json.Serialization.JsonIgnore]
     public bool IsResourceManager { get; init; }
 }
@@ -25,7 +26,14 @@ public sealed record HostMemoryActionRecord(DateTimeOffset At, int ProcessId, st
 public sealed record HostMemoryProtectionStatus(bool Enabled, double ThresholdPercent, double CheckIntervalSeconds,
     HostMemoryReserveStatus Reserve, decimal? TriggerBytes, decimal? RemainingBytes, HostMemoryCommit? CurrentCommit,
     NormalRunningPointSummary? NormalRunningPoint, string? InactiveReason,
-    IReadOnlyList<HostMemoryExclusion> ExcludedCandidates, int ActionRecordLimit, IReadOnlyList<HostMemoryActionRecord> Actions);
+    IReadOnlyList<HostMemoryExclusion> ExcludedCandidates, int ActionRecordLimit, IReadOnlyList<HostMemoryActionRecord> Actions)
+{
+    public string ActionMode { get; init; } = HostMemoryProtectionActionModes.DumpThenTerminate;
+}
+
+// The selection service resolves settings for this action; the executor owns process effects.
+public sealed record HostMemoryActionOptions(string ActionMode = HostMemoryProtectionActionModes.DumpThenTerminate,
+    bool SoftwareNoDump = false);
 
 // The source only subscribes to existing producers and projects their current values.
 public interface IHostMemoryProtectionSource
@@ -40,7 +48,7 @@ public interface IHostMemoryProtectionExecutor
 public interface IHostMemoryProtectionTarget : IDisposable
 {
     string? ExclusionReason { get; }
-    HostMemoryActionResult Execute(IHostMemoryProtectionReserve reserve);
+    HostMemoryActionResult Execute(IHostMemoryProtectionReserve reserve, HostMemoryActionOptions? options = null);
 }
 
 public sealed record HostMemoryReserveEntryStatus(string Location, ulong ConfiguredSizeBytes, bool Built, string? Reason, ulong RemainingBytes)

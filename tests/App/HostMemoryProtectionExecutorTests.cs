@@ -17,6 +17,34 @@ public sealed class HostMemoryProtectionExecutorTests : IDisposable
     private readonly string directory = Path.Combine(Path.GetTempPath(), "rm-host-memory-executor-" + Guid.NewGuid().ToString("N"));
     private string SecondDirectory => directory + "-second";
 
+    [Theory]
+    [InlineData("dumpThenTerminate", true, "software-no-dump")]
+    [InlineData("terminateOnly", true, "terminate-only")]
+    [InlineData("terminateOnly", false, "terminate-only")]
+    public void DirectActionModesTerminateOwnedChildWithoutSuspendSliceOrReserveConsumption(string mode, bool noDump, string reason)
+    {
+        using var child = StartOwnedChild();
+        try
+        {
+            using var reserve = CreateReserve();
+            var remaining = reserve.ReadStatus().RemainingBytes;
+            var suspendCalls = 0;
+            var executor = new WindowsHostMemoryProtectionExecutor(_ => { suspendCalls++; return -1; });
+            using var target = executor.Open(Identity(child));
+            Assert.Null(target.ExclusionReason);
+            var result = target.Execute(reserve, new(mode, noDump));
+            Assert.Equal("terminated-without-dump", result.Outcome);
+            Assert.Equal(reason, result.Reason);
+            Assert.Equal(0, suspendCalls);
+            Assert.True(child.WaitForExit(5000));
+            Assert.Empty(result.DumpPaths);
+            Assert.Equal(0UL, result.BytesWritten);
+            Assert.Equal(remaining, reserve.ReadStatus().RemainingBytes);
+            Assert.Empty(Directory.EnumerateFiles(directory, "*.dmp"));
+        }
+        finally { StopOwnedChild(child); }
+    }
+
     [Fact]
     public void MismatchedIdentityDoesNotSuspendDumpOrKillTheOwnedChild()
     {
@@ -360,7 +388,7 @@ public sealed class HostMemoryProtectionExecutorTests : IDisposable
         }
     }
 
-    private static unsafe void AssertStandardDumpAndPrivateMarker(IReadOnlyList<string> paths, nuint allocation, byte[] marker)
+    internal static unsafe void AssertStandardDumpAndPrivateMarker(IReadOnlyList<string> paths, nuint allocation, byte[] marker)
     {
         if (paths.Count > 1)
         {
@@ -522,7 +550,7 @@ public sealed class HostMemoryProtectionExecutorTests : IDisposable
         }
     }
 
-    private static Process StartOwnedChild(bool wow64 = false)
+    internal static Process StartOwnedChild(bool wow64 = false)
     {
         var systemDirectory = wow64
             ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "SysWOW64")
@@ -549,7 +577,7 @@ public sealed class HostMemoryProtectionExecutorTests : IDisposable
         }
     }
 
-    private static HostMemoryProcess Identity(Process child)
+    internal static HostMemoryProcess Identity(Process child)
     {
         using var handle = HostMemoryProtectionNative.OpenProcess(0x1000, false, child.Id);
         Assert.False(handle.IsInvalid);
@@ -565,7 +593,7 @@ public sealed class HostMemoryProtectionExecutorTests : IDisposable
         return handle;
     }
 
-    private static void StopOwnedChild(Process child)
+    internal static void StopOwnedChild(Process child)
     {
         if (!child.HasExited) { child.Kill(); Assert.True(child.WaitForExit(5000)); }
     }

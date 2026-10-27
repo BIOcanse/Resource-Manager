@@ -9,6 +9,19 @@ namespace Resource_Manager_APP.Tests;
 public sealed class AppSettingsMigratorTests
 {
     [Fact]
+    public void ReserveSchemaUpgradeDefaultsToDumpAndPreservesExplicitActionMode()
+    {
+        var root = JsonNode.Parse(CurrentShapeJson)!.AsObject();
+        root["version"] = "1.0.35";
+        root["memoryProtection"] = JsonNode.Parse("""{"enabled":false,"reserves":[]}""");
+        using var old = JsonDocument.Parse(root.ToJsonString());
+        Assert.Equal("dumpThenTerminate", AppSettingsMigrator.MigrateForRead(old.RootElement).MemoryProtection!.ActionMode);
+        root["memoryProtection"]!["actionMode"] = "terminateOnly";
+        using var configured = JsonDocument.Parse(root.ToJsonString());
+        Assert.Equal("terminateOnly", AppSettingsMigrator.MigrateForRead(configured.RootElement).MemoryProtection!.ActionMode);
+    }
+
+    [Fact]
     public void OldMemoryDumpDirectoryDoesNotInventDiskReservationDuringUpgrade()
     {
         var root = JsonNode.Parse(CurrentShapeJson)!.AsObject();
@@ -16,7 +29,7 @@ public sealed class AppSettingsMigratorTests
         root["memoryProtection"] = JsonNode.Parse("""{"enabled":true,"thresholdPercent":91,"checkIntervalSeconds":2,"dumpDirectory":"UserData/OldSlices"}""");
         using var document = JsonDocument.Parse(root.ToJsonString());
         var settings = AppSettingsMigrator.MigrateForRead(document.RootElement);
-        Assert.Equal("1.0.35", settings.Version);
+        Assert.Equal("1.0.36", settings.Version);
         Assert.True(settings.MemoryProtection!.Enabled);
         Assert.Equal(91, settings.MemoryProtection.ThresholdPercent);
         Assert.Empty(settings.MemoryProtection.Reserves!);
@@ -191,7 +204,8 @@ public sealed class AppSettingsMigratorTests
     [InlineData("1.0.33", true)]
     [InlineData("1.0.34", true)]
     [InlineData("1.0.35", true)]
-    [InlineData("1.0.36", false)]
+    [InlineData("1.0.36", true)]
+    [InlineData("1.0.37", false)]
     [InlineData("1.0.24.0", false)]
     [InlineData("99.0.0", false)]
     public void SupportsSourceVersion_UsesTheSingleContiguousMigrationRange(
@@ -524,7 +538,7 @@ public sealed class AppSettingsMigratorTests
     private const string CurrentShapeJson =
         """
         {
-          "version": "1.0.35",
+          "version": "1.0.36",
           "performance": {
             "optimizationMode": "normal",
             "preciseGpuPlacementEnabled": false,

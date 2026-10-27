@@ -14,11 +14,13 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ResourceManager.App.Application.CpuTopology;
+using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Application.MemoryProtection;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Application.Settings;
 using ResourceManager.App.Domain.CpuTopology;
+using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Endpoints;
 using ResourceManager.App.Hosting;
@@ -90,7 +92,7 @@ public sealed class HostMemoryProtectionTests
         Assert.True(status.Reserve.Built);
         Assert.Equal(ReserveSize, status.Reserve.RemainingBytes);
         var stored = await fixture.Stored();
-        Assert.Equal("1.0.35", stored.Settings.Version);
+        Assert.Equal("1.0.36", stored.Settings.Version);
         using var settingsWire = JsonDocument.Parse(JsonSerializer.Serialize(stored.Settings.MemoryProtection,
             new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         var reserveWire = Assert.Single(settingsWire.RootElement.GetProperty("reserves").EnumerateArray());
@@ -391,6 +393,43 @@ public sealed class HostMemoryProtectionTests
         Assert.Equal(102, status.Actions[^1].ProcessId);
     }
 
+    [Theory]
+    [InlineData("dumpThenTerminate", true, true)]
+    [InlineData("dumpThenTerminate", false, false)]
+    [InlineData("terminateOnly", true, false)]
+    [InlineData("terminateOnly", false, false)]
+    public async Task ActionModeAndSoftwareFlagReachExecutorWithoutExcludingTheSoftware(string mode, bool flagged, bool expectedNoDump)
+    {
+        await using var fixture = await Fixture.StartAsync();
+        await fixture.SoftwarePolicies.SaveSoftwarePolicyAsync(
+            GpuPlacementPolicyDefaults.CreateSoftwarePolicy("test-game", "Test game") with { HostMemoryProtectionNoDump = flagged },
+            CancellationToken.None);
+        await fixture.CreatePoint();
+        using var enabled = await fixture.Patch(new { enabled = true, actionMode = mode });
+        Assert.Equal(HttpStatusCode.OK, enabled.StatusCode);
+        Assert.Equal(mode, (await fixture.Status()).ActionMode);
+        Assert.Equal(mode, (await fixture.Stored()).Settings.MemoryProtection!.ActionMode);
+        fixture.Source.Publish(960, 96, [Process(20, "1", 800) with { SoftwareId = "TEST-GAME" }, Process(21, "1", 700)]);
+        await Until(() => fixture.Protection.ReadStatus().Actions.Count == 1);
+        Assert.Equal(20, Assert.Single(fixture.Executor.Executed));
+        Assert.Empty(fixture.Protection.ReadStatus().ExcludedCandidates);
+        Assert.Equal(new HostMemoryActionOptions(mode, expectedNoDump), Assert.Single(fixture.Executor.Options));
+    }
+
+    [Fact]
+    public async Task InvalidActionModeIsRejectedBeforeSettingsCommit()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        var before = await fixture.Stored();
+        Assert.Equal("dumpThenTerminate", before.Settings.MemoryProtection!.ActionMode);
+        Assert.Equal("dumpThenTerminate", (await fixture.Status()).ActionMode);
+        using var rejected = await fixture.Patch(new { actionMode = "invalid" });
+        Assert.Equal(HttpStatusCode.Conflict, rejected.StatusCode);
+        var result = (await rejected.Content.ReadFromJsonAsync<AppSettingsUpdateResult>())!;
+        Assert.Equal("invalid-action-mode", result.RuntimeFailureCode);
+        Assert.Equal(before.Revision, (await fixture.Stored()).Revision);
+    }
+
     private static HostMemoryProcess Process(int pid, string key, ulong bytes) => new(pid, key, "fake-" + pid, bytes);
     [Fact]
     public async Task SavedEnablementAfterRestartDoesNotRunWithoutAnInMemoryPoint()
@@ -446,6 +485,7 @@ public sealed class HostMemoryProtectionTests
         public string SecondReserveDirectory => Path.Combine(root, "SlicesSecond");
         public HostMemoryProtectionService Protection => app.Services.GetRequiredService<HostMemoryProtectionService>();
         public BusinessBlockScheduler Scheduler => app.Services.GetRequiredService<BusinessBlockScheduler>();
+        public IGpuPlacementPolicyStore SoftwarePolicies => app.Services.GetRequiredService<IGpuPlacementPolicyStore>();
         public Task<AppSettingsUpdateResult> Stored() => app.Services.GetRequiredService<IAppSettingsStore>().LoadReadOnlyAsync(CancellationToken.None);
         public async Task<HttpResponseMessage> Patch(object settings)
             => await Client.PatchAsJsonAsync("/api/memory-protection", new { expectedRevision = (await Stored()).Revision, changes = new { memoryProtection = settings } });
@@ -499,6 +539,13 @@ public sealed class HostMemoryProtectionTests
                 foreach (var path in Directory.EnumerateFiles(directory)) File.Delete(path);
                 Directory.Delete(directory);
             }
+            var profiles = Path.Combine(root, "UserData", "SoftwareProfiles");
+            if (Directory.Exists(profiles))
+            {
+                foreach (var path in Directory.EnumerateFiles(profiles)) File.Delete(path);
+                Directory.Delete(profiles);
+                Directory.Delete(Path.Combine(root, "UserData"));
+            }
             Directory.Delete(root);
         }
     }
@@ -540,6 +587,7 @@ public sealed class HostMemoryProtectionTests
     private sealed class FakeExecutor : IHostMemoryProtectionExecutor
     {
         public ConcurrentQueue<int> Opened = new(), Executed = new();
+        public ConcurrentQueue<HostMemoryActionOptions> Options = new();
         public Dictionary<int, string> Excluded = new();
         public HashSet<int> SuspendFailures = [];
         public TaskCompletionSource? Block;
@@ -552,9 +600,10 @@ public sealed class HostMemoryProtectionTests
         private sealed class Target(FakeExecutor owner, int pid) : IHostMemoryProtectionTarget
         {
             public string? ExclusionReason => owner.Excluded.GetValueOrDefault(pid);
-            public HostMemoryActionResult Execute(IHostMemoryProtectionReserve reserve)
+            public HostMemoryActionResult Execute(IHostMemoryProtectionReserve reserve, HostMemoryActionOptions? options = null)
             {
                 owner.Executed.Enqueue(pid);
+                owner.Options.Enqueue(options ?? new());
                 if (owner.SuspendFailures.Contains(pid)) return new("suspend-failed", "test", [], 0) { SuspendFailed = true };
                 var active = Interlocked.Increment(ref owner.concurrent);
                 owner.MaxConcurrent = Math.Max(owner.MaxConcurrent, active);

@@ -98,6 +98,8 @@ public sealed class HostMemoryProtectionSource(IMetricSnapshotPushSource metrics
             ulong? bytes = number is { } integer && integer >= 0 && integer <= ulong.MaxValue ? (ulong)integer : null;
             return new HostMemoryProcess(item.ProcessId, key, item.ProcessName, bytes)
             {
+                SoftwareId = facts.AttributionProcesses.FirstOrDefault(attribution => attribution.ProcessId == item.ProcessId
+                    && attribution.ProcessStartKey == item.ProcessStartKey)?.SoftwareId,
                 IsResourceManager = item.ProcessId == Environment.ProcessId
                     || ResourceManagerSelfDescriptor.ProcessNames.Contains(item.ProcessName, StringComparer.OrdinalIgnoreCase)
                     || facts.AttributionProcesses.Any(attribution => attribution.ProcessId == item.ProcessId

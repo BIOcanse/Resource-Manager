@@ -1,4 +1,5 @@
 using ResourceManager.App.Application.MemoryProtection;
+using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Infrastructure.Paths;
@@ -8,7 +9,7 @@ namespace ResourceManager.App.Infrastructure.MemoryProtection;
 
 public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource source,
     IHostMemoryProtectionExecutor executor, IHostMemoryProtectionReserve reserve, BusinessBlockScheduler scheduler, IHostEnvironment environment,
-    ILogger<HostMemoryProtectionService> logger) : IBusinessBlock
+    ILogger<HostMemoryProtectionService> logger, IGpuPlacementPolicyStore softwarePolicies) : IBusinessBlock
 {
     public const string BlockId = "HostMemoryProtection";
     public static string EnabledFact => BusinessBlockScheduler.EnabledFact(BlockId);
@@ -28,6 +29,7 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
 
     public string? ValidateSettings(HostMemoryProtectionSettings value)
     {
+        if (!HostMemoryProtectionActionModes.IsSupported(value.ActionMode)) return "invalid-action-mode";
         if (!double.IsFinite(value.ThresholdPercent) || value.ThresholdPercent is <= 0 or > 100) return "invalid-threshold-percent";
         if (!double.IsFinite(value.CheckIntervalSeconds) || value.CheckIntervalSeconds is < 1 or > 86400) return "invalid-check-interval";
         try
@@ -141,7 +143,7 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
                 trigger, trigger - commit?.CurrentBytes, commit,
                 point is null ? null : new(point.At, point.ProcessCount),
                 point is null ? "no-normal-running-point" : !settings.Enabled ? "disabled" : ReserveUnavailableReason(settings, currentReserve),
-                exclusions.ToArray(), RecordLimit, actions.Reverse().ToArray());
+                exclusions.ToArray(), RecordLimit, actions.Reverse().ToArray()) { ActionMode = settings.ActionMode };
         }
     }
 
@@ -160,7 +162,7 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
                 {
                     // A buffered delivery from before the preceding action cannot trigger another action.
                     if (reading.At <= actionFinishedAt) continue;
-                    await Task.Run(() => ProcessDelivery(reading, current, context.StopNotification), CancellationToken.None);
+                    await Task.Run(() => ProcessDeliveryAsync(reading, current, context.StopNotification), CancellationToken.None);
                     if (!reserve.ReadStatus().Built)
                     {
                         await configuration.WaitAsync();
@@ -182,7 +184,7 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
         }
     }
 
-    private void ProcessDelivery(HostMemoryReading reading, HostMemoryProtectionSettings current, CancellationToken stop)
+    private async Task ProcessDeliveryAsync(HostMemoryReading reading, HostMemoryProtectionSettings current, CancellationToken stop)
     {
         NormalRunningPoint baseline;
         Dictionary<(int, string), HostMemoryProcess> baselineProcesses;
@@ -218,6 +220,11 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
             lock (gate) if (ReferenceEquals(point, baseline)) exclusions = excluded.ToArray();
             return;
         }
+        // Read the existing per-software policies only when their no-dump flag can affect an action.
+        var noDumpSoftware = current.ActionMode == HostMemoryProtectionActionModes.DumpThenTerminate && candidates.Count != 0
+            ? (await softwarePolicies.GetAsync(stop)).SoftwarePolicies.Where(item => item.HostMemoryProtectionNoDump)
+                .Select(item => item.SoftwareId).ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var candidate in candidates.OrderByDescending(item => item.Growth).ThenBy(item => item.Process.ProcessId))
         {
             if (stop.IsCancellationRequested) break;
@@ -230,7 +237,8 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
                 lock (gate) if (ReferenceEquals(point, baseline)) cannotOpen[(candidate.Process.ProcessId, candidate.Process.ProcessStartKey)] = exclusion;
                 continue;
             }
-            var result = target.Execute(reserve);
+            var result = target.Execute(reserve, new(current.ActionMode,
+                candidate.Process.SoftwareId is { } softwareId && noDumpSoftware.Contains(softwareId)));
             if (result.Outcome == "reserve-unavailable") break;
             if (result.Outcome == "excluded")
             {
