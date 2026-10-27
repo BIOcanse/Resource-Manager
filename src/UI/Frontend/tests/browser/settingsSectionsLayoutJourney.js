@@ -8,7 +8,7 @@ import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
 import { writeFrontendPreferences } from "./frontendPreferencesFixture.js";
 import { NOT_GHOST } from "./liveLocator.js";
 
-const sectionOrder = ["runtimePolicy", "memory", "hardwareControl", "reportRules", "appearance", "performanceOverlay",
+const sectionOrder = ["runtimePolicy", "memory", "memoryProtection", "hardwareControl", "reportRules", "appearance", "performanceOverlay",
   "systemIntegration", "publicServices", "trustedAccess", "updates", "debug", "credits"];
 const newSections = ["runtimePolicy", "memory", "hardwareControl", "reportRules", "publicServices", "trustedAccess"];
 const readOnlySections = new Set(["performanceOverlay", "trustedAccess", "credits"]);
@@ -16,7 +16,7 @@ const sizes = [{ width: 1280, height: 800 }, { width: 800, height: 600 }];
 
 /**
  * 设置分区重新划分：
- * - 导航按 运行策略、内存、硬件控制、报告规则、外观、性能浮层、系统集成、公共服务、可信访问、更新与版本、调试、致谢 排列，没有「性能」；
+ * - 导航按 运行策略、内存、主机内存保护、硬件控制、报告规则、外观、性能浮层、系统集成、公共服务、可信访问、更新与版本、调试、致谢 排列，没有「性能」；
  * - 每个分区放的是自己的内容（信息更新频率在外观末尾，调节权限在硬件控制，公共服务和可信访问各自一节）；
  * - 「恢复为默认」只恢复当前分区的字段；只读分区（性能浮层、可信访问、致谢）没有草稿操作；
  * - 单独的数字框（重新应用间隔、报告规则）输入框固定宽度、在卡片内边距之内，单位紧跟在旁边；
@@ -69,6 +69,7 @@ export default async function settingsSectionsLayoutJourney(page, baseUrl) {
     settings.performance.realtimeActionBudgetTitle], [settings.performance.automaticMemoryCleanupTitle, settings.performance.refreshCadenceTitle]);
   await contains("memory", [settings.performance.automaticMemoryCleanupTitle, settings.performance.memoryOptimizationTargetTitle],
     [settings.performance.gpuOverflowTitle]);
+  await contains("memoryProtection", [app.memoryProtection.intro], [settings.performance.automaticMemoryCleanupTitle]);
   await contains("hardwareControl", [settings.hardwareControl.reassertionTitle, app.control.reassertionInterval, app.control.accessLevel.title]);
   await contains("reportRules", [app.reportRules.note]);
   await contains("appearance", [settings.appearance.uiStyleTitle, settings.performance.refreshCadenceTitle]);
@@ -129,9 +130,10 @@ export default async function settingsSectionsLayoutJourney(page, baseUrl) {
         unitSameLine: next ? Math.abs((next.top + next.bottom) / 2 - (input.top + input.bottom) / 2) <= 4 : null };
     });
   });
-  for (const section of ["hardwareControl", "reportRules"]) {
+  for (const section of ["memoryProtection", "hardwareControl", "reportRules"]) {
     await openSection(settings, section);
     if (section === "reportRules") await live(".report-rule-field .settings-number-field").first().waitFor();
+    if (section === "memoryProtection") await live(".memory-protection-settings .settings-row > .settings-number-field").first().waitFor();
     const fields = await fieldGeometry();
     assert.ok(fields.length > 0, `${section}: no number field`);
     for (const field of fields) {
