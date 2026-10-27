@@ -107,6 +107,15 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
         return new BackendServiceSession(baseAddress);
     }
 
+    // Parent publishes readiness. The window attests its own direct transport without
+    // creating another health monitor or publishing a competing backend session.
+    internal void PrepareWindowTransport()
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        backendProcessIdentity = captureIdentity()
+            ?? throw new InvalidOperationException(NativeUiText.Current.BackendNotOwned);
+    }
+
     internal Task<HttpResponseMessage> SendFrontendRequestAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(disposed, this);

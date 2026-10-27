@@ -1,4 +1,4 @@
-using BlockUids = ResourceManager.NativeUi.StateItems.BlockUids;
+using BlockUids = ResourceManager.NativeUi.LegacyStateItems.BlockUids;
 using Microsoft.Extensions.Logging;
 using ResourceManager.NativeUi.Blocks;
 using ResourceManager.NativeUi.Localization;

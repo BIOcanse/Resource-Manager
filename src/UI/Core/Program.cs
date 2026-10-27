@@ -20,6 +20,16 @@ internal static class Program
         Localization.NativeUiText.ApplyPersisted();
         NativeAppIdentity.TrySetCurrentProcessAppUserModelId(AppUserModelId);
         ApplicationConfiguration.Initialize();
+        using var residentPipe = ResidentWindowPipe.FromArguments(args);
+        if (residentPipe is not null)
+        {
+            using var windowContext = new NativeWindowApplicationContext(residentPipe,
+                new NativeUiApplicationServices { ApiBaseAddress = ResidentWindowPipe.ApiBaseFromArguments(args) });
+            Application.Run(windowContext);
+            return 0;
+        }
+        // Phase A compatibility: retain standalone composition until layout step 6
+        // migrates the launcher and persistent entry points to ResourceManager.Desktop.
         var singleInstance = NativeUiSingleInstanceCoordinator.Create();
         var command = options.SingleInstanceCommand;
         if (command == "exit")

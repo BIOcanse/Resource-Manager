@@ -24,6 +24,8 @@ public sealed partial class MainForm
                 "preferences.save" => SavePreferenceScope(owner, message),
                 _ => throw new InvalidOperationException("Unknown frontend cache operation.")
             };
+            if (operation is "preferences.save" or "preferences.reset")
+                PreferencesChanged?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or JsonException
             or InvalidOperationException or ArgumentException or KeyNotFoundException)

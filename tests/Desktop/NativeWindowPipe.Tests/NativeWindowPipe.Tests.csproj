@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AssemblyName>ResourceManager.NativeWindow.Tests</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <Using Include="Xunit" />
+    <ProjectReference Include="../../../src/UI/Core/ResourceManager.NativeUi.csproj" />
+    <!-- Exercise the unchanged standalone composition while layout step 6 still owns its removal. -->
+    <Compile Include="../../App/NativeUi*.cs" Link="Legacy/%(Filename)%(Extension)" />
+    <Compile Include="../../App/BackendFrontendProxyTests.cs" Link="Security/BackendFrontendProxyTests.cs" />
+    <Compile Include="../../App/EnvironmentVariableFactAttribute.cs" Link="Security/EnvironmentVariableFactAttribute.cs" />
+  </ItemGroup>
+</Project>

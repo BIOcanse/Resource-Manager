@@ -1,9 +1,9 @@
 using ResourceManager.Shared.BusinessBlocks.State;
-using BlockUids = ResourceManager.NativeUi.StateItems.BlockUids;
+using BlockUids = ResourceManager.NativeUi.LegacyStateItems.BlockUids;
 using Microsoft.Extensions.Logging;
 using ResourceManager.Shared.BusinessBlocks;
 using SharedScheduler = ResourceManager.Shared.BusinessBlocks.BusinessBlockScheduler;
-using ResourceManager.NativeUi.StateItems;
+using ResourceManager.NativeUi.LegacyStateItems;
 
 namespace ResourceManager.NativeUi.Blocks;
 

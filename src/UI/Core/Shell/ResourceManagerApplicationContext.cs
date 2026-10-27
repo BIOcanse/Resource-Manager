@@ -1,4 +1,4 @@
-using BlockUids = ResourceManager.NativeUi.StateItems.BlockUids;
+using BlockUids = ResourceManager.NativeUi.LegacyStateItems.BlockUids;
 using ResourceManager.NativeUi.Blocks;
 using ResourceManager.Shared.BusinessBlocks;
 using ResourceManager.NativeUi.Localization;
@@ -568,28 +568,7 @@ public sealed partial class ResourceManagerApplicationContext : ApplicationConte
     }
 
     private void OnDiagnosticsRequested(object? sender, EventArgs args)
-    {
-        try
-        {
-            var diagnosticsPath = NativeUiPaths.DiagnosticsFolder;
-            Directory.CreateDirectory(diagnosticsPath);
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "explorer.exe",
-                Arguments = $"\"{diagnosticsPath}\"",
-                UseShellExecute = true
-            });
-        }
-        catch (Exception ex) when (
-            ex is IOException
-                or UnauthorizedAccessException
-                or InvalidOperationException
-                or System.ComponentModel.Win32Exception)
-        {
-            System.Diagnostics.Trace.WriteLine(ex);
-            ShowBackendUnavailableBalloon(NativeUiText.Current.DiagnosticsOpenFailed);
-        }
-    }
+        => NativeUiDiagnostics.OpenFolder(_ => ShowBackendUnavailableBalloon(NativeUiText.Current.DiagnosticsOpenFailed));
 
     private void OnExitRequested(object? sender, EventArgs args) => ExitApplication();
 

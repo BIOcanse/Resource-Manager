@@ -151,18 +151,20 @@ public sealed class NativeUiWindowCloseTests
         return form;
     }
 
-    // One folder per test under the repository's .local, removed when the test ends.
+    // Each fixture lives inside the caller's registered validation workset.
     private sealed class TestRoot : IDisposable
     {
         public TestRoot()
         {
-            Path = System.IO.Path.Combine(RepositoryRoot(), ".local", "native-window-close-tests", Guid.NewGuid().ToString("N"));
+            var scratch = Environment.GetEnvironmentVariable("RM_REVIEW_SCRATCH")
+                ?? throw new InvalidOperationException("A registered validation scratch root is required.");
+            Path = System.IO.Path.Combine(scratch, "native-window-close-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(Path);
         }
 
         public string Path { get; }
 
-        public void Dispose() => Directory.Delete(Path, recursive: true);
+        public void Dispose() { } // The validation workset owns lifecycle and bounded retention.
     }
 
     private static void SendFrontendCommand(MainForm form, string command) =>

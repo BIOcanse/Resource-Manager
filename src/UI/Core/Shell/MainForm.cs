@@ -91,6 +91,8 @@ public sealed partial class MainForm : Form
 
     internal event EventHandler? WindowCloseRequested;
 
+    internal event EventHandler? PreferencesChanged;
+
     public void PrepareForOpenOnPrimaryScreen()
     {
         WindowPlacement.PlaceForOpenOnPrimaryScreen(this);
