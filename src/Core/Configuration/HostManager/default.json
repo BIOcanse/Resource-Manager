@@ -90,9 +90,9 @@
         {
           "role_id": 1,
           "maximum_source_count": 4096,
-          "maximum_item_count": 4096,
+          "maximum_item_count": 16384,
           "maximum_membership_count": 65536,
-          "maximum_due_item_count": 4096,
+          "maximum_due_item_count": 16384,
           "maximum_source_view_count": 4096,
           "maximum_expired_source_count": 4096
         },
@@ -344,9 +344,9 @@
         {
           "role_id": 1,
           "maximum_source_count": 256,
-          "maximum_item_count": 1024,
-          "maximum_membership_count": 8192,
-          "maximum_due_item_count": 1024,
+          "maximum_item_count": 16384,
+          "maximum_membership_count": 65536,
+          "maximum_due_item_count": 16384,
           "maximum_source_view_count": 256,
           "maximum_expired_source_count": 256
         },

@@ -656,6 +656,7 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
                 Flags = (uint)flags
             };
             var status = session.Track(in input, nativeItems);
+            ThrowIfCapacityExceeded(status);
             if (status != NativeSamplingSubscriptionStatus.Ok)
             {
                 throw new InvalidOperationException(
@@ -893,6 +894,7 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
                 Flags = (uint)flags
             };
             var status = session.Track(in input, nativeItems);
+            ThrowIfCapacityExceeded(status);
             if (status != NativeSamplingSubscriptionStatus.Ok)
             {
                 throw new InvalidOperationException(
@@ -1100,6 +1102,14 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
             return TimeSpan.Zero;
         }
         return nextWakeAt.Value - now;
+    }
+
+    private static void ThrowIfCapacityExceeded(NativeSamplingSubscriptionStatus status)
+    {
+        if (status is NativeSamplingSubscriptionStatus.ItemCapacityExceeded
+            or NativeSamplingSubscriptionStatus.SourceCapacityExceeded
+            or NativeSamplingSubscriptionStatus.MembershipCapacityExceeded)
+            throw new SamplingSubscriptionCapacityException(status);
     }
 
     private void EnsureBuffers(NativeSamplingSubscriptionCapacity capacity)

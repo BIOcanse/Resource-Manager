@@ -63,7 +63,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 : MetricSampleRequest.ForIds([]);
             var snapshot = await sampler.GetSnapshotAsync(snapshotRequest, cancellationToken);
             return Results.Ok(MetricSnapshotWireSnapshot.From(snapshot, snapshotRequest, catalogState.Revision));
-        }).AllowAnonymous();
+        }).AllowAnonymous().AddEndpointFilter(SamplingCapacityFailure);
 
         app.MapGet("/api/metrics/gpu-specialized", async (
             HttpRequest request,
@@ -117,7 +117,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             catch (ArgumentException) { return Results.BadRequest(); }
             var snapshot = await sampler.GetSnapshotAsync(selection, cancellationToken);
             return Results.Ok(ReadMetricFields(snapshot, selections, request.HttpContext.RequestServices));
-        }).AllowAnonymous();
+        }).AllowAnonymous().AddEndpointFilter(SamplingCapacityFailure);
 
         return app;
     }

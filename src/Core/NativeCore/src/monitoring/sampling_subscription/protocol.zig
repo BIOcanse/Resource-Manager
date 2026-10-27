@@ -354,8 +354,6 @@ pub fn validTrackHeader(input: *const TrackInput, config: *const Config) bool {
         input.observed_at_milliseconds != 0 and
         input.source_handle != 0 and
         input.item_count != 0 and
-        input.item_count <= config.maximum_item_count and
-        input.item_count <= config.maximum_membership_count and
         input.flags & ~SourceFlags.known == 0 and
         (trigger_modes == 0 or periodic) and
         input.valid_mask == expected_valid and

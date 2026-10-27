@@ -10,6 +10,25 @@ namespace Resource_Manager_APP.Tests;
 public sealed class ItemSamplingSubscriptionTrackerTests
 {
     [Fact]
+    public void OverCapacityRequestHasNamedFailureAndPreservesExistingDemand()
+    {
+        using var fixture = new HostManagerSamplingSubscriptionTestFixture(
+            AllMetricSubscriptionTestData.BoundedPlan(2, 2, 2));
+        var tracker = CreateMetricTracker(fixture);
+        var at = DateTimeOffset.UtcNow;
+        tracker.TrackPersistent("old", MetricSampleRequest.ForIds(["cpu.usage"]), at, TimeSpan.FromSeconds(1));
+        var failure = Assert.Throws<SamplingSubscriptionCapacityException>(() => tracker.TrackPersistent(
+            "large", MetricSampleRequest.ForIds(["one", "two", "three"]), at, TimeSpan.FromSeconds(1)));
+        Assert.Equal(NativeSamplingSubscriptionStatus.ItemCapacityExceeded, failure.Reason);
+        Assert.Single(ReadNativeState(fixture).Sources);
+        Assert.Single(ReadNativeState(fixture).Items);
+        tracker.TrackPersistent("small", MetricSampleRequest.ForIds(["memory.usage"]), at, TimeSpan.FromSeconds(1));
+        var plan = tracker.CreatePlan(at);
+        Assert.Equal(new[] { "cpu.usage", "memory.usage" }, plan.DueItemIds);
+        tracker.MarkSampled(plan.Request!, at);
+    }
+
+    [Fact]
     public void CaptureDurationBelowIntervalKeepsTheOriginalItemPhase()
     {
         using var fixture = new HostManagerSamplingSubscriptionTestFixture();

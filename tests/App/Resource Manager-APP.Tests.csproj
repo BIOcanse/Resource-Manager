@@ -57,6 +57,7 @@
     <EmbeddedResource Include="Fixtures\Optimization\smart-exclusions.json" LogicalName="smart-exclusions" />
     <EmbeddedResource Include="Fixtures\Software\manual-software-head-unversioned.json" />
     <EmbeddedResource Include="Fixtures\Metrics\c13-metric-catalog.json.gz" />
+    <EmbeddedResource Include="Fixtures\Metrics\installed-all-metrics-shape.json" />
     <Using Include="Xunit" />
     <EmbeddedResource Include="Fixtures\Hid\windows-sdk-layout.json" />
     <EmbeddedResource Include="Fixtures\Network\windows-sdk-tables*.json" />

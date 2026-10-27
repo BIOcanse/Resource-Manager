@@ -16,7 +16,10 @@ public enum NativeSamplingSubscriptionStatus : int
     NoData = 4,
     BufferTooSmall = 5,
     StaleFrame = 6,
-    OutOfMemory = 7
+    OutOfMemory = 7,
+    ItemCapacityExceeded = 9,
+    SourceCapacityExceeded = 10,
+    MembershipCapacityExceeded = 11
 }
 
 [Flags]

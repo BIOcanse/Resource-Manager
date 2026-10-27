@@ -11,6 +11,50 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class WindowsHardwareMetricSamplerLifecycleTests
 {
+    [Theory]
+    [InlineData(1352)]
+    [InlineData(1557)]
+    public void AllMetricsFromRecordedCatalogReachesRealNativeTracker(int metricCount)
+    {
+        using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
+        var catalog = AllMetricSubscriptionTestData.RecordedCatalog(metricCount);
+        using var sampler = CreateSampler(subscriptions, catalog);
+        var expanded = catalog.SelectSubscribable(MetricSampleRequest.All);
+        Assert.False(expanded.IsAll);
+        Assert.True(expanded.Ids.Count > 1024);
+        using var lease = sampler.AcquireSubscription("targeted-recording:recorded", MetricSampleRequest.All, TimeSpan.FromSeconds(1));
+        var tracker = (NativeItemSamplingSubscriptionTracker<MetricSampleRequest>)typeof(WindowsHardwareMetricSampler)
+            .GetField("subscriptions", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(sampler)!;
+        var plan = tracker.CreatePlan(DateTimeOffset.UtcNow);
+        Assert.NotNull(plan.Request);
+        Assert.Equal(sampler.GetPublicationItemIds(expanded).Order(), plan.DueItemIds.Order());
+        tracker.MarkSampled(plan.Request!, DateTimeOffset.UtcNow);
+    }
+
+    [Fact]
+    public async Task AllMetricsPushAndSingleFetchAdmitAndReleaseTheRealCatalog()
+    {
+        using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
+        using var sampler = CreateSampler(subscriptions, AllMetricSubscriptionTestData.RecordedCatalog());
+        var tracker = (NativeItemSamplingSubscriptionTracker<MetricSampleRequest>)typeof(WindowsHardwareMetricSampler)
+            .GetField("subscriptions", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(sampler)!;
+        for (var mode = 0; mode < 3; mode++)
+        {
+            using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await using var stream = sampler.SubscribeAsync("all-stream", MetricSampleRequest.All,
+                TimeSpan.FromSeconds(1), cancellation.Token).GetAsyncEnumerator();
+            var pending = mode == 0 ? stream.MoveNextAsync().AsTask()
+                : mode == 1 ? ((IMetricSnapshotPushSource)sampler).FetchOnceAsync("all-fetch", MetricSampleRequest.All, cancellation.Token)
+                : (Task)sampler.GetSnapshotAsync(cancellation.Token);
+            var plan = tracker.CreatePlan(DateTimeOffset.UtcNow);
+            Assert.True(plan.DueItemIds.Count > 1024);
+            tracker.MarkSampled(plan.Request!, DateTimeOffset.UtcNow);
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await pending);
+            Assert.Empty(tracker.CreatePlan(DateTimeOffset.UtcNow).ActiveItemIds);
+        }
+    }
+
     [Fact]
     public async Task CapturedPlanCallbackCannotAllocateHistoryAfterStop()
     {
@@ -396,7 +440,7 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
         Assert.Equal(ResourceManager.ReadWrite.FieldObservationStatus.Current, Assert.Single(reader.Current).Status);
     }
 
-    private static WindowsHardwareMetricSampler CreateSampler(
+    internal static WindowsHardwareMetricSampler CreateSampler(
         HostManagerSamplingSubscriptionTestFixture subscriptions,
         HardwareMetricCatalogState catalog,
         HostManagerMetricSnapshotOwner? owner = null,

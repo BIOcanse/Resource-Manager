@@ -16,6 +16,34 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class TargetedRecordingServiceTests : IDisposable
 {
+    [Fact]
+    public async Task RecordedAllMetricsRecordingHoldsRealNativeSubscriptionUntilUserStops()
+    {
+        using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
+        using var sampler = WindowsHardwareMetricSamplerLifecycleTests.CreateSampler(
+            subscriptions, AllMetricSubscriptionTestData.RecordedCatalog());
+        var store = new TargetedRecordingStore(new ResourceManagerDatabase(
+            new TestHostEnvironment(Path.Combine(root, "Resource Manager-APP"))));
+        var frames = new FakeFrames();
+        var breakdown = new FakeBreakdown();
+        var service = new TargetedRecordingService(store, new FakeSoftware(), frames, breakdown,
+            sampler, NullLogger<TargetedRecordingService>.Instance);
+        await service.StartAsync(CancellationToken.None);
+        try
+        {
+            var started = await service.BeginAsync("software", 600, CancellationToken.None);
+            Assert.Equal("recording", started.Status);
+            Assert.Equal("recording", (await store.GetAsync(started.Id, CancellationToken.None))!.Recording.Status);
+            Assert.Equal(1, frames.ActiveLeases);
+            Assert.Equal(1, breakdown.ActiveLeases);
+            var stopped = await service.FinishAsync(started.Id, CancellationToken.None);
+            Assert.Equal("user", stopped!.StopReason);
+            Assert.False(stopped.Incomplete);
+            Assert.Equal(0, frames.ActiveLeases);
+            Assert.Equal(0, breakdown.ActiveLeases);
+        }
+        finally { await service.StopAsync(CancellationToken.None); }
+    }
     private static readonly int TestProcessId = Environment.ProcessId;
     private static readonly long TestProcessStartKey = System.Diagnostics.Process.GetCurrentProcess().StartTime.ToFileTimeUtc();
     private readonly string root = Path.Combine(Path.GetTempPath(), $"rm-targeted-service-{Guid.NewGuid():N}");

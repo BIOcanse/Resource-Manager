@@ -487,6 +487,8 @@ pub const Session = struct {
     ) ResultCode {
         if (!protocol.validTrackHeader(input, &self.config)) return .abi_mismatch;
         if (references.len != input.item_count) return .invalid_argument;
+        if (references.len > self.config.maximum_item_count) return .sampling_item_capacity_exceeded;
+        if (references.len > self.config.maximum_membership_count) return .sampling_membership_capacity_exceeded;
         if (!self.operationAdvances(input.operation_epoch, input.command_at_milliseconds)) {
             return .stale_frame;
         }
@@ -515,14 +517,14 @@ pub const Session = struct {
         for (handles) |handle| if (self.findItem(handle) == null) {
             new_item_count += 1;
         };
-        if (new_item_count > self.replacementFreeItemCount(existing_source_index, handles)) return .out_of_memory;
-        if (existing_source_index == null and self.freeSourceCount() == 0) return .out_of_memory;
+        if (new_item_count > self.replacementFreeItemCount(existing_source_index, handles)) return .sampling_item_capacity_exceeded;
+        if (existing_source_index == null and self.freeSourceCount() == 0) return .sampling_source_capacity_exceeded;
         const reusable_memberships = if (existing_source_index) |source_index|
             self.sourceItemCount(source_index)
         else
             0;
         const required_memberships = self.membershipCount() - reusable_memberships + references.len;
-        if (required_memberships > self.config.maximum_membership_count) return .out_of_memory;
+        if (required_memberships > self.config.maximum_membership_count) return .sampling_membership_capacity_exceeded;
         // Prepare the replacement source and exact membership rows before any
         // authoritative state changes. Membership indices never leave this module.
         var updated_source = if (existing_source_index) |index| self.sources[index] else SourceSlot{};

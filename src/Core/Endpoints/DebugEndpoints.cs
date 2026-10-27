@@ -49,7 +49,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 gpu.HasMetric(SchedulingProcessMetricMask.GpuUsage)
                     || gpu.HasMetric(SchedulingProcessMetricMask.GpuDedicatedMemory))).Select(process => new GpuRendererProcessPayload(process.ProcessId, process.ProcessStartKey, process.ProcessName, WindowsGpuRendererConfirmation.Read(new(process.ProcessId, process.ProcessStartKey, process.ProcessName, process.ExecutablePath ?? string.Empty), keys))).ToArray();
             return Results.Ok(new GpuRendererConfirmationPayload("graphics-kernel-client", rows));
-        });
+        }).AddEndpointFilter(SamplingCapacityFailure);
 
         // 订阅 N 秒（默认 5，允许 1–30）后返回各进程的帧统计，用来在真实程序上核对帧率。
         app.MapGet("/api/debug/frame-timing", async (HttpResponse response, IFrameTimingObservationSource frames,
@@ -132,7 +132,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 "debug:metrics-capture", sampleRequest,
                 cancellationToken);
             return Results.Ok(snapshot);
-        });
+        }).AddEndpointFilter(SamplingCapacityFailure);
 
         return app;
     }
@@ -154,7 +154,19 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 : processes.ReadLatest(new SchedulingProcessFactRequest(mask, hardware.GpuInventory));
             var failures = facts?.Processes.Select(process => new GpuPlacementFailurePayload(process.ProcessId, process.ProcessStartKey, gpuInjector.GetKnownProcessFailure(new GpuPlacementProcessInstance(process.ProcessId, process.ProcessStartKey, process.ProcessName, process.ExecutablePath ?? string.Empty)))).Where(process => process.failure is not null).ToArray();
             return Results.Ok(new DebugSchedulingPayload(hardware?.GpuInventory, facts, failures));
-        });
+        }).AddEndpointFilter(SamplingCapacityFailure);
         return app;
+    }
+
+
+    private static async ValueTask<object?> SamplingCapacityFailure(
+        EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    {
+        try { return await next(context); }
+        catch (ResourceManager.Subscription.SamplingSubscriptionCapacityException error)
+        {
+            return Results.Json(new EndpointErrorPayload(error.Reason.ToString()),
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
     }
 }

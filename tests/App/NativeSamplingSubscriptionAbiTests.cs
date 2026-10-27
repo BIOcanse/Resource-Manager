@@ -71,6 +71,9 @@ public sealed class NativeSamplingSubscriptionAbiTests
         Assert.Equal(1U, (uint)NativeSamplingSubscriptionCompletionStatus.Sampled);
         Assert.Equal(3U, (uint)NativeSamplingSubscriptionCompletionStatus.Skipped);
         Assert.Equal(7, (int)NativeSamplingSubscriptionStatus.OutOfMemory);
+        Assert.Equal(9, (int)NativeSamplingSubscriptionStatus.ItemCapacityExceeded);
+        Assert.Equal(10, (int)NativeSamplingSubscriptionStatus.SourceCapacityExceeded);
+        Assert.Equal(11, (int)NativeSamplingSubscriptionStatus.MembershipCapacityExceeded);
     }
 
     [Fact]

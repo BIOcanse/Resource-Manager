@@ -444,7 +444,7 @@ test "duplicate handles, time regression, future skew, and capacity fail closed"
     try std.testing.expectEqual(ResultCode.stale_frame, track(session, 1, 1_001, 1_001, 1, 0, 0, &.{10}));
     try std.testing.expectEqual(ResultCode.stale_frame, track(session, 2, 999, 999, 1, 0, 0, &.{10}));
     try std.testing.expectEqual(ResultCode.stale_frame, track(session, 2, 1_100, 1_700, 1, 0, 0, &.{10}));
-    try std.testing.expectEqual(ResultCode.out_of_memory, track(session, 2, 1_100, 1_100, 2, 0, 0, &.{20}));
+    try std.testing.expectEqual(ResultCode.sampling_source_capacity_exceeded, track(session, 2, 1_100, 1_100, 2, 0, 0, &.{20}));
 
     const snapshot_result = runSnapshotWithCapacities(session, 0, 2);
     try std.testing.expectEqual(ResultCode.buffer_too_small, snapshot_result.code);
@@ -1764,11 +1764,38 @@ test "removed items stay reserved until query or trigger-only plans settle" {
         try std.testing.expectEqual(ResultCode.ok, pending.code);
         try std.testing.expectEqual(ResultCode.ok, remove(session, operation, now, 1));
         operation += 1;
-        try std.testing.expectEqual(ResultCode.out_of_memory, track(session, operation, now, now, 2, 0, 0, &.{20}));
+        try std.testing.expectEqual(ResultCode.sampling_item_capacity_exceeded, track(session, operation, now, now, 2, 0, 0, &.{20}));
         const handles: []const u64 = if (mode == 0) &.{10} else &.{};
         const settled = completeWithTriggers(session, operation, pending.result.header.plan_epoch, now, now, .skipped, handles, pending.result.triggers[0..pending.result.header.trigger_count]);
         try std.testing.expectEqual(ResultCode.ok, settled.code);
         try std.testing.expectEqual(@as(?u32, null), session.findItem(10));
         try std.testing.expectEqual(ResultCode.ok, track(session, operation + 1, now, now, 2, 0, 0, &.{20}));
     }
+}
+
+test "track capacity failures are named and preserve existing demand" {
+    var config = testConfig();
+    config.maximum_item_count = 2;
+    config.maximum_due_item_count = 2;
+    config.maximum_source_count = 2;
+    config.maximum_source_view_count = 2;
+    config.maximum_expired_source_count = 2;
+    config.maximum_membership_count = 2;
+    const session = try session_module.Session.create(&config);
+    defer session.destroy();
+    try std.testing.expectEqual(ResultCode.ok, track(session, 1, 1000, 1000, 1, 0, 0, &.{10}));
+    try std.testing.expectEqual(ResultCode.sampling_item_capacity_exceeded,
+        track(session, 2, 1000, 1000, 2, 0, 0, &.{ 10, 20, 30 }));
+    try std.testing.expectEqual(@as(u32, 1), session.activeSourceCount());
+    try std.testing.expectEqual(@as(u32, 1), session.knownItemCount());
+    try std.testing.expectEqual(ResultCode.ok, track(session, 2, 1000, 1000, 1, 0, 0, &.{ 10, 20 }));
+    try std.testing.expectEqual(ResultCode.sampling_membership_capacity_exceeded,
+        track(session, 3, 1000, 1000, 2, 0, 0, &.{10}));
+    try std.testing.expectEqual(@as(u32, 1), session.activeSourceCount());
+    try std.testing.expectEqual(@as(u32, 2), session.membershipCount());
+    // Structural faults retain ABI precedence even when the requested count is oversized.
+    var bad = trackInput(3, 1000, 1000, 2, 0, 0, 3);
+    bad.abi_version = 0;
+    const references = [_]protocol.ItemReference{ itemReference(10), itemReference(20), itemReference(30) };
+    try std.testing.expectEqual(ResultCode.abi_mismatch, session.track(&bad, &references));
 }
