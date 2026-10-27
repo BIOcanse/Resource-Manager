@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdirSync } from "node:fs";
+import { createReadStream, mkdirSync } from "node:fs";
+import { StringDecoder } from "node:string_decoder";
 import { join } from "node:path";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { writeFrontendPreferences } from "./frontendPreferencesFixture.js";
@@ -129,18 +130,54 @@ function checkPairs(what, pairs, expected, app) {
   assert.deepEqual([...seen].sort(), [...expected.keys()].sort(), `${what}: every named GPU appears: ${JSON.stringify(pairs)}`);
 }
 
-/** 期望值从服务端的目录算（夹具或真实切片都一样）：gpu.N 指标的 scopeKey 对上 gpu_adapter 设备自报的名字。 */
+/**
+ * 期望值从页面收到的同一份目录算：gpu.N 指标的 scopeKey 对上 gpu_adapter 设备自报的名字。
+ * 夹具：mock 的目录 GET（由场景生成，和推送信封同源）。真实切片：切片里第一帧字段目录推送信封，它同时带 fields 和 metrics
+ * （mock 回放的就是它；GET /api/metrics/fields/catalog 不在切片里，仍是夹具），按流读，不把整份切片读进内存。
+ */
 async function expectedNames(page, baseUrl) {
-  const catalog = await (await page.request.get(`${baseUrl}/api/metrics/catalog`)).json();
-  const fields = await (await page.request.get(`${baseUrl}/api/metrics/fields/catalog`)).json();
-  const devices = Array.isArray(fields) ? fields : fields.fields ?? [];
-  const nameByIdentity = new Map(devices.filter(item => item.device?.kind === "gpu_adapter" && item.device.displayName?.trim())
+  const envelope = process.env.RM_REAL_SLICE ? await firstSliceCatalogEnvelope(process.env.RM_REAL_SLICE) : {
+    metrics: await (await page.request.get(`${baseUrl}/api/metrics/catalog`)).json(),
+    fields: await (await page.request.get(`${baseUrl}/api/metrics/fields/catalog`)).json()
+  };
+  const nameByIdentity = new Map(envelope.fields.filter(item => item.device?.kind === "gpu_adapter" && item.device.displayName?.trim())
     .map(item => [item.deviceIdentity, item.device.displayName.trim()]));
   const names = new Map();
-  for (const metric of catalog) {
+  for (const metric of envelope.metrics) {
     const index = /^gpu\.(\d+)\./.exec(metric.id)?.[1];
     const name = index !== undefined && metric.scopeKind === "gpu" ? nameByIdentity.get(metric.scopeKey) : undefined;
     if (name) names.set(index, name);
   }
   return names;
+}
+
+/** 切片 slice.json 里第一帧 /api/metrics/fields/catalog/subscribe 的 body：找到标记后按括号配对取出这一段 JSON（跳过字符串里的括号）。 */
+async function firstSliceCatalogEnvelope(sliceDirectory) {
+  const marker = '"path":"/api/metrics/fields/catalog/subscribe';
+  const decoder = new StringDecoder("utf8");
+  let text = "";
+  let bodyStart = -1;
+  for await (const chunk of createReadStream(join(sliceDirectory, "slice.json"), { highWaterMark: 1 << 20 })) {
+    text += decoder.write(chunk);
+    if (bodyStart < 0) {
+      const at = text.indexOf(marker);
+      if (at < 0) { text = text.slice(-marker.length); continue; }
+      const body = text.indexOf('"body":', at);
+      if (body < 0) { text = text.slice(at); continue; }
+      text = text.slice(body + '"body":'.length);
+      bodyStart = 0;
+    }
+    let depth = 0, inString = false, escaped = false;
+    for (let index = 0; index < text.length; index += 1) {
+      const character = text[index];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (character === "\\") escaped = true;
+        else if (character === '"') inString = false;
+      } else if (character === '"') inString = true;
+      else if (character === "{") depth += 1;
+      else if (character === "}" && --depth === 0) return JSON.parse(text.slice(0, index + 1));
+    }
+  }
+  throw new Error(`No field catalog frame in ${sliceDirectory}`);
 }
