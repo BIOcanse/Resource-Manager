@@ -2733,7 +2733,7 @@ const jaJpAppCopy: AppCopy = {
     metric: {
       notExposed: "読み取り非対応",
       needsComponent: (value: string) => `${value} が必要`,
-      noValidReading: "読み取れません",
+      noValidReading: "有効な値なし",
       notApplicable: "このデバイスにはありません"
     },
     software: {

@@ -2733,7 +2733,7 @@ const frFrAppCopy: AppCopy = {
     metric: {
       notExposed: "Non lisible",
       needsComponent: (value: string) => `Nécessite ${value}`,
-      noValidReading: "Aucun relevé",
+      noValidReading: "Aucun relevé valide",
       notApplicable: "Absent de cet appareil"
     },
     software: {

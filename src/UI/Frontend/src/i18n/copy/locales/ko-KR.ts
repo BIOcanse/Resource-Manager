@@ -2732,7 +2732,7 @@ const koKrAppCopy: AppCopy = {
     metric: {
       notExposed: "읽기 미지원",
       needsComponent: (value: string) => `${value} 필요`,
-      noValidReading: "읽을 수 없음",
+      noValidReading: "유효한 값 없음",
       notApplicable: "이 장치에는 없음"
     },
     software: {

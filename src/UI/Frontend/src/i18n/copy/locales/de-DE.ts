@@ -2733,7 +2733,7 @@ const deDeAppCopy: AppCopy = {
     metric: {
       notExposed: "Nicht lesbar",
       needsComponent: (value: string) => `Benötigt ${value}`,
-      noValidReading: "Kein Messwert",
+      noValidReading: "Kein gültiger Messwert",
       notApplicable: "Auf diesem Gerät nicht vorhanden"
     },
     software: {

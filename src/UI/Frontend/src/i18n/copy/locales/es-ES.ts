@@ -2733,7 +2733,7 @@ const esEsAppCopy: AppCopy = {
     metric: {
       notExposed: "No legible",
       needsComponent: (value: string) => `Requiere ${value}`,
-      noValidReading: "Sin lectura",
+      noValidReading: "Sin lectura válida",
       notApplicable: "No existe en este dispositivo"
     },
     software: {

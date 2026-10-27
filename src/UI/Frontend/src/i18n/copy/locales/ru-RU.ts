@@ -2733,7 +2733,7 @@ const ruRuAppCopy: AppCopy = {
     metric: {
       notExposed: "Недоступно для чтения",
       needsComponent: (value: string) => `Требуется ${value}`,
-      noValidReading: "Нет показаний",
+      noValidReading: "Нет корректных показаний",
       notApplicable: "Отсутствует на этом устройстве"
     },
     software: {

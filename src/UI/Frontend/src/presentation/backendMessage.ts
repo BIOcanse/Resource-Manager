@@ -201,6 +201,12 @@ function deviceTopologyRenderers(): Record<number, Renderer> {
   };
 }
 
+/** 后端消息的原样代码：域/码，带参数时把参数照写在后面。用在提示里，以及认不出的消息本身。 */
+export function backendMessageCodeText(message: BackendMessage): string {
+  const args = message.args ?? [];
+  return `${message.domain}/${message.code}${args.length > 0 ? ` [${args.join(", ")}]` : ""}`;
+}
+
 export function renderBackendMessage(
   message: BackendMessage | null | undefined,
   fallback?: string

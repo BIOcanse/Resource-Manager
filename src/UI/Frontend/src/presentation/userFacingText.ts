@@ -1,5 +1,5 @@
 import { currentLanguage, uiText } from "../text.ts";
-import { backendMessageDomains, renderBackendMessage } from "./backendMessage.ts";
+import { backendMessageCodeText, backendMessageDomains, renderBackendMessage } from "./backendMessage.ts";
 import type { BackendMessage } from "../types";
 
 const internalImplementationPattern = /\b(?:provider|shim|hook|loopback|jsonl|webview2|dxgkrnl|vidmm|fileio|diskio|ip helper|affinity|native ui|api|gc)\b|目标接收池|重算账本|运行中重建诱导|内部控制接口|热路径|闸门|软件级信封|调用栈|堆栈|exception|system\.[a-z]|at [a-z0-9_.]+\(/i;
@@ -173,7 +173,7 @@ export function userFacingMetricGroup(value: unknown) {
 }
 
 // 为什么不能选这个指标，后端在目录里已经算好了（可能是「当前没有读数」而不是「缺组件」）。
-// 只有后端没给理由时才退回这两句通用说明，不要因为指标声明过组件就断言是缺组件。
+// 认不出的域或码写出原样的代码（不换成别的说法）；只有后端没给理由时才退回这两句通用说明，不要因为指标声明过组件就断言是缺组件。
 export function userFacingMetricUnavailableReason(
   requiredComponentName?: string | null,
   disabledReason?: BackendMessage | null
@@ -182,12 +182,17 @@ export function userFacingMetricUnavailableReason(
     return renderBackendMessage(disabledReason.domain === backendMessageDomains.metric
       && disabledReason.code === 2 && requiredComponentName
       ? { ...disabledReason, args: [requiredComponentName] }
-      : disabledReason);
+      : disabledReason, metricDisabledReasonCode(disabledReason));
   }
 
   return requiredComponentName
     ? uiText.status.metricUnavailable.needsComponent
     : uiText.status.metricUnavailable.deviceNotProvided;
+}
+
+/** 不可选原因的原样代码（域/码/参数），放在提示里，认不出的原因直接显示它。 */
+export function metricDisabledReasonCode(disabledReason: BackendMessage) {
+  return uiText.backendMessage.reasonCode(backendMessageCodeText(disabledReason));
 }
 
 export function componentDisplayName(componentId: unknown, fallback?: unknown) {

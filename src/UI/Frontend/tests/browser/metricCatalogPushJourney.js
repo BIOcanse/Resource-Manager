@@ -10,7 +10,7 @@ import {
  * 目录订阅信封（{catalogRevision, fields, metrics}）在没有普通指标帧时也直接生效（简体中文）：
  * 先等卡片上的设备字段有读数，再暂停 /api/metrics/subscribe（值和字段值都不再推）。
  * 1. 目录换修订号：设备从目录里消失，卡片随订阅帧写「设备不在」；
- * 2. 修订号不变、只有组件安装信息变：选择器里 cpu.frequency 从「缺组件」变成「读不到」。
+ * 2. 修订号不变、只有组件安装信息变：选择器里 cpu.frequency 从「缺组件」变成「无有效读数」（后端码 3/3）。
  * 两步都不发 GET /api/metrics/catalog，也没有任何指标帧。
  */
 export default async function metricCatalogPushJourney(page, baseUrl) {
@@ -60,6 +60,12 @@ export default async function metricCatalogPushJourney(page, baseUrl) {
   await patchScenario(baseUrl, { metricCatalogComponent: "installed" });
   await option.locator(".metric-unavailable").filter({ hasText: noValidReading }).waitFor({ timeout: 10_000 });
   if (!await option.isDisabled()) throw new Error("an installed metric without a valid reading stays selectable");
+  // 后端的原因原样留在提示里（域/码/参数），格子里写的是那句话，不是代码。
+  const reasonTitle = await option.getAttribute("title");
+  if (!reasonTitle?.split("\n").includes(app.backendMessage.reasonCode("3/3"))
+    || (await unavailableText()).some((text) => text.includes("3/3"))) {
+    throw new Error(`the disabled metric does not keep the backend reason code on hover only: ${JSON.stringify({ reasonTitle, aside: await unavailableText() })}`);
+  }
   if (await option.locator(".metric-option-dependency").count() !== 0) {
     throw new Error("the installed component is still offered for installation");
   }

@@ -7,6 +7,7 @@ import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext
 import type { MetricFieldCatalogDevice } from "../../data/metricFields/metricFieldSource.ts";
 import {
   componentDisplayName,
+  metricDisabledReasonCode,
   userFacingMetricGroup,
   userFacingMetricUnavailableReason,
   userFacingState
@@ -74,11 +75,18 @@ function gpuGroupName(metrics: readonly MetricDefinition[], devices: readonly Me
     : null;
 }
 
-/** 选项名和右侧原因都可能被截断：悬停看全名、不可选的原因；设备字段附字段说明，已装的组件附组件状态。 */
+/**
+ * 选项名和右侧原因都可能被截断：悬停看全名、不可选的原因和后端原样的原因代码（域/码/参数）；
+ * 设备字段附字段说明，已装的组件附组件状态。
+ */
 function optionTitle(metric: MetricDefinition, dependency: MetricDependencyState | null, unavailable: boolean): string {
+  const reason = unavailable ? userFacingMetricUnavailableReason(metric.requiredComponentName, metric.disabledReason) : null;
+  const code = unavailable && metric.disabledReason ? metricDisabledReasonCode(metric.disabledReason) : null;
   return [
     localizedMetricLabel(metric.id, metric.label),
-    unavailable ? userFacingMetricUnavailableReason(metric.requiredComponentName, metric.disabledReason) : null,
+    reason,
+    // 认不出的原因本身就是代码，不再写第二遍。
+    code === reason ? null : code,
     metric.scopeKind === deviceFieldScopeKind ? metric.detail : null,
     dependency && !dependency.missing ? `${dependency.name} · ${dependency.stateLabel}` : null
   ].filter(Boolean).join("\n");
