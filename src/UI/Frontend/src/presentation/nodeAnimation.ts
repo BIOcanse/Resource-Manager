@@ -56,7 +56,7 @@ const ANCESTOR_LIMIT = 64;
  * 其余 data 属性都是身份（行、字段、焦点、可见区域），幽灵不能被当成真实节点找到，一律去掉。
  */
 export const GHOST_STYLE_DATA_ATTRIBUTES: ReadonlySet<string> = new Set([
-  "data-column-id", "data-tone", "data-bar-color", "data-placement", "data-form-factor", "data-exit-slot"
+  "data-column-id", "data-tone", "data-bar-color", "data-placement", "data-form-factor", "data-exit-slot", "data-outcome"
 ]);
 const GHOST_REMOVED_ATTRIBUTES = ["id", "role", "tabindex", "name", "for", "autofocus", "contenteditable", "href"];
 
