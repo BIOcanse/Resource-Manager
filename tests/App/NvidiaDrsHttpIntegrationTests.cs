@@ -143,19 +143,42 @@ public sealed class NvidiaDrsHttpIntegrationTests(ITestOutputHelper output)
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await using var fixture = await Fixture.StartAsync(deadline.Token);
         var frozen = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        fixture.Recording.OnSetting = () => { fixture.Zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze); frozen.TrySetResult(); };
+        using var release = new ManualResetEventSlim();
+        var attempts = 0;
+        fixture.Recording.OnSetting = () =>
+        {
+            fixture.Zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
+            frozen.TrySetResult();
+            if (Interlocked.Increment(ref attempts) == 1) release.Wait(deadline.Token);
+        };
         var before = fixture.Provider.ReadState();
         using var cancelledFetch = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
         var pending = fixture.PostAsync("read", Request(), cancelledFetch.Token);
-        await frozen.Task.WaitAsync(deadline.Token);
-        Assert.Same(before, fixture.Provider.ReadState());
-        // A rejected attempt is not a new sample. The subscription waits for
-        // future collection, and caller cancellation must withdraw that demand.
-        cancelledFetch.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+        try
+        {
+            await frozen.Task.WaitAsync(deadline.Token);
+            Assert.Same(before, fixture.Provider.ReadState());
+            // A rejected attempt is not a new sample. Client cancellation withdraws
+            // demand, but does not wait for the server's synchronous native read.
+            cancelledFetch.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+            // Discovery shares the original capture gate. While still frozen it
+            // waits for that read's publication decision, then rejects without a
+            // native query. Restoring Normal earlier could admit the old result.
+            var settled = fixture.Provider.DiscoverNvidiaDrsInformationAsync(Limits, deadline.Token).AsTask();
+            Assert.False(settled.IsCompleted);
+            release.Set();
+            Assert.Null(await settled);
+            Assert.Same(before, fixture.Provider.ReadState());
+            Assert.Equal(1, fixture.Recording.Reads);
+            Assert.Equal(1, fixture.Recording.Destroys);
+        }
+        finally { release.Set(); }
         fixture.Zone.ApplyMode(ResourceManagerComputeZoneMode.Normal);
         using var directory = await fixture.Client.PostAsJsonAsync(Route("discover"), Limits, deadline.Token);
         Assert.Equal(HttpStatusCode.ServiceUnavailable, directory.StatusCode); Assert.Same(before, fixture.Provider.ReadState());
+        Assert.Equal(2, fixture.Recording.Reads);
+        Assert.Equal(2, fixture.Recording.Destroys);
         fixture.Recording.OnSetting = null; fixture.Zone.ApplyMode(ResourceManagerComputeZoneMode.Normal);
         using var recovered = await fixture.PostAsync("read", Request(), deadline.Token);
         AssertQword(await recovered.Content.ReadFromJsonAsync<JsonElement>(deadline.Token));
