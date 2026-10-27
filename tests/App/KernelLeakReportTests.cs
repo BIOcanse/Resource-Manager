@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -49,7 +48,7 @@ public sealed partial class KernelLeakReportTests
         Assert.Equal("recorded-product", item.Holder.ProductName);
         var wire = JsonSerializer.Serialize(new { subscriptionId = "leaks", value = report }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         Assert.Contains("\"resourceKind\":\"ProcessHandles\"", wire);
-        File.WriteAllText(EvidencePath("wire-example.json"), wire);
+        WriteEvidence("wire-example.json", wire);
     }
     [Fact]
     public async Task ExitAndPidReuseReleaseSeriesAndLastSubscriberDrainsDemand()
@@ -193,7 +192,7 @@ public sealed partial class KernelLeakReportTests
             for (var round = 0; round < options.SeriesCapacity; round++)
                 series.Observe(new(DateTimeOffset.UnixEpoch.AddMilliseconds((long)round * options.IntervalMilliseconds), true, samples));
             var seriesMs = timer.Elapsed.TotalMilliseconds / options.SeriesCapacity;
-            File.WriteAllText(EvidencePath("sampling-cost.json"), JsonSerializer.Serialize(new
+            WriteEvidence("sampling-cost.json", JsonSerializer.Serialize(new
             {
                 handleCaptureMilliseconds = elapsed, warmMedianMilliseconds = elapsed.Skip(1).Order().Skip(2).Take(2).Average(),
                 fullSamplerCaptureMilliseconds = fullSamplerCosts, fullSamplerWarmMedianMilliseconds = fullSamplerCosts.Skip(1).Order().Skip(2).Take(2).Average(),
@@ -294,7 +293,7 @@ public sealed partial class KernelLeakReportTests
             Assert.Equal(297UL, item.Growth);
             Assert.Equal(297d / 7, item.GrowthPerSecond);
             Assert.Equal(7, item.ObservationSeconds);
-            File.WriteAllText(EvidencePath("noisy-wire-example.json"), JsonSerializer.Serialize(subscription.Current, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+            WriteEvidence("noisy-wire-example.json", JsonSerializer.Serialize(subscription.Current, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         }
     }
     [Fact]
@@ -312,9 +311,12 @@ public sealed partial class KernelLeakReportTests
             Assert.Equal(percentage == 25 ? 1 : 0, items.Count);
         }
     }
-    private static string EvidencePath(string name, [CallerFilePath] string source = "")
-        => Path.Combine(Environment.GetEnvironmentVariable("RM_KERNEL_LEAK_EVIDENCE_ROOT")
-            ?? Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source)!, "../../.local/reports")), name);
+    // Evidence files are written only when a run names a directory for them; ordinary test runs write nothing.
+    private static void WriteEvidence(string name, string text)
+    {
+        if (Environment.GetEnvironmentVariable("RM_KERNEL_LEAK_EVIDENCE_ROOT") is { Length: > 0 } root)
+            File.WriteAllText(Path.Combine(root, name), text);
+    }
     private sealed class CountingInventory : IWindowsProcessInventoryReader
     {
         internal int Walks, Tables;

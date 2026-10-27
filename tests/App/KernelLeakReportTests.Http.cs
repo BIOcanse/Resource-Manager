@@ -64,7 +64,7 @@ public sealed partial class KernelLeakReportTests
                 Assert.Equal("ProcessHandles", item.GetProperty("resourceKind").GetString());
                 Assert.Equal("42", item.GetProperty("holder").GetProperty("startKey").GetString());
                 Assert.Equal(1200UL, item.GetProperty("currentValue").GetUInt64());
-                File.WriteAllText(EvidencePath("wire-example.json"), line);
+                WriteEvidence("wire-example.json", line);
             }
         }
         response.Dispose();
