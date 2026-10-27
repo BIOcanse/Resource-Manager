@@ -552,6 +552,34 @@
       },
       "perBlock": false,
       "trigger": "event"
+    },
+    {
+      "uid": 66,
+      "kind": "item",
+      "process": "backend",
+      "name": "CpuThreadDiagnosticRequests",
+      "comment": "Per-request target process identities and query-only thread handles; explicit diagnostic demand only. Disposing the holder closes all handles.",
+      "storage": "own",
+      "type": "System.Collections.Generic.HashSet<ResourceManager.ReadWrite.Windows.Processes.EtwCpuResidencyCaptureOwner.ThreadDiagnosticRequest>",
+      "owner": {
+        "component": "EtwCpuResidencyCaptureOwner"
+      },
+      "perBlock": false,
+      "trigger": "event"
+    },
+    {
+      "uid": 67,
+      "kind": "item",
+      "process": "backend",
+      "name": "CpuProcessThreadWindow",
+      "comment": "Requested process closed ETW execution window with optional raw thread identity, name, start module and separately bounded Windows user/kernel counter deltas.",
+      "storage": "reference",
+      "type": "ResourceManager.ReadWrite.Windows.Processes.CpuProcessThreadWindow",
+      "owner": {
+        "component": "EtwCpuResidencyCaptureOwner.ThreadDiagnosticRequest"
+      },
+      "perBlock": false,
+      "trigger": "event"
     }
   ]
 }

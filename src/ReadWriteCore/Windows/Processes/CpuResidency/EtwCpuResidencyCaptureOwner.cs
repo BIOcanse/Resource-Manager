@@ -14,7 +14,7 @@ internal sealed record CpuResidencyOwnerDiagnostics(string State, string Message
     long? SessionGeneration, CpuResidencyCaptureConfiguration? SessionPlan, CpuResidencyAggregationDiagnostics? Aggregation);
 /// <summary>The original shared-broker session, closed-window buffer and published raw current.
 /// No worker or global broker. EnsureStarted/Collect/Stop are explicit; borrowed broker is never disposed.</summary>
-public sealed class EtwCpuResidencyCaptureOwner : IDisposable
+public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
 {
     private const KernelTraceEventParser.Keywords RequiredKeywords = KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread | KernelTraceEventParser.Keywords.ContextSwitch;
 
@@ -212,6 +212,7 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
             () => IsCurrentSession(session, expectedBindingEpoch),
             ReadEventCreation,
             index => ResolveEventLogicalProcessorId(index, processorIds), session.Window.Observe);
+        BindDiagnosticSource(kernel, () => IsCurrentSession(session, expectedBindingEpoch));
 
         lock (subscriptionGate)
         {
@@ -1022,6 +1023,7 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
 
     private (IKernelEtwSubscription? Subscription, ResidencySessionState? Session) DetachSessionCore()
     {
+        ClearDiagnosticSource();
         bindingEpoch = checked(bindingEpoch + 1);
         var subscription = kernelSubscription;
         kernelSubscription = null;
@@ -1195,7 +1197,7 @@ public sealed class EtwCpuResidencyCaptureOwner : IDisposable
         lock (subscriptionGate)
         {
             if (stopped) { ClearRetiredBuffersCore(); return; }
-            stopped = true; (lease, session) = DetachSessionCore(); state = "Stopped";
+            stopped = true; DisposeDiagnosticRequests(); (lease, session) = DetachSessionCore(); state = "Stopped";
         }
         try { lease?.Dispose(); } finally { ClearRetiredBuffers(); }
     }

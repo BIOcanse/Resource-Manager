@@ -87,6 +87,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     [JsonSerializable(typeof(global::ResourceManager.App.Domain.CpuTopology.CpuBaselineRatioRequest))]
     [JsonSerializable(typeof(global::ResourceManager.App.Domain.CpuTopology.CpuBaselineRatioUpdateResult))]
     [JsonSerializable(typeof(global::ResourceManager.App.Domain.CpuTopology.CpuCorePerformanceOverrideRequest))]
+    [JsonSerializable(typeof(global::ResourceManager.ReadWrite.Windows.Processes.CpuProcessThreadWindow))]
     [JsonSerializable(typeof(global::ResourceManager.App.Domain.CpuTopology.CpuCoreResidencySnapshot))]
     [JsonSerializable(typeof(global::ResourceManager.App.Domain.CpuTopology.CpuTopologySnapshot))]
     [JsonSerializable(typeof(global::ResourceManager.App.Domain.Dependencies.DependencyVersionOptions))]

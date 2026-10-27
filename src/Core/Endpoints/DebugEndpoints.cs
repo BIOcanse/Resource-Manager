@@ -56,6 +56,22 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             return snapshot is null ? Results.Ok(new RunningStatePayload(false)) : Results.Ok(new FrameTimingStatePayload(true, snapshot));
         });
 
+        app.MapGet("/api/debug/thread-cpu", async (HttpResponse response, EtwCpuCoreResidencyReader reader,
+            int processId, long processStartKey, CancellationToken cancellation) =>
+        {
+            response.Headers.CacheControl = "no-store";
+            if (processId <= 0 || processStartKey <= 0) return Results.BadRequest();
+            using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+            budget.CancelAfter(TimeSpan.FromSeconds(30));
+            try
+            {
+                return Results.Ok(await reader.CaptureThreadWindowAsync("debug.thread-cpu", processId, processStartKey, budget.Token));
+            }
+            catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
+            {
+                return Results.StatusCode(StatusCodes.Status504GatewayTimeout);
+            }
+        });
         app.MapGet("/api/debug/cpu-residency", (HttpResponse response, EtwCpuCoreResidencyReader reader) =>
         {
             response.Headers.CacheControl = "no-store";

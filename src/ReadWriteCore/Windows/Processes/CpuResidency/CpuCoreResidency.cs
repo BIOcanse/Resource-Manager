@@ -80,4 +80,7 @@ public sealed record CpuThreadCoreResidency(
     string? PrimaryCcdId,
     string? PrimaryPhysicalCoreId,
     int? PrimaryLogicalProcessorId,
-    IReadOnlyList<string>? PhysicalCoreIds = null);
+    IReadOnlyList<string>? PhysicalCoreIds = null)
+{
+    public ResourceManager.ReadWrite.Windows.Processes.CpuThreadDiagnosticFacts? Diagnostic { get; init; }
+}

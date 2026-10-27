@@ -122,6 +122,7 @@ public sealed class TrustedAccessPolicyAuditTests
     [Theory]
     [InlineData("/api/debug/gpu-renderers")]
     [InlineData("/api/debug/frame-timing")]
+    [InlineData("/api/debug/thread-cpu")]
     [InlineData("/api/debug/scheduling-inputs")]
     [InlineData("/api/gpu-placement/software/{softwareId}")]
     [InlineData("/api/optimization/reports")]

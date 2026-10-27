@@ -13,7 +13,10 @@ public enum WindowsProcessDetailsFields : byte
     All = ImageSignature | LoadedModules | ThreadState
 }
 
-public sealed record WindowsProcessLoadedModule(ulong BaseAddress, string Path);
+public sealed record WindowsProcessLoadedModule(ulong BaseAddress, string Path)
+{
+    public uint? ImageSizeBytes { get; init; }
+}
 public sealed record WindowsProcessThreadState(uint ThreadId, uint State, uint WaitReason);
 
 /// <summary>One immutable process inventory observation keyed by the existing PID/creation-FILETIME identity.</summary>

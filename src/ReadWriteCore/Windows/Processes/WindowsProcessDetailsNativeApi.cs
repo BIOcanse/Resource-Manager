@@ -4,7 +4,7 @@ using System.Text;
 namespace ResourceManager.ReadWrite.Windows.Processes;
 
 /// <summary>Win32 calls for one explicit, read-only process detail request.</summary>
-internal sealed class WindowsProcessDetailsNativeApi : IWindowsProcessDetailsNativeApi
+internal sealed partial class WindowsProcessDetailsNativeApi : IWindowsProcessDetailsNativeApi
 {
     private const uint WaitTimeout = 0x102;
     private const uint ListModulesAll = 0x03;
@@ -74,7 +74,8 @@ internal sealed class WindowsProcessDetailsNativeApi : IWindowsProcessDetailsNat
                 if (module == IntPtr.Zero) return false;
                 var baseAddress = PointerValue(module);
                 if (!bases.Add(baseAddress) || !TryReadModulePath(process, module, out var modulePath)) return false;
-                rows.Add(new(baseAddress, modulePath));
+                rows.Add(new(baseAddress, modulePath) { ImageSizeBytes = GetModuleInformation(process, module, out var info,
+                    checked((uint)Marshal.SizeOf<ModuleInformation>())) ? info.SizeOfImage : null });
             }
             modules = rows.AsReadOnly();
             return true;
