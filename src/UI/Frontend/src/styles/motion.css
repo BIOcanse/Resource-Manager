@@ -2,6 +2,7 @@
    动画 / Motion：令牌由动画风格定（目录 presentation/animationStyle.ts 是唯一来源，
    tests/animationStyleContract.test.ts 核对这里和目录一致）。
    :root 是桌面常规；实际生效的风格写在 body[data-animations]，值就是风格标识。
+   这里每一条过渡和动画都在目录的 CSS_MOTIONS 里登记类别（进场退场或平面移动），新加一条要同时登记。
    ============================================================ */
 
 :root {

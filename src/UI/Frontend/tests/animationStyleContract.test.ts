@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { animationStyle, animationStyleIds, animationStyles, cssEase, movingAnimationStyleIds, TERMINAL_STEPS } from "../src/presentation/animationStyle.ts";
+import { animationStyle, animationStyleIds, animationStyles, CSS_MOTIONS, cssEase, MOVING, movingAnimationStyleIds, TERMINAL_STEPS } from "../src/presentation/animationStyle.ts";
 import type { AnimationStyleDefinition } from "../src/presentation/animationStyle.ts";
 import { CARRY_PARTS, springParam, SWITCH_PART } from "../src/interactions/components/springOrEase.ts";
 import { globalLayer, partLayer, PARAM_SPECS, resolveParams } from "../src/interactions/protocol/params.ts";
@@ -183,4 +183,52 @@ for (const language of languages) {
   own.forEach((value, index) => assert.notEqual(value, baseOwn[index], `${language}: text ${index} left in the base language: ${value}`));
 }
 
-console.log(`animationStyleContract: ${animationStyles.length} styles match motion.css, the Lodestone layer, the points and nine languages`);
+// 样式表里的过渡和动画都在目录里登记类别（CSS_MOTIONS，docs「已裁定」），两边一一对应。
+// 算数的是 transition、animation 简写和 transition-property、animation-name（值是 none 的不算）；只清零时长的规则不是动画。
+// 类别和写法对得上：过渡改的是已在场节点的状态，是平面移动；循环动画（infinite）是平面移动；其余动画是挂上或退场时播一次，是进场退场。
+// 平面移动让节点出现或消失只有一处裁定的例外：资源条的分段从宽度 0 长出来（用户「保留生长」）。
+const sourceSheets: string[] = [];
+const sheetDirs = [resolve(here, "../src")];
+for (let guard = 0; sheetDirs.length > 0 && guard < 10_000; guard += 1) {
+  const directory = sheetDirs.pop()!;
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (entry.isDirectory()) sheetDirs.push(join(directory, entry.name));
+    else if (entry.name.endsWith(".css")) sourceSheets.push(join(directory, entry.name));
+  }
+}
+const motionKey = (sheet: string, property: string, selector: string) => `${sheet} | ${property} | ${selector}`;
+const written = new Map<string, string>();
+for (const path of sourceSheets) {
+  const sheet = path.slice(resolve(here, "../src").length + 1).replaceAll("\\", "/");
+  const text = strip(readFileSync(path, "utf8"));
+  assert.doesNotMatch(text, /@starting-style/, `${sheet}: an entrance written as a transition from @starting-style bypasses the entrance owner`);
+  const body = text.replace(/@keyframes[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, "");
+  for (const match of body.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selector = match[1].split(/,(?![^(]*\))/).map((part) => part.replace(/\s+/g, " ").trim()).join(", ");
+    for (const part of match[2].split(";")) {
+      const colon = part.indexOf(":");
+      if (colon < 0) continue;
+      const name = part.slice(0, colon).trim();
+      const value = part.slice(colon + 1).replace(/\s+/g, " ").trim();
+      const property = name === "transition" || name === "transition-property" ? "transition" : name === "animation" || name === "animation-name" ? "animation" : null;
+      if (!property || /^none\b/.test(value)) continue;
+      written.set(motionKey(sheet, property, selector), value);
+    }
+  }
+}
+const registered = new Map(CSS_MOTIONS.map((motion) => [motionKey(motion.sheet, motion.property, motion.selector), motion]));
+assert.equal(registered.size, CSS_MOTIONS.length, "each style sheet motion is registered once");
+for (const key of written.keys()) assert.ok(registered.has(key), `${key} is not registered with its kind in presentation/animationStyle.ts CSS_MOTIONS`);
+for (const key of registered.keys()) assert.ok(written.has(key), `${key} is registered in CSS_MOTIONS but no style sheet writes it`);
+for (const [key, motion] of registered) {
+  const looping = motion.property === "animation" && /\binfinite\b/.test(written.get(key) ?? "");
+  const expected = motion.property === "transition" || looping ? "平面移动" : "进场退场";
+  assert.equal(motion.kind, expected, `${key}: a ${looping ? "looping animation" : motion.property} is ${expected}`);
+}
+const ruled = CSS_MOTIONS.filter((motion) => motion.ruledAppearance !== undefined);
+assert.deepEqual(ruled.map((motion) => motion.selector), [`${MOVING} .resource-segment-layer.motion-segment`],
+  "the only planar move that makes a node appear is the resource bar segment growing from width 0");
+assert.match(ruled[0].ruledAppearance!, /保留生长/);
+assert.equal(ruled[0].kind, "平面移动");
+
+console.log(`animationStyleContract: ${animationStyles.length} styles match motion.css, the Lodestone layer, the points and nine languages; ${CSS_MOTIONS.length} style sheet motions registered with their kind`);

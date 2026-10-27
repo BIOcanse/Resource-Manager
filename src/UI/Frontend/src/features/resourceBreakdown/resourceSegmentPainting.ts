@@ -1,5 +1,7 @@
 // 资源条画布上与绘制无关的几步，画布组件（ResourceSegmentPaintPlane.tsx）只管把结果画出来：
 // 一段过渡里每一帧各段在哪、离开的段收到哪里、新来的段从哪里长出来；
+// （新来的段从宽度 0 长出来、离开的段收拢是平面移动让节点出现、消失的唯一裁定例外，用户 2026-10-26「保留生长」；
+//  命中层的过渡登记在 presentation/animationStyle.ts 的 CSS_MOTIONS）
 // 标签截到多长才放得下。
 
 export interface ResourcePaintSegment {

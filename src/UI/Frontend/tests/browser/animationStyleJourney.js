@@ -97,10 +97,10 @@ export default async function animationStyleJourney(page, baseUrl) {
         const x = box.left + box.width / 2;
         const y = box.top + box.height / 2;
         const target = document.elementFromPoint(x, y);
-        // 画在这一点的选项：框含这一点的那些（相邻两项的边框可能叠 1 px，叠住的那一条两项都算）。
+        // 画在这一点的选项：框含这一点的那些。命中测试按整像素对齐框，框外 1 px 以内也算（相邻两项之间的缝不到 1 px，两项都算）。
         const drawn = [...group.querySelectorAll("[role='radio']")].filter((item) => {
           const r = item.getBoundingClientRect();
-          return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+          return x >= r.left - 1 && x <= r.right + 1 && y >= r.top - 1 && y <= r.bottom + 1;
         });
         const radio = target?.closest("[role='radio']") ?? null;
         const hitsDrawn = !!target && group.contains(target) && (radio ? drawn.includes(radio) : drawn.length === 0);
