@@ -6,6 +6,16 @@ let server;
 before(async () => { server = await startMockServer(); });
 after(async () => { await server?.close(); });
 
+test("Automatic resource bars honor requested scale modes in snapshots and streams", async () => {
+  const query = "ids=cpu.usage,memory.usage&modes=cpu.usage:capacity&modes=memory.usage:active";
+  const { value } = await server.json(`/api/resource-monitor/snapshot?${query}`);
+  const modes = snapshot => snapshot.bars.map(bar => [bar.metricId, bar.scaleMode]);
+  assert.deepEqual(modes(decodeResourceBreakdownWireSnapshot(value.breakdown)), [["cpu.usage", "capacity"], ["memory.usage", "active"]]);
+  const frames = await server.frames([{ id: "bars", path: `/api/resource-monitor/subscribe?scope=bars&${query}&intervalMs=100` }],
+    frames => frames.length > 0);
+  assert.deepEqual(modes(decodeResourceBreakdownWireSnapshot(frames[0].value.breakdown)), [["cpu.usage", "capacity"], ["memory.usage", "active"]]);
+});
+
 test("Audit bars and their explicit unavailable replacements publish each metric's r4 facts", async () => {
   await server.scenario({ resourceSoftwareMix: "audit", resourceUnavailableBarIds: [] });
   try {

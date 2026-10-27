@@ -2305,11 +2305,17 @@ const lastServedResourceBars = new Map();
 
 function resourceBreakdown(...args) {
   const breakdown = resourceBreakdownFixture(...args);
+  const requestedModes = new Map((args[3] ?? []).map(value => {
+    const [id, scale] = value.split(":");
+    return [id.toLowerCase(), scale?.toLowerCase()];
+  }));
   const unavailable = new Set(scenario.resourceUnavailableBarIds);
   const frozen = new Set(scenario.resourceFrozenBarIds);
   // 每种调用（资源条、明细、资源表事实）各记各的：同一条在不同调用里的形状不同。
   const call = JSON.stringify(args.slice(1).map((value) => value instanceof Set ? [...value].sort() : value));
-  const bars = breakdown.bars.map((bar) => {
+  const bars = breakdown.bars.map((current) => {
+    const scale = requestedModes.get(current.metricId.toLowerCase());
+    const bar = scale === "capacity" || scale === "active" ? { ...current, scaleMode: scale } : current;
     const key = `${call}|${bar.metricId}`;
     if (frozen.has(bar.metricId) && lastServedResourceBars.has(key)) return lastServedResourceBars.get(key);
     return unavailable.has(bar.metricId)
@@ -2318,7 +2324,7 @@ function resourceBreakdown(...args) {
       : bar;
   });
   for (const bar of bars) lastServedResourceBars.set(`${call}|${bar.metricId}`, bar);
-  return unavailable.size === 0 && frozen.size === 0 ? breakdown : { ...breakdown, bars };
+  return { ...breakdown, bars };
 }
 
 function resourceBreakdownFixture(capturedAt = now(), processDetailSoftwareIds = new Set(), measures = [], modes = [], { keepMissingTotals = false, ids = [] } = {}) {
