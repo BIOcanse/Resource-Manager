@@ -37,7 +37,8 @@ export const enBackendMessagesCopy: Pick<AppCopy, "backendMessage"> = {
     metric: {
       notExposed: "Not readable",
       needsComponent: (value: string) => `Needs ${value}`,
-      noValidReading: "No reading"
+      noValidReading: "No reading",
+      notApplicable: "Not on this device"
     },
     software: {
       hasUninstallEntry: "Has an uninstall entry",

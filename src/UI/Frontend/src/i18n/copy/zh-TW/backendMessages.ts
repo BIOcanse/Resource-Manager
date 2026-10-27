@@ -35,7 +35,8 @@ export const zhBackendMessagesCopy = {
     metric: {
       notExposed: "不支援讀取",
       needsComponent: (value: string) => `需要 ${value}`,
-      noValidReading: "讀不到"
+      noValidReading: "讀不到",
+      notApplicable: "此裝置沒有此項"
     },
     software: {
       hasUninstallEntry: "有解除安裝入口",

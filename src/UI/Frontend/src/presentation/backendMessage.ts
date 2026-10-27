@@ -102,7 +102,8 @@ function metricRenderers(): Record<number, Renderer> {
   return {
     1: () => copy.notExposed,
     2: (args) => copy.needsComponent(args[0] ?? ""),
-    3: () => copy.noValidReading
+    3: () => copy.noValidReading,
+    4: () => copy.notApplicable
   };
 }
 

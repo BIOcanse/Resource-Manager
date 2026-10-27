@@ -2734,9 +2734,10 @@ const jaJpAppCopy: AppCopy = {
       singleAdapter: "このマシンには GPU が 1 つしかないため、GPU スケジューリングに選択肢がありません。"
     },
     metric: {
-      notExposed: "現在のハードウェアまたはプロバイダーはこの値を公開していません。",
-      needsComponent: (value: string) => `現在のプロバイダーは有効な値を返しません。より完全な ${value}、または対応するハードウェア／OEM コンポーネントが必要です。`,
-      noValidReading: "現在のハードウェアまたはプロバイダーは有効な値を返しません。"
+      notExposed: "読み取り非対応",
+      needsComponent: (value: string) => `${value} が必要`,
+      noValidReading: "読み取れません",
+      notApplicable: "このデバイスにはありません"
     },
     software: {
       hasUninstallEntry: "アンインストール項目あり",

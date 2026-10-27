@@ -2734,9 +2734,10 @@ const esEsAppCopy: AppCopy = {
       singleAdapter: "Esta máquina solo tiene una GPU, así que la programación de GPU no tiene ningún destino que elegir."
     },
     metric: {
-      notExposed: "El hardware o el proveedor actual no expone esta lectura.",
-      needsComponent: (value: string) => `El proveedor actual no devuelve ninguna lectura válida; hace falta un ${value} más completo o el hardware o componente OEM correspondiente.`,
-      noValidReading: "El hardware o el proveedor actual no devuelve ninguna lectura válida."
+      notExposed: "No legible",
+      needsComponent: (value: string) => `Requiere ${value}`,
+      noValidReading: "Sin lectura",
+      notApplicable: "No existe en este dispositivo"
     },
     software: {
       hasUninstallEntry: "Tiene entrada de desinstalación",
