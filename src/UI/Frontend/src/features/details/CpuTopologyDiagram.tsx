@@ -28,7 +28,6 @@ import type {
 import { UserDetailsDialog } from "../../components/UserDetailsDialog";
 import { uiText } from "../../text.ts";
 import { resourceFactUnavailableText } from "../../presentation/metricLabels.ts";
-import { HelpHint } from "../../ui/primitives/HelpHint.tsx";
 import { formatBytes } from "../../presentation/byteUnits.ts";
 import type { MetricFieldDevice } from "../../data/metricFields/metricFieldSource.ts";
 import {
