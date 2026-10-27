@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For } from "solid-js";
+import { createEffect, createMemo, createSignal, For } from "solid-js";
 import { SegmentedControl as PrimitiveSegmentedControl } from "../../../ui/primitives/SegmentedControl.tsx";
 import {
   formatNumberFieldValue,
@@ -83,9 +83,11 @@ export function NumberField(props: {
     props.min,
     props.max);
 
+  // 只在显示的数值真的变化时改写输入框：来源刷新送来同一个值不应覆盖还没提交的输入。
+  const shownValue = createMemo(() => formatNumberFieldValue(props.value, props.step));
   createEffect(() => {
     if (!editing()) {
-      setDraft(formatNumberFieldValue(props.value, props.step));
+      setDraft(shownValue());
     }
   });
 
