@@ -1,4 +1,11 @@
 <Project>
+  <PropertyGroup>
+    <ResourceManagerStateNames Condition="'$(ResourceManagerStateNames)' == ''">true</ResourceManagerStateNames>
+  </PropertyGroup>
+  <!-- SDK defaults have been imported here, so this constant reaches Csc. Tests share the switch. -->
+  <PropertyGroup Condition="'$(ResourceManagerStateNames)' == 'true' and ('$(MSBuildProjectName)' == 'ResourceManager.App' or '$(MSBuildProjectName)' == 'ResourceManager.NativeUi' or '$(MSBuildProjectName)' == 'Resource Manager-APP.Tests')">
+    <DefineConstants>$(DefineConstants);RM_STATE_NAMES</DefineConstants>
+  </PropertyGroup>
   <!-- Composite R2R recompiles the framework together with the app, whether it
        publishes single-file or as a folder. Publish each assembly separately
        within the existing bounded build. -->

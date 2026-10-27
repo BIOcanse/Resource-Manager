@@ -12,6 +12,7 @@
 *.md text
 *.json text
 *.xml text
+src/Shared/StateItems/state-items.json text eol=lf
 
 /tools/catalog-validation/software-metadata/Inputs/*.json text eol=lf
 /tools/catalog-validation/software-metadata/Generated/*.json text eol=lf

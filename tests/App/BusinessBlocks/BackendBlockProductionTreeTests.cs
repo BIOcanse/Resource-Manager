@@ -93,6 +93,8 @@ public sealed class BackendBlockProductionTreeTests
         var production = services.Select(value => value.ImplementationInstance).OfType<BusinessBlockRegistration>().ToArray();
         var graph = new BackendBlockGraph(production);
         var rootBlocks = FullHostedBlocks.Except(SamplingLifetimeConsumers, StringComparer.Ordinal).ToList();
+        StateRegistryTests.AssertBlocks("backend", StateRegistryTests.BackendBlocks,
+            graph.BlockIds.Prepend(BackendBlockGraph.Program), windowsService ? [] : ["AutomaticProductUpdateService"]);
         if (windowsService) rootBlocks.Add("AutomaticProductUpdateService");
         var hostedBlocks = rootBlocks.Concat(SamplingLifetimeConsumers).ToArray();
         Assert.Equal(expectedCount, graph.Nodes.Count);

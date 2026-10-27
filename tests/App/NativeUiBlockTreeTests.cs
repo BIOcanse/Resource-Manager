@@ -14,6 +14,8 @@ public sealed class NativeUiBlockTreeTests
     {
         var probes = new Probes();
         await using var trees = Create(probes);
+        StateRegistryTests.AssertBlocks("ui", StateRegistryTests.UiBlocks,
+            trees.Read().Blocks.Select(block => block.Id).Prepend(BusinessBlockGraph.Program));
         await trees.StartAsync(false);
         await probes.Next(NativeUiBlockIds.SingleInstance);
         await probes.Next(NativeUiBlockIds.BackendConnection);

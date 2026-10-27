@@ -17,6 +17,17 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
     <PackageReference Include="FreedomPoint.Core" Version="0.1.0-dev.45" />
   </ItemGroup>
+  <Target Name="GenerateStateItems"
+          Condition="'$(DesignTimeBuild)' != 'true'"
+          Inputs="$(MSBuildProjectDirectory)/../../Shared/StateItems/state-items.json;$(MSBuildProjectDirectory)/../../../scripts/build/Generate-StateItems.ps1;$(MSBuildProjectDirectory)/../../../scripts/build/StateItemRegistry.psm1"
+          Outputs="$(IntermediateOutputPath)StateItems.g.cs">
+    <Exec Command="pwsh -NoProfile -File &quot;$(MSBuildProjectDirectory)/../../../scripts/build/Generate-StateItems.ps1&quot; -Registry &quot;$(MSBuildProjectDirectory)/../../Shared/StateItems/state-items.json&quot; -Process ui -Namespace ResourceManager.NativeUi.StateItems -Output &quot;$(IntermediateOutputPath)StateItems.g.cs&quot;" />
+  </Target>
+  <Target Name="IncludeStateItems" BeforeTargets="CoreCompile" DependsOnTargets="GenerateStateItems" Condition="'$(DesignTimeBuild)' != 'true'">
+    <ItemGroup>
+      <Compile Include="$(IntermediateOutputPath)StateItems.g.cs" />
+    </ItemGroup>
+  </Target>
   <Target Name="GenerateFrontendPreferenceValues" BeforeTargets="CoreCompile" Condition="'$(DesignTimeBuild)' != 'true'">
     <Exec Command="pwsh -NoProfile -File &quot;$(MSBuildProjectDirectory)/../../../scripts/build/Generate-FrontendPreferences.ps1&quot; -WorkRoot &quot;$(ResourceManagerLedgerWorkRoot)&quot; -GeneratorPath &quot;$(ResourceManagerFrontendGeneratorPath)&quot;" />
     <ItemGroup>
