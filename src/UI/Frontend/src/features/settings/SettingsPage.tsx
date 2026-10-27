@@ -39,7 +39,7 @@ export { MultiSegmentedControl, SegmentedControl } from "./components/SettingsCo
 
 interface SettingsPageProps {
   settings: AppSettings;
-  onTrustedAccessHeadingChange?: (heading: HTMLElement | undefined) => void;
+  onTrustedAccessFocusTargetChange?: (target: HTMLElement | undefined) => void;
   loadState: "loading" | "refreshing" | "ready" | "stale" | "error";
   activeSection: SettingsSection;
   saveState: "idle" | "saving" | "saved" | "constrained" | "partial" | "error" | "conflict";
@@ -99,11 +99,11 @@ interface SettingsPageProps {
   onDebugLogChange: (enabled: boolean) => void;
   onHostManagerSmartCoordinatorScoreOnlyChange: (enabled: boolean) => void;
   onHostManagerSmartCoordinatorPerformanceLogChange: (enabled: boolean) => void;
-  /** 性能浮层分区：软件详细信息里能不能编辑叠加层。 */
+  /** 性能浮层分区：软件详细信息里能不能编辑浮层。 */
   overlayEditingAvailable: boolean;
   /** 性能浮层分区：软件详细信息对话框是否开着。 */
   softwareDetailOpen: boolean;
-  /** 性能浮层分区：打开这个软件的详细信息，停在叠加层分页。 */
+  /** 性能浮层分区：打开这个软件的详细信息，停在浮层分页。 */
   onOpenSoftwareOverlay: (software: SoftwareRecord) => void;
 }
 
@@ -394,7 +394,7 @@ export function SettingsPage(props: SettingsPageProps) {
           <Show when={props.activeSection === "trustedAccess"}>
             <div class="settings-section-panel">
               <TrustedAccessManager copy={text().systemIntegration.trustedAccess}
-                onHeadingChange={props.onTrustedAccessHeadingChange} />
+                onFocusTargetChange={props.onTrustedAccessFocusTargetChange} />
             </div>
           </Show>
           <Show when={props.activeSection === "debug"}>

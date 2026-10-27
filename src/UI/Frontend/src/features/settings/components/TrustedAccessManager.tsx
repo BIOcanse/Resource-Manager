@@ -56,7 +56,8 @@ type ActionTarget = "create" | "default" | `key:${string}` | `request:${string}`
 
 export function TrustedAccessManager(props: {
   copy: TrustedAccessCopy;
-  onHeadingChange?: (heading: HTMLElement | undefined) => void;
+  /** 查看请求跳转后接收焦点的元素（整个可信访问区）。 */
+  onFocusTargetChange?: (target: HTMLElement | undefined) => void;
 }) {
   const runtime = useFrontendRuntime();
   const frontendWork = useFrontendWork();
@@ -85,7 +86,7 @@ export function TrustedAccessManager(props: {
   const [pending, setPending] = createSignal<ActionTarget | null>(null);
   const [confirmRequest, setConfirmRequest] = createSignal<ConfirmDialogRecord | null>(null);
   let resolveConfirm: ((confirmed: boolean) => void) | null = null;
-  let managerHeading: HTMLElement | undefined;
+  let managerRegion: HTMLElement | undefined;
   let copyButton: HTMLButtonElement | undefined;
   let enableDefaultButton: HTMLButtonElement | undefined;
   let defaultHeading: HTMLElement | undefined;
@@ -102,9 +103,9 @@ export function TrustedAccessManager(props: {
 
   const load = () => keySource.refresh({ afterCurrent: true });
   onMount(() => {
-    props.onHeadingChange?.(managerHeading);
+    props.onFocusTargetChange?.(managerRegion);
   });
-  onCleanup(() => props.onHeadingChange?.(undefined));
+  onCleanup(() => props.onFocusTargetChange?.(undefined));
 
   const ready = () => {
     const state = keyList();
@@ -287,8 +288,8 @@ export function TrustedAccessManager(props: {
         runtime.reconnectSubscriptions();
       });
     })) return;
-    // 恢复入口已经消失：焦点交给默认密钥区的标题（读取失败时交给整个区的标题）。
-    (defaultHeading?.isConnected ? defaultHeading : document.getElementById("trustedAccessManagerTitle"))?.focus();
+    // 恢复入口已经消失：焦点交给默认密钥区的标题（读取失败时交给整个区）。
+    (defaultHeading?.isConnected ? defaultHeading : managerRegion)?.focus();
   };
   const decide = (request: AccessRequestPending, action: "approve" | "deny") =>
     runAction(`request:${request.requestId}`, props.copy.requestActionFailed, async () => {
@@ -332,10 +333,10 @@ export function TrustedAccessManager(props: {
   );
 
   return (
-    <section id="trustedAccessManager" class="settings-row settings-row-block trusted-access-manager"
-      aria-labelledby="trustedAccessManagerTitle">
+    // 分区标题已经写着“可信访问”，这里不再重复一个标题，只留说明；区域名称仍给读屏。
+    <section ref={managerRegion} id="trustedAccessManager" class="settings-row settings-row-block trusted-access-manager"
+      aria-label={props.copy.title} tabindex={-1}>
       <div class="settings-row-copy">
-        <strong ref={managerHeading} id="trustedAccessManagerTitle" tabindex={-1}>{props.copy.title}</strong>
         <span>{props.copy.description}</span>
       </div>
 

@@ -7,7 +7,7 @@ import type { SoftwareRecord } from "../../types";
 
 interface SettingsWorkspaceProps {
   settings: SettingsStore;
-  onTrustedAccessHeadingChange?: (heading: HTMLElement | undefined) => void;
+  onTrustedAccessFocusTargetChange?: (target: HTMLElement | undefined) => void;
   productUpdates: ProductUpdateStore;
   runtimeCapabilities: RuntimeCapabilitiesStore;
   softwareDetailOpen: boolean;
@@ -19,7 +19,7 @@ export function SettingsWorkspace(props: SettingsWorkspaceProps) {
   onCleanup(settings.discardDraftChanges);
   return (
     <SettingsPage
-        onTrustedAccessHeadingChange={props.onTrustedAccessHeadingChange}
+        onTrustedAccessFocusTargetChange={props.onTrustedAccessFocusTargetChange}
         settings={settings.draftSettings()}
         loadState={settings.loadState()}
         activeSection={settings.activeSection()}

@@ -80,7 +80,12 @@ export default async function settingsSectionsLayoutJourney(page, baseUrl) {
     settings.systemIntegration.lmStudioEndpointTitle, settings.systemIntegration.lmStudioAutoStartTitle],
     [settings.systemIntegration.autoStartTitle]);
   await openSection(settings, "trustedAccess");
-  await page.locator("#trustedAccessManagerTitle").waitFor({ state: "visible" });
+  await page.locator("#trustedAccessManager").waitFor({ state: "visible" });
+  // 只重复分区标题的内层标题已去掉：可信访问和报告规则里没有与分区同义的标题。
+  assert.equal(await live(".trusted-access-manager > .settings-row-copy strong").count(), 0, "Trusted access repeats the section title");
+  await openSection(settings, "reportRules");
+  await live(".report-rule-group").first().waitFor();
+  assert.equal(await live(".report-rule-settings > strong").count(), 0, "Report rules repeats the section title");
 
   // 只读分区没有草稿操作；可编辑分区有「恢复为默认」。
   for (const section of sectionOrder) {
@@ -152,7 +157,7 @@ export default async function settingsSectionsLayoutJourney(page, baseUrl) {
     for (const section of [...newSections, "appearance", "systemIntegration"]) {
       await openSection(settings, section);
       if (section === "reportRules") await live(".report-rule-field").first().waitFor();
-      if (section === "trustedAccess") await page.locator("#trustedAccessManagerTitle").waitFor({ state: "visible" });
+      if (section === "trustedAccess") await page.locator("#trustedAccessManager").waitFor({ state: "visible" });
       if (section === "hardwareControl") await live('.control-access-level [role="radio"][aria-checked="true"]').waitFor();
       screenshots.push(join(shots, `settings-${section}-${language}.png`));
       // 换页和换分区的淡出层都走完再截，画面里只有这个分区。

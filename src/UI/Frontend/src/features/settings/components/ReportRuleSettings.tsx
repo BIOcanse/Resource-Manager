@@ -45,8 +45,8 @@ export function ReportRuleSettings(props: {
     return error?.rule === rule && error.field === field ? text().reasons[error.reason] : null;
   };
 
+  // 分区标题已经写着“报告规则”，不再重复标题；区域名称仍给读屏。
   return <section class="settings-section-panel report-rule-settings" aria-label={text().title}>
-    <strong>{text().title}</strong>
     <p>{text().note}</p>
     <Show when={loading()}><p role="status">{text().loading}</p></Show>
     <Show when={failed()}><p role="alert">{text().loadFailed}</p>

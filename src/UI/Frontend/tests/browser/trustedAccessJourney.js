@@ -191,7 +191,7 @@ export default async function trustedAccessJourney(page, baseUrl) {
         await new Promise(resolve => requestAnimationFrame(resolve));
       }
       return {
-        titlePresent: Boolean(document.getElementById("trustedAccessManagerTitle")),
+        titlePresent: Boolean(document.getElementById("trustedAccessManager")),
         activeId: document.activeElement?.id,
         at: performance.now()
       };
@@ -203,12 +203,12 @@ export default async function trustedAccessJourney(page, baseUrl) {
   await page.waitForFunction(() => document.body.dataset.page === "settings");
   await page.locator(".trusted-access-notification").waitFor({ state: "detached" });
   try {
-    await page.waitForFunction(() => document.activeElement?.id === "trustedAccessManagerTitle");
+    await page.waitForFunction(() => document.activeElement?.id === "trustedAccessManager");
   } catch (error) {
     const focusState = await page.evaluate(() => ({
       activeId: document.activeElement?.id,
-      titlePresent: Boolean(document.getElementById("trustedAccessManagerTitle")),
-      titleVisible: Boolean(document.getElementById("trustedAccessManagerTitle")?.getClientRects().length)
+      titlePresent: Boolean(document.getElementById("trustedAccessManager")),
+      titleVisible: Boolean(document.getElementById("trustedAccessManager")?.getClientRects().length)
     }));
     throw new Error(`Review navigation did not focus the manager: ${JSON.stringify({ coldRoute, settingsChunkIntercepted, focusState })}`, { cause: error });
   }
@@ -219,13 +219,13 @@ export default async function trustedAccessJourney(page, baseUrl) {
   await page.waitForFunction(() => document.body.dataset.page === "monitor"
     && document.activeElement?.id === "activePageTitle");
   await page.getByRole("button", { name: appCopy.page.settings, exact: true }).click();
-  await page.locator("#trustedAccessManagerTitle").waitFor({ state: "visible" });
+  await page.locator("#trustedAccessManager").waitFor({ state: "visible" });
   assert.equal((await activeElement()).id, "activePageTitle", "ordinary settings navigation consumes no old review focus request");
   await page.getByRole("button", { name: appCopy.page.monitor, exact: true }).click();
   await page.waitForFunction(() => document.body.dataset.page === "monitor"
     && document.activeElement?.id === "activePageTitle");
   await banner.getByRole("button", { name: copy.reviewRequests, exact: true }).click();
-  await page.waitForFunction(() => document.activeElement?.id === "trustedAccessManagerTitle");
+  await page.waitForFunction(() => document.activeElement?.id === "trustedAccessManager");
   const warmFocus = await activeElement();
   const panel = page.getByRole("region", { name: copy.title, exact: true });
   await panel.getByText(copy.defaultEnabled, { exact: true }).waitFor();

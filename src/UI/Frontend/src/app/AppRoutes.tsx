@@ -47,7 +47,7 @@ interface AppRoutesProps {
   activePage: Accessor<PageId>;
   /** 详细信息选中的二级分页（分页树）。 */
   detailsTab: Accessor<DetailsTab>;
-  onTrustedAccessHeadingChange?: (heading: HTMLElement | undefined) => void;
+  onTrustedAccessFocusTargetChange?: (target: HTMLElement | undefined) => void;
   monitor: MonitorStore;
   management: ManagementStore;
   optimization: OptimizationStore;
@@ -61,7 +61,7 @@ interface AppRoutesProps {
   onManagementSoftwareContextMenu: (event: MouseEvent, target: SoftwareContextMenuTarget) => void;
   onOpenSoftwareDetail: (type: "component" | "software", value: ManagedComponent | SoftwareRecord) => void;
   onOpenSoftwareSettingsById: (softwareId: string, softwareName: string) => void;
-  /** 设置 → 性能浮层：软件详细信息对话框是否开着，以及打开某个软件停在叠加层分页。 */
+  /** 设置 → 性能浮层：软件详细信息对话框是否开着，以及打开某个软件停在浮层分页。 */
   softwareDetailOpen: boolean;
   onOpenSoftwareOverlay: (software: SoftwareRecord) => void;
   onInspectOptimizationTarget: (report: OptimizationReportItem) => void;
@@ -136,7 +136,7 @@ export function AppRoutes(props: AppRoutesProps) {
         >
           <PageBoundary name={uiText.page.settings}>
             <SettingsWorkspace
-              onTrustedAccessHeadingChange={props.onTrustedAccessHeadingChange}
+              onTrustedAccessFocusTargetChange={props.onTrustedAccessFocusTargetChange}
               settings={props.settings}
               productUpdates={props.productUpdates}
               runtimeCapabilities={props.runtimeCapabilities}

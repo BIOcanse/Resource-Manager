@@ -59,7 +59,7 @@ export default function App() {
   const frontendRuntime = useFrontendRuntime();
   const [activePage, setActivePage] = createSignal<PageId>("monitor");
   const [accessRequestsFocusRequested, setAccessRequestsFocusRequested] = createSignal(false);
-  const [trustedAccessHeading, setTrustedAccessHeading] = createSignal<HTMLElement>();
+  const [trustedAccessFocusTarget, setTrustedAccessFocusTarget] = createSignal<HTMLElement>();
   const [taskCenterOpen, setTaskCenterOpen] = createSignal(false);
   const [taskCenterSnapshot, setTaskCenterSnapshot] = createSignal(
     frontendRuntime.taskCenter.snapshot);
@@ -374,7 +374,7 @@ export default function App() {
         runtimeCapabilities={runtimeCapabilities}
         taskCenterActiveCount={() => taskCenterSnapshot().activeUserCount}
         taskCenterOperationState={() => taskCenterSnapshot().operationState}
-        pageFocusTarget={() => accessRequestsFocusRequested() ? trustedAccessHeading() : undefined}
+        pageFocusTarget={() => accessRequestsFocusRequested() ? trustedAccessFocusTarget() : undefined}
         onPageTargetFocused={(title) => {
           title.scrollIntoView({
             block: "start",
@@ -393,7 +393,7 @@ export default function App() {
         </>}
       >
         <AppRoutes
-          onTrustedAccessHeadingChange={setTrustedAccessHeading}
+          onTrustedAccessFocusTargetChange={setTrustedAccessFocusTarget}
           animationStyle={gpuRuntimePlan().animations}
           activePage={activePage}
           detailsTab={detailsNavigation.selected}
