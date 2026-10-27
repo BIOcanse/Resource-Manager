@@ -129,6 +129,8 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
   }, cpuIndex);
   await page.mouse.move(5, 5);
   const unsorted = await headerState();
+  const softwareOrder = () => visibleRows("software").evaluateAll((rows) => rows.map((row) => row.getAttribute("aria-label")));
+  const combinedOrder = await softwareOrder();
   await cpuButton.click();
   await page.mouse.move(5, 5);
   await page.waitForTimeout(400);
@@ -160,6 +162,41 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
     throw new Error(`Every header needs a tooltip, the name itself when there is no basis: ${JSON.stringify(titles)}`);
   }
   results.header = { unsorted, descending, ascending, hovered, titles };
+
+  // 5b. 排序轮流（用户 10-27）：点一次从高到低、两次从低到高、第三次回到默认的综合排序——没有一列有箭头，aria-sort 全是 none，行序回到综合排序。
+  //     键盘按表头按钮（Enter、空格）走同一个轮流。
+  const sortState = () => panel.evaluate((element) => ({
+    sorts: [...element.querySelectorAll(".resource-table-head-cell")].map((cell) => cell.getAttribute("aria-sort")),
+    active: element.querySelectorAll(".resource-table-head-cell.active").length,
+    shownArrows: [...element.querySelectorAll(".resource-table-sort-indicator")].filter((icon) => getComputedStyle(icon).opacity !== "0").length }));
+  const waitForCombined = async (step) => {
+    await page.mouse.move(5, 5);
+    try {
+      await page.waitForFunction(() => [...document.querySelectorAll(".resource-table-panel .resource-table-head-cell")]
+        .every((cell) => cell.getAttribute("aria-sort") === "none"), undefined, { timeout: 3000 });
+      await page.waitForTimeout(400);
+    } catch { /* 下面的断言写出实际状态 */ }
+    const state = await sortState();
+    const order = await softwareOrder();
+    if (state.sorts.some((sort) => sort !== "none") || state.active !== 0 || state.shownArrows !== 0
+      || JSON.stringify(order) !== JSON.stringify(combinedOrder)) {
+      throw new Error(`${step} did not return to the combined order: ${JSON.stringify({ state, order, combinedOrder })}`);
+    }
+    return state;
+  };
+  await cpuButton.click();
+  const clearedByClick = await waitForCombined("The third click");
+  const keyboardSorts = [];
+  await cpuButton.focus();
+  for (const key of ["Enter", "Space"]) {
+    await page.keyboard.press(key);
+    await page.waitForFunction((expected) => document.querySelector('.resource-table-panel .resource-table-head-cell[data-column-id="cpu"]')
+      ?.getAttribute("aria-sort") === expected, key === "Enter" ? "descending" : "ascending", { timeout: 3000 });
+    keyboardSorts.push(await cpuHead.getAttribute("aria-sort"));
+  }
+  await page.keyboard.press("Enter");
+  const clearedByKeyboard = await waitForCombined("The third key press");
+  results.sortCycle = { clearedByClick, keyboardSorts, clearedByKeyboard };
 
   // 6. 列宽把手：平时不接指针（表头格边缘点下去是排序），编辑时以列边为中线 12 px 宽，好按中。
   const edgeHit = () => panel.locator('.resource-table-head-cell[data-column-id="status"]').evaluate((cell) => {

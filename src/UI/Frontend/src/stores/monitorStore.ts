@@ -8,6 +8,7 @@ import type { DashboardSlotRef } from "../features/monitor/Dashboard";
 import { defaultPerformanceMetricIds } from "../features/resourceTable/ResourcePerformancePanel";
 import { createResourceFactsProjection } from "../features/resourceTable/resourceFacts.ts";
 import { resourceTableMetricId } from "../features/resourceTable/resourceTableSources.ts";
+import { defaultResourceTableSort, nextResourceTableSort, type ResourceTableSort } from "../features/resourceTable/resourceTableSort.ts";
 import type { ProcessMetricField } from "../data/resourceMonitor/processFieldCatalog.ts";
 import type { ResourcePrecisionSelection } from "../features/resourceBreakdown/ResourceBreakdown";
 import { reconcileResourceSelection } from "../features/resourceBreakdown/resourceSelection";
@@ -165,7 +166,7 @@ export interface MonitorStore {
   resourceBarsObservation: Accessor<ObservationState>;
   resourceTableSnapshot: Accessor<ResourceTableSnapshot | null>;
   resourceTableObservation: Accessor<ObservationState>;
-  resourceTableSort: Accessor<{ columnId: string; direction: "asc" | "desc" }>;
+  resourceTableSort: Accessor<ResourceTableSort>;
   expandedResourceTableRows: Accessor<Record<string, boolean>>;
   resourceSelection: Accessor<ResourcePrecisionSelection | null>;
   expandedResourceSegments: Accessor<Record<string, string>>;
@@ -197,7 +198,8 @@ export interface MonitorStore {
   changeResourceTableMode: (mode: ResourceTableViewMode) => void;
   toggleResourceTableEditMode: () => void;
   cancelResourceTableEdit: () => void;
-  updateResourceTableSort: (columnId: string, direction: "asc" | "desc") => void;
+  /** 点一次某列表头：降序、升序、回到默认的综合排序轮流（resourceTableSort.ts）。 */
+  cycleResourceTableSort: (columnId: string) => void;
   toggleResourceTableColumn: (columnId: string, visible: boolean) => void;
   /** 改一列的来源：null 是自动选择，其余是进程字段名。和显示/隐藏一样进编辑草稿，保存时写前端布局缓存。 */
   changeResourceTableColumnSource: (columnId: string, source: string | null) => void;
@@ -227,7 +229,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   const [resourceTableMode, setResourceTableMode] = createSignal<ResourceTableViewMode>("software");
   const [resourceTableEditMode, setResourceTableEditMode] = createSignal(false);
   const [resourceBarEditMode, setResourceBarEditMode] = createSignal(false);
-  const [resourceTableSort, setResourceTableSort] = createSignal<{ columnId: string; direction: "asc" | "desc" }>({ columnId: "impact", direction: "desc" });
+  const [resourceTableSort, setResourceTableSort] = createSignal<ResourceTableSort>(defaultResourceTableSort);
   const [expandedResourceTableRows, setExpandedResourceTableRows] = createSignal<Record<string, boolean>>({});
   const [resourceSelection, setResourceSelection] = createSignal<ResourcePrecisionSelection | null>(null);
   // 每条资源条展开的段（按条的 metricId），记着选中时这一段的类型化身份。
@@ -805,7 +807,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     }
     setResourceTableMode(mode);
     if (mode !== "process" && isProcessDetailResourceTableColumn(resourceTableSort().columnId)) {
-      setResourceTableSort({ columnId: "impact", direction: "desc" });
+      setResourceTableSort(defaultResourceTableSort);
     }
     if (mode !== "software") {
       setExpandedResourceTableRows({});
@@ -866,8 +868,8 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     setResourceTableSaveState("idle");
   }
 
-  function updateResourceTableSort(columnId: string, direction: "asc" | "desc") {
-    setResourceTableSort({ columnId, direction });
+  function cycleResourceTableSort(columnId: string) {
+    setResourceTableSort(nextResourceTableSort(resourceTableSort(), columnId));
   }
 
   function toggleResourceTableColumn(columnId: string, visible: boolean) {
@@ -1067,7 +1069,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     changeResourceTableMode,
     toggleResourceTableEditMode,
     cancelResourceTableEdit,
-    updateResourceTableSort,
+    cycleResourceTableSort,
     toggleResourceTableColumn,
     changeResourceTableColumnSource,
     updateResourceTableColumnWidth,

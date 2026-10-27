@@ -94,7 +94,8 @@ interface ResourceTableProps {
   onModeChange: (mode: ResourceTableViewMode) => void;
   onToggleEdit: () => void;
   onCancelEdit: () => void;
-  onSortChange: (columnId: string, direction: "asc" | "desc") => void;
+  /** 点了某列表头；排序怎么变由 store 决定（resourceTableSort.ts）。 */
+  onSortColumn: (columnId: string) => void;
   onToggleColumn: (columnId: string, visible: boolean) => void;
   /** 后端进程字段目录：列的来源选择和选了来源后的表头口径。 */
   processFields: readonly ProcessMetricField[];
@@ -238,7 +239,7 @@ export function ResourceTable(props: ResourceTableProps) {
                 sortDirection={props.sortDirection}
                 expandedSoftwareIds={props.expandedSoftwareIds}
                 highlightedSoftwareId={props.highlightedSoftwareId}
-                onSortChange={props.onSortChange}
+                onSortColumn={props.onSortColumn}
                 onColumnWidthChange={props.onColumnWidthChange}
                 onToggleExpand={props.onToggleExpand}
                 onSoftwareContextMenu={props.onSoftwareContextMenu}
@@ -421,7 +422,8 @@ function VirtualResourceTable(props: {
   sortDirection: string;
   expandedSoftwareIds: Record<string, boolean>;
   highlightedSoftwareId?: string | null;
-  onSortChange: (columnId: string, direction: "asc" | "desc") => void;
+  /** 点了某列表头；排序怎么变由 store 决定（resourceTableSort.ts）。 */
+  onSortColumn: (columnId: string) => void;
   onColumnWidthChange: (columnId: string, width: number, commit: boolean) => void;
   onToggleExpand: (softwareId: string) => void;
   onSoftwareContextMenu?: SoftwareContextMenuHandler;
@@ -759,12 +761,7 @@ function VirtualResourceTable(props: {
   };
 
   const updateSort = (column: ResourceTableColumn) => {
-    if (!column.sortable) {
-      return;
-    }
-
-    const nextDirection = props.sortColumnId === column.id && props.sortDirection === "desc" ? "asc" : "desc";
-    props.onSortChange(column.id, nextDirection);
+    if (column.sortable) props.onSortColumn(column.id);
   };
 
   return (
