@@ -106,9 +106,13 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
                 };
             }
 
-            var candidate = AppSettingsPatchApplier.Apply(
-                previous.Settings,
-                patch.Changes);
+            AppSettings candidate;
+            try { candidate = AppSettingsPatchApplier.Apply(previous.Settings, patch.Changes); }
+            catch (AppSettingsPatchException error) when (error.FieldPath is not null)
+            {
+                return previous with { RuntimeApplicationDisposition = "rejectedBeforeCommit",
+                    RuntimeFailureCode = "invalid-settings-value-type", RuntimeFailurePath = error.FieldPath };
+            }
             return await ApplyAppSettingsUnderGateAsync(
                 candidate,
                 reason,

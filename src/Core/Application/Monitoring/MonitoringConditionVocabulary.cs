@@ -29,7 +29,7 @@ internal sealed record MonitoringConditionVocabulary(IReadOnlyList<ConditionName
     ConditionCredentials Credentials, int MaximumLength, string WaitPath, string ExpansionHeader)
 {
     public IReadOnlyList<string> Events => MemoryProtectionEvents;
-    internal static readonly string[] MemoryProtectionEvents = ["active", "inactive", "normal-running-point-created",
+    internal static readonly string[] MemoryProtectionEvents = ["active", "inactive", "normal-running-point-created", "normal-running-point-changed",
         "threshold-reached", "below-threshold", "action-started", "action", "reserve-remaining-changed", "reserve-error"];
     // One declaration table, consumed by both expansion and the public vocabulary endpoint.
     private static readonly ConditionName[] FixedNames =

@@ -26,6 +26,31 @@ namespace Resource_Manager_APP.Tests;
 // 设置页「报告判定」：default.json 给出规则名和默认值，用户值逐项覆盖，编译器统一校验。
 public sealed class ReportRuleSettingsTests
 {
+    [Theory]
+    [InlineData("{\"debug\":{\"debugLogEnabled\":\"yes\"}}", "$.debug.debugLogEnabled")]
+    [InlineData("{\"debug\":[]}", "$.debug")]
+    [InlineData("{\"debug\":{\"debugLogEnabled\":{}}}", "$.debug.debugLogEnabled")]
+    [InlineData("{\"debug\":null}", "$.debug")]
+    // appearance is a retired section: an unknown path is rejected at the first name the settings do not have.
+    [InlineData("{\"appearance\":{\"theme\":\"dark\"}}", "$.appearance")]
+    [InlineData("{\"reports\":{\"ruleOverrides\":[{\"rule\":12}]}}", "$.reports.ruleOverrides[0].rule")]
+    [InlineData("[]", "$")]
+    public async Task WrongJsonTypesReturnSettingsRejectionWithPathAndDoNotCommit(string changes, string path)
+    {
+        await using var fixture = await SettingsFixture.StartAsync();
+        var before = (await fixture.Client.GetFromJsonAsync<AppSettingsUpdateResult>("/api/settings/app"))!;
+        var plan = fixture.Plans.Current;
+        using var response = await fixture.PatchAsync(changes);
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var result = (await response.Content.ReadFromJsonAsync<AppSettingsUpdateResult>())!;
+        Assert.Equal("rejectedBeforeCommit", result.RuntimeApplicationDisposition);
+        Assert.Equal("invalid-settings-value-type", result.RuntimeFailureCode);
+        Assert.Equal(path, result.RuntimeFailurePath);
+        Assert.Equal(before.Revision, result.Revision);
+        Assert.Equal(before.Revision, (await fixture.Client.GetFromJsonAsync<AppSettingsUpdateResult>("/api/settings/app"))!.Revision);
+        Assert.Same(plan, fixture.Plans.Current);
+    }
+
     [Fact]
     public async Task SettingsGetPreservesDeliveryFailuresAndReapplyClearsThem()
     {

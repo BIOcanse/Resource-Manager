@@ -112,7 +112,8 @@ public sealed class WindowsHostMemoryProtectionExecutor : IHostMemoryProtectionE
                 return TerminateWithoutDump("terminate-only");
             if (options.SoftwareNoDump) return TerminateWithoutDump("software-no-dump");
             using var lease = reserve.TryAcquire();
-            if (lease is null) return TerminateWithoutDump(reserve.ReadStatus().Reason ?? "reserve-unavailable");
+            if (lease is null) return reserve.ReadStatus().Reason is { } reserveError
+                ? TerminateWithoutDump("reserve-error", reserveError) : TerminateWithoutDump("reserve-unavailable");
             if (process.PrivateCommitBytes is not { } privateCommit)
                 return new("excluded", "private-commit-unavailable", [], 0);
             if (privateCommit > lease.RemainingBytes)
@@ -125,14 +126,15 @@ public sealed class WindowsHostMemoryProtectionExecutor : IHostMemoryProtectionE
             }
             catch (Exception error) when (error is IOException or Win32Exception or UnauthorizedAccessException or ArgumentException or NotSupportedException or OverflowException)
             {
-                return new("preflight-failed", error.Message, [], 0);
+                return new("preflight-failed", "preflight-failed", [], 0) { Detail = error.Message };
             }
             if (!lease.CanFit(requiredBytes)) return TerminateWithoutDump("minidump-exceeds-reserve");
             if (CriticalityExclusion(processHandle) is { } currentCriticality)
                 return new("excluded", currentCriticality, [], 0);
             var suspended = executor.suspendProcess(processHandle);
             if (suspended < 0)
-                return new HostMemoryActionResult("suspend-failed", $"ntstatus-{suspended:x8}", [], 0) { SuspendFailed = true };
+                return new HostMemoryActionResult("suspend-failed", "suspend-failed", [], 0)
+                    { SuspendFailed = true, Detail = $"ntstatus-{suspended:x8}" };
 
             Stream? file = null;
             string? failure = null;
@@ -164,15 +166,17 @@ public sealed class WindowsHostMemoryProtectionExecutor : IHostMemoryProtectionE
                 }
             }
             return new(failure is not null ? "slice-incomplete" : releaseLimit is not null ? "completed-with-release-limit" : "completed",
-                failure ?? releaseLimit, lease.SlicePaths.ToArray(), bytesWritten);
+                failure is not null ? "slice-incomplete" : releaseLimit is not null ? "release-limit" : null,
+                lease.SlicePaths.ToArray(), bytesWritten) { Detail = failure ?? releaseLimit };
         }
 
-        private HostMemoryActionResult TerminateWithoutDump(string reason)
+        private HostMemoryActionResult TerminateWithoutDump(string reason, string? detail = null)
         {
             if (CriticalityExclusion(processHandle!) is { } criticality)
                 return new("excluded", criticality, [], 0);
             var failure = Terminate();
-            return new(failure is null ? "terminated-without-dump" : "termination-failed", failure ?? reason, [], 0);
+            return new(failure is null ? "terminated-without-dump" : "termination-failed",
+                failure is null ? reason : "termination-failed", [], 0) { Detail = failure ?? detail };
         }
 
         private string? Terminate()

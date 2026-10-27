@@ -120,7 +120,8 @@ public sealed partial class HostMemoryProtectionExecutorTests : IDisposable
             using var target = executor.Open(Identity(child));
             var result = target.Execute(reserve);
             Assert.Equal("terminated-without-dump", result.Outcome);
-            Assert.Equal("reserve-not-configured", result.Reason);
+            Assert.Equal("reserve-error", result.Reason);
+            Assert.Equal("reserve-not-configured", result.Detail);
             Assert.Equal(0, suspendCalls);
             Assert.True(child.WaitForExit(5000));
             Assert.Empty(result.DumpPaths);
@@ -247,7 +248,7 @@ public sealed partial class HostMemoryProtectionExecutorTests : IDisposable
                 Assert.NotEmpty(failedReleases);
                 Assert.All(failedReleases, failed => Assert.True(failed.Error != 0));
                 var failedBytes = failedReleases.Aggregate(0UL, (total, failed) => total + (ulong)failed.Size);
-                Assert.StartsWith($"private-memory-decommit-limited chunks={failedReleases.Count} bytes={failedBytes};", result.Reason);
+                Assert.StartsWith($"private-memory-decommit-limited chunks={failedReleases.Count} bytes={failedBytes};", result.Detail);
             }
             Assert.False(result.SuspendFailed);
             Assert.True(child.WaitForExit(5000));
@@ -279,7 +280,8 @@ public sealed partial class HostMemoryProtectionExecutorTests : IDisposable
             Assert.Null(target.ExclusionReason);
             var result = target.Execute(reserve);
             Assert.Equal("slice-incomplete", result.Outcome);
-            Assert.Contains("injected-disk-full", result.Reason);
+            Assert.Equal("slice-incomplete", result.Reason);
+            Assert.Contains("injected-disk-full", result.Detail);
             Assert.False(result.SuspendFailed);
             Assert.True(child.WaitForExit(5000));
             var dumpPath = Assert.Single(result.DumpPaths);
@@ -329,7 +331,7 @@ public sealed partial class HostMemoryProtectionExecutorTests : IDisposable
             using var target = new WindowsHostMemoryProtectionExecutor().Open(Identity(child));
             var result = target.Execute(reserve);
             Assert.Equal("slice-incomplete", result.Outcome);
-            Assert.Contains("injected-metadata-write-failure", result.Reason);
+            Assert.Contains("injected-metadata-write-failure", result.Detail);
             Assert.True(reserve.WriteAttempts > 0);
             Assert.True(child.WaitForExit(5000));
             Assert.Empty(result.DumpPaths); // Composite parts are created lazily on their first actual write.
@@ -481,9 +483,10 @@ public sealed partial class HostMemoryProtectionExecutorTests : IDisposable
         if (result.Outcome == "completed") Assert.Null(result.Reason);
         else
         {
-            Assert.StartsWith("private-memory-decommit-limited chunks=", result.Reason);
-            Assert.Contains("address=0x", result.Reason);
-            Assert.Contains("native-error=", result.Reason);
+            Assert.Equal("release-limit", result.Reason);
+            Assert.StartsWith("private-memory-decommit-limited chunks=", result.Detail);
+            Assert.Contains("address=0x", result.Detail);
+            Assert.Contains("native-error=", result.Detail);
         }
     }
 

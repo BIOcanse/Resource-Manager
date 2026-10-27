@@ -105,7 +105,8 @@ public sealed partial class HostMemoryProtectionTests
             Assert.True(child.WaitForExit(5000));
             var status = await fixture.Status();
             Assert.True(status.Active); Assert.False(status.Reserve.Built);
-            Assert.Equal("reserve-release-failed", Assert.Single(status.Actions).Reason);
+            Assert.Equal("reserve-error", Assert.Single(status.Actions).Reason);
+            Assert.Equal("reserve-release-failed", Assert.Single(status.Actions).Detail);
             while (await changes.MoveNextAsync())
                 if (changes.Current.Events.Any(change => change.Kind == "reserve-error")) break;
             Assert.Contains(changes.Current.Events, change => change.Kind == "reserve-error" && change.Reason == "reserve-release-failed");

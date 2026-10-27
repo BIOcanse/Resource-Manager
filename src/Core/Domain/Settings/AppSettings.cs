@@ -176,6 +176,8 @@ public sealed record AppSettingsUpdateResult(
 
     public string? RuntimeFailureCode { get; init; }
 
+    public string? RuntimeFailurePath { get; init; }
+
     public ServiceRecoveryDiagnostics? ServiceRecovery { get; init; }
 }
 

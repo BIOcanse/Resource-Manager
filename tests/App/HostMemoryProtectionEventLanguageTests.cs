@@ -8,6 +8,7 @@ public sealed class HostMemoryProtectionEventLanguageTests
     [InlineData("active")]
     [InlineData("inactive")]
     [InlineData("normal-running-point-created")]
+    [InlineData("normal-running-point-changed")]
     [InlineData("threshold-reached")]
     [InlineData("below-threshold")]
     [InlineData("action-started")]

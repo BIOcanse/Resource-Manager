@@ -27,6 +27,7 @@ public sealed partial class HostMemoryProtectionTests
         Assert.Equal(800m, action.GrowthBytes);
         Assert.Equal("process", action.TargetKind);
         Assert.Null(action.TreeRoot);
+        Assert.Equal(new HostMemorySelectionBasis("process-growth-at-least-minimum", 800, null, 800), action.SelectionBasis);
     }
 
     [Fact]
@@ -48,6 +49,8 @@ public sealed partial class HostMemoryProtectionTests
         var records = (await fixture.Status()).Actions;
         Assert.All(records, item => { Assert.Equal("processTree", item.TargetKind); Assert.Equal(20, item.TreeRoot!.ProcessId); });
         Assert.Single(records.Select(item => item.ActionId).Distinct());
+        Assert.All(records, item => Assert.Equal(
+            new HostMemorySelectionBasis("largest-direct-children-memory-growth", null, 400, 1000), item.SelectionBasis));
         Assert.Equal(2, records.Count(item => item.Outcome == "excluded"));
         Assert.All(fixture.Executor.Options, options => Assert.Equal("terminateOnly", options.ActionMode));
     }
@@ -87,8 +90,8 @@ public sealed partial class HostMemoryProtectionTests
         await using var fixture = await Fixture.StartAsync();
         var before = await fixture.Stored();
         using var response = await fixture.Patch(new { protectedProcesses = entry is null ? null : new[] { entry } });
-        Assert.Equal(entry is null ? HttpStatusCode.BadRequest : HttpStatusCode.Conflict, response.StatusCode);
-        if (entry is null) Assert.Contains("invalid-protected-processes", await response.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        if (entry is null) Assert.Equal("invalid-settings-value-type", (await response.Content.ReadFromJsonAsync<AppSettingsUpdateResult>())!.RuntimeFailureCode);
         else Assert.Equal("invalid-protected-processes", (await response.Content.ReadFromJsonAsync<AppSettingsUpdateResult>())!.RuntimeFailureCode);
         Assert.Equal(before.Revision, (await fixture.Stored()).Revision);
     }
@@ -110,19 +113,22 @@ public sealed partial class HostMemoryProtectionTests
     }
 
     [Theory]
-    [InlineData("{\"minimumProcessGrowthBytes\":null}", "invalid-minimum-process-growth-bytes")]
-    [InlineData("{\"minimumProcessGrowthBytes\":1.5}", "invalid-minimum-process-growth-bytes")]
-    [InlineData("{\"minimumProcessGrowthBytes\":\"bad\"}", "invalid-minimum-process-growth-bytes")]
-    [InlineData("{\"protectedProcesses\":[1]}", "invalid-protected-processes")]
-    [InlineData("{\"protectedProcesses\":\"explorer.exe\"}", "invalid-protected-processes")]
-    public async Task WrongNewFieldTypesReturnCodesBeforeCommit(string json, string code)
+    [InlineData("{\"minimumProcessGrowthBytes\":null}", "$.memoryProtection.minimumProcessGrowthBytes")]
+    [InlineData("{\"minimumProcessGrowthBytes\":1.5}", "$.memoryProtection.minimumProcessGrowthBytes")]
+    [InlineData("{\"minimumProcessGrowthBytes\":\"bad\"}", "$.memoryProtection.minimumProcessGrowthBytes")]
+    [InlineData("{\"protectedProcesses\":[1]}", "$.memoryProtection.protectedProcesses[0]")]
+    [InlineData("{\"protectedProcesses\":\"explorer.exe\"}", "$.memoryProtection.protectedProcesses")]
+    public async Task WrongNewFieldTypesReturnCodesBeforeCommit(string json, string path)
     {
         await using var fixture = await Fixture.StartAsync();
         var before = await fixture.Stored();
         using var document = JsonDocument.Parse(json);
         using var response = await fixture.Patch(document.RootElement);
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Contains(code, await response.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var result = (await response.Content.ReadFromJsonAsync<AppSettingsUpdateResult>())!;
+        Assert.Equal("rejectedBeforeCommit", result.RuntimeApplicationDisposition);
+        Assert.Equal("invalid-settings-value-type", result.RuntimeFailureCode);
+        Assert.Equal(path, result.RuntimeFailurePath);
         Assert.Equal(before.Revision, (await fixture.Stored()).Revision);
     }
 }

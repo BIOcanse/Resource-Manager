@@ -8,7 +8,10 @@ public sealed record AppSettingsPatchRequest(
     string ExpectedRevision,
     JsonElement Changes);
 
-public sealed class AppSettingsPatchException(string message) : IOException(message);
+public sealed class AppSettingsPatchException(string message, string? fieldPath = null) : IOException(message)
+{
+    public string? FieldPath { get; } = fieldPath;
+}
 
 public static class AppSettingsPatchApplier
 {
@@ -20,7 +23,7 @@ public static class AppSettingsPatchApplier
         if (changes.ValueKind != JsonValueKind.Object)
         {
             throw new AppSettingsPatchException(
-                "Application settings changes must be a JSON object.");
+                "invalid-settings-value-type", "$");
         }
 
         var target = JsonSerializer.SerializeToNode(current, JsonOptions) as JsonObject
@@ -30,62 +33,63 @@ public static class AppSettingsPatchApplier
             ?? throw new AppSettingsPatchException(
                 "Application settings changes must be a JSON object.");
 
-        ApplyObjectPatch(target, patch, path: string.Empty);
-        var candidate = target.Deserialize<AppSettings>(JsonOptions)
-            ?? throw new AppSettingsPatchException(
-                "The patched application settings image is empty.");
-        return AppSettingsNormalizer.Normalize(candidate);
+        ApplyObjectPatch(target, patch);
+        try
+        {
+            var candidate = target.Deserialize<AppSettings>(JsonOptions)
+                ?? throw new AppSettingsPatchException("invalid-settings-value-type", "$");
+            return AppSettingsNormalizer.Normalize(candidate);
+        }
+        catch (JsonException error)
+        {
+            throw new AppSettingsPatchException("invalid-settings-value-type", error.Path ?? "$");
+        }
     }
 
     private static void ApplyObjectPatch(
         JsonObject target,
-        JsonObject patch,
-        string path)
+        JsonObject patch)
     {
-        foreach (var property in patch)
+        var pending = new Stack<(JsonObject Target, JsonObject Patch, string Path)>();
+        pending.Push((target, patch, "$"));
+        while (pending.TryPop(out var item))
         {
-            var propertyPath = string.IsNullOrEmpty(path)
-                ? property.Key
-                : $"{path}.{property.Key}";
-            if (string.IsNullOrEmpty(path)
-                && string.Equals(property.Key, "version", StringComparison.Ordinal))
+            foreach (var property in item.Patch)
             {
-                throw new AppSettingsPatchException(
-                    "The application settings schema version cannot be patched.");
-            }
-
-            if (!target.TryGetPropertyValue(property.Key, out var currentValue))
-            {
-                throw new AppSettingsPatchException(
-                    $"Unknown application settings field '{propertyPath}'.");
-            }
-
-            if (propertyPath == "memoryProtection.protectedProcesses"
-                && (property.Value is not JsonArray list || list.Any(item => item is not JsonValue text || !text.TryGetValue<string>(out _))))
-                throw new AppSettingsPatchException("invalid-protected-processes");
-            if (propertyPath == "memoryProtection.minimumProcessGrowthBytes"
-                && (property.Value is not JsonValue number || !number.TryGetValue<long>(out _)))
-                throw new AppSettingsPatchException("invalid-minimum-process-growth-bytes");
-
-            if (property.Value is JsonObject patchObject)
-            {
-                if (currentValue is not JsonObject targetObject)
+                var propertyPath = $"{item.Path}.{property.Key}";
+                if (item.Path == "$"
+                    && string.Equals(property.Key, "version", StringComparison.Ordinal))
                 {
                     throw new AppSettingsPatchException(
-                        $"Application settings field '{propertyPath}' is not an object.");
+                        "The application settings schema version cannot be patched.");
                 }
 
-                ApplyObjectPatch(targetObject, patchObject, propertyPath);
-                continue;
-            }
+                if (!item.Target.TryGetPropertyValue(property.Key, out var currentValue))
+                {
+                    throw new AppSettingsPatchException(
+                        "invalid-settings-value-type", propertyPath);
+                }
 
-            if (property.Value is null)
-            {
-                throw new AppSettingsPatchException(
-                    $"Application settings field '{propertyPath}' cannot be removed.");
-            }
+                if (property.Value is JsonObject patchObject)
+                {
+                    if (currentValue is not JsonObject targetObject)
+                    {
+                        throw new AppSettingsPatchException(
+                            "invalid-settings-value-type", propertyPath);
+                    }
 
-            target[property.Key] = property.Value.DeepClone();
+                    pending.Push((targetObject, patchObject, propertyPath));
+                    continue;
+                }
+
+                if (property.Value is null)
+                {
+                    throw new AppSettingsPatchException(
+                        "invalid-settings-value-type", propertyPath);
+                }
+
+                item.Target[property.Key] = property.Value.DeepClone();
+            }
         }
     }
 }

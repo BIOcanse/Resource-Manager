@@ -136,6 +136,18 @@ public sealed partial class HostMemoryProtectionService(IHostMemoryProtectionSou
 
     public NormalRunningPoint? ReadPoint() { lock (gate) return point; }
 
+    public async Task ClearPointAsync()
+    {
+        await pointCreation.WaitAsync();
+        try
+        {
+            lock (gate) { point = null; cannotOpen.Clear(); exclusions = []; }
+            await pointExists.PublishAsync(false, Reason("normal-running-point-cleared"));
+            PublishStatus();
+        }
+        finally { pointCreation.Release(); }
+    }
+
     public async Task<NormalRunningPoint> CreatePointAsync(CancellationToken cancellationToken)
     {
         await pointCreation.WaitAsync(cancellationToken);
@@ -263,7 +275,8 @@ public sealed partial class HostMemoryProtectionService(IHostMemoryProtectionSou
                 { ProtectedProcesses = current.ProtectedProcesses });
             actionFinishedAt = DateTimeOffset.UtcNow;
             if (result.Outcome == "excluded") AddExclusion(candidate.Process, result.Reason ?? "cannot-open", persist: true);
-            else Record(candidate.Process, result, actionId, null);
+            else Record(candidate.Process, result, actionId, null,
+                new("process-growth-at-least-minimum", candidate.Growth, null, current.MinimumProcessGrowthBytes));
             lock (gate) currentActionId = null;
             if (result.Outcome != "excluded" && !result.SuspendFailed) { Finish("process-handled"); return; }
             PublishStatus();
@@ -290,7 +303,8 @@ public sealed partial class HostMemoryProtectionService(IHostMemoryProtectionSou
                 }
                 if (result.Outcome == "excluded") AddExclusion(process, result.Reason ?? "cannot-open");
                 else acted = true;
-                Record(process, result, actionId, tree.Root);
+                Record(process, result, actionId, tree.Root,
+                    new("largest-direct-children-memory-growth", null, tree.GrowthBytes, current.MinimumProcessGrowthBytes));
             }
             actionFinishedAt = DateTimeOffset.UtcNow;
             lock (gate) currentActionId = null;
@@ -330,13 +344,14 @@ public sealed partial class HostMemoryProtectionService(IHostMemoryProtectionSou
             }
             PublishStatus();
         }
-        void Record(HostMemoryProcess process, HostMemoryActionResult result, string id, HostMemoryTreeRoot? root)
+        void Record(HostMemoryProcess process, HostMemoryActionResult result, string id, HostMemoryTreeRoot? root, HostMemorySelectionBasis basis)
         {
             var bytes = before.TryGetValue((process.ProcessId, process.ProcessStartKey), out var old) ? old.PrivateCommitBytes : 0;
             var record = new HostMemoryActionRecord(DateTimeOffset.UtcNow, process.ProcessId, process.ProcessStartKey, process.Name,
                 bytes, process.PrivateCommitBytes, bytes is { } b && process.PrivateCommitBytes is { } now ? (decimal)now - b : null,
-                result.DumpPaths, result.BytesWritten, result.Outcome, result.Reason)
-                { ActionId = id, TargetKind = root is null ? "process" : "processTree", TreeRoot = root };
+                result.DumpPaths, result.BytesWritten, result.Outcome, result.Reason, basis)
+                { ActionId = id, TargetKind = root is null ? "process" : "processTree", TreeRoot = root,
+                    Detail = result.Detail };
             lock (gate)
             {
                 if (ReferenceEquals(point, baseline)) exclusions = excluded.ToArray();

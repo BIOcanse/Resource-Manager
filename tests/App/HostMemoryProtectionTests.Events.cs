@@ -80,12 +80,16 @@ public sealed partial class HostMemoryProtectionTests
             fixture.Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, lifetime.Token), lifetime);
         var replay = await stream.ReadFrameAsync();
         Assert.Equal("protection", replay.GetProperty("subscriptionId").GetString());
-        Assert.False(replay.GetProperty("value").GetProperty("atOrAboveThreshold").GetBoolean());
+        Assert.Equal("status", replay.GetProperty("value").GetProperty("type").GetString());
+        Assert.False(replay.GetProperty("value").GetProperty("status").GetProperty("atOrAboveThreshold").GetBoolean());
+        Assert.False(replay.GetProperty("value").GetProperty("status").TryGetProperty("actions", out _));
+        Assert.Equal("records", (await stream.ReadFrameAsync()).GetProperty("value").GetProperty("type").GetString());
+        Assert.Equal("normalRunningPoint", (await stream.ReadFrameAsync()).GetProperty("value").GetProperty("type").GetString());
         var delivered = fixture.Source.Deliveries;
         fixture.Source.Publish(200, 20, []);
         await Until(() => fixture.Source.Deliveries > delivered);
         fixture.Source.Publish(960, 96, []);
-        var next = (await stream.ReadFrameAsync()).GetProperty("value");
+        var next = (await stream.ReadFrameAsync()).GetProperty("value").GetProperty("status");
         Assert.True(next.GetProperty("atOrAboveThreshold").GetBoolean());
         Assert.Equal(960UL, next.GetProperty("currentCommit").GetProperty("currentBytes").GetUInt64());
         var output = Environment.GetEnvironmentVariable("RM_MEMORY_PROTECTION_WIRE_REPORT");
@@ -96,6 +100,95 @@ public sealed partial class HostMemoryProtectionTests
                 ExecutablePath = @"C:\fixture\example.exe", SoftwareId = "example" }]);
             await fixture.CreatePoint(ensureReserve: false);
             await File.WriteAllTextAsync(output + ".point.json", await fixture.Client.GetStringAsync("/api/memory-protection/normal-running-point"));
+        }
+    }
+
+    [Fact]
+    public async Task PublicChannelPublishesFullPointOnCreateReplaceAndClear()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(25));
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
+        { Content = JsonContent.Create(new { version = 1, subscriptions = new[] { new { id = "point", path = "/api/memory-protection/subscribe" } } }) };
+        await using var stream = new ConditionSubscriptionTests.Stream(request,
+            fixture.Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, lifetime.Token), lifetime);
+        Assert.Equal(JsonValueKind.Null, (await Point()).ValueKind);
+        var first = await fixture.CreatePoint(ensureReserve: false);
+        var created = await Point();
+        Assert.Equal(first.At, created.GetProperty("at").GetDateTimeOffset());
+        Assert.Equal(first.ProcessCount, created.GetProperty("processes").GetArrayLength());
+        fixture.Source.Publish(300, 30, [Process(25, "250", 150)]);
+        var second = await fixture.CreatePoint(ensureReserve: false);
+        var replaced = await Point();
+        Assert.Equal(second.At, replaced.GetProperty("at").GetDateTimeOffset());
+        Assert.Equal(25, replaced.GetProperty("processes")[0].GetProperty("processId").GetInt32());
+        var wait = fixture.Client.GetAsync("/api/hooks/wait?condition=" + Uri.EscapeDataString("memory-protection normal-running-point-changed"), lifetime.Token);
+        await Until(() => fixture.Source.Active == 2);
+        await fixture.Protection.ClearPointAsync();
+        Assert.Equal(JsonValueKind.Null, (await Point()).ValueKind);
+        Assert.Null(fixture.Protection.ReadPoint());
+        using var changed = await wait;
+        changed.EnsureSuccessStatusCode();
+        using var hook = JsonDocument.Parse(await changed.Content.ReadAsStringAsync());
+        Assert.Equal("normal-running-point-changed", hook.RootElement.GetProperty("value").GetProperty("event").GetProperty("kind").GetString());
+
+        async Task<JsonElement> Point()
+        {
+            while (true)
+            {
+                var value = (await stream.ReadFrameAsync()).GetProperty("value");
+                if (value.TryGetProperty("type", out var type) && type.GetString() == "normalRunningPoint")
+                    return value.GetProperty("normalRunningPoint").Clone();
+            }
+        }
+    }
+
+    [Fact]
+    public async Task PublicChannelReplaysRecordsOnceThenSendsOnlyNewRecordsAndLiveStatus()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        await fixture.CreatePoint();
+        using (var enabled = await fixture.Patch(new { enabled = true })) enabled.EnsureSuccessStatusCode();
+        await Until(() => fixture.Source.Active == 1);
+        fixture.Source.Publish(960, 96, [Process(20, "200", 800)]);
+        await Until(async () => (await fixture.Status()).Actions.Count == 1 && (await fixture.Status()).CurrentActionId is null);
+        var previous = Assert.Single((await fixture.Status()).Actions);
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(25));
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
+        { Content = JsonContent.Create(new { version = 1, subscriptions = new[] { new { id = "records", path = "/api/memory-protection/subscribe" } } }) };
+        await using var stream = new ConditionSubscriptionTests.Stream(request,
+            fixture.Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, lifetime.Token), lifetime);
+        AssertLive((await stream.ReadFrameAsync()).GetProperty("value"));
+        var replay = (await stream.ReadFrameAsync()).GetProperty("value");
+        Assert.Equal("records", replay.GetProperty("type").GetString());
+        Assert.Equal(64, replay.GetProperty("limit").GetInt32());
+        Assert.Equal(previous.ActionId, Assert.Single(replay.GetProperty("records").EnumerateArray()).GetProperty("actionId").GetString());
+        Assert.Equal("normalRunningPoint", (await stream.ReadFrameAsync()).GetProperty("value").GetProperty("type").GetString());
+        fixture.Source.Publish(970, 97, [Process(21, "300", 900)]);
+        JsonElement record;
+        while (true)
+        {
+            var value = (await stream.ReadFrameAsync()).GetProperty("value");
+            if (value.GetProperty("type").GetString() == "record") { record = value.GetProperty("record"); break; }
+            AssertLive(value);
+        }
+        Assert.Equal(21, record.GetProperty("processId").GetInt32());
+        Assert.NotEqual(previous.ActionId, record.GetProperty("actionId").GetString());
+        fixture.Source.Publish(250, 25, []);
+        while (true)
+        {
+            var value = (await stream.ReadFrameAsync()).GetProperty("value");
+            AssertLive(value);
+            if (value.GetProperty("status").GetProperty("currentCommit").GetProperty("currentBytes").GetUInt64() == 250) break;
+        }
+
+        static void AssertLive(JsonElement value)
+        {
+            Assert.Equal("status", value.GetProperty("type").GetString());
+            var status = value.GetProperty("status");
+            Assert.False(status.TryGetProperty("actions", out _));
+            Assert.False(status.TryGetProperty("actionRecordLimit", out _));
+            Assert.False(status.TryGetProperty("normalRunningPoint", out _));
         }
     }
 

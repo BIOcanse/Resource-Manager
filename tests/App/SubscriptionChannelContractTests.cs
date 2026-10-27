@@ -46,6 +46,7 @@ public sealed class SubscriptionChannelContractTests
     [InlineData("/api/optimization/smart/status/subscribe")]
     [InlineData("/api/operations/subscribe")]
     [InlineData("/api/settings/app/subscribe")]
+    [InlineData("/api/memory-protection/subscribe")]
     [InlineData("/api/startup-modules/settings/subscribe")]
     [InlineData("/api/updates/product/status/subscribe")]
     [InlineData("/api/management/inventory-revisions/subscribe")]

@@ -344,7 +344,18 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 subscription.Compile(async (writer, token) =>
                 {
                     await foreach (var value in services.GetRequiredService<ResourceManager.App.Infrastructure.MemoryProtection.HostMemoryProtectionService>().SubscribeAsync(token))
-                        await writer.WriteAsync(subscription.Id, value.Status, token);
+                    {
+                        await writer.WriteAsync(subscription.Id, new Application.MemoryProtection.HostMemoryProtectionStatusFrame(
+                            Application.MemoryProtection.HostMemoryProtectionLiveStatus.From(value.Status)), token);
+                        if (value.IsReplay)
+                            await writer.WriteAsync(subscription.Id, new Application.MemoryProtection.HostMemoryProtectionRecordsFrame(
+                                value.Status.Actions, value.Status.ActionRecordLimit), token);
+                        if (value.IsReplay || value.PointChanged)
+                            await writer.WriteAsync(subscription.Id, new Application.MemoryProtection.HostMemoryProtectionPointFrame(value.NormalRunningPoint), token);
+                        foreach (var change in value.Events)
+                            if (change.Action is { } action)
+                                await writer.WriteAsync(subscription.Id, new Application.MemoryProtection.HostMemoryProtectionRecordFrame(action), token);
+                    }
                 })),
             ["/api/settings/app/subscribe"] = new((subscription, services, _) =>
                 CompileSettingsSubscription(subscription, services.GetRequiredService<IAppSettingsSubscriptionSource>().SubscribeAsync)),

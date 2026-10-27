@@ -66,6 +66,42 @@ public sealed class JsonMetadataContractTests
         Assert.Equal(volatility, roundTrip.Volatility);
     }
 
+    [Theory]
+    [InlineData("process", "process-growth-at-least-minimum", "800", "null")]
+    [InlineData("processTree", "largest-direct-children-memory-growth", "null", "400")]
+    public void MemoryProtectionRecordFixturesRoundTripWithProductionMetadata(string kind, string rule, string growth, string children)
+    {
+        var treeRoot = kind == "processTree" ? "{\"processId\":20,\"processStartKey\":\"100\",\"name\":\"root\"}" : "null";
+        var fixture = $$$$"""
+            {"type":"record","record":{"at":"2026-10-27T12:00:00+00:00","processId":20,"processStartKey":"200","name":"example",
+            "baselineBytes":0,"currentBytes":800,"growthBytes":800,"dumpPaths":[],"bytesWritten":0,
+            "outcome":"terminated-without-dump","reason":"reserve-error","actionId":"test-action","targetKind":"{{{{kind}}}}","treeRoot":{{{{treeRoot}}}},
+            "detail":"volume release failed","selectionBasis":{"rule":"{{{{rule}}}}","processGrowthBytes":{{{{growth}}}},
+            "directChildrenMemoryGrowthBytes":{{{{children}}}},"minimumProcessGrowthBytes":800}}}
+            """;
+        var options = new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions;
+        ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
+        var value = JsonSerializer.Deserialize<ResourceManager.App.Application.MemoryProtection.HostMemoryProtectionRecordFrame>(fixture, options)!;
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(fixture), JsonSerializer.SerializeToNode(value, options)));
+        var replay = new ResourceManager.App.Application.MemoryProtection.HostMemoryProtectionRecordsFrame([value.Record], 64);
+        var replayWire = JsonSerializer.SerializeToElement(replay, options);
+        Assert.Equal("records", replayWire.GetProperty("type").GetString());
+        Assert.Equal(64, replayWire.GetProperty("limit").GetInt32());
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(fixture)!["record"], JsonNode.Parse(replayWire.GetProperty("records")[0].GetRawText())));
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("{\"at\":\"2026-10-27T12:00:00+00:00\",\"commit\":{\"currentBytes\":200,\"limitBytes\":1000,\"percent\":20},\"processes\":[],\"processCount\":0}")]
+    public void MemoryProtectionPointFixturesRoundTripWithProductionMetadata(string point)
+    {
+        var fixture = "{\"type\":\"normalRunningPoint\",\"normalRunningPoint\":" + point + "}";
+        var options = new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions;
+        ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
+        var value = JsonSerializer.Deserialize<ResourceManager.App.Application.MemoryProtection.HostMemoryProtectionPointFrame>(fixture, options)!;
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(fixture), JsonSerializer.SerializeToNode(value, options)));
+    }
+
     [Fact]
     public void OrdinaryOperationAndProcessWireExcludeInternalDiagnosticText()
     {

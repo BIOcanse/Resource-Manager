@@ -8,6 +8,7 @@ public sealed partial class HostMemoryProtectionService
 {
     private readonly HashSet<Channel<HostMemoryProtectionPublication>> subscribers = [];
     private HostMemoryProtectionStatus? publishedStatus;
+    private NormalRunningPoint? publishedPoint;
     private HostMemoryCommit? observedCommit;
     private DateTimeOffset observedAt;
 
@@ -21,7 +22,7 @@ public sealed partial class HostMemoryProtectionService
             { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
         lock (gate)
         {
-            channel.Writer.TryWrite(new(publishedStatus!, []));
+            channel.Writer.TryWrite(new(publishedStatus!, []) { NormalRunningPoint = publishedPoint, IsReplay = true });
             subscribers.Add(channel);
         }
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -64,13 +65,16 @@ public sealed partial class HostMemoryProtectionService
             }
             var next = BuildStatus(observedCommit);
             var previous = publishedStatus;
-            if (previous is not null && SameStatus(previous, next)) return;
+            var pointChanged = !ReferenceEquals(publishedPoint, point);
+            if (previous is not null && SameStatus(previous, next) && !pointChanged) return;
             var events = new List<HostMemoryProtectionEvent>();
             if (previous is not null)
             {
                 if (previous.Active != next.Active || previous.InactiveReason != next.InactiveReason)
                     events.Add(new(next.Active ? "active" : "inactive", next.InactiveReason));
-                if (previous.NormalRunningPoint != next.NormalRunningPoint && next.NormalRunningPoint is not null)
+                if (pointChanged)
+                    events.Add(new("normal-running-point-changed"));
+                if (pointChanged && point is not null)
                     events.Add(new("normal-running-point-created"));
                 if (previous.AtOrAboveThreshold != next.AtOrAboveThreshold && next.AtOrAboveThreshold is { } above)
                     events.Add(new(above ? "threshold-reached" : "below-threshold"));
@@ -87,7 +91,9 @@ public sealed partial class HostMemoryProtectionService
                     events.Add(new("reserve-error", reason));
             }
             publishedStatus = next;
-            var value = new HostMemoryProtectionPublication(next, events);
+            publishedPoint = point;
+            var value = new HostMemoryProtectionPublication(next, events)
+                { NormalRunningPoint = point, PointChanged = pointChanged };
             foreach (var subscriber in subscribers)
                 if (!subscriber.Writer.TryWrite(value))
                     subscriber.Writer.TryComplete(new IOException("memory-protection-subscriber-too-slow"));
