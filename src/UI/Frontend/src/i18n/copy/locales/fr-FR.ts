@@ -2291,7 +2291,7 @@ const frFrAppCopy: AppCopy = {
     detailTitle: (target: string) => `Détails de ${target}`,
     readFailed: "Échec de la lecture du rapport de planification intelligente",
     showAllRecords: (count: number) => plural("fr-FR", count, { one: "Afficher {count} enregistrement", many: "Afficher les {count} enregistrements", other: "Afficher les {count} enregistrements" }),
-    showRecentRecords: (count: number) => plural("fr-FR", count, { one: "N'afficher que l'enregistrement le plus récent", many: "N'afficher que les {count} enregistrements les plus récents", other: "N'afficher que les {count} enregistrements les plus récents" }),
+    showRecentRecords: (count: number) => plural("fr-FR", count, { one: "N'afficher que le dernier enregistrement ({count})", many: "N'afficher que les {count} enregistrements les plus récents", other: "N'afficher que les {count} enregistrements les plus récents" }),
     section: {
       result: "Résultat de la planification",
       execution: "Exécution"

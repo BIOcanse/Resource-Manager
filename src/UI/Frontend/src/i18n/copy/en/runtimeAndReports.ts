@@ -17,7 +17,7 @@ export const enRuntimeAndReportsCopy: Pick<AppCopy, "smartReport" | "browserRunt
     detailTitle: (target: string) => `${target} details`,
     readFailed: "Reading the smart scheduling report failed",
     showAllRecords: (count: number) => plural("en-US", count, { one: "Show {count} record", other: "Show all {count} records" }),
-    showRecentRecords: (count: number) => plural("en-US", count, { one: "Show only the latest record", other: "Show only the latest {count} records" }),
+    showRecentRecords: (count: number) => plural("en-US", count, { one: "Show only the latest {count} record", other: "Show only the latest {count} records" }),
     section: {
       result: "Scheduling result",
       execution: "Execution"
