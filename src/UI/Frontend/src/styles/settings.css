@@ -497,6 +497,15 @@
   align-items: stretch;
 }
 
+/* 整行排列的项（实时动作预算）里，分段控件和成对数字框按自身宽度靠左，不随行宽拉满。 */
+.settings-row-block > .settings-segmented-control {
+  justify-self: start;
+}
+
+.settings-row-block > .settings-number-pair {
+  width: min(420px, 100%);
+}
+
 /* 从属选项（受上一项开关控制）：缩进，并用左侧引导线连成一组。 */
 .settings-debug-option {
   position: relative;
