@@ -276,77 +276,77 @@
     {
       "uid": 40,
       "kind": "block",
-      "process": "ui",
+      "process": "desktop",
       "name": "Program",
       "comment": "Root of the UI control trees: the program itself."
     },
     {
       "uid": 41,
       "kind": "block",
-      "process": "ui",
+      "process": "desktop",
       "name": "MainRoot",
       "comment": "Owns the main UI service tree."
     },
     {
       "uid": 42,
       "kind": "block",
-      "process": "ui",
+      "process": "desktop",
       "name": "TrayRoot",
       "comment": "Owns the independent system tray tree."
     },
     {
       "uid": 43,
       "kind": "block",
-      "process": "ui",
+      "process": "desktop",
       "name": "SingleInstance",
       "comment": "Receives requests through the single-instance UI channel."
     },
     {
       "uid": 44,
       "kind": "block",
-      "process": "ui",
+      "process": "desktop",
       "name": "BackendConnection",
       "comment": "Maintains the current backend session and reconnects after session loss."
     },
     {
       "uid": 45,
       "kind": "block",
-      "process": "ui",
+      "process": "window",
       "name": "MainWindow",
       "comment": "Owns the main application window lifetime."
     },
     {
       "uid": 46,
       "kind": "block",
-      "process": "ui",
+      "process": "desktop",
       "name": "DesktopObservation",
       "comment": "Observes desktop activity using the current backend session."
     },
     {
       "uid": 47,
       "kind": "block",
-      "process": "ui",
+      "process": "desktop",
       "name": "Overlay",
       "comment": "Owns the performance overlay lifetime."
     },
     {
       "uid": 48,
       "kind": "block",
-      "process": "ui",
+      "process": "window",
       "name": "LoopbackProxy",
       "comment": "Owns the loopback proxy used by the main window."
     },
     {
       "uid": 49,
       "kind": "block",
-      "process": "ui",
+      "process": "window",
       "name": "WebViewHost",
       "comment": "Owns the embedded browser lifetime."
     },
     {
       "uid": 50,
       "kind": "block",
-      "process": "ui",
+      "process": "desktop",
       "name": "TrayNotifications",
       "comment": "Observes backend notifications for the system tray."
     },
@@ -458,7 +458,7 @@
     {
       "uid": 58,
       "kind": "item",
-      "process": "ui",
+      "process": "desktop",
       "name": "ProgramShuttingDown",
       "comment": "Whether terminal UI shutdown has begun. The UI exit path publishes this event.",
       "storage": "own",
@@ -473,7 +473,7 @@
     {
       "uid": 59,
       "kind": "item",
-      "process": "ui",
+      "process": "desktop",
       "name": "ProgramStarted",
       "comment": "Whether the UI process has started its control trees. The startup path publishes this event.",
       "storage": "own",
@@ -488,7 +488,7 @@
     {
       "uid": 60,
       "kind": "item",
-      "process": "ui",
+      "process": "desktop",
       "name": "WindowWanted",
       "comment": "Whether the user currently wants the main window open. Window requests publish change events.",
       "storage": "own",
@@ -503,7 +503,7 @@
     {
       "uid": 61,
       "kind": "item",
-      "process": "ui",
+      "process": "desktop",
       "name": "BackendSessionReady",
       "comment": "Whether the current backend session is ready. The backend connection flow publishes session transition events.",
       "storage": "reference",
@@ -837,6 +837,340 @@
       "conditions": [],
       "children": [],
       "decides": 62
+    },
+    {
+      "uid": 87,
+      "kind": "block",
+      "process": "desktop",
+      "name": "ForceTerminateHotkey",
+      "comment": "Registers and handles the configured force-terminate hotkey."
+    },
+    {
+      "uid": 88,
+      "kind": "block",
+      "process": "desktop",
+      "name": "TaskManagerReplacement",
+      "comment": "Owns the configured task-manager replacement integration."
+    },
+    {
+      "uid": 89,
+      "kind": "block",
+      "process": "desktop",
+      "name": "WindowProcess",
+      "comment": "Owns the complete lifetime of the child .NET window process."
+    },
+    {
+      "uid": 90,
+      "kind": "block",
+      "process": "window",
+      "name": "Program",
+      "comment": "Root of the child window process control tree."
+    },
+    {
+      "uid": 91,
+      "kind": "item",
+      "process": "window",
+      "name": "ParentWantsMeRunning",
+      "comment": "Window pipe input: ParentWantsMeRunning.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "NativeWindowBlockTrees parent pipe"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "NativeWindowBlockTrees.SetParentWantsRunningAsync parent pipe demand changed"
+    },
+    {
+      "uid": 92,
+      "kind": "item",
+      "process": "window",
+      "name": "BackendSessionReady",
+      "comment": "Window pipe input: BackendSessionReady.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "NativeWindowBlockTrees parent pipe"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "NativeWindowBlockTrees.SetBackendSessionAsync backend session readiness changed"
+    },
+    {
+      "uid": 93,
+      "kind": "item",
+      "process": "window",
+      "name": "ProgramShuttingDown",
+      "comment": "Window pipe input: ProgramShuttingDown.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "NativeWindowBlockTrees parent pipe"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "BusinessBlockScheduler.ShutdownAsync terminal window shutdown requested"
+    },
+    {
+      "uid": 94,
+      "kind": "item",
+      "process": "desktop",
+      "name": "OverlayEnabled",
+      "comment": "Resident preference or backend settings fact: OverlayEnabled; absent means false.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "Resident settings and preferences owner"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "Desktop Host.readPreferences preferences-changed publication"
+    },
+    {
+      "uid": 95,
+      "kind": "item",
+      "process": "desktop",
+      "name": "ForceTerminateHotkeyEnabled",
+      "comment": "Resident preference or backend settings fact: ForceTerminateHotkeyEnabled; absent means false.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "Resident settings and preferences owner"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SystemIntegration force-terminate settings publication (phase-A placeholder)"
+    },
+    {
+      "uid": 96,
+      "kind": "item",
+      "process": "desktop",
+      "name": "ForceTerminateHotkeyValid",
+      "comment": "Resident preference or backend settings fact: ForceTerminateHotkeyValid; absent means false.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "Resident settings and preferences owner"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SystemIntegration hotkey validation publication (phase-A placeholder)"
+    },
+    {
+      "uid": 97,
+      "kind": "item",
+      "process": "desktop",
+      "name": "TaskManagerReplacementEnabled",
+      "comment": "Resident preference or backend settings fact: TaskManagerReplacementEnabled; absent means false.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "Resident settings and preferences owner"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SystemIntegration task-manager settings publication (phase-A placeholder)"
+    },
+    {
+      "uid": 98,
+      "kind": "item",
+      "process": "desktop",
+      "name": "NotificationsEnabled",
+      "comment": "Resident preference or backend settings fact: NotificationsEnabled; absent means false.",
+      "storage": "own",
+      "type": "bool",
+      "owner": {
+        "component": "Resident settings and preferences owner"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "Desktop Host.readPreferences preferences-changed publication"
+    },
+    {
+      "uid": 99,
+      "kind": "condition",
+      "process": "desktop",
+      "name": "ProgramActive",
+      "comment": "The program has started and terminal shutdown has not begun; absent facts are false.",
+      "perBlock": false,
+      "node": 40,
+      "items": [
+        {
+          "item": 59
+        },
+        {
+          "item": 58
+        }
+      ],
+      "conditions": [],
+      "children": []
+    },
+    {
+      "uid": 100,
+      "kind": "condition",
+      "process": "desktop",
+      "name": "MainTreeWanted",
+      "comment": "Run the main tree while the program is active.",
+      "perBlock": false,
+      "node": 40,
+      "items": [],
+      "conditions": [
+        99
+      ],
+      "children": [],
+      "decides": 41
+    },
+    {
+      "uid": 101,
+      "kind": "condition",
+      "process": "desktop",
+      "name": "TrayTreeWanted",
+      "comment": "Run the independent tray tree while the program is active.",
+      "perBlock": false,
+      "node": 40,
+      "items": [],
+      "conditions": [
+        99
+      ],
+      "children": [],
+      "decides": 42
+    },
+    {
+      "uid": 102,
+      "kind": "condition",
+      "process": "desktop",
+      "name": "AlwaysWanted",
+      "comment": "A direct child required whenever its parent runs.",
+      "perBlock": true,
+      "items": [],
+      "conditions": [],
+      "children": []
+    },
+    {
+      "uid": 103,
+      "kind": "condition",
+      "process": "desktop",
+      "name": "ForceTerminateHotkeyWanted",
+      "comment": "The force-terminate setting is enabled and its configured hotkey is valid.",
+      "perBlock": false,
+      "node": 41,
+      "items": [
+        {
+          "item": 95
+        },
+        {
+          "item": 96
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 87
+    },
+    {
+      "uid": 104,
+      "kind": "condition",
+      "process": "desktop",
+      "name": "TaskManagerReplacementWanted",
+      "comment": "The task-manager replacement setting is enabled.",
+      "perBlock": false,
+      "node": 41,
+      "items": [
+        {
+          "item": 97
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 88
+    },
+    {
+      "uid": 105,
+      "kind": "condition",
+      "process": "desktop",
+      "name": "WindowProcessWanted",
+      "comment": "The resident user-operation owner wants the window process open.",
+      "perBlock": false,
+      "node": 41,
+      "items": [
+        {
+          "item": 60
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 89
+    },
+    {
+      "uid": 106,
+      "kind": "condition",
+      "process": "desktop",
+      "name": "DesktopObservationWanted",
+      "comment": "A backend session is ready for desktop observation.",
+      "perBlock": false,
+      "node": 44,
+      "items": [
+        {
+          "item": 61
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 46
+    },
+    {
+      "uid": 107,
+      "kind": "condition",
+      "process": "desktop",
+      "name": "OverlayWanted",
+      "comment": "A backend session is ready and at least one overlay is enabled.",
+      "perBlock": false,
+      "node": 44,
+      "items": [
+        {
+          "item": 61
+        },
+        {
+          "item": 94
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 47
+    },
+    {
+      "uid": 108,
+      "kind": "condition",
+      "process": "desktop",
+      "name": "TrayNotificationsWanted",
+      "comment": "A backend session is ready and at least one tray notification setting is enabled.",
+      "perBlock": false,
+      "node": 42,
+      "items": [
+        {
+          "item": 61
+        },
+        {
+          "item": 98
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 50
+    },
+    {
+      "uid": 109,
+      "kind": "item",
+      "process": "desktop",
+      "name": "BackendSession",
+      "comment": "不可变后端会话由常驻进程的后端连接块持有；完整值留在宿主，变化事件通知窗口转发消费者。",
+      "storage": "reference",
+      "type": "ResourceManager.NativeUi.LegacyStateItems.DesktopBackendSession",
+      "owner": {
+        "block": 44
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "Desktop backend session bind, transition or unbind"
     }
   ]
 }

@@ -1,4 +1,4 @@
-using ResourceManager.NativeUi.StateItems;
+using ResourceManager.NativeUi.LegacyStateItems;
 using ResourceManager.Shared.BusinessBlocks.State;
 
 namespace ResourceManager.NativeUi.Blocks;

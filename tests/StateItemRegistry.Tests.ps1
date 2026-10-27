@@ -223,8 +223,43 @@ foreach ($process in @('backend','ui')) {
 [IO.File]::WriteAllText($path, '{"entries":[{"uid":0}]}')
 Assert-Rejected { & $generator -Registry $path -Process backend -Namespace Invalid -Output (Join-Path $scratch 'invalid.g.cs') } 'Entry.*missing'
 $production = Read-StateRegistry -Path (Join-Path $repo 'src/Shared/StateItems/state-items.json')
-Assert-True ($production.entries.Count -eq 86) 'Production catalog contains 60 blocks, 20 items and six conditions.'
-Assert-True (@($production.entries | Where-Object kind -CEQ 'block').Count -eq 60) 'Production catalog contains 60 blocks.'
-Assert-True (@($production.entries | Where-Object kind -CEQ 'item').Count -eq 20) 'Production catalog contains 20 items.'
-Assert-True (@($production.entries | Where-Object kind -CEQ 'condition').Count -eq 6) 'Production catalog contains the six backend conditions.'
+Assert-True ($production.entries.Count -eq 109) 'Production catalog contains 64 blocks, 29 items and 16 conditions.'
+Assert-True (@($production.entries | Where-Object kind -CEQ 'block').Count -eq 64) 'Production catalog contains 64 blocks.'
+Assert-True (@($production.entries | Where-Object kind -CEQ 'item').Count -eq 29) 'Production catalog contains 29 items.'
+Assert-True (@($production.entries | Where-Object kind -CEQ 'condition').Count -eq 16) 'Production catalog contains 16 conditions.'
+Assert-True (@($production.entries | Where-Object process -CEQ 'ui').Count -eq 0) 'The old ui process has no remaining catalog entries.'
+foreach ($uid in @(40,41,42,43,44,46,47,50,58,59,60,61)) {
+    Assert-True (($production.entries | Where-Object uid -EQ $uid).process -ceq 'desktop') "Existing resident UID $uid is preserved."
+}
+foreach ($uid in @(45,48,49)) {
+    Assert-True (($production.entries | Where-Object uid -EQ $uid).process -ceq 'window') "Existing window UID $uid is preserved."
+}
+
+Write-StateRegistry $path (Get-Fixture)
+$beforeMove = [IO.File]::ReadAllBytes($path)
+Assert-Rejected { & $tool -Action Move -Registry $path -Process desktop -Uids @(1) } 'same process'
+Assert-True ([Convert]::ToBase64String([IO.File]::ReadAllBytes($path)) -ceq [Convert]::ToBase64String($beforeMove)) 'An invalid owner-only move leaves the file unchanged.'
+Assert-Rejected { & $tool -Action Move -Registry $path -Process desktop -Uids @(1,1) } 'distinct'
+Assert-Rejected { & $tool -Action Move -Registry $path -Process desktop -Uids @(99) } 'not found'
+& $tool -Action Move -Registry $path -Process desktop -Uids @(1,3)
+$moved = Read-StateRegistry -Path $path
+Assert-True ($moved.entries[0].uid -eq 1 -and $moved.entries[0].process -ceq 'desktop' -and $moved.entries[2].owner.block -eq 1) 'Move atomically migrates owners and items, preserving their UIDs.'
+& $tool -Action Move -Registry $path -Process window -Uids @(2,4)
+foreach ($process in @('desktop','window')) {
+    $output = Join-Path $scratch "$process.g.cs"
+    & $generator -Registry $path -Process $process -Namespace "Fixture_$process" -Output $output
+    Assert-True ([IO.File]::ReadAllText($output).Contains('public const int Program =')) "The split $process catalog generates independently."
+}
+# Host-valued items stay with their process owner; only their presence and
+# events cross the controller boundary. Conditions continue to read bools.
+$zigOutput = Join-Path $scratch 'desktop.g.zig'
+& $generator -Registry (Join-Path $repo 'src/Shared/StateItems/state-items.json') -Process desktop -Language Zig -Output $zigOutput
+$zigSource = [IO.File]::ReadAllText($zigOutput)
+Assert-True ($zigSource.Contains('.process = "desktop"') -and $zigSource.Contains('pub const ConditionUids') -and $zigSource.Contains('pub const @"Program" = 40;')) 'Resident Zig table contains its process, original root UID and registered conditions.'
+Assert-True (-not $zigSource.Contains('"Program" ,') -and -not $zigSource.Contains('.name = "')) 'Zig production names are absent by default.'
+Assert-True (-not $zigSource.Contains('pub const @"MainWindow"')) 'The resident table excludes child window process blocks.'
+Assert-True ($zigSource.Contains('.uid = 109, .storage = .reference, .value_type = .host') -and $zigSource.Contains('pub const @"BackendSession" = 109;')) 'The full resident backend session maps to a host-valued reference.'
+$session = $production.entries | Where-Object uid -EQ 109
+Assert-True ($session.owner.block -eq 44 -and $session.type -ceq 'ResourceManager.NativeUi.LegacyStateItems.DesktopBackendSession') 'The complete session has the backend connection as its sole owner and a concrete host payload type.'
+Assert-True (@($production.entries | Where-Object kind -CEQ 'condition' | ForEach-Object items | Where-Object item -EQ 109).Count -eq 0) 'No decision condition reads a host payload.'
 "Passed $script:count assertions. Fixtures: $scratch"

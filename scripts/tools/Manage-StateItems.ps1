@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('Add', 'Resolve', 'Export')][string]$Action,
+    [Parameter(Mandatory)][ValidateSet('Add', 'Move', 'Resolve', 'Export')][string]$Action,
     [string]$Registry = (Join-Path $PSScriptRoot '../../src/Shared/StateItems/state-items.json'),
     [ValidateSet('block', 'item', 'condition')][string]$Kind,
     [ValidateSet('backend', 'ui', 'desktop', 'window')][string]$Process,
@@ -20,6 +20,7 @@ param(
     [long[]]$Children = @(),
     [long]$Decides,
     [long]$Uid,
+    [long[]]$Uids,
     [string]$Version,
     [string]$TableDirectory,
     [string]$Destination
@@ -30,6 +31,20 @@ Import-Module (Join-Path $PSScriptRoot '../build/StateItemRegistry.psm1') -Force
 
 $registryPath = [IO.Path]::GetFullPath($Registry)
 switch ($Action) {
+    'Move' {
+        if (-not $Process -or -not $Uids -or $Uids.Count -eq 0) { throw 'Move requires -Process and -Uids.' }
+        $table = Read-StateRegistry -Path $registryPath
+        $selected = [Collections.Generic.HashSet[long]]::new()
+        foreach ($id in $Uids) {
+            if ($id -lt 1 -or -not $selected.Add($id)) { throw 'Move requires distinct positive Uids.' }
+            $entry = @($table.entries | Where-Object uid -EQ $id)
+            if ($entry.Count -ne 1) { throw "Registry entry uid=$id was not found." }
+            $entry[0].process = $Process
+        }
+        # Move owners and their publications together. Validate the complete result
+        # before writing, so a failed move cannot leave cross-process references.
+        Write-StateRegistry -Path $registryPath -Registry $table
+    }
     'Add' {
         foreach ($required in @('Kind', 'Process', 'Name', 'Comment')) {
             if (-not $PSBoundParameters.ContainsKey($required)) { throw "Add requires -$required." }

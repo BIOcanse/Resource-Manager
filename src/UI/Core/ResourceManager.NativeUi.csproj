@@ -20,12 +20,14 @@
   <Target Name="GenerateStateItems"
           Condition="'$(DesignTimeBuild)' != 'true'"
           Inputs="$(MSBuildProjectDirectory)/../../Shared/StateItems/state-items.json;$(MSBuildProjectDirectory)/../../../scripts/build/Generate-StateItems.ps1;$(MSBuildProjectDirectory)/../../../scripts/build/StateItemRegistry.psm1"
-          Outputs="$(IntermediateOutputPath)StateItems.g.cs">
-    <Exec Command="pwsh -NoProfile -File &quot;$(MSBuildProjectDirectory)/../../../scripts/build/Generate-StateItems.ps1&quot; -Registry &quot;$(MSBuildProjectDirectory)/../../Shared/StateItems/state-items.json&quot; -Process ui -Namespace ResourceManager.NativeUi.StateItems -Output &quot;$(IntermediateOutputPath)StateItems.g.cs&quot;" />
+          Outputs="$(IntermediateOutputPath)StateItems.g.cs;$(IntermediateOutputPath)DesktopStateItems.g.cs">
+    <Exec Command="pwsh -NoProfile -File &quot;$(MSBuildProjectDirectory)/../../../scripts/build/Generate-StateItems.ps1&quot; -Registry &quot;$(MSBuildProjectDirectory)/../../Shared/StateItems/state-items.json&quot; -Process window -Namespace ResourceManager.NativeUi.StateItems -Output &quot;$(IntermediateOutputPath)StateItems.g.cs&quot;" />
+    <Exec Command="pwsh -NoProfile -File &quot;$(MSBuildProjectDirectory)/../../../scripts/build/Generate-StateItems.ps1&quot; -Registry &quot;$(MSBuildProjectDirectory)/../../Shared/StateItems/state-items.json&quot; -Process desktop -Namespace ResourceManager.NativeUi.DesktopStateItems -Output &quot;$(IntermediateOutputPath)DesktopStateItems.g.cs&quot;" />
   </Target>
   <Target Name="IncludeStateItems" BeforeTargets="CoreCompile" DependsOnTargets="GenerateStateItems" Condition="'$(DesignTimeBuild)' != 'true'">
     <ItemGroup>
       <Compile Include="$(IntermediateOutputPath)StateItems.g.cs" />
+      <Compile Include="$(IntermediateOutputPath)DesktopStateItems.g.cs" />
     </ItemGroup>
   </Target>
   <Target Name="GenerateFrontendPreferenceValues" BeforeTargets="CoreCompile" Condition="'$(DesignTimeBuild)' != 'true'">
