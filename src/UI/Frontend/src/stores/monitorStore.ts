@@ -495,7 +495,8 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
 
   /**
    * 目录订阅的一帧：指标目录与设备目录、修订号同帧生效，不等普通指标帧。
-   * 同一修订号下组件安装信息也会变，所以指标目录按内容替换，不看修订号是否变化；
+   * 指标目录按内容替换：订阅帧之前目录可能由 GET 写入（快照帧带来新修订号时重取目录），
+   * 那份内容未必是这一帧的修订号，所以不只看修订号；
    * 修订号变化时，仍是出厂布局就重取看板设置（和快照帧的路径相同）。
    */
   function applyCatalogPush(push: MetricCatalogPush): void {

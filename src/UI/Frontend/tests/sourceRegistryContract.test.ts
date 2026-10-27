@@ -27,7 +27,7 @@ assert.match(
   /subscriptionChannel\.dispose\(\)[\s\S]*sourceRegistry\.dispose\(\)[\s\S]*backendSession\.dispose\(\)/);
 assert.match(runtime, /sourceRegistry\.dispose\(\)[\s\S]*backendSession\.dispose\(\)/);
 assert.match(sources, /subscriptionChannel:\s*BackendSubscriptionChannel/);
-assert.equal((sources.match(/channel:\s*subscriptionChannel/g) ?? []).length, 19);
+assert.equal((sources.match(/channel:\s*subscriptionChannel/g) ?? []).length, 20);
 // 内核泄漏报告只走统一订阅通道的推送（后端在报告变化时推送，没有采样间隔）。
 assert.match(sources, /kernelLeakReport:\s*new BackendCurrentValueSource/);
 assert.match(sources, /key:\s*"kernel-leaks\.report"/);
@@ -54,6 +54,8 @@ assert.match(sources, /localSystemStatus:\s*new BackendPushValueSource/);
 // 控制面的实际状态也走统一订阅源，和别的读数同一条通道。
 assert.match(sources, /controlActualState:\s*new BackendPushValueSource/);
 assert.match(sources, /deviceTopology:\s*new BackendPushValueSource/);
+// 卷可用空间等 Sampled 设备信息字段不在拓扑结构帧里，走自己的推送源（/api/device-topology/fields/subscribe）。
+assert.match(sources, /deviceTopologyFields:\s*new BackendPushValueSource<DeviceTopologyInformationSnapshot>\(\{[\s\S]*?buildUrl:\s*buildDeviceTopologyFieldsSubscriptionUrl,[\s\S]*?decoder:\s*deviceTopologyInformationDecoder/);
 assert.match(sources, /cpuTopology:\s*new BackendPushValueSource/);
 assert.match(sources, /cpuResidency:\s*new BackendPushValueSource/);
 assert.match(sources, /smartCoordinatorState:\s*new BackendPushValueSource/);

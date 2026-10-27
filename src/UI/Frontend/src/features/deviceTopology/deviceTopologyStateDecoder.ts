@@ -80,6 +80,12 @@ export const deviceTopologyStateDecoder =
       };
     });
 
+/** 设备信息字段订阅的一帧：与状态帧里的 informationFields 同形（后端 DeviceInformationSnapshot）。 */
+export const deviceTopologyInformationDecoder =
+  defineResponseDecoder<DeviceTopologyInformationSnapshot>(
+    "device-topology.fields",
+    (value) => decodeInformation(value, "$"));
+
 function decodeInformation(value: unknown, path: string): DeviceTopologyInformationSnapshot {
   const record = requireRecord(value, path);
   return {

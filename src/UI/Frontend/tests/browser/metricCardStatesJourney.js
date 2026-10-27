@@ -80,7 +80,7 @@ export default async function metricCardStatesJourney(page, baseUrl) {
   phases.push({ name: "before-catalog", slots: await readMetricSlotStates(page) });
   assert.deepEqual(phases.at(-1).slots, slotsFor(Array(8).fill(waiting)), "all eight slots wait before the field catalog arrives");
   publications.push(await publishMetricPhase(page, baseUrl, "catalog"));
-  // 字段目录 5 秒推一次：目录到了，不在目录里的设备照常写「设备不在」，不当作在等读数。
+  // 放行的那一帧目录到了：不在目录里的设备照常写「设备不在」，不当作在等读数。
   await card("fields").locator(".metric-small-row").first().locator(".metric-value")
     .filter({ hasText: zh.dashboard.deviceAbsent }).waitFor({ timeout: 15_000 });
   phases.push({ name: "catalog-only", slots: await readMetricSlotStates(page) });

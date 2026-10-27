@@ -10,7 +10,7 @@ import {
  * 目录订阅信封（{catalogRevision, fields, metrics}）在没有普通指标帧时也直接生效（简体中文）：
  * 先等卡片上的设备字段有读数，再暂停 /api/metrics/subscribe（值和字段值都不再推）。
  * 1. 目录换修订号：设备从目录里消失，卡片随订阅帧写「设备不在」；
- * 2. 修订号不变、只有组件安装信息变：选择器里 cpu.frequency 从「缺组件」变成「无有效读数」（后端码 3/3）。
+ * 2. 只有组件安装信息变：它也是目录内容，目录换修订号；选择器里 cpu.frequency 从「缺组件」变成「无有效读数」（后端码 3/3）。
  * 两步都不发 GET /api/metrics/catalog，也没有任何指标帧。
  */
 export default async function metricCatalogPushJourney(page, baseUrl) {
@@ -44,7 +44,7 @@ export default async function metricCatalogPushJourney(page, baseUrl) {
   if (secondRevision === firstRevision) throw new Error(`removing a device kept the catalog revision ${firstRevision}`);
   await expectNoValueFrameOrCatalogGet(baseUrl, valuePublications, catalogGets, catalogGetsBefore, "device removal");
 
-  // 2. 同一修订号下组件安装信息变化：信封的 metrics 换了内容，选择器跟着变。
+  // 2. 组件安装信息变化：信封带新修订号和新的 metrics，选择器跟着变。
   await page.getByRole("button", { name: app.monitorPage.editLayoutLabel, exact: true }).click();
   await addCardSlot(page, app, 1);
   const picker = page.locator("#metricModal");
@@ -70,8 +70,8 @@ export default async function metricCatalogPushJourney(page, baseUrl) {
     throw new Error("the installed component is still offered for installation");
   }
   const thirdRevision = await catalogRevision(baseUrl);
-  if (thirdRevision !== secondRevision) {
-    throw new Error(`component install information changed the catalog revision: ${secondRevision} -> ${thirdRevision}`);
+  if (thirdRevision === secondRevision) {
+    throw new Error(`component install information kept the catalog revision ${secondRevision}`);
   }
   await expectNoValueFrameOrCatalogGet(baseUrl, valuePublications, catalogGets, catalogGetsBefore, "component install");
 

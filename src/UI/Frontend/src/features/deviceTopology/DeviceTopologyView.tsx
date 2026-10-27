@@ -344,7 +344,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
         onClose={() => setDetailsOpen(false)}
       >
         <Show when={selectedNode()?.specializedDevice}>
-          {(model) => <DeviceSpecializedDetails model={model()} information={topology.state().informationFields} />}
+          {(model) => <DeviceSpecializedDetails model={model()} />}
         </Show>
         <Show when={selectedPort()?.deviceId}>
           {(deviceId) => <DeviceMetricFieldDetails devices={metricFieldDevices()} deviceId={deviceId()} />}

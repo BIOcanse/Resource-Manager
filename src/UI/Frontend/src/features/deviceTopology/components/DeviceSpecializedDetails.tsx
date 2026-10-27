@@ -23,10 +23,14 @@ import type {
 import { formatBytes } from "../adapters/adapterEvidence";
 import "./specialized-device-details.css";
 import { uiText } from "../../../text.ts";
-import type { DeviceTopologyInformationSnapshot } from "../../../types.ts";
 import { currentVolumeFreeBytes } from "../deviceTopologyLiveInformation.ts";
+import { usePushSource } from "../../../frontendRuntime/push/usePushSource.ts";
+import { useFrontendRuntime } from "../../../frontendRuntime/FrontendRuntimeContext";
+import { useFrontendReadIntervals } from "../../../app/FrontendReadIntervalsContext.tsx";
+import { useFrontendWork } from "../../../frontendWork/FrontendWorkContext";
+import { frontendWorkIds } from "../../../frontendWork/frontendWorkIds";
 
-export function DeviceSpecializedDetails(props: { model: SpecializedDeviceModel; information: DeviceTopologyInformationSnapshot }) {
+export function DeviceSpecializedDetails(props: { model: SpecializedDeviceModel }) {
   return (
     <section class={`device-specialized-details kind-${props.model.kind}`} aria-label={uiText.deviceSpecialized.sectionLabel(props.model.deviceTypeLabel)}>
       <Switch>
@@ -43,7 +47,7 @@ export function DeviceSpecializedDetails(props: { model: SpecializedDeviceModel;
           {(model) => <HubDetails model={model()} />}
         </Match>
         <Match when={asKind<ExternalStorageDeviceModel>(props.model, "external-storage")}>
-          {(model) => <StorageDetails model={model()} information={props.information} />}
+          {(model) => <StorageDetails model={model()} />}
         </Match>
         <Match when={asKind<KeyboardDeviceModel>(props.model, "keyboard")}>
           {(model) => <InputDetails model={model()} label={uiText.deviceSpecialized.keyboardInput} />}
@@ -145,7 +149,17 @@ function HubDetails(props: { model: DockDeviceModel | UsbHubDeviceModel }) {
   );
 }
 
-function StorageDetails(props: { model: ExternalStorageDeviceModel; information: DeviceTopologyInformationSnapshot }) {
+function StorageDetails(props: { model: ExternalStorageDeviceModel }) {
+  // 卷的可用空间是采样值，不在拓扑结构帧里：这一节显示期间自己持有设备信息字段订阅，
+  // 随拓扑视图的需求进出；退出只撤订阅，最后收到的值由数据来源保留。
+  const runtime = useFrontendRuntime();
+  const readIntervals = useFrontendReadIntervals();
+  const frontendWork = useFrontendWork();
+  const information = usePushSource(runtime.sources.deviceTopologyFields, () => ({
+    active: frontendWork.isNeeded(frontendWorkIds.detailsDeviceTopology),
+    intervalMs: readIntervals.current()?.monitor
+  })).snapshot;
+  const freeBytes = (driveLetter: string | null | undefined) => currentVolumeFreeBytes(information().data ?? null, driveLetter);
   return (
     <>
       <div class="device-storage-overview">
@@ -184,8 +198,8 @@ function StorageDetails(props: { model: ExternalStorageDeviceModel; information:
                           <strong>{volume().driveLetter ?? volume().label ?? uiText.deviceSpecialized.volumeWithoutLetter}</strong>
                           <span>{volume().fileSystem ?? uiText.deviceSpecialized.fileSystemNotReported} · {formatVolumeMountState(volume().mountState)}</span>
                         </div>
-                        <small>{formatVolumeCapacity(volume().capacityBytes, currentVolumeFreeBytes(props.information, volume().driveLetter))}</small>
-                        <VolumeUsage capacity={volume().capacityBytes} free={currentVolumeFreeBytes(props.information, volume().driveLetter)} />
+                        <small>{formatVolumeCapacity(volume().capacityBytes, freeBytes(volume().driveLetter))}</small>
+                        <VolumeUsage capacity={volume().capacityBytes} free={freeBytes(volume().driveLetter)} />
                       </div>
                     )}
                   </Index>

@@ -31,11 +31,15 @@ import {
 import type { ControlActualState } from "../../features/control/controlTypes.ts";
 import { localSystemStatusDecoder } from
   "../../data/localSystem/localSystemStatusDecoder.ts";
-import { buildDeviceTopologyStateSubscriptionUrl } from
-  "../../features/deviceTopology/deviceTopologyApi.ts";
-import { deviceTopologyStateDecoder } from
-  "../../features/deviceTopology/deviceTopologyStateDecoder.ts";
-import type { DeviceTopologySnapshotState } from "../../types.ts";
+import {
+  buildDeviceTopologyFieldsSubscriptionUrl,
+  buildDeviceTopologyStateSubscriptionUrl
+} from "../../features/deviceTopology/deviceTopologyApi.ts";
+import {
+  deviceTopologyInformationDecoder,
+  deviceTopologyStateDecoder
+} from "../../features/deviceTopology/deviceTopologyStateDecoder.ts";
+import type { DeviceTopologyInformationSnapshot, DeviceTopologySnapshotState } from "../../types.ts";
 import type { BackendStartupCapabilities } from "../../types.ts";
 import { getRuntimeCapabilities } from "../../data/runtimeCapabilities/runtimeCapabilitiesApi.ts";
 import {
@@ -195,7 +199,10 @@ export interface FrontendSources {
   readonly selfScheduling: PushValueSource<ResourceManagerSelfSchedulingSnapshot>;
   readonly localSystemStatus: PushValueSource<LocalSystemStatus>;
   readonly controlActualState: PushValueSource<ControlActualState>;
+  /** 设备拓扑的结构与健康：后端初次推当前值，之后只在变化时推；informationFields 只有 Fixed 与 EventDriven 字段。 */
   readonly deviceTopology: PushValueSource<DeviceTopologySnapshotState>;
+  /** 设备信息字段的当前值（含 Sampled 字段，例如卷可用空间）：每次采样推一帧。 */
+  readonly deviceTopologyFields: PushValueSource<DeviceTopologyInformationSnapshot>;
   readonly operations: CurrentValueSource<HostManagerOperationsState>;
   readonly managementInventoryRevision: CurrentValueSource<ManagementInventoryRevisionSnapshot>;
   readonly accessRequests: CurrentValueSource<AccessRequestPendingSnapshot>;
@@ -315,6 +322,12 @@ export function createFrontendSources(
       channel: subscriptionChannel,
       buildUrl: buildDeviceTopologyStateSubscriptionUrl,
       decoder: deviceTopologyStateDecoder
+    }),
+    deviceTopologyFields: new BackendPushValueSource<DeviceTopologyInformationSnapshot>({
+      key: "device-topology.fields",
+      channel: subscriptionChannel,
+      buildUrl: buildDeviceTopologyFieldsSubscriptionUrl,
+      decoder: deviceTopologyInformationDecoder
     }),
     operations: new BackendCurrentValueSource<HostManagerOperationsState>({
       key: "host-manager.operations.state",

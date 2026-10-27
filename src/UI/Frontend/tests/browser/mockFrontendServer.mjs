@@ -71,6 +71,14 @@ const defaultScenario = {
   deviceTopologyNumericUsb: false,
   deviceTopologyWireless: null,
   deviceTopologyTransport: false,
+  // 接一块带分区和卷（F:）的 USB 移动硬盘；卷的可用空间（Sampled）只经 /api/device-topology/fields/subscribe 发。
+  deviceTopologyStorage: false,
+  // 卷 F: 的可用空间，后端写无损十进制字符串；null 表示后端这一帧没有值。
+  deviceTopologyVolumeFreeBytes: "250092956672",
+  // 采集失败（state failed、failureCode 和一条诊断）；快照沿用最后一次成功提交的那份。
+  deviceTopologyFailure: false,
+  // 整机 BIOS 版本（snapshot.system.biosVersion）：只在整机图里显示，改它是一次不动清单和详情的结构变化。
+  deviceTopologyBiosVersion: null,
   displayEdid: "off",
   gpuGrade: "normal",
   cpuGrade: "normal",
@@ -133,7 +141,7 @@ const defaultScenario = {
   // 写在指标目录的每条 gpu.N.* 定义和 /api/gpu/performance-scores 的条目上，后端总是写这个键。
   gpuDedicatedMemoryMetrics: true,
   // cpu.frequency 的组件安装信息："none" 不需要组件；"missing" 需要传感器组件且未安装；"installed" 已安装但还没有有效读数。
-  // 安装信息变化时后端不换目录修订号（MetricCatalogPushTests），目录订阅照样推新的一帧。
+  // 安装信息也是目录内容：变化时后端换目录修订号并推一帧（MetricCatalogPushTests）。
   metricCatalogComponent: "none",
   // 整机总量读不到时资源条保留为显式不可用条，明细保留该指标自己的事实。
   resourceBarMeasureTotalsMissing: [],
@@ -1782,6 +1790,7 @@ function resetScenario() {
     delete requestTelemetry[key];
   }
   deviceTopologyRevision = 0;
+  committedDeviceTopology = null;
   operationsPublicationRevision = 0;
   operationsCurrentValue = null;
   commitOperationsValue();
@@ -1882,13 +1891,13 @@ function metricFieldCatalogBody() {
 }
 
 /*
- * 目录修订号（后端 HardwareMetricCatalogState.Revision）：不透明字符串，目录内容（设备、字段、指标定义、能力）
- * 变化时换新；组件安装信息不算在内。指标快照帧和目录订阅帧带同一个值。
+ * 目录修订号（后端 HardwareMetricCatalogState.Revision）：不透明字符串，覆盖全部公开内容（设备、字段、指标定义、
+ * 能力、组件安装信息），内容变化时换新；同一修订号就是同一份内容。指标快照帧和目录订阅帧带同一个值。
  */
 let metricCatalogRevisionSerial = 0;
 let metricCatalogRevisionIdentity = null;
 function metricCatalogRevision() {
-  const identity = JSON.stringify({ fields: metricFieldCatalogBody(), metrics: metricCatalogBody("none") });
+  const identity = JSON.stringify({ fields: metricFieldCatalogBody(), metrics: metricCatalogBody() });
   if (identity !== metricCatalogRevisionIdentity) {
     metricCatalogRevisionIdentity = identity;
     metricCatalogRevisionSerial += 1;
@@ -1897,11 +1906,17 @@ function metricCatalogRevision() {
 }
 
 // 目录订阅的一帧（后端 MetricCatalogWireSnapshot）：同一份目录的修订号、字段目录和指标目录。
+// 一个修订号只提交一次：内容没变时返回同一个对象，按变化推送的订阅据此不重发。
+let committedMetricCatalogPush = null;
 function metricCatalogPush() {
-  return { catalogRevision: metricCatalogRevision(), fields: metricFieldCatalogBody(), metrics: metricCatalogBody() };
+  const catalogRevision = metricCatalogRevision();
+  if (committedMetricCatalogPush?.catalogRevision !== catalogRevision) {
+    committedMetricCatalogPush = { catalogRevision, fields: metricFieldCatalogBody(), metrics: metricCatalogBody() };
+  }
+  return committedMetricCatalogPush;
 }
 
-// 后端在目录提交时立即唤醒目录订阅（不等下一次发现探测）；场景改动就是这里的提交。
+// 后端在目录提交时立即唤醒目录订阅（不等下一次发现探测）；场景改动就是这里的提交，内容没变的订阅者不收帧。
 function publishMetricCatalogNow() {
   const publishedAt = now();
   for (const [key, publisher] of ndjsonPublishers) {
@@ -2869,7 +2884,62 @@ function fixtureDisplayEdid() {
   }
   return display;
 }
+/*
+ * 拓扑订阅的帧（后端 DeviceTopologyCaptureOwner 的变化状态，push-only-on-change）：每次采集和上一次提交比较，
+ * 结构或健康真的变了才提交、推送；没变的采集不推，失败没变也不再推，恢复会推。
+ * - 比较不含 stateRevision、lastSuccessAt、lastAttemptAt、snapshot.capturedAt 和 informationFields.observedAt；
+ * - 结构帧的 informationFields 只留 Fixed 与 EventDriven 字段，Sampled 字段（卷可用空间、页面文件用量、
+ *   网络连接、地址与路由寿命）只经各自的采样订阅发；
+ * - 快照内容没变时沿用已提交的那份（capturedAt 不动）；
+ * - 提交帧的 lastSuccessAt 是提交这份内容的那次成功采集的时间，不是心跳；失败帧沿用最后一次成功的时间。
+ * GET /api/device-topology/state 是一次新采集的完整状态（含 Sampled 字段），不经过这里。
+ */
+const sampledVolatilityKind = 2; // 后端 ReadVolatilityKind.Sampled，wire 上是数字枚举。
+let committedDeviceTopology = null;
+
+function observeDeviceTopology(capturedAt) {
+  const observed = deviceTopologyStructureFrame(fixtureDeviceTopologyState(capturedAt));
+  const key = deviceTopologyChangeKey(observed);
+  if (committedDeviceTopology?.key === key) return committedDeviceTopology.state;
+  const previous = committedDeviceTopology?.state;
+  const state = { ...observed };
+  if (state.state === "failed") state.lastSuccessAt = previous?.lastSuccessAt ?? null;
+  if (isRecord(previous?.snapshot) && isRecord(state.snapshot)
+    && JSON.stringify({ ...previous.snapshot, capturedAt: null }) === JSON.stringify({ ...state.snapshot, capturedAt: null })) {
+    state.snapshot = previous.snapshot;
+  }
+  committedDeviceTopology = { key, state };
+  return state;
+}
+
+function deviceTopologyStructureFrame(state) {
+  if (!isRecord(state.informationFields)) return state;
+  const devices = state.informationFields.devices
+    .map(device => ({ ...device, fields: device.fields.filter(field => field.definition?.volatility?.kind !== sampledVolatilityKind) }))
+    .filter(device => device.fields.length > 0);
+  return { ...state, informationFields: { ...state.informationFields, devices } };
+}
+
+function deviceTopologyChangeKey(state) {
+  const { stateRevision: _revision, lastSuccessAt: _success, lastAttemptAt: _attempt, ...content } = state;
+  return JSON.stringify({ ...content,
+    snapshot: isRecord(content.snapshot) ? { ...content.snapshot, capturedAt: null } : content.snapshot,
+    informationFields: isRecord(content.informationFields) ? { ...content.informationFields, observedAt: null } : content.informationFields });
+}
+
 function fixtureDeviceTopologyState(capturedAt = now()) {
+  return applyTopologyHealthScenario(fixtureDeviceTopologyCapture(capturedAt));
+}
+
+// 采集失败：后端 PublishFailure 保留当前快照，写 failed、failureCode 和这次的诊断。
+function applyTopologyHealthScenario(state) {
+  if (!scenario.deviceTopologyFailure || !isRecord(state.snapshot)) return state;
+  return { ...state, state: "failed", failureCode: "device-topology-capture-failed", lastSuccessAt: null,
+    attemptDiagnostics: [{ sourceId: "display-coordinator", status: "required-incomplete",
+      code: "device-topology-display-coordinator-incomplete", messageCode: { domain: 5, code: 10, args: ["Warming"] } }] };
+}
+
+function fixtureDeviceTopologyCapture(capturedAt) {
   if (scenario.deviceTopologyInvalid) return { schemaVersion: "invalid" };
   if (scenario.readmeShowcase) return showcase.showcaseDeviceTopology(capturedAt, ++deviceTopologyRevision);
   if (recordedTopologyState) {
@@ -2966,6 +3036,11 @@ function applyTopologyFactScenarios(state) {
   }
   if (scenario.deviceTopologyNumericUsb) snapshot.ports = fixtureNumericUsbPorts();
   if (scenario.deviceTopologyTransport) snapshot.ports = fixtureTransportPorts();
+  if (scenario.deviceTopologyBiosVersion !== null) snapshot.system = { ...snapshot.system, biosVersion: scenario.deviceTopologyBiosVersion };
+  if (scenario.deviceTopologyStorage) {
+    snapshot.ports = [...snapshot.ports, fixtureStorageVolumePort()];
+    state.informationFields = fixtureVolumeInformation(state.lastSuccessAt ?? snapshot.capturedAt);
+  }
   if (scenario.deviceTopologyWireless !== null)
     snapshot.ports = [...snapshot.ports, fixtureWirelessPort(scenario.deviceTopologyWireless)];
   if (scenario.deviceTopologyExternalMachine) {
@@ -3001,6 +3076,36 @@ function fixtureWirelessPort(variant) {
         negotiatedStandard: variant === "standards" ? "802.11ac" : null }
     }
   };
+}
+
+// 带分区和卷的 USB 移动硬盘，形状同后端结构快照：卷的 freeBytes 在结构里恒为 null（DeviceTopologyStructure）。
+const fixtureVolumeIdentity = "\\\\?\\Volume{5c1f0e2a-7b3d-4e8f-9a61-0d2c4b6e8f10}\\";
+function fixtureStorageVolumePort() {
+  const uas = fixtureNumericUsbPorts().find(port => port.id === "fixture-usb-storage-uas");
+  return { ...uas, id: "fixture-usb-storage-volumes", displayName: "Fixture portable SSD",
+    deviceId: String.raw`USBSTOR\FIXTURE_PORTABLE_SSD`, pnpClass: "DiskDrive",
+    topologyPath: { domain: 5, code: 64, args: ["root/fixture-usb-storage-volumes"] },
+    usb: { ...uas.usb, portNumber: 20, deviceAddress: 20, productName: "Fixture portable SSD" },
+    storage: { physicalDeviceId: String.raw`\\.\PHYSICALDRIVE7`, model: "Fixture Portable SSD", manufacturer: "Frontend Harness",
+      serialNumber: null, firmwareRevision: "1.0", mediaType: "SSD", busType: "USB", capacityBytes: 1_000_204_886_016,
+      bytesPerSector: 512, partitionStyle: "GPT", healthStatus: "Healthy", source: { domain: 5, code: 59, args: [] },
+      partitions: [{ deviceId: "Disk #7, Partition #0", partitionNumber: 1, type: "GPT: Basic Data",
+        capacityBytes: 1_000_202_788_864, startingOffsetBytes: 1_048_576, bootable: false, bootPartition: false, primaryPartition: true,
+        volumes: [{ driveLetter: "F:", label: "Portable", fileSystem: "exFAT", capacityBytes: 1_000_185_827_328,
+          freeBytes: null, mountState: "mounted", volumeSerialNumber: null }] }] } };
+}
+
+// 卷 F: 的信息字段（后端 DeviceInformationFieldRegistry 的定义，volatility 是数字枚举）：挂载路径是 EventDriven，
+// 可用空间是 Sampled。完整状态两者都有；结构帧去掉 Sampled 的那个。
+function fixtureVolumeInformation(observedAt) {
+  const definition = (name, valueKind, unit, quantity, sourceId, volatility) =>
+    ({ name, resource: "volume", vendor: "all", valueKind, unit, quantity, sourceId, volatility });
+  return { observedAt, devices: [{ deviceIdentity: fixtureVolumeIdentity, objectType: "volume", fields: [
+    { definition: definition("volume_all_mount_paths_reported", "text-list", "path", "volume.topology.mount_paths_reported",
+      "windows.volume-metadata", { kind: 1, event: "Windows storage layout or volume configuration changed" }), value: ["F:\\"] },
+    { definition: definition("volume_all_free_bytes_actual", "unsigned-integer", "B", "volume.space.free_bytes_actual",
+      "windows.volume-space", { kind: sampledVolatilityKind }), value: scenario.deviceTopologyVolumeFreeBytes }
+  ] }] };
 }
 
 function fixtureNumericUsbPorts() {
@@ -3375,6 +3480,8 @@ async function subscriptionChannelStream(request, response) {
       createPayload: subscription.createPayload,
       detailsReadyAt: Date.now() + (subscription.requestUrl.pathname === "/api/resource-monitor/subscribe"
         && subscription.requestUrl.searchParams.get("scope") === "details" ? scenario.resourceDetailsDelayMs : 0),
+      // 按变化推送的路径（pushOnChange）：这个订阅者上次收到的值。
+      lastValue: undefined,
       publish(publishedAt, { force = false } = {}) {
         if (response.destroyed || response.writableEnded
           || (canReplay(replayPath) && sliceReplay?.frames(replayPath).length)
@@ -3382,10 +3489,14 @@ async function subscriptionChannelStream(request, response) {
           || (!force && scenario.pausedSubscriptionPaths.includes(subscription.requestUrl.pathname))) {
           return false;
         }
+        const value = subscription.createPayload(publishedAt);
+        // 当前值没换（同一个已提交对象）就不发；手动放行（force）照发当前值。
+        if (subscription.createPayload.pushOnChange && !force && value === this.lastValue) return false;
+        this.lastValue = value;
         writeSubscriptionChannelFrame(
           response,
           subscription.id,
-          subscription.createPayload(publishedAt));
+          value);
         recordLogicalPublication(subscription.requestUrl);
         return true;
       }
@@ -3422,6 +3533,7 @@ const subscriptionChannelSelectors = new Set([
   "/api/adapters/resource-manager/scheduling/subscribe",
   "/api/local-system/status/subscribe",
   "/api/device-topology/state/subscribe",
+  "/api/device-topology/fields/subscribe",
   "/api/cpu/topology/subscribe",
   "/api/cpu/residency/subscribe",
   "/api/optimization/smart/state/subscribe",
@@ -3548,6 +3660,13 @@ function metricFieldsSnapshot(selections) {
   return [...projected.values()];
 }
 
+// 后端只在内容变化时推的订阅：发帧函数返回当前已提交的值，内容没变时是同一个对象；
+// 订阅者按对象是否换了决定发不发（订阅时的第一帧总发）。
+function pushOnChange(createPayload) {
+  createPayload.pushOnChange = true;
+  return createPayload;
+}
+
 function subscriptionPayloadFactory(url) {
   const showcaseFactory = scenario.readmeShowcase ? showcase.showcaseSubscription(url.pathname) : null;
   if (showcaseFactory) return showcaseFactory;
@@ -3572,8 +3691,9 @@ function subscriptionPayloadFactory(url) {
       };
     }
     case "/api/metrics/fields/catalog/subscribe":
-      // 和后端一样：订阅时推一帧，之后每次发现探测（这里是推送周期）和每次目录提交（publishMetricCatalogNow）各推一帧。
-      return () => metricCatalogPush();
+      // 和后端一样：订阅时推当前值一帧，之后只在目录提交了新内容时推（推送周期上的发现探测和
+      // publishMetricCatalogNow 都只在修订号变了时出帧）。
+      return pushOnChange(() => metricCatalogPush());
     case "/api/metrics/gpu-specialized/subscribe":
       return (publishedAt) => ({
         version: 2,
@@ -3603,7 +3723,11 @@ function subscriptionPayloadFactory(url) {
       // 和后端一样不接受不认识的 items。
       return resourceFactItemsKnown(url) ? publishedAt => resourceFacts(url, publishedAt) : null;
     case "/api/device-topology/state/subscribe":
-      return (publishedAt) => fixtureDeviceTopologyState(publishedAt);
+      // 结构与健康：每个推送周期是一次采集，只有提交了变化才出帧（observeDeviceTopology）。
+      return pushOnChange((publishedAt) => observeDeviceTopology(publishedAt));
+    case "/api/device-topology/fields/subscribe":
+      // 设备信息字段的当前值（含 Sampled 字段）：每次采样完成一帧，观测时间就是这次采样。
+      return (publishedAt) => ({ ...fixtureDeviceTopologyState(publishedAt).informationFields, observedAt: publishedAt });
     case "/api/cpu/topology/subscribe":
       return (publishedAt) => scenario.cpuTopologyEmpty ? null : fixtureCpuTopology(publishedAt);
     case "/api/cpu/residency/subscribe":

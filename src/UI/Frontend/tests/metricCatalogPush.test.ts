@@ -30,7 +30,7 @@ assert.deepEqual(decoded.fields, metricFieldCatalogDecoder.decode(structuredClon
 assert.deepEqual(decoded.metrics, metricCatalogDecoder.decode(structuredClone(metrics)));
 assert.equal(decoded.fields.length, fields.length);
 assert.deepEqual(decoded.metrics.map((metric) => metric.id), metrics.map((metric) => metric.id));
-// 安装信息原样带过来，同一修订号下变化的正是这些字段。
+// 安装信息原样带过来；它也是目录内容，变化时后端换修订号。
 assert.equal(decoded.metrics[2]!.requiredComponentId, "hardware-sensors-pawnio-provider");
 assert.equal(decoded.metrics[2]!.selectable, false);
 

@@ -13,9 +13,8 @@ import { decodeMetricCatalog } from "./monitorSourceDecoders.ts";
  * - catalogRevision：不透明标记，只作相等比较，和指标快照帧上的 catalogRevision 是同一个值；
  * - fields：与 GET /api/metrics/fields/catalog 同形；
  * - metrics：与 GET /api/metrics/catalog 同形。
- * 拓扑、能力、候选来源和选中来源变化时后端立即推一帧，发现探测每个周期也推一帧。
- * 组件安装信息在同一修订号下也会变（metrics 里的 requiredComponentId、disabledReason），
- * 所以修订号相同不代表内容相同，消费方按内容替换。GET 两个接口仍返回裸数组，不经过这里。
+ * 订阅时后端推一帧当前值，之后只在目录内容真的变化时推（设备、字段、指标定义、能力、候选来源、
+ * 组件安装信息都算内容）；修订号覆盖全部公开内容，同一修订号就是同一份内容。GET 两个接口仍返回裸数组，不经过这里。
  */
 export interface MetricCatalogPush {
   readonly catalogRevision: string;

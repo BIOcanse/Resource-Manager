@@ -66,6 +66,11 @@ export default async function liveKeyboardFocusJourney(page, baseUrl) {
         const response = await page.request.post(`${baseUrl}/__test/scenario`, { data: { cpuTopologyUsageOffset: index % 2 } });
         assert(response.ok());
       }
+      // 设备拓扑只在变化时推：每一步改一次只在整机图里显示的 BIOS 版本，换来一帧真实推送。
+      if (path === "/api/device-topology/state/subscribe") {
+        const response = await page.request.post(`${baseUrl}/__test/scenario`, { data: { deviceTopologyBiosVersion: `FOCUS.${index}` } });
+        assert(response.ok());
+      }
       await page.waitForFunction(({ path, before }) => (window.__subscriptionFrameProbe.counts[path] ?? 0) > before, { path, before }, { timeout: 6500 });
       if (path === "/api/cpu/topology/subscribe") {
         await root.locator(".cpu-core-main strong, .cpu-ring-core-main strong").first().getByText(`${42 + index % 2}.0%`, { exact: true }).waitFor();

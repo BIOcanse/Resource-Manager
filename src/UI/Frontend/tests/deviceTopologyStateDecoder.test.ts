@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { deviceTopologyStateDecoder } from "../src/features/deviceTopology/deviceTopologyStateDecoder.ts";
+import { deviceTopologyInformationDecoder, deviceTopologyStateDecoder } from "../src/features/deviceTopology/deviceTopologyStateDecoder.ts";
 import { ResponseDecodeError } from "../src/frontendRuntime/request/ResponseDecoder.ts";
 import { currentVolumeFreeBytes } from "../src/features/deviceTopology/deviceTopologyLiveInformation.ts";
 
@@ -275,6 +275,18 @@ assert.equal(
   "ignored" in (decoded.snapshot!.ports[0] as unknown as Record<string, unknown>),
   false);
 
+// 结构帧只带 Fixed 与 EventDriven 字段（这里是卷的挂载路径），解出的就是发来的那些。
+const structuralInformation = {
+  observedAt: "2026-08-22T15:20:30.000Z",
+  devices: [{ deviceIdentity: "volume-guid-a", objectType: "volume", fields: [
+    { definition: { name: "volume_all_mount_paths_reported" }, value: ["E:\\"] }
+  ] }]
+};
+const structural = deviceTopologyStateDecoder.decode({ ...source, informationFields: structuralInformation });
+assert.deepEqual(structural.informationFields, structuralInformation);
+assert.equal(currentVolumeFreeBytes(structural.informationFields, "E:"), null, "the structural frame carries no free space");
+
+// 可用空间来自设备信息字段订阅的帧（裸 DeviceInformationSnapshot），每次采样一帧。
 const information = {
   observedAt: "2026-08-22T15:20:30.000Z",
   devices: [{ deviceIdentity: "volume-guid-a", objectType: "volume", fields: [
@@ -282,23 +294,32 @@ const information = {
     { definition: { name: "volume_all_free_bytes_actual" }, value: "500" }
   ] }]
 };
-const current = deviceTopologyStateDecoder.decode({ ...source, informationFields: information });
-assert.equal(currentVolumeFreeBytes(current.informationFields, "e:"), 500);
+const current = deviceTopologyInformationDecoder.decode(structuredClone(information));
+assert.deepEqual(current, information);
+assert.equal(currentVolumeFreeBytes(current, "e:"), 500);
 const changedInformation = structuredClone(information);
 changedInformation.devices[0].fields[1].value = "450";
-const changed = deviceTopologyStateDecoder.decode({ ...source, informationFields: changedInformation });
-assert.equal(changed.contentGeneration, current.contentGeneration);
-assert.equal(currentVolumeFreeBytes(changed.informationFields, "E:\\"), 450);
-assert.equal(currentVolumeFreeBytes({ ...current.informationFields, observedAt: null }, "E:"), null);
-assert.equal(currentVolumeFreeBytes(current.informationFields, "F:"), null);
-assert.equal(currentVolumeFreeBytes(current.informationFields, null), null);
-assert.equal(currentVolumeFreeBytes({ ...current.informationFields, devices: [
-  ...current.informationFields.devices, { ...current.informationFields.devices[0], deviceIdentity: "other-volume" }
+assert.equal(currentVolumeFreeBytes(deviceTopologyInformationDecoder.decode(changedInformation), "E:\\"), 450);
+assert.equal(currentVolumeFreeBytes(null, "E:"), null, "no fields frame yet");
+assert.equal(currentVolumeFreeBytes({ ...current, observedAt: null }, "E:"), null);
+assert.equal(currentVolumeFreeBytes(current, "F:"), null);
+assert.equal(currentVolumeFreeBytes(current, null), null);
+assert.equal(currentVolumeFreeBytes({ ...current, devices: [
+  ...current.devices, { ...current.devices[0], deviceIdentity: "other-volume" }
 ] }, "E:"), null);
 for (const value of [null, "unavailable", "9007199254740993", -1]) {
-  const unavailable = structuredClone(current.informationFields);
+  const unavailable = structuredClone(current);
   unavailable.devices[0].fields[1].value = value;
   assert.equal(currentVolumeFreeBytes(unavailable, "E:"), null);
+}
+for (const [value, path] of [
+  [[], "$"],
+  [{ observedAt: "bad-time", devices: [] }, "$.observedAt"],
+  [{ observedAt: null, devices: [{ deviceIdentity: "", objectType: "volume", fields: [] }] }, "$.devices[0].deviceIdentity"],
+  [{ observedAt: null, devices: [{ deviceIdentity: "v", objectType: "volume", fields: [{ definition: { name: "x" } }] }] }, "$.devices[0].fields[0].value"]
+] as const) {
+  assert.throws(() => deviceTopologyInformationDecoder.decode(value), (error: unknown) =>
+    error instanceof ResponseDecodeError && error.path === path, `fields frame rejects ${path}`);
 }
 
 const invalidCases: Array<[unknown, string]> = [

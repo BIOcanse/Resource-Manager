@@ -8,6 +8,7 @@ import { checkDeviceTopologyWireFacts } from "./deviceTopologyWireProbe.js";
 import { checkMachineIdentity } from "./deviceMachineIdentityProbe.js";
 import { checkNetworkConnectionStates } from "./deviceTopologyConnectionProbe.js";
 import { checkBadgesNotTruncated } from "./deviceBadgeProbe.js";
+import { checkVolumeFreeSpace } from "./deviceTopologyStorageProbe.js";
 import { waitForCondition } from "./journeyWaits.js";
 import { observeSubscriptionFrames } from "./subscriptionFrameProbe.js";
 export default async function deviceTopologySourceJourney(page, baseUrl = "http://127.0.0.1:4177") {
@@ -158,6 +159,8 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
   const app = await loadAppCopy("zh-CN");
   const wireFacts = await checkDeviceTopologyWireFacts(page, app, "zh-CN", baseUrl);
   await checkNetworkConnectionStates(page, app, "zh-CN", baseUrl);
+  const volumeFreeSpace = await checkVolumeFreeSpace(page, app, "zh-CN", baseUrl);
+  const health = await checkHealthTransitions(page, topology, subscriptionPath);
   const beforeEdid = (await readTelemetry(page, subscriptionPath)).publications;
   await setScenario(page, { displayEdid: "ready" });
   await waitForTelemetry(page, subscriptionPath, value => value.publications > beforeEdid);
@@ -223,8 +226,10 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
   await waitForTelemetry(page, subscriptionPath, value => value.publications > beforeOriginal);
   await checkRecordedDisplayDialog(page, app);
   const active = await waitForTelemetry(page, subscriptionPath, (value) => value.publications >= 2);
-  assert(active.started === 1
-    && active.logicalStarted === 1
+  // 存储详情打开、关上时增减自己的字段订阅，统一通道按新的订阅集合重建，拓扑的逻辑订阅随之退订重订；
+  // 每次重订都先退掉上一个，任何时候只有一个。
+  assert(active.started === active.logicalStarted
+    && active.logicalStarted === active.logicalRetired + 1
     && active.logicalInFlight === 1
     && active.logicalMaxInFlight === 1,
   `Device topology created duplicate logical subscriptions: ${JSON.stringify(active)}`);
@@ -312,6 +317,8 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
     panelHeading,
     machineIdentity,
     wireFacts,
+    volumeFreeSpace,
+    health,
     badges,
     nullableProtocolAccepted: true,
     metricFailureClearsOnlyItsOwnData: true,
@@ -377,7 +384,8 @@ async function checkScrolledSelectionSurvivesPublications(page, topology, subscr
   }, portCount - 2);
   assert(before.maxScroll > 200 && before.scrollTop > 200,
     `The fixture list does not scroll far enough to observe a jump: ${JSON.stringify(before)}`);
-  const published = (await readTelemetry(page, subscriptionPath)).publications;
+  // 拓扑只在变化时推：改两次只在整机图里显示的 BIOS 版本，得到两帧不动清单和详情的真实推送。
+  const published = await publishInvisibleChanges(page, subscriptionPath);
   await waitForTelemetry(page, subscriptionPath, value => value.publications >= published + 2);
   // Server write counts precede delivery. Wait until the same complete frames have
   // reached the application's reader, then cross its synchronous publish/render.
@@ -403,7 +411,7 @@ async function checkScrolledSelectionSurvivesPublications(page, topology, subscr
     rows.forEach((row) => { row.dataset.publicationProbe = "kept"; });
     return rows.length;
   });
-  const dialogPublished = (await readTelemetry(page, subscriptionPath)).publications;
+  const dialogPublished = await publishInvisibleChanges(page, subscriptionPath);
   await waitForTelemetry(page, subscriptionPath, value => value.publications >= dialogPublished + 2);
   // Do not let old row identity pass before the new frames are actually consumed.
   await frameProbe.drain([subscriptionPath], [".user-details-modal"]);
@@ -414,10 +422,38 @@ async function checkScrolledSelectionSurvivesPublications(page, topology, subscr
   await page.keyboard.press("Escape");
   await dialog.waitFor({ state: "hidden" });
 
-  await setScenario(page, { deviceTopologyPortCount: null, displayEdid: "ready" });
+  await setScenario(page, { deviceTopologyPortCount: null, displayEdid: "ready", deviceTopologyBiosVersion: null });
   await page.waitForFunction((count) =>
     document.querySelectorAll(".device-topology-panel .device-port-item:not(.nested)").length === count, rootCount);
   return { before, after, rowCount, keptRows };
+}
+
+// 两次结构变化，各等它的那一帧推出；返回改动前的推送数。
+async function publishInvisibleChanges(page, subscriptionPath) {
+  const published = (await readTelemetry(page, subscriptionPath)).publications;
+  for (const [index, biosVersion] of ["FIXTURE.1", "FIXTURE.2"].entries()) {
+    await setScenario(page, { deviceTopologyBiosVersion: biosVersion });
+    await waitForTelemetry(page, subscriptionPath, value => value.publications >= published + index + 1);
+  }
+  return published;
+}
+
+// 健康变化照推：失败推一帧（快照保留，提示“已过期”），失败不变不再推，恢复推一帧、提示消失。
+async function checkHealthTransitions(page, topology, subscriptionPath) {
+  const before = (await readTelemetry(page, subscriptionPath)).publications;
+  await setScenario(page, { deviceTopologyFailure: true });
+  await topology.locator(".observation-state.stale").waitFor();
+  const failed = await waitForTelemetry(page, subscriptionPath, value => value.publications >= before + 1);
+  assert(await topology.locator(".device-port-item").count() > 0, "A failed capture cleared the last committed topology");
+  // Observe more than one full 1 s capture cycle: an unchanged failure must not publish again.
+  await page.waitForTimeout(1_200);
+  const unchanged = await readTelemetry(page, subscriptionPath);
+  assert(unchanged.publications === failed.publications,
+    `An unchanged topology failure was published again: ${JSON.stringify({ failed: failed.publications, unchanged: unchanged.publications })}`);
+  await setScenario(page, { deviceTopologyFailure: false });
+  await topology.locator(".observation-state").waitFor({ state: "detached" });
+  const recovered = await waitForTelemetry(page, subscriptionPath, value => value.publications > unchanged.publications);
+  return { failurePublications: failed.publications - before, recoveryPublications: recovered.publications - failed.publications };
 }
 
 async function setScenario(page, patch) {

@@ -11,6 +11,7 @@ import { checkCpuMetricFields, checkDeviceMetricFields, checkFieldCardDisplay, e
 import { checkResourceTableSourceText } from "./resourceTableSourceChoiceJourney.js";
 import { checkResourceBarSourceText } from "./resourceBarSourceChoiceJourney.js";
 import { checkNetworkConnectionStates } from "./deviceTopologyConnectionProbe.js";
+import { checkVolumeFreeSpace } from "./deviceTopologyStorageProbe.js";
 import { helpHintText } from "./tooltipProbe.js";
 
 // 九语旅程按这个顺序逐个切换语言：每种语言都从前一种切过来，第一种是初始的 zh-CN。
@@ -41,6 +42,7 @@ export default async function localizationJourney(page, baseUrl, options = {}) {
   await enableMetricFields(baseUrl);
   await seedFieldCards(page);
   const metricFieldChecks = [];
+  const volumeFreeSpaceChecks = [];
   const fieldCardChecks = [];
   const resourceTableSourceChecks = [];
   const resourceBarSourceChecks = [];
@@ -201,6 +203,7 @@ export default async function localizationJourney(page, baseUrl, options = {}) {
     await page.getByRole("navigation").getByRole("button", { name: app.page.details, exact: true }).click();
     const topology = page.locator(".device-topology-panel"); await topology.waitFor();
     await checkNetworkConnectionStates(page, app, option.id, baseUrl);
+    volumeFreeSpaceChecks.push(await checkVolumeFreeSpace(page, app, option.id, baseUrl));
     await topology.locator(".device-port-item").first().click();
     await checkRecordedDisplayDialog(page, app);
     for (const variant of ["type3", "type3Inactive", "type3Unknown", "type3"]) {
@@ -363,7 +366,7 @@ export default async function localizationJourney(page, baseUrl, options = {}) {
     previous = option.id;
   }
   if (failures.length) throw new Error(failures.join("\n"));
-  return { typeXChecks, declarationChecks, metricFieldChecks, fieldCardChecks, resourceTableSourceChecks, resourceBarSourceChecks, languages: checked, enteredFrom, enteredState, actualSavedSwitching: true, translatedControlAndUpdateUi: true,
+  return { typeXChecks, declarationChecks, metricFieldChecks, volumeFreeSpaceChecks, fieldCardChecks, resourceTableSourceChecks, resourceBarSourceChecks, languages: checked, enteredFrom, enteredState, actualSavedSwitching: true, translatedControlAndUpdateUi: true,
     translatedComponentVerificationSuccessAndFailure: true,
     translatedProtectionEnableRemoveReloadAndFailure: true,
     foldedHistory: true, downgradeDisabled: true, localizedConsentCancelled: true };

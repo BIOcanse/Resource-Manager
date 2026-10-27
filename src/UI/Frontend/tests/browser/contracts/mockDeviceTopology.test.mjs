@@ -106,3 +106,112 @@ test("network connection journey supplies explicit nullable wireless facts", asy
     assert.equal(snapshot.ports[0].network.wireless, null);
   }
 });
+
+// 一条统一订阅通道，收下全部帧；waitFor 等到条件成立（有界），quiet 观察一段时间里没有新帧。
+async function openStream(subscriptions) {
+  const controller = new AbortController();
+  const response = await fetch(`${server.baseUrl}/api/subscriptions/stream`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ version: 1, subscriptions }), signal: controller.signal
+  });
+  assert.equal(response.status, 200);
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const frames = [];
+  let pending = "";
+  const pump = (async () => {
+    for (;;) {
+      const { done, value } = await reader.read().catch(() => ({ done: true }));
+      if (done) return;
+      pending += decoder.decode(value, { stream: true });
+      const lines = pending.split("\n");
+      pending = lines.pop();
+      for (const line of lines) if (line.trim()) frames.push(JSON.parse(line));
+    }
+  })();
+  const of = id => frames.filter(frame => frame.subscriptionId === id).map(frame => frame.value);
+  return {
+    of,
+    async waitFor(description, predicate, timeoutMs = 5_000) {
+      const deadline = Date.now() + timeoutMs;
+      while (!predicate()) {
+        if (Date.now() > deadline) assert.fail(`timed out waiting for ${description}: ${JSON.stringify(frames.map(frame => frame.subscriptionId))}`);
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+    },
+    async quiet(id, durationMs) {
+      const count = of(id).length;
+      await new Promise(resolve => setTimeout(resolve, durationMs));
+      assert.equal(of(id).length, count, `${id} sent a frame without a content change`);
+    },
+    async close() { controller.abort(); await reader.cancel().catch(() => {}); await pump; }
+  };
+}
+
+test("topology structure and the metric catalog push once, then only on change; sampled fields push every sample", async () => {
+  await server.json("/__test/scenario/reset", { method: "POST" });
+  await server.scenario({ deviceTopologyStorage: true });
+  const stream = await openStream([
+    { id: "state", path: "/api/device-topology/state/subscribe?intervalMs=100" },
+    { id: "fields", path: "/api/device-topology/fields/subscribe?intervalMs=100" },
+    { id: "catalog", path: "/api/metrics/fields/catalog/subscribe?intervalMs=100" }
+  ]);
+  try {
+    await stream.waitFor("first frames", () => stream.of("state").length === 1 && stream.of("catalog").length === 1
+      && stream.of("fields").length >= 3);
+    await stream.quiet("state", 500);
+    assert.equal(stream.of("catalog").length, 1, "an unchanged catalog was resent");
+
+    // 结构帧：卷只带 EventDriven 的挂载路径，快照里卷的 freeBytes 为 null；可用空间只在字段帧里。
+    const [first] = stream.of("state");
+    const decoded = deviceTopologyStateDecoder.decode(first);
+    assert.deepEqual(first.informationFields.devices.map(device => device.fields.map(field => field.definition.name)),
+      [["volume_all_mount_paths_reported"]]);
+    const volume = decoded.snapshot.ports.find(port => port.id === "fixture-usb-storage-volumes").storage.partitions[0].volumes[0];
+    assert.equal(volume.freeBytes, null);
+    const fields = stream.of("fields");
+    assert.deepEqual(fields.at(-1).devices[0].fields.map(field => [field.definition.name, field.value]),
+      [["volume_all_mount_paths_reported", ["F:\\"]], ["volume_all_free_bytes_actual", "250092956672"]]);
+    assert.ok(Date.parse(fields.at(-1).observedAt) > Date.parse(fields[0].observedAt), "each sample has its own observation time");
+
+    // 只改采样值：字段帧带新值，结构不推。
+    await server.scenario({ deviceTopologyVolumeFreeBytes: "200000000000" });
+    await stream.waitFor("the sampled free space", () => stream.of("fields").at(-1).devices[0].fields[1].value === "200000000000");
+    await stream.quiet("state", 300);
+
+    // 结构变化推一帧；lastSuccessAt 是提交这次变化的采集时间。
+    await server.scenario({ deviceTopologyBiosVersion: "FIXTURE.1" });
+    await stream.waitFor("the structural change", () => stream.of("state").length === 2);
+    const changed = stream.of("state")[1];
+    assert.equal(changed.snapshot.system.biosVersion, "FIXTURE.1");
+    assert.ok(Date.parse(changed.lastSuccessAt) > Date.parse(first.lastSuccessAt));
+    assert.equal(changed.lastSuccessAt, changed.snapshot.capturedAt);
+    await stream.quiet("state", 300);
+
+    // 健康变化照推：失败推一帧（快照和 lastSuccessAt 沿用上次成功的提交），失败不变不再推，恢复推一帧。
+    await server.scenario({ deviceTopologyFailure: true });
+    await stream.waitFor("the failure", () => stream.of("state").length === 3);
+    const failed = stream.of("state")[2];
+    assert.equal(failed.state, "failed");
+    assert.equal(failed.lastSuccessAt, changed.lastSuccessAt);
+    assert.deepEqual(failed.snapshot, changed.snapshot);
+    assert.ok(Date.parse(failed.lastAttemptAt) > Date.parse(changed.lastAttemptAt));
+    await stream.quiet("state", 300);
+    await server.scenario({ deviceTopologyFailure: false });
+    await stream.waitFor("the recovery", () => stream.of("state").length === 4);
+    const recovered = stream.of("state")[3];
+    assert.equal(recovered.state, "ready");
+    assert.equal(recovered.snapshot.capturedAt, changed.snapshot.capturedAt, "unchanged structure keeps its captured snapshot");
+    assert.ok(Date.parse(recovered.lastSuccessAt) > Date.parse(failed.lastSuccessAt));
+
+    // 目录：组件安装信息也是内容，换修订号并推一帧。
+    const firstRevision = stream.of("catalog")[0].catalogRevision;
+    await server.scenario({ metricCatalogComponent: "installed" });
+    await stream.waitFor("the catalog change", () => stream.of("catalog").length === 2);
+    assert.notEqual(stream.of("catalog")[1].catalogRevision, firstRevision);
+    await stream.quiet("catalog", 300);
+  } finally {
+    await stream.close();
+    await server.json("/__test/scenario/reset", { method: "POST" });
+  }
+});
