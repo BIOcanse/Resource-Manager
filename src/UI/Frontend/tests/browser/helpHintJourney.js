@@ -69,6 +69,7 @@ export default async function helpHintJourney(page, baseUrl) {
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   const copy = await loadAppCopy("zh-CN");
   const panel = page.locator(".resource-table-panel");
+  await waitForResourceBars(page);
   await panel.scrollIntoViewIfNeeded();
   const badge = panel.locator("#resourceTableStatus");
   const hint = panel.locator(".resource-table-title .help-hint");
@@ -228,6 +229,7 @@ export default async function helpHintJourney(page, baseUrl) {
   await writeFrontendPreferences(page, (value) => { value.appearance.animationStyle = "none"; });
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => document.body.dataset.animations === "none", null, { timeout: 5000 });
+  await waitForResourceBars(page);
   await panel.scrollIntoViewIfNeeded();
   await hint.waitFor();
   const still = await hint.boundingBox();
@@ -249,6 +251,7 @@ export default async function helpHintJourney(page, baseUrl) {
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForFunction((label) => document.querySelector(".resource-table-title .help-hint")?.getAttribute("aria-label") === label, text.common.helpHint, { timeout: 8000 })
       .catch(() => assert.fail(`${language}: the question mark is not named in this language`));
+    await waitForResourceBars(page);
     await hint.evaluate((element) => element.scrollIntoView({ block: "center" }));
     const measure = () => page.evaluate(() => {
       const rect = (element) => element?.getBoundingClientRect();
@@ -280,8 +283,11 @@ export default async function helpHintJourney(page, baseUrl) {
     // 否则指针落在问号刚离开的位置。
     await waitForContentSettled(page);
     const narrow = await stableBox(page, ".resource-table-title .help-hint");
-    await page.mouse.move(narrow.x + narrow.width / 2, narrow.y + narrow.height / 2, { steps: 3 });
-    await page.locator(live).waitFor({ timeout: 2000 }).catch(() => assert.fail(`${language}: hovering the question mark at the narrow window does not open it`));
+    const pointer = { x: narrow.x + narrow.width / 2, y: narrow.y + narrow.height / 2 };
+    await page.mouse.move(pointer.x, pointer.y, { steps: 3 });
+    await page.locator(live).waitFor({ timeout: 2000 }).catch(async () => {
+      assert.fail(`${language}: hovering the question mark at the narrow window does not open it ${JSON.stringify(await hoverDiagnostics(page, pointer, narrow))}`);
+    });
     assert.equal((await page.locator(live).textContent()).trim(), text.resourceTable.accountingBasis, `${language}: the explanation is in this language`);
     assertPlaced(await boxes(page), `${language} narrow`);
     const label = await panel.locator(".resource-table-title h2").boundingBox();
@@ -292,6 +298,56 @@ export default async function helpHintJourney(page, baseUrl) {
 
   assert.deepEqual(failures, [], "no page errors");
   return { hover: opened.placement, selected: selected.text.length, narrow: layouts };
+}
+
+// 资源条区在资源表上方。它的数据跟可见区域走：没进过视野就一直是“正在加载”的矮占位，第一次露出来才取数据、画出条目、
+// 整块变高，把资源表连同问号往下推（10-27 实测一次推了 142 px）。所以每次加载后先把资源条区滚进视野、等条目画出来，
+// 再去量布局、指问号；条目有过数据后，离开视野也保留（退出不是删除），之后不会再变高。
+async function waitForResourceBars(page) {
+  await page.locator(".resource-breakdown-panel").scrollIntoViewIfNeeded();
+  await page.locator(".resource-breakdown-item").first().waitFor({ state: "attached", timeout: 8000 })
+    .catch(async () => assert.fail(`the resource bars above the table never received their first data ${JSON.stringify(await page.evaluate(() => {
+      const panel = document.querySelector(".resource-breakdown-panel");
+      const item = document.querySelector(".resource-breakdown-item");
+      const box = item?.getBoundingClientRect();
+      return {
+        panel: panel ? panel.innerText.slice(0, 200) : null,
+        items: document.querySelectorAll(".resource-breakdown-item").length,
+        first: box ? { width: box.width, height: box.height, top: box.top } : null
+      };
+    }))}`));
+}
+
+// 悬停没打开时的现场：指针下是什么、问号现在在哪（和指上去时比）、问号和弹层的状态、页面滚动和退场层。只用于失败消息。
+async function hoverDiagnostics(page, pointer, aimed) {
+  return page.evaluate(({ pointer, aimed }) => {
+    const describe = (element) => element
+      ? `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ""}${element.classList.length ? `.${[...element.classList].join(".")}` : ""}`
+      : null;
+    const chain = (element) => {
+      const names = [];
+      let node = element;
+      while (node && names.length < 6) { names.push(describe(node)); node = node.parentElement; }
+      return names;
+    };
+    const button = document.querySelector(".resource-table-title .help-hint");
+    const box = button?.getBoundingClientRect();
+    const under = document.elementFromPoint(pointer.x, pointer.y);
+    return {
+      pointer,
+      aimed,
+      now: box ? { x: box.x, y: box.y, width: box.width, height: box.height } : null,
+      underPointer: chain(under),
+      underIsButton: Boolean(button && under && (under === button || button.contains(under))),
+      buttonOpen: button?.classList.contains("open") ?? null,
+      buttonHover: button?.matches(":hover") ?? null,
+      popovers: [...document.querySelectorAll(".help-hint-popover")].map((node) => ({ ghost: node.hasAttribute("data-exit-ghost"), id: node.id })),
+      scroll: { x: window.scrollX, y: window.scrollY },
+      leavingLayer: document.querySelector(".page-leaving-layer")?.childElementCount ?? null,
+      monitorHidden: document.querySelector('.page-host[data-page-id="monitor"]')?.getAttribute("aria-hidden") ?? null,
+      focused: document.hasFocus()
+    };
+  }, { pointer, aimed });
 }
 
 // 元素的外框连续 3 帧不变时返回它（最多等 2 秒；到时仍在动就按最后一帧，由后面的断言报错）。
