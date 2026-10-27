@@ -14,8 +14,10 @@ const channel = {
     return { updatePath(next: string) { entry.path = next; }, dispose() { entry.stopped = true; } };
   }
 } as unknown as BackendSubscriptionChannel;
+let canonicalizations = 0;
 const family = new BackendPushValueSourceFamily<string, number>({
   key: "test.hook", channel, buildUrl: (query, interval) => `${query}/${interval}`,
+  canonicalizeQuery: query => { canonicalizations++; return query; },
   decoder: defineResponseDecoder("number", value => Number(value))
 });
 const ready = (data: number): SourceSnapshot<number> => ({ key: family.key, status: "ready", data, error: null,
@@ -47,6 +49,12 @@ try {
   assert.equal(listeners.length, 3);
   state.setUnrelated(1);
   assert.equal(listeners.length, 3, "Equivalent demand retains its lease");
+  // The held demand was canonicalized when it was selected; reads and a published frame do not canonicalize it again.
+  const selectedCanonicalizations = canonicalizations;
+  for (let read = 0; read < 5; read++) state.view.snapshot();
+  listeners[2].publish(ready(43));
+  assert.equal(state.view.snapshot().data, 43);
+  assert.equal(canonicalizations, selectedCanonicalizations, "Reads of a held demand do not canonicalize its query");
   state.setInterval(2300);
   assert.equal(listeners.length, 4);
   assert.equal(listeners[2].stopped, true);

@@ -18,6 +18,9 @@ const bars = [
 ];
 
 assert.equal(reconcileResourceSelection(bars, null), null);
+// A frame that leaves the selected segment at its index keeps the selection object, so its readers are not notified.
+const unchanged = { metricId: "cpu.usage", softwareId: "software-b", displayKind: null, index: 1 };
+assert.strictEqual(reconcileResourceSelection(bars, unchanged), unchanged);
 assert.deepEqual(reconcileResourceSelection([
   bar("cpu.usage", ["software-b", "software-a"])
 ], {

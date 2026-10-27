@@ -52,5 +52,6 @@ export function reconcileResourceSelection(
   const retainedIndex = currentBar
     ? selectableResourceSegmentIds(currentBar).indexOf(current.softwareId)
     : -1;
-  return retainedIndex >= 0 ? { ...current, index: retainedIndex } : null;
+  // An unchanged selection keeps its identity, so a frame that leaves it in place does not notify its readers.
+  return retainedIndex < 0 ? null : retainedIndex === current.index ? current : { ...current, index: retainedIndex };
 }

@@ -9,12 +9,11 @@ import {
 
 export interface PushValueSourceFamily<TQuery, TValue> {
   readonly key: string;
-  readSnapshot(query: TQuery): SourceSnapshot<TValue>;
-  subscribeSnapshot(
-    query: TQuery,
-    intervalMs: number,
-    listener: (value: SourceSnapshot<TValue>) => void
-  ): () => void;
+  /**
+   * The family member for one query. The query is canonicalized once here; reading or subscribing through the
+   * returned source does not canonicalize it again, so a consumer holding one demand pays for it once per change.
+   */
+  select(query: TQuery): PushValueSource<TValue>;
 }
 
 export interface PushValueSource<TValue> {
@@ -94,13 +93,29 @@ implements PushValueSourceFamily<TQuery, TValue> {
     this.backendEpoch = this.channel.backendEpoch;
   }
 
-  readSnapshot(query: TQuery): SourceSnapshot<TValue> {
-    return this.entryFor(query).snapshot;
+  select(query: TQuery): PushValueSource<TValue> {
+    const canonicalQuery = this.canonicalizeQuery(query);
+    return {
+      key: this.key,
+      readSnapshot: () => this.entryFor(canonicalQuery, query).snapshot,
+      subscribeSnapshot: (intervalMs, listener) => this.subscribeEntry(canonicalQuery, query, intervalMs, listener)
+    };
   }
 
-  private entryFor(query: TQuery): PushEntry<TQuery, TValue> {
+  readSnapshot(query: TQuery): SourceSnapshot<TValue> {
+    return this.select(query).readSnapshot();
+  }
+
+  subscribeSnapshot(
+    query: TQuery,
+    intervalMs: number,
+    listener: (value: SourceSnapshot<TValue>) => void
+  ): () => void {
+    return this.select(query).subscribeSnapshot(intervalMs, listener);
+  }
+
+  private entryFor(canonicalQuery: string, query: TQuery): PushEntry<TQuery, TValue> {
     this.fenceEpoch();
-    const canonicalQuery = this.canonicalizeQuery(query);
     let entry = this.entries.get(canonicalQuery);
     if (!entry) {
       entry = {
@@ -126,12 +141,13 @@ implements PushValueSourceFamily<TQuery, TValue> {
     });
   }
 
-  subscribeSnapshot(
+  private subscribeEntry(
+    canonicalQuery: string,
     query: TQuery,
     intervalMs: number,
     listener: (value: SourceSnapshot<TValue>) => void
   ): () => void {
-    const entry = this.entryFor(query);
+    const entry = this.entryFor(canonicalQuery, query);
     this.unusedEntries.delete(entry.canonicalQuery);
     const listenerId = ++this.nextListenerId;
     entry.listeners.set(listenerId, {
@@ -260,28 +276,28 @@ implements PushValueSourceFamily<TQuery, TValue> {
 export class BackendPushValueSource<TValue>
 implements PushValueSource<TValue> {
   readonly key: string;
-  private readonly family: BackendPushValueSourceFamily<null, TValue>;
+  private readonly current: PushValueSource<TValue>;
 
   constructor(options: PushValueSourceOptions<TValue>) {
     this.key = options.key;
-    this.family = new BackendPushValueSourceFamily<null, TValue>({
+    this.current = new BackendPushValueSourceFamily<null, TValue>({
       key: options.key,
       channel: options.channel,
       buildUrl: (_query, intervalMs) => options.buildUrl(intervalMs),
       canonicalizeQuery: () => "current",
       decoder: options.decoder
-    });
+    }).select(null);
   }
 
   readSnapshot(): SourceSnapshot<TValue> {
-    return this.family.readSnapshot(null);
+    return this.current.readSnapshot();
   }
 
   subscribeSnapshot(
     intervalMs: number,
     listener: (value: SourceSnapshot<TValue>) => void
   ): () => void {
-    return this.family.subscribeSnapshot(null, intervalMs, listener);
+    return this.current.subscribeSnapshot(intervalMs, listener);
   }
 }
 

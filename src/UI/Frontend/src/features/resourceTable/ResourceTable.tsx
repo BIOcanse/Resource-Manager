@@ -39,7 +39,7 @@ import {
 } from "./resourceTableContentState";
 import { pinResourceTableRow } from "./resourceTableRowPin";
 import { resourceTableColumnsEqual } from "./resourceTableColumnIdentity";
-import { projectResourceTableHeat } from "./resourceTableHeat";
+import { resourceTableHeatMaxima, type ResourceTableHeatMaxima } from "./resourceTableHeat";
 import { accountResourceTableVisibility, resourceTableBusinessRowCount } from "./resourceTableAccounting.ts";
 import { ContentState } from "../../ui/patterns/ContentState.tsx";
 import { useInlineEditorFocus } from "../../interactions/inlineEditorFocus";
@@ -124,7 +124,9 @@ export function ResourceTable(props: ResourceTableProps) {
     props.expandedSoftwareIds,
     searchQuery(),
     rowSearchKeyCache));
-  const visibleRows = createMemo(() => projectResourceTableHeat(accountResourceTableVisibility(sourceRows(), projectedRows(), props.mode, props.snapshot?.columns ?? [])));
+  const visibleRows = createMemo(() => accountResourceTableVisibility(sourceRows(), projectedRows(), props.mode, props.snapshot?.columns ?? []));
+  // Heat is each mounted cell's share of its column maximum over the shown rows; rows and cells are not copied for it.
+  const heatMaxima = createMemo(() => resourceTableHeatMaxima(visibleRows()));
   const baseCount = createMemo(() => {
     const rows = sourceRows();
     return props.mode === "software"
@@ -238,6 +240,7 @@ export function ResourceTable(props: ResourceTableProps) {
                 mode={props.mode}
                 editMode={props.editMode}
                 rows={visibleRows()}
+                heatMaxima={heatMaxima()}
                 snapshot={props.snapshot}
                 columnSettings={props.columnSettings}
                 processFields={props.processFields}
@@ -429,6 +432,8 @@ function VirtualResourceTable(props: {
   mode: ResourceTableViewMode;
   editMode: boolean;
   rows: ResourceTableRow[];
+  /** Column maxima of rows (resourceTableHeat.ts); each cell's heat is its share of its column's maximum. */
+  heatMaxima: ResourceTableHeatMaxima;
   snapshot: ResourceTableSnapshot | null;
   columnSettings: ResourceTableColumnSettings[];
   processFields: readonly ProcessMetricField[];
@@ -563,12 +568,13 @@ function VirtualResourceTable(props: {
     const start = visibleRange().start;
     const ids = columnIds();
     const texts = columnTexts();
+    const maxima = props.heatMaxima;
     return slots().map(slot => {
       const row = current[start + slot];
       const cells = new Map<string, ResourceTableCellPresentation>();
       for (const id of ids) {
         if (id !== "name" && id !== "status") {
-          cells.set(id, resourceTableCellPresentation(row?.values?.[id], id, texts.get(id)!));
+          cells.set(id, resourceTableCellPresentation(row?.values?.[id], id, texts.get(id)!, maxima.get(id)));
         }
       }
       return { row, name: rowName(row), status: rowStatus(row), cells } satisfies ResourceTableRowPresentation;

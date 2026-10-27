@@ -1,5 +1,5 @@
 import type { PushValueItem, PushValueItemPolicy } from "../../frontendRuntime/push/PushCurrentItems.ts";
-import type { ResourceMonitorSnapshot, ResourceProcessDetailsSnapshot } from "../../types.ts";
+import type { ResourceFactsMonitorSnapshot, ResourceMonitorSnapshot, ResourceProcessDetailsSnapshot } from "../../types.ts";
 import type { ResourceBarQuery, ResourceBreakdownQuery, ResourceMonitorQuery } from "./resourceMonitorApi.ts";
 
 function barKey(metricId: string, scaleMode: string): string {
@@ -43,9 +43,10 @@ export const resourceMonitorCurrentItems: PushValueItemPolicy<ResourceMonitorQue
     ? factKeys(query).some(key => !keys.has(key)) || (needsIdentities(query) && !keys.has(identityKey(query)))
     : query.bars?.some(bar => !keys.has("bar:" + barKey(bar.source || bar.metricId, bar.scaleMode))) ?? false,
   split: (query, value) => {
+    // A frame of the other scope has none of this query's items.
     if (query.scope === "table") {
+      if (value.scope !== "table") return [];
       const facts = value.facts;
-      if (!facts) return [];
       const items: PushValueItem<ResourceMonitorSnapshot>[] = facts.metrics.map(metric => ({
         key: "facts:" + metric.metricId, capturedAt: metric.capturedAt ?? facts.capturedAt ?? null,
         value: { ...value, facts: { capturedAt: facts.capturedAt, metrics: [metric] } }
@@ -56,17 +57,21 @@ export const resourceMonitorCurrentItems: PushValueItemPolicy<ResourceMonitorQue
       }
       return items;
     }
+    if (value.scope !== "bars") return [];
     const items: PushValueItem<ResourceMonitorSnapshot>[] = (value.breakdown.bars ?? []).map(bar => ({
       key: "bar:" + barKey(bar.metricId, bar.scaleMode), capturedAt: bar.capturedAt ?? value.capturedAt ?? null,
       value: { ...value, breakdown: { ...value.breakdown, bars: [bar] } }
     }));
     return items;
   },
-  combine: (query, values, latest) => query.scope === "table"
-    ? { ...latest, facts: { capturedAt: latest.facts?.capturedAt,
-      metrics: values.flatMap(value => value.facts?.metrics ?? []),
-      identities: values.find(value => value.facts?.identities !== undefined)?.facts?.identities ?? [] } }
-    : { ...latest, breakdown: { ...latest.breakdown, bars: values.flatMap(value => value.breakdown.bars ?? []) } }
+  // Items come only from split, which keeps each query's own scope, so every value here has latest's scope.
+  combine: (_query, values, latest) => latest.scope === "table"
+    ? { ...latest, facts: { capturedAt: latest.facts.capturedAt,
+      metrics: values.flatMap(value => value.scope === "table" ? value.facts.metrics : []),
+      identities: values.find((value): value is ResourceFactsMonitorSnapshot => value.scope === "table"
+        && value.facts.identities !== undefined)?.facts.identities ?? [] } }
+    : { ...latest, breakdown: { ...latest.breakdown,
+      bars: values.flatMap(value => value.scope === "bars" ? value.breakdown.bars ?? [] : []) } }
 };
 
 // Details have their own sampling contract, never borrowed from bars or table facts.

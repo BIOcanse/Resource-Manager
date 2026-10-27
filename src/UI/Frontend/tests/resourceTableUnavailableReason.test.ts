@@ -42,7 +42,7 @@ for (const { id } of languages) {
     for (const [columnId, { code, family }] of Object.entries(expected)) {
       const cell = summary.values[columnId];
       assert.equal(cell.unavailableReason, code, `${id} ${columnId}: the reason is kept as sent`);
-      const presentation = resourceTableCellPresentation(cell, columnId, { label: columnId, basis: undefined });
+      const presentation = resourceTableCellPresentation(cell, columnId, { label: columnId, basis: undefined }, undefined);
       const reason = family === null ? null
         : (copy.resourceBreakdown.unavailableReason as unknown as Record<string, string>)[family];
       assert.ok(!presentation.display.includes(code) && !/[a-z]+-[a-z]+-/.test(presentation.display),

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { projectResourceTableHeat } from "../src/features/resourceTable/resourceTableHeat.ts";
+import { resourceTableCellHeat, resourceTableHeatMaxima } from "../src/features/resourceTable/resourceTableHeat.ts";
 import type { ResourceTableRow } from "../src/types.ts";
 
 function row(id: string, memory: number | null, cpu: number): ResourceTableRow {
@@ -12,41 +12,34 @@ function row(id: string, memory: number | null, cpu: number): ResourceTableRow {
     }
   };
 }
+const heatOf = (rows: ResourceTableRow[], index: number, columnId: string) =>
+  resourceTableCellHeat(rows[index].values[columnId], resourceTableHeatMaxima(rows).get(columnId));
 
 const input = [row("summary", 5.4, 5.1), row("a", 14.3, 1.2), row("b", 8.2, 0.2)];
 const saved = structuredClone(input);
-const output = projectResourceTableHeat(input);
-assert.equal(output[1].values.memory.heatPercent, 100);
-assert.equal(output[2].values.memory.heatPercent, 8.2 / 14.3 * 100);
-assert.equal(output[0].values.memory.heatPercent, 5.4 / 14.3 * 100);
-assert.equal(output[0].values.cpu.heatPercent, 100);
-assert.equal(output[1].values.cpu.heatPercent, 1.2 / 5.1 * 100);
-assert.deepEqual(input, saved, "projection must not mutate raw values");
-for (let index = 0; index < output.length; index++) {
-  for (const key of ["memory", "cpu"]) {
-    const { heatPercent, privateHeatPercent, ...cell } = output[index].values[key];
-    assert.deepEqual(cell, input[index].values[key]);
-  }
+assert.equal(heatOf(input, 1, "memory").heat, 100);
+assert.equal(heatOf(input, 2, "memory").heat, 8.2 / 14.3 * 100);
+assert.equal(heatOf(input, 0, "memory").heat, 5.4 / 14.3 * 100);
+assert.equal(heatOf(input, 0, "cpu").heat, 100);
+assert.equal(heatOf(input, 1, "cpu").heat, 1.2 / 5.1 * 100);
+assert.deepEqual(input, saved, "heat must not touch rows or cells");
+assert.equal(heatOf(input.slice(2), 0, "memory").heat, 100);
+assert.equal(heatOf([...input].reverse(), 1, "memory").heat, 100);
+assert.equal(resourceTableHeatMaxima([]).size, 0);
+for (const index of [0, 1]) {
+  const rows = [row("empty", null, 0), row("zero", 0, 0)];
+  assert.deepEqual(heatOf(rows, index, "memory"), { heat: 0, privateHeat: 0 });
+  assert.deepEqual(heatOf(rows, index, "cpu"), { heat: 0, privateHeat: 0 });
 }
-assert.equal(projectResourceTableHeat(input.slice(2))[0].values.memory.heatPercent, 100);
-assert.equal(projectResourceTableHeat([...input].reverse())[1].values.memory.heatPercent, 100);
-assert.deepEqual(projectResourceTableHeat([]), []);
-for (const item of projectResourceTableHeat([row("empty", null, 0), row("zero", 0, 0)])) {
-  assert.equal(item.values.memory.heatPercent, 0);
-  assert.equal(item.values.cpu.heatPercent, 0);
-}
-const tied = projectResourceTableHeat([row("a", 8, 2), row("b", 8, 2)]);
-assert.ok(tied.every((item) => item.values.memory.heatPercent === 100));
-assert.equal(projectResourceTableHeat([row("large", Number.MAX_VALUE, 0)])[0]
-  .values.memory.heatPercent, 100, "divide before multiplying to avoid overflow");
-console.log("Resource table per-column heat projection passed.");
+const tied = [row("a", 8, 2), row("b", 8, 2)];
+assert.ok([0, 1].every((index) => heatOf(tied, index, "memory").heat === 100));
+assert.equal(heatOf([row("large", Number.MAX_VALUE, 0)], 0, "memory").heat, 100, "divide before multiplying to avoid overflow");
+assert.deepEqual(resourceTableCellHeat(undefined, 10), { heat: 0, privateHeat: 0 }, "an absent cell has no heat");
+assert.deepEqual(resourceTableCellHeat({ value: 5, unit: "%" }, undefined), { heat: 0, privateHeat: 0 }, "a column without maximum has no heat");
 
 const shared = [row("a", 12, 0), row("b", 16, 0)];
 shared[0].values.memory.sharedValue = 4;
 shared[1].values.memory.sharedValue = 6;
-const split = projectResourceTableHeat(shared);
-assert.equal(split[0].values.memory.heatPercent, 75);
-assert.equal(split[0].values.memory.privateHeatPercent, 50);
-assert.equal(split[1].values.memory.heatPercent, 100);
-assert.equal(split[1].values.memory.privateHeatPercent, 62.5);
-assert.equal(projectResourceTableHeat(shared.slice(0, 1))[0].values.memory.sharedValue, 4);
+assert.deepEqual(heatOf(shared, 0, "memory"), { heat: 75, privateHeat: 50 });
+assert.deepEqual(heatOf(shared, 1, "memory"), { heat: 100, privateHeat: 62.5 });
+console.log("Resource table per-column heat passed.");

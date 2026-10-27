@@ -104,9 +104,9 @@ const query = (scope: "table" | "bars", ids: string[]): ResourceMonitorQuery => 
 });
 function resourceFrame(scope: "table" | "bars", second: number, ids: string[]): ResourceMonitorSnapshot {
   const metrics = ids.map(id => bar(id, second));
-  return { capturedAt: time(second), breakdown: { capturedAt: time(second), bars: scope === "bars" ? metrics : [] },
-    ...(scope === "table" ? { facts: { capturedAt: time(second), metrics, identities: [] } } : {}),
-    table: { rows: [], columns: [], sort: { columnId: "impact", direction: "desc" } } };
+  return scope === "bars"
+    ? { scope, capturedAt: time(second), breakdown: { capturedAt: time(second), bars: metrics } }
+    : { scope, capturedAt: time(second), facts: { capturedAt: time(second), metrics, identities: [] } };
 }
 for (const scope of ["table", "bars"] as const) {
   const h = harness(resourceMonitorCurrentItems);

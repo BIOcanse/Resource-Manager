@@ -8,7 +8,7 @@ import type {
   ResourceScaleMode,
   ResourceSoftwareSegment
 } from "../types";
-import { decodeResourceFacts, projectResourceFacts } from "../features/resourceTable/resourceFacts.ts";
+import { decodeResourceFacts } from "../features/resourceTable/resourceFacts.ts";
 import { decodeBarMetricFacts, decodeDetailsMetricFacts, requireTimestamp } from "./resourceMetricFactsWire.ts";
 import {
   requireArray,
@@ -130,12 +130,10 @@ export function decodeResourceMonitorWireSnapshot(
     snapshot.capturedAt,
     "$.capturedAt",
     requireTimestamp);
-  const breakdown = decodeResourceBreakdownWireSnapshot(snapshot.breakdown);
-  const table = projectResourceFacts({ capturedAt: capturedAt ?? undefined, metrics: [] }, [], "software", "impact", "desc");
   return {
+    scope: "bars",
     capturedAt: capturedAt ?? undefined,
-    breakdown,
-    table
+    breakdown: decodeResourceBreakdownWireSnapshot(snapshot.breakdown)
   };
 }
 

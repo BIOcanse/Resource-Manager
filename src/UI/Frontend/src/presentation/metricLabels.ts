@@ -10,6 +10,7 @@ import {
   type ByteQuantityKind
 } from "./byteUnits.ts";
 import { backendMessageDomains } from "./backendMessage.ts";
+import { resourceTableCellHeat } from "../features/resourceTable/resourceTableHeat.ts";
 import { userFacingMetricUnavailableReason } from "./userFacingText.ts";
 import { formatFieldValue } from "./fieldValueFormat.ts";
 import { formatLegacyMetricNumber } from "./legacyMetricNumber.ts";
@@ -381,11 +382,12 @@ export interface ResourceTableCellPresentation {
   readonly unavailable: boolean;
 }
 
-/** One current cell projection, shared by its text, tooltip and heat bindings. */
+/** One current cell projection, shared by its text, tooltip and heat bindings; heat is the cell's share of heatMaximum. */
 export function resourceTableCellPresentation(
   cell: ResourceTableValue | null | undefined,
   columnId: string,
-  text: { readonly label: string; readonly basis: string | undefined }
+  text: { readonly label: string; readonly basis: string | undefined },
+  heatMaximum: number | undefined
 ): ResourceTableCellPresentation {
   const display = resourceTableCellText(cell, columnId);
   const title = (cell?.sharedValue != null
@@ -396,7 +398,6 @@ export function resourceTableCellPresentation(
     + (text.basis ? `\n${text.basis}` : "")
     + (cell?.basis ? `\n${cell.basis}` : "")
     + (cell?.unavailableReason ? unavailableReasonLines(cell.unavailableReason, display) : "");
-  return { display, title, heat: cell?.heatPercent ?? 0,
-    privateHeat: cell?.privateHeatPercent ?? cell?.heatPercent ?? 0,
-    unavailable: cell?.availability === "Unavailable" };
+  const { heat, privateHeat } = resourceTableCellHeat(cell, heatMaximum);
+  return { display, title, heat, privateHeat, unavailable: cell?.availability === "Unavailable" };
 }

@@ -1,6 +1,6 @@
 import { formatTrimmedDigits } from "../../presentation/interfaceNumbers.ts";
 import { ResourceManager } from "../../preferences/generated/frontendPoints.values.ts";
-import type { ResourceBreakdownBar, ResourceProcessSegment, ResourceSoftwareSegment, ResourceMonitorSnapshot, ResourceTableColumnSettings, ResourceTableRow, ResourceTableSnapshot, ResourceTableValue, ResourceTableViewMode } from "../../types.ts";
+import type { ResourceBreakdownBar, ResourceProcessSegment, ResourceSoftwareSegment, ResourceFactsMonitorSnapshot, ResourceTableColumnSettings, ResourceTableRow, ResourceTableSnapshot, ResourceTableValue, ResourceTableViewMode } from "../../types.ts";
 import { decodeFactsMetricFacts, requireTimestamp } from "../../api/resourceMetricFactsWire.ts";
 import { requireArray, requireOneOf, requireFiniteNumber, requireNonEmptyString, requireNullable, requireRecord, requireSafeInteger, requireString, ResponseDecodeError } from "../../frontendRuntime/request/ResponseDecoder.ts";
 import { createMemo, type Accessor } from "solid-js";
@@ -8,6 +8,7 @@ import { isReservedSegment } from "../resourceBreakdown/resourceProcessIdentity.
 import { resourceProcessDisplayName, resourceTableCellText } from "../../presentation/metricLabels.ts";
 import { uiText } from "../../text.ts";
 import { isResourceTableMetricColumn, resourceTableMetricId } from "./resourceTableSources.ts";
+import { resourceTableColumnsEqual } from "./resourceTableColumnIdentity.ts";
 
 type IdentityProcess = Omit<ResourceProcessSegment, "value" | "systemPercent" | "softwarePercent">;
 type IdentitySoftware = Omit<ResourceSoftwareSegment, "value" | "systemPercent" | "processes" | "baseScore"> & { processes: IdentityProcess[] };
@@ -36,7 +37,7 @@ export interface ResourceFacts {
 }
 
 /** Decode the neutral attribution catalogs; all table identities are created below. */
-export function decodeResourceFacts(value: unknown): ResourceMonitorSnapshot {
+export function decodeResourceFacts(value: unknown): ResourceFactsMonitorSnapshot {
   const frame = requireRecord(value);
   if (requireSafeInteger(frame.version, "$.version") !== 2) throw new ResponseDecodeError("$.version", "resource facts version 2");
   const capturedAt = requireNullable(frame.capturedAt, "$.capturedAt", requireTimestamp) ?? undefined;
@@ -102,10 +103,11 @@ export function decodeResourceFacts(value: unknown): ResourceMonitorSnapshot {
     if (isProcess(process)) group.processCount++;
   }
   const facts = { capturedAt, metrics, identities: [...groups.values()] };
-  return { capturedAt, facts, breakdown: { capturedAt, bars: [] }, table: { capturedAt, columns: [], rows: [], sort: { columnId: "impact", direction: "desc" } } };
+  return { scope: "table", capturedAt, facts };
 }
 
-export function projectResourceFacts(facts: ResourceFacts, settings: readonly ResourceTableColumnSettings[], mode: ResourceTableViewMode, sortColumnId: string, direction: "asc" | "desc", locale?: string): ResourceTableSnapshot {
+/** collationLocale orders the text keys (names, status, user, architecture); it is the interface language. */
+export function projectResourceFacts(facts: ResourceFacts, settings: readonly ResourceTableColumnSettings[], mode: ResourceTableViewMode, sortColumnId: string, direction: "asc" | "desc", collationLocale: string): ResourceTableSnapshot {
   const options = settings;
   const columns = options.filter(column => column.visible).map(column => {
     const metric = facts.metrics.find(candidate => resourceTableMetricId(column) === candidate.metricId);
@@ -225,7 +227,7 @@ export function projectResourceFacts(facts: ResourceFacts, settings: readonly Re
   }
   // CurrentCultureIgnoreCase distinguishes accents, ignores case and leaves equal keys stable.
   // Digit runs compare by value, as Explorer orders names: "App 2" comes before "App 10".
-  const textOrder = new Intl.Collator(locale, { sensitivity: "accent", numeric: true });
+  const textOrder = new Intl.Collator(collationLocale, { sensitivity: "accent", numeric: true });
   const compare = (textKeys: boolean) => (left: ResourceTableRow, right: ResourceTableRow) => {
     const key = (item: ResourceTableRow): string | number => textKeys && sortColumnId === "name" ? item.name : textKeys && sortColumnId === "status" ? item.status : sortColumnId === "impact" ? item.impactScore : textKeys && ["user", "architecture"].includes(sortColumnId) ? item.values[sortColumnId]?.displayValue ?? "" : item.values[sortColumnId]?.value ?? -Number.MAX_VALUE;
     const a = key(left), b = key(right);
@@ -252,12 +254,16 @@ export function resourceFactsTotalBasis(metric: ResourceFactsMetric): string | u
   return basis || undefined;
 }
 
-/** Widths are consumed by the table's column memo, independently of fact rows. */
+/**
+ * Widths are consumed by the table's column memo, independently of fact rows.
+ * collationLocale is the interface language: rows are sorted again when it changes.
+ */
 export function createResourceFactsProjection(
   facts: Accessor<ResourceFacts | null>,
   settings: Accessor<readonly ResourceTableColumnSettings[]>,
   mode: Accessor<ResourceTableViewMode>,
   sort: Accessor<{ columnId: string; direction: "asc" | "desc" }>,
+  collationLocale: Accessor<string>,
   project: typeof projectResourceFacts = projectResourceFacts
 ): Accessor<ResourceTableSnapshot | null> {
   const columns = createMemo(() => settings().map(({ id, visible, source }) => ({ id, visible, source: source ?? null })), undefined, {
@@ -265,11 +271,14 @@ export function createResourceFactsProjection(
       && previous.every((column, index) => column.id === next[index].id && column.visible === next[index].visible
         && column.source === next[index].source)
   });
-  return createMemo(() => {
+  return createMemo<ResourceTableSnapshot | null>(previous => {
     const current = facts();
     const order = sort();
-    return current ? project(current, columns(), mode(), order.columnId, order.direction) : null;
-  });
+    if (!current) return null;
+    const next = project(current, columns(), mode(), order.columnId, order.direction, collationLocale());
+    // Equal columns keep the previous array, so the table's column consumers do not rebuild with every frame.
+    return previous && resourceTableColumnsEqual(previous.columns, next.columns) ? { ...next, columns: previous.columns } : next;
+  }, null);
 }
 
 function row(id: string, kind: string, name: string, status: string): ResourceTableRow {

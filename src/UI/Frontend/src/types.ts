@@ -708,9 +708,7 @@ export interface ResourceTableValue {
   unavailableReason?: string | null;
   /** A table-only explanation, e.g. why an independent system total is not additive. */
   basis?: string;
-  heatPercent?: number | null;
   sharedValue?: number | null;
-  privateHeatPercent?: number;
   attributionKind?: string;
 }
 
@@ -771,11 +769,22 @@ export interface ResourceTableSnapshot {
   viewMode?: "software" | "process" | string;
 }
 
-export interface ResourceMonitorSnapshot {
-  facts?: import("./features/resourceTable/resourceFacts.ts").ResourceFacts;
+/**
+ * One resource-monitor frame carries only what its scope sends: the table scope (facts wire version 2) its facts,
+ * the bars scope (wire version 10) its bar breakdown. The scope names which, the same scope the query asked for.
+ */
+export type ResourceMonitorSnapshot = ResourceFactsMonitorSnapshot | ResourceBarsMonitorSnapshot;
+
+export interface ResourceFactsMonitorSnapshot {
+  readonly scope: "table";
+  capturedAt?: string;
+  facts: import("./features/resourceTable/resourceFacts.ts").ResourceFacts;
+}
+
+export interface ResourceBarsMonitorSnapshot {
+  readonly scope: "bars";
   capturedAt?: string;
   breakdown: ResourceBreakdownSnapshot;
-  table: ResourceTableSnapshot;
 }
 
 export interface SystemProcessIdentity {

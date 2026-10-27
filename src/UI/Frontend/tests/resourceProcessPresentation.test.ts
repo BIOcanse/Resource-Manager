@@ -4,7 +4,7 @@ import { createRoot } from "solid-js";
 import { decodeResourceBreakdownWireSnapshot, decodeResourceProcessDetailsWireSnapshot, type ResourceBreakdownWireSnapshot } from "../src/api/resourceBreakdownWire.ts";
 import { createResourceFactsProjection, decodeResourceFacts, projectResourceFacts } from "../src/features/resourceTable/resourceFacts.ts";
 import { resourceProcessDisplayName, resourceTableRowName } from "../src/presentation/metricLabels.ts";
-import { applyLanguage } from "../src/text.ts";
+import { applyLanguage, currentLanguage } from "../src/text.ts";
 import { languageOptions } from "../src/i18n/settingsLanguages.ts";
 import { enrichSoftwareContextTarget } from "../src/components/softwareContextTarget.ts";
 
@@ -53,7 +53,7 @@ const facts = decodeResourceFacts({ version: 2, capturedAt: null, attributions: 
 }).facts!;
 const columns = [{ id: "name", visible: true }, { id: "cpu", visible: true }, { id: "memory", visible: true }, { id: "gpu.12.vram", visible: true }];
 const projection = createRoot(dispose => ({ dispose,
-  rows: createResourceFactsProjection(() => facts, () => columns, () => "process", () => ({ columnId: "name", direction: "asc" }))
+  rows: createResourceFactsProjection(() => facts, () => columns, () => "process", () => ({ columnId: "name", direction: "asc" }), currentLanguage)
 }));
 const initialIds = projection.rows()!.rows.map(row => row.id).sort();
 const languages = languageOptions.filter(option => option.id !== "system");

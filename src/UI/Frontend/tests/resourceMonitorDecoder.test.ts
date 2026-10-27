@@ -37,6 +37,10 @@ import { detailsMetricKeys, factsMetricKeys } from "./resourceFactsWireFixture.t
 
 {
   const decoded = decodeResourceMonitorWireSnapshot(readyResourceMonitorWire());
+  // Version 10 is the bars scope: it carries its breakdown and no placeholder facts or table.
+  assert.equal(decoded.scope, "bars");
+  assert.deepEqual(Object.keys(decoded).sort(), ["breakdown", "capturedAt", "scope"]);
+  if (decoded.scope !== "bars") throw new Error("unreachable");
   assert.equal(decoded.breakdown.bars?.[0]?.software[0]?.processes[0]?.processId, 42);
   assert.equal(decoded.breakdown.bars?.[0]?.software[0]?.processes[0]?.processStartKey, "134325768300000000");
 }
@@ -54,7 +58,11 @@ import { detailsMetricKeys, factsMetricKeys } from "./resourceFactsWireFixture.t
         processes: [{ processIndex: 0, value: 12, systemPercent: 12, softwarePercent: 100, baseScore: 0, sharedValue: null }] }] }]
   };
   const decoded = decodeResourceMonitorWireSnapshot(wire);
-  const metric = decoded.facts!.metrics[0];
+  // Version 2 is the table scope: it carries its facts and no placeholder breakdown or table.
+  assert.equal(decoded.scope, "table");
+  assert.deepEqual(Object.keys(decoded).sort(), ["capturedAt", "facts", "scope"]);
+  if (decoded.scope !== "table") throw new Error("unreachable");
+  const metric = decoded.facts.metrics[0];
   const process = metric.software[0].processes[0];
   assert.equal(decoded.capturedAt, capturedAt);
   assert.equal(process.processId, 4242);

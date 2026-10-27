@@ -20,10 +20,13 @@ type Source<TQuery, TValue> = PushValueSourceFamily<TQuery, TValue> | PushValueS
 type Demand<TQuery> = PushFamilyDemand<TQuery> | PushDemand | CurrentValueDemand;
 type Listener<TValue> = (snapshot: SourceSnapshot<TValue>) => void;
 
-function read<TQuery, TValue>(source: Source<TQuery, TValue>, demand: Demand<TQuery>): SourceSnapshot<TValue> {
+type Member<TValue> = PushValueSource<TValue> | CurrentValueSource<TValue>;
+
+/** A family demand names one member; selecting it canonicalizes the query once for every read and subscription. */
+function member<TQuery, TValue>(source: Source<TQuery, TValue>, demand: Demand<TQuery>): Member<TValue> {
   return "query" in demand
-    ? (source as PushValueSourceFamily<TQuery, TValue>).readSnapshot(demand.query)
-    : (source as PushValueSource<TValue>).readSnapshot();
+    ? (source as PushValueSourceFamily<TQuery, TValue>).select(demand.query)
+    : source as Member<TValue>;
 }
 
 /** Read first; only active demand opens a listener. The caller owns the returned disposal. */
@@ -31,10 +34,10 @@ export function bindPushSource<TQuery, TValue>(source: PushValueSourceFamily<TQu
 export function bindPushSource<TValue>(source: PushValueSource<TValue>, demand: PushDemand, listener: Listener<TValue>): () => void;
 export function bindPushSource<TValue>(source: CurrentValueSource<TValue>, demand: CurrentValueDemand, listener: Listener<TValue>): () => void;
 export function bindPushSource<TQuery, TValue>(source: Source<TQuery, TValue>, demand: Demand<TQuery>, listener: Listener<TValue>): () => void {
-  return bind(source, demand, listener);
+  return bind(member(source, demand), demand, listener);
 }
 
-function bind<TQuery, TValue>(source: Source<TQuery, TValue>, demand: Demand<TQuery>, listener: Listener<TValue>): () => void {
+function bind<TQuery, TValue>(source: Member<TValue>, demand: Demand<TQuery>, listener: Listener<TValue>): () => void {
   let accepting = true;
   const publish: Listener<TValue> = snapshot => {
     if (!accepting) return;
@@ -42,14 +45,12 @@ function bind<TQuery, TValue>(source: Source<TQuery, TValue>, demand: Demand<TQu
       // A consumer failure does not change the current value or sibling listeners.
     }
   };
-  publish(read(source, demand));
+  publish(source.readSnapshot());
   let unsubscribe: (() => void) | undefined;
   if (demand.active) {
     if ("intervalMs" in demand) {
       if (demand.intervalMs != null) {
-        unsubscribe = "query" in demand
-          ? (source as PushValueSourceFamily<TQuery, TValue>).subscribeSnapshot(demand.query, demand.intervalMs, publish)
-          : (source as PushValueSource<TValue>).subscribeSnapshot(demand.intervalMs, publish);
+        unsubscribe = (source as PushValueSource<TValue>).subscribeSnapshot(demand.intervalMs, publish);
       }
     } else {
       unsubscribe = (source as CurrentValueSource<TValue>).subscribeSnapshot(publish);
@@ -64,13 +65,14 @@ export function usePushSource<TValue>(source: CurrentValueSource<TValue>, demand
 export function usePushSource<TQuery, TValue>(source: Source<TQuery, TValue>, demand: Accessor<Demand<TQuery>>): PushSourceView<TValue> {
   // Equivalent demand publications must retain the listener, including startup settings saves.
   const binding = createMemo(demand, undefined, { equals: (left, right) => JSON.stringify(left) === JSON.stringify(right) });
-  const [publication, notify] = createSignal(untrack(() => read(source, binding())));
+  const selected = createMemo(() => member(source, binding()));
+  const [publication, notify] = createSignal(untrack(() => selected().readSnapshot()));
   createEffect(() => {
-    const stop = bind(source, binding(), next => notify(() => next));
+    const stop = bind(selected(), binding(), next => notify(() => next));
     onCleanup(stop);
   });
   return { snapshot: () => {
     publication();
-    return read(source, binding());
+    return selected().readSnapshot();
   } };
 }

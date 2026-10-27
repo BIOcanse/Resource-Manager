@@ -86,7 +86,7 @@ import {
   replaceCardSlotMetric,
   resizeCardSlot
 } from "./monitorConfig";
-import { uiText } from "../text.ts";
+import { currentLanguage, uiText } from "../text.ts";
 import { createResourceBreakdownBindings } from "./resourceBreakdownBindings.ts";
 
 /** 选监控项弹窗为哪个槽位打开：序号等于槽位数时是在末尾新加一个这个大小的槽位，否则换掉那个槽位的监控项。 */
@@ -345,7 +345,8 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     detailResidualMetricIds: resourceBreakdownResidualDetailMetricIds,
     barsSource: options.resourceMonitorSource,
     detailsSource: options.resourceProcessDetailsSource,
-    onBars: value => pruneResourceSelection(resourceBarViews(value.breakdown.bars ?? [], activeResourceBars(), processFields()))
+    // Selection follows the bar views shown for this frame, computed once in orderedSnapshotBars.
+    onBars: () => pruneResourceSelection(orderedSnapshotBars())
   });
   const resourceTableSubscriptionKey = createMemo(() => JSON.stringify({
     active: resourceTableNeeded() && (createResourceTableQuery().sampleMetricIds?.length ?? 0) > 0,
@@ -358,12 +359,18 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     () => JSON.parse(resourceTableSubscriptionKey()) as { active: boolean; query: ResourceMonitorQuery; intervalMs: number | null }).snapshot;
   const snapshot = createMemo(() => metricSourceSnapshot().data);
   const snapshotObservation = createMemo(() => snapshotMetricIds().length === 0 ? readyObservation() : pushObservation(metricSourceSnapshot()));
-  const resourceBreakdownSnapshot = createMemo(() => breakdownBindings.bars()?.data?.breakdown ?? null);
+  const resourceBreakdownSnapshot = createMemo(() => {
+    const value = breakdownBindings.bars()?.data;
+    return value?.scope === "bars" ? value.breakdown : null;
+  });
   const resourceProcessDetails = createMemo(() => breakdownBindings.details()?.data ?? null);
   const resourceProcessDetailsObservation = createMemo(() => pushObservation(breakdownBindings.details()));
-  const resourceTableFacts = createMemo(() => tableSourceSnapshot().data?.facts ?? null);
+  const resourceTableFacts = createMemo(() => {
+    const value = tableSourceSnapshot().data;
+    return value?.scope === "table" ? value.facts : null;
+  });
   const resourceTableSnapshot = createResourceFactsProjection(resourceTableFacts,
-    activeResourceTableColumns, resourceTableMode, resourceTableSort);
+    activeResourceTableColumns, resourceTableMode, resourceTableSort, currentLanguage);
   const resourceBarsObservation = createMemo(() => pushObservation(breakdownBindings.bars()));
   const resourceTableObservation = createMemo(() => pushObservation(tableSourceSnapshot()));
   const orderedSnapshotBars = createMemo(() => resourceBarViews(resourceBreakdownSnapshot()?.bars ?? [], activeResourceBars(), processFields()));

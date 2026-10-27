@@ -35,12 +35,13 @@ for (const { id: language } of languages) {
   assert.equal(formatFieldValue({ ...count, integerValue: null, numericValue: 88.3, unit: "%" }), `${decimal}%`, `${language} canonical field`);
   assert.equal(formatFieldValue({ ...count, integerValue: null, numericValue: 1.15, unit: "%" }), `${(1.1).toLocaleString(language, { useGrouping: false })}%`, `${language} keeps existing field rounding`);
   assert.equal(resourceTableCellText({ value: 88.3, unit: "%" }), `${decimal}%`, `${language} resource table`);
-  const presentation = resourceTableCellPresentation({ value: 88.3, unit: "%", heatPercent: 60, privateHeatPercent: 20,
-    basis: "frame basis" }, "cpu", { label: "CPU", basis: "column basis" });
+  // The column maximum is twice this reading, so the cell's heat is exactly half.
+  const presentation = resourceTableCellPresentation({ value: 88.3, unit: "%",
+    basis: "frame basis" }, "cpu", { label: "CPU", basis: "column basis" }, 88.3 * 2);
   assert.deepEqual(presentation, { display: `${decimal}%`, title: `CPU: ${decimal}%\ncolumn basis\nframe basis`,
-    heat: 60, privateHeat: 20, unavailable: false }, `${language} shared cell text, tooltip and heat`);
+    heat: 50, privateHeat: 50, unavailable: false }, `${language} shared cell text, tooltip and heat`);
   const failure = resourceTableCellPresentation({ value: null, unit: "%", availability: "Unavailable",
-    unavailableReason: "fixture-unavailable" }, "cpu", { label: "CPU", basis: undefined });
+    unavailableReason: "fixture-unavailable" }, "cpu", { label: "CPU", basis: undefined }, 100);
   // 未知原因码不进格子：格子写“无读数”，原始码只在悬停提示里（资源表和资源条共用的原因族表，见 resourceBarUnavailableReason.ts）。
   assert.equal(failure.display, uiText.dashboard.noReading, `${language} failure replaces the previous reading`);
   assert.ok(failure.title.includes(uiText.backendMessage.reasonCode("fixture-unavailable")), `${language} raw reason code on hover`);

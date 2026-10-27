@@ -11,13 +11,14 @@ import { readyResourceMonitorWire } from "./resourceMonitorFixture.ts";
 function source<TQuery, TValue>() {
   const calls: { query: TQuery; interval: number; stopped: boolean; emit: (snapshot: SourceSnapshot<TValue>) => void }[] = [];
   const current = new Map<string, SourceSnapshot<TValue>>();
-  const family: PushValueSourceFamily<TQuery, TValue> = { key: "test",
-    readSnapshot(query) { return current.get(JSON.stringify(query)) ?? snapshot<TValue>(null); },
-    subscribeSnapshot(query, interval, listener) {
-    const emit = (value: SourceSnapshot<TValue>) => { current.set(JSON.stringify(query), value); listener(value); };
-    const call = { query, interval, emit, stopped: false }; calls.push(call);
-    listener(family.readSnapshot(query));
-    return () => { call.stopped = true; };
+  const family: PushValueSourceFamily<TQuery, TValue> = { key: "test", select: query => {
+    const read = () => current.get(JSON.stringify(query)) ?? snapshot<TValue>(null);
+    return { key: "test", readSnapshot: read, subscribeSnapshot(interval, listener) {
+      const emit = (value: SourceSnapshot<TValue>) => { current.set(JSON.stringify(query), value); listener(value); };
+      const call = { query, interval, emit, stopped: false }; calls.push(call);
+      listener(read());
+      return () => { call.stopped = true; };
+    } };
   } };
   return { family, calls };
 }

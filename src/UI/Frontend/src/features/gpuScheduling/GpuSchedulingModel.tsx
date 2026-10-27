@@ -200,7 +200,7 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
   });
   const resourceBreakdown = createMemo(() => {
     const source = resourceSnapshot();
-    return source && sourceCanRender(source) ? source.data?.breakdown ?? null : null;
+    return source && sourceCanRender(source) && source.data?.scope === "bars" ? source.data.breakdown : null;
   });
   const metricData = createMemo(() => {
     const source = metricSnapshot();

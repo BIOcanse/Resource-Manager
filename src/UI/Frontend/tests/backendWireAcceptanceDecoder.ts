@@ -31,20 +31,19 @@ const metric = request.kind === "metric"
 const monitor = request.kind === "monitor" || request.kind === "facts"
   ? decodeResourceMonitorWireSnapshot(request.payload)
   : null;
-const table = metric === null
-  ? monitor?.table ?? null
-  : null;
-const breakdownProcess = monitor?.breakdown.bars
+// A decoded frame carries only its own scope: version 10 its bars, version 2 (facts) its facts.
+const bars = monitor?.scope === "bars" ? monitor.breakdown.bars : undefined;
+const facts = monitor?.scope === "table" ? monitor.facts : undefined;
+const breakdownProcess = bars
   ?.flatMap((bar) => bar.software)
   .flatMap((software) => software.processes)[0];
-const tableProcess = table?.rows.find((row) => row.kind === "process");
 const details = request.kind === "details"
   ? decodeResourceProcessDetailsWireSnapshot(request.payload) : null;
-const decodedMetrics = details?.metrics ?? monitor?.facts?.metrics ?? monitor?.breakdown.bars ?? [];
+const decodedMetrics = details?.metrics ?? facts?.metrics ?? bars ?? [];
 // The sampler acceptance sends every automatic metric in both available and unavailable states.
 // Keep the former BACKEND-RF-DISK-METRIC assertion on production-serialized r4 data, not the pre-r4 capture.
 if (request.kind === "facts" && request.metricIds?.includes("disk.io")) {
-  const disk = monitor?.facts?.metrics.find(metric => metric.metricId === "disk.io");
+  const disk = facts?.metrics.find(metric => metric.metricId === "disk.io");
   assert.ok(disk, "A requested disk.io must have a facts item");
   assert.ok(disk.totalValue !== null || !!disk.unavailableReason, "disk.io must publish its total or an unavailable reason");
 }
@@ -81,19 +80,18 @@ process.stdout.write(JSON.stringify({
     percent: "totalSystemPercent" in metric ? metric.totalSystemPercent : null,
     reason: "unavailableReason" in metric ? metric.unavailableReason : null,
     segments: metric.software.length })),
-  decodedEmptyBars: (monitor?.breakdown.bars ?? []).filter(bar => bar.totalValue === null)
+  decodedEmptyBars: (bars ?? []).filter(bar => bar.totalValue === null)
     .map(bar => ({ metricId: bar.metricId, scaleMode: bar.scaleMode, reason: bar.unavailableReason,
       total: bar.totalValue, capacity: bar.capacityValue, percent: bar.totalSystemPercent, segments: bar.software.length })),
   localizedNames,
   decodedProcesses,
   localizedProcessNames,
   processCount: decodedMetrics.flatMap(metric => metric.software).flatMap(software => software.processes).length,
-  factsProcessStartKey: monitor?.facts?.metrics[0]?.software[0]?.processes[0]?.processStartKey ?? null,
-  factsProcessSharedValue: monitor?.facts?.metrics[0]?.software[0]?.processes[0]?.sharedValue ?? null,
+  factsProcessStartKey: facts?.metrics[0]?.software[0]?.processes[0]?.processStartKey ?? null,
+  factsProcessSharedValue: facts?.metrics[0]?.software[0]?.processes[0]?.sharedValue ?? null,
   monitorVersion: monitor === null ? null : 8,
-  tableProcessStartKey: tableProcess?.processStartKey ?? null,
   breakdownProcessStartKey: breakdownProcess?.processStartKey ?? null,
-  hasTableSamplingMetadata: table === null
+  hasTableSamplingMetadata: monitor === null
     ? false
     : Object.hasOwn(rawTable, "status")
       || Object.hasOwn(rawTable, "inputDatasets"),
@@ -101,7 +99,7 @@ process.stdout.write(JSON.stringify({
     ? false
     : Object.hasOwn(rawBreakdown, "sampling")
       || Object.hasOwn(rawBreakdown, "datasets"),
-  hasProviderStates: table === null
+  hasProviderStates: monitor === null
     ? false
     : Object.hasOwn(rawTable, "providerStates"),
   metricVersion: metric?.version ?? null,

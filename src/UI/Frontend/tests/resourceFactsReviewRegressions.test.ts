@@ -3,8 +3,7 @@ import { createRoot, createSignal } from "solid-js";
 import { createResourceFactsProjection, projectResourceFacts, type ResourceFacts, type ResourceFactsMetric } from "../src/features/resourceTable/resourceFacts.ts";
 import type { ResourceSoftwareSegment, ResourceTableColumnSettings, ResourceTableViewMode } from "../src/types.ts";
 import { resourceTableCellText } from "../src/presentation/metricLabels.ts";
-import { uiText } from "../src/text.ts";
-import { projectResourceTableHeat } from "../src/features/resourceTable/resourceTableHeat.ts";
+import { applyLanguage, currentLanguage, uiText } from "../src/text.ts";
 
 const time = "2026-10-24T12:00:00Z";
 const columns = [{ id: "name", visible: true, width: 260 }, { id: "memory", visible: true, width: 110 }];
@@ -83,7 +82,7 @@ for (const missing of ["totalValue", "totalSystemPercent", "capacityValue"] as c
   const ready = metric("gpu.0.usage", []);
   const unavailable = { ...metric("gpu.1.usage", []), [missing]: null };
   const projected = projectResourceFacts({ capturedAt: time, metrics: [ready, unavailable] }, gpuColumns, "software", "impact", "desc");
-  const cells = projectResourceTableHeat(projected.rows)[0].values;
+  const cells = projected.rows[0].values;
   assert.equal(cells["gpu.0.usage"].value, 10);
   assert.equal(resourceTableCellText(cells["gpu.0.usage"]), "10.0%");
   assert.equal(cells["gpu.1.usage"].value, missing === "totalValue" ? null : 10);
@@ -131,7 +130,7 @@ createRoot(dispose => {
   const [mode, setMode] = createSignal<ResourceTableViewMode>("software");
   const [sort, setSort] = createSignal<{ columnId: string; direction: "asc" | "desc" }>({ columnId: "name", direction: "asc" });
   let recomputations = 0;
-  const result = createResourceFactsProjection(currentFacts, settings, mode, sort, (...args) => {
+  const result = createResourceFactsProjection(currentFacts, settings, mode, sort, () => "en-US", (...args) => {
     recomputations++;
     return projectResourceFacts(...args);
   });
@@ -152,4 +151,24 @@ createRoot(dispose => {
   assert.equal(recomputations, 5);
   dispose();
 });
+// Name order follows the interface language, not the browser's: Russian collates Cyrillic before Latin, English after,
+// and Simplified Chinese orders Han names by reading (安 an before 中 zhong) where English keeps code point order.
+// Switching the language alone sorts the rows again.
+{
+  const cyrillicAndLatin = factsFor([{ name: "Zeta", memory: 1 }, { name: "Яндекс", memory: 1 }, { name: "中文", memory: 1 }, { name: "安装", memory: 1 }]);
+  const projection = createRoot(dispose => ({ dispose, rows: createResourceFactsProjection(() => cyrillicAndLatin, () => columns, () => "software",
+    () => ({ columnId: "name", direction: "asc" }), currentLanguage) }));
+  const order = () => projection.rows()!.rows.filter(row => row.kind === "software").map(row => row.name);
+  try {
+    await applyLanguage("en-US");
+    assert.deepEqual(order(), ["Zeta", "Яндекс", "中文", "安装"], "en-US: Latin, Cyrillic, then Han by code point");
+    await applyLanguage("ru-RU");
+    assert.deepEqual(order().slice(0, 2), ["Яндекс", "Zeta"], "ru-RU: Cyrillic before Latin");
+    await applyLanguage("zh-CN");
+    assert.deepEqual(order().filter(name => name === "中文" || name === "安装"), ["安装", "中文"], "zh-CN: Han by pinyin");
+  } finally {
+    projection.dispose();
+    await applyLanguage("zh-CN");
+  }
+}
 console.log(JSON.stringify({ checked: "B1/B2/B3", processCount: count, longArrayScans, linearMembershipChecks, widthOnlyRecomputations: 0 }));
