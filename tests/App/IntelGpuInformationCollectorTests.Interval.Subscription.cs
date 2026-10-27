@@ -10,13 +10,14 @@ using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.ReadWrite.Vendors.Intel;
 using ResourceManager.App.Infrastructure.NativeCore;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed partial class IntelGpuInformationCollectorTests
 {
     [Fact]
-    public async Task IntervalValuesReachFreshHttpAndPushAndSdkCallsStopWithoutDemand()
+    public async Task IntervalSingleFetchAfterIdleReturnsTypedEmptyAndContinuousDemandRewarms()
     {
         using var slots = new HostManagerSamplingSubscriptionTestFixture(); using var owner = CreateClockOwner(slots, secondHasDedicatedMemory: true);
         await owner.StartAsync(CancellationToken.None); var dashboard = PublishClockCatalog(owner);
@@ -25,9 +26,12 @@ public sealed partial class IntelGpuInformationCollectorTests
         var gpuIdentity = RecordedGpuIdentities().Single(static gpu => gpu.DisplayIndex == 9).ExactIdentityKey;
         var device = bindings.Single(binding => binding.Field.Code == IntervalCodes[0] && binding.DeviceIdentity == gpuIdentity).DeviceIdentity;
         var sequence = 0; var badGpuEnergy = 0;
+        var heldSdkTime = double.NaN;
         var sdk = new Sdk { SampleFactory = () =>
         {
             var telemetry = Sample(); var time = Interlocked.Increment(ref sequence) * 2.0 + 0.125;
+            var heldTime = Volatile.Read(ref heldSdkTime);
+            if (!double.IsNaN(heldTime)) time = heldTime;
             telemetry.Timestamp = Number(time, IntelGclUnit.Seconds); telemetry.GpuEnergy = Number(time * 3 + 0.125, IntelGclUnit.Joules);
             telemetry.MemoryEnergy = Number(time * 5 + 0.25, IntelGclUnit.Joules); telemetry.BoardEnergy = Number(time * 10 + 0.5, IntelGclUnit.Joules);
             telemetry.GlobalActivity = Number(time * 0.5 + 0.125, IntelGclUnit.Seconds);
@@ -82,8 +86,40 @@ public sealed partial class IntelGpuInformationCollectorTests
             while (tracker.CaptureManagedSourceState() != (0, 0)) await Task.Delay(20, timeout.Token);
             var gate = (SemaphoreSlim)typeof(WindowsHardwareMetricSampler).GetField("sampleGate", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(sampler)!;
             await gate.WaitAsync(timeout.Token); gate.Release(); var calls = Volatile.Read(ref sdk.TelemetryCalls);
-            using (var fresh = JsonDocument.Parse(await client.GetStringAsync("/api/metrics/fields/snapshot" + query, timeout.Token))) CheckIntervalWire(fresh.RootElement[0].GetProperty("fields"));
+            await WaitForEmptyCounterDemandAsync(sampler, owner, timeout.Token);
+            // Keep even a later delivery from acquiring a second SDK interval.
+            // Baseline cleanup is acknowledged above, not caused by this clock.
+            Volatile.Write(ref heldSdkTime, (Volatile.Read(ref sequence) + 1) * 2.0 + 0.125);
+            var fetchStarted = DateTimeOffset.UtcNow;
+            using (var fresh = JsonDocument.Parse(await client.GetStringAsync("/api/metrics/fields/snapshot" + query
+                + ",gpu_intel_gpu_energy_joule", timeout.Token)))
+                CheckColdIntervalWire(fresh.RootElement[0].GetProperty("fields"),
+                    Volatile.Read(ref heldSdkTime) * 3 + 0.125, fetchStarted);
             Assert.True(Volatile.Read(ref sdk.TelemetryCalls) > calls);
+            var cold = sampler.ReadLatest(request)!;
+            Assert.All(request.Ids, id => Assert.True(cold.Datasets[id].LastAttemptAtUtcTicks >= fetchStarted.UtcTicks));
+            Assert.All(IntervalNames, name => Assert.Null(Fields(cold)[name].NumericValue));
+            while (tracker.CaptureManagedSourceState() != (0, 0)) await Task.Delay(20, timeout.Token);
+            await WaitForEmptyCounterDemandAsync(sampler, owner, timeout.Token);
+
+            // Keep demand while the SDK advances to verify a complete interval.
+            // A one-shot response must not silently wait for a numeric value.
+            Volatile.Write(ref heldSdkTime, double.NaN);
+            await using (var resumed = sampler.SubscribeAsync("igcl-interval-after-idle", request,
+                TimeSpan.FromMilliseconds(100), timeout.Token).GetAsyncEnumerator(timeout.Token))
+            {
+                do { Assert.True(await resumed.MoveNextAsync()); }
+                while (Fields(resumed.Current)[IntervalNames[0]].NumericValue != IntervalValues[0]);
+                for (var i = 0; i < IntervalNames.Length; i++)
+                {
+                    var field = Fields(resumed.Current)[IntervalNames[i]];
+                    Assert.Equal(IntervalValues[i], field.NumericValue);
+                    Assert.Equal(SamplingObservationStatus.Current, field.Status);
+                    Assert.Equal(2_000UL, field.SampleDurationMilliseconds);
+                }
+                using var wire = JsonDocument.Parse(await client.GetStringAsync("/api/metrics/fields/snapshot" + query, timeout.Token));
+                CheckIntervalWire(wire.RootElement[0].GetProperty("fields"));
+            }
             while (tracker.CaptureManagedSourceState() != (0, 0)) await Task.Delay(20, timeout.Token);
             await gate.WaitAsync(timeout.Token); gate.Release();
             var afterFetch = Volatile.Read(ref sdk.TelemetryCalls);
@@ -94,6 +130,63 @@ public sealed partial class IntelGpuInformationCollectorTests
             for (var i = 0; i < IntervalNames.Length; i++) Assert.Equal(IntervalValues[i], Fields(sampler.ReadLatest(request)!)[IntervalNames[i]].NumericValue);
         }
         finally { await app.StopAsync(); await sampler.StopAsync(CancellationToken.None); }
+    }
+
+    private static async Task WaitForEmptyCounterDemandAsync(WindowsHardwareMetricSampler sampler,
+        HostManagerMetricSnapshotOwner owner, CancellationToken cancellationToken)
+    {
+        var gate = (SemaphoreSlim)typeof(WindowsHardwareMetricSampler)
+            .GetField("sampleGate", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(sampler)!;
+        var signal = (SemaphoreSlim)typeof(WindowsHardwareMetricSampler)
+            .GetField("demandSignal", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(sampler)!;
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            using var lease = owner.Acquire();
+            // An already-created plan could predate the last lease removal.
+            // Two sequential worker acknowledgments rule that plan out.
+            for (var round = 0; round < 2; round++)
+            {
+                var before = lease.Workspace.ReadHeader();
+                ResourceManager.Subscription.NativeSamplingSubscriptionWorker<MetricSampleRequest, SamplingOwnerToken>
+                    .SignalDemand(signal);
+                var after = lease.Workspace.ReadHeader();
+                while (after.LastOperationEpoch <= before.LastOperationEpoch)
+                {
+                    await Task.Delay(1, cancellationToken);
+                    after = lease.Workspace.ReadHeader();
+                }
+                Assert.Equal(before.CommittedGeneration, after.CommittedGeneration);
+                Assert.Equal(before.LastPlanEpoch, after.LastPlanEpoch);
+            }
+        }
+        finally { gate.Release(); }
+    }
+
+    private static void CheckColdIntervalWire(JsonElement fields, double energy, DateTimeOffset fetchStarted)
+    {
+        Assert.Equal(7, fields.GetArrayLength());
+        var rows = fields.EnumerateArray().ToDictionary(field => field.GetProperty("name").GetString()!);
+        for (var i = 0; i < IntervalNames.Length; i++)
+        {
+            var row = rows[IntervalNames[i]];
+            Assert.Equal("intel.igcl", row.GetProperty("sourceId").GetString());
+            Assert.Equal(i < 3 ? "W" : "%", row.GetProperty("unit").GetString());
+            Assert.Equal("float64", row.GetProperty("valueKind").GetString());
+            Assert.Equal((int)SamplingObservationStatus.Unavailable, row.GetProperty("status").GetInt32());
+            foreach (var property in new[] { "numericValue", "integerValue", "booleanValue", "bytesValue",
+                "observedAt", "sampleDurationMilliseconds" })
+                Assert.Equal(JsonValueKind.Null, row.GetProperty(property).ValueKind);
+        }
+        var raw = rows["gpu_intel_gpu_energy_joule"];
+        Assert.Equal("intel.igcl", raw.GetProperty("sourceId").GetString());
+        Assert.Equal("J", raw.GetProperty("unit").GetString());
+        Assert.Equal("float64", raw.GetProperty("valueKind").GetString());
+        Assert.Equal((int)SamplingObservationStatus.Current, raw.GetProperty("status").GetInt32());
+        Assert.Equal(energy, raw.GetProperty("numericValue").GetDouble());
+        // The original native observation timestamp has millisecond precision.
+        Assert.True(raw.GetProperty("observedAt").GetDateTimeOffset()
+            >= DateTimeOffset.FromUnixTimeMilliseconds(fetchStarted.ToUnixTimeMilliseconds()));
     }
 
     private static void CheckIntervalWire(JsonElement fields)
