@@ -960,6 +960,10 @@ public sealed partial class HostManagerSmartCoordinator
         }
     }
 
+    // Wire code of a native plan status: the member name in kebab case ("CapacityExceeded" -> "capacity-exceeded").
+    internal static string NativePlanStatusCode(NativeSmartCoordinatorStatus status)
+        => System.Text.Json.JsonNamingPolicy.KebabCaseLower.ConvertName(status.ToString());
+
     private static void RequireNativePlanStatus(
         NativeSmartCoordinatorStatus status,
         NativeSmartCoordinatorWorkspace workspace,

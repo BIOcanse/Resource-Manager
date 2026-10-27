@@ -14,12 +14,39 @@ using ResourceManager.App.Endpoints.Transport;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.Metrics;
+using ResourceManager.App.Domain.Optimization;
 using ResourceManager.Shared.Runtime.TrustedAccess;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed class JsonMetadataContractTests
 {
+    [Theory]
+    [InlineData("success")]
+    [InlineData("cycle-failed")]
+    [InlineData("native-plan-failed")]
+    public void SmartStatusFixturesPinHttpAndSubscriptionWire(string name)
+    {
+        var expected = SmartStatusFixture(name);
+        var options = new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions;
+        ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
+        var status = JsonSerializer.Deserialize<HostManagerSmartCoordinatorStatus>(expected, options)!;
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonSerializer.SerializeToNode(status, options)));
+        var frame = new FrontendSubscriptionChannelFrame<HostManagerSmartCoordinatorStatus>("status", status);
+        var expectedFrame = new JsonObject { ["subscriptionId"] = "status", ["value"] = JsonNode.Parse(expected) };
+        var wire = JsonSerializer.SerializeToNode(frame, options);
+        Assert.True(JsonNode.DeepEquals(expectedFrame, wire), wire!.ToJsonString());
+        var roundTrip = JsonSerializer.Deserialize<FrontendSubscriptionChannelFrame<HostManagerSmartCoordinatorStatus>>(wire, options);
+        Assert.True(JsonNode.DeepEquals(wire, JsonSerializer.SerializeToNode(roundTrip, options)));
+    }
+
+    private static string SmartStatusFixture(string name)
+    {
+        using var stream = typeof(JsonMetadataContractTests).Assembly.GetManifestResourceStream("smart-status")!;
+        using var fixtures = JsonDocument.Parse(stream);
+        return fixtures.RootElement.GetProperty(name).GetRawText();
+    }
+
     [Theory]
     [InlineData(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     [InlineData(ResourceManager.ReadWrite.ReadVolatilityKind.Sampled)]
@@ -420,6 +447,11 @@ public sealed class JsonMetadataContractTests
         {
             Assert.True(++count <= 20000, "Fixture exceeded its node bound.");
             var type = Nullable.GetUnderlyingType(work.Type) ?? work.Type;
+            if (type == typeof(HostManagerSmartCoordinatorStatus))
+            {
+                work.Set(JsonNode.Parse(SmartStatusFixture("native-plan-failed")));
+                continue;
+            }
             if (type == typeof(MetricInteger)) { work.Set(JsonValue.Create("9007199254740993")); continue; }
             // This declaration validates Kind/Event together; independent primitive fixtures are invalid.
             if (type == typeof(ResourceManager.ReadWrite.ReadVolatility))

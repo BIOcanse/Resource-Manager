@@ -1,4 +1,5 @@
 using System.Globalization;
+using ResourceManager.App.Domain.Optimization;
 using static ResourceManager.App.Infrastructure.Optimization.HostManagerDecisionDiagnosticTokens;
 using ResourceManager.App.Infrastructure.NativeCore;
 
@@ -328,9 +329,6 @@ internal sealed record HostManagerDecisionDiagnosticsSnapshot(
     public IReadOnlyList<HostManagerFactExclusionDiagnostics> FactExclusions { get; init; } = [];
 }
 
-internal sealed record HostManagerCycleFailureDiagnostics(
-    string ExceptionType, NativeSmartCoordinatorStatus? NativePlanStatus);
-
 internal sealed record HostManagerCycleActionBudgetDiagnostics(
     uint? MaximumActionsThisCycle,
     bool RealtimeCycle,
@@ -342,10 +340,6 @@ internal sealed record HostManagerCycleActionBudgetDiagnostics(
 {
     public int Value => Mode == "fixed" ? Count : Percent;
 }
-
-internal sealed record HostManagerFactExclusionCount(string Fact, string Reason, int Count);
-internal sealed record HostManagerFactExclusionDiagnostics(
-    int? ProcessId, string? ProcessStartKey, string? TargetId, string Fact, string Reason);
 
 internal sealed record HostManagerSchedulingAuthorityDiagnostics(
     string RoundNumber,

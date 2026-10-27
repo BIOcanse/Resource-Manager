@@ -25,6 +25,10 @@ public sealed class HostManagerOptimizationWireContractTests
             [
                 "appliedTargetCount",
                 "coordinator",
+                "factExclusionCount",
+                "factExclusionCounts",
+                "factExclusions",
+                "failure",
                 "faultClosedReason",
                 "lastRestoreAt",
                 "lastRunAt",

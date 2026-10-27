@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Infrastructure.Optimization;
 
 namespace Resource_Manager_APP.Tests;
@@ -24,11 +25,17 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             if (canceled)
             {
                 Assert.Same(previous, current);
+                Assert.Null((await fixture.Coordinator.GetStatusAsync(CancellationToken.None)).Failure);
             }
             else
             {
                 Assert.NotSame(previous, current);
                 Assert.Equal(nameof(InvalidOperationException), current.Failure!.ExceptionType);
+                Assert.Equal(HostManagerCycleFailureKind.CycleFailed, current.Failure.Kind);
+                var status = await fixture.Coordinator.GetStatusAsync(CancellationToken.None);
+                Assert.Same(current.Failure, status.Failure);
+                Assert.Equal(0, status.FactExclusionCount);
+                Assert.Empty(status.FactExclusions);
                 Assert.Null(current.Failure.NativePlanStatus);
                 Assert.Null(current.NativeCoordinator);
                 Assert.Null(current.ActionBudget);

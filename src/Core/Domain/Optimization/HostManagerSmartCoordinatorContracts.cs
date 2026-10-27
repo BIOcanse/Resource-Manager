@@ -16,7 +16,30 @@ public sealed record HostManagerSmartCoordinatorStatus(
     int PendingChangeCount,
     int AppliedTargetCount,
     string? FaultClosedReason,
-    HostManagerCoordinatorFacts? Coordinator);
+    HostManagerCoordinatorFacts? Coordinator)
+{
+    /// <summary>The current settled segment's failure; null after success or before first settlement.</summary>
+    public HostManagerCycleFailureDiagnostics? Failure { get; init; }
+    public int FactExclusionCount { get; init; }
+    public IReadOnlyList<HostManagerFactExclusionCount> FactExclusionCounts { get; init; } = [];
+    public IReadOnlyList<HostManagerFactExclusionDiagnostics> FactExclusions { get; init; } = [];
+}
+
+[System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<HostManagerCycleFailureKind>))]
+public enum HostManagerCycleFailureKind
+{
+    [System.Text.Json.Serialization.JsonStringEnumMemberName("cycle-failed")] CycleFailed = 1,
+    [System.Text.Json.Serialization.JsonStringEnumMemberName("native-plan-failed")] NativePlanFailed = 2
+}
+
+// NativePlanStatus is the native plan's status code (for example "capacity-exceeded"), the same code
+// the segment's native-plan exclusion carries as its reason; null unless Kind is NativePlanFailed.
+public sealed record HostManagerCycleFailureDiagnostics(
+    HostManagerCycleFailureKind Kind, string ExceptionType, string? NativePlanStatus);
+
+public sealed record HostManagerFactExclusionCount(string Fact, string Reason, int Count);
+public sealed record HostManagerFactExclusionDiagnostics(
+    int? ProcessId, string? ProcessStartKey, string? TargetId, string Fact, string Reason);
 
 public sealed record HostManagerCoordinatorFacts(
     [property: System.Text.Json.Serialization.JsonNumberHandling(System.Text.Json.Serialization.JsonNumberHandling.WriteAsString | System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString)] ulong Revision,

@@ -1,5 +1,14 @@
 using System.Collections.Immutable;
 using System.Reflection;
+using System.Net.Http.Json;
+using System.Text.Json;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using ResourceManager.App.Application.Optimization;
+using ResourceManager.App.Endpoints;
+using ResourceManager.App.Infrastructure.Security;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Domain.ResourceBreakdown;
@@ -52,7 +61,19 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true,
             processFactsSnapshot: facts, smartCoordinatorMaximumProcesses: 2, automaticMemoryCleanupEnabled: false,
             cpuCoreReader: new RecordingCpuCoreResidencyReader(() => null));
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Logging.ClearProviders();
+        builder.Services.ConfigureHttpJsonOptions(options =>
+            ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options.SerializerOptions));
+        builder.Services.AddSingleton<IHostManagerSmartCoordinator>(fixture.Coordinator);
+        await using var app = builder.Build();
+        app.MapHostManagerSmartCoordinatorEndpoints(LoopbackApiPipelineMode.StandardUser);
+        await app.StartAsync();
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var initialStatus = await client.GetFromJsonAsync<JsonElement>("/api/optimization/smart/status", timeout.Token);
+        AssertClearedStatusFailure(initialStatus);
         await using var stream = fixture.Coordinator.SubscribeDecisionDiagnosticsAsync(timeout.Token).GetAsyncEnumerator();
         Assert.True(await stream.MoveNextAsync());
         for (var i = 0; i < 3; i++)
@@ -67,14 +88,30 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var diagnostics = await fixture.Coordinator.GetDecisionDiagnosticsAsync(CancellationToken.None);
         Assert.Same(diagnostics, stream.Current);
         var failure = Assert.IsType<HostManagerCycleFailureDiagnostics>(diagnostics.Failure);
+        Assert.Equal(HostManagerCycleFailureKind.NativePlanFailed, failure.Kind);
         Assert.Equal(nameof(InvalidDataException), failure.ExceptionType);
-        Assert.Equal(NativeSmartCoordinatorStatus.CapacityExceeded, failure.NativePlanStatus);
+        Assert.Equal("capacity-exceeded", failure.NativePlanStatus);
         Assert.Null(diagnostics.NativeCoordinator);
         Assert.Empty(diagnostics.NonAdaptedMemoryDecisions);
         Assert.Equal("unavailable", diagnostics.SchedulingAuthority.Availability);
         Assert.False(diagnostics.SchedulerRunning);
         Assert.Null((await fixture.Coordinator.GetStateAsync(CancellationToken.None)).Coordinator);
-        Assert.False((await fixture.Coordinator.GetStatusAsync(CancellationToken.None)).SchedulerRunning);
+        var failedStatus = await fixture.Coordinator.GetStatusAsync(CancellationToken.None);
+        Assert.False(failedStatus.SchedulerRunning);
+        Assert.Null(failedStatus.FaultClosedReason);
+        Assert.Same(diagnostics.Failure, failedStatus.Failure);
+        Assert.Same(diagnostics.FactExclusionCounts, failedStatus.FactExclusionCounts);
+        Assert.Same(diagnostics.FactExclusions, failedStatus.FactExclusions);
+        var failedWire = await client.GetFromJsonAsync<JsonElement>("/api/optimization/smart/status", timeout.Token);
+        Assert.False(failedWire.GetProperty("schedulerRunning").GetBoolean());
+        Assert.Equal("native-plan-failed", failedWire.GetProperty("failure").GetProperty("kind").GetString());
+        Assert.Equal("capacity-exceeded", failedWire.GetProperty("failure").GetProperty("nativePlanStatus").GetString());
+        Assert.Equal(nameof(InvalidDataException), failedWire.GetProperty("failure").GetProperty("exceptionType").GetString());
+        Assert.Equal(diagnostics.FactExclusionCount, failedWire.GetProperty("factExclusionCount").GetInt32());
+        var jsonOptions = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>>().Value.SerializerOptions;
+        var diagnosticsWire = JsonSerializer.SerializeToElement(diagnostics, jsonOptions);
+        foreach (var field in new[] { "failure", "factExclusionCounts", "factExclusions" })
+            Assert.Equal(diagnosticsWire.GetProperty(field).GetRawText(), failedWire.GetProperty(field).GetRawText());
         Assert.Contains(diagnostics.FactExclusionCounts, e => e.Fact == "native-plan" && e.Reason == "capacity-exceeded");
         Assert.Contains(diagnostics.FactExclusionCounts, e => e.Fact == "inventory" && e.Reason == "inventory-overflow");
         Assert.Equal(NativeSmartCoordinatorStatus.Ok, fixture.Workspace.RefreshSnapshot());
@@ -86,6 +123,21 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Null(diagnostics.Failure);
         Assert.NotNull(diagnostics.NativeCoordinator);
         Assert.DoesNotContain(diagnostics.FactExclusions, e => e.Fact == "native-plan");
+        var recoveredStatus = await fixture.Coordinator.GetStatusAsync(CancellationToken.None);
+        Assert.Null(recoveredStatus.Failure);
+        Assert.Equal(0, recoveredStatus.FactExclusionCount);
+        Assert.Empty(recoveredStatus.FactExclusionCounts);
+        Assert.Empty(recoveredStatus.FactExclusions);
+        var recoveredWire = await client.GetFromJsonAsync<JsonElement>("/api/optimization/smart/status", timeout.Token);
+        AssertClearedStatusFailure(recoveredWire);
+    }
+
+    private static void AssertClearedStatusFailure(JsonElement status)
+    {
+        Assert.Equal(JsonValueKind.Null, status.GetProperty("failure").ValueKind);
+        Assert.Equal(0, status.GetProperty("factExclusionCount").GetInt32());
+        Assert.Empty(status.GetProperty("factExclusionCounts").EnumerateArray());
+        Assert.Empty(status.GetProperty("factExclusions").EnumerateArray());
     }
 
     [Fact]

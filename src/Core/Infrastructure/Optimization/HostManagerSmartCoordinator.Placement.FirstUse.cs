@@ -38,7 +38,10 @@ public sealed partial class HostManagerSmartCoordinator
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            PublishObservation(new(exception.GetType().Name, cycleNativePlanFailure));
+            PublishObservation(new(
+                cycleNativePlanFailure.HasValue ? HostManagerCycleFailureKind.NativePlanFailed : HostManagerCycleFailureKind.CycleFailed,
+                exception.GetType().Name,
+                cycleNativePlanFailure is { } planStatus ? NativePlanStatusCode(planStatus) : null));
             throw;
         }
         if (completed.CompletedAdmission is not { } admission) return completed;

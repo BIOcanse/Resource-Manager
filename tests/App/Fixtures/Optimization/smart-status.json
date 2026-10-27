@@ -1,0 +1,50 @@
+{
+  "success": {
+    "mode": "cpu-only",
+    "schedulerRunning": true,
+    "lastRunAt": null,
+    "lastRestoreAt": null,
+    "pendingChangeCount": 0,
+    "appliedTargetCount": 0,
+    "faultClosedReason": null,
+    "coordinator": null,
+    "failure": null,
+    "factExclusionCount": 0,
+    "factExclusionCounts": [],
+    "factExclusions": []
+  },
+  "cycle-failed": {
+    "mode": "cpu-only",
+    "schedulerRunning": false,
+    "lastRunAt": null,
+    "lastRestoreAt": null,
+    "pendingChangeCount": 0,
+    "appliedTargetCount": 0,
+    "faultClosedReason": null,
+    "coordinator": null,
+    "failure": { "kind": "cycle-failed", "exceptionType": "IOException", "nativePlanStatus": null },
+    "factExclusionCount": 0,
+    "factExclusionCounts": [],
+    "factExclusions": []
+  },
+  "native-plan-failed": {
+    "mode": "cpu-only",
+    "schedulerRunning": false,
+    "lastRunAt": null,
+    "lastRestoreAt": null,
+    "pendingChangeCount": 0,
+    "appliedTargetCount": 0,
+    "faultClosedReason": null,
+    "coordinator": null,
+    "failure": { "kind": "native-plan-failed", "exceptionType": "InvalidDataException", "nativePlanStatus": "capacity-exceeded" },
+    "factExclusionCount": 2,
+    "factExclusionCounts": [
+      { "fact": "inventory", "reason": "inventory-overflow", "count": 1 },
+      { "fact": "native-plan", "reason": "capacity-exceeded", "count": 1 }
+    ],
+    "factExclusions": [
+      { "processId": 43003, "processStartKey": "9007199254740993", "targetId": "process:43003:9007199254740993", "fact": "inventory", "reason": "inventory-overflow" },
+      { "processId": null, "processStartKey": null, "targetId": null, "fact": "native-plan", "reason": "capacity-exceeded" }
+    ]
+  }
+}

@@ -101,8 +101,7 @@ public sealed partial class HostManagerSmartCoordinator
         if (planStatus != NativeSmartCoordinatorStatus.Ok)
         {
             cycleNativePlanFailure = planStatus;
-            cycleFactExclusions.Add(new(null, null, null, "native-plan",
-                planStatus == NativeSmartCoordinatorStatus.CapacityExceeded ? "capacity-exceeded" : $"status-{planStatus}"));
+            cycleFactExclusions.Add(new(null, null, null, "native-plan", NativePlanStatusCode(planStatus)));
         }
         RequireNativePlanStatus(
             planStatus,

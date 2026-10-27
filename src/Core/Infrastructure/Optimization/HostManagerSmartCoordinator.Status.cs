@@ -33,7 +33,13 @@ public sealed partial class HostManagerSmartCoordinator
             checked((int)(observation.NativeSnapshot?.PendingCount ?? 0)),
             CountAppliedTargets(state.AppliedPlacements, observation.NativeRows, memoryOwners),
             faultClosedReason,
-            state.Coordinator);
+            state.Coordinator)
+        {
+            Failure = observation.Decisions.Failure,
+            FactExclusionCount = observation.Decisions.Failure is null ? 0 : observation.Decisions.FactExclusionCount,
+            FactExclusionCounts = observation.Decisions.Failure is null ? [] : observation.Decisions.FactExclusionCounts,
+            FactExclusions = observation.Decisions.Failure is null ? [] : observation.Decisions.FactExclusions
+        };
     }
 
     /// <summary>
