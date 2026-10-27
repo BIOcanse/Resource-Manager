@@ -48,15 +48,12 @@ export const enMonitorViewsCopy: Pick<
     columnEditorLabel: "Resource list column editor",
     showColumn: (column: string) => `Show the ${column} column`,
     moveColumnLeft: (column: string) => `Move the ${column} column left`,
-    moveLeftTitle: "Move left",
     moveColumnRight: (column: string) => `Move the ${column} column right`,
-    moveRightTitle: "Move right",
     resizeColumn: (column: string) => `Resize the ${column} column`,
     moreActions: (name: string) => `More actions: ${name}`,
     currentItem: "this item",
     heatSharedLegend: "Bar under the value: solid is own, dashed is the shared share",
     memoryBreakdown: (label: string, value: string, own: string, shared: string) => `${label}: ${value}\nOwn ${own} · shared share ${shared}`,
-    moreActionsTitle: "More actions",
     unknownStatus: "Status unknown"
   },
   contextMenu: {

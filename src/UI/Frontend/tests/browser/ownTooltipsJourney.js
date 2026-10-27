@@ -9,12 +9,15 @@ import { NOT_GHOST } from "./liveLocator.js";
 
 /*
  * 我们自己的提示代替浏览器原生 title（ui/primitives/TooltipLayer.tsx、HelpHint.tsx、AnchoredLayer.tsx）：
- * - 没有原生提示：整个会话里（逐个一级页、详细信息的子页、设置的每个分区、任务中心、右键菜单、编辑状态）
- *   除资源表以外，任何时刻都没有元素带非空的 title 属性（MutationObserver 从页面加载起一直记）。
+ * - 没有原生提示：整个会话里（逐个一级页、详细信息的子页、设置的每个分区、任务中心、右键菜单、编辑状态、资源表的列编辑和列来源）
+ *   任何时刻都没有元素带非空的 title 属性（MutationObserver 从页面加载起一直记，资源表也算在内）。
  * - 名称提示：图标按钮悬停时显示它的无障碍名称（aria-label），离按钮 6 px、不盖住按钮、在窗口里；离开就收起；
  *   禁用的图标按钮悬停照样显示；键盘 Tab 到按钮上显示，Esc 收起而焦点不动，Tab 走开就换成下一个或收起。
  *   点一下得到的焦点不算：点完指针移开就收起。
  * - 完整内容提示：监视卡片的指标名、读数，设备拓扑的条目，显卡专用引擎：悬停显示 data-full-content 的全文（含换行）。
+ * - 资源表：行名、状态格、数值格（含换行的明细）悬停显示完整内容，列头排序按钮显示列名，有口径的列头旁有问号；
+ *   行尾「更多操作」、编辑时列的左移右移是名称提示。格子只带属性，提示由应用里唯一的提示层画。
+ * - 常驻页被隐藏（离开监视页时只标 aria-hidden、content-visibility: hidden，不卸下）：上面正显示的提示（格子的、资源条的）当场收起，指针没动也一样。
  * - 会动的风格下淡入，收起时留一份退场幽灵；无动画下当场出现、当场消失。
  * - 九种语言、最小窗口（760×520 的客户区，744×520 视口）：右上角任务中心按钮的提示、对话框关闭按钮的名称提示、
  *   标题栏开机时长的问号说明都是这种语言的，而且整个在窗口里。
@@ -67,10 +70,16 @@ function assertPlaced(state, label, gap = 6) {
   assert.ok(Math.abs(distance - gap) <= 0.5, `${label}: the tooltip is not ${gap} px from the element ${JSON.stringify(state)}`);
 }
 
-/** 指针移到窗口右下角，像手移动一样分几步走（问号说明按离开处和说明围成的区域判断是不是还在路上，一步跳过去会落在那块区域里）。 */
+/** 指针一步跳到窗口右下角（问号说明的离开处在问号和说明之间的走廊外时当场关上，不需要分步走）。 */
 async function moveAway(page) {
   const size = page.viewportSize();
-  await page.mouse.move(size.width - 2, size.height - 2, { steps: 12 });
+  await page.mouse.move(size.width - 2, size.height - 2, { steps: 1 });
+}
+
+/** 提示不再显示这段文字（关上了，或换成了指针现在所在的别的元素的提示）。 */
+async function waitTooltipGone(page, text, label) {
+  await page.waitForFunction(([selector, expected]) => document.querySelector(selector)?.textContent !== expected, [tooltip, text], { timeout: 3000 })
+    .catch(() => assert.fail(`${label}: the tooltip still shows ${JSON.stringify(text)}`));
 }
 
 async function hoverCenter(page, locator) {
@@ -116,7 +125,7 @@ export default async function ownTooltipsJourney(page, baseUrl) {
   await mkdir(shots, { recursive: true });
   const failures = [];
   page.on("pageerror", (error) => failures.push(String(error)));
-  // 从页面加载起记下每一个带非空 title 的元素（资源表除外：它的挂载另有人在改，留到以后）。
+  // 从页面加载起记下每一个带非空 title 的元素（资源表也算在内）。
   await page.addInitScript(() => {
     if (location.origin === "null") return;
     const seen = new Map();
@@ -134,7 +143,7 @@ export default async function ownTooltipsJourney(page, baseUrl) {
     const record = (element) => {
       if (!(element instanceof Element)) return;
       const text = element.getAttribute("title");
-      if (!text || !text.trim() || element.closest(".resource-table-panel")) return;
+      if (!text || !text.trim()) return;
       const key = `${describe(element)} | ${text.slice(0, 80)}`;
       if (!seen.has(key)) seen.set(key, { path: describe(element), title: text.slice(0, 120) });
     };
@@ -177,6 +186,24 @@ export default async function ownTooltipsJourney(page, baseUrl) {
   await moveAway(page);
   await waitNoTooltip(page, "leaving the disabled button");
   await page.getByRole("button", { name: app.resourceBreakdownView.cancelEditLabel, exact: true }).click();
+  // 资源表的列编辑：编辑时列头的左移右移，选中内存后它的来源选择（各来源的口径在旁边的问号里）。
+  const tablePanel = page.locator(".resource-table-panel");
+  await tablePanel.getByRole("button", { name: app.resourceTableView.editLabel, exact: true }).click();
+  const tableEditor = tablePanel.getByRole("group", { name: app.resourceTableView.columnEditorLabel, exact: true });
+  await tableEditor.getByRole("button", { name: app.resourceTable.columns.memory, exact: true }).click();
+  const memorySources = tablePanel.getByRole("radiogroup", { name: app.resourceTable.columnSourceLabel(app.resourceTable.columns.memory), exact: true });
+  await memorySources.waitFor();
+  const sourcesHint = memorySources.locator("xpath=following-sibling::button[contains(@class, 'help-hint')][1]");
+  await hoverCenter(page, sourcesHint);
+  await page.locator(`.help-hint-popover${NOT_GHOST} .help-hint-entry`).first().waitFor();
+  await moveAway(page);
+  await page.locator(`.help-hint-popover${NOT_GHOST}`).waitFor({ state: "detached" });
+  const moveLeft = tablePanel.locator(`.resource-table-column-order-button${NOT_GHOST}`).nth(2);
+  await hoverCenter(page, moveLeft);
+  await waitTooltip(page, await moveLeft.getAttribute("aria-label"), "move a column left");
+  assertPlaced(await tooltipState(page, moveLeft), "move a column left");
+  await moveAway(page);
+  await tablePanel.getByRole("button", { name: app.resourceTableView.cancelEditLabel, exact: true }).click();
   // 右键菜单（行尾的「更多操作」打开同一个菜单）：不能用的项在名称下面写原因。
   const rowActions = page.locator(".resource-table-panel [data-focus-key^='resource-row-actions:']:visible").first();
   await rowActions.click();
@@ -221,7 +248,7 @@ export default async function ownTooltipsJourney(page, baseUrl) {
   await openPage(page, app, "monitor");
   await resourceRow.waitFor();
   const titles = [...(await page.evaluate(() => [...window.__nativeTitles.values()]))];
-  assert.deepEqual(titles, [], `native title tooltips are still rendered outside the resource table: ${JSON.stringify(titles, null, 1)}`);
+  assert.deepEqual(titles, [], `native title tooltips are still rendered: ${JSON.stringify(titles, null, 1)}`);
 
   // 2. 名称提示：悬停、离开、键盘聚焦、Esc。
   await openComponents(page, app);
@@ -293,6 +320,69 @@ export default async function ownTooltipsJourney(page, baseUrl) {
     await waitTooltip(page, await engine.getAttribute("data-full-content"), "GPU specialized engine");
     await moveAway(page);
   }
+
+  // 3b. 资源表：格子、列头和行尾按钮。格子只带 data-full-content，提示由应用里唯一的提示层画（表格里没有别的提示层）。
+  await openPage(page, app, "monitor");
+  const liveRow = `.resource-table-panel .resource-table-row.software-row[aria-hidden="false"]${NOT_GHOST}`;
+  await page.locator(liveRow).first().waitFor({ timeout: 15_000 });
+  for (const [selector, label] of [[".resource-row-name", "row name"], [".status-cell", "status cell"], [".value-cell", "value cell"]]) {
+    const cell = page.locator(`${liveRow} ${selector}[data-full-content]:not([data-full-content=""])`).first();
+    const text = await cell.getAttribute("data-full-content");
+    assert.ok(text && text.trim(), `the ${label} declares its full content`);
+    await hoverCenter(page, cell);
+    await waitTooltip(page, text, `resource table ${label}`);
+    assertPlaced(await tooltipState(page, cell), `resource table ${label}`);
+    if (selector === ".value-cell") assert.equal((await tooltipState(page, cell)).innerText, text, "the cell details keep their line breaks");
+    await moveAway(page);
+    await waitNoTooltip(page, `leaving the ${label}`);
+  }
+  assert.equal(await page.locator(".resource-table-panel .hover-tooltip, .resource-table-panel .help-hint-popover").count(), 0,
+    "the table holds no tooltip layer of its own");
+  const sortButton = page.locator(".resource-table-panel .resource-table-head-cell .resource-table-sort-button").first();
+  await hoverCenter(page, sortButton);
+  await waitTooltip(page, await sortButton.getAttribute("data-full-content"), "column header");
+  await moveAway(page);
+  const columnHint = page.locator(".resource-table-panel .resource-table-head-cell > .help-hint").first();
+  await hoverCenter(page, columnHint);
+  await page.locator(`.help-hint-popover${NOT_GHOST}`).waitFor();
+  assertPlaced(await columnHint.evaluate((element) => {
+    const box = (node) => { const r = node.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }; };
+    const layer = document.getElementById(element.getAttribute("aria-describedby"));
+    return { anchor: box(element), layer: box(layer), placement: layer.getAttribute("data-placement"),
+      viewport: { width: document.documentElement.clientWidth, height: document.documentElement.clientHeight } };
+  }), "column basis question mark");
+  await moveAway(page);
+  await page.locator(`.help-hint-popover${NOT_GHOST}`).waitFor({ state: "detached" });
+  const rowMore = page.locator(".resource-table-panel [data-focus-key^='resource-row-actions:']:visible").first();
+  await hoverCenter(page, rowMore);
+  await waitTooltip(page, await rowMore.getAttribute("aria-label"), "row more actions");
+  await moveAway(page);
+
+  // 3c. 常驻页被隐藏：监视页上正显示着格子的提示，换到别的页（只派发点击，不动指针），提示当场收起。
+  const keptCell = page.locator(`${liveRow} .value-cell[data-full-content]`).first();
+  const keptText = await keptCell.getAttribute("data-full-content");
+  await hoverCenter(page, keptCell);
+  await waitTooltip(page, keptText, "a cell on the kept monitor page");
+  await page.getByRole("navigation").getByRole("button", { name: app.page.settings, exact: true }).dispatchEvent("click");
+  await page.locator('.page-host[data-page-id="monitor"][aria-hidden="true"]').waitFor({ state: "attached" });
+  await waitTooltipGone(page, keptText, "the monitor page was hidden under a stationary pointer");
+  await page.getByRole("navigation").getByRole("button", { name: app.page.monitor, exact: true }).dispatchEvent("click");
+  await page.locator('.page-host[data-page-id="monitor"]:not([aria-hidden])').waitFor({ state: "attached" });
+  await moveAway(page);
+  // 资源条提示（同一个跟随锚点的弹层）也一样：悬停内存条的一段，换页后收起。
+  const memoryTrack = page.locator('.resource-bar-track[data-metric-id="memory.usage"]').first();
+  await memoryTrack.scrollIntoViewIfNeeded();
+  const trackBox = await memoryTrack.boundingBox();
+  await page.mouse.move(trackBox.x + trackBox.width * 0.05, trackBox.y + trackBox.height / 2, { steps: 4 });
+  const barTooltip = `.resource-tooltip${NOT_GHOST}`;
+  await page.locator(barTooltip).waitFor({ timeout: 3000 });
+  await page.getByRole("navigation").getByRole("button", { name: app.page.settings, exact: true }).dispatchEvent("click");
+  await page.locator('.page-host[data-page-id="monitor"][aria-hidden="true"]').waitFor({ state: "attached" });
+  await page.waitForFunction((selector) => document.querySelector(selector) === null, barTooltip, { timeout: 3000 })
+    .catch(() => assert.fail("the resource bar tooltip stays open after its kept page was hidden"));
+  await page.getByRole("navigation").getByRole("button", { name: app.page.monitor, exact: true }).dispatchEvent("click");
+  await page.locator('.page-host[data-page-id="monitor"]:not([aria-hidden])').waitFor({ state: "attached" });
+  await moveAway(page);
 
   // 4. 动效：会动的风格下淡入、收起时留退场幽灵；无动画下当场出现、当场消失（上面一直是无动画）。
   await reloadWith(page, (value) => { value.appearance.animationStyle = "smooth"; });

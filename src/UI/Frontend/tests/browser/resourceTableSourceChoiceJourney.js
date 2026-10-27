@@ -1,11 +1,19 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { formatBytes } from "../../src/presentation/byteUnits.ts";
 import { waitForCondition } from "./journeyWaits.js";
+import { fullContent, helpHintText } from "./tooltipProbe.js";
+
+/** 表头的口径说明：排序按钮旁边的问号（同一个表头格里紧跟在排序按钮后面）。 */
+const columnHeaderBasis = (sortButton) =>
+  helpHintText(sortButton.locator("xpath=following-sibling::button[contains(@class, 'help-hint')][1]"));
+/** 列来源各选项的口径：来源选择旁边的问号，每项一段（来源名一行，口径在下面）。 */
+const sourceOptionsBasis = async (sources) =>
+  (await helpHintText(sources.locator("xpath=following-sibling::button[contains(@class, 'help-hint')][1]"))).split("\n\n");
 
 /**
  * 资源表内存列先选项目、再选来源（docs/metric_item_source_choice_2026-10-25.md，简体中文）：
  * 编辑列时选中内存芯片（点芯片文字，不点方格子），下面摆内存的“来源”，第一项是自动选择（已勾），写出后端这次实际读的字段（资源事实的 processFieldName，
- * 夹具是私有工作集），表头说明的第一行也写出它；其后是后端进程字段目录里标了 supportsResourceFacts 的内存口径
+ * 夹具是私有工作集），表头问号里的口径说明第一行也写出它；其后是后端进程字段目录里标了 supportsResourceFacts 的内存口径
  * （峰值提交量后端标为 false，不列）。选私有提交量并保存：资源事实只请求这个字段，表头写出口径，
  * 进程行显示私有提交量，总计行是后端给的系统提交量（不是进程之和），差额在“系统/驱动保留”行；
  * 选择存进前端布局缓存，重新载入后仍在。改回自动选择：恢复请求 memory.usage，表头和数值回到原样。
@@ -65,7 +73,7 @@ export default async function resourceTableSourceChoiceJourney(page, baseUrl) {
     table.memoryQuantities.private_working_set, table.memoryQuantities.private_commit];
   if (JSON.stringify(labels) !== JSON.stringify(expected)) throw new Error(`Memory sources ${JSON.stringify(labels)}, expected ${JSON.stringify(expected)}`);
   if (await radios.nth(0).getAttribute("aria-checked") !== "true") throw new Error("Automatic is not the checked source by default");
-  if (await header(table.columns.memory).getAttribute("title") !== `${automatic}\n${app.resourceBreakdown.memoryTableBasis}`) {
+  if (await columnHeaderBasis(header(table.columns.memory)) !== `${automatic}\n${app.resourceBreakdown.memoryTableBasis}`) {
     throw new Error("The automatic memory header does not name the field the backend actually reads");
   }
 
@@ -76,7 +84,7 @@ export default async function resourceTableSourceChoiceJourney(page, baseUrl) {
   await editButton.waitFor();
   const commitLabel = table.memoryColumnBySource(table.memoryQuantities.private_commit);
   await header(commitLabel).waitFor({ timeout: 15_000 });
-  if (await header(commitLabel).getAttribute("title") !== table.memorySourceBasis.private_commit) {
+  if (await columnHeaderBasis(header(commitLabel)) !== table.memorySourceBasis.private_commit) {
     throw new Error("The private-commit header does not state its basis");
   }
   await waitForText(() => memoryCell(softwareRow()), formatBytes(GiB, "memory"), "Process private commit");
@@ -116,7 +124,7 @@ export default async function resourceTableSourceChoiceJourney(page, baseUrl) {
   await editButton.waitFor();
   await waitForText(() => memoryCell(softwareRow()), formatBytes(0.625 * GiB, "memory"), "Working-set values are shown as sent");
   const sharedTotal = visibleRow("summary").first().locator(".resource-table-cell").nth(await memoryIndex());
-  if (!(await sharedTotal.getAttribute("title"))?.includes(table.nonAdditiveBasis)) throw new Error("Non-additive source has no visible warning");
+  if (!(await fullContent(sharedTotal))?.includes(table.nonAdditiveBasis)) throw new Error("Non-additive source has no visible warning");
   if (await residualRow().count() !== 0) throw new Error("A non-additive source shows a residual row");
   await editButton.click();
   await selectMemory();
@@ -150,15 +158,18 @@ export async function checkResourceTableSourceText(page, app, language) {
     { timeoutMs: 15_000, description: `${language}: resolved automatic memory source` });
   const labels = (await radios.allTextContents()).map((label) => label.trim());
   if (JSON.stringify(labels) !== JSON.stringify(expected)) throw new Error(`${language}: memory sources ${JSON.stringify(labels)}, expected ${JSON.stringify(expected)}`);
-  if (await radios.nth(1).getAttribute("title") !== `${table.nonAdditiveBasis}\n${table.memorySourceBasis.working_set_including_shared}`
-    || await radios.nth(3).getAttribute("title") !== table.memorySourceBasis.private_commit) {
-    throw new Error(`${language}: memory source basis is not localized`);
+  // 各来源的口径在来源选择旁边的问号里，选项本身不带原生 title。
+  const sourceBasis = await sourceOptionsBasis(sources);
+  if (!sourceBasis.includes(`${expected[1]}\n${table.nonAdditiveBasis}\n${table.memorySourceBasis.working_set_including_shared}`)
+    || !sourceBasis.includes(`${expected[3]}\n${table.memorySourceBasis.private_commit}`)
+    || await radios.nth(1).getAttribute("title") !== null) {
+    throw new Error(`${language}: memory source basis is not localized: ${JSON.stringify(sourceBasis)}`);
   }
   await radios.nth(3).click();
   const commitLabel = table.memoryColumnBySource(table.memoryQuantities.private_commit);
   const commitHeader = panel.locator(".resource-table-head-cell .resource-table-sort-button").filter({ hasText: commitLabel });
   await commitHeader.waitFor({ timeout: 15_000 });
-  if (await commitHeader.getAttribute("title") !== table.memorySourceBasis.private_commit) throw new Error(`${language}: private-commit header basis missing`);
+  if (await columnHeaderBasis(commitHeader) !== table.memorySourceBasis.private_commit) throw new Error(`${language}: private-commit header basis missing`);
   await panel.getByRole("button", { name: app.resourceTableView.cancelEditLabel, exact: true }).click();
   await panel.locator(".resource-table-head-cell .resource-table-sort-button").filter({ hasText: table.columns.memory }).waitFor({ timeout: 15_000 });
   return { language, sources: labels, header: commitLabel };

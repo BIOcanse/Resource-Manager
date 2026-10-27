@@ -90,11 +90,6 @@ export function RadioGroupItem(props: {
   readonly class?: string;
   readonly classList?: Record<string, boolean | undefined>;
   readonly disabled?: boolean;
-  /**
-   * 原生 title。待删：只剩资源表列来源的选项（features/resourceTable/ResourceTable.tsx）在用，
-   * 别处的选项说明一律放在控件旁的问号里（OptionsHelpHint）。资源表改用问号后删掉这个属性。
-   */
-  readonly title?: string;
   readonly children: JSX.Element;
 }) {
   const context = requireRadioGroupContext();
@@ -113,7 +108,6 @@ export function RadioGroupItem(props: {
       aria-checked={selected()}
       tabIndex={context.tabStopValue() === value ? 0 : -1}
       disabled={disabled()}
-      title={props.title}
       onClick={() => context.setValue(value)}
     >
       {props.children}

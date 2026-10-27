@@ -59,7 +59,7 @@ export default async function resourceTableTotalsJourney(page, baseUrl) {
     throw new Error("The GPU0 residual leaf lost its backend identity");
   }
   // Automatic bars currently do not publish a window in ResourceFactsSnapshot; the UI must not invent one.
-  const summaryTitles = await panel.locator('.summary-row[aria-hidden="false"] .value-cell').evaluateAll(cells => cells.map(cell => cell.title));
+  const summaryTitles = await panel.locator('.summary-row[aria-hidden="false"] .value-cell').evaluateAll(cells => cells.map(cell => cell.getAttribute("data-full-content") ?? ""));
   if (summaryTitles.some(title => title.includes(app.resourceTable.factsWindow("2")))) throw new Error(`An automatic metric invented a sampling window: ${JSON.stringify(summaryTitles)}`);
   if ((await panel.locator('[aria-hidden="false"] .resource-table-cell').allTextContents()).some(text => text.trim() === "-1")) throw new Error("Placeholder PID leaked into output");
   await panel.getByRole("searchbox").fill("example-");
@@ -98,7 +98,7 @@ export default async function resourceTableTotalsJourney(page, baseUrl) {
     if (!items.includes(field)) throw new Error(`Column choice did not request ${field}: ${JSON.stringify(items)}`);
   }
   await verify("process");
-  const sourcedTitles = await panel.locator('.summary-row[aria-hidden="false"] .value-cell').evaluateAll(cells => cells.map(cell => cell.title));
+  const sourcedTitles = await panel.locator('.summary-row[aria-hidden="false"] .value-cell').evaluateAll(cells => cells.map(cell => cell.getAttribute("data-full-content") ?? ""));
   if (sourcedTitles.filter(title => title.includes(app.resourceTable.factsWindow("2"))).length !== 1)
     throw new Error(`Only the selected network measure must show its own window: ${JSON.stringify(sourcedTitles)}`);
 
@@ -139,7 +139,7 @@ export default async function resourceTableTotalsJourney(page, baseUrl) {
     return [...root.querySelectorAll('.resource-table-row[aria-hidden="false"]')].map(row => ({
       kind: row.classList.contains("summary-row") ? "summary" : row.classList.contains("attribution-row") ? "attribution" : "other",
       text: row.querySelectorAll(".resource-table-cell")[index]?.textContent.trim() ?? "",
-      title: row.querySelectorAll(".resource-table-cell")[index]?.title ?? "" }));
+      title: row.querySelectorAll(".resource-table-cell")[index]?.getAttribute("data-full-content") ?? "" }));
   }, label);
   await page.waitForFunction(({ memory, vram, memoryReason, vramReason }) => {
     const root = document.querySelector(".resource-table-panel");

@@ -828,15 +828,12 @@ const esEsAppCopy: AppCopy = {
     columnEditorLabel: "Editor de columnas de la lista de recursos",
     showColumn: (column: string) => `Mostrar la columna ${column}`,
     moveColumnLeft: (column: string) => `Mover la columna ${column} a la izquierda`,
-    moveLeftTitle: "Mover a la izquierda",
     moveColumnRight: (column: string) => `Mover la columna ${column} a la derecha`,
-    moveRightTitle: "Mover a la derecha",
     resizeColumn: (column: string) => `Cambiar el ancho de la columna ${column}`,
     moreActions: (name: string) => `Más acciones: ${name}`,
     currentItem: "este elemento",
     heatSharedLegend: "Barra bajo el valor: continua = propio, discontinua = parte compartida",
     memoryBreakdown: (label: string, value: string, own: string, shared: string) => `${label}: ${value}\nPropio ${own} · parte compartida ${shared}`,
-    moreActionsTitle: "Más acciones",
     unknownStatus: "Estado desconocido"
   },
   contextMenu: {

@@ -3,17 +3,19 @@ import { CircleHelp } from "lucide-solid";
 import { uiText } from "../../text.ts";
 import { AnchoredLayer } from "./AnchoredLayer.tsx";
 import { HELP_HINT_SPACING } from "./anchoredPlacement.ts";
-import { graceArea, insideArea, type Point } from "./pointerGrace.ts";
+import { corridor, graceArea, insideArea, type Point } from "./pointerGrace.ts";
 
 /**
  * 问号说明：界面上一段说明不再藏在原生 title 里，而是旁边一个专门的问号按钮，说明画在我们自己的弹层上。
  *
  * 参与者：问号按钮、说明弹层（Portal 到 body，position: fixed，滚动容器裁不掉它）。开关只由这个组件持有，两个来源：
  * - 指针在里面：指针在问号上、说明上，或者正从其中一个移向另一个。离开一个时（落点不在另一个里），
- *   离开处和另一个的外框围成一块凸区域（pointerGrace.ts）；指针还在这块区域里就是在移过去的路上，走出去就算离开。
- *   斜着从问号侧边移向说明也算没离开。纯几何判断，不靠计时器去猜。触摸没有悬停，抬手就不算在里面。
+ *   离开处已经在两者之间的走廊外（一步跳到了别处）就当场算离开；否则离开处和另一个的外框围成一块凸区域（pointerGrace.ts），
+ *   指针还在这块区域里就是在移过去的路上，走出去就算离开。斜着从问号侧边移向说明也算没离开。
+ *   纯几何判断，不靠计时器去猜。触摸没有悬停，抬手就不算在里面。
  * - 焦点在里面：焦点在问号或说明上（Tab 到问号、点问号、在说明里按下去选字都会把焦点放进来）。焦点移到两者之外就不算。
  * 任一来源成立说明就开着，两个都不成立就关上。没有延迟，没有自动隐藏。
+ * 问号不显示了（卸下、所在的常驻页被隐藏，AnchoredLayer 的 onAnchorLost）：两个来源都清掉。
  * Esc：两个来源都清掉；焦点原来在问号或说明上时交还给问号（焦点在别处时只关说明，不抢焦点，也不吞掉这个键）。
  * 点问号：焦点来源成立（Esc 关掉之后，焦点还在问号上，再点一下重新打开）。
  * 在说明里按下去拖动选字：说明拿到焦点，指针拖出去也不关；松开后在别处按下（焦点离开）或按 Esc 才关。
@@ -87,17 +89,29 @@ export function HelpHint(props: HelpHintProps) {
     endGrace();
     setPointerInside(true);
   };
-  const pointerLeft = (other: () => HTMLElement | undefined) => (event: PointerEvent) => {
+  const pointerLeft = (self: () => HTMLElement | undefined, other: () => HTMLElement | undefined) => (event: PointerEvent) => {
     if (withinHint(event.relatedTarget)) return;
+    const left = self();
     const target = other();
     // 离开了窗口（relatedTarget 为 null）、触摸抬手、另一个不在：直接算离开。
-    if (event.pointerType === "touch" || event.relatedTarget === null || !target?.isConnected) {
+    if (event.pointerType === "touch" || event.relatedTarget === null || !left || !target?.isConnected) {
+      leave();
+      return;
+    }
+    const exit = { x: event.clientX, y: event.clientY };
+    const targetBox = target.getBoundingClientRect();
+    // 离开处已经不在两者之间的走廊里：没往另一个那边去（一步跳到了别处），当场算离开，不等下一次移动。
+    if (!insideArea(corridor(left.getBoundingClientRect(), targetBox), exit)) {
       leave();
       return;
     }
     endGrace();
-    grace = graceArea({ x: event.clientX, y: event.clientY }, target.getBoundingClientRect());
+    grace = graceArea(exit, targetBox);
     document.addEventListener("pointermove", onGraceMove, true);
+  };
+  const anchorLost = () => {
+    leave();
+    setFocusInside(false);
   };
   const onFocusOut = (event: FocusEvent) => {
     if (!withinHint(event.relatedTarget)) setFocusInside(false);
@@ -181,7 +195,7 @@ export function HelpHint(props: HelpHintProps) {
         aria-label={props.label ?? uiText.common.helpHint}
         aria-describedby={popoverId}
         onPointerEnter={onPointerEnter}
-        onPointerLeave={pointerLeft(() => popover)}
+        onPointerLeave={pointerLeft(() => button, () => popover)}
         onFocusIn={() => setFocusInside(true)}
         onFocusOut={onFocusOut}
         onClick={() => setFocusInside(true)}
@@ -194,8 +208,9 @@ export function HelpHint(props: HelpHintProps) {
           id={popoverId}
           anchor={() => button}
           ref={(element) => { popover = element; }}
+          onAnchorLost={anchorLost}
           onPointerEnter={onPointerEnter}
-          onPointerLeave={pointerLeft(() => button)}
+          onPointerLeave={pointerLeft(() => popover, () => button)}
           onPointerDown={onPopoverPointerDown}
           onFocusIn={() => setFocusInside(true)}
           onFocusOut={onFocusOut}
@@ -220,6 +235,7 @@ function HelpHintPopover(props: {
   readonly id: string;
   readonly anchor: () => HTMLElement | undefined;
   readonly ref: (element: HTMLDivElement) => void;
+  readonly onAnchorLost: () => void;
   readonly onPointerEnter: () => void;
   readonly onPointerLeave: (event: PointerEvent) => void;
   readonly onPointerDown: (event: PointerEvent) => void;
@@ -234,6 +250,7 @@ function HelpHintPopover(props: {
       anchor={props.anchor}
       spacing={HELP_HINT_SPACING}
       ref={props.ref}
+      onAnchorLost={props.onAnchorLost}
       id={props.id}
       class="help-hint-popover"
       role="tooltip"

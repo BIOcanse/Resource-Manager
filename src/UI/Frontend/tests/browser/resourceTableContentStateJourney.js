@@ -47,7 +47,7 @@ export default async function resourceTableContentStateJourney(
       width: cell.style.getPropertyValue("--heat"),
       privateWidth: cell.style.getPropertyValue("--private-heat"),
       background: getComputedStyle(cell).backgroundImage,
-      title: cell.title
+      title: cell.getAttribute("data-full-content") ?? ""
     })));
   // 默认软件列来自前端布局点（preferences.points.json 的 softwareColumns）：无 GPU 时数值列为 CPU、内存、磁盘、网络。
   // CreateNetworkThroughputBar 与磁盘条一样发布 B/s；共享内存的 75% 私有段仍单独检查。
@@ -75,7 +75,7 @@ export default async function resourceTableContentStateJourney(
     throw new Error(`Resource table mounted slots without data rows: ${JSON.stringify(rowPool)}`);
   }
   const nameBindings = await page.locator('#pageStage .resource-table-row[aria-hidden="false"] .resource-row-name')
-    .evaluateAll(names => names.map(name => ({ text: name.textContent, title: name.getAttribute("title"),
+    .evaluateAll(names => names.map(name => ({ text: name.textContent, title: name.getAttribute("data-full-content"),
       accessible: name.closest('[role="row"]')?.getAttribute("aria-label") })));
   if (nameBindings.length === 0 || nameBindings.some(name => name.text !== name.title || name.text !== name.accessible)) {
     throw new Error(`Resource row name text, tooltip and accessibility disagree: ${JSON.stringify(nameBindings)}`);

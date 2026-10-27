@@ -49,7 +49,7 @@ import { createReorderGroup, type ReorderGroup } from "../../interactions/solid/
 import type { Presentation } from "../../interactions/protocol/runtime.ts";
 import { enterSlot, exitInPlace, settleEntrancesWithin } from "../../presentation/nodeAnimation.ts";
 import { GpuNameNote } from "../monitor/GpuNameNote.tsx";
-import { HelpHint } from "../../ui/primitives/HelpHint.tsx";
+import { HelpHint, OptionsHelpHint } from "../../ui/primitives/HelpHint.tsx";
 
 const rowHeight = 38;
 const overscan = 6;
@@ -407,13 +407,16 @@ function ResourceTableColumnEditor(props: {
                 }}>
                 <Index each={choices()}>
                   {(choice, index) => (
-                    <RadioGroupItem value={`source-${index}`} class="segment"
-                      title={resourceTableColumnText({ id: columnId, source: choice().source }, props.processFields).basis}>
+                    <RadioGroupItem value={`source-${index}`} class="segment">
                       {resourceColumnSourceLabel(choice(), props.processFields, automaticField(columnId))}
                     </RadioGroupItem>
                   )}
                 </Index>
               </RadioGroupRoot>
+              <OptionsHelpHint entries={choices().flatMap((choice) => {
+                const basis = resourceTableColumnText({ id: columnId, source: choice.source }, props.processFields).basis;
+                return basis ? [{ label: resourceColumnSourceLabel(choice, props.processFields, automaticField(columnId)), text: basis }] : [];
+              })} />
             </div>
           );
         }}
@@ -827,11 +830,11 @@ function VirtualResourceTable(props: {
               >
                 {/* 编辑时整个表头格是拖动排序的把手，排序按钮停用：按下拖动时运行时捕获指针，浏览器把随后的 click 交给表头格，
                     按钮本来也收不到；停用的按钮算表头格的一部分，可用的按钮按在上面交给浏览器（interactions/solid/reorderGroup.ts）。 */}
-                {/* 提示：有口径说明时写口径（第一行就是列名和来源），没有时写列名本身，列窄、名字被截断时也看得到全名。 */}
+                {/* 排序按钮的完整内容提示是列名本身：列窄、名字被截断时也看得到全名。口径说明（第一行就是列名和来源）在旁边的问号里。 */}
                 <button
                   class="resource-table-sort-button"
                   type="button"
-                  title={columnText(column()).basis || columnText(column()).label}
+                  data-full-content={columnText(column()).label}
                   disabled={!column().sortable || props.editMode}
                   onClick={() => updateSort(column())}
                 >
@@ -851,6 +854,9 @@ function VirtualResourceTable(props: {
                     />
                   </Show>
                 </button>
+                <Show when={columnText(column()).basis}>
+                  {(basis) => <HelpHint>{basis()}</HelpHint>}
+                </Show>
                 <Show when={props.editMode}>
                   <span class="resource-table-column-order-actions">
                     <button
@@ -858,7 +864,7 @@ function VirtualResourceTable(props: {
                       type="button"
                       disabled={columnIndex() === 0}
                       aria-label={uiText.resourceTableView.moveColumnLeft(columnText(column()).label)}
-                      title={uiText.resourceTableView.moveLeftTitle}
+                      data-name-tooltip=""
                       onClick={() => {
                         const previous = columns()[columnIndex() - 1];
                         if (previous) {
@@ -873,7 +879,7 @@ function VirtualResourceTable(props: {
                       type="button"
                       disabled={columnIndex() === columns().length - 1}
                       aria-label={uiText.resourceTableView.moveColumnRight(columnText(column()).label)}
-                      title={uiText.resourceTableView.moveRightTitle}
+                      data-name-tooltip=""
                       onClick={() => {
                         const next = columns()[columnIndex() + 1];
                         if (next) {
@@ -1319,14 +1325,14 @@ function ResourceTableCell(props: {
             </svg>
           </button>
         </Show>
-        <span class="resource-row-name" title={props.rowName()}>{props.rowName()}</span>
+        <span class="resource-row-name" data-full-content={props.rowName()}>{props.rowName()}</span>
         <Show when={props.onSoftwareContextMenu && (row()?.kind === "software" || row()?.kind === "process")}>
           <button
             type="button"
             class="resource-row-actions"
             tabIndex={-1}
             aria-label={uiText.resourceTableView.moreActions(props.rowName() || uiText.resourceTableView.currentItem)}
-            title={uiText.resourceTableView.moreActionsTitle}
+            data-name-tooltip=""
             data-focus-key={`resource-row-actions:${row()?.id ?? "unknown"}`}
             onClick={(event) => openRowActions(event.currentTarget)}
             onKeyDown={(event) => {
@@ -1355,7 +1361,7 @@ function ResourceTableCell(props: {
 
   if (columnId === "status") {
     return (
-      <div class="resource-table-cell status-cell" role="gridcell" aria-colindex={props.columnIndex + 1} title={props.rowStatus()}>
+      <div class="resource-table-cell status-cell" role="gridcell" aria-colindex={props.columnIndex + 1} data-full-content={props.rowStatus()}>
         <span class="resource-table-cell-text">{props.rowStatus()}</span>
       </div>
     );
@@ -1363,7 +1369,7 @@ function ResourceTableCell(props: {
 
   if (columnId === "pid" || columnId === "user" || columnId === "architecture") {
     return (
-      <div class="resource-table-cell text-cell" role="gridcell" aria-colindex={props.columnIndex + 1} title={props.presentation().display}>
+      <div class="resource-table-cell text-cell" role="gridcell" aria-colindex={props.columnIndex + 1} data-full-content={props.presentation().display}>
         <span class="resource-table-cell-text">{props.presentation().display}</span>
       </div>
     );
@@ -1377,7 +1383,7 @@ function ResourceTableCell(props: {
       aria-colindex={props.columnIndex + 1}
       classList={{ unavailable: presentation().unavailable }}
       style={{ "--heat": `${presentation().heat}%`, "--private-heat": `${presentation().privateHeat}%` } satisfies CssVars}
-      title={presentation().title}
+      data-full-content={presentation().title}
     >
       <span class="resource-table-cell-text">{presentation().display}</span>
     </div>

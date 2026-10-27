@@ -43,16 +43,13 @@ export const zhMonitorViewsCopy = {
     columnEditorLabel: "資源列表列編輯器",
     showColumn: (column: string) => `顯示 ${column} 列`,
     moveColumnLeft: (column: string) => `左移 ${column} 列`,
-    moveLeftTitle: "左移",
     moveColumnRight: (column: string) => `右移 ${column} 列`,
-    moveRightTitle: "右移",
     resizeColumn: (column: string) => `調整 ${column} 列寬`,
     moreActions: (name: string) => `更多操作：${name}`,
     currentItem: "當前專案",
     heatSharedLegend: "底部細條：實線是自有，虛線是共享分攤",
     memoryBreakdown: (label: string, value: string, own: string, shared: string) => `${label}: ${value}
 自有 ${own} · 共享分攤 ${shared}`,
-    moreActionsTitle: "更多操作",
     unknownStatus: "狀態未知"
   },
   contextMenu: {

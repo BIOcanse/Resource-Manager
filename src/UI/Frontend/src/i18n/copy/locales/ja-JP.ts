@@ -828,15 +828,12 @@ const jaJpAppCopy: AppCopy = {
     columnEditorLabel: "リソース一覧の列エディター",
     showColumn: (column: string) => cjkText`${column}列を表示`,
     moveColumnLeft: (column: string) => cjkText`${column}列を左へ移動`,
-    moveLeftTitle: "左へ移動",
     moveColumnRight: (column: string) => cjkText`${column}列を右へ移動`,
-    moveRightTitle: "右へ移動",
     resizeColumn: (column: string) => cjkText`${column}列の幅を変更`,
     moreActions: (name: string) => `その他の操作: ${name}`,
     currentItem: "この項目",
     heatSharedLegend: "数値の下のバー：実線は専有、破線は共有按分",
     memoryBreakdown: (label: string, value: string, own: string, shared: string) => `${label}: ${value}\n専有 ${own} · 共有按分 ${shared}`,
-    moreActionsTitle: "その他の操作",
     unknownStatus: "状態不明"
   },
   contextMenu: {

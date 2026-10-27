@@ -155,11 +155,14 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
     throw new Error(`Hovered header looks like the sorted one or shows no preview: ${JSON.stringify({ hovered, active: ascending.background })}`);
   }
   const titles = await panel.locator(".resource-table-sort-button").evaluateAll((buttons) => buttons.map((button) => ({
-    label: button.querySelector("span").textContent.trim(), title: button.title })));
-  // 有口径说明的列（内存、磁盘）提示写口径，其余写列名本身。
+    label: button.querySelector("span").textContent.trim(), fullName: button.getAttribute("data-full-content"),
+    hint: button.parentElement.querySelector(":scope > .help-hint") !== null, title: button.getAttribute("title") })));
+  // 每个表头的完整内容提示是列名本身（列窄时看全名）；有口径说明的列（内存、磁盘）旁边有问号，其余没有。没有原生 title。
   const plain = titles.filter(({ label }) => ["名称", "状态", "CPU", "网络"].includes(label));
-  if (titles.some(({ title }) => !title) || plain.length !== 4 || plain.some(({ label, title }) => title !== label)) {
-    throw new Error(`Every header needs a tooltip, the name itself when there is no basis: ${JSON.stringify(titles)}`);
+  const explained = titles.filter(({ label }) => label.startsWith("内存") || label.startsWith("磁盘"));
+  if (titles.some(({ label, fullName, title }) => fullName !== label || title !== null) || plain.length !== 4 || plain.some(({ hint }) => hint)
+    || explained.length < 2 || explained.some(({ hint }) => !hint)) {
+    throw new Error(`Every header shows its full name, with a question mark only where there is a basis: ${JSON.stringify(titles)}`);
   }
   results.header = { unsorted, descending, ascending, hovered, titles };
 
@@ -424,7 +427,7 @@ export default async function resourceTableRowsJourney(page, baseUrl) {
       range.selectNodeContents(cell.querySelector(".resource-table-cell-text"));
       return { image: style.backgroundImage, size: style.backgroundSize, position: style.backgroundPosition,
         heat: cell.style.getPropertyValue("--heat"), privateHeat: cell.style.getPropertyValue("--private-heat"),
-        textBottom: range.getBoundingClientRect().bottom, barTop: cell.getBoundingClientRect().bottom - 7, title: cell.title };
+        textBottom: range.getBoundingClientRect().bottom, barTop: cell.getBoundingClientRect().bottom - 7, title: cell.getAttribute("data-full-content") ?? "" };
     };
     return { software: read(element.querySelector('.resource-table-row[aria-label="示例软件 2"]')),
       summary: read(element.querySelector('.resource-table-row.summary-row[aria-hidden="false"]')) };

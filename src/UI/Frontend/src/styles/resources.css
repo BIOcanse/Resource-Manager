@@ -244,6 +244,24 @@
   opacity: 1;
 }
 
+/* 有口径说明的列（只有数值列有，resourceMetricBasis）：问号在表头格左边，排序按钮占其余的宽，
+   列名仍靠右、和下面的数字右边缘对齐。 */
+.resource-table-head-cell:has(> .help-hint) {
+  display: flex;
+  align-items: center;
+}
+
+.resource-table-head-cell:has(> .help-hint) > .resource-table-sort-button {
+  flex: 1 1 auto;
+  width: auto;
+}
+
+.resource-table-head-cell > .help-hint {
+  flex: none;
+  order: -1;
+  margin: 0 -4px 0 6px;
+}
+
 .resource-table-head-cell.editing .resource-table-sort-button {
   padding-right: 52px;
   /* 编辑时表头格是拖动排序的把手，排序按钮停用（ResourceTable.tsx）。 */

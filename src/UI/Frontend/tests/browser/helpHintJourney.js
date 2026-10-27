@@ -7,6 +7,8 @@ import { seedFrontendPreferences, writeFrontendPreferences } from "./frontendPre
  * 问号说明（src/ui/primitives/HelpHint.tsx）在资源列表计数旁边：
  * - 计数徽标不再带原生 title，计数后面紧跟一个问号按钮；说明画在我们自己的弹层上（role=tooltip，Portal 到 body），问号的 aria-describedby 指向它。
  * - 悬停问号打开；指针一像素一像素斜着从问号移进说明（先从问号侧边出去，经过两者之间的空隙），途中一直开着；从问号横着走开就关上；离开两者就关上，关上时由呈现层留一份只能看见的幽灵。
+ * - 指针从问号或说明一步跳到远处停下（page.mouse.move 一步，之后不再移动）：当场关上，不等下一次移动。
+ * - 常驻页被隐藏（离开监视页时只标 aria-hidden、content-visibility: hidden，不卸下）：说明当场关上，不管是悬停还是焦点打开的，指针和焦点没动也一样。
  * - 说明里的字能拖动选中，拖出说明外松开也不关，选区只停在说明里的字上（不会选到后面页面的内容）；Esc 关上并把焦点交还问号。
  * - 键盘：Shift+Tab 从搜索框回到问号就打开，Esc 关上、焦点留在问号，再点问号重新打开；焦点在别处、只靠悬停打开时，Esc 只关说明不抢焦点。
  * - 点问号打开后指针移开仍开着，在别处按下才关。
@@ -120,6 +122,22 @@ export default async function helpHintJourney(page, baseUrl) {
   for (let x = from.x; x >= start.x - 6; x -= 1) await page.mouse.move(x, from.y);
   await waitClosed(page, "moving sideways off the question mark closes the explanation");
 
+  // 一步跳到远处停下：离开事件的坐标就是那个远点，它已经不在问号和说明之间的走廊里，当场关上，之后不再移动指针。
+  const size = page.viewportSize();
+  const far = { x: size.width - 2, y: size.height - 2 };
+  await page.mouse.move(from.x, from.y, { steps: 4 });
+  await page.locator(live).waitFor({ timeout: 2000 });
+  await page.mouse.move(far.x, far.y, { steps: 1 });
+  await waitClosed(page, "a one-step jump from the question mark to far away closes the explanation without another move");
+  // 从说明里一步跳走也一样。
+  await page.mouse.move(from.x, from.y, { steps: 4 });
+  await page.locator(live).waitFor({ timeout: 2000 });
+  const inside = await boxes(page);
+  await page.mouse.move(from.x, (inside.popover.top + inside.popover.bottom) / 2, { steps: 6 });
+  assert.ok(await isOpen(page), "the pointer reached the explanation");
+  await page.mouse.move(far.x, far.y, { steps: 1 });
+  await waitClosed(page, "a one-step jump from the explanation to far away closes it without another move");
+
   // 拖动选字：从说明里按下，拖到说明外面松开，说明不关，选中的是说明里的字。
   await page.mouse.move(from.x, from.y);
   await page.locator(live).waitFor({ timeout: 2000 });
@@ -181,6 +199,29 @@ export default async function helpHintJourney(page, baseUrl) {
   assert.ok(await isOpen(page), "a clicked question mark keeps its explanation open after the pointer leaves");
   await page.mouse.click(away.x, away.y);
   await waitClosed(page, "pressing elsewhere closes a clicked explanation");
+
+  // 常驻页被隐藏：换页只派发点击（不动指针、不动焦点），监视页标成 aria-hidden，问号自己的说明当场关上。
+  const nav = (id) => page.getByRole("navigation").getByRole("button", { name: copy.page[id], exact: true });
+  const own = `[id="${await hint.getAttribute("aria-describedby")}"]:not([data-exit-ghost])`;
+  const hideMonitor = async (how) => {
+    await page.locator(own).waitFor({ timeout: 2000 });
+    await nav("settings").dispatchEvent("click");
+    await page.locator('.page-host[data-page-id="monitor"][aria-hidden="true"]').waitFor({ state: "attached" });
+    await page.waitForFunction((selector) => document.querySelector(selector) === null, own, { timeout: 2000 })
+      .catch(() => assert.fail(`an explanation opened by ${how} stays open after its kept page was hidden`));
+    await nav("monitor").dispatchEvent("click");
+    await page.locator('.page-host[data-page-id="monitor"]:not([aria-hidden])').waitFor({ state: "attached" });
+    // 换页的退场幽灵里有一份问号的拷贝（只能看见），等它播完再找问号。
+    await page.waitForFunction(() => document.querySelector(".page-leaving-layer")?.childElementCount === 0, null, { timeout: 5000 });
+  };
+  await page.mouse.move(from.x, from.y, { steps: 4 });
+  await hideMonitor("hover");
+  await page.mouse.move(away.x, away.y, { steps: 4 });
+  await waitClosed(page, "the explanation is closed after returning to the monitor page and moving away");
+  await hint.focus();
+  await hideMonitor("focus");
+  await hint.evaluate((element) => element.blur());
+  await waitClosed(page, "the explanation is closed after returning to the monitor page and blurring");
 
   // 无动画：当场出现、当场消失，没有退场幽灵。
   await writeFrontendPreferences(page, (value) => { value.appearance.animationStyle = "none"; });

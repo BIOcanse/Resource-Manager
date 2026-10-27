@@ -9,7 +9,11 @@ export type AnchoredLayerProps = Omit<JSX.HTMLAttributes<HTMLDivElement>, "ref">
   /** 离锚点、离视口四边的距离（anchoredPlacement.ts 的具名间距）。 */
   readonly spacing: AnchoredSpacing;
   readonly ref?: (element: HTMLDivElement) => void;
-  /** 锚点不在页面上了（被卸下）。不给就只是不再挪位置。 */
+  /**
+   * 锚点不显示了：被卸下，或者不再画出来（checkVisibility 为假：自己或上层 display: none，
+   * 或者在 content-visibility: hidden 的子树里，例如离开后被隐藏的常驻页，app/navigation/pageHost.tsx）。
+   * 不给就只是不再挪位置。
+   */
   readonly onAnchorLost?: () => void;
 };
 
@@ -28,7 +32,7 @@ export function AnchoredLayer(props: AnchoredLayerProps) {
 
   const place = () => {
     const anchor = local.anchor();
-    if (!anchor?.isConnected) {
+    if (!anchor?.isConnected || !anchor.checkVisibility()) {
       local.onAnchorLost?.();
       return;
     }
