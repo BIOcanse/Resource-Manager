@@ -12,6 +12,22 @@ public sealed class SchedulingProcessFactSnapshotStateTests
     private static readonly TimeSpan FreshnessGrace = TimeSpan.FromSeconds(2);
 
     [Fact]
+    public void InventoryRefreshReplacesParentPidIndependentlyOfAttribution()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var state = new SchedulingProcessFactSnapshotState();
+        var fact = Fact(42, 100, SchedulingProcessMetricMask.None, 0, 0) with { ParentProcessId = 17 };
+        var sample = Sample(now, 1, SchedulingProcessMetricMask.None, fact);
+        state.ApplyScheduled(Request(SchedulingProcessMetricMask.None, SamplingDatasetIds.ProcessInventory), sample, now, Schedule(now));
+        state.ApplyScheduled(Request(SchedulingProcessMetricMask.None, SamplingDatasetIds.ProcessAttribution), sample, now, Schedule(now));
+        Assert.Equal(17, Assert.Single(state.ReadLatest(FactRequest(SchedulingProcessMetricMask.None), now)!.InventoryProcesses).ParentProcessId);
+        var next = now.AddSeconds(1);
+        state.ApplyScheduled(Request(SchedulingProcessMetricMask.None, SamplingDatasetIds.ProcessInventory),
+            Sample(next, 2, SchedulingProcessMetricMask.None, fact with { ParentProcessId = 18 }), next, Schedule(next, 2));
+        Assert.Equal(18, Assert.Single(state.ReadLatest(FactRequest(SchedulingProcessMetricMask.None), next)!.InventoryProcesses).ParentProcessId);
+    }
+
+    [Fact]
     public void FoundationReadNeedsBothPublicationsAndNoPerformanceDataset()
     {
         var now = DateTimeOffset.UtcNow;

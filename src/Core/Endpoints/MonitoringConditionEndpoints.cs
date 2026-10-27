@@ -76,7 +76,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         { await ErrorAsync(compilation.HookRejections[0].Value); return; }
         var expanded = compilation.HookExpansions![0].Value.Hook;
         response.Headers["X-Resource-Manager-Expanded-Hook"] = WebEncoders.Base64UrlEncode(JsonSerializer.SerializeToUtf8Bytes(expanded, ConditionJsonOptions));
-        var selector = MonitoringHookAuthorizationSelector(expanded.Rule.Binding, expanded.Rule.TopOwners);
+        var selector = expanded.Event is not null ? "/api/memory-protection/subscribe"
+            : MonitoringHookAuthorizationSelector(expanded.Rule!.Binding, expanded.Rule.TopOwners);
         TrustedAccessHttpPolicy.TryGetRequiredScopesForSubscription(selector, out var scopes);
         response.Headers["X-Resource-Manager-Required-Scopes"] = string.Join(',', scopes);
         var authorization = context.Items.TryGetValue(typeof(TrustedAccessAuthorizationContext), out var authorizationObject)
@@ -101,6 +102,11 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 {
                     response.StatusCode = result.State == "met" ? 200 : 409;
                     await response.WriteAsJsonAsync(new MonitoringHookWaitResult(id, expanded, result), options.Value.SerializerOptions, token);
+                }
+                else if (value is MonitoringEventHookEvent eventResult)
+                {
+                    response.StatusCode = 200;
+                    await response.WriteAsJsonAsync(new MonitoringHookWaitResult(id, expanded, eventResult), options.Value.SerializerOptions, token);
                 }
                 else return;
                 await lifetime.CancelAsync();

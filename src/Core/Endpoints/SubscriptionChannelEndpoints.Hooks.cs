@@ -14,10 +14,11 @@ namespace ResourceManager.App.Endpoints;
 
 public static partial class ResourceManagerEndpointRouteBuilderExtensions
 {
-    private sealed record MonitoringHookRequest(string Id, MonitoringHookRule Rule, TimeSpan Interval,
-        ExpandedMonitoringHook? Expansion = null)
+    private sealed record MonitoringHookRequest(string Id, MonitoringHookRule? Rule, TimeSpan Interval,
+        ExpandedMonitoringHook? Expansion = null, string? Event = null)
     {
-        internal string AuthorizationSelector => MonitoringHookAuthorizationSelector(Rule.Target.Binding, Rule.TopOwners);
+        internal string AuthorizationSelector => Event is not null ? "/api/memory-protection/subscribe"
+            : MonitoringHookAuthorizationSelector(Rule!.Target.Binding, Rule.TopOwners);
     }
 
     private static string MonitoringHookAuthorizationSelector(string binding, int topOwners)
@@ -38,15 +39,25 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 && rawId.ValueKind == JsonValueKind.String ? rawId.GetString() : null;
             try
             {
-                CheckHookObject(item, ["id", "rule", "intervalMs", "condition"]);
+                CheckHookObject(item, ["id", "rule", "intervalMs", "condition", "event"]);
                 if (!IsValidSubscriptionId(id) || !ids.Add(id!)) throw InvalidHook("hook id must be valid and unique");
                 if (item.TryGetProperty("condition", out var condition))
                 {
-                    if (condition.ValueKind != JsonValueKind.String || item.TryGetProperty("rule", out _) || item.TryGetProperty("intervalMs", out _))
+                    if (condition.ValueKind != JsonValueKind.String || item.TryGetProperty("rule", out _) || item.TryGetProperty("intervalMs", out _) || item.TryGetProperty("event", out _))
                         throw InvalidHook("condition must be a string and cannot be mixed with rule or intervalMs");
                     var expanded = await ExpandMonitoringConditionAsync(condition.GetString()!, id!, services, cancellationToken);
-                    result.Add(new(id!, DecodeHookRule(JsonSerializer.SerializeToElement(expanded.Rule, ConditionJsonOptions)),
-                        TimeSpan.FromMilliseconds(expanded.IntervalMs), expanded));
+                    result.Add(new(id!, expanded.Event is null ? DecodeHookRule(JsonSerializer.SerializeToElement(expanded.Rule, ConditionJsonOptions)) : null,
+                        TimeSpan.FromMilliseconds(expanded.IntervalMs), expanded, expanded.Event));
+                    continue;
+                }
+                if (item.TryGetProperty("event", out var eventValue))
+                {
+                    if (item.TryGetProperty("rule", out _) || item.TryGetProperty("intervalMs", out _)
+                        || eventValue.ValueKind != JsonValueKind.String) throw InvalidHook("event cannot be mixed with rule or intervalMs");
+                    var expanded = await ExpandMonitoringConditionAsync(eventValue.GetString()!.Replace("memory-protection.", "memory-protection ", StringComparison.Ordinal),
+                        id!, services, cancellationToken);
+                    if (expanded.Event != eventValue.GetString()) throw InvalidHook("event");
+                    result.Add(new(id!, null, TimeSpan.Zero, expanded, expanded.Event));
                     continue;
                 }
                 if (!item.TryGetProperty("intervalMs", out var interval) || interval.ValueKind != JsonValueKind.Number
@@ -118,7 +129,16 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 
     private static CompiledFrontendSubscription CompileMonitoringHook(MonitoringHookRequest request, IServiceProvider services)
     {
-        var rule = request.Rule;
+        if (request.Event is { } eventName)
+            return HookSubscription(request.Id, async (writer, token) =>
+            {
+                var owner = services.GetRequiredService<ResourceManager.App.Infrastructure.MemoryProtection.HostMemoryProtectionService>();
+                await foreach (var publication in owner.SubscribeAsync(token))
+                    foreach (var change in publication.Events.Where(change => "memory-protection." + change.Kind == eventName))
+                        await writer.WriteHookAsync(new MonitoringHookFrame<MonitoringEventHookEvent>(request.Id,
+                            new("met", change, publication.Status)), token);
+            });
+        var rule = request.Rule!;
         var target = rule.Target;
         var clock = services.GetService<TimeProvider>() ?? TimeProvider.System;
         var hook = new MonitoringHook(request.Id, rule, clock);

@@ -340,6 +340,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         SubscriptionSourceRoutes = new Dictionary<string, SubscriptionSourceRoute>(
             StringComparer.Ordinal)
         {
+            ["/api/memory-protection/subscribe"] = new((subscription, services, _) =>
+                subscription.Compile(async (writer, token) =>
+                {
+                    await foreach (var value in services.GetRequiredService<ResourceManager.App.Infrastructure.MemoryProtection.HostMemoryProtectionService>().SubscribeAsync(token))
+                        await writer.WriteAsync(subscription.Id, value.Status, token);
+                })),
             ["/api/settings/app/subscribe"] = new((subscription, services, _) =>
                 CompileSettingsSubscription(subscription, services.GetRequiredService<IAppSettingsSubscriptionSource>().SubscribeAsync)),
             ["/api/startup-modules/settings/subscribe"] = new((subscription, services, _) =>

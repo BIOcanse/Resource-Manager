@@ -25,7 +25,8 @@ public static class AppSettingsNormalizer
             // Rule values are validated against the rule profile by the runtime plan compiler, not rewritten here.
             new AppReportSettings(settings.Reports?.RuleOverrides ?? []),
             (settings.MemoryProtection ?? new HostMemoryProtectionSettings()) with
-                { Reserves = settings.MemoryProtection?.Reserves?.ToArray() ?? [] });
+                { Reserves = settings.MemoryProtection?.Reserves?.ToArray() ?? [],
+                    ProtectedProcesses = settings.MemoryProtection is { } protection ? protection.ProtectedProcesses?.ToArray()! : ["explorer.exe"] });
     }
 
     private static AppPerformanceSettings NormalizePerformance(AppPerformanceSettings? performance)

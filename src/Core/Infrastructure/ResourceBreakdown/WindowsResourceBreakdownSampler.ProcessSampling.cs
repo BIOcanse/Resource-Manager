@@ -182,8 +182,7 @@ public sealed partial class WindowsResourceBreakdownSampler
             var workingSet = hasWorkingSet ? (long)basic.Memory!.WorkingSet : 0;
             var privateMemory = hasPrivateMemory ? (long)basic.Memory!.PrivateCommit : 0;
             var totalProcessorTime = hasProcessorTime ? TimeSpan.FromTicks((long)basic.CpuTime100Ns!.Value) : TimeSpan.Zero;
-            var parentProcessId = preserveProductIdentity ? process.ParentProcessId
-                : basic.ParentPid is <= int.MaxValue ? (int)basic.ParentPid.Value : 0;
+            var parentProcessId = process.ParentProcessId;
 
             sample = new ProcessResourceSample(
                 processId,
@@ -219,7 +218,8 @@ public sealed partial class WindowsResourceBreakdownSampler
             if (processInstanceKey is { } identity)
             {
                 sample = new ProcessResourceSample() with
-                { ProcessId = identity.ProcessId, StartKey = identity.StartKey, Name = string.Empty,
+                { ProcessId = identity.ProcessId, ParentProcessId = process.ParentProcessId > 0 ? process.ParentProcessId : null,
+                    StartKey = identity.StartKey, Name = string.Empty,
                     BasicMetrics = ProcessBasicMetricObservation.Unavailable };
                 return true;
             }

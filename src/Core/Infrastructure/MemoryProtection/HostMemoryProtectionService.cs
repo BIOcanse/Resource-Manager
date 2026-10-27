@@ -10,7 +10,7 @@ using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
 namespace ResourceManager.App.Infrastructure.MemoryProtection;
 
-public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource source,
+public sealed partial class HostMemoryProtectionService(IHostMemoryProtectionSource source,
     IHostMemoryProtectionExecutor executor, IHostMemoryProtectionReserve reserve, BusinessBlockScheduler scheduler, IHostEnvironment environment,
     ILogger<HostMemoryProtectionService> logger, IGpuPlacementPolicyStore softwarePolicies) : IBusinessBlock
 {
@@ -28,10 +28,26 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
     private HostMemoryProtectionSettings settings = new();
     private CancellationTokenSource? subscriptionCancellation;
     private DateTimeOffset actionFinishedAt;
+    private bool reserveAccepted;
+    private string? currentActionId;
+    private string? decisionReason;
 
     public string? ValidateSettings(HostMemoryProtectionSettings value)
     {
         if (!HostMemoryProtectionActionModes.IsSupported(value.ActionMode)) return "invalid-action-mode";
+        if (value.MinimumProcessGrowthBytes <= 0) return "invalid-minimum-process-growth-bytes";
+        if (value.ProtectedProcesses is null) return "invalid-protected-processes";
+        var protectedEntries = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in value.ProtectedProcesses)
+        {
+            if (string.IsNullOrWhiteSpace(entry) || entry != entry.Trim() || !protectedEntries.Add(entry)) return "invalid-protected-processes";
+            if (Path.IsPathFullyQualified(entry))
+            {
+                try { if (string.IsNullOrEmpty(Path.GetFileName(entry)) || entry.Contains('*') || entry.Contains('?')) return "invalid-protected-processes"; _ = Path.GetFullPath(entry); }
+                catch (Exception error) when (error is ArgumentException or NotSupportedException or IOException) { return "invalid-protected-processes"; }
+            }
+            else if (Path.GetFileName(entry) != entry || entry.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) return "invalid-protected-processes";
+        }
         if (!double.IsFinite(value.ThresholdPercent) || value.ThresholdPercent is <= 0 or > 100) return "invalid-threshold-percent";
         if (!double.IsFinite(value.CheckIntervalSeconds) || value.CheckIntervalSeconds is < 1 or > 86400) return "invalid-check-interval";
         try
@@ -55,7 +71,9 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
         catch (Exception error) when (error is ArgumentException or NotSupportedException or IOException or UnauthorizedAccessException)
         { return "invalid-reserve-location:" + error.Message; }
         lock (gate) if (value.Enabled && point is null) return "no-normal-running-point";
-        return value.Enabled ? ReserveUnavailableReason(value, reserve.ReadStatus()) : null;
+        lock (gate)
+            return value.Enabled && !(settings.Enabled && reserveAccepted && Matches(ResolveEntries(value), reserve.ReadStatus()))
+                ? ReserveUnavailableReason(value, reserve.ReadStatus()) : null;
     }
 
     // Called in the existing serialized runtime-settings publication path, never from a private settings store.
@@ -76,8 +94,10 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
                 // Disablement is delivered by the parent. Only a frequency change renews subscriptions.
                 if (value.Enabled && settings.CheckIntervalSeconds != value.CheckIntervalSeconds) subscriptionCancellation?.Cancel();
                 settings = value;
+                reserveAccepted = value.Enabled && (Matches(entries, currentReserve) && reserveAccepted || reserve.ReadStatus().Built);
             }
             await PublishStateAsync("settings-published");
+            PublishStatus();
         }
         finally { configuration.Release(); }
     }
@@ -98,6 +118,7 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
                 return Matches(entries, prepared) ? reserve.Rebuild() : prepared;
             });
             await PublishStateAsync("reserve-rebuilt");
+            PublishStatus();
             return await ReadStatusAsync(cancellationToken);
         }
         finally { configuration.Release(); }
@@ -108,7 +129,9 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
         HostMemoryProtectionSettings current;
         lock (gate) current = settings;
         await enabled.PublishAsync(current.Enabled, Reason(cause));
-        await reserveBuilt.PublishAsync(ReserveUnavailableReason(current, reserve.ReadStatus()) is null, Reason(cause));
+        bool accepted;
+        lock (gate) accepted = reserveAccepted;
+        await reserveBuilt.PublishAsync(accepted || ReserveUnavailableReason(current, reserve.ReadStatus()) is null, Reason(cause));
     }
 
     public NormalRunningPoint? ReadPoint() { lock (gate) return point; }
@@ -127,6 +150,7 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
                 var next = new NormalRunningPoint(reading.At, reading.Commit, reading.Processes.ToArray());
                 lock (gate) { point = next; cannotOpen.Clear(); exclusions = []; }
                 await pointExists.PublishAsync(true, Reason("normal-running-point-created"));
+                PublishStatus(reading.Commit, useReading: true, reading.At);
                 return next;
             }
             throw new InvalidOperationException("normal-running-point-source-ended");
@@ -137,6 +161,11 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
     public async Task<HostMemoryProtectionStatus> ReadStatusAsync(CancellationToken cancellationToken)
     {
         var commit = await source.ReadCurrentCommitAsync(cancellationToken);
+        lock (gate) return BuildStatus(commit);
+    }
+
+    private HostMemoryProtectionStatus BuildStatus(HostMemoryCommit? commit)
+    {
         var currentReserve = reserve.ReadStatus();
         lock (gate)
         {
@@ -144,8 +173,15 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
             return new(settings.Enabled, settings.ThresholdPercent, settings.CheckIntervalSeconds, currentReserve,
                 trigger, trigger - commit?.CurrentBytes, commit,
                 point is null ? null : new(point.At, point.ProcessCount),
-                point is null ? "no-normal-running-point" : !settings.Enabled ? "disabled" : ReserveUnavailableReason(settings, currentReserve),
-                exclusions.ToArray(), RecordLimit, actions.Reverse().ToArray()) { ActionMode = settings.ActionMode };
+                point is null ? "no-normal-running-point" : !settings.Enabled ? "disabled" : reserveAccepted ? null : ReserveUnavailableReason(settings, currentReserve),
+                exclusions.ToArray(), RecordLimit, actions.Reverse().ToArray())
+            {
+                ActionMode = settings.ActionMode,
+                AtOrAboveThreshold = commit is null ? null : commit.Percent >= settings.ThresholdPercent,
+                CurrentActionId = currentActionId,
+                MinimumProcessGrowthBytes = settings.MinimumProcessGrowthBytes,
+                ProtectedProcesses = settings.ProtectedProcesses.ToArray(), DecisionReason = decisionReason
+            };
         }
     }
 
@@ -165,12 +201,6 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
                     // A buffered delivery from before the preceding action cannot trigger another action.
                     if (reading.At <= actionFinishedAt) continue;
                     await Task.Run(() => ProcessDeliveryAsync(reading, current, context.StopNotification), CancellationToken.None);
-                    if (!reserve.ReadStatus().Built)
-                    {
-                        await configuration.WaitAsync();
-                        try { await PublishStateAsync("reserve-unavailable"); }
-                        finally { configuration.Release(); }
-                    }
                 }
             }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
@@ -189,70 +219,124 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
     private async Task ProcessDeliveryAsync(HostMemoryReading reading, HostMemoryProtectionSettings current, CancellationToken stop)
     {
         NormalRunningPoint baseline;
-        Dictionary<(int, string), HostMemoryProcess> baselineProcesses;
+        Dictionary<(int, string), HostMemoryProcess> before;
         Dictionary<(int, string), HostMemoryExclusion> blocked;
         lock (gate)
         {
             if (point is null) return;
             current = settings;
             baseline = point;
-            baselineProcesses = baseline.Processes.ToDictionary(item => (item.ProcessId, item.ProcessStartKey));
+            before = baseline.Processes.ToDictionary(item => (item.ProcessId, item.ProcessStartKey));
             blocked = new(cannotOpen);
         }
+        PublishStatus(reading.Commit, useReading: true, reading.At);
         if (reading.Processes is null) return;
-        if (ReserveUnavailableReason(current, reserve.ReadStatus()) is not null) return;
+        lock (gate) if (!reserveAccepted) return;
         var excluded = blocked.Values.ToList();
-        var candidates = new List<(HostMemoryProcess Process, ulong Baseline, decimal Growth)>();
-        foreach (var process in reading.Processes)
-        {
-            if (blocked.ContainsKey((process.ProcessId, process.ProcessStartKey))) continue;
-            var before = baselineProcesses.GetValueOrDefault((process.ProcessId, process.ProcessStartKey));
-            var reason = process.IsResourceManager || process.ProcessId == Environment.ProcessId ? "resource-manager-process"
-                : process.ProcessId <= 4 ? "critical-process"
-                : process.ProcessStartKey == "0" ? "process-identity-unavailable"
-                : process.PrivateCommitBytes is null ? "private-commit-unavailable"
-                : before is { PrivateCommitBytes: null } ? "baseline-private-commit-unavailable" : null;
-            if (reason is not null) { excluded.Add(Exclude(process, reason)); continue; }
-            var bytes = before?.PrivateCommitBytes ?? 0;
-            candidates.Add((process, bytes, (decimal)process.PrivateCommitBytes!.Value - bytes));
-        }
-        // No sampling and no hold/debounce: commit percentOfTotal atOrAbove the configured threshold on each delivery.
         if (reading.Commit is null || reading.Commit.Percent < current.ThresholdPercent)
         {
-            lock (gate) if (ReferenceEquals(point, baseline)) exclusions = excluded.ToArray();
+            Finish(reading.Commit is null ? "commit-unavailable" : "below-threshold");
             return;
         }
-        // Read the existing per-software policies only when their no-dump flag can affect an action.
-        var noDumpSoftware = current.ActionMode == HostMemoryProtectionActionModes.DumpThenTerminate && candidates.Count != 0
-            ? (await softwarePolicies.GetAsync(stop)).SoftwarePolicies.Where(item => item.HostMemoryProtectionNoDump)
-                .Select(item => item.SoftwareId).ToHashSet(StringComparer.OrdinalIgnoreCase)
-            : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var policies = (await softwarePolicies.GetAsync(stop)).SoftwarePolicies;
+        var neverTerminate = policies.Where(item => item.HostMemoryProtectionNeverTerminate).Select(item => item.SoftwareId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var noDump = policies.Where(item => item.HostMemoryProtectionNoDump).Select(item => item.SoftwareId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var candidates = new List<(HostMemoryProcess Process, decimal Growth)>();
+        foreach (var process in reading.Processes)
+        {
+            var reason = CommonExclusion(process);
+            var atPoint = before.GetValueOrDefault((process.ProcessId, process.ProcessStartKey));
+            reason ??= process.PrivateCommitBytes is null ? "private-commit-unavailable"
+                : atPoint is { PrivateCommitBytes: null } ? "baseline-private-commit-unavailable" : null;
+            if (reason is not null) { AddExclusion(process, reason); continue; }
+            candidates.Add((process, (decimal)process.PrivateCommitBytes!.Value - (atPoint?.PrivateCommitBytes ?? 0)));
+        }
         foreach (var candidate in candidates.OrderByDescending(item => item.Growth).ThenBy(item => item.Process.ProcessId))
         {
-            if (stop.IsCancellationRequested) break;
+            if (stop.IsCancellationRequested) return;
+            if (candidate.Growth < current.MinimumProcessGrowthBytes) break;
             using var target = executor.Open(candidate.Process);
-            if (target.ExclusionReason is { } reason)
-            {
-                var exclusion = Exclude(candidate.Process, reason);
-                excluded.Add(exclusion);
-                // Failed effect opens (including unreadable criticality/identity) stay excluded for this point.
-                lock (gate) if (ReferenceEquals(point, baseline)) cannotOpen[(candidate.Process.ProcessId, candidate.Process.ProcessStartKey)] = exclusion;
-                continue;
-            }
+            if (target.ExclusionReason is { } reason) { AddExclusion(candidate.Process, reason, persist: true); continue; }
+            var actionId = Begin();
             var result = target.Execute(reserve, new(current.ActionMode,
-                candidate.Process.SoftwareId is { } softwareId && noDumpSoftware.Contains(softwareId)));
-            if (result.Outcome == "reserve-unavailable") break;
-            if (result.Outcome == "excluded")
+                current.ActionMode == HostMemoryProtectionActionModes.DumpThenTerminate && candidate.Process.SoftwareId is { } id && noDump.Contains(id))
+                { ProtectedProcesses = current.ProtectedProcesses });
+            actionFinishedAt = DateTimeOffset.UtcNow;
+            if (result.Outcome == "excluded") AddExclusion(candidate.Process, result.Reason ?? "cannot-open", persist: true);
+            else Record(candidate.Process, result, actionId, null);
+            lock (gate) currentActionId = null;
+            if (result.Outcome != "excluded" && !result.SuspendFailed) { Finish("process-handled"); return; }
+            PublishStatus();
+        }
+        var anyPositiveTree = false;
+        foreach (var tree in new HostMemoryProtectionTrees(reading.Processes, baseline.Processes).Ranked())
+        {
+            anyPositiveTree = true;
+            if (stop.IsCancellationRequested) return;
+            if (!tree.LeavesFirst.Any(process => CommonExclusion(process) is null)) continue;
+            var actionId = Begin();
+            var acted = false;
+            foreach (var process in tree.LeavesFirst)
             {
-                var exclusion = Exclude(candidate.Process, result.Reason ?? "cannot-open");
-                excluded.Add(exclusion);
-                lock (gate) if (ReferenceEquals(point, baseline)) cannotOpen[(candidate.Process.ProcessId, candidate.Process.ProcessStartKey)] = exclusion;
-                continue;
+                HostMemoryActionResult result;
+                if (CommonExclusion(process) is { } reason) result = new("excluded", reason, [], 0);
+                else
+                {
+                    using var target = executor.Open(process);
+                    result = target.ExclusionReason is { } openReason ? new("excluded", openReason, [], 0)
+                        : target.Execute(reserve, new(HostMemoryProtectionActionModes.TerminateOnly) { ProtectedProcesses = current.ProtectedProcesses });
+                    if (result.Outcome == "terminated-without-dump") result = result with { Reason = "process-tree" };
+                    if (result.Outcome == "excluded") AddExclusion(process, result.Reason ?? "cannot-open", persist: true);
+                }
+                if (result.Outcome == "excluded") AddExclusion(process, result.Reason ?? "cannot-open");
+                else acted = true;
+                Record(process, result, actionId, tree.Root);
             }
-            if (!result.SuspendFailed) actionFinishedAt = DateTimeOffset.UtcNow;
-            var record = new HostMemoryActionRecord(DateTimeOffset.UtcNow, candidate.Process.ProcessId, candidate.Process.ProcessStartKey,
-                candidate.Process.Name, candidate.Baseline, candidate.Process.PrivateCommitBytes!.Value, candidate.Growth,
-                result.DumpPaths, result.BytesWritten, result.Outcome, result.Reason);
+            actionFinishedAt = DateTimeOffset.UtcNow;
+            lock (gate) currentActionId = null;
+            if (acted) { Finish("process-tree-handled"); return; }
+            PublishStatus();
+        }
+        Finish(anyPositiveTree ? "no-eligible-tree" : "no-positive-child-memory-growth");
+
+        string? CommonExclusion(HostMemoryProcess process)
+            => blocked.TryGetValue((process.ProcessId, process.ProcessStartKey), out var previous) ? previous.Reason
+                : process.IsResourceManager || process.ProcessId == Environment.ProcessId ? "resource-manager-process"
+                : process.ProcessId <= 4 ? "critical-process"
+                : process.ProcessStartKey == "0" ? "process-identity-unavailable"
+                : process.SoftwareId is { } id && neverTerminate.Contains(id) ? "software-never-terminate"
+                : HostMemoryProtectionWhitelist.Matches(process, current.ProtectedProcesses) ? "protected-process" : null;
+        void AddExclusion(HostMemoryProcess process, string reason, bool persist = false)
+        {
+            var exclusion = Exclude(process, reason);
+            if (!excluded.Contains(exclusion)) excluded.Add(exclusion);
+            if (!persist || reason is "protected-process" or "software-never-terminate") return;
+            blocked[(process.ProcessId, process.ProcessStartKey)] = exclusion;
+            lock (gate) if (ReferenceEquals(point, baseline)) cannotOpen[(process.ProcessId, process.ProcessStartKey)] = exclusion;
+        }
+        string Begin()
+        {
+            var id = Guid.NewGuid().ToString("N");
+            lock (gate) { currentActionId = id; decisionReason = null; }
+            PublishStatus();
+            return id;
+        }
+        void Finish(string reason)
+        {
+            lock (gate)
+            {
+                if (ReferenceEquals(point, baseline)) exclusions = excluded.ToArray();
+                decisionReason = reason;
+            }
+            PublishStatus();
+        }
+        void Record(HostMemoryProcess process, HostMemoryActionResult result, string id, HostMemoryTreeRoot? root)
+        {
+            var bytes = before.TryGetValue((process.ProcessId, process.ProcessStartKey), out var old) ? old.PrivateCommitBytes : 0;
+            var record = new HostMemoryActionRecord(DateTimeOffset.UtcNow, process.ProcessId, process.ProcessStartKey, process.Name,
+                bytes, process.PrivateCommitBytes, bytes is { } b && process.PrivateCommitBytes is { } now ? (decimal)now - b : null,
+                result.DumpPaths, result.BytesWritten, result.Outcome, result.Reason)
+                { ActionId = id, TargetKind = root is null ? "process" : "processTree", TreeRoot = root };
             lock (gate)
             {
                 if (ReferenceEquals(point, baseline)) exclusions = excluded.ToArray();
@@ -260,9 +344,8 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
                 while (actions.Count > RecordLimit) actions.Dequeue();
             }
             logger.LogInformation("Host memory protection action: {@Action}", record);
-            if (!result.SuspendFailed) break;
+            PublishStatus();
         }
-        lock (gate) if (ReferenceEquals(point, baseline)) exclusions = excluded.ToArray();
     }
 
     private string ResolveDirectory(string value)

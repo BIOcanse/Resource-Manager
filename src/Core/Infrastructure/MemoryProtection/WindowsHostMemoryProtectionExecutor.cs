@@ -53,7 +53,11 @@ public sealed class WindowsHostMemoryProtectionExecutor : IHostMemoryProtectionE
                 var image = new StringBuilder(32768);
                 var size = (uint)image.Capacity;
                 if (!HostMemoryProtectionNative.QueryFullProcessImageName(handle, 0, image, ref size)) exclusion = "cannot-open";
-                else if (IsProductImage(Path.GetFileNameWithoutExtension(image.ToString()))) exclusion = "resource-manager-process";
+                else
+                {
+                    process = process with { ExecutablePath = image.ToString() };
+                    if (IsProductImage(Path.GetFileNameWithoutExtension(image.ToString()))) exclusion = "resource-manager-process";
+                }
             }
         }
         if (exclusion is not null)
@@ -103,11 +107,12 @@ public sealed class WindowsHostMemoryProtectionExecutor : IHostMemoryProtectionE
             // same effect handle instead of relying on classification performed before that wait.
             if (CriticalityExclusion(processHandle) is { } criticality)
                 return new("excluded", criticality, [], 0);
-            using var lease = reserve.TryAcquire();
-            if (lease is null) return new("reserve-unavailable", "reserve-unavailable", [], 0);
+            if (HostMemoryProtectionWhitelist.Matches(process, options.ProtectedProcesses)) return new("excluded", "protected-process", [], 0);
             if (options.ActionMode == HostMemoryProtectionActionModes.TerminateOnly)
                 return TerminateWithoutDump("terminate-only");
             if (options.SoftwareNoDump) return TerminateWithoutDump("software-no-dump");
+            using var lease = reserve.TryAcquire();
+            if (lease is null) return TerminateWithoutDump(reserve.ReadStatus().Reason ?? "reserve-unavailable");
             if (process.PrivateCommitBytes is not { } privateCommit)
                 return new("excluded", "private-commit-unavailable", [], 0);
             if (privateCommit > lease.RemainingBytes)

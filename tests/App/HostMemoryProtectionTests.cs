@@ -31,7 +31,7 @@ using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class HostMemoryProtectionTests
+public sealed partial class HostMemoryProtectionTests
 {
     private const ulong ReserveSize = 1024 * 1024;
     [Fact]
@@ -93,7 +93,7 @@ public sealed class HostMemoryProtectionTests
         Assert.True(status.Reserve.Built);
         Assert.Equal(ReserveSize, status.Reserve.RemainingBytes);
         var stored = await fixture.Stored();
-        Assert.Equal("1.0.36", stored.Settings.Version);
+        Assert.Equal("1.0.37", stored.Settings.Version);
         using var settingsWire = JsonDocument.Parse(JsonSerializer.Serialize(stored.Settings.MemoryProtection,
             new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         var reserveWire = Assert.Single(settingsWire.RootElement.GetProperty("reserves").EnumerateArray());
@@ -322,7 +322,7 @@ public sealed class HostMemoryProtectionTests
             [Process(10, "1", 950), Process(11, "1", 200), Process(12, "new", 300), Process(40, "1", 5000),
                 Process(41, "1", 4000), Process(42, "1", 6000) with { IsResourceManager = true }]);
         await Until(async () => (await fixture.Protection.ReadStatusAsync(CancellationToken.None)).Actions.Count == 1);
-        var action = Assert.Single((await fixture.Protection.ReadStatusAsync(CancellationToken.None)).Actions);
+        var action = Assert.Single((await fixture.Protection.ReadStatusAsync(CancellationToken.None)).Actions, item => item.Outcome != "excluded");
         Assert.Equal(12, action.ProcessId);
         Assert.Equal("new", action.ProcessStartKey);
         Assert.Equal(0UL, action.BaselineBytes);
@@ -386,7 +386,12 @@ public sealed class HostMemoryProtectionTests
         {
             fixture.Source.Publish(950, 95, [Process(100 + index, "1", (ulong)(index + 1))]);
             var count = index + 1;
-            await Until(async () => fixture.Executor.Executed.Count == count && (await fixture.Protection.ReadStatusAsync(CancellationToken.None)).Actions.Count == Math.Min(count, HostMemoryProtectionService.RecordLimit));
+            await Until(async () =>
+            {
+                var current = await fixture.Protection.ReadStatusAsync(CancellationToken.None);
+                return fixture.Executor.Executed.Count == count && current.CurrentActionId is null
+                    && current.Actions.Count == Math.Min(count, HostMemoryProtectionService.RecordLimit);
+            });
         }
         var status = (await fixture.Protection.ReadStatusAsync(CancellationToken.None));
         Assert.Equal(HostMemoryProtectionService.RecordLimit, status.Actions.Count);
@@ -414,7 +419,9 @@ public sealed class HostMemoryProtectionTests
         await Until(async () => (await fixture.Protection.ReadStatusAsync(CancellationToken.None)).Actions.Count == 1);
         Assert.Equal(20, Assert.Single(fixture.Executor.Executed));
         Assert.Empty((await fixture.Protection.ReadStatusAsync(CancellationToken.None)).ExcludedCandidates);
-        Assert.Equal(new HostMemoryActionOptions(mode, expectedNoDump), Assert.Single(fixture.Executor.Options));
+        var options = Assert.Single(fixture.Executor.Options);
+        Assert.Equal(mode, options.ActionMode);
+        Assert.Equal(expectedNoDump, options.SoftwareNoDump);
     }
 
     [Fact]
@@ -484,7 +491,8 @@ public sealed class HostMemoryProtectionTests
 
     private sealed class Fixture(WebApplication app, string root, FakeSource source, FakeExecutor executor) : IAsyncDisposable
     {
-        public HttpClient Client { get; } = new() { BaseAddress = new(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single()) };
+        public HttpClient Client { get; } = TrustedAccessEndpointTestAuthentication.Apply(new HttpClient
+            { BaseAddress = new(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single()) }, app.Services);
         public FakeSource Source => source;
         public FakeExecutor Executor => executor;
         public string ReserveDirectory => Path.Combine(root, "Slices");
@@ -497,7 +505,7 @@ public sealed class HostMemoryProtectionTests
             => await Client.PatchAsJsonAsync("/api/memory-protection", new { expectedRevision = (await Stored()).Revision, changes = new { memoryProtection = settings } });
         public async Task BuildReserve(ulong size = ReserveSize)
         {
-            using var response = await Patch(new { reserves = new[] { new { location = ReserveDirectory, sizeBytes = size } } });
+            using var response = await Patch(new { minimumProcessGrowthBytes = 1, reserves = new[] { new { location = ReserveDirectory, sizeBytes = size } } });
             response.EnsureSuccessStatusCode();
         }
         public async Task<NormalRunningPoint> CreatePoint(bool ensureReserve = true)
@@ -509,7 +517,8 @@ public sealed class HostMemoryProtectionTests
         }
         public async Task<HostMemoryProtectionStatus> Status() => (await Client.GetFromJsonAsync<HostMemoryProtectionStatus>("/api/memory-protection"))!;
 
-        public static async Task<Fixture> StartAsync()
+        public static async Task<Fixture> StartAsync(IHostMemoryProtectionExecutor? effects = null, IHostMemoryProtectionReserve? reserve = null,
+            string[]? scopes = null)
         {
             var root = Path.Combine(Path.GetTempPath(), "rm-memory-protection-host-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(root);
@@ -517,15 +526,18 @@ public sealed class HostMemoryProtectionTests
             builder.WebHost.UseUrls("http://127.0.0.1:0");
             var capabilities = new StartupCapabilitySet("memory-protection-test", StartupCapability.RuntimeEffectOwners | StartupCapability.MutablePersistence);
             builder.Services.AddResourceManagerApp(["--no-native-ui"], capabilities);
+            TrustedAccessEndpointTestAuthentication.Add(builder.Services, scopes ?? [ResourceManager.Shared.Runtime.TrustedAccess.AccessKeyScopes.ProcessesRead]);
             builder.Logging.ClearProviders();
             // Keep the production DI, settings compiler, block declaration and rule. No native hosted producer runs.
             builder.Services.RemoveAll<IHostedService>();
             var source = new FakeSource(); var executor = new FakeExecutor();
             builder.Services.AddSingleton<IHostMemoryProtectionSource>(source);
-            builder.Services.AddSingleton<IHostMemoryProtectionExecutor>(executor);
+            builder.Services.AddSingleton<IHostMemoryProtectionExecutor>(effects ?? executor);
+            if (reserve is not null) builder.Services.AddSingleton<IHostMemoryProtectionReserve>(_ => reserve);
             builder.Services.AddSingleton<ICpuTopologySampler>(new CpuSampler());
             var app = builder.Build();
             typeof(ResourceManagerEndpointRouteBuilderExtensions).GetMethod("MapHostMemoryProtectionEndpoints", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [app, capabilities]);
+            typeof(ResourceManagerEndpointRouteBuilderExtensions).GetMethod("MapSubscriptionChannelEndpoints", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [app]);
             await app.StartAsync();
             await app.Services.GetRequiredService<IRuntimeSpecializationCoordinator>().RebuildAsync("test-startup", CancellationToken.None);
             return new(app, root, source, executor);

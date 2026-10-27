@@ -141,6 +141,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         var process = Assert.Single(snapshot.InventoryProcesses);
         Assert.Equal(Environment.ProcessId, process.ProcessId);
         Assert.Equal(Environment.ProcessPath, process.ExecutablePath);
+        Assert.True(process.ParentProcessId > 0);
         Assert.True(process.ProcessStartKey > 0);
         using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
         Assert.Equal(identity.User!.Value, Assert.Single(catalogProvider.RequestedWindowsSids));

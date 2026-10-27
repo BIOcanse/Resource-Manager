@@ -4,7 +4,13 @@ using ResourceManager.App.Domain.Metrics;
 
 namespace ResourceManager.App.Application.Monitoring;
 
-internal sealed record ExpandedMonitoringHook(string Id, int IntervalMs, ExpandedMonitoringRule Rule);
+internal sealed record ExpandedMonitoringHook(string Id,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] int IntervalMs,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ExpandedMonitoringRule? Rule)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Event { get; init; }
+}
 internal sealed record ExpandedMonitoringRule(string Binding, string MetricId, string Quantity, string Comparison,
     double Threshold, double HoldSeconds, int TopOwners,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? SoftwareId = null,
@@ -22,6 +28,9 @@ internal sealed record MonitoringConditionVocabulary(IReadOnlyList<ConditionName
     IReadOnlyList<ConditionOperator> Operators, ConditionDefaults Defaults, IReadOnlyList<string> Grammar,
     ConditionCredentials Credentials, int MaximumLength, string WaitPath, string ExpansionHeader)
 {
+    public IReadOnlyList<string> Events => MemoryProtectionEvents;
+    internal static readonly string[] MemoryProtectionEvents = ["active", "inactive", "normal-running-point-created",
+        "threshold-reached", "below-threshold", "action-started", "action", "reserve-remaining-changed", "reserve-error"];
     // One declaration table, consumed by both expansion and the public vocabulary endpoint.
     private static readonly ConditionName[] FixedNames =
     [
@@ -64,6 +73,7 @@ internal sealed record MonitoringConditionVocabulary(IReadOnlyList<ConditionName
             new(1000, 0),
             [
                 "machine-name operator number+unit for number+time [every number+time] [top integer]",
+                "memory-protection event-name (one future occurrence; no hold, frequency or replay; processes.read scope)",
                 "process PID[:STARTKEY] process-name operator number+unit for number+time [every number+time] [top 0]",
                 "software \"software id\" software-name operator number+unit for number+time [every number+time] [top integer]",
                 "device \"exact device identity\" device-name operator number+unit for number+time [every number+time] [top 0]",

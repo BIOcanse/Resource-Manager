@@ -42,7 +42,11 @@ public sealed record HostMemoryProtectionSettings(
     double ThresholdPercent = 95,
     double CheckIntervalSeconds = 1,
     IReadOnlyList<HostMemoryReserveSettings>? Reserves = null,
-    string ActionMode = HostMemoryProtectionActionModes.DumpThenTerminate);
+    string ActionMode = HostMemoryProtectionActionModes.DumpThenTerminate,
+    long MinimumProcessGrowthBytes = 1073741824)
+{
+    public IReadOnlyList<string> ProtectedProcesses { get; init; } = ["explorer.exe"];
+}
 
 public static class HostMemoryProtectionActionModes
 {

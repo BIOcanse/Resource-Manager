@@ -184,7 +184,8 @@ public sealed partial class JsonAppSettingsStore : IAppSettingsStore, IAppSettin
         Reports = settings.Reports is { } reports
             ? reports with { RuleOverrides = Array.AsReadOnly(reports.RuleOverrides.ToArray()) } : null,
         MemoryProtection = settings.MemoryProtection is { } protection
-            ? protection with { Reserves = Array.AsReadOnly((protection.Reserves ?? []).ToArray()) } : null
+            ? protection with { Reserves = Array.AsReadOnly((protection.Reserves ?? []).ToArray()),
+                ProtectedProcesses = protection.ProtectedProcesses is null ? null! : Array.AsReadOnly(protection.ProtectedProcesses.ToArray()) } : null
     };
 
     public async IAsyncEnumerable<AppSettings> SubscribeAsync(string holder,

@@ -70,7 +70,8 @@ public sealed partial class JsonGpuPlacementPolicyStore
                 item.CpuMaximumOccupancyMode ?? CpuMaximumOccupancyModes.AllCores,
                 item.CpuManualExclusivePositionIds ?? [],
                 item.CpuManualLockedPositionIds ?? [],
-                item.HostMemoryProtectionNoDump);
+                item.HostMemoryProtectionNoDump,
+                item.HostMemoryProtectionNeverTerminate);
             softwarePolicies.Add(policy);
             var key = policy.SoftwareId.Trim();
             if (key.Length > 0
@@ -179,7 +180,8 @@ public sealed partial class JsonGpuPlacementPolicyStore
         string? CpuMaximumOccupancyMode,
         IReadOnlyList<string>? CpuManualExclusivePositionIds,
         IReadOnlyList<string>? CpuManualLockedPositionIds,
-        bool HostMemoryProtectionNoDump = false);
+        bool HostMemoryProtectionNoDump = false,
+        bool HostMemoryProtectionNeverTerminate = false);
 
     private sealed record LegacyProcessPolicy(
         string? SoftwareId,

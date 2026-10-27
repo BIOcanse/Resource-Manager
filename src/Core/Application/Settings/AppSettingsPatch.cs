@@ -60,6 +60,13 @@ public static class AppSettingsPatchApplier
                     $"Unknown application settings field '{propertyPath}'.");
             }
 
+            if (propertyPath == "memoryProtection.protectedProcesses"
+                && (property.Value is not JsonArray list || list.Any(item => item is not JsonValue text || !text.TryGetValue<string>(out _))))
+                throw new AppSettingsPatchException("invalid-protected-processes");
+            if (propertyPath == "memoryProtection.minimumProcessGrowthBytes"
+                && (property.Value is not JsonValue number || !number.TryGetValue<long>(out _)))
+                throw new AppSettingsPatchException("invalid-minimum-process-growth-bytes");
+
             if (property.Value is JsonObject patchObject)
             {
                 if (currentValue is not JsonObject targetObject)

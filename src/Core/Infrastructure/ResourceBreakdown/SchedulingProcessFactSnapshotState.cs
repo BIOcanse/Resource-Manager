@@ -157,6 +157,7 @@ internal sealed class SchedulingProcessFactSnapshotState
                 ? row.Fact with
                 {
                     ProcessName = ReuseText(row.Fact.ProcessName, process.ProcessName)!,
+                    ParentProcessId = process.ParentProcessId,
                     ExecutablePath = ReuseText(row.Fact.ExecutablePath, process.ExecutablePath)
                 }
                 : ComposeIdentity(row.Fact, process);

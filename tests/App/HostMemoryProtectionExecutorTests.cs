@@ -11,8 +11,24 @@ namespace Resource_Manager_APP.Tests;
 
 // Every destructive action below is confined to the ping.exe child created inside the test.
 // No live inventory, subscription source, protection host or user process is used.
-public sealed class HostMemoryProtectionExecutorTests : IDisposable
+public sealed partial class HostMemoryProtectionExecutorTests : IDisposable
 {
+    [Fact]
+    public void EffectHandleImageWhitelistProtectsOwnedChildEvenWhenPublishedPathIsWrong()
+    {
+        using var child = StartOwnedChild();
+        try
+        {
+            using var reserve = new HostMemoryDiskReserves();
+            using var target = new WindowsHostMemoryProtectionExecutor().Open(Identity(child) with { ExecutablePath = @"C:\wrong\unprotected.exe" });
+            var result = target.Execute(reserve, new("terminateOnly")
+                { ProtectedProcesses = [Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "ping.exe")] });
+            Assert.Equal("excluded", result.Outcome);
+            Assert.Equal("protected-process", result.Reason);
+            Assert.False(child.HasExited);
+        }
+        finally { StopOwnedChild(child); }
+    }
     private const nuint AllocationSize = 16 * 1024 * 1024;
     private readonly string directory = Path.Combine(Path.GetTempPath(), "rm-host-memory-executor-" + Guid.NewGuid().ToString("N"));
     private string SecondDirectory => directory + "-second";
@@ -89,7 +105,7 @@ public sealed class HostMemoryProtectionExecutorTests : IDisposable
     }
 
     [Fact]
-    public void MissingReserveDoesNotSuspendDumpOrTerminateOwnedChild()
+    public void UnavailableReserveTerminatesOwnedChildWithoutSuspendOrDump()
     {
         using var child = StartOwnedChild();
         try
@@ -103,9 +119,10 @@ public sealed class HostMemoryProtectionExecutorTests : IDisposable
             });
             using var target = executor.Open(Identity(child));
             var result = target.Execute(reserve);
-            Assert.Equal("reserve-unavailable", result.Outcome);
+            Assert.Equal("terminated-without-dump", result.Outcome);
+            Assert.Equal("reserve-not-configured", result.Reason);
             Assert.Equal(0, suspendCalls);
-            Assert.False(child.HasExited);
+            Assert.True(child.WaitForExit(5000));
             Assert.Empty(result.DumpPaths);
             Assert.Equal(0UL, result.BytesWritten);
             Assert.False(Directory.Exists(directory));

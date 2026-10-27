@@ -25,6 +25,7 @@ public sealed class HostMemorySoftwarePolicyTests
             "app", "App", softwareKind, CancellationToken.None);
 
         Assert.False(policy.HostMemoryProtectionNoDump);
+        Assert.False(policy.HostMemoryProtectionNeverTerminate);
         Assert.False(File.Exists(root.PolicyPath));
     }
 
@@ -38,6 +39,7 @@ public sealed class HostMemorySoftwarePolicyTests
         var request = GpuPlacementPolicyDefaults.CreateSoftwarePolicy(" app ", " App ") with
         {
             HostMemoryProtectionNoDump = noDump,
+            HostMemoryProtectionNeverTerminate = noDump,
             CpuSchedulingExcluded = true,
             GpuSchedulingExcluded = true,
             RuntimeHotSwitchEnabled = null
@@ -53,6 +55,7 @@ public sealed class HostMemorySoftwarePolicyTests
         var reloaded = await reloadedStore.GetOrCreateSoftwarePolicyAsync(
             "APP", "App", SoftwareKinds.Game, CancellationToken.None);
         Assert.Equal(noDump, reloaded.HostMemoryProtectionNoDump);
+        Assert.Equal(noDump, reloaded.HostMemoryProtectionNeverTerminate);
         Assert.True(reloaded.CpuSchedulingExcluded);
         Assert.False(reloaded.MemorySchedulingExcluded);
         Assert.True(reloaded.GpuSchedulingExcluded);
@@ -62,6 +65,7 @@ public sealed class HostMemorySoftwarePolicyTests
         var wirePolicy = root.ReadPolicyNode()["softwarePolicies"]!.AsArray()
             .Single(policy => policy!["softwareId"]!.GetValue<string>() == "app")!;
         Assert.Equal(noDump, wirePolicy["hostMemoryProtectionNoDump"]!.GetValue<bool>());
+        Assert.Equal(noDump, wirePolicy["hostMemoryProtectionNeverTerminate"]!.GetValue<bool>());
 
         await reloadedStore.SaveSoftwarePolicyAsync(reloaded with
         {

@@ -29,7 +29,7 @@ public sealed class AppSettingsMigratorTests
         root["memoryProtection"] = JsonNode.Parse("""{"enabled":true,"thresholdPercent":91,"checkIntervalSeconds":2,"dumpDirectory":"UserData/OldSlices"}""");
         using var document = JsonDocument.Parse(root.ToJsonString());
         var settings = AppSettingsMigrator.MigrateForRead(document.RootElement);
-        Assert.Equal("1.0.36", settings.Version);
+        Assert.Equal("1.0.37", settings.Version);
         Assert.True(settings.MemoryProtection!.Enabled);
         Assert.Equal(91, settings.MemoryProtection.ThresholdPercent);
         Assert.Empty(settings.MemoryProtection.Reserves!);
@@ -205,7 +205,8 @@ public sealed class AppSettingsMigratorTests
     [InlineData("1.0.34", true)]
     [InlineData("1.0.35", true)]
     [InlineData("1.0.36", true)]
-    [InlineData("1.0.37", false)]
+    [InlineData("1.0.37", true)]
+    [InlineData("1.0.38", false)]
     [InlineData("1.0.24.0", false)]
     [InlineData("99.0.0", false)]
     public void SupportsSourceVersion_UsesTheSingleContiguousMigrationRange(
@@ -538,7 +539,8 @@ public sealed class AppSettingsMigratorTests
     private const string CurrentShapeJson =
         """
         {
-          "version": "1.0.36",
+          "version": "1.0.37",
+          "memoryProtection": { "minimumProcessGrowthBytes": 1073741824, "protectedProcesses": ["explorer.exe"] },
           "performance": {
             "optimizationMode": "normal",
             "preciseGpuPlacementEnabled": false,

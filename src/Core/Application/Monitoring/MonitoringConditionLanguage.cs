@@ -31,6 +31,17 @@ internal static class MonitoringConditionLanguage
             Spaces();
             var subjectAt = at;
             var subject = Word();
+            if (subject == "memory-protection")
+            {
+                Space();
+                var eventAt = at;
+                var eventName = Word();
+                if (!MonitoringConditionVocabulary.MemoryProtectionEvents.Contains(eventName, StringComparer.Ordinal))
+                    throw Error("unknown memory-protection event", eventAt);
+                Spaces();
+                if (at != text.Length) throw Error("expected end of event condition");
+                return new(id, 0, null) { Event = "memory-protection." + eventName };
+            }
             var binding = "machine";
             string? software = null, device = null, startKey = null;
             int? pid = null;

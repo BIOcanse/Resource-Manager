@@ -107,6 +107,8 @@ public static class AppSettingsMigrator
         if (!root.TryGetProperty("memoryProtection", out var protection)) return new();
         var settings = protection.Deserialize<HostMemoryProtectionSettings>(WebJsonOptions)
             ?? throw new JsonException("memoryProtection must be an object.");
+        if (!protection.TryGetProperty("protectedProcesses", out _))
+            settings = settings with { ProtectedProcesses = ["explorer.exe"] };
         // The former dump directory contains no chosen capacity. Upgrade leaves the reserve
         // unconfigured rather than reserving disk space the user did not request.
         return settings with { Reserves = settings.Reserves ?? [] };
@@ -123,6 +125,9 @@ public static class AppSettingsMigrator
 
     public static bool RequiresRewrite(JsonElement root)
     {
+        if (!root.TryGetProperty("memoryProtection", out var protection) || protection.ValueKind != JsonValueKind.Object
+            || !protection.TryGetProperty("minimumProcessGrowthBytes", out var minimum) || minimum.ValueKind != JsonValueKind.Number || !minimum.TryGetInt64(out var growth) || growth <= 0
+            || !protection.TryGetProperty("protectedProcesses", out var protectedProcesses) || protectedProcesses.ValueKind != JsonValueKind.Array) return true;
         if (!root.TryGetProperty("systemIntegration", out var integration)
             || integration.ValueKind != JsonValueKind.Object
             || !integration.TryGetProperty("restartAfterCrashEnabled", out var enabled)

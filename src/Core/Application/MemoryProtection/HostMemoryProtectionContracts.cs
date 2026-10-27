@@ -5,6 +5,8 @@ namespace ResourceManager.App.Application.MemoryProtection;
 public sealed record HostMemoryProcess(int ProcessId, string ProcessStartKey, string Name, ulong? PrivateCommitBytes)
 {
     public string? SoftwareId { get; init; }
+    public string? ExecutablePath { get; init; }
+    public int? ParentProcessId { get; init; }
     [System.Text.Json.Serialization.JsonIgnore]
     public bool IsResourceManager { get; init; }
 }
@@ -22,18 +24,37 @@ public sealed record HostMemoryActionResult(string Outcome, string? Reason, IRea
     public bool SuspendFailed { get; init; }
 }
 public sealed record HostMemoryActionRecord(DateTimeOffset At, int ProcessId, string ProcessStartKey, string Name,
-    ulong BaselineBytes, ulong CurrentBytes, decimal GrowthBytes, IReadOnlyList<string> DumpPaths, ulong BytesWritten, string Outcome, string? Reason);
+    ulong? BaselineBytes, ulong? CurrentBytes, decimal? GrowthBytes, IReadOnlyList<string> DumpPaths, ulong BytesWritten, string Outcome, string? Reason)
+{
+    public string ActionId { get; init; } = "";
+    public string TargetKind { get; init; } = "process";
+    public HostMemoryTreeRoot? TreeRoot { get; init; }
+}
 public sealed record HostMemoryProtectionStatus(bool Enabled, double ThresholdPercent, double CheckIntervalSeconds,
     HostMemoryReserveStatus Reserve, decimal? TriggerBytes, decimal? RemainingBytes, HostMemoryCommit? CurrentCommit,
     NormalRunningPointSummary? NormalRunningPoint, string? InactiveReason,
     IReadOnlyList<HostMemoryExclusion> ExcludedCandidates, int ActionRecordLimit, IReadOnlyList<HostMemoryActionRecord> Actions)
 {
     public string ActionMode { get; init; } = HostMemoryProtectionActionModes.DumpThenTerminate;
+    public bool Active => InactiveReason is null;
+    public bool? AtOrAboveThreshold { get; init; }
+    public string? CurrentActionId { get; init; }
+    public long MinimumProcessGrowthBytes { get; init; } = 1073741824;
+    public IReadOnlyList<string> ProtectedProcesses { get; init; } = ["explorer.exe"];
+    public string? DecisionReason { get; init; }
 }
+
+public sealed record HostMemoryTreeRoot(int ProcessId, string? ProcessStartKey, string? Name);
+
+public sealed record HostMemoryProtectionEvent(string Kind, string? Reason = null, HostMemoryActionRecord? Action = null);
+public sealed record HostMemoryProtectionPublication(HostMemoryProtectionStatus Status, IReadOnlyList<HostMemoryProtectionEvent> Events);
 
 // The selection service resolves settings for this action; the executor owns process effects.
 public sealed record HostMemoryActionOptions(string ActionMode = HostMemoryProtectionActionModes.DumpThenTerminate,
-    bool SoftwareNoDump = false);
+    bool SoftwareNoDump = false)
+{
+    public IReadOnlyList<string> ProtectedProcesses { get; init; } = [];
+}
 
 // The source only subscribes to existing producers and projects their current values.
 public interface IHostMemoryProtectionSource

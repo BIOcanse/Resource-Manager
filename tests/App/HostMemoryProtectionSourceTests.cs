@@ -216,7 +216,7 @@ public sealed class HostMemoryProtectionSourceTests
     public async Task ResourceManagerAttributionRequiresMatchingPidAndCreation()
     {
         var fixture = new Fixture();
-        var ordinary = Process(42, 100);
+        var ordinary = Process(42, 100) with { ParentProcessId = 17, ExecutablePath = @"C:\fixture\test.exe" };
         var attributed = Process(43, 100);
         var wrongCreation = Process(44, 100);
         fixture.Foundations.Current = Foundation(ordinary, attributed, wrongCreation,
@@ -229,6 +229,8 @@ public sealed class HostMemoryProtectionSourceTests
         await using var stream = await fixture.OpenAsync();
         var rows = (await fixture.DeliverProcessesAsync(stream, ResourceSnapshot())).Processes!.ToDictionary(row => row.ProcessId);
         Assert.False(rows[42].IsResourceManager);
+        Assert.Equal(17, rows[42].ParentProcessId);
+        Assert.Equal(@"C:\fixture\test.exe", rows[42].ExecutablePath);
         Assert.Null(rows[42].SoftwareId);
         Assert.True(rows[43].IsResourceManager);
         Assert.Equal(RuntimeAttributionIds.ResourceManagerSelf, rows[43].SoftwareId);

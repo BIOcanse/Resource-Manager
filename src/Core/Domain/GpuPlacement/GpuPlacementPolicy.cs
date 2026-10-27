@@ -219,7 +219,8 @@ public sealed record GpuPlacementSoftwarePolicy(
     string CpuMaximumOccupancyMode = CpuMaximumOccupancyModes.AllCores,
     IReadOnlyList<string>? CpuManualExclusivePositionIds = null,
     IReadOnlyList<string>? CpuManualLockedPositionIds = null,
-    bool HostMemoryProtectionNoDump = false);
+    bool HostMemoryProtectionNoDump = false,
+    bool HostMemoryProtectionNeverTerminate = false);
 
 public sealed record GpuPlacementProcessPolicy(
     string SoftwareId,

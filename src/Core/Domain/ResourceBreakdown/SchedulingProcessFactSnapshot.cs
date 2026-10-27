@@ -140,6 +140,7 @@ public sealed record SchedulingProcessFact(
     ulong SourceGeneration,
     IReadOnlyList<SchedulingProcessGpuFact> Gpus)
 {
+    public int? ParentProcessId { get; init; }
     public string? UserName { get; init; }
     public string? Architecture { get; init; }
     public IReadOnlyList<string> SoftwareRootPaths { get; init; } = [];
