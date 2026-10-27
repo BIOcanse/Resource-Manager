@@ -7,8 +7,12 @@ import { AppearanceSettingsSection } from "./components/AppearanceSettingsSectio
 import { CreditsSettingsSection } from "./components/CreditsSettingsSection";
 import { DebugSettingsSection } from "./components/DebugSettingsSection";
 import { PerformanceOverlaySettingsSection } from "./components/PerformanceOverlaySettingsSection";
-import { PerformanceSettingsSection } from "./components/PerformanceSettingsSection";
+import { MemorySettingsSection } from "./components/MemorySettingsSection";
+import { PublicServicesSettingsSection } from "./components/PublicServicesSettingsSection";
+import { RefreshCadenceSetting } from "./components/RefreshCadenceSetting";
+import { RuntimePolicySettingsSection } from "./components/RuntimePolicySettingsSection";
 import { SystemIntegrationSettingsSection } from "./components/SystemIntegrationSettingsSection";
+import { TrustedAccessManager } from "./components/TrustedAccessManager";
 import { UpdatesSettingsSection } from "./components/UpdatesSettingsSection";
 import { uiText, currentSettingsText, isRightToLeftLanguage } from "../../text.ts";
 import { useSelectionIndicator } from "../../interactions/solid/selectionIndicator.ts";
@@ -53,7 +57,8 @@ interface SettingsPageProps {
   onReload: () => void;
   onReapply: () => void;
   onSave: () => void;
-  onRestoreDefaults: () => void;
+  /** 恢复为默认：只恢复这个分区自己的字段。 */
+  onRestoreDefaults: (section: SettingsSection) => void;
   onResetFrontendPreferences: () => void;
   onControlChange: (control: NonNullable<AppSettings["control"]>) => void;
   onPreciseGpuPlacementChange: (enabled: boolean) => void;
@@ -102,9 +107,13 @@ interface SettingsPageProps {
   onOpenSoftwareOverlay: (software: SoftwareRecord) => void;
 }
 
-const settingSections: SettingsSection[] = ["performance", "memoryProtection", "appearance", "performanceOverlay", "systemIntegration", "updates", "debug", "credits"];
-// 只读的分区（总览、致谢）不改设置草稿，没有重新加载、恢复为默认和保存。
-const readOnlySections: ReadonlySet<SettingsSection> = new Set(["performanceOverlay", "credits"]);
+const settingSections: SettingsSection[] = [
+  "runtimePolicy", "memory", "memoryProtection", "hardwareControl", "reportRules", "appearance", "performanceOverlay",
+  "systemIntegration", "publicServices", "trustedAccess", "updates", "debug", "credits"
+];
+// 只读的分区（性能浮层总览、可信访问、致谢）不改设置草稿，没有重新加载、恢复为默认和保存；
+// 可信访问的改动在它自己的控件里立即生效。
+const readOnlySections: ReadonlySet<SettingsSection> = new Set(["performanceOverlay", "trustedAccess", "credits"]);
 
 export function SettingsPage(props: SettingsPageProps) {
   // 界面语言只有一个所有者（appTextStore）：设置页的文案跟着它走，
@@ -241,7 +250,7 @@ export function SettingsPage(props: SettingsPageProps) {
                 class="secondary"
                 type="button"
                 disabled={props.saveState === "saving" || props.saveState === "conflict"}
-                onClick={props.onRestoreDefaults}
+                onClick={() => props.onRestoreDefaults(props.activeSection)}
               >
                 {text().actions.restoreDefaults}
               </button>
@@ -293,20 +302,22 @@ export function SettingsPage(props: SettingsPageProps) {
             aria-disabled={!settingsReady()}
             aria-describedby={props.loadState === "stale" ? "settingsStaleNotice" : undefined}
           >
-          <Show when={props.activeSection === "performance"}>
-            <HardwareControlSettings control={props.settings.control!} onChange={props.onControlChange} />
-            <ReportRuleSettings reports={props.settings.reports!} onChange={props.onReportsChange}
-              runtimeFailureCode={props.runtimeFailureCode} />
-            <PerformanceSettingsSection
+          <Show when={props.activeSection === "runtimePolicy"}>
+            <RuntimePolicySettingsSection
               settings={props.settings.performance}
               text={text()}
               preciseGpuPlacementAvailable={props.preciseGpuPlacementAvailable}
               onPreciseGpuPlacementChange={props.onPreciseGpuPlacementChange}
-              onAutomaticMemoryCleanupLinesChange={props.onAutomaticMemoryCleanupLinesChange}
-              onMemoryOptimizationTargetLinesChange={props.onMemoryOptimizationTargetLinesChange}
               onGpuOverflowThresholdsChange={props.onGpuOverflowThresholdsChange}
               onRealtimeActionBudgetChange={props.onRealtimeActionBudgetChange}
-              onLogicRefreshIntervalChange={props.onLogicRefreshIntervalChange}
+            />
+          </Show>
+          <Show when={props.activeSection === "memory"}>
+            <MemorySettingsSection
+              settings={props.settings.performance}
+              text={text()}
+              onAutomaticMemoryCleanupLinesChange={props.onAutomaticMemoryCleanupLinesChange}
+              onMemoryOptimizationTargetLinesChange={props.onMemoryOptimizationTargetLinesChange}
             />
           </Show>
           <Show when={props.activeSection === "memoryProtection"}>
@@ -316,6 +327,13 @@ export function SettingsPage(props: SettingsPageProps) {
               runtimeFailureCode={props.runtimeFailureCode}
               onChange={props.onMemoryProtectionChange}
             />
+          </Show>
+          <Show when={props.activeSection === "hardwareControl"}>
+            <HardwareControlSettings control={props.settings.control!} text={text()} onChange={props.onControlChange} />
+          </Show>
+          <Show when={props.activeSection === "reportRules"}>
+            <ReportRuleSettings reports={props.settings.reports!} onChange={props.onReportsChange}
+              runtimeFailureCode={props.runtimeFailureCode} />
           </Show>
           <Show when={props.activeSection === "appearance"}>
             <AppearanceSettingsSection
@@ -332,7 +350,13 @@ export function SettingsPage(props: SettingsPageProps) {
               onByteUnitModeChange={props.onByteUnitModeChange}
               onFontSmoothingChange={props.onFontSmoothingChange}
               onLanguageChange={props.onLanguageChange}
-            />
+            >
+              <RefreshCadenceSetting
+                settings={props.settings.performance}
+                text={text()}
+                onLogicRefreshIntervalChange={props.onLogicRefreshIntervalChange}
+              />
+            </AppearanceSettingsSection>
           </Show>
           <Show when={props.activeSection === "performanceOverlay"}>
             <PerformanceOverlaySettingsSection
@@ -344,17 +368,21 @@ export function SettingsPage(props: SettingsPageProps) {
           </Show>
           <Show when={props.activeSection === "systemIntegration"}>
             <SystemIntegrationSettingsSection
-              onTrustedAccessHeadingChange={props.onTrustedAccessHeadingChange}
               settings={props.settings.systemIntegration}
-              publicServiceSettings={props.settings.publicService}
-              aiModelServiceSettings={props.settings.aiModelService}
               text={text()}
-              publicServicesAvailable={props.publicServicesAvailable}
               onTaskManagerShortcutReplacementChange={props.onTaskManagerShortcutReplacementChange}
               onAutoStartChange={props.onAutoStartChange}
               onServiceRecoveryChange={props.onServiceRecoveryChange}
               serviceRecovery={props.serviceRecovery}
               onEditableHotkeyChange={props.onEditableHotkeyChange}
+            />
+          </Show>
+          <Show when={props.activeSection === "publicServices"}>
+            <PublicServicesSettingsSection
+              publicServiceSettings={props.settings.publicService}
+              aiModelServiceSettings={props.settings.aiModelService}
+              text={text()}
+              publicServicesAvailable={props.publicServicesAvailable}
               onLocalPublicServiceChange={props.onLocalPublicServiceChange}
               onPublicFileIndexChange={props.onPublicFileIndexChange}
               onPublicDatabaseServiceChange={props.onPublicDatabaseServiceChange}
@@ -362,6 +390,12 @@ export function SettingsPage(props: SettingsPageProps) {
               onLmStudioEndpointChange={props.onLmStudioEndpointChange}
               onLmStudioAutoStartChange={props.onLmStudioAutoStartChange}
             />
+          </Show>
+          <Show when={props.activeSection === "trustedAccess"}>
+            <div class="settings-section-panel">
+              <TrustedAccessManager copy={text().systemIntegration.trustedAccess}
+                onHeadingChange={props.onTrustedAccessHeadingChange} />
+            </div>
           </Show>
           <Show when={props.activeSection === "debug"}>
             <DebugSettingsSection

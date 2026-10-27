@@ -1,4 +1,4 @@
-import { Show } from "solid-js";
+import { Show, type JSX } from "solid-js";
 import { StandardSelect } from "../../../components/StandardSelect";
 import { languageOptions, normalizeLanguageMode } from "../../../text.ts";
 import { uiStylePalettes } from "../../../presentation/uiStyles.ts";
@@ -38,6 +38,8 @@ interface AppearanceSettingsSectionProps {
   onByteUnitModeChange: (byteUnitMode: ByteUnitMode) => void;
   onFontSmoothingChange: (fontSmoothing: AppFontSmoothing) => void;
   onLanguageChange: (language: AppLanguageMode) => void;
+  /** 排在外观各行之后的行（设置页放信息更新频率）。 */
+  children?: JSX.Element;
 }
 
 export function AppearanceSettingsSection(props: AppearanceSettingsSectionProps) {
@@ -186,6 +188,7 @@ export function AppearanceSettingsSection(props: AppearanceSettingsSectionProps)
           />
         </label>
       </div>
+      {props.children}
     </div>
   );
 }

@@ -93,7 +93,7 @@ export type AppLogicRefreshIntervalKey =
 /** 软件详细信息对话框的分页。 */
 export type SoftwareDetailTabId = "overview" | "policy" | "processes" | "overlay";
 
-export type SettingsSection = "performance" | "memoryProtection" | "appearance" | "performanceOverlay" | "systemIntegration" | "updates" | "debug" | "credits";
+export type SettingsSection = "runtimePolicy" | "memory" | "memoryProtection" | "hardwareControl" | "reportRules" | "appearance" | "performanceOverlay" | "systemIntegration" | "publicServices" | "trustedAccess" | "updates" | "debug" | "credits";
 
 /** Frontend view model; backend wire facts are declared in data/monitor/metricWire.ts. */
 export interface MetricDefinition {

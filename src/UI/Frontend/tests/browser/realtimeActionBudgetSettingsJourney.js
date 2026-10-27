@@ -25,7 +25,7 @@ export default async function realtimeActionBudgetSettingsJourney(page, baseUrl)
     if (option.id !== previous) await page.getByRole("button", { name: oldSettings.actions.save, exact: true }).click();
     await page.waitForFunction(language => document.documentElement.lang === language, option.id);
     const settings = await loadSettingsText(option.id);
-    await page.getByRole("button", { name: settings.sections.performance, exact: true }).click();
+    await page.getByRole("button", { name: settings.sections.runtimePolicy, exact: true }).click();
     await liveText(page, settings.performance.realtimeActionBudgetDescription).waitFor();
     const group = page.getByRole("radiogroup", { name: settings.performance.realtimeActionBudgetTitle, exact: true });
     for (const mode of settings.performance.realtimeActionBudgetModeOptions) {
@@ -57,7 +57,7 @@ export default async function realtimeActionBudgetSettingsJourney(page, baseUrl)
     assert(JSON.stringify(patches.at(-1)?.changes?.performance) === JSON.stringify(expected), `Wrong budget patch: ${JSON.stringify(patches.at(-1))}`);
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.getByRole("navigation").getByRole("button", { name: app.page.settings, exact: true }).click();
-    await page.getByRole("button", { name: settings.sections.performance, exact: true }).click();
+    await page.getByRole("button", { name: settings.sections.runtimePolicy, exact: true }).click();
   };
   await count.fill("64"); await count.blur();
   await percent.fill("12"); await percent.blur();

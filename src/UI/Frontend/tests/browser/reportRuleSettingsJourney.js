@@ -24,6 +24,7 @@ export default async function reportRuleSettingsJourney(page, baseUrl) {
   let app = await loadAppCopy("zh-CN");
   let settings = await loadSettingsText("zh-CN");
   await page.getByRole("navigation").getByRole("button", { name: app.page.settings, exact: true }).click();
+  await page.getByRole("button", { name: settings.sections.reportRules, exact: true }).click();
   const panel = () => page.getByRole("region", { name: app.reportRules.title, exact: true });
   const input = (rule, field) => panel().getByRole("textbox", {
     name: `${app.reportRules.ruleLabels[rule]} · ${app.reportRules.fields[field]}`, exact: true
@@ -102,7 +103,7 @@ export default async function reportRuleSettingsJourney(page, baseUrl) {
     await page.waitForFunction(language => document.documentElement.lang === language, option.id);
     app = await loadAppCopy(option.id);
     settings = await loadSettingsText(option.id);
-    await page.getByRole("button", { name: settings.sections.performance, exact: true }).click();
+    await page.getByRole("button", { name: settings.sections.reportRules, exact: true }).click();
     await panel().getByText(app.reportRules.note, { exact: true }).waitFor();
     await input("stray_process_memory", "activationThreshold").waitFor();
     await panel().getByRole("heading", { name: app.reportRules.strayProcessTitle, exact: true }).waitFor();

@@ -44,7 +44,7 @@ export default async function settingsSourceJourney(page, baseUrl) {
   await page.waitForFunction(() => document.body.dataset.resourceBarFrameRate === "90");
   assert.equal((await cache()).appearance.animationStyle, "none");
   assert.equal((await cache()).appearance.fontSmoothing, "grayscale");
-  await page.getByRole("button", { name: "性能", exact: true }).click();
+  await page.getByRole("button", { name: "外观", exact: true }).click();
   const cadence = page.getByRole("radiogroup", { name: "资源表", exact: true });
   await cadence.getByRole("radio", { name: "自定义", exact: true }).click();
   const interval = page.getByRole("textbox", { name: "资源表 自定义 (ms)", exact: true });
@@ -53,7 +53,7 @@ export default async function settingsSourceJourney(page, baseUrl) {
   await page.waitForFunction(() => JSON.parse(localStorage.getItem("resource-manager:frontend-preferences:v1"))?.refresh.resourceTable.customValue === 2300);
   assert.equal(patches.length, 0);
   await page.reload({ waitUntil: "domcontentloaded" });
-  await open("性能");
+  await open("外观");
   assert.equal(await interval.inputValue(), "2300");
   // Operational settings retain backend revision/conflict semantics.
   await page.getByRole("button", { name: "系统集成", exact: true }).click();

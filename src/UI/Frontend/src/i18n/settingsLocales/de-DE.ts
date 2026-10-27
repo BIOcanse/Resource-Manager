@@ -70,11 +70,16 @@ export default createSettingsLocale("de-DE", {
   },
   "navigationLabel": "Einstellungsbereiche",
   "sections": {
-    "performance": "Leistung",
+    "runtimePolicy": "Laufzeitrichtlinie",
+    "memory": "Arbeitsspeicher",
     "memoryProtection": "Speicherschutz des Hosts",
+    "hardwareControl": "Hardwaresteuerung",
+    "reportRules": "Berichtsregeln",
     "appearance": "Darstellung",
     "performanceOverlay": "Leistungs-Overlay",
     "systemIntegration": "Systemintegration",
+    "publicServices": "Gemeinsame Dienste",
+    "trustedAccess": "Vertrauenswürdiger Zugriff",
     "updates": "Updates und Versionen",
     "debug": "Debug",
     "credits": "Danksagung"
@@ -471,6 +476,10 @@ export default createSettingsLocale("de-DE", {
     "hostManagerSmartCoordinatorScoreOnlyDescription": "Überwachung und Planung fortsetzen, ohne Software- oder Hardwarezustände zu ändern.",
     "hostManagerSmartCoordinatorPerformanceLogTitle": "Planungsleistung protokollieren",
     "hostManagerSmartCoordinatorPerformanceLogDescription": "Planungsdauer und Last protokollieren, um den Eigenaufwand von Resource Manager zu untersuchen."
+  },
+  "hardwareControl": {
+    "reassertionTitle": "Regelmäßig erneut anwenden",
+    "reassertionDescription": "Resource Manager schreibt die auf der Seite „Steuerung“ erfolgreich angewendeten Einstellungen in diesem Intervall erneut, damit Windows, Treiber oder andere Programme sie nicht verändert lassen."
   },
   "performanceOverlay": {
     "intro": "Listet die Software auf, für die ein Overlay aktiviert ist. Angezeigt werden die gespeicherten Einstellungen, nicht ob ein Overlay gerade sichtbar ist.",

@@ -31,6 +31,7 @@ export default async function frontendRefreshIntervalsJourney(page, baseUrl) {
   // their meaning when the automatic foreground context changes.
   await navigation.getByRole("button", { name: "设置", exact: true }).click();
   const text = await loadSettingsText("zh-CN");
+  await page.getByRole("button", { name: text.sections.appearance, exact: true }).click();
   const custom = text.performance.presetNumericModeOptions.find(option => option.id === "custom").label;
   for (const [key, value] of [["monitor", 1700], ["resourceTable", 2300], ["localSystem", 4100]]) {
     const label = text.performance.refreshCadenceItems[key].label;

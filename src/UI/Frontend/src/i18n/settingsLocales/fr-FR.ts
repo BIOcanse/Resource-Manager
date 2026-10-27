@@ -70,11 +70,16 @@ export default createSettingsLocale("fr-FR", {
   },
   "navigationLabel": "Rubriques des paramètres",
   "sections": {
-    "performance": "Performances",
+    "runtimePolicy": "Stratégie d’exécution",
+    "memory": "Mémoire",
     "memoryProtection": "Protection de la mémoire de l’hôte",
+    "hardwareControl": "Contrôle matériel",
+    "reportRules": "Règles de rapport",
     "appearance": "Apparence",
     "performanceOverlay": "Superposition de performances",
     "systemIntegration": "Intégration système",
+    "publicServices": "Services partagés",
+    "trustedAccess": "Accès approuvé",
     "updates": "Mises à jour et versions",
     "debug": "Débogage",
     "credits": "Crédits"
@@ -471,6 +476,10 @@ export default createSettingsLocale("fr-FR", {
     "hostManagerSmartCoordinatorScoreOnlyDescription": "Continuer la surveillance et le calcul de planification sans modifier l’état logiciel ou matériel.",
     "hostManagerSmartCoordinatorPerformanceLogTitle": "Enregistrer les performances de planification",
     "hostManagerSmartCoordinatorPerformanceLogDescription": "Enregistrer les durées et la charge de planification pour analyser le coût propre à Resource Manager."
+  },
+  "hardwareControl": {
+    "reassertionTitle": "Réappliquer régulièrement",
+    "reassertionDescription": "À cet intervalle, Resource Manager réécrit les réglages appliqués avec succès sur la page Réglages, afin que Windows, les pilotes ou d’autres programmes ne les laissent pas modifiés."
   },
   "performanceOverlay": {
     "intro": "Liste les logiciels dont la superposition est activée. Les paramètres enregistrés sont affichés, et non l’état d’affichage actuel de la superposition.",

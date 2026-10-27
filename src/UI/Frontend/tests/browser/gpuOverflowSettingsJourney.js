@@ -19,7 +19,7 @@ export default async function gpuOverflowSettingsJourney(page, baseUrl) {
     if (option.id !== previous) await page.getByRole("button", { name: oldSettings.actions.save, exact: true }).click();
     await page.waitForFunction(language => document.documentElement.lang === language, option.id);
     const settings = await loadSettingsText(option.id);
-    await page.getByRole("button", { name: settings.sections.performance, exact: true }).click();
+    await page.getByRole("button", { name: settings.sections.runtimePolicy, exact: true }).click();
     await liveText(page, settings.performance.gpuOverflowTitle).waitFor();
     await liveText(page, settings.performance.gpuOverflowDescription).waitFor();
     for (const [label, value] of [

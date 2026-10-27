@@ -1,7 +1,7 @@
 import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 
 export default createSettingsLocale("ar-SA", {
-  sections: { performance: "الأداء", appearance: "المظهر", systemIntegration: "تكامل النظام", debug: "التصحيح", credits: "الشكر" },
+  sections: { appearance: "المظهر", systemIntegration: "تكامل النظام", debug: "التصحيح", credits: "الشكر" },
   saveState: { saving: "جار الحفظ", saved: "تم الحفظ", error: "فشل الحفظ" },
   appearance: {
     languageTitle: "لغة الواجهة",

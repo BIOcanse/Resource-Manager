@@ -20,6 +20,7 @@ import type {
 } from "../src/frontendRuntime/source/SourceDescriptor.ts";
 import type { SourceSnapshot } from "../src/frontendRuntime/source/SourceSnapshot.ts";
 import {
+  applySectionDefaults,
   createSettingsStore as createActualSettingsStore,
   defaultAppSettings,
   logicRefreshIntervalKeys,
@@ -74,6 +75,54 @@ await new Promise<void>((resolve, reject) => {
 }
 
 assert.deepEqual(canonicalDefaults.control, { reassertionIntervalSeconds: 120 });
+
+// 每个分区的「恢复为默认」只恢复这个分区自己的字段，其他分区的草稿原样保留。
+{
+  const defaults = defaultAppSettings();
+  const edited = normalizeAppSettings({
+    control: { reassertionIntervalSeconds: 337 },
+    reports: { ruleOverrides: [{ rule: "stray_process_idle", activationThreshold: null, clearThreshold: null, requiredConsecutiveHits: null,
+      requiredConsecutiveMisses: null, zeroActivityThreshold: null, executableNames: ["a.exe"] }] },
+    performance: { ...defaults.performance!, optimizationMode: "limited", preciseGpuPlacementEnabled: true,
+      gpuOverflowUsagePercent: 50, realtimeActionBudgetCount: 64, physicalMemoryAutomaticCleanupPercent: 20,
+      virtualMemoryOptimizationTargetUsagePercent: 40,
+      monitorRefreshIntervalMs: { mode: "custom", preset: "balanced", customValue: 1750 } },
+    appearance: { ...defaults.appearance!, theme: "dark" },
+    systemIntegration: { ...defaults.systemIntegration!, autoStartEnabled: true },
+    publicService: { ...defaults.publicService!, enabled: true },
+    aiModelService: { ...defaults.aiModelService!, endpoint: "http://127.0.0.1:4321" },
+    update: { ...defaults.update!, periodicCheckEnabled: true },
+    debug: { ...defaults.debug!, debugModeEnabled: true }
+  });
+  const runtimePolicy = applySectionDefaults("runtimePolicy", edited, defaults);
+  assert.equal(runtimePolicy.performance!.preciseGpuPlacementEnabled, false);
+  assert.equal(runtimePolicy.performance!.gpuOverflowUsagePercent, defaults.performance!.gpuOverflowUsagePercent);
+  assert.equal(runtimePolicy.performance!.realtimeActionBudgetCount, defaults.performance!.realtimeActionBudgetCount);
+  assert.equal(runtimePolicy.performance!.physicalMemoryAutomaticCleanupPercent, 20, "Runtime policy reset kept memory");
+  assert.equal(runtimePolicy.performance!.monitorRefreshIntervalMs.customValue, 1750, "Runtime policy reset kept refresh cadence");
+  assert.equal(runtimePolicy.performance!.optimizationMode, "limited", "No section owns the optimization mode");
+  assert.equal(runtimePolicy.control!.reassertionIntervalSeconds, 337);
+  const memory = applySectionDefaults("memory", edited, defaults);
+  assert.equal(memory.performance!.physicalMemoryAutomaticCleanupPercent, defaults.performance!.physicalMemoryAutomaticCleanupPercent);
+  assert.equal(memory.performance!.virtualMemoryOptimizationTargetUsagePercent, defaults.performance!.virtualMemoryOptimizationTargetUsagePercent);
+  assert.equal(memory.performance!.preciseGpuPlacementEnabled, true, "Memory reset kept runtime policy");
+  assert.equal(applySectionDefaults("hardwareControl", edited, defaults).control!.reassertionIntervalSeconds, 120);
+  assert.deepEqual(applySectionDefaults("reportRules", edited, defaults).reports, { ruleOverrides: [] });
+  const appearance = applySectionDefaults("appearance", edited, defaults);
+  assert.equal(appearance.appearance!.theme, defaults.appearance!.theme);
+  assert.deepEqual(appearance.performance!.monitorRefreshIntervalMs, defaults.performance!.monitorRefreshIntervalMs);
+  assert.equal(appearance.performance!.gpuOverflowUsagePercent, 50, "Appearance reset kept runtime policy");
+  assert.equal(applySectionDefaults("systemIntegration", edited, defaults).systemIntegration!.autoStartEnabled, false);
+  const publicServices = applySectionDefaults("publicServices", edited, defaults);
+  assert.equal(publicServices.publicService!.enabled, false);
+  assert.equal(publicServices.aiModelService!.endpoint, defaults.aiModelService!.endpoint);
+  assert.equal(publicServices.systemIntegration!.autoStartEnabled, true, "Public services reset kept system integration");
+  assert.equal(applySectionDefaults("updates", edited, defaults).update!.periodicCheckEnabled, false);
+  assert.equal(applySectionDefaults("debug", edited, defaults).debug!.debugModeEnabled, false);
+  for (const section of ["performanceOverlay", "trustedAccess", "credits"] as const) {
+    assert.equal(applySectionDefaults(section, edited, defaults), edited, `${section} has no fields to reset`);
+  }
+}
 assert.deepEqual(normalizeAppSettings({ control: { reassertionIntervalSeconds: 0 } }).control,
   { reassertionIntervalSeconds: 1 });
 assert.equal(normalizeAppSettings({ control: { reassertionIntervalSeconds: 999999 } }).control!.reassertionIntervalSeconds, 86400);
@@ -551,7 +600,7 @@ await new Promise<void>((resolve, reject) => {
       store.updateReports(updateReportRuleField(store.draftSettings().reports!, "cpu_throttle_temperature", "clearThreshold", null));
       assert.deepEqual(store.draftSettings().reports!.ruleOverrides.map(entry => entry.rule), ["stray_process_idle"]);
       assert.deepEqual(store.draftSettings().reports!.ruleOverrides[0].executableNames, []);
-      store.resetDraftToDefaults();
+      store.resetDraftToDefaults("reportRules");
       assert.deepEqual(store.draftSettings().reports, { ruleOverrides: [] });
       dispose(); resolve();
     })().catch(error => { dispose(); reject(error); });
@@ -579,7 +628,7 @@ await new Promise<void>((resolve, reject) => {
       assert.equal(resolveSelfCpuRuntimePlan(store.frontendRefreshIntervals(), "optimize", false)!.monitor, frontendRefreshIntervals.backgroundOptimized.monitor);
       assert.equal(store.draftSettings().performance!.monitorRefreshIntervalMs.customValue, 1750);
       assert.equal(store.isDirty(), true);
-      store.resetDraftToDefaults();
+      store.resetDraftToDefaults("appearance");
       assert.deepEqual(store.draftSettings().performance!.monitorRefreshIntervalMs, frontendRefreshIntervals.defaults.monitor);
       dispose(); resolve();
     })().catch(error => { dispose(); reject(error); });

@@ -17,7 +17,7 @@ const managementPage = readSource("features/management/components/ManagementPage
 const settingsWorkspace = readSource("features/settings/SettingsWorkspace.tsx");
 const settingsPage = readSource("features/settings/SettingsPage.tsx");
 const appearanceSettings = readSource("features/settings/components/AppearanceSettingsSection.tsx");
-const systemIntegrationSettings = readSource("features/settings/components/SystemIntegrationSettingsSection.tsx");
+const publicServicesSettings = readSource("features/settings/components/PublicServicesSettingsSection.tsx");
 const resourceTable = readSource("features/resourceTable/ResourceTable.tsx");
 const resourceBreakdown = readSource("features/resourceBreakdown/ResourceBreakdown.tsx");
 const resourcePaintPlane = readSource("features/resourceBreakdown/ResourceSegmentPaintPlane.tsx");
@@ -78,7 +78,7 @@ assert.doesNotMatch(componentCard, /onContextMenu|MoreActionsButton|softwareCont
 assert.match(settingsWorkspace, /onCleanup\(settings\.discardDraftChanges\)/);
 // The read-only overlay overview and credits own no edit toolbar either.
 assert.match(settingsPage, /settingsReady\(\) && !readOnlySections\.has\(props\.activeSection\)/);
-assert.match(settingsPage, /readOnlySections: ReadonlySet<SettingsSection> = new Set\(\["performanceOverlay", "credits"\]\)/);
+assert.match(settingsPage, /readOnlySections: ReadonlySet<SettingsSection> = new Set\(\["performanceOverlay", "trustedAccess", "credits"\]\)/);
 for (const control of [
   "onAnimationStyleChange",
   "onAutoDisableAnimationsChange",
@@ -99,7 +99,7 @@ assert.match(resourcePaintPlane, /attributeFilter: \["data-animations", "data-ba
 assert.match(resourcePaintPlane, /presentation\.barColor === "distinct"\s*\? segment\.distinctColor \?\? segment\.color\s*: segment\.color/);
 // 两种配色都画分隔线（异色区分时相邻两种颜色也要分开），不按配色关掉。
 assert.doesNotMatch(resourcePaintPlane, /barColor !== "distinct"/);
-assert.match(systemIntegrationSettings, /uiText\.misc\.publicServicesNotRunning/);
+assert.match(publicServicesSettings, /uiText\.misc\.publicServicesNotRunning/);
 
 // Monitor actions and copy must reflect actual available behavior.
 assert.match(resourceTable, /<Show when=\{props\.mode !== "performance"\}>[\s\S]*?onClick=\{props\.onToggleEdit\}/);

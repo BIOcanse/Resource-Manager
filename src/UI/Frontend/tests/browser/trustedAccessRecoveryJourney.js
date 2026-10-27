@@ -32,11 +32,11 @@ export default async function trustedAccessRecoveryJourney(page, baseUrl) {
   await page.setViewportSize({ width: 1180, height: 900 });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await page.getByRole("navigation").getByRole("button", { name: app.page.settings, exact: true }).click();
-  const openSystemIntegration = async text => {
+  const openTrustedAccess = async text => {
     await page.getByRole("button", { name: text.sections.appearance, exact: true }).click();
-    await page.getByRole("button", { name: text.sections.systemIntegration, exact: true }).click();
+    await page.getByRole("button", { name: text.sections.trustedAccess, exact: true }).click();
   };
-  await page.getByRole("button", { name: settingsText.sections.systemIntegration, exact: true }).click();
+  await page.getByRole("button", { name: settingsText.sections.trustedAccess, exact: true }).click();
   const panel = page.getByRole("region", { name: copy.title, exact: true });
 
   // H1：读取失败显示原因和重试，设置页不崩溃，待处理请求区照常显示。
@@ -70,7 +70,7 @@ export default async function trustedAccessRecoveryJourney(page, baseUrl) {
     const text = await loadSettingsText(option.id);
     const feedback = (await loadAppCopy(option.id)).feedback;
     const localized = text.systemIntegration.trustedAccess;
-    await openSystemIntegration(text);
+    await openTrustedAccess(text);
     const localizedPanel = page.getByRole("region", { name: localized.title, exact: true });
     await localizedPanel.getByText(localized.defaultEnabled, { exact: true }).waitFor();
     for (const value of [localized.description, localized.defaultTitle, localized.defaultFileLocation,
@@ -118,7 +118,7 @@ export default async function trustedAccessRecoveryJourney(page, baseUrl) {
     .getByRole("alert").filter({ hasText: copy.requestsLoadFailed }).waitFor({ timeout: 15_000 });
 
   // 重新进入这一节：密钥列表读取得到 401，显示对应原因、重试和管理员恢复入口。
-  await openSystemIntegration(settingsText);
+  await openTrustedAccess(settingsText);
   await loadFailure.filter({ hasText: copy.failureReasons.unauthorized }).waitFor();
   assert.deepEqual(errors, [], "a 401 key read must not throw into the page boundary");
   await loadFailure.getByRole("button", { name: copy.retry, exact: true }).waitFor();

@@ -68,11 +68,16 @@ export default createSettingsLocale("zh-TW", {
   },
   "navigationLabel": "設定分割槽",
   "sections": {
-    "performance": "效能",
+    "runtimePolicy": "執行策略",
+    "memory": "記憶體",
     "memoryProtection": "主機記憶體保護",
+    "hardwareControl": "硬體控制",
+    "reportRules": "報告規則",
     "appearance": "外觀",
     "performanceOverlay": "效能浮層",
     "systemIntegration": "系統整合",
+    "publicServices": "公共服務",
+    "trustedAccess": "可信存取",
     "updates": "更新與版本",
     "debug": "偵錯",
     "credits": "致謝"
@@ -469,6 +474,10 @@ export default createSettingsLocale("zh-TW", {
     "hostManagerSmartCoordinatorScoreOnlyDescription": "繼續監控並產生排程結果，但不實際變更軟體或硬體狀態。",
     "hostManagerSmartCoordinatorPerformanceLogTitle": "記錄排程效能",
     "hostManagerSmartCoordinatorPerformanceLogDescription": "記錄排程耗時與負載，用於排查 Resource Manager 自身開銷。"
+  },
+  "hardwareControl": {
+    "reassertionTitle": "定期重新套用",
+    "reassertionDescription": "Resource Manager 依此間隔將「控制面」頁中已成功套用的設定重新寫入一次，以免被系統、驅動程式或其他程式改回。"
   },
   "performanceOverlay": {
     "intro": "列出已啟用疊加層的軟體。此處顯示的是已儲存的設定，不代表疊加層目前已經顯示。",

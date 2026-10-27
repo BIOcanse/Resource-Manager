@@ -50,7 +50,7 @@ export default async function aiGatewayKeysJourney(page, baseUrl) {
   });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await page.getByRole("navigation").getByRole("button", { name: "设置", exact: true }).click();
-  const open = () => page.getByRole("button", { name: "系统集成", exact: true }).click();
+  const open = () => page.getByRole("button", { name: "公共服务", exact: true }).click();
   const requested = page.waitForRequest(request => new URL(request.url()).pathname === "/api/ai-gateway/credentials");
   await open();
   const manager = page.locator(".ai-gateway-manager");

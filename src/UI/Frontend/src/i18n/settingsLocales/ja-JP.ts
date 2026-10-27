@@ -69,11 +69,16 @@ export default createSettingsLocale("ja-JP", {
   },
   "navigationLabel": "設定の分類",
   "sections": {
-    "performance": "パフォーマンス",
+    "runtimePolicy": "実行ポリシー",
+    "memory": "メモリ",
     "memoryProtection": "ホスト メモリ保護",
+    "hardwareControl": "ハードウェア制御",
+    "reportRules": "レポート ルール",
     "appearance": "外観",
     "performanceOverlay": "パフォーマンス オーバーレイ",
     "systemIntegration": "システム統合",
+    "publicServices": "共通サービス",
+    "trustedAccess": "信頼済みアクセス",
     "updates": "更新とバージョン",
     "debug": "デバッグ",
     "credits": "クレジット"
@@ -470,6 +475,10 @@ export default createSettingsLocale("ja-JP", {
     "hostManagerSmartCoordinatorScoreOnlyDescription": "監視とスケジューリング結果の生成を続けますが、ソフトウェアやハードウェアの状態は変更しません。",
     "hostManagerSmartCoordinatorPerformanceLogTitle": "スケジューリング性能を記録",
     "hostManagerSmartCoordinatorPerformanceLogDescription": "スケジューリング時間と負荷を記録し、Resource Manager 自身の処理負荷を調べます。"
+  },
+  "hardwareControl": {
+    "reassertionTitle": "定期的に再適用",
+    "reassertionDescription": "[制御] ページで適用に成功した設定を、Resource Manager がこの間隔で再度書き込みます。Windows、ドライバー、他のプログラムによって変更されたままになるのを防ぎます。"
   },
   "performanceOverlay": {
     "intro": "オーバーレイが有効なソフトウェアを一覧表示します。表示されるのは保存済みの設定で、オーバーレイが現在表示されているかどうかではありません。",

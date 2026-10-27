@@ -229,6 +229,11 @@ export interface SettingsCopy {
     hostManagerSmartCoordinatorPerformanceLogTitle: string;
     hostManagerSmartCoordinatorPerformanceLogDescription: string;
   };
+  /** 设置 → 硬件控制：重新应用间隔这一行。 */
+  hardwareControl: {
+    reassertionTitle: string;
+    reassertionDescription: string;
+  };
   performanceOverlay: {
     intro: string;
     loading: string;

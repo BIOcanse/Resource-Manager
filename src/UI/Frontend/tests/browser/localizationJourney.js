@@ -167,7 +167,7 @@ export default async function localizationJourney(page, baseUrl, options = {}) {
       throw new Error(`${option.id}: animation style options are ${JSON.stringify(styleLabels)}`);
     }
 
-    await page.getByRole("button", { name: settings.sections.performance, exact: true }).click();
+    await page.getByRole("button", { name: settings.sections.runtimePolicy, exact: true }).click();
     await liveText(page, settings.performance.gpuOverflowTitle).waitFor();
     await liveText(page, settings.performance.gpuOverflowDescription).waitFor();
     await liveText(page, settings.performance.realtimeActionBudgetDescription).waitFor();

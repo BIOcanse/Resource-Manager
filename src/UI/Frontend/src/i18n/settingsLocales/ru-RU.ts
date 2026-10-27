@@ -70,11 +70,16 @@ export default createSettingsLocale("ru-RU", {
   },
   "navigationLabel": "Разделы настроек",
   "sections": {
-    "performance": "Производительность",
+    "runtimePolicy": "Политика выполнения",
+    "memory": "Память",
     "memoryProtection": "Защита памяти компьютера",
+    "hardwareControl": "Управление оборудованием",
+    "reportRules": "Правила отчётов",
     "appearance": "Внешний вид",
     "performanceOverlay": "Наложение производительности",
     "systemIntegration": "Интеграция с системой",
+    "publicServices": "Общие службы",
+    "trustedAccess": "Доверенный доступ",
     "updates": "Обновления и версии",
     "debug": "Отладка",
     "credits": "Благодарности"
@@ -471,6 +476,10 @@ export default createSettingsLocale("ru-RU", {
     "hostManagerSmartCoordinatorScoreOnlyDescription": "Продолжать мониторинг и расчёт планирования без изменения состояния программ или оборудования.",
     "hostManagerSmartCoordinatorPerformanceLogTitle": "Записывать производительность планирования",
     "hostManagerSmartCoordinatorPerformanceLogDescription": "Записывать длительность и нагрузку планирования для анализа собственных затрат Resource Manager."
+  },
+  "hardwareControl": {
+    "reassertionTitle": "Периодически применять заново",
+    "reassertionDescription": "С этим интервалом Resource Manager заново записывает параметры, успешно применённые на странице «Управление», чтобы Windows, драйверы или другие программы не оставили их изменёнными."
   },
   "performanceOverlay": {
     "intro": "Список программ, для которых включено наложение. Показаны сохранённые настройки, а не то, отображается ли наложение сейчас.",

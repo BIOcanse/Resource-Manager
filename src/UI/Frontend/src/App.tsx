@@ -348,7 +348,7 @@ export default function App() {
   }
 
   createEffect(() => {
-    if (activePage() !== "settings" || settings.activeSection() !== "systemIntegration") {
+    if (activePage() !== "settings" || settings.activeSection() !== "trustedAccess") {
       setAccessRequestsFocusRequested(false);
     }
   });
@@ -356,7 +356,7 @@ export default function App() {
   function openAccessRequests() {
     batch(() => {
       setAccessRequestsFocusRequested(true);
-      settings.setActiveSection("systemIntegration");
+      settings.setActiveSection("trustedAccess");
       selectPage("settings");
     });
   }
@@ -386,7 +386,7 @@ export default function App() {
         onTaskCenterOpen={() => setTaskCenterOpen(true)}
         notices={<>
           <TrustedAccessPendingBanner
-            hidden={() => activePage() === "settings" && settings.activeSection() === "systemIntegration"}
+            hidden={() => activePage() === "settings" && settings.activeSection() === "trustedAccess"}
             onReview={openAccessRequests}
           />
           <LanguageLoadNotice />

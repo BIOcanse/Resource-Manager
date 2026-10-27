@@ -98,7 +98,8 @@ export interface SettingsStore {
   saveDraft: () => Promise<void>;
   reapply: () => Promise<void>;
   discardDraftChanges: () => void;
-  resetDraftToDefaults: () => void;
+  /** 恢复为默认：只把这个分区自己的字段换成默认值，其他分区的草稿不动。 */
+  resetDraftToDefaults: (section: SettingsSection) => void;
   resetFrontendPreferences: () => Promise<void>;
   updateReports: (reports: NonNullable<AppSettings["reports"]>) => void;
   updateMemoryProtection: (memoryProtection: NonNullable<AppSettings["memoryProtection"]>) => void;
@@ -180,7 +181,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
   const [runtimeCapabilityConstrainedPaths, setRuntimeCapabilityConstrainedPaths] = createSignal<readonly string[]>([]);
   const [runtimeFailureCode, setRuntimeFailureCode] = createSignal<string | null>(null);
   const [serviceRecovery, setServiceRecovery] = createSignal<ServiceRecoveryDiagnostics>();
-  const [activeSection, setActiveSection] = createSignal<SettingsSection>("performance");
+  const [activeSection, setActiveSection] = createSignal<SettingsSection>("runtimePolicy");
   const isDirty = createMemo(() => revision() !== null
     && !areSettingsEqual(settings(), draftSettings()));
   const source = options.source.acquire({ active: false, refreshIntervalMs: null });
@@ -392,7 +393,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     setLoadState(nextLoadState);
   }
 
-  function resetDraftToDefaults() {
+  function resetDraftToDefaults(section: SettingsSection) {
     if (loadState() !== "ready" || saveState() === "conflict") {
       return;
     }
@@ -402,7 +403,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     defaults.performance!.monitorRefreshIntervalMs = structuredClone(published.defaults.monitor);
     defaults.performance!.resourceTableRefreshIntervalMs = structuredClone(published.defaults.resourceTable);
     defaults.performance!.localSystemRefreshIntervalMs = structuredClone(published.defaults.localSystem);
-    setDraftSettings(defaults);
+    setDraftSettings(applySectionDefaults(section, draftSettings(), defaults));
     setSaveState((state) => state === "saved" || state === "constrained" ? "idle" : state);
     setRuntimeCapabilityConstrainedPaths([]);
     setRuntimeFailureCode(null);
@@ -713,6 +714,43 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
       }));
     }
   };
+}
+
+/** 运行策略、内存、外观（信息更新频率）分区各自拥有的 performance 字段；optimizationMode 由优化页设置，不属于任何设置分区。 */
+const sectionPerformanceFields = {
+  runtimePolicy: ["preciseGpuPlacementEnabled", "gpuOverflowUsagePercent", "gpuOverflowDedicatedMemoryPercent",
+    "realtimeActionBudgetMode", "realtimeActionBudgetCount", "realtimeActionBudgetPercent"],
+  memory: ["physicalMemoryAutomaticCleanupPercent", "virtualMemoryAutomaticCleanupPercent",
+    "physicalMemoryOptimizationTargetUsagePercent", "virtualMemoryOptimizationTargetUsagePercent"],
+  appearance: ["monitorRefreshIntervalMs", "resourceTableRefreshIntervalMs", "localSystemRefreshIntervalMs"]
+} as const satisfies Partial<Record<SettingsSection, readonly (keyof AppPerformanceSettings)[]>>;
+
+/**
+ * 一个分区的「恢复为默认」：把 draft 里这个分区拥有的字段换成 defaults 里的值，其余原样保留。
+ * 只读分区（性能浮层、可信访问、致谢）没有字段，原样返回。
+ */
+export function applySectionDefaults(section: SettingsSection, draft: AppSettings, defaults: AppSettings): AppSettings {
+  const withPerformance = (fields: readonly (keyof AppPerformanceSettings)[]): AppSettings => {
+    const performance = { ...draft.performance! };
+    for (const field of fields) (performance as Record<string, unknown>)[field] = structuredClone(defaults.performance![field]);
+    return { ...draft, performance };
+  };
+  switch (section) {
+    case "runtimePolicy": return withPerformance(sectionPerformanceFields.runtimePolicy);
+    case "memory": return withPerformance(sectionPerformanceFields.memory);
+    case "memoryProtection": return { ...draft, memoryProtection: structuredClone(defaults.memoryProtection) };
+    case "hardwareControl": return { ...draft, control: structuredClone(defaults.control) };
+    case "reportRules": return { ...draft, reports: structuredClone(defaults.reports) };
+    case "appearance": return { ...withPerformance(sectionPerformanceFields.appearance), appearance: structuredClone(defaults.appearance) };
+    case "systemIntegration": return { ...draft, systemIntegration: structuredClone(defaults.systemIntegration) };
+    case "publicServices": return { ...draft, publicService: structuredClone(defaults.publicService),
+      aiModelService: structuredClone(defaults.aiModelService) };
+    case "updates": return { ...draft, update: structuredClone(defaults.update), notifications: structuredClone(defaults.notifications) };
+    case "debug": return { ...draft, debug: structuredClone(defaults.debug) };
+    case "performanceOverlay":
+    case "trustedAccess":
+    case "credits": return draft;
+  }
 }
 
 export function defaultAppSettings(): AppSettings {

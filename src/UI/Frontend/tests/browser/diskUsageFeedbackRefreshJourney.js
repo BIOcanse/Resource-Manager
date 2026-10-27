@@ -99,7 +99,7 @@ async function checkDiskUsageFeedbackRefresh(page, baseUrl) {
   await page.locator(".shell-pages")
     .getByRole("button", { name: zhApp.page.settings, exact: true }).click();
   await page.locator(".settings-nav")
-    .getByRole("button", { name: zhSettings.sections.performance, exact: true }).click();
+    .getByRole("button", { name: zhSettings.sections.appearance, exact: true }).click();
 
   const interval = settingsInput(zhSettings);
   await interval.waitFor({ state: "visible", timeout: 7000 });
@@ -143,7 +143,7 @@ async function checkDiskUsageFeedbackRefresh(page, baseUrl) {
   await page.locator(".shell-pages")
     .getByRole("button", { name: zhApp.page.settings, exact: true }).click();
   await page.locator(".settings-nav")
-    .getByRole("button", { name: zhSettings.sections.performance, exact: true }).click();
+    .getByRole("button", { name: zhSettings.sections.appearance, exact: true }).click();
   assert(await settingsInput(zhSettings).inputValue() === "2000",
     "The saved 2000 ms interval did not survive a reload");
 

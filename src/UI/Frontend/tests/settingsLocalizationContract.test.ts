@@ -6,7 +6,7 @@ const settingsPage = readSource("../src/features/settings/SettingsPage.tsx");
 const settingsLoader = readSource("../src/i18n/settingsLoader.ts");
 const settingsLocaleFactory = readSource("../src/i18n/settingsLocaleFactory.ts");
 const appearanceSettings = readSource("../src/features/settings/components/AppearanceSettingsSection.tsx");
-const performanceSettings = readSource("../src/features/settings/components/PerformanceSettingsSection.tsx");
+const refreshCadenceSetting = readSource("../src/features/settings/components/RefreshCadenceSetting.tsx");
 const settingsControls = readSource("../src/features/settings/components/SettingsControls.tsx");
 const updatesSettings = readSource("../src/features/settings/components/UpdatesSettingsSection.tsx");
 const trustedAccessManager = readSource("../src/features/settings/components/TrustedAccessManager.tsx");
@@ -54,14 +54,14 @@ assert.doesNotMatch(trustedAccessApi, /acquire-default|defaultSecret/);
 
 // Refresh interval edits stay local until the shared NumberField commits them.
 // 可见标签只写“自定义 (ms)”，不再把整行标题重复一遍；读屏名称仍带行标题，三行可区分。
-assert.match(performanceSettings, /<NumberField[\s\S]*?label=\{props\.text\.performance\.refreshCadenceCustomLabel\}[\s\S]*?ariaLabel=\{`\$\{itemText\(\)\.label\} \$\{props\.text\.performance\.refreshCadenceCustomLabel\}`\}[\s\S]*?min=\{500\}[\s\S]*?max=\{300000\}[\s\S]*?step=\{100\}[\s\S]*?onChange=\{\(value\) => updateLogicRefreshCustomValue\(key, value\)\}/);
+assert.match(refreshCadenceSetting, /<NumberField[\s\S]*?label=\{props\.text\.performance\.refreshCadenceCustomLabel\}[\s\S]*?ariaLabel=\{`\$\{itemText\(\)\.label\} \$\{props\.text\.performance\.refreshCadenceCustomLabel\}`\}[\s\S]*?min=\{500\}[\s\S]*?max=\{300000\}[\s\S]*?step=\{100\}[\s\S]*?onChange=\{\(value\) => updateLogicRefreshCustomValue\(key, value\)\}/);
 assert.match(settingsControls, /aria-label=\{props\.ariaLabel\}/);
 // 只显示当前模式生效的输入：锁定预设才有预设下拉框，自定义才有毫秒输入框，自动调度两者都没有。
-assert.match(performanceSettings, /<Match when=\{setting\(\)\.mode === "preset"\}>\s*<label class="settings-select settings-inline-select">[\s\S]*?<StandardSelect/);
-assert.match(performanceSettings, /<Match when=\{setting\(\)\.mode === "custom"\}>\s*<NumberField/);
-assert.equal(performanceSettings.match(/<StandardSelect/g)?.length, 1);
-assert.equal(performanceSettings.match(/<NumberField/g)?.length, 1);
-assert.doesNotMatch(performanceSettings, /onInput=\{\(event\) => updateLogicRefreshCustomValue/);
+assert.match(refreshCadenceSetting, /<Match when=\{setting\(\)\.mode === "preset"\}>\s*<label class="settings-select settings-inline-select">[\s\S]*?<StandardSelect/);
+assert.match(refreshCadenceSetting, /<Match when=\{setting\(\)\.mode === "custom"\}>\s*<NumberField/);
+assert.equal(refreshCadenceSetting.match(/<StandardSelect/g)?.length, 1);
+assert.equal(refreshCadenceSetting.match(/<NumberField/g)?.length, 1);
+assert.doesNotMatch(refreshCadenceSetting, /onInput=\{\(event\) => updateLogicRefreshCustomValue/);
 assert.match(settingsControls, /const \[draft, setDraft\]/);
 assert.match(settingsControls, /onBlur=\{commit\}/);
 assert.match(settingsControls, /if \(event\.key === "Enter"\) event\.currentTarget\.blur\(\)/);

@@ -69,11 +69,16 @@ export default createSettingsLocale("ko-KR", {
   },
   "navigationLabel": "설정 항목",
   "sections": {
-    "performance": "성능",
+    "runtimePolicy": "실행 정책",
+    "memory": "메모리",
     "memoryProtection": "호스트 메모리 보호",
+    "hardwareControl": "하드웨어 제어",
+    "reportRules": "보고서 규칙",
     "appearance": "모양",
     "performanceOverlay": "성능 오버레이",
     "systemIntegration": "시스템 통합",
+    "publicServices": "공용 서비스",
+    "trustedAccess": "신뢰된 액세스",
     "updates": "업데이트 및 버전",
     "debug": "디버그",
     "credits": "감사의 글"
@@ -470,6 +475,10 @@ export default createSettingsLocale("ko-KR", {
     "hostManagerSmartCoordinatorScoreOnlyDescription": "모니터링과 스케줄링 결과 생성을 계속하되 소프트웨어 및 하드웨어 상태는 변경하지 않습니다.",
     "hostManagerSmartCoordinatorPerformanceLogTitle": "스케줄링 성능 기록",
     "hostManagerSmartCoordinatorPerformanceLogDescription": "스케줄링 시간과 부하를 기록하여 Resource Manager 자체의 오버헤드를 조사합니다."
+  },
+  "hardwareControl": {
+    "reassertionTitle": "주기적으로 다시 적용",
+    "reassertionDescription": "Resource Manager가 [제어] 페이지에서 적용에 성공한 설정을 이 간격마다 다시 기록하여 Windows, 드라이버 또는 다른 프로그램이 바꾼 상태로 남지 않게 합니다."
   },
   "performanceOverlay": {
     "intro": "오버레이가 켜진 소프트웨어를 나열합니다. 표시되는 내용은 저장된 설정이며, 오버레이가 현재 표시되고 있는지는 나타내지 않습니다.",

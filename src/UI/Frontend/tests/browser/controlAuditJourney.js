@@ -87,6 +87,7 @@ export default async function controlAuditJourney(page, baseUrl) {
   await a.locator(".fan-curve-chart").waitFor();
   assert.ok(reads > hiddenReads, "Becoming visible reloads authoritative state");
   await page.getByRole("navigation", { name: "页面切换" }).getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("button", { name: "硬件控制", exact: true }).click();
   const interval = page.getByRole("textbox", { name: "重新应用间隔（秒）", exact: true });
   await interval.waitFor();
   assert.equal(await interval.inputValue(), "120");
@@ -107,6 +108,7 @@ export default async function controlAuditJourney(page, baseUrl) {
     : route.fulfill({ status: 503, json: { error: "access-read-failed" } }));
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.getByRole("navigation", { name: "页面切换" }).getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("button", { name: "硬件控制", exact: true }).click();
   const access = page.locator(".control-access-level");
   await access.getByRole("alert").filter({ hasText: "无法读取调节权限" }).waitFor();
   assert.equal(await access.locator('[role="radio"][aria-checked="true"]').count(), 0);

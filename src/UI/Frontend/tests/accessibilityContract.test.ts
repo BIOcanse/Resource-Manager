@@ -68,6 +68,7 @@ const themeConsumerStyles = [
 ].join("\n");
 const settingsSources = [
   readSource("features/settings/components/SystemIntegrationSettingsSection.tsx"),
+  readSource("features/settings/components/PublicServicesSettingsSection.tsx"),
   readSource("features/settings/components/DebugSettingsSection.tsx"),
   readSource("features/settings/components/EditableHotkeyEditor.tsx")
 ];

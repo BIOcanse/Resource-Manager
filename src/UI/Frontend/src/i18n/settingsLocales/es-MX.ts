@@ -1,7 +1,7 @@
 import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 
 export default createSettingsLocale("es-MX", {
-  sections: { performance: "Rendimiento", appearance: "Apariencia", systemIntegration: "Integración del sistema", debug: "Depuración", credits: "Créditos" },
+  sections: { appearance: "Apariencia", systemIntegration: "Integración del sistema", debug: "Depuración", credits: "Créditos" },
   saveState: { saving: "Guardando", saved: "Guardado", error: "No se pudo guardar" },
   appearance: {
     languageTitle: "Idioma de la interfaz",

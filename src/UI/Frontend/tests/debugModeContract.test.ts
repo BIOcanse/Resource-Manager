@@ -50,7 +50,9 @@ const retiredSelfOptimizationSources = [
   readClientSource("src/types.ts"),
   readClientSource("src/stores/settingsStore.ts"),
   readClientSource("src/features/settings/SettingsPage.tsx"),
-  readClientSource("src/features/settings/components/PerformanceSettingsSection.tsx"),
+  readClientSource("src/features/settings/components/RuntimePolicySettingsSection.tsx"),
+  readClientSource("src/features/settings/components/MemorySettingsSection.tsx"),
+  readClientSource("src/features/settings/components/RefreshCadenceSetting.tsx"),
   readClientSource("src/i18n/settingsTypes.ts"),
   readClientSource("src/i18n/settingsLoader.ts"),
   readClientSource("src/i18n/settingsLocaleFactory.ts")

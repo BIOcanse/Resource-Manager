@@ -6,11 +6,16 @@ const zhCnSettingsCopy: SettingsCopy = {
   updates: zhCnUpdatesCopy,
   navigationLabel: "设置分区",
   sections: {
-    performance: "性能",
+    runtimePolicy: "运行策略",
+    memory: "内存",
     memoryProtection: "主机内存保护",
+    hardwareControl: "硬件控制",
+    reportRules: "报告规则",
     appearance: "外观",
     performanceOverlay: "性能浮层",
     systemIntegration: "系统集成",
+    publicServices: "公共服务",
+    trustedAccess: "可信访问",
     updates: "更新与版本",
     debug: "调试",
     credits: "致谢"
@@ -333,6 +338,10 @@ const zhCnSettingsCopy: SettingsCopy = {
     hostManagerSmartCoordinatorPerformanceLogTitle: "记录调度性能",
     hostManagerSmartCoordinatorPerformanceLogDescription: "记录调度耗时和负载，用于排查资源管理器自身开销。"
   },
+  hardwareControl: {
+    reassertionTitle: "定期重新应用",
+    reassertionDescription: "资源管理器按此间隔把“控制面”页中已成功应用的设定重新写入一次，以免被系统、驱动或其他程序改回。"
+  },
   performanceOverlay: {
     intro: "列出已启用叠加层的软件。此处显示的是已保存的设置，不表示叠加层当前已经显示。",
     loading: "正在读取叠加层设置",
@@ -405,11 +414,16 @@ const enSettingsCopy: SettingsCopy = {
   updates: enUpdatesCopy,
   navigationLabel: "Settings sections",
   sections: {
-    performance: "Performance",
+    runtimePolicy: "Runtime Policy",
+    memory: "Memory",
     memoryProtection: "Host Memory Protection",
+    hardwareControl: "Hardware Control",
+    reportRules: "Report Rules",
     appearance: "Appearance",
     performanceOverlay: "Performance Overlay",
     systemIntegration: "System Integration",
+    publicServices: "Public Services",
+    trustedAccess: "Trusted Access",
     updates: "Updates & Versions",
     debug: "Debug",
     credits: "Credits"
@@ -731,6 +745,10 @@ const enSettingsCopy: SettingsCopy = {
     hostManagerSmartCoordinatorScoreOnlyDescription: "Continue monitoring and producing scheduling results without changing software or hardware state.",
     hostManagerSmartCoordinatorPerformanceLogTitle: "Record Scheduling Performance",
     hostManagerSmartCoordinatorPerformanceLogDescription: "Record scheduling duration and load to investigate Resource Manager's own overhead."
+  },
+  hardwareControl: {
+    reassertionTitle: "Reapply periodically",
+    reassertionDescription: "At this interval, Resource Manager writes the settings applied successfully on the Control page again, so that Windows, drivers or other programs do not leave them changed."
   },
   performanceOverlay: {
     intro: "Lists the software that has an overlay turned on. This shows the saved settings, not whether an overlay is currently displayed.",

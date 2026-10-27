@@ -70,11 +70,16 @@ export default createSettingsLocale("es-ES", {
   },
   "navigationLabel": "Secciones de ajustes",
   "sections": {
-    "performance": "Rendimiento",
+    "runtimePolicy": "Directiva de ejecución",
+    "memory": "Memoria",
     "memoryProtection": "Protección de memoria del equipo",
+    "hardwareControl": "Control de hardware",
+    "reportRules": "Reglas de informes",
     "appearance": "Apariencia",
     "performanceOverlay": "Superposición de rendimiento",
     "systemIntegration": "Integración del sistema",
+    "publicServices": "Servicios compartidos",
+    "trustedAccess": "Acceso de confianza",
     "updates": "Actualizaciones y versiones",
     "debug": "Depuración",
     "credits": "Créditos"
@@ -471,6 +476,10 @@ export default createSettingsLocale("es-ES", {
     "hostManagerSmartCoordinatorScoreOnlyDescription": "Continuar la supervisión y generar resultados de planificación sin modificar el estado del software ni del hardware.",
     "hostManagerSmartCoordinatorPerformanceLogTitle": "Registrar rendimiento de planificación",
     "hostManagerSmartCoordinatorPerformanceLogDescription": "Registrar la duración y la carga de planificación para investigar el consumo de Resource Manager."
+  },
+  "hardwareControl": {
+    "reassertionTitle": "Volver a aplicar periódicamente",
+    "reassertionDescription": "Con este intervalo, Resource Manager vuelve a escribir los ajustes aplicados correctamente en la página Control, para que Windows, los controladores u otros programas no los dejen cambiados."
   },
   "performanceOverlay": {
     "intro": "Enumera el software que tiene una superposición activada. Se muestran los ajustes guardados, no si la superposición se está mostrando ahora.",
