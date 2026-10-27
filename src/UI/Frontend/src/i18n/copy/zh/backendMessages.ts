@@ -30,6 +30,11 @@ export const zhBackendMessagesCopy = {
     runtimeFilesUnavailable: "无法准备所需文件。请检查网络连接和可用存储空间，然后重试此操作。",
       componentFilesExtracted: "组件文件已解压到安装目录。"
     },
+    kernelLeak: {
+      actionNotProvided: "本地服务暂不提供此操作。",
+      restartHolderRisk: "重启会中断持有程序的运行，未保存的状态可能丢失，重启后的行为也可能与之前不同。",
+      forceReleaseHandlesRisk: "强制释放句柄可能导致持有程序崩溃，也无法阻止泄漏继续发生，应仅作为最后手段。"
+    },
     gpuPlacement: {
       singleAdapter: "只有一块显卡，没有可调度的目标。"
     },

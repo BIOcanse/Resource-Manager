@@ -53,6 +53,77 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* 本轮观察进度：与汇总格同一种小格，值是「已达到，需要」。 */
+.kernel-leak-observation {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, max-content));
+  gap: 8px;
+}
+
+.kernel-leak-observation > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+}
+
+.kernel-leak-observation dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.kernel-leak-observation dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* 保留的上一轮失败：警告色标题，下面是原因和该轮的起止时间。 */
+.kernel-leak-previous-run {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line-soft);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+
+.kernel-leak-previous-run-title {
+  margin: 0;
+  color: var(--warn);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.kernel-leak-previous-run dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 14px;
+  font-size: 13px;
+}
+
+.kernel-leak-previous-run dl > div {
+  display: contents;
+}
+
+.kernel-leak-previous-run dt {
+  color: var(--muted);
+}
+
+.kernel-leak-previous-run dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
 .kernel-leak-items {
   margin: 0;
   padding: 0;
@@ -197,11 +268,41 @@
   overflow-wrap: anywhere;
 }
 
-/* 第 3 期之前，处理动作的位置只放这一句说明。 */
-.kernel-leak-actions-pending {
-  margin: 0;
+/* 处理操作：两个不可用的按钮各带一个风险问号，不可用的原因写在同一行后面；窄窗口下换行。 */
+.kernel-leak-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
   border-top: 1px solid var(--divider-soft);
   padding-top: 8px;
+}
+
+.kernel-leak-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.kernel-leak-action-button {
+  min-height: 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.kernel-leak-action-button:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.kernel-leak-action-reason {
   color: var(--muted);
   font-size: 12px;
 }

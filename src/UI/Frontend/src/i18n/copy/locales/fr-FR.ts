@@ -2730,6 +2730,11 @@ const frFrAppCopy: AppCopy = {
   runtimeFilesUnavailable: "Impossible de préparer les fichiers nécessaires. Vérifiez la connexion et l’espace de stockage disponible, puis réessayez cette action.",
       componentFilesExtracted: "Les fichiers du composant ont été extraits dans le dossier d'installation."
     },
+    kernelLeak: {
+      actionNotProvided: "Le service local ne fournit pas encore cette action.",
+      restartHolderRisk: "Le redémarrage interrompt le processus détenteur. L’état non enregistré peut être perdu et son comportement peut changer ensuite.",
+      forceReleaseHandlesRisk: "La libération forcée peut faire planter le processus détenteur et n’empêche pas la fuite de se poursuivre. À n’utiliser qu’en dernier recours."
+    },
     gpuPlacement: {
       singleAdapter: "Cette machine n'a qu'un seul GPU : l'ordonnancement GPU n'a aucune cible à choisir."
     },

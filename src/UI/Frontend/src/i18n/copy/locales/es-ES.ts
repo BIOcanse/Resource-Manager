@@ -2730,6 +2730,11 @@ const esEsAppCopy: AppCopy = {
   runtimeFilesUnavailable: "No se pudieron preparar los archivos necesarios. Compruebe la conexión y el espacio de almacenamiento disponible; después, vuelva a intentar esta acción.",
       componentFilesExtracted: "Los archivos del componente se extrajeron en la carpeta de instalación."
     },
+    kernelLeak: {
+      actionNotProvided: "El servicio local aún no proporciona esta acción.",
+      restartHolderRisk: "Reiniciar interrumpe el proceso propietario. Se puede perder el estado no guardado y su comportamiento puede cambiar después.",
+      forceReleaseHandlesRisk: "Forzar la liberación puede bloquear el proceso propietario y no impide que la fuga continúe. Úselo solo como último recurso."
+    },
     gpuPlacement: {
       singleAdapter: "Esta máquina solo tiene una GPU, así que la programación de GPU no tiene ningún destino que elegir."
     },

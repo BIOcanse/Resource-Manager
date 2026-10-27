@@ -2730,6 +2730,11 @@ const jaJpAppCopy: AppCopy = {
   runtimeFilesUnavailable: "必要なファイルを準備できませんでした。接続と空き容量を確認してから、この操作を再試行してください。",
       componentFilesExtracted: "コンポーネントのファイルをインストール先に展開しました。"
     },
+    kernelLeak: {
+      actionNotProvided: "ローカル サービスはこの操作をまだ提供していません。",
+      restartHolderRisk: "再起動すると保持プロセスが中断されます。保存されていない状態が失われたり、再起動後の動作が変わったりする可能性があります。",
+      forceReleaseHandlesRisk: "強制解放すると保持プロセスがクラッシュする可能性があり、リークの継続も防げません。最後の手段としてのみ使用してください。"
+    },
     gpuPlacement: {
       singleAdapter: "このマシンには GPU が 1 つしかないため、GPU スケジューリングに選択肢がありません。"
     },

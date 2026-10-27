@@ -10,23 +10,30 @@ import { frontendWorkIds } from "../../frontendWork/frontendWorkIds";
 import { CurrentPageHeading, useCurrentPageName } from "../../app/navigation/currentPageName.tsx";
 import { formatInterfaceNumber } from "../../presentation/interfaceNumbers.ts";
 import { ContentState } from "../../ui/patterns/ContentState.tsx";
+import { HelpHint } from "../../ui/primitives/HelpHint.tsx";
 import { uiText } from "../../text.ts";
 import {
+  kernelLeakActionReasons,
+  kernelLeakActionViews,
   kernelLeakCapturedAt,
   kernelLeakEvidence,
   kernelLeakHolderTitle,
   kernelLeakImagePath,
   kernelLeakItemKey,
+  kernelLeakObservationProgress,
+  kernelLeakPreviousRunFailure,
   kernelLeakProductName,
+  kernelLeakRestartNote,
   kernelLeakServices,
   kernelLeakStateView
 } from "./kernelLeakPresentation.ts";
 
 /*
  * 详细信息 → 内核泄漏报告（docs/kernel_leak_report_feature_2026-10-27.md“前端：报告界面”）。
- * 页面可见时订阅 /api/kernel-leaks/subscribe（前端工作控制器的可见性规则，和其他报告分页一样），后端发什么显示什么。
- * 处理动作（重启持有者、强制释放句柄）及其风险说明属于第 3 期，由本地服务的进程操作发出；
- * 在那之前每一项只占一个说明位置，前端不写动作名称、风险文字或动作逻辑。
+ * 观察由本地服务在整个运行期间进行（配置可关闭）；页面可见只决定是否订阅 /api/kernel-leaks/subscribe 收报告
+ * （前端工作控制器的可见性规则，和其他报告分页一样），后端发什么显示什么：本轮观察进度、上一轮失败及其时间、疑似项。
+ * 每项的两个处理操作（重启持有程序、强制释放句柄）在合同 v2 里是保留的：按钮不可用，问号里是后端给的风险说明，
+ * 不可用的原因直接写在按钮旁边。执行入口属于第 3 期。
  */
 export function KernelLeakReportPage() {
   const demandId = "details.kernel-leaks";
@@ -68,6 +75,26 @@ export function KernelLeakReportPage() {
             </Show>
           </dl>
         )}
+      </Show>
+      <Show when={report() && kernelLeakObservationProgress(report()!)}>
+        {(progress) => (
+          <dl class="kernel-leak-observation" aria-label={copy().observation.title}>
+            <For each={progress()}>{(entry) => <div><dt>{entry.label}</dt><dd>{entry.value}</dd></div>}</For>
+          </dl>
+        )}
+      </Show>
+      <Show when={report()?.observation.previousRunFailure}>
+        {(failure) => (
+          <div class="kernel-leak-previous-run" role="group" aria-label={copy().previousRun.title}>
+            <p class="kernel-leak-previous-run-title">{copy().previousRun.title}</p>
+            <dl>
+              <For each={kernelLeakPreviousRunFailure(failure())}>{(entry) => <div><dt>{entry.label}</dt><dd>{entry.value}</dd></div>}</For>
+            </dl>
+          </div>
+        )}
+      </Show>
+      <Show when={report() && kernelLeakRestartNote(report()!)}>
+        {(note) => <p class="kernel-leak-note">{note()}</p>}
       </Show>
       <Show when={(report()?.unavailableHolderCount ?? 0) > 0}>
         <p class="kernel-leak-note warning" role="status">{copy().unavailableHolders(report()!.unavailableHolderCount)}</p>
@@ -122,7 +149,19 @@ function KernelLeakItemCard(props: { readonly item: KernelLeakItem }) {
           {(entry) => <div><dt>{entry.label}</dt><dd>{entry.value}</dd></div>}
         </For>
       </dl>
-      <p class="kernel-leak-actions-pending">{copy().actionsPending}</p>
+      <div class="kernel-leak-actions" role="group" aria-label={copy().actions.title}>
+        <For each={kernelLeakActionViews(props.item)}>
+          {(action) => (
+            <span class="kernel-leak-action" data-kernel-leak-action={action.action} data-risk-level={action.riskLevel}>
+              <button type="button" class="kernel-leak-action-button" disabled>{action.name}</button>
+              <HelpHint label={action.riskLabel}>{action.riskText}</HelpHint>
+            </span>
+          )}
+        </For>
+        <For each={kernelLeakActionReasons(props.item)}>
+          {(reason) => <span class="kernel-leak-action-reason">{reason}</span>}
+        </For>
+      </div>
     </li>
   );
 }

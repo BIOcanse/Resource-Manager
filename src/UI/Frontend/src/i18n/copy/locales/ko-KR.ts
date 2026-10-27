@@ -2729,6 +2729,11 @@ const koKrAppCopy: AppCopy = {
   runtimeFilesUnavailable: "필요한 파일을 준비하지 못했습니다. 연결과 사용 가능한 저장 공간을 확인한 뒤 이 작업을 다시 시도하세요.",
       componentFilesExtracted: "구성 요소 파일을 설치 폴더에 압축 해제했습니다."
     },
+    kernelLeak: {
+      actionNotProvided: "로컬 서비스는 아직 이 작업을 제공하지 않습니다.",
+      restartHolderRisk: "다시 시작하면 보유 프로세스가 중단됩니다. 저장되지 않은 상태가 손실될 수 있으며 이후 동작이 달라질 수 있습니다.",
+      forceReleaseHandlesRisk: "강제 해제하면 보유 프로세스가 충돌할 수 있으며 누수가 계속되는 것을 막지 못합니다. 최후의 수단으로만 사용하십시오."
+    },
     gpuPlacement: {
       singleAdapter: "이 컴퓨터에는 GPU가 하나뿐이어서 GPU 스케줄링에 선택할 대상이 없습니다."
     },

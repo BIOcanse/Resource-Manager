@@ -3,20 +3,39 @@ import type { AppCopy } from "../index.ts";
 
 export const kernelLeakReport: AppCopy["kernelLeakReport"] = {
   tab: "Bericht zu Kernel-Lecks",
-  intro: "Listet Prozesse auf, deren Kernelressourcen (derzeit Prozesshandles) anhaltend wachsen und möglicherweise unbegrenzt zunehmen, zusammen mit den Nachweisen. Das Ergebnis zeigt nur einen Verdacht an; entscheiden Sie anhand der Nachweise, ob Sie eingreifen. Die Beobachtung läuft nur, solange diese Seite angezeigt wird, und beginnt beim erneuten Öffnen der Seite von vorn.",
+  intro: "Der lokale Dienst beobachtet während seiner Laufzeit fortlaufend die Kernelressourcen jedes Prozesses (derzeit Prozesshandles) und listet Prozesse auf, deren Ressourcen anhaltend wachsen und möglicherweise unbegrenzt zunehmen, zusammen mit den Nachweisen. Das Ergebnis zeigt nur einen Verdacht an; entscheiden Sie anhand der Nachweise, ob Sie eingreifen.",
   loading: "Bericht zu Kernel-Lecks wird geladen…",
   readFailed: "Der Bericht zu Kernel-Lecks konnte nicht gelesen werden.",
   capturedAt: "Erfasst am",
   suspectedItems: "Verdachtsfälle",
+  disabledTitle: "Die Beobachtung von Kernel-Lecks ist ausgeschaltet",
+  disabledDetail: "Die Konfiguration des lokalen Diensts schaltet die Beobachtung von Kernel-Lecks aus. Es werden keine Stichproben erfasst und kein Bericht erstellt.",
+  observingTitle: "Beobachtung läuft",
+  observingDetail: "Die Bewertung beginnt, sobald Beobachtungsdauer und Anzahl der Stichproben dieses Durchlaufs die Anforderungen erfüllen.",
   emptyTitle: "Keine vermuteten Kernel-Lecks gefunden",
-  emptyDetail: "Dieses Ergebnis wird auch angezeigt, solange die Beobachtungsdauer für eine Beurteilung noch nicht ausreicht. Gefundene Verdachtsfälle erscheinen hier.",
-  notObservedTitle: "Noch keine Stichprobe erfasst",
-  unavailableTitle: "Der Bericht zu Kernel-Lecks ist nicht verfügbar",
+  emptyDetail: "Beobachtungsdauer und Anzahl der Stichproben dieses Durchlaufs erfüllen die Anforderungen; keine Kernelressource wächst anhaltend.",
+  unavailableTitle: "Dieser Beobachtungsdurchlauf ist fehlgeschlagen",
   failure: {
-    NotObserved: "Die Beobachtung hat begonnen. Ergebnisse erscheinen nach der ersten Stichprobe.",
-    SourceUnavailable: "Die Ressourcendaten der Prozesse können nicht gelesen werden.",
-    CapacityExceeded: "Die Anzahl der beobachteten Prozesse überschreitet die Kapazitätsgrenze. Diese Beobachtung wurde beendet.",
-    InvalidObservation: "Die erfassten Daten sind ungültig. Diese Beobachtung wurde beendet."
+    SourceUnavailable: "Die Ressourcendaten der Prozesse konnten nicht gelesen werden.",
+    CapacityExceeded: "Die Anzahl der beobachteten Prozesse hat die Kapazitätsgrenze überschritten; dieser Durchlauf wurde beendet.",
+    InvalidObservation: "Die Stichprobendaten waren ungültig; dieser Durchlauf wurde beendet."
+  },
+  observation: {
+    title: "Aktueller Durchlauf",
+    startedAt: "Beginn des Durchlaufs",
+    elapsed: "Beobachtungsdauer",
+    samples: "Stichproben",
+    notStarted: "Noch keine Stichprobe",
+    reachedOfRequired: (reached: string, required: string) => `${reached} (erforderlich: ${required})`
+  },
+  previousRun: {
+    title: "Vorheriger Durchlauf fehlgeschlagen",
+    reason: "Grund",
+    startedAt: "Beginn des Durchlaufs",
+    failedAt: "Fehlgeschlagen am"
+  },
+  restartPolicy: {
+    NextInterval: "Der lokale Dienst beginnt beim nächsten Abtastintervall automatisch einen neuen Durchlauf."
   },
   unavailableHolders: (count: number) => plural("de-DE", count, {
     one: "Die Ressourcendaten von {count} Prozess konnten nicht gelesen werden; er wird bei dieser Beurteilung nicht berücksichtigt.",
@@ -36,12 +55,24 @@ export const kernelLeakReport: AppCopy["kernelLeakReport"] = {
     processEnded: "Prozess beendet"
   },
   evidence: {
-    currentValue: "Aktuelle Anzahl",
+    currentValue: "Aktueller Wert",
     growth: "Zunahme im Beobachtungszeitraum",
     growthPerSecond: "Zuwachsrate",
     observationTime: "Beobachtungsdauer",
     sampleCount: "Stichproben"
   },
   ratePerSecond: (value: string) => `${value}/s`,
-  actionsPending: "Der lokale Dienst stellt für diesen Eintrag noch keine Aktionen bereit."
+  actions: {
+    title: "Aktionen",
+    name: {
+      RestartHolder: "Besitzerprozess neu starten",
+      ForceReleaseHandles: "Handles erzwungen freigeben"
+    },
+    riskLevel: {
+      Warning: "Warnung",
+      High: "Hoch"
+    },
+    riskText: (level: string, risk: string) => `Risiko: ${level}. ${risk}`,
+    riskLabel: (name: string) => `Risiko: ${name}`
+  }
 };

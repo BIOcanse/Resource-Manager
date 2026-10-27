@@ -30,6 +30,11 @@ export const zhBackendMessagesCopy = {
     runtimeFilesUnavailable: "無法準備所需檔案。請檢查網路連線與可用儲存空間，然後重試此操作。",
       componentFilesExtracted: "元件檔案已解壓到安裝目錄。"
     },
+    kernelLeak: {
+      actionNotProvided: "本機服務暫不提供此操作。",
+      restartHolderRisk: "重新啟動會中斷持有程式的執行，未儲存的狀態可能遺失，重新啟動後的行為也可能與之前不同。",
+      forceReleaseHandlesRisk: "強制釋放控制代碼可能導致持有程式當機，也無法阻止洩漏繼續發生，應僅作為最後手段。"
+    },
     gpuPlacement: {
       singleAdapter: "只有一塊顯示卡，沒有可排程的目標。"
     },

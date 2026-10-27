@@ -18,7 +18,8 @@ export const backendMessageDomains = {
   metric: 3,
   software: 4,
   deviceTopology: 5,
-  operation: 6
+  operation: 6,
+  kernelLeak: 7
 } as const;
 
 type Renderer = (args: readonly string[]) => string;
@@ -111,6 +112,16 @@ function gpuPlacementRenderers(): Record<number, Renderer> {
   const copy = uiText.backendMessage.gpuPlacement;
   return {
     1: () => copy.singleAdapter
+  };
+}
+
+/** 内核泄漏报告里保留的处理操作：不可用的原因和两种操作的风险说明（BackendMessageCodes.KernelLeak，都不带参数）。 */
+function kernelLeakRenderers(): Record<number, Renderer> {
+  const copy = uiText.backendMessage.kernelLeak;
+  return {
+    1: () => copy.actionNotProvided,
+    2: () => copy.restartHolderRisk,
+    3: () => copy.forceReleaseHandlesRisk
   };
 }
 
@@ -222,7 +233,8 @@ export function renderBackendMessage(
     [backendMessageDomains.metric]: metricRenderers,
     [backendMessageDomains.software]: softwareRenderers,
     [backendMessageDomains.deviceTopology]: deviceTopologyRenderers,
-    [backendMessageDomains.operation]: operationRenderers
+    [backendMessageDomains.operation]: operationRenderers,
+    [backendMessageDomains.kernelLeak]: kernelLeakRenderers
   };
   const renderer = renderersByDomain[message.domain]?.()[message.code];
   if (!renderer) {

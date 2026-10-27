@@ -32,6 +32,11 @@ export const enBackendMessagesCopy: Pick<AppCopy, "backendMessage"> = {
     runtimeFilesUnavailable: "Required files could not be prepared. Check the connection and available storage, then retry this action.",
       componentFilesExtracted: "The component files were extracted into the install directory."
     },
+    kernelLeak: {
+      actionNotProvided: "The local service does not provide this action yet.",
+      restartHolderRisk: "Restarting interrupts the holder. Unsaved state can be lost, and its behavior may differ after the restart.",
+      forceReleaseHandlesRisk: "Forcing the handles closed can crash the holder and does not stop further leaking. Use it only as a last resort."
+    },
     gpuPlacement: {
       singleAdapter: "Only one GPU, nothing to schedule between."
     },

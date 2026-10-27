@@ -2730,6 +2730,11 @@ const deDeAppCopy: AppCopy = {
   runtimeFilesUnavailable: "Die benötigten Dateien konnten nicht vorbereitet werden. Prüfen Sie die Verbindung und den verfügbaren Speicherplatz und versuchen Sie diese Aktion erneut.",
       componentFilesExtracted: "Die Komponentendateien wurden in das Installationsverzeichnis entpackt."
     },
+    kernelLeak: {
+      actionNotProvided: "Der lokale Dienst stellt diese Aktion noch nicht bereit.",
+      restartHolderRisk: "Ein Neustart unterbricht den Besitzerprozess. Nicht gespeicherte Zustände können verloren gehen, und sein Verhalten kann sich danach ändern.",
+      forceReleaseHandlesRisk: "Das erzwungene Freigeben kann den Besitzerprozess zum Absturz bringen und verhindert kein weiteres Leck. Verwenden Sie es nur als letztes Mittel."
+    },
     gpuPlacement: {
       singleAdapter: "Dieser Rechner hat nur eine GPU, daher gibt es für die GPU-Planung kein Ziel zur Auswahl."
     },

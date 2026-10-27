@@ -4,20 +4,39 @@ import type { AppCopy } from "../zh/index.ts";
 export const enKernelLeakReportCopy: Pick<AppCopy, "kernelLeakReport"> = {
   kernelLeakReport: {
     tab: "Kernel leak report",
-    intro: "Lists processes whose kernel resources (currently process handles) keep growing and may be growing without bound, together with the evidence. A result only indicates a suspected leak; decide whether to act based on the evidence. Observation runs only while this page is shown and starts over when the page is opened again.",
+    intro: "While it runs, the local service keeps observing the kernel resources held by each process (currently process handles) and lists the processes whose resources keep growing and may be growing without bound, together with the evidence. A result only indicates a suspected leak; decide whether to act based on the evidence.",
     loading: "Loading the kernel leak report…",
     readFailed: "The kernel leak report could not be read.",
     capturedAt: "Captured at",
     suspectedItems: "Suspected items",
+    disabledTitle: "Kernel leak observation is turned off",
+    disabledDetail: "The local service's configuration turns off kernel leak observation, so no samples are taken and no report is produced.",
+    observingTitle: "Observing",
+    observingDetail: "Evaluation starts once this run's observation time and sample count both meet the requirements.",
     emptyTitle: "No suspected kernel leaks found",
-    emptyDetail: "This result is also shown while the observation time is not yet sufficient for a judgement. Suspected items appear here once they are found.",
-    notObservedTitle: "No sample has been taken yet",
-    unavailableTitle: "The kernel leak report is unavailable",
+    emptyDetail: "This run's observation time and sample count meet the requirements, and no kernel resource keeps growing.",
+    unavailableTitle: "This observation run failed",
     failure: {
-      NotObserved: "Observation has started. Results appear after the first sample.",
-      SourceUnavailable: "The resource data of processes cannot be read.",
-      CapacityExceeded: "The number of observed processes exceeds the capacity limit. This observation has stopped.",
-      InvalidObservation: "The sampled data is invalid. This observation has stopped."
+      SourceUnavailable: "The resource data of processes could not be read.",
+      CapacityExceeded: "The number of observed processes exceeded the capacity limit, so this run was stopped.",
+      InvalidObservation: "The sample data was invalid, so this run was stopped."
+    },
+    observation: {
+      title: "Current run",
+      startedAt: "Run started",
+      elapsed: "Observation time",
+      samples: "Samples",
+      notStarted: "Not sampled yet",
+      reachedOfRequired: (reached: string, required: string) => `${reached} (required: ${required})`
+    },
+    previousRun: {
+      title: "Previous run failed",
+      reason: "Reason",
+      startedAt: "Run started",
+      failedAt: "Failed at"
+    },
+    restartPolicy: {
+      NextInterval: "The local service starts a new run automatically at the next sampling interval."
     },
     unavailableHolders: (count: number) => plural("en-US", count, {
       one: "The resource data of {count} process could not be read; it is not included in this judgement.",
@@ -37,13 +56,25 @@ export const enKernelLeakReportCopy: Pick<AppCopy, "kernelLeakReport"> = {
       processEnded: "Process ended"
     },
     evidence: {
-      currentValue: "Current count",
+      currentValue: "Current value",
       growth: "Growth during observation",
       growthPerSecond: "Growth rate",
       observationTime: "Observation time",
       sampleCount: "Samples"
     },
     ratePerSecond: (value: string) => `${value}/s`,
-    actionsPending: "The local service does not provide actions for this item yet."
+    actions: {
+      title: "Actions",
+      name: {
+        RestartHolder: "Restart holder",
+        ForceReleaseHandles: "Force release handles"
+      },
+      riskLevel: {
+        Warning: "Warning",
+        High: "High"
+      },
+      riskText: (level: string, risk: string) => `Risk: ${level}. ${risk}`,
+      riskLabel: (name: string) => `Risk: ${name}`
+    }
   }
 };
