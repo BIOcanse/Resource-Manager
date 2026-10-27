@@ -10,6 +10,9 @@ import { defineResponseDecoder } from
   "../src/frontendRuntime/request/ResponseDecoder.ts";
 import { BackendSessionOwner } from
   "../src/frontendRuntime/session/BackendSessionOwner.ts";
+import { metricCurrentItems } from "../src/data/monitor/metricCurrentItems.ts";
+import type { MetricSnapshot } from "../src/types.ts";
+import type { MetricSnapshotQuery } from "../src/data/monitor/monitorSourcesApi.ts";
 
 interface SubscriptionRequestItem {
   readonly id: string;
@@ -777,3 +780,80 @@ async function waitFor(predicate: () => boolean): Promise<void> {
   } finally { channel.dispose(); owner.dispose(); }
 }
 console.log("Push synchronous reads: pending, retained identity, no demand, query isolation and epoch fence passed.");
+
+{
+  const host = createHostTransport();
+  const owner = new BackendSessionOwner({ transport: host.transport });
+  host.publish(readyMessage("1", "overlapping-items"));
+  const harness = createStreamHarness();
+  const channel = new BackendSubscriptionChannel({ backendSession: owner, fetch: harness.fetch });
+  const family = new BackendPushValueSourceFamily<MetricSnapshotQuery, MetricSnapshot>({
+    key: "test.metric-items", channel, currentItems: metricCurrentItems,
+    buildUrl: query => `/api/items?ids=${query.ids?.join(",") ?? "all"}`,
+    decoder: defineResponseDecoder("test.metric-items", value => value as MetricSnapshot)
+  });
+  const full = { ids: ["cpu", "disk"] };
+  const narrow = { ids: ["disk"] };
+  const releases: (() => void)[] = [];
+  const frame = (second: number, items: Record<string, number>): MetricSnapshot => ({
+    version: 5, capturedAt: `2026-10-27T00:00:${String(second).padStart(2, "0")}Z`, catalogRevision: "one",
+    items: Object.fromEntries(Object.entries(items).map(([id, numericValue]) => [id, { id, numericValue, status: 1 }]))
+  });
+  try {
+    const releaseFull = family.subscribeSnapshot(full, 1000, () => {});
+    releases.push(releaseFull);
+    await waitFor(() => harness.streams.length === 1);
+    publish(harness.streams[0], harness.streams[0].subscriptions[0].id, frame(10, { cpu: 10, disk: 10 }));
+    await flush();
+    releaseFull();
+    releases.push(family.subscribeSnapshot(narrow, 1000, () => {}));
+    await waitFor(() => harness.streams.length === 2);
+    publish(harness.streams[1], harness.streams[1].subscriptions[0].id, frame(20, { disk: 20 }));
+    await flush();
+    const current = family.readSnapshot(full);
+    assert.equal(current.data?.items.disk.numericValue, 20, "Narrow's new item survives returning to full without another frame");
+    assert.equal(current.data?.items.cpu.numericValue, 10, "Items outside narrow keep their own current value");
+    assert.equal(family.readSnapshot(narrow).data?.items.cpu.numericValue, 10, "Narrow sampling demand does not erase offscreen current slots");
+    const partial = family.readSnapshot({ ids: ["disk", "new"] });
+    assert.equal(partial.data?.items.disk.numericValue, 20);
+    assert.equal(partial.data?.items.new, undefined, "Unanswered item stays pending, never fabricated from a sibling");
+    assert.equal(family.readSnapshot({ ids: ["new"] }).status, "loading");
+    assert.equal(family.readSnapshot({ ids: ["new"] }).data?.items.new, undefined);
+    publish(harness.streams[1], harness.streams[1].subscriptions[0].id, frame(15, { disk: 15 }));
+    await flush();
+    assert.equal(family.readSnapshot(full).data?.items.disk.numericValue, 20, "An older frame cannot overwrite a newer item");
+
+    let observed = 0;
+    releases.push(family.subscribeSnapshot(full, 1000, snapshot => {
+      if (snapshot.data?.items.disk.numericValue === 30) {
+        assert.equal(family.readSnapshot(narrow).data?.items.disk.numericValue, 30, "All projections commit before callbacks");
+        observed++;
+      }
+    }));
+    await waitFor(() => harness.streams.length === 3);
+    const narrowId = harness.streams[2].subscriptions.find(item => item.path === "/api/items?ids=disk")!.id;
+    publish(harness.streams[2], narrowId, frame(30, { disk: 30 }));
+    await flush();
+    assert.equal(observed, 1, "Active overlapping queries receive current item changes");
+    publish(harness.streams[2], narrowId, { ...frame(40, {}), capturedAt: null,
+      items: { disk: { id: "disk", status: 3, numericValue: null, observedAt: null } } });
+    await flush();
+    assert.equal(family.readSnapshot(full).data?.items.disk.status, 3, "The backend's Unavailable placeholder replaces old good");
+    assert.equal(family.readSnapshot(full).data?.items.disk.numericValue, null);
+    publish(harness.streams[2], narrowId, frame(25, { disk: 25 }));
+    await flush();
+    assert.equal(family.readSnapshot(full).data?.items.disk.status, 3, "Old good cannot resurrect an unavailable item");
+
+    host.publish(readyMessage("2", "overlapping-items-next"));
+    assert.equal(family.readSnapshot(full).data, null, "Epoch change clears shared items as well as query projections");
+    assert.equal(family.readSnapshot(narrow).data, null);
+    assert.equal(family.readSnapshot({ ids: ["disk", "cold"] }).status, "loading");
+    await waitFor(() => harness.streams.length === 4);
+    const next = harness.streams[3].subscriptions.find(item => item.path === "/api/items?ids=disk")!;
+    publish(harness.streams[3], next.id, frame(1, { disk: 1 }));
+    await flush();
+    assert.equal(family.readSnapshot(full).data?.items.disk.numericValue, 1, "New epoch accepts its own earlier clock");
+    assert.equal(family.readSnapshot(full).data?.items.cpu, undefined, "Old epoch sibling never leaks into the new projection");
+  } finally { releases.forEach(stop => stop()); channel.dispose(); owner.dispose(); }
+}
+console.log("Push item owner: overlapping reads, notifications, older frames, empty, pending and epoch fence passed.");

@@ -42,3 +42,26 @@ test("M02 metric stream uses the same placeholder contract", async () => {
   assert.equal(frames[0].value.items["unknown.metric"].numericValue, null);
   assert.equal(frames[0].value.capturedAt, null);
 });
+
+test("M02 every requested metric ID is answered with its real status in snapshots and streams", async () => {
+  const ids = ["cpu.frequency", "cpu.usage", "memory.usage", "future.metric"];
+  const expected = { "cpu.frequency": 1, "cpu.usage": 3, "memory.usage": 7, "future.metric": 4 };
+  await server.scenario({ metricStatuses: { "cpu.frequency": 1, "cpu.usage": 3, "memory.usage": 7 } });
+  const check = value => {
+    assert.deepEqual(Object.keys(value.items).sort(), [...ids].sort(), "No requested ID is omitted, even without a current value");
+    for (const id of ids) {
+      assert.equal(value.items[id].id, id);
+      assert.equal(value.items[id].status, expected[id], id);
+      if (expected[id] !== 1) assert.equal(value.items[id].numericValue, null, id);
+    }
+  };
+  try {
+    const query = new URLSearchParams({ ids: ids.join(",") }).toString();
+    check((await server.json(`/api/metrics/snapshot?${query}`)).value);
+    const frames = await server.frames([{ id: "metrics", path: `/api/metrics/subscribe?${query}&intervalMs=100` }],
+      frames => frames.length > 0);
+    check(frames[0].value);
+  } finally {
+    await server.scenario({ metricStatuses: {} });
+  }
+});

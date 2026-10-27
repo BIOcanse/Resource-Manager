@@ -1,4 +1,8 @@
 import type { CpuObservationResult } from "../../data/cpu/cpuSourceDecoders.ts";
+import { metricCurrentItems } from "../../data/monitor/metricCurrentItems.ts";
+import { metricFieldCurrentItems } from "../../data/metricFields/metricFieldCurrentItems.ts";
+import { gpuSpecializedCurrentItems } from "../../data/gpu/gpuSpecializedCurrentItems.ts";
+import { resourceMonitorCurrentItems, resourceDetailsCurrentItems } from "../../data/resourceMonitor/resourceCurrentItems.ts";
 import { getManagementComponents, getManagementSoftware, getManagementBrowserRuntimes } from "../../data/managementInventory.ts";
 import type { ManagedComponent, SoftwareRecord } from "../../types.ts";
 import type { BrowserRuntimeSnapshot } from "../../features/browserRuntimes/browserRuntimeTypes.ts";
@@ -416,7 +420,8 @@ export function createFrontendSources(
         intervalMs),
       canonicalizeQuery: (query) => canonicalizeSourceQuery(
         normalizeMetricSnapshotQuery(query)).key,
-      decoder: metricSnapshotDecoder
+      decoder: metricSnapshotDecoder,
+      currentItems: metricCurrentItems
     }),
     metricFieldCatalog: new BackendPushValueSource<MetricCatalogPush>({
       key: "metric-fields.catalog",
@@ -429,14 +434,16 @@ export function createFrontendSources(
       channel: subscriptionChannel,
       buildUrl: buildMetricFieldSubscriptionUrl,
       canonicalizeQuery: (query) => canonicalizeSourceQuery(normalizeMetricFieldQuery(query)).key,
-      decoder: metricFieldDevicesDecoder
+      decoder: metricFieldDevicesDecoder,
+      currentItems: metricFieldCurrentItems
     }),
     resourceProcessDetails: new BackendPushValueSourceFamily<ResourceBreakdownQuery, ResourceProcessDetailsSnapshot>({
       key: "resource-monitor.process-details",
       channel: subscriptionChannel,
       buildUrl: (query, intervalMs) => buildResourceProcessDetailsSubscriptionUrl(normalizeResourceBreakdownQuery(query), intervalMs),
       canonicalizeQuery: (query) => canonicalizeSourceQuery(normalizeResourceBreakdownQuery(query)).key,
-      decoder: resourceProcessDetailsDecoder
+      decoder: resourceProcessDetailsDecoder,
+      currentItems: resourceDetailsCurrentItems
     }),
     resourceMonitor: new BackendPushValueSourceFamily<
       ResourceMonitorQuery,
@@ -449,7 +456,8 @@ export function createFrontendSources(
         intervalMs),
       canonicalizeQuery: (query) => canonicalizeSourceQuery(
         normalizeResourceMonitorQuery(query)).key,
-      decoder: resourceMonitorDecoder
+      decoder: resourceMonitorDecoder,
+      currentItems: resourceMonitorCurrentItems
     }),
     gpuSpecializedTelemetry: new BackendPushValueSourceFamily<
       GpuSpecializedTelemetryQuery,
@@ -463,7 +471,8 @@ export function createFrontendSources(
           intervalMs),
       canonicalizeQuery: (query) => canonicalizeSourceQuery(
         normalizeGpuSpecializedTelemetryQuery(query)).key,
-      decoder: gpuSpecializedTelemetryDecoder
+      decoder: gpuSpecializedTelemetryDecoder,
+      currentItems: gpuSpecializedCurrentItems
     }),
     gpuSchedulingModel: sourceRegistry.defineFamily<
       GpuSchedulingModelQuery,

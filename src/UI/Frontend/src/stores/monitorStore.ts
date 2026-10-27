@@ -219,7 +219,6 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   const [catalogObservation, setCatalogObservation] =
     createSignal<ObservationState>(loadingObservation());
   // 当前显示的指标帧回答了哪些指标：带数据的那一帧的查询里的指标，查询不限指标时是全部。
-  const [answeredMetricIds, setAnsweredMetricIds] = createSignal<ReadonlySet<string> | "all">(new Set());
   // 布局由前端缓存或本次构建的点值产生；加载前不制造第二份占位默认值。
   const [cards, setCards] = createSignal<DashboardCardSettings[]>([]);
   const [resourceBars, setResourceBars] = createSignal<ResourceBarSettings[]>([]);
@@ -347,27 +346,16 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     () => JSON.parse(metricSubscriptionKey()) as { active: boolean; query: MetricSnapshotQuery; intervalMs: number | null }).snapshot;
   const tableSourceSnapshot = usePushSource(options.resourceMonitorSource,
     () => JSON.parse(resourceTableSubscriptionKey()) as { active: boolean; query: ResourceMonitorQuery; intervalMs: number | null }).snapshot;
-  // 指标查询只含可见卡片的读数，滚动、换页重挂载时会随可见性变化；换了查询不清掉已接受的读数，
-  // 卡片按指标 ID 取值，沿用到新查询的帧到来为止（与下方表格事实同一口径）。
-  const snapshot = createMemo((previous: MetricSnapshot | null) =>
-    metricSourceSnapshot().data ?? previous, null);
+  const snapshot = createMemo(() => metricSourceSnapshot().data);
   const snapshotObservation = createMemo(() => snapshotMetricIds().length === 0 ? readyObservation() : pushObservation(metricSourceSnapshot()));
   const resourceBreakdownSnapshot = createMemo(() => breakdownBindings.bars()?.data?.breakdown ?? null);
   const resourceProcessDetails = createMemo(() => breakdownBindings.details()?.data ?? null);
   const resourceProcessDetailsObservation = createMemo(() => pushObservation(breakdownBindings.details()));
-  // A changed demand (for example basic -> full identity details) does not erase
-  // accepted facts. Local columns/mode project that value until the next frame;
-  // a received empty frame still replaces it immediately.
-  const resourceTableFacts = createMemo((previous: NonNullable<ResourceMonitorSnapshot["facts"]> | null) =>
-    tableSourceSnapshot().data?.facts ?? previous, null);
+  const resourceTableFacts = createMemo(() => tableSourceSnapshot().data?.facts ?? null);
   const resourceTableSnapshot = createResourceFactsProjection(resourceTableFacts,
     activeResourceTableColumns, resourceTableMode, resourceTableSort);
   const resourceBarsObservation = createMemo(() => pushObservation(breakdownBindings.bars()));
-  const resourceTableObservation = createMemo(() => {
-    const observation = pushObservation(tableSourceSnapshot() ?? null);
-    return observation.status === "loading" && resourceTableFacts()
-      ? readyObservation(resourceTableFacts()?.capturedAt ?? undefined) : observation;
-  });
+  const resourceTableObservation = createMemo(() => pushObservation(tableSourceSnapshot()));
   const orderedSnapshotBars = createMemo(() => resourceBarViews(resourceBreakdownSnapshot()?.bars ?? [], activeResourceBars(), processFields()));
   // 目录订阅每个探测周期推一次，内容通常不变；内容相同就不算变化，卡片目录和指标选择器不跟着重建。
   const fieldCatalogSnapshot = usePushSource(options.metricFieldCatalogSource, () => ({
@@ -397,11 +385,9 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   });
   // 卡片上的一个指标还在等首个读数：当前值里没有它，且送它的那一路还没回答过它、也没有报错。
   // 设备字段：值和目录都到之前 fieldCardValues 不写这一项，到了之后每个槽位都写（值、不可用或设备不在）。
-  // 原有指标：当前显示的指标帧回答的是它那次查询里的指标；卡片刚可见、换了查询时，新指标还没被任何一帧回答过，
-  // 这时缺项不能说明没有读数。
+  // 原有指标由 family 投影所有已回答项（含明确不可用的项）；没有项就是尚未收到回答。
   const cardPendingMetricIds = createMemo<ReadonlySet<string>>(() => {
     const items = cardSnapshot()?.items ?? {};
-    const answered = answeredMetricIds();
     const legacyFailed = snapshotObservation().status === "error";
     const fieldsFailed = pushObservation(fieldDevicesSnapshot() ?? null).status === "error";
     const pending = new Set<string>();
@@ -410,7 +396,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
         if (items[metricId]) continue;
         const waiting = fieldCardSlot(metricId, binding)
           ? !fieldsFailed
-          : !legacyFailed && answered !== "all" && !answered.has(metricId);
+          : !legacyFailed;
         if (waiting) pending.add(metricId);
       }
     }
@@ -430,9 +416,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   }));
 
   createEffect(on(metricSourceSnapshot, value => {
-    const query = (JSON.parse(metricSubscriptionKey()) as { query: MetricSnapshotQuery }).query;
     if (value.data) {
-      setAnsweredMetricIds(query.ids === null ? "all" : new Set(query.ids));
       if (!catalogFromPush && value.data.catalogRevision !== backendCatalogRevision) {
         backendCatalogRevision = value.data.catalogRevision;
         void followBackendCatalog(value.data.catalogRevision);

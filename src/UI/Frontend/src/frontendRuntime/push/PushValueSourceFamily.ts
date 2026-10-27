@@ -1,6 +1,7 @@
 import { MAX_UNSUBSCRIBED_SOURCE_ENTRIES } from "../source/sourceRetention.ts";
 import type { SourceSnapshot } from "../source/SourceSnapshot.ts";
 import type { ResponseDecoder } from "../request/ResponseDecoder.ts";
+import { PushCurrentItems, type PushValueItemPolicy } from "./PushCurrentItems.ts";
 import {
   type BackendSubscriptionChannel,
   type BackendSubscriptionChannelLease
@@ -37,6 +38,7 @@ export interface PushValueSourceFamilyOptions<TQuery, TValue> {
   readonly buildUrl: (query: TQuery, intervalMs: number) => string;
   readonly canonicalizeQuery?: (query: TQuery) => string;
   readonly decoder: ResponseDecoder<TValue>;
+  readonly currentItems?: PushValueItemPolicy<TQuery, TValue>;
 }
 
 export interface PushValueSourceOptions<TValue> {
@@ -77,6 +79,9 @@ implements PushValueSourceFamily<TQuery, TValue> {
   private readonly entries = new Map<string, PushEntry<TQuery, TValue>>();
   private readonly unusedEntries = new Map<string, PushEntry<TQuery, TValue>>();
   private nextListenerId = 0;
+  private readonly currentItems: PushCurrentItems<TQuery, TValue> | null;
+  private backendEpoch: string | null;
+  private publicationRevision = 0;
 
   constructor(options: PushValueSourceFamilyOptions<TQuery, TValue>) {
     this.key = options.key;
@@ -85,6 +90,8 @@ implements PushValueSourceFamily<TQuery, TValue> {
     this.canonicalizeQuery = options.canonicalizeQuery
       ?? ((query) => JSON.stringify(query));
     this.decoder = options.decoder;
+    this.currentItems = options.currentItems ? new PushCurrentItems(options.currentItems) : null;
+    this.backendEpoch = this.channel.backendEpoch;
   }
 
   readSnapshot(query: TQuery): SourceSnapshot<TValue> {
@@ -92,6 +99,7 @@ implements PushValueSourceFamily<TQuery, TValue> {
   }
 
   private entryFor(query: TQuery): PushEntry<TQuery, TValue> {
+    this.fenceEpoch();
     const canonicalQuery = this.canonicalizeQuery(query);
     let entry = this.entries.get(canonicalQuery);
     if (!entry) {
@@ -101,6 +109,7 @@ implements PushValueSourceFamily<TQuery, TValue> {
         channelLease: null, effectiveIntervalMs: null
       };
       this.entries.set(canonicalQuery, entry);
+      entry.snapshot = this.currentItems?.project(query, entry.snapshot) ?? entry.snapshot;
     }
     if (entry.snapshot.backendEpoch !== this.channel.backendEpoch) {
       entry.snapshot = this.pendingSnapshot();
@@ -178,6 +187,8 @@ implements PushValueSourceFamily<TQuery, TValue> {
     if (!this.isCurrent(entry)) {
       return;
     }
+    this.fenceEpoch();
+    if (value.backendEpoch !== this.channel.backendEpoch) return;
     // Reopening transport is demand, not a new value. Session changes still fence it.
     if (value.status === "loading" && entry.snapshot.revision > 0
       && value.backendEpoch === entry.snapshot.backendEpoch) {
@@ -185,12 +196,27 @@ implements PushValueSourceFamily<TQuery, TValue> {
     }
     const snapshot = Object.freeze({
       ...value,
-      revision: (entry.snapshot?.revision ?? 0) + 1
+      revision: ++this.publicationRevision
     });
+    if (this.currentItems && value.status !== "loading") {
+      const changed = this.currentItems.accept(entry.query, snapshot);
+      // Update all projections before notifying any consumer (including reentrant reads).
+      const affected = [...this.entries.values()].filter(candidate => candidate === entry
+        || this.currentItems!.intersects(candidate.query, changed));
+      for (const candidate of affected) {
+        candidate.snapshot = this.currentItems.project(candidate.query, candidate === entry ? snapshot : candidate.snapshot);
+      }
+      for (const candidate of affected) this.notify(candidate);
+      return;
+    }
     entry.snapshot = snapshot;
+    this.notify(entry);
+  }
+
+  private notify(entry: PushEntry<TQuery, TValue>): void {
     for (const listener of entry.listeners.values()) {
       try {
-        listener.publish(snapshot);
+        listener.publish(entry.snapshot);
       } catch {
         // A consumer cannot replace or terminate the shared transport owner.
       }
@@ -214,11 +240,19 @@ implements PushValueSourceFamily<TQuery, TValue> {
       const oldest = this.unusedEntries.keys().next().value!;
       this.unusedEntries.delete(oldest);
       this.entries.delete(oldest);
+      this.currentItems?.retain([...this.entries.values()].map(candidate => candidate.query));
     }
   }
 
   private isCurrent(entry: PushEntry<TQuery, TValue>): boolean {
     return this.entries.get(entry.canonicalQuery) === entry;
+  }
+
+  private fenceEpoch(): void {
+    if (this.backendEpoch === this.channel.backendEpoch) return;
+    this.backendEpoch = this.channel.backendEpoch;
+    this.currentItems?.clear();
+    for (const entry of this.entries.values()) entry.snapshot = this.pendingSnapshot();
   }
 
 }
