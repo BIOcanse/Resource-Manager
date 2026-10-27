@@ -270,6 +270,7 @@ function aggregateProfile(inputs) {
     totalDurationMs += slice.durationMs;
     const countAtTime = new Map();
     for (const event of slice.events) {
+      if (event.kind === "end") continue;
       if (event.kind === "frame") {
         const key = `${sliceIndex}:${selectorKey(event.path)}`;
         const frames = frameGroups.get(key) ?? [];

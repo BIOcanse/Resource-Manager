@@ -25,9 +25,15 @@ export function validateSlice(slice) {
     || !Array.isArray(slice.events) || slice.events.length > 200000) {
     throw new Error("Invalid slice header");
   }
-  for (const event of slice.events) {
-    if (!["response", "frame"].includes(event.kind) || !Number.isFinite(event.atMs)
-      || event.atMs < 0 || event.atMs > slice.durationMs
+  if (slice.readiness && (typeof slice.readiness.ready !== "boolean" || !Number.isFinite(slice.readiness.waitedMs)
+    || !Number.isFinite(slice.readiness.timeoutMs) || slice.readiness.waitedMs < 0 || !Array.isArray(slice.readiness.events))) {
+    throw new Error("Invalid slice readiness");
+  }
+  const groups = [{ events: slice.events, limit: slice.durationMs },
+    ...(slice.readiness ? [{ events: slice.readiness.events, limit: slice.readiness.timeoutMs }] : [])];
+  for (const group of groups) for (const event of group.events) {
+    if (!["response", "frame", "end"].includes(event.kind) || !Number.isFinite(event.atMs)
+      || event.atMs < 0 || event.atMs > group.limit
       || typeof event.path !== "string" || !isSafeSliceSelector(event.path)
       || !Object.hasOwn(event, "body")) {
       throw new Error("Invalid slice event");
@@ -40,6 +46,8 @@ export function validateSlice(slice) {
     if (event.kind === "frame" && !new URL(event.path, "http://localhost").pathname.endsWith("/subscribe")) {
       throw new Error("Invalid frame selector");
     }
+    if (event.kind === "end" && (!Number.isInteger(event.status) || event.status < 0 || event.status > 599
+      || typeof event.reason !== "string")) throw new Error("Invalid stream end event");
   }
   return slice;
 }

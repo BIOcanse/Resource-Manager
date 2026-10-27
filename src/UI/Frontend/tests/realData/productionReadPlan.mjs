@@ -10,6 +10,9 @@ const dashboardPreferencesPath = resolve(sourceRoot, "preferences/dashboardPrefe
 const resourceTableSourcesPath = resolve(sourceRoot, "features/resourceTable/resourceTableSources.ts");
 const resourceBarSourcesPath = resolve(sourceRoot, "features/resourceBreakdown/resourceBarSources.ts");
 const monitorConfigPath = resolve(sourceRoot, "stores/monitorConfig.ts");
+const fieldCardsPath = resolve(sourceRoot, "features/monitor/fieldCards.ts");
+const cpuFieldsPath = resolve(sourceRoot, "features/details/cpuMetricFields.ts");
+const deviceFieldsPath = resolve(sourceRoot, "features/deviceTopology/deviceMetricFields.ts");
 const deniedPath = /credentials?|access-keys?|access-requests?|draft|refresh|reapply|secrets?|tokens?/i;
 const resourceBreakdownQuery = {
   bars: null,
@@ -75,6 +78,7 @@ export async function deriveProductionReadPlan(intervalMs = 1000, catalogs = nul
     subscriptions: [...subscriptions].sort(),
     streamPath,
     discoveryPath,
+    topologyPath: [...subscriptions].find(path => path.startsWith("/api/device-topology/state/subscribe")),
     catalogReads
   };
 }
@@ -309,7 +313,7 @@ function getBuilderVariants(name, catalogs, module, resourceSelectors) {
       {
         ...resourceBreakdownQuery,
         scope: "table",
-        processDetailLevel: "basic",
+        processDetailLevel: resourceSelectors.processDetailLevel,
         sampleMetricIds: resourceSelectors.tableItems,
         visibleColumnIds: [],
         sortColumnId: "",
@@ -330,15 +334,12 @@ function getBuilderVariants(name, catalogs, module, resourceSelectors) {
     ].filter(query => query.scope === "table" ? resourceSelectors.tableItems.length > 0 : resourceSelectors.bars.length > 0);
   }
   if (name === "buildMetricSnapshotSubscriptionUrl") {
-    if (!catalogs) return [];
-    const ids = uniqueStrings((catalogs.metrics ?? []).map(item => item?.id));
+    if (!resourceSelectors) return [];
+    const ids = resourceSelectors.metricIds;
     return ids.length ? [{ ids }] : [];
   }
   if (name === "buildMetricFieldSubscriptionUrl") {
-    if (!catalogs) return [];
-    const fields = uniqueStrings((catalogs.metricFields ?? []).flatMap(device =>
-      Array.isArray(device?.fields) ? device.fields.map(field => field?.name) : []));
-    return fields.length ? [{ fields }] : [];
+    return resourceSelectors?.fieldQueries ?? [];
   }
   if (name === "buildGpuSpecializedTelemetrySubscriptionUrl") {
     if (!catalogs) return [];
@@ -375,37 +376,36 @@ function uniqueStrings(values) {
 }
 
 async function deriveResourceQuerySelectors(catalogs) {
-  const [dashboardPreferences, resourceTableSources, resourceBarSources, monitorConfig] = await (resourceSelectorSourcesPromise ??= Promise.all([
+  const [dashboardPreferences, resourceTableSources, resourceBarSources, monitorConfig, fieldCards, cpuFields, deviceFields] = await (resourceSelectorSourcesPromise ??= Promise.all([
     import(pathToFileURL(dashboardPreferencesPath).href),
     import(pathToFileURL(resourceTableSourcesPath).href),
     import(pathToFileURL(resourceBarSourcesPath).href),
-    import(pathToFileURL(monitorConfigPath).href)
+    import(pathToFileURL(monitorConfigPath).href),
+    import(pathToFileURL(fieldCardsPath).href),
+    import(pathToFileURL(cpuFieldsPath).href),
+    import(pathToFileURL(deviceFieldsPath).href)
   ]));
   const metrics = Array.isArray(catalogs.metrics) ? catalogs.metrics : [];
-  const processFields = Array.isArray(catalogs.processFields) ? catalogs.processFields : [];
   const settings = dashboardPreferences.dashboardPointValues(metrics);
-  const bars = monitorConfig.defaultResourceBars(metrics).map(resourceBarSources.resourceBarQuery);
-  const tableMetricIds = [];
-  const comparableProcessFieldIds = [];
-  const columns = [...settings.resourceTableColumns, ...settings.resourceTableProcessColumns];
-  for (const column of columns) {
-    const metricId = resourceTableSources.resourceTableMetricId(column);
-    if (metricId) tableMetricIds.push(metricId);
-    comparableProcessFieldIds.push(...resourceTableSources.resourceColumnSourceChoices(column.id, processFields)
-      .map(choice => choice.source));
-  }
-  for (const bar of bars) {
-    comparableProcessFieldIds.push(...resourceBarSources.resourceBarSourceChoices(bar.metricId, processFields));
-  }
+  const available = column => dashboardPreferences.dashboardMetricAvailable(column.id, column.binding, metrics);
+  const bars = settings.resourceBars.filter(bar => dashboardPreferences.dashboardMetricAvailable(bar.metricId, bar.binding, metrics))
+    .map(resourceBarSources.resourceBarQuery);
+  const columns = monitorConfig.normalizeResourceTableColumns(settings.resourceTableColumns, metrics, "software");
+  const metricIds = uniqueStrings(settings.cards.flatMap(card => card.slots.filter(slot =>
+    !fieldCards.fieldCardSlot(slot.metricId, slot.binding)
+      && dashboardPreferences.dashboardMetricAvailable(slot.metricId, slot.binding, metrics)).map(slot => slot.metricId)));
+  const cardFields = uniqueStrings(fieldCards.fieldCardSlots(settings.cards).map(slot => slot.fieldName));
+  // These are the actual field sets consumed by the CPU and device details pages,
+  // not a concatenation of every device/field in the hardware catalog.
+  const fieldQueries = [cardFields, cpuFields.numaFieldNames, [cpuFields.effectiveFrequencyFieldName], deviceFields.deviceMetricFieldNames]
+    .filter(fields => fields.length > 0).map(fields => ({ fields }));
   return {
+    metricIds,
+    fieldQueries,
+    processDetailLevel: columns.some(column => column.visible && ["user", "architecture"].includes(column.id)) ? "full" : "basic",
     tableItems: uniqueStrings([
-      ...monitorConfig.allResourceSampleMetricIds(metrics),
-      ...tableMetricIds,
-      ...bars.map(bar => bar.source ?? bar.metricId),
-      ...comparableProcessFieldIds,
-      // These backend dataset IDs provide the complete process identity/owner pool.
-      "process.inventory",
-      "process.attribution"
+      ...(columns.some(column => column.visible) ? ["process.inventory", "process.attribution"] : []),
+      ...columns.filter(column => column.visible && available(column)).map(resourceTableSources.resourceTableMetricId).filter(id => id !== null)
     ]),
     bars,
     residualDetailMetricIds: resourceBarSources.resourceBarResidualDetailMetricIds(bars)
