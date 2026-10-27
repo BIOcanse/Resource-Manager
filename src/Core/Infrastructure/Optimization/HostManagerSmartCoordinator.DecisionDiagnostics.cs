@@ -99,7 +99,7 @@ public sealed partial class HostManagerSmartCoordinator
             FactExclusionCounts = cycleFactExclusions.GroupBy(e => (e.Fact, e.Reason))
                 .Select(g => new HostManagerFactExclusionCount(g.Key.Fact, g.Key.Reason, g.Count())).ToArray(),
             FactExclusions = cycleFactExclusions.Take(64).Select(e => new HostManagerFactExclusionDiagnostics(
-                e.ProcessId, e.ProcessStartKey?.ToString(CultureInfo.InvariantCulture), e.TargetId, e.Fact, e.Reason)).ToArray()
+                e.ProcessId, e.ProcessStartKey?.ToString(CultureInfo.InvariantCulture), e.TargetId, e.Fact, e.Reason, e.AdapterKey?.ToString(CultureInfo.InvariantCulture))).ToArray()
         };
         Volatile.Write(ref publishedObservation, new(snapshot, rows, decisions));
         decisionPublications.Publish();

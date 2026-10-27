@@ -1,0 +1,346 @@
+[
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "inventory",
+    "reason": "unidentified-live-process",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "cpu-usage",
+    "reason": "dataset-not-current",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "inventory",
+    "reason": "inventory-overflow",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "inventory",
+    "reason": "emitted-count-mismatch",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "inventory",
+    "reason": "inventory-count-mismatch",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "inventory",
+    "reason": "capture-count-mismatch",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "inventory",
+    "reason": "invalid-or-duplicate-inventory-identity",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "identity",
+    "reason": "invalid-or-duplicate-process",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "attribution",
+    "reason": "row-missing-or-invalid",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "gpu-usage",
+    "reason": "gpu-row-missing-or-invalid",
+    "adapterKey": "9007199254740995"
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "identity",
+    "reason": "target-process-count-not-one",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "identity",
+    "reason": "target-process-identity-missing",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "identity",
+    "reason": "target-process-identity-mismatch",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "runtime-state",
+    "reason": "duplicate-target-process-identity",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "runtime-state",
+    "reason": "target-runtime-state-invalid",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "runtime-state",
+    "reason": "compute-runtime-state-missing",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "cpu-core-residency",
+    "reason": "cpu-residency-not-covered",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "cpu-core-residency",
+    "reason": "cpu-residency-invalid",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "compute-score",
+    "reason": "ownership-software-attribution-mismatch",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "cpu-score",
+    "reason": "canonical-process-membership-mismatch",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "cpu-score",
+    "reason": "canonical-software-score-missing",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "decision-target",
+    "reason": "live-identity-without-decision-facts",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "cpu-score",
+    "reason": "canonical-process-not-projected",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "cpu-score",
+    "reason": "canonical-software-membership-incomplete",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "cpu-score",
+    "reason": "cleanup-baseline-score-missing",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "memory-cleanup",
+    "reason": "cleanup-current-process-facts-missing",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "base-score",
+    "reason": "cleanup-software-maximum-base-score-missing",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "native-plan",
+    "reason": "invalid-argument",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "native-plan",
+    "reason": "abi-mismatch",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "native-plan",
+    "reason": "unavailable",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "native-plan",
+    "reason": "no-data",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "native-plan",
+    "reason": "buffer-too-small",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "native-plan",
+    "reason": "stale-generation",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "native-plan",
+    "reason": "out-of-memory",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "native-plan",
+    "reason": "capacity-exceeded",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "native-plan",
+    "reason": "conflicting-facts",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "native-plan",
+    "reason": "feedback-mismatch",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "native-plan",
+    "reason": "recreate-required",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "memory-usage",
+    "reason": "row-missing-or-invalid",
+    "adapterKey": null
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "gpu-dedicated-memory",
+    "reason": "row-missing-or-invalid",
+    "adapterKey": "18446744073709551615"
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "gpu-private-memory-bytes",
+    "reason": "row-missing-or-invalid",
+    "adapterKey": "18446744073709551615"
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "gpu-shared-memory-bytes",
+    "reason": "row-missing-or-invalid",
+    "adapterKey": "18446744073709551615"
+  },
+  {
+    "processId": 42,
+    "processStartKey": "9007199254740993",
+    "targetId": null,
+    "fact": "gpu-score",
+    "reason": "row-missing-or-invalid",
+    "adapterKey": "18446744073709551615"
+  }
+]

@@ -66,7 +66,7 @@ public sealed class SchedulingProcessFactSnapshotStateTests
         Assert.Single(projected.Processes);
         Assert.Equal(1U, projected.EmittedCount);
         Assert.Equal(1U, projected.SkippedCount);
-        Assert.Contains(projected.FactExclusions, e => e.ProcessId == 42 && e.Fact == "identity");
+        Assert.Contains(projected.FactExclusions, e => e.ProcessId == 42 && e.Fact == SchedulingFactCode.Identity);
     }
 
     [Fact]
@@ -82,7 +82,7 @@ public sealed class SchedulingProcessFactSnapshotStateTests
         Assert.True(current.HasUnidentifiedProcesses);
         Assert.False(current.IsInventoryCurrentComplete());
         Assert.Contains(current.ProjectValidFacts(FactRequest(SchedulingProcessMetricMask.CpuUsage).GpuInventory).FactExclusions,
-            e => e.Fact == "inventory" && e.Reason == "unidentified-live-process");
+            e => e.Fact == SchedulingFactCode.Inventory && e.Reason == SchedulingFactExclusionReason.UnidentifiedLiveProcess);
         state.ApplyScheduled(Request(SchedulingProcessMetricMask.CpuUsage),
             sample with { HasUnidentifiedProcesses = false }, now, Schedule(now));
         Assert.True(state.ReadLatest(FactRequest(SchedulingProcessMetricMask.CpuUsage), now)!.IsInventoryCurrentComplete());

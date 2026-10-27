@@ -167,7 +167,7 @@ public sealed record SchedulingProcessFactRequest(
 public readonly record struct SoftwareBaseScore(string SoftwareId, double BaseScore);
 
 public sealed record SchedulingFactExclusion(
-    int? ProcessId, ulong? ProcessStartKey, string? TargetId, string Fact, string Reason);
+    int? ProcessId, ulong? ProcessStartKey, string? TargetId, SchedulingFactCode Fact, SchedulingFactExclusionReason Reason, ulong? AdapterKey = null);
 
 public sealed partial record SchedulingProcessFactSnapshot(
     SamplingObservationStatus InventoryStatus,
@@ -313,16 +313,16 @@ public sealed partial record SchedulingProcessFactSnapshot(
     public bool IsInventoryCurrentComplete()
         => InventoryIncompleteReason() is null;
 
-    internal string? InventoryIncompleteReason()
+    internal SchedulingFactExclusionReason? InventoryIncompleteReason()
     {
-        if (HasUnidentifiedProcesses) return "unidentified-live-process";
-        if (!IsInventoryCurrent()) return "dataset-not-current";
-        if (OverflowCount != 0) return "inventory-overflow";
-        if (EmittedCount != Processes.Count) return "emitted-count-mismatch";
+        if (HasUnidentifiedProcesses) return SchedulingFactExclusionReason.UnidentifiedLiveProcess;
+        if (!IsInventoryCurrent()) return SchedulingFactExclusionReason.DatasetNotCurrent;
+        if (OverflowCount != 0) return SchedulingFactExclusionReason.InventoryOverflow;
+        if (EmittedCount != Processes.Count) return SchedulingFactExclusionReason.EmittedCountMismatch;
         if ((ulong)EnumeratedCount != (ulong)CurrentInventoryProcesses.Count + ExcludedCount)
-            return "inventory-count-mismatch";
+            return SchedulingFactExclusionReason.InventoryCountMismatch;
         if ((ulong)EnumeratedCount != (ulong)EmittedCount + ExcludedCount + SkippedCount)
-            return "capture-count-mismatch";
+            return SchedulingFactExclusionReason.CaptureCountMismatch;
 
         var identities = new HashSet<(int ProcessId, ulong ProcessStartKey)>();
         foreach (var process in CurrentInventoryProcesses)
@@ -331,7 +331,7 @@ public sealed partial record SchedulingProcessFactSnapshot(
                 || process.ProcessStartKey == 0
                 || !identities.Add((process.ProcessId, process.ProcessStartKey)))
             {
-                return "invalid-or-duplicate-inventory-identity";
+                return SchedulingFactExclusionReason.InvalidOrDuplicateInventoryIdentity;
             }
         }
 

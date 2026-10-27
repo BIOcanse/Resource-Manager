@@ -54,6 +54,7 @@
     <EmbeddedResource Include="Fixtures\Control\control-instances.installed-c15.json" />
     <EmbeddedResource Include="Fixtures\Optimization\rollback-state.c16-v2.json" />
     <EmbeddedResource Include="Fixtures\Optimization\smart-status.json" LogicalName="smart-status" />
+    <EmbeddedResource Include="Fixtures\Optimization\smart-exclusions.json" LogicalName="smart-exclusions" />
     <EmbeddedResource Include="Fixtures\Software\manual-software-head-unversioned.json" />
     <EmbeddedResource Include="Fixtures\Metrics\c13-metric-catalog.json.gz" />
     <Using Include="Xunit" />

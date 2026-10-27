@@ -8,6 +8,34 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 {
+    [Fact]
+    public async Task AdapterExclusionsShareFactReasonCountsAndKeepExactAdapterDetails()
+    {
+        var source = CreateCompleteProcessFacts(4242, 81, "software:test", 80, 25, 10);
+        source = source with
+        {
+            FactExclusions =
+            [
+                new(4242, 81, null, SchedulingFactCode.GpuUsage, SchedulingFactExclusionReason.GpuRowMissingOrInvalid, 9_007_199_254_740_993),
+                new(4242, 81, null, SchedulingFactCode.GpuUsage, SchedulingFactExclusionReason.GpuRowMissingOrInvalid, ulong.MaxValue)
+            ]
+        };
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true,
+            processFactsOverride: new RetainedFacts(source));
+        await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
+        var diagnostics = await fixture.Coordinator.GetDecisionDiagnosticsAsync(CancellationToken.None);
+        var count = Assert.Single(diagnostics.FactExclusionCounts, e => e.Fact == SchedulingFactCode.GpuUsage
+            && e.Reason == SchedulingFactExclusionReason.GpuRowMissingOrInvalid);
+        Assert.Equal(2, count.Count);
+        Assert.Equal(new[] { "9007199254740993", "18446744073709551615" }, diagnostics.FactExclusions
+            .Where(e => e.Fact == count.Fact && e.Reason == count.Reason).Select(e => e.AdapterKey));
+        Assert.All(diagnostics.FactExclusions, e =>
+        {
+            Assert.True(Enum.IsDefined(e.Fact));
+            Assert.True(Enum.IsDefined(e.Reason));
+        });
+    }
+
     [Theory]
     [InlineData("runtime")]
     [InlineData("identity")]
@@ -43,7 +71,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Contains(diagnostics.NonAdaptedMemoryDecisions, d => d.ProcessId == 4243);
         Assert.True(diagnostics.FactExclusionCount > 0);
         Assert.Contains(diagnostics.FactExclusions, e => failure is "overflow" or "accounting"
-            ? e.Fact == "inventory" : e.ProcessId == 4242);
+            ? e.Fact == SchedulingFactCode.Inventory : e.ProcessId == 4242);
         Assert.NotNull(diagnostics.SchedulingAuthority.MemoryModes);
     }
 
@@ -66,7 +94,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Null(authority.Compute.Gpu);
         Assert.NotNull(authority.MemoryModes);
         var diagnostics = await fixture.Coordinator.GetDecisionDiagnosticsAsync(CancellationToken.None);
-        Assert.Contains(diagnostics.FactExclusions, e => e.Fact == "GpuUsage" && e.Reason == "dataset-not-current");
+        Assert.Contains(diagnostics.FactExclusions, e => e.Fact == SchedulingFactCode.GpuUsage && e.Reason == SchedulingFactExclusionReason.DatasetNotCurrent);
     }
 
     [Fact]
@@ -79,6 +107,6 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var diagnostics = await fixture.Coordinator.GetDecisionDiagnosticsAsync(CancellationToken.None);
         Assert.True(diagnostics.FactExclusionCount >= 100);
         Assert.Equal(64, diagnostics.FactExclusions.Count);
-        Assert.Contains(diagnostics.FactExclusionCounts, c => c.Fact == "RuntimeState" && c.Count == 100);
+        Assert.Contains(diagnostics.FactExclusionCounts, c => c.Fact == SchedulingFactCode.RuntimeState && c.Count == 100);
     }
 }

@@ -7,6 +7,31 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class HostManagerComputeScoringWorkspaceTests
 {
     [Theory]
+    [InlineData(SchedulingFactCode.GpuUsage)]
+    [InlineData(SchedulingFactCode.GpuDedicatedMemory)]
+    public void InvalidGpuMetricEmitsFactCodeAndSeparateAdapter(SchedulingFactCode fact)
+    {
+        var inventory = CreateInventory();
+        var source = CreateFacts(inventory, 10);
+        var process = source.Processes[0];
+        var gpu = process.Gpus[0] with
+        {
+            UsagePercent = fact == SchedulingFactCode.GpuUsage ? double.NaN : 25,
+            DedicatedMemoryUsedPercent = fact == SchedulingFactCode.GpuDedicatedMemory ? double.NaN : 42
+        };
+        source = source with { Processes = [process with { Gpus = [gpu] }, source.Processes[1]] };
+        var projected = source.ProjectValidFacts(inventory);
+        Assert.Contains(projected.FactExclusions, exclusion => exclusion.ProcessId == process.ProcessId
+            && exclusion.Fact == fact && exclusion.AdapterKey == gpu.AdapterKey
+            && exclusion.Reason == SchedulingFactExclusionReason.GpuRowMissingOrInvalid);
+        Assert.All(projected.FactExclusions, exclusion =>
+        {
+            Assert.True(Enum.IsDefined(exclusion.Fact));
+            Assert.True(Enum.IsDefined(exclusion.Reason));
+        });
+    }
+
+    [Theory]
     [InlineData(true)]
     [InlineData(false)]
     public void InvalidResidencyByteKeepsOtherByteAndValidGpuPercentages(bool invalidPrivate)
@@ -33,7 +58,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
         Assert.Equal(invalidPrivate ? 512d : null, accepted.SharedMemoryBytes);
         Assert.Null(accepted.ResidentMemoryBytes);
         Assert.Contains(projected.FactExclusions, exclusion => exclusion.Fact ==
-            $"{(invalidPrivate ? "gpu-private-memory-bytes" : "gpu-shared-memory-bytes")}:11");
+            (invalidPrivate ? SchedulingFactCode.GpuPrivateMemoryBytes : SchedulingFactCode.GpuSharedMemoryBytes) && exclusion.AdapterKey == 11);
         Assert.Equal(accepted, Assert.Single(projected.ProjectValidFacts(inventory).Processes[0].Gpus));
     }
 
@@ -111,7 +136,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
         Assert.Equal(1U, Assert.Single(result.Cpu.Scores,
             row => row.Kind == NativeComputeScoringOutputKind.SoftwareCpu).MemberCount);
         Assert.Contains(exclusions, exclusion => exclusion.ProcessId == 20
-            && exclusion.Fact == "runtime-state");
+            && exclusion.Fact == SchedulingFactCode.RuntimeState);
         Assert.Equal(1U, result.Welfare.EligibleProcessCount);
     }
 
@@ -153,7 +178,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
         Assert.Equal(2U, Assert.Single(result.Cpu.Scores,
             row => row.Kind == NativeComputeScoringOutputKind.SoftwareCpu).MemberCount);
         Assert.DoesNotContain(exclusions, exclusion => exclusion.ProcessId == 20
-            && exclusion.Fact == "cpu-core-residency");
+            && exclusion.Fact == SchedulingFactCode.CpuCoreResidency);
     }
 
     [Fact]

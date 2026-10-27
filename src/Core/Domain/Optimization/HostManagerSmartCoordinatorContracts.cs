@@ -1,3 +1,5 @@
+using ResourceManager.App.Domain.ResourceBreakdown;
+
 namespace ResourceManager.App.Domain.Optimization;
 
 /// <summary>
@@ -35,11 +37,11 @@ public enum HostManagerCycleFailureKind
 // NativePlanStatus is the native plan's status code (for example "capacity-exceeded"), the same code
 // the segment's native-plan exclusion carries as its reason; null unless Kind is NativePlanFailed.
 public sealed record HostManagerCycleFailureDiagnostics(
-    HostManagerCycleFailureKind Kind, string ExceptionType, string? NativePlanStatus);
+    HostManagerCycleFailureKind Kind, string ExceptionType, SchedulingFactExclusionReason? NativePlanStatus);
 
-public sealed record HostManagerFactExclusionCount(string Fact, string Reason, int Count);
+public sealed record HostManagerFactExclusionCount(SchedulingFactCode Fact, SchedulingFactExclusionReason Reason, int Count);
 public sealed record HostManagerFactExclusionDiagnostics(
-    int? ProcessId, string? ProcessStartKey, string? TargetId, string Fact, string Reason);
+    int? ProcessId, string? ProcessStartKey, string? TargetId, SchedulingFactCode Fact, SchedulingFactExclusionReason Reason, string? AdapterKey = null);
 
 public sealed record HostManagerCoordinatorFacts(
     [property: System.Text.Json.Serialization.JsonNumberHandling(System.Text.Json.Serialization.JsonNumberHandling.WriteAsString | System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString)] ulong Revision,

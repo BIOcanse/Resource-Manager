@@ -46,7 +46,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
 
         Assert.Equal(10, Assert.Single(result!.Cpu!.Scores, row => row.Kind == NativeComputeScoringOutputKind.ProcessCpu).ProcessId);
         Assert.Contains(result.Gpu!.Scores, row => row.ProcessId == 20);
-        Assert.Contains(exclusions, row => row.ProcessId == 20 && row.Reason == "cpu-residency-not-covered");
+        Assert.Contains(exclusions, row => row.ProcessId == 20 && row.Reason == SchedulingFactExclusionReason.CpuResidencyNotCovered);
     }
 
     [Theory]
@@ -109,7 +109,7 @@ public sealed partial class HostManagerComputeScoringWorkspaceTests
 
         Assert.Equal(20, Assert.Single(result!.Cpu!.Scores, row => row.Kind == NativeComputeScoringOutputKind.ProcessCpu).ProcessId);
         Assert.Contains(result.Gpu!.Scores, row => row.ProcessId == 10);
-        Assert.Contains(exclusions, row => row.ProcessId == 10 && row.Reason == "cpu-residency-invalid");
+        Assert.Contains(exclusions, row => row.ProcessId == 10 && row.Reason == SchedulingFactExclusionReason.CpuResidencyInvalid);
     }
 
     [Fact]

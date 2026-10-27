@@ -103,7 +103,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
             {
                 exclusions?.Add(new SchedulingFactExclusion(process.ProcessId, process.ProcessStartKey,
                     HostManagerTargetIdentity.CreateProcessTargetId(process.ProcessId, process.ProcessStartKey),
-                    "runtime-state", "compute-runtime-state-missing"));
+                    SchedulingFactCode.RuntimeState, SchedulingFactExclusionReason.ComputeRuntimeStateMissing));
             }
         }
         processFacts = Narrow(processFacts, selected);
@@ -508,7 +508,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
             var identity = new HostManagerComputeProcessIdentity(process.ProcessId, process.ProcessStartKey);
             if (process.ProcessStartKey > measuredThroughStartKey)
             {
-                Exclude(process, "cpu-residency-not-covered");
+                Exclude(process, SchedulingFactExclusionReason.CpuResidencyNotCovered);
                 continue;
             }
             observed.TryGetValue(identity, out var observation);
@@ -520,7 +520,7 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
                     || observation.PhysicalCores.Select(core => core.PhysicalCoreId)
                         .Distinct(StringComparer.OrdinalIgnoreCase).Count() != observation.PhysicalCores.Count))
             {
-                Exclude(process, "cpu-residency-invalid");
+                Exclude(process, SchedulingFactExclusionReason.CpuResidencyInvalid);
                 continue;
             }
             if ((uint)selected.Count == capacity.ProcessCapacity) throw new InvalidDataException("CPU process capacity was exceeded.");
@@ -530,10 +530,10 @@ internal sealed unsafe class HostManagerComputeScoringWorkspace : IDisposable
         if (selected.Count == 0) return null;
         return new(Narrow(source, selected), HostManagerCpuOccupancySource.CoreResidency, observed, cursor);
 
-        void Exclude(SchedulingProcessFact process, string reason)
+        void Exclude(SchedulingProcessFact process, SchedulingFactExclusionReason reason)
             => exclusions?.Add(new SchedulingFactExclusion(process.ProcessId, process.ProcessStartKey,
                 HostManagerTargetIdentity.CreateProcessTargetId(process.ProcessId, process.ProcessStartKey),
-                "cpu-core-residency", reason));
+                SchedulingFactCode.CpuCoreResidency, reason));
     }
 
     private static bool IsTrustedCpuResidency(CpuCoreResidencySnapshot? snapshot)

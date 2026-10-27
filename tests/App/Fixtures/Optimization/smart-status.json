@@ -1,6 +1,6 @@
 {
   "success": {
-    "mode": "cpu-only",
+    "mode": "cpu",
     "schedulerRunning": true,
     "lastRunAt": null,
     "lastRestoreAt": null,
@@ -14,7 +14,7 @@
     "factExclusions": []
   },
   "cycle-failed": {
-    "mode": "cpu-only",
+    "mode": "cpu",
     "schedulerRunning": false,
     "lastRunAt": null,
     "lastRestoreAt": null,
@@ -28,7 +28,7 @@
     "factExclusions": []
   },
   "native-plan-failed": {
-    "mode": "cpu-only",
+    "mode": "cpu",
     "schedulerRunning": false,
     "lastRunAt": null,
     "lastRestoreAt": null,
@@ -43,8 +43,8 @@
       { "fact": "native-plan", "reason": "capacity-exceeded", "count": 1 }
     ],
     "factExclusions": [
-      { "processId": 43003, "processStartKey": "9007199254740993", "targetId": "process:43003:9007199254740993", "fact": "inventory", "reason": "inventory-overflow" },
-      { "processId": null, "processStartKey": null, "targetId": null, "fact": "native-plan", "reason": "capacity-exceeded" }
+      { "processId": 43003, "processStartKey": "9007199254740993", "targetId": "process:43003:9007199254740993", "fact": "inventory", "reason": "inventory-overflow", "adapterKey": null },
+      { "processId": null, "processStartKey": null, "targetId": null, "fact": "native-plan", "reason": "capacity-exceeded", "adapterKey": null }
     ]
   }
 }

@@ -1,10 +1,27 @@
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.Optimization;
+using ResourceManager.App.Domain.ResourceBreakdown;
+using System.Text.Json;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed class HostManagerDecisionDiagnosticsTests
 {
+    [Fact]
+    public void EveryNativePlanFailureHasAClosedReasonCode()
+    {
+        foreach (var status in Enum.GetValues<NativeSmartCoordinatorStatus>())
+        {
+            if (status == NativeSmartCoordinatorStatus.Ok) continue;
+            var reason = HostManagerSmartCoordinator.NativePlanStatusCode(status);
+            Assert.True(Enum.IsDefined(reason));
+            Assert.Equal(JsonNamingPolicy.KebabCaseLower.ConvertName(status.ToString()),
+                JsonSerializer.SerializeToElement(reason).GetString());
+        }
+        Assert.Throws<ArgumentOutOfRangeException>(() => HostManagerSmartCoordinator.NativePlanStatusCode(NativeSmartCoordinatorStatus.Ok));
+        Assert.Throws<ArgumentOutOfRangeException>(() => HostManagerSmartCoordinator.NativePlanStatusCode((NativeSmartCoordinatorStatus)int.MaxValue));
+    }
+
     [Fact]
     public void NativeProjectionPreservesExactIdentitiesAndDecisionFields()
     {

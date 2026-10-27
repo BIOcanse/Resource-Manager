@@ -744,7 +744,7 @@ public sealed class SchedulingObservationContractTests
         Assert.Equal(other.ProcessId, Assert.Single(projected.Processes).ProcessId);
         Assert.True(projected.IsCpuCurrentComplete());
         Assert.False(projected.IsInventoryCurrentComplete());
-        Assert.Contains(projected.FactExclusions, e => e.ProcessId == first.ProcessId && e.Fact == "identity");
+        Assert.Contains(projected.FactExclusions, e => e.ProcessId == first.ProcessId && e.Fact == SchedulingFactCode.Identity);
     }
 
     private static NativeMetricSnapshotMetricOutput CurrentMetric(

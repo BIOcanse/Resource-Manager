@@ -960,9 +960,23 @@ public sealed partial class HostManagerSmartCoordinator
         }
     }
 
-    // Wire code of a native plan status: the member name in kebab case ("CapacityExceeded" -> "capacity-exceeded").
-    internal static string NativePlanStatusCode(NativeSmartCoordinatorStatus status)
-        => System.Text.Json.JsonNamingPolicy.KebabCaseLower.ConvertName(status.ToString());
+    // Native planning emits the same closed reason type as every other exclusion producer.
+    internal static SchedulingFactExclusionReason NativePlanStatusCode(NativeSmartCoordinatorStatus status)
+        => status switch
+        {
+            NativeSmartCoordinatorStatus.InvalidArgument => SchedulingFactExclusionReason.InvalidArgument,
+            NativeSmartCoordinatorStatus.AbiMismatch => SchedulingFactExclusionReason.AbiMismatch,
+            NativeSmartCoordinatorStatus.Unavailable => SchedulingFactExclusionReason.Unavailable,
+            NativeSmartCoordinatorStatus.NoData => SchedulingFactExclusionReason.NoData,
+            NativeSmartCoordinatorStatus.BufferTooSmall => SchedulingFactExclusionReason.BufferTooSmall,
+            NativeSmartCoordinatorStatus.StaleGeneration => SchedulingFactExclusionReason.StaleGeneration,
+            NativeSmartCoordinatorStatus.OutOfMemory => SchedulingFactExclusionReason.OutOfMemory,
+            NativeSmartCoordinatorStatus.CapacityExceeded => SchedulingFactExclusionReason.CapacityExceeded,
+            NativeSmartCoordinatorStatus.ConflictingFacts => SchedulingFactExclusionReason.ConflictingFacts,
+            NativeSmartCoordinatorStatus.FeedbackMismatch => SchedulingFactExclusionReason.FeedbackMismatch,
+            NativeSmartCoordinatorStatus.RecreateRequired => SchedulingFactExclusionReason.RecreateRequired,
+            _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Expected a native plan failure status.")
+        };
 
     private static void RequireNativePlanStatus(
         NativeSmartCoordinatorStatus status,

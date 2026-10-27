@@ -47,7 +47,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         fixture.Coordinator.TransitionProbe = probe;
         await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
         var diagnostics = await fixture.Coordinator.GetDecisionDiagnosticsAsync(CancellationToken.None);
-        Assert.DoesNotContain(diagnostics.FactExclusions, e => e.Fact == "inventory");
+        Assert.DoesNotContain(diagnostics.FactExclusions, e => e.Fact == SchedulingFactCode.Inventory);
         Assert.Contains(probe.Rows, row => row.ProcessId == 42832);
         Assert.Equal(2U, fixture.Workspace.Snapshot.ProcessCount);
         Assert.DoesNotContain(fixture.Workspace.CurrentSnapshotRows.ToArray(), row => row.ProcessId == 42830);
@@ -90,7 +90,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var failure = Assert.IsType<HostManagerCycleFailureDiagnostics>(diagnostics.Failure);
         Assert.Equal(HostManagerCycleFailureKind.NativePlanFailed, failure.Kind);
         Assert.Equal(nameof(InvalidDataException), failure.ExceptionType);
-        Assert.Equal("capacity-exceeded", failure.NativePlanStatus);
+        Assert.Equal(SchedulingFactExclusionReason.CapacityExceeded, failure.NativePlanStatus);
         Assert.Null(diagnostics.NativeCoordinator);
         Assert.Empty(diagnostics.NonAdaptedMemoryDecisions);
         Assert.Equal("unavailable", diagnostics.SchedulingAuthority.Availability);
@@ -112,8 +112,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var diagnosticsWire = JsonSerializer.SerializeToElement(diagnostics, jsonOptions);
         foreach (var field in new[] { "failure", "factExclusionCounts", "factExclusions" })
             Assert.Equal(diagnosticsWire.GetProperty(field).GetRawText(), failedWire.GetProperty(field).GetRawText());
-        Assert.Contains(diagnostics.FactExclusionCounts, e => e.Fact == "native-plan" && e.Reason == "capacity-exceeded");
-        Assert.Contains(diagnostics.FactExclusionCounts, e => e.Fact == "inventory" && e.Reason == "inventory-overflow");
+        Assert.Contains(diagnostics.FactExclusionCounts, e => e.Fact == SchedulingFactCode.NativePlan && e.Reason == SchedulingFactExclusionReason.CapacityExceeded);
+        Assert.Contains(diagnostics.FactExclusionCounts, e => e.Fact == SchedulingFactCode.Inventory && e.Reason == SchedulingFactExclusionReason.InventoryOverflow);
         Assert.Equal(NativeSmartCoordinatorStatus.Ok, fixture.Workspace.RefreshSnapshot());
         Assert.Equal(2U, fixture.Workspace.Snapshot.ProcessCount);
         fixture.ProcessFacts.SetSnapshot(CreateCompleteProcessFacts(43004, 104, "software:churn", 20, 25, 10));
@@ -122,7 +122,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         diagnostics = await fixture.Coordinator.GetDecisionDiagnosticsAsync(CancellationToken.None);
         Assert.Null(diagnostics.Failure);
         Assert.NotNull(diagnostics.NativeCoordinator);
-        Assert.DoesNotContain(diagnostics.FactExclusions, e => e.Fact == "native-plan");
+        Assert.DoesNotContain(diagnostics.FactExclusions, e => e.Fact == SchedulingFactCode.NativePlan);
         var recoveredStatus = await fixture.Coordinator.GetStatusAsync(CancellationToken.None);
         Assert.Null(recoveredStatus.Failure);
         Assert.Equal(0, recoveredStatus.FactExclusionCount);
@@ -216,7 +216,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             .ValidMask.HasFlag(NativeSmartCoordinatorInputValidity.ProcessScore));
         Assert.True((bool)projection.GetType().GetProperty("FullProcessSnapshot")!.GetValue(projection)!);
         var exclusions = Assert.IsType<List<SchedulingFactExclusion>>(ReadPrivateReference(fixture.Coordinator, "cycleFactExclusions"));
-        Assert.Contains(exclusions, exclusion => exclusion.Fact == "identity" && exclusion.Reason.StartsWith("target-process-", StringComparison.Ordinal));
+        Assert.Contains(exclusions, exclusion => exclusion.Fact == SchedulingFactCode.Identity && exclusion.Reason is SchedulingFactExclusionReason.TargetProcessCountNotOne or SchedulingFactExclusionReason.TargetProcessIdentityMissing or SchedulingFactExclusionReason.TargetProcessIdentityMismatch);
     }
 
     [Theory]
@@ -375,8 +375,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.True(Assert.Single(probe.Rows, row => row.ProcessId == affectedPid && row.MetricKind == NativeSmartCoordinatorMetricKind.VramUsagePercent)
             .ValidMask.HasFlag(NativeSmartCoordinatorInputValidity.Metric));
         var exclusions = Assert.IsType<List<SchedulingFactExclusion>>(ReadPrivateReference(fixture.Coordinator, "cycleFactExclusions"));
-        Assert.Contains(exclusions, exclusion => exclusion.Fact == (gpuDomain ? "gpu-score" : "cpu-score")
-            && exclusion.Reason.StartsWith("canonical-software-membership-incomplete", StringComparison.Ordinal));
+        Assert.Contains(exclusions, exclusion => exclusion.Fact == (gpuDomain ? SchedulingFactCode.GpuScore : SchedulingFactCode.CpuScore)
+            && exclusion.Reason == SchedulingFactExclusionReason.CanonicalSoftwareMembershipIncomplete);
     }
 
     private static NativeSmartCoordinatorWorkspace.Operation BeginNativeFactProjection(

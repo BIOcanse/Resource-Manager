@@ -23,7 +23,7 @@ public sealed class HostManagerComputeRuntimeFactTests
 
         Assert.Equal(new HostManagerComputeProcessIdentity(20, 200), Assert.Single(result).Key);
         Assert.Single(exclusions);
-        Assert.Equal("runtime-state", exclusions[0].Fact);
+        Assert.Equal(SchedulingFactCode.RuntimeState, exclusions[0].Fact);
     }
 
     [Fact]
@@ -35,7 +35,7 @@ public sealed class HostManagerComputeRuntimeFactTests
         ], exclusions);
 
         Assert.Equal(new HostManagerComputeProcessIdentity(20, 200), Assert.Single(result).Key);
-        Assert.All(exclusions, exclusion => Assert.Equal("duplicate-target-process-identity", exclusion.Reason));
+        Assert.All(exclusions, exclusion => Assert.Equal(SchedulingFactExclusionReason.DuplicateTargetProcessIdentity, exclusion.Reason));
         Assert.Equal(2, exclusions.Count);
     }
 

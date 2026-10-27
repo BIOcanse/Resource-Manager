@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.Optimization.Transactions;
@@ -101,7 +102,7 @@ public sealed partial class HostManagerSmartCoordinator
         if (planStatus != NativeSmartCoordinatorStatus.Ok)
         {
             cycleNativePlanFailure = planStatus;
-            cycleFactExclusions.Add(new(null, null, null, "native-plan", NativePlanStatusCode(planStatus)));
+            cycleFactExclusions.Add(new(null, null, null, SchedulingFactCode.NativePlan, NativePlanStatusCode(planStatus)));
         }
         RequireNativePlanStatus(
             planStatus,

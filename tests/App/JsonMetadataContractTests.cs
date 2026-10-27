@@ -16,6 +16,7 @@ using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Domain.KernelLeak;
+using ResourceManager.App.Domain.Settings;
 using ResourceManager.Shared.Runtime.TrustedAccess;
 
 namespace Resource_Manager_APP.Tests;
@@ -66,6 +67,7 @@ public sealed class JsonMetadataContractTests
         var options = new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions;
         ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
         var status = JsonSerializer.Deserialize<HostManagerSmartCoordinatorStatus>(expected, options)!;
+        Assert.True(AppOptimizationModes.IsSupported(status.Mode), $"Unsupported fixture mode: {status.Mode}");
         Assert.True(JsonNode.DeepEquals(JsonNode.Parse(expected), JsonSerializer.SerializeToNode(status, options)));
         var frame = new FrontendSubscriptionChannelFrame<HostManagerSmartCoordinatorStatus>("status", status);
         var expectedFrame = new JsonObject { ["subscriptionId"] = "status", ["value"] = JsonNode.Parse(expected) };
@@ -80,6 +82,78 @@ public sealed class JsonMetadataContractTests
         using var stream = typeof(JsonMetadataContractTests).Assembly.GetManifestResourceStream("smart-status")!;
         using var fixtures = JsonDocument.Parse(stream);
         return fixtures.RootElement.GetProperty(name).GetRawText();
+    }
+
+    [Fact]
+    public void EverySmartStatusFixtureUsesASupportedProductMode()
+    {
+        using var stream = typeof(JsonMetadataContractTests).Assembly.GetManifestResourceStream("smart-status")!;
+        using var fixtures = JsonDocument.Parse(stream);
+        Assert.All(fixtures.RootElement.EnumerateObject(), fixture => Assert.True(
+            AppOptimizationModes.IsSupported(fixture.Value.GetProperty("mode").GetString()), fixture.Name));
+    }
+
+    [Fact]
+    public void EverySmartExclusionCodeHasAnExactWireFixture()
+    {
+        using var stream = typeof(JsonMetadataContractTests).Assembly.GetManifestResourceStream("smart-exclusions")!;
+        using var fixture = JsonDocument.Parse(stream);
+        var options = new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions;
+        ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
+        var details = JsonSerializer.Deserialize<IReadOnlyList<HostManagerFactExclusionDiagnostics>>(fixture.RootElement, options)!;
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(fixture.RootElement.GetRawText()), JsonSerializer.SerializeToNode(details, options)));
+        Assert.Equal(Enum.GetValues<SchedulingFactCode>().Order(), details.Select(e => e.Fact).Distinct().Order());
+        Assert.Equal(Enum.GetValues<SchedulingFactExclusionReason>().Order(), details.Select(e => e.Reason).Distinct().Order());
+        foreach (var row in details)
+        {
+            Assert.True(Enum.IsDefined(row.Fact));
+            Assert.True(Enum.IsDefined(row.Reason));
+            var count = new HostManagerFactExclusionCount(row.Fact, row.Reason, 1);
+            var countWire = JsonSerializer.SerializeToElement(count, options);
+            var detailWire = JsonSerializer.SerializeToElement(row, options);
+            Assert.Equal(detailWire.GetProperty("fact").GetString(), countWire.GetProperty("fact").GetString());
+            Assert.Equal(detailWire.GetProperty("reason").GetString(), countWire.GetProperty("reason").GetString());
+            Assert.Matches("^[a-z]+(-[a-z]+)*$", detailWire.GetProperty("fact").GetString()!);
+            Assert.Matches("^[a-z]+(-[a-z]+)*$", detailWire.GetProperty("reason").GetString()!);
+        }
+    }
+
+    [Theory]
+    [InlineData("fact", "\"unknown-fact\"")]
+    [InlineData("reason", "\"unknown-reason\"")]
+    [InlineData("fact", "\"gpu-usage:11\"")]
+    [InlineData("fact", "999")]
+    [InlineData("reason", "999")]
+    [InlineData("fact", "\"999\"")]
+    [InlineData("reason", "\"999\"")]
+    public void SmartExclusionWireRejectsUnknownAndNumericCodes(string field, string value)
+    {
+        var options = new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions;
+        ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
+        var detail = JsonSerializer.SerializeToNode(new HostManagerFactExclusionDiagnostics(
+            null, null, null, SchedulingFactCode.NativePlan, SchedulingFactExclusionReason.CapacityExceeded), options)!;
+        detail[field] = JsonNode.Parse(value);
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<HostManagerFactExclusionDiagnostics>(detail, options));
+        var count = new JsonObject { ["fact"] = detail["fact"]!.DeepClone(), ["reason"] = detail["reason"]!.DeepClone(), ["count"] = 1 };
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<HostManagerFactExclusionCount>(count, options));
+    }
+
+    [Fact]
+    public void SmartExclusionProductionTypesCannotEmitUndefinedCodes()
+    {
+        var options = new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions;
+        ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
+        foreach (var (fact, reason) in new[]
+        {
+            ((SchedulingFactCode)0, SchedulingFactExclusionReason.DatasetNotCurrent),
+            ((SchedulingFactCode)int.MaxValue, SchedulingFactExclusionReason.DatasetNotCurrent),
+            (SchedulingFactCode.Inventory, (SchedulingFactExclusionReason)0),
+            (SchedulingFactCode.Inventory, (SchedulingFactExclusionReason)int.MaxValue)
+        })
+        {
+            Assert.Throws<JsonException>(() => JsonSerializer.Serialize(new HostManagerFactExclusionDiagnostics(null, null, null, fact, reason), options));
+            Assert.Throws<JsonException>(() => JsonSerializer.Serialize(new HostManagerFactExclusionCount(fact, reason, 1), options));
+        }
     }
 
     [Theory]

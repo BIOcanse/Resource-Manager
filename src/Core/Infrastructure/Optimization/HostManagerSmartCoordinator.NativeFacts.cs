@@ -112,7 +112,7 @@ public sealed partial class HostManagerSmartCoordinator
         {
             if (target.ProcessIds.Count != 1)
             {
-                Exclude(null, null, target.TargetId, "identity", "target-process-count-not-one");
+                Exclude(null, null, target.TargetId, SchedulingFactCode.Identity, SchedulingFactExclusionReason.TargetProcessCountNotOne);
                 continue;
             }
             var targetProcessId = target.ProcessIds[0];
@@ -120,13 +120,13 @@ public sealed partial class HostManagerSmartCoordinator
                 || !target.ProcessStartKeys.TryGetValue(targetProcessId, out var targetStartKey)
                 || targetStartKey == 0)
             {
-                Exclude(targetProcessId, null, target.TargetId, "identity", "target-process-identity-missing");
+                Exclude(targetProcessId, null, target.TargetId, SchedulingFactCode.Identity, SchedulingFactExclusionReason.TargetProcessIdentityMissing);
                 continue;
             }
             if (!string.Equals(target.TargetId,
                 HostManagerTargetIdentity.CreateProcessTargetId(targetProcessId, targetStartKey), StringComparison.Ordinal))
             {
-                Exclude(targetProcessId, targetStartKey, target.TargetId, "identity", "target-process-identity-mismatch");
+                Exclude(targetProcessId, targetStartKey, target.TargetId, SchedulingFactCode.Identity, SchedulingFactExclusionReason.TargetProcessIdentityMismatch);
                 continue;
             }
             var targetKey = NativeStableIdentity.CreateCaseInsensitiveKey(target.TargetId);
@@ -154,7 +154,7 @@ public sealed partial class HostManagerSmartCoordinator
                     && !reattributedSoftwareKeys.Contains(attributedSoftwareKey);
                 if (!scoreMembershipConsistent)
                 {
-                    Exclude(processId, startKey, target.TargetId, "compute-score", "ownership-software-attribution-mismatch");
+                    Exclude(processId, startKey, target.TargetId, SchedulingFactCode.ComputeScore, SchedulingFactExclusionReason.OwnershipSoftwareAttributionMismatch);
                 }
                 var hasAdapterRecord = ownership.AdapterRecords.TryGetValue(
                     softwareKey,
@@ -195,13 +195,13 @@ public sealed partial class HostManagerSmartCoordinator
                     && (cpuScore!.SoftwareKey != attributedSoftwareKey
                         || !seenCpuProcessScores.Add(processScoreKey)))
                 {
-                    Exclude(processId, startKey, target.TargetId, "cpu-score", "canonical-process-membership-mismatch");
+                    Exclude(processId, startKey, target.TargetId, SchedulingFactCode.CpuScore, SchedulingFactExclusionReason.CanonicalProcessMembershipMismatch);
                     processCpuMetricsComplete = false;
                 }
                 if (processCpuMetricsComplete
                     && !scoreProjection.SoftwareCpu.TryGetValue(attributedSoftwareKey, out cpuSoftwareScore))
                 {
-                    Exclude(processId, startKey, target.TargetId, "cpu-score", "canonical-software-score-missing");
+                    Exclude(processId, startKey, target.TargetId, SchedulingFactCode.CpuScore, SchedulingFactExclusionReason.CanonicalSoftwareScoreMissing);
                 }
                 var rawCpuAvailable = target.HasCpuMetric && IsPercent(target.CpuUsagePercent);
                 var processGpuMetricsComplete = IsProcessGpuMetricsComplete(
@@ -284,7 +284,7 @@ public sealed partial class HostManagerSmartCoordinator
                                 || processScore.SoftwareKey != attributedSoftwareKey
                                 || !seenGpuProcessScores.Add(gpuProcessScoreKey))
                             {
-                                Exclude(processId, startKey, target.TargetId, "gpu-score", "canonical-process-membership-mismatch");
+                                Exclude(processId, startKey, target.TargetId, SchedulingFactCode.GpuScore, SchedulingFactExclusionReason.CanonicalProcessMembershipMismatch, gpu.AdapterKey);
                                 // Raw usage and VRAM remain independent of the score filter.
                                 AppendMetric(inputRows, identity, NativeSmartCoordinatorMetricKind.GpuUsagePercent,
                                     gpu.GpuUsagePercent, usageGpuIndex);
@@ -293,7 +293,7 @@ public sealed partial class HostManagerSmartCoordinator
                             {
                                 if (softwareScore is null)
                                 {
-                                    Exclude(processId, startKey, target.TargetId, "gpu-score", "canonical-software-score-missing");
+                                    Exclude(processId, startKey, target.TargetId, SchedulingFactCode.GpuScore, SchedulingFactExclusionReason.CanonicalSoftwareScoreMissing, gpu.AdapterKey);
                                 }
                                 IncrementMemberCount(observedGpuSoftwareMembers, softwareScoreKey);
                                 AppendMetric(inputRows,
@@ -355,7 +355,7 @@ public sealed partial class HostManagerSmartCoordinator
                 ProcessId = checked((uint)process.ProcessId),
                 ProcessStartKey = process.ProcessStartKey
             });
-            Exclude(process.ProcessId, process.ProcessStartKey, targetId, "decision-target", "live-identity-without-decision-facts");
+            Exclude(process.ProcessId, process.ProcessStartKey, targetId, SchedulingFactCode.DecisionTarget, SchedulingFactExclusionReason.LiveIdentityWithoutDecisionFacts);
         }
 
         foreach (var pair in ownership.ProcessRecords
@@ -449,8 +449,8 @@ public sealed partial class HostManagerSmartCoordinator
             outputRows[cursor++] = row;
         }
 
-        void Exclude(int? processId, ulong? startKey, string targetId, string fact, string reason)
-            => cycleFactExclusions.Add(new SchedulingFactExclusion(processId, startKey, targetId, fact, reason));
+        void Exclude(int? processId, ulong? startKey, string targetId, SchedulingFactCode fact, SchedulingFactExclusionReason reason, ulong? adapterKey = null)
+            => cycleFactExclusions.Add(new SchedulingFactExclusion(processId, startKey, targetId, fact, reason, adapterKey));
     }
 
     private static NativeSmartCoordinatorInputRow CreateNativeIdentityFact(
@@ -1214,7 +1214,7 @@ public sealed partial class HostManagerSmartCoordinator
             {
                 exclusions.Add(new SchedulingFactExclusion(pair.Key.ProcessId, pair.Key.ProcessStartKey,
                     HostManagerTargetIdentity.CreateProcessTargetId(pair.Key.ProcessId, pair.Key.ProcessStartKey),
-                    "cpu-score", "canonical-process-not-projected"));
+                    SchedulingFactCode.CpuScore, SchedulingFactExclusionReason.CanonicalProcessNotProjected));
             }
         }
         foreach (var pair in projection.ProcessGpu)
@@ -1223,7 +1223,7 @@ public sealed partial class HostManagerSmartCoordinator
             {
                 exclusions.Add(new SchedulingFactExclusion(pair.Key.ProcessId, pair.Key.ProcessStartKey,
                     HostManagerTargetIdentity.CreateProcessTargetId(pair.Key.ProcessId, pair.Key.ProcessStartKey),
-                    "gpu-score", "canonical-process-not-projected"));
+                    SchedulingFactCode.GpuScore, SchedulingFactExclusionReason.CanonicalProcessNotProjected, pair.Key.AdapterKey));
             }
         }
         var incompleteCpuSoftware = new HashSet<ulong>();
@@ -1235,7 +1235,7 @@ public sealed partial class HostManagerSmartCoordinator
             {
                 incompleteCpuSoftware.Add(pair.Key);
                 exclusions.Add(new SchedulingFactExclusion(null, null, $"software:{pair.Key:x16}",
-                    "cpu-score", "canonical-software-membership-incomplete"));
+                    SchedulingFactCode.CpuScore, SchedulingFactExclusionReason.CanonicalSoftwareMembershipIncomplete));
             }
         }
         foreach (var pair in projection.SoftwareGpu)
@@ -1245,7 +1245,7 @@ public sealed partial class HostManagerSmartCoordinator
             {
                 incompleteGpuSoftware.Add(pair.Key);
                 exclusions.Add(new SchedulingFactExclusion(null, null, $"software:{pair.Key.SoftwareKey:x16}/gpu:{pair.Key.AdapterKey:x16}",
-                    "gpu-score", "canonical-software-membership-incomplete"));
+                    SchedulingFactCode.GpuScore, SchedulingFactExclusionReason.CanonicalSoftwareMembershipIncomplete, pair.Key.AdapterKey));
             }
         }
         foreach (var (index, score) in projectedRows)

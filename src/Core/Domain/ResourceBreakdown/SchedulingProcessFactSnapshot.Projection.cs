@@ -8,16 +8,16 @@ public sealed partial record SchedulingProcessFactSnapshot
     public SchedulingProcessFactSnapshot ProjectValidFacts(SchedulingGpuInventorySnapshot inventory)
     {
         var exclusions = new List<SchedulingFactExclusion>(FactExclusions);
-        void Exclude(SchedulingProcessFact? process, string fact, string reason)
-            => exclusions.Add(new(process?.ProcessId, process?.ProcessStartKey, null, fact, reason));
+        void Exclude(SchedulingProcessFact? process, SchedulingFactCode fact, SchedulingFactExclusionReason reason, ulong? adapterKey = null)
+            => exclusions.Add(new(process?.ProcessId, process?.ProcessStartKey, null, fact, reason, adapterKey));
 
         if (!IsInventoryCurrent())
         {
-            Exclude(null, "inventory", "dataset-not-current");
+            Exclude(null, SchedulingFactCode.Inventory, SchedulingFactExclusionReason.DatasetNotCurrent);
             return this with { Processes = [], FactExclusions = exclusions };
         }
         var incompleteReason = InventoryIncompleteReason();
-        if (incompleteReason is not null) Exclude(null, "inventory", incompleteReason);
+        if (incompleteReason is { } reason) Exclude(null, SchedulingFactCode.Inventory, reason);
         var duplicates = Processes.GroupBy(p => (p.ProcessId, p.ProcessStartKey))
             .Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet();
         if (HasSeparateFoundationPayloads)
@@ -33,7 +33,7 @@ public sealed partial record SchedulingProcessFactSnapshot
                 _ => IsScalarMetricCurrentComplete(metric)
             };
             if (available) current |= metric;
-            else Exclude(null, metric.ToString(), "dataset-not-current");
+            else Exclude(null, FactCodeFor(metric), SchedulingFactExclusionReason.DatasetNotCurrent);
         }
         var selected = new List<SchedulingProcessFact>();
         var unidentified = HasUnidentifiedProcesses;
@@ -43,13 +43,13 @@ public sealed partial record SchedulingProcessFactSnapshot
                 || duplicates.Contains((process.ProcessId, process.ProcessStartKey)))
             {
                 if (!HasSeparateFoundationPayloads) unidentified = true;
-                Exclude(process, "identity", "invalid-or-duplicate-process");
+                Exclude(process, SchedulingFactCode.Identity, SchedulingFactExclusionReason.InvalidOrDuplicateProcess);
                 continue;
             }
             if (!double.IsFinite(process.BaseScore) || process.BaseScore < 0)
-                Exclude(process, "base-score", "row-missing-or-invalid");
+                Exclude(process, SchedulingFactCode.BaseScore, SchedulingFactExclusionReason.RowMissingOrInvalid);
             if (string.IsNullOrWhiteSpace(process.ProcessName) || string.IsNullOrWhiteSpace(process.SoftwareId))
-                Exclude(process, "attribution", "row-missing-or-invalid");
+                Exclude(process, SchedulingFactCode.Attribution, SchedulingFactExclusionReason.RowMissingOrInvalid);
             var mask = process.ValidMetricMask & current;
             foreach (var metric in EnumerateMetrics(RequestedMetricMask))
             {
@@ -63,7 +63,7 @@ public sealed partial record SchedulingProcessFactSnapshot
                 if (!valid)
                 {
                     mask &= ~metric;
-                    Exclude(process, metric.ToString(), current.HasFlag(metric) ? "row-missing-or-invalid" : "dataset-not-current");
+                    Exclude(process, FactCodeFor(metric), current.HasFlag(metric) ? SchedulingFactExclusionReason.RowMissingOrInvalid : SchedulingFactExclusionReason.DatasetNotCurrent);
                 }
             }
             var gpuRows = new List<SchedulingProcessGpuFact>();
@@ -81,7 +81,7 @@ public sealed partial record SchedulingProcessFactSnapshot
                     if (mask.HasFlag(usage) && identityValid && IsGpuLineageValid(gpu, usage)
                         && IsPercentValid(gpu.UsagePercent, gpu.ValidMetricMask, usage))
                         gpuMask |= usage;
-                    else Exclude(process, $"{usage}:{gpu.AdapterKey}", "gpu-row-missing-or-invalid");
+                    else Exclude(process, SchedulingFactCode.GpuUsage, SchedulingFactExclusionReason.GpuRowMissingOrInvalid, gpu.AdapterKey);
                 }
                 const SchedulingProcessMetricMask memory = SchedulingProcessMetricMask.GpuDedicatedMemory;
                 var memorySourceValid = mask.HasFlag(memory) && identityValid
@@ -92,17 +92,17 @@ public sealed partial record SchedulingProcessFactSnapshot
                         && adapter.CapacityStatus == SamplingObservationStatus.Current
                         && IsPercentValid(gpu.DedicatedMemoryUsedPercent, gpu.ValidMetricMask, memory))
                         gpuMask |= memory;
-                    else Exclude(process, $"{memory}:{gpu.AdapterKey}", "gpu-row-missing-or-invalid");
+                    else Exclude(process, SchedulingFactCode.GpuDedicatedMemory, SchedulingFactExclusionReason.GpuRowMissingOrInvalid, gpu.AdapterKey);
                 }
-                double? ProjectBytes(double? bytes, string fact)
+                double? ProjectBytes(double? bytes, SchedulingFactCode fact)
                 {
                     if (bytes is null) return null;
                     if (memorySourceValid && double.IsFinite(bytes.Value) && bytes >= 0) return bytes;
-                    Exclude(process, $"{fact}:{gpu.AdapterKey}", "gpu-row-missing-or-invalid");
+                    Exclude(process, fact, SchedulingFactExclusionReason.GpuRowMissingOrInvalid, gpu.AdapterKey);
                     return null;
                 }
-                var privateBytes = ProjectBytes(gpu.PrivateMemoryBytes, "gpu-private-memory-bytes");
-                var sharedBytes = ProjectBytes(gpu.SharedMemoryBytes, "gpu-shared-memory-bytes");
+                var privateBytes = ProjectBytes(gpu.PrivateMemoryBytes, SchedulingFactCode.GpuPrivateMemoryBytes);
+                var sharedBytes = ProjectBytes(gpu.SharedMemoryBytes, SchedulingFactCode.GpuSharedMemoryBytes);
                 if (gpuMask != SchedulingProcessMetricMask.None || privateBytes is not null || sharedBytes is not null)
                     gpuRows.Add(gpu with { ValidMetricMask = gpuMask,
                         PrivateMemoryBytes = privateBytes, SharedMemoryBytes = sharedBytes });
@@ -124,4 +124,15 @@ public sealed partial record SchedulingProcessFactSnapshot
             FactExclusions = exclusions
         };
     }
+
+    private static SchedulingFactCode FactCodeFor(SchedulingProcessMetricMask metric)
+        => metric switch
+        {
+            SchedulingProcessMetricMask.CpuUsage => SchedulingFactCode.CpuUsage,
+            SchedulingProcessMetricMask.MemoryUsage => SchedulingFactCode.MemoryUsage,
+            SchedulingProcessMetricMask.GpuUsage => SchedulingFactCode.GpuUsage,
+            SchedulingProcessMetricMask.GpuDedicatedMemory => SchedulingFactCode.GpuDedicatedMemory,
+            SchedulingProcessMetricMask.RuntimeState => SchedulingFactCode.RuntimeState,
+            _ => throw new ArgumentOutOfRangeException(nameof(metric))
+        };
 }

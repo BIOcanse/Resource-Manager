@@ -502,7 +502,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(2, Assert.IsType<int>(counts["sampleProcesses"])); // Identity remains observable even without runtime state.
         var diagnostics = await fixture.Coordinator.GetDecisionDiagnosticsAsync(CancellationToken.None);
         Assert.Contains(diagnostics.FactExclusions, exclusion => exclusion.ProcessId == 4_243
-            && exclusion.Fact == "RuntimeState");
+            && exclusion.Fact == SchedulingFactCode.RuntimeState);
         var details = Assert.IsType<Dictionary<string, object?>>(record.Properties["details"]);
         Assert.Equal(3U, Assert.IsType<uint>(details["nativeInputCount"]));
         Assert.Equal(0U, native.ActionCount);
