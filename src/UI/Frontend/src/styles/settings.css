@@ -7,7 +7,7 @@
   gap: 16px;
 }
 
-.page-stage > .settings-page.active-page {
+.page-host > .settings-page.active-page {
   width: 100%;
 }
 

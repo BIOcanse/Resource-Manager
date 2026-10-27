@@ -17,12 +17,18 @@
 }
 
 .app-shell > *,
-.page-stage > * {
+.page-host > * {
   width: 100%;
   min-width: 0;
   max-width: var(--workspace-max-width);
   margin-left: auto;
   margin-right: auto;
+}
+
+/* 每个一级页在 stage 里的位置（app/navigation/pageHost.tsx）。不是当前页的位置 aria-hidden，并且不排版、不绘制、
+   不占高度、不可命中和聚焦：常驻页留在里面的节点保留浏览器已算好的样式和布局，回来时直接显示；里面的可见区域不和视口相交。 */
+.page-host[aria-hidden="true"] {
+  content-visibility: hidden;
 }
 
 /* 换页时旧页的退场幽灵放在这一层（呈现层 presentation/nodeAnimation.ts，内容过渡 interactions/solid/contentTransition.ts）：

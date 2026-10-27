@@ -54,7 +54,7 @@ internal static partial class Program
         var declarationPath = Path.Combine(root, "src/UI/Frontend/preferences.points.json");
         using var document = JsonDocument.Parse(File.ReadAllBytes(declarationPath));
         var definitions = document.RootElement.GetProperty("points").EnumerateArray().Select(value => value.Clone()).ToArray();
-        if (definitions.Length != 31) throw new InvalidDataException("Expected 31 frontend points.");
+        if (definitions.Length != 32) throw new InvalidDataException("Expected 32 frontend points.");
         var style = definitions.Single(item => item.GetProperty("symbol").GetString() == "UiStyle").GetProperty("value").GetString()!;
         var theme = definitions.Single(item => item.GetProperty("symbol").GetString() == "Theme").GetProperty("value").GetString()!;
         var appearance = UiStyleCatalog.Normalize(style, theme);
@@ -154,6 +154,11 @@ internal static partial class Program
         {
             "choice" => value.ValueKind == JsonValueKind.String && definition.GetProperty("options").EnumerateArray().Any(option => option.GetString() == value.GetString()),
             "boolean" => value.ValueKind is JsonValueKind.True or JsonValueKind.False,
+            // Multiple choice: distinct members of the options list; an empty selection is valid.
+            "choiceSet" => value.ValueKind == JsonValueKind.Array
+                && value.EnumerateArray().All(item => item.ValueKind == JsonValueKind.String
+                    && definition.GetProperty("options").EnumerateArray().Any(option => option.GetString() == item.GetString()))
+                && value.EnumerateArray().Select(item => item.GetString()).Distinct(StringComparer.Ordinal).Count() == value.GetArrayLength(),
             "refresh" => value.ValueKind == JsonValueKind.Object && value.GetProperty("mode").GetString() is "aotu" or "preset" or "custom"
                 && value.GetProperty("preset").GetString() is "responsive" or "balanced" or "lowPower" or "quiet"
                 && value.GetProperty("customValue").GetInt32() is >= 500 and <= 300000,
@@ -177,6 +182,7 @@ internal static partial class Program
     {
         "choice" => new("string", "[]const u8", "", ""),
         "boolean" => new("bool", "bool", "", ""),
+        "choiceSet" => new("ImmutableArray<string>", "void", "", ""),
         "refresh" => new("PointRefreshSetting", "void", "public sealed record PointRefreshSetting(string Mode, string Preset, int CustomValue);", ""),
         "presets" => new("PointRefreshPresets", "void", "public sealed record PointRefreshPresets(int Responsive, int Balanced, int LowPower, int Quiet);", ""),
         "metricOrder" => new("ImmutableArray<string>", "void", "", ""),
@@ -188,6 +194,7 @@ internal static partial class Program
     {
         "choice" => JsonSerializer.Serialize(value.GetString()),
         "boolean" => value.GetBoolean() ? "true" : "false",
+        "choiceSet" => "ImmutableArray.Create<string>(" + string.Join(",", value.EnumerateArray().Select(item => JsonSerializer.Serialize(item.GetString()))) + ")",
         "refresh" => "new(" + string.Join(",", JsonSerializer.Serialize(value.GetProperty("mode").GetString()),
             JsonSerializer.Serialize(value.GetProperty("preset").GetString()), value.GetProperty("customValue").GetRawText()) + ")",
         "presets" => "new(" + string.Join(",", new[] { "responsive", "balanced", "lowPower", "quiet" }.Select(name => value.GetProperty(name).GetRawText())) + ")",
@@ -200,6 +207,7 @@ internal static partial class Program
     {
         "choice" => string.Join(" | ", definition.GetProperty("options").EnumerateArray().Select(value => JsonSerializer.Serialize(value.GetString()))),
         "boolean" => "boolean",
+        "choiceSet" => "readonly (" + string.Join(" | ", definition.GetProperty("options").EnumerateArray().Select(value => JsonSerializer.Serialize(value.GetString()))) + ")[]",
         "refresh" => "{ readonly mode: \"aotu\" | \"preset\" | \"custom\"; readonly preset: \"responsive\" | \"balanced\" | \"lowPower\" | \"quiet\"; readonly customValue: number }",
         "presets" => "{ readonly responsive: number; readonly balanced: number; readonly lowPower: number; readonly quiet: number }",
         "metricOrder" => "readonly string[]",

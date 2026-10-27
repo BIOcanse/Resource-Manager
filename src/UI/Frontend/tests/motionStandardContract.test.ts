@@ -82,7 +82,7 @@ for (const rule of rules) {
 }
 // 换页、二级分页、页签面板、设置分区的进出由磁石内容过渡带（docs/page_motion_2026-10-25.md），样式表不给它们写入场动画，
 // 否则每次挂上都重播一遍，和运行时带的进出叠在一起。
-for (const selector of [".page", ".ui-tabs-panel", ".settings-section-panel", ".page-subnav", ".page-stage"]) {
+for (const selector of [".page", ".ui-tabs-panel", ".settings-section-panel", ".page-subnav", ".page-stage", ".page-host"]) {
   assert.ok(!rules.some((rule) => rule.selectors.includes(selector) && rule.declarations.has("animation")),
     `${selector} enters through the Lodestone content transition, not a CSS animation`);
 }

@@ -1,5 +1,5 @@
 import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
-import { onCleanup, Show } from "solid-js";
+import { Show } from "solid-js";
 import type { Accessor } from "solid-js";
 import { Dashboard } from "./Dashboard";
 import { ResourceBreakdown } from "../resourceBreakdown/ResourceBreakdown";
@@ -14,6 +14,7 @@ import {
   ObservationStateNotice
 } from "../../components/ObservationStateNotice";
 import { useInlineEditorFocus } from "../../interactions/inlineEditorFocus";
+import { onPageLeave } from "../../app/navigation/pageHost.tsx";
 
 interface MonitorPageProps {
   animationStyle: AnimationStyleId;
@@ -41,7 +42,8 @@ export function MonitorPage(props: MonitorPageProps) {
     editor: () => dashboardEditorRegion,
     initialFocus: () => dashboardAddButton
   });
-  onCleanup(monitor.cancelAllMonitorEdits);
+  // 离开监视页（常驻时被隐藏，或卸下）时放弃未保存的编辑。
+  onPageLeave(monitor.cancelAllMonitorEdits);
 
   return (
     <section id="monitorPage" class="page active-page">

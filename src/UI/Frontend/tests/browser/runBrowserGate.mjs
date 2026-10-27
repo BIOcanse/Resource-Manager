@@ -85,6 +85,7 @@ import accessibilitySemanticsJourney from "./accessibilitySemanticsJourney.js";
 const allJourneys = [
   ["core-lease-contract", async (...args) => (await import("./coreLeaseContractJourney.js")).default(...args)],
   ["page-value-retention", async (...args) => (await import("./pageValueRetentionJourney.js")).default(...args)],
+  ["kept-page", async (...args) => (await import("./keptPageJourney.js")).default(...args)],
   ["realistic-data-sweep", async (...args) => (await import("./realisticDataSweepJourney.js")).default(...args)],
   ["management-source-states", managementSourceStatesJourney],
   ["monitor-page-task", async (...args) => (await import("./monitorPageTaskJourney.js")).default(...args)],

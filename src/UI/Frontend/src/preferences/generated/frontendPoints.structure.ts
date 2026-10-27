@@ -47,6 +47,7 @@ export namespace ResourceManager {
       readonly LocalSystemPresets: __fpDeepReadonly<{ readonly responsive: number; readonly balanced: number; readonly lowPower: number; readonly quiet: number }>;
       readonly AutoForegroundPreset: __fpDeepReadonly<"responsive" | "balanced" | "lowPower" | "quiet">;
       readonly AutoBackgroundPreset: __fpDeepReadonly<"responsive" | "balanced" | "lowPower" | "quiet">;
+      readonly KeptPages: __fpDeepReadonly<readonly ("monitor")[]>;
       readonly FontSizePx: number;
       readonly RegionWidthRatio: number;
       readonly RegionHeightRatio: number;

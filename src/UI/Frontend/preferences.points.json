@@ -19,6 +19,7 @@
     {"group":1,"name":"refresh-auto_foreground_preset","symbol":"AutoForegroundPreset","type":"choice","options":["responsive","balanced","lowPower","quiet"],"value":"responsive"},
     {"group":1,"name":"refresh-auto_background_preset","symbol":"AutoBackgroundPreset","type":"choice","options":["responsive","balanced","lowPower","quiet"],"value":"lowPower"},
     {"group":1,"name":"refresh-visibility_cooldown_ms","symbol":"VisibilityCooldownMs","type":"integer","min":0,"max":60000,"value":5000},
+    {"group":1,"name":"refresh-kept_pages","symbol":"KeptPages","type":"choiceSet","options":["monitor"],"value":["monitor"]},
     {"group":2,"name":"overlay-font_size_px","symbol":"FontSizePx","type":"integer","min":8,"max":72,"value":14},
     {"group":2,"name":"overlay-region_width_ratio","symbol":"RegionWidthRatio","type":"decimal","min":0.05,"max":1,"value":0.25},
     {"group":2,"name":"overlay-region_height_ratio","symbol":"RegionHeightRatio","type":"decimal","min":0.05,"max":1,"value":0.2},

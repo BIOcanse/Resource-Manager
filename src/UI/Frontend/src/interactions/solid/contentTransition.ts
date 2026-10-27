@@ -23,6 +23,11 @@ export interface ContentTransitionOptions {
   readonly order: Accessor<number>;
   /** 显示当前内容的元素。可以随 key 换成另一个元素（例如另一个页签面板）。 */
   readonly stage: () => HTMLElement | undefined;
+  /**
+   * 旧内容自己的元素，幽灵从它取：不写就是 stage（内容占满 stage）。stage 里同时留着别的、不显示的内容时
+   * （外壳里常驻页的位置），写旧内容所在的那一块，幽灵只带这一块。
+   */
+  readonly leaving?: () => HTMLElement | undefined;
   /** 旧内容的幽灵放在哪个定位元素里；不写就放在显示内容的元素旁边（它的父元素里）。 */
   readonly layer?: () => HTMLElement | undefined;
   /** 旧内容怎么离开：move 用 Solid 卸下的旧节点（整份内容被换掉），clone 用换之前复制的副本（内容就地换）。 */
@@ -39,7 +44,7 @@ export function useContentTransition(options: ContentTransitionOptions): void {
 
   // 1. 换之前：旧内容还在原处，留幽灵。
   createComputed(on(options.key, () => {
-    const current = untrack(options.stage);
+    const current = untrack(options.leaving ?? options.stage);
     if (!current) return;
     const next = untrack(options.order);
     const shift = `${next >= shownOrder ? -distance : distance}px`;

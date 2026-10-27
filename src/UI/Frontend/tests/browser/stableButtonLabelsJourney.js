@@ -45,9 +45,11 @@ export default async function stableButtonLabelsJourney(page, baseUrl) {
       if (pageId !== "settings") {
         await page.getByRole("navigation").getByRole("button", { name: app.page[pageId], exact: true }).click();
       }
-      await page.locator(readySelector).first().waitFor();
+      // 只等当前页里的那颗：常驻页隐藏后 DOM 还在（app/navigation/pageHost.tsx）。
+      await page.locator(`#pageStage > .page-host:not([aria-hidden="true"]) ${readySelector}`).first().waitFor();
       const buttons = await page.evaluate(() => {
-        const visible = (element) => element.getClientRects().length > 0;
+        // checkVisibility 把 content-visibility: hidden 里的内容算作不可见；隐藏的常驻页里的按钮仍报告旧的框。
+        const visible = (element) => element.getClientRects().length > 0 && element.checkVisibility();
         return [...document.querySelectorAll("button .stable-label")].filter(visible).map((label) => {
           const button = label.closest("button");
           const candidates = [...label.children];

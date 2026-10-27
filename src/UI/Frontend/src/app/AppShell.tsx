@@ -16,6 +16,7 @@ import type { NavigationTree, SecondaryNavigation, SecondaryTab } from "./naviga
 import { useSelectionIndicator } from "../interactions/solid/selectionIndicator.ts";
 import { useContentTransition } from "../interactions/solid/contentTransition.ts";
 import { CurrentPageNameProvider } from "./navigation/currentPageName.tsx";
+import { keptPages } from "./navigation/pageHost.tsx";
 
 interface AppShellProps {
   activePage: Accessor<PageId>;
@@ -106,14 +107,17 @@ export function AppShell(props: AppShellProps) {
   });
   // 二级分页条常驻，每个一级页的那组分页也常驻：换一级页时这一组直接显示、别的组隐藏，不进场；
   // 每组自带选中指示条（页签组），组里换分页时指示条滑过去，回到这一页时它还停在原来的分页上。
-  // 页面内容：换一级页时旧页的节点被 Solid 换掉，挪进退出层；只换二级分页时页面就地更新，先存一份静态副本。
+  // 页面内容：每页在 stage 里有自己的位置（navigation/pageHost.tsx），幽灵只从旧页的位置取。
+  // 换一级页时旧页的节点被 Solid 卸下，挪进退出层；常驻页离开后节点还在（只是隐藏），只换二级分页时页面就地更新，
+  // 这两种先存一份静态副本。新内容的进场在整个 stage 上。
   useContentTransition({
     name: "页面内容",
     key: routeIdentity,
     order: routeOrder,
     stage: () => pageStage,
+    leaving: () => pageStage?.querySelector<HTMLElement>(`:scope > .page-host[data-page-id="${displayedPage}"]`) ?? undefined,
     layer: () => pageLayer,
-    snapshot: () => (props.activePage() !== displayedPage ? "move" : "clone")
+    snapshot: () => (props.activePage() !== displayedPage && !keptPages.has(displayedPage) ? "move" : "clone")
   });
 
   return (

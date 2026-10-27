@@ -1,8 +1,9 @@
-﻿import { Show, lazy, onCleanup, onMount } from "solid-js";
+﻿import { lazy, onCleanup, onMount } from "solid-js";
 import type { Accessor } from "solid-js";
 import type { SoftwareContextMenuTarget } from "../components/SoftwareContextMenu";
 import { MonitorPage } from "../features/monitor/MonitorPage";
 import { PageBoundary } from "../ui/patterns/PageBoundary.tsx";
+import { PageHost } from "./navigation/pageHost.tsx";
 import type { ManagementStore } from "../stores/managementStore";
 import type { MonitorStore } from "../stores/monitorStore";
 import type { OptimizationStore } from "../stores/optimizationStore";
@@ -80,76 +81,58 @@ export function AppRoutes(props: AppRoutesProps) {
     onCleanup(() => cancelIdleCallback(idle));
   });
 
+  // 每页一个位置（navigation/pageHost.tsx）：常驻页离开后只隐藏，其余页离开时卸下。
+  const current = (page: PageId) => props.activePage() === page;
   return (
-    <Show
-      when={props.activePage() === "components"}
-      fallback={
-        <Show
-          when={props.activePage() === "settings"}
-          fallback={
-            <Show
-              when={props.activePage() === "control"}
-              fallback={(
-            <Show
-              when={props.activePage() === "diskUsage"}
-              fallback={(
-            <Show
-              when={props.activePage() === "details"}
-              fallback={
-                <Show
-                  when={props.activePage() === "optimization"}
-                  fallback={(
-                    <PageBoundary name={uiText.page.monitor}>
-                      <MonitorPage {...props} />
-                    </PageBoundary>
-                  )}
-                >
-                  <PageBoundary name={uiText.page.optimization}>
-                    <OptimizationWorkspace {...props} />
-                  </PageBoundary>
-                </Show>
-              }
-            >
-              <PageBoundary name={uiText.page.details}>
-                <DetailsPage
-                  activeTab={props.detailsTab()}
-                  software={props.management.software()}
-                  runtimeCapabilities={props.runtimeCapabilities}
-                  onOpenSoftwareSettings={props.onOpenSoftwareSettingsById}
-                  confirmDialog={props.confirmDialog}
-                />
-              </PageBoundary>
-            </Show>
-              )}
-            >
-              <PageBoundary name={uiText.page.diskUsage}>
-                <DiskUsageWorkspace onActionError={props.onActionError} />
-              </PageBoundary>
-            </Show>
-              )}
-            >
-              <PageBoundary name={uiText.page.control}>
-                <ControlWorkspace onNotice={props.onNotice} />
-              </PageBoundary>
-            </Show>
-          }
-        >
-          <PageBoundary name={uiText.page.settings}>
-            <SettingsWorkspace
-              onTrustedAccessFocusTargetChange={props.onTrustedAccessFocusTargetChange}
-              settings={props.settings}
-              productUpdates={props.productUpdates}
-              runtimeCapabilities={props.runtimeCapabilities}
-              softwareDetailOpen={props.softwareDetailOpen}
-              onOpenSoftwareOverlay={props.onOpenSoftwareOverlay}
-            />
-          </PageBoundary>
-        </Show>
-      }
-    >
-      <PageBoundary name={uiText.page.components}>
-        <ManagementWorkspace {...props} />
-      </PageBoundary>
-    </Show>
+    <>
+      <PageHost page="monitor" active={current("monitor")}>
+        <PageBoundary name={uiText.page.monitor}>
+          <MonitorPage {...props} />
+        </PageBoundary>
+      </PageHost>
+      <PageHost page="components" active={current("components")}>
+        <PageBoundary name={uiText.page.components}>
+          <ManagementWorkspace {...props} />
+        </PageBoundary>
+      </PageHost>
+      <PageHost page="optimization" active={current("optimization")}>
+        <PageBoundary name={uiText.page.optimization}>
+          <OptimizationWorkspace {...props} />
+        </PageBoundary>
+      </PageHost>
+      <PageHost page="diskUsage" active={current("diskUsage")}>
+        <PageBoundary name={uiText.page.diskUsage}>
+          <DiskUsageWorkspace onActionError={props.onActionError} />
+        </PageBoundary>
+      </PageHost>
+      <PageHost page="control" active={current("control")}>
+        <PageBoundary name={uiText.page.control}>
+          <ControlWorkspace onNotice={props.onNotice} />
+        </PageBoundary>
+      </PageHost>
+      <PageHost page="details" active={current("details")}>
+        <PageBoundary name={uiText.page.details}>
+          <DetailsPage
+            activeTab={props.detailsTab()}
+            software={props.management.software()}
+            runtimeCapabilities={props.runtimeCapabilities}
+            onOpenSoftwareSettings={props.onOpenSoftwareSettingsById}
+            confirmDialog={props.confirmDialog}
+          />
+        </PageBoundary>
+      </PageHost>
+      <PageHost page="settings" active={current("settings")}>
+        <PageBoundary name={uiText.page.settings}>
+          <SettingsWorkspace
+            onTrustedAccessFocusTargetChange={props.onTrustedAccessFocusTargetChange}
+            settings={props.settings}
+            productUpdates={props.productUpdates}
+            runtimeCapabilities={props.runtimeCapabilities}
+            softwareDetailOpen={props.softwareDetailOpen}
+            onOpenSoftwareOverlay={props.onOpenSoftwareOverlay}
+          />
+        </PageBoundary>
+      </PageHost>
+    </>
   );
 }

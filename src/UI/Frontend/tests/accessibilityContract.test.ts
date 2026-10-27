@@ -105,7 +105,7 @@ assert.match(
 );
 assert.match(resourceSegmentPaintPlane, /const dividerColor = "var\(--divider\)";/);
 assert.match(layout, /\.app-shell\s*\{[\s\S]*?overflow-x:\s*hidden;/);
-assert.match(layout, /\.app-shell\s*>\s*\*,\s*\.page-stage\s*>\s*\*\s*\{[\s\S]*?width:\s*100%;[\s\S]*?min-width:\s*0;/);
+assert.match(layout, /\.app-shell\s*>\s*\*,\s*\.page-host\s*>\s*\*\s*\{[\s\S]*?width:\s*100%;[\s\S]*?min-width:\s*0;/);
 
 for (const semanticMarker of [
   'role="treegrid"',
@@ -279,7 +279,7 @@ assert.match(resourceTable, /type="search"[\s\S]*?aria-label=/);
 assert.match(monitorPage, /<ObservationStateNotice[\s\S]*?label=\{uiText\.monitorPage\.metricCatalog\}[\s\S]*?presentation="blocking-only"/);
 assert.doesNotMatch(monitorPage, /实时资源数据仍会继续显示，布局编辑暂不可用。/);
 assert.match(monitorPage, /disabled=\{!dashboardAvailable\(\) \|\| monitor\.dashboardSaveState\(\) === "saving"\}/);
-assert.match(monitorPage, /onCleanup\(monitor\.cancelAllMonitorEdits\)/);
+assert.match(monitorPage, /onPageLeave\(monitor\.cancelAllMonitorEdits\)/);
 assert.match(monitorPage, /onClick=\{monitor\.cancelDashboardEdit\}/);
 assert.match(inlineEditorFocus, /firstInlineEditorControl/);
 assert.match(inlineEditorFocus, /focusTarget\?\.focus\(\{ preventScroll: true \}\)/);

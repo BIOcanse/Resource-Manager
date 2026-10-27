@@ -771,7 +771,7 @@
   }
 
   body[data-page="details"] .app-shell > *,
-  body[data-page="details"] .page-stage > * {
+  body[data-page="details"] .page-host > * {
     width: 100%;
     min-width: 0;
   }

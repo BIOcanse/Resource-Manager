@@ -55,6 +55,8 @@ public static class @FrontendPoints
     public static readonly string @AutoForegroundPreset = @FrontendPointsValues.@__fpValue_AutoForegroundPreset;
     [global::FreedomPoint.FreedomPointBinding(0x00010002002D0007UL)]
     public static readonly string @AutoBackgroundPreset = @FrontendPointsValues.@__fpValue_AutoBackgroundPreset;
+    [global::FreedomPoint.FreedomPointBinding(0x00010002002D0008UL)]
+    public static readonly ImmutableArray<string> @KeptPages = @FrontendPointsValues.@__fpValue_KeptPages;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200300000UL)]
     public const int @FontSizePx = @FrontendPointsValues.@__fpValue_FontSizePx;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200300001UL)]

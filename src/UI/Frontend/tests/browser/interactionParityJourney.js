@@ -72,10 +72,11 @@ export default async function interactionParityJourney(page, baseUrl) {
             && document.querySelector(`#${id}Page`), id, { timeout: 7000 });
           if (id === "details") {
             // mock 里 GPU 调度模型一直在读取中、没有可点的控件：只等它的页签选中；设备拓扑等到有可点的控件。
+            // 只看当前页的位置：常驻页隐藏后（content-visibility: hidden）里面的按钮仍报告旧的框。
             for (const secondary of ["gpu", "device"]) {
               await mouse(await point(tab(secondary)));
               await page.waitForFunction(value => document.querySelector('.page-subnav-group:not([hidden]) [aria-selected="true"]')
-                ?.getAttribute("data-tab-value") === value && (value === "gpu" || [...document.querySelectorAll("#pageStage button")]
+                ?.getAttribute("data-tab-value") === value && (value === "gpu" || [...document.querySelectorAll("#pageStage > .page-host:not([aria-hidden='true']) button")]
                 .some(element => !element.disabled && element.getClientRects().length > 0)), secondary, { timeout: 7000 });
             }
           }
