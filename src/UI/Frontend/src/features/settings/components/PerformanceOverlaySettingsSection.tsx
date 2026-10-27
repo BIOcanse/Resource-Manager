@@ -1,12 +1,10 @@
-import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
-import { listEnabledPerformanceOverlays } from "../../../api.ts";
+import { createEffect, createMemo, For, on, Show } from "solid-js";
 import { useFrontendRuntime } from "../../../frontendRuntime/FrontendRuntimeContext.tsx";
 import { useSource } from "../../../frontendRuntime/source/useSource.ts";
 import { useFrontendWork } from "../../../frontendWork/FrontendWorkContext.tsx";
 import { useFrontendVisibilityDemand } from "../../../frontendWork/useFrontendVisibilityDemand";
 import { frontendVisibilitySurface } from "../../../frontendWork/frontendVisibilitySurface";
 import { frontendWorkIds } from "../../../frontendWork/frontendWorkIds";
-import { onPageLeave } from "../../../app/navigation/pageHost.tsx";
 import { softwareRecordName } from "../../../presentation/softwareFacts.ts";
 import { userFacingErrorMessage } from "../../../presentation/userFacingText.ts";
 import { uiText } from "../../../text.ts";
@@ -38,41 +36,28 @@ interface OverlayRow {
 export function PerformanceOverlaySettingsSection(props: PerformanceOverlaySettingsSectionProps) {
   const copy = () => props.text.performanceOverlay;
   const runtime = useFrontendRuntime();
-  // 软件列表和浮层设置随这个分区的可见区域读取：常驻页隐藏时退掉，回来时重读。
+  // 软件列表和浮层设置都是数据来源，随这个分区的需求订阅：进入时读，退出时退订并取消没读完的那次。
+  // 退出后来源保留最后接受的值，分区重建时第一帧就有。
   const work = useFrontendWork();
   const workId = frontendWorkIds.settingsPerformanceOverlay;
   useFrontendVisibilityDemand(workId, [workId]);
   const needed = () => work.isNeeded(workId);
   const softwareSource = useSource(runtime.sources.managementSoftware, () => ({ active: needed() }));
-  const [overlays, setOverlays] = createSignal<readonly PerformanceOverlaySettings[] | null>(null);
-  const [overlayError, setOverlayError] = createSignal<unknown>(null);
-  let request = 0;
-  const load = async () => {
-    const id = ++request;
-    setOverlayError(null);
-    try {
-      const result = await listEnabledPerformanceOverlays();
-      if (id === request) setOverlays(result);
-    } catch (error) {
-      if (id === request) setOverlayError(error);
-    }
-  };
-  // 浮层设置读一次：分区建起来时（同步读到，回来的第一帧就有）、软件详细信息关上时；
-  // 常驻页隐藏过，再显示时重读一次。详细信息是盖住整页的对话框，开着时不能离开这一页。
-  let hiddenSinceLoad = false;
-  onPageLeave(() => { hiddenSinceLoad = true; });
-  createEffect(on(() => props.softwareDetailOpen, (open) => { if (!open) void load(); }));
-  createEffect(on(needed, (now) => {
-    if (!now || !hiddenSinceLoad) return;
-    hiddenSinceLoad = false;
-    void load();
+  const overlaysSource = useSource(runtime.sources.performanceOverlays, () => ({ active: needed() }));
+  // 软件详细信息关上时再读一次（同一读法），那里保存的改动随即出现在这里；等此前的读取结束再读，读到的是保存后的值。
+  // 详细信息是盖住整页的对话框，开着时不能离开这一页。
+  createEffect(on(() => props.softwareDetailOpen, (open) => {
+    if (!open && needed()) void overlaysSource.refresh({ afterCurrent: true });
   }, { defer: true }));
+  const overlaysSnapshot = () => overlaysSource.snapshot();
+  const overlaysFailed = () => overlaysSnapshot().data === null
+    && (overlaysSnapshot().status === "error" || overlaysSnapshot().status === "unavailable");
 
   const softwareSnapshot = () => softwareSource.snapshot();
   const softwareFailed = () => softwareSnapshot().data === null
     && (softwareSnapshot().status === "error" || softwareSnapshot().status === "unavailable");
   const rows = createMemo<readonly OverlayRow[] | null>(() => {
-    const current = overlays();
+    const current = overlaysSnapshot().data;
     const software = softwareSnapshot().data;
     if (!current || !software) return null;
     return current.map((settings) => ({
@@ -80,11 +65,11 @@ export function PerformanceOverlaySettingsSection(props: PerformanceOverlaySetti
       software: software.find((record) => record.id.toLowerCase() === settings.softwareId.toLowerCase()) ?? null
     }));
   });
-  const failure = () => overlayError() !== null
-    ? userFacingErrorMessage(overlayError(), copy().loadFailed)
+  const failure = () => overlaysFailed()
+    ? userFacingErrorMessage(overlaysSnapshot().error, copy().loadFailed)
     : softwareFailed() ? userFacingErrorMessage(softwareSnapshot().error, copy().loadFailed) : null;
   const retry = () => {
-    if (overlayError() !== null) void load();
+    if (overlaysFailed()) void overlaysSource.refresh();
     if (softwareFailed()) void softwareSource.refresh();
   };
   const summary = (settings: PerformanceOverlaySettings) => [

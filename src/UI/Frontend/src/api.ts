@@ -88,11 +88,11 @@ export async function getMetricCatalog() {
   return metricCatalogDecoder.decode(await getJson<unknown>("/api/metrics/catalog"));
 }
 
-/** 叠加层设置：显示方式和外观归前端偏好；是否注入看后端登记的启动模块，读取时总是一并读出。 */
-export async function getPerformanceOverlaySettings(softwareId: string): Promise<PerformanceOverlaySettings> {
+/** 叠加层设置：显示方式和外观归前端偏好；是否注入看后端登记的启动模块，读取时总是一并读出。signal 取消启动模块的读取。 */
+export async function getPerformanceOverlaySettings(softwareId: string, signal?: AbortSignal): Promise<PerformanceOverlaySettings> {
   const preferences = await frontendPreferencesClient().read();
   const presentation = { ...pointOverlayPresentation(), ...cachedOverlay(preferences, softwareId) };
-  const injectionModules = overlayInjectionModules(await getStartupModuleSelection(softwareId));
+  const injectionModules = overlayInjectionModules(await getStartupModuleSelection(softwareId, signal));
   if (presentation.mode === "injected") {
     presentation.enabled = injectionModules === "complete";
   }
@@ -103,11 +103,12 @@ export async function getPerformanceOverlaySettings(softwareId: string): Promise
 
 /**
  * 设置 → 性能浮层的总览：前端偏好里有浮层设置的每个软件，按浮层分页同一读法（getPerformanceOverlaySettings）
- * 得出是否启用，只留启用的。不读运行状态。
+ * 得出是否启用，只留启用的。不读运行状态。signal 取消各软件的启动模块读取。
  */
-export async function listEnabledPerformanceOverlays(): Promise<PerformanceOverlaySettings[]> {
+export async function listEnabledPerformanceOverlays(signal: AbortSignal): Promise<PerformanceOverlaySettings[]> {
   const preferences = await frontendPreferencesClient().read();
-  const settings = await Promise.all(Object.keys(preferences.overlays).map(getPerformanceOverlaySettings));
+  const settings = await Promise.all(Object.keys(preferences.overlays)
+    .map((softwareId) => getPerformanceOverlaySettings(softwareId, signal)));
   return settings.filter((overlay) => overlay.enabled);
 }
 
@@ -115,8 +116,8 @@ function startupModuleSelectionPath(softwareId: string) {
   return `/api/startup-modules/software/${encodeURIComponent(softwareId)}`;
 }
 
-async function getStartupModuleSelection(softwareId: string): Promise<StartupModuleSelection> {
-  return startupModuleSelectionDecoder.decode(await getJson<unknown>(startupModuleSelectionPath(softwareId)));
+async function getStartupModuleSelection(softwareId: string, signal?: AbortSignal): Promise<StartupModuleSelection> {
+  return startupModuleSelectionDecoder.decode(await getJson<unknown>(startupModuleSelectionPath(softwareId), { signal }));
 }
 
 /** 启动模块已经在后端改好，但叠加层偏好没有保存成功。界面据此提示“后端已更新、偏好未保存”。 */

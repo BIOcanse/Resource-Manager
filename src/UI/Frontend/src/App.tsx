@@ -122,8 +122,8 @@ export default function App() {
   const managementInventory = useManagementInventory({
     sources: frontendRuntime.sources,
     operations: frontendRuntime.operationRegistry,
-    inventoryActive: () => frontendWork.frontendVisible() && frontendWork.isNeeded(frontendWorkIds.managementInventory),
-    browserRuntimesActive: () => frontendWork.frontendVisible() && frontendWork.isNeeded(frontendWorkIds.managementBrowserRuntimes),
+    inventoryActive: () => frontendWork.isNeeded(frontendWorkIds.managementInventory),
+    browserRuntimesActive: () => frontendWork.isNeeded(frontendWorkIds.managementBrowserRuntimes),
     mutablePersistenceEnabled: runtimeCapabilities.mutablePersistenceEnabled
   });
   const management = createManagementStore({

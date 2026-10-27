@@ -1,10 +1,10 @@
-import { createEffect, createSignal, onCleanup, onMount, on, Show } from "solid-js";
+import { createSignal, Show } from "solid-js";
 import { openPath, openProperties } from "../../api";
 import { onPageLeave } from "../../app/navigation/pageHost.tsx";
-import { useFrontendWork } from "../../frontendWork/FrontendWorkContext.tsx";
 import { frontendWorkIds } from "../../frontendWork/frontendWorkIds.ts";
 import { frontendVisibilitySurface } from "../../frontendWork/frontendVisibilitySurface.ts";
 import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand.tsx";
+import { useWhileNeeded } from "../../frontendWork/useWhileNeeded.ts";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
 import { DiskUsageContextMenu } from "./DiskUsageContextMenu";
 import { DiskUsagePage } from "./DiskUsagePage";
@@ -18,7 +18,6 @@ export function DiskUsageWorkspace(props: {
   onActionError: (error: unknown, fallback: string) => void;
 }) {
   const runtime = useFrontendRuntime();
-  const frontendWork = useFrontendWork();
   const owner = runtime.diskUsage;
   const {
     volumes, volumesReadState, scanning, scanFailed, summary, layout, resultReadFailure,
@@ -32,18 +31,20 @@ export function DiskUsageWorkspace(props: {
   // 页面工作随整页可见区域：页面隐藏（离开常驻页、窗口隐藏）时停，回来时恢复。
   const pageWork = frontendWorkIds.diskUsagePage;
   useFrontendVisibilityDemand(pageWork, [pageWork]);
-  createEffect(on(() => frontendWork.isNeeded(pageWork), needed => owner.setActive(needed)));
+  // 进入：owner 活动（读卷列表和结果），窗口回到前台时重读卷列表；退出时都撤销。
+  const refreshVolumes = () => void owner.readVolumes();
+  useWhileNeeded(pageWork, () => {
+    owner.setActive(true);
+    window.addEventListener("focus", refreshVolumes);
+    return () => {
+      window.removeEventListener("focus", refreshVolumes);
+      owner.setActive(false);
+    };
+  });
   onPageLeave(() => {
     menuRequest++;
     setMenu(null);
   });
-  onMount(() => {
-    // 页面不需要时 owner 不活动，readVolumes 直接返回。
-    const refreshVolumes = () => void owner.readVolumes();
-    window.addEventListener("focus", refreshVolumes);
-    onCleanup(() => window.removeEventListener("focus", refreshVolumes));
-  });
-  onCleanup(() => owner.setActive(false));
 
   return (
     <>

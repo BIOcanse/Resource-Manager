@@ -2,6 +2,8 @@ import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show, 
 import type { MetricDefinition, MetricSnapshot } from "../../types";
 import type { ObservationState } from "../../observation/observationState";
 import { observeDocumentAppearance } from "../../presentation/documentAppearance";
+import { frontendWorkIds } from "../../frontendWork/frontendWorkIds.ts";
+import { useWhileNeeded } from "../../frontendWork/useWhileNeeded.ts";
 import {
   appendPerformancePoint,
   appendPerformanceHistory,
@@ -67,15 +69,18 @@ export function ResourcePerformancePanel(props: {
     if (canvas) {
       observer.observe(canvas);
     }
-    const stopObservingAppearance = observeDocumentAppearance(drawSoon);
     drawSoon();
     onCleanup(() => {
       observer.disconnect();
-      stopObservingAppearance();
       if (frame) {
         cancelAnimationFrame(frame);
       }
     });
+  });
+  // 进入：重画一次（离开期间可能换过风格或配色），之后跟随外观变化；退出时不再跟随。
+  useWhileNeeded(frontendWorkIds.monitorTable, () => {
+    drawSoon();
+    return observeDocumentAppearance(drawSoon);
   });
 
   return (

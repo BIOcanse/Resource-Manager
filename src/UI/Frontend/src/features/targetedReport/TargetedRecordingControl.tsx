@@ -2,7 +2,6 @@ import { createEffect, createMemo, createSignal, Show, type JSX } from "solid-js
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext.tsx";
 import { sourceCanRender } from "../../frontendRuntime/source/SourceSnapshot.ts";
 import { useSource } from "../../frontendRuntime/source/useSource.ts";
-import { useFrontendWork } from "../../frontendWork/FrontendWorkContext.tsx";
 import { uiText } from "../../text.ts";
 import { startRecording, stopRecording, type RecordingHeader } from "./targetedRecordingApi.ts";
 
@@ -15,22 +14,21 @@ const activeRecordingRefreshIntervalMs = 2_000;
  *   没有录制状态要说时，状态行显示 hint（省略时显示 intro）。列表读取失败由报告页统一提示，
  *   这里只提示开始、停止本身的失败。
  * softwareId 为空表示还没有选软件：字段照常显示，开始按钮不可用。
- * active 是录制列表是否要读：所在页面按自己的可见区域给出；省略时跟随窗口是否可见（软件详情对话框）。
+ * active 是录制列表是否要读，由所在的地方给出：报告页给本页工作 id 的需求，软件详情对话框给窗口是否可见（活动范围是打开着的对话框）。
  */
 export function TargetedRecordingControl(props: {
   softwareId: string;
-  active?: boolean;
+  active: boolean;
   onStarted?: (recording: RecordingHeader) => void;
   layout?: "section" | "toolbar";
   hint?: string;
   children?: JSX.Element;
 }) {
   const runtime = useFrontendRuntime();
-  const work = useFrontendWork();
   const toolbar = () => props.layout === "toolbar";
   const [refreshIntervalMs, setRefreshIntervalMs] = createSignal<number | null>(null);
   const recordingsSource = useSource(runtime.sources.targetedRecordings, () => ({
-    active: props.active ?? work.frontendVisible(),
+    active: props.active,
     refreshIntervalMs: refreshIntervalMs()
   }));
   const [maximumSeconds, setMaximumSeconds] = createSignal(600);

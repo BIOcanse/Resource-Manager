@@ -1,6 +1,8 @@
 import { canAnimateResourceBar } from "./resourceBarAnimation.ts";
 import { createEffect, createSignal, onCleanup } from "solid-js";
 import { observeDocumentAppearance } from "../../presentation/documentAppearance";
+import { frontendWorkIds } from "../../frontendWork/frontendWorkIds.ts";
+import { useWhileNeeded } from "../../frontendWork/useWhileNeeded.ts";
 import {
   parseResourceBarFrameRate,
   shouldDrawResourceBarFrame,
@@ -71,17 +73,23 @@ export function ResourceSegmentPaintPlane(props: ResourceSegmentPaintPlaneProps)
   // 这时外观没变，不能当成变化去重画，否则正在走的过渡被直接画成末帧。
   const [presentation, setPresentation] = createSignal(readResourceBarPresentation(), { equals: samePresentation });
 
+  // 进入：重读一次外观（离开期间可能换过，没变就不重画），之后跟随外观变化；退出时不再跟随。
   const refreshPresentation = () => setPresentation(readResourceBarPresentation());
-  const observer = new MutationObserver(refreshPresentation);
-  observer.observe(document.body, {
-    attributes: true,
-    attributeFilter: ["data-animations", "data-bar-color", "data-resource-bar-frame-rate"]
+  useWhileNeeded(frontendWorkIds.monitorBars, () => {
+    refreshPresentation();
+    const observer = new MutationObserver(refreshPresentation);
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["data-animations", "data-bar-color", "data-resource-bar-frame-rate"]
+    });
+    const stopObservingAppearance = observeDocumentAppearance(refreshPresentation);
+    return () => {
+      observer.disconnect();
+      stopObservingAppearance();
+    };
   });
-  const stopObservingAppearance = observeDocumentAppearance(refreshPresentation);
 
   onCleanup(() => {
-    observer.disconnect();
-    stopObservingAppearance();
     cancelAnimationFrame(animationFrame);
   });
 

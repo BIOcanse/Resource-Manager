@@ -1,5 +1,7 @@
 import { createEffect, onCleanup, onMount } from "solid-js";
 import { observeDocumentAppearance } from "../../presentation/documentAppearance";
+import { frontendWorkIds } from "../../frontendWork/frontendWorkIds.ts";
+import { useWhileNeeded } from "../../frontendWork/useWhileNeeded.ts";
 import { axisTicks, formatTick, type ChartAxis } from "./targetedReportAxis.ts";
 
 export type { ChartAxis };
@@ -34,13 +36,16 @@ export function TargetedReportChart(props: {
   onMount(() => {
     const observer = new ResizeObserver(drawSoon);
     if (canvas) observer.observe(canvas);
-    const stopObservingAppearance = observeDocumentAppearance(drawSoon);
     drawSoon();
     onCleanup(() => {
       observer.disconnect();
-      stopObservingAppearance();
       if (frame) cancelAnimationFrame(frame);
     });
+  });
+  // 进入：重画一次（离开期间可能换过风格或配色），之后跟随外观变化；退出时不再跟随。
+  useWhileNeeded(frontendWorkIds.targetedReportsPage, () => {
+    drawSoon();
+    return observeDocumentAppearance(drawSoon);
   });
   return <canvas ref={canvas} class="targeted-report-chart" role="img" aria-label={props.ariaLabel} />;
 }

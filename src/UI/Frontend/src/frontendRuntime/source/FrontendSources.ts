@@ -7,7 +7,8 @@ import { metricFieldCurrentItems } from "../../data/metricFields/metricFieldCurr
 import { gpuSpecializedCurrentItems } from "../../data/gpu/gpuSpecializedCurrentItems.ts";
 import { resourceMonitorCurrentItems, resourceDetailsCurrentItems } from "../../data/resourceMonitor/resourceCurrentItems.ts";
 import { getManagementComponents, getManagementSoftware, getManagementBrowserRuntimes } from "../../data/managementInventory.ts";
-import type { ManagedComponent, SoftwareRecord } from "../../types.ts";
+import type { ManagedComponent, PerformanceOverlaySettings, SoftwareRecord } from "../../types.ts";
+import { listEnabledPerformanceOverlays } from "../../api.ts";
 import type { BrowserRuntimeSnapshot } from "../../features/browserRuntimes/browserRuntimeTypes.ts";
 import {
   buildProductUpdateStatusSubscriptionUrl,
@@ -185,6 +186,7 @@ export interface FrontendSources {
   readonly settingsReads: ReturnType<typeof createSettingsReadSources>;
   readonly managementComponents: SourceHandle<ManagedComponent[]>;
   readonly managementSoftware: SourceHandle<SoftwareRecord[]>;
+  readonly performanceOverlays: SourceHandle<PerformanceOverlaySettings[]>;
   readonly managementBrowserRuntimes: SourceHandle<BrowserRuntimeSnapshot>;
   readonly aiGatewayCredentials: SourceHandle<AiGatewayCredentialView[]>;
   readonly resourceProcessDetails: PushValueSourceFamily<ResourceBreakdownQuery, ResourceProcessDetailsSnapshot>;
@@ -260,6 +262,12 @@ export function createFrontendSources(
     managementSoftware: sourceRegistry.define({
       key: "management.software",
       load: (signal, options) => getManagementSoftware(requestClient, signal, options),
+      retainLastGood: false
+    }),
+    // 设置 → 性能浮层的总览：启用了浮层的软件（前端偏好加启动模块登记，和浮层分页同一读法）。
+    performanceOverlays: sourceRegistry.define<PerformanceOverlaySettings[]>({
+      key: "settings.performance-overlays",
+      load: signal => listEnabledPerformanceOverlays(signal),
       retainLastGood: false
     }),
     managementBrowserRuntimes: sourceRegistry.define({

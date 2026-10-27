@@ -1,5 +1,7 @@
 import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import { onPageLeave } from "../../app/navigation/pageHost.tsx";
+import { frontendWorkIds } from "../../frontendWork/frontendWorkIds.ts";
+import { useWhileNeeded } from "../../frontendWork/useWhileNeeded.ts";
 import { wheelNotches } from "../../interactions/wheelNotches.ts";
 import { uiText } from "../../text.ts";
 import { observeDocumentAppearance } from "../../presentation/documentAppearance";
@@ -52,7 +54,8 @@ export function DiskUsageTreemapPlane(props: {
   let container: HTMLDivElement | undefined;
   const [viewport, setViewport] = createSignal<DiskUsageViewport>(identityViewport);
   const [size, setSize] = createSignal({ width: 0, height: 0 });
-  const [theme, setTheme] = createSignal(readPaintTheme());
+  // 颜色没变就不换：换主题会整张位图重渲，进入时重读一次颜色不能因此重渲。
+  const [theme, setTheme] = createSignal(readPaintTheme(), { equals: samePaintTheme });
 
   // 鼠标贴边时持续平移。指针离开或没贴边就停，不空转。
   let edgeFrame = 0;
@@ -125,17 +128,23 @@ export function DiskUsageTreemapPlane(props: {
     }
     measure();
 
-    const stopObservingAppearance = observeDocumentAppearance(() => setTheme(readPaintTheme()));
-
-    window.addEventListener("blur", releasePointer);
-
     onCleanup(() => {
       observer.disconnect();
-      stopObservingAppearance();
-      window.removeEventListener("blur", releasePointer);
       stopEdgePan();
       stopWheelZoom();
     });
+  });
+
+  // 进入：读一次当前颜色（离开期间可能换过风格或配色），之后跟随外观变化；窗口失焦时停住指针。退出时都撤销。
+  useWhileNeeded(frontendWorkIds.diskUsagePage, () => {
+    const syncTheme = () => setTheme(readPaintTheme());
+    syncTheme();
+    const stopObservingAppearance = observeDocumentAppearance(syncTheme);
+    window.addEventListener("blur", releasePointer);
+    return () => {
+      window.removeEventListener("blur", releasePointer);
+      stopObservingAppearance();
+    };
   });
 
   // 换了一棵树才回到整图视角，否则会停在上一棵树的某个角落。
@@ -588,6 +597,11 @@ function isTypingSomewhere(): boolean {
   }
   const tag = active.tagName;
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
+
+function samePaintTheme(left: DiskUsagePaintTheme, right: DiskUsagePaintTheme) {
+  return left.directoryHue === right.directoryHue && left.fileHue === right.fileHue && left.surface === right.surface
+    && left.label === right.label && left.labelShadow === right.labelShadow && left.selection === right.selection;
 }
 
 // 颜色从当前风格和配色的 CSS 变量取；深浅看根元素实际生效的 color-scheme，

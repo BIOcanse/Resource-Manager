@@ -139,6 +139,8 @@ function sortedPolicyValues(values?: readonly string[] | null) {
 }
 
 export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
+  // 对话框里的读取随窗口是否可见：活动范围是打开着的对话框。
+  const frontendWork = useFrontendWork();
   let closeButton: HTMLButtonElement | undefined;
   const [activeTab, setActiveTab] = createSignal<DetailTabId>("overview");
   const [selectedProcessKey, setSelectedProcessKey] = createSignal<string | null>(null);
@@ -305,7 +307,7 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
                   </Show>
                   <DetailSection title={uiText.softwareDetail.section.operations} rows={model().operationRows} onOpenPath={props.runtimeEffectsEnabled ? props.onOpenPath : undefined} />
                   <Show when={props.mutablePersistenceEnabled && model().type === "software"}>
-                    <TargetedRecordingControl softwareId={model().id} />
+                    <TargetedRecordingControl softwareId={model().id} active={frontendWork.frontendVisible()} />
                   </Show>
                   <Show when={props.gpuPlacementEnabled && model().type === "software" && !props.preciseGpuPlacementEnabled}>
                     <section class="software-detail-section">

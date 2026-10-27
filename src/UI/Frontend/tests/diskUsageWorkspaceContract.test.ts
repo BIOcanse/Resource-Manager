@@ -100,7 +100,8 @@ assert.doesNotMatch(workspace, /createSignal<DiskUsage(?:Layout|Volume|ScanSumma
 assert.doesNotMatch(workspace, /frontendWork\.frontendVisible/);
 assert.match(workspace, /useFrontendVisibilityDemand\(pageWork, \[pageWork\]\)/);
 assert.match(workspace, /visibilitySurface=\{frontendVisibilitySurface\(pageWork, \[pageWork\]\)\}/);
-assert.match(workspace, /createEffect\(on\(\(\) => frontendWork\.isNeeded\(pageWork\), needed => owner\.setActive\(needed\)\)\)/);
+assert.match(workspace, /useWhileNeeded\(pageWork, \(\) => \{\s*owner\.setActive\(true\);[\s\S]*?owner\.setActive\(false\);\s*\};\s*\}\)/);
+assert.doesNotMatch(workspace, /onMount\(/, "Disk usage activity follows the page's need, not construction");
 assert.match(workspace, /onPageLeave\(\(\) => \{\s*menuRequest\+\+;\s*setMenu\(null\);\s*\}\)/);
 assert.match(workspace, /if \(request === menuRequest\) setMenu\(\{ node, x, y \}\)/);
 assert.match(page, /<div class="disk-usage-page" \{\.\.\.props\.visibilitySurface\}>/);

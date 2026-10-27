@@ -1,4 +1,4 @@
-import { createSignal, createUniqueId, For, onCleanup, Show, type JSX } from "solid-js";
+import { createEffect, createSignal, createUniqueId, For, onCleanup, Show, type JSX } from "solid-js";
 import { CircleHelp } from "lucide-solid";
 import { uiText } from "../../text.ts";
 import { AnchoredLayer } from "./AnchoredLayer.tsx";
@@ -176,12 +176,16 @@ export function HelpHint(props: HelpHintProps) {
   };
 
   // 只靠指针打开、焦点在别处时，Esc 也能关掉说明；这时不吞键，也不动焦点（dismiss 里判断）。
+  // 监听只在指针停在说明上时挂着：没有打开的说明不占文档的全局监听。
   const onDocumentKeyDown = (event: KeyboardEvent) => {
     if (event.key === "Escape" && pointerInside() && !focusInside()) dismiss(event);
   };
-  document.addEventListener("keydown", onDocumentKeyDown);
+  createEffect(() => {
+    if (!pointerInside()) return;
+    document.addEventListener("keydown", onDocumentKeyDown);
+    onCleanup(() => document.removeEventListener("keydown", onDocumentKeyDown));
+  });
   onCleanup(() => {
-    document.removeEventListener("keydown", onDocumentKeyDown);
     endGrace();
     endDrag();
   });

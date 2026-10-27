@@ -3,11 +3,12 @@ import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
 import { HelpHint, OptionsHelpHint, type HelpHintEntry } from "../../ui/primitives/HelpHint.tsx";
 import { controlReasonText } from "../../presentation/controlReasonText.ts";
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
-import { batch, createMemo, createSignal, For, Match, onMount, onCleanup, Show, Switch } from "solid-js";
+import { batch, createMemo, createSignal, For, Match, Show, Switch } from "solid-js";
 import { onPageLeave } from "../../app/navigation/pageHost.tsx";
 import { useFrontendWork } from "../../frontendWork/FrontendWorkContext";
 import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand";
 import { frontendWorkIds } from "../../frontendWork/frontendWorkIds";
+import { useWhileNeeded } from "../../frontendWork/useWhileNeeded.ts";
 import { Portal } from "solid-js/web";
 import { CircleDashed, Download, Lock, X } from "lucide-solid";
 import {
@@ -74,11 +75,10 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
   const noticeSource = useSource(runtime.sources.control.notice, demand);
   const sources = [objectsSource, stateSource, instancesSource, presetsSource, consentSource, accessSource, noticeSource];
   const reloadState = () => { for (const source of sources) void source.refresh(); };
-  // 窗口回到前台时重读；页面不需要时（隐藏着）不读，再显示时来源随需求恢复自己会读。
-  const reloadOnFocus = () => { if (visible()) reloadState(); };
-  onMount(() => {
-    window.addEventListener("focus", reloadOnFocus);
-    onCleanup(() => window.removeEventListener("focus", reloadOnFocus));
+  // 进入期间窗口回到前台时重读；不需要时（页面隐藏着）不监听，再进入时来源随需求恢复自己会读。
+  useWhileNeeded(frontendWorkIds.controlActual, () => {
+    window.addEventListener("focus", reloadState);
+    return () => window.removeEventListener("focus", reloadState);
   });
   const catalog = () => objectsSource.snapshot().data;
   const state = () => stateSource.snapshot().data;

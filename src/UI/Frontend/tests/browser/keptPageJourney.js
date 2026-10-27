@@ -4,6 +4,19 @@ import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 import { ResourceManager } from "../../src/preferences/generated/frontendPoints.values.ts";
 
 const MONITOR_SUBSCRIPTIONS = ["/api/metrics/subscribe", "/api/resource-monitor/subscribe", "/api/resource-facts/subscribe"];
+// 每个一级页自己读的接口（前缀）。隐藏的常驻页对它们零读取：不发请求、不持有订阅（第 4.4 节“建造与活动”的验收）。
+// 只列这一页独有的；应用级运行上下文（本机状态、自调度、清单修订、访问请求等）不归任何一页，不在这里。
+const PAGE_ENDPOINTS = {
+  monitor: ["/api/metrics/subscribe", "/api/metrics/snapshot", "/api/resource-monitor/", "/api/resource-facts/", "/api/resource-breakdown/"],
+  components: ["/api/components", "/api/software", "/api/browser-runtimes"],
+  optimization: ["/api/optimization/reports", "/api/optimization/smart/status"],
+  diskUsage: ["/api/disk-usage/"],
+  control: ["/api/control/"],
+  details: ["/api/cpu/", "/api/device-topology/", "/api/kernel-leaks/", "/api/optimization/smart/state/", "/api/gpu/"],
+  settings: ["/api/memory-protection", "/api/settings/report-rules", "/api/access-keys", "/api/startup-modules/"]
+};
+// 离开后观察这么久：长于各页的刷新间隔，期间窗口还回到一次前台。
+const HIDDEN_OBSERVATION_MS = 2500;
 
 /*
  * 常驻页（src/app/navigation/pageHost.tsx，自由点 refresh-kept_pages）：离开监视页后它的 DOM 还在，但不显示、不可聚焦、
@@ -75,6 +88,7 @@ export default async function keptPageJourney(page, baseUrl) {
     "the hidden monitor is not in the accessibility tree");
   await waitTelemetry(baseUrl, t => MONITOR_SUBSCRIPTIONS.every(path => (t[path]?.logicalInFlight ?? 0) === 0),
     "the hidden monitor holds no subscriptions");
+  await assertNoReadsWhileHidden(page, baseUrl, "monitor");
 
   await primary("monitor").click();
   const shown = await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => {
@@ -126,6 +140,7 @@ export default async function keptPageJourney(page, baseUrl) {
     assert.equal(away.focusable, false, `controls of the hidden ${id} page cannot take focus`);
     assert.equal(away.hit, false, `controls of the hidden ${id} page cannot be hit`);
     assertHosts(away.hosts, "monitor", kept, visited);
+    await assertNoReadsWhileHidden(page, baseUrl, id);
     await leaveChecks[id]?.whileAway?.();
     await primary(id).click();
     await shownHost(page, id).waitFor({ state: "attached" });
@@ -235,6 +250,32 @@ function assertHosts(hosts, current, kept, visited) {
       assert.equal(host.children > 0, kept.has(host.id) && visited.has(host.id), `${host.id} is built while away only when kept and opened`);
     }
   }
+}
+
+// 离开一页后：先等它撤掉的订阅都退掉，再观察一段时间（其间窗口回到前台一次），这一页的接口不能有新的请求或订阅。
+async function assertNoReadsWhileHidden(page, baseUrl, id) {
+  const prefixes = PAGE_ENDPOINTS[id];
+  const own = telemetry => Object.entries(telemetry).filter(([path]) => prefixes.some(prefix => path.startsWith(prefix)));
+  const held = telemetry => own(telemetry).filter(([, item]) => (item.logicalInFlight ?? 0) > 0 || (item.physicalInFlight ?? 0) > 0)
+    .map(([path]) => path);
+  const deadline = Date.now() + 10000;
+  let before = await readTelemetry(baseUrl);
+  while (held(before).length > 0 && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 50));
+    before = await readTelemetry(baseUrl);
+  }
+  assert.deepEqual(held(before), [], `the hidden ${id} page releases its reads and subscriptions`);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await page.waitForTimeout(HIDDEN_OBSERVATION_MS);
+  const after = await readTelemetry(baseUrl);
+  const reads = own(after)
+    .map(([path, item]) => ({ path, started: (item.started ?? 0) - (before[path]?.started ?? 0), held: item.logicalInFlight ?? 0 }))
+    .filter(read => read.started > 0 || read.held > 0);
+  assert.deepEqual(reads, [], `the hidden ${id} page makes no reads while hidden`);
+}
+
+async function readTelemetry(baseUrl) {
+  return (await fetch(`${baseUrl}/__test/requests`)).json();
 }
 
 async function waitTelemetry(baseUrl, predicate, message) {
