@@ -22,7 +22,9 @@ export const enMonitorCopy: Pick<
     metricCatalog: "Metric catalog",
     liveMetrics: "Live metrics",
     resourceUsage: "Resource usage",
-    resourceList: "Resource list"
+    resourceList: "Resource list",
+    deviceFieldReadings: "Device field readings",
+    deviceFieldReadingsFailed: "Metrics that use device fields have no readings for now; other metrics are not affected."
   },
   dashboard: {
     panel: "Monitoring dashboard",
@@ -47,6 +49,8 @@ export const enMonitorCopy: Pick<
     noReadingHint: "No reading right now",
     noReading: "No reading",
     waitingReading: "Waiting for the first reading",
+    readingFailed: "Read failed",
+    readingFailedHint: "Device field readings are unavailable; see the notice above.",
     notInCatalogHint: "This item isn't in the metric catalog",
     namedDevice: (kind: string, name: string) => `${kind} · ${name}`,
     numberedDevice: (kind: string, ordinal: number) => `${kind} ${ordinal}`,

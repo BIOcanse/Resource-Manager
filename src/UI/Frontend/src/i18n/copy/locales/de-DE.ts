@@ -598,7 +598,9 @@ const deDeAppCopy: AppCopy = {
     metricCatalog: "Metrikkatalog",
     liveMetrics: "Live-Metriken",
     resourceUsage: "Ressourcennutzung",
-    resourceList: "Ressourcenliste"
+    resourceList: "Ressourcenliste",
+    deviceFieldReadings: "Messwerte der Gerätefelder",
+    deviceFieldReadingsFailed: "Metriken mit Gerätefeldern haben derzeit keine Messwerte; andere Metriken sind nicht betroffen."
   },
   dashboard: {
     panel: "Überwachungs-Dashboard",
@@ -623,6 +625,8 @@ const deDeAppCopy: AppCopy = {
     noReadingHint: "Derzeit kein Messwert",
     noReading: "Kein Messwert",
     waitingReading: "Warten auf den ersten Messwert",
+    readingFailed: "Lesefehler",
+    readingFailedHint: "Die Messwerte der Gerätefelder sind nicht verfügbar; siehe Hinweis oben.",
     notInCatalogHint: "Dieser Eintrag fehlt im Metrikkatalog",
     namedDevice: (kind: string, name: string) => `${kind} · ${name}`,
     numberedDevice: (kind: string, ordinal: number) => `${kind} ${ordinal}`,

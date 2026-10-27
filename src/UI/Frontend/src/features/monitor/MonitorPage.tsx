@@ -106,6 +106,12 @@ export function MonitorPage(props: MonitorPageProps) {
               presentation="blocking-only"
               renderWhenUnavailable
             >
+              {/* 设备字段那一路单独提示：只影响用设备字段的卡片，那些卡片写“读取失败”，其他卡片照常。推送源自己重连，没有手动重试。 */}
+              <ObservationStateNotice
+                state={monitor.fieldObservation()}
+                label={uiText.monitorPage.deviceFieldReadings}
+                presentation="blocking-only"
+              />
               <div
                 ref={dashboardEditorRegion}
                 role={monitor.editMode() ? "group" : undefined}
@@ -117,6 +123,7 @@ export function MonitorPage(props: MonitorPageProps) {
                   gpuNames={monitor.gpuNames()}
                   snapshot={monitor.cardSnapshot()}
                   pendingMetricIds={monitor.cardPendingMetricIds()}
+                  failedMetricIds={monitor.cardFailedMetricIds()}
                   trends={monitor.cardTrends()}
                   editMode={monitor.editMode()}
                   metricSelectionAvailable={metricSelectionAvailable()}

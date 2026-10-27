@@ -151,6 +151,13 @@ export interface MonitorStore {
    * （设备字段的值或目录未到；原有指标的这次查询还在加载）。卡片据此画“读取中”，不写“无读数”。
    */
   cardPendingMetricIds: Accessor<ReadonlySet<string>>;
+  /**
+   * 送值那一路报错、当前值里也没有它的设备字段卡片指标。卡片据此写“读取失败”，不写“无读数”。
+   * 原有指标那一路报错时由整块实时指标的提示说明，不进这里。
+   */
+  cardFailedMetricIds: Accessor<ReadonlySet<string>>;
+  /** 设备字段那一路的观察状态：可见卡片上没有设备字段时不订阅，算作就绪；报错时带说明影响范围的文字。 */
+  fieldObservation: Accessor<ObservationState>;
   /** 大、超大槽位里监控项最近的读数（features/monitor/cardTrends.ts）。 */
   cardTrends: Accessor<CardTrends>;
   activeCards: Accessor<DashboardCardSettings[]>;
@@ -388,25 +395,36 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     // 卡片显示不读目录修订号，沿用指标帧的；还没有指标帧时为空。
     return { version: 5, capturedAt: legacy?.capturedAt ?? null, catalogRevision: legacy?.catalogRevision ?? "", items: { ...legacy?.items, ...items } };
   });
+  const fieldObservation = createMemo<ObservationState>(() => {
+    if (fieldQuery().fields.length === 0) return readyObservation();
+    const observation = pushObservation(fieldDevicesSnapshot() ?? null);
+    return observation.status === "error"
+      ? { ...observation, lastError: uiText.monitorPage.deviceFieldReadingsFailed } : observation;
+  });
   // 卡片上的一个指标还在等首个读数：当前值里没有它，且送它的那一路还没回答过它、也没有报错。
-  // 设备字段：值和目录都到之前 fieldCardValues 不写这一项，到了之后每个槽位都写（值、不可用或设备不在）。
+  // 设备字段：值和目录都到之前 fieldCardValues 不写这一项，到了之后每个槽位都写（值、不可用或设备不在）；
+  // 那一路报错时它不再等，记为读取失败。
   // 原有指标由 family 投影所有已回答项（含明确不可用的项）；没有项就是尚未收到回答。
-  const cardPendingMetricIds = createMemo<ReadonlySet<string>>(() => {
+  const cardReadingGaps = createMemo(() => {
     const items = cardSnapshot()?.items ?? {};
     const legacyFailed = snapshotObservation().status === "error";
     const fieldsFailed = pushObservation(fieldDevicesSnapshot() ?? null).status === "error";
     const pending = new Set<string>();
+    const failed = new Set<string>();
     for (const card of activeCards()) {
       for (const { metricId, binding } of card.slots) {
         if (items[metricId]) continue;
-        const waiting = fieldCardSlot(metricId, binding)
-          ? !fieldsFailed
-          : !legacyFailed;
-        if (waiting) pending.add(metricId);
+        if (fieldCardSlot(metricId, binding)) {
+          (fieldsFailed ? failed : pending).add(metricId);
+        } else if (!legacyFailed) {
+          pending.add(metricId);
+        }
       }
     }
-    return pending;
+    return { pending: pending as ReadonlySet<string>, failed: failed as ReadonlySet<string> };
   });
+  const cardPendingMetricIds = () => cardReadingGaps().pending;
+  const cardFailedMetricIds = () => cardReadingGaps().failed;
   // 大、超大槽位的趋势：送这个监控项的那一路每来一帧（原有指标帧或设备字段帧）记一点，另一路的帧不记，时间轴不重复。
   const trendMetricIds = createMemo(() => new Set(activeCards().flatMap((card) => card.slots
     .filter((slot) => slot.size === "large" || slot.size === "full").map((slot) => slot.metricId))));
@@ -1021,6 +1039,8 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     pickerCatalog,
     cardSnapshot,
     cardPendingMetricIds,
+    cardFailedMetricIds,
+    fieldObservation,
     cardTrends,
     activeCards,
     resourceBarEditing,

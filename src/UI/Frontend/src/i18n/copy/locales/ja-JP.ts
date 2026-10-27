@@ -598,7 +598,9 @@ const jaJpAppCopy: AppCopy = {
     metricCatalog: "メトリック カタログ",
     liveMetrics: "ライブ メトリック",
     resourceUsage: "リソース使用量",
-    resourceList: "リソース一覧"
+    resourceList: "リソース一覧",
+    deviceFieldReadings: "デバイス フィールドの読み取り値",
+    deviceFieldReadingsFailed: "デバイス フィールドを使うメトリックは現在読み取り値がありません。ほかのメトリックには影響しません。"
   },
   dashboard: {
     panel: "監視ダッシュボード",
@@ -623,6 +625,8 @@ const jaJpAppCopy: AppCopy = {
     noReadingHint: "現在、読み取り値がありません",
     noReading: "読み取り値なし",
     waitingReading: "最初の読み取り値を待っています",
+    readingFailed: "読み取り失敗",
+    readingFailedHint: "デバイス フィールドの読み取り値を取得できません。上の通知を参照してください。",
     notInCatalogHint: "この項目はメトリック カタログにありません",
     namedDevice: (kind: string, name: string) => `${kind} · ${name}`,
     numberedDevice: (kind: string, ordinal: number) => `${kind} ${ordinal}`,

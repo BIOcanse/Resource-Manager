@@ -173,6 +173,11 @@ body.reordering * {
   font-weight: 600;
 }
 
+/* 送值那一路报错：和“无读数”同样大小，用警示色区分，原因在上方提示和悬停说明里。 */
+.metric-value.missing.failed {
+  color: var(--danger);
+}
+
 /* 最小：一行，标签在左、数值在右。 */
 .metric-small-row {
   min-width: 0;

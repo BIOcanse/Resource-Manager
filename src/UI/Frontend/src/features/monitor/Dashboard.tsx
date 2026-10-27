@@ -30,6 +30,8 @@ interface DashboardProps {
   snapshot: MetricSnapshot | null;
   /** 还在等首个读数的指标（monitorStore.cardPendingMetricIds）。 */
   pendingMetricIds: ReadonlySet<string>;
+  /** 送值那一路报错的指标（monitorStore.cardFailedMetricIds）：写“读取失败”，不写“无读数”。 */
+  failedMetricIds: ReadonlySet<string>;
   /** 大、超大槽位里监控项最近的读数（monitorStore.cardTrends）。 */
   trends: CardTrends;
   editMode: boolean;
@@ -142,6 +144,7 @@ export function Dashboard(props: DashboardProps) {
                           gpuNames={props.gpuNames}
                           snapshot={props.snapshot}
                           pending={props.pendingMetricIds.has(slot().metricId)}
+                          failed={props.failedMetricIds.has(slot().metricId)}
                           trend={props.trends.get(slot().metricId) ?? []}
                           reorder={slotReorder}
                           onOpenMetricModal={props.onOpenMetricModal}
@@ -225,6 +228,7 @@ function MetricSlot(props: {
   gpuNames: ReadonlyMap<string, string>;
   snapshot: MetricSnapshot | null;
   pending: boolean;
+  failed: boolean;
   trend: readonly CardTrendPoint[];
   reorder: ReorderGroup;
   onOpenMetricModal: DashboardProps["onOpenMetricModal"];
@@ -239,7 +243,7 @@ function MetricSlot(props: {
   const slotLabel = () => uiText.dashboard.slotLabel(props.cardOrdinal, props.index + 1);
   const view = () => (
     <MetricView metricId={props.slot.metricId} binding={props.slot.binding} size={props.slot.size} catalog={props.catalog}
-      gpuNames={props.gpuNames} snapshot={props.snapshot} pending={props.pending} trend={props.trend} />
+      gpuNames={props.gpuNames} snapshot={props.snapshot} pending={props.pending} failed={props.failed} trend={props.trend} />
   );
   return (
     <Show when={props.editMode} fallback={view()}>
@@ -296,6 +300,7 @@ function MetricView(props: {
   gpuNames: ReadonlyMap<string, string>;
   snapshot: MetricSnapshot | null;
   pending: boolean;
+  failed: boolean;
   trend: readonly CardTrendPoint[];
 }) {
   const absent = () => props.catalog.length > 0 && !dashboardMetricAvailable(props.metricId, props.binding, props.catalog);
@@ -324,9 +329,12 @@ function MetricView(props: {
       : [deviceName(), resourceMetricBasis(props.metricId)];
     return [label(), ...extra].filter(Boolean).join("\n");
   };
+  // 送值那一路报错：写“读取失败”，和“无读数”分开；设备不在照常优先。
   const reading = createMemo(() => absent()
     ? { value: uiText.dashboard.deviceAbsent, gap: "", unit: "", missing: true, title: uiText.dashboard.deviceAbsentHint }
-    : metricCardReading(definition(), metric()));
+    : props.failed
+      ? { value: uiText.dashboard.readingFailed, gap: "", unit: "", missing: true, title: uiText.dashboard.readingFailedHint }
+      : metricCardReading(definition(), metric()));
   // 首个读数还没到：画一条占位，不先写「无读数」再跳成数值。设备不在照常直接写。
   const waiting = () => props.pending && !absent();
   const withTrend = () => props.size === "large" || props.size === "full";
@@ -348,7 +356,7 @@ function MetricView(props: {
           </div>
         }
       >
-        <div class="metric-value" classList={{ missing: reading().missing }} title={reading().title}>
+        <div class="metric-value" classList={{ missing: reading().missing, failed: props.failed && !absent() }} title={reading().title}>
           <Show when={reading().unit} fallback={reading().value}>
             {/* 数值和单位之间的空格放在单位里，按单位的字号排：终端风格的等宽大字号下空格不会宽出一截。 */}
             <span class="metric-number">{reading().value}</span><span class="metric-unit">{reading().gap}{reading().unit}</span>

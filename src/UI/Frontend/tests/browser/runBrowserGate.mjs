@@ -43,6 +43,7 @@ import controlToggleChoiceJourney from "./controlToggleChoiceJourney.js";
 import controlSliderInteractionJourney from "./controlSliderInteractionJourney.js";
 import metricFieldsJourney from "./metricFieldsJourney.js";
 import metricFieldCardsJourney from "./metricFieldCardsJourney.js";
+import metricFieldFailureJourney from "./metricFieldFailureJourney.js";
 import metricPickerGpuNamesJourney from "./metricPickerGpuNamesJourney.js";
 import gpuUnknownRuntimeJourney from "./gpuUnknownRuntimeJourney.js";
 import gpuCommittedThresholdsJourney from "./gpuCommittedThresholdsJourney.js";
@@ -133,6 +134,7 @@ const allJourneys = [
   ["control-slider-interaction", controlSliderInteractionJourney],
   ["metric-fields", metricFieldsJourney],
   ["metric-field-cards", metricFieldCardsJourney],
+  ["metric-field-failure", metricFieldFailureJourney],
   ["metric-catalog-push", async (...args) => (await import("./metricCatalogPushJourney.js")).default(...args)],
   ["metric-card-states", async (...args) => (await import("./metricCardStatesJourney.js")).default(...args)],
   ["metric-card-slots", async (...args) => (await import("./metricCardSlotsJourney.js")).default(...args)],

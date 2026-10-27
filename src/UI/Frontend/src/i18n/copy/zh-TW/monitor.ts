@@ -18,7 +18,9 @@ export const zhMonitorCopy = {
     metricCatalog: "指標目錄",
     liveMetrics: "實時指標",
     resourceUsage: "資源佔用",
-    resourceList: "資源列表"
+    resourceList: "資源列表",
+    deviceFieldReadings: "裝置欄位讀數",
+    deviceFieldReadingsFailed: "使用裝置欄位的監控項目暫時沒有讀數，其他監控項目不受影響。"
   },
   dashboard: {
     panel: "監控面板",
@@ -43,6 +45,8 @@ export const zhMonitorCopy = {
     noReadingHint: "暫時沒有讀數",
     noReading: "無讀數",
     waitingReading: "正在等待首個讀數",
+    readingFailed: "讀取失敗",
+    readingFailedHint: "裝置欄位讀數暫不可用，詳見上方提示。",
     notInCatalogHint: "指標目錄裡沒有這一項",
     namedDevice: (kind: string, name: string) => `${kind} · ${name}`,
     numberedDevice: (kind: string, ordinal: number) => `${kind} ${ordinal}`,

@@ -598,7 +598,9 @@ const ruRuAppCopy: AppCopy = {
     metricCatalog: "Каталог метрик",
     liveMetrics: "Метрики в реальном времени",
     resourceUsage: "Использование ресурсов",
-    resourceList: "Список ресурсов"
+    resourceList: "Список ресурсов",
+    deviceFieldReadings: "Чтение полей устройства",
+    deviceFieldReadingsFailed: "Метрики, использующие поля устройства, сейчас не получают показаний; остальные метрики не затронуты."
   },
   dashboard: {
     panel: "Панель мониторинга",
@@ -623,6 +625,8 @@ const ruRuAppCopy: AppCopy = {
     noReadingHint: "Сейчас нет показаний",
     noReading: "Нет данных",
     waitingReading: "Ожидание первых показаний",
+    readingFailed: "Ошибка чтения",
+    readingFailedHint: "Показания полей устройства недоступны; см. уведомление выше.",
     notInCatalogHint: "Этого элемента нет в каталоге метрик",
     namedDevice: (kind: string, name: string) => `${kind} · ${name}`,
     numberedDevice: (kind: string, ordinal: number) => `${kind} ${ordinal}`,

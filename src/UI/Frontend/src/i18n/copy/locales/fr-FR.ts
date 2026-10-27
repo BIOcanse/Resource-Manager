@@ -598,7 +598,9 @@ const frFrAppCopy: AppCopy = {
     metricCatalog: "Catalogue de métriques",
     liveMetrics: "Métriques en direct",
     resourceUsage: "Utilisation des ressources",
-    resourceList: "Liste des ressources"
+    resourceList: "Liste des ressources",
+    deviceFieldReadings: "Flux des champs de l'appareil",
+    deviceFieldReadingsFailed: "Les métriques qui utilisent des champs de l'appareil n'ont pas de mesure pour le moment ; les autres métriques ne sont pas concernées."
   },
   dashboard: {
     panel: "Tableau de bord de surveillance",
@@ -623,6 +625,8 @@ const frFrAppCopy: AppCopy = {
     noReadingHint: "Aucun relevé pour le moment",
     noReading: "Aucune mesure",
     waitingReading: "En attente de la première mesure",
+    readingFailed: "Échec de lecture",
+    readingFailedHint: "Les mesures des champs de l'appareil sont indisponibles ; voir l'avis ci-dessus.",
     notInCatalogHint: "Cet élément ne figure pas dans le catalogue de métriques",
     namedDevice: (kind: string, name: string) => `${kind} · ${name}`,
     numberedDevice: (kind: string, ordinal: number) => `${kind} ${ordinal}`,

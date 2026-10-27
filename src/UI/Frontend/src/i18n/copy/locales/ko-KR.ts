@@ -597,7 +597,9 @@ const koKrAppCopy: AppCopy = {
     metricCatalog: "메트릭 카탈로그",
     liveMetrics: "실시간 메트릭",
     resourceUsage: "리소스 사용량",
-    resourceList: "리소스 목록"
+    resourceList: "리소스 목록",
+    deviceFieldReadings: "장치 필드 측정값",
+    deviceFieldReadingsFailed: "장치 필드를 사용하는 메트릭은 현재 측정값이 없습니다. 다른 메트릭에는 영향이 없습니다."
   },
   dashboard: {
     panel: "모니터링 대시보드",
@@ -622,6 +624,8 @@ const koKrAppCopy: AppCopy = {
     noReadingHint: "현재 측정값이 없습니다",
     noReading: "측정값 없음",
     waitingReading: "첫 측정값을 기다리는 중",
+    readingFailed: "읽기 실패",
+    readingFailedHint: "장치 필드 측정값을 사용할 수 없습니다. 위의 알림을 참조하세요.",
     notInCatalogHint: "이 항목은 메트릭 카탈로그에 없습니다",
     namedDevice: (kind: string, name: string) => `${kind} · ${name}`,
     numberedDevice: (kind: string, ordinal: number) => `${kind} ${ordinal}`,

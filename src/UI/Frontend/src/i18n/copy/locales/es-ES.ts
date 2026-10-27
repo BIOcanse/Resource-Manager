@@ -598,7 +598,9 @@ const esEsAppCopy: AppCopy = {
     metricCatalog: "Catálogo de métricas",
     liveMetrics: "Métricas en directo",
     resourceUsage: "Uso de recursos",
-    resourceList: "Lista de recursos"
+    resourceList: "Lista de recursos",
+    deviceFieldReadings: "Flujo de campos del dispositivo",
+    deviceFieldReadingsFailed: "Las métricas que usan campos del dispositivo no tienen lecturas por ahora; las demás métricas no se ven afectadas."
   },
   dashboard: {
     panel: "Panel de supervisión",
@@ -623,6 +625,8 @@ const esEsAppCopy: AppCopy = {
     noReadingHint: "Sin lectura por ahora",
     noReading: "Sin lectura",
     waitingReading: "Esperando la primera lectura",
+    readingFailed: "Error de lectura",
+    readingFailedHint: "Las lecturas de los campos del dispositivo no están disponibles; consulte el aviso de arriba.",
     notInCatalogHint: "Este elemento no está en el catálogo de métricas",
     namedDevice: (kind: string, name: string) => `${kind} · ${name}`,
     numberedDevice: (kind: string, ordinal: number) => `${kind} ${ordinal}`,
