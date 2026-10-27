@@ -79,9 +79,11 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             {
                 return Results.Ok(await reader.CaptureThreadWindowAsync("debug.thread-cpu", processId, processStartKey, budget.Token));
             }
-            catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
+            catch (OperationCanceledException error) when (!cancellation.IsCancellationRequested)
             {
-                return Results.StatusCode(StatusCodes.Status504GatewayTimeout);
+                return Results.Json(new ThreadCpuWindowTimeoutPayload("thread-cpu-window-timeout",
+                    (error as ThreadCpuWindowWaitCanceledException)?.Diagnostics),
+                    statusCode: StatusCodes.Status504GatewayTimeout);
             }
         });
         app.MapGet("/api/debug/cpu-residency", (HttpResponse response, EtwCpuCoreResidencyReader reader) =>
@@ -169,4 +171,5 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 statusCode: StatusCodes.Status503ServiceUnavailable);
         }
     }
+    private sealed record ThreadCpuWindowTimeoutPayload(string Error, ThreadCpuWindowWaitDiagnostics? Wait);
 }

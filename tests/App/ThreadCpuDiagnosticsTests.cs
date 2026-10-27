@@ -24,7 +24,36 @@ namespace Resource_Manager_APP.Tests;
 public sealed class ThreadCpuDiagnosticsTests
 {
     [Fact]
-    public async Task RequestedProcessHasNamedThreadPartialExitAndMatchingExecutionTotalThroughDebugEndpoint()
+    public async Task ThreadDemandResumesPausedResidencyAndWaitsForAFreshWindow()
+    {
+        using var target = new NamedThread();
+        using var process = Process.GetCurrentProcess();
+        var birth = process.StartTime.ToUniversalTime().ToFileTimeUtc();
+        using var sampling = new HostManagerSamplingSubscriptionTestFixture();
+        var broker = new Broker();
+        using var reader = Reader(sampling, broker);
+        broker.WindowReady = () => FeedWindow(reader, sampling, process.Id, birth, target.Id, false);
+        using var slow = reader.AcquireSubscription("ordinary.paused", TimeSpan.FromSeconds(30));
+        await reader.StartAsync(default);
+        try
+        {
+            await Until(() => reader.Read() is not null && Owner(reader).State == "Idle");
+            var previous = reader.Read()!;
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var result = Assert.IsType<CpuProcessThreadWindow>(await reader.CaptureThreadWindowAsync(
+                "paused", process.Id, birth, timeout.Token));
+            Assert.True(result.MeasuredFrom > previous.MeasuredFrom);
+            Assert.Equal(process.Id, result.Process.ProcessId);
+            Assert.Equal(NamedThread.Description, Assert.Single(result.Process.Threads).Diagnostic!.Description);
+            Assert.Equal(0, Owner(reader).DiagnosticRequestCount);
+        }
+        finally { await reader.StopAsync(default); }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RequestedProcessHasNamedThreadPartialExitAndMatchingExecutionTotalThroughDebugEndpoint(bool initiallyPaused)
     {
         using var target = new NamedThread();
         using var survivor = new NamedThread();
@@ -36,26 +65,16 @@ public sealed class ThreadCpuDiagnosticsTests
         broker.WindowReady = () =>
         {
             FeedWindow(reader, sampling, process.Id, birth, target.Id, exited: true,
-                secondTid: survivor.Id, duringWindow: target.BurnAndExit);
+                secondTid: survivor.Id, duringWindow: !initiallyPaused || broker.Windows > 1 ? target.BurnAndExit : null);
         };
-        var builder = WebApplication.CreateBuilder();
-        builder.WebHost.UseUrls("http://127.0.0.1:0");
-        builder.Services.AddResourceManagerApp(["--no-native-ui"], StartupCapabilitySet.NormalReadOnly);
-        TrustedAccessEndpointTestAuthentication.Add(builder.Services, "processes.read");
-        builder.Services.RemoveAll<IHostedService>();
-        builder.Services.AddSingleton(reader);
-        await using var app = TrustedAccessEndpointTestAuthentication.Build(builder);
-        typeof(ResourceManagerEndpointRouteBuilderExtensions).GetMethod("MapDebugEndpoints", BindingFlags.Static | BindingFlags.NonPublic)!
-            .Invoke(null, [app]);
+        using var slow = initiallyPaused ? reader.AcquireSubscription("endpoint.paused", TimeSpan.FromSeconds(30)) : null;
+        await using var app = BuildDebugApp(reader);
         await app.StartAsync();
-        using var client = TrustedAccessEndpointTestAuthentication.Apply(new HttpClient
-        {
-            BaseAddress = new Uri(Assert.Single(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses)),
-            Timeout = TimeSpan.FromSeconds(20)
-        }, app.Services);
+        using var client = DebugClient(app, TimeSpan.FromSeconds(20));
         await reader.StartAsync(default);
         try
         {
+            if (initiallyPaused) await Until(() => reader.Read() is not null && Owner(reader).State == "Idle");
             using var response = await client.GetAsync($"/api/debug/thread-cpu?processId={process.Id}&processStartKey={birth}");
             response.EnsureSuccessStatusCode();
             Assert.Equal("no-store", response.Headers.CacheControl!.ToString());
@@ -83,6 +102,64 @@ public sealed class ThreadCpuDiagnosticsTests
         }
         finally { await reader.StopAsync(default); }
     }
+
+    [Fact]
+    public async Task DebugTimeoutReportsPublishedWindowsThatNeverBecomeFresh()
+    {
+        using var process = Process.GetCurrentProcess();
+        var birth = process.StartTime.ToUniversalTime().ToFileTimeUtc();
+        using var sampling = new HostManagerSamplingSubscriptionTestFixture();
+        var broker = new Broker();
+        using var reader = Reader(sampling, broker);
+        broker.WindowReady = () => FeedWindow(reader, sampling, process.Id, birth, 10, false,
+            timestampOffset: -TimeSpan.FromMinutes(2));
+        using var slow = reader.AcquireSubscription("timeout.paused", TimeSpan.FromSeconds(30));
+        await using var app = BuildDebugApp(reader);
+        await app.StartAsync();
+        using var client = DebugClient(app, TimeSpan.FromSeconds(40));
+        await reader.StartAsync(default);
+        try
+        {
+            await Until(() => reader.Read() is not null && Owner(reader).State == "Idle");
+            using var response = await client.GetAsync($"/api/debug/thread-cpu?processId={process.Id}&processStartKey={birth}");
+            Assert.Equal(System.Net.HttpStatusCode.GatewayTimeout, response.StatusCode);
+            Assert.Equal("no-store", response.Headers.CacheControl!.ToString());
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.Equal("thread-cpu-window-timeout", json.RootElement.GetProperty("error").GetString());
+            var wait = json.RootElement.GetProperty("wait");
+            Assert.Equal("fresh-closed-window", wait.GetProperty("waitingFor").GetString());
+            Assert.True(wait.GetProperty("publicationsObserved").GetInt32() > 1);
+            Assert.True(wait.GetProperty("lastWindow").GetProperty("measuredFrom").GetDateTimeOffset()
+                < wait.GetProperty("requestedAt").GetDateTimeOffset());
+            Assert.True(wait.GetProperty("revisionAtCancellation").GetInt64()
+                > wait.GetProperty("revisionAtRequest").GetInt64());
+            Assert.True(wait.GetProperty("hasSessionLease").GetBoolean());
+            Assert.Equal("Running", wait.GetProperty("residency").GetProperty("state").GetString());
+            Assert.Equal(0, Owner(reader).DiagnosticRequestCount);
+        }
+        finally { await reader.StopAsync(default); }
+    }
+
+    private static WebApplication BuildDebugApp(EtwCpuCoreResidencyReader reader)
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Services.AddResourceManagerApp(["--no-native-ui"], StartupCapabilitySet.NormalReadOnly);
+        TrustedAccessEndpointTestAuthentication.Add(builder.Services, "processes.read");
+        builder.Services.RemoveAll<IHostedService>();
+        builder.Services.AddSingleton(reader);
+        var app = TrustedAccessEndpointTestAuthentication.Build(builder);
+        typeof(ResourceManagerEndpointRouteBuilderExtensions).GetMethod("MapDebugEndpoints", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [app]);
+        return app;
+    }
+
+    private static HttpClient DebugClient(WebApplication app, TimeSpan timeout)
+        => TrustedAccessEndpointTestAuthentication.Apply(new HttpClient
+        {
+            BaseAddress = new Uri(Assert.Single(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses)),
+            Timeout = timeout
+        }, app.Services);
 
     [Fact]
     public async Task AHandleExitedBeforeTheWindowCannotEnrichLaterExecutionUsingTheSameThreadId()
@@ -144,7 +221,13 @@ public sealed class ThreadCpuDiagnosticsTests
         var capture = reader.CaptureThreadWindowAsync("cancel", process.Id, process.StartTime.ToUniversalTime().ToFileTimeUtc(), cancellation.Token);
         Assert.Equal(1, Owner(reader).DiagnosticRequestCount);
         cancellation.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => capture);
+        var canceled = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => capture);
+        var wait = Assert.IsType<ThreadCpuWindowWaitCanceledException>(canceled).Diagnostics;
+        Assert.Equal("fresh-closed-window", wait.WaitingFor);
+        Assert.Equal(0, wait.PublicationsObserved);
+        Assert.Null(wait.LastWindow);
+        Assert.Null(wait.WorkerStatus);
+        Assert.Equal(cancellation.Token, canceled.CancellationToken);
         Assert.Equal(0, Owner(reader).DiagnosticRequestCount);
         Assert.Equal(0, broker.Windows);
     }
@@ -188,7 +271,8 @@ public sealed class ThreadCpuDiagnosticsTests
         while (!condition()) await Task.Delay(5, timeout.Token);
     }
     private static void FeedWindow(EtwCpuCoreResidencyReader reader, HostManagerSamplingSubscriptionTestFixture sampling,
-        int pid, long birth, int tid, bool exited, int secondTid = 0, Action? duringWindow = null)
+        int pid, long birth, int tid, bool exited, int secondTid = 0, Action? duringWindow = null,
+        TimeSpan timestampOffset = default)
     {
         var session = typeof(EtwCpuResidencyCaptureOwner).GetField("activeSession", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(Owner(reader))!;
         var buffer = (CpuResidencyAggregationBuffer)session.GetType().GetProperty("Buffer")!.GetValue(session)!;
@@ -196,7 +280,7 @@ public sealed class ThreadCpuDiagnosticsTests
         var plan = sampling.Provider.Current.HostManager.CpuCoreResidency;
         var processors = plan.PhysicalCoreByLogicalProcessor.Keys.Order().ToArray();
         var start = Stopwatch.GetTimestamp();
-        var now = DateTimeOffset.UtcNow;
+        var now = DateTimeOffset.UtcNow + timestampOffset;
         var duration = Stopwatch.Frequency * plan.ObservationWindowMilliseconds / 1000;
         buffer.ObserveProcessStart(start, now, pid, (ulong)pid, birth, "recorded-thread-cpu");
         buffer.ObserveThreadStart(start, now, pid, tid);
