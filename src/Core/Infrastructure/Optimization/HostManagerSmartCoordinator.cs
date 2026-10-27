@@ -86,7 +86,7 @@ public sealed partial class HostManagerSmartCoordinator(
     private bool legacyStatePrepared;
     // 调度循环存活且上一周期没有失败；与模式无关。状态读取时再和当前模式、故障关闭合成，
     // 这样刚切换模式、循环还没跑到下一周期时，状态也不会沿用上一个模式的结论。
-    private bool schedulerRunning;
+    private volatile bool schedulerRunning;
     private int foregroundControlRequestCount;
     private readonly ResourceManagerSelfLocalResourceManager selfLocalResourceManagerOwner =
         selfLocalResourceManager ?? throw new ArgumentNullException(
@@ -111,37 +111,26 @@ public sealed partial class HostManagerSmartCoordinator(
     public async Task<HostManagerSmartCoordinatorStatus> GetStatusAsync(CancellationToken cancellationToken)
     {
         RequireOperationAdmission();
-        await gate.WaitAsync(cancellationToken);
-        try
-        {
-            RequireOperationAdmission();
-            // Observation uses the store's synchronized snapshot; it does not settle or mutate GPU work.
-            var state = await stateStore.LoadAsync(cancellationToken);
-            return await CreateStatusAsync(
-                runtimePlanProvider.Current.OptimizationMode.Mode,
-                ProjectNativeState(state),
-                cancellationToken);
-        }
-        finally
-        {
-            gate.Release();
-        }
+        cancellationToken.ThrowIfCancellationRequested();
+        // Stores own their synchronization. Native data is the last published segment,
+        // so observation never borrows a workspace or waits for the round gate.
+        var state = await stateStore.LoadAsync(cancellationToken);
+        RequireOperationAdmission();
+        var observation = Volatile.Read(ref publishedObservation);
+        return await CreateStatusAsync(
+            runtimePlanProvider.Current.OptimizationMode.Mode,
+            ProjectNativeState(state, observation),
+            cancellationToken,
+            observation);
     }
 
     public async Task<HostManagerRollbackStateDocument> GetStateAsync(CancellationToken cancellationToken)
     {
         RequireOperationAdmission();
-        await gate.WaitAsync(cancellationToken);
-        try
-        {
-            RequireOperationAdmission();
-            var state = await stateStore.LoadAsync(cancellationToken);
-            return ProjectNativeState(state);
-        }
-        finally
-        {
-            gate.Release();
-        }
+        cancellationToken.ThrowIfCancellationRequested();
+        var state = await stateStore.LoadAsync(cancellationToken);
+        RequireOperationAdmission();
+        return ProjectNativeState(state);
     }
 
     public async Task<HostManagerSmartCoordinatorStatus> SetModeAsync(

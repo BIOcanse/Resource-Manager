@@ -7,48 +7,66 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 public sealed partial class HostManagerSmartCoordinator
 {
     private HostManagerCycleActionBudgetDiagnostics? lastCycleActionBudget;
-    internal async Task<HostManagerDecisionDiagnosticsSnapshot>
+
+    // Coordinator-owned derived current value, never a native workspace borrow.
+    // Replaced only after the segment has settled, while its caller owns gate.
+    private sealed record PublishedObservation(
+        NativeSmartCoordinatorSnapshot? NativeSnapshot,
+        NativeSmartCoordinatorSnapshotRow[] NativeRows,
+        HostManagerDecisionDiagnosticsSnapshot Decisions);
+
+    private PublishedObservation publishedObservation = new(null, [], new(
+        "resource-manager-smart-decision-diagnostics-v2",
+        DateTimeOffset.UtcNow,
+        runtimePlanProvider.Current.Version,
+        runtimePlanProvider.Current.OptimizationMode.Mode,
+        false,
+        ProjectSchedulingAuthorityDiagnostics(schedulingAuthority.Capture()),
+        null,
+        []));
+
+    internal Task<HostManagerDecisionDiagnosticsSnapshot>
         GetDecisionDiagnosticsAsync(CancellationToken cancellationToken)
     {
         RequireOperationAdmission();
-        await gate.WaitAsync(cancellationToken);
-        try
-        {
-            RequireOperationAdmission();
-            var runtimePlan = runtimePlanProvider.Current;
-            var authority = schedulingAuthorityOwner.Capture();
-            var memoryProjection = NonAdaptedMemoryModeProjection;
-            var workspace = nativeWorkspace;
-            var schedulingEnabled = runtimePlan.OptimizationMode.SchedulingEnabled;
-            var native = !schedulingEnabled || workspace is null
-                ? null
-                : ProjectNativeDiagnostics(
-                    workspace.Snapshot,
-                    workspace.CurrentSnapshotRows.ToArray());
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(Volatile.Read(ref publishedObservation).Decisions);
+    }
 
-            return new HostManagerDecisionDiagnosticsSnapshot(
-                "resource-manager-smart-decision-diagnostics-v2",
-                DateTimeOffset.UtcNow,
-                runtimePlan.Version,
-                runtimePlan.OptimizationMode.Mode,
-                schedulerRunning && schedulingEnabled,
-                ProjectSchedulingAuthorityDiagnostics(authority),
-                native,
-                ProjectNonAdaptedMemoryDiagnostics(memoryProjection))
-            {
-                ActionBudget = lastCycleActionBudget,
-                NonAdaptedMemorySkipCounts = ProjectMemoryDirectiveSkipCounts(),
-                FactExclusionCount = cycleFactExclusions.Count,
-                FactExclusionCounts = cycleFactExclusions.GroupBy(e => (e.Fact, e.Reason))
-                    .Select(g => new HostManagerFactExclusionCount(g.Key.Fact, g.Key.Reason, g.Count())).ToArray(),
-                FactExclusions = cycleFactExclusions.Take(64).Select(e => new HostManagerFactExclusionDiagnostics(
-                    e.ProcessId, e.ProcessStartKey?.ToString(CultureInfo.InvariantCulture), e.TargetId, e.Fact, e.Reason)).ToArray()
-            };
-        }
-        finally
+    private void PublishObservation()
+    {
+        var runtimePlan = runtimePlanProvider.Current;
+        var authority = schedulingAuthorityOwner.Capture();
+        var memoryProjection = NonAdaptedMemoryModeProjection;
+        var workspace = nativeWorkspace;
+        var snapshot = workspace?.Snapshot;
+        var rows = workspace?.CurrentSnapshotRows.ToArray() ?? [];
+        var schedulingEnabled = runtimePlan.OptimizationMode.SchedulingEnabled;
+        var native = !schedulingEnabled || workspace is null
+            ? null
+            : ProjectNativeDiagnostics(
+                snapshot!.Value,
+                rows);
+
+        var decisions = new HostManagerDecisionDiagnosticsSnapshot(
+            "resource-manager-smart-decision-diagnostics-v2",
+            DateTimeOffset.UtcNow,
+            runtimePlan.Version,
+            runtimePlan.OptimizationMode.Mode,
+            schedulerRunning && schedulingEnabled,
+            ProjectSchedulingAuthorityDiagnostics(authority),
+            native,
+            ProjectNonAdaptedMemoryDiagnostics(memoryProjection))
         {
-            gate.Release();
-        }
+            ActionBudget = lastCycleActionBudget,
+            NonAdaptedMemorySkipCounts = ProjectMemoryDirectiveSkipCounts(),
+            FactExclusionCount = cycleFactExclusions.Count,
+            FactExclusionCounts = cycleFactExclusions.GroupBy(e => (e.Fact, e.Reason))
+                .Select(g => new HostManagerFactExclusionCount(g.Key.Fact, g.Key.Reason, g.Count())).ToArray(),
+            FactExclusions = cycleFactExclusions.Take(64).Select(e => new HostManagerFactExclusionDiagnostics(
+                e.ProcessId, e.ProcessStartKey?.ToString(CultureInfo.InvariantCulture), e.TargetId, e.Fact, e.Reason)).ToArray()
+        };
+        Volatile.Write(ref publishedObservation, new(snapshot, rows, decisions));
     }
 
     private static HostManagerSchedulingAuthorityDiagnostics

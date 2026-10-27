@@ -6,12 +6,14 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 
 public sealed partial class HostManagerSmartCoordinator
 {
-    // 调用方持有 gate：读取期间没有周期在改所有权、验证作用域或原生工作区。
+    // Each owner supplies a synchronized current value; no round gate or workspace borrow.
     private async Task<HostManagerSmartCoordinatorStatus> CreateStatusAsync(
         string mode,
         HostManagerRollbackStateDocument state,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        PublishedObservation? observation = null)
     {
+        observation ??= Volatile.Read(ref publishedObservation);
         var normalizedMode = HostManagerOptimizationModes.Normalize(mode);
         var faultClosedReason = ReadFaultClosedReason();
         // 账本尚未打开时还没有已知的所有权，和原生工作区尚未建立时一样计为没有对象。
@@ -27,21 +29,11 @@ public sealed partial class HostManagerSmartCoordinator
                 && faultClosedReason is null,
             state.LastRunAt,
             state.LastRestoreAt,
-            checked((int)(nativeWorkspace?.Snapshot.PendingCount ?? 0)),
-            CountCurrentAppliedTargets(state, memoryOwners),
+            checked((int)(observation.NativeSnapshot?.PendingCount ?? 0)),
+            CountAppliedTargets(state.AppliedPlacements, observation.NativeRows, memoryOwners),
             faultClosedReason,
             state.Coordinator);
     }
-
-    private int CountCurrentAppliedTargets(
-        HostManagerRollbackStateDocument state,
-        IReadOnlyCollection<NativeAppliedOwnershipProcessIdentity> memoryOwners)
-        => CountAppliedTargets(
-            state.AppliedPlacements,
-            nativeWorkspace is null
-                ? ReadOnlySpan<NativeSmartCoordinatorSnapshotRow>.Empty
-                : nativeWorkspace.CurrentSnapshotRows,
-            memoryOwners);
 
     /// <summary>
     /// 验证作用域故障或过期时，运行时拒绝一切新的效果准入（故障关闭）。返回原因码；正常准入时返回 null。

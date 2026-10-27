@@ -29,6 +29,7 @@ public sealed partial class HostManagerSmartCoordinator
         {
             CompleteMemoryDirectiveDiagnostics();
         }
+        PublishObservation();
         if (completed.CompletedAdmission is not { } admission) return completed;
 
         foreach (var planned in firstUse)

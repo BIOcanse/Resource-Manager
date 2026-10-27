@@ -930,13 +930,16 @@ public sealed partial class HostManagerSmartCoordinator
             HostManagerModuleKind.SmartCoordinator);
 
     private HostManagerRollbackStateDocument ProjectNativeState(HostManagerRollbackStateDocument state)
+        => ProjectNativeState(state, Volatile.Read(ref publishedObservation));
+
+    private static HostManagerRollbackStateDocument ProjectNativeState(
+        HostManagerRollbackStateDocument state, PublishedObservation observation)
     {
-        if (nativeWorkspace is null)
+        if (observation.NativeSnapshot is not { } snapshot)
         {
             return state;
         }
 
-        var snapshot = nativeWorkspace.Snapshot;
         return state with
         {
             LastRunAt = snapshot.ObservedAtMilliseconds == 0

@@ -65,6 +65,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     {
         await using var fixture = await CreateMemorySkipFixtureAsync();
         ResetMemorySkipOutcomes(fixture.Coordinator);
+        PublishMemorySkipTestSegment(fixture.Coordinator);
 
         await AssertMemorySkipAsync(fixture, "memory_stage_not_reached");
     }
@@ -295,6 +296,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 HostManagerProcessPolicyTransactionFields.MemoryPriority, MemorySkipPid, checked((long)MemorySkipStart), [0]);
 
         Assert.True(fixture.Coordinator.TryRecordMemoryCaptureSkip(directive, capture, 3));
+        PublishMemorySkipTestSegment(fixture.Coordinator);
         await AssertMemorySkipAsync(fixture, expectedReason);
     }
 
@@ -381,7 +383,15 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     maximumTransactions, allowFresh, CancellationToken.None])!;
             await work;
         }
+        PublishMemorySkipTestSegment(fixture.Coordinator);
     }
+
+    // These tests execute an individual private effect stage instead of a round.
+    // Complete its observation publication explicitly, just as the real segment does.
+    private static void PublishMemorySkipTestSegment(HostManagerSmartCoordinator coordinator)
+        => typeof(HostManagerSmartCoordinator)
+            .GetMethod("PublishObservation", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(coordinator, null);
 
     private static async Task ReconcileMemorySkipPayloadsAsync(HostManagerSmartCoordinator coordinator,
         HostManagerTransactionJournalAdmission admission)
