@@ -286,7 +286,7 @@ public sealed class HostMemoryDiskReservesTests(ITestOutputHelper output)
         if (!OperatingSystem.IsWindows()) return;
         if (string.IsNullOrWhiteSpace(SecondTestRoot()))
         {
-            output.WriteLine("Neither RM_MEMORY_RESERVE_TEST_ROOT nor RM_REVIEW_SCRATCH is configured. Other facts verify logical two-entry behavior; this run does not claim physical cross-volume coverage.");
+            output.WriteLine("RM_MEMORY_RESERVE_TEST_ROOT is not configured. Other facts verify logical two-entry behavior; this run does not claim physical cross-volume coverage.");
             return;
         }
         using var directories = new OwnedDirectories(output);
@@ -373,8 +373,8 @@ public sealed class HostMemoryDiskReservesTests(ITestOutputHelper output)
 
     private static string? SecondTestRoot()
     {
-        var configured = Environment.GetEnvironmentVariable("RM_MEMORY_RESERVE_TEST_ROOT");
-        return string.IsNullOrWhiteSpace(configured) ? Environment.GetEnvironmentVariable("RM_REVIEW_SCRATCH") : configured;
+        // Only this variable names a root chosen for another volume; general scratch roots can share the temp volume.
+        return Environment.GetEnvironmentVariable("RM_MEMORY_RESERVE_TEST_ROOT");
     }
 
     private static string VolumeRoot(string path)

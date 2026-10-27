@@ -124,7 +124,8 @@ public sealed class StateRegistryTests
         Assert.Equal(mapping.Keys.Except(inactive).Order(), production.Order());
         Assert.All(production, id => Assert.Single(registered, uid => uid == mapping[id]));
         if (process == "backend")
-            Assert.Equal(registered.Except(inactive.Select(id => mapping[id])), production.Select(id => mapping[id]));
+            // UIDs fill the smallest free number, so a block added later need not follow registration order.
+            Assert.Equal(registered.Except(inactive.Select(id => mapping[id])).Order(), production.Select(id => mapping[id]).Order());
     }
 
     private static string RegistryPath([CallerFilePath] string source = "")
