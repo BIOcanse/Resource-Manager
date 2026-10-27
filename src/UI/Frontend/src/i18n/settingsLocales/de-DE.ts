@@ -1,4 +1,5 @@
 import { createSettingsLocale } from "../settingsLocaleFactory.ts";
+import { plural } from "../plural.ts";
 
 export default createSettingsLocale("de-DE", {
   "updates": {
@@ -72,6 +73,7 @@ export default createSettingsLocale("de-DE", {
     "performance": "Leistung",
     "memoryProtection": "Speicherschutz des Hosts",
     "appearance": "Darstellung",
+    "performanceOverlay": "Leistungs-Overlay",
     "systemIntegration": "Systemintegration",
     "updates": "Updates und Versionen",
     "debug": "Debug",
@@ -469,6 +471,18 @@ export default createSettingsLocale("de-DE", {
     "hostManagerSmartCoordinatorScoreOnlyDescription": "Überwachung und Planung fortsetzen, ohne Software- oder Hardwarezustände zu ändern.",
     "hostManagerSmartCoordinatorPerformanceLogTitle": "Planungsleistung protokollieren",
     "hostManagerSmartCoordinatorPerformanceLogDescription": "Planungsdauer und Last protokollieren, um den Eigenaufwand von Resource Manager zu untersuchen."
+  },
+  "performanceOverlay": {
+    "intro": "Listet die Software auf, für die ein Overlay aktiviert ist. Angezeigt werden die gespeicherten Einstellungen, nicht ob ein Overlay gerade sichtbar ist.",
+    "loading": "Overlay-Einstellungen werden gelesen",
+    "loadFailed": "Die Overlay-Einstellungen konnten nicht gelesen werden",
+    "emptyTitle": "Für keine Software ist ein Overlay aktiviert",
+    "emptyDetail": (tab: string) => `Zum Aktivieren die Details einer Software öffnen und den Tab „${tab}“ wählen.`,
+    "metricCount": (count: number) => plural("de-DE", count, { one: "{count} Metrik", other: "{count} Metriken" }),
+    "position": (anchor: string) => `Position: ${anchor}`,
+    "open": "Overlay-Einstellungen öffnen",
+    "openLabel": (name: string) => `Overlay-Einstellungen für ${name} öffnen`,
+    "softwareMissing": "Diese Software ist nicht mehr in der Softwareliste; ihre Details können nicht geöffnet werden."
   },
   "credits": {
     "heroTitle": "Danke an alle Menschen und Projekte, die Resource Manager möglich machen",

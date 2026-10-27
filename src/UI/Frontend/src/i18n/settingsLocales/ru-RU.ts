@@ -1,4 +1,5 @@
 import { createSettingsLocale } from "../settingsLocaleFactory.ts";
+import { plural } from "../plural.ts";
 
 export default createSettingsLocale("ru-RU", {
   "updates": {
@@ -72,6 +73,7 @@ export default createSettingsLocale("ru-RU", {
     "performance": "Производительность",
     "memoryProtection": "Защита памяти компьютера",
     "appearance": "Внешний вид",
+    "performanceOverlay": "Наложение производительности",
     "systemIntegration": "Интеграция с системой",
     "updates": "Обновления и версии",
     "debug": "Отладка",
@@ -469,6 +471,18 @@ export default createSettingsLocale("ru-RU", {
     "hostManagerSmartCoordinatorScoreOnlyDescription": "Продолжать мониторинг и расчёт планирования без изменения состояния программ или оборудования.",
     "hostManagerSmartCoordinatorPerformanceLogTitle": "Записывать производительность планирования",
     "hostManagerSmartCoordinatorPerformanceLogDescription": "Записывать длительность и нагрузку планирования для анализа собственных затрат Resource Manager."
+  },
+  "performanceOverlay": {
+    "intro": "Список программ, для которых включено наложение. Показаны сохранённые настройки, а не то, отображается ли наложение сейчас.",
+    "loading": "Чтение настроек наложения",
+    "loadFailed": "Не удалось прочитать настройки наложения",
+    "emptyTitle": "Ни для одной программы наложение не включено",
+    "emptyDetail": (tab: string) => `Чтобы включить его, откройте сведения о программе и перейдите на вкладку «${tab}».`,
+    "metricCount": (count: number) => plural("ru-RU", count, { one: "{count} метрика", few: "{count} метрики", many: "{count} метрик", other: "{count} метрики" }),
+    "position": (anchor: string) => `Положение: ${anchor}`,
+    "open": "Открыть настройки наложения",
+    "openLabel": (name: string) => `Открыть настройки наложения для ${name}`,
+    "softwareMissing": "Этой программы больше нет в списке программ, поэтому её сведения открыть нельзя."
   },
   "credits": {
     "heroTitle": "Спасибо всем людям и проектам, благодаря которым существует Resource Manager",

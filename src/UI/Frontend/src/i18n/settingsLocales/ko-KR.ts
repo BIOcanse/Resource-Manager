@@ -72,6 +72,7 @@ export default createSettingsLocale("ko-KR", {
     "performance": "성능",
     "memoryProtection": "호스트 메모리 보호",
     "appearance": "모양",
+    "performanceOverlay": "성능 오버레이",
     "systemIntegration": "시스템 통합",
     "updates": "업데이트 및 버전",
     "debug": "디버그",
@@ -469,6 +470,18 @@ export default createSettingsLocale("ko-KR", {
     "hostManagerSmartCoordinatorScoreOnlyDescription": "모니터링과 스케줄링 결과 생성을 계속하되 소프트웨어 및 하드웨어 상태는 변경하지 않습니다.",
     "hostManagerSmartCoordinatorPerformanceLogTitle": "스케줄링 성능 기록",
     "hostManagerSmartCoordinatorPerformanceLogDescription": "스케줄링 시간과 부하를 기록하여 Resource Manager 자체의 오버헤드를 조사합니다."
+  },
+  "performanceOverlay": {
+    "intro": "오버레이가 켜진 소프트웨어를 나열합니다. 표시되는 내용은 저장된 설정이며, 오버레이가 현재 표시되고 있는지는 나타내지 않습니다.",
+    "loading": "오버레이 설정을 읽는 중",
+    "loadFailed": "오버레이 설정을 읽지 못했습니다",
+    "emptyTitle": "오버레이가 켜진 소프트웨어가 없습니다",
+    "emptyDetail": (tab: string) => `켜려면 소프트웨어 세부 정보를 열고 '${tab}' 탭으로 이동하세요.`,
+    "metricCount": (count: number) => `메트릭 ${count}개`,
+    "position": (anchor: string) => `위치: ${anchor}`,
+    "open": "오버레이 설정 열기",
+    "openLabel": (name: string) => `${name}의 오버레이 설정 열기`,
+    "softwareMissing": "이 소프트웨어는 더 이상 소프트웨어 목록에 없으므로 세부 정보를 열 수 없습니다."
   },
   "credits": {
     "heroTitle": "Resource Manager 를 가능하게 만든 모든 사람과 프로젝트에 감사드립니다",

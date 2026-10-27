@@ -76,7 +76,9 @@ assert.doesNotMatch(componentCard, /onContextMenu|MoreActionsButton|softwareCont
 
 // Draft settings belong to one settings-page visit and read-only credits own no edit toolbar.
 assert.match(settingsWorkspace, /onCleanup\(settings\.discardDraftChanges\)/);
-assert.match(settingsPage, /settingsReady\(\) && props\.activeSection !== "credits"/);
+// The read-only overlay overview and credits own no edit toolbar either.
+assert.match(settingsPage, /settingsReady\(\) && !readOnlySections\.has\(props\.activeSection\)/);
+assert.match(settingsPage, /readOnlySections: ReadonlySet<SettingsSection> = new Set\(\["performanceOverlay", "credits"\]\)/);
 for (const control of [
   "onAnimationStyleChange",
   "onAutoDisableAnimationsChange",

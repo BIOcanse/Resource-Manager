@@ -1,4 +1,5 @@
 import { createSettingsLocale } from "../settingsLocaleFactory.ts";
+import { plural } from "../plural.ts";
 
 export default createSettingsLocale("fr-FR", {
   "updates": {
@@ -72,6 +73,7 @@ export default createSettingsLocale("fr-FR", {
     "performance": "Performances",
     "memoryProtection": "Protection de la mémoire de l’hôte",
     "appearance": "Apparence",
+    "performanceOverlay": "Superposition de performances",
     "systemIntegration": "Intégration système",
     "updates": "Mises à jour et versions",
     "debug": "Débogage",
@@ -469,6 +471,18 @@ export default createSettingsLocale("fr-FR", {
     "hostManagerSmartCoordinatorScoreOnlyDescription": "Continuer la surveillance et le calcul de planification sans modifier l’état logiciel ou matériel.",
     "hostManagerSmartCoordinatorPerformanceLogTitle": "Enregistrer les performances de planification",
     "hostManagerSmartCoordinatorPerformanceLogDescription": "Enregistrer les durées et la charge de planification pour analyser le coût propre à Resource Manager."
+  },
+  "performanceOverlay": {
+    "intro": "Liste les logiciels dont la superposition est activée. Les paramètres enregistrés sont affichés, et non l’état d’affichage actuel de la superposition.",
+    "loading": "Lecture des paramètres de superposition",
+    "loadFailed": "Échec de la lecture des paramètres de superposition",
+    "emptyTitle": "Aucun logiciel n’a de superposition activée",
+    "emptyDetail": (tab: string) => `Pour l’activer, ouvrez les détails du logiciel puis l’onglet « ${tab} ».`,
+    "metricCount": (count: number) => plural("fr-FR", count, { one: "{count} métrique", many: "{count} métriques", other: "{count} métriques" }),
+    "position": (anchor: string) => `Position : ${anchor}`,
+    "open": "Ouvrir les paramètres de superposition",
+    "openLabel": (name: string) => `Ouvrir les paramètres de superposition de ${name}`,
+    "softwareMissing": "Ce logiciel ne figure plus dans la liste des logiciels ; ses détails ne peuvent pas être ouverts."
   },
   "credits": {
     "heroTitle": "Merci à chaque personne et projet qui rend Resource Manager possible",

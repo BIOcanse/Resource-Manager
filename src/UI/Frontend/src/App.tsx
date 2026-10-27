@@ -408,6 +408,8 @@ export default function App() {
           contextMenuOpen={softwareActions.contextMenu() !== null}
           onManagementSoftwareContextMenu={softwareActions.openManagementSoftwareContextMenu}
           onOpenSoftwareDetail={softwareActions.openSoftwareDetail}
+          softwareDetailOpen={softwareActions.softwareDetail() !== null}
+          onOpenSoftwareOverlay={(software) => softwareActions.openSoftwareDetail("software", software, "overlay")}
           onOpenSoftwareSettingsById={(softwareId, softwareName) =>
             void softwareActions.openSoftwareSettingsById(softwareId, softwareName)}
           onNotice={(message) => showToast({
@@ -434,6 +436,7 @@ export default function App() {
       />
       <SoftwareDetailModal
         detail={softwareActions.softwareDetail()}
+        initialTab={softwareActions.softwareDetailTab()}
         notice={softwareActions.softwareDetailNotice()}
         actionInProgress={softwareActions.softwareDetailActionInProgress()}
         gpuPlacementEnabled={runtimeCapabilities.gpuPlacementEnabled()}

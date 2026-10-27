@@ -3,7 +3,7 @@ import { StableLabel } from "../ui/primitives/StableLabel.tsx";
 import { formatGpuProviderCapability, formatGpuLaunchOutcome } from "./gpuPlacementPresentation.ts";
 import { useFrontendReadIntervals } from "../app/FrontendReadIntervalsContext.tsx";
 import { RuntimePolicyDeliveryNotice } from "./RuntimePolicyDeliveryNotice";
-import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, Show, untrack } from "solid-js";
 import { AlertTriangle, FolderOpen } from "lucide-solid";
 import { getDefaultGpuPlacementSoftwarePolicy } from "../api";
 import { useFrontendRuntime } from "../frontendRuntime/FrontendRuntimeContext";
@@ -34,7 +34,8 @@ import type {
   GpuPlacementProcessPolicy,
   GpuPlacementSoftwarePolicy,
   GpuPlacementSoftwareSettingsSnapshot,
-  SoftwareDetailModel
+  SoftwareDetailModel,
+  SoftwareDetailTabId
 } from "../types";
 import {
   userFacingDateTime,
@@ -59,10 +60,12 @@ import { useSource } from "../frontendRuntime/source/useSource.ts";
 import { memoryProtectionDemand } from "../data/memoryProtection/memoryProtectionDemand.ts";
 
 type ScalarDetailValueType = Exclude<DetailValue, DetailValue[]>;
-type DetailTabId = "overview" | "policy" | "processes" | "overlay";
+type DetailTabId = SoftwareDetailTabId;
 
 interface SoftwareDetailModalProps {
   detail: SoftwareDetailModel | null;
+  /** 打开时停在哪个分页（这个软件不显示该分页时回到概览）。 */
+  initialTab: SoftwareDetailTabId;
   notice: DetailNotice | null;
   actionInProgress: boolean;
   gpuPlacementEnabled: boolean;
@@ -154,17 +157,21 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
   });
   const processHistory = () => props.gpuPlacementSettings?.processHistory?.processes ?? [];
 
-  createEffect(() => {
+  // 只在打开（换了软件或从关着到开着）时选分页；同一个软件的模型更新（例如软件元数据到达）不把用户切走。
+  const openedDetail = createMemo(() => {
     const model = detail();
-    if (!model) {
+    return model ? `${model.type}:${model.id}` : null;
+  });
+  createEffect(on(openedDetail, (opened) => {
+    if (!opened) {
       setActiveTab("overview");
       setSelectedProcessKey(null);
       setNoticeDetailsOpen(false);
       return;
     }
 
-    setActiveTab("overview");
-  });
+    setActiveTab(untrack(() => props.initialTab));
+  }));
 
   createEffect(() => {
     if (!tabs().includes(activeTab())) {

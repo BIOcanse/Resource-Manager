@@ -71,6 +71,7 @@ export default createSettingsLocale("zh-TW", {
     "performance": "效能",
     "memoryProtection": "主機記憶體保護",
     "appearance": "外觀",
+    "performanceOverlay": "效能浮層",
     "systemIntegration": "系統整合",
     "updates": "更新與版本",
     "debug": "偵錯",
@@ -468,6 +469,18 @@ export default createSettingsLocale("zh-TW", {
     "hostManagerSmartCoordinatorScoreOnlyDescription": "繼續監控並產生排程結果，但不實際變更軟體或硬體狀態。",
     "hostManagerSmartCoordinatorPerformanceLogTitle": "記錄排程效能",
     "hostManagerSmartCoordinatorPerformanceLogDescription": "記錄排程耗時與負載，用於排查 Resource Manager 自身開銷。"
+  },
+  "performanceOverlay": {
+    "intro": "列出已啟用疊加層的軟體。此處顯示的是已儲存的設定，不代表疊加層目前已經顯示。",
+    "loading": "正在讀取疊加層設定",
+    "loadFailed": "疊加層設定讀取失敗",
+    "emptyTitle": "沒有軟體啟用疊加層",
+    "emptyDetail": (tab: string) => `在軟體的詳細資訊中開啟「${tab}」分頁即可啟用。`,
+    "metricCount": (count: number) => `${count} 項指標`,
+    "position": (anchor: string) => `位置：${anchor}`,
+    "open": "開啟疊加層設定",
+    "openLabel": (name: string) => `開啟「${name}」的疊加層設定`,
+    "softwareMissing": "軟體清單中已沒有這個軟體，無法開啟其詳細資訊。"
   },
   "credits": {
     "heroTitle": "授權與鳴謝",

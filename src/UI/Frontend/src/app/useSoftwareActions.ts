@@ -51,7 +51,8 @@ import type {
   PageId,
   SoftwareDetailModel,
   SoftwareRecord,
-  SystemProcessOperationResult
+  SystemProcessOperationResult,
+  SoftwareDetailTabId
 } from "../types";
 import {
   formatBoolean,
@@ -106,6 +107,8 @@ interface UseSoftwareActionsOptions {
 export function useSoftwareActions(options: UseSoftwareActionsOptions) {
   const { monitor, management, setActivePage, openManagementSubpage, confirmDialog, showToast, showErrorToast } = options;
   const [softwareDetail, setSoftwareDetail] = createSignal<SoftwareDetailModel | null>(null);
+  // 打开详细信息时停在哪个分页；省略时是概览。
+  const [softwareDetailTab, setSoftwareDetailTab] = createSignal<SoftwareDetailTabId>("overview");
   const [softwareDetailNotice, setSoftwareDetailNotice] = createSignal<DetailNotice | null>(null);
   const [softwareDetailActionInProgress, setSoftwareDetailActionInProgress] = createSignal(false);
   const [gpuPlacementSettings, setGpuPlacementSettings] = createSignal<GpuPlacementSoftwareSettingsSnapshot | null>(null);
@@ -368,8 +371,9 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
     });
   }
 
-  function openSoftwareDetail(type: "component" | "software", value: ManagedComponent | SoftwareRecord) {
+  function openSoftwareDetail(type: "component" | "software", value: ManagedComponent | SoftwareRecord, tab: SoftwareDetailTabId = "overview") {
     const model = createSoftwareDetailModel(type, value);
+    setSoftwareDetailTab(tab);
     setSoftwareDetail(model);
     setSoftwareDetailNotice(null);
     setGpuPlacementSettings(null);
@@ -778,6 +782,7 @@ export function useSoftwareActions(options: UseSoftwareActionsOptions) {
 
   return {
     softwareDetail,
+    softwareDetailTab,
     softwareDetailNotice,
     softwareDetailActionInProgress,
     gpuPlacementSettings,

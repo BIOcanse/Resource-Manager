@@ -51,7 +51,7 @@ export const loadingSettingsText: SettingsTextBundle = {
   updates: loadingUpdatesCopy,
   language: "zh-CN",
   navigationLabel: "",
-  sections: { performance: "", memoryProtection: "", appearance: "", systemIntegration: "", updates: "", debug: "", credits: "" },
+  sections: { performance: "", memoryProtection: "", appearance: "", performanceOverlay: "", systemIntegration: "", updates: "", debug: "", credits: "" },
   saveState: { saving: "", saved: "", constrained: "", partial: "", error: "", dirty: "", conflict: "" },
   loadState: {
     loading: "",
@@ -318,6 +318,18 @@ export const loadingSettingsText: SettingsTextBundle = {
     hostManagerSmartCoordinatorScoreOnlyDescription: "",
     hostManagerSmartCoordinatorPerformanceLogTitle: "",
     hostManagerSmartCoordinatorPerformanceLogDescription: ""
+  },
+  performanceOverlay: {
+    intro: "",
+    loading: "",
+    loadFailed: "",
+    emptyTitle: "",
+    emptyDetail: () => "",
+    metricCount: () => "",
+    position: () => "",
+    open: "",
+    openLabel: () => "",
+    softwareMissing: ""
   },
   credits: {
     heroTitle: "",

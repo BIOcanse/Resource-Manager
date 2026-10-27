@@ -72,6 +72,7 @@ export default createSettingsLocale("ja-JP", {
     "performance": "パフォーマンス",
     "memoryProtection": "ホスト メモリ保護",
     "appearance": "外観",
+    "performanceOverlay": "パフォーマンス オーバーレイ",
     "systemIntegration": "システム統合",
     "updates": "更新とバージョン",
     "debug": "デバッグ",
@@ -469,6 +470,18 @@ export default createSettingsLocale("ja-JP", {
     "hostManagerSmartCoordinatorScoreOnlyDescription": "監視とスケジューリング結果の生成を続けますが、ソフトウェアやハードウェアの状態は変更しません。",
     "hostManagerSmartCoordinatorPerformanceLogTitle": "スケジューリング性能を記録",
     "hostManagerSmartCoordinatorPerformanceLogDescription": "スケジューリング時間と負荷を記録し、Resource Manager 自身の処理負荷を調べます。"
+  },
+  "performanceOverlay": {
+    "intro": "オーバーレイが有効なソフトウェアを一覧表示します。表示されるのは保存済みの設定で、オーバーレイが現在表示されているかどうかではありません。",
+    "loading": "オーバーレイ設定を読み取っています",
+    "loadFailed": "オーバーレイ設定の読み取りに失敗しました",
+    "emptyTitle": "オーバーレイが有効なソフトウェアはありません",
+    "emptyDetail": (tab: string) => `有効にするには、ソフトウェアの詳細を開き [${tab}] タブを選択してください。`,
+    "metricCount": (count: number) => `メトリック ${count} 個`,
+    "position": (anchor: string) => `位置: ${anchor}`,
+    "open": "オーバーレイ設定を開く",
+    "openLabel": (name: string) => `${name} のオーバーレイ設定を開く`,
+    "softwareMissing": "このソフトウェアはソフトウェア一覧にないため、詳細を開けません。"
   },
   "credits": {
     "heroTitle": "Resource Manager を支えるすべての人とプロジェクトに感謝します",

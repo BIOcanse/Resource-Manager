@@ -61,6 +61,9 @@ interface AppRoutesProps {
   onManagementSoftwareContextMenu: (event: MouseEvent, target: SoftwareContextMenuTarget) => void;
   onOpenSoftwareDetail: (type: "component" | "software", value: ManagedComponent | SoftwareRecord) => void;
   onOpenSoftwareSettingsById: (softwareId: string, softwareName: string) => void;
+  /** 设置 → 性能浮层：软件详细信息对话框是否开着，以及打开某个软件停在叠加层分页。 */
+  softwareDetailOpen: boolean;
+  onOpenSoftwareOverlay: (software: SoftwareRecord) => void;
   onInspectOptimizationTarget: (report: OptimizationReportItem) => void;
   /** 流程提示：某个动作做不成时当场说一句，不在页面上常驻。 */
   onNotice: (message: string) => void;
@@ -137,6 +140,8 @@ export function AppRoutes(props: AppRoutesProps) {
               settings={props.settings}
               productUpdates={props.productUpdates}
               runtimeCapabilities={props.runtimeCapabilities}
+              softwareDetailOpen={props.softwareDetailOpen}
+              onOpenSoftwareOverlay={props.onOpenSoftwareOverlay}
             />
           </PageBoundary>
         </Show>

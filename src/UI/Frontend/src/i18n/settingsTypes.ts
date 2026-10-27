@@ -229,6 +229,18 @@ export interface SettingsCopy {
     hostManagerSmartCoordinatorPerformanceLogTitle: string;
     hostManagerSmartCoordinatorPerformanceLogDescription: string;
   };
+  performanceOverlay: {
+    intro: string;
+    loading: string;
+    loadFailed: string;
+    emptyTitle: string;
+    emptyDetail: (tab: string) => string;
+    metricCount: (count: number) => string;
+    position: (anchor: string) => string;
+    open: string;
+    openLabel: (name: string) => string;
+    softwareMissing: string;
+  };
   credits: {
     heroTitle: string;
     heroBody: string;

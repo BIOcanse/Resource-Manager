@@ -93,6 +93,8 @@ const defaultScenario = {
   optimizationRuntime: false,
   optimizationReports: "ready",
   smartPlacements: [],
+  // 软件列表里示例软件之外的软件（{ id, name }），设置 → 性能浮层的多软件情形用。
+  extraSoftware: [],
   // 后端调度状态（GET /api/optimization/smart/status 与它的推送订阅同源）；只写与默认值不同的字段。
   smartStatus: {},
   softwareIssues: true,
@@ -1123,7 +1125,8 @@ async function handleApi(request, response, url) {
     return json(response, 200, [{
       ...mockSoftware,
       issues: scenario.softwareIssues ? mockSoftware.issues : []
-    }]);
+    }, ...scenario.extraSoftware.map(({ id, name }, index) => ({ ...mockSoftware, id, name,
+      executablePaths: [`C:\\FrontendHarness\\${id}.exe`], processIds: [5000 + index], processNames: [`${id}.exe`], issues: [] }))]);
   }
   return json(response, 404, { error: "frontend harness route not configured" });
 }
@@ -1555,6 +1558,10 @@ function applyScenarioPatch(patch) {
   if (patch.displayEdid === "typex" && !recordedTypeXState) throw new Error("TypeX requires real RM_EDID_UI_TYPEX_STATE_JSON output; no fallback");
   Object.assign(scenario, patch);
   if (Object.hasOwn(patch, "memoryProtection")) memoryProtection.scenario(patch.memoryProtection);
+  // 启动模块登记的起始值（[{ softwareId, moduleIds }]），和界面经原生桥保存的登记同一份。
+  for (const selection of patch.startupModuleSelections ?? []) {
+    startupModuleSelections.set(selection.softwareId.toLowerCase(), { softwareId: selection.softwareId, moduleIds: [...selection.moduleIds].sort() });
+  }
   settleMockValueSlots(patch);
   if (Object.hasOwn(patch, "manualPublishPaths")) rescheduleAllNdjsonPublishers();
   if (Object.hasOwn(patch, "operations")

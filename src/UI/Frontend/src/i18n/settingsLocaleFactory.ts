@@ -1,5 +1,6 @@
 import type { ConcreteAppLanguageMode, SettingsCopy, SettingsCopyPatch, SettingsCopyPatchObject } from "./settingsTypes.ts";
 import { enUpdatesCopy, zhCnUpdatesCopy } from "./settingsUpdateCopy.ts";
+import { plural } from "./plural.ts";
 
 const zhCnSettingsCopy: SettingsCopy = {
   updates: zhCnUpdatesCopy,
@@ -8,6 +9,7 @@ const zhCnSettingsCopy: SettingsCopy = {
     performance: "性能",
     memoryProtection: "主机内存保护",
     appearance: "外观",
+    performanceOverlay: "性能浮层",
     systemIntegration: "系统集成",
     updates: "更新与版本",
     debug: "调试",
@@ -331,6 +333,18 @@ const zhCnSettingsCopy: SettingsCopy = {
     hostManagerSmartCoordinatorPerformanceLogTitle: "记录调度性能",
     hostManagerSmartCoordinatorPerformanceLogDescription: "记录调度耗时和负载，用于排查资源管理器自身开销。"
   },
+  performanceOverlay: {
+    intro: "列出已启用叠加层的软件。此处显示的是已保存的设置，不表示叠加层当前已经显示。",
+    loading: "正在读取叠加层设置",
+    loadFailed: "叠加层设置读取失败",
+    emptyTitle: "没有软件启用叠加层",
+    emptyDetail: (tab: string) => `在软件的详细信息中打开“${tab}”分页即可启用。`,
+    metricCount: (count: number) => `${count} 项指标`,
+    position: (anchor: string) => `位置：${anchor}`,
+    open: "打开叠加层设置",
+    openLabel: (name: string) => `打开“${name}”的叠加层设置`,
+    softwareMissing: "软件列表中已没有这个软件，无法打开其详细信息。"
+  },
   credits: {
     heroTitle: "许可与鸣谢",
     heroBody: "衷心感谢 Microsoft，以及 Windows、.NET、WebView2 和整个开发者社区。没有这些作者和维护者多年积累的工具、接口与基础组件，一个个人开发者不可能独自完成资源管理器。无论许可是否要求署名，我们都珍视并感谢每一份贡献。本项目独立开发，鸣谢不代表上游为本应用签名、认证或背书。",
@@ -394,6 +408,7 @@ const enSettingsCopy: SettingsCopy = {
     performance: "Performance",
     memoryProtection: "Host Memory Protection",
     appearance: "Appearance",
+    performanceOverlay: "Performance Overlay",
     systemIntegration: "System Integration",
     updates: "Updates & Versions",
     debug: "Debug",
@@ -716,6 +731,18 @@ const enSettingsCopy: SettingsCopy = {
     hostManagerSmartCoordinatorScoreOnlyDescription: "Continue monitoring and producing scheduling results without changing software or hardware state.",
     hostManagerSmartCoordinatorPerformanceLogTitle: "Record Scheduling Performance",
     hostManagerSmartCoordinatorPerformanceLogDescription: "Record scheduling duration and load to investigate Resource Manager's own overhead."
+  },
+  performanceOverlay: {
+    intro: "Lists the software that has an overlay turned on. This shows the saved settings, not whether an overlay is currently displayed.",
+    loading: "Reading overlay settings",
+    loadFailed: "Reading overlay settings failed",
+    emptyTitle: "No software has an overlay turned on",
+    emptyDetail: (tab: string) => `To turn one on, open the software's details and go to the ${tab} tab.`,
+    metricCount: (count: number) => plural("en-US", count, { one: "{count} metric", other: "{count} metrics" }),
+    position: (anchor: string) => `Position: ${anchor}`,
+    open: "Open overlay settings",
+    openLabel: (name: string) => `Open overlay settings for ${name}`,
+    softwareMissing: "This software is no longer in the software list, so its details cannot be opened."
   },
   credits: {
     heroTitle: "Licenses and credits",

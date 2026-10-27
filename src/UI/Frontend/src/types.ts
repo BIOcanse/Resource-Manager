@@ -90,7 +90,10 @@ export type AppLogicRefreshIntervalKey =
   | "monitor"
   | "resourceTable"
   | "localSystem";
-export type SettingsSection = "performance" | "memoryProtection" | "appearance" | "systemIntegration" | "updates" | "debug" | "credits";
+/** 软件详细信息对话框的分页。 */
+export type SoftwareDetailTabId = "overview" | "policy" | "processes" | "overlay";
+
+export type SettingsSection = "performance" | "memoryProtection" | "appearance" | "performanceOverlay" | "systemIntegration" | "updates" | "debug" | "credits";
 
 /** Frontend view model; backend wire facts are declared in data/monitor/metricWire.ts. */
 export interface MetricDefinition {

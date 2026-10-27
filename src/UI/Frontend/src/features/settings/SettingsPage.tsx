@@ -6,6 +6,7 @@ import { HardwareControlSettings } from "./components/HardwareControlSettings";
 import { AppearanceSettingsSection } from "./components/AppearanceSettingsSection";
 import { CreditsSettingsSection } from "./components/CreditsSettingsSection";
 import { DebugSettingsSection } from "./components/DebugSettingsSection";
+import { PerformanceOverlaySettingsSection } from "./components/PerformanceOverlaySettingsSection";
 import { PerformanceSettingsSection } from "./components/PerformanceSettingsSection";
 import { SystemIntegrationSettingsSection } from "./components/SystemIntegrationSettingsSection";
 import { UpdatesSettingsSection } from "./components/UpdatesSettingsSection";
@@ -26,7 +27,8 @@ import type {
   AppPalette,
   AppResourceBarFrameRateMode,
   AppUiStyle,
-  SettingsSection
+  SettingsSection,
+  SoftwareRecord
 } from "../../types";
 
 export { MultiSegmentedControl, SegmentedControl } from "./components/SettingsControls";
@@ -92,9 +94,17 @@ interface SettingsPageProps {
   onDebugLogChange: (enabled: boolean) => void;
   onHostManagerSmartCoordinatorScoreOnlyChange: (enabled: boolean) => void;
   onHostManagerSmartCoordinatorPerformanceLogChange: (enabled: boolean) => void;
+  /** 性能浮层分区：软件详细信息里能不能编辑叠加层。 */
+  overlayEditingAvailable: boolean;
+  /** 性能浮层分区：软件详细信息对话框是否开着。 */
+  softwareDetailOpen: boolean;
+  /** 性能浮层分区：打开这个软件的详细信息，停在叠加层分页。 */
+  onOpenSoftwareOverlay: (software: SoftwareRecord) => void;
 }
 
-const settingSections: SettingsSection[] = ["performance", "memoryProtection", "appearance", "systemIntegration", "updates", "debug", "credits"];
+const settingSections: SettingsSection[] = ["performance", "memoryProtection", "appearance", "performanceOverlay", "systemIntegration", "updates", "debug", "credits"];
+// 只读的分区（总览、致谢）不改设置草稿，没有重新加载、恢复为默认和保存。
+const readOnlySections: ReadonlySet<SettingsSection> = new Set(["performanceOverlay", "credits"]);
 
 export function SettingsPage(props: SettingsPageProps) {
   // 界面语言只有一个所有者（appTextStore）：设置页的文案跟着它走，
@@ -192,7 +202,7 @@ export function SettingsPage(props: SettingsPageProps) {
         <div class="settings-content-header">
           <h2>{sectionLabel(props.activeSection)}</h2>
           <div class="settings-header-actions">
-            <Show when={settingsReady() && props.activeSection !== "credits"}>
+            <Show when={settingsReady() && !readOnlySections.has(props.activeSection)}>
               <span
                 class="settings-save-state"
                 classList={{
@@ -322,6 +332,14 @@ export function SettingsPage(props: SettingsPageProps) {
               onByteUnitModeChange={props.onByteUnitModeChange}
               onFontSmoothingChange={props.onFontSmoothingChange}
               onLanguageChange={props.onLanguageChange}
+            />
+          </Show>
+          <Show when={props.activeSection === "performanceOverlay"}>
+            <PerformanceOverlaySettingsSection
+              text={text()}
+              overlayEditingAvailable={props.overlayEditingAvailable}
+              softwareDetailOpen={props.softwareDetailOpen}
+              onOpenOverlay={props.onOpenSoftwareOverlay}
             />
           </Show>
           <Show when={props.activeSection === "systemIntegration"}>

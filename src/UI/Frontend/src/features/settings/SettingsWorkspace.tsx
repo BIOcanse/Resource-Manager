@@ -3,12 +3,15 @@ import { SettingsPage } from "./SettingsPage";
 import type { SettingsStore } from "../../stores/settingsStore";
 import type { RuntimeCapabilitiesStore } from "../../stores/runtimeCapabilitiesStore";
 import type { ProductUpdateStore } from "../../stores/productUpdateStore";
+import type { SoftwareRecord } from "../../types";
 
 interface SettingsWorkspaceProps {
   settings: SettingsStore;
   onTrustedAccessHeadingChange?: (heading: HTMLElement | undefined) => void;
   productUpdates: ProductUpdateStore;
   runtimeCapabilities: RuntimeCapabilitiesStore;
+  softwareDetailOpen: boolean;
+  onOpenSoftwareOverlay: (software: SoftwareRecord) => void;
 }
 
 export function SettingsWorkspace(props: SettingsWorkspaceProps) {
@@ -74,6 +77,9 @@ export function SettingsWorkspace(props: SettingsWorkspaceProps) {
         onDebugLogChange={settings.updateDebugLog}
         onHostManagerSmartCoordinatorScoreOnlyChange={settings.updateHostManagerSmartCoordinatorScoreOnly}
         onHostManagerSmartCoordinatorPerformanceLogChange={settings.updateHostManagerSmartCoordinatorPerformanceLog}
+        overlayEditingAvailable={props.runtimeCapabilities.mutablePersistenceEnabled()}
+        softwareDetailOpen={props.softwareDetailOpen}
+        onOpenSoftwareOverlay={props.onOpenSoftwareOverlay}
     />
   );
 }

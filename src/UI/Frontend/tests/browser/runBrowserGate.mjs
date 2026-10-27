@@ -10,6 +10,7 @@ import diskUsagePagedTreeJourney from "./diskUsagePagedTreeJourney.js";
 import diskUsageActionErrorsJourney from "./diskUsageActionErrorsJourney.js";
 import diskUsageSetupOrderJourney from "./diskUsageSetupOrderJourney.js";
 import overlaySettingsJourney from "./overlaySettingsJourney.js";
+import performanceOverlaySettingsJourney from "./performanceOverlaySettingsJourney.js";
 import loginStartupJourney from "./loginStartupJourney.js";
 import managementFeedbackJourney from "./managementFeedbackJourney.js";
 import reportRuleSettingsJourney from "./reportRuleSettingsJourney.js";
@@ -106,6 +107,7 @@ const allJourneys = [
   ["disk-usage-action-errors", diskUsageActionErrorsJourney],
   ["disk-usage-setup-order", diskUsageSetupOrderJourney],
   ["overlay-settings", overlaySettingsJourney],
+  ["performance-overlay-settings", performanceOverlaySettingsJourney],
   ["login-startup", loginStartupJourney],
   ["management-feedback", managementFeedbackJourney],
   ["management-shared-refresh", managementSharedRefreshJourney],

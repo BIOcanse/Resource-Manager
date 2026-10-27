@@ -101,6 +101,16 @@ export async function getPerformanceOverlaySettings(softwareId: string): Promise
     metricSources: { ...presentation.metricSources } };
 }
 
+/**
+ * 设置 → 性能浮层的总览：前端偏好里有叠加层设置的每个软件，按叠加层分页同一读法（getPerformanceOverlaySettings）
+ * 得出是否启用，只留启用的。不读运行状态。
+ */
+export async function listEnabledPerformanceOverlays(): Promise<PerformanceOverlaySettings[]> {
+  const preferences = await frontendPreferencesClient().read();
+  const settings = await Promise.all(Object.keys(preferences.overlays).map(getPerformanceOverlaySettings));
+  return settings.filter((overlay) => overlay.enabled);
+}
+
 function startupModuleSelectionPath(softwareId: string) {
   return `/api/startup-modules/software/${encodeURIComponent(softwareId)}`;
 }
