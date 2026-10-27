@@ -7,7 +7,7 @@ namespace ResourceManager.App.Domain.KernelLeak;
 [JsonConverter(typeof(JsonStringEnumConverter<KernelLeakResourceKind>))]
 public enum KernelLeakResourceKind { ProcessHandles }
 [JsonConverter(typeof(JsonStringEnumConverter<KernelLeakUnit>))]
-public enum KernelLeakUnit { [JsonStringEnumMemberName("count")] Count, [JsonStringEnumMemberName("bytes")] Bytes }
+public enum KernelLeakUnit { [JsonStringEnumMemberName("count")] Count }
 [JsonConverter(typeof(JsonStringEnumConverter<KernelLeakReportStatus>))]
 public enum KernelLeakReportStatus { Disabled, Observing, Empty, Suspected, Unavailable }
 [JsonConverter(typeof(JsonStringEnumConverter<KernelLeakFailure>))]
@@ -59,7 +59,8 @@ public sealed record KernelLeakSuspect(KernelLeakResourceKind ResourceKind, ulon
             BackendMessage.Create(BackendMessageDomains.KernelLeak, BackendMessageCodes.KernelLeak.ForceReleaseHandlesRisk), KernelLeakRiskLevel.High)
     });
 }
-public sealed record KernelLeakRunFailure(DateTimeOffset? StartedAt, DateTimeOffset FailedAt, KernelLeakFailure Failure);
+public sealed record KernelLeakRunFailure(DateTimeOffset StartedAt, DateTimeOffset FailedAt, KernelLeakFailure Failure);
+// No start while disabled, awaiting the first frame, or unavailable before the first frame.
 public sealed record KernelLeakObservation(DateTimeOffset? StartedAt, double ElapsedSeconds, int SampleCount,
     int RequiredSeconds, int RequiredSampleCount, KernelLeakRunFailure? PreviousRunFailure)
 {

@@ -15,12 +15,47 @@ using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Optimization;
+using ResourceManager.App.Domain.KernelLeak;
 using ResourceManager.Shared.Runtime.TrustedAccess;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed class JsonMetadataContractTests
 {
+    [Fact]
+    public void KernelLeakRunFailureFixturePinsRequiredStartOnHttpAndSubscriptionWire()
+    {
+        const string fixture = """
+            {"status":"Observing","capturedAt":"1970-01-01T00:00:02+00:00","items":[],"failure":"None",
+            "observation":{"startedAt":"1970-01-01T00:00:02+00:00","elapsedSeconds":0,"sampleCount":1,
+            "requiredSeconds":600,"requiredSampleCount":8,"previousRunFailure":{"startedAt":"1970-01-01T00:00:00+00:00",
+            "failedAt":"1970-01-01T00:00:01+00:00","failure":"SourceUnavailable"},"restartPolicy":"NextInterval"},"unavailableHolderCount":0}
+            """;
+        var options = new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions;
+        ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
+        var start = DateTimeOffset.UnixEpoch;
+        var previous = new KernelLeakRunFailure(start, start.AddSeconds(1), KernelLeakFailure.SourceUnavailable);
+        var report = new KernelLeakReport(KernelLeakReportStatus.Observing, start.AddSeconds(2), [], KernelLeakFailure.None,
+            new(start.AddSeconds(2), 0, 1, 600, 8, previous));
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(fixture), JsonSerializer.SerializeToNode(report, options)));
+        var frame = new FrontendSubscriptionChannelFrame<KernelLeakReport>("leaks", report);
+        var expectedFrame = new JsonObject { ["subscriptionId"] = "leaks", ["value"] = JsonNode.Parse(fixture) };
+        Assert.True(JsonNode.DeepEquals(expectedFrame, JsonSerializer.SerializeToNode(frame, options)));
+        Assert.Equal(previous, JsonSerializer.Deserialize<KernelLeakRunFailure>(JsonSerializer.Serialize(previous, options), options));
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<KernelLeakRunFailure>(
+            """{"startedAt":null,"failedAt":"1970-01-01T00:00:01+00:00","failure":"SourceUnavailable"}""", options));
+    }
+
+    [Fact]
+    public void KernelLeakUnitWireContainsOnlyCount()
+    {
+        var options = new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions;
+        ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
+        Assert.Collection(Enum.GetValues<KernelLeakUnit>(),
+            unit => Assert.Equal("\"count\"", JsonSerializer.Serialize(unit, options)));
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<KernelLeakUnit>("\"bytes\"", options));
+    }
+
     [Theory]
     [InlineData("success")]
     [InlineData("cycle-failed")]

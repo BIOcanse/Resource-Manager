@@ -107,8 +107,13 @@ public sealed class KernelLeakObserver(IKernelLeakSampleSource source, IKernelLe
         void Fail(KernelLeakFailure failure, DateTimeOffset at, int unavailable = 0)
         {
             series.Clear();
-            if (runStart is { } began) elapsed = Math.Max(0, (at - began).TotalSeconds);
-            failedRun = new(runStart, at, failure);
+            // A demand can fail/end before a frame starts a run. Publish its typed report
+            // failure without manufacturing a run start or replacing an already failed run.
+            if (runStart is { } began && failedRun is null)
+            {
+                elapsed = Math.Max(0, (at - began).TotalSeconds);
+                failedRun = new(began, at, failure);
+            }
             Publish(new(KernelLeakReportStatus.Unavailable, at, [], failure, Progress())
                 { UnavailableHolderCount = unavailable }, series, 0, 0);
         }
@@ -116,12 +121,10 @@ public sealed class KernelLeakObserver(IKernelLeakSampleSource source, IKernelLe
         {
             while (!token.IsCancellationRequested)
             {
-                var receivedFrame = false;
                 try
                 {
                     await foreach (var frame in source.SubscribeAsync("kernel-leak-observer", TimeSpan.FromMilliseconds(options.IntervalMilliseconds), token))
                     {
-                        receivedFrame = true;
                         token.ThrowIfCancellationRequested();
                         // The next interval is a new run even when that attempt also fails.
                         var began = BeginRunIfNeeded(frame.CapturedAt);
@@ -163,14 +166,12 @@ public sealed class KernelLeakObserver(IKernelLeakSampleSource source, IKernelLe
                         }
                     }
                     token.ThrowIfCancellationRequested();
-                    if (!receivedFrame) BeginRunIfNeeded(DateTimeOffset.UtcNow);
                     if (failedRun is null) Fail(KernelLeakFailure.SourceUnavailable, DateTimeOffset.UtcNow);
                 }
                 catch (Exception error) when (error is not OperationCanceledException || !token.IsCancellationRequested)
                 {
                     logger.LogWarning(error, "Kernel leak sampling demand failed; retrying at the next configured interval.");
                     var at = DateTimeOffset.UtcNow;
-                    BeginRunIfNeeded(at);
                     Fail(Classify(error), at);
                 }
                 // An ended/failed source is reacquired only at the configured interval, never in a tight retry loop.

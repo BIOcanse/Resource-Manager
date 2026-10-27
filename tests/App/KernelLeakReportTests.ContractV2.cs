@@ -62,6 +62,7 @@ public sealed partial class KernelLeakReportTests
         using var fixture = new Fixture(options: Fast with { Enabled = false });
         Assert.Equal(KernelLeakReportStatus.Disabled, fixture.Reports.Read().Status);
         Assert.Equal(KernelLeakFailure.None, fixture.Reports.Read().Failure);
+        Assert.Null(fixture.Reports.Read().Observation.StartedAt);
         Assert.Equal(0, fixture.Reports.Read().Observation.SampleCount);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         await using var reader = fixture.Reports.SubscribeAsync(cancellation.Token).GetAsyncEnumerator();
@@ -195,6 +196,7 @@ public sealed partial class KernelLeakReportTests
     public async Task PublishedKindsUnitsAndReservedActionsAreConsumerReady()
     {
         Assert.Equal(["ProcessHandles"], Enum.GetNames<KernelLeakResourceKind>());
+        Assert.Equal(["Count"], Enum.GetNames<KernelLeakUnit>());
         Assert.DoesNotContain("NotObserved", Enum.GetNames<KernelLeakFailure>());
         using var fixture = new Fixture();
         for (var index = 0; index < 3; index++) await DeliverWithoutReader(fixture, index, 1000 + index * 100);

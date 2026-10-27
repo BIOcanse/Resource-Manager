@@ -333,7 +333,8 @@ public sealed partial class KernelLeakReportTests
         internal IKernelLeakReportSource Reports => services.GetRequiredService<IKernelLeakReportSource>();
         internal Task StopAsync() => services.GetServices<Microsoft.Extensions.Hosting.IHostedService>().Single().StopAsync(default);
         internal Fixture(bool rawSamples = false, bool failedAttribution = false, KernelLeakOptions? options = null,
-            IKernelLeakAttributionReader? attribution = null, bool publishAfterHostStart = false)
+            IKernelLeakAttributionReader? attribution = null, bool publishAfterHostStart = false,
+            IKernelLeakSampleSource? sampleSource = null)
         {
             var collection = new ServiceCollection(); collection.AddLogging();
             var plans = new RuntimePlanProvider(new HostManagerDeploymentState());
@@ -357,6 +358,7 @@ public sealed partial class KernelLeakReportTests
             collection.AddKernelLeakObservation();
             collection.AddSingleton<IKernelLeakAttributionReader>(attribution ?? new RecordedAttribution(failedAttribution));
             if (rawSamples) { Raw = new(); collection.AddSingleton<IKernelLeakSampleSource>(Raw); }
+            if (sampleSource is not null) collection.AddSingleton(sampleSource);
             services = collection.BuildServiceProvider();
             services.GetServices<Microsoft.Extensions.Hosting.IHostedService>().Single().StartAsync(default).GetAwaiter().GetResult();
             if (publishAfterHostStart)
