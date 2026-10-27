@@ -4,7 +4,7 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { formatPollingInterval, formatRate } from "../src/features/deviceTopology/adapters/adapterEvidence.ts";
 import { formatFieldValue } from "../src/presentation/fieldValueFormat.ts";
-import { applyLanguage, currentLanguage } from "../src/text.ts";
+import { applyLanguage, currentLanguage, uiText } from "../src/text.ts";
 import { languageOptions } from "../src/i18n/settingsLanguages.ts";
 import { metricCardReading, metricDisplayValue, resourceTableCellText, resourceTableCellPresentation } from "../src/presentation/metricLabels.ts";
 import { formatBytePair, formatBitsPerSecond, formatBytes } from "../src/presentation/byteUnits.ts";
@@ -41,7 +41,9 @@ for (const { id: language } of languages) {
     heat: 60, privateHeat: 20, unavailable: false }, `${language} shared cell text, tooltip and heat`);
   const failure = resourceTableCellPresentation({ value: null, unit: "%", availability: "Unavailable",
     unavailableReason: "fixture-unavailable" }, "cpu", { label: "CPU", basis: undefined });
-  assert.equal(failure.display, "fixture-unavailable", `${language} failure replaces the previous reading`);
+  // 未知原因码不进格子：格子写“无读数”，原始码只在悬停提示里（资源表和资源条共用的原因族表，见 resourceBarUnavailableReason.ts）。
+  assert.equal(failure.display, uiText.dashboard.noReading, `${language} failure replaces the previous reading`);
+  assert.ok(failure.title.includes(uiText.backendMessage.reasonCode("fixture-unavailable")), `${language} raw reason code on hover`);
   assert.equal(failure.unavailable, true);
   const fixed = (1.5).toLocaleString(language, { useGrouping: false, minimumFractionDigits: 2, maximumFractionDigits: 2 });
   assert.equal(formatBytes(1.5 * 1024 ** 3, "memory", "native"), `${fixed} GiB`, `${language} bytes`);
