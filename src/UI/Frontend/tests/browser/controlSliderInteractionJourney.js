@@ -292,7 +292,7 @@ export default async function controlSliderInteractionJourney(page, baseUrl) {
       const press = { x: event.clientX, value: Number(input.value),
         hitsInput: document.elementFromPoint(event.clientX, event.clientY) === input, nextFrameValue: null };
       window.__thumbPresses.push(press);
-      // 运行时可能在下一帧才处理这次按下：那一帧滑块还在同一步，这一次才算数。
+      // 运行时可能在下一帧才按那一帧滑块的框判命中：指针在按下那一帧和下一帧的滑块上都落在框里，这一次才算数（滑块被抓住后照样接着走）。
       requestAnimationFrame(() => { press.nextFrameValue = Number(input.value); });
     }, { capture: true });
   });
@@ -321,7 +321,7 @@ export default async function controlSliderInteractionJourney(page, baseUrl) {
     await settleRendering();
     const entry = { from, to, drawn, press, thumb: await thumb(), shown: await shown() };
     attempts.push(entry);
-    if (Math.abs(press.x - xAt(press.value)) <= 6 && press.nextFrameValue === press.value) caught = entry;
+    if (Math.abs(press.x - xAt(press.value)) <= 6 && Math.abs(press.x - xAt(press.nextFrameValue)) <= 6) caught = entry;
   }
   assert.ok(caught, `A press landed on the thumb where it was drawn: ${JSON.stringify(attempts)}`);
   assert.equal(caught.press.hitsInput, true, `The drawn thumb is hit: ${JSON.stringify(caught)}`);
