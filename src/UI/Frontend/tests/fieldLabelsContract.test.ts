@@ -17,7 +17,8 @@ interface RegistryField { name: string; resource: string; vendor: string; valueK
 
 const registrySource = readFileSync(new URL("../../../ReadWriteCore/Fields/MetricFieldRegistry.cs", import.meta.url), "utf8");
 // 参数之间允许换行缩进（长行在 MetricVendor 之后折行）。
-const rowPattern = /new\((?:Code:\s*)?MetricFieldCode\.(\w+),\s+(?:Name:\s*)?"([^"]+)",\s+(?:Resource:\s*)?MetricResource\.(\w+),\s+(?:Vendor:\s*)?MetricVendor\.(\w+),\s+(?:Unit:\s*)?"[^"]*",\s+(?:RequestTemplate:\s*)?"[^"]*"\)(?:\s+\{([^}]*)\})?/g;
+// 每行末尾可带读取变化性（Volatility: ReadVolatility.Sampled，或带事件名的 ReadVolatility.EventDriven("…")）。
+const rowPattern = /new\((?:Code:\s*)?MetricFieldCode\.(\w+),\s+(?:Name:\s*)?"([^"]+)",\s+(?:Resource:\s*)?MetricResource\.(\w+),\s+(?:Vendor:\s*)?MetricVendor\.(\w+),\s+(?:Unit:\s*)?"[^"]*",\s+(?:RequestTemplate:\s*)?"[^"]*"(?:,\s+Volatility:\s*ReadVolatility\.\w+(?:\("[^"]*"\))?)?\)(?:\s+\{([^}]*)\})?/g;
 const baseRows = [...registrySource.matchAll(rowPattern)].map((match) => ({
   code: match[1],
   field: { name: match[2], resource: match[3], vendor: match[4], valueKind: /ValueKind = "([^"]+)"/.exec(match[5] ?? "")?.[1] ?? "float64" }
