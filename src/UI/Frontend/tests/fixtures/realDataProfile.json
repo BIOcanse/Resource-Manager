@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "source": "bootstrap",
+  "provenance": {
+    "sources": [
+      {
+        "source": "user brief (2026-10-26)",
+        "status": "reported-unverified",
+        "details": "Reported workload has 33 rows and 27.4 GiB; this was not independently verified in development_progress.md."
+      },
+      {
+        "source": "tests/fixtures/resourceFactsAccounting.pre-r4.real.json",
+        "status": "fixture-evidence",
+        "details": "Three frames list seven metric ids; gpu.0 and gpu.1 imply two GPU metric slots. gpu.1 VRAM has a null total and five rows in each recorded frame. CapturedAt spacing supplies the interval samples."
+      },
+      {
+        "source": "tests/fixtures/metricFieldsWire/catalog.json and subscription-frame.json",
+        "status": "fixture-evidence",
+        "details": "Seven wire device records cover seven device kinds. Numeric values below are copied from the corresponding subscription frame."
+      },
+      {
+        "source": "tests/browser/mockFrontendServer.mjs",
+        "status": "mock-capacity",
+        "details": "The existing many resource-table variant defaults to 80 rows and accepts up to 1000 rows; this is a test fixture capacity, not a measured workload."
+      },
+      {
+        "source": "D:/Code/Resource-Manager-Development/docs/development_progress.md",
+        "status": "checked-unmatched",
+        "details": "No 33-row / 27.4-GiB workload entry was found. The file's 27.4 matches are CPU percentages, so those values are not used as memory evidence."
+      }
+    ],
+    "dimensions": {
+      "processCounts": "reported-and-mock-capacity; not learned from a raw slice",
+      "nameLengthHistograms": "estimated synthetic localized labels; not observed process names",
+      "gpuCounts": "inferred from fixture metric ids; not a host topology observation",
+      "engineCountsPerGpu": "estimated; no engine inventory is present in the bootstrap fixtures",
+      "deviceCounts": "fixture record count; not a host topology observation",
+      "metrics": "mix of reported, fixture-observed, and mock-estimated samples",
+      "frameIntervalsMs": "derived from fixture CapturedAt timestamps"
+    }
+  },
+  "processCounts": {
+    "samples": [33, 80],
+    "sampleCount": 2,
+    "range": { "min": 33, "max": 80 },
+    "distribution": { "p50": 56.5, "p90": 75.3, "mean": 56.5 },
+    "observed": false,
+    "status": "reported-and-mock-capacity"
+  },
+  "nameLengthHistograms": {
+    "zh-CN": { "unit": "unicode-code-points", "samples": [3, 5, 5, 5, 4, 5, 4, 5, 11], "sampleCount": 9, "range": { "min": 3, "max": 11 }, "distribution": { "p50": 5, "p90": 6.2, "mean": 5.222222222222222 }, "histogram": { "3": 1, "4": 2, "5": 5, "11": 1 }, "observed": false, "status": "estimated" },
+    "zh-TW": { "unit": "unicode-code-points", "samples": [3, 5, 5, 5, 4, 6, 6, 5, 11], "sampleCount": 9, "range": { "min": 3, "max": 11 }, "distribution": { "p50": 5, "p90": 7, "mean": 5.555555555555555 }, "histogram": { "3": 1, "4": 1, "5": 4, "6": 2, "11": 1 }, "observed": false, "status": "estimated" },
+    "en-US": { "unit": "unicode-code-points", "samples": [7, 12, 12, 11, 10, 11, 16, 16, 37], "sampleCount": 9, "range": { "min": 7, "max": 37 }, "distribution": { "p50": 12, "p90": 20.2, "mean": 14.666666666666666 }, "histogram": { "7": 1, "10": 1, "11": 2, "12": 2, "16": 2, "37": 1 }, "observed": false, "status": "estimated" },
+    "ja-JP": { "unit": "unicode-code-points", "samples": [5, 7, 4, 9, 6, 8, 7, 10, 14], "sampleCount": 9, "range": { "min": 4, "max": 14 }, "distribution": { "p50": 7, "p90": 10.8, "mean": 7.777777777777778 }, "histogram": { "4": 1, "5": 1, "6": 1, "7": 2, "8": 1, "9": 1, "10": 1, "14": 1 }, "observed": false, "status": "estimated" },
+    "ko-KR": { "unit": "unicode-code-points", "samples": [4, 7, 7, 8, 8, 6, 4, 7, 14], "sampleCount": 9, "range": { "min": 4, "max": 14 }, "distribution": { "p50": 7, "p90": 9.2, "mean": 7.222222222222222 }, "histogram": { "4": 2, "6": 1, "7": 3, "8": 2, "14": 1 }, "observed": false, "status": "estimated" },
+    "fr-FR": { "unit": "unicode-code-points", "samples": [10, 18, 13, 13, 21, 15, 25, 26, 41], "sampleCount": 9, "range": { "min": 10, "max": 41 }, "distribution": { "p50": 18, "p90": 29, "mean": 20.22222222222222 }, "histogram": { "10": 1, "13": 2, "15": 1, "18": 1, "21": 1, "25": 1, "26": 1, "41": 1 }, "observed": false, "status": "estimated" },
+    "de-DE": { "unit": "unicode-code-points", "samples": [7, 11, 11, 11, 22, 11, 14, 20, 43], "sampleCount": 9, "range": { "min": 7, "max": 43 }, "distribution": { "p50": 11, "p90": 26.2, "mean": 16.666666666666668 }, "histogram": { "7": 1, "11": 4, "14": 1, "20": 1, "22": 1, "43": 1 }, "observed": false, "status": "estimated" },
+    "es-ES": { "unit": "unicode-code-points", "samples": [9, 21, 15, 16, 25, 16, 18, 25, 43], "sampleCount": 9, "range": { "min": 9, "max": 43 }, "distribution": { "p50": 18, "p90": 28.6, "mean": 20.88888888888889 }, "histogram": { "9": 1, "15": 1, "16": 2, "18": 1, "21": 1, "25": 2, "43": 1 }, "observed": false, "status": "estimated" },
+    "ru-RU": { "unit": "unicode-code-points", "samples": [7, 17, 13, 14, 22, 13, 14, 18, 38], "sampleCount": 9, "range": { "min": 7, "max": 38 }, "distribution": { "p50": 14, "p90": 25.2, "mean": 17.333333333333332 }, "histogram": { "7": 1, "13": 2, "14": 2, "17": 1, "18": 1, "22": 1, "38": 1 }, "observed": false, "status": "estimated" }
+  },
+  "gpuCounts": {
+    "samples": [2],
+    "sampleCount": 1,
+    "range": { "min": 2, "max": 2 },
+    "distribution": { "p50": 2, "p90": 2, "mean": 2 },
+    "observed": false,
+    "status": "inferred-from-gpu-metric-ids"
+  },
+  "engineCountsPerGpu": {
+    "samples": [4, 6],
+    "sampleCount": 2,
+    "range": { "min": 4, "max": 6 },
+    "distribution": { "p50": 5, "p90": 5.8, "mean": 5 },
+    "observed": false,
+    "status": "estimated"
+  },
+  "deviceCounts": {
+    "samples": [7],
+    "sampleCount": 1,
+    "range": { "min": 7, "max": 7 },
+    "distribution": { "p50": 7, "p90": 7, "mean": 7 },
+    "observed": false,
+    "status": "fixture-record-count"
+  },
+  "deviceKinds": [
+    "cpu_logical_processor",
+    "fan",
+    "gpu_adapter",
+    "network_interface",
+    "npu",
+    "numa_node",
+    "storage"
+  ],
+  "gpuVramBytes": { "samples": [8589934592], "range": { "min": 8589934592, "max": 8589934592 }, "status": "mock-estimate" },
+  "gpuUsagePercent": { "samples": [24, 58, 96], "range": { "min": 24, "max": 96 }, "status": "mock-estimate" },
+  "metrics": {
+    "cpu.usage": { "unit": "%", "samples": [12, 62], "sampleCount": 2, "range": { "min": 12, "max": 62 }, "distribution": { "p50": 37, "p90": 57, "mean": 37 }, "percentSamples": [12, 62], "observed": false, "status": "mock-estimate" },
+    "memory.usage": { "unit": "B", "samples": [29420525977.6], "sampleCount": 1, "range": { "min": 29420525977.6, "max": 29420525977.6 }, "distribution": { "p50": 29420525977.6, "p90": 29420525977.6, "mean": 29420525977.6 }, "observed": false, "status": "reported-unverified" },
+    "gpu.0.usage": { "unit": "%", "samples": [24, 58, 96], "sampleCount": 3, "range": { "min": 24, "max": 96 }, "distribution": { "p50": 58, "p90": 88.4, "mean": 59.333333333333336 }, "percentSamples": [24, 58, 96], "observed": false, "status": "mock-estimate" },
+    "gpu.0.vram": { "unit": "B", "samples": [4294967296], "sampleCount": 1, "range": { "min": 4294967296, "max": 4294967296 }, "distribution": { "p50": 4294967296, "p90": 4294967296, "mean": 4294967296 }, "observed": false, "status": "mock-estimate" },
+    "gpu.1.usage": { "unit": "%", "samples": [6, 24, 46], "sampleCount": 3, "range": { "min": 6, "max": 46 }, "distribution": { "p50": 24, "p90": 41.6, "mean": 25.333333333333332 }, "percentSamples": [6, 24, 46], "observed": false, "status": "mock-estimate" },
+    "gpu.1.vram": { "unit": "B", "samples": [], "integerSamples": [], "percentSamples": [], "nullSamples": 3, "rowCountSamples": [5, 5, 5], "range": { "min": null, "max": null }, "distribution": { "p50": null, "p90": null, "mean": null }, "observed": true, "status": "observed-unavailable", "unavailableReason": "gpu-dedicated-memory-total-unavailable" },
+    "cpu_intel_effective_frequency_mhz@wire-cpu": { "unit": "MHz", "samples": [3200], "sampleCount": 1, "range": { "min": 3200, "max": 3200 }, "distribution": { "p50": 3200, "p90": 3200, "mean": 3200 }, "observed": true, "status": "fixture-observed" },
+    "fan_all_speed_rpm@wire-fan": { "unit": "RPM", "samples": [1200], "sampleCount": 1, "range": { "min": 1200, "max": 1200 }, "distribution": { "p50": 1200, "p90": 1200, "mean": 1200 }, "observed": true, "status": "fixture-observed" },
+    "gpu_amd_npu_activity_percent@wire-gpu": { "unit": "%", "samples": [37.5], "sampleCount": 1, "range": { "min": 37.5, "max": 37.5 }, "distribution": { "p50": 37.5, "p90": 37.5, "mean": 37.5 }, "percentSamples": [37.5], "observed": true, "status": "fixture-observed" },
+    "network_all_rx_errors_actual@wire-network": { "unit": "count", "samples": [], "integerSamples": ["18446744073709551615"], "range": { "min": "18446744073709551615", "max": "18446744073709551615" }, "distribution": { "p50": "18446744073709551615", "p90": "18446744073709551615", "mean": null }, "observed": true, "status": "fixture-observed" },
+    "npu_all_engine_busy_percent@wire-npu": { "unit": "%", "samples": [125.5], "sampleCount": 1, "range": { "min": 125.5, "max": 125.5 }, "distribution": { "p50": 125.5, "p90": 125.5, "mean": 125.5 }, "percentSamples": [125.5], "observed": true, "status": "fixture-observed" },
+    "memory_all_numa_node_capacity_mib@wire-numa": { "unit": "MiB", "samples": [], "integerSamples": ["65536"], "integerRange": { "min": "65536", "max": "65536" }, "range": { "min": null, "max": null }, "distribution": { "p50": null, "p90": null, "mean": null }, "observed": true, "status": "fixture-observed" },
+    "storage_all_nvme_composite_temperature_celsius@wire-storage": { "unit": "°C", "samples": [40], "sampleCount": 1, "range": { "min": 40, "max": 40 }, "distribution": { "p50": 40, "p90": 40, "mean": 40 }, "observed": true, "status": "fixture-observed" }
+  },
+  "resourceFactMetricIds": [
+    "cpu.usage",
+    "memory.usage",
+    "gpu.0.usage",
+    "gpu.0.vram",
+    "gpu.1.usage",
+    "gpu.1.vram",
+    "network.traffic"
+  ],
+  "resourceFactGpu1Vram": { "totalValue": null, "rowCount": 5, "frameCount": 3 },
+  "frameIntervalSamplesMs": [1302.1998, 1182.6883]
+}

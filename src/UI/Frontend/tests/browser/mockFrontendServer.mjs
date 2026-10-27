@@ -3,6 +3,9 @@ import { canonicalFieldNames } from "../../src/features/monitor/canonicalFields.
 import { reportRules } from "../fixtures/reportRuleSettings.ts";
 import * as showcase from "./readmeShowcaseFixture.js";
 import { createMemoryProtectionFixture, defaultMemoryProtectionSettings, memoryProtectionScenarios, defaultSoftwarePolicy, invalidMemoryProtectionPatch } from "./memoryProtectionFixture.mjs";
+import { loadSliceReplay } from "../realData/replaySlice.mjs";
+import { generatedMetricDefinitions, generatedMetricItems, generatedGpuScores, generatedFieldDevices } from "../realData/generatedMockData.mjs";
+import { generateScenario } from "../realData/generateScenario.mjs";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, resolve, sep, isAbsolute } from "node:path";
@@ -13,6 +16,8 @@ const staticRoot = process.env.RM_FRONTEND_STATIC_ROOT
   ? resolve(process.env.RM_FRONTEND_STATIC_ROOT)
   : fileURLToPath(new URL("../../../../../src/Core/wwwroot/", import.meta.url));
 const now = () => new Date().toISOString();
+const realDataProfile = JSON.parse(await readFile(new URL("../fixtures/realDataProfile.json", import.meta.url), "utf8"));
+let sliceReplay = await loadSliceReplay(process.env.RM_REAL_SLICE);
 const recordedEdidState = JSON.parse(await readFile(process.env.RM_EDID_UI_STATE_JSON || new URL("../fixtures/displayEdid.json", import.meta.url), "utf8"));
 const recordedType3State = JSON.parse(await readFile(process.env.RM_EDID_UI_TYPE3_STATE_JSON || new URL("../fixtures/displayEdidType3.json", import.meta.url), "utf8"));
 const typeXWirePath = process.env.RM_EDID_UI_TYPEX_STATE_JSON;
@@ -30,6 +35,8 @@ const recordedDeclarationStates = Object.fromEntries(await Promise.all(Object.en
 }).map(async ([name, file]) => [name, JSON.parse(await readFile(new URL(`../fixtures/${file}`, import.meta.url), "utf8"))])));
 const defaultScenario = {
   memoryProtection: "no-point",
+  slice: null,
+  generatedData: null,
   capabilities: "ready",
   settings: "ready",
   settingsConflict: false,
@@ -326,12 +333,25 @@ const server = createServer(async (request, response) => {
   try {
     const url = new URL(request.url ?? "/", `http://127.0.0.1:${server.address().port}`);
     if (url.pathname === "/__test/scenario" && request.method === "POST") {
-      const patch = JSON.parse(await readBody(request));
+      let patch = JSON.parse(await readBody(request));
+      if (patch.preset) {
+        const generated = generateScenario(realDataProfile, patch.seed ?? 1, patch.preset);
+        patch = { ...patch, ...generated.scenarioPatch, generatedData: generated.generatedData };
+      } else if (patch.scenarioPatch && patch.generatedData) {
+        patch = { ...patch.scenarioPatch, generatedData: patch.generatedData };
+      }
+      if (patch.generatedData) {
+        patch = { ...patch, resourceSegmentCount: patch.generatedData.names.length,
+          metricCatalogExtra: generatedMetricDefinitions(patch.generatedData).filter(definition => !metricCatalog.some(base => base.id === definition.id)),
+          metricFieldDevices: generatedFieldDevices(patch.generatedData) };
+      }
+      if (Object.hasOwn(patch, "slice")) sliceReplay = await loadSliceReplay(patch.slice || process.env.RM_REAL_SLICE);
       applyScenarioPatch(patch);
       return json(response, 200, scenario);
     }
     if (url.pathname === "/__test/scenario/reset" && request.method === "POST") {
       resetScenario();
+      sliceReplay = await loadSliceReplay(process.env.RM_REAL_SLICE);
       return json(response, 200, scenario);
     }
     if (url.pathname === "/__test/scenario") {
@@ -434,6 +454,12 @@ server.listen(port, "127.0.0.1", () => {
 
 async function handleApi(request, response, url) {
   const path = url.pathname;
+  const replayed = request.method === "GET" && !scenario.readmeShowcase ? sliceReplay?.response(path + url.search) : null;
+  if (replayed) {
+    response.writeHead(replayed.status ?? 200, { "Content-Type": replayed.contentType || "application/json", "Cache-Control": "no-store" });
+    return response.end(replayed.encoding === "text" ? String(replayed.body)
+      : replayed.encoding === "json" || replayed.contentType?.toLowerCase().includes("json") ? JSON.stringify(replayed.body) : String(replayed.body));
+  }
   if (scenario.trustedAccess === "default-key-off") {
     return json(response, 401, { error: "access-key-invalid" });
   }
@@ -909,7 +935,7 @@ async function handleApi(request, response, url) {
   if (path === "/api/gpu/performance-scores") {
     return json(response, 200, {
       capturedAt: now(),
-      gpus: scenario.unknownGpuScore ? [{
+      gpus: scenario.generatedData ? generatedGpuScores(scenario.generatedData) : scenario.unknownGpuScore ? [{
         gpuId: "gpu:0",
         index: 0,
         name: "Unlisted GPU",
@@ -1073,6 +1099,10 @@ async function handleApi(request, response, url) {
       installComponentId: "shared-webview2-runtime",
       capturedAt: now()
     });
+  }
+  if (path === "/api/software" && scenario.generatedData) {
+    return json(response, 200, scenario.generatedData.names.map((name, index) => ({ ...mockSoftware,
+      id: `frontend-harness.software${index ? `.${index}` : ""}`, name, processIds: [4242 + index], processNames: [`${name}.exe`], issues: [] })));
   }
   if (path === "/api/software") {
     return json(response, 200, [{
@@ -1496,6 +1526,7 @@ const scenarioChoices = {
 };
 
 function applyScenarioPatch(patch) {
+  if (Object.hasOwn(patch, "generatedData")) applyGeneratedProcessFields(patch.generatedData);
   const presentation = frontendPreferenceScenarioKeys.filter(key => Object.hasOwn(patch, key));
   if (presentation.length > 0) throw new Error(`Frontend preferences are not backend scenario values: ${presentation.join(", ")}`);
   if (Object.hasOwn(patch, "trustedAccess") && !trustedAccessScenarios.has(patch.trustedAccess)) {
@@ -1583,6 +1614,7 @@ function publishProductUpdateStatusValue(subscriber) {
 }
 
 function resetScenario() {
+  applyGeneratedProcessFields(null);
   startupModuleSelections.clear();
   trustedAccessDefaultSerial = 1;
   if (diskScanCompletionTimer) clearTimeout(diskScanCompletionTimer);
@@ -1800,6 +1832,27 @@ const processFieldCatalog = [
       { reading: { resource: "gpu", quantity }, total: "gpu.0.vram", additive: true, sourceFieldName: source }))
 ];
 const catalogFieldByName = new Map(processFieldCatalog.map(field => [field.name, field]));
+const originalProcessFieldCatalog = processFieldCatalog.slice();
+const generatedProcessFieldNames = new Set();
+function applyGeneratedProcessFields(data) {
+  processFieldCatalog.splice(0, processFieldCatalog.length, ...originalProcessFieldCatalog.filter(field => !data || field.gpuEngine === null));
+  for (const name of generatedProcessFieldNames) { catalogFieldByName.delete(name); delete processMemoryFacts[name]; }
+  catalogFieldByName.clear();
+  for (const field of processFieldCatalog) catalogFieldByName.set(field.name, field);
+  generatedProcessFieldNames.clear();
+  for (const engine of data?.engines ?? []) {
+    const luid = 4096 + engine.gpuIndex;
+    const name = `process_all_gpu_residency_attributed_gpu_${engine.gpuIndex}_luid_${luid.toString(16).padStart(16, "0")}_physical_0_engine_${engine.index}`;
+    const gpuEngine = { adapterLuid: luid, physicalIndex: 0, engineIndex: engine.index };
+    const field = catalogField(name, "float64", "%", "windows.pdh.gpu-engine", {
+      reading: { resource: "gpu", quantity: "engine_busy_percent" }, total: `gpu.${engine.gpuIndex}.usage`, additive: true,
+      gpuEngine, engineClass: engine.engineClass, sourceFieldName: "process_all_gpu_residency_attributed" });
+    generatedProcessFieldNames.add(name); processFieldCatalog.push(field); catalogFieldByName.set(name, field);
+    processMemoryFacts[name] = { totalMetricId: field.resourceFactTotalMetricId, totalValue: engine.usagePercent, capacityValue: 100,
+      processSum: engine.usagePercent, unit: "%", windowMilliseconds: data.intervalsMs[0], additive: true,
+      quantity: "engine_busy_percent", gpuEngine, engineClass: engine.engineClass };
+  }
+}
 
 // 自动的整机内存指标实际读的进程字段（后端在资源事实和资源条上写的 processFieldName）。
 const automaticProcessFields = { "memory.usage": "process_all_private_working_set_actual", "virtualMemory.usage": "process_all_private_commit_actual" };
@@ -1897,7 +1950,8 @@ function metricSnapshot(requestedIds) {
     });
   }
   if (scenario.readmeShowcase) Object.assign(allItems, showcase.showcaseMetricItems());
-  const definitions = [...metricCatalog, ...(scenario.metricCatalogAddresses === "reading-source" ? [readingSourceAddress()] : []),
+  if (scenario.generatedData) Object.assign(allItems, generatedMetricItems({ metrics: generatedReadings() }));
+  const definitions = [...metricCatalog, ...scenario.metricCatalogExtra, ...(scenario.metricCatalogAddresses === "reading-source" ? [readingSourceAddress()] : []),
     ...(scenario.readmeShowcase ? showcase.showcaseMetricDefinitions() : [])];
   const knownMetricIds = new Map([...definitions.map(item => item.id), ...Object.keys(allItems)]
     .map(metricId => [metricId.toLowerCase(), metricId]));
@@ -1905,7 +1959,7 @@ function metricSnapshot(requestedIds) {
   const statuses = new Map(Object.entries(scenario.metricStatuses).map(([id, status]) => [id.toLowerCase(), status]));
   const items = Object.fromEntries(selectedIds.map(id => {
     const current = allItems[id];
-    const status = statuses.get(id.toLowerCase()) ?? (current ? 1 : 4);
+    const status = statuses.get(id.toLowerCase()) ?? (current ? current.status : 4);
     if (current && status === 1) return [id, { ...current, observedAt: metricSlot.observedAt }];
     return [id, {
       ...(current ?? { id, unit: definitions.find(item => item.id === id)?.unit ?? "" }),
@@ -2270,13 +2324,14 @@ function resourceBreakdownFixture(capturedAt = now(), processDetailSoftwareIds =
     return auditResourceBreakdown(capturedAt, generation, processDetailSoftwareIds, measures, modes, keepMissingTotals);
   }
   const cpuValue = scenario.resourceCpuValue ?? [12, 38, 21, 55][generation % 4];
-  const segmentCount = normalizeFixtureCount(scenario.resourceSegmentCount, 1, 1000);
+  const segmentCount = normalizeFixtureCount(scenario.resourceSegmentCount, 1, scenario.generatedData?.names.length ?? 1000);
   const softwareCatalog = Array.from({ length: segmentCount }, (_, index) => [
     index === 0 ? "frontend-harness.software" : `frontend-harness.software.${index}`,
     index === 0 ? "示例软件" : `示例软件 ${index}`,
     "other",
     "other"
   ]);
+  if (scenario.generatedData) softwareCatalog.forEach((row, index) => { row[1] = scenario.generatedData.names[index]; });
   const visibleIds = new Set(normalizeMetricIds([...ids, ...measures]).map(id => id.toLowerCase()));
   const processFields = [...visibleIds].filter(id => Object.hasOwn(processMemoryFacts, id));
   const bars = [
@@ -2326,6 +2381,27 @@ function resourceBreakdownFixture(capturedAt = now(), processDetailSoftwareIds =
       ] : []),
       ...resourceMeasureBars(softwareCatalog, processFields, modes, processDetailSoftwareIds, keepMissingTotals, capturedAt)
     ].filter(bar => visibleIds.has(bar.metricId.toLowerCase()));
+  if (scenario.generatedData) {
+    const weights = scenario.generatedData.weights;
+    const weightSum = weights.reduce((sum, value) => sum + value, 0);
+    for (const metricId of visibleIds) {
+      const item = generatedReadings()[metricId];
+      if (!item) continue;
+      if (item.numericValue === null) {
+        const index = bars.findIndex(bar => bar.metricId === metricId);
+        if (index >= 0) bars.splice(index, 1);
+        continue;
+      }
+      const total = item.numericValue;
+      const capacity = item.percent > 0 ? total * 100 / item.percent : item.unit === "%" ? 100 : Math.max(total, 1);
+      const percent = capacity > 0 ? total * 100 / capacity : 0;
+      const bar = { metricId, unit: item.unit ?? "%", scaleMode: "capacity", totalValue: total, capacityValue: capacity, totalSystemPercent: percent,
+        ...barFacts({ processSumValue: total, residualValue: 0, additiveAcrossProcesses: true, capturedAt }),
+        software: weights.map((weight, index) => [index, total * weight / weightSum, percent * weight / weightSum, 1, 0, []]) };
+      const index = bars.findIndex(bar => bar.metricId === metricId);
+      if (index >= 0) bars[index] = bar; else bars.push(bar);
+    }
+  }
   for (const metricId of visibleIds) {
     if (bars.some(bar => bar.metricId === metricId) || !/^(?:cpu\.usage|memory\.usage|virtualmemory\.usage|disk\.(?:io|read|write)|network\.(?:raw\.)?(?:traffic|receive|send)|gpu\.\d+\.(?:usage|vram))$/.test(metricId)) continue;
     const throughput = metricId.startsWith("disk.") || metricId.startsWith("network.");
@@ -2474,17 +2550,19 @@ function barFacts({ processSumValue, residualValue, additiveAcrossProcesses, cap
 // gpu-dedicated-memory-total-unavailable、不发行；其余指标保留进程行、没有残差，原因是 system-total-unavailable。
 function resourceFacts(url, capturedAt = now()) {
   if (scenario.readmeShowcase) return showcase.showcaseResourceFacts(new Set(url.searchParams.getAll("items")), capturedAt);
-  const count = scenario.resourceTableVariant === "empty" ? 0 : normalizeFixtureCount(scenario.resourceTableRowCount, scenario.resourceTableVariant === "many" ? 80 : 1, 1000);
+  const count = scenario.resourceTableVariant === "empty" ? 0 : normalizeFixtureCount(scenario.resourceTableRowCount, scenario.resourceTableVariant === "many" ? 80 : 1, scenario.generatedData?.names.length ?? 1000);
   const software = Array.from({ length: count }, (_, index) => ({ softwareId: `frontend-harness.software${index ? `.${index}` : ""}`,
     name: index ? `示例软件 ${index}` : "示例软件", kind: "other", attributionKind: "running" }));
+  if (scenario.generatedData) software.forEach((item, index) => { item.name = scenario.generatedData.names[index]; });
   const processes = software.map((_, index) => ({ processId: 4242 + index, processStartKey: String(132000000000000000n + BigInt(4242 + index)),
     name: `example-${index}.exe`, executablePath: "C:\\FrontendHarness\\example.exe", userName: "测试用户", architecture: "x64", attributionKind: "process" }));
+  if (scenario.generatedData) processes.forEach((item, index) => { item.name = `${scenario.generatedData.names[index]}.exe`; });
   const items = new Set(url.searchParams.getAll("items"));
   const attributions = items.has("process.attribution") ? software.slice(0, count).map((identity, index) => ({ softwareId: identity.softwareId, processIndex: index, baseScore: 0 })) : [];
 
   function balance({ metricId, unit, totalMetricId, processFieldName, totalValue, capacityValue, processSum, additive, quantity = null,
     windowMilliseconds = null, gpuEngine = null, engineClass = null, sharedValue = null, residualRows = null, counterLeaves = null }) {
-    const missing = scenario.resourceTableTotalsMissing.includes(metricId);
+    const missing = scenario.resourceTableTotalsMissing.includes(metricId) || generatedReadings()[metricId]?.numericValue === null;
     const total = missing ? null : totalValue;
     const percent = value => capacityValue > 0 ? value * 100 / capacityValue : 0;
     const facts = { totalMetricId, quantity, windowMilliseconds, gpuEngine, engineClass, capturedAt, residualSource: physicalResidualSource(metricId), additiveAcrossProcesses: additive };
@@ -2494,11 +2572,15 @@ function resourceFacts(url, capturedAt = now()) {
         unavailableReason: Object.hasOwn(processMemoryFacts, metricId) ? "gpu-measure-total-unavailable"
           : /^gpu\.\d+\.vram$/.test(metricId) ? "gpu-dedicated-memory-total-unavailable" : "system-total-unavailable" };
     }
-    const share = count > 0 ? processSum / count : 0;
     const shared = sharedValue === null ? null : sharedValue / Math.max(1, count);
-    const rows = software.slice(0, count).map((identity, index) => ({ softwareId: identity.softwareId, value: share, systemPercent: percent(share),
+    const weights = scenario.generatedData?.weights;
+    const weightSum = weights?.reduce((sum, value) => sum + value, 0) ?? 1;
+    const rows = software.slice(0, count).map((identity, index) => {
+      const share = weights ? processSum * weights[index] / weightSum : count > 0 ? processSum / count : 0;
+      return { softwareId: identity.softwareId, value: share, systemPercent: percent(share),
       processCount: 1, baseScore: 0, sharedValue: shared,
-      processes: [{ processIndex: index, value: share, systemPercent: percent(share), softwarePercent: 100, baseScore: 0, sharedValue: shared }] }));
+      processes: [{ processIndex: index, value: share, systemPercent: percent(share), softwarePercent: 100, baseScore: 0, sharedValue: shared }] };
+    });
     const sum = count > 0 ? processSum : 0;
     const residual = additive && total !== null ? total - sum : null;
     if (residual !== null && residual !== 0 && residualRows !== null) {
@@ -2539,7 +2621,8 @@ function resourceFacts(url, capturedAt = now()) {
     // 自动指标：内存类按字节，其余按百分比或速率；accounting 场景下总量是进程之和的两倍，差额进残差。
     const memory = metricId === "memory.usage" || metricId.endsWith(".vram");
     const throughputMetric = metricId === "disk.io" || metricId === "network.traffic";
-    const processSum = count > 0 ? memory ? 536870912 : 12 : 0;
+    const generated = generatedReadings()[metricId];
+    const processSum = count > 0 ? generated?.numericValue ?? (memory ? 536870912 : 12) : 0;
     // 计数器叶子替代通用残差行；整机总量包含这些叶子，使 r4 的残差事实与行值一致。
     const residualRows = metricId === "memory.usage" && scenario.resourceMemoryResidualLeaves
       && !scenario.resourceTableTotalsMissing.includes(metricId)
@@ -2549,7 +2632,8 @@ function resourceFacts(url, capturedAt = now()) {
       : scenario.resourceTableAccountingFixture ? processSum * 2 : processSum;
     return balance({ metricId, unit: memory ? "B" : throughputMetric ? "B/s" : "%", totalMetricId: metricId,
       processFieldName: automaticProcessFields[metricId] ?? null, totalValue, processSum, additive: true,
-      capacityValue: memory ? 1073741824 * (scenario.resourceTableAccountingFixture ? 2 : 1) : throughputMetric ? Math.max(1, totalValue) : 100,
+      capacityValue: generated ? (generated.percent > 0 ? generated.numericValue * 100 / generated.percent : memory ? 64 * GiB : 100)
+        : memory ? 1073741824 * (scenario.resourceTableAccountingFixture ? 2 : 1) : throughputMetric ? Math.max(1, totalValue) : 100,
       quantity: metricId.endsWith(".vram") ? "dedicated_memory_used" : null,
       sharedValue: memory ? 134217728 : null, residualRows });
   });
@@ -2989,7 +3073,8 @@ async function subscriptionChannelStream(request, response) {
     const operation = requestUrl.pathname === "/api/operations/subscribe";
     const managementInventoryRevision = requestUrl.pathname === "/api/management/inventory-revisions/subscribe";
     const productUpdateStatus = requestUrl.pathname === "/api/updates/product/status/subscribe";
-    const eventOnly = operation || managementInventoryRevision || productUpdateStatus;
+    const recordedFrames = !scenario.readmeShowcase && sliceReplay?.frames(requestUrl.pathname + requestUrl.search).length > 0;
+    const eventOnly = operation || managementInventoryRevision || productUpdateStatus || recordedFrames;
     let createPayload;
     try { createPayload = eventOnly ? null : subscriptionPayloadFactory(requestUrl); }
     catch { return json(response, 400, { error: "One or more subscription queries are invalid." }); }
@@ -3021,6 +3106,16 @@ async function subscriptionChannelStream(request, response) {
   const releases = [];
   for (const subscription of subscriptions) {
     const releaseTelemetry = trackLogicalSubscription(subscription.requestUrl);
+    const replayPath = subscription.requestUrl.pathname + subscription.requestUrl.search;
+    if (!scenario.readmeShowcase && sliceReplay?.frames(replayPath).length) {
+      const release = sliceReplay.subscribe(replayPath, value => {
+        if (response.destroyed || response.writableEnded) return;
+        writeSubscriptionChannelFrame(response, subscription.id, value);
+        recordLogicalPublication(subscription.requestUrl);
+      });
+      releases.push(() => { release(); releaseTelemetry(); });
+      continue;
+    }
     if (subscription.operation) {
       const subscriber = {
         response,
@@ -3157,7 +3252,8 @@ function parseSubscriptionChannelSelector(value) {
   }
   const separator = value.indexOf("?");
   const selector = separator < 0 ? value : value.slice(0, separator);
-  if (!subscriptionChannelSelectors.has(selector)) {
+  if (!subscriptionChannelSelectors.has(selector)
+    && (scenario.readmeShowcase || !sliceReplay?.frames(value).length)) {
     return null;
   }
   return new URL(value, `http://127.0.0.1:${port}`);
@@ -3404,13 +3500,17 @@ function rescheduleNdjsonPublisher(publisher) {
   if (scenario.manualPublishPaths.includes(publisher.path)) return;
   const current = Date.now();
   const nextBoundary = (Math.floor(current / intervalMs) + 1) * intervalMs;
-  publisher.timer = setTimeout(
-    () => publishNdjsonBoundary(publisher),
-    Math.max(0, nextBoundary - current));
+  const rhythm = scenario.generatedData?.intervalsMs;
+  const delayMs = rhythm?.length ? rhythm[(publisher.generatedFrame ?? 0) % rhythm.length] : Math.max(0, nextBoundary - current);
+  publisher.generatedFrame = (publisher.generatedFrame ?? 0) + 1;
+  publisher.timer = setTimeout(() => publishNdjsonBoundary(publisher), delayMs);
 }
 
 function publishNdjsonBoundary(publisher) {
   publisher.timer = null;
+  if (scenario.generatedData && ["/api/metrics/subscribe", "/api/resource-facts/subscribe", "/api/resource-monitor/subscribe"].includes(publisher.path)) {
+    scenario.generatedData.frameIndex = (scenario.generatedData.frameIndex ?? 0) + 1;
+  }
   const publishedAt = now();
   for (const subscriber of [...publisher.subscribers]) {
     subscriber.publish(publishedAt);
@@ -3426,6 +3526,12 @@ function pushInterval(url) {
   return Number.isFinite(value)
     ? Math.min(60_000, Math.max(100, Math.round(value)))
     : 1_000;
+}
+
+function generatedReadings() {
+  const data = scenario.generatedData;
+  if (!data) return {};
+  return data.metricUpdates?.length ? data.metricUpdates[(data.frameIndex ?? 0) % data.metricUpdates.length] : data.metrics;
 }
 
 function text(response, status, payload) {
