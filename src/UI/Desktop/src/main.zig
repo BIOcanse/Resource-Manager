@@ -256,7 +256,8 @@ const Host = struct {
                 });
             },
             else => {
-                // Frontend and MainFrontend are packaging blocks. The five future entries are
+                // Frontend, MainFrontend and SystemIntegration are packaging blocks.
+                // The five future entries are
                 // explicitly inert phase A stubs, with their declared conditions.
                 running(slot);
                 _ = c.WaitForSingleObject(slot.stop, c.INFINITE);

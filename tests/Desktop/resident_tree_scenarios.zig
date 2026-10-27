@@ -11,7 +11,7 @@ const I = topology.ItemUids;
 const Run = struct { block: u32, number: u64 };
 const Event = union(enum) { start: Run, stop: Run, running: Run, returned: Run, window_ready, close, ending, session };
 const Claim = control.state.Claim;
-const Target = enum { roots_running, window_running, window_stopped, desktop_running, desktop_stopped, all_stopped, first_session, second_session, held_stops, main_stopped };
+const Target = enum { roots_running, window_running, window_stopped, desktop_running, desktop_stopped, all_stopped, first_session, second_session, held_stops, main_stopped, integration_children_running, hotkey_stopped };
 
 const Host = struct {
     const Slot = struct { host: *Host = undefined, run: Run = undefined, stop: w.HANDLE = undefined, worker: ?std.Thread = null, starts: usize = 0 };
@@ -36,6 +36,7 @@ const Host = struct {
     // Controlled test-host delivery, not a business block refusing stop.
     held_blocks: [2]u32 = .{ 0, 0 },
     held_runs: [2]?Run = .{ null, null },
+    integration_stop_delivered: bool = false,
 
     fn why() control.Reason {
         return .{ .kind = 1, .owner = "tree-scenario", .cause = "test input", .plan_version = 0 };
@@ -160,6 +161,7 @@ const Host = struct {
                     try std.testing.expectEqual(control.types.BlockState.stopped, try self.state(child.uid));
                     try std.testing.expect(self.slot(child.uid).worker == null);
                 }
+                if (run.block == B.SystemIntegration) self.integration_stop_delivered = true;
                 for (self.held_blocks, 0..) |block, index| {
                     if (block == run.block) {
                         self.held_runs[index] = run;
@@ -200,7 +202,7 @@ const Host = struct {
     }
     fn reached(self: *Host, target: Target) !bool {
         return switch (target) {
-            .roots_running => try self.state(B.Frontend) == .running and try self.state(B.MainFrontend) == .running and try self.state(B.Tray) == .running and try self.state(B.BackendConnection) == .running and try self.state(B.SingleInstance) == .running,
+            .roots_running => try self.state(B.Frontend) == .running and try self.state(B.MainFrontend) == .running and try self.state(B.SystemIntegration) == .running and try self.state(B.Tray) == .running and try self.state(B.BackendConnection) == .running and try self.state(B.SingleInstance) == .running,
             .window_running => self.window_ready and try self.state(B.WindowProcess) == .running,
             .window_stopped => self.slot(B.WindowProcess).starts != 0 and self.slot(B.WindowProcess).worker == null and try self.state(B.WindowProcess) == .stopped,
             .desktop_running => try self.state(B.DesktopObservation) == .running,
@@ -210,6 +212,8 @@ const Host = struct {
             .second_session => self.sessions >= 2,
             .held_stops => self.held_runs[0] != null and self.held_runs[1] != null,
             .main_stopped => try self.state(B.MainFrontend) == .stopped and self.slot(B.MainFrontend).worker == null,
+            .integration_children_running => try self.state(B.ForceTerminateHotkey) == .running and try self.state(B.TaskManagerReplacement) == .running,
+            .hotkey_stopped => try self.state(B.ForceTerminateHotkey) == .stopped and self.slot(B.ForceTerminateHotkey).worker == null,
         };
     }
     fn wait(self: *Host, target: Target) !void {
@@ -224,7 +228,7 @@ const Host = struct {
         return error.ScenarioTimedOut;
     }
     fn rootsSurvive(self: *Host) !void {
-        for ([_]u32{ B.Frontend, B.MainFrontend, B.Tray, B.BackendConnection, B.SingleInstance }) |uid| {
+        for ([_]u32{ B.Frontend, B.MainFrontend, B.SystemIntegration, B.Tray, B.BackendConnection, B.SingleInstance }) |uid| {
             try std.testing.expectEqual(control.types.BlockState.running, try self.state(uid));
             try std.testing.expectEqual(@as(usize, 1), self.slot(uid).starts);
         }
@@ -240,7 +244,62 @@ const Host = struct {
         }
         return error.StopNotHeld;
     }
+    fn releaseHeldStops(self: *Host) void {
+        for (self.held_runs) |run| if (run) |held| {
+            _ = w.SetEvent(self.slot(held.block).stop);
+        };
+        self.held_blocks = .{ 0, 0 };
+        self.held_runs = .{ null, null };
+    }
 };
+
+test "SystemIntegration stays running when both system integration switches are off" {
+    var host: Host = .{};
+    try host.init(false, "hold");
+    defer host.deinit();
+    const hotkey = try host.engine.claimWrite(.{ .item = I.ForceTerminateHotkeyEnabled });
+    const task_manager = try host.engine.claimWrite(.{ .item = I.TaskManagerReplacementEnabled });
+    const valid = try host.engine.claimWrite(.{ .item = I.ForceTerminateHotkeyValid });
+    try host.engine.publish(hotkey, .{ .value = false }, Host.why(), null);
+    try host.engine.publish(task_manager, .{ .value = false }, Host.why(), null);
+    try host.engine.publish(valid, .{ .value = true }, Host.why(), null);
+    try host.wait(.roots_running);
+    try host.rootsSurvive();
+    for ([_]u32{ B.ForceTerminateHotkey, B.TaskManagerReplacement }) |block| {
+        try std.testing.expectEqual(control.types.BlockState.stopped, try host.state(block));
+        try std.testing.expectEqual(@as(usize, 0), host.slot(block).starts);
+    }
+}
+
+test "SystemIntegration receives stop only after both children stop and join" {
+    var host: Host = .{};
+    try host.init(true, "hold");
+    defer host.deinit();
+    defer host.releaseHeldStops();
+    try host.wait(.window_running);
+    try host.wait(.roots_running);
+    const hotkey = try host.engine.claimWrite(.{ .item = I.ForceTerminateHotkeyEnabled });
+    const task_manager = try host.engine.claimWrite(.{ .item = I.TaskManagerReplacementEnabled });
+    const valid = try host.engine.claimWrite(.{ .item = I.ForceTerminateHotkeyValid });
+    try host.engine.publish(hotkey, .{ .value = true }, Host.why(), null);
+    try host.engine.publish(task_manager, .{ .value = true }, Host.why(), null);
+    try host.engine.publish(valid, .{ .value = true }, Host.why(), null);
+    try host.wait(.integration_children_running);
+    host.held_blocks = .{ B.ForceTerminateHotkey, B.TaskManagerReplacement };
+    try host.end();
+    try host.wait(.held_stops);
+    try std.testing.expect(!host.integration_stop_delivered);
+    try std.testing.expectEqual(control.types.BlockState.running, try host.state(B.SystemIntegration));
+    try host.releaseStop(B.ForceTerminateHotkey);
+    try host.wait(.hotkey_stopped);
+    try std.testing.expect(!host.integration_stop_delivered);
+    try std.testing.expectEqual(control.types.BlockState.running, try host.state(B.SystemIntegration));
+    try host.releaseStop(B.TaskManagerReplacement);
+    try host.wait(.all_stopped);
+    // dispatch(stop) checks every direct child is stopped and joined first.
+    try std.testing.expect(host.integration_stop_delivered);
+    try std.testing.expect(host.slot(B.SystemIntegration).worker == null);
+}
 
 test "tree scenario 6: background WindowWanted false never requests a child" {
     var host: Host = .{};
@@ -327,13 +386,7 @@ test "program message loop waits for Frontend including both branches and their 
     try host.init(true, "hold");
     defer host.deinit();
     // Always release held delivery on assertion failure so cleanup can cancel.
-    defer {
-        for (host.held_runs) |run| if (run) |held| {
-            _ = w.SetEvent(host.slot(held.block).stop);
-        };
-        host.held_blocks = .{ 0, 0 };
-        host.held_runs = .{ null, null };
-    }
+    defer host.releaseHeldStops();
     try host.wait(.window_running);
     try host.wait(.roots_running);
     const notifications = try host.engine.claimWrite(.{ .item = I.NotificationsEnabled });

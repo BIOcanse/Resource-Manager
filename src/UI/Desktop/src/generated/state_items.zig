@@ -2,7 +2,7 @@
 const declarations = @import("rm_control").declarations;
 
 pub const registry: declarations.Registry = .{
-    .version = "8f4d2f876550bf631c0f086fe8e067753ec2fdc5",
+    .version = "4e455295522649bdef142f432748d07251a6dcba",
     .process = "desktop",
     .blocks = &.{
         .{ .uid = 40, .name = null },
@@ -16,6 +16,7 @@ pub const registry: declarations.Registry = .{
         .{ .uid = 87, .name = null },
         .{ .uid = 88, .name = null },
         .{ .uid = 89, .name = null },
+        .{ .uid = 100, .name = null },
         .{ .uid = 101, .name = null },
     },
     .items = &.{
@@ -40,13 +41,13 @@ pub const registry: declarations.Registry = .{
             .items = &.{
             },
             .conditions = &.{  }, .children = &.{  }, .decides = null, .name = null },
-        .{ .uid = 103, .node = 41, .per_block = false,
+        .{ .uid = 103, .node = 100, .per_block = false,
             .items = &.{
                 .{ .item = 95, .block = null },
                 .{ .item = 96, .block = null },
             },
             .conditions = &.{  }, .children = &.{  }, .decides = 87, .name = null },
-        .{ .uid = 104, .node = 41, .per_block = false,
+        .{ .uid = 104, .node = 100, .per_block = false,
             .items = &.{
                 .{ .item = 97, .block = null },
             },
@@ -88,6 +89,7 @@ pub const BlockUids = struct {
     pub const @"ForceTerminateHotkey" = 87;
     pub const @"TaskManagerReplacement" = 88;
     pub const @"WindowProcess" = 89;
+    pub const @"SystemIntegration" = 100;
     pub const @"Frontend" = 101;
 };
 

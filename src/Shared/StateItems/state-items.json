@@ -1004,6 +1004,13 @@
       "decides": 101
     },
     {
+      "uid": 100,
+      "kind": "block",
+      "process": "desktop",
+      "name": "SystemIntegration",
+      "comment": "Groups force-terminate hotkey and task-manager replacement under MainFrontend; runs until stopped."
+    },
+    {
       "uid": 101,
       "kind": "block",
       "process": "desktop",
@@ -1028,7 +1035,7 @@
       "name": "ForceTerminateHotkeyWanted",
       "comment": "The force-terminate setting is enabled and its configured hotkey is valid.",
       "perBlock": false,
-      "node": 41,
+      "node": 100,
       "items": [
         {
           "item": 95
@@ -1048,7 +1055,7 @@
       "name": "TaskManagerReplacementWanted",
       "comment": "The task-manager replacement setting is enabled.",
       "perBlock": false,
-      "node": 41,
+      "node": 100,
       "items": [
         {
           "item": 97

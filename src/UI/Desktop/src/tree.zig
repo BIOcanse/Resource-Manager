@@ -18,8 +18,9 @@ pub const tree: control.tree.Tree = .{
         .{ .uid = B.MainFrontend, .parent = B.Frontend },
         .{ .uid = B.Tray, .parent = B.Frontend },
         .{ .uid = B.SingleInstance, .parent = B.MainFrontend },
-        .{ .uid = B.ForceTerminateHotkey, .parent = B.MainFrontend },
-        .{ .uid = B.TaskManagerReplacement, .parent = B.MainFrontend },
+        .{ .uid = B.SystemIntegration, .parent = B.MainFrontend },
+        .{ .uid = B.ForceTerminateHotkey, .parent = B.SystemIntegration },
+        .{ .uid = B.TaskManagerReplacement, .parent = B.SystemIntegration },
         .{ .uid = B.BackendConnection, .parent = B.MainFrontend },
         .{ .uid = B.WindowProcess, .parent = B.MainFrontend },
         .{ .uid = B.DesktopObservation, .parent = B.BackendConnection, .inputs = &.{B.BackendConnection} },
@@ -30,6 +31,7 @@ pub const tree: control.tree.Tree = .{
         .{ .node = B.Frontend, .condition = C.AlwaysWanted, .child = B.MainFrontend },
         .{ .node = B.Frontend, .condition = C.AlwaysWanted, .child = B.Tray },
         .{ .node = B.MainFrontend, .condition = C.AlwaysWanted, .child = B.SingleInstance },
+        .{ .node = B.MainFrontend, .condition = C.AlwaysWanted, .child = B.SystemIntegration },
         .{ .node = B.MainFrontend, .condition = C.AlwaysWanted, .child = B.BackendConnection },
     },
     .computes = &.{
@@ -118,6 +120,18 @@ test "Program owns only Frontend and Frontend owns the two frontend branches" {
     }
     try std.testing.expectEqual(@as(usize, 1), root_children);
     try std.testing.expectEqual(@as(usize, 2), frontend_children);
+}
+
+test "SystemIntegration owns exactly the two system integration blocks" {
+    const std = @import("std");
+    var children: usize = 0;
+    for (tree.blocks) |block| {
+        if (block.uid == B.SystemIntegration) try std.testing.expectEqual(B.MainFrontend, block.parent.?);
+        if (block.parent != B.SystemIntegration) continue;
+        children += 1;
+        try std.testing.expect(block.uid == B.ForceTerminateHotkey or block.uid == B.TaskManagerReplacement);
+    }
+    try std.testing.expectEqual(@as(usize, 2), children);
 }
 
 test "resident conditions require ready sessions, explicit switches and valid keys" {

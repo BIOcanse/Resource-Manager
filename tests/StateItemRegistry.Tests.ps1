@@ -223,13 +223,19 @@ foreach ($process in @('backend','ui')) {
 [IO.File]::WriteAllText($path, '{"entries":[{"uid":0}]}')
 Assert-Rejected { & $generator -Registry $path -Process backend -Namespace Invalid -Output (Join-Path $scratch 'invalid.g.cs') } 'Entry.*missing'
 $production = Read-StateRegistry -Path (Join-Path $repo 'src/Shared/StateItems/state-items.json')
-Assert-True ($production.entries.Count -eq 108) 'Production catalog contains 65 blocks, 29 items and 14 conditions.'
-Assert-True (@($production.entries | Where-Object kind -CEQ 'block').Count -eq 65) 'Production catalog contains 65 blocks.'
+Assert-True ($production.entries.Count -eq 109) 'Production catalog contains 66 blocks, 29 items and 14 conditions.'
+Assert-True (@($production.entries | Where-Object kind -CEQ 'block').Count -eq 66) 'Production catalog contains 66 blocks.'
 Assert-True (@($production.entries | Where-Object kind -CEQ 'item').Count -eq 29) 'Production catalog contains 29 items.'
 Assert-True (@($production.entries | Where-Object kind -CEQ 'condition').Count -eq 14) 'Production catalog contains 14 conditions.'
 Assert-True (($production.entries | Where-Object uid -EQ 41).name -ceq 'MainFrontend') 'MainRoot is renamed without changing UID 41.'
 Assert-True (($production.entries | Where-Object uid -EQ 42).name -ceq 'Tray') 'TrayRoot is renamed without changing UID 42.'
 Assert-True (@($production.entries | Where-Object { $_.process -ceq 'desktop' -and $_.name -ceq 'Frontend' -and $_.kind -ceq 'block' }).Count -eq 1) 'The resident has one Frontend wrapper declaration.'
+$integration = @($production.entries | Where-Object { $_.process -ceq 'desktop' -and $_.name -ceq 'SystemIntegration' -and $_.kind -ceq 'block' })
+Assert-True ($integration.Count -eq 1) 'The resident has one SystemIntegration wrapper declaration.'
+foreach ($name in @('ForceTerminateHotkeyWanted','TaskManagerReplacementWanted')) {
+    $condition = $production.entries | Where-Object { $_.process -ceq 'desktop' -and $_.name -ceq $name }
+    Assert-True ($condition.node -eq $integration[0].uid) "$name is decided by the system integration node."
+}
 Assert-True (@($production.entries | Where-Object name -CIn @('MainTreeWanted','TrayTreeWanted')).Count -eq 0) 'The obsolete root-to-two-branches conditions are removed.'
 $active = $production.entries | Where-Object { $_.process -ceq 'desktop' -and $_.name -ceq 'ProgramActive' }
 $frontend = $production.entries | Where-Object { $_.process -ceq 'desktop' -and $_.name -ceq 'Frontend' }
