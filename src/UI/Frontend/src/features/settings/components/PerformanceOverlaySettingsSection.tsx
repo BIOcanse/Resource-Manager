@@ -11,7 +11,7 @@ import { ContentState } from "../../../ui/patterns/ContentState.tsx";
 
 interface PerformanceOverlaySettingsSectionProps {
   text: SettingsTextBundle;
-  /** 软件详细信息里能不能编辑叠加层（叠加层分页只在可写持久化时出现）。 */
+  /** 软件详细信息里能不能编辑浮层（浮层分页只在可写持久化时出现）。 */
   overlayEditingAvailable: boolean;
   /** 软件详细信息对话框是否开着：关上时重新读一次，那里保存的改动随即出现在这里。 */
   softwareDetailOpen: boolean;
@@ -25,10 +25,10 @@ interface OverlayRow {
 }
 
 /*
- * 设置 → 性能浮层：哪些软件启用了叠加层。
- * 数据只用前端已有的：叠加层前端偏好，加上叠加层分页本来就读的启动模块登记（getPerformanceOverlaySettings，同一读法），
+ * 设置 → 性能浮层：哪些软件启用了浮层。
+ * 数据只用前端已有的：浮层前端偏好，加上浮层分页本来就读的启动模块登记（getPerformanceOverlaySettings，同一读法），
  * 只列启用的。没有运行状态（是否找到窗口、是否已注入），这里写明显示的是保存的设置。
- * 修改在软件详细信息的叠加层分页里做：每一行的按钮直接打开那个分页。
+ * 修改在软件详细信息的浮层分页里做：每一行的按钮直接打开那个分页。
  */
 export function PerformanceOverlaySettingsSection(props: PerformanceOverlaySettingsSectionProps) {
   const copy = () => props.text.performanceOverlay;

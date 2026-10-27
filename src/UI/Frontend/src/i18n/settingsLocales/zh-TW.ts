@@ -480,15 +480,15 @@ export default createSettingsLocale("zh-TW", {
     "reassertionDescription": "Resource Manager 依此間隔將「控制面」頁中已成功套用的設定重新寫入一次，以免被系統、驅動程式或其他程式改回。"
   },
   "performanceOverlay": {
-    "intro": "列出已啟用疊加層的軟體。此處顯示的是已儲存的設定，不代表疊加層目前已經顯示。",
-    "loading": "正在讀取疊加層設定",
-    "loadFailed": "疊加層設定讀取失敗",
-    "emptyTitle": "沒有軟體啟用疊加層",
+    "intro": "列出已啟用浮層的軟體。此處顯示的是已儲存的設定，不代表浮層目前已經顯示。",
+    "loading": "正在讀取浮層設定",
+    "loadFailed": "浮層設定讀取失敗",
+    "emptyTitle": "沒有軟體啟用浮層",
     "emptyDetail": (tab: string) => `在軟體的詳細資訊中開啟「${tab}」分頁即可啟用。`,
     "metricCount": (count: number) => `${count} 項指標`,
     "position": (anchor: string) => `位置：${anchor}`,
-    "open": "開啟疊加層設定",
-    "openLabel": (name: string) => `開啟「${name}」的疊加層設定`,
+    "open": "開啟浮層設定",
+    "openLabel": (name: string) => `開啟「${name}」的浮層設定`,
     "softwareMissing": "軟體清單中已沒有這個軟體，無法開啟其詳細資訊。"
   },
   "credits": {

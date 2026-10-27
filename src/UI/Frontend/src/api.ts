@@ -102,7 +102,7 @@ export async function getPerformanceOverlaySettings(softwareId: string): Promise
 }
 
 /**
- * 设置 → 性能浮层的总览：前端偏好里有叠加层设置的每个软件，按叠加层分页同一读法（getPerformanceOverlaySettings）
+ * 设置 → 性能浮层的总览：前端偏好里有浮层设置的每个软件，按浮层分页同一读法（getPerformanceOverlaySettings）
  * 得出是否启用，只留启用的。不读运行状态。
  */
 export async function listEnabledPerformanceOverlays(): Promise<PerformanceOverlaySettings[]> {

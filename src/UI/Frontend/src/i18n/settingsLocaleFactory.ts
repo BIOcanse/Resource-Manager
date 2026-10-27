@@ -343,15 +343,15 @@ const zhCnSettingsCopy: SettingsCopy = {
     reassertionDescription: "资源管理器按此间隔把“控制面”页中已成功应用的设定重新写入一次，以免被系统、驱动或其他程序改回。"
   },
   performanceOverlay: {
-    intro: "列出已启用叠加层的软件。此处显示的是已保存的设置，不表示叠加层当前已经显示。",
-    loading: "正在读取叠加层设置",
-    loadFailed: "叠加层设置读取失败",
-    emptyTitle: "没有软件启用叠加层",
+    intro: "列出已启用浮层的软件。此处显示的是已保存的设置，不表示浮层当前已经显示。",
+    loading: "正在读取浮层设置",
+    loadFailed: "浮层设置读取失败",
+    emptyTitle: "没有软件启用浮层",
     emptyDetail: (tab: string) => `在软件的详细信息中打开“${tab}”分页即可启用。`,
     metricCount: (count: number) => `${count} 项指标`,
     position: (anchor: string) => `位置：${anchor}`,
-    open: "打开叠加层设置",
-    openLabel: (name: string) => `打开“${name}”的叠加层设置`,
+    open: "打开浮层设置",
+    openLabel: (name: string) => `打开“${name}”的浮层设置`,
     softwareMissing: "软件列表中已没有这个软件，无法打开其详细信息。"
   },
   credits: {

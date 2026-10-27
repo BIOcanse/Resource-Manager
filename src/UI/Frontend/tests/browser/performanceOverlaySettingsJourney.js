@@ -11,7 +11,7 @@ import { NOT_GHOST } from "./liveLocator.js";
 
 const injectedModules = ["performance-overlay-preload", "performance-overlay-vulkan"];
 const overlay = (patch) => ({ ...pointOverlayPresentation(), ...patch });
-// 多软件的情形：外置、注入（模块已登记）各一个启用；一个关闭、一个注入但模块没有登记（叠加层分页按未启用读），都不列出；
+// 多软件的情形：外置、注入（模块已登记）各一个启用；一个关闭、一个注入但模块没有登记（浮层分页按未启用读），都不列出；
 // 一个启用但软件列表里已经没有它，按软件 ID 列出、不能打开。
 const mixed = {
   overlays: {
@@ -30,12 +30,12 @@ const mixed = {
 };
 
 /**
- * 设置 → 性能浮层（外观之后）：启用叠加层的软件总览。
- * - 没有：写没有软件启用，并说明在软件详细信息的叠加层分页里启用；
- * - 一个外置：一行，写显示方式、指标数和位置；按钮打开这个软件的详细信息并停在叠加层分页，关上后总览重新读；
- * - 多个混合：只列启用的（注入要模块已登记，与叠加层分页同一读法），软件列表里没有的按 ID 列出且不能打开；
+ * 设置 → 性能浮层（外观之后）：启用浮层的软件总览。
+ * - 没有：写没有软件启用，并说明在软件详细信息的浮层分页里启用；
+ * - 一个外置：一行，写显示方式、指标数和位置；按钮打开这个软件的详细信息并停在浮层分页，关上后总览重新读；
+ * - 多个混合：只列启用的（注入要模块已登记，与浮层分页同一读法），软件列表里没有的按 ID 列出且不能打开；
  * - 九种语言在 1280×800 和 800×600 下不溢出、没有被截掉的按钮；简体中文和英文截图。
- * 只读前端偏好和叠加层分页本来就读的启动模块登记。
+ * 只读前端偏好和浮层分页本来就读的启动模块登记。
  */
 export default async function performanceOverlaySettingsJourney(page, baseUrl) {
   const shots = process.env.RM_BROWSER_ARTIFACT_DIR
@@ -102,7 +102,7 @@ export default async function performanceOverlaySettingsJourney(page, baseUrl) {
     assert.equal((await one.locator(".settings-row-copy span").textContent()).trim(), expectedSummary, `${language}: wrong row summary`);
     screenshots.push(join(shots, `performance-overlay-one-${language}.png`));
     await panel.screenshot({ path: screenshots.at(-1) });
-    // 按钮打开这个软件的详细信息，停在叠加层分页；改动在那里保存，关上后这里重新读。
+    // 按钮打开这个软件的详细信息，停在浮层分页；改动在那里保存，关上后这里重新读。
     await one.getByRole("button", { name: settings.performanceOverlay.openLabel("示例软件"), exact: true }).click();
     const dialog = page.locator("#softwareDetailModal");
     await dialog.getByRole("tab", { name: app.performanceOverlay.tab, exact: true, selected: true }).waitFor();
