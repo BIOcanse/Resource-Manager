@@ -11,7 +11,7 @@ using ResourceManager.Subscription.Native;
 
 namespace ResourceManager.App.Infrastructure.DeviceTopology.Snapshots;
 
-internal enum DeviceTopologyFieldScope { Snapshot, Acpi, Software, Services, OperatingSystem, PassiveCurrent, NvidiaDrs }
+internal enum DeviceTopologyFieldScope { Snapshot, Acpi, Software, Services, OperatingSystem, PassiveCurrent, NvidiaDrs, NetworkEndpoints }
 
 public sealed partial class DeviceTopologySnapshotProvider
 {
@@ -72,6 +72,7 @@ public sealed partial class DeviceTopologySnapshotProvider
             DeviceTopologyFieldScope.Services => DeviceTopologySampleScope.Services,
             DeviceTopologyFieldScope.OperatingSystem => DeviceTopologySampleScope.OperatingSystem,
             DeviceTopologyFieldScope.PassiveCurrent => DeviceTopologySampleScope.PassiveCurrent,
+            DeviceTopologyFieldScope.NetworkEndpoints => DeviceTopologySampleScope.NetworkEndpoints,
             DeviceTopologyFieldScope.NvidiaDrs => DeviceTopologySampleScope.NvidiaDrs,
             _ => throw new ArgumentOutOfRangeException(nameof(publicScope))
         };

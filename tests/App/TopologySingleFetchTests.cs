@@ -173,6 +173,8 @@ public sealed class TopologySingleFetchTests
             }
             finally { Interlocked.Decrement(ref Active); }
         }
+        public IAsyncEnumerable<DeviceTopologySnapshotState> SubscribeChangesAsync(string id, TimeSpan interval, CancellationToken token)
+            => throw new InvalidOperationException("A single fetch must await sample completion, including an unchanged sample.");
         public async IAsyncEnumerable<DeviceInformationSnapshot> SubscribeAcpiAsync(string holder, TimeSpan interval,
             [EnumeratorCancellation] CancellationToken token)
         {

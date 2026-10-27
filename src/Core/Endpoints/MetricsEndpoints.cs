@@ -1,3 +1,4 @@
+using ResourceManager.App.Application.DeviceTopology;
 using ResourceManager.App.Application.Adaptation;
 using ResourceManager.App.Application.Components;
 using ResourceManager.App.Application.Controlled;
@@ -39,15 +40,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         app.MapMetricFieldEndpoints();
         app.MapGet("/api/metrics/catalog", async (
             HardwareMetricCatalogState catalogState,
-            IComponentManager componentManager,
+            IComponentManager componentManager, HttpContext context,
             CancellationToken cancellationToken) =>
         {
-            // Keep unavailable definitions so consumers can display the missing capability.
-            if (catalogState.ReadCommitted().Snapshot is not { } snapshot)
-                return Results.Ok(Array.Empty<MetricDefinition>());
-            return Results.Ok(MetricCatalog.WithInstalledComponents(
-                MetricCatalog.FromSnapshot(snapshot),
-                await InstalledComponentIdsAsync(componentManager, cancellationToken)));
+            await catalogState.RefreshCompositionAsync(componentManager,
+                context.RequestServices.GetService<IDeviceTopologySnapshotProvider>(), cancellationToken);
+            return Results.Ok(catalogState.ReadPublication()?.Metrics ?? Array.Empty<MetricDefinition>());
         }).AllowAnonymous();
 
         app.MapGet("/api/metrics/snapshot", async (
@@ -97,10 +95,14 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         app.MapGet("/api/metrics/fields/capabilities", ([Microsoft.AspNetCore.Mvc.FromServices] ResourceManager.ReadWrite.ReadWriteCore core)
             => Results.Ok(PublicCapabilityFields(core.Catalog.Fields))).AllowAnonymous();
 
-        app.MapGet("/api/metrics/fields/catalog", (HardwareMetricCatalogState catalogState, HttpContext context)
-            => catalogState.ReadCommitted().Snapshot is { } snapshot
-                ? Results.Ok(ReadMetricFieldCatalog(snapshot, context.RequestServices))
-                : Results.StatusCode(StatusCodes.Status503ServiceUnavailable)).AllowAnonymous();
+        app.MapGet("/api/metrics/fields/catalog", async (HardwareMetricCatalogState catalogState, HttpContext context,
+            IComponentManager components, CancellationToken cancellationToken) =>
+        {
+            await catalogState.RefreshCompositionAsync(components,
+                context.RequestServices.GetService<IDeviceTopologySnapshotProvider>(), cancellationToken);
+            return catalogState.ReadPublication() is { } committed ? Results.Ok(committed.Fields)
+                : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+        }).AllowAnonymous();
 
         app.MapGet("/api/metrics/fields/snapshot", async (
             HttpRequest request, HttpResponse response, HardwareMetricCatalogState catalogState,

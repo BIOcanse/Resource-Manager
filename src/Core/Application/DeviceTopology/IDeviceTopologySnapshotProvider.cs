@@ -11,6 +11,11 @@ public interface IDeviceTopologySnapshotProvider
         TimeSpan interval,
         CancellationToken cancellationToken);
 
+    // Structural state uses change notification; one-shot requests and information reads
+    // continue to use sample completion even when the sampled value is identical.
+    IAsyncEnumerable<DeviceTopologySnapshotState> SubscribeChangesAsync(
+        string subscriptionId, TimeSpan interval, CancellationToken cancellationToken);
+
     // No unread/retained-state yield: demand publishes the owner's once-read fixed value,
     // or its typed failure. Its original observation time is not a freshness criterion.
     IAsyncEnumerable<DeviceInformationSnapshot> SubscribeAcpiAsync(

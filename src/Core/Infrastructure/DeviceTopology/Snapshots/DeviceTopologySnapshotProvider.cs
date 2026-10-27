@@ -1,3 +1,4 @@
+using ResourceManager.ReadWrite.Windows.Devices;
 using ResourceManager.ReadWrite.Vendors.Nvidia;
 using ResourceManager.ReadWrite.Windows.Devices.Snapshots;
 using System.Runtime.CompilerServices;
@@ -27,9 +28,12 @@ public sealed partial class DeviceTopologySnapshotProvider(
     WindowsInstalledSoftwareInventory? softwareInventory = null,
     WindowsServiceInformationOwner? serviceInventory = null,
     WindowsOperatingSystemInformationOwner? operatingSystemInventory = null,
-    NvidiaNvapiMonitoringZone? nvidiaDrsZone = null)
+    NvidiaNvapiMonitoringZone? nvidiaDrsZone = null,
+    WindowsNetworkEndpointInformationReader? networkEndpoints = null)
     : IDeviceTopologySnapshotProvider, IHostedService, IDisposable
 {
+    internal const string NetworkEndpointsItemId = "deviceTopology.network-endpoints";
+    private readonly WindowsNetworkEndpointInformationReader networkEndpointReader = networkEndpoints ?? new();
     internal const string NvidiaDrsItemId = "deviceTopology.nvidia-drs";
     internal const string SnapshotItemId = "deviceTopology.snapshot";
     internal const string AcpiItemId = "deviceTopology.acpi";
@@ -88,9 +92,10 @@ public sealed partial class DeviceTopologySnapshotProvider(
         WindowsInstalledSoftwareInventory? softwareInventory = null,
         WindowsServiceInformationOwner? serviceInventory = null,
         WindowsOperatingSystemInformationOwner? operatingSystemInventory = null,
-        NvidiaNvapiMonitoringZone? nvidiaDrsZone = null)
+        NvidiaNvapiMonitoringZone? nvidiaDrsZone = null,
+        WindowsNetworkEndpointInformationReader? networkEndpoints = null)
         : this(reader, store, semanticComparer, samplingSubscriptionOwner, logger, acpiReader,
-            softwareInventory, serviceInventory, operatingSystemInventory, nvidiaDrsZone)
+            softwareInventory, serviceInventory, operatingSystemInventory, nvidiaDrsZone, networkEndpoints)
     {
         ArgumentNullException.ThrowIfNull(ledgerOwner);
         subscriptions = CreateSubscriptions(samplingSubscriptionOwner,
@@ -115,6 +120,23 @@ public sealed partial class DeviceTopologySnapshotProvider(
         }
     }
 
+    [RuntimeRead(ReadVolatilityKind.EventDriven, nameof(SubscribeChangesAsync))]
+    public async IAsyncEnumerable<DeviceTopologySnapshotState> SubscribeChangesAsync(
+        string subscriptionId, TimeSpan interval, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        using var publication = captureOwner.SubscribeTopologyChanges();
+        using var lease = AcquireInformationSubscription(subscriptionId, interval, cancellationToken: cancellationToken);
+        var previous = captureOwner.ReadChangeState();
+        yield return previous;
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            await publication.WaitAsync(cancellationToken);
+            var next = captureOwner.ReadChangeState();
+            if (ReferenceEquals(previous, next)) continue;
+            previous = next;
+            yield return next;
+        }
+    }
     public DeviceTopologySnapshotState ReadState()
     {
         return captureOwner.ReadState();
@@ -328,6 +350,7 @@ public sealed partial class DeviceTopologySnapshotProvider(
 
     private static IEnumerable<string> SamplingItemIds(DeviceTopologySampleScope scope)
     {
+        if ((scope & DeviceTopologySampleScope.NetworkEndpoints) != 0) yield return NetworkEndpointsItemId;
         if ((scope & DeviceTopologySampleScope.Snapshot) != 0) yield return SnapshotItemId;
         if ((scope & DeviceTopologySampleScope.Acpi) != 0) yield return AcpiItemId;
         if ((scope & DeviceTopologySampleScope.Software) != 0) yield return SoftwareItemId;
@@ -341,6 +364,7 @@ public sealed partial class DeviceTopologySnapshotProvider(
         IReadOnlyList<ResourceManager.Subscription.NativeItemSamplingSubscriptionSourceView<DeviceTopologySampleRequest>> sources)
     {
         var scope = DeviceTopologySampleScope.None;
+        if (items.Contains(NetworkEndpointsItemId, StringComparer.OrdinalIgnoreCase)) scope |= DeviceTopologySampleScope.NetworkEndpoints;
         if (items.Contains(SnapshotItemId, StringComparer.OrdinalIgnoreCase)) scope |= DeviceTopologySampleScope.Snapshot;
         if (items.Contains(AcpiItemId, StringComparer.OrdinalIgnoreCase)) scope |= DeviceTopologySampleScope.Acpi;
         if (items.Contains(SoftwareItemId, StringComparer.OrdinalIgnoreCase)) scope |= DeviceTopologySampleScope.Software;
@@ -400,6 +424,12 @@ public sealed partial class DeviceTopologySnapshotProvider(
                 return osCompletion;
             if (osCompletion == DeviceTopologySampleCompletion.Failed) completion = osCompletion;
         }
+        if ((scope & DeviceTopologySampleScope.NetworkEndpoints) != 0)
+        {
+            var networkCompletion = await TrySampleNetworkEndpointsAsync(ownerToken, cancellationToken, collectionCommitted);
+            if (networkCompletion is DeviceTopologySampleCompletion.Canceled or DeviceTopologySampleCompletion.SkippedBusy) return networkCompletion;
+            if (networkCompletion == DeviceTopologySampleCompletion.Failed) completion = networkCompletion;
+        }
         if ((scope & DeviceTopologySampleScope.NvidiaDrs) != 0)
         {
             var drsCompletion = await TrySampleNvidiaDrsAsync(ownerToken, cancellationToken, nvidiaDrsRequests, collectionCommitted);
@@ -410,7 +440,7 @@ public sealed partial class DeviceTopologySnapshotProvider(
     }
 
     [Flags]
-    private enum DeviceTopologySampleScope : byte { None = 0, Snapshot = 1, Acpi = 2, Software = 4, Services = 8, OperatingSystem = 16, PassiveCurrent = 32, NvidiaDrs = 64 }
+    private enum DeviceTopologySampleScope : byte { None = 0, Snapshot = 1, Acpi = 2, Software = 4, Services = 8, OperatingSystem = 16, PassiveCurrent = 32, NvidiaDrs = 64, NetworkEndpoints = 128 }
 
     private bool HasCurrentDemand(DeviceTopologySampleScope scope)
         => subscriptions.HasPersistentDemand(request =>

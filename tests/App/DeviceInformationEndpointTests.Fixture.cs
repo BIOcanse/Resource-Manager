@@ -42,6 +42,7 @@ public sealed partial class DeviceInformationEndpointTests
         TrustedAccessEndpointTestAuthentication.Add(builder.Services, "read");
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.ClearProviders();
+        builder.Services.AddSingleton(provider);
         builder.Services.AddSingleton<IDeviceTopologySnapshotProvider>(provider);
         builder.Services.AddHostedService(_ => provider);
         var app = TrustedAccessEndpointTestAuthentication.Build(builder);
@@ -85,8 +86,8 @@ public sealed partial class DeviceInformationEndpointTests
     {
         private readonly HostManagerSamplingSubscriptionTestFixture sampling = new();
         public DeviceTopologySnapshotProvider Provider { get; }
-        public Fixture(Reader reader,DeviceTopologyPersistedSnapshot? persisted=null) => Provider = new(reader, new Store(persisted), new(), sampling.Owner, NullLogger<DeviceTopologySnapshotProvider>.Instance,
-            new WindowsAcpiFirmwareTableReader());
+        public Fixture(Reader reader,DeviceTopologyPersistedSnapshot? persisted=null, WindowsNetworkEndpointInformationReader? networkEndpoints=null) => Provider = new(reader, new Store(persisted), new(), sampling.Owner, NullLogger<DeviceTopologySnapshotProvider>.Instance,
+            new WindowsAcpiFirmwareTableReader(), networkEndpoints: networkEndpoints);
         internal async Task WaitForNoDemandAndIdleAsync()
         {
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));

@@ -23,7 +23,7 @@ public sealed partial class HardwareMetricCatalogStateTests
     [InlineData("preferred")]
     [InlineData("preferred-device")]
     [InlineData("preferred-field")]
-    public void IdentityDetectsAllPreviouslyComparedFields(string change)
+    public void RevisionChangesOnlyForPublicContent(string change)
     {
         var original = CreateSnapshot(1, "gpu", "gpu.0.usage");
         var definition = MetricFieldRegistry.FindByName("gpu_amd_apu_temperature_reported_celsius")!;
@@ -61,22 +61,23 @@ public sealed partial class HardwareMetricCatalogStateTests
         state.PublishCatalogProbe(original);
         var revision = state.Revision;
         state.PublishCatalogProbe(next);
-        Assert.NotEqual(revision, state.Revision);
+        if (change is "workspace" or "configuration" or "catalog") Assert.Equal(revision, state.Revision);
+        else Assert.NotEqual(revision, state.Revision);
     }
 
     [Fact]
-    public void EqualHashStillRequiresStructuralIdentityEquality()
+    public void FingerprintCollisionCannotKeepRevisionForDifferentContent()
     {
         var first = new HardwareMetricCatalogState();
         first.PublishCatalogProbe(CreateSnapshot(1, "gpu-a", "gpu.0.usage"));
         var second = new HardwareMetricCatalogState();
-        second.PublishCatalogProbe(CreateSnapshot(1, "gpu-b", "gpu.0.usage"));
-        var identityField = typeof(HardwareMetricCatalogState).GetField("identity", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var firstIdentity = identityField.GetValue(first)!;
-        var secondIdentity = identityField.GetValue(second)!;
-        var hashField = firstIdentity.GetType().GetField("hash", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        hashField.SetValue(secondIdentity, hashField.GetValue(firstIdentity));
-        Assert.Equal(firstIdentity.GetHashCode(), secondIdentity.GetHashCode());
-        Assert.False(firstIdentity.Equals(secondIdentity));
+        var next = CreateSnapshot(1, "gpu-b", "gpu.0.usage");
+        second.PublishCatalogProbe(next);
+        var fingerprint = typeof(HardwareMetricCatalogState).GetField("contentFingerprint", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        fingerprint.SetValue(first, fingerprint.GetValue(second));
+        var revision = first.Revision;
+        first.PublishCatalogProbe(next);
+        Assert.NotEqual(revision, first.Revision);
+        Assert.Equal("gpu-b", first.ReadPublication()!.Metrics.First(metric => metric.ScopeKind == "gpu").ScopeKey);
     }
 }

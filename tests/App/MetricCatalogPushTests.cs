@@ -21,7 +21,7 @@ using ResourceManager.ReadWrite;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class MetricCatalogPushTests
+public sealed partial class MetricCatalogPushTests
 {
     [Theory]
     [InlineData(false)]
@@ -73,7 +73,7 @@ public sealed class MetricCatalogPushTests
     }
 
     [Fact]
-    public async Task UnchangedDiscoveryProbeRefreshesInstalledComponentProjectionAtTheSameHardwareRevision()
+    public async Task InstalledComponentChangeCommitsExactlyOneNewRevisionAndUnchangedProbesSendNothing()
     {
         const string metricId = "system.motherboardTemperature";
         const string componentId = "hardware-sensors-pawnio-provider";
@@ -94,17 +94,33 @@ public sealed class MetricCatalogPushTests
         Assert.Equal(BackendMessageCodes.Metric.NeedsComponent, missing.GetProperty("disabledReason").GetProperty("code").GetByte());
 
         components.Installed = true;
-        source.Tick();
+        await source.TickAsync();
         var refreshed = await ReadAsync(reader, timeout.Token);
         var installed = Assert.Single(refreshed.GetProperty("metrics").EnumerateArray(),
             metric => metric.GetProperty("id").GetString() == metricId);
         Assert.Equal(JsonValueKind.Null, installed.GetProperty("requiredComponentId").ValueKind);
         Assert.False(installed.GetProperty("selectable").GetBoolean());
         Assert.Equal(BackendMessageCodes.Metric.NoValidReading, installed.GetProperty("disabledReason").GetProperty("code").GetByte());
-        Assert.Equal(revision, refreshed.GetProperty("catalogRevision").GetString());
+        Assert.NotEqual(revision, refreshed.GetProperty("catalogRevision").GetString());
         Assert.Equal(revision, first.GetProperty("catalogRevision").GetString());
         Assert.Equal(first.GetProperty("fields").GetRawText(), refreshed.GetProperty("fields").GetRawText());
-        Assert.Equal(revision, catalog.Revision);
+        Assert.Equal(refreshed.GetProperty("catalogRevision").GetString(), catalog.Revision);
+        var notifications = 0;
+        catalog.Changed += () => notifications++;
+        var pending = ReadAsync(reader, timeout.Token);
+        for (var index = 0; index < 20; index++)
+        {
+            catalog.PublishCatalogProbe(snapshot with { CatalogGeneration = (ulong)index + 10 });
+            await source.TickAsync();
+        }
+        Assert.Equal(0, notifications);
+        Assert.False(pending.IsCompleted);
+        Assert.Equal(refreshed.GetProperty("catalogRevision").GetString(), catalog.Revision);
+        catalog.PublishCatalogProbe(Snapshot("available", selected: true));
+        var changed = await pending;
+        Assert.Equal(1, notifications);
+        AssertMetadata(changed, "available", selected: true);
+        Assert.NotEqual(refreshed.GetProperty("catalogRevision").GetString(), changed.GetProperty("catalogRevision").GetString());
         Assert.True(Assert.Single(source.Requests).IsCatalogProbe);
         Assert.Equal(0, fixture.Sampler.Reads);
         Assert.Equal(0, fixture.Sampler.Captures);
@@ -285,14 +301,23 @@ public sealed class MetricCatalogPushTests
 
     private sealed class ProbeCatalogSource(HardwareMetricSnapshot snapshot) : IMetricSnapshotPushSource
     {
-        private readonly Channel<bool> ticks = Channel.CreateUnbounded<bool>();
+        private readonly Channel<TaskCompletionSource> ticks = Channel.CreateUnbounded<TaskCompletionSource>();
         public List<MetricSampleRequest> Requests { get; } = [];
-        public void Tick() => ticks.Writer.TryWrite(true);
+        public Task TickAsync()
+        {
+            var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            ticks.Writer.TryWrite(completed);
+            return completed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        }
         public async IAsyncEnumerable<HardwareMetricSnapshot> SubscribeAsync(string id, MetricSampleRequest request,
             TimeSpan interval, [EnumeratorCancellation] CancellationToken token)
         {
             Requests.Add(request);
-            await foreach (var _ in ticks.Reader.ReadAllAsync(token)) yield return snapshot;
+            await foreach (var completed in ticks.Reader.ReadAllAsync(token))
+            {
+                yield return snapshot;
+                completed.TrySetResult();
+            }
         }
     }
 

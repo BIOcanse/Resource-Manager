@@ -410,6 +410,13 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     fieldsOnly: true)),
             ["/api/device-topology/nvidia-drs/fields/subscribe"] =
                 new((subscription, services, interval) => CompileNvidiaDrsSubscription(subscription, services, interval)),
+            ["/api/device-topology/network-endpoints/fields/subscribe"] =
+                new((subscription, services, interval) => subscription.Compile(async (writer, token) =>
+                {
+                    await foreach (var value in services.GetRequiredService<ResourceManager.App.Infrastructure.DeviceTopology.Snapshots.DeviceTopologySnapshotProvider>()
+                        .SubscribeNetworkEndpointsAsync($"subscription:{subscription.Id}", interval, token))
+                        await writer.WriteAsync(subscription.Id, value, token);
+                })),
             ["/api/device-topology/acpi/fields/subscribe"] =
                 new((subscription, services, interval) => CompileAcpiInformationSubscription(
                     subscription,
@@ -755,10 +762,10 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     {
         return subscription.Compile(async (writer, cancellationToken) =>
         {
-            await foreach (var snapshot in topology.SubscribeAsync(
-                $"frontend-channel:{subscription.Id}",
-                interval,
-                cancellationToken))
+            var values = fieldsOnly
+                ? topology.SubscribeAsync($"frontend-channel:{subscription.Id}", interval, cancellationToken)
+                : topology.SubscribeChangesAsync($"frontend-channel:{subscription.Id}", interval, cancellationToken);
+            await foreach (var snapshot in values)
             {
                 if (fieldsOnly)
                     await writer.WriteAsync(subscription.Id, snapshot.InformationFields, cancellationToken);

@@ -9,6 +9,7 @@ public sealed class WindowsNetworkEndpointInformationReader
     public WindowsNetworkEndpointInformationReader() : this(new WindowsNetworkEndpointTableApi()) { }
     internal WindowsNetworkEndpointInformationReader(IWindowsNetworkEndpointTableApi api) => this.api = api;
 
+    [RuntimeRead(ReadVolatilityKind.Sampled)]
     public DeviceTopologyNetworkEndpointInformation Read()
     {
         var discovered = ReadTables();

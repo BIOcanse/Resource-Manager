@@ -27,8 +27,7 @@ public static partial class DeviceTopologyInformationProjection
         Add("machine", "machine", [
             Text(F.MachineAllManufacturer, system.Manufacturer),
             Text(F.MachineAllModelDeclared, system.Model),
-            .. WindowsInformationFieldProjection.SecurityFields(security),
-            .. WindowsInformationFieldProjection.NetworkEndpointFields(snapshot.NetworkEndpointInformation)]);
+            .. WindowsInformationFieldProjection.SecurityFields(security)]);
         Add("bios", "bios", [
             Text(F.BiosAllVendor, system.BiosManufacturer),
             Text(F.BiosAllVersionDeclared, system.BiosVersion),

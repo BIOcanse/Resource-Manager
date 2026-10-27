@@ -10,20 +10,23 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class DeviceInformationEndpointTests
 {
+    // Explicit cached-current inspection for startup and post-cancellation assertions.
+    private static string ReadPublishedNetworkFields(DeviceTopologySnapshotProvider provider, Microsoft.AspNetCore.Builder.WebApplication app)
+        => JsonSerializer.Serialize(provider.ReadNetworkEndpointInformation(), ResponseJson(app));
     [Fact]
     public async Task EndpointHttpKeepsRawPidExactCreationAndFamilyFailuresThenRecoversOrEmpties()
     {
         var api=new NetworkEndpointInformationCollectorTests.Api();
         var collector=new WindowsNetworkEndpointInformationReader(api);
-        var reader=new Reader(()=>DeviceInformationTestData.Snapshot() with { NetworkEndpointInformation=collector.Read() });
-        using var fixture=new Fixture(reader);await using var app=await StartAsync(fixture.Provider);using var client=Client(app);
-        using var initial=JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
+        var reader=new Reader(DeviceInformationTestData.Snapshot());
+        using var fixture=new Fixture(reader, networkEndpoints: collector);await using var app=await StartAsync(fixture.Provider);using var client=Client(app);
+        using var initial=JsonDocument.Parse(ReadPublishedNetworkFields(fixture.Provider, app));
         Assert.Equal(0,api.Reads);Assert.Equal(0,api.Opens);
         for(var phase=0;phase<4;phase++)
         {
             api.ReadTable=(kind,_)=>phase==3?new byte[4]:phase==1&&kind==WindowsNetworkEndpointTableKind.UdpIpv6?null:NetworkEndpointInformationCollectorTests.Raw(kind);
-            var sampledHttpFields1 = await client.GetStringAsync("/api/device-topology/fields");var reads=api.Reads;var opens=api.Opens;
-            var current=fixture.Provider.ReadState().InformationFields;
+            var sampledHttpFields1 = await client.GetStringAsync("/api/device-topology/network-endpoints/fields");var reads=api.Reads;var opens=api.Opens;
+            var current=fixture.Provider.ReadNetworkEndpointInformation();
             using var result=JsonDocument.Parse(sampledHttpFields1);
             var tcp4=Field(result.RootElement,"machine","network_all_tcp_ipv4_endpoint_reported");
             Assert.Equal("windows.ip-helper",tcp4.GetProperty("definition").GetProperty("sourceId").GetString());
@@ -50,21 +53,22 @@ public sealed partial class DeviceInformationEndpointTests
                 Assert.Equal(0x11223344U,scoped.GetProperty("local").GetProperty("scopeIdRaw").GetUInt32());
                 Assert.Equal(0xf1234567U,scoped.GetProperty("remote").GetProperty("scopeIdRaw").GetUInt32());
             }
-            Assert.Equal(reads,api.Reads);Assert.Equal(opens,api.Opens);Assert.Same(current,fixture.Provider.ReadState().InformationFields);
+            Assert.Equal(reads,api.Reads);Assert.Equal(opens,api.Opens);Assert.Same(current,fixture.Provider.ReadNetworkEndpointInformation());
         }
     }
 
     [Fact]
-    public async Task PersistedEndpointSnapshotDeclaresEmptyValuesUntilFreshCapture()
+    public async Task PersistedTopologyDoesNotSupplyTheNetworkItemUntilItsOwnFreshCapture()
     {
         var snapshot=DeviceInformationTestData.Snapshot() with { NetworkEndpointInformation=new WindowsNetworkEndpointInformationReader(new NetworkEndpointInformationCollectorTests.Api()).Read() };
         var persisted=new DeviceTopologyPersistedSnapshot(DeviceTopologySnapshotState.CurrentSchemaVersion,"test",9,new DeviceTopologySemanticComparer().ComputeHash(snapshot),snapshot);
-        var reader=new Reader(snapshot);using var fixture=new Fixture(reader,persisted);
+        var collector=new WindowsNetworkEndpointInformationReader(new NetworkEndpointInformationCollectorTests.Api());
+        var reader=new Reader(snapshot);using var fixture=new Fixture(reader,persisted, networkEndpoints: collector);
         await using var app=await StartAsync(fixture.Provider);using var client=Client(app);
-        using var cached=JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
+        using var cached=JsonDocument.Parse(ReadPublishedNetworkFields(fixture.Provider, app));
         string[] names=["network_all_tcp_ipv4_endpoint_reported","network_all_tcp_ipv6_endpoint_reported","network_all_udp_ipv4_endpoint_reported","network_all_udp_ipv6_endpoint_reported"];
-        foreach(var name in names) Assert.Equal(JsonValueKind.Null,Field(cached.RootElement,"machine",name).GetProperty("value").ValueKind);
-        Assert.Equal(0,reader.ReadCount);var sampledHttpFields2 = await client.GetStringAsync("/api/device-topology/fields");
+        Assert.Equal(0, cached.RootElement.GetProperty("devices").GetArrayLength());
+        Assert.Equal(0,reader.ReadCount);var sampledHttpFields2 = await client.GetStringAsync("/api/device-topology/network-endpoints/fields");
         using var current=JsonDocument.Parse(sampledHttpFields2);
         foreach(var name in names) Assert.Equal(3,Field(current.RootElement,"machine",name).GetProperty("value").GetArrayLength());
     }
@@ -73,13 +77,13 @@ public sealed partial class DeviceInformationEndpointTests
     public async Task OriginalWorkerAndUnifiedStreamCollectEndpointsOnlyWithDemandAndCancellationKeepsCurrentDisplay()
     {
         var api=new NetworkEndpointInformationCollectorTests.Api();var collector=new WindowsNetworkEndpointInformationReader(api);
-        var reader=new Reader(()=>DeviceInformationTestData.Snapshot() with { NetworkEndpointInformation=collector.Read() });
-        using var fixture=new Fixture(reader);await using var app=await StartAsync(fixture.Provider);using var client=Client(app);
-        using var initial=JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
+        var reader=new Reader(DeviceInformationTestData.Snapshot());
+        using var fixture=new Fixture(reader, networkEndpoints: collector);await using var app=await StartAsync(fixture.Provider);using var client=Client(app);
+        using var initial=JsonDocument.Parse(ReadPublishedNetworkFields(fixture.Provider, app));
         Assert.Equal(0,api.Reads);Assert.Equal(0,api.Opens);
         using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(12));
         using var request=new HttpRequestMessage(HttpMethod.Post,"/api/subscriptions/stream") { Content=JsonContent.Create(new { version=1,subscriptions=new[] {
-            new { id="endpoint-worker",path="/api/device-topology/fields/subscribe?intervalMs=1000" } } }) };
+            new { id="endpoint-worker",path="/api/device-topology/network-endpoints/fields/subscribe?intervalMs=1000" } } }) };
         using var response=await client.SendAsync(request,HttpCompletionOption.ResponseHeadersRead,timeout.Token);
         Assert.Equal(HttpStatusCode.OK,response.StatusCode);
         using var stream=new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
@@ -87,11 +91,11 @@ public sealed partial class DeviceInformationEndpointTests
         var value=Field(message.RootElement.GetProperty("value"),"machine","network_all_tcp_ipv4_endpoint_reported").GetProperty("value");
         Assert.Equal(3,value.GetArrayLength());Assert.True(api.Reads>=8);Assert.True(api.Opens>=4);
         Assert.All(api.Leases,static lease=>Assert.Equal(1,lease.Disposals));
-        await timeout.CancelAsync();response.Dispose();await Task.Delay(250);
-        var reads=api.Reads;var opens=api.Opens;var current=fixture.Provider.ReadState().InformationFields;
-        using var cached=JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
+        await timeout.CancelAsync();response.Dispose();await fixture.WaitForNoDemandAndIdleAsync();
+        var reads=api.Reads;var opens=api.Opens;var current=fixture.Provider.ReadNetworkEndpointInformation();
+        using var cached=JsonDocument.Parse(ReadPublishedNetworkFields(fixture.Provider, app));
         Assert.Equal(value.GetRawText(),Field(cached.RootElement,"machine","network_all_tcp_ipv4_endpoint_reported").GetProperty("value").GetRawText());
-        await Task.Delay(1300);Assert.Equal(reads,api.Reads);Assert.Equal(opens,api.Opens);Assert.Same(current,fixture.Provider.ReadState().InformationFields);
+        Assert.Equal(reads,api.Reads);Assert.Equal(opens,api.Opens);Assert.Same(current,fixture.Provider.ReadNetworkEndpointInformation());
         await app.StopAsync();
     }
 }

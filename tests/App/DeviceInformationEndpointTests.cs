@@ -150,12 +150,11 @@ public sealed partial class DeviceInformationEndpointTests
             Assert.Equal(JsonValueKind.Null,Field(failure.RootElement.GetProperty("value"),NetworkAddressInformationCollectorTests.IdentityA,name).GetProperty("value").ValueKind);
             Assert.Equal(firstValue,Field(recovery.RootElement.GetProperty("value"),NetworkAddressInformationCollectorTests.IdentityA,name).GetProperty("value").GetRawText());
         }
-        foreach (var name in new[] { "network_all_tcp_ipv4_endpoint_reported", "network_all_tcp_ipv6_endpoint_reported", "network_all_udp_ipv4_endpoint_reported", "network_all_udp_ipv6_endpoint_reported" })
-        {
-            var value=Field(successful,"machine",name).GetProperty("value"); Assert.Equal(3,value.GetArrayLength());
-            Assert.Equal(JsonValueKind.Null,Field(failure.RootElement.GetProperty("value"),"machine",name).GetProperty("value").ValueKind);
-            Assert.Equal(value.GetRawText(),Field(recovery.RootElement.GetProperty("value"),"machine",name).GetProperty("value").GetRawText());
-        }
+        foreach (var frame in new[] { successful, failure.RootElement.GetProperty("value"), recovery.RootElement.GetProperty("value") })
+            Assert.DoesNotContain(frame.GetProperty("devices").EnumerateArray().SelectMany(static device => device.GetProperty("fields").EnumerateArray()),
+                static field => field.GetProperty("definition").GetProperty("name").GetString() is
+                    "network_all_tcp_ipv4_endpoint_reported" or "network_all_tcp_ipv6_endpoint_reported"
+                    or "network_all_udp_ipv4_endpoint_reported" or "network_all_udp_ipv6_endpoint_reported");
         Assert.Equal(AtaExtendedCapacityInformationCollectorTests.MaximumCapacity,
             Field(successful, "ata", "storage_all_capacity_declared").GetProperty("value").GetString());
         Assert.Equal(JsonValueKind.Null, Field(failure.RootElement.GetProperty("value"), "ata", "storage_all_capacity_declared").GetProperty("value").ValueKind);

@@ -26,8 +26,7 @@ public sealed class WindowsInformationCollectorIntegrationTests
         var at = raw.CapturedAt;
         var product = DeviceTopologyInformationProjection.Create(raw, at);
         var independent = new[] { WindowsInformationFieldProjection.PageFiles([page], at),
-            WindowsInformationFieldProjection.Volumes([volume], at), WindowsInformationFieldProjection.NetworkInterfaces([network], at),
-            WindowsInformationFieldProjection.NetworkEndpoints(endpoints, at) };
+            WindowsInformationFieldProjection.Volumes([volume], at), WindowsInformationFieldProjection.NetworkInterfaces([network], at) };
         foreach (var device in independent.SelectMany(frame => frame.Devices))
         foreach (var field in device.Fields)
         {
@@ -36,6 +35,9 @@ public sealed class WindowsInformationCollectorIntegrationTests
             Assert.Equal(field.Definition, actual.Definition);
             Assert.Equal(field.Value?.GetRawText(), actual.Value?.GetRawText());
         }
+        // Connection definitions belong exclusively to the independent Sampled item.
+        foreach (var field in WindowsInformationFieldProjection.NetworkEndpointFields(endpoints))
+            Assert.Null(product.FindField(new("machine", field.Definition.Name)));
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         var restored = JsonSerializer.Deserialize<DeviceInformationSnapshot>(JsonSerializer.Serialize(independent[0], options), options)!;
         Assert.Equal(independent[0].Devices[0].Fields[1].Value!.Value.GetString(), restored.Devices[0].Fields[1].Value!.Value.GetString());

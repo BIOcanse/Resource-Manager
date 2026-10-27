@@ -1,5 +1,5 @@
-using System.Threading.Channels;
 using ResourceManager.App.Application.Components;
+using ResourceManager.App.Application.DeviceTopology;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Endpoints.Transport;
@@ -14,49 +14,41 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         TimeSpan interval, IServiceProvider services, FrontendSubscriptionChannelWriter writer,
         CancellationToken cancellationToken)
     {
-        var changes = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
-        {
-            SingleReader = true,
-            FullMode = BoundedChannelFullMode.DropWrite
-        });
-        void Changed() => changes.Writer.TryWrite(true);
-        catalog.Changed += Changed;
         using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        // The existing probe keeps discovery active; metadata publications also wake this
-        // channel directly, without requiring any ordinary metric-value subscription.
-        var discovery = ObserveDiscoveryAsync();
-        Changed();
+        Task discovery = Task.CompletedTask;
         try
         {
-            while (await changes.Reader.WaitToReadAsync(lifetime.Token))
-            {
-                while (changes.Reader.TryRead(out _)) { }
-                var committed = catalog.ReadCommitted();
-                if (committed.Snapshot is not { } snapshot) continue;
-                var installed = await InstalledComponentIdsAsync(
-                    services.GetRequiredService<IComponentManager>(), lifetime.Token);
+            await RefreshCompositionAsync();
+            discovery = ObserveDiscoveryAsync();
+            await foreach (var committed in catalog.SubscribeChangesAsync(lifetime.Token))
                 await writer.WriteAsync(id, new MetricCatalogWireSnapshot(committed.Revision,
-                    ReadMetricFieldCatalog(snapshot, services),
-                    MetricCatalog.WithInstalledComponents(MetricCatalog.FromSnapshot(snapshot), installed)), lifetime.Token);
-            }
+                    committed.Fields, committed.Metrics), lifetime.Token);
         }
         finally
         {
-            catalog.Changed -= Changed;
             await lifetime.CancelAsync();
             try { await discovery; }
             catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         }
 
+        Task RefreshCompositionAsync() => catalog.RefreshCompositionAsync(
+            services.GetRequiredService<IComponentManager>(),
+            services.GetService<IDeviceTopologySnapshotProvider>(), lifetime.Token);
+
         async Task ObserveDiscoveryAsync()
         {
             try
             {
-                await foreach (var _ in source.SubscribeAsync($"frontend-channel:{id}",
-                    MetricSampleRequest.CatalogProbe, interval, lifetime.Token)) Changed();
+                await foreach (var _ in source.SubscribeAsync($"subscription:{id}",
+                    MetricSampleRequest.CatalogProbe, interval, lifetime.Token))
+                    await RefreshCompositionAsync();
             }
             catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
-            catch (Exception exception) { changes.Writer.TryComplete(exception); }
+            catch
+            {
+                await lifetime.CancelAsync();
+                throw;
+            }
         }
     }
 }

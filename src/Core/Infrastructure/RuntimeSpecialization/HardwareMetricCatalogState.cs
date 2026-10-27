@@ -1,25 +1,42 @@
+using System.Runtime.CompilerServices;
+using ResourceManager.ReadWrite.Publications;
+using System.Security.Cryptography;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.ReadWrite.Fields;
+using ResourceManager.ReadWrite;
+using ResourceManager.App.Application.Components;
+using ResourceManager.App.Application.DeviceTopology;
+using ResourceManager.App.Domain.DeviceTopology;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
-public sealed class HardwareMetricCatalogState
+public sealed partial class HardwareMetricCatalogState
 {
     private readonly object gate = new();
+    private readonly CurrentValuePublicationSignal publications = new();
     private HardwareMetricCatalog? current;
-    private CatalogIdentity? identity;
+    private readonly SemaphoreSlim compositionGate = new(1, 1);
+    private IReadOnlySet<string> installedComponents = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    private IReadOnlyList<DeviceTopologyPort>? ports;
+    private MetricCatalogPublication? publication;
+    private byte[] contentFingerprint = [];
     private string revision = Guid.NewGuid().ToString("N");
 
     public event Action? Changed;
 
+    [RuntimeRead(ReadVolatilityKind.EventDriven, nameof(Changed))]
     public HardwareMetricSnapshot? Current => Volatile.Read(ref current)?.CreateSnapshot();
 
+    [RuntimeRead(ReadVolatilityKind.EventDriven, nameof(Changed))]
     public HardwareMetricCatalog? Catalog => Volatile.Read(ref current);
 
     public string Revision => Volatile.Read(ref revision);
 
+    [RuntimeRead(ReadVolatilityKind.EventDriven, nameof(Changed))]
     public (HardwareMetricSnapshot? Snapshot, string Revision) ReadCommitted()
     {
         lock (gate)
@@ -68,19 +85,11 @@ public sealed class HardwareMetricCatalogState
     public void PublishCatalogProbe(HardwareMetricSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        var nextIdentity = CatalogIdentity.Create(snapshot);
         Action? changed = null;
         lock (gate)
         {
             Volatile.Write(ref current, HardwareMetricCatalog.FromSnapshot(snapshot));
-            if (nextIdentity.Equals(identity))
-            {
-                return;
-            }
-
-            identity = nextIdentity;
-            Volatile.Write(ref revision, Guid.NewGuid().ToString("N"));
-            changed = Changed;
+            if (CommitContent()) changed = Changed;
         }
 
         changed?.Invoke();
@@ -95,9 +104,7 @@ public sealed class HardwareMetricCatalogState
             var next = MetricReadingCatalog.Update(current, snapshot);
             if (ReferenceEquals(next, current)) return false;
             Volatile.Write(ref current, next);
-            identity = CatalogIdentity.Create(next.CreateSnapshot());
-            Volatile.Write(ref revision, Guid.NewGuid().ToString("N"));
-            changed = Changed;
+            changed = CommitContent() ? Changed : null;
         }
         changed?.Invoke();
         return true;
@@ -121,71 +128,85 @@ public sealed class HardwareMetricCatalogState
             || name.Equals("engineBusy", StringComparison.OrdinalIgnoreCase);
     }
 
-    // Keep the compared fields typed: a hash rejects differences quickly, and a
-    // matching hash still requires full equality. No per-field formatted copies.
-    private sealed class CatalogIdentity : IEquatable<CatalogIdentity>
+    [RuntimeRead(ReadVolatilityKind.EventDriven, nameof(Changed))]
+    public MetricCatalogPublication? ReadPublication()
     {
-        private readonly ulong workspaceIdentity;
-        private readonly ulong configurationGeneration;
-        private readonly ulong catalogGeneration;
-        private readonly (int Index, string Identity, bool? HasDedicatedMemoryMetrics)[] adapters;
-        private readonly (string Id, string ScopeKind, string ScopeKey)[] metrics;
-        private readonly (string Device, string Address, string Source, MetricReadingSource? Reading)[] bindings;
-        private readonly (string Address, string Alias, bool Selected)[] aliases;
-        private readonly int hash;
-
-        private CatalogIdentity(HardwareMetricSnapshot snapshot)
-        {
-            workspaceIdentity = snapshot.WorkspaceIdentity;
-            configurationGeneration = snapshot.ConfigurationGeneration;
-            catalogGeneration = snapshot.CatalogGeneration;
-            var boundAddresses = snapshot.FieldBindings.Values.SelectMany(static binding => binding.RequestAliases)
-                .Concat(snapshot.FieldBindings.Keys).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            adapters = snapshot.Gpus.OrderBy(static gpu => gpu.Index)
-                .Select(static gpu => (gpu.Index, gpu.IdentityKey ?? string.Empty, gpu.HasDedicatedMemoryMetrics)).ToArray();
-            metrics = MetricCatalog.FromSnapshot(snapshot)
-                .Where(definition => definition.Selectable || boundAddresses.Contains(definition.Id))
-                .OrderBy(static definition => definition.Id, StringComparer.OrdinalIgnoreCase)
-                .Select(static definition => (definition.Id, definition.ScopeKind ?? string.Empty,
-                    definition.ScopeKey ?? string.Empty)).ToArray();
-            bindings = snapshot.FieldBindings.Values
-                .OrderBy(static binding => binding.RequestAddress, StringComparer.Ordinal)
-                .Select(static binding => (binding.DeviceIdentity, binding.RequestAddress,
-                    binding.SourceId, binding.Field.Reading)).ToArray();
-            aliases = snapshot.FieldBindings.Values.SelectMany(static binding =>
-                    binding.RequestAliases.Select(alias => (binding.RequestAddress, Alias: alias, Selected: false))
-                        .Concat(binding.SelectedRequestAliases.Select(alias => (binding.RequestAddress, Alias: alias, Selected: true))))
-                .OrderBy(static alias => alias.RequestAddress, StringComparer.Ordinal)
-                .ThenBy(static alias => alias.Alias, StringComparer.Ordinal)
-                .ThenBy(static alias => alias.Selected).ToArray();
-            var builder = new HashCode();
-            builder.Add(workspaceIdentity);
-            builder.Add(configurationGeneration);
-            builder.Add(catalogGeneration);
-            builder.Add(adapters.Length);
-            foreach (var adapter in adapters) builder.Add(adapter);
-            builder.Add(metrics.Length);
-            foreach (var metric in metrics) builder.Add(metric);
-            builder.Add(bindings.Length);
-            foreach (var binding in bindings) builder.Add(binding);
-            builder.Add(aliases.Length);
-            foreach (var alias in aliases) builder.Add(alias);
-            hash = builder.ToHashCode();
-        }
-
-        internal static CatalogIdentity Create(HardwareMetricSnapshot snapshot) => new(snapshot);
-
-        public bool Equals(CatalogIdentity? other)
-            => other is not null && hash == other.hash
-                && workspaceIdentity == other.workspaceIdentity
-                && configurationGeneration == other.configurationGeneration
-                && catalogGeneration == other.catalogGeneration
-                && adapters.AsSpan().SequenceEqual(other.adapters)
-                && metrics.AsSpan().SequenceEqual(other.metrics)
-                && bindings.AsSpan().SequenceEqual(other.bindings)
-                && aliases.AsSpan().SequenceEqual(other.aliases);
-
-        public override bool Equals(object? obj) => obj is CatalogIdentity other && Equals(other);
-        public override int GetHashCode() => hash;
+        lock (gate) return publication;
     }
+
+    public async IAsyncEnumerable<MetricCatalogPublication> SubscribeChangesAsync(
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        using var changed = publications.Subscribe();
+        var previous = ReadPublication();
+        if (previous is not null) yield return previous;
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            await changed.WaitAsync(cancellationToken);
+            var next = ReadPublication();
+            // A notification may have been queued before the initial/current read.
+            // Deliver each committed value once, even across that registration race.
+            if (next is null || ReferenceEquals(previous, next)) continue;
+            previous = next;
+            yield return next;
+        }
+    }
+    // Discovery owns refreshing these external facts. Transport only reads the commit.
+    public async Task RefreshCompositionAsync(IComponentManager components,
+        IDeviceTopologySnapshotProvider? topology, CancellationToken token)
+    {
+        await compositionGate.WaitAsync(token);
+        try
+        {
+            var installed = (await components.GetStatusesAsync(token)).Where(static status => status.Installed)
+                .Select(static status => status.Definition.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var topologyPorts = topology?.ReadState().Snapshot?.Ports;
+            Action? changed;
+            lock (gate)
+            {
+                installedComponents = installed;
+                ports = topologyPorts;
+                changed = CommitContent() ? Changed : null;
+            }
+            changed?.Invoke();
+        }
+        finally { compositionGate.Release(); }
+    }
+
+    private bool CommitContent()
+    {
+        if (current is null) return false;
+        var snapshot = current.CreateSnapshot();
+        var project = MetricDeviceProjection.Create(ports, snapshot.FieldBindings.Values);
+        var next = new CatalogContent(MetricDeviceFields.Catalog(snapshot)
+            .Select(value => value with { Device = project(value.Device) }).ToArray(),
+            MetricCatalog.WithInstalledComponents(MetricCatalog.FromSnapshot(snapshot), installedComponents)
+                .OrderBy(static metric => metric.Id, StringComparer.Ordinal).Select(static metric => metric with
+                { CandidateSources = metric.CandidateSources.OrderBy(static source => source.DeviceIdentity, StringComparer.Ordinal)
+                    .ThenBy(static source => source.FieldName, StringComparer.Ordinal).ThenBy(static source => source.SourceId, StringComparer.Ordinal).ToArray() }).ToArray());
+        // Fingerprint the entire public value, including the composed facts, rather than discovery counters.
+        // Matching digests still require exact content equality. Only the typed commit and
+        // small digest stay resident; comparison buffers belong to this call.
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(next, CatalogJsonContext.Default.CatalogContent);
+        var fingerprint = SHA256.HashData(bytes);
+        if (contentFingerprint.AsSpan().SequenceEqual(fingerprint) && publication is not null
+            && bytes.AsSpan().SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(
+                new CatalogContent(publication.Fields, publication.Metrics), CatalogJsonContext.Default.CatalogContent)))
+            return false;
+        contentFingerprint = fingerprint;
+        Volatile.Write(ref revision, Guid.NewGuid().ToString("N"));
+        publication = new(revision, next.Fields, next.Metrics);
+        publications.Publish();
+        return true;
+    }
+
+    private sealed record CatalogContent(IReadOnlyList<MetricDeviceFieldCatalog> Fields,
+        IReadOnlyList<MetricDefinition> Metrics);
+
+    [JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
+    [JsonSerializable(typeof(CatalogContent))]
+    private partial class CatalogJsonContext : JsonSerializerContext;
 }
+
+public sealed record MetricCatalogPublication(string Revision, IReadOnlyList<MetricDeviceFieldCatalog> Fields,
+    IReadOnlyList<MetricDefinition> Metrics);

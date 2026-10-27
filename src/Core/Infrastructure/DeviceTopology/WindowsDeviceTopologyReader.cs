@@ -35,7 +35,6 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
     private readonly WindowsHidInformationReader hidReader = new();
     private readonly WindowsNpuInformationReader npuReader = new();
     private readonly WindowsNetworkInterfaceInformationReader networkInterfaceReader = new();
-    private readonly WindowsNetworkEndpointInformationReader networkEndpointReader = new();
     private readonly WindowsSecurityInformationReader securityReader = new();
     private readonly WindowsVolumeSpaceInformationReader volumeSpaceReader = new();
     private readonly WindowsDiskLayoutInformationReader diskLayoutReader = new();
@@ -238,7 +237,6 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
             NpuInformation = ReadNpuDeclarations(nativeDevices, npuReader.Read),
             HidInformation = hidReader.Read(),
             NetworkInterfaceInformation = networkInterfaceReader.Read(),
-            NetworkEndpointInformation = networkEndpointReader.Read(),
             SecurityInformation = securityReader.Read(),
             VolumeSpaceInformation = volumeSpaceReader.Read(),
             DiskLayoutInformation = diskLayoutReader.Read(),

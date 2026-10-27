@@ -34,6 +34,17 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 ?? DeviceInformationSnapshot.Empty);
         }).AllowAnonymous();
 
+        app.MapGet("/api/device-topology/network-endpoints/fields", async (
+            HttpResponse response,
+            ResourceManager.App.Infrastructure.DeviceTopology.Snapshots.DeviceTopologySnapshotProvider provider,
+            CancellationToken token) =>
+        {
+            DisableResponseCache(response);
+            return Results.Ok(await ResourceManager.Subscription.SubscriptionSingleFetch.ReadAsync(
+                provider.SubscribeNetworkEndpointsAsync("network-endpoints:single-fetch",
+                    ResourceManager.Subscription.SubscriptionSingleFetch.Interval, token, includeCurrent: false),
+                static _ => true, token) ?? DeviceInformationSnapshot.Empty);
+        }).AllowAnonymous();
         app.MapNvidiaDrsInformationEndpoints();
         return app;
     }

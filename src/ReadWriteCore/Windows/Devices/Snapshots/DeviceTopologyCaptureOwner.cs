@@ -16,6 +16,9 @@ public sealed partial class DeviceTopologyCaptureOwner(
 {
     private readonly SemaphoreSlim sampleGate = new(1, 1);
     private readonly CurrentValuePublicationSignal publicationSignal = new();
+    private readonly CurrentValuePublicationSignal topologyChangeSignal = new();
+    private DeviceTopologySnapshotState changeState = DeviceTopologySnapshotState.Warming;
+    private byte[] changeFingerprint = [];
     private readonly CurrentValuePublicationSignal acpiPublicationSignal = new();
     private DeviceTopologySnapshotState state = DeviceTopologySnapshotState.Warming;
     private string? semanticHash;
@@ -26,6 +29,9 @@ public sealed partial class DeviceTopologyCaptureOwner(
 
     public DeviceTopologySnapshotState ReadState() => Volatile.Read(ref state);
     public CurrentValuePublicationSignal.Subscription SubscribeTopologyPublications() => publicationSignal.Subscribe();
+    [RuntimeRead(ReadVolatilityKind.EventDriven, nameof(SubscribeTopologyChanges))]
+    public DeviceTopologySnapshotState ReadChangeState() => Volatile.Read(ref changeState);
+    public CurrentValuePublicationSignal.Subscription SubscribeTopologyChanges() => topologyChangeSignal.Subscribe();
     public CurrentValuePublicationSignal.Subscription SubscribeAcpiPublications() => acpiPublicationSignal.Subscribe();
 
     /// <summary>Seed the original journal state before starting the caller's worker.</summary>
@@ -317,6 +323,27 @@ public sealed partial class DeviceTopologyCaptureOwner(
         fields = WindowsInformationFieldProjection.PreserveNvidiaDrsInformation(fields, previousInformation);
         Volatile.Write(ref state, next with { InformationFields = fields });
         InformationPublications.Publish([InformationCollectionItemId]);
+        PublishTopologyChange();
     }
 
+    private void PublishTopologyChange()
+    {
+        var current = ReadState();
+        var fields = new DeviceInformationSnapshot(current.InformationFields.ObservedAt,
+            current.InformationFields.Devices.Select(device => device with
+            { Fields = device.Fields.Where(static field => field.Definition.Volatility.Kind != ReadVolatilityKind.Sampled)
+                .OrderBy(static field => field.Definition.Name, StringComparer.Ordinal).ToArray() })
+                .Where(static device => device.Fields.Count > 0).OrderBy(static device => device.DeviceIdentity, StringComparer.Ordinal).ToArray());
+        var next = current with { InformationFields = fields,
+            Snapshot = current.Snapshot is null ? null : DeviceTopologyStructure.Create(current.Snapshot) };
+        var comparable = next with { StateRevision = 0, LastAttemptAt = null, LastSuccessAt = null,
+            InformationFields = fields with { ObservedAt = null } };
+        var bytes = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(comparable,
+            DeviceFingerprintJsonContext.Default.DeviceTopologySnapshotState);
+        var fingerprint = System.Security.Cryptography.SHA256.HashData(bytes);
+        if (changeFingerprint.AsSpan().SequenceEqual(fingerprint)) return;
+        changeFingerprint = fingerprint;
+        Volatile.Write(ref changeState, next);
+        topologyChangeSignal.Publish();
+    }
 }
