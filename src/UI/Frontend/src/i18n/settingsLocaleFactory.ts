@@ -462,7 +462,7 @@ const enSettingsCopy: SettingsCopy = {
     automaticMemoryCleanupDescription: "Background cleanup follows resource pressure levels. These thresholds set when low remaining physical memory or commit capacity triggers emergency cleanup. They apply only when the optimization mode includes memory scheduling.",
     physicalMemoryAutomaticCleanupLabel: "Physical memory free %",
     virtualMemoryAutomaticCleanupLabel: "Commit headroom %",
-    memoryOptimizationTargetTitle: "Memory Optimization Target",
+    memoryOptimizationTargetTitle: "Memory optimization target",
     memoryOptimizationTargetDescription: "Usage above a target continues slow level-one release without triggering emergency cleanup.",
     physicalMemoryOptimizationTargetLabel: "Physical memory target usage %",
     virtualMemoryOptimizationTargetLabel: "Target commit usage %",
@@ -475,11 +475,11 @@ const enSettingsCopy: SettingsCopy = {
     realtimeActionBudgetModeOptions: [{"id":"fixed","label":"Fixed count"},{"id":"percent","label":"Process percentage"}],
     realtimeActionBudgetCountLabel: "Fixed action count",
     realtimeActionBudgetPercentLabel: "All processes %",
-    refreshCadenceTitle: "Information Update Frequency",
+    refreshCadenceTitle: "Information update frequency",
     refreshCadenceDescription: "Control how quickly monitoring information and status are updated. Faster updates use slightly more resources.",
     presetNumericModeOptions: [
       { id: "aotu", label: "Automatic", description: "Choose a refresh rate for the current performance mode and window state." },
-      { id: "preset", label: "Lock Preset", description: "Always use the selected preset cadence." },
+      { id: "preset", label: "Lock preset", description: "Always use the selected preset cadence." },
       { id: "custom", label: "Custom", description: "Always use the manually entered millisecond value." }
     ],
     refreshCadencePresetLabel: "Preset",
@@ -487,13 +487,13 @@ const enSettingsCopy: SettingsCopy = {
     refreshCadencePresetOptions: [
       { id: "responsive", label: "Responsive", description: "Prioritizes foreground interaction with faster refreshes." },
       { id: "balanced", label: "Balanced", description: "A practical update rate for everyday use." },
-      { id: "lowPower", label: "Low Power", description: "Low-power background strategy." },
+      { id: "lowPower", label: "Low power", description: "Low-power background strategy." },
       { id: "quiet", label: "Quiet", description: "Lowest cadence while keeping necessary refreshes." }
     ],
     refreshCadenceItems: {
       monitor: { label: "Monitor Snapshot / Bars", description: "Refreshes live dashboard values and resource bars." },
-      resourceTable: { label: "Resource Table", description: "Refreshes the software and process resource list." },
-      localSystem: { label: "Local System", description: "Refreshes low-frequency local status such as uptime." }
+      resourceTable: { label: "Resource table", description: "Refreshes the software and process resource list." },
+      localSystem: { label: "Local system", description: "Refreshes low-frequency local status such as uptime." }
     }
   },
   appearance: {
@@ -514,18 +514,18 @@ const enSettingsCopy: SettingsCopy = {
       none: { label: "No animation", description: "Every transition and entrance completes in the same frame; the look is unchanged" },
       ultra: { label: "Ultra performance", description: "No animation, and no shadows, highlights or blur, for the lowest overhead" }
     },
-    resourceBarFrameRateTitle: "Resource Bar Frame Rate",
+    resourceBarFrameRateTitle: "Resource bar frame rate",
     resourceBarFrameRateDescription: "How many frames per second resource-bar transitions draw. Follow display uses the monitor refresh rate; Custom caps the frames to lower the cost. Has no effect with No animation or Ultra performance.",
     resourceBarFrameRateModeOptions: [
       { id: "display", label: "Follow display", description: "Draw a frame on every screen refresh." },
       { id: "custom", label: "Custom", description: "Draw at most the set number of frames per second (10–240)." }
     ],
     resourceBarFrameRateCustomLabel: "Frame rate (FPS)",
-    barColorTitle: "Bar Colours",
+    barColorTitle: "Bar colours",
     barColorDescription: "Use fixed colours by software type or assign a different colour to each software item.",
-    byteUnitTitle: "Capacity Units",
+    byteUnitTitle: "Capacity units",
     byteUnitDescription: "1 GiB = 1024 MiB, 1 GB = 1000 MB. Switching changes the numbers themselves, not just the labels.",
-    fontSmoothingTitle: "Text Smoothing",
+    fontSmoothingTitle: "Text smoothing",
     fontSmoothingDescription: "Balance text clarity and interface cost automatically, or lock a rendering mode.",
     languageTitle: "Interface language",
     languageDescription: "Choose the language used by the Resource Manager interface. System uses the Windows display language.",
@@ -596,7 +596,7 @@ const enSettingsCopy: SettingsCopy = {
       loginStartWriteFailed: "The sign-in startup setting could not be saved. The switch shows the state read back afterwards.",
       loginStartRetry: "Retry",
       taskManagerDescription: "When on, every way of opening Task Manager opens Resource Manager instead (it starts if it is not running, or shows its main window): Ctrl+Shift+Esc, the taskbar menu, Task Manager on the Ctrl+Alt+Del screen, and running taskmgr.exe. The Ctrl+Alt+Del screen itself is unchanged. The replacement must be registered with administrator rights; until it is, only Ctrl+Shift+Esc is taken over, and only while Resource Manager is running. Turning this off removes only the registry value that Resource Manager wrote.",
-      forceTerminateTitle: "Force Terminate Hotkey",
+      forceTerminateTitle: "Force terminate hotkey",
       forceTerminateDescription: "Terminate the focused foreground app and every app with a visible unresponsive window. Disabled by default.",
       forceTerminateWarning: "Triggering this hotkey immediately terminates processes and discards unsaved work. Enabling it requires Ctrl, Alt, or Win plus a non-modifier key.",
       hotkeyEmpty: "No keys configured",
@@ -605,9 +605,9 @@ const enSettingsCopy: SettingsCopy = {
       hotkeyRemoveKey: "Remove key",
       hotkeyUnordered: "Press together",
       hotkeyOrdered: "Previous key first",
-      publicServiceTitle: "Local Public Service",
+      publicServiceTitle: "Local public service",
       publicServiceDescription: "Allow local software to use shared functions provided by Resource Manager.",
-      publicFileIndexTitle: "Shared Software File Index",
+      publicFileIndexTitle: "Shared software file index",
       publicFileIndexDescription: "Reuse Resource Manager's existing index without rescanning on queries.",
       publicDatabaseServiceTitle: "SQLite Database Service",
       publicDatabaseServiceDescription: "Provide isolated named databases, parameterized queries, and batch transactions to local programs.",
@@ -624,7 +624,7 @@ const enSettingsCopy: SettingsCopy = {
       aiGatewayNamePlaceholder: "Purpose name (optional)",
       aiGatewayGenerate: "Generate Key",
       aiGatewayGenerating: "Working",
-      aiGatewayOneTimeTitle: "Key Generated",
+      aiGatewayOneTimeTitle: "Key generated",
       aiGatewayOneTimeDescription: "The key is shown once. Save it now because it cannot be viewed again.",
       aiGatewayApiKeyLabel: "API Key",
       aiGatewayBaseUrlLabel: "Base URL",
@@ -633,7 +633,7 @@ const enSettingsCopy: SettingsCopy = {
       aiGatewayEmpty: "No compatibility keys have been generated.",
       aiGatewayLoadFailed: "Unable to load local AI keys",
       trustedAccess: {
-        title: "Trusted Access Keys",
+        title: "Trusted access keys",
         description: "Manage general access keys and one-time authorization requests.",
         loading: "Loading access keys…",
         loadFailed: "Unable to load trusted access keys.",
@@ -737,13 +737,13 @@ const enSettingsCopy: SettingsCopy = {
       }
   },
   debug: {
-    debugModeTitle: "Debug Mode",
+    debugModeTitle: "Debug mode",
     debugModeDescription: "Show and enable local diagnostic options. Turn this on only while investigating a problem.",
-    debugLogTitle: "Save Debug Logs",
+    debugLogTitle: "Save debug logs",
     debugLogDescription: "Record information needed to investigate problems. This can use a small amount of disk and processor time.",
-    hostManagerSmartCoordinatorScoreOnlyTitle: "Analyze Without Applying Changes",
+    hostManagerSmartCoordinatorScoreOnlyTitle: "Analyze without applying changes",
     hostManagerSmartCoordinatorScoreOnlyDescription: "Continue monitoring and producing scheduling results without changing software or hardware state.",
-    hostManagerSmartCoordinatorPerformanceLogTitle: "Record Scheduling Performance",
+    hostManagerSmartCoordinatorPerformanceLogTitle: "Record scheduling performance",
     hostManagerSmartCoordinatorPerformanceLogDescription: "Record scheduling duration and load to investigate Resource Manager's own overhead."
   },
   hardwareControl: {
