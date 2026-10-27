@@ -22,7 +22,7 @@ pub const tree: control.tree.Tree = .{
         .{ .uid = B.ForceTerminateHotkey, .parent = B.SystemIntegration },
         .{ .uid = B.TaskManagerReplacement, .parent = B.SystemIntegration },
         .{ .uid = B.BackendConnection, .parent = B.MainFrontend },
-        .{ .uid = B.WindowProcess, .parent = B.MainFrontend },
+        .{ .uid = B.WindowProcess, .parent = B.MainFrontend, .launches_process = "window" },
         .{ .uid = B.DesktopObservation, .parent = B.BackendConnection, .inputs = &.{B.BackendConnection} },
         .{ .uid = B.Overlay, .parent = B.BackendConnection, .inputs = &.{B.BackendConnection} },
         .{ .uid = B.TrayNotifications, .parent = B.Tray, .inputs = &.{B.BackendConnection} },

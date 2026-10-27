@@ -11,16 +11,7 @@ pub fn build(b: *std.Build) void {
         .optimize = .ReleaseSafe,
     });
     const module = b.createModule(.{ .root_source_file = b.path("src/main.zig"), .target = target, .optimize = optimize });
-    const generation = b.addSystemCommand(&.{ "pwsh", "-NoProfile", "-File" });
-    generation.addFileArg(b.path("../../../scripts/build/Generate-DesktopStateItems.ps1"));
-    generation.addFileInput(b.path("../../Shared/StateItems/state-items.json"));
-    generation.addFileInput(b.path("../../../scripts/build/Generate-StateItems.ps1"));
-    generation.addFileInput(b.path("../../../scripts/build/StateItemRegistry.psm1"));
-    generation.addArg("-Output");
-    const state_file = generation.addOutputFileArg("state_items.zig");
-    if (state_names) generation.addArg("-Names");
-    const states = b.createModule(.{ .root_source_file = state_file, .target = target, .optimize = optimize });
-    states.addImport("rm_control", control);
+    const states = stateItems(b, control, target, optimize, state_names);
     module.addImport("desktop_state_items", states);
     configure(module, control);
     if (b.option([]const u8, "points-root", "Directory containing selected FreedomPoint values")) |root| {
@@ -58,6 +49,36 @@ pub fn build(b: *std.Build) void {
     const desktop_tree = b.createModule(.{ .root_source_file = b.path("src/tree.zig"), .target = target, .optimize = optimize });
     desktop_tree.addImport("rm_control", control);
     desktop_tree.addImport("desktop_state_items", states);
+    // Export always uses a separate development table, even if the product
+    // table omits names. The exporter is never installed with the resident.
+    const export_tree = b.createModule(.{ .root_source_file = b.path("src/tree.zig"), .target = target, .optimize = .ReleaseSafe });
+    export_tree.addImport("rm_control", control);
+    export_tree.addImport("desktop_state_items", stateItems(b, control, target, .ReleaseSafe, true));
+    const export_source = b.createModule(.{
+        .root_source_file = b.path("src/export_tree.zig"),
+        .target = target,
+        .optimize = .ReleaseSafe,
+        .imports = &.{ .{ .name = "rm_control", .module = control }, .{ .name = "desktop_tree", .module = export_tree } },
+    });
+    const exporter = b.addExecutable(.{
+        .name = "export-control-tree",
+        .use_llvm = false,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("../../Shared/Control/src/export_tree_main.zig"),
+            .target = target,
+            .optimize = .ReleaseSafe,
+            .imports = &.{ .{ .name = "rm_control", .module = control }, .{ .name = "process_tree", .module = export_source } },
+        }),
+    });
+    const run_exporter = b.addRunArtifact(exporter);
+    b.step("export-tree", "Export the resident root and its window process launch").dependOn(&run_exporter.step);
+    const export_for_test = b.addRunArtifact(exporter);
+    const export_check = b.addSystemCommand(&.{ "pwsh", "-NoProfile", "-File" });
+    export_check.addFileArg(b.path("../../../tests/Desktop/ResidentControlTreeExport.Tests.ps1"));
+    export_check.addArg("-TreeJson");
+    export_check.addFileArg(export_for_test.captureStdOut(.{}));
+    b.step("test-export", "Check the actual resident export and window launch").dependOn(&export_check.step);
+    test_step.dependOn(&export_check.step);
     const integration = b.createModule(.{ .root_source_file = b.path("../../../tests/Desktop/resident_tree_scenarios.zig"), .target = target, .optimize = optimize });
     integration.addImport("rm_control", control);
     integration.addImport("desktop_tree", desktop_tree);
@@ -92,4 +113,18 @@ fn configure(module: *std.Build.Module, control: *std.Build.Module) void {
     module.link_libc = true;
     for ([_][]const u8{ "user32", "shell32", "advapi32", "winhttp", "iphlpapi", "ws2_32", "ole32" }) |library|
         module.linkSystemLibrary(library, .{});
+}
+
+fn stateItems(b: *std.Build, control: *std.Build.Module, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, state_names: bool) *std.Build.Module {
+    const generation = b.addSystemCommand(&.{ "pwsh", "-NoProfile", "-File" });
+    generation.addFileArg(b.path("../../../scripts/build/Generate-DesktopStateItems.ps1"));
+    generation.addFileInput(b.path("../../Shared/StateItems/state-items.json"));
+    generation.addFileInput(b.path("../../../scripts/build/Generate-StateItems.ps1"));
+    generation.addFileInput(b.path("../../../scripts/build/StateItemRegistry.psm1"));
+    generation.addArg("-Output");
+    const state_file = generation.addOutputFileArg("state_items.zig");
+    if (state_names) generation.addArg("-Names");
+    const states = b.createModule(.{ .root_source_file = state_file, .target = target, .optimize = optimize });
+    states.addImport("rm_control", control);
+    return states;
 }

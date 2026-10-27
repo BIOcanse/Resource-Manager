@@ -34,11 +34,15 @@ $work = 'F:\code\Resource-Manager-Development\desktop-resident'
 $env:ZIG_GLOBAL_CACHE_DIR = "$work\zig-global-cache"
 & D:\Code\CommonAssets\Tools\JobQueue\JobQueue.ps1 -Action Run -Label 'desktop Debug' `
   -FilePath D:\Code\CommonAssets\Tools\Zig\zig-0.16.0\zig.exe `
-  -ArgumentList @('build', '-Doptimize=Debug', "-Dpoints-root=$work/desktop-points", '--cache-dir', "$work\zig-cache", '--prefix', "$work\debug", '-j2') `
+  -ArgumentList @('build', '-Doptimize=Debug', "-Dpoints-root=$work/desktop-points", '--cache-dir', "$work\zig-cache", '--prefix', "$work\debug", '-j1') `
   -WorkingDirectory "$PWD\src\UI\Desktop"
 ```
 
 产物为 `debug/bin/ResourceManager.Desktop.exe`。`build test` 覆盖全部 Zig 测试；内存受限时分别调用 `test-blocks`、`test-pipe`、`test-integration`，每次只编译一个入口。`-Dintegration-filter=<名称子串>` 可定向运行树场景。登记表每次构建经共享生成器生成，输入依赖包含真实登记表和生成器；Debug 默认包含名字，其他优化配置默认不包含名字，可通过 `-Dstate-names` 显式选择。
+
+开发期导出从同一份 `tree.zig` 的 Program 根（UID 40）开始，经共享 `export_tree_main.zig` 输出整个常驻树。`WindowProcess`（UID 89）声明 `launches_process = "window"`；这只是导出元数据，控制器不读取它。生成器为导出单独提供带名字的开发表，不把名字带入正式运行表，也不安装导出工具。Frontend 使用 UID 101，MainFrontend 和 Tray 保留 UID 41、42。窗口树仍是 C# 声明；本步骤不迁移它，也不为它编造 Zig 导出。
+
+在同一个已登记输出目录内通过 JobQueue 运行 `zig build export-tree -j1 --cache-dir <缓存目录>`，stdout 是单进程 JSON。窗口进程提供真实导出后，可将两份输出交给 `scripts/tools/Export-ControlTree.ps1 -TreeJson <desktop.json>,<window.json>` 拼接；共享脚本会明确拒绝缺少被启动进程的输入。`zig build test-export -j1` 导出真实根声明，并校验根、Frontend 和唯一的 window 启动块；默认 `zig build test -j1` 包含这一检查。测试不启动常驻进程或窗口进程。
 
 普通交互身份的文件夹具验收独立为 `test-key-fixture`：先由维护会话用既有 Initialize-BackendKeyFixture.ps1 准备，再运行该入口，原 owner/ACL/重复读取/取消断言不变。`check-key-fixture` 只编译此入口；默认 `test` 不访问该真实夹具。`-Dpipe-filter=<名称子串>` 可只补失败的管道测试。
 
