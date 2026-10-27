@@ -21,7 +21,7 @@ public sealed class BusinessBlockSchedulerFailureTests
         var worker = new Block(async context =>
         {
             var run = Interlocked.Increment(ref runs);
-            diagnostics!.BeginRun("worker");
+            diagnostics!.BeginRun(154);
             context.ReportRunning();
             if (run == 1)
             {
@@ -30,25 +30,25 @@ public sealed class BusinessBlockSchedulerFailureTests
                 if (throws)
                 {
                     var error = new IOException("the block's own error");
-                    diagnostics.RecordResult("worker", BusinessBlockResult.Failed(error));
+                    diagnostics.RecordResult(154, BusinessBlockResult.Failed(error));
                     throw error;
                 }
-                diagnostics.RecordResult("worker", BusinessBlockResult.Done);
+                diagnostics.RecordResult(154, BusinessBlockResult.Done);
                 return;
             }
             secondEntered.TrySetResult();
             try { await Task.Delay(System.Threading.Timeout.InfiniteTimeSpan, context.StopNotification); }
             catch (OperationCanceledException) when (context.StopNotification.IsCancellationRequested) { }
-            diagnostics.RecordResult("worker", BusinessBlockResult.Stopped);
+            diagnostics.RecordResult(154, BusinessBlockResult.Stopped);
         });
-        var registrations = new[] { Register("worker", worker), Register("peer", peer) };
+        var registrations = new[] { Register(154, worker), Register(140, peer) };
         diagnostics = new(registrations, NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
         await using var scheduler = Create(registrations);
         try
         {
-            await scheduler.StartAsync("worker", Reason());
+            await scheduler.StartAsync(154, Reason());
             await firstEntered.Task.WaitAsync(TestTimeout);
-            var peerRequest = scheduler.StartAsync("peer", Reason(owner: "unrelated-owner"));
+            var peerRequest = scheduler.StartAsync(140, Reason(owner: "unrelated-owner"));
             releaseFirst.TrySetResult();
             await peerRequest.WaitAsync(TestTimeout);
             await peer.Entered.Task.WaitAsync(TestTimeout);
@@ -56,9 +56,9 @@ public sealed class BusinessBlockSchedulerFailureTests
             Assert.Equal(2, Volatile.Read(ref runs));
             Assert.Equal(1, peer.Runs);
             Assert.False(peer.Notified.Task.IsCompleted);
-            Assert.Equal(BusinessBlockState.Running, scheduler.ReadState("worker"));
-            Assert.Equal(BusinessBlockState.Running, scheduler.ReadState("peer"));
-            var workerHistory = scheduler.Read().History.Where(item => item.BlockId == "worker").ToArray();
+            Assert.Equal(BusinessBlockState.Running, scheduler.ReadState(154));
+            Assert.Equal(BusinessBlockState.Running, scheduler.ReadState(140));
+            var workerHistory = scheduler.Read().History.Where(item => item.BlockId == 154).ToArray();
             Assert.Equal([BusinessBlockState.Starting, BusinessBlockState.Running, BusinessBlockState.Stopped,
                 BusinessBlockState.Starting, BusinessBlockState.Running], workerHistory.Select(item => item.To));
         }
@@ -69,17 +69,17 @@ public sealed class BusinessBlockSchedulerFailureTests
     public async Task DiagnosticFailureCannotCancelABlockOrWithdrawAnyDemand()
     {
         var first = new Probe(); var peer = new Probe();
-        var registrations = new[] { Register("first", first), Register("peer", peer) };
+        var registrations = new[] { Register(124, first), Register(140, peer) };
         var diagnostics = new BusinessBlockDiagnosticsRegistry(registrations, NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
         await using var scheduler = Create(registrations);
         try
         {
-            await scheduler.StartAsync("first", Reason());
-            await scheduler.StartAsync("peer", Reason());
+            await scheduler.StartAsync(124, Reason());
+            await scheduler.StartAsync(140, Reason());
             await Task.WhenAll(first.Entered.Task, peer.Entered.Task).WaitAsync(TestTimeout);
             var before = scheduler.Read();
-            diagnostics.ReportFailure("first", new IOException("reported by the block"), "read");
-            Assert.Equal(BusinessBlockOutcome.Failed, diagnostics.Read("first").Result!.Outcome);
+            diagnostics.ReportFailure(124, new IOException("reported by the block"), "read");
+            Assert.Equal(BusinessBlockOutcome.Failed, diagnostics.Read(124).Result!.Outcome);
             Assert.Equal(before.History, scheduler.Read().History);
             Assert.Equal(before.Demands.OrderBy(item => item.Key), scheduler.Read().Demands.OrderBy(item => item.Key));
             Assert.False(first.Notified.Task.IsCompleted);

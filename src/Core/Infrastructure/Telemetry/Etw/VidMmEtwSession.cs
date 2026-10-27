@@ -1,6 +1,7 @@
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Session;
 using ResourceManager.ReadWrite.Windows.Processes.Etw;
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
@@ -19,7 +20,7 @@ internal sealed class TraceEventVidMmSession : IVidMmEtwSession
     internal TraceEventVidMmSession(string name, string provider, ulong keywords)
     {
         session = new TraceEventSession(name) { StopOnDispose = true };
-        cleanup = new(session);
+        cleanup = new(session, blockId: BlockUids.DxgkrnlVidMmEtwTelemetryZone);
         try { session.EnableProvider(provider, TraceEventLevel.Verbose, keywords); }
         catch (Exception error)
         {

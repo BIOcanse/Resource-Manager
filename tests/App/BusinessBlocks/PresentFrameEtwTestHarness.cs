@@ -48,11 +48,11 @@ internal sealed class PresentFrameEtwTestHarness : IAsyncDisposable
         var sessions = new PresentFrameEtwTestSessionFactory();
         PresentFrameEtwSource? source = null;
         EtwTestRunRecorder? recorder = null;
-        var registration = new BusinessBlockRegistration("present-etw", [], _ => recorder!);
+        var registration = new BusinessBlockRegistration(BackendUids.PresentFrameEtwSource, [], _ => recorder!);
         var diagnostics = new BusinessBlockDiagnosticsRegistry([registration], NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
         var controller = new BusinessBlockScheduler(services, [registration],
             Options.Create(blockOptions ?? new BusinessBlockOptions()), NullLogger<BusinessBlockScheduler>.Instance,
-            decisions: [EtwTestRunRecorder.AvailabilityRule(PresentFrameEtwSource.BusinessBlockId, PresentFrameEtwSource.AvailabilityFact)]);
+            decisions: [EtwTestRunRecorder.AvailabilityRule(BackendUids.PresentFrameEtwSource, PresentFrameEtwSource.AvailabilityFact)]);
         observer ??= new BusinessBlockEtwThreadObserver(diagnostics);
         var sourceLogger = logger ?? NullLogger<PresentFrameEtwSource>.Instance;
         if (useNativeSession)
@@ -65,7 +65,7 @@ internal sealed class PresentFrameEtwTestHarness : IAsyncDisposable
                 timeProvider ?? new PresentFrameEtwManualTimeProvider(), observer);
         }
 
-        recorder = new(source, diagnostics, "present-etw");
+        recorder = new(source, diagnostics, BackendUids.PresentFrameEtwSource);
         source.PublishAvailabilityAsync().GetAwaiter().GetResult();
         return new(services, controller, source, sessions, diagnostics, recorder);
     }
@@ -97,10 +97,10 @@ internal sealed class PresentFrameEtwTestHarness : IAsyncDisposable
     }
 }
 
-internal sealed class EtwTestRunRecorder(IBusinessBlock block, BusinessBlockDiagnosticsRegistry diagnostics, string id) : IBusinessBlock
+internal sealed class EtwTestRunRecorder(IBusinessBlock block, BusinessBlockDiagnosticsRegistry diagnostics, int id) : IBusinessBlock
 {
-    internal static BusinessBlockDecisionRegistration AvailabilityRule(string id, string availabilityFact)
-        => new(BackendBlockGraph.Program, [BusinessBlockScheduler.DemandFact(id), availabilityFact],
+    internal static BusinessBlockDecisionRegistration AvailabilityRule(int id, string availabilityFact)
+        => new(BackendUids.Program, [BusinessBlockScheduler.DemandFact(id), availabilityFact],
             input => input.Facts[BusinessBlockScheduler.DemandFact(id)].Value && input.Facts[availabilityFact].Value ? [id] : []);
 
     private readonly System.Threading.Channels.Channel<BusinessBlockResult> results =

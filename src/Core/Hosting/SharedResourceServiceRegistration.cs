@@ -1,3 +1,4 @@
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using ResourceManager.App.Application.PublicResources;
 using ResourceManager.App.Hosting.StartupCapabilities;
 using ResourceManager.App.Infrastructure.PublicResources;
@@ -32,7 +33,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         if (startupCapabilities.Allows(StartupCapability.SharedResourceOwnership))
         {
             services.AddSerialHostedServiceAlias<SharedMemoryPublicResourceBroker>();
-            services.AddBusinessBlockHostedService<SharedResourceSubscriptionMaintenanceService>(BackendBlockIds.SharedResourceSubscriptionMaintenanceService, [], ["resource-expiration"]);
+            services.AddBusinessBlockHostedService<SharedResourceSubscriptionMaintenanceService>(BlockUids.SharedResourceSubscriptionMaintenanceService, []);
         }
         return services;
     }

@@ -1,3 +1,4 @@
+using BlockUids = ResourceManager.NativeUi.StateItems.BlockUids;
 using Microsoft.Extensions.Logging;
 using ResourceManager.NativeUi.Blocks;
 using ResourceManager.NativeUi.Localization;
@@ -17,18 +18,18 @@ public sealed partial class ResourceManagerApplicationContext
     private readonly NativeUiWindowRequests windowRequests = new();
     private NativeUiProxyBlock? proxyBlock;
 
-    private IBusinessBlock CreateBlock(string id) => new UiBlock(context => RunOnUiAsync(() => id switch
+    private IBusinessBlock CreateBlock(int id) => new UiBlock(context => RunOnUiAsync(() => id switch
     {
-        NativeUiBlockIds.MainRoot => RunMainRootAsync(context),
-        NativeUiBlockIds.TrayRoot => RunTrayRootAsync(context),
-        NativeUiBlockIds.SingleInstance => RunSingleInstanceAsync(context),
-        NativeUiBlockIds.BackendConnection => backendConnection.RunAsync(context),
-        NativeUiBlockIds.MainWindow => RunWindowAsync(context),
-        NativeUiBlockIds.LoopbackProxy => RunProxyAsync(context),
-        NativeUiBlockIds.WebViewHost => RunWebViewAsync(context),
-        NativeUiBlockIds.DesktopObservation => RunDesktopAsync(context),
-        NativeUiBlockIds.Overlay => RunOverlayAsync(context),
-        NativeUiBlockIds.TrayNotifications => RunTrayNotificationsAsync(context),
+        BlockUids.MainRoot => RunMainRootAsync(context),
+        BlockUids.TrayRoot => RunTrayRootAsync(context),
+        BlockUids.SingleInstance => RunSingleInstanceAsync(context),
+        BlockUids.BackendConnection => backendConnection.RunAsync(context),
+        BlockUids.MainWindow => RunWindowAsync(context),
+        BlockUids.LoopbackProxy => RunProxyAsync(context),
+        BlockUids.WebViewHost => RunWebViewAsync(context),
+        BlockUids.DesktopObservation => RunDesktopAsync(context),
+        BlockUids.Overlay => RunOverlayAsync(context),
+        BlockUids.TrayNotifications => RunTrayNotificationsAsync(context),
         _ => throw new InvalidOperationException("Unknown native UI block: " + id)
     }));
 
@@ -257,7 +258,7 @@ public sealed partial class ResourceManagerApplicationContext
     private async Task CloseWindowBranchAsync()
     {
         await trees.SetWindowWantedAsync(false, "window-close");
-        await trees.WaitForStateAsync(NativeUiBlockIds.MainWindow, BusinessBlockState.Stopped);
+        await trees.WaitForStateAsync(BlockUids.MainWindow, BusinessBlockState.Stopped);
     }
 
     private void OnSessionEnded(object sender, Microsoft.Win32.SessionEndedEventArgs args)

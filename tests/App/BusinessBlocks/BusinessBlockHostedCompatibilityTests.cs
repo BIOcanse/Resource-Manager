@@ -19,9 +19,9 @@ public sealed class BusinessBlockHostedCompatibilityTests
         var observations = new ConcurrentQueue<StopObservation>();
         using var host = BuildHost(services =>
         {
-            services.AddBusinessBlockHostedService<FirstStopService>("first", [], [], _ => new(observations));
-            services.AddBusinessBlockHostedService<SecondStopService>("second", [], [], _ => new(observations));
-            services.AddBusinessBlockHostedService<ThirdStopService>("third", [], [], _ => new(observations));
+            services.AddBusinessBlockHostedService<FirstStopService>(124, [], _ => new(observations));
+            services.AddBusinessBlockHostedService<SecondStopService>(146, [], _ => new(observations));
+            services.AddBusinessBlockHostedService<ThirdStopService>(151, [], _ => new(observations));
         });
 
         await host.StartAsync();
@@ -42,7 +42,7 @@ public sealed class BusinessBlockHostedCompatibilityTests
         var releaseStop = NewSignal();
         var service = new LifecycleService(_ => releaseStop.Task);
         using var host = BuildHost(services =>
-            services.AddBusinessBlockHostedService<LifecycleService>("service", [], [], _ => service));
+            services.AddBusinessBlockHostedService<LifecycleService>(147, [], _ => service));
         await host.StartAsync();
         var stopping = Hosted<LifecycleService>(host).StopAsync(hostDeadline.Token);
         try
@@ -51,11 +51,11 @@ public sealed class BusinessBlockHostedCompatibilityTests
             hostDeadline.Cancel();
             await stopping.WaitAsync(TestTimeout);
             Assert.Equal(BusinessBlockState.Stopping,
-                host.Services.GetRequiredService<BusinessBlockScheduler>().ReadState("service"));
+                host.Services.GetRequiredService<BusinessBlockScheduler>().ReadState(147));
             Assert.Equal(CancellationToken.None, service.LastStopToken);
             releaseStop.TrySetResult();
             await WaitUntilAsync(() => host.Services.GetRequiredService<BusinessBlockScheduler>()
-                .ReadState("service") == BusinessBlockState.Stopped);
+                .ReadState(147) == BusinessBlockState.Stopped);
         }
         finally
         {
@@ -72,12 +72,12 @@ public sealed class BusinessBlockHostedCompatibilityTests
         var failure = new TimeoutException("service-owned timeout");
         var service = new LifecycleService(_ => Task.FromException(failure));
         using var host = BuildHost(services =>
-            services.AddBusinessBlockHostedService<LifecycleService>("service", [], [], _ => service));
+            services.AddBusinessBlockHostedService<LifecycleService>(147, [], _ => service));
         await host.StartAsync();
         var thrown = await Assert.ThrowsAsync<TimeoutException>(() => Hosted<LifecycleService>(host).StopAsync(CancellationToken.None));
         Assert.Same(failure, thrown);
         Assert.Equal(1, service.StopCount);
-        var result = host.Services.GetRequiredService<BusinessBlockDiagnosticsRegistry>().Read("service").Result;
+        var result = host.Services.GetRequiredService<BusinessBlockDiagnosticsRegistry>().Read(147).Result;
         Assert.Equal(BusinessBlockOutcome.Failed, result!.Outcome);
         Assert.Equal(BusinessBlockFailureStage.Stop, result.FailureStage);
         var hostStopError = await Record.ExceptionAsync(() => host.StopAsync().WaitAsync(TestTimeout));
@@ -91,7 +91,7 @@ public sealed class BusinessBlockHostedCompatibilityTests
         var worker = new GatedBackgroundService(release.Task);
         using var cancellation = new CancellationTokenSource();
         using var host = BuildHost(services =>
-            services.AddBusinessBlockHostedService<GatedBackgroundService>("worker", [], [], _ => worker));
+            services.AddBusinessBlockHostedService<GatedBackgroundService>(154, [], _ => worker));
         await host.StartAsync();
         await worker.ExecutionStarted.Task.WaitAsync(TestTimeout);
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
@@ -102,7 +102,7 @@ public sealed class BusinessBlockHostedCompatibilityTests
             cancellation.Cancel();
             await stopping.WaitAsync(TestTimeout);
             Assert.False(worker.ExecuteTask!.IsCompleted);
-            Assert.Equal(BusinessBlockState.Stopping, scheduler.ReadState("worker"));
+            Assert.Equal(BusinessBlockState.Stopping, scheduler.ReadState(154));
             Assert.Equal(CancellationToken.None, worker.LastStopToken);
             await host.StopAsync(cancellation.Token).WaitAsync(TestTimeout);
             var elapsed = Stopwatch.StartNew();
@@ -111,7 +111,7 @@ public sealed class BusinessBlockHostedCompatibilityTests
             Assert.Equal(1, worker.StopCount);
         }
         finally { release.TrySetResult(); }
-        await WaitUntilAsync(() => scheduler.ReadState("worker") == BusinessBlockState.Stopped);
+        await WaitUntilAsync(() => scheduler.ReadState(154) == BusinessBlockState.Stopped);
         Assert.Equal(1, worker.StopCount);
     }
 
@@ -120,7 +120,7 @@ public sealed class BusinessBlockHostedCompatibilityTests
     {
         var service = new GatedStartService();
         using var host = BuildHost(services =>
-            services.AddBusinessBlockHostedService<GatedStartService>("service", [], [], _ => service));
+            services.AddBusinessBlockHostedService<GatedStartService>(147, [], _ => service));
         var hosted = Hosted<GatedStartService>(host);
         var starting = hosted.StartAsync(CancellationToken.None);
         await service.StartEntered.Task.WaitAsync(TestTimeout);
@@ -143,8 +143,8 @@ public sealed class BusinessBlockHostedCompatibilityTests
     {
         var service = new RecoverableStartService();
         using var host = BuildHost(services =>
-            services.AddBusinessBlockHostedService<RecoverableStartService>("service", [], [], _ => service));
-        var block = host.Services.GetRequiredService<HostedBusinessBlockRegistry>().GetOrAdd("service", () => service);
+            services.AddBusinessBlockHostedService<RecoverableStartService>(147, [], _ => service));
+        var block = host.Services.GetRequiredService<HostedBusinessBlockRegistry>().GetOrAdd(147, () => service);
         var first = block.PrepareStart(CancellationToken.None);
         var firstRun = block.RunAsync(new(CancellationToken.None, () => { }));
         try
@@ -186,12 +186,12 @@ public sealed class BusinessBlockHostedCompatibilityTests
     {
         var service = new LifecycleService(_ => Task.CompletedTask);
         using var host = BuildHost(services =>
-            services.AddBusinessBlockHostedService<LifecycleService>("service", [], [], _ => service));
+            services.AddBusinessBlockHostedService<LifecycleService>(147, [], _ => service));
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
-        await scheduler.SetDemandAsync("external", "service", TestReason("external-start")).WaitAsync(TestTimeout);
+        await scheduler.SetDemandAsync("external", 147, TestReason("external-start")).WaitAsync(TestTimeout);
         try
         {
-            await WaitUntilAsync(() => scheduler.ReadState("service") == BusinessBlockState.Running);
+            await WaitUntilAsync(() => scheduler.ReadState(147) == BusinessBlockState.Running);
             await host.StartAsync().WaitAsync(TestTimeout);
             Assert.Equal(1, service.StartCount);
         }
@@ -212,16 +212,16 @@ public sealed class BusinessBlockHostedCompatibilityTests
             return releaseSecondStop.Task;
         });
         using var host = BuildHost(services =>
-            services.AddBusinessBlockHostedService<LifecycleService>("service", [], [], _ => service));
+            services.AddBusinessBlockHostedService<LifecycleService>(147, [], _ => service));
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
         Task? stopping = null;
         try
         {
             await host.StartAsync().WaitAsync(TestTimeout);
-            await scheduler.SetEnabledAsync("service", false, TestReason("first-run-stop")).WaitAsync(TestTimeout);
-            await WaitUntilAsync(() => scheduler.ReadState("service") == BusinessBlockState.Stopped);
-            await scheduler.SetEnabledAsync("service", true, TestReason("second-run-start")).WaitAsync(TestTimeout);
-            await WaitUntilAsync(() => scheduler.ReadState("service") == BusinessBlockState.Running);
+            await scheduler.SetEnabledAsync(147, false, TestReason("first-run-stop")).WaitAsync(TestTimeout);
+            await WaitUntilAsync(() => scheduler.ReadState(147) == BusinessBlockState.Stopped);
+            await scheduler.SetEnabledAsync(147, true, TestReason("second-run-start")).WaitAsync(TestTimeout);
+            await WaitUntilAsync(() => scheduler.ReadState(147) == BusinessBlockState.Running);
             Assert.Equal(2, service.StartCount);
 
             stopping = host.StopAsync();
@@ -242,12 +242,12 @@ public sealed class BusinessBlockHostedCompatibilityTests
         var events = new ConcurrentQueue<string>();
         using var host = BuildHost(services =>
         {
-            services.AddBusinessBlockHostedService<FirstConstructedService>("first", [], [], _ =>
+            services.AddBusinessBlockHostedService<FirstConstructedService>(124, [], _ =>
             { events.Enqueue("first:construct"); return new(events); });
             services.AddSingleton<LazyAliasService>(_ =>
             { events.Enqueue("alias:construct"); return new(events); });
-            services.AddHostedServiceAlias<LazyAliasService>("alias", [], []);
-            services.AddBusinessBlockHostedService<SecondConstructedService>("second", [], [], _ =>
+            services.AddHostedServiceAlias<LazyAliasService>(112, []);
+            services.AddBusinessBlockHostedService<SecondConstructedService>(146, [], _ =>
             { events.Enqueue("second:construct"); return new(events); });
         });
         var hosted = host.Services.GetServices<IHostedService>()
@@ -266,8 +266,8 @@ public sealed class BusinessBlockHostedCompatibilityTests
         {
             services.AddSingleton<LazyAliasService>(_ =>
             { events.Enqueue("alias:construct"); return new(events); });
-            services.AddHostedServiceAlias<LazyAliasService>("alias", [], []);
-            services.AddBusinessBlockHostedService<ThrowingConstructedService>("direct", [], [], _ =>
+            services.AddHostedServiceAlias<LazyAliasService>(112, []);
+            services.AddBusinessBlockHostedService<ThrowingConstructedService>(122, [], _ =>
             { events.Enqueue("direct:construct"); throw failure; });
         });
         var thrown = await Assert.ThrowsAsync<InvalidOperationException>(() => host.StartAsync());

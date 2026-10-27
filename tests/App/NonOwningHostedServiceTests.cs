@@ -17,7 +17,7 @@ public sealed class NonOwningHostedServiceTests
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
-                services.AddBusinessBlockHostedService<ProbeWorker>("ProbeWorker", [], ["test-output"], _ => worker);
+                services.AddBusinessBlockHostedService<ProbeWorker>(101, [], _ => worker);
             })
             .Build();
         var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
@@ -48,7 +48,7 @@ public sealed class NonOwningHostedServiceTests
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
-                services.AddBusinessBlockHostedService<ProbeWorker>("ProbeWorker", [], ["test-output"], _ => worker);
+                services.AddBusinessBlockHostedService<ProbeWorker>(101, [], _ => worker);
             })
             .Build();
         try
@@ -58,10 +58,10 @@ public sealed class NonOwningHostedServiceTests
             await host.StopAsync();
             Assert.True(worker.ExecuteTask!.IsCompleted);
             var facts = Assert.Single(host.Services.GetRequiredService<IBusinessBlockQuery>().Read().Blocks,
-                block => block.Id == nameof(ProbeWorker));
+                block => block.Id == 101);
             Assert.Equal(BusinessBlockState.Stopped, facts.State);
             Assert.Equal(BusinessBlockOutcome.Stopped,
-                host.Services.GetRequiredService<BusinessBlockDiagnosticsRegistry>().Read("ProbeWorker").Result!.Outcome);
+                host.Services.GetRequiredService<BusinessBlockDiagnosticsRegistry>().Read(101).Result!.Outcome);
             Assert.Equal(0, worker.DisposeCount);
         }
         finally
@@ -78,7 +78,7 @@ public sealed class NonOwningHostedServiceTests
         PlainService? service = null;
         var host = Host.CreateDefaultBuilder()
             .ConfigureLogging(logging => logging.ClearProviders())
-            .ConfigureServices(services => services.AddBusinessBlockHostedService<PlainService>("PlainService", [], ["test-output"], _ =>
+            .ConfigureServices(services => services.AddBusinessBlockHostedService<PlainService>(102, [], _ =>
             {
                 created++;
                 return service = new PlainService();

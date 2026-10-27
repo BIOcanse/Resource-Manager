@@ -1,3 +1,4 @@
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using ResourceManager.App.Application.MemoryProtection;
 using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
@@ -11,8 +12,7 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
     IHostMemoryProtectionExecutor executor, IHostMemoryProtectionReserve reserve, BusinessBlockScheduler scheduler, IHostEnvironment environment,
     ILogger<HostMemoryProtectionService> logger, IGpuPlacementPolicyStore softwarePolicies) : IBusinessBlock
 {
-    public const string BlockId = "HostMemoryProtection";
-    public static string EnabledFact => BusinessBlockScheduler.EnabledFact(BlockId);
+    public static string EnabledFact => BusinessBlockScheduler.EnabledFact(BlockUids.HostMemoryProtection);
     public const string PointFact = "memory-protection:normal-running-point-exists";
     public const string ReserveFact = "memory-protection:reserve-built";
     public const int RecordLimit = 64;
@@ -105,7 +105,7 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
     {
         HostMemoryProtectionSettings current;
         lock (gate) current = settings;
-        await scheduler.SetEnabledAsync(BlockId, current.Enabled, Reason(cause));
+        await scheduler.SetEnabledAsync(BlockUids.HostMemoryProtection, current.Enabled, Reason(cause));
         await scheduler.SetFactAsync(ReserveFact, ReserveUnavailableReason(current, reserve.ReadStatus()) is null, Reason(cause));
     }
 
@@ -283,7 +283,7 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
         }
         throw new IOException("reserve-path-too-deep");
     }
-    private BusinessBlockReason Reason(string cause) => new(BusinessBlockRequestKind.Configuration, BlockId, cause, scheduler.CurrentPlanVersion);
+    private BusinessBlockReason Reason(string cause) => new(BusinessBlockRequestKind.Configuration, BlockUids.HostMemoryProtection.ToString(System.Globalization.CultureInfo.InvariantCulture), cause, scheduler.CurrentPlanVersion);
     private static HostMemoryExclusion Exclude(HostMemoryProcess process, string reason)
         => new(process.ProcessId, process.ProcessStartKey, process.Name, reason);
 }

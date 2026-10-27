@@ -17,7 +17,7 @@ internal sealed class BusinessBlockFactAuthority
     public Task Publish(string key, bool value, BusinessBlockReason reason)
         => Publish(key, () => new(key, value, [reason]), reason);
 
-    public Task PublishDemand(string id, ConcurrentDictionary<string, BusinessBlockDemand> demands, BusinessBlockReason reason)
+    public Task PublishDemand(int id, ConcurrentDictionary<string, BusinessBlockDemand> demands, BusinessBlockReason reason)
         => Publish(BusinessBlockScheduler.DemandFact(id), () =>
         {
             var current = demands.Values.Where(demand => demand.BlockId == id).Select(demand => demand.Reason).ToArray();

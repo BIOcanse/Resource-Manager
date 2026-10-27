@@ -60,7 +60,7 @@ public sealed class StaticAnalysisDefectRegressionTests
     public async Task InvalidConsumerCounterDoesNotPreventIndependentRegistrationOrDrain()
     {
         using var services = new ServiceCollection().BuildServiceProvider();
-        BusinessBlockRegistration[] declarations = [new("consumer", [], _ => throw new NotSupportedException())];
+        BusinessBlockRegistration[] declarations = [new(120, [], _ => throw new NotSupportedException())];
         var diagnostics = new BusinessBlockDiagnosticsRegistry(declarations, NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
         await using var controller = new BusinessBlockScheduler(services, declarations,
             Options.Create(new BusinessBlockOptions()), NullLogger<BusinessBlockScheduler>.Instance);
@@ -70,9 +70,9 @@ public sealed class StaticAnalysisDefectRegressionTests
         var entered = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
         var prior = Task.Run(() =>
         {
-            using var registration = diagnostics.RegisterConsumerThread("consumer", "prior");
+            using var registration = diagnostics.RegisterConsumerThread(120, "prior");
             var entries = (IDictionary)Field(diagnostics, "entries");
-            var metrics = entries["consumer"]!.GetType().GetProperty("Metrics")!.GetValue(entries["consumer"])!;
+            var metrics = entries[120]!.GetType().GetProperty("Metrics")!.GetValue(entries[120])!;
             var threads = (IDictionary)Field(metrics, "activeThreads");
             var state = threads.Values.Cast<object>().Single();
             var baseline = state.GetType().GetProperty("LastCpuTicks")!;
@@ -86,12 +86,12 @@ public sealed class StaticAnalysisDefectRegressionTests
         try
         {
             // This synchronous call cannot resume on the prior registration thread.
-            using var accepted = diagnostics.RegisterConsumerThread("consumer", "independent");
-            Assert.Throws<InvalidOperationException>(() => diagnostics.Read("consumer"));
+            using var accepted = diagnostics.RegisterConsumerThread(120, "independent");
+            Assert.Throws<InvalidOperationException>(() => diagnostics.Read(120));
             Assert.Equal(BusinessBlockState.Stopped, Assert.Single(controller.Read().Blocks).State);
         }
         finally { release.Set(); await prior.WaitAsync(TimeSpan.FromSeconds(5)); }
-        var facts = diagnostics.Read("consumer");
+        var facts = diagnostics.Read(120);
         Assert.Empty(facts.Metrics.ActiveThreads);
         Assert.Equal(BusinessBlockState.Stopped, Assert.Single(controller.Read().Blocks).State);
     }

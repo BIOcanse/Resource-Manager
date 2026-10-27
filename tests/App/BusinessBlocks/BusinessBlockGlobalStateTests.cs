@@ -16,14 +16,14 @@ public sealed class BusinessBlockControlSystemTests
     public async Task FourStatesStopCannotBeRefusedAndReadsArePure(bool stopWhileStarting)
     {
         var logger = new CapturedLogger<BusinessBlockController>();
-        var control = new BusinessBlockController(logger, 4);
+        var control = new BusinessBlockController(logger, 4, _ => null);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var notified = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         BusinessBlockRunContext? context = null;
         var calls = 0;
         var entered = BusinessBlockTestSupport.Signal();
         Assert.Equal([BusinessBlockState.Stopped, BusinessBlockState.Starting, BusinessBlockState.Running, BusinessBlockState.Stopping], Enum.GetValues<BusinessBlockState>());
-        control.Start("one", async value =>
+        control.Start(137, async value =>
         {
             context = value;
             Interlocked.Increment(ref calls);
@@ -32,24 +32,24 @@ public sealed class BusinessBlockControlSystemTests
             await release.Task;
         });
         await entered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
-        Assert.Equal(BusinessBlockState.Starting, control.Read().States["one"]);
+        Assert.Equal(BusinessBlockState.Starting, control.Read().States[137]);
         var first = control.Read();
         Assert.Equal(first.History, control.Read().History);
         Assert.Equal(1, calls);
         if (!stopWhileStarting)
         {
             context!.ReportRunning();
-            Assert.Equal(BusinessBlockState.Running, control.Read().States["one"]);
+            Assert.Equal(BusinessBlockState.Running, control.Read().States[137]);
         }
-        await control.Stop("one");
+        await control.Stop(137);
         await notified.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal(BusinessBlockState.Stopping, control.Read().States["one"]);
+        Assert.Equal(BusinessBlockState.Stopping, control.Read().States[137]);
         context!.ReportRunning();
-        Assert.Equal(BusinessBlockState.Stopping, control.Read().States["one"]);
-        Assert.Equal(BusinessBlockState.Stopping, control.ReadState("one"));
+        Assert.Equal(BusinessBlockState.Stopping, control.Read().States[137]);
+        Assert.Equal(BusinessBlockState.Stopping, control.ReadState(137));
         release.SetResult();
-        await BusinessBlockTestSupport.Until(() => control.ReadState("one") == BusinessBlockState.Stopped);
-        Assert.Equal(BusinessBlockState.Stopped, control.Read().States["one"]);
+        await BusinessBlockTestSupport.Until(() => control.ReadState(137) == BusinessBlockState.Stopped);
+        Assert.Equal(BusinessBlockState.Stopped, control.Read().States[137]);
         Assert.Equal(stopWhileStarting ? 3 : 4, control.Read().History.Count);
         Assert.Contains(logger.Messages, value => value.Contains("Stopped -> Starting"));
         Assert.Contains(logger.Messages, value => value.Contains("Stopping -> Stopped"));
@@ -59,21 +59,21 @@ public sealed class BusinessBlockControlSystemTests
     [InlineData(true)]
     public async Task EntryReturnIsStoppedRegardlessOfItsOutcome(bool throws)
     {
-        var control = new BusinessBlockController(NullLogger<BusinessBlockController>.Instance);
+        var control = new BusinessBlockController(NullLogger<BusinessBlockController>.Instance, 128, _ => null);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var returned = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var returned = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
         control.StateChanged += (id, state) => { if (state == BusinessBlockState.Stopped) returned.TrySetResult(id); };
-        control.Start("one", async context =>
+        control.Start(137, async context =>
         {
             context.ReportRunning();
             await release.Task;
             if (throws) throw new IOException("entry failed");
         });
-        await BusinessBlockTestSupport.Until(() => control.ReadState("one") == BusinessBlockState.Running);
-        Assert.Equal(BusinessBlockState.Running, control.Read().States["one"]);
+        await BusinessBlockTestSupport.Until(() => control.ReadState(137) == BusinessBlockState.Running);
+        Assert.Equal(BusinessBlockState.Running, control.Read().States[137]);
         release.SetResult();
-        Assert.Equal("one", await returned.Task.WaitAsync(TimeSpan.FromSeconds(5)));
-        Assert.Equal(BusinessBlockState.Stopped, control.Read().States["one"]);
+        Assert.Equal(137, await returned.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(BusinessBlockState.Stopped, control.Read().States[137]);
         Assert.DoesNotContain(control.Read().History, value => value.To == BusinessBlockState.Stopping);
     }
     internal sealed class CapturedLogger<T> : ILogger<T>
@@ -103,16 +103,16 @@ public sealed class BusinessBlockGlobalStateTests
             await release.Task;
         });
         await using var scheduler = BusinessBlockTestSupport.Create([
-            BusinessBlockTestSupport.Register("parent", parent), BusinessBlockTestSupport.Register("child", child, "parent")]);
+            BusinessBlockTestSupport.Register(139, parent), BusinessBlockTestSupport.Register(118, child, 139)]);
         var reason = BusinessBlockTestSupport.Reason();
         try
         {
             for (var round = 0; round < rounds; round++)
             {
-                await scheduler.SetDemandAsync("child-demand", "child", reason);
-                await scheduler.SetDemandAsync("parent-demand", "parent", reason);
-                await BusinessBlockTestSupport.Until(() => scheduler.ReadState("parent") == BusinessBlockState.Running
-                    && scheduler.ReadState("child") == BusinessBlockState.Running);
+                await scheduler.SetDemandAsync("child-demand", 118, reason);
+                await scheduler.SetDemandAsync("parent-demand", 139, reason);
+                await BusinessBlockTestSupport.Until(() => scheduler.ReadState(139) == BusinessBlockState.Running
+                    && scheduler.ReadState(118) == BusinessBlockState.Running);
                 var returnThisChild = Volatile.Read(ref childReturn)!;
                 var releasePublishers = BusinessBlockTestSupport.Signal();
                 var operations = new[]
@@ -137,18 +137,18 @@ public sealed class BusinessBlockGlobalStateTests
     {
         var release = BusinessBlockTestSupport.Signal();
         var block = new BusinessBlockTestSupport.Probe(reportRunning: false, releaseStop: release.Task);
-        await using var scheduler = BusinessBlockTestSupport.Create([BusinessBlockTestSupport.Register("worker", block)]);
+        await using var scheduler = BusinessBlockTestSupport.Create([BusinessBlockTestSupport.Register(154, block)]);
         try
         {
-            await scheduler.StartAsync("worker", BusinessBlockTestSupport.Reason());
+            await scheduler.StartAsync(154, BusinessBlockTestSupport.Reason());
             await block.Entered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
-            Assert.Equal(BusinessBlockState.Starting, scheduler.ReadState("worker"));
-            await scheduler.StopAsync("worker", BusinessBlockTestSupport.Reason());
+            Assert.Equal(BusinessBlockState.Starting, scheduler.ReadState(154));
+            await scheduler.StopAsync(154, BusinessBlockTestSupport.Reason());
             await block.Notified.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
-            Assert.Equal(BusinessBlockState.Stopping, scheduler.ReadState("worker"));
+            Assert.Equal(BusinessBlockState.Stopping, scheduler.ReadState(154));
             Assert.False(block.Returned.Task.IsCompleted);
             release.TrySetResult();
-            await BusinessBlockTestSupport.State(scheduler, "worker", BusinessBlockState.Stopped);
+            await BusinessBlockTestSupport.State(scheduler, 154, BusinessBlockState.Stopped);
             Assert.Contains(scheduler.Read().History, item => item.From == BusinessBlockState.Starting && item.To == BusinessBlockState.Stopping);
         }
         finally { release.TrySetResult(); await BusinessBlockTestSupport.StopAll(scheduler); }
@@ -161,25 +161,25 @@ public sealed class BusinessBlockGlobalStateTests
     public async Task RootAcceptsAllThreeDemandKindsAndLastWithdrawalStopsTheBlock(BusinessBlockRequestKind kind)
     {
         var block = new BusinessBlockTestSupport.Probe();
-        await using var scheduler = BusinessBlockTestSupport.Create([BusinessBlockTestSupport.Register("worker", block)]);
+        await using var scheduler = BusinessBlockTestSupport.Create([BusinessBlockTestSupport.Register(154, block)]);
         var reason = BusinessBlockTestSupport.Reason(kind, "external-owner", "needs-output", 42);
         Assert.Empty(scheduler.Read().Demands);
         Assert.All(scheduler.Read().Blocks, item => Assert.Equal(BusinessBlockState.Stopped, item.State));
         try
         {
-            await scheduler.SetDemandAsync("first", "worker", reason);
+            await scheduler.SetDemandAsync("first", 154, reason);
             await block.Entered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
-            await scheduler.SetDemandAsync("second", "worker", reason);
+            await scheduler.SetDemandAsync("second", 154, reason);
             await scheduler.SetDemandAsync("first", null, reason);
             Assert.Equal(1, block.Runs);
             Assert.Equal(0, block.Returns);
-            Assert.Equal(BusinessBlockState.Running, scheduler.ReadState("worker"));
-            var fact = scheduler.Read().Facts.Single(item => item.Key == BusinessBlockScheduler.DemandFact("worker"));
+            Assert.Equal(BusinessBlockState.Running, scheduler.ReadState(154));
+            var fact = scheduler.Read().Facts.Single(item => item.Key == BusinessBlockScheduler.DemandFact(154));
             Assert.True(fact.Value);
             Assert.Equal(reason, Assert.Single(fact.Reasons));
-            Assert.Contains(scheduler.Read().Decisions, item => item.ParentId == BackendBlockGraph.Program && item.Reason == reason && item.ShouldRun.SequenceEqual(["worker"]));
+            Assert.Contains(scheduler.Read().Decisions, item => item.ParentId == BackendUids.Program && item.Reason == reason && item.ShouldRun.SequenceEqual([154]));
             await scheduler.SetDemandAsync("second", null, reason);
-            await BusinessBlockTestSupport.State(scheduler, "worker", BusinessBlockState.Stopped);
+            await BusinessBlockTestSupport.State(scheduler, 154, BusinessBlockState.Stopped);
             Assert.Equal(1, block.Returns);
             Assert.Empty(scheduler.Read().Demands);
         }
@@ -192,21 +192,21 @@ public sealed class BusinessBlockGlobalStateTests
         var parent = new BusinessBlockTestSupport.Probe(reportRunning: false);
         var child = new BusinessBlockTestSupport.Probe();
         await using var scheduler = BusinessBlockTestSupport.Create([
-            BusinessBlockTestSupport.Register("parent", parent), BusinessBlockTestSupport.Register("child", child, "parent")]);
+            BusinessBlockTestSupport.Register(139, parent), BusinessBlockTestSupport.Register(118, child, 139)]);
         try
         {
-            await scheduler.StartAsync("child", BusinessBlockTestSupport.Reason());
+            await scheduler.StartAsync(118, BusinessBlockTestSupport.Reason());
             Assert.Equal(0, parent.Runs);
             Assert.Equal(0, child.Runs);
-            await scheduler.StartAsync("parent", BusinessBlockTestSupport.Reason());
+            await scheduler.StartAsync(139, BusinessBlockTestSupport.Reason());
             await parent.Entered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
-            Assert.Equal(BusinessBlockState.Starting, scheduler.ReadState("parent"));
+            Assert.Equal(BusinessBlockState.Starting, scheduler.ReadState(139));
             // The child's demand was evaluated, but its parent is still Starting.
-            await scheduler.StartAsync("child", BusinessBlockTestSupport.Reason());
+            await scheduler.StartAsync(118, BusinessBlockTestSupport.Reason());
             Assert.Equal(0, child.Runs);
             parent.Context!.ReportRunning();
             await child.Entered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
-            Assert.Equal(BusinessBlockState.Running, scheduler.ReadState("child"));
+            Assert.Equal(BusinessBlockState.Running, scheduler.ReadState(118));
         }
         finally { await BusinessBlockTestSupport.StopAll(scheduler); }
     }
@@ -220,22 +220,22 @@ public sealed class BusinessBlockGlobalStateTests
         var child = new BusinessBlockTestSupport.Probe("child", events);
         var leaf = new BusinessBlockTestSupport.Probe("leaf", events, releaseStop: release.Task);
         await using var scheduler = BusinessBlockTestSupport.Create([
-            BusinessBlockTestSupport.Register("parent", parent), BusinessBlockTestSupport.Register("child", child, "parent"),
-            BusinessBlockTestSupport.Register("leaf", leaf, "child")]);
+            BusinessBlockTestSupport.Register(139, parent), BusinessBlockTestSupport.Register(118, child, 139),
+            BusinessBlockTestSupport.Register(130, leaf, 118)]);
         try
         {
-            await scheduler.StartAsync("leaf", BusinessBlockTestSupport.Reason());
-            await scheduler.StartAsync("child", BusinessBlockTestSupport.Reason());
-            await scheduler.StartAsync("parent", BusinessBlockTestSupport.Reason());
+            await scheduler.StartAsync(130, BusinessBlockTestSupport.Reason());
+            await scheduler.StartAsync(118, BusinessBlockTestSupport.Reason());
+            await scheduler.StartAsync(139, BusinessBlockTestSupport.Reason());
             await leaf.Entered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             Assert.Equal(["parent:start", "child:start", "leaf:start"], events);
-            await scheduler.StopAsync("parent", BusinessBlockTestSupport.Reason());
+            await scheduler.StopAsync(139, BusinessBlockTestSupport.Reason());
             await leaf.Notified.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
-            Assert.Equal(BusinessBlockState.Stopping, scheduler.ReadState("leaf"));
+            Assert.Equal(BusinessBlockState.Stopping, scheduler.ReadState(130));
             Assert.False(child.Notified.Task.IsCompleted);
             Assert.False(parent.Notified.Task.IsCompleted);
             release.TrySetResult();
-            await BusinessBlockTestSupport.State(scheduler, "parent", BusinessBlockState.Stopped);
+            await BusinessBlockTestSupport.State(scheduler, 139, BusinessBlockState.Stopped);
             Assert.Equal(["parent:start", "child:start", "leaf:start", "leaf:return", "child:return", "parent:return"], events);
             Assert.All(scheduler.Read().Blocks, item => Assert.Equal(BusinessBlockState.Stopped, item.State));
         }
@@ -257,20 +257,20 @@ public sealed class BusinessBlockGlobalStateTests
             await slow.RunAsync(context);
         });
         await using var scheduler = BusinessBlockTestSupport.Create([
-            BusinessBlockTestSupport.Register("slow", preparingBlock), BusinessBlockTestSupport.Register("fast", fast)],
-            [new(BackendBlockGraph.Program, ["group"], input => input.Facts["group"].Value ? ["slow", "fast"] : [])]);
+            BusinessBlockTestSupport.Register(150, preparingBlock), BusinessBlockTestSupport.Register(123, fast)],
+            [new(BackendUids.Program, ["group"], input => input.Facts["group"].Value ? [150, 123] : [])]);
         try
         {
             await scheduler.SetFactAsync("group", true, BusinessBlockTestSupport.Reason());
             await preparing.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             await fast.Entered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
-            Assert.Equal(BusinessBlockState.Starting, scheduler.ReadState("slow"));
+            Assert.Equal(BusinessBlockState.Starting, scheduler.ReadState(150));
             prepare.Set();
             await slow.Entered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             await scheduler.SetFactAsync("group", false, BusinessBlockTestSupport.Reason());
             await slow.Notified.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             await fast.Returned.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
-            Assert.Equal(BusinessBlockState.Stopping, scheduler.ReadState("slow"));
+            Assert.Equal(BusinessBlockState.Stopping, scheduler.ReadState(150));
         }
         finally { prepare.Set(); cleanup.TrySetResult(); await BusinessBlockTestSupport.StopAll(scheduler); }
     }
@@ -278,26 +278,24 @@ public sealed class BusinessBlockGlobalStateTests
     [Fact]
     public void ControlTreeRejectsDuplicateUnknownParentMultipleParentAndCycle()
     {
-        BusinessBlockRegistration Node(string id, string parent = BackendBlockGraph.Program, params string[] inputs)
+        BusinessBlockRegistration Node(int id, int parent = BackendUids.Program, params int[] inputs)
             => new(id, inputs, _ => throw new InvalidOperationException("Validation must not construct a block.")) { ParentId = parent };
-        Assert.Throws<ArgumentException>(() => new BackendBlockGraph([Node("same"), Node("same")]));
-        Assert.Throws<KeyNotFoundException>(() => new BackendBlockGraph([Node("child", "missing")]));
-        Assert.Throws<ArgumentException>(() => new BackendBlockGraph([Node("a"), Node("b"), Node("shared", "a"), Node("shared", "b")]));
-        Assert.Throws<InvalidOperationException>(() => new BackendBlockGraph([Node("a", "b"), Node("b", "a")]));
-        Assert.Throws<KeyNotFoundException>(() => new BackendBlockGraph([Node("consumer", BackendBlockGraph.Program, "missing-input")]));
+        Assert.Throws<ArgumentException>(() => new BackendBlockGraph([Node(145), Node(145)]));
+        Assert.Throws<KeyNotFoundException>(() => new BackendBlockGraph([Node(118, 133)]));
+        Assert.Throws<ArgumentException>(() => new BackendBlockGraph([Node(111), Node(113), Node(148, 111), Node(148, 113)]));
+        Assert.Throws<InvalidOperationException>(() => new BackendBlockGraph([Node(111, 113), Node(113, 111)]));
+        Assert.Throws<KeyNotFoundException>(() => new BackendBlockGraph([Node(120, BackendUids.Program, 158)]));
     }
 
     [Fact]
     public void GraphCopiesDeclarationsAndAllowsCrossBranchDataCycles()
     {
-        var inputs = new[] { "producer" };
-        var outputs = new[] { "result" };
+        var inputs = new[] { 141 };
         var graph = new BackendBlockGraph([
-            new("producer", ["consumer"], _ => null!), new("consumer", inputs, _ => null!) { Outputs = outputs }]);
-        inputs[0] = "missing"; outputs[0] = "changed";
-        Assert.Equal(["producer"], graph.Nodes.Single(item => item.Id == "consumer").Inputs);
-        Assert.Equal(["result"], graph.Nodes.Single(item => item.Id == "consumer").Outputs);
-        Assert.Equal(["producer", "consumer"], graph.Children(BackendBlockGraph.Program));
+            new(141, [120], _ => null!), new(120, inputs, _ => null!)]);
+        inputs[0] = 999;
+        Assert.Equal([141], graph.Nodes.Single(item => item.Id == 120).Inputs);
+        Assert.Equal([141, 120], graph.Children(BackendUids.Program));
     }
 
     [Theory]
@@ -309,9 +307,10 @@ public sealed class BusinessBlockGlobalStateTests
         ResourceManager.App.Hosting.ResourceManagerServiceCollectionExtensions.AddResourceManagerApp(services, ["--startup-profile=" + profile]);
         var graph = new BackendBlockGraph(services.Select(value => value.ImplementationInstance).OfType<BusinessBlockRegistration>());
         Assert.True(graph.Nodes.Count > 20);
-        Assert.All(graph.Nodes, node => Assert.All(node.Inputs.Concat(node.Outputs), value => Assert.False(string.IsNullOrWhiteSpace(value))));
-        Assert.DoesNotContain(graph.Nodes, node => node.Id.Contains("Frontend", StringComparison.OrdinalIgnoreCase) || node.Id.Contains("NativeUi", StringComparison.OrdinalIgnoreCase));
-        if (profile == "normal-read-only") Assert.DoesNotContain(graph.Nodes, node => node.Id == "PortableSoftwareDiscoveryService");
+        Assert.All(graph.Nodes, node => Assert.All(node.Inputs, value => Assert.True(value > 0)));
+        var uiIds = typeof(UiUids).GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static).Select(field => (int)field.GetRawConstantValue()!);
+        Assert.DoesNotContain(graph.BlockIds, uiIds.Contains);
+        if (profile == "normal-read-only") Assert.DoesNotContain(graph.Nodes, node => node.Id == BackendUids.PortableSoftwareDiscoveryService);
     }
 
     [Fact]

@@ -4,12 +4,11 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlock
 
 /// <summary>A lazy factory keeps a diagnostic read from constructing or starting a business service.</summary>
 public sealed record BusinessBlockRegistration(
-    string Id, IReadOnlyList<string> Dependencies, Func<IServiceProvider, IBusinessBlock> Create)
+    int Id, IReadOnlyList<int> Dependencies, Func<IServiceProvider, IBusinessBlock> Create)
 {
-    public string ParentId { get; init; } = BackendBlockGraph.Program;
+    public int ParentId { get; init; } = ResourceManager.App.StateItems.BlockUids.Program;
     public Type? HostedServiceType { get; init; }
-    public IReadOnlyList<string> Outputs { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>An observation-only component can publish diagnostics without being a runnable block.</summary>
-public sealed record BusinessBlockDiagnosticRegistration(string Id);
+public sealed record BusinessBlockDiagnosticRegistration(int Id);

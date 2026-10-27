@@ -1,3 +1,4 @@
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.ReadWrite.Windows.Processes.Etw;
 using ResourceManager.ReadWrite.Windows.Frames;
@@ -7,7 +8,7 @@ namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 public sealed partial class PresentFrameEtwSource
 {
     private PresentRun? activeRun;
-    internal const string AvailabilityFact = "native-session-available:" + BusinessBlockId;
+    internal static readonly string AvailabilityFact = "native-session-available:" + BlockUids.PresentFrameEtwSource.ToString(System.Globalization.CultureInfo.InvariantCulture);
     private bool nativeSessionAvailable = true;
     private TaskCompletionSource<PresentRun> nextRun = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -20,7 +21,7 @@ public sealed partial class PresentFrameEtwSource
             activeRun = run = new PresentRun(context.StopNotification);
             nextRun.TrySetResult(run);
             nextRun = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            diagnostics.BeginRun(BusinessBlockId);
+            diagnostics.BeginRun(BlockUids.PresentFrameEtwSource);
         }
         return RunSessionAsync(run, context);
     }
@@ -41,7 +42,7 @@ public sealed partial class PresentFrameEtwSource
         {
             lock (lifecycle)
             {
-                using var measurement = diagnostics.MeasureSegment(BusinessBlockId);
+                using var measurement = diagnostics.MeasureSegment(BlockUids.PresentFrameEtwSource);
                 ObjectDisposedException.ThrowIf(disposed, this);
                 stopNotification.ThrowIfCancellationRequested();
                 if (session is not null || flushTimer is not null)
@@ -61,7 +62,7 @@ public sealed partial class PresentFrameEtwSource
                 });
                 Volatile.Write(ref frameLeases, frameSubscriptions.Count);
                 UpdateProviders(current, null);
-                run.Processing = DedicatedEtwConsumerThread.Start(BusinessBlockId, name, () =>
+                run.Processing = DedicatedEtwConsumerThread.Start(BlockUids.PresentFrameEtwSource, name, () =>
                 {
                     try { current.Process(); }
                     catch (OperationCanceledException) when (stopNotification.IsCancellationRequested) { }
@@ -105,20 +106,20 @@ public sealed partial class PresentFrameEtwSource
                 catch (Exception error)
                 {
                     SetAvailability(false, "flush-timer-release-unconfirmed");
-                    diagnostics.ReportFailure(BusinessBlockId, error, "flush-timer-stop");
+                    diagnostics.ReportFailure(BlockUids.PresentFrameEtwSource, error, "flush-timer-stop");
                     result = BusinessBlockResult.Failed(error, BusinessBlockFailureStage.Stop);
                 }
             }
             var released = false;
             try
             {
-                using (diagnostics.MeasureSegment(BusinessBlockId)) run.Session?.Dispose();
+                using (diagnostics.MeasureSegment(BlockUids.PresentFrameEtwSource)) run.Session?.Dispose();
                 released = true;
             }
             catch (Exception error)
             {
                 SetAvailability(false, "session-release-unconfirmed");
-                diagnostics.ReportFailure(BusinessBlockId, error, "session-stop");
+                diagnostics.ReportFailure(BlockUids.PresentFrameEtwSource, error, "session-stop");
                 result = BusinessBlockResult.Failed(error, BusinessBlockFailureStage.Stop);
             }
             try
@@ -131,7 +132,7 @@ public sealed partial class PresentFrameEtwSource
             run.ConsumerThread?.Join();
             lock (lifecycle)
             {
-                using var measurement = diagnostics.MeasureSegment(BusinessBlockId);
+                using var measurement = diagnostics.MeasureSegment(BlockUids.PresentFrameEtwSource);
                 if (released && ReferenceEquals(session, run.Session)) session = null;
                 lock (gate)
                 {
@@ -148,7 +149,7 @@ public sealed partial class PresentFrameEtwSource
                     }
                 }
                 activeRun = null;
-                diagnostics.RecordResult(BusinessBlockId, result);
+                diagnostics.RecordResult(BlockUids.PresentFrameEtwSource, result);
                 run.Completed.TrySetResult();
             }
             if (released && run.Session is not null && flushTimer is null && !Volatile.Read(ref run.PermissionDenied))
@@ -158,13 +159,13 @@ public sealed partial class PresentFrameEtwSource
 
     internal Task PublishAvailabilityAsync()
         => controller.SetFactAsync(AvailabilityFact, Volatile.Read(ref nativeSessionAvailable),
-            new(BusinessBlockRequestKind.Dependency, BusinessBlockId, "native-session-availability", controller.CurrentPlanVersion));
+            new(BusinessBlockRequestKind.Dependency, BlockUids.PresentFrameEtwSource.ToString(System.Globalization.CultureInfo.InvariantCulture), "native-session-availability", controller.CurrentPlanVersion));
 
     private void SetAvailability(bool available, string cause)
     {
         Volatile.Write(ref nativeSessionAvailable, available);
         _ = controller.SetFactAsync(AvailabilityFact, available,
-            new(BusinessBlockRequestKind.Dependency, BusinessBlockId, cause, controller.CurrentPlanVersion));
+            new(BusinessBlockRequestKind.Dependency, BlockUids.PresentFrameEtwSource.ToString(System.Globalization.CultureInfo.InvariantCulture), cause, controller.CurrentPlanVersion));
     }
 
     private void SignalFailure(Exception error)
@@ -178,7 +179,7 @@ public sealed partial class PresentFrameEtwSource
         if (firstFailure)
         {
             InvalidateCurrent();
-            diagnostics.ReportFailure(BusinessBlockId, error, "present-output");
+            diagnostics.ReportFailure(BlockUids.PresentFrameEtwSource, error, "present-output");
         }
     }
 

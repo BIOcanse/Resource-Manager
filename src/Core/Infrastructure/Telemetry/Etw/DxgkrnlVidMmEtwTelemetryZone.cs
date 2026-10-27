@@ -1,3 +1,4 @@
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using System.Collections.Concurrent;
 using Microsoft.Diagnostics.Tracing;
 using ResourceManager.Adapter;
@@ -19,7 +20,6 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone(
     IEtwConsumerThreadObserver? consumerThreadObserver = null) : IBusinessBlock, IResourceManagerSelfComputeZone
 {
     public const string ProviderStateId = "dxgkrnl-vidmm-etw";
-    internal const string BusinessBlockId = "DxgkrnlVidMmEtwTelemetryZone";
     private const string ProviderName = "Microsoft-Windows-DxgKrnl";
     private const ulong DxgKrnlKeywords = 0x40UL | 0x80UL | 0x10000UL | 0x100000UL | 0x200000UL | 0x20000000UL;
     private static readonly ulong ZoneObjectKey = AdapterResourceKey.FromString($"resource-manager:zone:{MonitoringSourceZoneIds.EtwDxgkrnlVidMm}");
@@ -37,8 +37,8 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone(
     public ulong ZoneKey => ZoneObjectKey;
     public string DisplayName => MonitoringSourceZoneIds.EtwDxgkrnlVidMm;
     public ResourceManagerComputeZoneMode CurrentMode => currentComputeMode;
-    public string State => controller.ReadState(BusinessBlockId).ToString();
-    public string Message => diagnostics.Read(BusinessBlockId).Result?.Outcome == BusinessBlockOutcome.Failed ? "etw-session-failed" : string.Empty;
+    public string State => controller.ReadState(BlockUids.DxgkrnlVidMmEtwTelemetryZone).ToString();
+    public string Message => diagnostics.Read(BlockUids.DxgkrnlVidMmEtwTelemetryZone).Result?.Outcome == BusinessBlockOutcome.Failed ? "etw-session-failed" : string.Empty;
     internal DxgkrnlVidMmEtwTelemetryZone(ILogger<DxgkrnlVidMmEtwTelemetryZone> logger,
         BusinessBlockScheduler controller, BusinessBlockDiagnosticsRegistry diagnostics, Func<uint, IWindowsNetworkEndpointProcessLease?> openProcess,
         Func<string, IVidMmEtwSession>? createSession = null, IEtwConsumerThreadObserver? consumerThreadObserver = null)
@@ -49,7 +49,7 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone(
     }
 
     public IBusinessBlockDependency AcquireSubscription(string owner, TimeSpan interval)
-        => new Subscription(this, controller.AcquireDependency(BusinessBlockId,
+        => new Subscription(this, controller.AcquireDependency(BlockUids.DxgkrnlVidMmEtwTelemetryZone,
             new(BusinessBlockRequestKind.Dependency, owner, "gpu-vram-residual-subscription", controller.CurrentPlanVersion)));
 
     public IReadOnlyList<DxgkrnlVidMmEtwMemoryEvidence> ReadEvidence(TimeSpan evidenceWindow)
@@ -75,7 +75,7 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone(
     internal Task ApplyModeAsync(ResourceManagerComputeZoneMode mode)
     {
         currentComputeMode = mode;
-        var dispatch = controller.SetEnabledAsync(BusinessBlockId, mode != ResourceManagerComputeZoneMode.Freeze,
+        var dispatch = controller.SetEnabledAsync(BlockUids.DxgkrnlVidMmEtwTelemetryZone, mode != ResourceManagerComputeZoneMode.Freeze,
             new(BusinessBlockRequestKind.Configuration, "compute-zone", MonitoringSourceZoneIds.EtwDxgkrnlVidMm, controller.CurrentPlanVersion));
         return mode == ResourceManagerComputeZoneMode.Freeze ? AwaitReleasedAsync(dispatch) : dispatch;
     }

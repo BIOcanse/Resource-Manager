@@ -1,3 +1,6 @@
+using Microsoft.Extensions.Logging;
+using ResourceManager.NativeUi.StateItems;
+
 namespace ResourceManager.NativeUi;
 
 internal static class Program
@@ -9,6 +12,7 @@ internal static class Program
     {
         if (ElevatedProcessActionBroker.TryExecuteBackendRequest(args) is { } backendExitCode) return backendExitCode;
         if (ElevatedProcessActionBroker.TryExecute(args) is { } processExitCode) return processExitCode;
+        new NativeUiTraceLogger<ResourceManagerApplicationContext>().LogInformation("State registry version {RegistryVersion}.", StateRegistry.Version);
         using var packageUse = new NativeUiPackageUseLifetime();
         var options = NativeUiLaunchOptions.Parse(args);
         // 界面语言的来源是持久化设置里的 appearance.language（含 "system" 取值）；

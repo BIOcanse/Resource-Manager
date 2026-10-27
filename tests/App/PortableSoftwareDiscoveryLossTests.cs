@@ -230,7 +230,7 @@ public sealed class PortableSoftwareDiscoveryLossTests
         await Worker(service).WaitAsync(TimeSpan.FromSeconds(5));
         await service.StopAsync(CancellationToken.None);
 
-        Assert.Equal(nameof(PortableSoftwareDiscoveryService), reported.BlockId);
+        Assert.Equal(BackendUids.PortableSoftwareDiscoveryService, reported.BlockId);
         Assert.Same(error, reported.Error);
         Assert.Equal("portable-discovery-loop", reported.Operation);
         Assert.True(Worker(service).IsCompletedSuccessfully);
@@ -288,13 +288,13 @@ public sealed class PortableSoftwareDiscoveryLossTests
 
     private sealed class RecordingBlockDiagnostics : IBusinessBlockDiagnostics
     {
-        internal TaskCompletionSource<(string BlockId, Exception Error, string Operation)> FailureObserved { get; }
+        internal TaskCompletionSource<(int BlockId, Exception Error, string Operation)> FailureObserved { get; }
             = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public void ReportFailure(string blockId, Exception error, string operation)
+        public void ReportFailure(int blockId, Exception error, string operation)
             => FailureObserved.TrySetResult((blockId, error, operation));
 
-        public IDisposable MeasureSegment(string blockId) => NoopDisposable.Instance;
+        public IDisposable MeasureSegment(int blockId) => NoopDisposable.Instance;
     }
 
     private sealed class NoopDisposable : IDisposable

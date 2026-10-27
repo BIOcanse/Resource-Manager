@@ -371,7 +371,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 services.AddSingleton(coordinator);
                 services.AddSingleton<IHostManagerSmartCoordinator>(static provider =>
                     provider.GetRequiredService<HostManagerSmartCoordinator>());
-                services.AddHostedServiceAlias<HostManagerSmartCoordinator>("HostManagerSmartCoordinator", [], ["optimization-decisions"]);
+                services.AddHostedServiceAlias<HostManagerSmartCoordinator>(BackendUids.HostManagerSmartCoordinator, []);
             })
             .Build();
 

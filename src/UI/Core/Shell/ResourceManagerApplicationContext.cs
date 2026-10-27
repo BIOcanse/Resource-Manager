@@ -1,3 +1,4 @@
+using BlockUids = ResourceManager.NativeUi.StateItems.BlockUids;
 using ResourceManager.NativeUi.Blocks;
 using ResourceManager.Shared.BusinessBlocks;
 using ResourceManager.NativeUi.Localization;
@@ -174,7 +175,7 @@ public sealed partial class ResourceManagerApplicationContext : ApplicationConte
         activateRequestedWindow = activate;
         secondaryRequestedWindow = placeOnSecondaryScreen;
         await trees.SetWindowWantedAsync(true, "show-window");
-        await trees.WaitForStateAsync(NativeUiBlockIds.MainWindow, BusinessBlockState.Running, shutdown.Token);
+        await trees.WaitForStateAsync(BlockUids.MainWindow, BusinessBlockState.Running, shutdown.Token);
         var form = mainForm!;
         if (ReferenceEquals(previousWindow, form))
             PresentMainWindow(form, activate, placeOnSecondaryScreen);
@@ -310,7 +311,7 @@ public sealed partial class ResourceManagerApplicationContext : ApplicationConte
     {
         if (mainForm is not { IsDisposed: false, Visible: true } form) return;
         var token = windowLifetime;
-        await trees.WaitForStateAsync(NativeUiBlockIds.WebViewHost, BusinessBlockState.Running, token);
+        await trees.WaitForStateAsync(BlockUids.WebViewHost, BusinessBlockState.Running, token);
         if (ReferenceEquals(form, mainForm) && !token.IsCancellationRequested)
             await form.StartFrontendAsync();
     }

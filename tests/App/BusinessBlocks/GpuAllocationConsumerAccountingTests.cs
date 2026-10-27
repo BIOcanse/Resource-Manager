@@ -29,8 +29,8 @@ public sealed class GpuAllocationConsumerAccountingTests
             && ReferenceEquals(field.GetValue(processing), session));
         Assert.Contains(runtimeFields, field => field.FieldType == typeof(IEtwConsumerThreadObserver)
             && ReferenceEquals(field.GetValue(processing), observer));
-        Assert.Contains(runtimeFields, field => field.FieldType == typeof(string)
-            && Equals(field.GetValue(processing), "gpu-allocation-etw"));
+        Assert.Contains(runtimeFields, field => field.FieldType == typeof(int?)
+            && Equals(field.GetValue(processing), BackendUids.GpuAllocationCollector));
     }
 
     private static object ReadField(object instance, string name)
@@ -39,9 +39,9 @@ public sealed class GpuAllocationConsumerAccountingTests
 
     private sealed class RecordingObserver : IEtwConsumerThreadObserver
     {
-        public IDisposable RegisterCurrentThread(string blockId, string sessionName) => EmptyDisposable.Instance;
+        public IDisposable RegisterCurrentThread(int blockId, string sessionName) => EmptyDisposable.Instance;
 
-        public void ReportFailure(string blockId, Exception error) { }
+        public void ReportFailure(int blockId, Exception error) { }
     }
 
     private sealed class EmptyDisposable : IDisposable

@@ -1,6 +1,7 @@
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Session;
 using ResourceManager.ReadWrite.Windows.Processes.Etw;
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
@@ -46,7 +47,7 @@ internal sealed class TraceEventPresentFrameEtwSession(string name) : IPresentFr
         }
         finally
         {
-            var release = (cleanup ??= new(session)).Stop(Timeout.InfiniteTimeSpan);
+            var release = (cleanup ??= new(session, blockId: BlockUids.PresentFrameEtwSource)).Stop(Timeout.InfiniteTimeSpan);
             if (!release.IsReleased) throw new IOException("Present session release was not confirmed: " + string.Join(" | ", release.Failures));
         }
     }

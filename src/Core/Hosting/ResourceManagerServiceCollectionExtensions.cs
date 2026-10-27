@@ -1,3 +1,4 @@
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using ResourceManager.App.Application.Control;
 using ResourceManager.App.Application.Settings;
 using ResourceManager.App.Application.RuntimeSpecialization;
@@ -47,7 +48,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
                 StartupCapability.PublicServiceCoordination)));
         services.AddSingleton(new RuntimePersistenceCapabilityPolicy(
             startupCapabilities.Allows(StartupCapability.MutablePersistence)));
-        services.AddHostedServiceAlias<RuntimeSpecializationCoordinator>(BackendBlockIds.RuntimeSpecializationCoordinator, [], ["compiled-runtime-plan"]);
+        services.AddHostedServiceAlias<RuntimeSpecializationCoordinator>(BlockUids.RuntimeSpecializationCoordinator, []);
         services.AddHttpClient();
         services.AddHttpClient(ProductUpdateSource.HttpClientName)
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
@@ -58,12 +59,12 @@ public static partial class ResourceManagerServiceCollectionExtensions
         {
             services.AddSingleton<IProductPackageUsage, ProductPackageUsage>();
             services.AddSingleton<IInternetConnectivity, WindowsInternetConnectivity>();
-            services.AddBusinessBlockHostedService<AutomaticProductUpdateService>(BackendBlockIds.AutomaticProductUpdateService, [BackendBlockIds.RuntimeSpecializationCoordinator], ["update-decisions"]);
+            services.AddBusinessBlockHostedService<AutomaticProductUpdateService>(BlockUids.AutomaticProductUpdateService, [BlockUids.RuntimeSpecializationCoordinator]);
         }
 
         RegisterHostedBusinessBlock<ResourceManager.App.Infrastructure.DeviceTopology.Snapshots.DeviceTopologySnapshotProvider>(services,
-            BackendBlockIds.DeviceTopologySnapshotProvider, [BackendBlockIds.HostManagerSamplingSubscriptionOwner], ["device-topology"],
-            parentId: BackendBlockIds.HostManagerSamplingSubscriptionOwner);
+            BlockUids.DeviceTopologySnapshotProvider, [BlockUids.HostManagerSamplingSubscriptionOwner],
+            parentId: BlockUids.HostManagerSamplingSubscriptionOwner);
 
         services
             .AddResourceManagerRuntimeSpecialization(startupCapabilities)
@@ -124,7 +125,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         // 这也是那两个服务图测试守着的东西。
         if (startupCapabilities.Allows(StartupCapability.RuntimeEffectOwners))
         {
-            services.AddBusinessBlockHostedService<ControlDesiredStateReassertion>(BackendBlockIds.ControlDesiredStateReassertion, [BackendBlockIds.RuntimeSpecializationCoordinator], ["reasserted-controls"]);
+            services.AddBusinessBlockHostedService<ControlDesiredStateReassertion>(BlockUids.ControlDesiredStateReassertion, [BlockUids.RuntimeSpecializationCoordinator]);
             /*
              * 给软件风扇曲线喂温度。
              *
@@ -134,13 +135,13 @@ public static partial class ResourceManagerServiceCollectionExtensions
              * 这台机器用不上的话它一次都不推（核心会在 describe 里说要不要），
              * 所以注册它不等于一定会跑起来。
              */
-            services.AddBusinessBlockHostedService<FanCurveTemperatureFeed>(BackendBlockIds.FanCurveTemperatureFeed, [BackendBlockIds.WindowsHardwareMetricSampler], ["fan-temperatures"]);
+            services.AddBusinessBlockHostedService<FanCurveTemperatureFeed>(BlockUids.FanCurveTemperatureFeed, [BlockUids.WindowsHardwareMetricSampler]);
             // 实际状态的采样。和写入层分开的另一条路：它按自己的节奏读，
             // 结果原子替换进当前值，订阅端只取当前值、不触发采样。
             services.AddSingleton<ControlActualStateReader>();
             services.AddSingleton<IControlActualStateOwner>(static provider =>
                 provider.GetRequiredService<ControlActualStateReader>());
-            services.AddBusinessBlockHostedService<ControlActualStateReader>(BackendBlockIds.ControlActualStateReader, [], ["actual-controls"], static provider => provider.GetRequiredService<ControlActualStateReader>());
+            services.AddBusinessBlockHostedService<ControlActualStateReader>(BlockUids.ControlActualStateReader, [], static provider => provider.GetRequiredService<ControlActualStateReader>());
         }
         else
         {

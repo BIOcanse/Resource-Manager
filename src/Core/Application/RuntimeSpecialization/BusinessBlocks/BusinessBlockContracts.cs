@@ -21,9 +21,13 @@ public sealed class BusinessBlockOptions
 
 public interface IBusinessBlockDiagnostics
 {
-    void ReportFailure(string blockId, Exception error, string operation);
-    IDisposable MeasureSegment(string blockId);
+    void ReportFailure(int blockId, Exception error, string operation);
+    IDisposable MeasureSegment(int blockId);
 }
 
-public sealed record BusinessBlockDiagnostics(string Id, BusinessBlockResult? Result, BusinessBlockMetricFacts Metrics);
+public sealed record BusinessBlockDiagnostics(int Id, BusinessBlockResult? Result, BusinessBlockMetricFacts Metrics)
+{
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? Name { get; init; }
+}
 public sealed record BusinessBlockDebugSnapshot(BusinessBlocksSnapshot Scheduling, IReadOnlyList<BusinessBlockDiagnostics> Diagnostics);

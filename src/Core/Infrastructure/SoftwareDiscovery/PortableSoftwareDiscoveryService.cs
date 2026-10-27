@@ -1,3 +1,4 @@
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using System.Diagnostics;
 using System.Threading.Channels;
 using Microsoft.Diagnostics.Tracing.Parsers;
@@ -150,7 +151,7 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
             },
             (candidate, _) =>
             {
-                using var segment = blockDiagnostics?.MeasureSegment(nameof(PortableSoftwareDiscoveryService));
+                using var segment = blockDiagnostics?.MeasureSegment(BlockUids.PortableSoftwareDiscoveryService);
                 ObserveCandidate(candidate, catalog.Catalog.Pipeline, cancellationToken);
                 return ValueTask.CompletedTask;
             });
@@ -191,7 +192,7 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
                 }
                 nextCandidate = runStarts.Reader.WaitToReadAsync(cancellationToken).AsTask();
                 using var catalog = await attributionCatalogProvider.AcquireCatalogAsync(cancellationToken);
-                using var segment = blockDiagnostics?.MeasureSegment(nameof(PortableSoftwareDiscoveryService));
+                using var segment = blockDiagnostics?.MeasureSegment(BlockUids.PortableSoftwareDiscoveryService);
                 ObserveCandidate(candidate, catalog.Catalog.Pipeline, cancellationToken);
             }
         }
@@ -200,7 +201,7 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
         }
         catch (Exception ex)
         {
-            blockDiagnostics?.ReportFailure(nameof(PortableSoftwareDiscoveryService), ex, "portable-discovery-loop");
+            blockDiagnostics?.ReportFailure(BlockUids.PortableSoftwareDiscoveryService, ex, "portable-discovery-loop");
             logger.LogError(ex, "Portable software process discovery worker stopped unexpectedly; discovery is unavailable for this service lifetime.");
         }
     }

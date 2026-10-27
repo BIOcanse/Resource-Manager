@@ -23,7 +23,7 @@ public sealed class PresentFrameEtwLifecycleTests
         Assert.Equal(BusinessBlockOutcome.Failed, result.Outcome);
         Assert.Equal(BusinessBlockFailureStage.Run, result.FailureStage);
         Assert.Equal(typeof(UnauthorizedAccessException).FullName, result.FailureType);
-        await EtwTestRunRecorder.UntilAsync(() => harness.Controller.ReadState(PresentFrameEtwSource.BusinessBlockId) == BusinessBlockState.Stopped);
+        await EtwTestRunRecorder.UntilAsync(() => harness.Controller.ReadState(BackendUids.PresentFrameEtwSource) == BusinessBlockState.Stopped);
         await harness.Source.PublishAvailabilityAsync();
         await Task.Delay(TimeSpan.FromMilliseconds(100));
         Assert.Equal(1, harness.Sessions.Attempts);
@@ -33,7 +33,7 @@ public sealed class PresentFrameEtwLifecycleTests
         Assert.False(session.ConsumerThread!.IsAlive);
         Assert.False(Assert.Single(harness.Controller.Read().Facts, fact => fact.Key == PresentFrameEtwSource.AvailabilityFact).Value);
         Assert.Equal(2, harness.Controller.Read().Demands.Count);
-        Assert.Empty(harness.Diagnostics.Read(PresentFrameEtwSource.BusinessBlockId).Metrics.ActiveThreads);
+        Assert.Empty(harness.Diagnostics.Read(BackendUids.PresentFrameEtwSource).Metrics.ActiveThreads);
         await PresentFrameEtwTestHarness.ReleaseAsync(frame);
         await PresentFrameEtwTestHarness.ReleaseAsync(api);
     }
@@ -49,7 +49,7 @@ public sealed class PresentFrameEtwLifecycleTests
         Assert.Equal(BusinessBlockOutcome.Failed, result.Outcome);
         Assert.Equal(BusinessBlockFailureStage.Start, result.FailureStage);
         Assert.Equal(typeof(UnauthorizedAccessException).FullName, result.FailureType);
-        await EtwTestRunRecorder.UntilAsync(() => harness.Controller.ReadState(PresentFrameEtwSource.BusinessBlockId) == BusinessBlockState.Stopped);
+        await EtwTestRunRecorder.UntilAsync(() => harness.Controller.ReadState(BackendUids.PresentFrameEtwSource) == BusinessBlockState.Stopped);
         await harness.Source.PublishAvailabilityAsync();
         await Task.Delay(TimeSpan.FromMilliseconds(100));
         Assert.Equal(1, harness.Sessions.Attempts);
@@ -57,7 +57,7 @@ public sealed class PresentFrameEtwLifecycleTests
         Assert.False(harness.Sessions.Current.HasBoundHandler);
         Assert.False(Assert.Single(harness.Controller.Read().Facts, fact => fact.Key == PresentFrameEtwSource.AvailabilityFact).Value);
         Assert.Single(harness.Controller.Read().Demands);
-        Assert.Empty(harness.Diagnostics.Read(PresentFrameEtwSource.BusinessBlockId).Metrics.ActiveThreads);
+        Assert.Empty(harness.Diagnostics.Read(BackendUids.PresentFrameEtwSource).Metrics.ActiveThreads);
         await PresentFrameEtwTestHarness.ReleaseAsync(subscription);
     }
 
@@ -77,12 +77,12 @@ public sealed class PresentFrameEtwLifecycleTests
             harness.Sessions.Current.Complete();
         }
         Assert.Equal(BusinessBlockOutcome.Failed, (await harness.NextResultAsync()).Outcome);
-        await EtwTestRunRecorder.UntilAsync(() => harness.Controller.ReadState(PresentFrameEtwSource.BusinessBlockId) == BusinessBlockState.Stopped);
+        await EtwTestRunRecorder.UntilAsync(() => harness.Controller.ReadState(BackendUids.PresentFrameEtwSource) == BusinessBlockState.Stopped);
         await harness.Source.PublishAvailabilityAsync();
         await Task.Delay(TimeSpan.FromMilliseconds(100));
         Assert.Equal(1, harness.Sessions.Attempts);
         Assert.False(Assert.Single(harness.Controller.Read().Facts, fact => fact.Key == PresentFrameEtwSource.AvailabilityFact).Value);
-        Assert.Empty(harness.Diagnostics.Read(PresentFrameEtwSource.BusinessBlockId).Metrics.ActiveThreads);
+        Assert.Empty(harness.Diagnostics.Read(BackendUids.PresentFrameEtwSource).Metrics.ActiveThreads);
         Assert.Single(harness.Controller.Read().Demands);
         await PresentFrameEtwTestHarness.ReleaseAsync(subscription);
     }
@@ -121,7 +121,7 @@ public sealed class PresentFrameEtwLifecycleTests
         await PresentFrameEtwTestHarness.ReadyAsync(frame);
         var session = Assert.Single(harness.Sessions.Snapshot());
         await session.ProcessStarted.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Single(harness.Diagnostics.Read("present-etw").Metrics.ActiveThreads);
+        Assert.Single(harness.Diagnostics.Read(BackendUids.PresentFrameEtwSource).Metrics.ActiveThreads);
 
         await PresentFrameEtwTestHarness.ReleaseAsync(frame);
         var completion = await harness.NextResultAsync();
@@ -129,7 +129,7 @@ public sealed class PresentFrameEtwLifecycleTests
         Assert.Equal(1, session.Stops);
         Assert.True(session.ProcessExited.IsCompleted);
         Assert.False(session.ConsumerThread!.IsAlive);
-        Assert.Empty(harness.Diagnostics.Read("present-etw").Metrics.ActiveThreads);
+        Assert.Empty(harness.Diagnostics.Read(BackendUids.PresentFrameEtwSource).Metrics.ActiveThreads);
     }
 
     [Theory]

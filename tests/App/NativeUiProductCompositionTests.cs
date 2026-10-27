@@ -28,7 +28,7 @@ public sealed class NativeUiProductCompositionTests
         await app.SystemSessionMessageAsync(0x0016, 0);
         Assert.False(app.Trees.Read().ShuttingDown);
         Assert.False(browser.SurfaceClosed.Task.IsCompleted);
-        Assert.Equal(BusinessBlockState.Running, app.Trees.ReadState(NativeUiBlockIds.WebViewHost));
+        Assert.Equal(BusinessBlockState.Running, app.Trees.ReadState(UiUids.WebViewHost));
     }
 
     [Fact]
@@ -95,7 +95,7 @@ public sealed class NativeUiProductCompositionTests
         await using var app = await NativeUiProductTestHost.StartAsync(slowBrowser: true);
         var browser = await app.NextBrowserAsync();
         await browser.Initialized.Task.WaitAsync(Limit);
-        await app.Trees.WaitForStateAsync(NativeUiBlockIds.TrayRoot, BusinessBlockState.Running).WaitAsync(Limit);
+        await app.Trees.WaitForStateAsync(UiUids.TrayRoot, BusinessBlockState.Running).WaitAsync(Limit);
         switch (entry)
         {
             case "tray": await app.TrayExitAsync(); break;
@@ -106,7 +106,7 @@ public sealed class NativeUiProductCompositionTests
         await browser.SurfaceClosed.Task.WaitAsync(Limit);
         Assert.True(app.Trees.Read().ShuttingDown);
         Assert.False(app.Exited.IsCompleted);
-        Assert.Equal(BusinessBlockState.Stopping, app.Trees.ReadState(NativeUiBlockIds.WebViewHost));
+        Assert.Equal(BusinessBlockState.Stopping, app.Trees.ReadState(UiUids.WebViewHost));
         app.ReleaseBrowser.TrySetResult();
         await app.Exited.WaitAsync(Limit);
         Assert.NotNull(app.ExitSnapshot);
@@ -124,9 +124,9 @@ public sealed class NativeUiProductCompositionTests
         var firstWindow = app.Window;
         await app.WindowCloseAsync();
         await firstBrowser.SurfaceClosed.Task.WaitAsync(Limit);
-        Assert.Equal(BusinessBlockState.Running, app.Trees.ReadState(NativeUiBlockIds.LoopbackProxy));
-        Assert.Equal(BusinessBlockState.Running, app.Trees.ReadState(NativeUiBlockIds.TrayRoot));
-        Assert.Equal(BusinessBlockState.Running, app.Trees.ReadState(NativeUiBlockIds.BackendConnection));
+        Assert.Equal(BusinessBlockState.Running, app.Trees.ReadState(UiUids.LoopbackProxy));
+        Assert.Equal(BusinessBlockState.Running, app.Trees.ReadState(UiUids.TrayRoot));
+        Assert.Equal(BusinessBlockState.Running, app.Trees.ReadState(UiUids.BackendConnection));
         await app.InvokeAsync(() => Assert.False(firstWindow.IsDisposed));
         await app.SendCommandAsync("show-passive");
         Assert.False(app.Browsers.Reader.TryPeek(out _));
@@ -145,10 +145,10 @@ public sealed class NativeUiProductCompositionTests
     {
         await using var app = await NativeUiProductTestHost.StartAsync(delayedConnection: true, pauseReconnect: true);
         var browser = await app.NextBrowserAsync();
-        await app.Trees.WaitForStateAsync(NativeUiBlockIds.MainWindow, BusinessBlockState.Running).WaitAsync(Limit);
+        await app.Trees.WaitForStateAsync(UiUids.MainWindow, BusinessBlockState.Running).WaitAsync(Limit);
         await app.Trees.SetBackendSessionReadyAsync(false, 0);
-        Assert.Equal(BusinessBlockState.Stopped, app.Trees.ReadState(NativeUiBlockIds.LoopbackProxy));
-        Assert.Equal(BusinessBlockState.Stopped, app.Trees.ReadState(NativeUiBlockIds.WebViewHost));
+        Assert.Equal(BusinessBlockState.Stopped, app.Trees.ReadState(UiUids.LoopbackProxy));
+        Assert.Equal(BusinessBlockState.Stopped, app.Trees.ReadState(UiUids.WebViewHost));
         Assert.False(browser.Initialized.Task.IsCompleted);
         app.AllowConnect.SetResult();
         await browser.Initialized.Task.WaitAsync(Limit);
@@ -157,8 +157,8 @@ public sealed class NativeUiProductCompositionTests
         first.Loss.SetResult(BackendServiceUnavailableEventArgs.OwnedProcessExited(101));
         var second = await app.NextSessionAsync();
         Assert.NotSame(first.Session, second.Session);
-        Assert.Equal(BusinessBlockState.Running, app.Trees.ReadState(NativeUiBlockIds.LoopbackProxy));
-        Assert.Equal(BusinessBlockState.Running, app.Trees.ReadState(NativeUiBlockIds.WebViewHost));
+        Assert.Equal(BusinessBlockState.Running, app.Trees.ReadState(UiUids.LoopbackProxy));
+        Assert.Equal(BusinessBlockState.Running, app.Trees.ReadState(UiUids.WebViewHost));
         Assert.False(browser.SurfaceClosed.Task.IsCompleted);
         Assert.False(app.Browsers.Reader.TryPeek(out _));
         app.AllowReconnect.SetResult();
@@ -182,9 +182,9 @@ public sealed class NativeUiProductCompositionTests
         Assert.NotSame(first.Session, second.Session);
         Assert.All(first.Handlers, handler => Assert.Equal(0, handler.Disposals));
         await app.InvokeAsync(app.Context.ExitThread);
-        await app.Trees.WaitForStateAsync(NativeUiBlockIds.MainRoot, BusinessBlockState.Stopped).WaitAsync(Limit);
+        await app.Trees.WaitForStateAsync(UiUids.MainRoot, BusinessBlockState.Stopped).WaitAsync(Limit);
         Assert.False(app.Exited.IsCompleted);
-        Assert.Equal(BusinessBlockState.Stopping, app.Trees.ReadState(NativeUiBlockIds.TrayNotifications));
+        Assert.Equal(BusinessBlockState.Stopping, app.Trees.ReadState(UiUids.TrayNotifications));
         Assert.All(first.Handlers, handler => Assert.Equal(0, handler.Disposals));
         app.ReleaseTray.SetResult();
         await app.Exited.WaitAsync(Limit);
@@ -196,9 +196,9 @@ public sealed class NativeUiProductCompositionTests
     public async Task ProductBackgroundStartupDoesNotCreateWindowBeforeShowCommand()
     {
         await using var app = await NativeUiProductTestHost.StartAsync(startInBackground: true);
-        await app.Trees.WaitForStateAsync(NativeUiBlockIds.BackendConnection, BusinessBlockState.Running).WaitAsync(Limit);
-        await app.Trees.WaitForStateAsync(NativeUiBlockIds.TrayRoot, BusinessBlockState.Running).WaitAsync(Limit);
-        Assert.Equal(BusinessBlockState.Stopped, app.Trees.ReadState(NativeUiBlockIds.MainWindow));
+        await app.Trees.WaitForStateAsync(UiUids.BackendConnection, BusinessBlockState.Running).WaitAsync(Limit);
+        await app.Trees.WaitForStateAsync(UiUids.TrayRoot, BusinessBlockState.Running).WaitAsync(Limit);
+        Assert.Equal(BusinessBlockState.Stopped, app.Trees.ReadState(UiUids.MainWindow));
         Assert.False(app.Browsers.Reader.TryPeek(out _));
         await app.SendCommandAsync("show-passive");
         var browser = await app.NextBrowserAsync();
@@ -235,13 +235,13 @@ public sealed class NativeUiProductCompositionTests
             Assert.True(retry.Visible && retry.Enabled);
             Assert.False(browser.Initialized.Task.IsCompleted);
             Assert.Equal(1, Volatile.Read(ref attempts));
-            Assert.Equal(BusinessBlockState.Starting, app.Trees.ReadState(NativeUiBlockIds.LoopbackProxy));
+            Assert.Equal(BusinessBlockState.Starting, app.Trees.ReadState(UiUids.LoopbackProxy));
             Assert.Contains("pilot3 listener failure", File.ReadAllText(app.StartupFailurePath));
             retry.PerformClick();
         });
         await browser.Initialized.Task.WaitAsync(Limit);
         Assert.Equal(2, Volatile.Read(ref attempts));
-        Assert.Equal(BusinessBlockState.Running, app.Trees.ReadState(NativeUiBlockIds.LoopbackProxy));
+        Assert.Equal(BusinessBlockState.Running, app.Trees.ReadState(UiUids.LoopbackProxy));
     }
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]

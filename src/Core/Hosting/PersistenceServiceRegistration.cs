@@ -1,3 +1,4 @@
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using ResourceManager.App.Infrastructure.Persistence;
 using ResourceManager.App.Infrastructure.Persistence.Legacy;
 using ResourceManager.App.Application.Indexing;
@@ -30,7 +31,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
             services.AddSingleton<IPortableSoftwareRegistry>(static provider =>
                 provider.GetRequiredService<SqlitePortableSoftwareRegistry>());
             services.AddSerialHostedService<ResourceManagerDatabaseInitializer>();
-            services.AddHostedServiceAlias<SqlitePortableSoftwareRegistry>(BackendBlockIds.SqlitePortableSoftwareRegistry, [BackendBlockIds.RuntimeSpecializationCoordinator], ["portable-software-registry"]);
+            services.AddHostedServiceAlias<SqlitePortableSoftwareRegistry>(BlockUids.SqlitePortableSoftwareRegistry, [BlockUids.RuntimeSpecializationCoordinator]);
         }
         else
         {

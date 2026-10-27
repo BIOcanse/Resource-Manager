@@ -201,7 +201,7 @@ internal sealed class NativeUiProductTestHost : IAsyncDisposable
     private static extern nint SendMessage(nint window, uint message, nint wParam, nint lParam);
     internal async Task SendCommandAsync(string command)
     {
-        await Trees.WaitForStateAsync(NativeUiBlockIds.SingleInstance, BusinessBlockState.Running).WaitAsync(TimeSpan.FromSeconds(10));
+        await Trees.WaitForStateAsync(UiUids.SingleInstance, BusinessBlockState.Running).WaitAsync(TimeSpan.FromSeconds(10));
         Assert.True(await Task.Run(() => instance.SignalRequest(command)));
     }
     internal async Task<Browser> NextBrowserAsync()

@@ -1,3 +1,4 @@
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
@@ -201,7 +202,7 @@ public sealed class HostMemoryProtectionTests
         fixture.Source.Publish(990, 99, [Process(100, "1", 1000)]);
         Assert.Equal(deliveries, fixture.Source.Deliveries);
         Assert.Equal(0, fixture.Source.Active);
-        Assert.Equal(BusinessBlockState.Stopped, fixture.Scheduler.ReadState(HostMemoryProtectionService.BlockId));
+        Assert.Equal(BusinessBlockState.Stopped, fixture.Scheduler.ReadState(BlockUids.HostMemoryProtection));
         Assert.Empty(fixture.Executor.Opened);
         Assert.Empty(fixture.Executor.Executed);
     }
@@ -311,7 +312,7 @@ public sealed class HostMemoryProtectionTests
         await using var fixture = await Fixture.StartAsync();
         fixture.Source.Publish(200, 20, [Process(10, "1", 900), Process(11, "1", 10), Process(12, "old", 1000)]);
         await fixture.CreatePoint();
-        Assert.Equal(BusinessBlockState.Stopped, fixture.Scheduler.ReadState(HostMemoryProtectionService.BlockId));
+        Assert.Equal(BusinessBlockState.Stopped, fixture.Scheduler.ReadState(BlockUids.HostMemoryProtection));
         fixture.Executor.Excluded[40] = "cannot-open";
         fixture.Executor.Excluded[41] = "critical-process";
         using var enabled = await fixture.Patch(new { enabled = true });
@@ -336,14 +337,14 @@ public sealed class HostMemoryProtectionTests
         await Until(() => fixture.Protection.ReadStatus().Actions.Count == 2);
         Assert.Equal(1, fixture.Executor.Opened.Count(id => id == 40));
         Assert.Equal(11, fixture.Protection.ReadStatus().Actions[0].ProcessId);
-        var decision = fixture.Scheduler.Read().CurrentDecisions.Single(item => item.ParentId == BackendBlockGraph.Program);
+        var decision = fixture.Scheduler.Read().CurrentDecisions.Single(item => item.ParentId == BlockUids.Program);
         Assert.Contains(decision.Facts, item => item.Key == HostMemoryProtectionService.EnabledFact && item.Value);
         Assert.Contains(decision.Facts, item => item.Key == HostMemoryProtectionService.PointFact && item.Value);
         Assert.Contains(decision.Facts, item => item.Key == HostMemoryProtectionService.ReserveFact && item.Value);
 
         using var disabled = await fixture.Patch(new { enabled = false });
         Assert.Equal(HttpStatusCode.OK, disabled.StatusCode);
-        await Until(() => fixture.Source.Active == 0 && fixture.Scheduler.ReadState(HostMemoryProtectionService.BlockId) == BusinessBlockState.Stopped);
+        await Until(() => fixture.Source.Active == 0 && fixture.Scheduler.ReadState(BlockUids.HostMemoryProtection) == BusinessBlockState.Stopped);
         fixture.Source.Publish(999, 99, [Process(11, "1", 9000)]);
         Assert.Equal(2, fixture.Protection.ReadStatus().Actions.Count);
     }
@@ -361,10 +362,10 @@ public sealed class HostMemoryProtectionTests
         await Until(() => fixture.Executor.Executed.Contains(21));
         using var disabled = await fixture.Patch(new { enabled = false });
         Assert.Equal(HttpStatusCode.OK, disabled.StatusCode);
-        Assert.NotEqual(BusinessBlockState.Stopped, fixture.Scheduler.ReadState(HostMemoryProtectionService.BlockId));
+        Assert.NotEqual(BusinessBlockState.Stopped, fixture.Scheduler.ReadState(BlockUids.HostMemoryProtection));
         Assert.DoesNotContain(22, fixture.Executor.Executed);
         fixture.Executor.Block.SetResult();
-        await Until(() => fixture.Scheduler.ReadState(HostMemoryProtectionService.BlockId) == BusinessBlockState.Stopped);
+        await Until(() => fixture.Scheduler.ReadState(BlockUids.HostMemoryProtection) == BusinessBlockState.Stopped);
         Assert.Equal(2, fixture.Protection.ReadStatus().Actions.Count);
         Assert.Contains(fixture.Protection.ReadStatus().Actions, item => item.Outcome == "suspend-failed");
         Assert.Equal(1, fixture.Executor.MaxConcurrent);
@@ -442,11 +443,11 @@ public sealed class HostMemoryProtectionTests
         var status = fixture.Protection.ReadStatus();
         Assert.True(status.Enabled);
         Assert.Equal("no-normal-running-point", status.InactiveReason);
-        Assert.Equal(BusinessBlockState.Stopped, fixture.Scheduler.ReadState(HostMemoryProtectionService.BlockId));
+        Assert.Equal(BusinessBlockState.Stopped, fixture.Scheduler.ReadState(BlockUids.HostMemoryProtection));
         Assert.Equal(0, fixture.Source.Active);
         await fixture.CreatePoint(ensureReserve: false);
         await Until(() => fixture.Source.Active == 1);
-        Assert.Equal(BusinessBlockState.Running, fixture.Scheduler.ReadState(HostMemoryProtectionService.BlockId));
+        Assert.Equal(BusinessBlockState.Running, fixture.Scheduler.ReadState(BlockUids.HostMemoryProtection));
     }
 
     [Fact]
@@ -528,7 +529,7 @@ public sealed class HostMemoryProtectionTests
         {
             executor.Block?.TrySetResult();
             await Scheduler.ShutdownAsync(new(BusinessBlockRequestKind.Configuration, "test", "shutdown", 1));
-            await Until(() => Scheduler.ReadState(HostMemoryProtectionService.BlockId) == BusinessBlockState.Stopped);
+            await Until(() => Scheduler.ReadState(BlockUids.HostMemoryProtection) == BusinessBlockState.Stopped);
             Client.Dispose();
             await app.StopAsync(); await app.DisposeAsync();
             // All handles have closed. These are the only flat directories this fixture creates.

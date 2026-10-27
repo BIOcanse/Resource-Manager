@@ -17,6 +17,15 @@ public sealed class BusinessBlockScheduler : ResourceManager.Shared.BusinessBloc
     private BusinessBlockScheduler(IServiceProvider services, BackendBlockGraph graph,
         IOptions<BusinessBlockOptions> options, ILogger<BusinessBlockScheduler> logger,
         BusinessBlockController? control, IEnumerable<BusinessBlockDecisionRegistration>? decisions)
-        : base(graph, id => graph.Get(id).Create(services), options.Value.HistoryLimit, logger, control, decisions,
+        : base(graph, id => graph.Get(id).Create(services), options.Value.HistoryLimit, logger, ResourceManager.App.StateItems.StateRegistry.Version, LookupName, control, decisions,
             () => services.GetService<IRuntimePlanProvider>()?.Current.Version ?? 0) { }
+
+    private static string? LookupName(int uid)
+    {
+#if RM_STATE_NAMES
+        return ResourceManager.App.StateItems.StateNames.Name(uid);
+#else
+        return null;
+#endif
+    }
 }

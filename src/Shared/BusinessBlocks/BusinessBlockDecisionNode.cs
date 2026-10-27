@@ -6,14 +6,16 @@ namespace ResourceManager.Shared.BusinessBlocks;
 internal sealed class BusinessBlockDecisionNode : IDisposable
 {
     private readonly object sync = new();
-    private readonly IReadOnlyList<string> children;
-    private readonly Func<BusinessBlockDecisionInput, IReadOnlyCollection<string>> decide;
+    private readonly IReadOnlyList<int> children;
+    private readonly Func<BusinessBlockDecisionInput, IReadOnlyCollection<int>> decide;
     private readonly BusinessBlockFactAuthority authority;
     private readonly BusinessBlockController control;
-    private readonly Func<string, IBusinessBlock> create;
-    private readonly Func<string, BusinessBlockDecisionNode?> childNode;
+    private readonly Func<int, IBusinessBlock> create;
+    private readonly Func<int, BusinessBlockDecisionNode?> childNode;
     private readonly ILogger logger;
     private readonly int historyLimit;
+    private readonly int program;
+    private readonly Func<int, string?> nameLookup;
     private readonly Queue<BusinessBlockDecision> history = new();
     private BusinessBlockDecision? currentDecision;
     private TaskCompletionSource? pending;
@@ -24,18 +26,18 @@ internal sealed class BusinessBlockDecisionNode : IDisposable
     private long sequence;
     private string transition = "initial";
     private BusinessBlockReason reason = new(BusinessBlockRequestKind.Configuration, "program", "initial", 0);
-    public string ParentId { get; }
+    public int ParentId { get; }
     public IReadOnlyList<string> FactKeys { get; }
 
-    public BusinessBlockDecisionNode(string parentId, IReadOnlyList<string> children, IReadOnlyList<string> factKeys,
-        Func<BusinessBlockDecisionInput, IReadOnlyCollection<string>> decide, BusinessBlockFactAuthority authority,
-        BusinessBlockController control, Func<string, IBusinessBlock> create,
-        Func<string, BusinessBlockDecisionNode?> childNode, ILogger logger, int historyLimit)
+    public BusinessBlockDecisionNode(int parentId, IReadOnlyList<int> children, IReadOnlyList<string> factKeys,
+        Func<BusinessBlockDecisionInput, IReadOnlyCollection<int>> decide, BusinessBlockFactAuthority authority,
+        BusinessBlockController control, Func<int, IBusinessBlock> create,
+        Func<int, BusinessBlockDecisionNode?> childNode, ILogger logger, int historyLimit, int program, Func<int, string?> nameLookup)
     {
         ParentId = parentId; this.children = children; FactKeys = factKeys; this.decide = decide;
         this.authority = authority; this.control = control; this.create = create; this.childNode = childNode;
-        this.logger = logger; this.historyLimit = historyLimit;
-        permitted = parentId == BusinessBlockGraph.Program;
+        this.logger = logger; this.historyLimit = historyLimit; this.program = program; this.nameLookup = nameLookup;
+        permitted = parentId == program;
     }
 
     public Task Wake(string cause, BusinessBlockReason why)
@@ -85,7 +87,7 @@ internal sealed class BusinessBlockDecisionNode : IDisposable
             catch (Exception error)
             {
                 // A malformed rule is reported to its own fact publisher. Block errors never arrive here.
-                logger.LogError(error, "Decision node {ParentId} could not evaluate its rule", ParentId);
+                logger.LogError(error, "Decision node {ParentId}{ParentName} could not evaluate its rule", ParentId, NameSuffix(ParentId));
                 completion.TrySetException(error);
             }
             // Immediate returns can trigger another decision; give fact publishers a chance to run.
@@ -96,11 +98,11 @@ internal sealed class BusinessBlockDecisionNode : IDisposable
     private void Align(bool permit, string cause, BusinessBlockReason why)
     {
         var facts = FactKeys.ToDictionary(key => key, authority.Read, StringComparer.Ordinal);
-        var actual = children.ToDictionary(id => id, control.ReadState, StringComparer.Ordinal);
+        var actual = children.ToDictionary(id => id, control.ReadState);
         // The owner's state is read when deciding, never kept: children run only while the owner runs.
-        var active = permit && (ParentId == BusinessBlockGraph.Program || control.ReadState(ParentId) == BusinessBlockState.Running);
-        var wanted = active && !(ParentId == BusinessBlockGraph.Program && facts[BusinessBlockScheduler.ShutdownFact].Value)
-            ? decide(new(facts, actual)).ToHashSet(StringComparer.Ordinal) : new HashSet<string>(StringComparer.Ordinal);
+        var active = permit && (ParentId == program || control.ReadState(ParentId) == BusinessBlockState.Running);
+        var wanted = active && !(ParentId == program && facts[BusinessBlockScheduler.ShutdownFact].Value)
+            ? decide(new(facts, actual)).ToHashSet() : new HashSet<int>();
         foreach (var id in wanted)
             if (!actual.ContainsKey(id)) throw new InvalidOperationException($"Decision node {ParentId} cannot control non-child {id}.");
         wanted.RemoveWhere(id => !facts[BusinessBlockScheduler.EnabledFact(id)].Value);
@@ -116,8 +118,8 @@ internal sealed class BusinessBlockDecisionNode : IDisposable
             }
         }
         if (logger.IsEnabled(LogLevel.Information))
-            logger.LogInformation("Business block decision {ParentId}/{Sequence}: fact={Fact}, kind={Kind}, owner={Owner}, config={Version}; children={Children}; facts={Facts}",
-                ParentId, decision.Sequence, cause, why.Kind, why.Owner, why.PlanVersion, string.Join(",", decision.ShouldRun),
+            logger.LogInformation("Business block decision {ParentId}{ParentName}/{Sequence}: fact={Fact}, kind={Kind}, owner={Owner}, config={Version}; children={Children}; facts={Facts}",
+                ParentId, NameSuffix(ParentId), decision.Sequence, cause, why.Kind, why.Owner, why.PlanVersion, string.Join(",", decision.ShouldRun.Select(id => id.ToString(System.Globalization.CultureInfo.InvariantCulture) + NameSuffix(id))),
                 string.Join(";", decision.Facts.Select(fact => $"{fact.Key}={fact.Value}[{string.Join(",", fact.Reasons.Select(item => $"{item.Kind}/{item.Owner}/{item.ConfigurationOrDependency}/{item.PlanVersion}"))}]")));
 
         // Siblings have no order. A child with its own node is stopped only after the handshake:
@@ -155,9 +157,11 @@ internal sealed class BusinessBlockDecisionNode : IDisposable
         }
     }
 
+    private string NameSuffix(int id) => nameLookup(id) is { } name ? $" ({name})" : "";
+
     private void PublishDrained(bool value, BusinessBlockReason why)
     {
-        if (ParentId != BusinessBlockGraph.Program)
+        if (ParentId != program)
             _ = authority.Publish(BusinessBlockScheduler.ChildrenStoppedFact(ParentId), value, why);
     }
 

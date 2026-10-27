@@ -3,7 +3,7 @@ using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
 /// <summary>Owns the original hosted service's readiness and stop contract.</summary>
-internal sealed class HostedBusinessBlock(string id, Func<IHostedService> resolve,
+internal sealed class HostedBusinessBlock(int id, Func<IHostedService> resolve,
     HostedBusinessBlockRegistry registry, BusinessBlockDiagnosticsRegistry diagnostics) : IBusinessBlock
 {
     private readonly object sync = new();

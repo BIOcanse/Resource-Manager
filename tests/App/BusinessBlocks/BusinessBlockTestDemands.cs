@@ -9,9 +9,9 @@ namespace Resource_Manager_APP.Tests;
 
 internal static class BusinessBlockTestDemands
 {
-    internal static Task StartAsync(this BusinessBlockScheduler scheduler, string id, BusinessBlockReason reason, CancellationToken cancellation = default)
+    internal static Task StartAsync(this BusinessBlockScheduler scheduler, int id, BusinessBlockReason reason, CancellationToken cancellation = default)
         => scheduler.SetDemandAsync("test:" + id, id, reason, cancellation);
-    internal static Task StopAsync(this BusinessBlockScheduler scheduler, string id, BusinessBlockReason reason, CancellationToken cancellation = default)
+    internal static Task StopAsync(this BusinessBlockScheduler scheduler, int id, BusinessBlockReason reason, CancellationToken cancellation = default)
         => scheduler.SetDemandAsync("test:" + id, null, reason, cancellation);
     internal static Task StopDependenciesAsync(this BusinessBlockScheduler scheduler, BusinessBlockReason reason, CancellationToken cancellation = default)
         => scheduler.ShutdownAsync(reason);
@@ -26,15 +26,15 @@ internal static class BusinessBlockTestSupport
         IEnumerable<BusinessBlockDecisionRegistration>? decisions = null, int historyLimit = 128, ILogger<BusinessBlockScheduler>? logger = null)
         => new(new EmptyServices(), registrations, Options.Create(new BusinessBlockOptions { HistoryLimit = historyLimit }),
             logger ?? NullLogger<BusinessBlockScheduler>.Instance, decisions: decisions);
-    internal static BusinessBlockRegistration Register(string id, IBusinessBlock block, string parent = BackendBlockGraph.Program, params string[] inputs)
-        => new(id, inputs, _ => block) { ParentId = parent, Outputs = [id + ":output"] };
+    internal static BusinessBlockRegistration Register(int id, IBusinessBlock block, int parent = BackendUids.Program, params int[] inputs)
+        => new(id, inputs, _ => block) { ParentId = parent };
     internal static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal static async Task Until(Func<bool> predicate)
     {
         using var timeout = new CancellationTokenSource(TestTimeout);
         while (!predicate()) await Task.Delay(1, timeout.Token);
     }
-    internal static Task State(BusinessBlockScheduler scheduler, string id, BusinessBlockState state)
+    internal static Task State(BusinessBlockScheduler scheduler, int id, BusinessBlockState state)
         => Until(() => scheduler.ReadState(id) == state);
     internal static async Task StopAll(BusinessBlockScheduler scheduler)
     {

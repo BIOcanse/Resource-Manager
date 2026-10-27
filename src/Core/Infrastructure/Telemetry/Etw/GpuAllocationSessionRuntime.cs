@@ -1,6 +1,7 @@
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Session;
 using ResourceManager.ReadWrite.Windows.Processes.Etw;
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
@@ -46,7 +47,7 @@ internal sealed class TraceEventGpuAllocationSessionFactory(
         {
             if (session is not null)
             {
-                var cleanup = new TraceEventSessionProcessingRuntime(session).Stop(TimeSpan.FromSeconds(3));
+                var cleanup = new TraceEventSessionProcessingRuntime(session, blockId: BlockUids.GpuAllocationCollector).Stop(TimeSpan.FromSeconds(3));
                 if (!cleanup.IsReleased) throw new KernelEtwSessionCreationCleanupException(failure,
                     new InvalidOperationException(string.Join(" | ", cleanup.Failures)));
             }
@@ -62,12 +63,10 @@ internal sealed class TraceEventGpuAllocationSession(
     TraceEventSession session,
     IEtwConsumerThreadObserver? consumerThreadObserver = null) : IGpuAllocationSession
 {
-    internal const string ConsumerBlockId = "gpu-allocation-etw";
-
     private readonly TraceEventSessionProcessingRuntime processing = new(
         session,
         consumerThreadObserver: consumerThreadObserver,
-        blockId: ConsumerBlockId);
+        blockId: BlockUids.GpuAllocationCollector);
     private Action<TraceEvent>? eventHandler;
     public bool IsProcessing => processing.IsProcessing;
     public int EventsLost => processing.EventsLost;

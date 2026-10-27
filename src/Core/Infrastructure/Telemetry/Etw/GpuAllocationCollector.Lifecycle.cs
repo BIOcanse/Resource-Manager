@@ -1,3 +1,4 @@
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using Microsoft.Extensions.Configuration;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
@@ -7,8 +8,7 @@ namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
 public sealed partial class GpuAllocationCollector
 {
-    internal const string BusinessBlockId = "gpu-allocation-etw";
-    internal const string AvailabilityFact = "native-session-available:" + BusinessBlockId;
+    internal static readonly string AvailabilityFact = "native-session-available:" + BlockUids.GpuAllocationCollector.ToString(System.Globalization.CultureInfo.InvariantCulture);
     private const string SubscriptionCause = "gpu-allocation-subscription";
 
     private readonly ILogger<GpuAllocationCollector> logger;
@@ -59,7 +59,7 @@ public sealed partial class GpuAllocationCollector
             controller.CurrentPlanVersion);
         lock (lifecycle)
         {
-            var dependency = controller.AcquireDependency(BusinessBlockId, reason);
+            var dependency = controller.AcquireDependency(BlockUids.GpuAllocationCollector, reason);
             var lease = new Lease(this, refreshInterval, dependency);
             leases.Add(lease);
             lease.ObserveRelease();
@@ -78,7 +78,7 @@ public sealed partial class GpuAllocationCollector
             activeRun = run;
             nextRun.TrySetResult(run);
             nextRun = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            diagnostics.BeginRun(BusinessBlockId);
+            diagnostics.BeginRun(BlockUids.GpuAllocationCollector);
         }
         return RunSessionAsync(run, context);
     }
@@ -101,11 +101,11 @@ public sealed partial class GpuAllocationCollector
             {
                 var error = new InvalidOperationException("The previous GPU allocation session was not released.");
                 run.Started.TrySetException(error);
-                diagnostics.ReportFailure(BusinessBlockId, error, "session-release-unconfirmed");
+                diagnostics.ReportFailure(BlockUids.GpuAllocationCollector, error, "session-release-unconfirmed");
                 throw error;
             }
 
-            using (diagnostics.MeasureSegment(BusinessBlockId)) StartSession(run);
+            using (diagnostics.MeasureSegment(BlockUids.GpuAllocationCollector)) StartSession(run);
             started = true;
             context.ReportRunning();
             run.Started.TrySetResult();
@@ -145,7 +145,7 @@ public sealed partial class GpuAllocationCollector
                 Task captureRequests;
                 lock (lifecycle) captureRequests = run.CaptureRequestsDrained;
                 await captureRequests.ConfigureAwait(false);
-                using (diagnostics.MeasureSegment(BusinessBlockId)) cleanupFailure = StopSession(run);
+                using (diagnostics.MeasureSegment(BlockUids.GpuAllocationCollector)) cleanupFailure = StopSession(run);
                 // Stop can be denied while its native consumer is still alive.
                 // A failed native release never excuses leaving owned work running.
                 try { run.Session?.JoinProcessing(); }
@@ -165,20 +165,20 @@ public sealed partial class GpuAllocationCollector
         var finalResult = cleanupFailure is null
             ? result
             : BusinessBlockResult.Failed(cleanupFailure, BusinessBlockFailureStage.Stop);
-        diagnostics.RecordResult(BusinessBlockId, finalResult);
+        diagnostics.RecordResult(BlockUids.GpuAllocationCollector, finalResult);
         run.Completed.TrySetResult();
     }
 
     internal Task PublishAvailabilityAsync()
         => controller.SetFactAsync(AvailabilityFact, Volatile.Read(ref nativeSessionAvailable),
-            new(BusinessBlockRequestKind.Dependency, BusinessBlockId, "native-session-availability", controller.CurrentPlanVersion));
+            new(BusinessBlockRequestKind.Dependency, BlockUids.GpuAllocationCollector.ToString(System.Globalization.CultureInfo.InvariantCulture), "native-session-availability", controller.CurrentPlanVersion));
 
     private void SetAvailability(bool available, string cause)
     {
         Volatile.Write(ref nativeSessionAvailable, available);
         // The decision may wait for this run's return; only publication is synchronous.
         _ = controller.SetFactAsync(AvailabilityFact, available,
-            new(BusinessBlockRequestKind.Dependency, BusinessBlockId, cause, controller.CurrentPlanVersion));
+            new(BusinessBlockRequestKind.Dependency, BlockUids.GpuAllocationCollector.ToString(System.Globalization.CultureInfo.InvariantCulture), cause, controller.CurrentPlanVersion));
     }
 
     private void ObservePermissionFailure(Run run, Exception? error)

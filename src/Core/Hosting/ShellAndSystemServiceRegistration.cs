@@ -1,3 +1,4 @@
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using ResourceManager.App.Application.LocalSystem;
 using ResourceManager.App.Application.Operations;
 using ResourceManager.App.Infrastructure.LocalSystem;
@@ -13,10 +14,10 @@ public static partial class ResourceManagerServiceCollectionExtensions
         string[] args,
         BackendHostEnvironment hostEnvironment)
     {
-        services.AddBusinessBlockHostedService<ServiceAutoStartSettings>(BackendBlockIds.ServiceAutoStartSettings, [BackendBlockIds.RuntimeSpecializationCoordinator], ["service-autostart-policy"]);
+        services.AddBusinessBlockHostedService<ServiceAutoStartSettings>(BlockUids.ServiceAutoStartSettings, [BlockUids.RuntimeSpecializationCoordinator]);
         services.AddSingleton<IServiceRecoveryControl, WindowsServiceRecoveryControl>();
         services.AddSingleton<ServiceRecoverySettings>();
-        services.AddBusinessBlockHostedService<ServiceRecoverySettings>(BackendBlockIds.ServiceRecoverySettings, [BackendBlockIds.RuntimeSpecializationCoordinator], ["service-recovery-policy"], provider => provider.GetRequiredService<ServiceRecoverySettings>());
+        services.AddBusinessBlockHostedService<ServiceRecoverySettings>(BlockUids.ServiceRecoverySettings, [BlockUids.RuntimeSpecializationCoordinator], provider => provider.GetRequiredService<ServiceRecoverySettings>());
 
         return services;
     }

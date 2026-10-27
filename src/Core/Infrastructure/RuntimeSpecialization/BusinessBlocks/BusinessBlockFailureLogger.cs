@@ -7,7 +7,7 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlock
 /// It forwards the original log and reports exception-bearing warnings/errors, without rethrowing
 /// or changing the worker's continuation. Used by the launch reconciler.
 /// </summary>
-internal sealed class BusinessBlockFailureLogger<T>(ILogger<T> inner, IBusinessBlockDiagnostics diagnostics, string blockId) : ILogger<T>
+internal sealed class BusinessBlockFailureLogger<T>(ILogger<T> inner, IBusinessBlockDiagnostics diagnostics, int blockId) : ILogger<T>
 {
     public IDisposable? BeginScope<TState>(TState state) where TState : notnull => inner.BeginScope(state);
     public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Warning || inner.IsEnabled(logLevel);

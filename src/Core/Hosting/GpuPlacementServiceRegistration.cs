@@ -1,3 +1,4 @@
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Infrastructure.GpuPlacement;
@@ -24,9 +25,9 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<IGpuPlacementProcessHistoryStore, JsonGpuPlacementProcessHistoryStore>();
         services.AddSingleton<IPresentGraphicsApiObservationSource>(static provider => provider.GetRequiredService<PresentFrameEtwSource>());
         if (startupCapabilities.Allows(StartupCapability.MutablePersistence))
-            services.AddBusinessBlockHostedService<GpuPlacementProcessHistoryObserver>(BackendBlockIds.GpuPlacementProcessHistoryObserver,
-                [BackendBlockIds.RuntimeSpecializationCoordinator, BackendBlockIds.WindowsResourceBreakdownSampler,
-                    Infrastructure.Telemetry.Etw.PresentFrameEtwSource.BusinessBlockId, BackendBlockIds.SqlitePortableSoftwareRegistry], ["graphics-api-history"]);
+            services.AddBusinessBlockHostedService<GpuPlacementProcessHistoryObserver>(BlockUids.GpuPlacementProcessHistoryObserver,
+                [BlockUids.RuntimeSpecializationCoordinator, BlockUids.WindowsResourceBreakdownSampler,
+                    BlockUids.PresentFrameEtwSource, BlockUids.SqlitePortableSoftwareRegistry]);
         services.AddSingleton<IWindowsGraphicsPreferenceStore, WindowsGraphicsPreferenceStore>();
         services.AddSingleton<D3d11ProxyShimRuntime>();
         services.AddSingleton<WindowsGpuPlacementInjector>();
@@ -51,8 +52,9 @@ public static partial class ResourceManagerServiceCollectionExtensions
             services.AddSingleton<ILogger<GpuLaunchInterceptionReconciler>>(provider =>
                 new BusinessBlockFailureLogger<GpuLaunchInterceptionReconciler>(
                     provider.GetRequiredService<ILoggerFactory>().CreateLogger<GpuLaunchInterceptionReconciler>(),
-                    provider.GetRequiredService<IBusinessBlockDiagnostics>(), BackendBlockIds.GpuLaunchInterceptionReconciler));
-            services.AddSingleton(new BusinessBlockDiagnosticRegistration(BackendBlockIds.GpuLaunchInterceptionReconciler));
+                    provider.GetRequiredService<IBusinessBlockDiagnostics>(), BlockUids.Program));
+            // Reconciliation is serial program work, so its diagnostics belong to the program root.
+            services.AddSingleton(new BusinessBlockDiagnosticRegistration(BlockUids.Program));
             services.AddSerialHostedServiceAlias<GpuLaunchInterceptionReconciler>();
         }
         services.AddSingleton<IRunningGpuPlacementActionService, ExternalOnlyRunningGpuPlacementActionService>();

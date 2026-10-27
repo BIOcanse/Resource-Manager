@@ -1,3 +1,4 @@
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
@@ -7,14 +8,14 @@ namespace ResourceManager.App.Hosting;
 internal sealed class NonOwningHostedService<TService> : BackgroundService where TService : class, IHostedService
 {
     private readonly IServiceProvider provider;
-    private readonly string id;
+    private readonly int id;
     private TService? service;
     private HostedBusinessBlock.Session? hostSession;
 
     private HostedBusinessBlock Block => provider.GetRequiredService<HostedBusinessBlockRegistry>()
         .GetOrAdd(id, () => Service);
 
-    internal NonOwningHostedService(IServiceProvider provider, string id, bool constructService = false)
+    internal NonOwningHostedService(IServiceProvider provider, int id, bool constructService = false)
     {
         this.provider = provider;
         this.id = id;
@@ -78,10 +79,10 @@ internal sealed class NonOwningHostedService<TService> : BackgroundService where
 internal static class NonOwningHostedServiceRegistration
 {
     internal static IServiceCollection AddHostedServiceAlias<TService>(this IServiceCollection services,
-        string id, string[] inputs, string[] outputs, bool constructService = false,
-        string parentId = BackendBlockGraph.Program) where TService : class, IHostedService
+        int id, int[] inputs, bool constructService = false,
+        int parentId = BlockUids.Program) where TService : class, IHostedService
     {
-        ResourceManagerServiceCollectionExtensions.RegisterHostedBusinessBlock<TService>(services, id, inputs, outputs, parentId);
+        ResourceManagerServiceCollectionExtensions.RegisterHostedBusinessBlock<TService>(services, id, inputs, parentId);
         services.AddSingleton<IHostedService>(provider => new NonOwningHostedService<TService>(provider, id, constructService));
         return services;
     }

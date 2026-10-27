@@ -4,12 +4,12 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlock
 internal sealed class HostedBusinessBlockRegistry(BusinessBlockDiagnosticsRegistry diagnostics)
 {
     private readonly object sync = new();
-    private readonly Dictionary<string, HostedBusinessBlock> blocks = new(StringComparer.Ordinal);
+    private readonly Dictionary<int, HostedBusinessBlock> blocks = new();
     private bool hostStopping;
     internal bool IsHostStopping { get { lock (sync) return hostStopping; } }
     internal void BeginHostStopping() { lock (sync) hostStopping = true; }
 
-    internal HostedBusinessBlock GetOrAdd(string id, Func<IHostedService> resolve)
+    internal HostedBusinessBlock GetOrAdd(int id, Func<IHostedService> resolve)
     {
         lock (sync)
         {

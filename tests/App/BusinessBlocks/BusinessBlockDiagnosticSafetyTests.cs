@@ -14,21 +14,21 @@ public sealed class BusinessBlockDiagnosticSafetyTests
     public async Task CurrentDecisionRemainsQueryableWhenHistoryIsDisabled()
     {
         var block = new Probe();
-        await using var scheduler = Create([Register("block", block)], historyLimit: 0);
+        await using var scheduler = Create([Register(116, block)], historyLimit: 0);
         try
         {
             var demand = Reason(BusinessBlockRequestKind.User, "operator", "observe", 19);
-            await scheduler.SetDemandAsync("observe", "block", demand);
-            await State(scheduler, "block", BusinessBlockState.Running);
+            await scheduler.SetDemandAsync("observe", 116, demand);
+            await State(scheduler, 116, BusinessBlockState.Running);
             var snapshot = scheduler.Read();
             Assert.Empty(snapshot.History);
             Assert.Empty(snapshot.Decisions);
             var current = Assert.Single(snapshot.CurrentDecisions);
-            Assert.Equal(BackendBlockGraph.Program, current.ParentId);
-            Assert.Equal(["block"], current.ShouldRun);
+            Assert.Equal(BackendUids.Program, current.ParentId);
+            Assert.Equal([116], current.ShouldRun);
             Assert.Contains(current.Facts, fact => fact.Value && fact.Reasons.Contains(demand));
             await scheduler.SetDemandAsync("observe", null, demand);
-            await State(scheduler, "block", BusinessBlockState.Stopped);
+            await State(scheduler, 116, BusinessBlockState.Stopped);
             Assert.Empty(Assert.Single(scheduler.Read().CurrentDecisions).ShouldRun);
         }
         finally { await StopAll(scheduler); }
@@ -42,11 +42,11 @@ public sealed class BusinessBlockDiagnosticSafetyTests
         const string secret = "user-secret-token";
         var error = new IOException(@"C:\Users\Alice\private; S-1-5-21-123456; " + secret);
         var logger = new ErrorLogger();
-        var registrations = new[] { Register("block", new Probe()) };
+        var registrations = new[] { Register(116, new Probe()) };
         var diagnostics = new BusinessBlockDiagnosticsRegistry(registrations, logger);
         await using var scheduler = Create(registrations);
-        if (recordResult) diagnostics.RecordResult("block", BusinessBlockResult.Failed(error));
-        else diagnostics.ReportFailure("block", error, "record-write");
+        if (recordResult) diagnostics.RecordResult(116, BusinessBlockResult.Failed(error));
+        else diagnostics.ReportFailure(116, error, "record-write");
         var options = new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions;
         ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
         var snapshot = new BusinessBlockDebugSnapshot(scheduler.Read(), diagnostics.ReadAll());
@@ -66,37 +66,37 @@ public sealed class BusinessBlockDiagnosticSafetyTests
     public void DiagnosticsRequirePredeclaredIdsIncludingObservationOnlyComponents()
     {
         var diagnostics = new BusinessBlockDiagnosticsRegistry([], NullLogger<BusinessBlockDiagnosticsRegistry>.Instance,
-            [new("observation")]);
-        diagnostics.ReportFailure("observation", new IOException("observed failure"), "observe");
-        Assert.Equal("observation", Assert.Single(diagnostics.ReadAll()).Id);
-        Assert.Throws<KeyNotFoundException>(() => diagnostics.Read("typo"));
-        Assert.Throws<KeyNotFoundException>(() => diagnostics.BeginRun("typo"));
-        Assert.Throws<KeyNotFoundException>(() => diagnostics.RecordResult("typo", BusinessBlockResult.Done));
-        Assert.Throws<KeyNotFoundException>(() => diagnostics.ReportFailure("typo", new IOException(), "observe"));
-        Assert.Throws<KeyNotFoundException>(() => diagnostics.MeasureSegment("typo"));
-        Assert.Throws<KeyNotFoundException>(() => diagnostics.RegisterConsumerThread("typo", "session"));
+            [new(136)]);
+        diagnostics.ReportFailure(136, new IOException("observed failure"), "observe");
+        Assert.Equal(136, Assert.Single(diagnostics.ReadAll()).Id);
+        Assert.Throws<KeyNotFoundException>(() => diagnostics.Read(152));
+        Assert.Throws<KeyNotFoundException>(() => diagnostics.BeginRun(152));
+        Assert.Throws<KeyNotFoundException>(() => diagnostics.RecordResult(152, BusinessBlockResult.Done));
+        Assert.Throws<KeyNotFoundException>(() => diagnostics.ReportFailure(152, new IOException(), "observe"));
+        Assert.Throws<KeyNotFoundException>(() => diagnostics.MeasureSegment(152));
+        Assert.Throws<KeyNotFoundException>(() => diagnostics.RegisterConsumerThread(152, "session"));
         Assert.Single(diagnostics.ReadAll());
     }
 
     [Fact]
     public async Task BlockOwnedResultAndMeasurementsAreSeparateFromSchedulingAndReadsArePure()
     {
-        var registrations = new[] { Register("block", new Probe()) };
+        var registrations = new[] { Register(116, new Probe()) };
         var diagnostics = new BusinessBlockDiagnosticsRegistry(registrations, NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
         await using var scheduler = Create(registrations);
-        diagnostics.BeginRun("block");
+        diagnostics.BeginRun(116);
         var scheduling = scheduler.Read();
-        using (diagnostics.MeasureSegment("block")) GC.KeepAlive(new byte[32 * 1024]);
-        diagnostics.RecordResult("block", BusinessBlockResult.Done);
-        var measured = diagnostics.Read("block");
+        using (diagnostics.MeasureSegment(116)) GC.KeepAlive(new byte[32 * 1024]);
+        diagnostics.RecordResult(116, BusinessBlockResult.Done);
+        var measured = diagnostics.Read(116);
         Assert.True(measured.Metrics.TotalAllocatedBytes >= 32 * 1024);
         Assert.Equal(BusinessBlockOutcome.Done, measured.Result!.Outcome);
-        Assert.Equal(measured.Result, diagnostics.Read("block").Result);
+        Assert.Equal(measured.Result, diagnostics.Read(116).Result);
         Assert.Equal(scheduling.History, scheduler.Read().History);
         Assert.Equal(scheduling.Decisions, scheduler.Read().Decisions);
-        Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState("block"));
-        diagnostics.BeginRun("block");
-        Assert.Null(diagnostics.Read("block").Result);
+        Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState(116));
+        diagnostics.BeginRun(116);
+        Assert.Null(diagnostics.Read(116).Result);
     }
 
     private sealed class ErrorLogger : ILogger<BusinessBlockDiagnosticsRegistry>

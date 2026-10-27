@@ -10,7 +10,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed class VidMmBusinessBlockTests
 {
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(10);
-    private static readonly string BlockId = nameof(DxgkrnlVidMmEtwTelemetryZone);
+    private static readonly int BlockId = BackendUids.DxgkrnlVidMmEtwTelemetryZone;
 
     [Theory]
     [InlineData(false)]
@@ -171,10 +171,10 @@ public sealed class VidMmBusinessBlockTests
         var session = harness.Sessions.Current;
         await session.ProcessEntered.WaitAsync(TestTimeout);
         var registration = Assert.Single(harness.Observer.Registrations);
-        Assert.Equal("vidmm-etw", registration.BlockId);
+        Assert.Equal(BackendUids.DxgkrnlVidMmEtwTelemetryZone, registration.BlockId);
         Assert.Same(session.ConsumerThread, registration.Thread);
         Assert.NotEqual(Environment.CurrentManagedThreadId, registration.Thread.ManagedThreadId);
-        Assert.True(registration.Thread.Name?.Contains("vidmm-etw", StringComparison.Ordinal) == true);
+        Assert.True(registration.Thread.Name?.Contains(BlockId.ToString(), StringComparison.Ordinal) == true);
         Assert.Equal("Running", harness.Zone.State);
         Assert.Equal(string.Empty, harness.Zone.Message);
         var now = DateTimeOffset.UtcNow;

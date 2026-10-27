@@ -1,3 +1,4 @@
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Application.Optimization.Scheduling;
 using ResourceManager.App.Application.Optimization.SmartControl;
@@ -77,7 +78,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         });
         services.AddSingleton<JsonDebugDiagnosticLogWriter>();
         services.AddSingleton<IDebugDiagnosticLogWriter>(static provider => provider.GetRequiredService<JsonDebugDiagnosticLogWriter>());
-        services.AddHostedServiceAlias<JsonDebugDiagnosticLogWriter>(BackendBlockIds.JsonDebugDiagnosticLogWriter, [BackendBlockIds.RuntimeSpecializationCoordinator], ["diagnostic-records"]);
+        services.AddHostedServiceAlias<JsonDebugDiagnosticLogWriter>(BlockUids.JsonDebugDiagnosticLogWriter, [BlockUids.RuntimeSpecializationCoordinator]);
         services.AddSingleton<NativeReportCoordinatorPersistenceStore>();
         services.AddSingleton<INativeReportCoordinatorPersistenceStore>(static provider =>
             provider.GetRequiredService<NativeReportCoordinatorPersistenceStore>());
@@ -102,10 +103,10 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<IOptimizationSoftwareIssueSignalSource>(static provider =>
             provider.GetRequiredService<HostManagerReportCoordinatorOwner>());
         services.AddSingleton<ISoftwareIssueSource, OptimizationReportSoftwareIssueSource>();
-        services.AddHostedServiceAlias<HostManagerReportCoordinatorOwner>(BackendBlockIds.HostManagerReportCoordinatorOwner,
-            [BackendBlockIds.RuntimeSpecializationCoordinator, BackendBlockIds.WindowsResourceBreakdownSampler, BackendBlockIds.WindowsHardwareMetricSampler,
-                BackendBlockIds.EtwSystemInterruptSnapshotSource,
-                ..(startupCapabilities.Allows(StartupCapability.MutablePersistence) ? new[] { BackendBlockIds.SqlitePortableSoftwareRegistry } : [])], ["reports"]);
+        services.AddHostedServiceAlias<HostManagerReportCoordinatorOwner>(BlockUids.HostManagerReportCoordinatorOwner,
+            [BlockUids.RuntimeSpecializationCoordinator, BlockUids.WindowsResourceBreakdownSampler, BlockUids.WindowsHardwareMetricSampler,
+                BlockUids.EtwSystemInterruptSnapshotSource,
+                ..(startupCapabilities.Allows(StartupCapability.MutablePersistence) ? new[] { BlockUids.SqlitePortableSoftwareRegistry } : [])]);
 
         services.AddSingleton<IAutomaticMemoryCleanupPlanner, NativeAutomaticMemoryCleanupPlanner>();
         services.AddSingleton<HostManagerMemoryCleanupAttemptJournal>();
@@ -140,7 +141,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetRequiredService<HostManagerSmartCoordinator>());
         if (startHostedService)
         {
-            services.AddHostedServiceAlias<HostManagerSmartCoordinator>(BackendBlockIds.HostManagerSmartCoordinator, [BackendBlockIds.RuntimeSpecializationCoordinator, BackendBlockIds.WindowsResourceBreakdownSampler, BackendBlockIds.WindowsHardwareMetricSampler, BackendBlockIds.EtwCpuCoreResidencyReader], ["optimization-decisions"]);
+            services.AddHostedServiceAlias<HostManagerSmartCoordinator>(BlockUids.HostManagerSmartCoordinator, [BlockUids.RuntimeSpecializationCoordinator, BlockUids.WindowsResourceBreakdownSampler, BlockUids.WindowsHardwareMetricSampler, BlockUids.EtwCpuCoreResidencyReader]);
         }
         return services;
     }

@@ -13,26 +13,26 @@ public sealed class BusinessBlockConsumerDrainTests
     {
         using var releaseConsumer = new ManualResetEventSlim();
         var block = new ConsumerBlock(releaseConsumer);
-        var registrations = new[] { Register("consumer", block) };
+        var registrations = new[] { Register(120, block) };
         var diagnostics = new BusinessBlockDiagnosticsRegistry(registrations, NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
         block.Diagnostics = diagnostics;
         await using var scheduler = Create(registrations);
         try
         {
-            await scheduler.StartAsync("consumer", Reason());
+            await scheduler.StartAsync(120, Reason());
             await block.Entered.Task.WaitAsync(TestTimeout);
-            await State(scheduler, "consumer", BusinessBlockState.Running);
-            Assert.Single(diagnostics.Read("consumer").Metrics.ActiveThreads);
-            await scheduler.StopAsync("consumer", Reason());
+            await State(scheduler, 120, BusinessBlockState.Running);
+            Assert.Single(diagnostics.Read(120).Metrics.ActiveThreads);
+            await scheduler.StopAsync(120, Reason());
             await block.ConsumerNotified.Task.WaitAsync(TestTimeout);
-            Assert.Equal(BusinessBlockState.Stopping, scheduler.ReadState("consumer"));
+            Assert.Equal(BusinessBlockState.Stopping, scheduler.ReadState(120));
             Assert.False(block.Returned.Task.IsCompleted);
-            Assert.Single(diagnostics.Read("consumer").Metrics.ActiveThreads);
+            Assert.Single(diagnostics.Read(120).Metrics.ActiveThreads);
             releaseConsumer.Set();
             await block.Returned.Task.WaitAsync(TestTimeout);
-            await State(scheduler, "consumer", BusinessBlockState.Stopped);
-            Assert.Empty(diagnostics.Read("consumer").Metrics.ActiveThreads);
-            Assert.Equal(BusinessBlockOutcome.Stopped, diagnostics.Read("consumer").Result!.Outcome);
+            await State(scheduler, 120, BusinessBlockState.Stopped);
+            Assert.Empty(diagnostics.Read(120).Metrics.ActiveThreads);
+            Assert.Equal(BusinessBlockOutcome.Stopped, diagnostics.Read(120).Result!.Outcome);
         }
         finally { releaseConsumer.Set(); await StopAll(scheduler); }
     }
@@ -42,23 +42,23 @@ public sealed class BusinessBlockConsumerDrainTests
     {
         using var releaseConsumer = new ManualResetEventSlim();
         var block = new ConsumerBlock(releaseConsumer);
-        var registrations = new[] { Register("consumer", block) };
+        var registrations = new[] { Register(120, block) };
         var diagnostics = new BusinessBlockDiagnosticsRegistry(registrations, NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
         block.Diagnostics = diagnostics;
         await using var scheduler = Create(registrations);
         try
         {
-            await scheduler.StartAsync("consumer", Reason());
+            await scheduler.StartAsync(120, Reason());
             await block.Entered.Task.WaitAsync(TestTimeout);
-            await State(scheduler, "consumer", BusinessBlockState.Running);
-            diagnostics.ReportFailure("consumer", new IOException("private consumer failed"), "consume");
-            Assert.Equal(BusinessBlockOutcome.Failed, diagnostics.Read("consumer").Result!.Outcome);
-            Assert.Equal(BusinessBlockState.Running, scheduler.ReadState("consumer"));
+            await State(scheduler, 120, BusinessBlockState.Running);
+            diagnostics.ReportFailure(120, new IOException("private consumer failed"), "consume");
+            Assert.Equal(BusinessBlockOutcome.Failed, diagnostics.Read(120).Result!.Outcome);
+            Assert.Equal(BusinessBlockState.Running, scheduler.ReadState(120));
             Assert.False(block.ConsumerNotified.Task.IsCompleted);
-            Assert.Single(diagnostics.Read("consumer").Metrics.ActiveThreads);
+            Assert.Single(diagnostics.Read(120).Metrics.ActiveThreads);
         }
         finally { releaseConsumer.Set(); await StopAll(scheduler); }
-        Assert.Empty(diagnostics.Read("consumer").Metrics.ActiveThreads);
+        Assert.Empty(diagnostics.Read(120).Metrics.ActiveThreads);
     }
 
     private sealed class ConsumerBlock(ManualResetEventSlim releaseConsumer) : IBusinessBlock
@@ -69,10 +69,10 @@ public sealed class BusinessBlockConsumerDrainTests
         public TaskCompletionSource Returned { get; } = Signal();
         public async Task RunAsync(BusinessBlockRunContext context)
         {
-            Diagnostics.BeginRun("consumer");
-            var consumer = DedicatedEtwConsumerThread.Start("business-drain", "private-session", () =>
+            Diagnostics.BeginRun(120);
+            var consumer = DedicatedEtwConsumerThread.Start(120, "private-session", () =>
             {
-                using var accounting = Diagnostics.RegisterConsumerThread("consumer", "private-session");
+                using var accounting = Diagnostics.RegisterConsumerThread(120, "private-session");
                 Entered.TrySetResult();
                 if (!context.StopNotification.WaitHandle.WaitOne(TestTimeout)) throw new TimeoutException("No stop notification arrived.");
                 ConsumerNotified.TrySetResult();
@@ -82,7 +82,7 @@ public sealed class BusinessBlockConsumerDrainTests
             context.ReportRunning();
             // Resource ownership belongs here: returning before this task ends would be a block bug.
             await consumer;
-            Diagnostics.RecordResult("consumer", BusinessBlockResult.Stopped);
+            Diagnostics.RecordResult(120, BusinessBlockResult.Stopped);
             Returned.TrySetResult();
         }
     }

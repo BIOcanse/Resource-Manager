@@ -36,7 +36,7 @@ public sealed class GpuAllocationSubscriptionLifetimeTests
 
         var result = await harness.NextResultAsync();
         Assert.Equal(BusinessBlockOutcome.Failed, result.Outcome);
-        await EtwTestRunRecorder.UntilAsync(() => harness.Controller.ReadState(GpuAllocationCollector.BusinessBlockId)
+        await EtwTestRunRecorder.UntilAsync(() => harness.Controller.ReadState(BackendUids.GpuAllocationCollector)
             == BusinessBlockState.Stopped);
         await harness.Collector.PublishAvailabilityAsync();
         Assert.False(Assert.Single(harness.Controller.Read().Facts,
@@ -56,7 +56,7 @@ public sealed class GpuAllocationSubscriptionLifetimeTests
             Assert.Null(harness.Collector.ReadCurrent(GpuAllocationTestSession.Processes));
             Assert.Equal(1, factory.Attempts);
             Assert.Equal(captures, factory.Sessions.Sum(session => session.Captures));
-            Assert.Equal(BusinessBlockState.Stopped, harness.Controller.ReadState(GpuAllocationCollector.BusinessBlockId));
+            Assert.Equal(BusinessBlockState.Stopped, harness.Controller.ReadState(BackendUids.GpuAllocationCollector));
             Assert.Single(harness.Controller.Read().Demands);
         }
         finally
@@ -78,7 +78,7 @@ public sealed class GpuAllocationSubscriptionLifetimeTests
         await EtwTestRunRecorder.ReadyAsync(second);
         await harness.Collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
         Assert.NotNull(harness.Collector.ReadCurrent(GpuAllocationTestSession.Processes));
-        await harness.Controller.SetEnabledAsync(GpuAllocationCollector.BusinessBlockId, false,
+        await harness.Controller.SetEnabledAsync(BackendUids.GpuAllocationCollector, false,
             new(BusinessBlockRequestKind.Configuration, "test", "pause-native-producer", 0));
         await harness.NextResultAsync();
         using var callerStop = new CancellationTokenSource();
@@ -92,7 +92,7 @@ public sealed class GpuAllocationSubscriptionLifetimeTests
             Assert.False(remainingReady.IsCompleted);
             // A capture can have copied this lease before Dispose disposed its source.
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first.Ready);
-            await harness.Controller.SetEnabledAsync(GpuAllocationCollector.BusinessBlockId, true,
+            await harness.Controller.SetEnabledAsync(BackendUids.GpuAllocationCollector, true,
                 new(BusinessBlockRequestKind.Configuration, "test", "resume-native-producer", 0));
             await remainingReady.WaitAsync(TimeSpan.FromSeconds(10));
             await harness.Collector.CaptureAsync(GpuAllocationTestSession.Processes, callerStop.Token);
@@ -126,10 +126,10 @@ public sealed class GpuAllocationSubscriptionLifetimeTests
         Task? capture = null;
         try
         {
-            await harness.Controller.SetEnabledAsync(GpuAllocationCollector.BusinessBlockId, false,
+            await harness.Controller.SetEnabledAsync(BackendUids.GpuAllocationCollector, false,
                 new(BusinessBlockRequestKind.Configuration, "test", "pause-native-producer", 0));
             await joining.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.Equal(BusinessBlockState.Stopping, harness.Controller.ReadState(GpuAllocationCollector.BusinessBlockId));
+            Assert.Equal(BusinessBlockState.Stopping, harness.Controller.ReadState(BackendUids.GpuAllocationCollector));
             Assert.False(session.Joined);
 
             capture = harness.Collector.CaptureAsync(GpuAllocationTestSession.Processes, callerStop.Token);
@@ -161,7 +161,7 @@ public sealed class GpuAllocationSubscriptionLifetimeTests
         await using var harness = factory.Harness();
         var subscription = harness.Collector.AcquireSubscription(TimeSpan.FromSeconds(30));
         await EtwTestRunRecorder.ReadyAsync(subscription);
-        await harness.Controller.SetEnabledAsync(GpuAllocationCollector.BusinessBlockId, false,
+        await harness.Controller.SetEnabledAsync(BackendUids.GpuAllocationCollector, false,
             new(BusinessBlockRequestKind.Configuration, "test", "pause-native-producer", 0));
         await harness.NextResultAsync();
 

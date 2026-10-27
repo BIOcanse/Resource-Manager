@@ -98,7 +98,7 @@ public sealed class JsonDebugDiagnosticLogWriterTests
             Assert.Equal(2, failures.Length);
             Assert.All(failures, failure =>
             {
-                Assert.Equal(nameof(JsonDebugDiagnosticLogWriter), failure.BlockId);
+                Assert.Equal(BackendUids.JsonDebugDiagnosticLogWriter, failure.BlockId);
                 Assert.Equal("diagnostic-record-write", failure.Operation);
                 Assert.NotNull(failure.Error);
             });
@@ -352,10 +352,10 @@ public sealed class JsonDebugDiagnosticLogWriterTests
         private readonly TaskCompletionSource reportsObserved =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        internal ConcurrentQueue<(string BlockId, Exception Error, string Operation)> Failures { get; } = new();
+        internal ConcurrentQueue<(int BlockId, Exception Error, string Operation)> Failures { get; } = new();
         internal Task ReportsObserved => reportsObserved.Task;
 
-        public void ReportFailure(string blockId, Exception error, string operation)
+        public void ReportFailure(int blockId, Exception error, string operation)
         {
             Failures.Enqueue((blockId, error, operation));
             if (Interlocked.Increment(ref reportCount) >= expectedReports)
@@ -364,7 +364,7 @@ public sealed class JsonDebugDiagnosticLogWriterTests
             }
         }
 
-        public IDisposable MeasureSegment(string blockId) => NoopDisposable.Instance;
+        public IDisposable MeasureSegment(int blockId) => NoopDisposable.Instance;
     }
 
     private sealed class NoopDisposable : IDisposable

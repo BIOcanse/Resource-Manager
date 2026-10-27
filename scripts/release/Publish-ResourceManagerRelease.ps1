@@ -65,9 +65,18 @@ foreach ($project in $projects) {
         else { '-p:PublishSingleFile=false' })
     # MSBuild owns incremental native compilation; no deployment or IFEO cleanup runs here.
     & dotnet publish $project.Project -c Release -r win-x64 --self-contained true @layout -p:PublishReadyToRun=true `
+        -p:ResourceManagerStateNames=false `
         -p:SkipClientAppBuild=true "-p:ResourceManagerLedgerWorkRoot=$ledgerWorkRoot" `
         -p:DebugType=none -p:DebugSymbols=false "-p:Version=$Version" -o $destination
     if ($LASTEXITCODE -ne 0) { throw "Publication failed: $($project.Project), exit $LASTEXITCODE" }
+    $stateAssembly = switch ($project.Directory) {
+        'backend' { 'ResourceManager.dll' }
+        'ui' { 'ResourceManager.NativeUi.dll' }
+    }
+    if ($stateAssembly) {
+        & pwsh -NoProfile -File (Join-Path $scriptsRoot 'validation\Test-StateNamesAbsent.ps1') -AssemblyPath (Join-Path $destination $stateAssembly)
+        if ($LASTEXITCODE -ne 0) { throw "StateNames metadata verification failed: $destination, exit $LASTEXITCODE" }
+    }
 }
 $startEntryOutput = Join-Path $OutputRoot 'start-entry'
 if (Test-Path -LiteralPath $startEntryOutput) { throw "Publish directory already exists: $startEntryOutput" }

@@ -268,7 +268,7 @@ public sealed class BusinessBlockMetricsTests
         using var services = new ServiceCollection().BuildServiceProvider();
         var registrations = new[]
         {
-            new BusinessBlockRegistration("busy", Array.Empty<string>(), _ => block!)
+            new BusinessBlockRegistration(117, Array.Empty<int>(), _ => block!)
         };
         var options = Options.Create(new BusinessBlockOptions {  });
         var diagnostics = new BusinessBlockDiagnosticsRegistry(registrations, NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
@@ -283,23 +283,23 @@ public sealed class BusinessBlockMetricsTests
         var started = false;
         try
         {
-            await controller.SetDemandAsync("metrics", "busy", reason);
+            await controller.SetDemandAsync("metrics", 117, reason);
             started = true;
             var thread = await block.Started.WaitAsync(TimeSpan.FromSeconds(5));
             var threadHandle = NativeThreadTimes.Open(thread.NativeThreadId);
             try
             {
                 var independentBefore = NativeThreadTimes.GetCpuTicks(threadHandle) - thread.CpuTicksAtRegistration;
-                var beforeRead = diagnostics.Read("busy");
+                var beforeRead = diagnostics.Read(117);
                 // Read the independent baseline after the product read, then require real CPU progress.
                 NativeThreadTimes.WaitForCpuTicksAfter(threadHandle, NativeThreadTimes.GetCpuTicks(threadHandle));
-                var blockFacts = diagnostics.Read("busy");
+                var blockFacts = diagnostics.Read(117);
                 var metrics = blockFacts.Metrics;
                 var threadFacts = Assert.Single(metrics.ActiveThreads);
                 var independentAfter = NativeThreadTimes.GetCpuTicks(threadHandle) - thread.CpuTicksAtRegistration;
                 var previousMetrics = beforeRead.Metrics;
 
-                Assert.Equal("busy", blockFacts.Id);
+                Assert.Equal(117, blockFacts.Id);
                 Assert.True(metrics.TotalCpuTime > TimeSpan.Zero);
                 Assert.True(metrics.TotalCpuTime > previousMetrics.TotalCpuTime);
                 Assert.False(metrics.AllocationCoverageComplete);
@@ -325,7 +325,7 @@ public sealed class BusinessBlockMetricsTests
             await block.Completed.WaitAsync(TimeSpan.FromSeconds(5));
             started = false;
 
-            var stopped = diagnostics.Read("busy");
+            var stopped = diagnostics.Read(117);
             Assert.Empty(stopped.Metrics.ActiveThreads);
             Assert.Equal(BusinessBlockAttributionCoverage.DedicatedThreads, stopped.Metrics.Coverage);
         }
@@ -354,7 +354,7 @@ public sealed class BusinessBlockMetricsTests
             {
                 try
                 {
-                    using (diagnostics.RegisterConsumerThread("busy", "busy-test"))
+                    using (diagnostics.RegisterConsumerThread(117, "busy-test"))
                     {
                         context.ReportRunning();
                         started.TrySetResult(new(
@@ -379,7 +379,7 @@ public sealed class BusinessBlockMetricsTests
                 IsBackground = true
             };
             worker.Start();
-            try { diagnostics.RecordResult("busy", await completion.Task); }
+            try { diagnostics.RecordResult(117, await completion.Task); }
             finally { worker.Join(); completed.TrySetResult(); }
         }
     }

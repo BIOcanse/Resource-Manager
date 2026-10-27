@@ -65,7 +65,7 @@ internal sealed class VidMmBusinessBlockTestHarness : IAsyncDisposable
         DxgkrnlVidMmEtwTelemetryZone? zone = null;
         EtwTestRunRecorder? recorder = null;
         var registration = new BusinessBlockRegistration(
-            nameof(DxgkrnlVidMmEtwTelemetryZone),
+            BackendUids.DxgkrnlVidMmEtwTelemetryZone,
             [],
             _ => recorder!);
         var diagnostics = new BusinessBlockDiagnosticsRegistry([registration], controllerLogger);
@@ -74,11 +74,11 @@ internal sealed class VidMmBusinessBlockTestHarness : IAsyncDisposable
             [registration],
             Options.Create(blockOptions ?? new BusinessBlockOptions()),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BusinessBlockScheduler>.Instance,
-            decisions: [EtwTestRunRecorder.AvailabilityRule(DxgkrnlVidMmEtwTelemetryZone.BusinessBlockId, DxgkrnlVidMmEtwTelemetryZone.AvailabilityFact)]);
+            decisions: [EtwTestRunRecorder.AvailabilityRule(BackendUids.DxgkrnlVidMmEtwTelemetryZone, DxgkrnlVidMmEtwTelemetryZone.AvailabilityFact)]);
         var observer = new RecordingEtwConsumerThreadObserver(new BusinessBlockEtwThreadObserver(diagnostics));
         zone = new DxgkrnlVidMmEtwTelemetryZone(NullLogger<DxgkrnlVidMmEtwTelemetryZone>.Instance,
             controller, diagnostics, processMetadata.Open, sessions.Create, observer);
-        recorder = new(zone, diagnostics, nameof(DxgkrnlVidMmEtwTelemetryZone));
+        recorder = new(zone, diagnostics, BackendUids.DxgkrnlVidMmEtwTelemetryZone);
         zone.PublishAvailabilityAsync().GetAwaiter().GetResult();
         var harness = new VidMmBusinessBlockTestHarness(services, controller,
             zone,
@@ -224,12 +224,12 @@ internal sealed class VidMmEtwTestSession(string sessionName) : IVidMmEtwSession
 internal sealed class RecordingEtwConsumerThreadObserver(IEtwConsumerThreadObserver? inner = null) : IEtwConsumerThreadObserver
 {
     private readonly ConcurrentQueue<ThreadRegistration> registrations = new();
-    private readonly ConcurrentQueue<(string BlockId, Exception Error)> failures = new();
+    private readonly ConcurrentQueue<(int BlockId, Exception Error)> failures = new();
 
     internal ThreadRegistration[] Registrations => registrations.ToArray();
-    internal (string BlockId, Exception Error)[] Failures => failures.ToArray();
+    internal (int BlockId, Exception Error)[] Failures => failures.ToArray();
 
-    public IDisposable RegisterCurrentThread(string blockId, string sessionName)
+    public IDisposable RegisterCurrentThread(int blockId, string sessionName)
     {
         var registration = new ThreadRegistration(blockId, sessionName, Thread.CurrentThread,
             inner?.RegisterCurrentThread(blockId, sessionName));
@@ -237,18 +237,18 @@ internal sealed class RecordingEtwConsumerThreadObserver(IEtwConsumerThreadObser
         return registration;
     }
 
-    public void ReportFailure(string blockId, Exception error)
+    public void ReportFailure(int blockId, Exception error)
     {
         failures.Enqueue((blockId, error));
         inner?.ReportFailure(blockId, error);
     }
 
-    internal sealed class ThreadRegistration(string blockId, string sessionName, Thread thread,
+    internal sealed class ThreadRegistration(int blockId, string sessionName, Thread thread,
         IDisposable? innerRegistration = null) : IDisposable
     {
         private int disposed;
 
-        internal string BlockId { get; } = blockId;
+        internal int BlockId { get; } = blockId;
         internal string SessionName { get; } = sessionName;
         internal Thread Thread { get; } = thread;
         internal bool IsDisposed => Volatile.Read(ref disposed) != 0;

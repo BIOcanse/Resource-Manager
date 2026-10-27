@@ -1,8 +1,10 @@
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.ReadWrite.Windows.Processes.Etw;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
+using ResourceManager.App.StateItems;
 
 namespace ResourceManager.App.Hosting;
 
@@ -14,7 +16,12 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddOptions<BusinessBlockOptions>().BindConfiguration(BusinessBlockOptions.SectionName);
         services.TryAddSingleton<BusinessBlockController>(provider => new(
             provider.GetRequiredService<ILogger<BusinessBlockController>>(),
-            provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<BusinessBlockOptions>>().Value.HistoryLimit));
+            provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<BusinessBlockOptions>>().Value.HistoryLimit,
+#if RM_STATE_NAMES
+            StateNames.Name));
+#else
+            static _ => null));
+#endif
         services.TryAddSingleton<BusinessBlockDiagnosticsRegistry>();
         services.TryAddSingleton<HostedBusinessBlockRegistry>();
         services.TryAddSingleton<BusinessBlockScheduler>();
@@ -23,60 +30,60 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.TryAddSingleton<IEtwConsumerThreadObserver, BusinessBlockEtwThreadObserver>();
         services.AddSingleton<IHostedService, BusinessBlockDependencyLifetime>();
         services.TryAddSingleton<NativeEtwLifetimeService>();
-        AddHostedBlockDeclaration<NativeEtwLifetimeService>(services, BackendBlockIds.NativeEtwLifetimeService, [], []);
+        AddHostedBlockDeclaration<NativeEtwLifetimeService>(services, BlockUids.NativeEtwLifetimeService, []);
         services.AddSingleton<IHostedService>(provider => new NonOwningHostedService<NativeEtwLifetimeService>(
-            provider, BackendBlockIds.NativeEtwLifetimeService, constructService: true));
+            provider, BlockUids.NativeEtwLifetimeService, constructService: true));
         return services;
     }
 
     internal static IServiceCollection AddBusinessBlockHostedService<TService>(this IServiceCollection services,
-        string id, string[] inputs, string[] outputs, string parentId = BackendBlockGraph.Program) where TService : class, IHostedService
+        int id, int[] inputs, int parentId = BlockUids.Program) where TService : class, IHostedService
     {
         services.TryAddSingleton<TService>();
-        return services.AddHostedServiceAlias<TService>(id, inputs, outputs, constructService: true, parentId: parentId);
+        return services.AddHostedServiceAlias<TService>(id, inputs, constructService: true, parentId: parentId);
     }
 
     internal static IServiceCollection AddBusinessBlockHostedService<TService>(this IServiceCollection services,
-        string id, string[] inputs, string[] outputs, Func<IServiceProvider, TService> factory,
-        string parentId = BackendBlockGraph.Program) where TService : class, IHostedService
+        int id, int[] inputs, Func<IServiceProvider, TService> factory,
+        int parentId = BlockUids.Program) where TService : class, IHostedService
     {
         services.TryAddSingleton(factory);
-        return services.AddHostedServiceAlias<TService>(id, inputs, outputs, constructService: true, parentId: parentId);
+        return services.AddHostedServiceAlias<TService>(id, inputs, constructService: true, parentId: parentId);
     }
 
     internal static void RegisterHostedBusinessBlock<TService>(IServiceCollection services,
-        string id, string[] inputs, string[] outputs, string parentId = BackendBlockGraph.Program) where TService : class, IHostedService
+        int id, int[] inputs, int parentId = BlockUids.Program) where TService : class, IHostedService
     {
         services.AddBusinessBlockController();
-        AddHostedBlockDeclaration<TService>(services, id, inputs, outputs, parentId);
+        AddHostedBlockDeclaration<TService>(services, id, inputs, parentId);
     }
 
     private static void AddHostedBlockDeclaration<TService>(IServiceCollection services,
-        string id, string[] inputs, string[] outputs, string parentId = BackendBlockGraph.Program) where TService : class, IHostedService
+        int id, int[] inputs, int parentId = BlockUids.Program) where TService : class, IHostedService
     {
         services.AddSingleton(new BusinessBlockRegistration(id, inputs,
             provider => provider.GetRequiredService<HostedBusinessBlockRegistry>().GetOrAdd(id, () => provider.GetRequiredService<TService>()))
-            { Outputs = outputs, HostedServiceType = typeof(TService), ParentId = parentId });
+            { HostedServiceType = typeof(TService), ParentId = parentId });
     }
 
     private static IServiceCollection AddEtwBusinessBlocks(this IServiceCollection services)
     {
-        services.AddSingleton(new BusinessBlockRegistration(PresentFrameEtwSource.BusinessBlockId, [],
+        services.AddSingleton(new BusinessBlockRegistration(BlockUids.PresentFrameEtwSource, [],
             provider => provider.GetRequiredService<PresentFrameEtwSource>())
-            { ParentId = BackendBlockIds.NativeEtwLifetimeService, Outputs = ["frame-timing", "graphics-api"] });
-        services.AddSingleton(new BusinessBlockRegistration(GpuAllocationCollector.BusinessBlockId, [],
+            { ParentId = BlockUids.NativeEtwLifetimeService });
+        services.AddSingleton(new BusinessBlockRegistration(BlockUids.GpuAllocationCollector, [],
             provider => provider.GetRequiredService<GpuAllocationCollector>())
-            { ParentId = BackendBlockIds.NativeEtwLifetimeService, Outputs = ["gpu-allocation"] });
-        services.AddSingleton(new BusinessBlockRegistration(DxgkrnlVidMmEtwTelemetryZone.BusinessBlockId, [],
+            { ParentId = BlockUids.NativeEtwLifetimeService });
+        services.AddSingleton(new BusinessBlockRegistration(BlockUids.DxgkrnlVidMmEtwTelemetryZone, [],
             provider => provider.GetRequiredService<DxgkrnlVidMmEtwTelemetryZone>())
-            { ParentId = BackendBlockIds.NativeEtwLifetimeService, Outputs = ["gpu-vram-residual"] });
+            { ParentId = BlockUids.NativeEtwLifetimeService });
         var native = new[]
         {
-            (Id: PresentFrameEtwSource.BusinessBlockId, Fact: PresentFrameEtwSource.AvailabilityFact),
-            (Id: GpuAllocationCollector.BusinessBlockId, Fact: GpuAllocationCollector.AvailabilityFact),
-            (Id: DxgkrnlVidMmEtwTelemetryZone.BusinessBlockId, Fact: DxgkrnlVidMmEtwTelemetryZone.AvailabilityFact)
+            (Id: BlockUids.PresentFrameEtwSource, Fact: PresentFrameEtwSource.AvailabilityFact),
+            (Id: BlockUids.GpuAllocationCollector, Fact: GpuAllocationCollector.AvailabilityFact),
+            (Id: BlockUids.DxgkrnlVidMmEtwTelemetryZone, Fact: DxgkrnlVidMmEtwTelemetryZone.AvailabilityFact)
         };
-        services.AddSingleton(new BusinessBlockDecisionRegistration(BackendBlockIds.NativeEtwLifetimeService,
+        services.AddSingleton(new BusinessBlockDecisionRegistration(BlockUids.NativeEtwLifetimeService,
             native.SelectMany(value => new[] { BusinessBlockScheduler.DemandFact(value.Id), value.Fact }).ToArray(),
             input => native.Where(value => input.Facts[BusinessBlockScheduler.DemandFact(value.Id)].Value
                 && input.Facts[value.Fact].Value).Select(value => value.Id).ToArray()));
@@ -86,16 +93,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
 
 internal sealed class BusinessBlockEtwThreadObserver(BusinessBlockDiagnosticsRegistry diagnostics) : IEtwConsumerThreadObserver
 {
-    public IDisposable RegisterCurrentThread(string blockId, string sessionName)
-        => diagnostics.RegisterConsumerThread(Map(blockId), sessionName);
-    public void ReportFailure(string blockId, Exception error)
-        => diagnostics.ReportFailure(Map(blockId), error, "etw-consumer");
-    private static string Map(string blockId) => blockId switch
-    {
-        "kernel-etw" => BackendBlockIds.KernelEtwSessionBroker,
-        "vidmm-etw" => DxgkrnlVidMmEtwTelemetryZone.BusinessBlockId,
-        "present-etw" => PresentFrameEtwSource.BusinessBlockId,
-        "gpu-allocation-etw" => GpuAllocationCollector.BusinessBlockId,
-        _ => throw new ArgumentOutOfRangeException(nameof(blockId), blockId, "Undeclared ETW business block.")
-    };
+    public IDisposable RegisterCurrentThread(int blockId, string sessionName)
+        => diagnostics.RegisterConsumerThread(blockId, sessionName);
+    public void ReportFailure(int blockId, Exception error)
+        => diagnostics.ReportFailure(blockId, error, "etw-consumer");
 }

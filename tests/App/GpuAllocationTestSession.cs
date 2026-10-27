@@ -48,16 +48,16 @@ internal sealed class GpuAllocationTestHarness : IAsyncDisposable
         services = new ServiceCollection().BuildServiceProvider();
         GpuAllocationCollector? collector = null;
         EtwTestRunRecorder? recorder = null;
-        var registration = new BusinessBlockRegistration("gpu-allocation-etw", [], _ => recorder!);
+        var registration = new BusinessBlockRegistration(BackendUids.GpuAllocationCollector, [], _ => recorder!);
         Diagnostics = new BusinessBlockDiagnosticsRegistry([registration], NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
         Controller = new BusinessBlockScheduler(services, [registration],
             Options.Create(blockOptions ?? new BusinessBlockOptions()), NullLogger<BusinessBlockScheduler>.Instance,
-            decisions: [EtwTestRunRecorder.AvailabilityRule(GpuAllocationCollector.BusinessBlockId, GpuAllocationCollector.AvailabilityFact)]);
+            decisions: [EtwTestRunRecorder.AvailabilityRule(BackendUids.GpuAllocationCollector, GpuAllocationCollector.AvailabilityFact)]);
         Collector = new GpuAllocationCollector(logger ?? NullLogger<GpuAllocationCollector>.Instance,
             configuration ?? new ConfigurationBuilder().Build(), Controller, Diagnostics, factory,
             timeProvider ?? TimeProvider.System, budget, observer);
         collector = Collector;
-        Recorder = recorder = new(collector, Diagnostics, "gpu-allocation-etw");
+        Recorder = recorder = new(collector, Diagnostics, BackendUids.GpuAllocationCollector);
         Collector.PublishAvailabilityAsync().GetAwaiter().GetResult();
     }
 

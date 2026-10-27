@@ -1,22 +1,10 @@
+using BlockUids = ResourceManager.NativeUi.StateItems.BlockUids;
 using Microsoft.Extensions.Logging;
 using ResourceManager.Shared.BusinessBlocks;
 using SharedScheduler = ResourceManager.Shared.BusinessBlocks.BusinessBlockScheduler;
+using ResourceManager.NativeUi.StateItems;
 
 namespace ResourceManager.NativeUi.Blocks;
-
-internal static class NativeUiBlockIds
-{
-    public const string MainRoot = "native-ui:main";
-    public const string TrayRoot = "native-ui:tray";
-    public const string SingleInstance = "native-ui:single-instance";
-    public const string BackendConnection = "native-ui:backend-connection";
-    public const string MainWindow = "native-ui:main-window";
-    public const string DesktopObservation = "native-ui:desktop-observation";
-    public const string Overlay = "native-ui:overlay";
-    public const string LoopbackProxy = "native-ui:loopback-proxy";
-    public const string WebViewHost = "native-ui:webview-host";
-    public const string TrayNotifications = "native-ui:tray-notifications";
-}
 
 /// <summary>The native process's main and tray trees share facts, never control each other.</summary>
 internal sealed class NativeUiBlockTrees : IAsyncDisposable
@@ -30,38 +18,43 @@ internal sealed class NativeUiBlockTrees : IAsyncDisposable
     private int started;
     private int disposed;
 
-    internal NativeUiBlockTrees(Func<string, IBusinessBlock> create, ILogger logger,
+    internal NativeUiBlockTrees(Func<int, IBusinessBlock> create, ILogger logger,
         ILogger<BusinessBlockController> controllerLogger, int historyLimit = 128)
     {
-        control = new(controllerLogger, historyLimit);
-        var graph = new BusinessBlockGraph([
-            Node(NativeUiBlockIds.MainRoot, BusinessBlockGraph.Program),
-            Node(NativeUiBlockIds.TrayRoot, BusinessBlockGraph.Program),
-            Node(NativeUiBlockIds.SingleInstance, NativeUiBlockIds.MainRoot),
-            Node(NativeUiBlockIds.BackendConnection, NativeUiBlockIds.MainRoot),
-            Node(NativeUiBlockIds.MainWindow, NativeUiBlockIds.MainRoot),
-            Node(NativeUiBlockIds.DesktopObservation, NativeUiBlockIds.BackendConnection, NativeUiBlockIds.BackendConnection),
-            Node(NativeUiBlockIds.Overlay, NativeUiBlockIds.BackendConnection, NativeUiBlockIds.BackendConnection),
-            Node(NativeUiBlockIds.LoopbackProxy, NativeUiBlockIds.MainWindow, NativeUiBlockIds.BackendConnection),
-            Node(NativeUiBlockIds.WebViewHost, NativeUiBlockIds.LoopbackProxy, NativeUiBlockIds.LoopbackProxy),
-            Node(NativeUiBlockIds.TrayNotifications, NativeUiBlockIds.TrayRoot, NativeUiBlockIds.BackendConnection)
+#if RM_STATE_NAMES
+        Func<int, string?> nameLookup = StateNames.Name;
+#else
+        Func<int, string?> nameLookup = static _ => null;
+#endif
+        control = new(controllerLogger, historyLimit, nameLookup);
+        var graph = new BusinessBlockGraph(BlockUids.Program, [
+            Node(BlockUids.MainRoot, BlockUids.Program),
+            Node(BlockUids.TrayRoot, BlockUids.Program),
+            Node(BlockUids.SingleInstance, BlockUids.MainRoot),
+            Node(BlockUids.BackendConnection, BlockUids.MainRoot),
+            Node(BlockUids.MainWindow, BlockUids.MainRoot),
+            Node(BlockUids.DesktopObservation, BlockUids.BackendConnection, BlockUids.BackendConnection),
+            Node(BlockUids.Overlay, BlockUids.BackendConnection, BlockUids.BackendConnection),
+            Node(BlockUids.LoopbackProxy, BlockUids.MainWindow, BlockUids.BackendConnection),
+            Node(BlockUids.WebViewHost, BlockUids.LoopbackProxy, BlockUids.LoopbackProxy),
+            Node(BlockUids.TrayNotifications, BlockUids.TrayRoot, BlockUids.BackendConnection)
         ]);
-        scheduler = new(graph, create, historyLimit, logger, control, [
+        scheduler = new(graph, create, historyLimit, logger, StateRegistry.Version, nameLookup, control, [
             // Whether a whole tree runs is decided here, never by the tree itself; program exit is the scheduler's shutdown fact.
-            new(BusinessBlockGraph.Program, [ProgramStartedFact], input => input.Facts[ProgramStartedFact].Value
-                ? [NativeUiBlockIds.MainRoot, NativeUiBlockIds.TrayRoot] : []),
-            new(NativeUiBlockIds.MainRoot, [WindowWantedFact], input => input.Facts[WindowWantedFact].Value
-                ? [NativeUiBlockIds.SingleInstance, NativeUiBlockIds.BackendConnection, NativeUiBlockIds.MainWindow]
-                : [NativeUiBlockIds.SingleInstance, NativeUiBlockIds.BackendConnection]),
-            new(NativeUiBlockIds.BackendConnection, [BackendSessionReadyFact], input => input.Facts[BackendSessionReadyFact].Value
-                ? [NativeUiBlockIds.DesktopObservation, NativeUiBlockIds.Overlay] : []),
-            new(NativeUiBlockIds.MainWindow, [BackendSessionReadyFact], input =>
+            new(BlockUids.Program, [ProgramStartedFact], input => input.Facts[ProgramStartedFact].Value
+                ? [BlockUids.MainRoot, BlockUids.TrayRoot] : []),
+            new(BlockUids.MainRoot, [WindowWantedFact], input => input.Facts[WindowWantedFact].Value
+                ? [BlockUids.SingleInstance, BlockUids.BackendConnection, BlockUids.MainWindow]
+                : [BlockUids.SingleInstance, BlockUids.BackendConnection]),
+            new(BlockUids.BackendConnection, [BackendSessionReadyFact], input => input.Facts[BackendSessionReadyFact].Value
+                ? [BlockUids.DesktopObservation, BlockUids.Overlay] : []),
+            new(BlockUids.MainWindow, [BackendSessionReadyFact], input =>
                 input.Facts[BackendSessionReadyFact].Value
-                    || input.Children[NativeUiBlockIds.LoopbackProxy] != BusinessBlockState.Stopped
-                        ? [NativeUiBlockIds.LoopbackProxy] : []),
-            new(NativeUiBlockIds.LoopbackProxy, [], _ => [NativeUiBlockIds.WebViewHost]),
-            new(NativeUiBlockIds.TrayRoot, [BackendSessionReadyFact], input => input.Facts[BackendSessionReadyFact].Value
-                ? [NativeUiBlockIds.TrayNotifications] : [])
+                    || input.Children[BlockUids.LoopbackProxy] != BusinessBlockState.Stopped
+                        ? [BlockUids.LoopbackProxy] : []),
+            new(BlockUids.LoopbackProxy, [], _ => [BlockUids.WebViewHost]),
+            new(BlockUids.TrayRoot, [BackendSessionReadyFact], input => input.Facts[BackendSessionReadyFact].Value
+                ? [BlockUids.TrayNotifications] : [])
         ], () => Volatile.Read(ref sessionGeneration));
     }
 
@@ -79,7 +72,7 @@ internal sealed class NativeUiBlockTrees : IAsyncDisposable
     {
         Interlocked.Exchange(ref sessionGeneration, generation);
         return scheduler.SetFactAsync(BackendSessionReadyFact, ready,
-            new(BusinessBlockRequestKind.Dependency, NativeUiBlockIds.BackendConnection,
+            new(BusinessBlockRequestKind.Dependency, BlockUids.BackendConnection.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 ready ? "session-ready" : "session-lost", generation));
     }
 
@@ -87,20 +80,20 @@ internal sealed class NativeUiBlockTrees : IAsyncDisposable
     {
         await scheduler.ShutdownAsync(reason).ConfigureAwait(false);
         await Task.WhenAll(
-            WaitForStateAsync(NativeUiBlockIds.MainRoot, BusinessBlockState.Stopped),
-            WaitForStateAsync(NativeUiBlockIds.TrayRoot, BusinessBlockState.Stopped)).ConfigureAwait(false);
+            WaitForStateAsync(BlockUids.MainRoot, BusinessBlockState.Stopped),
+            WaitForStateAsync(BlockUids.TrayRoot, BusinessBlockState.Stopped)).ConfigureAwait(false);
         if (scheduler.Read().Blocks.Any(block => block.State != BusinessBlockState.Stopped))
             throw new InvalidOperationException("Native UI lifetime roots returned before their branches stopped.");
     }
 
     internal BusinessBlocksSnapshot Read() => scheduler.Read();
-    internal BusinessBlockState ReadState(string id) => scheduler.ReadState(id);
+    internal BusinessBlockState ReadState(int id) => scheduler.ReadState(id);
 
     /// <summary>Waits for authoritative controller state; notifications carry no cached state.</summary>
-    internal async Task WaitForStateAsync(string id, BusinessBlockState state, CancellationToken cancellation = default)
+    internal async Task WaitForStateAsync(int id, BusinessBlockState state, CancellationToken cancellation = default)
     {
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        void Changed(string changedId, BusinessBlockState _)
+        void Changed(int changedId, BusinessBlockState _)
         {
             if (changedId == id && control.ReadState(id) == state) completion.TrySetResult();
         }
@@ -122,6 +115,6 @@ internal sealed class NativeUiBlockTrees : IAsyncDisposable
 
     private BusinessBlockReason Reason(string owner, string cause)
         => new(BusinessBlockRequestKind.User, owner, cause, Volatile.Read(ref sessionGeneration));
-    private static BusinessBlockNode Node(string id, string parent, params string[] inputs)
-        => new(id, parent, inputs, [id + ":output"]);
+    private static BusinessBlockNode Node(int id, int parent, params int[] inputs)
+        => new(id, parent, inputs);
 }

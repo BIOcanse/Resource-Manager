@@ -88,7 +88,7 @@ public sealed class GpuPresentGraphicsApiTests
         var dependency = Assert.Single(harness.Controller.Read().Demands);
         Assert.Equal("graphics-api-history", dependency.Reason.Owner);
         Assert.Equal("present-graphics-api-subscription", dependency.Reason.ConfigurationOrDependency);
-        Assert.Equal("present-etw", dependency.BlockId);
+        Assert.Equal(BackendUids.PresentFrameEtwSource, dependency.BlockId);
         await PresentFrameEtwTestHarness.ReleaseAsync(lease);
     }
 

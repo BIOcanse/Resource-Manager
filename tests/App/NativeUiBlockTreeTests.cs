@@ -14,23 +14,23 @@ public sealed class NativeUiBlockTreeTests
     {
         var probes = new Probes();
         await using var trees = Create(probes);
-        StateRegistryTests.AssertBlocks("ui", StateRegistryTests.UiBlocks,
-            trees.Read().Blocks.Select(block => block.Id).Prepend(BusinessBlockGraph.Program));
+        StateRegistryTests.AssertBlocks("ui",
+            trees.Read().Blocks.Select(block => block.Id).Prepend(UiUids.Program));
         await trees.StartAsync(false);
-        await probes.Next(NativeUiBlockIds.SingleInstance);
-        await probes.Next(NativeUiBlockIds.BackendConnection);
-        await probes.Next(NativeUiBlockIds.TrayRoot);
-        Assert.Equal(BusinessBlockState.Stopped, trees.ReadState(NativeUiBlockIds.MainWindow));
-        Assert.Equal(BusinessBlockState.Stopped, trees.ReadState(NativeUiBlockIds.WebViewHost));
-        Assert.Equal(BusinessBlockState.Running, trees.ReadState(NativeUiBlockIds.MainRoot));
-        Assert.Equal(BusinessBlockState.Running, trees.ReadState(NativeUiBlockIds.TrayRoot));
+        await probes.Next(UiUids.SingleInstance);
+        await probes.Next(UiUids.BackendConnection);
+        await probes.Next(UiUids.TrayRoot);
+        Assert.Equal(BusinessBlockState.Stopped, trees.ReadState(UiUids.MainWindow));
+        Assert.Equal(BusinessBlockState.Stopped, trees.ReadState(UiUids.WebViewHost));
+        Assert.Equal(BusinessBlockState.Running, trees.ReadState(UiUids.MainRoot));
+        Assert.Equal(BusinessBlockState.Running, trees.ReadState(UiUids.TrayRoot));
 
         await trees.SetBackendSessionReadyAsync(true, 1);
         await trees.SetWindowWantedAsync(true, "tray-click");
-        await probes.Next(NativeUiBlockIds.WebViewHost);
-        Assert.Equal(1, probes.Runs(NativeUiBlockIds.TrayRoot));
-        Assert.Equal(1, probes.Runs(NativeUiBlockIds.BackendConnection));
-        Assert.Equal(1, probes.Runs(NativeUiBlockIds.SingleInstance));
+        await probes.Next(UiUids.WebViewHost);
+        Assert.Equal(1, probes.Runs(UiUids.TrayRoot));
+        Assert.Equal(1, probes.Runs(UiUids.BackendConnection));
+        Assert.Equal(1, probes.Runs(UiUids.SingleInstance));
     }
 
     [Fact]
@@ -40,9 +40,9 @@ public sealed class NativeUiBlockTreeTests
         await using var trees = Create(probes);
         Assert.All(trees.Read().Blocks, block => Assert.Equal(BusinessBlockState.Stopped, block.State));
         await trees.StartAsync(false);
-        await probes.Next(NativeUiBlockIds.TrayRoot);
-        var root = Assert.Single(trees.Read().CurrentDecisions, decision => decision.ParentId == BusinessBlockGraph.Program);
-        Assert.Equal(new[] { NativeUiBlockIds.MainRoot, NativeUiBlockIds.TrayRoot }, root.ShouldRun);
+        await probes.Next(UiUids.TrayRoot);
+        var root = Assert.Single(trees.Read().CurrentDecisions, decision => decision.ParentId == UiUids.Program);
+        Assert.Equal(new[] { UiUids.MainRoot, UiUids.TrayRoot }, root.ShouldRun);
         Assert.Empty(trees.Read().Demands);
     }
 
@@ -51,42 +51,42 @@ public sealed class NativeUiBlockTreeTests
     {
         var cleanup = Signal();
         var probes = new Probes();
-        probes.Cleanup(NativeUiBlockIds.WebViewHost, cleanup.Task);
+        probes.Cleanup(UiUids.WebViewHost, cleanup.Task);
         await using var trees = Create(probes);
         try
         {
             await trees.StartAsync(true);
             await trees.SetBackendSessionReadyAsync(true, 1);
-            var window = await probes.Next(NativeUiBlockIds.MainWindow);
-            var browser = await probes.Next(NativeUiBlockIds.WebViewHost);
-            var proxy = await probes.Next(NativeUiBlockIds.LoopbackProxy);
-            await probes.Next(NativeUiBlockIds.TrayRoot);
-            await probes.Next(NativeUiBlockIds.SingleInstance);
-            await probes.Next(NativeUiBlockIds.BackendConnection);
+            var window = await probes.Next(UiUids.MainWindow);
+            var browser = await probes.Next(UiUids.WebViewHost);
+            var proxy = await probes.Next(UiUids.LoopbackProxy);
+            await probes.Next(UiUids.TrayRoot);
+            await probes.Next(UiUids.SingleInstance);
+            await probes.Next(UiUids.BackendConnection);
 
             await trees.SetWindowWantedAsync(false, "window-close");
             await browser.StopObserved.Task.WaitAsync(Timeout);
             Assert.False(proxy.StopObserved.Task.IsCompleted);
-            Assert.Equal(BusinessBlockState.Running, trees.ReadState(NativeUiBlockIds.LoopbackProxy));
+            Assert.Equal(BusinessBlockState.Running, trees.ReadState(UiUids.LoopbackProxy));
             Assert.False(window.StopObserved.Task.IsCompleted);
-            Assert.Equal(BusinessBlockState.Running, trees.ReadState(NativeUiBlockIds.MainWindow));
-            Assert.Equal(BusinessBlockState.Stopping, trees.ReadState(NativeUiBlockIds.WebViewHost));
-            Assert.Equal(BusinessBlockState.Running, trees.ReadState(NativeUiBlockIds.TrayRoot));
-            Assert.Equal(BusinessBlockState.Running, trees.ReadState(NativeUiBlockIds.BackendConnection));
+            Assert.Equal(BusinessBlockState.Running, trees.ReadState(UiUids.MainWindow));
+            Assert.Equal(BusinessBlockState.Stopping, trees.ReadState(UiUids.WebViewHost));
+            Assert.Equal(BusinessBlockState.Running, trees.ReadState(UiUids.TrayRoot));
+            Assert.Equal(BusinessBlockState.Running, trees.ReadState(UiUids.BackendConnection));
 
             cleanup.TrySetResult();
-            await trees.WaitForStateAsync(NativeUiBlockIds.MainWindow, BusinessBlockState.Stopped).WaitAsync(Timeout);
-            Assert.Equal(BusinessBlockState.Stopped, trees.ReadState(NativeUiBlockIds.LoopbackProxy));
-            Assert.Equal(BusinessBlockState.Stopped, trees.ReadState(NativeUiBlockIds.WebViewHost));
+            await trees.WaitForStateAsync(UiUids.MainWindow, BusinessBlockState.Stopped).WaitAsync(Timeout);
+            Assert.Equal(BusinessBlockState.Stopped, trees.ReadState(UiUids.LoopbackProxy));
+            Assert.Equal(BusinessBlockState.Stopped, trees.ReadState(UiUids.WebViewHost));
 
             await trees.SetWindowWantedAsync(true, "second-instance-show");
-            var reopened = await probes.Next(NativeUiBlockIds.MainWindow);
-            await probes.Next(NativeUiBlockIds.WebViewHost);
-            await probes.Next(NativeUiBlockIds.LoopbackProxy);
+            var reopened = await probes.Next(UiUids.MainWindow);
+            await probes.Next(UiUids.WebViewHost);
+            await probes.Next(UiUids.LoopbackProxy);
             Assert.NotSame(window, reopened);
-            Assert.Equal(2, probes.Runs(NativeUiBlockIds.MainWindow));
-            Assert.Equal(1, probes.Runs(NativeUiBlockIds.TrayRoot));
-            Assert.Equal(1, probes.Runs(NativeUiBlockIds.SingleInstance));
+            Assert.Equal(2, probes.Runs(UiUids.MainWindow));
+            Assert.Equal(1, probes.Runs(UiUids.TrayRoot));
+            Assert.Equal(1, probes.Runs(UiUids.SingleInstance));
         }
         finally { cleanup.TrySetResult(); }
     }
@@ -96,26 +96,26 @@ public sealed class NativeUiBlockTreeTests
     {
         var cleanup = Signal();
         var probes = new Probes();
-        probes.Cleanup(NativeUiBlockIds.WebViewHost, cleanup.Task);
+        probes.Cleanup(UiUids.WebViewHost, cleanup.Task);
         await using var trees = Create(probes);
         try
         {
             await trees.StartAsync(true);
             await trees.SetBackendSessionReadyAsync(true, 1);
-            var window = await probes.Next(NativeUiBlockIds.MainWindow);
-            var browser = await probes.Next(NativeUiBlockIds.WebViewHost);
-            await probes.Next(NativeUiBlockIds.LoopbackProxy);
+            var window = await probes.Next(UiUids.MainWindow);
+            var browser = await probes.Next(UiUids.WebViewHost);
+            await probes.Next(UiUids.LoopbackProxy);
             window.Finish.TrySetResult();
-            await trees.WaitForStateAsync(NativeUiBlockIds.MainWindow, BusinessBlockState.Stopped).WaitAsync(Timeout);
+            await trees.WaitForStateAsync(UiUids.MainWindow, BusinessBlockState.Stopped).WaitAsync(Timeout);
             await browser.StopObserved.Task.WaitAsync(Timeout);
             await trees.SetWindowWantedAsync(false, "window-close");
             await trees.SetWindowWantedAsync(true, "tray-click");
-            Assert.Equal(1, probes.Runs(NativeUiBlockIds.MainWindow));
-            Assert.Equal(BusinessBlockState.Stopping, trees.ReadState(NativeUiBlockIds.WebViewHost));
+            Assert.Equal(1, probes.Runs(UiUids.MainWindow));
+            Assert.Equal(BusinessBlockState.Stopping, trees.ReadState(UiUids.WebViewHost));
 
             cleanup.TrySetResult();
-            var replacement = await probes.Next(NativeUiBlockIds.MainWindow);
-            await probes.Next(NativeUiBlockIds.WebViewHost);
+            var replacement = await probes.Next(UiUids.MainWindow);
+            await probes.Next(UiUids.WebViewHost);
             Assert.NotSame(window, replacement);
             Assert.True(browser.Returned.Task.IsCompleted);
         }
@@ -128,32 +128,32 @@ public sealed class NativeUiBlockTreeTests
         var probes = new Probes();
         await using var trees = Create(probes);
         await trees.StartAsync(true);
-        var window = await probes.Next(NativeUiBlockIds.MainWindow);
+        var window = await probes.Next(UiUids.MainWindow);
         await trees.SetBackendSessionReadyAsync(true, 11);
-        var browser = await probes.Next(NativeUiBlockIds.WebViewHost);
-        var desktop = await probes.Next(NativeUiBlockIds.DesktopObservation);
-        var overlay = await probes.Next(NativeUiBlockIds.Overlay);
-        var notifications = await probes.Next(NativeUiBlockIds.TrayNotifications);
+        var browser = await probes.Next(UiUids.WebViewHost);
+        var desktop = await probes.Next(UiUids.DesktopObservation);
+        var overlay = await probes.Next(UiUids.Overlay);
+        var notifications = await probes.Next(UiUids.TrayNotifications);
 
         await trees.SetBackendSessionReadyAsync(false, 11);
         await Task.WhenAll(desktop.Returned.Task, overlay.Returned.Task, notifications.Returned.Task).WaitAsync(Timeout);
         await Task.WhenAll(
-            trees.WaitForStateAsync(NativeUiBlockIds.DesktopObservation, BusinessBlockState.Stopped),
-            trees.WaitForStateAsync(NativeUiBlockIds.Overlay, BusinessBlockState.Stopped),
-            trees.WaitForStateAsync(NativeUiBlockIds.TrayNotifications, BusinessBlockState.Stopped)).WaitAsync(Timeout);
-        Assert.Equal(BusinessBlockState.Running, trees.ReadState(NativeUiBlockIds.MainWindow));
-        Assert.Equal(BusinessBlockState.Running, trees.ReadState(NativeUiBlockIds.WebViewHost));
+            trees.WaitForStateAsync(UiUids.DesktopObservation, BusinessBlockState.Stopped),
+            trees.WaitForStateAsync(UiUids.Overlay, BusinessBlockState.Stopped),
+            trees.WaitForStateAsync(UiUids.TrayNotifications, BusinessBlockState.Stopped)).WaitAsync(Timeout);
+        Assert.Equal(BusinessBlockState.Running, trees.ReadState(UiUids.MainWindow));
+        Assert.Equal(BusinessBlockState.Running, trees.ReadState(UiUids.WebViewHost));
         Assert.False(window.StopObserved.Task.IsCompleted);
         Assert.False(browser.StopObserved.Task.IsCompleted);
 
         await trees.SetBackendSessionReadyAsync(true, 12);
-        Assert.NotSame(desktop, await probes.Next(NativeUiBlockIds.DesktopObservation));
-        Assert.NotSame(overlay, await probes.Next(NativeUiBlockIds.Overlay));
-        Assert.NotSame(notifications, await probes.Next(NativeUiBlockIds.TrayNotifications));
+        Assert.NotSame(desktop, await probes.Next(UiUids.DesktopObservation));
+        Assert.NotSame(overlay, await probes.Next(UiUids.Overlay));
+        Assert.NotSame(notifications, await probes.Next(UiUids.TrayNotifications));
         var session = trees.Read().Facts.Single(fact => fact.Key == NativeUiBlockTrees.BackendSessionReadyFact);
         Assert.True(session.Value);
         Assert.Equal(12, Assert.Single(session.Reasons).PlanVersion);
-        Assert.Equal(1, probes.Runs(NativeUiBlockIds.MainWindow));
+        Assert.Equal(1, probes.Runs(UiUids.MainWindow));
     }
 
     [Fact]
@@ -163,7 +163,7 @@ public sealed class NativeUiBlockTreeTests
         await using var trees = Create(probes);
         await trees.StartAsync(true);
         await trees.SetBackendSessionReadyAsync(true, 1);
-        await probes.Next(NativeUiBlockIds.WebViewHost);
+        await probes.Next(UiUids.WebViewHost);
         await trees.ShutdownAsync(new(BusinessBlockRequestKind.User, "program", "exit", 1));
         Assert.All(trees.Read().Blocks, block => Assert.Equal(BusinessBlockState.Stopped, block.State));
         var starts = probes.TotalRuns;
@@ -179,11 +179,11 @@ public sealed class NativeUiBlockTreeTests
         var probes = new Probes();
         await using var trees = Create(probes);
         using var cancellation = new CancellationTokenSource();
-        var canceled = trees.WaitForStateAsync(NativeUiBlockIds.MainWindow, BusinessBlockState.Running, cancellation.Token);
+        var canceled = trees.WaitForStateAsync(UiUids.MainWindow, BusinessBlockState.Running, cancellation.Token);
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => canceled);
         await trees.StartAsync(true);
-        await trees.WaitForStateAsync(NativeUiBlockIds.MainWindow, BusinessBlockState.Running).WaitAsync(Timeout);
+        await trees.WaitForStateAsync(UiUids.MainWindow, BusinessBlockState.Running).WaitAsync(Timeout);
     }
 
     private static NativeUiBlockTrees Create(Probes probes)
@@ -192,18 +192,18 @@ public sealed class NativeUiBlockTreeTests
 
     private sealed class Probes
     {
-        private readonly ConcurrentDictionary<string, Channel<Execution>> runs = new();
-        private readonly ConcurrentDictionary<string, int> counts = new();
-        private readonly ConcurrentDictionary<string, Task> cleanup = new();
+        private readonly ConcurrentDictionary<int, Channel<Execution>> runs = new();
+        private readonly ConcurrentDictionary<int, int> counts = new();
+        private readonly ConcurrentDictionary<int, Task> cleanup = new();
         internal int TotalRuns => counts.Values.Sum();
-        internal int Runs(string id) => counts.GetValueOrDefault(id);
-        internal void Cleanup(string id, Task release) => cleanup[id] = release;
-        internal IBusinessBlock Create(string id) => new Block(this, id);
-        internal async Task<Execution> Next(string id)
+        internal int Runs(int id) => counts.GetValueOrDefault(id);
+        internal void Cleanup(int id, Task release) => cleanup[id] = release;
+        internal IBusinessBlock Create(int id) => new Block(this, id);
+        internal async Task<Execution> Next(int id)
             => await GetChannel(id).Reader.ReadAsync().AsTask().WaitAsync(Timeout);
-        private Channel<Execution> GetChannel(string id) => runs.GetOrAdd(id, _ => Channel.CreateUnbounded<Execution>());
+        private Channel<Execution> GetChannel(int id) => runs.GetOrAdd(id, _ => Channel.CreateUnbounded<Execution>());
 
-        private sealed class Block(Probes owner, string id) : IBusinessBlock
+        private sealed class Block(Probes owner, int id) : IBusinessBlock
         {
             public async Task RunAsync(BusinessBlockRunContext context)
             {

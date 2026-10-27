@@ -59,8 +59,10 @@ public sealed record KernelEtwSessionStopResult(
 
 public sealed class TraceEventKernelEtwSessionRuntimeFactory(
     Action<string>? beforeCreate = null,
-    IEtwConsumerThreadObserver? consumerThreadObserver = null) : IKernelEtwSessionRuntimeFactory
+    IEtwConsumerThreadObserver? consumerThreadObserver = null,
+    int? blockId = null) : IKernelEtwSessionRuntimeFactory
 {
+    private readonly int? consumerBlockId = DedicatedEtwConsumerThread.ValidateBlockId(blockId, consumerThreadObserver);
 
     public bool TryGetAvailability(out string state, out string message)
     {
@@ -112,7 +114,7 @@ public sealed class TraceEventKernelEtwSessionRuntimeFactory(
                 keywordControl,
                 dispatcher,
                 consumerThreadObserver,
-                "kernel-etw");
+                consumerBlockId);
         }
         catch (Exception startFailure)
         {
@@ -184,8 +186,9 @@ internal sealed class TraceEventSessionProcessingRuntime(
     KernelEtwSessionKeywordControl? keywordControl = null,
     KernelEtwSubscriptionDispatcher? dispatcher = null,
     IEtwConsumerThreadObserver? consumerThreadObserver = null,
-    string blockId = "etw-consumer") : IKernelEtwSessionRuntime
+    int? blockId = null) : IKernelEtwSessionRuntime
 {
+    private readonly int? consumerBlockId = DedicatedEtwConsumerThread.ValidateBlockId(blockId, consumerThreadObserver);
     private Microsoft.Diagnostics.Tracing.ETWTraceEventSource? source;
     private Task? processingTask;
     private Thread? consumerThread;
@@ -227,7 +230,7 @@ internal sealed class TraceEventSessionProcessingRuntime(
 
         source = processingSource;
         processingTask = DedicatedEtwConsumerThread.Start(
-            blockId,
+            consumerBlockId,
             session.SessionName,
             () => processingSource.Process(),
             out consumerThread,

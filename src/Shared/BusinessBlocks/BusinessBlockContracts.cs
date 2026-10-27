@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace ResourceManager.Shared.BusinessBlocks;
 
 public enum BusinessBlockState { Stopped, Starting, Running, Stopping }
@@ -24,11 +26,19 @@ public interface IBusinessBlockQuery
     BusinessBlocksSnapshot Read();
 }
 
-public sealed record BusinessBlockFacts(string Id, BusinessBlockState State, string ParentId,
-    IReadOnlyList<string> Inputs, IReadOnlyList<string> Outputs);
+public sealed record BusinessBlockFacts(int Id, BusinessBlockState State, int ParentId,
+    IReadOnlyList<int> Inputs)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Name { get; init; }
+}
 public sealed record BusinessBlocksSnapshot(DateTimeOffset At, int HistoryLimit,
     IReadOnlyList<BusinessBlockFacts> Blocks, IReadOnlyList<BusinessBlockControlTransition> History)
 {
+    public required string RegistryVersion { get; init; }
+    public required int Program { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ProgramName { get; init; }
     public IReadOnlyList<BusinessBlockNode> Graph { get; init; } = [];
     public IReadOnlyList<BusinessBlockDemand> Demands { get; init; } = [];
     public IReadOnlyList<BusinessBlockDecision> Decisions { get; init; } = [];
@@ -37,22 +47,22 @@ public sealed record BusinessBlocksSnapshot(DateTimeOffset At, int HistoryLimit,
     public bool ShuttingDown { get; init; }
 }
 
-public sealed record BusinessBlockNode(string Id, string ParentId,
-    IReadOnlyList<string> Inputs, IReadOnlyList<string> Outputs);
-public sealed record BusinessBlockDemand(string Key, string BlockId, BusinessBlockReason Reason);
+public sealed record BusinessBlockNode(int Id, int ParentId,
+    IReadOnlyList<int> Inputs);
+public sealed record BusinessBlockDemand(string Key, int BlockId, BusinessBlockReason Reason);
 /// <summary>Authoritative boolean conditions used by today's rules; execution details are not facts here.</summary>
 public sealed record BusinessBlockFact(string Key, bool Value, IReadOnlyList<BusinessBlockReason> Reasons);
-public sealed record BusinessBlockDecision(long Sequence, string ParentId, string Transition,
-    BusinessBlockReason Reason, IReadOnlyList<string> ShouldRun, IReadOnlyList<BusinessBlockFact> Facts);
+public sealed record BusinessBlockDecision(long Sequence, int ParentId, string Transition,
+    BusinessBlockReason Reason, IReadOnlyList<int> ShouldRun, IReadOnlyList<BusinessBlockFact> Facts);
 public sealed record BusinessBlockDecisionInput(IReadOnlyDictionary<string, BusinessBlockFact> Facts,
-    IReadOnlyDictionary<string, BusinessBlockState> Children);
-public sealed record BusinessBlockControlTransition(long Sequence, DateTimeOffset At, string BlockId,
+    IReadOnlyDictionary<int, BusinessBlockState> Children);
+public sealed record BusinessBlockControlTransition(long Sequence, DateTimeOffset At, int BlockId,
     BusinessBlockState From, BusinessBlockState To);
-public sealed record BusinessBlockControlSnapshot(IReadOnlyDictionary<string, BusinessBlockState> States,
+public sealed record BusinessBlockControlSnapshot(IReadOnlyDictionary<int, BusinessBlockState> States,
     IReadOnlyList<BusinessBlockControlTransition> History);
 public sealed record BusinessBlockRunContext(CancellationToken StopNotification, Action ReportRunning);
 
 /// <summary>A parent's rule reads only these declared facts and its immediate children's states.</summary>
-public sealed record BusinessBlockDecisionRegistration(string ParentId, IReadOnlyList<string> FactKeys,
-    Func<BusinessBlockDecisionInput, IReadOnlyCollection<string>> Decide);
+public sealed record BusinessBlockDecisionRegistration(int ParentId, IReadOnlyList<string> FactKeys,
+    Func<BusinessBlockDecisionInput, IReadOnlyCollection<int>> Decide);
 

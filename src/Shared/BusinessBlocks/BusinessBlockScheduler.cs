@@ -7,33 +7,39 @@ namespace ResourceManager.Shared.BusinessBlocks;
 public class BusinessBlockScheduler : IBusinessBlockQuery, IAsyncDisposable
 {
     public const string ShutdownFact = "program:shutting-down";
-    public static string DemandFact(string id) => "demand:" + id;
-    public static string EnabledFact(string id) => "enabled:" + id;
-    public static string ChildrenStoppedFact(string id) => "children-stopped:" + id;
-    private readonly Func<string, IBusinessBlock> create;
+    public static string DemandFact(int id) => "demand:" + id;
+    public static string EnabledFact(int id) => "enabled:" + id;
+    public static string ChildrenStoppedFact(int id) => "children-stopped:" + id;
+    private readonly Func<int, IBusinessBlock> create;
     private readonly Func<long> currentPlanVersion;
     private readonly BusinessBlockController control;
     private readonly BusinessBlockFactAuthority facts = new();
     private readonly ConcurrentDictionary<string, BusinessBlockDemand> demands = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, BusinessBlockDecisionNode> nodes = new(StringComparer.Ordinal);
+    private readonly Dictionary<int, BusinessBlockDecisionNode> nodes = new();
     private readonly int historyLimit;
+    private readonly string registryVersion;
+    private readonly Func<int, string?> nameLookup;
     private long nextDependency;
     private int disposed;
     private int shuttingDown;
     public BusinessBlockGraph Graph { get; }
     public long CurrentPlanVersion => currentPlanVersion();
 
-    public BusinessBlockScheduler(BusinessBlockGraph graph, Func<string, IBusinessBlock> create,
-        int historyLimit, ILogger logger, BusinessBlockController? control = null,
+    public BusinessBlockScheduler(BusinessBlockGraph graph, Func<int, IBusinessBlock> create,
+        int historyLimit, ILogger logger, string registryVersion, Func<int, string?> nameLookup, BusinessBlockController? control = null,
         IEnumerable<BusinessBlockDecisionRegistration>? decisions = null, Func<long>? currentPlanVersion = null)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(registryVersion);
+        ArgumentNullException.ThrowIfNull(nameLookup);
+        this.registryVersion = registryVersion;
+        this.nameLookup = nameLookup;
         this.create = create;
         this.currentPlanVersion = currentPlanVersion ?? (() => 0);
         this.historyLimit = historyLimit;
         ArgumentOutOfRangeException.ThrowIfNegative(historyLimit);
-        this.control = control ?? new(Microsoft.Extensions.Logging.Abstractions.NullLogger<BusinessBlockController>.Instance, historyLimit);
+        this.control = control ?? new(Microsoft.Extensions.Logging.Abstractions.NullLogger<BusinessBlockController>.Instance, historyLimit, nameLookup);
         Graph = graph;
-        var rules = (decisions ?? []).ToDictionary(value => value.ParentId, StringComparer.Ordinal);
+        var rules = (decisions ?? []).ToDictionary(value => value.ParentId);
         foreach (var parent in rules.Keys) _ = Graph.Children(parent);
         facts.Declare(ShutdownFact);
         foreach (var block in Graph.Nodes)
@@ -42,19 +48,19 @@ public class BusinessBlockScheduler : IBusinessBlockQuery, IAsyncDisposable
             facts.Declare(EnabledFact(block.Id), true);
             if (Graph.Children(block.Id).Count > 0) facts.Declare(ChildrenStoppedFact(block.Id), true);
         }
-        foreach (var parent in Graph.BlockIds.Prepend(BusinessBlockGraph.Program))
+        foreach (var parent in Graph.BlockIds.Prepend(Graph.Program))
         {
             var children = Graph.Children(parent);
-            if (children.Count == 0 && parent != BusinessBlockGraph.Program) continue;
+            if (children.Count == 0 && parent != Graph.Program) continue;
             var rule = rules.GetValueOrDefault(parent) ?? new(parent,
                 children.Select(DemandFact).ToArray(), input => children.Where(id => input.Facts[DemandFact(id)].Value).ToArray());
             // Enablement is a fact read only by the block's own parent.
             var keys = rule.FactKeys.Concat(children.Select(EnabledFact))
                 .Concat(children.Where(id => Graph.Children(id).Count > 0).Select(ChildrenStoppedFact))
-                .Concat(parent == BusinessBlockGraph.Program ? [ShutdownFact] : Array.Empty<string>()).Distinct(StringComparer.Ordinal).ToArray();
+                .Concat(parent == Graph.Program ? [ShutdownFact] : Array.Empty<string>()).Distinct(StringComparer.Ordinal).ToArray();
             foreach (var key in keys) facts.Declare(key);
             var node = new BusinessBlockDecisionNode(parent, children, keys, rule.Decide, facts, this.control,
-                id => this.create(id), id => nodes.GetValueOrDefault(id), logger, historyLimit);
+                id => this.create(id), id => nodes.GetValueOrDefault(id), logger, historyLimit, Graph.Program, nameLookup);
             nodes.Add(parent, node);
         }
         foreach (var node in nodes.Values)
@@ -64,17 +70,17 @@ public class BusinessBlockScheduler : IBusinessBlockQuery, IAsyncDisposable
         this.control.StateChanged += OnStateChanged;
     }
 
-    public Task SetDemandAsync(string key, string? blockId, BusinessBlockReason reason, CancellationToken cancellation = default)
+    public Task SetDemandAsync(string key, int? blockId, BusinessBlockReason reason, CancellationToken cancellation = default)
     {
         ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         Validate(reason);
-        if (blockId is not null) _ = Graph.Get(blockId);
+        if (blockId is not null) _ = Graph.Get(blockId.Value);
         BusinessBlockDemand? previous;
         if (blockId is null) demands.TryRemove(key, out previous);
         else
         {
-            var replacement = new BusinessBlockDemand(key, blockId, reason);
+            var replacement = new BusinessBlockDemand(key, blockId.Value, reason);
             while (true)
             {
                 if (demands.TryGetValue(key, out previous))
@@ -84,11 +90,11 @@ public class BusinessBlockScheduler : IBusinessBlockQuery, IAsyncDisposable
                 else if (demands.TryAdd(key, replacement)) break;
             }
         }
-        var affected = new[] { previous?.BlockId, blockId }.OfType<string>().Distinct(StringComparer.Ordinal);
+        var affected = new[] { previous?.BlockId, blockId }.OfType<int>().Distinct();
         return Task.WhenAll(affected.Select(id => facts.PublishDemand(id, demands, reason)));
     }
 
-    public Task SetEnabledAsync(string id, bool enabled, BusinessBlockReason reason)
+    public Task SetEnabledAsync(int id, bool enabled, BusinessBlockReason reason)
     {
         ThrowIfDisposed(); _ = Graph.Get(id); Validate(reason);
         return facts.Publish(EnabledFact(id), enabled, reason);
@@ -104,7 +110,7 @@ public class BusinessBlockScheduler : IBusinessBlockQuery, IAsyncDisposable
         return facts.Publish(key, value, reason);
     }
 
-    public IBusinessBlockDependency AcquireDependency(string id, BusinessBlockReason reason)
+    public IBusinessBlockDependency AcquireDependency(int id, BusinessBlockReason reason)
     {
         var key = "dependency:" + Interlocked.Increment(ref nextDependency);
         return new BusinessBlockDemandLease(this, key, reason) { Ready = SetDemandAsync(key, id, reason) };
@@ -117,22 +123,23 @@ public class BusinessBlockScheduler : IBusinessBlockQuery, IAsyncDisposable
         return facts.Publish(ShutdownFact, true, reason);
     }
 
-    private void OnStateChanged(string id, BusinessBlockState state)
+    private void OnStateChanged(int id, BusinessBlockState state)
     {
         if (Volatile.Read(ref disposed) != 0) return;
-        var reason = new BusinessBlockReason(BusinessBlockRequestKind.Dependency, id,
+        var reason = new BusinessBlockReason(BusinessBlockRequestKind.Dependency, id.ToString(System.Globalization.CultureInfo.InvariantCulture),
             state == BusinessBlockState.Stopped ? "run-returned" : "state:" + state, CurrentPlanVersion);
         if (nodes.TryGetValue(id, out var ownNode)) _ = ownNode.Wake("owner-" + reason.ConfigurationOrDependency, reason);
         _ = nodes[Graph.Get(id).ParentId].Wake(reason.ConfigurationOrDependency, reason);
     }
 
-    public BusinessBlockState ReadState(string id) { _ = Graph.Get(id); return control.ReadState(id); }
+    public BusinessBlockState ReadState(int id) { _ = Graph.Get(id); return control.ReadState(id); }
     public BusinessBlocksSnapshot Read()
     {
         var actual = control.Read();
         return new(DateTimeOffset.UtcNow, historyLimit, Graph.Nodes.Select(node => new BusinessBlockFacts(
-            node.Id, actual.States.GetValueOrDefault(node.Id), node.ParentId, node.Inputs, node.Outputs)).ToArray(), actual.History)
+            node.Id, actual.States.GetValueOrDefault(node.Id), node.ParentId, node.Inputs) { Name = nameLookup(node.Id) }).ToArray(), actual.History)
         {
+            RegistryVersion = registryVersion, Program = Graph.Program, ProgramName = nameLookup(Graph.Program),
             Graph = Graph.Nodes, Demands = demands.Values.ToArray(), Facts = facts.ReadAll(),
             Decisions = nodes.Values.SelectMany(node => node.ReadDecisions()).ToArray(),
             CurrentDecisions = nodes.Values.Select(node => node.ReadCurrentDecision()).OfType<BusinessBlockDecision>().ToArray(),

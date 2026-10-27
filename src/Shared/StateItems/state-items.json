@@ -19,14 +19,14 @@
       "kind": "block",
       "process": "backend",
       "name": "TrustedAccessRequestOwner",
-      "comment": "Maintains pending requests for trusted access."
+      "comment": "Maintains and publishes pending requests for trusted access."
     },
     {
       "uid": 4,
       "kind": "block",
       "process": "backend",
       "name": "TrustedAccessInvocationHostedService",
-      "comment": "Processes trusted invocations from external callers."
+      "comment": "Processes trusted invocations from external callers and publishes their results."
     },
     {
       "uid": 5,
@@ -40,7 +40,7 @@
       "kind": "block",
       "process": "backend",
       "name": "AutomaticProductUpdateService",
-      "comment": "Checks and coordinates automatic product updates in the Windows service host."
+      "comment": "Checks for automatic product updates and produces update decisions in the Windows service host."
     },
     {
       "uid": 7,
@@ -54,42 +54,42 @@
       "kind": "block",
       "process": "backend",
       "name": "HostManagerMetricSnapshotOwner",
-      "comment": "Owns the workspace for current metric snapshots."
+      "comment": "Owns the workspace that publishes current metric snapshots."
     },
     {
       "uid": 9,
       "kind": "block",
       "process": "backend",
       "name": "HostManagerSoftwareIdentityOwner",
-      "comment": "Owns the workspace for software identity resolution."
+      "comment": "Owns the workspace that produces resolved software identities."
     },
     {
       "uid": 10,
       "kind": "block",
       "process": "backend",
       "name": "HostManagerFileQueryOwner",
-      "comment": "Owns the workspace for file queries."
+      "comment": "Owns the workspace that provides file queries and their results."
     },
     {
       "uid": 11,
       "kind": "block",
       "process": "backend",
       "name": "HostManagerDisplayCoordinatorOwner",
-      "comment": "Owns the workspace for display coordination."
+      "comment": "Owns the workspace that publishes display topology."
     },
     {
       "uid": 12,
       "kind": "block",
       "process": "backend",
       "name": "HostManagerPublicServiceCoordinatorOwner",
-      "comment": "Owns the workspace for public service coordination."
+      "comment": "Owns the workspace that produces public service tasks."
     },
     {
       "uid": 13,
       "kind": "block",
       "process": "backend",
       "name": "HostManagerOperationCoordinatorOwner",
-      "comment": "Owns the workspace for requested operations."
+      "comment": "Owns the workspace that produces requested operation results."
     },
     {
       "uid": 14,
@@ -138,14 +138,14 @@
       "kind": "block",
       "process": "backend",
       "name": "FanControlCoreLifetimeService",
-      "comment": "Owns the lifetime of the native fan control runtime."
+      "comment": "Owns and provides the native fan control runtime."
     },
     {
       "uid": 21,
       "kind": "block",
       "process": "backend",
       "name": "KernelEtwSessionBroker",
-      "comment": "Owns the shared kernel ETW session and its consumers."
+      "comment": "Owns the shared kernel ETW session and provides its kernel events to consumers."
     },
     {
       "uid": 22,
@@ -173,7 +173,7 @@
       "kind": "block",
       "process": "backend",
       "name": "GpuPlacementProcessHistoryObserver",
-      "comment": "Observes process history used for GPU placement."
+      "comment": "Produces graphics API history for processes, used for GPU placement."
     },
     {
       "uid": 26,
@@ -194,14 +194,14 @@
       "kind": "block",
       "process": "backend",
       "name": "HostManagerReportCoordinatorOwner",
-      "comment": "Owns the workspace for report coordination."
+      "comment": "Owns the workspace that produces reports."
     },
     {
       "uid": 29,
       "kind": "block",
       "process": "backend",
       "name": "HostManagerSmartCoordinator",
-      "comment": "Coordinates the active optimization runtime."
+      "comment": "Coordinates the active optimization runtime and produces optimization decisions."
     },
     {
       "uid": 30,
@@ -236,7 +236,7 @@
       "kind": "block",
       "process": "backend",
       "name": "GpuTelemetryWorkerSupervisor",
-      "comment": "Supervises native GPU metric sampling workers."
+      "comment": "Supervises native GPU sampling workers and publishes their GPU metrics."
     },
     {
       "uid": 35,
@@ -271,7 +271,7 @@
       "kind": "block",
       "process": "backend",
       "name": "WindowsResourceBreakdownSampler",
-      "comment": "Samples resource use and its per-process breakdown."
+      "comment": "Publishes resource use snapshots and their per-process breakdown."
     },
     {
       "uid": 40,

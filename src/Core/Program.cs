@@ -7,6 +7,7 @@ using Microsoft.Extensions.Hosting.WindowsServices;
 using System.Security.Principal;
 using ResourceManager.App.Application.TrustedAccess;
 using ResourceManager.Shared.Packages;
+using ResourceManager.App.StateItems;
 
 if (args.Contains("--prepare-package-use-guard", StringComparer.Ordinal))
 {
@@ -51,6 +52,7 @@ builder.Services.AddResourceManagerApp(
     hostEnvironment);
 
 var app = builder.Build();
+app.Logger.LogInformation("State registry version {RegistryVersion}.", StateRegistry.Version);
 var initializeAccessKeys = args.Contains("--initialize-trusted-access", StringComparer.Ordinal);
 var recoverAccessKeys = args.Contains("--recover-trusted-access", StringComparer.Ordinal);
 if (initializeAccessKeys || recoverAccessKeys)

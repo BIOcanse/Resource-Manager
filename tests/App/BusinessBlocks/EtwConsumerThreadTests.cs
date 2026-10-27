@@ -24,7 +24,7 @@ public sealed class EtwConsumerThreadTests
         var iterations = 0;
 
         var processing = DedicatedEtwConsumerThread.Start(
-            "vidmm-etw",
+            101,
             "session-1",
             () =>
             {
@@ -45,9 +45,9 @@ public sealed class EtwConsumerThreadTests
             Assert.True(entered.Wait(TimeSpan.FromSeconds(10)));
             Assert.True(registrationStarted.IsSet);
             Assert.False(registrationDisposed.IsSet);
-            Assert.Equal("vidmm-etw", observation.BlockId);
+            Assert.Equal(101, observation.BlockId);
             Assert.Equal("session-1", observation.SessionName);
-            Assert.Equal("vidmm-etw / session-1", actionThreadName);
+            Assert.Equal("101 / session-1", actionThreadName);
             Assert.NotEqual(callerThreadId, Volatile.Read(ref actionThreadId));
             Assert.NotEqual(callerThreadId, observation.ManagedThreadId);
             Assert.Equal(observation.ManagedThreadId, Volatile.Read(ref actionThreadId));
@@ -82,7 +82,7 @@ public sealed class EtwConsumerThreadTests
             disposalStarted,
             registrationDisposed);
         var processing = DedicatedEtwConsumerThread.Start(
-            "kernel-etw",
+            102,
             "session-2",
             static () => throw new InvalidOperationException("consumer failure"),
             observation);
@@ -94,7 +94,7 @@ public sealed class EtwConsumerThreadTests
         Assert.True(registrationStarted.IsSet);
         Assert.True(registrationDisposed.IsSet);
         var reported = Assert.Single(observation.ReportedFailures);
-        Assert.Equal("kernel-etw", reported.BlockId);
+        Assert.Equal(102, reported.BlockId);
         Assert.Same(error, reported.Error);
     }
 
@@ -112,7 +112,7 @@ public sealed class EtwConsumerThreadTests
             registrationDisposed,
             reportFailureError: reportingError);
         var processing = DedicatedEtwConsumerThread.Start(
-            "kernel-etw",
+            102,
             "session-3",
             () => throw consumerError,
             observation);
@@ -133,12 +133,12 @@ public sealed class EtwConsumerThreadTests
         ManualResetEventSlim? allowDispose = null,
         Exception? reportFailureError = null) : IEtwConsumerThreadObserver
     {
-        public List<(string BlockId, Exception Error)> ReportedFailures { get; } = [];
-        public string? BlockId { get; private set; }
+        public List<(int BlockId, Exception Error)> ReportedFailures { get; } = [];
+        public int? BlockId { get; private set; }
         public string? SessionName { get; private set; }
         public int ManagedThreadId { get; private set; }
 
-        public IDisposable RegisterCurrentThread(string blockId, string sessionName)
+        public IDisposable RegisterCurrentThread(int blockId, string sessionName)
         {
             BlockId = blockId;
             SessionName = sessionName;
@@ -147,7 +147,7 @@ public sealed class EtwConsumerThreadTests
             return new Registration(disposalStarted, registrationDisposed, allowDispose);
         }
 
-        public void ReportFailure(string blockId, Exception error)
+        public void ReportFailure(int blockId, Exception error)
         {
             ReportedFailures.Add((blockId, error));
             if (reportFailureError is not null)

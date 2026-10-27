@@ -35,6 +35,7 @@ $DevelopmentRunner = Join-Path $RepositoryRoot "scripts\dev\Run-Development.ps1"
 $FinalImageBuilder = Join-Path $RepositoryRoot "scripts\release\New-ResourceManagerFinalImage.ps1"
 $FinalImageValidator = Join-Path $RepositoryRoot "scripts\validation\Test-ResourceManagerFinalImage.ps1"
 $ExecutableManifestValidator = Join-Path $RepositoryRoot "scripts\validation\Test-WindowsExecutableManifest.ps1"
+$StateNamesValidator = Join-Path $RepositoryRoot "scripts\validation\Test-StateNamesAbsent.ps1"
 
 function Write-Step([string]$Message) {
     if (-not $Quiet) {
@@ -185,8 +186,9 @@ if ($publishBackend) {
     Write-Step "发布 win-x64 自包含后端。"
     Invoke-CheckedCommand `
         "dotnet" `
-        @("publish", $BackendProject, "/p:PublishProfile=win-x64-self-contained", "/p:SkipClientAppBuild=true", "--nologo", "--verbosity", "minimal") `
+        @("publish", $BackendProject, "-p:ResourceManagerStateNames=false", "/p:PublishProfile=win-x64-self-contained", "/p:SkipClientAppBuild=true", "--nologo", "--verbosity", "minimal") `
         $RepositoryRoot
+    Invoke-CheckedCommand 'pwsh' @('-NoProfile', '-File', $StateNamesValidator, '-AssemblyPath', (Join-Path $BackendOutput 'ResourceManager.dll')) $RepositoryRoot
 }
 
 if ($publishNativeUi) {
@@ -196,6 +198,7 @@ if ($publishNativeUi) {
         "dotnet" `
         @(
             "publish", $NativeUiProject,
+            "-p:ResourceManagerStateNames=false",
             "-c", "Release",
             "-r", "win-x64",
             "--self-contained", "true",
@@ -206,19 +209,20 @@ if ($publishNativeUi) {
             "--verbosity", "minimal"
         ) `
         $RepositoryRoot
+    Invoke-CheckedCommand 'pwsh' @('-NoProfile', '-File', $StateNamesValidator, '-AssemblyPath', (Join-Path $NativeUiOutput 'ResourceManager.NativeUi.dll')) $RepositoryRoot
 }
 
 if ($Target -eq 'All' -or $Target -eq 'Launcher') {
     Clear-PublishDirectory $LauncherOutput
     Invoke-CheckedCommand 'dotnet' @(
-        'publish', $LauncherProject, '-c', 'Release', '-r', 'win-x64',
+        'publish', $LauncherProject, '-p:ResourceManagerStateNames=false', '-c', 'Release', '-r', 'win-x64',
         '--self-contained', 'true', '-p:PublishSingleFile=true',
         "-p:PublishDir=$LauncherOutput", '--nologo', '--verbosity', 'minimal') $RepositoryRoot
 }
 
 if ($Target -in @("All", "SessionAgent")) {
     Clear-PublishDirectory $SessionAgentOutput
-    Invoke-CheckedCommand "dotnet" @("publish", $SessionAgentProject, "-c", "Release", "-r", "win-x64", "--self-contained", "true", "-p:PublishSingleFile=true", "-p:PublishDir=$SessionAgentOutput", "--nologo", "--verbosity", "minimal") $RepositoryRoot
+    Invoke-CheckedCommand "dotnet" @("publish", $SessionAgentProject, "-p:ResourceManagerStateNames=false", "-c", "Release", "-r", "win-x64", "--self-contained", "true", "-p:PublishSingleFile=true", "-p:PublishDir=$SessionAgentOutput", "--nologo", "--verbosity", "minimal") $RepositoryRoot
 }
 
 if ($publishBackend -and -not (Test-Path -LiteralPath $BackendExe)) {

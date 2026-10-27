@@ -1,3 +1,4 @@
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using Microsoft.Diagnostics.Tracing;
 using ResourceManager.ReadWrite.Windows.Processes.Etw;
 using ResourceManager.Adapter;
@@ -76,7 +77,6 @@ public sealed partial class PresentFrameEtwSource(
 
     public ulong ZoneKey => ZoneObjectKey;
     public string DisplayName => MonitoringSourceZoneIds.EtwPresentFrames;
-    internal const string BusinessBlockId = "present-etw";
     public ResourceManagerComputeZoneMode CurrentMode => mode;
 
     internal PresentFrameEtwSource(ILogger<PresentFrameEtwSource> logger,
@@ -96,7 +96,7 @@ public sealed partial class PresentFrameEtwSource(
         {
             ObjectDisposedException.ThrowIf(disposed, this);
             var previousFrameLeases = frameLeases;
-            var dependency = controller.AcquireDependency(BusinessBlockId,
+            var dependency = controller.AcquireDependency(BlockUids.PresentFrameEtwSource,
                 new(BusinessBlockRequestKind.Dependency, "frame-observation", "present-frame-subscription", controller.CurrentPlanVersion));
             var subscription = new FrameSubscription(this, dependency);
             frameSubscriptions.Add(subscription);
@@ -150,7 +150,7 @@ public sealed partial class PresentFrameEtwSource(
         lock (lifecycle)
         {
             mode = next;
-            var dispatch = controller.SetEnabledAsync(BusinessBlockId, next != ResourceManagerComputeZoneMode.Freeze,
+            var dispatch = controller.SetEnabledAsync(BlockUids.PresentFrameEtwSource, next != ResourceManagerComputeZoneMode.Freeze,
                 new(BusinessBlockRequestKind.Configuration, "compute-zone", MonitoringSourceZoneIds.EtwPresentFrames, controller.CurrentPlanVersion));
             return next == ResourceManagerComputeZoneMode.Freeze ? AwaitReleasedAsync(dispatch) : dispatch;
         }
@@ -201,7 +201,7 @@ public sealed partial class PresentFrameEtwSource(
         if (run is null || Volatile.Read(ref run.Accepting) == 0 || !ReferenceEquals(run.Session, current)) return;
         try
         {
-            using (diagnostics.MeasureSegment(BusinessBlockId))
+            using (diagnostics.MeasureSegment(BlockUids.PresentFrameEtwSource))
             {
                 current.Flush();
                 if (Volatile.Read(ref frameLeases) == 0) return;

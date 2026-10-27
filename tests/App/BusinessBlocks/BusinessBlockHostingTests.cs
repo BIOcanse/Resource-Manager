@@ -18,11 +18,11 @@ public sealed class BusinessBlockHostingTests
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
-                services.AddBusinessBlockHostedService<ConsumerService>("ConsumerService", ["DependencyService"], ["test-output"],
+                services.AddBusinessBlockHostedService<ConsumerService>(155, [156],
                     _ => new ConsumerService(events));
 
                 // A data input does not control another hosted service's lifecycle.
-                services.AddBusinessBlockHostedService<DependencyService>("DependencyService", [], ["test-output"],
+                services.AddBusinessBlockHostedService<DependencyService>(156, [],
                     _ => new DependencyService(events));
             })
             .Build();
@@ -48,12 +48,12 @@ public sealed class BusinessBlockHostingTests
         while (controller.Read().Blocks.Any(block => block.State != BusinessBlockState.Stopped))
             await Task.Delay(5, timeout.Token);
         var blocks = host.Services.GetRequiredService<IBusinessBlockQuery>()
-            .Read().Blocks.ToDictionary(static block => block.Id, StringComparer.Ordinal);
-        Assert.Equal(BusinessBlockState.Stopped, blocks[nameof(DependencyService)].State);
-        Assert.Equal(BusinessBlockState.Stopped, blocks[nameof(ConsumerService)].State);
+            .Read().Blocks.ToDictionary(static block => block.Id);
+        Assert.Equal(BusinessBlockState.Stopped, blocks[156].State);
+        Assert.Equal(BusinessBlockState.Stopped, blocks[155].State);
         Assert.Equal(
-            new[] { nameof(DependencyService) },
-            blocks[nameof(ConsumerService)].Inputs);
+            new[] { 156 },
+            blocks[155].Inputs);
     }
 
     [Fact]
@@ -64,8 +64,8 @@ public sealed class BusinessBlockHostingTests
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
-                services.AddBusinessBlockHostedService<ThrowingStartService>("consumer", ["input"], ["test-output"]);
-                services.AddBusinessBlockHostedService<DependencyService>("input", [], ["test-output"], _ => new DependencyService(events));
+                services.AddBusinessBlockHostedService<ThrowingStartService>(120, [126]);
+                services.AddBusinessBlockHostedService<DependencyService>(126, [], _ => new DependencyService(events));
             }).Build();
         await Assert.ThrowsAsync<IOException>(() => host.StartAsync().WaitAsync(TimeSpan.FromSeconds(10)));
         Assert.Empty(events);
@@ -91,7 +91,7 @@ public sealed class BusinessBlockHostingTests
         using var host = Host.CreateDefaultBuilder()
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
-                services.AddBusinessBlockHostedService<LazyService>("LazyService", [], ["test-output"], _ =>
+                services.AddBusinessBlockHostedService<LazyService>(157, [], _ =>
                 {
                     constructed++;
                     return new LazyService();
@@ -102,8 +102,8 @@ public sealed class BusinessBlockHostingTests
         var snapshot = query.Read();
 
         Assert.Equal(0, constructed);
-        var block = Assert.Single(snapshot.Blocks, block => block.Id == nameof(LazyService));
-        Assert.Equal(nameof(LazyService), block.Id);
+        var block = Assert.Single(snapshot.Blocks, block => block.Id == 157);
+        Assert.Equal(157, block.Id);
         Assert.Equal(BusinessBlockState.Stopped, block.State);
     }
 

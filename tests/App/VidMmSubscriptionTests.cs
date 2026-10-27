@@ -53,7 +53,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
 
             second.Dispose();
             await harness.Zone.ApplyModeAsync(ResourceManagerComputeZoneMode.Normal);
-            await EtwTestRunRecorder.UntilAsync(() => harness.Controller.ReadState(nameof(DxgkrnlVidMmEtwTelemetryZone)) == BusinessBlockState.Stopped);
+            await EtwTestRunRecorder.UntilAsync(() => harness.Controller.ReadState(BackendUids.DxgkrnlVidMmEtwTelemetryZone) == BusinessBlockState.Stopped);
             await harness.Recorder.DrainAsync();
             Assert.False(harness.Sessions.Current.ConsumerThread!.IsAlive);
             Assert.Equal(1, harness.Sessions.Current.DisposeCount);

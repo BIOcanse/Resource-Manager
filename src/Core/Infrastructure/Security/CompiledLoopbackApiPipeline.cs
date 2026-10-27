@@ -1,3 +1,4 @@
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using System.Security.Principal;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using ResourceManager.App.Infrastructure.ServiceHosting;
@@ -72,11 +73,11 @@ public static class LoopbackApiPipelineConfigurator
         services.TryAddSingleton<TrustedAccessRequestOwner>();
         services.TryAddSingleton<ITrustedAccessRequestOwner>(provider => provider.GetRequiredService<TrustedAccessRequestOwner>());
         Hosting.NonOwningHostedServiceRegistration.AddHostedServiceAlias<TrustedAccessRequestOwner>(services,
-            Hosting.BackendBlockIds.TrustedAccessRequestOwner, [Hosting.BackendBlockIds.RuntimeSpecializationCoordinator], ["trusted-access-requests"]);
+            BlockUids.TrustedAccessRequestOwner, [BlockUids.RuntimeSpecializationCoordinator]);
         services.AddSingleton<ILoopbackApiAdministratorReader, WindowsLoopbackApiAdministratorReader>();
         services.TryAddSingleton<IInteractiveUserSessionBroker, WindowsInteractiveUserSessionBroker>();
         Hosting.ResourceManagerServiceCollectionExtensions.AddBusinessBlockHostedService<TrustedAccessInvocationHostedService>(services,
-            Hosting.BackendBlockIds.TrustedAccessInvocationHostedService, [], ["trusted-invocation-results"]);
+            BlockUids.TrustedAccessInvocationHostedService, []);
     }
 
     private static void ConfigureAuthenticationMiddleware(WebApplication application)

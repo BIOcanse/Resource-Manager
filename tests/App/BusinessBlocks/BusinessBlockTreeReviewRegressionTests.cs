@@ -15,21 +15,21 @@ public sealed class BusinessBlockTreeReviewRegressionTests
         var aChild = new BusinessBlockTestSupport.Probe();
         var zChild = new BusinessBlockTestSupport.Probe(releaseStop: release.Task);
         await using var scheduler = BusinessBlockTestSupport.Create([
-            BusinessBlockTestSupport.Register("A", a), BusinessBlockTestSupport.Register("Z", z),
-            BusinessBlockTestSupport.Register("A-child", aChild, "A"), BusinessBlockTestSupport.Register("Z-child", zChild, "Z")]);
+            BusinessBlockTestSupport.Register(101, a), BusinessBlockTestSupport.Register(109, z),
+            BusinessBlockTestSupport.Register(102, aChild, 101), BusinessBlockTestSupport.Register(110, zChild, 109)]);
         try
         {
-            await scheduler.StartAsync("A", BusinessBlockTestSupport.Reason());
-            await scheduler.StartAsync("Z", BusinessBlockTestSupport.Reason());
-            await scheduler.StartAsync("Z-child", BusinessBlockTestSupport.Reason());
+            await scheduler.StartAsync(101, BusinessBlockTestSupport.Reason());
+            await scheduler.StartAsync(109, BusinessBlockTestSupport.Reason());
+            await scheduler.StartAsync(110, BusinessBlockTestSupport.Reason());
             await zChild.Entered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             await scheduler.ShutdownAsync(BusinessBlockTestSupport.Reason());
             await zChild.Notified.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             // An unrelated sibling must finish even while Z's whole branch is still draining.
             await a.Returned.Task.WaitAsync(TimeSpan.FromSeconds(2));
-            await scheduler.StartAsync("A-child", BusinessBlockTestSupport.Reason());
+            await scheduler.StartAsync(102, BusinessBlockTestSupport.Reason());
             Assert.Equal(0, aChild.Runs);
-            Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState("A-child"));
+            Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState(102));
         }
         finally { release.TrySetResult(); await BusinessBlockTestSupport.StopAll(scheduler); }
     }
@@ -47,21 +47,21 @@ public sealed class BusinessBlockTreeReviewRegressionTests
         });
         var leaf = new BusinessBlockTestSupport.Probe(releaseStop: releaseLeaf.Task);
         await using var scheduler = BusinessBlockTestSupport.Create([
-            BusinessBlockTestSupport.Register("U", upper), BusinessBlockTestSupport.Register("P", middle, "U"),
-            BusinessBlockTestSupport.Register("L", leaf, "P")]);
+            BusinessBlockTestSupport.Register(108, upper), BusinessBlockTestSupport.Register(107, middle, 108),
+            BusinessBlockTestSupport.Register(106, leaf, 107)]);
         try
         {
-            foreach (var id in new[] { "L", "P", "U" }) await scheduler.StartAsync(id, BusinessBlockTestSupport.Reason());
+            foreach (var id in new[] { 106, 107, 108 }) await scheduler.StartAsync(id, BusinessBlockTestSupport.Reason());
             await leaf.Entered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             returnMiddle.TrySetResult();
-            await BusinessBlockTestSupport.State(scheduler, "P", BusinessBlockState.Stopped);
+            await BusinessBlockTestSupport.State(scheduler, 107, BusinessBlockState.Stopped);
             await leaf.Notified.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
-            await scheduler.StopAsync("U", BusinessBlockTestSupport.Reason());
+            await scheduler.StopAsync(108, BusinessBlockTestSupport.Reason());
             // Force a completed U-level evaluation while L is deliberately still cleaning up.
-            await scheduler.StopAsync("P", BusinessBlockTestSupport.Reason());
-            Assert.False(scheduler.Read().Facts.Single(fact => fact.Key == BusinessBlockScheduler.ChildrenStoppedFact("U")).Value);
+            await scheduler.StopAsync(107, BusinessBlockTestSupport.Reason());
+            Assert.False(scheduler.Read().Facts.Single(fact => fact.Key == BusinessBlockScheduler.ChildrenStoppedFact(108)).Value);
             Assert.False(upper.Notified.Task.IsCompleted);
-            await scheduler.StartAsync("U", BusinessBlockTestSupport.Reason());
+            await scheduler.StartAsync(108, BusinessBlockTestSupport.Reason());
             Assert.Equal(1, upper.Runs);
             Assert.False(upper.Notified.Task.IsCompleted);
         }
@@ -81,29 +81,29 @@ public sealed class BusinessBlockTreeReviewRegressionTests
         });
         var child = new BusinessBlockTestSupport.Probe();
         await using var scheduler = BusinessBlockTestSupport.Create([
-            BusinessBlockTestSupport.Register("P", parent), BusinessBlockTestSupport.Register("C", child, "P")],
-            [new("P", ["start-child"], input =>
+            BusinessBlockTestSupport.Register(107, parent), BusinessBlockTestSupport.Register(104, child, 107)],
+            [new(107, ["start-child"], input =>
             {
                 if (!input.Facts["start-child"].Value) return [];
                 deciding.TrySetResult();
                 if (!releaseDecision.Wait(BusinessBlockTestSupport.TestTimeout)) throw new TimeoutException("test decision not released");
-                return ["C"];
+                return [104];
             })]);
         Task? decision = null;
         try
         {
-            await scheduler.StartAsync("P", BusinessBlockTestSupport.Reason());
+            await scheduler.StartAsync(107, BusinessBlockTestSupport.Reason());
             decision = scheduler.SetFactAsync("start-child", true, BusinessBlockTestSupport.Reason());
             await deciding.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             // Disable the next parent run, without stopping the current entry through the scheduler.
-            await scheduler.StopAsync("P", BusinessBlockTestSupport.Reason());
+            await scheduler.StopAsync(107, BusinessBlockTestSupport.Reason());
             parentReturn.TrySetResult();
-            await BusinessBlockTestSupport.State(scheduler, "P", BusinessBlockState.Stopped);
+            await BusinessBlockTestSupport.State(scheduler, 107, BusinessBlockState.Stopped);
             releaseDecision.Set();
             await decision.WaitAsync(BusinessBlockTestSupport.TestTimeout);
-            await BusinessBlockTestSupport.State(scheduler, "C", BusinessBlockState.Stopped);
+            await BusinessBlockTestSupport.State(scheduler, 104, BusinessBlockState.Stopped);
             Assert.Equal(child.Runs, child.Returns);
-            Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState("P"));
+            Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState(107));
         }
         finally
         {
@@ -130,36 +130,36 @@ public sealed class BusinessBlockTreeReviewRegressionTests
         });
         var child = new BusinessBlockTestSupport.Probe(releaseStop: releaseChild.Task);
         var lateChild = new BusinessBlockTestSupport.Probe();
-        var control = new BusinessBlockController(new BlockingLogger(logging, releaseLog, "P: Starting -> Running"));
+        var control = new BusinessBlockController(new BlockingLogger(logging, releaseLog, "107: Starting -> Running"), 128, _ => null);
         await using var scheduler = new BusinessBlockScheduler(new BusinessBlockTestSupport.EmptyServices(), [
-            BusinessBlockTestSupport.Register("P", parent), BusinessBlockTestSupport.Register("C", child, "P"),
-            BusinessBlockTestSupport.Register("late", lateChild, "P")],
+            BusinessBlockTestSupport.Register(107, parent), BusinessBlockTestSupport.Register(104, child, 107),
+            BusinessBlockTestSupport.Register(127, lateChild, 107)],
             Microsoft.Extensions.Options.Options.Create(new BusinessBlockOptions()),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BusinessBlockScheduler>.Instance, control);
         Task? runningReport = null;
         try
         {
-            await scheduler.StartAsync("P", BusinessBlockTestSupport.Reason());
+            await scheduler.StartAsync(107, BusinessBlockTestSupport.Reason());
             await entered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             runningReport = Task.Run(() => parentContext!.ReportRunning());
             await logging.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
-            await scheduler.StartAsync("C", BusinessBlockTestSupport.Reason());
+            await scheduler.StartAsync(104, BusinessBlockTestSupport.Reason());
             await child.Entered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             parentReturn.TrySetResult();
             await child.Notified.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
-            Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState("P"));
+            Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState(107));
             releaseLog.Set();
             await runningReport.WaitAsync(BusinessBlockTestSupport.TestTimeout);
-            await scheduler.StartAsync("late", BusinessBlockTestSupport.Reason());
+            await scheduler.StartAsync(127, BusinessBlockTestSupport.Reason());
             Assert.Equal(0, lateChild.Runs);
-            Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState("late"));
-            Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState("P"));
+            Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState(127));
+            Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState(107));
         }
         finally
         {
             releaseLog.Set(); parentReturn.TrySetResult();
             if (runningReport is not null) await runningReport.WaitAsync(BusinessBlockTestSupport.TestTimeout);
-            await scheduler.StopAsync("P", BusinessBlockTestSupport.Reason());
+            await scheduler.StopAsync(107, BusinessBlockTestSupport.Reason());
             releaseChild.TrySetResult();
             await BusinessBlockTestSupport.StopAll(scheduler);
         }
@@ -171,18 +171,18 @@ public sealed class BusinessBlockTreeReviewRegressionTests
         var logging = BusinessBlockTestSupport.Signal();
         using var releaseLog = new ManualResetEventSlim();
         var releaseEntries = BusinessBlockTestSupport.Signal();
-        var control = new BusinessBlockController(new BlockingLogger(logging, releaseLog));
-        var aStart = Task.Run(() => control.Start("A", async context => { context.ReportRunning(); await releaseEntries.Task; }));
+        var control = new BusinessBlockController(new BlockingLogger(logging, releaseLog), 128, _ => null);
+        var aStart = Task.Run(() => control.Start(101, async context => { context.ReportRunning(); await releaseEntries.Task; }));
         Task? bStart = null;
         try
         {
             await logging.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             bStart = Task.Run(async () =>
             {
-                Assert.Equal(BusinessBlockState.Stopped, control.ReadState("B"));
-                control.Start("B", async context => { context.ReportRunning(); await releaseEntries.Task; });
-                await BusinessBlockTestSupport.Until(() => control.ReadState("B") == BusinessBlockState.Running);
-                Assert.Equal(BusinessBlockState.Running, control.ReadState("B"));
+                Assert.Equal(BusinessBlockState.Stopped, control.ReadState(103));
+                control.Start(103, async context => { context.ReportRunning(); await releaseEntries.Task; });
+                await BusinessBlockTestSupport.Until(() => control.ReadState(103) == BusinessBlockState.Running);
+                Assert.Equal(BusinessBlockState.Running, control.ReadState(103));
             });
             await bStart.WaitAsync(TimeSpan.FromSeconds(2));
         }
@@ -197,14 +197,14 @@ public sealed class BusinessBlockTreeReviewRegressionTests
             finally
             {
                 releaseEntries.TrySetResult();
-                await BusinessBlockTestSupport.Until(() => control.ReadState("A") == BusinessBlockState.Stopped
-                    && control.ReadState("B") == BusinessBlockState.Stopped);
+                await BusinessBlockTestSupport.Until(() => control.ReadState(101) == BusinessBlockState.Stopped
+                    && control.ReadState(103) == BusinessBlockState.Stopped);
             }
         }
     }
 
     private sealed class BlockingLogger(TaskCompletionSource entered, ManualResetEventSlim release,
-        string blockedTransition = "A: Stopped -> Starting") : ILogger<BusinessBlockController>
+        string blockedTransition = "101: Stopped -> Starting") : ILogger<BusinessBlockController>
     {
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
         public bool IsEnabled(LogLevel level) => true;

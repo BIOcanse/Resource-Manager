@@ -17,7 +17,7 @@ public sealed class GpuAllocationSessionLifetimeTests
         var result = await harness.NextResultAsync();
         Assert.Equal(BusinessBlockOutcome.Failed, result.Outcome);
         Assert.Equal(typeof(UnauthorizedAccessException).FullName, result.FailureType);
-        await EtwTestRunRecorder.UntilAsync(() => harness.Controller.ReadState(GpuAllocationCollector.BusinessBlockId) == BusinessBlockState.Stopped);
+        await EtwTestRunRecorder.UntilAsync(() => harness.Controller.ReadState(BackendUids.GpuAllocationCollector) == BusinessBlockState.Stopped);
         await harness.Collector.PublishAvailabilityAsync();
         await Task.Delay(TimeSpan.FromMilliseconds(100));
         Assert.Equal(1, factory.Attempts);
@@ -55,7 +55,7 @@ public sealed class GpuAllocationSessionLifetimeTests
         Assert.Equal(BusinessBlockOutcome.Failed, result.Outcome);
         Assert.Equal(BusinessBlockFailureStage.Run, result.FailureStage);
         Assert.Equal(typeof(UnauthorizedAccessException).FullName, result.FailureType);
-        await EtwTestRunRecorder.UntilAsync(() => harness.Controller.ReadState(GpuAllocationCollector.BusinessBlockId) == BusinessBlockState.Stopped);
+        await EtwTestRunRecorder.UntilAsync(() => harness.Controller.ReadState(BackendUids.GpuAllocationCollector) == BusinessBlockState.Stopped);
         await harness.Collector.PublishAvailabilityAsync();
         await Task.Delay(TimeSpan.FromMilliseconds(100));
         Assert.Equal(1, factory.Attempts);
@@ -84,7 +84,7 @@ public sealed class GpuAllocationSessionLifetimeTests
             factory.Current.End();
         }
         Assert.Equal(BusinessBlockOutcome.Failed, (await harness.NextResultAsync()).Outcome);
-        await EtwTestRunRecorder.UntilAsync(() => harness.Controller.ReadState(GpuAllocationCollector.BusinessBlockId) == BusinessBlockState.Stopped);
+        await EtwTestRunRecorder.UntilAsync(() => harness.Controller.ReadState(BackendUids.GpuAllocationCollector) == BusinessBlockState.Stopped);
         await harness.Collector.PublishAvailabilityAsync();
         await Task.Delay(TimeSpan.FromMilliseconds(100));
         Assert.Equal(1, factory.Attempts);
@@ -105,15 +105,15 @@ public sealed class GpuAllocationSessionLifetimeTests
         await using var harness = factory.Harness();
         var subscription = harness.Collector.AcquireSubscription(TimeSpan.FromSeconds(30));
         Assert.Equal(BusinessBlockOutcome.Failed, (await harness.NextResultAsync()).Outcome);
-        await EtwTestRunRecorder.UntilAsync(() => harness.Controller.ReadState(GpuAllocationCollector.BusinessBlockId) == BusinessBlockState.Stopped);
+        await EtwTestRunRecorder.UntilAsync(() => harness.Controller.ReadState(BackendUids.GpuAllocationCollector) == BusinessBlockState.Stopped);
         await harness.Collector.PublishAvailabilityAsync();
         var second = harness.Collector.AcquireSubscription(TimeSpan.FromSeconds(1));
         await Task.Delay(TimeSpan.FromMilliseconds(100));
         Assert.Equal(1, factory.Attempts);
-        Assert.Equal(BusinessBlockState.Stopped, harness.Controller.ReadState(GpuAllocationCollector.BusinessBlockId));
+        Assert.Equal(BusinessBlockState.Stopped, harness.Controller.ReadState(BackendUids.GpuAllocationCollector));
         Assert.False(Assert.Single(harness.Controller.Read().Facts, fact => fact.Key == GpuAllocationCollector.AvailabilityFact).Value);
         Assert.Equal(typeof(UnauthorizedAccessException).FullName,
-            harness.Diagnostics.Read(GpuAllocationCollector.BusinessBlockId).Result?.FailureType);
+            harness.Diagnostics.Read(BackendUids.GpuAllocationCollector).Result?.FailureType);
         if (afterCreation)
         {
             Assert.Equal(1, factory.Current.Stops);
@@ -162,7 +162,7 @@ public sealed class GpuAllocationSessionLifetimeTests
             Assert.False(release.IsCompleted);
             Assert.True(session.IsProcessing);
             Assert.False(session.Joined);
-            Assert.Equal(BusinessBlockState.Stopping, harness.Controller.ReadState(GpuAllocationCollector.BusinessBlockId));
+            Assert.Equal(BusinessBlockState.Stopping, harness.Controller.ReadState(BackendUids.GpuAllocationCollector));
             Assert.False(Assert.Single(harness.Controller.Read().Facts,
                 fact => fact.Key == GpuAllocationCollector.AvailabilityFact).Value);
         }
@@ -170,7 +170,7 @@ public sealed class GpuAllocationSessionLifetimeTests
         await release.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.True(session.Joined);
         Assert.Equal(BusinessBlockOutcome.Failed, (await harness.NextResultAsync()).Outcome);
-        await EtwTestRunRecorder.UntilAsync(() => harness.Controller.ReadState(GpuAllocationCollector.BusinessBlockId) == BusinessBlockState.Stopped);
+        await EtwTestRunRecorder.UntilAsync(() => harness.Controller.ReadState(BackendUids.GpuAllocationCollector) == BusinessBlockState.Stopped);
     }
 
     [Fact]
@@ -220,7 +220,7 @@ public sealed class GpuAllocationSessionLifetimeTests
         var ready = next.Ready;
         await Task.Delay(TimeSpan.FromMilliseconds(100));
         Assert.False(ready.IsCompleted);
-        Assert.Equal(BusinessBlockState.Stopped, harness.Controller.ReadState(GpuAllocationCollector.BusinessBlockId));
+        Assert.Equal(BusinessBlockState.Stopped, harness.Controller.ReadState(BackendUids.GpuAllocationCollector));
         Assert.False(Assert.Single(harness.Controller.Read().Facts, fact => fact.Key == GpuAllocationCollector.AvailabilityFact).Value);
         await EtwTestRunRecorder.ReleaseAsync(next);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ready);
@@ -242,7 +242,7 @@ public sealed class GpuAllocationSessionLifetimeTests
         var ready = next.Ready;
         await Task.Delay(TimeSpan.FromMilliseconds(100));
         Assert.False(ready.IsCompleted);
-        Assert.Equal(BusinessBlockState.Stopped, harness.Controller.ReadState(GpuAllocationCollector.BusinessBlockId));
+        Assert.Equal(BusinessBlockState.Stopped, harness.Controller.ReadState(BackendUids.GpuAllocationCollector));
         await EtwTestRunRecorder.ReleaseAsync(next);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ready);
         Assert.Equal(1, factory.Attempts);

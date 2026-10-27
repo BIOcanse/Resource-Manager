@@ -11,7 +11,7 @@ public sealed class BusinessBlockFailureLoggerTests
     {
         var inner = new ProbeLogger();
         var diagnostics = new ProbeDiagnostics();
-        var logger = new BusinessBlockFailureLogger<object>(inner, diagnostics, "legacy");
+        var logger = new BusinessBlockFailureLogger<object>(inner, diagnostics, 101);
         var error = new IOException("caught failure");
 
         Assert.True(logger.IsEnabled(LogLevel.Warning));
@@ -20,7 +20,7 @@ public sealed class BusinessBlockFailureLoggerTests
 
         Assert.Equal(2, inner.Logs);
         Assert.Same(error, diagnostics.Error);
-        Assert.Equal("legacy", diagnostics.BlockId);
+        Assert.Equal(101, diagnostics.BlockId);
         Assert.Equal(1, diagnostics.Failures);
     }
 
@@ -35,14 +35,14 @@ public sealed class BusinessBlockFailureLoggerTests
     private sealed class ProbeDiagnostics : IBusinessBlockDiagnostics
     {
         public Exception? Error;
-        public string? BlockId;
+        public int? BlockId;
         public int Failures;
-        public void ReportFailure(string blockId, Exception error, string operation)
+        public void ReportFailure(int blockId, Exception error, string operation)
         {
             Error = error;
             BlockId = blockId;
             Failures++;
         }
-        public IDisposable MeasureSegment(string blockId) => throw new NotSupportedException();
+        public IDisposable MeasureSegment(int blockId) => throw new NotSupportedException();
     }
 }

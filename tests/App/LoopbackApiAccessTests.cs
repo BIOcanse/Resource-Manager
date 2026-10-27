@@ -168,8 +168,8 @@ public sealed partial class LoopbackApiAccessTests
         var after = query.Read();
         Assert.Equal(before.History.ToArray(), after.History.ToArray());
         Assert.Equal(after.History.Count, scheduling.GetProperty("history").GetArrayLength());
-        Assert.Equal(before.Blocks.Select(block => block.Id).OrderBy(id => id, StringComparer.Ordinal),
-            after.Blocks.Select(block => block.Id).OrderBy(id => id, StringComparer.Ordinal));
+        Assert.Equal(before.Blocks.Select(block => block.Id).Order(),
+            after.Blocks.Select(block => block.Id).Order());
         Assert.All(after.Blocks, static block =>
         {
             Assert.Equal(BusinessBlockState.Stopped, block.State);
@@ -181,9 +181,8 @@ public sealed partial class LoopbackApiAccessTests
             block.Metrics.TotalAllocatedBytes,
             ActiveThreadCount = block.Metrics.ActiveThreads.Count
         }).ToArray());
-        Assert.Equal(after.Blocks.Select(block => block.Id).OrderBy(id => id, StringComparer.Ordinal),
-            payloadBlocks.Select(block => block.GetProperty("id").GetString()!)
-                .OrderBy(id => id, StringComparer.Ordinal));
+        Assert.Equal(after.Blocks.Select(block => block.Id).Order(),
+            payloadBlocks.Select(block => block.GetProperty("id").GetInt32()).Order());
         Assert.All(payloadBlocks, static block =>
         {
             Assert.Equal((int)BusinessBlockState.Stopped, block.GetProperty("state").GetInt32());

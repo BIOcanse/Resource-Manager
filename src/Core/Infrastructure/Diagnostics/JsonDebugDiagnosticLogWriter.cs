@@ -1,3 +1,4 @@
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -192,7 +193,7 @@ public sealed class JsonDebugDiagnosticLogWriter(
         }
         catch (Exception ex)
         {
-            blockDiagnostics?.ReportFailure(nameof(JsonDebugDiagnosticLogWriter), ex, "diagnostic-writer-loop");
+            blockDiagnostics?.ReportFailure(BlockUids.JsonDebugDiagnosticLogWriter, ex, "diagnostic-writer-loop");
             logger.LogDebug(ex, "Debug diagnostic log writer stopped unexpectedly.");
         }
     }
@@ -209,7 +210,7 @@ public sealed class JsonDebugDiagnosticLogWriter(
             }
 
             string line;
-            using (blockDiagnostics?.MeasureSegment(nameof(JsonDebugDiagnosticLogWriter)))
+            using (blockDiagnostics?.MeasureSegment(BlockUids.JsonDebugDiagnosticLogWriter))
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(logPath) ?? AppContext.BaseDirectory);
                 RotateIfNeeded();
@@ -224,7 +225,7 @@ public sealed class JsonDebugDiagnosticLogWriter(
         }
         catch (Exception ex)
         {
-            blockDiagnostics?.ReportFailure(nameof(JsonDebugDiagnosticLogWriter), ex, "diagnostic-record-write");
+            blockDiagnostics?.ReportFailure(BlockUids.JsonDebugDiagnosticLogWriter, ex, "diagnostic-record-write");
             logger.LogDebug(ex, "Failed to write debug diagnostic log record.");
             return false;
         }

@@ -1,3 +1,4 @@
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using Microsoft.Diagnostics.Tracing;
 using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Domain.GpuPlacement;
@@ -17,7 +18,7 @@ public sealed partial class PresentFrameEtwSource : IPresentGraphicsApiObservati
         lock (lifecycle)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
-            var dependency = controller.AcquireDependency(BusinessBlockId,
+            var dependency = controller.AcquireDependency(BlockUids.PresentFrameEtwSource,
                 new(BusinessBlockRequestKind.Dependency, "graphics-api-history", "present-graphics-api-subscription", controller.CurrentPlanVersion));
             var subscription = new GraphicsApiSubscription(this, process, dependency);
             lock (gate) graphicsApiSubscriptions.Add(subscription);

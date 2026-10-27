@@ -20,9 +20,9 @@ public sealed class BusinessBlockHostedCancellationTests
         using var host = Host.CreateDefaultBuilder()
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services => services.AddBusinessBlockHostedService<GatedCleanup>(
-                "cleanup", [], [], _ => service)).Build();
+                119, [], _ => service)).Build();
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
-        var block = host.Services.GetRequiredService<HostedBusinessBlockRegistry>().GetOrAdd("cleanup", () => service);
+        var block = host.Services.GetRequiredService<HostedBusinessBlockRegistry>().GetOrAdd(119, () => service);
         using var deadline = new CancellationTokenSource();
         await host.StartAsync().WaitAsync(BusinessBlockTestSupport.TestTimeout);
         Task? stopping = null;
@@ -35,11 +35,11 @@ public sealed class BusinessBlockHostedCancellationTests
             catch (OperationCanceledException) { }
             catch (AggregateException errors) when (errors.Flatten().InnerExceptions.All(error => error is OperationCanceledException)) { }
             Assert.False(block.CurrentStopCompletion().IsCompleted);
-            Assert.Equal(BusinessBlockState.Stopping, scheduler.ReadState("cleanup"));
+            Assert.Equal(BusinessBlockState.Stopping, scheduler.ReadState(119));
             Assert.Equal(1, service.StopCount);
             Assert.False(service.CleanupCompleted);
             service.Release.TrySetResult();
-            await BusinessBlockTestSupport.State(scheduler, "cleanup", BusinessBlockState.Stopped);
+            await BusinessBlockTestSupport.State(scheduler, 119, BusinessBlockState.Stopped);
             Assert.True(service.CleanupCompleted);
         }
         finally
@@ -64,7 +64,7 @@ public sealed class BusinessBlockHostedCancellationTests
         using var host = Host.CreateDefaultBuilder()
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services => services.AddBusinessBlockHostedService<SharedResourceSubscriptionMaintenanceService>(
-                "maintenance", [], [], _ => service)).Build();
+                159, [], _ => service)).Build();
         var alias = host.Services.GetServices<IHostedService>()
             .OfType<NonOwningHostedService<SharedResourceSubscriptionMaintenanceService>>().Single();
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
@@ -72,8 +72,8 @@ public sealed class BusinessBlockHostedCancellationTests
         {
             await alias.StartAsync(CancellationToken.None).WaitAsync(BusinessBlockTestSupport.TestTimeout);
             await maintenance.Entered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
-            await scheduler.SetEnabledAsync("maintenance", false, BusinessBlockTestSupport.Reason());
-            await BusinessBlockTestSupport.State(scheduler, "maintenance", BusinessBlockState.Stopped);
+            await scheduler.SetEnabledAsync(159, false, BusinessBlockTestSupport.Reason());
+            await BusinessBlockTestSupport.State(scheduler, 159, BusinessBlockState.Stopped);
             Assert.True(service.ExecuteTask!.IsCanceled);
 
             // Invoke the same observer after the wrapper's completion. This fixes the late

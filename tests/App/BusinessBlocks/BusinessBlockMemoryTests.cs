@@ -15,7 +15,7 @@ public sealed class BusinessBlockMemoryTests(ITestOutputHelper output)
         const int registrationCount = 40;
         var registrations = Enumerable.Range(0, registrationCount)
             .Select(index => new BusinessBlockRegistration(
-                $"block-{index}", Array.Empty<string>(), static _ => new NeverRunBlock()))
+                index + 101, Array.Empty<int>(), static _ => new NeverRunBlock()))
             .ToArray();
         var options = Options.Create(new BusinessBlockOptions());
         var provider = new EmptyServiceProvider();
@@ -25,7 +25,7 @@ public sealed class BusinessBlockMemoryTests(ITestOutputHelper output)
         await using (var warm = new BusinessBlockScheduler(provider, registrations, options, logger))
         {
             for (var index = 0; index < 128; index++)
-                await warm.SetEnabledAsync("block-0", index % 2 == 0, new(BusinessBlockRequestKind.Configuration, "test", "warm", 1));
+                await warm.SetEnabledAsync(101, index % 2 == 0, new(BusinessBlockRequestKind.Configuration, "test", "warm", 1));
         }
 
         var beforeController = CollectLiveBytes();
@@ -41,7 +41,7 @@ public sealed class BusinessBlockMemoryTests(ITestOutputHelper output)
         var historyAllocationStart = GC.GetTotalAllocatedBytes();
         for (var index = 0; index < historyCount; index++)
         {
-            await controller.SetEnabledAsync("block-0", index % 2 == 0, new(BusinessBlockRequestKind.Configuration, "test", operation, 1));
+            await controller.SetEnabledAsync(101, index % 2 == 0, new(BusinessBlockRequestKind.Configuration, "test", operation, 1));
         }
         var historyAllocated = GC.GetTotalAllocatedBytes() - historyAllocationStart;
         var afterHistory = CollectLiveBytes();

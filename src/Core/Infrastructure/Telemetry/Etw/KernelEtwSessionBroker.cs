@@ -1,5 +1,6 @@
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.ReadWrite.Windows.Processes.Etw;
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
@@ -19,12 +20,12 @@ public sealed class KernelEtwSessionBroker : BackgroundService, IKernelEtwSessio
         this.blockDiagnostics = blockDiagnostics;
         owner = new(new TraceEventKernelEtwSessionRuntimeFactory(sessionName =>
             ProcessOwnedEtwSessionOrphanReconciler.CreateDefault(logger).Reconcile(
-                ResourceManagerEtwSessionNames.KernelPrefix, ResourceManagerEtwSessionNames.CurrentOwner, sessionName), consumerThreadObserver),
+                ResourceManagerEtwSessionNames.KernelPrefix, ResourceManagerEtwSessionNames.CurrentOwner, sessionName), consumerThreadObserver, BlockUids.KernelEtwSessionBroker),
             new(value =>
             {
                 Report(logger, value);
                 if (value.Exception is { } error)
-                    blockDiagnostics?.ReportFailure(nameof(KernelEtwSessionBroker), error, "kernel-session");
+                    blockDiagnostics?.ReportFailure(BlockUids.KernelEtwSessionBroker, error, "kernel-session");
             }));
         reconciliationInterval = TimeSpan.FromSeconds(5);
     }
@@ -94,7 +95,7 @@ public sealed class KernelEtwSessionBroker : BackgroundService, IKernelEtwSessio
             while (!stoppingToken.IsCancellationRequested)
             {
                 await Task.Delay(reconciliationInterval, stoppingToken);
-                using var segment = blockDiagnostics?.MeasureSegment(nameof(KernelEtwSessionBroker));
+                using var segment = blockDiagnostics?.MeasureSegment(BlockUids.KernelEtwSessionBroker);
                 owner.Reconcile();
             }
         }
