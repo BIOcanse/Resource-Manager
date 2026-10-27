@@ -1,0 +1,15 @@
+{
+  "tree": "resource-manager-desktop",
+  "profiles": ["default"],
+  "points": [
+    { "id": 0, "symbol": "controller_workers", "default": 2, "min": 1, "max": 8 },
+    { "id": 1, "symbol": "history_capacity", "default": 32, "min": 1, "max": 4096 },
+    { "id": 2, "symbol": "worker_arena_bytes", "default": 65536, "min": 4096, "max": 16777216 },
+    { "id": 3, "symbol": "thread_stack_bytes", "default": 262144, "min": 65536, "max": 16777216 },
+    { "id": 4, "symbol": "backend_probe_interval_ms", "default": 2000, "min": 100, "max": 60000 },
+    { "id": 5, "symbol": "backend_timeout_ms", "default": 2000, "min": 100, "max": 60000 },
+    { "id": 6, "symbol": "window_cancel_poll_ms", "default": 10, "min": 1, "max": 1000 },
+    { "id": 7, "symbol": "instance_connect_timeout_ms", "default": 1500, "min": 1, "max": 60000 },
+    { "id": 8, "symbol": "instance_connect_poll_ms", "default": 10, "min": 1, "max": 1000 }
+  ]
+}
