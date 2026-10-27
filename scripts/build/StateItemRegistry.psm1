@@ -32,7 +32,7 @@ function Get-StateReference {
 }
 
 function Assert-StateRegistry {
-    param([Parameter(Mandatory)][System.Collections.IDictionary]$Registry, [ValidateSet('CSharp', 'Zig')][string]$Language = 'CSharp')
+    param([Parameter(Mandatory)][System.Collections.IDictionary]$Registry)
     if (@($Registry.Keys).Count -ne 1 -or @($Registry.Keys)[0] -cne 'entries' -or $Registry.entries -isnot [array]) {
         throw 'Registry: expected exactly an entries array.'
     }
@@ -70,7 +70,6 @@ function Assert-StateRegistry {
             if ($entry.storage -isnot [string] -or $entry.storage -cnotin @('own', 'reference')) { throw "${label}: storage must be own or reference." }
             if ($entry.type -isnot [string] -or [string]::IsNullOrWhiteSpace($entry.type)) { throw "${label}: type must be a non-empty C# type name." }
             if ([Microsoft.CodeAnalysis.CSharp.SyntaxFactory]::ParseTypeName($entry.type).ContainsDiagnostics) { throw "${label}: type must be a C# type name." }
-            if ($Language -ceq 'Zig' -and $entry.type -cne 'bool') { throw "${label}: Zig declaration contract supports only type bool." }
             if ($entry.perBlock -isnot [bool]) { throw "${label}: perBlock must be boolean." }
             if ($entry.trigger -isnot [string] -or $entry.trigger -cnotin @('event', 'poll')) { throw "${label}: trigger must be event or poll." }
             if ($entry.trigger -ceq 'poll') {
@@ -180,8 +179,7 @@ function Read-StateRegistry {
     [CmdletBinding(DefaultParameterSetName = 'Path')]
     param(
         [Parameter(Mandatory, ParameterSetName = 'Path')][string]$Path,
-        [Parameter(Mandatory, ParameterSetName = 'Bytes')][AllowEmptyCollection()][byte[]]$Bytes,
-        [ValidateSet('CSharp', 'Zig')][string]$Language = 'CSharp'
+        [Parameter(Mandatory, ParameterSetName = 'Bytes')][AllowEmptyCollection()][byte[]]$Bytes
     )
     if ($PSCmdlet.ParameterSetName -eq 'Path') { $Bytes = [IO.File]::ReadAllBytes([IO.Path]::GetFullPath($Path)) }
     if ($Bytes.Length -ge 3 -and $Bytes[0] -eq 239 -and $Bytes[1] -eq 187 -and $Bytes[2] -eq 191) { throw 'Registry: UTF-8 BOM is not allowed.' }
@@ -211,7 +209,7 @@ function Read-StateRegistry {
         $registry = ConvertFrom-Json -InputObject $json -AsHashtable -Depth 16
     } catch { throw "Registry: invalid JSON: $_" }
     if ($registry -isnot [System.Collections.IDictionary]) { throw 'Registry: expected an object.' }
-    Assert-StateRegistry $registry -Language $Language
+    Assert-StateRegistry $registry
     return $registry
 }
 

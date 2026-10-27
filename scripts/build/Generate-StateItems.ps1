@@ -12,7 +12,7 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'StateItemRegistry.psm1') -Force
 
 $bytes = [IO.File]::ReadAllBytes([IO.Path]::GetFullPath($Registry))
-$table = Read-StateRegistry -Bytes $bytes -Language $Language
+$table = Read-StateRegistry -Bytes $bytes
 $version = Get-StateRegistryVersion $bytes
 $entries = @($table.entries | Where-Object process -CEQ $Process)
 $lines = [Collections.Generic.List[string]]::new()
@@ -44,10 +44,11 @@ if ($Language -ceq 'Zig') {
     $lines.Add('    },')
     $lines.Add('    .items = &.{')
     foreach ($entry in $entries | Where-Object kind -CEQ 'item') {
-        # ValueType in the contract has only bool. Reject at the schema boundary.
+        # The contract's ValueType: bool stays bool; every other type is host (the value stays with its owner).
+        $valueType = if ($entry.type -ceq 'bool') { 'bool' } else { 'host' }
         $owner = if ($entry.owner.Contains('block')) { $entry.owner.block } else { 'null' }
         $perBlock = $entry.perBlock.ToString().ToLowerInvariant()
-        $lines.Add("        .{ .uid = $($entry.uid), .storage = .$($entry.storage), .value_type = .$($entry.type), .per_block = $perBlock, .trigger = .$($entry.trigger), .owner_block = $owner, .name = $(Get-ZigName $entry) },")
+        $lines.Add("        .{ .uid = $($entry.uid), .storage = .$($entry.storage), .value_type = .$valueType, .per_block = $perBlock, .trigger = .$($entry.trigger), .owner_block = $owner, .name = $(Get-ZigName $entry) },")
     }
     $lines.Add('    },')
     $lines.Add('    .conditions = &.{')
