@@ -336,9 +336,9 @@ function MetricView(props: {
       : [resourceMetricBasis(props.metricId)];
     return [label(), ...extra].filter(Boolean).join("\n");
   };
-  const reading = () => absent()
+  const reading = createMemo(() => absent()
     ? { value: uiText.dashboard.deviceAbsent, gap: "", unit: "", missing: true, title: uiText.dashboard.deviceAbsentHint }
-    : metricCardReading(definition(), metric());
+    : metricCardReading(definition(), metric()));
   // 首个读数还没到：画一条占位，不先写「无读数」再跳成数值。设备不在照常直接写。
   const waiting = () => props.pending && !absent();
   const withTrend = () => props.size === "large" || props.size === "full";

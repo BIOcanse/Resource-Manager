@@ -99,6 +99,7 @@ assert.match(component, /\$\{resourceProcessDisplayName\(process, bar\.metricId\
 assert.match(component, /aria-label=\{resourceProcessTooltip\(props\.bar, props\.software, item\(\)\.segment\)\}/);
 const table = readFileSync(new URL("../src/features/resourceTable/ResourceTable.tsx", import.meta.url), "utf8");
 assert.match(table, /resourceTableRowName as rowName/);
-assert.match(table, /title=\{rowName\(row\(\)\)\}/);
+// Actual table text/title/ARIA agreement is checked in the content-state browser
+// journey; the UI may share a projection instead of calling this helper per prop.
 assert.match(table, /processNames: row\.processNames \?\? \[\]/);
 console.log(`Synthetic process presentation passed: ${languages.length} languages, four static categories, ETW/ordinary names, three decoders, reactive table names/search and stable identity.`);

@@ -6,7 +6,7 @@ import { formatPollingInterval, formatRate } from "../src/features/deviceTopolog
 import { formatFieldValue } from "../src/presentation/fieldValueFormat.ts";
 import { applyLanguage, currentLanguage } from "../src/text.ts";
 import { languageOptions } from "../src/i18n/settingsLanguages.ts";
-import { metricCardReading, metricDisplayValue, resourceTableCellText } from "../src/presentation/metricLabels.ts";
+import { metricCardReading, metricDisplayValue, resourceTableCellText, resourceTableCellPresentation } from "../src/presentation/metricLabels.ts";
 import { formatBytePair, formatBitsPerSecond, formatBytes } from "../src/presentation/byteUnits.ts";
 import { formatLegacyMetricNumber } from "../src/presentation/legacyMetricNumber.ts";
 import { formatFixedDigits, formatInterfaceNumber, formatSignificantDigits, formatTrimmedDigits, interfaceDecimalSeparator } from "../src/presentation/interfaceNumbers.ts";
@@ -35,6 +35,14 @@ for (const { id: language } of languages) {
   assert.equal(formatFieldValue({ ...count, integerValue: null, numericValue: 88.3, unit: "%" }), `${decimal}%`, `${language} canonical field`);
   assert.equal(formatFieldValue({ ...count, integerValue: null, numericValue: 1.15, unit: "%" }), `${(1.1).toLocaleString(language, { useGrouping: false })}%`, `${language} keeps existing field rounding`);
   assert.equal(resourceTableCellText({ value: 88.3, unit: "%" }), `${decimal}%`, `${language} resource table`);
+  const presentation = resourceTableCellPresentation({ value: 88.3, unit: "%", heatPercent: 60, privateHeatPercent: 20,
+    basis: "frame basis" }, "cpu", { label: "CPU", basis: "column basis" });
+  assert.deepEqual(presentation, { display: `${decimal}%`, title: `CPU: ${decimal}%\ncolumn basis\nframe basis`,
+    heat: 60, privateHeat: 20, unavailable: false }, `${language} shared cell text, tooltip and heat`);
+  const failure = resourceTableCellPresentation({ value: null, unit: "%", availability: "Unavailable",
+    unavailableReason: "fixture-unavailable" }, "cpu", { label: "CPU", basis: undefined });
+  assert.equal(failure.display, "fixture-unavailable", `${language} failure replaces the previous reading`);
+  assert.equal(failure.unavailable, true);
   const fixed = (1.5).toLocaleString(language, { useGrouping: false, minimumFractionDigits: 2, maximumFractionDigits: 2 });
   assert.equal(formatBytes(1.5 * 1024 ** 3, "memory", "native"), `${fixed} GiB`, `${language} bytes`);
   assert.equal(formatBytePair(1.5 * 1024 ** 3, 2.5 * 1024 ** 3, "memory", "native"), `${fixed} / ${(2.5).toLocaleString(language, { useGrouping: false, minimumFractionDigits: 2, maximumFractionDigits: 2 })} GiB`, `${language} byte pair`);
@@ -55,11 +63,21 @@ assert.notEqual(formatted.get("de-DE"), formatted.get("en-US"), "German and Engl
 // a formatter, and switching back reuses that language's formatter.
 await applyLanguage("fr-FR");
 const OriginalNumberFormat = Intl.NumberFormat;
+const originalFormatToParts = Intl.NumberFormat.prototype.formatToParts;
 let constructions = 0;
+let separatorReads = 0;
+Intl.NumberFormat.prototype.formatToParts = function (this: Intl.NumberFormat, ...args: Parameters<typeof originalFormatToParts>) {
+  separatorReads++;
+  return originalFormatToParts.apply(this, args);
+};
 Intl.NumberFormat = new Proxy(OriginalNumberFormat, {
   construct(target, args) { constructions++; return Reflect.construct(target, args); }
 });
 try {
+  for (let read = 0; read < 20; read++) {
+    assert.equal(interfaceDecimalSeparator(), ",");
+  }
+  assert.equal(separatorReads, 0, "a language's known separator is not rebuilt for each reading");
   const first = formatFixedDigits(1.25, 12);
   assert.notEqual(formatFixedDigits(2.25, 12), first, "readings are never cached");
   formatInterfaceNumber(3.25, { maximumFractionDigits: 12, minimumFractionDigits: 12, useGrouping: false });
@@ -77,6 +95,7 @@ try {
   assert.equal(constructions, 4, "switching back reuses its formatter");
 } finally {
   Intl.NumberFormat = OriginalNumberFormat;
+  Intl.NumberFormat.prototype.formatToParts = originalFormatToParts;
 }
 
 // 源码里不允许再出现不带语言的区域格式化：toLocaleString()、toLocaleString(undefined, …)、Intl.*Format() / (undefined …)。

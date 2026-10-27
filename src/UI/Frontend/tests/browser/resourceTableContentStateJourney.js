@@ -65,6 +65,21 @@ export default async function resourceTableContentStateJourney(
       || summary[2] !== numericTexts[2] || summary[3] !== numericTexts[3]) {
     throw new Error(`Frontend summary did not retain authoritative totals: ${JSON.stringify(summary)}`);
   }
+  // A short result needs no empty row slots: those still construct every cell,
+  // subscribe reactive getters and participate in style/layout on page mount.
+  const rowPool = await page.locator(".resource-table-frame").evaluate(frame => ({
+    slots: frame.querySelectorAll(".resource-table-row").length,
+    rows: Number(frame.getAttribute("aria-rowcount")) - 1
+  }));
+  if (rowPool.slots > rowPool.rows) {
+    throw new Error(`Resource table mounted slots without data rows: ${JSON.stringify(rowPool)}`);
+  }
+  const nameBindings = await page.locator('#pageStage .resource-table-row[aria-hidden="false"] .resource-row-name')
+    .evaluateAll(names => names.map(name => ({ text: name.textContent, title: name.getAttribute("title"),
+      accessible: name.closest('[role="row"]')?.getAttribute("aria-label") })));
+  if (nameBindings.length === 0 || nameBindings.some(name => name.text !== name.title || name.text !== name.accessible)) {
+    throw new Error(`Resource row name text, tooltip and accessibility disagree: ${JSON.stringify(nameBindings)}`);
+  }
   await page.locator('.resource-table-panel').screenshot({ path: resolve(process.env.RM_BROWSER_ARTIFACT_ROOT ?? 'tests/browser/artifacts', 'resource-table-shared.png') });
   await setScenario(page, baseUrl, { resourceTableRowCount: 2 });
   await page.getByRole("button", { name: "更多操作：示例软件 1", exact: true }).waitFor();
@@ -85,6 +100,8 @@ export default async function resourceTableContentStateJourney(
     viewports,
     retainedTableHidden: true,
     maximumHeatVerified: heat,
+    rowPool,
+    nameBindings,
     pageErrors: failures
   };
 }

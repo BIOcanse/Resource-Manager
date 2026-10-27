@@ -1,8 +1,9 @@
 import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
 import { observeLayout } from "../../interactions/solid/layoutObservation.ts";
 import {
+  resourceTableCellPresentation,
   resourceTableCellText,
-  resourceFactUnavailableText,
+  type ResourceTableCellPresentation,
   resourceTableColumnLabel,
   resourceTableRowName as rowName
 } from "../../presentation/metricLabels";
@@ -10,13 +11,12 @@ import type { ProcessMetricField } from "../../data/resourceMonitor/processField
 import {
   resourceColumnSourceChoices,
   resourceColumnSourceLabel,
-  resourceTableColumnText,
-  type ResourceTableColumnText
+  resourceTableColumnText
 } from "./resourceTableSources.ts";
 import { RadioGroupItem, RadioGroupRoot } from "../../ui/primitives/RadioGroup.tsx";
 import { batch, createComputed, createEffect, createMemo, createSignal, For, Index, onCleanup, onMount, Show } from "solid-js";
 import type { JSX } from "solid-js";
-import { ArrowDown, ArrowLeft, ArrowRight, ChevronRight, MoreHorizontal } from "lucide-solid";
+import { ArrowDown, ArrowLeft, ArrowRight } from "lucide-solid";
 import { userFacingLabel } from "../../presentation/userFacingText";
 import { isReservedSegment } from "../resourceBreakdown/resourceProcessIdentity.ts";
 import { ResourcePerformancePanel } from "./ResourcePerformancePanel";
@@ -41,12 +41,11 @@ import { pinResourceTableRow } from "./resourceTableRowPin";
 import { resourceTableColumnsEqual } from "./resourceTableColumnIdentity";
 import { projectResourceTableHeat } from "./resourceTableHeat";
 import { accountResourceTableVisibility, resourceTableBusinessRowCount } from "./resourceTableAccounting.ts";
-import { formatBytes } from "../../presentation/byteUnits.ts";
 import { ContentState } from "../../ui/patterns/ContentState.tsx";
 import { useInlineEditorFocus } from "../../interactions/inlineEditorFocus";
 import { columnEdgeBound, columnResizeHandleDefinition } from "../../interactions/components/columnResizeHandle.ts";
 import { solidHost, useInteraction } from "../../interactions/solid/lodestone.ts";
-import { createReorderGroup } from "../../interactions/solid/reorderGroup.ts";
+import { createReorderGroup, type ReorderGroup } from "../../interactions/solid/reorderGroup.ts";
 import type { Presentation } from "../../interactions/protocol/runtime.ts";
 import { enterSlot, exitInPlace, settleEntrancesWithin } from "../../presentation/nodeAnimation.ts";
 
@@ -57,6 +56,15 @@ const minColumnWidth = 56;
 const maxColumnWidth = 520;
 const columnResizeKeyStep = 12;
 type CssVars = JSX.CSSProperties & Record<string, string>;
+interface ResourceTableRowPresentation {
+  readonly row: ResourceTableRow | undefined;
+  readonly name: string;
+  readonly status: string;
+  readonly cells: ReadonlyMap<string, ResourceTableCellPresentation>;
+}
+const emptyCellPresentation: ResourceTableCellPresentation = {
+  display: "--", title: "", heat: 0, privateHeat: 0, unavailable: false
+};
 interface RowSearchKeyCacheEntry {
   signature: string;
   key: string;
@@ -487,7 +495,7 @@ function VirtualResourceTable(props: {
     }));
     return resourceTableColumnsEqual(previous, next) ? previous : next;
   }, []);
-  const columnIds = createMemo(() => columns().map((column) => column.id));
+  const columnIds = createMemo(() => baseColumns().map((column) => column.id));
   /** 第 index 列存的宽度改成 width 时，它的右边缘离表头左边缘多远（多余宽度照常分给各列）。 */
   const columnRightEdge = (index: number, width: number) => {
     const resized = baseColumns().map((column, at) => at === index ? { ...column, width } : column);
@@ -511,18 +519,43 @@ function VirtualResourceTable(props: {
     return low;
   };
   // 表头、单元格提示用的列名和说明：选了来源的列写出口径，自动选择写出后端这次实际读的字段。
-  const columnTexts = createMemo(() => new Map(columns().map((column) => [column.id,
+  // Width correction must not invalidate every cell's current text/reading.
+  const columnsById = createMemo(() => new Map(columns().map(column => [column.id, column])));
+  const columnById = (id: string) => columnsById().get(id)!;
+  const columnTexts = createMemo(() => new Map(baseColumns().map(column => [column.id,
     resourceTableColumnText(column, props.processFields, column.processFieldName)])));
-  const columnText = (column: ResourceTableColumn) => columnTexts().get(column.id)
-    ?? resourceTableColumnText(column, props.processFields, column.processFieldName);
+  const textById = (id: string) => columnTexts().get(id)!;
+  const columnText = (column: ResourceTableColumn) => textById(column.id);
   const gridTemplate = createMemo(() => columnWidths().map((width) => `${width}px`).join(" "));
   const visibleRange = createMemo(() => {
     const start = Math.max(0, Math.floor(scrollTop() / rowHeight) - overscan);
     return { start };
   });
+  const firstRenderedRow = createMemo(() => Math.max(0, Math.floor(scrollTop() / rowHeight) - 1));
+  const lastRenderedRow = createMemo(() => Math.ceil((scrollTop() + viewportHeight()) / rowHeight) + 1);
   const slots = createMemo(() => {
     const count = Math.ceil(viewportHeight() / rowHeight) + overscan * 2 + slotReserve;
-    return Array.from({ length: Math.max(1, count) }, (_, index) => index);
+    // Keep index-based reuse and overscan, but do not mount cells for rows that
+    // do not exist. Short/empty results need no unused viewport-sized pool.
+    return Array.from({ length: Math.min(rows().length, count) }, (_, index) => index);
+  });
+  // One synchronous projection for the mounted pool, rather than hundreds of
+  // per-cell computation owners. Values/locale/range changes replace it now.
+  const rowPresentations = createMemo(() => {
+    const current = rows();
+    const start = visibleRange().start;
+    const ids = columnIds();
+    const texts = columnTexts();
+    return slots().map(slot => {
+      const row = current[start + slot];
+      const cells = new Map<string, ResourceTableCellPresentation>();
+      for (const id of ids) {
+        if (id !== "name" && id !== "status") {
+          cells.set(id, resourceTableCellPresentation(row?.values?.[id], id, texts.get(id)!));
+        }
+      }
+      return { row, name: rowName(row), status: rowStatus(row), cells } satisfies ResourceTableRowPresentation;
+    });
   });
   let lastScrolledHighlightKey = "";
   let lastActiveRowIndex = 0;
@@ -737,6 +770,7 @@ function VirtualResourceTable(props: {
   return (
     <div
       class="resource-table-frame"
+      style={{ "--resource-table-columns": gridTemplate() } satisfies CssVars}
       // 软件行可以展开出进程行，所以是树形表格：行带层级和展开状态，焦点按行移动（方向键、Home/End、左右展开收起）。
       role="treegrid"
       aria-label={uiText.resourceTable.panel}
@@ -753,37 +787,20 @@ function VirtualResourceTable(props: {
           role="row"
           aria-rowindex={1}
           style={{
-            "grid-template-columns": gridTemplate(),
             width: `${tableWidth()}px`,
             transform: `translateX(${-scrollLeft()}px)`
           }}
         >
           <For each={columnIds()}>
             {(columnId, columnIndex) => {
-              const column = () => columns().find((candidate) => candidate.id === columnId)!;
-              // 列宽把手由交互协议的运行时处理（协议第 4.4 节）：编辑模式才能拖，拖动中连续改宽度，松开、方向键、取消时提交。
-              // 宿主值是把手离表头左边缘的位置（存的宽度按多余宽度分配后的右边缘）；宿主把位置换回存的宽度。
-              let resizeHandle!: HTMLSpanElement;
+              const column = () => columnById(columnId);
               const storedWidth = () => clampColumnWidth(baseColumns()[columnIndex()].width);
-              // 这次拖动前存的宽度：第一次连续调用时记下，取消时回到它，最终调用或取消后清掉。
-              let widthBeforeDrag: number | null = null;
-              useInteraction(`列宽把手「${columnId}」`, columnResizeHandleDefinition, () => columnResizeView(resizeHandle, () => props.editMode), solidHost<number>({
-                value: () => columnRightEdge(columnIndex(), storedWidth()),
-                enabled: () => props.editMode,
-                call: (port, args) => {
-                  if (port === "resize") {
-                    const final = args[1] === true;
-                    if (!final && widthBeforeDrag === null) widthBeforeDrag = storedWidth();
-                    props.onColumnWidthChange(columnId, columnWidthForEdge(columnIndex(), Number(args[0])), final);
-                    if (final) widthBeforeDrag = null;
-                  } else if (port === "step") {
-                    props.onColumnWidthChange(columnId, clampColumnWidth(storedWidth() + Number(args[0]) * columnResizeKeyStep), true);
-                  } else if (port === "cancel" && widthBeforeDrag !== null) {
-                    props.onColumnWidthChange(columnId, widthBeforeDrag, true);
-                    widthBeforeDrag = null;
-                  }
-                }
-              }));
+              let header: HTMLDivElement | undefined;
+              let reorderRef: ((element: HTMLElement) => void) | undefined;
+              const bindHeader = (ref: ((element: HTMLElement) => void) | undefined) => {
+                reorderRef = ref;
+                if (header) ref?.(header);
+              };
               return (
               <div
                 role="columnheader"
@@ -797,7 +814,7 @@ function VirtualResourceTable(props: {
                   editing: props.editMode
                 }}
                 data-column-id={columnId}
-                ref={columnReorder.item({ id: () => columnId, enabled: () => props.editMode })}
+                ref={element => { header = element; reorderRef?.(element); }}
               >
                 {/* 编辑时整个表头格是拖动排序的把手，排序按钮停用：按下拖动时运行时捕获指针，浏览器把随后的 click 交给表头格，
                     按钮本来也收不到；停用的按钮算表头格的一部分，可用的按钮按在上面交给浏览器（interactions/solid/reorderGroup.ts）。 */}
@@ -857,18 +874,23 @@ function VirtualResourceTable(props: {
                     </button>
                   </span>
                 </Show>
-                <span
-                  ref={resizeHandle}
-                  class="resource-table-column-resizer"
-                  role="separator"
-                  tabIndex={props.editMode ? 0 : -1}
-                  aria-orientation="vertical"
-                  aria-label={uiText.resourceTableView.resizeColumn(columnText(column()).label)}
-                  aria-valuemin={minColumnWidth}
-                  aria-valuemax={maxColumnWidth}
-                  aria-valuenow={storedWidth()}
-                  aria-disabled={props.editMode ? "false" : "true"}
-                />
+                <Show when={props.editMode} fallback={
+                  <span class="resource-table-column-resizer" role="separator" tabIndex={-1}
+                    aria-orientation="vertical" aria-label={uiText.resourceTableView.resizeColumn(columnText(column()).label)}
+                    aria-valuemin={minColumnWidth} aria-valuemax={maxColumnWidth}
+                    aria-valuenow={storedWidth()} aria-disabled="true" />
+                }>
+                  <ResourceTableColumnResizer
+                    columnId={columnId}
+                    label={columnText(column()).label}
+                    storedWidth={storedWidth}
+                    rightEdge={width => columnRightEdge(columnIndex(), width)}
+                    widthForEdge={edge => columnWidthForEdge(columnIndex(), edge)}
+                    onWidthChange={props.onColumnWidthChange}
+                    reorder={columnReorder}
+                    bindHeader={bindHeader}
+                  />
+                </Show>
               </div>
               );
             }}
@@ -892,14 +914,17 @@ function VirtualResourceTable(props: {
           <For each={slots()}>
             {(slot) => {
               const rowIndex = () => visibleRange().start + slot;
-              const row = () => rows()[rowIndex()];
+              const presentation = () => rowPresentations()[slot];
+              const row = () => presentation()?.row;
               return (
                 <ResourceTableRowSlot
                   row={row}
-                  columns={columns}
-                  columnText={columnText}
-                  gridTemplate={gridTemplate}
+                  presentation={presentation}
+                  columnIds={columnIds}
+                  columnById={columnById}
                   rowIndex={rowIndex}
+                  renderContents={(rowIndex() >= firstRenderedRow() && rowIndex() < lastRenderedRow())
+                    || activeRowId() === row()?.id}
                   mode={props.mode}
                   expandedSoftwareIds={() => props.expandedSoftwareIds}
                   highlightedSoftwareId={props.highlightedSoftwareId}
@@ -920,12 +945,51 @@ function VirtualResourceTable(props: {
   );
 }
 
+/** Only editing owns a resize controller or its geometry. */
+function ResourceTableColumnResizer(props: {
+  columnId: string;
+  label: string;
+  storedWidth: () => number;
+  rightEdge: (width: number) => number;
+  widthForEdge: (edge: number) => number;
+  onWidthChange: ResourceTableProps["onColumnWidthChange"];
+  reorder: ReorderGroup;
+  bindHeader: (ref: ((element: HTMLElement) => void) | undefined) => void;
+}) {
+  let element!: HTMLSpanElement;
+  let widthBeforeDrag: number | null = null;
+  props.bindHeader(props.reorder.item({ id: () => props.columnId, enabled: () => true }));
+  onCleanup(() => props.bindHeader(undefined));
+  useInteraction(`列宽把手「${props.columnId}」`, columnResizeHandleDefinition,
+    () => columnResizeView(element, () => true), solidHost<number>({
+      value: () => props.rightEdge(props.storedWidth()),
+      enabled: () => true,
+      call: (port, args) => {
+        if (port === "resize") {
+          const final = args[1] === true;
+          if (!final && widthBeforeDrag === null) widthBeforeDrag = props.storedWidth();
+          props.onWidthChange(props.columnId, props.widthForEdge(Number(args[0])), final);
+          if (final) widthBeforeDrag = null;
+        } else if (port === "step") {
+          props.onWidthChange(props.columnId, clampColumnWidth(props.storedWidth() + Number(args[0]) * columnResizeKeyStep), true);
+        } else if (port === "cancel" && widthBeforeDrag !== null) {
+          props.onWidthChange(props.columnId, widthBeforeDrag, true);
+          widthBeforeDrag = null;
+        }
+      }
+    }));
+  return <span ref={element} class="resource-table-column-resizer" role="separator" tabIndex={0}
+    aria-orientation="vertical" aria-label={uiText.resourceTableView.resizeColumn(props.label)}
+    aria-valuemin={minColumnWidth} aria-valuemax={maxColumnWidth} aria-valuenow={props.storedWidth()} aria-disabled="false" />;
+}
+
 function ResourceTableRowSlot(props: {
   row: () => ResourceTableRow | undefined;
-  columns: () => ResourceTableColumn[];
-  columnText: (column: ResourceTableColumn) => ResourceTableColumnText;
-  gridTemplate: () => string;
+  presentation: () => ResourceTableRowPresentation | undefined;
+  columnIds: () => string[];
+  columnById: (id: string) => ResourceTableColumn;
   rowIndex: () => number;
+  renderContents: boolean;
   mode: ResourceTableViewMode;
   expandedSoftwareIds: () => Record<string, boolean>;
   highlightedSoftwareId?: string | null;
@@ -940,6 +1004,7 @@ function ResourceTableRowSlot(props: {
   onRowContextMenu: (row: ResourceTableRow, element: HTMLElement) => void;
 }) {
   const row = () => props.row();
+  const name = () => props.presentation()?.name ?? "";
   const hasRow = () => row() !== undefined;
   const isHighlighted = () => Boolean(
     props.highlightedSoftwareId
@@ -956,7 +1021,7 @@ function ResourceTableRowSlot(props: {
       data-resource-row-id={row()?.id}
       data-resource-software-id={row()?.softwareId}
       aria-rowindex={props.rowIndex() + 2}
-      aria-label={rowName(row())}
+      aria-label={name()}
       aria-level={hasRow() ? (row()?.depth ?? 0) + 1 : undefined}
       aria-expanded={isExpandable()
         ? props.expandedSoftwareIds()[row()?.softwareId ?? ""] === true
@@ -1005,21 +1070,25 @@ function ResourceTableRowSlot(props: {
         props.onRowContextMenu(current, event.currentTarget);
       }}
       style={{
-        "grid-template-columns": props.gridTemplate(),
+        // The pool retains current DOM values in every slot. Only clipped
+        // overscan descendants skip rendering; scrolling/focus enables them
+        // synchronously, with one extra row at each edge and no geometry read.
+        "content-visibility": props.renderContents ? "visible" : "hidden",
         transform: `translateY(${props.rowIndex() * rowHeight}px)`,
         visibility: hasRow() ? "visible" : "hidden",
         "pointer-events": hasRow() ? "auto" : "none"
       }}
     >
-      <For each={props.columns().map((column) => column.id)}>
+      <For each={props.columnIds()}>
         {(columnId, columnIndex) => {
-          const column = () => props.columns().find((candidate) => candidate.id === columnId)!;
           return <ResourceTableCell
-            column={column()}
-            text={props.columnText(column())}
+            column={props.columnById(columnId)}
+            presentation={() => props.presentation()?.cells.get(columnId) ?? emptyCellPresentation}
             columnIndex={columnIndex()}
             onRowContextMenu={props.onRowContextMenu}
             row={row}
+            rowName={name}
+            rowStatus={() => props.presentation()?.status ?? ""}
             mode={props.mode}
             expandedSoftwareIds={props.expandedSoftwareIds}
             onToggleExpand={props.onToggleExpand}
@@ -1190,9 +1259,11 @@ function normalizeSearchText(value: string) {
 
 function ResourceTableCell(props: {
   column: ResourceTableColumn;
-  text: ResourceTableColumnText;
+  presentation: () => ResourceTableCellPresentation;
   columnIndex: number;
   row: () => ResourceTableRow | undefined;
+  rowName: () => string;
+  rowStatus: () => string;
   mode: ResourceTableViewMode;
   expandedSoftwareIds: () => Record<string, boolean>;
   onToggleExpand: (softwareId: string) => void;
@@ -1200,9 +1271,8 @@ function ResourceTableCell(props: {
   onRowContextMenu: (row: ResourceTableRow, element: HTMLElement) => void;
 }) {
   const row = () => props.row();
-  const value = () => row()?.values?.[props.column.id];
-  const heat = () => value()?.heatPercent ?? 0;
-  if (props.column.id === "name") {
+  const columnId = props.column.id;
+  if (columnId === "name") {
     return (
       <div
         class="resource-table-cell name-cell"
@@ -1225,16 +1295,22 @@ function ResourceTableCell(props: {
             aria-label={props.expandedSoftwareIds()[row()?.softwareId ?? ""] ? uiText.resourceTable.collapseProcesses : uiText.resourceTable.expandProcesses}
             aria-expanded={props.expandedSoftwareIds()[row()?.softwareId ?? ""] ? "true" : "false"}
           >
-            <ChevronRight aria-hidden="true" size={14} strokeWidth={2.25} />
+            {/* Fixed Lucide geometry (ISC, included in credits): a static SVG
+                template avoids a Dynamic/For/context tree in every row. */}
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"
+              class="lucide lucide-icon lucide-chevron-right" aria-hidden="true">
+              <path d="m9 18 6-6-6-6" />
+            </svg>
           </button>
         </Show>
-        <span class="resource-row-name" title={rowName(row())}>{rowName(row())}</span>
+        <span class="resource-row-name" title={props.rowName()}>{props.rowName()}</span>
         <Show when={props.onSoftwareContextMenu && (row()?.kind === "software" || row()?.kind === "process")}>
           <button
             type="button"
             class="resource-row-actions"
             tabIndex={-1}
-            aria-label={uiText.resourceTableView.moreActions(rowName(row()) || uiText.resourceTableView.currentItem)}
+            aria-label={uiText.resourceTableView.moreActions(props.rowName() || uiText.resourceTableView.currentItem)}
             title={uiText.resourceTableView.moreActionsTitle}
             data-focus-key={`resource-row-actions:${row()?.id ?? "unknown"}`}
             onClick={(event) => openRowActions(event.currentTarget)}
@@ -1249,53 +1325,46 @@ function ResourceTableCell(props: {
               openRowActions(event.currentTarget);
             }}
           >
-            <MoreHorizontal aria-hidden="true" size={16} strokeWidth={2} />
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+              class="lucide lucide-icon lucide-ellipsis" aria-hidden="true">
+              <circle cx="12" cy="12" r="1" />
+              <circle cx="19" cy="12" r="1" />
+              <circle cx="5" cy="12" r="1" />
+            </svg>
           </button>
         </Show>
       </div>
     );
   }
 
-  if (props.column.id === "status") {
-    const status = () => rowStatus(row());
+  if (columnId === "status") {
     return (
-      <div class="resource-table-cell status-cell" role="gridcell" aria-colindex={props.columnIndex + 1} title={status()}>
-        <span class="resource-table-cell-text">{status()}</span>
+      <div class="resource-table-cell status-cell" role="gridcell" aria-colindex={props.columnIndex + 1} title={props.rowStatus()}>
+        <span class="resource-table-cell-text">{props.rowStatus()}</span>
       </div>
     );
   }
 
-  if (props.column.id === "pid" || props.column.id === "user" || props.column.id === "architecture") {
+  if (columnId === "pid" || columnId === "user" || columnId === "architecture") {
     return (
-      <div class="resource-table-cell text-cell" role="gridcell" aria-colindex={props.columnIndex + 1} title={resourceTableCellText(value(), props.column.id)}>
-        <span class="resource-table-cell-text">{resourceTableCellText(value(), props.column.id)}</span>
+      <div class="resource-table-cell text-cell" role="gridcell" aria-colindex={props.columnIndex + 1} title={props.presentation().display}>
+        <span class="resource-table-cell-text">{props.presentation().display}</span>
       </div>
     );
   }
 
+  const presentation = props.presentation;
   return (
     <div
       class="resource-table-cell value-cell"
       role="gridcell"
       aria-colindex={props.columnIndex + 1}
-      classList={{ unavailable: value()?.availability === "Unavailable" }}
-      style={{ "--heat": `${heat()}%`, "--private-heat": `${value()?.privateHeatPercent ?? heat()}%` } satisfies CssVars}
-      title={(value()?.sharedValue != null
-        ? uiText.resourceTableView.memoryBreakdown(
-          props.text.label,
-          resourceTableCellText(value(), props.column.id),
-          formatBytes((value()?.value ?? 0) - value()!.sharedValue!, "memory"),
-          formatBytes(value()?.sharedValue, "memory"))
-          // 有共享分摊的格子，底部细条分实线（自有）和虚线（共享分摊）两段，提示里写明。
-          + `\n${uiText.resourceTableView.heatSharedLegend}`
-        : value()
-          ? `${props.text.label}: ${resourceTableCellText(value(), props.column.id)}`
-          : props.text.label)
-        + (props.text.basis ? `\n${props.text.basis}` : "")
-        + (value()?.basis ? `\n${value()!.basis}` : "")
-        + (value()?.unavailableReason ? `\n${resourceFactUnavailableText(value()!.unavailableReason!).hint}` : "")}
+      classList={{ unavailable: presentation().unavailable }}
+      style={{ "--heat": `${presentation().heat}%`, "--private-heat": `${presentation().privateHeat}%` } satisfies CssVars}
+      title={presentation().title}
     >
-      <span class="resource-table-cell-text">{resourceTableCellText(value(), props.column.id)}</span>
+      <span class="resource-table-cell-text">{presentation().display}</span>
     </div>
   );
 

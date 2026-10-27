@@ -363,3 +363,31 @@ export function resourceTableCellText(
       return `${formatFixedDigits(cell.value, 1)} ${cell.unit}`.trim();
   }
 }
+
+export interface ResourceTableCellPresentation {
+  readonly display: string;
+  readonly title: string;
+  readonly heat: number;
+  readonly privateHeat: number;
+  readonly unavailable: boolean;
+}
+
+/** One current cell projection, shared by its text, tooltip and heat bindings. */
+export function resourceTableCellPresentation(
+  cell: ResourceTableValue | null | undefined,
+  columnId: string,
+  text: { readonly label: string; readonly basis: string | undefined }
+): ResourceTableCellPresentation {
+  const display = resourceTableCellText(cell, columnId);
+  const title = (cell?.sharedValue != null
+    ? uiText.resourceTableView.memoryBreakdown(text.label, display,
+      formatBytes((cell.value ?? 0) - cell.sharedValue, "memory"), formatBytes(cell.sharedValue, "memory"))
+      + `\n${uiText.resourceTableView.heatSharedLegend}`
+    : cell ? `${text.label}: ${display}` : text.label)
+    + (text.basis ? `\n${text.basis}` : "")
+    + (cell?.basis ? `\n${cell.basis}` : "")
+    + (cell?.unavailableReason ? `\n${resourceFactUnavailableText(cell.unavailableReason).hint}` : "");
+  return { display, title, heat: cell?.heatPercent ?? 0,
+    privateHeat: cell?.privateHeatPercent ?? cell?.heatPercent ?? 0,
+    unavailable: cell?.availability === "Unavailable" };
+}

@@ -202,7 +202,42 @@ export default async function resourceTableScrollStabilityJourney(
   }
   await page.locator(".resource-table-panel").getByRole("button", { name: /取消/ }).click();
 
-  return { before, after, factSubscriptions, initialNames, sortedNames, widthBefore, widthAfter, nameOnlyRowsPreserved: true };
+  // A full pool includes clipped reserve rows. A native scroll must expose
+  // current text on the next paint, and keyboard navigation must cross the pool.
+  const scrolledPool = await page.locator(".resource-table-viewport").evaluate(async viewport => {
+    viewport.scrollTop = 30 * 38 + 7;
+    await new Promise(requestAnimationFrame);
+    const clip = viewport.getBoundingClientRect();
+    const rows = [...viewport.querySelectorAll('.resource-table-row[aria-hidden="false"]')];
+    const visible = rows.filter(row => {
+      const box = row.getBoundingClientRect();
+      return box.top < clip.bottom && box.bottom > clip.top;
+    });
+    visible[0]?.focus({ preventScroll: true });
+    return {
+      visible: visible.map(row => ({ rendered: getComputedStyle(row).contentVisibility !== "hidden",
+        name: row.querySelector(".resource-row-name")?.textContent,
+        values: [...row.querySelectorAll(".value-cell")].map(cell => cell.textContent?.trim()) })),
+      retainedNames: rows.every(row => Boolean(row.querySelector(".resource-row-name")?.textContent)),
+      poolSize: rows.length
+    };
+  });
+  if (!scrolledPool.visible.length || !scrolledPool.retainedNames
+    || scrolledPool.visible.some(row => !row.rendered || !row.name || row.values.some(value => !value))) {
+    throw new Error(`Scrolling exposed missing current row contents: ${JSON.stringify(scrolledPool)}`);
+  }
+  for (const key of ["End", "Home"]) {
+    await page.keyboard.press(key);
+    await page.waitForFunction(key => {
+      const frame = document.querySelector(".resource-table-frame");
+      const row = document.activeElement?.closest(".resource-table-row");
+      const expected = key === "End" ? Number(frame?.getAttribute("aria-rowcount")) : 3;
+      return Number(row?.getAttribute("aria-rowindex")) === expected
+        && getComputedStyle(row).contentVisibility !== "hidden"
+        && Boolean(row.querySelector(".resource-row-name")?.textContent);
+    }, key);
+  }
+  return { before, after, factSubscriptions, initialNames, sortedNames, widthBefore, widthAfter, nameOnlyRowsPreserved: true, scrolledPool };
 }
 
 async function waitForNameSort(page, direction, previousNames) {
