@@ -253,8 +253,10 @@ public sealed class ThreadCpuDiagnosticsTests
             {
                 Marshal.ThrowExceptionForHR(SetThreadDescription(GetCurrentThread(), Description));
                 Id = (int)GetCurrentThreadId(); ready.Set(); run.Wait();
+                // GetThreadTimes advances per clock tick. A fixed wall-clock burn can receive less than one
+                // tick under a loaded test host, so burn until this thread's own counters show CPU time.
                 var watch = Stopwatch.StartNew();
-                while (watch.ElapsedMilliseconds < 100) Thread.SpinWait(1024);
+                while (OwnCpuTime100Ns() < MinimumBurn100Ns && watch.ElapsedMilliseconds < 3_000) Thread.SpinWait(1024);
             }) { IsBackground = true };
             thread.Start(); Assert.True(ready.Wait(TimeSpan.FromSeconds(5)));
         }
@@ -264,5 +266,14 @@ public sealed class ThreadCpuDiagnosticsTests
         private static extern int SetThreadDescription(IntPtr thread, string description);
         [DllImport("kernel32.dll", ExactSpelling = true)] private static extern IntPtr GetCurrentThread();
         [DllImport("kernel32.dll", ExactSpelling = true)] private static extern uint GetCurrentThreadId();
+        private const long MinimumBurn100Ns = 500_000;
+        private static long OwnCpuTime100Ns()
+        {
+            Assert.True(GetThreadTimes(GetCurrentThread(), out _, out _, out var kernel, out var user));
+            return kernel + user;
+        }
+        [DllImport("kernel32.dll", ExactSpelling = true, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetThreadTimes(IntPtr thread, out long creation, out long exit, out long kernel, out long user);
     }
 }
