@@ -14,6 +14,7 @@ import { waitForCondition, waitForNextPaint, waitForStableRendering } from "./jo
  * - 单击和原生 range 相同：同一串单击，原生 range 每次得到的值和这里一样（点在滑块上不改，点在滑轨上到那里）；
  * - 拖动中按 Esc、按右键取消：什么都不写，回到拖动前的值；
  * - 方向键、PageUp / PageDown、Home / End 照原生 range 一步一写；
+ * - 平面移动：终端顿挫下滑块走向新值的路上，按在它这一帧画出的位置是抓住滑块；
  * - 外观不变：四种界面风格下，可用和置灰两种状态，滑条的截图和原样的原生 range（同一处换上去的原生元素）逐像素相同
  *   （只容浏览器光栅化圆角抗锯齿时差 1 级的抖动），
  *   截图存在 RM_BROWSER_ARTIFACT_DIR。
@@ -269,13 +270,69 @@ export default async function controlSliderInteractionJourney(page, baseUrl) {
   await page.waitForTimeout(400);
   assert.equal(await pendingWrite(), false, "Home at the start writes nothing");
 
+  /*
+   * 平面移动（docs/animation_style_2026-10-26.md「总原则」）：滑块走向新值的路上，命中区域就是它这一帧画在的地方。
+   * 终端顿挫按步跳，每一步停约 45 ms，真实鼠标来得及按在某一步画出的滑块上。按在那里是抓住滑块（单击滑块不改值，
+   * 滑块接着走到新值）；命中区域若还按终点算，这一下就是按在滑轨上，值会改成按下处。
+   * 按下那一刻在页面里记下滑块画在哪个值、指针在哪、那一点命中的元素；指针刚好没落在这一步的滑块上（这一步正好换了）就再来一次。
+   */
+  await writeFrontendPreferences(page, value => { value.appearance.animationStyle = "terminal"; });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => document.body.dataset.animations === "terminal");
+  await openControl();
+  await slider.waitFor();
+  await slider.scrollIntoViewIfNeeded();
+  await waitFor("Terminal style value", thumb, "0");
+  const movingTrack = await slider.boundingBox();
+  const movingY = movingTrack.y + movingTrack.height / 2;
+  const xAt = (v) => movingTrack.x + 8 + (v / 100) * (movingTrack.width - 16);
+  await slider.evaluate(input => {
+    window.__thumbPresses = [];
+    window.addEventListener("pointerdown", event => {
+      window.__thumbPresses.push({ x: event.clientX, value: Number(input.value),
+        hitsInput: document.elementFromPoint(event.clientX, event.clientY) === input });
+    }, { capture: true });
+  });
+  const attempts = [];
+  let caught = null;
+  for (let attempt = 0; attempt < 6 && caught === null; attempt += 1) {
+    const from = Number(await thumb());
+    const to = from < 50 ? 90 : 10;
+    await page.mouse.move(xAt(to), movingY);
+    await page.mouse.down();
+    await page.mouse.up();
+    const drawn = await page.waitForFunction(([input, a, b]) => {
+      const value = Number(input.value);
+      return value !== a && value !== b ? value : null;
+    }, [await slider.elementHandle(), from, to], { polling: "raf", timeout: 2000 }).then(handle => handle.jsonValue()).catch(() => null);
+    if (drawn === null) {
+      attempts.push({ from, to, drawn });
+      await waitFor(`Attempt ${attempt}: thumb settles`, thumb, String(to));
+      continue;
+    }
+    await page.mouse.move(xAt(drawn), movingY);
+    await page.mouse.down();
+    await page.mouse.up();
+    const press = await page.evaluate(() => window.__thumbPresses.at(-1));
+    await page.waitForTimeout(400);
+    await settleRendering();
+    const entry = { from, to, drawn, press, thumb: await thumb(), shown: await shown() };
+    attempts.push(entry);
+    if (Math.abs(press.x - xAt(press.value)) <= 6) caught = entry;
+  }
+  assert.ok(caught, `A press landed on the thumb where it was drawn: ${JSON.stringify(attempts)}`);
+  assert.equal(caught.press.hitsInput, true, `The drawn thumb is hit: ${JSON.stringify(caught)}`);
+  assert.ok(caught.press.value !== caught.from && caught.press.value !== caught.to, `The thumb was pressed on its way: ${JSON.stringify(caught)}`);
+  assert.equal(caught.thumb, String(caught.to), `Pressing the moving thumb where it is drawn grabs it, it does not jump there: ${JSON.stringify(attempts)}`);
+  assert.equal(caught.shown, String(caught.to), `Pressing the moving thumb writes nothing new: ${JSON.stringify(attempts)}`);
+
   // 外观：四种界面风格、可用和置灰，滑条和原样的原生 range 逐字节相同。
   await box.fill("65");
   await box.press("Enter");
   await applyAndSettle(65, "Screenshot value");
   const looks = [];
   for (const uiStyle of ["standard", "classic", "soft", "outline", "terminal"]) {
-    await writeFrontendPreferences(page, value => { value.appearance.uiStyle = uiStyle; });
+    await writeFrontendPreferences(page, value => { value.appearance.uiStyle = uiStyle; value.appearance.animationStyle = "none"; });
     await page.reload({ waitUntil: "domcontentloaded" });
     await page.waitForFunction(style => document.documentElement.dataset.uiStyle === style, uiStyle);
     await openControl();
@@ -310,7 +367,7 @@ export default async function controlSliderInteractionJourney(page, baseUrl) {
       looks.push({ path, ...diff });
     }
   }
-  return { parity, looks, nativeThumbPress: "on-thumb clicks keep the value in both" };
+  return { parity, looks, nativeThumbPress: "on-thumb clicks keep the value in both", movingThumbPress: caught, movingThumbAttempts: attempts.length };
 }
 
 /** 两张 PNG 截图逐像素比：尺寸是否相同、有几个像素不同、任一通道最大差几级。在页面里用 canvas 解码。 */

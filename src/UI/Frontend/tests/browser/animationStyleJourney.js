@@ -12,6 +12,7 @@ import { waitForStableRendering } from "./journeyWaits.js";
  *   流畅平滑带速度、能接住（动画中再按一次，滑块先顺着原来的方向走一点再回头）；桌面常规按固定时长、不带速度；
  *   终端顿挫按固定步数跳（拖着时连续）；无动画、超高性能在按键的同一个任务里就到终态。
  * - 滚动区边缘回弹：流畅平滑里滚到顶还往上滚，内容按橡皮筋偏出去再回到边缘，滚动区本身不动；其余风格不偏。
+ * - 平面移动（「总原则」第二类）：回弹偏出去的内容在画出来的地方命中；动画风格那组分段选择的指示条每一帧画在哪里，那里命中的就是画在那里的选项。
  * - 刷新后保持；旧偏好（animations、motionFeel）按迁移读成新的两项。
  * 自动关闭在回到前台时的选择由 automatic-animation 旅程查。
  */
@@ -66,9 +67,45 @@ export default async function animationStyleJourney(page, baseUrl) {
         const style = getComputedStyle(dialog);
         return { opacity: Math.round(Number(style.opacity) * 1000) / 1000, transform: style.transform };
       },
+      /**
+       * 边缘回弹的偏移，和这一帧的命中（平面移动：命中区域随画面走）：取滚动内容里第一个设置行，按它这一帧画出的框
+       * （含回弹的平移）取上沿、下沿往里 2 px 的两点，两点命中的都是它。命中区域若留在原处，偏出去几 px 下沿那点就落到别处。
+       */
       band: () => {
         const element = document.querySelector("[data-edge-band]");
-        return element ? Number.parseFloat(element.style.getPropertyValue("--edge-band")) : 0;
+        const offset = element ? Number.parseFloat(element.style.getPropertyValue("--edge-band")) : 0;
+        const row = document.querySelector(".settings-content .settings-row");
+        if (!row) return { offset, hit: null };
+        const box = row.getBoundingClientRect();
+        const x = box.left + Math.min(24, box.width / 2);
+        const hit = [box.top + 2, box.bottom - 2].every((y) => {
+          const target = document.elementFromPoint(x, y);
+          return !!target && row.contains(target);
+        });
+        return { offset, hit, top: Math.round(box.top * 10) / 10 };
+      },
+      /**
+       * 外观分区里动画风格那组分段选择的指示条（平面移动）：这一帧画在哪里、那里命中的就是画在那里的东西。
+       * 指示条是选项下面的底、不接指针，所以它中心那一点命中的是画在那一点的选项（落在两项之间的缝里时是组本身）。
+       */
+      indicator: () => {
+        const group = document.querySelector("[data-indicator-probe]");
+        const bar = group?.querySelector(".selection-indicator");
+        if (!group || !bar) return null;
+        const box = bar.getBoundingClientRect();
+        if (getComputedStyle(bar).visibility === "hidden" || box.width === 0) return { visible: false };
+        const x = box.left + box.width / 2;
+        const y = box.top + box.height / 2;
+        const target = document.elementFromPoint(x, y);
+        // 画在这一点的选项：框含这一点的那些（相邻两项的边框可能叠 1 px，叠住的那一条两项都算）。
+        const drawn = [...group.querySelectorAll("[role='radio']")].filter((item) => {
+          const r = item.getBoundingClientRect();
+          return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+        });
+        const radio = target?.closest("[role='radio']") ?? null;
+        const hitsDrawn = !!target && group.contains(target) && (radio ? drawn.includes(radio) : drawn.length === 0);
+        return { visible: true, x: Math.round(x * 10) / 10, real: !bar.closest("[data-exit-ghost]"), hitsDrawn,
+          ...(hitsDrawn ? {} : { target: target ? `${target.tagName}.${target.className}` : null, drawn: drawn.map((item) => item.textContent?.trim()) }) };
       },
       /** hit：内容层在视口里那一块的中心点命中的是真节点（幽灵不可命中，进场不挪命中区域）。 */
       section: () => {
@@ -266,6 +303,20 @@ export default async function animationStyleJourney(page, baseUrl) {
     } });
   };
 
+  /**
+   * 指示条滑动：点动画风格那组里隔两项的选项（只选不保存，生效的风格不变），逐帧读指示条；读完点回原来的选项，等它停下。
+   */
+  const indicatorSlide = async (style) => {
+    const ids = settings.animationStyleOptions.map((option) => option.id);
+    const other = ids[(ids.indexOf(style) + 2) % ids.length];
+    await page.evaluate(() => document.querySelectorAll("[data-indicator-probe]").forEach((element) => element.removeAttribute("data-indicator-probe")));
+    await styleGroup.evaluate((element) => element.setAttribute("data-indicator-probe", ""));
+    const run = await sample({ reader: "indicator", startEvent: "click", trigger: () => styleGroup.getByRole("radio", { name: label(other), exact: true }).click() });
+    await styleGroup.getByRole("radio", { name: label(style), exact: true }).click();
+    await page.waitForTimeout(700);
+    return run;
+  };
+
   /** 内容层的开度：进场完内联不透明度撤掉，读作 1。 */
   const opacityOf = (value) => (value.opacity === "" || value.opacity == null ? "1" : value.opacity);
   const distinct = (values) => [...new Set(values.map((value) => JSON.stringify(value)))].map((value) => JSON.parse(value));
@@ -287,15 +338,19 @@ export default async function animationStyleJourney(page, baseUrl) {
     await openSettings();
     const sections = [await sectionChange("updates"), await sectionChange("appearance")];
     const reverse = await sectionReverse();
+    const indicator = await indicatorSlide(style);
     await page.waitForTimeout(400);
     const band = await edgeBand();
-    const bandPeak = Math.max(...band.frames.map((frame) => Math.abs(frame.value)));
+    const bandPeak = Math.max(...band.frames.map((frame) => Math.abs(frame.value.offset)));
     const bandLeft = await page.evaluate(() => document.querySelectorAll("[data-edge-band]").length);
     const entry = { tokenMs, toggle: toggle.map(({ settledAt, sameTask, final }) => ({ settledAt, sameTask, final })),
       toggleFrames: toggle[0].frames.map((frame) => [Math.round(frame.t), frame.value]),
       caught: caught.frames.map((frame) => [Math.round(frame.t), frame.value]), caughtPresses: caught.events.map(Math.round), caughtChanges: caught.changes.map(Math.round), drag,
       dialog: { settledAt: dialog.settledAt, first: dialog.frames.find((frame) => frame.value)?.value, values: distinct(dialog.frames.filter((frame) => frame.value).map((frame) => frame.value.opacity)) },
-      band: { peak: bandPeak, settledAt: band.settledAt, final: band.final, left: bandLeft },
+      band: { peak: bandPeak, settledAt: band.settledAt, final: band.final, left: bandLeft,
+        missed: band.frames.filter((frame) => frame.value.hit !== true).map((frame) => [Math.round(frame.t), frame.value]) },
+      indicator: { settledAt: indicator.settledAt, xs: distinct(indicator.frames.filter((frame) => frame.value?.visible).map((frame) => frame.value.x)),
+        missed: indicator.frames.filter((frame) => !frame.value?.visible || !frame.value.real || !frame.value.hitsDrawn).map((frame) => [Math.round(frame.t), frame.value]) },
       closed,
       sections: sections.map((run) => ({ settledAt: run.settledAt, first: run.frames[0]?.value, sameTask: run.sameTask, values: distinct(run.frames.map((frame) => opacityOf(frame.value))) })),
       reverse: { settledAt: reverse.settledAt, sameTask: reverse.sameTask, frames: reverse.frames.slice(0, 12).map((frame) => [Math.round(frame.t), opacityOf(frame.value), frame.value.leaving]) } };
@@ -310,8 +365,14 @@ export default async function animationStyleJourney(page, baseUrl) {
     }
     const xs = (run) => run.frames.map((frame) => frame.value);
     if (style === "smooth") {
-      if (!(bandPeak > 5) || band.final !== 0 || bandLeft !== 0 || band.settledAt > 2000) fail(`smooth: the scroll edge does not rubber-band and return: ${JSON.stringify(entry.band)}`);
+      if (!(bandPeak > 5) || band.final?.offset !== 0 || bandLeft !== 0 || band.settledAt > 2000) fail(`smooth: the scroll edge does not rubber-band and return: ${JSON.stringify(entry.band)}`);
     } else if (bandPeak !== 0 || bandLeft !== 0) fail(`${style}: the scroll edge moves: ${JSON.stringify(entry.band)}`);
+    // 平面移动（「总原则」）：命中区域和这一帧的画面一致。回弹偏出去的内容在画出来的地方命中；指示条每一帧画在哪里，那里命中的就是画在那里的选项。
+    if (entry.band.missed.length) fail(`${style}: the rubber-banded content is not hit where it is drawn: ${JSON.stringify(entry.band.missed.slice(0, 6))}`);
+    if (entry.indicator.missed.length) fail(`${style}: the selection indicator's frame and hit disagree: ${JSON.stringify(entry.indicator.missed.slice(0, 6))}`);
+    if (style === "none" || style === "ultra") {
+      if (entry.indicator.xs.length > 2) fail(`${style}: the selection indicator passes through ${entry.indicator.xs.length} places: ${JSON.stringify(entry.indicator.xs)}`);
+    } else if (entry.indicator.xs.length < 3) fail(`${style}: the selection indicator does not slide: ${JSON.stringify(entry.indicator.xs)}`);
     if (style === "none" || style === "ultra") {
       // 当帧到终态：按键派发完那一刻滑块已在另一端；弹窗、分区的第一帧就是终态。
       for (const run of toggle) if (run.sameTask !== run.final) fail(`${style}: the switch is not at its end in the same task: ${JSON.stringify(entry.toggle)}`);

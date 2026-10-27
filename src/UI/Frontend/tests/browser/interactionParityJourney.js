@@ -11,6 +11,8 @@ const RECT_TOLERANCE_PX = 0.5;
  * 五种风格共用一段交互：呈现只能改像素，不能推迟挂载、焦点、命中和可访问性。
  * 测量从浏览器收到真实输入事件开始，不把 Playwright 的往返时间算成交互延迟。
  * 即时快照在任何等待之前保存；快速往返之间不等动画。稳定几何另行采样，不能用它放行操作。
+ * 这里比的是进场退场一类（docs/animation_style_2026-10-26.md「总原则」）：换页、弹窗、页签、行展开，交互和 none 完全相同。
+ * 平面移动一类（命中区域随画面走）由 animation-style（边缘回弹、分段选择指示条）和 control-slider-interaction（滑块）旅程核对。
  */
 export default async function interactionParityJourney(page, baseUrl) {
   const app = await loadAppCopy("zh-CN");
