@@ -55,11 +55,18 @@ public sealed class CpuTopologyEndpointTests
     }
 
     [Fact]
-    public async Task ResidencyReadsExplainMissingWindowAndSummarizeTheSamePublishedWindow()
+    public async Task ResidencyReadsFetchAFreshWindowExplainAMissingOneAndSummarizeIt()
     {
         await using var fixture = new CpuTopologyProviderTestFixture();
-        CpuCoreResidencySnapshot? value = null;
-        var residency = new RecordingCpuCoreResidencyReader(() => value);
+        var published = false;
+        CpuCoreResidencySnapshot? last = null;
+        // Every capture is a new window taken now, as the single fetch only accepts windows captured after the request.
+        var residency = new RecordingCpuCoreResidencyReader(() => last = published
+            ? CpuCoreResidencyTestValues.Create(19, DateTimeOffset.UtcNow,
+                CpuCoreResidencyTestValues.Process(1, 10, ("core:0", 20), ("core:1", 10)),
+                CpuCoreResidencyTestValues.Process(2, 20, ("core:0", 30))) with
+                { LogicalProcessorScopes = [new(0, "core:0", "ccd:0", "fixture"), new(1, "core:2", "ccd:0", "fixture")] }
+            : null);
         await using var app = await StartEndpointsAsync(fixture.Reader, residency);
         using var client = CreateClient(app);
         foreach (var path in new[] { "/api/cpu/residency", "/api/cpu/residency/cores" })
@@ -68,17 +75,17 @@ public sealed class CpuTopologyEndpointTests
             Assert.Equal("unavailable", empty.GetProperty("state").GetString());
             Assert.Equal("cpu-residency-window-unavailable", empty.GetProperty("reasonCode").GetString());
         }
-        value = CpuCoreResidencyTestValues.Create(19, DateTimeOffset.UtcNow,
-            CpuCoreResidencyTestValues.Process(1, 10, ("core:0", 20), ("core:1", 10)),
-            CpuCoreResidencyTestValues.Process(2, 20, ("core:0", 30))) with
-            { LogicalProcessorScopes = [new(0, "core:0", "ccd:0", "fixture"), new(1, "core:2", "ccd:0", "fixture")] };
+        published = true;
         var summary = await client.GetFromJsonAsync<JsonElement>("/api/cpu/residency/cores");
-        Assert.Equal(value.MeasuredFrom, summary.GetProperty("measuredFrom").GetDateTimeOffset());
-        Assert.Equal(value.MeasuredThrough, summary.GetProperty("measuredThrough").GetDateTimeOffset());
+        Assert.NotNull(last);
+        Assert.Equal(last.MeasuredFrom, summary.GetProperty("measuredFrom").GetDateTimeOffset());
+        Assert.Equal(last.MeasuredThrough, summary.GetProperty("measuredThrough").GetDateTimeOffset());
         var cores = summary.GetProperty("cores").EnumerateArray().ToArray();
         Assert.Equal(50, cores.Single(core => core.GetProperty("physicalCoreId").GetString() == "core:0").GetProperty("usagePercent").GetDouble());
         Assert.Equal(0, cores.Single(core => core.GetProperty("physicalCoreId").GetString() == "core:2").GetProperty("usagePercent").GetDouble());
-        Assert.Empty(residency.Subscriptions);
+        Assert.Equal(["cpu-residency:snapshot", "cpu-residency:cores", "cpu-residency:cores"],
+            residency.Subscriptions.Select(subscription => subscription.Id));
+        Assert.Equal(residency.Subscriptions.Count, residency.ReleasedSubscriptions);
         Assert.Equal(0, fixture.Sampler.CaptureCount);
         await app.StopAsync();
     }
