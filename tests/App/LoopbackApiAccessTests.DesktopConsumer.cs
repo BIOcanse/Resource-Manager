@@ -16,7 +16,6 @@ public sealed partial class LoopbackApiAccessTests
         await using var fixture = await Fixture.StartAsync();
         using var current = Process.GetCurrentProcess();
         Assert.True(current.SessionId > 0, "Desktop publisher selection requires an interactive Windows session.");
-        var sample = CaptureEmptyDesktopSample(current);
 
         using var selection = new HttpRequestMessage(HttpMethod.Post,
             InteractiveDesktopObservation.EndpointPath + "/publisher/select");
@@ -34,7 +33,7 @@ public sealed partial class LoopbackApiAccessTests
 
         using var publish = new HttpRequestMessage(HttpMethod.Post, InteractiveDesktopObservation.EndpointPath)
         {
-            Content = JsonContent.Create(sample)
+            Content = JsonContent.Create(CaptureEmptyDesktopSample(current))
         };
         publish.Headers.Add(TrustedAccessHeaders.KeyHeader, fixture.Key);
         using var published = await fixture.Client.SendAsync(publish);
@@ -49,7 +48,7 @@ public sealed partial class LoopbackApiAccessTests
 
         using var competingPublish = new HttpRequestMessage(HttpMethod.Post, InteractiveDesktopObservation.EndpointPath)
         {
-            Content = JsonContent.Create(sample)
+            Content = JsonContent.Create(CaptureEmptyDesktopSample(current))
         };
         competingPublish.Headers.Add(TrustedAccessHeaders.KeyHeader, fixture.Key);
         using var rejected = await competingClient.SendAsync(competingPublish);

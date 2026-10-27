@@ -75,22 +75,27 @@ public sealed partial class NvidiaFanHttpIntegrationTests
         using var client = new HttpClient { BaseAddress = new Uri(Assert.Single(app.Services.GetRequiredService<IServer>()
             .Features.Get<IServerAddressesFeature>()!.Addresses)), Timeout = Timeout.InfiniteTimeSpan };
         TrustedAccessEndpointTestAuthentication.Apply(client, app.Services);
-        using (var initial = await GetJsonAsync(client, "/api/metrics/fields/snapshot" + query, timeout.Token))
-            Assert.All(Assert.Single(initial.RootElement.EnumerateArray()).GetProperty("fields").EnumerateArray(), static field =>
-                Assert.Equal(JsonValueKind.Null, field.GetProperty("numericValue").ValueKind));
-        using (var initialBusy = await GetJsonAsync(client, "/api/metrics/fields/snapshot" + busyQuery, timeout.Token))
-        {
-            var device = Assert.Single(initialBusy.RootElement.EnumerateArray());
-            Assert.Equal(busyField.DeviceIdentity, device.GetProperty("deviceIdentity").GetString());
-            var field = Assert.Single(device.GetProperty("fields").EnumerateArray());
-            Assert.Equal(NpuEngineRecordedResources.Busy, field.GetProperty("name").GetString());
-            Assert.Equal(JsonValueKind.Null, field.GetProperty("numericValue").ValueKind);
-            Assert.Equal("windows.npu-engine", field.GetProperty("sourceId").GetString());
-        }
         Assert.Equal(0, recording.Reads);
         await sampler.StartAsync(timeout.Token);
         try
         {
+            using (var initial = await GetJsonAsync(client, "/api/metrics/fields/snapshot" + query, timeout.Token))
+            {
+                var rawField = Assert.Single(Assert.Single(initial.RootElement.EnumerateArray()).GetProperty("fields").EnumerateArray(),
+                    field => field.GetProperty("name").GetString() == NpuEngineRecordedResources.Raw);
+                Assert.Equal(JsonValueKind.String, rawField.GetProperty("integerValue").ValueKind);
+            }
+            Assert.True(recording.Reads > 0);
+            var beforeBusy = recording.Reads;
+            using (var initialBusy = await GetJsonAsync(client, "/api/metrics/fields/snapshot" + busyQuery, timeout.Token))
+            {
+                var initialDevice = Assert.Single(initialBusy.RootElement.EnumerateArray());
+                Assert.Equal(busyField.DeviceIdentity, initialDevice.GetProperty("deviceIdentity").GetString());
+                var field = Assert.Single(initialDevice.GetProperty("fields").EnumerateArray());
+                Assert.Equal(NpuEngineRecordedResources.Busy, field.GetProperty("name").GetString());
+                Assert.Equal("windows.npu-engine", field.GetProperty("sourceId").GetString());
+            }
+            Assert.True(recording.Reads > beforeBusy);
             using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
             using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
             { Content = JsonContent.Create(new { version = 1, subscriptions = new[]
@@ -123,12 +128,16 @@ public sealed partial class NvidiaFanHttpIntegrationTests
                 requests.SelectMany(static request => request.Targets).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal));
             Assert.All(requests, static request => Assert.Equal(256U, request.Maximum));
             await cancellation.CancelAsync(); response.Dispose(); reader.Dispose(); await ended.Task.WaitAsync(timeout.Token);
+            var beforeFetch = recording.Reads;
+            using var fresh = await GetJsonAsync(client, "/api/metrics/fields/snapshot" + query, timeout.Token);
+            Assert.Equal(125d, EngineRatio(fresh.RootElement)!.Value.GetProperty("numericValue").GetDouble());
+            Assert.True(recording.Reads > beforeFetch);
+            var beforeBusyFetch = recording.Reads;
+            using var freshBusy = await GetJsonAsync(client, "/api/metrics/fields/snapshot" + busyQuery, timeout.Token);
+            Assert.Equal(125d, EngineBusy(freshBusy.RootElement)!.Value.GetProperty("numericValue").GetDouble());
+            Assert.True(recording.Reads > beforeBusyFetch);
             await sampler.StopAsync(timeout.Token);
             var reads = recording.Reads; var current = core.ReadCached(new(identity, NpuEngineRecordedResources.Ratio));
-            using var cached = await GetJsonAsync(client, "/api/metrics/fields/snapshot" + query, timeout.Token);
-            Assert.Equal(125d, EngineRatio(cached.RootElement)!.Value.GetProperty("numericValue").GetDouble());
-            using var cachedBusy = await GetJsonAsync(client, "/api/metrics/fields/snapshot" + busyQuery, timeout.Token);
-            Assert.Equal(125d, EngineBusy(cachedBusy.RootElement)!.Value.GetProperty("numericValue").GetDouble());
             Assert.Equal(current, core.ReadCached(new(identity, NpuEngineRecordedResources.Ratio))); Assert.Equal(reads, recording.Reads);
             var incarnation = owner.CurrentWorkspaceIdentity;
             owner.RequestTopologyRefresh(); Assert.NotNull(owner.RefreshTopologyIfRequested());

@@ -56,6 +56,59 @@ public sealed class FieldSubscriptionSingleFetchTests
     }
 
     [Fact]
+    public async Task SingleFetchCompletesAndCancelsWithoutRetiringContinuousFieldDemand()
+    {
+        var scope = new FieldSubscriptionSamplingModeRecordedBorrow();
+        await using var composition = CreateComposition(scope);
+        await composition.StartAsync();
+        var backend = new RecordingBackend(composition);
+        var subscriptions = new FieldSubscriptionCore(new ReadWriteCore(scope, new NoDependencies()), backend);
+        using var deadline = new CancellationTokenSource(Timeout);
+        await using (var continuous = composition.SubscribeAsync("continuous-field", [scope.QueryA],
+            TimeSpan.FromMilliseconds(100), FieldSubscriptionOptions.Default, deadline.Token)
+            .GetAsyncEnumerator(deadline.Token))
+        {
+            Assert.True(await continuous.MoveNextAsync());
+            var previous = Assert.Single(continuous.Current);
+            var fresh = Assert.Single(await subscriptions.FetchOnceAsync("successful-field-once",
+                [scope.QueryA], deadline.Token));
+            Assert.NotEqual(previous.Value?.Text, fresh.Value?.Text);
+            Assert.Equal(1, backend.Released);
+            Assert.Equal(new[] { scope.QueryA }, scope.ActiveFields.ToArray());
+
+            var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            scope.CollectionBehavior = async (fields, permit, token) =>
+            {
+                entered.TrySetResult();
+                await release.Task.WaitAsync(token);
+                return scope.Publish(permit, [scope.CreateReading(scope.QueryA, "shared-after-cancel")], fields);
+            };
+            using var cancellation = new CancellationTokenSource();
+            var pending = subscriptions.FetchOnceAsync("cancelled-field-once", [scope.QueryA], cancellation.Token);
+            try
+            {
+                await entered.Task.WaitAsync(deadline.Token);
+                Assert.False(pending.IsCompleted);
+                cancellation.Cancel();
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending.WaitAsync(deadline.Token));
+                Assert.Equal(2, backend.Released);
+                Assert.False(release.Task.IsCompleted);
+                Assert.Equal(new[] { scope.QueryA }, scope.ActiveFields.ToArray());
+            }
+            finally { release.TrySetResult(); }
+            using var cadence = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
+            cadence.CancelAfter(TimeSpan.FromMilliseconds(750));
+            do { Assert.True(await continuous.MoveNextAsync().AsTask().WaitAsync(cadence.Token)); }
+            while (Assert.Single(continuous.Current).Value?.Text != "shared-after-cancel");
+            Assert.True(await continuous.MoveNextAsync().AsTask().WaitAsync(cadence.Token));
+            Assert.Equal("shared-after-cancel", Assert.Single(continuous.Current).Value?.Text);
+        }
+        await WaitForNoDemandAsync(scope, deadline.Token);
+        await composition.StopAsync().WaitAsync(Timeout);
+    }
+
+    [Fact]
     public async Task CancellingBlockedSingleFetchReleasesItsDemandBeforeSharedCollectionFinishes()
     {
         var scope = new FieldSubscriptionSamplingModeRecordedBorrow();

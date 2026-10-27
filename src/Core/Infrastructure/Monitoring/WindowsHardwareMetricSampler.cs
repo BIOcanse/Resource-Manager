@@ -271,6 +271,11 @@ public sealed partial class WindowsHardwareMetricSampler :
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
+        // Catalogue declarations contain no measurements. Read their committed
+        // metadata without acquiring sampling demand, the sample gate or a
+        // native workspace; only requests for values require a single fetch.
+        if (request.IsCatalogProbe)
+            return metricCatalog.ReadCommitted().Snapshot ?? CreateWarmingSnapshot(request);
         return await ((IMetricSnapshotPushSource)this).FetchOnceAsync(
             "single-fetch:hardware", request, cancellationToken).ConfigureAwait(false)
             ?? CreateWarmingSnapshot(request);

@@ -24,7 +24,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
     [Theory]
     [InlineData(0U, 0d)]
     [InlineData(1U, 1450d)]
-    public async Task NormalIntelFanHttpCatalogCacheAndUnifiedPushUseTheOriginalHostCurrent(uint fanIndex, double rpm)
+    public async Task NormalIntelFanHttpSingleFetchAndUnifiedPushUseTheOriginalHostCurrent(uint fanIndex, double rpm)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         using var slots = new HostManagerSamplingSubscriptionTestFixture();
@@ -94,15 +94,17 @@ public sealed partial class NvidiaFanHttpIntegrationTests
         var query = "?device=" + Uri.EscapeDataString(selectedFan.ExactIdentityKey) + "&fields=" + RecordedIntelFanResources.Name;
         var selection = MetricDeviceFields.CreateRequest(dashboard.Current!, selectedFan.ExactIdentityKey, [RecordedIntelFanResources.Name]);
         await AssertPublicIntelFanCatalogsAsync(client, recording, selectedFan, timeout.Token);
-        using (var initial = await GetJsonAsync(client, "/api/metrics/fields/snapshot" + query, timeout.Token))
-            Assert.Equal(JsonValueKind.Null, IntelHttpField(initial.RootElement, selectedFan).GetProperty("numericValue").ValueKind);
-        using (var generic = await client.GetAsync("/api/metrics/snapshot?ids=" + Uri.EscapeDataString(selection.Ids.First()), timeout.Token))
-            Assert.Equal(HttpStatusCode.OK, generic.StatusCode);
         Assert.Equal(0, Volatile.Read(ref queryCount));
-
         await sampler.StartAsync(timeout.Token);
         try
         {
+            using (var initial = await GetJsonAsync(client, "/api/metrics/fields/snapshot" + query, timeout.Token))
+                AssertIntelHttpRpm(initial.RootElement, selectedFan, rpm);
+            Assert.True(Volatile.Read(ref queryCount) > 0);
+            var beforeGeneric = Volatile.Read(ref queryCount);
+            using (var generic = await client.GetAsync("/api/metrics/snapshot?ids=" + Uri.EscapeDataString(selection.Ids.First()), timeout.Token))
+                Assert.Equal(HttpStatusCode.OK, generic.StatusCode);
+            Assert.True(Volatile.Read(ref queryCount) > beforeGeneric);
             using var channelCancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
             using var streamRequest = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
             {
@@ -137,6 +139,10 @@ public sealed partial class NvidiaFanHttpIntegrationTests
             response.Dispose();
             reader.Dispose();
             await channelEnded.Task.WaitAsync(timeout.Token);
+            var beforeSingleFetch = Volatile.Read(ref queryCount);
+            using (var fresh = await GetJsonAsync(client, "/api/metrics/fields/snapshot" + query, timeout.Token))
+                AssertIntelHttpRpm(fresh.RootElement, selectedFan, rpm);
+            Assert.True(Volatile.Read(ref queryCount) > beforeSingleFetch);
             await sampler.StopAsync(timeout.Token);
             Assert.Null(sampler.CaptureSamplingWorkerTask());
             var drainedReads = Volatile.Read(ref queryCount);
@@ -146,8 +152,6 @@ public sealed partial class NvidiaFanHttpIntegrationTests
             Assert.Equal(rpm, originalReading.Value!.Number);
             for (var attempt = 0; attempt < 3; attempt++)
             {
-                using var cached = await GetJsonAsync(client, "/api/metrics/fields/snapshot" + query, timeout.Token);
-                AssertIntelHttpRpm(cached.RootElement, selectedFan, rpm);
                 Assert.Equal(originalReading, core.ReadCached(reference));
                 Assert.Equal(originalCurrent.CommittedGeneration, sampler.ReadLatest(selection)!.CommittedGeneration);
                 Assert.Equal(drainedReads, Volatile.Read(ref queryCount));

@@ -89,11 +89,13 @@ public sealed partial class NvidiaFanHttpIntegrationTests
         Assert.True(busyCapability.Read.Supported);
         Assert.Equal("windows.npu-engine", busyCapability.ReadSource);
         var request = MetricDeviceFields.CreateRequest(dashboard.Current!, identity, [name]);
-        _ = await sampler.GetSnapshotAsync(request, timeout.Token);
         Assert.Equal(0, recording.Reads);
         await sampler.StartAsync(timeout.Token);
         try
         {
+            var fetched = await sampler.GetSnapshotAsync(request, timeout.Token);
+            Assert.Equal(MetricInteger.FromUnsigned128(resident), NpuMemoryCaptureIntegrationTests.Npu(fetched, name).IntegerValue);
+            Assert.True(recording.Reads > 0);
             await using (var stream = sampler.SubscribeAsync("npu-memory-original-worker", request,
                 TimeSpan.FromMilliseconds(100), timeout.Token).GetAsyncEnumerator(timeout.Token))
             {
@@ -104,7 +106,6 @@ public sealed partial class NvidiaFanHttpIntegrationTests
                 Assert.Equal(SamplingObservationStatus.Current, delivered.Status);
                 Assert.Equal("windows.npu-memory", delivered.SourceId);
             }
-            await sampler.StopAsync(timeout.Token);
             Assert.True(recording.Reads > 0);
             var count = recording.Reads;
             var current = sampler.ReadLatest(request);
@@ -121,6 +122,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
             try
             {
                 var query = "?device=" + Uri.EscapeDataString(identity) + "&fields=" + name;
+                var httpStarted = DateTimeOffset.UtcNow;
                 using var response = await client.GetAsync("/api/metrics/fields/snapshot" + query, timeout.Token);
                 Assert.Equal(HttpStatusCode.OK, response.StatusCode);
                 using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(timeout.Token));
@@ -133,14 +135,21 @@ public sealed partial class NvidiaFanHttpIntegrationTests
                 Assert.Equal(resident.ToString(System.Globalization.CultureInfo.InvariantCulture), field.GetProperty("integerValue").GetString());
                 Assert.Equal(JsonValueKind.Null, field.GetProperty("numericValue").ValueKind);
                 Assert.Equal("windows.npu-memory", field.GetProperty("sourceId").GetString());
-                Assert.Equal(count, recording.Reads);
-                Assert.Equal(current!.CommittedGeneration, sampler.ReadLatest(request)!.CommittedGeneration);
-                Assert.Equal(NpuMemoryCaptureIntegrationTests.Npu(current, name),
-                    NpuMemoryCaptureIntegrationTests.Npu(sampler.ReadLatest(request)!, name));
+                Assert.True(recording.Reads > count);
+                Assert.True(field.GetProperty("observedAt").GetDateTimeOffset() >= httpStarted);
+                var latest = sampler.ReadLatest(request)!;
+                Assert.True(latest.Datasets[Assert.Single(request.Ids)].LastAttemptAtUtcTicks >= httpStarted.UtcTicks);
+                Assert.Equal(MetricInteger.FromUnsigned128(resident),
+                    NpuMemoryCaptureIntegrationTests.Npu(latest, name).IntegerValue);
                 Assert.Equal(NpuMemoryFields.SharedResident, Assert.Single(recording.Requests).Value);
                 Assert.Equal(0, recording.MemoryReads);
             }
             finally { await app.StopAsync(CancellationToken.None); }
+            await sampler.StopAsync(timeout.Token);
+            var stoppedReads = recording.Reads;
+            _ = core.ReadCached(reference);
+            _ = sampler.ReadLatest(request);
+            Assert.Equal(stoppedReads, recording.Reads);
             using var retired = owner.Acquire();
             owner.RequestTopologyRefresh();
             recording.EmptyDirectory = true;

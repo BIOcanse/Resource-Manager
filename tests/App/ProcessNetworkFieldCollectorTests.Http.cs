@@ -38,11 +38,16 @@ public sealed partial class ProcessNetworkFieldCollectorTests
         Assert.Equal(ProcessMetricFieldRegistry.Definitions.Count, catalog.RootElement.GetArrayLength());
         Assert.All(catalog.RootElement.EnumerateArray(), field => Assert.Equal("process", field.GetProperty("resource").GetString()));
         var selector = "/api/resource-monitor/subscribe?scope=bars&intervalMs=1000&ids=" + string.Join(',', Names);
-        var cachedUrl = "/api/resource-breakdown/snapshot?ids=" + string.Join(',', Names);
-        using var initial = JsonDocument.Parse(await client.GetStringAsync(cachedUrl));
-        Assert.Equal(4, initial.RootElement.GetProperty("processFields").GetProperty("fields").GetArrayLength());
-        Assert.Null(initial.RootElement.GetProperty("processFields").GetProperty("capturedAt").GetString());
+        var snapshotUrl = "/api/resource-breakdown/snapshot?ids=" + string.Join(',', Names);
         Assert.Equal(0, network.Reads);
+        using var initial = JsonDocument.Parse(await client.GetStringAsync(snapshotUrl));
+        Assert.Equal(4, initial.RootElement.GetProperty("processFields").GetProperty("fields").GetArrayLength());
+        Assert.Equal(captured, initial.RootElement.GetProperty("processFields").GetProperty("capturedAt").GetDateTimeOffset());
+        Assert.Equal("9007199254740993", WireValues(initial.RootElement)[0].GetProperty("integerValue").GetString());
+        Assert.True(network.Reads > 0);
+        var initialReads = network.Reads;
+        await Task.Delay(1300);
+        Assert.Equal(initialReads, network.Reads);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
         { Content = JsonContent.Create(new { version = 1, subscriptions = new[] { new { id = "process-network", path = selector } } }) };
@@ -69,14 +74,17 @@ public sealed partial class ProcessNetworkFieldCollectorTests
         response.Dispose();
         await Task.Delay(300);
         var stoppedReads = network.Reads;
-        using var cached = JsonDocument.Parse(await client.GetStringAsync(cachedUrl));
-        Assert.Equal("9007199254740993", WireValues(cached.RootElement)[0].GetProperty("integerValue").GetString());
+        using var fresh = JsonDocument.Parse(await client.GetStringAsync(snapshotUrl));
+        Assert.Equal("9007199254740993", WireValues(fresh.RootElement)[0].GetProperty("integerValue").GetString());
+        Assert.True(network.Reads > stoppedReads);
+        var beforeMonitor = network.Reads;
         using var monitor = JsonDocument.Parse(await client.GetStringAsync("/api/resource-monitor/snapshot?scope=bars&ids=" + Names[3]));
         Assert.Single(WireValues(monitor.RootElement.GetProperty("breakdown")).EnumerateArray());
         Assert.Equal(3.5, WireValues(monitor.RootElement.GetProperty("breakdown"))[0].GetProperty("numericValue").GetDouble());
-        Assert.Equal(stoppedReads, network.Reads);
+        Assert.True(network.Reads > beforeMonitor);
+        var fetchedReads = network.Reads;
         await Task.Delay(1300);
-        Assert.Equal(stoppedReads, network.Reads);
+        Assert.Equal(fetchedReads, network.Reads);
         await app.StopAsync();
     }
 

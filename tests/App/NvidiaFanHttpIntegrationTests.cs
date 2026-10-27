@@ -34,7 +34,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
     [Theory]
     [InlineData(0U, 0d, 1400d)]
     [InlineData(1U, 105d, null)]
-    public async Task NormalHttpCatalogCacheAndUnifiedStreamUseTheOriginalSelectedFanWorker(
+    public async Task NormalHttpSingleFetchAndUnifiedStreamUseTheOriginalSelectedFanWorker(
         uint fanIndex, double percent, double? rpm)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
@@ -57,6 +57,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
         var recoveredQuery = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var phase = 0;
         var queryCount = 0;
+        var expectedFanFields = 3; // Percent = 1, RPM = 2.
         var zone = new NvidiaNvmlMonitoringZone((_, _, _) =>
             throw new InvalidOperationException("No whole-GPU telemetry was selected."),
             readFanIdentities: _ => recording.Fans,
@@ -65,7 +66,9 @@ public sealed partial class NvidiaFanHttpIntegrationTests
                 Assert.Same(recording.Inventory, inventory);
                 var target = Assert.Single(targets);
                 Assert.Equal(selectedFan, target.Fan);
-                Assert.True(target.IncludePercent && target.IncludeRpm);
+                var expected = Volatile.Read(ref expectedFanFields);
+                Assert.Equal((expected & 1) != 0, target.IncludePercent);
+                Assert.Equal((expected & 2) != 0, target.IncludeRpm);
                 queriedTargets.Enqueue(targets);
                 Interlocked.Increment(ref queryCount);
                 var currentPhase = Volatile.Read(ref phase);
@@ -102,17 +105,25 @@ public sealed partial class NvidiaFanHttpIntegrationTests
             [NvidiaFanFixture.Percent, NvidiaFanFixture.Rpm]);
 
         await AssertPublicCatalogsAsync(client, recording, selectedFan, timeout.Token);
-        using (var initial = await GetJsonAsync(client, "/api/metrics/fields/snapshot" + query, timeout.Token))
-            Assert.All(Fields(initial.RootElement, selectedFan).Values,
-                static field => Assert.Equal(JsonValueKind.Null, field.GetProperty("numericValue").ValueKind));
-        using (var genericGet = await client.GetAsync("/api/metrics/snapshot?ids="
-            + Uri.EscapeDataString(selection.Ids.First()), timeout.Token))
-            Assert.Equal(HttpStatusCode.OK, genericGet.StatusCode);
         Assert.Equal(0, Volatile.Read(ref queryCount));
-
         await sampler.StartAsync(timeout.Token);
         try
         {
+            using (var initial = await GetJsonAsync(client, "/api/metrics/fields/snapshot" + query, timeout.Token))
+                AssertFanValues(initial.RootElement, selectedFan, percent, rpm);
+            Assert.True(Volatile.Read(ref queryCount) > 0);
+            var beforeGeneric = Volatile.Read(ref queryCount);
+            var percentSelection = MetricDeviceFields.CreateRequest(dashboard.Current!, selectedFan.ExactIdentityKey,
+                [NvidiaFanFixture.Percent]);
+            Volatile.Write(ref expectedFanFields, 1);
+            try
+            {
+                using var genericGet = await client.GetAsync("/api/metrics/snapshot?ids="
+                    + Uri.EscapeDataString(Assert.Single(percentSelection.Ids)), timeout.Token);
+                Assert.Equal(HttpStatusCode.OK, genericGet.StatusCode);
+            }
+            finally { Volatile.Write(ref expectedFanFields, 3); }
+            Assert.True(Volatile.Read(ref queryCount) > beforeGeneric);
             using var channelCancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
             using var streamRequest = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
             {
@@ -153,6 +164,10 @@ public sealed partial class NvidiaFanHttpIntegrationTests
             reader.Dispose();
             // Endpoint completion includes disposal of the actual subscription enumerator.
             await channelEnded.Task.WaitAsync(timeout.Token);
+            var beforeSingleFetch = Volatile.Read(ref queryCount);
+            using (var fresh = await GetJsonAsync(client, "/api/metrics/fields/snapshot" + query, timeout.Token))
+                AssertFanValues(fresh.RootElement, selectedFan, percent, rpm);
+            Assert.True(Volatile.Read(ref queryCount) > beforeSingleFetch);
             // StopAsync drains the real worker and admitted capture; no delay guesses quiescence.
             await sampler.StopAsync(timeout.Token);
             Assert.Null(sampler.CaptureSamplingWorkerTask());
@@ -160,8 +175,6 @@ public sealed partial class NvidiaFanHttpIntegrationTests
             var committed = sampler.ReadLatest(selection)!.CommittedGeneration;
             for (var index = 0; index < 3; index++)
             {
-                using var cached = await GetJsonAsync(client, "/api/metrics/fields/snapshot" + query, timeout.Token);
-                AssertFanValues(cached.RootElement, selectedFan, percent, rpm);
                 var publicField = new FieldReference(selectedFan.ExactIdentityKey, NvidiaFanFixture.Percent);
                 Assert.Equal(percent, core.ReadCached(publicField).Value!.Number);
                 Assert.Equal(committed, sampler.ReadLatest(selection)!.CommittedGeneration);
@@ -275,7 +288,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
         builder.Services.AddSingleton(core);
         builder.Services.AddSingleton<IComponentManager, NoInstalledComponentManager>();
         // An unselected route may bind its service, but this fixture never creates that worker.
-        builder.Services.AddSingleton<IGpuTelemetryWorkerClient>(_ => throw new InvalidOperationException("Unselected specialized GPU route."));
+        builder.Services.AddSingleton<IGpuTelemetryPushSource>(_ => throw new InvalidOperationException("Unselected specialized GPU route."));
         var app = TrustedAccessEndpointTestAuthentication.Build(builder);
         app.Use(async (context, next) =>
         {

@@ -43,7 +43,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             CancellationToken cancellationToken) =>
         {
             // Keep unavailable definitions so consumers can display the missing capability.
-            if (catalogState.Current is not { } snapshot)
+            if (catalogState.ReadCommitted().Snapshot is not { } snapshot)
                 return Results.Ok(Array.Empty<MetricDefinition>());
             return Results.Ok(MetricCatalog.WithInstalledComponents(
                 MetricCatalog.FromSnapshot(snapshot),
@@ -98,7 +98,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             => Results.Ok(PublicCapabilityFields(core.Catalog.Fields))).AllowAnonymous();
 
         app.MapGet("/api/metrics/fields/catalog", (HardwareMetricCatalogState catalogState, HttpContext context)
-            => catalogState.Current is { } snapshot
+            => catalogState.ReadCommitted().Snapshot is { } snapshot
                 ? Results.Ok(ReadMetricFieldCatalog(snapshot, context.RequestServices))
                 : Results.StatusCode(StatusCodes.Status503ServiceUnavailable)).AllowAnonymous();
 

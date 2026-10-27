@@ -70,10 +70,8 @@ public sealed partial class IntelGpuInformationCollectorTests
         TrustedAccessEndpointTestAuthentication.Apply(client, app.Services);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var query = "?device=" + Uri.EscapeDataString(device) + "&fields=" + string.Join(',', Names);
-        Assert.All(ReadIntelFields(await sampler.GetSnapshotAsync(request, timeout.Token), device).Values, field =>
+        Assert.All(ReadIntelFields(sampler.ReadLatest(request) ?? dashboard.Current!, device).Values, field =>
         { Assert.Null(field.NumericValue); Assert.Null(field.IntegerValue); Assert.Null(field.BooleanValue); });
-        using (var cold = JsonDocument.Parse(await client.GetStringAsync("/api/metrics/fields/snapshot" + query, timeout.Token)))
-            Assert.Equal(18, cold.RootElement[0].GetProperty("fields").GetArrayLength());
         Assert.Equal(0, sdk.Opens);
         await sampler.StartAsync(timeout.Token);
         try
@@ -112,11 +110,15 @@ public sealed partial class IntelGpuInformationCollectorTests
                 .GetField("sampleGate", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(sampler)!;
             await sampleGate.WaitAsync(timeout.Token); sampleGate.Release();
             var calls = Volatile.Read(ref sdk.TelemetryCalls);
-            using (var cachedWire = JsonDocument.Parse(await client.GetStringAsync("/api/metrics/fields/snapshot" + query, timeout.Token)))
-                CheckIntelWire(cachedWire.RootElement[0].GetProperty("fields"));
-            await Task.Delay(200, timeout.Token); Assert.Equal(calls, Volatile.Read(ref sdk.TelemetryCalls));
+            using (var freshWire = JsonDocument.Parse(await client.GetStringAsync("/api/metrics/fields/snapshot" + query, timeout.Token)))
+                CheckIntelWire(freshWire.RootElement[0].GetProperty("fields"));
+            Assert.True(Volatile.Read(ref sdk.TelemetryCalls) > calls);
+            while (tracker.CaptureManagedSourceState() != (0, 0)) await Task.Delay(20, timeout.Token);
+            await sampleGate.WaitAsync(timeout.Token); sampleGate.Release();
+            var afterFetch = Volatile.Read(ref sdk.TelemetryCalls);
+            await Task.Delay(200, timeout.Token); Assert.Equal(afterFetch, Volatile.Read(ref sdk.TelemetryCalls));
             await sampler.StopAsync(CancellationToken.None);
-            Assert.Equal(0, ReadIntelFields(await sampler.GetSnapshotAsync(request, timeout.Token), device)["gpu_intel_gpu_energy_joule"].NumericValue);
+            Assert.Equal(0, ReadIntelFields(sampler.ReadLatest(request)!, device)["gpu_intel_gpu_energy_joule"].NumericValue);
             Assert.Equal(sdk.Opens, sdk.Closes);
         }
         finally { await app.StopAsync(); await sampler.StopAsync(CancellationToken.None); }

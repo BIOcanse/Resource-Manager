@@ -43,8 +43,14 @@ public sealed partial class ProcessBasicFieldCollectorTests
         string[] names = [Names[1], Names[5], NetworkNames[0]];
         var snapshotUrl = "/api/resource-breakdown/snapshot?ids=" + string.Join(',', names);
         var subscribeUrl = "/api/resource-monitor/subscribe?scope=bars&intervalMs=1000&ids=" + string.Join(',', names);
+        Assert.Equal(0, api.Opens); Assert.Equal(0, network.Reads);
         using var initial = JsonDocument.Parse(await client.GetStringAsync(snapshotUrl));
-        Assert.Equal(3, initial.RootElement.GetProperty("processFields").GetProperty("fields").GetArrayLength()); Assert.Equal(0, api.Opens); Assert.Equal(0, network.Reads);
+        Assert.Equal(3, initial.RootElement.GetProperty("processFields").GetProperty("fields").GetArrayLength());
+        Assert.Equal("9007199254740993", BasicWireValue(initial.RootElement, Names[1]).GetProperty("integerValue").GetString());
+        Assert.True(api.Opens > 0); Assert.True(network.Reads > 0);
+        var initialOpens = Volatile.Read(ref api.Opens); var initialReads = network.Reads;
+        await Task.Delay(1300);
+        Assert.Equal(initialOpens, Volatile.Read(ref api.Opens)); Assert.Equal(initialReads, network.Reads);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
         { Content = JsonContent.Create(new { version = 1, subscriptions = new[] { new { id = "process-basic-mixed", path = subscribeUrl } } }) };
@@ -65,12 +71,15 @@ public sealed partial class ProcessBasicFieldCollectorTests
         Assert.Equal(0, api.HandleCalls); Assert.All(api.PrivateRequests, Assert.False);
         await timeout.CancelAsync(); response.Dispose(); await Task.Delay(300);
         var opens = Volatile.Read(ref api.Opens); var reads = network.Reads;
-        using var cached = JsonDocument.Parse(await client.GetStringAsync(snapshotUrl));
-        Assert.Equal("9007199254740993", BasicWireValue(cached.RootElement, Names[1]).GetProperty("integerValue").GetString());
+        using var fresh = JsonDocument.Parse(await client.GetStringAsync(snapshotUrl));
+        Assert.Equal("9007199254740993", BasicWireValue(fresh.RootElement, Names[1]).GetProperty("integerValue").GetString());
+        Assert.True(Volatile.Read(ref api.Opens) > opens); Assert.True(network.Reads > reads);
+        var beforeMonitor = Volatile.Read(ref api.Opens); var beforeMonitorNetwork = network.Reads;
         using var monitor = JsonDocument.Parse(await client.GetStringAsync("/api/resource-monitor/snapshot?scope=bars&ids=" + Names[5]));
         Assert.Equal("9007199254740993", BasicWireValue(monitor.RootElement.GetProperty("breakdown"), Names[5]).GetProperty("integerValue").GetString());
-        Assert.Equal(opens, Volatile.Read(ref api.Opens)); Assert.Equal(reads, network.Reads);
-        await Task.Delay(1300); Assert.Equal(opens, Volatile.Read(ref api.Opens)); Assert.Equal(reads, network.Reads); await app.StopAsync();
+        Assert.True(Volatile.Read(ref api.Opens) > beforeMonitor); Assert.Equal(beforeMonitorNetwork, network.Reads);
+        var fetchedOpens = Volatile.Read(ref api.Opens); var fetchedReads = network.Reads;
+        await Task.Delay(1300); Assert.Equal(fetchedOpens, Volatile.Read(ref api.Opens)); Assert.Equal(fetchedReads, network.Reads); await app.StopAsync();
     }
 
     private static JsonElement BasicWireValue(JsonElement snapshot, string field)

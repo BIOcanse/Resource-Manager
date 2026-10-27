@@ -78,7 +78,7 @@ public sealed partial class IntelGpuInformationCollectorTests
     }
 
     [Fact]
-    public async Task CommonClocksReachOriginalCacheHttpAndPushAndStopReadingWhenUnsubscribed()
+    public async Task CommonClocksReachFreshHttpAndPushAndStopReadingWithoutDemand()
     {
         using var slots = new HostManagerSamplingSubscriptionTestFixture();
         using var owner = CreateClockOwner(slots, secondHasDedicatedMemory: true);
@@ -102,9 +102,7 @@ public sealed partial class IntelGpuInformationCollectorTests
         TrustedAccessEndpointTestAuthentication.Apply(client, app.Services);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         var query = "?device=" + Uri.EscapeDataString(device) + "&fields=" + string.Join(',', ClockNames);
-        Assert.All(Fields(await sampler.GetSnapshotAsync(request, timeout.Token)).Values, field => Assert.Null(field.NumericValue));
-        using (var cold = JsonDocument.Parse(await client.GetStringAsync("/api/metrics/fields/snapshot" + query, timeout.Token)))
-            Assert.All(cold.RootElement[0].GetProperty("fields").EnumerateArray(), field => Assert.Equal(JsonValueKind.Null, field.GetProperty("numericValue").ValueKind));
+        Assert.All(Fields(sampler.ReadLatest(request) ?? dashboard.Current!).Values, field => Assert.Null(field.NumericValue));
         Assert.Equal(0, sdk.Opens);
         await sampler.StartAsync(timeout.Token);
         try
@@ -138,10 +136,14 @@ public sealed partial class IntelGpuInformationCollectorTests
             var calls = Volatile.Read(ref sdk.TelemetryCalls);
             using (var wire = JsonDocument.Parse(await client.GetStringAsync("/api/metrics/fields/snapshot" + query, timeout.Token)))
                 CheckClockWire(wire.RootElement[0].GetProperty("fields"));
-            await Task.Delay(200, timeout.Token); Assert.Equal(calls, Volatile.Read(ref sdk.TelemetryCalls));
+            Assert.True(Volatile.Read(ref sdk.TelemetryCalls) > calls);
+            while (tracker.CaptureManagedSourceState() != (0, 0)) await Task.Delay(20, timeout.Token);
+            await sampleGate.WaitAsync(timeout.Token); sampleGate.Release();
+            var afterFetch = Volatile.Read(ref sdk.TelemetryCalls);
+            await Task.Delay(200, timeout.Token); Assert.Equal(afterFetch, Volatile.Read(ref sdk.TelemetryCalls));
             lock (sdk.TelemetryDevices) Assert.All(sdk.TelemetryDevices, handle => Assert.Equal(new IntPtr(1), handle));
             await sampler.StopAsync(CancellationToken.None);
-            Assert.All(Fields(await sampler.GetSnapshotAsync(request, timeout.Token)).Values, field => Assert.Equal(0, field.NumericValue));
+            Assert.All(Fields(sampler.ReadLatest(request)!).Values, field => Assert.Equal(0, field.NumericValue));
             Assert.Equal(sdk.Opens, sdk.Closes);
         }
         finally { await app.StopAsync(); await sampler.StopAsync(CancellationToken.None); }

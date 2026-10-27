@@ -105,7 +105,7 @@ public sealed partial class IntelGpuInformationCollectorTests
     }
 
     [Fact]
-    public async Task OriginalWorkerPublishesCurrentPciStateThroughCacheHttpAndPush()
+    public async Task OriginalWorkerPublishesCurrentPciStateThroughFreshHttpAndPush()
     {
         using var slots = new HostManagerSamplingSubscriptionTestFixture();
         using var owner = CreateClockOwner(slots, secondHasDedicatedMemory: true);
@@ -128,9 +128,7 @@ public sealed partial class IntelGpuInformationCollectorTests
         TrustedAccessEndpointTestAuthentication.Apply(client, app.Services);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(25));
         var query = "?device=" + Uri.EscapeDataString(device) + "&fields=" + string.Join(',', PciNames);
-        Assert.All(Fields(await sampler.GetSnapshotAsync(request, timeout.Token)).Values, field => Assert.Null(field.NumericValue));
-        using (var cold = JsonDocument.Parse(await client.GetStringAsync("/api/metrics/fields/snapshot" + query, timeout.Token)))
-            Assert.All(cold.RootElement[0].GetProperty("fields").EnumerateArray(), field => Assert.Equal(JsonValueKind.Null, field.GetProperty("numericValue").ValueKind));
+        Assert.All(Fields(sampler.ReadLatest(request) ?? dashboard.Current!).Values, field => Assert.Null(field.NumericValue));
         Assert.Equal(0, sdk.Opens); await sampler.StartAsync(timeout.Token);
         try
         {
@@ -161,11 +159,15 @@ public sealed partial class IntelGpuInformationCollectorTests
             while (tracker.CaptureManagedSourceState() != (0, 0)) await Task.Delay(20, timeout.Token);
             var gate = (SemaphoreSlim)typeof(WindowsHardwareMetricSampler).GetField("sampleGate", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(sampler)!;
             await gate.WaitAsync(timeout.Token); gate.Release(); var calls = Volatile.Read(ref sdk.PciCalls);
-            using (var cached = JsonDocument.Parse(await client.GetStringAsync("/api/metrics/fields/snapshot" + query, timeout.Token))) CheckPciWire(cached.RootElement[0].GetProperty("fields"));
-            await Task.Delay(200, timeout.Token); Assert.Equal(calls, Volatile.Read(ref sdk.PciCalls));
+            using (var fresh = JsonDocument.Parse(await client.GetStringAsync("/api/metrics/fields/snapshot" + query, timeout.Token))) CheckPciWire(fresh.RootElement[0].GetProperty("fields"));
+            Assert.True(Volatile.Read(ref sdk.PciCalls) > calls);
+            while (tracker.CaptureManagedSourceState() != (0, 0)) await Task.Delay(20, timeout.Token);
+            await gate.WaitAsync(timeout.Token); gate.Release();
+            var afterFetch = Volatile.Read(ref sdk.PciCalls);
+            await Task.Delay(200, timeout.Token); Assert.Equal(afterFetch, Volatile.Read(ref sdk.PciCalls));
             Assert.Equal(0, sdk.TelemetryCalls); lock (sdk.PciDevices) Assert.All(sdk.PciDevices, handle => Assert.Equal(new IntPtr(1), handle));
             await sampler.StopAsync(CancellationToken.None); Assert.Equal(sdk.Opens, sdk.Closes);
-            Assert.All(Fields(await sampler.GetSnapshotAsync(request, timeout.Token)).Values, field => Assert.Equal(0, field.NumericValue));
+            Assert.All(Fields(sampler.ReadLatest(request)!).Values, field => Assert.Equal(0, field.NumericValue));
         }
         finally { await app.StopAsync(); await sampler.StopAsync(CancellationToken.None); }
     }

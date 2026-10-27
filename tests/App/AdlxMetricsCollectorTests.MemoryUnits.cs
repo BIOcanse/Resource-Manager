@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Reflection;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
@@ -82,7 +83,7 @@ public sealed partial class AdlxMetricsCollectorTests
     }
 
     [Fact]
-    public async Task RawMemoryRealWorkerHttpPushFailureRecoveryAndCancelKeepSdkUnits()
+    public async Task RawMemoryFreshHttpAndPushKeepSdkUnitsAndStopReadingWithoutDemand()
     {
         using var slots = new HostManagerSamplingSubscriptionTestFixture();
         var root = Path.Combine(Path.GetTempPath(), $"adlx-mb-worker-{Guid.NewGuid():N}");
@@ -109,7 +110,7 @@ public sealed partial class AdlxMetricsCollectorTests
         TrustedAccessEndpointTestAuthentication.Apply(client, app.Services);
         var query = "?device=" + Uri.EscapeDataString(device) + "&fields=" + RawMemoryName;
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        Assert.Null(ReadRawMemory(await sampler.GetSnapshotAsync(request, timeout.Token), device).IntegerValue);
+        Assert.Null(ReadRawMemory(sampler.ReadLatest(request) ?? dashboard.Current!, device).IntegerValue);
         Assert.Equal(0, native.MetadataReads); await sampler.StartAsync(timeout.Token);
         try
         {
@@ -134,14 +135,22 @@ public sealed partial class AdlxMetricsCollectorTests
             }
             // Client cancellation is asynchronous across HTTP; wait for the endpoint to release its lease.
             await streamCompleted.Task.WaitAsync(timeout.Token);
-            // A capture already issued before lease release may still finish. Drain the
-            // original worker before checking that cached HTTP reads perform no collection.
-            await sampler.StopAsync(CancellationToken.None);
+            var tracker = (NativeItemSamplingSubscriptionTracker<MetricSampleRequest>)typeof(WindowsHardwareMetricSampler)
+                .GetField("subscriptions", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(sampler)!;
+            while (tracker.CaptureManagedSourceState() != (0, 0)) await Task.Delay(20, timeout.Token);
+            var gate = (SemaphoreSlim)typeof(WindowsHardwareMetricSampler)
+                .GetField("sampleGate", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(sampler)!;
+            await gate.WaitAsync(timeout.Token); gate.Release();
             var reads = Volatile.Read(ref native.SelectedReads);
-            using var cached = JsonDocument.Parse(await client.GetStringAsync("/api/metrics/fields/snapshot" + query, timeout.Token));
-            CheckRawMemoryWire(cached.RootElement[0].GetProperty("fields")[0]);
-            await Task.Delay(150, timeout.Token); Assert.Equal(reads, Volatile.Read(ref native.SelectedReads));
-            Assert.Equal(MetricInteger.Parse("0"), ReadRawMemory(await sampler.GetSnapshotAsync(request, timeout.Token), device).IntegerValue);
+            using var fresh = JsonDocument.Parse(await client.GetStringAsync("/api/metrics/fields/snapshot" + query, timeout.Token));
+            CheckRawMemoryWire(fresh.RootElement[0].GetProperty("fields")[0]);
+            Assert.True(Volatile.Read(ref native.SelectedReads) > reads);
+            while (tracker.CaptureManagedSourceState() != (0, 0)) await Task.Delay(20, timeout.Token);
+            await gate.WaitAsync(timeout.Token); gate.Release();
+            var afterFetch = Volatile.Read(ref native.SelectedReads);
+            await Task.Delay(150, timeout.Token); Assert.Equal(afterFetch, Volatile.Read(ref native.SelectedReads));
+            await sampler.StopAsync(CancellationToken.None);
+            Assert.Equal(MetricInteger.Parse("0"), ReadRawMemory(sampler.ReadLatest(request)!, device).IntegerValue);
         }
         finally { await app.StopAsync(); await sampler.StopAsync(CancellationToken.None); }
     }

@@ -120,7 +120,7 @@ public sealed class NvidiaVideoMetricsRecordedTests
     }
 
     [Fact]
-    public async Task SelectedCapturePublishesFourFieldsAndClearsWrongDeviceAndFailedReadValues()
+    public async Task SelectedCapturePublishesFourFieldsToCacheAndClearsWrongDeviceAndFailedReadValues()
     {
         using var slots = new HostManagerSamplingSubscriptionTestFixture();
         var root = Path.Combine(Path.GetTempPath(), $"nvml-video-{Guid.NewGuid():N}");
@@ -271,7 +271,8 @@ public sealed class NvidiaVideoMetricsRecordedTests
         var request = MetricDeviceFields.CreateRequest(dashboard.Current!, device, VideoNames);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         Assert.Equal(0, readerCalls);
-        var warm = await sampler.GetSnapshotAsync(request, timeout.Token);
+        // Explicit cache inspection must not create sampling demand before the worker starts.
+        var warm = sampler.ReadLatest(request) ?? dashboard.Current!;
         Assert.All(ReadFields(warm, device), value => Assert.Null(value.NumericValue));
         Assert.Equal(0, readerCalls);
 
@@ -305,7 +306,6 @@ public sealed class NvidiaVideoMetricsRecordedTests
                 _ => VideoCodes.ToDictionary(static code => code, static _ => (double?)null)
             };
             AssertVideoFields(captured, sampler.ReadLatest(request)!, device, expected);
-            AssertVideoFields(captured, await sampler.GetSnapshotAsync(request, timeout.Token), device, expected);
         }
 
         Assert.Equal(4, encoderCalls);

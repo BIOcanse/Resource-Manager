@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Reflection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -94,7 +95,7 @@ public sealed class NvidiaPerformanceStateCollectorTests
     }
 
     [Fact]
-    public async Task OriginalWorkerReadsOnlyDemandAndGetUsesCacheAfterCancelAndStop()
+    public async Task OriginalWorkerAndSingleFetchReadOnlyDemandAndCacheInspectionAfterStopDoesNotRead()
     {
         using var slots = new HostManagerSamplingSubscriptionTestFixture();
         var root = Path.Combine(Path.GetTempPath(),$"pstate-worker-{Guid.NewGuid():N}");
@@ -131,7 +132,7 @@ public sealed class NvidiaPerformanceStateCollectorTests
             slots.Owner,slots.Provider,NullLogger<WindowsHardwareMetricSampler>.Instance);
         var request = MetricDeviceFields.CreateRequest(dashboard.Current!,device,[Name]);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        Assert.Null(Field(await sampler.GetSnapshotAsync(request,timeout.Token),device).IntegerValue); Assert.Equal(0,reads);
+        Assert.Null(Field(sampler.ReadLatest(request) ?? dashboard.Current!,device).IntegerValue); Assert.Equal(0,reads);
         await sampler.StartAsync(timeout.Token);
         try
         {
@@ -143,10 +144,17 @@ public sealed class NvidiaPerformanceStateCollectorTests
             await Task.Delay(150,timeout.Token); var stoppedReads = Volatile.Read(ref reads);
             Assert.True(stoppedReads > 0);
             Assert.Equal(MetricInteger.Parse("0"), Field(await sampler.GetSnapshotAsync(request,timeout.Token),device).IntegerValue);
-            await Task.Delay(150,timeout.Token); Assert.Equal(stoppedReads,Volatile.Read(ref reads));
+            Assert.True(Volatile.Read(ref reads) > stoppedReads);
+            var tracker = (NativeItemSamplingSubscriptionTracker<MetricSampleRequest>)typeof(WindowsHardwareMetricSampler)
+                .GetField("subscriptions", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(sampler)!;
+            while (tracker.CaptureManagedSourceState() != (0, 0)) await Task.Delay(20, timeout.Token);
+            var gate = (SemaphoreSlim)typeof(WindowsHardwareMetricSampler).GetField("sampleGate", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(sampler)!;
+            await gate.WaitAsync(timeout.Token); gate.Release();
+            var afterFetch = Volatile.Read(ref reads);
+            await Task.Delay(150,timeout.Token); Assert.Equal(afterFetch,Volatile.Read(ref reads));
             await sampler.StopAsync(CancellationToken.None);
-            Assert.Equal(MetricInteger.Parse("0"), Field(await sampler.GetSnapshotAsync(request,timeout.Token),device).IntegerValue);
-            Assert.Equal(stoppedReads,Volatile.Read(ref reads));
+            Assert.Equal(MetricInteger.Parse("0"), Field(sampler.ReadLatest(request)!,device).IntegerValue);
+            Assert.Equal(afterFetch,Volatile.Read(ref reads));
         }
         finally { await sampler.StopAsync(CancellationToken.None); }
     }

@@ -107,6 +107,96 @@ public sealed class SubscriptionHolderFanCompositionTests
     }
 
     [Fact]
+    public async Task HardwareSingleFetchCompletionDoesNotCancelOrSlowContinuousTemperatureSubscription()
+    {
+        await using var fixture = new TemperatureFixture();
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await fixture.StartAsync(deadline.Token);
+        await using (var stream = fixture.Sampler.SubscribeAsync("continuous-temperature",
+            TemperatureFixture.Request, TimeSpan.FromMilliseconds(100), deadline.Token).GetAsyncEnumerator(deadline.Token))
+        {
+            Assert.True(await stream.MoveNextAsync());
+            var demand = fixture.ReadDemand();
+            Assert.Equal(1u, demand.ActiveSourceCount);
+            Assert.Equal(100ul, demand.IntervalMilliseconds);
+            fixture.Temperature = 80;
+            var pending = fixture.Sampler.GetSnapshotAsync(TemperatureFixture.Request, deadline.Token);
+            using (var whileFetching = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token))
+            {
+                whileFetching.CancelAfter(TimeSpan.FromMilliseconds(750));
+                do { Assert.True(await stream.MoveNextAsync().AsTask().WaitAsync(whileFetching.Token)); }
+                while (stream.Current.Items["cpu.temperature"].NumericValue != 80d);
+                // A slower single fetch must not suspend deliveries from the
+                // existing fast holder while waiting for its own delivery.
+                Assert.True(await stream.MoveNextAsync().AsTask().WaitAsync(whileFetching.Token));
+                Assert.True(await stream.MoveNextAsync().AsTask().WaitAsync(whileFetching.Token));
+            }
+            var fetched = await pending;
+            Assert.Equal(80d, fetched.Items["cpu.temperature"].NumericValue);
+            Assert.Equal(1u, fixture.ReadDemand().ActiveSourceCount);
+            Assert.Equal(100ul, fixture.ReadDemand().IntervalMilliseconds);
+
+            // The same enumerator and original 100 ms demand must continue
+            // after the temporary 1 s holder has been released.
+            fixture.Temperature = 95;
+            using var cadence = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
+            cadence.CancelAfter(TimeSpan.FromMilliseconds(750));
+            do { Assert.True(await stream.MoveNextAsync().AsTask().WaitAsync(cadence.Token)); }
+            while (stream.Current.Items["cpu.temperature"].NumericValue != 95d);
+            Assert.Equal(1u, fixture.ReadDemand().ActiveSourceCount);
+            Assert.Equal(100ul, fixture.ReadDemand().IntervalMilliseconds);
+        }
+        Assert.Equal(0u, fixture.ReadDemand().ActiveSourceCount);
+        Assert.Empty(fixture.UnexpectedReads);
+    }
+
+    [Fact]
+    public async Task CancellingSingleFetchDoesNotCancelContinuousTemperatureSubscriptionOrSharedCollection()
+    {
+        await using var fixture = new TemperatureFixture();
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var cancellation = new CancellationTokenSource();
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        await fixture.StartAsync(deadline.Token);
+        await using (var stream = fixture.Sampler.SubscribeAsync("continuous-temperature",
+            TemperatureFixture.Request, TimeSpan.FromMilliseconds(100), deadline.Token).GetAsyncEnumerator(deadline.Token))
+        {
+            Assert.True(await stream.MoveNextAsync());
+            fixture.BeforeRead = () =>
+            {
+                entered.Set();
+                if (!release.Wait(TimeSpan.FromSeconds(8))) throw new TimeoutException("The shared read was not released.");
+            };
+            var pending = fixture.Sampler.GetSnapshotAsync(TemperatureFixture.Request, cancellation.Token);
+            try
+            {
+                Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
+                Assert.False(pending.IsCompleted);
+                Assert.Equal(2u, fixture.ReadDemand().ActiveSourceCount);
+                Assert.Equal(100ul, fixture.ReadDemand().IntervalMilliseconds);
+                cancellation.Cancel();
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending.WaitAsync(deadline.Token));
+                Assert.Equal(1u, fixture.ReadDemand().ActiveSourceCount);
+                Assert.Equal(100ul, fixture.ReadDemand().IntervalMilliseconds);
+                fixture.Temperature = 90;
+            }
+            finally { fixture.BeforeRead = null; release.Set(); }
+
+            using var cadence = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
+            cadence.CancelAfter(TimeSpan.FromMilliseconds(750));
+            do { Assert.True(await stream.MoveNextAsync().AsTask().WaitAsync(cadence.Token)); }
+            while (stream.Current.Items["cpu.temperature"].NumericValue != 90d);
+            fixture.Temperature = 100;
+            do { Assert.True(await stream.MoveNextAsync().AsTask().WaitAsync(cadence.Token)); }
+            while (stream.Current.Items["cpu.temperature"].NumericValue != 100d);
+            Assert.Equal(1u, fixture.ReadDemand().ActiveSourceCount);
+        }
+        Assert.Equal(0u, fixture.ReadDemand().ActiveSourceCount);
+        Assert.Empty(fixture.UnexpectedReads);
+    }
+
+    [Fact]
     public async Task CancelledHardwareSingleFetchReleasesItsDemandWhileTemperatureReadIsBlocked()
     {
         await using var fixture = new TemperatureFixture();

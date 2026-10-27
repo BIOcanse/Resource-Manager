@@ -34,7 +34,7 @@ public sealed class NvidiaFanHostIntegrationTests
     }
 
     [Fact]
-    public async Task OriginalHostWorkerUsesSelectedFanDelegatesAndRetiresOldCatalogPublication()
+    public async Task OriginalHostWorkerAndSingleFetchUseSelectedFanAndRetireOldCatalogPublication()
     {
         using var slots = new HostManagerSamplingSubscriptionTestFixture();
         var fixture = new NvidiaFanFixture(); var topology = fixture.Topology();
@@ -56,7 +56,7 @@ public sealed class NvidiaFanHostIntegrationTests
             registry, slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         Assert.Empty(fixture.Targets);
-        await sampler.GetSnapshotAsync(request, timeout.Token); Assert.Empty(fixture.Targets);
+        _ = sampler.ReadLatest(request); Assert.Empty(fixture.Targets);
         await sampler.StartAsync(timeout.Token);
         try
         {
@@ -76,8 +76,17 @@ public sealed class NvidiaFanHostIntegrationTests
             });
             var cached = sampler.ReadLatest(request);
             Assert.Equal(cached?.CommittedGeneration, sampler.ReadLatest(request)?.CommittedGeneration);
-            await sampler.GetSnapshotAsync(request, timeout.Token);
-            await Task.Delay(150, timeout.Token); Assert.Equal(count, fixture.Targets.Count);
+            var fresh = await sampler.GetSnapshotAsync(request, timeout.Token);
+            Assert.True(fixture.Targets.Count > count);
+            Assert.Equal(105d, Assert.Single(Assert.Single(MetricDeviceFields.Read(fresh, fan.ExactIdentityKey,
+                new HashSet<string> { NvidiaFanFixture.Percent })).Fields).NumericValue);
+            var tracker = (NativeItemSamplingSubscriptionTracker<MetricSampleRequest>)typeof(WindowsHardwareMetricSampler)
+                .GetField("subscriptions", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(sampler)!;
+            while (tracker.CaptureManagedSourceState() != (0, 0)) await Task.Delay(20, timeout.Token);
+            var gate = (SemaphoreSlim)typeof(WindowsHardwareMetricSampler).GetField("sampleGate", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(sampler)!;
+            await gate.WaitAsync(timeout.Token); gate.Release();
+            var afterFetch = fixture.Targets.Count;
+            await Task.Delay(150, timeout.Token); Assert.Equal(afterFetch, fixture.Targets.Count);
             using var retired = owner.Acquire();
             fixture.Fans = [new(NvidiaFanFixture.ParentB, 0)]; owner.RequestTopologyRefresh();
             Assert.NotNull(owner.RefreshTopologyIfRequested());

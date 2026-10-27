@@ -167,6 +167,22 @@ public sealed class MetricCatalogPushTests
     }
 
     [Fact]
+    public async Task CatalogGetsWithoutCommittedMetadataDoNotStartDiscoveryOrSampling()
+    {
+        var source = new SilentCatalogSource();
+        await using var fixture = await Fixture.StartAsync(new HardwareMetricCatalogState(), source);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var fields = await fixture.Client.GetAsync("/api/metrics/fields/catalog", timeout.Token);
+        using var metrics = JsonDocument.Parse(await fixture.Client.GetStringAsync("/api/metrics/catalog", timeout.Token));
+
+        Assert.Equal(System.Net.HttpStatusCode.ServiceUnavailable, fields.StatusCode);
+        Assert.Empty(metrics.RootElement.EnumerateArray());
+        Assert.Empty(source.Requests);
+        Assert.Equal(0, fixture.Sampler.Reads);
+        Assert.Equal(0, fixture.Sampler.Captures);
+    }
+
+    [Fact]
     public async Task CatalogGetsOnlyReadCommittedStateAndMatchTheMetadataEnvelope()
     {
         var catalog = new HardwareMetricCatalogState();
@@ -314,7 +330,7 @@ public sealed class MetricCatalogPushTests
             builder.Services.AddSingleton<IMetricSampler>(sampler);
             builder.Services.AddSingleton<IComponentManager>(components ?? new NoInstalledComponentManager());
             builder.Services.AddSingleton<ReadWriteCore>(_ => throw new InvalidOperationException("Unused capability route."));
-            builder.Services.AddSingleton<IGpuTelemetryWorkerClient>(_ => throw new InvalidOperationException("Unused GPU route."));
+            builder.Services.AddSingleton<IGpuTelemetryPushSource>(_ => throw new InvalidOperationException("Catalog routes must not resolve a GPU subscription source."));
             var app = TrustedAccessEndpointTestAuthentication.Build(builder);
             foreach (var name in new[] { "MapMetricsEndpoints", "MapSubscriptionChannelEndpoints" })
                 typeof(ResourceManagerEndpointRouteBuilderExtensions).GetMethod(name,

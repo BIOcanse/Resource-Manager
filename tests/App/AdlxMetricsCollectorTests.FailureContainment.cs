@@ -76,7 +76,8 @@ public sealed partial class AdlxMetricsCollectorTests
             if (entered.IsSet) Assert.True(finished.Wait(TimeSpan.FromSeconds(2)));
             await sampler.StopAsync(CancellationToken.None);
         }
-        Assert.Null(Fields(await sampler.GetSnapshotAsync(request, CancellationToken.None), device)[Names[0]].NumericValue);
+        // After stop this is an explicit inspection of the retained failed-source value.
+        Assert.Null(Fields(sampler.ReadLatest(request)!, device)[Names[0]].NumericValue);
     }
 
     [Theory]

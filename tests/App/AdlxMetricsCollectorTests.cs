@@ -224,7 +224,7 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public async Task OriginalWorkerSamplesSubscribedDeviceAndGetsCacheAfterCancellation()
+    public async Task OriginalWorkerAndSingleFetchSampleSelectedDeviceAndStopReadingWithoutDemand()
     {
         using var slots=new HostManagerSamplingSubscriptionTestFixture();
         var root=Path.Combine(Path.GetTempPath(),$"adlx-worker-{Guid.NewGuid():N}");
@@ -251,9 +251,7 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
         TrustedAccessEndpointTestAuthentication.Apply(client, app.Services);
         var query="?device="+Uri.EscapeDataString(device)+"&fields="+string.Join(',',Names);
         using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        Assert.Null(Fields(await sampler.GetSnapshotAsync(request,timeout.Token),device)[Names[2]].IntegerValue);
-        using(var cached=JsonDocument.Parse(await client.GetStringAsync("/api/metrics/fields/snapshot"+query,timeout.Token)))
-            CheckWire(cached.RootElement[0].GetProperty("fields"),true);
+        Assert.Null(Fields(sampler.ReadLatest(request) ?? dashboard.Current!,device)[Names[2]].IntegerValue);
         Assert.Equal(0,native.MetadataReads); await sampler.StartAsync(timeout.Token);
         try
         {
@@ -275,12 +273,21 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
             }
             await Task.Delay(150,timeout.Token); var reads=Volatile.Read(ref native.SelectedReads); Assert.True(reads>0);
             Assert.Equal(MetricInteger.Parse("9007199254740993"), Fields(await sampler.GetSnapshotAsync(request,timeout.Token),device)[Names[2]].IntegerValue);
-            await Task.Delay(150,timeout.Token); Assert.Equal(reads,Volatile.Read(ref native.SelectedReads));
+            Assert.True(Volatile.Read(ref native.SelectedReads)>reads);
+            var beforeHttp=Volatile.Read(ref native.SelectedReads);
+            using(var fresh=JsonDocument.Parse(await client.GetStringAsync("/api/metrics/fields/snapshot"+query,timeout.Token)))
+                CheckWire(fresh.RootElement[0].GetProperty("fields"),false);
+            Assert.True(Volatile.Read(ref native.SelectedReads)>beforeHttp);
+            var tracker=(NativeItemSamplingSubscriptionTracker<MetricSampleRequest>)typeof(WindowsHardwareMetricSampler)
+                .GetField("subscriptions",BindingFlags.Instance|BindingFlags.NonPublic)!.GetValue(sampler)!;
+            while(tracker.CaptureManagedSourceState()!=(0,0)) await Task.Delay(20,timeout.Token);
+            var gate=(SemaphoreSlim)typeof(WindowsHardwareMetricSampler).GetField("sampleGate",BindingFlags.Instance|BindingFlags.NonPublic)!.GetValue(sampler)!;
+            await gate.WaitAsync(timeout.Token); gate.Release();
+            var afterFetch=Volatile.Read(ref native.SelectedReads);
+            await Task.Delay(150,timeout.Token); Assert.Equal(afterFetch,Volatile.Read(ref native.SelectedReads));
             await sampler.StopAsync(CancellationToken.None);
-            Assert.Equal(MetricInteger.Parse("9007199254740993"), Fields(await sampler.GetSnapshotAsync(request,timeout.Token),device)[Names[2]].IntegerValue);
-            using(var cached=JsonDocument.Parse(await client.GetStringAsync("/api/metrics/fields/snapshot"+query,timeout.Token)))
-                CheckWire(cached.RootElement[0].GetProperty("fields"),false);
-            Assert.Equal(reads,Volatile.Read(ref native.SelectedReads));
+            Assert.Equal(MetricInteger.Parse("9007199254740993"), Fields(sampler.ReadLatest(request)!,device)[Names[2]].IntegerValue);
+            Assert.Equal(afterFetch,Volatile.Read(ref native.SelectedReads));
         }
         finally { await app.StopAsync(); await sampler.StopAsync(CancellationToken.None); }
     }

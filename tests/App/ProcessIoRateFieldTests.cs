@@ -182,12 +182,14 @@ public sealed class ProcessIoRateFieldTests
     }
 
     [Fact]
-    public async Task HttpUnifiedStreamCarriesTypedPerProcessIntervalAndGetDoesNotQuery()
+    public async Task HttpUnifiedStreamCarriesTypedPerProcessIntervalAndGetFetchesOnce()
     {
         var api = new Basic.Api { IoValue = Counts(100) }; var clock = new Clock { Step = 500 };
         using var fixture = Basic.Fixture(api, clock: clock); await using var app = await Network.StartAsync(fixture);
-        using var client = Network.Client(app); var cached = "/api/resource-breakdown/snapshot?ids=" + Raw + "," + Rate;
-        using (var initial = JsonDocument.Parse(await client.GetStringAsync(cached))) Assert.Equal(0, api.IoCalls);
+        using var client = Network.Client(app); var snapshotUrl = "/api/resource-breakdown/snapshot?ids=" + Raw + "," + Rate;
+        using (var initial = JsonDocument.Parse(await client.GetStringAsync(snapshotUrl))) Assert.True(api.IoCalls > 0);
+        var initialReads = api.IoCalls;
+        await Task.Delay(1300); Assert.Equal(initialReads, api.IoCalls);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         var path = "/api/resource-monitor/subscribe?scope=bars&intervalMs=1000&ids=" + Raw + "," + Rate;
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
@@ -211,9 +213,11 @@ public sealed class ProcessIoRateFieldTests
             Assert.All(fields.GetProperty("sources").EnumerateArray(), static source => Assert.Equal(JsonValueKind.Null, source.GetProperty("windowMilliseconds").ValueKind));
             found = true; break;
         }
-        Assert.True(found); await timeout.CancelAsync(); response.Dispose(); await fixture.Sampler.StopAsync(default);
-        var reads = api.IoCalls; using var passive = JsonDocument.Parse(await client.GetStringAsync(cached));
-        Assert.Equal(reads, api.IoCalls); await app.StopAsync();
+        Assert.True(found); await timeout.CancelAsync(); response.Dispose(); await Task.Delay(300);
+        var reads = api.IoCalls; using var fresh = JsonDocument.Parse(await client.GetStringAsync(snapshotUrl));
+        Assert.True(api.IoCalls > reads);
+        var fetchedReads = api.IoCalls; await Task.Delay(1300); Assert.Equal(fetchedReads, api.IoCalls);
+        await fixture.Sampler.StopAsync(default); await app.StopAsync();
     }
 
     private static double? Numeric(ProcessMetricFieldSnapshot snapshot) => snapshot.Processes.Single().Values.Single().NumericValue;

@@ -179,7 +179,7 @@ public sealed partial class IntelFanOwnerHostIntegrationTests
             intelGclZone: zone, borrowedControls: fixture.Resources.Controls);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         Assert.Empty(fixture.Sessions[0].Reads);
-        await sampler.GetSnapshotAsync(request, timeout.Token);
+        _ = sampler.ReadLatest(request);
         Assert.Empty(fixture.Sessions[0].Reads);
         await sampler.StartAsync(timeout.Token);
         try
