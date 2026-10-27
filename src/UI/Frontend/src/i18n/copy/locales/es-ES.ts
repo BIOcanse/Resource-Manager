@@ -2290,6 +2290,8 @@ const esEsAppCopy: AppCopy = {
     fallbackTarget: "Planificación",
     detailTitle: (target: string) => `Detalles de ${target}`,
     readFailed: "No se pudo leer el informe de planificación inteligente",
+    showAllRecords: (count: number) => plural("es-ES", count, { one: "Mostrar {count} registro", many: "Mostrar los {count} registros", other: "Mostrar los {count} registros" }),
+    showRecentRecords: (count: number) => plural("es-ES", count, { one: "Mostrar solo el registro más reciente", many: "Mostrar solo los {count} registros más recientes", other: "Mostrar solo los {count} registros más recientes" }),
     section: {
       result: "Resultado de la planificación",
       execution: "Ejecución"

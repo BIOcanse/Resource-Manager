@@ -64,6 +64,11 @@
   gap: 8px;
 }
 
+/* 列表下方的“显示全部／只显示最近”按钮：靠起始边，不拉满整行。 */
+.smart-details-records-toggle {
+  justify-self: start;
+}
+
 .smart-details-record {
   min-width: 0;
   display: grid;

@@ -18,6 +18,9 @@ import { uiText } from "../../text.ts";
 import { CurrentPageHeading, useCurrentPageName } from "../../app/navigation/currentPageName.tsx";
 
 
+/** 默认列出的最近记录条数。 */
+const recentRecordCount = 8;
+
 interface DetailRecord {
   target: string;
   kind: string;
@@ -49,6 +52,9 @@ export function HostManagerSmartCoordinatorDetailsReport(props: { software: read
         : uiText.smartReport.empty;
   });
   const records = createMemo(() => collectDetailRecords(state(), props.software));
+  // 默认列出最近 recentRecordCount 条；多于这个数时列表下方有一个按钮切换成全部列出，再按回到最近几条。
+  const [showAllRecords, setShowAllRecords] = createSignal(false);
+  const visibleRecords = createMemo(() => showAllRecords() ? records() : records().slice(0, recentRecordCount));
 
   const pageName = useCurrentPageName();
   return (
@@ -72,7 +78,7 @@ export function HostManagerSmartCoordinatorDetailsReport(props: { software: read
             fallback={<div class="optimization-empty">{uiText.smartReport.empty}</div>}
           >
             <div class="smart-details-records">
-              <For each={records().slice(0, 8)}>
+              <For each={visibleRecords()}>
                 {(record) => (
                   <article class="smart-details-record">
                     <div class="smart-details-record-main">
@@ -88,6 +94,18 @@ export function HostManagerSmartCoordinatorDetailsReport(props: { software: read
                 )}
               </For>
             </div>
+            <Show when={records().length > recentRecordCount}>
+              <button
+                class="secondary smart-details-records-toggle"
+                type="button"
+                aria-expanded={showAllRecords()}
+                onClick={() => setShowAllRecords(!showAllRecords())}
+              >
+                {showAllRecords()
+                  ? uiText.smartReport.showRecentRecords(recentRecordCount)
+                  : uiText.smartReport.showAllRecords(records().length)}
+              </button>
+            </Show>
           </Show>
           </>
         )}

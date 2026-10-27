@@ -2289,6 +2289,8 @@ const koKrAppCopy: AppCopy = {
     fallbackTarget: "스케줄링",
     detailTitle: (target: string) => `${target} 세부 정보`,
     readFailed: "스마트 스케줄링 보고서를 읽지 못했습니다",
+    showAllRecords: (count: number) => `기록 ${count}개 모두 표시`,
+    showRecentRecords: (count: number) => `최근 ${count}개만 표시`,
     section: {
       result: "스케줄링 결과",
       execution: "실행"

@@ -2290,6 +2290,8 @@ const deDeAppCopy: AppCopy = {
     fallbackTarget: "Planung",
     detailTitle: (target: string) => `Details zu ${target}`,
     readFailed: "Der Bericht der intelligenten Planung konnte nicht gelesen werden",
+    showAllRecords: (count: number) => plural("de-DE", count, { one: "{count} Eintrag anzeigen", other: "Alle {count} Einträge anzeigen" }),
+    showRecentRecords: (count: number) => plural("de-DE", count, { one: "Nur den neuesten Eintrag anzeigen", other: "Nur die neuesten {count} Einträge anzeigen" }),
     section: {
       result: "Ergebnis der Planung",
       execution: "Ausführung"

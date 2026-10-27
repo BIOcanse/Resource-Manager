@@ -2290,6 +2290,8 @@ const ruRuAppCopy: AppCopy = {
     fallbackTarget: "Планирование",
     detailTitle: (target: string) => `Сведения: ${target}`,
     readFailed: "Не удалось прочитать отчёт умного планирования",
+    showAllRecords: (count: number) => plural("ru-RU", count, { one: "Показать все {count} запись", few: "Показать все {count} записи", many: "Показать все {count} записей", other: "Показать все {count} записи" }),
+    showRecentRecords: (count: number) => plural("ru-RU", count, { one: "Показать только последние {count} запись", few: "Показать только последние {count} записи", many: "Показать только последние {count} записей", other: "Показать только последние {count} записи" }),
     section: {
       result: "Результат планирования",
       execution: "Выполнение"

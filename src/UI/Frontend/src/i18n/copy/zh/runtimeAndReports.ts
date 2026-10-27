@@ -14,6 +14,8 @@ export const zhRuntimeAndReportsCopy = {
     fallbackTarget: "调度",
     detailTitle: (target: string) => cjkText`${target}详细信息`,
     readFailed: "智能调度报告读取失败",
+    showAllRecords: (count: number) => `显示全部 ${count} 条记录`,
+    showRecentRecords: (count: number) => `只显示最近 ${count} 条`,
     section: {
       result: "调度结果",
       execution: "执行情况"

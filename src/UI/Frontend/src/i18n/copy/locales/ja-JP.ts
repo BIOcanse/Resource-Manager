@@ -2290,6 +2290,8 @@ const jaJpAppCopy: AppCopy = {
     fallbackTarget: "スケジューリング",
     detailTitle: (target: string) => `${target} の詳細`,
     readFailed: "スマート スケジューリング レポートの読み取りに失敗しました",
+    showAllRecords: (count: number) => `全 ${count} 件の記録を表示`,
+    showRecentRecords: (count: number) => `最新の ${count} 件のみ表示`,
     section: {
       result: "スケジューリングの結果",
       execution: "実行"

@@ -14,6 +14,8 @@ export const zhRuntimeAndReportsCopy = {
     fallbackTarget: "排程",
     detailTitle: (target: string) => cjkText`${target}詳細資訊`,
     readFailed: "智慧排程報告讀取失敗",
+    showAllRecords: (count: number) => `顯示全部 ${count} 筆記錄`,
+    showRecentRecords: (count: number) => `只顯示最近 ${count} 筆`,
     section: {
       result: "排程結果",
       execution: "執行情況"
