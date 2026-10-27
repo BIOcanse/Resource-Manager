@@ -9,7 +9,6 @@ internal sealed partial class NativeDisplayCoordinatorSession : INativeDisplayCo
     static NativeDisplayCoordinatorSession() => ResourceManager.ReadWrite.Native.ReadWriteNativeLibraryResolver.EnsureRegistered();
     private readonly object sync = new();
     private IntPtr handle;
-    private NativeDisplayCoordinatorCapacity capacity;
 
     internal NativeDisplayCoordinatorSession(in NativeDisplayCoordinatorConfiguration configuration,
         Func<ulong, ResourceManager.ReadWrite.Native.INativeDisplayNormalizationScratch>? createScratch = null)
@@ -33,7 +32,7 @@ internal sealed partial class NativeDisplayCoordinatorSession : INativeDisplayCo
 
         try
         {
-            capacity = QueryAndValidateCapacity(handle, in configuration);
+            _ = QueryAndValidateCapacity(handle, in configuration);
             if (createScratch is not null)
             {
                 normalizationScratch = createScratch(configuration.MaximumTextByteCount)
@@ -58,8 +57,11 @@ internal sealed partial class NativeDisplayCoordinatorSession : INativeDisplayCo
         {
             lock (sync)
             {
-                _ = RequireHandle();
-                return capacity;
+                var status = (NativeDisplayCoordinatorStatus)NativeMethods.QueryCapacity(
+                    RequireHandle(), out var current, SizeOf<NativeDisplayCoordinatorCapacity>());
+                if (status != NativeDisplayCoordinatorStatus.Ok)
+                    throw new InvalidOperationException($"Native display-coordinator capacity query failed with {status}.");
+                return current;
             }
         }
     }

@@ -4,11 +4,69 @@ using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.ReadWrite.Native;
+using ResourceManager.ReadWrite.Windows.Metrics.Capture;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed class MetricCatalogMetadataSharingTests
 {
+    [Fact]
+    public void ReadingSelectionUsesCatalogStringsAndOneIdPerPhysicalReading()
+    {
+        var compiled = NativeMetricSnapshotHostConfiguration.CreateCatalogConfiguration(
+            HostManagerTestPlanFactory.CreatePlan().MetricSnapshot);
+        var plan = compiled with
+        {
+            RuleTemplates = compiled.RuleTemplates.Select(static template => template with
+            { SourceId = new string(template.SourceId.AsSpan()) }).ToImmutableArray()
+        };
+        var catalog = NativeMetricSnapshotCatalogProjection.Create(plan,
+            [new(0, "GPU", "gpu-a", 0x101, 1, 2, true)], [], [],
+            NativeMetricSnapshotCatalogHandleMap.Empty);
+        foreach (var binding in catalog.RuleBindings.Values)
+            Assert.Same(catalog.SourceIds[binding.SourceHandle], binding.SourceId);
+
+        var frame = new NativeMetricSnapshotCommittedFrame(
+            new() { ConfigurationGeneration = 1, CatalogGeneration = 1, CommittedGeneration = 1 },
+            catalog.Sources.Select(static source => new NativeMetricSnapshotSourceOutput
+            { SourceHandle = source.SourceHandle, CapabilityGeneration = 1 }).ToImmutableArray(),
+            [], [], [], catalog);
+        var tracker = new MetricReadingSourceTracker();
+        var selection = tracker.Select(frame, 1);
+        var repeated = tracker.Select(frame, 1);
+        var sharedGroups = selection.Fields.Values.GroupBy(static reading => reading.Id)
+            .Where(static group => group.Count() > 1).ToArray();
+        Assert.NotEmpty(sharedGroups);
+        var avoidedStringBytes = 0L;
+        foreach (var group in sharedGroups)
+        {
+            var canonical = group.First();
+            foreach (var reading in group)
+            {
+                Assert.Same(canonical.Id, reading.Id);
+                Assert.Same(canonical.Quantity, reading.Quantity);
+            }
+            avoidedStringBytes += (group.Count() - 1) * ((24 + canonical.Id.Length * 2 + 7) & ~7);
+        }
+        Assert.True(avoidedStringBytes >= 168);
+        foreach (var (handle, reading) in selection.Fields)
+        {
+            Assert.Same(reading.Id, repeated.Fields[handle].Id);
+            Assert.Equal(reading, repeated.Fields[handle]);
+            var binding = catalog.MetricBindings[handle];
+            if (reading.Quantity == binding.Field!.Name)
+                Assert.Same(binding.Field.Name, reading.Quantity);
+        }
+        // A new catalog generation creates its own bounded ID ownership.
+        var next = tracker.Select(frame with
+        { Header = frame.Header with { CatalogGeneration = 2 } }, 1);
+        foreach (var (handle, reading) in selection.Fields)
+        {
+            Assert.Equal(reading, next.Fields[handle]);
+            Assert.NotSame(reading.Id, next.Fields[handle].Id);
+        }
+    }
+
     [Fact]
     public void SameKindDevicesShareMetadataThroughCatalogAndRepeatedPublicationWithoutChangingWireValues()
     {

@@ -2209,7 +2209,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            while (fixture.ProcessFacts.ActiveSubscriptionCount != 1)
+            // Process demand is acquired before hardware demand; both must be visible before asserting their histories.
+            while (fixture.ProcessFacts.ActiveSubscriptionCount != 1
+                || fixture.MetricSampler.ActiveSubscriptionCount != 1)
             {
                 await Task.Delay(10, timeout.Token);
             }

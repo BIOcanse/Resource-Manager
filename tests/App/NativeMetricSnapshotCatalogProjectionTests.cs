@@ -579,9 +579,25 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
         Assert.True(before.Capacity.ResidentByteCount > emptyResidentBytes);
         Assert.Equal(before.Capacity.ResidentByteCount, after.Capacity.ResidentByteCount);
         Assert.Equal(before.Capacity.ScratchByteCount, after.Capacity.ScratchByteCount);
-        _ = before.ReadCommitted();
-        _ = after.ReadCommitted();
-        Assert.Equal(ReadAllocations(before), ReadAllocations(after));
+        var beforeFrame = before.ReadCommitted();
+        var afterFrame = after.ReadCommitted();
+        Assert.Equal((beforeFrame.Sources.Length, beforeFrame.Metrics.Length,
+                beforeFrame.GpuInventory.Length, beforeFrame.Rules.Length),
+            (afterFrame.Sources.Length, afterFrame.Metrics.Length,
+                afterFrame.GpuInventory.Length, afterFrame.Rules.Length));
+        // Warm complete batches on both paths, then compare their allocation
+        // floors. A one-off runtime allocation must not masquerade as a
+        // capacity-dependent cost; a per-read cost still appears in every batch.
+        _ = ReadAllocations(before);
+        _ = ReadAllocations(after);
+        var beforeAllocated = long.MaxValue;
+        var afterAllocated = long.MaxValue;
+        for (var batch = 0; batch < 3; batch++)
+        {
+            beforeAllocated = Math.Min(beforeAllocated, ReadAllocations(before));
+            afterAllocated = Math.Min(afterAllocated, ReadAllocations(after));
+        }
+        Assert.Equal(beforeAllocated, afterAllocated);
 
         static long ReadAllocations(NativeMetricSnapshotWorkspace workspace)
         {

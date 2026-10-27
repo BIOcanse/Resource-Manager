@@ -216,6 +216,46 @@ internal sealed class WindowsProcessDetailsInformationReader : IWindowsProcessDe
 /// <summary>Bounds and validates the documented variable-length process/thread table.</summary>
 internal static class WindowsProcessSystemThreadParser
 {
+    internal static unsafe bool TryParseInventory(ReadOnlySpan<byte> data, WindowsProcessDetailsOptions options,
+        out WindowsProcessInventoryEntry[] processes)
+    {
+        processes = [];
+        if (!TryParseCreations(data, options, out var creations)) return false;
+        var rows = new List<WindowsProcessInventoryEntry>(creations.Count);
+        var offset = 0;
+        fixed (byte* start = data)
+        {
+            while (offset < data.Length)
+            {
+                var header = MemoryMarshal.Read<SystemProcessInformationHeader>(data[offset..]);
+                var pid = (int)PointerValue(header.UniqueProcessId);
+                var parent = PointerValue(header.InheritedFromUniqueProcessId);
+                var image = header.ImageName;
+                string? name = null;
+                if (image.Length != 0)
+                {
+                    var imageOffset = unchecked((ulong)image.Buffer.ToInt64() - (ulong)start);
+                    if ((image.Length & 1) == 0 && image.Length <= image.MaximumLength
+                        && imageOffset <= (ulong)data.Length && image.Length <= (ulong)data.Length - imageOffset)
+                    {
+                        // Process.ProcessName omits the executable extension.
+                        var characters = MemoryMarshal.Cast<byte, char>(data.Slice((int)imageOffset, image.Length));
+                        if (characters.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) characters = characters[..^4];
+                        name = new string(characters);
+                    }
+                }
+                var creation = header.CreationTime;
+                rows.Add(new(pid, new(creation > 0 ? ProcessReadStatus.Current : ProcessReadStatus.Unavailable,
+                    creation > 0 ? creation : null), parent <= int.MaxValue ? (int)parent : 0, name,
+                    ThreadCount: header.NumberOfThreads <= options.MaximumThreadsPerProcess ? header.NumberOfThreads : null));
+                if (header.NextEntryOffset == 0) break;
+                offset += (int)header.NextEntryOffset;
+            }
+        }
+        processes = rows.ToArray();
+        return true;
+    }
+
     internal static bool TryParseCreations(ReadOnlySpan<byte> data, WindowsProcessDetailsOptions options,
         out Dictionary<int, long> creations)
     {

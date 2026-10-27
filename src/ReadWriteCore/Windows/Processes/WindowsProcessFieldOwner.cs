@@ -85,12 +85,13 @@ public sealed partial class WindowsProcessFieldOwner : IDisposable
             var definitions = names.Distinct(StringComparer.OrdinalIgnoreCase).Select(name => ProcessMetricFieldRegistry.Find(name)!).ToArray();
             var mask = definitions.Aggregate(ProcessMetricReadMask.None, static (value, field) => value | field.ReadMask);
             var includeCpu = definitions.Any(static field => field.Code == ProcessMetricFieldCode.CpuUsage);
-            IReadOnlyDictionary<Process, CapturedProcessBasic>? prepared = null;
-            bool Capture(Process process, ProcessCreationRead creation, out ProcessFieldSample sample, out TimeSpan cpu, out ProcessInstanceKey? identity)
-                => CaptureFieldSample(process, creation, mask, includeCpu, out sample, out cpu, out identity, prepared);
+            var textSharing = CreateTextSharing();
+            IReadOnlyDictionary<WindowsProcessInventoryEntry, CapturedProcessBasic>? prepared = null;
+            bool Capture(WindowsProcessInventoryEntry process, ProcessCreationRead creation, out ProcessFieldSample sample, out TimeSpan cpu, out ProcessInstanceKey? identity)
+                => CaptureFieldSample(process, creation, mask, includeCpu, out sample, out cpu, out identity, prepared, textSharing);
             var batch = CaptureBatch(includeCpu, DirectCpu, (TryCaptureProcess<ProcessFieldSample>)Capture, static row => row.HasProcessorTime,
                 prepare: mask.HasFlag(ProcessMetricReadMask.ThreadCount)
-                    ? (processes, creations) => prepared = ReadBasicBatch(processes, (_, _) => mask, creations) : null);
+                    ? processes => prepared = ReadBasicBatch(processes, (_, _) => mask, textSharing) : null);
             if (batch.Status != ResourceManager.App.Domain.Metrics.SamplingObservationStatus.Current)
                 throw new InvalidOperationException("The process inventory did not produce a complete current observation.");
             var rows = batch.Samples.Select(sample =>

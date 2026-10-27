@@ -38,29 +38,11 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
         IAsyncDisposable
 {
     private const int SampleIntervalSeconds = 10;
-    private static readonly MetricSampleRequest ReportMetricRequest =
-        MetricSampleRequest.ForIds(
-        [
-            SamplingDatasetIds.SystemGpuInventory,
-            "cpu.temperature",
-            "cpu.usage",
-            "cpu.frequencyPercent"
-        ]);
-    private static readonly ResourceBreakdownSampleRequest ReportResourceRequest =
-        ResourceBreakdownSampleRequest.ForResourceTable(
-            [ResourceBreakdownMetricIds.MemoryUsage, "process_all_command_line_actual"],
-            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                [ResourceBreakdownMetricIds.MemoryUsage] =
-                    ResourceBreakdownScaleModes.Capacity
-            });
     private static readonly TimeSpan SampleInterval =
         TimeSpan.FromSeconds(SampleIntervalSeconds);
 
     private readonly SemaphoreSlim executionGate = new(1, 1);
     private readonly HostManagerStrayProcessReportFactProjector strayProjector = new();
-    private const SchedulingProcessMetricMask ReportProcessMetrics = SchedulingProcessMetricMask.RuntimeState
-        | SchedulingProcessMetricMask.CpuUsage | SchedulingProcessMetricMask.GpuUsage;
     private readonly SemaphoreSlim planSignal = new(0, 1);
     private NativeReportCoordinatorWorkspace? workspace;
     private NativeReportCoordinatorWorkspace? pendingWorkspaceClose;
@@ -82,7 +64,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
     private ulong importGeneration;
     private ulong lastCommandMonotonicMilliseconds;
     private long lastCommandUtcMilliseconds;
-    private bool subscribed;
+    private volatile bool subscribed;
 
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -99,7 +81,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
                     publication.Plan.HostManager.RequirePublished(),
                     cancellationToken);
                 ThrowIfRetiring();
-                AcquireObservationSubscriptions();
+                UpdateObservationSubscriptions(RequireAppliedPlan());
                 await base.StartAsync(cancellationToken);
             }
             finally
@@ -375,12 +357,15 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
             var activeWorkspace = RequireWorkspace();
             var plan = RequireAppliedPlan();
             var state = RequireCoordinatorState();
-            var hardware = metricSource.ReadLatest(ReportMetricRequest);
-            var resources = resourceSource.ReadLatest(ReportResourceRequest);
-            var interrupts = interruptSource.Read();
-            var processFacts = processSource.ReadLatest(new SchedulingProcessFactRequest(
-                ReportProcessMetrics, hardware?.GpuInventory ?? new SchedulingGpuInventorySnapshot(
-                    SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, [])));
+            var inputs = GetObservationInputs(plan);
+            if (subscribed) UpdateObservationSubscriptions(plan);
+            var hardware = inputs.NeedsMetrics ? metricSource.ReadLatest(inputs.Metrics) : null;
+            var resources = inputs.NeedsResources ? resourceSource.ReadLatest(inputs.Resources) : EmptyResources;
+            var interrupts = inputs.NeedsInterrupts ? interruptSource.Read() : HostManagerReportReadModel.Empty.InterruptSnapshot;
+            var processFacts = inputs.ProcessMetrics == SchedulingProcessMetricMask.None ? null
+                : processSource.ReadLatest(new SchedulingProcessFactRequest(
+                    inputs.ProcessMetrics, hardware?.GpuInventory ?? new SchedulingGpuInventorySnapshot(
+                        SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, [])));
             var backgroundIds = BackgroundSoftwareIds(processFacts);
             var protectedIds = (await protectionService.GetProtectedTargetsAsync(cancellationToken))
                 .Where(item => item.State == OptimizationProtectionStates.Active && item.SoftwareId is not null)
@@ -453,44 +438,9 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
         }
     }
 
-    private void AcquireObservationSubscriptions()
-    {
-        if (processSubscription is not null
-            || metricSubscription is not null
-            || resourceSubscription is not null
-            || interruptSubscription is not null)
-        {
-            throw new InvalidOperationException(
-                "Report observation subscriptions are already active.");
-        }
-
-        try
-        {
-            processSubscription = processSource.AcquireSubscription(
-                "host-manager.reports.runtime-state",
-                ReportProcessMetrics, SampleInterval);
-            metricSubscription = metricSource.AcquireSubscription(
-                "host-manager.reports.hardware",
-                ReportMetricRequest,
-                SampleInterval);
-            resourceSubscription = resourceSource.AcquireSubscription(
-                "host-manager.reports.software-memory",
-                ReportResourceRequest,
-                SampleInterval);
-            interruptSubscription = interruptSource.AcquireSubscription(
-                "host-manager.reports.system-interrupts",
-                SampleInterval);
-        }
-        catch (Exception acquisitionFailure)
-        {
-            var failures = new List<Exception> { acquisitionFailure };
-            ReleaseObservationSubscriptions(failures);
-            ThrowFailures(failures);
-        }
-    }
-
     private void ReleaseObservationSubscriptions(ICollection<Exception> failures)
     {
+        subscribedInputs = null;
         var processes = Interlocked.Exchange(ref processSubscription, null);
         CaptureDisposalFailure(processes, failures);
         var interrupts = Interlocked.Exchange(ref interruptSubscription, null);

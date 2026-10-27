@@ -51,20 +51,23 @@ pub const Session = struct {
     round_monotonic_ms: u64 = 0,
 
     pub fn create(config: *const protocol.Config) !*Session {
-        return createWithScratchOwnership(config, true);
+        return createWithAllocator(config, std.heap.page_allocator);
+    }
+
+    pub fn createWithAllocator(config: *const protocol.Config, allocator: std.mem.Allocator) !*Session {
+        return createWithScratchOwnership(config, true, allocator);
     }
 
     pub fn createExternal(config: *const protocol.Config) !*Session {
-        return createWithScratchOwnership(config, false);
+        return createWithScratchOwnership(config, false, std.heap.page_allocator);
     }
 
-    fn createWithScratchOwnership(config: *const protocol.Config, owns_scratch: bool) !*Session {
+    fn createWithScratchOwnership(config: *const protocol.Config, owns_scratch: bool, allocator: std.mem.Allocator) !*Session {
         if (!protocol.validConfig(config)) return error.InvalidConfiguration;
         const resident = residentByteCount(config) catch
             return error.InvalidConfiguration;
         if (resident > config.resident_byte_budget) return error.InvalidConfiguration;
 
-        const allocator = std.heap.page_allocator;
         const self = try allocator.create(Session);
         errdefer allocator.destroy(self);
         var active = try Bank.create(allocator, config);
@@ -109,7 +112,8 @@ pub const Session = struct {
         self.* = .{
             .allocator = allocator,
             .config = config.*,
-            .resident_byte_count = resident - (if (owns_scratch) @as(u64, 0) else config.maximum_text_byte_count),
+            .resident_byte_count = resident - (if (owns_scratch) @as(u64, 0) else config.maximum_text_byte_count) -
+                3 * (@as(u64, config.maximum_text_byte_count) + @as(u64, config.maximum_diff_entry_count) * @sizeOf(protocol.DiffEntry)),
             .active = active,
             .working = working,
             .next = next,
@@ -158,6 +162,11 @@ pub const Session = struct {
         allocator.destroy(self);
     }
 
+    fn actualResidentByteCount(self: *const Session) u64 {
+        return self.resident_byte_count + self.active.dynamicByteCount() +
+            self.working.dynamicByteCount() + self.next.dynamicByteCount();
+    }
+
     pub fn capacity(self: *Session) protocol.Capacity {
         lockMutex(&self.mutex);
         defer unlockMutex(&self.mutex);
@@ -176,7 +185,7 @@ pub const Session = struct {
             .identity_index_capacity = self.config.identity_index_capacity,
             .text_index_capacity = self.config.text_index_capacity,
             .reserved_u32 = 0,
-            .resident_byte_count = self.resident_byte_count,
+            .resident_byte_count = self.actualResidentByteCount(),
             .reserved = [_]u64{0} ** 8,
         };
     }
@@ -436,7 +445,7 @@ pub const Session = struct {
             .text_count = self.active.text_count,
             .unresolved_count = self.active.unresolved_count,
             .diff_count = self.active.diff_count,
-            .resident_byte_count = self.resident_byte_count,
+            .resident_byte_count = self.actualResidentByteCount(),
         };
         return .ok;
     }
@@ -919,8 +928,7 @@ pub const Session = struct {
             self.next.nodes[0..self.next.node_count],
             self.content_generation,
             next_generation,
-            self.next.diffs,
-            &self.next.diff_count,
+            &self.next,
             nodeHandleOf,
             sameNode,
         );
@@ -932,8 +940,7 @@ pub const Session = struct {
             self.next.edges[0..self.next.edge_count],
             self.content_generation,
             next_generation,
-            self.next.diffs,
-            &self.next.diff_count,
+            &self.next,
             edgeHandleOf,
             sameEdge,
         );
@@ -945,8 +952,7 @@ pub const Session = struct {
             self.next.capabilities[0..self.next.capability_count],
             self.content_generation,
             next_generation,
-            self.next.diffs,
-            &self.next.diff_count,
+            &self.next,
             capabilityHandleOf,
             sameCapability,
         );
@@ -958,8 +964,7 @@ pub const Session = struct {
             self.next.texts[0..self.next.text_count],
             self.content_generation,
             next_generation,
-            self.next.diffs,
-            &self.next.diff_count,
+            &self.next,
             textHandleOf,
             sameText,
         );
@@ -971,8 +976,7 @@ pub const Session = struct {
             self.next.unresolved[0..self.next.unresolved_count],
             self.content_generation,
             next_generation,
-            self.next.diffs,
-            &self.next.diff_count,
+            &self.next,
             unresolvedHandleOf,
             sameUnresolved,
         );
@@ -2141,22 +2145,20 @@ fn appendEntityDiff(
     new_values: []const T,
     old_generation: u64,
     new_generation: u64,
-    outputs: []protocol.DiffEntry,
-    output_count: *u32,
+    output_bank: *Bank,
     comptime handleOf: fn (T) protocol.Handle128,
     comptime equal: fn (T, T) bool,
 ) ResultCode {
     var old_index: usize = 0;
     var new_index: usize = 0;
     while (old_index < old_values.len or new_index < new_values.len) {
-        if (output_count.* >= outputs.len) return .out_of_memory;
         if (old_index >= old_values.len) {
-            appendDiff(outputs, output_count, entity_kind, .added, handleOf(new_values[new_index]), 0, new_generation, 0);
+            appendDiff(output_bank, entity_kind, .added, handleOf(new_values[new_index]), 0, new_generation, 0) catch return .out_of_memory;
             new_index += 1;
             continue;
         }
         if (new_index >= new_values.len) {
-            appendDiff(outputs, output_count, entity_kind, .removed, handleOf(old_values[old_index]), old_generation, 0, 0);
+            appendDiff(output_bank, entity_kind, .removed, handleOf(old_values[old_index]), old_generation, 0, 0) catch return .out_of_memory;
             old_index += 1;
             continue;
         }
@@ -2164,15 +2166,15 @@ fn appendEntityDiff(
         const new_handle = handleOf(new_values[new_index]);
         if (bank_module.equalHandle(old_handle, new_handle)) {
             if (!equal(old_values[old_index], new_values[new_index])) {
-                appendDiff(outputs, output_count, entity_kind, .changed, new_handle, old_generation, new_generation, std.math.maxInt(u64));
+                appendDiff(output_bank, entity_kind, .changed, new_handle, old_generation, new_generation, std.math.maxInt(u64)) catch return .out_of_memory;
             }
             old_index += 1;
             new_index += 1;
         } else if (bank_module.lessHandle({}, old_handle, new_handle)) {
-            appendDiff(outputs, output_count, entity_kind, .removed, old_handle, old_generation, 0, 0);
+            appendDiff(output_bank, entity_kind, .removed, old_handle, old_generation, 0, 0) catch return .out_of_memory;
             old_index += 1;
         } else {
-            appendDiff(outputs, output_count, entity_kind, .added, new_handle, 0, new_generation, 0);
+            appendDiff(output_bank, entity_kind, .added, new_handle, 0, new_generation, 0) catch return .out_of_memory;
             new_index += 1;
         }
     }
@@ -2180,16 +2182,16 @@ fn appendEntityDiff(
 }
 
 fn appendDiff(
-    outputs: []protocol.DiffEntry,
-    count: *u32,
+    output_bank: *Bank,
     entity_kind: protocol.EntityKind,
     change_kind: protocol.ChangeKind,
     handle: protocol.Handle128,
     old_generation: u64,
     new_generation: u64,
     changed_field_mask: u64,
-) void {
-    outputs[count.*] = .{
+) !void {
+    try output_bank.ensureDiffCapacity(try std.math.add(u32, output_bank.diff_count, 1));
+    output_bank.diffs[output_bank.diff_count] = .{
         .struct_size = @sizeOf(protocol.DiffEntry),
         .entity_kind = @intFromEnum(entity_kind),
         .change_kind = @intFromEnum(change_kind),
@@ -2199,7 +2201,7 @@ fn appendDiff(
         .new_generation = new_generation,
         .changed_field_mask = changed_field_mask,
     };
-    count.* += 1;
+    output_bank.diff_count += 1;
 }
 
 fn copyOutputs(comptime T: type, source: []const T, outputs: []T) ResultCode {

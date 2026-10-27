@@ -142,6 +142,30 @@ public sealed class NativeDisplayCoordinatorAbiTests
         Assert.Equal((uint)NativeDisplayCoordinatorPhase.Warming, snapshot.Phase);
     }
 
+    [Fact]
+    public void LargeTextAndDiffCeilingsDoNotAllocateTheirMaximumIntoThreeIdleBanks()
+    {
+        var small = CreateConfiguration();
+        var large = small;
+        large.MaximumTextByteCount = 1024 * 1024;
+        large.MaximumDiffEntryCount = 8192;
+        large.ResidentByteBudget = 16 * 1024 * 1024;
+        using var smallSession = new NativeDisplayCoordinatorSession(in small);
+        using var largeSession = new NativeDisplayCoordinatorSession(in large);
+        // Only the separate normalization scratch follows the configured byte
+        // ceiling; text/diff banks retain their bounded initial physical sizes.
+        Assert.Equal((ulong)(large.MaximumTextByteCount - small.MaximumTextByteCount),
+            largeSession.Capacity.ResidentByteCount - smallSession.Capacity.ResidentByteCount);
+        Assert.Equal(large.MaximumTextByteCount, largeSession.Capacity.MaximumTextByteCount);
+        Assert.Equal(large.MaximumDiffEntryCount, largeSession.Capacity.MaximumDiffEntryCount);
+        Assert.Equal(NativeDisplayCoordinatorStatus.Ok, largeSession.Snapshot(out var snapshot));
+        Assert.Equal(largeSession.Capacity.ResidentByteCount, snapshot.ResidentByteCount);
+        Assert.Equal(0U, snapshot.NodeCount);
+        var admission = large;
+        admission.ResidentByteBudget = largeSession.Capacity.ResidentByteCount;
+        Assert.Throws<InvalidOperationException>(() => new NativeDisplayCoordinatorSession(in admission));
+    }
+
     private static NativeDisplayCoordinatorConfiguration CreateConfiguration()
         => new()
         {

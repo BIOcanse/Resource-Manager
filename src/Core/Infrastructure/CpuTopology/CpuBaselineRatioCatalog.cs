@@ -9,50 +9,87 @@ namespace ResourceManager.App.Infrastructure.CpuTopology;
 public sealed partial class CpuBaselineRatioCatalog
 {
     private const string ResourceName = "ResourceManager.Configuration.Cpu.baseline-defaults.json";
-    private readonly CatalogDocument document;
-    private readonly FrozenDictionary<string, IntelModelDefault> intelModels;
+    private readonly CatalogDefaults document;
+    private readonly Lazy<FrozenDictionary<string, IntelModelDefault>> intelModels;
 
-    private CpuBaselineRatioCatalog(CatalogDocument document)
+    private CpuBaselineRatioCatalog(CatalogDefaults document, Func<FrozenDictionary<string, IntelModelDefault>> loadIntelModels)
     {
         if (document.SchemaVersion != 1 || string.IsNullOrWhiteSpace(document.DatasetVersion)
             || !CpuBaselineRatio.IsValid(document.UnmatchedRatio)
             || !CpuBaselineRatio.IsValid(document.AmdSingleCcdRatio)
-            || !CpuBaselineRatio.IsValid(document.AmdSymmetricDualCcdRatio)
-            || document.IntelModels is not { Length: > 0 })
+            || !CpuBaselineRatio.IsValid(document.AmdSymmetricDualCcdRatio))
+        {
+            throw new InvalidDataException("Invalid CPU baseline default catalog.");
+        }
+        this.document = document;
+        intelModels = new(loadIntelModels);
+    }
+
+    internal bool IntelModelsLoaded => intelModels.IsValueCreated;
+
+    private static FrozenDictionary<string, IntelModelDefault> CreateIntelModels(CatalogDocument document)
+    {
+        if (document.IntelModels is not { Length: > 0 })
         {
             throw new InvalidDataException("Invalid CPU baseline default catalog.");
         }
         var models = new Dictionary<string, IntelModelDefault>(StringComparer.Ordinal);
+        var bases = new HashSet<string>(StringComparer.Ordinal);
+        var groups = new HashSet<string>(StringComparer.Ordinal);
         foreach (var model in document.IntelModels)
         {
             if (model is null || string.IsNullOrWhiteSpace(model.Name)
                 || string.IsNullOrWhiteSpace(model.Basis) || string.IsNullOrWhiteSpace(model.Group)
-                || model.PhysicalCores <= 0 || !CpuBaselineRatio.IsValid(model.Ratio)
-                || !models.TryAdd(NormalizeModelName(model.Name), model))
+                || model.PhysicalCores <= 0 || !CpuBaselineRatio.IsValid(model.Ratio))
+            {
+                throw new InvalidDataException("Invalid or duplicate Intel CPU baseline default.");
+            }
+            // These catalog-controlled values repeat across the model table; keep sharing local to this owner.
+            if (!bases.TryGetValue(model.Basis, out var basis)) bases.Add(basis = model.Basis);
+            if (!groups.TryGetValue(model.Group, out var group)) groups.Add(group = model.Group);
+            if (!models.TryAdd(NormalizeModelName(model.Name), model with { Basis = basis, Group = group }))
             {
                 throw new InvalidDataException("Invalid or duplicate Intel CPU baseline default.");
             }
         }
-        this.document = document;
-        intelModels = models.ToFrozenDictionary(StringComparer.Ordinal);
+        return models.ToFrozenDictionary(StringComparer.Ordinal);
     }
 
     public static CpuBaselineRatioCatalog LoadEmbedded()
     {
         using var stream = typeof(CpuBaselineRatioCatalog).Assembly.GetManifestResourceStream(ResourceName)
             ?? throw new InvalidDataException("The CPU baseline default catalog is missing.");
-        return Read(stream);
+        // Skip the Intel array without retaining its JSON or constructing its models on other vendors.
+        var defaults = JsonSerializer.Deserialize<CatalogDefaults>(stream, CreateJsonOptions())
+            ?? throw new InvalidDataException("The CPU baseline default catalog is empty.");
+        return new CpuBaselineRatioCatalog(defaults, static () =>
+        {
+            using var modelStream = typeof(CpuBaselineRatioCatalog).Assembly.GetManifestResourceStream(ResourceName)
+                ?? throw new InvalidDataException("The CPU baseline default catalog is missing.");
+            return CreateIntelModels(ReadDocument(modelStream));
+        });
     }
 
     internal static CpuBaselineRatioCatalog Read(Stream stream)
     {
-        var document = JsonSerializer.Deserialize<CatalogDocument>(stream, new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        var document = ReadDocument(stream);
+        var catalog = new CpuBaselineRatioCatalog(new(document.SchemaVersion, document.DatasetVersion,
+            document.UnmatchedRatio, document.AmdSingleCcdRatio, document.AmdSymmetricDualCcdRatio),
+            () => CreateIntelModels(document));
+        _ = catalog.intelModels.Value;
+        return catalog;
+    }
+
+    private static CatalogDocument ReadDocument(Stream stream)
+        => JsonSerializer.Deserialize<CatalogDocument>(stream, CreateJsonOptions())
+            ?? throw new InvalidDataException("The CPU baseline default catalog is empty.");
+
+    private static JsonSerializerOptions CreateJsonOptions()
+        => new(JsonSerializerDefaults.Web)
         {
             UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
             NumberHandling = JsonNumberHandling.Strict
-        }) ?? throw new InvalidDataException("The CPU baseline default catalog is empty.");
-        return new CpuBaselineRatioCatalog(document);
-    }
+        };
 
     public CpuBaselineRatioSettings Resolve(CpuTopologySnapshot topology, double? manualRatio)
     {
@@ -64,7 +101,7 @@ public sealed partial class CpuBaselineRatioCatalog
         string? matchedModel = null;
         var vendor = NormalizeVendor(topology.Specification.Vendor);
         if (vendor == "Intel"
-            && intelModels.TryGetValue(NormalizeModelName(topology.CpuName), out var model)
+            && intelModels.Value.TryGetValue(NormalizeModelName(topology.CpuName), out var model)
             && model.PhysicalCores == topology.PhysicalCoreCount)
         {
             ratio = model.Ratio;
@@ -156,6 +193,13 @@ public sealed partial class CpuBaselineRatioCatalog
     private sealed record CatalogDocument(int SchemaVersion, string DatasetVersion,
         double UnmatchedRatio, double AmdSingleCcdRatio, double AmdSymmetricDualCcdRatio,
         IntelModelDefault[] IntelModels);
+
+    private sealed record CatalogDefaults(int SchemaVersion, string DatasetVersion,
+        double UnmatchedRatio, double AmdSingleCcdRatio, double AmdSymmetricDualCcdRatio)
+    {
+        [JsonIgnore]
+        public object? IntelModels { get; init; }
+    }
 
     private sealed record IntelModelDefault(string Name, double Ratio, int PhysicalCores, string Basis, string Group);
 }

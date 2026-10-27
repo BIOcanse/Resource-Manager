@@ -107,6 +107,10 @@ public sealed class WindowsProcessBasicMetricReader
     /// <summary>Reads a complete selected batch with at most one process snapshot. Handles and
     /// observations belong only to this call; no directory, baseline or current is retained.</summary>
     public IReadOnlyList<ProcessBasicMetricObservation> ReadBatch(IReadOnlyList<ProcessBasicMetricRequest> requests)
+        => ReadBatch(requests, null);
+
+    internal IReadOnlyList<ProcessBasicMetricObservation> ReadBatch(IReadOnlyList<ProcessBasicMetricRequest> requests,
+        IReadOnlyDictionary<ProcessInstanceKey, uint?>? capturedThreadCounts)
     {
         ArgumentNullException.ThrowIfNull(requests);
         var prepared = new Prepared[requests.Count];
@@ -126,14 +130,24 @@ public sealed class WindowsProcessBasicMetricReader
                 }
                 catch (Exception error) when (IsSourceFailure(error)) { }
             }
-            var threadHandles = prepared.Where(item => item.Valid && item.Request.Mask.HasFlag(ProcessMetricReadMask.ThreadCount))
-                .GroupBy(item => item.Request.ProcessId).Where(group => group.Count() == 1)
-                .ToDictionary(group => group.Key, group => group.Single().Handle);
             IReadOnlyDictionary<int, uint?> threads = new Dictionary<int, uint?>();
-            if (threadHandles.Count != 0)
+            if (capturedThreadCounts is not null)
             {
-                try { threads = api.ThreadCounts(threadHandles); }
-                catch (Exception error) when (IsSourceFailure(error)) { }
+                threads = prepared.Where(item => item.Valid && item.Request.Mask.HasFlag(ProcessMetricReadMask.ThreadCount))
+                    .GroupBy(item => item.Request.ProcessId).Where(group => group.Count() == 1)
+                    .ToDictionary(group => group.Key, group => capturedThreadCounts.GetValueOrDefault(
+                        new(group.Key, group.Single().Request.CreationFileTime100Ns)));
+            }
+            else
+            {
+                var threadHandles = prepared.Where(item => item.Valid && item.Request.Mask.HasFlag(ProcessMetricReadMask.ThreadCount))
+                    .GroupBy(item => item.Request.ProcessId).Where(group => group.Count() == 1)
+                    .ToDictionary(group => group.Key, group => group.Single().Handle);
+                if (threadHandles.Count != 0)
+                {
+                    try { threads = api.ThreadCounts(threadHandles); }
+                    catch (Exception error) when (IsSourceFailure(error)) { }
+                }
             }
             for (var i = 0; i < prepared.Length; i++)
             {

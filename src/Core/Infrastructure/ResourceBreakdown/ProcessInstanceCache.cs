@@ -8,6 +8,7 @@ internal sealed class ProcessInstanceCache<TValue>
     private readonly ConcurrentDictionary<ProcessInstanceKey, TValue> entries = new();
 
     internal int Count => entries.Count;
+    internal IEnumerable<TValue> Values => entries.Values;
 
     internal bool TryGet(ProcessInstanceKey key, out TValue? value)
     {

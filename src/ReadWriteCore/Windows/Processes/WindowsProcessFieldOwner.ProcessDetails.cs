@@ -190,7 +190,7 @@ public sealed partial class WindowsProcessFieldOwner
     private WindowsProcessDetailsInventory CaptureNativeProcessDetailsInventory(WindowsProcessDetailsOptions options,
         CancellationToken cancellationToken)
     {
-        bool Capture(Process process, ProcessCreationRead creationRead, out ProcessDetailsInventoryRow row, out TimeSpan cpu, out ProcessInstanceKey? identity)
+        bool Capture(WindowsProcessInventoryEntry process, ProcessCreationRead creationRead, out ProcessDetailsInventoryRow row, out TimeSpan cpu, out ProcessInstanceKey? identity)
         {
             cancellationToken.ThrowIfCancellationRequested();
             cpu = default;

@@ -332,6 +332,8 @@ public sealed record NativeMetricSnapshotCatalogProjection(
             })
             .ToImmutableArray();
         // Metadata belongs to this catalog, while addresses belong to each device.
+        var sourceIds = plan.SourcePolicies.ToImmutableDictionary(
+            static policy => policy.SourceHandle, static policy => policy.SourceId);
         var metadata = new Dictionary<(string Template, string Source, uint ValueKind), FieldMetadata>();
         FieldMetadata Metadata(NativeMetricSnapshotRuleTemplate template)
         {
@@ -349,7 +351,7 @@ public sealed record NativeMetricSnapshotCatalogProjection(
                 _ => throw new InvalidOperationException("Unknown metric value kind.")
             };
             if (field is not null && field.ValueKind != valueKind) field = field with { ValueKind = valueKind };
-            var result = new FieldMetadata(field, template.SourceId);
+            var result = new FieldMetadata(field, sourceIds[template.SourceHandle]);
             metadata.Add(key, result);
             return result;
         }
@@ -390,10 +392,6 @@ public sealed record NativeMetricSnapshotCatalogProjection(
         var metricHandles =
             ImmutableDictionary.CreateBuilder<string, ulong>(
                 StringComparer.OrdinalIgnoreCase);
-        var sourceIds = plan.SourcePolicies
-            .ToImmutableDictionary(
-                static policy => policy.SourceHandle,
-                static policy => policy.SourceId);
         var sourceHandles = plan.SourcePolicies
             .ToImmutableDictionary(
                 static policy => policy.SourceId,

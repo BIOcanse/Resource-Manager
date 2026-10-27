@@ -17,6 +17,9 @@ internal sealed class WindowsProcessInventoryBuffer : IDisposable
     private readonly IWindowsProcessInventoryBufferApi api;
     private IntPtr buffer;
     private bool disposed;
+    internal const int LowUsageReadsBeforeShrink = 8;
+    private int lowUsageReads;
+    private int lowUsageMaximumBytes;
     internal int CapacityBytes { get; private set; }
 
     internal WindowsProcessInventoryBuffer(WindowsProcessDetailsOptions? options = null,
@@ -30,26 +33,37 @@ internal sealed class WindowsProcessInventoryBuffer : IDisposable
     {
         ObjectDisposedException.ThrowIf(disposed, this);
         data = default;
-        if (CapacityBytes == 0) Grow(options.InitialSystemInformationBufferBytes);
+        // Resize before querying: the kernel table contains absolute pointers, so
+        // moving a successful table would invalidate its embedded string pointers.
+        if (lowUsageReads >= LowUsageReadsBeforeShrink)
+            Resize(Math.Max(options.InitialSystemInformationBufferBytes, checked(lowUsageMaximumBytes * 2)));
+        if (CapacityBytes == 0) Resize(options.InitialSystemInformationBufferBytes);
         for (var attempt = 0; attempt < options.MaximumSystemInformationAttempts; attempt++)
         {
             var status = api.Query(buffer, checked((uint)CapacityBytes), out var returned);
             if (status == 0)
             {
-                if (returned == 0 || returned > CapacityBytes) return false;
+                if (returned == 0 || returned > CapacityBytes) { ResetLowUsage(); return false; }
+                if (CapacityBytes > options.InitialSystemInformationBufferBytes && returned <= CapacityBytes / 4)
+                {
+                    lowUsageReads++;
+                    lowUsageMaximumBytes = Math.Max(lowUsageMaximumBytes, checked((int)returned));
+                }
+                else ResetLowUsage();
                 data = new ReadOnlySpan<byte>(buffer.ToPointer(), checked((int)returned));
                 return true;
             }
+            ResetLowUsage();
             if (status is not (unchecked((int)0xC0000004) or unchecked((int)0xC0000023))) return false;
             var next = Math.Max((long)returned, (long)CapacityBytes * 2);
             if (attempt + 1 == options.MaximumSystemInformationAttempts
                 || next > options.MaximumSystemInformationBufferBytes || next <= CapacityBytes) return false;
-            Grow(checked((int)next));
+            Resize(checked((int)next));
         }
         return false;
     }
 
-    private void Grow(int bytes)
+    private void Resize(int bytes)
     {
         if (bytes <= 0 || bytes > options.MaximumSystemInformationBufferBytes)
             throw new ArgumentOutOfRangeException(nameof(bytes));
@@ -57,13 +71,17 @@ internal sealed class WindowsProcessInventoryBuffer : IDisposable
         if (next == IntPtr.Zero) throw new OutOfMemoryException("Cannot allocate the process inventory workspace.");
         buffer = next;
         CapacityBytes = bytes;
+        ResetLowUsage();
     }
+
+    private void ResetLowUsage() { lowUsageReads = 0; lowUsageMaximumBytes = 0; }
 
     internal void Release()
     {
         if (buffer != IntPtr.Zero) api.Free(buffer);
         buffer = IntPtr.Zero;
         CapacityBytes = 0;
+        ResetLowUsage();
     }
 
     public void Dispose()

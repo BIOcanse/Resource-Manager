@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Domain.CpuTopology;
 using ResourceManager.App.Domain.GpuPlacement;
@@ -38,6 +39,9 @@ internal sealed class HostManagerIdealProcessorStableIdentityComparer
 
 internal sealed class HostManagerIdealProcessorWorkspace
 {
+    private const int LowUsageCallsBeforeTrim = 4;
+    private int lowUsageCalls;
+
     internal readonly List<HostManagerIdealProcessorInput> Inputs = [];
     internal readonly List<HostManagerIdealProcessorPlacement> Plans = [];
     internal readonly List<HostManagerPlacementDesired> Desired = [];
@@ -49,13 +53,17 @@ internal sealed class HostManagerIdealProcessorWorkspace
     internal readonly HashSet<string> ExcludedCoreIds = new(StringComparer.OrdinalIgnoreCase);
     internal readonly Dictionary<int, double> LogicalLoads = [];
     internal readonly Dictionary<string, ExistingIdealRecord> ExistingRecords = new(StringComparer.Ordinal);
-    internal readonly Dictionary<HostManagerIdealProcessorStableIdentity, string> StableRecordIds =
-        new(HostManagerIdealProcessorStableIdentityComparer.Instance);
-    internal readonly HashSet<HostManagerIdealProcessorStableIdentity> CurrentStableIdentities =
+    internal readonly Dictionary<HostManagerIdealProcessorStableIdentity, StableRecordId> StableRecordIds =
         new(HostManagerIdealProcessorStableIdentityComparer.Instance);
     internal readonly List<HostManagerIdealProcessorStableIdentity> StaleStableIdentities = [];
 
     internal void ClearEphemeralReferences()
+    {
+        TrimAfterSustainedLowUsage();
+        ClearReferences();
+    }
+
+    private void ClearReferences()
     {
         Inputs.Clear();
         Plans.Clear();
@@ -68,11 +76,47 @@ internal sealed class HostManagerIdealProcessorWorkspace
         ExcludedCoreIds.Clear();
         LogicalLoads.Clear();
         ExistingRecords.Clear();
-        CurrentStableIdentities.Clear();
         StaleStableIdentities.Clear();
     }
 
-    internal void ResetCall() => ClearEphemeralReferences();
+    internal void ResetCall() => ClearReferences();
+
+    private void TrimAfterSustainedLowUsage()
+    {
+        var liveCount = Math.Max(StableRecordIds.Count, Math.Max(Inputs.Count, ExistingRecords.Count));
+        liveCount = Math.Max(liveCount, Math.Max(Plans.Count, Desired.Count));
+        foreach (var input in Inputs)
+        {
+            liveCount = Math.Max(liveCount, input.Threads.Count);
+        }
+        var capacity = Math.Max(StableRecordIds.EnsureCapacity(0), ExistingRecords.EnsureCapacity(0));
+        capacity = Math.Max(capacity, Math.Max(Inputs.Capacity, OrderedInputs.Capacity));
+        capacity = Math.Max(capacity, Math.Max(Plans.Capacity, Desired.Capacity));
+        capacity = Math.Max(capacity, Math.Max(OrderedThreads.Capacity, StaleStableIdentities.Capacity));
+        if (capacity <= 128 || liveCount > capacity / 4)
+        {
+            lowUsageCalls = 0;
+            return;
+        }
+        if (++lowUsageCalls < LowUsageCallsBeforeTrim) return;
+
+        // Leave growth headroom, and count completed calls rather than the empty reset at call entry.
+        var targetCapacity = Math.Max(32, liveCount * 2);
+        if (StableRecordIds.EnsureCapacity(0) > targetCapacity) StableRecordIds.TrimExcess(targetCapacity);
+        if (ExistingRecords.EnsureCapacity(0) > targetCapacity) ExistingRecords.TrimExcess(targetCapacity);
+        TrimList(Inputs, targetCapacity);
+        TrimList(Plans, targetCapacity);
+        TrimList(Desired, targetCapacity);
+        TrimList(OrderedInputs, targetCapacity);
+        TrimList(OrderedThreads, targetCapacity);
+        TrimList(StaleStableIdentities, targetCapacity);
+        lowUsageCalls = 0;
+    }
+
+    private static void TrimList<T>(List<T> list, int targetCapacity)
+    {
+        if (list.Capacity > targetCapacity) list.Capacity = Math.Max(list.Count, targetCapacity);
+    }
 
     internal void ResetPlannerScratch()
     {
@@ -88,7 +132,6 @@ internal sealed class HostManagerIdealProcessorWorkspace
 
     internal void ReconcileStableRecordIds()
     {
-        CurrentStableIdentities.Clear();
         foreach (var input in Inputs)
         {
             for (var threadIndex = 0; threadIndex < input.Threads.Count; threadIndex++)
@@ -106,23 +149,26 @@ internal sealed class HostManagerIdealProcessorWorkspace
                     thread.ProcessStartKey,
                     thread.ThreadId,
                     thread.ThreadStartKey);
-                CurrentStableIdentities.Add(identity);
-                if (StableRecordIds.ContainsKey(identity))
+                ref var record = ref CollectionsMarshal.GetValueRefOrAddDefault(StableRecordIds, identity, out var exists);
+                if (!exists)
                 {
-                    continue;
+                    record.RecordId = HostManagerSmartCoordinator.CreateStableId(
+                        $"automatic-placement|ideal|{input.Process.TargetId}|{thread.ProcessStartKey}|{thread.ThreadId}|{thread.ThreadStartKey}");
                 }
-
-                StableRecordIds.Add(identity, HostManagerSmartCoordinator.CreateStableId(
-                    $"automatic-placement|ideal|{input.Process.TargetId}|{thread.ProcessStartKey}|{thread.ThreadId}|{thread.ThreadStartKey}"));
+                record.IsCurrent = true;
             }
         }
 
         StaleStableIdentities.Clear();
         foreach (var pair in StableRecordIds)
         {
-            if (!CurrentStableIdentities.Contains(pair.Key))
+            if (!pair.Value.IsCurrent)
             {
                 StaleStableIdentities.Add(pair.Key);
+            }
+            else
+            {
+                CollectionsMarshal.GetValueRefOrNullRef(StableRecordIds, pair.Key).IsCurrent = false;
             }
         }
         foreach (var identity in StaleStableIdentities)
@@ -130,18 +176,31 @@ internal sealed class HostManagerIdealProcessorWorkspace
             StableRecordIds.Remove(identity);
         }
         StaleStableIdentities.Clear();
-        CurrentStableIdentities.Clear();
     }
 
     internal bool TryGetStableRecordId(
         string targetId,
         ThreadIdealProcessorPolicySnapshot thread,
         out string recordId)
-        => StableRecordIds.TryGetValue(new HostManagerIdealProcessorStableIdentity(
+    {
+        if (StableRecordIds.TryGetValue(new HostManagerIdealProcessorStableIdentity(
             targetId,
             thread.ProcessStartKey,
             thread.ThreadId,
-            thread.ThreadStartKey), out recordId!);
+            thread.ThreadStartKey), out var record))
+        {
+            recordId = record.RecordId;
+            return true;
+        }
+        recordId = null!;
+        return false;
+    }
+
+    internal struct StableRecordId
+    {
+        internal string RecordId;
+        internal bool IsCurrent;
+    }
 
     internal readonly record struct OrderedInput(HostManagerIdealProcessorInput Input, int OriginalIndex);
     internal readonly record struct OrderedThread(ThreadIdealProcessorPolicySnapshot Thread, int OriginalIndex);

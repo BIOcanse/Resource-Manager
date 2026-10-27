@@ -30,16 +30,17 @@ public sealed partial class WindowsResourceBreakdownSampler
         bool preserveProductIdentity = true)
     {
         var now = DateTimeOffset.UtcNow;
-        var parentProcessIds = preserveProductIdentity ? ReadProcessParentIds() : new Dictionary<int, int>();
+        processFieldOwner.ReadAttributionText = ReadAttributionText;
+        var textSharing = processFieldOwner.CreateTextSharing();
         var windowIdentities = preserveProductIdentity && ShouldReadWindowIdentities(detailLevel)
             ? shellIdentityReader.ReadWindowIdentities() : new Dictionary<int, ShellProcessIdentity>();
-        IReadOnlyDictionary<Process, WindowsProcessFieldOwner.CapturedProcessBasic>? prepared = null;
-        bool Capture(Process process, ProcessCreationRead creation, out ProcessResourceSample sample, out TimeSpan cpu, out ProcessInstanceKey? key)
+        IReadOnlyDictionary<WindowsProcessInventoryEntry, WindowsProcessFieldOwner.CapturedProcessBasic>? prepared = null;
+        bool Capture(WindowsProcessInventoryEntry process, ProcessCreationRead creation, out ProcessResourceSample sample, out TimeSpan cpu, out ProcessInstanceKey? key)
             => TryCreateProcessSample(process, includeCpu, detailLevel,
                 includeCpu ? basicMask | ProcessMetricReadMask.CpuTime : basicMask, preserveProductIdentity,
-                parentProcessIds, windowIdentities, creation.Creation, out sample, out cpu, out key,
+                windowIdentities, creation.Creation, out sample, out cpu, out key,
                 prepared is null ? null : prepared.GetValueOrDefault(process)
-                    ?? new(creation.Creation, ProcessBasicMetricObservation.Unavailable));
+                    ?? new(creation.Creation, ProcessBasicMetricObservation.Unavailable), textSharing);
         List<ProcessResourceSample>? projected = null;
         var batch = processFieldOwner.CaptureBatch(includeCpu, cpuDeltaTracker,
             (TryCaptureProcess<ProcessResourceSample>)Capture, static row => row.HasProcessorTime,
@@ -55,14 +56,14 @@ public sealed partial class WindowsResourceBreakdownSampler
                 foreach (var path in fileMetadataCache.Keys)
                     if (!livePaths.Contains(path)) fileMetadataCache.TryRemove(path, out _);
             }, now, basicMask.HasFlag(ProcessMetricReadMask.ThreadCount)
-                ? (processes, creations) => prepared = processFieldOwner.ReadBasicBatch(processes, (process, creation) =>
+                ? processes => prepared = processFieldOwner.ReadBasicBatch(processes, (process, creation) =>
                 {
                     var mask = includeCpu ? basicMask | ProcessMetricReadMask.CpuTime : basicMask;
                     var cached = creation is { } birth ? TryGetCachedProcessIdentity(new(process.Id, birth)) : null;
                     if (preserveProductIdentity && cached is null) mask |= ProcessMetricReadMask.ImagePath;
                     if (preserveProductIdentity) mask |= ProcessMetricReadMask.UserSid;
                     return mask;
-                }, creations) : null);
+                }, textSharing) : null);
         if (batch.Status != SamplingObservationStatus.Current)
             return new(batch.Status, batch.EnumeratedCount, batch.ExcludedCount, batch.SkippedCount, []);
         var samples = projected ?? batch.Samples.ToList();
@@ -110,18 +111,17 @@ public sealed partial class WindowsResourceBreakdownSampler
     }
 
     private bool TryCreateProcessSample(
-        Process process,
+        WindowsProcessInventoryEntry process,
         bool includeCpu,
         ProcessSampleDetailLevel detailLevel,
         ProcessMetricReadMask basicMask,
         bool preserveProductIdentity,
-        IReadOnlyDictionary<int, int> parentProcessIds,
         IReadOnlyDictionary<int, ShellProcessIdentity> windowIdentities,
         long? creation,
         out ProcessResourceSample sample,
         out TimeSpan cpuState,
         out ProcessInstanceKey? processInstanceKey,
-        WindowsProcessFieldOwner.CapturedProcessBasic? prepared = null)
+        WindowsProcessFieldOwner.CapturedProcessBasic? prepared = null, ProcessInstanceTextSharing? textSharing = null)
     {
         sample = default;
         cpuState = default;
@@ -140,6 +140,7 @@ public sealed partial class WindowsResourceBreakdownSampler
             if (preserveProductIdentity && cachedIdentity is null) queryMask |= ProcessMetricReadMask.ImagePath;
             if (preserveProductIdentity) queryMask |= ProcessMetricReadMask.UserSid;
             var basic = prepared?.Basic ?? processBasicMetricReader.Read(processId, startKey ?? 0, queryMask);
+            if (processInstanceKey is { } textKey && textSharing is not null) basic = textSharing.Share(textKey, basic);
             // Scheduling keeps the original cache; its path now comes from the same verified SDK query.
             if (preserveProductIdentity && cachedIdentity is null && processInstanceKey is { } cacheKey)
             {
@@ -181,7 +182,7 @@ public sealed partial class WindowsResourceBreakdownSampler
             var workingSet = hasWorkingSet ? (long)basic.Memory!.WorkingSet : 0;
             var privateMemory = hasPrivateMemory ? (long)basic.Memory!.PrivateCommit : 0;
             var totalProcessorTime = hasProcessorTime ? TimeSpan.FromTicks((long)basic.CpuTime100Ns!.Value) : TimeSpan.Zero;
-            var parentProcessId = preserveProductIdentity ? parentProcessIds.GetValueOrDefault(processId)
+            var parentProcessId = preserveProductIdentity ? process.ParentProcessId
                 : basic.ParentPid is <= int.MaxValue ? (int)basic.ParentPid.Value : 0;
 
             sample = new ProcessResourceSample(
@@ -390,37 +391,6 @@ public sealed partial class WindowsResourceBreakdownSampler
                 return ProcessFileMetadata.Empty;
             }
         });
-    }
-
-    private static Dictionary<int, int> ReadProcessParentIds()
-    {
-        var snapshot = NativeMethods.CreateToolhelp32Snapshot(NativeMethods.Th32csSnapProcess, 0);
-        if (snapshot == IntPtr.Zero || snapshot == new IntPtr(-1))
-        {
-            return [];
-        }
-
-        try
-        {
-            var parents = new Dictionary<int, int>();
-            var entry = ProcessEntry32.Create();
-            if (!NativeMethods.Process32First(snapshot, ref entry))
-            {
-                return parents;
-            }
-
-            do
-            {
-                parents[(int)entry.ProcessId] = (int)entry.ParentProcessId;
-            }
-            while (NativeMethods.Process32Next(snapshot, ref entry));
-
-            return parents;
-        }
-        finally
-        {
-            NativeMethods.CloseHandle(snapshot);
-        }
     }
 
     private static List<ProcessResourceSample> MarkSelfDescendants(List<ProcessResourceSample> samples)

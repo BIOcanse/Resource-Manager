@@ -305,6 +305,9 @@ internal sealed class MetricReadingSourceTracker
         }
 
         var definitions = new SelectionDefinition[definitionCount];
+        // Only this catalog's physical readings share an ID. The temporary index
+        // is discarded after construction; definitions own the resulting strings.
+        var catalogReadingIds = new Dictionary<(string Device, string Quantity), string>();
         var candidateIndex = 0;
         foreach (var binding in catalog.MetricBindings.Values)
         {
@@ -318,13 +321,19 @@ internal sealed class MetricReadingSourceTracker
                 binding.SourceId,
                 nvmeDevices.Contains(binding.DeviceIdentity));
             var quantity = unmappedApu ? "cpu.apu_temperature_unmapped" : rule.Quantity;
+            var readingKey = (device, quantity);
+            if (!catalogReadingIds.TryGetValue(readingKey, out var readingId))
+            {
+                readingId = ReadingId(device, quantity);
+                catalogReadingIds.Add(readingKey, readingId);
+            }
             definitions[candidateIndex++] = new(
                 binding,
                 device,
                 quantity,
                 rule.SourceRank,
                 rule.AliasRank,
-                ReadingId(device, quantity),
+                readingId,
                 LegacyAddress(binding),
                 unmappedApu,
                 binding.FieldCode == MetricFieldCode.CpuTemperature

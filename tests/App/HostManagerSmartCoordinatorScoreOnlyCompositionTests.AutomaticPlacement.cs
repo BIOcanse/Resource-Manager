@@ -138,6 +138,72 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             firstDesired.Record.RecordId,
             firstDesired.IdealProcessorMetadata!.Value);
         Assert.Equal("1", materialized.Metadata!["appliedProcessorNumber"]);
+
+        var workspace = Assert.IsType<HostManagerIdealProcessorWorkspace>(
+            ReadPrivateReference(fixture.Coordinator, "idealProcessorWorkspace"));
+        var lowThreads = threadSnapshots;
+        var highThreads = Enumerable.Range(0, 2_048)
+            .Select(index => new ThreadIdealProcessorPolicySnapshot(processId, processStartKey,
+                10001 + index, processStartKey + checked((ulong)index) + 1, new(0, 0), 0, 15, []))
+            .ToArray();
+        IReadOnlyList<HostManagerPlacementDesired> RunOwnedCall()
+            => createDesired(idealReads, topology, CompiledHardwareScorePlan.Default,
+                processes, hardPlacements, existing, null, highThreads.Length);
+        (int Identities, int Plans, int Desired, int Threads) Capacities()
+            => (workspace.StableRecordIds.EnsureCapacity(0), workspace.Plans.Capacity,
+                workspace.Desired.Capacity, workspace.OrderedThreads.Capacity);
+
+        threadSnapshots = highThreads;
+        Assert.NotEmpty(RunOwnedCall());
+        var peak = Capacities();
+        Assert.Equal(highThreads.Length, workspace.StableRecordIds.Count);
+        Assert.True(workspace.TryGetStableRecordId(process.TargetId, lowThreads[1], out var cachedId));
+        Assert.Same(firstRecordId, cachedId);
+
+        // A short dip keeps the warmed allocation; a new spike restarts the four-call low-use period.
+        threadSnapshots = lowThreads;
+        for (var index = 0; index < 3; index++)
+        {
+            Assert.Equal(firstRecordId, Assert.Single(RunOwnedCall()).Record.RecordId);
+            Assert.Equal(peak, Capacities());
+        }
+        threadSnapshots = highThreads;
+        Assert.NotEmpty(RunOwnedCall());
+        Assert.Equal(peak, Capacities());
+        threadSnapshots = lowThreads;
+        for (var index = 0; index < 3; index++)
+        {
+            Assert.Equal(firstRecordId, Assert.Single(RunOwnedCall()).Record.RecordId);
+            Assert.Equal(peak, Capacities());
+        }
+        var trimmedDesired = Assert.Single(RunOwnedCall());
+        var trimmed = Capacities();
+        Assert.InRange(trimmed.Identities, lowThreads.Count, 64);
+        Assert.InRange(trimmed.Plans, lowThreads.Count, 64);
+        Assert.InRange(trimmed.Desired, 1, 64);
+        Assert.InRange(trimmed.Threads, lowThreads.Count, 64);
+        Assert.Equal(firstDesired.IdealProcessorMetadata, trimmedDesired.IdealProcessorMetadata);
+        Assert.Same(firstRecordId, trimmedDesired.Record.RecordId);
+        Assert.Equal(lowThreads.Count, workspace.StableRecordIds.Count);
+        Assert.Empty(workspace.Inputs);
+        Assert.Empty(workspace.Plans);
+        Assert.Empty(workspace.Desired);
+
+        var identityEntries = ReadPrivateReference(workspace.StableRecordIds, "_entries");
+        var planItems = ReadPrivateReference(workspace.Plans, "_items");
+        var desiredItems = ReadPrivateReference(workspace.Desired, "_items");
+        var orderedThreadItems = ReadPrivateReference(workspace.OrderedThreads, "_items");
+        var steadyBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (var index = 0; index < 32; index++) _ = RunOwnedCall();
+        var steadyAllocated = GC.GetAllocatedBytesForCurrentThread() - steadyBefore;
+        Assert.InRange(steadyAllocated, 0, 16_384);
+        Assert.Equal(trimmed, Capacities());
+        Assert.Same(identityEntries, ReadPrivateReference(workspace.StableRecordIds, "_entries"));
+        Assert.Same(planItems, ReadPrivateReference(workspace.Plans, "_items"));
+        Assert.Same(desiredItems, ReadPrivateReference(workspace.Desired, "_items"));
+        Assert.Same(orderedThreadItems, ReadPrivateReference(workspace.OrderedThreads, "_items"));
+        Assert.True(workspace.TryGetStableRecordId(process.TargetId, lowThreads[1], out var steadyId));
+        Assert.Same(cachedId, steadyId);
     }
 
     [Fact]

@@ -59,6 +59,65 @@ public sealed class ProcessInventoryBufferTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void SustainedLowTablesShrinkBeforeQueryAndRetainHeadroomWithoutRepeatedResizes()
+    {
+        var api = new BufferApi { RequiredBytes = 4096 };
+        using var buffer = new WindowsProcessInventoryBuffer(new(initialSystemInformationBufferBytes: 256,
+            maximumSystemInformationBufferBytes: 8192), api);
+        Assert.True(buffer.TryRead(out _));
+        Assert.Equal(4096, buffer.CapacityBytes);
+        var resizes = api.Resizes;
+        for (var i = 0; i < WindowsProcessInventoryBuffer.LowUsageReadsBeforeShrink; i++)
+        {
+            api.RequiredBytes = i == 0 ? 600 : 400;
+            Assert.True(buffer.TryRead(out var data));
+            Assert.Equal(api.RequiredBytes, data.Length);
+            Assert.Equal(4096, buffer.CapacityBytes);
+        }
+        Assert.True(buffer.TryRead(out var shrunk));
+        Assert.Equal(1200, buffer.CapacityBytes); // twice the whole low interval's maximum
+        Assert.Equal(2896, 4096 - buffer.CapacityBytes);
+        Assert.Equal(resizes + 1, api.Resizes);
+        Assert.Equal(api.CurrentBuffer, api.LastQueryBuffer);
+        Assert.Equal(api.LastQueryBuffer + IntPtr.Size, MemoryMarshal.Read<IntPtr>(shrunk));
+        for (var i = 0; i < 40; i++) Assert.True(buffer.TryRead(out _));
+        Assert.Equal(resizes + 1, api.Resizes);
+        api.RequiredBytes = 4096;
+        Assert.True(buffer.TryRead(out var regrown));
+        Assert.Equal(4096, regrown.Length);
+        Assert.Equal(4096, buffer.CapacityBytes);
+        buffer.Release();
+        Assert.Equal(0, buffer.CapacityBytes);
+        Assert.Equal(1, api.Frees);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void HighUsageOrFailedQueryResetsTheLowUsageInterval(bool failQuery)
+    {
+        var api = new BufferApi { RequiredBytes = 4096 };
+        using var buffer = new WindowsProcessInventoryBuffer(new(initialSystemInformationBufferBytes: 256,
+            maximumSystemInformationBufferBytes: 8192), api);
+        Assert.True(buffer.TryRead(out _));
+        api.RequiredBytes = 128;
+        for (var i = 0; i < WindowsProcessInventoryBuffer.LowUsageReadsBeforeShrink - 1; i++)
+            Assert.True(buffer.TryRead(out _));
+        api.RequiredBytes = failQuery ? 128 : 2048;
+        api.Failure = failQuery ? "denied" : null;
+        Assert.Equal(!failQuery, buffer.TryRead(out _));
+        api.Failure = null;
+        api.RequiredBytes = 128;
+        for (var i = 0; i < WindowsProcessInventoryBuffer.LowUsageReadsBeforeShrink; i++)
+        {
+            Assert.True(buffer.TryRead(out _));
+            Assert.Equal(4096, buffer.CapacityBytes);
+        }
+        Assert.True(buffer.TryRead(out _));
+        Assert.Equal(256, buffer.CapacityBytes);
+    }
+
+    [Fact]
     public async Task SamplerStopReleasesWorkspaceEvenWithoutABackgroundWorkerAndCanRestart()
     {
         using var sampler = new WindowsResourceBreakdownSampler(null!, null!, null!, null!, null!, null!, null!, null!);
@@ -153,17 +212,25 @@ public sealed class ProcessInventoryBufferTests(ITestOutputHelper output)
     private sealed class BufferApi : IWindowsProcessInventoryBufferApi
     {
         internal int RequiredBytes, Resizes, Frees;
+        internal IntPtr CurrentBuffer, LastQueryBuffer;
         internal string? Failure;
         public int Query(IntPtr buffer, uint length, out uint returned)
         {
+            LastQueryBuffer = buffer;
             returned = (uint)RequiredBytes;
             if (Failure == "denied") return unchecked((int)0xC0000022);
             if (Failure == "zero") { returned = 0; return 0; }
             if (Failure == "oversized-success") { returned = length + 1; return 0; }
             if (Failure == "attempts") { returned = length + 1; return unchecked((int)0xC0000004); }
-            return returned > length ? unchecked((int)0xC0000004) : 0;
+            if (returned > length) return unchecked((int)0xC0000004);
+            Marshal.WriteIntPtr(buffer, buffer + IntPtr.Size);
+            return 0;
         }
-        public IntPtr Resize(IntPtr buffer, int length) { Resizes++; return Marshal.ReAllocHGlobal(buffer, new(length)); }
+        public IntPtr Resize(IntPtr buffer, int length)
+        {
+            Resizes++;
+            return CurrentBuffer = Marshal.ReAllocHGlobal(buffer, new(length));
+        }
         public void Free(IntPtr buffer) { Frees++; Marshal.FreeHGlobal(buffer); }
     }
 }

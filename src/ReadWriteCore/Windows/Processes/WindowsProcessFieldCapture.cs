@@ -5,7 +5,7 @@ using ResourceManager.ReadWrite.ProcessFields;
 
 namespace ResourceManager.ReadWrite.Windows.Processes;
 
-internal delegate bool TryCaptureProcess<T>(Process process, ProcessCreationRead creation, out T sample, out TimeSpan cpu, out ProcessInstanceKey? identity);
+internal delegate bool TryCaptureProcess<T>(WindowsProcessInventoryEntry process, ProcessCreationRead creation, out T sample, out TimeSpan cpu, out ProcessInstanceKey? identity);
 internal sealed record ProcessCaptureBatch<T>(SamplingObservationStatus Status, uint EnumeratedCount,
     uint ExcludedCount, uint SkippedCount, IReadOnlyList<T> Samples, DateTimeOffset CapturedAt,
     ProcessCpuDeltaTracker.IntervalResult Cpu)
@@ -33,55 +33,43 @@ public sealed partial class WindowsProcessFieldOwner
     internal ProcessCaptureBatch<T> CaptureBatch<T>(bool includeCpu, ProcessCpuDeltaTracker tracker,
         TryCaptureProcess<T> capture, Func<T, bool> hasCpu,
         Action<List<T>, HashSet<ProcessInstanceKey>>? afterCapture = null, DateTimeOffset? captureStart = null,
-        Action<Process[], IReadOnlyDictionary<int, ProcessCreationRead>>? prepare = null, int maximumProcessCount = int.MaxValue)
+        Action<WindowsProcessInventoryEntry[]>? prepare = null, int maximumProcessCount = int.MaxValue)
     {
         if (maximumProcessCount <= 0) throw new ArgumentOutOfRangeException(nameof(maximumProcessCount));
         var now = captureStart ?? CaptureClock();
         var cpu = new Dictionary<ProcessInstanceKey, TimeSpan>();
         var samples = new List<T>();
         var live = new HashSet<ProcessInstanceKey>();
-        Process[] processes;
-        try { processes = Inventory.GetProcesses(); }
+        WindowsProcessInventoryCapture inventory;
+        try { inventory = Inventory.Capture(inventoryBuffer); }
         catch { return new(SamplingObservationStatus.Unavailable, 0, 0, 0, [], now, new(now, null, new Dictionary<ProcessInstanceKey, double>())); }
+        using var inventoryLease = inventory;
+        var processes = inventory.Processes;
         if (processes.Length > maximumProcessCount)
         {
-            foreach (var process in processes)
-                try { process.Dispose(); } catch { }
             var enumerated = checked((uint)processes.Length);
             return new(SamplingObservationStatus.Unavailable, enumerated, 0, enumerated, [], now,
                 new(now, null, new Dictionary<ProcessInstanceKey, double>()));
         }
         uint excluded = 0, skipped = 0;
         var unidentified = false;
-        try
+        prepare?.Invoke(processes);
+        foreach (var process in processes)
         {
-            var creations = Inventory.ReadCreations(processes, inventoryBuffer);
-            prepare?.Invoke(processes, creations);
-            foreach (var process in processes)
+            if (process.Id <= 0) { excluded++; continue; }
+            var creation = process.Creation;
+            if (creation.Status == ProcessReadStatus.Exited) { excluded++; continue; }
+            var captured = capture(process, creation, out var sample, out var time, out var key);
+            if (key is null)
             {
-                if (process.Id <= 0) { excluded++; continue; }
-                var creation = creations.GetValueOrDefault(process.Id, new(ProcessReadStatus.Unavailable, null));
-                if (creation.Status == ProcessReadStatus.Exited) { excluded++; continue; }
-                var captured = capture(process, creation, out var sample, out var time, out var key);
-                if (key is null)
-                {
-                    // Only a proven exit may be absent from a complete inventory.
-                    // A live identity failure must remain visible to its owner.
-                    unidentified = true;
-                }
-                if (!captured) { skipped++; continue; }
-                if (key is { } identity) live.Add(identity);
-                if (includeCpu && hasCpu(sample) && key is { } cpuIdentity) cpu[cpuIdentity] = time;
-                samples.Add(sample);
+                // Only a proven exit may be absent from a complete inventory.
+                // A live identity failure must remain visible to its owner.
+                unidentified = true;
             }
-        }
-        finally
-        {
-            foreach (var process in processes)
-            {
-                try { process.Dispose(); }
-                catch { }
-            }
+            if (!captured) { skipped++; continue; }
+            if (key is { } identity) live.Add(identity);
+            if (includeCpu && hasCpu(sample) && key is { } cpuIdentity) cpu[cpuIdentity] = time;
+            samples.Add(sample);
         }
         BasicReader.PruneCommandLineFailures(live);
         afterCapture?.Invoke(samples, live);
@@ -90,29 +78,35 @@ public sealed partial class WindowsProcessFieldOwner
         { HasUnidentifiedProcesses = unidentified };
     }
     internal sealed record CapturedProcessBasic(long? Creation, ProcessBasicMetricObservation Basic);
-    internal IReadOnlyDictionary<Process, CapturedProcessBasic> ReadBasicBatch(Process[] processes,
-        Func<Process, long?, ProcessMetricReadMask> selectMask, IReadOnlyDictionary<int, ProcessCreationRead> creations)
+    internal IReadOnlyDictionary<WindowsProcessInventoryEntry, CapturedProcessBasic> ReadBasicBatch(WindowsProcessInventoryEntry[] processes,
+        Func<WindowsProcessInventoryEntry, long?, ProcessMetricReadMask> selectMask, ProcessInstanceTextSharing? textSharing = null)
     {
-        var selected = new List<(Process Process, long? Creation, ProcessBasicMetricRequest Request)>();
+        var selected = new List<(WindowsProcessInventoryEntry Process, long? Creation, ProcessBasicMetricRequest Request)>();
         foreach (var process in processes)
         {
             try
             {
                 if (process.Id <= 0) continue;
-                var creation = creations.GetValueOrDefault(process.Id).Creation;
+                var creation = process.Creation.Creation;
                 selected.Add((process, creation, new(process.Id, creation ?? 0, selectMask(process, creation))));
             }
             catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException) { }
         }
-        var readings = BasicReader.ReadBatch(selected.Select(row => row.Request).ToArray());
-        return selected.Select((row, index) => (row.Process, Value: new CapturedProcessBasic(row.Creation, readings[index])))
+        var threadCounts = selected.Any(static row => row.Request.Mask.HasFlag(ProcessMetricReadMask.ThreadCount))
+            && processes.All(static process => process.Source is null)
+            ? processes.Where(static process => process.Creation.Creation is > 0)
+                .ToDictionary(static process => new ProcessInstanceKey(process.Id, process.Creation.Creation!.Value), static process => process.ThreadCount)
+            : null;
+        var readings = BasicReader.ReadBatch(selected.Select(row => row.Request).ToArray(), threadCounts);
+        return selected.Select((row, index) => (row.Process, Value: new CapturedProcessBasic(row.Creation,
+                row.Creation is { } birth && textSharing is not null ? textSharing.Share(new(row.Process.Id, birth), readings[index]) : readings[index])))
             .ToDictionary(row => row.Process, row => row.Value);
     }
     internal static ProcessCreationRead ReadCreation(Process process)
         => WindowsProcessCreationQuery.Read(process.Id);
-    private bool CaptureFieldSample(Process process, ProcessCreationRead creationRead, ProcessMetricReadMask mask, bool includeCpu,
+    private bool CaptureFieldSample(WindowsProcessInventoryEntry process, ProcessCreationRead creationRead, ProcessMetricReadMask mask, bool includeCpu,
         out ProcessFieldSample sample, out TimeSpan cpu, out ProcessInstanceKey? key,
-        IReadOnlyDictionary<Process, CapturedProcessBasic>? prepared = null)
+        IReadOnlyDictionary<WindowsProcessInventoryEntry, CapturedProcessBasic>? prepared = null, ProcessInstanceTextSharing? textSharing = null)
     {
         sample = null!; cpu = default; key = null;
         try
@@ -123,6 +117,7 @@ public sealed partial class WindowsProcessFieldOwner
             key = creation is { } birth ? new(pid, birth) : null;
             var basic = prepared is null ? BasicReader.Read(pid, creation ?? 0, mask)
                 : captured?.Basic ?? ProcessBasicMetricObservation.Unavailable;
+            if (key is { } textKey && textSharing is not null) basic = textSharing.Share(textKey, basic);
             var hasCpu = includeCpu && basic.CpuTime100Ns is { } ticks && ticks <= (UInt128)long.MaxValue;
             cpu = hasCpu ? TimeSpan.FromTicks((long)basic.CpuTime100Ns!.Value) : TimeSpan.Zero;
             sample = new(pid, creation, basic, hasCpu);

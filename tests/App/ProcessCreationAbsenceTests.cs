@@ -25,7 +25,7 @@ public sealed class ProcessCreationAbsenceTests
             Assert.Equal(ProcessReadStatus.Exited, WindowsProcessFieldOwner.ReadCreation(exited).Status);
             Assert.Null(WindowsProcessFieldOwner.ReadCreation(exited).Creation);
             Assert.Equal(ProcessReadStatus.Current, WindowsProcessFieldOwner.ReadCreation(live).Status);
-            bool Capture(Process process, ProcessCreationRead read, out int sample, out TimeSpan cpu, out ProcessInstanceKey? key)
+            bool Capture(WindowsProcessInventoryEntry process, ProcessCreationRead read, out int sample, out TimeSpan cpu, out ProcessInstanceKey? key)
             {
                 sample = process.Id; cpu = default;
                 key = read.Creation is { } birth ? new(sample, birth) : null;
@@ -43,7 +43,7 @@ public sealed class ProcessCreationAbsenceTests
 
         using var unreadable = Process.GetCurrentProcess();
         owner.Inventory = new Inventory([unreadable]);
-        bool Missing(Process process, ProcessCreationRead read, out int sample, out TimeSpan cpu, out ProcessInstanceKey? key)
+        bool Missing(WindowsProcessInventoryEntry process, ProcessCreationRead read, out int sample, out TimeSpan cpu, out ProcessInstanceKey? key)
         { sample = process.Id; cpu = default; key = null; return true; }
         var partial = owner.CaptureBatch<int>(false, new(), Missing, static _ => false);
         Assert.True(partial.HasUnidentifiedProcesses);

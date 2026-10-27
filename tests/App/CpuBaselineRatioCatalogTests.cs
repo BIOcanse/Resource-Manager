@@ -12,6 +12,9 @@ public sealed class CpuBaselineRatioCatalogTests
     [Fact]
     public void EveryEmbeddedIntelModelResolvesWithItsOwnSuffixAndCoreCount()
     {
+        var catalog = CpuBaselineRatioCatalog.LoadEmbedded();
+        _ = catalog.Resolve(CreateTopology("AMD Ryzen 7 9800X3D", "AMD", [8]), null);
+        Assert.False(catalog.IntelModelsLoaded);
         using var stream = typeof(CpuBaselineRatioCatalog).Assembly.GetManifestResourceStream(
             "ResourceManager.Configuration.Cpu.baseline-defaults.json")!;
         using var data = JsonDocument.Parse(stream);
@@ -24,7 +27,7 @@ public sealed class CpuBaselineRatioCatalogTests
             var expected = model.GetProperty("ratio").GetDouble();
             foreach (var observed in new[] { name, $"Intel(R) {name} CPU @ 3.00GHz" })
             {
-                var settings = Catalog.Resolve(CreateTopology(observed, "Intel", [cores]), null);
+                var settings = catalog.Resolve(CreateTopology(observed, "Intel", [cores]), null);
                 Assert.Equal(name, settings.MatchedModel);
                 Assert.Equal(expected, settings.Ratio);
                 Assert.Equal(expected, settings.DefaultRatio);
@@ -33,6 +36,54 @@ public sealed class CpuBaselineRatioCatalogTests
                 Assert.Equal("2026-09-02", settings.DatasetVersion);
             }
         }
+        Assert.True(catalog.IntelModelsLoaded);
+    }
+
+    [Fact]
+    public void IntelDefaultsAllocateOnlyAfterAnIntelVendorAndRemainUsableAcrossTopologyChanges()
+    {
+        var amd = CreateTopology("AMD Ryzen 9 9955HX", "AuthenticAMD", [8, 8]);
+        var intel = CreateTopology("Intel(R) Core(TM) i9-14900K", "GenuineIntel", [24]);
+        var other = intel with { Specification = intel.Specification with { Vendor = "Other" } };
+        // Warm shared serializer and model-name metadata before comparing the two production load paths.
+        _ = Catalog.Resolve(intel, null);
+        _ = CpuBaselineRatioCatalog.LoadEmbedded().Resolve(amd, null);
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var catalog = CpuBaselineRatioCatalog.LoadEmbedded();
+        var amdSettings = catalog.Resolve(amd, null);
+        var nonIntelAllocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.False(catalog.IntelModelsLoaded);
+        Assert.Equal(0.5, amdSettings.DefaultRatio);
+        Assert.Equal("amd:symmetric-dual-ccd", amdSettings.DefaultSource);
+        var unknownSettings = catalog.Resolve(other, 0.75);
+        Assert.False(catalog.IntelModelsLoaded);
+        Assert.Equal(1, unknownSettings.DefaultRatio);
+        Assert.Equal(0.75, unknownSettings.Ratio);
+
+        before = GC.GetAllocatedBytesForCurrentThread();
+        var intelSettings = catalog.Resolve(intel, null);
+        var intelAllocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(catalog.IntelModelsLoaded);
+        Assert.True(intelAllocated > nonIntelAllocated,
+            $"Intel table: {intelAllocated} bytes; non-Intel catalog and resolve: {nonIntelAllocated} bytes.");
+        Assert.Equal("Core i9-14900K", intelSettings.MatchedModel);
+        Assert.Equal(0.5557, intelSettings.DefaultRatio);
+        Assert.Equal(amdSettings, catalog.Resolve(amd, null));
+        Assert.Equal(unknownSettings, catalog.Resolve(other, 0.75));
+
+        var changedCores = intel with { PhysicalCoreCount = 16 };
+        Assert.Null(catalog.Resolve(changedCores, null).MatchedModel);
+        Assert.Equal(intelSettings, catalog.Resolve(intel, null));
+        var nextModel = catalog.Resolve(CreateTopology("Core i5-12600K", "Intel", [10]), null);
+        Assert.Equal("Core i5-12600K", nextModel.MatchedModel);
+        Assert.Equal(0.7804, nextModel.DefaultRatio);
+
+        before = GC.GetAllocatedBytesForCurrentThread();
+        _ = catalog.Resolve(intel, null);
+        var warmIntelAllocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(warmIntelAllocated < intelAllocated / 10,
+            $"Warm resolve: {warmIntelAllocated} bytes; first Intel resolve: {intelAllocated} bytes.");
     }
 
     [Theory]

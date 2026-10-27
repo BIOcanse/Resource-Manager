@@ -1699,3 +1699,125 @@ test "external normalization storage is absent when idle and detached canonical 
     try expectCode(.ok, session.snapshot(&snapshot));
     try std.testing.expect(snapshot.node_count > 0);
 }
+
+test "display actual text and diff columns grow by content through all three canonical banks" {
+    var config = testConfig(256);
+    config.maximum_text_byte_count = 1024 * 1024;
+    config.maximum_diff_entry_count = 8192;
+    config.optional_source_mask = 0;
+    const session = try state.Session.createWithAllocator(&config, std.testing.allocator);
+    defer session.destroy();
+    const initial = session.capacity();
+    const initial_dynamic = session.active.dynamicByteCount() + session.working.dynamicByteCount() + session.next.dynamicByteCount();
+    const old_dynamic = 3 * (@as(u64, config.maximum_text_byte_count) + @as(u64, config.maximum_diff_entry_count) * @sizeOf(protocol.DiffEntry));
+    try std.testing.expectEqual(@as(u64, 3456), initial_dynamic);
+    try std.testing.expectEqual(@as(u64, 4_518_528), old_dynamic - initial_dynamic);
+    var facts: [8]protocol.DisplayFact = undefined;
+    for (&facts, 0..) |*fact, index| {
+        fact.* = targetOnlyFact(.display_config, index + 1, 0x1234, @intCast(index + 1));
+        fact.valid_mask |= protocol.FactValid.evidence;
+        fact.evidence_text_index = 0;
+    }
+    const evidence = "e" ** 700;
+    const texts = [_]protocol.TextInput{textInput(.evidence, 0, evidence.len)};
+    var stable_resident: u64 = 0;
+    for (1..7) |epoch| {
+        try expectCode(.ok, session.beginRefresh(&refreshInput(config, epoch)));
+        const header = batchHeader(config, epoch, epoch, .display_config, .complete, facts.len, texts.len, evidence.len);
+        try expectCode(.ok, session.submitSource(&header, &facts, &texts, evidence));
+        try expectCode(.ok, session.finalize(&finalizeInput(config, epoch)));
+        var snapshot = std.mem.zeroes(protocol.SnapshotOutput);
+        try expectCode(.ok, session.snapshot(&snapshot));
+        try std.testing.expectEqual(@as(u64, 1), snapshot.content_generation);
+        try std.testing.expectEqual(@as(u32, 16), snapshot.node_count);
+        try std.testing.expectEqual(@as(u32, 8), snapshot.edge_count);
+        try std.testing.expectEqual(@as(u32, 8), snapshot.capability_count);
+        try std.testing.expectEqual(@as(u32, 700), session.active.text_byte_count);
+        try std.testing.expectEqualStrings(evidence, session.active.text(0));
+        try std.testing.expectEqual(session.capacity().resident_byte_count, snapshot.resident_byte_count);
+        try std.testing.expectEqual(initial.maximum_text_byte_count, session.capacity().maximum_text_byte_count);
+        try std.testing.expectEqual(initial.maximum_diff_entry_count, session.capacity().maximum_diff_entry_count);
+        if (epoch == 1) {
+            try std.testing.expectEqual(@as(u32, 33), snapshot.diff_count);
+            try std.testing.expectEqual(@as(usize, 64), session.active.diffs.len);
+            for (session.active.diffs[0..snapshot.diff_count]) |diff| {
+                try std.testing.expectEqual(@intFromEnum(protocol.ChangeKind.added), diff.change_kind);
+            }
+        } else try std.testing.expectEqual(@as(u32, 0), snapshot.diff_count);
+        if (epoch == 3) stable_resident = snapshot.resident_byte_count;
+        if (epoch > 3) try std.testing.expectEqual(stable_resident, snapshot.resident_byte_count);
+    }
+    try std.testing.expectEqual(@as(usize, 1024), session.active.text_bytes.len);
+    try std.testing.expectEqual(@as(usize, 1024), session.working.text_bytes.len);
+    try std.testing.expectEqual(@as(usize, 1024), session.next.text_bytes.len);
+    try std.testing.expect(session.capacity().resident_byte_count < initial.resident_byte_count + old_dynamic);
+    // Admission still reserves the full configured worst case, even for an empty bank.
+    var insufficient = config;
+    insufficient.resident_byte_budget = initial.resident_byte_count;
+    try std.testing.expectError(error.InvalidConfiguration, state.Session.createWithAllocator(&insufficient, std.testing.allocator));
+}
+
+test "display text allocation failure leaves canonical snapshot intact and retryable" {
+    var config = testConfig(8);
+    config.optional_source_mask = 0;
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const session = try state.Session.createWithAllocator(&config, failing.allocator());
+    defer session.destroy();
+    try expectCode(.ok, session.beginRefresh(&refreshInput(config, 1)));
+    try submitDisplayConfig(session, config, 1, 1, false);
+    try expectCode(.ok, session.finalize(&finalizeInput(config, 1)));
+    var before = std.mem.zeroes(protocol.SnapshotOutput);
+    try expectCode(.ok, session.snapshot(&before));
+    const canonical_text = try std.testing.allocator.dupe(u8, session.active.text_bytes[0..session.active.text_byte_count]);
+    defer std.testing.allocator.free(canonical_text);
+    try expectCode(.ok, session.beginRefresh(&refreshInput(config, 2)));
+    failing.fail_index = failing.alloc_index;
+    failing.resize_fail_index = failing.resize_index;
+    const evidence = "a" ** 700;
+    const monitor = "DISPLAY\\DEL40A9\\5&10ABC&0&UID4357";
+    const bytes = monitor ++ evidence;
+    const texts = [_]protocol.TextInput{
+        textInput(.monitor_device_path, 0, monitor.len),
+        textInput(.evidence, monitor.len, evidence.len),
+    };
+    var fact = targetOnlyFact(.display_config, 1, 0x1234, 7);
+    fact.valid_mask |= protocol.FactValid.monitor_path | protocol.FactValid.evidence;
+    fact.identity_mask |= protocol.IdentityMask.monitor_path;
+    fact.monitor_path_text_index = 0;
+    fact.evidence_text_index = 1;
+    const header = batchHeader(config, 2, 2, .display_config, .complete, 1, texts.len, bytes.len);
+    try expectCode(.out_of_memory, session.submitSource(&header, &.{fact}, &texts, bytes));
+    try std.testing.expectEqual(before.content_generation, session.content_generation);
+    try std.testing.expectEqualStrings(canonical_text, session.active.text_bytes[0..session.active.text_byte_count]);
+    failing.fail_index = std.math.maxInt(usize);
+    failing.resize_fail_index = std.math.maxInt(usize);
+    try expectCode(.ok, session.submitSource(&header, &.{fact}, &texts, bytes));
+    try expectCode(.ok, session.finalize(&finalizeInput(config, 2)));
+    try std.testing.expectEqual(before.content_generation + 1, session.content_generation);
+}
+test "display diff allocation failure preserves the active bank until finalize succeeds" {
+    var config = testConfig(8);
+    config.optional_source_mask = 0;
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const session = try state.Session.createWithAllocator(&config, failing.allocator());
+    defer session.destroy();
+    var facts: [8]protocol.DisplayFact = undefined;
+    for (&facts, 0..) |*fact, index| fact.* = targetOnlyFact(.display_config, index + 1, 1234, @intCast(index + 1));
+    try expectCode(.ok, session.beginRefresh(&refreshInput(config, 1)));
+    const header = batchHeader(config, 1, 1, .display_config, .complete, facts.len, 0, 0);
+    try expectCode(.ok, session.submitSource(&header, &facts, &.{}, &.{}));
+    const active_nodes = session.active.nodes.ptr;
+    failing.fail_index = failing.alloc_index;
+    failing.resize_fail_index = failing.resize_index;
+    try expectCode(.out_of_memory, session.finalize(&finalizeInput(config, 1)));
+    try std.testing.expectEqual(@as(u64, 0), session.content_generation);
+    try std.testing.expectEqual(@as(u32, 0), session.active.node_count);
+    try std.testing.expectEqual(active_nodes, session.active.nodes.ptr);
+    failing.fail_index = std.math.maxInt(usize);
+    failing.resize_fail_index = std.math.maxInt(usize);
+    try expectCode(.ok, session.finalize(&finalizeInput(config, 1)));
+    try std.testing.expectEqual(@as(u64, 1), session.content_generation);
+    try std.testing.expectEqual(@as(u32, 16), session.active.node_count);
+    try std.testing.expectEqual(@as(u32, 32), session.active.diff_count);
+    try std.testing.expectEqual(@as(usize, 32), session.active.diffs.len);
+}

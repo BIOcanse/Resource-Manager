@@ -5,6 +5,7 @@ using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using System.Collections.Immutable;
+using ResourceManager.ReadWrite.Windows.Processes;
 
 namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 
@@ -16,8 +17,9 @@ public sealed partial class WindowsResourceBreakdownSampler
     {
         var processById = processSamples.ToDictionary(static process => process.ProcessId);
         var baseScorePlan = runtimePlanProvider.Current.BaseScore;
+        var textSharing = processFieldOwner.CreateTextSharing();
         var capture = await RuntimeProcessAttributionCapture.CaptureAsync(processAttributionCatalogProvider,
-            processSamples.Select(CreateRuntimeIdentity).ToArray(), baseScorePlan, cancellationToken,
+            processSamples.Select(process => CreateRuntimeIdentity(process, textSharing)).ToArray(), baseScorePlan, cancellationToken,
             TryGetCachedDirectMatch,
             CacheDirectMatch);
         var batch = capture.Batch;
@@ -29,7 +31,12 @@ public sealed partial class WindowsResourceBreakdownSampler
             baseScorePlan, capture.SoftwareBaseScores, batch.HelperOwnerByProcessId);
     }
 
-    private RuntimeProcessIdentity CreateRuntimeIdentity(ProcessResourceSample process)
+    private IEnumerable<ProcessInstanceText> ReadAttributionText()
+        => processAttributionCache.Values.Where(static entry => entry.Identity.StartKey is > 0)
+            .Select(static entry => new ProcessInstanceText(new(entry.Identity.ProcessId, entry.Identity.StartKey!.Value),
+                entry.Identity.CommandLine, entry.Identity.UserSid));
+
+    private RuntimeProcessIdentity CreateRuntimeIdentity(ProcessResourceSample process, ProcessInstanceTextSharing textSharing)
     {
         var identity = new RuntimeProcessIdentity(
             process.ProcessId,
@@ -45,16 +52,19 @@ public sealed partial class WindowsResourceBreakdownSampler
             process.WindowTitle,
             process.StartKey,
             UserSid: process.BasicMetrics.UserSid);
-        return ReadRuntimeCommandLine(processAttributionCache, identity, () => ReadHelperCommandLine(process));
+        return ReadRuntimeCommandLine(processAttributionCache, identity, () => ReadHelperCommandLine(process), textSharing);
     }
 
     internal static RuntimeProcessIdentity ReadRuntimeCommandLine(
-        ProcessInstanceCache<CachedProcessAttribution> cache, RuntimeProcessIdentity identity, Func<string?> read)
+        ProcessInstanceCache<CachedProcessAttribution> cache, RuntimeProcessIdentity identity, Func<string?> read,
+        ProcessInstanceTextSharing? textSharing = null)
     {
         if (identity.StartKey is not > 0) return identity;
         var key = new ProcessInstanceKey(identity.ProcessId, identity.StartKey.Value);
         cache.TryGet(key, out var cached);
-        identity = identity with { CommandLine = cached is not null ? cached.Identity.CommandLine : read() };
+        var command = cached is not null ? cached.Identity.CommandLine : read();
+        identity = identity with { CommandLine = textSharing?.ShareCommandLine(key, command) ?? command,
+            UserSid = textSharing is null ? identity.UserSid : textSharing.ShareUserSid(identity.UserSid) };
         if (cached is not null)
         {
             // Keep one set of equal text values for this process instance, even
@@ -72,9 +82,14 @@ public sealed partial class WindowsResourceBreakdownSampler
                 ApplicationUserModelId = Reuse(previous.ApplicationUserModelId, identity.ApplicationUserModelId),
                 WindowApplicationUserModelId = Reuse(previous.WindowApplicationUserModelId, identity.WindowApplicationUserModelId),
                 WindowTitle = Reuse(previous.WindowTitle, identity.WindowTitle),
-                UserSid = Reuse(previous.UserSid, identity.UserSid)
+                UserSid = textSharing is not null ? identity.UserSid : Reuse(previous.UserSid, identity.UserSid)
             };
-            if (identity == previous) return previous;
+            if (identity == previous)
+            {
+                if (ReferenceEquals(identity.CommandLine, previous.CommandLine) && ReferenceEquals(identity.UserSid, previous.UserSid)) return previous;
+                cache.Set(key, cached with { Identity = identity });
+                return identity;
+            }
         }
         CacheRuntimeIdentity(cache, identity);
         return identity;

@@ -52,6 +52,8 @@ pub const Bank = struct {
     capabilities: []protocol.DisplayCapabilityOutput,
     unresolved: []protocol.UnresolvedOutput,
     diffs: []protocol.DiffEntry,
+    maximum_text_byte_count: u32,
+    maximum_diff_entry_count: u32,
     fact_count: u32 = 0,
     text_count: u32 = 0,
     text_byte_count: u32 = 0,
@@ -71,7 +73,7 @@ pub const Bank = struct {
         errdefer allocator.free(facts);
         const texts = try allocator.alloc(TextSlot, config.maximum_text_binding_count);
         errdefer allocator.free(texts);
-        const text_bytes = try allocator.alloc(u8, config.maximum_text_byte_count);
+        const text_bytes = try allocator.alloc(u8, @min(config.maximum_text_byte_count, 256));
         errdefer allocator.free(text_bytes);
         const text_index = try allocator.alloc(u32, config.text_index_capacity);
         errdefer allocator.free(text_index);
@@ -89,7 +91,7 @@ pub const Bank = struct {
             config.maximum_unresolved_count,
         );
         errdefer allocator.free(unresolved);
-        const diffs = try allocator.alloc(protocol.DiffEntry, config.maximum_diff_entry_count);
+        const diffs = try allocator.alloc(protocol.DiffEntry, @min(config.maximum_diff_entry_count, 16));
         errdefer allocator.free(diffs);
         var bank = Bank{
             .allocator = allocator,
@@ -102,6 +104,8 @@ pub const Bank = struct {
             .capabilities = capabilities,
             .unresolved = unresolved,
             .diffs = diffs,
+            .maximum_text_byte_count = config.maximum_text_byte_count,
+            .maximum_diff_entry_count = config.maximum_diff_entry_count,
         };
         bank.reset();
         return bank;
@@ -195,7 +199,8 @@ pub const Bank = struct {
         if (self.text_count >= self.texts.len) return error.TextCapacity;
         const next_end = std.math.add(u32, self.text_byte_count, @intCast(bytes.len)) catch
             return error.TextCapacity;
-        if (next_end > self.text_bytes.len) return error.TextCapacity;
+        if (next_end > self.maximum_text_byte_count) return error.TextCapacity;
+        try self.ensureCapacity(u8, &self.text_bytes, next_end, self.maximum_text_byte_count);
         const index = self.text_count;
         self.texts[index] = .{
             .kind = kind,
@@ -224,6 +229,27 @@ pub const Bank = struct {
     pub fn rebuildTextIndex(self: *Bank) void {
         @memset(self.text_index, protocol.no_text_index);
         for (0..self.text_count) |index| insertTextIndex(self, @intCast(index));
+    }
+
+    pub fn ensureDiffCapacity(self: *Bank, demand: u32) !void {
+        try self.ensureCapacity(protocol.DiffEntry, &self.diffs, demand, self.maximum_diff_entry_count);
+    }
+
+    // Only the staging bank grows. Reallocation preserves every used slot; an
+    // allocation failure leaves that owner intact and cannot publish partial data.
+    fn ensureCapacity(self: *Bank, comptime T: type, values: *[]T, demand: u32, limit: u32) !void {
+        if (demand > limit) return error.CapacityExceeded;
+        if (demand <= values.len) return;
+        var count: usize = @max(values.len, 1);
+        while (count < demand) count = @min(@as(usize, limit), try std.math.mul(usize, count, 2));
+        const old_count = values.len;
+        const replacement = try self.allocator.realloc(values.*, count);
+        @memset(std.mem.sliceAsBytes(replacement[old_count..]), 0);
+        values.* = replacement;
+    }
+
+    pub fn dynamicByteCount(self: *const Bank) u64 {
+        return self.text_bytes.len + self.diffs.len * @sizeOf(protocol.DiffEntry);
     }
 };
 
