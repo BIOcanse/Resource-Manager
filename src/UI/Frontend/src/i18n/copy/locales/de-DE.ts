@@ -41,7 +41,8 @@ const deDeAppCopy: AppCopy = {
   fieldValueLabel,
   common: {
     saving: "Wird gespeichert",
-    saveFailed: "Speichern fehlgeschlagen"
+    saveFailed: "Speichern fehlgeschlagen",
+    helpHint: "Erläuterung"
   },
   feedback: {
     confirm: "Bestätigen",

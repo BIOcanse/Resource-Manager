@@ -355,7 +355,8 @@
 }
 
 /* 下拉弹层（WinUI 浮层）：8px 圆角、1px 描边、一层柔和阴影。 */
-:root[data-ui-style="standard"] .standard-select-popover {
+:root[data-ui-style="standard"] .standard-select-popover,
+:root[data-ui-style="standard"] .help-hint-popover {
   border-color: var(--line-soft);
   box-shadow: var(--elev-3);
 }

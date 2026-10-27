@@ -41,7 +41,8 @@ const frFrAppCopy: AppCopy = {
   fieldValueLabel,
   common: {
     saving: "Enregistrement",
-    saveFailed: "Échec de l'enregistrement"
+    saveFailed: "Échec de l'enregistrement",
+    helpHint: "Explication"
   },
   feedback: {
     confirm: "Confirmer",

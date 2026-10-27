@@ -1,6 +1,6 @@
 import { onCleanup, onMount, type JSX } from "solid-js";
 import { Portal } from "solid-js/web";
-import { resolveResourceTooltipPlacement } from "./resourceTooltipPlacement.ts";
+import { RESOURCE_TOOLTIP_SPACING, resolveAnchoredPlacement } from "../../ui/primitives/anchoredPlacement.ts";
 import { exitOnUnmount } from "../../presentation/nodeAnimation.ts";
 
 /**
@@ -20,11 +20,12 @@ export function ResourceTooltipOverlay(props: { anchor: () => HTMLElement | unde
     if (tooltip && anchor?.isConnected) {
       const size = tooltip.getBoundingClientRect();
       const viewport = document.documentElement;
-      const placement = resolveResourceTooltipPlacement(
+      const placement = resolveAnchoredPlacement(
         anchor.getBoundingClientRect(),
         { left: 0, top: 0, right: viewport.clientWidth, bottom: viewport.clientHeight },
         size.width,
-        size.height);
+        size.height,
+        RESOURCE_TOOLTIP_SPACING);
       const key = `${placement.left}|${placement.top}|${placement.vertical}`;
       if (key !== placed) {
         placed = key;

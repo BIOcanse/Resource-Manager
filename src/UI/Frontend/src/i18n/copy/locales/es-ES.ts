@@ -41,7 +41,8 @@ const esEsAppCopy: AppCopy = {
   fieldValueLabel,
   common: {
     saving: "Guardando",
-    saveFailed: "No se pudo guardar"
+    saveFailed: "No se pudo guardar",
+    helpHint: "Explicación"
   },
   feedback: {
     confirm: "Confirmar",

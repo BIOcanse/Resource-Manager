@@ -3,7 +3,8 @@ import { zhControlPresentationCopy } from "./controlPresentation.ts";
 export const zhShellCopy = {
   common: {
     saving: "儲存中",
-    saveFailed: "儲存失敗"
+    saveFailed: "儲存失敗",
+    helpHint: "說明"
   },
   feedback: {
     confirm: "確認",

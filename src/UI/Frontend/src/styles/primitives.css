@@ -122,3 +122,68 @@
 .stable-label > .stable-label-inactive {
   visibility: hidden;
 }
+
+/*
+ * 问号说明（ui/primitives/HelpHint.tsx）：一个只有图标的小按钮，悬停、聚焦或说明开着时换成强调色。
+ * 盖掉全局 button 的实心强调色外观；键盘焦点环用全局那一条（motion.css :focus-visible）。
+ */
+.help-hint {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  min-height: 0;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background-color: transparent;
+  background-image: none;
+  color: var(--muted);
+  cursor: help;
+}
+
+.help-hint:hover,
+.help-hint.open {
+  background-color: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+/*
+ * 说明弹层：挂在 body 上（Portal，position: fixed），和下拉框的弹出层同一层、同一套外观（controls.css .standard-select-popover）。
+ * 和问号之间 6 px（HelpHint.tsx 的 HELP_HINT_SPACING）；指针斜着移过这段空隙也不算离开，由组件按几何判断（pointerGrace.ts）。
+ * 放好之前不显示。字可以选中：拖动选字从这里开始。
+ */
+.help-hint-popover {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1200;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 16px));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 7px 10px 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  box-shadow: var(--elev-3), var(--edge-highlight);
+  outline: none;
+  cursor: text;
+  user-select: text;
+}
+
+.help-hint-popover:not([data-placement]) {
+  visibility: hidden;
+}
+
+@media (forced-colors: active) {
+  .help-hint-popover {
+    outline: 1px solid CanvasText;
+  }
+}

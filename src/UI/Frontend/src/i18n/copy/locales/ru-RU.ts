@@ -41,7 +41,8 @@ const ruRuAppCopy: AppCopy = {
   fieldValueLabel,
   common: {
     saving: "Сохранение",
-    saveFailed: "Не удалось сохранить"
+    saveFailed: "Не удалось сохранить",
+    helpHint: "Пояснение"
   },
   feedback: {
     confirm: "Подтвердить",

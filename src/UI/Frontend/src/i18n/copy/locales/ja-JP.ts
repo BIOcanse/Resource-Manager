@@ -41,7 +41,8 @@ const jaJpAppCopy: AppCopy = {
   fieldValueLabel,
   common: {
     saving: "保存中",
-    saveFailed: "保存に失敗しました"
+    saveFailed: "保存に失敗しました",
+    helpHint: "説明"
   },
   feedback: {
     confirm: "確認",

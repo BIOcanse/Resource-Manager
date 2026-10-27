@@ -49,6 +49,7 @@ import { createReorderGroup, type ReorderGroup } from "../../interactions/solid/
 import type { Presentation } from "../../interactions/protocol/runtime.ts";
 import { enterSlot, exitInPlace, settleEntrancesWithin } from "../../presentation/nodeAnimation.ts";
 import { GpuNameNote } from "../monitor/GpuNameNote.tsx";
+import { HelpHint } from "../../ui/primitives/HelpHint.tsx";
 
 const rowHeight = 38;
 const overscan = 6;
@@ -165,7 +166,8 @@ export function ResourceTable(props: ResourceTableProps) {
         <div class="resource-table-title">
           <h2>{props.mode === "performance" ? uiText.resourceTable.performance : uiText.resourceTable.panel}</h2>
           <Show when={props.mode !== "performance"}>
-            <span id="resourceTableStatus" class="count-badge" title={uiText.resourceTable.accountingBasis}>{statusText()}</span>
+            <span id="resourceTableStatus" class="count-badge">{statusText()}</span>
+            <HelpHint>{uiText.resourceTable.accountingBasis}</HelpHint>
           </Show>
         </div>
         <div class="panel-header-actions">

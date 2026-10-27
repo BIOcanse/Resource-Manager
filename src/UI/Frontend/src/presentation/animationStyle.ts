@@ -182,7 +182,7 @@ export const CSS_MOTIONS: readonly CssMotion[] = [
   { sheet: "styles/task-center.css", selector: ".task-center-spinner", property: "animation", kind: "平面移动" },
   // 挂上时的淡入（只改不透明度，真实节点第一帧就在终态几何上）。
   entering("animation", ".toast"),
-  entering("animation", ".standard-select-popover, .standard-context-menu, .disk-usage-context-menu"),
+  entering("animation", ".standard-select-popover, .standard-context-menu, .disk-usage-context-menu, .help-hint-popover"),
   entering("animation", ".resource-tooltip"),
   entering("animation", ".resource-process-panel"),
   entering("animation", `${MOVING} .resource-table-row[data-enter-slot="row"] > .resource-table-cell`),
@@ -193,7 +193,7 @@ export const CSS_MOTIONS: readonly CssMotion[] = [
   entering("animation", ".targeted-report-list-row, .targeted-report-detail"),
   entering("animation", ".targeted-recording-status > p, .targeted-recording-alert, .targeted-report-note.error"),
   // 退场幽灵的槽位。
-  ghost(":is(.standard-select-popover, .standard-context-menu, .disk-usage-context-menu)"),
+  ghost(":is(.standard-select-popover, .standard-context-menu, .disk-usage-context-menu, .help-hint-popover)"),
   ghost(".modal-backdrop"),
   ghost(".modal-backdrop > .modal"),
   ghost(".toast"),

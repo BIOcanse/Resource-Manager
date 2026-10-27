@@ -5,7 +5,8 @@ import { plural } from "../../plural.ts";
 export const enShellCopy: Pick<AppCopy, "reportRules" | "common" | "feedback" | "page" | "control" | "diskUsage" | "shell"> = {
   common: {
     saving: "Saving",
-    saveFailed: "Save failed"
+    saveFailed: "Save failed",
+    helpHint: "Explanation"
   },
   feedback: {
     confirm: "Confirm",

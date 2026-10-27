@@ -40,7 +40,8 @@ const koKrAppCopy: AppCopy = {
   fieldValueLabel,
   common: {
     saving: "저장 중",
-    saveFailed: "저장하지 못했습니다"
+    saveFailed: "저장하지 못했습니다",
+    helpHint: "설명"
   },
   feedback: {
     confirm: "확인",
