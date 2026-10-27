@@ -73,7 +73,7 @@ export function KernelLeakReportPage() {
         <p class="kernel-leak-note warning" role="status">{copy().unavailableHolders(report()!.unavailableHolderCount)}</p>
       </Show>
       <Show when={stateView()} fallback={
-        <ul class="kernel-leak-items" aria-label={copy().suspectedItems}>
+        <ul class="kernel-leak-items" role="list" aria-label={copy().suspectedItems}>
           <For each={items()}>{(item) => <KernelLeakItemCard item={item} />}</For>
         </ul>
       }>
