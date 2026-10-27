@@ -1,8 +1,11 @@
 import { Copy, KeyRound, Trash2 } from "lucide-solid";
 import { createSignal, For, Show } from "solid-js";
+import { onPageLeave } from "../../../app/navigation/pageHost.tsx";
 import { createAiGatewayCredential, revokeAiGatewayCredential } from "../../../api";
 import { useFrontendRuntime } from "../../../frontendRuntime/FrontendRuntimeContext.tsx";
 import { useSource } from "../../../frontendRuntime/source/useSource.ts";
+import { useFrontendWork } from "../../../frontendWork/FrontendWorkContext.tsx";
+import { frontendWorkIds } from "../../../frontendWork/frontendWorkIds";
 import { userFacingDateTime, userFacingErrorMessage } from "../../../presentation/userFacingText";
 import type { AiGatewayCompatibilityProfile, AiGatewayCredentialCreatedView } from "../../../types";
 import { SegmentedControl } from "../../../ui/primitives/SegmentedControl.tsx";
@@ -38,8 +41,12 @@ export function AiGatewayKeyManager(props: AiGatewayKeyManagerProps) {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const [copiedField, setCopiedField] = createSignal<string | null>(null);
+  const work = useFrontendWork();
+  // 密钥列表随公共服务分区的可见区域读取（PublicServicesSettingsSection 登记）。
   const credentials = useSource(useFrontendRuntime().sources.aiGatewayCredentials,
-    () => ({ active: props.enabled, refreshIntervalMs: null }));
+    () => ({ active: props.enabled && work.isNeeded(frontendWorkIds.settingsPublicServices), refreshIntervalMs: null }));
+  // 新生成的密钥只显示这一次：离开这一页时丢掉（常驻页隐藏那一刻，或卸下时），回来时不会再显示。
+  onPageLeave(() => setCreated(null));
 
   const refetch = async () => {
     const snapshot = await credentials.refresh();

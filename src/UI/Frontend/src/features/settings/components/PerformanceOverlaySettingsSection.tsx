@@ -2,6 +2,11 @@ import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js"
 import { listEnabledPerformanceOverlays } from "../../../api.ts";
 import { useFrontendRuntime } from "../../../frontendRuntime/FrontendRuntimeContext.tsx";
 import { useSource } from "../../../frontendRuntime/source/useSource.ts";
+import { useFrontendWork } from "../../../frontendWork/FrontendWorkContext.tsx";
+import { useFrontendVisibilityDemand } from "../../../frontendWork/useFrontendVisibilityDemand";
+import { frontendVisibilitySurface } from "../../../frontendWork/frontendVisibilitySurface";
+import { frontendWorkIds } from "../../../frontendWork/frontendWorkIds";
+import { onPageLeave } from "../../../app/navigation/pageHost.tsx";
 import { softwareRecordName } from "../../../presentation/softwareFacts.ts";
 import { userFacingErrorMessage } from "../../../presentation/userFacingText.ts";
 import { uiText } from "../../../text.ts";
@@ -33,7 +38,12 @@ interface OverlayRow {
 export function PerformanceOverlaySettingsSection(props: PerformanceOverlaySettingsSectionProps) {
   const copy = () => props.text.performanceOverlay;
   const runtime = useFrontendRuntime();
-  const softwareSource = useSource(runtime.sources.managementSoftware, () => ({ active: true }));
+  // 软件列表和浮层设置随这个分区的可见区域读取：常驻页隐藏时退掉，回来时重读。
+  const work = useFrontendWork();
+  const workId = frontendWorkIds.settingsPerformanceOverlay;
+  useFrontendVisibilityDemand(workId, [workId]);
+  const needed = () => work.isNeeded(workId);
+  const softwareSource = useSource(runtime.sources.managementSoftware, () => ({ active: needed() }));
   const [overlays, setOverlays] = createSignal<readonly PerformanceOverlaySettings[] | null>(null);
   const [overlayError, setOverlayError] = createSignal<unknown>(null);
   let request = 0;
@@ -47,7 +57,16 @@ export function PerformanceOverlaySettingsSection(props: PerformanceOverlaySetti
       if (id === request) setOverlayError(error);
     }
   };
+  // 浮层设置读一次：分区建起来时（同步读到，回来的第一帧就有）、软件详细信息关上时；
+  // 常驻页隐藏过，再显示时重读一次。详细信息是盖住整页的对话框，开着时不能离开这一页。
+  let hiddenSinceLoad = false;
+  onPageLeave(() => { hiddenSinceLoad = true; });
   createEffect(on(() => props.softwareDetailOpen, (open) => { if (!open) void load(); }));
+  createEffect(on(needed, (now) => {
+    if (!now || !hiddenSinceLoad) return;
+    hiddenSinceLoad = false;
+    void load();
+  }, { defer: true }));
 
   const softwareSnapshot = () => softwareSource.snapshot();
   const softwareFailed = () => softwareSnapshot().data === null
@@ -75,7 +94,7 @@ export function PerformanceOverlaySettingsSection(props: PerformanceOverlaySetti
   ].join(" · ");
 
   return (
-    <div class="settings-section-panel performance-overlay-settings">
+    <div class="settings-section-panel performance-overlay-settings" {...frontendVisibilitySurface(workId, [workId])}>
       <p>{copy().intro}</p>
       <Show
         when={failure() === null}

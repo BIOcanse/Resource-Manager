@@ -2,6 +2,9 @@ import { uiText } from "../../../text.ts";
 import type { SettingsTextBundle } from "../../../text.ts";
 import type { AppSettings } from "../../../types.ts";
 import { ControlAccessLevelSetting } from "./ControlAccessLevelSetting";
+import { useFrontendVisibilityDemand } from "../../../frontendWork/useFrontendVisibilityDemand";
+import { frontendVisibilitySurface } from "../../../frontendWork/frontendVisibilitySurface";
+import { frontendWorkIds } from "../../../frontendWork/frontendWorkIds";
 import { NumberField } from "./SettingsControls";
 
 /**
@@ -13,7 +16,10 @@ export function HardwareControlSettings(props: {
   text: SettingsTextBundle;
   onChange: (control: NonNullable<AppSettings["control"]>) => void;
 }) {
-  return <div class="settings-section-panel">
+  // 这个分区的可见区域：调节权限档位按它读取（常驻页隐藏时退掉，回来时重读）。
+  const workId = frontendWorkIds.settingsHardwareControl;
+  useFrontendVisibilityDemand(workId, [workId]);
+  return <div class="settings-section-panel" {...frontendVisibilitySurface(workId, [workId])}>
     <div class="settings-row">
       <div class="settings-row-copy">
         <strong>{props.text.hardwareControl.reassertionTitle}</strong>

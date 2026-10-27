@@ -1,8 +1,10 @@
 import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
-import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
 import { unrecognizedGpuNames } from "../../data/gpu/gpuSchedulingModelSource";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
-import { sourceCanRender, type SourceSnapshot } from "../../frontendRuntime/source/SourceSnapshot";
+import { sourceCanRender } from "../../frontendRuntime/source/SourceSnapshot";
+import { useSource } from "../../frontendRuntime/source/useSource";
+import { useFrontendWork } from "../../frontendWork/FrontendWorkContext";
 import { frontendWorkIds } from "../../frontendWork/frontendWorkIds";
 import {
   frontendVisibilityDemandId,
@@ -16,7 +18,6 @@ import type {
   AppOptimizationMode,
   OptimizationReportItem,
   OptimizationReportOverview,
-  GpuPerformanceScoreSnapshot,
   HostManagerSmartCoordinatorStatus,
   TrustedOptimizationTarget
 } from "../../types";
@@ -60,15 +61,12 @@ interface OptimizationPageProps {
 
 export function OptimizationPage(props: OptimizationPageProps) {
   const runtime = useFrontendRuntime();
-  const gpuScoresLease = runtime.sources.gpuPerformanceScores.acquire(
-    { active: true, refreshIntervalMs: null });
-  const [gpuScoresSource, setGpuScoresSource] =
-    createSignal<SourceSnapshot<GpuPerformanceScoreSnapshot>>(gpuScoresLease.snapshot);
-  const stopGpuScores = gpuScoresLease.subscribe(setGpuScoresSource);
-  onCleanup(() => {
-    stopGpuScores();
-    gpuScoresLease.release();
-  });
+  const frontendWork = useFrontendWork();
+  // 未识别显卡的提示紧挨报告标题，和报告一起随报告区可见取得；页面隐藏时退掉，回来重新读取。
+  const gpuScores = useSource(runtime.sources.gpuPerformanceScores, () => ({
+    active: frontendWork.isNeeded(frontendWorkIds.optimizationReports),
+    refreshIntervalMs: null
+  }));
   const modeDemandId = "optimization.mode-status";
   const headerDemandId = "optimization.report-header";
   useFrontendVisibilityDemand(modeDemandId, [frontendWorkIds.optimizationSmartStatus]);
@@ -94,7 +92,7 @@ export function OptimizationPage(props: OptimizationPageProps) {
   };
   const visibleReports = createMemo(() => filterOptimizationReports(reports(), searchQuery()));
   const unknownGpuNames = createMemo(() => {
-    const source = gpuScoresSource();
+    const source = gpuScores.snapshot();
     return sourceCanRender(source) && source.data
       ? unrecognizedGpuNames(source.data)
       : [];
@@ -219,7 +217,7 @@ export function OptimizationPage(props: OptimizationPageProps) {
             />
             <button class="secondary" type="button" disabled={props.loading} onClick={() => {
               props.onRefresh();
-              void gpuScoresLease.refresh();
+              void gpuScores.refresh();
             }}>
               <StableLabel labels={{ idle: uiText.optimization.refresh, busy: uiText.optimization.refreshing }} current={props.loading ? "busy" : "idle"} />
             </button>

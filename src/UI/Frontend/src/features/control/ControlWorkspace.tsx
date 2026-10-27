@@ -3,7 +3,8 @@ import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
 import { HelpHint, OptionsHelpHint, type HelpHintEntry } from "../../ui/primitives/HelpHint.tsx";
 import { controlReasonText } from "../../presentation/controlReasonText.ts";
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
-import { createMemo, createSignal, For, Match, onMount, onCleanup, Show, Switch } from "solid-js";
+import { batch, createMemo, createSignal, For, Match, onMount, onCleanup, Show, Switch } from "solid-js";
+import { onPageLeave } from "../../app/navigation/pageHost.tsx";
 import { useFrontendWork } from "../../frontendWork/FrontendWorkContext";
 import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand";
 import { frontendWorkIds } from "../../frontendWork/frontendWorkIds";
@@ -73,9 +74,11 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
   const noticeSource = useSource(runtime.sources.control.notice, demand);
   const sources = [objectsSource, stateSource, instancesSource, presetsSource, consentSource, accessSource, noticeSource];
   const reloadState = () => { for (const source of sources) void source.refresh(); };
+  // 窗口回到前台时重读；页面不需要时（隐藏着）不读，再显示时来源随需求恢复自己会读。
+  const reloadOnFocus = () => { if (visible()) reloadState(); };
   onMount(() => {
-    window.addEventListener("focus", reloadState);
-    onCleanup(() => window.removeEventListener("focus", reloadState));
+    window.addEventListener("focus", reloadOnFocus);
+    onCleanup(() => window.removeEventListener("focus", reloadOnFocus));
   });
   const catalog = () => objectsSource.snapshot().data;
   const state = () => stateSource.snapshot().data;
@@ -116,6 +119,12 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
     else next.delete(objectId);
     return next;
   });
+  // 离开页面就丢掉没应用的草稿（不写、不应用），回来时和重新打开一样从已保存的状态开始。
+  onPageLeave(() => batch(() => {
+    setDraft(null);
+    setFanModes(new Map<string, string>());
+    setTakingOver(new Set<string>());
+  }));
   const savedObjects = () => state()?.desired.objects ?? [];
   const edited = () => draft() ?? savedObjects();
 
@@ -431,6 +440,7 @@ function ControlObjectCard(props: {
   onDeletePreset: (presetId: string) => void;
 }) {
   const [presetName, setPresetName] = createSignal("");
+  onPageLeave(() => setPresetName(""));
   // 用户对这个对象设过什么，以及最近一次施加的回执。
   const saved = () => props.state?.desired.objects
     .find((entry) => entry.objectId === props.object.id)?.settings ?? [];

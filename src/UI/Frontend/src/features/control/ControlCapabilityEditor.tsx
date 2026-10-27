@@ -1,5 +1,6 @@
 import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
-import { createEffect, createMemo, createSignal, onCleanup, Show, untrack } from "solid-js";
+import { createEffect, createMemo, createSignal, Show, untrack } from "solid-js";
+import { onPageLeave } from "../../app/navigation/pageHost.tsx";
 import { uiText } from "../../text.ts";
 import { controlCapabilityLabel, controlDisplayText } from "./controlPresentation.ts";
 import {
@@ -203,6 +204,11 @@ function NumberEditor(props: {
    * 取消就回到原来的值。null 表示没在拖。
    */
   const [preview, setPreview] = createSignal<number | null>(null);
+  // 离开页面时敲到一半的字和拖动预览都丢掉，不提交。
+  onPageLeave(() => {
+    setDraft(null);
+    setPreview(null);
+  });
 
   const commit = (text: string) => {
     const bounds = range();
@@ -368,8 +374,12 @@ function CurveEditor(props: {
   const runtime = useFrontendRuntime();
   const [reading, setReading] = createSignal(false);
   const [readFailed, setReadFailed] = createSignal(false);
-  let mounted = true;
-  onCleanup(() => { mounted = false; });
+  // 离开页面后读回来的曲线不再进草稿（草稿离开时已丢弃）：每次离开换一号，读之前记下这一号。
+  let visit = 0;
+  onPageLeave(() => {
+    visit++;
+    setReadFailed(false);
+  });
 
   const configured = () => (props.setting?.curve?.length ?? 0) > 0;
 
@@ -423,7 +433,8 @@ function CurveEditor(props: {
     setReading(true);
     setReadFailed(false);
     const requestedSetting = props.setting;
-    const stillSelected = () => mounted && props.setting === requestedSetting && !props.disabled;
+    const requestedVisit = visit;
+    const stillSelected = () => requestedVisit === visit && props.setting === requestedSetting && !props.disabled;
     try {
       const firmware = await getControlObjectCurve(runtime.requestClient, props.objectId);
       if (stillSelected()) {

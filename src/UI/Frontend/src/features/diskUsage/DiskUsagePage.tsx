@@ -6,6 +6,7 @@ import { pickShellFolder } from "../../utils.ts";
 import { SegmentedControl } from "../../ui/primitives/SegmentedControl.tsx";
 import { uiText } from "../../text.ts";
 import { ContentState } from "../../ui/patterns/ContentState.tsx";
+import type { FrontendVisibilitySurfaceAttributes } from "../../frontendWork/frontendVisibilitySurface.ts";
 import type {
   DiskUsageScanMode,
   DiskUsageScanScope,
@@ -31,6 +32,8 @@ export function DiskUsagePage(props: {
   onActionError: (error: unknown, fallback: string) => void;
   /** 扫描结果面板。还没有结果时由这里出空态。 */
   children?: JSX.Element;
+  /** 整页的可见区域：读卷、读结果、算布局这些页面工作只在它可见时进行。 */
+  visibilitySurface: FrontendVisibilitySurfaceAttributes;
 }) {
   const [scope, setScope] = createSignal<DiskUsageScanScope>("allVolumes");
   const [mode, setMode] = createSignal<DiskUsageScanMode>("fast");
@@ -76,7 +79,7 @@ export function DiskUsagePage(props: {
   }
 
   return (
-    <div class="disk-usage-page">
+    <div class="disk-usage-page" {...props.visibilitySurface}>
       <Show when={!collapsed()}>
         <div class="panel disk-usage-setup">
           <div class="settings-row">

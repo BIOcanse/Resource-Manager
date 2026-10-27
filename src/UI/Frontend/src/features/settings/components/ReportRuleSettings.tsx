@@ -1,6 +1,9 @@
 import { For, Show } from "solid-js";
 import { useFrontendRuntime } from "../../../frontendRuntime/FrontendRuntimeContext";
 import { useFrontendWork } from "../../../frontendWork/FrontendWorkContext";
+import { useFrontendVisibilityDemand } from "../../../frontendWork/useFrontendVisibilityDemand";
+import { frontendVisibilitySurface } from "../../../frontendWork/frontendVisibilitySurface";
+import { frontendWorkIds } from "../../../frontendWork/frontendWorkIds";
 import { useSource } from "../../../frontendRuntime/source/useSource.ts";
 import { sourceCanRender } from "../../../frontendRuntime/source/SourceSnapshot.ts";
 import { uiText } from "../../../text.ts";
@@ -16,8 +19,11 @@ export function ReportRuleSettings(props: {
 }) {
   const runtime = useFrontendRuntime();
   const frontendWork = useFrontendWork();
+  // 规则目录随这个分区的可见区域读取：常驻页隐藏时退掉，回来时重读。
+  const workId = frontendWorkIds.settingsReportRules;
+  useFrontendVisibilityDemand(workId, [workId]);
   const source = useSource(runtime.sources.settingsReads.reportRules,
-    () => ({ active: frontendWork.frontendVisible(), refreshIntervalMs: null }));
+    () => ({ active: frontendWork.isNeeded(workId), refreshIntervalMs: null }));
   const catalog = () => sourceCanRender(source.snapshot()) ? source.snapshot().data : null;
   const loading = () => source.snapshot().status === "idle" || source.snapshot().status === "loading";
   const failed = () => source.snapshot().status === "error" || source.snapshot().status === "unavailable";
@@ -46,7 +52,8 @@ export function ReportRuleSettings(props: {
   };
 
   // 分区标题已经写着“报告规则”，不再重复标题；区域名称仍给读屏。
-  return <section class="settings-section-panel report-rule-settings" aria-label={text().title}>
+  return <section class="settings-section-panel report-rule-settings" aria-label={text().title}
+    {...frontendVisibilitySurface(workId, [workId])}>
     <p>{text().note}</p>
     <Show when={loading()}><p role="status">{text().loading}</p></Show>
     <Show when={failed()}><p role="alert">{text().loadFailed}</p>

@@ -37,6 +37,7 @@ import {
   numaNodeRows
 } from "./cpuMetricFields.ts";
 import { CurrentPageHeading } from "../../app/navigation/currentPageName.tsx";
+import { onPageLeave } from "../../app/navigation/pageHost.tsx";
 import { createStore, reconcile } from "solid-js/store";
 
 type CpuSelectionKind = "ccd" | "core" | "logical";
@@ -111,6 +112,13 @@ export function CpuTopologyDiagram(props: {
     const current = source && sourceCanRender(source) ? source.data ?? undefined : undefined;
     // Reconcile mutates its target; the view must own it rather than a shared source snapshot.
     setModel("current", reconcile(structuredClone(current), { key: "id" }));
+  });
+  // 离开页面时放弃未保存的核心评分编辑（常驻页隐藏时，或页面卸下时）。
+  onPageLeave(() => {
+    if (!editing()) return;
+    const current = model.current;
+    if (current) cancelEditing(current);
+    else setEditing(false);
   });
   const snapshot = () => model.current;
   // The push value is the snapshot or a typed unavailable state with the owner's reason; never a bare null.

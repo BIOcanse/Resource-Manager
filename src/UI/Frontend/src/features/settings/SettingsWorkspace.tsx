@@ -1,4 +1,4 @@
-import { onCleanup } from "solid-js";
+import { onPageLeave } from "../../app/navigation/pageHost.tsx";
 import { SettingsPage } from "./SettingsPage";
 import type { SettingsStore } from "../../stores/settingsStore";
 import type { RuntimeCapabilitiesStore } from "../../stores/runtimeCapabilitiesStore";
@@ -16,7 +16,8 @@ interface SettingsWorkspaceProps {
 
 export function SettingsWorkspace(props: SettingsWorkspaceProps) {
   const settings = props.settings;
-  onCleanup(settings.discardDraftChanges);
+  // 未保存的设置草稿只属于这一次访问：离开设置页时丢弃（常驻时隐藏那一刻，否则卸下时）。
+  onPageLeave(settings.discardDraftChanges);
   return (
     <SettingsPage
         onTrustedAccessFocusTargetChange={props.onTrustedAccessFocusTargetChange}

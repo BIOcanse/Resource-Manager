@@ -7,6 +7,10 @@ import { ConfirmDialog, type ConfirmDialogRecord, type ConfirmDialogRequest } fr
 import { useAccessRequestSnapshot } from "../../trustedAccess/AccessRequestSnapshotContext.tsx";
 import { useFrontendRuntime } from "../../../frontendRuntime/FrontendRuntimeContext";
 import { useFrontendWork } from "../../../frontendWork/FrontendWorkContext";
+import { useFrontendVisibilityDemand } from "../../../frontendWork/useFrontendVisibilityDemand";
+import { frontendVisibilitySurface } from "../../../frontendWork/frontendVisibilitySurface";
+import { frontendWorkIds } from "../../../frontendWork/frontendWorkIds";
+import { onPageLeave } from "../../../app/navigation/pageHost.tsx";
 import { useSource } from "../../../frontendRuntime/source/useSource.ts";
 import { sourceCanRender } from "../../../frontendRuntime/source/SourceSnapshot.ts";
 import { acceptSourceCommand } from "../../../frontendRuntime/source/acceptSourceCommand.ts";
@@ -66,8 +70,11 @@ export function TrustedAccessManager(props: {
   const requestById = createMemo(() => new Map(requestList().requests.map((request) => [request.requestId, request])));
   const requestIds = createMemo(() => requestList().requests.map((request) => request.requestId),
     [], { equals: (previous, next) => previous.length === next.length && previous.every((id, index) => id === next[index]) });
+  // 密钥列表随这个分区的可见区域读取：常驻页隐藏时退掉，回来时重读。
+  const workId = frontendWorkIds.settingsTrustedAccess;
+  useFrontendVisibilityDemand(workId, [workId]);
   const keySource = useSource(runtime.sources.settingsReads.accessKeys,
-    () => ({ active: frontendWork.frontendVisible(), refreshIntervalMs: null }));
+    () => ({ active: frontendWork.isNeeded(workId), refreshIntervalMs: null }));
   const keyList = (): KeyListState => {
     const current = keySource.snapshot();
     if (sourceCanRender(current) && current.data) return { status: "ready", snapshot: current.data };
@@ -149,7 +156,11 @@ export function TrustedAccessManager(props: {
     setConfirmRequest(null);
     resolve?.(confirmed);
   };
-  onCleanup(() => finishConfirm(false));
+  // 离开这一页时（常驻页隐藏那一刻，或卸下时）：未答的确认按取消结束；只显示一次的新密钥不再留着，回来时不会再显示。
+  onPageLeave(() => {
+    finishConfirm(false);
+    setCreated(null);
+  });
 
   const availableScopes = () => ready()?.availableScopes ?? [];
   /** 本版本认识、且后端当前允许授予的范围才能勾选。 */
@@ -335,7 +346,7 @@ export function TrustedAccessManager(props: {
   return (
     // 分区标题已经写着“可信访问”，这里不再重复一个标题，只留说明；区域名称仍给读屏。
     <section ref={managerRegion} id="trustedAccessManager" class="settings-row settings-row-block trusted-access-manager"
-      aria-label={props.copy.title} tabindex={-1}>
+      aria-label={props.copy.title} tabindex={-1} {...frontendVisibilitySurface(workId, [workId])}>
       <div class="settings-row-copy">
         <span>{props.copy.description}</span>
       </div>

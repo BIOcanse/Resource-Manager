@@ -7,6 +7,7 @@ import type { ControlAccessLevel } from "../../control/controlTypes.ts";
 import { useFrontendRuntime } from "../../../frontendRuntime/FrontendRuntimeContext";
 import { useFrontendWork } from "../../../frontendWork/FrontendWorkContext.tsx";
 import { useSource } from "../../../frontendRuntime/source/useSource.ts";
+import { frontendWorkIds } from "../../../frontendWork/frontendWorkIds";
 import { sourceCanRender } from "../../../frontendRuntime/source/SourceSnapshot.ts";
 import { acceptSourceCommand } from "../../../frontendRuntime/source/acceptSourceCommand.ts";
 import { DialogRoot } from "../../../ui/primitives/Dialog";
@@ -26,7 +27,9 @@ import { uiText } from "../../../text.ts";
 export function ControlAccessLevelSetting() {
   const runtime = useFrontendRuntime();
   const work = useFrontendWork();
-  const source = useSource(runtime.sources.control.accessLevel, () => ({ active: work.frontendVisible(), refreshIntervalMs: null }));
+  // 随硬件控制分区的可见区域读取（HardwareControlSettings 登记）。
+  const source = useSource(runtime.sources.control.accessLevel,
+    () => ({ active: work.isNeeded(frontendWorkIds.settingsHardwareControl), refreshIntervalMs: null }));
   const text = uiText.control.accessLevel;
   const level = () => sourceCanRender(source.snapshot()) ? source.snapshot().data : null;
   const [pending, setPending] = createSignal<ControlAccessLevel | null>(null);

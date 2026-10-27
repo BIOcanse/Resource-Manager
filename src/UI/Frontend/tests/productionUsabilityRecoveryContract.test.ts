@@ -75,7 +75,13 @@ assert.match(componentCard, /<DetailsButton/);
 assert.doesNotMatch(componentCard, /onContextMenu|MoreActionsButton|softwareContextTargetFromComponent/);
 
 // Draft settings belong to one settings-page visit and read-only credits own no edit toolbar.
-assert.match(settingsWorkspace, /onCleanup\(settings\.discardDraftChanges\)/);
+// 常驻页隐藏时也算离开（onPageLeave 在卸下时同样调用）。
+assert.match(settingsWorkspace, /onPageLeave\(settings\.discardDraftChanges\)/);
+// 只显示一次的新密钥离开这一页时丢掉：常驻页回来时不再显示。
+for (const keyManager of ["TrustedAccessManager", "AiGatewayKeyManager"]) {
+  assert.match(readSource(`features/settings/components/${keyManager}.tsx`), /onPageLeave\([\s\S]{0,80}setCreated\(null\)/,
+    `${keyManager} drops the one-time secret on page leave`);
+}
 // The read-only overlay overview and credits own no edit toolbar either.
 assert.match(settingsPage, /settingsReady\(\) && !readOnlySections\.has\(props\.activeSection\)/);
 assert.match(settingsPage, /readOnlySections: ReadonlySet<SettingsSection> = new Set\(\["performanceOverlay", "trustedAccess", "credits"\]\)/);

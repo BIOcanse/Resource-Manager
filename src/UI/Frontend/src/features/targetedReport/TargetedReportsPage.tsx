@@ -265,6 +265,7 @@ export function TargetedReportsPage(props: {
       </div>
       <p class="targeted-report-note">{uiText.targetedReport.workflow}</p>
       <TargetedRecordingControl layout="toolbar" softwareId={selectedTarget()} hint={toolbarHint()}
+        active={frontendWork.isNeeded(frontendWorkIds.targetedReportsPage)}
         onStarted={(recording) => select(recording.id)}>
         <div class="targeted-recording-field targeted-recording-target">
           <span aria-hidden="true">{uiText.targetedReport.software}</span>

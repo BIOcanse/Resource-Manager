@@ -95,4 +95,14 @@ console.log("diskUsageWorkspaceContract: ok");
 
 assert.match(workspace, /const owner = runtime\.diskUsage/);
 assert.doesNotMatch(workspace, /createSignal<DiskUsage(?:Layout|Volume|ScanSummary)|getDiskUsage(?:Tree|Summary|Volumes)\(/);
-assert.match(workspace, /createEffect\(on\(frontendWork\.frontendVisible, visible => owner\.setActive\(visible\)\)\)/);
+// Kept page: owner activity follows the page's own visible-area demand, not window visibility alone;
+// leaving closes the context menu and drops a menu fetch that resolves afterwards.
+assert.doesNotMatch(workspace, /frontendWork\.frontendVisible/);
+assert.match(workspace, /useFrontendVisibilityDemand\(pageWork, \[pageWork\]\)/);
+assert.match(workspace, /visibilitySurface=\{frontendVisibilitySurface\(pageWork, \[pageWork\]\)\}/);
+assert.match(workspace, /createEffect\(on\(\(\) => frontendWork\.isNeeded\(pageWork\), needed => owner\.setActive\(needed\)\)\)/);
+assert.match(workspace, /onPageLeave\(\(\) => \{\s*menuRequest\+\+;\s*setMenu\(null\);\s*\}\)/);
+assert.match(workspace, /if \(request === menuRequest\) setMenu\(\{ node, x, y \}\)/);
+assert.match(page, /<div class="disk-usage-page" \{\.\.\.props\.visibilitySurface\}>/);
+const plane = readFileSync(new URL("../src/features/diskUsage/DiskUsageTreemapPlane.tsx", import.meta.url), "utf8");
+assert.match(plane, /onPageLeave\(\(\) => \{\s*releasePointer\(\);\s*stopWheelZoom\(\);\s*\}\)/);

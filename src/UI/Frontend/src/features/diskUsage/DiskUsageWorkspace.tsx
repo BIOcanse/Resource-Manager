@@ -1,6 +1,10 @@
 import { createEffect, createSignal, onCleanup, onMount, on, Show } from "solid-js";
 import { openPath, openProperties } from "../../api";
+import { onPageLeave } from "../../app/navigation/pageHost.tsx";
 import { useFrontendWork } from "../../frontendWork/FrontendWorkContext.tsx";
+import { frontendWorkIds } from "../../frontendWork/frontendWorkIds.ts";
+import { frontendVisibilitySurface } from "../../frontendWork/frontendVisibilitySurface.ts";
+import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand.tsx";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
 import { DiskUsageContextMenu } from "./DiskUsageContextMenu";
 import { DiskUsagePage } from "./DiskUsagePage";
@@ -23,8 +27,18 @@ export function DiskUsageWorkspace(props: {
     navigateUp, selectRoot, changeQueryPage
   } = owner;
   const [menu, setMenu] = createSignal<{ node: DiskUsageNode; x: number; y: number } | null>(null);
-  createEffect(on(frontendWork.frontendVisible, visible => owner.setActive(visible)));
+  // 右键菜单要先取单节点事实才打开；每次右键和离开页面都换一号，晚到的回复对不上号就不再打开。
+  let menuRequest = 0;
+  // 页面工作随整页可见区域：页面隐藏（离开常驻页、窗口隐藏）时停，回来时恢复。
+  const pageWork = frontendWorkIds.diskUsagePage;
+  useFrontendVisibilityDemand(pageWork, [pageWork]);
+  createEffect(on(() => frontendWork.isNeeded(pageWork), needed => owner.setActive(needed)));
+  onPageLeave(() => {
+    menuRequest++;
+    setMenu(null);
+  });
   onMount(() => {
+    // 页面不需要时 owner 不活动，readVolumes 直接返回。
     const refreshVolumes = () => void owner.readVolumes();
     window.addEventListener("focus", refreshVolumes);
     onCleanup(() => window.removeEventListener("focus", refreshVolumes));
@@ -43,6 +57,7 @@ export function DiskUsageWorkspace(props: {
         onRetryVolumes={() => void readVolumes()}
         onScan={(scope, mode, target) => void startScan(scope, mode, target)}
         onActionError={props.onActionError}
+        visibilitySurface={frontendVisibilitySurface(pageWork, [pageWork])}
       >
         <Show when={scanFailed()}>
           <p role="alert">{uiText.diskUsage.scanFailed}</p>
@@ -71,8 +86,9 @@ export function DiskUsageWorkspace(props: {
             }}
             onContextMenu={(nodeId, x, y) => {
               // 右键菜单还需要分配字节等单节点事实。
+              const request = ++menuRequest;
               void getDiskUsageNode(runtime.requestClient, nodeId)
-                .then((node) => setMenu({ node, x, y }))
+                .then((node) => { if (request === menuRequest) setMenu({ node, x, y }); })
                 .catch(() => undefined);
             }}
             onViewChanged={onViewChanged}

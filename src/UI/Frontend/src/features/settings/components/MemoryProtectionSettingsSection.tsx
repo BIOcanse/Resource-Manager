@@ -2,6 +2,9 @@ import { createSignal, For, Index, Show, type JSX } from "solid-js";
 import { useFrontendRuntime } from "../../../frontendRuntime/FrontendRuntimeContext.tsx";
 import { usePushSource } from "../../../frontendRuntime/push/usePushSource.ts";
 import { useFrontendWork } from "../../../frontendWork/FrontendWorkContext.tsx";
+import { useFrontendVisibilityDemand } from "../../../frontendWork/useFrontendVisibilityDemand";
+import { frontendVisibilitySurface } from "../../../frontendWork/frontendVisibilitySurface";
+import { frontendWorkIds } from "../../../frontendWork/frontendWorkIds";
 import { createNormalRunningPoint, rebuildMemoryProtectionReserve } from "../../../data/memoryProtection/memoryProtectionApi.ts";
 import type {
   HostMemoryActionRecord,
@@ -51,7 +54,10 @@ export function MemoryProtectionSettingsSection(props: MemoryProtectionSettingsS
   const copy = () => uiText.memoryProtection;
   const runtime = useFrontendRuntime();
   const work = useFrontendWork();
-  const protection = usePushSource(runtime.sources.memoryProtection, () => ({ active: work.frontendVisible() }));
+  // 订阅随这个分区的可见区域开关：常驻页隐藏时退订，回来时重新订阅，订阅的第一帧就是当前值。
+  const workId = frontendWorkIds.settingsMemoryProtection;
+  useFrontendVisibilityDemand(workId, [workId]);
+  const protection = usePushSource(runtime.sources.memoryProtection, () => ({ active: work.isNeeded(workId) }));
   const view = () => protection.snapshot().data;
   const statusData = () => view()?.status ?? null;
   const unavailable = () => protection.snapshot().status === "error" || protection.snapshot().status === "unavailable";
@@ -108,7 +114,7 @@ export function MemoryProtectionSettingsSection(props: MemoryProtectionSettingsS
   const notProvided = () => copy().valueNotProvided;
 
   return (
-    <div class="settings-section-panel memory-protection-settings">
+    <div class="settings-section-panel memory-protection-settings" {...frontendVisibilitySurface(workId, [workId])}>
       <p>{copy().intro}</p>
       <Show when={props.settings} fallback={<ContentState kind="unavailable" title={notProvided()} />}>
         {(settings) => (

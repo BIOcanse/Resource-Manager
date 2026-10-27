@@ -15,6 +15,7 @@ import { useFrontendWork } from "../../frontendWork/FrontendWorkContext.tsx";
 import { frontendWorkIds } from "../../frontendWork/frontendWorkIds.ts";
 import { userFacingErrorMessage } from "../../presentation/userFacingText";
 import { uiText } from "../../text.ts";
+import { onPageLeave } from "../../app/navigation/pageHost.tsx";
 
 /** CPU 基准比例：显示当前 CPU 的默认值与来源，允许设定或清除用户值。 */
 export function CpuBaselineRatioPanel(props: { runtimeEffectsEnabled: boolean }) {
@@ -35,6 +36,8 @@ export function CpuBaselineRatioPanel(props: { runtimeEffectsEnabled: boolean })
   const [saving, setSaving] = createSignal(false);
   const [commandError, setCommandError] = createSignal<string | null>(null);
   const [notice, setNotice] = createSignal<string | null>(null);
+  // 离开页面时放弃未保存的基准比例编辑。
+  onPageLeave(() => setEditing(false));
 
   function startEditing(current: CpuBaselineRatioSettings) {
     setDraft(String(Number(current.ratio.toFixed(4))));

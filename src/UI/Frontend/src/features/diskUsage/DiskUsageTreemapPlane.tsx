@@ -1,4 +1,5 @@
 import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
+import { onPageLeave } from "../../app/navigation/pageHost.tsx";
 import { wheelNotches } from "../../interactions/wheelNotches.ts";
 import { uiText } from "../../text.ts";
 import { observeDocumentAppearance } from "../../presentation/documentAppearance";
@@ -103,6 +104,20 @@ export function DiskUsageTreemapPlane(props: {
     setViewport((current) => panByPixels(current, width, height, deltaX, deltaY));
   }
 
+  // 窗口失焦或离开页面时指针不会再有消息传过来，贴边平移必须就地停住、悬停提示收起，
+  // 否则切回来会发现视图自己跑掉了。
+  const releasePointer = () => {
+    pointerX = -1;
+    pointerY = -1;
+    stopEdgePan();
+    props.onHover(-1, 0, 0);
+  };
+  // 离开页面时缩放过渡也停在原地，隐藏着的页面不再排帧。
+  onPageLeave(() => {
+    releasePointer();
+    stopWheelZoom();
+  });
+
   onMount(() => {
     const observer = new ResizeObserver(() => measure());
     if (container) {
@@ -112,20 +127,12 @@ export function DiskUsageTreemapPlane(props: {
 
     const stopObservingAppearance = observeDocumentAppearance(() => setTheme(readPaintTheme()));
 
-    // 窗口失焦时指针不会再有消息传过来，贴边平移必须就地停住，
-    // 否则切回来会发现视图自己跑掉了。
-    const release = () => {
-      pointerX = -1;
-      pointerY = -1;
-      stopEdgePan();
-      props.onHover(-1, 0, 0);
-    };
-    window.addEventListener("blur", release);
+    window.addEventListener("blur", releasePointer);
 
     onCleanup(() => {
       observer.disconnect();
       stopObservingAppearance();
-      window.removeEventListener("blur", release);
+      window.removeEventListener("blur", releasePointer);
       stopEdgePan();
       stopWheelZoom();
     });

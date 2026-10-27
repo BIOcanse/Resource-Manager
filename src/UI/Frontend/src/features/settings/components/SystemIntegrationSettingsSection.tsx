@@ -1,5 +1,8 @@
 import { ServiceRecoverySetting } from "./ServiceRecoverySetting";
 import { FrontendStartupSetting } from "./FrontendStartupSetting";
+import { useFrontendVisibilityDemand } from "../../../frontendWork/useFrontendVisibilityDemand";
+import { frontendVisibilitySurface } from "../../../frontendWork/frontendVisibilitySurface";
+import { frontendWorkIds } from "../../../frontendWork/frontendWorkIds";
 import {
   defaultForceTerminateHotkey,
   forceTerminateHotkeyActionId
@@ -32,9 +35,12 @@ export function SystemIntegrationSettingsSection(props: SystemIntegrationSetting
   const forceTerminateHotkey = () => systemIntegration().hotkeys?.find(
     (hotkey) => hotkey.actionId === forceTerminateHotkeyActionId
   ) ?? defaultForceTerminateHotkey();
+  // 这个分区的可见区域：登录启动项按它读取（常驻页隐藏时退掉，回来时重读）。
+  const workId = frontendWorkIds.settingsSystemIntegration;
+  useFrontendVisibilityDemand(workId, [workId]);
 
   return (
-    <div class="settings-section-panel">
+    <div class="settings-section-panel" {...frontendVisibilitySurface(workId, [workId])}>
       <ServiceRecoverySetting settings={systemIntegration()} diagnostics={props.serviceRecovery}
         text={props.text.systemIntegration} onChange={props.onServiceRecoveryChange} />
       <FrontendStartupSetting text={props.text.systemIntegration} />

@@ -4,6 +4,7 @@ import { requestLoginStartup } from "../shellLoginStartup.ts";
 import { useFrontendRuntime } from "../../../frontendRuntime/FrontendRuntimeContext.tsx";
 import { useFrontendWork } from "../../../frontendWork/FrontendWorkContext.tsx";
 import { useSource } from "../../../frontendRuntime/source/useSource.ts";
+import { frontendWorkIds } from "../../../frontendWork/frontendWorkIds";
 import { sourceCanRender } from "../../../frontendRuntime/source/SourceSnapshot.ts";
 import { acceptSourceCommand } from "../../../frontendRuntime/source/acceptSourceCommand.ts";
 
@@ -15,7 +16,9 @@ import { acceptSourceCommand } from "../../../frontendRuntime/source/acceptSourc
 export function FrontendStartupSetting(props: { text: SettingsTextBundle["systemIntegration"] }) {
   const runtime = useFrontendRuntime();
   const work = useFrontendWork();
-  const source = useSource(runtime.sources.loginStartup, () => ({ active: work.frontendVisible(), refreshIntervalMs: null }));
+  // 随系统集成分区的可见区域读取（SystemIntegrationSettingsSection 登记）。
+  const source = useSource(runtime.sources.loginStartup,
+    () => ({ active: work.isNeeded(frontendWorkIds.settingsSystemIntegration), refreshIntervalMs: null }));
   const confirmed = () => sourceCanRender(source.snapshot()) ? source.snapshot().data : null;
   const [working, setWorking] = createSignal<"reading" | "writing" | null>(null);
   const phase = () => working() ?? (["idle", "loading"].includes(source.snapshot().status) ? "reading" : "idle");

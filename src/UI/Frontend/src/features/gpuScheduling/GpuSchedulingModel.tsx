@@ -34,6 +34,7 @@ import type { GpuPerformanceScoreItem, GpuSpecializedTelemetrySnapshot, MetricDe
 import { ObservationStateBoundary } from "../../components/ObservationStateNotice";
 import { uiText } from "../../text.ts";
 import { CurrentPageHeading } from "../../app/navigation/currentPageName.tsx";
+import { onPageLeave } from "../../app/navigation/pageHost.tsx";
 import {
   dedicatedMemoryEmptyLabel,
   dedicatedMemoryHint,
@@ -246,6 +247,10 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
   const [saving, setSaving] = createSignal(false);
   const [deliveryPending, setDeliveryPending] = createSignal(false);
   const [scoreDraft, setScoreDraft] = createSignal<Record<string, string>>({});
+  // 离开页面时放弃未保存的显卡评分编辑。
+  onPageLeave(() => {
+    if (editing()) cancelEditing();
+  });
 
   createEffect(() => {
     if (editing()) {

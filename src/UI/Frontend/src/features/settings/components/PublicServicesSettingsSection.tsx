@@ -1,5 +1,8 @@
 import { Show } from "solid-js";
 import { AiGatewayKeyManager } from "./AiGatewayKeyManager";
+import { useFrontendVisibilityDemand } from "../../../frontendWork/useFrontendVisibilityDemand";
+import { frontendVisibilitySurface } from "../../../frontendWork/frontendVisibilitySurface";
+import { frontendWorkIds } from "../../../frontendWork/frontendWorkIds";
 import type { SettingsTextBundle } from "../../../text.ts";
 import type {
   AppAiModelServiceSettings,
@@ -34,9 +37,12 @@ export function PublicServicesSettingsSection(props: PublicServicesSettingsSecti
     endpoint: "http://127.0.0.1:1234",
     autoStartEnabled: false
   };
+  // 这个分区的可见区域：AI 网关密钥列表按它读取（常驻页隐藏时退掉，回来时重读）。
+  const workId = frontendWorkIds.settingsPublicServices;
+  useFrontendVisibilityDemand(workId, [workId]);
 
   return (
-    <div class="settings-section-panel">
+    <div class="settings-section-panel" {...frontendVisibilitySurface(workId, [workId])}>
       <Show when={!props.publicServicesAvailable}>
         <div class="settings-capability-notice" role="status">
           {uiText.misc.publicServicesNotRunning}

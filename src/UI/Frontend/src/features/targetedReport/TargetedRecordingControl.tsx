@@ -15,9 +15,11 @@ const activeRecordingRefreshIntervalMs = 2_000;
  *   没有录制状态要说时，状态行显示 hint（省略时显示 intro）。列表读取失败由报告页统一提示，
  *   这里只提示开始、停止本身的失败。
  * softwareId 为空表示还没有选软件：字段照常显示，开始按钮不可用。
+ * active 是录制列表是否要读：所在页面按自己的可见区域给出；省略时跟随窗口是否可见（软件详情对话框）。
  */
 export function TargetedRecordingControl(props: {
   softwareId: string;
+  active?: boolean;
   onStarted?: (recording: RecordingHeader) => void;
   layout?: "section" | "toolbar";
   hint?: string;
@@ -28,7 +30,7 @@ export function TargetedRecordingControl(props: {
   const toolbar = () => props.layout === "toolbar";
   const [refreshIntervalMs, setRefreshIntervalMs] = createSignal<number | null>(null);
   const recordingsSource = useSource(runtime.sources.targetedRecordings, () => ({
-    active: work.frontendVisible(),
+    active: props.active ?? work.frontendVisible(),
     refreshIntervalMs: refreshIntervalMs()
   }));
   const [maximumSeconds, setMaximumSeconds] = createSignal(600);

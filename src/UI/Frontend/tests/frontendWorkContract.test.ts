@@ -188,6 +188,28 @@ assert.doesNotMatch(
   readSource("features/settings/SettingsPage.tsx"),
   /useFrontendVisibilityDemand|FrontendVisibilityDemandBinding|frontendVisibilitySurface/,
   "settings sections with no continuous work must not register empty visibility owners");
+// 设置页里读后端数据的分区各自登记可见区域（分区的根元素），分区里的数据源按它取得订阅：
+// 常驻页隐藏时退掉，回来时重读；不按窗口可见或常开。
+for (const [section, workId, consumers] of [
+  ["HardwareControlSettings", "settingsHardwareControl", ["ControlAccessLevelSetting"]],
+  ["MemoryProtectionSettingsSection", "settingsMemoryProtection", ["MemoryProtectionSettingsSection"]],
+  ["ReportRuleSettings", "settingsReportRules", ["ReportRuleSettings"]],
+  ["PerformanceOverlaySettingsSection", "settingsPerformanceOverlay", ["PerformanceOverlaySettingsSection"]],
+  ["SystemIntegrationSettingsSection", "settingsSystemIntegration", ["FrontendStartupSetting"]],
+  ["PublicServicesSettingsSection", "settingsPublicServices", ["AiGatewayKeyManager"]],
+  ["TrustedAccessManager", "settingsTrustedAccess", ["TrustedAccessManager"]],
+  ["UpdatesSettingsSection", "settingsUpdates", ["UpdatesSettingsSection"]]
+] as const) {
+  const sectionSource = readSource(`features/settings/components/${section}.tsx`);
+  assert.match(sectionSource, new RegExp(String.raw`const workId = frontendWorkIds\.${workId};\s*useFrontendVisibilityDemand\(workId, \[workId\]\)`),
+    `${section} registers the ${workId} visible area`);
+  assert.match(sectionSource, /\{\.\.\.frontendVisibilitySurface\(workId, \[workId\]\)\}/, `${section} marks its root as the ${workId} surface`);
+  for (const consumer of consumers) {
+    const consumerSource = readSource(`features/settings/components/${consumer}.tsx`);
+    assert.match(consumerSource, new RegExp(String.raw`isNeeded\((?:workId|frontendWorkIds\.${workId})\)`), `${consumer} follows ${workId}`);
+    assert.doesNotMatch(consumerSource, /frontendVisible\(\)|active: true\b/, `${consumer} does not follow window visibility alone`);
+  }
+}
 
 const refreshSchedulerSource = readSource("app/useRuntimeReadContext.ts");
 assert.match(

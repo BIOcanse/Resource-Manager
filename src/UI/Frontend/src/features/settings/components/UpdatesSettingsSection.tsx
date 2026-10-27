@@ -3,6 +3,9 @@ import { Show, createSignal } from "solid-js";
 import { postJson } from "../../../api";
 import { useFrontendRuntime } from "../../../frontendRuntime/FrontendRuntimeContext";
 import { useFrontendWork } from "../../../frontendWork/FrontendWorkContext";
+import { useFrontendVisibilityDemand } from "../../../frontendWork/useFrontendVisibilityDemand";
+import { frontendVisibilitySurface } from "../../../frontendWork/frontendVisibilitySurface";
+import { frontendWorkIds } from "../../../frontendWork/frontendWorkIds";
 import { useSource } from "../../../frontendRuntime/source/useSource.ts";
 import { sourceCanRender } from "../../../frontendRuntime/source/SourceSnapshot.ts";
 import type { ProductVersionCatalog } from "../../../data/settingsReadSources.ts";
@@ -33,8 +36,11 @@ export function UpdatesSettingsSection(props: {
 }) {
   const runtime = useFrontendRuntime();
   const frontendWork = useFrontendWork();
+  // 版本目录随这个分区的可见区域读取：常驻页隐藏时退掉，回来时重读。
+  const workId = frontendWorkIds.settingsUpdates;
+  useFrontendVisibilityDemand(workId, [workId]);
   const source = useSource(runtime.sources.settingsReads.productVersions,
-    () => ({ active: frontendWork.frontendVisible(), refreshIntervalMs: null }));
+    () => ({ active: frontendWork.isNeeded(workId), refreshIntervalMs: null }));
   const catalog = (): ProductVersionCatalog | null => {
     const snapshot = source.snapshot();
     if (sourceCanRender(snapshot)) return snapshot.data;
@@ -89,7 +95,7 @@ export function UpdatesSettingsSection(props: {
         onChange={(checked) => props.onNotificationSwitchChange(path, checked)} />
     </div>;
 
-  return <div class="settings-section-panel">
+  return <div class="settings-section-panel" {...frontendVisibilitySurface(workId, [workId])}>
     <div class="settings-row">
       <div class="settings-row-copy">
         <strong>{text().modeTitle}</strong>

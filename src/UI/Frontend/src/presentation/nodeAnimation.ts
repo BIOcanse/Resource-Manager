@@ -83,11 +83,14 @@ interface Placement {
   readonly scrolls: readonly { path: readonly number[]; left: number; top: number }[];
 }
 
-/** 节点此刻在哪：父元素链（最近的在前）、要不要按外框绝对定位、里面滚过的元素。量不到（不在文档里、不显示）给 null。 */
+/**
+ * 节点此刻在哪：父元素链（最近的在前）、要不要按外框绝对定位、里面滚过的元素。
+ * 量不到给 null：不在文档里，或者不画出来（checkVisibility 为假：自己或上层 display: none、display: contents
+ * 没有盒子、在隐藏的常驻页里——上层 content-visibility: hidden）。
+ */
 function measure(element: HTMLElement, layer?: HTMLElement): Placement | null {
-  if (!element.isConnected || !element.parentElement) return null;
+  if (!element.isConnected || !element.parentElement || !element.checkVisibility()) return null;
   const style = getComputedStyle(element);
-  if (style.display === "none" || style.display === "contents") return null;
   if (layer) {
     const rect = element.getBoundingClientRect();
     const origin = layer.getBoundingClientRect();
@@ -301,12 +304,11 @@ export function exitOnUnmount(element: HTMLElement, options: ExitOptions = {}): 
     for (const root of leavingRoots) if (root.contains(element)) return;
     // 先读（量框、滚过的位置），再停掉里面的进场：停进场会写样式，读在写之后就会在这个任务里强制布局。
     const placement = measure(element, options.layer);
-    stopEntrancesWithin(element);
-    if (!placement) return;
+    const stopped = stopEntrancesWithin(element);
     queueMicrotask(() => {
       // 清理后节点没有被移出文档（不是真的卸下）：不放幽灵。
-      if (element.isConnected) return;
-      place(element, placement, options);
+      if (placement && !element.isConnected) place(element, placement, options);
+      settleStopped(stopped);
     });
   });
 }
@@ -318,8 +320,11 @@ export function exitOnUnmount(element: HTMLElement, options: ExitOptions = {}): 
 export function exitInPlace(element: HTMLElement, options: ExitOptions & { readonly keep?: "copy" | "children" } = {}): void {
   if (slotsAreEmpty()) return;
   const placement = measure(element, options.layer);
-  stopEntrancesWithin(element);
-  if (!placement) return;
+  const stopped = stopEntrancesWithin(element);
+  if (!placement) {
+    queueMicrotask(() => settleStopped(stopped));
+    return;
+  }
   leavingRoots.add(element);
   queueMicrotask(() => leavingRoots.delete(element));
   if (options.keep === "children") {
@@ -328,12 +333,14 @@ export function exitInPlace(element: HTMLElement, options: ExitOptions & { reado
     queueMicrotask(() => {
       shell.append(...nodes.filter((node) => !node.isConnected));
       if (shell.childNodes.length > 0) place(shell, placement, options);
+      settleStopped(stopped);
     });
     return;
   }
   const copy = element.cloneNode(true) as HTMLElement;
   copyLook(element, copy);
   place(copy, placement, options);
+  settleStopped(stopped);
 }
 
 // ---- 磁石带的进场 ----
@@ -361,13 +368,31 @@ function finishEntrance(entrance: Entrance): void {
   interactionRuntime().remove(entrance.instance, performance.now());
 }
 
-/** 节点退出时：它和它里面正在进场的节点不再画（幽灵从这一刻的样子开始退出）。 */
-function stopEntrancesWithin(root: HTMLElement): void {
+/**
+ * 节点退出时：它和它里面正在进场的节点不再画（幽灵从这一刻的样子开始退出），返回停掉的进场。
+ * 停下时进场画到一半的样子（不透明度）先留在节点上，给幽灵用；幽灵放好以后用 settleStopped 收尾。
+ */
+function stopEntrancesWithin(root: HTMLElement): readonly Entrance[] {
+  const stopped: Entrance[] = [];
   for (const entrance of [...entrances.values()]) {
     if (root.contains(entrance.element)) {
       entrances.delete(entrance.element);
       interactionRuntime().remove(entrance.instance, performance.now());
+      stopped.push(entrance);
     }
+  }
+  return stopped;
+}
+
+/**
+ * 停掉的进场里，节点还留在页面上（不是被挪进幽灵、也没有卸下）的，例如离开常驻页时隐藏起来的整页、
+ * 复制幽灵后原地留着的节点：去掉画到一半的样子，节点就是终态。
+ * 节点这时已经重新进场（例如来回切换时同一个节点马上又进来）的，样子归新的进场，不动。
+ */
+function settleStopped(stopped: readonly Entrance[]): void {
+  for (const entrance of stopped) {
+    if (entrances.has(entrance.element)) continue;
+    if (entrance.element.isConnected && !entrance.element.closest("[data-exit-ghost]")) clearLook(entrance.faded);
   }
 }
 
