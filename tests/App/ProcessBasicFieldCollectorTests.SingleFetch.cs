@@ -82,7 +82,7 @@ public sealed partial class ProcessBasicFieldCollectorTests
         => (ResourceManager.App.Infrastructure.Monitoring.NativeItemSamplingSubscriptionTracker<ResourceBreakdownSampleRequest>)
             typeof(WindowsResourceBreakdownSampler).GetField("subscriptions", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(sampler)!;
 
-    private static async Task WaitForProcessDemandDrainedAsync(NetworkTests.Fixture fixture, CancellationToken token)
+    internal static async Task WaitForProcessDemandDrainedAsync(NetworkTests.Fixture fixture, CancellationToken token)
     {
         var tracker = ProcessSubscriptions(fixture.Sampler);
         while (tracker.CaptureManagedSourceState() != (0, 0)) await Task.Delay(1, token);

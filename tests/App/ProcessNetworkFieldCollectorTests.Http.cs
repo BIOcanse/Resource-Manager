@@ -22,6 +22,7 @@ public sealed partial class ProcessNetworkFieldCollectorTests
     [Fact]
     public async Task RealHttpAndUnifiedPushUseTheOriginalOwnerRecoverAndStopWithoutDemand()
     {
+        using var drainDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var phase = 0;
         var captured = DateTimeOffset.UtcNow.AddSeconds(-3);
         var good = Window(captured, Birth, "9007199254740993", "7");
@@ -45,8 +46,9 @@ public sealed partial class ProcessNetworkFieldCollectorTests
         Assert.Equal(captured, initial.RootElement.GetProperty("processFields").GetProperty("capturedAt").GetDateTimeOffset());
         Assert.Equal("9007199254740993", WireValues(initial.RootElement)[0].GetProperty("integerValue").GetString());
         Assert.True(network.Reads > 0);
+        await ProcessBasicFieldCollectorTests.WaitForProcessDemandDrainedAsync(fixture, drainDeadline.Token);
         var initialReads = network.Reads;
-        await Task.Delay(1300);
+        await ProcessBasicFieldCollectorTests.WaitForProcessDemandDrainedAsync(fixture, drainDeadline.Token);
         Assert.Equal(initialReads, network.Reads);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
@@ -72,7 +74,7 @@ public sealed partial class ProcessNetworkFieldCollectorTests
         using var final = await NextFrame(stream, timeout.Token, true);
         await timeout.CancelAsync();
         response.Dispose();
-        await Task.Delay(300);
+        await ProcessBasicFieldCollectorTests.WaitForProcessDemandDrainedAsync(fixture, drainDeadline.Token);
         var stoppedReads = network.Reads;
         using var fresh = JsonDocument.Parse(await client.GetStringAsync(snapshotUrl));
         Assert.Equal("9007199254740993", WireValues(fresh.RootElement)[0].GetProperty("integerValue").GetString());
@@ -82,8 +84,9 @@ public sealed partial class ProcessNetworkFieldCollectorTests
         Assert.Single(WireValues(monitor.RootElement.GetProperty("breakdown")).EnumerateArray());
         Assert.Equal(3.5, WireValues(monitor.RootElement.GetProperty("breakdown"))[0].GetProperty("numericValue").GetDouble());
         Assert.True(network.Reads > beforeMonitor);
+        await ProcessBasicFieldCollectorTests.WaitForProcessDemandDrainedAsync(fixture, drainDeadline.Token);
         var fetchedReads = network.Reads;
-        await Task.Delay(1300);
+        await ProcessBasicFieldCollectorTests.WaitForProcessDemandDrainedAsync(fixture, drainDeadline.Token);
         Assert.Equal(fetchedReads, network.Reads);
         await app.StopAsync();
     }
