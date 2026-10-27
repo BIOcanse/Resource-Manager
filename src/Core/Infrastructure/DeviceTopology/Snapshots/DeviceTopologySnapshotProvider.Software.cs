@@ -44,7 +44,7 @@ public sealed partial class DeviceTopologySnapshotProvider
         var inventory = SoftwareInventory ?? throw new InvalidOperationException("No software inventory is bound to this provider.");
         try
         {
-            var snapshot = await inventory.CaptureInformationAsync(cancellationToken,
+            var snapshot = await inventory.ReadOrCaptureInformationAsync(cancellationToken,
                 action => TryPublishHosted(ownerToken, action, () => collectionCommitted?.Invoke(DeviceTopologySampleScope.Software,
                     new HashSet<string>(StringComparer.Ordinal) { SoftwareItemId })));
             if (!ownerToken.IsActive) return DeviceTopologySampleCompletion.Canceled;

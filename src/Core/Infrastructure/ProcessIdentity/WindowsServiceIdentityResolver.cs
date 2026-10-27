@@ -28,9 +28,22 @@ public sealed class WindowsServiceIdentityResolver : IRuntimeServiceIdentityReso
         this.clock = clock;
     }
 
+    // The service owner publishes one immutable membership/name snapshot. Its
+    // existing five-second acquisition stays Sampled; attribution compares the
+    // published snapshot once per batch instead of probing it for each PID.
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Service membership/name snapshot published")]
+    public object InputVersion { get { lock (gate) return cachedSnapshot; } }
+
+    [ResourceManager.ReadWrite.RuntimeReadCache]
+    public object CaptureInputVersion() => GetServicesByProcess();
+
     public RuntimeAttributionObservation Observe(RuntimeProcessIdentity process)
+        => Observe(process, GetServicesByProcess());
+
+    public RuntimeAttributionObservation Observe(RuntimeProcessIdentity process, object inputVersion)
     {
-        var snapshot = GetServicesByProcess();
+        var snapshot = inputVersion as ServiceSnapshot
+            ?? throw new ArgumentException("Supply the service snapshot captured for this batch.", nameof(inputVersion));
         if (!snapshot.Available)
         {
             return RuntimeAttributionObservation.Unavailable;
@@ -81,6 +94,7 @@ public sealed class WindowsServiceIdentityResolver : IRuntimeServiceIdentityReso
             []));
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Sampled)]
     private ServiceSnapshot GetServicesByProcess()
     {
         var now = clock.GetUtcNow();
@@ -91,18 +105,35 @@ public sealed class WindowsServiceIdentityResolver : IRuntimeServiceIdentityReso
                 return cachedSnapshot;
             }
 
-            cachedSnapshot = ReadServicesByProcess();
+            var next = ReadServicesByProcess();
+            if (!SameSnapshot(cachedSnapshot, next)) cachedSnapshot = next;
             cachedAt = now;
             return cachedSnapshot;
         }
     }
 
+    private static bool SameSnapshot(ServiceSnapshot previous, ServiceSnapshot current)
+    {
+        if (previous.Available != current.Available || previous.ServicesByProcess.Count != current.ServicesByProcess.Count
+            || !previous.UnavailableProcessIds.SetEquals(current.UnavailableProcessIds)) return false;
+        foreach (var (pid, service) in previous.ServicesByProcess)
+        {
+            if (!current.ServicesByProcess.TryGetValue(pid, out var next) || service.StartKey != next.StartKey
+                || service.Observation.Status != next.Observation.Status
+                || service.Observation.Attribution?.Id != next.Observation.Attribution?.Id
+                || service.Observation.Attribution?.Name != next.Observation.Attribution?.Name) return false;
+        }
+        // CreateObservation owns all other service payload fields as constants.
+        return true;
+    }
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Sampled)]
     private static IReadOnlyList<WindowsServiceRecord>? ReadServiceEntries()
     {
         var facts = new WindowsServiceReader().Read(WindowsServiceScope.Win32);
         return facts.Available ? facts.Services : null;
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Sampled)]
     private ServiceSnapshot ReadServicesByProcess()
     {
         var entries = readServices();

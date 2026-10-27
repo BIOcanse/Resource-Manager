@@ -91,7 +91,7 @@ public sealed class ProcessCommandLineFieldTests
         Assert.Equal(2, api.Raw.Frees);
     }
     [Fact]
-    public async Task HostCanonicalPathPreservesEmptyTextThenClearsFailedTextWithoutAttribution()
+    public async Task HostCanonicalPathKeepsFixedEmptyTextWithoutRequeryingOrAttribution()
     {
         var api = new Api(); api.Raw.Text = "";
         using var fixture = new Resource_Manager_APP.Tests.ProcessNetworkFieldCollectorTests.Fixture(
@@ -103,9 +103,9 @@ public sealed class ProcessCommandLineFieldTests
         Assert.Null(first.ProcessFields!.WindowMilliseconds); Assert.Equal(1, api.CommandCalls);
         api.Raw.Fault = "denied";
         var failed = await fixture.Sampler.CaptureSnapshotAsync(request, default);
-        Assert.Null(Basic.Value(failed, Name).StringValue);
+        Assert.Equal("", Basic.Value(failed, Name).StringValue);
         Assert.Equal(0, api.Basic.MemoryCalls + api.Basic.IoCalls + api.Basic.HandleCalls + api.Basic.ImageCalls + api.Basic.SidCalls + api.Basic.ParentCalls);
-        Assert.Equal(2, api.Basic.Closes);
+        Assert.Equal(1, api.Basic.Closes);
     }
     [Fact]
     public async Task DirectBorrowPublicationFailureAndRetirementUseSameOriginalCurrent()
@@ -119,26 +119,27 @@ public sealed class ProcessCommandLineFieldTests
         using var signal = owner.Publications.Subscribe([ProcessMetricDatasetIds.BasicMetrics]);
         api.Raw.Text = "";
         var direct = await owner.Backend.CollectAsync([field], timeout.Token); await signal.WaitAsync(timeout.Token);
-        Assert.Equal("", direct.Single().Value!.Text); Assert.Equal(direct.Single(), owner.Backend.ReadCached(field));
+        Assert.Equal("app.exe --arg", direct.Single().Value!.Text); Assert.Equal(direct.Single(), owner.Backend.ReadCached(field));
         api.Raw.Fault = "denied";
         var failure = await borrow.CollectAsync([field], new Permit(), timeout.Token); await signal.WaitAsync(timeout.Token);
-        Assert.True(failure.Committed); Assert.Null(failure.Readings.Single().Value); Assert.Null(owner.Backend.ReadCached(field).Value);
+        Assert.True(failure.Committed); Assert.Equal("app.exe --arg", failure.Readings.Single().Value!.Text); Assert.Equal("app.exe --arg", owner.Backend.ReadCached(field).Value!.Text);
         api.Raw.Fault = ""; inventory.Empty = true;
         var retired = await borrow.CollectAsync([field], new Permit(), timeout.Token); await signal.WaitAsync(timeout.Token);
         Assert.True(retired.Committed); Assert.Equal(field, retired.Readings.Single().Field); Assert.Null(retired.Readings.Single().Value);
-        Assert.Empty(owner.Backend.Catalog.Devices); Assert.Equal(3, api.CommandCalls);
+        Assert.Empty(owner.Backend.Catalog.Devices); Assert.Equal(1, api.CommandCalls);
     }
     [Theory]
     [InlineData(false)] [InlineData(true)]
     public async Task RejectedPermitOrMidCaptureCancellationRetainsOriginalTextCurrent(bool cancel)
     {
-        var api = new Api(); using var owner = Owner(api, new());
+        var api = new Api(); var inventory = new Inventory(); using var owner = Owner(api, inventory);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await owner.CollectAsync([Name], timeout.Token);
         var field = owner.Backend.Catalog.Fields.Single(item => item.Field.FieldName == Name).Field;
         using var borrow = owner.BorrowSubscriptionCapture(); borrow.Bind([field]);
         var before = owner.Backend.ReadCached(field); api.Raw.Text = "new";
         using var cancellation = new CancellationTokenSource();
+        api.Creation = Basic.Birth + 1; inventory.Birth = (long)api.Creation.Value;
         if (cancel) api.AfterCommand = cancellation.Cancel;
         if (cancel) await Assert.ThrowsAnyAsync<OperationCanceledException>(() => borrow.CollectAsync([field], new Permit(), cancellation.Token).AsTask());
         else Assert.False((await borrow.CollectAsync([field], new Permit { Active = false }, timeout.Token)).Committed);
@@ -163,11 +164,11 @@ public sealed class ProcessCommandLineFieldTests
         Assert.Equal(1, api.CommandCalls);
         Assert.Equal(1, api.Basic.Opens);
         api.Raw.Fault = "";
-        Assert.Null(reader.Read(Environment.ProcessId, (long)Basic.Birth, ProcessMetricReadMask.CommandLine).CommandLine);
-        Assert.Equal(1, api.CommandCalls);
+        Assert.Equal(api.Raw.Text, reader.Read(Environment.ProcessId, (long)Basic.Birth, ProcessMetricReadMask.CommandLine).CommandLine);
+        Assert.Equal(2, api.CommandCalls);
         api.Creation = Basic.Birth + 1;
         Assert.Equal(api.Raw.Text, reader.Read(Environment.ProcessId, (long)api.Creation.Value, ProcessMetricReadMask.CommandLine).CommandLine);
-        Assert.Equal(2, api.CommandCalls);
+        Assert.Equal(3, api.CommandCalls);
     }
 
     private sealed class Api : IWindowsProcessBasicMetricApi
@@ -216,7 +217,13 @@ public sealed class ProcessCommandLineFieldTests
         public void Free(IntPtr buffer) { Frees++; Marshal.FreeHGlobal(buffer); }
     }
     private sealed class Inventory : IWindowsProcessInventoryReader
-    { internal bool Empty; public Process[] GetProcesses() => Empty ? [] : [Process.GetCurrentProcess()]; }
+    {
+        internal bool Empty;
+        internal long Birth = (long)Basic.Birth;
+        public Process[] GetProcesses() => throw new InvalidOperationException();
+        public WindowsProcessInventoryCapture Capture(WindowsProcessInventoryBuffer buffer)
+            => new(Empty ? [] : [new(Environment.ProcessId, new(ProcessReadStatus.Current, Birth), 0, "fixture")]);
+    }
     private sealed class NoEtw : IKernelEtwSessionBroker
     { public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request) => throw new Xunit.Sdk.XunitException("Unexpected ETW"); public KernelEtwSessionSnapshot GetSnapshot() => throw new Xunit.Sdk.XunitException("Unexpected ETW"); }
     private sealed class Permit : IMetricPublicationPermit

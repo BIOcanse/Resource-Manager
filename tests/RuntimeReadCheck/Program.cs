@@ -284,6 +284,21 @@ class C { void Read() => System.Runtime.Intrinsics.X86.X86Base.CpuId(0,0); }
 await Check("unmanaged function pointer", """
 unsafe class C { int Read(delegate* unmanaged<int> api) => api(); }
 """, "RMR006");
+await Check("tray frame cannot query fixed process SID each time", """
+class ProcessFields {
+    string? CaptureFrame() => ReadSid();
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
+    string? ReadSid() => Microsoft.Win32.Registry.GetValue("fixture", "sid", null) as string;
+}
+""", "RMR007");
+await Check("tray frame uses the original fixed-fact cache boundary", """
+class ProcessFields {
+    string? CaptureFrame() => ReadOnce();
+    [ResourceManager.ReadWrite.RuntimeReadCache] string? ReadOnce() => ReadSid();
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
+    string? ReadSid() => Microsoft.Win32.Registry.GetValue("fixture", "sid", null) as string;
+}
+""", "");
 Console.WriteLine($"Passed {assertions} semantic analyzer fixtures.");
 Native("unmarked native API", "void Read() { RegQueryValueExW(key); }", "RMR101");
 Native("native declaration", "// RuntimeRead: EventDriven(\"settings.changed\")\nvoid Read() { RegQueryValueExW(key); }", "");

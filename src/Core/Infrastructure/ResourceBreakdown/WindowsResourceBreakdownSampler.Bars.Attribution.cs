@@ -21,7 +21,7 @@ public sealed partial class WindowsResourceBreakdownSampler
         var capture = await RuntimeProcessAttributionCapture.CaptureAsync(processAttributionCatalogProvider,
             processSamples.Select(process => CreateRuntimeIdentity(process, textSharing)).ToArray(), baseScorePlan, cancellationToken,
             TryGetCachedDirectMatch,
-            CacheDirectMatch);
+            CacheDirectMatch, TryGetCachedFixedInputs);
         var batch = capture.Batch;
         if (batch.Failures.Count != 0)
             logger?.LogWarning("Process attribution could not observe these processes: {FailedProcesses}.",
@@ -104,7 +104,7 @@ public sealed partial class WindowsResourceBreakdownSampler
         if (!cache.TryGet(key, out var cached) || cached?.Identity != identity)
             // A direct match belongs to its original input. Recovery must not
             // overwrite that input while carrying the old result and stamps.
-            cache.Set(key, new CachedProcessAttribution(identity));
+            cache.Set(key, new CachedProcessAttribution(identity) { FixedInputs = cached?.FixedInputs });
     }
 
     private RuntimeProcessAttributionDirectMatch? TryGetCachedDirectMatch(
@@ -158,13 +158,17 @@ public sealed partial class WindowsResourceBreakdownSampler
             catalog.Version,
             catalog.BundledCatalogVersion,
             match,
-            new WeakReference<RuntimeProcessAttributionCatalog>(catalog)));
+            new WeakReference<RuntimeProcessAttributionCatalog>(catalog)) { FixedInputs = match.ExternalInputs?.FixedInputs });
     }
+
+    private RuntimeProcessAttributionFixedInputs? TryGetCachedFixedInputs(RuntimeProcessIdentity process)
+        => process.StartKey is > 0 && processAttributionCache.TryGet(new(process.ProcessId, process.StartKey.Value), out var entry)
+            ? entry?.FixedInputs : null;
 
     private string? ReadHelperCommandLine(ProcessResourceSample process)
     {
         if (process.StartKey is not > 0) return null;
-        return processBasicMetricReader.Read(
+        return processFieldOwner.ReadBasic(
             process.ProcessId, process.StartKey.Value,
             ResourceManager.ReadWrite.ProcessFields.ProcessMetricReadMask.CommandLine).CommandLine;
     }
@@ -184,5 +188,8 @@ public sealed partial class WindowsResourceBreakdownSampler
         RuntimeProcessAttributionCatalogVersion? CatalogVersion = null,
         string? BundledCatalogVersion = null,
         RuntimeProcessAttributionDirectMatch? DirectMatch = null,
-        WeakReference<RuntimeProcessAttributionCatalog>? CatalogSnapshot = null);
+        WeakReference<RuntimeProcessAttributionCatalog>? CatalogSnapshot = null)
+    {
+        internal RuntimeProcessAttributionFixedInputs? FixedInputs { get; init; }
+    }
 }

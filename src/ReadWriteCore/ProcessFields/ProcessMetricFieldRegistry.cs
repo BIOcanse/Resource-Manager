@@ -118,7 +118,7 @@ public static class ProcessMetricFieldRegistry
         Basic(ProcessMetricFieldCode.ParentPid, "process_all_parent_pid_actual", "unsigned64", "pid", ProcessMetricReadMask.ParentPid, ReadVolatility.Fixed),
         Basic(ProcessMetricFieldCode.UserSid, "process_all_user_sid_actual", "string", "text", ProcessMetricReadMask.UserSid, ReadVolatility.Fixed),
         Basic(ProcessMetricFieldCode.ThreadCount, "process_all_thread_count_actual", "unsigned64", "count", ProcessMetricReadMask.ThreadCount, ReadVolatility.Sampled),
-        Basic(ProcessMetricFieldCode.CommandLine, "process_all_command_line_actual", "string", "text", ProcessMetricReadMask.CommandLine, ReadVolatility.Sampled)
+        Basic(ProcessMetricFieldCode.CommandLine, "process_all_command_line_actual", "string", "text", ProcessMetricReadMask.CommandLine, ReadVolatility.Fixed)
     ];
     private static readonly FrozenDictionary<string, ProcessMetricFieldDefinition> ByName =
         Definitions.ToFrozenDictionary(static field => field.Name, StringComparer.OrdinalIgnoreCase);

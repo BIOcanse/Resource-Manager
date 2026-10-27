@@ -5,6 +5,7 @@ namespace ResourceManager.ReadWrite.Windows.Processes;
 
 internal sealed partial class WindowsProcessBasicMetricNativeApi
 {
+    [RuntimeRead(ReadVolatilityKind.Fixed)]
     public string? CommandLine(IntPtr handle) => WindowsProcessCommandLineQuery.Read(handle);
 }
 
@@ -43,6 +44,7 @@ internal static class WindowsProcessCommandLineQuery
         if (result.Reason is not null) System.Diagnostics.Debug.WriteLine($"Process command line: {result.Reason}");
         return result.Value;
     }
+    [RuntimeRead(ReadVolatilityKind.Fixed)]
     internal static Result ReadResult(IntPtr process, IWindowsProcessCommandLineCalls calls)
     {
         Result Missing(string reason) => calls.IsExited(process)

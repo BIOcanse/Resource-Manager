@@ -47,6 +47,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             IRuntimeSoftwareObservationSource runtimeSoftware,
             IResourceBreakdownPushSource resources,
             IPortableSoftwareDiscovery portableSoftwareDiscovery,
+            IRuntimeProcessAttributionCatalogProvider processAttributionCatalogProvider,
             CancellationToken cancellationToken) =>
         {
             if (!TryReadInteractiveCaller(context, out var caller))
@@ -64,6 +65,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             var records = refresh == true
                 ? await softwareRegistry.RefreshSoftwareAsync(caller.WindowsSid, cancellationToken, running)
                 : await softwareRegistry.GetSoftwareAsync(caller.WindowsSid, cancellationToken, running);
+            if (refresh == true) await processAttributionCatalogProvider.InvalidateSoftwareSnapshotAsync();
             return Results.Ok(await softwareIssueProjection.ProjectAsync(
                 records,
                 cancellationToken));

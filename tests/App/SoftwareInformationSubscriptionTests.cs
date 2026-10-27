@@ -96,7 +96,7 @@ public sealed class SoftwareInformationSubscriptionTests
     }
 
     [Fact]
-    public async Task RealWorkerSharesOneSoftwareItemUsesHighestDemandAndRestoresSlowerFrequency()
+    public async Task RealWorkerKeepsDemandButOnlyExplicitRefreshReacquiresSoftware()
     {
         using var fixture = new Fixture();
         using var timeout = new CancellationTokenSource(Deadline);
@@ -115,9 +115,12 @@ public sealed class SoftwareInformationSubscriptionTests
             medium = fixture.Provider.AcquireSoftwareInformationSubscription("medium", TimeSpan.FromSeconds(2));
             fast = fixture.Provider.AcquireSoftwareInformationSubscription("fast", TimeSpan.FromSeconds(1));
             Assert.Equal((3u, 3u, 1u, 1000UL), fixture.ReadDemand());
-            Assert.True(await stream.MoveNextAsync().AsTask().WaitAsync(Deadline));
-            Assert.True(await stream.MoveNextAsync().AsTask().WaitAsync(Deadline));
-            Assert.InRange(fixture.Scans, 3, 4);
+            await Task.Delay(1200, timeout.Token);
+            Assert.Equal(1, fixture.Scans); // even the fast subscription consumes current
+            var changed = stream.MoveNextAsync().AsTask();
+            await fixture.Inventory.RefreshInstalledSoftwareAsync(timeout.Token);
+            Assert.True(await changed.WaitAsync(Deadline));
+            Assert.Equal(2, fixture.Scans);
             fast.Dispose(); fast = null;
             Assert.Equal((2u, 2u, 1u, 2000UL), fixture.ReadDemand());
             medium.Dispose(); medium = null;
@@ -235,12 +238,11 @@ public sealed class SoftwareInformationSubscriptionTests
         await fixture.Provider.StartAsync(timeout.Token);
         try
         {
-            // The worker's first sample fills the original current. The first stream result arrives on its
-            // own two-second trigger, after the inventory has been queried again by that same worker.
+            // The field trigger delivers the original current; only explicit refresh scans.
             Assert.True(await firstDelivery.WaitAsync(Deadline));
             var firstPeriodic = Assert.Single(stream.Current);
-            Assert.True(fixture.Scans >= 2);
-            Assert.NotEqual("scan-1", firstPeriodic.Value?.Text);
+            Assert.Equal(1, fixture.Scans);
+            Assert.Equal("scan-1", firstPeriodic.Value?.Text);
             Assert.Equal(firstPeriodic, composed.Reads.ReadCached(name.Field));
 
             var nextPeriodic = stream.MoveNextAsync().AsTask();
@@ -253,13 +255,13 @@ public sealed class SoftwareInformationSubscriptionTests
 
             Assert.True(await nextPeriodic.WaitAsync(Deadline));
             var nextWorkerReading = Assert.Single(stream.Current);
-            Assert.Equal(beforeDirect + 2, fixture.Scans);
-            Assert.NotEqual(directReading.Value?.Text, nextWorkerReading.Value?.Text);
+            Assert.Equal(beforeDirect + 1, fixture.Scans);
+            Assert.Equal(directReading.Value?.Text, nextWorkerReading.Value?.Text);
             Assert.Equal(nextWorkerReading, composed.Reads.ReadCached(name.Field));
             Assert.Same(fixture.Inventory, fixture.Provider.SoftwareInventory);
             Assert.Equal(fixture.Inventory.ReadInformation().ObservedAt, nextWorkerReading.ObservedAt);
             _ = await fixture.Inventory.GetInstalledSoftwareAsync(timeout.Token);
-            _ = composed.Reads.Catalog; _ = composed.Reads.ReadCached(name.Field); Assert.Equal(beforeDirect + 2, fixture.Scans);
+            _ = composed.Reads.Catalog; _ = composed.Reads.ReadCached(name.Field); Assert.Equal(beforeDirect + 1, fixture.Scans);
             Assert.Equal(0, fixture.Topology.Reads + fixture.Acpi.Reads + fixture.Store.Saves + processApi.Opens + cpu.Sampler.CaptureCount);
         }
         finally { await timeout.CancelAsync(); await fixture.Provider.StopAsync(default).WaitAsync(Deadline); }

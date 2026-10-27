@@ -49,8 +49,10 @@ public sealed class RuntimeProcessAttributionPipeline : IDisposable
         Func<RuntimeProcessIdentity, RuntimeProcessAttributionPipeline> selectPipeline,
         CancellationToken cancellationToken = default,
         IReadOnlyDictionary<int, RuntimeProcessAttributionDirectMatch>? cachedDirectMatches = null,
-        bool captureDirectMatches = false)
+        bool captureDirectMatches = false,
+        IReadOnlyDictionary<int, RuntimeProcessAttributionFixedInputs>? cachedFixedInputs = null)
     {
+        var versions = new Dictionary<NativeRuntimeProcessAttributionResolver, RuntimeAttributionInputVersions>();
         var resolved = new Dictionary<int, RuntimeSoftwareAttribution>();
         var sources = new Dictionary<int, uint>();
         Dictionary<int, RuntimeProcessAttributionDirectMatch>? directMatches =
@@ -63,15 +65,17 @@ public sealed class RuntimeProcessAttributionPipeline : IDisposable
             try
             {
                 var resolver = selectPipeline(process).resolver;
+                if (!versions.TryGetValue(resolver, out var inputs))
+                    versions.Add(resolver, inputs = resolver.CaptureExternalInputVersions());
                 if (cachedDirectMatches?.TryGetValue(process.ProcessId, out var cachedMatch) == true
-                    && resolver.AreExternalInputsCurrent(process, cachedMatch.ExternalInputs))
+                    && NativeRuntimeProcessAttributionResolver.AreExternalInputsCurrent(inputs, cachedMatch.ExternalInputs))
                 {
                     if (directMatches is not null) directMatches[process.ProcessId] = cachedMatch;
                     resolved[process.ProcessId] = cachedMatch.Attribution;
                     sources[process.ProcessId] = cachedMatch.Source;
                     continue;
                 }
-                var attribution = resolver.Resolve(process, out var source, out var externalInputs);
+                var attribution = resolver.Resolve(process, out var source, out var externalInputs, inputs, cachedFixedInputs?.GetValueOrDefault(process.ProcessId));
                 var directMatch = new RuntimeProcessAttributionDirectMatch(attribution, source, externalInputs);
                 if (directMatches is not null && NativeRuntimeProcessAttributionResolver.HasStablePathInput(process))
                     directMatches[process.ProcessId] = directMatch;
@@ -185,6 +189,8 @@ internal sealed class RuntimeProcessAttributionExternalInputs(
     RuntimeAttributionObservation system,
     RuntimeAttributionObservation? productRoot = null)
 {
+    internal RuntimeAttributionInputVersions? Versions { get; init; }
+    internal RuntimeProcessAttributionFixedInputs? FixedInputs { get; init; }
     internal RuntimeAttributionObservation Package { get; } = package;
     internal RuntimeAttributionObservation Service { get; } = service;
     internal RuntimeAttributionObservation Root { get; } = root;

@@ -98,16 +98,16 @@ public sealed class WindowsProcessFieldOwnerLibraryIntegrationTests
     public async Task RetiredOwnerRejectsInFlightCommitButReturnsItsActualCaptureAndRetainsDisplay()
     {
         var api = new Basic.Api(); using var owner = Owner(api, new());
-        var first = await owner.CollectAsync(["process_all_image_path_actual"]);
+        var first = await owner.CollectAsync(["process_all_working_set_actual"]);
         using var entered = new ManualResetEventSlim(); using var release = new ManualResetEventSlim();
         owner.Inventory = new Inventory(() => { entered.Set(); if (!release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException(); return [Process.GetCurrentProcess()]; });
-        var pending = Task.Run(() => owner.CollectAsync(["process_all_image_path_actual"]));
+        var pending = Task.Run(() => owner.CollectAsync(["process_all_working_set_actual"]));
         try
         {
-            Assert.True(entered.Wait(TimeSpan.FromSeconds(5))); api.Image = "changed"; owner.Dispose(); release.Set();
+            Assert.True(entered.Wait(TimeSpan.FromSeconds(5))); api.MemoryValue = api.MemoryValue! with { WorkingSet = 17 }; owner.Dispose(); release.Set();
             var captured = await pending.WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.Equal("changed", captured.Processes.Single().Values.Single().StringValue);
-            Assert.Equal(first.Processes.Single().Values.Single().StringValue, owner.ReadCachedSnapshot()!.Processes.Single().Values.Single().StringValue);
+            Assert.Equal(MetricInteger.Parse("17"), captured.Processes.Single().Values.Single().IntegerValue);
+            Assert.Equal(first.Processes.Single().Values.Single().IntegerValue, owner.ReadCachedSnapshot()!.Processes.Single().Values.Single().IntegerValue);
         }
         finally { release.Set(); await pending.WaitAsync(TimeSpan.FromSeconds(10)); }
     }

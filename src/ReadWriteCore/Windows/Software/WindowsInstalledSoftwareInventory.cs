@@ -55,7 +55,7 @@ public sealed partial class WindowsInstalledSoftwareInventory : IInstalledSoftwa
             async (selection, permit, token) =>
             {
                 var committed = false;
-                var snapshot = await CaptureInformationAsync(token, commit =>
+                var snapshot = await ReadOrCaptureInformationAsync(token, commit =>
                 {
                     committed = permit.TryPublish(commit);
                     return committed;
@@ -63,6 +63,22 @@ public sealed partial class WindowsInstalledSoftwareInventory : IInstalledSoftwa
                 return new(InformationReadWriteBackend.Read(selection, snapshot), committed,
                     InformationCollectionBorrow.QueriedFieldsAfterSourceRead(selection, true));
             }, FieldCollectionSourceKind.SourceQuery);
+    /// <summary>EventDriven subscription acquisition: initialize once, then consume
+    /// the current inventory until explicit refresh commits a replacement.</summary>
+    [RuntimeReadCache]
+    public async ValueTask<DeviceInformationSnapshot> ReadOrCaptureInformationAsync(CancellationToken cancellationToken,
+        Func<Action, bool>? tryPublish = null)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (Volatile.Read(ref current) is not null)
+        {
+            tryPublish?.Invoke(static () => { });
+            return ReadInformation();
+        }
+        await LoadAsync(false, userSid: null, cancellationToken, tryPublish, clearFieldsOnFailure: true);
+        return ReadInformation();
+    }
+
     public DeviceInformationSnapshot ReadInformation()
     {
         var snapshot = Volatile.Read(ref current);
@@ -71,6 +87,7 @@ public sealed partial class WindowsInstalledSoftwareInventory : IInstalledSoftwa
             : DeviceInformationSnapshot.Empty;
     }
 
+    [RuntimeRead(ReadVolatilityKind.EventDriven, "Explicit installed software refresh requested")]
     public async ValueTask<DeviceInformationSnapshot> CaptureInformationAsync(CancellationToken cancellationToken,
         Func<Action, bool>? tryPublish = null)
     {
@@ -304,7 +321,7 @@ public sealed partial class WindowsInstalledSoftwareInventory : IInstalledSoftwa
     }
 
     [SupportedOSPlatform("windows")]
-    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Installed software registration changed")]
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Explicit installed software refresh requested")]
     private static void ReadUninstallRoot(
         RegistryInventoryRoot root,
         Dictionary<string, InstalledSoftwareEntry> records,
@@ -363,7 +380,7 @@ public sealed partial class WindowsInstalledSoftwareInventory : IInstalledSoftwa
     }
 
     [SupportedOSPlatform("windows")]
-    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Installed software registration changed")]
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Explicit installed software refresh requested")]
     private static InstalledSoftwareEntry? ReadEntry(
         RegistryInventoryRoot root,
         string subKeyName,
@@ -416,12 +433,12 @@ public sealed partial class WindowsInstalledSoftwareInventory : IInstalledSoftwa
     }
 
     [SupportedOSPlatform("windows")]
-    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Installed software registration changed")]
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Explicit installed software refresh requested")]
     internal static ulong? ReadEstimatedSizeBytes(RegistryKey key)
         => ReadEstimatedSizeBytes(() => key.GetValue("EstimatedSize"), () => key.GetValueKind("EstimatedSize"));
 
     [SupportedOSPlatform("windows")]
-    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Installed software registration changed")]
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Explicit installed software refresh requested")]
     internal static ulong? ReadEstimatedSizeBytes(Func<object?> readValue, Func<RegistryValueKind> readKind)
     {
         try

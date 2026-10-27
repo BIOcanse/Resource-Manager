@@ -66,6 +66,7 @@ public sealed class WindowsSystemProcessClassifier : IRuntimeSystemProcessClassi
         "PhoneExperienceHost"
     };
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     public RuntimeAttributionObservation Observe(RuntimeProcessIdentity process)
     {
         if (process.ProcessId <= 4 || CoreSystemProcessNames.Contains(process.Name))

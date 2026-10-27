@@ -66,22 +66,23 @@ public sealed partial class WindowsProcessFieldOwner
                 // A live identity failure must remain visible to its owner.
                 unidentified = true;
             }
-            if (!captured) { skipped++; continue; }
             if (key is { } identity) live.Add(identity);
+            if (!captured) { skipped++; continue; }
             if (includeCpu && hasCpu(sample) && key is { } cpuIdentity) cpu[cpuIdentity] = time;
             samples.Add(sample);
         }
-        BasicReader.PruneCommandLineFailures(live);
+        PruneFixedFields(live);
         afterCapture?.Invoke(samples, live);
         var interval = tracker.UpdateInterval(includeCpu, now, cpu, Environment.ProcessorCount);
         return new(SamplingObservationStatus.Current, checked((uint)processes.Length), excluded, skipped, samples, now, interval)
         { HasUnidentifiedProcesses = unidentified };
     }
     internal sealed record CapturedProcessBasic(long? Creation, ProcessBasicMetricObservation Basic);
+    [RuntimeReadCache]
     internal IReadOnlyDictionary<WindowsProcessInventoryEntry, CapturedProcessBasic> ReadBasicBatch(WindowsProcessInventoryEntry[] processes,
         Func<WindowsProcessInventoryEntry, long?, ProcessMetricReadMask> selectMask, ProcessInstanceTextSharing? textSharing = null)
     {
-        var selected = new List<(WindowsProcessInventoryEntry Process, long? Creation, ProcessBasicMetricRequest Request)>();
+        var selected = new List<(WindowsProcessInventoryEntry Process, long? Creation, ProcessMetricReadMask Requested, ProcessBasicMetricRequest Request)>();
         foreach (var process in processes)
         {
             try
@@ -90,7 +91,7 @@ public sealed partial class WindowsProcessFieldOwner
                 var creation = process.Creation.Creation;
                 var requestMask = selectMask(process, creation);
                 if (process.Source is null && process.Creation.HandleCount is not null) requestMask &= ~ProcessMetricReadMask.HandleCount;
-                selected.Add((process, creation, new(process.Id, creation ?? 0, requestMask)));
+                selected.Add((process, creation, requestMask, new(process.Id, creation ?? 0, SelectUncachedFields(process.Id, creation ?? 0, requestMask))));
             }
             catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException) { }
         }
@@ -102,7 +103,7 @@ public sealed partial class WindowsProcessFieldOwner
         var readings = BasicReader.ReadBatch(selected.Select(row => row.Request).ToArray(), threadCounts);
         return selected.Select((row, index) =>
         {
-            var basic = readings[index];
+            var basic = ReuseFixedFields(row.Process.Id, row.Creation ?? 0, row.Requested, row.Request.Mask, readings[index]);
             if (row.Process.Source is null && row.Process.Creation.HandleCount is { } nativeHandles) basic = basic with { HandleCount = nativeHandles };
             if (row.Creation is { } birth && textSharing is not null) basic = textSharing.Share(new(row.Process.Id, birth), basic);
             return (row.Process, Value: new CapturedProcessBasic(row.Creation, basic));
@@ -122,7 +123,7 @@ public sealed partial class WindowsProcessFieldOwner
             var captured = prepared?.GetValueOrDefault(process);
             var creation = captured is null ? creationRead.Creation : captured.Creation;
             key = creation is { } birth ? new(pid, birth) : null;
-            var basic = prepared is null ? BasicReader.Read(pid, creation ?? 0, process.Source is null && creationRead.HandleCount is not null ? mask & ~ProcessMetricReadMask.HandleCount : mask)
+            var basic = prepared is null ? ReadBasic(pid, creation ?? 0, process.Source is null && creationRead.HandleCount is not null ? mask & ~ProcessMetricReadMask.HandleCount : mask)
                 : captured?.Basic ?? ProcessBasicMetricObservation.Unavailable;
             if (process.Source is null && mask.HasFlag(ProcessMetricReadMask.HandleCount) && creationRead.HandleCount is { } nativeHandles)
                 basic = basic with { HandleCount = nativeHandles };

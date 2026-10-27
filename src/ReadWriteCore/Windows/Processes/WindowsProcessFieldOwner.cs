@@ -194,6 +194,7 @@ public sealed partial class WindowsProcessFieldOwner : IDisposable
     private void ReleaseResources()
     {
         inventoryBuffer.Dispose();
+        fixedFields.Clear();
         HostedIo.Clear();
         DirectIo.Clear();
         try { network?.Dispose(); }

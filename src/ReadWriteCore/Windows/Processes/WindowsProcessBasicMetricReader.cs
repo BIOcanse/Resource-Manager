@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using ResourceManager.App.Infrastructure.ResourceBreakdown;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
@@ -45,29 +44,12 @@ internal interface IWindowsProcessBasicMetricApi
 }
 
 /// <summary>Explicit read of the selected counters for one process creation identity.
-/// Uncached reads open, verify and release their own handle; unreadable command
-/// lines are remembered for the exact creation identity until inventory retirement.</summary>
+/// Reads open, verify and release their own handle. The original process field owner
+/// retains Fixed fields; this raw reader retains no per-instance state.</summary>
 public sealed class WindowsProcessBasicMetricReader
 {
     private readonly IWindowsProcessBasicMetricApi api;
     private readonly TimeProvider clock;
-    private readonly ConcurrentDictionary<ProcessInstanceKey, byte> unreadableCommandLines = new();
-
-    internal void PruneCommandLineFailures(IReadOnlySet<ProcessInstanceKey> live)
-    {
-        foreach (var key in unreadableCommandLines.Keys)
-            if (!live.Contains(key)) unreadableCommandLines.TryRemove(key, out _);
-    }
-
-    private string? ReadCommandLine(IntPtr handle, int processId, long creation)
-    {
-        var key = new ProcessInstanceKey(processId, creation);
-        if (unreadableCommandLines.ContainsKey(key)) return null;
-        var value = ReadCategory(() => api.CommandLine(handle));
-        if (value is null) unreadableCommandLines.TryAdd(key, 0);
-        return value;
-    }
-
     public WindowsProcessBasicMetricReader() : this(new WindowsProcessBasicMetricNativeApi()) { }
 
     internal WindowsProcessBasicMetricReader(IWindowsProcessBasicMetricApi api, TimeProvider? clock = null)
@@ -177,8 +159,6 @@ public sealed class WindowsProcessBasicMetricReader
     private ProcessBasicMetricObservation ReadSingle(int processId, long creationFileTime, ProcessMetricReadMask mask)
     {
         if (mask == ProcessMetricReadMask.None || processId <= 0 || creationFileTime <= 0) return ProcessBasicMetricObservation.Unavailable;
-        if (mask == ProcessMetricReadMask.CommandLine && unreadableCommandLines.ContainsKey(new(processId, creationFileTime)))
-            return ProcessBasicMetricObservation.Unavailable;
         var handle = IntPtr.Zero; var released = true; var value = ProcessBasicMetricObservation.Unavailable;
         try
         {
@@ -207,7 +187,7 @@ public sealed class WindowsProcessBasicMetricReader
         var handles = mask.HasFlag(ProcessMetricReadMask.HandleCount) ? ReadHandleCount(handle) : null;
         var image = mask.HasFlag(ProcessMetricReadMask.ImagePath) ? ReadCategory(() => api.ImagePath(handle)) : null;
         var sid = mask.HasFlag(ProcessMetricReadMask.UserSid) ? ReadCategory(() => api.UserSid(handle)) : null;
-        var commandLine = mask.HasFlag(ProcessMetricReadMask.CommandLine) ? ReadCommandLine(handle, processId, creationFileTime) : null;
+        var commandLine = mask.HasFlag(ProcessMetricReadMask.CommandLine) ? ReadCategory(() => api.CommandLine(handle)) : null;
         var parent = mask.HasFlag(ProcessMetricReadMask.ParentPid) ? ReadParentPid(handle) : null;
         if (!api.Times(handle, out var after, out _, out _) || after != created) return ProcessBasicMetricObservation.Unavailable;
         if (mask.HasFlag(ProcessMetricReadMask.ThreadCount))

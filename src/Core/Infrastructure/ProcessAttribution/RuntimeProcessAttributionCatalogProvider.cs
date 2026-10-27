@@ -1,4 +1,5 @@
 using ResourceManager.App.Application.Adaptation;
+using ResourceManager.App.Application.Management;
 using ResourceManager.App.Application.Controlled;
 using ResourceManager.App.Application.ProcessAttribution;
 using ResourceManager.App.Application.Software;
@@ -18,9 +19,10 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
     IRuntimeSystemProcessClassifier systemProcessClassifier,
     ISoftwareIdentityCatalog softwareIdentityCatalog,
     HostManagerSoftwareIdentityOwner softwareIdentityOwner,
-    IWindowsGameListSource windowsGameListSource) : IRuntimeProcessAttributionCatalogProvider, IDisposable
+    IWindowsGameListSource windowsGameListSource,
+    IManagementInventoryRevisionOwner? inventoryRevisionOwner = null, TimeProvider? clock = null) : IRuntimeProcessAttributionCatalogProvider, IDisposable
 {
-    private static readonly TimeSpan SnapshotLifetime = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan IdleScopeLifetime = TimeSpan.FromSeconds(8);
     private readonly SemaphoreSlim refreshGate = new(1, 1);
     private readonly object lifecycleGate = new();
     private readonly Dictionary<string, CatalogScopeState> scopes = new(StringComparer.Ordinal);
@@ -35,9 +37,11 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
     public async Task<RuntimeProcessAttributionCatalogLease> AcquireCatalogAsync(string? windowsSid, CancellationToken cancellationToken)
     {
         var scope = RuntimeProcessAttributionCapture.CatalogScope(windowsSid);
-        var software = await GetSoftwareAsync(scope, cancellationToken);
         var adapted = await adapterRegistry.GetAllAsync(cancellationToken);
         var controlled = controlledRegistry.GetAll();
+        var adaptedVersion = RuntimeProcessAttributionCatalogVersionFactory.CreateAdaptedVersion(adapted);
+        var controlledVersion = RuntimeProcessAttributionCatalogVersionFactory.CreateControlledVersion(controlled);
+        var software = await GetSoftwareAsync(scope, adaptedVersion, controlledVersion, cancellationToken);
         var retired = new List<CatalogHolder>();
         RuntimeProcessAttributionCatalogLease result;
         lock (lifecycleGate)
@@ -81,10 +85,10 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
                 if (state.Current is { } old) retired.Add(old);
                 state.Current = holder;
             }
-            state.LastAcquiredAt = DateTimeOffset.UtcNow;
+            state.LastAcquiredAt = (clock ?? TimeProvider.System).GetUtcNow();
             // Idle owner catalogs do not accumulate for the lifetime of the service.
             foreach (var idle in scopes.Where(pair => pair.Key != scope
-                && state.LastAcquiredAt - pair.Value.LastAcquiredAt >= SnapshotLifetime).ToArray())
+                && state.LastAcquiredAt - pair.Value.LastAcquiredAt >= IdleScopeLifetime).ToArray())
             {
                 if (idle.Value.Current is { } holder) retired.Add(holder);
                 scopes.Remove(idle.Key);
@@ -113,7 +117,7 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
                 foreach (var state in scopes.Values)
                 {
                     state.CachedSoftware = null;
-                    state.CachedSoftwareAt = default;
+                    state.CachedSoftwareRevision = null;
                 }
                 softwareSnapshotGeneration = checked(softwareSnapshotGeneration + 1);
             }
@@ -140,10 +144,12 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
         foreach (var holder in retired) holder.Retire();
     }
 
-    private async Task<SoftwareSnapshot> GetSoftwareAsync(string scope, CancellationToken cancellationToken)
+    [ResourceManager.ReadWrite.RuntimeReadCache]
+    private async Task<SoftwareSnapshot> GetSoftwareAsync(string scope, RuntimeProcessAttributionSourceVersion adapted,
+        RuntimeProcessAttributionSourceVersion controlled, CancellationToken cancellationToken)
     {
-        var now = DateTimeOffset.UtcNow;
-        if (TryGetCachedSoftware(scope, now, out var software))
+        var revision = inventoryRevisionOwner?.Current.SoftwareRevision;
+        if (TryGetCachedSoftware(scope, revision, adapted, controlled, out var software))
         {
             return software;
         }
@@ -151,21 +157,19 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
         await refreshGate.WaitAsync(cancellationToken);
         try
         {
-            now = DateTimeOffset.UtcNow;
-            if (TryGetCachedSoftware(scope, now, out software))
+            revision = inventoryRevisionOwner?.Current.SoftwareRevision;
+            if (TryGetCachedSoftware(scope, revision, adapted, controlled, out software))
             {
                 return software;
             }
 
-            var records = await softwareRegistry.GetSoftwareAsync(scope, cancellationToken);
-            software = new SoftwareSnapshot(records,
-                WindowsGameListPaths.Normalize(windowsGameListSource.ReadExecutablePaths()));
+            software = await ReadSoftwareSnapshotAsync(scope, adapted, controlled, cancellationToken);
             lock (lifecycleGate)
             {
                 ObjectDisposedException.ThrowIf(disposed, this);
                 var state = GetScope(scope);
                 state.CachedSoftware = software;
-                state.CachedSoftwareAt = DateTimeOffset.UtcNow;
+                state.CachedSoftwareRevision = revision;
             }
             return software;
         }
@@ -175,16 +179,29 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
         }
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven,
+        "Management software revision published or InvalidateSoftwareSnapshotAsync")]
+    private async Task<SoftwareSnapshot> ReadSoftwareSnapshotAsync(string scope, RuntimeProcessAttributionSourceVersion adapted,
+        RuntimeProcessAttributionSourceVersion controlled, CancellationToken cancellationToken)
+    {
+        var bundledVersion = softwareIdentityCatalog.Version;
+        var records = await softwareRegistry.GetSoftwareAsync(scope, cancellationToken);
+        return new(records, WindowsGameListPaths.Normalize(windowsGameListSource.ReadExecutablePaths()),
+            adapted, controlled, bundledVersion);
+    }
+
     private bool TryGetCachedSoftware(
         string scope,
-        DateTimeOffset now,
-        out SoftwareSnapshot software)
+        string? revision, RuntimeProcessAttributionSourceVersion adapted,
+        RuntimeProcessAttributionSourceVersion controlled, out SoftwareSnapshot software)
     {
         lock (lifecycleGate)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
             if (scopes.TryGetValue(scope, out var state) && state.CachedSoftware is not null
-                && now - state.CachedSoftwareAt < SnapshotLifetime)
+                && StringComparer.Ordinal.Equals(state.CachedSoftwareRevision, revision)
+                && state.CachedSoftware.Adapted == adapted && state.CachedSoftware.Controlled == controlled
+                && StringComparer.Ordinal.Equals(state.CachedSoftware.BundledVersion, softwareIdentityCatalog.Version))
             {
                 software = state.CachedSoftware;
                 return true;
@@ -197,7 +214,10 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
 
     private sealed record SoftwareSnapshot(
         IReadOnlyList<SoftwareRecord> Software,
-        IReadOnlySet<string> WindowsGamePaths);
+        IReadOnlySet<string> WindowsGamePaths,
+        RuntimeProcessAttributionSourceVersion Adapted,
+        RuntimeProcessAttributionSourceVersion Controlled,
+        string BundledVersion);
 
     // Accessed only under lifecycleGate.
     private CatalogScopeState GetScope(string scope)
@@ -210,7 +230,7 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
     {
         internal CatalogHolder? Current;
         internal SoftwareSnapshot? CachedSoftware;
-        internal DateTimeOffset CachedSoftwareAt;
+        internal string? CachedSoftwareRevision;
         internal DateTimeOffset LastAcquiredAt;
     }
 

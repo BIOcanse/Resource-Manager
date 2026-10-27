@@ -187,7 +187,7 @@ public sealed class ResourceBreakdownAttributionCacheTests
     [InlineData("root")]
     [InlineData("root-app-data")]
     [InlineData("system")]
-    public async Task ExternalObservationsInvalidateEvenWhenIdentityAndCatalogAreUnchanged(string source)
+    public async Task PublishedExternalInputChangesInvalidateEvenWhenIdentityAndCatalogAreUnchanged(string source)
     {
         var mutable = new MutableResolver();
         using var provider = Provider(package: source == "package" ? mutable : null,
@@ -282,6 +282,55 @@ public sealed class ResourceBreakdownAttributionCacheTests
         finally { Environment.SetEnvironmentVariable(variable, prior); }
     }
 
+    [Fact]
+    public async Task IdenticalServiceAcquisitionDoesNotPublishAnInputChange()
+    {
+        var clock = new Clock();
+        var reads = 0;
+        var services = new WindowsServiceIdentityResolver(() => { reads++; return [Service("SvcA", "A")]; }, _ => 100, clock);
+        using var provider = Provider(service: services);
+        var cache = new Cache();
+        var first = await Capture(provider, cache, Child);
+        var inputs = cache.Entry(Child).DirectMatch!.Value.ExternalInputs;
+        clock.Advance();
+        Assert.Equal(first, await Capture(provider, cache, Child));
+        Assert.Equal(2, reads); // source acquisition continues at its existing rate
+        Assert.Same(inputs, cache.Entry(Child).DirectMatch!.Value.ExternalInputs);
+    }
+    [Fact]
+    public void ReadingAnInputVersionDoesNotAcquireTheServiceSource()
+    {
+        var clock = new Clock();
+        var reads = 0;
+        var services = new WindowsServiceIdentityResolver(() => { reads++; return [Service("SvcA", "A")]; }, _ => 100, clock);
+        _ = services.InputVersion;
+        Assert.Equal(0, reads);
+        var acquired = services.CaptureInputVersion();
+        Assert.Equal(1, reads);
+        clock.Advance();
+        Assert.Same(acquired, services.InputVersion);
+        Assert.Equal(1, reads);
+        Assert.Same(acquired, services.CaptureInputVersion()); // unchanged source reuses the published version
+        Assert.Equal(2, reads);
+    }
+    [Fact]
+    public async Task ServiceResolutionUsesTheBatchSnapshotWhenTimeAdvancesDuringAnotherObservation()
+    {
+        var clock = new Clock();
+        IReadOnlyList<WindowsServiceRecord> entries = [Service("SvcA", "A")];
+        var services = new WindowsServiceIdentityResolver(() => entries, _ => 100, clock);
+        var package = new CallbackPackageResolver(() => { entries = [Service("SvcB", "B")]; clock.Advance(); });
+        using var provider = Provider(package: package, service: services);
+        var cache = new Cache();
+        Assert.Equal("windows-service:svca", (await Capture(provider, cache, Child)).Id);
+        Assert.Equal("windows-service:svca", cache.Entry(Child).DirectMatch!.Value.ExternalInputs!.Service.Attribution!.Id);
+        Assert.Equal("windows-service:svcb", (await Capture(provider, cache, Child)).Id);
+    }
+    private sealed class CallbackPackageResolver(Action capture) : IRuntimePackageIdentityResolver
+    {
+        public RuntimeAttributionObservation Observe(RuntimeProcessIdentity process)
+        { capture(); return RuntimeAttributionObservation.NoMatch; }
+    }
     private static WindowsServiceRecord Service(string name, string displayName) => new(name, displayName, 0x20, 4, 57001, null);
     private static RuntimeProcessAttributionCatalogProvider Provider(IRuntimePackageIdentityResolver? package = null,
         IRuntimeServiceIdentityResolver? service = null, IRuntimeRootIdentityResolver? root = null,
@@ -293,7 +342,7 @@ public sealed class ResourceBreakdownAttributionCacheTests
     {
         cache.Prepare(process);
         return (await RuntimeProcessAttributionCapture.CaptureAsync(provider, [process], Scores, default,
-            cache.Get, cache.Set)).Batch.SoftwareByProcessId[process.ProcessId];
+            cache.Get, cache.Set, cache.GetFixedInputs)).Batch.SoftwareByProcessId[process.ProcessId];
     }
     private static async Task<RuntimeSoftwareAttribution> Uncached(RuntimeProcessAttributionCatalogProvider provider,
         RuntimeProcessIdentity process)
@@ -308,14 +357,29 @@ public sealed class ResourceBreakdownAttributionCacheTests
             => entries.TryGet(new(process.ProcessId, process.StartKey!.Value), out var entry) ? entry! : throw new InvalidOperationException();
         internal RuntimeProcessAttributionDirectMatch? Get(RuntimeProcessIdentity process, string scope,
             RuntimeProcessAttributionCatalog catalog) => WindowsResourceBreakdownSampler.TryGetCachedDirectMatch(entries, process, scope, catalog);
+        internal RuntimeProcessAttributionFixedInputs? GetFixedInputs(RuntimeProcessIdentity process) => Entry(process).FixedInputs;
         internal void Set(RuntimeProcessIdentity process, string scope, RuntimeProcessAttributionCatalog catalog,
             RuntimeProcessAttributionDirectMatch match) => WindowsResourceBreakdownSampler.CacheDirectMatch(entries, process, scope, catalog, match);
     }
     private sealed class MutableResolver : IRuntimePackageIdentityResolver, IRuntimeServiceIdentityResolver,
         IRuntimeRootIdentityResolver, IRuntimeSystemProcessClassifier
     {
-        internal RuntimeAttributionObservation Current = RuntimeAttributionObservation.NoMatch;
-        internal bool Throw;
+        private RuntimeAttributionObservation current = RuntimeAttributionObservation.NoMatch;
+        private bool fail;
+        private object version = new();
+        public object InputVersion => version;
+        // Represents the source's input-change event: publish the new value,
+        // then replace the version consumed by the next batch.
+        internal RuntimeAttributionObservation Current
+        {
+            get => current;
+            set { current = value; version = new(); }
+        }
+        internal bool Throw
+        {
+            get => fail;
+            set { fail = value; version = new(); }
+        }
         public RuntimeAttributionObservation Observe(RuntimeProcessIdentity process)
             => Throw ? throw new IOException("observation failed") : Current;
     }

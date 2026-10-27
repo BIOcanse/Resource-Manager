@@ -5,15 +5,19 @@ namespace ResourceManager.ReadWrite.Windows.Processes;
 internal sealed partial class WindowsProcessBasicMetricNativeApi : IWindowsProcessBasicMetricApi
 {
     public IntPtr Open(int processId) => OpenProcess(0x1000, false, processId);
+    [RuntimeRead(ReadVolatilityKind.Sampled)]
     public bool Times(IntPtr handle, out ulong creation, out ulong kernel, out ulong user)
     {
         var success = GetProcessTimes(handle, out var created, out _, out var kernelTime, out var userTime);
         creation = created.ToUInt64(); kernel = kernelTime.ToUInt64(); user = userTime.ToUInt64(); return success;
     }
+    [RuntimeRead(ReadVolatilityKind.Sampled)]
     public ProcessMemoryObservation? Memory(IntPtr handle, bool privateWorkingSet) => WindowsProcessResidentMemory.ReadNative(handle, privateWorkingSet);
+    [RuntimeRead(ReadVolatilityKind.Sampled)]
     public ProcessIoObservation? Io(IntPtr handle)
         => GetProcessIoCounters(handle, out var value)
             ? new(value.ReadOperationCount, value.WriteOperationCount, value.OtherOperationCount, value.ReadTransferCount, value.WriteTransferCount, value.OtherTransferCount) : null;
+    [RuntimeRead(ReadVolatilityKind.Sampled)]
     public uint? HandleCount(IntPtr handle) => GetProcessHandleCount(handle, out var value) ? value : null;
     public bool Close(IntPtr handle) => CloseHandle(handle);
 

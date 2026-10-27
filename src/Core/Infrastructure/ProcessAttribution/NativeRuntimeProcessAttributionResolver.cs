@@ -13,6 +13,7 @@ using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.SoftwareIdentity;
 using ResourceManager.App.Infrastructure.Software;
+using ResourceManager.App.Infrastructure.ResourceBreakdown;
 
 namespace ResourceManager.App.Infrastructure.ProcessAttribution;
 
@@ -55,6 +56,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
     private readonly IReadOnlyDictionary<string, RuntimeSoftwareAttribution> sourceClassifications;
     private NativeSoftwareIdentityPayloadCatalog resolutionPayloads = new();
     private bool disposed;
+    private RuntimeAttributionInputVersions? currentInputVersions;
 
     internal NativeRuntimeProcessAttributionResolver(
         IReadOnlyList<SoftwareRecord> softwareRecords,
@@ -173,7 +175,8 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
         => Resolve(process, out selectedSource, out _);
 
     internal RuntimeSoftwareAttribution Resolve(RuntimeProcessIdentity process, out uint selectedSource,
-        out RuntimeProcessAttributionExternalInputs externalInputs)
+        out RuntimeProcessAttributionExternalInputs externalInputs,
+        RuntimeAttributionInputVersions? inputVersions = null, RuntimeProcessAttributionFixedInputs? cachedFixedInputs = null)
     {
         ArgumentNullException.ThrowIfNull(process);
         lock (gate)
@@ -206,13 +209,18 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                 selfCatalog.Observe(process),
                 process.IsSelfDescendant ? [SelfAttribution] : [],
                 frame.FrameEpoch);
-            var package = packageResolver.Observe(process);
+            inputVersions ??= CaptureExternalInputVersions();
+            var package = cachedFixedInputs is not null && ReferenceEquals(cachedFixedInputs.PackageSource, packageResolver)
+                && ReferenceEquals(cachedFixedInputs.PackageVersion, inputVersions.Package)
+                && SameProcessInstance(cachedFixedInputs.Instance, process)
+                ? cachedFixedInputs.Package : packageResolver.Observe(process);
+
             AddSource(
                 observations,
                 NativeRuntimeAttributionSources.Package,
                 package,
                 frame.FrameEpoch);
-            var service = serviceResolver.Observe(process);
+            var service = serviceResolver.Observe(process, inputVersions.Service);
             AddSource(
                 observations,
                 NativeRuntimeAttributionSources.Service,
@@ -227,25 +235,33 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                 [],
                 frame.FrameEpoch);
             var bundledEntry = AddBundledSource(observations, process, frame.FrameEpoch);
-            var product = ObserveRuntimeProduct(process, out var productRoot);
+            var root = cachedFixedInputs is not null && ReferenceEquals(cachedFixedInputs.RootSource, rootResolver)
+                && ReferenceEquals(cachedFixedInputs.RootVersion, inputVersions.Root)
+                && SameProcessInstance(cachedFixedInputs.Instance, process)
+                ? cachedFixedInputs.Root : rootResolver.Observe(process);
+            var product = ObserveRuntimeProduct(process, root, out var productRoot);
             AddSource(
                 observations,
                 NativeRuntimeAttributionSources.RuntimeProduct,
                 product,
                 frame.FrameEpoch);
-            var root = rootResolver.Observe(process);
+
             AddSource(
                 observations,
                 NativeRuntimeAttributionSources.RuntimeRoot,
                 root,
                 frame.FrameEpoch);
-            var system = systemClassifier.Observe(process);
+            var system = cachedFixedInputs is not null && ReferenceEquals(cachedFixedInputs.SystemSource, systemClassifier)
+                && ReferenceEquals(cachedFixedInputs.SystemVersion, inputVersions.System)
+                && SameProcessInstance(cachedFixedInputs.Instance, process)
+                ? cachedFixedInputs.System : systemClassifier.Observe(process);
             AddSource(
                 observations,
                 NativeRuntimeAttributionSources.System,
                 system,
                 frame.FrameEpoch);
-            externalInputs = new(package, service, root, system, productRoot);
+            externalInputs = new(package, service, root, system, productRoot)
+            { Versions = inputVersions, FixedInputs = new(packageResolver, inputVersions.Package, new(process.ProcessId, process.StartKey ?? 0), package, rootResolver, inputVersions.Root, root, systemClassifier, inputVersions.System, system) };
 
             observations.Sort(static (left, right) =>
             {
@@ -339,43 +355,35 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
         }
     }
 
-    internal bool AreExternalInputsCurrent(RuntimeProcessIdentity process,
-        RuntimeProcessAttributionExternalInputs? inputs)
+    private static bool SameProcessInstance(ProcessInstanceKey previous, RuntimeProcessIdentity current)
+        => current.StartKey is > 0 && previous.ProcessId == current.ProcessId && previous.StartKey == current.StartKey;
+    // Immutable rules and per-process package facts have no registration probe.
+    // Mutable implementations replace their input version when publishing a change.
+    [ResourceManager.ReadWrite.RuntimeReadCache]
+    internal RuntimeAttributionInputVersions CaptureExternalInputVersions()
     {
-        // Relative/environment-dependent paths have no immutable normalization
-        // input. Re-resolve them instead of adding an ambient-state cache.
-        if (inputs is null || !HasStablePathInput(process)) return false;
-        return SameObservation(inputs.Package, packageResolver.Observe(process))
-            // A matched service payload is owned by the service resolver's
-            // immutable snapshot. No-match/unavailable are distinct terminals.
-            && SameServiceSnapshot(inputs.Service, serviceResolver.Observe(process))
-            && (inputs.ProductRoot is not { } productRoot
-                || SameObservation(productRoot, rootResolver.Observe(process)))
-            && SameObservation(inputs.Root, rootResolver.Observe(process))
-            && SameObservation(inputs.System, systemClassifier.Observe(process));
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            var package = packageResolver.CaptureInputVersion();
+            var service = serviceResolver.CaptureInputVersion();
+            var root = rootResolver.CaptureInputVersion();
+            var system = systemClassifier.CaptureInputVersion();
+            if (currentInputVersions is { } prior
+                && ReferenceEquals(prior.Package, package) && ReferenceEquals(prior.Service, service)
+                && ReferenceEquals(prior.Root, root) && ReferenceEquals(prior.System, system))
+                return prior;
+            return currentInputVersions = new(package, service, root, system);
+        }
     }
+
+    internal static bool AreExternalInputsCurrent(RuntimeAttributionInputVersions current,
+        RuntimeProcessAttributionExternalInputs? inputs)
+        => ReferenceEquals(inputs?.Versions, current);
 
     internal static bool HasStablePathInput(RuntimeProcessIdentity process)
         => process.ExecutablePath is not { } path
             || !path.Contains('%') && Path.IsPathFullyQualified(path.Trim().Trim('"'));
-
-    private static bool SameServiceSnapshot(RuntimeAttributionObservation previous,
-        RuntimeAttributionObservation current)
-        => previous.Status == current.Status && ReferenceEquals(previous.Attribution, current.Attribution);
-
-    private static bool SameObservation(RuntimeAttributionObservation previous,
-        RuntimeAttributionObservation current)
-    {
-        if (previous.Status != current.Status) return false;
-        if (ReferenceEquals(previous.Attribution, current.Attribution)) return true;
-        if (previous.Attribution is not { } prior || current.Attribution is not { } next
-            || prior.Id != next.Id || prior.Name != next.Name || prior.Kind != next.Kind
-            || prior.DisplayKind != next.DisplayKind || prior.CategorySource != next.CategorySource
-            || prior.RootPaths.Count != next.RootPaths.Count) return false;
-        for (var index = 0; index < prior.RootPaths.Count; index++)
-            if (prior.RootPaths[index] != next.RootPaths[index]) return false;
-        return true;
-    }
 
     private RuntimeSoftwareAttribution ResolveOutput(
         NativeSoftwareIdentityResolutionOutput output)
@@ -657,7 +665,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
     }
 
     private RuntimeAttributionObservation ObserveRuntimeProduct(
-        RuntimeProcessIdentity process, out RuntimeAttributionObservation? productRoot)
+        RuntimeProcessIdentity process, RuntimeAttributionObservation fixedRoot, out RuntimeAttributionObservation? productRoot)
     {
         productRoot = null;
         var processPath = CanonicalPath(process.ExecutablePath);
@@ -670,7 +678,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
         if (ResourceManager.App.Infrastructure.ProcessIdentity.WindowsRuntimeRootIdentityResolver
             .InferAppDataProductRoot(process.ExecutablePath!) is not null)
         {
-            var observation = rootResolver.Observe(process);
+            var observation = fixedRoot;
             productRoot = observation;
             return observation;
         }

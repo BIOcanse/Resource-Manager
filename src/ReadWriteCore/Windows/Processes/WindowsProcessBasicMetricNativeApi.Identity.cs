@@ -6,6 +6,7 @@ namespace ResourceManager.ReadWrite.Windows.Processes;
 
 internal sealed partial class WindowsProcessBasicMetricNativeApi
 {
+    [RuntimeRead(ReadVolatilityKind.Fixed)]
     public string? ImagePath(IntPtr handle)
     {
         for (var capacity = 1024; capacity <= 32768; capacity *= 2)
@@ -18,6 +19,7 @@ internal sealed partial class WindowsProcessBasicMetricNativeApi
         return null;
     }
 
+    [RuntimeRead(ReadVolatilityKind.Fixed)]
     public uint? ParentPid(IntPtr handle)
     {
         var size = Marshal.SizeOf<ProcessBasicInformation>();
@@ -28,6 +30,7 @@ internal sealed partial class WindowsProcessBasicMetricNativeApi
     internal static uint? DecodeInheritedPid(UIntPtr value)
         => value.ToUInt64() <= uint.MaxValue ? (uint)value.ToUInt64() : null;
 
+    [RuntimeRead(ReadVolatilityKind.Fixed)]
     public string? UserSid(IntPtr handle)
     {
         if (!OperatingSystem.IsWindows()) return null;

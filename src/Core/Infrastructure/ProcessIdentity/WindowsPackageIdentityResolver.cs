@@ -21,6 +21,7 @@ public sealed class WindowsPackageIdentityResolver : IRuntimePackageIdentityReso
         Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
         "WindowsApps"));
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     public RuntimeAttributionObservation Observe(RuntimeProcessIdentity process)
     {
         var processPath = NormalizePath(process.ExecutablePath);
@@ -31,7 +32,7 @@ public sealed class WindowsPackageIdentityResolver : IRuntimePackageIdentityReso
 
         var pathPackageRoot = TryGetWindowsAppsPackageRoot(processPath);
         var packageResult = pathPackageRoot is null
-            ? TryGetPackageFullName(process.ProcessId)
+            ? TryGetPackageFullName(process.ProcessId, process.StartKey)
             : new PackageNameResult(
                 PackageNameStatus.Matched,
                 Path.GetFileName(pathPackageRoot));
@@ -61,7 +62,8 @@ public sealed class WindowsPackageIdentityResolver : IRuntimePackageIdentityReso
             rootPaths));
     }
 
-    private static PackageNameResult TryGetPackageFullName(int processId)
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
+    private static PackageNameResult TryGetPackageFullName(int processId, long? startKey)
     {
         var handle = NativeMethods.OpenProcess(NativeMethods.ProcessQueryLimitedInformation, false, processId);
         if (handle == IntPtr.Zero || handle == new IntPtr(-1))
@@ -71,6 +73,9 @@ public sealed class WindowsPackageIdentityResolver : IRuntimePackageIdentityReso
 
         try
         {
+            if (startKey is > 0 && (!NativeMethods.GetProcessTimes(handle, out var birth, out _, out _, out _)
+                || birth.ToUInt64() != (ulong)startKey.Value))
+                return new PackageNameResult(PackageNameStatus.Unavailable, null);
             uint length = 0;
             var result = NativeMethods.GetPackageFullName(handle, ref length, null);
             if (result == NativeMethods.AppmodelErrorNoPackage || length == 0)

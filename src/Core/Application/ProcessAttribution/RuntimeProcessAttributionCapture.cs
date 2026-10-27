@@ -28,7 +28,8 @@ internal static class RuntimeProcessAttributionCapture
         Func<RuntimeProcessIdentity, string, RuntimeProcessAttributionCatalog,
             RuntimeProcessAttributionDirectMatch?>? getCachedDirectMatch = null,
         Action<RuntimeProcessIdentity, string, RuntimeProcessAttributionCatalog,
-            RuntimeProcessAttributionDirectMatch>? cacheDirectMatch = null)
+            RuntimeProcessAttributionDirectMatch>? cacheDirectMatch = null,
+        Func<RuntimeProcessIdentity, RuntimeProcessAttributionFixedInputs?>? getCachedFixedInputs = null)
     {
         var catalogs = new Dictionary<string, RuntimeProcessAttributionCatalogLease>(StringComparer.Ordinal);
         var scopeByPid = new Dictionary<int, string>();
@@ -57,11 +58,14 @@ internal static class RuntimeProcessAttributionCapture
                         cachedDirectMatches[process.ProcessId] = match;
                 }
             }
+            var fixedInputs = getCachedFixedInputs is null ? null : processes
+                .Select(process => (process.ProcessId, Facts: getCachedFixedInputs(process)))
+                .Where(item => item.Facts is not null).ToDictionary(item => item.ProcessId, item => item.Facts!);
             var batch = RuntimeProcessAttributionPipeline.MatchBatch(processes,
                 process => catalogs[scopeByPid[process.ProcessId]].Catalog.Pipeline,
                 cancellationToken,
                 cachedDirectMatches,
-                captureDirectMatches: cacheDirectMatch is not null);
+                captureDirectMatches: cacheDirectMatch is not null, cachedFixedInputs: fixedInputs);
             if (cacheDirectMatch is not null)
             {
                 foreach (var process in processes)

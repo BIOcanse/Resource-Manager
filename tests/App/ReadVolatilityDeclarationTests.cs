@@ -63,8 +63,8 @@ public sealed class ReadVolatilityDeclarationTests
             field => field.Code == ProcessMetricFieldCode.StartTime).Volatility.Kind);
         Assert.Equal(ReadVolatilityKind.Sampled, ProcessMetricFieldRegistry.Definitions.Single(
             field => field.Code == ProcessMetricFieldCode.WorkingSet).Volatility.Kind);
-        // The command line is read from current process memory, which a process can modify.
-        Assert.Equal(ReadVolatilityKind.Sampled, ProcessMetricFieldRegistry.Definitions.Single(
+        // The runtime contract fixes the command line to the observed PID/start-key instance.
+        Assert.Equal(ReadVolatilityKind.Fixed, ProcessMetricFieldRegistry.Definitions.Single(
             field => field.Code == ProcessMetricFieldCode.CommandLine).Volatility.Kind);
         Assert.Equal(ReadVolatilityKind.Sampled,
             ProcessGpuResourceFieldRegistry.ForResidentMemory(0, 1, ProcessMetricFieldCode.GpuResidentBytes).Volatility.Kind);

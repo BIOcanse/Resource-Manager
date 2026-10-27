@@ -233,7 +233,7 @@ internal static class RuntimeProcessAttributionCatalogVersionFactory
         return hash.ToVersion(records.Count);
     }
 
-    private static RuntimeProcessAttributionSourceVersion CreateAdaptedVersion(
+    internal static RuntimeProcessAttributionSourceVersion CreateAdaptedVersion(
         IReadOnlyList<AdapterSoftwareRegistration> registrations)
     {
         var hash = new StableVersionHash(registrations.Count);
@@ -259,7 +259,7 @@ internal static class RuntimeProcessAttributionCatalogVersionFactory
         return hash.ToVersion(registrations.Count);
     }
 
-    private static RuntimeProcessAttributionSourceVersion CreateControlledVersion(
+    internal static RuntimeProcessAttributionSourceVersion CreateControlledVersion(
         IReadOnlyList<ControlledSoftwareRegistration> registrations)
     {
         var hash = new StableVersionHash(registrations.Count);

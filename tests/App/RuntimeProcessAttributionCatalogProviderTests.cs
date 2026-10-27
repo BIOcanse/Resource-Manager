@@ -128,6 +128,7 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
             var unchanged = await CaptureCached(provider, processes, plan, cache);
             Assert.Equal(1, bundle.Observations);
             Assert.Equal(firstAttribution, unchanged.Batch.SoftwareByProcessId[process.ProcessId]);
+            Assert.Equal(1, packageResolver.Calls);
 
             var beforeScopeSwitch = bundle.Observations;
             await CaptureCached(provider, [process with { UserSid = UserTwo }], plan, cache);
@@ -304,18 +305,21 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
         Assert.Equal(1, bundle.Observations);
         Assert.Equal(tray.Batch.SoftwareByProcessId, unchangedTray.Batch.SoftwareByProcessId);
 
+        packageResolver.PublishInputChange();
         var enrichedAppId = trayIdentity with { ApplicationUserModelId = "app:full-table" };
         var updatedAppId = await CaptureCached(provider, [enrichedAppId], plan, cache);
         Assert.Equal(2, bundle.Observations);
         Assert.Equal("signal:application:app:full-table",
             updatedAppId.Batch.SoftwareByProcessId[trayIdentity.ProcessId].Id);
 
+        packageResolver.PublishInputChange();
         var withWindowAppId = enrichedAppId with { WindowApplicationUserModelId = "window:full-table" };
         var updatedWindowAppId = await CaptureCached(provider, [withWindowAppId], plan, cache);
         Assert.Equal(3, bundle.Observations);
         Assert.Equal("signal:window-app:window:full-table",
             updatedWindowAppId.Batch.SoftwareByProcessId[trayIdentity.ProcessId].Id);
 
+        packageResolver.PublishInputChange();
         var fullTable = withWindowAppId with { WindowTitle = "Visible title" };
         var withTitle = await CaptureCached(provider, [fullTable], plan, cache);
         Assert.Equal(4, bundle.Observations);
@@ -324,6 +328,7 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
         await CaptureCached(provider, [fullTable], plan, cache);
         Assert.Equal(4, bundle.Observations);
 
+        packageResolver.PublishInputChange();
         var changedTitle = fullTable with { WindowTitle = "Updated title" };
         var updatedTitle = await CaptureCached(provider, [changedTitle], plan, cache);
         Assert.Equal(5, bundle.Observations);
@@ -383,7 +388,7 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
             softwareIdentityCatalog: new MutableSoftwareIdentityCatalog { Version = "1.0.0" }))
         {
             await CaptureCached(changedInstalledScopeProvider, [process], plan, cache);
-            Assert.Equal(2, packageResolver.Calls);
+            Assert.Equal(1, packageResolver.Calls);
             Assert.Equal(1, cache.GenerationFor(new ProcessInstanceKey(process.ProcessId, process.StartKey!.Value)));
         }
 
@@ -403,9 +408,87 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
             Assert.Equal(installedCatalog.Catalog.Version, bundledCatalog.Catalog.Version);
 
             await CaptureCached(bundledVersionProvider, [process], plan, cache);
-            Assert.Equal(3, packageResolver.Calls);
+            Assert.Equal(1, packageResolver.Calls);
         }
     }
+
+    [Fact]
+    public async Task SoftwareSnapshotUsesPublishedInventoryRevisionInsteadOfElapsedTime()
+    {
+        var registry = new MutableSoftwareRegistryView([CreateSoftware("first", "First", @"D:\Apps\Product")]);
+        var revisions = new ResourceManager.App.Application.Management.ManagementInventoryRevisionOwner();
+        var clock = new CatalogClock();
+        var games = new FakeWindowsGameListSource();
+        using var provider = CreateProvider(registry, windowsGameListSource: games, inventoryRevisionOwner: revisions, clock: clock);
+        using var first = await provider.AcquireCatalogAsync(UserOne, default);
+        Assert.Equal(1, games.ReadCount);
+        clock.Advance();
+        using var steady = await provider.AcquireCatalogAsync(UserOne, default);
+        Assert.Same(first.Catalog, steady.Catalog);
+        Assert.Equal(1, games.ReadCount); // elapsed time must not refresh registry-backed sources
+        registry.SetSoftware([CreateSoftware("second", "Second", @"D:\Apps\Product")]);
+        revisions.ObserveSoftwareInventoryContentChanged(); // existing refresh/content-change publication
+        using var changed = await provider.AcquireCatalogAsync(UserOne, default);
+        Assert.NotSame(first.Catalog, changed.Catalog);
+        Assert.Equal(2, games.ReadCount);
+        Assert.Equal("second", changed.Catalog.Pipeline.Match(CreateProcess(@"D:\Apps\Product\app.exe")).Id);
+    }
+
+    [Fact]
+    public async Task RegistrationAndBundledCatalogPublicationsRefreshTheSoftwareSnapshot()
+    {
+        var registry = new MutableSoftwareRegistryView([]);
+        var adapted = new MutableAdapterSoftwareRegistry();
+        var controlled = new MutableControlledSoftwareRegistry();
+        var games = new FakeWindowsGameListSource();
+        var bundled = new MutableSoftwareIdentityCatalog();
+        using var provider = CreateProvider(registry, adapted, games, controlledRegistry: controlled, softwareIdentityCatalog: bundled);
+        using var first = await provider.AcquireCatalogAsync(UserOne, default);
+        Assert.Equal(1, games.ReadCount);
+        adapted.Registrations = [CreateAdapter("adapter:new", "New", @"D:\Apps\New")];
+        using var adapterChange = await provider.AcquireCatalogAsync(UserOne, default);
+        Assert.Equal(2, games.ReadCount);
+        controlled.Registrations = [new(Guid.NewGuid(), DateTimeOffset.UnixEpoch, "new.exe", ["New"], [@"D:\Apps\New"], [], [], "controlled")];
+        using var controlledChange = await provider.AcquireCatalogAsync(UserOne, default);
+        Assert.Equal(3, games.ReadCount);
+        bundled.Version = "2.0.0";
+        using var catalogChange = await provider.AcquireCatalogAsync(UserOne, default);
+        Assert.Equal(4, games.ReadCount);
+        using var unchanged = await provider.AcquireCatalogAsync(UserOne, default);
+        Assert.Equal(4, games.ReadCount);
+        Assert.Same(catalogChange.Catalog, unchanged.Catalog);
+    }
+    private sealed class CatalogClock : TimeProvider
+    {
+        private DateTimeOffset now = DateTimeOffset.UnixEpoch.AddHours(1);
+        public override DateTimeOffset GetUtcNow() => now;
+        internal void Advance() => now += TimeSpan.FromMinutes(1);
+    }
+
+
+    [Fact]
+    public async Task SteadyAttributionFrameDoesNotProbeSixHundredFortyPackageIdentities()
+    {
+        var packages = new CountingPackageIdentityResolver();
+        using var provider = CreateProvider(new MutableSoftwareRegistryView([]), packageIdentityResolver: packages);
+        var cache = new DirectAttributionCache();
+        var processes = Enumerable.Range(60000, 640).Select(pid => new RuntimeProcessIdentity(pid, null, "app",
+            @"D:\Apps\Fixture\app.exe", false, StartKey: pid, UserSid: UserOne)).ToArray();
+        var plan = new CompiledBaseScorePlan(new Dictionary<string, double>(), new Dictionary<string, double>());
+        await CaptureCached(provider, processes, plan, cache);
+        Assert.Equal(640, packages.Calls);
+        for (var frame = 0; frame < 3; frame++) await CaptureCached(provider, processes, plan, cache);
+        Assert.Equal(640, packages.Calls);
+        Assert.Equal(4, packages.VersionReads); // one input version read per batch, independent of process count
+        packages.ObserveResult = _ => RuntimeAttributionObservation.Matched(new("package:updated", "Updated package", SoftwareKinds.RuntimePackage, SoftwareDisplayKinds.WindowsApp, []));
+        packages.PublishInputChange(); // package registration/source publication, not a per-process probe
+        var changed = await CaptureCached(provider, processes, plan, cache);
+        Assert.Equal(1280, packages.Calls);
+        Assert.All(changed.Batch.SoftwareByProcessId.Values, value => Assert.Equal("package:updated", value.Id));
+        await CaptureCached(provider, processes, plan, cache);
+        Assert.Equal(1280, packages.Calls);
+    }
+
 
     private sealed class TrackingCatalogProvider(IRuntimeProcessAttributionCatalogProvider inner)
         : IRuntimeProcessAttributionCatalogProvider
@@ -756,7 +839,8 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
         HostManagerSoftwareIdentityOwner? softwareIdentityOwner = null,
         IRuntimeServiceIdentityResolver? serviceIdentityResolver = null,
         IRuntimeRootIdentityResolver? rootIdentityResolver = null,
-        IRuntimeSystemProcessClassifier? systemClassifier = null)
+        IRuntimeSystemProcessClassifier? systemClassifier = null,
+        ResourceManager.App.Application.Management.IManagementInventoryRevisionOwner? inventoryRevisionOwner = null, TimeProvider? clock = null)
     {
         var resolvers = new NullResolvers();
         return new RuntimeProcessAttributionCatalogProvider(
@@ -769,7 +853,7 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
             systemClassifier ?? resolvers,
             softwareIdentityCatalog ?? SoftwareIdentityCatalogTestData.Empty,
             softwareIdentityOwner ?? SoftwareIdentityCatalogTestData.Owner,
-            windowsGameListSource ?? new FakeWindowsGameListSource());
+            windowsGameListSource ?? new FakeWindowsGameListSource(), inventoryRevisionOwner, clock);
     }
 
     private sealed class MutableSoftwareIdentityCatalog : ISoftwareIdentityCatalog,
@@ -820,12 +904,20 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
             RuntimeProcessAttributionDirectMatch match)
             => WindowsResourceBreakdownSampler.CacheDirectMatch(entries, process, scope, catalog, match);
 
+        internal RuntimeProcessAttributionFixedInputs? GetFixedInputs(RuntimeProcessIdentity process)
+            => process.StartKey is > 0 && entries.TryGet(new(process.ProcessId, process.StartKey.Value), out var entry)
+                ? entry?.FixedInputs : null;
+
         internal void Prune(IReadOnlySet<ProcessInstanceKey> liveInstances) => entries.Prune(liveInstances);
     }
 
     private sealed class CountingPackageIdentityResolver : IRuntimePackageIdentityResolver
     {
         private int calls;
+        private object version = new();
+        internal int VersionReads;
+        public object InputVersion { get { VersionReads++; return version; } }
+        internal void PublishInputChange() => version = new();
         private readonly Dictionary<int, int> callsByPid = [];
 
         internal int Calls => Volatile.Read(ref calls);
@@ -876,7 +968,7 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
         CompiledBaseScorePlan plan,
         DirectAttributionCache cache)
         => await RuntimeProcessAttributionCapture.CaptureAsync(provider, processes, plan, default,
-            cache.TryGet, cache.Set);
+            cache.TryGet, cache.Set, cache.GetFixedInputs);
 
     private static (HostManagerSoftwareIdentityOwner Owner, RuntimePlanProvider PlanProvider)
         CreateMutableSoftwareIdentityOwner()

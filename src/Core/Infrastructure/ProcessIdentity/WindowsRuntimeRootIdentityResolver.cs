@@ -33,6 +33,7 @@ public sealed class WindowsRuntimeRootIdentityResolver : IRuntimeRootIdentityRes
         "build"
     };
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     public RuntimeAttributionObservation Observe(RuntimeProcessIdentity process)
     {
         var processPath = NormalizePath(process.ExecutablePath);

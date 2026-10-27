@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Infrastructure.Software;
 using ResourceManager.ReadWrite.Information;
 using ResourceManager.App.Domain.Software;
@@ -47,6 +48,40 @@ public sealed class WindowsInstalledSoftwareInventoryTests : IDisposable
             "cancel", _ => throw new OperationCanceledException()));
     }
 
+    [Fact]
+    public async Task SubscriptionFramesReuseInventoryUntilExplicitRefreshPublishesChangedContent()
+    {
+        var reads = 0;
+        var name = "First";
+        var changes = 0;
+        var inventory = new WindowsInstalledSoftwareInventory(_ =>
+        {
+            reads++;
+            return [new InstalledSoftwareEntry("fixture", name, null, null, null, [], null, "fixture")];
+        }, onSoftwareContentChanged: () => changes++);
+        await inventory.GetInstalledSoftwareAsync(default);
+        var field = inventory.CreateBackend().Catalog.Fields.First().Field;
+        using var borrow = inventory.BorrowSubscriptionCapture();
+        borrow.Bind([field]);
+        borrow.SynchronizeDemand([field]);
+        for (var frame = 0; frame < 4; frame++)
+            await borrow.CollectAsync([field], new AcceptedPermit(), default);
+        Assert.Equal(1, reads);
+        name = "Updated";
+        await inventory.RefreshInstalledSoftwareAsync(default);
+        Assert.Equal(2, reads);
+        Assert.Equal(1, changes);
+        await borrow.CollectAsync([field], new AcceptedPermit(), default);
+        Assert.Equal(2, reads);
+        Assert.Equal("Updated", Assert.Single(await inventory.GetInstalledSoftwareAsync(default)).Name);
+    }
+    private sealed class AcceptedPermit : IMetricPublicationPermit
+    {
+        public ulong WorkspaceIncarnation => 1;
+        public ulong ConfigurationGeneration => 1;
+        public bool IsActive => true;
+        public bool TryPublish(Action commit) { commit(); return true; }
+    }
     private readonly string testRoot = Path.Combine(
         Path.GetTempPath(),
         $"resource-manager-installed-inventory-{Guid.NewGuid():N}");
