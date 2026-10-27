@@ -111,13 +111,26 @@ public sealed partial class MetricCatalogueSubscriptionTests
         Assert.Equal([SamplingDatasetIds.SystemMetricCatalog], first.DueItemIds);
         Assert.Equal(1, first.Schedule.ActiveItemCount);
         Assert.Equal(2, first.Schedule.ActiveSourceCount);
+        var planned = ReadCatalogueDemand(slots);
         var completion = tracker.MarkSampled(first.Request, now);
-        Assert.Equal(TimeSpan.FromSeconds(1), completion.Delay);
+        // The native command clock also advances by real elapsed time between
+        // planning and completion. The item keeps its phase, so the remaining
+        // delay can be 999 ms even though its effective period is exactly 1 s.
+        var completed = ReadCatalogueDemand(slots);
+        Assert.Equal(1_000UL, completed.Item.EffectiveIntervalMilliseconds);
+        var elapsedPeriods = (completed.Header.LastCommandAtMilliseconds
+            - planned.Item.ScheduledDueMilliseconds) / 1_000UL;
+        Assert.Equal(planned.Item.ScheduledDueMilliseconds + (elapsedPeriods + 1) * 1_000UL,
+            completed.Item.ScheduledDueMilliseconds);
+        Assert.Equal(completed.Item.ScheduledDueMilliseconds, completed.Header.NextWakeMilliseconds);
+        Assert.Equal(TimeSpan.FromMilliseconds(checked((long)(completed.Header.NextWakeMilliseconds
+            - completed.Header.LastCommandAtMilliseconds))), completion.Delay);
         var fastAt = completion.Schedule.NextWakeAt!.Value.AddMilliseconds(100);
         var fastDue = tracker.CreatePlan(fastAt);
         Assert.True(fastDue.Request!.IsCatalogProbe);
         tracker.MarkSampled(fastDue.Request, fastAt);
         fast.Dispose();
+        Assert.Equal(5_000UL, ReadCatalogueDemand(slots).Item.EffectiveIntervalMilliseconds);
         var slowOnly = tracker.CreatePlan(now.AddSeconds(2));
         Assert.Null(slowOnly.Request);
         Assert.Equal(1, slowOnly.Schedule.ActiveSourceCount);
@@ -278,6 +291,21 @@ public sealed partial class MetricCatalogueSubscriptionTests
             null!, null!, null!, null!, null!, new AmdIntegratedGpuSensorRoute(), null!, owner, catalog,
             new MonitoringSourceZoneRegistry([]), slots.Owner, slots.Provider,
             NullLogger<WindowsHardwareMetricSampler>.Instance);
+
+    private static (NativeSamplingSubscriptionSnapshotHeader Header, NativeSamplingSubscriptionItemState Item)
+        ReadCatalogueDemand(HostManagerSamplingSubscriptionTestFixture slots)
+        => slots.Owner.Execute(1, session =>
+        {
+            var header = new NativeSamplingSubscriptionSnapshotHeader
+            {
+                AbiVersion = NativeSamplingSubscriptionAbi.Version,
+                StructSize = checked((uint)System.Runtime.InteropServices.Marshal.SizeOf<NativeSamplingSubscriptionSnapshotHeader>())
+            };
+            var sources = new NativeSamplingSubscriptionSourceView[session.Capacity.SnapshotSourceCapacity];
+            var items = new NativeSamplingSubscriptionItemState[session.Capacity.SnapshotItemCapacity];
+            Assert.Equal(NativeSamplingSubscriptionStatus.Ok, session.Snapshot(ref header, sources, items));
+            return (header, Assert.Single(items.Take(checked((int)header.ItemOutputCount))));
+        });
 
     private static void AssertCatalogOnlyGpu(
         HardwareMetricSnapshot snapshot,
