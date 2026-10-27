@@ -38,8 +38,8 @@ public sealed class BusinessBlockControllerTests
         Assert.Throws<KeyNotFoundException>(() => scheduler.ReadState(133));
         Assert.Throws<KeyNotFoundException>(() => scheduler.AcquireDependency(133, Reason()));
         Assert.Throws<KeyNotFoundException>(() => { _ = scheduler.SetDemandAsync("unknown", 133, Reason()); });
-        Assert.Throws<KeyNotFoundException>(() => { _ = scheduler.SetEnabledAsync(133, true, Reason()); });
-        Assert.Throws<KeyNotFoundException>(() => { _ = scheduler.SetFactAsync("missing", true, Reason()); });
+        Assert.Throws<KeyNotFoundException>(() => scheduler.Authority.Read<bool>(new(BackendItems.BlockDemand, 9999)));
+        Assert.Throws<KeyNotFoundException>(() => scheduler.Authority.Read<bool>(9999));
         Assert.Empty(scheduler.Read().Demands);
     }
 
@@ -50,8 +50,9 @@ public sealed class BusinessBlockControllerTests
     {
         var logger = new BusinessBlockControlSystemTests.CapturedLogger<BusinessBlockScheduler>();
         await using var scheduler = Create([Register(154, new Probe())], historyLimit: limit, logger: logger);
+        var enabled154 = scheduler.Authority.ClaimWrite<bool>(BusinessBlockTestSupport.GateKey(154));
         for (var index = 0; index < 8; index++)
-            await scheduler.SetEnabledAsync(154, index % 2 != 0, Reason(cause: "configuration-" + index));
+            await enabled154.PublishAsync(index % 2 != 0, Reason(cause: "configuration-" + index));
         var decisions = scheduler.Read().Decisions;
         Assert.Equal(limit, decisions.Count);
         Assert.Equal(8, logger.Messages.Count(value => value.StartsWith("Business block decision ", StringComparison.Ordinal)));

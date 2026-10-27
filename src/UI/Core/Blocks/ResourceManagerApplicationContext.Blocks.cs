@@ -23,7 +23,7 @@ public sealed partial class ResourceManagerApplicationContext
         BlockUids.MainRoot => RunMainRootAsync(context),
         BlockUids.TrayRoot => RunTrayRootAsync(context),
         BlockUids.SingleInstance => RunSingleInstanceAsync(context),
-        BlockUids.BackendConnection => backendConnection.RunAsync(context),
+        BlockUids.BackendConnection => RunBackendConnectionAsync(context),
         BlockUids.MainWindow => RunWindowAsync(context),
         BlockUids.LoopbackProxy => RunProxyAsync(context),
         BlockUids.WebViewHost => RunWebViewAsync(context),
@@ -32,6 +32,13 @@ public sealed partial class ResourceManagerApplicationContext
         BlockUids.TrayNotifications => RunTrayNotificationsAsync(context),
         _ => throw new InvalidOperationException("Unknown native UI block: " + id)
     }));
+
+    private async Task RunBackendConnectionAsync(BusinessBlockRunContext context)
+    {
+        await trees.StartBackendSessionPublicationAsync();
+        try { await backendConnection.RunAsync(context); }
+        finally { await trees.StopBackendSessionPublicationAsync(); }
+    }
 
     private async Task RunMainRootAsync(BusinessBlockRunContext context)
     {

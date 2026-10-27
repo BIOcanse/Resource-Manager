@@ -47,12 +47,12 @@ public sealed class BusinessBlockDrainHandshakeTests
         await using var scheduler = new BusinessBlockScheduler(new BusinessBlockTestSupport.EmptyServices(),
             [BusinessBlockTestSupport.Register(105, grandparent), BusinessBlockTestSupport.Register(107, parent, 105),
              BusinessBlockTestSupport.Register(104, child, 107), BusinessBlockTestSupport.Register(106, leaf, 104)],
-            Options.Create(new BusinessBlockOptions()), NullLogger<BusinessBlockScheduler>.Instance, control,
-            [new(107, [BusinessBlockScheduler.DemandFact(104), "p-probe"], input =>
-                input.Facts[BusinessBlockScheduler.DemandFact(104)].Value ? [104] : []),
-             new(104, [BusinessBlockScheduler.DemandFact(106)], input =>
+            Options.Create(new BusinessBlockOptions()), NullLogger<BusinessBlockScheduler>.Instance, BusinessBlockTestSupport.CreateAuthority(), control,
+            [new(107, [BusinessBlockTestSupport.DemandKey(104), TestStateUids.ParentProbe], input =>
+                input.Read<bool>(BusinessBlockTestSupport.DemandKey(104)).GetValueOrDefault(false) ? [104] : []),
+             new(104, [BusinessBlockTestSupport.DemandKey(106)], input =>
              {
-                 if (!input.Facts[BusinessBlockScheduler.DemandFact(106)].Value) return [];
+                 if (!input.Read<bool>(BusinessBlockTestSupport.DemandKey(106)).GetValueOrDefault(false)) return [];
                  if (Interlocked.Exchange(ref decisionHeld, 1) == 0)
                  {
                      decisionEntered.TrySetResult();
@@ -60,6 +60,7 @@ public sealed class BusinessBlockDrainHandshakeTests
                  }
                  return [106];
              })]);
+        var parentProbeWriter = scheduler.Authority.ClaimWrite<bool>(TestStateUids.ParentProbe);
         Task? leafDemand = null;
         Task? ancestorStop = null;
         Task? parentDecision = null;
@@ -67,7 +68,7 @@ public sealed class BusinessBlockDrainHandshakeTests
         {
             foreach (var id in new[] { 105, 107, 104 }) await scheduler.StartAsync(id, BusinessBlockTestSupport.Reason());
             await BusinessBlockTestSupport.State(scheduler, 104, BusinessBlockState.Running);
-            await BusinessBlockTestSupport.Until(() => ChildrenStopped(scheduler, 104));
+            await BusinessBlockTestSupport.State(scheduler, 106, BusinessBlockState.Stopped);
             leafDemand = scheduler.StartAsync(106, BusinessBlockTestSupport.Reason());
             await decisionEntered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             childReturn.TrySetResult();
@@ -78,16 +79,17 @@ public sealed class BusinessBlockDrainHandshakeTests
             releaseDecision.Set();
             await leafDispatchEntered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             ancestorStop = scheduler.StopAsync(107, BusinessBlockTestSupport.Reason());
-            parentDecision = scheduler.SetFactAsync("p-probe", true, BusinessBlockTestSupport.Reason());
+            parentDecision = parentProbeWriter.PublishAsync(true, BusinessBlockTestSupport.Reason());
             await Task.WhenAll(ancestorStop, parentDecision).WaitAsync(BusinessBlockTestSupport.TestTimeout);
-            Assert.False(ChildrenStopped(scheduler, 107));
+            Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState(104));
+            Assert.Equal(BusinessBlockState.Starting, scheduler.ReadState(106));
             Assert.False(parent.Notified.Task.IsCompleted);
 
             releaseLeafDispatch.Set();
             await leafDemand.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             await leaf.Notified.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             Assert.Equal(BusinessBlockState.Stopping, scheduler.ReadState(106));
-            Assert.False(ChildrenStopped(scheduler, 107));
+            Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState(104));
             Assert.False(parent.Notified.Task.IsCompleted);
 
             releaseReturnCallback.Set();
@@ -147,10 +149,10 @@ public sealed class BusinessBlockDrainHandshakeTests
         };
         await using var scheduler = new BusinessBlockScheduler(new BusinessBlockTestSupport.EmptyServices(),
             [BusinessBlockTestSupport.Register(114, parent), BusinessBlockTestSupport.Register(115, child, 114)],
-            Options.Create(new BusinessBlockOptions()), NullLogger<BusinessBlockScheduler>.Instance, control,
-            [new(114, [BusinessBlockScheduler.DemandFact(115)], input =>
+            Options.Create(new BusinessBlockOptions()), NullLogger<BusinessBlockScheduler>.Instance, BusinessBlockTestSupport.CreateAuthority(), control,
+            [new(114, [BusinessBlockTestSupport.DemandKey(115)], input =>
             {
-                if (!input.Facts[BusinessBlockScheduler.DemandFact(115)].Value) return [];
+                if (!input.Read<bool>(BusinessBlockTestSupport.DemandKey(115)).GetValueOrDefault(false)) return [];
                 if (Interlocked.Exchange(ref decisionHeld, 1) == 0)
                 {
                     decisionEntered.TrySetResult();
@@ -163,7 +165,7 @@ public sealed class BusinessBlockDrainHandshakeTests
         {
             await scheduler.StartAsync(114, BusinessBlockTestSupport.Reason());
             await BusinessBlockTestSupport.State(scheduler, 114, BusinessBlockState.Running);
-            await BusinessBlockTestSupport.Until(() => ChildrenStopped(scheduler, 114));
+            await BusinessBlockTestSupport.State(scheduler, 115, BusinessBlockState.Stopped);
             childDemand = scheduler.StartAsync(115, BusinessBlockTestSupport.Reason());
             await decisionEntered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             parentReturn.TrySetResult();
@@ -171,7 +173,7 @@ public sealed class BusinessBlockDrainHandshakeTests
 
             // An unchanged fact still wakes the root. Its completed decision is our barrier:
             // the root must revoke permission, not reuse the earlier "children stopped" report.
-            await scheduler.SetEnabledAsync(114, true, BusinessBlockTestSupport.Reason(cause: "root-pulse"))
+            await scheduler.SetDemandAsync("test:114", 114, BusinessBlockTestSupport.Reason(cause: "root-pulse"))
                 .WaitAsync(BusinessBlockTestSupport.TestTimeout);
             Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState(114));
             Assert.Equal(1, Volatile.Read(ref parentRuns));
@@ -204,9 +206,6 @@ public sealed class BusinessBlockDrainHandshakeTests
             await BusinessBlockTestSupport.StopAll(scheduler);
         }
     }
-
-    private static bool ChildrenStopped(BusinessBlockScheduler scheduler, int id)
-        => scheduler.Read().Facts.Single(fact => fact.Key == BusinessBlockScheduler.ChildrenStoppedFact(id)).Value;
 
     private static void Wait(ManualResetEventSlim gate)
     {

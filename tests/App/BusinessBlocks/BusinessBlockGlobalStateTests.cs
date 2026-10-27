@@ -174,9 +174,9 @@ public sealed class BusinessBlockGlobalStateTests
             Assert.Equal(1, block.Runs);
             Assert.Equal(0, block.Returns);
             Assert.Equal(BusinessBlockState.Running, scheduler.ReadState(154));
-            var fact = scheduler.Read().Facts.Single(item => item.Key == BusinessBlockScheduler.DemandFact(154));
-            Assert.True(fact.Value);
-            Assert.Equal(reason, Assert.Single(fact.Reasons));
+            var fact = scheduler.Read().Items.Single(item => item.ItemUid == BackendItems.BlockDemand && item.BlockUid == 154);
+            Assert.True(Assert.IsType<bool>(fact.Value));
+            Assert.Equal(reason, Assert.Single(scheduler.Read().Demands, item => item.BlockId == 154).Reason);
             Assert.Contains(scheduler.Read().Decisions, item => item.ParentId == BackendUids.Program && item.Reason == reason && item.ShouldRun.SequenceEqual([154]));
             await scheduler.SetDemandAsync("second", null, reason);
             await BusinessBlockTestSupport.State(scheduler, 154, BusinessBlockState.Stopped);
@@ -258,16 +258,17 @@ public sealed class BusinessBlockGlobalStateTests
         });
         await using var scheduler = BusinessBlockTestSupport.Create([
             BusinessBlockTestSupport.Register(150, preparingBlock), BusinessBlockTestSupport.Register(123, fast)],
-            [new(BackendUids.Program, ["group"], input => input.Facts["group"].Value ? [150, 123] : [])]);
+            [new(BackendUids.Program, [TestStateUids.Group], input => input.Read<bool>(TestStateUids.Group).GetValueOrDefault(false) ? [150, 123] : [])]);
+        var groupWriter = scheduler.Authority.ClaimWrite<bool>(TestStateUids.Group);
         try
         {
-            await scheduler.SetFactAsync("group", true, BusinessBlockTestSupport.Reason());
+            await groupWriter.PublishAsync(true, BusinessBlockTestSupport.Reason());
             await preparing.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             await fast.Entered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             Assert.Equal(BusinessBlockState.Starting, scheduler.ReadState(150));
             prepare.Set();
             await slow.Entered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
-            await scheduler.SetFactAsync("group", false, BusinessBlockTestSupport.Reason());
+            await groupWriter.PublishAsync(false, BusinessBlockTestSupport.Reason());
             await slow.Notified.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             await fast.Returned.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             Assert.Equal(BusinessBlockState.Stopping, scheduler.ReadState(150));

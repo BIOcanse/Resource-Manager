@@ -1,3 +1,4 @@
+using ResourceManager.Shared.BusinessBlocks.State;
 using BlockUids = ResourceManager.NativeUi.StateItems.BlockUids;
 using Microsoft.Extensions.Logging;
 using ResourceManager.Shared.BusinessBlocks;
@@ -6,12 +7,10 @@ using ResourceManager.NativeUi.StateItems;
 
 namespace ResourceManager.NativeUi.Blocks;
 
-/// <summary>The native process's main and tray trees share facts, never control each other.</summary>
+/// <summary>The native process's main and tray trees share state items, never control each other.</summary>
 internal sealed class NativeUiBlockTrees : IAsyncDisposable
 {
-    internal const string ProgramStartedFact = "native-ui:program-started";
-    internal const string WindowWantedFact = "native-ui:window-wanted";
-    internal const string BackendSessionReadyFact = "native-ui:backend-session-ready";
+    private readonly NativeUiStateItems state = new();
     private readonly BusinessBlockController control;
     private readonly SharedScheduler scheduler;
     private long sessionGeneration;
@@ -39,21 +38,21 @@ internal sealed class NativeUiBlockTrees : IAsyncDisposable
             Node(BlockUids.WebViewHost, BlockUids.LoopbackProxy, BlockUids.LoopbackProxy),
             Node(BlockUids.TrayNotifications, BlockUids.TrayRoot, BlockUids.BackendConnection)
         ]);
-        scheduler = new(graph, create, historyLimit, logger, StateRegistry.Version, nameLookup, control, [
-            // Whether a whole tree runs is decided here, never by the tree itself; program exit is the scheduler's shutdown fact.
-            new(BlockUids.Program, [ProgramStartedFact], input => input.Facts[ProgramStartedFact].Value
+        scheduler = new(graph, create, historyLimit, logger, StateRegistry.Version, nameLookup, state.Authority, null, StateItemUids.ProgramShuttingDown, control, [
+            // Whether a whole tree runs is decided here, never by the tree itself; program exit is the scheduler's shutdown item.
+            new(BlockUids.Program, [StateItemUids.ProgramStarted], input => input.Read<bool>(StateItemUids.ProgramStarted).GetValueOrDefault(false)
                 ? [BlockUids.MainRoot, BlockUids.TrayRoot] : []),
-            new(BlockUids.MainRoot, [WindowWantedFact], input => input.Facts[WindowWantedFact].Value
+            new(BlockUids.MainRoot, [StateItemUids.WindowWanted], input => input.Read<bool>(StateItemUids.WindowWanted).GetValueOrDefault(false)
                 ? [BlockUids.SingleInstance, BlockUids.BackendConnection, BlockUids.MainWindow]
                 : [BlockUids.SingleInstance, BlockUids.BackendConnection]),
-            new(BlockUids.BackendConnection, [BackendSessionReadyFact], input => input.Facts[BackendSessionReadyFact].Value
+            new(BlockUids.BackendConnection, [StateItemUids.BackendSessionReady], input => input.Read<bool>(StateItemUids.BackendSessionReady).GetValueOrDefault(false)
                 ? [BlockUids.DesktopObservation, BlockUids.Overlay] : []),
-            new(BlockUids.MainWindow, [BackendSessionReadyFact], input =>
-                input.Facts[BackendSessionReadyFact].Value
+            new(BlockUids.MainWindow, [StateItemUids.BackendSessionReady], input =>
+                input.Read<bool>(StateItemUids.BackendSessionReady).GetValueOrDefault(false)
                     || input.Children[BlockUids.LoopbackProxy] != BusinessBlockState.Stopped
                         ? [BlockUids.LoopbackProxy] : []),
             new(BlockUids.LoopbackProxy, [], _ => [BlockUids.WebViewHost]),
-            new(BlockUids.TrayRoot, [BackendSessionReadyFact], input => input.Facts[BackendSessionReadyFact].Value
+            new(BlockUids.TrayRoot, [StateItemUids.BackendSessionReady], input => input.Read<bool>(StateItemUids.BackendSessionReady).GetValueOrDefault(false)
                 ? [BlockUids.TrayNotifications] : [])
         ], () => Volatile.Read(ref sessionGeneration));
     }
@@ -62,19 +61,26 @@ internal sealed class NativeUiBlockTrees : IAsyncDisposable
     {
         if (Interlocked.Exchange(ref started, 1) != 0) return;
         await SetWindowWantedAsync(windowWanted, "startup").ConfigureAwait(false);
-        await scheduler.SetFactAsync(ProgramStartedFact, true, Reason("program", "process-started")).ConfigureAwait(false);
+        await state.ProgramStarted.PublishAsync(true, Reason("program", "process-started")).ConfigureAwait(false);
     }
 
     internal Task SetWindowWantedAsync(bool wanted, string owner)
-        => scheduler.SetFactAsync(WindowWantedFact, wanted, Reason(owner, wanted ? "show-window" : "close-window"));
+        => state.WindowWanted.PublishAsync(wanted, Reason(owner, wanted ? "show-window" : "close-window"));
 
     internal Task SetBackendSessionReadyAsync(bool ready, long generation)
     {
         Interlocked.Exchange(ref sessionGeneration, generation);
-        return scheduler.SetFactAsync(BackendSessionReadyFact, ready,
+        return state.BackendSessionReady.PublishAsync(ready,
             new(BusinessBlockRequestKind.Dependency, BlockUids.BackendConnection.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 ready ? "session-ready" : "session-lost", generation));
     }
+
+    internal Task StartBackendSessionPublicationAsync()
+        => state.BackendSessionReady.BindAsync(Reason(BlockUids.BackendConnection.ToString(System.Globalization.CultureInfo.InvariantCulture), "owner-started"));
+
+    // Whole owner-flow shutdown only; generation transitions keep the existing publication points.
+    internal Task StopBackendSessionPublicationAsync()
+        => state.BackendSessionReady.UnbindAsync(Reason(BlockUids.BackendConnection.ToString(System.Globalization.CultureInfo.InvariantCulture), "owner-stopped"));
 
     internal async Task ShutdownAsync(BusinessBlockReason reason)
     {

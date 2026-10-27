@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using ResourceManager.Shared.BusinessBlocks.State;
 
 namespace ResourceManager.Shared.BusinessBlocks;
 
@@ -43,19 +44,39 @@ public sealed record BusinessBlocksSnapshot(DateTimeOffset At, int HistoryLimit,
     public IReadOnlyList<BusinessBlockDemand> Demands { get; init; } = [];
     public IReadOnlyList<BusinessBlockDecision> Decisions { get; init; } = [];
     public IReadOnlyList<BusinessBlockDecision> CurrentDecisions { get; init; } = [];
-    public IReadOnlyList<BusinessBlockFact> Facts { get; init; } = [];
+    public IReadOnlyList<BusinessBlockItem> Items { get; init; } = [];
     public bool ShuttingDown { get; init; }
 }
 
 public sealed record BusinessBlockNode(int Id, int ParentId,
     IReadOnlyList<int> Inputs);
 public sealed record BusinessBlockDemand(string Key, int BlockId, BusinessBlockReason Reason);
-/// <summary>Authoritative boolean conditions used by today's rules; execution details are not facts here.</summary>
-public sealed record BusinessBlockFact(string Key, bool Value, IReadOnlyList<BusinessBlockReason> Reasons);
+public sealed record BusinessBlockItem(int ItemUid, int? BlockUid, object? Value, NoValueReason? NoValueReason)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Name { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? BlockName { get; init; }
+}
 public sealed record BusinessBlockDecision(long Sequence, int ParentId, string Transition,
-    BusinessBlockReason Reason, IReadOnlyList<int> ShouldRun, IReadOnlyList<BusinessBlockFact> Facts);
-public sealed record BusinessBlockDecisionInput(IReadOnlyDictionary<string, BusinessBlockFact> Facts,
-    IReadOnlyDictionary<int, BusinessBlockState> Children);
+    BusinessBlockReason Reason, IReadOnlyList<int> ShouldRun, IReadOnlyList<BusinessBlockItem> Items);
+/// <summary>A rule can only read its declared items, captured together before evaluating it.</summary>
+public sealed class BusinessBlockDecisionInput
+{
+    private readonly StateAuthority authority;
+    private readonly IReadOnlyDictionary<StateItemKey, IStatePublication?> items;
+    public IReadOnlyDictionary<int, BusinessBlockState> Children { get; }
+    public IReadOnlyCollection<StateItemKey> ItemKeys => items.Keys.ToArray();
+    internal BusinessBlockDecisionInput(StateAuthority authority, IReadOnlyDictionary<StateItemKey, IStatePublication?> items,
+        IReadOnlyDictionary<int, BusinessBlockState> children)
+    { this.authority = authority; this.items = items; Children = children; }
+    public StateRead<T> Read<T>(StateItemKey key)
+    {
+        if (!items.TryGetValue(key, out var publication)) throw new InvalidOperationException($"Rule read undeclared state item {key}.");
+        authority.ValidateType<T>(key);
+        return publication is StatePublication<T> value ? value.Read : StateRead<T>.NoValue(NoValueReason.NotPublished);
+    }
+}
 public sealed record BusinessBlockControlTransition(long Sequence, DateTimeOffset At, int BlockId,
     BusinessBlockState From, BusinessBlockState To);
 public sealed record BusinessBlockControlSnapshot(IReadOnlyDictionary<int, BusinessBlockState> States,
@@ -63,6 +84,6 @@ public sealed record BusinessBlockControlSnapshot(IReadOnlyDictionary<int, Busin
 public sealed record BusinessBlockRunContext(CancellationToken StopNotification, Action ReportRunning);
 
 /// <summary>A parent's rule reads only these declared facts and its immediate children's states.</summary>
-public sealed record BusinessBlockDecisionRegistration(int ParentId, IReadOnlyList<string> FactKeys,
+public sealed record BusinessBlockDecisionRegistration(int ParentId, IReadOnlyList<StateItemKey> ItemKeys,
     Func<BusinessBlockDecisionInput, IReadOnlyCollection<int>> Decide);
 

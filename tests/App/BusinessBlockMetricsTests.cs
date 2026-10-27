@@ -276,7 +276,7 @@ public sealed class BusinessBlockMetricsTests
             services,
             registrations,
             options,
-            NullLogger<BusinessBlockScheduler>.Instance);
+            NullLogger<BusinessBlockScheduler>.Instance, BusinessBlockTestSupport.CreateAuthority());
         block = new ControllerBusyBlock(diagnostics);
 
         var reason = new BusinessBlockReason(BusinessBlockRequestKind.User, "metrics-test", "busy-block", 1);

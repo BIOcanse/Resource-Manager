@@ -35,6 +35,7 @@ internal sealed class PresentFrameEtwTestHarness : IAsyncDisposable
     internal PresentFrameEtwTestSessionFactory Sessions { get; }
     internal BusinessBlockDiagnosticsRegistry Diagnostics { get; }
     internal EtwTestRunRecorder Recorder { get; }
+    internal NativeEtwSessionAvailability Availability { get; private init; } = null!;
     internal Task<BusinessBlockResult> NextResultAsync() => Recorder.NextResultAsync();
 
     internal static PresentFrameEtwTestHarness Create(
@@ -50,24 +51,25 @@ internal sealed class PresentFrameEtwTestHarness : IAsyncDisposable
         EtwTestRunRecorder? recorder = null;
         var registration = new BusinessBlockRegistration(BackendUids.PresentFrameEtwSource, [], _ => recorder!);
         var diagnostics = new BusinessBlockDiagnosticsRegistry([registration], NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
+        var authority = BusinessBlockTestSupport.CreateAuthority();
+        var availability = new NativeEtwSessionAvailability(authority);
         var controller = new BusinessBlockScheduler(services, [registration],
-            Options.Create(blockOptions ?? new BusinessBlockOptions()), NullLogger<BusinessBlockScheduler>.Instance,
-            decisions: [EtwTestRunRecorder.AvailabilityRule(BackendUids.PresentFrameEtwSource, PresentFrameEtwSource.AvailabilityFact)]);
+            Options.Create(blockOptions ?? new BusinessBlockOptions()), NullLogger<BusinessBlockScheduler>.Instance, authority,
+            decisions: [EtwTestRunRecorder.AvailabilityRule(BackendUids.PresentFrameEtwSource, BackendItems.PresentNativeSessionAvailable, BackendItems.PresentUnfrozen)]);
         observer ??= new BusinessBlockEtwThreadObserver(diagnostics);
         var sourceLogger = logger ?? NullLogger<PresentFrameEtwSource>.Instance;
         if (useNativeSession)
         {
-            source = new PresentFrameEtwSource(sourceLogger, controller, diagnostics, observer);
+            source = new PresentFrameEtwSource(sourceLogger, controller, diagnostics, availability, observer);
         }
         else
         {
-            source = new PresentFrameEtwSource(sourceLogger, controller, diagnostics, sessions.Create,
+            source = new PresentFrameEtwSource(sourceLogger, controller, diagnostics, availability, sessions.Create,
                 timeProvider ?? new PresentFrameEtwManualTimeProvider(), observer);
         }
 
         recorder = new(source, diagnostics, BackendUids.PresentFrameEtwSource);
-        source.PublishAvailabilityAsync().GetAwaiter().GetResult();
-        return new(services, controller, source, sessions, diagnostics, recorder);
+        return new(services, controller, source, sessions, diagnostics, recorder) { Availability = availability };
     }
 
     internal static Task ReadyAsync(IDisposable lease)
@@ -99,9 +101,17 @@ internal sealed class PresentFrameEtwTestHarness : IAsyncDisposable
 
 internal sealed class EtwTestRunRecorder(IBusinessBlock block, BusinessBlockDiagnosticsRegistry diagnostics, int id) : IBusinessBlock
 {
-    internal static BusinessBlockDecisionRegistration AvailabilityRule(int id, string availabilityFact)
-        => new(BackendUids.Program, [BusinessBlockScheduler.DemandFact(id), availabilityFact],
-            input => input.Facts[BusinessBlockScheduler.DemandFact(id)].Value && input.Facts[availabilityFact].Value ? [id] : []);
+    internal static BusinessBlockDecisionRegistration AvailabilityRule(int id, int availabilityItem, int? unfrozenItem = null, bool fixtureGate = false)
+    {
+        var keys = new List<StateItemKey> { BusinessBlockTestSupport.DemandKey(id), availabilityItem };
+        if (unfrozenItem is { } mode) keys.Add(mode);
+        if (fixtureGate) keys.Add(BusinessBlockTestSupport.GateKey(id));
+        return new(BackendUids.Program, keys, input =>
+            input.Read<bool>(BusinessBlockTestSupport.DemandKey(id)).GetValueOrDefault(false)
+            && input.Read<bool>(availabilityItem).GetValueOrDefault(false)
+            && (unfrozenItem is not { } uid || input.Read<bool>(uid).GetValueOrDefault(false))
+            && (!fixtureGate || input.Read<bool>(BusinessBlockTestSupport.GateKey(id)).GetValueOrDefault(true)) ? [id] : []);
+    }
 
     private readonly System.Threading.Channels.Channel<BusinessBlockResult> results =
         System.Threading.Channels.Channel.CreateBounded<BusinessBlockResult>(new System.Threading.Channels.BoundedChannelOptions(64)

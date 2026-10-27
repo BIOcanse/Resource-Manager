@@ -50,21 +50,25 @@ internal sealed class GpuAllocationTestHarness : IAsyncDisposable
         EtwTestRunRecorder? recorder = null;
         var registration = new BusinessBlockRegistration(BackendUids.GpuAllocationCollector, [], _ => recorder!);
         Diagnostics = new BusinessBlockDiagnosticsRegistry([registration], NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
+        var authority = BusinessBlockTestSupport.CreateAuthority();
+        Availability = new NativeEtwSessionAvailability(authority);
+        Gate = authority.ClaimWrite<bool>(BusinessBlockTestSupport.GateKey(BackendUids.GpuAllocationCollector));
         Controller = new BusinessBlockScheduler(services, [registration],
-            Options.Create(blockOptions ?? new BusinessBlockOptions()), NullLogger<BusinessBlockScheduler>.Instance,
-            decisions: [EtwTestRunRecorder.AvailabilityRule(BackendUids.GpuAllocationCollector, GpuAllocationCollector.AvailabilityFact)]);
+            Options.Create(blockOptions ?? new BusinessBlockOptions()), NullLogger<BusinessBlockScheduler>.Instance, authority,
+            decisions: [EtwTestRunRecorder.AvailabilityRule(BackendUids.GpuAllocationCollector, BackendItems.GpuAllocationNativeSessionAvailable, fixtureGate: true)]);
         Collector = new GpuAllocationCollector(logger ?? NullLogger<GpuAllocationCollector>.Instance,
-            configuration ?? new ConfigurationBuilder().Build(), Controller, Diagnostics, factory,
+            configuration ?? new ConfigurationBuilder().Build(), Controller, Diagnostics, Availability, factory,
             timeProvider ?? TimeProvider.System, budget, observer);
         collector = Collector;
         Recorder = recorder = new(collector, Diagnostics, BackendUids.GpuAllocationCollector);
-        Collector.PublishAvailabilityAsync().GetAwaiter().GetResult();
     }
 
     internal GpuAllocationCollector Collector { get; }
     internal BusinessBlockScheduler Controller { get; }
     internal BusinessBlockDiagnosticsRegistry Diagnostics { get; }
     internal EtwTestRunRecorder Recorder { get; }
+    internal NativeEtwSessionAvailability Availability { get; }
+    internal StateWriter<bool> Gate { get; }
     internal Task<BusinessBlockResult> NextResultAsync() => Recorder.NextResultAsync();
 
     public async ValueTask DisposeAsync()

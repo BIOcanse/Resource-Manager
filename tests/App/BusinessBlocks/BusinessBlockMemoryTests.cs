@@ -22,15 +22,17 @@ public sealed class BusinessBlockMemoryTests(ITestOutputHelper output)
         var logger = NullLogger<BusinessBlockScheduler>.Instance;
 
         // Warm code paths and logger metadata before measuring the retained object graph.
-        await using (var warm = new BusinessBlockScheduler(provider, registrations, options, logger))
+        await using (var warm = BusinessBlockTestSupport.Create(registrations))
         {
+            var warmGate = warm.Authority.ClaimWrite<bool>(BusinessBlockTestSupport.GateKey(101));
             for (var index = 0; index < 128; index++)
-                await warm.SetEnabledAsync(101, index % 2 == 0, new(BusinessBlockRequestKind.Configuration, "test", "warm", 1));
+                await warmGate.PublishAsync(index % 2 == 0, new(BusinessBlockRequestKind.Configuration, "test", "warm", 1));
         }
 
         var beforeController = CollectLiveBytes();
         var controllerAllocationStart = GC.GetTotalAllocatedBytes();
-        await using var controller = new BusinessBlockScheduler(provider, registrations, options, logger);
+        await using var controller = BusinessBlockTestSupport.Create(registrations);
+        var enabled101 = controller.Authority.ClaimWrite<bool>(BusinessBlockTestSupport.GateKey(101));
         var controllerAllocated = GC.GetTotalAllocatedBytes() - controllerAllocationStart;
         var afterController = CollectLiveBytes();
         var controllerRetained = Math.Max(0, afterController - beforeController);
@@ -41,7 +43,7 @@ public sealed class BusinessBlockMemoryTests(ITestOutputHelper output)
         var historyAllocationStart = GC.GetTotalAllocatedBytes();
         for (var index = 0; index < historyCount; index++)
         {
-            await controller.SetEnabledAsync(101, index % 2 == 0, new(BusinessBlockRequestKind.Configuration, "test", operation, 1));
+            await enabled101.PublishAsync(index % 2 == 0, new(BusinessBlockRequestKind.Configuration, "test", operation, 1));
         }
         var historyAllocated = GC.GetTotalAllocatedBytes() - historyAllocationStart;
         var afterHistory = CollectLiveBytes();

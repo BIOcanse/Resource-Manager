@@ -150,9 +150,10 @@ public sealed class NativeUiBlockTreeTests
         Assert.NotSame(desktop, await probes.Next(UiUids.DesktopObservation));
         Assert.NotSame(overlay, await probes.Next(UiUids.Overlay));
         Assert.NotSame(notifications, await probes.Next(UiUids.TrayNotifications));
-        var session = trees.Read().Facts.Single(fact => fact.Key == NativeUiBlockTrees.BackendSessionReadyFact);
-        Assert.True(session.Value);
-        Assert.Equal(12, Assert.Single(session.Reasons).PlanVersion);
+        var session = trees.Read().Items.Single(fact => fact.ItemUid == UiItems.BackendSessionReady);
+        Assert.True(Assert.IsType<bool>(session.Value));
+        Assert.Contains(trees.Read().Decisions, decision => decision.Reason.PlanVersion == 12
+            && decision.Items.Any(item => item.ItemUid == UiItems.BackendSessionReady && item.Value is true));
         Assert.Equal(1, probes.Runs(UiUids.MainWindow));
     }
 

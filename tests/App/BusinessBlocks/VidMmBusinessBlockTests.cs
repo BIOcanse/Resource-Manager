@@ -32,14 +32,14 @@ public sealed class VidMmBusinessBlockTests
         Assert.Equal(BusinessBlockFailureStage.Run, result.FailureStage);
         Assert.Equal(typeof(UnauthorizedAccessException).FullName, result.FailureType);
         await EtwTestRunRecorder.UntilAsync(() => harness.Zone.State == "Stopped");
-        await harness.Zone.PublishAvailabilityAsync();
+        Assert.NotNull(harness.Availability.ReadFailure(BackendUids.DxgkrnlVidMmEtwTelemetryZone));
         await Task.Delay(TimeSpan.FromMilliseconds(100));
         Assert.Equal(1, harness.Sessions.Attempts);
         Assert.Equal(1, session.DisposeCount);
         Assert.True(session.ProcessExited.IsCompleted);
         Assert.False(session.ConsumerThread!.IsAlive);
-        Assert.False(Assert.Single(harness.Controller.Read().Facts,
-            fact => fact.Key == DxgkrnlVidMmEtwTelemetryZone.AvailabilityFact).Value);
+        Assert.False(Assert.IsType<bool>(Assert.Single(harness.Controller.Read().Items,
+            fact => fact.ItemUid == BackendItems.VidMmNativeSessionAvailable).Value));
         Assert.Empty(harness.Diagnostics.Read(BlockId).Metrics.ActiveThreads);
         Assert.Single(harness.Controller.Read().Demands);
         await EtwTestRunRecorder.ReleaseAsync(subscription);
@@ -65,11 +65,11 @@ public sealed class VidMmBusinessBlockTests
         }
         Assert.Equal(BusinessBlockOutcome.Failed, (await harness.NextResultAsync()).Outcome);
         await EtwTestRunRecorder.UntilAsync(() => harness.Zone.State == "Stopped");
-        await harness.Zone.PublishAvailabilityAsync();
+        Assert.NotNull(harness.Availability.ReadFailure(BackendUids.DxgkrnlVidMmEtwTelemetryZone));
         await Task.Delay(TimeSpan.FromMilliseconds(100));
         Assert.Equal(1, harness.Sessions.Attempts);
-        Assert.False(Assert.Single(harness.Controller.Read().Facts,
-            fact => fact.Key == DxgkrnlVidMmEtwTelemetryZone.AvailabilityFact).Value);
+        Assert.False(Assert.IsType<bool>(Assert.Single(harness.Controller.Read().Items,
+            fact => fact.ItemUid == BackendItems.VidMmNativeSessionAvailable).Value));
         Assert.Single(harness.Controller.Read().Demands);
         Assert.Empty(harness.Diagnostics.Read(BlockId).Metrics.ActiveThreads);
         await EtwTestRunRecorder.ReleaseAsync(subscription);
@@ -87,15 +87,15 @@ public sealed class VidMmBusinessBlockTests
         var subscription = harness.Zone.AcquireSubscription("permission-test", TimeSpan.FromSeconds(1));
         Assert.Equal(BusinessBlockOutcome.Failed, (await harness.NextResultAsync()).Outcome);
         await EtwTestRunRecorder.UntilAsync(() => harness.Zone.State == "Stopped");
-        await harness.Zone.PublishAvailabilityAsync();
+        Assert.NotNull(harness.Availability.ReadFailure(BackendUids.DxgkrnlVidMmEtwTelemetryZone));
         var second = harness.Zone.AcquireSubscription("another-consumer", TimeSpan.FromSeconds(1));
         await Task.Delay(TimeSpan.FromMilliseconds(100));
         Assert.Equal(1, harness.Sessions.Attempts);
         Assert.Equal("Stopped", harness.Zone.State);
         Assert.Contains(harness.ControllerLogger.Entries, entry => entry.Exception == error);
         Assert.Equal(typeof(UnauthorizedAccessException).FullName, harness.Diagnostics.Read(BlockId).Result?.FailureType);
-        Assert.False(Assert.Single(harness.Controller.Read().Facts,
-            fact => fact.Key == DxgkrnlVidMmEtwTelemetryZone.AvailabilityFact).Value);
+        Assert.False(Assert.IsType<bool>(Assert.Single(harness.Controller.Read().Items,
+            fact => fact.ItemUid == BackendItems.VidMmNativeSessionAvailable).Value));
         if (afterCreation) Assert.Equal(1, harness.Sessions.Current.DisposeCount);
         await EtwTestRunRecorder.ReleaseAsync(subscription);
         await EtwTestRunRecorder.ReleaseAsync(second);
@@ -114,7 +114,7 @@ public sealed class VidMmBusinessBlockTests
         try
         {
             await creating.Task.WaitAsync(TestTimeout);
-            await harness.Controller.SetEnabledAsync(BlockId, true,
+            await harness.Controller.SetDemandAsync(Assert.Single(harness.Controller.Read().Demands).Key, BlockId,
                 new(BusinessBlockRequestKind.Configuration, "test", "same-current-enable", 0)).WaitAsync(TestTimeout);
             Assert.Equal("Starting", harness.Zone.State);
             var ready = Task.Run(async () => await dependency.Ready);

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
@@ -24,8 +25,30 @@ internal static class BusinessBlockTestSupport
         => new(kind, owner, cause, version);
     internal static BusinessBlockScheduler Create(IEnumerable<BusinessBlockRegistration> registrations,
         IEnumerable<BusinessBlockDecisionRegistration>? decisions = null, int historyLimit = 128, ILogger<BusinessBlockScheduler>? logger = null)
-        => new(new EmptyServices(), registrations, Options.Create(new BusinessBlockOptions { HistoryLimit = historyLimit }),
-            logger ?? NullLogger<BusinessBlockScheduler>.Instance, decisions: decisions);
+    {
+        var rows = registrations.ToArray();
+        var graph = new BackendBlockGraph(rows);
+        var authority = CreateAuthority(graph.BlockIds);
+        var rules = (decisions ?? []).ToDictionary(rule => rule.ParentId);
+        foreach (var parent in graph.BlockIds.Prepend(graph.Program))
+        {
+            var children = graph.Children(parent);
+            if (children.Count == 0 || rules.ContainsKey(parent)) continue;
+            // These fixture rules explicitly model configuration gating. Custom rules choose their own inputs.
+            rules.Add(parent, new(parent, children.SelectMany(id => new[] { DemandKey(id), GateKey(id) }).ToArray(),
+                input => children.Where(id => input.Read<bool>(DemandKey(id)).GetValueOrDefault(false)
+                    && input.Read<bool>(GateKey(id)).GetValueOrDefault(true)).ToArray()));
+        }
+        return new(new EmptyServices(), rows, Options.Create(new BusinessBlockOptions { HistoryLimit = historyLimit }),
+            logger ?? NullLogger<BusinessBlockScheduler>.Instance, authority, decisions: rules.Values);
+    }
+    internal static StateItemKey DemandKey(int id) => new(BackendItems.BlockDemand, id);
+    internal static StateItemKey GateKey(int id) => new(TestStateUids.Unfrozen, id);
+    internal static StateAuthority CreateAuthority(IEnumerable<int>? blocks = null)
+        => new(ResourceManager.App.StateItems.StateRegistry.Items.Concat(TestStateUids.Declarations),
+            ResourceManager.App.StateItems.StateRegistry.Blocks.Concat(blocks ?? Enumerable.Range(101, 59)).Distinct());
+    internal static void AddStateFixtures(IServiceCollection services)
+        => services.AddSingleton(_ => CreateAuthority());
     internal static BusinessBlockRegistration Register(int id, IBusinessBlock block, int parent = BackendUids.Program, params int[] inputs)
         => new(id, inputs, _ => block) { ParentId = parent };
     internal static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);

@@ -20,7 +20,7 @@ public sealed class BusinessBlockHostedCancellationTests
         using var host = Host.CreateDefaultBuilder()
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services => services.AddBusinessBlockHostedService<GatedCleanup>(
-                119, [], _ => service)).Build();
+                119, [], _ => service)).ConfigureServices(BusinessBlockTestSupport.AddStateFixtures).Build();
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
         var block = host.Services.GetRequiredService<HostedBusinessBlockRegistry>().GetOrAdd(119, () => service);
         using var deadline = new CancellationTokenSource();
@@ -64,7 +64,7 @@ public sealed class BusinessBlockHostedCancellationTests
         using var host = Host.CreateDefaultBuilder()
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services => services.AddBusinessBlockHostedService<SharedResourceSubscriptionMaintenanceService>(
-                159, [], _ => service)).Build();
+                159, [], _ => service)).ConfigureServices(BusinessBlockTestSupport.AddStateFixtures).Build();
         var alias = host.Services.GetServices<IHostedService>()
             .OfType<NonOwningHostedService<SharedResourceSubscriptionMaintenanceService>>().Single();
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
@@ -72,7 +72,7 @@ public sealed class BusinessBlockHostedCancellationTests
         {
             await alias.StartAsync(CancellationToken.None).WaitAsync(BusinessBlockTestSupport.TestTimeout);
             await maintenance.Entered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
-            await scheduler.SetEnabledAsync(159, false, BusinessBlockTestSupport.Reason());
+            await scheduler.SetDemandAsync("host:159", null, BusinessBlockTestSupport.Reason());
             await BusinessBlockTestSupport.State(scheduler, 159, BusinessBlockState.Stopped);
             Assert.True(service.ExecuteTask!.IsCanceled);
 

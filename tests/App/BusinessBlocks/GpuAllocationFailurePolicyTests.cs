@@ -16,7 +16,7 @@ public sealed class GpuAllocationFailurePolicyTests
         BusinessBlockRegistration[] declarations = [new(120, [], _ => consumer)];
         var diagnostics = new BusinessBlockDiagnosticsRegistry(declarations, NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
         await using var scheduler = new BusinessBlockScheduler(services, declarations,
-            Options.Create(new BusinessBlockOptions()), NullLogger<BusinessBlockScheduler>.Instance);
+            Options.Create(new BusinessBlockOptions()), NullLogger<BusinessBlockScheduler>.Instance, BusinessBlockTestSupport.CreateAuthority());
         var dependency = scheduler.AcquireDependency(120, new(BusinessBlockRequestKind.Dependency, "test", "allocation-output", 1));
         await EtwTestRunRecorder.ReadyAsync(dependency);
         await consumer.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));

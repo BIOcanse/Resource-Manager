@@ -752,7 +752,7 @@ public sealed class HostManagerSmartCoordinatorCompositionTests
         public object? GetService(Type serviceType)
             => serviceType == typeof(HostManagerSmartCoordinator) ? owner
                 : serviceType == typeof(NativeEtwLifetimeService)
-                    ? nativeLifetime ??= new NativeEtwLifetimeService(this) : null;
+                    ? nativeLifetime ??= new NativeEtwLifetimeService() : null;
     }
 
     private static MethodInfo RequireSinglePrivateMethod(string name)

@@ -383,11 +383,11 @@
       "kind": "item",
       "process": "backend",
       "name": "PresentNativeSessionAvailable",
-      "comment": "Whether the Present producer can use its native ETW session. Session lifecycle changes publish events.",
+      "comment": "Whether the Present native ETW session is available. The process-wide publisher marks it unavailable after an unconfirmed release, permission refusal or exhausted session capacity.",
       "storage": "reference",
       "type": "bool",
       "owner": {
-        "block": 30
+        "component": "NativeEtwSessionAvailability"
       },
       "perBlock": false,
       "trigger": "event"
@@ -397,11 +397,11 @@
       "kind": "item",
       "process": "backend",
       "name": "GpuAllocationNativeSessionAvailable",
-      "comment": "Whether the GPU allocation producer can use its native ETW session. Session lifecycle changes publish events.",
+      "comment": "Whether the GPU allocation native ETW session is available. The process-wide publisher marks it unavailable after an unconfirmed release, permission refusal or exhausted session capacity.",
       "storage": "reference",
       "type": "bool",
       "owner": {
-        "block": 31
+        "component": "NativeEtwSessionAvailability"
       },
       "perBlock": false,
       "trigger": "event"
@@ -411,11 +411,11 @@
       "kind": "item",
       "process": "backend",
       "name": "VidMmNativeSessionAvailable",
-      "comment": "Whether the VidMm producer can use its native ETW session. Session lifecycle changes publish events.",
+      "comment": "Whether the VidMm native ETW session is available. The process-wide publisher marks it unavailable after an unconfirmed release, permission refusal or exhausted session capacity.",
       "storage": "reference",
       "type": "bool",
       "owner": {
-        "block": 32
+        "component": "NativeEtwSessionAvailability"
       },
       "perBlock": false,
       "trigger": "event"
@@ -548,7 +548,7 @@
       "storage": "reference",
       "type": "bool",
       "owner": {
-        "component": "HostMemoryDiskReserves"
+        "component": "HostMemoryProtectionService reserve readiness"
       },
       "perBlock": false,
       "trigger": "event"

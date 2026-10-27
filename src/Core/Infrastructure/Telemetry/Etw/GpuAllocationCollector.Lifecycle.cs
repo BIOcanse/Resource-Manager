@@ -8,7 +8,7 @@ namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
 public sealed partial class GpuAllocationCollector
 {
-    internal static readonly string AvailabilityFact = "native-session-available:" + BlockUids.GpuAllocationCollector.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    private static Guid[] RequiredProviders => [Provider, BoundaryProvider];
     private const string SubscriptionCause = "gpu-allocation-subscription";
 
     private readonly ILogger<GpuAllocationCollector> logger;
@@ -24,15 +24,15 @@ public sealed partial class GpuAllocationCollector
     private string? sessionName;
     private Run? activeRun;
     private TaskCompletionSource<Run> nextRun = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private bool runtimeReleaseBlocked;
-    private bool nativeSessionAvailable = true;
+    private readonly NativeEtwSessionAvailability availability;
 
     public GpuAllocationCollector(ILogger<GpuAllocationCollector> logger, IConfiguration configuration,
-        BusinessBlockScheduler controller, BusinessBlockDiagnosticsRegistry diagnostics, IEtwConsumerThreadObserver? consumerThreadObserver = null)
+        BusinessBlockScheduler controller, BusinessBlockDiagnosticsRegistry diagnostics, NativeEtwSessionAvailability availability, IEtwConsumerThreadObserver? consumerThreadObserver = null)
     {
         this.logger = logger;
         this.controller = controller;
         this.diagnostics = diagnostics;
+        this.availability = availability;
         plan = GpuAllocationCapturePlan.Compile(configuration);
         sessionFactory = new TraceEventGpuAllocationSessionFactory(logger, consumerThreadObserver);
         timeProvider = TimeProvider.System;
@@ -40,10 +40,10 @@ public sealed partial class GpuAllocationCollector
     }
 
     internal GpuAllocationCollector(ILogger<GpuAllocationCollector> logger, IConfiguration configuration,
-        BusinessBlockScheduler controller, BusinessBlockDiagnosticsRegistry diagnostics, IGpuAllocationSessionFactory sessionFactory,
+        BusinessBlockScheduler controller, BusinessBlockDiagnosticsRegistry diagnostics, NativeEtwSessionAvailability availability, IGpuAllocationSessionFactory sessionFactory,
         TimeProvider timeProvider, TimeSpan? deliveryBudget = null,
         IEtwConsumerThreadObserver? consumerThreadObserver = null)
-        : this(logger, configuration, controller, diagnostics, consumerThreadObserver)
+        : this(logger, configuration, controller, diagnostics, availability, consumerThreadObserver)
     {
         this.sessionFactory = sessionFactory;
         this.timeProvider = timeProvider;
@@ -95,16 +95,6 @@ public sealed partial class GpuAllocationCollector
         try
         {
             stopNotification.ThrowIfCancellationRequested();
-            bool releaseUnconfirmed;
-            lock (lifecycle) releaseUnconfirmed = runtimeReleaseBlocked || session is not null;
-            if (releaseUnconfirmed)
-            {
-                var error = new InvalidOperationException("The previous GPU allocation session was not released.");
-                run.Started.TrySetException(error);
-                diagnostics.ReportFailure(BlockUids.GpuAllocationCollector, error, "session-release-unconfirmed");
-                throw error;
-            }
-
             using (diagnostics.MeasureSegment(BlockUids.GpuAllocationCollector)) StartSession(run);
             started = true;
             context.ReportRunning();
@@ -131,10 +121,9 @@ public sealed partial class GpuAllocationCollector
         }
         catch (Exception error)
         {
-            ObservePermissionFailure(run, error);
+            ObserveSessionFailure(run, error);
             run.Started.TrySetException(error);
             result = BusinessBlockResult.Failed(error, started ? BusinessBlockFailureStage.Run : BusinessBlockFailureStage.Start);
-            if (runtimeReleaseBlocked) SetAvailability(false, "session-release-unconfirmed");
         }
         finally
         {
@@ -149,13 +138,15 @@ public sealed partial class GpuAllocationCollector
                 // Stop can be denied while its native consumer is still alive.
                 // A failed native release never excuses leaving owned work running.
                 try { run.Session?.JoinProcessing(); }
-                catch (Exception error) { ObservePermissionFailure(run, error); cleanupFailure ??= error; }
+                catch (Exception error) { ObserveSessionFailure(run, error); cleanupFailure ??= error; }
             }
             finally
             {
                 captureGate.Release();
                 lock (lifecycle)
                 {
+                    if (ReferenceEquals(session, run.Session)) { session = null; sessionName = null; }
+                    run.Session = null;
                     if (ReferenceEquals(activeRun, run)) activeRun = null;
                 }
                 run.CaptureAdmission.Dispose();
@@ -169,44 +160,26 @@ public sealed partial class GpuAllocationCollector
         run.Completed.TrySetResult();
     }
 
-    internal Task PublishAvailabilityAsync()
-        => controller.SetFactAsync(AvailabilityFact, Volatile.Read(ref nativeSessionAvailable),
-            new(BusinessBlockRequestKind.Dependency, BlockUids.GpuAllocationCollector.ToString(System.Globalization.CultureInfo.InvariantCulture), "native-session-availability", controller.CurrentPlanVersion));
-
-    private void SetAvailability(bool available, string cause)
+    private void ObserveSessionFailure(Run run, Exception? error)
     {
-        Volatile.Write(ref nativeSessionAvailable, available);
-        // The decision may wait for this run's return; only publication is synchronous.
-        _ = controller.SetFactAsync(AvailabilityFact, available,
-            new(BusinessBlockRequestKind.Dependency, BlockUids.GpuAllocationCollector.ToString(System.Globalization.CultureInfo.InvariantCulture), cause, controller.CurrentPlanVersion));
-    }
-
-    private void ObservePermissionFailure(Run run, Exception? error)
-    {
-        if (error is not UnauthorizedAccessException) return;
-        Volatile.Write(ref run.PermissionDenied, true);
-        SetAvailability(false, "native-session-permission");
+        if (error is null) return;
+        Volatile.Write(ref run.Failed, true);
+        availability.ReportFailure(BlockUids.GpuAllocationCollector, error, RequiredProviders);
     }
 
     private void ReportSessionFailure(Run run, Exception error)
     {
-        if (error is UnauthorizedAccessException) Volatile.Write(ref run.PermissionDenied, true);
+        Volatile.Write(ref run.Failed, true);
         // Failure is ready before availability can make the parent send stop.
         run.ProcessingCompletion.TrySetResult(error);
-        ObservePermissionFailure(run, error);
+        ObserveSessionFailure(run, error);
     }
 
     private void StartSession(Run run)
     {
         var name = ResourceManagerEtwSessionNames.Create(ResourceManagerEtwSessionNames.GpuAllocationsPrefix,
             ResourceManagerEtwSessionNames.CurrentOwner);
-        IGpuAllocationSession current;
-        try { current = sessionFactory.Create(name); }
-        catch (KernelEtwSessionCreationCleanupException)
-        {
-            lock (lifecycle) runtimeReleaseBlocked = true;
-            throw;
-        }
+        var current = sessionFactory.Create(name);
 
         lock (lifecycle)
         {
@@ -310,25 +283,24 @@ public sealed partial class GpuAllocationCollector
         {
             current = run.Session;
             if (current is null) return null;
-            if (runtimeReleaseBlocked) return new InvalidOperationException("The GPU allocation session release is unconfirmed.");
         }
 
         KernelEtwSessionStopResult released;
         try { released = current.Stop(Timeout.InfiniteTimeSpan); }
         catch (Exception error)
         {
-            lock (lifecycle) runtimeReleaseBlocked = true;
-            SetAvailability(false, "session-release-unconfirmed");
-            logger.LogError(error, "GPU allocation session release failed; the owned session handle remains retained.");
+            availability.Report(BlockUids.GpuAllocationCollector, NativeEtwSessionUnavailableCause.ReleaseUnconfirmed, error);
+            ObserveSessionFailure(run, error);
+            logger.LogError(error, "GPU allocation session release failed.");
             return error;
         }
 
         if (!released.IsReleased)
         {
-            lock (lifecycle) runtimeReleaseBlocked = true;
-            SetAvailability(false, "session-release-unconfirmed");
             var error = new IOException("GPU allocation session release was not confirmed: " + string.Join(" | ", released.Failures));
-            logger.LogError(error, "GPU allocation session release failed; the owned session handle remains retained.");
+            availability.Report(BlockUids.GpuAllocationCollector, NativeEtwSessionUnavailableCause.ReleaseUnconfirmed, error);
+            ObserveSessionFailure(run, error);
+            logger.LogError(error, "GPU allocation session release failed.");
             return error;
         }
 
@@ -340,7 +312,6 @@ public sealed partial class GpuAllocationCollector
                 sessionName = null;
             }
         }
-        if (!Volatile.Read(ref run.PermissionDenied)) SetAvailability(true, "session-release-confirmed");
         return null;
     }
 
@@ -379,7 +350,7 @@ public sealed partial class GpuAllocationCollector
 
     private sealed class Run(CancellationToken stopNotification)
     {
-        internal bool PermissionDenied;
+        internal bool Failed;
         internal TaskCompletionSource Completed { get; } = NewSignal();
         internal CancellationToken StopNotification { get; } = stopNotification;
         internal CancellationTokenSource CaptureAdmission { get; } = new();

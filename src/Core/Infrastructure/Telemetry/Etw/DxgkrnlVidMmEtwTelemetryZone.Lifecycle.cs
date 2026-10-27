@@ -9,10 +9,7 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone
 {
     private readonly object sessionGate = new();
     private VidMmRun? activeRun;
-    private IVidMmEtwSession? session;
-    private bool releaseBlocked;
-    internal static readonly string AvailabilityFact = "native-session-available:" + BlockUids.DxgkrnlVidMmEtwTelemetryZone.ToString(System.Globalization.CultureInfo.InvariantCulture);
-    private bool nativeSessionAvailable = true;
+    private static Guid[] RequiredProviders => [PresentFrameEtwSource.GraphicsKernelProvider];
     private TaskCompletionSource<VidMmRun> nextRun = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public Task RunAsync(BusinessBlockRunContext context)
@@ -43,15 +40,6 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone
         var stage = BusinessBlockFailureStage.Start;
         try
         {
-            bool releaseUnconfirmed;
-            lock (sessionGate) releaseUnconfirmed = releaseBlocked || session is not null;
-            if (releaseUnconfirmed)
-            {
-                var error = new InvalidOperationException("The previous VidMm runtime was not released.");
-                run.Started.TrySetException(error);
-                diagnostics.ReportFailure(BlockUids.DxgkrnlVidMmEtwTelemetryZone, error, "session-release-unconfirmed");
-                throw error;
-            }
             lock (sessionGate)
             {
                 using var measurement = diagnostics.MeasureSegment(BlockUids.DxgkrnlVidMmEtwTelemetryZone);
@@ -64,7 +52,7 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone
                 Volatile.Write(ref stoppedAtUtcTicks, 0);
                 Volatile.Write(ref nextPruneUtcTicks, 0);
                 var current = createSession(SessionName);
-                run.Session = session = current;
+                run.Session = current;
                 current.Bind(data =>
                 {
                     if (Volatile.Read(ref run.Accepting) != 0) OnDynamicEvent(data, evidence);
@@ -92,9 +80,7 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone
         }
         catch (Exception error)
         {
-            ObservePermissionFailure(run, error);
-            if (error is KernelEtwSessionCreationCleanupException) releaseBlocked = true;
-            if (releaseBlocked) SetAvailability(false, "session-release-unconfirmed");
+            ObserveSessionFailure(error);
             run.Started.TrySetException(error);
             Volatile.Write(ref retainedEvidence, []);
             result = BusinessBlockResult.Failed(error, stage);
@@ -102,16 +88,14 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone
         finally
         {
             Interlocked.Exchange(ref run.Accepting, 0);
-            var released = false;
             try
             {
                 using (diagnostics.MeasureSegment(BlockUids.DxgkrnlVidMmEtwTelemetryZone)) run.Session?.Dispose();
-                released = true;
             }
             catch (Exception error)
             {
-                releaseBlocked = true;
-                SetAvailability(false, "session-release-unconfirmed");
+                availability.Report(BlockUids.DxgkrnlVidMmEtwTelemetryZone, NativeEtwSessionUnavailableCause.ReleaseUnconfirmed, error);
+                ObserveSessionFailure(error);
                 diagnostics.ReportFailure(BlockUids.DxgkrnlVidMmEtwTelemetryZone, error, "session-stop");
                 result = BusinessBlockResult.Failed(error, BusinessBlockFailureStage.Stop);
             }
@@ -119,8 +103,9 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone
             {
                 if (run.Processing is { } processing) await processing.ConfigureAwait(false);
             }
-            catch (Exception error) { ObservePermissionFailure(run, error); result = BusinessBlockResult.Failed(error); }
+            catch (Exception error) { ObserveSessionFailure(error); result = BusinessBlockResult.Failed(error); }
             run.ConsumerThread?.Join();
+            run.Session = null;
             lock (sessionGate)
             {
                 using var measurement = diagnostics.MeasureSegment(BlockUids.DxgkrnlVidMmEtwTelemetryZone);
@@ -128,40 +113,20 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone
                     ? [] : evidenceByProcess.Values.ToArray());
                 Interlocked.Exchange(ref evidenceByProcess, new());
                 Volatile.Write(ref stoppedAtUtcTicks, DateTimeOffset.UtcNow.UtcTicks);
-                if (released && ReferenceEquals(session, run.Session)) session = null;
                 activeRun = null;
                 diagnostics.RecordResult(BlockUids.DxgkrnlVidMmEtwTelemetryZone, result);
                 run.Completed.TrySetResult();
             }
-            if (released && run.Session is not null)
-            {
-                releaseBlocked = false;
-                if (!Volatile.Read(ref run.PermissionDenied)) SetAvailability(true, "session-release-confirmed");
-            }
         }
-    }
-
-    internal Task PublishAvailabilityAsync()
-        => controller.SetFactAsync(AvailabilityFact, Volatile.Read(ref nativeSessionAvailable),
-            new(BusinessBlockRequestKind.Dependency, BlockUids.DxgkrnlVidMmEtwTelemetryZone.ToString(System.Globalization.CultureInfo.InvariantCulture), "native-session-availability", controller.CurrentPlanVersion));
-
-    private void SetAvailability(bool available, string cause)
-    {
-        Volatile.Write(ref nativeSessionAvailable, available);
-        // Publication commits synchronously. Awaiting the reader's decision here
-        // could wait for this same run to finish its cleanup.
-        _ = controller.SetFactAsync(AvailabilityFact, available,
-            new(BusinessBlockRequestKind.Dependency, BlockUids.DxgkrnlVidMmEtwTelemetryZone.ToString(System.Globalization.CultureInfo.InvariantCulture), cause, controller.CurrentPlanVersion));
     }
 
     private void SignalFailure(Exception error)
     {
         var run = Volatile.Read(ref activeRun);
         if (run is null) return;
-        if (error is UnauthorizedAccessException) Volatile.Write(ref run.PermissionDenied, true);
         Interlocked.Exchange(ref run.Accepting, 0);
         var firstFailure = run.Failure.TrySetResult(error);
-        ObservePermissionFailure(run, error);
+        ObserveSessionFailure(error);
         if (firstFailure)
         {
             Volatile.Write(ref retainedEvidence, []);
@@ -169,12 +134,8 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone
         }
     }
 
-    private void ObservePermissionFailure(VidMmRun run, Exception error)
-    {
-        if (error is not UnauthorizedAccessException) return;
-        Volatile.Write(ref run.PermissionDenied, true);
-        SetAvailability(false, "native-session-permission");
-    }
+    private void ObserveSessionFailure(Exception error)
+        => availability.ReportFailure(BlockUids.DxgkrnlVidMmEtwTelemetryZone, error, RequiredProviders);
 
     private async Task AwaitReadyAsync(Task dispatch)
     {
@@ -206,7 +167,6 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone
 
     private sealed class VidMmRun(CancellationToken stopNotification)
     {
-        internal bool PermissionDenied;
         internal CancellationToken StopNotification { get; } = stopNotification;
         internal TaskCompletionSource Completed { get; } = NewSignal();
         internal int Accepting = 1;

@@ -26,7 +26,7 @@ public sealed class BusinessBlockDependencyTests
                 var snapshot = scheduler.Read();
                 var finalTarget = Assert.Single(snapshot.Demands).BlockId;
                 foreach (var id in ids)
-                    Assert.Equal(id == finalTarget, snapshot.Facts.Single(item => item.Key == BusinessBlockScheduler.DemandFact(id)).Value);
+                    Assert.Equal(id == finalTarget, Assert.IsType<bool>(snapshot.Items.Single(item => item.ItemUid == BackendItems.BlockDemand && item.BlockUid == id).Value));
                 await Until(() => ids.All(id => scheduler.ReadState(id) ==
                     (id == finalTarget ? BusinessBlockState.Running : BusinessBlockState.Stopped)));
             }
@@ -42,14 +42,15 @@ public sealed class BusinessBlockDependencyTests
         var first = new Probe(reportRunning: false);
         var next = new Probe();
         await using var scheduler = Create([Register(124, first), Register(135, next)],
-            [new(BackendUids.Program, ["requested"], input =>
+            [new(BackendUids.Program, [TestStateUids.Requested], input =>
             {
                 Assert.Equal(new[] { 124, 135 }, input.Children.Keys.Order());
-                return input.Facts["requested"].Value ? [124, 135] : [];
+                return input.Read<bool>(TestStateUids.Requested).GetValueOrDefault(false) ? [124, 135] : [];
             })]);
+        var requestedWriter = scheduler.Authority.ClaimWrite<bool>(TestStateUids.Requested);
         try
         {
-            await scheduler.SetFactAsync("requested", true, Reason());
+            await requestedWriter.PublishAsync(true, Reason());
             await first.Entered.Task.WaitAsync(TestTimeout);
             Assert.Equal(BusinessBlockState.Starting, scheduler.ReadState(124));
             await next.Entered.Task.WaitAsync(TestTimeout);
@@ -58,7 +59,7 @@ public sealed class BusinessBlockDependencyTests
             await next.Entered.Task.WaitAsync(TestTimeout);
             Assert.Contains(scheduler.Read().Decisions, item => item.ShouldRun.SequenceEqual([124, 135]));
             var history = scheduler.Read().History.ToArray();
-            await scheduler.SetFactAsync("requested", true, Reason());
+            await requestedWriter.PublishAsync(true, Reason());
             Assert.Equal(history, scheduler.Read().History);
             Assert.Equal(1, first.Runs);
             Assert.Equal(1, next.Runs);
@@ -80,10 +81,11 @@ public sealed class BusinessBlockDependencyTests
             await Task.WhenAll(first.Ready, second.Ready).WaitAsync(TestTimeout);
             await producer.Entered.Task.WaitAsync(TestTimeout);
             Assert.Equal(1, producer.Runs);
-            var fact = scheduler.Read().Facts.Single(item => item.Key == BusinessBlockScheduler.DemandFact(141));
-            Assert.True(fact.Value);
-            Assert.Contains(firstReason, fact.Reasons);
-            Assert.Contains(secondReason, fact.Reasons);
+            var fact = scheduler.Read().Items.Single(item => item.ItemUid == BackendItems.BlockDemand && item.BlockUid == 141);
+            Assert.True(Assert.IsType<bool>(fact.Value));
+            var reasons = scheduler.Read().Demands.Where(item => item.BlockId == 141).Select(item => item.Reason);
+            Assert.Contains(firstReason, reasons);
+            Assert.Contains(secondReason, reasons);
             first.Dispose();
             await first.Released.WaitAsync(TestTimeout);
             Assert.Single(scheduler.Read().Demands);
@@ -92,7 +94,7 @@ public sealed class BusinessBlockDependencyTests
             await second.DisposeAsync();
             await State(scheduler, 141, BusinessBlockState.Stopped);
             Assert.Empty(scheduler.Read().Demands);
-            Assert.False(scheduler.Read().Facts.Single(item => item.Key == BusinessBlockScheduler.DemandFact(141)).Value);
+            Assert.False(Assert.IsType<bool>(scheduler.Read().Items.Single(item => item.ItemUid == BackendItems.BlockDemand && item.BlockUid == 141).Value));
         }
         finally { first.Dispose(); second.Dispose(); await StopAll(scheduler); }
     }
@@ -128,31 +130,33 @@ public sealed class BusinessBlockDependencyTests
         var leftCalls = 0;
         var rightCalls = 0;
         var left = new Probe(); var right = new Probe();
-        BusinessBlockDecisionRegistration Rule(int parent, int child, string key, Action called)
+        BusinessBlockDecisionRegistration Rule(int parent, int child, StateItemKey key, Action called)
             => new(parent, [key], input =>
             {
                 called();
                 Assert.Equal([child], input.Children.Keys);
-                Assert.Equal(new[] { key, BusinessBlockScheduler.EnabledFact(child) }.Order(), input.Facts.Keys.Order());
-                return input.Facts[key].Value ? [child] : [];
+                Assert.Equal([key], input.ItemKeys);
+                return input.Read<bool>(key).GetValueOrDefault(false) ? [child] : [];
             });
         await using var scheduler = Create([
             Register(131, new Probe()), Register(143, new Probe()), Register(132, left, 131), Register(144, right, 143)],
-            [Rule(131, 132, "left-fact", () => Interlocked.Increment(ref leftCalls)),
-             Rule(143, 144, "right-fact", () => Interlocked.Increment(ref rightCalls))]);
+            [Rule(131, 132, TestStateUids.Left, () => Interlocked.Increment(ref leftCalls)),
+             Rule(143, 144, TestStateUids.Right, () => Interlocked.Increment(ref rightCalls))]);
+        var leftWriter = scheduler.Authority.ClaimWrite<bool>(TestStateUids.Left);
+        var rightWriter = scheduler.Authority.ClaimWrite<bool>(TestStateUids.Right);
         try
         {
             await scheduler.StartAsync(131, Reason());
             await scheduler.StartAsync(143, Reason());
             await State(scheduler, 143, BusinessBlockState.Running);
-            await scheduler.SetFactAsync("left-fact", false, Reason());
-            await scheduler.SetFactAsync("right-fact", false, Reason());
+            await leftWriter.PublishAsync(false, Reason());
+            await rightWriter.PublishAsync(false, Reason());
             var unrelatedCalls = Volatile.Read(ref rightCalls);
             var unrelatedHistory = scheduler.Read().Decisions.Where(item => item.ParentId == 143).ToArray();
             var reason = Reason(BusinessBlockRequestKind.Configuration, "authority", "left-fact", 12);
-            await scheduler.SetFactAsync("left-fact", true, reason);
+            await leftWriter.PublishAsync(true, reason);
             await left.Entered.Task.WaitAsync(TestTimeout);
-            await scheduler.SetFactAsync("left-fact", true, reason);
+            await leftWriter.PublishAsync(true, reason);
             Assert.Equal(1, left.Runs);
             Assert.Equal(0, left.Returns);
             Assert.Equal(0, right.Runs);
@@ -161,7 +165,7 @@ public sealed class BusinessBlockDependencyTests
             var decision = scheduler.Read().Decisions.Last(item => item.ParentId == 131);
             Assert.Equal(reason, decision.Reason);
             Assert.Equal([132], decision.ShouldRun);
-            Assert.Equal(reason, Assert.Single(decision.Facts.Single(item => item.Key == "left-fact").Reasons));
+            Assert.True(Assert.IsType<bool>(Assert.Single(decision.Items, item => item.ItemUid == TestStateUids.Left).Value));
         }
         finally { await StopAll(scheduler); }
     }
@@ -173,22 +177,23 @@ public sealed class BusinessBlockDependencyTests
         var enteredRule = Signal();
         var blockOnce = 0;
         var worker = new Probe();
-        var demandKey = BusinessBlockScheduler.DemandFact(154);
+        var demandKey = BusinessBlockTestSupport.DemandKey(154);
         await using var scheduler = Create([Register(154, worker)],
-            [new(BackendUids.Program, [demandKey, "block-rule"], input =>
+            [new(BackendUids.Program, [demandKey, TestStateUids.BlockRule], input =>
             {
-                if (input.Facts["block-rule"].Value && Interlocked.Exchange(ref blockOnce, 1) == 0)
+                if (input.Read<bool>(TestStateUids.BlockRule).GetValueOrDefault(false) && Interlocked.Exchange(ref blockOnce, 1) == 0)
                 {
                     enteredRule.TrySetResult();
                     if (!releaseRule.Wait(TestTimeout)) throw new TimeoutException("The test did not release its rule.");
                 }
-                return input.Facts[demandKey].Value ? [154] : [];
+                return input.Read<bool>(demandKey).GetValueOrDefault(false) ? [154] : [];
             })]);
+        var blockRuleWriter = scheduler.Authority.ClaimWrite<bool>(TestStateUids.BlockRule);
         try
         {
             await scheduler.SetDemandAsync("lease", 154, Reason());
             await worker.Entered.Task.WaitAsync(TestTimeout);
-            var blocked = scheduler.SetFactAsync("block-rule", true, Reason());
+            var blocked = blockRuleWriter.PublishAsync(true, Reason());
             await enteredRule.Task.WaitAsync(TestTimeout);
             var withdrawal = scheduler.SetDemandAsync("lease", null, Reason());
             var reacquire = scheduler.SetDemandAsync("lease", 154, Reason());
@@ -211,25 +216,27 @@ public sealed class BusinessBlockDependencyTests
         var right = new Probe();
         await using var scheduler = Create([
             Register(131, new Probe()), Register(143, new Probe()), Register(132, new Probe(), 131), Register(144, right, 143)],
-            [new(131, ["left-fact"], input =>
+            [new(131, [TestStateUids.Left], input =>
             {
-                if (input.Facts["left-fact"].Value)
+                if (input.Read<bool>(TestStateUids.Left).GetValueOrDefault(false))
                 {
                     enteredRule.TrySetResult();
                     if (!releaseRule.Wait(TestTimeout)) throw new TimeoutException("The test did not release its branch.");
                 }
                 return [];
-            }), new(143, ["right-fact"], input => input.Facts["right-fact"].Value ? [144] : [])]);
+            }), new(143, [TestStateUids.Right], input => input.Read<bool>(TestStateUids.Right).GetValueOrDefault(false) ? [144] : [])]);
+        var leftWriter = scheduler.Authority.ClaimWrite<bool>(TestStateUids.Left);
+        var rightWriter = scheduler.Authority.ClaimWrite<bool>(TestStateUids.Right);
         try
         {
             await scheduler.StartAsync(131, Reason());
             await scheduler.StartAsync(143, Reason());
             await State(scheduler, 131, BusinessBlockState.Running);
             await State(scheduler, 143, BusinessBlockState.Running);
-            var blocked = scheduler.SetFactAsync("left-fact", true, Reason());
+            var blocked = leftWriter.PublishAsync(true, Reason());
             await enteredRule.Task.WaitAsync(TestTimeout);
             Assert.False(blocked.IsCompleted);
-            await scheduler.SetFactAsync("right-fact", true, Reason()).WaitAsync(TestTimeout);
+            await rightWriter.PublishAsync(true, Reason()).WaitAsync(TestTimeout);
             await right.Entered.Task.WaitAsync(TestTimeout);
             Assert.False(blocked.IsCompleted);
             Assert.Equal(BusinessBlockState.Running, scheduler.ReadState(144));
@@ -243,12 +250,13 @@ public sealed class BusinessBlockDependencyTests
     public async Task RuleCannotControlANonChild()
     {
         await using var scheduler = Create([Register(139, new Probe()), Register(138, new Probe(), 139), Register(149, new Probe())],
-            [new(139, ["bad-rule"], input => input.Facts["bad-rule"].Value ? [149] : [])]);
+            [new(139, [TestStateUids.BadRule], input => input.Read<bool>(TestStateUids.BadRule).GetValueOrDefault(false) ? [149] : [])]);
+        var badRuleWriter = scheduler.Authority.ClaimWrite<bool>(TestStateUids.BadRule);
         try
         {
             await scheduler.StartAsync(139, Reason());
             await State(scheduler, 139, BusinessBlockState.Running);
-            var error = await Assert.ThrowsAsync<InvalidOperationException>(() => scheduler.SetFactAsync("bad-rule", true, Reason()));
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() => badRuleWriter.PublishAsync(true, Reason()));
             Assert.Contains("non-child 149", error.Message);
             Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState(149));
         }

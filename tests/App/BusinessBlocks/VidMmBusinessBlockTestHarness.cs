@@ -46,6 +46,7 @@ internal sealed class VidMmBusinessBlockTestHarness : IAsyncDisposable
     internal RecordingLogger<BusinessBlockDiagnosticsRegistry> ControllerLogger { get; }
     internal BusinessBlockDiagnosticsRegistry Diagnostics { get; }
     internal EtwTestRunRecorder Recorder { get; }
+    internal NativeEtwSessionAvailability Availability { get; private init; } = null!;
     internal Task<BusinessBlockResult> NextResultAsync() => Recorder.NextResultAsync();
     internal Func<uint, ulong?> CurrentProcessBirth
     {
@@ -69,23 +70,24 @@ internal sealed class VidMmBusinessBlockTestHarness : IAsyncDisposable
             [],
             _ => recorder!);
         var diagnostics = new BusinessBlockDiagnosticsRegistry([registration], controllerLogger);
+        var authority = BusinessBlockTestSupport.CreateAuthority();
+        var availability = new NativeEtwSessionAvailability(authority);
         var controller = new BusinessBlockScheduler(
             services,
             [registration],
             Options.Create(blockOptions ?? new BusinessBlockOptions()),
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<BusinessBlockScheduler>.Instance,
-            decisions: [EtwTestRunRecorder.AvailabilityRule(BackendUids.DxgkrnlVidMmEtwTelemetryZone, DxgkrnlVidMmEtwTelemetryZone.AvailabilityFact)]);
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<BusinessBlockScheduler>.Instance, authority,
+            decisions: [EtwTestRunRecorder.AvailabilityRule(BackendUids.DxgkrnlVidMmEtwTelemetryZone, BackendItems.VidMmNativeSessionAvailable, BackendItems.VidMmUnfrozen)]);
         var observer = new RecordingEtwConsumerThreadObserver(new BusinessBlockEtwThreadObserver(diagnostics));
         zone = new DxgkrnlVidMmEtwTelemetryZone(NullLogger<DxgkrnlVidMmEtwTelemetryZone>.Instance,
-            controller, diagnostics, processMetadata.Open, sessions.Create, observer);
+            controller, diagnostics, availability, processMetadata.Open, sessions.Create, observer);
         recorder = new(zone, diagnostics, BackendUids.DxgkrnlVidMmEtwTelemetryZone);
-        zone.PublishAvailabilityAsync().GetAwaiter().GetResult();
         var harness = new VidMmBusinessBlockTestHarness(services, controller,
             zone,
             sessions,
             observer,
             controllerLogger,
-            processMetadata, diagnostics, recorder);
+            processMetadata, diagnostics, recorder) { Availability = availability };
         return harness;
     }
 

@@ -59,7 +59,7 @@ public sealed class BusinessBlockTreeReviewRegressionTests
             await scheduler.StopAsync(108, BusinessBlockTestSupport.Reason());
             // Force a completed U-level evaluation while L is deliberately still cleaning up.
             await scheduler.StopAsync(107, BusinessBlockTestSupport.Reason());
-            Assert.False(scheduler.Read().Facts.Single(fact => fact.Key == BusinessBlockScheduler.ChildrenStoppedFact(108)).Value);
+            Assert.Equal(BusinessBlockState.Stopping, scheduler.ReadState(106));
             Assert.False(upper.Notified.Task.IsCompleted);
             await scheduler.StartAsync(108, BusinessBlockTestSupport.Reason());
             Assert.Equal(1, upper.Runs);
@@ -82,18 +82,19 @@ public sealed class BusinessBlockTreeReviewRegressionTests
         var child = new BusinessBlockTestSupport.Probe();
         await using var scheduler = BusinessBlockTestSupport.Create([
             BusinessBlockTestSupport.Register(107, parent), BusinessBlockTestSupport.Register(104, child, 107)],
-            [new(107, ["start-child"], input =>
+            [new(107, [TestStateUids.StartChild], input =>
             {
-                if (!input.Facts["start-child"].Value) return [];
+                if (!input.Read<bool>(TestStateUids.StartChild).GetValueOrDefault(false)) return [];
                 deciding.TrySetResult();
                 if (!releaseDecision.Wait(BusinessBlockTestSupport.TestTimeout)) throw new TimeoutException("test decision not released");
                 return [104];
             })]);
+        var startChildWriter = scheduler.Authority.ClaimWrite<bool>(TestStateUids.StartChild);
         Task? decision = null;
         try
         {
             await scheduler.StartAsync(107, BusinessBlockTestSupport.Reason());
-            decision = scheduler.SetFactAsync("start-child", true, BusinessBlockTestSupport.Reason());
+            decision = startChildWriter.PublishAsync(true, BusinessBlockTestSupport.Reason());
             await deciding.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             // Disable the next parent run, without stopping the current entry through the scheduler.
             await scheduler.StopAsync(107, BusinessBlockTestSupport.Reason());
@@ -135,7 +136,7 @@ public sealed class BusinessBlockTreeReviewRegressionTests
             BusinessBlockTestSupport.Register(107, parent), BusinessBlockTestSupport.Register(104, child, 107),
             BusinessBlockTestSupport.Register(127, lateChild, 107)],
             Microsoft.Extensions.Options.Options.Create(new BusinessBlockOptions()),
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<BusinessBlockScheduler>.Instance, control);
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<BusinessBlockScheduler>.Instance, BusinessBlockTestSupport.CreateAuthority(), control);
         Task? runningReport = null;
         try
         {

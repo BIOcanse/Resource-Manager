@@ -26,7 +26,9 @@ public sealed class BusinessBlockDiagnosticSafetyTests
             var current = Assert.Single(snapshot.CurrentDecisions);
             Assert.Equal(BackendUids.Program, current.ParentId);
             Assert.Equal([116], current.ShouldRun);
-            Assert.Contains(current.Facts, fact => fact.Value && fact.Reasons.Contains(demand));
+            Assert.Contains(current.Items, fact => fact.ItemUid == BackendItems.BlockDemand && fact.BlockUid == 116
+                && fact.Value is true);
+            Assert.Equal(demand, Assert.Single(snapshot.Demands, value => value.BlockId == 116 && value.Key == "observe").Reason);
             await scheduler.SetDemandAsync("observe", null, demand);
             await State(scheduler, 116, BusinessBlockState.Stopped);
             Assert.Empty(Assert.Single(scheduler.Read().CurrentDecisions).ShouldRun);

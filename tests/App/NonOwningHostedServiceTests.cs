@@ -19,7 +19,7 @@ public sealed class NonOwningHostedServiceTests
             {
                 services.AddBusinessBlockHostedService<ProbeWorker>(101, [], _ => worker);
             })
-            .Build();
+            .ConfigureServices(BusinessBlockTestSupport.AddStateFixtures).Build();
         var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
         var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var registration = lifetime.ApplicationStopping.Register(() => stopping.TrySetResult());
@@ -50,7 +50,7 @@ public sealed class NonOwningHostedServiceTests
             {
                 services.AddBusinessBlockHostedService<ProbeWorker>(101, [], _ => worker);
             })
-            .Build();
+            .ConfigureServices(BusinessBlockTestSupport.AddStateFixtures).Build();
         try
         {
             await host.StartAsync();
@@ -83,7 +83,7 @@ public sealed class NonOwningHostedServiceTests
                 created++;
                 return service = new PlainService();
             }))
-            .Build();
+            .ConfigureServices(BusinessBlockTestSupport.AddStateFixtures).Build();
         try
         {
             var hostedServices = host.Services.GetServices<IHostedService>().OfType<NonOwningHostedService<PlainService>>().ToArray();

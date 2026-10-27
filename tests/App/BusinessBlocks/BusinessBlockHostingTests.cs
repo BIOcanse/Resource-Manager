@@ -25,7 +25,7 @@ public sealed class BusinessBlockHostingTests
                 services.AddBusinessBlockHostedService<DependencyService>(156, [],
                     _ => new DependencyService(events));
             })
-            .Build();
+            .ConfigureServices(BusinessBlockTestSupport.AddStateFixtures).Build();
 
         Assert.Single(host.Services.GetServices<IHostedService>().OfType<BusinessBlockDependencyLifetime>());
         var hostedServices = host.Services.GetServices<IHostedService>().Where(static service => service
@@ -66,7 +66,7 @@ public sealed class BusinessBlockHostingTests
             {
                 services.AddBusinessBlockHostedService<ThrowingStartService>(120, [126]);
                 services.AddBusinessBlockHostedService<DependencyService>(126, [], _ => new DependencyService(events));
-            }).Build();
+            }).ConfigureServices(BusinessBlockTestSupport.AddStateFixtures).Build();
         await Assert.ThrowsAsync<IOException>(() => host.StartAsync().WaitAsync(TimeSpan.FromSeconds(10)));
         Assert.Empty(events);
         // The native ETW scope starts before this test's service; close the real Host
@@ -96,7 +96,7 @@ public sealed class BusinessBlockHostingTests
                     constructed++;
                     return new LazyService();
                 }))
-            .Build();
+            .ConfigureServices(BusinessBlockTestSupport.AddStateFixtures).Build();
 
         var query = host.Services.GetRequiredService<IBusinessBlockQuery>();
         var snapshot = query.Read();

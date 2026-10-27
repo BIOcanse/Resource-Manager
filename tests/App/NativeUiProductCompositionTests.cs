@@ -49,8 +49,8 @@ public sealed class NativeUiProductCompositionTests
         await app.SessionEndedAsync();
         await browser.SurfaceClosed.Task.WaitAsync(Limit);
         Assert.True(app.Trees.Read().ShuttingDown);
-        Assert.Contains(app.Trees.Read().Facts.Single(fact => fact.Key == "program:shutting-down").Reasons,
-            reason => reason.ConfigurationOrDependency == "windows-session-ended");
+        Assert.Contains(app.Trees.Read().Decisions, decision => decision.Reason.ConfigurationOrDependency == "windows-session-ended"
+            && decision.Items.Any(item => item.ItemUid == UiItems.ProgramShuttingDown && item.Value is true));
         Assert.False(app.Exited.IsCompleted);
         await app.InvokeAsync(() => Assert.False(window.IsDisposed));
         app.ReleaseBrowser.TrySetResult();

@@ -63,7 +63,7 @@ public sealed class StaticAnalysisDefectRegressionTests
         BusinessBlockRegistration[] declarations = [new(120, [], _ => throw new NotSupportedException())];
         var diagnostics = new BusinessBlockDiagnosticsRegistry(declarations, NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
         await using var controller = new BusinessBlockScheduler(services, declarations,
-            Options.Create(new BusinessBlockOptions()), NullLogger<BusinessBlockScheduler>.Instance);
+            Options.Create(new BusinessBlockOptions()), NullLogger<BusinessBlockScheduler>.Instance, BusinessBlockTestSupport.CreateAuthority());
         // Keep all registration scopes on their registering threads. The corrupted
         // prior baseline makes a diagnostic read fail without affecting independent registration.
         using var release = new ManualResetEventSlim();

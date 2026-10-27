@@ -23,7 +23,7 @@ public sealed class BusinessBlockHostedPartialStartupTests
                 services.AddBusinessBlockController();
                 services.AddSingleton<IHostedService>(earlier);
                 services.AddBusinessBlockHostedService<GatedStopService>(128, [], _ => later);
-            }).Build();
+            }).ConfigureServices(BusinessBlockTestSupport.AddStateFixtures).Build();
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
         await scheduler.SetDemandAsync("external", 128, new(BusinessBlockRequestKind.User,
             "partial-startup-test", "external-start", 0)).WaitAsync(TestTimeout);

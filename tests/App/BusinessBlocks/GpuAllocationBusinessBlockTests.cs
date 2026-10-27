@@ -13,7 +13,7 @@ public sealed class GpuAllocationBusinessBlockTests
     {
         await using var harness = new GpuAllocationTestSessionFactory().Harness();
         var collector = new GpuAllocationCollector(NullLogger<GpuAllocationCollector>.Instance,
-            new ConfigurationBuilder().Build(), harness.Controller, harness.Diagnostics);
+            new ConfigurationBuilder().Build(), harness.Controller, harness.Diagnostics, harness.Availability);
         var fields = typeof(GpuAllocationCollector).GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
         Assert.Contains(fields, field => ReferenceEquals(field.GetValue(collector), harness.Controller));
         Assert.Contains(fields, field => ReferenceEquals(field.GetValue(collector), harness.Diagnostics));

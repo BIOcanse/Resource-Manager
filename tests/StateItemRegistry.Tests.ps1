@@ -156,6 +156,8 @@ foreach ($process in @('backend','ui')) {
     $program = if ($process -eq 'backend') { 1 } else { 2 }
     Assert-True ($source.Contains("public const int Program = $program;") -and $source.Contains("Version = `"$version`"")) "Generated $process constants and version."
     Assert-True ($source.Contains('#if RM_STATE_NAMES') -and $source.Contains('internal static class StateNames') -and $source.Contains('_ => null')) "Generated $process conditional names."
+    Assert-True ($source.Contains('IReadOnlyList<StateItemDeclaration> Items') -and $source.Contains('IReadOnlyList<int> Blocks')) "Generated $process typed declarations."
+    Assert-True ($source.Contains('typeof(bool)') -and $source.Contains('StateItemTrigger.')) "Generated $process declaration type and trigger."
     $other = if ($process -eq 'backend') { 'Preference' } else { 'Ready' }
     Assert-True (-not $source.Contains("public const int $other =")) "Generated $process excludes other process."
     [IO.File]::SetLastWriteTimeUtc($output, $fixedTime)
@@ -164,11 +166,27 @@ foreach ($process in @('backend','ui')) {
     # Compile the same output with and without the switch, without a repository or SDK project.
     foreach ($names in @($true, $false)) {
         $ns = "Fixture_${process}_$names"
-        $compiled = $source.Replace("namespace Fixture_$process;", "namespace $ns;")
+        $compiled = $source.Replace('using ResourceManager.Shared.BusinessBlocks.State;', "using $ns.SharedState;").Replace("namespace Fixture_$process;", "namespace $ns {")
         $probe = "public class Probe { public static int Program => BlockUids.Program; }"
+        # Compile the actual shared declaration contract under a unique fixture namespace.
+        $sharedState = [IO.File]::ReadAllText((Join-Path $repo 'src/Shared/BusinessBlocks/State/StateRead.cs')).Replace(
+            'namespace ResourceManager.Shared.BusinessBlocks.State;', "namespace $ns.SharedState {")
         $options = if ($names) { @('/define:RM_STATE_NAMES') } else { @('/optimize') }
-        $types = Add-Type -TypeDefinition ($compiled + "`n" + $probe) -CompilerOptions $options -PassThru
+        $types = Add-Type -TypeDefinition ("using System;`n" + $compiled + "`n" + $probe + "`n}`n" + $sharedState + "`n}") -CompilerOptions $options -PassThru
         $assembly = $types[0].Assembly
+        $registryType = $assembly.GetType("$ns.StateRegistry")
+        $declarations = @($registryType.GetProperty('Items').GetValue($null))
+        Assert-True ($declarations.Count -eq 1) "Generated $process declaration count."
+        $declaration = $declarations[0]
+        $expectedItem = if ($process -eq 'backend') { 3 } else { 4 }
+        Assert-True ($declaration.Uid -eq $expectedItem -and $declaration.ValueType -eq [bool]) 'Declaration preserves UID and type.'
+        Assert-True ($declaration.PerBlock -eq ($process -eq 'ui')) 'Declaration preserves per-block shape.'
+        if ($process -eq 'backend') {
+            Assert-True ($declaration.Storage.ToString() -ceq 'Reference' -and $declaration.Owner.BlockUid -eq 1) 'Reference declaration preserves block owner.'
+        } else {
+            Assert-True ($declaration.Storage.ToString() -ceq 'Own' -and $declaration.PollInterval -ceq '/ui/preference/interval') 'Owned declaration preserves polling metadata.'
+            Assert-True (($null -ne $declaration.Owner.ComponentLabel) -eq $names) 'Component owner label follows names switch.'
+        }
         $nameType = $assembly.GetType("$ns.StateNames")
         Assert-True (($null -ne $nameType) -eq $names) "Compiled names present=$names."
         if ($names) {

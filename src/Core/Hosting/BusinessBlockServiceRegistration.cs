@@ -1,3 +1,4 @@
+using ResourceManager.Shared.BusinessBlocks.State;
 using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
@@ -22,6 +23,9 @@ public static partial class ResourceManagerServiceCollectionExtensions
 #else
             static _ => null));
 #endif
+        services.TryAddSingleton<BackendStateItems>();
+        services.TryAddSingleton<StateAuthority>(provider => provider.GetRequiredService<BackendStateItems>().Authority);
+        services.TryAddSingleton<NativeEtwSessionAvailability>();
         services.TryAddSingleton<BusinessBlockDiagnosticsRegistry>();
         services.TryAddSingleton<HostedBusinessBlockRegistry>();
         services.TryAddSingleton<BusinessBlockScheduler>();
@@ -79,16 +83,30 @@ public static partial class ResourceManagerServiceCollectionExtensions
             { ParentId = BlockUids.NativeEtwLifetimeService });
         var native = new[]
         {
-            (Id: BlockUids.PresentFrameEtwSource, Fact: PresentFrameEtwSource.AvailabilityFact),
-            (Id: BlockUids.GpuAllocationCollector, Fact: GpuAllocationCollector.AvailabilityFact),
-            (Id: BlockUids.DxgkrnlVidMmEtwTelemetryZone, Fact: DxgkrnlVidMmEtwTelemetryZone.AvailabilityFact)
+            (Id: BlockUids.PresentFrameEtwSource, Item: StateItemUids.PresentNativeSessionAvailable),
+            (Id: BlockUids.GpuAllocationCollector, Item: StateItemUids.GpuAllocationNativeSessionAvailable),
+            (Id: BlockUids.DxgkrnlVidMmEtwTelemetryZone, Item: StateItemUids.VidMmNativeSessionAvailable)
         };
-        services.AddSingleton(new BusinessBlockDecisionRegistration(BlockUids.NativeEtwLifetimeService,
-            native.SelectMany(value => new[] { BusinessBlockScheduler.DemandFact(value.Id), value.Fact }).ToArray(),
-            input => native.Where(value => input.Facts[BusinessBlockScheduler.DemandFact(value.Id)].Value
-                && input.Facts[value.Fact].Value).Select(value => value.Id).ToArray()));
+        services.AddSingleton(provider =>
+        {
+            // The publisher exists before any reader starts; it is independent of block lifetimes.
+            _ = provider.GetRequiredService<NativeEtwSessionAvailability>();
+            return new BusinessBlockDecisionRegistration(BlockUids.NativeEtwLifetimeService,
+                native.SelectMany(value => new StateItemKey[] { new(StateItemUids.BlockDemand, value.Id), value.Item })
+                    .Concat([new(StateItemUids.PresentUnfrozen), new(StateItemUids.VidMmUnfrozen)]).ToArray(),
+                input => native.Where(value => input.Read<bool>(new(StateItemUids.BlockDemand, value.Id)).GetValueOrDefault(false)
+                    && input.Read<bool>(value.Item).GetValueOrDefault(false)
+                    && (value.Id == BlockUids.GpuAllocationCollector || IsUnfrozen(input.Read<bool>(value.Id == BlockUids.PresentFrameEtwSource
+                        ? StateItemUids.PresentUnfrozen : StateItemUids.VidMmUnfrozen))))
+                    .Select(value => value.Id).ToArray());
+        });
         return services;
     }
+
+    // The lazy mode owner has not published before its first construction; its initial mode is unfrozen.
+    // A stopped owner or failed read does not permit its child.
+    private static bool IsUnfrozen(StateRead<bool> mode)
+        => mode.HasValue ? mode.Value : mode.NoValueReason == NoValueReason.NotPublished;
 }
 
 internal sealed class BusinessBlockEtwThreadObserver(BusinessBlockDiagnosticsRegistry diagnostics) : IEtwConsumerThreadObserver

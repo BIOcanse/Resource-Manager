@@ -338,9 +338,9 @@ public sealed class HostMemoryProtectionTests
         Assert.Equal(1, fixture.Executor.Opened.Count(id => id == 40));
         Assert.Equal(11, fixture.Protection.ReadStatus().Actions[0].ProcessId);
         var decision = fixture.Scheduler.Read().CurrentDecisions.Single(item => item.ParentId == BlockUids.Program);
-        Assert.Contains(decision.Facts, item => item.Key == HostMemoryProtectionService.EnabledFact && item.Value);
-        Assert.Contains(decision.Facts, item => item.Key == HostMemoryProtectionService.PointFact && item.Value);
-        Assert.Contains(decision.Facts, item => item.Key == HostMemoryProtectionService.ReserveFact && item.Value);
+        Assert.Contains(decision.Items, item => item.ItemUid == BackendItems.HostMemoryProtectionEnabled && item.Value is true);
+        Assert.Contains(decision.Items, item => item.ItemUid == BackendItems.MemoryProtectionNormalRunningPointExists && item.Value is true);
+        Assert.Contains(decision.Items, item => item.ItemUid == BackendItems.MemoryProtectionReserveBuilt && item.Value is true);
 
         using var disabled = await fixture.Patch(new { enabled = false });
         Assert.Equal(HttpStatusCode.OK, disabled.StatusCode);

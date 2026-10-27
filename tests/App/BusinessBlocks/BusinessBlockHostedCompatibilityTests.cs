@@ -218,9 +218,9 @@ public sealed class BusinessBlockHostedCompatibilityTests
         try
         {
             await host.StartAsync().WaitAsync(TestTimeout);
-            await scheduler.SetEnabledAsync(147, false, TestReason("first-run-stop")).WaitAsync(TestTimeout);
+            await scheduler.SetDemandAsync("host:147", null, TestReason("first-run-stop")).WaitAsync(TestTimeout);
             await WaitUntilAsync(() => scheduler.ReadState(147) == BusinessBlockState.Stopped);
-            await scheduler.SetEnabledAsync(147, true, TestReason("second-run-start")).WaitAsync(TestTimeout);
+            await scheduler.SetDemandAsync("host:147", 147, TestReason("second-run-start")).WaitAsync(TestTimeout);
             await WaitUntilAsync(() => scheduler.ReadState(147) == BusinessBlockState.Running);
             Assert.Equal(2, service.StartCount);
 
@@ -276,7 +276,7 @@ public sealed class BusinessBlockHostedCompatibilityTests
     }
 
     private static IHost BuildHost(Action<IServiceCollection> configure) => Host.CreateDefaultBuilder()
-        .ConfigureLogging(logging => logging.ClearProviders()).ConfigureServices(configure).Build();
+        .ConfigureLogging(logging => logging.ClearProviders()).ConfigureServices(configure).ConfigureServices(BusinessBlockTestSupport.AddStateFixtures).Build();
     private static NonOwningHostedService<TService> Hosted<TService>(IHost host) where TService : class, IHostedService
         => Assert.Single(host.Services.GetServices<IHostedService>().OfType<NonOwningHostedService<TService>>());
     private static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);

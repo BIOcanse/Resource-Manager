@@ -62,7 +62,7 @@ public sealed partial class GpuAllocationCollector : IBusinessBlock
             if (ActiveSubscriptionsLocked().Length == 0) return;
             // A due capture only uses the actual current run. The parent may
             // intentionally leave the producer stopped while demand is held.
-            if (activeRun is not { } currentRun || !Volatile.Read(ref nativeSessionAvailable)
+            if (activeRun is not { } currentRun || Volatile.Read(ref currentRun.Failed)
                 || currentRun.StopNotification.IsCancellationRequested || currentRun.CaptureAdmission.IsCancellationRequested)
             {
                 run = null;
@@ -115,12 +115,6 @@ public sealed partial class GpuAllocationCollector : IBusinessBlock
                     || run.CaptureAdmission.IsCancellationRequested) return;
                 keepLive = plan.UseLive(activeSubscriptions.Min(static lease => lease.Interval));
                 captureAdmitted = true;
-                if (runtimeReleaseBlocked)
-                {
-                    var error = new InvalidOperationException("The owned GPU allocation runtime was not released.");
-                    ReportSessionFailure(run, error);
-                    throw error;
-                }
                 if (!SessionControl(run, () => session?.IsProcessing == true))
                 {
                     run.ProcessingCompletion.TrySetResult(null);

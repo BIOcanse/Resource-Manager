@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.Telemetry.Etw;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -52,13 +53,14 @@ public sealed class BackendBlockProductionTreeTests
         using var provider = new ServiceCollection().BuildServiceProvider();
         var control = new BusinessBlockController(NullLogger<BusinessBlockController>.Instance, 256, _ => null);
         await using var scheduler = new BusinessBlockScheduler(provider, probes, Options.Create(new BusinessBlockOptions()),
-            NullLogger<BusinessBlockScheduler>.Instance, control,
-            [new(BackendUids.Program, ["profile"], input => input.Facts["profile"].Value ? graph.Children(BackendUids.Program) : [])]);
+            NullLogger<BusinessBlockScheduler>.Instance, BusinessBlockTestSupport.CreateAuthority(), control,
+            [new(BackendUids.Program, [TestStateUids.Profile], input => input.Read<bool>(TestStateUids.Profile).GetValueOrDefault(false) ? graph.Children(BackendUids.Program) : [])]);
+        var profileWriter = scheduler.Authority.ClaimWrite<bool>(TestStateUids.Profile);
         var reason = BusinessBlockTestSupport.Reason();
         try
         {
             foreach (var id in SamplingLifetimeConsumers) await scheduler.SetDemandAsync("sampling:" + id, id, reason);
-            await scheduler.SetFactAsync("profile", true, reason);
+            await profileWriter.PublishAsync(true, reason);
             await BusinessBlockTestSupport.Until(() => SamplingLifetimeConsumers.All(id => scheduler.ReadState(id) == BusinessBlockState.Running));
             await scheduler.ShutdownAsync(reason);
             await Task.WhenAll(consumers.Values.Select(consumer => consumer.StopNotified.Task)).WaitAsync(BusinessBlockTestSupport.TestTimeout);
@@ -117,26 +119,27 @@ public sealed class BackendBlockProductionTreeTests
 
         // Exercise the real topology with inert entries; this never starts native sessions or product services.
         var probes = production.Select(registration => registration with { Create = _ => new Probe() }).ToArray();
-        using var provider = new ServiceCollection().BuildServiceProvider();
+        var authority = BusinessBlockTestSupport.CreateAuthority(graph.BlockIds);
+        services.AddSingleton(authority);
+        using var provider = services.BuildServiceProvider();
         var control = new BusinessBlockController(NullLogger<BusinessBlockController>.Instance, 256, _ => null);
-        var nativeRule = services.Select(value => value.ImplementationInstance).OfType<BusinessBlockDecisionRegistration>()
+        var nativeRule = provider.GetServices<BusinessBlockDecisionRegistration>()
             .Single(rule => rule.ParentId == BackendUids.NativeEtwLifetimeService);
         await using var scheduler = new BusinessBlockScheduler(provider, probes, Options.Create(new BusinessBlockOptions()),
-            NullLogger<BusinessBlockScheduler>.Instance, control,
-            [new(BackendUids.Program, ["profile"], input => input.Facts["profile"].Value ? rootBlocks : []), nativeRule]);
+            NullLogger<BusinessBlockScheduler>.Instance, authority, control,
+            [new(BackendUids.Program, [TestStateUids.Profile], input => input.Read<bool>(TestStateUids.Profile).GetValueOrDefault(false) ? rootBlocks : []), nativeRule]);
+        var profileWriter = scheduler.Authority.ClaimWrite<bool>(TestStateUids.Profile);
         var reason = new BusinessBlockReason(BusinessBlockRequestKind.Configuration, "host-profile", "full", 1);
         try
         {
             foreach (var id in SamplingLifetimeConsumers) await scheduler.SetDemandAsync("sampling:" + id, id, reason);
-            await scheduler.SetFactAsync("profile", true, reason);
+            await profileWriter.PublishAsync(true, reason);
             await BusinessBlockTestSupport.Until(() => hostedBlocks.All(id => scheduler.ReadState(id) == BusinessBlockState.Running));
             Assert.True(hostedBlocks.ToHashSet().SetEquals(control.Read().History.Where(row => row.To == BusinessBlockState.Starting).Select(row => row.BlockId)));
             Assert.Equal(BusinessBlockState.Running, scheduler.ReadState(BackendUids.NativeEtwLifetimeService));
             Assert.All(NativeBlocks, id => Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState(id)));
             foreach (var id in NativeBlocks) await scheduler.SetDemandAsync("native:" + id, id, reason);
-            Assert.All(NativeBlocks, id => Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState(id)));
-            foreach (var fact in nativeRule.FactKeys.Where(key => !key.StartsWith("demand:", StringComparison.Ordinal)))
-                await scheduler.SetFactAsync(fact, true, reason);
+            // The independent publisher initializes availability before the group runs; no group republish is needed.
             await BusinessBlockTestSupport.Until(() => NativeBlocks.All(id => scheduler.ReadState(id) == BusinessBlockState.Running));
             var started = control.Read().History;
             Assert.True(hostedBlocks.Concat(NativeBlocks).ToHashSet().SetEquals(started.Where(row => row.To == BusinessBlockState.Starting).Select(row => row.BlockId)));
@@ -168,7 +171,7 @@ public sealed class BackendBlockProductionTreeTests
                 services.AddSingleton<SerialInitialization>(_ => initialization);
                 services.AddSerialHostedServiceAlias<SerialInitialization>();
                 services.AddBusinessBlockHostedService<FollowingWorker>(125, [], _ => worker);
-            }).Build();
+            }).ConfigureServices(BusinessBlockTestSupport.AddStateFixtures).Build();
         Task? start = null;
         Task? stop = null;
         try
@@ -216,7 +219,7 @@ public sealed class BackendBlockProductionTreeTests
                 services.AddBusinessBlockController();
                 services.AddSingleton(new BusinessBlockRegistration(134, [], _ => native)
                     { ParentId = BackendUids.NativeEtwLifetimeService });
-            }).Build();
+            }).ConfigureServices(BusinessBlockTestSupport.AddStateFixtures).Build();
         var hosted = host.Services.GetServices<IHostedService>().ToArray();
         Assert.Collection(hosted, service => Assert.IsType<BusinessBlockDependencyLifetime>(service),
             service => Assert.IsType<NonOwningHostedService<NativeEtwLifetimeService>>(service));

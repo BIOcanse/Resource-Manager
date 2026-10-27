@@ -1,3 +1,5 @@
+using ResourceManager.App.StateItems;
+using ResourceManager.Shared.BusinessBlocks.State;
 using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using ResourceManager.App.Application.MemoryProtection;
 using ResourceManager.App.Application.GpuPlacement;
@@ -12,9 +14,9 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
     IHostMemoryProtectionExecutor executor, IHostMemoryProtectionReserve reserve, BusinessBlockScheduler scheduler, IHostEnvironment environment,
     ILogger<HostMemoryProtectionService> logger, IGpuPlacementPolicyStore softwarePolicies) : IBusinessBlock
 {
-    public static string EnabledFact => BusinessBlockScheduler.EnabledFact(BlockUids.HostMemoryProtection);
-    public const string PointFact = "memory-protection:normal-running-point-exists";
-    public const string ReserveFact = "memory-protection:reserve-built";
+    private readonly StateCell<bool> enabled = scheduler.Authority.ClaimCell<bool>(StateItemUids.HostMemoryProtectionEnabled);
+    private readonly StateCell<bool> pointExists = scheduler.Authority.ClaimCell<bool>(StateItemUids.MemoryProtectionNormalRunningPointExists);
+    private readonly StateCell<bool> reserveBuilt = scheduler.Authority.ClaimCell<bool>(StateItemUids.MemoryProtectionReserveBuilt);
     public const int RecordLimit = 64;
     private readonly object gate = new();
     private readonly SemaphoreSlim pointCreation = new(1, 1);
@@ -67,7 +69,7 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
             var entries = ResolveEntries(value);
             var currentReserve = reserve.ReadStatus();
             if (!Matches(entries, currentReserve))
-                await scheduler.SetFactAsync(ReserveFact, false, Reason("reserve-configuring"));
+                await reserveBuilt.PublishAsync(false, Reason("reserve-configuring"));
             await Task.Run(() => reserve.Prepare(entries));
             lock (gate)
             {
@@ -75,7 +77,7 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
                 if (value.Enabled && settings.CheckIntervalSeconds != value.CheckIntervalSeconds) subscriptionCancellation?.Cancel();
                 settings = value;
             }
-            await PublishFactsAsync("settings-published");
+            await PublishStateAsync("settings-published");
         }
         finally { configuration.Release(); }
     }
@@ -85,7 +87,7 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
         await configuration.WaitAsync(cancellationToken);
         try
         {
-            await scheduler.SetFactAsync(ReserveFact, false, Reason("reserve-rebuilding"));
+            await reserveBuilt.PublishAsync(false, Reason("reserve-rebuilding"));
             // Once started, this finite allocation finishes and publishes its real result even if HTTP disconnects.
             HostMemoryProtectionSettings current;
             lock (gate) current = settings;
@@ -95,18 +97,18 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
                 var prepared = reserve.Prepare(entries);
                 return Matches(entries, prepared) ? reserve.Rebuild() : prepared;
             });
-            await PublishFactsAsync("reserve-rebuilt");
+            await PublishStateAsync("reserve-rebuilt");
             return ReadStatus();
         }
         finally { configuration.Release(); }
     }
 
-    private async Task PublishFactsAsync(string cause)
+    private async Task PublishStateAsync(string cause)
     {
         HostMemoryProtectionSettings current;
         lock (gate) current = settings;
-        await scheduler.SetEnabledAsync(BlockUids.HostMemoryProtection, current.Enabled, Reason(cause));
-        await scheduler.SetFactAsync(ReserveFact, ReserveUnavailableReason(current, reserve.ReadStatus()) is null, Reason(cause));
+        await enabled.PublishAsync(current.Enabled, Reason(cause));
+        await reserveBuilt.PublishAsync(ReserveUnavailableReason(current, reserve.ReadStatus()) is null, Reason(cause));
     }
 
     public NormalRunningPoint? ReadPoint() { lock (gate) return point; }
@@ -124,7 +126,7 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
                 if (reading.Commit is null || reading.Processes is null) continue;
                 var next = new NormalRunningPoint(reading.At, reading.Commit, reading.Processes.ToArray());
                 lock (gate) { point = next; cannotOpen.Clear(); exclusions = []; }
-                await scheduler.SetFactAsync(PointFact, true, Reason("normal-running-point-created"));
+                await pointExists.PublishAsync(true, Reason("normal-running-point-created"));
                 return next;
             }
             throw new InvalidOperationException("normal-running-point-source-ended");
@@ -166,7 +168,7 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
                     if (!reserve.ReadStatus().Built)
                     {
                         await configuration.WaitAsync();
-                        try { await PublishFactsAsync("reserve-unavailable"); }
+                        try { await PublishStateAsync("reserve-unavailable"); }
                         finally { configuration.Release(); }
                     }
                 }

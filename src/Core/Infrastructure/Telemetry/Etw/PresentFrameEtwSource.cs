@@ -20,6 +20,7 @@ public sealed partial class PresentFrameEtwSource(
     ILogger<PresentFrameEtwSource> logger,
     BusinessBlockScheduler controller,
     BusinessBlockDiagnosticsRegistry diagnostics,
+    NativeEtwSessionAvailability availability,
     IEtwConsumerThreadObserver? consumerThreadObserver = null)
     : IFrameTimingObservationSource, IResourceManagerSelfComputeZone, IBusinessBlock, IDisposable
 {
@@ -64,8 +65,8 @@ public sealed partial class PresentFrameEtwSource(
     private readonly TimeProvider timeProvider = TimeProvider.System;
     private readonly object gate = new();
     private PresentFrameLedger ledger = new(ReadProcessStartKey);
-    private IPresentFrameEtwSession? session;
-    private ITimer? flushTimer;
+    private readonly ResourceManager.Shared.BusinessBlocks.State.StateCell<bool> unfrozen =
+        ComputeZoneModeCell.ClaimUnfrozen(controller.Authority, ResourceManager.App.StateItems.StateItemUids.PresentUnfrozen);
     private readonly HashSet<FrameSubscription> frameSubscriptions = [];
     private int frameLeases;
     private bool disposed;
@@ -82,9 +83,10 @@ public sealed partial class PresentFrameEtwSource(
     internal PresentFrameEtwSource(ILogger<PresentFrameEtwSource> logger,
         BusinessBlockScheduler controller,
         BusinessBlockDiagnosticsRegistry diagnostics,
+        NativeEtwSessionAvailability availability,
         Func<string, IPresentFrameEtwSession> createSession,
         TimeProvider? timeProvider = null,
-        IEtwConsumerThreadObserver? consumerThreadObserver = null) : this(logger, controller, diagnostics, consumerThreadObserver)
+        IEtwConsumerThreadObserver? consumerThreadObserver = null) : this(logger, controller, diagnostics, availability, consumerThreadObserver)
     {
         this.createSession = createSession;
         this.timeProvider = timeProvider ?? TimeProvider.System;
@@ -150,7 +152,7 @@ public sealed partial class PresentFrameEtwSource(
         lock (lifecycle)
         {
             mode = next;
-            var dispatch = controller.SetEnabledAsync(BlockUids.PresentFrameEtwSource, next != ResourceManagerComputeZoneMode.Freeze,
+            var dispatch = unfrozen.PublishAsync(next != ResourceManagerComputeZoneMode.Freeze,
                 new(BusinessBlockRequestKind.Configuration, "compute-zone", MonitoringSourceZoneIds.EtwPresentFrames, controller.CurrentPlanVersion));
             return next == ResourceManagerComputeZoneMode.Freeze ? AwaitReleasedAsync(dispatch) : dispatch;
         }
