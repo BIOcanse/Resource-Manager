@@ -1,12 +1,10 @@
 import { localizedMetricLabel, metricCardReading, resourceMetricBasis
 } from "../../presentation/metricLabels";
 import { Plus, Replace, UnfoldVertical, X } from "lucide-solid";
-import { createMemo, createSignal, For, Show, untrack } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, Show, untrack } from "solid-js";
 import type { JSX } from "solid-js";
-import { createReorderGroup, NATIVE_CONTROL } from "../../interactions/solid/reorderGroup.ts";
+import { createReorderGroup } from "../../interactions/solid/reorderGroup.ts";
 import type { ReorderGroup } from "../../interactions/solid/reorderGroup.ts";
-import { solidHost, useInteraction } from "../../interactions/solid/lodestone.ts";
-import { cardSlotLayoutDefinition } from "../../interactions/components/cardSlotLayout.ts";
 import type { Vec } from "../../interactions/protocol/vec.ts";
 import type { DashboardCardSettings, DashboardCardSlot, DashboardMetricBinding, DashboardSlotSize, MetricDefinition, MetricSnapshot } from "../../types";
 import { uiText } from "../../text.ts";
@@ -21,7 +19,7 @@ import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisib
 import { frontendVisibilitySourceDemand, frontendVisibilitySurface } from "../../frontendWork/frontendVisibilitySurface";
 import { frontendVisibilitySourceKinds, frontendWorkIds } from "../../frontendWork/frontendWorkIds";
 import { dashboardMetricAvailable } from "../../preferences/dashboardPreferences.ts";
-import { exitOnUnmount } from "../../presentation/nodeAnimation.ts";
+import { exitOnUnmount, reflowNode } from "../../presentation/nodeAnimation.ts";
 
 interface DashboardProps {
   cards: DashboardCardSettings[];
@@ -179,42 +177,30 @@ export function Dashboard(props: DashboardProps) {
 }
 
 /**
- * 卡片里一块区域（一个槽位，或编辑时的“+”）：上边和高度由磁石的卡片槽位组件带（interactions/components/cardSlotLayout.ts），
- * 这里只把它的通道写成 CSS 变量 --slot-top、--slot-units（styles/monitor.css 按单位步长换算）。
- * 新挂上的区域（新增、换了监控项、拖进来、进入编辑时的“+”）第一帧就在终态的上边和高度：出现是进场，不用平面移动
- * （docs/animation_style_2026-10-26.md「总原则」），编辑槽和“+”由样式表淡入。
- * 它是包含里面按钮的最内层组件（“+”的按钮外面没有别的组件），所以和拖动排序项一样声明可用的原生控件，
- * 否则按在“+”上会交给外面的卡片拖动、点击被引擎拦下（协议第 4.2 节第 2 项）。
+ * 卡片里一块区域（一个槽位，或编辑时的“+”）：上边和高度写成 CSS 变量 --slot-top、--slot-units（styles/monitor.css 按单位步长换算）。
+ * 增删、换监控项、改大小、拖动排序放下以后，区域当即在终态的上边和高度、可命中：这是稍大一些的变化，按进场退场一类
+ * （docs/animation_style_2026-10-26.md「总原则」），滑过去的画面由呈现层画在不可命中的副本上（presentation/nodeAnimation.ts 的 reflowNode）。
+ * 新挂上的区域第一帧就在终态，编辑槽和“+”由样式表淡入。
  */
 function SlotFrame(props: { name: string; top: number; units: number; class: string; children: JSX.Element }) {
   let element!: HTMLDivElement;
   const top = createMemo(() => props.top);
   const units = createMemo(() => props.units);
-  const write = (value: Vec) => {
-    element.style.setProperty("--slot-top", value.x.toFixed(4));
-    element.style.setProperty("--slot-units", value.y.toFixed(4));
+  const write = (target: HTMLElement, value: Vec) => {
+    target.style.setProperty("--slot-top", value.x.toFixed(4));
+    target.style.setProperty("--slot-units", value.y.toFixed(4));
   };
-  useInteraction(`卡片槽位「${props.name}」`, cardSlotLayoutDefinition, () => ({
-    element,
-    bindingLabel: "上边和高度",
-    geometry: () => null,
-    nativeControl: (target) => {
-      const control = target instanceof Element ? target.closest(NATIVE_CONTROL) : null;
-      return control !== null && element.contains(control);
-    },
-    render: ({ x }) => write(x),
-    aria: () => ""
-  }), solidHost<Vec>({
-    value: () => ({ x: top(), y: units() }),
-    enabled: () => false,
-    call: () => undefined
+  // 第一次运行是挂上（ref 里已经画好），之后每次变化是一次重排。
+  createEffect(on(() => ({ x: top(), y: units() }), (next, previous) => {
+    if (!previous || (previous.x === next.x && previous.y === next.y)) return;
+    reflowNode(element, { name: `卡片槽位「${props.name}」`, from: previous, to: next, draw: write });
   }));
   return (
     <div
       ref={(node) => {
         element = node;
-        // 运行时下一帧才画：先按宿主值放好，第一帧不会叠在卡片顶上。
-        write(untrack(() => ({ x: top(), y: units() })));
+        // 挂上时就在终态的上边和高度。
+        write(node, untrack(() => ({ x: top(), y: units() })));
       }}
       class={props.class}
     >

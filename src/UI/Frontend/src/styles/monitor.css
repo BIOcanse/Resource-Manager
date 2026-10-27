@@ -65,8 +65,8 @@ body.reordering * {
 
 /*
  * 卡片主体纵向 --card-units 个单位（至少 6 个；旧布局迁移来的卡片可能更多，原样排下）。槽位按 --slot-top、--slot-units
- * 绝对定位，这两个变量由磁石的卡片槽位组件按通道写（features/monitor/Dashboard.tsx 的 SlotFrame），改大小、增删、换位置时
- * 由它带到终态。一个单位的步长含槽位间距；浏览和编辑用同一个步长，进出编辑时卡片不变高。
+ * 绝对定位，这两个变量由 features/monitor/Dashboard.tsx 的 SlotFrame 写：改大小、增删、换位置时当即写终态，
+ * 滑过去的画面在呈现层的副本上（presentation/nodeAnimation.ts 的 reflowNode）。一个单位的步长含槽位间距；浏览和编辑用同一个步长，进出编辑时卡片不变高。
  */
 .metric-slots {
   --slot-step: 42px;

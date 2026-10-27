@@ -39,7 +39,8 @@ export const CARRY_PARTS = {
   // 选中指示条（页签、二级分页、设置导航、分段选择）：分段控件复刻的 Motion 布局是 450 ms 缓动，换成到位时长相当的 UIKit 弹簧。通道是序号。
   selection: { by: "选中指示条", durationToken: "--motion-medium", ease: { ms: 180, curve: DESKTOP_DECEL },
     spring: { responseMs: 400, damping: 1, stopPx: 0.001 }, source: "分段控件复刻（Motion 布局 450 ms）→ UIKit 弹簧：响应 400 ms、阻尼比 1" },
-  // 监视卡片槽位（拖动排序换位、改大小、增删）：拖动排序复刻的 Motion 回位弹簧 stiffness 200、damping 40。通道是卡片的单位。
+  // 重排（监视卡片的槽位在拖动排序放下、改大小、增删之后，components/reflow.ts）：拖动排序复刻的 Motion 回位弹簧 stiffness 200、damping 40。
+  // 通道是走了多少（0–1），画在不可命中的副本上。
   slot: { by: "卡片槽位", durationToken: "--motion-medium", ease: { ms: 180, curve: DESKTOP_DECEL },
     spring: { responseMs: 444.3, damping: 1.41, stopPx: 0.001 }, source: "拖动排序复刻（Motion Reorder）：响应 444.3 ms、阻尼比 1.41" },
   // 风扇曲线点、数值滑条（键盘一步、取消回位、外部改值）：平滑滑块复刻的弹簧。通道有几何，单位是屏幕 px。

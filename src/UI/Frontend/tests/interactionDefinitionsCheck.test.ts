@@ -11,7 +11,7 @@ import { columnEdgeBound, columnResizeHandleDefinition } from "../src/interactio
 import { curvePointDefinition } from "../src/interactions/components/curvePoint.ts";
 import { REORDER_BOUND, reorderItemDefinition } from "../src/interactions/components/reorderItem.ts";
 import { switchToggleDefinition } from "../src/interactions/components/switchToggle.ts";
-import { CARD_SLOT_LAYOUT_BOUND, cardSlotLayoutDefinition } from "../src/interactions/components/cardSlotLayout.ts";
+import { reflowDefinition } from "../src/interactions/components/reflow.ts";
 import { selectionIndicatorDefinition } from "../src/interactions/components/selectionIndicator.ts";
 import { entranceDefinitions } from "../src/interactions/components/entrance.ts";
 import { edgeRubberBandDefinition } from "../src/interactions/components/edgeRubberBand.ts";
@@ -26,12 +26,10 @@ const definitions: readonly [Definition, Geometry][] = [
   [controlSliderDefinition, { center: "滑块圆心", atMin: { x: 8, y: 0 }, atMax: { x: 192, y: 0 } }],
   [curvePointDefinition, { center: "点的圆心", atMin: { x: 0, y: 240 }, atMax: { x: 0, y: 0 } }],
   [columnResizeHandleDefinition, { center: "列的右边缘", atMin: { x: -columnEdgeBound, y: 0 }, atMax: { x: columnEdgeBound, y: 0 } }],
-  [reorderItemDefinition as unknown as Definition, { center: "指针（排序项不跟手）", atMin: { x: -REORDER_BOUND, y: -REORDER_BOUND }, atMax: { x: REORDER_BOUND, y: REORDER_BOUND } }],
-  // 卡片槽位不读输入，呈现层不报几何；这里给一份只为几何那几项检查。
-  [cardSlotLayoutDefinition as unknown as Definition, { center: "槽位上边", atMin: { x: 0, y: 0 }, atMax: { x: CARD_SLOT_LAYOUT_BOUND * 40, y: CARD_SLOT_LAYOUT_BOUND * 40 } }]
+  [reorderItemDefinition as unknown as Definition, { center: "指针（排序项不跟手）", atMin: { x: -REORDER_BOUND, y: -REORDER_BOUND }, atMax: { x: REORDER_BOUND, y: REORDER_BOUND } }]
 ];
-// 不读输入、只由宿主值带的（选中指示条、内容进场、弹窗进场、滚动区边缘回弹）：没有几何，通道是序号、开度或偏移。
-const hostDriven: readonly Definition[] = [selectionIndicatorDefinition, entranceDefinitions.page, entranceDefinitions.dialog, edgeRubberBandDefinition];
+// 不读输入、只由宿主值带的（选中指示条、内容进场、弹窗进场、重排、滚动区边缘回弹）：没有几何，通道是序号、开度、走了多少或偏移。
+const hostDriven: readonly Definition[] = [selectionIndicatorDefinition, entranceDefinitions.page, entranceDefinitions.dialog, reflowDefinition, edgeRubberBandDefinition];
 
 // 每种动画风格的磁石全局层各检查一遍（docs/animation_style_2026-10-26.md）：弹簧和缓动两种走法都要完备、确定。
 // 值表含定义用到的场声明的参数（协议第 5 节“场和取值自己的参数”）。
@@ -72,4 +70,12 @@ for (const definition of new Set(exported)) {
   assert.ok(checked.has(definition), `${definition.name} is not in the machine check above`);
 }
 assert.equal(new Set(exported).size, checked.size, "every checked definition is exported from src/interactions/components");
+
+// 两类按变化大小分（docs「总原则」，用户 2026-10-27「稍大一些的都用立即生效最好」）：平面移动只给控件自己的小幅运动。
+// 允许声明平面移动的部件只有这一张表：开关的滑块（开关和折叠箭头）、数值滑条的滑块、分段与页签的选中指示条、拖动中跟着指针的排序项、
+// 列宽把手、风扇曲线点、滚动区边缘回弹。卡片、槽位的重排和放下后的落位、展开收起、换页、弹窗都是进场退场。
+// （资源条分段的生长是样式表里的过渡，裁定的例外登记在 presentation/animationStyle.ts 的 CSS_MOTIONS。）
+const CONTROL_LOCAL_PARTS = ["settings-switch", "control-number-slider", "selection-indicator", "reorder-item", "resource-table-column-resize", "curve-point", "edge-rubber-band"];
+const planarParts = [...new Set(exported)].filter((definition) => definition.motion === "平面移动").map((definition) => definition.id).sort();
+assert.deepEqual(planarParts, [...CONTROL_LOCAL_PARTS].sort(), "only the control-local parts declare a planar move");
 console.log(`PASS interaction definitions: ${definitions.length + hostDriven.length} checked in ${animationStyles.length} animation styles, each declares its animation kind`);

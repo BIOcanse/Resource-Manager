@@ -414,6 +414,13 @@ body:is([data-animations="smooth"], [data-animations="desktop"], [data-animation
   animation: motion-fade-out var(--motion-fast) var(--ease-standard) forwards;
 }
 
+/* 重排的副本（presentation/nodeAnimation.ts 的 reflowNode）：只画滑过去的那一段，复制出来时里面挂上的淡入、过渡都不重放。 */
+[data-reflow-copy],
+[data-reflow-copy] * {
+  animation: none !important;
+  transition: none !important;
+}
+
 /* --- 无动画 / 超高性能：一切瞬时 --- */
 body[data-animations="none"] *,
 body[data-animations="none"] *::before,

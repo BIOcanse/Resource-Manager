@@ -10,7 +10,7 @@ import { CARRY_PARTS, springParam, SWITCH_PART } from "../src/interactions/compo
 import { globalLayer, partLayer, PARAM_SPECS, resolveParams } from "../src/interactions/protocol/params.ts";
 import { declaredSpecs } from "../src/interactions/protocol/definition.ts";
 import type { Definition } from "../src/interactions/protocol/definition.ts";
-import { cardSlotLayoutDefinition } from "../src/interactions/components/cardSlotLayout.ts";
+import { reflowDefinition } from "../src/interactions/components/reflow.ts";
 import { columnResizeHandleDefinition } from "../src/interactions/components/columnResizeHandle.ts";
 import { entranceDefinitions } from "../src/interactions/components/entrance.ts";
 import { controlSliderDefinition } from "../src/interactions/components/controlSlider.ts";
@@ -93,7 +93,7 @@ for (const id of ["none", "ultra"]) assert.deepEqual(byId(id).lodestone, desktop
 assert.deepEqual(animationStyles.map((style) => [style.id, style.engineMode]),
   [["smooth", "normal"], ["desktop", "normal"], ["terminal", "normal"], ["none", "none"], ["ultra", "ultra"]]);
 const definitions: Array<[string, Definition]> = [
-  ["内容进场", entranceDefinitions.page], ["选中指示条", selectionIndicatorDefinition], ["卡片槽位", cardSlotLayoutDefinition],
+  ["内容进场", entranceDefinitions.page], ["选中指示条", selectionIndicatorDefinition], ["重排", reflowDefinition],
   ["曲线点", curvePointDefinition], ["数值滑条", controlSliderDefinition], ["设置开关", switchToggleDefinition], ["列宽把手", columnResizeHandleDefinition],
   ["弹窗进场", entranceDefinitions.dialog], ["滚动区边缘回弹", edgeRubberBandDefinition]
 ];
@@ -230,5 +230,13 @@ assert.deepEqual(ruled.map((motion) => motion.selector), [`${MOVING} .resource-s
   "the only planar move that makes a node appear is the resource bar segment growing from width 0");
 assert.match(ruled[0].ruledAppearance!, /保留生长/);
 assert.equal(ruled[0].kind, "平面移动");
+// 按变化大小分（用户 2026-10-27「稍大一些的都用立即生效最好」）：会挪动、改大小的过渡只给控件自己的小幅运动：
+// 按钮按下、行和卡片悬停抬起 1 px、展开箭头和排序箭头转向，加上裁定的资源条分段。
+const CONTROL_LOCAL_CSS = ["button", ".settings-row, .device-port-item, .optimization-report, .device-port-icon",
+  `${MOVING} .resource-row-expander svg`, `${MOVING} .resource-table-sort-indicator`, `${MOVING} .resource-segment-layer.motion-segment`];
+const movingTransitions = [...written].filter(([key, value]) => key.includes(" | transition | ")
+  && /(^|,\s*)(transform|translate|scale|rotate|width|height|top|left|right|bottom|margin[\w-]*|inset)\s/.test(value))
+  .map(([key]) => key.split(" | ")[2]).sort();
+assert.deepEqual(movingTransitions, [...CONTROL_LOCAL_CSS].sort(), "only control-local transitions move or resize a node; larger changes take effect at once");
 
 console.log(`animationStyleContract: ${animationStyles.length} styles match motion.css, the Lodestone layer, the points and nine languages; ${CSS_MOTIONS.length} style sheet motions registered with their kind`);

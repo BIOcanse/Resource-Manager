@@ -2,6 +2,8 @@ import { onCleanup, untrack } from "solid-js";
 import { entranceDefinitions } from "../interactions/components/entrance.ts";
 import type { EntrancePart } from "../interactions/components/entrance.ts";
 import type { MotionKind } from "../interactions/components/common.ts";
+import { reflowDefinition } from "../interactions/components/reflow.ts";
+import type { Vec } from "../interactions/protocol/vec.ts";
 import type { Instance, Presentation } from "../interactions/protocol/runtime.ts";
 import { interactionAnimationMode, interactionRuntime } from "../interactions/solid/lodestone.ts";
 import { createOrderHost } from "../interactions/solid/orderHost.ts";
@@ -23,6 +25,9 @@ import { createOrderHost } from "../interactions/solid/orderHost.ts";
  * 不画位移和缩放：现有宿主里变换会带着命中区域一起移动。带位移的效果只放在退场幽灵上。
  * 磁石带的进场（弹窗、换页一类，enterNode）每次都是一个新的部件，从开度 0、静止开始，不接旧节点的速度；
  * CSS 带的进场（enterSlot）按 [data-enter-slot] 的规则播放。
+ *
+ * 重排：已经在场的节点换位置或大小（稍大一些的变化，「总原则」第一类）。真实节点当即在终态上、可命中，这一段里看不见（不透明度 0，
+ * 照样可命中）；画面上一份只能看见的副本（也是幽灵：data-exit-ghost，再加 data-reflow-copy）从这一刻画到的样子滑到终态，播完撤掉。
  */
 
 /**
@@ -113,16 +118,36 @@ function measure(element: HTMLElement, layer?: HTMLElement): Placement | null {
   return { parents, box, scrolls: scrolledInside(element) };
 }
 
+/**
+ * 滚动过的元素和最后一次滚到的位置：文档上一个被动的捕获滚动监听记下（滚动事件在一帧开头派发，这时读位置不强制布局）。
+ * 退场时只从这里找节点里滚过的元素，不在换页的任务里逐个读整棵子树的 scrollTop。回到 0 的、已经不在文档里的去掉。
+ */
+const scrollPositions = new Map<Element, { readonly left: number; readonly top: number }>();
+if (typeof document !== "undefined") {
+  document.addEventListener("scroll", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (target.scrollTop === 0 && target.scrollLeft === 0) scrollPositions.delete(target);
+    else scrollPositions.set(target, { left: target.scrollLeft, top: target.scrollTop });
+  }, { capture: true, passive: true });
+}
+
 /** 节点里滚过的元素（按子节点序号的路径记）：节点挪进幽灵或复制后滚动位置会丢，放好以后按路径还原。 */
 function scrolledInside(root: HTMLElement): { path: number[]; left: number; top: number }[] {
   const found: { path: number[]; left: number; top: number }[] = [];
-  const stack: { element: Element; path: number[] }[] = [{ element: root, path: [] }];
-  let visited = 0;
-  while (stack.length > 0 && visited < GHOST_NODE_LIMIT) {
-    const { element, path } = stack.pop()!;
-    visited += 1;
-    if (element.scrollTop !== 0 || element.scrollLeft !== 0) found.push({ path, left: element.scrollLeft, top: element.scrollTop });
-    for (let index = 0; index < element.children.length; index += 1) stack.push({ element: element.children[index], path: [...path, index] });
+  for (const [element, at] of scrollPositions) {
+    if (!element.isConnected) {
+      scrollPositions.delete(element);
+      continue;
+    }
+    if (!root.contains(element)) continue;
+    const path: number[] = [];
+    let node: Element = element;
+    for (let depth = 0; node !== root && node.parentElement && depth < ANCESTOR_LIMIT; depth += 1) {
+      path.unshift(Array.prototype.indexOf.call(node.parentElement.children, node));
+      node = node.parentElement;
+    }
+    if (node === root) found.push({ path, left: at.left, top: at.top });
   }
   return found;
 }
@@ -212,24 +237,51 @@ function place(ghost: HTMLElement, placement: Placement, options: ExitOptions): 
         element.scrollTop = scroll.top;
       }
     }
-    // 只等会结束的动画（退出槽位）；副本里循环播放的动画（例如读取中的转圈）不算。
-    const animations = finiteAnimations(ghost);
-    // 槽位是空的（这个节点没有退出动画）：退出当场结束。
-    if (animations.length === 0) {
-      ghost.remove();
-      return;
-    }
-    const timer = window.setTimeout(() => ghost.remove(), GHOST_LIFETIME_MS);
-    void Promise.allSettled(animations.map((animation) => animation.finished)).then(() => {
-      window.clearTimeout(timer);
-      ghost.remove();
-    });
+    // 等退出槽位的动画播完（副本里重放的进场、循环播放的转圈不算）；槽位是空的就在两帧后撤掉。
+    awaitSlotAnimations(ghost, EXIT_KEYFRAMES, () => ghost.remove());
   });
 }
 
-/** 节点和它里面会结束的动画（循环播放的不算）。 */
-function finiteAnimations(root: HTMLElement): Animation[] {
-  return root.getAnimations({ subtree: true }).filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity);
+/** 退出槽位用的关键帧（styles/motion.css 里 [data-exit-ghost] 的规则，合同测试核对）。 */
+export const EXIT_KEYFRAMES: ReadonlySet<string> = new Set(["motion-fade-out", "motion-sink-out", "motion-dialog-out", "motion-toast-out", "motion-content-out", "motion-row-out"]);
+/** CSS 进场槽位用的关键帧（styles/motion.css 里 [data-enter-slot] 的规则，合同测试核对）。 */
+export const ENTER_KEYFRAMES: ReadonlySet<string> = new Set(["motion-fade-in"]);
+
+/**
+ * 等 root 和它里面用 keyframes 里的关键帧播放的动画都结束：槽位动画由这里挂上的属性开始，所以按冒泡到 root 的
+ * animationstart、animationend、animationcancel 事件数，不调用 getAnimations（它会在这一刻算整棵子树的样式）。
+ * 挂上后两帧里一个都没开始，就是槽位是空的；最长等 GHOST_LIFETIME_MS。
+ */
+function awaitSlotAnimations(root: HTMLElement, keyframes: ReadonlySet<string>, done: () => void): void {
+  let active = 0;
+  let started = false;
+  let finished = false;
+  const onStart = (event: AnimationEvent) => {
+    if (!keyframes.has(event.animationName)) return;
+    started = true;
+    active += 1;
+  };
+  const onEnd = (event: AnimationEvent) => {
+    if (!keyframes.has(event.animationName)) return;
+    active -= 1;
+    if (active <= 0) finish();
+  };
+  const timer = window.setTimeout(() => finish(), GHOST_LIFETIME_MS);
+  function finish(): void {
+    if (finished) return;
+    finished = true;
+    window.clearTimeout(timer);
+    root.removeEventListener("animationstart", onStart);
+    root.removeEventListener("animationend", onEnd);
+    root.removeEventListener("animationcancel", onEnd);
+    done();
+  }
+  root.addEventListener("animationstart", onStart);
+  root.addEventListener("animationend", onEnd);
+  root.addEventListener("animationcancel", onEnd);
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (!started) finish();
+  }));
 }
 
 /** 这一刻整块离开的内容（exitInPlace 记下，同一个任务的微任务里清掉）：里面卸下的节点由这块的幽灵带着。 */
@@ -244,8 +296,9 @@ export function exitOnUnmount(element: HTMLElement, options: ExitOptions = {}): 
     if (slotsAreEmpty()) return;
     // 外面整块内容正在离开（换页、换分区）：这个节点随那块的幽灵一起走，不另放幽灵，也不必再量。
     for (const root of leavingRoots) if (root.contains(element)) return;
-    stopEntrancesWithin(element);
+    // 先读（量框、滚过的位置），再停掉里面的进场：停进场会写样式，读在写之后就会在这个任务里强制布局。
     const placement = measure(element, options.layer);
+    stopEntrancesWithin(element);
     if (!placement) return;
     queueMicrotask(() => {
       // 清理后节点没有被移出文档（不是真的卸下）：不放幽灵。
@@ -261,8 +314,8 @@ export function exitOnUnmount(element: HTMLElement, options: ExitOptions = {}): 
  */
 export function exitInPlace(element: HTMLElement, options: ExitOptions & { readonly keep?: "copy" | "children" } = {}): void {
   if (slotsAreEmpty()) return;
-  stopEntrancesWithin(element);
   const placement = measure(element, options.layer);
+  stopEntrancesWithin(element);
   if (!placement) return;
   leavingRoots.add(element);
   queueMicrotask(() => leavingRoots.delete(element));
@@ -361,6 +414,96 @@ export function enterNode(element: HTMLElement, options: { readonly part: Entran
   host.set(1, "节点进场");
 }
 
+// ---- 重排 ----
+
+interface Reflow {
+  readonly element: HTMLElement;
+  readonly instance: Instance;
+  /** 真实节点原来的内联不透明度：重排结束时还原。 */
+  readonly opacity: string;
+  readonly timer: number;
+  copy: HTMLElement | null;
+  /** 副本这一刻画到的值（调用方的坐标）：重排中再换终态，新的一段从这里开始。 */
+  drawn: Vec;
+}
+
+/** 正在重排的节点：重排中只存在这里。 */
+const reflows = new Map<HTMLElement, Reflow>();
+
+function finishReflow(reflow: Reflow): void {
+  if (reflows.get(reflow.element) !== reflow) return;
+  reflows.delete(reflow.element);
+  window.clearTimeout(reflow.timer);
+  reflow.copy?.remove();
+  if (reflow.opacity) reflow.element.style.opacity = reflow.opacity;
+  else reflow.element.style.removeProperty("opacity");
+  interactionRuntime().remove(reflow.instance, performance.now());
+}
+
+/**
+ * 已经在场的节点换位置或大小（重排）：draw(target, at) 把调用方坐标里的一个值画到节点上（真实节点和副本用同一个画法）。
+ * 这里先把真实节点画到 to（交互当即在终态），再放一份副本从这一刻画到的样子（from，或上一段重排的副本此刻的值）滑到 to。
+ * 每次重排是一个新的磁石部件（components/reflow.ts），从 0、静止开始，不接上一段的速度。
+ * 无动画、超高性能、界面看不见、起点终点相同：只画真实节点。
+ */
+export function reflowNode(element: HTMLElement, options: { readonly name: string; readonly from: Vec; readonly to: Vec; readonly draw: (target: HTMLElement, at: Vec) => void }): void {
+  const running = reflows.get(element);
+  const from = running ? running.drawn : options.from;
+  if (running) finishReflow(running);
+  const to = options.to;
+  options.draw(element, to);
+  if (slotsAreEmpty() || document.visibilityState === "hidden" || !element.isConnected || (from.x === to.x && from.y === to.y)) return;
+  const opacity = element.style.opacity;
+  element.style.opacity = "0";
+  const host = createOrderHost(0);
+  let reflow: Reflow | null = null;
+  const render = (x: number) => {
+    if (!reflow || reflows.get(element) !== reflow) return;
+    const done = reflow;
+    if (!element.isConnected) {
+      queueMicrotask(() => finishReflow(done));
+      return;
+    }
+    const p = Math.min(1, Math.max(0, x));
+    done.drawn = { x: from.x + (to.x - from.x) * p, y: from.y + (to.y - from.y) * p };
+    if (done.copy) options.draw(done.copy, done.drawn);
+    if (p >= 1) queueMicrotask(() => finishReflow(done));
+  };
+  const view: Presentation = {
+    element,
+    bindingLabel: "副本的位置和大小",
+    geometry: () => null,
+    render: (d) => render(d.x as number),
+    aria: () => ""
+  };
+  const instance = interactionRuntime().add(options.name, reflowDefinition, view, host.host);
+  const started: Reflow = { element, instance, opacity, timer: 0, copy: null, drawn: from };
+  reflow = { ...started, timer: window.setTimeout(() => reflow && finishReflow(reflow), GHOST_LIFETIME_MS) };
+  reflows.set(element, reflow);
+  // 复制、去掉身份放在下一帧画出来之前，不压在输入的任务里；真实节点这一刻已经在终态、看不见。
+  requestAnimationFrame(() => {
+    const current = reflow;
+    if (!current || reflows.get(element) !== current || !element.isConnected) return;
+    const copy = element.cloneNode(true) as HTMLElement;
+    copyLook(element, copy);
+    if (!stripIdentity(copy)) {
+      finishReflow(current);
+      return;
+    }
+    copy.setAttribute("data-exit-ghost", "");
+    copy.setAttribute("data-reflow-copy", "");
+    copy.setAttribute("aria-hidden", "true");
+    copy.inert = true;
+    copy.style.pointerEvents = "none";
+    if (opacity) copy.style.opacity = opacity;
+    else copy.style.removeProperty("opacity");
+    options.draw(copy, current.drawn);
+    element.after(copy);
+    current.copy = copy;
+  });
+  host.set(1, "重排");
+}
+
 // ---- CSS 带的进场 ----
 
 /**
@@ -370,17 +513,8 @@ export function enterNode(element: HTMLElement, options: { readonly part: Entran
 export function enterSlot(element: HTMLElement, slot: EnterSlot): void {
   if (slotsAreEmpty()) return;
   element.setAttribute("data-enter-slot", slot);
-  // 取动画要算样式：放到下一帧画出来之前，不在输入的任务里强制算。
-  requestAnimationFrame(() => {
-    if (element.getAttribute("data-enter-slot") !== slot) return;
-    const animations = finiteAnimations(element);
-    if (animations.length === 0) {
-      element.removeAttribute("data-enter-slot");
-      return;
-    }
-    void Promise.allSettled(animations.map((animation) => animation.finished)).then(() => {
-      if (element.getAttribute("data-enter-slot") === slot) element.removeAttribute("data-enter-slot");
-    });
+  awaitSlotAnimations(element, ENTER_KEYFRAMES, () => {
+    if (element.getAttribute("data-enter-slot") === slot) element.removeAttribute("data-enter-slot");
   });
 }
 
