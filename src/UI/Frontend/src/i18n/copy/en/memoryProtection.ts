@@ -69,7 +69,7 @@ export const enMemoryProtectionCopy: Pick<AppCopy, "memoryProtection"> = {
     recordsEmpty: "No action records",
     recordProcess: (name: string, processId: number) => `${name} (PID ${processId})`,
     recordAt: "Time",
-    recordStartKey: "Start key",
+    recordStartKey: "Process start key",
     recordBaseline: "Baseline",
     recordCurrent: "At action",
     recordGrowth: "Growth",

@@ -68,7 +68,7 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
   recordsEmpty: "処理記録はありません",
   recordProcess: (name: string, processId: number) => cjkText`${name}（PID ${processId}）`,
   recordAt: "日時",
-  recordStartKey: "起動キー",
+  recordStartKey: "プロセス開始識別子",
   recordBaseline: "基準値",
   recordCurrent: "処理時の値",
   recordGrowth: "増加量",

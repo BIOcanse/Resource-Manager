@@ -70,7 +70,7 @@ export const zhMemoryProtectionCopy = {
     recordsEmpty: "暂无处理记录",
     recordProcess: (name: string, processId: number) => cjkText`${name}（PID ${processId}）`,
     recordAt: "时间",
-    recordStartKey: "启动键",
+    recordStartKey: "进程启动标识",
     recordBaseline: "基线值",
     recordCurrent: "处理时的值",
     recordGrowth: "增长量",

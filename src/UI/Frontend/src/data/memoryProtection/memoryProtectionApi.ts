@@ -1,8 +1,7 @@
 import type { RequestClient } from "../../frontendRuntime/request/RequestClient.ts";
 import { RequestProblem } from "../../frontendRuntime/request/RequestProblem.ts";
-import { appSettingsResultDecoder, type CommittedAppSettingsResult } from "../appSettings/appSettingsResultDecoder.ts";
 import { memoryProtectionStatusDecoder, normalRunningPointDecoder, nullableNormalRunningPointDecoder } from "./memoryProtectionDecoders.ts";
-import type { HostMemoryProtectionSettingsPatch, HostMemoryProtectionStatus } from "./memoryProtectionTypes.ts";
+import type { HostMemoryProtectionStatus } from "./memoryProtectionTypes.ts";
 import { uiText } from "../../text.ts";
 
 type Client = Pick<RequestClient, "request">;
@@ -29,24 +28,6 @@ export async function rebuildMemoryProtectionReserve(client: Client, signal?: Ab
   } catch (error) {
     if (error instanceof RequestProblem && error.status === 409) {
       return { status: 409, value: memoryProtectionStatusDecoder.decode(error.payload) };
-    }
-    throw error;
-  }
-}
-export type MemoryProtectionSettingsPatchResult =
-  | { accepted: true; value: CommittedAppSettingsResult }
-  | { accepted: false; status: 409; value: CommittedAppSettingsResult };
-export async function patchMemoryProtectionSettings(client: Client, expectedRevision: string,
-  settings: HostMemoryProtectionSettingsPatch, signal?: AbortSignal): Promise<MemoryProtectionSettingsPatchResult> {
-  try {
-    const value = await client.request({ key: "memory-protection.settings.patch", url: "/api/memory-protection",
-      decoder: appSettingsResultDecoder, fallbackError: uiText.misc.saveSettingsFailed, signal,
-      request: { method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ expectedRevision, changes: { memoryProtection: settings } }) } });
-    return { accepted: true, value };
-  } catch (error) {
-    if (error instanceof RequestProblem && error.status === 409) {
-      return { accepted: false, status: 409, value: appSettingsResultDecoder.decode(error.payload) };
     }
     throw error;
   }

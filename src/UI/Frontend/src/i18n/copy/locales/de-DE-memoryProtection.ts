@@ -68,7 +68,7 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
   recordsEmpty: "Keine Behandlungen protokolliert",
   recordProcess: (name: string, processId: number) => `${name} (PID ${processId})`,
   recordAt: "Zeitpunkt",
-  recordStartKey: "Startschlüssel",
+  recordStartKey: "Prozessstartkennung",
   recordBaseline: "Basiswert",
   recordCurrent: "Wert bei Behandlung",
   recordGrowth: "Zuwachs",

@@ -69,7 +69,7 @@ export const zhTwMemoryProtectionCopy: Pick<AppCopy, "memoryProtection"> = {
     recordsEmpty: "尚無處理記錄",
     recordProcess: (name: string, processId: number) => cjkText`${name}（PID ${processId}）`,
     recordAt: "時間",
-    recordStartKey: "啟動鍵",
+    recordStartKey: "處理程序啟動識別碼",
     recordBaseline: "基準值",
     recordCurrent: "處理時的值",
     recordGrowth: "增長量",

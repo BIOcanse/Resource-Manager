@@ -16,9 +16,6 @@ export interface HostMemoryProtectionSettings {
   reserves: HostMemoryReserveSettings[] | null;
   actionMode: HostMemoryProtectionActionMode;
 }
-// AppSettings PATCH forbids removing a field with null; reserves replaces the full ordered array.
-export type HostMemoryProtectionSettingsPatch = Partial<Omit<HostMemoryProtectionSettings, "reserves">>
-  & { reserves?: HostMemoryReserveSettings[] };
 export interface HostMemoryCommit { currentBytes: number; limitBytes: number; percent: number; }
 export interface HostMemoryProcess {
   processId: number;

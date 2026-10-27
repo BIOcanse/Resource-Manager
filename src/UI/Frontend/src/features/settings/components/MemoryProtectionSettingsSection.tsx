@@ -343,7 +343,7 @@ export function MemoryProtectionSettingsSection(props: MemoryProtectionSettingsS
                                 <Fact label={copy().recordBaseline}>{formatBytes(record.baselineBytes, "memory")}</Fact>
                                 <Fact label={copy().recordCurrent}>{formatBytes(record.currentBytes, "memory")}</Fact>
                                 <Fact label={copy().recordGrowth}>{bytesAsSent(record.growthBytes)}</Fact>
-                                <Fact label={copy().recordBytesWritten}>{formatBytes(record.bytesWritten, "memory")}</Fact>
+                                <Fact label={copy().recordBytesWritten}>{formatBytes(record.bytesWritten, "storage")}</Fact>
                                 <Show when={record.reason}>
                                   {(reason) => (
                                     <Fact label={copy().recordReason} wide title={reason()}>{memoryProtectionReasonText(reason())}</Fact>

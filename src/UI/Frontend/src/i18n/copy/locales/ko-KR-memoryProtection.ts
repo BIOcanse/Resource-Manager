@@ -67,7 +67,7 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
   recordsEmpty: "처리 기록이 없습니다",
   recordProcess: (name: string, processId: number) => `${name}(PID ${processId})`,
   recordAt: "시간",
-  recordStartKey: "시작 키",
+  recordStartKey: "프로세스 시작 식별자",
   recordBaseline: "기준값",
   recordCurrent: "처리 시 값",
   recordGrowth: "증가량",
