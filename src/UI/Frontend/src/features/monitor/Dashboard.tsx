@@ -1,7 +1,7 @@
 import { localizedMetricLabel, metricCardReading, resourceMetricBasis
 } from "../../presentation/metricLabels";
 import { Plus, Replace, UnfoldVertical, X } from "lucide-solid";
-import { createMemo, createSignal, For, onMount, Show, untrack } from "solid-js";
+import { createMemo, createSignal, For, Show, untrack } from "solid-js";
 import type { JSX } from "solid-js";
 import { createReorderGroup, NATIVE_CONTROL } from "../../interactions/solid/reorderGroup.ts";
 import type { ReorderGroup } from "../../interactions/solid/reorderGroup.ts";
@@ -110,9 +110,6 @@ export function Dashboard(props: DashboardProps) {
           const keys = createMemo(() => places().map((place) => place.key));
           const used = createMemo(() => usedUnits(card().slots));
           const remaining = createMemo(() => remainingUnits(card().slots));
-          // 卡片挂上之后才出现的槽位（新增、换了监控项、拖进来、进入编辑时的“+”）从高度 0 长出来；随卡片一起出现的直接在位。
-          let mounted = false;
-          onMount(() => { mounted = true; });
           const ordinal = () => cardIndex() + 1;
           const addSlot = (button: HTMLElement) => openSizeMenu(button, `add|${cardId}|${card().slots.length}`, sizesThatFit(card().slots), null,
             (size) => props.onOpenMetricModal({ cardId, index: card().slots.length, size, currentMetricId: null }));
@@ -130,7 +127,7 @@ export function Dashboard(props: DashboardProps) {
                     const place = createMemo<SlotPlace>((previous) => places().find((item) => item.key === key) ?? previous!);
                     const slot = () => place().slot;
                     return (
-                      <SlotFrame name={`${cardId}|${key}`} top={place().top} units={slotUnits(slot().size)} grow={mounted}
+                      <SlotFrame name={`${cardId}|${key}`} top={place().top} units={slotUnits(slot().size)}
                         class={`card-slot size-${slot().size}`}>
                         <MetricSlot
                           cardId={cardId}
@@ -157,7 +154,7 @@ export function Dashboard(props: DashboardProps) {
                 </For>
                 {/* 编辑时剩余的单位是一块“+”：先选大小，再选监控项。没有剩余时不显示。 */}
                 <Show when={props.editMode && remaining() >= 1}>
-                  <SlotFrame name={`${cardId}|+`} top={used()} units={remaining()} grow={mounted} class="card-slot card-slot-add">
+                  <SlotFrame name={`${cardId}|+`} top={used()} units={remaining()} class="card-slot card-slot-add">
                     <button
                       type="button"
                       class="slot-add"
@@ -184,17 +181,15 @@ export function Dashboard(props: DashboardProps) {
 /**
  * 卡片里一块区域（一个槽位，或编辑时的“+”）：上边和高度由磁石的卡片槽位组件带（interactions/components/cardSlotLayout.ts），
  * 这里只把它的通道写成 CSS 变量 --slot-top、--slot-units（styles/monitor.css 按单位步长换算）。
- * grow 为 true 时从高度 0 出发，挂上后的下一帧才给实际高度。
+ * 新挂上的区域（新增、换了监控项、拖进来、进入编辑时的“+”）第一帧就在终态的上边和高度：出现是进场，不用平面移动
+ * （docs/animation_style_2026-10-26.md「总原则」），编辑槽和“+”由样式表淡入。
  * 它是包含里面按钮的最内层组件（“+”的按钮外面没有别的组件），所以和拖动排序项一样声明可用的原生控件，
  * 否则按在“+”上会交给外面的卡片拖动、点击被引擎拦下（协议第 4.2 节第 2 项）。
  */
-function SlotFrame(props: { name: string; top: number; units: number; grow: boolean; class: string; children: JSX.Element }) {
+function SlotFrame(props: { name: string; top: number; units: number; class: string; children: JSX.Element }) {
   let element!: HTMLDivElement;
-  const grow = untrack(() => props.grow);
-  const [grown, setGrown] = createSignal(!grow);
-  if (grow) onMount(() => requestAnimationFrame(() => setGrown(true)));
   const top = createMemo(() => props.top);
-  const units = createMemo(() => (grown() ? props.units : 0));
+  const units = createMemo(() => props.units);
   const write = (value: Vec) => {
     element.style.setProperty("--slot-top", value.x.toFixed(4));
     element.style.setProperty("--slot-units", value.y.toFixed(4));

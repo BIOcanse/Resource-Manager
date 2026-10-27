@@ -5,16 +5,17 @@
 // 折叠标题（ui/primitives/Disclosure.tsx）也用这份定义（协议 4.6：演示的折叠面板和开关同一份定义）：没有几何，不能拖，开度跟宿主值走。
 
 import { LANDING, STOP_POINT } from "../protocol/definition.ts";
-import type { Definition } from "../protocol/definition.ts";
 import { SPRING } from "../protocol/field.ts";
 import { springOrEaseToPoints } from "./springOrEase.ts";
 import { call, CLAIM, dragBasics, stopAt } from "./common.ts";
+import type { PartDefinition } from "./common.ts";
 
 const drag = dragBasics();
 
-export const switchToggleDefinition: Definition = {
+export const switchToggleDefinition: PartDefinition<number, "平面移动"> = {
   id: "settings-switch",
   name: "设置开关",
+  motion: "平面移动",
   modes: drag.modes,
   exclusive: drag.exclusive,
   held: drag.held,

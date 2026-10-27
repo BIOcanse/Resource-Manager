@@ -7,18 +7,19 @@
 // 和演示的差别：产品没有默认宽度可复原，所以没有双击复原那一行。
 
 import { CURRENT, LANDING, STOP_POINT } from "../protocol/definition.ts";
-import type { Definition } from "../protocol/definition.ts";
 import { CUBIC, NO_FIELD, toTerminal } from "../protocol/field.ts";
 import { call, CLAIM, dragBasics, FOCUS, stopAt } from "./common.ts";
+import type { PartDefinition } from "./common.ts";
 
 /** 位置通道的边界：远大于屏幕，几何两端就是边界两端。 */
 export const columnEdgeBound = 100000;
 
 const drag = dragBasics({ cancel: [call("cancel")] });
 
-export const columnResizeHandleDefinition: Definition = {
+export const columnResizeHandleDefinition: PartDefinition<number, "平面移动"> = {
   id: "resource-table-column-resize",
   name: "列宽把手",
+  motion: "平面移动",
   modes: drag.modes,
   exclusive: drag.exclusive,
   held: drag.held,

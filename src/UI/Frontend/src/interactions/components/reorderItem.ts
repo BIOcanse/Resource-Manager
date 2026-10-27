@@ -14,14 +14,16 @@ import { HOLD } from "../protocol/field.ts";
 import { POINTER_AT } from "../protocol/values.ts";
 import type { Vec } from "../protocol/vec.ts";
 import { call, CLAIM, dragBasics, FOCUS, LOSS_EVENTS } from "./common.ts";
+import type { PartDefinition } from "./common.ts";
 
 /** 通道边界（屏幕 px）：远大于屏幕，几何的两角就是边界的两角，所以通道的值就是屏幕坐标。 */
 export const REORDER_BOUND = 100000;
 const drag = dragBasics({ cancel: [call("cancel")], cancelOnLoss: LOSS_EVENTS });
 
-export const reorderItemDefinition: Definition<Vec> = {
+export const reorderItemDefinition: PartDefinition<Vec, "平面移动"> = {
   id: "reorder-item",
   name: "拖动排序项",
+  motion: "平面移动",
   modes: drag.modes,
   exclusive: drag.exclusive,
   held: drag.held,

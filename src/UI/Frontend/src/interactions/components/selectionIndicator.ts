@@ -6,15 +6,16 @@
 // 到终态由动画风格选弹簧或缓动（springOrEase.ts 的部件 selection）：流畅平滑是弹簧，快速连点时接住当时的速度；
 // 桌面常规、终端顿挫是 --motion-medium 时长的缓动。
 
-import type { Definition } from "../protocol/definition.ts";
+import type { PartDefinition } from "./common.ts";
 import { carryField } from "./springOrEase.ts";
 
 /** 序号的边界：远大于任何一组的项数。 */
 export const SELECTION_ORDER_BOUND = 100000;
 
-export const selectionIndicatorDefinition: Definition = {
+export const selectionIndicatorDefinition: PartDefinition<number, "平面移动"> = {
   id: "selection-indicator",
   name: "选中指示条",
+  motion: "平面移动",
   modes: ["静止"],
   exclusive: [],
   rows: [],

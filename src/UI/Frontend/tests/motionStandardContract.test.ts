@@ -68,6 +68,8 @@ for (const selector of [".standard-select-popover", ".standard-context-menu", ".
     `${selector} enters like the other small popovers`);
 }
 // 进场不挪动命中区域：真实节点上的动画（不在 [data-exit-ghost] 上的规则）只能用只改不透明度的关键帧；位移、缩放只在退场幽灵上。
+// 这些关键帧是进场的淡入和占位条的呼吸（docs/animation_style_2026-10-26.md「总原则」：只改不透明度的两类都可以）；
+// 平面移动不写成关键帧，由声明了类别的磁石部件带（src/interactions/components）。
 const keyframeBodies = new Map([...stripComments(readFileSync(join(srcRoot, "styles/motion.css"), "utf8")).matchAll(/@keyframes\s+([\w-]+)\s*\{([\s\S]*?\})\s*\}/g)].map((match) => [match[1], match[2]]));
 for (const rule of rules) {
   const animation = rule.declarations.get("animation");

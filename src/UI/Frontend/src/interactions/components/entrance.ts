@@ -4,7 +4,7 @@
 // 新节点不接旧节点的位置和速度：每次进场都从开度 0、静止开始。
 // 到终态由动画风格选弹簧或缓动（springOrEase.ts 的部件：弹窗是 dialog，换页、切分页、页签、设置分区是 page）；
 // 无动画、超高性能由运行时直接到终态。
-import type { Definition } from "../protocol/definition.ts";
+import type { PartDefinition } from "./common.ts";
 import { carryField } from "./springOrEase.ts";
 
 /** 有进场的部件：参数前缀就是 springOrEase.ts 的部件名。 */
@@ -12,10 +12,11 @@ export type EntrancePart = "dialog" | "page";
 
 const NAMES: Readonly<Record<EntrancePart, string>> = { dialog: "弹窗进场", page: "内容进场" };
 
-function entranceDefinition(part: EntrancePart): Definition {
+function entranceDefinition(part: EntrancePart): PartDefinition<number, "进场退场"> {
   return {
     id: `${part}-entrance`,
     name: NAMES[part],
+    motion: "进场退场",
     modes: ["静止"],
     exclusive: [],
     rows: [],
@@ -28,7 +29,7 @@ function entranceDefinition(part: EntrancePart): Definition {
   };
 }
 
-export const entranceDefinitions: Readonly<Record<EntrancePart, Definition>> = {
+export const entranceDefinitions: Readonly<Record<EntrancePart, PartDefinition<number, "进场退场">>> = {
   dialog: entranceDefinition("dialog"),
   page: entranceDefinition("page")
 };

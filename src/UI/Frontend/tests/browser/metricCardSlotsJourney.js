@@ -9,7 +9,7 @@ import { frontendPreferencesKey } from "./frontendPreferencesFixture.js";
  * 1. 旧布局迁移：有槽位之前的格式（主读数加两行）和同样内容的槽位格式渲染一模一样，主读数是“中”、每行是“最小”；
  * 2. 各档的高度是单位的倍数；大、超大有趋势图，超大写最低、最高；
  * 3. “+”只列放得下的大小，没有剩余单位时没有“+”；改大小只列“剩余 + 自己”放得下的大小，当前大小不可选；
- * 4. 改大小、删除、新增由磁石带过渡：正常档下高度和位置是走过去的，无动画档下下一帧就到终态；
+ * 4. 改大小、删除、新增由磁石带过渡：正常档下已在场槽位的高度和位置是走过去的，新出现的区域第一帧就在终态，无动画档下下一帧就到终态；
  * 5. 选好大小再选监控项，保存后缓存里是槽位格式。
  */
 export default async function metricCardSlotsJourney(page, baseUrl) {
@@ -134,11 +134,14 @@ export default async function metricCardSlotsJourney(page, baseUrl) {
   assert.equal(await add(2).count(), 0, "the card is now full: no +");
   // 大了就有趋势。
   await frames("slots").nth(1).locator(".metric-trend").waitFor();
-  // 删除最后一槽：剩余一个单位，“+”从高度 0 长出来。
+  // 删除最后一槽：剩余一个单位，“+”出现。出现是进场（docs/animation_style_2026-10-26.md「总原则」）：
+  // 第一帧就在终态的位置和高度，只淡入；卡片槽位的平面移动只带已经在场的槽位。
   const removeLast = frames("slots").nth(2).locator(".slot-delete");
-  const grow = await sampleAfter(page, removeLast, "slots", ".card-slot-add");
-  assert.ok(grow[0].height < legacy[1].height - 1, `the + grows in from zero: ${grow.map((sample) => sample.height).join(",")}`);
-  assert.equal(Math.round(grow.at(-1).height), legacy[1].height);
+  const appear = await sampleAfter(page, removeLast, "slots", ".card-slot-add");
+  const last = appear.at(-1);
+  assert.equal(Math.round(last.height), legacy[1].height);
+  assert.ok(appear.every((sample) => Math.abs(sample.height - last.height) < 0.5 && Math.abs(sample.top - last.top) < 0.5),
+    `the + appears at its final place and height: ${appear.map((sample) => `${sample.top.toFixed(1)}/${sample.height.toFixed(1)}`).join(",")}`);
 
   // 5. 选好大小再选监控项：“+”→ 最小 → 选监控项弹窗，确认后加在末尾，保存后是槽位格式。
   await add(2).click();

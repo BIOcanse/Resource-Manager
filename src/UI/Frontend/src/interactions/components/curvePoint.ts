@@ -3,9 +3,9 @@
 // 拖动中每次移动都调用（连续），松手停在落点，取消回起点的值，停住时调用。键盘和产品一致：方向键 ±1，Shift 加方向键 ±10，Home / End。
 
 import { CURRENT, LANDING, ORIGIN, STOP_POINT } from "../protocol/definition.ts";
-import type { Definition } from "../protocol/definition.ts";
 import { NO_FIELD, toTerminal } from "../protocol/field.ts";
 import { call, CLAIM, dragBasics, FOCUS, JUMP_TO_POINTER, stopAt } from "./common.ts";
+import type { PartDefinition } from "./common.ts";
 import { carryField } from "./springOrEase.ts";
 
 const STEP = 1;
@@ -16,9 +16,10 @@ const KEY_CHANGES = KEYS.flatMap((k) => [`${k}↑`, `${k}↓`, `${k}⟳`]);
 const select = (value: string | number) => call("select", value);
 const drag = dragBasics({ cancel: [stopAt(ORIGIN)], ignore: KEY_CHANGES });
 
-export const curvePointDefinition: Definition = {
+export const curvePointDefinition: PartDefinition<number, "平面移动"> = {
   id: "curve-point",
   name: "曲线点",
+  motion: "平面移动",
   modes: drag.modes,
   exclusive: drag.exclusive,
   held: drag.held,

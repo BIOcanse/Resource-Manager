@@ -1,6 +1,7 @@
 import { onCleanup, untrack } from "solid-js";
 import { entranceDefinitions } from "../interactions/components/entrance.ts";
 import type { EntrancePart } from "../interactions/components/entrance.ts";
+import type { MotionKind } from "../interactions/components/common.ts";
 import type { Instance, Presentation } from "../interactions/protocol/runtime.ts";
 import { interactionAnimationMode, interactionRuntime } from "../interactions/solid/lodestone.ts";
 import { createOrderHost } from "../interactions/solid/orderHost.ts";
@@ -24,6 +25,19 @@ import { createOrderHost } from "../interactions/solid/orderHost.ts";
  * CSS 带的进场（enterSlot）按 [data-enter-slot] 的规则播放。
  */
 
+/**
+ * 呈现层的槽位（styles/motion.css 按名字给画面）和它们的动画类别（components/common.ts 的 MotionKind）：这里只有进场退场，
+ * 写成别的类别编译不过。进场槽位写在真实节点的 data-enter-slot，只改不透明度；退出槽位写在幽灵的 data-exit-slot。
+ * 没写槽位名的退场按节点自己的 class 取 motion.css 里 [data-exit-ghost] 的默认槽位，同样只在幽灵上。
+ * 磁石带的进场（enterNode）用的定义自己声明类别（components/entrance.ts，也是进场退场）。
+ * 合同测试（tests/nodeAnimationContract.test.ts）核对这两张表和 motion.css 里用到的槽位名一一对应。
+ */
+type EntranceOrExit = Extract<MotionKind, "进场退场">;
+export const ENTER_SLOTS = { row: "进场退场", disclosure: "进场退场" } as const satisfies Readonly<Record<string, EntranceOrExit>>;
+export const EXIT_SLOTS = { content: "进场退场", disclosure: "进场退场" } as const satisfies Readonly<Record<string, EntranceOrExit>>;
+export type EnterSlot = keyof typeof ENTER_SLOTS;
+export type ExitSlot = keyof typeof EXIT_SLOTS;
+
 /** 一份幽灵最多复制、清理多少个节点：超过就不放幽灵（退出当场结束）。 */
 const GHOST_NODE_LIMIT = 20000;
 /** 幽灵最长留多久：槽位动画没有按时结束（例如被父元素整个清空）也一定撤掉。 */
@@ -45,8 +59,8 @@ function slotsAreEmpty(): boolean {
 }
 
 export interface ExitOptions {
-  /** 退出动画槽位名（写到幽灵的 data-exit-slot）；不给就按节点自己的 class 取默认槽位。 */
-  readonly slot?: string;
+  /** 退出动画槽位名（写到幽灵的 data-exit-slot，EXIT_SLOTS 里的一个）；不给就按节点自己的 class 取默认槽位。 */
+  readonly slot?: ExitSlot;
   /** 槽位要的量，写成幽灵上的 CSS 变量（例如内容退出的位移方向）。 */
   readonly vars?: Readonly<Record<string, string>>;
   /**
@@ -353,7 +367,7 @@ export function enterNode(element: HTMLElement, options: { readonly part: Entran
  * 节点进场，画面按 [data-enter-slot] 的 CSS 规则播放（只改不透明度），播完去掉属性。
  * 无动画、超高性能：不加属性，节点当场就是终态。
  */
-export function enterSlot(element: HTMLElement, slot: string): void {
+export function enterSlot(element: HTMLElement, slot: EnterSlot): void {
   if (slotsAreEmpty()) return;
   element.setAttribute("data-enter-slot", slot);
   // 取动画要算样式：放到下一帧画出来之前，不在输入的任务里强制算。

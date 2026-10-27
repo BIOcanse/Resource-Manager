@@ -309,7 +309,9 @@ body:is([data-animations="smooth"], [data-animations="desktop"], [data-animation
     background var(--motion-fast) var(--ease-standard);
 }
 
-.edit-slot {
+/* 编辑槽和“+”挂上时第一帧就在终态的位置和高度（卡片槽位只带已经在场的槽位），画面淡入。 */
+.edit-slot,
+.slot-add {
   animation: motion-fade-in var(--motion-medium) var(--ease-decel);
 }
 

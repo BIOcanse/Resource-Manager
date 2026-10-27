@@ -1,7 +1,22 @@
 // 几个组件共用的写法：输入变化清单、常用输出，以及拖动组件的公共部分。
 // 只是把同一串东西写一次；生成的行和手写的一样列在转移表里、一样过机器检查。
 
-import type { Call, Mode, Output, Row } from "../protocol/definition.ts";
+import type { Call, Definition, Mode, Output, Row } from "../protocol/definition.ts";
+import type { Value } from "../protocol/vec.ts";
+
+/**
+ * 动画的两类（docs/animation_style_2026-10-26.md「总原则」）：每份部件定义在 motion 上写自己是哪一类，没有默认值。
+ * - 进场退场：节点出现、消失、换内容。交互当即到终态，画面不改命中：退场是幽灵，进场第一帧的命中几何就是终态。
+ *   只由呈现层（presentation/nodeAnimation.ts）用。
+ * - 平面移动：已经在场的节点的位置、偏移、尺寸连续变化。变换写在真实节点上，命中区域随画面移动；不用来让节点出现或消失。
+ *   挂在组件上的入口 useInteraction（solid/lodestone.ts）只收这一类。
+ * 只改不透明度的动画两类都可以。
+ */
+export const MOTION_KINDS = ["进场退场", "平面移动"] as const;
+export type MotionKind = (typeof MOTION_KINDS)[number];
+
+/** 产品里的部件定义：磁石的定义加上动画类别 motion（磁石协议的定义还没有这一项，产品这边先写在同一个对象上）。 */
+export type PartDefinition<V extends Value = number, K extends MotionKind = MotionKind> = Definition<V> & { readonly motion: K };
 
 /** 输入丢失事件（协议第 2.5 节）。 */
 export const LOSS_EVENTS = ["loss.blur", "loss.focus", "loss.hidden", "loss.visible", "loss.pointercancel", "loss.lostcapture", "loss.leftzone"] as const;

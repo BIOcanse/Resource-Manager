@@ -4,8 +4,9 @@
 // 这就是宿主值；滚轮停了，宿主值回到 0，内容按临界阻尼弹簧回到边缘（ω = 2π ÷ 400 ms，和复刻的越界回弹相同）。
 // 通道是内容的偏移（px，正是往下）。跟着滚轮时用一个快的临界阻尼弹簧把偏移带到宿主值，免得滚轮一格一跳。
 // 橡皮筋系数是声明的参数 edgeBandRubber：组件给的默认 0 是不回弹（桌面常规），流畅平滑在全局层把它换成复刻的 0.55。
+// 平面移动（docs/animation_style_2026-10-26.md「总原则」）：偏的是已经在场的滚动内容，平移写在真实节点上，回弹期间命中区域随内容偏。
 
-import type { Definition } from "../protocol/definition.ts";
+import type { PartDefinition } from "./common.ts";
 import { byCase, springField } from "../protocol/field.ts";
 import { declared } from "../protocol/params.ts";
 
@@ -23,9 +24,10 @@ const follow = springField("边缘回弹跟着滚轮", "edgeBandFollow", FOLLOW_
 const back = springField("边缘回弹回到边缘", "edgeBandReturn", IOS_BOUNCE_PERIOD_MS, 1, 0.1);
 const field = byCase("边缘回弹", "宿主值不是 0（滚轮还在边缘往外滚）时", (r) => r.target !== null && r.target.x !== 0, follow, "否则（滚轮停了）", back);
 
-export const edgeRubberBandDefinition: Definition = {
+export const edgeRubberBandDefinition: PartDefinition<number, "平面移动"> = {
   id: "edge-rubber-band",
   name: "滚动区边缘回弹",
+  motion: "平面移动",
   modes: ["静止"],
   exclusive: [],
   rows: [],

@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { readdirSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { checkDefinition } from "../src/interactions/protocol/check.ts";
 import type { Definition, Geometry } from "../src/interactions/protocol/definition.ts";
 import { globalLayer, partLayer, resolveParams } from "../src/interactions/protocol/params.ts";
@@ -14,6 +17,7 @@ import { entranceDefinitions } from "../src/interactions/components/entrance.ts"
 import { edgeRubberBandDefinition } from "../src/interactions/components/edgeRubberBand.ts";
 import { declaredSpecs } from "../src/interactions/protocol/definition.ts";
 import { animationStyles } from "../src/presentation/animationStyle.ts";
+import { MOTION_KINDS } from "../src/interactions/components/common.ts";
 
 // 产品里每份磁石定义都过一遍机器检查（协议第 4.3 节）：发行用“优化”执行方式，不跑检查，所以开发期在这里跑。
 // 系统参数和产品一样不读（null）；几何取和产品呈现层同方向的两端，只为几何那几项检查，像素数不影响完备和确定。
@@ -48,4 +52,24 @@ for (const style of animationStyles) {
     assert.deepEqual(definition.rows, [], `${definition.name} reads no input`);
   }
 }
-console.log(`PASS interaction definitions: ${definitions.length + hostDriven.length} checked in ${animationStyles.length} animation styles`);
+// 动画类别（docs/animation_style_2026-10-26.md「总原则」）：components 下导出的每份定义都要写 motion，没有默认值；
+// 每份定义也都要在上面两张表里，过机器检查。新加的定义漏了任何一项，这里直接报错。
+const componentsRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../src/interactions/components");
+const isDefinition = (value: unknown): value is Definition & { motion?: unknown } =>
+  typeof value === "object" && value !== null && "id" in value && "rows" in value && "channel" in value;
+const exported: (Definition & { motion?: unknown })[] = [];
+for (const name of readdirSync(componentsRoot).filter((file) => file.endsWith(".ts"))) {
+  const module: Record<string, unknown> = await import(pathToFileURL(join(componentsRoot, name)).href);
+  for (const value of Object.values(module)) {
+    if (isDefinition(value)) exported.push(value);
+    else if (typeof value === "object" && value !== null) exported.push(...Object.values(value).filter(isDefinition));
+  }
+}
+const checked = new Set<unknown>([...definitions.map(([definition]) => definition), ...hostDriven]);
+for (const definition of new Set(exported)) {
+  assert.ok((MOTION_KINDS as readonly unknown[]).includes(definition.motion),
+    `${definition.name} declares no animation kind (motion: ${MOTION_KINDS.join(" | ")}), got ${String(definition.motion)}`);
+  assert.ok(checked.has(definition), `${definition.name} is not in the machine check above`);
+}
+assert.equal(new Set(exported).size, checked.size, "every checked definition is exported from src/interactions/components");
+console.log(`PASS interaction definitions: ${definitions.length + hostDriven.length} checked in ${animationStyles.length} animation styles, each declares its animation kind`);

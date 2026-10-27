@@ -15,6 +15,7 @@ import type { Definition } from "../protocol/definition.ts";
 import { NO_FIELD, toTerminal } from "../protocol/field.ts";
 import { POINTER_AT } from "../protocol/values.ts";
 import { call, CLAIM, dragBasics, FOCUS, JUMP_TO_POINTER, stopAt } from "./common.ts";
+import type { PartDefinition } from "./common.ts";
 import { carryField } from "./springOrEase.ts";
 
 /**
@@ -30,9 +31,10 @@ const step = (direction: number, big: boolean) => [CLAIM, call("step", direction
 // 按住时的方向键明确忽略（认领）：不然浏览器会让原生 range 自己走一格。
 const drag = dragBasics({ cancel: [call("cancel")], ignore: KEY_CHANGES });
 
-export const controlSliderDefinition: Definition = {
+export const controlSliderDefinition: PartDefinition<number, "平面移动"> = {
   id: "control-number-slider",
   name: "数值滑条",
+  motion: "平面移动",
   modes: drag.modes,
   exclusive: drag.exclusive,
   held: drag.held,

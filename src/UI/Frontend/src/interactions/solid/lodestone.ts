@@ -1,6 +1,6 @@
 import { createEffect, createSignal, on, onCleanup, onMount } from "solid-js";
 import type { Accessor } from "solid-js";
-import type { Definition } from "../protocol/definition.ts";
+import type { PartDefinition } from "../components/common.ts";
 import type { ParamOverrides } from "../protocol/params.ts";
 import { attachDom, expectRelease } from "../protocol/domInput.ts";
 import { Runtime } from "../protocol/runtime.ts";
@@ -109,8 +109,10 @@ export interface InteractionHandle<V extends Value = Value> {
 /**
  * 把一份定义、一个呈现层和一个宿主挂到组件上：组件挂载后加入运行时，卸载时移除。
  * 在 Solid 组件的初始化里调用；view 在挂载时才建，因为它要读已经渲染好的元素。
+ * 只收平面移动的定义（components/common.ts 的 MotionKind）：挂上的是已经在场的节点，画面怎么动命中区域就怎么动；
+ * 进场退场只由呈现层（presentation/nodeAnimation.ts）用。
  */
-export function useInteraction<V extends Value>(name: string, definition: Definition<V>, view: () => Presentation<V>, host: Host<V>): InteractionHandle<V> {
+export function useInteraction<V extends Value>(name: string, definition: PartDefinition<V, "平面移动">, view: () => Presentation<V>, host: Host<V>): InteractionHandle<V> {
   const handle: { instance: Instance<V> | null } = { instance: null };
   onMount(() => {
     const instance = interactionRuntime().add(name, definition, view(), host);
