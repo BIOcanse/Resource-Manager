@@ -1,5 +1,7 @@
 /* Settings Page */
+/* 设置里所有数字输入框同宽（单独的、成对的、报告规则、帧率和更新间隔），标签在框上方换行，不随行宽或标签长度变宽。 */
 .settings-page {
+  --settings-number-width: 140px;
   min-height: calc(100vh - var(--shellbar-height) - var(--managementbar-height) - 52px);
   display: grid;
   grid-template-columns: 210px minmax(0, 1fr);
@@ -503,7 +505,7 @@
 }
 
 .settings-row-block > .settings-number-pair {
-  width: min(420px, 100%);
+  justify-self: start;
 }
 
 /* 从属选项（受上一项开关控制）：缩进，并用左侧引导线连成一组。 */
@@ -720,9 +722,10 @@
 }
 
 .settings-number-pair {
-  min-width: min(420px, 100%);
+  min-width: 0;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(2, var(--settings-number-width));
+  align-items: end;
   gap: 8px;
 }
 
@@ -733,13 +736,11 @@
 }
 
 .settings-number-pair span {
-  overflow: hidden;
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
   line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .settings-number-pair input {
@@ -774,19 +775,6 @@
   gap: 8px;
 }
 
-.settings-control-cluster {
-  min-width: min(720px, 100%);
-  display: flex;
-  align-items: end;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.settings-control-cluster .settings-number-field {
-  width: 180px;
-}
-
 /* 资源条动画帧率：模式控件右侧跟一个只在自定义时出现的帧率输入，底边对齐。
    更新区的间隔检查：开关右侧跟间隔输入，同样底边对齐。 */
 .settings-frame-rate-control,
@@ -801,7 +789,7 @@
 
 .settings-frame-rate-control .settings-number-field,
 .settings-update-interval-control .settings-number-field {
-  width: 150px;
+  width: var(--settings-number-width);
 }
 
 /* 说明 | 模式 | 当前模式的输入。自动调度时第三列留空，各行的模式控件仍然对齐。 */
@@ -852,23 +840,16 @@
 /* 设置行里单独的数字框（与主机内存保护的行一致）：输入框固定宽度，含单位的标签紧贴在输入框上方，不随行宽拉满。 */
 .settings-row > .settings-number-field {
   justify-self: start;
-  width: max-content;
-  max-width: 100%;
-}
-
-.settings-row > .settings-number-field input {
-  width: 140px;
+  width: var(--settings-number-width);
   max-width: 100%;
 }
 
 .settings-number-field span {
-  overflow: hidden;
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
   line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .settings-number-field input {
@@ -1563,13 +1544,14 @@
 .report-rule-group, .report-rule { min-width: 0; display: grid; gap: 10px; }
 .report-rule-group h3 { margin: 8px 0 0; font-size: 14px; }
 .report-rule { border-top: 1px solid var(--divider-soft); padding-top: 10px; }
+/* 规则名在报告类型标题（14px）之下、字段名（12px）之上；未设字号时会继承页面的 16px，比所属的报告类型还大。 */
+.report-rule > strong { font-size: 13px; line-height: 1.3; }
 /* 报告规则的数字行：数字框、紧跟其后的单位、默认值和恢复按钮排成一行，放不下再换行。 */
 .settings-row.report-rule-field { display: flex; flex-wrap: wrap; justify-content: flex-start; align-items: flex-end; column-gap: 8px; }
 .report-rule-field > span { min-height: 34px; display: inline-flex; align-items: center; font-size: 13px; }
 .report-rule-field > .report-rule-default { margin-inline-start: 10px; }
 /* 报告规则的数字框与输入框同宽，较长的字段名在框上方换行，单位因此紧贴输入框。 */
-.report-rule-field > .settings-number-field { width: 140px; }
-.report-rule-field > .settings-number-field span { white-space: normal; }
+.report-rule-field > .settings-number-field { width: var(--settings-number-width); }
 .report-rule-default { color: var(--muted); font-size: 13px; }
 .report-rule-names { flex: 1 1 100%; overflow-wrap: anywhere; }
 .report-rule-names label { display: grid; gap: 6px; }
