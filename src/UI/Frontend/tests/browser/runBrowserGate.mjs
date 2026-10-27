@@ -189,6 +189,7 @@ const allJourneys = [
   ["monitor-current-value-retention", monitorCurrentValueRetentionJourney],
   ["frontend-visibility-demand", frontendVisibilityDemandJourney],
   ["optimization-reports", optimizationReportsJourney],
+  ["smart-failure", async (...args) => (await import("./smartFailureJourney.js")).default(...args)],
   ["task-center", taskCenterJourney],
   ["task-center-status-icon", taskCenterStatusIconJourney],
   ["resource-layout-task", resourceLayoutTaskJourney],

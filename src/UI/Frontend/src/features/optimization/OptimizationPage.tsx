@@ -22,6 +22,13 @@ import type {
   TrustedOptimizationTarget
 } from "../../types";
 import { presentOptimizationReport } from "./optimizationPresentation";
+import {
+  smartFailureExclusionLabel,
+  smartFailureExclusionSections,
+  smartFailureHint,
+  smartFailureNativePlanStatus,
+  smartFailureTitle
+} from "./smartFailurePresentation.ts";
 import { UserDetailsDialog } from "../../components/UserDetailsDialog";
 import {
   observationCanRender,
@@ -32,6 +39,8 @@ import {
   ObservationStateNotice
 } from "../../components/ObservationStateNotice";
 import { SegmentedControl } from "../../ui/primitives/SegmentedControl.tsx";
+import { HelpHint } from "../../ui/primitives/HelpHint.tsx";
+import { formatInterfaceNumber } from "../../presentation/interfaceNumbers.ts";
 import { uiText } from "../../text.ts";
 import { optimizationEvidenceValue, optimizationTargetName } from "./optimizationPresentation";
 import {
@@ -77,6 +86,7 @@ export function OptimizationPage(props: OptimizationPageProps) {
   const [reportFilter, setReportFilter] = createSignal<ReportFilter>("untrusted");
   const [searchQuery, setSearchQuery] = createSignal("");
   const [detailReport, setDetailReport] = createSignal<OptimizationReportItem | null>(null);
+  const [exclusionsOpen, setExclusionsOpen] = createSignal(false);
   const allReports = () => props.overview?.reports ?? [];
   const trustedTargets = () => props.overview?.trustedTargets ?? [];
   const untrustedReports = () => allReports().filter((report) => !isTrustedReport(report));
@@ -189,6 +199,41 @@ export function OptimizationPage(props: OptimizationPageProps) {
           <div class="observation-state error" role="alert">
             <strong>{uiText.optimization.runtimeFaultClosedTitle}</strong>
             <span>{uiText.optimization.runtimeFaultClosedDetail(reason())}</span>
+          </div>
+        )}
+      </Show>
+      {/* 当前已结束的调度段失败了：只看后端的 failure，不由“调度未运行”推断；和上面的故障关闭互不影响。 */}
+      <Show when={props.hostManagerStatus?.failure}>
+        {(failure) => (
+          <div class="observation-state error optimization-smart-failure" role="alert" data-failure-kind={failure().kind}>
+            <strong>{smartFailureTitle(failure())}</strong>
+            <HelpHint>{smartFailureHint(failure())}</HelpHint>
+            <Show when={smartFailureNativePlanStatus(failure())}>
+              {(text) => <span class="optimization-smart-failure-plan">{text()}</span>}
+            </Show>
+            <Show when={(props.hostManagerStatus?.factExclusionCount ?? 0) > 0}>
+              <div class="optimization-smart-failure-exclusions">
+                <div class="optimization-smart-failure-exclusion-total">
+                  <span>{uiText.smartFailure.exclusionTotal(props.hostManagerStatus?.factExclusionCount ?? 0)}</span>
+                  <HelpHint>{uiText.smartFailure.exclusionsHint}</HelpHint>
+                  <Show when={(props.hostManagerStatus?.factExclusions.length ?? 0) > 0}>
+                    <button class="secondary details-button" type="button" onClick={() => setExclusionsOpen(true)}>
+                      {uiText.smartFailure.viewExclusions}
+                    </button>
+                  </Show>
+                </div>
+                <ul class="optimization-smart-failure-counts" role="list" aria-label={uiText.smartFailure.summaryLabel}>
+                  <For each={props.hostManagerStatus?.factExclusionCounts ?? []}>
+                    {(group) => (
+                      <li data-fact={group.fact} data-reason={group.reason}>
+                        <span>{smartFailureExclusionLabel(group.fact, group.reason)}</span>
+                        <strong>{formatInterfaceNumber(group.count)}</strong>
+                      </li>
+                    )}
+                  </For>
+                </ul>
+              </div>
+            </Show>
           </div>
         )}
       </Show>
@@ -327,6 +372,15 @@ export function OptimizationPage(props: OptimizationPageProps) {
         summary={detailReport() ? presentOptimizationReport(detailReport()!).summary : undefined}
         sections={detailReport() ? presentOptimizationReport(detailReport()!).details : []}
         onClose={() => setDetailReport(null)}
+      />
+      <UserDetailsDialog
+        open={exclusionsOpen()}
+        title={uiText.smartFailure.detailTitle}
+        summary={uiText.smartFailure.detailSummary(
+          props.hostManagerStatus?.factExclusions.length ?? 0,
+          props.hostManagerStatus?.factExclusionCount ?? 0)}
+        sections={props.hostManagerStatus ? smartFailureExclusionSections(props.hostManagerStatus) : []}
+        onClose={() => setExclusionsOpen(false)}
       />
     </section>
   );

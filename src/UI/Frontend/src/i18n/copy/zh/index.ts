@@ -24,6 +24,7 @@ import { zhStoresCopy } from "./stores.ts";
 import { zhTaskCenterCopy } from "./taskCenter.ts";
 import { zhTargetedReportCopy } from "./targetedReport.ts";
 import { zhKernelLeakReportCopy } from "./kernelLeakReport.ts";
+import { zhSmartFailureCopy } from "./smartFailure.ts";
 import { zhMemoryProtectionCopy } from "./memoryProtection.ts";
 
 // 中文基底：全应用文案的唯一权威形状，其他语言按同一形状提供翻译。
@@ -49,6 +50,7 @@ export const zhAppCopy = {
   ...zhTaskCenterCopy,
   ...zhTargetedReportCopy,
   ...zhKernelLeakReportCopy,
+  ...zhSmartFailureCopy,
   ...zhMemoryProtectionCopy,
   ...zhRuntimeAndReportsCopy,
   ...zhStoresCopy,

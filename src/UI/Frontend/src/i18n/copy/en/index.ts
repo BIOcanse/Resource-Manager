@@ -24,6 +24,7 @@ import { enStoresCopy } from "./stores.ts";
 import { enTaskCenterCopy } from "./taskCenter.ts";
 import { enTargetedReportCopy } from "./targetedReport.ts";
 import { enKernelLeakReportCopy } from "./kernelLeakReport.ts";
+import { enSmartFailureCopy } from "./smartFailure.ts";
 import { enMemoryProtectionCopy } from "./memoryProtection.ts";
 import type { AppCopy } from "../zh/index.ts";
 
@@ -50,6 +51,7 @@ export const enAppCopy: AppCopy = {
   ...enTaskCenterCopy,
   ...enTargetedReportCopy,
   ...enKernelLeakReportCopy,
+  ...enSmartFailureCopy,
   ...enMemoryProtectionCopy,
   ...enRuntimeAndReportsCopy,
   ...enStoresCopy,

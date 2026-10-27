@@ -6,6 +6,7 @@ import { physicalMemoryResidualCopy } from "../physicalMemoryResidual.ts";
 import type { AppCopy } from "../index.ts";
 import { targetedReport } from "./es-ES-targetedReport.ts";
 import { kernelLeakReport } from "./es-ES-kernelLeakReport.ts";
+import { smartFailure } from "./es-ES-smartFailure.ts";
 import { memoryProtection } from "./es-ES-memoryProtection.ts";
 import { fieldLabel, fieldValueLabel } from "./es-ES-fieldLabels.ts";
 import { plural } from "../../plural.ts";
@@ -38,6 +39,7 @@ const esEsAppCopy: AppCopy = {
   },
   targetedReport,
   kernelLeakReport,
+  smartFailure,
   memoryProtection,
   fieldLabel,
   fieldValueLabel,

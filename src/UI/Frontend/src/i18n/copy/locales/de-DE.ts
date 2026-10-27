@@ -6,6 +6,7 @@ import { physicalMemoryResidualCopy } from "../physicalMemoryResidual.ts";
 import type { AppCopy } from "../index.ts";
 import { targetedReport } from "./de-DE-targetedReport.ts";
 import { kernelLeakReport } from "./de-DE-kernelLeakReport.ts";
+import { smartFailure } from "./de-DE-smartFailure.ts";
 import { memoryProtection } from "./de-DE-memoryProtection.ts";
 import { fieldLabel, fieldValueLabel } from "./de-DE-fieldLabels.ts";
 import { plural } from "../../plural.ts";
@@ -38,6 +39,7 @@ const deDeAppCopy: AppCopy = {
   },
   targetedReport,
   kernelLeakReport,
+  smartFailure,
   memoryProtection,
   fieldLabel,
   fieldValueLabel,

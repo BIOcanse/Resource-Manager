@@ -359,6 +359,45 @@ export interface HostManagerSmartCoordinatorStatus {
   /** null：运行时正常准入；非 null：运行时故障关闭，不会执行任何新调整，值是诊断原因码。 */
   faultClosedReason: string | null;
   coordinator: HostManagerCoordinatorFacts | null;
+  /**
+   * 当前已结束的调度段的失败；null 表示当前没有失败段（成功后或尚未结束过一段）。
+   * 和 schedulerRunning、faultClosedReason 各自独立：不能由 schedulerRunning=false 推断失败。
+   */
+  failure: HostManagerCycleFailure | null;
+  /** 该失败段排除的事实总数；成功段为 0。 */
+  factExclusionCount: number;
+  /** 按（事实，原因）分组的排除数量。 */
+  factExclusionCounts: HostManagerFactExclusionCount[];
+  /** 排除明细，后端最多列出 64 项。 */
+  factExclusions: HostManagerFactExclusion[];
+}
+
+/** 原生调度计划的状态码（后端 NativeSmartCoordinatorStatus 成员名的短横线写法，不含 ok）。 */
+export type HostManagerNativePlanStatus =
+  | "invalid-argument" | "abi-mismatch" | "unavailable" | "no-data" | "buffer-too-small"
+  | "stale-generation" | "out-of-memory" | "capacity-exceeded" | "conflicting-facts"
+  | "feedback-mismatch" | "recreate-required";
+
+/** exceptionType 只用于诊断，界面不显示也不解析。 */
+export type HostManagerCycleFailure =
+  | { kind: "cycle-failed"; exceptionType: string; nativePlanStatus: null }
+  | { kind: "native-plan-failed"; exceptionType: string; nativePlanStatus: HostManagerNativePlanStatus };
+
+export type HostManagerCycleFailureKind = HostManagerCycleFailure["kind"];
+
+export interface HostManagerFactExclusionCount {
+  fact: string;
+  reason: string;
+  count: number;
+}
+
+export interface HostManagerFactExclusion {
+  processId: number | null;
+  /** 后端 ulong 的十进制文本。 */
+  processStartKey: string | null;
+  targetId: string | null;
+  fact: string;
+  reason: string;
 }
 
 export interface HostManagerRollbackStateDocument {

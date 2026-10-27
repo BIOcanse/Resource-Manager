@@ -7,6 +7,7 @@ import { physicalMemoryResidualCopy } from "../physicalMemoryResidual.ts";
 import type { AppCopy } from "../index.ts";
 import { targetedReport } from "./ja-JP-targetedReport.ts";
 import { kernelLeakReport } from "./ja-JP-kernelLeakReport.ts";
+import { smartFailure } from "./ja-JP-smartFailure.ts";
 import { memoryProtection } from "./ja-JP-memoryProtection.ts";
 import { fieldLabel, fieldValueLabel } from "./ja-JP-fieldLabels.ts";
 
@@ -38,6 +39,7 @@ const jaJpAppCopy: AppCopy = {
   },
   targetedReport,
   kernelLeakReport,
+  smartFailure,
   memoryProtection,
   fieldLabel,
   fieldValueLabel,

@@ -96,6 +96,45 @@
   overflow-wrap: anywhere;
 }
 
+/* 调度段失败：沿用 .observation-state.error；排除汇总另起一行，按（数据项，原因）每组一行。 */
+.optimization-smart-failure-exclusions {
+  flex-basis: 100%;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.optimization-smart-failure-exclusion-total {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.optimization-smart-failure-counts {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.optimization-smart-failure-counts li {
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+
+.optimization-smart-failure-counts span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.optimization-smart-failure-counts strong {
+  font-variant-numeric: tabular-nums;
+}
+
 .optimization-report,
 .optimization-trust-item {
   min-width: 0;

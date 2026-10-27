@@ -98,6 +98,8 @@ const defaultScenario = {
   extraSoftware: [],
   // 后端调度状态（GET /api/optimization/smart/status 与它的推送订阅同源）；只写与默认值不同的字段。
   smartStatus: {},
+  // 调度段结果：smartStatusSegments 里的一种（后端 tests/App 的 smart-status 夹具三例），smartStatus 再覆盖在上面。
+  smartStatusSegment: "success",
   softwareIssues: true,
   operations: "empty",
   operationCanceled: false,
@@ -1550,6 +1552,7 @@ function delay(milliseconds) {
 // mock 也就没有这些开关；旅程改用 frontendPreferencesFixture.js 写前端缓存。传入旧开关直接报错，免得静默无效。
 const frontendPreferenceScenarioKeys = ["settingsTheme", "settingsUiStyle", "animations", "localSystemIntervalMs", "performanceMonitorRefreshIntervalMs"];
 const scenarioChoices = {
+  smartStatusSegment: ["success", "cycle-failed", "native-plan-failed"],
   kernelLeakReport: Object.keys(kernelLeakReportFrames),
   memoryProtection: memoryProtectionScenarios,
   deviceTopologyMachineIdentity: [null, "workstation", "mobile_workstation", "laptop", "desktop", "unknown"],
@@ -3431,6 +3434,35 @@ const subscriptionChannelSelectors = new Set([
   "/api/memory-protection/subscribe"
 ]);
 
+// 调度段的 failure 与事实排除，形状同后端 tests/App/Fixtures/Optimization/smart-status.json 的三例
+// （夹具的 mode 是 "cpu-only"，不是产品模式，这里不取；模式和其余字段由 smartStatus 给）。
+const smartStatusSegments = {
+  success: {
+    failure: null,
+    factExclusionCount: 0,
+    factExclusionCounts: [],
+    factExclusions: []
+  },
+  "cycle-failed": {
+    failure: { kind: "cycle-failed", exceptionType: "IOException", nativePlanStatus: null },
+    factExclusionCount: 0,
+    factExclusionCounts: [],
+    factExclusions: []
+  },
+  "native-plan-failed": {
+    failure: { kind: "native-plan-failed", exceptionType: "InvalidDataException", nativePlanStatus: "capacity-exceeded" },
+    factExclusionCount: 2,
+    factExclusionCounts: [
+      { fact: "inventory", reason: "inventory-overflow", count: 1 },
+      { fact: "native-plan", reason: "capacity-exceeded", count: 1 }
+    ],
+    factExclusions: [
+      { processId: 43003, processStartKey: "9007199254740993", targetId: "process:43003:9007199254740993", fact: "inventory", reason: "inventory-overflow" },
+      { processId: null, processStartKey: null, targetId: null, fact: "native-plan", reason: "capacity-exceeded" }
+    ]
+  }
+};
+
 function smartCoordinatorStatus() {
   return {
     mode: "normal",
@@ -3441,6 +3473,7 @@ function smartCoordinatorStatus() {
     appliedTargetCount: 0,
     faultClosedReason: null,
     coordinator: null,
+    ...structuredClone(smartStatusSegments[scenario.smartStatusSegment]),
     ...scenario.smartStatus
   };
 }

@@ -6,6 +6,7 @@ import { physicalMemoryResidualCopy } from "../physicalMemoryResidual.ts";
 import type { AppCopy } from "../index.ts";
 import { targetedReport } from "./ko-KR-targetedReport.ts";
 import { kernelLeakReport } from "./ko-KR-kernelLeakReport.ts";
+import { smartFailure } from "./ko-KR-smartFailure.ts";
 import { memoryProtection } from "./ko-KR-memoryProtection.ts";
 import { fieldLabel, fieldValueLabel } from "./ko-KR-fieldLabels.ts";
 
@@ -37,6 +38,7 @@ const koKrAppCopy: AppCopy = {
   },
   targetedReport,
   kernelLeakReport,
+  smartFailure,
   memoryProtection,
   fieldLabel,
   fieldValueLabel,

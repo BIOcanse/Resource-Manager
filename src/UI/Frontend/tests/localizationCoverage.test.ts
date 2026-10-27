@@ -74,7 +74,8 @@ for (const count of [0, 1, 37]) {
     { path: `diskUsage.fileCount(${count})`, render: copy => copy.diskUsage.fileCount(count), parameters: [String(count)], requiresTranslation: true },
     { path: `diskUsage.omitted(${count})`, render: copy => copy.diskUsage.omitted(count), parameters: [String(count)], requiresTranslation: true },
     { path: `shell.taskCenterActive(${count})`, render: copy => copy.shell.taskCenterActive(count), parameters: [String(count)], requiresTranslation: true },
-    { path: `kernelLeakReport.unavailableHolders(${count})`, render: copy => copy.kernelLeakReport.unavailableHolders(count), parameters: [String(count)], requiresTranslation: true }
+    { path: `kernelLeakReport.unavailableHolders(${count})`, render: copy => copy.kernelLeakReport.unavailableHolders(count), parameters: [String(count)], requiresTranslation: true },
+    { path: `smartFailure.exclusionTotal(${count})`, render: copy => copy.smartFailure.exclusionTotal(count), parameters: [String(count)], requiresTranslation: true }
   );
 }
 // 增长速率的单位写法：数字已按界面语言格式化，各语言只给“每秒”的写法（多数语言与英文同为 /s）。
@@ -82,7 +83,9 @@ appCases.push(
   { path: "kernelLeakReport.ratePerSecond", render: copy => copy.kernelLeakReport.ratePerSecond("+0,42"), parameters: ["+0,42"], requiresTranslation: false },
   { path: "kernelLeakReport.observation.reachedOfRequired", render: copy => copy.kernelLeakReport.observation.reachedOfRequired("0:02:30", "0:10:00"), parameters: ["0:02:30", "0:10:00"], requiresTranslation: true },
   { path: "kernelLeakReport.actions.riskText", render: copy => copy.kernelLeakReport.actions.riskText("Level-A", "Risk-B."), parameters: ["Level-A", "Risk-B."], requiresTranslation: true },
-  { path: "kernelLeakReport.actions.riskLabel", render: copy => copy.kernelLeakReport.actions.riskLabel("Action-A"), parameters: ["Action-A"], requiresTranslation: true }
+  { path: "kernelLeakReport.actions.riskLabel", render: copy => copy.kernelLeakReport.actions.riskLabel("Action-A"), parameters: ["Action-A"], requiresTranslation: true },
+  { path: "smartFailure.nativePlanStatus", render: copy => copy.smartFailure.nativePlanStatus("Status-A"), parameters: ["Status-A"], requiresTranslation: true },
+  { path: "smartFailure.detailSummary", render: copy => copy.smartFailure.detailSummary(64, 130), parameters: ["64", "130"], requiresTranslation: true }
 );
 const settingsCases: FunctionCase<SettingsTextBundle>[] = [
   { path: "updates.confirmPrepare", render: copy => copy.updates.confirmPrepare("4.7.9-beta.8"), parameters: ["4.7.9-beta.8"], requiresTranslation: true },
