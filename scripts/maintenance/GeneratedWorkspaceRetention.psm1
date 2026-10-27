@@ -1551,6 +1551,11 @@ function Remove-GWWorkspaceSnapshot {
             try {
                 if ([ResourceManager.GeneratedWorkspaces.NativeFileGuard]::Length($stream) -ne [long]$expected.Item1 -or
                     [ResourceManager.GeneratedWorkspaces.NativeFileGuard]::LastWriteTicks($stream) -ne [long]$expected.Item2) { throw "File changed immediately before deletion: $filePath" }
+                # File.Delete refuses read-only files; git object files in test fixtures are read-only (10-27).
+                $attributes = [System.IO.File]::GetAttributes($filePath)
+                if ($attributes -band [System.IO.FileAttributes]::ReadOnly) {
+                    [System.IO.File]::SetAttributes($filePath, $attributes -band -bnot [System.IO.FileAttributes]::ReadOnly)
+                }
                 [System.IO.File]::Delete($filePath)
             }
             finally { $stream.Dispose() }

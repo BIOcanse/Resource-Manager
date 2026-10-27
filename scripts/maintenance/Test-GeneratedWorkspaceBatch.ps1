@@ -22,6 +22,8 @@ function Add-Workspace([string]$Root,[string]$Name,[string]$State='completed',[s
     return $path
 }
 $eligibleA = Add-Workspace $rootA 'eligible'
+# Read-only files must still be deleted: git object files in test fixtures are read-only (10-27 retention failures).
+[IO.File]::SetAttributes((Join-Path $eligibleA 'payload.bin'), [IO.FileAttributes]::ReadOnly)
 $running = Add-Workspace $rootA 'running' 'running'
 $unknown = Join-Path $rootA 'unknown'
 [void][IO.Directory]::CreateDirectory($unknown)
