@@ -41,7 +41,9 @@ public sealed record HostMemoryProtectionSettings(
     bool Enabled = false,
     double ThresholdPercent = 95,
     double CheckIntervalSeconds = 1,
-    string DumpDirectory = "UserData/MemorySlices");
+    IReadOnlyList<HostMemoryReserveSettings>? Reserves = null);
+
+public sealed record HostMemoryReserveSettings(string Location, ulong SizeBytes);
 
 public sealed record AppHardwareControlSettings(int ReassertionIntervalSeconds = 120);
 

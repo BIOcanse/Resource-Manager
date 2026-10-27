@@ -156,6 +156,7 @@ internal static class TrustedAccessHttpPolicy
             "PATCH /api/settings/app",
             "PATCH /api/memory-protection",
             "POST /api/memory-protection/normal-running-point",
+            "POST /api/memory-protection/reserve/rebuild",
             "POST /api/components/{id}/install",
             "POST /api/control/instances/refresh",
             "POST /api/control/redetect",

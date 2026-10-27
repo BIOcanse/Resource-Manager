@@ -4,7 +4,7 @@ namespace ResourceManager.App.Application.Settings;
 
 public static class AppSettingsDefaults
 {
-    public const string CurrentVersion = "1.0.34";
+    public const string CurrentVersion = "1.0.35";
     public const int RealtimeActionBudgetCount = 32;
     public const int MinRealtimeActionBudgetCount = 1;
     public const int MaxRealtimeActionBudgetCount = 8192;
@@ -61,7 +61,7 @@ public static class AppSettingsDefaults
             new AppUpdateSettings(),
             new AppHardwareControlSettings(),
             new AppReportSettings([]),
-            new HostMemoryProtectionSettings());
+            new HostMemoryProtectionSettings(Reserves: []));
     }
 
 }

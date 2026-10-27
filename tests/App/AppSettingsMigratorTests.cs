@@ -9,6 +9,35 @@ namespace Resource_Manager_APP.Tests;
 public sealed class AppSettingsMigratorTests
 {
     [Fact]
+    public void OldMemoryDumpDirectoryDoesNotInventDiskReservationDuringUpgrade()
+    {
+        var root = JsonNode.Parse(CurrentShapeJson)!.AsObject();
+        root["version"] = "1.0.34";
+        root["memoryProtection"] = JsonNode.Parse("""{"enabled":true,"thresholdPercent":91,"checkIntervalSeconds":2,"dumpDirectory":"UserData/OldSlices"}""");
+        using var document = JsonDocument.Parse(root.ToJsonString());
+        var settings = AppSettingsMigrator.MigrateForRead(document.RootElement);
+        Assert.Equal("1.0.35", settings.Version);
+        Assert.True(settings.MemoryProtection!.Enabled);
+        Assert.Equal(91, settings.MemoryProtection.ThresholdPercent);
+        Assert.Empty(settings.MemoryProtection.Reserves!);
+        Assert.DoesNotContain("dumpDirectory", JsonSerializer.Serialize(settings, JsonSerializerOptions.Web));
+        Assert.True(AppSettingsMigrator.RequiresRewrite(document.RootElement));
+    }
+
+    [Fact]
+    public void CurrentMemoryReserveEntriesPreserveUserOrderAndCapacity()
+    {
+        var root = JsonNode.Parse(CurrentShapeJson)!.AsObject();
+        root["memoryProtection"] = JsonNode.Parse("""{"enabled":false,"thresholdPercent":94,"checkIntervalSeconds":3,"reserves":[{"location":"UserData/SecondVolume","sizeBytes":131072},{"location":"UserData/FirstVolume","sizeBytes":65536}]}""");
+        using var document = JsonDocument.Parse(root.ToJsonString());
+        var settings = AppSettingsMigrator.MigrateForRead(document.RootElement).MemoryProtection!;
+        Assert.Equal(new[] { new HostMemoryReserveSettings("UserData/SecondVolume", 131072),
+            new HostMemoryReserveSettings("UserData/FirstVolume", 65536) }, settings.Reserves);
+        Assert.Equal(94, settings.ThresholdPercent);
+        Assert.Equal(3, settings.CheckIntervalSeconds);
+    }
+
+    [Fact]
     public void Version129_AddsRealtimeActionBudgetDefaultsAndPreservesExistingChoices()
     {
         var root = JsonNode.Parse(CurrentShapeJson)!.AsObject();
@@ -161,7 +190,8 @@ public sealed class AppSettingsMigratorTests
     [InlineData("1.0.32", true)]
     [InlineData("1.0.33", true)]
     [InlineData("1.0.34", true)]
-    [InlineData("1.0.35", false)]
+    [InlineData("1.0.35", true)]
+    [InlineData("1.0.36", false)]
     [InlineData("1.0.24.0", false)]
     [InlineData("99.0.0", false)]
     public void SupportsSourceVersion_UsesTheSingleContiguousMigrationRange(
@@ -494,7 +524,7 @@ public sealed class AppSettingsMigratorTests
     private const string CurrentShapeJson =
         """
         {
-          "version": "1.0.34",
+          "version": "1.0.35",
           "performance": {
             "optimizationMode": "normal",
             "preciseGpuPlacementEnabled": false,

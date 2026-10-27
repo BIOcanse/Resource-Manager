@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 using ResourceManager.App.Application.MemoryProtection;
 using ResourceManager.App.Infrastructure.MemoryProtection;
+using ResourceManager.App.Domain.Settings;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -14,6 +15,7 @@ public sealed class HostMemoryProtectionExecutorTests : IDisposable
 {
     private const nuint AllocationSize = 16 * 1024 * 1024;
     private readonly string directory = Path.Combine(Path.GetTempPath(), "rm-host-memory-executor-" + Guid.NewGuid().ToString("N"));
+    private string SecondDirectory => directory + "-second";
 
     [Fact]
     public void MismatchedIdentityDoesNotSuspendDumpOrKillTheOwnedChild()
@@ -25,9 +27,10 @@ public sealed class HostMemoryProtectionExecutorTests : IDisposable
             identity = identity with { ProcessStartKey = (ulong.Parse(identity.ProcessStartKey, CultureInfo.InvariantCulture) + 1).ToString(CultureInfo.InvariantCulture) };
             using var target = new WindowsHostMemoryProtectionExecutor().Open(identity);
             Assert.Equal("identity-changed", target.ExclusionReason);
-            var result = target.Execute(directory);
+            using var reserve = new HostMemoryDiskReserves();
+            var result = target.Execute(reserve);
             Assert.Equal("excluded", result.Outcome);
-            Assert.Null(result.DumpPath);
+            Assert.Empty(result.DumpPaths);
             Assert.False(child.HasExited);
             Assert.False(Directory.Exists(directory));
         }
@@ -40,28 +43,136 @@ public sealed class HostMemoryProtectionExecutorTests : IDisposable
         using var child = StartOwnedChild();
         try
         {
+            using var reserve = CreateReserve();
+            var remaining = reserve.ReadStatus().RemainingBytes;
             var executor = new WindowsHostMemoryProtectionExecutor(_ => unchecked((int)0xc0000022));
             using var target = executor.Open(Identity(child));
             Assert.Null(target.ExclusionReason);
-            var result = target.Execute(directory);
+            var result = target.Execute(reserve);
             Assert.Equal("suspend-failed", result.Outcome);
             Assert.True(result.SuspendFailed);
-            Assert.Null(result.DumpPath);
+            Assert.Empty(result.DumpPaths);
             Assert.Equal(0UL, result.BytesWritten);
             Assert.False(child.HasExited);
+            Assert.Empty(Directory.EnumerateFiles(directory, "*.dmp"));
+            Assert.Equal(remaining, reserve.ReadStatus().RemainingBytes);
+        }
+        finally { StopOwnedChild(child); }
+    }
+
+    [Fact]
+    public void MissingReserveDoesNotSuspendDumpOrTerminateOwnedChild()
+    {
+        using var child = StartOwnedChild();
+        try
+        {
+            using var reserve = new HostMemoryDiskReserves();
+            var suspendCalls = 0;
+            var executor = new WindowsHostMemoryProtectionExecutor(handle =>
+            {
+                suspendCalls++;
+                return HostMemoryProtectionNative.NtSuspendProcess(handle);
+            });
+            using var target = executor.Open(Identity(child));
+            var result = target.Execute(reserve);
+            Assert.Equal("reserve-unavailable", result.Outcome);
+            Assert.Equal(0, suspendCalls);
+            Assert.False(child.HasExited);
+            Assert.Empty(result.DumpPaths);
+            Assert.Equal(0UL, result.BytesWritten);
             Assert.False(Directory.Exists(directory));
         }
         finally { StopOwnedChild(child); }
     }
 
+    [Fact]
+    public void PrivateCommitLargerThanRemainingReserveTerminatesWithoutSuspendOrDump()
+    {
+        using var child = StartOwnedChild();
+        try
+        {
+            using var reserve = CreateReserve(64 * 1024);
+            var remaining = reserve.ReadStatus().RemainingBytes;
+            var identity = Identity(child);
+            Assert.True(identity.PrivateCommitBytes > remaining);
+            var suspendCalls = 0;
+            var executor = new WindowsHostMemoryProtectionExecutor(handle =>
+            {
+                suspendCalls++;
+                return HostMemoryProtectionNative.NtSuspendProcess(handle);
+            });
+            using var target = executor.Open(identity);
+            var result = target.Execute(reserve);
+            Assert.Equal("terminated-without-dump", result.Outcome);
+            Assert.Equal("private-commit-exceeds-reserve", result.Reason);
+            Assert.Equal(0, suspendCalls);
+            Assert.True(child.WaitForExit(5000));
+            Assert.Empty(result.DumpPaths);
+            Assert.Equal(0UL, result.BytesWritten);
+            Assert.Equal(remaining, reserve.ReadStatus().RemainingBytes);
+            Assert.Empty(Directory.EnumerateFiles(directory, "*.dmp"));
+        }
+        finally { StopOwnedChild(child); }
+    }
+
+    [Fact]
+    public void FullMinidumpExceedsReserveEvenWhenReportedPrivateCommitFitsTerminatesWithoutSuspendOrDump()
+    {
+        using var child = StartOwnedChild();
+        try
+        {
+            using var reserve = CreateReserve();
+            var cluster = Assert.Single(reserve.ReadStatus().Entries).ClusterBytes;
+            Assert.True(cluster > 0);
+            // Control only the published metric input. Native sizing must still independently measure
+            // this owned child's complete image instead of trusting that deliberately small metric.
+            var identity = Identity(child) with { PrivateCommitBytes = 1 };
+            var privateBytes = identity.PrivateCommitBytes!.Value;
+            var capacity = cluster;
+            var status = reserve.Prepare([new HostMemoryReserveSettings(directory, capacity)]);
+            Assert.True(status.Built, status.Reason);
+            Assert.True(privateBytes <= status.RemainingBytes);
+            using (var handle = HostMemoryProtectionNative.OpenProcess(HostMemoryProtectionNative.RequiredAccess, false, child.Id))
+            {
+                Assert.False(handle.IsInvalid);
+                var layout = HostMemoryMinidumpWriter.ReadLayout(handle);
+                var fullBytes = HostMemoryMinidumpWriter.Measure(handle, child.Id, layout);
+                using var lease = reserve.TryAcquire();
+                Assert.NotNull(lease);
+                Assert.True(lease.CanFit(privateBytes));
+                Assert.False(lease.CanFit(fullBytes));
+            }
+            var suspendCalls = 0;
+            var executor = new WindowsHostMemoryProtectionExecutor(handle =>
+            {
+                suspendCalls++;
+                return HostMemoryProtectionNative.NtSuspendProcess(handle);
+            });
+            using var target = executor.Open(identity);
+            var result = target.Execute(reserve);
+            Assert.Equal("terminated-without-dump", result.Outcome);
+            Assert.Equal("minidump-exceeds-reserve", result.Reason);
+            Assert.Equal(0, suspendCalls);
+            Assert.True(child.WaitForExit(5000));
+            Assert.Empty(result.DumpPaths);
+            Assert.Equal(0UL, result.BytesWritten);
+            Assert.Equal(status.RemainingBytes, reserve.ReadStatus().RemainingBytes);
+            Assert.Empty(Directory.EnumerateFiles(directory, "*.dmp"));
+        }
+        finally { StopOwnedChild(child); }
+    }
+
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void PrivateCommitFallsWhileStandardDumpGrowsThenOwnedChildTerminates(bool wow64)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void PrivateCommitFallsWhileStandardDumpGrowsThenOwnedChildTerminates(bool wow64, bool multipleEntries)
     {
         using var child = StartOwnedChild(wow64);
         try
         {
+            using var reserve = multipleEntries ? CreateSegmentedReserve() : CreateReserve();
+            var remaining = reserve.ReadStatus().RemainingBytes;
             using var allocationHandle = OpenAllocationHandle(child);
             var marker = "host-memory-private-slice-marker"u8.ToArray();
             var allocation = VirtualAllocEx(allocationHandle, 0, AllocationSize, 0x3000, 0x04);
@@ -82,7 +193,7 @@ public sealed class HostMemoryProtectionExecutorTests : IDisposable
                 }, (address, size, error) => failedReleases.Add((address, size, error)));
             using var target = executor.Open(Identity(child));
             Assert.Null(target.ExclusionReason);
-            var result = target.Execute(directory);
+            var result = target.Execute(reserve);
             AssertCompleteSlice(result);
             Assert.DoesNotContain(failedReleases, failed => failed.Address < allocation + AllocationSize && failed.Address + failed.Size > allocation);
             if (result.Outcome == "completed") Assert.Empty(failedReleases);
@@ -95,13 +206,15 @@ public sealed class HostMemoryProtectionExecutorTests : IDisposable
             }
             Assert.False(result.SuspendFailed);
             Assert.True(child.WaitForExit(5000));
-            Assert.NotNull(result.DumpPath);
-            Assert.Equal((ulong)new FileInfo(result.DumpPath).Length, result.BytesWritten);
+            Assert.Equal(multipleEntries ? 2 : 1, result.DumpPaths.Count);
+            if (multipleEntries) Assert.Equal(64 * 1024, new FileInfo(result.DumpPaths[0]).Length);
+            Assert.Equal(result.DumpPaths.Aggregate(0UL, (total, path) => total + (ulong)new FileInfo(path).Length), result.BytesWritten);
+            Assert.Equal(result.DumpPaths.Aggregate(0UL, (total, path) => total + ReadAllocatedBytes(path)), remaining - reserve.ReadStatus().RemainingBytes);
             Assert.True(samples.Count > 1);
             Assert.Contains(samples, sample => initialCommit - sample.Commit >= (long)AllocationSize / 2);
             Assert.All(samples.Zip(samples.Skip(1)), pair => Assert.True(pair.Second.FileBytes > pair.First.FileBytes));
             lock (HostMemoryMinidumpWriter.DbgHelpGate)
-                AssertStandardDumpAndPrivateMarker(result.DumpPath, allocation, marker);
+                AssertStandardDumpAndPrivateMarker(result.DumpPaths, allocation, marker);
         }
         finally { StopOwnedChild(child); }
     }
@@ -113,19 +226,25 @@ public sealed class HostMemoryProtectionExecutorTests : IDisposable
         ulong bytesBeforeFailure = 0;
         try
         {
+            using var reserve = CreateReserve();
+            var remaining = reserve.ReadStatus().RemainingBytes;
             var executor = new WindowsHostMemoryProtectionExecutor(HostMemoryProtectionNative.NtSuspendProcess,
                 (_, _, bytes) => { bytesBeforeFailure = bytes; throw new IOException("injected-disk-full"); });
             using var target = executor.Open(Identity(child));
             Assert.Null(target.ExclusionReason);
-            var result = target.Execute(directory);
+            var result = target.Execute(reserve);
             Assert.Equal("slice-incomplete", result.Outcome);
             Assert.Contains("injected-disk-full", result.Reason);
             Assert.False(result.SuspendFailed);
             Assert.True(child.WaitForExit(5000));
-            Assert.NotNull(result.DumpPath);
+            var dumpPath = Assert.Single(result.DumpPaths);
             Assert.True(result.BytesWritten > 0);
             Assert.Equal(bytesBeforeFailure, result.BytesWritten);
-            Assert.Equal((ulong)new FileInfo(result.DumpPath).Length, result.BytesWritten);
+            Assert.Equal((ulong)new FileInfo(dumpPath).Length, result.BytesWritten);
+            var after = reserve.ReadStatus().RemainingBytes;
+            Assert.True(after < remaining);
+            Assert.Equal(ReadAllocatedBytes(dumpPath), remaining - after);
+            Assert.Equal(after, reserve.ReadStatus().RemainingBytes); // No implicit reserve refill.
         }
         finally { StopOwnedChild(child); }
     }
@@ -136,17 +255,42 @@ public sealed class HostMemoryProtectionExecutorTests : IDisposable
         using var child = StartOwnedChild();
         try
         {
-            Directory.CreateDirectory(directory);
-            var fileInsteadOfDirectory = Path.Combine(directory, "file");
-            File.WriteAllText(fileInsteadOfDirectory, "owned fixture");
+            using var funded = CreateReserve();
+            var remaining = funded.ReadStatus().RemainingBytes;
+            using var reserve = new FailingReserve(funded, failCreate: true);
             using var target = new WindowsHostMemoryProtectionExecutor().Open(Identity(child));
             Assert.Null(target.ExclusionReason);
-            var result = target.Execute(fileInsteadOfDirectory);
+            var result = target.Execute(reserve);
             Assert.Equal("slice-incomplete", result.Outcome);
             Assert.NotNull(result.Reason);
             Assert.True(child.WaitForExit(5000));
-            Assert.Null(result.DumpPath);
+            Assert.Empty(result.DumpPaths);
             Assert.Equal(0UL, result.BytesWritten);
+            Assert.Equal(remaining, funded.ReadStatus().RemainingBytes);
+            Assert.Empty(Directory.EnumerateFiles(directory, "*.dmp"));
+        }
+        finally { StopOwnedChild(child); }
+    }
+
+    [Fact]
+    public void MetadataCallbackWriteFailureReturnsToManagedCodeAndTerminatesOwnedChild()
+    {
+        using var child = StartOwnedChild();
+        try
+        {
+            using var funded = CreateReserve();
+            var remaining = funded.ReadStatus().RemainingBytes;
+            using var reserve = new FailingReserve(funded, failCreate: false);
+            using var target = new WindowsHostMemoryProtectionExecutor().Open(Identity(child));
+            var result = target.Execute(reserve);
+            Assert.Equal("slice-incomplete", result.Outcome);
+            Assert.Contains("injected-metadata-write-failure", result.Reason);
+            Assert.True(reserve.WriteAttempts > 0);
+            Assert.True(child.WaitForExit(5000));
+            Assert.Empty(result.DumpPaths); // Composite parts are created lazily on their first actual write.
+            Assert.Equal(0UL, result.BytesWritten);
+            Assert.Empty(Directory.EnumerateFiles(directory, "*.dmp"));
+            Assert.Equal(remaining, funded.ReadStatus().RemainingBytes);
         }
         finally { StopOwnedChild(child); }
     }
@@ -162,6 +306,7 @@ public sealed class HostMemoryProtectionExecutorTests : IDisposable
         using var secondSuspended = new ManualResetEventSlim();
         try
         {
+            using var reserve = CreateReserve();
             secondChild = StartOwnedChild();
             var held = 0;
             var firstExecutor = new WindowsHostMemoryProtectionExecutor(HostMemoryProtectionNative.NtSuspendProcess,
@@ -183,14 +328,14 @@ public sealed class HostMemoryProtectionExecutorTests : IDisposable
             List<Task<HostMemoryActionResult>> actions = [];
             try
             {
-                actions.Add(Task.Run(() => firstTarget.Execute(directory)));
+                actions.Add(Task.Run(() => firstTarget.Execute(reserve)));
                 Assert.True(firstWriting.Wait(TimeSpan.FromSeconds(5)), actions[0].IsCompletedSuccessfully
                     ? $"First action ended before decommit observation: {actions[0].Result.Outcome}: {actions[0].Result.Reason}"
                     : "The first action did not reach a decommitted chunk.");
                 actions.Add(Task.Run(() =>
                 {
                     secondAttempted.Set();
-                    return secondTarget.Execute(directory);
+                    return secondTarget.Execute(reserve);
                 }));
                 Assert.True(secondAttempted.Wait(TimeSpan.FromSeconds(5)));
                 Assert.False(secondSuspended.Wait(TimeSpan.FromMilliseconds(250)));
@@ -215,16 +360,36 @@ public sealed class HostMemoryProtectionExecutorTests : IDisposable
         }
     }
 
-    private static unsafe void AssertStandardDumpAndPrivateMarker(string path, nuint allocation, byte[] marker)
+    private static unsafe void AssertStandardDumpAndPrivateMarker(IReadOnlyList<string> paths, nuint allocation, byte[] marker)
     {
+        if (paths.Count > 1)
+        {
+            // Reassemble only in test-owned memory; production never writes an unfunded combined file.
+            var bytes = new byte[checked((int)paths.Sum(path => new FileInfo(path).Length))];
+            var offset = 0;
+            foreach (var part in paths)
+            {
+                using var input = File.OpenRead(part);
+                var length = checked((int)input.Length);
+                input.ReadExactly(bytes.AsSpan(offset, length));
+                offset += length;
+            }
+            fixed (byte* baseOfDump = bytes) AssertDumpMemory(baseOfDump, (ulong)bytes.Length, allocation, marker);
+            return;
+        }
+        var path = Assert.Single(paths);
         // A mapped view rounds capacity to page boundaries; only the file's actual length is payload.
         var fileLength = checked((ulong)new FileInfo(path).Length);
         using var mapping = MemoryMappedFile.CreateFromFile(path, FileMode.Open, null, 0, MemoryMappedFileAccess.Read);
         using var view = mapping.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
         byte* pointer = null;
         view.SafeMemoryMappedViewHandle.AcquirePointer(ref pointer);
-        try
-        {
+        try { AssertDumpMemory(pointer, fileLength, allocation, marker); }
+        finally { view.SafeMemoryMappedViewHandle.ReleasePointer(); }
+    }
+
+    private static unsafe void AssertDumpMemory(byte* pointer, ulong fileLength, nuint allocation, byte[] marker)
+    {
             // Use Windows' independent minidump reader, not the production writer's layout code.
             Assert.True(MiniDumpReadDumpStream((nint)pointer, 3, out _, out var threads, out var threadBytes));
             Assert.True(threadBytes >= 4);
@@ -263,8 +428,6 @@ public sealed class HostMemoryProtectionExecutorTests : IDisposable
             Assert.True(found, "The owned child's private allocation must be in the standard memory list.");
             Assert.True(sharedUserDataFound, "The OS-owned shared page remains in the dump without an invalid process decommit.");
             Assert.Equal(fileLength, payload);
-        }
-        finally { view.SafeMemoryMappedViewHandle.ReleasePointer(); }
     }
 
     private static void AssertCompleteSlice(HostMemoryActionResult result)
@@ -276,6 +439,86 @@ public sealed class HostMemoryProtectionExecutorTests : IDisposable
             Assert.StartsWith("private-memory-decommit-limited chunks=", result.Reason);
             Assert.Contains("address=0x", result.Reason);
             Assert.Contains("native-error=", result.Reason);
+        }
+    }
+
+    private HostMemoryDiskReserves CreateReserve(ulong sizeBytes = 32 * 1024 * 1024)
+    {
+        var reserve = new HostMemoryDiskReserves();
+        try
+        {
+            var status = reserve.Prepare([new HostMemoryReserveSettings(directory, sizeBytes)]);
+            Assert.True(status.Built, status.Reason);
+            return reserve;
+        }
+        catch { reserve.Dispose(); throw; }
+    }
+
+    private HostMemoryDiskReserves CreateSegmentedReserve()
+    {
+        var reserve = new HostMemoryDiskReserves();
+        try
+        {
+            var status = reserve.Prepare([new(directory, 64 * 1024), new(SecondDirectory, 32 * 1024 * 1024)]);
+            Assert.True(status.Built, status.Reason);
+            return reserve;
+        }
+        catch { reserve.Dispose(); throw; }
+    }
+
+    private static ulong ReadAllocatedBytes(string path)
+    {
+        using var handle = File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        Assert.True(GetFileInformationByHandleEx(handle, 1, out var info, (uint)Marshal.SizeOf<FileStandardInfo>()),
+            $"GetFileInformationByHandleEx failed: {Marshal.GetLastWin32Error()}");
+        Assert.True(info.AllocationSize >= info.EndOfFile);
+        return checked((ulong)info.AllocationSize);
+    }
+
+    private sealed class FailingReserve(IHostMemoryProtectionReserve inner, bool failCreate) : IHostMemoryProtectionReserve
+    {
+        internal int WriteAttempts;
+        public HostMemoryReserveStatus ReadStatus() => inner.ReadStatus();
+        public HostMemoryReserveStatus Prepare(IReadOnlyList<HostMemoryReserveSettings> entries) => inner.Prepare(entries);
+        public HostMemoryReserveStatus Rebuild() => inner.Rebuild();
+        public IHostMemoryProtectionReserveLease? TryAcquire()
+            => inner.TryAcquire() is { } lease ? new FailingLease(lease, this, failCreate) : null;
+        public void Dispose() { }
+
+        private sealed class FailingLease(IHostMemoryProtectionReserveLease lease, FailingReserve owner, bool failCreate)
+            : IHostMemoryProtectionReserveLease
+        {
+            public string Location => lease.Location;
+            public ulong RemainingBytes => lease.RemainingBytes;
+            public IReadOnlyList<string> SlicePaths => lease.SlicePaths;
+            public bool CanFit(ulong bytes) => lease.CanFit(bytes);
+            public Stream CreateSlice(string fileName)
+                => failCreate ? throw new IOException("injected-slice-create-failure") : new FailingWriteStream(lease.CreateSlice(fileName), owner);
+            public void Dispose() => lease.Dispose();
+        }
+
+        private sealed class FailingWriteStream(Stream stream, FailingReserve owner) : Stream
+        {
+            public override bool CanRead => stream.CanRead;
+            public override bool CanSeek => stream.CanSeek;
+            public override bool CanWrite => stream.CanWrite;
+            public override long Length => stream.Length;
+            public override long Position { get => stream.Position; set => stream.Position = value; }
+            public override void Flush() => stream.Flush();
+            public override int Read(byte[] buffer, int offset, int count) => stream.Read(buffer, offset, count);
+            public override long Seek(long offset, SeekOrigin origin) => stream.Seek(offset, origin);
+            public override void SetLength(long value) => stream.SetLength(value);
+            public override void Write(byte[] buffer, int offset, int count) => Write(buffer.AsSpan(offset, count));
+            public override void Write(ReadOnlySpan<byte> buffer)
+            {
+                owner.WriteAttempts++;
+                throw new IOException("injected-metadata-write-failure");
+            }
+            protected override void Dispose(bool disposing)
+            {
+                if (disposing) stream.Dispose();
+                base.Dispose(disposing);
+            }
         }
     }
 
@@ -311,7 +554,8 @@ public sealed class HostMemoryProtectionExecutorTests : IDisposable
         using var handle = HostMemoryProtectionNative.OpenProcess(0x1000, false, child.Id);
         Assert.False(handle.IsInvalid);
         Assert.True(HostMemoryProtectionNative.GetProcessTimes(handle, out var creation, out _, out _, out _));
-        return new(child.Id, creation.ToString(CultureInfo.InvariantCulture), "ping", 0);
+        child.Refresh();
+        return new(child.Id, creation.ToString(CultureInfo.InvariantCulture), "ping", checked((ulong)child.PrivateMemorySize64));
     }
 
     private static SafeProcessHandle OpenAllocationHandle(Process child)
@@ -328,10 +572,13 @@ public sealed class HostMemoryProtectionExecutorTests : IDisposable
 
     public void Dispose()
     {
-        if (!Directory.Exists(directory)) return;
-        // This test creates only known flat fixture/dump files; never traverse or delete other roots.
-        foreach (var file in Directory.EnumerateFiles(directory)) File.Delete(file);
-        Directory.Delete(directory);
+        foreach (var ownedDirectory in new[] { directory, SecondDirectory })
+        {
+            if (!Directory.Exists(ownedDirectory)) continue;
+            // This test creates only known flat fixture/dump files; never traverse or delete other roots.
+            foreach (var file in Directory.EnumerateFiles(ownedDirectory)) File.Delete(file);
+            Directory.Delete(ownedDirectory);
+        }
     }
 
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -340,6 +587,21 @@ public sealed class HostMemoryProtectionExecutorTests : IDisposable
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool WriteProcessMemory(SafeProcessHandle process, nuint address, byte[] buffer, nuint size, out nuint bytesWritten);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FileStandardInfo
+    {
+        internal long AllocationSize;
+        internal long EndOfFile;
+        internal uint NumberOfLinks;
+        internal byte DeletePending;
+        internal byte Directory;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetFileInformationByHandleEx(SafeFileHandle file, int informationClass,
+        out FileStandardInfo information, uint bufferSize);
 
     [DllImport("dbghelp.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

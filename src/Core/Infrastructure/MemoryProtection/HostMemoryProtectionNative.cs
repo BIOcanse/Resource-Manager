@@ -58,8 +58,39 @@ internal static class HostMemoryProtectionNative
 
     [DllImport("dbghelp.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool MiniDumpWriteDump(SafeProcessHandle process, int processId, SafeFileHandle file, uint dumpType,
-        nint exception, nint userStreams, nint callback);
+    internal static extern bool MiniDumpWriteDump(SafeProcessHandle process, int processId, nint file, uint dumpType,
+        nint exception, nint userStreams, ref MiniDumpCallbackInformation callback);
+
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal delegate bool MiniDumpCallbackRoutine(nint parameter, nint input, nint output);
+
+    // minidumpapiset.h wraps all minidump structures in pshpack4.h, including callback structs.
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
+    internal struct MiniDumpCallbackInformation
+    {
+        internal MiniDumpCallbackRoutine Routine;
+        internal nint Parameter;
+    }
+
+    // Only the header and Io union member are consumed; other callback union members are untouched.
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
+    internal struct MiniDumpCallbackInput
+    {
+        internal uint ProcessId;
+        internal nint ProcessHandle;
+        internal uint CallbackType;
+        internal MiniDumpIoCallback Io;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
+    internal struct MiniDumpIoCallback
+    {
+        internal nint Handle;
+        internal ulong Offset;
+        internal nint Buffer;
+        internal uint BufferBytes;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct MemoryBasicInformation

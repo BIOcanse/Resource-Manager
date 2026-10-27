@@ -11,11 +11,12 @@ public static partial class ResourceManagerServiceCollectionExtensions
     {
         services.AddSingleton<IHostMemoryProtectionSource, HostMemoryProtectionSource>();
         services.AddSingleton<IHostMemoryProtectionExecutor, WindowsHostMemoryProtectionExecutor>();
+        services.AddSingleton<IHostMemoryProtectionReserve, HostMemoryDiskReserves>();
         services.AddSingleton<HostMemoryProtectionService>();
         services.AddSingleton(new BusinessBlockRegistration(HostMemoryProtectionService.BlockId,
             [BackendBlockIds.WindowsHardwareMetricSampler, BackendBlockIds.WindowsResourceBreakdownSampler],
             provider => provider.GetRequiredService<HostMemoryProtectionService>()) { Outputs = ["host-memory-protection"] });
-        // This site supplies the root's existing demand rule with this new child's two facts.
+        // The parent owns the run decision; the feature publishes enablement, point and reserve facts.
         // All other children keep the existing demand/enablement behavior; no generic control code changes.
         services.AddSingleton(provider =>
         {
@@ -24,9 +25,10 @@ public static partial class ResourceManagerServiceCollectionExtensions
                 .Select(item => item.Id).ToArray();
             return new BusinessBlockDecisionRegistration(BackendBlockGraph.Program,
                 children.Select(BusinessBlockScheduler.DemandFact).Concat(
-                    [HostMemoryProtectionService.EnabledFact, HostMemoryProtectionService.PointFact]).ToArray(),
+                    [HostMemoryProtectionService.EnabledFact, HostMemoryProtectionService.PointFact, HostMemoryProtectionService.ReserveFact]).ToArray(),
                 input => children.Where(id => input.Facts[BusinessBlockScheduler.DemandFact(id)].Value)
                     .Concat(input.Facts[HostMemoryProtectionService.EnabledFact].Value && input.Facts[HostMemoryProtectionService.PointFact].Value
+                        && input.Facts[HostMemoryProtectionService.ReserveFact].Value
                         ? [HostMemoryProtectionService.BlockId] : Array.Empty<string>()).ToArray());
         });
         return services;

@@ -82,39 +82,55 @@ public sealed class WindowsHostMemoryProtectionExecutor : IHostMemoryProtectionE
         private bool executed;
         public string? ExclusionReason { get; } = exclusion;
 
-        public HostMemoryActionResult Execute(string dumpDirectory)
+        public HostMemoryActionResult Execute(IHostMemoryProtectionReserve reserve)
         {
             // Callers normally serialize actions; keep that guarantee for direct callers and separate
             // executor instances too. The retained handle still identifies the originally opened process.
-            lock (ActionGate) return ExecuteCore(dumpDirectory);
+            lock (ActionGate) return ExecuteCore(reserve);
         }
 
-        private HostMemoryActionResult ExecuteCore(string dumpDirectory)
+        private HostMemoryActionResult ExecuteCore(IHostMemoryProtectionReserve reserve)
         {
-            if (ExclusionReason is not null) return new("excluded", ExclusionReason, null, 0);
+            if (ExclusionReason is not null) return new("excluded", ExclusionReason, [], 0);
             ObjectDisposedException.ThrowIf(processHandle is null, this);
             if (executed) throw new InvalidOperationException("The process action has already been executed.");
             executed = true;
             // An opened target can wait behind a previous action. Recheck its critical flag on the
             // same effect handle instead of relying on classification performed before that wait.
             if (CriticalityExclusion(processHandle) is { } criticality)
-                return new("excluded", criticality, null, 0);
+                return new("excluded", criticality, [], 0);
+            using var lease = reserve.TryAcquire();
+            if (lease is null) return new("reserve-unavailable", "reserve-unavailable", [], 0);
+            if (process.PrivateCommitBytes is not { } privateCommit)
+                return new("excluded", "private-commit-unavailable", [], 0);
+            if (privateCommit > lease.RemainingBytes)
+                return TerminateWithoutDump("private-commit-exceeds-reserve");
+            ulong requiredBytes;
+            try
+            {
+                var layout = HostMemoryMinidumpWriter.ReadLayout(processHandle);
+                requiredBytes = HostMemoryMinidumpWriter.Measure(processHandle, process.ProcessId, layout);
+            }
+            catch (Exception error) when (error is IOException or Win32Exception or UnauthorizedAccessException or ArgumentException or NotSupportedException or OverflowException)
+            {
+                return new("preflight-failed", error.Message, [], 0);
+            }
+            if (!lease.CanFit(requiredBytes)) return TerminateWithoutDump("minidump-exceeds-reserve");
+            if (CriticalityExclusion(processHandle) is { } currentCriticality)
+                return new("excluded", currentCriticality, [], 0);
             var suspended = executor.suspendProcess(processHandle);
             if (suspended < 0)
-                return new HostMemoryActionResult("suspend-failed", $"ntstatus-{suspended:x8}", null, 0) { SuspendFailed = true };
+                return new HostMemoryActionResult("suspend-failed", $"ntstatus-{suspended:x8}", [], 0) { SuspendFailed = true };
 
-            FileStream? file = null;
-            string? dumpPath = null;
+            Stream? file = null;
             string? failure = null;
             string? releaseLimit = null;
             ulong bytesWritten = 0;
             try
             {
                 var regions = HostMemoryMinidumpWriter.ReadLayout(processHandle);
-                Directory.CreateDirectory(dumpDirectory);
-                var path = Path.Combine(dumpDirectory, $"process-{process.ProcessId}-{process.ProcessStartKey}-{Guid.NewGuid():N}.dmp");
-                file = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read, bufferSize: 1);
-                dumpPath = path;
+                var fileName = $"process-{process.ProcessId}-{process.ProcessStartKey}-{Guid.NewGuid():N}.dmp";
+                file = lease.CreateSlice(fileName);
                 releaseLimit = HostMemoryMinidumpWriter.Write(processHandle, process.ProcessId, file, regions,
                     executor.chunkDecommitted, executor.decommitFailed);
             }
@@ -126,10 +142,7 @@ public sealed class WindowsHostMemoryProtectionExecutor : IHostMemoryProtectionE
             {
                 // Host protection wins over an incomplete slice. Keep the file open until termination,
                 // even when layout, file creation, reading, writing or decommitting has failed.
-                if (!HostMemoryProtectionNative.TerminateProcess(processHandle, 1))
-                    failure = $"terminate-failed-{Marshal.GetLastWin32Error()}; {failure}";
-                else if (HostMemoryProtectionNative.WaitForSingleObject(processHandle, 5000) != 0)
-                    failure = $"termination-not-observed; {failure}";
+                if (Terminate() is { } terminationFailure) failure = $"{terminationFailure}; {failure}";
                 if (file is not null)
                 {
                     try { bytesWritten = checked((ulong)file.Length); }
@@ -139,8 +152,21 @@ public sealed class WindowsHostMemoryProtectionExecutor : IHostMemoryProtectionE
                 }
             }
             return new(failure is not null ? "slice-incomplete" : releaseLimit is not null ? "completed-with-release-limit" : "completed",
-                failure ?? releaseLimit, dumpPath, bytesWritten);
+                failure ?? releaseLimit, lease.SlicePaths.ToArray(), bytesWritten);
         }
+
+        private HostMemoryActionResult TerminateWithoutDump(string reason)
+        {
+            if (CriticalityExclusion(processHandle!) is { } criticality)
+                return new("excluded", criticality, [], 0);
+            var failure = Terminate();
+            return new(failure is null ? "terminated-without-dump" : "termination-failed", failure ?? reason, [], 0);
+        }
+
+        private string? Terminate()
+            => !HostMemoryProtectionNative.TerminateProcess(processHandle!, 1)
+                ? $"terminate-failed-{Marshal.GetLastWin32Error()}"
+                : HostMemoryProtectionNative.WaitForSingleObject(processHandle!, 5000) != 0 ? "termination-not-observed" : null;
 
         public void Dispose()
         {

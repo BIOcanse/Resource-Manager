@@ -14,6 +14,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         app.MapPost("/api/memory-protection/normal-running-point", async (HostMemoryProtectionService protection, CancellationToken token)
             => Results.Ok(await protection.CreatePointAsync(token)));
         app.MapGet("/api/memory-protection", (HostMemoryProtectionService protection) => Results.Ok(protection.ReadStatus()));
+        if (capabilities.Allows(StartupCapability.MutablePersistence))
+        app.MapPost("/api/memory-protection/reserve/rebuild", async (HostMemoryProtectionService protection, CancellationToken token) =>
+        {
+            var status = await protection.RebuildReserveAsync(token);
+            return Results.Json(status, statusCode: status.Reserve.Built ? 200 : 409);
+        });
         // The existing revision-checked patch protocol prevents overwriting another settings consumer.
         if (capabilities.Allows(StartupCapability.MutablePersistence))
         app.MapPatch("/api/memory-protection", async (AppSettingsPatchRequest request, IRuntimeSpecializationCoordinator runtime, CancellationToken token)

@@ -24,7 +24,8 @@ public static class AppSettingsNormalizer
             new AppHardwareControlSettings(Math.Clamp(settings.Control?.ReassertionIntervalSeconds ?? 120, 1, 86_400)),
             // Rule values are validated against the rule profile by the runtime plan compiler, not rewritten here.
             new AppReportSettings(settings.Reports?.RuleOverrides ?? []),
-            settings.MemoryProtection ?? new HostMemoryProtectionSettings());
+            (settings.MemoryProtection ?? new HostMemoryProtectionSettings()) with
+                { Reserves = settings.MemoryProtection?.Reserves?.ToArray() ?? [] });
     }
 
     private static AppPerformanceSettings NormalizePerformance(AppPerformanceSettings? performance)

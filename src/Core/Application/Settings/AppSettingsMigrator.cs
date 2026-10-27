@@ -97,12 +97,19 @@ public static class AppSettingsMigrator
             new AppHardwareControlSettings(
                 ReadInt32(root, "control", "reassertionIntervalSeconds", 120)),
             ReadReports(root),
-            root.TryGetProperty("memoryProtection", out var protection)
-                ? protection.Deserialize<HostMemoryProtectionSettings>(WebJsonOptions)
-                    ?? throw new JsonException("memoryProtection must be an object.")
-                : new HostMemoryProtectionSettings());
+            ReadMemoryProtection(root));
 
         return AppSettingsNormalizer.Normalize(settings);
+    }
+
+    private static HostMemoryProtectionSettings ReadMemoryProtection(JsonElement root)
+    {
+        if (!root.TryGetProperty("memoryProtection", out var protection)) return new();
+        var settings = protection.Deserialize<HostMemoryProtectionSettings>(WebJsonOptions)
+            ?? throw new JsonException("memoryProtection must be an object.");
+        // The former dump directory contains no chosen capacity. Upgrade leaves the reserve
+        // unconfigured rather than reserving disk space the user did not request.
+        return settings with { Reserves = settings.Reserves ?? [] };
     }
 
     // A malformed override list is a malformed settings file (JsonException), not a reason to drop entries.

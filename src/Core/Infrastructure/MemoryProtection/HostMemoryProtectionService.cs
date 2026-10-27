@@ -7,15 +7,17 @@ using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 namespace ResourceManager.App.Infrastructure.MemoryProtection;
 
 public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource source,
-    IHostMemoryProtectionExecutor executor, BusinessBlockScheduler scheduler, IHostEnvironment environment,
+    IHostMemoryProtectionExecutor executor, IHostMemoryProtectionReserve reserve, BusinessBlockScheduler scheduler, IHostEnvironment environment,
     ILogger<HostMemoryProtectionService> logger) : IBusinessBlock
 {
     public const string BlockId = "HostMemoryProtection";
     public static string EnabledFact => BusinessBlockScheduler.EnabledFact(BlockId);
     public const string PointFact = "memory-protection:normal-running-point-exists";
+    public const string ReserveFact = "memory-protection:reserve-built";
     public const int RecordLimit = 64;
     private readonly object gate = new();
     private readonly SemaphoreSlim pointCreation = new(1, 1);
+    private readonly SemaphoreSlim configuration = new(1, 1);
     private readonly Queue<HostMemoryActionRecord> actions = new();
     private readonly Dictionary<(int, string), HostMemoryExclusion> cannotOpen = new();
     private IReadOnlyList<HostMemoryExclusion> exclusions = [];
@@ -28,10 +30,28 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
     {
         if (!double.IsFinite(value.ThresholdPercent) || value.ThresholdPercent is <= 0 or > 100) return "invalid-threshold-percent";
         if (!double.IsFinite(value.CheckIntervalSeconds) || value.CheckIntervalSeconds is < 1 or > 86400) return "invalid-check-interval";
-        if (string.IsNullOrWhiteSpace(value.DumpDirectory)) return "invalid-dump-directory";
-        try { _ = ResolveDirectory(value.DumpDirectory); }
-        catch (Exception error) when (error is ArgumentException or NotSupportedException or IOException) { return "invalid-dump-directory"; }
-        lock (gate) return value.Enabled && point is null ? "no-normal-running-point" : null;
+        try
+        {
+            var locations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            ulong total = 0;
+            foreach (var entry in value.Reserves ?? [])
+            {
+                if (entry is null || string.IsNullOrWhiteSpace(entry.Location)) return "invalid-reserve-location";
+                if (entry.SizeBytes is 0 or > long.MaxValue) return "invalid-reserve-size";
+                var location = ResolveDirectory(entry.Location);
+                if (!locations.Add(location)) return "duplicate-reserve-location";
+                total = checked(total + entry.SizeBytes);
+                if (total > long.MaxValue) return "invalid-reserve-total-size";
+                // A read-only volume query rejects partial clusters before settings commit.
+                var cluster = HostMemoryDiskReserveNative.Volume(ExistingDirectory(location)).Cluster;
+                if (entry.SizeBytes % cluster != 0) return $"reserve-size-must-be-whole-clusters:cluster-bytes={cluster}";
+            }
+        }
+        catch (OverflowException) { return "invalid-reserve-total-size"; }
+        catch (Exception error) when (error is ArgumentException or NotSupportedException or IOException or UnauthorizedAccessException)
+        { return "invalid-reserve-location:" + error.Message; }
+        lock (gate) if (value.Enabled && point is null) return "no-normal-running-point";
+        return value.Enabled ? ReserveUnavailableReason(value, reserve.ReadStatus()) : null;
     }
 
     // Called in the existing serialized runtime-settings publication path, never from a private settings store.
@@ -39,13 +59,52 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
     {
         var error = ValidateSettings(value with { Enabled = false });
         if (error is not null) throw new HostMemoryProtectionSettingsException(error);
-        lock (gate)
+        await configuration.WaitAsync();
+        try
         {
-            // Disablement is delivered by the parent. Only a frequency change renews this run's subscriptions.
-            if (value.Enabled && settings.CheckIntervalSeconds != value.CheckIntervalSeconds) subscriptionCancellation?.Cancel();
-            settings = value;
+            var entries = ResolveEntries(value);
+            var currentReserve = reserve.ReadStatus();
+            if (!Matches(entries, currentReserve))
+                await scheduler.SetFactAsync(ReserveFact, false, Reason("reserve-configuring"));
+            await Task.Run(() => reserve.Prepare(entries));
+            lock (gate)
+            {
+                // Disablement is delivered by the parent. Only a frequency change renews subscriptions.
+                if (value.Enabled && settings.CheckIntervalSeconds != value.CheckIntervalSeconds) subscriptionCancellation?.Cancel();
+                settings = value;
+            }
+            await PublishFactsAsync("settings-published");
         }
-        await scheduler.SetEnabledAsync(BlockId, value.Enabled, Reason("settings-published"));
+        finally { configuration.Release(); }
+    }
+
+    public async Task<HostMemoryProtectionStatus> RebuildReserveAsync(CancellationToken cancellationToken)
+    {
+        await configuration.WaitAsync(cancellationToken);
+        try
+        {
+            await scheduler.SetFactAsync(ReserveFact, false, Reason("reserve-rebuilding"));
+            // Once started, this finite allocation finishes and publishes its real result even if HTTP disconnects.
+            HostMemoryProtectionSettings current;
+            lock (gate) current = settings;
+            var entries = ResolveEntries(current);
+            await Task.Run(() =>
+            {
+                var prepared = reserve.Prepare(entries);
+                return Matches(entries, prepared) ? reserve.Rebuild() : prepared;
+            });
+            await PublishFactsAsync("reserve-rebuilt");
+            return ReadStatus();
+        }
+        finally { configuration.Release(); }
+    }
+
+    private async Task PublishFactsAsync(string cause)
+    {
+        HostMemoryProtectionSettings current;
+        lock (gate) current = settings;
+        await scheduler.SetEnabledAsync(BlockId, current.Enabled, Reason(cause));
+        await scheduler.SetFactAsync(ReserveFact, ReserveUnavailableReason(current, reserve.ReadStatus()) is null, Reason(cause));
     }
 
     public NormalRunningPoint? ReadPoint() { lock (gate) return point; }
@@ -74,13 +133,14 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
     public HostMemoryProtectionStatus ReadStatus()
     {
         var commit = source.ReadCurrentCommit();
+        var currentReserve = reserve.ReadStatus();
         lock (gate)
         {
             decimal? trigger = commit is null ? null : (decimal)commit.LimitBytes * (decimal)settings.ThresholdPercent / 100m;
-            return new(settings.Enabled, settings.ThresholdPercent, settings.CheckIntervalSeconds, ResolveDirectory(settings.DumpDirectory),
+            return new(settings.Enabled, settings.ThresholdPercent, settings.CheckIntervalSeconds, currentReserve,
                 trigger, trigger - commit?.CurrentBytes, commit,
                 point is null ? null : new(point.At, point.ProcessCount),
-                point is null ? "no-normal-running-point" : !settings.Enabled ? "disabled" : null,
+                point is null ? "no-normal-running-point" : !settings.Enabled ? "disabled" : ReserveUnavailableReason(settings, currentReserve),
                 exclusions.ToArray(), RecordLimit, actions.Reverse().ToArray());
         }
     }
@@ -101,6 +161,12 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
                     // A buffered delivery from before the preceding action cannot trigger another action.
                     if (reading.At <= actionFinishedAt) continue;
                     await Task.Run(() => ProcessDelivery(reading, current, context.StopNotification), CancellationToken.None);
+                    if (!reserve.ReadStatus().Built)
+                    {
+                        await configuration.WaitAsync();
+                        try { await PublishFactsAsync("reserve-unavailable"); }
+                        finally { configuration.Release(); }
+                    }
                 }
             }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
@@ -130,6 +196,7 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
             blocked = new(cannotOpen);
         }
         if (reading.Processes is null) return;
+        if (ReserveUnavailableReason(current, reserve.ReadStatus()) is not null) return;
         var excluded = blocked.Values.ToList();
         var candidates = new List<(HostMemoryProcess Process, ulong Baseline, decimal Growth)>();
         foreach (var process in reading.Processes)
@@ -163,7 +230,8 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
                 lock (gate) if (ReferenceEquals(point, baseline)) cannotOpen[(candidate.Process.ProcessId, candidate.Process.ProcessStartKey)] = exclusion;
                 continue;
             }
-            var result = target.Execute(ResolveDirectory(current.DumpDirectory));
+            var result = target.Execute(reserve);
+            if (result.Outcome == "reserve-unavailable") break;
             if (result.Outcome == "excluded")
             {
                 var exclusion = Exclude(candidate.Process, result.Reason ?? "cannot-open");
@@ -174,7 +242,7 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
             if (!result.SuspendFailed) actionFinishedAt = DateTimeOffset.UtcNow;
             var record = new HostMemoryActionRecord(DateTimeOffset.UtcNow, candidate.Process.ProcessId, candidate.Process.ProcessStartKey,
                 candidate.Process.Name, candidate.Baseline, candidate.Process.PrivateCommitBytes!.Value, candidate.Growth,
-                result.DumpPath, result.BytesWritten, result.Outcome, result.Reason);
+                result.DumpPaths, result.BytesWritten, result.Outcome, result.Reason);
             lock (gate)
             {
                 if (ReferenceEquals(point, baseline)) exclusions = excluded.ToArray();
@@ -188,7 +256,25 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
     }
 
     private string ResolveDirectory(string value)
-        => Path.GetFullPath(value, PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath));
+        => Path.TrimEndingDirectorySeparator(Path.GetFullPath(value, PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath)));
+    private string? ReserveUnavailableReason(HostMemoryProtectionSettings value, HostMemoryReserveStatus status)
+        => !Matches(ResolveEntries(value), status) ? "disk-reserve-not-built"
+            : !status.Built ? status.Reason ?? "disk-reserve-not-built" : null;
+    private HostMemoryReserveSettings[] ResolveEntries(HostMemoryProtectionSettings value)
+        => (value.Reserves ?? []).Select(entry => entry with { Location = ResolveDirectory(entry.Location) }).ToArray();
+    private static bool Matches(IReadOnlyList<HostMemoryReserveSettings> entries, HostMemoryReserveStatus status)
+        => entries.Count == status.Entries.Count && entries.Where((entry, index) =>
+            !string.Equals(entry.Location, status.Entries[index].Location, StringComparison.OrdinalIgnoreCase)
+            || entry.SizeBytes != status.Entries[index].ConfiguredSizeBytes).Any() == false;
+    private static string ExistingDirectory(string location)
+    {
+        for (var count = 0; count < 256; count++)
+        {
+            if (Directory.Exists(location)) return location;
+            location = Path.GetDirectoryName(location) ?? throw new IOException("reserve-volume-not-found");
+        }
+        throw new IOException("reserve-path-too-deep");
+    }
     private BusinessBlockReason Reason(string cause) => new(BusinessBlockRequestKind.Configuration, BlockId, cause, scheduler.CurrentPlanVersion);
     private static HostMemoryExclusion Exclude(HostMemoryProcess process, string reason)
         => new(process.ProcessId, process.ProcessStartKey, process.Name, reason);

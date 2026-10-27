@@ -30,6 +30,7 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class HostMemoryProtectionTests
 {
+    private const ulong ReserveSize = 1024 * 1024;
     [Fact]
     public async Task WireDefaultsPointReplacementAndEnableRejectionUseExistingSettingsCommit()
     {
@@ -44,7 +45,13 @@ public sealed class HostMemoryProtectionTests
         Assert.False(status.Enabled);
         Assert.Equal(95, status.ThresholdPercent);
         Assert.Equal(1, status.CheckIntervalSeconds);
-        Assert.EndsWith(Path.Combine("UserData", "MemorySlices"), status.DumpDirectory);
+        Assert.Empty(status.Reserve.Entries);
+        Assert.False(status.Reserve.Built);
+        Assert.Equal(0UL, status.Reserve.ConfiguredSizeBytes);
+        Assert.Equal(0UL, status.Reserve.RemainingBytes);
+        Assert.Equal("reserve-not-configured", status.Reserve.Reason);
+        Assert.False(statusWire.RootElement.TryGetProperty("dumpDirectory", out _));
+        Assert.Equal(0UL, statusWire.RootElement.GetProperty("reserve").GetProperty("configuredSizeBytes").GetUInt64());
         Assert.Equal(950m, status.TriggerBytes);
         Assert.Equal(750m, status.RemainingBytes);
         Assert.Equal("no-normal-running-point", status.InactiveReason);
@@ -57,11 +64,11 @@ public sealed class HostMemoryProtectionTests
         Assert.False((await fixture.Stored()).Settings.MemoryProtection!.Enabled);
         Assert.Equal(0, fixture.Source.Active);
 
-        var first = await fixture.CreatePoint();
+        var first = await fixture.CreatePoint(ensureReserve: false);
         Assert.Equal(1, first.ProcessCount);
         Assert.Equal(200UL, first.Commit.CurrentBytes);
         fixture.Source.Publish(300, 30, [Process(10, "20", 123)]);
-        var next = await fixture.CreatePoint();
+        var next = await fixture.CreatePoint(ensureReserve: false);
         using var pointWire = JsonDocument.Parse(await fixture.Client.GetStringAsync("/api/memory-protection/normal-running-point"));
         var processWire = pointWire.RootElement.GetProperty("processes")[0];
         Assert.Equal("20", processWire.GetProperty("processStartKey").GetString());
@@ -71,13 +78,27 @@ public sealed class HostMemoryProtectionTests
         Assert.Equal(next.At, fixture.Protection.ReadPoint()!.At);
         Assert.Equal(next.Processes, fixture.Protection.ReadPoint()!.Processes);
         Assert.NotEqual(first, next);
-        using var response = await fixture.Patch(new { thresholdPercent = 90, checkIntervalSeconds = 2, dumpDirectory = "UserData/CustomSlices" });
+        using var response = await fixture.Patch(new { thresholdPercent = 90, checkIntervalSeconds = 2,
+            reserves = new[] { new { location = fixture.ReserveDirectory, sizeBytes = ReserveSize } } });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         status = await fixture.Status();
         Assert.Equal(900m, status.TriggerBytes);
         Assert.Equal(600m, status.RemainingBytes);
         Assert.Equal(2, status.CheckIntervalSeconds);
-        Assert.EndsWith("CustomSlices", status.DumpDirectory);
+        Assert.Equal(fixture.ReserveDirectory, Assert.Single(status.Reserve.Entries).Location);
+        Assert.Equal(ReserveSize, status.Reserve.ConfiguredSizeBytes);
+        Assert.True(status.Reserve.Built);
+        Assert.Equal(ReserveSize, status.Reserve.RemainingBytes);
+        var stored = await fixture.Stored();
+        Assert.Equal("1.0.35", stored.Settings.Version);
+        using var settingsWire = JsonDocument.Parse(JsonSerializer.Serialize(stored.Settings.MemoryProtection,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        var reserveWire = Assert.Single(settingsWire.RootElement.GetProperty("reserves").EnumerateArray());
+        Assert.Equal(fixture.ReserveDirectory, reserveWire.GetProperty("location").GetString());
+        Assert.Equal(ReserveSize, reserveWire.GetProperty("sizeBytes").GetUInt64());
+        Assert.False(settingsWire.RootElement.TryGetProperty("reserveLocation", out _));
+        Assert.False(settingsWire.RootElement.TryGetProperty("reserveSizeBytes", out _));
+        Assert.False(settingsWire.RootElement.TryGetProperty("dumpDirectory", out _));
     }
 
     [Theory]
@@ -92,6 +113,194 @@ public sealed class HostMemoryProtectionTests
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Equal(reason, (await response.Content.ReadFromJsonAsync<AppSettingsUpdateResult>())!.RuntimeFailureCode);
         Assert.Equal(before.Revision, (await fixture.Stored()).Revision);
+    }
+
+    [Fact]
+    public async Task PointWithoutConfiguredReserveCannotEnableAndUnconfiguredRebuildDoesNotSample()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        using (var rebuild = await fixture.Client.PostAsync("/api/memory-protection/reserve/rebuild", null))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, rebuild.StatusCode);
+            var result = (await rebuild.Content.ReadFromJsonAsync<HostMemoryProtectionStatus>())!;
+            Assert.False(result.Reserve.Built);
+            Assert.Equal("reserve-not-configured", result.Reserve.Reason);
+            Assert.Equal(200UL, result.CurrentCommit!.CurrentBytes);
+        }
+        Assert.Equal(0, fixture.Source.Deliveries);
+        await fixture.CreatePoint(ensureReserve: false);
+        var before = await fixture.Stored();
+        using var response = await fixture.Patch(new { enabled = true });
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("reserve-not-configured", (await response.Content.ReadFromJsonAsync<AppSettingsUpdateResult>())!.RuntimeFailureCode);
+        Assert.Equal(before.Revision, (await fixture.Stored()).Revision);
+        Assert.False((await fixture.Status()).Enabled);
+        Assert.Equal(0, fixture.Source.Active);
+        Assert.Empty(fixture.Executor.Opened);
+        Assert.Empty(fixture.Executor.Executed);
+    }
+
+    [Fact]
+    public async Task NonalignedReserveSettingIsRejectedWithActualClusterSizeBeforeCommit()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        Directory.CreateDirectory(fixture.ReserveDirectory);
+        var cluster = HostMemoryDiskReserveNative.Volume(fixture.ReserveDirectory).Cluster;
+        Assert.True(cluster > 1);
+        var before = await fixture.Stored();
+        using var response = await fixture.Patch(new
+        {
+            reserves = new[] { new { location = fixture.ReserveDirectory, sizeBytes = cluster + 1 } }
+        });
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var result = (await response.Content.ReadFromJsonAsync<AppSettingsUpdateResult>())!;
+        Assert.Equal($"reserve-size-must-be-whole-clusters:cluster-bytes={cluster}", result.RuntimeFailureCode);
+        Assert.Equal(before.Revision, (await fixture.Stored()).Revision);
+        Assert.Empty((await fixture.Status()).Reserve.Entries);
+        Assert.Equal(0, fixture.Source.Deliveries);
+        Assert.Equal(0, fixture.Source.Active);
+        Assert.Empty(fixture.Executor.Opened);
+        Assert.Empty(fixture.Executor.Executed);
+    }
+
+    [Fact]
+    public async Task ImpossibleReserveStoresDisabledIntentButCannotEnableOrRun()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        const ulong impossibleSize = (ulong)long.MaxValue - 65535;
+        await fixture.BuildReserve(impossibleSize);
+        var stored = await fixture.Stored();
+        Assert.False(stored.Settings.MemoryProtection!.Enabled);
+        Assert.Equal(impossibleSize, Assert.Single(stored.Settings.MemoryProtection.Reserves!).SizeBytes);
+        Assert.Equal(fixture.ReserveDirectory, Assert.Single(stored.Settings.MemoryProtection.Reserves!).Location);
+        var status = await fixture.Status();
+        Assert.False(status.Reserve.Built);
+        Assert.Equal(impossibleSize, status.Reserve.ConfiguredSizeBytes);
+        Assert.Equal(0UL, status.Reserve.RemainingBytes);
+        Assert.Equal("insufficient-disk-space-for-reserve", status.Reserve.Reason);
+        Assert.Equal(0, fixture.Source.Deliveries);
+        using (var rebuild = await fixture.Client.PostAsync("/api/memory-protection/reserve/rebuild", null))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, rebuild.StatusCode);
+            var result = (await rebuild.Content.ReadFromJsonAsync<HostMemoryProtectionStatus>())!;
+            Assert.Equal(status.Reserve.ConfiguredSizeBytes, result.Reserve.ConfiguredSizeBytes);
+            Assert.Equal(status.Reserve.Built, result.Reserve.Built);
+            Assert.Equal(status.Reserve.Reason, result.Reserve.Reason);
+            Assert.Equal(status.Reserve.RemainingBytes, result.Reserve.RemainingBytes);
+            Assert.Equal(status.Reserve.Entries.ToArray(), result.Reserve.Entries.ToArray());
+        }
+        Assert.Equal(0, fixture.Source.Deliveries);
+        await fixture.CreatePoint(ensureReserve: false);
+        var deliveries = fixture.Source.Deliveries;
+        using var enabled = await fixture.Patch(new { enabled = true });
+        Assert.Equal(HttpStatusCode.Conflict, enabled.StatusCode);
+        Assert.Equal("insufficient-disk-space-for-reserve", (await enabled.Content.ReadFromJsonAsync<AppSettingsUpdateResult>())!.RuntimeFailureCode);
+        Assert.False((await fixture.Stored()).Settings.MemoryProtection!.Enabled);
+        fixture.Source.Publish(990, 99, [Process(100, "1", 1000)]);
+        Assert.Equal(deliveries, fixture.Source.Deliveries);
+        Assert.Equal(0, fixture.Source.Active);
+        Assert.Equal(BusinessBlockState.Stopped, fixture.Scheduler.ReadState(HostMemoryProtectionService.BlockId));
+        Assert.Empty(fixture.Executor.Opened);
+        Assert.Empty(fixture.Executor.Executed);
+    }
+
+    [Fact]
+    public async Task EnableCannotChangeReserveConfigurationBeforeItsNewReserveExists()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        await fixture.CreatePoint();
+        var before = await fixture.Stored();
+        using var response = await fixture.Patch(new { enabled = true,
+            reserves = new[] { new { location = fixture.ReserveDirectory, sizeBytes = ReserveSize * 2 } } });
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("disk-reserve-not-built", (await response.Content.ReadFromJsonAsync<AppSettingsUpdateResult>())!.RuntimeFailureCode);
+        Assert.Equal(before.Revision, (await fixture.Stored()).Revision);
+        Assert.Equal(ReserveSize, (await fixture.Status()).Reserve.ConfiguredSizeBytes);
+        Assert.Equal(0, fixture.Source.Active);
+        Assert.Empty(fixture.Executor.Executed);
+    }
+
+    [Fact]
+    public async Task MultipleReserveLocationsPublishTotalsAndOrderedPerEntryCapacity()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        using var response = await fixture.Patch(new
+        {
+            reserves = new[]
+            {
+                new { location = fixture.ReserveDirectory, sizeBytes = ReserveSize },
+                new { location = fixture.SecondReserveDirectory, sizeBytes = ReserveSize * 2 }
+            }
+        });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var status = await fixture.Status();
+        Assert.False(status.Enabled);
+        Assert.True(status.Reserve.Built);
+        Assert.Equal(ReserveSize * 3, status.Reserve.ConfiguredSizeBytes);
+        Assert.Equal(ReserveSize * 3, status.Reserve.RemainingBytes);
+        Assert.Collection(status.Reserve.Entries,
+            first => { Assert.Equal(fixture.ReserveDirectory, first.Location); Assert.Equal(ReserveSize, first.ConfiguredSizeBytes); },
+            second => { Assert.Equal(fixture.SecondReserveDirectory, second.Location); Assert.Equal(ReserveSize * 2, second.ConfiguredSizeBytes); });
+        Assert.All(status.Reserve.Entries, entry =>
+        {
+            Assert.True(entry.Built);
+            Assert.Null(entry.Reason);
+            Assert.True(entry.ClusterBytes > 0);
+            Assert.Equal(0UL, entry.ConfiguredSizeBytes % entry.ClusterBytes);
+            Assert.Equal(entry.ConfiguredSizeBytes, entry.RemainingBytes);
+        });
+        using var wire = JsonDocument.Parse(await fixture.Client.GetStringAsync("/api/memory-protection"));
+        var reserve = wire.RootElement.GetProperty("reserve");
+        Assert.Equal(ReserveSize * 3, reserve.GetProperty("remainingBytes").GetUInt64());
+        Assert.Equal(2, reserve.GetProperty("entries").GetArrayLength());
+        Assert.Equal(fixture.SecondReserveDirectory, reserve.GetProperty("entries")[1].GetProperty("location").GetString());
+        Assert.True(reserve.GetProperty("entries")[0].GetProperty("clusterBytes").GetUInt64() > 0);
+        Assert.False(wire.RootElement.TryGetProperty("dumpDirectory", out _));
+        Assert.Equal(0, fixture.Source.Deliveries);
+        Assert.Equal(0, fixture.Source.Active);
+        Assert.Empty(fixture.Executor.Opened);
+    }
+
+    [Fact]
+    public async Task ConsumedReserveIsReportedAndOnlyExplicitRebuildRefillsIt()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        await fixture.CreatePoint();
+        fixture.Executor.SliceBytes = 8193;
+        using (var enabled = await fixture.Patch(new { enabled = true })) Assert.Equal(HttpStatusCode.OK, enabled.StatusCode);
+        await Until(() => fixture.Source.Active == 1);
+        fixture.Source.Publish(960, 96, [Process(20, "1", 1000)]);
+        await Until(() => fixture.Protection.ReadStatus().Actions.Count == 1);
+        using (var disabled = await fixture.Patch(new { enabled = false })) Assert.Equal(HttpStatusCode.OK, disabled.StatusCode);
+        await Until(() => fixture.Source.Active == 0);
+        var sample = Assert.Single(fixture.Executor.ReserveSamples);
+        Assert.Equal(ReserveSize, sample.Before);
+        Assert.InRange(sample.AfterWrite, 1UL, ReserveSize - 1);
+        Assert.Equal(sample.AfterWrite, sample.AfterOverwrite);
+        Assert.Equal(sample.AfterWrite, sample.AfterShrink);
+        var consumed = await fixture.Status();
+        Assert.Equal(sample.AfterWrite, consumed.Reserve.RemainingBytes);
+        Assert.True(consumed.Reserve.Built);
+        using (var wire = JsonDocument.Parse(await fixture.Client.GetStringAsync("/api/memory-protection")))
+            Assert.Equal(sample.AfterWrite, wire.RootElement.GetProperty("reserve").GetProperty("remainingBytes").GetUInt64());
+        var action = Assert.Single(consumed.Actions);
+        Assert.Equal(8193UL, action.BytesWritten);
+        var slicePath = Assert.Single(action.DumpPaths);
+        Assert.Equal(1, new FileInfo(slicePath).Length);
+
+        await fixture.BuildReserve();
+        using (var frequency = await fixture.Patch(new { checkIntervalSeconds = 2 })) Assert.Equal(HttpStatusCode.OK, frequency.StatusCode);
+        Assert.Equal(sample.AfterWrite, (await fixture.Status()).Reserve.RemainingBytes);
+        var deliveries = fixture.Source.Deliveries;
+        using var rebuilt = await fixture.Client.PostAsync("/api/memory-protection/reserve/rebuild", null);
+        Assert.Equal(HttpStatusCode.OK, rebuilt.StatusCode);
+        var result = (await rebuilt.Content.ReadFromJsonAsync<HostMemoryProtectionStatus>())!;
+        Assert.True(result.Reserve.Built);
+        Assert.Equal(ReserveSize, result.Reserve.RemainingBytes);
+        Assert.Equal(consumed.NormalRunningPoint, result.NormalRunningPoint);
+        Assert.Equal(deliveries, fixture.Source.Deliveries);
+        Assert.Equal(0, fixture.Source.Active);
+        Assert.Equal(1, new FileInfo(slicePath).Length);
     }
 
     [Fact]
@@ -128,6 +337,7 @@ public sealed class HostMemoryProtectionTests
         var decision = fixture.Scheduler.Read().CurrentDecisions.Single(item => item.ParentId == BackendBlockGraph.Program);
         Assert.Contains(decision.Facts, item => item.Key == HostMemoryProtectionService.EnabledFact && item.Value);
         Assert.Contains(decision.Facts, item => item.Key == HostMemoryProtectionService.PointFact && item.Value);
+        Assert.Contains(decision.Facts, item => item.Key == HostMemoryProtectionService.ReserveFact && item.Value);
 
         using var disabled = await fixture.Patch(new { enabled = false });
         Assert.Equal(HttpStatusCode.OK, disabled.StatusCode);
@@ -186,14 +396,16 @@ public sealed class HostMemoryProtectionTests
     public async Task SavedEnablementAfterRestartDoesNotRunWithoutAnInMemoryPoint()
     {
         await using var fixture = await Fixture.StartAsync();
+        await fixture.BuildReserve();
         // This is the production startup-publication path with a persisted switch, using only fake sources.
-        await fixture.Protection.ApplySettingsAsync(new(Enabled: true));
+        await fixture.Protection.ApplySettingsAsync(new(Enabled: true,
+            Reserves: [new(fixture.ReserveDirectory, ReserveSize)]));
         var status = fixture.Protection.ReadStatus();
         Assert.True(status.Enabled);
         Assert.Equal("no-normal-running-point", status.InactiveReason);
         Assert.Equal(BusinessBlockState.Stopped, fixture.Scheduler.ReadState(HostMemoryProtectionService.BlockId));
         Assert.Equal(0, fixture.Source.Active);
-        await fixture.CreatePoint();
+        await fixture.CreatePoint(ensureReserve: false);
         await Until(() => fixture.Source.Active == 1);
         Assert.Equal(BusinessBlockState.Running, fixture.Scheduler.ReadState(HostMemoryProtectionService.BlockId));
     }
@@ -230,13 +442,21 @@ public sealed class HostMemoryProtectionTests
         public HttpClient Client { get; } = new() { BaseAddress = new(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single()) };
         public FakeSource Source => source;
         public FakeExecutor Executor => executor;
+        public string ReserveDirectory => Path.Combine(root, "Slices");
+        public string SecondReserveDirectory => Path.Combine(root, "SlicesSecond");
         public HostMemoryProtectionService Protection => app.Services.GetRequiredService<HostMemoryProtectionService>();
         public BusinessBlockScheduler Scheduler => app.Services.GetRequiredService<BusinessBlockScheduler>();
         public Task<AppSettingsUpdateResult> Stored() => app.Services.GetRequiredService<IAppSettingsStore>().LoadReadOnlyAsync(CancellationToken.None);
         public async Task<HttpResponseMessage> Patch(object settings)
             => await Client.PatchAsJsonAsync("/api/memory-protection", new { expectedRevision = (await Stored()).Revision, changes = new { memoryProtection = settings } });
-        public async Task<NormalRunningPoint> CreatePoint()
+        public async Task BuildReserve(ulong size = ReserveSize)
         {
+            using var response = await Patch(new { reserves = new[] { new { location = ReserveDirectory, sizeBytes = size } } });
+            response.EnsureSuccessStatusCode();
+        }
+        public async Task<NormalRunningPoint> CreatePoint(bool ensureReserve = true)
+        {
+            if (ensureReserve) await BuildReserve();
             using var response = await Client.PostAsync("/api/memory-protection/normal-running-point", null);
             response.EnsureSuccessStatusCode();
             return (await response.Content.ReadFromJsonAsync<NormalRunningPoint>())!;
@@ -271,12 +491,13 @@ public sealed class HostMemoryProtectionTests
             await Until(() => Scheduler.ReadState(HostMemoryProtectionService.BlockId) == BusinessBlockState.Stopped);
             Client.Dispose();
             await app.StopAsync(); await app.DisposeAsync();
-            // Only files produced by the existing settings store in this fixture's known Config directory.
-            var config = Path.Combine(root, "Config");
-            if (Directory.Exists(config))
+            // All handles have closed. These are the only flat directories this fixture creates.
+            foreach (var name in new[] { "Config", "Slices", "SlicesSecond" })
             {
-                foreach (var path in Directory.EnumerateFiles(config)) File.Delete(path);
-                Directory.Delete(config);
+                var directory = Path.Combine(root, name);
+                if (!Directory.Exists(directory)) continue;
+                foreach (var path in Directory.EnumerateFiles(directory)) File.Delete(path);
+                Directory.Delete(directory);
             }
             Directory.Delete(root);
         }
@@ -322,6 +543,8 @@ public sealed class HostMemoryProtectionTests
         public Dictionary<int, string> Excluded = new();
         public HashSet<int> SuspendFailures = [];
         public TaskCompletionSource? Block;
+        public int SliceBytes;
+        public ConcurrentQueue<(ulong Before, ulong AfterWrite, ulong AfterOverwrite, ulong AfterShrink)> ReserveSamples = new();
         private int concurrent;
         public int MaxConcurrent;
         public IHostMemoryProtectionTarget Open(HostMemoryProcess process)
@@ -329,13 +552,31 @@ public sealed class HostMemoryProtectionTests
         private sealed class Target(FakeExecutor owner, int pid) : IHostMemoryProtectionTarget
         {
             public string? ExclusionReason => owner.Excluded.GetValueOrDefault(pid);
-            public HostMemoryActionResult Execute(string directory)
+            public HostMemoryActionResult Execute(IHostMemoryProtectionReserve reserve)
             {
                 owner.Executed.Enqueue(pid);
-                if (owner.SuspendFailures.Contains(pid)) return new("suspend-failed", "test", null, 0) { SuspendFailed = true };
+                if (owner.SuspendFailures.Contains(pid)) return new("suspend-failed", "test", [], 0) { SuspendFailed = true };
                 var active = Interlocked.Increment(ref owner.concurrent);
                 owner.MaxConcurrent = Math.Max(owner.MaxConcurrent, active);
-                try { owner.Block?.Task.GetAwaiter().GetResult(); return new("completed", null, Path.Combine(directory, "test.dmp"), 123); }
+                try
+                {
+                    owner.Block?.Task.GetAwaiter().GetResult();
+                    using var lease = reserve.TryAcquire() ?? throw new InvalidOperationException("Test reserve must be ready.");
+                    var name = "test-" + pid + ".dmp";
+                    if (owner.SliceBytes != 0)
+                    {
+                        var before = lease.RemainingBytes;
+                        using var slice = lease.CreateSlice(name);
+                        slice.Write(new byte[owner.SliceBytes]);
+                        var afterWrite = lease.RemainingBytes;
+                        slice.Position = 0;
+                        slice.WriteByte(123);
+                        var afterOverwrite = lease.RemainingBytes;
+                        slice.SetLength(1);
+                        owner.ReserveSamples.Enqueue((before, afterWrite, afterOverwrite, lease.RemainingBytes));
+                    }
+                    return new("completed", null, lease.SlicePaths.ToArray(), (ulong)owner.SliceBytes);
+                }
                 finally { Interlocked.Decrement(ref owner.concurrent); }
             }
             public void Dispose() { }
