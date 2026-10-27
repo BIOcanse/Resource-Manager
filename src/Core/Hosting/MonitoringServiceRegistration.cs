@@ -50,6 +50,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<AmdIntegratedGpuSensorRoute>();
         // 频率这条要知道这颗芯片的加速上限 —— Windows 给不出来，只能问 SMU。
         // 它是芯片的固有属性，只问一次。
+        services.AddKernelLeakObservation();
         services.AddSingleton<CpuMaxBoostFrequency>();
         services.AddSingleton<PdhCpuFrequencyMonitoringZone>(static provider =>
             new PdhCpuFrequencyMonitoringZone(

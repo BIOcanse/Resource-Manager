@@ -14,6 +14,19 @@ namespace Resource_Manager_APP.Tests;
 public sealed class InformationGapFieldOwnerTests
 {
     [Fact]
+    public void ScmEnumerationRejectsOwnerLimitsAndReleasesItsOwnResources()
+    {
+        var noBuffer = new RecordedNative();
+        var denied = new WindowsServiceReader(noBuffer).Read(maximumBufferBytes: 1);
+        Assert.False(denied.Available); Assert.Equal(8, denied.ErrorCode);
+        Assert.Equal(0, noBuffer.Allocated); Assert.Equal(1, noBuffer.ManagerClosed);
+        var tooMany = new RecordedNative();
+        var overflow = new WindowsServiceReader(tooMany).Read(maximumServices: 1);
+        Assert.False(overflow.Available); Assert.Equal(8, overflow.ErrorCode);
+        Assert.Equal(tooMany.Allocated, tooMany.Freed); Assert.Equal(1, tooMany.ManagerClosed);
+        Assert.Equal(4u, tooMany.ManagerAccess); Assert.Equal(0, tooMany.ConfigCalls);
+    }
+    [Fact]
     public void EstimatedSizeUsesUnsignedDwordKilobytesAndRejectsOtherRegistryKinds()
     {
         Assert.Equal(1024UL, WindowsInstalledSoftwareInventory.DecodeEstimatedSizeBytes(1, RegistryValueKind.DWord));

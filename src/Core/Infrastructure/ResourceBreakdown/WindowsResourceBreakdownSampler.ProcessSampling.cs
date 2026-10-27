@@ -55,7 +55,7 @@ public sealed partial class WindowsResourceBreakdownSampler
                     .ToHashSet(StringComparer.OrdinalIgnoreCase);
                 foreach (var path in fileMetadataCache.Keys)
                     if (!livePaths.Contains(path)) fileMetadataCache.TryRemove(path, out _);
-            }, now, basicMask.HasFlag(ProcessMetricReadMask.ThreadCount)
+            }, now, (basicMask & (ProcessMetricReadMask.ThreadCount | ProcessMetricReadMask.HandleCount)) != 0
                 ? processes => prepared = processFieldOwner.ReadBasicBatch(processes, (process, creation) =>
                 {
                     var mask = includeCpu ? basicMask | ProcessMetricReadMask.CpuTime : basicMask;

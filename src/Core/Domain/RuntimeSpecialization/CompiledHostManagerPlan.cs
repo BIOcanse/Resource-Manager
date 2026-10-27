@@ -35,6 +35,8 @@ public sealed record CompiledHostManagerPlan(
     CompiledHostManagerSmartCoordinatorPlan SmartCoordinator,
     CompiledHostManagerDeploymentDigests DeploymentDigests)
 {
+    [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.KernelLeakObservation)]
+    public Application.KernelLeak.KernelLeakOptions? KernelLeak { get; init; }
     public CompiledDataHistoryPlan DataHistory { get; init; } = CompiledDataHistoryPlan.Empty;
     public CompiledFreedomPointTree FreedomPoints { get; init; } = CompiledFreedomPointTree.Empty;
     public CompiledCpuCoreResidencyPlan CpuCoreResidency { get; init; } = CompiledCpuCoreResidencyPlan.Unpublished;

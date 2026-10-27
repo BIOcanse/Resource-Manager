@@ -2,6 +2,7 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints
 
 internal static class BackendFreedomPointPaths
 {
+    public const string KernelLeak = "resource-manager/backend/monitoring/build/complex/0";
     public const string ServiceRecoveryCounterReset = "resource-manager/backend/service_recovery/build/simple/0";
     public const string CpuResidencyObservationWindow = "resource-manager/backend/monitoring/cpu_residency/build/simple/0";
     public const string CpuResidencyExecutionTimeSource = "resource-manager/backend/monitoring/cpu_residency/build/complex/0";

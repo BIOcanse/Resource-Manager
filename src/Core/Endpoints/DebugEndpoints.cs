@@ -18,6 +18,11 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 {
     private static IEndpointRouteBuilder MapDebugEndpoints(this IEndpointRouteBuilder app)
     {
+        app.MapGet("/api/debug/kernel-leaks", (HttpResponse response, Application.KernelLeak.IKernelLeakReportSource reports) =>
+        {
+            response.Headers.CacheControl = "no-store";
+            return Results.Ok(new Domain.KernelLeak.KernelLeakDebugSnapshot(reports.Read(), reports.ReadDiagnostics()));
+        });
         app.MapGet("/api/debug/business-blocks", (HttpResponse response, IBusinessBlockQuery blocks, BusinessBlockDiagnosticsRegistry diagnostics) =>
         {
             response.Headers.CacheControl = "no-store";

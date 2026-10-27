@@ -55,6 +55,7 @@ public sealed partial class HostManagerPlanCompiler
         var freedom = (freedomPointRegistry ?? FreedomPointRegistry.LoadEmbedded()).BeginCompilation(profile, cpuScoring);
         var compiledCpuScoring = CompileCpuScoring(freedom);
         var cpuCoreResidency = CompileCpuCoreResidency(freedom, cpuTopology);
+        var kernelLeak = CompileKernelLeak(freedom);
         var schedulerSamplingInterval = CompileSchedulerSamplingInterval(freedom);
         var serviceRecoveryReset = CompileServiceRecovery(freedom);
         var trustedAccessRequestLifetime = CompileTrustedAccessRequestLifetime(freedom);
@@ -576,6 +577,7 @@ public sealed partial class HostManagerPlanCompiler
         {
             DataHistory = dataHistory,
             CpuCoreResidency = cpuCoreResidency,
+            KernelLeak = kernelLeak,
             CpuScoring = compiledCpuScoring,
             SchedulerSamplingInterval = schedulerSamplingInterval,
             ServiceRecoveryResetPeriodSeconds = serviceRecoveryReset,

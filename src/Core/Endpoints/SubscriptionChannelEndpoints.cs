@@ -350,6 +350,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 CompileMetricCatalogSubscription(subscription, services, interval)),
             ["/api/metrics/gpu-specialized/subscribe"] = new((subscription, services, interval) =>
                 CompileGpuSubscription(subscription, services, interval)),
+            ["/api/kernel-leaks/subscribe"] = new((subscription, services, _) =>
+                subscription.Compile(async (writer, token) =>
+                {
+                    await foreach (var report in services.GetRequiredService<Application.KernelLeak.IKernelLeakReportSource>().SubscribeAsync(token))
+                        await writer.WriteAsync(subscription.Id, report, token);
+                })),
             ["/api/resource-monitor/subscribe"] = new((subscription, services, interval) =>
                 CompileResourceSubscription(subscription, services, interval)),
             ["/api/resource-facts/subscribe"] = new((subscription, services, interval) =>

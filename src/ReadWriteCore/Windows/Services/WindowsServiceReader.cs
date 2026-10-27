@@ -24,10 +24,11 @@ public sealed class WindowsServiceReader
 
     public WindowsServiceCapture Read(WindowsServiceScope scope = WindowsServiceScope.Win32,
         bool includeConfiguration = false, CancellationToken cancellationToken = default,
-        IReadOnlySet<string>? configurationServiceNames = null)
+        IReadOnlySet<string>? configurationServiceNames = null, int maximumBufferBytes = 1048576, int maximumServices = 16384)
     {
         if (scope is not WindowsServiceScope.Win32 and not WindowsServiceScope.Drivers and not WindowsServiceScope.Win32AndDrivers)
             throw new ArgumentOutOfRangeException(nameof(scope));
+        if (maximumBufferBytes < 1 || maximumServices < 1) throw new ArgumentOutOfRangeException(nameof(maximumBufferBytes));
         cancellationToken.ThrowIfCancellationRequested();
         var configurationNames = configurationServiceNames?.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var manager = native.OpenManager(includeConfiguration ? 0x0005u : 0x0004u);
@@ -38,13 +39,15 @@ public sealed class WindowsServiceReader
             var sized = native.Enumerate(manager, (uint)scope, IntPtr.Zero, 0, out var bytes, out var count, ref resume);
             if (sized && count == 0 && bytes == 0) return new(true, []);
             if (bytes == 0 || native.LastError != ErrorMoreData) return new(false, [], native.LastError);
+            if (bytes > maximumBufferBytes) return new(false, [], 8); // Explicit bounded-allocation failure.
             var buffer = native.Allocate(checked((int)bytes));
             try
             {
                 resume = 0;
                 if (!native.Enumerate(manager, (uint)scope, buffer, bytes, out _, out count, ref resume))
                     return new(false, [], native.LastError);
-                var records = new List<WindowsServiceRecord>();
+                if (count > maximumServices || resume != 0) return new(false, [], 8);
+                var records = new List<WindowsServiceRecord>(checked((int)count));
                 var entrySize = Marshal.SizeOf<EnumServiceStatusProcess>();
                 if ((ulong)count * (ulong)entrySize > bytes) return new(false, [], 13);
                 for (var index = 0; index < count; index++)
@@ -76,6 +79,7 @@ public sealed class WindowsServiceReader
         {
             _ = native.QueryConfiguration(service, IntPtr.Zero, 0, out var bytes);
             if (bytes < (uint)Marshal.SizeOf<QueryServiceConfig>() || native.LastError != ErrorInsufficientBuffer) return null;
+
             var buffer = native.Allocate(checked((int)bytes));
             try
             {

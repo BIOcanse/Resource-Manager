@@ -8,6 +8,10 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 public sealed partial class HostManagerPlanCompiler
 {
+    private static Application.KernelLeak.KernelLeakOptions CompileKernelLeak(FreedomPointCompilation freedom)
+        => freedom.Consume<Application.KernelLeak.KernelLeakOptions>(BackendFreedomPointPaths.KernelLeak,
+            "HostManagerPlanCompiler.CompileKernelLeak").Validate();
+
     private static int CompileServiceRecovery(FreedomPointCompilation freedom)
         => freedom.Consume<int>(BackendFreedomPointPaths.ServiceRecoveryCounterReset,
             "HostManagerPlanCompiler.CompileServiceRecovery");

@@ -4,7 +4,8 @@ using Microsoft.Win32.SafeHandles;
 namespace ResourceManager.ReadWrite.Windows.Processes;
 
 internal enum ProcessReadStatus { Current, Exited, Unavailable }
-internal readonly record struct ProcessCreationRead(ProcessReadStatus Status, long? Creation);
+internal readonly record struct ProcessCreationRead(ProcessReadStatus Status, long? Creation)
+{ internal uint? HandleCount { get; init; } }
 
 internal static class WindowsProcessCreationQuery
 {

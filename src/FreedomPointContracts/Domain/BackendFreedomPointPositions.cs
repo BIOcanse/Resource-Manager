@@ -3,6 +3,7 @@ namespace ResourceManager.App.Domain.RuntimeSpecialization.FreedomPoints;
 
 internal static class BackendFreedomPointPositions
 {
+    public const ulong KernelLeakObservation = 0x0001000200050000UL;
     public const ulong ObservationWindowMs = 0x0001000200080000UL;
     public const ulong ExecutionTimeSource = 0x0001000200090000UL;
     public const ulong SubscriptionIntervalMs = 0x00010002000C0000UL;

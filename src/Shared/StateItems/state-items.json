@@ -608,6 +608,34 @@
       },
       "perBlock": false,
       "trigger": "event"
+    },
+    {
+      "uid": 70,
+      "kind": "item",
+      "process": "backend",
+      "name": "KernelLeakReport",
+      "comment": "Read-only suspected unbounded growth evidence; report subscriptions own the single named process sampling demand.",
+      "storage": "reference",
+      "type": "ResourceManager.App.Domain.KernelLeak.KernelLeakReport",
+      "owner": {
+        "component": "KernelLeakObserver"
+      },
+      "perBlock": false,
+      "trigger": "event"
+    },
+    {
+      "uid": 71,
+      "kind": "item",
+      "process": "backend",
+      "name": "KernelLeakSeries",
+      "comment": "Bounded per-process-start-key handle rings; removed on holder exit, source failure and last report unsubscribe.",
+      "storage": "own",
+      "type": "ResourceManager.App.Infrastructure.KernelLeak.KernelLeakSeries",
+      "owner": {
+        "component": "KernelLeakObserver"
+      },
+      "perBlock": false,
+      "trigger": "event"
     }
   ]
 }

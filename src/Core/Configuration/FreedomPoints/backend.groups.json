@@ -1,5 +1,5 @@
 {
-  "contractFingerprint": "68B559F7ABCCFA044BA0BC917EA6D26217DD2C3E7FF780FB13AE45AF22BC3500",
+  "contractFingerprint": "05B050C71DCAD84442F3F810D01EF4E5D395E3344A07E85C0A61938B53CEF0B9",
   "groups": [
     {
       "key": "resource-manager/backend",
@@ -15,7 +15,9 @@
       "name": "monitoring",
       "description": "Backend subscriptions publish current values; readers do not sample.",
       "order": 0,
-      "points": []
+      "points": [
+        "0001000200050000"
+      ]
     },
     {
       "key": "resource-manager/backend/monitoring/cpu_residency",

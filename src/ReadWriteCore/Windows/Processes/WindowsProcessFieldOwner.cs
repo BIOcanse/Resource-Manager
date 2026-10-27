@@ -90,7 +90,7 @@ public sealed partial class WindowsProcessFieldOwner : IDisposable
             bool Capture(WindowsProcessInventoryEntry process, ProcessCreationRead creation, out ProcessFieldSample sample, out TimeSpan cpu, out ProcessInstanceKey? identity)
                 => CaptureFieldSample(process, creation, mask, includeCpu, out sample, out cpu, out identity, prepared, textSharing);
             var batch = CaptureBatch(includeCpu, DirectCpu, (TryCaptureProcess<ProcessFieldSample>)Capture, static row => row.HasProcessorTime,
-                prepare: mask.HasFlag(ProcessMetricReadMask.ThreadCount)
+                prepare: (mask & (ProcessMetricReadMask.ThreadCount | ProcessMetricReadMask.HandleCount)) != 0
                     ? processes => prepared = ReadBasicBatch(processes, (_, _) => mask, textSharing) : null);
             if (batch.Status != ResourceManager.App.Domain.Metrics.SamplingObservationStatus.Current)
                 throw new InvalidOperationException("The process inventory did not produce a complete current observation.");

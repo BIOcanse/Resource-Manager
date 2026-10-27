@@ -8,6 +8,32 @@
         {
           "id": "monitoring",
           "description": "Backend subscriptions publish current values; readers do not sample.",
+          "build": {
+            "complex": [
+              {
+                "value_source": "registry",
+                "index": 0,
+                "consumers": [
+                  "HostManagerPlanCompiler.CompileKernelLeak"
+                ],
+                "description": "Low-rate handle observations, bounded rings and suspicion thresholds.",
+                "id": "kernel_leak_observation",
+                "value_type": "object",
+                "value": {
+                  "minimum_samples": 8,
+                  "series_capacity": 32,
+                  "handle_floor": 1024,
+                  "interval_milliseconds": 30000,
+                  "minimum_observation_seconds": 600,
+                  "maximum_holders": 4096,
+                  "minimum_growth": 128,
+                  "edge_percentage": 25
+                },
+                "status": "active",
+                "update_class": "rebuild_backend"
+              }
+            ]
+          },
           "children": [
             {
               "id": "cpu_residency",

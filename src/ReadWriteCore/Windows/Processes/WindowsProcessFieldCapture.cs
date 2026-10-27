@@ -88,7 +88,9 @@ public sealed partial class WindowsProcessFieldOwner
             {
                 if (process.Id <= 0) continue;
                 var creation = process.Creation.Creation;
-                selected.Add((process, creation, new(process.Id, creation ?? 0, selectMask(process, creation))));
+                var requestMask = selectMask(process, creation);
+                if (process.Source is null && process.Creation.HandleCount is not null) requestMask &= ~ProcessMetricReadMask.HandleCount;
+                selected.Add((process, creation, new(process.Id, creation ?? 0, requestMask)));
             }
             catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException) { }
         }
@@ -98,8 +100,13 @@ public sealed partial class WindowsProcessFieldOwner
                 .ToDictionary(static process => new ProcessInstanceKey(process.Id, process.Creation.Creation!.Value), static process => process.ThreadCount)
             : null;
         var readings = BasicReader.ReadBatch(selected.Select(row => row.Request).ToArray(), threadCounts);
-        return selected.Select((row, index) => (row.Process, Value: new CapturedProcessBasic(row.Creation,
-                row.Creation is { } birth && textSharing is not null ? textSharing.Share(new(row.Process.Id, birth), readings[index]) : readings[index])))
+        return selected.Select((row, index) =>
+        {
+            var basic = readings[index];
+            if (row.Process.Source is null && row.Process.Creation.HandleCount is { } nativeHandles) basic = basic with { HandleCount = nativeHandles };
+            if (row.Creation is { } birth && textSharing is not null) basic = textSharing.Share(new(row.Process.Id, birth), basic);
+            return (row.Process, Value: new CapturedProcessBasic(row.Creation, basic));
+        })
             .ToDictionary(row => row.Process, row => row.Value);
     }
     internal static ProcessCreationRead ReadCreation(Process process)
@@ -115,8 +122,10 @@ public sealed partial class WindowsProcessFieldOwner
             var captured = prepared?.GetValueOrDefault(process);
             var creation = captured is null ? creationRead.Creation : captured.Creation;
             key = creation is { } birth ? new(pid, birth) : null;
-            var basic = prepared is null ? BasicReader.Read(pid, creation ?? 0, mask)
+            var basic = prepared is null ? BasicReader.Read(pid, creation ?? 0, process.Source is null && creationRead.HandleCount is not null ? mask & ~ProcessMetricReadMask.HandleCount : mask)
                 : captured?.Basic ?? ProcessBasicMetricObservation.Unavailable;
+            if (process.Source is null && mask.HasFlag(ProcessMetricReadMask.HandleCount) && creationRead.HandleCount is { } nativeHandles)
+                basic = basic with { HandleCount = nativeHandles };
             if (key is { } textKey && textSharing is not null) basic = textSharing.Share(textKey, basic);
             var hasCpu = includeCpu && basic.CpuTime100Ns is { } ticks && ticks <= (UInt128)long.MaxValue;
             cpu = hasCpu ? TimeSpan.FromTicks((long)basic.CpuTime100Ns!.Value) : TimeSpan.Zero;

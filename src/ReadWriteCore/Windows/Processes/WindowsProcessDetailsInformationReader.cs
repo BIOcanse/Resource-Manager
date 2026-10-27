@@ -246,7 +246,7 @@ internal static class WindowsProcessSystemThreadParser
                 }
                 var creation = header.CreationTime;
                 rows.Add(new(pid, new(creation > 0 ? ProcessReadStatus.Current : ProcessReadStatus.Unavailable,
-                    creation > 0 ? creation : null), parent <= int.MaxValue ? (int)parent : 0, name,
+                    creation > 0 ? creation : null) { HandleCount = header.HandleCount }, parent <= int.MaxValue ? (int)parent : 0, name,
                     ThreadCount: header.NumberOfThreads <= options.MaximumThreadsPerProcess ? header.NumberOfThreads : null));
                 if (header.NextEntryOffset == 0) break;
                 offset += (int)header.NextEntryOffset;
