@@ -71,7 +71,6 @@ export const zhRuntimeAndReportsCopy = {
     detailTitle: (name: string) => cjkText`${name}詳細資訊`,
     version: (value: string) => `版本 ${value}`,
     unknown: "未知",
-    details: "詳細資訊",
     detailsOf: (name: string) => cjkText`${name}詳細資訊`,
     sharedRuntimePurpose: "供本機 WebView2 軟體共同使用的共享介面執行時。",
     externalBrowserPurpose: "供支援外部瀏覽器的軟體開啟 Web 介面；不能作為 WebView2 嵌入執行時。",

@@ -44,8 +44,9 @@ export function DebugSettingsSection(props: DebugSettingsSectionProps) {
             <div class="settings-row-copy">
               <strong>{props.text.debug.hostManagerSmartCoordinatorPerformanceLogTitle}</strong>
               <span>{props.text.debug.hostManagerSmartCoordinatorPerformanceLogDescription}</span>
+              <Show when={!props.optimizationRuntimeAvailable}><span role="note">{uiText.misc.optimizationRuntimeDisabled}</span></Show>
             </div>
-            <SwitchControl ariaLabel={props.text.debug.hostManagerSmartCoordinatorPerformanceLogTitle} checked={debug().hostManagerSmartCoordinatorPerformanceLogEnabled} title={!props.optimizationRuntimeAvailable ? uiText.misc.optimizationRuntimeDisabled : undefined} disabled={!props.optimizationRuntimeAvailable} onChange={(checked) => props.onHostManagerSmartCoordinatorPerformanceLogChange(checked)} />
+            <SwitchControl ariaLabel={props.text.debug.hostManagerSmartCoordinatorPerformanceLogTitle} checked={debug().hostManagerSmartCoordinatorPerformanceLogEnabled} disabled={!props.optimizationRuntimeAvailable} onChange={(checked) => props.onHostManagerSmartCoordinatorPerformanceLogChange(checked)} />
           </div>
         </Show>
       </Show>
@@ -55,8 +56,9 @@ export function DebugSettingsSection(props: DebugSettingsSectionProps) {
           <div class="settings-row-copy">
             <strong>{props.text.debug.hostManagerSmartCoordinatorScoreOnlyTitle}</strong>
             <span>{props.text.debug.hostManagerSmartCoordinatorScoreOnlyDescription}</span>
+            <Show when={!props.optimizationRuntimeAvailable}><span role="note">{uiText.misc.optimizationRuntimeDisabled}</span></Show>
           </div>
-          <SwitchControl ariaLabel={props.text.debug.hostManagerSmartCoordinatorScoreOnlyTitle} checked={debug().hostManagerSmartCoordinatorScoreOnlyEnabled} title={!props.optimizationRuntimeAvailable ? uiText.misc.optimizationRuntimeDisabled : undefined} disabled={!props.optimizationRuntimeAvailable} onChange={(checked) => props.onHostManagerSmartCoordinatorScoreOnlyChange(checked)} />
+          <SwitchControl ariaLabel={props.text.debug.hostManagerSmartCoordinatorScoreOnlyTitle} checked={debug().hostManagerSmartCoordinatorScoreOnlyEnabled} disabled={!props.optimizationRuntimeAvailable} onChange={(checked) => props.onHostManagerSmartCoordinatorScoreOnlyChange(checked)} />
         </div>
       </Show>
     </div>

@@ -505,9 +505,7 @@ const koKrAppCopy: AppCopy = {
     detailsOf: (name: string) => `자세히: ${name}`,
     moreActionsOf: (name: string) => `추가 작업: ${name}`,
     currentSoftware: "이 소프트웨어",
-    rootNeedsCheck: "루트 디렉터리 확인이 필요합니다",
-    details: "자세히",
-    moreActions: "추가 작업"
+    rootNeedsCheck: "루트 디렉터리 확인이 필요합니다"
   },
   softwareKind: {
     Unclassified: "미분류",
@@ -793,9 +791,7 @@ const koKrAppCopy: AppCopy = {
     showBar: (metric: string) => `${metric} 표시`,
     scaleModeLabel: (metric: string) => `${metric} 눈금 모드`,
     moveUp: (label: string) => `${label} 위로 이동`,
-    moveUpTitle: "위로 이동",
     moveDown: (label: string) => `${label} 아래로 이동`,
-    moveDownTitle: "아래로 이동",
     unavailable: "사용할 수 없음",
     processUsage: (name: string) => `${name} 프로세스 사용량`,
     metric: {
@@ -2238,7 +2234,6 @@ const koKrAppCopy: AppCopy = {
     updatedAt: "업데이트 시각",
     identity: "식별자",
     canceling: "취소하는 중",
-    cancelTask: "작업 취소",
     cancelWithTitle: (title: string, identity: string) => `${title} 취소 (${identity})`,
     operation: {
       componentDownload: "구성 요소 다운로드",
@@ -2346,7 +2341,6 @@ const koKrAppCopy: AppCopy = {
     detailTitle: (name: string) => `${name} 세부 정보`,
     version: (value: string) => `버전 ${value}`,
     unknown: "알 수 없음",
-    details: "자세히",
     detailsOf: (name: string) => `${name} 세부 정보`,
     sharedRuntimePurpose: "이 PC의 WebView2 소프트웨어가 공유하는 인터페이스 런타임입니다.",
     externalBrowserPurpose: "외부 브라우저를 지원하는 소프트웨어의 웹 인터페이스를 엽니다. 임베디드 WebView2 런타임으로는 쓸 수 없습니다.",

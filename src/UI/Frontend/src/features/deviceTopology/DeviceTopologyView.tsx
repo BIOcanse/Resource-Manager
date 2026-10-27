@@ -253,7 +253,7 @@ export function DeviceTopologyView(props: DeviceTopologyViewProps) {
                           aria-pressed={selectedNode()?.id === nodeId}
                           style={`--device-tree-depth:${Math.min(node().depth, 8)}`}
                           onClick={() => setSelectedNodeId(nodeId)}
-                          title={node().subtitle
+                          data-full-content={node().subtitle
                             ? `${node().path?.join(" → ") ?? node().title} · ${node().subtitle}`
                             : node().path?.join(" → ") ?? node().title}
                         >

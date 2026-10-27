@@ -312,7 +312,7 @@ export function MetricModal(props: MetricModalProps) {
                 class="icon-button metric-picker-clear"
                 type="button"
                 aria-label={uiText.metricPicker.clearSearchLabel}
-                title={uiText.resourceTableView.clearSearch}
+                data-name-tooltip=""
                 onClick={() => {
                   setQuery("");
                   searchInput?.focus();
@@ -343,7 +343,7 @@ export function MetricModal(props: MetricModalProps) {
                 <section class="metric-option-group-block" role="group" aria-labelledby={headingId()}>
                   <div class="metric-option-group-heading">
                     {/* 列表框里只能放分组和选项：组名是普通元素，靠 aria-labelledby 给分组命名，不用标题角色。 */}
-                    <div id={headingId()} class="metric-option-group-title" title={group().detail ?? undefined}>
+                    <div id={headingId()} class="metric-option-group-title">
                       {group().group}
                       <Show when={group().detail}>
                         {(detail) => <span class="metric-option-group-detail"> · {detail()}</span>}
@@ -377,7 +377,7 @@ export function MetricModal(props: MetricModalProps) {
                               unavailable: unavailable()
                             }}
                             data-metric-id={metric.id}
-                            title={optionTitle(metric, dependency(), unavailable())}
+                            data-full-content={optionTitle(metric, dependency(), unavailable())}
                             aria-selected={isSelected(metric.id)}
                             disabled={unavailable()}
                             onPointerMove={() => {
@@ -398,7 +398,7 @@ export function MetricModal(props: MetricModalProps) {
                                   class="metric-option-dependency"
                                   role="img"
                                   aria-label={uiText.metricPicker.needsInstall(dependency()!.name)}
-                                  title={uiText.metricPicker.needsInstall(dependency()!.name)}
+                                  data-name-tooltip=""
                                 >
                                   <PackagePlus size={13} aria-hidden="true" />
                                 </span>
@@ -437,8 +437,8 @@ export function MetricModal(props: MetricModalProps) {
               }}>
               <Index each={sourceChoices()}>
                 {(choice, index) => (
-                  <RadioGroupItem value={`source-${index}`} class="metric-source-choice" title={metricSourceChoiceLabel(choice())}>
-                    <span class="metric-source-choice-label">{metricSourceChoiceLabel(choice())}</span>
+                  <RadioGroupItem value={`source-${index}`} class="metric-source-choice">
+                    <span class="metric-source-choice-label" data-full-content={metricSourceChoiceLabel(choice())}>{metricSourceChoiceLabel(choice())}</span>
                     <Show when={choice().preferred}>
                       <small class="metric-source-choice-mark">{uiText.metricPicker.sourcePreferred}</small>
                     </Show>

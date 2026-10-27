@@ -89,7 +89,7 @@ export default async function metricCardStatesJourney(page, baseUrl) {
   const pending = page.locator(".dashboard .metric-value.pending");
   assert.equal(await pending.count(), 7, "every slot without a delivered value shows the waiting placeholder");
   for (const element of await pending.all()) {
-    assert.equal(await element.getAttribute("title"), zh.dashboard.waitingReading);
+    assert.equal(await element.getAttribute("data-full-content"), zh.dashboard.waitingReading);
     assert.equal(await element.locator(".sr-only").textContent(), zh.dashboard.waitingReading);
     assert.equal(await element.locator(".metric-pending-bar").evaluate((bar) => getComputedStyle(bar).animationName), "motion-pending-pulse");
   }
@@ -206,7 +206,7 @@ export default async function metricCardStatesJourney(page, baseUrl) {
         return box.top >= frame.top - 1 && box.bottom <= frame.bottom + 1;
       });
       return { label: label.textContent, labelFits: fits(label), value: value.textContent, valueFits: fits(value), inside,
-        device: element.classList.contains("with-device"), title: element.querySelector(".metric-label").title,
+        device: element.classList.contains("with-device"), title: element.querySelector(".metric-label").getAttribute("data-full-content") ?? "",
         cardWidth: element.closest(".metric-card").getBoundingClientRect().width };
     }));
   }

@@ -1,4 +1,5 @@
 import { usePushSource } from "../../frontendRuntime/push/usePushSource.ts";
+import { HelpHint } from "../../ui/primitives/HelpHint.tsx";
 import { formatFixedDigits } from "../../presentation/interfaceNumbers.ts";
 import { isReservedSegment } from "../resourceBreakdown/resourceProcessIdentity.ts";
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
@@ -474,9 +475,12 @@ function PressureMeter(props: {
 }) {
   const value = () => sanitizePercent(props.value);
   return (
-    <div class="gpu-pressure-meter" title={props.hint} data-dedicated-memory={props.dedicatedMemory}>
+    <div class="gpu-pressure-meter" data-dedicated-memory={props.dedicatedMemory}>
       <div>
-        <span>{props.label}</span>
+        <span class="with-help-hint">
+          {props.label}
+          <Show when={props.hint}>{(hint) => <HelpHint>{hint()}</HelpHint>}</Show>
+        </span>
         <strong>{value() === null ? props.emptyLabel ?? uiText.gpuScheduling.noData : formatPercent(value())}</strong>
       </div>
       <span class="gpu-pressure-track" aria-hidden="true">
@@ -513,7 +517,7 @@ function SpecializedUsageMeter(props: { usage: GpuSpecializedUsage }) {
     props.usage.engineName ?? ""
   ].filter(Boolean).join(" · ");
   return (
-    <div class="gpu-specialized-meter" title={title()}>
+    <div class="gpu-specialized-meter" data-full-content={title()}>
       <div>
         <span>{props.usage.label}</span>
         <strong>{value() === null ? uiText.gpuScheduling.noData : formatPercent(value())}</strong>

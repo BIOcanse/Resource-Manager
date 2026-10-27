@@ -506,9 +506,7 @@ const jaJpAppCopy: AppCopy = {
     detailsOf: (name: string) => `詳細: ${name}`,
     moreActionsOf: (name: string) => `その他の操作: ${name}`,
     currentSoftware: "このソフトウェア",
-    rootNeedsCheck: "ルート ディレクトリの確認が必要です",
-    details: "詳細",
-    moreActions: "その他の操作"
+    rootNeedsCheck: "ルート ディレクトリの確認が必要です"
   },
   softwareKind: {
     Unclassified: "未分類",
@@ -794,9 +792,7 @@ const jaJpAppCopy: AppCopy = {
     showBar: (metric: string) => cjkText`${metric}を表示`,
     scaleModeLabel: (metric: string) => cjkText`${metric}のスケール モード`,
     moveUp: (label: string) => cjkText`${label}を上へ移動`,
-    moveUpTitle: "上へ移動",
     moveDown: (label: string) => cjkText`${label}を下へ移動`,
-    moveDownTitle: "下へ移動",
     unavailable: "取得できません",
     processUsage: (name: string) => `${name} のプロセス使用量`,
     metric: {
@@ -2239,7 +2235,6 @@ const jaJpAppCopy: AppCopy = {
     updatedAt: "更新",
     identity: "識別子",
     canceling: "キャンセル中",
-    cancelTask: "タスクをキャンセル",
     cancelWithTitle: (title: string, identity: string) => `${title} をキャンセル (${identity})`,
     operation: {
       componentDownload: "コンポーネントのダウンロード",
@@ -2347,7 +2342,6 @@ const jaJpAppCopy: AppCopy = {
     detailTitle: (name: string) => `${name} の詳細`,
     version: (value: string) => `バージョン ${value}`,
     unknown: "不明",
-    details: "詳細",
     detailsOf: (name: string) => `${name} の詳細`,
     sharedRuntimePurpose: "この PC の WebView2 ソフトウェアが共有するインターフェイス ランタイムです。",
     externalBrowserPurpose: "外部ブラウザーに対応したソフトウェアの Web インターフェイスを開きます。埋め込みの WebView2 ランタイムとしては使えません。",

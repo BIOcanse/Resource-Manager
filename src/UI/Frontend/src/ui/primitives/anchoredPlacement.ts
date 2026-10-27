@@ -25,8 +25,11 @@ export const RESOURCE_TOOLTIP_SPACING: AnchoredSpacing = { gap: 8, inset: 8 };
 /** 问号说明（HelpHint）：离问号 6 px，离视口四边至少 8 px。 */
 export const HELP_HINT_SPACING: AnchoredSpacing = { gap: 6, inset: 8 };
 
+/** 名称提示和完整内容提示（TooltipLayer）：离元素 6 px，离视口四边至少 8 px。 */
+export const HOVER_TOOLTIP_SPACING: AnchoredSpacing = { gap: 6, inset: 8 };
+
 /**
- * 挂在页面最顶层的小弹层（资源条提示、问号说明）放在锚点的哪里：放在锚点上方或下方，不盖住锚点；整个弹层留在视口里。
+ * 挂在页面最顶层的小弹层（资源条提示、问号说明、名称提示和完整内容提示）放在锚点的哪里：放在锚点上方或下方，不盖住锚点；整个弹层留在视口里。
  * 上方放得下就放上方，否则下方放得下就放下方；两边都放不下时放在空间大的一边，再收进视口（这时才可能压到锚点）。
  * 水平方向以锚点为中心，收进视口左右各留 inset。
  */

@@ -2,12 +2,25 @@ import { createEffect, createSignal, For, on, onCleanup, Show } from "solid-js";
 import { restoreFocusTarget, scheduleFocusRestore } from "../interactions/focusReturn.ts";
 import { exitOnUnmount } from "../presentation/nodeAnimation.ts";
 
+/**
+ * 这一项的原因写在哪一项下面：不能用的项挨着、原因又相同时（例如只提供查看的启动配置下的几项系统操作），
+ * 只在第一项下写一次，后面几项把它当作自己的描述。不能用或没写原因时是 null。
+ */
+export function disabledReasonOwner(items: readonly StandardContextMenuItem[], index: number): number | null {
+  const reason = items[index]?.disabled ? items[index].disabledReason : undefined;
+  if (!reason) return null;
+  let owner = index;
+  while (owner > 0 && items[owner - 1].disabled && items[owner - 1].disabledReason === reason) owner -= 1;
+  return owner;
+}
+
 export interface StandardContextMenuItem {
   id: string;
   label: string;
   disabled?: boolean;
   danger?: boolean;
-  title?: string;
+  /** 不能用的原因：在这一项里写在名称下面一行（禁用的按钮收不到指针，原因要看得见）。 */
+  disabledReason?: string;
   separatorBefore?: boolean;
   onSelect?: () => void;
 }
@@ -225,7 +238,12 @@ export function StandardContextMenu(props: {
                   class="standard-context-menu-item"
                   classList={{ danger: item.danger }}
                   disabled={item.disabled}
-                  title={item.title}
+                  // 原因写在项里，但项的名称只是它的名字，原因作为描述读出（原因相同的几项共用第一项下的那一行）。
+                  aria-label={item.label}
+                  aria-describedby={(() => {
+                    const owner = disabledReasonOwner(model().items, index());
+                    return owner === null ? undefined : `${model().id}-reason-${owner}`;
+                  })()}
                   onFocus={() => setActiveIndex(index())}
                   onPointerMove={() => {
                     if (!item.disabled) {
@@ -242,6 +260,9 @@ export function StandardContextMenu(props: {
                   }}
                 >
                   {item.label}
+                  <Show when={disabledReasonOwner(model().items, index()) === index() ? item.disabledReason : undefined}>
+                    {(reason) => <small id={`${model().id}-reason-${index()}`} class="standard-context-menu-reason">{reason()}</small>}
+                  </Show>
                 </button>
               </>
             )}

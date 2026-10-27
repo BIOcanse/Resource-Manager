@@ -1,6 +1,7 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { formatBytes } from "../../src/presentation/byteUnits.ts";
 import { waitForCondition } from "./journeyWaits.js";
+import { helpHintText } from "./tooltipProbe.js";
 
 /**
  * 资源条先选项目、再选来源（docs/metric_item_source_choice_2026-10-25.md，简体中文）：
@@ -22,6 +23,8 @@ export default async function resourceBarSourceChoiceJourney(page, baseUrl) {
   const memoryLabel = app.metricLabel["memory.usage"];
   const bar = (metricId) => page.locator(".resource-breakdown-item").filter({ has: page.locator(`.resource-bar-track[data-metric-id="${metricId}"]`) });
   const header = (metricId) => bar(metricId).locator(".resource-breakdown-header strong");
+  // 条名的统计口径在读数后面的问号里：说明的第一段（第二段是刻度的含义）。
+  const headerBasis = async (metricId) => (await helpHintText(bar(metricId).locator(".resource-breakdown-header .help-hint"))).split("\n\n")[0];
   const setScenario = async (patch) => {
     const response = await fetch(`${baseUrl}/__test/scenario`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
     if (!response.ok) throw new Error(`Scenario ${JSON.stringify(patch)} was rejected`);
@@ -55,8 +58,8 @@ export default async function resourceBarSourceChoiceJourney(page, baseUrl) {
   await header("memory.usage").waitFor({ timeout: 15_000 });
   await header("memory.usage").scrollIntoViewIfNeeded();
   if (await header("memory.usage").textContent() !== memoryLabel) throw new Error("The automatic memory bar lost its name");
-  if (await header("memory.usage").getAttribute("title") !== `${automatic}\n${app.resourceBreakdown.memoryBasis}`) {
-    throw new Error(`The automatic memory bar does not name the field it reads: ${await header("memory.usage").getAttribute("title")}`);
+  if (await headerBasis("memory.usage") !== `${automatic}\n${app.resourceBreakdown.memoryBasis}`) {
+    throw new Error(`The automatic memory bar does not name the field it reads: ${await headerBasis("memory.usage")}`);
   }
 
   await editButton.click();
@@ -80,7 +83,7 @@ export default async function resourceBarSourceChoiceJourney(page, baseUrl) {
   await editButton.waitFor();
   const sourcedLabel = table.memoryColumnBySource(table.memoryQuantities.working_set_including_shared);
   await waitFor(async () => await header("memory.usage").textContent() === sourcedLabel || await header("memory.usage").textContent(), "Working-set bar name");
-  if (await header("memory.usage").getAttribute("title") !== `${table.nonAdditiveBasis}\n${table.memorySourceBasis.working_set_including_shared}`) {
+  if (await headerBasis("memory.usage") !== `${table.nonAdditiveBasis}\n${table.memorySourceBasis.working_set_including_shared}`) {
     throw new Error("The working-set bar does not state its basis");
   }
   const memoryTotal = formatBytes(8 * GiB, "memory");
@@ -179,8 +182,11 @@ export async function checkResourceBarSourceText(page, app, language) {
   const expected = [app.metricPicker.sourceAutomatic(table.memoryQuantities.private_working_set), table.memoryQuantities.working_set_including_shared,
     table.memoryQuantities.private_working_set];
   if (JSON.stringify(labels) !== JSON.stringify(expected)) throw new Error(`${language}: bar sources ${JSON.stringify(labels)}, expected ${JSON.stringify(expected)}`);
-  if (await radios.nth(1).getAttribute("title") !== `${table.nonAdditiveBasis}\n${table.memorySourceBasis.working_set_including_shared}`
-    || await radios.nth(2).getAttribute("title") !== app.resourceBreakdown.memoryBasis) {
+  // 各来源的口径在来源选择旁边的问号里：每项一段，来源名一行、口径在下面。
+  const sourceBasis = (await helpHintText(sources.locator("xpath=following-sibling::button[contains(@class, 'help-hint')][1]"))).split("\n\n");
+  if (!sourceBasis.includes(`${expected[1]}\n${table.nonAdditiveBasis}\n${table.memorySourceBasis.working_set_including_shared}`)
+    || !sourceBasis.includes(`${expected[2]}\n${app.resourceBreakdown.memoryBasis}`)
+    || await radios.nth(1).getAttribute("title") !== null) {
     throw new Error(`${language}: bar source basis is not localized`);
   }
   if (enabledHere) {

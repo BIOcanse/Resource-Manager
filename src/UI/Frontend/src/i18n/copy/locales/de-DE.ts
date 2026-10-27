@@ -506,9 +506,7 @@ const deDeAppCopy: AppCopy = {
     detailsOf: (name: string) => `Details: ${name}`,
     moreActionsOf: (name: string) => `Weitere Aktionen: ${name}`,
     currentSoftware: "diese Software",
-    rootNeedsCheck: "Das Stammverzeichnis muss geprüft werden",
-    details: "Details",
-    moreActions: "Weitere Aktionen"
+    rootNeedsCheck: "Das Stammverzeichnis muss geprüft werden"
   },
   softwareKind: {
     Unclassified: "Nicht kategorisiert",
@@ -794,9 +792,7 @@ const deDeAppCopy: AppCopy = {
     showBar: (metric: string) => `${metric} anzeigen`,
     scaleModeLabel: (metric: string) => `Skalenmodus für ${metric}`,
     moveUp: (label: string) => `${label} nach oben verschieben`,
-    moveUpTitle: "Nach oben verschieben",
     moveDown: (label: string) => `${label} nach unten verschieben`,
-    moveDownTitle: "Nach unten verschieben",
     unavailable: "Nicht verfügbar",
     processUsage: (name: string) => `Prozessnutzung von ${name}`,
     metric: {
@@ -2239,7 +2235,6 @@ const deDeAppCopy: AppCopy = {
     updatedAt: "Aktualisiert",
     identity: "Identität",
     canceling: "Wird abgebrochen",
-    cancelTask: "Aufgabe abbrechen",
     cancelWithTitle: (title: string, identity: string) => `${title} abbrechen (${identity})`,
     operation: {
       componentDownload: "Komponente herunterladen",
@@ -2347,7 +2342,6 @@ const deDeAppCopy: AppCopy = {
     detailTitle: (name: string) => `Details zu ${name}`,
     version: (value: string) => `Version ${value}`,
     unknown: "Unbekannt",
-    details: "Details",
     detailsOf: (name: string) => `Details zu ${name}`,
     sharedRuntimePurpose: "Eine gemeinsame Oberflächen-Runtime, die von der WebView2-Software auf diesem PC genutzt wird.",
     externalBrowserPurpose: "Öffnet Weboberflächen für Software, die externe Browser unterstützt; als eingebettete WebView2-Runtime ist er nicht verwendbar.",

@@ -65,8 +65,9 @@ export function EditableHotkeyEditor(props: {
         <div class="settings-row-copy">
           <strong>{props.labels.forceTerminateTitle}</strong>
           <span>{props.labels.forceTerminateDescription}</span>
+          <Show when={!safeToEnable()}><span role="note">{uiText.hotkeyEditor.destructiveModifierRequired}</span></Show>
         </div>
-        <SwitchControl ariaLabel={props.labels.forceTerminateTitle} checked={props.hotkey.enabled} title={safeToEnable() ? undefined : uiText.hotkeyEditor.destructiveModifierRequired} disabled={!safeToEnable()} onChange={(checked) => commit(model().keys, model().relations, checked)} />
+        <SwitchControl ariaLabel={props.labels.forceTerminateTitle} checked={props.hotkey.enabled} disabled={!safeToEnable()} onChange={(checked) => commit(model().keys, model().relations, checked)} />
       </div>
       <div class="settings-hotkey-warning">{props.labels.forceTerminateWarning}</div>
       <Show when={model().keys.length > 0} fallback={<div class="settings-hotkey-empty">{props.labels.hotkeyEmpty}</div>}>
@@ -110,8 +111,8 @@ export function EditableHotkeyEditor(props: {
                   <button
                     type="button"
                     class="settings-icon-button"
-                    title={props.labels.hotkeyRemoveKey}
                     aria-label={props.labels.hotkeyRemoveKey}
+                    data-name-tooltip=""
                     onClick={() => removeKey(index())}
                   >
                     <Trash2 size={17} />

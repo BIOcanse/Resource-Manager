@@ -25,7 +25,6 @@ export const enTaskCenterCopy: Pick<AppCopy, "taskCenter"> = {
     updatedAt: "Updated",
     identity: "Identity",
     canceling: "Canceling",
-    cancelTask: "Cancel task",
     cancelWithTitle: (title: string, identity: string) => `Cancel ${title} (${identity})`,
     operation: {
       componentDownload: "Download component",

@@ -47,8 +47,9 @@ export function PublicServicesSettingsSection(props: PublicServicesSettingsSecti
           <strong>{props.text.systemIntegration.publicServiceTitle}</strong>
           <span>{props.text.systemIntegration.publicServiceDescription}</span>
           <code>http://127.0.0.1:9321/api/public/v1</code>
+          <Show when={!props.publicServicesAvailable}><span role="note">{uiText.misc.publicServicesDisabled}</span></Show>
         </div>
-        <SwitchControl ariaLabel={props.text.systemIntegration.publicServiceTitle} checked={publicService().enabled} title={!props.publicServicesAvailable ? uiText.misc.publicServicesDisabled : undefined} disabled={!props.publicServicesAvailable} onChange={(checked) => props.onLocalPublicServiceChange(checked)} />
+        <SwitchControl ariaLabel={props.text.systemIntegration.publicServiceTitle} checked={publicService().enabled} disabled={!props.publicServicesAvailable} onChange={(checked) => props.onLocalPublicServiceChange(checked)} />
       </div>
       <div class="settings-row settings-debug-option">
         <div class="settings-row-copy">

@@ -61,7 +61,7 @@ export default async function metricCatalogPushJourney(page, baseUrl) {
   await option.locator(".metric-unavailable").filter({ hasText: noValidReading }).waitFor({ timeout: 10_000 });
   if (!await option.isDisabled()) throw new Error("an installed metric without a valid reading stays selectable");
   // 后端的原因原样留在提示里（域/码/参数），格子里写的是那句话，不是代码。
-  const reasonTitle = await option.getAttribute("title");
+  const reasonTitle = await option.getAttribute("data-full-content");
   if (!reasonTitle?.split("\n").includes(app.backendMessage.reasonCode("3/3"))
     || (await unavailableText()).some((text) => text.includes("3/3"))) {
     throw new Error(`the disabled metric does not keep the backend reason code on hover only: ${JSON.stringify({ reasonTitle, aside: await unavailableText() })}`);

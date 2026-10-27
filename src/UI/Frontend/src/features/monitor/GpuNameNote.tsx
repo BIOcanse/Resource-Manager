@@ -13,7 +13,7 @@ export function GpuNameNote(props: { metricId: string; names: ReadonlyMap<string
 export function GpuNameText(props: { name: string | null }) {
   return (
     <Show when={props.name}>
-      {(value) => <small class="metric-device gpu-name-note" title={value()}>{value()}</small>}
+      {(value) => <small class="metric-device gpu-name-note" data-full-content={value()}>{value()}</small>}
     </Show>
   );
 }

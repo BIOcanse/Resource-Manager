@@ -165,7 +165,7 @@ async function checkReadingSources(page, baseUrl, app) {
   await expectCard({ main: [], alternate: [], pending: [marks.pending] }, "default");
   await openPicker();
   await expectPicker({ preferred: [], alternate: null, alias: null, pending: [marks.pending], unsupported: null }, "default");
-  const titles = await picker.locator(".reading-source-mark").evaluateAll((elements) => [...new Set(elements.map((element) => element.title))]);
+  const titles = await picker.locator(".reading-source-mark").evaluateAll((elements) => [...new Set(elements.map((element) => element.getAttribute("data-full-content") ?? ""))]);
   if (!titles.includes(marks.pendingHint)) {
     throw new Error(`Reading-source marks lack their hints: ${JSON.stringify(titles)}`);
   }

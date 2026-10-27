@@ -1,4 +1,5 @@
 import { useHorizontalReveal } from "../interactions/solid/horizontalReveal.ts";
+import { HelpHint } from "../ui/primitives/HelpHint.tsx";
 import { For, Show, createComputed, createEffect, createMemo, on } from "solid-js";
 import type { Accessor, JSX } from "solid-js";
 import { ListTodo } from "lucide-solid";
@@ -149,9 +150,10 @@ export function AppShell(props: AppShellProps) {
           }
         }}>
           <strong class="shell-title-text">{uiText.shell.productName}</strong>
-          <span class="shell-uptime shell-title-text" title={uiText.shell.uptimeTitle}>
+          <span class="shell-uptime shell-title-text">
             <span class="shell-uptime-label">{uiText.shell.uptime}</span>
             <span id="captureTime">{props.systemUptime()}</span>
+            <HelpHint>{uiText.shell.uptimeTitle}</HelpHint>
           </span>
         </div>
         <div class="shell-utility-actions">
@@ -163,7 +165,9 @@ export function AppShell(props: AppShellProps) {
               ? uiText.shell.taskCenterActive(props.taskCenterActiveCount())
               : uiText.shell.taskCenter}
             aria-haspopup="dialog"
-            title={taskCenterTitle(props.taskCenterOperationState())}
+            aria-description={taskCenterStatus(props.taskCenterOperationState()) ?? undefined}
+            data-name-tooltip=""
+            data-full-content={taskCenterStatus(props.taskCenterOperationState()) ?? undefined}
             onClick={props.onTaskCenterOpen}
           >
             <ListTodo aria-hidden="true" size={18} />
@@ -269,7 +273,8 @@ function secondaryTabElementId(page: PageId, navigation: SecondaryNavigation): s
   return navigation.tabs().find((tab) => tab.id === selected)?.elementId ?? `${secondaryTabsId(page)}-tab-${selected}`;
 }
 
-function taskCenterTitle(state: TaskCenterOperationState): string {
+/** 任务列表不正常时的状态（同步中、断开、不可用）：任务中心按钮的提示和读屏描述读它；正常时是 null，提示只显示按钮的名称。 */
+function taskCenterStatus(state: TaskCenterOperationState): string | null {
   switch (state) {
     case "loading":
       return uiText.shell.taskCenterSyncing;
@@ -278,6 +283,6 @@ function taskCenterTitle(state: TaskCenterOperationState): string {
     case "error":
       return uiText.shell.taskCenterUnavailable;
     default:
-      return uiText.shell.taskCenter;
+      return null;
   }
 }

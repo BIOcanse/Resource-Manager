@@ -21,9 +21,7 @@ export const enSoftwareCopy: Pick<
     detailsOf: (name: string) => `Details: ${name}`,
     moreActionsOf: (name: string) => `More actions: ${name}`,
     currentSoftware: "this software",
-    rootNeedsCheck: "Root directory needs a check",
-    details: "Details",
-    moreActions: "More actions"
+    rootNeedsCheck: "Root directory needs a check"
   },
   softwareKind: {
     Unclassified: "Unclassified",

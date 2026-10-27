@@ -93,7 +93,7 @@ export function Dashboard(props: DashboardProps) {
         id: size,
         label: `${uiText.dashboard.slotSize[size]} · ${uiText.dashboard.slotSizeHint[size]}`,
         disabled: size === current,
-        title: size === current ? uiText.dashboard.currentSize : undefined,
+        disabledReason: size === current ? uiText.dashboard.currentSize : undefined,
         onSelect: () => choose(size)
       }))
     });
@@ -166,7 +166,7 @@ export function Dashboard(props: DashboardProps) {
                       aria-label={uiText.dashboard.addSlot(ordinal())}
                       aria-haspopup="menu"
                       disabled={!props.metricSelectionAvailable}
-                      title={!props.metricSelectionAvailable ? uiText.dashboard.catalogUnavailable : uiText.dashboard.addSlot(ordinal())}
+                      data-name-tooltip=""
                       onClick={(event) => addSlot(event.currentTarget)}
                     >
                       <Plus size={16} aria-hidden="true" />
@@ -259,9 +259,7 @@ function MetricSlot(props: {
             class="slot-change"
             aria-label={uiText.dashboard.replaceMetric(slotLabel(), metricLabel())}
             disabled={!props.metricSelectionAvailable}
-            title={!props.metricSelectionAvailable
-              ? uiText.dashboard.catalogUnavailable
-              : uiText.dashboard.replaceMetric(slotLabel(), metricLabel())}
+            data-name-tooltip=""
             onClick={() => props.onOpenMetricModal({ cardId: props.cardId, index: props.index, size: props.slot.size, currentMetricId: props.slot.metricId })}
           >
             <Replace size={13} aria-hidden="true" />
@@ -272,7 +270,7 @@ function MetricSlot(props: {
             aria-label={uiText.dashboard.resizeSlot(slotLabel(), metricLabel())}
             aria-haspopup="menu"
             disabled={!props.canResize}
-            title={uiText.dashboard.resizeSlot(slotLabel(), metricLabel())}
+            data-name-tooltip=""
             onClick={(event) => props.onOpenResize(event.currentTarget)}
           >
             <UnfoldVertical size={13} aria-hidden="true" />
@@ -281,7 +279,7 @@ function MetricSlot(props: {
             type="button"
             class="slot-delete"
             aria-label={uiText.dashboard.removeMetric(slotLabel(), metricLabel())}
-            title={uiText.dashboard.removeMetric(slotLabel(), metricLabel())}
+            data-name-tooltip=""
             onClick={() => props.onClearSlot(props.cardId, props.index)}
           >
             <X size={13} aria-hidden="true" />
@@ -340,7 +338,7 @@ function MetricView(props: {
   const withTrend = () => props.size === "large" || props.size === "full";
   return (
     <div class={`${props.size === "small" ? "metric-small-row" : `metric-main-content metric-size-${props.size}`}${deviceName() ? " with-device" : ""}`}>
-      <div class="metric-label" title={labelTitle()}>
+      <div class="metric-label" data-full-content={labelTitle()}>
         <span class="metric-label-text">{label()}</span>
         {/* 设备名前面是读数来源标记（首选／待确认），设备名过长时只截设备名。 */}
         <Show when={deviceName()}>
@@ -350,13 +348,13 @@ function MetricView(props: {
       <Show
         when={!waiting()}
         fallback={
-          <div class="metric-value pending" title={uiText.dashboard.waitingReading}>
+          <div class="metric-value pending" data-full-content={uiText.dashboard.waitingReading}>
             <span class="metric-pending-bar" aria-hidden="true" />
             <span class="sr-only">{uiText.dashboard.waitingReading}</span>
           </div>
         }
       >
-        <div class="metric-value" classList={{ missing: reading().missing, failed: props.failed && !absent() }} title={reading().title}>
+        <div class="metric-value" classList={{ missing: reading().missing, failed: props.failed && !absent() }} data-full-content={reading().title || undefined}>
           <Show when={reading().unit} fallback={reading().value}>
             {/* 数值和单位之间的空格放在单位里，按单位的字号排：终端风格的等宽大字号下空格不会宽出一截。 */}
             <span class="metric-number">{reading().value}</span><span class="metric-unit">{reading().gap}{reading().unit}</span>

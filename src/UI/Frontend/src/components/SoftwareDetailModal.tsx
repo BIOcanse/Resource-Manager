@@ -1,4 +1,5 @@
 import { usePushSource } from "../frontendRuntime/push/usePushSource.ts";
+import { HelpHint } from "../ui/primitives/HelpHint.tsx";
 import { StableLabel } from "../ui/primitives/StableLabel.tsx";
 import { formatGpuProviderCapability, formatGpuLaunchOutcome } from "./gpuPlacementPresentation.ts";
 import { useFrontendReadIntervals } from "../app/FrontendReadIntervalsContext.tsx";
@@ -805,10 +806,7 @@ function CpuManualPlacementToggles(props: {
 }) {
   return (
     <div class="cpu-manual-toggles">
-      <label
-        classList={{ disabled: props.exclusiveDisabled === true }}
-        title={props.exclusiveDisabled === true ? uiText.softwareDetail.cpu.exclusiveDisabled : undefined}
-      >
+      <label classList={{ disabled: props.exclusiveDisabled === true }}>
         <input
           type="checkbox"
           checked={hasId(props.exclusiveIds, props.id)}
@@ -817,6 +815,10 @@ function CpuManualPlacementToggles(props: {
         />
         <span>{uiText.softwareDetail.cpu.reserve}</span>
       </label>
+      {/* 独占不能勾时，原因在它旁边的问号里（禁用的勾选框收不到指针）。 */}
+      <Show when={props.exclusiveDisabled === true}>
+        <HelpHint>{uiText.softwareDetail.cpu.exclusiveDisabled}</HelpHint>
+      </Show>
       <label>
         <input
           type="checkbox"

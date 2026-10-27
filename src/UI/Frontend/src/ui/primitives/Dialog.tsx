@@ -94,7 +94,7 @@ export function DialogHeader(props: {
         class="icon-button secondary"
         type="button"
         aria-label={props.closeLabel ?? uiText.misc.close}
-        title={props.closeLabel ?? uiText.misc.close}
+        data-name-tooltip=""
         onClick={props.onDismiss}
       >
         <X aria-hidden="true" size={18} strokeWidth={2} />

@@ -1,9 +1,8 @@
-import { createSignal, createUniqueId, onCleanup, onMount, Show, type JSX } from "solid-js";
-import { Portal } from "solid-js/web";
+import { createSignal, createUniqueId, For, onCleanup, Show, type JSX } from "solid-js";
 import { CircleHelp } from "lucide-solid";
-import { exitOnUnmount } from "../../presentation/nodeAnimation.ts";
 import { uiText } from "../../text.ts";
-import { HELP_HINT_SPACING, resolveAnchoredPlacement } from "./anchoredPlacement.ts";
+import { AnchoredLayer } from "./AnchoredLayer.tsx";
+import { HELP_HINT_SPACING } from "./anchoredPlacement.ts";
 import { graceArea, insideArea, type Point } from "./pointerGrace.ts";
 
 /**
@@ -28,7 +27,35 @@ export interface HelpHintProps {
   readonly children: JSX.Element;
   /** 问号按钮的无障碍名称；不给就是通用的「说明」（uiText.common.helpHint）。 */
   readonly label?: string;
+  /**
+   * 按钮上画的图标；不给就是问号。只给「这个标记本身就是该看说明的地方」的场合用，
+   * 例如控制页行首的锁：锁和勾选框占同一格，原因就挂在锁上（图标不进读屏，名称用 label）。
+   */
+  readonly icon?: JSX.Element;
   readonly class?: string;
+}
+
+export interface HelpHintEntry {
+  /** 选项名，加粗在前。 */
+  readonly label: string;
+  /** 这一项的说明或不可用的原因。 */
+  readonly text: string;
+}
+
+/**
+ * 一组选项各自的说明：分段选择、单选组的选项本身是按钮，里面放不下问号，就在控件旁放一个问号，
+ * 说明里每项一段，选项名加粗在前，说明在下一行。没有任何一项要说明时什么都不画。
+ */
+export function OptionsHelpHint(props: { readonly entries: readonly HelpHintEntry[]; readonly label?: string; readonly class?: string }) {
+  return (
+    <Show when={props.entries.length > 0}>
+      <HelpHint label={props.label} class={props.class}>
+        <For each={props.entries}>
+          {(entry) => <p class="help-hint-entry"><strong>{entry.label}</strong>{entry.text}</p>}
+        </For>
+      </HelpHint>
+    </Show>
+  );
 }
 
 export function HelpHint(props: HelpHintProps) {
@@ -160,7 +187,7 @@ export function HelpHint(props: HelpHintProps) {
         onClick={() => setFocusInside(true)}
         onKeyDown={onKeyDown}
       >
-        <CircleHelp size={14} aria-hidden="true" />
+        {props.icon ?? <CircleHelp size={14} aria-hidden="true" />}
       </button>
       <Show when={open()}>
         <HelpHintPopover
@@ -201,58 +228,25 @@ function HelpHintPopover(props: {
   readonly onKeyDown: (event: KeyboardEvent) => void;
   readonly children: JSX.Element;
 }) {
-  let element: HTMLDivElement | undefined;
-  let frame = 0;
-  let placed = "";
-
-  // 和资源条提示一样：出现期间每一帧对着问号重算位置（页面滚动、窗口变化、问号随旁边的计数挪动时都跟着走），位置没变不写样式。
-  const place = () => {
-    const anchor = props.anchor();
-    if (element && anchor?.isConnected) {
-      const size = element.getBoundingClientRect();
-      const viewport = document.documentElement;
-      const placement = resolveAnchoredPlacement(
-        anchor.getBoundingClientRect(),
-        { left: 0, top: 0, right: viewport.clientWidth, bottom: viewport.clientHeight },
-        size.width,
-        size.height,
-        HELP_HINT_SPACING);
-      const key = `${placement.left}|${placement.top}|${placement.vertical}`;
-      if (key !== placed) {
-        placed = key;
-        element.style.left = `${placement.left}px`;
-        element.style.top = `${placement.top}px`;
-        element.dataset.placement = placement.vertical;
-      }
-    }
-  };
-  const follow = () => {
-    place();
-    frame = requestAnimationFrame(follow);
-  };
-
-  // 挂上的这一刻就放好（不等下一帧），第一帧画出来就在问号旁边。
-  onMount(follow);
-  onCleanup(() => cancelAnimationFrame(frame));
-
+  // 和资源条提示同一个弹层（AnchoredLayer）：出现期间每一帧对着问号重算位置，问号随旁边的计数挪动时也跟着走。
   return (
-    <Portal>
-      <div
-        ref={(node) => { element = node; props.ref(node); exitOnUnmount(node); }}
-        id={props.id}
-        class="help-hint-popover"
-        role="tooltip"
-        tabIndex={-1}
-        data-modal-focus-portal="true"
-        onPointerEnter={props.onPointerEnter}
-        onPointerLeave={props.onPointerLeave}
-        onPointerDown={props.onPointerDown}
-        onFocusIn={props.onFocusIn}
-        onFocusOut={props.onFocusOut}
-        onKeyDown={props.onKeyDown}
-      >
-        {props.children}
-      </div>
-    </Portal>
+    <AnchoredLayer
+      anchor={props.anchor}
+      spacing={HELP_HINT_SPACING}
+      ref={props.ref}
+      id={props.id}
+      class="help-hint-popover"
+      role="tooltip"
+      tabIndex={-1}
+      data-modal-focus-portal="true"
+      onPointerEnter={props.onPointerEnter}
+      onPointerLeave={props.onPointerLeave}
+      onPointerDown={props.onPointerDown}
+      onFocusIn={props.onFocusIn}
+      onFocusOut={props.onFocusOut}
+      onKeyDown={props.onKeyDown}
+    >
+      {props.children}
+    </AnchoredLayer>
   );
 }

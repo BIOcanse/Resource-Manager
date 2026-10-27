@@ -182,7 +182,7 @@ export function AiGatewayKeyManager(props: AiGatewayKeyManagerProps) {
                 class="settings-icon-button"
                 type="button"
                 aria-label={props.labels.aiGatewayRevoke}
-                title={props.labels.aiGatewayRevoke}
+                data-name-tooltip=""
                 disabled={busy()}
                 onClick={() => revoke(credential.id)}
               >
@@ -218,7 +218,7 @@ function GatewayValue(props: GatewayValueProps) {
         class="secondary"
         type="button"
         aria-label={props.copyLabel}
-        title={props.copyLabel}
+        data-name-tooltip=""
         onClick={() => props.onCopy(props.id, props.value)}
       >
         <Copy size={16} />

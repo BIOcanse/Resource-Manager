@@ -112,6 +112,10 @@ export function ManagementPage(props: ManagementPageProps) {
             profileDisabledMessage={uiText.managementPage.softwareRegistrySupplementDisabled}
           />
         </Show>
+        {/* 只提供查看的启动配置：安装、卸载、校验都不可用，原因在列表上方写一次。 */}
+        <Show when={!props.runtimeEffectsEnabled}>
+          <div class="observation-state management-view-only" role="note"><span>{uiText.managementPage.viewOnly}</span></div>
+        </Show>
         <Show when={props.runtimeEffectsEnabled}>
           <ObservationStateNotice
             state={props.operationsObservation}
@@ -221,7 +225,6 @@ function ComponentCard(props: {
                 class="management-action-button"
                 type="button"
                 disabled={!props.runtimeEffectsEnabled || !componentCanInstall(props.component)}
-                title={props.runtimeEffectsEnabled ? undefined : uiText.managementPage.viewOnly}
                 onClick={() => props.onInstall(props.component)}
               >
                 {componentInstallLabel(props.component)}
@@ -232,7 +235,7 @@ function ComponentCard(props: {
               when={dependencySoftware()?.operations?.canUninstall}
               fallback={<Show when={props.component.state !== "payload_missing" && props.component.state !== "update_available"}><ManagementStatusTag label={uiText.management.installed} tone="normal" /></Show>}
             >
-              <button class="management-action-button" type="button" disabled={!props.runtimeEffectsEnabled} title={props.runtimeEffectsEnabled ? undefined : uiText.managementPage.viewOnly} onClick={() => props.onUninstall(dependencySoftware()!, key())}>
+              <button class="management-action-button" type="button" disabled={!props.runtimeEffectsEnabled} onClick={() => props.onUninstall(dependencySoftware()!, key())}>
                 {uiText.management.uninstall}
               </button>
             </Show>
@@ -241,7 +244,6 @@ function ComponentCard(props: {
         <Show when={props.component.canVerify}>
           <button class="management-action-button" type="button"
             disabled={!props.runtimeEffectsEnabled || Boolean(activeLabel())}
-            title={props.runtimeEffectsEnabled ? undefined : uiText.managementPage.viewOnly}
             onClick={() => props.onVerify(props.component)}>
             {componentVerifyLabel(props.component.state)}
           </button>
@@ -335,7 +337,7 @@ function SoftwareCard(props: {
           when={canUninstall()}
           fallback={<ManagementStatusTag label={statusLabel()} tone={statusTone()} />}
         >
-          <button class="management-action-button" type="button" disabled={!props.runtimeEffectsEnabled} title={props.runtimeEffectsEnabled ? undefined : uiText.managementPage.viewOnly} onClick={() => props.onUninstall(props.software, key())}>
+          <button class="management-action-button" type="button" disabled={!props.runtimeEffectsEnabled} onClick={() => props.onUninstall(props.software, key())}>
             {uiText.management.uninstall}
           </button>
         </Show>
@@ -370,7 +372,7 @@ function repeatsStatus(message: string, status: string) {
 
 function SettingsButton(props: { onClick: () => void }) {
   return (
-    <button class="management-settings-button" type="button" title={uiText.management.softwareSettings} aria-label={uiText.management.softwareSettings} onClick={props.onClick}>
+    <button class="management-settings-button" type="button" aria-label={uiText.management.softwareSettings} data-name-tooltip="" onClick={props.onClick}>
       <Settings aria-hidden="true" size={16} strokeWidth={2} />
     </button>
   );
@@ -381,8 +383,8 @@ function DetailsButton(props: { label: string; onClick: () => void }) {
     <button
       class="management-settings-button"
       type="button"
-      title={uiText.managementPage.details}
       aria-label={props.label}
+      data-name-tooltip=""
       onClick={props.onClick}
     >
       <Info aria-hidden="true" size={16} strokeWidth={2} />
@@ -400,8 +402,8 @@ function MoreActionsButton(props: {
     <button
       class="management-settings-button"
       type="button"
-      title={uiText.managementPage.moreActions}
       aria-label={props.label}
+      data-name-tooltip=""
       data-focus-key={props.focusKey}
       onClick={(event) => open(event.currentTarget)}
       onKeyDown={(event) => {

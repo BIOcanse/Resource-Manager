@@ -12,7 +12,6 @@ export function SwitchControl(props: {
   checked: boolean;
   disabled?: boolean;
   ariaLabel?: string;
-  title?: string;
   as?: "label" | "span";
   onChange: (checked: boolean) => void;
 }) {
@@ -52,7 +51,6 @@ export function SwitchControl(props: {
       <input
         type="checkbox"
         aria-label={props.ariaLabel}
-        title={props.title}
         checked={props.checked}
         disabled={props.disabled}
         onChange={(event) => props.onChange(event.currentTarget.checked)}

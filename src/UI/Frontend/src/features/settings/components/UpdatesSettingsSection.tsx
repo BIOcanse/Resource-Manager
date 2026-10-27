@@ -106,7 +106,7 @@ export function UpdatesSettingsSection(props: {
       </div>
       <div class="settings-update-interval-control">
         <SwitchControl ariaLabel={text().periodicTitle} checked={props.settings?.periodicCheckEnabled === true}
-          disabled={automaticOff()} title={automaticOff() ? text().offReason : undefined}
+          disabled={automaticOff()}
           onChange={props.onPeriodicCheckChange} />
         <NumberField label={text().intervalLabel(updateCheckIntervalHours.minimum, updateCheckIntervalHours.maximum)}
           ariaLabel={text().intervalTitle}

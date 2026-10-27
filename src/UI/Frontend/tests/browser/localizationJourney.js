@@ -11,6 +11,7 @@ import { checkCpuMetricFields, checkDeviceMetricFields, checkFieldCardDisplay, e
 import { checkResourceTableSourceText } from "./resourceTableSourceChoiceJourney.js";
 import { checkResourceBarSourceText } from "./resourceBarSourceChoiceJourney.js";
 import { checkNetworkConnectionStates } from "./deviceTopologyConnectionProbe.js";
+import { helpHintText } from "./tooltipProbe.js";
 
 // 九语旅程按这个顺序逐个切换语言：每种语言都从前一种切过来，第一种是初始的 zh-CN。
 const initialLanguage = "zh-CN";
@@ -238,8 +239,10 @@ export default async function localizationJourney(page, baseUrl, options = {}) {
     const boost = page.getByRole("radiogroup", { name: app.control.presentation.labels["gpu.dynamic-boost-enabled"], exact: true });
     for (const label of [app.control.toggleChoice.firmware, app.control.presentation.toggleOn, app.control.presentation.toggleOff])
       await boost.getByRole("radio", { name: label, exact: true }).waitFor();
-    if (await boost.getByRole("radio", { name: app.control.toggleChoice.firmware, exact: true }).getAttribute("title") !== app.control.toggleChoice.firmwareHint)
-      throw new Error(`${option.id}: Return-to-firmware choice lost its localized explanation`);
+    // 交还固件的说明在三选一旁边的问号里（选项名一行、说明一行）。
+    const firmwareHint = await helpHintText(boost.locator("xpath=following-sibling::button[contains(@class, 'help-hint')][1]"));
+    if (firmwareHint !== `${app.control.toggleChoice.firmware}\n${app.control.toggleChoice.firmwareHint}`)
+      throw new Error(`${option.id}: Return-to-firmware choice lost its localized explanation: ${JSON.stringify(firmwareHint)}`);
     await page.getByRole("radio", { name: app.control.ownership.firmware, exact: true }).click();
 
     await page.getByRole("navigation").getByRole("button", { name: app.page.components, exact: true }).click();

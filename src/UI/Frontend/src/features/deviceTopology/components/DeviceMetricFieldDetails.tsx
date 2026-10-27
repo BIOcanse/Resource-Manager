@@ -1,4 +1,5 @@
 import { Index, Show } from "solid-js";
+import { HelpHint } from "../../../ui/primitives/HelpHint.tsx";
 import type { MetricFieldDevice } from "../../../data/metricFields/metricFieldSource.ts";
 import { deviceMetricSections } from "../deviceMetricFields.ts";
 import { ReadingSourceMark } from "../../../components/ReadingSourceMark.tsx";
@@ -12,7 +13,7 @@ export function DeviceMetricFieldDetails(props: { devices: readonly MetricFieldD
     <Index each={deviceMetricSections(props.devices, props.deviceId)}>
       {(section) => (
         <section class="user-details-section">
-          <h3 title={section().hint ?? undefined}>{section().title}</h3>
+          <h3>{section().title}</h3>
           <Show when={section().hint}>
             {(hint) => <p class="user-details-note">{hint()}</p>}
           </Show>
@@ -20,7 +21,10 @@ export function DeviceMetricFieldDetails(props: { devices: readonly MetricFieldD
             <Index each={section().rows}>
               {(row) => (
                 <div class="user-details-row">
-                  <dt title={row().hint ?? undefined}>{row().label}<ReadingSourceMark mark={row().mark} /></dt>
+                  <dt>
+                    {row().label}<ReadingSourceMark mark={row().mark} />
+                    <Show when={row().hint}>{(hint) => <HelpHint>{hint()}</HelpHint>}</Show>
+                  </dt>
                   <dd>{row().value}</dd>
                 </div>
               )}

@@ -68,8 +68,8 @@ export function BrowserRuntimePage(props: BrowserRuntimePageProps) {
               <button
                 class="secondary icon-button"
                 type="button"
-                title={uiText.browserRuntime.openOfficialSource}
                 aria-label={uiText.browserRuntime.openOfficialSource}
+                data-name-tooltip=""
                 onClick={() => window.open(String(url()), "_blank", "noopener")}
               >
                 <ExternalLink size={16} aria-hidden="true" />
@@ -149,8 +149,8 @@ function RuntimeIdentity(props: {
       <button
         class="secondary icon-button browser-runtime-details-button"
         type="button"
-        title={uiText.browserRuntime.details}
         aria-label={uiText.browserRuntime.detailsOf(props.runtime.name)}
+        data-name-tooltip=""
         onClick={props.onShowDetails}
       >
         <Info size={16} aria-hidden="true" />

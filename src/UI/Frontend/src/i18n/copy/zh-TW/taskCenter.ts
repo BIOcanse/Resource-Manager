@@ -24,7 +24,6 @@ export const zhTaskCenterCopy = {
     updatedAt: "更新時間",
     identity: "標識",
     canceling: "正在取消",
-    cancelTask: "取消任務",
     cancelWithTitle: (title: string, identity: string) => `取消 ${title}（${identity}）`,
     operation: {
       componentDownload: "下載元件",

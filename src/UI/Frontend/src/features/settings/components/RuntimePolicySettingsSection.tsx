@@ -1,3 +1,4 @@
+import { Show } from "solid-js";
 import { defaultAppSettings } from "../../../stores/settingsStore";
 import type { SettingsTextBundle } from "../../../text.ts";
 import type { AppPerformanceSettings } from "../../../types";
@@ -38,13 +39,13 @@ export function RuntimePolicySettingsSection(props: RuntimePolicySettingsSection
         <div class="settings-row-copy">
           <strong>{props.text.performance.preciseGpuPlacementTitle}</strong>
           <span>{props.text.performance.preciseGpuPlacementDescription}</span>
+          <Show when={!props.preciseGpuPlacementAvailable}><span role="note">{uiText.misc.precisePlacementDisabled}</span></Show>
         </div>
         <SegmentedControl
           value={props.preciseGpuPlacementAvailable ? gpuSchedulingMode() : "basic"}
           options={gpuSchedulingModeOptions()}
           ariaLabel={props.text.performance.preciseGpuPlacementTitle}
           disabled={!props.preciseGpuPlacementAvailable}
-          disabledTitle={uiText.misc.precisePlacementDisabled}
           onChange={(mode) => props.onPreciseGpuPlacementChange(mode === "precise")}
         />
       </div>

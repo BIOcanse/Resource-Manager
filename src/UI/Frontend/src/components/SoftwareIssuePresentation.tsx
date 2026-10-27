@@ -16,7 +16,7 @@ export function SoftwareIssueTagStrip(props: {
             <span
               class="software-issue-tag"
               data-tone={softwareIssueTone(issue.severity)}
-              title={softwareIssueMessage(issue)}
+              data-full-content={softwareIssueMessage(issue)}
             >
               {softwareIssueLabel(issue)}
             </span>

@@ -14,9 +14,7 @@ export const zhMonitorViewsCopy = {
     showBar: (metric: string) => `显示 ${metric}`,
     scaleModeLabel: (metric: string) => `${metric} 缩放模式`,
     moveUp: (label: string) => `上移 ${label}`,
-    moveUpTitle: "上移",
     moveDown: (label: string) => `下移 ${label}`,
-    moveDownTitle: "下移",
     unavailable: "暂不可用",
     processUsage: (name: string) => `${name} 进程占用`,
     metric: {

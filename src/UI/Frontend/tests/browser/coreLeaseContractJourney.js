@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
+import { helpHintText } from "./tooltipProbe.js";
 
 export default async function coreLeaseContractJourney(page, baseUrl) {
   const app = await loadAppCopy("zh-CN");
@@ -25,7 +26,8 @@ export default async function coreLeaseContractJourney(page, baseUrl) {
   const details = page.getByRole("dialog", { name: app.cpuTopology.coreDetailTitle, exact: true });
   const unavailable = app.resourceTable.unavailableReasons["cpu-topology-not-published"];
   await details.getByText(unavailable.label, { exact: true }).waitFor();
-  assert.equal(await details.getByText(unavailable.label, { exact: true }).getAttribute("title"), unavailable.hint);
+  // 不可用的说明在原因后面的问号里。
+  assert.equal(await helpHintText(details.getByText(unavailable.label, { exact: true }).locator(".help-hint")), unavailable.hint);
   assert.equal(await details.getByText(app.cpuTopology.noBindings, { exact: true }).count(), 0);
   assert.equal(await details.getByText(app.cpuTopology.loadingSoftwarePolicy, { exact: true }).count(), 0);
   await page.keyboard.press("Escape");

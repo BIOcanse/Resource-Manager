@@ -139,10 +139,11 @@ assert.match(resources, /\.resource-tooltip\s*\{[^}]*text-align:\s*left;/);
 const motion = stripComments(read("styles/motion.css"));
 assert.match(motion, /\.resource-tooltip\s*\{\s*animation:\s*motion-fade-in var\(--motion-fast\) var\(--ease-standard\);/);
 assert.match(motion, /body\[data-animations="none"\] \*,[\s\S]*?animation-duration:\s*0s !important;/, "the reduced modes show the tooltip without the fade");
-// 提示挂在页面最顶层（Portal 到 body，position: fixed，和下拉框弹出层同一层），不在资源条那一行里：下一行盖不住它。
-// 整条的口径只说一次（条名的 title 和轨道的 aria-description），各段的提示不再重复它。
+// 提示挂在页面最顶层（共用的 AnchoredLayer：Portal 到 body，position: fixed，和下拉框弹出层同一层），不在资源条那一行里：下一行盖不住它。
+// 整条的口径只说一次（条名后面的问号和轨道的 aria-description），各段的提示不再重复它。
 const overlay = read("features/resourceBreakdown/ResourceTooltipOverlay.tsx");
-assert.match(overlay, /<Portal>/);
+assert.match(overlay, /<AnchoredLayer [^>]*class="resource-tooltip"/);
+assert.match(read("ui/primitives/AnchoredLayer.tsx"), /<Portal>/);
 assert.match(resources, /\.resource-tooltip\s*\{[^}]*position:\s*fixed;[^}]*z-index:\s*1200;/);
 assert.doesNotMatch(breakdown, /<span\s+class="resource-tooltip"/, "no tooltip is rendered inside a bar row any more");
 // 两个浮层同一套外观：提示和下拉框弹出层用同样的表面、细边框和阴影令牌，深色配色下也和后面的卡片分得开；各风格不再单独改提示。

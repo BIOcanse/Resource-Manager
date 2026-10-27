@@ -1,4 +1,5 @@
 import { usePushSource } from "../../frontendRuntime/push/usePushSource.ts";
+import { HelpHint } from "../../ui/primitives/HelpHint.tsx";
 import { formatFixedDigits } from "../../presentation/interfaceNumbers.ts";
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
 import { RuntimePolicyDeliveryNotice } from "../../components/RuntimePolicyDeliveryNotice";
@@ -224,7 +225,7 @@ export function CpuTopologyDiagram(props: {
               <strong>{model().cpuName}</strong>
               <For each={numaNodeRows(numaFieldData())}>
                 {(node) => (
-                  <span class="cpu-topology-numa" title={uiText.cpuTopology.numaHint}>
+                  <span class="cpu-topology-numa">
                     {uiText.cpuTopology.numaNode(node.nodeNumber, [
                       node.capacity === undefined ? null
                         : uiText.cpuTopology.numaCapacity(node.capacity ?? uiText.cpuTopology.fieldUnavailable),
@@ -234,6 +235,10 @@ export function CpuTopologyDiagram(props: {
                   </span>
                 )}
               </For>
+              {/* 容量与可用量的口径：几个节点共用一个问号。 */}
+              <Show when={numaNodeRows(numaFieldData()).length > 0}>
+                <HelpHint>{uiText.cpuTopology.numaHint}</HelpHint>
+              </Show>
             </div>
             <div class="cpu-topology-diagram" classList={{ "ring-layout": model().visualLayoutKind === "ring_bus" }}>
               <Show when={model().visualLayoutKind === "ring_bus"} fallback={
@@ -283,7 +288,7 @@ export function CpuTopologyDiagram(props: {
                                           disabled={!logical.affinitySelectable}
                                           aria-pressed={isSelected(selected(), "logical", String(logical.id))}
                                           aria-label={uiText.cpuTopology.logicalProcessorLabel(logical.id, formatRuntimeDuration(logicalRuntime().executionTimeMilliseconds, residencyHasData()))}
-                                          title={uiText.cpuTopology.logicalProcessorTitle(logical.processorGroup, logical.groupRelativeIndex, formatRuntimeDuration(logicalRuntime().executionTimeMilliseconds, residencyHasData()))}
+                                          data-full-content={uiText.cpuTopology.logicalProcessorTitle(logical.processorGroup, logical.groupRelativeIndex, formatRuntimeDuration(logicalRuntime().executionTimeMilliseconds, residencyHasData()))}
                                           onClick={() => toggleSelection(setSelected, "logical", String(logical.id))}
                                         >
                                           <span>{uiText.cpuTopology.logicalProcessor(logical.id)}</span>
@@ -360,7 +365,7 @@ export function CpuTopologyDiagram(props: {
                                       disabled={!logical.affinitySelectable}
                                       aria-pressed={isSelected(selected(), "logical", String(logical.id))}
                                       aria-label={uiText.cpuTopology.logicalProcessorLabel(logical.id, formatRuntimeDuration(logicalRuntime().executionTimeMilliseconds, residencyHasData()))}
-                                      title={uiText.cpuTopology.logicalProcessorTitle(logical.processorGroup, logical.groupRelativeIndex, formatRuntimeDuration(logicalRuntime().executionTimeMilliseconds, residencyHasData()))}
+                                      data-full-content={uiText.cpuTopology.logicalProcessorTitle(logical.processorGroup, logical.groupRelativeIndex, formatRuntimeDuration(logicalRuntime().executionTimeMilliseconds, residencyHasData()))}
                                       onClick={() => toggleSelection(setSelected, "logical", String(logical.id))}
                                     >
                                       <span>{logical.id}</span>
@@ -513,7 +518,7 @@ function CpuCoreSelectionButton(props: {
       <small>{uiText.cpuTopology.corePerformance(performance())}</small>
       <small>{uiText.cpuTopology.coreExecutionTime(executionTime())}</small>
       <Show when={props.cacheSummary}>
-        <small class="cpu-core-cache" title={props.cacheSummary}>{props.cacheSummary}</small>
+        <small class="cpu-core-cache" data-full-content={props.cacheSummary}>{props.cacheSummary}</small>
       </Show>
       <Show when={props.variant === "grid"}>
         <span class="cpu-core-meter" aria-hidden="true">
@@ -632,7 +637,7 @@ function CpuTopologyDetailsDialog(props: {
                     <div class="user-details-row"><dt>{uiText.cpuTopology.cache}</dt><dd>{formatCacheLevelList(current().cacheLevels) || "--"}</dd></div>
                     <Show when={frequencies().length > 0}>
                       <div class="user-details-row">
-                        <dt title={uiText.cpuTopology.effectiveFrequencyHint}>{uiText.cpuTopology.effectiveFrequency}</dt>
+                        <dt>{uiText.cpuTopology.effectiveFrequency}<HelpHint>{uiText.cpuTopology.effectiveFrequencyHint}</HelpHint></dt>
                         <dd>{frequencies().map((row) => uiText.cpuTopology.logicalFrequency(
                           row.logicalProcessorId,
                           row.frequency ?? uiText.cpuTopology.fieldUnavailable)).join(" · ")}</dd>
@@ -649,11 +654,13 @@ function CpuTopologyDetailsDialog(props: {
                   <h3>{uiText.cpuTopology.exclusiveBindings}</h3>
                   <Show
                     when={!props.bindingsLoading}
-                    fallback={<p class="user-details-summary" role="status"
-                      title={props.bindingsUnavailableReason ? resourceFactUnavailableText(props.bindingsUnavailableReason).hint : undefined}>
+                    fallback={<p class="user-details-summary" role="status">
                       {props.bindingsUnavailableReason
                         ? resourceFactUnavailableText(props.bindingsUnavailableReason).label
                         : uiText.cpuTopology.loadingSoftwarePolicy}
+                      <Show when={props.bindingsUnavailableReason}>
+                        {(reason) => <HelpHint>{resourceFactUnavailableText(reason()).hint}</HelpHint>}
+                      </Show>
                     </p>}
                   >
                     <Show
@@ -813,7 +820,7 @@ function CpuCacheBox(props: { group?: CpuCacheGroup; level: number; children: JS
     <section
       class={`cpu-cache-box level-${props.level}`}
       classList={{ unknown: props.group.sizeKb === null }}
-      title={formatCacheGroupTitle(props.group)}
+      data-full-content={formatCacheGroupTitle(props.group)}
     >
       <span class="cpu-cache-label">{formatCacheGroupLabel(props.group)}</span>
       {props.children}
@@ -830,7 +837,7 @@ function CpuRingCacheLayer(props: { model: CpuTopologySnapshot }) {
           <div
             class={`cpu-ring-cache-region level-${group.level}`}
             style={ringCacheRegionStyle(group, props.model.physicalCores.length)}
-            title={formatCacheGroupTitle(group)}
+            data-full-content={formatCacheGroupTitle(group)}
           >
             <span>{formatCacheGroupLabel(group)}</span>
           </div>
@@ -846,7 +853,7 @@ function CpuProcessDurationList(props: { processes: CpuProcessRuntimeDuration[];
       <div class="cpu-process-score-list" classList={{ compact: props.compact === true }}>
         <For each={props.processes.slice(0, props.compact ? 2 : 4)}>
           {(process) => (
-            <span title={`${process.processName} · PID ${process.processId}`}>
+            <span data-full-content={`${process.processName} · PID ${process.processId}`}>
               <small>{process.processName}</small>
               <strong>{formatDuration(process.executionTimeMilliseconds)}</strong>
             </span>

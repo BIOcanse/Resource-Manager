@@ -1,5 +1,6 @@
 import { usePushSource } from "../../frontendRuntime/push/usePushSource.ts";
 import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
+import { HelpHint, OptionsHelpHint, type HelpHintEntry } from "../../ui/primitives/HelpHint.tsx";
 import { controlReasonText } from "../../presentation/controlReasonText.ts";
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
 import { createMemo, createSignal, For, Match, onMount, onCleanup, Show, Switch } from "solid-js";
@@ -518,6 +519,19 @@ function ControlObjectCard(props: {
    * 而其中大多数用户根本不关心 —— 他只想知道能不能调。
    * 想知道为什么的时候，停在那把锁上就有。
    */
+  /** 名称后面那个问号里的两段：这一项走哪条链路、要哪一档权限（普通档是默认，不写）。 */
+  const capabilityLegend = (capability: ControlCapability): HelpHintEntry[] => {
+    const entries: HelpHintEntry[] = [];
+    if (capability.channel) {
+      entries.push({ label: uiText.control.channel[capability.channel] ?? capability.channel, text: uiText.control.channelHint });
+    }
+    const level = capability.requiredAccessLevel;
+    if (level !== "normal") {
+      entries.push({ label: uiText.control.accessLevel.name[level], text: uiText.control.accessLevel.hint[level] });
+    }
+    return entries;
+  };
+
   const lockReason = (capability: ControlCapability) => {
     /*
      * 归固件管的时候，**两条原因都要说**。
@@ -617,9 +631,11 @@ function ControlObjectCard(props: {
                       )}
                     </Show>
                   </dt>
-                  <dd title={entry.capability.unavailableReason
-                    ? controlReasonText(entry.capability.unavailableReason) : undefined}>
+                  <dd>
                     {actualText(entry.value)}
+                    <Show when={entry.capability.unavailableReason}>
+                      {(reason) => <HelpHint>{controlReasonText(reason())}</HelpHint>}
+                    </Show>
                   </dd>
                 </div>
               )}
@@ -650,6 +666,7 @@ function ControlObjectCard(props: {
               new Intl.ListFormat(currentLanguage(), { type: "conjunction" }).format(props.takenOverWith))
             : uiText.control.term["takeover-all-fans"]}</p>
         </Show>
+        <span class="with-help-hint">
         <RadioGroupRoot class="segmented settings-segmented-control control-ownership-choice control-fan-modes"
           ariaLabel={uiText.control.ownership.label} value={selectedMode() ?? ""} onChange={id => {
             if (selectedMode() === id) return;
@@ -657,8 +674,7 @@ function ControlObjectCard(props: {
             props.onFanModeChoice(id);
           }}>
           <For each={modes()}>{entry =>
-            <RadioGroupItem value={entry.id} class="segment settings-segment" disabled={!entry.available}
-              title={entry.unavailableReason ? controlReasonText(entry.unavailableReason) : undefined}>
+            <RadioGroupItem value={entry.id} class="segment settings-segment" disabled={!entry.available}>
               <Show when={!entry.available}>
                 <Show when={entry.unavailableKind === "platform"} fallback={<Lock size={13} />}><X size={13} /></Show>
               </Show>
@@ -666,6 +682,10 @@ function ControlObjectCard(props: {
             </RadioGroupItem>
           }</For>
         </RadioGroupRoot>
+        {/* 用不了的方式：原因在旁边的问号里，每项一段。 */}
+        <OptionsHelpHint entries={modes().flatMap((entry) => entry.unavailableReason
+          ? [{ label: uiText.control.term[entry.id], text: controlReasonText(entry.unavailableReason) }] : [])} />
+        </span>
         <Show when={mode()}>{(chosen) =>
           <p class="control-capability-reason control-fan-mode-hint">
             {uiText.control.fanModeHint[chosen().id]}
@@ -736,7 +756,7 @@ function ControlObjectCard(props: {
                 class="control-preset-remove"
                 type="button"
                 aria-label={uiText.control.presets.remove}
-                title={uiText.control.presets.remove}
+                data-name-tooltip=""
                 onClick={() => props.onDeletePreset(preset.id)}
               >
                 ×
@@ -817,28 +837,22 @@ function ControlObjectCard(props: {
                       图标由后端给的种类决定，不由界面猜。
                     */
                     /*
-                      **提示挂在外层这个 span 上，不挂在图标上。**
+                      **原因挂在锁上：这把锁本身就是说明按钮（HelpHint，图标换成锁）。**
 
-                      上面那句"停在那把锁上就有"先前只对读屏软件成立：
-                      aria-label 只进可访问性树，鼠标悬停什么都不弹，
-                      于是用眼睛看的用户对着一把锁毫无办法 ——
-                      而他恰恰是最需要知道"差什么"的那个人。
-
-                      而 title 不能加在图标上：这些图标渲染出来是 <svg>，
-                      而 svg 的 title **属性**不弹提示（那要一个 <title> 子元素）。
-                      套一层 span 把 title 挂在外面，一处覆盖四个图标，
-                      也不用去动图标组件。
+                      停在锁上、Tab 到锁上或点它，原因出现在我们自己的说明弹层里，字可以选中；
+                      用眼睛看的用户和读屏用户拿到的是同一句话（按钮的名称就是原因）。
+                      一处覆盖四个图标，按钮和勾选框占同样宽的一格，名称照样从同一个位置起排。
                     */
-                    <span
+                    <HelpHint
                       class="control-capability-lock-slot"
-                      title={lockReason(capability())}
-                    >
+                      label={lockReason(capability())}
+                      icon={
                     <Switch
                       fallback={
                         <Lock
                           class="control-capability-lock"
                           size={13}
-                          aria-label={lockReason(capability())}
+                          aria-hidden="true"
                         />
                       }
                     >
@@ -847,7 +861,7 @@ function ControlObjectCard(props: {
                         <X
                           class="control-capability-x"
                           size={14}
-                          aria-label={lockReason(capability())}
+                          aria-hidden="true"
                         />
                       </Match>
                       {/*
@@ -860,7 +874,7 @@ function ControlObjectCard(props: {
                         <CircleDashed
                           class="control-capability-pending"
                           size={13}
-                          aria-label={lockReason(capability())}
+                          aria-hidden="true"
                         />
                       </Match>
                       {/* 缺组件：装上就有，指向能装它的地方。 */}
@@ -868,11 +882,14 @@ function ControlObjectCard(props: {
                         <Download
                           class="control-capability-needs"
                           size={13}
-                          aria-label={lockReason(capability())}
+                          aria-hidden="true"
                         />
                       </Match>
                     </Switch>
-                    </span>
+                    }
+                    >
+                      {lockReason(capability())}
+                    </HelpHint>
                   }
                 >
                   {/*
@@ -918,10 +935,7 @@ function ControlObjectCard(props: {
                 */}
                 <Show when={capability().channel}>
                   {(channel) => (
-                    <span
-                      class="control-capability-channel"
-                      title={uiText.control.channelHint}
-                    >
+                    <span class="control-capability-channel">
                       {uiText.control.channel[channel()] ?? channel()}
                     </span>
                   )}
@@ -935,7 +949,6 @@ function ControlObjectCard(props: {
                       classList={{
                         "control-capability-level-root": level() === "root"
                       }}
-                      title={uiText.control.accessLevel.hint[level()]}
                     >
                       <span class="sr-only">
                         {uiText.control.accessLevel.name[level()]}
@@ -943,6 +956,8 @@ function ControlObjectCard(props: {
                     </span>
                   )}
                 </Show>
+                {/* 链路和档位是什么意思：名称后面一个问号，链路、档位各一段。 */}
+                <OptionsHelpHint entries={capabilityLegend(capability())} />
               </span>
 
               <span class="control-capability-meta">
@@ -950,13 +965,15 @@ function ControlObjectCard(props: {
                 <Show when={itemStatus(capability().id) !== "unset"}>
                   <span
                     class="control-capability-tag"
-                    // 失败或不支持时，后端给的原因停在标签上就有（交还固件失败也走这里）。
-                    title={itemStatus(capability().id) === "failed" || itemStatus(capability().id) === "unsupported"
-                      ? controlOutcomeReason(outcomes().find(outcome => outcome.capabilityId === capability().id)) ?? undefined : undefined}
                     data-tone={controlItemTone(itemStatus(capability().id))}
                   >
                     {uiText.control.status[itemStatus(capability().id)]}
                   </span>
+                  {/* 失败或不支持时，后端给的原因在标签旁的问号里（交还固件失败也走这里）。 */}
+                  <Show when={itemStatus(capability().id) === "failed" || itemStatus(capability().id) === "unsupported"
+                    ? controlOutcomeReason(outcomes().find(outcome => outcome.capabilityId === capability().id)) : null}>
+                    {(reason) => <HelpHint>{reason()}</HelpHint>}
+                  </Show>
                 </Show>
                 {/*
                   机器现在实际是多少。读得到才显示 —— 读不到时挂一句
@@ -976,7 +993,7 @@ function ControlObjectCard(props: {
                   {(value) => (
                     <span
                       class="control-capability-actual"
-                      title={`${uiText.control.actual}${actualText(value())}`}
+                      data-full-content={`${uiText.control.actual}${actualText(value())}`}
                     >
                       <span class="control-capability-live" aria-hidden="true" />
                       <span class="sr-only">{uiText.control.actual}</span>

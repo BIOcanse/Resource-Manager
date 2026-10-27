@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { helpHintText } from "./tooltipProbe.js";
 
 /**
  * X80：开关型能力的三选一（交还固件／开启／关闭）。
@@ -90,7 +91,10 @@ export default async function controlToggleChoiceJourney(page, baseUrl) {
   assert.deepEqual(await apply(), [], "Return to firmware removes the setting instead of writing false");
   const tag = page.locator(".control-capability-tag").filter({ hasText: "应用失败" });
   await tag.waitFor();
-  assert.equal(await tag.getAttribute("title"), "未能释放此项控制。", "A failed release shows the localized stable reason");
+  // 原因在标签旁的问号里（我们自己的说明弹层，不是原生 title）。
+  assert.equal(await tag.getAttribute("title"), null, "the failed tag has no native title");
+  assert.equal(await helpHintText(tag.locator("xpath=following-sibling::button[contains(@class, 'help-hint')][1]")), "未能释放此项控制。",
+    "A failed release shows the localized stable reason");
   await page.getByRole("button", { name: "重试", exact: true }).click();
   await page.waitForFunction(() => document.querySelector(".control-object-actions button:last-child")?.disabled === true);
   assert.equal(retries.length, 2, "Pending release can be retried explicitly without a value change");

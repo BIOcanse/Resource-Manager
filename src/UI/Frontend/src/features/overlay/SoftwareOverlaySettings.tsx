@@ -272,8 +272,8 @@ function OverlayMetricSourceChoice(props: {
           }}>
           <Index each={choices()}>
             {(choice, index) => (
-              <RadioGroupItem value={`source-${index}`} class="segment" title={choice().label}>
-                {choice().label}
+              <RadioGroupItem value={`source-${index}`} class="segment">
+                <span data-full-content={choice().label}>{choice().label}</span>
                 <Show when={choice().preferred}>
                   <small class="metric-source-choice-mark">{uiText.metricPicker.sourcePreferred}</small>
                 </Show>

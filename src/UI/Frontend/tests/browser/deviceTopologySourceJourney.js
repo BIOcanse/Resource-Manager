@@ -111,7 +111,7 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
         text,
         oneLine: !secondary || secondary.getBoundingClientRect().height <= parseFloat(getComputedStyle(secondary).lineHeight) + 1,
         truncated: Boolean(secondary && secondary.scrollWidth > secondary.clientWidth + 1),
-        tooltipHasText: (item.getAttribute("title") ?? "").includes(text)
+        tooltipHasText: (item.getAttribute("data-full-content") ?? "").includes(text) && !item.hasAttribute("title")
       };
     });
     list.style.width = previousWidth;

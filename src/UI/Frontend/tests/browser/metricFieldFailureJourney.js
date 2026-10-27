@@ -60,7 +60,7 @@ export default async function metricFieldFailureJourney(page, baseUrl) {
     assert.equal(await notice.getByRole("button").count(), 0, `${language}: the push source has no manual refresh, so the notice must not offer one`);
     assert.equal(await page.locator(".observation-state.error").count(), 1, `${language}: the field failure spread to another notice`);
     await fieldValue.filter({ hasText: app.dashboard.readingFailed }).waitFor({ timeout: 15_000 });
-    assert.equal(await fieldValue.getAttribute("title"), app.dashboard.readingFailedHint, `${language}: the failed slot lacks its hint`);
+    assert.equal(await fieldValue.getAttribute("data-full-content"), app.dashboard.readingFailedHint, `${language}: the failed slot lacks its hint`);
     assert.ok(await fieldValue.evaluate(element => element.classList.contains("failed") && !element.classList.contains("pending")),
       `${language}: the failed slot is not marked failed`);
     await absentValue.filter({ hasText: app.dashboard.deviceAbsent }).waitFor();

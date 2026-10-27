@@ -5,6 +5,7 @@ import { NOT_GHOST } from "./liveLocator.js";
  */
 
 import { pointPreferences } from "../../src/preferences/frontendPreferences.ts";
+import { helpHintText } from "./tooltipProbe.js";
 const fixtureDeviceId = "DISPLAY\\FIXTURE_HDMI_1";
 const field = (name, unit, valueKind, extra) => ({
   name, unit, valueKind, numericValue: null, integerValue: null, status: 1,
@@ -90,7 +91,8 @@ export async function checkCpuMetricFields(page, app, language) {
   await model.locator(".cpu-topology-meta strong").waitFor({ timeout: 65_000 });
   const numaLine = model.locator(".cpu-topology-numa").filter({ hasText: numa });
   await numaLine.waitFor();
-  if (await numaLine.getAttribute("title") !== cpu.numaHint) throw new Error(`${language}: NUMA hint missing`);
+  // NUMA 的口径在 NUMA 那几行后面的问号里。
+  if (await helpHintText(model.locator(".cpu-topology-meta > .help-hint")) !== cpu.numaHint) throw new Error(`${language}: NUMA hint missing`);
   await model.locator(".cpu-topology-actions").getByRole("button", { name: cpu.details, exact: true }).click();
   const dialog = page.locator(`.user-details-modal${NOT_GHOST}:visible`);
   await dialog.getByText(cpu.coreDetailTitle, { exact: true }).waitFor();
@@ -98,7 +100,7 @@ export async function checkCpuMetricFields(page, app, language) {
   await frequency.locator("dd").filter({
     hasText: [cpu.logicalFrequency(0, "4812 MHz"), cpu.logicalFrequency(1, cpu.fieldUnavailable)].join(" · ")
   }).waitFor();
-  if (await frequency.locator("dt").getAttribute("title") !== cpu.effectiveFrequencyHint)
+  if (await helpHintText(frequency.locator("dt .help-hint")) !== cpu.effectiveFrequencyHint)
     throw new Error(`${language}: effective-frequency hint missing`);
   await page.keyboard.press("Escape");
   await page.waitForFunction(() => document.querySelectorAll(".user-details-modal").length === 0
@@ -146,7 +148,7 @@ export async function checkFieldCardDisplay(page, app, language) {
   await main.locator(".metric-device").filter({ hasText: device }).waitFor();
   const absent = card.locator(".metric-small-row");
   await absent.locator(".metric-value").filter({ hasText: app.dashboard.deviceAbsent }).waitFor({ timeout: 15_000 });
-  if (await absent.locator(".metric-value").getAttribute("title") !== app.dashboard.deviceAbsentHint)
+  if (await absent.locator(".metric-value").getAttribute("data-full-content") !== app.dashboard.deviceAbsentHint)
     throw new Error(`${language}: device-absent hint missing`);
   return { language, device, absent: app.dashboard.deviceAbsent };
 }

@@ -122,7 +122,7 @@ export function MemoryProtectionSettingsSection(props: MemoryProtectionSettingsS
           <>
             <Show when={unsaved()}><p role="status">{copy().unsavedNote}</p></Show>
             <Show when={rejection()}>
-              {(code) => <p role="alert" title={code()}>{copy().rejected(memoryProtectionReasonText(code()))}</p>}
+              {(code) => <p role="alert" data-full-content={code()}>{copy().rejected(memoryProtectionReasonText(code()))}</p>}
             </Show>
             <Show when={!statusData()}>
               <Show
@@ -150,7 +150,7 @@ export function MemoryProtectionSettingsSection(props: MemoryProtectionSettingsS
                 <div class="settings-row settings-row-block">
                   <div class="settings-row-copy" role="status">
                     <strong>{copy().effectiveTitle}</strong>
-                    <span class="memory-protection-effective" title={current().inactiveReason ?? undefined}>
+                    <span class="memory-protection-effective" data-full-content={current().inactiveReason ?? undefined}>
                       {current().inactiveReason === null
                         ? copy().effective
                         : copy().inactive(memoryProtectionReasonText(current().inactiveReason!))}
@@ -346,7 +346,7 @@ export function MemoryProtectionSettingsSection(props: MemoryProtectionSettingsS
                                 <Fact label={copy().recordBytesWritten}>{formatBytes(record.bytesWritten, "storage")}</Fact>
                                 <Show when={record.reason}>
                                   {(reason) => (
-                                    <Fact label={copy().recordReason} wide title={reason()}>{memoryProtectionReasonText(reason())}</Fact>
+                                    <Fact label={copy().recordReason} wide fullContent={reason()}>{memoryProtectionReasonText(reason())}</Fact>
                                   )}
                                 </Show>
                                 <Fact label={copy().recordDumpPaths} wide>
@@ -392,18 +392,19 @@ export function MemoryProtectionSettingsSection(props: MemoryProtectionSettingsS
   );
 }
 
-function Fact(props: { label: string; wide?: boolean; title?: string; children: JSX.Element }) {
+/** 一项记录。fullContent：悬停这一项的值看的完整内容（例如翻译前的原始原因码）。 */
+function Fact(props: { label: string; wide?: boolean; fullContent?: string; children: JSX.Element }) {
   return (
     <div class="memory-protection-fact" classList={{ wide: props.wide === true }}>
       <dt>{props.label}</dt>
-      <dd title={props.title}>{props.children}</dd>
+      <dd data-full-content={props.fullContent}>{props.children}</dd>
     </div>
   );
 }
 
 function BuiltState(props: { built: boolean; reason: string | null }) {
   return (
-    <span class="memory-protection-built" classList={{ failed: !props.built }} title={props.reason ?? undefined}>
+    <span class="memory-protection-built" classList={{ failed: !props.built }} data-full-content={props.reason ?? undefined}>
       {props.built
         ? uiText.memoryProtection.reserveBuilt
         : props.reason === null

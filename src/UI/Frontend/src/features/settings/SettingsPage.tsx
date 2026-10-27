@@ -1,4 +1,5 @@
 import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
+import { HelpHint } from "../../ui/primitives/HelpHint.tsx";
 import { For, Show } from "solid-js";
 import { ReportRuleSettings } from "./components/ReportRuleSettings";
 import { MemoryProtectionSettingsSection } from "./components/MemoryProtectionSettingsSection";
@@ -35,7 +36,7 @@ import type {
   SoftwareRecord
 } from "../../types";
 
-export { MultiSegmentedControl, SegmentedControl } from "./components/SettingsControls";
+export { SegmentedControl } from "./components/SettingsControls";
 
 interface SettingsPageProps {
   settings: AppSettings;
@@ -219,12 +220,13 @@ export function SettingsPage(props: SettingsPageProps) {
                   warning: props.saveState === "partial" || props.saveState === "constrained"
                 }}
                 role={props.saveState === "error" || props.saveState === "conflict" ? "alert" : "status"}
-                title={props.saveState === "constrained"
-                  ? props.runtimeCapabilityConstrainedPaths.join(", ")
-                  : undefined}
               >
                 {statusText()}
               </span>
+              {/* 受限时是哪几项：状态后面一个问号，每项一行。 */}
+              <Show when={props.saveState === "constrained" && props.runtimeCapabilityConstrainedPaths.length > 0}>
+                <HelpHint>{props.runtimeCapabilityConstrainedPaths.join("\n")}</HelpHint>
+              </Show>
               <Show when={props.saveState === "conflict"}>
                 <button class="secondary" type="button" onClick={props.onReload}>
                   {text().actions.reload}
@@ -240,11 +242,14 @@ export function SettingsPage(props: SettingsPageProps) {
                   class="secondary"
                   type="button"
                   disabled={props.saveState === "saving" || props.isDirty}
-                  title={props.isDirty ? uiText.misc.saveOrRevertFirst : undefined}
                   onClick={props.onReload}
                 >
                   {text().actions.reload}
                 </button>
+                {/* 有未保存的修改时不能重新加载：原因在按钮旁的问号里（禁用的按钮收不到指针）。 */}
+                <Show when={props.isDirty}>
+                  <HelpHint>{uiText.misc.saveOrRevertFirst}</HelpHint>
+                </Show>
               </Show>
               <button
                 class="secondary"

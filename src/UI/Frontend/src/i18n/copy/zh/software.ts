@@ -82,9 +82,7 @@ export const zhSoftwareCopy = {
     detailsOf: (name: string) => `详细信息：${name}`,
     moreActionsOf: (name: string) => `更多操作：${name}`,
     currentSoftware: "当前软件",
-    rootNeedsCheck: "根目录需要检查",
-    details: "详细信息",
-    moreActions: "更多操作"
+    rootNeedsCheck: "根目录需要检查"
   },
   manualSoftware: {
     addAdapted: "添加适配软件",

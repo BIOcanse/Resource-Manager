@@ -141,6 +141,9 @@
   background-image: none;
   color: var(--muted);
   cursor: help;
+  /* 夹在一行字里时不把这一行撑高（按钮 20 px，只按 14 px 算进行高）；在弹性行里同样只占 14 px 的高。 */
+  vertical-align: middle;
+  margin-block: -3px;
 }
 
 .help-hint:hover,
@@ -170,7 +173,7 @@
   font-weight: 500;
   line-height: 1.5;
   text-align: left;
-  white-space: normal;
+  white-space: pre-line;
   overflow-wrap: anywhere;
   box-shadow: var(--elev-3), var(--edge-highlight);
   outline: none;
@@ -178,12 +181,63 @@
   user-select: text;
 }
 
-.help-hint-popover:not([data-placement]) {
+/*
+ * 名称提示、完整内容提示（ui/primitives/TooltipLayer.tsx）：图标按钮的名称、截断文字或一格的完整内容。
+ * 和问号说明、资源条提示同一层、同一套外观；离元素 6 px（HOVER_TOOLTIP_SPACING）。不接收指针，不挡住后面的控件。
+ * 文字里的换行照原样分行。
+ */
+.hover-tooltip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1200;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 16px));
+  pointer-events: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 5px 9px 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: left;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  box-shadow: var(--elev-3), var(--edge-highlight);
+}
+
+/* 说明分几段时段间留一点空；选项说明（OptionsHelpHint）每段选项名单独一行。 */
+.help-hint-popover p {
+  margin: 0;
+}
+
+.help-hint-popover p + p {
+  margin-top: 6px;
+}
+
+.help-hint-entry > strong {
+  display: block;
+  font-weight: 700;
+}
+
+/* 一段文字或一个控件和它后面的问号：排成一行，在所在的行或网格里只算一项。 */
+.with-help-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.help-hint-popover:not([data-placement]),
+.hover-tooltip:not([data-placement]) {
   visibility: hidden;
 }
 
 @media (forced-colors: active) {
-  .help-hint-popover {
+  .help-hint-popover,
+  .hover-tooltip {
     outline: 1px solid CanvasText;
   }
 }

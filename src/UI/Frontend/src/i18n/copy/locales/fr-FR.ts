@@ -506,9 +506,7 @@ const frFrAppCopy: AppCopy = {
     detailsOf: (name: string) => `Détails : ${name}`,
     moreActionsOf: (name: string) => `Autres actions : ${name}`,
     currentSoftware: "ce logiciel",
-    rootNeedsCheck: "Le répertoire racine doit être vérifié",
-    details: "Détails",
-    moreActions: "Autres actions"
+    rootNeedsCheck: "Le répertoire racine doit être vérifié"
   },
   softwareKind: {
     Unclassified: "Non classé",
@@ -794,9 +792,7 @@ const frFrAppCopy: AppCopy = {
     showBar: (metric: string) => `Afficher ${metric}`,
     scaleModeLabel: (metric: string) => `Mode d'échelle de ${metric}`,
     moveUp: (label: string) => `Déplacer ${label} vers le haut`,
-    moveUpTitle: "Déplacer vers le haut",
     moveDown: (label: string) => `Déplacer ${label} vers le bas`,
-    moveDownTitle: "Déplacer vers le bas",
     unavailable: "Indisponible",
     processUsage: (name: string) => `Utilisation des processus de ${name}`,
     metric: {
@@ -2239,7 +2235,6 @@ const frFrAppCopy: AppCopy = {
     updatedAt: "Mise à jour",
     identity: "Identité",
     canceling: "Annulation",
-    cancelTask: "Annuler la tâche",
     cancelWithTitle: (title: string, identity: string) => `Annuler ${title} (${identity})`,
     operation: {
       componentDownload: "Télécharger un composant",
@@ -2347,7 +2342,6 @@ const frFrAppCopy: AppCopy = {
     detailTitle: (name: string) => `Détails de ${name}`,
     version: (value: string) => `Version ${value}`,
     unknown: "Inconnu",
-    details: "Détails",
     detailsOf: (name: string) => `Détails de ${name}`,
     sharedRuntimePurpose: "Un runtime d'interface partagé utilisé par les logiciels WebView2 de ce PC.",
     externalBrowserPurpose: "Ouvre les interfaces web des logiciels qui prennent en charge les navigateurs externes ; il ne peut pas servir de runtime WebView2 intégré.",

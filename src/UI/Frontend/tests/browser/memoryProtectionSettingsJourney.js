@@ -209,7 +209,7 @@ export default async function memoryProtectionSettingsJourney(page, baseUrl) {
     } else {
       const expected = record.outcome === "terminated-without-dump" ? copy.reasons[record.reason] : expectedReasons[record.outcome];
       assert.equal(await factText(row, copy.recordReason), expected);
-      assert.equal(await fact(row, copy.recordReason).getAttribute("title"), record.reason);
+      assert.equal(await fact(row, copy.recordReason).getAttribute("data-full-content"), record.reason);
     }
     const paths = await row.locator(".memory-protection-paths li").allInnerTexts();
     assert.deepEqual(paths, record.dumpPaths, `${record.outcome}: dump paths keep the record order`);

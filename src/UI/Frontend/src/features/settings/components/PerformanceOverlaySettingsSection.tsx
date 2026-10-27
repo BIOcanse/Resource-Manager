@@ -97,14 +97,15 @@ export function PerformanceOverlaySettingsSection(props: PerformanceOverlaySetti
                   return (
                     <div class="settings-row performance-overlay-row" data-software-id={row.settings.softwareId}>
                       <div class="settings-row-copy">
-                        <strong title={name()}>{name()}</strong>
+                        <strong data-full-content={name()}>{name()}</strong>
                         <span>{summary(row.settings)}</span>
+                        {/* 打不开的原因写在这一行的说明里（禁用的按钮收不到指针）。 */}
+                        <Show when={disabledReason()}>{(reason) => <span role="note">{reason()}</span>}</Show>
                       </div>
                       <button
                         type="button"
                         class="secondary"
                         aria-label={copy().openLabel(name())}
-                        title={disabledReason()}
                         disabled={disabledReason() !== undefined}
                         onClick={() => row.software && props.onOpenOverlay(row.software)}
                       >

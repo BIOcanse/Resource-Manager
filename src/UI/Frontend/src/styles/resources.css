@@ -819,6 +819,11 @@
   color: var(--text);
 }
 
+/* 指标名后面有统计口径的问号时，它占名称和缩放下拉框之间的一列。 */
+.resource-bar-option:has(> .help-hint) {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+
 .resource-bar-option input {
   margin: 0;
 }

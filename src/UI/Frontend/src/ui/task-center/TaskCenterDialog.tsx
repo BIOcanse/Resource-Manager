@@ -1,4 +1,5 @@
 import { renderBackendMessage } from "../../presentation/backendMessage.ts";
+import { HelpHint } from "../primitives/HelpHint.tsx";
 import {
   For,
   Match,
@@ -257,13 +258,15 @@ function TaskCenterList(props: {
                   type="button"
                   disabled={!item().cancelable || props.cancelingIds.has(itemId)}
                   aria-label={taskCancelLabel(item())}
-                  title={props.cancelingIds.has(itemId)
-                    ? uiText.taskCenter.canceling
-                    : item().actionBlockedReason ?? uiText.taskCenter.cancelTask}
+                  data-name-tooltip=""
                   onClick={() => props.onCancel(item())}
                 >
                   <Ban aria-hidden="true" size={17} />
                 </button>
+                {/* 取消不了（正在取消、已结束、会话未同步……）：原因在按钮旁的问号里（禁用的按钮收不到指针）。 */}
+                <Show when={props.cancelingIds.has(itemId) ? uiText.taskCenter.canceling : item().actionBlockedReason}>
+                  {(reason) => <HelpHint>{reason()}</HelpHint>}
+                </Show>
               </div>
             </article>
             );

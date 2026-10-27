@@ -19,9 +19,7 @@ export const enMonitorViewsCopy: Pick<
     showBar: (metric: string) => `Show ${metric}`,
     scaleModeLabel: (metric: string) => `${metric} scale mode`,
     moveUp: (label: string) => `Move ${label} up`,
-    moveUpTitle: "Move up",
     moveDown: (label: string) => `Move ${label} down`,
-    moveDownTitle: "Move down",
     unavailable: "Unavailable",
     processUsage: (name: string) => `${name} process usage`,
     metric: {

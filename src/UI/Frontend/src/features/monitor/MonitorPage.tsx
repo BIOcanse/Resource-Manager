@@ -64,6 +64,13 @@ export function MonitorPage(props: MonitorPageProps) {
           <Show when={monitor.dashboardSaveState() === "error"}>
             <span class="save-state error">{uiText.common.saveFailed}</span>
           </Show>
+          {/* 按钮用不了的原因写在按钮旁边（禁用的按钮收不到指针）。 */}
+          <Show when={!dashboardAvailable()}>
+            <span class="save-state">{uiText.monitorPage.layoutEditUnavailable}</span>
+          </Show>
+          <Show when={dashboardAvailable() && monitor.editMode() && !metricSelectionAvailable()}>
+            <span class="save-state">{uiText.dashboard.catalogUnavailable}</span>
+          </Show>
           <Show when={monitor.editMode()}>
             <button
               class="secondary panel-refresh-button"
@@ -81,7 +88,6 @@ export function MonitorPage(props: MonitorPageProps) {
             type="button"
             data-focus-key="monitor-dashboard-edit"
             aria-label={monitor.editMode() ? uiText.monitorPage.saveLayoutLabel : uiText.monitorPage.editLayoutLabel}
-            title={!dashboardAvailable() ? uiText.monitorPage.layoutEditUnavailable : undefined}
             disabled={!dashboardAvailable() || monitor.dashboardSaveState() === "saving"}
             onClick={() => monitor.editMode() ? void monitor.saveDraftAndLeaveEditMode() : monitor.enterEditMode()}
           >

@@ -84,7 +84,7 @@ export function DeviceMachineView(props: { system: DeviceTopologySystemIdentity;
       <div class="device-system-meta">
         <Index each={identity().chips}>
           {(chip) => (
-            <span title={chip().title}>
+            <span data-full-content={chip().title}>
               <Show when={chip().label}>{(label) => <small>{label()}</small>}</Show>
               {chip().value}
             </span>

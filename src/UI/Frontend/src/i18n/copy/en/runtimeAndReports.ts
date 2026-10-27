@@ -73,7 +73,6 @@ export const enRuntimeAndReportsCopy: Pick<AppCopy, "smartReport" | "browserRunt
     detailTitle: (name: string) => `${name} details`,
     version: (value: string) => `Version ${value}`,
     unknown: "Unknown",
-    details: "Details",
     detailsOf: (name: string) => `${name} details`,
     sharedRuntimePurpose: "A shared interface runtime used by WebView2 software on this PC.",
     externalBrowserPurpose: "Opens web interfaces for software that supports external browsers; it cannot be used as an embedded WebView2 runtime.",

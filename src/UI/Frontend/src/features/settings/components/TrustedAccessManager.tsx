@@ -487,7 +487,7 @@ export function TrustedAccessManager(props: {
                         <RefreshCw size={16} /> {pending() === `key:${key.id}` ? props.copy.working : props.copy.rotate}
                       </button>
                       <button type="button" class="settings-icon-button" disabled={busy()}
-                        aria-label={props.copy.revokeKeyLabel(key.name)} title={props.copy.revoke}
+                        aria-label={props.copy.revokeKeyLabel(key.name)} data-name-tooltip=""
                         onClick={() => void revoke(key)}>
                         <Trash2 size={17} />
                       </button>

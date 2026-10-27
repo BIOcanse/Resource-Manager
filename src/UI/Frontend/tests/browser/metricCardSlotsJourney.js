@@ -55,8 +55,9 @@ export default async function metricCardSlotsJourney(page, baseUrl) {
     });
   });
   const menuItems = async () => (await page.getByRole("menuitem").all());
+  // 项的名称（不能用的项在名称下面另写一行原因，原因是描述，不算名称）。
   const menuNames = async () => Promise.all((await menuItems()).map(async (item) => ({
-    name: (await item.textContent()).trim(), disabled: await item.isDisabled() })));
+    name: (await item.getAttribute("aria-label")).trim(), disabled: await item.isDisabled() })));
   const option = (size) => `${text.slotSize[size]} · ${text.slotSizeHint[size]}`;
   // 菜单打开后焦点要等一帧才进去：对菜单本身按 Esc。
   const closeMenu = async () => {
@@ -123,7 +124,9 @@ export default async function metricCardSlotsJourney(page, baseUrl) {
   assert.deepEqual(await menuNames(), [
     { name: option("small"), disabled: true }, { name: option("medium"), disabled: false }, { name: option("large"), disabled: false }
   ], "one own unit plus two left: up to large, the current size is not offered as a change");
-  assert.equal(await page.getByRole("menuitem").first().getAttribute("title"), text.currentSize);
+  // 当前大小不能选：原因写在这一项的名称下面（禁用的按钮收不到指针，不靠悬停）。
+  assert.equal(await page.getByRole("menuitem").first().locator(".standard-context-menu-reason").textContent(), text.currentSize);
+  assert.equal(await page.getByRole("menuitem").first().getAttribute("title"), null);
   // 4. 会动的风格：选大以后真实槽位当即在终态（点击处理完那一刻），这一槽的高度和下一槽的位置在副本上走过去。
   const timeline = await sampleAfter(page, page.getByRole("menuitem", { name: option("large"), exact: true }), "slots");
   const finalHeight = 3 * legacy[1].height + 2 * gap;

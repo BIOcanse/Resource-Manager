@@ -506,9 +506,7 @@ const esEsAppCopy: AppCopy = {
     detailsOf: (name: string) => `Detalles: ${name}`,
     moreActionsOf: (name: string) => `Más acciones: ${name}`,
     currentSoftware: "este software",
-    rootNeedsCheck: "El directorio raíz necesita una comprobación",
-    details: "Detalles",
-    moreActions: "Más acciones"
+    rootNeedsCheck: "El directorio raíz necesita una comprobación"
   },
   softwareKind: {
     Unclassified: "Sin clasificar",
@@ -794,9 +792,7 @@ const esEsAppCopy: AppCopy = {
     showBar: (metric: string) => `Mostrar ${metric}`,
     scaleModeLabel: (metric: string) => `Modo de escala de ${metric}`,
     moveUp: (label: string) => `Mover ${label} hacia arriba`,
-    moveUpTitle: "Mover hacia arriba",
     moveDown: (label: string) => `Mover ${label} hacia abajo`,
-    moveDownTitle: "Mover hacia abajo",
     unavailable: "No disponible",
     processUsage: (name: string) => `Uso de los procesos de ${name}`,
     metric: {
@@ -2239,7 +2235,6 @@ const esEsAppCopy: AppCopy = {
     updatedAt: "Actualizada",
     identity: "Identidad",
     canceling: "Cancelando",
-    cancelTask: "Cancelar la tarea",
     cancelWithTitle: (title: string, identity: string) => `Cancelar ${title} (${identity})`,
     operation: {
       componentDownload: "Descargar componente",
@@ -2347,7 +2342,6 @@ const esEsAppCopy: AppCopy = {
     detailTitle: (name: string) => `Detalles de ${name}`,
     version: (value: string) => `Versión ${value}`,
     unknown: "Desconocido",
-    details: "Detalles",
     detailsOf: (name: string) => `Detalles de ${name}`,
     sharedRuntimePurpose: "Un entorno de ejecución de interfaz compartido que usa el software WebView2 de este equipo.",
     externalBrowserPurpose: "Abre interfaces web para el software compatible con navegadores externos; no puede usarse como entorno de ejecución WebView2 integrado.",

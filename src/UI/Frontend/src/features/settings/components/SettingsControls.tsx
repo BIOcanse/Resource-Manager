@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For } from "solid-js";
+import { createEffect, createMemo, createSignal } from "solid-js";
 import { SegmentedControl as PrimitiveSegmentedControl } from "../../../ui/primitives/SegmentedControl.tsx";
 import {
   formatNumberFieldValue,
@@ -12,7 +12,6 @@ export function SegmentedControl<T extends string>(props: {
   options: Array<{ id: T; label: string; description?: string }>;
   ariaLabel: string;
   disabled?: boolean;
-  disabledTitle?: string;
   onChange: (value: T) => void;
 }) {
   return (
@@ -23,44 +22,8 @@ export function SegmentedControl<T extends string>(props: {
       class="settings-segmented-control"
       itemClass="settings-segment"
       disabled={props.disabled}
-      disabledTitle={props.disabledTitle}
       onChange={props.onChange}
     />
-  );
-}
-
-export function MultiSegmentedControl<T extends string>(props: {
-  values: readonly T[];
-  options: Array<{ id: T; label: string; description?: string }>;
-  ariaLabel: string;
-  onChange: (values: T[]) => void;
-}) {
-  const hasValue = (id: T) => props.values.includes(id);
-  const toggle = (id: T) => {
-    const next = hasValue(id)
-      ? props.values.filter((value) => value !== id)
-      : [...props.values, id];
-    props.onChange(next);
-  };
-
-  return (
-    <div class="segmented settings-segmented-control" role="group" aria-label={props.ariaLabel}>
-      <For each={props.options}>
-        {(option) => (
-          <button
-            type="button"
-            class="segment settings-segment"
-            role="checkbox"
-            aria-checked={hasValue(option.id) ? "true" : "false"}
-            classList={{ active: hasValue(option.id) }}
-            title={option.description}
-            onClick={() => toggle(option.id)}
-          >
-            {option.label}
-          </button>
-        )}
-      </For>
-    </div>
   );
 }
 

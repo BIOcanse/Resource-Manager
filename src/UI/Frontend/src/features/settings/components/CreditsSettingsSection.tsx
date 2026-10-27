@@ -41,7 +41,7 @@ export function CreditsSettingsSection(props: { text: SettingsTextBundle }) {
                 {(item) => (
                   <article class="settings-credit-item" style={{ "--credit-subjects": item.subjects.length }}>
                     <div class="settings-credit-title">
-                      <strong title={item.name}>{item.name}</strong>
+                      <strong data-full-content={item.name}>{item.name}</strong>
                       <span>{item.role}</span>
                     </div>
                     <For each={item.subjects}>
@@ -50,7 +50,7 @@ export function CreditsSettingsSection(props: { text: SettingsTextBundle }) {
                           <Show when={subject.name}>{(name) => <strong>{name()}</strong>}</Show>
                           <Show when={subject.description}>{(description) => <p>
                             <q cite={description().source}>{description().text}</q>
-                            <a class="settings-credit-source" href={description().source} title={description().source}
+                            <a class="settings-credit-source" href={description().source} data-full-content={description().source}
                               target="_blank" rel="noopener noreferrer" onClick={releasePointerFocus}>
                               {props.text.credits.sourceLabel}
                             </a>
@@ -59,7 +59,7 @@ export function CreditsSettingsSection(props: { text: SettingsTextBundle }) {
                         <For each={subject.links}>
                           {(link) => (
                             <a class="settings-credit-link" data-kind={link.kind} style={{ "grid-column": link.kind }} href={link.href}
-                              aria-label={link.accessibleName} title={link.accessibleName}
+                              aria-label={link.accessibleName} data-name-tooltip=""
                               target="_blank" rel="noopener noreferrer" onClick={releasePointerFocus}>
                               {link.label}
                             </a>

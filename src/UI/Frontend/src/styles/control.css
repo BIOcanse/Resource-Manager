@@ -341,14 +341,15 @@
 }
 
 /*
-  锁 / 叉 / 虚圈 / 下载这几个图标的外壳，只为了挂 title ——
-  svg 的 title 属性不弹提示，得由外面这层 span 来弹。
-  布局上完全透明：和它取代的那个图标占一样的位置。
+  锁 / 叉 / 虚圈 / 下载这几个图标的外壳：它就是这一项的说明按钮（HelpHint，图标换成锁），原因在按钮的说明弹层里。
+  布局上和它取代的勾选框占一样的位置：去掉问号按钮的固定 20 px 方块，只包住图标本身（图标自己 13 px 宽，右边留 4 px）。
 */
-.control-capability-lock-slot {
+.help-hint.control-capability-lock-slot {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: auto;
+  height: auto;
 }
 
 .control-editor-value {

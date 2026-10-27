@@ -1,4 +1,5 @@
 import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
+import { HelpHint, OptionsHelpHint } from "../../ui/primitives/HelpHint.tsx";
 import { localizedMetricLabel, resourceMetricBasis, resourceProcessDisplayName, softwareDisplayName } from "../../presentation/metricLabels.ts";
 import { createEffect, createMemo, createSignal, For, Index, onCleanup, Show } from "solid-js";
 import { ArrowDown, ArrowUp } from "lucide-solid";
@@ -305,7 +306,7 @@ function ResourceBarEditor(props: {
               classList={{ selected: selected() }}
               onClick={(event) => {
                 const target = event.target as Element;
-                if (!event.currentTarget.contains(target) || target.closest("input, .standard-select")) return;
+                if (!event.currentTarget.contains(target) || target.closest("input, .standard-select, .help-hint")) return;
                 setSelectedMetricId(selected() ? null : metricId);
               }}
             >
@@ -315,10 +316,13 @@ function ResourceBarEditor(props: {
                 checked={Boolean(bar())}
                 onChange={(event) => props.onToggleBar(metricId, event.currentTarget.checked)}
               />
-              <button type="button" class="resource-bar-select" aria-pressed={selected()} title={resourceMetricBasis(metricId)}>
+              <button type="button" class="resource-bar-select" aria-pressed={selected()}>
                 {label()}
                 <GpuNameNote metricId={metricId} names={props.gpuNames} />
               </button>
+              <Show when={resourceMetricBasis(metricId)}>
+                {(basis) => <HelpHint>{basis()}</HelpHint>}
+              </Show>
               <StandardSelect<"capacity" | "active">
                 value={normalizeResourceBarScaleMode(metricId, bar()?.scaleMode)}
                 disabled={!bar() || !supportsCapacity}
@@ -350,14 +354,17 @@ function ResourceBarEditor(props: {
                 }}>
                 <Index each={choices()}>
                   {(source, index) => (
-                    <RadioGroupItem value={`source-${index}`} class="segment"
-                      title={resourceBarText({ metricId, source: source(), processFieldName: null }, props.processFields,
-                        processSourceAdditivity(source(), props.processFields)).basis}>
+                    <RadioGroupItem value={`source-${index}`} class="segment">
                       {resourceBarSourceLabel(source(), props.processFields, automaticField(metricId))}
                     </RadioGroupItem>
                   )}
                 </Index>
               </RadioGroupRoot>
+              <OptionsHelpHint entries={choices().flatMap((source) => {
+                const basis = resourceBarText({ metricId, source, processFieldName: null }, props.processFields,
+                  processSourceAdditivity(source, props.processFields)).basis;
+                return basis ? [{ label: resourceBarSourceLabel(source, props.processFields, automaticField(metricId)), text: basis }] : [];
+              })} />
             </div>
           );
         }}
@@ -507,9 +514,14 @@ function ResourceBreakdownItem(props: {
       ref={props.reorder.item({ id: () => props.bar.metricId, enabled: () => props.editMode })}
     >
       <div class="resource-breakdown-header">
-        <strong title={props.bar.basis}>{label()}<GpuNameNote metricId={props.bar.metricId} names={props.gpuNames} /></strong>
-        <span title={props.bar.scaleMode === "active" ? uiText.resourceBreakdown.scaleActiveHint : uiText.resourceBreakdown.scaleCapacityHint}>
+        <strong>{label()}<GpuNameNote metricId={props.bar.metricId} names={props.gpuNames} /></strong>
+        <span class="with-help-hint">
           {resourceBarValueText(props.bar)} · {props.bar.scaleMode === "active" ? uiText.resourceBreakdown.scaleActive : uiText.resourceBreakdown.scaleCapacity}
+          {/* 条名的统计口径和刻度的含义：读数后面一个问号，两段。 */}
+          <HelpHint>
+            <Show when={props.bar.basis}>{(basis) => <p>{basis()}</p>}</Show>
+            <p>{props.bar.scaleMode === "active" ? uiText.resourceBreakdown.scaleActiveHint : uiText.resourceBreakdown.scaleCapacityHint}</p>
+          </HelpHint>
         </span>
         <Show when={props.editMode}>
           <span class="resource-breakdown-order-actions">
@@ -518,7 +530,7 @@ function ResourceBreakdownItem(props: {
               type="button"
               disabled={!props.canMoveBefore}
               aria-label={uiText.resourceBreakdownView.moveUp(label())}
-              title={uiText.resourceBreakdownView.moveUpTitle}
+              data-name-tooltip=""
               onClick={props.onMoveBefore}
             >
               <ArrowUp aria-hidden="true" size={15} />
@@ -528,7 +540,7 @@ function ResourceBreakdownItem(props: {
               type="button"
               disabled={!props.canMoveAfter}
               aria-label={uiText.resourceBreakdownView.moveDown(label())}
-              title={uiText.resourceBreakdownView.moveDownTitle}
+              data-name-tooltip=""
               onClick={props.onMoveAfter}
             >
               <ArrowDown aria-hidden="true" size={15} />

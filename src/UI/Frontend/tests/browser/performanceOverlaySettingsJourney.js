@@ -126,13 +126,15 @@ export default async function performanceOverlaySettingsJourney(page, baseUrl) {
     const ids = await rowsOf(panel).evaluateAll(rows => rows.map(row => row.dataset.softwareId));
     assert.deepEqual([...ids].sort(), ["frontend-harness.software", "overlay.injected.app", "overlay.removed.app"], `${language}: wrong rows ${ids}`);
     const injected = rowsOf(panel).filter({ hasText: "Injected Sample" });
-    assert.equal((await injected.locator(".settings-row-copy span").textContent()).trim(), [app.performanceOverlay.injected,
+    assert.equal((await injected.locator(".settings-row-copy span:not([role='note'])").textContent()).trim(), [app.performanceOverlay.injected,
       settings.performanceOverlay.metricCount(1), settings.performanceOverlay.position(app.performanceOverlay.bottomLeft)].join(" · "));
     const removed = panel.locator('.performance-overlay-row[data-software-id="overlay.removed.app"]');
     assert.equal((await removed.locator(".settings-row-copy strong").textContent()).trim(), "overlay.removed.app");
     const removedButton = removed.getByRole("button");
     assert.ok(await removedButton.isDisabled(), `${language}: a software missing from the list can still be opened`);
-    assert.equal(await removedButton.getAttribute("title"), settings.performanceOverlay.softwareMissing);
+    // 打不开的原因写在这一行的说明里（禁用的按钮收不到指针）。
+    assert.equal(await removedButton.getAttribute("title"), null);
+    assert.equal((await removed.locator(".settings-row-copy [role='note']").textContent()).trim(), settings.performanceOverlay.softwareMissing);
     screenshots.push(join(shots, `performance-overlay-mixed-${language}.png`));
     await panel.screenshot({ path: screenshots.at(-1) });
   }

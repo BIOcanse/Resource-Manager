@@ -49,6 +49,24 @@
   color: var(--control-disabled-text);
 }
 
+/* 不能用的项在名称下面写一行原因（StandardContextMenu 的 disabledReason）：小一号、次要色，太长就换行。 */
+.standard-context-menu-item:has(> .standard-context-menu-reason) {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1px;
+  padding-block: 4px;
+}
+
+.standard-context-menu-reason {
+  max-width: 320px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: normal;
+}
+
 .standard-context-menu-separator {
   height: 1px;
   margin: 4px 0;

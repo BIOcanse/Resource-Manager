@@ -25,7 +25,7 @@ export function TrustedAccessPendingBanner(props: {
             <span>{copy().requestsDescription}</span>
             <span>{copy().requestNamed(requests()[0]?.name ?? "")}</span>
           </div>
-          <span class="trusted-access-notification-count count-badge" title={copy().requestCount(requests().length)}>
+          <span class="trusted-access-notification-count count-badge" data-full-content={copy().requestCount(requests().length)}>
             <span aria-hidden="true">{requests().length}</span>
             <span class="sr-only">{copy().requestCount(requests().length)}</span>
           </span>

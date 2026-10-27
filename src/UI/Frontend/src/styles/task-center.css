@@ -184,6 +184,12 @@
   display: flex;
   align-items: flex-start;
   justify-content: flex-end;
+  gap: 2px;
+}
+
+/* 取消按钮旁的原因问号和按钮垂直居中对齐（图标按钮 34 px 高，问号 20 px：上边留 7 px）。 */
+.task-center-item-actions > .help-hint {
+  margin-top: 7px;
 }
 
 .task-center-empty {

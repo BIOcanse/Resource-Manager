@@ -169,7 +169,8 @@ textarea {
 .standard-select-popover,
 .standard-context-menu,
 .disk-usage-context-menu,
-.help-hint-popover {
+.help-hint-popover,
+.hover-tooltip {
   animation: motion-fade-in var(--motion-fast) var(--ease-decel);
 }
 
@@ -369,8 +370,8 @@ body:is([data-animations="smooth"], [data-animations="desktop"], [data-animation
   to { opacity: 0; transform: translateY(-6px); }
 }
 
-/* 小弹层（下拉、右键菜单、问号说明） */
-body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) [data-exit-ghost]:is(.standard-select-popover, .standard-context-menu, .disk-usage-context-menu, .help-hint-popover) {
+/* 小弹层（下拉、右键菜单、问号说明、名称提示和完整内容提示） */
+body:is([data-animations="smooth"], [data-animations="desktop"], [data-animations="terminal"]) [data-exit-ghost]:is(.standard-select-popover, .standard-context-menu, .disk-usage-context-menu, .help-hint-popover, .hover-tooltip) {
   animation: motion-sink-out var(--motion-fast) var(--ease-standard) forwards;
 }
 

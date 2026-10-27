@@ -93,6 +93,7 @@ const allJourneys = [
   ["resource-table-totals-locale", async (...args) => (await import("./resourceTableTotalsLocaleJourney.js")).default(...args)],
   ["resource-table-header-fit", async (...args) => (await import("./resourceTableHeaderFitJourney.js")).default(...args)],
   ["help-hint", async (...args) => (await import("./helpHintJourney.js")).default(...args)],
+  ["own-tooltips", async (...args) => (await import("./ownTooltipsJourney.js")).default(...args)],
   ["interface-number-locale", async (...args) => (await import("./interfaceNumberLocaleJourney.js")).default(...args)],
   ["automatic-animation", async (...args) => (await import("./automaticAnimationJourney.js")).default(...args)],
   ["shell-title-selection", async (...args) => (await import("./shellTitleSelectionJourney.js")).default(...args)],

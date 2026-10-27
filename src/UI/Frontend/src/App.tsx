@@ -14,6 +14,7 @@ import { ConfirmDialogHost, ToastHost } from "./components/AppFeedback";
 import { ManualSoftwareModal } from "./features/management/components/ManualSoftwareModal";
 import { MetricDependencyState, MetricModal } from "./features/monitor/MetricModal";
 import { StandardContextMenu } from "./components/StandardContextMenu";
+import { TooltipLayer } from "./ui/primitives/TooltipLayer.tsx";
 import { FrontendWorkProvider } from "./frontendWork/FrontendWorkContext";
 import { useFrontendWorkController } from "./frontendWork/useFrontendWorkController";
 import { frontendVisibilitySourceKinds, frontendWorkIds } from "./frontendWork/frontendWorkIds";
@@ -476,6 +477,7 @@ export default function App() {
       />
       <ConfirmDialogHost request={confirmQueue()[0] ?? null} onResolve={resolveConfirmDialog} />
       <ToastHost items={toasts()} onDismiss={dismissToast} />
+      <TooltipLayer />
       </>
       </FrontendReadIntervalsProvider>
       </AccessRequestSnapshotProvider>

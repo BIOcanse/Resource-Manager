@@ -39,7 +39,7 @@ export function createSoftwareContextMenuModel(
 {
   const hasProcess = normalizedProcessTargets(target).length > 0;
   const fileLocation = primaryFileLocation(target);
-  const systemActionUnavailableTitle = actions.allowSystemActions
+  const systemActionUnavailableReason = actions.allowSystemActions
     ? undefined
     : uiText.contextMenu.viewOnly;
   return {
@@ -52,7 +52,7 @@ export function createSoftwareContextMenuModel(
         id: "expand",
         label: target.expanded ? uiText.contextMenu.collapse : uiText.contextMenu.expand,
         disabled: !target.canExpand,
-        title: target.canExpand ? undefined : uiText.contextMenu.noExpandableGroup,
+        disabledReason: target.canExpand ? undefined : uiText.contextMenu.noExpandableGroup,
         onSelect: () => actions.onExpand(target)
       },
       {
@@ -60,7 +60,7 @@ export function createSoftwareContextMenuModel(
         label: uiText.contextMenu.endTask,
         danger: true,
         disabled: !actions.allowSystemActions || !hasProcess,
-        title: systemActionUnavailableTitle ?? (hasProcess ? undefined : uiText.contextMenu.noRunningProcess),
+        disabledReason: systemActionUnavailableReason ?? (hasProcess ? undefined : uiText.contextMenu.noRunningProcess),
         onSelect: () => actions.onTerminate(target)
       },
       {
@@ -68,7 +68,7 @@ export function createSoftwareContextMenuModel(
         label: uiText.contextMenu.createDump,
         separatorBefore: true,
         disabled: !actions.allowSystemActions || !hasProcess,
-        title: systemActionUnavailableTitle ?? (hasProcess ? undefined : uiText.contextMenu.noDumpProcess),
+        disabledReason: systemActionUnavailableReason ?? (hasProcess ? undefined : uiText.contextMenu.noDumpProcess),
         onSelect: () => actions.onCreateDump(target)
       },
       {
@@ -81,21 +81,21 @@ export function createSoftwareContextMenuModel(
         id: "file-location",
         label: uiText.contextMenu.openFileLocation,
         disabled: !actions.allowSystemActions || !fileLocation,
-        title: systemActionUnavailableTitle ?? (fileLocation ? undefined : uiText.contextMenu.noFileLocation),
+        disabledReason: systemActionUnavailableReason ?? (fileLocation ? undefined : uiText.contextMenu.noFileLocation),
         onSelect: () => actions.onOpenFileLocation(target)
       },
       {
         id: "search",
         label: uiText.contextMenu.onlineSearch,
         disabled: !actions.allowSystemActions || !target.name.trim(),
-        title: systemActionUnavailableTitle,
+        disabledReason: systemActionUnavailableReason,
         onSelect: () => actions.onSearchOnline(target)
       },
       {
         id: "properties",
         label: uiText.contextMenu.properties,
         disabled: !actions.allowSystemActions || !primaryPropertiesPath(target),
-        title: systemActionUnavailableTitle ?? (primaryPropertiesPath(target) ? undefined : uiText.contextMenu.noPropertiesPath),
+        disabledReason: systemActionUnavailableReason ?? (primaryPropertiesPath(target) ? undefined : uiText.contextMenu.noPropertiesPath),
         onSelect: () => actions.onProperties(target)
       }
     ]

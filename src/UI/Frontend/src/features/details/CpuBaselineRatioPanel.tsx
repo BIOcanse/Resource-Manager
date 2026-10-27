@@ -139,7 +139,7 @@ export function CpuBaselineRatioPanel(props: { runtimeEffectsEnabled: boolean })
           {(current) => (
             <>
               <div class="cpu-topology-meta">
-                <strong title={current().cpuName}>{current().cpuName}</strong>
+                <strong data-full-content={current().cpuName}>{current().cpuName}</strong>
               </div>
               <div class="smart-details-summary">
                 <BaselineTile
@@ -189,7 +189,7 @@ function BaselineTile(props: { label: string; value: string }) {
   return (
     <div class="smart-details-tile">
       <span>{props.label}</span>
-      <strong title={props.value}>{props.value}</strong>
+      <strong data-full-content={props.value}>{props.value}</strong>
     </div>
   );
 }

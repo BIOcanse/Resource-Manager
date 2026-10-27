@@ -1,4 +1,5 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
+import { helpHintText } from "./tooltipProbe.js";
 
 /**
  * GPU 调度模型按后端的 hasDedicatedMemoryMetrics 显示三种状态（简体中文）。夹具里 gpu.0 每种情况下都有显存读数
@@ -49,7 +50,7 @@ export default async function gpuDedicatedMemoryStatesJourney(page, baseUrl) {
       throw new Error(`hasDedicatedMemoryMetrics=${expected.capability}: ${JSON.stringify(actual)}; ${error}`);
     }
     const meter = page.locator(".gpu-pressure-grid .gpu-pressure-meter[data-dedicated-memory]");
-    const hint = await meter.getAttribute("title");
+    const hint = await helpHintText(meter.locator(".help-hint"));
     if (hint !== expected.hint) throw new Error(`hasDedicatedMemoryMetrics=${expected.capability}: hint ${JSON.stringify(hint)}`);
     results.push({ capability: expected.capability, state: expected.state, vram: expected.vram, position: expected.position });
   }

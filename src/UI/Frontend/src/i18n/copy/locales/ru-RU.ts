@@ -506,9 +506,7 @@ const ruRuAppCopy: AppCopy = {
     detailsOf: (name: string) => `Сведения: ${name}`,
     moreActionsOf: (name: string) => `Другие действия: ${name}`,
     currentSoftware: "эта программа",
-    rootNeedsCheck: "Требуется проверка корневого каталога",
-    details: "Сведения",
-    moreActions: "Другие действия"
+    rootNeedsCheck: "Требуется проверка корневого каталога"
   },
   softwareKind: {
     Unclassified: "Без категории",
@@ -794,9 +792,7 @@ const ruRuAppCopy: AppCopy = {
     showBar: (metric: string) => `Показывать «${metric}»`,
     scaleModeLabel: (metric: string) => `Режим шкалы: ${metric}`,
     moveUp: (label: string) => `Переместить ${label} вверх`,
-    moveUpTitle: "Переместить вверх",
     moveDown: (label: string) => `Переместить ${label} вниз`,
-    moveDownTitle: "Переместить вниз",
     unavailable: "Недоступно",
     processUsage: (name: string) => `Использование процессами ${name}`,
     metric: {
@@ -2239,7 +2235,6 @@ const ruRuAppCopy: AppCopy = {
     updatedAt: "Обновлено",
     identity: "Идентификатор",
     canceling: "Отмена",
-    cancelTask: "Отменить задачу",
     cancelWithTitle: (title: string, identity: string) => `Отменить ${title} (${identity})`,
     operation: {
       componentDownload: "Скачивание компонента",
@@ -2347,7 +2342,6 @@ const ruRuAppCopy: AppCopy = {
     detailTitle: (name: string) => `Сведения: ${name}`,
     version: (value: string) => `Версия ${value}`,
     unknown: "Неизвестно",
-    details: "Сведения",
     detailsOf: (name: string) => `Сведения: ${name}`,
     sharedRuntimePurpose: "Общая среда выполнения интерфейса, используемая программами на WebView2 на этом компьютере.",
     externalBrowserPurpose: "Открывает веб-интерфейсы для программ с поддержкой внешних браузеров; в качестве встроенной среды выполнения WebView2 не используется.",
