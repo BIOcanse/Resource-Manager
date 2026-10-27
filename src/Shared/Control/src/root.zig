@@ -17,5 +17,6 @@ comptime {
     if (@import("builtin").mode != .ReleaseSafe) @compileError("rm_control must compile in ReleaseSafe mode");
 }
 pub const json = @import("json.zig");
+pub const export_tree = @import("export_tree.zig");
 
 pub const readers = @import("readers.zig");

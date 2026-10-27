@@ -6,6 +6,8 @@ pub const Block = struct {
     uid: d.BlockUid,
     parent: ?d.BlockUid,
     inputs: []const d.BlockUid = &.{},
+    /// Development export metadata; the controller never reads this field.
+    launches_process: ?[]const u8 = null,
 };
 pub const PerBlockUse = struct {
     node: d.BlockUid,

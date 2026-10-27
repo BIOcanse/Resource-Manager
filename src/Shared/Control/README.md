@@ -32,6 +32,124 @@ Use `native_core_module` for `host_module` in NativeCore; the frontend supplies 
 
 `Controller(registry, tree)` checks the complete tree at compile time, using bounded loops rather than recursion. Inputs may cross branches and form data cycles.
 
+## Development tree export
+
+The exporter reads declarations only; it never creates a controller, calls a
+compute function, launches the product or inspects runtime state. Each process
+provides `process_name`, its development `registry`, and `profiles` (a slice of
+`rm_control.export_tree.Profile`, each with `name` and `tree`). Profiles may
+contain subsets whose union covers the registry. Blocks merge by UID and must have the same
+parent in every profile; a conflict reports the block's name. A release table
+without block, item or condition names is rejected with a development-table
+diagnostic. `tree.Block.launches_process` defaults to null and is export metadata
+only; the controller ignores it.
+
+JSON schema version 1 contains `process`, `registryVersion`, `profiles`,
+`program` (UID), `conditions` and `blocks`. Every block has `uid`, `name`,
+`parent` (UID or null), `children` (UIDs), `profiles`, and `declarations`.
+Each declaration has `profile`, `inputs` (UID/name pairs), `decidingCondition`
+(null for the process root), and `launchesProcess` (name or null). Keeping the
+declarations per profile preserves differing inputs, conditions and launch
+metadata without duplicating the block. Conditions contain `uid`, `name`,
+`perBlock`, named `items` (including effective block keys), `conditions` (named
+lower condition references) and `children` (named state reads). The top-level
+condition table also describes lower conditions, including their own reads.
+
+The allocation-free API is
+`export_tree.write(comptime registry, process, profiles, *json.Writer, *?[]const u8)`.
+The diagnostic borrows the offending name. Pass an empty writer buffer to
+measure, then allocate exactly `writer.len` bytes and write again. Errors do not
+write partial JSON. All walks are bounded by the declaration slices; there is no
+recursive traversal.
+
+In a process's `build.zig`, reuse the ReleaseSafe `control` module above and add:
+
+```zig
+const process_tree = b.createModule(.{
+    .root_source_file = b.path("src/export_tree.zig"),
+    .target = target,
+    .optimize = .ReleaseSafe,
+    .imports = &.{.{ .name = "rm_control", .module = control }},
+});
+const exporter = b.addExecutable(.{
+    .name = "export-control-tree",
+    .use_llvm = false, // build-only utility; reduces compile memory on x86_64
+    .root_module = b.createModule(.{
+        .root_source_file = b.path("../../Shared/Control/src/export_tree_main.zig"),
+        .target = target,
+        .optimize = .ReleaseSafe,
+        .imports = &.{
+            .{ .name = "rm_control", .module = control },
+            .{ .name = "process_tree", .module = process_tree },
+        },
+    }),
+});
+const run_exporter = b.addRunArtifact(exporter);
+// Inherit stdout: zig build export-tree writes only the per-process JSON there.
+b.step("export-tree", "Export development control declarations").dependOn(&run_exporter.step);
+```
+
+`src/export_tree.zig` is a small adapter over the process's existing tree:
+
+```zig
+const control = @import("rm_control");
+const source = @import("tree.zig");
+pub const process_name = "desktop";
+pub const registry = source.registry; // generated development table, with names
+pub const profiles: []const control.export_tree.Profile = &.{
+    .{ .name = "normal", .tree = source.normal_tree },
+    .{ .name = "minimal", .tree = source.minimal_tree },
+};
+```
+
+The build executable imports this adapter under the fixed name `process_tree`.
+It has no product entry points. This change does not wire steps into NativeCore
+or Desktop: add them after 5c and desktop-resident land; window follows 5d.
+
+From the repository root under pwsh 7:
+
+```powershell
+scripts/tools/Export-ControlTree.ps1 -TreeJson backend.json,desktop.json,window.json
+scripts/tools/Export-ControlTree.ps1 -TreeJson desktop.json,window.json -From window:MainWindow
+scripts/tools/Export-ControlTree.ps1 -TreeJson desktop.json,window.json -From desktop:42 -Profile normal -Format json
+scripts/tools/Export-ControlTree.ps1 -TreeJson backend.json,desktop.json,window.json -CompareWith target.md
+# Automatic discovery; builds go through foreground JobQueue, caches to ledger:
+scripts/tools/Export-ControlTree.ps1 -WorkRoot F:/code/Resource-Manager-Development/ledger-control-tree-export
+```
+
+`-TreeJson` accepts 1–64 per-process files. Omit it to run the `export-tree`
+step of backend (NativeCore) and desktop (Desktop), listed in one table at the
+top of the script. A missing build/step prints `no Zig declaration yet` to stderr
+and is not an error. Other build/export failures fail normally. Automatic builds
+use foreground JobQueue with `-j1`, a 4 GiB ceiling and a registered validation
+batch; `-WorkRoot` defaults to `.local`.
+Set it to the ledger for big caches. Successful and failed batches are completed
+after use; existing batches and processes are not closed or stopped.
+
+`-From` defaults to the software `Program` root and accepts `process:Name`, a
+globally unique name, or `process:UID`. The process program blocks are retained
+in per-process metadata but replaced in the stitched structure: unlaunched
+processes contribute their top-level blocks to Program; launched ones contribute
+them to their launching block. Duplicate launchers, unknown processes/parents
+and cycles fail with names. `-Profile` selects that profile's declarations;
+removing a parent or a launch removes the entire branch. Unknown profiles fail.
+
+`-Format text` uses exactly three columns per indent, `├─ ` / `└─ ` / `│  `,
+`process:Name`, then two spaces and the deciding condition name. If unfiltered
+profiles use different conditions, the comment joins their names with ` / `;
+JSON retains each declaration. `-Format json` emits a flat subtree, named parent
+and child references and per-process condition tables. The selected root has
+null parent. A process program UID/name also selects Program, which it represents.
+The `processes` metadata retains the original `programBlock` declaration and
+the complete condition table. No recursive serialization is needed for the tree.
+
+`-CompareWith` reads the first `control-tree` fenced block in Markdown (or a plain
+text tree). It reports target-only blocks, code-only blocks and different
+parents, ignoring comments and sibling order. Differences exit successfully;
+malformed input still fails. Use `-Format json` for `missingInCode`, `extraInCode`
+and `parentDiffers` arrays. Comparison applies to the selected subtree/profile.
+Input files are capped at 64 MiB, trees at 100,000 blocks and depth at 4096.
+
 ## Host calls
 
 ```zig
@@ -101,7 +219,24 @@ Run from this directory under pwsh 7 through the foreground JobQueue:
 
 ```powershell
 $env:ZIG_GLOBAL_CACHE_DIR = 'F:\code\Resource-Manager-Development\ledger-state-items-5b\zig-global-cache'
-& 'D:\Code\CommonAssets\Tools\JobQueue\JobQueue.ps1' -Action Run -Label 'claude: zig-control' -FilePath zig -ArgumentList @('build','test','--summary','all') -WorkingDirectory 'F:\code\Resource-Manager-Worktrees\zig-control\src\Shared\Control' -TimeoutMinutes 30
+& 'D:\Code\CommonAssets\Tools\JobQueue\JobQueue.ps1' -Action Run -Label 'claude: zig-control' -FilePath zig -ArgumentList @('build','test','-j1','--summary','all') -WorkingDirectory 'F:\code\Resource-Manager-Worktrees\zig-control\src\Shared\Control' -MemoryLimitGiB 4 -TimeoutMinutes 30
 ```
 
 The test step runs controller scenarios, conditions, item and reader storage, host presence, runtime-reader delivery, JSON tests and diagnostic-matching compile fixtures. Tests use `std.testing.allocator`. Product hosts and C ABI exports belong to 5c/5d.
+
+The export suite and build-only entry fixture have their own build file under
+`tests/Fixtures/ControlTreeExport` (relative to the repository root). Run it
+through the same foreground JobQueue with `@('build','test','export-tree','-j1',
+'--summary','all','--cache-dir', '<registered ledger scratch>/fixture-cache')`
+and `-MemoryLimitGiB 4`. Set `ZIG_GLOBAL_CACHE_DIR` to that batch's global cache.
+The fixture uses the Zig native backend (`use_llvm = false`) to fit the 4 GiB
+ceiling; it still compiles ReleaseSafe and exercises the actual exporter and
+stdout entry. It does not change the product build's compiler selection.
+
+The plain pwsh suite is `tests/ControlTreeExport.Tests.ps1 -WorkRoot <ledger>`.
+`-GeneratedJson <fixture-stdout.json>` additionally checks the actual Zig output
+in the stitching script. `-TestDiscovery` runs the default process table, so run
+that mode through JobQueue with a 4 GiB ceiling too. Use the ledger as that outer
+job's working directory to avoid claiming the product directories needed by the
+inner export jobs. Without `-TestDiscovery` the suite only reads/writes small
+fixtures and does not build Zig. It registers and completes its own workset.
