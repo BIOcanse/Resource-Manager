@@ -770,8 +770,9 @@
     overflow-x: hidden;
   }
 
-  body[data-page="details"] .app-shell > *,
-  body[data-page="details"] .page-host > * {
+  /* 只给可见的子元素铺满：页面标题和 .sr-only 是 1px 的绝对定位元素，铺满后从左边距处伸出外壳，外壳出现横向滚动。 */
+  body[data-page="details"] .app-shell > :not(.app-page-title, .sr-only),
+  body[data-page="details"] .page-host > :not(.app-page-title, .sr-only) {
     width: 100%;
     min-width: 0;
   }
