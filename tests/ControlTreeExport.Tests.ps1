@@ -114,9 +114,9 @@ try {
         $output=@(& (Join-Path $PSHOME 'pwsh.exe') -NoProfile -File $tool -WorkRoot $WorkRoot 2> $diagnostic)
         $exitCode=$LASTEXITCODE
         $message=Get-Content -LiteralPath $diagnostic -Raw
-        Assert-True ($exitCode -eq 0) "missing steps report successfully: $message"
-        Assert-True ($message -match 'backend: no Zig declaration yet' -and $message -match 'desktop: no Zig declaration yet') 'missing per-process exports reported'
-        Assert-True (($output -join "`n").Trim() -ceq 'Program') 'empty discovery prints software root'
+        Assert-True ($exitCode -eq 0) "backend discovery succeeds: $message"
+        Assert-True ($message -notmatch 'backend: no Zig declaration yet' -and $message -match 'desktop: no Zig declaration yet') 'backend export exists; desktop export remains absent'
+        Assert-True (($output -join "`n") -match 'backend:Backend') 'software root includes backend tree'
     }
     $outcome='success'
     "Control tree export: $script:count assertions passed."

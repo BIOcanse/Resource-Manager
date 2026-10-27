@@ -37,6 +37,55 @@ pub fn build(b: *std.Build) void {
     backend_tree_module.addImport("rm_control", control_module);
     backend_tree_module.addImport("backend_declarations", backend_declarations_module);
 
+    // The exporter is a separate development executable. Its named declarations
+    // never flow into the product library, including -Dstate-names=false builds.
+    const generate_export_declarations = b.addSystemCommand(&.{ powershell, "-NoProfile", "-File" });
+    generate_export_declarations.addFileArg(b.path("../../../scripts/build/Generate-StateItems.ps1"));
+    generate_export_declarations.addFileInput(b.path("../../../scripts/build/StateItemRegistry.psm1"));
+    generate_export_declarations.addArg("-Registry");
+    generate_export_declarations.addFileArg(b.path("../../../src/Shared/StateItems/state-items.json"));
+    generate_export_declarations.addArgs(&.{ "-Process", "backend", "-Language", "Zig", "-Names:$true", "-Output" });
+    const export_declarations_file = generate_export_declarations.addOutputFileArg("backend_export_declarations.zig");
+    const export_declarations = b.createModule(.{
+        .root_source_file = export_declarations_file,
+        .target = target,
+        .optimize = .ReleaseSafe,
+        .imports = &.{.{ .name = "rm_control", .module = control_module }},
+    });
+    const export_backend_tree = b.createModule(.{
+        .root_source_file = b.path("src/control/backend_tree.zig"),
+        .target = target,
+        .optimize = .ReleaseSafe,
+        .imports = &.{
+            .{ .name = "rm_control", .module = control_module },
+            .{ .name = "backend_declarations", .module = export_declarations },
+        },
+    });
+    const process_tree = b.createModule(.{
+        .root_source_file = b.path("src/control/export_tree.zig"),
+        .target = target,
+        .optimize = .ReleaseSafe,
+        .imports = &.{
+            .{ .name = "rm_control", .module = control_module },
+            .{ .name = "backend_tree", .module = export_backend_tree },
+        },
+    });
+    const exporter = b.addExecutable(.{
+        .name = "export-control-tree",
+        .use_llvm = false,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("../../Shared/Control/src/export_tree_main.zig"),
+            .target = target,
+            .optimize = .ReleaseSafe,
+            .imports = &.{
+                .{ .name = "rm_control", .module = control_module },
+                .{ .name = "process_tree", .module = process_tree },
+            },
+        }),
+    });
+    const run_exporter = b.addRunArtifact(exporter);
+    b.step("export-tree", "Export development control declarations").dependOn(&run_exporter.step);
+
     const native_core_module = b.createModule(.{
         .root_source_file = b.path("src/abi.zig"),
         .target = target,
