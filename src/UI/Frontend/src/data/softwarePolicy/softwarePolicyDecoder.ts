@@ -30,7 +30,8 @@ export function decodeSoftwarePolicy(value: unknown, path = "$"): GpuPlacementSo
     cpuMaximumOccupancyMode: requireOneOf(row.cpuMaximumOccupancyMode, `${path}.cpuMaximumOccupancyMode`, ["single_ccd", "all_cores"]),
     cpuManualExclusivePositionIds: requireNullable(row.cpuManualExclusivePositionIds, `${path}.cpuManualExclusivePositionIds`, requireStringArray),
     cpuManualLockedPositionIds: requireNullable(row.cpuManualLockedPositionIds, `${path}.cpuManualLockedPositionIds`, requireStringArray),
-    hostMemoryProtectionNoDump: requireBoolean(row.hostMemoryProtectionNoDump, `${path}.hostMemoryProtectionNoDump`)
+    hostMemoryProtectionNoDump: requireBoolean(row.hostMemoryProtectionNoDump, `${path}.hostMemoryProtectionNoDump`),
+    hostMemoryProtectionNeverTerminate: requireBoolean(row.hostMemoryProtectionNeverTerminate, `${path}.hostMemoryProtectionNeverTerminate`)
   };
 }
 export const softwarePolicyDecoder = defineResponseDecoder("software-policy.v1", decodeSoftwarePolicy);

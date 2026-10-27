@@ -1601,7 +1601,23 @@
 .memory-protection-reserve-editor { min-width: 0; display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .memory-protection-reserve-row { min-width: 0; display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto auto; align-items: end; gap: 8px 12px; }
 .memory-protection-size-readout { color: var(--muted); font-size: 12px; line-height: 34px; white-space: nowrap; }
+/* 生效状态和一次处理的组头：三栏铺满整行，跨整行的项（最近一次判断、选择依据）另起一行。
+   auto-fit 的空栏遇到跨整行的项不会收起，事实会挤在左边几条窄栏里，所以这两处写明三栏。 */
+.memory-protection-state .memory-protection-facts,
+.memory-protection-action > .memory-protection-facts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+/* 生效状态的标题后紧跟问号说明。 */
+.memory-protection-title { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+/* 最小进程增长量：字节数框和更新间隔的数字框同宽，右侧是同一数值的可读写法，底边对齐。 */
+.memory-protection-byte-control { min-width: 0; display: flex; align-items: end; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.memory-protection-byte-control .settings-number-field { width: 150px; }
+/* 进程白名单：每行一个可执行文件名或完整路径，后面是移除按钮。 */
+.memory-protection-protected-row { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px 12px; }
+/* 一次处理一组：组里是这次处理的各条记录，进程树的成员按后端顺序排在组内。 */
+.memory-protection-action > .memory-protection-list { margin-top: 2px; }
+.memory-protection-record[data-outcome="excluded"] .memory-protection-outcome { color: var(--muted); }
 @media (max-width: 760px) {
+  .memory-protection-state .memory-protection-facts,
+  .memory-protection-action > .memory-protection-facts { grid-template-columns: minmax(0, 1fr); }
   .memory-protection-reserve-row { grid-template-columns: minmax(0, 1fr) auto; }
   .memory-protection-location { grid-column: 1 / -1; }
 }

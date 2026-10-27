@@ -1,17 +1,13 @@
 import type { RequestClient } from "../../frontendRuntime/request/RequestClient.ts";
 import { RequestProblem } from "../../frontendRuntime/request/RequestProblem.ts";
-import { memoryProtectionStatusDecoder, normalRunningPointDecoder, nullableNormalRunningPointDecoder } from "./memoryProtectionDecoders.ts";
+import { memoryProtectionStatusDecoder, normalRunningPointDecoder } from "./memoryProtectionDecoders.ts";
 import type { HostMemoryProtectionStatus } from "./memoryProtectionTypes.ts";
 import { uiText } from "../../text.ts";
 
 type Client = Pick<RequestClient, "request">;
-export function getMemoryProtectionStatus(client: Client, signal?: AbortSignal) {
-  return client.request({ key: "memory-protection.status.get", url: "/api/memory-protection",
-    decoder: memoryProtectionStatusDecoder, fallbackError: uiText.misc.readSettingsFailed, signal, request: { method: "GET" } });
-}
-export function getNormalRunningPoint(client: Client, signal?: AbortSignal) {
-  return client.request({ key: "memory-protection.normal-running-point.get", url: "/api/memory-protection/normal-running-point",
-    decoder: nullableNormalRunningPointDecoder, fallbackError: uiText.misc.readSettingsFailed, signal, request: { method: "GET" } });
+/** One subscription carries status, record and normal running point frames; see memoryProtectionSubscriptionSource. */
+export function buildMemoryProtectionSubscriptionUrl(): string {
+  return "/api/memory-protection/subscribe";
 }
 export function createNormalRunningPoint(client: Client, signal?: AbortSignal) {
   return client.request({ key: "memory-protection.normal-running-point.create", url: "/api/memory-protection/normal-running-point",

@@ -169,6 +169,7 @@ const allJourneys = [
   ["memory-protection-settings", async (...args) => (await import("./memoryProtectionSettingsJourney.js")).default(...args)],
   ["memory-protection-no-dump", async (...args) => (await import("./memoryProtectionNoDumpJourney.js")).default(...args)],
   ["memory-protection-layout", async (...args) => (await import("./memoryProtectionLayoutJourney.js")).default(...args)],
+  ["memory-protection-events", async (...args) => (await import("./memoryProtectionEventsJourney.js")).default(...args)],
   ["performance-history", performanceHistoryJourney],
   ["theme-consistency", themeConsistencyJourney],
   ["page-tabs-consistency", pageTabsConsistencyJourney],

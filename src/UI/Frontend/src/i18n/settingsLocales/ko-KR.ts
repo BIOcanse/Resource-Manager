@@ -90,7 +90,8 @@ export default createSettingsLocale("ko-KR", {
     "partial": "저장됨. 실행 계획의 게시 또는 전달이 완료되지 않았습니다",
     "error": "저장 실패",
     "dirty": "저장되지 않음",
-    "conflict": "다른 곳에서 설정이 변경되었습니다. 저장 전에 다시 불러오세요"
+    "conflict": "다른 곳에서 설정이 변경되었습니다. 저장 전에 다시 불러오세요",
+    "invalidValueType": "저장 거부됨: 설정 값의 형식이 올바르지 않습니다"
   },
   "loadState": {
     "loading": "저장된 설정 불러오는 중…",

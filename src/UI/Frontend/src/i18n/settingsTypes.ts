@@ -71,6 +71,8 @@ export interface SettingsCopy {
     error: string;
     dirty: string;
     conflict: string;
+    /** The settings owner rejected a value of the wrong JSON type; the header adds the rejected path. */
+    invalidValueType: string;
   };
   loadState: {
     loading: string;

@@ -168,8 +168,8 @@ import {
   type MetricFieldQuery
 } from "../../data/metricFields/metricFieldSource.ts";
 import type { SourceFamily, SourceHandle } from "./SourceDescriptor.ts";
-import { getMemoryProtectionStatus, getNormalRunningPoint } from "../../data/memoryProtection/memoryProtectionApi.ts";
-import type { HostMemoryProtectionStatus, NormalRunningPoint } from "../../data/memoryProtection/memoryProtectionTypes.ts";
+import { createMemoryProtectionSubscriptionSource } from "../../data/memoryProtection/memoryProtectionSubscriptionSource.ts";
+import type { HostMemoryProtectionView } from "../../data/memoryProtection/memoryProtectionTypes.ts";
 import type { AiGatewayCredentialView } from "../../types.ts";
 import { getAiGatewayCredentials } from "../../data/aiGatewayCredentials.ts";
 import { getCpuBaselineRatio, type CpuBaselineRatioSettings } from "../../data/cpu/cpuBaselineRatioApi.ts";
@@ -179,8 +179,7 @@ import {
 } from "./SourceRegistry.ts";
 
 export interface FrontendSources {
-  readonly memoryProtection: SourceHandle<HostMemoryProtectionStatus>;
-  readonly normalRunningPoint: SourceHandle<NormalRunningPoint | null>;
+  readonly memoryProtection: CurrentValueSource<HostMemoryProtectionView>;
   readonly control: ReturnType<typeof createControlSources>;
   readonly loginStartup: SourceHandle<boolean>;
   readonly settingsReads: ReturnType<typeof createSettingsReadSources>;
@@ -249,17 +248,7 @@ export function createFrontendSources(
   subscriptionChannel: BackendSubscriptionChannel
 ): FrontendSources {
   return Object.freeze({
-    memoryProtection: sourceRegistry.define({
-      key: "memory-protection.status",
-      load: signal => getMemoryProtectionStatus(requestClient, signal),
-      retainLastGood: false
-    }),
-    normalRunningPoint: sourceRegistry.define({
-      key: "memory-protection.normal-running-point",
-      load: signal => getNormalRunningPoint(requestClient, signal),
-      retainLastGood: false,
-      selectCapturedAt: value => value?.at ?? null
-    }),
+    memoryProtection: createMemoryProtectionSubscriptionSource(subscriptionChannel),
     control: createControlSources(sourceRegistry, requestClient),
     loginStartup: createLoginStartupSource(sourceRegistry),
     settingsReads: createSettingsReadSources(sourceRegistry, requestClient),

@@ -91,7 +91,8 @@ export default createSettingsLocale("fr-FR", {
     "partial": "Enregistré ; la publication ou la transmission du plan d’exécution est incomplète",
     "error": "Échec de l'enregistrement",
     "dirty": "Non enregistré",
-    "conflict": "Paramètres modifiés ailleurs ; rechargez avant d’enregistrer"
+    "conflict": "Paramètres modifiés ailleurs ; rechargez avant d’enregistrer",
+    "invalidValueType": "Enregistrement refusé : une valeur de paramètre a un type incorrect"
   },
   "loadState": {
     "loading": "Chargement des paramètres enregistrés…",

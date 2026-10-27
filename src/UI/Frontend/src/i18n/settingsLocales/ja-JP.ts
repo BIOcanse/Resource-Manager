@@ -90,7 +90,8 @@ export default createSettingsLocale("ja-JP", {
     "partial": "保存済み。実行計画の公開または配信が完了していません",
     "error": "保存に失敗",
     "dirty": "未保存",
-    "conflict": "ほかの場所で設定が変更されました。保存前に再読み込みしてください"
+    "conflict": "ほかの場所で設定が変更されました。保存前に再読み込みしてください",
+    "invalidValueType": "保存が拒否されました：設定値の型が正しくありません"
   },
   "loadState": {
     "loading": "保存済みの設定を読み込み中…",

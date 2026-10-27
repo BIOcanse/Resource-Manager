@@ -4,17 +4,26 @@ import { cjkText } from "../../cjkSpacing.ts";
 // 后端原因码在 reasons 里逐项给出；带参数的原因码用函数，参数原样插入。认不出的原因码由界面原样显示。
 export const zhMemoryProtectionCopy = {
   memoryProtection: {
-    intro: "提交量达到触发阈值时，在正常运行点之后全部内存增长最多的进程中选一个处理：按处理方式先把它的私有内存转储到磁盘保留区，或直接结束。",
+    intro: "提交量达到触发阈值时，每次只处理一个对象：正常运行点之后增长量最大的进程达到最小进程增长量时，按处理方式处理这一个进程（先把私有内存转储到磁盘保留区，或直接结束）；达不到时，结束直接子进程内存增量最大的那个进程下面的整个进程树。进程白名单里的进程和设为“不结束”的软件不会被结束。",
     unsavedNote: "有未保存的更改。下方状态按已保存的设置显示，保存后由后端重新给出。",
     statusLoading: "正在读取内存保护状态…",
     statusUnavailable: "无法读取内存保护状态",
     statusUnavailableDetail: "没有显示替代数值。请恢复本地服务后重试。",
-    retry: "重试",
     valueNotProvided: "后端未提供",
     enabledTitle: "开启内存保护",
     enabledDescription: "开启需要正常运行点和完整建成的磁盘保留区；不满足时保存会被拒绝并写明原因。",
     effectiveTitle: "生效状态",
     effective: "保护正在生效",
+    effectiveHintLabel: "生效状态说明",
+    effectiveHint: "保护是否生效和磁盘保留区是否建成分开显示。保留区在运行中出错时保护仍然生效，之后选中的进程直接结束、不写切片；只有开启前保留区没有建成时，保护才不生效。",
+    thresholdState: "提交量与触发阈值",
+    thresholdStateReached: "已达到触发阈值",
+    thresholdStateBelow: "低于触发阈值",
+    thresholdStateUnknown: "无法判断：读不到提交量",
+    currentAction: "正在进行的处理",
+    currentActionNone: "无",
+    decisionTitle: "最近一次判断",
+    decisionNone: "暂无",
     inactive: (reason: string) => `未生效：${reason}`,
     rejected: (reason: string) => `保存被拒绝：${reason}`,
     thresholdTitle: "触发阈值",
@@ -33,6 +42,16 @@ export const zhMemoryProtectionCopy = {
       dumpThenTerminate: { label: "转储后结束", description: "冻结进程，把私有内存写入磁盘保留区，写完后结束进程。" },
       terminateOnly: { label: "只结束", description: "所有选中的进程都直接结束，不冻结、不写切片。" }
     },
+    minimumGrowthTitle: "最小进程增长量",
+    minimumGrowthDescription: "增长量最大的进程达到这个值时只处理这一个进程，达不到时改为结束进程树。比较的是相对正常运行点的增长量，不是进程的绝对大小。按字节输入。",
+    minimumGrowthLabel: "增长量（字节）",
+    protectedTitle: "进程白名单",
+    protectedDescription: "按可执行文件名（例如 explorer.exe）或完整路径列出永远不被结束的进程。只保护列出的进程本身，它的子进程照样会被结束。列表可以清空。",
+    protectedEntryLabel: (index: number) => cjkText`第${index}项`,
+    protectedEntry: "可执行文件名或完整路径",
+    addProtected: "添加进程",
+    removeProtected: "移除",
+    protectedEmpty: "进程白名单为空：除排除的候选外，任何进程都可能被结束。",
     pointTitle: "正常运行点",
     pointDescription: "记录当时的提交量和每个进程的全部内存，作为之后计算增长量的基线。新建的覆盖旧的；服务重启后需要重新创建。",
     pointNone: "没有正常运行点",
@@ -78,6 +97,20 @@ export const zhMemoryProtectionCopy = {
     recordDumpPaths: "切片文件（按顺序）",
     recordNoDumpPaths: "未写切片",
     recordReason: "原因",
+    recordDetail: "详情",
+    selectionRule: "选择依据",
+    selectionRules: {
+      "process-growth-at-least-minimum": "增长量最大的进程达到最小进程增长量",
+      "largest-direct-children-memory-growth": "直接子进程内存增量最大的进程树"
+    },
+    selectionProcessGrowth: "该进程的增长量",
+    selectionChildrenGrowth: "直接子进程内存增量",
+    selectionMinimum: "比较用的最小进程增长量",
+    actionId: "处理编号",
+    treeRoot: "树根",
+    treeRootStartKey: "树根的进程启动标识",
+    treeRootNameUnknown: "名称未知",
+    targetKinds: { process: "单个进程", processTree: "进程树" },
     outcomes: {
       "preflight-failed": "预检失败",
       "suspend-failed": "冻结失败",
@@ -85,7 +118,8 @@ export const zhMemoryProtectionCopy = {
       "completed-with-release-limit": "已完成，部分内存未能释放",
       completed: "已完成",
       "terminated-without-dump": "已结束，未转储",
-      "termination-failed": "结束失败"
+      "termination-failed": "结束失败",
+      excluded: "已跳过"
     },
     excludedTitle: "排除的候选",
     excludedDescription: "这些进程不参与选择，原因由后端给出。",
@@ -98,7 +132,9 @@ export const zhMemoryProtectionCopy = {
       "baseline-private-commit-unavailable": "正常运行点里没有该进程的全部内存",
       "cannot-open": "无法打开进程（受保护进程或权限不足），在本次正常运行点内不再选择",
       "identity-changed": "进程身份已改变",
-      "criticality-unavailable": "无法判断是否为系统关键进程"
+      "criticality-unavailable": "无法判断是否为系统关键进程",
+      "protected-process": "在进程白名单里",
+      "software-never-terminate": "软件设为不结束"
     },
     reasons: {
       disabled: "内存保护未开启",
@@ -139,7 +175,25 @@ export const zhMemoryProtectionCopy = {
       "software-no-dump": "按软件设置不转储",
       "private-commit-exceeds-reserve": "进程的全部内存超过剩余保留区",
       "minidump-exceeds-reserve": "切片按簇计算后超过剩余保留区",
-      "termination-not-observed": "未观察到进程结束"
+      "termination-not-observed": "未观察到进程结束",
+      "process-tree": "按进程树结束",
+      "reserve-unavailable": "磁盘保留区不可用",
+      "invalid-minimum-process-growth-bytes": "最小进程增长量必须是大于 0 的整数字节数",
+      "invalid-protected-processes": "进程白名单无效：每项必须是可执行文件名或完整路径，不能为空、不能有首尾空格，也不能重复",
+      "release-limit": "部分私有内存未能解除提交",
+      "slice-incomplete": "切片没有完整写入",
+      "preflight-failed": "转储前的预检失败",
+      "suspend-failed": "未能冻结进程",
+      "termination-failed": "未能结束进程",
+      "reserve-error": "磁盘保留区出错，未写切片"
+    },
+    decisionReasons: {
+      "commit-unavailable": "读不到提交量，没有处理",
+      "below-threshold": "提交量低于触发阈值，没有处理",
+      "process-handled": "已处理增长量最大的进程",
+      "process-tree-handled": "已结束一棵进程树",
+      "no-positive-child-memory-growth": "没有进程达到最小进程增长量，也没有直接子进程内存增量大于 0 的进程，没有处理",
+      "no-eligible-tree": "直接子进程内存增量大于 0 的进程下面都没有可以结束的进程，没有处理"
     },
     wholeClusters: (clusterBytes: string) => cjkText`大小不是分配单元（簇）的整数倍；该卷的簇大小为${clusterBytes}`,
     invalidLocation: (detail: string) => `保留区位置无效：${detail}`,
@@ -151,6 +205,8 @@ export const zhMemoryProtectionCopy = {
       noDump: "不转储",
       noDumpHint: "只在设置中的处理方式为“转储后结束”时起作用：此软件的进程直接结束，不冻结、不写切片，仍按增长量参与选择。",
       noDumpInactiveNow: "当前处理方式为“只结束”，所有进程都直接结束，此项现在不起作用。",
+      neverTerminate: "不结束",
+      neverTerminateHint: "主机内存保护永远不结束此软件的进程，与处理方式无关。在进程树里遇到时只跳过它本身，它的子进程照样会被结束。",
       modeUnavailable: "无法读取当前处理方式。"
     }
   }

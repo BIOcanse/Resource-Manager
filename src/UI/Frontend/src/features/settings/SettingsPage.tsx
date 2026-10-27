@@ -46,6 +46,8 @@ interface SettingsPageProps {
   saveState: "idle" | "saving" | "saved" | "constrained" | "partial" | "error" | "conflict";
   runtimeCapabilityConstrainedPaths: readonly string[];
   runtimeFailureCode: string | null;
+  /** The rejected value's JSON path that comes with invalid-settings-value-type. */
+  runtimeFailurePath: string | null;
   onReportsChange: (reports: NonNullable<AppSettings["reports"]>) => void;
   onMemoryProtectionChange: (memoryProtection: NonNullable<AppSettings["memoryProtection"]>) => void;
   /** 已保存的内存保护设置：分区据此判断有没有未保存的更改，保存提交后重新读后端状态。 */
@@ -158,6 +160,12 @@ export function SettingsPage(props: SettingsPageProps) {
       return text().saveState.constrained;
     }
     if (props.saveState === "error") {
+      // The settings owner's type rejection can name any section's value, so the header shows it with its path.
+      if (props.runtimeFailureCode === "invalid-settings-value-type") {
+        return props.runtimeFailurePath === null
+          ? text().saveState.invalidValueType
+          : `${text().saveState.invalidValueType} · ${props.runtimeFailurePath}`;
+      }
       return text().saveState.error;
     }
     if (props.saveState === "conflict") {

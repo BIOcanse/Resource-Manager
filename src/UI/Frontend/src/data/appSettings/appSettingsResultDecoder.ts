@@ -114,6 +114,10 @@ export const appSettingsResultDecoder =
         runtimeFailureCode: optional(
           record.runtimeFailureCode,
           "$.runtimeFailureCode",
+          (item, path) => requireNullable(item, path, requireString)),
+        runtimeFailurePath: optional(
+          record.runtimeFailurePath,
+          "$.runtimeFailurePath",
           (item, path) => requireNullable(item, path, requireString))
       };
       return Object.freeze(result) as CommittedAppSettingsResult;

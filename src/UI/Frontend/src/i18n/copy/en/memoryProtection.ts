@@ -3,17 +3,26 @@ import type { AppCopy } from "../zh/index.ts";
 
 export const enMemoryProtectionCopy: Pick<AppCopy, "memoryProtection"> = {
   memoryProtection: {
-    intro: "When commit charge reaches the trigger threshold, the process whose total memory has grown most since the normal running point is handled: depending on the action mode, its private memory is first dumped to the disk reserve, or the process is terminated directly.",
+    intro: "When commit charge reaches the trigger threshold, one target is handled at a time: if the process with the largest growth since the normal running point reaches the minimum process growth, that process alone is handled according to the action mode (its private memory is first dumped to the disk reserve, or it is terminated directly); otherwise the whole process tree under the process whose direct children's memory grew most is terminated. Processes on the process allow list and software set to “Never terminate” are never terminated.",
     unsavedNote: "There are unsaved changes. The status below reflects the saved settings and is reported again by the backend after saving.",
     statusLoading: "Reading memory protection status…",
     statusUnavailable: "Memory protection status could not be read",
     statusUnavailableDetail: "No substitute values are shown. Restore the local service and try again.",
-    retry: "Retry",
     valueNotProvided: "Not provided by the backend",
     enabledTitle: "Enable memory protection",
     enabledDescription: "Enabling requires a normal running point and a fully built disk reserve; otherwise saving is rejected with the reason.",
     effectiveTitle: "Effective state",
     effective: "Protection is in effect",
+    effectiveHintLabel: "About the protection state",
+    effectiveHint: "Whether protection is in effect and whether the disk reserve is built are shown separately. If the reserve fails while running, protection stays in effect and selected processes are terminated directly without a slice; protection is not in effect only when the reserve was not built before it was enabled.",
+    thresholdState: "Commit charge and threshold",
+    thresholdStateReached: "Trigger threshold reached",
+    thresholdStateBelow: "Below the trigger threshold",
+    thresholdStateUnknown: "Cannot be determined: commit charge is unreadable",
+    currentAction: "Action in progress",
+    currentActionNone: "None",
+    decisionTitle: "Most recent decision",
+    decisionNone: "None yet",
     inactive: (reason: string) => `Not in effect: ${reason}`,
     rejected: (reason: string) => `Saving was rejected: ${reason}`,
     thresholdTitle: "Trigger threshold",
@@ -32,6 +41,16 @@ export const enMemoryProtectionCopy: Pick<AppCopy, "memoryProtection"> = {
       dumpThenTerminate: { label: "Dump then terminate", description: "Suspends the process, writes its private memory to the disk reserve and terminates it afterwards." },
       terminateOnly: { label: "Terminate only", description: "Every selected process is terminated directly, without suspension or a slice." }
     },
+    minimumGrowthTitle: "Minimum process growth",
+    minimumGrowthDescription: "When the process with the largest growth reaches this value, only that process is handled; otherwise a process tree is terminated. The growth since the normal running point is compared, not the absolute size of the process. Enter the value in bytes.",
+    minimumGrowthLabel: "Growth (bytes)",
+    protectedTitle: "Process allow list",
+    protectedDescription: "Processes that are never terminated, listed by executable file name (for example explorer.exe) or full path. Only the listed process itself is protected; its child processes can still be terminated. The list may be empty.",
+    protectedEntryLabel: (index: number) => `Entry ${index}`,
+    protectedEntry: "Executable file name or full path",
+    addProtected: "Add process",
+    removeProtected: "Remove",
+    protectedEmpty: "The process allow list is empty: apart from excluded candidates, any process can be terminated.",
     pointTitle: "Normal running point",
     pointDescription: "Records the commit charge and the total memory of every process at that moment as the baseline for later growth. A new point replaces the previous one; it must be created again after the service restarts.",
     pointNone: "No normal running point",
@@ -77,6 +96,20 @@ export const enMemoryProtectionCopy: Pick<AppCopy, "memoryProtection"> = {
     recordDumpPaths: "Slice files (in order)",
     recordNoDumpPaths: "No slice written",
     recordReason: "Reason",
+    recordDetail: "Details",
+    selectionRule: "Selection basis",
+    selectionRules: {
+      "process-growth-at-least-minimum": "The process growth reached the minimum process growth",
+      "largest-direct-children-memory-growth": "The process tree with the largest direct-child memory growth"
+    },
+    selectionProcessGrowth: "Process growth",
+    selectionChildrenGrowth: "Direct-child memory growth",
+    selectionMinimum: "Minimum process growth compared",
+    actionId: "Action ID",
+    treeRoot: "Tree root",
+    treeRootStartKey: "Tree root start key",
+    treeRootNameUnknown: "Unknown name",
+    targetKinds: { process: "Single process", processTree: "Process tree" },
     outcomes: {
       "preflight-failed": "Preflight failed",
       "suspend-failed": "Suspension failed",
@@ -84,7 +117,8 @@ export const enMemoryProtectionCopy: Pick<AppCopy, "memoryProtection"> = {
       "completed-with-release-limit": "Completed; some memory could not be released",
       completed: "Completed",
       "terminated-without-dump": "Terminated without dump",
-      "termination-failed": "Termination failed"
+      "termination-failed": "Termination failed",
+      excluded: "Skipped"
     },
     excludedTitle: "Excluded candidates",
     excludedDescription: "These processes are not selected; the reasons are reported by the backend.",
@@ -97,7 +131,9 @@ export const enMemoryProtectionCopy: Pick<AppCopy, "memoryProtection"> = {
       "baseline-private-commit-unavailable": "The normal running point has no total memory for this process",
       "cannot-open": "The process could not be opened (protected process or insufficient rights); it is not selected again for this normal running point",
       "identity-changed": "The process identity changed",
-      "criticality-unavailable": "Whether the process is critical could not be determined"
+      "criticality-unavailable": "Whether the process is critical could not be determined",
+      "protected-process": "On the process allow list",
+      "software-never-terminate": "Software set to never terminate"
     },
     reasons: {
       disabled: "Memory protection is not enabled",
@@ -138,7 +174,25 @@ export const enMemoryProtectionCopy: Pick<AppCopy, "memoryProtection"> = {
       "software-no-dump": "No dump by software setting",
       "private-commit-exceeds-reserve": "The process's total memory exceeds the remaining reserve",
       "minidump-exceeds-reserve": "The slice, counted in whole clusters, exceeds the remaining reserve",
-      "termination-not-observed": "Process termination was not observed"
+      "termination-not-observed": "Process termination was not observed",
+      "process-tree": "Terminated as part of a process tree",
+      "reserve-unavailable": "The disk reserve is unavailable",
+      "invalid-minimum-process-growth-bytes": "The minimum process growth must be a whole number of bytes greater than 0",
+      "invalid-protected-processes": "The process allow list is invalid: each entry must be an executable file name or a full path, must not be empty or have leading or trailing spaces, and must not be repeated",
+      "release-limit": "Some private memory could not be decommitted",
+      "slice-incomplete": "The slice was not written completely",
+      "preflight-failed": "The pre-dump check failed",
+      "suspend-failed": "The process could not be suspended",
+      "termination-failed": "The process could not be terminated",
+      "reserve-error": "The disk reserve failed; no slice was written"
+    },
+    decisionReasons: {
+      "commit-unavailable": "Commit charge was unreadable; nothing was handled",
+      "below-threshold": "Commit charge was below the trigger threshold; nothing was handled",
+      "process-handled": "The process with the largest growth was handled",
+      "process-tree-handled": "A process tree was terminated",
+      "no-positive-child-memory-growth": "No process reached the minimum process growth and no process's direct children grew in memory; nothing was handled",
+      "no-eligible-tree": "No process tree whose root's direct children grew in memory contained a process that could be terminated; nothing was handled"
     },
     wholeClusters: (clusterBytes: string) => `The size is not a whole number of allocation units (clusters); the volume's cluster size is ${clusterBytes}`,
     invalidLocation: (detail: string) => `The reserve location is invalid: ${detail}`,
@@ -150,6 +204,8 @@ export const enMemoryProtectionCopy: Pick<AppCopy, "memoryProtection"> = {
       noDump: "No dump",
       noDumpHint: "Applies only when the action mode in Settings is “Dump then terminate”: this software's processes are terminated directly, without suspension or a slice, and are still selected by growth.",
       noDumpInactiveNow: "The current action mode is “Terminate only”: every process is terminated directly, so this option has no effect now.",
+      neverTerminate: "Never terminate",
+      neverTerminateHint: "Host memory protection never terminates this software's processes, regardless of the action mode. In a process tree only the process itself is skipped; its child processes can still be terminated.",
       modeUnavailable: "The current action mode could not be read."
     }
   }

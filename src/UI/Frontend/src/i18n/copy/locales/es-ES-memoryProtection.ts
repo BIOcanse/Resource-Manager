@@ -2,17 +2,26 @@ import { plural } from "../../plural.ts";
 import type { AppCopy } from "../index.ts";
 
 export const memoryProtection: AppCopy["memoryProtection"] = {
-  intro: "Cuando la memoria comprometida alcanza el umbral de activación, se trata el proceso cuya memoria total más ha crecido desde el punto de funcionamiento normal: según el modo de actuación, primero se vuelca su memoria privada en la reserva de disco o se termina el proceso directamente.",
+  intro: "Cuando la memoria comprometida alcanza el umbral de activación, se trata un solo objetivo cada vez: si el proceso con mayor crecimiento desde el punto de funcionamiento normal alcanza el crecimiento mínimo, solo se trata ese proceso según el modo de actuación (primero se vuelca su memoria privada en la reserva de disco o se termina directamente); en caso contrario, se termina todo el árbol de procesos situado bajo el proceso cuyos procesos hijos directos más han crecido en memoria. Los procesos de la lista de procesos permitidos y el software configurado como «No terminar» nunca se terminan.",
   unsavedNote: "Hay cambios sin guardar. El estado siguiente refleja la configuración guardada y el servicio lo vuelve a proporcionar después de guardar.",
   statusLoading: "Leyendo el estado de la protección de memoria…",
   statusUnavailable: "No se pudo leer el estado de la protección de memoria",
   statusUnavailableDetail: "No se muestran valores sustitutivos. Restablezca el servicio local e inténtelo de nuevo.",
-  retry: "Reintentar",
   valueNotProvided: "No proporcionado por el servicio",
   enabledTitle: "Activar la protección de memoria",
   enabledDescription: "Para activarla se necesitan un punto de funcionamiento normal y una reserva de disco completamente creada; si no se cumple, el guardado se rechaza indicando el motivo.",
   effectiveTitle: "Estado de aplicación",
   effective: "La protección está en vigor",
+  effectiveHintLabel: "Información sobre el estado de la protección",
+  effectiveHint: "Se muestra por separado si la protección está en vigor y si la reserva de disco está creada. Si la reserva falla durante el funcionamiento, la protección sigue en vigor y los procesos seleccionados se terminan directamente sin volcado; la protección solo deja de estar en vigor cuando la reserva no se creó antes de activarla.",
+  thresholdState: "Memoria comprometida y umbral",
+  thresholdStateReached: "Umbral de activación alcanzado",
+  thresholdStateBelow: "Por debajo del umbral de activación",
+  thresholdStateUnknown: "No se puede determinar: la memoria comprometida no se puede leer",
+  currentAction: "Actuación en curso",
+  currentActionNone: "Ninguna",
+  decisionTitle: "Última decisión",
+  decisionNone: "Todavía ninguna",
   inactive: (reason: string) => `No está en vigor: ${reason}`,
   rejected: (reason: string) => `Se rechazó el guardado: ${reason}`,
   thresholdTitle: "Umbral de activación",
@@ -31,6 +40,16 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
     dumpThenTerminate: { label: "Volcar y terminar", description: "Suspende el proceso, escribe su memoria privada en la reserva de disco y después termina el proceso." },
     terminateOnly: { label: "Solo terminar", description: "Todos los procesos seleccionados se terminan directamente, sin suspenderlos ni escribir fragmentos." }
   },
+  minimumGrowthTitle: "Crecimiento mínimo de un proceso",
+  minimumGrowthDescription: "Cuando el proceso con mayor crecimiento alcanza este valor, solo se trata ese proceso; en caso contrario, se termina un árbol de procesos. Se compara el crecimiento desde el punto de funcionamiento normal, no el tamaño absoluto del proceso. Introduzca el valor en bytes.",
+  minimumGrowthLabel: "Crecimiento (bytes)",
+  protectedTitle: "Lista de procesos permitidos",
+  protectedDescription: "Procesos que nunca se terminan, indicados por nombre de archivo ejecutable (por ejemplo, explorer.exe) o ruta completa. Solo se protege el propio proceso indicado; sus procesos hijos pueden terminarse. La lista puede quedar vacía.",
+  protectedEntryLabel: (index: number) => `Entrada ${index}`,
+  protectedEntry: "Nombre de archivo ejecutable o ruta completa",
+  addProtected: "Añadir proceso",
+  removeProtected: "Quitar",
+  protectedEmpty: "La lista de procesos permitidos está vacía: salvo los candidatos excluidos, cualquier proceso puede terminarse.",
   pointTitle: "Punto de funcionamiento normal",
   pointDescription: "Registra la memoria comprometida y la memoria total de cada proceso en ese momento como referencia para calcular el crecimiento posterior. Un punto nuevo sustituye al anterior; debe volver a crearse después de reiniciar el servicio.",
   pointNone: "No hay ningún punto de funcionamiento normal",
@@ -76,6 +95,20 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
   recordDumpPaths: "Archivos de fragmento (en orden)",
   recordNoDumpPaths: "No se escribió ningún fragmento",
   recordReason: "Motivo",
+  recordDetail: "Detalles",
+  selectionRule: "Criterio de selección",
+  selectionRules: {
+    "process-growth-at-least-minimum": "El crecimiento del proceso alcanzó el crecimiento mínimo",
+    "largest-direct-children-memory-growth": "Árbol de procesos con el mayor crecimiento de memoria de los procesos hijos directos"
+  },
+  selectionProcessGrowth: "Crecimiento del proceso",
+  selectionChildrenGrowth: "Crecimiento de memoria de los procesos hijos directos",
+  selectionMinimum: "Crecimiento mínimo comparado",
+  actionId: "Identificador de actuación",
+  treeRoot: "Raíz del árbol",
+  treeRootStartKey: "Identificador de inicio de la raíz",
+  treeRootNameUnknown: "Nombre desconocido",
+  targetKinds: { process: "Proceso individual", processTree: "Árbol de procesos" },
   outcomes: {
     "preflight-failed": "Error en la comprobación previa",
     "suspend-failed": "Error al suspender",
@@ -83,7 +116,8 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
     "completed-with-release-limit": "Completado; parte de la memoria no se pudo liberar",
     completed: "Completado",
     "terminated-without-dump": "Terminado sin volcado",
-    "termination-failed": "Error al terminar"
+    "termination-failed": "Error al terminar",
+    excluded: "Omitido"
   },
   excludedTitle: "Candidatos excluidos",
   excludedDescription: "Estos procesos no se seleccionan; el servicio proporciona los motivos.",
@@ -96,7 +130,9 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
     "baseline-private-commit-unavailable": "El punto de funcionamiento normal no contiene la memoria total de este proceso",
     "cannot-open": "No se pudo abrir el proceso (proceso protegido o permisos insuficientes); no se vuelve a seleccionar durante este punto de funcionamiento normal",
     "identity-changed": "La identidad del proceso ha cambiado",
-    "criticality-unavailable": "No se pudo determinar si es un proceso crítico del sistema"
+    "criticality-unavailable": "No se pudo determinar si es un proceso crítico del sistema",
+    "protected-process": "En la lista de procesos permitidos",
+    "software-never-terminate": "Software configurado como «No terminar»"
   },
   reasons: {
     disabled: "La protección de memoria no está activada",
@@ -137,7 +173,25 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
     "software-no-dump": "Sin volcado por la configuración del programa",
     "private-commit-exceeds-reserve": "La memoria total del proceso supera la reserva restante",
     "minidump-exceeds-reserve": "El fragmento, contado en clústeres completos, supera la reserva restante",
-    "termination-not-observed": "No se observó la terminación del proceso"
+    "termination-not-observed": "No se observó la terminación del proceso",
+    "process-tree": "Terminado como parte de un árbol de procesos",
+    "reserve-unavailable": "La reserva de disco no está disponible",
+    "invalid-minimum-process-growth-bytes": "El crecimiento mínimo debe ser un número entero de bytes mayor que 0",
+    "invalid-protected-processes": "La lista de procesos permitidos no es válida: cada entrada debe ser un nombre de archivo ejecutable o una ruta completa, no puede estar vacía ni tener espacios al principio o al final, y no puede repetirse",
+    "release-limit": "No se pudo anular el compromiso de una parte de la memoria privada",
+    "slice-incomplete": "El fragmento no se escribió por completo",
+    "preflight-failed": "Error en la comprobación previa al volcado",
+    "suspend-failed": "No se pudo suspender el proceso",
+    "termination-failed": "No se pudo terminar el proceso",
+    "reserve-error": "Error en la reserva de disco; no se escribió ningún fragmento"
+  },
+  decisionReasons: {
+    "commit-unavailable": "No se pudo leer la memoria comprometida; no se trató nada",
+    "below-threshold": "La memoria comprometida estaba por debajo del umbral de activación; no se trató nada",
+    "process-handled": "Se trató el proceso con mayor crecimiento",
+    "process-tree-handled": "Se terminó un árbol de procesos",
+    "no-positive-child-memory-growth": "Ningún proceso alcanzó el crecimiento mínimo y ningún proceso tuvo procesos hijos directos que crecieran en memoria; no se trató nada",
+    "no-eligible-tree": "Ningún árbol de procesos cuya raíz tiene procesos hijos directos que crecieron en memoria contenía un proceso que pudiera terminarse; no se trató nada"
   },
   wholeClusters: (clusterBytes: string) => `El tamaño no es un múltiplo entero de la unidad de asignación (clúster); el tamaño de clúster del volumen es ${clusterBytes}`,
   invalidLocation: (detail: string) => `La ubicación de la reserva no es válida: ${detail}`,
@@ -149,6 +203,8 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
     noDump: "Sin volcado",
     noDumpHint: "Solo se aplica cuando el modo de actuación de la configuración es «Volcar y terminar»: los procesos de este programa se terminan directamente, sin suspenderlos ni escribir fragmentos, y siguen seleccionándose según su crecimiento.",
     noDumpInactiveNow: "El modo de actuación actual es «Solo terminar»: todos los procesos se terminan directamente, por lo que esta opción no tiene efecto ahora.",
+    neverTerminate: "No terminar",
+    neverTerminateHint: "La protección de memoria del equipo nunca termina los procesos de este software, sea cual sea el modo de actuación. En un árbol de procesos solo se omite el propio proceso; sus procesos hijos pueden terminarse.",
     modeUnavailable: "No se pudo leer el modo de actuación actual."
   }
 };

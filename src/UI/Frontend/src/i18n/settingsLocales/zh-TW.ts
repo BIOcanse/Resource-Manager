@@ -89,7 +89,8 @@ export default createSettingsLocale("zh-TW", {
     "partial": "已儲存，執行計畫尚未完成發布或投遞",
     "error": "儲存失敗",
     "dirty": "未儲存",
-    "conflict": "設定已在其他位置更新，請重新載入"
+    "conflict": "設定已在其他位置更新，請重新載入",
+    "invalidValueType": "儲存遭拒：設定值的類型不符合要求"
   },
   "loadState": {
     "loading": "正在讀取已儲存設定…",

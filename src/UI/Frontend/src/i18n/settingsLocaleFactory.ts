@@ -27,7 +27,8 @@ const zhCnSettingsCopy: SettingsCopy = {
     partial: "已保存，运行计划尚未完成发布或投递",
     error: "保存失败",
     dirty: "未保存",
-    conflict: "设置已在其他位置更新，请重新加载"
+    conflict: "设置已在其他位置更新，请重新加载",
+    invalidValueType: "保存被拒绝：设置值的类型不符合要求"
   },
   loadState: {
     loading: "正在读取已保存设置…",
@@ -435,7 +436,8 @@ const enSettingsCopy: SettingsCopy = {
     partial: "Saved; runtime plan publication or delivery is incomplete",
     error: "Save failed",
     dirty: "Unsaved",
-    conflict: "Settings changed elsewhere; reload before saving"
+    conflict: "Settings changed elsewhere; reload before saving",
+    invalidValueType: "Save rejected: a settings value has the wrong type"
   },
   loadState: {
     loading: "Loading committed settings…",

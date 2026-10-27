@@ -9,7 +9,7 @@ import usabilityProbe from "./usabilityProbe.js";
 // 主机内存保护两处界面在九种语言、1280×800 和窄宽度 800×600 下都不溢出：文字不超出所在区域、不被截断，
 // 页面和分区都不出现横向滚动，所有可见输入都有名称。zh-CN 和 en-US 顺带截取主要状态的页面截图。
 const viewports = [{ width: 1280, height: 800 }, { width: 800, height: 600 }];
-const settingsScenarios = ["all-outcomes", "reserve-partial-cluster", "commit-unavailable"];
+const settingsScenarios = ["all-outcomes", "reserve-partial-cluster", "commit-unavailable", "tree-actions"];
 const shotLanguages = new Set(["zh-CN", "en-US"]);
 
 export default async function memoryProtectionLayoutJourney(page, baseUrl) {
@@ -52,7 +52,7 @@ export default async function memoryProtectionLayoutJourney(page, baseUrl) {
     await page.getByRole("button", { name: settings.sections.memoryProtection, exact: true }).click();
     await page.getByText(app.memoryProtection.intro, { exact: true }).waitFor();
     await page.locator(".memory-protection-effective").waitFor();
-    if (name === "all-outcomes") await page.locator(".memory-protection-record").first().waitFor();
+    if (name === "all-outcomes" || name === "tree-actions") await page.locator(".memory-protection-record").first().waitFor();
     await waitForContentSettled(page);
   }
   async function openSoftware(language, name) {
@@ -73,10 +73,9 @@ export default async function memoryProtectionLayoutJourney(page, baseUrl) {
   }
   // 只滚动设置分区自己（滚动条所在的那一层），不让外层页面跟着被滚走。
   async function scrollPanelTo(selector) {
+    // 滚动的是分区外面的某一层容器，不是分区本身：让目标自己滚到可见区顶端。
     await page.evaluate(selector => {
-      const panel = document.querySelector(".memory-protection-settings");
-      const target = panel?.querySelector(selector);
-      if (panel && target) panel.scrollTop += target.getBoundingClientRect().top - panel.getBoundingClientRect().top;
+      document.querySelector(".memory-protection-settings")?.querySelector(selector)?.scrollIntoView({ block: "start" });
     }, selector);
   }
   async function expectFits(where, selector, boundary) {
@@ -130,6 +129,9 @@ export default async function memoryProtectionLayoutJourney(page, baseUrl) {
       await memoryProtectionShot(page, `settings-${language}-all-outcomes-full`, { tall: true });
       await scrollPanelTo(".memory-protection-records");
       await memoryProtectionShot(page, `settings-${language}-all-outcomes-records`);
+      await openSettings(language, "tree-actions");
+      await scrollPanelTo(".memory-protection-records");
+      await memoryProtectionShot(page, `settings-${language}-tree-actions-records`);
       for (const name of ["disabled-ready", "terminate-only"]) {
         await openSoftware(language, name);
         await memoryProtectionShot(page, `software-${language}-${name === "disabled-ready" ? "dump-then-terminate" : name}`);

@@ -224,6 +224,9 @@ const managementInventoryRevisionSubscribers = new Set();
 const subscriptionChannelResponses = new Set();
 const productUpdateStatusSubscribers = new Set();
 const kernelLeakReportSubscribers = new Set();
+// /api/memory-protection/subscribe：和后端一样按 type 分帧。订阅时依次重放 status、records、normalRunningPoint；
+// 之后状态每次变化发 status，每条新增或更新的记录发一个 record，正常运行点创建、替换、清除时发 normalRunningPoint。
+const memoryProtectionSubscribers = new Set();
 // 后端帧的真实形状（codex/update-notice，与 GET /api/updates/product/status 相同）。
 const defaultProductUpdateStatus = Object.freeze({
   stage: "idle", targetVersion: null, workspace: null, error: null, updatedAt: "2026-10-25T19:00:00+00:00",
@@ -244,7 +247,7 @@ let targetedRecordingSequence = 0;
 let cpuBaselineOverrideRatio = null;
 const targetedRecordings = new Map();
 const defaultAppSettings = {
-  version: "1.0.36",
+  version: "1.0.37",
   memoryProtection: defaultMemoryProtectionSettings(),
   performance: { gpuOverflowUsagePercent: 95, gpuOverflowDedicatedMemoryPercent: 80, realtimeActionBudgetMode: "fixed", realtimeActionBudgetCount: 32, realtimeActionBudgetPercent: 5 },
   reports: { ruleOverrides: [] },
@@ -740,10 +743,15 @@ async function handleApi(request, response, url) {
     return json(response, 200, memoryProtection.status());
   }
   if (path === "/api/memory-protection/normal-running-point" && ["GET", "POST"].includes(request.method)) {
-    return json(response, 200, request.method === "GET" ? memoryProtection.readPoint() : memoryProtection.createPoint());
+    if (request.method === "GET") return json(response, 200, memoryProtection.readPoint());
+    const created = memoryProtection.createPoint();
+    publishMemoryProtectionStatus();
+    publishMemoryProtectionPoint();
+    return json(response, 200, created);
   }
   if (path === "/api/memory-protection/reserve/rebuild" && request.method === "POST") {
     const status = memoryProtection.rebuild();
+    publishMemoryProtectionStatus();
     return json(response, status.reserve.built ? 200 : 409, status);
   }
   if (path === "/api/settings/app" || (path === "/api/memory-protection" && request.method === "PATCH")) {
@@ -772,15 +780,19 @@ async function handleApi(request, response, url) {
         || patch.expectedRevision !== scenario.settingsRevision) {
         return json(response, 409, appSettingsResult("revisionConflict"));
       }
+      const typeProblemPath = invalidMemoryProtectionPatch(patch.changes) ?? settingsValueTypeProblem(patch.changes);
+      if (typeProblemPath !== null) {
+        return json(response, 409, { ...appSettingsResult("rejectedBeforeCommit"),
+          runtimeFailureCode: "invalid-settings-value-type", runtimeFailurePath: typeProblemPath });
+      }
       if (Object.hasOwn(patch.changes, "memoryProtection")) {
-        const patchProblem = invalidMemoryProtectionPatch(patch.changes);
-        if (patchProblem) return json(response, 400, { error: patchProblem });
         const memoryProblem = memoryProtection.validate({ ...appSettings.memoryProtection, ...patch.changes.memoryProtection });
         if (memoryProblem) return json(response, 409, { ...appSettingsResult("rejectedBeforeCommit"), runtimeFailureCode: memoryProblem });
       }
       mergeRecord(appSettings, patch.changes);
       if (appSettings.memoryProtection) appSettings.memoryProtection.reserves ??= [];
       if (Object.hasOwn(patch.changes, "memoryProtection")) memoryProtection.prepare();
+      publishMemoryProtectionStatus();
       scenario.settingsRevision = nextSettingsRevision(scenario.settingsRevision);
       scenario.debugMode = appSettings.debug?.debugModeEnabled === true;
       appSettingsRuntimeDisposition = scenario.settingsRuntimeDisposition;
@@ -797,6 +809,7 @@ async function handleApi(request, response, url) {
       appSettings.memoryProtection ??= defaultMemoryProtectionSettings();
       appSettings.memoryProtection.reserves ??= [];
       memoryProtection.prepare();
+      publishMemoryProtectionStatus();
       scenario.settingsRevision = nextSettingsRevision(scenario.settingsRevision);
       scenario.debugMode = appSettings.debug?.debugModeEnabled === true;
       appSettingsRuntimeDisposition = scenario.settingsRuntimeDisposition;
@@ -1565,6 +1578,26 @@ function applyScenarioPatch(patch) {
   if (patch.displayEdid === "typex" && !recordedTypeXState) throw new Error("TypeX requires real RM_EDID_UI_TYPEX_STATE_JSON output; no fallback");
   Object.assign(scenario, patch);
   if (Object.hasOwn(patch, "memoryProtection")) memoryProtection.scenario(patch.memoryProtection);
+  // 测试用：下一次重放带的记录上限（换场景后恢复 64）。
+  if (Object.hasOwn(patch, "memoryProtectionRecordLimit")) memoryProtection.setRecordLimit(patch.memoryProtectionRecordLimit);
+  // 换场景、改上限相当于后端重启后重新订阅：已有订阅收到完整重放。
+  if (Object.hasOwn(patch, "memoryProtection") || Object.hasOwn(patch, "memoryProtectionRecordLimit")) replayMemoryProtection();
+  // 测试用：照后端 Begin/Finish 的方式发布当前处理编号和最近一次判断（{ decisionReason?, currentActionId? }）。
+  if (Object.hasOwn(patch, "memoryProtectionDecision")) {
+    memoryProtection.publishDecision(patch.memoryProtectionDecision);
+    publishMemoryProtectionStatus();
+  }
+  // 测试用：按处理事件发布新增或更新的记录（字段缺省见 memoryProtectionFixture 的 upsertRecord），一条一帧。
+  for (const fields of patch.memoryProtectionRecords ?? []) {
+    const record = memoryProtection.upsertRecord(fields);
+    publishMemoryProtectionFrame({ type: "record", record });
+  }
+  // 测试用：清除正常运行点（HostMemoryProtectionService.ClearPointAsync），发布 null 和新的状态。
+  if (patch.memoryProtectionClearPoint === true) {
+    memoryProtection.clearPoint();
+    publishMemoryProtectionStatus();
+    publishMemoryProtectionPoint();
+  }
   // 启动模块登记的起始值（[{ softwareId, moduleIds }]），和界面经原生桥保存的登记同一份。
   for (const selection of patch.startupModuleSelections ?? []) {
     startupModuleSelections.set(selection.softwareId.toLowerCase(), { softwareId: selection.softwareId, moduleIds: [...selection.moduleIds].sort() });
@@ -1635,6 +1668,59 @@ function currentProductUpdateStatus() {
     : { ...defaultProductUpdateStatus, ...structuredClone(scenario.productUpdateStatus) };
 }
 
+function publishMemoryProtectionFrame(frame) {
+  for (const subscriber of [...memoryProtectionSubscribers]) writeMemoryProtectionFrame(subscriber, frame);
+}
+
+function publishMemoryProtectionStatus() {
+  publishMemoryProtectionFrame({ type: "status", status: memoryProtection.liveStatus() });
+}
+
+function publishMemoryProtectionPoint() {
+  publishMemoryProtectionFrame({ type: "normalRunningPoint", normalRunningPoint: memoryProtection.readPoint() });
+}
+
+// SubscriptionChannelEndpoints 的重放顺序：status、records（最新的在前）、normalRunningPoint。
+function replayMemoryProtectionTo(subscriber) {
+  writeMemoryProtectionFrame(subscriber, { type: "status", status: memoryProtection.liveStatus() });
+  writeMemoryProtectionFrame(subscriber, { type: "records", ...memoryProtection.records() });
+  writeMemoryProtectionFrame(subscriber, { type: "normalRunningPoint", normalRunningPoint: memoryProtection.readPoint() });
+}
+
+function replayMemoryProtection() {
+  for (const subscriber of [...memoryProtectionSubscribers]) replayMemoryProtectionTo(subscriber);
+}
+
+function writeMemoryProtectionFrame(subscriber, frame) {
+  const { response, requestUrl, write } = subscriber;
+  if (response.destroyed || response.writableEnded) return;
+  write(frame);
+  recordLogicalPublication(requestUrl);
+}
+
+// 设置的统一类型检查（AppSettingsPatch）：改动的值和当前设置的 JSON 类型不符时，整次改动以
+// invalid-settings-value-type 拒绝，并给出第一个不符的值的路径。当前值为 null 或不存在的字段、改成 null 的值
+// 不在这里检查（内存保护分区的删除由 invalidMemoryProtectionPatch 处理，其余分区沿用各自已有的处理）。
+function settingsValueTypeProblem(changes) {
+  const kind = value => value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
+  const pending = [{ path: "$", patch: changes, current: appSettings }];
+  let visited = 0;
+  while (pending.length > 0) {
+    if (++visited > 10000) throw new Error("settings patch is too large for the mock type check");
+    const { path, patch, current } = pending.shift();
+    if (current === null || current === undefined || patch === null) continue;
+    if (kind(patch) !== kind(current)) return path;
+    if (kind(current) === "object") {
+      for (const [key, value] of Object.entries(patch)) {
+        if (Object.hasOwn(current, key)) pending.push({ path: `${path}.${key}`, patch: value, current: current[key] });
+      }
+    } else if (kind(current) === "array" && current.length > 0) {
+      patch.forEach((value, index) => pending.push({ path: `${path}[${index}]`, patch: value, current: current[0] }));
+    }
+  }
+  return null;
+}
+
 function publishProductUpdateStatus() {
   for (const subscriber of [...productUpdateStatusSubscribers]) publishProductUpdateStatusValue(subscriber);
 }
@@ -1686,6 +1772,7 @@ function resetScenario() {
   }
   Object.assign(appSettings, structuredClone(defaultAppSettings));
   memoryProtection.scenario("no-point");
+  replayMemoryProtection();
   softwarePolicies.clear();
   appSettingsRuntimeDisposition = "committedAndApplied";
   for (const key of Object.keys(requestTelemetry)) {
@@ -3153,7 +3240,8 @@ async function subscriptionChannelStream(request, response) {
     const managementInventoryRevision = requestUrl.pathname === "/api/management/inventory-revisions/subscribe";
     const productUpdateStatus = requestUrl.pathname === "/api/updates/product/status/subscribe";
     const kernelLeakReport = requestUrl.pathname === "/api/kernel-leaks/subscribe";
-    const eventOnly = operation || managementInventoryRevision || productUpdateStatus || kernelLeakReport;
+    const memoryProtectionStatus = requestUrl.pathname === "/api/memory-protection/subscribe";
+    const eventOnly = operation || managementInventoryRevision || productUpdateStatus || kernelLeakReport || memoryProtectionStatus;
     let createPayload;
     try { createPayload = eventOnly ? null : subscriptionPayloadFactory(requestUrl); }
     catch { return json(response, 400, { error: "One or more subscription queries are invalid." }); }
@@ -3167,6 +3255,7 @@ async function subscriptionChannelStream(request, response) {
       managementInventoryRevision,
       productUpdateStatus,
       kernelLeakReport,
+      memoryProtectionStatus,
       createPayload
     });
   }
@@ -3208,6 +3297,21 @@ async function subscriptionChannelStream(request, response) {
       publishOperationValue(subscriber, currentOperationsValue());
       releases.push(() => {
         operationSubscribers.delete(subscriber);
+        releaseTelemetry();
+      });
+      continue;
+    }
+
+    if (subscription.memoryProtectionStatus) {
+      const subscriber = {
+        response,
+        requestUrl: subscription.requestUrl,
+        write: (value) => writeSubscriptionChannelFrame(response, subscription.id, value)
+      };
+      memoryProtectionSubscribers.add(subscriber);
+      replayMemoryProtectionTo(subscriber);
+      releases.push(() => {
+        memoryProtectionSubscribers.delete(subscriber);
         releaseTelemetry();
       });
       continue;
@@ -3323,7 +3427,8 @@ const subscriptionChannelSelectors = new Set([
   "/api/management/inventory-revisions/subscribe",
   "/api/access-requests/subscribe",
   "/api/updates/product/status/subscribe",
-  "/api/kernel-leaks/subscribe"
+  "/api/kernel-leaks/subscribe",
+  "/api/memory-protection/subscribe"
 ]);
 
 function smartCoordinatorStatus() {

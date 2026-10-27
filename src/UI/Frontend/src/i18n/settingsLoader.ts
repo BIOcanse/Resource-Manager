@@ -52,7 +52,7 @@ export const loadingSettingsText: SettingsTextBundle = {
   language: "zh-CN",
   navigationLabel: "",
   sections: { runtimePolicy: "", memory: "", memoryProtection: "", hardwareControl: "", reportRules: "", appearance: "", performanceOverlay: "", systemIntegration: "", publicServices: "", trustedAccess: "", updates: "", debug: "", credits: "" },
-  saveState: { saving: "", saved: "", constrained: "", partial: "", error: "", dirty: "", conflict: "" },
+  saveState: { saving: "", saved: "", constrained: "", partial: "", error: "", dirty: "", conflict: "", invalidValueType: "" },
   loadState: {
     loading: "",
     errorTitle: "",

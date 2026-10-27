@@ -31,6 +31,12 @@ assert.equal((sources.match(/channel:\s*subscriptionChannel/g) ?? []).length, 19
 // 内核泄漏报告只走统一订阅通道的推送（后端在报告变化时推送，没有采样间隔）。
 assert.match(sources, /kernelLeakReport:\s*new BackendCurrentValueSource/);
 assert.match(sources, /key:\s*"kernel-leaks\.report"/);
+// 主机内存保护的状态、记录和正常运行点只走一个订阅（/api/memory-protection/subscribe），由一个来源合成，不轮询 GET。
+const memoryProtectionSource = readSource("data/memoryProtection/memoryProtectionSubscriptionSource.ts");
+assert.match(sources, /memoryProtection:\s*createMemoryProtectionSubscriptionSource\(subscriptionChannel\)/);
+assert.doesNotMatch(sources, /normalRunningPoint|getNormalRunningPoint/);
+assert.match(memoryProtectionSource, /new FrameFoldSource</);
+assert.match(memoryProtectionSource, /frames:\s*new BackendCurrentValueSource\(\{[\s\S]*channel,[\s\S]*buildUrl:\s*buildMemoryProtectionSubscriptionUrl,[\s\S]*decoder:\s*memoryProtectionFrameDecoder/);
 // 产品更新状态只走统一订阅通道的推送（设置页更新区与界面内新版本提示共用）。
 assert.match(sources, /productUpdateStatus:\s*new BackendCurrentValueSource/);
 assert.match(sources, /key:\s*"updates\.product\.status"/);

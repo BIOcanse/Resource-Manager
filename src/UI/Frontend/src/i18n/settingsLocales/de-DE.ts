@@ -91,7 +91,8 @@ export default createSettingsLocale("de-DE", {
     "partial": "Gespeichert; Veröffentlichung oder Zustellung des Laufzeitplans ist unvollständig",
     "error": "Speichern fehlgeschlagen",
     "dirty": "Ungespeichert",
-    "conflict": "Einstellungen wurden anderswo geändert; vor dem Speichern neu laden"
+    "conflict": "Einstellungen wurden anderswo geändert; vor dem Speichern neu laden",
+    "invalidValueType": "Speichern abgelehnt: Ein Einstellungswert hat den falschen Typ"
   },
   "loadState": {
     "loading": "Gespeicherte Einstellungen werden geladen…",

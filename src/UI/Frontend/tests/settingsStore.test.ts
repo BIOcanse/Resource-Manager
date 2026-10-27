@@ -31,13 +31,18 @@ import type { AppSettings } from "../src/types.ts";
 
 const canonicalDefaults = defaultAppSettings();
 const memorySettings = { enabled: true, thresholdPercent: 87.5, checkIntervalSeconds: 3,
-  actionMode: "terminateOnly" as const, reserves: [{ location: "F:\\reserve", sizeBytes: 67108864 }] };
+  actionMode: "terminateOnly" as const, reserves: [{ location: "F:\\reserve", sizeBytes: 67108864 }],
+  minimumProcessGrowthBytes: 268435456, protectedProcesses: [] as string[] };
 assert.deepEqual(normalizeAppSettings({ memoryProtection: memorySettings }).memoryProtection, memorySettings);
 assert.equal(normalizeAppSettings({ memoryProtection: null }).memoryProtection, null);
 const clonedMemorySettings = normalizeAppSettings({ memoryProtection: memorySettings }).memoryProtection!;
 clonedMemorySettings.reserves![0].sizeBytes = 4096;
 assert.equal(memorySettings.reserves[0].sizeBytes, 67108864, "Settings drafts must own their reserve array");
-assert.equal(canonicalDefaults.version, "1.0.36", "Frontend defaults must carry the backend App settings format");
+assert.equal(canonicalDefaults.version, "1.0.37", "Frontend defaults must carry the backend App settings format");
+assert.deepEqual(canonicalDefaults.memoryProtection?.protectedProcesses, ["explorer.exe"], "Backend default whitelist");
+assert.equal(canonicalDefaults.memoryProtection?.minimumProcessGrowthBytes, 1073741824, "Backend default minimum process growth (1 GiB)");
+assert.deepEqual(normalizeAppSettings({ memoryProtection: memorySettings }).memoryProtection?.protectedProcesses, [],
+  "An explicitly empty whitelist stays empty");
 assert.equal(canonicalDefaults.performance?.preciseGpuPlacementEnabled, false);
 assert.equal(canonicalDefaults.publicService?.enabled, false);
 assert.equal(canonicalDefaults.publicService?.fileIndexEnabled, false);
@@ -179,7 +184,7 @@ assert.equal(normalizedMissingFields.aiModelService?.autoStartEnabled, false);
     ["normalized legacy", normalizedLegacy],
     ["normalized missing", normalizedMissingFields]
   ] as const) {
-    assert.equal(settings.version, "1.0.36", `${label}: version`);
+    assert.equal(settings.version, "1.0.37", `${label}: version`);
     for (const key of retiredPerformanceKeys) {
       assert.equal(key in settings.performance!, false, `${label}: performance.${key} must be gone`);
     }
@@ -602,6 +607,35 @@ await new Promise<void>((resolve, reject) => {
       assert.deepEqual(store.draftSettings().reports!.ruleOverrides[0].executableNames, []);
       store.resetDraftToDefaults("reportRules");
       assert.deepEqual(store.draftSettings().reports, { ruleOverrides: [] });
+      dispose(); resolve();
+    })().catch(error => { dispose(); reject(error); });
+  });
+});
+
+// The settings owner's type rejection carries the rejected value's path with its code; an edit clears both.
+await new Promise<void>((resolve, reject) => {
+  createRoot(dispose => {
+    void (async () => {
+      const source = new FakeSettingsSource();
+      const store = createSettingsStore({ source, requestClient: {
+        request: async () => {
+          throw new RequestProblem("rejected", {
+            kind: "http", retryable: false, status: 409,
+            payload: { runtimeApplicationDisposition: "rejectedBeforeCommit", runtimeFailureCode: "invalid-settings-value-type",
+              runtimeFailurePath: "$.debug.debugModeEnabled" },
+            attempt: { id: "1", sequence: 1, key: "app.settings.patch", decoderId: "app.settings.result.v1",
+              method: "PATCH", backendEpoch: null, startedAt: 0, finishedAt: 1, durationMs: 1 }
+          });
+        }
+      } as never });
+      await new Promise<void>(resolve => setImmediate(resolve));
+      source.publishReady(result("type-a", "normal", "system"));
+      store.updateReports(updateReportRuleField(store.draftSettings().reports!, "cpu_throttle_temperature", "activationThreshold", 91));
+      await store.saveDraft();
+      assert.equal(store.saveState(), "error");
+      assert.deepEqual([store.runtimeFailureCode(), store.runtimeFailurePath()], ["invalid-settings-value-type", "$.debug.debugModeEnabled"]);
+      store.updateReports(updateReportRuleField(store.draftSettings().reports!, "cpu_throttle_temperature", "activationThreshold", 90));
+      assert.deepEqual([store.runtimeFailureCode(), store.runtimeFailurePath()], [null, null], "an edit clears the code and its path");
       dispose(); resolve();
     })().catch(error => { dispose(); reject(error); });
   });

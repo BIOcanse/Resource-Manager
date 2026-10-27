@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { getMemoryProtectionStatus, getNormalRunningPoint, createNormalRunningPoint,
+import { buildMemoryProtectionSubscriptionUrl, createNormalRunningPoint,
   rebuildMemoryProtectionReserve } from "../src/data/memoryProtection/memoryProtectionApi.ts";
 import { getGpuPlacementSoftwareSettings, getDefaultGpuPlacementSoftwarePolicy, saveGpuPlacementSoftwarePolicy } from "../src/api.ts";
 import { RequestClient } from "../src/frontendRuntime/request/RequestClient.ts";
@@ -18,15 +18,11 @@ globalThis.fetch = (async (input, init) => {
   return new Response(JSON.stringify(payload), { status, headers: { "Content-Type": "application/json" } });
 }) as typeof fetch;
 try {
-  payload = memoryStatus;
-  assert.deepEqual(await getMemoryProtectionStatus(client), memoryStatus);
-  payload = null; assert.equal(await getNormalRunningPoint(client), null);
+  // Status, records and the point have no GET consumer in the frontend: they are read from the subscription only.
+  assert.equal(buildMemoryProtectionSubscriptionUrl(), "/api/memory-protection/subscribe");
   payload = memoryPoint;
-  assert.deepEqual(await getNormalRunningPoint(client), memoryPoint);
   assert.deepEqual(await createNormalRunningPoint(client), memoryPoint);
-  assert.deepEqual(calls.map(call => [call.url, call.init?.method]), [
-    ["/api/memory-protection", "GET"], ["/api/memory-protection/normal-running-point", "GET"],
-    ["/api/memory-protection/normal-running-point", "GET"], ["/api/memory-protection/normal-running-point", "POST"]]);
+  assert.deepEqual(calls.map(call => [call.url, call.init?.method]), [["/api/memory-protection/normal-running-point", "POST"]]);
   assert.equal(calls.at(-1)?.init?.body, undefined, "point creation is bodyless");
   for (const code of [200, 409]) {
     payload = memoryStatus; status = code;
@@ -37,14 +33,13 @@ try {
   payload = {}; status = 409;
   await assert.rejects(rebuildMemoryProtectionReserve(client), ResponseDecodeError);
   status = 503;
-  await assert.rejects(getMemoryProtectionStatus(client), (error: unknown) => error instanceof RequestProblem && error.status === 503);
   await assert.rejects(createNormalRunningPoint(client), (error: unknown) => error instanceof RequestProblem && error.status === 503);
   status = 200; payload = {};
-  await assert.rejects(getMemoryProtectionStatus(client), (error: unknown) => error instanceof RequestProblem && error.kind === "invalid-response");
-  await assert.rejects(getNormalRunningPoint(client), (error: unknown) => error instanceof RequestProblem && error.kind === "invalid-response");
+  await assert.rejects(createNormalRunningPoint(client), (error: unknown) => error instanceof RequestProblem && error.kind === "invalid-response");
   payload = { softwarePolicy };
   const loaded = await getGpuPlacementSoftwareSettings("example-software", "Example");
   assert.equal(loaded.softwarePolicy.hostMemoryProtectionNoDump, true);
+  assert.equal(loaded.softwarePolicy.hostMemoryProtectionNeverTerminate, true);
   payload = { ...softwarePolicy, hostMemoryProtectionNoDump: false };
   assert.equal((await getDefaultGpuPlacementSoftwarePolicy("example-software", "Example")).hostMemoryProtectionNoDump, false);
   const edited = { ...loaded.softwarePolicy, cpuSchedulingExcluded: true };
@@ -54,6 +49,7 @@ try {
       runtimeDeliveryFailureCount: 0, failureCode: null };
     const saved = await saveGpuPlacementSoftwarePolicy(edited);
     assert.equal(saved.policy.hostMemoryProtectionNoDump, true);
+    assert.equal(saved.policy.hostMemoryProtectionNeverTerminate, true);
     assert.equal(saved.runtimeApplicationDisposition, disposition);
     assert.deepEqual(JSON.parse(String(calls.at(-1)?.init?.body)), edited, "unrelated edit PUT preserves entire policy and flag");
   }

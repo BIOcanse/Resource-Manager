@@ -91,7 +91,8 @@ export default createSettingsLocale("es-ES", {
     "partial": "Guardado; la publicación o entrega del plan de ejecución está incompleta",
     "error": "Error al guardar",
     "dirty": "Sin guardar",
-    "conflict": "Los ajustes cambiaron en otro lugar; recarga antes de guardar"
+    "conflict": "Los ajustes cambiaron en otro lugar; recarga antes de guardar",
+    "invalidValueType": "Guardado rechazado: un valor de configuración tiene un tipo no válido"
   },
   "loadState": {
     "loading": "Cargando ajustes guardados…",

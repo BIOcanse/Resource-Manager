@@ -2,17 +2,26 @@ import { plural } from "../../plural.ts";
 import type { AppCopy } from "../index.ts";
 
 export const memoryProtection: AppCopy["memoryProtection"] = {
-  intro: "Erreicht die Commit-Menge den Auslöseschwellenwert, wird der Prozess behandelt, dessen Gesamtspeicher seit dem Normalbetriebspunkt am stärksten gewachsen ist: Je nach Behandlungsart wird zuerst sein privater Speicher als Abbild in die Datenträgerreserve geschrieben oder der Prozess direkt beendet.",
+  intro: "Erreicht die Commit-Menge den Auslöseschwellenwert, wird jeweils genau ein Ziel behandelt: Erreicht der Prozess mit dem größten Wachstum seit dem Normalbetriebspunkt das Mindestwachstum, wird nur dieser Prozess gemäß der Behandlungsart behandelt (zuerst wird sein privater Speicher als Abbild in die Datenträgerreserve geschrieben, oder er wird direkt beendet); andernfalls wird der gesamte Prozessbaum unter dem Prozess beendet, dessen direkte Unterprozesse am stärksten im Speicher gewachsen sind. Prozesse auf der Prozess-Zulassungsliste und Software mit der Einstellung „Nicht beenden“ werden nie beendet.",
   unsavedNote: "Es gibt nicht gespeicherte Änderungen. Der Status unten entspricht den gespeicherten Einstellungen und wird nach dem Speichern erneut vom Dienst geliefert.",
   statusLoading: "Status des Speicherschutzes wird gelesen…",
   statusUnavailable: "Der Status des Speicherschutzes konnte nicht gelesen werden",
   statusUnavailableDetail: "Es werden keine Ersatzwerte angezeigt. Stellen Sie den lokalen Dienst wieder her und versuchen Sie es erneut.",
-  retry: "Erneut versuchen",
   valueNotProvided: "Vom Dienst nicht geliefert",
   enabledTitle: "Speicherschutz aktivieren",
   enabledDescription: "Zum Aktivieren sind ein Normalbetriebspunkt und eine vollständig angelegte Datenträgerreserve erforderlich; andernfalls wird das Speichern mit Angabe des Grundes abgelehnt.",
   effectiveTitle: "Wirksamkeit",
   effective: "Der Schutz ist wirksam",
+  effectiveHintLabel: "Erläuterung zur Wirksamkeit",
+  effectiveHint: "Ob der Schutz wirksam ist und ob die Datenträgerreserve angelegt ist, wird getrennt angezeigt. Tritt bei der Reserve während des Betriebs ein Fehler auf, bleibt der Schutz wirksam, und ausgewählte Prozesse werden ohne Abbild direkt beendet; nicht wirksam ist der Schutz nur, wenn die Reserve vor dem Aktivieren nicht angelegt wurde.",
+  thresholdState: "Commit-Menge und Schwellenwert",
+  thresholdStateReached: "Auslöseschwellenwert erreicht",
+  thresholdStateBelow: "Unter dem Auslöseschwellenwert",
+  thresholdStateUnknown: "Nicht feststellbar: Die Commit-Menge ist nicht lesbar",
+  currentAction: "Laufende Behandlung",
+  currentActionNone: "Keine",
+  decisionTitle: "Letzte Entscheidung",
+  decisionNone: "Noch keine",
   inactive: (reason: string) => `Nicht wirksam: ${reason}`,
   rejected: (reason: string) => `Speichern abgelehnt: ${reason}`,
   thresholdTitle: "Auslöseschwellenwert",
@@ -31,6 +40,16 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
     dumpThenTerminate: { label: "Abbild, dann beenden", description: "Hält den Prozess an, schreibt seinen privaten Speicher in die Datenträgerreserve und beendet den Prozess anschließend." },
     terminateOnly: { label: "Nur beenden", description: "Jeder ausgewählte Prozess wird direkt beendet, ohne Anhalten und ohne Speicherabbild." }
   },
+  minimumGrowthTitle: "Mindestwachstum eines Prozesses",
+  minimumGrowthDescription: "Erreicht der Prozess mit dem größten Wachstum diesen Wert, wird nur dieser Prozess behandelt; andernfalls wird ein Prozessbaum beendet. Verglichen wird das Wachstum seit dem Normalbetriebspunkt, nicht die absolute Größe des Prozesses. Eingabe in Byte.",
+  minimumGrowthLabel: "Wachstum (Byte)",
+  protectedTitle: "Prozess-Zulassungsliste",
+  protectedDescription: "Prozesse, die nie beendet werden, angegeben als Name der ausführbaren Datei (zum Beispiel explorer.exe) oder als vollständiger Pfad. Geschützt ist nur der aufgeführte Prozess selbst; seine Unterprozesse können weiterhin beendet werden. Die Liste darf leer sein.",
+  protectedEntryLabel: (index: number) => `Eintrag ${index}`,
+  protectedEntry: "Name der ausführbaren Datei oder vollständiger Pfad",
+  addProtected: "Prozess hinzufügen",
+  removeProtected: "Entfernen",
+  protectedEmpty: "Die Prozess-Zulassungsliste ist leer: Abgesehen von ausgeschlossenen Kandidaten kann jeder Prozess beendet werden.",
   pointTitle: "Normalbetriebspunkt",
   pointDescription: "Erfasst die Commit-Menge und den Gesamtspeicher jedes Prozesses zu diesem Zeitpunkt als Basis für den späteren Zuwachs. Ein neuer Punkt ersetzt den vorherigen; nach einem Neustart des Dienstes muss er neu erstellt werden.",
   pointNone: "Kein Normalbetriebspunkt",
@@ -76,6 +95,20 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
   recordDumpPaths: "Speicherabbilddateien (in Reihenfolge)",
   recordNoDumpPaths: "Kein Speicherabbild geschrieben",
   recordReason: "Grund",
+  recordDetail: "Details",
+  selectionRule: "Auswahlgrundlage",
+  selectionRules: {
+    "process-growth-at-least-minimum": "Das Wachstum des Prozesses hat das Mindestwachstum erreicht",
+    "largest-direct-children-memory-growth": "Prozessbaum mit dem größten Speicherzuwachs der direkten Unterprozesse"
+  },
+  selectionProcessGrowth: "Wachstum des Prozesses",
+  selectionChildrenGrowth: "Speicherzuwachs der direkten Unterprozesse",
+  selectionMinimum: "Verglichenes Mindestwachstum",
+  actionId: "Behandlungskennung",
+  treeRoot: "Wurzel des Baums",
+  treeRootStartKey: "Startkennung der Wurzel",
+  treeRootNameUnknown: "Name unbekannt",
+  targetKinds: { process: "Einzelner Prozess", processTree: "Prozessbaum" },
   outcomes: {
     "preflight-failed": "Vorabprüfung fehlgeschlagen",
     "suspend-failed": "Anhalten fehlgeschlagen",
@@ -83,7 +116,8 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
     "completed-with-release-limit": "Abgeschlossen; ein Teil des Speichers konnte nicht freigegeben werden",
     completed: "Abgeschlossen",
     "terminated-without-dump": "Ohne Abbild beendet",
-    "termination-failed": "Beenden fehlgeschlagen"
+    "termination-failed": "Beenden fehlgeschlagen",
+    excluded: "Übersprungen"
   },
   excludedTitle: "Ausgeschlossene Kandidaten",
   excludedDescription: "Diese Prozesse werden nicht ausgewählt; die Gründe liefert der Dienst.",
@@ -96,7 +130,9 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
     "baseline-private-commit-unavailable": "Der Normalbetriebspunkt enthält keinen Gesamtspeicher für diesen Prozess",
     "cannot-open": "Der Prozess konnte nicht geöffnet werden (geschützter Prozess oder unzureichende Rechte); er wird für diesen Normalbetriebspunkt nicht erneut ausgewählt",
     "identity-changed": "Die Identität des Prozesses hat sich geändert",
-    "criticality-unavailable": "Es konnte nicht festgestellt werden, ob es ein kritischer Systemprozess ist"
+    "criticality-unavailable": "Es konnte nicht festgestellt werden, ob es ein kritischer Systemprozess ist",
+    "protected-process": "Auf der Prozess-Zulassungsliste",
+    "software-never-terminate": "Software auf „Nicht beenden“ gesetzt"
   },
   reasons: {
     disabled: "Der Speicherschutz ist nicht aktiviert",
@@ -137,7 +173,25 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
     "software-no-dump": "Kein Abbild laut Softwareeinstellung",
     "private-commit-exceeds-reserve": "Der Gesamtspeicher des Prozesses überschreitet die verbleibende Reserve",
     "minidump-exceeds-reserve": "Das Speicherabbild überschreitet, in ganzen Clustern gerechnet, die verbleibende Reserve",
-    "termination-not-observed": "Das Beenden des Prozesses wurde nicht festgestellt"
+    "termination-not-observed": "Das Beenden des Prozesses wurde nicht festgestellt",
+    "process-tree": "Als Teil eines Prozessbaums beendet",
+    "reserve-unavailable": "Die Datenträgerreserve ist nicht verfügbar",
+    "invalid-minimum-process-growth-bytes": "Das Mindestwachstum muss eine ganze Zahl von Byte größer als 0 sein",
+    "invalid-protected-processes": "Die Prozess-Zulassungsliste ist ungültig: Jeder Eintrag muss ein Name einer ausführbaren Datei oder ein vollständiger Pfad sein, darf nicht leer sein, keine führenden oder nachgestellten Leerzeichen enthalten und nicht doppelt vorkommen",
+    "release-limit": "Ein Teil des privaten Speichers konnte nicht aus der Zusicherung gelöst werden",
+    "slice-incomplete": "Das Speicherabbild wurde nicht vollständig geschrieben",
+    "preflight-failed": "Die Vorabprüfung vor dem Speicherabbild ist fehlgeschlagen",
+    "suspend-failed": "Der Prozess konnte nicht angehalten werden",
+    "termination-failed": "Der Prozess konnte nicht beendet werden",
+    "reserve-error": "Fehler in der Datenträgerreserve; es wurde kein Speicherabbild geschrieben"
+  },
+  decisionReasons: {
+    "commit-unavailable": "Die Commit-Menge war nicht lesbar; es wurde nichts behandelt",
+    "below-threshold": "Die Commit-Menge lag unter dem Auslöseschwellenwert; es wurde nichts behandelt",
+    "process-handled": "Der Prozess mit dem größten Wachstum wurde behandelt",
+    "process-tree-handled": "Ein Prozessbaum wurde beendet",
+    "no-positive-child-memory-growth": "Kein Prozess hat das Mindestwachstum erreicht, und bei keinem Prozess sind die direkten Unterprozesse im Speicher gewachsen; es wurde nichts behandelt",
+    "no-eligible-tree": "In keinem Prozessbaum, dessen Wurzel im Speicher gewachsene direkte Unterprozesse hat, gab es einen beendbaren Prozess; es wurde nichts behandelt"
   },
   wholeClusters: (clusterBytes: string) => `Die Größe ist kein ganzzahliges Vielfaches der Zuordnungseinheit (Cluster); die Clustergröße des Volumes beträgt ${clusterBytes}`,
   invalidLocation: (detail: string) => `Der Speicherort der Reserve ist ungültig: ${detail}`,
@@ -149,6 +203,8 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
     noDump: "Kein Abbild",
     noDumpHint: "Wirkt nur, wenn die Behandlungsart in den Einstellungen „Abbild, dann beenden“ ist: Die Prozesse dieser Software werden direkt beendet, ohne Anhalten und ohne Speicherabbild, und werden weiterhin nach ihrem Zuwachs ausgewählt.",
     noDumpInactiveNow: "Die aktuelle Behandlungsart ist „Nur beenden“: Jeder Prozess wird direkt beendet, daher hat diese Option derzeit keine Wirkung.",
+    neverTerminate: "Nicht beenden",
+    neverTerminateHint: "Der Hostspeicherschutz beendet die Prozesse dieser Software nie, unabhängig von der Behandlungsart. In einem Prozessbaum wird nur der Prozess selbst übersprungen; seine Unterprozesse können weiterhin beendet werden.",
     modeUnavailable: "Die aktuelle Behandlungsart konnte nicht gelesen werden."
   }
 };

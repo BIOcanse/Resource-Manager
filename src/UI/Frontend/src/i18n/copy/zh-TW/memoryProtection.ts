@@ -3,17 +3,26 @@ import type { AppCopy } from "../zh/index.ts";
 
 export const zhTwMemoryProtectionCopy: Pick<AppCopy, "memoryProtection"> = {
   memoryProtection: {
-    intro: "提交量達到觸發閾值時，從正常運行點之後全部記憶體增長最多的處理程序中選出一個處理：依處理方式先將其私有記憶體轉儲到磁碟保留區，或直接結束。",
+    intro: "提交量達到觸發閾值時，每次只處理一個對象：正常運行點之後增長量最大的處理程序達到最小處理程序增長量時，依處理方式處理這一個處理程序（先將其私有記憶體轉儲到磁碟保留區，或直接結束）；未達到時，結束直接子處理程序記憶體增量最大的那個處理程序底下的整個處理程序樹。處理程序白名單中的處理程序和設為「不結束」的軟體不會被結束。",
     unsavedNote: "有尚未儲存的變更。下方狀態依已儲存的設定顯示，儲存後由後端重新提供。",
     statusLoading: "正在讀取記憶體保護狀態…",
     statusUnavailable: "無法讀取記憶體保護狀態",
     statusUnavailableDetail: "未顯示替代數值。請恢復本機服務後重試。",
-    retry: "重試",
     valueNotProvided: "後端未提供",
     enabledTitle: "開啟記憶體保護",
     enabledDescription: "開啟需要正常運行點和完整建立的磁碟保留區；不符合時儲存會被拒絕並註明原因。",
     effectiveTitle: "生效狀態",
     effective: "保護正在生效",
+    effectiveHintLabel: "生效狀態說明",
+    effectiveHint: "保護是否生效與磁碟保留區是否建成分開顯示。保留區在執行中出錯時保護仍然生效，之後選中的處理程序直接結束、不寫入切片；只有開啟前保留區沒有建成時，保護才不生效。",
+    thresholdState: "提交量與觸發閾值",
+    thresholdStateReached: "已達到觸發閾值",
+    thresholdStateBelow: "低於觸發閾值",
+    thresholdStateUnknown: "無法判斷：讀不到提交量",
+    currentAction: "正在進行的處理",
+    currentActionNone: "無",
+    decisionTitle: "最近一次判斷",
+    decisionNone: "暫無",
     inactive: (reason: string) => `未生效：${reason}`,
     rejected: (reason: string) => `儲存被拒絕：${reason}`,
     thresholdTitle: "觸發閾值",
@@ -32,6 +41,16 @@ export const zhTwMemoryProtectionCopy: Pick<AppCopy, "memoryProtection"> = {
       dumpThenTerminate: { label: "轉儲後結束", description: "凍結處理程序，將私有記憶體寫入磁碟保留區，寫完後結束處理程序。" },
       terminateOnly: { label: "只結束", description: "所有選中的處理程序都直接結束，不凍結、不寫入切片。" }
     },
+    minimumGrowthTitle: "最小處理程序增長量",
+    minimumGrowthDescription: "增長量最大的處理程序達到此值時只處理這一個處理程序，未達到時改為結束處理程序樹。比較的是相對正常運行點的增長量，不是處理程序的絕對大小。以位元組輸入。",
+    minimumGrowthLabel: "增長量（位元組）",
+    protectedTitle: "處理程序白名單",
+    protectedDescription: "以可執行檔名稱（例如 explorer.exe）或完整路徑列出永遠不被結束的處理程序。只保護列出的處理程序本身，其子處理程序照樣會被結束。清單可以清空。",
+    protectedEntryLabel: (index: number) => cjkText`第${index}項`,
+    protectedEntry: "可執行檔名稱或完整路徑",
+    addProtected: "新增處理程序",
+    removeProtected: "移除",
+    protectedEmpty: "處理程序白名單為空：除排除的候選外，任何處理程序都可能被結束。",
     pointTitle: "正常運行點",
     pointDescription: "記錄當時的提交量和每個處理程序的全部記憶體，作為之後計算增長量的基準。新建立的會取代舊的；服務重新啟動後需要重新建立。",
     pointNone: "沒有正常運行點",
@@ -77,6 +96,20 @@ export const zhTwMemoryProtectionCopy: Pick<AppCopy, "memoryProtection"> = {
     recordDumpPaths: "切片檔案（依順序）",
     recordNoDumpPaths: "未寫入切片",
     recordReason: "原因",
+    recordDetail: "詳細資訊",
+    selectionRule: "選擇依據",
+    selectionRules: {
+      "process-growth-at-least-minimum": "增長量最大的處理程序達到最小處理程序增長量",
+      "largest-direct-children-memory-growth": "直接子處理程序記憶體增量最大的處理程序樹"
+    },
+    selectionProcessGrowth: "該處理程序的增長量",
+    selectionChildrenGrowth: "直接子處理程序記憶體增量",
+    selectionMinimum: "比較用的最小處理程序增長量",
+    actionId: "處理編號",
+    treeRoot: "樹根",
+    treeRootStartKey: "樹根的處理程序啟動標識",
+    treeRootNameUnknown: "名稱未知",
+    targetKinds: { process: "單一處理程序", processTree: "處理程序樹" },
     outcomes: {
       "preflight-failed": "預檢失敗",
       "suspend-failed": "凍結失敗",
@@ -84,7 +117,8 @@ export const zhTwMemoryProtectionCopy: Pick<AppCopy, "memoryProtection"> = {
       "completed-with-release-limit": "已完成，部分記憶體未能釋放",
       completed: "已完成",
       "terminated-without-dump": "已結束，未轉儲",
-      "termination-failed": "結束失敗"
+      "termination-failed": "結束失敗",
+      excluded: "已略過"
     },
     excludedTitle: "排除的候選",
     excludedDescription: "這些處理程序不參與選擇，原因由後端提供。",
@@ -97,7 +131,9 @@ export const zhTwMemoryProtectionCopy: Pick<AppCopy, "memoryProtection"> = {
       "baseline-private-commit-unavailable": "正常運行點中沒有該處理程序的全部記憶體",
       "cannot-open": "無法開啟處理程序（受保護的處理程序或權限不足），在本次正常運行點內不再選擇",
       "identity-changed": "處理程序身分已變更",
-      "criticality-unavailable": "無法判斷是否為系統關鍵處理程序"
+      "criticality-unavailable": "無法判斷是否為系統關鍵處理程序",
+      "protected-process": "在處理程序白名單中",
+      "software-never-terminate": "軟體設為不結束"
     },
     reasons: {
       disabled: "記憶體保護未開啟",
@@ -138,7 +174,25 @@ export const zhTwMemoryProtectionCopy: Pick<AppCopy, "memoryProtection"> = {
       "software-no-dump": "依軟體設定不轉儲",
       "private-commit-exceeds-reserve": "處理程序的全部記憶體超過剩餘保留區",
       "minidump-exceeds-reserve": "切片以叢集計算後超過剩餘保留區",
-      "termination-not-observed": "未觀察到處理程序結束"
+      "termination-not-observed": "未觀察到處理程序結束",
+      "process-tree": "依處理程序樹結束",
+      "reserve-unavailable": "磁碟保留區無法使用",
+      "invalid-minimum-process-growth-bytes": "最小處理程序增長量必須是大於 0 的整數位元組數",
+      "invalid-protected-processes": "處理程序白名單無效：每一項必須是可執行檔名稱或完整路徑，不能為空、不能有首尾空格，也不能重複",
+      "release-limit": "部分私有記憶體未能解除提交",
+      "slice-incomplete": "切片沒有完整寫入",
+      "preflight-failed": "傾印前的預檢失敗",
+      "suspend-failed": "未能凍結處理程序",
+      "termination-failed": "未能結束處理程序",
+      "reserve-error": "磁碟保留區出錯，未寫入切片"
+    },
+    decisionReasons: {
+      "commit-unavailable": "讀不到提交量，沒有處理",
+      "below-threshold": "提交量低於觸發閾值，沒有處理",
+      "process-handled": "已處理增長量最大的處理程序",
+      "process-tree-handled": "已結束一棵處理程序樹",
+      "no-positive-child-memory-growth": "沒有處理程序達到最小處理程序增長量，也沒有直接子處理程序記憶體增量大於 0 的處理程序，沒有處理",
+      "no-eligible-tree": "直接子處理程序記憶體增量大於 0 的處理程序底下都沒有可以結束的處理程序，沒有處理"
     },
     wholeClusters: (clusterBytes: string) => cjkText`大小不是配置單位（叢集）的整數倍；該磁碟區的叢集大小為${clusterBytes}`,
     invalidLocation: (detail: string) => `保留區位置無效：${detail}`,
@@ -150,6 +204,8 @@ export const zhTwMemoryProtectionCopy: Pick<AppCopy, "memoryProtection"> = {
       noDump: "不轉儲",
       noDumpHint: "只在設定中的處理方式為「轉儲後結束」時起作用：此軟體的處理程序直接結束，不凍結、不寫入切片，仍依增長量參與選擇。",
       noDumpInactiveNow: "目前處理方式為「只結束」，所有處理程序都直接結束，此項目前不起作用。",
+      neverTerminate: "不結束",
+      neverTerminateHint: "主機記憶體保護永遠不結束此軟體的處理程序，與處理方式無關。在處理程序樹中遇到時只略過它本身，其子處理程序照樣會被結束。",
       modeUnavailable: "無法讀取目前的處理方式。"
     }
   }

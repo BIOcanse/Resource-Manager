@@ -1,17 +1,26 @@
 import type { AppCopy } from "../index.ts";
 
 export const memoryProtection: AppCopy["memoryProtection"] = {
-  intro: "커밋량이 트리거 임계값에 도달하면 정상 실행 지점 이후 전체 메모리 증가량이 가장 큰 프로세스 하나를 골라 처리합니다. 처리 방식에 따라 해당 프로세스의 프라이빗 메모리를 먼저 디스크 예약 영역에 덤프하거나 바로 종료합니다.",
+  intro: "커밋량이 트리거 임계값에 도달하면 한 번에 대상 하나만 처리합니다. 정상 실행 지점 이후 증가량이 가장 큰 프로세스가 최소 증가량에 도달하면 처리 방식에 따라 그 프로세스만 처리합니다(프라이빗 메모리를 먼저 디스크 예약 영역에 덤프하거나 바로 종료합니다). 도달하지 않으면 직접 자식 프로세스의 메모리 증가량이 가장 큰 프로세스 아래의 프로세스 트리 전체를 종료합니다. 프로세스 허용 목록에 있는 프로세스와 ‘종료 안 함’으로 설정한 소프트웨어는 종료되지 않습니다.",
   unsavedNote: "저장하지 않은 변경 사항이 있습니다. 아래 상태는 저장된 설정을 기준으로 표시되며, 저장 후 백엔드가 다시 제공합니다.",
   statusLoading: "메모리 보호 상태를 읽는 중…",
   statusUnavailable: "메모리 보호 상태를 읽을 수 없습니다",
   statusUnavailableDetail: "대체 값을 표시하지 않습니다. 로컬 서비스를 복구한 후 다시 시도하세요.",
-  retry: "다시 시도",
   valueNotProvided: "백엔드가 제공하지 않음",
   enabledTitle: "메모리 보호 사용",
   enabledDescription: "사용하려면 정상 실행 지점과 완전히 구축된 디스크 예약 영역이 필요합니다. 조건을 충족하지 않으면 저장이 거부되고 이유가 표시됩니다.",
   effectiveTitle: "적용 상태",
   effective: "보호가 적용 중입니다",
+  effectiveHintLabel: "적용 상태 설명",
+  effectiveHint: "보호가 적용 중인지와 디스크 예약 영역이 만들어졌는지는 따로 표시합니다. 실행 중에 예약 영역에 오류가 생겨도 보호는 계속 적용되며, 선택된 프로세스는 슬라이스를 쓰지 않고 바로 종료됩니다. 활성화하기 전에 예약 영역이 만들어지지 않은 경우에만 보호가 적용되지 않습니다.",
+  thresholdState: "커밋량과 임계값",
+  thresholdStateReached: "트리거 임계값에 도달했습니다",
+  thresholdStateBelow: "트리거 임계값 미만입니다",
+  thresholdStateUnknown: "판단할 수 없음: 커밋량을 읽을 수 없습니다",
+  currentAction: "진행 중인 처리",
+  currentActionNone: "없음",
+  decisionTitle: "최근 판단",
+  decisionNone: "아직 없음",
   inactive: (reason: string) => `적용되지 않음: ${reason}`,
   rejected: (reason: string) => `저장이 거부됨: ${reason}`,
   thresholdTitle: "트리거 임계값",
@@ -30,6 +39,16 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
     dumpThenTerminate: { label: "덤프 후 종료", description: "프로세스를 일시 중단하고 프라이빗 메모리를 디스크 예약 영역에 기록한 다음 프로세스를 종료합니다." },
     terminateOnly: { label: "종료만", description: "선택된 모든 프로세스를 일시 중단하거나 슬라이스를 기록하지 않고 바로 종료합니다." }
   },
+  minimumGrowthTitle: "프로세스 최소 증가량",
+  minimumGrowthDescription: "증가량이 가장 큰 프로세스가 이 값에 도달하면 그 프로세스만 처리하고, 도달하지 않으면 프로세스 트리를 종료합니다. 비교하는 값은 정상 실행 지점 이후의 증가량이며 프로세스의 절대 크기가 아닙니다. 바이트 단위로 입력합니다.",
+  minimumGrowthLabel: "증가량(바이트)",
+  protectedTitle: "프로세스 허용 목록",
+  protectedDescription: "종료하지 않을 프로세스를 실행 파일 이름(예: explorer.exe) 또는 전체 경로로 지정합니다. 보호되는 것은 지정한 프로세스 자신뿐이며, 그 자식 프로세스는 종료될 수 있습니다. 목록은 비울 수 있습니다.",
+  protectedEntryLabel: (index: number) => `${index}번째 항목`,
+  protectedEntry: "실행 파일 이름 또는 전체 경로",
+  addProtected: "프로세스 추가",
+  removeProtected: "제거",
+  protectedEmpty: "프로세스 허용 목록이 비어 있습니다. 제외된 후보를 빼면 어떤 프로세스든 종료될 수 있습니다.",
   pointTitle: "정상 실행 지점",
   pointDescription: "해당 시점의 커밋량과 각 프로세스의 전체 메모리를 기록하여 이후 증가량을 계산하는 기준으로 삼습니다. 새로 만들면 이전 지점을 대체하며, 서비스를 다시 시작한 후에는 다시 만들어야 합니다.",
   pointNone: "정상 실행 지점이 없습니다",
@@ -75,6 +94,20 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
   recordDumpPaths: "슬라이스 파일(순서대로)",
   recordNoDumpPaths: "슬라이스를 기록하지 않음",
   recordReason: "이유",
+  recordDetail: "세부 정보",
+  selectionRule: "선택 근거",
+  selectionRules: {
+    "process-growth-at-least-minimum": "프로세스 증가량이 최소 증가량에 도달함",
+    "largest-direct-children-memory-growth": "직접 자식 프로세스의 메모리 증가량이 가장 큰 프로세스 트리"
+  },
+  selectionProcessGrowth: "프로세스 증가량",
+  selectionChildrenGrowth: "직접 자식 프로세스의 메모리 증가량",
+  selectionMinimum: "비교한 최소 증가량",
+  actionId: "처리 ID",
+  treeRoot: "트리 루트",
+  treeRootStartKey: "루트의 프로세스 시작 키",
+  treeRootNameUnknown: "이름 알 수 없음",
+  targetKinds: { process: "단일 프로세스", processTree: "프로세스 트리" },
   outcomes: {
     "preflight-failed": "사전 검사 실패",
     "suspend-failed": "일시 중단 실패",
@@ -82,7 +115,8 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
     "completed-with-release-limit": "완료됨, 일부 메모리를 해제하지 못함",
     completed: "완료됨",
     "terminated-without-dump": "덤프 없이 종료됨",
-    "termination-failed": "종료 실패"
+    "termination-failed": "종료 실패",
+    excluded: "건너뜀"
   },
   excludedTitle: "제외된 후보",
   excludedDescription: "이 프로세스들은 선택 대상에서 제외되며, 이유는 백엔드가 제공합니다.",
@@ -95,7 +129,9 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
     "baseline-private-commit-unavailable": "정상 실행 지점에 이 프로세스의 전체 메모리가 없습니다",
     "cannot-open": "프로세스를 열 수 없습니다(보호된 프로세스 또는 권한 부족). 이번 정상 실행 지점 동안 다시 선택하지 않습니다",
     "identity-changed": "프로세스 신원이 변경되었습니다",
-    "criticality-unavailable": "시스템 핵심 프로세스인지 판단할 수 없습니다"
+    "criticality-unavailable": "시스템 핵심 프로세스인지 판단할 수 없습니다",
+    "protected-process": "프로세스 허용 목록에 있음",
+    "software-never-terminate": "소프트웨어가 ‘종료 안 함’으로 설정됨"
   },
   reasons: {
     disabled: "메모리 보호가 사용되지 않습니다",
@@ -136,7 +172,25 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
     "software-no-dump": "소프트웨어 설정에 따라 덤프하지 않음",
     "private-commit-exceeds-reserve": "프로세스의 전체 메모리가 남은 예약 영역을 초과합니다",
     "minidump-exceeds-reserve": "클러스터 단위로 계산한 슬라이스가 남은 예약 영역을 초과합니다",
-    "termination-not-observed": "프로세스 종료가 확인되지 않았습니다"
+    "termination-not-observed": "프로세스 종료가 확인되지 않았습니다",
+    "process-tree": "프로세스 트리의 일부로 종료됨",
+    "reserve-unavailable": "디스크 예약 영역을 사용할 수 없습니다",
+    "invalid-minimum-process-growth-bytes": "최소 증가량은 0보다 큰 정수 바이트 수여야 합니다",
+    "invalid-protected-processes": "프로세스 허용 목록이 잘못되었습니다. 각 항목은 실행 파일 이름 또는 전체 경로여야 하며, 비어 있거나 앞뒤에 공백이 있거나 중복될 수 없습니다",
+    "release-limit": "일부 프라이빗 메모리의 커밋을 해제하지 못했습니다",
+    "slice-incomplete": "슬라이스를 완전히 기록하지 못했습니다",
+    "preflight-failed": "덤프 전 사전 검사에 실패했습니다",
+    "suspend-failed": "프로세스를 일시 중단하지 못했습니다",
+    "termination-failed": "프로세스를 종료하지 못했습니다",
+    "reserve-error": "디스크 예약 영역 오류로 슬라이스를 기록하지 않았습니다"
+  },
+  decisionReasons: {
+    "commit-unavailable": "커밋량을 읽을 수 없어 처리하지 않았습니다",
+    "below-threshold": "커밋량이 트리거 임계값 미만이어서 처리하지 않았습니다",
+    "process-handled": "증가량이 가장 큰 프로세스를 처리했습니다",
+    "process-tree-handled": "프로세스 트리 하나를 종료했습니다",
+    "no-positive-child-memory-growth": "최소 증가량에 도달한 프로세스가 없고 직접 자식 프로세스의 메모리가 증가한 프로세스도 없어 처리하지 않았습니다",
+    "no-eligible-tree": "직접 자식 프로세스의 메모리가 증가한 프로세스 아래에 종료할 수 있는 프로세스가 없어 처리하지 않았습니다"
   },
   wholeClusters: (clusterBytes: string) => `크기가 할당 단위(클러스터)의 정수배가 아닙니다. 이 볼륨의 클러스터 크기는 ${clusterBytes}입니다`,
   invalidLocation: (detail: string) => `예약 영역 위치가 잘못되었습니다: ${detail}`,
@@ -148,6 +202,8 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
     noDump: "덤프 안 함",
     noDumpHint: "설정의 처리 방식이 ‘덤프 후 종료’일 때만 적용됩니다. 이 소프트웨어의 프로세스는 일시 중단하거나 슬라이스를 기록하지 않고 바로 종료되며, 계속 증가량에 따라 선택 대상이 됩니다.",
     noDumpInactiveNow: "현재 처리 방식이 ‘종료만’이므로 모든 프로세스가 바로 종료되며, 이 항목은 지금 적용되지 않습니다.",
+    neverTerminate: "종료 안 함",
+    neverTerminateHint: "호스트 메모리 보호는 처리 방식과 관계없이 이 소프트웨어의 프로세스를 종료하지 않습니다. 프로세스 트리 안에서는 이 프로세스 자신만 건너뛰며, 그 자식 프로세스는 종료될 수 있습니다.",
     modeUnavailable: "현재 처리 방식을 읽을 수 없습니다."
   }
 };

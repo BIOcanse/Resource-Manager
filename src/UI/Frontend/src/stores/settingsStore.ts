@@ -91,6 +91,8 @@ export interface SettingsStore {
   saveState: Accessor<"idle" | "saving" | "saved" | "constrained" | "partial" | "error" | "conflict">;
   runtimeCapabilityConstrainedPaths: Accessor<readonly string[]>;
   runtimeFailureCode: Accessor<string | null>;
+  /** Set together with runtimeFailureCode: the rejected value's JSON path, when the backend names one. */
+  runtimeFailurePath: Accessor<string | null>;
   serviceRecovery: Accessor<ServiceRecoveryDiagnostics | undefined>;
   activeSection: Accessor<SettingsSection>;
   setActiveSection: Setter<SettingsSection>;
@@ -180,6 +182,11 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
   const [saveState, setSaveState] = createSignal<"idle" | "saving" | "saved" | "constrained" | "partial" | "error" | "conflict">("idle");
   const [runtimeCapabilityConstrainedPaths, setRuntimeCapabilityConstrainedPaths] = createSignal<readonly string[]>([]);
   const [runtimeFailureCode, setRuntimeFailureCode] = createSignal<string | null>(null);
+  const [runtimeFailurePath, setRuntimeFailurePath] = createSignal<string | null>(null);
+  const setRuntimeFailure = (code: string | null, path: string | null) => batch(() => {
+    setRuntimeFailureCode(code);
+    setRuntimeFailurePath(path);
+  });
   const [serviceRecovery, setServiceRecovery] = createSignal<ServiceRecoveryDiagnostics>();
   const [activeSection, setActiveSection] = createSignal<SettingsSection>("runtimePolicy");
   const isDirty = createMemo(() => revision() !== null
@@ -222,7 +229,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     setDraftSettings(next);
     setSaveState((state) => state === "saved" || state === "constrained" ? "idle" : state);
     setRuntimeCapabilityConstrainedPaths([]);
-    setRuntimeFailureCode(null);
+    setRuntimeFailure(null, null);
   }
 
   async function saveDraft() {
@@ -230,7 +237,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     if (loadState() !== "ready" || !expectedRevision || saveState() === "conflict" || saveState() === "saving") {
       return;
     }
-    setRuntimeFailureCode(null);
+    setRuntimeFailure(null, null);
     const submittedDraft = draftSettings();
     const next = alignRuntimeOwnedSettings(
       normalizeAppSettings(submittedDraft),
@@ -265,7 +272,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
         changes);
       const outcome = classifySettingsApplicationOutcome(result.runtimeApplicationDisposition);
       if (outcome === "rejected") {
-        setRuntimeFailureCode(result.runtimeFailureCode ?? null);
+        setRuntimeFailure(result.runtimeFailureCode ?? null, result.runtimeFailurePath ?? null);
         throw new Error(uiText.misc.settingsNotCommitted);
       }
       if (preferenceChanges) await writePreferences(current => preferencesFromSettings(next, current));
@@ -293,9 +300,14 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
         return;
       }
       if (error instanceof RequestProblem && error.status === 409) {
-        const payload = error.payload as { runtimeApplicationDisposition?: unknown; runtimeFailureCode?: unknown } | null;
+        const payload = error.payload as {
+          runtimeApplicationDisposition?: unknown; runtimeFailureCode?: unknown; runtimeFailurePath?: unknown;
+        } | null;
         if (payload?.runtimeApplicationDisposition === "rejectedBeforeCommit"
-          && typeof payload.runtimeFailureCode === "string") setRuntimeFailureCode(payload.runtimeFailureCode);
+          && typeof payload.runtimeFailureCode === "string") {
+          setRuntimeFailure(payload.runtimeFailureCode,
+            typeof payload.runtimeFailurePath === "string" ? payload.runtimeFailurePath : null);
+        }
       }
       setSaveState("error");
     }
@@ -388,7 +400,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     setSaveState(outcome === "capability-constrained" ? "constrained"
       : outcome === "persisted-pending" ? "partial" : "idle");
     setRuntimeCapabilityConstrainedPaths(snapshot.data.runtimeCapabilityConstrainedPaths ?? []);
-    setRuntimeFailureCode(snapshot.data.runtimeFailureCode ?? null);
+    setRuntimeFailure(snapshot.data.runtimeFailureCode ?? null, snapshot.data.runtimeFailurePath ?? null);
     setServiceRecovery(snapshot.data.serviceRecovery ?? undefined);
     setLoadState(nextLoadState);
   }
@@ -406,7 +418,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     setDraftSettings(applySectionDefaults(section, draftSettings(), defaults));
     setSaveState((state) => state === "saved" || state === "constrained" ? "idle" : state);
     setRuntimeCapabilityConstrainedPaths([]);
-    setRuntimeFailureCode(null);
+    setRuntimeFailure(null, null);
   }
 
   async function resetFrontendPreferences() {
@@ -428,7 +440,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     setDraftSettings(normalizeAppSettings(settings()));
     setSaveState((state) => state === "saving" ? state : "idle");
     setRuntimeCapabilityConstrainedPaths([]);
-    setRuntimeFailureCode(null);
+    setRuntimeFailure(null, null);
   }
 
   function updatePerformance(updater: (performance: AppPerformanceSettings) => AppPerformanceSettings) {
@@ -481,6 +493,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     saveState,
     runtimeCapabilityConstrainedPaths,
     runtimeFailureCode,
+    runtimeFailurePath,
     serviceRecovery,
     activeSection,
     setActiveSection,
@@ -755,8 +768,9 @@ export function applySectionDefaults(section: SettingsSection, draft: AppSetting
 
 export function defaultAppSettings(): AppSettings {
   return {
-    version: "1.0.36",
-    memoryProtection: { enabled: false, thresholdPercent: 95, checkIntervalSeconds: 1, reserves: [], actionMode: "dumpThenTerminate" },
+    version: "1.0.37",
+    memoryProtection: { enabled: false, thresholdPercent: 95, checkIntervalSeconds: 1, reserves: [], actionMode: "dumpThenTerminate",
+      minimumProcessGrowthBytes: 1073741824, protectedProcesses: ["explorer.exe"] },
     control: { reassertionIntervalSeconds: 120 },
     reports: { ruleOverrides: [] },
     performance: {
@@ -809,7 +823,7 @@ export function defaultAppSettings(): AppSettings {
 export function normalizeAppSettings(settings?: AppSettings | null): AppSettings {
   const defaults = defaultAppSettings();
   return {
-    version: "1.0.36",
+    version: "1.0.37",
     memoryProtection: structuredClone(settings?.memoryProtection === undefined ? defaults.memoryProtection : settings.memoryProtection),
     control: {
       reassertionIntervalSeconds: normalizeInteger(settings?.control?.reassertionIntervalSeconds, 1, 86400, defaults.control!.reassertionIntervalSeconds)

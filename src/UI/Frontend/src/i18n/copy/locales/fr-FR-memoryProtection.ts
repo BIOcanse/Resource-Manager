@@ -2,17 +2,26 @@ import { plural } from "../../plural.ts";
 import type { AppCopy } from "../index.ts";
 
 export const memoryProtection: AppCopy["memoryProtection"] = {
-  intro: "Lorsque la mémoire engagée atteint le seuil de déclenchement, le processus dont la mémoire totale a le plus augmenté depuis le point de fonctionnement normal est traité : selon le mode d’action, sa mémoire privée est d’abord vidée dans la réserve disque, ou le processus est arrêté directement.",
+  intro: "Lorsque la mémoire engagée atteint le seuil de déclenchement, une seule cible est traitée à la fois : si le processus dont la croissance depuis le point de fonctionnement normal est la plus forte atteint la croissance minimale, seul ce processus est traité selon le mode d’action (sa mémoire privée est d’abord vidée dans la réserve disque, ou il est arrêté directement) ; sinon, toute l’arborescence de processus située sous le processus dont les processus enfants directs ont le plus augmenté en mémoire est arrêtée. Les processus de la liste des processus autorisés et les logiciels réglés sur « Ne pas arrêter » ne sont jamais arrêtés.",
   unsavedNote: "Des modifications ne sont pas enregistrées. L’état ci-dessous reflète les paramètres enregistrés et sera de nouveau fourni par le service après l’enregistrement.",
   statusLoading: "Lecture de l’état de la protection de la mémoire…",
   statusUnavailable: "Impossible de lire l’état de la protection de la mémoire",
   statusUnavailableDetail: "Aucune valeur de substitution n’est affichée. Rétablissez le service local, puis réessayez.",
-  retry: "Réessayer",
   valueNotProvided: "Non fourni par le service",
   enabledTitle: "Activer la protection de la mémoire",
   enabledDescription: "L’activation nécessite un point de fonctionnement normal et une réserve disque entièrement constituée ; à défaut, l’enregistrement est refusé avec le motif.",
   effectiveTitle: "État d’application",
   effective: "La protection est appliquée",
+  effectiveHintLabel: "À propos de l’état de la protection",
+  effectiveHint: "L’application de la protection et la création de la réserve disque sont affichées séparément. Si la réserve rencontre une erreur en cours de fonctionnement, la protection reste appliquée et les processus sélectionnés sont arrêtés directement sans vidage ; la protection n’est pas appliquée uniquement lorsque la réserve n’a pas été créée avant l’activation.",
+  thresholdState: "Mémoire engagée et seuil",
+  thresholdStateReached: "Seuil de déclenchement atteint",
+  thresholdStateBelow: "Sous le seuil de déclenchement",
+  thresholdStateUnknown: "Impossible à déterminer : la mémoire engagée est illisible",
+  currentAction: "Traitement en cours",
+  currentActionNone: "Aucun",
+  decisionTitle: "Dernière décision",
+  decisionNone: "Aucune pour l’instant",
   inactive: (reason: string) => `Non appliquée : ${reason}`,
   rejected: (reason: string) => `Enregistrement refusé : ${reason}`,
   thresholdTitle: "Seuil de déclenchement",
@@ -31,6 +40,16 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
     dumpThenTerminate: { label: "Vidage puis arrêt", description: "Suspend le processus, écrit sa mémoire privée dans la réserve disque, puis arrête le processus." },
     terminateOnly: { label: "Arrêt seul", description: "Chaque processus sélectionné est arrêté directement, sans suspension ni écriture de tranche." }
   },
+  minimumGrowthTitle: "Croissance minimale d’un processus",
+  minimumGrowthDescription: "Lorsque le processus dont la croissance est la plus forte atteint cette valeur, seul ce processus est traité ; sinon, une arborescence de processus est arrêtée. C’est la croissance depuis le point de fonctionnement normal qui est comparée, et non la taille absolue du processus. Saisissez la valeur en octets.",
+  minimumGrowthLabel: "Croissance (octets)",
+  protectedTitle: "Liste des processus autorisés",
+  protectedDescription: "Processus qui ne sont jamais arrêtés, indiqués par nom de fichier exécutable (par exemple explorer.exe) ou par chemin complet. Seul le processus indiqué est protégé ; ses processus enfants peuvent toujours être arrêtés. La liste peut être vide.",
+  protectedEntryLabel: (index: number) => `Entrée ${index}`,
+  protectedEntry: "Nom de fichier exécutable ou chemin complet",
+  addProtected: "Ajouter un processus",
+  removeProtected: "Supprimer",
+  protectedEmpty: "La liste des processus autorisés est vide : hormis les candidats exclus, tout processus peut être arrêté.",
   pointTitle: "Point de fonctionnement normal",
   pointDescription: "Enregistre la mémoire engagée et la mémoire totale de chaque processus à cet instant, comme référence pour calculer la croissance ultérieure. Un nouveau point remplace le précédent ; il doit être recréé après un redémarrage du service.",
   pointNone: "Aucun point de fonctionnement normal",
@@ -76,6 +95,20 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
   recordDumpPaths: "Fichiers de tranche (dans l’ordre)",
   recordNoDumpPaths: "Aucune tranche écrite",
   recordReason: "Motif",
+  recordDetail: "Détails",
+  selectionRule: "Critère de sélection",
+  selectionRules: {
+    "process-growth-at-least-minimum": "La croissance du processus a atteint la croissance minimale",
+    "largest-direct-children-memory-growth": "Arborescence de processus dont les processus enfants directs ont la plus forte croissance mémoire"
+  },
+  selectionProcessGrowth: "Croissance du processus",
+  selectionChildrenGrowth: "Croissance mémoire des processus enfants directs",
+  selectionMinimum: "Croissance minimale comparée",
+  actionId: "Identifiant du traitement",
+  treeRoot: "Racine de l’arborescence",
+  treeRootStartKey: "Clé de démarrage de la racine",
+  treeRootNameUnknown: "Nom inconnu",
+  targetKinds: { process: "Processus unique", processTree: "Arborescence de processus" },
   outcomes: {
     "preflight-failed": "Échec de la vérification préalable",
     "suspend-failed": "Échec de la suspension",
@@ -83,7 +116,8 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
     "completed-with-release-limit": "Terminé ; une partie de la mémoire n’a pas pu être libérée",
     completed: "Terminé",
     "terminated-without-dump": "Arrêté sans vidage",
-    "termination-failed": "Échec de l’arrêt"
+    "termination-failed": "Échec de l’arrêt",
+    excluded: "Ignoré"
   },
   excludedTitle: "Candidats exclus",
   excludedDescription: "Ces processus ne sont pas sélectionnés ; les motifs sont fournis par le service.",
@@ -96,7 +130,9 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
     "baseline-private-commit-unavailable": "Le point de fonctionnement normal ne contient pas la mémoire totale de ce processus",
     "cannot-open": "Le processus n’a pas pu être ouvert (processus protégé ou droits insuffisants) ; il n’est plus sélectionné pour ce point de fonctionnement normal",
     "identity-changed": "L’identité du processus a changé",
-    "criticality-unavailable": "Impossible de déterminer s’il s’agit d’un processus système critique"
+    "criticality-unavailable": "Impossible de déterminer s’il s’agit d’un processus système critique",
+    "protected-process": "Dans la liste des processus autorisés",
+    "software-never-terminate": "Logiciel réglé sur « Ne pas arrêter »"
   },
   reasons: {
     disabled: "La protection de la mémoire n’est pas activée",
@@ -137,7 +173,25 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
     "software-no-dump": "Sans vidage selon le paramètre du logiciel",
     "private-commit-exceeds-reserve": "La mémoire totale du processus dépasse la réserve restante",
     "minidump-exceeds-reserve": "La tranche, comptée en clusters entiers, dépasse la réserve restante",
-    "termination-not-observed": "L’arrêt du processus n’a pas été constaté"
+    "termination-not-observed": "L’arrêt du processus n’a pas été constaté",
+    "process-tree": "Arrêté dans le cadre d’une arborescence de processus",
+    "reserve-unavailable": "La réserve disque n’est pas disponible",
+    "invalid-minimum-process-growth-bytes": "La croissance minimale doit être un nombre entier d’octets supérieur à 0",
+    "invalid-protected-processes": "La liste des processus autorisés n’est pas valide : chaque entrée doit être un nom de fichier exécutable ou un chemin complet, ne doit pas être vide ni commencer ou finir par une espace, et ne doit pas être répétée",
+    "release-limit": "Une partie de la mémoire privée n’a pas pu être désengagée",
+    "slice-incomplete": "La tranche n’a pas été entièrement écrite",
+    "preflight-failed": "Échec de la vérification préalable au vidage",
+    "suspend-failed": "Impossible de suspendre le processus",
+    "termination-failed": "Impossible d’arrêter le processus",
+    "reserve-error": "Erreur de la réserve disque ; aucune tranche n’a été écrite"
+  },
+  decisionReasons: {
+    "commit-unavailable": "La mémoire engagée était illisible ; rien n’a été traité",
+    "below-threshold": "La mémoire engagée était sous le seuil de déclenchement ; rien n’a été traité",
+    "process-handled": "Le processus dont la croissance est la plus forte a été traité",
+    "process-tree-handled": "Une arborescence de processus a été arrêtée",
+    "no-positive-child-memory-growth": "Aucun processus n’a atteint la croissance minimale et aucun processus n’a de processus enfants directs ayant augmenté en mémoire ; rien n’a été traité",
+    "no-eligible-tree": "Aucune arborescence dont la racine a des processus enfants directs ayant augmenté en mémoire ne contenait de processus pouvant être arrêté ; rien n’a été traité"
   },
   wholeClusters: (clusterBytes: string) => `La taille n’est pas un multiple entier de l’unité d’allocation (cluster) ; la taille de cluster du volume est de ${clusterBytes}`,
   invalidLocation: (detail: string) => `L’emplacement de la réserve n’est pas valide : ${detail}`,
@@ -149,6 +203,8 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
     noDump: "Sans vidage",
     noDumpHint: "S’applique uniquement lorsque le mode d’action des paramètres est « Vidage puis arrêt » : les processus de ce logiciel sont arrêtés directement, sans suspension ni écriture de tranche, et restent sélectionnés selon leur croissance.",
     noDumpInactiveNow: "Le mode d’action actuel est « Arrêt seul » : chaque processus est arrêté directement, cette option n’a donc aucun effet pour l’instant.",
+    neverTerminate: "Ne pas arrêter",
+    neverTerminateHint: "La protection de la mémoire de l’hôte n’arrête jamais les processus de ce logiciel, quel que soit le mode d’action. Dans une arborescence de processus, seul ce processus est ignoré ; ses processus enfants peuvent toujours être arrêtés.",
     modeUnavailable: "Impossible de lire le mode d’action actuel."
   }
 };

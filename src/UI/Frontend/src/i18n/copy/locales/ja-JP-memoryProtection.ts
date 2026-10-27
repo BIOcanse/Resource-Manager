@@ -2,17 +2,26 @@ import { cjkText } from "../../cjkSpacing.ts";
 import type { AppCopy } from "../index.ts";
 
 export const memoryProtection: AppCopy["memoryProtection"] = {
-  intro: "コミット量がトリガーしきい値に達すると、正常稼働点以降に全メモリの増加量が最も大きいプロセスを 1 つ選んで処理します。処理方式に応じて、そのプライベート メモリをディスク予約領域へ先にダンプするか、直接終了します。",
+  intro: "コミット量がトリガーしきい値に達すると、1 回に 1 つの対象だけを処理します。正常稼働点以降の増加量が最大のプロセスが最小増加量に達した場合は、そのプロセスだけを処理方式に従って処理します（プライベート メモリをディスク予約領域へ先にダンプするか、直接終了します）。達しない場合は、直接の子プロセスのメモリ増加量が最も大きいプロセスの下にあるプロセス ツリー全体を終了します。プロセス許可リストにあるプロセスと「終了しない」に設定したソフトウェアは終了しません。",
   unsavedNote: "保存されていない変更があります。下の状態は保存済みの設定に基づいて表示され、保存後にバックエンドから改めて提供されます。",
   statusLoading: "メモリ保護の状態を読み込んでいます…",
   statusUnavailable: "メモリ保護の状態を読み込めません",
   statusUnavailableDetail: "代替の値は表示していません。ローカル サービスを復旧してから再試行してください。",
-  retry: "再試行",
   valueNotProvided: "バックエンドから提供されていません",
   enabledTitle: "メモリ保護を有効にする",
   enabledDescription: "有効にするには、正常稼働点と完全に構築されたディスク予約領域が必要です。条件を満たさない場合、保存は拒否され、理由が示されます。",
   effectiveTitle: "適用状態",
   effective: "保護が適用されています",
+  effectiveHintLabel: "適用状態の説明",
+  effectiveHint: "保護が適用されているかどうかと、ディスク予約領域が作成済みかどうかは別々に表示します。実行中に予約領域でエラーが発生しても保護は適用されたままで、選択されたプロセスはスライスを書き込まずに直接終了します。保護が適用されないのは、有効にする前に予約領域が作成されていなかった場合だけです。",
+  thresholdState: "コミット量としきい値",
+  thresholdStateReached: "トリガーしきい値に達しています",
+  thresholdStateBelow: "トリガーしきい値未満です",
+  thresholdStateUnknown: "判断できません：コミット量を読み取れません",
+  currentAction: "実行中の処理",
+  currentActionNone: "なし",
+  decisionTitle: "直近の判断",
+  decisionNone: "まだありません",
   inactive: (reason: string) => `適用されていません：${reason}`,
   rejected: (reason: string) => `保存が拒否されました：${reason}`,
   thresholdTitle: "トリガーしきい値",
@@ -31,6 +40,16 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
     dumpThenTerminate: { label: "ダンプ後に終了", description: "プロセスを凍結し、プライベート メモリをディスク予約領域に書き込んでから、プロセスを終了します。" },
     terminateOnly: { label: "終了のみ", description: "選ばれたプロセスはすべて直接終了し、凍結もスライスの書き込みも行いません。" }
   },
+  minimumGrowthTitle: "プロセスの最小増加量",
+  minimumGrowthDescription: "増加量が最大のプロセスがこの値に達した場合はそのプロセスだけを処理し、達しない場合はプロセス ツリーを終了します。比較するのは正常稼働点からの増加量で、プロセスの絶対サイズではありません。バイト単位で入力します。",
+  minimumGrowthLabel: "増加量（バイト）",
+  protectedTitle: "プロセス許可リスト",
+  protectedDescription: "終了しないプロセスを、実行ファイル名（例：explorer.exe）または完全パスで指定します。保護されるのは指定したプロセス自体だけで、その子プロセスは終了されることがあります。リストは空にできます。",
+  protectedEntryLabel: (index: number) => cjkText`${index}番目`,
+  protectedEntry: "実行ファイル名または完全パス",
+  addProtected: "プロセスを追加",
+  removeProtected: "削除",
+  protectedEmpty: "プロセス許可リストは空です。除外された候補を除き、どのプロセスも終了される可能性があります。",
   pointTitle: "正常稼働点",
   pointDescription: "その時点のコミット量と各プロセスの全メモリを記録し、以降の増加量を計算する基準にします。新しく作成すると以前のものを置き換えます。サービスの再起動後は再作成が必要です。",
   pointNone: "正常稼働点がありません",
@@ -76,6 +95,20 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
   recordDumpPaths: "スライス ファイル（順番どおり）",
   recordNoDumpPaths: "スライスは書き込まれていません",
   recordReason: "理由",
+  recordDetail: "詳細",
+  selectionRule: "選択の根拠",
+  selectionRules: {
+    "process-growth-at-least-minimum": "プロセスの増加量が最小増加量に達した",
+    "largest-direct-children-memory-growth": "直接の子プロセスのメモリ増加量が最大のプロセス ツリー"
+  },
+  selectionProcessGrowth: "プロセスの増加量",
+  selectionChildrenGrowth: "直接の子プロセスのメモリ増加量",
+  selectionMinimum: "比較した最小増加量",
+  actionId: "処理 ID",
+  treeRoot: "ツリーのルート",
+  treeRootStartKey: "ルートのプロセス開始キー",
+  treeRootNameUnknown: "名前不明",
+  targetKinds: { process: "単一のプロセス", processTree: "プロセス ツリー" },
   outcomes: {
     "preflight-failed": "事前チェックに失敗",
     "suspend-failed": "凍結に失敗",
@@ -83,7 +116,8 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
     "completed-with-release-limit": "完了（一部のメモリを解放できませんでした）",
     completed: "完了",
     "terminated-without-dump": "ダンプせずに終了",
-    "termination-failed": "終了に失敗"
+    "termination-failed": "終了に失敗",
+    excluded: "スキップ"
   },
   excludedTitle: "除外された候補",
   excludedDescription: "これらのプロセスは選択の対象になりません。理由はバックエンドが提供します。",
@@ -96,7 +130,9 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
     "baseline-private-commit-unavailable": "正常稼働点にこのプロセスの全メモリがありません",
     "cannot-open": "プロセスを開けません（保護されたプロセスまたは権限不足）。今回の正常稼働点の間は再び選択しません",
     "identity-changed": "プロセスの識別情報が変わりました",
-    "criticality-unavailable": "システムの重要なプロセスかどうかを判断できません"
+    "criticality-unavailable": "システムの重要なプロセスかどうかを判断できません",
+    "protected-process": "プロセス許可リストにあります",
+    "software-never-terminate": "ソフトウェアが「終了しない」に設定されています"
   },
   reasons: {
     disabled: "メモリ保護が有効になっていません",
@@ -137,7 +173,25 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
     "software-no-dump": "ソフトウェアの設定によりダンプしません",
     "private-commit-exceeds-reserve": "プロセスの全メモリが残りの予約領域を超えています",
     "minidump-exceeds-reserve": "クラスター単位で計算したスライスが残りの予約領域を超えています",
-    "termination-not-observed": "プロセスの終了を確認できませんでした"
+    "termination-not-observed": "プロセスの終了を確認できませんでした",
+    "process-tree": "プロセス ツリーの一部として終了",
+    "reserve-unavailable": "ディスク予約領域を使用できません",
+    "invalid-minimum-process-growth-bytes": "最小増加量は 0 より大きい整数のバイト数である必要があります",
+    "invalid-protected-processes": "プロセス許可リストが無効です。各項目は実行ファイル名または完全パスで、空にしたり前後に空白を入れたり重複させたりすることはできません",
+    "release-limit": "一部のプライベート メモリのコミットを解除できませんでした",
+    "slice-incomplete": "スライスを完全には書き込めませんでした",
+    "preflight-failed": "ダンプ前の事前チェックに失敗しました",
+    "suspend-failed": "プロセスを凍結できませんでした",
+    "termination-failed": "プロセスを終了できませんでした",
+    "reserve-error": "ディスク予約領域でエラーが発生したため、スライスを書き込んでいません"
+  },
+  decisionReasons: {
+    "commit-unavailable": "コミット量を読み取れなかったため、処理していません",
+    "below-threshold": "コミット量がトリガーしきい値未満だったため、処理していません",
+    "process-handled": "増加量が最大のプロセスを処理しました",
+    "process-tree-handled": "プロセス ツリーを 1 つ終了しました",
+    "no-positive-child-memory-growth": "最小増加量に達したプロセスがなく、直接の子プロセスのメモリが増加したプロセスもないため、処理していません",
+    "no-eligible-tree": "直接の子プロセスのメモリが増加したプロセスの下に、終了できるプロセスがなかったため、処理していません"
   },
   wholeClusters: (clusterBytes: string) => cjkText`サイズがアロケーション ユニット（クラスター）の整数倍ではありません。このボリュームのクラスター サイズは${clusterBytes}です`,
   invalidLocation: (detail: string) => `予約領域の場所が無効です：${detail}`,
@@ -149,6 +203,8 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
     noDump: "ダンプしない",
     noDumpHint: "設定の処理方式が「ダンプ後に終了」の場合にのみ有効です。このソフトウェアのプロセスは凍結もスライスの書き込みも行わずに直接終了しますが、引き続き増加量に基づいて選択の対象になります。",
     noDumpInactiveNow: "現在の処理方式は「終了のみ」で、すべてのプロセスが直接終了するため、この項目は現在効果がありません。",
+    neverTerminate: "終了しない",
+    neverTerminateHint: "ホスト メモリ保護は、処理方式にかかわらず、このソフトウェアのプロセスを終了しません。プロセス ツリーの中ではこのプロセス自体だけをスキップし、その子プロセスは終了されることがあります。",
     modeUnavailable: "現在の処理方式を読み込めません。"
   }
 };

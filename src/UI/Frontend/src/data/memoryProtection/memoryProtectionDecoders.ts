@@ -1,28 +1,52 @@
 import {
   defineResponseDecoder, requireArray, requireBoolean, requireFiniteNumber,
-  requireNonNegativeFiniteNumber, requireNonNegativeSafeInteger, requireNullable,
+  requireNonEmptyString, requireNonNegativeFiniteNumber, requireNonNegativeSafeInteger, requireNullable,
   requireOneOf, requireRecord, requireString, requireStringArray, ResponseDecodeError
 } from "../../frontendRuntime/request/ResponseDecoder.ts";
 import type {
-  HostMemoryActionRecord, HostMemoryCommit, HostMemoryExclusion, HostMemoryProcess,
-  HostMemoryProtectionSettings, HostMemoryProtectionStatus, HostMemoryReserveEntryStatus,
-  HostMemoryReserveStatus, NormalRunningPoint, NormalRunningPointSummary
+  HostMemoryActionOutcome, HostMemoryActionReason, HostMemoryActionRecord, HostMemoryActionTargetKind, HostMemoryCommit,
+  HostMemoryExclusion, HostMemoryExclusionReason, HostMemoryProcess, HostMemoryProtectionFrame,
+  HostMemoryProtectionLiveStatus, HostMemoryProtectionSettings, HostMemoryProtectionStatus, HostMemoryReserveEntryStatus,
+  HostMemoryReserveStatus, HostMemorySelectionBasis, HostMemoryTreeRoot, NormalRunningPoint, NormalRunningPointSummary
 } from "./memoryProtectionTypes.ts";
 
 export const memoryProtectionActionModes = ["dumpThenTerminate", "terminateOnly"] as const;
-// excluded/reserve-unavailable are executor control results, never status action records.
+// "excluded" records are skipped process tree members (HostMemoryProtectionService tree loop); a skipped
+// single-process candidate is listed in excludedCandidates, never in the records.
 export const memoryProtectionActionOutcomes = ["preflight-failed", "suspend-failed", "slice-incomplete",
-  "completed-with-release-limit", "completed", "terminated-without-dump", "termination-failed"] as const;
+  "completed-with-release-limit", "completed", "terminated-without-dump", "termination-failed", "excluded"] as const;
 export const memoryProtectionExclusionReasons = ["resource-manager-process", "critical-process",
   "process-identity-unavailable", "private-commit-unavailable", "baseline-private-commit-unavailable",
-  "cannot-open", "identity-changed", "criticality-unavailable"] as const;
-export const memoryProtectionDirectActionReasons = ["terminate-only", "software-no-dump",
-  "private-commit-exceeds-reserve", "minidump-exceeds-reserve"] as const;
+  "cannot-open", "identity-changed", "criticality-unavailable", "protected-process", "software-never-terminate"] as const;
+export const memoryProtectionTargetKinds = ["process", "processTree"] as const;
+export const memoryProtectionSelectionRules = ["process-growth-at-least-minimum", "largest-direct-children-memory-growth"] as const;
+// WindowsHostMemoryProtectionExecutor: one code per failed outcome; terminated-without-dump names why no dump was
+// written (process-tree is set by HostMemoryProtectionService for tree members). Completed dumps have no reason.
+const actionReasonsByOutcome: Readonly<Record<Exclude<HostMemoryActionOutcome, "completed" | "excluded">, readonly HostMemoryActionReason[]>> = {
+  "completed-with-release-limit": ["release-limit"],
+  "slice-incomplete": ["slice-incomplete"],
+  "preflight-failed": ["preflight-failed"],
+  "suspend-failed": ["suspend-failed"],
+  "termination-failed": ["termination-failed"],
+  "terminated-without-dump": ["terminate-only", "software-no-dump", "private-commit-exceeds-reserve",
+    "minidump-exceeds-reserve", "reserve-error", "reserve-unavailable", "process-tree"]
+};
+export const memoryProtectionActionReasons: readonly HostMemoryActionReason[] = [...new Set(Object.values(actionReasonsByOutcome).flat())];
+export const memoryProtectionDecisionReasons = ["commit-unavailable", "below-threshold", "process-handled",
+  "process-tree-handled", "no-positive-child-memory-growth", "no-eligible-tree"] as const;
 
 function requireWireUInt64(value: unknown, path: string): number {
   const number = requireNonNegativeFiniteNumber(value, path);
   if (!Number.isInteger(number) || number > 18446744073709551615) {
     throw new ResponseDecodeError(path, "UInt64 JSON number");
+  }
+  return number;
+}
+// Int64 JSON numbers (minimumProcessGrowthBytes); like UInt64 fields, precision beyond 2^53 is the JSON number's.
+function requireWireInt64(value: unknown, path: string): number {
+  const number = requireFiniteNumber(value, path);
+  if (!Number.isInteger(number) || Math.abs(number) > 9223372036854775807) {
+    throw new ResponseDecodeError(path, "Int64 JSON number");
   }
   return number;
 }
@@ -46,7 +70,9 @@ export function decodeHostMemoryProtectionSettings(value: unknown, path = "$"): 
       const entry = requireRecord(value, path);
       return { location: requireString(entry.location, `${path}.location`),
         sizeBytes: requireWireUInt64(entry.sizeBytes, `${path}.sizeBytes`) };
-    }))
+    })),
+    minimumProcessGrowthBytes: requireWireInt64(row.minimumProcessGrowthBytes, `${path}.minimumProcessGrowthBytes`),
+    protectedProcesses: requireStringArray(row.protectedProcesses, `${path}.protectedProcesses`)
   };
 }
 export function decodeHostMemoryCommit(value: unknown, path = "$"): HostMemoryCommit {
@@ -64,7 +90,9 @@ export function decodeHostMemoryProcess(value: unknown, path = "$"): HostMemoryP
     processStartKey: requireString(row.processStartKey, `${path}.processStartKey`),
     name: requireString(row.name, `${path}.name`),
     privateCommitBytes: requireNullable(row.privateCommitBytes, `${path}.privateCommitBytes`, requireWireUInt64),
-    softwareId: nullableReason(row.softwareId, `${path}.softwareId`)
+    softwareId: nullableReason(row.softwareId, `${path}.softwareId`),
+    executablePath: nullableReason(row.executablePath, `${path}.executablePath`),
+    parentProcessId: requireNullable(row.parentProcessId, `${path}.parentProcessId`, requireNonNegativeSafeInteger)
   };
 }
 export function decodeNormalRunningPointSummary(value: unknown, path = "$"): NormalRunningPointSummary {
@@ -105,37 +133,73 @@ export function decodeHostMemoryExclusion(value: unknown, path = "$"): HostMemor
     reason: requireOneOf(row.reason, `${path}.reason`, memoryProtectionExclusionReasons)
   };
 }
+export function decodeHostMemoryTreeRoot(value: unknown, path = "$"): HostMemoryTreeRoot {
+  const row = requireRecord(value, path);
+  return {
+    processId: requireNonNegativeSafeInteger(row.processId, `${path}.processId`),
+    processStartKey: nullableReason(row.processStartKey, `${path}.processStartKey`),
+    name: nullableReason(row.name, `${path}.name`)
+  };
+}
+function decodeSelectionBasis(value: unknown, path: string, targetKind: HostMemoryActionTargetKind): HostMemorySelectionBasis {
+  const row = requireRecord(value, path);
+  const rule = requireOneOf(row.rule, `${path}.rule`, memoryProtectionSelectionRules);
+  const expected = targetKind === "processTree" ? "largest-direct-children-memory-growth" : "process-growth-at-least-minimum";
+  if (rule !== expected) throw new ResponseDecodeError(`${path}.rule`, `${expected} for ${targetKind}`);
+  // HostMemoryProtectionService fills exactly the ranking value of the rule it applied.
+  const growth = (field: "processGrowthBytes" | "directChildrenMemoryGrowthBytes", applies: boolean): number | null => {
+    if (applies) return requireFiniteNumber(row[field], `${path}.${field}`);
+    if (row[field] !== null) throw new ResponseDecodeError(`${path}.${field}`, `null for ${rule}`);
+    return null;
+  };
+  const tree = rule === "largest-direct-children-memory-growth";
+  return {
+    rule,
+    processGrowthBytes: growth("processGrowthBytes", !tree),
+    directChildrenMemoryGrowthBytes: growth("directChildrenMemoryGrowthBytes", tree),
+    minimumProcessGrowthBytes: requireWireInt64(row.minimumProcessGrowthBytes, `${path}.minimumProcessGrowthBytes`)
+  };
+}
 export function decodeHostMemoryActionRecord(value: unknown, path = "$"): HostMemoryActionRecord {
   const row = requireRecord(value, path);
   const outcome = requireOneOf(row.outcome, `${path}.outcome`, memoryProtectionActionOutcomes);
   const reasonPath = `${path}.reason`;
-  let reason: string | null;
+  const detail = nullableReason(row.detail, `${path}.detail`);
+  let reason: HostMemoryActionReason | HostMemoryExclusionReason | null;
   if (outcome === "completed") {
     if (row.reason !== null) throw new ResponseDecodeError(reasonPath, "null for completed action");
+    if (detail !== null) throw new ResponseDecodeError(`${path}.detail`, "null for completed action");
     reason = null;
-  } else if (outcome === "terminated-without-dump") {
-    reason = requireOneOf(row.reason, reasonPath, memoryProtectionDirectActionReasons);
+  } else if (outcome === "excluded") {
+    reason = requireOneOf(row.reason, reasonPath, memoryProtectionExclusionReasons);
   } else {
-    reason = requireString(row.reason, reasonPath);
-    if ((outcome === "suspend-failed" && !/^ntstatus-[0-9a-f]{8}$/.test(reason))
-      || (outcome === "termination-failed" && reason !== "termination-not-observed" && !/^terminate-failed--?\d+$/.test(reason))
-      || (outcome === "completed-with-release-limit" && !/^private-memory-decommit-limited chunks=\d+ bytes=\d+; /.test(reason))) {
-      throw new ResponseDecodeError(reasonPath, `backend ${outcome} reason`);
-    }
-    // Preflight and incomplete-slice failures carry arbitrary native/IO exception messages.
+    reason = requireOneOf(row.reason, reasonPath, actionReasonsByOutcome[outcome]);
+  }
+  const targetKind = requireOneOf(row.targetKind, `${path}.targetKind`, memoryProtectionTargetKinds);
+  const treeRoot = requireNullable(row.treeRoot, `${path}.treeRoot`, decodeHostMemoryTreeRoot);
+  if ((targetKind === "processTree") !== (treeRoot !== null)) {
+    throw new ResponseDecodeError(`${path}.treeRoot`, targetKind === "processTree" ? "tree root for processTree" : "null for process");
   }
   return {
     at: timestamp(row.at, `${path}.at`),
     processId: requireNonNegativeSafeInteger(row.processId, `${path}.processId`),
     processStartKey: requireString(row.processStartKey, `${path}.processStartKey`), name: requireString(row.name, `${path}.name`),
-    baselineBytes: requireWireUInt64(row.baselineBytes, `${path}.baselineBytes`),
-    currentBytes: requireWireUInt64(row.currentBytes, `${path}.currentBytes`),
-    growthBytes: requireFiniteNumber(row.growthBytes, `${path}.growthBytes`),
+    baselineBytes: requireNullable(row.baselineBytes, `${path}.baselineBytes`, requireWireUInt64),
+    currentBytes: requireNullable(row.currentBytes, `${path}.currentBytes`, requireWireUInt64),
+    growthBytes: requireNullable(row.growthBytes, `${path}.growthBytes`, requireFiniteNumber),
     dumpPaths: requireStringArray(row.dumpPaths, `${path}.dumpPaths`),
-    bytesWritten: requireWireUInt64(row.bytesWritten, `${path}.bytesWritten`), outcome, reason
+    bytesWritten: requireWireUInt64(row.bytesWritten, `${path}.bytesWritten`), outcome, reason, detail,
+    selectionBasis: decodeSelectionBasis(row.selectionBasis, `${path}.selectionBasis`, targetKind),
+    actionId: requireNonEmptyString(row.actionId, `${path}.actionId`), targetKind, treeRoot
   };
 }
-export function decodeHostMemoryProtectionStatus(value: unknown, path = "$"): HostMemoryProtectionStatus {
+// HostMemoryProtectionStatus.Active is "InactiveReason is null" on the backend; both are sent and must agree.
+function requireActive(value: unknown, path: string, inactiveReason: string | null): boolean {
+  const active = requireBoolean(value, path);
+  if (active !== (inactiveReason === null)) throw new ResponseDecodeError(path, "active exactly when inactiveReason is null");
+  return active;
+}
+export function decodeHostMemoryProtectionLiveStatus(value: unknown, path = "$"): HostMemoryProtectionLiveStatus {
   const row = requireRecord(value, path);
   const reserve = decodeHostMemoryReserveStatus(row.reserve, `${path}.reserve`);
   const inactiveReason = nullableReason(row.inactiveReason, `${path}.inactiveReason`);
@@ -151,16 +215,47 @@ export function decodeHostMemoryProtectionStatus(value: unknown, path = "$"): Ho
     triggerBytes: requireNullable(row.triggerBytes, `${path}.triggerBytes`, requireFiniteNumber),
     remainingBytes: requireNullable(row.remainingBytes, `${path}.remainingBytes`, requireFiniteNumber),
     currentCommit: requireNullable(row.currentCommit, `${path}.currentCommit`, decodeHostMemoryCommit),
-    normalRunningPoint: requireNullable(row.normalRunningPoint, `${path}.normalRunningPoint`, decodeNormalRunningPointSummary),
     // Service forwards reserve.reason verbatim, including OS exception text.
     inactiveReason,
     excludedCandidates: rows(row.excludedCandidates, `${path}.excludedCandidates`, decodeHostMemoryExclusion),
+    active: requireActive(row.active, `${path}.active`, inactiveReason),
+    atOrAboveThreshold: requireNullable(row.atOrAboveThreshold, `${path}.atOrAboveThreshold`, requireBoolean),
+    currentActionId: requireNullable(row.currentActionId, `${path}.currentActionId`, requireNonEmptyString),
+    minimumProcessGrowthBytes: requireWireInt64(row.minimumProcessGrowthBytes, `${path}.minimumProcessGrowthBytes`),
+    protectedProcesses: requireStringArray(row.protectedProcesses, `${path}.protectedProcesses`),
+    decisionReason: requireNullable(row.decisionReason, `${path}.decisionReason`,
+      (value, path) => requireOneOf(value, path, memoryProtectionDecisionReasons))
+  };
+}
+export function decodeHostMemoryProtectionStatus(value: unknown, path = "$"): HostMemoryProtectionStatus {
+  const row = requireRecord(value, path);
+  return {
+    ...decodeHostMemoryProtectionLiveStatus(row, path),
+    normalRunningPoint: requireNullable(row.normalRunningPoint, `${path}.normalRunningPoint`, decodeNormalRunningPointSummary),
     actionRecordLimit: requireNonNegativeSafeInteger(row.actionRecordLimit, `${path}.actionRecordLimit`),
     actions: rows(row.actions, `${path}.actions`, decodeHostMemoryActionRecord)
   };
 }
+const memoryProtectionFrameTypes = ["status", "records", "record", "normalRunningPoint"] as const;
+// HostMemoryProtectionFrames and HostMemoryProtectionPointFrame: every subscription value names its frame in type.
+export function decodeHostMemoryProtectionFrame(value: unknown, path = "$"): HostMemoryProtectionFrame {
+  const row = requireRecord(value, path);
+  const type = requireOneOf(row.type, `${path}.type`, memoryProtectionFrameTypes);
+  switch (type) {
+    case "status":
+      return { type, status: decodeHostMemoryProtectionLiveStatus(row.status, `${path}.status`) };
+    case "records":
+      return { type, records: rows(row.records, `${path}.records`, decodeHostMemoryActionRecord),
+        limit: requireNonNegativeSafeInteger(row.limit, `${path}.limit`) };
+    case "record":
+      return { type, record: decodeHostMemoryActionRecord(row.record, `${path}.record`) };
+    case "normalRunningPoint":
+      return { type,
+        normalRunningPoint: requireNullable(row.normalRunningPoint, `${path}.normalRunningPoint`, decodeNormalRunningPoint) };
+  }
+}
 export const memoryProtectionSettingsDecoder = defineResponseDecoder("memory-protection.settings.v1", decodeHostMemoryProtectionSettings);
-export const memoryProtectionStatusDecoder = defineResponseDecoder("memory-protection.status.v1", decodeHostMemoryProtectionStatus);
+// The reserve rebuild response is the full status; the subscription sends frames.
+export const memoryProtectionStatusDecoder = defineResponseDecoder("memory-protection.status.v3", decodeHostMemoryProtectionStatus);
+export const memoryProtectionFrameDecoder = defineResponseDecoder("memory-protection.frame.v1", decodeHostMemoryProtectionFrame);
 export const normalRunningPointDecoder = defineResponseDecoder("memory-protection.normal-running-point.v1", decodeNormalRunningPoint);
-export const nullableNormalRunningPointDecoder = defineResponseDecoder<NormalRunningPoint | null>(
-  "memory-protection.normal-running-point.nullable.v1", value => requireNullable(value, "$", decodeNormalRunningPoint));

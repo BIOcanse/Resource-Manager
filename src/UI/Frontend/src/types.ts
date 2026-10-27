@@ -498,6 +498,8 @@ export interface AppSettingsResult {
   runtimeDeliveryFailureCount?: number;
   runtimeCapabilityConstrainedPaths?: readonly string[];
   runtimeFailureCode?: string | null;
+  /** JSON path of the rejected value, e.g. "$.debug.debugLogEnabled", sent with invalid-settings-value-type. */
+  runtimeFailurePath?: string | null;
 }
 
 export interface ResourceProcessSegment {
@@ -889,6 +891,7 @@ export type CpuMaximumOccupancyMode = "single_ccd" | "all_cores";
 
 export interface GpuPlacementSoftwarePolicy {
   hostMemoryProtectionNoDump: boolean;
+  hostMemoryProtectionNeverTerminate: boolean;
   softwareId: string;
   softwareName: string;
   allowedProviders: string[];

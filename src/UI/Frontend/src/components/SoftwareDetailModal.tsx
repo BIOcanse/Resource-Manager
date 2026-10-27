@@ -57,8 +57,6 @@ import { uiText } from "../text.ts";
 import { formatBytes } from "../presentation/byteUnits.ts";
 import { SoftwareOverlaySettings } from "../features/overlay/SoftwareOverlaySettings.tsx";
 import { moveRovingFocus } from "../ui/primitives/RovingFocus.ts";
-import { useSource } from "../frontendRuntime/source/useSource.ts";
-import { memoryProtectionDemand } from "../data/memoryProtection/memoryProtectionDemand.ts";
 
 type ScalarDetailValueType = Exclude<DetailValue, DetailValue[]>;
 type DetailTabId = SoftwareDetailTabId;
@@ -129,6 +127,7 @@ function policyComparableKey(policy: GpuPlacementSoftwarePolicy) {
     memorySchedulingExcluded: policy.memorySchedulingExcluded,
     gpuSchedulingExcluded: policy.gpuSchedulingExcluded,
     hostMemoryProtectionNoDump: policy.hostMemoryProtectionNoDump,
+    hostMemoryProtectionNeverTerminate: policy.hostMemoryProtectionNeverTerminate,
     cpuMaximumOccupancyMode: policy.cpuMaximumOccupancyMode,
     cpuManualExclusivePositionIds: sortedPolicyValues(policy.cpuManualExclusivePositionIds),
     cpuManualLockedPositionIds: sortedPolicyValues(policy.cpuManualLockedPositionIds)
@@ -661,22 +660,17 @@ function SchedulingParticipationGroup(props: {
   );
 }
 
-// 主机内存保护的“不转储”（docs/host_memory_protection_2026-10-26.md）：存在软件策略里，随策略草稿保存。
-// 它只在全局处理方式为“转储后结束”时起作用；全局为“只结束”时照样显示，并说明现在不起作用。
+// 主机内存保护的“不转储”和“不结束”（docs/host_memory_protection_2026-10-26.md）：都存在软件策略里，随策略草稿
+// 整份保存。“不转储”只在全局处理方式为“转储后结束”时起作用；全局为“只结束”时照样显示，并说明现在不起作用。
+// “不结束”不受处理方式影响。处理方式读自保护状态订阅。
 function HostMemoryProtectionPolicyGroup(props: {
   policy: GpuPlacementSoftwarePolicy;
   onUpdate: (patch: Partial<GpuPlacementSoftwarePolicy>) => void;
 }) {
   const runtime = useFrontendRuntime();
   const work = useFrontendWork();
-  const intervals = useFrontendReadIntervals();
-  const status = useSource(runtime.sources.memoryProtection, () => {
-    const current = intervals.current();
-    return current
-      ? memoryProtectionDemand(work.frontendVisible(), current)
-      : { active: work.frontendVisible(), refreshIntervalMs: null };
-  });
-  const actionMode = () => status.snapshot().data?.actionMode ?? null;
+  const status = usePushSource(runtime.sources.memoryProtection, () => ({ active: work.frontendVisible() }));
+  const actionMode = () => status.snapshot().data?.status.actionMode ?? null;
   const copy = () => uiText.memoryProtection.software;
   return (
     <div class="software-policy-group software-memory-protection-group">
@@ -687,6 +681,12 @@ function HostMemoryProtectionPolicyGroup(props: {
           hint={copy().noDumpHint}
           checked={props.policy.hostMemoryProtectionNoDump}
           onChange={(hostMemoryProtectionNoDump) => props.onUpdate({ hostMemoryProtectionNoDump })}
+        />
+        <PolicyToggle
+          label={copy().neverTerminate}
+          hint={copy().neverTerminateHint}
+          checked={props.policy.hostMemoryProtectionNeverTerminate}
+          onChange={(hostMemoryProtectionNeverTerminate) => props.onUpdate({ hostMemoryProtectionNeverTerminate })}
         />
       </div>
       <Show when={actionMode() === "terminateOnly"}>

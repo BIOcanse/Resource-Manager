@@ -184,17 +184,19 @@ export default async function memoryProtectionSettingsJourney(page, baseUrl) {
   await open("commit-unavailable");
   await expectValues(copy.valueNotProvided, copy.valueNotProvided, copy.valueNotProvided);
 
-  // all-outcomes：七种结果、直接结束的四种原因、跨卷有序的切片路径和八种排除原因都显示出来。
+  // all-outcomes：七种结果、每种结果的原因码、诊断详情、跨卷有序的切片路径和排除原因都显示出来。
   await open("all-outcomes");
   const status = await (await fetch(`${baseUrl}/api/memory-protection`)).json();
   const records = panel().locator(".memory-protection-record");
   assert.equal(await records.count(), status.actions.length);
-  const expectedReasons = {
-    "completed-with-release-limit": copy.releaseLimited("1", "4.00 KiB"),
+  // 原因是码，查表得文字；详情是后端的诊断原文：认得的写法（NTSTATUS、Win32 错误、未能解除提交）照文案写出，其余原样显示。
+  const expectedDetails = {
+    "release-limit": copy.releaseLimited("1", "4.00 KiB"),
     "preflight-failed": "ReadProcessMemory failed",
     "suspend-failed": copy.suspendStatus("0xc0000022"),
     "slice-incomplete": "fixture IO failure",
-    "termination-failed": copy.terminateFailed("5")
+    "termination-failed": copy.terminateFailed("5"),
+    "reserve-error": "Access to the reserve file was denied."
   };
   for (let index = 0; index < status.actions.length; index++) {
     const record = status.actions[index];
@@ -207,17 +209,23 @@ export default async function memoryProtectionSettingsJourney(page, baseUrl) {
     if (record.reason === null) {
       assert.equal(await fact(row, copy.recordReason).count(), 0);
     } else {
-      const expected = record.outcome === "terminated-without-dump" ? copy.reasons[record.reason] : expectedReasons[record.outcome];
-      assert.equal(await factText(row, copy.recordReason), expected);
+      assert.equal(await factText(row, copy.recordReason), copy.reasons[record.reason]);
       assert.equal(await fact(row, copy.recordReason).getAttribute("data-full-content"), record.reason);
     }
+    if (record.detail === null) {
+      assert.equal(await fact(row, copy.recordDetail).count(), 0, `${record.outcome}: no detail`);
+    } else {
+      assert.equal(await factText(row, copy.recordDetail), expectedDetails[record.reason], `${record.reason}: detail`);
+      assert.equal(await fact(row, copy.recordDetail).getAttribute("data-full-content"), record.detail, "hover shows the raw detail");
+    }
+    assert.equal(await row.locator("[title]").count(), 0, "records have no native tooltips");
     const paths = await row.locator(".memory-protection-paths li").allInnerTexts();
     assert.deepEqual(paths, record.dumpPaths, `${record.outcome}: dump paths keep the record order`);
     if (record.dumpPaths.length === 0) assert.equal(await factText(row, copy.recordDumpPaths), copy.recordNoDumpPaths);
   }
   assert.deepEqual(new Set(status.actions.map(record => record.outcome)).size, 7);
   const exclusions = panel().locator(".memory-protection-exclusion");
-  assert.equal(await exclusions.count(), 8);
+  assert.equal(await exclusions.count(), 10);
   for (let index = 0; index < status.excludedCandidates.length; index++) {
     const candidate = status.excludedCandidates[index];
     assert.equal((await exclusions.nth(index).locator("span").innerText()).trim(), copy.exclusionReasons[candidate.reason]);
@@ -226,9 +234,11 @@ export default async function memoryProtectionSettingsJourney(page, baseUrl) {
   // exclusions：只有排除的候选，没有处理记录。
   await open("exclusions");
   await panel().getByText(copy.recordsEmpty, { exact: true }).waitFor();
-  assert.equal(await panel().locator(".memory-protection-exclusion").count(), 8);
+  assert.equal(await panel().locator(".memory-protection-exclusion").count(), 10);
 
-  assert.deepEqual([...new Set(covered)].sort(), [...memoryProtectionScenarios].sort(), "every mock scenario was opened");
+  // tree-actions and action-in-progress belong to the memory-protection-events journey.
+  assert.deepEqual([...new Set(covered)].sort(), memoryProtectionScenarios.filter(name => !["tree-actions", "action-in-progress"].includes(name)).sort(),
+    "every settings mock scenario was opened");
   assert.equal(errors.length, 0, `page errors: ${errors.join("\n")}`);
   return { scenarios: [...new Set(covered)], rejectedEnables: ["no-normal-running-point", "reserve-not-configured"],
     exactReserveSizeSent: 131075, records: status.actions.length, exclusions: status.excludedCandidates.length };
