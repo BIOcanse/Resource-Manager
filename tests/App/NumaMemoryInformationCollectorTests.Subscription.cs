@@ -38,7 +38,8 @@ public sealed partial class NumaMemoryInformationCollectorTests
             dashboard, registry, slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance);
         var request = MetricDeviceFields.CreateRequest(dashboard.Current!, "windows-numa-node|9", [FieldName, CapacityFieldName]);
         Assert.Equal(2, request.Ids.Count);
-        await sampler.GetSnapshotAsync(request, CancellationToken.None);
+        // Explicit cache inspection: GetSnapshotAsync acquires a single-fetch demand and waits for sampling.
+        _ = sampler.ReadLatest(request);
         Assert.Empty(reads);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
         await sampler.StartAsync(timeout.Token);
@@ -50,7 +51,7 @@ public sealed partial class NumaMemoryInformationCollectorTests
             AssertCapacityNode(current, "windows-numa-node|9", "123");
             Assert.Equal(new ushort[] { 9 }, reads);
             Assert.Equal(new ushort[] { 9 }, capacityReads);
-            var snapshot = await sampler.GetSnapshotAsync(request, timeout.Token);
+            var snapshot = sampler.ReadLatest(request)!;
             AssertNode(snapshot, "windows-numa-node|9", "9007199254740993");
             AssertCapacityNode(snapshot, "windows-numa-node|9", "123");
             sampler.ReadLatest(request);
@@ -62,7 +63,7 @@ public sealed partial class NumaMemoryInformationCollectorTests
             await sampler.StopAsync(CancellationToken.None);
             var count = reads.Count;
             var capacityCount = capacityReads.Count;
-            await sampler.GetSnapshotAsync(request, CancellationToken.None);
+            _ = sampler.ReadLatest(request);
             Assert.Equal(count, reads.Count);
             Assert.Equal(capacityCount, capacityReads.Count);
         }

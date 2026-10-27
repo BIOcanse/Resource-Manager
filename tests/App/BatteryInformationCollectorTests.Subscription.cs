@@ -10,8 +10,10 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class BatteryInformationCollectorTests
 {
-    [Fact]
-    public async Task RealSamplingWorkerCollectsOnlySubscribedBatteryAndOrdinaryReadsUseCache()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RealSamplingWorkerCollectsOnlySubscribedBatteryAndCacheInspectionNeedsNoWorker(bool cancelFetchBeforeStart)
     {
         var root = Path.Combine(Path.GetTempPath(), $"battery-owner-{Guid.NewGuid():N}");
         using var slots = new HostManagerSamplingSubscriptionTestFixture();
@@ -38,8 +40,21 @@ public sealed partial class BatteryInformationCollectorTests
         var request = MetricDeviceFields.CreateRequest(dashboard.Current!, devices[1].ExactIdentityKey,
             ["battery_all_remaining_capacity_actual_relative_units"]);
         Assert.Empty(opened);
-        await sampler.GetSnapshotAsync(request, CancellationToken.None);
+        // Explicit cache inspection: GetSnapshotAsync acquires a single-fetch demand and waits for sampling.
+        _ = sampler.ReadLatest(request);
         Assert.Empty(opened);
+        if (cancelFetchBeforeStart)
+        {
+            // A single fetch before Start legitimately waits; canceling it must
+            // withdraw its demand so the later worker sees only battery-consumer.
+            using var fetchCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var fetch = sampler.GetSnapshotAsync(request, fetchCancellation.Token);
+            Assert.False(fetch.IsCompleted);
+            Assert.Empty(opened);
+            fetchCancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fetch);
+            Assert.Empty(opened);
+        }
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         await sampler.StartAsync(timeout.Token);
         try
@@ -51,7 +66,7 @@ public sealed partial class BatteryInformationCollectorTests
             Assert.Equal(SamplingObservationStatus.Current, value.Status);
             Assert.Equal(25000, value.NumericValue);
             Assert.Equal(["path-1"], opened);
-            await sampler.GetSnapshotAsync(request, timeout.Token);
+            _ = sampler.ReadLatest(request);
             sampler.ReadLatest(request);
             Assert.Single(opened);
         }
@@ -59,7 +74,7 @@ public sealed partial class BatteryInformationCollectorTests
         {
             await sampler.StopAsync(CancellationToken.None);
             var count = opened.Count;
-            await sampler.GetSnapshotAsync(request, CancellationToken.None);
+            _ = sampler.ReadLatest(request);
             Assert.Equal(count, opened.Count);
         }
     }

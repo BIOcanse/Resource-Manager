@@ -199,7 +199,8 @@ public sealed class IntelPsysOwnerIntegrationTests
             dashboard, registry, slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance, intelMsrZone: zone);
         var request = MetricDeviceFields.CreateRequest(dashboard.Current!, Identity, [Raw, Unit]);
         Assert.Equal(2, request.Ids.Count);
-        _ = await sampler.GetSnapshotAsync(request, default);
+        // Explicit cache inspection: GetSnapshotAsync acquires a single-fetch demand and waits for sampling.
+        _ = sampler.ReadLatest(request)!;
         Assert.Equal(0, probe.Opens);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await sampler.StartAsync(timeout.Token);
@@ -215,7 +216,7 @@ public sealed class IntelPsysOwnerIntegrationTests
             await sampler.StopAsync(default);
             var opens = probe.Opens;
             _ = sampler.ReadLatest(request);
-            _ = await sampler.GetSnapshotAsync(request, default);
+            _ = sampler.ReadLatest(request)!;
             Assert.Equal(opens, probe.Opens);
             Assert.Equal(probe.Opens, probe.Disposals);
             Assert.Equal(0, probe.Writes);

@@ -36,7 +36,8 @@ public sealed partial class NetworkCounterInformationCollectorTests
         using var sampler=new WindowsHardwareMetricSampler(new WindowsCpuMonitoringZone(),memory,null!,null!,null!,null!,null!,null!,null!,null!,null!,new AmdIntegratedGpuSensorRoute(),null!,owner,dashboard,registry,slots.Owner,slots.Provider,NullLogger<WindowsHardwareMetricSampler>.Instance,networkZone:zone);
         var request=MetricDeviceFields.CreateRequest(dashboard.Current!,target.ExactIdentityKey,["network_all_rx_errors_actual","network_all_rx_bytes_per_second_actual"]);
         Assert.Equal(2,request.Ids.Count);
-        await sampler.GetSnapshotAsync(request,CancellationToken.None);Assert.Empty(api.Reads);
+        // Explicit cache inspection: GetSnapshotAsync acquires a single-fetch demand and waits for sampling.
+        _ = sampler.ReadLatest(request);Assert.Empty(api.Reads);
         using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await sampler.StartAsync(timeout.Token);
         try
@@ -46,13 +47,13 @@ public sealed partial class NetworkCounterInformationCollectorTests
                 await ReadCurrentRateAsync(stream);
             }
             await Task.Delay(150,timeout.Token);var reads=api.Reads.Count;
-            Check(await sampler.GetSnapshotAsync(request,timeout.Token),200);sampler.ReadLatest(request);
+            Check(sampler.ReadLatest(request)!,200);sampler.ReadLatest(request);
             await Task.Delay(150,timeout.Token);Assert.Equal(reads,api.Reads.Count);
             await using(var stream=sampler.SubscribeAsync("network-second",request,TimeSpan.FromMilliseconds(100),timeout.Token).GetAsyncEnumerator(timeout.Token))
             {
                 await ReadCurrentRateAsync(stream);
                 await sampler.StopAsync(CancellationToken.None);var stopped=api.Reads.Count;
-                Check(await sampler.GetSnapshotAsync(request,timeout.Token),200);Assert.Equal(stopped,api.Reads.Count);
+                Check(sampler.ReadLatest(request)!,200);Assert.Equal(stopped,api.Reads.Count);
             }
         }
         finally { await sampler.StopAsync(CancellationToken.None); }
