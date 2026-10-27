@@ -182,5 +182,5 @@ foreach ($process in @('backend','ui')) {
 [IO.File]::WriteAllText($path, '{"entries":[{"uid":0}]}')
 Assert-Rejected { & $generator -Registry $path -Process backend -Namespace Invalid -Output (Join-Path $scratch 'invalid.g.cs') } 'Entry.*missing'
 $production = Read-StateRegistry -Path (Join-Path $repo 'src/Shared/StateItems/state-items.json')
-Assert-True ($production.entries.Count -eq 61) 'Initial production catalog contains 50 blocks and 11 items.'
+Assert-True ($production.entries.Count -eq 65) 'Production catalog contains 51 blocks and 14 items.'
 "Passed $script:count assertions. Fixtures: $scratch"

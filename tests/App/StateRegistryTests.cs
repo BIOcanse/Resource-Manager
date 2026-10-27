@@ -51,7 +51,8 @@ public sealed class StateRegistryTests
         ["CpuTopologySnapshotProvider"] = BackendUids.CpuTopologySnapshotProvider,
         ["EtwCpuCoreResidencyReader"] = BackendUids.EtwCpuCoreResidencyReader,
         ["EtwSystemInterruptSnapshotSource"] = BackendUids.EtwSystemInterruptSnapshotSource,
-        ["WindowsResourceBreakdownSampler"] = BackendUids.WindowsResourceBreakdownSampler
+        ["WindowsResourceBreakdownSampler"] = BackendUids.WindowsResourceBreakdownSampler,
+        ["HostMemoryProtection"] = BackendUids.HostMemoryProtection
     };
     internal static readonly IReadOnlyDictionary<string, int> UiBlocks = new Dictionary<string, int>(StringComparer.Ordinal)
     {

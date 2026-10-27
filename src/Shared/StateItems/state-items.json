@@ -503,6 +503,55 @@
       },
       "perBlock": false,
       "trigger": "event"
+    },
+    {
+      "uid": 62,
+      "kind": "block",
+      "process": "backend",
+      "name": "HostMemoryProtection",
+      "comment": "Host memory protection: holds commit and process subscriptions and acts when commit reaches the threshold."
+    },
+    {
+      "uid": 63,
+      "kind": "item",
+      "process": "backend",
+      "name": "HostMemoryProtectionEnabled",
+      "comment": "Whether the user enabled host memory protection. Settings changes publish the event.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "HostMemoryProtectionService settings"
+      },
+      "perBlock": false,
+      "trigger": "event"
+    },
+    {
+      "uid": 64,
+      "kind": "item",
+      "process": "backend",
+      "name": "MemoryProtectionNormalRunningPointExists",
+      "comment": "Whether a normal running point exists for this service run. Creating a point publishes the event.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "HostMemoryProtectionService normal running point"
+      },
+      "perBlock": false,
+      "trigger": "event"
+    },
+    {
+      "uid": 65,
+      "kind": "item",
+      "process": "backend",
+      "name": "MemoryProtectionReserveBuilt",
+      "comment": "Whether every configured disk reserve entry is fully built. Reserve configuration and rebuild publish the event.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "HostMemoryDiskReserves"
+      },
+      "perBlock": false,
+      "trigger": "event"
     }
   ]
 }
