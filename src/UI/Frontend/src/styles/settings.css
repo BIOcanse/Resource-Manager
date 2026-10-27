@@ -704,6 +704,12 @@
   font-size: 13px;
 }
 
+/* 选项名放不下一行时在分段内换行，而不是被分段控件的轨道裁掉（日语的动画风格五个选项在 1280 宽时就放不下）。 */
+.settings-segmented-control .settings-segment {
+  min-width: 0;
+  white-space: normal;
+}
+
 .settings-number-pair {
   min-width: min(420px, 100%);
   display: grid;
@@ -832,6 +838,18 @@
   min-width: 0;
   display: grid;
   gap: 5px;
+}
+
+/* 设置行里单独的数字框（与主机内存保护的行一致）：输入框固定宽度，含单位的标签紧贴在输入框上方，不随行宽拉满。 */
+.settings-row > .settings-number-field {
+  justify-self: start;
+  width: max-content;
+  max-width: 100%;
+}
+
+.settings-row > .settings-number-field input {
+  width: 140px;
+  max-width: 100%;
 }
 
 .settings-number-field span {
@@ -1536,7 +1554,13 @@
 .report-rule-group, .report-rule { min-width: 0; display: grid; gap: 10px; }
 .report-rule-group h3 { margin: 8px 0 0; font-size: 14px; }
 .report-rule { border-top: 1px solid var(--divider-soft); padding-top: 10px; }
-.report-rule-field { flex-wrap: wrap; justify-content: flex-start; }
+/* 报告规则的数字行：数字框、紧跟其后的单位、默认值和恢复按钮排成一行，放不下再换行。 */
+.settings-row.report-rule-field { display: flex; flex-wrap: wrap; justify-content: flex-start; align-items: flex-end; column-gap: 8px; }
+.report-rule-field > span { min-height: 34px; display: inline-flex; align-items: center; font-size: 13px; }
+.report-rule-field > .report-rule-default { margin-inline-start: 10px; }
+/* 报告规则的数字框与输入框同宽，较长的字段名在框上方换行，单位因此紧贴输入框。 */
+.report-rule-field > .settings-number-field { width: 140px; }
+.report-rule-field > .settings-number-field span { white-space: normal; }
 .report-rule-default { color: var(--muted); font-size: 13px; }
 .report-rule-names { flex: 1 1 100%; overflow-wrap: anywhere; }
 .report-rule-names label { display: grid; gap: 6px; }
