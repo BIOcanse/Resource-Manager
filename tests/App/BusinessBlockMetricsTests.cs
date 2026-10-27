@@ -1,8 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
@@ -265,18 +263,10 @@ public sealed class BusinessBlockMetricsTests
     public async Task BlockDiagnosticsAttributeBusyConsumerCpuAndReleaseItOnStop()
     {
         ControllerBusyBlock? block = null;
-        using var services = new ServiceCollection().BuildServiceProvider();
-        var registrations = new[]
-        {
-            new BusinessBlockRegistration(117, Array.Empty<int>(), _ => block!)
-        };
-        var options = Options.Create(new BusinessBlockOptions {  });
-        var diagnostics = new BusinessBlockDiagnosticsRegistry(registrations, NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
-        await using var controller = new BusinessBlockScheduler(
-            services,
-            registrations,
-            options,
-            NullLogger<BusinessBlockScheduler>.Instance, BusinessBlockTestSupport.CreateAuthority());
+        var diagnosticRegistration = new BusinessBlockRegistration(117, _ => block!);
+        var diagnostics = new BusinessBlockDiagnosticsRegistry([diagnosticRegistration], NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
+        await using var controller = new TestBlockScheduler(
+            [new TestBlockRegistration(117, [], _ => block!)], BusinessBlockTestSupport.CreateAuthority());
         block = new ControllerBusyBlock(diagnostics);
 
         var reason = new BusinessBlockReason(BusinessBlockRequestKind.User, "metrics-test", "busy-block", 1);

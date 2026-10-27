@@ -1,4 +1,3 @@
-using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
@@ -79,20 +78,20 @@ internal sealed class NonOwningHostedService<TService> : BackgroundService where
 internal static class NonOwningHostedServiceRegistration
 {
     internal static IServiceCollection AddHostedServiceAlias<TService>(this IServiceCollection services,
-        int id, int[] inputs, bool constructService = false,
-        int parentId = BlockUids.Program) where TService : class, IHostedService
+        int id, bool constructService = false) where TService : class, IHostedService
     {
-        ResourceManagerServiceCollectionExtensions.RegisterHostedBusinessBlock<TService>(services, id, inputs, parentId);
+        ResourceManagerServiceCollectionExtensions.RegisterHostedBusinessBlock<TService>(services, id);
         services.AddSingleton<IHostedService>(provider => new NonOwningHostedService<TService>(provider, id, constructService));
         return services;
     }
 
     // Used by independently owned registration files whose declaration is supplied by the composition root.
-    internal static IServiceCollection AddHostedServiceAlias<TService>(this IServiceCollection services) where TService : class, IHostedService
+    internal static IServiceCollection AddHostedServiceAlias<TService>(this IServiceCollection services,
+        bool constructService = false) where TService : class, IHostedService
     {
         var declaration = services.Select(value => value.ImplementationInstance).OfType<BusinessBlockRegistration>()
             .Single(value => value.HostedServiceType == typeof(TService));
-        services.AddSingleton<IHostedService>(provider => new NonOwningHostedService<TService>(provider, declaration.Id));
+        services.AddSingleton<IHostedService>(provider => new NonOwningHostedService<TService>(provider, declaration.Id, constructService));
         return services;
     }
 }

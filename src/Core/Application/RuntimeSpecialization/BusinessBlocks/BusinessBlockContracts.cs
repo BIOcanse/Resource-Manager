@@ -31,3 +31,4 @@ public sealed record BusinessBlockDiagnostics(int Id, BusinessBlockResult? Resul
     public string? Name { get; init; }
 }
 public sealed record BusinessBlockDebugSnapshot(BusinessBlocksSnapshot Scheduling, IReadOnlyList<BusinessBlockDiagnostics> Diagnostics);
+public sealed record NativeBusinessBlockDebugSnapshot(System.Text.Json.JsonElement Scheduling, IReadOnlyList<BusinessBlockDiagnostics> Diagnostics);

@@ -41,6 +41,7 @@ public sealed record CompiledHostManagerPlan(
     public CompiledFreedomPointTree FreedomPoints { get; init; } = CompiledFreedomPointTree.Empty;
     public CompiledCpuCoreResidencyPlan CpuCoreResidency { get; init; } = CompiledCpuCoreResidencyPlan.Unpublished;
     public CompiledCpuScoringPlan? CpuScoring { get; init; }
+    public CompiledBackendControlSettings BackendControlSettings { get; init; } = CompiledBackendControlSettings.Unpublished;
     [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.SubscriptionIntervalMs)]
     public TimeSpan SchedulerSamplingInterval { get; init; }
 
@@ -64,6 +65,7 @@ public sealed record CompiledHostManagerPlan(
         && !string.IsNullOrWhiteSpace(FreedomPoints.Namespace)
         && !FreedomPoints.Children.IsDefaultOrEmpty
         && CpuCoreResidency.IsPublished
+        && BackendControlSettings.IsPublished
         && CpuScoring is not null
         && SchedulerSamplingInterval > TimeSpan.Zero
         && TrustedAccessRequestLifetimeMilliseconds > 0

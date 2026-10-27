@@ -6,6 +6,7 @@ using ResourceManager.App.Domain.CpuTopology;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Infrastructure.NativeCore;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints;
 using System.Collections.Immutable;
 using System.Runtime.InteropServices;
@@ -59,6 +60,7 @@ public sealed partial class HostManagerPlanCompiler
         var schedulerSamplingInterval = CompileSchedulerSamplingInterval(freedom);
         var serviceRecoveryReset = CompileServiceRecovery(freedom);
         var trustedAccessRequestLifetime = CompileTrustedAccessRequestLifetime(freedom);
+        var backendControlSettings = BackendControlSettings.Compile(freedom);
 
         var buildSpecialize = CompileBuildSpecialize(
             profile.BuildSpecialize ?? throw Missing("build_specialize"));
@@ -582,6 +584,7 @@ public sealed partial class HostManagerPlanCompiler
             SchedulerSamplingInterval = schedulerSamplingInterval,
             ServiceRecoveryResetPeriodSeconds = serviceRecoveryReset,
             TrustedAccessRequestLifetimeMilliseconds = trustedAccessRequestLifetime,
+            BackendControlSettings = backendControlSettings,
             FreedomPoints = freedomPoints
         };
     }

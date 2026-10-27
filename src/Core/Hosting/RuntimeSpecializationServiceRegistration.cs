@@ -59,21 +59,21 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<RuntimeSpecializationCoordinator>();
         services.AddSingleton<IRuntimeSpecializationCoordinator>(static provider => provider.GetRequiredService<RuntimeSpecializationCoordinator>());
         services.AddSingleton<HostManagerSamplingSubscriptionOwner>();
-        services.AddHostedServiceAlias<HostManagerSamplingSubscriptionOwner>(BlockUids.HostManagerSamplingSubscriptionOwner, [BlockUids.RuntimeSpecializationCoordinator]);
+        services.AddHostedServiceAlias<HostManagerSamplingSubscriptionOwner>(BlockUids.HostManagerSamplingSubscriptionOwner);
         services.AddSingleton<HostManagerMetricSnapshotOwner>();
-        services.AddHostedServiceAlias<HostManagerMetricSnapshotOwner>(BlockUids.HostManagerMetricSnapshotOwner, [BlockUids.RuntimeSpecializationCoordinator]);
+        services.AddHostedServiceAlias<HostManagerMetricSnapshotOwner>(BlockUids.HostManagerMetricSnapshotOwner);
         services.AddSingleton<HostManagerSoftwareIdentityOwner>();
-        services.AddHostedServiceAlias<HostManagerSoftwareIdentityOwner>(BlockUids.HostManagerSoftwareIdentityOwner, [BlockUids.RuntimeSpecializationCoordinator]);
+        services.AddHostedServiceAlias<HostManagerSoftwareIdentityOwner>(BlockUids.HostManagerSoftwareIdentityOwner);
         services.AddSingleton<HostManagerFileQueryOwner>();
         services.AddSingleton<INativeFileQueryLeaseSource>(static provider =>
             provider.GetRequiredService<HostManagerFileQueryOwner>());
-        services.AddHostedServiceAlias<HostManagerFileQueryOwner>(BlockUids.HostManagerFileQueryOwner, [BlockUids.RuntimeSpecializationCoordinator]);
+        services.AddHostedServiceAlias<HostManagerFileQueryOwner>(BlockUids.HostManagerFileQueryOwner);
         services.AddSingleton<HostManagerDisplayCoordinatorOwner>();
-        services.AddHostedServiceAlias<HostManagerDisplayCoordinatorOwner>(BlockUids.HostManagerDisplayCoordinatorOwner, [BlockUids.RuntimeSpecializationCoordinator]);
+        services.AddHostedServiceAlias<HostManagerDisplayCoordinatorOwner>(BlockUids.HostManagerDisplayCoordinatorOwner);
         if (startupCapabilities.Allows(StartupCapability.PublicServiceCoordination))
         {
             services.AddSingleton<HostManagerPublicServiceCoordinatorOwner>();
-            services.AddHostedServiceAlias<HostManagerPublicServiceCoordinatorOwner>(BlockUids.HostManagerPublicServiceCoordinatorOwner, [BlockUids.RuntimeSpecializationCoordinator]);
+            services.AddHostedServiceAlias<HostManagerPublicServiceCoordinatorOwner>(BlockUids.HostManagerPublicServiceCoordinatorOwner);
         }
         if (startupCapabilities.Allows(StartupCapability.RuntimeEffectOwners))
         {
@@ -106,7 +106,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
                 provider.GetRequiredService<HostManagerOperationCoordinatorOwner>());
             services.AddSingleton<IHostManagerOperationQueryService>(static provider =>
                 provider.GetRequiredService<HostManagerOperationCoordinatorOwner>());
-            services.AddHostedServiceAlias<HostManagerOperationCoordinatorOwner>(BlockUids.HostManagerOperationCoordinatorOwner, [BlockUids.RuntimeSpecializationCoordinator]);
+            services.AddHostedServiceAlias<HostManagerOperationCoordinatorOwner>(BlockUids.HostManagerOperationCoordinatorOwner);
         }
         return services;
     }

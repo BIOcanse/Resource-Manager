@@ -41,7 +41,7 @@ public sealed class GpuAllocationSubscriptionLifetimeTests
         Assert.NotNull(harness.Availability.ReadFailure(BackendUids.GpuAllocationCollector));
         Assert.False(Assert.IsType<bool>(Assert.Single(harness.Controller.Read().Items,
             fact => fact.ItemUid == BackendItems.GpuAllocationNativeSessionAvailable).Value));
-        Assert.Single(harness.Controller.Read().Demands);
+        Assert.Single(harness.Controller.Read().Demands, demand => demand.BlockId == BackendUids.GpuAllocationCollector);
         Assert.False(subscription.Released.IsCompleted);
         var captures = factory.Sessions.Sum(session => session.Captures);
 
@@ -57,7 +57,7 @@ public sealed class GpuAllocationSubscriptionLifetimeTests
             Assert.Equal(1, factory.Attempts);
             Assert.Equal(captures, factory.Sessions.Sum(session => session.Captures));
             Assert.Equal(BusinessBlockState.Stopped, harness.Controller.ReadState(BackendUids.GpuAllocationCollector));
-            Assert.Single(harness.Controller.Read().Demands);
+            Assert.Single(harness.Controller.Read().Demands, demand => demand.BlockId == BackendUids.GpuAllocationCollector);
         }
         finally
         {
@@ -78,7 +78,7 @@ public sealed class GpuAllocationSubscriptionLifetimeTests
         await EtwTestRunRecorder.ReadyAsync(second);
         await harness.Collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
         Assert.NotNull(harness.Collector.ReadCurrent(GpuAllocationTestSession.Processes));
-        await harness.Gate.PublishAsync(false,
+        await harness.SetNativeEtwGroupDemandAsync(false,
             new(BusinessBlockRequestKind.Configuration, "test", "pause-native-producer", 0));
         await harness.NextResultAsync();
         using var callerStop = new CancellationTokenSource();
@@ -92,7 +92,7 @@ public sealed class GpuAllocationSubscriptionLifetimeTests
             Assert.False(remainingReady.IsCompleted);
             // A capture can have copied this lease before Dispose disposed its source.
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first.Ready);
-            await harness.Gate.PublishAsync(true,
+            await harness.SetNativeEtwGroupDemandAsync(true,
                 new(BusinessBlockRequestKind.Configuration, "test", "resume-native-producer", 0));
             await remainingReady.WaitAsync(TimeSpan.FromSeconds(10));
             await harness.Collector.CaptureAsync(GpuAllocationTestSession.Processes, callerStop.Token);
@@ -126,7 +126,7 @@ public sealed class GpuAllocationSubscriptionLifetimeTests
         Task? capture = null;
         try
         {
-            await harness.Gate.PublishAsync(false,
+            await harness.SetNativeEtwGroupDemandAsync(false,
                 new(BusinessBlockRequestKind.Configuration, "test", "pause-native-producer", 0));
             await joining.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Equal(BusinessBlockState.Stopping, harness.Controller.ReadState(BackendUids.GpuAllocationCollector));
@@ -138,7 +138,7 @@ public sealed class GpuAllocationSubscriptionLifetimeTests
             Assert.Equal(1, factory.Attempts);
             Assert.Equal(1, session.Captures);
             Assert.False(session.Joined);
-            Assert.Single(harness.Controller.Read().Demands);
+            Assert.Single(harness.Controller.Read().Demands, demand => demand.BlockId == BackendUids.GpuAllocationCollector);
         }
         finally
         {
@@ -161,7 +161,7 @@ public sealed class GpuAllocationSubscriptionLifetimeTests
         await using var harness = factory.Harness();
         var subscription = harness.Collector.AcquireSubscription(TimeSpan.FromSeconds(30));
         await EtwTestRunRecorder.ReadyAsync(subscription);
-        await harness.Gate.PublishAsync(false,
+        await harness.SetNativeEtwGroupDemandAsync(false,
             new(BusinessBlockRequestKind.Configuration, "test", "pause-native-producer", 0));
         await harness.NextResultAsync();
 

@@ -18,9 +18,6 @@
     <AdditionalFiles Include="$(MSBuildThisFileDirectory)src/Core/Native/**/*.c;$(MSBuildThisFileDirectory)src/Core/Native/**/*.cpp;$(MSBuildThisFileDirectory)src/Core/Native/**/*.h;$(MSBuildThisFileDirectory)src/Core/Native/**/*.hpp;$(MSBuildThisFileDirectory)src/Core/Native/**/*.inc;$(MSBuildThisFileDirectory)src/Core/NativeCore/**/*.zig;$(MSBuildThisFileDirectory)src/Core/NativeCore/**/*.h"
                      Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)**/zig-out/**;$(MSBuildThisFileDirectory)**/.zig-cache/**;$(MSBuildThisFileDirectory)**/third_party/**;$(MSBuildThisFileDirectory)**/third-party/**;$(MSBuildThisFileDirectory)**/vendor/**" />
   </ItemGroup>
-  <PropertyGroup>
-    <ResourceManagerStateNames Condition="'$(ResourceManagerStateNames)' == ''">true</ResourceManagerStateNames>
-  </PropertyGroup>
   <!-- SDK defaults have been imported here, so this constant reaches Csc. Tests share the switch. -->
   <PropertyGroup Condition="'$(ResourceManagerStateNames)' == 'true' and ('$(MSBuildProjectName)' == 'ResourceManager.App' or '$(MSBuildProjectName)' == 'ResourceManager.NativeUi' or '$(MSBuildProjectName)' == 'Resource Manager-APP.Tests')">
     <DefineConstants>$(DefineConstants);RM_STATE_NAMES</DefineConstants>

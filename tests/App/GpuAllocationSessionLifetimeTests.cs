@@ -26,7 +26,7 @@ public sealed class GpuAllocationSessionLifetimeTests
         Assert.True(factory.Current.Joined);
         Assert.False(factory.Current.HasBoundHandler);
         Assert.False(Assert.IsType<bool>(Assert.Single(harness.Controller.Read().Items, fact => fact.ItemUid == BackendItems.GpuAllocationNativeSessionAvailable).Value));
-        Assert.Single(harness.Controller.Read().Demands);
+        Assert.Single(harness.Controller.Read().Demands, demand => demand.BlockId == BackendUids.GpuAllocationCollector);
         await EtwTestRunRecorder.ReleaseAsync(subscription);
     }
 
@@ -64,7 +64,7 @@ public sealed class GpuAllocationSessionLifetimeTests
         Assert.True(session.Joined);
         Assert.False(session.HasBoundHandler);
         Assert.False(Assert.IsType<bool>(Assert.Single(harness.Controller.Read().Items, fact => fact.ItemUid == BackendItems.GpuAllocationNativeSessionAvailable).Value));
-        Assert.Single(harness.Controller.Read().Demands);
+        Assert.Single(harness.Controller.Read().Demands, demand => demand.BlockId == BackendUids.GpuAllocationCollector);
         Assert.Null(harness.Collector.ReadCurrent(GpuAllocationTestSession.Processes));
         await EtwTestRunRecorder.ReleaseAsync(subscription);
     }
@@ -89,7 +89,7 @@ public sealed class GpuAllocationSessionLifetimeTests
         await Task.Delay(TimeSpan.FromMilliseconds(100));
         Assert.Equal(1, factory.Attempts);
         Assert.False(Assert.IsType<bool>(Assert.Single(harness.Controller.Read().Items, fact => fact.ItemUid == BackendItems.GpuAllocationNativeSessionAvailable).Value));
-        Assert.Single(harness.Controller.Read().Demands);
+        Assert.Single(harness.Controller.Read().Demands, demand => demand.BlockId == BackendUids.GpuAllocationCollector);
         await EtwTestRunRecorder.ReleaseAsync(subscription);
     }
 

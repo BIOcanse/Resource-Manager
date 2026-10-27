@@ -1,23 +1,12 @@
 namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
-/// <summary>Backend registrations and factories over the shared immutable control tree.</summary>
+/// <summary>Read-only native tree metadata plus the host's UID-to-entry factories.</summary>
 public sealed class BackendBlockGraph : BusinessBlockGraph
 {
     private readonly Dictionary<int, BusinessBlockRegistration> registrations;
-
-    public BackendBlockGraph(IEnumerable<BusinessBlockRegistration> source)
-        : this(source.ToArray()) { }
-
-    private BackendBlockGraph(BusinessBlockRegistration[] source)
-        : base(ResourceManager.App.StateItems.BlockUids.Program, source.Select(declaration => new BusinessBlockNode(declaration.Id, declaration.ParentId,
-            declaration.Dependencies)))
-    {
-        registrations = source.ToDictionary(declaration => declaration.Id, declaration => declaration with
-        {
-            Dependencies = base.Get(declaration.Id).Inputs
-        });
-    }
-
+    internal BackendBlockGraph(IEnumerable<BusinessBlockRegistration> source, BusinessBlockGraph tree)
+        : base(tree.Program, tree.Nodes) => registrations = BackendNativeControlFactory
+            .WithWrappers(source, tree.BlockIds).ToDictionary(value => value.Id);
     internal new BusinessBlockRegistration Get(int id) => registrations.TryGetValue(id, out var value)
         ? value : throw new KeyNotFoundException($"Unknown business block: {id}");
 }

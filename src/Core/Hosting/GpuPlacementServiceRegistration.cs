@@ -27,9 +27,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<IGpuPlacementProcessHistoryStore, JsonGpuPlacementProcessHistoryStore>();
         services.AddSingleton<IPresentGraphicsApiObservationSource>(static provider => provider.GetRequiredService<PresentFrameEtwSource>());
         if (startupCapabilities.Allows(StartupCapability.MutablePersistence))
-            services.AddBusinessBlockHostedService<GpuPlacementProcessHistoryObserver>(BlockUids.GpuPlacementProcessHistoryObserver,
-                [BlockUids.RuntimeSpecializationCoordinator, BlockUids.WindowsResourceBreakdownSampler,
-                    BlockUids.PresentFrameEtwSource, BlockUids.SqlitePortableSoftwareRegistry]);
+            services.AddBusinessBlockHostedService<GpuPlacementProcessHistoryObserver>(BlockUids.GpuPlacementProcessHistoryObserver);
         services.AddSingleton<IWindowsGraphicsPreferenceStore, WindowsGraphicsPreferenceStore>();
         services.AddSingleton<D3d11ProxyShimRuntime>();
         services.AddSingleton<WindowsGpuPlacementInjector>();

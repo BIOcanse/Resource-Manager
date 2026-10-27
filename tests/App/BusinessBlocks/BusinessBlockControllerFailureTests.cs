@@ -42,7 +42,7 @@ public sealed class BusinessBlockSchedulerFailureTests
             diagnostics.RecordResult(154, BusinessBlockResult.Stopped);
         });
         var registrations = new[] { Register(154, worker), Register(140, peer) };
-        diagnostics = new(registrations, NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
+        diagnostics = new(registrations.Select(value => new BusinessBlockRegistration(value.Id, value.Create)), NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
         await using var scheduler = Create(registrations);
         try
         {
@@ -68,18 +68,27 @@ public sealed class BusinessBlockSchedulerFailureTests
     [Fact]
     public async Task DiagnosticFailureCannotCancelABlockOrWithdrawAnyDemand()
     {
+        const int firstId = BackendUids.RuntimeSpecializationCoordinator;
+        const int peerId = BackendUids.TrustedAccessRequestOwner;
         var first = new Probe(); var peer = new Probe();
-        var registrations = new[] { Register(124, first), Register(140, peer) };
-        var diagnostics = new BusinessBlockDiagnosticsRegistry(registrations, NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
-        await using var scheduler = Create(registrations);
+        var fixture = NativeBackendBlockTestSupport.CreateFullTreeFixture(new Dictionary<int, IBusinessBlock>
+        {
+            [firstId] = first,
+            [peerId] = peer
+        });
+        await using var owner = fixture;
+        var diagnostics = new BusinessBlockDiagnosticsRegistry(
+            [new(firstId, _ => first), new(peerId, _ => peer)],
+            NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
+        var scheduler = fixture.Scheduler;
         try
         {
-            await scheduler.StartAsync(124, Reason());
-            await scheduler.StartAsync(140, Reason());
+            await scheduler.StartAsync(firstId, Reason());
+            await scheduler.StartAsync(peerId, Reason());
             await Task.WhenAll(first.Entered.Task, peer.Entered.Task).WaitAsync(TestTimeout);
             var before = scheduler.Read();
-            diagnostics.ReportFailure(124, new IOException("reported by the block"), "read");
-            Assert.Equal(BusinessBlockOutcome.Failed, diagnostics.Read(124).Result!.Outcome);
+            diagnostics.ReportFailure(firstId, new IOException("reported by the block"), "read");
+            Assert.Equal(BusinessBlockOutcome.Failed, diagnostics.Read(firstId).Result!.Outcome);
             Assert.Equal(before.History, scheduler.Read().History);
             Assert.Equal(before.Demands.OrderBy(item => item.Key), scheduler.Read().Demands.OrderBy(item => item.Key));
             Assert.False(first.Notified.Task.IsCompleted);

@@ -110,6 +110,7 @@ internal sealed class FreedomPointSdkAdapter
             return point.ValueType switch
             {
                 "positive_int32" => PointValueSet.Simple(PointValue.FromInteger(value.GetInt32())),
+                "nonnegative_int32" => PointValueSet.Simple(PointValue.FromInteger(value.GetInt32())),
                 "number" => PointValueSet.Simple(PointValue.FromDecimal(value.GetDouble())),
                 "boolean" => PointValueSet.Simple(PointValue.FromChoices(value.GetBoolean() ? 2UL : 1UL)),
                 _ => PointValueSet.ComplexValue(value)
@@ -123,6 +124,7 @@ internal sealed class FreedomPointSdkAdapter
         return point.ValueType switch
         {
             "positive_int32" => JsonSerializer.SerializeToElement(fact.Value.Slots[0].Integer),
+            "nonnegative_int32" => JsonSerializer.SerializeToElement(fact.Value.Slots[0].Integer),
             "number" => JsonSerializer.SerializeToElement(fact.Value.Slots[0].Decimal),
             "boolean" => JsonSerializer.SerializeToElement(fact.Value.Slots[0].Choices == 2UL),
             _ => fact.Value.Complex!.Value
@@ -144,6 +146,15 @@ internal sealed class FreedomPointSdkAdapter
             BackendFreedomPointPositions.SmtAccounting => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledCpuCoreResidencyPlan", "PhysicalCoreByLogicalProcessor"),
             BackendFreedomPointPositions.CrashCounterResetSeconds => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "ServiceRecoveryResetPeriodSeconds"),
             BackendFreedomPointPositions.RequestLifetimeMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "TrustedAccessRequestLifetimeMilliseconds"),
+            BackendFreedomPointPositions.WorkerCount => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledBackendControlSettings", "WorkerCount"),
+            BackendFreedomPointPositions.HistoryCapacity => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledBackendControlSettings", "HistoryCapacity"),
+            BackendFreedomPointPositions.DemandCapacity => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledBackendControlSettings", "DemandCapacity"),
+            BackendFreedomPointPositions.DemandBytes => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledBackendControlSettings", "DemandBytes"),
+            BackendFreedomPointPositions.CompletionCapacity => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledBackendControlSettings", "CompletionCapacity"),
+            BackendFreedomPointPositions.ReaderCapacity => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledBackendControlSettings", "ReaderCapacity"),
+            BackendFreedomPointPositions.ReaderBytes => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledBackendControlSettings", "ReaderBytes"),
+            BackendFreedomPointPositions.WorkerArenaBytes => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledBackendControlSettings", "WorkerArenaBytes"),
+            BackendFreedomPointPositions.ReasonTextCapacity => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledBackendControlSettings", "ReasonTextCapacity"),
             BackendFreedomPointPositions.SubscriptionIntervalMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "SchedulerSamplingInterval"),
             BackendFreedomPointPositions.ActionTimeoutMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlacementCoordinatorHotPublishPlan", "ActionTimeoutMilliseconds"),
             BackendFreedomPointPositions.GpuWindowExecutionLimits => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlacementCoordinatorHotPublishPlan", "WindowExecution"),
@@ -180,6 +191,7 @@ internal sealed class FreedomPointSdkAdapter
         Slots = point.Path.Kind == PointKind.Complex ? [] : [point.ValueType switch
         {
             "positive_int32" => new SlotContract { Kind = ValueKind.Integer, IntegerMinimum = 1, IntegerMaximum = int.MaxValue },
+            "nonnegative_int32" => new SlotContract { Kind = ValueKind.Integer, IntegerMinimum = 0, IntegerMaximum = int.MaxValue },
             "number" => new SlotContract { Kind = ValueKind.Decimal },
             "boolean" => new SlotContract { Kind = ValueKind.Choose, Options = ["false", "true"], RequiredSelectionCount = 1 },
             _ => throw new InvalidDataException($"Unknown simple type '{point.ValueType}'.")

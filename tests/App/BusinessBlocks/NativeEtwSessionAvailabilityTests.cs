@@ -2,9 +2,7 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
@@ -40,7 +38,7 @@ public sealed class NativeEtwSessionAvailabilityTests
         Assert.Equal(BusinessBlockOutcome.Failed, result.Outcome);
         await EtwTestRunRecorder.UntilAsync(() => rig.Controller.ReadState(block) == BusinessBlockState.Stopped);
         Assert.False(rig.Authority.Read<bool>(rig.AvailabilityUid).Value);
-        Assert.Single(rig.Controller.Read().Demands);
+        Assert.Single(rig.Controller.Read().Demands, demand => demand.BlockId == block);
         var expected = failure is Failure.PermissionCreate or Failure.PermissionProvider
             ? NativeEtwSessionUnavailableCause.NoPermission
             : failure is Failure.CapacityCreate or Failure.CapacityProvider
@@ -146,11 +144,11 @@ public sealed class NativeEtwSessionAvailabilityTests
 
     private sealed class Rig : IAsyncDisposable, IGpuAllocationSessionFactory
     {
-        private readonly ServiceProvider services = new ServiceCollection().BuildServiceProvider();
         private readonly Failure? failure;
+        private readonly NativeBackendBlockFixture fixture;
         internal int Block { get; }
         internal int AvailabilityUid { get; }
-        internal StateAuthority Authority { get; } = new(StateRegistry.Items, StateRegistry.Blocks);
+        internal StateAuthority Authority => fixture.Authority;
         internal NativeEtwSessionAvailability Availability { get; }
         internal BusinessBlockScheduler Controller { get; }
         internal EtwTestRunRecorder Recorder { get; }
@@ -166,14 +164,13 @@ public sealed class NativeEtwSessionAvailabilityTests
             this.failure = failure;
             AvailabilityUid = block == BlockUids.PresentFrameEtwSource ? StateItemUids.PresentNativeSessionAvailable
                 : block == BlockUids.GpuAllocationCollector ? StateItemUids.GpuAllocationNativeSessionAvailable : StateItemUids.VidMmNativeSessionAvailable;
-            Availability = new(Authority);
             EtwTestRunRecorder? recorder = null;
-            BusinessBlockRegistration[] declarations = [new(block, [], _ => recorder!)];
-            var diagnostics = new BusinessBlockDiagnosticsRegistry(declarations, NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
-            StateItemKey demand = new(StateItemUids.BlockDemand, block);
-            Controller = new(services, declarations, Options.Create(new BusinessBlockOptions()), NullLogger<BusinessBlockScheduler>.Instance,
-                Authority, decisions: [new(BlockUids.Program, [demand, AvailabilityUid],
-                    input => input.Read<bool>(demand).GetValueOrDefault(false) && input.Read<bool>(AvailabilityUid).GetValueOrDefault(false) ? [block] : [])]);
+            var registration = new BusinessBlockRegistration(block, _ => recorder!);
+            var diagnostics = new BusinessBlockDiagnosticsRegistry([registration], NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
+            fixture = NativeBackendBlockTestSupport.CreateFullTreeFixture(
+                new Dictionary<int, Func<IServiceProvider, IBusinessBlock>> { [block] = _ => recorder! });
+            Controller = fixture.Scheduler;
+            Availability = fixture.Availability;
             IBusinessBlock source;
             if (block == BlockUids.PresentFrameEtwSource)
                 source = Present = new(NullLogger<PresentFrameEtwSource>.Instance, Controller, diagnostics, Availability,
@@ -184,6 +181,7 @@ public sealed class NativeEtwSessionAvailabilityTests
             else source = VidMm = new(NullLogger<DxgkrnlVidMmEtwTelemetryZone>.Instance, Controller, diagnostics, Availability,
                 _ => null, _ => CreateSession());
             Recorder = recorder = new(source, diagnostics, block);
+            fixture.HoldNativeEtwGroup();
         }
 
         private Session CreateSession()
@@ -206,8 +204,7 @@ public sealed class NativeEtwSessionAvailabilityTests
         {
             await Controller.ShutdownAsync(new(BusinessBlockRequestKind.Dependency, "test", "cleanup", 0)).WaitAsync(TimeSpan.FromSeconds(10));
             Present?.Dispose();
-            await Controller.DisposeAsync();
-            await services.DisposeAsync();
+            await fixture.DisposeAsync();
         }
     }
 

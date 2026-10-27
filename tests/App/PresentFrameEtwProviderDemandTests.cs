@@ -50,7 +50,7 @@ public sealed class PresentFrameEtwProviderDemandTests
         var second = fixture.Source.AcquireSubscription();
         await PresentFrameEtwTestHarness.ReadyAsync(first);
         await PresentFrameEtwTestHarness.ReadyAsync(second);
-        Assert.Equal(3, fixture.Controller.Read().Demands.Count);
+        Assert.Equal(3, fixture.Controller.Read().Demands.Count(demand => demand.BlockId == BackendUids.PresentFrameEtwSource));
         Assert.Equal(ApiProviders.Concat(DisplayProviders), session.Enabled);
         Assert.Collection(session.Operations.Skip(3),
             item => AssertEnable(item, DisplayProviders[0], TraceEventLevel.Verbose,
@@ -65,10 +65,10 @@ public sealed class PresentFrameEtwProviderDemandTests
         Assert.True(fixture.Source.Read(TimeSpan.FromSeconds(1))!.Complete);
         await PresentFrameEtwTestHarness.ReleaseAsync(first);
         Assert.Equal(5, session.Operations.Length);
-        Assert.Equal(2, fixture.Controller.Read().Demands.Count);
+        Assert.Equal(2, fixture.Controller.Read().Demands.Count(demand => demand.BlockId == BackendUids.PresentFrameEtwSource));
         await PresentFrameEtwTestHarness.ReleaseAsync(second);
         Assert.Equal(ApiProviders, session.Enabled);
-        Assert.Single(fixture.Controller.Read().Demands);
+        Assert.Single(fixture.Controller.Read().Demands, demand => demand.BlockId == BackendUids.PresentFrameEtwSource);
         Assert.Equal(DisplayProviders.Select(provider => new PresentEtwProviderOperation("disable", provider)),
             session.Operations.Skip(5));
         Assert.Equal(0, session.Stops);
@@ -85,7 +85,7 @@ public sealed class PresentFrameEtwProviderDemandTests
         Assert.Single(fixture.Sessions.Snapshot());
         await PresentFrameEtwTestHarness.ReleaseAsync(resumed);
         await PresentFrameEtwTestHarness.ReleaseAsync(api);
-        Assert.Empty(fixture.Controller.Read().Demands);
+        Assert.Empty(fixture.Controller.Read().Demands.Where(demand => demand.BlockId == BackendUids.PresentFrameEtwSource));
     }
 
     [Fact]
@@ -244,7 +244,7 @@ public sealed class PresentFrameEtwProviderDemandTests
         await EtwTestRunRecorder.UntilAsync(() => fixture.Sessions.Attempts == 2);
         await PresentFrameEtwTestHarness.ReadyAsync(api);
         Assert.Equal(ApiProviders, fixture.Sessions.Current.Enabled);
-        Assert.Single(fixture.Controller.Read().Demands);
+        Assert.Single(fixture.Controller.Read().Demands, demand => demand.BlockId == BackendUids.PresentFrameEtwSource);
         await PresentFrameEtwTestHarness.ReleaseAsync(api);
     }
 

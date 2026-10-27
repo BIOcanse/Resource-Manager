@@ -39,7 +39,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             .ConfigureServices(services =>
             {
                 services.AddSingleton(fixture.Coordinator);
-                services.AddHostedServiceAlias<ResourceManager.App.Infrastructure.Optimization.HostManagerSmartCoordinator>(BackendUids.HostManagerSmartCoordinator, []);
+                services.AddHostedServiceAlias<ResourceManager.App.Infrastructure.Optimization.HostManagerSmartCoordinator>(BackendUids.HostManagerSmartCoordinator);
+                NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
             })
             .Build();
         Assert.Equal(BackgroundServiceExceptionBehavior.StopHost,

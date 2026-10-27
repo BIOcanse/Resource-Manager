@@ -1,10 +1,8 @@
 using System.Collections.Concurrent;
 using System.Runtime.ExceptionServices;
 using Microsoft.Diagnostics.Tracing;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
@@ -17,19 +15,17 @@ namespace Resource_Manager_APP.Tests;
 internal sealed class VidMmBusinessBlockTestHarness : IAsyncDisposable
 {
     private static readonly TimeSpan CleanupTimeout = TimeSpan.FromSeconds(10);
-    private readonly ServiceProvider services;
 
     private VidMmBusinessBlockTestHarness(
-        ServiceProvider services,
-        BusinessBlockScheduler controller,
+        NativeBackendBlockFixture fixture,
         DxgkrnlVidMmEtwTelemetryZone zone,
         VidMmEtwTestSessionFactory sessions,
         RecordingEtwConsumerThreadObserver observer,
         RecordingLogger<BusinessBlockDiagnosticsRegistry> controllerLogger,
         ProcessMetadataState processMetadata, BusinessBlockDiagnosticsRegistry diagnostics, EtwTestRunRecorder recorder)
     {
-        this.services = services;
-        Controller = controller;
+        Fixture = fixture;
+        Controller = fixture.Scheduler;
         Zone = zone;
         Sessions = sessions;
         Observer = observer;
@@ -37,8 +33,10 @@ internal sealed class VidMmBusinessBlockTestHarness : IAsyncDisposable
         this.processMetadata = processMetadata;
         Diagnostics = diagnostics;
         Recorder = recorder;
+        Availability = fixture.Availability;
     }
 
+    internal NativeBackendBlockFixture Fixture { get; }
     internal BusinessBlockScheduler Controller { get; }
     internal DxgkrnlVidMmEtwTelemetryZone Zone { get; }
     internal VidMmEtwTestSessionFactory Sessions { get; }
@@ -46,7 +44,7 @@ internal sealed class VidMmBusinessBlockTestHarness : IAsyncDisposable
     internal RecordingLogger<BusinessBlockDiagnosticsRegistry> ControllerLogger { get; }
     internal BusinessBlockDiagnosticsRegistry Diagnostics { get; }
     internal EtwTestRunRecorder Recorder { get; }
-    internal NativeEtwSessionAvailability Availability { get; private init; } = null!;
+    internal NativeEtwSessionAvailability Availability { get; }
     internal Task<BusinessBlockResult> NextResultAsync() => Recorder.NextResultAsync();
     internal Func<uint, ulong?> CurrentProcessBirth
     {
@@ -59,36 +57,31 @@ internal sealed class VidMmBusinessBlockTestHarness : IAsyncDisposable
 
     internal static VidMmBusinessBlockTestHarness Create(BusinessBlockOptions? blockOptions = null)
     {
-        var services = new ServiceCollection().BuildServiceProvider();
         var sessions = new VidMmEtwTestSessionFactory();
         var controllerLogger = new RecordingLogger<BusinessBlockDiagnosticsRegistry>();
         var processMetadata = new ProcessMetadataState();
         DxgkrnlVidMmEtwTelemetryZone? zone = null;
         EtwTestRunRecorder? recorder = null;
-        var registration = new BusinessBlockRegistration(
-            BackendUids.DxgkrnlVidMmEtwTelemetryZone,
-            [],
-            _ => recorder!);
+        var registration = new BusinessBlockRegistration(BackendUids.DxgkrnlVidMmEtwTelemetryZone, _ => recorder!);
         var diagnostics = new BusinessBlockDiagnosticsRegistry([registration], controllerLogger);
-        var authority = BusinessBlockTestSupport.CreateAuthority();
-        var availability = new NativeEtwSessionAvailability(authority);
-        var controller = new BusinessBlockScheduler(
-            services,
-            [registration],
-            Options.Create(blockOptions ?? new BusinessBlockOptions()),
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<BusinessBlockScheduler>.Instance, authority,
-            decisions: [EtwTestRunRecorder.AvailabilityRule(BackendUids.DxgkrnlVidMmEtwTelemetryZone, BackendItems.VidMmNativeSessionAvailable, BackendItems.VidMmUnfrozen)]);
+        var fixture = NativeBackendBlockTestSupport.CreateFullTreeFixture(
+            new Dictionary<int, Func<IServiceProvider, IBusinessBlock>>
+            {
+                [BackendUids.DxgkrnlVidMmEtwTelemetryZone] = _ => recorder!
+            }, historyCapacity: blockOptions?.HistoryLimit ?? 128);
+        var controller = fixture.Scheduler;
+        var availability = fixture.Availability;
         var observer = new RecordingEtwConsumerThreadObserver(new BusinessBlockEtwThreadObserver(diagnostics));
         zone = new DxgkrnlVidMmEtwTelemetryZone(NullLogger<DxgkrnlVidMmEtwTelemetryZone>.Instance,
             controller, diagnostics, availability, processMetadata.Open, sessions.Create, observer);
         recorder = new(zone, diagnostics, BackendUids.DxgkrnlVidMmEtwTelemetryZone);
-        var harness = new VidMmBusinessBlockTestHarness(services, controller,
+        fixture.HoldNativeEtwGroup();
+        return new VidMmBusinessBlockTestHarness(fixture,
             zone,
             sessions,
             observer,
             controllerLogger,
-            processMetadata, diagnostics, recorder) { Availability = availability };
-        return harness;
+            processMetadata, diagnostics, recorder);
     }
 
     public async ValueTask DisposeAsync()
@@ -104,8 +97,7 @@ internal sealed class VidMmBusinessBlockTestHarness : IAsyncDisposable
         }
         finally
         {
-            await Controller.DisposeAsync();
-            await services.DisposeAsync();
+            await Fixture.DisposeAsync();
         }
     }
 

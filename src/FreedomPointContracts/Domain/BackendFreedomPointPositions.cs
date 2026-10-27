@@ -28,4 +28,13 @@ internal static class BackendFreedomPointPositions
     public const ulong ScoreAlgorithm = 0x00010002001F0003UL;
     public const ulong CrashCounterResetSeconds = 0x0001000200200000UL;
     public const ulong RequestLifetimeMs = 0x0001000200240000UL;
+    public const ulong WorkerCount = 0x0001000200280000UL;
+    public const ulong HistoryCapacity = 0x0001000200280001UL;
+    public const ulong DemandCapacity = 0x0001000200280002UL;
+    public const ulong DemandBytes = 0x0001000200280003UL;
+    public const ulong CompletionCapacity = 0x0001000200280004UL;
+    public const ulong ReaderCapacity = 0x0001000200280005UL;
+    public const ulong ReaderBytes = 0x0001000200280006UL;
+    public const ulong WorkerArenaBytes = 0x0001000200280007UL;
+    public const ulong ReasonTextCapacity = 0x0001000200280008UL;
 }

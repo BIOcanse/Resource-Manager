@@ -83,8 +83,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetRequiredService<Infrastructure.Adaptation.ResourceManagerLedgerOwner>()));
         services.AddSingleton<IGpuTelemetryWorkerClient>(static provider => provider.GetRequiredService<GpuTelemetryWorkerSupervisor>());
         services.AddSingleton<IGpuTelemetryPushSource>(static provider => provider.GetRequiredService<GpuTelemetryWorkerSupervisor>());
-        services.AddHostedServiceAlias<GpuTelemetryWorkerSupervisor>(BlockUids.GpuTelemetryWorkerSupervisor, [BlockUids.HostManagerSamplingSubscriptionOwner],
-            parentId: BlockUids.HostManagerSamplingSubscriptionOwner);
+        services.AddHostedServiceAlias<GpuTelemetryWorkerSupervisor>(BlockUids.GpuTelemetryWorkerSupervisor);
 
         services.AddSingleton<FirmwareIdentityReader>();
         services.AddSingleton<FirmwareProviderPlanCompiler>();
@@ -151,8 +150,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<ResourceManager.Subscription.IFieldSubscriptionBackend>(provider =>
             provider.GetRequiredService<Infrastructure.ReadWrite.HostFieldBackends>().Subscriptions);
         services.AddSingleton<ResourceManager.Subscription.FieldSubscriptionCore>();
-        services.AddHostedServiceAlias<WindowsHardwareMetricSampler>(BlockUids.WindowsHardwareMetricSampler, [BlockUids.RuntimeSpecializationCoordinator, BlockUids.HostManagerSamplingSubscriptionOwner, BlockUids.HostManagerMetricSnapshotOwner],
-            parentId: BlockUids.HostManagerSamplingSubscriptionOwner);
+        services.AddHostedServiceAlias<WindowsHardwareMetricSampler>(BlockUids.WindowsHardwareMetricSampler);
         services.AddSingleton<ICpuCorePerformanceOverrideStore, JsonCpuCorePerformanceOverrideStore>();
         services.AddSingleton<ICpuTopologySampler, WindowsCpuTopologyReader>();
         services.AddSingleton<CpuTopologySnapshotProvider>(static provider => new(
@@ -161,8 +159,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetRequiredService<ILogger<CpuTopologySnapshotProvider>>(),
             provider.GetRequiredService<Infrastructure.Adaptation.ResourceManagerLedgerOwner>()));
         services.AddSingleton<ICpuTopologyReader>(static provider => provider.GetRequiredService<CpuTopologySnapshotProvider>());
-        services.AddHostedServiceAlias<CpuTopologySnapshotProvider>(BlockUids.CpuTopologySnapshotProvider, [BlockUids.HostManagerSamplingSubscriptionOwner],
-            parentId: BlockUids.HostManagerSamplingSubscriptionOwner);
+        services.AddHostedServiceAlias<CpuTopologySnapshotProvider>(BlockUids.CpuTopologySnapshotProvider);
 
         // 磁盘占用：卷清单只读，随叫随取。
         services.AddSingleton<IDiskUsageVolumeCatalog, WindowsDiskUsageVolumeCatalog>();
@@ -193,7 +190,11 @@ public static partial class ResourceManagerServiceCollectionExtensions
         // 风扇由后端内的风扇控制核心处理，按控制通道分类而不按品牌；
         // 而且自带一条规矩：退出时把风扇交还固件。
         services.AddSingleton<FanControlCoreClient>();
-        services.AddBusinessBlockHostedService<FanControlCoreLifetimeService>(BlockUids.FanControlCoreLifetimeService, []);
+        services.AddBusinessBlockHostedService<FanControlCoreLifetimeService>(BlockUids.FanControlCoreLifetimeService);
+        // Host starts aliases serially. The feed can become ready only after its parent core runs;
+        // reverse host shutdown also gives the feed its stop turn before the core waits for it.
+        if (startupCapabilities.Allows(StartupCapability.RuntimeEffectOwners))
+            services.AddHostedServiceAlias<FanCurveTemperatureFeed>(constructService: true);
         services.AddSingleton<IControlWriter, FanControlWriter>();
         // 控制对象目录：只读，从已有的监控快照里认对象，不新开采集。
         // 机箱形态读一次就够，所以做成单例 —— 见 WindowsChassisKindReader。
@@ -223,13 +224,13 @@ public static partial class ResourceManagerServiceCollectionExtensions
 
         services.AddSingleton<KernelEtwSessionBroker>();
         services.AddSingleton<IKernelEtwSessionBroker>(static provider => provider.GetRequiredService<KernelEtwSessionBroker>());
-        services.AddHostedServiceAlias<KernelEtwSessionBroker>(BlockUids.KernelEtwSessionBroker, []);
+        services.AddHostedServiceAlias<KernelEtwSessionBroker>(BlockUids.KernelEtwSessionBroker);
 
         services.AddSingleton<PortableSoftwareDiscoveryService>();
         services.AddSingleton<IPortableSoftwareDiscovery>(static provider => provider.GetRequiredService<PortableSoftwareDiscoveryService>());
         if (startupCapabilities.Allows(StartupCapability.MutablePersistence))
         {
-            services.AddHostedServiceAlias<PortableSoftwareDiscoveryService>(BlockUids.PortableSoftwareDiscoveryService, [BlockUids.KernelEtwSessionBroker, BlockUids.SqlitePortableSoftwareRegistry]);
+            services.AddHostedServiceAlias<PortableSoftwareDiscoveryService>(BlockUids.PortableSoftwareDiscoveryService);
         }
         else
         {
@@ -246,8 +247,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<ICpuCoreResidencyReader>(static provider => provider.GetRequiredService<EtwCpuCoreResidencyReader>());
         services.AddSingleton<IResourceTableProviderStateSource>(static provider => provider.GetRequiredService<EtwCpuCoreResidencyReader>());
         services.AddSingleton<IResourceManagerSelfComputeZone>(static provider => provider.GetRequiredService<EtwCpuCoreResidencyReader>());
-        services.AddHostedServiceAlias<EtwCpuCoreResidencyReader>(BlockUids.EtwCpuCoreResidencyReader, [BlockUids.RuntimeSpecializationCoordinator, BlockUids.KernelEtwSessionBroker, BlockUids.HostManagerSamplingSubscriptionOwner],
-            parentId: BlockUids.HostManagerSamplingSubscriptionOwner);
+        services.AddHostedServiceAlias<EtwCpuCoreResidencyReader>(BlockUids.EtwCpuCoreResidencyReader);
 
         services.AddSingleton<EtwSystemInterruptSnapshotSource>(static provider => new(
             provider.GetRequiredService<IKernelEtwSessionBroker>(),
@@ -256,8 +256,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetRequiredService<Infrastructure.Adaptation.ResourceManagerLedgerOwner>()));
         services.AddSingleton<ISystemInterruptSnapshotSource>(static provider => provider.GetRequiredService<EtwSystemInterruptSnapshotSource>());
         services.AddSingleton<IResourceManagerSelfComputeZone>(static provider => provider.GetRequiredService<EtwSystemInterruptSnapshotSource>());
-        services.AddHostedServiceAlias<EtwSystemInterruptSnapshotSource>(BlockUids.EtwSystemInterruptSnapshotSource, [BlockUids.KernelEtwSessionBroker, BlockUids.HostManagerSamplingSubscriptionOwner],
-            parentId: BlockUids.HostManagerSamplingSubscriptionOwner);
+        services.AddHostedServiceAlias<EtwSystemInterruptSnapshotSource>(BlockUids.EtwSystemInterruptSnapshotSource);
 
         services.AddSingleton<EtwPhysicalDiskIoAttributionReader>(static provider => new(
             provider.GetRequiredService<IKernelEtwSessionBroker>(),
@@ -266,7 +265,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<IPhysicalDiskIoAttributionReader>(static provider => provider.GetRequiredService<EtwPhysicalDiskIoAttributionReader>());
         services.AddSingleton<IResourceTableProviderStateSource>(static provider => provider.GetRequiredService<EtwPhysicalDiskIoAttributionReader>());
         services.AddSingleton<IResourceManagerSelfComputeZone>(static provider => provider.GetRequiredService<EtwPhysicalDiskIoAttributionReader>());
-        services.AddHostedServiceAlias<EtwPhysicalDiskIoAttributionReader>(BlockUids.EtwPhysicalDiskIoAttributionReader, [BlockUids.KernelEtwSessionBroker]);
+        services.AddHostedServiceAlias<EtwPhysicalDiskIoAttributionReader>(BlockUids.EtwPhysicalDiskIoAttributionReader);
 
         services.AddSingleton<DxgkrnlVidMmEtwTelemetryZone>();
         services.AddSingleton<IResourceManagerSelfComputeZone>(static provider => provider.GetRequiredService<DxgkrnlVidMmEtwTelemetryZone>());
@@ -282,7 +281,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<EtwNetworkTcpIpAttributionReader>();
         services.AddSingleton<IEtwNetworkAttributionReader>(static provider => provider.GetRequiredService<EtwNetworkTcpIpAttributionReader>());
         services.AddSingleton<IResourceTableProviderStateSource>(static provider => provider.GetRequiredService<EtwNetworkTcpIpAttributionReader>());
-        services.AddHostedServiceAlias<EtwNetworkTcpIpAttributionReader>(BlockUids.EtwNetworkTcpIpAttributionReader, [BlockUids.KernelEtwSessionBroker]);
+        services.AddHostedServiceAlias<EtwNetworkTcpIpAttributionReader>(BlockUids.EtwNetworkTcpIpAttributionReader);
         services.AddSingleton<IpHelperNetworkAttributionReader>();
         services.AddSingleton<INetworkAttributionReader>(static provider => provider.GetRequiredService<IpHelperNetworkAttributionReader>());
         services.AddSingleton<IResourceTableProviderStateSource>(static provider => provider.GetRequiredService<IpHelperNetworkAttributionReader>());
@@ -309,11 +308,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<ISchedulingProcessFactSource>(static provider => provider.GetRequiredService<WindowsResourceBreakdownSampler>());
         services.AddSingleton<ISchedulingProcessFactObservationSource>(static provider => provider.GetRequiredService<WindowsResourceBreakdownSampler>());
         services.AddSingleton<ResourceManager.App.Application.ProcessAttribution.IRuntimeSoftwareObservationSource>(static provider => provider.GetRequiredService<WindowsResourceBreakdownSampler>());
-        services.AddHostedServiceAlias<WindowsResourceBreakdownSampler>(BlockUids.WindowsResourceBreakdownSampler,
-            [BlockUids.RuntimeSpecializationCoordinator, BlockUids.WindowsHardwareMetricSampler, BlockUids.HostManagerSamplingSubscriptionOwner,
-                BlockUids.EtwPhysicalDiskIoAttributionReader, BlockUids.EtwNetworkTcpIpAttributionReader,
-                BlockUids.GpuAllocationCollector, BlockUids.DxgkrnlVidMmEtwTelemetryZone],
-            parentId: BlockUids.HostManagerSamplingSubscriptionOwner);
+        services.AddHostedServiceAlias<WindowsResourceBreakdownSampler>(BlockUids.WindowsResourceBreakdownSampler);
         return services;
     }
 

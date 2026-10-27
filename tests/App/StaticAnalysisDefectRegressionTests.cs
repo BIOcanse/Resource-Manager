@@ -1,9 +1,7 @@
 using System.Collections;
 using System.IO.MemoryMappedFiles;
 using System.Reflection;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.Adaptation;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
@@ -59,11 +57,11 @@ public sealed class StaticAnalysisDefectRegressionTests
     [Fact]
     public async Task InvalidConsumerCounterDoesNotPreventIndependentRegistrationOrDrain()
     {
-        using var services = new ServiceCollection().BuildServiceProvider();
-        BusinessBlockRegistration[] declarations = [new(120, [], _ => throw new NotSupportedException())];
+        BusinessBlockRegistration[] declarations = [new(120, _ => throw new NotSupportedException())];
         var diagnostics = new BusinessBlockDiagnosticsRegistry(declarations, NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
-        await using var controller = new BusinessBlockScheduler(services, declarations,
-            Options.Create(new BusinessBlockOptions()), NullLogger<BusinessBlockScheduler>.Instance, BusinessBlockTestSupport.CreateAuthority());
+        await using var controller = new TestBlockScheduler(
+            [new TestBlockRegistration(120, [], _ => throw new NotSupportedException())],
+            BusinessBlockTestSupport.CreateAuthority());
         // Keep all registration scopes on their registering threads. The corrupted
         // prior baseline makes a diagnostic read fail without affecting independent registration.
         using var release = new ManualResetEventSlim();

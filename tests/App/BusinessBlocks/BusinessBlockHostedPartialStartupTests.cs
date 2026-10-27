@@ -22,12 +22,13 @@ public sealed class BusinessBlockHostedPartialStartupTests
             {
                 services.AddBusinessBlockController();
                 services.AddSingleton<IHostedService>(earlier);
-                services.AddBusinessBlockHostedService<GatedStopService>(128, [], _ => later);
-            }).ConfigureServices(BusinessBlockTestSupport.AddStateFixtures).Build();
+                services.AddBusinessBlockHostedService<GatedStopService>(BackendUids.RuntimeSpecializationCoordinator, _ => later);
+                NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
+            }).Build();
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
-        await scheduler.SetDemandAsync("external", 128, new(BusinessBlockRequestKind.User,
+        await scheduler.SetDemandAsync("external", BackendUids.RuntimeSpecializationCoordinator, new(BusinessBlockRequestKind.User,
             "partial-startup-test", "external-start", 0)).WaitAsync(TestTimeout);
-        await WaitUntilAsync(() => scheduler.ReadState(128) == BusinessBlockState.Running);
+        await WaitUntilAsync(() => scheduler.ReadState(BackendUids.RuntimeSpecializationCoordinator) == BusinessBlockState.Running);
         Assert.Equal(1, later.StartCount);
         var failure = await Assert.ThrowsAsync<IOException>(() => host.StartAsync().WaitAsync(TestTimeout));
         Assert.Same(earlier.StartFailure, failure);
@@ -44,12 +45,12 @@ public sealed class BusinessBlockHostedPartialStartupTests
         finally
         {
             // A failing regression must also release the stranded original run.
-            var block = host.Services.GetRequiredService<HostedBusinessBlockRegistry>().GetOrAdd(128, () => later);
+            var block = host.Services.GetRequiredService<HostedBusinessBlockRegistry>().GetOrAdd(BackendUids.RuntimeSpecializationCoordinator, () => later);
             if (!later.StopStarted.Task.IsCompleted) block.SetHostStopTurn();
             later.ReleaseStop.TrySetResult();
             await (stopping ?? host.StopAsync()).WaitAsync(TestTimeout);
             await block.CurrentStopCompletion().WaitAsync(TestTimeout);
-            await WaitUntilAsync(() => scheduler.ReadState(128) == BusinessBlockState.Stopped);
+            await WaitUntilAsync(() => scheduler.ReadState(BackendUids.RuntimeSpecializationCoordinator) == BusinessBlockState.Stopped);
         }
 
         Assert.Equal(1, later.StartCount);

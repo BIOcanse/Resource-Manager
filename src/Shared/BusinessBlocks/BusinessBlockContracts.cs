@@ -46,6 +46,8 @@ public sealed record BusinessBlocksSnapshot(DateTimeOffset At, int HistoryLimit,
     public IReadOnlyList<BusinessBlockDecision> CurrentDecisions { get; init; } = [];
     public IReadOnlyList<BusinessBlockItem> Items { get; init; } = [];
     public bool ShuttingDown { get; init; }
+    [JsonIgnore]
+    public System.Text.Json.JsonElement? NativeSnapshot { get; init; }
 }
 
 public sealed record BusinessBlockNode(int Id, int ParentId,
@@ -59,7 +61,7 @@ public sealed record BusinessBlockItem(int ItemUid, int? BlockUid, object? Value
     public string? BlockName { get; init; }
 }
 public sealed record BusinessBlockDecision(long Sequence, int ParentId, string Transition,
-    BusinessBlockReason Reason, IReadOnlyList<int> ShouldRun, IReadOnlyList<BusinessBlockItem> Items);
+    BusinessBlockReason? Reason, IReadOnlyList<int> ShouldRun, IReadOnlyList<BusinessBlockItem> Items);
 /// <summary>A rule can only read its declared items, captured together before evaluating it.</summary>
 public sealed class BusinessBlockDecisionInput
 {
@@ -83,7 +85,7 @@ public sealed record BusinessBlockControlSnapshot(IReadOnlyDictionary<int, Busin
     IReadOnlyList<BusinessBlockControlTransition> History);
 public sealed record BusinessBlockRunContext(CancellationToken StopNotification, Action ReportRunning);
 
-/// <summary>A parent's rule reads only these declared facts and its immediate children's states.</summary>
+/// <summary>Transitional managed rule for the window process and fixtures; Claude's control session deletes it at the end of 5d. The backend's rules are compiled in Zig.</summary>
 public sealed record BusinessBlockDecisionRegistration(int ParentId, IReadOnlyList<StateItemKey> ItemKeys,
     Func<BusinessBlockDecisionInput, IReadOnlyCollection<int>> Decide);
 

@@ -166,9 +166,12 @@ pub fn Controller(comptime registry: d.Registry, comptime topology: tr.Tree) typ
         transition_sequence: u64 = 0,
         transition_retained: usize = 0,
         decisions: []Decision,
+        current_decisions: [node_count]?Decision = [_]?Decision{null} ** node_count,
         history_items: []ItemValue,
+        current_items: []ItemValue,
         pending_reason_bytes: []u8,
         history_reason_bytes: []u8,
+        current_reason_bytes: []u8,
         completions: []Completion,
         readers: reader_storage.Readers,
         queue: [node_count]usize = undefined,
@@ -217,18 +220,23 @@ pub fn Controller(comptime registry: d.Registry, comptime topology: tr.Tree) typ
             const history_item_capacity = std.math.mul(usize, config.history_capacity, node_items.len) catch return error.InvalidConfiguration;
             const history_items = try allocator.alloc(ItemValue, history_item_capacity);
             errdefer allocator.free(history_items);
+            const current_items = try allocator.alloc(ItemValue, node_items.len);
+            errdefer allocator.free(current_items);
             const pending_reason_capacity = std.math.mul(usize, node_count, config.reason_text_capacity) catch return error.InvalidConfiguration;
             const pending_reason_bytes = try allocator.alloc(u8, pending_reason_capacity);
             errdefer allocator.free(pending_reason_bytes);
             const history_reason_capacity = std.math.mul(usize, decision_capacity, config.reason_text_capacity) catch return error.InvalidConfiguration;
             const history_reason_bytes = try allocator.alloc(u8, history_reason_capacity);
             errdefer allocator.free(history_reason_bytes);
+            const current_reason_capacity = std.math.mul(usize, node_count, config.reason_text_capacity) catch return error.InvalidConfiguration;
+            const current_reason_bytes = try allocator.alloc(u8, current_reason_capacity);
+            errdefer allocator.free(current_reason_bytes);
             const completions = try allocator.alloc(Completion, config.completion_capacity);
             errdefer allocator.free(completions);
             for (completions) |*c| c.* = .{};
             var runtime_readers = try reader_storage.Readers.init(allocator, config.reader_capacity, config.reader_bytes);
             errdefer runtime_readers.deinit();
-            self.* = .{ .allocator = allocator, .config = config, .host = host, .authority = authority, .demands = demands, .shutdown_claim = shutdown_claim, .workers = workers, .transitions = transitions, .decisions = decisions, .history_items = history_items, .pending_reason_bytes = pending_reason_bytes, .history_reason_bytes = history_reason_bytes, .completions = completions, .readers = runtime_readers };
+            self.* = .{ .allocator = allocator, .config = config, .host = host, .authority = authority, .demands = demands, .shutdown_claim = shutdown_claim, .workers = workers, .transitions = transitions, .decisions = decisions, .history_items = history_items, .current_items = current_items, .pending_reason_bytes = pending_reason_bytes, .history_reason_bytes = history_reason_bytes, .current_reason_bytes = current_reason_bytes, .completions = completions, .readers = runtime_readers };
             self.config.host_blocks = &host_block_uids;
             for (&self.nodes, 0..) |*node, ni| {
                 node.permitted = node_uids[ni] == topology.program;
@@ -655,6 +663,18 @@ pub fn Controller(comptime registry: d.Registry, comptime topology: tr.Tree) typ
                 if (m.node == ni and m.decides != null and active and self.conditions[mi].value) should_run |= @as(u64, 1) << m.bit;
             }
             n.sequence += 1;
+            const current_items = self.current_items[key_offsets[ni]..key_offsets[ni + 1]];
+            @memcpy(current_items, captured);
+            const current_reason_start = ni * self.config.reason_text_capacity;
+            const current_reason_buffer = self.current_reason_bytes[current_reason_start..][0..self.config.reason_text_capacity];
+            self.current_decisions[ni] = .{
+                .sequence = n.sequence,
+                .node = uid,
+                .should_run = should_run,
+                .source = source,
+                .reason = if (reason) |why| copyReason(current_reason_buffer, why) else null,
+                .items = current_items,
+            };
             if (self.config.history_capacity > 0) {
                 const slot = ni * self.config.history_capacity + @as(usize, @intCast((n.sequence - 1) % self.config.history_capacity));
                 const count = captured.len;
@@ -895,8 +915,10 @@ pub fn Controller(comptime registry: d.Registry, comptime topology: tr.Tree) typ
             self.allocator.free(self.transitions);
             self.allocator.free(self.decisions);
             self.allocator.free(self.history_items);
+            self.allocator.free(self.current_items);
             self.allocator.free(self.pending_reason_bytes);
             self.allocator.free(self.history_reason_bytes);
+            self.allocator.free(self.current_reason_bytes);
             self.allocator.free(self.completions);
             self.readers.deinit();
             self.authority.deinit();
@@ -922,6 +944,56 @@ pub fn Controller(comptime registry: d.Registry, comptime topology: tr.Tree) typ
                 w.raw(",\"name\":");
                 w.string(n);
             }
+        }
+        fn jsonDecision(w: *Json, row: Decision) void {
+            w.raw("{\"sequence\":");
+            w.number(row.sequence);
+            w.raw(",\"node\":");
+            w.number(row.node);
+            w.raw(",\"shouldRun\":[");
+            var first_child = true;
+            for (metadata) |m| {
+                if (m.node == nodeIndex(row.node).? and m.decides != null and row.should_run & (@as(u64, 1) << m.bit) != 0) {
+                    if (!first_child) w.raw(",");
+                    first_child = false;
+                    w.number(registry.blocks[m.decides.?].uid);
+                }
+            }
+            w.raw("],\"source\":{\"cause\":");
+            w.string(@tagName(row.source.cause));
+            w.raw(",\"uid\":");
+            w.number(row.source.uid);
+            if (row.source.block) |block| {
+                w.raw(",\"blockUid\":");
+                w.number(block);
+            }
+            w.raw("},\"reason\":");
+            if (row.reason) |why| {
+                w.raw("{\"kind\":");
+                w.number(why.kind);
+                w.raw(",\"owner\":");
+                w.string(why.owner);
+                w.raw(",\"cause\":");
+                w.string(why.cause);
+                w.raw(",\"planVersion\":");
+                w.number(why.plan_version);
+                w.raw("}");
+            } else w.raw("null");
+            w.raw(",\"items\":[");
+            for (row.items, 0..) |item, item_index| {
+                if (item_index > 0) w.raw(",");
+                w.raw("{\"uid\":");
+                w.number(item.key.item);
+                jsonName(w, registry.items[tr.itemIndex(registry, item.key.item).?].name);
+                if (item.key.block) |block| {
+                    w.raw(",\"blockUid\":");
+                    w.number(block);
+                }
+                w.raw(",");
+                jsonRead(w, item.value);
+                w.raw("}");
+            }
+            w.raw("]}");
         }
         pub fn snapshot(self: *Self, buffer: []u8) !usize {
             self.mutex.lock();
@@ -1067,55 +1139,16 @@ pub fn Controller(comptime registry: d.Registry, comptime topology: tr.Tree) typ
                     const row = self.decisions[ni * self.config.history_capacity + @as(usize, @intCast((sequence - 1) % self.config.history_capacity))];
                     if (!first) w.raw(",");
                     first = false;
-                    w.raw("{\"sequence\":");
-                    w.number(row.sequence);
-                    w.raw(",\"node\":");
-                    w.number(row.node);
-                    w.raw(",\"shouldRun\":[");
-                    var first_child = true;
-                    for (metadata) |m| {
-                        if (m.node == ni and m.decides != null and row.should_run & (@as(u64, 1) << m.bit) != 0) {
-                            if (!first_child) w.raw(",");
-                            first_child = false;
-                            w.number(registry.blocks[m.decides.?].uid);
-                        }
-                    }
-                    w.raw("],\"source\":{\"cause\":");
-                    w.string(@tagName(row.source.cause));
-                    w.raw(",\"uid\":");
-                    w.number(row.source.uid);
-                    if (row.source.block) |block| {
-                        w.raw(",\"blockUid\":");
-                        w.number(block);
-                    }
-                    w.raw("},\"reason\":");
-                    if (row.reason) |why| {
-                        w.raw("{\"kind\":");
-                        w.number(why.kind);
-                        w.raw(",\"owner\":");
-                        w.string(why.owner);
-                        w.raw(",\"cause\":");
-                        w.string(why.cause);
-                        w.raw(",\"planVersion\":");
-                        w.number(why.plan_version);
-                        w.raw("}");
-                    } else w.raw("null");
-                    w.raw(",\"items\":[");
-                    for (row.items, 0..) |item, item_index| {
-                        if (item_index > 0) w.raw(",");
-                        w.raw("{\"uid\":");
-                        w.number(item.key.item);
-                        jsonName(&w, registry.items[tr.itemIndex(registry, item.key.item).?].name);
-                        if (item.key.block) |block| {
-                            w.raw(",\"blockUid\":");
-                            w.number(block);
-                        }
-                        w.raw(",");
-                        jsonRead(&w, item.value);
-                        w.raw("}");
-                    }
-                    w.raw("]}");
+                    jsonDecision(&w, row);
                 }
+            }
+            w.raw("],\"currentDecisions\":[");
+            first = true;
+            for (self.current_decisions) |maybe_row| {
+                const row = maybe_row orelse continue;
+                if (!first) w.raw(",");
+                first = false;
+                jsonDecision(&w, row);
             }
             w.raw("],\"allocator\":{\"current\":");
             w.number(self.demands.current());

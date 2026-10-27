@@ -331,7 +331,10 @@ public sealed class ReportRuleSettingsTests
             builder.WebHost.UseUrls("http://127.0.0.1:0");
             var capabilities = new StartupCapabilitySet("report-rules-test",
                 StartupCapability.RuntimeEffectOwners | StartupCapability.MutablePersistence);
+            ResourceManager.App.Infrastructure.Security.LoopbackApiPipelineConfigurator
+                .Compile(false).ConfigureServices(builder.Services);
             builder.Services.AddResourceManagerApp(["--no-native-ui"], capabilities);
+            NativeBackendBlockTestSupport.AddFullTreeHostFixture(builder.Services);
             builder.Services.RemoveAll<IHostedService>();
             builder.Logging.ClearProviders();
             var app = builder.Build();

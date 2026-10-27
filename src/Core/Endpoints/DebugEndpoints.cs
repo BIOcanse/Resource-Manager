@@ -26,7 +26,10 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         app.MapGet("/api/debug/business-blocks", (HttpResponse response, IBusinessBlockQuery blocks, BusinessBlockDiagnosticsRegistry diagnostics) =>
         {
             response.Headers.CacheControl = "no-store";
-            return Results.Ok(new BusinessBlockDebugSnapshot(blocks.Read(), diagnostics.ReadAll()));
+            var snapshot = blocks.Read();
+            return snapshot.NativeSnapshot is { } native
+                ? Results.Ok(new NativeBusinessBlockDebugSnapshot(native, diagnostics.ReadAll()))
+                : Results.Ok(new BusinessBlockDebugSnapshot(snapshot, diagnostics.ReadAll()));
         });
 
         app.MapGet("/api/debug/gpu-renderers", async (HttpResponse response,

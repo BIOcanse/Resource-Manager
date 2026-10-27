@@ -5,6 +5,7 @@ test {
     _ = @import("host_items.zig");
     _ = @import("demand_tests.zig");
     _ = @import("scenarios.zig");
+    _ = @import("current_decisions.zig");
     _ = @import("layers.zig");
     _ = @import("rm_control").json;
 }

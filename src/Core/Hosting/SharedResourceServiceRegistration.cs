@@ -33,7 +33,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         if (startupCapabilities.Allows(StartupCapability.SharedResourceOwnership))
         {
             services.AddSerialHostedServiceAlias<SharedMemoryPublicResourceBroker>();
-            services.AddBusinessBlockHostedService<SharedResourceSubscriptionMaintenanceService>(BlockUids.SharedResourceSubscriptionMaintenanceService, []);
+            services.AddBusinessBlockHostedService<SharedResourceSubscriptionMaintenanceService>(BlockUids.SharedResourceSubscriptionMaintenanceService);
         }
         return services;
     }

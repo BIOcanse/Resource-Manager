@@ -15,15 +15,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
     {
         if (services.Any(value => value.ServiceType == typeof(BusinessBlockScheduler))) return services;
         services.AddOptions<BusinessBlockOptions>().BindConfiguration(BusinessBlockOptions.SectionName);
-        services.TryAddSingleton<BusinessBlockController>(provider => new(
-            provider.GetRequiredService<ILogger<BusinessBlockController>>(),
-            provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<BusinessBlockOptions>>().Value.HistoryLimit,
-#if RM_STATE_NAMES
-            StateNames.Name));
-#else
-            static _ => null));
-#endif
-        services.TryAddSingleton<BackendStateItems>();
+        services.TryAddSingleton<NativeControl>(BackendNativeControlFactory.Create);
+        services.TryAddSingleton<BackendStateItems>(provider => new(provider.GetRequiredService<NativeControl>()));
         services.TryAddSingleton<StateAuthority>(provider => provider.GetRequiredService<BackendStateItems>().Authority);
         services.TryAddSingleton<NativeEtwSessionAvailability>();
         services.TryAddSingleton<BusinessBlockDiagnosticsRegistry>();
@@ -34,79 +27,51 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.TryAddSingleton<IEtwConsumerThreadObserver, BusinessBlockEtwThreadObserver>();
         services.AddSingleton<IHostedService, BusinessBlockDependencyLifetime>();
         services.TryAddSingleton<NativeEtwLifetimeService>();
-        AddHostedBlockDeclaration<NativeEtwLifetimeService>(services, BlockUids.NativeEtwLifetimeService, []);
+        AddHostedBlockDeclaration<NativeEtwLifetimeService>(services, BlockUids.NativeEtwLifetimeService);
         services.AddSingleton<IHostedService>(provider => new NonOwningHostedService<NativeEtwLifetimeService>(
             provider, BlockUids.NativeEtwLifetimeService, constructService: true));
         return services;
     }
 
     internal static IServiceCollection AddBusinessBlockHostedService<TService>(this IServiceCollection services,
-        int id, int[] inputs, int parentId = BlockUids.Program) where TService : class, IHostedService
+        int id) where TService : class, IHostedService
     {
         services.TryAddSingleton<TService>();
-        return services.AddHostedServiceAlias<TService>(id, inputs, constructService: true, parentId: parentId);
+        return services.AddHostedServiceAlias<TService>(id, constructService: true);
     }
 
     internal static IServiceCollection AddBusinessBlockHostedService<TService>(this IServiceCollection services,
-        int id, int[] inputs, Func<IServiceProvider, TService> factory,
-        int parentId = BlockUids.Program) where TService : class, IHostedService
+        int id, Func<IServiceProvider, TService> factory) where TService : class, IHostedService
     {
         services.TryAddSingleton(factory);
-        return services.AddHostedServiceAlias<TService>(id, inputs, constructService: true, parentId: parentId);
+        return services.AddHostedServiceAlias<TService>(id, constructService: true);
     }
 
     internal static void RegisterHostedBusinessBlock<TService>(IServiceCollection services,
-        int id, int[] inputs, int parentId = BlockUids.Program) where TService : class, IHostedService
+        int id) where TService : class, IHostedService
     {
         services.AddBusinessBlockController();
-        AddHostedBlockDeclaration<TService>(services, id, inputs, parentId);
+        AddHostedBlockDeclaration<TService>(services, id);
     }
 
-    private static void AddHostedBlockDeclaration<TService>(IServiceCollection services,
-        int id, int[] inputs, int parentId = BlockUids.Program) where TService : class, IHostedService
+    private static void AddHostedBlockDeclaration<TService>(IServiceCollection services, int id)
+        where TService : class, IHostedService
     {
-        services.AddSingleton(new BusinessBlockRegistration(id, inputs,
+        services.AddSingleton(new BusinessBlockRegistration(id,
             provider => provider.GetRequiredService<HostedBusinessBlockRegistry>().GetOrAdd(id, () => provider.GetRequiredService<TService>()))
-            { HostedServiceType = typeof(TService), ParentId = parentId });
+            { HostedServiceType = typeof(TService) });
     }
 
     private static IServiceCollection AddEtwBusinessBlocks(this IServiceCollection services)
     {
-        services.AddSingleton(new BusinessBlockRegistration(BlockUids.PresentFrameEtwSource, [],
-            provider => provider.GetRequiredService<PresentFrameEtwSource>())
-            { ParentId = BlockUids.NativeEtwLifetimeService });
-        services.AddSingleton(new BusinessBlockRegistration(BlockUids.GpuAllocationCollector, [],
-            provider => provider.GetRequiredService<GpuAllocationCollector>())
-            { ParentId = BlockUids.NativeEtwLifetimeService });
-        services.AddSingleton(new BusinessBlockRegistration(BlockUids.DxgkrnlVidMmEtwTelemetryZone, [],
-            provider => provider.GetRequiredService<DxgkrnlVidMmEtwTelemetryZone>())
-            { ParentId = BlockUids.NativeEtwLifetimeService });
-        var native = new[]
-        {
-            (Id: BlockUids.PresentFrameEtwSource, Item: StateItemUids.PresentNativeSessionAvailable),
-            (Id: BlockUids.GpuAllocationCollector, Item: StateItemUids.GpuAllocationNativeSessionAvailable),
-            (Id: BlockUids.DxgkrnlVidMmEtwTelemetryZone, Item: StateItemUids.VidMmNativeSessionAvailable)
-        };
-        services.AddSingleton(provider =>
-        {
-            // The publisher exists before any reader starts; it is independent of block lifetimes.
-            _ = provider.GetRequiredService<NativeEtwSessionAvailability>();
-            return new BusinessBlockDecisionRegistration(BlockUids.NativeEtwLifetimeService,
-                native.SelectMany(value => new StateItemKey[] { new(StateItemUids.BlockDemand, value.Id), value.Item })
-                    .Concat([new(StateItemUids.PresentUnfrozen), new(StateItemUids.VidMmUnfrozen)]).ToArray(),
-                input => native.Where(value => input.Read<bool>(new(StateItemUids.BlockDemand, value.Id)).GetValueOrDefault(false)
-                    && input.Read<bool>(value.Item).GetValueOrDefault(false)
-                    && (value.Id == BlockUids.GpuAllocationCollector || IsUnfrozen(input.Read<bool>(value.Id == BlockUids.PresentFrameEtwSource
-                        ? StateItemUids.PresentUnfrozen : StateItemUids.VidMmUnfrozen))))
-                    .Select(value => value.Id).ToArray());
-        });
+        services.AddSingleton(new BusinessBlockRegistration(BlockUids.PresentFrameEtwSource,
+            provider => provider.GetRequiredService<PresentFrameEtwSource>()));
+        services.AddSingleton(new BusinessBlockRegistration(BlockUids.GpuAllocationCollector,
+            provider => provider.GetRequiredService<GpuAllocationCollector>()));
+        services.AddSingleton(new BusinessBlockRegistration(BlockUids.DxgkrnlVidMmEtwTelemetryZone,
+            provider => provider.GetRequiredService<DxgkrnlVidMmEtwTelemetryZone>()));
         return services;
     }
-
-    // The lazy mode owner has not published before its first construction; its initial mode is unfrozen.
-    // A stopped owner or failed read does not permit its child.
-    private static bool IsUnfrozen(StateRead<bool> mode)
-        => mode.HasValue ? mode.Value : mode.NoValueReason == NoValueReason.NotPublished;
 }
 
 internal sealed class BusinessBlockEtwThreadObserver(BusinessBlockDiagnosticsRegistry diagnostics) : IEtwConsumerThreadObserver

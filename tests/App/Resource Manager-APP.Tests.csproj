@@ -12,6 +12,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <AssemblyMetadata Include="ResourceManagerTestArtifactsPath" Value="$(ArtifactsPath)" />
     <Using Include="ResourceManager.Subscription.Native" />
     <Using Include="ResourceManager.Subscription" />
     <Using Include="ResourceManager.ReadWrite.Publications" />

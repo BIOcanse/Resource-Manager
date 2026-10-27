@@ -14,10 +14,11 @@ public static partial class ResourceManagerServiceCollectionExtensions
         string[] args,
         BackendHostEnvironment hostEnvironment)
     {
-        services.AddBusinessBlockHostedService<ServiceAutoStartSettings>(BlockUids.ServiceAutoStartSettings, [BlockUids.RuntimeSpecializationCoordinator]);
+        services.AddBusinessBlockHostedService<ServiceAutoStartSettings>(BlockUids.ServiceAutoStartSettings);
         services.AddSingleton<IServiceRecoveryControl, WindowsServiceRecoveryControl>();
         services.AddSingleton<ServiceRecoverySettings>();
-        services.AddBusinessBlockHostedService<ServiceRecoverySettings>(BlockUids.ServiceRecoverySettings, [BlockUids.RuntimeSpecializationCoordinator], provider => provider.GetRequiredService<ServiceRecoverySettings>());
+        services.AddBusinessBlockHostedService<ServiceRecoverySettings>(BlockUids.ServiceRecoverySettings,
+            provider => provider.GetRequiredService<ServiceRecoverySettings>());
 
         return services;
     }

@@ -1,7 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
-using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -44,11 +42,11 @@ public sealed class BusinessBlockDrainHandshakeTests
                 Wait(releaseLeafDispatch);
             }
         };
-        await using var scheduler = new BusinessBlockScheduler(new BusinessBlockTestSupport.EmptyServices(),
+        await using var scheduler = new TestBlockScheduler(
             [BusinessBlockTestSupport.Register(105, grandparent), BusinessBlockTestSupport.Register(107, parent, 105),
              BusinessBlockTestSupport.Register(104, child, 107), BusinessBlockTestSupport.Register(106, leaf, 104)],
-            Options.Create(new BusinessBlockOptions()), NullLogger<BusinessBlockScheduler>.Instance, BusinessBlockTestSupport.CreateAuthority(), control,
-            [new(107, [BusinessBlockTestSupport.DemandKey(104), TestStateUids.ParentProbe], input =>
+            BusinessBlockTestSupport.CreateAuthority(), control: control,
+            decisions: [new(107, [BusinessBlockTestSupport.DemandKey(104), TestStateUids.ParentProbe], input =>
                 input.Read<bool>(BusinessBlockTestSupport.DemandKey(104)).GetValueOrDefault(false) ? [104] : []),
              new(104, [BusinessBlockTestSupport.DemandKey(106)], input =>
              {
@@ -147,10 +145,10 @@ public sealed class BusinessBlockDrainHandshakeTests
             try { Wait(releaseCallback); }
             finally { callbackExited.TrySetResult(); }
         };
-        await using var scheduler = new BusinessBlockScheduler(new BusinessBlockTestSupport.EmptyServices(),
+        await using var scheduler = new TestBlockScheduler(
             [BusinessBlockTestSupport.Register(114, parent), BusinessBlockTestSupport.Register(115, child, 114)],
-            Options.Create(new BusinessBlockOptions()), NullLogger<BusinessBlockScheduler>.Instance, BusinessBlockTestSupport.CreateAuthority(), control,
-            [new(114, [BusinessBlockTestSupport.DemandKey(115)], input =>
+            BusinessBlockTestSupport.CreateAuthority(), control: control,
+            decisions: [new(114, [BusinessBlockTestSupport.DemandKey(115)], input =>
             {
                 if (!input.Read<bool>(BusinessBlockTestSupport.DemandKey(115)).GetValueOrDefault(false)) return [];
                 if (Interlocked.Exchange(ref decisionHeld, 1) == 0)

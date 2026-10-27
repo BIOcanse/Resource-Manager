@@ -101,8 +101,8 @@ internal sealed class BackendFreedomPointRegistry
                 throw new InvalidDataException($"'{path}' needs unique ids and dense explicit local indices.");
             }
             var address = $"{path}/{index}";
-            if (point.ValueType is not ("positive_int32" or "number" or "boolean" or "object" or "array")
-                || simple != (point.ValueType is "positive_int32" or "number" or "boolean"))
+            if (point.ValueType is not ("positive_int32" or "nonnegative_int32" or "number" or "boolean" or "object" or "array")
+                || simple != (point.ValueType is "positive_int32" or "nonnegative_int32" or "number" or "boolean"))
             {
                 throw new InvalidDataException($"'{address}' has the wrong value type for its table.");
             }
@@ -164,6 +164,7 @@ internal sealed class BackendFreedomPointRegistry
         var valid = type switch
         {
             "positive_int32" => value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number) && number > 0,
+            "nonnegative_int32" => value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number) && number >= 0,
             "number" => value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var number) && double.IsFinite(number),
             "boolean" => value.ValueKind is JsonValueKind.True or JsonValueKind.False,
             "object" => value.ValueKind == JsonValueKind.Object,

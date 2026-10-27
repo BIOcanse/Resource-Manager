@@ -4,9 +4,8 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlock
 
 /// <summary>A lazy factory keeps a diagnostic read from constructing or starting a business service.</summary>
 public sealed record BusinessBlockRegistration(
-    int Id, IReadOnlyList<int> Dependencies, Func<IServiceProvider, IBusinessBlock> Create)
+    int Id, Func<IServiceProvider, IBusinessBlock> Create)
 {
-    public int ParentId { get; init; } = ResourceManager.App.StateItems.BlockUids.Program;
     public Type? HostedServiceType { get; init; }
 }
 

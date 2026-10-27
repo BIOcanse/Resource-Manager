@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
+using ResourceManager.Shared.BusinessBlocks;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -279,39 +280,64 @@ public sealed class BusinessBlockGlobalStateTests
     [Fact]
     public void ControlTreeRejectsDuplicateUnknownParentMultipleParentAndCycle()
     {
-        BusinessBlockRegistration Node(int id, int parent = BackendUids.Program, params int[] inputs)
+        TestBlockRegistration Node(int id, int parent = BackendUids.Program, params int[] inputs)
             => new(id, inputs, _ => throw new InvalidOperationException("Validation must not construct a block.")) { ParentId = parent };
-        Assert.Throws<ArgumentException>(() => new BackendBlockGraph([Node(145), Node(145)]));
-        Assert.Throws<KeyNotFoundException>(() => new BackendBlockGraph([Node(118, 133)]));
-        Assert.Throws<ArgumentException>(() => new BackendBlockGraph([Node(111), Node(113), Node(148, 111), Node(148, 113)]));
-        Assert.Throws<InvalidOperationException>(() => new BackendBlockGraph([Node(111, 113), Node(113, 111)]));
-        Assert.Throws<KeyNotFoundException>(() => new BackendBlockGraph([Node(120, BackendUids.Program, 158)]));
+        Assert.Throws<ArgumentException>(() => TestBlockScheduler.CreateGraph([Node(145), Node(145)]));
+        Assert.Throws<KeyNotFoundException>(() => TestBlockScheduler.CreateGraph([Node(118, 133)]));
+        Assert.Throws<ArgumentException>(() => TestBlockScheduler.CreateGraph([Node(111), Node(113), Node(148, 111), Node(148, 113)]));
+        Assert.Throws<InvalidOperationException>(() => TestBlockScheduler.CreateGraph([Node(111, 113), Node(113, 111)]));
+        Assert.Throws<KeyNotFoundException>(() => TestBlockScheduler.CreateGraph([Node(120, BackendUids.Program, 158)]));
     }
 
     [Fact]
     public void GraphCopiesDeclarationsAndAllowsCrossBranchDataCycles()
     {
         var inputs = new[] { 141 };
-        var graph = new BackendBlockGraph([
-            new(141, [120], _ => null!), new(120, inputs, _ => null!)]);
+        var graph = new BusinessBlockGraph(BackendUids.Program,
+        [
+            new(141, BackendUids.Program, [120]), new(120, BackendUids.Program, inputs)
+        ]);
         inputs[0] = 999;
         Assert.Equal([141], graph.Nodes.Single(item => item.Id == 120).Inputs);
         Assert.Equal([141, 120], graph.Children(BackendUids.Program));
     }
 
     [Theory]
-    [InlineData("full")]
-    [InlineData("normal-read-only")]
-    public void ProductionGraphIsClosedForEachStartupProfile(string profile)
+    [InlineData("full", false, 47)]
+    [InlineData("full", true, 48)]
+    [InlineData("normal-read-only", false, 31)]
+    public async Task ProductionGraphIsClosedForEachStartupProfile(string profile, bool windowsService, int expectedCount)
     {
         var services = new ServiceCollection();
-        ResourceManager.App.Hosting.ResourceManagerServiceCollectionExtensions.AddResourceManagerApp(services, ["--startup-profile=" + profile]);
-        var graph = new BackendBlockGraph(services.Select(value => value.ImplementationInstance).OfType<BusinessBlockRegistration>());
-        Assert.True(graph.Nodes.Count > 20);
+        ResourceManager.App.Infrastructure.Security.LoopbackApiPipelineConfigurator.Compile(false).ConfigureServices(services);
+        ResourceManager.App.Hosting.ResourceManagerServiceCollectionExtensions.AddResourceManagerApp(services, ["--startup-profile=" + profile],
+            profile == "full" ? ResourceManager.App.Hosting.StartupCapabilities.StartupCapabilitySet.Full
+                : ResourceManager.App.Hosting.StartupCapabilities.StartupCapabilitySet.NormalReadOnly,
+            ResourceManager.App.Hosting.BackendHostEnvironment.Compile(windowsService, windowsService));
+        var registrations = services.Select(value => value.ImplementationInstance).OfType<BusinessBlockRegistration>().ToArray();
+        var nativeProfile = profile switch
+        {
+            "full" => windowsService ? 2u : 1u,
+            "normal-read-only" => 3u,
+            _ => throw new ArgumentOutOfRangeException(nameof(profile), profile, "Unknown backend profile.")
+        };
+        await using var native = NativeBackendBlockTestSupport.CreateControl(registrations, nativeProfile);
+        var graph = native.Graph;
+        var selectedIds = BackendNativeControlFactory.WithWrappers(registrations, graph.BlockIds)
+            .Select(declaration => declaration.Id).Order().ToArray();
+        Assert.Equal(BackendUids.Program, graph.Program);
+        Assert.Equal(expectedCount, graph.Nodes.Count);
+        Assert.Equal(selectedIds, graph.BlockIds.Order().ToArray());
+        Assert.DoesNotContain(graph.BlockIds, id => id == graph.Program);
+        var expectedParents = BackendExpectedProductionTree.Parents(nativeProfile);
+        Assert.Equal(expectedParents.Keys.Order(), graph.BlockIds.Order());
+        Assert.Equal([BackendUids.Backend], graph.Children(BackendUids.Program));
+        Assert.All(graph.Nodes, node => Assert.Equal(expectedParents[node.Id], node.ParentId));
         Assert.All(graph.Nodes, node => Assert.All(node.Inputs, value => Assert.True(value > 0)));
         var uiIds = typeof(UiUids).GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static).Select(field => (int)field.GetRawConstantValue()!);
         Assert.DoesNotContain(graph.BlockIds, uiIds.Contains);
-        if (profile == "normal-read-only") Assert.DoesNotContain(graph.Nodes, node => node.Id == BackendUids.PortableSoftwareDiscoveryService);
+        if (profile == "normal-read-only")
+            Assert.DoesNotContain(registrations, declaration => declaration.Id == BackendUids.PortableSoftwareDiscoveryService);
     }
 
     [Fact]
@@ -327,12 +353,23 @@ public sealed class BusinessBlockGlobalStateTests
             Assert.Equal("BusinessBlockDecisionNode.cs", Path.GetFileName(Assert.Single(callers)));
         }
         var owners = files.Where(file => File.ReadAllText(file).Contains("BusinessBlockController", StringComparison.Ordinal)).Select(Path.GetFileName);
-        Assert.All(owners, name => Assert.Contains(name, new[] { "BusinessBlockController.cs", "BusinessBlockDecisionNode.cs", "BusinessBlockScheduler.cs", "BusinessBlockServiceRegistration.cs" }));
-        // All generic lifecycle layers are covered, including any newly added execution wrapper.
-        // Legacy ETW code's internal session cancellation and judgments are explicitly outside this migration.
+        Assert.All(owners, name => Assert.Contains(name, new[] { "BusinessBlockController.cs", "BusinessBlockDecisionNode.cs",
+            "BusinessBlockScheduler.cs", "BusinessBlockServiceRegistration.cs", "ManagedBusinessBlockRuntime.cs" }));
+        var lifecycleFiles = Directory.EnumerateFiles(Path.Combine(core, "Infrastructure", "RuntimeSpecialization", "BusinessBlocks"), "*.cs")
+            .Concat(Directory.EnumerateFiles(shared, "*.cs")).ToArray();
+        var cancellationOwners = lifecycleFiles.Where(file =>
+        {
+            var code = File.ReadAllText(file);
+            return code.Contains("CancellationTokenSource", StringComparison.Ordinal)
+                || System.Text.RegularExpressions.Regex.IsMatch(code, @"\.\s*Cancel(?:Async|After)?\s*\(");
+        }).Select(Path.GetFileName).ToHashSet(StringComparer.Ordinal);
+        Assert.True(new[] { "BusinessBlockController.cs", "NativeControl.Callbacks.cs" }
+            .ToHashSet(StringComparer.Ordinal).SetEquals(cancellationOwners));
+        // Managed block control and native host callbacks own their run cancellation tokens.
+        // Every other generic lifecycle layer must remain free of cancellation policy.
         var genericLayers = Directory.EnumerateFiles(Path.Combine(core, "Infrastructure", "RuntimeSpecialization", "BusinessBlocks"), "*.cs")
             .Concat(Directory.EnumerateFiles(shared, "*.cs"))
-            .Where(file => Path.GetFileName(file) != "BusinessBlockController.cs");
+            .Where(file => Path.GetFileName(file) is not "BusinessBlockController.cs" and not "NativeControl.Callbacks.cs");
         foreach (var file in genericLayers)
         {
             var code = File.ReadAllText(file);

@@ -1,33 +1,24 @@
 using ResourceManager.Shared.BusinessBlocks.State;
-using Microsoft.Extensions.Options;
 using ResourceManager.App.Application.RuntimeSpecialization;
-using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 
 namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
-/// <summary>Backend registration and configuration adapter for the shared scheduler.</summary>
+/// <summary>The backend selects native explicitly; the compiled Zig tree owns decisions.</summary>
 public sealed class BusinessBlockScheduler : ResourceManager.Shared.BusinessBlocks.BusinessBlockScheduler
 {
-    public new BackendBlockGraph Graph => (BackendBlockGraph)base.Graph;
-
+    public new BackendBlockGraph Graph { get; }
     public BusinessBlockScheduler(IServiceProvider services, IEnumerable<BusinessBlockRegistration> registrations,
-        IOptions<BusinessBlockOptions> options, ILogger<BusinessBlockScheduler> logger, StateAuthority authority,
-        BusinessBlockController? control = null, IEnumerable<BusinessBlockDecisionRegistration>? decisions = null)
-        : this(services, new BackendBlockGraph(registrations), options, logger, authority, control, decisions) { }
+        NativeControl native, StateAuthority authority)
+        : this(services, new BackendBlockGraph(registrations, native.Graph), native, authority) { }
+    private BusinessBlockScheduler(IServiceProvider services, BackendBlockGraph graph, NativeControl native, StateAuthority authority)
+        : base(native, InitializeAvailability(services, authority), id => graph.Get(id).Create(services),
+            () => services.GetService<IRuntimePlanProvider>()?.Current.Version ?? 0)
+        => Graph = graph;
 
-    private BusinessBlockScheduler(IServiceProvider services, BackendBlockGraph graph,
-        IOptions<BusinessBlockOptions> options, ILogger<BusinessBlockScheduler> logger, StateAuthority authority,
-        BusinessBlockController? control, IEnumerable<BusinessBlockDecisionRegistration>? decisions)
-        : base(graph, id => graph.Get(id).Create(services), options.Value.HistoryLimit, logger, ResourceManager.App.StateItems.StateRegistry.Version, LookupName, authority, ResourceManager.App.StateItems.StateItemUids.BlockDemand,
-            ResourceManager.App.StateItems.StateItemUids.ProgramShuttingDown, control, decisions,
-            () => services.GetService<IRuntimePlanProvider>()?.Current.Version ?? 0) { }
-
-    private static string? LookupName(int uid)
+    private static StateAuthority InitializeAvailability(IServiceProvider services, StateAuthority authority)
     {
-#if RM_STATE_NAMES
-        return ResourceManager.App.StateItems.StateNames.Name(uid);
-#else
-        return null;
-#endif
+        // The independent publisher initializes the three cells before native readers are activated.
+        _ = services.GetRequiredService<ResourceManager.App.Infrastructure.Telemetry.Etw.NativeEtwSessionAvailability>();
+        return authority;
     }
 }

@@ -6,5 +6,9 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlock
 /// <summary>Creates this process's state directory from its generated registry declarations.</summary>
 public sealed class BackendStateItems
 {
-    public StateAuthority Authority { get; } = new(StateRegistry.Items, StateRegistry.Blocks);
+    public StateAuthority Authority { get; }
+    // Transitional fixture construction. Production DI explicitly supplies its native controller.
+    public BackendStateItems() => Authority = new(StateRegistry.Items, StateRegistry.Blocks);
+    internal BackendStateItems(NativeControl control)
+        => Authority = control.CreateAuthority(StateRegistry.Items, StateRegistry.Blocks);
 }

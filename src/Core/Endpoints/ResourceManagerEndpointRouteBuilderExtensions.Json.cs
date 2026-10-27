@@ -20,6 +20,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     [JsonSerializable(typeof(FrontendSubscriptionChannelFrame<global::ResourceManager.App.Domain.Settings.AppSettings>))]
     [JsonSerializable(typeof(FrontendSubscriptionChannelFrame<global::ResourceManager.App.Domain.GpuPlacement.StartupModuleSettingsDocument>))]
     [JsonSerializable(typeof(global::ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks.BusinessBlockDebugSnapshot))]
+    [JsonSerializable(typeof(global::ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks.NativeBusinessBlockDebugSnapshot))]
     [JsonSerializable(typeof(global::ResourceManager.App.Endpoints.Transport.ResourceFactsSnapshot))]
     [JsonSerializable(typeof(FrontendSubscriptionChannelFrame<global::ResourceManager.App.Endpoints.Transport.ResourceFactsSnapshot>))]
     [JsonSerializable(typeof(FrontendSubscriptionChannelFrame<global::ResourceManager.App.Domain.Control.ControlActualState>))]

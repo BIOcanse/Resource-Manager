@@ -2,8 +2,6 @@ using System.Diagnostics.Tracing;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
@@ -39,45 +37,47 @@ internal sealed class GpuAllocationTestSessionFactory : IGpuAllocationSessionFac
 
 internal sealed class GpuAllocationTestHarness : IAsyncDisposable
 {
-    private readonly ServiceProvider services;
-
     internal GpuAllocationTestHarness(GpuAllocationTestSessionFactory factory, TimeSpan? budget,
         ILogger<GpuAllocationCollector>? logger, IConfiguration? configuration, TimeProvider? timeProvider,
         IEtwConsumerThreadObserver? observer, BusinessBlockOptions? blockOptions)
     {
-        services = new ServiceCollection().BuildServiceProvider();
+        var resolvedConfiguration = configuration ?? new ConfigurationBuilder().Build();
+        _ = GpuAllocationCapturePlan.Compile(resolvedConfiguration);
         GpuAllocationCollector? collector = null;
         EtwTestRunRecorder? recorder = null;
-        var registration = new BusinessBlockRegistration(BackendUids.GpuAllocationCollector, [], _ => recorder!);
+        var registration = new BusinessBlockRegistration(BackendUids.GpuAllocationCollector, _ => recorder!);
         Diagnostics = new BusinessBlockDiagnosticsRegistry([registration], NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
-        var authority = BusinessBlockTestSupport.CreateAuthority();
-        Availability = new NativeEtwSessionAvailability(authority);
-        Gate = authority.ClaimWrite<bool>(BusinessBlockTestSupport.GateKey(BackendUids.GpuAllocationCollector));
-        Controller = new BusinessBlockScheduler(services, [registration],
-            Options.Create(blockOptions ?? new BusinessBlockOptions()), NullLogger<BusinessBlockScheduler>.Instance, authority,
-            decisions: [EtwTestRunRecorder.AvailabilityRule(BackendUids.GpuAllocationCollector, BackendItems.GpuAllocationNativeSessionAvailable, fixtureGate: true)]);
+        Fixture = NativeBackendBlockTestSupport.CreateFullTreeFixture(
+            new Dictionary<int, Func<IServiceProvider, IBusinessBlock>>
+            {
+                [BackendUids.GpuAllocationCollector] = _ => recorder!
+            }, historyCapacity: blockOptions?.HistoryLimit ?? 128);
+        Controller = Fixture.Scheduler;
+        Availability = Fixture.Availability;
         Collector = new GpuAllocationCollector(logger ?? NullLogger<GpuAllocationCollector>.Instance,
-            configuration ?? new ConfigurationBuilder().Build(), Controller, Diagnostics, Availability, factory,
+            resolvedConfiguration, Controller, Diagnostics, Availability, factory,
             timeProvider ?? TimeProvider.System, budget, observer);
         collector = Collector;
         Recorder = recorder = new(collector, Diagnostics, BackendUids.GpuAllocationCollector);
+        Fixture.HoldNativeEtwGroup();
     }
 
     internal GpuAllocationCollector Collector { get; }
+    internal NativeBackendBlockFixture Fixture { get; }
     internal BusinessBlockScheduler Controller { get; }
     internal BusinessBlockDiagnosticsRegistry Diagnostics { get; }
     internal EtwTestRunRecorder Recorder { get; }
     internal NativeEtwSessionAvailability Availability { get; }
-    internal StateWriter<bool> Gate { get; }
     internal Task<BusinessBlockResult> NextResultAsync() => Recorder.NextResultAsync();
+    internal Task SetNativeEtwGroupDemandAsync(bool hold, BusinessBlockReason reason)
+        => Fixture.SetNativeEtwGroupDemandAsync(hold, reason);
 
     public async ValueTask DisposeAsync()
     {
         await Controller.ShutdownAsync(new BusinessBlockReason(BusinessBlockRequestKind.Dependency,
             "gpu-allocation-test-harness", "test-cleanup", Controller.CurrentPlanVersion)).WaitAsync(TimeSpan.FromSeconds(10));
         await Recorder.DrainAsync();
-        await Controller.DisposeAsync();
-        await services.DisposeAsync();
+        await Fixture.DisposeAsync();
     }
 }
 

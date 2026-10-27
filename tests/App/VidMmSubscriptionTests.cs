@@ -41,14 +41,15 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             await harness.Zone.ApplyModeAsync(ResourceManagerComputeZoneMode.Normal);
             await EtwTestRunRecorder.UntilAsync(() => harness.Sessions.Attempts == 1);
             await harness.Sessions.Current.ProcessEntered.WaitAsync(TimeSpan.FromSeconds(5));
-            var running = Assert.Single(harness.Controller.Read().Blocks);
+            var running = Assert.Single(harness.Controller.Read().Blocks,
+                block => block.Id == BackendUids.DxgkrnlVidMmEtwTelemetryZone);
             Assert.Equal(BusinessBlockState.Running, running.State);
-            Assert.Equal(2, harness.Controller.Read().Demands.Count);
+            Assert.Equal(2, harness.Controller.Read().Demands.Count(demand => demand.BlockId == BackendUids.DxgkrnlVidMmEtwTelemetryZone));
             Assert.Equal(1, harness.Sessions.Attempts);
 
             first.Dispose();
             await harness.Zone.ApplyModeAsync(ResourceManagerComputeZoneMode.Normal);
-            Assert.Single(harness.Controller.Read().Demands);
+            Assert.Single(harness.Controller.Read().Demands, demand => demand.BlockId == BackendUids.DxgkrnlVidMmEtwTelemetryZone);
             Assert.True(harness.Sessions.Current.ConsumerThread!.IsAlive);
 
             second.Dispose();

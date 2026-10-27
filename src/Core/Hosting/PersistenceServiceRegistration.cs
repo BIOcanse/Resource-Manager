@@ -31,7 +31,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
             services.AddSingleton<IPortableSoftwareRegistry>(static provider =>
                 provider.GetRequiredService<SqlitePortableSoftwareRegistry>());
             services.AddSerialHostedService<ResourceManagerDatabaseInitializer>();
-            services.AddHostedServiceAlias<SqlitePortableSoftwareRegistry>(BlockUids.SqlitePortableSoftwareRegistry, [BlockUids.RuntimeSpecializationCoordinator]);
+            services.AddHostedServiceAlias<SqlitePortableSoftwareRegistry>(BlockUids.SqlitePortableSoftwareRegistry);
         }
         else
         {

@@ -6,6 +6,7 @@ using ResourceManager.App.Infrastructure.CpuTopology;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.Optimization;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -16,8 +17,8 @@ public sealed class HostManagerFreedomPointPlanTests
     {
         var plan = HostManagerTestPlanFactory.CreatePlan();
         var points = plan.FreedomPoints.EnumeratePoints().ToArray();
-        Assert.Equal(25, points.Length);
-        Assert.Equal(19, points.Count(point => point.Status == "active"));
+        Assert.Equal(34, points.Length);
+        Assert.Equal(28, points.Count(point => point.Status == "active"));
         Assert.Equal(6, points.Count(point => point.Status == "pending"));
         Assert.Equal(new CompiledGpuOverflowPolicy(95, 80), plan.HotPublish.PlacementCoordinator.GpuOverflow);
         Assert.DoesNotContain(points, point => point.Address == "resource-manager/backend/scheduling/placement/runtime/complex/1");
@@ -66,6 +67,29 @@ public sealed class HostManagerFreedomPointPlanTests
         Assert.Equal(
             "HostManagerPlanCompiler.CompileSmartCoordinatorHotPublish",
             Assert.Single(welfare.Consumers));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(128)]
+    public void BackendControlCapacitiesCompileFromFreedomPointsAndAllowZeroHistory(int historyCapacity)
+    {
+        var plan = HostManagerTestPlanFactory.CreatePlan(editFreedomPoints: root =>
+            FreedomPointTestFactory.Point(root, BackendFreedomPointPaths.BusinessBlockHistoryCapacity)["value"] = historyCapacity);
+
+        Assert.Equal(new CompiledBackendControlSettings(
+            WorkerCount: 4,
+            HistoryCapacity: historyCapacity,
+            DemandCapacity: 64,
+            DemandBytes: 8192,
+            CompletionCapacity: 128,
+            ReaderCapacity: 16,
+            ReaderBytes: 4096,
+            WorkerArenaBytes: 65536,
+            ReasonTextCapacity: 256), plan.BackendControlSettings);
+        Assert.True(plan.BackendControlSettings.IsPublished);
+        if (historyCapacity == 128)
+            Assert.Equal(plan.BackendControlSettings, BackendControlSettings.ProductDefaults);
     }
 
     [Fact]

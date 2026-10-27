@@ -1,6 +1,5 @@
 using System.Text.Json;
 using ResourceManager.App.Endpoints;
-using SharedScheduler = ResourceManager.Shared.BusinessBlocks.BusinessBlockScheduler;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -94,13 +93,16 @@ public sealed class BusinessBlockIdentityTests
             BackendItems.ProgramShuttingDown => "ProgramShuttingDown", _ => null
         } : null;
         var controlLog = new BusinessBlockControlSystemTests.CapturedLogger<BusinessBlockController>();
-        var decisionLog = new BusinessBlockControlSystemTests.CapturedLogger<SharedScheduler>();
+        var decisionLog = new BusinessBlockControlSystemTests.CapturedLogger<ResourceManager.Shared.BusinessBlocks.BusinessBlockScheduler>();
         var control = new BusinessBlockController(controlLog, 8, Lookup);
         var block = new BusinessBlockTestSupport.Probe();
-        var graph = new BusinessBlockGraph(program, [new(worker, program, [])]);
         var authority = BusinessBlockTestSupport.CreateAuthority([program, worker]);
-        await using var scheduler = new SharedScheduler(graph, _ => block, 8, decisionLog,
-            registryVersion, Lookup, authority, BackendItems.BlockDemand, BackendItems.ProgramShuttingDown, control);
+        await using var scheduler = new TestBlockScheduler(
+            [new TestBlockRegistration(worker, [], _ => block) { ParentId = program }], authority,
+            historyLimit: 8, logger: decisionLog, control: control, program: program,
+            demandItemUid: BackendItems.BlockDemand, shutdownItemUid: BackendItems.ProgramShuttingDown,
+            registryVersion: registryVersion, nameLookup: Lookup);
+        var graph = scheduler.Graph;
         var reason = BusinessBlockTestSupport.Reason(owner: "operator", cause: "observe", version: 19);
         try
         {

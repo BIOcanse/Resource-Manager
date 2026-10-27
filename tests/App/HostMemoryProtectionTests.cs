@@ -337,7 +337,7 @@ public sealed partial class HostMemoryProtectionTests
         await Until(async () => (await fixture.Protection.ReadStatusAsync(CancellationToken.None)).Actions.Count == 2);
         Assert.Equal(1, fixture.Executor.Opened.Count(id => id == 40));
         Assert.Equal(11, (await fixture.Protection.ReadStatusAsync(CancellationToken.None)).Actions[0].ProcessId);
-        var decision = fixture.Scheduler.Read().CurrentDecisions.Single(item => item.ParentId == BlockUids.Program);
+        var decision = fixture.Scheduler.Read().CurrentDecisions.Single(item => item.ParentId == BlockUids.Backend);
         Assert.Contains(decision.Items, item => item.ItemUid == BackendItems.HostMemoryProtectionEnabled && item.Value is true);
         Assert.Contains(decision.Items, item => item.ItemUid == BackendItems.MemoryProtectionNormalRunningPointExists && item.Value is true);
         Assert.Contains(decision.Items, item => item.ItemUid == BackendItems.MemoryProtectionReserveBuilt && item.Value is true);
@@ -528,8 +528,9 @@ public sealed partial class HostMemoryProtectionTests
             builder.Services.AddResourceManagerApp(["--no-native-ui"], capabilities);
             TrustedAccessEndpointTestAuthentication.Add(builder.Services, scopes ?? [ResourceManager.Shared.Runtime.TrustedAccess.AccessKeyScopes.ProcessesRead]);
             builder.Logging.ClearProviders();
-            // Keep the production DI, settings compiler, block declaration and rule. No native hosted producer runs.
+            // Keep the production DI, settings compiler, and memory-protection declaration, using its exact full-profile native tree.
             builder.Services.RemoveAll<IHostedService>();
+            NativeBackendBlockTestSupport.AddFullTreeHostFixture(builder.Services);
             var source = new FakeSource(); var executor = new FakeExecutor();
             builder.Services.AddSingleton<IHostMemoryProtectionSource>(source);
             builder.Services.AddSingleton<IHostMemoryProtectionExecutor>(effects ?? executor);

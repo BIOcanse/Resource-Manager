@@ -29,10 +29,14 @@
     <NativeCoreRoot Condition="'$(NativeCoreRoot)' == ''">$(MSBuildProjectDirectory)\NativeCore</NativeCoreRoot>
     <NativeCoreZigExecutable Condition="'$(NativeCoreZigExecutable)' == ''">zig</NativeCoreZigExecutable>
     <NativeCoreTargetArgument Condition="'$(NativeCoreTarget)' != ''">-Dtarget=$(NativeCoreTarget)</NativeCoreTargetArgument>
+    <!-- MSBuild booleans are case-insensitive; Zig arguments and artifact paths use canonical spelling. -->
+    <NativeCoreStateNames Condition="'$(ResourceManagerStateNames)' == 'true'">true</NativeCoreStateNames>
+    <NativeCoreStateNames Condition="'$(ResourceManagerStateNames)' == 'false'">false</NativeCoreStateNames>
+    <NativeCoreStateNamesArgument>-Dstate-names=$(NativeCoreStateNames)</NativeCoreStateNamesArgument>
     <NativeCoreOptimize Condition="'$(NativeCoreOptimize)' == '' and '$(Configuration)' == 'Debug'">Debug</NativeCoreOptimize>
     <NativeCoreOptimize Condition="'$(NativeCoreOptimize)' == ''">ReleaseFast</NativeCoreOptimize>
-    <NativeCoreInstallRoot>$(NativeCoreRoot)\zig-out\msbuild\$(NativeCoreOptimize)</NativeCoreInstallRoot>
-    <NativeCoreOutput>$(NativeCoreInstallRoot)\bin\ResourceManager.NativeCore.dll</NativeCoreOutput>
+    <NativeCoreInstallRoot Condition="'$(NativeCoreInstallRoot)' == ''">$(NativeCoreRoot)\zig-out\msbuild\$(NativeCoreOptimize)\state-names-$(NativeCoreStateNames)</NativeCoreInstallRoot>
+    <NativeCoreOutput Condition="'$(NativeCoreOutput)' == ''">$(NativeCoreInstallRoot)\bin\ResourceManager.NativeCore.dll</NativeCoreOutput>
     <ClientAppRoot>$(MSBuildProjectDirectory)\..\..\src\UI\Frontend</ClientAppRoot>
     <ResourceManagerLedgerPowerShell Condition="'$(ResourceManagerLedgerPowerShell)' == ''">pwsh</ResourceManagerLedgerPowerShell>
     <ResourceManagerLedgerZigExecutable Condition="'$(ResourceManagerLedgerZigExecutable)' == ''">zig</ResourceManagerLedgerZigExecutable>
@@ -177,6 +181,8 @@
   <ItemGroup>
     <NativeCoreSource Include="$(NativeCoreRoot)\build.zig" />
     <NativeCoreSource Include="$(NativeCoreRoot)\src\**\*.zig" />
+    <NativeCoreSource Include="$(MSBuildProjectDirectory)\..\Shared\Control\src\**\*.zig" />
+    <NativeCoreSource Include="$(MSBuildProjectDirectory)\..\Shared\StateItems\state-items.json;$(MSBuildProjectDirectory)\..\..\scripts\build\Generate-StateItems.ps1;$(MSBuildProjectDirectory)\..\..\scripts\build\StateItemRegistry.psm1" />
   </ItemGroup>
   <ItemGroup>
     <GpuWindowActionSource Include="$(GpuWindowActionRoot)\ResourceManagerGpuWindowAction.cpp" />
@@ -217,12 +223,16 @@
           Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipAdlxBridgeBuild)' != 'true'">
     <Exec WorkingDirectory="$(AdlxBridgeRoot)" Command="cmd.exe /d /c .\build.cmd" />
   </Target>
+  <Target Name="ValidateResourceManagerStateNames" BeforeTargets="PrepareForBuild;BuildNativeCore">
+    <Error Condition="'$(ResourceManagerStateNames)' != 'true' and '$(ResourceManagerStateNames)' != 'false'"
+           Text="ResourceManagerStateNames must be true or false (case-insensitive); received '$(ResourceManagerStateNames)'." />
+  </Target>
   <Target Name="BuildNativeCore"
           BeforeTargets="PrepareForBuild"
           Inputs="@(NativeCoreSource)"
           Outputs="$(NativeCoreOutput)"
           Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipNativeCoreBuild)' != 'true'">
-    <Exec WorkingDirectory="$(NativeCoreRoot)" Command="&quot;$(NativeCoreZigExecutable)&quot; build --prefix &quot;$(NativeCoreInstallRoot)&quot; $(NativeCoreTargetArgument) -Doptimize=$(NativeCoreOptimize)" />
+    <Exec WorkingDirectory="$(NativeCoreRoot)" Command="&quot;$(NativeCoreZigExecutable)&quot; build -j1 --prefix &quot;$(NativeCoreInstallRoot)&quot; $(NativeCoreTargetArgument) -Doptimize=$(NativeCoreOptimize) $(NativeCoreStateNamesArgument)" />
   </Target>
   <Target Name="BuildGpuWindowAction"
           BeforeTargets="PrepareForBuild"

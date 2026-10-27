@@ -65,12 +65,8 @@ public sealed partial class ConditionSubscriptionTests
 
     private static string FindWaitTool()
     {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        for (var depth = 0; directory is not null && depth < 10; depth++, directory = directory.Parent)
-        {
-            var path = Path.Combine(directory.FullName, "scripts", "tools", "Wait-RmCondition.ps1");
-            if (File.Exists(path)) return path;
-        }
-        throw new FileNotFoundException("Wait-RmCondition.ps1 is missing from the test worktree.");
+        var path = Path.Combine(TestRepositoryPaths.FindRoot(), "scripts", "tools", "Wait-RmCondition.ps1");
+        if (File.Exists(path)) return path;
+        throw new FileNotFoundException("Wait-RmCondition.ps1 is missing from the test worktree.", path);
     }
 }

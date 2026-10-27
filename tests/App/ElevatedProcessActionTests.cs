@@ -106,11 +106,7 @@ public sealed class ElevatedProcessActionTests
     [Fact]
     public async Task UtilityEntryRejectsAnUnattestedParentWithoutOpeningTheInterface()
     {
-        var root = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(TestSourcePath())!, "..", ".."));
-        var configuration = AppContext.BaseDirectory.Contains(Path.DirectorySeparatorChar + "Release" + Path.DirectorySeparatorChar)
-            ? "Release" : "Debug";
-        var executable = Path.Combine(root, "src", "UI", "Core", "bin", configuration,
-            "net10.0-windows", "ResourceManager.NativeUi.exe");
+        var executable = NativeUiTestExecutableLocator.GetPath();
         Assert.True(File.Exists(executable));
         var start = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true };
         start.ArgumentList.Add(ElevatedProcessActionRequest.Argument);
@@ -120,8 +116,6 @@ public sealed class ElevatedProcessActionTests
         await helper.WaitForExitAsync(deadline.Token);
         Assert.Equal(5, helper.ExitCode);
     }
-
-    private static string TestSourcePath([System.Runtime.CompilerServices.CallerFilePath] string path = "") => path;
 
     [Fact]
     public void NativeTerminationResultsUseEveryDeclaredLanguageAndRetainBothCounts()

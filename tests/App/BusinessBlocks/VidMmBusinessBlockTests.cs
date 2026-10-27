@@ -41,7 +41,7 @@ public sealed class VidMmBusinessBlockTests
         Assert.False(Assert.IsType<bool>(Assert.Single(harness.Controller.Read().Items,
             fact => fact.ItemUid == BackendItems.VidMmNativeSessionAvailable).Value));
         Assert.Empty(harness.Diagnostics.Read(BlockId).Metrics.ActiveThreads);
-        Assert.Single(harness.Controller.Read().Demands);
+        Assert.Single(harness.Controller.Read().Demands, demand => demand.BlockId == BlockId);
         await EtwTestRunRecorder.ReleaseAsync(subscription);
     }
 
@@ -70,7 +70,7 @@ public sealed class VidMmBusinessBlockTests
         Assert.Equal(1, harness.Sessions.Attempts);
         Assert.False(Assert.IsType<bool>(Assert.Single(harness.Controller.Read().Items,
             fact => fact.ItemUid == BackendItems.VidMmNativeSessionAvailable).Value));
-        Assert.Single(harness.Controller.Read().Demands);
+        Assert.Single(harness.Controller.Read().Demands, demand => demand.BlockId == BlockId);
         Assert.Empty(harness.Diagnostics.Read(BlockId).Metrics.ActiveThreads);
         await EtwTestRunRecorder.ReleaseAsync(subscription);
     }
@@ -114,7 +114,8 @@ public sealed class VidMmBusinessBlockTests
         try
         {
             await creating.Task.WaitAsync(TestTimeout);
-            await harness.Controller.SetDemandAsync(Assert.Single(harness.Controller.Read().Demands).Key, BlockId,
+            await harness.Controller.SetDemandAsync(Assert.Single(harness.Controller.Read().Demands,
+                    demand => demand.BlockId == BlockId).Key, BlockId,
                 new(BusinessBlockRequestKind.Configuration, "test", "same-current-enable", 0)).WaitAsync(TestTimeout);
             Assert.Equal("Starting", harness.Zone.State);
             var ready = Task.Run(async () => await dependency.Ready);
@@ -187,7 +188,7 @@ public sealed class VidMmBusinessBlockTests
         var thread = Assert.Single(harness.Diagnostics.Read(BlockId).Metrics.ActiveThreads);
         Assert.True(thread.NativeThreadId > 0);
         Assert.Equal(session.SessionName, thread.SessionName);
-        Assert.Equal(2, harness.Controller.Read().Demands.Count);
+        Assert.Equal(2, harness.Controller.Read().Demands.Count(demand => demand.BlockId == BlockId));
         Assert.Contains(harness.Controller.Read().Demands, demand => demand.Reason.Owner == "residual-slow"
             && demand.Reason.ConfigurationOrDependency == "gpu-vram-residual-subscription");
         await EtwTestRunRecorder.ReleaseAsync(slow);
@@ -239,7 +240,7 @@ public sealed class VidMmBusinessBlockTests
         Assert.Equal("Running", harness.Zone.State);
         if (fail) Assert.Empty(harness.Zone.ReadEvidence(TimeSpan.FromSeconds(45)));
         else Assert.Equal(evidence, Assert.Single(harness.Zone.ReadEvidence(TimeSpan.FromSeconds(45))));
-        Assert.Single(harness.Controller.Read().Demands);
+        Assert.Single(harness.Controller.Read().Demands, demand => demand.BlockId == BlockId);
         Assert.False(dependency.Released.IsCompleted);
         await EtwTestRunRecorder.ReleaseAsync(dependency);
     }

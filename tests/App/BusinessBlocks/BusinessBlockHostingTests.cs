@@ -18,14 +18,15 @@ public sealed class BusinessBlockHostingTests
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
-                services.AddBusinessBlockHostedService<ConsumerService>(155, [156],
+                services.AddBusinessBlockHostedService<ConsumerService>(BackendUids.TrustedAccessRequestOwner,
                     _ => new ConsumerService(events));
 
                 // A data input does not control another hosted service's lifecycle.
-                services.AddBusinessBlockHostedService<DependencyService>(156, [],
+                services.AddBusinessBlockHostedService<DependencyService>(BackendUids.RuntimeSpecializationCoordinator,
                     _ => new DependencyService(events));
+                NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
             })
-            .ConfigureServices(BusinessBlockTestSupport.AddStateFixtures).Build();
+            .Build();
 
         Assert.Single(host.Services.GetServices<IHostedService>().OfType<BusinessBlockDependencyLifetime>());
         var hostedServices = host.Services.GetServices<IHostedService>().Where(static service => service
@@ -49,11 +50,11 @@ public sealed class BusinessBlockHostingTests
             await Task.Delay(5, timeout.Token);
         var blocks = host.Services.GetRequiredService<IBusinessBlockQuery>()
             .Read().Blocks.ToDictionary(static block => block.Id);
-        Assert.Equal(BusinessBlockState.Stopped, blocks[156].State);
-        Assert.Equal(BusinessBlockState.Stopped, blocks[155].State);
+        Assert.Equal(BusinessBlockState.Stopped, blocks[BackendUids.RuntimeSpecializationCoordinator].State);
+        Assert.Equal(BusinessBlockState.Stopped, blocks[BackendUids.TrustedAccessRequestOwner].State);
         Assert.Equal(
-            new[] { 156 },
-            blocks[155].Inputs);
+            new[] { BackendUids.RuntimeSpecializationCoordinator },
+            blocks[BackendUids.TrustedAccessRequestOwner].Inputs);
     }
 
     [Fact]
@@ -64,9 +65,11 @@ public sealed class BusinessBlockHostingTests
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
-                services.AddBusinessBlockHostedService<ThrowingStartService>(120, [126]);
-                services.AddBusinessBlockHostedService<DependencyService>(126, [], _ => new DependencyService(events));
-            }).ConfigureServices(BusinessBlockTestSupport.AddStateFixtures).Build();
+                services.AddBusinessBlockHostedService<ThrowingStartService>(BackendUids.TrustedAccessRequestOwner);
+                services.AddBusinessBlockHostedService<DependencyService>(BackendUids.RuntimeSpecializationCoordinator,
+                    _ => new DependencyService(events));
+                NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
+            }).Build();
         await Assert.ThrowsAsync<IOException>(() => host.StartAsync().WaitAsync(TimeSpan.FromSeconds(10)));
         Assert.Empty(events);
         // The native ETW scope starts before this test's service; close the real Host
@@ -91,19 +94,19 @@ public sealed class BusinessBlockHostingTests
         using var host = Host.CreateDefaultBuilder()
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
-                services.AddBusinessBlockHostedService<LazyService>(157, [], _ =>
+                services.AddBusinessBlockHostedService<LazyService>(BackendUids.TrustedAccessRequestOwner, _ =>
                 {
                     constructed++;
                     return new LazyService();
                 }))
-            .ConfigureServices(BusinessBlockTestSupport.AddStateFixtures).Build();
+            .ConfigureServices(NativeBackendBlockTestSupport.AddFullTreeHostFixture).Build();
 
         var query = host.Services.GetRequiredService<IBusinessBlockQuery>();
         var snapshot = query.Read();
 
         Assert.Equal(0, constructed);
-        var block = Assert.Single(snapshot.Blocks, block => block.Id == 157);
-        Assert.Equal(157, block.Id);
+        var block = Assert.Single(snapshot.Blocks, block => block.Id == BackendUids.TrustedAccessRequestOwner);
+        Assert.Equal(BackendUids.TrustedAccessRequestOwner, block.Id);
         Assert.Equal(BusinessBlockState.Stopped, block.State);
     }
 

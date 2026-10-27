@@ -42,9 +42,13 @@ public sealed class NormalReadOnlyServiceGraphTests
     public void AutomaticUpdateServiceResolvesWithPublicationOwnerOnlyInWritableServiceGraph(bool writable)
     {
         using var host = Host.CreateDefaultBuilder()
-            .ConfigureServices(services => services.AddResourceManagerApp(
-                ["--no-native-ui"], writable ? StartupCapabilitySet.Full : StartupCapabilitySet.NormalReadOnly,
-                BackendHostEnvironment.Compile(isWindowsService: true, isLocalSystem: true)))
+            .ConfigureServices(services =>
+            {
+                ResourceManager.App.Infrastructure.Security.LoopbackApiPipelineConfigurator.Compile(false).ConfigureServices(services);
+                services.AddResourceManagerApp(
+                    ["--no-native-ui"], writable ? StartupCapabilitySet.Full : StartupCapabilitySet.NormalReadOnly,
+                    BackendHostEnvironment.Compile(isWindowsService: true, isLocalSystem: true));
+            })
             .Build();
         var owners = host.Services.GetServices<IHostedService>()
             .OfType<NonOwningHostedService<AutomaticProductUpdateService>>()
@@ -64,7 +68,10 @@ public sealed class NormalReadOnlyServiceGraphTests
     {
         using var host = Host.CreateDefaultBuilder()
             .ConfigureServices(static services =>
-                services.AddResourceManagerApp(["--no-native-ui"], StartupCapabilitySet.NormalReadOnly))
+            {
+                ResourceManager.App.Infrastructure.Security.LoopbackApiPipelineConfigurator.Compile(false).ConfigureServices(services);
+                services.AddResourceManagerApp(["--no-native-ui"], StartupCapabilitySet.NormalReadOnly);
+            })
             .Build();
 
         var capabilities = host.Services.GetRequiredService<StartupCapabilitySet>();
@@ -73,8 +80,12 @@ public sealed class NormalReadOnlyServiceGraphTests
         Assert.Same(StartupCapabilitySet.NormalReadOnly, capabilities);
         Assert.IsType<NonOwningHostedService<NativeEtwLifetimeService>>(
             hostedServices[0]);
-        Assert.IsType<NonOwningHostedService<RuntimeSpecializationCoordinator>>(
+        Assert.IsType<NonOwningHostedService<ResourceManager.App.Infrastructure.Security.TrustedAccessRequestOwner>>(
             hostedServices[1]);
+        Assert.IsType<NonOwningHostedService<ResourceManager.App.Infrastructure.Security.TrustedAccessInvocationHostedService>>(
+            hostedServices[2]);
+        Assert.IsType<NonOwningHostedService<RuntimeSpecializationCoordinator>>(
+            hostedServices[3]);
         Assert.DoesNotContain(hostedServices, static service =>
             service is ResourceManagerDatabaseInitializer
             or SqliteLegacyDataImportHostedService
@@ -156,9 +167,10 @@ public sealed class NormalReadOnlyServiceGraphTests
     {
         using var host = Host.CreateDefaultBuilder()
             .ConfigureServices(static services =>
-                services.AddResourceManagerApp(
-                    ["--no-native-ui"],
-                    StartupCapabilitySet.Full))
+            {
+                ResourceManager.App.Infrastructure.Security.LoopbackApiPipelineConfigurator.Compile(false).ConfigureServices(services);
+                services.AddResourceManagerApp(["--no-native-ui"], StartupCapabilitySet.Full);
+            })
             .Build();
 
         var hostedServices = host.Services.GetServices<IHostedService>().Where(static service => service is not BusinessBlockDependencyLifetime).ToArray();
@@ -191,19 +203,27 @@ public sealed class NormalReadOnlyServiceGraphTests
     }
 
     [Fact]
-    public void BusinessBlockQueryLeavesTheNormalReadOnlyGraphStopped()
+    public async Task BusinessBlockQueryLeavesTheNormalReadOnlyBusinessWorkersStopped()
     {
         using var host = Host.CreateDefaultBuilder()
             .ConfigureServices(static services =>
-                services.AddResourceManagerApp(["--no-native-ui"], StartupCapabilitySet.NormalReadOnly))
+            {
+                ResourceManager.App.Infrastructure.Security.LoopbackApiPipelineConfigurator.Compile(false).ConfigureServices(services);
+                services.AddResourceManagerApp(["--no-native-ui"], StartupCapabilitySet.NormalReadOnly);
+            })
             .Build();
 
-        var blocks = host.Services.GetRequiredService<IBusinessBlockQuery>().Read().Blocks;
+        var query = host.Services.GetRequiredService<IBusinessBlockQuery>();
+        var wrappers = BackendExpectedProductionTree.Parents(3).Keys
+            .Where(BackendExpectedProductionTree.Wrappers.Contains).ToHashSet();
+        await BusinessBlockTestSupport.Until(() => wrappers.All(uid =>
+            query.Read().Blocks.Any(block => block.Id == uid && block.State == BusinessBlockState.Running)));
+        var blocks = query.Read().Blocks;
 
         Assert.NotEmpty(blocks);
-        Assert.All(blocks, static block =>
+        Assert.All(blocks, block =>
         {
-            Assert.Equal(BusinessBlockState.Stopped, block.State);
+            Assert.Equal(wrappers.Contains(block.Id) ? BusinessBlockState.Running : BusinessBlockState.Stopped, block.State);
         });
     }
 
@@ -219,7 +239,10 @@ public sealed class NormalReadOnlyServiceGraphTests
             using var host = Host.CreateDefaultBuilder()
                 .UseContentRoot(packageRoot)
                 .ConfigureServices(static services =>
-                    services.AddResourceManagerApp(["--no-native-ui"], StartupCapabilitySet.NormalReadOnly))
+                {
+                    ResourceManager.App.Infrastructure.Security.LoopbackApiPipelineConfigurator.Compile(false).ConfigureServices(services);
+                    services.AddResourceManagerApp(["--no-native-ui"], StartupCapabilitySet.NormalReadOnly);
+                })
                 .ConfigureLogging(logging => logging.ClearProviders().AddConsole())
                 .Build();
             var before = EnumerateRelativePaths(packageRoot);

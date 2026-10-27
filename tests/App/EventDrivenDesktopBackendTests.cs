@@ -213,7 +213,7 @@ public sealed class EventDrivenDesktopBackendTests
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = files.Root });
             builder.WebHost.UseUrls("http://127.0.0.1:0");
             builder.Logging.ClearProviders();
-            var capabilities = new StartupCapabilitySet("desktop-backend-test", StartupCapability.None);
+            var capabilities = StartupCapabilitySet.NormalReadOnly;
             builder.Services.AddResourceManagerApp(["--no-native-ui"], capabilities);
             LoopbackApiPipelineConfigurator.Compile(false).ConfigureServices(builder.Services);
             builder.Services.RemoveAll<IHostedService>();

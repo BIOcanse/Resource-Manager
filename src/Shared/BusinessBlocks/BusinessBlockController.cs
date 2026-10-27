@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 
 namespace ResourceManager.Shared.BusinessBlocks;
 
-/// <summary>Generic hands: invoke an entry and deliver stop notification.</summary>
+/// <summary>Transitional managed control for the window process and isolated fixtures. Claude's control session removes it at the end of 5d after the window switches to Zig.</summary>
 public sealed class BusinessBlockController(ILogger<BusinessBlockController> logger, int historyLimit, Func<int, string?> nameLookup)
 {
     private readonly ConcurrentDictionary<int, Cell> cells = new();

@@ -389,6 +389,113 @@
               }
             ]
           }
+        },
+        {
+          "id": "business_blocks",
+          "description": "Fixed-capacity backend control for business-block workers, queues, readers, arenas, and failure reasons.",
+          "build": {
+            "simple": [
+              {
+                "index": 0,
+                "id": "worker_count",
+                "description": "Number of workers in the native backend business-block scheduler.",
+                "value_type": "positive_int32",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": 4,
+                "consumers": ["BackendControlSettings.Compile"]
+              },
+              {
+                "index": 1,
+                "id": "history_capacity",
+                "description": "Maximum completed business-block results retained for diagnostics.",
+                "value_type": "nonnegative_int32",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": 128,
+                "consumers": ["BackendControlSettings.Compile"]
+              },
+              {
+                "index": 2,
+                "id": "demand_capacity",
+                "description": "Maximum outstanding business-block demands retained by the scheduler.",
+                "value_type": "positive_int32",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": 64,
+                "consumers": ["BackendControlSettings.Compile"]
+              },
+              {
+                "index": 3,
+                "id": "demand_bytes",
+                "description": "Maximum byte size of retained business-block demand payloads.",
+                "value_type": "positive_int32",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": 8192,
+                "consumers": ["BackendControlSettings.Compile"]
+              },
+              {
+                "index": 4,
+                "id": "completion_capacity",
+                "description": "Maximum completed business-block results awaiting consumption.",
+                "value_type": "positive_int32",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": 128,
+                "consumers": ["BackendControlSettings.Compile"]
+              },
+              {
+                "index": 5,
+                "id": "reader_capacity",
+                "description": "Maximum business-block state readers admitted by native control.",
+                "value_type": "positive_int32",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": 16,
+                "consumers": ["BackendControlSettings.Compile"]
+              },
+              {
+                "index": 6,
+                "id": "reader_bytes",
+                "description": "Maximum byte size of a retained business-block reader payload.",
+                "value_type": "positive_int32",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": 4096,
+                "consumers": ["BackendControlSettings.Compile"]
+              },
+              {
+                "index": 7,
+                "id": "worker_arena_bytes",
+                "description": "Byte capacity of each native business-block worker arena.",
+                "value_type": "positive_int32",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": 65536,
+                "consumers": ["BackendControlSettings.Compile"]
+              },
+              {
+                "index": 8,
+                "id": "reason_text_capacity",
+                "description": "Maximum characters retained for a business-block failure reason.",
+                "value_type": "positive_int32",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": 256,
+                "consumers": ["BackendControlSettings.Compile"]
+              }
+            ]
+          }
         }
       ]
     }

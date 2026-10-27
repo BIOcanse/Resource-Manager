@@ -123,10 +123,7 @@ public sealed class ElevatedBackendRequestTests
     [Fact]
     public async Task GenericUtilityEntryRejectsUnattestedParentWithoutOpeningGuardOrInterface()
     {
-        var root = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(TestSourcePath())!, "..", ".."));
-        var configuration = AppContext.BaseDirectory.Contains(Path.DirectorySeparatorChar + "Release" + Path.DirectorySeparatorChar)
-            ? "Release" : "Debug";
-        var executable = Path.Combine(root, "src", "UI", "Core", "bin", configuration, "net10.0-windows", "ResourceManager.NativeUi.exe");
+        var executable = NativeUiTestExecutableLocator.GetPath();
         Assert.True(File.Exists(executable));
         var start = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true };
         start.ArgumentList.Add(ElevatedBackendInvocation.Argument);
@@ -137,7 +134,6 @@ public sealed class ElevatedBackendRequestTests
         Assert.Equal(5, helper.ExitCode);
     }
 
-    private static string TestSourcePath([System.Runtime.CompilerServices.CallerFilePath] string path = "") => path;
     private sealed class MutationHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> send) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)

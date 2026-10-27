@@ -147,6 +147,14 @@ public sealed partial class LoopbackApiAccessTests
         fixture.Client.DefaultRequestHeaders.Add(TrustedAccessHeaders.KeyHeader, fixture.Key);
         fixture.Administrator.ThrowIfCalled = true;
         var query = fixture.App.Services.GetRequiredService<IBusinessBlockQuery>();
+        var wrappers = BackendExpectedProductionTree.Wrappers.ToHashSet();
+        // Activation starts structural wrappers through AlwaysWanted. Capture a settled
+        // baseline so the GET is compared only against changes caused by the read.
+        await BusinessBlockTestSupport.Until(() =>
+        {
+            var blocks = query.Read().Blocks;
+            return wrappers.All(id => blocks.Any(block => block.Id == id && block.State == BusinessBlockState.Running));
+        });
         var before = query.Read();
         var diagnostics = fixture.App.Services.GetRequiredService<ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks.BusinessBlockDiagnosticsRegistry>();
         var metricsBefore = diagnostics.ReadAll().Select(block => new
@@ -167,12 +175,12 @@ public sealed partial class LoopbackApiAccessTests
         Assert.True(payload.RootElement.TryGetProperty("diagnostics", out _));
         var after = query.Read();
         Assert.Equal(before.History.ToArray(), after.History.ToArray());
-        Assert.Equal(after.History.Count, scheduling.GetProperty("history").GetArrayLength());
+        Assert.Equal(after.History.Count, scheduling.GetProperty("transitions").GetArrayLength());
         Assert.Equal(before.Blocks.Select(block => block.Id).Order(),
             after.Blocks.Select(block => block.Id).Order());
-        Assert.All(after.Blocks, static block =>
+        Assert.All(after.Blocks, block =>
         {
-            Assert.Equal(BusinessBlockState.Stopped, block.State);
+            Assert.Equal(wrappers.Contains(block.Id) ? BusinessBlockState.Running : BusinessBlockState.Stopped, block.State);
         });
         Assert.Equal(metricsBefore, diagnostics.ReadAll().Select(block => new
         {
@@ -181,11 +189,12 @@ public sealed partial class LoopbackApiAccessTests
             block.Metrics.TotalAllocatedBytes,
             ActiveThreadCount = block.Metrics.ActiveThreads.Count
         }).ToArray());
-        Assert.Equal(after.Blocks.Select(block => block.Id).Order(),
-            payloadBlocks.Select(block => block.GetProperty("id").GetInt32()).Order());
-        Assert.All(payloadBlocks, static block =>
+        Assert.Equal(after.Blocks.Select(block => block.Id).Prepend(after.Program).Order(),
+            payloadBlocks.Select(block => block.GetProperty("uid").GetInt32()).Order());
+        Assert.All(payloadBlocks, block =>
         {
-            Assert.Equal((int)BusinessBlockState.Stopped, block.GetProperty("state").GetInt32());
+            Assert.Equal(wrappers.Contains(block.GetProperty("uid").GetInt32()) ? "running" : "stopped",
+                block.GetProperty("state").GetString());
             Assert.False(block.TryGetProperty("metrics", out _));
         });
         Assert.Equal(0, fixture.Administrator.Calls);

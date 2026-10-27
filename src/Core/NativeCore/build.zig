@@ -4,11 +4,46 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const control_module = b.createModule(.{
+        .root_source_file = b.path("../../Shared/Control/src/root.zig"),
+        .target = target,
+        .optimize = .ReleaseSafe,
+    });
+
+    const powershell = b.option([]const u8, "powershell", "PowerShell executable used to generate state-item declarations") orelse "pwsh";
+    const state_names = b.option(bool, "state-names", "Include development-only names in generated state-item declarations") orelse true;
+    const generate_backend_declarations = b.addSystemCommand(&.{ powershell, "-NoProfile", "-File" });
+    generate_backend_declarations.addFileArg(b.path("../../../scripts/build/Generate-StateItems.ps1"));
+    generate_backend_declarations.addFileInput(b.path("../../../scripts/build/StateItemRegistry.psm1"));
+    generate_backend_declarations.addArg("-Registry");
+    generate_backend_declarations.addFileArg(b.path("../../../src/Shared/StateItems/state-items.json"));
+    generate_backend_declarations.addArgs(&.{ "-Process", "backend", "-Language", "Zig" });
+    generate_backend_declarations.addArg(if (state_names) "-Names:$true" else "-Names:$false");
+    generate_backend_declarations.addArg("-Output");
+    const backend_declarations_file = generate_backend_declarations.addOutputFileArg("backend_declarations.zig");
+
+    const backend_declarations_module = b.createModule(.{
+        .root_source_file = backend_declarations_file,
+        .target = target,
+        .optimize = .ReleaseSafe,
+    });
+    backend_declarations_module.addImport("rm_control", control_module);
+
+    const backend_tree_module = b.createModule(.{
+        .root_source_file = b.path("src/control/backend_tree.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    backend_tree_module.addImport("rm_control", control_module);
+    backend_tree_module.addImport("backend_declarations", backend_declarations_module);
+
     const native_core_module = b.createModule(.{
         .root_source_file = b.path("src/abi.zig"),
         .target = target,
         .optimize = optimize,
     });
+    native_core_module.addImport("rm_control", control_module);
+    native_core_module.addImport("backend_tree", backend_tree_module);
     native_core_module.linkSystemLibrary("pdh", .{});
     native_core_module.linkSystemLibrary("iphlpapi", .{});
     native_core_module.linkSystemLibrary("psapi", .{});
@@ -27,6 +62,8 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    test_module.addImport("rm_control", control_module);
+    test_module.addImport("backend_tree", backend_tree_module);
     test_module.linkSystemLibrary("pdh", .{});
     test_module.linkSystemLibrary("iphlpapi", .{});
     test_module.linkSystemLibrary("psapi", .{});
@@ -56,6 +93,18 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run NativeCore tests");
     test_step.dependOn(&run_tests.step);
+
+    const control_abi_test_module = b.createModule(.{
+        .root_source_file = b.path("src/control_abi_test_root.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+    });
+    control_abi_test_module.addImport("rm_control", control_module);
+    control_abi_test_module.addImport("backend_tree", backend_tree_module);
+    control_abi_test_module.addImport("backend_declarations", backend_declarations_module);
+    const control_abi_tests = b.addTest(.{ .root_module = control_abi_test_module });
+    const run_control_abi_tests = b.addRunArtifact(control_abi_tests);
+    test_step.dependOn(&run_control_abi_tests.step);
     test_step.dependOn(&run_smart_coordinator_tests.step);
     test_step.dependOn(&run_transaction_journal_tests.step);
 

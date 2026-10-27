@@ -1,6 +1,4 @@
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
@@ -11,12 +9,11 @@ public sealed class GpuAllocationFailurePolicyTests
     [Fact]
     public async Task BlockDiagnosticsCannotWithdrawAConsumerOrChangeItsControlState()
     {
-        await using var services = new ServiceCollection().BuildServiceProvider();
         var consumer = new Consumer();
-        BusinessBlockRegistration[] declarations = [new(120, [], _ => consumer)];
+        BusinessBlockRegistration[] declarations = [new(120, _ => consumer)];
         var diagnostics = new BusinessBlockDiagnosticsRegistry(declarations, NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
-        await using var scheduler = new BusinessBlockScheduler(services, declarations,
-            Options.Create(new BusinessBlockOptions()), NullLogger<BusinessBlockScheduler>.Instance, BusinessBlockTestSupport.CreateAuthority());
+        await using var scheduler = new TestBlockScheduler(
+            [BusinessBlockTestSupport.Register(120, consumer)], BusinessBlockTestSupport.CreateAuthority());
         var dependency = scheduler.AcquireDependency(120, new(BusinessBlockRequestKind.Dependency, "test", "allocation-output", 1));
         await EtwTestRunRecorder.ReadyAsync(dependency);
         await consumer.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));

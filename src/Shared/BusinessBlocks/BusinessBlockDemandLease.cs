@@ -1,7 +1,7 @@
 
 namespace ResourceManager.Shared.BusinessBlocks;
 
-internal sealed class BusinessBlockDemandLease(BusinessBlockScheduler owner, string key, BusinessBlockReason reason) : IBusinessBlockDependency
+internal sealed class BusinessBlockDemandLease(IBusinessBlockRuntime owner, string key, BusinessBlockReason reason) : IBusinessBlockDependency
 {
     private readonly TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int releasing;

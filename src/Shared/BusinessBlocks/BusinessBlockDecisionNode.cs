@@ -3,7 +3,7 @@ using ResourceManager.Shared.BusinessBlocks.State;
 
 namespace ResourceManager.Shared.BusinessBlocks;
 
-/// <summary>One serial decision loop for one parent's immediate children. It owns no execution policy.</summary>
+/// <summary>Transitional managed decision loop for the window process and isolated fixtures. Claude's control session removes it and the selection seam at the end of 5d.</summary>
 internal sealed class BusinessBlockDecisionNode : IDisposable
 {
     private readonly object sync = new();

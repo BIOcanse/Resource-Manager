@@ -236,7 +236,7 @@ test "generated declaration values" {
 "@
         $probePath=Join-Path $scratch 'probe.zig'
         [IO.File]::WriteAllText($probePath,$probe)
-        $zigArgs=@('test','-ODebug','--cache-dir',(Join-Path $scratch 'cache'),'--global-cache-dir',(Join-Path $scratch 'global-cache'),'--dep','generated','--dep','rm_control',"-Mroot=$probePath",'--dep','rm_control',"-Mgenerated=$output",('-Mrm_control='+(Join-Path $scratch 'rm_control.zig')))
+        $zigArgs=@('test','-j1','-ODebug','--cache-dir',(Join-Path $scratch 'cache'),'--global-cache-dir',(Join-Path $scratch 'global-cache'),'--dep','generated','--dep','rm_control',"-Mroot=$probePath",'--dep','rm_control',"-Mgenerated=$output",('-Mrm_control='+(Join-Path $scratch 'rm_control.zig')))
         & $Zig @zigArgs
         Assert-True ($LASTEXITCODE -eq 0) "Zig compile and value test: $process names=$names."
     }
@@ -258,7 +258,7 @@ test "non-bool types are host-valued" {
     try std.testing.expectEqual(d.ValueType.bool, r.items[1].value_type);
 }
 "@)
-& $Zig test -ODebug --cache-dir (Join-Path $scratch 'cache') --global-cache-dir (Join-Path $scratch 'global-cache') --dep generated --dep rm_control "-Mroot=$hostProbe" --dep rm_control "-Mgenerated=$hostOutput" ('-Mrm_control='+(Join-Path $scratch 'rm_control.zig'))
+& $Zig test -j1 -ODebug --cache-dir (Join-Path $scratch 'cache') --global-cache-dir (Join-Path $scratch 'global-cache') --dep generated --dep rm_control "-Mroot=$hostProbe" --dep rm_control "-Mgenerated=$hostOutput" ('-Mrm_control='+(Join-Path $scratch 'rm_control.zig'))
 Assert-True ($LASTEXITCODE -eq 0) 'Zig compile and value test: non-bool item is host.'
 # The production registry generates Zig tables that compile for every process, whatever item types it holds.
 foreach ($process in @('backend','ui','desktop','window')) {
@@ -274,7 +274,7 @@ test "production tables compile" {
     try std.testing.expectEqualStrings("$process", r.process);
 }
 "@)
-    & $Zig test -ODebug --cache-dir (Join-Path $scratch 'cache') --global-cache-dir (Join-Path $scratch 'global-cache') --dep generated --dep rm_control "-Mroot=$productionProbe" --dep rm_control "-Mgenerated=$productionOutput" ('-Mrm_control='+(Join-Path $scratch 'rm_control.zig'))
+    & $Zig test -j1 -ODebug --cache-dir (Join-Path $scratch 'cache') --global-cache-dir (Join-Path $scratch 'global-cache') --dep generated --dep rm_control "-Mroot=$productionProbe" --dep rm_control "-Mgenerated=$productionOutput" ('-Mrm_control='+(Join-Path $scratch 'rm_control.zig'))
     Assert-True ($LASTEXITCODE -eq 0) "Production Zig tables compile: $process."
 }
 foreach ($process in @('backend','ui')) {

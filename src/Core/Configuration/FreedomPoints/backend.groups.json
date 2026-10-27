@@ -1,5 +1,5 @@
 {
-  "contractFingerprint": "564034E530B4AF19117AA6A212357168DF59ABD2FACECC89B2F41EF30F86DA7B",
+  "contractFingerprint": "6549F2A84331FC21CCC3D5129BD464DAC9A42DD2792F454E8A0162A71CC691AE",
   "groups": [
     {
       "key": "resource-manager/backend",
@@ -113,6 +113,24 @@
       "order": 4,
       "points": [
         "0001000200240000"
+      ]
+    },
+    {
+      "key": "resource-manager/backend/business_blocks",
+      "parent": "resource-manager/backend",
+      "name": "business_blocks",
+      "description": "Fixed-capacity backend business-block control settings.",
+      "order": 5,
+      "points": [
+        "0001000200280000",
+        "0001000200280001",
+        "0001000200280002",
+        "0001000200280003",
+        "0001000200280004",
+        "0001000200280005",
+        "0001000200280006",
+        "0001000200280007",
+        "0001000200280008"
       ]
     }
   ]

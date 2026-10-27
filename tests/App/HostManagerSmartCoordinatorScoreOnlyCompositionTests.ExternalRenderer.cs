@@ -110,7 +110,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.False(Directory.Exists(root));
         Directory.CreateDirectory(root);
         using var host = Host.CreateDefaultBuilder().UseContentRoot(root)
-            .ConfigureServices(services => services.AddResourceManagerApp(["--no-native-ui"], StartupCapabilitySet.NormalReadOnly)).Build();
+            .ConfigureServices(services =>
+            {
+                ResourceManager.App.Infrastructure.Security.LoopbackApiPipelineConfigurator
+                    .Compile(false).ConfigureServices(services);
+                services.AddResourceManagerApp(["--no-native-ui"], StartupCapabilitySet.NormalReadOnly);
+            }).Build();
         await host.StartAsync();
         try
         {
@@ -150,7 +155,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Path.GetFileNameWithoutExtension(input.GetProperty("rootImage").GetString()!), input.GetProperty("rootImage").GetString()!);
         using var host = Host.CreateDefaultBuilder().UseContentRoot(root)
             .ConfigureLogging(log => log.SetMinimumLevel(LogLevel.Warning))
-            .ConfigureServices(services => services.AddResourceManagerApp(["--no-native-ui"], StartupCapabilitySet.NormalReadOnly)).Build();
+            .ConfigureServices(services =>
+            {
+                ResourceManager.App.Infrastructure.Security.LoopbackApiPipelineConfigurator
+                    .Compile(false).ConfigureServices(services);
+                services.AddResourceManagerApp(["--no-native-ui"], StartupCapabilitySet.NormalReadOnly);
+            }).Build();
         using var bound = new CancellationTokenSource(TimeSpan.FromSeconds(90));
         await host.StartAsync(bound.Token);
         var controlled = host.Services.GetRequiredService<IControlledSoftwareRegistry>();

@@ -19,9 +19,9 @@ public sealed class BusinessBlockHostedCompatibilityTests
         var observations = new ConcurrentQueue<StopObservation>();
         using var host = BuildHost(services =>
         {
-            services.AddBusinessBlockHostedService<FirstStopService>(124, [], _ => new(observations));
-            services.AddBusinessBlockHostedService<SecondStopService>(146, [], _ => new(observations));
-            services.AddBusinessBlockHostedService<ThirdStopService>(151, [], _ => new(observations));
+            services.AddBusinessBlockHostedService<FirstStopService>(BackendUids.RuntimeSpecializationCoordinator, _ => new(observations));
+            services.AddBusinessBlockHostedService<SecondStopService>(BackendUids.TrustedAccessRequestOwner, _ => new(observations));
+            services.AddBusinessBlockHostedService<ThirdStopService>(BackendUids.TrustedAccessInvocationHostedService, _ => new(observations));
         });
 
         await host.StartAsync();
@@ -42,7 +42,7 @@ public sealed class BusinessBlockHostedCompatibilityTests
         var releaseStop = NewSignal();
         var service = new LifecycleService(_ => releaseStop.Task);
         using var host = BuildHost(services =>
-            services.AddBusinessBlockHostedService<LifecycleService>(147, [], _ => service));
+            services.AddBusinessBlockHostedService<LifecycleService>(BackendUids.HostManagerMetricSnapshotOwner, _ => service));
         await host.StartAsync();
         var stopping = Hosted<LifecycleService>(host).StopAsync(hostDeadline.Token);
         try
@@ -51,11 +51,11 @@ public sealed class BusinessBlockHostedCompatibilityTests
             hostDeadline.Cancel();
             await stopping.WaitAsync(TestTimeout);
             Assert.Equal(BusinessBlockState.Stopping,
-                host.Services.GetRequiredService<BusinessBlockScheduler>().ReadState(147));
+                host.Services.GetRequiredService<BusinessBlockScheduler>().ReadState(BackendUids.HostManagerMetricSnapshotOwner));
             Assert.Equal(CancellationToken.None, service.LastStopToken);
             releaseStop.TrySetResult();
             await WaitUntilAsync(() => host.Services.GetRequiredService<BusinessBlockScheduler>()
-                .ReadState(147) == BusinessBlockState.Stopped);
+                .ReadState(BackendUids.HostManagerMetricSnapshotOwner) == BusinessBlockState.Stopped);
         }
         finally
         {
@@ -72,12 +72,13 @@ public sealed class BusinessBlockHostedCompatibilityTests
         var failure = new TimeoutException("service-owned timeout");
         var service = new LifecycleService(_ => Task.FromException(failure));
         using var host = BuildHost(services =>
-            services.AddBusinessBlockHostedService<LifecycleService>(147, [], _ => service));
+            services.AddBusinessBlockHostedService<LifecycleService>(BackendUids.HostManagerMetricSnapshotOwner, _ => service));
         await host.StartAsync();
         var thrown = await Assert.ThrowsAsync<TimeoutException>(() => Hosted<LifecycleService>(host).StopAsync(CancellationToken.None));
         Assert.Same(failure, thrown);
         Assert.Equal(1, service.StopCount);
-        var result = host.Services.GetRequiredService<BusinessBlockDiagnosticsRegistry>().Read(147).Result;
+        var result = host.Services.GetRequiredService<BusinessBlockDiagnosticsRegistry>()
+            .Read(BackendUids.HostManagerMetricSnapshotOwner).Result;
         Assert.Equal(BusinessBlockOutcome.Failed, result!.Outcome);
         Assert.Equal(BusinessBlockFailureStage.Stop, result.FailureStage);
         var hostStopError = await Record.ExceptionAsync(() => host.StopAsync().WaitAsync(TestTimeout));
@@ -91,7 +92,7 @@ public sealed class BusinessBlockHostedCompatibilityTests
         var worker = new GatedBackgroundService(release.Task);
         using var cancellation = new CancellationTokenSource();
         using var host = BuildHost(services =>
-            services.AddBusinessBlockHostedService<GatedBackgroundService>(154, [], _ => worker));
+            services.AddBusinessBlockHostedService<GatedBackgroundService>(BackendUids.HostManagerSoftwareIdentityOwner, _ => worker));
         await host.StartAsync();
         await worker.ExecutionStarted.Task.WaitAsync(TestTimeout);
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
@@ -102,7 +103,7 @@ public sealed class BusinessBlockHostedCompatibilityTests
             cancellation.Cancel();
             await stopping.WaitAsync(TestTimeout);
             Assert.False(worker.ExecuteTask!.IsCompleted);
-            Assert.Equal(BusinessBlockState.Stopping, scheduler.ReadState(154));
+            Assert.Equal(BusinessBlockState.Stopping, scheduler.ReadState(BackendUids.HostManagerSoftwareIdentityOwner));
             Assert.Equal(CancellationToken.None, worker.LastStopToken);
             await host.StopAsync(cancellation.Token).WaitAsync(TestTimeout);
             var elapsed = Stopwatch.StartNew();
@@ -111,7 +112,7 @@ public sealed class BusinessBlockHostedCompatibilityTests
             Assert.Equal(1, worker.StopCount);
         }
         finally { release.TrySetResult(); }
-        await WaitUntilAsync(() => scheduler.ReadState(154) == BusinessBlockState.Stopped);
+        await WaitUntilAsync(() => scheduler.ReadState(BackendUids.HostManagerSoftwareIdentityOwner) == BusinessBlockState.Stopped);
         Assert.Equal(1, worker.StopCount);
     }
 
@@ -120,7 +121,7 @@ public sealed class BusinessBlockHostedCompatibilityTests
     {
         var service = new GatedStartService();
         using var host = BuildHost(services =>
-            services.AddBusinessBlockHostedService<GatedStartService>(147, [], _ => service));
+            services.AddBusinessBlockHostedService<GatedStartService>(BackendUids.HostManagerMetricSnapshotOwner, _ => service));
         var hosted = Hosted<GatedStartService>(host);
         var starting = hosted.StartAsync(CancellationToken.None);
         await service.StartEntered.Task.WaitAsync(TestTimeout);
@@ -143,8 +144,8 @@ public sealed class BusinessBlockHostedCompatibilityTests
     {
         var service = new RecoverableStartService();
         using var host = BuildHost(services =>
-            services.AddBusinessBlockHostedService<RecoverableStartService>(147, [], _ => service));
-        var block = host.Services.GetRequiredService<HostedBusinessBlockRegistry>().GetOrAdd(147, () => service);
+            services.AddBusinessBlockHostedService<RecoverableStartService>(BackendUids.HostManagerMetricSnapshotOwner, _ => service));
+        var block = host.Services.GetRequiredService<HostedBusinessBlockRegistry>().GetOrAdd(BackendUids.HostManagerMetricSnapshotOwner, () => service);
         var first = block.PrepareStart(CancellationToken.None);
         var firstRun = block.RunAsync(new(CancellationToken.None, () => { }));
         try
@@ -186,12 +187,12 @@ public sealed class BusinessBlockHostedCompatibilityTests
     {
         var service = new LifecycleService(_ => Task.CompletedTask);
         using var host = BuildHost(services =>
-            services.AddBusinessBlockHostedService<LifecycleService>(147, [], _ => service));
+            services.AddBusinessBlockHostedService<LifecycleService>(BackendUids.HostManagerMetricSnapshotOwner, _ => service));
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
-        await scheduler.SetDemandAsync("external", 147, TestReason("external-start")).WaitAsync(TestTimeout);
+        await scheduler.SetDemandAsync("external", BackendUids.HostManagerMetricSnapshotOwner, TestReason("external-start")).WaitAsync(TestTimeout);
         try
         {
-            await WaitUntilAsync(() => scheduler.ReadState(147) == BusinessBlockState.Running);
+            await WaitUntilAsync(() => scheduler.ReadState(BackendUids.HostManagerMetricSnapshotOwner) == BusinessBlockState.Running);
             await host.StartAsync().WaitAsync(TestTimeout);
             Assert.Equal(1, service.StartCount);
         }
@@ -212,16 +213,17 @@ public sealed class BusinessBlockHostedCompatibilityTests
             return releaseSecondStop.Task;
         });
         using var host = BuildHost(services =>
-            services.AddBusinessBlockHostedService<LifecycleService>(147, [], _ => service));
+            services.AddBusinessBlockHostedService<LifecycleService>(BackendUids.HostManagerMetricSnapshotOwner, _ => service));
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
         Task? stopping = null;
         try
         {
             await host.StartAsync().WaitAsync(TestTimeout);
-            await scheduler.SetDemandAsync("host:147", null, TestReason("first-run-stop")).WaitAsync(TestTimeout);
-            await WaitUntilAsync(() => scheduler.ReadState(147) == BusinessBlockState.Stopped);
-            await scheduler.SetDemandAsync("host:147", 147, TestReason("second-run-start")).WaitAsync(TestTimeout);
-            await WaitUntilAsync(() => scheduler.ReadState(147) == BusinessBlockState.Running);
+            var blockId = BackendUids.HostManagerMetricSnapshotOwner;
+            await scheduler.SetDemandAsync("host:" + blockId, null, TestReason("first-run-stop")).WaitAsync(TestTimeout);
+            await WaitUntilAsync(() => scheduler.ReadState(blockId) == BusinessBlockState.Stopped);
+            await scheduler.SetDemandAsync("host:" + blockId, blockId, TestReason("second-run-start")).WaitAsync(TestTimeout);
+            await WaitUntilAsync(() => scheduler.ReadState(blockId) == BusinessBlockState.Running);
             Assert.Equal(2, service.StartCount);
 
             stopping = host.StopAsync();
@@ -242,12 +244,12 @@ public sealed class BusinessBlockHostedCompatibilityTests
         var events = new ConcurrentQueue<string>();
         using var host = BuildHost(services =>
         {
-            services.AddBusinessBlockHostedService<FirstConstructedService>(124, [], _ =>
+            services.AddBusinessBlockHostedService<FirstConstructedService>(BackendUids.RuntimeSpecializationCoordinator, _ =>
             { events.Enqueue("first:construct"); return new(events); });
             services.AddSingleton<LazyAliasService>(_ =>
             { events.Enqueue("alias:construct"); return new(events); });
-            services.AddHostedServiceAlias<LazyAliasService>(112, []);
-            services.AddBusinessBlockHostedService<SecondConstructedService>(146, [], _ =>
+            services.AddHostedServiceAlias<LazyAliasService>(BackendUids.HostManagerFileQueryOwner);
+            services.AddBusinessBlockHostedService<SecondConstructedService>(BackendUids.TrustedAccessRequestOwner, _ =>
             { events.Enqueue("second:construct"); return new(events); });
         });
         var hosted = host.Services.GetServices<IHostedService>()
@@ -266,8 +268,8 @@ public sealed class BusinessBlockHostedCompatibilityTests
         {
             services.AddSingleton<LazyAliasService>(_ =>
             { events.Enqueue("alias:construct"); return new(events); });
-            services.AddHostedServiceAlias<LazyAliasService>(112, []);
-            services.AddBusinessBlockHostedService<ThrowingConstructedService>(122, [], _ =>
+            services.AddHostedServiceAlias<LazyAliasService>(BackendUids.HostManagerFileQueryOwner);
+            services.AddBusinessBlockHostedService<ThrowingConstructedService>(BackendUids.HostManagerDisplayCoordinatorOwner, _ =>
             { events.Enqueue("direct:construct"); throw failure; });
         });
         var thrown = await Assert.ThrowsAsync<InvalidOperationException>(() => host.StartAsync());
@@ -276,7 +278,12 @@ public sealed class BusinessBlockHostedCompatibilityTests
     }
 
     private static IHost BuildHost(Action<IServiceCollection> configure) => Host.CreateDefaultBuilder()
-        .ConfigureLogging(logging => logging.ClearProviders()).ConfigureServices(configure).ConfigureServices(BusinessBlockTestSupport.AddStateFixtures).Build();
+        .ConfigureLogging(logging => logging.ClearProviders())
+        .ConfigureServices(services =>
+        {
+            configure(services);
+            NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
+        }).Build();
     private static NonOwningHostedService<TService> Hosted<TService>(IHost host) where TService : class, IHostedService
         => Assert.Single(host.Services.GetServices<IHostedService>().OfType<NonOwningHostedService<TService>>());
     private static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);

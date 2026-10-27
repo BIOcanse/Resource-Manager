@@ -78,7 +78,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         });
         services.AddSingleton<JsonDebugDiagnosticLogWriter>();
         services.AddSingleton<IDebugDiagnosticLogWriter>(static provider => provider.GetRequiredService<JsonDebugDiagnosticLogWriter>());
-        services.AddHostedServiceAlias<JsonDebugDiagnosticLogWriter>(BlockUids.JsonDebugDiagnosticLogWriter, [BlockUids.RuntimeSpecializationCoordinator]);
+        services.AddHostedServiceAlias<JsonDebugDiagnosticLogWriter>(BlockUids.JsonDebugDiagnosticLogWriter);
         services.AddSingleton<NativeReportCoordinatorPersistenceStore>();
         services.AddSingleton<INativeReportCoordinatorPersistenceStore>(static provider =>
             provider.GetRequiredService<NativeReportCoordinatorPersistenceStore>());
@@ -103,10 +103,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<IOptimizationSoftwareIssueSignalSource>(static provider =>
             provider.GetRequiredService<HostManagerReportCoordinatorOwner>());
         services.AddSingleton<ISoftwareIssueSource, OptimizationReportSoftwareIssueSource>();
-        services.AddHostedServiceAlias<HostManagerReportCoordinatorOwner>(BlockUids.HostManagerReportCoordinatorOwner,
-            [BlockUids.RuntimeSpecializationCoordinator, BlockUids.WindowsResourceBreakdownSampler, BlockUids.WindowsHardwareMetricSampler,
-                BlockUids.EtwSystemInterruptSnapshotSource,
-                ..(startupCapabilities.Allows(StartupCapability.MutablePersistence) ? new[] { BlockUids.SqlitePortableSoftwareRegistry } : [])]);
+        services.AddHostedServiceAlias<HostManagerReportCoordinatorOwner>(BlockUids.HostManagerReportCoordinatorOwner);
 
         services.AddSingleton<IAutomaticMemoryCleanupPlanner, NativeAutomaticMemoryCleanupPlanner>();
         services.AddSingleton<HostManagerMemoryCleanupAttemptJournal>();
@@ -146,7 +143,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetRequiredService<HostManagerSmartCoordinator>());
         if (startHostedService)
         {
-            services.AddHostedServiceAlias<HostManagerSmartCoordinator>(BlockUids.HostManagerSmartCoordinator, [BlockUids.RuntimeSpecializationCoordinator, BlockUids.WindowsResourceBreakdownSampler, BlockUids.WindowsHardwareMetricSampler, BlockUids.EtwCpuCoreResidencyReader]);
+            services.AddHostedServiceAlias<HostManagerSmartCoordinator>(BlockUids.HostManagerSmartCoordinator);
         }
         return services;
     }

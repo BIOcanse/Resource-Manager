@@ -19,10 +19,13 @@ public sealed class BusinessBlockHostedCancellationTests
         var service = new GatedCleanup();
         using var host = Host.CreateDefaultBuilder()
             .ConfigureLogging(logging => logging.ClearProviders())
-            .ConfigureServices(services => services.AddBusinessBlockHostedService<GatedCleanup>(
-                119, [], _ => service)).ConfigureServices(BusinessBlockTestSupport.AddStateFixtures).Build();
+            .ConfigureServices(services =>
+            {
+                services.AddBusinessBlockHostedService<GatedCleanup>(BackendUids.RuntimeSpecializationCoordinator, _ => service);
+                NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
+            }).Build();
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
-        var block = host.Services.GetRequiredService<HostedBusinessBlockRegistry>().GetOrAdd(119, () => service);
+        var block = host.Services.GetRequiredService<HostedBusinessBlockRegistry>().GetOrAdd(BackendUids.RuntimeSpecializationCoordinator, () => service);
         using var deadline = new CancellationTokenSource();
         await host.StartAsync().WaitAsync(BusinessBlockTestSupport.TestTimeout);
         Task? stopping = null;
@@ -35,11 +38,11 @@ public sealed class BusinessBlockHostedCancellationTests
             catch (OperationCanceledException) { }
             catch (AggregateException errors) when (errors.Flatten().InnerExceptions.All(error => error is OperationCanceledException)) { }
             Assert.False(block.CurrentStopCompletion().IsCompleted);
-            Assert.Equal(BusinessBlockState.Stopping, scheduler.ReadState(119));
+            Assert.Equal(BusinessBlockState.Stopping, scheduler.ReadState(BackendUids.RuntimeSpecializationCoordinator));
             Assert.Equal(1, service.StopCount);
             Assert.False(service.CleanupCompleted);
             service.Release.TrySetResult();
-            await BusinessBlockTestSupport.State(scheduler, 119, BusinessBlockState.Stopped);
+            await BusinessBlockTestSupport.State(scheduler, BackendUids.RuntimeSpecializationCoordinator, BusinessBlockState.Stopped);
             Assert.True(service.CleanupCompleted);
         }
         finally
@@ -63,8 +66,12 @@ public sealed class BusinessBlockHostedCancellationTests
             NullLogger<SharedResourceSubscriptionMaintenanceService>.Instance);
         using var host = Host.CreateDefaultBuilder()
             .ConfigureLogging(logging => logging.ClearProviders())
-            .ConfigureServices(services => services.AddBusinessBlockHostedService<SharedResourceSubscriptionMaintenanceService>(
-                159, [], _ => service)).ConfigureServices(BusinessBlockTestSupport.AddStateFixtures).Build();
+            .ConfigureServices(services =>
+            {
+                services.AddBusinessBlockHostedService<SharedResourceSubscriptionMaintenanceService>(
+                    BackendUids.SharedResourceSubscriptionMaintenanceService, _ => service);
+                NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
+            }).Build();
         var alias = host.Services.GetServices<IHostedService>()
             .OfType<NonOwningHostedService<SharedResourceSubscriptionMaintenanceService>>().Single();
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
@@ -72,8 +79,9 @@ public sealed class BusinessBlockHostedCancellationTests
         {
             await alias.StartAsync(CancellationToken.None).WaitAsync(BusinessBlockTestSupport.TestTimeout);
             await maintenance.Entered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
-            await scheduler.SetDemandAsync("host:159", null, BusinessBlockTestSupport.Reason());
-            await BusinessBlockTestSupport.State(scheduler, 159, BusinessBlockState.Stopped);
+            await scheduler.SetDemandAsync("host:" + BackendUids.SharedResourceSubscriptionMaintenanceService,
+                null, BusinessBlockTestSupport.Reason());
+            await BusinessBlockTestSupport.State(scheduler, BackendUids.SharedResourceSubscriptionMaintenanceService, BusinessBlockState.Stopped);
             Assert.True(service.ExecuteTask!.IsCanceled);
 
             // Invoke the same observer after the wrapper's completion. This fixes the late

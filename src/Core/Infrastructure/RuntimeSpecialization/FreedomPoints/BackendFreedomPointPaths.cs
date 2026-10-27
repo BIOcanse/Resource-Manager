@@ -21,4 +21,13 @@ internal static class BackendFreedomPointPaths
     public const string CpuBaselineRatio = "resource-manager/backend/scoring/cpu/runtime/simple/0";
     public const string CpuCorePerformanceWeights = "resource-manager/backend/scoring/cpu/runtime/complex/1";
     public const string TrustedAccessRequestLifetime = "resource-manager/backend/trusted_access/build/simple/0";
+    public const string BusinessBlockWorkerCount = "resource-manager/backend/business_blocks/build/simple/0";
+    public const string BusinessBlockHistoryCapacity = "resource-manager/backend/business_blocks/build/simple/1";
+    public const string BusinessBlockDemandCapacity = "resource-manager/backend/business_blocks/build/simple/2";
+    public const string BusinessBlockDemandBytes = "resource-manager/backend/business_blocks/build/simple/3";
+    public const string BusinessBlockCompletionCapacity = "resource-manager/backend/business_blocks/build/simple/4";
+    public const string BusinessBlockReaderCapacity = "resource-manager/backend/business_blocks/build/simple/5";
+    public const string BusinessBlockReaderBytes = "resource-manager/backend/business_blocks/build/simple/6";
+    public const string BusinessBlockWorkerArenaBytes = "resource-manager/backend/business_blocks/build/simple/7";
+    public const string BusinessBlockReasonTextCapacity = "resource-manager/backend/business_blocks/build/simple/8";
 }

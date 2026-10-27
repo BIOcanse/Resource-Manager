@@ -85,7 +85,8 @@ public sealed class GpuPresentGraphicsApiTests
         await using var harness = PresentFrameEtwTestHarness.Create();
         var lease = harness.Source.AcquireGraphicsApiSubscription(Instance());
         await PresentFrameEtwTestHarness.ReadyAsync(lease);
-        var dependency = Assert.Single(harness.Controller.Read().Demands);
+        var dependency = Assert.Single(harness.Controller.Read().Demands,
+            demand => demand.BlockId == BackendUids.PresentFrameEtwSource);
         Assert.Equal("graphics-api-history", dependency.Reason.Owner);
         Assert.Equal("present-graphics-api-subscription", dependency.Reason.ConfigurationOrDependency);
         Assert.Equal(BackendUids.PresentFrameEtwSource, dependency.BlockId);

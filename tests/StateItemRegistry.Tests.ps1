@@ -223,5 +223,8 @@ foreach ($process in @('backend','ui')) {
 [IO.File]::WriteAllText($path, '{"entries":[{"uid":0}]}')
 Assert-Rejected { & $generator -Registry $path -Process backend -Namespace Invalid -Output (Join-Path $scratch 'invalid.g.cs') } 'Entry.*missing'
 $production = Read-StateRegistry -Path (Join-Path $repo 'src/Shared/StateItems/state-items.json')
-Assert-True ($production.entries.Count -eq 71) 'Production catalog contains 51 blocks and 20 items.'
+Assert-True ($production.entries.Count -eq 86) 'Production catalog contains 60 blocks, 20 items and six conditions.'
+Assert-True (@($production.entries | Where-Object kind -CEQ 'block').Count -eq 60) 'Production catalog contains 60 blocks.'
+Assert-True (@($production.entries | Where-Object kind -CEQ 'item').Count -eq 20) 'Production catalog contains 20 items.'
+Assert-True (@($production.entries | Where-Object kind -CEQ 'condition').Count -eq 6) 'Production catalog contains the six backend conditions.'
 "Passed $script:count assertions. Fixtures: $scratch"

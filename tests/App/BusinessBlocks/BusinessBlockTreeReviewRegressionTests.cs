@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
-using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -132,11 +131,10 @@ public sealed class BusinessBlockTreeReviewRegressionTests
         var child = new BusinessBlockTestSupport.Probe(releaseStop: releaseChild.Task);
         var lateChild = new BusinessBlockTestSupport.Probe();
         var control = new BusinessBlockController(new BlockingLogger(logging, releaseLog, "107: Starting -> Running"), 128, _ => null);
-        await using var scheduler = new BusinessBlockScheduler(new BusinessBlockTestSupport.EmptyServices(), [
+        await using var scheduler = new TestBlockScheduler([
             BusinessBlockTestSupport.Register(107, parent), BusinessBlockTestSupport.Register(104, child, 107),
             BusinessBlockTestSupport.Register(127, lateChild, 107)],
-            Microsoft.Extensions.Options.Options.Create(new BusinessBlockOptions()),
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<BusinessBlockScheduler>.Instance, BusinessBlockTestSupport.CreateAuthority(), control);
+            BusinessBlockTestSupport.CreateAuthority(), control: control);
         Task? runningReport = null;
         try
         {

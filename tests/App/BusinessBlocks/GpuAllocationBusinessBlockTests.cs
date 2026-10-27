@@ -37,8 +37,9 @@ public sealed class GpuAllocationBusinessBlockTests
         Assert.DoesNotContain(GpuAllocationCollector.Provider, factory.Current.Enabled);
         var fast = collector.AcquireSubscription(TimeSpan.FromSeconds(1), "resource-breakdown:gpu.0.vram");
         await EtwTestRunRecorder.ReadyAsync(fast);
-        var demands = harness.Controller.Read().Demands;
-        Assert.Equal(2, demands.Count);
+        var demands = harness.Controller.Read().Demands
+            .Where(demand => demand.BlockId == BackendUids.GpuAllocationCollector).ToArray();
+        Assert.Equal(2, demands.Length);
         Assert.Contains(demands, demand => demand.Reason.Owner == "resource-sampling"
             && demand.Reason.ConfigurationOrDependency == "gpu-allocation-subscription");
         Assert.Contains(demands, demand => demand.Reason.Owner == "resource-breakdown:gpu.0.vram");

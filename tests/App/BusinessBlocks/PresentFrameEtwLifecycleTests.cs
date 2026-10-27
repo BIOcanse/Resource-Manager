@@ -32,7 +32,7 @@ public sealed class PresentFrameEtwLifecycleTests
         Assert.True(session.ProcessExited.IsCompleted);
         Assert.False(session.ConsumerThread!.IsAlive);
         Assert.False(Assert.IsType<bool>(Assert.Single(harness.Controller.Read().Items, fact => fact.ItemUid == BackendItems.PresentNativeSessionAvailable).Value));
-        Assert.Equal(2, harness.Controller.Read().Demands.Count);
+        Assert.Equal(2, harness.Controller.Read().Demands.Count(demand => demand.BlockId == BackendUids.PresentFrameEtwSource));
         Assert.Empty(harness.Diagnostics.Read(BackendUids.PresentFrameEtwSource).Metrics.ActiveThreads);
         await PresentFrameEtwTestHarness.ReleaseAsync(frame);
         await PresentFrameEtwTestHarness.ReleaseAsync(api);
@@ -56,7 +56,7 @@ public sealed class PresentFrameEtwLifecycleTests
         Assert.Equal(1, harness.Sessions.Current.Stops);
         Assert.False(harness.Sessions.Current.HasBoundHandler);
         Assert.False(Assert.IsType<bool>(Assert.Single(harness.Controller.Read().Items, fact => fact.ItemUid == BackendItems.PresentNativeSessionAvailable).Value));
-        Assert.Single(harness.Controller.Read().Demands);
+        Assert.Single(harness.Controller.Read().Demands, demand => demand.BlockId == BackendUids.PresentFrameEtwSource);
         Assert.Empty(harness.Diagnostics.Read(BackendUids.PresentFrameEtwSource).Metrics.ActiveThreads);
         await PresentFrameEtwTestHarness.ReleaseAsync(subscription);
     }
@@ -83,7 +83,7 @@ public sealed class PresentFrameEtwLifecycleTests
         Assert.Equal(1, harness.Sessions.Attempts);
         Assert.False(Assert.IsType<bool>(Assert.Single(harness.Controller.Read().Items, fact => fact.ItemUid == BackendItems.PresentNativeSessionAvailable).Value));
         Assert.Empty(harness.Diagnostics.Read(BackendUids.PresentFrameEtwSource).Metrics.ActiveThreads);
-        Assert.Single(harness.Controller.Read().Demands);
+        Assert.Single(harness.Controller.Read().Demands, demand => demand.BlockId == BackendUids.PresentFrameEtwSource);
         await PresentFrameEtwTestHarness.ReleaseAsync(subscription);
     }
 

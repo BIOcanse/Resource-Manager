@@ -164,7 +164,10 @@ public sealed class CpuBaselineRatioEndpointTests
             builder.WebHost.UseUrls("http://127.0.0.1:0");
             var capabilities = readOnly ? StartupCapabilitySet.NormalReadOnly
                 : new StartupCapabilitySet("cpu-baseline-test", StartupCapability.RuntimeEffectOwners | StartupCapability.MutablePersistence);
+            ResourceManager.App.Infrastructure.Security.LoopbackApiPipelineConfigurator
+                .Compile(false).ConfigureServices(builder.Services);
             builder.Services.AddResourceManagerApp(["--no-native-ui"], capabilities);
+            if (!readOnly) NativeBackendBlockTestSupport.AddFullTreeHostFixture(builder.Services);
             // Failure-path assertions must not require permission to write Windows EventLog.
             builder.Logging.ClearProviders().AddConsole();
             builder.Services.RemoveAll<IHostedService>();

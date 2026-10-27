@@ -1,5 +1,9 @@
 <Project>
   <PropertyGroup>
+    <!-- This custom property must be known while native artifact paths are evaluated. -->
+    <ResourceManagerStateNames Condition="'$(ResourceManagerStateNames)' == ''">true</ResourceManagerStateNames>
+  </PropertyGroup>
+  <PropertyGroup>
     <!-- Explicit MSBuild ownership also takes precedence over a shared NUGET_PACKAGES environment. -->
     <RestorePackagesPath Condition="'$(RestorePackagesPath)' == ''">$(MSBuildThisFileDirectory)sdk/freedom-point/restored-packages</RestorePackagesPath>
   </PropertyGroup>

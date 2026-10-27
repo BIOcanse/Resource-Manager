@@ -1,6 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Hosting;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
+using ResourceManager.App.Infrastructure.Telemetry.Etw;
+using ResourceManager.App.StateItems;
 using ResourceManager.Shared.BusinessBlocks.State;
 using SharedScheduler = ResourceManager.Shared.BusinessBlocks.BusinessBlockScheduler;
 using BackendRegistry = ResourceManager.App.StateItems.StateRegistry;
@@ -193,30 +196,25 @@ public sealed class StateAuthorityTests
     public async Task ProductionNativeRuleStopsOnlyTheExplicitlyFrozenProducerAndLeavesGpuRunning(int target, int modeUid)
     {
         var services = new ServiceCollection();
+        ResourceManager.App.Infrastructure.Security.LoopbackApiPipelineConfigurator.Compile(false).ConfigureServices(services);
         ResourceManagerServiceCollectionExtensions.AddResourceManagerApp(services, ["--startup-profile=full"]);
-        await using var provider = services.BuildServiceProvider();
-        // Resolve the actual production registration factory and its availability owner.
-        // No scheduler, producer, session or hosted service is resolved from this provider.
-        var rule = provider.GetServices<BusinessBlockDecisionRegistration>()
-            .Single(value => value.ParentId == BackendUids.NativeEtwLifetimeService);
-        var authority = provider.GetRequiredService<StateAuthority>();
+        var registrations = services.Select(value => value.ImplementationInstance).OfType<BusinessBlockRegistration>().ToArray();
+        var blocks = new[] { BackendUids.NativeEtwLifetimeService, BackendUids.PresentFrameEtwSource,
+            BackendUids.GpuAllocationCollector, BackendUids.DxgkrnlVidMmEtwTelemetryZone }.ToDictionary(id => id, _ => new HoldingBlock());
+        var probes = registrations.Select(registration => registration with
+        {
+            Create = _ => blocks.TryGetValue(registration.Id, out var block) ? block : new HoldingBlock()
+        }).ToArray();
+        await using var native = NativeBackendBlockTestSupport.CreateControl(probes);
+        var authority = NativeBackendBlockTestSupport.CreateAuthority(native);
+        var availability = new NativeEtwSessionAvailability(authority);
         var presentMode = authority.ClaimCell<bool>(BackendItems.PresentUnfrozen);
         var vidMmMode = authority.ClaimCell<bool>(BackendItems.VidMmUnfrozen);
         await presentMode.PublishAsync(true, Reason);
         await vidMmMode.PublishAsync(true, Reason);
         var mode = modeUid == BackendItems.PresentUnfrozen ? presentMode : vidMmMode;
-        var blocks = new[] { BackendUids.NativeEtwLifetimeService, BackendUids.PresentFrameEtwSource,
-            BackendUids.GpuAllocationCollector, BackendUids.DxgkrnlVidMmEtwTelemetryZone }.ToDictionary(id => id, _ => new HoldingBlock());
-        var graph = new BusinessBlockGraph(BackendUids.Program,
-        [
-            new(BackendUids.NativeEtwLifetimeService, BackendUids.Program, []),
-            new(BackendUids.PresentFrameEtwSource, BackendUids.NativeEtwLifetimeService, []),
-            new(BackendUids.GpuAllocationCollector, BackendUids.NativeEtwLifetimeService, []),
-            new(BackendUids.DxgkrnlVidMmEtwTelemetryZone, BackendUids.NativeEtwLifetimeService, [])
-        ]);
-        await using var scheduler = new SharedScheduler(graph, id => blocks[id], 128,
-            NullLogger.Instance, BackendRegistry.Version, static _ => null, authority,
-            BackendItems.BlockDemand, BackendItems.ProgramShuttingDown, decisions: [rule]);
+        using var provider = new ServiceCollection().AddSingleton(availability).BuildServiceProvider();
+        await using var scheduler = new BusinessBlockScheduler(provider, probes, native, authority);
         try
         {
             await scheduler.SetDemandAsync("target", target, Reason).WaitAsync(Timeout);
@@ -239,11 +237,10 @@ public sealed class StateAuthorityTests
     }
 
     private static StateAuthority CreateAuthority() => new(BackendRegistry.Items, BackendRegistry.Blocks);
-    private static SharedScheduler CreateSingleBlockScheduler(StateAuthority authority, IBusinessBlock block,
+    private static TestBlockScheduler CreateSingleBlockScheduler(StateAuthority authority, IBusinessBlock block,
         BusinessBlockDecisionRegistration rule, int? demandItemUid = null)
-        => new(new BusinessBlockGraph(BackendUids.Program, [new(BackendUids.PresentFrameEtwSource, BackendUids.Program, [])]),
-            _ => block, 64, NullLogger.Instance, BackendRegistry.Version, static _ => null,
-            authority, demandItemUid, BackendItems.ProgramShuttingDown, decisions: [rule]);
+        => new([new TestBlockRegistration(BackendUids.PresentFrameEtwSource, [], _ => block)], authority,
+            historyLimit: 64, logger: NullLogger.Instance, decisions: [rule], demandItemUid: demandItemUid);
     private static async Task Until(Func<bool> predicate)
     {
         using var timeout = new CancellationTokenSource(Timeout);

@@ -1,9 +1,7 @@
 using System.Runtime.ExceptionServices;
 using Microsoft.Diagnostics.Tracing;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
@@ -14,28 +12,27 @@ namespace Resource_Manager_APP.Tests;
 
 internal sealed class PresentFrameEtwTestHarness : IAsyncDisposable
 {
-    private readonly ServiceProvider services;
-
     private PresentFrameEtwTestHarness(
-        ServiceProvider services,
-        BusinessBlockScheduler controller,
+        NativeBackendBlockFixture fixture,
         PresentFrameEtwSource source,
         PresentFrameEtwTestSessionFactory sessions, BusinessBlockDiagnosticsRegistry diagnostics, EtwTestRunRecorder recorder)
     {
-        this.services = services;
-        Controller = controller;
+        Fixture = fixture;
+        Controller = fixture.Scheduler;
         Source = source;
         Sessions = sessions;
         Diagnostics = diagnostics;
         Recorder = recorder;
+        Availability = fixture.Availability;
     }
 
+    internal NativeBackendBlockFixture Fixture { get; }
     internal BusinessBlockScheduler Controller { get; }
     internal PresentFrameEtwSource Source { get; }
     internal PresentFrameEtwTestSessionFactory Sessions { get; }
     internal BusinessBlockDiagnosticsRegistry Diagnostics { get; }
     internal EtwTestRunRecorder Recorder { get; }
-    internal NativeEtwSessionAvailability Availability { get; private init; } = null!;
+    internal NativeEtwSessionAvailability Availability { get; }
     internal Task<BusinessBlockResult> NextResultAsync() => Recorder.NextResultAsync();
 
     internal static PresentFrameEtwTestHarness Create(
@@ -45,17 +42,18 @@ internal sealed class PresentFrameEtwTestHarness : IAsyncDisposable
         BusinessBlockOptions? blockOptions = null,
         bool useNativeSession = false)
     {
-        var services = new ServiceCollection().BuildServiceProvider();
         var sessions = new PresentFrameEtwTestSessionFactory();
         PresentFrameEtwSource? source = null;
         EtwTestRunRecorder? recorder = null;
-        var registration = new BusinessBlockRegistration(BackendUids.PresentFrameEtwSource, [], _ => recorder!);
+        var registration = new BusinessBlockRegistration(BackendUids.PresentFrameEtwSource, _ => recorder!);
         var diagnostics = new BusinessBlockDiagnosticsRegistry([registration], NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
-        var authority = BusinessBlockTestSupport.CreateAuthority();
-        var availability = new NativeEtwSessionAvailability(authority);
-        var controller = new BusinessBlockScheduler(services, [registration],
-            Options.Create(blockOptions ?? new BusinessBlockOptions()), NullLogger<BusinessBlockScheduler>.Instance, authority,
-            decisions: [EtwTestRunRecorder.AvailabilityRule(BackendUids.PresentFrameEtwSource, BackendItems.PresentNativeSessionAvailable, BackendItems.PresentUnfrozen)]);
+        var fixture = NativeBackendBlockTestSupport.CreateFullTreeFixture(
+            new Dictionary<int, Func<IServiceProvider, IBusinessBlock>>
+            {
+                [BackendUids.PresentFrameEtwSource] = _ => recorder!
+            }, historyCapacity: blockOptions?.HistoryLimit ?? 128);
+        var controller = fixture.Scheduler;
+        var availability = fixture.Availability;
         observer ??= new BusinessBlockEtwThreadObserver(diagnostics);
         var sourceLogger = logger ?? NullLogger<PresentFrameEtwSource>.Instance;
         if (useNativeSession)
@@ -69,7 +67,8 @@ internal sealed class PresentFrameEtwTestHarness : IAsyncDisposable
         }
 
         recorder = new(source, diagnostics, BackendUids.PresentFrameEtwSource);
-        return new(services, controller, source, sessions, diagnostics, recorder) { Availability = availability };
+        fixture.HoldNativeEtwGroup();
+        return new(fixture, source, sessions, diagnostics, recorder);
     }
 
     internal static Task ReadyAsync(IDisposable lease)
@@ -93,26 +92,13 @@ internal sealed class PresentFrameEtwTestHarness : IAsyncDisposable
         finally
         {
             Source.Dispose();
-            await Controller.DisposeAsync();
-            await services.DisposeAsync();
+            await Fixture.DisposeAsync();
         }
     }
 }
 
 internal sealed class EtwTestRunRecorder(IBusinessBlock block, BusinessBlockDiagnosticsRegistry diagnostics, int id) : IBusinessBlock
 {
-    internal static BusinessBlockDecisionRegistration AvailabilityRule(int id, int availabilityItem, int? unfrozenItem = null, bool fixtureGate = false)
-    {
-        var keys = new List<StateItemKey> { BusinessBlockTestSupport.DemandKey(id), availabilityItem };
-        if (unfrozenItem is { } mode) keys.Add(mode);
-        if (fixtureGate) keys.Add(BusinessBlockTestSupport.GateKey(id));
-        return new(BackendUids.Program, keys, input =>
-            input.Read<bool>(BusinessBlockTestSupport.DemandKey(id)).GetValueOrDefault(false)
-            && input.Read<bool>(availabilityItem).GetValueOrDefault(false)
-            && (unfrozenItem is not { } uid || input.Read<bool>(uid).GetValueOrDefault(false))
-            && (!fixtureGate || input.Read<bool>(BusinessBlockTestSupport.GateKey(id)).GetValueOrDefault(true)) ? [id] : []);
-    }
-
     private readonly System.Threading.Channels.Channel<BusinessBlockResult> results =
         System.Threading.Channels.Channel.CreateBounded<BusinessBlockResult>(new System.Threading.Channels.BoundedChannelOptions(64)
         {

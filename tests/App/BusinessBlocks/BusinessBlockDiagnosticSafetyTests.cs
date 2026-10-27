@@ -45,7 +45,7 @@ public sealed class BusinessBlockDiagnosticSafetyTests
         var error = new IOException(@"C:\Users\Alice\private; S-1-5-21-123456; " + secret);
         var logger = new ErrorLogger();
         var registrations = new[] { Register(116, new Probe()) };
-        var diagnostics = new BusinessBlockDiagnosticsRegistry(registrations, logger);
+        var diagnostics = new BusinessBlockDiagnosticsRegistry(registrations.Select(value => new BusinessBlockRegistration(value.Id, value.Create)), logger);
         await using var scheduler = Create(registrations);
         if (recordResult) diagnostics.RecordResult(116, BusinessBlockResult.Failed(error));
         else diagnostics.ReportFailure(116, error, "record-write");
@@ -84,7 +84,7 @@ public sealed class BusinessBlockDiagnosticSafetyTests
     public async Task BlockOwnedResultAndMeasurementsAreSeparateFromSchedulingAndReadsArePure()
     {
         var registrations = new[] { Register(116, new Probe()) };
-        var diagnostics = new BusinessBlockDiagnosticsRegistry(registrations, NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
+        var diagnostics = new BusinessBlockDiagnosticsRegistry(registrations.Select(value => new BusinessBlockRegistration(value.Id, value.Create)), NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
         await using var scheduler = Create(registrations);
         diagnostics.BeginRun(116);
         var scheduling = scheduler.Read();

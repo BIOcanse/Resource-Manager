@@ -656,6 +656,187 @@
       "perBlock": false,
       "trigger": "event",
       "changeEvent": "KernelLeakObserver sampling frame, holder exit or run failure"
+    },
+    {
+      "uid": 72,
+      "kind": "condition",
+      "process": "backend",
+      "name": "PresentEtwChildShouldRun",
+      "comment": "Whether Present ETW is demanded, its native session is available, and its mode is unfrozen or not yet published.",
+      "perBlock": false,
+      "node": 2,
+      "items": [
+        {
+          "item": 51,
+          "block": 30
+        },
+        {
+          "item": 53
+        },
+        {
+          "item": 56
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 30
+    },
+    {
+      "uid": 73,
+      "kind": "condition",
+      "process": "backend",
+      "name": "GpuAllocationEtwChildShouldRun",
+      "comment": "Whether GPU allocation ETW is demanded and its native session is available.",
+      "perBlock": false,
+      "node": 2,
+      "items": [
+        {
+          "item": 51,
+          "block": 31
+        },
+        {
+          "item": 54
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 31
+    },
+    {
+      "uid": 74,
+      "kind": "condition",
+      "process": "backend",
+      "name": "VidMmEtwChildShouldRun",
+      "comment": "Whether VidMm ETW is demanded, its native session is available, and its mode is unfrozen or not yet published.",
+      "perBlock": false,
+      "node": 2,
+      "items": [
+        {
+          "item": 51,
+          "block": 32
+        },
+        {
+          "item": 55
+        },
+        {
+          "item": 57
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 32
+    },
+    {
+      "uid": 75,
+      "kind": "block",
+      "process": "backend",
+      "name": "Backend",
+      "comment": "Wraps the complete backend service lifetime and its feature domains."
+    },
+    {
+      "uid": 76,
+      "kind": "block",
+      "process": "backend",
+      "name": "ServiceHost",
+      "comment": "Groups runtime-plan compilation, service settings, diagnostics and automatic updates."
+    },
+    {
+      "uid": 77,
+      "kind": "block",
+      "process": "backend",
+      "name": "Monitoring",
+      "comment": "Groups metric sampling, native ETW sessions, resource observation and display topology."
+    },
+    {
+      "uid": 78,
+      "kind": "block",
+      "process": "backend",
+      "name": "HardwareControl",
+      "comment": "Groups fan sessions, software-curve temperatures, saved hardware settings and actual control values."
+    },
+    {
+      "uid": 79,
+      "kind": "block",
+      "process": "backend",
+      "name": "Optimization",
+      "comment": "Groups intelligent resource optimization and GPU placement history observation."
+    },
+    {
+      "uid": 80,
+      "kind": "block",
+      "process": "backend",
+      "name": "Reports",
+      "comment": "Groups backend report producers, including optimization and kernel-leak reports."
+    },
+    {
+      "uid": 81,
+      "kind": "block",
+      "process": "backend",
+      "name": "SoftwareManagement",
+      "comment": "Groups software identity, file queries, portable registration and discovery."
+    },
+    {
+      "uid": 82,
+      "kind": "block",
+      "process": "backend",
+      "name": "TrustedAccess",
+      "comment": "Groups trusted access requests, approvals and invocation processing."
+    },
+    {
+      "uid": 83,
+      "kind": "block",
+      "process": "backend",
+      "name": "PublicServices",
+      "comment": "Groups public services, model tasks and shared resource subscription maintenance."
+    },
+    {
+      "uid": 84,
+      "kind": "condition",
+      "process": "backend",
+      "name": "AlwaysWanted",
+      "comment": "Wants the backend whole or a present feature domain whenever its parent is running.",
+      "perBlock": true,
+      "items": [],
+      "conditions": [],
+      "children": []
+    },
+    {
+      "uid": 85,
+      "kind": "condition",
+      "process": "backend",
+      "name": "HasExternalDemand",
+      "comment": "Whether the corresponding block currently has external demand.",
+      "perBlock": true,
+      "items": [
+        {
+          "item": 51
+        }
+      ],
+      "conditions": [],
+      "children": []
+    },
+    {
+      "uid": 86,
+      "kind": "condition",
+      "process": "backend",
+      "name": "HostMemoryProtectionReady",
+      "comment": "Whether memory protection is enabled, has a normal running point, and has built its reserve.",
+      "perBlock": false,
+      "node": 75,
+      "items": [
+        {
+          "item": 63
+        },
+        {
+          "item": 64
+        },
+        {
+          "item": 65
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 62
     }
   ]
 }

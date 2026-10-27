@@ -17,9 +17,10 @@ public sealed class NonOwningHostedServiceTests
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
-                services.AddBusinessBlockHostedService<ProbeWorker>(101, [], _ => worker);
+                services.AddBusinessBlockHostedService<ProbeWorker>(BackendUids.RuntimeSpecializationCoordinator, _ => worker);
+                NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
             })
-            .ConfigureServices(BusinessBlockTestSupport.AddStateFixtures).Build();
+            .Build();
         var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
         var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var registration = lifetime.ApplicationStopping.Register(() => stopping.TrySetResult());
@@ -48,9 +49,10 @@ public sealed class NonOwningHostedServiceTests
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
-                services.AddBusinessBlockHostedService<ProbeWorker>(101, [], _ => worker);
+                services.AddBusinessBlockHostedService<ProbeWorker>(BackendUids.RuntimeSpecializationCoordinator, _ => worker);
+                NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
             })
-            .ConfigureServices(BusinessBlockTestSupport.AddStateFixtures).Build();
+            .Build();
         try
         {
             await host.StartAsync();
@@ -58,10 +60,11 @@ public sealed class NonOwningHostedServiceTests
             await host.StopAsync();
             Assert.True(worker.ExecuteTask!.IsCompleted);
             var facts = Assert.Single(host.Services.GetRequiredService<IBusinessBlockQuery>().Read().Blocks,
-                block => block.Id == 101);
+                block => block.Id == BackendUids.RuntimeSpecializationCoordinator);
             Assert.Equal(BusinessBlockState.Stopped, facts.State);
             Assert.Equal(BusinessBlockOutcome.Stopped,
-                host.Services.GetRequiredService<BusinessBlockDiagnosticsRegistry>().Read(101).Result!.Outcome);
+                host.Services.GetRequiredService<BusinessBlockDiagnosticsRegistry>()
+                    .Read(BackendUids.RuntimeSpecializationCoordinator).Result!.Outcome);
             Assert.Equal(0, worker.DisposeCount);
         }
         finally
@@ -78,12 +81,15 @@ public sealed class NonOwningHostedServiceTests
         PlainService? service = null;
         var host = Host.CreateDefaultBuilder()
             .ConfigureLogging(logging => logging.ClearProviders())
-            .ConfigureServices(services => services.AddBusinessBlockHostedService<PlainService>(102, [], _ =>
+            .ConfigureServices(services =>
             {
-                created++;
-                return service = new PlainService();
-            }))
-            .ConfigureServices(BusinessBlockTestSupport.AddStateFixtures).Build();
+                services.AddBusinessBlockHostedService<PlainService>(BackendUids.TrustedAccessRequestOwner, _ =>
+                {
+                    created++;
+                    return service = new PlainService();
+                });
+                NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
+            }).Build();
         try
         {
             var hostedServices = host.Services.GetServices<IHostedService>().OfType<NonOwningHostedService<PlainService>>().ToArray();

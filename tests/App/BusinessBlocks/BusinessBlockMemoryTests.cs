@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
-using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
+using SharedScheduler = ResourceManager.Shared.BusinessBlocks.BusinessBlockScheduler;
 using Xunit.Abstractions;
 
 namespace Resource_Manager_APP.Tests;
@@ -14,12 +13,9 @@ public sealed class BusinessBlockMemoryTests(ITestOutputHelper output)
     {
         const int registrationCount = 40;
         var registrations = Enumerable.Range(0, registrationCount)
-            .Select(index => new BusinessBlockRegistration(
-                index + 101, Array.Empty<int>(), static _ => new NeverRunBlock()))
+            .Select(index => BusinessBlockTestSupport.Register(index + 101, new NeverRunBlock()))
             .ToArray();
-        var options = Options.Create(new BusinessBlockOptions());
-        var provider = new EmptyServiceProvider();
-        var logger = NullLogger<BusinessBlockScheduler>.Instance;
+        var logger = NullLogger<SharedScheduler>.Instance;
 
         // Warm code paths and logger metadata before measuring the retained object graph.
         await using (var warm = BusinessBlockTestSupport.Create(registrations))
@@ -65,11 +61,6 @@ public sealed class BusinessBlockMemoryTests(ITestOutputHelper output)
     }
 
     private static long CollectLiveBytes() => GC.GetTotalMemory(forceFullCollection: true);
-
-    private sealed class EmptyServiceProvider : IServiceProvider
-    {
-        public object? GetService(Type serviceType) => null;
-    }
 
     private sealed class NeverRunBlock : IBusinessBlock
     {

@@ -57,6 +57,30 @@ try
 
     using var compiler = JsonDocument.Parse(File.ReadAllBytes(args[1]));
     var evaluated = compiler.RootElement.GetProperty("projects").EnumerateArray().ToArray();
+    const string appProjectRelativePath = "src/Core/ResourceManager.App.csproj";
+    var appProject = evaluated.SingleOrDefault(project => string.Equals(
+        project.GetProperty("projectRelativePath").GetString(), appProjectRelativePath, StringComparison.Ordinal));
+    if (appProject.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+        throw new InvalidDataException("The evaluated ResourceManager.App compiler context is missing.");
+    var appProperties = appProject.GetProperty("Properties");
+    var appIntermediateOutputPath = appProperties.GetProperty("IntermediateOutputPath").GetString();
+    if (string.IsNullOrWhiteSpace(appIntermediateOutputPath))
+        throw new InvalidDataException("The evaluated app compiler context has no IntermediateOutputPath.");
+    if (!Path.IsPathFullyQualified(appIntermediateOutputPath))
+        appIntermediateOutputPath = Path.Combine(Path.GetDirectoryName(Path.Combine(root, appProjectRelativePath))!,
+            appIntermediateOutputPath);
+    var stateItemsSource = Path.GetFullPath(Path.Combine(appIntermediateOutputPath, "StateItems.g.cs"));
+    var artifactsRoot = Path.GetFullPath(compiler.RootElement.GetProperty("artifactsPath").GetString()!);
+    var stateItemsRelativePath = Path.GetRelativePath(artifactsRoot, stateItemsSource);
+    if (Path.IsPathRooted(stateItemsRelativePath) || stateItemsRelativePath == ".." ||
+        stateItemsRelativePath.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
+        stateItemsRelativePath.StartsWith(".." + Path.AltDirectorySeparatorChar, StringComparison.Ordinal))
+        throw new InvalidDataException("The generated app StateItems source is outside the task artifacts root.");
+    if (!File.Exists(stateItemsSource))
+        throw new InvalidDataException("The compiler-generated app StateItems source is missing: " + stateItemsSource);
+    // This target adds StateItems.g.cs before CoreCompile, so the explicit MSBuild
+    // Compile item query does not include it. Capture that exact generated source.
+    var additionalSources = ImmutableArray.Create("artifacts/" + stateItemsRelativePath.Replace('\\', '/'));
     var ledgerRoots = evaluated.Select(project => project.GetProperty("Properties")
             .TryGetProperty("ResourceManagerLedgerOutputRoot", out var value) ? value.GetString() : null)
         .Where(static path => !string.IsNullOrWhiteSpace(path)).Select(static path => Path.GetFullPath(path!))
@@ -75,7 +99,8 @@ try
         ImmutableHashSet.Create(StringComparer.OrdinalIgnoreCase, "bin", "obj", "third_party", "node_modules", ".zig-cache", "zig-out", "Config", "UserData"),
         MaximumFiles: 20_000, MaximumFileBytes: 32 * 1024 * 1024)
     {
-        AdditionalRoots = additionalRoots.ToImmutable()
+        AdditionalRoots = additionalRoots.ToImmutable(),
+        ExplicitFiles = additionalSources
     };
     var current = SourceCapture.Capture(scan);
     var projectAssemblyNames = evaluated.Select(project => project.GetProperty("Properties").GetProperty("AssemblyName").GetString()!)
@@ -128,7 +153,11 @@ try
         var generatedRoot = properties.GetProperty("CompilerGeneratedFilesOutputPath").GetString()!;
         var generatedFiles = Directory.Exists(generatedRoot)
             ? Directory.EnumerateFiles(generatedRoot, "*.cs", SearchOption.AllDirectories) : [];
-        var selected = compileFiles.Concat(generatedFiles).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var additionalCompileFiles = string.Equals(projectPath, appProjectRelativePath, StringComparison.Ordinal)
+            ? new[] { stateItemsSource }
+            : Array.Empty<string>();
+        var selected = compileFiles.Concat(generatedFiles).Concat(additionalCompileFiles)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         if (selected.Any(path => !current.TryGetRelativePath(path, out _)))
             throw new InvalidDataException($"Uncaptured Compile items in {projectPath}.");
         return new CSharpCompilationContext
