@@ -11,6 +11,7 @@ public sealed partial class ProcessBasicFieldCollectorTests
     [Fact]
     public async Task RealHttpUnifiedWorkerIsolatesSourcesRecoversAndStopsReadingAfterCancellation()
     {
+        using var drainDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var phase = 0; var api = new Api(); var captured = DateTimeOffset.UtcNow.AddSeconds(-5);
         var network = new NetworkTests.NetworkReader(_ => Volatile.Read(ref phase) == 1 ? throw new InvalidOperationException("network failed") : Network(captured));
         using var fixture = Fixture(api, network, () => Volatile.Read(ref phase) == 3
@@ -48,6 +49,7 @@ public sealed partial class ProcessBasicFieldCollectorTests
         Assert.Equal(3, initial.RootElement.GetProperty("processFields").GetProperty("fields").GetArrayLength());
         Assert.Equal("9007199254740993", BasicWireValue(initial.RootElement, Names[1]).GetProperty("integerValue").GetString());
         Assert.True(api.Opens > 0); Assert.True(network.Reads > 0);
+        await WaitForProcessDemandDrainedAsync(fixture, drainDeadline.Token);
         var initialOpens = Volatile.Read(ref api.Opens); var initialReads = network.Reads;
         await Task.Delay(1300);
         Assert.Equal(initialOpens, Volatile.Read(ref api.Opens)); Assert.Equal(initialReads, network.Reads);
@@ -69,15 +71,19 @@ public sealed partial class ProcessBasicFieldCollectorTests
         Assert.Equal(JsonValueKind.Null, BasicWireValue(failedInventory.RootElement.GetProperty("value").GetProperty("breakdown"), Names[5]).GetProperty("integerValue").ValueKind);
         Volatile.Write(ref phase, 2); using var recovered = await BasicFrame(stream, timeout.Token, true, true);
         Assert.Equal(0, api.HandleCalls); Assert.All(api.PrivateRequests, Assert.False);
-        await timeout.CancelAsync(); response.Dispose(); await Task.Delay(300);
+        await timeout.CancelAsync(); response.Dispose();
+        await WaitForProcessDemandDrainedAsync(fixture, drainDeadline.Token);
         var opens = Volatile.Read(ref api.Opens); var reads = network.Reads;
         using var fresh = JsonDocument.Parse(await client.GetStringAsync(snapshotUrl));
         Assert.Equal("9007199254740993", BasicWireValue(fresh.RootElement, Names[1]).GetProperty("integerValue").GetString());
         Assert.True(Volatile.Read(ref api.Opens) > opens); Assert.True(network.Reads > reads);
+        await WaitForProcessDemandDrainedAsync(fixture, drainDeadline.Token);
         var beforeMonitor = Volatile.Read(ref api.Opens); var beforeMonitorNetwork = network.Reads;
         using var monitor = JsonDocument.Parse(await client.GetStringAsync("/api/resource-monitor/snapshot?scope=bars&ids=" + Names[5]));
         Assert.Equal("9007199254740993", BasicWireValue(monitor.RootElement.GetProperty("breakdown"), Names[5]).GetProperty("integerValue").GetString());
         Assert.True(Volatile.Read(ref api.Opens) > beforeMonitor); Assert.Equal(beforeMonitorNetwork, network.Reads);
+        // A returned fetch has released its holder, but an already-admitted round may still finish.
+        await WaitForProcessDemandDrainedAsync(fixture, drainDeadline.Token);
         var fetchedOpens = Volatile.Read(ref api.Opens); var fetchedReads = network.Reads;
         await Task.Delay(1300); Assert.Equal(fetchedOpens, Volatile.Read(ref api.Opens)); Assert.Equal(fetchedReads, network.Reads); await app.StopAsync();
     }

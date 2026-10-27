@@ -1,7 +1,8 @@
 namespace ResourceManager.Subscription;
 
 /// <summary>A one-shot consumer of an ordinary named subscription. Enumeration
-/// owns the demand; completing, cancellation and failures all dispose it.</summary>
+/// owns the demand; completing, cancellation and failures all dispose it.
+/// Releasing this holder is not a drain barrier for shared sampling already in flight.</summary>
 public static class SubscriptionSingleFetch
 {
     // A single fetch requests a prompt initial sample, then ends. One second is
