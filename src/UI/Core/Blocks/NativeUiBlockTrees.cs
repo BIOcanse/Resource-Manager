@@ -21,6 +21,7 @@ internal static class NativeUiBlockIds
 /// <summary>The native process's main and tray trees share facts, never control each other.</summary>
 internal sealed class NativeUiBlockTrees : IAsyncDisposable
 {
+    internal const string ProgramStartedFact = "native-ui:program-started";
     internal const string WindowWantedFact = "native-ui:window-wanted";
     internal const string BackendSessionReadyFact = "native-ui:backend-session-ready";
     private readonly BusinessBlockController control;
@@ -46,6 +47,9 @@ internal sealed class NativeUiBlockTrees : IAsyncDisposable
             Node(NativeUiBlockIds.TrayNotifications, NativeUiBlockIds.TrayRoot, NativeUiBlockIds.BackendConnection)
         ]);
         scheduler = new(graph, create, historyLimit, logger, control, [
+            // Whether a whole tree runs is decided here, never by the tree itself; program exit is the scheduler's shutdown fact.
+            new(BusinessBlockGraph.Program, [ProgramStartedFact], input => input.Facts[ProgramStartedFact].Value
+                ? [NativeUiBlockIds.MainRoot, NativeUiBlockIds.TrayRoot] : []),
             new(NativeUiBlockIds.MainRoot, [WindowWantedFact], input => input.Facts[WindowWantedFact].Value
                 ? [NativeUiBlockIds.SingleInstance, NativeUiBlockIds.BackendConnection, NativeUiBlockIds.MainWindow]
                 : [NativeUiBlockIds.SingleInstance, NativeUiBlockIds.BackendConnection]),
@@ -65,10 +69,7 @@ internal sealed class NativeUiBlockTrees : IAsyncDisposable
     {
         if (Interlocked.Exchange(ref started, 1) != 0) return;
         await SetWindowWantedAsync(windowWanted, "startup").ConfigureAwait(false);
-        var reason = Reason("program", "process-started");
-        await Task.WhenAll(
-            scheduler.SetDemandAsync("native-ui:main-lifetime", NativeUiBlockIds.MainRoot, reason),
-            scheduler.SetDemandAsync("native-ui:tray-lifetime", NativeUiBlockIds.TrayRoot, reason)).ConfigureAwait(false);
+        await scheduler.SetFactAsync(ProgramStartedFact, true, Reason("program", "process-started")).ConfigureAwait(false);
     }
 
     internal Task SetWindowWantedAsync(bool wanted, string owner)

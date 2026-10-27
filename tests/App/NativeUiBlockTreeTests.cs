@@ -32,6 +32,19 @@ public sealed class NativeUiBlockTreeTests
     }
 
     [Fact]
+    public async Task TheRootDecidesWhichTreesRunFromItsDeclaredRule()
+    {
+        var probes = new Probes();
+        await using var trees = Create(probes);
+        Assert.All(trees.Read().Blocks, block => Assert.Equal(BusinessBlockState.Stopped, block.State));
+        await trees.StartAsync(false);
+        await probes.Next(NativeUiBlockIds.TrayRoot);
+        var root = Assert.Single(trees.Read().CurrentDecisions, decision => decision.ParentId == BusinessBlockGraph.Program);
+        Assert.Equal(new[] { NativeUiBlockIds.MainRoot, NativeUiBlockIds.TrayRoot }, root.ShouldRun);
+        Assert.Empty(trees.Read().Demands);
+    }
+
+    [Fact]
     public async Task ClosingWaitsForBrowserCleanupThenReopeningCreatesANewWindowBranch()
     {
         var cleanup = Signal();
