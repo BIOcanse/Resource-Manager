@@ -21,8 +21,28 @@ using ResourceManager.Shared.Runtime.TrustedAccess;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class JsonMetadataContractTests
+public sealed partial class JsonMetadataContractTests
 {
+    [Fact]
+    public void SchedulingDebugPayloadSerializesPopulatedProcessAndDatasetFacts()
+    {
+        var options = new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions;
+        ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
+        var ticks = DateTimeOffset.UtcNow.UtcTicks;
+        var mask = SchedulingProcessMetricMask.CpuUsage;
+        var facts = new SchedulingProcessFactSnapshot(SamplingObservationStatus.Current, 1, ticks, 1, 1, 0, 0, mask, mask,
+            [new(42, 10, "cs2", @"D:\Games\Steam\cs2.exe", "catalog:game-counter-strike-2", "CS2", "game", "game", 95, mask, 17, 0, 1, [])])
+        {
+            DatasetObservations = new Dictionary<SchedulingProcessMetricMask, SchedulingProcessDatasetObservation>
+            { [mask] = SchedulingProcessDatasetObservation.CreateCurrent(mask, 1, ticks, 1, ticks) }
+        };
+        var type = typeof(ResourceManagerEndpointRouteBuilderExtensions).GetNestedType("DebugSchedulingPayload", BindingFlags.NonPublic)!;
+        var payload = Activator.CreateInstance(type, [null, facts, null])!;
+        var wire = JsonSerializer.SerializeToElement(payload, type, options);
+        Assert.Equal(42, wire.GetProperty("processFacts").GetProperty("processes")[0].GetProperty("processId").GetInt32());
+        Assert.Equal(17, wire.GetProperty("processFacts").GetProperty("processes")[0].GetProperty("cpuUsagePercent").GetDouble());
+    }
+
     [Fact]
     public void KernelLeakRunFailureFixturePinsRequiredStartOnHttpAndSubscriptionWire()
     {

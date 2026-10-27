@@ -12,6 +12,7 @@ using ResourceManager.App.Domain.SoftwareIdentity;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.SoftwareIdentity;
+using ResourceManager.App.Infrastructure.Software;
 
 namespace ResourceManager.App.Infrastructure.ProcessAttribution;
 
@@ -40,6 +41,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
     private readonly NativeRuntimeSourceCatalog controlledCatalog;
     private readonly NativeRuntimeSourceCatalog selfCatalog;
     private readonly NativeRuntimeSourceCatalog knownCatalog;
+    private readonly IReadOnlySet<string> steamClientRoots;
     private readonly IReadOnlyDictionary<string, RuntimeSoftwareAttribution> registeredSoftware;
     private readonly IReadOnlyList<DirectProcessBinding> adaptedBindings;
     private readonly IReadOnlyList<DirectProcessBinding> controlledBindings;
@@ -87,7 +89,14 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
         try
         {
             var catalogEntries = bundledCatalog.Entries.ToDictionary(entry => $"catalog:{entry.Id}", StringComparer.Ordinal);
-            var currentRecords = softwareRecords.Select(record =>
+            var clientRoots = softwareRecords.Where(record => WindowsInstalledSoftwareInventory.IsSteamClientId(record.Id))
+                .SelectMany(record => record.RootPaths)
+                .Select(ResourceManagerSelfDescriptor.NormalizePath).Where(root => root is not null).Select(root => root!)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            steamClientRoots = clientRoots.Select(CanonicalPath).Where(root => root is not null).Select(root => root!)
+                .ToHashSet(StringComparer.Ordinal);
+            var currentRecords = softwareRecords.Select(record => record with
+                { RootPaths = WindowsInstalledSoftwareInventory.SteamGameRoots(record.Id, record.RootPaths, clientRoots) }).Select(record =>
                 !record.HasExplicitKind && catalogEntries.TryGetValue(record.Id, out var entry)
                     ? record with { Name = entry.DisplayName, Kind = entry.Kind }
                     : record).ToArray();
@@ -214,7 +223,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                 NativeRuntimeAttributionSources.KnownSoftware,
                 CanonicalPath(process.ExecutablePath) is { } knownPath && IsWindowsOwnedPath(knownPath)
                     ? NativeSourceCatalogObservation.NoMatch
-                    : knownCatalog.ObserveKnown(process),
+                    : ObserveKnownSoftware(process),
                 [],
                 frame.FrameEpoch);
             var bundledEntry = AddBundledSource(observations, process, frame.FrameEpoch);
@@ -431,7 +440,9 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                     ?? throw new InvalidOperationException(
                         "Native bundled catalog matched without an entry payload.");
                 var root = CanonicalPath(process.ExecutablePath) is { } executablePath
-                    ? CanonicalPath(Path.GetDirectoryName(executablePath))
+                    ? CanonicalPath(entry.Kind == SoftwareKinds.Game
+                        ? WindowsInstalledSoftwareInventory.SteamGameRootForExecutable(executablePath) ?? Path.GetDirectoryName(executablePath)
+                        : Path.GetDirectoryName(executablePath))
                     : null;
                 AddMatched(
                     target,
@@ -451,6 +462,19 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                 throw new InvalidOperationException(
                     $"Unknown native catalog observation status {observation.Status}.");
         }
+    }
+
+    private NativeSourceCatalogObservation ObserveKnownSoftware(RuntimeProcessIdentity process)
+    {
+        var observation = knownCatalog.ObserveKnown(process);
+        if (observation.Conflict || CanonicalPath(process.ExecutablePath) is not { } path
+            || WindowsInstalledSoftwareInventory.SteamGameRootForExecutable(path) is not { } gameRoot)
+            return observation;
+        // Steam owns its client helpers. Its library's game folders need their
+        // own manifest/catalog evidence; the client's broad root cannot claim them.
+        return observation with { Candidates = observation.Candidates.Where(candidate =>
+            !WindowsInstalledSoftwareInventory.IsSteamClientId(candidate.Attribution.Id)
+                || !steamClientRoots.Any(root => IsUnder(gameRoot, root))).ToArray() };
     }
 
     private void AddCatalogSource(

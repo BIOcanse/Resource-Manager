@@ -90,22 +90,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             return Results.Ok(reader.GetDiagnostics());
         });
 
-        app.MapGet("/api/debug/scheduling-inputs", async (HttpResponse response,
-            IMetricSnapshotPushSource metrics, IResourceBreakdownPushSource resources,
-            ISchedulingProcessFactObservationSource processes, WindowsGpuPlacementInjector gpuInjector,
-            CancellationToken cancellationToken) =>
-        {
-            response.Headers.CacheControl = "no-store";
-            var hardware = await metrics.FetchOnceAsync("debug:scheduling-inputs:hardware", MetricSampleRequest.All, cancellationToken);
-            var mask = SchedulingProcessMetricMask.CpuUsage | SchedulingProcessMetricMask.GpuUsage
-                | SchedulingProcessMetricMask.GpuDedicatedMemory | SchedulingProcessMetricMask.RuntimeState;
-            var processSnapshot = await resources.FetchOnceAsync("debug:scheduling-inputs:processes", new([], new Dictionary<string, string>(),
-                ProcessSampleDetailLevel.SmartSchedulingLite, mask), cancellationToken);
-            var facts = hardware is null || processSnapshot is null ? null
-                : processes.ReadLatest(new SchedulingProcessFactRequest(mask, hardware.GpuInventory));
-            var failures = facts?.Processes.Select(process => new GpuPlacementFailurePayload(process.ProcessId, process.ProcessStartKey, gpuInjector.GetKnownProcessFailure(new GpuPlacementProcessInstance(process.ProcessId, process.ProcessStartKey, process.ProcessName, process.ExecutablePath ?? string.Empty)))).Where(process => process.failure is not null).ToArray();
-            return Results.Ok(new DebugSchedulingPayload(hardware?.GpuInventory, facts, failures));
-        });
+        app.MapSchedulingInputsDebugEndpoint();
 
         app.MapGet("/api/debug/freedom-points", (
             HttpResponse response,
@@ -149,6 +134,27 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             return Results.Ok(snapshot);
         });
 
+        return app;
+    }
+
+    internal static IEndpointRouteBuilder MapSchedulingInputsDebugEndpoint(this IEndpointRouteBuilder app)
+    {
+        app.MapGet("/api/debug/scheduling-inputs", async (HttpResponse response,
+            IMetricSnapshotPushSource metrics, IResourceBreakdownPushSource resources,
+            ISchedulingProcessFactObservationSource processes, WindowsGpuPlacementInjector gpuInjector,
+            CancellationToken cancellationToken) =>
+        {
+            response.Headers.CacheControl = "no-store";
+            var hardware = await metrics.FetchOnceAsync("debug:scheduling-inputs:hardware", MetricSampleRequest.All, cancellationToken);
+            var mask = SchedulingProcessMetricMask.CpuUsage | SchedulingProcessMetricMask.GpuUsage
+                | SchedulingProcessMetricMask.GpuDedicatedMemory | SchedulingProcessMetricMask.RuntimeState;
+            var processSnapshot = await resources.FetchOnceAsync("debug:scheduling-inputs:processes", new([], new Dictionary<string, string>(),
+                ProcessSampleDetailLevel.SmartSchedulingLite, mask), cancellationToken);
+            var facts = hardware is null || processSnapshot is null ? null
+                : processes.ReadLatest(new SchedulingProcessFactRequest(mask, hardware.GpuInventory));
+            var failures = facts?.Processes.Select(process => new GpuPlacementFailurePayload(process.ProcessId, process.ProcessStartKey, gpuInjector.GetKnownProcessFailure(new GpuPlacementProcessInstance(process.ProcessId, process.ProcessStartKey, process.ProcessName, process.ExecutablePath ?? string.Empty)))).Where(process => process.failure is not null).ToArray();
+            return Results.Ok(new DebugSchedulingPayload(hardware?.GpuInventory, facts, failures));
+        });
         return app;
     }
 }

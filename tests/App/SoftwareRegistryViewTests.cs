@@ -20,6 +20,25 @@ namespace Resource_Manager_APP.Tests;
 public sealed class SoftwareRegistryViewTests
 {
     [Fact]
+    public async Task SteamManifestInventoryUsesAppIdForCatalogClassWithoutUninstallRegistration()
+    {
+        const string root = @"F:\SteamLibrary\steamapps\common\Counter-Strike Global Offensive";
+        var catalog = SoftwareIdentityCatalogTestData.Create(new SoftwareIdentityCatalogEntry(
+            "game-counter-strike-2", "Counter-Strike 2", SoftwareKinds.Game, "test", SteamAppIds: [730]));
+        var view = new SoftwareRegistryView(new StaticAdapterSoftwareRegistry([]), new InMemoryControlledSoftwareRegistry(),
+            new EmptyDependencyManager(), new EmptyManualSoftwareRegistry(),
+            new StaticSoftwarePolicyProfileProvider(new SoftwarePolicyProfile(new Dictionary<string, SoftwarePolicyGroup>(), new Dictionary<string, SoftwarePolicyAssignment>())),
+            new StaticInstalledSoftwareInventory([new("steam-app-730", "Localized manifest label", null, null, root, [root], null,
+                @"F:\SteamLibrary\steamapps\appmanifest_730.acf")]), catalog, new StaticPortableSoftwareRegistry([]));
+        var software = Assert.Single(await view.GetSoftwareAsync(default), item => item.Id == "steam-app-730");
+        Assert.Equal(SoftwareKinds.Game, software.Kind);
+        Assert.Equal("game-counter-strike-2", software.SoftwareIdentityId);
+        Assert.Equal([root], software.RootPaths);
+        Assert.Contains(software.SourceFacts, fact => fact.Kind == "steam_library");
+        Assert.False(software.Operations.CanUninstall);
+    }
+
+    [Fact]
     public void SoftwareContractsContainFactsWithoutPresentationFields()
     {
         var fields = typeof(SoftwareRecord).GetProperties().Select(property => property.Name).ToHashSet();

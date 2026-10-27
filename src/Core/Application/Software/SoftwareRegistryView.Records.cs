@@ -30,7 +30,8 @@ public sealed partial class SoftwareRegistryView
         var hasUninstallEntry = !string.IsNullOrWhiteSpace(entry.UninstallString);
         return new SoftwareRecord(
             entry.Id, entry.Name, SoftwareKinds.Other, "installed",
-            [new(SoftwareSourceKinds.WindowsRegistry)], entry.RootPaths,
+            [new(entry.Id.StartsWith("steam-app-", StringComparison.Ordinal)
+                ? SoftwareSourceKinds.SteamLibrary : SoftwareSourceKinds.WindowsRegistry)], entry.RootPaths,
             hasUninstallEntry
                 ? new SoftwareOperationCapabilities(true, "WindowsUninstaller", SoftwareUninstallConstraints.None)
                 : NoUninstall(SoftwareUninstallConstraints.MissingUninstallEntry),

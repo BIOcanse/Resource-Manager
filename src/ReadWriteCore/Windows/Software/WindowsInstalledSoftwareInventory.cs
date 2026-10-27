@@ -242,7 +242,7 @@ public sealed partial class WindowsInstalledSoftwareInventory : IInstalledSoftwa
             ReadUninstallRoot(root, records, cancellationToken);
         }
 
-        return NormalizeSharedInstallRoots(records.Values)
+        return NormalizeSharedInstallRoots(ReadSteamLibraries(records.Values.ToArray(), cancellationToken))
             .OrderBy(static item => item.Name, StringComparer.OrdinalIgnoreCase)
             .ThenBy(static item => item.Publisher, StringComparer.OrdinalIgnoreCase)
             .ToArray();

@@ -1028,7 +1028,6 @@ public sealed partial class WindowsResourceBreakdownSampler(
                 processAttribution,
                 generation,
                 snapshot.CapturedAt.UtcTicks,
-                preserveUnattributedMetricRows: true,
                 allocationReading: allocationReading);
         }
         return new ResourceBreakdownCapture(snapshot, schedulingSnapshot)

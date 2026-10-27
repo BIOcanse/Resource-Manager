@@ -95,6 +95,7 @@ public static class SoftwareSourceKinds
 {
     public const string Dependency = "dependency";
     public const string WindowsRegistry = "windows_registry";
+    public const string SteamLibrary = "steam_library";
     public const string Self = "self";
     public const string Adapter = "adapter";
     public const string Controlled = "controlled";

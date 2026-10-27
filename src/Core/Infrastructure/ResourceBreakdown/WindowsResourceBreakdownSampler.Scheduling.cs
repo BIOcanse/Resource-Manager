@@ -112,7 +112,6 @@ public sealed partial class WindowsResourceBreakdownSampler
         ProcessAttributionSnapshot? attribution,
         ulong generation,
         long observedAtUtcTicks,
-        bool preserveUnattributedMetricRows = false,
         ResourceManager.App.Infrastructure.Telemetry.Etw.GpuAllocationReading? allocationReading = null)
     {
         var requestedGpuMask = request.RequestedMetricMask
@@ -167,24 +166,9 @@ public sealed partial class WindowsResourceBreakdownSampler
             var software = attribution?.AttributionByProcessId.GetValueOrDefault(
                     sample.ProcessId)
                 ?? RuntimeSoftwareAttribution.Unattributed;
-            var attributed = !string.IsNullOrWhiteSpace(software.Id)
-                && !software.Id.Equals(
-                    RuntimeAttributionIds.Unattributed,
-                    StringComparison.OrdinalIgnoreCase);
-            var identityFact = inventoryFact;
-            if (attributed)
-            {
-                var processKey = OptimizationBaseScorePolicyResolver.CreateProcessKey(
-                    sample.Name,
-                    sample.ExecutablePath);
-                identityFact = ProjectSchedulingAttribution(inventoryFact, software, baseScorePlan, processKey);
-                attributionFacts.Add(identityFact);
-            }
-            else if (!preserveUnattributedMetricRows)
-            {
-                skippedCount++;
-                continue;
-            }
+            var processKey = OptimizationBaseScorePolicyResolver.CreateProcessKey(sample.Name, sample.ExecutablePath);
+            var identityFact = ProjectSchedulingAttribution(inventoryFact, software, baseScorePlan, processKey);
+            attributionFacts.Add(identityFact);
 
             var validMask = SchedulingProcessMetricMask.None;
             var cpuUsagePercent = 0d;
