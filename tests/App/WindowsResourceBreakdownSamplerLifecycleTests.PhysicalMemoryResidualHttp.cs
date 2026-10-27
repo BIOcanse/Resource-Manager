@@ -64,17 +64,25 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         foreach (var method in new[] { "MapResourceMonitorEndpoints", "MapSubscriptionChannelEndpoints" })
             typeof(ResourceManagerEndpointRouteBuilderExtensions).GetMethod(method, BindingFlags.Static | BindingFlags.NonPublic)!
                 .Invoke(null, [app]);
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(40));
+        // Two single fetches plus the stream each respect the independent ten-second PFN cadence.
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         await app.StartAsync(deadline.Token);
         try
         {
             using var client = TrustedAccessEndpointTestAuthentication.Client(app);
             var selector = $"scope=details&{selection}&residualDetails=memory.usage";
-            using var empty = JsonDocument.Parse(await client.GetStringAsync("/api/resource-monitor/snapshot?" + selector, deadline.Token));
-            Assert.False(empty.RootElement.TryGetProperty("physicalMemoryResidual", out _));
-            Assert.Empty(empty.RootElement.GetProperty("metrics").EnumerateArray());
-            Assert.Equal(0, Volatile.Read(ref walks));
-            Assert.Equal(0, Volatile.Read(ref counterCaptures));
+            var firstStarted = DateTimeOffset.UtcNow;
+            using var first = JsonDocument.Parse(await client.GetStringAsync("/api/resource-monitor/snapshot?" + selector, deadline.Token));
+            AssertCounterDetails(first.RootElement, metric);
+            var firstPhysical = first.RootElement.GetProperty("physicalMemoryResidual");
+            AssertPfnDetails(firstPhysical);
+            var firstPfnAt = firstPhysical.GetProperty("capturedAt").GetDateTimeOffset();
+            Assert.True(firstPfnAt >= firstStarted);
+            var firstWalks = Volatile.Read(ref walks);
+            var firstCounters = Volatile.Read(ref counterCaptures);
+            Assert.True(firstWalks > 0);
+            Assert.True(firstCounters > 0);
+            Assert.Equal(0U, ReadResourceSubscriptionCounts(fixture.Slots.Owner).ActiveSourceCount);
 
             using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
             {
@@ -94,31 +102,49 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
                 if (!value.TryGetProperty("physicalMemoryResidual", out var physical)
                     || value.GetProperty("metrics").GetArrayLength() == 0) continue;
                 AssertCounterDetails(value, metric);
-                Assert.Equal("pfn", physical.GetProperty("source").GetString());
-                Assert.Contains(physical.GetProperty("status").GetString(), new[] { "ready", "unavailable" });
-                if (physical.GetProperty("status").GetString() == "unavailable")
-                {
-                    Assert.False(string.IsNullOrEmpty(physical.GetProperty("reasonCode").GetString()));
-                    Assert.Empty(physical.GetProperty("parts").EnumerateArray());
-                }
+                AssertPfnDetails(physical);
                 pfnAt = physical.GetProperty("capturedAt").GetDateTimeOffset();
                 break;
             }
-            Assert.True(Volatile.Read(ref counterCaptures) > 0);
+            Assert.True(pfnAt >= firstPfnAt);
+            Assert.True(Volatile.Read(ref counterCaptures) > firstCounters);
             var publishedWalks = Volatile.Read(ref walks);
-            Assert.True(publishedWalks > 0);
-            // Reads reuse the independent PFN publication; they do not stamp it
-            // with a counter capture's time or perform another walk.
-            using var cached = JsonDocument.Parse(await client.GetStringAsync("/api/resource-monitor/snapshot?" + selector, deadline.Token));
-            AssertCounterDetails(cached.RootElement, metric);
-            Assert.Equal(pfnAt, cached.RootElement.GetProperty("physicalMemoryResidual").GetProperty("capturedAt").GetDateTimeOffset());
+            Assert.True(publishedWalks >= firstWalks);
+            // Explicit cache inspection reuses the independent PFN publication without walking.
+            var cached = sampler.ReadLatest(ResourceBreakdownSampleRequest.ForResourceTable(
+                [metric, PhysicalMemoryResidualFrame.MetricId], new Dictionary<string, string>()));
+            Assert.Equal(pfnAt, cached.PhysicalMemoryResidual!.CapturedAt);
+            Assert.Equal(publishedWalks, Volatile.Read(ref walks));
+
+            // HTTP snapshots now own a single fetch and must wait for a genuinely newer PFN sample.
+            var nextStarted = DateTimeOffset.UtcNow;
+            var streamedCounters = Volatile.Read(ref counterCaptures);
+            using var next = JsonDocument.Parse(await client.GetStringAsync("/api/resource-monitor/snapshot?" + selector, deadline.Token));
+            AssertCounterDetails(next.RootElement, metric);
+            var nextPhysical = next.RootElement.GetProperty("physicalMemoryResidual");
+            AssertPfnDetails(nextPhysical);
+            var nextPfnAt = nextPhysical.GetProperty("capturedAt").GetDateTimeOffset();
+            Assert.True(nextPfnAt >= nextStarted);
+            Assert.True(nextPfnAt > pfnAt);
+            Assert.True(Volatile.Read(ref walks) > publishedWalks);
+            Assert.True(Volatile.Read(ref counterCaptures) > streamedCounters);
+            var refreshedWalks = Volatile.Read(ref walks);
             using var unrelated = JsonDocument.Parse(await client.GetStringAsync(
                 "/api/resource-monitor/snapshot?scope=details&ids=cpu.usage&residualDetails=memory.usage", deadline.Token));
             Assert.False(unrelated.RootElement.TryGetProperty("physicalMemoryResidual", out _));
             Assert.DoesNotContain("system-memory/", unrelated.RootElement.GetRawText());
-            Assert.Equal(publishedWalks, Volatile.Read(ref walks));
+            Assert.Equal(refreshedWalks, Volatile.Read(ref walks));
         }
         finally { await app.StopAsync(CancellationToken.None); }
+    }
+
+    private static void AssertPfnDetails(JsonElement physical)
+    {
+        Assert.Equal("pfn", physical.GetProperty("source").GetString());
+        Assert.Contains(physical.GetProperty("status").GetString(), new[] { "ready", "unavailable" });
+        if (physical.GetProperty("status").GetString() != "unavailable") return;
+        Assert.False(string.IsNullOrEmpty(physical.GetProperty("reasonCode").GetString()));
+        Assert.Empty(physical.GetProperty("parts").EnumerateArray());
     }
 
     private static void AssertCounterDetails(JsonElement value, string metric)

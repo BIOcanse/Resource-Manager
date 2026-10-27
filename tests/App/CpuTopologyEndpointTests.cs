@@ -19,26 +19,37 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class CpuTopologyEndpointTests
 {
-    [Fact]
-    public async Task OrdinaryHttpReadsReturnExplicitUnavailableWithoutCapturing()
+    [Theory]
+    [InlineData("/api/cpu/topology")]
+    [InlineData("/api/cpu/topology/exclusive-bindings")]
+    [InlineData("/api/cpu/topology/fields")]
+    public async Task OrdinaryHttpReadsOwnDemandAndReturnExplicitUnavailableAfterAFailedCapture(string path)
     {
         await using var fixture = new CpuTopologyProviderTestFixture();
         await using var app = await StartEndpointsAsync(fixture.Reader);
         using var client = CreateClient(app);
-        foreach (var path in new[] { "/api/cpu/topology", "/api/cpu/topology/exclusive-bindings" })
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var pending = client.GetAsync(path, timeout.Token);
+        while (fixture.ReadDemand().SourceCount != 1) await Task.Delay(10, timeout.Token);
+        Assert.False(pending.IsCompleted);
+        await fixture.Reader.StartAsync(CancellationToken.None);
+        Assert.Equal(1, await fixture.Sampler.WaitForCaptureAsync());
+        fixture.Sampler.Complete(new InvalidOperationException("Recorded capture failure."));
+        using var response = await pending;
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        if (path != "/api/cpu/topology/fields")
         {
-            using var response = await client.GetAsync(path);
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             using var unavailable = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
             Assert.Equal("unavailable", unavailable.RootElement.GetProperty("state").GetString());
             Assert.Equal("cpu-topology-not-published", unavailable.RootElement.GetProperty("reasonCode").GetString());
         }
-        using var fieldsResponse = await client.GetAsync("/api/cpu/topology/fields");
-        Assert.Equal(HttpStatusCode.OK, fieldsResponse.StatusCode);
-        using var fields = JsonDocument.Parse(await fieldsResponse.Content.ReadAsStringAsync());
-        Assert.Equal(JsonValueKind.Null, fields.RootElement.GetProperty("observedAt").ValueKind);
-        Assert.Empty(fields.RootElement.GetProperty("devices").EnumerateArray());
-        Assert.Equal(0, fixture.Sampler.CaptureCount);
+        else
+        {
+            using var fields = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.Equal(JsonValueKind.Null, fields.RootElement.GetProperty("observedAt").ValueKind);
+            Assert.Empty(fields.RootElement.GetProperty("devices").EnumerateArray());
+        }
+        Assert.Equal(1, fixture.Sampler.CaptureCount);
         Assert.Equal(0u, fixture.ReadDemand().SourceCount);
         await app.StopAsync();
     }
@@ -164,11 +175,19 @@ public sealed class CpuTopologyEndpointTests
         var node = Assert.Single(information.GetProperty("devices").EnumerateArray(),
             device => device.GetProperty("deviceIdentity").GetString() == "windows-numa-node|7");
         Assert.Equal(2, node.GetProperty("fields").GetArrayLength());
-        using var getResponse = await client.GetAsync("/api/cpu/topology/fields", timeout.Token);
-        Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
-        using var cached = JsonDocument.Parse(await getResponse.Content.ReadAsStringAsync(timeout.Token));
-        Assert.Equal(information.GetRawText(), cached.RootElement.GetRawText());
+        var getResponseTask = client.GetAsync("/api/cpu/topology/fields", timeout.Token);
+        while (fixture.ReadDemand().SourceCount != 3) await Task.Delay(10, timeout.Token);
+        Assert.False(getResponseTask.IsCompleted);
         Assert.Equal(3, await fixture.Sampler.WaitForCaptureAsync());
+        var freshSnapshot = snapshot with { CapturedAt = DateTimeOffset.UtcNow };
+        fixture.Sampler.Complete(freshSnapshot);
+        using var getResponse = await getResponseTask;
+        Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
+        using var freshFields = JsonDocument.Parse(await getResponse.Content.ReadAsStringAsync(timeout.Token));
+        Assert.Equal(freshSnapshot.CapturedAt, freshFields.RootElement.GetProperty("observedAt").GetDateTimeOffset());
+        Assert.Equal(information.GetProperty("devices").GetRawText(), freshFields.RootElement.GetProperty("devices").GetRawText());
+        _ = await ReadPairAsync(stream, timeout.Token);
+        Assert.Equal(4, await fixture.Sampler.WaitForCaptureAsync());
         fixture.Sampler.Complete(new InvalidOperationException("Native capture failed after publishing XState."));
         var failedFrames = await ReadPairAsync(stream, timeout.Token);
         Assert.Equal(JsonValueKind.Null, Assert.Single(failedFrames, frame =>

@@ -79,18 +79,28 @@ public sealed partial class ConditionSubscriptionTests
     }
 
     [Fact]
-    public async Task ProcessContractExampleResolvesPublishedIdentityThenUsesTheOriginalProcessHook()
+    public async Task ProcessContractExampleWaitsForFreshIdentityThenUsesTheOriginalProcessHook()
     {
         var foundation = Foundations();
         var rows = foundation.InventoryProcesses.Where(row => row.ProcessId == 22).Select(row => row with { ProcessId = 1234 }).ToArray();
-        var resources = new ResourceSource { Foundations = foundation with { InventoryProcesses = rows, AttributionProcesses = rows } };
+        var resources = new ResourceSource { Foundations = Foundations(reused: true) };
         await using var host = await Host.StartAsync(new MetricSource(), resources);
         await using var channel = await host.OpenAsync([new { id = "process", condition = "process 1234 private > 4GiB for 30s every 2s" }]);
-        var expanded = (await channel.ReadAsync()).GetProperty("hook");
+        var expansion = channel.ReadAsync();
+        await resources.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("monitoring-condition:process:process-identity", resources.Owner);
+        Assert.Equal(0, resources.FoundationReads);
+        Assert.False(expansion.IsCompleted);
+        await resources.PublishAsync(IdentityPublication(Epoch));
+        Assert.False(expansion.IsCompleted);
+        Assert.Equal(0, resources.FoundationReads);
+        resources.Foundations = foundation with { InventoryProcesses = rows, AttributionProcesses = rows };
+        await resources.PublishAsync(IdentityPublication(DateTimeOffset.UtcNow));
+        var expanded = (await expansion.WaitAsync(TimeSpan.FromSeconds(5))).GetProperty("hook");
         Assert.Equal("202", expanded.GetProperty("rule").GetProperty("startKey").GetString());
         Assert.Equal(2000, expanded.GetProperty("intervalMs").GetInt32());
         Assert.Equal(Math.BitIncrement(4294967296d), expanded.GetProperty("rule").GetProperty("threshold").GetDouble());
-        await resources.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await UntilAsync(() => resources.Active == 1 && resources.Acquired == 2);
         const string field = "process_all_private_commit_actual";
         var current = new ResourceBreakdownSnapshot(Epoch, [])
         { ProcessFields = new(Epoch, null, [ProcessMetricFieldRegistry.Find(field)!],
@@ -98,7 +108,26 @@ public sealed partial class ConditionSubscriptionTests
             { Sources = [new("windows.process.query", Epoch, null)] } };
         await resources.PublishAsync(current); host.Clock.Advance(30); await resources.PublishAsync(current);
         Assert.Equal("met", (await channel.ReadAsync()).GetProperty("state").GetString());
-        Assert.Equal(1, resources.Acquired);
+        Assert.Equal(2, resources.Acquired);
+
+        static ResourceBreakdownSnapshot IdentityPublication(DateTimeOffset at) => new(at, [])
+        { Datasets = [new(SamplingDatasetIds.ProcessInventory, "ready", 1, 1, at, at, at, null, null, null)] };
+    }
+
+    [Fact]
+    public async Task DisconnectingDuringIdentityLookupReleasesItsSingleFetch()
+    {
+        var resources = new ResourceSource { Foundations = Foundations() };
+        await using var host = await Host.StartAsync(new MetricSource(), resources);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var pending = host.Client.GetAsync("/api/hooks/wait?condition="
+            + Uri.EscapeDataString("process 22 private > 1GiB for 1s"), cancellation.Token);
+        await resources.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(0, resources.FoundationReads);
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+        await UntilAsync(() => resources.Active == 0);
+        Assert.Equal(0, resources.FoundationReads);
     }
 
     [Fact]

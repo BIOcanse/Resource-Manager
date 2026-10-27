@@ -10,6 +10,44 @@ public sealed class ControlActualStateReaderTests
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(5);
 
     [Fact]
+    public async Task SingleFetchWaitsForNewWriterResultAndWithdrawsDemandAfterDeliveryOrCancellation()
+    {
+        var clock = new ControlledClock();
+        var writer = new CountingWriter();
+        using var reader = new ControlActualStateReader(new Catalog(), [writer], clock);
+        await reader.StartAsync(default);
+        try
+        {
+            var first = reader.FetchOnceAsync("control-test:first", default);
+            var startup = await clock.NextTimerAsync();
+            Assert.False(first.IsCompleted);
+            startup.Fire();
+            var periodic = await clock.NextTimerAsync();
+            Assert.NotNull(await first.WaitAsync(Deadline));
+            await WaitUntilAsync(() => periodic.Disposed);
+            Assert.Equal(1, writer.Reads);
+
+            writer.Read = _ => Task.FromResult<ControlActualValue?>(new("device", "power", 77));
+            var second = reader.FetchOnceAsync("control-test:second", default);
+            var resumed = await clock.NextTimerAsync();
+            Assert.False(second.IsCompleted); // The retained result must not satisfy a new demand.
+            resumed.Fire();
+            var resumedPeriodic = await clock.NextTimerAsync();
+            Assert.Equal(77, Assert.Single((await second.WaitAsync(Deadline))!.Values).Number);
+            await WaitUntilAsync(() => resumedPeriodic.Disposed);
+
+            using var cancellation = new CancellationTokenSource();
+            var cancelled = reader.FetchOnceAsync("control-test:cancel", cancellation.Token);
+            var cancelledStartup = await clock.NextTimerAsync();
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelled);
+            await WaitUntilAsync(() => cancelledStartup.Disposed);
+            Assert.Equal(2, writer.Reads);
+        }
+        finally { await reader.StopAsync(default); }
+    }
+
+    [Fact]
     public async Task PreviousRunLeaseCannotCancelFreshDemandAfterRestart()
     {
         var clock = new ControlledClock();

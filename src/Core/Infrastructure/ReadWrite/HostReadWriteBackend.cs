@@ -31,6 +31,8 @@ public sealed class HostReadWriteBackend : IReadWriteBackend
             snapshot =>
             {
                 catalogState.PublishCatalogProbe(snapshot);
+                // Cached by design: this callback projects the capture already
+                // owned by the original sampler; another fetch would reenter it.
                 discoveredControls = controlCatalog.ReadObjects();
             },
             (snapshot, binding) =>
@@ -85,7 +87,10 @@ public sealed class HostReadWriteBackend : IReadWriteBackend
             // callback inside the original sampler's same SampleGate.
             return await controlSampler.ExecuteBoundControlWriteAsync(field, binding, value, async cancellationToken =>
             {
-                var controlTarget = FindManagedTarget(binding, contract, controlCatalog.ReadObjects());
+                // Fresh physical capture is already held under SampleGate.
+                // Reuse its catalog for both identity and permission checks.
+                var controls = controlCatalog.ReadObjects();
+                var controlTarget = FindManagedTarget(binding, contract, controls);
                 if (controlTarget is null)
                     return new(field, ControlApplyStatuses.Unsupported, "field-write-device-unavailable");
                 double? number = value.Number;
@@ -95,18 +100,21 @@ public sealed class HostReadWriteBackend : IReadWriteBackend
                         return new(field, ControlApplyStatuses.Failed, "field-write-invalid-integer");
                     number = integer.ToSigned64();
                 }
-                var report = await writeLayer.WriteAsync(new([new(controlTarget.Id,
-                    [new(contract.RawCapability, Number: number, Toggle: value.Boolean, Unit: contract.RawUnit)])]), cancellationToken);
+                var report = await writeLayer.WriteWithCatalogAsync(new([new(controlTarget.Id,
+                    [new(contract.RawCapability, Number: number, Toggle: value.Boolean, Unit: contract.RawUnit)])]), controls, cancellationToken);
                 var outcome = report.Outcomes.Single();
                 return new(field, outcome.Status, outcome.Reason?.Code) { Evidence = outcome.Evidence };
             }, token);
         }
-        var target = FindPowerLimitTarget(binding, controlCatalog.ReadObjects());
+        // This binding uses the original discovered/captured control projection.
+        // Keep it explicit rather than introducing a nested sampling demand.
+        var powerControls = controlCatalog.ReadObjects();
+        var target = FindPowerLimitTarget(binding, powerControls);
         if (target is null) return new(field, ControlApplyStatuses.Unsupported, "field-write-device-unavailable");
         // The existing layer owns instance checks, permission, driver selection,
         // range/unit validation and confirmed write results. No desired state is saved.
-        var report = await writeLayer.WriteAsync(new([new(target.Id,
-            [new("gpu.power-limit", Number: value.Number, Unit: binding.Field.Unit)])]), token);
+        var report = await writeLayer.WriteWithCatalogAsync(new([new(target.Id,
+            [new("gpu.power-limit", Number: value.Number, Unit: binding.Field.Unit)])]), powerControls, token);
         var result = report.Outcomes.Single();
         return new(field, result.Status, result.Reason?.Code);
     }

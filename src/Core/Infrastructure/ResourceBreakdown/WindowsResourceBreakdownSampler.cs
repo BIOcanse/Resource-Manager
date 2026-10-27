@@ -191,16 +191,17 @@ public sealed partial class WindowsResourceBreakdownSampler(
             cancellationToken);
     }
 
-    public Task<ResourceBreakdownSnapshot> GetSnapshotAsync(
+    public async Task<ResourceBreakdownSnapshot> GetSnapshotAsync(
         ResourceBreakdownSampleRequest request,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
         var subscriptionRequest = SelectSubscribable(request);
-        return Task.FromResult(snapshotState.ReadOrCreate(
-            DateTimeOffset.UtcNow,
-            subscriptionRequest));
+        return await ((IResourceBreakdownPushSource)this).FetchOnceAsync(
+            "single-fetch:resources", subscriptionRequest, cancellationToken).ConfigureAwait(false)
+            ?? new ResourceBreakdownSnapshot(DateTimeOffset.UtcNow, [])
+            { Sampling = new(ResourceBreakdownSamplingStatuses.Warming, 0, null, null, null, null) };
     }
 
     public async Task<ResourceBreakdownSnapshot> CaptureSnapshotAsync(

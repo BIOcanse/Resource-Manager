@@ -43,6 +43,18 @@ public sealed class ControlWriteLayer(
     {
         ArgumentNullException.ThrowIfNull(desired);
         cancellationToken.ThrowIfCancellationRequested();
+        var objects = capabilities is not null && !capabilities.Allows(StartupCapability.RuntimeEffectOwners)
+            ? new ControlObjectCatalog([], DateTimeOffset.UtcNow)
+            : await catalog.ReadObjectsAsync(cancellationToken).ConfigureAwait(false);
+        return await WriteWithCatalogAsync(desired, objects, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<ControlApplyReport> WriteWithCatalogAsync(ControlDesiredState desired,
+        ControlObjectCatalog objectCatalog, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(desired);
+        ArgumentNullException.ThrowIfNull(objectCatalog);
+        cancellationToken.ThrowIfCancellationRequested();
 
         var rejection = capabilities is not null && !capabilities.Allows(StartupCapability.RuntimeEffectOwners)
             ? "startup-profile-read-only"
@@ -51,7 +63,7 @@ public sealed class ControlWriteLayer(
             return new(desired.Objects.SelectMany(target => target.Settings.Select(setting =>
                 new ControlApplyOutcome(target.ObjectId, setting.CapabilityId, ControlApplyStatuses.Unsupported, rejection) { Reason = new(rejection) })).ToArray(), DateTimeOffset.UtcNow);
 
-        var objects = catalog.ReadObjects().Objects
+        var objects = objectCatalog.Objects
             .ToDictionary(static entry => entry.Id, StringComparer.Ordinal);
         var outcomes = new List<ControlApplyOutcome>();
 
@@ -109,7 +121,8 @@ public sealed class ControlWriteLayer(
         if (capabilities is not null && !capabilities.Allows(StartupCapability.RuntimeEffectOwners))
             return new(removed.Objects.SelectMany(target => target.Settings.Select(setting =>
                 new ControlApplyOutcome(target.ObjectId, setting.CapabilityId, ControlApplyStatuses.Unsupported, "startup-profile-read-only") { Reason = new("startup-profile-read-only") })).ToArray(), DateTimeOffset.UtcNow);
-        var objects = catalog.ReadObjects().Objects.ToDictionary(entry => entry.Id, StringComparer.Ordinal);
+        var objects = (await catalog.ReadObjectsAsync(cancellationToken).ConfigureAwait(false)).Objects
+            .ToDictionary(entry => entry.Id, StringComparer.Ordinal);
         var outcomes = new List<ControlApplyOutcome>();
         foreach (var removedObject in removed.Objects)
         {

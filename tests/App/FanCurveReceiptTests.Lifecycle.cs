@@ -217,8 +217,8 @@ public sealed partial class FanCurveReceiptTests
     {
         internal int Captures { get; private set; }
         public Task<HardwareMetricSnapshot> GetSnapshotAsync(CancellationToken token) => throw new NotSupportedException();
-        public Task<HardwareMetricSnapshot> GetSnapshotAsync(MetricSampleRequest request, CancellationToken token) => throw new NotSupportedException();
-        public Task<HardwareMetricSnapshot> CaptureSnapshotAsync(MetricSampleRequest request, CancellationToken token)
+        public Task<HardwareMetricSnapshot> CaptureSnapshotAsync(MetricSampleRequest request, CancellationToken token) => throw new NotSupportedException("Fan apply must use subscription single fetch.");
+        public Task<HardwareMetricSnapshot> GetSnapshotAsync(MetricSampleRequest request, CancellationToken token)
         {
             Captures++;
             Assert.Equal(["cpu.temperature"], request.Ids);

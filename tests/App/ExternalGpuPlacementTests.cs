@@ -231,10 +231,10 @@ public sealed class ExternalGpuPlacementTests
         var process = new SchedulingProcessFact(123, 456, "chrome", @"C:\chrome.exe", "chrome", "Chrome", "other", "other",
             35, SchedulingProcessMetricMask.GpuUsage, 0, 0, 1, [gpu]);
         var source = new ResidentSource(process);
-        var sample = new ExternalGpuResidentObservation(source, source).Read(new(123, 456, "chrome", @"C:\chrome.exe"));
+        var sample = new ExternalGpuResidentObservation(source, source, null!, null!).Read(new(123, 456, "chrome", @"C:\chrome.exe"));
         Assert.Equal(48 * 1024 * 1024, Assert.Single(sample!.Adapters).ResidentBytes);
         Assert.Equal(100, sample.ObservedAtUtcTicks);
-        Assert.Empty(new ExternalGpuResidentObservation(source, source).Read(new(123, 457, "chrome", @"C:\chrome.exe"))!.Adapters);
+        Assert.Empty(new ExternalGpuResidentObservation(source, source, null!, null!).Read(new(123, 457, "chrome", @"C:\chrome.exe"))!.Adapters);
     }
 
     private sealed class ResidentSource(SchedulingProcessFact process, long usageAt = 100) : IMetricSnapshotObservationSource, ISchedulingProcessFactObservationSource
@@ -316,7 +316,7 @@ public sealed class ExternalGpuPlacementTests
         var process = new SchedulingProcessFact(123, 456, "chrome", @"C:\chrome.exe", "chrome", "Chrome", "other", "other",
             35, SchedulingProcessMetricMask.GpuUsage, 0, 0, 1, [target, sourceEngine]);
         var source = new ResidentSource(process);
-        var sample = new ExternalGpuResidentObservation(source, source).Read(new(123, 456, "chrome", @"C:\chrome.exe"));
+        var sample = new ExternalGpuResidentObservation(source, source, null!, null!).Read(new(123, 456, "chrome", @"C:\chrome.exe"));
         Assert.NotNull(sample);
         Assert.Equal(2, sample.Adapters.Count);
         Assert.Contains(sample.Adapters, row => row.AdapterKey == 99 && row.ResidentBytes == 0 && row.UsagePercent == 7);
@@ -330,7 +330,7 @@ public sealed class ExternalGpuPlacementTests
         var process = new SchedulingProcessFact(123, 456, "chrome", @"C:\chrome.exe", "chrome", "Chrome", "other", "other",
             35, SchedulingProcessMetricMask.GpuUsage, 0, 0, 1, [gpu]);
         var source = new ResidentSource(process, usageAt: 50);
-        var sample = new ExternalGpuResidentObservation(source, source).Read(new(123, 456, "chrome", @"C:\chrome.exe"));
+        var sample = new ExternalGpuResidentObservation(source, source, null!, null!).Read(new(123, 456, "chrome", @"C:\chrome.exe"));
         Assert.NotNull(sample);
         Assert.Equal(50, sample.ObservedAtUtcTicks);
         Assert.Equal(50, sample.LastAttemptAtUtcTicks);
@@ -525,9 +525,9 @@ public sealed class ExternalGpuPlacementTests
             RuntimeHotSwitchEnabled = true,
             AllowedProviders = [GpuPlacementProviderIds.D3dDeviceCreateShim]
         };
-        var sources = new NoSampling();
+        var sources = new UnavailableInventory();
         using var receipts = new ResourceManager.App.Infrastructure.Optimization.JsonHostManagerRollbackStateStore(Path.Combine(files.Root, "state.json"), TimeProvider.System, TimeSpan.FromMinutes(1));
-        var external = new WindowsExternalGpuPlacementRuntime(files, new(sources, sources), NullLogger<WindowsExternalGpuPlacementRuntime>.Instance, receipts);
+        var external = new WindowsExternalGpuPlacementRuntime(files, new(sources, sources, sources, sources), NullLogger<WindowsExternalGpuPlacementRuntime>.Instance, receipts);
         var service = new WindowsRunningGpuPlacementActionService(NullLogger<WindowsRunningGpuPlacementActionService>.Instance,
             new(files), null!, null!, new GpuGraphicsApiIdentificationTests.Plans(software), new(), external);
         var result = await service.PrepareWithFirstApiObservationAsync(new("target", "software", "Software",
@@ -536,6 +536,8 @@ public sealed class ExternalGpuPlacementTests
         Assert.Null(result.Plan);
         Assert.Empty(result.ApiObservationProcesses);
         Assert.False(service.HasUnreleasedExternalControl);
+        Assert.Equal(1, sources.Acquisitions);
+        Assert.Equal(0, sources.ActiveSubscriptions);
     }
 
     [Fact]
@@ -549,7 +551,7 @@ public sealed class ExternalGpuPlacementTests
         };
         var sources = new NoSampling();
         using var receipts = new ResourceManager.App.Infrastructure.Optimization.JsonHostManagerRollbackStateStore(Path.Combine(files.Root, "state.json"), TimeProvider.System, TimeSpan.FromMinutes(1));
-        var external = new WindowsExternalGpuPlacementRuntime(files, new(sources, sources),
+        var external = new WindowsExternalGpuPlacementRuntime(files, new(sources, sources, null!, null!),
             NullLogger<WindowsExternalGpuPlacementRuntime>.Instance, receipts);
         var service = new ExternalOnlyRunningGpuPlacementActionService(
             new GpuGraphicsApiIdentificationTests.Plans(policy), external, new UnusedHistory());
@@ -621,7 +623,7 @@ public sealed class ExternalGpuPlacementTests
     public void ResidentObservationDoesNotAcquireSubscriptionOrSampleOnRead()
     {
         var sources = new NoSampling();
-        var observation = new ExternalGpuResidentObservation(sources, sources);
+        var observation = new ExternalGpuResidentObservation(sources, sources, null!, null!);
         Assert.Null(observation.Read(new(123, 1, "chrome", @"C:\chrome.exe")));
         Assert.Equal(1, sources.Reads);
     }
@@ -633,6 +635,48 @@ public sealed class ExternalGpuPlacementTests
         public SchedulingProcessFactSnapshot? ReadLatest(SchedulingProcessFactRequest request) => throw new InvalidOperationException("No inventory.");
         public IDisposable AcquireSubscription(string id, MetricSampleRequest request, TimeSpan interval) => throw new InvalidOperationException("No implicit subscription.");
         public IDisposable AcquireSubscription(string id, SchedulingProcessMetricMask mask, TimeSpan interval) => throw new InvalidOperationException("No implicit subscription.");
+    }
+
+    private sealed class UnavailableInventory : IMetricSnapshotObservationSource, ISchedulingProcessFactObservationSource,
+        IMetricSnapshotPushSource, IResourceBreakdownPushSource
+    {
+        internal int Acquisitions, ActiveSubscriptions;
+        public IDisposable AcquireSubscription(string holder, MetricSampleRequest request, TimeSpan interval)
+        {
+            Assert.Equal("external-gpu-placement:prepare:inventory", holder);
+            Assert.Equal(["system.gpu.inventory"], request.Ids);
+            Assert.Equal(TimeSpan.FromSeconds(1), interval);
+            Acquisitions++;
+            ActiveSubscriptions++;
+            return new InventoryLease(this);
+        }
+        public async IAsyncEnumerable<HardwareMetricSnapshot> SubscribeAsync(string holder, MetricSampleRequest request,
+            TimeSpan interval, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            await Task.CompletedTask;
+            cancellationToken.ThrowIfCancellationRequested();
+            var now = DateTimeOffset.UtcNow;
+            yield return new(now, HardwareMetricTestData.EmptyCpu, HardwareMetricTestData.EmptyMemory,
+                HardwareMetricTestData.EmptyVirtualMemory, [], HardwareMetricTestData.EmptyGpuInventory,
+                new Dictionary<string, MetricReadingValue>())
+            {
+                Datasets = new Dictionary<string, HardwareMetricDatasetObservation>
+                {
+                    ["system.gpu.inventory"] = new("system.gpu.inventory", SamplingObservationStatus.Unavailable,
+                        1, now.UtcTicks, 1, 1, 1, 1) { LastAttemptAtUtcTicks = now.UtcTicks }
+                }
+            };
+        }
+        public HardwareMetricSnapshot? ReadLatest(MetricSampleRequest request) => throw new InvalidOperationException("Unavailable fresh inventory must not fall back to cached reads.");
+        public SchedulingProcessFactSnapshot? ReadLatest(SchedulingProcessFactRequest request) => throw new InvalidOperationException("No current inventory.");
+        public IDisposable AcquireSubscription(string holder, SchedulingProcessMetricMask mask, TimeSpan interval) => throw new InvalidOperationException("Qualification only needs inventory.");
+        public IAsyncEnumerable<ResourceBreakdownSnapshot> SubscribeAsync(string holder, ResourceBreakdownSampleRequest request,
+            TimeSpan interval, CancellationToken cancellationToken) => throw new InvalidOperationException("Qualification only needs inventory.");
+
+        private sealed class InventoryLease(UnavailableInventory owner) : IDisposable
+        {
+            public void Dispose() => owner.ActiveSubscriptions--;
+        }
     }
 
     private sealed class RecordingHistory : IGpuPlacementProcessHistoryStore

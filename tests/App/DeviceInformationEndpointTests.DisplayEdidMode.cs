@@ -11,7 +11,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class DeviceInformationEndpointTests
 {
     [Fact]
-    public async Task DisplayModeHttpUsesOriginalProjectionAndGetNeverCapturesStaticInactiveDeclarations()
+    public async Task DisplayModeHttpUsesOriginalProjectionAndSingleFetchPreservesStaticInactiveDeclarations()
     {
         var healthy = DisplayEdidModeInformationCollectorTests.Healthy();
         var inactive = DisplayEdidModeInformationCollectorTests.Snapshot(DisplayEdidModeInformationCollectorTests.Path() with { Active = false, TargetAvailable = false });
@@ -22,11 +22,11 @@ public sealed partial class DeviceInformationEndpointTests
             DisplayEdidModeInformationCollectorTests.Snapshot(DisplayEdidModeInformationCollectorTests.Path(DeviceTopologyEdidReadResult.Unavailable)),
             healthy with { Ports = [] }, healthy);
         using var fixture = new Fixture(reader); await using var app = await StartAsync(fixture.Provider); using var client = Client(app);
-        _ = await client.GetStringAsync("/api/device-topology/fields"); Assert.Equal(0, reader.ReadCount);
+        _ = ReadPublishedFields(fixture.Provider, app); Assert.Equal(0, reader.ReadCount);
         for (var phase = 0; phase < 5; phase++)
         {
-            await fixture.Provider.SampleNowAsync(CancellationToken.None); var reads = reader.ReadCount;
-            using var document = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+            var sampledHttpFields1 = await client.GetStringAsync("/api/device-topology/fields"); var reads = reader.ReadCount;
+            using var document = JsonDocument.Parse(sampledHttpFields1);
             if (phase == 3) Assert.DoesNotContain(document.RootElement.GetProperty("devices").EnumerateArray(), static d => d.GetProperty("objectType").GetString() == "display_path");
             else
             {
@@ -37,8 +37,8 @@ public sealed partial class DeviceInformationEndpointTests
                 if (phase == 0) Assert.Equal(JsonValueKind.Null, Hdr(document.RootElement, "display_all_resolution_actual").GetProperty("value").ValueKind);
                 if (phase == 1) Assert.Equal(Convert.ToBase64String(unsupported), Hdr(document.RootElement, DisplayEdidRawInformationCollectorTests.Name).GetProperty("value").GetString());
             }
-            using var stateDocument = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/state"));
-            AssertInformationFieldsInStateMatchFieldsEndpoint(stateDocument.RootElement, document.RootElement);
+            using var stateDocument = JsonDocument.Parse(ReadPublishedState(fixture.Provider, app));
+            AssertPublishedInformationFieldsMatchResponse(stateDocument.RootElement, document.RootElement);
             Assert.Equal(reads, reader.ReadCount);
         }
         await app.StopAsync();
@@ -52,13 +52,13 @@ public sealed partial class DeviceInformationEndpointTests
             new DeviceTopologySemanticComparer().ComputeHash(healthy), healthy);
         var reader = new Reader(healthy, new IOException("recorded capture failure"), healthy);
         using var fixture = new Fixture(reader, persisted); await using var app = await StartAsync(fixture.Provider); using var client = Client(app);
-        using var startup = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var startup = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         Assert.Equal(JsonValueKind.Null, Hdr(startup.RootElement, DisplayEdidModeInformationCollectorTests.Name).GetProperty("value").ValueKind);
         Assert.Equal(0, reader.ReadCount);
         for (var phase = 0; phase < 3; phase++)
         {
-            await fixture.Provider.SampleNowAsync(CancellationToken.None); var reads = reader.ReadCount;
-            using var document = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+            var sampledHttpFields2 = await client.GetStringAsync("/api/device-topology/fields"); var reads = reader.ReadCount;
+            using var document = JsonDocument.Parse(sampledHttpFields2);
             var value = Hdr(document.RootElement, DisplayEdidModeInformationCollectorTests.Name).GetProperty("value");
             if (phase == 1) Assert.Equal(JsonValueKind.Null, value.ValueKind); else DisplayEdidModeInformationCollectorTests.AssertValue(value);
             Assert.Equal(reads, reader.ReadCount);
@@ -71,7 +71,7 @@ public sealed partial class DeviceInformationEndpointTests
     {
         var reader = new Reader(DisplayEdidModeInformationCollectorTests.Healthy);
         using var fixture = new Fixture(reader); await using var app = await StartAsync(fixture.Provider); using var client = Client(app);
-        _ = await client.GetStringAsync("/api/device-topology/fields"); Assert.Equal(0, reader.ReadCount);
+        _ = ReadPublishedFields(fixture.Provider, app); Assert.Equal(0, reader.ReadCount);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(12));
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream") {
             Content = JsonContent.Create(new { version = 1, subscriptions = new[] {
@@ -86,7 +86,7 @@ public sealed partial class DeviceInformationEndpointTests
         Assert.True(reader.ReadCount >= 1);
         await timeout.CancelAsync(); response.Dispose(); await fixture.WaitForNoDemandAndIdleAsync();
         var reads = reader.ReadCount; var current = fixture.Provider.ReadState().InformationFields;
-        using var displayed = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var displayed = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         DisplayEdidModeInformationCollectorTests.AssertValue(Hdr(displayed.RootElement, DisplayEdidModeInformationCollectorTests.Name).GetProperty("value"));
         await Task.Delay(1100); Assert.Equal(reads, reader.ReadCount); Assert.Same(current, fixture.Provider.ReadState().InformationFields);
         await app.StopAsync();

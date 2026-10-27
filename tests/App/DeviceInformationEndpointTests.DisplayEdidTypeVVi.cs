@@ -7,14 +7,14 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class DeviceInformationEndpointTests
 {
     [Fact]
-    public async Task TypeVViPassiveGetAndUnifiedSubscriptionUseTheRealParserAndRetainCurrentOnStop()
+    public async Task TypeVViCachedInspectionAndUnifiedSubscriptionUseTheRealParserAndRetainCurrentOnStop()
     {
         var reader = new Reader(() => DisplayEdidTypeVViTestData.Snapshot());
         using var fixture = new Fixture(reader);
         await using var app = await StartAsync(fixture.Provider);
         using var client = Client(app);
-        _ = await client.GetStringAsync("/api/device-topology/fields");
-        _ = await client.GetStringAsync("/api/device-topology/state");
+        _ = ReadPublishedFields(fixture.Provider, app);
+        _ = ReadPublishedState(fixture.Provider, app);
         Assert.Equal(0, reader.ReadCount);
 
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(12));
@@ -42,7 +42,7 @@ public sealed partial class DeviceInformationEndpointTests
         await fixture.WaitForNoDemandAndIdleAsync();
         var reads = reader.ReadCount;
         var current = fixture.Provider.ReadState().InformationFields;
-        using var passive = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var passive = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         DisplayEdidTypeVViTestData.AssertValue(
             Hdr(passive.RootElement, DisplayEdidModeInformationCollectorTests.Name).GetProperty("value"));
         await Task.Delay(1100);

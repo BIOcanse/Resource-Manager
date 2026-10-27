@@ -46,7 +46,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         Assert.Equal("Compute", field.EngineClass);
         Assert.Equal(4, fields.Count);
         var reads = source.Reads;
-        _ = sampler.ResourceFactFields; _ = await sampler.GetSnapshotAsync(raw, default);
+        _ = sampler.ResourceFactFields; _ = sampler.ReadLatest(raw);
         Assert.Equal(reads, source.Reads);
         var chosen = raw with { MetricIds = [field.Name], ProcessMemoryFactIds = [field.Name] };
         await sampler.StartAsync(default);

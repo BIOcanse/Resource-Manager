@@ -24,15 +24,19 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             return Results.Ok(new BusinessBlockDebugSnapshot(blocks.Read(), diagnostics.ReadAll()));
         });
 
-        app.MapGet("/api/debug/gpu-renderers", (HttpResponse response,
-            IMetricSnapshotObservationSource metrics, ISchedulingProcessFactObservationSource processes) =>
+        app.MapGet("/api/debug/gpu-renderers", async (HttpResponse response,
+            IMetricSnapshotPushSource metrics, IResourceBreakdownPushSource resources,
+            ISchedulingProcessFactObservationSource processes, CancellationToken cancellationToken) =>
         {
             response.Headers.CacheControl = "no-store";
-            var hardware = metrics.ReadLatest(MetricSampleRequest.All);
+            var hardware = await metrics.FetchOnceAsync("debug:gpu-renderers:hardware", MetricSampleRequest.All, cancellationToken);
             var keys = hardware?.GpuInventory.Adapters.Select(adapter => adapter.AdapterKey).ToArray() ?? [];
-            var facts = hardware is null ? null : processes.ReadLatest(new SchedulingProcessFactRequest(
-                SchedulingProcessMetricMask.RuntimeState | SchedulingProcessMetricMask.GpuUsage
-                    | SchedulingProcessMetricMask.GpuDedicatedMemory, hardware.GpuInventory));
+            var mask = SchedulingProcessMetricMask.RuntimeState | SchedulingProcessMetricMask.GpuUsage
+                | SchedulingProcessMetricMask.GpuDedicatedMemory;
+            var processSnapshot = await resources.FetchOnceAsync("debug:gpu-renderers:processes", new([], new Dictionary<string, string>(),
+                ProcessSampleDetailLevel.SmartSchedulingLite, mask), cancellationToken);
+            var facts = hardware is null || processSnapshot is null ? null
+                : processes.ReadLatest(new SchedulingProcessFactRequest(mask, hardware.GpuInventory));
             var rows = facts?.Processes.Where(process => process.Gpus.Any(gpu =>
                 gpu.HasMetric(SchedulingProcessMetricMask.GpuUsage)
                     || gpu.HasMetric(SchedulingProcessMetricMask.GpuDedicatedMemory))).Select(process => new GpuRendererProcessPayload(process.ProcessId, process.ProcessStartKey, process.ProcessName, WindowsGpuRendererConfirmation.Read(new(process.ProcessId, process.ProcessStartKey, process.ProcessName, process.ExecutablePath ?? string.Empty), keys))).ToArray();
@@ -78,16 +82,19 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             return Results.Ok(reader.GetDiagnostics());
         });
 
-        app.MapGet("/api/debug/scheduling-inputs", (HttpResponse response,
-            IMetricSnapshotObservationSource metrics, ISchedulingProcessFactObservationSource processes,
-            WindowsGpuPlacementInjector gpuInjector) =>
+        app.MapGet("/api/debug/scheduling-inputs", async (HttpResponse response,
+            IMetricSnapshotPushSource metrics, IResourceBreakdownPushSource resources,
+            ISchedulingProcessFactObservationSource processes, WindowsGpuPlacementInjector gpuInjector,
+            CancellationToken cancellationToken) =>
         {
             response.Headers.CacheControl = "no-store";
-            var hardware = metrics.ReadLatest(MetricSampleRequest.All);
-            var facts = hardware is null ? null : processes.ReadLatest(new SchedulingProcessFactRequest(
-                SchedulingProcessMetricMask.CpuUsage | SchedulingProcessMetricMask.GpuUsage
-                    | SchedulingProcessMetricMask.GpuDedicatedMemory | SchedulingProcessMetricMask.RuntimeState,
-                hardware.GpuInventory));
+            var hardware = await metrics.FetchOnceAsync("debug:scheduling-inputs:hardware", MetricSampleRequest.All, cancellationToken);
+            var mask = SchedulingProcessMetricMask.CpuUsage | SchedulingProcessMetricMask.GpuUsage
+                | SchedulingProcessMetricMask.GpuDedicatedMemory | SchedulingProcessMetricMask.RuntimeState;
+            var processSnapshot = await resources.FetchOnceAsync("debug:scheduling-inputs:processes", new([], new Dictionary<string, string>(),
+                ProcessSampleDetailLevel.SmartSchedulingLite, mask), cancellationToken);
+            var facts = hardware is null || processSnapshot is null ? null
+                : processes.ReadLatest(new SchedulingProcessFactRequest(mask, hardware.GpuInventory));
             var failures = facts?.Processes.Select(process => new GpuPlacementFailurePayload(process.ProcessId, process.ProcessStartKey, gpuInjector.GetKnownProcessFailure(new GpuPlacementProcessInstance(process.ProcessId, process.ProcessStartKey, process.ProcessName, process.ExecutablePath ?? string.Empty)))).Where(process => process.failure is not null).ToArray();
             return Results.Ok(new DebugSchedulingPayload(hardware?.GpuInventory, facts, failures));
         });
@@ -121,15 +128,15 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         app.MapGet("/api/debug/metrics/capture", async (
             HttpRequest request,
             HttpResponse response,
-            IMetricSampler sampler,
+            IMetricSnapshotPushSource metrics,
             CancellationToken cancellationToken) =>
         {
             response.Headers.CacheControl = "no-store";
             var sampleRequest = request.Query.TryGetValue("ids", out var ids)
                 ? MetricSampleRequest.ForIds(ids)
                 : MetricSampleRequest.All;
-            var snapshot = await sampler.CaptureSnapshotAsync(
-                sampleRequest,
+            var snapshot = await metrics.FetchOnceAsync(
+                "debug:metrics-capture", sampleRequest,
                 cancellationToken);
             return Results.Ok(snapshot);
         });

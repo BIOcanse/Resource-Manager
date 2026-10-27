@@ -61,7 +61,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         Assert.Contains(SamplingDatasetIds.ProcessInventory, WindowsResourceBreakdownSampler.GetPublicationDatasetIds(request));
         Assert.Contains(SamplingDatasetIds.ProcessAttribution, WindowsResourceBreakdownSampler.GetPublicationDatasetIds(request));
         var before = api.MemoryCalls;
-        _ = await sampler.GetSnapshotAsync(request, default);
+        _ = sampler.ReadLatest(request);
         Assert.Equal(before, api.MemoryCalls);
         Assert.Equal(0, Volatile.Read(ref residualCaptures));
         await sampler.StartAsync(default);
@@ -121,7 +121,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             var stoppedResiduals = Volatile.Read(ref residualCaptures);
             await Task.Delay(300);
             Assert.Equal(stopped, api.MemoryCalls);
-            _ = await sampler.GetSnapshotAsync(request, default);
+            _ = sampler.ReadLatest(request);
             sampler.ReadLatest(request);
             Assert.Equal(stoppedResiduals, Volatile.Read(ref residualCaptures));
             Assert.Equal(0, hardware.ActiveSubscriptions);

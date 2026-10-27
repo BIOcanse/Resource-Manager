@@ -8,9 +8,9 @@ public sealed class MonitoringConditionLanguageBoundaryTests
     [Theory]
     [InlineData("  memory.free < 1KiB for 1ms every 1ms top 0  ", 1024d, .001d, 1)]
     [InlineData("memory.free < 0.5MiB for 0.1ms every 0.001s", 524288d, .0001d, 1)]
-    public void SpacesAndListedUnitScalesHaveExactExpansion(string text, double threshold, double hold, int interval)
+    public async Task SpacesAndListedUnitScalesHaveExactExpansion(string text, double threshold, double hold, int interval)
     {
-        var hook = Expand(text);
+        var hook = await ExpandAsync(text);
         Assert.Equal(threshold, hook.Rule.Threshold); Assert.Equal(hold, hook.Rule.HoldSeconds); Assert.Equal(interval, hook.IntervalMs);
     }
 
@@ -34,26 +34,26 @@ public sealed class MonitoringConditionLanguageBoundaryTests
     [InlineData("process 1:18446744073709551616 private < 1B for 1s", "positive UInt64")]
     [InlineData("process 1:2 private < 1B for 1s top 1", "no top-owner")]
     [InlineData("device \"missing\" gpu.0.vram < 1B for 1s", "unknown name")]
-    public void EveryErrorFamilyHasAnExplicitReason(string text, string reason)
+    public async Task EveryErrorFamilyHasAnExplicitReason(string text, string reason)
     {
-        var error = Assert.Throws<MonitoringConditionParseException>(() => Expand(text));
+        var error = (await Assert.ThrowsAsync<MonitoringConditionParseException>(() => ExpandAsync(text)));
         Assert.Contains(reason, error.Reason); Assert.InRange(error.Position, 0, text.Length);
     }
 
     [Fact]
-    public void NumericOverflowAndLengthAreBoundedAndNeverPartiallyAccepted()
+    public async Task NumericOverflowAndLengthAreBoundedAndNeverPartiallyAccepted()
     {
         var tooLong = new string(' ', 4097);
-        Assert.Equal(4096, Assert.Throws<MonitoringConditionParseException>(() => Expand(tooLong)).Position);
+        Assert.Equal(4096, (await Assert.ThrowsAsync<MonitoringConditionParseException>(() => ExpandAsync(tooLong))).Position);
         var huge = "memory.free < " + new string('9', 310) + "B for 1s";
-        Assert.Equal(14, Assert.Throws<MonitoringConditionParseException>(() => Expand(huge)).Position);
+        Assert.Equal(14, (await Assert.ThrowsAsync<MonitoringConditionParseException>(() => ExpandAsync(huge))).Position);
         var converted = "memory.free < " + new string('9', 308) + "GiB for 1s";
-        Assert.Contains("converted", Assert.Throws<MonitoringConditionParseException>(() => Expand(converted)).Reason);
+        Assert.Contains("converted", (await Assert.ThrowsAsync<MonitoringConditionParseException>(() => ExpandAsync(converted))).Reason);
         var strict = "memory.free > " + double.MaxValue.ToString("F0", CultureInfo.InvariantCulture) + "B for 1s";
-        Assert.Contains("strict threshold", Assert.Throws<MonitoringConditionParseException>(() => Expand(strict)).Reason);
+        Assert.Contains("strict threshold", (await Assert.ThrowsAsync<MonitoringConditionParseException>(() => ExpandAsync(strict))).Reason);
         var time = "memory.free < 1B for " + new string('9', 30) + "s";
-        Assert.Contains("time exceeds", Assert.Throws<MonitoringConditionParseException>(() => Expand(time)).Reason);
+        Assert.Contains("time exceeds", (await Assert.ThrowsAsync<MonitoringConditionParseException>(() => ExpandAsync(time))).Reason);
     }
 
-    private static ExpandedMonitoringHook Expand(string text) => MonitoringConditionLanguage.Expand(text, "test", MonitoringConditionVocabulary.Create(null), _ => null);
+    private static Task<ExpandedMonitoringHook> ExpandAsync(string text) => MonitoringConditionLanguage.ExpandAsync(text, "test", MonitoringConditionVocabulary.Create(null), _ => Task.FromResult<string?>(null));
 }

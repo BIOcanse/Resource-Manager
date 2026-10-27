@@ -10,7 +10,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class DeviceInformationEndpointTests
 {
     [Fact]
-    public async Task DisplayHdrHttpKeepsIndependentStatesClearsLegacyAndRemovesAbsentPathWithoutGetIo()
+    public async Task DisplayHdrHttpKeepsIndependentStatesClearsLegacyAndRemovesAbsentPathThroughSingleFetch()
     {
         var healthy = DisplayHdrInformationCollectorTests.Healthy();
         var legacy = DisplayHdrInformationCollectorTests.Snapshot(DisplayRotationInformationCollectorTests.Path(0) with {
@@ -19,11 +19,11 @@ public sealed partial class DeviceInformationEndpointTests
         var reader = new Reader(healthy, legacy, DisplayHdrInformationCollectorTests.Healthy(mode: 1),
             DisplayHdrInformationCollectorTests.Healthy(flags: 0, mode: 0), healthy with { Ports = [] }, healthy);
         using var fixture = new Fixture(reader); await using var app = await StartAsync(fixture.Provider); using var client = Client(app);
-        _ = await client.GetStringAsync("/api/device-topology/fields"); Assert.Equal(0, reader.ReadCount);
+        _ = ReadPublishedFields(fixture.Provider, app); Assert.Equal(0, reader.ReadCount);
         for (var phase = 0; phase < 6; phase++)
         {
-            await fixture.Provider.SampleNowAsync(CancellationToken.None); var reads = reader.ReadCount;
-            using var document = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+            var sampledHttpFields1 = await client.GetStringAsync("/api/device-topology/fields"); var reads = reader.ReadCount;
+            using var document = JsonDocument.Parse(sampledHttpFields1);
             if (phase == 4) Assert.DoesNotContain(document.RootElement.GetProperty("devices").EnumerateArray(), d => d.GetProperty("objectType").GetString() == "display_path");
             else
             {
@@ -50,12 +50,12 @@ public sealed partial class DeviceInformationEndpointTests
             new DeviceTopologySemanticComparer().ComputeHash(raw), raw);
         var reader = new Reader(raw, new IOException("capture failed"), DisplayHdrInformationCollectorTests.Healthy(mode: 1));
         using var fixture = new Fixture(reader, persisted); await using var app = await StartAsync(fixture.Provider); using var client = Client(app);
-        using var startup = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var startup = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         foreach (var name in DisplayHdrInformationCollectorTests.Names) Assert.Equal(JsonValueKind.Null, Hdr(startup.RootElement, name).GetProperty("value").ValueKind);
         Assert.Equal(0, reader.ReadCount);
         for (var phase = 0; phase < 3; phase++)
         {
-            await fixture.Provider.SampleNowAsync(CancellationToken.None); using var document = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+            var sampledHttpFields2 = await client.GetStringAsync("/api/device-topology/fields"); using var document = JsonDocument.Parse(sampledHttpFields2);
             if (phase == 1) foreach (var name in DisplayHdrInformationCollectorTests.Names) Assert.Equal(JsonValueKind.Null, Hdr(document.RootElement, name).GetProperty("value").ValueKind);
             else Assert.Equal(phase == 0 ? "2" : "1", Hdr(document.RootElement, DisplayHdrInformationCollectorTests.Names[3]).GetProperty("value").GetString());
         }
@@ -67,7 +67,7 @@ public sealed partial class DeviceInformationEndpointTests
     {
         var reader = new Reader(() => DisplayHdrInformationCollectorTests.Healthy());
         using var fixture = new Fixture(reader); await using var app = await StartAsync(fixture.Provider); using var client = Client(app);
-        _ = await client.GetStringAsync("/api/device-topology/fields"); Assert.Equal(0, reader.ReadCount);
+        _ = ReadPublishedFields(fixture.Provider, app); Assert.Equal(0, reader.ReadCount);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(12)); using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
         { Content = JsonContent.Create(new { version = 1, subscriptions = new[] { new { id = "display-hdr", path = "/api/device-topology/fields/subscribe?intervalMs=1000" } } }) };
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token); Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -75,7 +75,7 @@ public sealed partial class DeviceInformationEndpointTests
         Assert.Equal("2", Hdr(message.RootElement.GetProperty("value"), DisplayHdrInformationCollectorTests.Names[3]).GetProperty("value").GetString());
         Assert.True(reader.ReadCount >= 1); await timeout.CancelAsync(); response.Dispose(); await Task.Delay(250);
         var reads = reader.ReadCount; var cached = fixture.Provider.ReadState().InformationFields;
-        using var displayed = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var displayed = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         Assert.True(Hdr(displayed.RootElement, DisplayHdrInformationCollectorTests.Names[2]).GetProperty("value").GetBoolean());
         await Task.Delay(1300); Assert.Equal(reads, reader.ReadCount); Assert.Same(cached, fixture.Provider.ReadState().InformationFields); await app.StopAsync();
     }

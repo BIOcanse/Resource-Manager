@@ -24,11 +24,11 @@ public sealed partial class DeviceInformationEndpointTests
             return DiskIdentityInformationCollectorTests.Snapshot(disk, physical);
         });
         using var fixture = new Fixture(reader); await using var app = await StartAsync(fixture.Provider); using var client = Client(app);
-        _ = await client.GetStringAsync("/api/device-topology/fields"); Assert.Equal(0, reader.ReadCount);
+        _ = ReadPublishedFields(fixture.Provider, app); Assert.Equal(0, reader.ReadCount);
         for (phase = 0; phase < 6; phase++)
         {
-            await fixture.Provider.SampleNowAsync(CancellationToken.None); var reads = reader.ReadCount;
-            using var document = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields")); var root = document.RootElement;
+            var sampledHttpFields1 = await client.GetStringAsync("/api/device-topology/fields"); var reads = reader.ReadCount;
+            using var document = JsonDocument.Parse(sampledHttpFields1); var root = document.RootElement;
             var relation = Field(root, DiskLayoutInformationCollectorTests.IdA, DiskIdentityInformationCollectorTests.RelationName).GetProperty("value");
             if (phase == 0 || phase == 5) Assert.Equal(DiskIdentityInformationCollectorTests.HardwareId, relation.GetString());
             else Assert.Equal(JsonValueKind.Null, relation.ValueKind);
@@ -48,13 +48,13 @@ public sealed partial class DeviceInformationEndpointTests
         var persisted = new DeviceTopologyPersistedSnapshot(DeviceTopologySnapshotState.CurrentSchemaVersion, "test", 11, new DeviceTopologySemanticComparer().ComputeHash(raw), raw);
         var reader = new Reader(raw, new IOException("failed"), raw);
         using var fixture = new Fixture(reader, persisted); await using var app = await StartAsync(fixture.Provider); using var client = Client(app);
-        using var initial = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields")); AssertRelationEmpty(initial.RootElement); Assert.Equal(0, reader.ReadCount);
-        await fixture.Provider.SampleNowAsync(CancellationToken.None);
-        using var fresh = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields")); Assert.Equal(DiskIdentityInformationCollectorTests.HardwareId, Field(fresh.RootElement, DiskLayoutInformationCollectorTests.IdA, DiskIdentityInformationCollectorTests.RelationName).GetProperty("value").GetString());
-        await fixture.Provider.SampleNowAsync(CancellationToken.None);
-        using var failed = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields")); AssertRelationEmpty(failed.RootElement); AssertDiskLayoutEmpty(failed.RootElement, DiskLayoutInformationCollectorTests.IdA); AssertAlignmentEmpty(failed.RootElement);
-        await fixture.Provider.SampleNowAsync(CancellationToken.None);
-        using var recovered = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields")); Assert.Equal(DiskIdentityInformationCollectorTests.HardwareId, Field(recovered.RootElement, DiskLayoutInformationCollectorTests.IdA, DiskIdentityInformationCollectorTests.RelationName).GetProperty("value").GetString());
+        using var initial = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app)); AssertRelationEmpty(initial.RootElement); Assert.Equal(0, reader.ReadCount);
+        var sampledHttpFields2 = await client.GetStringAsync("/api/device-topology/fields");
+        using var fresh = JsonDocument.Parse(sampledHttpFields2); Assert.Equal(DiskIdentityInformationCollectorTests.HardwareId, Field(fresh.RootElement, DiskLayoutInformationCollectorTests.IdA, DiskIdentityInformationCollectorTests.RelationName).GetProperty("value").GetString());
+        var sampledHttpFields3 = await client.GetStringAsync("/api/device-topology/fields");
+        using var failed = JsonDocument.Parse(sampledHttpFields3); AssertRelationEmpty(failed.RootElement); AssertDiskLayoutEmpty(failed.RootElement, DiskLayoutInformationCollectorTests.IdA); AssertAlignmentEmpty(failed.RootElement);
+        var sampledHttpFields4 = await client.GetStringAsync("/api/device-topology/fields");
+        using var recovered = JsonDocument.Parse(sampledHttpFields4); Assert.Equal(DiskIdentityInformationCollectorTests.HardwareId, Field(recovered.RootElement, DiskLayoutInformationCollectorTests.IdA, DiskIdentityInformationCollectorTests.RelationName).GetProperty("value").GetString());
         await app.StopAsync();
     }
 
@@ -63,7 +63,7 @@ public sealed partial class DeviceInformationEndpointTests
     {
         var reader = new Reader(DiskIdentityInformationCollectorTests.Snapshot(DiskIdentityInformationCollectorTests.Disk(), [DiskIdentityInformationCollectorTests.Hardware()]));
         using var fixture = new Fixture(reader); await using var app = await StartAsync(fixture.Provider); using var client = Client(app);
-        _ = await client.GetStringAsync("/api/device-topology/fields"); Assert.Equal(0, reader.ReadCount);
+        _ = ReadPublishedFields(fixture.Provider, app); Assert.Equal(0, reader.ReadCount);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(12));
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
         { Content = JsonContent.Create(new { version = 1, subscriptions = new[] { new { id = "disk-identity", path = "/api/device-topology/fields/subscribe?intervalMs=1000" } } }) };
@@ -72,7 +72,7 @@ public sealed partial class DeviceInformationEndpointTests
         Assert.Equal(DiskIdentityInformationCollectorTests.HardwareId, Field(message.RootElement.GetProperty("value"), DiskLayoutInformationCollectorTests.IdA, DiskIdentityInformationCollectorTests.RelationName).GetProperty("value").GetString());
         Assert.True(reader.ReadCount >= 1); await timeout.CancelAsync(); response.Dispose(); await Task.Delay(250);
         var reads = reader.ReadCount; var cached = fixture.Provider.ReadState().InformationFields;
-        using var displayed = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var displayed = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         Assert.Equal(DiskIdentityInformationCollectorTests.HardwareId, Field(displayed.RootElement, DiskLayoutInformationCollectorTests.IdA, DiskIdentityInformationCollectorTests.RelationName).GetProperty("value").GetString());
         await Task.Delay(1300); Assert.Equal(reads, reader.ReadCount); Assert.Same(cached, fixture.Provider.ReadState().InformationFields); await app.StopAsync();
     }

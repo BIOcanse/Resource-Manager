@@ -10,7 +10,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class DeviceInformationEndpointTests
 {
     [Fact]
-    public async Task DisplayRotationHttpPublishesChangesClearsUnavailableAndRemovesAbsentPathWithoutGetIo()
+    public async Task DisplayRotationHttpPublishesChangesClearsUnavailableAndRemovesAbsentPathThroughSingleFetch()
     {
         var port = DisplayRotationInformationCollectorTests.Port(0);
         var initial = DeviceInformationTestData.Snapshot(port);
@@ -18,11 +18,11 @@ public sealed partial class DeviceInformationEndpointTests
             initial with { Ports = [port with { Display = port.Display! with { TargetAvailable = false } }] },
             initial with { Ports = [] }, initial);
         using var fixture = new Fixture(reader); await using var app = await StartAsync(fixture.Provider); using var client = Client(app);
-        _ = await client.GetStringAsync("/api/device-topology/fields"); Assert.Equal(0, reader.ReadCount);
+        _ = ReadPublishedFields(fixture.Provider, app); Assert.Equal(0, reader.ReadCount);
         for (var phase = 0; phase < 5; phase++)
         {
-            await fixture.Provider.SampleNowAsync(CancellationToken.None); var reads = reader.ReadCount;
-            using var document = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+            var sampledHttpFields1 = await client.GetStringAsync("/api/device-topology/fields"); var reads = reader.ReadCount;
+            using var document = JsonDocument.Parse(sampledHttpFields1);
             if (phase == 3) Assert.DoesNotContain(document.RootElement.GetProperty("devices").EnumerateArray(), d => d.GetProperty("objectType").GetString() == "display_path");
             else
             {
@@ -43,12 +43,12 @@ public sealed partial class DeviceInformationEndpointTests
             new DeviceTopologySemanticComparer().ComputeHash(raw), raw);
         var reader = new Reader(raw, new IOException("capture failed"), raw); using var fixture = new Fixture(reader, persisted);
         await using var app = await StartAsync(fixture.Provider); using var client = Client(app);
-        using var startup = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var startup = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         Assert.Equal(JsonValueKind.Null, Rotation(startup.RootElement).GetProperty("value").ValueKind); Assert.Equal(0, reader.ReadCount);
         for (var phase = 0; phase < 3; phase++)
         {
-            await fixture.Provider.SampleNowAsync(CancellationToken.None);
-            using var document = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+            var sampledHttpFields2 = await client.GetStringAsync("/api/device-topology/fields");
+            using var document = JsonDocument.Parse(sampledHttpFields2);
             var value = Rotation(document.RootElement).GetProperty("value");
             if (phase == 1) Assert.Equal(JsonValueKind.Null, value.ValueKind); else Assert.Equal("180", value.GetString());
         }
@@ -60,7 +60,7 @@ public sealed partial class DeviceInformationEndpointTests
     {
         var reader = new Reader(() => DeviceInformationTestData.Snapshot(DisplayRotationInformationCollectorTests.Port(90)));
         using var fixture = new Fixture(reader); await using var app = await StartAsync(fixture.Provider); using var client = Client(app);
-        _ = await client.GetStringAsync("/api/device-topology/fields"); Assert.Equal(0, reader.ReadCount);
+        _ = ReadPublishedFields(fixture.Provider, app); Assert.Equal(0, reader.ReadCount);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(12)); using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
         { Content = JsonContent.Create(new { version = 1, subscriptions = new[] { new { id = "display-rotation", path = "/api/device-topology/fields/subscribe?intervalMs=1000" } } }) };
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token); Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -68,7 +68,7 @@ public sealed partial class DeviceInformationEndpointTests
         using var message = JsonDocument.Parse(await ReadFirstObservedInformationAsync(stream, timeout.Token));
         Assert.Equal("90", Rotation(message.RootElement.GetProperty("value")).GetProperty("value").GetString()); Assert.True(reader.ReadCount >= 1);
         await timeout.CancelAsync(); response.Dispose(); await Task.Delay(250); var reads = reader.ReadCount; var cache = fixture.Provider.ReadState().InformationFields;
-        using var displayed = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var displayed = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         Assert.Equal("90", Rotation(displayed.RootElement).GetProperty("value").GetString());
         await Task.Delay(1300); Assert.Equal(reads, reader.ReadCount); Assert.Same(cache, fixture.Provider.ReadState().InformationFields); await app.StopAsync();
     }

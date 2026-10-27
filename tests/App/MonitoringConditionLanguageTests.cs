@@ -10,10 +10,10 @@ public sealed class MonitoringConditionLanguageTests
     [InlineData("memory.used >= 512MiB for 500ms every 2s top 3", "machine", "memory.usage", "value", "atOrAbove", 536870912d, .5d, 2000, 3)]
     [InlineData("cpu < 25% for 1s every 100ms", "machine", "cpu.usage", "value", "below", 25d, 1d, 100, 0)]
     [InlineData("cpu < 25% for 1s every 1.001s", "machine", "cpu.usage", "value", "below", 25d, 1d, 1001, 0)]
-    public void GrammarExpandsMachineConditions(string text, string binding, string metric, string quantity, string comparison,
+    public async Task GrammarExpandsMachineConditions(string text, string binding, string metric, string quantity, string comparison,
         double threshold, double hold, int interval, int owners)
     {
-        var expanded = MonitoringConditionLanguage.Expand(text, "test", MonitoringConditionVocabulary.Create(null), _ => null);
+        var expanded = await MonitoringConditionLanguage.ExpandAsync(text, "test", MonitoringConditionVocabulary.Create(null), _ => Task.FromResult<string?>(null));
         Assert.Equal("test", expanded.Id); Assert.Equal(interval, expanded.IntervalMs);
         Assert.Equal(binding, expanded.Rule.Binding); Assert.Equal(metric, expanded.Rule.MetricId);
         Assert.Equal(quantity, expanded.Rule.Quantity); Assert.Equal(comparison, expanded.Rule.Comparison);
@@ -22,10 +22,10 @@ public sealed class MonitoringConditionLanguageTests
     }
 
     [Fact]
-    public void ProcessExampleCapturesThePublishedStartKeyAndUsesOnlyLowLevelComparison()
+    public async Task ProcessExampleCapturesThePublishedStartKeyAndUsesOnlyLowLevelComparison()
     {
-        var result = MonitoringConditionLanguage.Expand("process 1234 private > 4GiB for 30s every 2s", "process",
-            MonitoringConditionVocabulary.Create(null), pid => pid == 1234 ? "133700000000000000" : null);
+        var result = await MonitoringConditionLanguage.ExpandAsync("process 1234 private > 4GiB for 30s every 2s", "process",
+            MonitoringConditionVocabulary.Create(null), pid => Task.FromResult<string?>(pid == 1234 ? "133700000000000000" : null));
         Assert.Equal(1234, result.Rule.ProcessId); Assert.Equal("133700000000000000", result.Rule.StartKey);
         Assert.Equal("process_all_private_commit_actual", result.Rule.MetricId);
         Assert.Equal("atOrAbove", result.Rule.Comparison);
@@ -34,13 +34,13 @@ public sealed class MonitoringConditionLanguageTests
     }
 
     [Fact]
-    public void ExplicitProcessIdentityNeedsNoLookupAndQuotedSoftwareIdsAreLossless()
+    public async Task ExplicitProcessIdentityNeedsNoLookupAndQuotedSoftwareIdsAreLossless()
     {
-        var process = MonitoringConditionLanguage.Expand("process 1234:5678 private >= 1B for 1s", "p",
+        var process = await MonitoringConditionLanguage.ExpandAsync("process 1234:5678 private >= 1B for 1s", "p",
             MonitoringConditionVocabulary.Create(null), _ => throw new InvalidOperationException("must not resolve"));
         Assert.Equal("5678", process.Rule.StartKey);
-        var software = MonitoringConditionLanguage.Expand("software \"software:a b\\\"c\\\\d\" private-resident < 1.5GiB for 1s", "s",
-            MonitoringConditionVocabulary.Create(null), _ => null);
+        var software = await MonitoringConditionLanguage.ExpandAsync("software \"software:a b\\\"c\\\\d\" private-resident < 1.5GiB for 1s", "s",
+            MonitoringConditionVocabulary.Create(null), _ => Task.FromResult<string?>(null));
         Assert.Equal("software:a b\"c\\d", software.Rule.SoftwareId);
         Assert.Equal(1610612736d, software.Rule.Threshold);
     }
@@ -71,28 +71,28 @@ public sealed class MonitoringConditionLanguageTests
     [InlineData("software \"a\\qb\" private < 1B for 1s", 12)]
     [InlineData("software \" a \" private < 1B for 1s", 9)]
     [InlineData("process 1234abc private < 1B for 1s", 12)]
-    public void InvalidInputReportsExactZeroBasedPositionAndReason(string text, int position)
+    public async Task InvalidInputReportsExactZeroBasedPositionAndReason(string text, int position)
     {
-        var error = Assert.Throws<MonitoringConditionParseException>(() => MonitoringConditionLanguage.Expand(text,
-            "test", MonitoringConditionVocabulary.Create(null), _ => null));
+        var error = await Assert.ThrowsAsync<MonitoringConditionParseException>(() => MonitoringConditionLanguage.ExpandAsync(text,
+            "test", MonitoringConditionVocabulary.Create(null), _ => Task.FromResult<string?>(null)));
         Assert.Equal(position, error.Position);
         Assert.False(string.IsNullOrWhiteSpace(error.Reason));
     }
 
     [Fact]
-    public void MissingPublishedProcessIdentityDoesNotGuessOrStartSampling()
+    public async Task MissingFreshProcessIdentityDoesNotGuess()
     {
-        var error = Assert.Throws<MonitoringConditionParseException>(() => MonitoringConditionLanguage.Expand(
-            "process 1234 private > 4GiB for 30s every 2s", "p", MonitoringConditionVocabulary.Create(null), _ => null));
+        var error = await Assert.ThrowsAsync<MonitoringConditionParseException>(() => MonitoringConditionLanguage.ExpandAsync(
+            "process 1234 private > 4GiB for 30s every 2s", "p", MonitoringConditionVocabulary.Create(null), _ => Task.FromResult<string?>(null)));
         Assert.Equal(8, error.Position); Assert.Contains("start key", error.Reason);
     }
 
     [Fact]
-    public void DeviceNameComesFromTheSamePublishedVocabularyAndKeepsItsExactIdentity()
+    public async Task DeviceNameComesFromTheSamePublishedVocabularyAndKeepsItsExactIdentity()
     {
         var vocabulary = MonitoringConditionVocabulary.Create(StorageMetricSnapshotTestData.CommittedSnapshot());
         var name = vocabulary.Names.First(item => item.Binding == "device" && item.Unit == "B");
-        var result = MonitoringConditionLanguage.Expand($"device \"{name.DeviceIdentity}\" {name.Name} >= 1B for 1s", "device", vocabulary, _ => null);
+        var result = await MonitoringConditionLanguage.ExpandAsync($"device \"{name.DeviceIdentity}\" {name.Name} >= 1B for 1s", "device", vocabulary, _ => Task.FromResult<string?>(null));
         Assert.Equal(name.MetricId, result.Rule.MetricId); Assert.Equal(name.DeviceIdentity, result.Rule.DeviceIdentity);
         Assert.Equal("value", result.Rule.Quantity); Assert.Equal(0, result.Rule.TopOwners);
     }

@@ -121,21 +121,21 @@ public sealed class HostNpuInformationFieldsTests
 public sealed partial class DeviceInformationEndpointTests
 {
     [Fact]
-    public async Task NpuCachedHttpKeepsFiveDefinitionsClearsUnavailableThenRemovesSuccessfulEmpty()
+    public async Task NpuSingleFetchHttpKeepsFiveDefinitionsClearsUnavailableThenRemovesSuccessfulEmpty()
     {
         var healthy = HostNpuInformationFieldsTests.Snapshot([HostNpuInformationFieldsTests.Row()]);
         var reader = new Reader(healthy, healthy with { NpuInformation = null }, healthy with { NpuInformation = [] });
         using var fixture = new Fixture(reader);
         await using var app = await StartAsync(fixture.Provider);
         using var client = Client(app);
-        using (var initial = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields")))
+        using (var initial = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app)))
             Assert.Empty(initial.RootElement.GetProperty("devices").EnumerateArray());
         Assert.Equal(0, reader.ReadCount);
         for (var phase = 0; phase < 3; phase++)
         {
-            await fixture.Provider.SampleNowAsync(default);
+            var sampledHttpFields = await client.GetStringAsync("/api/device-topology/fields");
             var state = fixture.Provider.ReadState();
-            using var message = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+            using var message = JsonDocument.Parse(sampledHttpFields);
             var devices = message.RootElement.GetProperty("devices").EnumerateArray();
             if (phase == 2)
                 Assert.DoesNotContain(devices, static device => device.GetProperty("deviceIdentity").GetString() == HostNpuInformationFieldsTests.Identity);

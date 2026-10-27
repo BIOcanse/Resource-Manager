@@ -9,7 +9,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class DeviceInformationEndpointTests
 {
     [Fact]
-    public async Task NativeExtendedSecurityProductFieldsReachCacheHttpAndRoundTripWithoutAnotherRead()
+    public async Task NativeExtendedSecurityProductFieldsReachFreshHttpAndRoundTrip()
     {
         using var com = new WindowsSecurityProductInformationCollectorTests.Com(); var product = com.Add("Extended");
         using var extended = new WindowsSecurityProductInformationCollectorTests.ExtendedProduct(com, product);
@@ -24,12 +24,12 @@ public sealed partial class DeviceInformationEndpointTests
         var persisted = new DeviceTopologyPersistedSnapshot(DeviceTopologySnapshotState.CurrentSchemaVersion, "test", 7, comparer.ComputeHash(raw), raw);
         var reader = new Reader(raw, new InvalidOperationException("whole source failed"), raw);
         using var fixture = new Fixture(reader, persisted); await using var app = await StartAsync(fixture.Provider); using var client = Client(app);
-        using var initial = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var initial = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         AssertSecurityProductValuesEmpty(initial.RootElement); Assert.Equal(0, reader.ReadCount);
         for (var phase = 0; phase < 3; phase++)
         {
-            await fixture.Provider.SampleNowAsync(CancellationToken.None);
-            using var result = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+            var sampledHttpFields1 = await client.GetStringAsync("/api/device-topology/fields");
+            using var result = JsonDocument.Parse(sampledHttpFields1);
             if (phase == 1) { AssertSecurityProductValuesEmpty(result.RootElement); continue; }
             var row = Field(result.RootElement, "machine", "security_all_antivirus_products_reported").GetProperty("value")[0];
             Assert.Equal("guid\0raw", row.GetProperty("productGuidReported").GetString()); Assert.False(row.GetProperty("productIsDefaultReported").GetBoolean());

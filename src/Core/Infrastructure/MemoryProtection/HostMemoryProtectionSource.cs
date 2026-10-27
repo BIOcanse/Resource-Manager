@@ -13,7 +13,7 @@ using ResourceManager.ReadWrite.ProcessFields;
 namespace ResourceManager.App.Infrastructure.MemoryProtection;
 
 public sealed class HostMemoryProtectionSource(IMetricSnapshotPushSource metrics,
-    IMetricSnapshotObservationSource currentMetrics, IResourceBreakdownPushSource resources,
+    IResourceBreakdownPushSource resources,
     ISchedulingProcessFactObservationSource foundations) : IHostMemoryProtectionSource
 {
     internal const string PrivateCommitField = "process_all_private_commit_actual";
@@ -24,7 +24,8 @@ public sealed class HostMemoryProtectionSource(IMetricSnapshotPushSource metrics
         [PrivateCommitField], new Dictionary<string, string>(), ProcessSampleDetailLevel.ResourceTableBasic)
         { PublicationDatasetIds = [SamplingDatasetIds.ProcessInventory, SamplingDatasetIds.ProcessAttribution] };
 
-    public HostMemoryCommit? ReadCurrentCommit() => ReadCommit(currentMetrics.ReadLatest(CommitRequest));
+    public async Task<HostMemoryCommit?> ReadCurrentCommitAsync(CancellationToken cancellationToken)
+        => ReadCommit(await metrics.FetchOnceAsync("host-memory-protection:status", CommitRequest, cancellationToken));
 
     public async IAsyncEnumerable<HostMemoryReading> SubscribeAsync(string holder, TimeSpan interval,
         [EnumeratorCancellation] CancellationToken cancellationToken)

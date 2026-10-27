@@ -8,20 +8,59 @@ using ResourceManager.App.Domain.ResourceBreakdown;
 namespace ResourceManager.App.Infrastructure.GpuPlacement.External;
 
 public sealed class ExternalGpuResidentObservation(
-    IMetricSnapshotObservationSource hardware, ISchedulingProcessFactObservationSource processes)
+    IMetricSnapshotObservationSource hardware, ISchedulingProcessFactObservationSource processes,
+    IMetricSnapshotPushSource hardwarePublications, IResourceBreakdownPushSource processPublications)
 {
+    // Renderer qualification and residency confirmation need independent, current GPU facts even
+    // when Smart and every resource table are stopped. One second matches action confirmation needs.
+    internal static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(1);
+    private static readonly MetricSampleRequest InventoryRequest = MetricSampleRequest.ForIds([
+        SamplingDatasetIds.SystemGpuInventory]);
+    private const SchedulingProcessMetricMask ResidentMetricMask = SchedulingProcessMetricMask.GpuDedicatedMemory
+        | SchedulingProcessMetricMask.GpuUsage;
+
+    internal IDisposable AcquireInventorySubscription(string holder)
+        => hardware.AcquireSubscription(holder, InventoryRequest, RefreshInterval);
+
+    internal IDisposable AcquireSubscription(string holder)
+    {
+        var inventory = AcquireInventorySubscription(holder + ":inventory");
+        try
+        {
+            return new ObservationLease(inventory,
+                processes.AcquireSubscription(holder + ":resident", ResidentMetricMask, RefreshInterval));
+        }
+        catch { inventory.Dispose(); throw; }
+    }
+
+    internal Task<HardwareMetricSnapshot?> FetchInventoryAsync(string holder, CancellationToken cancellationToken)
+        => hardwarePublications.FetchOnceAsync(holder, InventoryRequest, cancellationToken);
+
+    internal async Task<bool> FetchResidentAsync(string holder, CancellationToken cancellationToken)
+        => await processPublications.FetchOnceAsync(holder,
+            new ResourceBreakdownSampleRequest([], new Dictionary<string, string>(),
+                ProcessSampleDetailLevel.SmartSchedulingLite, ResidentMetricMask), cancellationToken).ConfigureAwait(false) is not null;
+
+    private sealed class ObservationLease(IDisposable inventory, IDisposable resident) : IDisposable
+    {
+        private int disposed;
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref disposed, 1) != 0) return;
+            try { resident.Dispose(); }
+            finally { inventory.Dispose(); }
+        }
+    }
+
     internal IReadOnlyList<ulong> ReadAdapterKeys()
-        => hardware.ReadLatest(MetricSampleRequest.ForIds([
-            SamplingDatasetIds.SystemGpuInventory]))?.GpuInventory?.Adapters
-            .Select(adapter => adapter.AdapterKey).Where(key => key != 0).Distinct().ToArray() ?? [];
+        => hardware.ReadLatest(InventoryRequest)?.GpuInventory is { Status: SamplingObservationStatus.Current } inventory
+            ? inventory.Adapters.Select(adapter => adapter.AdapterKey).Where(key => key != 0).Distinct().ToArray() : [];
 
     internal ExternalResidentSample? Read(GpuPlacementProcessInstance identity)
     {
-        var inventory = hardware.ReadLatest(MetricSampleRequest.ForIds([
-            SamplingDatasetIds.SystemGpuInventory]))?.GpuInventory;
-        if (inventory is null) return null;
-        var snapshot = processes.ReadLatest(new(SchedulingProcessMetricMask.GpuDedicatedMemory
-            | SchedulingProcessMetricMask.GpuUsage, inventory));
+        var inventory = hardware.ReadLatest(InventoryRequest)?.GpuInventory;
+        if (inventory is not { Status: SamplingObservationStatus.Current }) return null;
+        var snapshot = processes.ReadLatest(new(ResidentMetricMask, inventory));
         if (snapshot is null || !snapshot.DatasetObservations.TryGetValue(
                 SchedulingProcessMetricMask.GpuDedicatedMemory, out var memory)
             || memory.Status != SamplingObservationStatus.Current

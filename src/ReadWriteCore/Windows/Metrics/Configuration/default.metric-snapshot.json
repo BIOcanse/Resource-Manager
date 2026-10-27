@@ -358,18 +358,18 @@
         "source_id": "windows.virtual-memory",
         "scope_expansion": "virtual_memory",
         "metric_kind": "virtual_memory_used",
-        "value_kind": "float64",
+        "value_kind": "unsigned64",
         "capability_mask": 4,
         "metric_flags": [
           "nonnegative",
           "used_value"
         ],
         "minimum_value_bits": 0,
-        "maximum_value_bits": 9218868437227405311,
+        "maximum_value_bits": 18446744073709551615,
         "gpu_vendor_mask": 0,
         "applicability_mask": 0,
         "maximum_instance_count": 1,
-        "semantic_fingerprint": 1004
+        "semantic_fingerprint": 11004
       },
       {
         "template_id": "virtualMemory.percent.windows",
@@ -396,18 +396,18 @@
         "source_id": "windows.virtual-memory",
         "scope_expansion": "virtual_memory",
         "metric_kind": "virtual_memory_total",
-        "value_kind": "float64",
+        "value_kind": "unsigned64",
         "capability_mask": 4,
         "metric_flags": [
           "nonnegative",
           "total_value"
         ],
         "minimum_value_bits": 0,
-        "maximum_value_bits": 9218868437227405311,
+        "maximum_value_bits": 18446744073709551615,
         "gpu_vendor_mask": 0,
         "applicability_mask": 0,
         "maximum_instance_count": 1,
-        "semantic_fingerprint": 1079
+        "semantic_fingerprint": 11079
       },
       {
         "template_id": "cpu.frequency.pdh",

@@ -162,7 +162,10 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 ? ParseProcessSampleDetailLevel(detail.ToString()) ?? ProcessSampleDetailLevel.ResourceTableBasic
                 : ProcessSampleDetailLevel.ResourceTableBasic)
         {
-            PublicationDatasetIds = foundations,
+            // The shared process-fact projection requires both identity and
+            // attribution. Own both even for an inventory-only one-shot reply.
+            PublicationDatasetIds = foundations.Length == 0 ? [] :
+                [Domain.Monitoring.SamplingDatasetIds.ProcessInventory, Domain.Monitoring.SamplingDatasetIds.ProcessAttribution],
             ProcessMemoryFactIds = metrics.Where(static item => ProcessMemoryFactFields.TotalMetricId(item) is not null).ToArray()
         };
     }

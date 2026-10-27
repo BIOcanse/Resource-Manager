@@ -7,7 +7,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
 {
     [Fact]
-    public async Task PhysicalResidualDetailsUseIndependentDemandAndMinimumWhileReadsDoNoWalk()
+    public async Task PhysicalResidualDetailsUseIndependentDemandAndMinimumWhileCachedReadsDoNoWalk()
     {
         using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
         using var catalog = new VersionedProcessAttributionCatalogProvider();
@@ -29,7 +29,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         await sampler.StartAsync(default);
         try
         {
-            Assert.Null((await sampler.GetSnapshotAsync(request,default)).PhysicalMemoryResidual);
+            Assert.Null(sampler.ReadLatest(request).PhysicalMemoryResidual);
             await Assert.ThrowsAsync<InvalidOperationException>(() => sampler.CaptureSnapshotAsync(request,default));
             using (sampler.AcquireSubscription("ordinary-private", ResourceBreakdownSampleRequest.ForResourceTable(
                 ["process_all_private_working_set_actual"],new Dictionary<string,string>()), TimeSpan.FromMilliseconds(100)))
@@ -44,7 +44,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
                     Assert.Equal(1,Volatile.Read(ref walks));
                     await Task.Delay(300); // the faster ordinary field continues; PFNs are not due
                     sampler.ReadLatest(request);
-                    await sampler.GetSnapshotAsync(request,default);
+                    sampler.ReadLatest(request);
                     Assert.Equal(1,Volatile.Read(ref walks));
                 }
                 await Task.Delay(300);

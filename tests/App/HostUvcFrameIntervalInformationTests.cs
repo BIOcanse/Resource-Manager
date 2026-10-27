@@ -7,7 +7,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class DeviceInformationEndpointTests
 {
     [Fact]
-    public async Task UvcIntervalsCachedHttpKeepsIntegersClearsFailureRecoversAndRemovesAbsentDevice()
+    public async Task UvcIntervalsSingleFetchHttpKeepsIntegersClearsFailureRecoversAndRemovesAbsentDevice()
     {
         var healthy = UvcFrameIntervalCapabilityTests.Snapshot();
         var reader = new Reader(healthy, new InvalidOperationException("recorded descriptor capture failure"),
@@ -15,14 +15,14 @@ public sealed partial class DeviceInformationEndpointTests
         using var fixture = new Fixture(reader);
         await using var app = await StartAsync(fixture.Provider);
         using var client = Client(app);
-        using (var initial = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields")))
+        using (var initial = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app)))
             Assert.Empty(initial.RootElement.GetProperty("devices").EnumerateArray());
         Assert.Equal(0, reader.ReadCount);
         for (var phase = 0; phase < 4; phase++)
         {
-            await fixture.Provider.SampleNowAsync(default);
+            var sampledHttpFields = await client.GetStringAsync("/api/device-topology/fields");
             var current = fixture.Provider.ReadState().InformationFields;
-            using var response = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+            using var response = JsonDocument.Parse(sampledHttpFields);
             if (phase == 3)
                 Assert.DoesNotContain(response.RootElement.GetProperty("devices").EnumerateArray(),
                     item => item.GetProperty("deviceIdentity").GetString() == UvcFrameIntervalCapabilityTests.Identity);
@@ -70,7 +70,7 @@ public sealed partial class DeviceInformationEndpointTests
         await fixture.WaitForNoDemandAndIdleAsync();
         var reads = reader.ReadCount;
         var current = fixture.Provider.ReadState().InformationFields;
-        using var cached = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var cached = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         Assert.Equal(reads, reader.ReadCount);
         Assert.Same(current, fixture.Provider.ReadState().InformationFields);
         await app.StopAsync();

@@ -5,6 +5,7 @@ using System.Text.Json;
 using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Domain.GpuPlacement;
+using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.Paths;
 
 namespace ResourceManager.App.Infrastructure.GpuPlacement.External;
@@ -61,19 +62,25 @@ public sealed partial class WindowsExternalGpuPlacementRuntime(
         }
     }
 
-    public ExternalGpuPlacementPlan? Prepare(IReadOnlyList<GpuPlacementProcessInstance> processes)
+    public async Task<ExternalGpuPlacementPlan?> PrepareAsync(IReadOnlyList<GpuPlacementProcessInstance> processes,
+        CancellationToken cancellationToken)
     {
         using var reads = CreateQualificationReadCycle();
-        return Prepare(processes, reads);
+        return await PrepareAsync(processes, reads, cancellationToken).ConfigureAwait(false);
     }
 
     internal RendererQualificationReadCycle CreateQualificationReadCycle()
         => new(WindowsRendererQualificationNativeApi.Instance);
 
-    internal ExternalGpuPlacementPlan? Prepare(IReadOnlyList<GpuPlacementProcessInstance> processes, RendererQualificationReadCycle reads)
+    internal async Task<ExternalGpuPlacementPlan?> PrepareAsync(IReadOnlyList<GpuPlacementProcessInstance> processes,
+        RendererQualificationReadCycle reads, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         RetireFinishedAttempts();
-        if (HasUnreleasedControl) return null;
+        if (HasUnreleasedControl || processes.Count == 0) return null;
+        using var demand = observations.AcquireInventorySubscription("external-gpu-placement:prepare:inventory");
+        if ((await observations.FetchInventoryAsync("external-gpu-placement:prepare:inventory-once", cancellationToken)
+                .ConfigureAwait(false))?.GpuInventory.Status != SamplingObservationStatus.Current) return null;
         var eligible = processes.Select(process => ReadPlan(process, reads, useAbsenceCache: true)).OfType<ExternalGpuPlacementPlan>().ToArray();
         return eligible.Length == 1 && !HasFailedAttempt(evidenceRoot, eligible[0].Root) ? eligible[0] : null;
     }
@@ -216,6 +223,15 @@ public sealed partial class WindowsExternalGpuPlacementRuntime(
         var cleanupDeadline = execution.CleanupDeadlineMilliseconds;
         if (workDeadline <= Now || cleanupDeadline <= workDeadline || cancellationToken.IsCancellationRequested)
             return new([], "External GPU action has no remaining execution budget.", RunningGpuPlacementActionStatuses.Skipped);
+        using var demand = observations.AcquireSubscription("external-gpu-placement:execute");
+        using (var initialObservation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+        {
+            initialObservation.CancelAfter(TimeSpan.FromMilliseconds(Math.Max(1, (long)workDeadline - (long)Now)));
+            if ((await observations.FetchInventoryAsync("external-gpu-placement:execute:inventory-once", initialObservation.Token)
+                    .ConfigureAwait(false))?.GpuInventory.Status != SamplingObservationStatus.Current
+                || !await observations.FetchResidentAsync("external-gpu-placement:execute:resident-once", initialObservation.Token).ConfigureAwait(false))
+                return new([], "No current GPU inventory or process publication is available.", RunningGpuPlacementActionStatuses.Skipped);
+        }
         var id = Guid.NewGuid().ToString("N");
         var directory = Path.Combine(evidenceRoot, id);
         var (stop, cancel) = ExternalGpuControllerRecovery.SignalPaths(directory, controllerImage);

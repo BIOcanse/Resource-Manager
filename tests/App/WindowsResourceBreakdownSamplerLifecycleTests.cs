@@ -82,7 +82,8 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             VirtualMemory = new VirtualMemoryMetrics(UsedBytes: totalCommit, TotalBytes: commitLimit, UsagePercent: 50, IsSelectable: true),
             Items = new Dictionary<string, MetricReadingValue>(hardware.Items)
             {
-                [ResourceBreakdownMetricIds.VirtualMemoryUsage] = new(Id: ResourceBreakdownMetricIds.VirtualMemoryUsage, NumericValue: totalCommit, Unit: "B", Percent: 50, Total: commitLimit)
+                [ResourceBreakdownMetricIds.VirtualMemoryUsage] = new(Id: ResourceBreakdownMetricIds.VirtualMemoryUsage, NumericValue: null, Unit: "B", Percent: 50, Total: commitLimit)
+                    { IntegerValue = new(totalCommit) }
             },
             Datasets = new Dictionary<string, HardwareMetricDatasetObservation>(hardware.Datasets)
             {
@@ -492,7 +493,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
     }
 
     [Fact]
-    public async Task DirectCaptureDoesNotPopulateTheHostedCurrentSlot()
+    public async Task DirectCaptureDoesNotPopulateTheHostedCachedRead()
     {
         using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
         using var catalogProvider = new VersionedProcessAttributionCatalogProvider();
@@ -516,22 +517,20 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         Assert.Equal(1, catalogProvider.CaptureCount);
         Assert.Equal(ResourceBreakdownSamplingStatuses.Ready, direct.Sampling.Status);
 
-        var hostedBeforeStart = await sampler.GetSnapshotAsync(
-            request,
-            CancellationToken.None);
+        var hostedBeforeStart = sampler.ReadLatest(request);
         Assert.Equal(
             ResourceBreakdownSamplingStatuses.Warming,
             hostedBeforeStart.Sampling.Status);
         Assert.Empty(hostedBeforeStart.Bars);
 
         await catalogProvider.InvalidateSoftwareSnapshotAsync();
-        _ = await sampler.GetSnapshotAsync(request, CancellationToken.None);
+        _ = sampler.ReadLatest(request);
 
         Assert.Equal(1, catalogProvider.CaptureCount);
     }
 
     [Fact]
-    public async Task GetSnapshotAsync_DoesNotRunForegroundCaptureOnFailure()
+    public async Task ReadLatestCached_DoesNotRunForegroundCaptureOnFailure()
     {
         using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
         var catalogProvider = new FailingProcessAttributionCatalogProvider();
@@ -550,8 +549,8 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             [ResourceBreakdownMetricIds.MemoryUsage],
             new Dictionary<string, string>());
 
-        var first = await sampler.GetSnapshotAsync(request, CancellationToken.None);
-        var second = await sampler.GetSnapshotAsync(request, CancellationToken.None);
+        var first = sampler.ReadLatest(request);
+        var second = sampler.ReadLatest(request);
 
         Assert.Equal(ResourceBreakdownSamplingStatuses.Warming, first.Sampling.Status);
         Assert.Equal(ResourceBreakdownSamplingStatuses.Warming, second.Sampling.Status);
@@ -561,16 +560,14 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             sampler.CaptureSnapshotAsync(request, CancellationToken.None));
         Assert.Equal(1, catalogProvider.CaptureCount);
 
-        var hostedAfterDirectFailure = await sampler.GetSnapshotAsync(
-            request,
-            CancellationToken.None);
+        var hostedAfterDirectFailure = sampler.ReadLatest(request);
         Assert.Equal(
             ResourceBreakdownSamplingStatuses.Warming,
             hostedAfterDirectFailure.Sampling.Status);
     }
 
     [Fact]
-    public async Task GetSnapshotAsync_ReadsOnlyTheCurrentSlotWithoutRegisteringHardwareDemand()
+    public void ReadLatestCached_DoesNotRegisterHardwareDemand()
     {
         using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
         using var catalogProvider = new VersionedProcessAttributionCatalogProvider();
@@ -590,9 +587,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             [ResourceBreakdownMetricIds.MemoryUsage],
             new Dictionary<string, string>());
 
-        var snapshot = await sampler.GetSnapshotAsync(
-            request,
-            CancellationToken.None);
+        var snapshot = sampler.ReadLatest(request);
 
         Assert.Equal(ResourceBreakdownSamplingStatuses.Warming, snapshot.Sampling.Status);
         Assert.Equal(0, metricSampler.GetCount);
@@ -666,14 +661,12 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         await sampler.StartAsync(startup.Token);
         startup.Cancel();
 
-        _ = await sampler.GetSnapshotAsync(request, CancellationToken.None);
+        _ = sampler.ReadLatest(request);
         var deadline = Stopwatch.GetTimestamp() + Stopwatch.Frequency * 5;
         ResourceBreakdownSnapshot? snapshot = null;
         while (Stopwatch.GetTimestamp() < deadline)
         {
-            snapshot = await sampler.GetSnapshotAsync(
-                request,
-                CancellationToken.None);
+            snapshot = sampler.ReadLatest(request);
             if (snapshot.Bars.Any(static bar =>
                     bar.MetricId == ResourceBreakdownMetricIds.MemoryUsage))
             {

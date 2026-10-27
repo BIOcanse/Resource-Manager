@@ -18,11 +18,11 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class DeviceInformationEndpointTests
 {
-    private static void AssertInformationFieldsInStateMatchFieldsEndpoint(JsonElement state, JsonElement fields)
+    private static void AssertPublishedInformationFieldsMatchResponse(JsonElement state, JsonElement fields)
         => Assert.Equal(fields.GetRawText(), state.GetProperty("informationFields").GetRawText());
 
     [Fact]
-    public async Task CachedHttpRetainsDeclarationsClearsFailedValuesAndIncludesCurrentInformationAlongsideSnapshot()
+    public async Task SingleFetchHttpRetainsDeclarationsClearsFailedValuesAndIncludesCurrentInformationAlongsideSnapshot()
     {
         var snapshot = DeviceInformationTestData.Snapshot() with
         { MemoryModules = [DeviceInformationTestData.Module("dimm")], Batteries = [new("battery", "厂商", "声明序号", "X123")],
@@ -35,14 +35,14 @@ public sealed partial class DeviceInformationEndpointTests
         using var fixture = new Fixture(reader);
         await using var app = await StartAsync(fixture.Provider);
         using var client = Client(app);
-        using var empty = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var empty = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         Assert.Equal(0, empty.RootElement.GetProperty("devices").GetArrayLength());
         Assert.Equal(0, reader.ReadCount);
-        await fixture.Provider.SampleNowAsync(CancellationToken.None);
+        var sampledHttpFields1 = await client.GetStringAsync("/api/device-topology/fields");
         var current = fixture.Provider.ReadState().InformationFields;
         Assert.Equal("厂商", current.Devices.Single(d => d.DeviceIdentity == "battery")
             .Fields.Single(f => f.Definition.Name == "battery_all_manufacturer_declared").Value!.Value.GetString());
-        using var first = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var first = JsonDocument.Parse(sampledHttpFields1);
         Assert.Equal("18446744073709551615", Field(first.RootElement, "dimm", "memory_all_dimm_capacity").GetProperty("value").GetString());
         Assert.Equal("厂商", Field(first.RootElement, "battery", "battery_all_manufacturer_declared").GetProperty("value").GetString());
         Assert.Equal("X123", Field(first.RootElement, "battery", "battery_all_chemistry_declared").GetProperty("value").GetString());
@@ -67,8 +67,8 @@ public sealed partial class DeviceInformationEndpointTests
         Assert.Equal("198.51.100.7", Field(first.RootElement,NetworkAddressInformationCollectorTests.IdentityA,"network_all_unicast_address_reported").GetProperty("value")[0].GetProperty("address").GetString());
         Assert.Same(current, fixture.Provider.ReadState().InformationFields);
         Assert.Equal(1, reader.ReadCount);
-        await fixture.Provider.SampleNowAsync(CancellationToken.None);
-        using var failed = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        var sampledHttpFields2 = await client.GetStringAsync("/api/device-topology/fields");
+        using var failed = JsonDocument.Parse(sampledHttpFields2);
         Assert.Equal(JsonValueKind.Null, Field(failed.RootElement, "dimm", "memory_all_dimm_capacity").GetProperty("value").ValueKind);
         Assert.Equal(JsonValueKind.Null, Field(failed.RootElement, "battery", "battery_all_manufacturer_declared").GetProperty("value").ValueKind);
         Assert.Equal(JsonValueKind.Null, Field(failed.RootElement, "ata", "storage_all_capacity_declared").GetProperty("value").ValueKind);
@@ -81,8 +81,8 @@ public sealed partial class DeviceInformationEndpointTests
             static field => Assert.Null(field.Value));
         Assert.All(fixture.Provider.ReadState().InformationFields.Devices.Single(d => d.DeviceIdentity == NetworkAddressInformationCollectorTests.IdentityA).Fields,
             static field => Assert.Null(field.Value));
-        using var legacy = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/state"));
-        AssertInformationFieldsInStateMatchFieldsEndpoint(legacy.RootElement, failed.RootElement);
+        using var legacy = JsonDocument.Parse(ReadPublishedState(fixture.Provider, app));
+        AssertPublishedInformationFieldsMatchResponse(legacy.RootElement, failed.RootElement);
         Assert.Equal("Machine Model", legacy.RootElement.GetProperty("snapshot").GetProperty("system").GetProperty("model").GetString());
         Assert.Equal(2, reader.ReadCount);
         await app.StopAsync();
@@ -186,8 +186,8 @@ public sealed partial class DeviceInformationEndpointTests
         using var client=Client(app);
         for (var phase=0;phase<4;phase++)
         {
-            await fixture.Provider.SampleNowAsync(CancellationToken.None);
-            using var result=JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+            var sampledHttpFields3 = await client.GetStringAsync("/api/device-topology/fields");
+            using var result=JsonDocument.Parse(sampledHttpFields3);
             if (phase==3)
                 Assert.DoesNotContain(result.RootElement.GetProperty("devices").EnumerateArray(),static d=>d.GetProperty("deviceIdentity").GetString()==NvidiaGpuDeclarationCollectorTests.IdentityA);
             else
@@ -213,7 +213,7 @@ public sealed partial class DeviceInformationEndpointTests
         using var fixture=new Fixture(reader,persisted);
         await using var app=await StartAsync(fixture.Provider);
         using var client=Client(app);
-        using var cached=JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var cached=JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         Assert.Equal(JsonValueKind.Null,Field(cached.RootElement,NvidiaGpuDeclarationCollectorTests.IdentityA,"gpu_nvidia_cuda_compute_capability").GetProperty("value").ValueKind);
         Assert.Equal(JsonValueKind.Null,Field(cached.RootElement,AmdGpuDeclarationInformationCollectorTests.IdentityA,"gpu_amd_vbios_version").GetProperty("value").ValueKind);
         Assert.Equal(JsonValueKind.Null,Field(cached.RootElement,NvidiaGpuDeclarationCollectorTests.IdentityA,"gpu_all_driver_version").GetProperty("value").ValueKind);
@@ -222,8 +222,8 @@ public sealed partial class DeviceInformationEndpointTests
         Assert.Equal(JsonValueKind.Null,Field(cached.RootElement,NetworkAddressInformationCollectorTests.IdentityA,"network_all_unicast_address_reported").GetProperty("value").ValueKind);
         Assert.Equal(JsonValueKind.Null,Field(cached.RootElement,NetworkAddressInformationCollectorTests.IdentityA,"network_all_route_reported").GetProperty("value").ValueKind);
         Assert.Equal(0,reader.ReadCount);
-        await fixture.Provider.SampleNowAsync(CancellationToken.None);
-        using var live=JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        var sampledHttpFields4 = await client.GetStringAsync("/api/device-topology/fields");
+        using var live=JsonDocument.Parse(sampledHttpFields4);
         Assert.Equal("8.10",Field(live.RootElement,NvidiaGpuDeclarationCollectorTests.IdentityA,"gpu_nvidia_cuda_compute_capability").GetProperty("value").GetString());
         Assert.Equal("32.0.15.8100",Field(live.RootElement,NvidiaGpuDeclarationCollectorTests.IdentityA,"gpu_all_driver_version").GetProperty("value").GetString());
         Assert.Equal((ushort)4,Field(live.RootElement,HidInformationCollectorTests.IdentityA,"hid_all_usage_declared").GetProperty("value").GetProperty("usage").GetUInt16());
@@ -242,8 +242,8 @@ public sealed partial class DeviceInformationEndpointTests
         using var client=Client(app);
         for (var phase=0;phase<4;phase++)
         {
-            await fixture.Provider.SampleNowAsync(CancellationToken.None);
-            using var result=JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+            var sampledHttpFields5 = await client.GetStringAsync("/api/device-topology/fields");
+            using var result=JsonDocument.Parse(sampledHttpFields5);
             if (phase==3)
                 Assert.DoesNotContain(result.RootElement.GetProperty("devices").EnumerateArray(),static d=>d.GetProperty("deviceIdentity").GetString()==NvidiaGpuDeclarationCollectorTests.IdentityA);
             else
@@ -270,8 +270,8 @@ public sealed partial class DeviceInformationEndpointTests
         using var client=Client(app);
         for (var phase=0;phase<4;phase++)
         {
-            await fixture.Provider.SampleNowAsync(CancellationToken.None);
-            using var result=JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+            var sampledHttpFields6 = await client.GetStringAsync("/api/device-topology/fields");
+            using var result=JsonDocument.Parse(sampledHttpFields6);
             if (phase==3) Assert.DoesNotContain(result.RootElement.GetProperty("devices").EnumerateArray(),static d=>d.GetProperty("deviceIdentity").GetString()==HidInformationCollectorTests.IdentityA);
             else
             {
@@ -285,7 +285,7 @@ public sealed partial class DeviceInformationEndpointTests
     }
 
     [Fact]
-    public async Task RealWorkerRunsTheHidCollectorOnlyForSubscribedSnapshotsAndGetNeverQueriesIt()
+    public async Task RealWorkerRunsTheHidCollectorOnlyForSubscribedSnapshotsAndCachedInspectionDoesNotQueryIt()
     {
         var api=new HidInformationCollectorTests.RepeatedApi();
         var collector=new ResourceManager.ReadWrite.Windows.Devices.Hid.WindowsHidInformationReader(api);
@@ -293,7 +293,7 @@ public sealed partial class DeviceInformationEndpointTests
         using var fixture=new Fixture(reader);
         await using var app=await StartAsync(fixture.Provider);
         using var client=Client(app);
-        using var initial=JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var initial=JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         Assert.Equal(0,api.Enumerations); Assert.Equal(0,api.Opens);
         using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(12));
         using var request=new HttpRequestMessage(HttpMethod.Post,"/api/subscriptions/stream") {
@@ -308,7 +308,7 @@ public sealed partial class DeviceInformationEndpointTests
         await timeout.CancelAsync(); response.Dispose(); await fixture.WaitForNoDemandAndIdleAsync();
         var reads=api.Enumerations; var opens=api.Opens;
         var current=fixture.Provider.ReadState().InformationFields;
-        using var cached=JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var cached=JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         Assert.Equal(reads,api.Enumerations); Assert.Equal(opens,api.Opens);
         await Task.Delay(1300);
         Assert.Equal(reads,api.Enumerations); Assert.Equal(opens,api.Opens); Assert.Same(current,fixture.Provider.ReadState().InformationFields);
@@ -325,8 +325,8 @@ public sealed partial class DeviceInformationEndpointTests
         using var client=Client(app);
         for (var phase=0;phase<4;phase++)
         {
-            await fixture.Provider.SampleNowAsync(CancellationToken.None);
-            using var result=JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+            var sampledHttpFields7 = await client.GetStringAsync("/api/device-topology/fields");
+            using var result=JsonDocument.Parse(sampledHttpFields7);
             if (phase==3)
                 Assert.DoesNotContain(result.RootElement.GetProperty("devices").EnumerateArray(),static d=>d.GetProperty("deviceIdentity").GetString()==NetworkAddressInformationCollectorTests.IdentityA);
             else
@@ -339,7 +339,7 @@ public sealed partial class DeviceInformationEndpointTests
     }
 
     [Fact]
-    public async Task RealWorkerRunsNetworkTablesOnlyWithDemandAndGetRetainsTheCurrentCache()
+    public async Task RealWorkerRunsNetworkTablesOnlyWithDemandAndCachedInspectionRetainsCurrent()
     {
         var api=new NetworkAddressInformationCollectorTests.Api();
         var collector=new WindowsNetworkInterfaceInformationReader(api);
@@ -347,7 +347,7 @@ public sealed partial class DeviceInformationEndpointTests
         using var fixture=new Fixture(reader);
         await using var app=await StartAsync(fixture.Provider);
         using var client=Client(app);
-        using var initial=JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var initial=JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         Assert.Equal(0,api.InterfaceReads); Assert.Equal(0,api.UnicastReads); Assert.Equal(0,api.RouteReads);
         using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(12));
         using var request=new HttpRequestMessage(HttpMethod.Post,"/api/subscriptions/stream") {
@@ -363,7 +363,7 @@ public sealed partial class DeviceInformationEndpointTests
         await timeout.CancelAsync(); response.Dispose(); await fixture.WaitForNoDemandAndIdleAsync();
         var reads=api.InterfaceReads; var addresses=api.UnicastReads; var routes=api.RouteReads;
         var current=fixture.Provider.ReadState().InformationFields;
-        using var cached=JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var cached=JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         Assert.Equal(reads,api.InterfaceReads); Assert.Equal(addresses,api.UnicastReads); Assert.Equal(routes,api.RouteReads);
         await Task.Delay(1300);
         Assert.Equal(reads,api.InterfaceReads); Assert.Equal(addresses,api.UnicastReads); Assert.Equal(routes,api.RouteReads); Assert.Same(current,fixture.Provider.ReadState().InformationFields);
@@ -378,8 +378,8 @@ public sealed partial class DeviceInformationEndpointTests
         using var fixture=new Fixture(reader); await using var app=await StartAsync(fixture.Provider); using var client=Client(app);
         for(var phase=0;phase<4;phase++)
         {
-            await fixture.Provider.SampleNowAsync(CancellationToken.None);
-            using var message=JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+            var sampledHttpFields8 = await client.GetStringAsync("/api/device-topology/fields");
+            using var message=JsonDocument.Parse(sampledHttpFields8);
             if(phase==3) Assert.DoesNotContain(message.RootElement.GetProperty("devices").EnumerateArray(),device=>device.GetProperty("deviceIdentity").GetString()==AmdGpuDeclarationInformationCollectorTests.IdentityA);
             else foreach(var name in new[] { "gpu_amd_vbios_version","gpu_amd_vram_type","gpu_amd_vbios_part_number","gpu_amd_vbios_date_raw" })
             {
@@ -391,12 +391,12 @@ public sealed partial class DeviceInformationEndpointTests
     }
 
     [Fact]
-    public async Task RealWorkerRunsAmdDeclarationCollectorOnlyForDemandAndHttpUsesCacheAfterCancel()
+    public async Task RealWorkerRunsAmdDeclarationCollectorOnlyForDemandAndCachedInspectionAfterCancel()
     {
         var probe=AmdGpuDeclarationInformationCollectorTests.CreateCollectorProbe();
         var reader=new Reader(()=>DeviceInformationTestData.Snapshot() with { AmdGpuInformation=probe.Read() });
         using var fixture=new Fixture(reader); await using var app=await StartAsync(fixture.Provider); using var client=Client(app);
-        using var initial=JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields")); Assert.Equal(0,probe.Calls());
+        using var initial=JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app)); Assert.Equal(0,probe.Calls());
         using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(12));
         using var request=new HttpRequestMessage(HttpMethod.Post,"/api/subscriptions/stream") {
             Content=JsonContent.Create(new { version=1,subscriptions=new[] { new { id="amd-worker",path="/api/device-topology/fields/subscribe?intervalMs=1000" } } }) };
@@ -410,7 +410,7 @@ public sealed partial class DeviceInformationEndpointTests
         Assert.True(probe.Calls()>0);
         await timeout.CancelAsync(); response.Dispose(); await fixture.WaitForNoDemandAndIdleAsync();
         var calls=probe.Calls(); var current=fixture.Provider.ReadState().InformationFields;
-        using var cached=JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var cached=JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         Assert.Equal("113-TEST",Field(cached.RootElement,AmdGpuDeclarationInformationCollectorTests.IdentityA,"gpu_amd_vbios_part_number").GetProperty("value").GetString());
         await Task.Delay(1300); Assert.Equal(calls,probe.Calls()); Assert.Same(current,fixture.Provider.ReadState().InformationFields);
         await app.StopAsync();

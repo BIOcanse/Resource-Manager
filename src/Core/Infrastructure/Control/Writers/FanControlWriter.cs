@@ -324,7 +324,7 @@ public sealed class FanControlWriter(
             // to accept a software plan; only a successful plan starts the ongoing lease.
             try
             {
-                var snapshot = await sampler.CaptureSnapshotAsync(
+                var snapshot = await sampler.GetSnapshotAsync(
                     FanCurveTemperatureFeed.TemperatureRequest(catalog?.Current), cancellationToken).ConfigureAwait(false);
                 var samples = FanCurveTemperatureFeed.Collect(snapshot, DateTimeOffset.UtcNow);
                 var hasRequiredTemperature = description.Role == ControlFanRoles.Gpu

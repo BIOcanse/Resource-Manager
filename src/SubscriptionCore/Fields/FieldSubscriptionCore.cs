@@ -10,6 +10,17 @@ public sealed class FieldSubscriptionCore(ReadWriteCore core, IFieldSubscription
     private readonly ReadWriteCore core = core ?? throw new ArgumentNullException(nameof(core));
     private readonly IFieldSubscriptionBackend backend = backend ?? throw new ArgumentNullException(nameof(backend));
 
+    /// <summary>One named fresh query through the normal subscription worker.
+    /// Empty or failed fields are delivered as such; no cached fallback.</summary>
+    public async Task<ImmutableArray<FieldReading>> FetchOnceAsync(string holder,
+        ImmutableArray<FieldReference> fields, CancellationToken cancellationToken = default)
+    {
+        var value = await SubscriptionSingleFetch.ReadAsync(SubscribeAsync(holder, fields, SubscriptionSingleFetch.Interval,
+            new FieldSubscriptionOptions { SamplingMode = FieldSubscriptionSamplingMode.FreshOnTrigger },
+            cancellationToken), static _ => true, cancellationToken).ConfigureAwait(false);
+        return value.IsDefault ? [] : value;
+    }
+
     public IDisposable Acquire(string subscriptionId, ImmutableArray<FieldReference> fields, TimeSpan interval)
     {
         Validate(subscriptionId, fields, interval);

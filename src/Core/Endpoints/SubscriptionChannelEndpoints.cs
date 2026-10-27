@@ -252,7 +252,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 identityAccess.Allowed ? "allowed" : $"denied:{identityAccess.ErrorCode}");
             if (!identityAccess.Allowed) return Failed(identityAccess.StatusCode, identityAccess.ErrorCode);
         }
-        var hooks = DecodeMonitoringHooks(request.Hooks, hookRejections, httpContext.RequestServices);
+        var hooks = await DecodeMonitoringHooksAsync(request.Hooks, hookRejections,
+            httpContext.RequestServices, httpContext.RequestAborted);
         foreach (var descriptor in descriptors.Concat(hooks.Select(hook =>
             new ParsedFrontendSubscription(hook.Id, hook.AuthorizationSelector, QueryCollection.Empty))))
         {

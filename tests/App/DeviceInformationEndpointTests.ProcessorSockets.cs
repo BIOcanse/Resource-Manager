@@ -8,7 +8,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class DeviceInformationEndpointTests
 {
     [Fact]
-    public async Task ProcessorSocketWorkerPublishesFailureRecoveryAndEmptyTableWhileGetAndCancelDoNotRead()
+    public async Task ProcessorSocketWorkerPublishesFailureRecoveryAndEmptyTableWhileCachedInspectionAndCancelDoNotRead()
     {
         var good = SmbiosFirmwareInformationCollectorTests.SocketTable(SmbiosFirmwareInformationCollectorTests.Processor(0x1234));
         var empty = SmbiosFirmwareInformationCollectorTests.SocketTable();
@@ -24,7 +24,7 @@ public sealed partial class DeviceInformationEndpointTests
         using var fixture = new Fixture(reader);
         await using var app = await StartAsync(fixture.Provider);
         using var client = Client(app);
-        using var initial = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var initial = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         Assert.Equal(0, Volatile.Read(ref rawReads));
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream") {
@@ -53,7 +53,7 @@ public sealed partial class DeviceInformationEndpointTests
         await Task.Delay(300);
         var reads = Volatile.Read(ref rawReads);
         var current = fixture.Provider.ReadState().InformationFields;
-        using var cached = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var cached = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         Assert.True(HasSocketValue(cached.RootElement, "CPU0"));
         Assert.Equal(reads, Volatile.Read(ref rawReads));
         await Task.Delay(1300);

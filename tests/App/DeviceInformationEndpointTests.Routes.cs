@@ -16,15 +16,15 @@ public sealed partial class DeviceInformationEndpointTests
         using var fixture = new Fixture(reader);
         await using var app = await StartAsync(fixture.Provider);
         using var client = Client(app);
-        using var initial = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var initial = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         Assert.Equal(0, api.RouteReads);
         for (var phase = 0; phase < 4; phase++)
         {
             api.Routes = phase == 1 ? null : phase == 3 ? new byte[8] : NetworkRouteInformationCollectorTests.Raw();
-            await fixture.Provider.SampleNowAsync(CancellationToken.None);
+            var sampledHttpFields1 = await client.GetStringAsync("/api/device-topology/fields");
             var current = fixture.Provider.ReadState().InformationFields;
             var count = api.RouteReads;
-            using var result = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+            using var result = JsonDocument.Parse(sampledHttpFields1);
             var field = Field(result.RootElement, NetworkAddressInformationCollectorTests.IdentityA, "network_all_route_reported");
             var definition = field.GetProperty("definition");
             Assert.Equal("windows.ip-helper", definition.GetProperty("sourceId").GetString());

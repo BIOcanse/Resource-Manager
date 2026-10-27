@@ -3,6 +3,7 @@ using ResourceManager.App.Application.Control;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Domain.Control;
 using ResourceManager.App.Domain.Metrics;
+using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Infrastructure.Control.Writers;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
@@ -10,9 +11,9 @@ using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 namespace ResourceManager.App.Infrastructure.Control;
 
 /// <summary>
-/// 从已有的监控快照里认出可控对象。
+/// 从同一监控生产者的快照里认出可控对象。
 ///
-/// 刻意不新开采集：哪几块卡、哪几个风扇，监控侧早就知道了。
+/// 一次性读取持有命名订阅等新结果；原采样门内的投影只读已有快照。
 /// 同一块卡在监控页和控制页必须是同一个东西，所以身份直接用监控侧的
 /// <see cref="GpuMetrics.IdentityKey"/>，不另造编号。
 ///
@@ -27,7 +28,8 @@ public sealed class WindowsControlObjectCatalog(
     IControlAccessLevel accessLevel,
     FanControlCoreClient fanCore,
     WindowsChassisKindReader chassis,
-    IMetricSnapshotObservationSource observations) : IControlObjectCatalog
+    IMetricSnapshotObservationSource observations,
+    IMetricSnapshotPushSource metrics) : IControlObjectCatalog
 {
     /// <summary>读显卡出厂唯一标识用的。读不到就退到型号，见 ControlInstanceIdentity。</summary>
     private readonly NvidiaNvmlControlBridge uniqueIdReader = new();
@@ -40,9 +42,29 @@ public sealed class WindowsControlObjectCatalog(
 
     private readonly IReadOnlyList<IControlWriter> writers = writers.ToArray();
 
+    // Cached by design for the original sampler's capture/write callbacks.
     public ControlObjectCatalog ReadObjects()
     {
         var declared = ReadDeclaredObjects();
+        return declared with { Objects = declared.Objects.Select(ResolveAvailability).ToArray() };
+    }
+
+    public async Task<ControlObjectCatalog> ReadObjectsAsync(CancellationToken cancellationToken)
+    {
+        // The published catalog contains declaration facts only. Reuse those
+        // identities to request just the measured values this projection reads.
+        var topology = catalogState.Current ?? await metrics.FetchOnceAsync("control-object-catalog:topology",
+            MetricSampleRequest.CatalogProbe, cancellationToken);
+        if (topology is null) return new([], DateTimeOffset.UtcNow);
+        var ids = new List<string> { SamplingDatasetIds.SystemGpuInventory, "cpu.fanRpm" };
+        ids.AddRange(topology.Gpus.Select(static gpu => $"gpu.{gpu.Index}.fanRpm"));
+        ids.AddRange(topology.FieldBindings.Values
+            .Where(static binding => binding.Field.Code is MetricFieldCode.CpuFanRpm or MetricFieldCode.GpuFanRpm)
+            .Select(static binding => binding.RequestAddress));
+        var request = MetricSampleRequest.ForIds(ids).WithCatalog();
+        var snapshot = await metrics.FetchOnceAsync("control-object-catalog", request, cancellationToken);
+        if (snapshot is null) return new([], DateTimeOffset.UtcNow);
+        var declared = ReadDeclaredObjects(snapshot);
         return declared with { Objects = declared.Objects.Select(ResolveAvailability).ToArray() };
     }
 

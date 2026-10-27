@@ -44,7 +44,7 @@ public sealed partial class WindowsRunningGpuPlacementActionService(
             var allowed = distinctProcesses.Where(process => policy.Resolve(request.SoftwareId, request.DisplayName, null,
                 JsonGpuPlacementProcessHistoryStore.BuildProcessKey(process.ProcessName, process.ExecutablePath))
                 .AcceptsRuntimeGpuScheduling()).ToArray();
-            var external = externalRuntime.Prepare(allowed);
+            var external = await externalRuntime.PrepareAsync(allowed, cancellationToken).ConfigureAwait(false);
             if (external is null) return new(null, "目标没有已验证的无注入运行期移动路径，或存在未释放的控制器。");
             if (TryGetWindowProcessId(NativeMethods.GetForegroundWindow()) == external.Root.ProcessId)
                 return new(null, "目标浏览器当前处于前台，不进入运行期换卡候选。");

@@ -27,8 +27,7 @@ public sealed class AmdHardwareTopologyEndpointTests
             .GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses)) };
         TrustedAccessEndpointTestAuthentication.Apply(client, app.Services);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        using (var empty = await client.GetFromJsonAsync<JsonDocument>("/api/cpu/topology/fields", timeout.Token))
-            Assert.Empty(empty!.RootElement.GetProperty("devices").EnumerateArray());
+        Assert.Empty(fixture.Reader.GetInformationSnapshot().Devices);
         Assert.Equal(0, fixture.Sampler.CaptureCount);
         Assert.Equal(0u, fixture.ReadDemand().SourceCount);
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
@@ -59,19 +58,24 @@ public sealed class AmdHardwareTopologyEndpointTests
         Assert.Equal(2, member.GetProperty("logicalProcessorAddresses").GetArrayLength());
         Assert.All(member.GetProperty("logicalProcessorAddresses").EnumerateArray(), address =>
             Assert.Equal(2, address.GetProperty("processorGroup").GetInt32()));
-        Assert.Equal(2, await fixture.Sampler.WaitForCaptureAsync());
-        var current = fixture.Reader.GetInformationSnapshot();
         for (var index = 0; index < 3; index++)
         {
-            using var cached = await client.GetFromJsonAsync<JsonDocument>("/api/cpu/topology/fields", timeout.Token);
-            Assert.Equal(populated.GetRawText(), cached!.RootElement.GetRawText());
-            Assert.Same(current, fixture.Reader.GetInformationSnapshot());
+            var pending = client.GetFromJsonAsync<JsonDocument>("/api/cpu/topology/fields", timeout.Token);
+            while (fixture.ReadDemand().SourceCount != 2) await Task.Delay(10, timeout.Token);
+            Assert.Equal(index + 2, await fixture.Sampler.WaitForCaptureAsync());
+            var fresh = snapshot with { CapturedAt = DateTimeOffset.UtcNow };
+            fixture.Sampler.Complete(fresh);
+            using var current = await pending;
+            Assert.Equal(fresh.CapturedAt, current!.RootElement.GetProperty("observedAt").GetDateTimeOffset());
+            Assert.Equal(members.GetRawText(), Membership(current.RootElement).GetRawText());
+            Assert.Equal(members.GetRawText(), Membership(await ReadFrameAsync(stream, timeout.Token)).GetRawText());
         }
-        Assert.Equal(2, fixture.Sampler.CaptureCount);
+        Assert.True(fixture.Sampler.CaptureCount >= 4);
         Assert.Equal(1u, fixture.ReadDemand().SourceCount);
+        Assert.Equal(5, await fixture.Sampler.WaitForCaptureAsync());
         fixture.Sampler.Complete(new InvalidOperationException("Recorded CPUID capture unavailable."));
         Assert.Equal(JsonValueKind.Null, Membership(await ReadFrameAsync(stream, timeout.Token)).ValueKind);
-        Assert.Equal(3, await fixture.Sampler.WaitForCaptureAsync());
+        Assert.Equal(6, await fixture.Sampler.WaitForCaptureAsync());
         fixture.Sampler.Complete(snapshot);
         Assert.Equal(members.GetRawText(), Membership(await ReadFrameAsync(stream, timeout.Token)).GetRawText());
         await timeout.CancelAsync();

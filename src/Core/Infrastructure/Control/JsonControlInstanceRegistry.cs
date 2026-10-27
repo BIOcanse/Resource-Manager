@@ -44,7 +44,7 @@ public sealed class JsonControlInstanceRegistry(
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(instanceId);
-        var objects = catalog.ReadObjects().Objects;
+        var objects = (await catalog.ReadObjectsAsync(cancellationToken).ConfigureAwait(false)).Objects;
         var present = objects
             .Any(entry => string.Equals(entry.Id, instanceId, StringComparison.Ordinal));
         if (present)
@@ -91,7 +91,7 @@ public sealed class JsonControlInstanceRegistry(
     /// </summary>
     private async Task<ControlInstanceCatalog> SynchronizeAsync(CancellationToken cancellationToken, bool recoverUnreadable)
     {
-        var objects = catalog.ReadObjects().Objects;
+        var objects = (await catalog.ReadObjectsAsync(cancellationToken).ConfigureAwait(false)).Objects;
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         ControlInstanceRegistryFile file;
         try

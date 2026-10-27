@@ -42,42 +42,40 @@ public sealed class ExternalOnlyRunningGpuPlacementActionService(
         => logger?.LogDebug("External renderer preparation pass: {Candidates} ReadPlan calls, {ConfirmedApis} confirmed API candidates, {ModuleReads} module inventories, {NegativeHits} absent-renderer cache hits.",
             reads.ReadPlanCount, reads.ConfirmedApiCount, reads.ModuleReads, reads.NegativeHits);
 
-    public Task<RunningGpuPlacementPreparation> PrepareAsync(
+    public async Task<RunningGpuPlacementPreparation> PrepareAsync(
         RunningGpuPlacementActionRequest request, CancellationToken cancellationToken)
     {
         using var cycle = CreatePreparationReadCycle();
-        return cycle.PrepareAsync(request, cancellationToken);
+        return await cycle.PrepareAsync(request, cancellationToken).ConfigureAwait(false);
     }
 
-    private Task<RunningGpuPlacementPreparation> PrepareAsync(
+    private async Task<RunningGpuPlacementPreparation> PrepareAsync(
         RunningGpuPlacementActionRequest request, CancellationToken cancellationToken, RendererQualificationReadCycle reads)
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(request.TargetId) || string.IsNullOrWhiteSpace(request.SoftwareId)
             || request.TargetAdapterKey == 0)
-            return Task.FromResult(new RunningGpuPlacementPreparation(null, "Missing exact software or target adapter identity."));
+            return new(null, "Missing exact software or target adapter identity.");
         var processes = request.Processes.Distinct().ToArray();
         if (processes.Select(static process => process.ProcessId).Distinct().Count() != processes.Length)
-            return Task.FromResult(new RunningGpuPlacementPreparation(null, "Conflicting process identities for one PID."));
+            return new(null, "Conflicting process identities for one PID.");
         var policy = runtimePlans.Current.GpuPlacement;
         if (!policy.GlobalPreciseProviderEnabled)
-            return Task.FromResult(new RunningGpuPlacementPreparation(null, "Runtime GPU scheduling is disabled."));
+            return new(null, "Runtime GPU scheduling is disabled.");
         var allowed = processes.Where(process => policy.Resolve(request.SoftwareId, request.DisplayName, request.SoftwareKind,
             JsonGpuPlacementProcessHistoryStore.BuildProcessKey(process.ProcessName, process.ExecutablePath))
             .AcceptsExternalRuntimeGpuScheduling()).ToArray();
-        var external = runtime.Prepare(allowed, reads);
+        var external = await runtime.PrepareAsync(allowed, reads, cancellationToken).ConfigureAwait(false);
         if (external is null)
-            return Task.FromResult(new RunningGpuPlacementPreparation(null,
-                "No confirmed external renderer route is available for this process."));
+            return new(null, "No confirmed external renderer route is available for this process.");
         if (!IsKnownBackground(external.Root))
-            return Task.FromResult(new RunningGpuPlacementPreparation(null,
-                "The renderer root is foreground or its interactive desktop state is unknown."));
+            return new(null, "The renderer root is foreground or its interactive desktop state is unknown.");
         var api = ConfirmedGraphicsApi(external.Renderer);
         var plan = new RunningGpuPlacementActionPlan(request with { Processes = [external.GpuProcess] },
             [], new Dictionary<int, GpuGraphicsApi> { [external.GpuProcess.ProcessId] = api })
             { External = external };
-        return CompletePreparationAsync(request, external, plan, cancellationToken);
+        return await CompletePreparationAsync(request, external, plan, cancellationToken).ConfigureAwait(false);
     }
 
     public Task<RunningGpuPlacementPreparation> PrepareWithFirstApiObservationAsync(

@@ -44,7 +44,7 @@ public sealed class FanManagementModesTests
                     supportsSoftwareCurve = true, softwareTakeoverCoversAllFans = true, curvePoints = 10, supportsFirmwareCurveReset = true } } });
         }));
         var writer = new FanControlWriter(client);
-        var catalog = new WindowsControlObjectCatalog(null!, [writer], new Access(), client, null!, null!);
+        var catalog = new WindowsControlObjectCatalog(null!, [writer], new Access(), client, null!, null!, null!);
         var target = new ControlObject("fan:oem0", "fan", null, new("windows", "oem"), Capabilities);
         var result = catalog.ResolveAvailability(target);
         Assert.Equal(3, result.FanManagementModes!.Count);

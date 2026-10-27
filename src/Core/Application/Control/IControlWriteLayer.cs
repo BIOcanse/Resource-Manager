@@ -27,6 +27,12 @@ public interface IControlWriteLayer
     Task<ControlApplyReport> WriteAsync(
         ControlDesiredState desired,
         CancellationToken cancellationToken);
+
+    /// <summary>Uses the catalog already captured by the original sampler under
+    /// its sample gate, so the bound write does not wait on its own sampling.</summary>
+    Task<ControlApplyReport> WriteWithCatalogAsync(ControlDesiredState desired,
+        ControlObjectCatalog catalog, CancellationToken cancellationToken)
+        => WriteAsync(desired, cancellationToken);
 }
 
 /// <summary>

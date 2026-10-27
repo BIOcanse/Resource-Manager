@@ -269,6 +269,21 @@ internal sealed partial class WindowsHardwareMetricCapture
                 MetricFieldCode.ThreadCount => metrics.ThreadCount,
                 MetricFieldCode.HandleCount => metrics.HandleCount,
                 _ => null
+            },
+            unsignedValue: id => id.FieldCode switch
+            {
+                // Commit protection consumes exact byte counts. Do not pass
+                // UInt64 counters through double before publishing typed fields.
+                MetricFieldCode.CommitUsed => metrics.UsedBytes,
+                MetricFieldCode.CommitLimit => metrics.TotalBytes,
+                MetricFieldCode.CommitPeak => metrics.CommitPeakBytes,
+                MetricFieldCode.SystemCache => metrics.SystemCacheBytes,
+                MetricFieldCode.KernelPaged => metrics.KernelPagedBytes,
+                MetricFieldCode.KernelNonpaged => metrics.KernelNonpagedBytes,
+                MetricFieldCode.ProcessCount => metrics.ProcessCount,
+                MetricFieldCode.ThreadCount => metrics.ThreadCount,
+                MetricFieldCode.HandleCount => metrics.HandleCount,
+                _ => null
             });
     }
 

@@ -18,4 +18,9 @@ public interface IControlActualStateOwner
 
     /// <summary>持有期间启用唯一的实际值采样路径。释放最后一个租约后停止采样。</summary>
     IDisposable AcquireSubscription();
+
+    /// <summary>A named one-shot demand, completed by the next new publication.
+    /// The retained Current property is reserved for held subscriptions.</summary>
+    Task<ControlActualState?> FetchOnceAsync(string holder, CancellationToken cancellationToken)
+        => throw new NotSupportedException("This control state owner does not provide subscription single fetch.");
 }

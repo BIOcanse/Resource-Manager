@@ -13,16 +13,16 @@ internal sealed class MonitoringConditionParseException(int position, string rea
 // A bounded, one-pass expansion. It owns no rule state, sampling or evaluator.
 internal static class MonitoringConditionLanguage
 {
-    internal static ExpandedMonitoringHook Expand(string text, string id, MonitoringConditionVocabulary vocabulary,
-        Func<int, string?> resolveStartKey)
-        => new Parser(text, vocabulary, resolveStartKey).Expand(id);
+    internal static Task<ExpandedMonitoringHook> ExpandAsync(string text, string id, MonitoringConditionVocabulary vocabulary,
+        Func<int, Task<string?>> resolveStartKey)
+        => new Parser(text, vocabulary, resolveStartKey).ExpandAsync(id);
 
-    private sealed class Parser(string text, MonitoringConditionVocabulary vocabulary, Func<int, string?> resolveStartKey)
+    private sealed class Parser(string text, MonitoringConditionVocabulary vocabulary, Func<int, Task<string?>> resolveStartKey)
     {
         private int at;
         private MonitoringConditionParseException Error(string reason, int? position = null) => new(position ?? at, reason);
 
-        internal ExpandedMonitoringHook Expand(string id)
+        internal async Task<ExpandedMonitoringHook> ExpandAsync(string id)
         {
             if (text.Length > vocabulary.MaximumLength) throw Error("condition is too long", vocabulary.MaximumLength);
             for (var index = 0; index < text.Length; index++)
@@ -54,7 +54,7 @@ internal static class MonitoringConditionLanguage
                     else
                     {
                         if (at < text.Length && text[at] != ' ') throw Error("expected a space or colon after PID");
-                        startKey = resolveStartKey(pid.Value)
+                        startKey = await resolveStartKey(pid.Value)
                             ?? throw Error("published process start key is unavailable; supply PID:STARTKEY", pidAt);
                     }
                 }

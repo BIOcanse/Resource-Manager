@@ -13,11 +13,11 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     /// </summary>
     private static IEndpointRouteBuilder MapDebugGpuControlEndpoint(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/debug/gpu-control", (IControlObjectCatalog catalog) =>
+        app.MapGet("/api/debug/gpu-control", async (IControlObjectCatalog catalog, CancellationToken cancellationToken) =>
         {
             var bridge = new NvidiaNvapiControlBridge();
             var powerBridge = new NvidiaNvmlControlBridge();
-            var rows = catalog.ReadObjects().Objects
+            var rows = (await catalog.ReadObjectsAsync(cancellationToken)).Objects
                 .Where(static entry => entry.AdapterIndex is not null)
                 .Select(entry =>
                 {

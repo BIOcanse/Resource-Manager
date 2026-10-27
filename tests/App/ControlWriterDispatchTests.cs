@@ -13,6 +13,37 @@ namespace Resource_Manager_APP.Tests;
 /// </summary>
 public sealed class ControlWriterDispatchTests
 {
+    [Fact]
+    public async Task WriteFetchesFreshCatalogWhileBoundWriteUsesItsAlreadyCapturedCatalog()
+    {
+        var target = GpuObject();
+        var captured = new ControlObjectCatalog([target], DateTimeOffset.UtcNow);
+        var catalog = new AsyncOnlyCatalog(captured);
+        var writer = new FakeWriter { Availability = ControlWriteAvailability.Yes() };
+        var layer = new ControlWriteLayer(catalog, [writer], StubAccessLevel.Normal);
+        var desired = new ControlDesiredState([new(target.Id, [new("gpu.core-clock-offset", Number: 45, Unit: "MHz")])]);
+
+        var fresh = await layer.WriteAsync(desired, CancellationToken.None);
+        Assert.Equal(ControlApplyStatuses.Applied, Assert.Single(fresh.Outcomes).Status);
+        Assert.Equal(1, catalog.Fetches);
+        var bound = await layer.WriteWithCatalogAsync(desired, captured, CancellationToken.None);
+        Assert.Equal(ControlApplyStatuses.Applied, Assert.Single(bound.Outcomes).Status);
+        Assert.Equal(1, catalog.Fetches);
+        Assert.Equal(2, writer.Written.Count);
+    }
+
+    private sealed class AsyncOnlyCatalog(ControlObjectCatalog current) : IControlObjectCatalog
+    {
+        internal int Fetches;
+        public ControlObjectCatalog ReadObjects() => throw new InvalidOperationException("This caller must fetch a fresh catalog.");
+        public Task<ControlObjectCatalog> ReadObjectsAsync(CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            Fetches++;
+            return Task.FromResult(current);
+        }
+    }
+
     private static ControlObject GpuObject(
         ControlNumberRange? range = null,
         string accessLevel = ControlAccessLevels.Normal) => new(

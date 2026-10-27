@@ -113,22 +113,22 @@ public sealed class ExternalGpuAttemptRetirementTests
         {
             var runtime = Runtime(files, store);
             Assert.Null(store.ReadExternalGpuAttemptReferences());
-            runtime.Prepare([]);
+            await runtime.PrepareAsync([], default);
             Assert.True(Directory.Exists(directory));
             await store.SaveAsync(State(directory), default);
             Assert.Contains(directory, store.ReadExternalGpuAttemptReferences()!);
-            runtime.Prepare([]);
+            await runtime.PrepareAsync([], default);
             Assert.True(Directory.Exists(directory));
             fail = true;
             await Assert.ThrowsAnyAsync<IOException>(() => store.SaveAsync(HostManagerRollbackStateDocument.Empty, default));
-            runtime.Prepare([]);
+            await runtime.PrepareAsync([], default);
             Assert.True(Directory.Exists(directory));
             Assert.Contains(directory, store.ReadExternalGpuAttemptReferences()!);
         }
         using (var store = new JsonHostManagerRollbackStateStore(path, TimeProvider.System, TimeSpan.FromMinutes(1)))
         {
             await store.LoadAsync(default);
-            Runtime(files, store).Prepare([]);
+            await Runtime(files, store).PrepareAsync([], default);
             Assert.True(Directory.Exists(directory));
             await store.SaveAsync(HostManagerRollbackStateDocument.Empty, default);
             Assert.Empty(store.ReadExternalGpuAttemptReferences()!);
@@ -137,7 +137,7 @@ public sealed class ExternalGpuAttemptRetirementTests
         using (var store = new JsonHostManagerRollbackStateStore(path, TimeProvider.System, TimeSpan.FromMinutes(1)))
         {
             await store.LoadAsync(default);
-            Runtime(files, store).Prepare([]);
+            await Runtime(files, store).PrepareAsync([], default);
             Assert.False(Directory.Exists(directory));
         }
     }
@@ -153,7 +153,7 @@ public sealed class ExternalGpuAttemptRetirementTests
         {
             var directory = Attempt(files, RunningGpuPlacementActionStatuses.RecreateRequested);
             File.WriteAllText(Path.Combine(directory, "stderr.log"), new string('x', 10000));
-            runtime.Prepare([]);
+            await runtime.PrepareAsync([], default);
             Assert.False(Directory.Exists(directory));
         }
         var summaries = Directory.GetFiles(Path.Combine(Attempts(files), "Diagnostics"));
@@ -166,7 +166,7 @@ public sealed class ExternalGpuAttemptRetirementTests
         File.WriteAllText(Path.Combine(staged, "stderr.log"), "remaining");
         File.WriteAllText(Path.Combine(staged, "controller.json"), "invalid");
         Assert.False(runtime.HasUnreleasedControl);
-        Runtime(files, store).Prepare([]);
+        await Runtime(files, store).PrepareAsync([], default);
         Assert.False(Directory.Exists(staged));
     }
 
@@ -180,7 +180,7 @@ public sealed class ExternalGpuAttemptRetirementTests
         var directory = Attempt(files, RunningGpuPlacementActionStatuses.NotApplied);
         await store.LoadAsync(default);
         File.WriteAllText(Path.Combine(directory, "controller.json"), controller);
-        Runtime(files, store).Prepare([]);
+        await Runtime(files, store).PrepareAsync([], default);
         Assert.True(Directory.Exists(directory));
         Assert.True(Runtime(files, store).HasUnreleasedControl);
         var state = State(directory);

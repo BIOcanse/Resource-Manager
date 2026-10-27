@@ -137,6 +137,14 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot : IDisposable
         Add(PublicationDataset);
         foreach (var id in request.Ids)
             Add(id);
+        // Some capacity aliases have an observation row but deliberately no
+        // value cell. Include their original canonical field cells when that
+        // alias is explicitly requested, without reading unrelated capacities.
+        var missingAliases = request.Ids.Where(id => !catalog.ItemHandles.ContainsKey(id))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (missingAliases.Count > 0)
+            foreach (var binding in catalog.FieldBindings.Values)
+                if (binding.RequestAliases.Any(missingAliases.Contains)) Add(binding.RequestAddress);
         if (request.IncludesCatalog)
             foreach (var id in new[] { MetricDatasetIds.SystemMetricCatalog, MetricDatasetIds.StorageInventory,
                 MetricDatasetIds.FanInventory, MetricDatasetIds.BatteryInventory, MetricDatasetIds.NumaInventory }) Add(id);

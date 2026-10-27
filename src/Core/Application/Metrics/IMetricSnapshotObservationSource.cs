@@ -10,6 +10,8 @@ public interface IMetricSnapshotObservationSource
         MetricSampleRequest request,
         TimeSpan refreshInterval);
 
+    /// <summary>Reads published slots beneath an owned subscription, or for an
+    /// explicit cache inspector. One-shot consumers use the push source's FetchOnceAsync.</summary>
     HardwareMetricSnapshot? ReadLatest(MetricSampleRequest request);
 
     IReadOnlyDictionary<string, MetricReadingValue> ReadItems(ImmutableArray<string> ids)

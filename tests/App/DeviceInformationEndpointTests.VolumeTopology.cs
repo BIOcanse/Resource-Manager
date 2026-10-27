@@ -18,14 +18,14 @@ public sealed partial class DeviceInformationEndpointTests
         var reader = new Reader(() => DeviceInformationTestData.Snapshot() with { VolumeSpaceInformation = collector.Read() });
         using var fixture = new Fixture(reader);
         await using var app = await StartAsync(fixture.Provider); using var client = Client(app);
-        _ = await client.GetStringAsync("/api/device-topology/fields"); Assert.Equal(0, space.Directories); Assert.Empty(metadata.Requests);
+        _ = ReadPublishedFields(fixture.Provider, app); Assert.Equal(0, space.Directories); Assert.Empty(metadata.Requests);
         for (var phase = 0; phase < 7; phase++)
         {
             metadata.FailureGroup = phase is >= 1 and <= 3 ? phase - 1 : -1;
             space.Roots = phase == 4 ? null : phase == 5 ? [] : [VolumeSpaceInformationCollectorTests.RootA, VolumeSpaceInformationCollectorTests.RootB];
-            await fixture.Provider.SampleNowAsync(CancellationToken.None);
+            var sampledHttpFields1 = await client.GetStringAsync("/api/device-topology/fields");
             var queries = metadata.Requests.Count; var directories = space.Directories;
-            using var document = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+            using var document = JsonDocument.Parse(sampledHttpFields1);
             var root = document.RootElement;
             if (phase == 5) Assert.DoesNotContain(root.GetProperty("devices").EnumerateArray(), device => device.GetProperty("objectType").GetString() == "volume");
             else if (phase == 4) { AssertVolumeValuesEmpty(root, VolumeSpaceInformationCollectorTests.IdA); AssertVolumeValuesEmpty(root, VolumeSpaceInformationCollectorTests.IdB); }
@@ -56,15 +56,15 @@ public sealed partial class DeviceInformationEndpointTests
         var persisted = new DeviceTopologyPersistedSnapshot(DeviceTopologySnapshotState.CurrentSchemaVersion, "test", 9, new DeviceTopologySemanticComparer().ComputeHash(raw), raw);
         var reader = new Reader(raw, new IOException("failed"), raw); using var fixture = new Fixture(reader, persisted);
         await using var app = await StartAsync(fixture.Provider); using var client = Client(app);
-        using var initial = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var initial = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         AssertVolumeValuesEmpty(initial.RootElement, volume.DeviceIdentity); Assert.Equal(0, reader.ReadCount);
-        await fixture.Provider.SampleNowAsync(CancellationToken.None);
-        using var fresh = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        var sampledHttpFields2 = await client.GetStringAsync("/api/device-topology/fields");
+        using var fresh = JsonDocument.Parse(sampledHttpFields2);
         Assert.Equal("  数据  ", Field(fresh.RootElement, volume.DeviceIdentity, "volume_all_label_configured").GetProperty("value").GetString());
-        await fixture.Provider.SampleNowAsync(CancellationToken.None);
-        using var failed = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields")); AssertVolumeValuesEmpty(failed.RootElement, volume.DeviceIdentity);
-        await fixture.Provider.SampleNowAsync(CancellationToken.None);
-        using var recovered = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        var sampledHttpFields3 = await client.GetStringAsync("/api/device-topology/fields");
+        using var failed = JsonDocument.Parse(sampledHttpFields3); AssertVolumeValuesEmpty(failed.RootElement, volume.DeviceIdentity);
+        var sampledHttpFields4 = await client.GetStringAsync("/api/device-topology/fields");
+        using var recovered = JsonDocument.Parse(sampledHttpFields4);
         Assert.Equal("89ABCDEF", Field(recovered.RootElement, volume.DeviceIdentity, "volume_all_filesystem_serial_reported").GetProperty("value").GetString());
         await app.StopAsync();
     }
@@ -76,7 +76,7 @@ public sealed partial class DeviceInformationEndpointTests
         var collector = new WindowsVolumeSpaceInformationReader(space, metadata);
         var reader = new Reader(() => DeviceInformationTestData.Snapshot() with { VolumeSpaceInformation = collector.Read() });
         using var fixture = new Fixture(reader); await using var app = await StartAsync(fixture.Provider); using var client = Client(app);
-        _ = await client.GetStringAsync("/api/device-topology/fields"); Assert.Empty(metadata.Requests);
+        _ = ReadPublishedFields(fixture.Provider, app); Assert.Empty(metadata.Requests);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(12));
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
         { Content = JsonContent.Create(new { version = 1, subscriptions = new[] {
@@ -91,7 +91,7 @@ public sealed partial class DeviceInformationEndpointTests
         Assert.True(space.Directories >= 1); Assert.Equal(space.Directories * 6, metadata.Requests.Count);
         await timeout.CancelAsync(); response.Dispose(); await Task.Delay(250);
         var queries = metadata.Requests.Count; var cached = fixture.Provider.ReadState().InformationFields;
-        using var displayed = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var displayed = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         Assert.Equal("89ABCDEF", Field(displayed.RootElement, VolumeSpaceInformationCollectorTests.IdA, "volume_all_filesystem_serial_reported").GetProperty("value").GetString());
         await Task.Delay(1300); Assert.Equal(queries, metadata.Requests.Count); Assert.Same(cached, fixture.Provider.ReadState().InformationFields);
         await app.StopAsync();

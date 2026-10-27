@@ -38,7 +38,7 @@ public sealed record HostMemoryActionOptions(string ActionMode = HostMemoryProte
 // The source only subscribes to existing producers and projects their current values.
 public interface IHostMemoryProtectionSource
 {
-    HostMemoryCommit? ReadCurrentCommit();
+    Task<HostMemoryCommit?> ReadCurrentCommitAsync(CancellationToken cancellationToken);
     IAsyncEnumerable<HostMemoryReading> SubscribeAsync(string holder, TimeSpan interval, CancellationToken cancellationToken);
 }
 public interface IHostMemoryProtectionExecutor

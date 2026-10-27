@@ -13,7 +13,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             => await response.WriteAsJsonAsync(protection.ReadPoint(), token));
         app.MapPost("/api/memory-protection/normal-running-point", async (HostMemoryProtectionService protection, CancellationToken token)
             => Results.Ok(await protection.CreatePointAsync(token)));
-        app.MapGet("/api/memory-protection", (HostMemoryProtectionService protection) => Results.Ok(protection.ReadStatus()));
+        app.MapGet("/api/memory-protection", async (HostMemoryProtectionService protection, CancellationToken token)
+            => Results.Ok(await protection.ReadStatusAsync(token)));
         if (capabilities.Allows(StartupCapability.MutablePersistence))
         app.MapPost("/api/memory-protection/reserve/rebuild", async (HostMemoryProtectionService protection, CancellationToken token) =>
         {

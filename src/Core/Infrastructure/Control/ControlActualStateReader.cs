@@ -1,5 +1,8 @@
 using ResourceManager.App.Application.Control;
 using ResourceManager.App.Domain.Control;
+using System.Runtime.CompilerServices;
+using ResourceManager.ReadWrite.Publications;
+using ResourceManager.Subscription;
 
 namespace ResourceManager.App.Infrastructure.Control;
 
@@ -45,6 +48,8 @@ public sealed class ControlActualStateReader(
     private bool stopped;
     private int disposed;
     private volatile ControlActualState current = ControlActualState.Empty;
+    private readonly SamplingPublicationSignal publications = new();
+    private const string ActualDataset = "control.actual";
 
     internal ControlActualStateReader(IControlObjectCatalog catalog, IEnumerable<IControlWriter> writers,
         TimeProvider clock) : this(catalog, writers)
@@ -53,6 +58,28 @@ public sealed class ControlActualStateReader(
     }
 
     public ControlActualState Current => current;
+
+    public Task<ControlActualState?> FetchOnceAsync(string holder, CancellationToken cancellationToken)
+        => SubscriptionSingleFetch.ReadAsync(SubscribeOnceAsync(holder, cancellationToken),
+            static _ => true, cancellationToken);
+
+    private async IAsyncEnumerable<ControlActualState> SubscribeOnceAsync(string holder,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(holder);
+        cancellationToken.ThrowIfCancellationRequested();
+        using var publication = publications.Subscribe([ActualDataset]);
+        using var lease = AcquireSubscription();
+        logger?.LogDebug("Control actual-state subscription {Holder} acquired.", holder);
+        try
+        {
+            // No initial cached delivery: this waits for the original worker,
+            // including its normal startup delay and shared ten-second cadence.
+            await publication.WaitAsync(cancellationToken).ConfigureAwait(false);
+            yield return Current;
+        }
+        finally { logger?.LogDebug("Control actual-state subscription {Holder} released.", holder); }
+    }
 
     public IDisposable AcquireSubscription()
     {
@@ -120,7 +147,11 @@ public sealed class ControlActualStateReader(
                         lock (subscriptionGate)
                         {
                             // An obsolete read must not replace the value after the last lease exits.
-                            if (!sampling.IsCancellationRequested) current = next;
+                            if (!sampling.IsCancellationRequested)
+                            {
+                                current = next;
+                                publications.Publish([ActualDataset]);
+                            }
                         }
                     }
                     while (await timer.WaitForNextTickAsync(sampling.Token).ConfigureAwait(false));
@@ -174,7 +205,7 @@ public sealed class ControlActualStateReader(
         var values = new List<ControlActualValue>();
         try
         {
-            foreach (var controlObject in catalog.ReadObjects().Objects)
+            foreach (var controlObject in (await catalog.ReadObjectsAsync(cancellationToken).ConfigureAwait(false)).Objects)
             {
                 foreach (var capability in controlObject.Capabilities)
                 {

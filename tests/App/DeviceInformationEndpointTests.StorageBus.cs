@@ -11,18 +11,18 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class DeviceInformationEndpointTests
 {
     [Fact]
-    public async Task StorageBusHttpUsesOriginalCacheAndClearsFailureThenEmptyDirectoryRemovesKnownDisk()
+    public async Task StorageBusHttpUsesSingleFetchAndClearsFailureThenEmptyDirectoryRemovesKnownDisk()
     {
         var api = new StorageBusInformationCollectorTests.Api(); var collector = new WindowsDiskLayoutInformationReader(api);
         var reader = new Reader(() => DeviceInformationTestData.Snapshot() with { DiskLayoutInformation = collector.Read(), VolumeSpaceInformation = [] });
         using var fixture = new Fixture(reader); await using var app = await StartAsync(fixture.Provider); using var client = Client(app);
-        _ = await client.GetStringAsync("/api/device-topology/fields"); Assert.Equal(0, api.Reads);
+        _ = ReadPublishedFields(fixture.Provider, app); Assert.Equal(0, api.Reads);
         for (var phase = 0; phase < 5; phase++)
         {
             api.Bus = phase == 1 ? null : phase == 4 ? 0U : 14U;
             api.Directory = phase == 2 ? null : phase == 3 ? [] : [DiskLayoutInformationCollectorTests.DiskA];
-            await fixture.Provider.SampleNowAsync(CancellationToken.None); var reads = api.Reads;
-            using var document = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields")); var root = document.RootElement;
+            var sampledHttpFields1 = await client.GetStringAsync("/api/device-topology/fields"); var reads = api.Reads;
+            using var document = JsonDocument.Parse(sampledHttpFields1); var root = document.RootElement;
             if (phase == 3) Assert.DoesNotContain(root.GetProperty("devices").EnumerateArray(), d => d.GetProperty("deviceIdentity").GetString() == DiskLayoutInformationCollectorTests.IdA);
             else
             {
@@ -42,11 +42,11 @@ public sealed partial class DeviceInformationEndpointTests
         var persisted = new DeviceTopologyPersistedSnapshot(DeviceTopologySnapshotState.CurrentSchemaVersion, "test", 11, new DeviceTopologySemanticComparer().ComputeHash(raw), raw);
         var reader = new Reader(raw, new IOException("capture failed"), raw); using var fixture = new Fixture(reader, persisted);
         await using var app = await StartAsync(fixture.Provider); using var client = Client(app);
-        using var initial = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields")); AssertBusNull(initial.RootElement); Assert.Equal(0, reader.ReadCount);
-        await fixture.Provider.SampleNowAsync(CancellationToken.None); using var fresh = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var initial = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app)); AssertBusNull(initial.RootElement); Assert.Equal(0, reader.ReadCount);
+        var sampledHttpFields2 = await client.GetStringAsync("/api/device-topology/fields"); using var fresh = JsonDocument.Parse(sampledHttpFields2);
         Assert.Equal("14", Field(fresh.RootElement, DiskLayoutInformationCollectorTests.IdA, StorageBusInformationCollectorTests.Name).GetProperty("value").GetString());
-        await fixture.Provider.SampleNowAsync(CancellationToken.None); using var failed = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields")); AssertBusNull(failed.RootElement);
-        await fixture.Provider.SampleNowAsync(CancellationToken.None); using var recovered = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        var sampledHttpFields3 = await client.GetStringAsync("/api/device-topology/fields"); using var failed = JsonDocument.Parse(sampledHttpFields3); AssertBusNull(failed.RootElement);
+        var sampledHttpFields4 = await client.GetStringAsync("/api/device-topology/fields"); using var recovered = JsonDocument.Parse(sampledHttpFields4);
         Assert.Equal("14", Field(recovered.RootElement, DiskLayoutInformationCollectorTests.IdA, StorageBusInformationCollectorTests.Name).GetProperty("value").GetString()); await app.StopAsync();
     }
 
@@ -56,7 +56,7 @@ public sealed partial class DeviceInformationEndpointTests
         var api = new StorageBusInformationCollectorTests.Api(); var collector = new WindowsDiskLayoutInformationReader(api);
         var reader = new Reader(() => DeviceInformationTestData.Snapshot() with { DiskLayoutInformation = collector.Read(), VolumeSpaceInformation = [] });
         using var fixture = new Fixture(reader); await using var app = await StartAsync(fixture.Provider); using var client = Client(app);
-        _ = await client.GetStringAsync("/api/device-topology/fields"); Assert.Equal(0, api.Reads);
+        _ = ReadPublishedFields(fixture.Provider, app); Assert.Equal(0, api.Reads);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(12)); using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
         { Content = JsonContent.Create(new { version = 1, subscriptions = new[] { new { id = "storage-bus", path = "/api/device-topology/fields/subscribe?intervalMs=1000" } } }) };
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token); Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -65,7 +65,7 @@ public sealed partial class DeviceInformationEndpointTests
         Assert.Equal("14", bus.GetProperty("value").GetString()); Assert.Equal(StorageBusInformationCollectorTests.Source, bus.GetProperty("definition").GetProperty("sourceId").GetString());
         Assert.True(api.Reads >= 1); await timeout.CancelAsync(); response.Dispose(); await Task.Delay(250);
         var reads = api.Reads; var cached = fixture.Provider.ReadState().InformationFields;
-        using var displayed = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields")); Assert.Equal("14", Field(displayed.RootElement, DiskLayoutInformationCollectorTests.IdA, StorageBusInformationCollectorTests.Name).GetProperty("value").GetString());
+        using var displayed = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app)); Assert.Equal("14", Field(displayed.RootElement, DiskLayoutInformationCollectorTests.IdA, StorageBusInformationCollectorTests.Name).GetProperty("value").GetString());
         await Task.Delay(1300); Assert.Equal(reads, api.Reads); Assert.Same(cached, fixture.Provider.ReadState().InformationFields); await app.StopAsync();
     }
 

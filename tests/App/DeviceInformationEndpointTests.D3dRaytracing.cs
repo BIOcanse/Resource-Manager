@@ -9,9 +9,9 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class DeviceInformationEndpointTests
 {
     [Fact]
-    public async Task D3d12RaytracingHttpGetsArePassiveAndReturnTheExplicitOriginalCurrent()
+    public async Task D3d12RaytracingCachedInspectionReturnsTheExplicitOriginalCurrent()
     {
-        var genericReader = new Reader(() => throw new InvalidOperationException("Passive D3D HTTP must not enumerate topology."));
+        var genericReader = new Reader(() => throw new InvalidOperationException("Explicit cached D3D inspection must not enumerate topology."));
         using var fixture = new Fixture(genericReader);
         await using var app = await StartAsync(fixture.Provider);
         using var client = Client(app);
@@ -24,12 +24,12 @@ public sealed partial class DeviceInformationEndpointTests
         var identity = $"windows-d3d-adapter|d3d12|luid:{adapter.Luid:X16}|pci:{adapter.PciVendorId:X4}:{adapter.PciDeviceId:X4}";
         var field = new FieldReference(identity, name);
 
-        // Before any explicit capability discovery, both actual endpoints remain passive.
-        using var initialFields = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        // Before explicit capability discovery, cached projections contain no D3D scope.
+        using var initialFields = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         Assert.DoesNotContain(initialFields.RootElement.GetProperty("devices").EnumerateArray(),
             device => device.GetProperty("deviceIdentity").GetString() == identity);
-        using (var state = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/state")))
-            AssertInformationFieldsInStateMatchFieldsEndpoint(state.RootElement, initialFields.RootElement);
+        using (var state = JsonDocument.Parse(ReadPublishedState(fixture.Provider, app)))
+            AssertPublishedInformationFieldsMatchResponse(state.RootElement, initialFields.RootElement);
         Assert.Equal(0, genericReader.ReadCount);
         Assert.Equal(0, recorded.ReadCount);
 
@@ -51,7 +51,7 @@ public sealed partial class DeviceInformationEndpointTests
             Assert.NotNull(current);
             Assert.Same(DeviceInformationFieldRegistry.GpuAllD3d12RaytracingTier, current.Definition);
             var readsBeforeGets = recorded.ReadCount;
-            using var fieldsResponse = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+            using var fieldsResponse = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
             var wireField = Field(fieldsResponse.RootElement, identity, name);
             var definition = wireField.GetProperty("definition");
             Assert.Equal(name, definition.GetProperty("name").GetString());
@@ -84,8 +84,8 @@ public sealed partial class DeviceInformationEndpointTests
                 Assert.Null(reading.Value);
                 Assert.Null(reading.ObservedAt);
             }
-            using var stateResponse = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/state"));
-            AssertInformationFieldsInStateMatchFieldsEndpoint(stateResponse.RootElement, fieldsResponse.RootElement);
+            using var stateResponse = JsonDocument.Parse(ReadPublishedState(fixture.Provider, app));
+            AssertPublishedInformationFieldsMatchResponse(stateResponse.RootElement, fieldsResponse.RootElement);
             Assert.Same(originalState, fixture.Provider.ReadState());
             Assert.Same(originalInformation, fixture.Provider.ReadState().InformationFields);
             Assert.Equal(readsBeforeGets, recorded.ReadCount);

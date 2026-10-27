@@ -7,10 +7,13 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 {
     private static void MapNvidiaDrsInformationEndpoints(this IEndpointRouteBuilder app)
     {
+        // Explicit cache inspection, paired with /read for a new sample. This
+        // diagnostic reports exactly the retained field statuses and timestamps.
         app.MapPost("/api/device-topology/nvidia-drs/fields/current", IResult (NvidiaDrsFieldRequest? request,
             HttpResponse response, [Microsoft.AspNetCore.Mvc.FromServices] DeviceTopologySnapshotProvider provider) =>
         {
             DisableResponseCache(response);
+            response.Headers["X-Resource-Manager-Read-Mode"] = "cached";
             try
             {
                 var scope = DrsScope(request);

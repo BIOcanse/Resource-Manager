@@ -18,6 +18,18 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class DeviceInformationEndpointTests
 {
+    // Deliberate inspection of original published state, for persisted-startup and
+    // post-cancellation cache contracts. Actual GETs below use subscription single fetch.
+    private static string ReadPublishedFields(DeviceTopologySnapshotProvider provider, WebApplication app)
+        => JsonSerializer.Serialize(provider.ReadState().InformationFields, ResponseJson(app));
+
+    private static string ReadPublishedState(DeviceTopologySnapshotProvider provider, WebApplication app)
+        => JsonSerializer.Serialize(provider.ReadState(), ResponseJson(app));
+
+    private static JsonSerializerOptions ResponseJson(WebApplication app)
+        => app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>>()
+            .Value.SerializerOptions;
+
     private static JsonElement Field(JsonElement snapshot, string identity, string name) =>
         Assert.Single(Assert.Single(snapshot.GetProperty("devices").EnumerateArray(),
             device => device.GetProperty("deviceIdentity").GetString() == identity)

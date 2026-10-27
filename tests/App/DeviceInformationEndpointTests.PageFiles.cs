@@ -11,20 +11,20 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class DeviceInformationEndpointTests
 {
     [Fact]
-    public async Task PageFileHttpUsesOriginalCacheAndSeparatesUnitFailureFromUnavailableDirectory()
+    public async Task PageFileHttpUsesSingleFetchAndSeparatesUnitFailureFromUnavailableDirectory()
     {
         var calls = new PageFileInformationCollectorTests.Calls { Names = [PageFileInformationCollectorTests.PathA, PageFileInformationCollectorTests.PathB],
             Frames = [PageFileInformationCollectorTests.NativeFrame(), PageFileInformationCollectorTests.NativeFrame(10, 0, 1)] };
         var reader = new Reader(() => DeviceInformationTestData.Snapshot() with { PageFileInformation = PageFileInformationCollectorTests.Read(calls) });
         using var fixture = new Fixture(reader); await using var app = await StartAsync(fixture.Provider); using var client = Client(app);
-        _ = await client.GetStringAsync("/api/device-topology/fields"); Assert.Equal(0, calls.Enumerations); Assert.Equal(0, calls.SizeCalls);
+        _ = ReadPublishedFields(fixture.Provider, app); Assert.Equal(0, calls.Enumerations); Assert.Equal(0, calls.SizeCalls);
         for (var phase = 0; phase < 5; phase++)
         {
             calls.PageBytes = phase == 1 ? 0U : 8192U; calls.Complete = phase != 2;
             calls.Names = phase == 4 ? [] : [PageFileInformationCollectorTests.PathA, PageFileInformationCollectorTests.PathB];
-            await fixture.Provider.SampleNowAsync(CancellationToken.None);
+            var sampledHttpFields1 = await client.GetStringAsync("/api/device-topology/fields");
             var current = fixture.Provider.ReadState().InformationFields; var count = calls.Enumerations; var sizes = calls.SizeCalls;
-            using var result = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+            using var result = JsonDocument.Parse(sampledHttpFields1);
             var files = result.RootElement.GetProperty("devices").EnumerateArray().Where(item => item.GetProperty("objectType").GetString() == "page_file").ToArray();
             Assert.Equal(phase == 4 ? 0 : 2, files.Length);
             if (phase == 2) { AssertPageFileValuesEmpty(result.RootElement, PageFileInformationCollectorTests.IdA); AssertPageFileValuesEmpty(result.RootElement, PageFileInformationCollectorTests.IdB); }
@@ -50,12 +50,12 @@ public sealed partial class DeviceInformationEndpointTests
             new DeviceTopologySemanticComparer().ComputeHash(raw), raw);
         var reader = new Reader(raw, new IOException("failed"), raw);
         using var fixture = new Fixture(reader, persisted); await using var app = await StartAsync(fixture.Provider); using var client = Client(app);
-        using var initial = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var initial = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         AssertPageFileValuesEmpty(initial.RootElement, PageFileInformationCollectorTests.IdA); Assert.Equal(0, reader.ReadCount);
         for (var phase = 0; phase < 3; phase++)
         {
-            await fixture.Provider.SampleNowAsync(CancellationToken.None);
-            using var value = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+            var sampledHttpFields2 = await client.GetStringAsync("/api/device-topology/fields");
+            using var value = JsonDocument.Parse(sampledHttpFields2);
             if (phase == 1) AssertPageFileValuesEmpty(value.RootElement, PageFileInformationCollectorTests.IdA);
             else Assert.Equal("151115727451828646830080", Field(value.RootElement, PageFileInformationCollectorTests.IdA, "memory_all_pagefile_capacity").GetProperty("value").GetString());
         }
@@ -68,7 +68,7 @@ public sealed partial class DeviceInformationEndpointTests
         var calls = new PageFileInformationCollectorTests.Calls();
         var reader = new Reader(() => DeviceInformationTestData.Snapshot() with { PageFileInformation = PageFileInformationCollectorTests.Read(calls) });
         using var fixture = new Fixture(reader); await using var app = await StartAsync(fixture.Provider); using var client = Client(app);
-        _ = await client.GetStringAsync("/api/device-topology/fields"); Assert.Equal(0, calls.Enumerations);
+        _ = ReadPublishedFields(fixture.Provider, app); Assert.Equal(0, calls.Enumerations);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(12));
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
         { Content = JsonContent.Create(new { version = 1, subscriptions = new[] {
@@ -85,7 +85,7 @@ public sealed partial class DeviceInformationEndpointTests
         Assert.True(calls.Enumerations >= 1); Assert.Equal(calls.Enumerations, calls.SizeCalls);
         await timeout.CancelAsync(); response.Dispose(); await Task.Delay(250);
         var count = calls.Enumerations; var current = fixture.Provider.ReadState().InformationFields;
-        using var cached = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var cached = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         Assert.Equal("1638400", Field(cached.RootElement, PageFileInformationCollectorTests.IdA, "memory_all_pagefile_used").GetProperty("value").GetString());
         await Task.Delay(1300); Assert.Equal(count, calls.Enumerations); Assert.Equal(count, calls.SizeCalls);
         Assert.Same(current, fixture.Provider.ReadState().InformationFields); await app.StopAsync();

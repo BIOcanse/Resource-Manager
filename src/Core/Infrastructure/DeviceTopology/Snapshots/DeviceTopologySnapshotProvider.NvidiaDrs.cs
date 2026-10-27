@@ -25,10 +25,10 @@ public sealed partial class DeviceTopologySnapshotProvider
         NvidiaDrsInformationRequest scope, CancellationToken token)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
-        using var lease = samplingSubscriptionOwner.Acquire(2);
-        var access = captureOwner.CreateNvidiaDrsInformation(scope, NvidiaDrsZone.ReadDrs,
-            DrsPermission(new(() => lease.OwnerToken.IsActive, lease.OwnerToken.TryPublish, () => true)));
-        return await access.Backend.CollectAsync(scope.Fields, token);
+        var value = await SubscriptionSingleFetch.ReadAsync(SubscribeNvidiaDrsFieldsAsync(
+            "single-fetch:nvidia-drs", scope, SubscriptionSingleFetch.Interval,
+            new(FieldSubscriptionSamplingMode.FreshOnTrigger), token), static _ => true, token);
+        return value.IsDefault ? [] : value;
     }
 
     internal async ValueTask<DeviceInformationSnapshot?> DiscoverNvidiaDrsInformationAsync(NvidiaDrsReadLimits limits, CancellationToken token)

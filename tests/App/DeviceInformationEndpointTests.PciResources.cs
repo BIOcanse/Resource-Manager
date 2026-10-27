@@ -10,18 +10,18 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class DeviceInformationEndpointTests
 {
     [Fact]
-    public async Task PciResourceHttpUsesOriginalCacheAndSeparatesFailedSourceFromSuccessfulEmptyRanges()
+    public async Task PciResourceHttpUsesSingleFetchAndSeparatesFailedSourceFromSuccessfulEmptyRanges()
     {
         var api = new PciResourceInformationCollectorTests.Api(); var frames = api.Descriptors;
         var reader = new Reader(() => PciResourceInformationCollectorTests.Snapshot(api));
         using var fixture = new Fixture(reader); await using var app = await StartAsync(fixture.Provider); using var client = Client(app);
-        _ = await client.GetStringAsync("/api/device-topology/fields"); Assert.Equal(0, api.Opens);
+        _ = ReadPublishedFields(fixture.Provider, app); Assert.Equal(0, api.Opens);
         for (var phase = 0; phase < 4; phase++)
         {
             api.Fault = phase == 1 ? "data" : ""; api.Descriptors = phase == 2 ? [] : frames;
-            await fixture.Provider.SampleNowAsync(CancellationToken.None);
+            var sampledHttpFields1 = await client.GetStringAsync("/api/device-topology/fields");
             var current = fixture.Provider.ReadState().InformationFields; var count = api.Opens; var calls = api.DataCalls;
-            using var result = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+            using var result = JsonDocument.Parse(sampledHttpFields1);
             var field = Field(result.RootElement, PciResourceInformationCollectorTests.Identity, "pci_all_resource_range");
             Assert.Equal("windows.pci-allocated-resources", field.GetProperty("definition").GetProperty("sourceId").GetString());
             var value = field.GetProperty("value");
@@ -42,12 +42,12 @@ public sealed partial class DeviceInformationEndpointTests
             new DeviceTopologySemanticComparer().ComputeHash(raw), raw);
         var reader = new Reader(raw, new InvalidOperationException("source failed"), raw);
         using var fixture = new Fixture(reader, persisted); await using var app = await StartAsync(fixture.Provider); using var client = Client(app);
-        using var initial = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var initial = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         Assert.Equal(JsonValueKind.Null, Field(initial.RootElement, PciResourceInformationCollectorTests.Identity, "pci_all_resource_range").GetProperty("value").ValueKind);
         Assert.Equal(0, reader.ReadCount);
         for (var phase = 0; phase < 3; phase++)
         {
-            await fixture.Provider.SampleNowAsync(CancellationToken.None); using var result = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+            var sampledHttpFields2 = await client.GetStringAsync("/api/device-topology/fields"); using var result = JsonDocument.Parse(sampledHttpFields2);
             var value = Field(result.RootElement, PciResourceInformationCollectorTests.Identity, "pci_all_resource_range").GetProperty("value");
             if (phase == 1) Assert.Equal(JsonValueKind.Null, value.ValueKind); else Assert.Equal("9007199254740993", value[1].GetProperty("startReported").GetString());
         }
@@ -59,7 +59,7 @@ public sealed partial class DeviceInformationEndpointTests
     {
         var api = new PciResourceInformationCollectorTests.Api(); var reader = new Reader(() => PciResourceInformationCollectorTests.Snapshot(api));
         using var fixture = new Fixture(reader); await using var app = await StartAsync(fixture.Provider); using var client = Client(app);
-        _ = await client.GetStringAsync("/api/device-topology/fields"); Assert.Equal(0, api.Opens);
+        _ = ReadPublishedFields(fixture.Provider, app); Assert.Equal(0, api.Opens);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(12));
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
         { Content = JsonContent.Create(new { version = 1, subscriptions = new[] {
@@ -71,7 +71,7 @@ public sealed partial class DeviceInformationEndpointTests
         Assert.True(api.Opens >= 1); Assert.Equal(4 * api.Opens, api.DataCalls);
         await timeout.CancelAsync(); response.Dispose(); await Task.Delay(250);
         var count = api.Opens; var current = fixture.Provider.ReadState().InformationFields;
-        using var cached = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var cached = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         Assert.Equal(4, Field(cached.RootElement, PciResourceInformationCollectorTests.Identity, "pci_all_resource_range").GetProperty("value").GetArrayLength());
         await Task.Delay(1300); Assert.Equal(count, api.Opens); Assert.Equal(4 * count, api.DataCalls);
         Assert.Same(current, fixture.Provider.ReadState().InformationFields); await app.StopAsync();

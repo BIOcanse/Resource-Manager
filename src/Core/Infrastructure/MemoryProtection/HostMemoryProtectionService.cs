@@ -98,7 +98,7 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
                 return Matches(entries, prepared) ? reserve.Rebuild() : prepared;
             });
             await PublishStateAsync("reserve-rebuilt");
-            return ReadStatus();
+            return await ReadStatusAsync(cancellationToken);
         }
         finally { configuration.Release(); }
     }
@@ -134,9 +134,9 @@ public sealed class HostMemoryProtectionService(IHostMemoryProtectionSource sour
         finally { pointCreation.Release(); }
     }
 
-    public HostMemoryProtectionStatus ReadStatus()
+    public async Task<HostMemoryProtectionStatus> ReadStatusAsync(CancellationToken cancellationToken)
     {
-        var commit = source.ReadCurrentCommit();
+        var commit = await source.ReadCurrentCommitAsync(cancellationToken);
         var currentReserve = reserve.ReadStatus();
         lock (gate)
         {

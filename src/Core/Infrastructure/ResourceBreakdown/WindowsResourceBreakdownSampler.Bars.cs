@@ -327,8 +327,8 @@ public sealed partial class WindowsResourceBreakdownSampler
             && snapshot.Items.TryGetValue(metricId, out metric!)
             // 可用与否看读数本身，不看显示串：容量类指标已经不带显示串了，
             // 拿字符串判空会把内存和显存整条判成不可用。
-            && metric.NumericValue is double reading
-            && double.IsFinite(reading))
+            && (metric.IntegerValue is not null
+                || metric.NumericValue is double reading && double.IsFinite(reading)))
         {
             return true;
         }

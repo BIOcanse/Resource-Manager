@@ -99,12 +99,13 @@ public sealed partial class WindowsHardwareMetricSampler :
         IpHelperNetworkMonitoringZone? networkZone = null,
         IntelGclMonitoringZone? intelGclZone = null,
         WindowsMetricControlResources? borrowedControls = null,
-        WindowsNpuMemoryMonitoringZone? npuMemoryZone = null, WindowsNpuEngineMonitoringZone? npuEngineZone = null)
+        WindowsNpuMemoryMonitoringZone? npuMemoryZone = null, WindowsNpuEngineMonitoringZone? npuEngineZone = null,
+        WindowsHardwareMetricResources? borrowedResources = null)
         : this(cpuZone, memoryZone, virtualMemoryZone, gpuAdapterOrderZone, cpuFrequencyZone,
             gpuEngineZone, systemIoZone, nvidiaZone, nvidiaNvapiZone, amdAdlxZone, amdSmuZone,
             integratedGpuSensorRoute, platformSensorReader, metricSnapshotOwner, metricCatalog,
             monitoringSourceZoneRegistry, samplingSubscriptionOwner, runtimePlanProvider, logger, batteryZone,
-            intelMsrZone, networkZone, intelGclZone, borrowedControls, npuMemoryZone, npuEngineZone, null)
+            intelMsrZone, networkZone, intelGclZone, borrowedControls, npuMemoryZone, npuEngineZone, null, borrowedResources)
     {
     }
 
@@ -135,7 +136,8 @@ public sealed partial class WindowsHardwareMetricSampler :
         WindowsMetricControlResources? borrowedControls,
         WindowsNpuMemoryMonitoringZone? npuMemoryZone,
         WindowsNpuEngineMonitoringZone? npuEngineZone,
-        Func<ulong, uint, INativeSamplingOutputScratch>? createOutputScratch)
+        Func<ulong, uint, INativeSamplingOutputScratch>? createOutputScratch,
+        WindowsHardwareMetricResources? borrowedResources = null)
     {
         this.cpuZone = cpuZone;
         this.memoryZone = memoryZone;
@@ -159,7 +161,7 @@ public sealed partial class WindowsHardwareMetricSampler :
         this.metricSnapshotOwner = metricSnapshotOwner;
         publishedSnapshot = new("metric_snapshot", () => this.metricSnapshotOwner.CreateCurrentSession());
         this.metricCatalog = metricCatalog;
-        var resources = CreateBorrowedResources(borrowedControls);
+        var resources = borrowedResources ?? CreateBorrowedResources(borrowedControls);
         controlFields = new WindowsMetricControlFields(resources.Controls!, resources.ReadGpuInventory, sourceId =>
             monitoringSourceZoneRegistry.GetZone(NativeMetricSnapshotSourceCatalog.ResolveZoneId(sourceId switch
             {
@@ -263,16 +265,15 @@ public sealed partial class WindowsHardwareMetricSampler :
         CancellationToken cancellationToken)
         => GetSnapshotAsync(MetricSampleRequest.All, cancellationToken);
 
-    public Task<HardwareMetricSnapshot> GetSnapshotAsync(
+    public async Task<HardwareMetricSnapshot> GetSnapshotAsync(
         MetricSampleRequest request,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
-        var snapshot = publishedSnapshot.Read(request);
-        return Task.FromResult(snapshot is null
-            ? CreateWarmingSnapshot(request)
-            : ProjectSnapshot(snapshot, request));
+        return await ((IMetricSnapshotPushSource)this).FetchOnceAsync(
+            "single-fetch:hardware", request, cancellationToken).ConfigureAwait(false)
+            ?? CreateWarmingSnapshot(request);
     }
 
     public async Task<HardwareMetricSnapshot> CaptureSnapshotAsync(
@@ -1002,8 +1003,18 @@ public sealed partial class WindowsHardwareMetricSampler :
             return snapshot;
         }
 
+        // Capacity fields intentionally have no legacy value alias in native
+        // current. An explicit alias request still owns and receives that same
+        // canonical field; do not discard it while projecting the request.
+        var missingAliases = request.Ids.Where(id => !snapshot.Items.ContainsKey(id))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var requestedAddresses = snapshot.FieldBindings.Values
+            .Where(binding => missingAliases.Count > 0
+                && binding.RequestAliases.Any(missingAliases.Contains))
+            .Select(static binding => binding.RequestAddress)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var items = snapshot.Items
-            .Where(pair => request.Includes(pair.Key))
+            .Where(pair => request.Includes(pair.Key) || requestedAddresses.Contains(pair.Key))
             .ToDictionary(
                 static pair => pair.Key,
                 static pair => pair.Value,

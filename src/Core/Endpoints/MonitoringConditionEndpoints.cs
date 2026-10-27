@@ -22,14 +22,22 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     { TypeInfoResolver = BackendHttpJsonContext.Default };
     private sealed record MonitoringConditionInput(string Id, string Condition);
 
-    private static ExpandedMonitoringHook ExpandMonitoringCondition(string text, string id, IServiceProvider services)
-        => MonitoringConditionLanguage.Expand(text, id,
+    private static Task<ExpandedMonitoringHook> ExpandMonitoringConditionAsync(string text, string id,
+        IServiceProvider services, CancellationToken cancellationToken)
+        => MonitoringConditionLanguage.ExpandAsync(text, id,
             MonitoringConditionVocabulary.Create(services.GetService<HardwareMetricCatalogState>()?.Current),
-            pid => ResolveConditionProcessStartKey(pid, services));
+            pid => ResolveConditionProcessStartKeyAsync(pid, id, services, cancellationToken));
 
-    private static string? ResolveConditionProcessStartKey(int pid, IServiceProvider services)
+    private static async Task<string?> ResolveConditionProcessStartKeyAsync(int pid, string id,
+        IServiceProvider services, CancellationToken cancellationToken)
     {
-        var current = services.GetService<ISchedulingProcessFactObservationSource>()?.ReadLatest(new(
+        var resources = services.GetRequiredService<IResourceBreakdownPushSource>();
+        var request = new ResourceBreakdownSampleRequest([], new Dictionary<string, string>(),
+            ProcessSampleDetailLevel.ResourceTableBasic)
+            { PublicationDatasetIds = [SamplingDatasetIds.ProcessInventory, SamplingDatasetIds.ProcessAttribution] };
+        if (await resources.FetchOnceAsync($"monitoring-condition:{id}:process-identity", request, cancellationToken) is null)
+            return null;
+        var current = services.GetRequiredService<ISchedulingProcessFactObservationSource>().ReadLatest(new(
             SchedulingProcessMetricMask.None, new(SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, [])));
         if (current?.TryGetCurrentFoundationDataset(SamplingDatasetIds.ProcessInventory, out _) != true) return null;
         var process = current.InventoryProcesses.FirstOrDefault(item => item.ProcessId == pid && item.ProcessStartKey > 0);

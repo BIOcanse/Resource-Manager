@@ -21,12 +21,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         // 控不了的对象和能力**照样返回**，带上原因和缺哪个组件。
         // 这和指标目录是同一条口径 —— 过滤掉等于把算好的原因扔掉，
         // 用户看到的就是"根本没这功能"，分不清是机器不支持还是软件没做。
-        app.MapGet("/api/control/objects", (
+        app.MapGet("/api/control/objects", async (
             HttpResponse response,
-            IControlObjectCatalog catalog) =>
+            IControlObjectCatalog catalog, CancellationToken cancellationToken) =>
         {
             DisableResponseCache(response);
-            return Results.Ok(catalog.ReadObjects());
+            return Results.Ok(await catalog.ReadObjectsAsync(cancellationToken));
         }).AllowAnonymous();
 
         /*
@@ -47,7 +47,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             CancellationToken cancellationToken) =>
         {
             DisableResponseCache(response);
-            var target = catalog.ReadObjects().Objects
+            var target = (await catalog.ReadObjectsAsync(cancellationToken)).Objects
                 .FirstOrDefault(entry => string.Equals(
                     entry.Id,
                     objectId,
@@ -71,13 +71,13 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         //
         // **它不是期望状态的回声**：固件会按温度自己调度，用户也可能用别的软件改过，
         // 两者对不上是常态，而且正是用户需要看见的信息。
-        // 只返回当前值，不触发采样 —— 采样是后台那条独立的路。
-        app.MapGet("/api/control/actual", (
+        // 一次性读取持有原后台采样租约，等待新发布后释放。
+        app.MapGet("/api/control/actual", async (
             HttpResponse response,
-            IControlActualStateOwner owner) =>
+            IControlActualStateOwner owner, CancellationToken cancellationToken) =>
         {
             DisableResponseCache(response);
-            return Results.Ok(owner.Current);
+            return Results.Ok(await owner.FetchOnceAsync("control:actual", cancellationToken));
         }).AllowAnonymous();
 
         // 期望状态 + 最近一次施加的回执。界面据此算"已应用/正在应用/没应用上"。
@@ -171,15 +171,15 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
          * **只清缓存，不改任何设定。** 重新检测不该顺手把用户调过的东西动了。
          */
         if (startupCapabilities.Allows(StartupCapability.MutablePersistence | StartupCapability.RuntimeEffectOwners))
-        app.MapPost("/api/control/redetect", (
+        app.MapPost("/api/control/redetect", async (
             IEnumerable<IControlDetectionCache> caches,
-            IControlObjectCatalog catalog) =>
+            IControlObjectCatalog catalog, CancellationToken cancellationToken) =>
         {
             foreach (var cache in caches)
             {
                 cache.ResetDetection();
             }
-            return Results.Ok(catalog.ReadObjects());
+            return Results.Ok(await catalog.ReadObjectsAsync(cancellationToken));
         });
 
         /*

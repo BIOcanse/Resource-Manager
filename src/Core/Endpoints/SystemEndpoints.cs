@@ -30,6 +30,7 @@ using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Hosting.StartupCapabilities;
 using ResourceManager.App.Endpoints.Transport;
+using ResourceManager.ReadWrite.Information;
 
 namespace ResourceManager.App.Endpoints;
 
@@ -59,16 +60,17 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             CancellationToken cancellationToken) =>
         {
             DisableResponseCache(response);
-            await response.WriteAsJsonAsync<object>(topologyReader.GetSnapshot() is { } topology
+            await response.WriteAsJsonAsync<object>(await topologyReader.FetchOnceAsync("cpu-topology:snapshot", cancellationToken) is { } topology
                 ? topology : new CpuObservationUnavailable("unavailable", "cpu-topology-not-published"), cancellationToken);
         }).AllowAnonymous();
 
-        app.MapGet("/api/cpu/topology/fields", (
+        app.MapGet("/api/cpu/topology/fields", async (
             HttpResponse response,
-            ICpuTopologyReader topologyReader) =>
+            ICpuTopologyReader topologyReader, CancellationToken cancellationToken) =>
         {
             DisableResponseCache(response);
-            return Results.Ok(topologyReader.GetInformationSnapshot());
+            return Results.Ok(await topologyReader.FetchInformationOnceAsync("cpu-topology:fields", cancellationToken)
+                ?? DeviceInformationSnapshot.Empty);
         }).AllowAnonymous();
 
         app.MapGet("/api/cpu/topology/exclusive-bindings", async (
@@ -78,7 +80,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             CancellationToken cancellationToken) =>
         {
             DisableResponseCache(response);
-            var topology = topologyReader.GetSnapshot();
+            var topology = await topologyReader.FetchOnceAsync("cpu-topology:exclusive-bindings", cancellationToken);
             var snapshot = topology is null
                 ? null
                 : CpuExclusiveBindingProjection.Create(
@@ -195,19 +197,22 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             });
         }
 
-        app.MapGet("/api/cpu/residency", (
+        app.MapGet("/api/cpu/residency", async (
             HttpResponse response,
-            ICpuCoreResidencyReader residencyReader) =>
+            ICpuCoreResidencyReader residencyReader,
+            CancellationToken cancellationToken) =>
         {
             DisableResponseCache(response);
-            return Results.Ok<object>(residencyReader.Read() is { } snapshot ? snapshot
+            return Results.Ok<object>(await residencyReader.FetchOnceAsync("cpu-residency:snapshot", cancellationToken) is { } snapshot ? snapshot
                 : new CpuObservationUnavailable("unavailable", "cpu-residency-window-unavailable"));
         }).AllowAnonymous();
 
-        app.MapGet("/api/cpu/residency/cores", (HttpResponse response, ICpuCoreResidencyReader residencyReader) =>
+        app.MapGet("/api/cpu/residency/cores", async (HttpResponse response, ICpuCoreResidencyReader residencyReader,
+            CancellationToken cancellationToken) =>
         {
             DisableResponseCache(response);
-            return Results.Ok<object>(residencyReader.Read() is { } snapshot ? CpuObservationProjection.Summarize(snapshot)
+            return Results.Ok<object>(await residencyReader.FetchOnceAsync("cpu-residency:cores", cancellationToken) is { } snapshot
+                ? CpuObservationProjection.Summarize(snapshot)
                 : new CpuObservationUnavailable("unavailable", "cpu-residency-window-unavailable"));
         }).AllowAnonymous();
 

@@ -17,14 +17,14 @@ public sealed partial class DeviceInformationEndpointTests
         var collector=new WindowsNetworkEndpointInformationReader(api);
         var reader=new Reader(()=>DeviceInformationTestData.Snapshot() with { NetworkEndpointInformation=collector.Read() });
         using var fixture=new Fixture(reader);await using var app=await StartAsync(fixture.Provider);using var client=Client(app);
-        using var initial=JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var initial=JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         Assert.Equal(0,api.Reads);Assert.Equal(0,api.Opens);
         for(var phase=0;phase<4;phase++)
         {
             api.ReadTable=(kind,_)=>phase==3?new byte[4]:phase==1&&kind==WindowsNetworkEndpointTableKind.UdpIpv6?null:NetworkEndpointInformationCollectorTests.Raw(kind);
-            await fixture.Provider.SampleNowAsync(CancellationToken.None);var reads=api.Reads;var opens=api.Opens;
+            var sampledHttpFields1 = await client.GetStringAsync("/api/device-topology/fields");var reads=api.Reads;var opens=api.Opens;
             var current=fixture.Provider.ReadState().InformationFields;
-            using var result=JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+            using var result=JsonDocument.Parse(sampledHttpFields1);
             var tcp4=Field(result.RootElement,"machine","network_all_tcp_ipv4_endpoint_reported");
             Assert.Equal("windows.ip-helper",tcp4.GetProperty("definition").GetProperty("sourceId").GetString());
             Assert.Equal("array",tcp4.GetProperty("definition").GetProperty("valueKind").GetString());
@@ -61,11 +61,11 @@ public sealed partial class DeviceInformationEndpointTests
         var persisted=new DeviceTopologyPersistedSnapshot(DeviceTopologySnapshotState.CurrentSchemaVersion,"test",9,new DeviceTopologySemanticComparer().ComputeHash(snapshot),snapshot);
         var reader=new Reader(snapshot);using var fixture=new Fixture(reader,persisted);
         await using var app=await StartAsync(fixture.Provider);using var client=Client(app);
-        using var cached=JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var cached=JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         string[] names=["network_all_tcp_ipv4_endpoint_reported","network_all_tcp_ipv6_endpoint_reported","network_all_udp_ipv4_endpoint_reported","network_all_udp_ipv6_endpoint_reported"];
         foreach(var name in names) Assert.Equal(JsonValueKind.Null,Field(cached.RootElement,"machine",name).GetProperty("value").ValueKind);
-        Assert.Equal(0,reader.ReadCount);await fixture.Provider.SampleNowAsync(CancellationToken.None);
-        using var current=JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        Assert.Equal(0,reader.ReadCount);var sampledHttpFields2 = await client.GetStringAsync("/api/device-topology/fields");
+        using var current=JsonDocument.Parse(sampledHttpFields2);
         foreach(var name in names) Assert.Equal(3,Field(current.RootElement,"machine",name).GetProperty("value").GetArrayLength());
     }
 
@@ -75,7 +75,7 @@ public sealed partial class DeviceInformationEndpointTests
         var api=new NetworkEndpointInformationCollectorTests.Api();var collector=new WindowsNetworkEndpointInformationReader(api);
         var reader=new Reader(()=>DeviceInformationTestData.Snapshot() with { NetworkEndpointInformation=collector.Read() });
         using var fixture=new Fixture(reader);await using var app=await StartAsync(fixture.Provider);using var client=Client(app);
-        using var initial=JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var initial=JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         Assert.Equal(0,api.Reads);Assert.Equal(0,api.Opens);
         using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(12));
         using var request=new HttpRequestMessage(HttpMethod.Post,"/api/subscriptions/stream") { Content=JsonContent.Create(new { version=1,subscriptions=new[] {
@@ -89,7 +89,7 @@ public sealed partial class DeviceInformationEndpointTests
         Assert.All(api.Leases,static lease=>Assert.Equal(1,lease.Disposals));
         await timeout.CancelAsync();response.Dispose();await Task.Delay(250);
         var reads=api.Reads;var opens=api.Opens;var current=fixture.Provider.ReadState().InformationFields;
-        using var cached=JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var cached=JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         Assert.Equal(value.GetRawText(),Field(cached.RootElement,"machine","network_all_tcp_ipv4_endpoint_reported").GetProperty("value").GetRawText());
         await Task.Delay(1300);Assert.Equal(reads,api.Reads);Assert.Equal(opens,api.Opens);Assert.Same(current,fixture.Provider.ReadState().InformationFields);
         await app.StopAsync();

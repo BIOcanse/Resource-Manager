@@ -12,7 +12,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class DeviceInformationEndpointTests
 {
     [Fact]
-    public async Task SecurityHttpUsesCurrentCacheIsolatesFailuresAndRecoversWithoutHistoricalValues()
+    public async Task SecurityHttpUsesSingleFetchIsolatesFailuresAndRecoversWithoutHistoricalValues()
     {
         var api = new WindowsSecurityInformationCollectorTests.Api();
         var collector = new WindowsSecurityInformationReader(api);
@@ -20,7 +20,7 @@ public sealed partial class DeviceInformationEndpointTests
         using var fixture = new Fixture(reader);
         await using var app = await StartAsync(fixture.Provider);
         using var client = Client(app);
-        _ = await client.GetStringAsync("/api/device-topology/fields");
+        _ = ReadPublishedFields(fixture.Provider, app);
         Assert.Empty(api.Providers);
         Assert.Equal(0, api.Opens);
 
@@ -29,11 +29,11 @@ public sealed partial class DeviceInformationEndpointTests
             api.Health[4] = phase == 1 ? (1, 2U) : (0, 0U);
             api.PolicyFactory = () => new() { PrivateStatus = phase == 1 ? unchecked((int)0x80004005) : 0 };
             api.OpenError = phase == 2 ? new COMException("unavailable") : null;
-            await fixture.Provider.SampleNowAsync(CancellationToken.None);
+            var sampledHttpFields1 = await client.GetStringAsync("/api/device-topology/fields");
             var current = fixture.Provider.ReadState().InformationFields;
             var reads = api.Providers.Count;
             var opens = api.Opens;
-            using var result = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+            using var result = JsonDocument.Parse(sampledHttpFields1);
             var antivirus = Field(result.RootElement, "machine", "security_all_antivirus_state_reported");
             Assert.Equal("windows.security-center", antivirus.GetProperty("definition").GetProperty("sourceId").GetString());
             Assert.Equal("enum32", antivirus.GetProperty("definition").GetProperty("unit").GetString());
@@ -73,18 +73,18 @@ public sealed partial class DeviceInformationEndpointTests
         using var fixture = new Fixture(reader, persisted);
         await using var app = await StartAsync(fixture.Provider);
         using var client = Client(app);
-        using var restored = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var restored = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         AssertSecurityValuesCleared(restored.RootElement);
         Assert.Equal(0, reader.ReadCount);
-        await fixture.Provider.SampleNowAsync(CancellationToken.None);
-        using var first = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        var sampledHttpFields2 = await client.GetStringAsync("/api/device-topology/fields");
+        using var first = JsonDocument.Parse(sampledHttpFields2);
         Assert.Equal("0", Field(first.RootElement, "machine", "security_all_antivirus_state_reported").GetProperty("value").GetString());
         Assert.True(Field(first.RootElement, "windows-firewall-profile|private", "security_all_windows_firewall_enabled_configured").GetProperty("value").GetBoolean());
-        await fixture.Provider.SampleNowAsync(CancellationToken.None);
-        using var failed = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        var sampledHttpFields3 = await client.GetStringAsync("/api/device-topology/fields");
+        using var failed = JsonDocument.Parse(sampledHttpFields3);
         AssertSecurityValuesCleared(failed.RootElement);
-        await fixture.Provider.SampleNowAsync(CancellationToken.None);
-        using var recovered = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        var sampledHttpFields4 = await client.GetStringAsync("/api/device-topology/fields");
+        using var recovered = JsonDocument.Parse(sampledHttpFields4);
         Assert.Equal("6", Field(recovered.RootElement, "machine", "security_all_windows_firewall_profiles_active_mask").GetProperty("value").GetString());
         Assert.Equal(3, reader.ReadCount);
         await app.StopAsync();
@@ -99,7 +99,7 @@ public sealed partial class DeviceInformationEndpointTests
         using var fixture = new Fixture(reader);
         await using var app = await StartAsync(fixture.Provider);
         using var client = Client(app);
-        _ = await client.GetStringAsync("/api/device-topology/fields");
+        _ = ReadPublishedFields(fixture.Provider, app);
         Assert.Empty(api.Providers);
         Assert.Equal(0, api.Opens);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(12));
@@ -123,7 +123,7 @@ public sealed partial class DeviceInformationEndpointTests
         await Task.Delay(250);
         var reads = reader.ReadCount;
         var current = fixture.Provider.ReadState().InformationFields;
-        using var cached = JsonDocument.Parse(await client.GetStringAsync("/api/device-topology/fields"));
+        using var cached = JsonDocument.Parse(ReadPublishedFields(fixture.Provider, app));
         Assert.Equal("0", Field(cached.RootElement, "machine", "security_all_antivirus_state_reported").GetProperty("value").GetString());
         await Task.Delay(1300);
         Assert.Equal(reads, reader.ReadCount);

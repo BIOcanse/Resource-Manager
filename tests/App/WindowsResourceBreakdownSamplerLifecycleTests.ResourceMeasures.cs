@@ -40,7 +40,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             new WindowsProcessBasicMetricReader(api));
         var request = ResourceBreakdownSampleRequest.ForResourceTable([field], new Dictionary<string, string>())
             with { ProcessMemoryFactIds = [field] };
-        _ = await sampler.GetSnapshotAsync(request, default);
+        _ = sampler.ReadLatest(request);
         Assert.Equal(0, api.Opens + disk.Reads + network.Reads);
         await sampler.StartAsync(default);
         try

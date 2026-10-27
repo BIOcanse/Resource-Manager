@@ -160,27 +160,25 @@ public sealed partial class AcpiInformationSubscriptionTests
     }
 
     [Fact]
-    public async Task HttpGetReadsOnlyAcpiCacheAndLegacyPayloadDoesNotExposeIt()
+    public async Task HttpGetAcquiresFreshAcpiAndLegacyTopologyKeepsItsIndependentScope()
     {
         using var fixture = new Fixture(new AcpiReader(AcpiFirmwareTestData.Tables()));
         await using var app = await StartAsync(fixture.Provider);
         using var client = Client(app);
-        using var empty = await client.GetFromJsonAsync<JsonDocument>("/api/device-topology/acpi/fields");
-        Assert.Empty(empty!.RootElement.GetProperty("devices").EnumerateArray());
-        await Task.Delay(50);
-        Assert.Equal(0, fixture.Acpi.ReadCount);
-        Assert.Equal(0, fixture.Topology.ReadCount);
-        await fixture.Provider.SampleAcpiNowAsync(CancellationToken.None);
-        using var response = await client.GetAsync("/api/device-topology/acpi/fields");
-        Assert.Contains("no-store", response.Headers.CacheControl!.ToString());
-        using var cached = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal("FACP", WireField(cached.RootElement, "firmware_all_acpi_table_signature").GetString());
-        Assert.Equal(AcpiFirmwareTestData.Raw(AcpiFirmwareTestData.Id("FACP")),
-            WireField(cached.RootElement, "firmware_all_acpi_table_raw").GetBytesFromBase64());
-        using var legacy = await client.GetFromJsonAsync<JsonDocument>("/api/device-topology/state");
-        Assert.False(legacy!.RootElement.TryGetProperty("acpiInformationFields", out _));
+        using var first = await client.GetFromJsonAsync<JsonDocument>("/api/device-topology/acpi/fields");
+        Assert.Equal("FACP", WireField(first!.RootElement, "firmware_all_acpi_table_signature").GetString());
         Assert.Equal(1, fixture.Acpi.ReadCount);
         Assert.Equal(0, fixture.Topology.ReadCount);
+        using var response = await client.GetAsync("/api/device-topology/acpi/fields");
+        Assert.Contains("no-store", response.Headers.CacheControl!.ToString());
+        using var current = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("FACP", WireField(current.RootElement, "firmware_all_acpi_table_signature").GetString());
+        Assert.Equal(AcpiFirmwareTestData.Raw(AcpiFirmwareTestData.Id("FACP")),
+            WireField(current.RootElement, "firmware_all_acpi_table_raw").GetBytesFromBase64());
+        using var legacy = await client.GetFromJsonAsync<JsonDocument>("/api/device-topology/state");
+        Assert.False(legacy!.RootElement.TryGetProperty("acpiInformationFields", out _));
+        Assert.Equal(2, fixture.Acpi.ReadCount);
+        Assert.Equal(1, fixture.Topology.ReadCount);
         await app.StopAsync();
     }
 

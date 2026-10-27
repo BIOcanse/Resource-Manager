@@ -77,20 +77,37 @@ public sealed class HostMemoryProtectionSourceTests
     }
 
     [Fact]
-    public void CurrentCommitOnlyReadsPublishedValuesAndPreservesUnsignedPrecision()
+    public async Task CurrentCommitWaitsForOwnFreshSubscriptionAndPreservesUnsignedPrecision()
     {
         var fixture = new Fixture();
         const ulong used = 9007199254740993;
-        fixture.Metrics.Current = CommitSnapshot(new(used), new(ulong.MaxValue), 97.25);
-        Assert.Equal(new HostMemoryCommit(used, ulong.MaxValue, 97.25), fixture.Source.ReadCurrentCommit());
-        fixture.Metrics.Current = null;
-        Assert.Null(fixture.Source.ReadCurrentCommit());
-        Assert.Equal(2, fixture.Metrics.ReadCount);
+        fixture.Metrics.Current = CommitSnapshot(capturedAt: DateTimeOffset.UnixEpoch);
+        var pending = fixture.Source.ReadCurrentCommitAsync(CancellationToken.None);
+        var holder = await fixture.Metrics.Started.Reader.ReadAsync().AsTask().WaitAsync(Timeout);
+        Assert.Equal("host-memory-protection:status", holder);
+        Assert.False(pending.IsCompleted);
+        Assert.Equal(3, fixture.Metrics.Active[holder].Request.Ids.Count);
+        fixture.Metrics.Publish(holder, fixture.Metrics.Current!);
+        Assert.False(pending.IsCompleted);
+        fixture.Metrics.Publish(holder, CommitSnapshot(new(used), new(ulong.MaxValue), 97.25));
+        Assert.Equal(new HostMemoryCommit(used, ulong.MaxValue, 97.25), await pending.WaitAsync(Timeout));
+        Assert.Equal(0, fixture.Metrics.ReadCount);
         Assert.Equal(0, fixture.Metrics.AcquireCount);
         Assert.Empty(fixture.Metrics.Active);
         Assert.Empty(fixture.Resources.Active);
         Assert.Equal(0, fixture.Foundations.ReadCount);
-        Assert.Equal(3, fixture.Metrics.LastReadRequest!.Ids.Count);
+    }
+
+    [Fact]
+    public async Task CancellingCurrentCommitReleasesItsSubscription()
+    {
+        var fixture = new Fixture();
+        using var cancellation = new CancellationTokenSource();
+        var pending = fixture.Source.ReadCurrentCommitAsync(cancellation.Token);
+        await fixture.Metrics.Started.Reader.ReadAsync().AsTask().WaitAsync(Timeout);
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending.WaitAsync(Timeout));
+        Assert.Empty(fixture.Metrics.Active);
     }
 
     [Theory]
@@ -134,8 +151,13 @@ public sealed class HostMemoryProtectionSourceTests
         fixture.Metrics.Publish(Holder + ":commit", snapshot with { Items = items });
         Assert.True(await pending.WaitAsync(Timeout));
         Assert.Null(stream.Current.Commit);
-        fixture.Metrics.Current = snapshot with { Items = items };
-        Assert.Null(fixture.Source.ReadCurrentCommit());
+        var currentCommit = fixture.Source.ReadCurrentCommitAsync(CancellationToken.None);
+        var holder = await fixture.Metrics.Started.Reader.ReadAsync().AsTask().WaitAsync(Timeout);
+        fixture.Metrics.Publish(holder, snapshot with { Items = items,
+            Datasets = snapshot.Datasets.ToDictionary(pair => pair.Key,
+                pair => pair.Value with { LastAttemptAtUtcTicks = DateTimeOffset.UtcNow.UtcTicks }) });
+        Assert.Null(await currentCommit.WaitAsync(Timeout));
+        Assert.False(fixture.Metrics.Active.ContainsKey(holder));
     }
 
     [Fact]
@@ -216,10 +238,12 @@ public sealed class HostMemoryProtectionSourceTests
         Assert.True(rows[45].IsResourceManager);
     }
 
-    private static HardwareMetricSnapshot CommitSnapshot(MetricInteger? used = null, MetricInteger? limit = null, double percent = 50)
+    private static HardwareMetricSnapshot CommitSnapshot(MetricInteger? used = null, MetricInteger? limit = null,
+        double percent = 50, DateTimeOffset? capturedAt = null)
     {
         var provider = new HardwareSensorProviderState("fixture", "current", null);
-        return new(DateTimeOffset.UtcNow,
+        var at = capturedAt ?? DateTimeOffset.UtcNow;
+        return new(at,
             new("", 0, false, CpuMetricObservationStatus.Unavailable, 0, 0, 0, 0, 0, "", new(provider, null, null, null, null)),
             new(0, 0, 0, false), new(0, 0, 0, false), [],
             new(SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, []),
@@ -228,7 +252,11 @@ public sealed class HostMemoryProtectionSourceTests
                 ["used"] = new("used", null, "B") { FieldCode = MetricFieldCode.CommitUsed, IntegerValue = used ?? new(50) },
                 ["limit"] = new("limit", null, "B") { FieldCode = MetricFieldCode.CommitLimit, IntegerValue = limit ?? new(100) },
                 ["percent"] = new("percent", percent, "%") { FieldCode = MetricFieldCode.CommitPercent }
-            });
+            })
+        { Datasets = new Dictionary<string, HardwareMetricDatasetObservation>
+            { [SamplingDatasetIds.ForSystemMetric("virtualMemory.usage")] = new(
+                SamplingDatasetIds.ForSystemMetric("virtualMemory.usage"), SamplingObservationStatus.Current,
+                1, at.UtcTicks, 1, 1, 1, 1) { LastAttemptAtUtcTicks = at.UtcTicks } } };
     }
 
     private static SchedulingProcessFact Process(int pid, ulong start) =>
@@ -265,7 +293,7 @@ public sealed class HostMemoryProtectionSourceTests
         public MetricSource Metrics { get; } = new();
         public ResourceSource Resources { get; } = new();
         public FoundationSource Foundations { get; } = new();
-        public HostMemoryProtectionSource Source => new(Metrics, Metrics, Resources, Foundations);
+        public HostMemoryProtectionSource Source => new(Metrics, Resources, Foundations);
 
         public async Task<IAsyncEnumerator<HostMemoryReading>> OpenAsync(CancellationToken cancellation = default)
         {

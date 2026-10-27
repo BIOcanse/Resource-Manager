@@ -273,7 +273,7 @@ public sealed class HostMemoryProtectionTests
         using (var enabled = await fixture.Patch(new { enabled = true })) Assert.Equal(HttpStatusCode.OK, enabled.StatusCode);
         await Until(() => fixture.Source.Active == 1);
         fixture.Source.Publish(960, 96, [Process(20, "1", 1000)]);
-        await Until(() => fixture.Protection.ReadStatus().Actions.Count == 1);
+        await Until(async () => (await fixture.Protection.ReadStatusAsync(CancellationToken.None)).Actions.Count == 1);
         using (var disabled = await fixture.Patch(new { enabled = false })) Assert.Equal(HttpStatusCode.OK, disabled.StatusCode);
         await Until(() => fixture.Source.Active == 0);
         var sample = Assert.Single(fixture.Executor.ReserveSamples);
@@ -321,22 +321,22 @@ public sealed class HostMemoryProtectionTests
         fixture.Source.Publish(960, 96,
             [Process(10, "1", 950), Process(11, "1", 200), Process(12, "new", 300), Process(40, "1", 5000),
                 Process(41, "1", 4000), Process(42, "1", 6000) with { IsResourceManager = true }]);
-        await Until(() => fixture.Protection.ReadStatus().Actions.Count == 1);
-        var action = Assert.Single(fixture.Protection.ReadStatus().Actions);
+        await Until(async () => (await fixture.Protection.ReadStatusAsync(CancellationToken.None)).Actions.Count == 1);
+        var action = Assert.Single((await fixture.Protection.ReadStatusAsync(CancellationToken.None)).Actions);
         Assert.Equal(12, action.ProcessId);
         Assert.Equal("new", action.ProcessStartKey);
         Assert.Equal(0UL, action.BaselineBytes);
         Assert.Equal(300m, action.GrowthBytes);
         Assert.DoesNotContain(42, fixture.Executor.Opened);
-        var excluded = fixture.Protection.ReadStatus().ExcludedCandidates;
+        var excluded = (await fixture.Protection.ReadStatusAsync(CancellationToken.None)).ExcludedCandidates;
         Assert.Contains(excluded, item => item.ProcessId == 40 && item.Reason == "cannot-open");
         Assert.Contains(excluded, item => item.ProcessId == 41 && item.Reason == "critical-process");
         Assert.Contains(excluded, item => item.ProcessId == 42 && item.Reason == "resource-manager-process");
 
         fixture.Source.Publish(970, 97, [Process(40, "1", 8000), Process(11, "1", 210)]);
-        await Until(() => fixture.Protection.ReadStatus().Actions.Count == 2);
+        await Until(async () => (await fixture.Protection.ReadStatusAsync(CancellationToken.None)).Actions.Count == 2);
         Assert.Equal(1, fixture.Executor.Opened.Count(id => id == 40));
-        Assert.Equal(11, fixture.Protection.ReadStatus().Actions[0].ProcessId);
+        Assert.Equal(11, (await fixture.Protection.ReadStatusAsync(CancellationToken.None)).Actions[0].ProcessId);
         var decision = fixture.Scheduler.Read().CurrentDecisions.Single(item => item.ParentId == BlockUids.Program);
         Assert.Contains(decision.Items, item => item.ItemUid == BackendItems.HostMemoryProtectionEnabled && item.Value is true);
         Assert.Contains(decision.Items, item => item.ItemUid == BackendItems.MemoryProtectionNormalRunningPointExists && item.Value is true);
@@ -346,7 +346,7 @@ public sealed class HostMemoryProtectionTests
         Assert.Equal(HttpStatusCode.OK, disabled.StatusCode);
         await Until(() => fixture.Source.Active == 0 && fixture.Scheduler.ReadState(BlockUids.HostMemoryProtection) == BusinessBlockState.Stopped);
         fixture.Source.Publish(999, 99, [Process(11, "1", 9000)]);
-        Assert.Equal(2, fixture.Protection.ReadStatus().Actions.Count);
+        Assert.Equal(2, (await fixture.Protection.ReadStatusAsync(CancellationToken.None)).Actions.Count);
     }
 
     [Fact]
@@ -366,8 +366,8 @@ public sealed class HostMemoryProtectionTests
         Assert.DoesNotContain(22, fixture.Executor.Executed);
         fixture.Executor.Block.SetResult();
         await Until(() => fixture.Scheduler.ReadState(BlockUids.HostMemoryProtection) == BusinessBlockState.Stopped);
-        Assert.Equal(2, fixture.Protection.ReadStatus().Actions.Count);
-        Assert.Contains(fixture.Protection.ReadStatus().Actions, item => item.Outcome == "suspend-failed");
+        Assert.Equal(2, (await fixture.Protection.ReadStatusAsync(CancellationToken.None)).Actions.Count);
+        Assert.Contains((await fixture.Protection.ReadStatusAsync(CancellationToken.None)).Actions, item => item.Outcome == "suspend-failed");
         Assert.Equal(1, fixture.Executor.MaxConcurrent);
         Assert.Equal(0, fixture.Source.Active);
     }
@@ -386,9 +386,9 @@ public sealed class HostMemoryProtectionTests
         {
             fixture.Source.Publish(950, 95, [Process(100 + index, "1", (ulong)(index + 1))]);
             var count = index + 1;
-            await Until(() => fixture.Executor.Executed.Count == count && fixture.Protection.ReadStatus().Actions.Count == Math.Min(count, HostMemoryProtectionService.RecordLimit));
+            await Until(async () => fixture.Executor.Executed.Count == count && (await fixture.Protection.ReadStatusAsync(CancellationToken.None)).Actions.Count == Math.Min(count, HostMemoryProtectionService.RecordLimit));
         }
-        var status = fixture.Protection.ReadStatus();
+        var status = (await fixture.Protection.ReadStatusAsync(CancellationToken.None));
         Assert.Equal(HostMemoryProtectionService.RecordLimit, status.Actions.Count);
         Assert.Equal(165, status.Actions[0].ProcessId);
         Assert.Equal(102, status.Actions[^1].ProcessId);
@@ -411,9 +411,9 @@ public sealed class HostMemoryProtectionTests
         Assert.Equal(mode, (await fixture.Status()).ActionMode);
         Assert.Equal(mode, (await fixture.Stored()).Settings.MemoryProtection!.ActionMode);
         fixture.Source.Publish(960, 96, [Process(20, "1", 800) with { SoftwareId = "TEST-GAME" }, Process(21, "1", 700)]);
-        await Until(() => fixture.Protection.ReadStatus().Actions.Count == 1);
+        await Until(async () => (await fixture.Protection.ReadStatusAsync(CancellationToken.None)).Actions.Count == 1);
         Assert.Equal(20, Assert.Single(fixture.Executor.Executed));
-        Assert.Empty(fixture.Protection.ReadStatus().ExcludedCandidates);
+        Assert.Empty((await fixture.Protection.ReadStatusAsync(CancellationToken.None)).ExcludedCandidates);
         Assert.Equal(new HostMemoryActionOptions(mode, expectedNoDump), Assert.Single(fixture.Executor.Options));
     }
 
@@ -440,7 +440,7 @@ public sealed class HostMemoryProtectionTests
         // This is the production startup-publication path with a persisted switch, using only fake sources.
         await fixture.Protection.ApplySettingsAsync(new(Enabled: true,
             Reserves: [new(fixture.ReserveDirectory, ReserveSize)]));
-        var status = fixture.Protection.ReadStatus();
+        var status = (await fixture.Protection.ReadStatusAsync(CancellationToken.None));
         Assert.True(status.Enabled);
         Assert.Equal("no-normal-running-point", status.InactiveReason);
         Assert.Equal(BusinessBlockState.Stopped, fixture.Scheduler.ReadState(BlockUids.HostMemoryProtection));
@@ -459,7 +459,7 @@ public sealed class HostMemoryProtectionTests
         using var enabled = await fixture.Patch(new { enabled = true });
         await Until(() => fixture.Source.Active == 1);
         fixture.Source.Publish(960, 96, [Process(40, "1", 1000), Process(41, "1", 100)]);
-        await Until(() => fixture.Protection.ReadStatus().Actions.Count == 1);
+        await Until(async () => (await fixture.Protection.ReadStatusAsync(CancellationToken.None)).Actions.Count == 1);
         using var disabled = await fixture.Patch(new { enabled = false });
         await Until(() => fixture.Source.Active == 0);
         fixture.Source.Publish(200, 20, [Process(40, "1", 1000), Process(41, "1", 100)]);
@@ -467,10 +467,15 @@ public sealed class HostMemoryProtectionTests
         using var reenabled = await fixture.Patch(new { enabled = true });
         await Until(() => fixture.Source.Active == 1);
         fixture.Source.Publish(960, 96, [Process(40, "1", 2000), Process(41, "1", 200)]);
-        await Until(() => fixture.Protection.ReadStatus().Actions.Count == 2);
+        await Until(async () => (await fixture.Protection.ReadStatusAsync(CancellationToken.None)).Actions.Count == 2);
         Assert.Equal(2, fixture.Executor.Opened.Count(id => id == 40));
     }
 
+    private static async Task Until(Func<Task<bool>> predicate)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        while (!await predicate()) await Task.Delay(10, timeout.Token);
+    }
     private static async Task Until(Func<bool> predicate)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -563,7 +568,7 @@ public sealed class HostMemoryProtectionTests
         private HostMemoryReading current = new(DateTimeOffset.UtcNow, new(200, 1000, 20), [Process(10, "1", 100)]);
         public int Active => readers.Count;
         public int Deliveries;
-        public HostMemoryCommit? ReadCurrentCommit() => Volatile.Read(ref current).Commit;
+        public Task<HostMemoryCommit?> ReadCurrentCommitAsync(CancellationToken token) => Task.FromResult(Volatile.Read(ref current).Commit);
         public void Publish(ulong bytes, double percent, IReadOnlyList<HostMemoryProcess> processes)
         {
             var next = new HostMemoryReading(DateTimeOffset.UtcNow, new(bytes, 1000, percent), processes);

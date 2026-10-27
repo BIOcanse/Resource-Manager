@@ -112,7 +112,7 @@ public sealed class NvidiaDrsHttpIntegrationTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public async Task UnifiedSelectorUsesOriginalWorkerAndStopPreservesCurrentAndDirectStillWorks()
+    public async Task UnifiedSelectorUsesOriginalWorkerAndStoppedSingleFetchIsExplicitlyUnavailable()
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await using var fixture = await Fixture.StartAsync(deadline.Token);
@@ -134,7 +134,7 @@ public sealed class NvidiaDrsHttpIntegrationTests(ITestOutputHelper output)
         AssertQword(await current.Content.ReadFromJsonAsync<JsonElement>(deadline.Token));
         Assert.Same(before, fixture.Provider.ReadState()); Assert.Equal(reads, fixture.Recording.Reads);
         using var direct = await fixture.PostAsync("read", Request(), deadline.Token);
-        Assert.Equal(HttpStatusCode.OK, direct.StatusCode); Assert.Equal(reads + 1, fixture.Recording.Reads);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, direct.StatusCode); Assert.Equal(reads, fixture.Recording.Reads);
     }
 
     [Fact]
@@ -142,10 +142,17 @@ public sealed class NvidiaDrsHttpIntegrationTests(ITestOutputHelper output)
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await using var fixture = await Fixture.StartAsync(deadline.Token);
-        fixture.Recording.OnSetting = () => fixture.Zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
+        var frozen = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Recording.OnSetting = () => { fixture.Zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze); frozen.TrySetResult(); };
         var before = fixture.Provider.ReadState();
-        using var rejected = await fixture.PostAsync("read", Request(), deadline.Token);
-        Assert.Equal(HttpStatusCode.OK, rejected.StatusCode); Assert.Same(before, fixture.Provider.ReadState());
+        using var cancelledFetch = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
+        var pending = fixture.PostAsync("read", Request(), cancelledFetch.Token);
+        await frozen.Task.WaitAsync(deadline.Token);
+        Assert.Same(before, fixture.Provider.ReadState());
+        // A rejected attempt is not a new sample. The subscription waits for
+        // future collection, and caller cancellation must withdraw that demand.
+        cancelledFetch.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
         fixture.Zone.ApplyMode(ResourceManagerComputeZoneMode.Normal);
         using var directory = await fixture.Client.PostAsJsonAsync(Route("discover"), Limits, deadline.Token);
         Assert.Equal(HttpStatusCode.ServiceUnavailable, directory.StatusCode); Assert.Same(before, fixture.Provider.ReadState());

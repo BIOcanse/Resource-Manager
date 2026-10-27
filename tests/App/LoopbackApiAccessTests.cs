@@ -453,7 +453,10 @@ public sealed partial class LoopbackApiAccessTests
         foreach (var response in new[] { open, close })
             Assert.Equal(admission == "administrator" ? HttpStatusCode.OK : HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Equal(admission == "administrator" ? 4 : 2, fixture.Effects.ValidationCalls);
-        Assert.Equal(1, fixture.Sampler.Captures);
+        Assert.Equal(0, fixture.Sampler.Captures);
+        Assert.Equal(1, fixture.Sampler.SingleFetches);
+        Assert.Equal("debug:metrics-capture", fixture.Sampler.Holder);
+        Assert.Equal(0, fixture.Sampler.ActiveSubscriptions);
         Assert.Equal(admission == "administrator" ? 5 : 0, fixture.Administrator.Calls);
     }
 
@@ -587,6 +590,7 @@ public sealed partial class LoopbackApiAccessTests
                 builder.Services.AddSingleton<IHostManagerProcessEffectValidationScopeControl>(fixture.Effects);
                 builder.Services.AddSingleton<IHostManagerMemoryCleanupValidationEvidenceControl>(fixture.Effects);
                 builder.Services.AddSingleton<IMetricSampler>(fixture.Sampler);
+                builder.Services.AddSingleton<IMetricSnapshotPushSource>(fixture.Sampler);
                 builder.Services.AddSingleton<ILocalAiModelService>(fixture.Models);
                 builder.Services.AddSingleton<IAiGatewayLocalModelPolicy, AiModelPolicy>();
                 builder.Services.AddSingleton<IAiGatewayCredentialService>(fixture.Credentials);
@@ -671,9 +675,22 @@ public sealed partial class LoopbackApiAccessTests
         }
     }
 
-    private sealed class Sampler : IMetricSampler
+    private sealed class Sampler : IMetricSampler, IMetricSnapshotPushSource
     {
         public int Captures { get; private set; }
+        public int SingleFetches { get; private set; }
+        public int ActiveSubscriptions { get; private set; }
+        public string? Holder { get; private set; }
+        public async IAsyncEnumerable<HardwareMetricSnapshot> SubscribeAsync(string holder, MetricSampleRequest request,
+            TimeSpan interval, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Holder = holder;
+            SingleFetches++;
+            ActiveSubscriptions++;
+            try { await Task.CompletedTask; yield break; }
+            finally { ActiveSubscriptions--; }
+        }
         public Task<HardwareMetricSnapshot> GetSnapshotAsync(CancellationToken cancellationToken)
             => Task.FromResult<HardwareMetricSnapshot>(null!);
         public Task<HardwareMetricSnapshot> GetSnapshotAsync(MetricSampleRequest request, CancellationToken cancellationToken)

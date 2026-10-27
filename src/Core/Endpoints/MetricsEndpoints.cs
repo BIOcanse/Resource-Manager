@@ -65,14 +65,20 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             return Results.Ok(MetricSnapshotWireSnapshot.From(snapshot, snapshotRequest, catalogState.Revision));
         }).AllowAnonymous();
 
-        app.MapGet("/api/metrics/gpu-specialized", (
+        app.MapGet("/api/metrics/gpu-specialized", async (
+            HttpRequest request,
             HttpResponse response,
-            IGpuTelemetryWorkerClient gpuTelemetry,
+            IGpuTelemetryPushSource gpuTelemetry,
             CancellationToken cancellationToken) =>
         {
             DisableResponseCache(response);
-            cancellationToken.ThrowIfCancellationRequested();
-            return Results.Ok(GpuTelemetryWireSnapshot.From(gpuTelemetry.GetLatestSnapshot()));
+            // No ids means no counter demand, matching the main metrics snapshot.
+            var counterIds = request.Query.TryGetValue("ids", out var ids)
+                ? ids.Select(static id => id ?? string.Empty) : [];
+            var sampleRequest = GpuTelemetryWorkerRequest.Create(counterIds,
+                GpuTelemetryWorkerDetailLevel.AdvancedCounters, timeoutMilliseconds: 500);
+            var snapshot = await gpuTelemetry.FetchOnceAsync("gpu-specialized:snapshot", sampleRequest, cancellationToken);
+            return Results.Ok(snapshot is null ? null : GpuTelemetryWireSnapshot.From(snapshot));
         }).AllowAnonymous();
         return app;
     }

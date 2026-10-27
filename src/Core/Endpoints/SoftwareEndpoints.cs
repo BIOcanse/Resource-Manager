@@ -23,7 +23,9 @@ using ResourceManager.App.Domain.SoftwareDiscovery;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.LocalSystem;
 using ResourceManager.App.Domain.Metrics;
+using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.Optimization;
+using ResourceManager.App.Domain.ProcessAttribution;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.ResourceTable;
 using ResourceManager.App.Domain.Settings;
@@ -43,6 +45,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             ISoftwareRegistryView softwareRegistry,
             ISoftwareIssueProjection softwareIssueProjection,
             IRuntimeSoftwareObservationSource runtimeSoftware,
+            IResourceBreakdownPushSource resources,
             IPortableSoftwareDiscovery portableSoftwareDiscovery,
             CancellationToken cancellationToken) =>
         {
@@ -53,9 +56,14 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 await portableSoftwareDiscovery.ScanRunningProcessesAsync(cancellationToken);
             }
 
+            var current = await resources.FetchOnceAsync("software-list:runtime-attribution",
+                new([], new Dictionary<string, string>(), ProcessSampleDetailLevel.ResourceTableBasic)
+                { PublicationDatasetIds = [SamplingDatasetIds.ProcessInventory, SamplingDatasetIds.ProcessAttribution] },
+                cancellationToken);
+            IReadOnlyList<RuntimeSoftwareAttribution> running = current is null ? [] : runtimeSoftware.ReadLatestSoftware();
             var records = refresh == true
-                ? await softwareRegistry.RefreshSoftwareAsync(caller.WindowsSid, cancellationToken, runtimeSoftware.ReadLatestSoftware())
-                : await softwareRegistry.GetSoftwareAsync(caller.WindowsSid, cancellationToken, runtimeSoftware.ReadLatestSoftware());
+                ? await softwareRegistry.RefreshSoftwareAsync(caller.WindowsSid, cancellationToken, running)
+                : await softwareRegistry.GetSoftwareAsync(caller.WindowsSid, cancellationToken, running);
             return Results.Ok(await softwareIssueProjection.ProjectAsync(
                 records,
                 cancellationToken));

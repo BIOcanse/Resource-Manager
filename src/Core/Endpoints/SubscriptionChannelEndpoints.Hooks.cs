@@ -23,8 +23,9 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     private static string MonitoringHookAuthorizationSelector(string binding, int topOwners)
         => binding is "software" or "process" || topOwners > 0 ? "/api/resource-monitor/subscribe" : "/api/metrics/subscribe";
 
-    private static IReadOnlyList<MonitoringHookRequest> DecodeMonitoringHooks(JsonElement hooks,
-        List<MonitoringHookFrame<SubscriptionChannelRejection>> rejections, IServiceProvider services)
+    private static async Task<IReadOnlyList<MonitoringHookRequest>> DecodeMonitoringHooksAsync(JsonElement hooks,
+        List<MonitoringHookFrame<SubscriptionChannelRejection>> rejections, IServiceProvider services,
+        CancellationToken cancellationToken)
     {
         var result = new List<MonitoringHookRequest>();
         if (hooks.ValueKind == JsonValueKind.Undefined) return result;
@@ -43,7 +44,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 {
                     if (condition.ValueKind != JsonValueKind.String || item.TryGetProperty("rule", out _) || item.TryGetProperty("intervalMs", out _))
                         throw InvalidHook("condition must be a string and cannot be mixed with rule or intervalMs");
-                    var expanded = ExpandMonitoringCondition(condition.GetString()!, id!, services);
+                    var expanded = await ExpandMonitoringConditionAsync(condition.GetString()!, id!, services, cancellationToken);
                     result.Add(new(id!, DecodeHookRule(JsonSerializer.SerializeToElement(expanded.Rule, ConditionJsonOptions)),
                         TimeSpan.FromMilliseconds(expanded.IntervalMs), expanded));
                     continue;
