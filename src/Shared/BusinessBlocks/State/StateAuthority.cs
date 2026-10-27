@@ -68,6 +68,21 @@ public sealed class StateAuthority
         lock (entry.Sync) Volatile.Write(ref entry.Readers, [.. entry.Readers, reader]);
         return new Subscription(entry, reader);
     }
+    /// <summary>Dynamic readers use a named holder on the same publication path as declared readers.</summary>
+    public IDisposable Subscribe(StateItemKey key, string holder, Func<BusinessBlockReason, Task> reader)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(holder);
+        ArgumentNullException.ThrowIfNull(reader);
+        var entry = Get(key);
+        Func<BusinessBlockReason, Task> dispatch = reason => reader(reason);
+        lock (entry.Sync)
+        {
+            entry.Holders ??= new(StringComparer.Ordinal);
+            if (!entry.Holders.Add(holder)) throw new InvalidOperationException("A state subscription already uses this holder.");
+            Volatile.Write(ref entry.Readers, [.. entry.Readers, dispatch]);
+        }
+        return new Subscription(entry, dispatch, holder);
+    }
     internal Task Notify(Entry entry, BusinessBlockReason reason)
     {
         var readers = Volatile.Read(ref entry.Readers);
@@ -125,10 +140,24 @@ public sealed class StateAuthority
         internal SnapshotRow? Snapshot;
         internal int Claimed;
         internal Func<BusinessBlockReason, Task>[] Readers = [];
+        internal HashSet<string>? Holders;
     }
     internal sealed record SnapshotRow(IStatePublication? Publication, Func<int, string?> NameLookup, BusinessBlockItem Row);
-    private sealed class Subscription(Entry entry, Func<BusinessBlockReason, Task> reader) : IDisposable
+    private sealed class Subscription(Entry entry, Func<BusinessBlockReason, Task> reader, string? holder = null) : IDisposable
     {
-        public void Dispose() { lock (entry.Sync) Volatile.Write(ref entry.Readers, entry.Readers.Where(value => value != reader).ToArray()); }
+        private int disposed;
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref disposed, 1) != 0) return;
+            lock (entry.Sync)
+            {
+                Volatile.Write(ref entry.Readers, entry.Readers.Where(value => value != reader).ToArray());
+                if (holder is not null)
+                {
+                    entry.Holders!.Remove(holder);
+                    if (entry.Holders.Count == 0) entry.Holders = null;
+                }
+            }
+        }
     }
 }

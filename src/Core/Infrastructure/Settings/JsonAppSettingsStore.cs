@@ -4,10 +4,13 @@ using ResourceManager.App.Application.Settings;
 using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.Paths;
+using ResourceManager.App.StateItems;
+using ResourceManager.Shared.BusinessBlocks;
+using ResourceManager.Shared.BusinessBlocks.State;
 
 namespace ResourceManager.App.Infrastructure.Settings;
 
-public sealed partial class JsonAppSettingsStore : IAppSettingsStore
+public sealed partial class JsonAppSettingsStore : IAppSettingsStore, IAppSettingsSubscriptionSource
 {
     private static readonly JsonSerializerOptions JsonOptions = new JsonAppSettingsStoreJsonContext(new JsonSerializerOptions(JsonSerializerDefaults.Web)
     {
@@ -21,14 +24,19 @@ public sealed partial class JsonAppSettingsStore : IAppSettingsStore
     private AppSettings? cachedSettings;
     private DateTimeOffset cachedUpdatedAt;
     private AppSettingsSourceMetadata? cachedSource;
+    private readonly StateCell<AppSettings> current;
+    private readonly StateAuthority authority;
 
     public JsonAppSettingsStore(
+        StateAuthority authority,
         IHostEnvironment environment,
         ILogger<JsonAppSettingsStore>? logger = null)
     {
         settingsPath = ResolveSettingsPath(environment.ContentRootPath);
         lastKnownGoodPath = ResolveLastKnownGoodPath(settingsPath);
         this.logger = logger;
+        this.authority = authority;
+        current = authority.ClaimCell<AppSettings>(StateItemUids.AppSettingsCurrent);
     }
 
     public async Task<AppSettingsUpdateResult> LoadAsync(CancellationToken cancellationToken)
@@ -50,11 +58,11 @@ public sealed partial class JsonAppSettingsStore : IAppSettingsStore
             var updatedAt = File.Exists(settingsPath)
                 ? File.GetLastWriteTimeUtc(settingsPath)
                 : DateTimeOffset.UtcNow;
-            cachedSettings = loaded.Settings;
+            cachedSettings = await PublishCurrentAsync(OwnSettings(loaded.Settings), loaded.Source.EffectiveSha256);
             cachedUpdatedAt = updatedAt;
             cachedSource = loaded.Source;
             return new AppSettingsUpdateResult(
-                loaded.Settings,
+                cachedSettings,
                 updatedAt,
                 settingsPath,
                 loaded.Source);
@@ -112,11 +120,13 @@ public sealed partial class JsonAppSettingsStore : IAppSettingsStore
         await gate.WaitAsync(cancellationToken);
         try
         {
-            var normalized = AppSettingsNormalizer.Normalize(settings);
-            if (cachedSettings == normalized && File.Exists(settingsPath))
+            var normalized = OwnSettings(AppSettingsNormalizer.Normalize(settings));
+            var previous = cachedSettings;
+            var changed = cachedSource?.EffectiveSha256 != ComputeEffectiveDigest(normalized);
+            if (!changed && previous is not null && File.Exists(settingsPath))
             {
                 var unchanged = new AppSettingsUpdateResult(
-                    cachedSettings,
+                    previous,
                     cachedUpdatedAt,
                     settingsPath,
                     cachedSource ?? CreateSavedSource(normalized));
@@ -137,15 +147,65 @@ public sealed partial class JsonAppSettingsStore : IAppSettingsStore
                 normalized,
                 validateBeforeCommit,
                 cancellationToken);
-            cachedSettings = normalized;
+            cachedSettings = await PublishCurrentAsync(normalized, committed.Source.EffectiveSha256);
             cachedUpdatedAt = committed.UpdatedAt;
             cachedSource = committed.Source;
             return committed;
+        }
+        catch (AppSettingsCommitAmbiguousException)
+        {
+            await current.PublishNoValueAsync(NoValueReason.ReadFailed, SettingsChanged);
+            throw;
         }
         finally
         {
             gate.Release();
         }
+    }
+
+    private static readonly BusinessBlockReason SettingsChanged = new(
+        BusinessBlockRequestKind.Configuration, nameof(JsonAppSettingsStore), "app-settings", 0);
+
+    private async Task<AppSettings> PublishCurrentAsync(AppSettings settings, string digest)
+    {
+        var previous = authority.Read<AppSettings>(StateItemUids.AppSettingsCurrent);
+        if (previous.HasValue && ComputeEffectiveDigest(previous.Value) == digest) return previous.Value;
+        await current.PublishAsync(settings, SettingsChanged);
+        return settings;
+    }
+
+    private static AppSettings OwnSettings(AppSettings settings) => settings with
+    {
+        SystemIntegration = settings.SystemIntegration with
+        {
+            Hotkeys = Array.AsReadOnly(settings.SystemIntegration.Hotkeys.Select(hotkey => hotkey with
+                { Encoding = Array.AsReadOnly(hotkey.Encoding.ToArray()) }).ToArray())
+        },
+        Reports = settings.Reports is { } reports
+            ? reports with { RuleOverrides = Array.AsReadOnly(reports.RuleOverrides.ToArray()) } : null,
+        MemoryProtection = settings.MemoryProtection is { } protection
+            ? protection with { Reserves = Array.AsReadOnly((protection.Reserves ?? []).ToArray()) } : null
+    };
+
+    public async IAsyncEnumerable<AppSettings> SubscribeAsync(string holder,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        // A read-scoped subscriber never repairs, migrates or backs up a settings file.
+        // The same write gate orders initial publication, registration and later commits.
+        SettingsSubscriptionHolder<AppSettings> subscription;
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (!authority.Read<AppSettings>(StateItemUids.AppSettingsCurrent).HasValue)
+            {
+                var loaded = await LoadReadOnlyCoreAsync(cancellationToken);
+                await PublishCurrentAsync(OwnSettings(loaded.Settings), loaded.Source.EffectiveSha256);
+            }
+            subscription = new(authority, StateItemUids.AppSettingsCurrent, holder);
+        }
+        finally { gate.Release(); }
+        using (subscription)
+            await foreach (var value in subscription.ReadAsync(cancellationToken)) yield return value;
     }
 
     private async Task<LoadedSettings> LoadCoreAsync(CancellationToken cancellationToken)

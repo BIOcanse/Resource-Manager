@@ -100,6 +100,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
         if (startupCapabilities.Allows(StartupCapability.MutablePersistence))
             services.AddSingleton<LegacyDashboardFileMigration>();
         services.AddSingleton<IAppSettingsStore, JsonAppSettingsStore>();
+        services.AddSingleton<IAppSettingsSubscriptionSource>(provider =>
+            (JsonAppSettingsStore)provider.GetRequiredService<IAppSettingsStore>());
         // 控制面的持久化与写回路。放在这里而不是监控注册里：
         // 期望状态的存储要 IHostEnvironment，而只读服务图里没有它 ——
         // 那张图本来也不该带着一个会写硬件的后台服务。

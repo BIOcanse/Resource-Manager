@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 using System.Net;
 using System.Net.Http.Json;
 using System.Reflection;
@@ -29,7 +30,7 @@ public sealed class PerformanceOverlayEndpointTests
         TrustedAccessEndpointTestAuthentication.Add(builder.Services, "read", "machine.write", "injection.configure");
         builder.Services.AddSingleton<ILoopbackApiAdministratorReader>(new Administrator());
         builder.Services.ConfigureHttpJsonOptions(options => ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options.SerializerOptions));
-        var store = new JsonStartupModuleSettingsStore(files, files.Catalog);
+        var store = new JsonStartupModuleSettingsStore(new BackendStateItems().Authority, files, files.Catalog);
         var registry = new CapturingLaunchRegistry();
         var software = new SingleSoftwareRegistryView(files.Image);
         builder.Services.AddSingleton(files.Catalog);

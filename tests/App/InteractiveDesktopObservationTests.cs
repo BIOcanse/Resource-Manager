@@ -72,15 +72,16 @@ public sealed class InteractiveDesktopObservationTests
     }
 
     [Fact]
-    public void StaleSampleCannotBeRenewedByReceiptOrRead()
+    public void UnchangedSampleRemainsCurrentWhileItsPublishingConnectionIsOpen()
     {
         var clock = new Clock();
         var store = new InteractiveDesktopObservationStore(clock, _ => true, _ => 1);
         var sample = Sample(1, 100, [100]);
         Assert.True(Publish(store, sample));
         clock.Now = Epoch.AddSeconds(2);
-        Assert.False(Publish(store, sample));
-        Assert.Null(store.IsForeground(100, Start));
+        Assert.True(store.IsForeground(100, Start));
+        Assert.True(Publish(store, sample));
+        Assert.True(store.IsForeground(100, Start));
     }
 
     [Fact]
@@ -143,7 +144,9 @@ public sealed class InteractiveDesktopObservationTests
         Assert.True(store.Publish(sample, "first"));
         first.Cancel();
         Assert.False(store.Publish(sample, "first"));
+        Assert.Null(store.IsForeground(100, Start));
         Assert.True(store.SelectPublisher(1, "second", 998, Start, CancellationToken.None));
+        Assert.Null(store.IsForeground(100, Start));
         Assert.True(store.Publish(sample with { PublisherProcessId = 998 }, "second"));
     }
 

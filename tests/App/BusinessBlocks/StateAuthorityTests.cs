@@ -13,6 +13,28 @@ public sealed class StateAuthorityTests
     private static readonly BusinessBlockReason Reason = new(BusinessBlockRequestKind.User, "state-authority-test", "explicit", 7);
 
     [Fact]
+    public async Task DynamicHoldersAreUniquePerItemAndReleaseOnlyTheirOwnRegistration()
+    {
+        var authority = CreateAuthority();
+        var cell = authority.ClaimCell<bool>(BackendItems.PresentUnfrozen);
+        var calls = 0;
+        Func<BusinessBlockReason, Task> reader = _ => { calls++; return Task.CompletedTask; };
+        using var first = authority.Subscribe(BackendItems.PresentUnfrozen, "first", reader);
+        Assert.Throws<InvalidOperationException>(() => authority.Subscribe(BackendItems.PresentUnfrozen, "first", reader));
+        using var second = authority.Subscribe(BackendItems.PresentUnfrozen, "second", reader);
+        await cell.PublishAsync(true, Reason);
+        Assert.Equal(2, calls);
+        first.Dispose();
+        first.Dispose();
+        await cell.PublishAsync(false, Reason);
+        Assert.Equal(3, calls);
+        using var replacement = authority.Subscribe(BackendItems.PresentUnfrozen, "first", reader);
+        first.Dispose();
+        await cell.PublishAsync(true, Reason);
+        Assert.Equal(5, calls);
+    }
+
+    [Fact]
     public async Task ClaimsRequireTheDeclaredStorageAndTypeAndOnlyOneOwnerCanWriteEachKey()
     {
         var authority = CreateAuthority();

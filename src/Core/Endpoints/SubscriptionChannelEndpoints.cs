@@ -15,6 +15,8 @@ using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.TrustedAccess;
+using ResourceManager.App.Application.Settings;
+using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.ResourceBreakdown;
@@ -338,6 +340,10 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         SubscriptionSourceRoutes = new Dictionary<string, SubscriptionSourceRoute>(
             StringComparer.Ordinal)
         {
+            ["/api/settings/app/subscribe"] = new((subscription, services, _) =>
+                CompileSettingsSubscription(subscription, services.GetRequiredService<IAppSettingsSubscriptionSource>().SubscribeAsync)),
+            ["/api/startup-modules/settings/subscribe"] = new((subscription, services, _) =>
+                CompileSettingsSubscription(subscription, services.GetRequiredService<IStartupModuleSettingsSubscriptionSource>().SubscribeAsync)),
             ["/api/metrics/subscribe"] = new((subscription, services, interval) =>
                 CompileMetricSubscription(subscription, services, interval)),
             ["/api/metrics/fields/catalog/subscribe"] = new((subscription, services, interval) =>
@@ -437,6 +443,17 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         };
 
     internal static IEnumerable<string> SubscriptionSelectors => SubscriptionSourceRoutes.Keys;
+
+    private static CompiledFrontendSubscription CompileSettingsSubscription<T>(
+        ParsedFrontendSubscription subscription, Func<string, CancellationToken, IAsyncEnumerable<T>> subscribe)
+    {
+        return subscription.Compile(async (writer, token) =>
+        {
+            var holder = $"settings:{subscription.Id}:{Guid.NewGuid():N}";
+            await foreach (var value in subscribe(holder, token))
+                await writer.WriteAsync(subscription.Id, value, token);
+        });
+    }
 
     /// <summary>
     /// 一条订阅源：拿到这次订阅的 query 和间隔之后，怎么把它编成一个运行体。

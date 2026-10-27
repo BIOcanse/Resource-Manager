@@ -388,6 +388,8 @@ internal static class TrustedAccessHttpPolicy
     {
         IReadOnlyList<string>? scopes = selector switch
         {
+            "/api/settings/app/subscribe" => [AccessKeyScopes.Read],
+            "/api/startup-modules/settings/subscribe" => [AccessKeyScopes.Read],
             "/api/metrics/subscribe" => [AccessKeyScopes.MetricsRead],
             "/api/metrics/fields/catalog/subscribe" => [],
             "/api/metrics/gpu-specialized/subscribe" => [AccessKeyScopes.MetricsRead],

@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -24,7 +25,7 @@ public sealed class GpuStartupProviderPolicyTests
         await policyStore.SaveSoftwarePolicyAsync(software, CancellationToken.None);
         await policyStore.SaveProcessPolicyAsync(Process(software, root.Target, true), CancellationToken.None);
         using var modules = new StartupModuleTestCatalog();
-        var overlays = new JsonStartupModuleSettingsStore(root.Environment, modules.Catalog);
+        var overlays = new JsonStartupModuleSettingsStore(new BackendStateItems().Authority, root.Environment, modules.Catalog);
         await overlays.SaveAsync(new(software.SoftwareId, ["fixture-module"]), CancellationToken.None);
 
         var decision = await Resolver(policyStore, await policyStore.GetAsync(CancellationToken.None),

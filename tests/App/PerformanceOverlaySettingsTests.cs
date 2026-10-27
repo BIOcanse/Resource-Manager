@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Infrastructure.GpuPlacement;
 using ResourceManager.Shared.Packages;
@@ -10,10 +11,10 @@ public sealed class PerformanceOverlaySettingsTests
     public async Task GenericSelectionPersistsWithoutRenderingPolicy()
     {
         using var files = new StartupModuleTestCatalog();
-        var store = new JsonStartupModuleSettingsStore(files, files.Catalog);
+        var store = new JsonStartupModuleSettingsStore(new BackendStateItems().Authority, files, files.Catalog);
         Assert.Empty((await store.GetAsync(default)).Software);
         await store.SaveAsync(new("software", ["fixture-module"]), default);
-        var saved = Assert.Single((await new JsonStartupModuleSettingsStore(files, files.Catalog).GetAsync(default)).Software);
+        var saved = Assert.Single((await new JsonStartupModuleSettingsStore(new BackendStateItems().Authority, files, files.Catalog).GetAsync(default)).Software);
         Assert.Equal(["fixture-module"], saved.ModuleIds);
         var path = Path.Combine(files.Root, "UserData", "SoftwareProfiles", "startup-modules.local.json");
         var bytes = await File.ReadAllTextAsync(path);

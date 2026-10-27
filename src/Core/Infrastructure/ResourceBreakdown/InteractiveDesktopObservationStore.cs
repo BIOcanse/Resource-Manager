@@ -9,7 +9,6 @@ namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 
 public sealed class InteractiveDesktopObservationStore
 {
-    internal static readonly TimeSpan MaximumAge = TimeSpan.FromSeconds(1);
     private static readonly WindowsProcessBasicMetricReader BasicMetricReader = new();
     private readonly object gate = new();
     private readonly Dictionary<int, InteractiveDesktopObservation> sessions = [];
@@ -53,7 +52,10 @@ public sealed class InteractiveDesktopObservationStore
         lock (gate)
         {
             if (publishers.TryGetValue(sessionId, out var current) && ReferenceEquals(current, publisher))
+            {
                 publishers.Remove(sessionId);
+                sessions.Remove(sessionId);
+            }
         }
         publisher.Closed.Unregister();
         publisher.Revoked.Unregister();
@@ -63,7 +65,8 @@ public sealed class InteractiveDesktopObservationStore
     {
         var now = clock.GetUtcNow().UtcTicks;
         if (observation.SessionId <= 0 || observation.PublisherProcessId <= 4
-            || observation.PublisherCreationFileTimeUtc <= 0 || !Fresh(observation, now)
+            || observation.PublisherCreationFileTimeUtc <= 0
+            || observation.ObservedAtUtcTicks <= 0 || observation.ObservedAtUtcTicks > now
             || observation.Windows is null || observation.Windows.Count > InteractiveDesktopObservation.MaximumWindows
             || observation.Windows.Any(window => window is null || window.ProcessId <= 0 || window.CreationFileTimeUtc < 0)
             || observation.Windows.Select(window => window.ProcessId).Distinct().Count() != observation.Windows.Count
@@ -79,8 +82,6 @@ public sealed class InteractiveDesktopObservationStore
                 || publisher.CreationFileTimeUtc != observation.PublisherCreationFileTimeUtc) return false;
             if (sessions.TryGetValue(observation.SessionId, out var previous)
                 && observation.ObservedAtUtcTicks < previous.ObservedAtUtcTicks) return false;
-            foreach (var stale in sessions.Where(pair => !Fresh(pair.Value, now)).Select(pair => pair.Key).ToArray())
-                sessions.Remove(stale);
             if (!sessions.ContainsKey(observation.SessionId) && sessions.Count >= 64) return false;
             sessions[observation.SessionId] = observation;
         }
@@ -91,8 +92,7 @@ public sealed class InteractiveDesktopObservationStore
         IReadOnlyDictionary<int, int>? helperOwnerByProcessId = null)
     {
         Dictionary<int, InteractiveDesktopObservation> current;
-        var now = clock.GetUtcNow().UtcTicks;
-        lock (gate) current = sessions.Where(pair => Fresh(pair.Value, now)).ToDictionary();
+        lock (gate) current = sessions.ToDictionary();
         var windows = current.ToDictionary(pair => pair.Key,
             pair => pair.Value.Windows.ToDictionary(window => window.ProcessId));
         var result = new Dictionary<ProcessInstanceKey, ProcessRuntimeStateFact>();
@@ -137,10 +137,6 @@ public sealed class InteractiveDesktopObservationStore
     private static bool SameInstance(DesktopProcessWindowObservation row, ProcessInstanceKey process)
         => row.CreationFileTimeUtc == DesktopProcessWindowObservation.UnverifiedCreationTime
             || row.CreationFileTimeUtc == process.StartKey;
-
-    private static bool Fresh(InteractiveDesktopObservation sample, long now)
-        => sample.ObservedAtUtcTicks > 0 && sample.ObservedAtUtcTicks <= now
-            && now - sample.ObservedAtUtcTicks <= MaximumAge.Ticks;
 
     private static bool VerifyPublisher(InteractiveDesktopObservation observation)
     {

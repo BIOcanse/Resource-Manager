@@ -580,6 +580,34 @@
       },
       "perBlock": false,
       "trigger": "event"
+    },
+    {
+      "uid": 68,
+      "kind": "item",
+      "process": "backend",
+      "name": "AppSettingsCurrent",
+      "comment": "Current normalized persisted backend settings, published only by JsonAppSettingsStore.",
+      "storage": "reference",
+      "type": "ResourceManager.App.Domain.Settings.AppSettings",
+      "owner": {
+        "component": "JsonAppSettingsStore"
+      },
+      "perBlock": false,
+      "trigger": "event"
+    },
+    {
+      "uid": 69,
+      "kind": "item",
+      "process": "backend",
+      "name": "StartupModuleSettingsCurrent",
+      "comment": "Current injected-module selections, published only by JsonStartupModuleSettingsStore.",
+      "storage": "reference",
+      "type": "ResourceManager.App.Domain.GpuPlacement.StartupModuleSettingsDocument",
+      "owner": {
+        "component": "JsonStartupModuleSettingsStore"
+      },
+      "perBlock": false,
+      "trigger": "event"
     }
   ]
 }

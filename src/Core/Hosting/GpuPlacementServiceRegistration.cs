@@ -22,6 +22,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<IGpuPlacementPolicyStore, JsonGpuPlacementPolicyStore>();
         services.AddSingleton(ResourceManager.Shared.Packages.PackageRuntimeCatalog.Current);
         services.AddSingleton<IStartupModuleSettingsStore, JsonStartupModuleSettingsStore>();
+        services.AddSingleton<IStartupModuleSettingsSubscriptionSource>(provider =>
+            (JsonStartupModuleSettingsStore)provider.GetRequiredService<IStartupModuleSettingsStore>());
         services.AddSingleton<IGpuPlacementProcessHistoryStore, JsonGpuPlacementProcessHistoryStore>();
         services.AddSingleton<IPresentGraphicsApiObservationSource>(static provider => provider.GetRequiredService<PresentFrameEtwSource>());
         if (startupCapabilities.Allows(StartupCapability.MutablePersistence))

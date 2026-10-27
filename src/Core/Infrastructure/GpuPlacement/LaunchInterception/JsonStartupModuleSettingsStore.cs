@@ -4,20 +4,28 @@ using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Infrastructure.Paths;
 using ResourceManager.Shared.Packages;
+using ResourceManager.App.Infrastructure.Settings;
+using ResourceManager.App.StateItems;
+using ResourceManager.Shared.BusinessBlocks;
+using ResourceManager.Shared.BusinessBlocks.State;
 
 namespace ResourceManager.App.Infrastructure.GpuPlacement;
 
-public sealed class JsonStartupModuleSettingsStore(IHostEnvironment environment, PackageRuntimeCatalog catalog)
-    : IStartupModuleSettingsStore
+public sealed class JsonStartupModuleSettingsStore(StateAuthority authority, IHostEnvironment environment, PackageRuntimeCatalog catalog)
+    : IStartupModuleSettingsStore, IStartupModuleSettingsSubscriptionSource
 {
     private readonly string path = Path.Combine(PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath),
         "UserData", "SoftwareProfiles", "startup-modules.local.json");
     private readonly SemaphoreSlim gate = new(1, 1);
+    private readonly StateCell<StartupModuleSettingsDocument> current = authority.ClaimCell<StartupModuleSettingsDocument>(StateItemUids.StartupModuleSettingsCurrent);
+    private StartupModuleSettingsDocument? cached;
+    private static readonly BusinessBlockReason SettingsChanged = new(
+        BusinessBlockRequestKind.Configuration, nameof(JsonStartupModuleSettingsStore), "startup-module-settings", 0);
 
     public async Task<StartupModuleSettingsDocument> GetAsync(CancellationToken cancellationToken)
     {
         await gate.WaitAsync(cancellationToken);
-        try { return await ReadAsync(cancellationToken); }
+        try { return await LoadAsync(cancellationToken); }
         finally { gate.Release(); }
     }
 
@@ -28,14 +36,17 @@ public sealed class JsonStartupModuleSettingsStore(IHostEnvironment environment,
             || selection.ModuleIds.Distinct(StringComparer.Ordinal).Count() != selection.ModuleIds.Count
             || selection.ModuleIds.Any(id => id is null || !catalog.TryGetStartupModule(id, out _)))
             throw new ArgumentException("Invalid startup module selection.");
-        var normalized = selection with { ModuleIds = selection.ModuleIds.Order(StringComparer.Ordinal).ToArray() };
+        var normalized = selection with { ModuleIds = Array.AsReadOnly(selection.ModuleIds.Order(StringComparer.Ordinal).ToArray()) };
         await gate.WaitAsync(cancellationToken);
         try
         {
-            var document = await ReadAsync(cancellationToken);
-            var next = new StartupModuleSettingsDocument(1, document.Software
+            var document = await LoadAsync(cancellationToken);
+            var previous = document.Software.FirstOrDefault(item => item.SoftwareId.Equals(normalized.SoftwareId, StringComparison.OrdinalIgnoreCase));
+            if (previous is not null && previous.SoftwareId == normalized.SoftwareId
+                && previous.ModuleIds.SequenceEqual(normalized.ModuleIds, StringComparer.Ordinal)) return normalized;
+            var next = new StartupModuleSettingsDocument(1, Array.AsReadOnly(document.Software
                 .Where(item => !item.SoftwareId.Equals(selection.SoftwareId, StringComparison.OrdinalIgnoreCase))
-                .Append(normalized).OrderBy(static item => item.SoftwareId, StringComparer.OrdinalIgnoreCase).ToArray());
+                .Append(normalized).OrderBy(static item => item.SoftwareId, StringComparer.OrdinalIgnoreCase).ToArray()));
             if (next.Software.Count > 4096) throw new ArgumentException("Startup software limit exceeded.");
             var bytes = JsonSerializer.SerializeToUtf8Bytes(next, StartupModuleStorageJson.Default.StartupModuleSettingsDocument);
             if (bytes.Length > 1024 * 1024) throw new ArgumentException("Startup module settings limit exceeded.");
@@ -53,9 +64,37 @@ public sealed class JsonStartupModuleSettingsStore(IHostEnvironment environment,
                 NativeCore.WindowsNativeAtomicFileCommitter.CommitReplace(temporary, path);
             }
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
+            cached = next;
+            await current.PublishAsync(next, SettingsChanged);
             return normalized;
         }
         finally { gate.Release(); }
+    }
+
+    private async Task<StartupModuleSettingsDocument> LoadAsync(CancellationToken token)
+    {
+        if (cached is not null) return cached;
+        var document = await ReadAsync(token);
+        var loaded = document with { Software = Array.AsReadOnly(document.Software.Select(selection => selection with
+            { ModuleIds = Array.AsReadOnly(selection.ModuleIds.ToArray()) }).ToArray()) };
+        cached = loaded;
+        await current.PublishAsync(loaded, SettingsChanged);
+        return loaded;
+    }
+
+    public async IAsyncEnumerable<StartupModuleSettingsDocument> SubscribeAsync(string holder,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        SettingsSubscriptionHolder<StartupModuleSettingsDocument> subscription;
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            await LoadAsync(cancellationToken);
+            subscription = new(authority, StateItemUids.StartupModuleSettingsCurrent, holder);
+        }
+        finally { gate.Release(); }
+        using (subscription)
+            await foreach (var value in subscription.ReadAsync(cancellationToken)) yield return value;
     }
 
     private async Task<StartupModuleSettingsDocument> ReadAsync(CancellationToken cancellationToken)

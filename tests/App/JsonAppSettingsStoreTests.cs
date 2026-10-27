@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
@@ -22,11 +23,11 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
     {
         var appRoot = Directory.CreateDirectory(Path.Combine(testRoot, "Resource Manager-APP")).FullName;
         var environment = new TestHostEnvironment(appRoot);
-        var store = new JsonAppSettingsStore(environment);
+        var store = new JsonAppSettingsStore(new BackendStateItems().Authority, environment);
         var initial = await store.LoadAsync(CancellationToken.None);
         await store.SaveAsync(initial.Settings with { MemoryProtection = initial.Settings.MemoryProtection! with { ActionMode = mode } },
             CancellationToken.None);
-        var reloaded = await new JsonAppSettingsStore(environment).LoadAsync(CancellationToken.None);
+        var reloaded = await new JsonAppSettingsStore(new BackendStateItems().Authority, environment).LoadAsync(CancellationToken.None);
         Assert.Equal(mode, reloaded.Settings.MemoryProtection!.ActionMode);
     }
 
@@ -43,7 +44,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         var path = Path.Combine(config, "app-settings.json");
         await File.WriteAllTextAsync(path, source.ToJsonString());
 
-        var loaded = await new JsonAppSettingsStore(new TestHostEnvironment(appRoot)).LoadAsync(CancellationToken.None);
+        var loaded = await new JsonAppSettingsStore(new BackendStateItems().Authority, new TestHostEnvironment(appRoot)).LoadAsync(CancellationToken.None);
 
         Assert.Equal(AppSettingsSourceKind.MigratedPersisted, loaded.Source.Kind);
         Assert.True(loaded.Source.RewritePerformed);
@@ -61,7 +62,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
     {
         var appRoot = Directory.CreateDirectory(Path.Combine(testRoot, "Resource Manager-APP")).FullName;
         var environment = new TestHostEnvironment(appRoot);
-        var store = new JsonAppSettingsStore(environment);
+        var store = new JsonAppSettingsStore(new BackendStateItems().Authority, environment);
         var initial = await store.LoadAsync(default);
         var saved = await store.SaveAsync(initial.Settings, default);
         var backup = Path.Combine(Path.GetDirectoryName(saved.StoragePath)!, "app-settings.last-good.json");
@@ -71,7 +72,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         try
         {
             var logger = new SettingsBackupWarningLogger<JsonAppSettingsStore>();
-            var loaded = await new JsonAppSettingsStore(environment, logger).LoadAsync(default);
+            var loaded = await new JsonAppSettingsStore(new BackendStateItems().Authority, environment, logger).LoadAsync(default);
             Assert.Equal(JsonSerializer.Serialize(saved.Settings), JsonSerializer.Serialize(loaded.Settings));
             Assert.Equal(AppSettingsSourceKind.Persisted, loaded.Source.Kind);
             Assert.Contains(logger.Entries, entry => entry.Level == Microsoft.Extensions.Logging.LogLevel.Warning
@@ -87,7 +88,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
     {
         var appRoot = Directory.CreateDirectory(Path.Combine(testRoot, "Resource Manager-APP")).FullName;
         var environment = new TestHostEnvironment(appRoot);
-        var store = new JsonAppSettingsStore(environment);
+        var store = new JsonAppSettingsStore(new BackendStateItems().Authority, environment);
         var original = await store.LoadAsync(CancellationToken.None);
         await store.SaveAsync(original.Settings, CancellationToken.None);
         var folder = Path.GetDirectoryName(original.StoragePath)!;
@@ -106,7 +107,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
             Assert.Empty(Directory.EnumerateFiles(folder, "*.tmp"));
         }
         finally { File.SetAttributes(readonlyPath, FileAttributes.Normal); }
-        var reloaded = await new JsonAppSettingsStore(environment).LoadAsync(CancellationToken.None);
+        var reloaded = await new JsonAppSettingsStore(new BackendStateItems().Authority, environment).LoadAsync(CancellationToken.None);
         Assert.Equal(failBackup, reloaded.Settings.SystemIntegration.AutoStartEnabled);
     }
 
@@ -124,10 +125,10 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         source[section] = JsonNode.Parse(literal);
         source["debug"]!["debugLogEnabled"] = true;
         await File.WriteAllTextAsync(Path.Combine(config, "app-settings.json"), source.ToJsonString());
-        var loaded = await new JsonAppSettingsStore(new TestHostEnvironment(appRoot)).LoadAsync(CancellationToken.None);
+        var loaded = await new JsonAppSettingsStore(new BackendStateItems().Authority, new TestHostEnvironment(appRoot)).LoadAsync(CancellationToken.None);
         Assert.True(loaded.Settings.Debug.DebugLogEnabled);
         Assert.False(loaded.Settings.SystemIntegration.AutoStartEnabled);
-        var reloaded = await new JsonAppSettingsStore(new TestHostEnvironment(appRoot)).LoadAsync(CancellationToken.None);
+        var reloaded = await new JsonAppSettingsStore(new BackendStateItems().Authority, new TestHostEnvironment(appRoot)).LoadAsync(CancellationToken.None);
         Assert.True(reloaded.Settings.Debug.DebugLogEnabled);
     }
 
@@ -136,17 +137,17 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
     {
         var appRoot = Directory.CreateDirectory(Path.Combine(testRoot, "Resource Manager-APP")).FullName;
         var environment = new TestHostEnvironment(appRoot);
-        var store = new JsonAppSettingsStore(environment);
+        var store = new JsonAppSettingsStore(new BackendStateItems().Authority, environment);
         var defaults = (await store.LoadAsync(CancellationToken.None)).Settings;
         await store.SaveAsync(defaults with
         {
             SystemIntegration = defaults.SystemIntegration with { AutoStartEnabled = true }
         }, CancellationToken.None);
-        var other = new JsonAppSettingsStore(environment);
+        var other = new JsonAppSettingsStore(new BackendStateItems().Authority, environment);
         var loaded = (await other.LoadAsync(CancellationToken.None)).Settings;
         Assert.True(loaded.SystemIntegration.AutoStartEnabled);
         await other.SaveAsync(loaded with { SystemIntegration = loaded.SystemIntegration with { AutoStartEnabled = false } }, CancellationToken.None);
-        var disabled = (await new JsonAppSettingsStore(environment).LoadAsync(CancellationToken.None)).Settings;
+        var disabled = (await new JsonAppSettingsStore(new BackendStateItems().Authority, environment).LoadAsync(CancellationToken.None)).Settings;
         Assert.False(disabled.SystemIntegration.AutoStartEnabled);
     }
 
@@ -154,7 +155,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
     public async Task SaveAsync_NativeUiReaderDoesNotBlockAtomicReplacement()
     {
         var appRoot = Directory.CreateDirectory(Path.Combine(testRoot, "Resource Manager-APP")).FullName;
-        var store = new JsonAppSettingsStore(new TestHostEnvironment(appRoot));
+        var store = new JsonAppSettingsStore(new BackendStateItems().Authority, new TestHostEnvironment(appRoot));
         var original = await store.LoadAsync(CancellationToken.None);
         await store.SaveAsync(original.Settings, CancellationToken.None);
         using var reader = ResourceManager.NativeUi.Configuration.SettingsFileReader.Open(original.StoragePath);
@@ -191,7 +192,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         };
         await File.WriteAllTextAsync(settingsPath, source.ToJsonString());
 
-        var store = new JsonAppSettingsStore(new TestHostEnvironment(appRoot));
+        var store = new JsonAppSettingsStore(new BackendStateItems().Authority, new TestHostEnvironment(appRoot));
         var loaded = await store.LoadAsync(CancellationToken.None);
 
         Assert.Equal(AppSettingsSourceKind.MigratedPersisted, loaded.Source.Kind);
@@ -235,7 +236,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         source["debug"]!["hostManagerSmartCoordinatorScoreOnlyEnabled"] = true;
         await File.WriteAllTextAsync(settingsPath, source.ToJsonString());
 
-        var loaded = await new JsonAppSettingsStore(new TestHostEnvironment(appRoot))
+        var loaded = await new JsonAppSettingsStore(new BackendStateItems().Authority, new TestHostEnvironment(appRoot))
             .LoadAsync(CancellationToken.None);
 
         Assert.Equal(AppSettingsSourceKind.MigratedPersisted, loaded.Source.Kind);
@@ -271,7 +272,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         await File.WriteAllTextAsync(settingsPath, source.ToJsonString());
         var before = CaptureFileTree(configRoot);
 
-        var loaded = await new JsonAppSettingsStore(new TestHostEnvironment(appRoot))
+        var loaded = await new JsonAppSettingsStore(new BackendStateItems().Authority, new TestHostEnvironment(appRoot))
             .LoadReadOnlyAsync(CancellationToken.None);
 
         Assert.Equal(AppSettingsSourceKind.MigratedPersisted, loaded.Source.Kind);
@@ -287,7 +288,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         var caseRoot = Path.Combine(testRoot, "read-only-last-good");
         var appRoot = Directory.CreateDirectory(
             Path.Combine(caseRoot, "Resource Manager-APP")).FullName;
-        var store = new JsonAppSettingsStore(new TestHostEnvironment(appRoot));
+        var store = new JsonAppSettingsStore(new BackendStateItems().Authority, new TestHostEnvironment(appRoot));
         var expected = AppSettingsDefaults.Create() with
         {
             Debug = AppSettingsDefaults.Create().Debug with { DebugLogEnabled = true }
@@ -297,7 +298,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         var configRoot = Path.GetDirectoryName(saved.StoragePath)!;
         var before = CaptureFileTree(configRoot);
 
-        var recovered = await new JsonAppSettingsStore(new TestHostEnvironment(appRoot))
+        var recovered = await new JsonAppSettingsStore(new BackendStateItems().Authority, new TestHostEnvironment(appRoot))
             .LoadReadOnlyAsync(CancellationToken.None);
 
         Assert.Equal(AppSettingsSourceKind.RecoveredLastKnownGood, recovered.Source.Kind);
@@ -311,7 +312,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
     {
         var appRoot = Directory.CreateDirectory(
             Path.Combine(testRoot, "validated-failure", "Resource Manager-APP")).FullName;
-        var store = new JsonAppSettingsStore(new TestHostEnvironment(appRoot));
+        var store = new JsonAppSettingsStore(new BackendStateItems().Authority, new TestHostEnvironment(appRoot));
         var original = AppSettingsDefaults.Create();
         var saved = await store.SaveAsync(original, CancellationToken.None);
         var originalPayload = await File.ReadAllBytesAsync(saved.StoragePath);
@@ -340,7 +341,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
     {
         var appRoot = Directory.CreateDirectory(
             Path.Combine(testRoot, "validated-success", "Resource Manager-APP")).FullName;
-        var store = new JsonAppSettingsStore(new TestHostEnvironment(appRoot));
+        var store = new JsonAppSettingsStore(new BackendStateItems().Authority, new TestHostEnvironment(appRoot));
         var candidate = AppSettingsDefaults.Create();
         AppSettingsUpdateResult? validated = null;
 
@@ -365,7 +366,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
     {
         var appRoot = Directory.CreateDirectory(
             Path.Combine(testRoot, "last-known-good", "Resource Manager-APP")).FullName;
-        var originalStore = new JsonAppSettingsStore(new TestHostEnvironment(appRoot));
+        var originalStore = new JsonAppSettingsStore(new BackendStateItems().Authority, new TestHostEnvironment(appRoot));
         var expected = AppSettingsDefaults.Create() with
         {
             Debug = AppSettingsDefaults.Create().Debug with { DebugLogEnabled = true }
@@ -377,7 +378,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         Assert.True(File.Exists(lastKnownGoodPath));
         await File.WriteAllTextAsync(saved.StoragePath, "{");
 
-        var recoveredStore = new JsonAppSettingsStore(new TestHostEnvironment(appRoot));
+        var recoveredStore = new JsonAppSettingsStore(new BackendStateItems().Authority, new TestHostEnvironment(appRoot));
         var recovered = await recoveredStore.LoadAsync(CancellationToken.None);
 
         Assert.Equal(AppSettingsSourceKind.RecoveredLastKnownGood, recovered.Source.Kind);
@@ -387,7 +388,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         Assert.Equal(
             JsonSerializer.Serialize(expected),
             JsonSerializer.Serialize(
-                (await new JsonAppSettingsStore(new TestHostEnvironment(appRoot))
+                (await new JsonAppSettingsStore(new BackendStateItems().Authority, new TestHostEnvironment(appRoot))
                     .LoadAsync(CancellationToken.None)).Settings));
     }
 
@@ -401,7 +402,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         var settingsPath = Path.Combine(configRoot, "app-settings.json");
         await File.WriteAllTextAsync(settingsPath, "{");
 
-        var store = new JsonAppSettingsStore(new TestHostEnvironment(appRoot));
+        var store = new JsonAppSettingsStore(new BackendStateItems().Authority, new TestHostEnvironment(appRoot));
         var recovered = await store.LoadAsync(CancellationToken.None);
 
         Assert.Equal(
@@ -431,7 +432,7 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         var settingsPath = Path.Combine(configRoot, "app-settings.json");
         const string futureSettings = "{\"version\":\"99.0.0\"}";
         await File.WriteAllTextAsync(settingsPath, futureSettings);
-        var store = new JsonAppSettingsStore(new TestHostEnvironment(appRoot));
+        var store = new JsonAppSettingsStore(new BackendStateItems().Authority, new TestHostEnvironment(appRoot));
 
         await Assert.ThrowsAnyAsync<IOException>(() =>
             store.LoadAsync(CancellationToken.None));

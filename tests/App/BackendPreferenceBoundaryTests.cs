@@ -1,3 +1,4 @@
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -110,7 +111,7 @@ public sealed class BackendPreferenceBoundaryTests
             var environment = new Environment(application);
             async Task Migrate()
             {
-                await new JsonAppSettingsStore(environment).LoadAsync(default);
+                await new JsonAppSettingsStore(new BackendStateItems().Authority, environment).LoadAsync(default);
             }
             if (startupOrder == 2)
                 await Task.WhenAll(Task.Run(Migrate), Task.Run(() => frontend.Read()));
@@ -160,7 +161,7 @@ public sealed class BackendPreferenceBoundaryTests
         try
         {
             await File.WriteAllBytesAsync(path, original);
-            var owner = new JsonAppSettingsStore(new Environment(application));
+            var owner = new JsonAppSettingsStore(new BackendStateItems().Authority, new Environment(application));
             var loaded = await owner.LoadAsync(CancellationToken.None);
             Assert.Equal(AppSettingsDefaults.CurrentVersion, loaded.Settings.Version);
             Assert.True(loaded.Source.RewritePerformed);
@@ -170,7 +171,7 @@ public sealed class BackendPreferenceBoundaryTests
             using var migrated = JsonDocument.Parse(await ReadCommitted(path));
             Assert.False(PresentationPreferenceRemoval.HasAppFields(migrated.RootElement));
             var bytes = await ReadCommitted(path);
-            var reloaded = await new JsonAppSettingsStore(new Environment(application)).LoadAsync(CancellationToken.None);
+            var reloaded = await new JsonAppSettingsStore(new BackendStateItems().Authority, new Environment(application)).LoadAsync(CancellationToken.None);
             Assert.False(reloaded.Source.RewritePerformed);
             Assert.Equal(bytes, await ReadCommitted(path));
             Assert.Equal(backupTime, File.GetLastWriteTimeUtc(backup));
