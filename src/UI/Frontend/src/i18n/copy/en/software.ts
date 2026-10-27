@@ -51,7 +51,7 @@ export const enSoftwareCopy: Pick<
   management: {
     issueText: {
       abnormal_memory_usage: "Abnormal memory usage",
-      long_system_interrupts: "Long system interrupts",
+      long_system_interrupts: "Long single system interrupt",
       excessive_system_interrupts: "High system interrupt usage",
       known_security_vulnerability: "Known security vulnerability",
       dependency_issue: "Dependency issue",

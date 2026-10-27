@@ -26,7 +26,7 @@ export const zhSoftwareCopy = {
   management: {
     issueText: {
       abnormal_memory_usage: "記憶體用量異常",
-      long_system_interrupts: "長時間系統中斷",
+      long_system_interrupts: "單次系統中斷過長",
       excessive_system_interrupts: "系統中斷用量偏高",
       known_security_vulnerability: "存在已公開安全漏洞",
       dependency_issue: "相依性問題",

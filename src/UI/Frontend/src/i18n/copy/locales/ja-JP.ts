@@ -535,7 +535,7 @@ const jaJpAppCopy: AppCopy = {
   management: {
     issueText: {
       abnormal_memory_usage: "メモリ使用量の異常",
-      long_system_interrupts: "長時間のシステム割り込み",
+      long_system_interrupts: "長すぎる単発のシステム割り込み",
       excessive_system_interrupts: "システム割り込みの高負荷",
       known_security_vulnerability: "既知のセキュリティ脆弱性",
       dependency_issue: "依存関係の問題",

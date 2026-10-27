@@ -535,7 +535,7 @@ const deDeAppCopy: AppCopy = {
   management: {
     issueText: {
       abnormal_memory_usage: "Ungewöhnliche Speichernutzung",
-      long_system_interrupts: "Lange Systeminterrupts",
+      long_system_interrupts: "Zu langer einzelner Systeminterrupt",
       excessive_system_interrupts: "Hohe Auslastung durch Systeminterrupts",
       known_security_vulnerability: "Bekannte Sicherheitslücke",
       dependency_issue: "Abhängigkeitsproblem",

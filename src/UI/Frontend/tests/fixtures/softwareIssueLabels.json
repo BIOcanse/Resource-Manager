@@ -1,7 +1,7 @@
 {
   "en-US": {
     "abnormal_memory_usage": "Abnormal memory usage",
-    "long_system_interrupts": "Long system interrupts",
+    "long_system_interrupts": "Long single system interrupt",
     "excessive_system_interrupts": "High system interrupt usage",
     "known_security_vulnerability": "Known security vulnerability",
     "dependency_issue": "Dependency issue",
@@ -10,7 +10,7 @@
   },
   "zh-CN": {
     "abnormal_memory_usage": "内存占用异常",
-    "long_system_interrupts": "长系统中断",
+    "long_system_interrupts": "单次系统中断过长",
     "excessive_system_interrupts": "系统中断占用高",
     "known_security_vulnerability": "存在已公开安全漏洞",
     "dependency_issue": "依赖问题",
@@ -19,7 +19,7 @@
   },
   "zh-TW": {
     "abnormal_memory_usage": "記憶體用量異常",
-    "long_system_interrupts": "長時間系統中斷",
+    "long_system_interrupts": "單次系統中斷過長",
     "excessive_system_interrupts": "系統中斷用量偏高",
     "known_security_vulnerability": "存在已公開安全漏洞",
     "dependency_issue": "相依性問題",
@@ -28,7 +28,7 @@
   },
   "de-DE": {
     "abnormal_memory_usage": "Ungewöhnliche Speichernutzung",
-    "long_system_interrupts": "Lange Systeminterrupts",
+    "long_system_interrupts": "Zu langer einzelner Systeminterrupt",
     "excessive_system_interrupts": "Hohe Auslastung durch Systeminterrupts",
     "known_security_vulnerability": "Bekannte Sicherheitslücke",
     "dependency_issue": "Abhängigkeitsproblem",
@@ -37,7 +37,7 @@
   },
   "es-ES": {
     "abnormal_memory_usage": "Uso anormal de memoria",
-    "long_system_interrupts": "Interrupciones del sistema largas",
+    "long_system_interrupts": "Interrupción del sistema demasiado larga",
     "excessive_system_interrupts": "Uso elevado de interrupciones del sistema",
     "known_security_vulnerability": "Vulnerabilidad de seguridad conocida",
     "dependency_issue": "Problema de dependencia",
@@ -46,7 +46,7 @@
   },
   "fr-FR": {
     "abnormal_memory_usage": "Utilisation mémoire anormale",
-    "long_system_interrupts": "Interruptions système longues",
+    "long_system_interrupts": "Interruption système trop longue",
     "excessive_system_interrupts": "Utilisation élevée des interruptions système",
     "known_security_vulnerability": "Vulnérabilité de sécurité connue",
     "dependency_issue": "Problème de dépendance",
@@ -55,7 +55,7 @@
   },
   "ja-JP": {
     "abnormal_memory_usage": "メモリ使用量の異常",
-    "long_system_interrupts": "長時間のシステム割り込み",
+    "long_system_interrupts": "長すぎる単発のシステム割り込み",
     "excessive_system_interrupts": "システム割り込みの高負荷",
     "known_security_vulnerability": "既知のセキュリティ脆弱性",
     "dependency_issue": "依存関係の問題",
@@ -64,7 +64,7 @@
   },
   "ko-KR": {
     "abnormal_memory_usage": "비정상 메모리 사용량",
-    "long_system_interrupts": "긴 시스템 인터럽트",
+    "long_system_interrupts": "지나치게 긴 단일 시스템 인터럽트",
     "excessive_system_interrupts": "높은 시스템 인터럽트 사용량",
     "known_security_vulnerability": "알려진 보안 취약점",
     "dependency_issue": "종속성 문제",
@@ -73,7 +73,7 @@
   },
   "ru-RU": {
     "abnormal_memory_usage": "Аномальное использование памяти",
-    "long_system_interrupts": "Длительные системные прерывания",
+    "long_system_interrupts": "Слишком долгое системное прерывание",
     "excessive_system_interrupts": "Высокая нагрузка системных прерываний",
     "known_security_vulnerability": "Известная уязвимость безопасности",
     "dependency_issue": "Проблема зависимости",

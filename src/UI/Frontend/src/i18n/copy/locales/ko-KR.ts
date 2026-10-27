@@ -534,7 +534,7 @@ const koKrAppCopy: AppCopy = {
   management: {
     issueText: {
       abnormal_memory_usage: "비정상 메모리 사용량",
-      long_system_interrupts: "긴 시스템 인터럽트",
+      long_system_interrupts: "지나치게 긴 단일 시스템 인터럽트",
       excessive_system_interrupts: "높은 시스템 인터럽트 사용량",
       known_security_vulnerability: "알려진 보안 취약점",
       dependency_issue: "종속성 문제",

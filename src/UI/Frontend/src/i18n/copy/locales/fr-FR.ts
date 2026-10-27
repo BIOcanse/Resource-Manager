@@ -535,7 +535,7 @@ const frFrAppCopy: AppCopy = {
   management: {
     issueText: {
       abnormal_memory_usage: "Utilisation mémoire anormale",
-      long_system_interrupts: "Interruptions système longues",
+      long_system_interrupts: "Interruption système trop longue",
       excessive_system_interrupts: "Utilisation élevée des interruptions système",
       known_security_vulnerability: "Vulnérabilité de sécurité connue",
       dependency_issue: "Problème de dépendance",

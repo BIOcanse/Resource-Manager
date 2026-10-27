@@ -321,7 +321,7 @@ const mockSoftware = {
       kind: "long_system_interrupts",
       severity: "critical",
       source: "dynamic_report",
-      label: "造成长系统中断",
+      label: "造成单次系统中断过长",
       message: "example.sys 是同一采样窗口中的主要归因驱动。",
       dynamic: true,
       references: [],

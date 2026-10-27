@@ -535,7 +535,7 @@ const ruRuAppCopy: AppCopy = {
   management: {
     issueText: {
       abnormal_memory_usage: "Аномальное использование памяти",
-      long_system_interrupts: "Длительные системные прерывания",
+      long_system_interrupts: "Слишком долгое системное прерывание",
       excessive_system_interrupts: "Высокая нагрузка системных прерываний",
       known_security_vulnerability: "Известная уязвимость безопасности",
       dependency_issue: "Проблема зависимости",

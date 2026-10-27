@@ -535,7 +535,7 @@ const esEsAppCopy: AppCopy = {
   management: {
     issueText: {
       abnormal_memory_usage: "Uso anormal de memoria",
-      long_system_interrupts: "Interrupciones del sistema largas",
+      long_system_interrupts: "Interrupción del sistema demasiado larga",
       excessive_system_interrupts: "Uso elevado de interrupciones del sistema",
       known_security_vulnerability: "Vulnerabilidad de seguridad conocida",
       dependency_issue: "Problema de dependencia",

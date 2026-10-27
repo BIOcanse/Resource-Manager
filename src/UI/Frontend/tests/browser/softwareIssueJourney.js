@@ -45,12 +45,12 @@ export default async function softwareIssueJourney(page, baseUrl) {
   await card.waitFor({ state: "visible", timeout: 5000 });
   const tags = card.locator(".software-issue-tag");
   assert(await tags.count() === 3, "Software card did not render all static and dynamic issue tags");
-  for (const label of ["存在已公开安全漏洞", "内存占用异常", "长系统中断"]) {
+  for (const label of ["存在已公开安全漏洞", "内存占用异常", "单次系统中断过长"]) {
     await card.getByText(label, { exact: true }).waitFor({ state: "visible", timeout: 3000 });
   }
 
   const search = page.getByRole("searchbox", { name: /一般应用搜索/ });
-  await search.fill("长系统中断");
+  await search.fill("单次系统中断过长");
   await card.waitFor({ state: "visible", timeout: 3000 });
   assert(await page.locator(".software-item").count() === 1,
     "Issue label search did not retain only the matching software card");
