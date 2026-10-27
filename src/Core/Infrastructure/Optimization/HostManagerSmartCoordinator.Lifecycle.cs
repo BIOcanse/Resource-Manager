@@ -190,7 +190,6 @@ public sealed partial class HostManagerSmartCoordinator
             failure = exception;
         }
         ObserveShutdownPoint(HostManagerSmartCoordinatorShutdownPoint.ExactWorkerJoined);
-        PublishCpuLeasesUnavailable("scheduler-stopped");
 
         Task foregroundCompletion;
         lock (lifecycleSync)

@@ -23,8 +23,13 @@ public sealed record RuntimeCpuLeaseSnapshot(string LeaseId, RuntimeCpuLeaseRequ
 
 public interface IRuntimeCpuLeaseService
 {
-    RuntimeCpuLeaseSnapshot CreateCpuLease(RuntimeCpuLeaseRequest request, string holder);
     Task<RuntimeCpuLeaseSnapshot?> ReadCpuLeaseAsync(string leaseId, CancellationToken cancellationToken);
+    RuntimeCpuLeaseSnapshot ProjectCpuLeaseAvailability(RuntimeCpuLeaseSnapshot snapshot);
+}
+
+public interface IRuntimeCpuLeaseRegistry
+{
+    RuntimeCpuLeaseSnapshot CreateCpuLease(RuntimeCpuLeaseRequest request, string holder);
     bool DeleteCpuLease(string leaseId);
     Task WaitForCpuLeaseEndAsync(string leaseId, CancellationToken cancellationToken);
 }

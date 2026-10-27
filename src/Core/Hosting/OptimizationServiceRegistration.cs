@@ -133,6 +133,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
         bool startHostedService = true)
     {
         services.AddSingleton<RuntimeCpuLeaseStore>();
+        services.AddSingleton<IRuntimeCpuLeaseRegistry>(static provider =>
+            provider.GetRequiredService<RuntimeCpuLeaseStore>());
         services.AddSingleton<HostManagerSmartCoordinator>();
         services.AddSingleton<IRuntimeCpuLeaseService>(static provider =>
             provider.GetRequiredService<HostManagerSmartCoordinator>());

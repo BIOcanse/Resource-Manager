@@ -25,6 +25,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             optimizationMode: mode, optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology);
         var allowed = RecordCpuLeaseBindings(fixture);
+        BeginCpuLeaseRunForManualCycles(fixture);
         allowed[pid] = [1, 2]; // An external original range must never be widened by apply or restore.
         var target = kind switch
         {
@@ -32,7 +33,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             "process" => new RuntimeCpuLeaseTarget(ProcessId: pid, ProcessStartKey: birth),
             _ => new RuntimeCpuLeaseTarget(ExecutablePath: facts.Processes[0].ExecutablePath)
         };
-        var lease = fixture.Coordinator.CreateCpuLease(new(target, ["core:0"], true, true), "fixture-holder");
+        var lease = fixture.CpuLeases.CreateCpuLease(new(target, ["core:0"], true, true), "fixture-holder");
         Assert.Equal("pending", lease.State);
         for (var cycle = 0; cycle < 12; cycle++)
         {
@@ -49,8 +50,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal("observed", observed.State);
         Assert.Contains(observed.Effects, effect => effect.ProcessId == pid && effect.Role == "target" && effect.State == "observed");
         Assert.Contains(observed.Effects, effect => effect.ProcessId == other && effect.Role == "avoidance" && effect.State == "observed");
-        var ended = fixture.Coordinator.WaitForCpuLeaseEndAsync(lease.LeaseId, default);
-        Assert.True(fixture.Coordinator.DeleteCpuLease(lease.LeaseId));
+        var ended = fixture.CpuLeases.WaitForCpuLeaseEndAsync(lease.LeaseId, default);
+        Assert.True(fixture.CpuLeases.DeleteCpuLease(lease.LeaseId));
         await ended.WaitAsync(TimeSpan.FromSeconds(5));
         for (var cycle = 0; cycle < 12 && fixture.StateStore.Current.AppliedPlacements.Count != 0; cycle++)
         { fixture.PublishNextHostedCpuObservation(); await fixture.RunRealtimeCycleAsync(); }
@@ -71,9 +72,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology);
         RecordCpuLeaseBindings(fixture);
+        BeginCpuLeaseRunForManualCycles(fixture);
         fixture.ProcessPolicyWriter.BatchHandler = requests => requests.Select(request => new ProcessResourcePolicyBatchWriteResult(
             request.ProcessId, [new ProcessResourcePolicyBatchFieldResult(ProcessResourcePolicyBatchFields.CpuSets, false, "access-denied") { ErrorCode = 5 }])).ToArray();
-        var lease = fixture.Coordinator.CreateCpuLease(new(new(ProcessId: pid, ProcessStartKey: birth), ["core:0"], true, false), "fixture-holder");
+        var lease = fixture.CpuLeases.CreateCpuLease(new(new(ProcessId: pid, ProcessStartKey: birth), ["core:0"], true, false), "fixture-holder");
         for (var cycle = 0; cycle < 8; cycle++)
         {
             if (cycle != 0) fixture.PublishNextHostedCpuObservation();
@@ -98,7 +100,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology);
         RecordCpuLeaseBindings(fixture);
-        var lease = fixture.Coordinator.CreateCpuLease(new(new(ProcessId: pid, ProcessStartKey: birth), ["core:0"], true, false), "holder");
+        BeginCpuLeaseRunForManualCycles(fixture);
+        var lease = fixture.CpuLeases.CreateCpuLease(new(new(ProcessId: pid, ProcessStartKey: birth), ["core:0"], true, false), "holder");
         fixture.ProcessFacts.SetSnapshot(facts with { HasUnidentifiedProcesses = true });
         await fixture.Coordinator.RunOnceAsync(default);
         Assert.NotNull(await fixture.Coordinator.ReadCpuLeaseAsync(lease.LeaseId, default));
@@ -114,31 +117,77 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         const int pid = 53131;
         const ulong birth = 133900000000000131;
         var topology = CreateAutomaticPlacementTopology();
-        var store = new RuntimeCpuLeaseStore();
         var facts = CreateCompleteProcessFacts(pid, birth, "probe", 80, 20, 5);
-        string id;
-        await using (var first = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true, scoreOnlyEnabled: false,
+        var residency = new PublicationControlledCpuResidencyReader();
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true, scoreOnlyEnabled: false,
             processFactsSnapshot: facts, policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
-            optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement, cpuLeaseStore: store,
-            cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology))
-        {
-            RecordCpuLeaseBindings(first);
-            id = first.Coordinator.CreateCpuLease(new(new(ProcessId: pid, ProcessStartKey: birth), ["core:0"], true, false), "holder").LeaseId;
-            await first.Coordinator.RunOnceAsync(default);
-            await first.Coordinator.StopAsync(default);
-            var stopped = await first.Coordinator.ReadCpuLeaseAsync(id, default);
-            Assert.NotNull(stopped);
-            Assert.Equal("scheduler-stopped", stopped.ReasonCode);
-        }
-        await using var second = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true, scoreOnlyEnabled: false,
-            processFactsSnapshot: facts, policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
-            optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement, cpuLeaseStore: store,
+            optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement, cpuCoreReader: residency,
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology);
-        var allowed = RecordCpuLeaseBindings(second);
-        await second.Coordinator.RunOnceAsync(default);
+        var allowed = RecordCpuLeaseBindings(fixture);
+        var id = fixture.CpuLeases.CreateCpuLease(new(new(ProcessId: pid, ProcessStartKey: birth), ["core:0"], true, false), "holder").LeaseId;
+        AssertCpuLeaseStopped((await fixture.Coordinator.ReadCpuLeaseAsync(id, default))!);
+        Assert.Equal("pending", fixture.CpuLeases.Get(id)!.Snapshot.State);
+
+        await fixture.Coordinator.StartAsync(default);
+        await residency.WaitForSubscriptionAsync();
+        await fixture.Coordinator.RunOnceAsync(default);
         Assert.Equal([1U], allowed[pid]);
-        Assert.Equal("observed", (await second.Coordinator.ReadCpuLeaseAsync(id, default))!.State);
-        second.Coordinator.DeleteCpuLease(id);
+        Assert.Equal("observed", (await fixture.Coordinator.ReadCpuLeaseAsync(id, default))!.State);
+        await fixture.Coordinator.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(10));
+        AssertCpuLeaseStopped((await fixture.Coordinator.ReadCpuLeaseAsync(id, default))!);
+
+        await fixture.Coordinator.StartAsync(default);
+        await fixture.Coordinator.RunOnceAsync(default);
+        Assert.Equal([1U], allowed[pid]);
+        Assert.Equal("observed", (await fixture.Coordinator.ReadCpuLeaseAsync(id, default))!.State);
+        fixture.CpuLeases.DeleteCpuLease(id);
+        await fixture.Coordinator.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
+    public async Task RuntimeCoreLeaseStoppedReadCannotBeOverwrittenByDrainingForegroundCycle()
+    {
+        const int pid = 53132;
+        const ulong birth = 133900000000000132;
+        var topology = CreateAutomaticPlacementTopology();
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true, scoreOnlyEnabled: false,
+            processFactsSnapshot: CreateCompleteProcessFacts(pid, birth, "probe", 80, 20, 5),
+            policyExecutionEnabled: false, automaticMemoryCleanupEnabled: false,
+            optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
+            cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology);
+        RecordCpuLeaseBindings(fixture);
+        BeginCpuLeaseRunForManualCycles(fixture);
+        var id = fixture.CpuLeases.CreateCpuLease(new(new(ProcessId: pid, ProcessStartKey: birth), ["core:0"], true, false), "holder").LeaseId;
+        var probe = new BlockingTransitionProbe(HostManagerSmartCoordinatorTransitionPoint.BeforeNativeCall);
+        fixture.Coordinator.TransitionProbe = probe;
+        var cycle = Task.Run(() => fixture.Coordinator.RunOnceAsync(default));
+        await probe.Reached.WaitAsync(TimeSpan.FromSeconds(10));
+        var stop = fixture.Coordinator.StopAsync(default);
+        await probe.AdmissionClosed.WaitAsync(TimeSpan.FromSeconds(10));
+        try
+        {
+            Assert.False(stop.IsCompleted);
+            AssertCpuLeaseStopped((await fixture.Coordinator.ReadCpuLeaseAsync(id, default))!);
+        }
+        finally { probe.Release(); }
+        await cycle.WaitAsync(TimeSpan.FromSeconds(10));
+        await stop.WaitAsync(TimeSpan.FromSeconds(10));
+        // Prove the late foreground cycle wrote an observation, rather than merely testing an unchanged pending row.
+        Assert.Equal("observed", fixture.CpuLeases.Get(id)!.Snapshot.State);
+        AssertCpuLeaseStopped((await fixture.Coordinator.ReadCpuLeaseAsync(id, default))!);
+    }
+
+    private static void AssertCpuLeaseStopped(RuntimeCpuLeaseSnapshot snapshot)
+    {
+        Assert.Equal("unavailable", snapshot.State);
+        Assert.Equal("scheduler-stopped", snapshot.ReasonCode);
+    }
+
+    private static void BeginCpuLeaseRunForManualCycles(ScoreOnlyCoordinatorFixture fixture)
+    {
+        // These fixture-owned runs invoke production cycles directly, without a competing background loop.
+        // Lifecycle tests instead exercise the real StartAsync/StopAsync entry points.
+        WritePrivateField(fixture.Coordinator, "lifecycleState", (int)HostManagerSmartCoordinatorLifecycleState.Running);
     }
 
     [Fact]
@@ -153,8 +202,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology);
         var allowed = RecordCpuLeaseBindings(fixture);
-        var first = fixture.Coordinator.CreateCpuLease(new(new(ProcessId: pid, ProcessStartKey: birth), ["core:0"], true, false), "holder1");
-        var second = fixture.Coordinator.CreateCpuLease(new(new(ProcessId: pid, ProcessStartKey: birth), ["core:1"], true, false), "holder2");
+        BeginCpuLeaseRunForManualCycles(fixture);
+        var first = fixture.CpuLeases.CreateCpuLease(new(new(ProcessId: pid, ProcessStartKey: birth), ["core:0"], true, false), "holder1");
+        var second = fixture.CpuLeases.CreateCpuLease(new(new(ProcessId: pid, ProcessStartKey: birth), ["core:1"], true, false), "holder2");
         await fixture.Coordinator.RunOnceAsync(default);
         Assert.Equal([1U, 2U, 3U, 4U], allowed[pid]);
         foreach (var lease in new[] { first, second })
@@ -179,8 +229,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology);
         var allowed = RecordCpuLeaseBindings(fixture);
+        BeginCpuLeaseRunForManualCycles(fixture);
         allowed[pid] = alreadyBound ? [1U] : [2U];
-        var lease = fixture.Coordinator.CreateCpuLease(new(new(ProcessId: pid, ProcessStartKey: birth), ["core:0"], true, false), "holder");
+        var lease = fixture.CpuLeases.CreateCpuLease(new(new(ProcessId: pid, ProcessStartKey: birth), ["core:0"], true, false), "holder");
         await fixture.Coordinator.RunOnceAsync(default);
         var effect = Assert.Single((await fixture.Coordinator.ReadCpuLeaseAsync(lease.LeaseId, default))!.Effects);
         Assert.Equal(alreadyBound ? "observed" : "failed", effect.State);
@@ -201,8 +252,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology);
         var allowed = RecordCpuLeaseBindings(fixture);
+        BeginCpuLeaseRunForManualCycles(fixture);
         allowed[peer] = [2, 3, 4];
-        var lease = fixture.Coordinator.CreateCpuLease(new(new(ProcessId: pid, ProcessStartKey: birth), ["core:0"], false, true), "holder");
+        var lease = fixture.CpuLeases.CreateCpuLease(new(new(ProcessId: pid, ProcessStartKey: birth), ["core:0"], false, true), "holder");
         await fixture.Coordinator.RunOnceAsync(default);
         Assert.Equal([1U, 2U, 3U, 4U], allowed[pid]);
         var observed = (await fixture.Coordinator.ReadCpuLeaseAsync(lease.LeaseId, default))!;
@@ -223,8 +275,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology);
         RecordCpuLeaseBindings(fixture);
-        var first = fixture.Coordinator.CreateCpuLease(new(new(ProcessId: firstPid, ProcessStartKey: birth), ["core:0"], true, true), "one");
-        var second = fixture.Coordinator.CreateCpuLease(new(new(ProcessId: secondPid, ProcessStartKey: birth + 1), ["core:0"], true, true), "two");
+        BeginCpuLeaseRunForManualCycles(fixture);
+        var first = fixture.CpuLeases.CreateCpuLease(new(new(ProcessId: firstPid, ProcessStartKey: birth), ["core:0"], true, true), "one");
+        var second = fixture.CpuLeases.CreateCpuLease(new(new(ProcessId: secondPid, ProcessStartKey: birth + 1), ["core:0"], true, true), "two");
         await fixture.Coordinator.RunOnceAsync(default);
         foreach (var lease in new[] { first, second })
         {

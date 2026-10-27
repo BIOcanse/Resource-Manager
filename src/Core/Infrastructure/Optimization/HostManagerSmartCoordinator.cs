@@ -59,7 +59,7 @@ public sealed partial class HostManagerSmartCoordinator(
     HostManagerSchedulingAuthority schedulingAuthority,
     HostManagerMemoryModePolicyAuthority memoryModePolicyAuthority,
     HostManagerProcessEffectValidationScopeAuthority processEffectValidationScopeAuthority,
-    RuntimeCpuLeaseStore? cpuLeaseStore = null)
+    RuntimeCpuLeaseStore cpuLeaseStore)
     : BackgroundService,
         IHostManagerSmartCoordinator,
         IHostManagerProcessEffectValidationScopeControl,
@@ -68,7 +68,7 @@ public sealed partial class HostManagerSmartCoordinator(
 {
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly HostManagerVersionedWakeDeadline schedulingWakeDeadline =
-        new(timeProvider);
+        (cpuLeaseStore ?? throw new ArgumentNullException(nameof(cpuLeaseStore))).WakeDeadline;
     private readonly HostManagerDurableTimeSource durableTimeSource = new(timeProvider);
     private NativeSmartCoordinatorWorkspace? nativeWorkspace;
     private NativeSmartCoordinatorWorkspace? pendingNativeWorkspaceClose;

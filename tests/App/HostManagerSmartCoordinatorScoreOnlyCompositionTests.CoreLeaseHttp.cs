@@ -19,6 +19,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     [InlineData("delete")]
     [InlineData("revoke")]
     [InlineData("keyless")]
+    [InlineData("stopped")]
     public async Task CpuLeaseHttpUsesExistingSubscriptionDisconnectAndKeyRevocationLifetime(string end)
     {
         const int pid = 53201;
@@ -30,12 +31,14 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             optimizationCapabilities: OptimizationModeCapabilities.HardwarePlacement,
             cpuTopology: topology, cpuScoring: HostManagerTestPlanFactory.CreateCpuScoring(topology), automaticPlacementTopology: topology);
         RecordCpuLeaseBindings(fixture);
+        if (end != "stopped") BeginCpuLeaseRunForManualCycles(fixture);
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0"); builder.Logging.ClearProviders();
         builder.Services.ConfigureHttpJsonOptions(options => ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options.SerializerOptions));
         var credential = TrustedAccessEndpointTestAuthentication.Add(builder.Services, "machine.write");
         builder.Services.AddSingleton<ILoopbackApiAdministratorReader>(new CpuLeaseFixtureAdministrator());
         builder.Services.AddSingleton<IRuntimeCpuLeaseService>(fixture.Coordinator);
+        builder.Services.AddSingleton<IRuntimeCpuLeaseRegistry>(fixture.CpuLeases);
         await using var app = TrustedAccessEndpointTestAuthentication.Build(builder);
         ResourceManagerEndpointRouteBuilderExtensions.MapCpuLeaseEndpoints(app);
         await app.StartAsync();
@@ -51,7 +54,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
             using var line = JsonDocument.Parse((await reader.ReadLineAsync(timeout.Token))!);
             var id = line.RootElement.GetProperty("leaseId").GetString()!;
-            Assert.Equal("pending", line.RootElement.GetProperty("state").GetString());
+            Assert.Equal(end == "stopped" ? "unavailable" : "pending", line.RootElement.GetProperty("state").GetString());
+            if (end == "stopped")
+            {
+                Assert.Equal("scheduler-stopped", line.RootElement.GetProperty("reasonCode").GetString());
+                BeginCpuLeaseRunForManualCycles(fixture);
+            }
             Assert.Empty(fixture.StateStore.Current.AppliedPlacements);
             await fixture.Coordinator.RunOnceAsync(timeout.Token);
             using var currentResponse = await client.GetAsync("/api/cpu/leases/" + id, timeout.Token);

@@ -5637,7 +5637,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             NativeSmartCoordinatorWorkspace workspace,
             IDisposable? ownedProcessFactsOverride,
             ResourceManagerSelfLocalResourceManager? ownedSelfManager,
-            ResourceManagerLedgerOwner? ownedComputeLedger)
+            ResourceManagerLedgerOwner? ownedComputeLedger,
+            RuntimeCpuLeaseStore cpuLeases)
         {
             Root = root;
             RuntimePlan = runtimePlan;
@@ -5657,6 +5658,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             this.memoryCleanupJournal = memoryCleanupJournal;
             NativeTransactions = nativeTransactions;
             Coordinator = coordinator;
+            CpuLeases = cpuLeases;
             Workspace = workspace;
             this.ownedProcessFactsOverride = ownedProcessFactsOverride;
             this.ownedSelfManager = ownedSelfManager;
@@ -5684,6 +5686,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         internal RecordingDebugLogWriter DebugLogWriter { get; }
         internal HostManagerNativeActionTransactionRuntime NativeTransactions { get; }
         internal HostManagerSmartCoordinator Coordinator { get; }
+        internal RuntimeCpuLeaseStore CpuLeases { get; }
         internal NativeSmartCoordinatorWorkspace Workspace { get; }
 
         internal static async Task<ScoreOnlyCoordinatorFixture> CreateAsync(
@@ -5730,8 +5733,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
              ResourceManager.App.Infrastructure.GpuPlacement.Preparation.WindowsGpuCallbackPreparationRuntime? gpuCallbackRuntime = null,
              Microsoft.Extensions.Logging.ILogger<HostManagerSmartCoordinator>? coordinatorLogger = null,
              ResourceManagerSelfLocalResourceManager? selfLocalResourceManager = null,
-             IReadOnlyList<string>? singleCcdSoftwareIds = null,
-             RuntimeCpuLeaseStore? cpuLeaseStore = null)
+             IReadOnlyList<string>? singleCcdSoftwareIds = null)
         {
             var root = Path.Combine(
                 Path.GetTempPath(),
@@ -5880,6 +5882,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 ?? factoryProcessFacts
                 ?? processFacts;
             timeProvider ??= TimeProvider.System;
+            var cpuLeaseStore = new RuntimeCpuLeaseStore(runtimePlanProvider, timeProvider);
             var memoryCleanupJournalPath = Path.Combine(root, "memory-cleanup-attempts.json");
             var memoryCleanupJournal = new HostManagerMemoryCleanupAttemptJournal(
                 memoryCleanupJournalPath,
@@ -6021,7 +6024,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 workspace,
                 factoryProcessFacts as IDisposable,
                 ownedSelfManager,
-                ownedComputeLedger);
+                ownedComputeLedger,
+                cpuLeaseStore);
         }
 
         internal async Task<SeededProcessOwnership> SeedProcessOwnershipAsync(

@@ -10,56 +10,24 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 
 public sealed partial class HostManagerSmartCoordinator
 {
-    private readonly RuntimeCpuLeaseStore runtimeCpuLeases = cpuLeaseStore ?? new();
+    private readonly RuntimeCpuLeaseStore runtimeCpuLeases = cpuLeaseStore;
     private readonly Dictionary<string, string> cpuLeaseTargetFailures = new(StringComparer.Ordinal);
     private readonly Dictionary<string, uint> cpuPlacementWriteFailures = new(StringComparer.Ordinal);
-
-    public RuntimeCpuLeaseSnapshot CreateCpuLease(RuntimeCpuLeaseRequest request, string holder)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        ArgumentNullException.ThrowIfNull(request.Target);
-        var target = request.Target;
-        var kinds = (target.SoftwareId is null ? 0 : 1) + (target.ProcessId is null ? 0 : 1)
-            + (target.ExecutablePath is null ? 0 : 1);
-        if (kinds != 1 || target.ProcessId is <= 0 || target.ProcessId.HasValue != target.ProcessStartKey.HasValue
-            || target.ProcessStartKey == 0 || target.SoftwareId is not null && string.IsNullOrWhiteSpace(target.SoftwareId)
-            || target.ProcessStartKey > 2650467743999999999UL
-            || !request.Lock && !request.Exclusive || string.IsNullOrWhiteSpace(holder))
-            throw new InvalidOperationException("invalid-cpu-lease-target-or-operation");
-        if (target.ExecutablePath is { } path)
-        {
-            if (!Path.IsPathFullyQualified(path) || !path.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("cpu-lease-executable-path-required");
-            target = target with { ExecutablePath = Path.GetFullPath(path) };
-        }
-        var topology = runtimePlanProvider.Current.CpuPlacementTopology
-            ?? throw new InvalidOperationException("cpu-topology-unavailable");
-        var cores = request.PhysicalCoreIds?.Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToArray();
-        if (cores is not { Length: > 0 } || cores.Any(id => !topology.PhysicalCores.Any(core => core.Id.Equals(id, StringComparison.OrdinalIgnoreCase)))
-            || request.Exclusive && cores.Length >= topology.PhysicalCores.Count)
-            throw new InvalidOperationException("invalid-cpu-lease-physical-core-set");
-        var result = runtimeCpuLeases.Add(request with { Target = target, PhysicalCoreIds = cores }, holder, timeProvider.GetUtcNow(),
-            runtimePlanProvider.Current.HostManager.RequirePublished().HostRecreate.PlacementCoordinator.TargetCapacity);
-        schedulingWakeDeadline.PublishForeground(TimeSpan.Zero);
-        return result;
-    }
 
     public Task<RuntimeCpuLeaseSnapshot?> ReadCpuLeaseAsync(string leaseId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         // Last completed observation is data, never starts sampling or performs writes.
-        return Task.FromResult(runtimeCpuLeases.Get(leaseId)?.Snapshot);
+        var snapshot = runtimeCpuLeases.Get(leaseId)?.Snapshot;
+        return Task.FromResult(snapshot is null ? null : ProjectCpuLeaseAvailability(snapshot));
     }
 
-    public bool DeleteCpuLease(string leaseId)
+    public RuntimeCpuLeaseSnapshot ProjectCpuLeaseAvailability(RuntimeCpuLeaseSnapshot snapshot)
     {
-        var removed = runtimeCpuLeases.Remove(leaseId);
-        if (removed) schedulingWakeDeadline.PublishForeground(TimeSpan.Zero);
-        return removed;
+        lock (lifecycleSync)
+            return LifecycleState == HostManagerSmartCoordinatorLifecycleState.Running ? snapshot
+                : snapshot with { State = "unavailable", ReasonCode = "scheduler-stopped" };
     }
-
-    public Task WaitForCpuLeaseEndAsync(string leaseId, CancellationToken cancellationToken)
-        => (runtimeCpuLeases.Get(leaseId)?.Ended.Task ?? Task.CompletedTask).WaitAsync(cancellationToken);
 
     private void PublishCpuLeasesUnavailable(string reason)
     {
@@ -74,7 +42,7 @@ public sealed partial class HostManagerSmartCoordinator
             if (lease.Snapshot.Request.Target.ProcessId is { } pid
                 && !facts.CurrentInventoryProcesses.Any(process => process.ProcessId == pid
                     && process.ProcessStartKey == lease.Snapshot.Request.Target.ProcessStartKey))
-                DeleteCpuLease(lease.Snapshot.LeaseId);
+                runtimeCpuLeases.DeleteCpuLease(lease.Snapshot.LeaseId);
     }
 
     private static bool MatchesCpuLease(RuntimeCpuLeaseTarget target, HostManagerAutomaticPlacementProcess process)

@@ -12,7 +12,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     internal static IEndpointRouteBuilder MapCpuLeaseEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/api/cpu/leases", async (RuntimeCpuLeaseRequest request, HttpContext context,
-            IRuntimeCpuLeaseService leases, IOptions<JsonOptions> json, CancellationToken cancellationToken) =>
+            IRuntimeCpuLeaseRegistry leases, IRuntimeCpuLeaseService observations,
+            IOptions<JsonOptions> json, CancellationToken cancellationToken) =>
         {
             var authorization = ReadAuthorization(context);
             if (authorization is null) { context.Response.StatusCode = StatusCodes.Status401Unauthorized; return; }
@@ -48,7 +49,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             try
             {
                 NdjsonResponse.Prepare(context.Response);
-                await NdjsonResponse.WriteAsync(context.Response, lease, json.Value.SerializerOptions, lifetime.Token);
+                await NdjsonResponse.WriteAsync(context.Response, observations.ProjectCpuLeaseAvailability(lease), json.Value.SerializerOptions, lifetime.Token);
                 await leases.WaitForCpuLeaseEndAsync(lease.LeaseId, lifetime.Token);
             }
             catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
@@ -62,7 +63,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             var lease = await leases.ReadCpuLeaseAsync(leaseId, cancellationToken);
             return lease is null ? Results.NotFound(new EndpointErrorPayload("cpu-lease-not-found")) : Results.Ok(lease);
         });
-        app.MapDelete("/api/cpu/leases/{leaseId}", (string leaseId, IRuntimeCpuLeaseService leases)
+        app.MapDelete("/api/cpu/leases/{leaseId}", (string leaseId, IRuntimeCpuLeaseRegistry leases)
             => leases.DeleteCpuLease(leaseId) ? Results.NoContent() : Results.NotFound(new EndpointErrorPayload("cpu-lease-not-found")));
         return app;
     }
