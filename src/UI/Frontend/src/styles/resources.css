@@ -354,6 +354,41 @@
   text-overflow: ellipsis;
 }
 
+/* GPU 列：列名下面一行是这块显卡的名字（监视卡片设备名的小字 .metric-device），两行仍在 34 px 的表头里，列名和箭头不动。 */
+.resource-table-sort-button:has(> .gpu-name-note) {
+  flex-wrap: wrap;
+  align-content: center;
+  row-gap: 0;
+}
+
+/* 换行时长列名不独占一行：列名在第一行和箭头（12 px 加 4 px 间距）并排、放不下就省略。 */
+.resource-table-sort-button:has(> .gpu-name-note) > span:first-child {
+  max-width: calc(100% - 16px);
+}
+
+.resource-table-sort-button > .gpu-name-note {
+  order: 1;
+  flex: 0 0 100%;
+  margin-top: 0;
+  line-height: 13px;
+  text-align: right;
+  font-weight: 500;
+}
+
+/* 编辑芯片上的显卡名字在名称下面一行、左对齐；选中的芯片是强调色底，名字跟着芯片的字色。 */
+:is(.resource-table-column-select, .resource-bar-select, .resource-breakdown-header strong) > .gpu-name-note {
+  text-align: left;
+  font-weight: 500;
+}
+
+.resource-table-column-select:has(> .gpu-name-note) {
+  text-align: left;
+}
+
+:is(.resource-table-column-option, .resource-bar-option).selected .gpu-name-note {
+  color: inherit;
+}
+
 /*
   列宽把手只在编辑模式能用（ResourceTable.tsx）：平时不接指针，表头格边缘照常点下去排序，也不显示改宽度的光标；
   编辑时把手以列的右边缘为中线左右各 6 px，中间一条把手线，悬停、拖动时变成强调色。

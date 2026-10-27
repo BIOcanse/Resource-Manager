@@ -114,6 +114,7 @@ export function MonitorPage(props: MonitorPageProps) {
                 <Dashboard
                   cards={monitor.activeCards()}
                   catalog={monitor.cardCatalog()}
+                  gpuNames={monitor.gpuNames()}
                   snapshot={monitor.cardSnapshot()}
                   pendingMetricIds={monitor.cardPendingMetricIds()}
                   trends={monitor.cardTrends()}
@@ -141,6 +142,7 @@ export function MonitorPage(props: MonitorPageProps) {
               <ResourceBreakdown
                 animationStyle={props.animationStyle}
                 catalog={monitor.catalog()}
+                gpuNames={monitor.gpuNames()}
                 editMode={monitor.resourceBarEditing()}
                 editingAvailable={dashboardAvailable()}
                 bars={monitor.activeResourceBars()}
@@ -182,6 +184,7 @@ export function MonitorPage(props: MonitorPageProps) {
                 columnSettings={monitor.activeResourceTableColumns()}
                 snapshot={monitor.resourceTableSnapshot()}
                 observation={activeResourceTableObservation()}
+                gpuNames={monitor.gpuNames()}
                 sortColumnId={monitor.resourceTableSort().columnId}
                 sortDirection={monitor.resourceTableSort().direction}
                 expandedSoftwareIds={monitor.expandedResourceTableRows()}

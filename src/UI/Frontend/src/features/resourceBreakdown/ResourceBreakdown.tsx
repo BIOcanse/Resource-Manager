@@ -61,6 +61,7 @@ import {
   type ResourceBarView
 } from "./resourceBarSources.ts";
 import { exitOnUnmount } from "../../presentation/nodeAnimation.ts";
+import { GpuNameNote } from "../monitor/GpuNameNote.tsx";
 
 export interface ResourcePrecisionSelection {
   metricId: string;
@@ -73,6 +74,8 @@ export interface ResourcePrecisionSelection {
 interface ResourceBreakdownProps {
   animationStyle: AnimationStyleId;
   catalog: MetricDefinition[];
+  /** 后端编号的显卡各自的名字（monitorStore.gpuNames）：GPU 条和芯片在编号旁用小字写出。 */
+  gpuNames: ReadonlyMap<string, string>;
   editMode: boolean;
   editingAvailable: boolean;
   saveState: "idle" | "saving" | "error";
@@ -169,6 +172,7 @@ export function ResourceBreakdown(props: ResourceBreakdownProps) {
         <ResourceBarEditor
           onElement={(element) => { editorRegion = element; }}
           catalog={props.catalog}
+          gpuNames={props.gpuNames}
           bars={props.bars}
           snapshotBars={props.snapshotBars}
           processFields={props.processFields}
@@ -208,6 +212,7 @@ export function ResourceBreakdown(props: ResourceBreakdownProps) {
                     <ResourceBreakdownItem
                       animationStyle={props.animationStyle}
                       bar={currentBar()}
+                      gpuNames={props.gpuNames}
                       processDetails={props.processDetails}
                       processDetailsObservation={props.processDetailsObservation}
                       editMode={props.editMode}
@@ -244,6 +249,7 @@ export function ResourceBreakdown(props: ResourceBreakdownProps) {
 function ResourceBarEditor(props: {
   onElement?: (element: HTMLDivElement) => void;
   catalog: MetricDefinition[];
+  gpuNames: ReadonlyMap<string, string>;
   bars: ResourceBarSettings[];
   snapshotBars: readonly ResourceBarView[];
   processFields: readonly ProcessMetricField[];
@@ -308,6 +314,7 @@ function ResourceBarEditor(props: {
               />
               <button type="button" class="resource-bar-select" aria-pressed={selected()} title={resourceMetricBasis(metricId)}>
                 {label()}
+                <GpuNameNote metricId={metricId} names={props.gpuNames} />
               </button>
               <StandardSelect<"capacity" | "active">
                 value={normalizeResourceBarScaleMode(metricId, bar()?.scaleMode)}
@@ -330,7 +337,7 @@ function ResourceBarEditor(props: {
           const current = () => barByMetric().get(metricId)?.source ?? null;
           return (
             <div class="resource-bar-source">
-              <strong>{label()}</strong>
+              <strong>{label()}<GpuNameNote metricId={metricId} names={props.gpuNames} /></strong>
               <RadioGroupRoot class="segmented resource-bar-source-choices" ariaLabel={label()}
                 // 存的来源不在目录里（目录变了）时不勾任何一项，不把它显示成自动选择。
                 value={(() => { const index = choices().indexOf(current()); return index < 0 ? "" : `source-${index}`; })()}
@@ -359,6 +366,7 @@ function ResourceBarEditor(props: {
 function ResourceBreakdownItem(props: {
   animationStyle: AnimationStyleId;
   bar: ResourceBarView;
+  gpuNames: ReadonlyMap<string, string>;
   processDetails: ResourceProcessDetailsSnapshot | null;
   processDetailsObservation: ObservationState;
   editMode: boolean;
@@ -486,7 +494,7 @@ function ResourceBreakdownItem(props: {
       ref={props.reorder.item({ id: () => props.bar.metricId, enabled: () => props.editMode })}
     >
       <div class="resource-breakdown-header">
-        <strong title={props.bar.basis}>{label()}</strong>
+        <strong title={props.bar.basis}>{label()}<GpuNameNote metricId={props.bar.metricId} names={props.gpuNames} /></strong>
         <span title={props.bar.scaleMode === "active" ? uiText.resourceBreakdown.scaleActiveHint : uiText.resourceBreakdown.scaleCapacityHint}>
           {resourceBarValueText(props.bar)} · {props.bar.scaleMode === "active" ? uiText.resourceBreakdown.scaleActive : uiText.resourceBreakdown.scaleCapacity}
         </span>

@@ -9,6 +9,7 @@ import { defaultPerformanceMetricIds } from "../features/resourceTable/ResourceP
 import { createResourceFactsProjection } from "../features/resourceTable/resourceFacts.ts";
 import { resourceTableMetricId } from "../features/resourceTable/resourceTableSources.ts";
 import { defaultResourceTableSort, nextResourceTableSort, type ResourceTableSort } from "../features/resourceTable/resourceTableSort.ts";
+import { gpuAdapterNames } from "../features/monitor/gpuAdapterNames.ts";
 import type { ProcessMetricField } from "../data/resourceMonitor/processFieldCatalog.ts";
 import type { ResourcePrecisionSelection } from "../features/resourceBreakdown/ResourceBreakdown";
 import { reconcileResourceSelection } from "../features/resourceBreakdown/resourceSelection";
@@ -167,6 +168,8 @@ export interface MonitorStore {
   resourceTableSnapshot: Accessor<ResourceTableSnapshot | null>;
   resourceTableObservation: Accessor<ObservationState>;
   resourceTableSort: Accessor<ResourceTableSort>;
+  /** 后端编号的显卡（键是编号 N）各自的名字；后端没给名字的编号不在里面。 */
+  gpuNames: Accessor<ReadonlyMap<string, string>>;
   expandedResourceTableRows: Accessor<Record<string, boolean>>;
   resourceSelection: Accessor<ResourcePrecisionSelection | null>;
   expandedResourceSegments: Accessor<Record<string, string>>;
@@ -374,6 +377,8 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   })).snapshot;
   const fieldDevices = createMemo(() => fieldDevicesSnapshot().data);
   const cardCatalog = createMemo(() => [...catalog(), ...fieldCardDefinitions(fieldCatalog() ?? [])]);
+  // 后端编号的显卡各自的名字（gpuAdapterNames.ts）：卡片、资源条、资源表在 GPU 编号旁用小字写出，编号原样。
+  const gpuNames = createMemo(() => gpuAdapterNames(catalog(), fieldCatalog()));
   // 卡片上已经放了的字段照常从 cardCatalog 取设备名和标记；只有选择器按设置少列。
   const pickerCatalog = createMemo(() => cardCatalog().filter(metricOfferedInPicker));
   const cardSnapshot = createMemo<MetricSnapshot | null>(() => {
@@ -1040,6 +1045,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
     resourceTableSnapshot,
     resourceTableObservation,
     resourceTableSort,
+    gpuNames,
     expandedResourceTableRows,
     resourceSelection,
     expandedResourceSegments,

@@ -4,7 +4,6 @@ import { PackagePlus, Search, X } from "lucide-solid";
 import { createEffect, createMemo, createSelector, createSignal, For, Index, Show } from "solid-js";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext.tsx";
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
-import type { MetricFieldCatalogDevice } from "../../data/metricFields/metricFieldSource.ts";
 import {
   componentDisplayName,
   metricDisabledReasonCode,
@@ -26,6 +25,7 @@ import {
 import { isComponentInstalled, textOrEmpty } from "../../utils";
 import { uiText } from "../../text.ts";
 import { deviceFieldScopeKind } from "./fieldCards.ts";
+import { gpuAdapterNames } from "./gpuAdapterNames.ts";
 import { ReadingSourceMark } from "../../components/ReadingSourceMark.tsx";
 import { RadioGroupItem, RadioGroupRoot } from "../../ui/primitives/RadioGroup.tsx";
 import { metricSourceChoiceLabel, metricSourceChoices, type MetricSourceChoice } from "./metricSources.ts";
@@ -63,18 +63,6 @@ export interface MetricDependencyState {
   missing: boolean;
 }
 
-/** 显卡组用指标携带的设备身份查设备事实，不解析身份或按序号猜设备。 */
-function gpuGroupName(metrics: readonly MetricDefinition[], devices: readonly MetricFieldCatalogDevice[]): string | null {
-  if (!metrics.every((metric) => /^gpu\.\d+$/i.test(metric.group.trim()))) {
-    return null;
-  }
-  const identities = new Set(metrics.map((metric) => metric.deviceIdentity));
-  const [identity] = identities;
-  return identities.size === 1 && identity
-    ? devices.find((device) => device.deviceIdentity === identity && device.kind === "gpu_adapter")?.displayName?.trim() || null
-    : null;
-}
-
 /**
  * 选项名和右侧原因都可能被截断：悬停看全名、不可选的原因和后端原样的原因代码（域/码/参数）；
  * 设备字段附字段说明，已装的组件附组件状态。
@@ -92,6 +80,13 @@ function optionTitle(metric: MetricDefinition, dependency: MetricDependencyState
   ].filter(Boolean).join("\n");
 }
 
+/** 一组都是同一块编号显卡的指标时，组名后面写它的名字；后端没给名字时只写编号。 */
+function gpuGroupName(metrics: readonly MetricDefinition[], names: ReadonlyMap<string, string>): string | null {
+  const index = /^gpu\.(\d+)$/i.exec(metrics[0]?.group.trim() ?? "")?.[1];
+  return index !== undefined && metrics.every((metric) => metric.group.trim() === metrics[0].group.trim())
+    ? names.get(index) ?? null : null;
+}
+
 export function MetricModal(props: MetricModalProps) {
   const runtime = useFrontendRuntime();
   const readIntervals = useFrontendReadIntervals();
@@ -99,6 +94,8 @@ export function MetricModal(props: MetricModalProps) {
     active: props.open, intervalMs: readIntervals.current()?.monitor
   }));
   const devices = () => catalogSource.snapshot().data?.fields ?? [];
+  // 显卡组的组名后面写这块显卡的名字（后端编号原样），名字来自字段目录（gpuAdapterNames.ts）。
+  const gpuNames = createMemo(() => gpuAdapterNames(props.catalog, devices()));
   const listboxId = "metric-modal-options";
   let searchInput: HTMLInputElement | undefined;
   let listbox: HTMLDivElement | undefined;
@@ -172,7 +169,7 @@ export function MetricModal(props: MetricModalProps) {
       byKey.set(key, {
         group: userFacingMetricGroup(metrics[0].group),
         metrics,
-        detail: metrics[0].scopeKind === deviceFieldScopeKind ? uiText.metricPicker.deviceFields : gpuGroupName(metrics, devices()),
+        detail: metrics[0].scopeKind === deviceFieldScopeKind ? uiText.metricPicker.deviceFields : gpuGroupName(metrics, gpuNames()),
         // 这一组缺哪些组件，在组标题上说一次。
         missingComponents: [...new Set(metrics
           .filter((metric) => !metricUnavailable(metric))

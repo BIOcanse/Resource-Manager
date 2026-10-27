@@ -9,6 +9,7 @@ import type { Vec } from "../../interactions/protocol/vec.ts";
 import type { DashboardCardSettings, DashboardCardSlot, DashboardMetricBinding, DashboardSlotSize, MetricDefinition, MetricSnapshot } from "../../types";
 import { uiText } from "../../text.ts";
 import { deviceFieldScopeKind } from "./fieldCards.ts";
+import { gpuNameForMetric } from "./gpuAdapterNames.ts";
 import { cardUnits, remainingUnits, sizesThatFit, slotUnits, usedUnits } from "./cardSlots.ts";
 import { cardTrendCapacity, cardTrendPaths, cardTrendRange } from "./cardTrends.ts";
 import type { CardTrendPoint, CardTrends } from "./cardTrends.ts";
@@ -24,6 +25,8 @@ import { exitOnUnmount, reflowNode } from "../../presentation/nodeAnimation.ts";
 interface DashboardProps {
   cards: DashboardCardSettings[];
   catalog: MetricDefinition[];
+  /** 后端编号的显卡各自的名字（monitorStore.gpuNames）：GPU 卡片在标签下用小字写出。 */
+  gpuNames: ReadonlyMap<string, string>;
   snapshot: MetricSnapshot | null;
   /** 还在等首个读数的指标（monitorStore.cardPendingMetricIds）。 */
   pendingMetricIds: ReadonlySet<string>;
@@ -136,6 +139,7 @@ export function Dashboard(props: DashboardProps) {
                           editMode={props.editMode}
                           metricSelectionAvailable={props.metricSelectionAvailable}
                           catalog={props.catalog}
+                          gpuNames={props.gpuNames}
                           snapshot={props.snapshot}
                           pending={props.pendingMetricIds.has(slot().metricId)}
                           trend={props.trends.get(slot().metricId) ?? []}
@@ -218,6 +222,7 @@ function MetricSlot(props: {
   editMode: boolean;
   metricSelectionAvailable: boolean;
   catalog: MetricDefinition[];
+  gpuNames: ReadonlyMap<string, string>;
   snapshot: MetricSnapshot | null;
   pending: boolean;
   trend: readonly CardTrendPoint[];
@@ -234,7 +239,7 @@ function MetricSlot(props: {
   const slotLabel = () => uiText.dashboard.slotLabel(props.cardOrdinal, props.index + 1);
   const view = () => (
     <MetricView metricId={props.slot.metricId} binding={props.slot.binding} size={props.slot.size} catalog={props.catalog}
-      snapshot={props.snapshot} pending={props.pending} trend={props.trend} />
+      gpuNames={props.gpuNames} snapshot={props.snapshot} pending={props.pending} trend={props.trend} />
   );
   return (
     <Show when={props.editMode} fallback={view()}>
@@ -288,6 +293,7 @@ function MetricView(props: {
   metricId: string;
   size: DashboardSlotSize;
   catalog: MetricDefinition[];
+  gpuNames: ReadonlyMap<string, string>;
   snapshot: MetricSnapshot | null;
   pending: boolean;
   trend: readonly CardTrendPoint[];
@@ -305,16 +311,17 @@ function MetricView(props: {
     return label && label !== props.metricId ? label : null;
   };
   const label = () => knownLabel() ?? uiText.dashboard.metricUnavailable;
-  // 设备字段：标签下面写是哪台设备，悬停看字段说明。
-  const deviceName = () => definition()?.scopeKind === deviceFieldScopeKind ? definition()!.group : null;
+  // 设备字段：标签下面写是哪台设备，悬停看字段说明。按编号的显卡指标（gpu.N.*）同样写这块显卡的名字，编号原样。
+  const fieldDevice = () => definition()?.scopeKind === deviceFieldScopeKind;
+  const deviceName = () => fieldDevice() ? definition()!.group : gpuNameForMetric(props.metricId, props.gpuNames);
   // 标签可能被截断：悬停总能看到全名，再加设备与字段说明，或量纲说明。
   const labelTitle = () => {
     if (!knownLabel()) {
       return props.metricId;
     }
-    const extra = deviceName()
+    const extra = fieldDevice()
       ? [deviceName(), definition()?.detail]
-      : [resourceMetricBasis(props.metricId)];
+      : [deviceName(), resourceMetricBasis(props.metricId)];
     return [label(), ...extra].filter(Boolean).join("\n");
   };
   const reading = createMemo(() => absent()

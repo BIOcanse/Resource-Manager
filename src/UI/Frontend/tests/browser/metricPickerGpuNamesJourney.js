@@ -3,17 +3,18 @@ import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 
 export default async function metricPickerGpuNamesJourney(page, baseUrl) {
   const app = await loadAppCopy("zh-CN");
-  // Device order and ordinals deliberately disagree with metric aliases: identity owns the join.
+  // Device order and ordinals deliberately disagree with metric aliases: the GPU scope key owns the join.
+  // As in the real slice 20261027T043049Z, an alias without a bound field has deviceIdentity null; its scopeKey still names the adapter.
   const response = await fetch(`${baseUrl}/__test/scenario`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ metricFieldDevices: [
       { deviceIdentity: "opaque-b", device: { kind: "gpu_adapter", address: null, displayName: "Second GPU", ordinal: 0 }, fields: [] },
       { deviceIdentity: "opaque-a", device: { kind: "gpu_adapter", address: null, displayName: "First GPU", ordinal: 1 }, fields: [] }
     ], metricCatalogExtra: [
-      { id: "gpu.0.usage", unit: "%", deviceIdentity: "opaque-a", selectable: true, detail: "untrusted old detail", candidateSources: [] },
-      { id: "gpu.0.vram", unit: "B", deviceIdentity: "opaque-a", selectable: true, candidateSources: [] },
-      { id: "gpu.1.usage", unit: "%", deviceIdentity: "opaque-b", selectable: true, candidateSources: [] },
-      { id: "gpu.2.usage", unit: "%", deviceIdentity: "absent", selectable: true, candidateSources: [] }
+      { id: "gpu.0.usage", unit: "%", deviceIdentity: "opaque-a", scopeKind: "gpu", scopeKey: "opaque-a", selectable: true, detail: "untrusted old detail", candidateSources: [] },
+      { id: "gpu.0.vram", unit: "B", deviceIdentity: null, scopeKind: "gpu", scopeKey: "opaque-a", selectable: true, candidateSources: [] },
+      { id: "gpu.1.usage", unit: "%", deviceIdentity: "opaque-b", scopeKind: "gpu", scopeKey: "opaque-b", selectable: true, candidateSources: [] },
+      { id: "gpu.2.usage", unit: "%", deviceIdentity: "absent", scopeKind: "gpu", scopeKey: "absent", selectable: true, candidateSources: [] }
     ] })
   });
   assert.equal(response.status, 200);
@@ -28,6 +29,8 @@ export default async function metricPickerGpuNamesJourney(page, baseUrl) {
   await picker.getByRole("group", { name: "GPU1 · Second GPU", exact: true }).waitFor();
   await picker.getByRole("group", { name: "GPU2", exact: true }).waitFor();
   assert.equal(await picker.getByText("untrusted old detail", { exact: true }).count(), 0);
+  // 后端标为可选、还没有首个读数的项（10-27 起绑定了但尚未采样的读数都这样发）照发来的样子可选，不按有没有值另行停用。
+  assert.equal(await picker.locator('[data-metric-id="gpu.0.vram"]').isDisabled(), false, "A selectable metric without a value yet stays selectable");
   // 列表框里只有分组（role=group）和选项：组名不是标题角色，空状态在列表框外。
   const listbox = picker.getByRole("listbox", { name: app.metricPicker.listLabel, exact: true });
   const roles = await listbox.evaluate((element) => ({

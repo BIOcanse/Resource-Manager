@@ -48,6 +48,7 @@ import { solidHost, useInteraction } from "../../interactions/solid/lodestone.ts
 import { createReorderGroup, type ReorderGroup } from "../../interactions/solid/reorderGroup.ts";
 import type { Presentation } from "../../interactions/protocol/runtime.ts";
 import { enterSlot, exitInPlace, settleEntrancesWithin } from "../../presentation/nodeAnimation.ts";
+import { GpuNameNote } from "../monitor/GpuNameNote.tsx";
 
 const rowHeight = 38;
 const overscan = 6;
@@ -87,6 +88,8 @@ interface ResourceTableProps {
   columnSettings: ResourceTableColumnSettings[];
   snapshot: ResourceTableSnapshot | null;
   observation: ObservationState;
+  /** 后端编号的显卡各自的名字（monitorStore.gpuNames）：GPU 列的表头和芯片在编号旁用小字写出。 */
+  gpuNames: ReadonlyMap<string, string>;
   sortColumnId: string;
   sortDirection: string;
   expandedSoftwareIds: Record<string, boolean>;
@@ -216,6 +219,7 @@ export function ResourceTable(props: ResourceTableProps) {
           onElement={(element) => { editorRegion = element; }}
           mode={props.mode}
           catalog={props.catalog}
+          gpuNames={props.gpuNames}
           columns={props.columnSettings}
           processFields={props.processFields}
           snapshotColumns={props.snapshot?.columns ?? []}
@@ -235,6 +239,7 @@ export function ResourceTable(props: ResourceTableProps) {
                 snapshot={props.snapshot}
                 columnSettings={props.columnSettings}
                 processFields={props.processFields}
+                gpuNames={props.gpuNames}
                 sortColumnId={props.sortColumnId}
                 sortDirection={props.sortDirection}
                 expandedSoftwareIds={props.expandedSoftwareIds}
@@ -315,6 +320,7 @@ function ResourceTableColumnEditor(props: {
   onElement?: (element: HTMLDivElement) => void;
   mode: ResourceTableViewMode;
   catalog: MetricDefinition[];
+  gpuNames: ReadonlyMap<string, string>;
   columns: ResourceTableColumnSettings[];
   processFields: readonly ProcessMetricField[];
   /** 当前快照的列：自动选择的列带着后端这次实际读的字段。 */
@@ -374,7 +380,10 @@ function ResourceTableColumnEditor(props: {
                 checked={byId().get(columnId)?.visible ?? editorColumnById().get(columnId)?.visible ?? false}
                 onChange={(event) => props.onToggle(columnId, event.currentTarget.checked)}
               />
-              <button type="button" class="resource-table-column-select" aria-pressed={selected()}>{label()}</button>
+              <button type="button" class="resource-table-column-select" aria-pressed={selected()}>
+                {label()}
+                <GpuNameNote metricId={columnId} names={props.gpuNames} />
+              </button>
             </div>
           );
         }}
@@ -386,7 +395,7 @@ function ResourceTableColumnEditor(props: {
           const current = () => byId().get(columnId)?.source ?? null;
           return (
             <div class="resource-table-column-source">
-              <strong>{label()}</strong>
+              <strong>{label()}<GpuNameNote metricId={columnId} names={props.gpuNames} /></strong>
               <RadioGroupRoot class="segmented resource-table-column-source-choices" ariaLabel={label()}
                 // 存的来源不在目录里（目录变了）时不勾任何一项，不把它显示成自动选择。
                 value={(() => { const index = choices().findIndex((choice) => choice.source === current()); return index < 0 ? "" : `source-${index}`; })()}
@@ -418,6 +427,7 @@ function VirtualResourceTable(props: {
   snapshot: ResourceTableSnapshot | null;
   columnSettings: ResourceTableColumnSettings[];
   processFields: readonly ProcessMetricField[];
+  gpuNames: ReadonlyMap<string, string>;
   sortColumnId: string;
   sortDirection: string;
   expandedSoftwareIds: Record<string, boolean>;
@@ -824,6 +834,8 @@ function VirtualResourceTable(props: {
                   onClick={() => updateSort(column())}
                 >
                   <span>{columnText(column()).label}</span>
+                  {/* GPU 列：列名下面一行小字写这块显卡的名字（编号原样），排序箭头和列名的位置不变。 */}
+                  <GpuNameNote metricId={columnId} names={props.gpuNames} />
                   {/* 排序箭头一直在（不占位置变化）：当前排序列按方向画出，其余可排序列悬停时淡出点下去会得到的降序。
                       数值列的箭头在列名左边，列名右边缘和下面的数字对齐。 */}
                   <Show when={column().sortable}>

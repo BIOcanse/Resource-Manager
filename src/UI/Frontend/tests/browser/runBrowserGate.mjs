@@ -142,6 +142,7 @@ const allJourneys = [
   ["resource-bar-editor", async (...args) => (await import("./resourceBarEditorJourney.js")).default(...args)],
   ["overlay-source-choice", async (...args) => (await import("./overlaySourceChoiceJourney.js")).default(...args)],
   ["metric-picker-gpu-names", metricPickerGpuNamesJourney],
+  ["gpu-names", async (...args) => (await import("./gpuNamesJourney.js")).default(...args)],
   ["gpu-unknown-runtime", gpuUnknownRuntimeJourney],
   ["gpu-committed-thresholds", gpuCommittedThresholdsJourney],
   ["gpu-dedicated-memory-states", async (...args) => (await import("./gpuDedicatedMemoryStatesJourney.js")).default(...args)],

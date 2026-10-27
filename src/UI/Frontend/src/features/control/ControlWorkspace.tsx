@@ -34,7 +34,8 @@ import {
 } from "./ControlCapabilityEditor";
 import { ControlFirstRunNotice } from "./ControlFirstRunNotice";
 import { controlItemTone } from "../../presentation/statusTone.ts";
-import { controlCapabilityLabel, controlDisplayText, controlOutcomeReason, controlObjectName } from "./controlPresentation.ts";
+import { controlCapabilityLabel, controlDisplayText, controlFanGpuName, controlOutcomeReason, controlObjectName } from "./controlPresentation.ts";
+import { GpuNameText } from "../monitor/GpuNameNote.tsx";
 import {
   controlItemStatusOf,
   canRetryControlObject,
@@ -394,6 +395,7 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
                   {(object) => (
                     <ControlObjectCard
                       object={object}
+                      gpuName={controlFanGpuName(object, catalog()?.objects ?? [])}
                       fanModeChoice={fanModes().get(object.id)}
                       onFanModeChoice={(mode) => chooseFanMode(object.id, mode)}
                       takingOver={takingOver().has(object.id)}
@@ -475,6 +477,8 @@ function siblingFansTakenOverWith(
 
 function ControlObjectCard(props: {
   object: ControlObject;
+  /** 显卡风扇控制器所属显卡的名字（controlFanGpuName），在编号旁用小字写出；没有为 null。 */
+  gpuName: string | null;
   fanModeChoice?: string;
   onFanModeChoice: (mode: string | null) => void;
   takingOver: boolean;
@@ -642,7 +646,7 @@ function ControlObjectCard(props: {
       classList={{ "control-object-inactive": !props.object.isControllable }}
     >
       <header>
-        <strong>{controlObjectName(props.object)}</strong>
+        <strong>{controlObjectName(props.object)}<GpuNameText name={props.gpuName} /></strong>
         <span class="control-object-platform">
           {/* 每个对象自带自己的情况，不是全局的：一台机器上 A 卡和 N 卡各是一种。 */}
           {uiText.control.term[props.object.platform.operatingSystem]}
@@ -1112,7 +1116,10 @@ function ControlInstancesPanel(props: {
         <For each={props.catalog?.instances ?? []}>
           {(view) => (
             <li classList={{ "control-instance-absent": !view.isPresent }}>
-              <span class="control-capability-label">{controlObjectName(view.instance)}</span>
+              <span class="control-capability-label">
+                {controlObjectName(view.instance)}
+                <GpuNameText name={controlFanGpuName(view.instance, (props.catalog?.instances ?? []).map((other) => other.instance))} />
+              </span>
               <span class="control-object-platform">
                 {view.isPresent
                   ? uiText.control.instances.present
