@@ -37,6 +37,8 @@ public static class @FrontendPoints
     public static readonly string @Language = @FrontendPointsValues.@__fpValue_Language;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200290008UL)]
     public static readonly string @ByteUnitMode = @FrontendPointsValues.@__fpValue_ByteUnitMode;
+    [global::FreedomPoint.FreedomPointBinding(0x00010002002C0000UL)]
+    public const int @VisibilityCooldownMs = @FrontendPointsValues.@__fpValue_VisibilityCooldownMs;
     [global::FreedomPoint.FreedomPointBinding(0x00010002002D0000UL)]
     public static readonly PointRefreshSetting @Monitor = @FrontendPointsValues.@__fpValue_Monitor;
     [global::FreedomPoint.FreedomPointBinding(0x00010002002D0001UL)]

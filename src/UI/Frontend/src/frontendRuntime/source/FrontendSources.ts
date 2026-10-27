@@ -1,4 +1,7 @@
 import type { CpuObservationResult } from "../../data/cpu/cpuSourceDecoders.ts";
+import { createControlSources } from "../../data/control/controlSources.ts";
+import { createLoginStartupSource } from "../../data/loginStartup/loginStartupSource.ts";
+import { createSettingsReadSources } from "../../data/settingsReadSources.ts";
 import { metricCurrentItems } from "../../data/monitor/metricCurrentItems.ts";
 import { metricFieldCurrentItems } from "../../data/metricFields/metricFieldCurrentItems.ts";
 import { gpuSpecializedCurrentItems } from "../../data/gpu/gpuSpecializedCurrentItems.ts";
@@ -164,6 +167,7 @@ import { getMemoryProtectionStatus, getNormalRunningPoint } from "../../data/mem
 import type { HostMemoryProtectionStatus, NormalRunningPoint } from "../../data/memoryProtection/memoryProtectionTypes.ts";
 import type { AiGatewayCredentialView } from "../../types.ts";
 import { getAiGatewayCredentials } from "../../data/aiGatewayCredentials.ts";
+import { getCpuBaselineRatio, type CpuBaselineRatioSettings } from "../../data/cpu/cpuBaselineRatioApi.ts";
 import {
   canonicalizeSourceQuery,
   type SourceRegistry
@@ -172,6 +176,9 @@ import {
 export interface FrontendSources {
   readonly memoryProtection: SourceHandle<HostMemoryProtectionStatus>;
   readonly normalRunningPoint: SourceHandle<NormalRunningPoint | null>;
+  readonly control: ReturnType<typeof createControlSources>;
+  readonly loginStartup: SourceHandle<boolean>;
+  readonly settingsReads: ReturnType<typeof createSettingsReadSources>;
   readonly managementComponents: SourceHandle<ManagedComponent[]>;
   readonly managementSoftware: SourceHandle<SoftwareRecord[]>;
   readonly managementBrowserRuntimes: SourceHandle<BrowserRuntimeSnapshot>;
@@ -193,6 +200,7 @@ export interface FrontendSources {
   /** 优化页的调度状态（模式、运行、故障关闭、待确认、已优化对象数），后端推送。 */
   readonly smartCoordinatorStatus: PushValueSource<HostManagerSmartCoordinatorStatus>;
   readonly cpuExclusiveBindings: SourceHandle<CpuObservationResult<CpuExclusiveBindingSnapshot>>;
+  readonly cpuBaselineRatio: SourceHandle<CpuBaselineRatioSettings | null>;
   readonly metricCatalog: SourceHandle<MetricDefinition[]>;
   /** 进程字段目录（后端常量表）：资源表列的来源选择从这里来。 */
   readonly processFieldCatalog: SourceHandle<readonly ProcessMetricField[]>;
@@ -245,6 +253,9 @@ export function createFrontendSources(
       retainLastGood: false,
       selectCapturedAt: value => value?.at ?? null
     }),
+    control: createControlSources(sourceRegistry, requestClient),
+    loginStartup: createLoginStartupSource(sourceRegistry),
+    settingsReads: createSettingsReadSources(sourceRegistry, requestClient),
     managementComponents: sourceRegistry.define({
       key: "management.components",
       load: signal => getManagementComponents(requestClient, signal),
@@ -348,6 +359,11 @@ export function createFrontendSources(
       channel: subscriptionChannel,
       buildUrl: buildHostManagerSmartStatusSubscriptionUrl,
       decoder: hostManagerSmartStatusDecoder
+    }),
+    cpuBaselineRatio: sourceRegistry.define<CpuBaselineRatioSettings | null>({
+      key: "cpu.baseline-ratio",
+      load: (signal) => getCpuBaselineRatio(requestClient, signal),
+      retainLastGood: false
     }),
     cpuExclusiveBindings: sourceRegistry.define<CpuObservationResult<CpuExclusiveBindingSnapshot>>({
       key: "cpu.exclusive-bindings",

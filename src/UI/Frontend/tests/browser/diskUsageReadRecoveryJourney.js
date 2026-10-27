@@ -39,6 +39,9 @@ export default async function diskUsageReadRecoveryJourney(page, baseUrl) {
       const gate = new Promise(resolve => { releaseInitialReads = resolve; });
       await page.route(initialReadPattern, async route => { await gate; await route.continue(); });
     }
+    // Pending/empty/failure are independent per-language initial-runtime cases.
+    // Navigation now correctly retains an accepted result across page lifetimes.
+    await page.reload({ waitUntil: "domcontentloaded" });
     await navigation.getByRole("button", { name: copy.page.diskUsage, exact: true }).click();
     const workspace = page.locator(".disk-usage-page");
     if (releaseInitialReads) {
@@ -71,12 +74,17 @@ export default async function diskUsageReadRecoveryJourney(page, baseUrl) {
       assert(Math.abs(emptyHeight - pendingResultHeight) <= 1, `Disk pending/accepted-empty height changed: ${pendingResultHeight} -> ${emptyHeight}`);
     }
 
-    await patch({ diskUsageVolumesEmpty: false, diskUsageMultiRoot: true });
+    await patch({ diskUsageVolumesEmpty: false, diskUsageMultiRoot: true,
+      diskUsageScanLifecycle: true, diskUsageScanCompletionDelayMs: 200 });
     await navigation.getByRole("button", { name: copy.page.monitor, exact: true }).click();
     await navigation.getByRole("button", { name: copy.page.diskUsage, exact: true }).click();
     await waitForContentSettled(page);
     await workspace.locator(".disk-usage-result").waitFor();
     await workspace.locator(".disk-usage-volume").first().waitFor();
+    // Accept a non-empty result through its real invalidation owner. A page
+    // round trip must not be used to replace an already accepted empty result.
+    await workspace.locator(".disk-usage-setup-actions button").last().click();
+    await workspace.getByRole("button", { name: copy.diskUsage.resetView, exact: true }).waitFor();
     await patch({ diskUsageVolumesFailure: true, diskUsageResultFailure: true });
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     // A completed scan invalidates authoritative facts; reset/zoom only lays out local facts.

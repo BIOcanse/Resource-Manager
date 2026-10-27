@@ -6,12 +6,16 @@ import { uiText } from "../../../text.ts";
 import { ConfirmDialog, type ConfirmDialogRecord, type ConfirmDialogRequest } from "../../../ui/patterns/ConfirmDialog.tsx";
 import { useAccessRequestSnapshot } from "../../trustedAccess/AccessRequestSnapshotContext.tsx";
 import { useFrontendRuntime } from "../../../frontendRuntime/FrontendRuntimeContext";
+import { useFrontendWork } from "../../../frontendWork/FrontendWorkContext";
+import { useSource } from "../../../frontendRuntime/source/useSource.ts";
+import { sourceCanRender } from "../../../frontendRuntime/source/SourceSnapshot.ts";
+import { acceptSourceCommand } from "../../../frontendRuntime/source/acceptSourceCommand.ts";
+import { refreshAccessKeysAfterCommand } from "../../../data/settingsReadSources.ts";
 import {
   approveAccessRequest,
   createAccessKey,
   denyAccessRequest,
   enableDefaultAccessKeyElevated,
-  getAccessKeySnapshot,
   revokeAccessKey,
   rotateAccessKey,
   setDefaultAccessKey,
@@ -55,12 +59,21 @@ export function TrustedAccessManager(props: {
   onHeadingChange?: (heading: HTMLElement | undefined) => void;
 }) {
   const runtime = useFrontendRuntime();
+  const frontendWork = useFrontendWork();
   const pendingSnapshot = useAccessRequestSnapshot();
   const requestList = createMemo(() => accessRequestListView(pendingSnapshot()));
   const requestById = createMemo(() => new Map(requestList().requests.map((request) => [request.requestId, request])));
   const requestIds = createMemo(() => requestList().requests.map((request) => request.requestId),
     [], { equals: (previous, next) => previous.length === next.length && previous.every((id, index) => id === next[index]) });
-  const [keyList, setKeyList] = createSignal<KeyListState>({ status: "loading" });
+  const keySource = useSource(runtime.sources.settingsReads.accessKeys,
+    () => ({ active: frontendWork.frontendVisible(), refreshIntervalMs: null }));
+  const keyList = (): KeyListState => {
+    const current = keySource.snapshot();
+    if (sourceCanRender(current) && current.data) return { status: "ready", snapshot: current.data };
+    if (current.status === "idle" || current.status === "loading") return { status: "loading" };
+    return { status: "failed", reason: current.error instanceof TrustedAccessRequestError ? current.error.reason : "failed",
+      error: current.error };
+  };
   const [created, setCreated] = createSignal<AccessKeyCreated | null>(null);
   const [createdCopied, setCreatedCopied] = createSignal(false);
   const [name, setName] = createSignal("");
@@ -87,22 +100,9 @@ export function TrustedAccessManager(props: {
       : props.copy.failureReasons[kind];
   };
 
-  /** 读取密钥列表。showLoading 为 false 时，读取期间保留当前列表，读取失败仍切到失败状态。 */
-  const load = async (showLoading = true) => {
-    if (showLoading) setKeyList({ status: "loading" });
-    try {
-      setKeyList({ status: "ready", snapshot: await getAccessKeySnapshot(props.copy.loadFailed) });
-    } catch (reason) {
-      setKeyList({
-        status: "failed",
-        reason: reason instanceof TrustedAccessRequestError ? reason.reason : "failed",
-        error: reason
-      });
-    }
-  };
+  const load = () => keySource.refresh({ afterCurrent: true });
   onMount(() => {
     props.onHeadingChange?.(managerHeading);
-    void load();
   });
   onCleanup(() => props.onHeadingChange?.(undefined));
 
@@ -114,10 +114,9 @@ export function TrustedAccessManager(props: {
     const state = keyList();
     return state.status === "failed" ? state : null;
   };
-  const updateSnapshot = (update: (current: AccessKeySnapshot) => AccessKeySnapshot) => {
-    const state = keyList();
-    if (state.status === "ready") setKeyList({ status: "ready", snapshot: update(state.snapshot) });
-  };
+  const acceptKeyCommand = <T,>(command: () => Promise<T>, update: (current: AccessKeySnapshot, result: T) => AccessKeySnapshot) =>
+    acceptSourceCommand(runtime.sources.settingsReads.accessKeys, command,
+      (result, current) => sourceCanRender(current) && current.data ? update(current.data, result) : undefined);
 
   let previousRequests = new Map<string, AccessRequestPending>();
   createEffect(() => {
@@ -206,8 +205,8 @@ export function TrustedAccessManager(props: {
   const generate = () => runAction("create", props.copy.actionFailed, async () => {
     const displayName = name().trim();
     if (!displayName || createScopes().length === 0) return;
-    const result = await createAccessKey(displayName, createScopes(), props.copy.actionFailed);
-    updateSnapshot((current) => ({ ...current, keys: [...current.keys, result.key] }));
+    const result = await acceptKeyCommand(() => createAccessKey(displayName, createScopes(), props.copy.actionFailed),
+      (current, result) => ({ ...current, keys: [...current.keys, result.key] }));
     setName("");
     setSelectedCreateScopes(null);
     showCreated(result);
@@ -220,8 +219,7 @@ export function TrustedAccessManager(props: {
       tone: "warning"
     })) return;
     await runAction(`key:${key.id}`, props.copy.actionFailed, async () => {
-      const result = await rotateAccessKey(key.id, props.copy.actionFailed);
-      updateSnapshot((current) => ({
+      const result = await acceptKeyCommand(() => rotateAccessKey(key.id, props.copy.actionFailed), (current, result) => ({
         ...current,
         keys: [...current.keys.filter((candidate) => candidate.id !== key.id), result.key]
       }));
@@ -237,8 +235,8 @@ export function TrustedAccessManager(props: {
     })) return;
     const index = independentKeys().findIndex((candidate) => candidate.id === key.id);
     if (!await runAction(`key:${key.id}`, props.copy.actionFailed, async () => {
-      await revokeAccessKey(key.id, props.copy.actionFailed);
-      updateSnapshot((current) => ({ ...current, keys: current.keys.filter((candidate) => candidate.id !== key.id) }));
+      await acceptKeyCommand(() => revokeAccessKey(key.id, props.copy.actionFailed),
+        (current) => ({ ...current, keys: current.keys.filter((candidate) => candidate.id !== key.id) }));
       if (created()?.key.id === key.id) setCreated(null);
     })) return;
     // 被撤销的行已移除：焦点移到同一位置的下一行，没有行时移到列表标题。
@@ -253,9 +251,8 @@ export function TrustedAccessManager(props: {
       tone: "error"
     })) return;
     if (!await runAction("default", props.copy.actionFailed, async () => {
-      await setDefaultAccessKey("disable", props.copy.actionFailed);
       // 关闭后界面已没有可用的密钥，不再读取列表；按返回结果更新。
-      updateSnapshot((current) => ({
+      await acceptKeyCommand(() => setDefaultAccessKey("disable", props.copy.actionFailed), (current) => ({
         ...current,
         defaultEnabled: false,
         defaultKeyId: null,
@@ -274,37 +271,36 @@ export function TrustedAccessManager(props: {
       tone: "warning"
     })) return;
     await runAction("default", props.copy.actionFailed, async () => {
-      await setDefaultAccessKey("rotate", props.copy.actionFailed);
-      setCreated(null);
-      // 界面用的就是默认密钥：旧密钥上的推送流已被后端结束，按新密钥重连。
-      runtime.reconnectSubscriptions();
-      await load(false);
+      await refreshAccessKeysAfterCommand(runtime.sources.settingsReads.accessKeys, async () => {
+        await setDefaultAccessKey("rotate", props.copy.actionFailed);
+        setCreated(null);
+        // 界面用的就是默认密钥：旧密钥上的推送流已被后端结束，按新密钥重连。
+        runtime.reconnectSubscriptions();
+      });
     });
   };
   const enableDefault = async () => {
     if (!await runAction("default", props.copy.actionFailed, async () => {
-      await enableDefaultAccessKeyElevated(props.copy.actionFailed);
-      // 关闭期间推送流收到 401 已终止，集合没变也要重连。
-      runtime.reconnectSubscriptions();
-      await load(keyList().status !== "ready");
+      await refreshAccessKeysAfterCommand(runtime.sources.settingsReads.accessKeys, async () => {
+        await enableDefaultAccessKeyElevated(props.copy.actionFailed);
+        // 关闭期间推送流收到 401 已终止，集合没变也要重连。
+        runtime.reconnectSubscriptions();
+      });
     })) return;
     // 恢复入口已经消失：焦点交给默认密钥区的标题（读取失败时交给整个区的标题）。
     (defaultHeading?.isConnected ? defaultHeading : document.getElementById("trustedAccessManagerTitle"))?.focus();
   };
   const decide = (request: AccessRequestPending, action: "approve" | "deny") =>
     runAction(`request:${request.requestId}`, props.copy.requestActionFailed, async () => {
-      const result = action === "approve"
-        ? await approveAccessRequest(request.requestId, requestScopes(request), props.copy.requestActionFailed)
-        : await denyAccessRequest(
+      const result = await acceptKeyCommand(() => action === "approve"
+        ? approveAccessRequest(request.requestId, requestScopes(request), props.copy.requestActionFailed)
+        : denyAccessRequest(
           request.requestId,
           denyReasons()[request.requestId] ?? "not-approved",
-          props.copy.requestActionFailed);
-      if (result.key) {
-        updateSnapshot((current) => ({
+          props.copy.requestActionFailed), (current, result) => result.key ? ({
           ...current,
           keys: [...current.keys.filter((key) => key.id !== result.key!.id), result.key!]
-        }));
-      }
+        }) : current);
       rememberOutcome(request, result);
       // 这张请求卡片会随订阅更新移除：焦点先移到请求区标题，结果由状态行播报。
       requestsHeading?.focus();

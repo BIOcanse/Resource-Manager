@@ -1,7 +1,10 @@
-import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
-import { getReportRuleSettings } from "../../../api.ts";
+import { For, Show } from "solid-js";
+import { useFrontendRuntime } from "../../../frontendRuntime/FrontendRuntimeContext";
+import { useFrontendWork } from "../../../frontendWork/FrontendWorkContext";
+import { useSource } from "../../../frontendRuntime/source/useSource.ts";
+import { sourceCanRender } from "../../../frontendRuntime/source/SourceSnapshot.ts";
 import { uiText } from "../../../text.ts";
-import type { AppReportSettings, ReportRuleField, ReportRuleSetting, ReportRuleSettingsResponse } from "../../../types.ts";
+import type { AppReportSettings, ReportRuleField, ReportRuleSetting } from "../../../types.ts";
 import { emptyReportRuleValues, parseExecutableNames, parseReportRuleRejection,
   reportRuleNumberField, updateReportRuleField } from "../reportRuleSettingsModel.ts";
 import { NumberField } from "./SettingsControls";
@@ -11,27 +14,14 @@ export function ReportRuleSettings(props: {
   runtimeFailureCode?: string | null;
   onChange: (reports: AppReportSettings) => void;
 }) {
-  const [catalog, setCatalog] = createSignal<ReportRuleSettingsResponse>();
-  const [loading, setLoading] = createSignal(true);
-  const [failed, setFailed] = createSignal(false);
-  let controller: AbortController | undefined;
-  const load = async () => {
-    controller?.abort();
-    const request = new AbortController();
-    controller = request;
-    setLoading(true);
-    setFailed(false);
-    try {
-      const result = await getReportRuleSettings(request.signal);
-      if (!request.signal.aborted) setCatalog(result);
-    } catch {
-      if (!request.signal.aborted) setFailed(true);
-    } finally {
-      if (!request.signal.aborted) setLoading(false);
-    }
-  };
-  onMount(() => { void load(); });
-  onCleanup(() => controller?.abort());
+  const runtime = useFrontendRuntime();
+  const frontendWork = useFrontendWork();
+  const source = useSource(runtime.sources.settingsReads.reportRules,
+    () => ({ active: frontendWork.frontendVisible(), refreshIntervalMs: null }));
+  const catalog = () => sourceCanRender(source.snapshot()) ? source.snapshot().data : null;
+  const loading = () => source.snapshot().status === "idle" || source.snapshot().status === "loading";
+  const failed = () => source.snapshot().status === "error" || source.snapshot().status === "unavailable";
+  const load = () => source.refresh();
   const text = () => uiText.reportRules;
   const groups = () => [...new Set(catalog()?.rules.map(rule => rule.reportType) ?? [])];
   const title = (type: string) => {
@@ -67,19 +57,20 @@ export function ReportRuleSettings(props: {
     </Show>
     <For each={groups()}>{group => <section class="report-rule-group" aria-label={title(group)}>
       <h3>{title(group)}</h3>
-      <For each={catalog()!.rules.filter(rule => rule.reportType === group)}>{rule =>
-        <section class="report-rule" aria-label={ruleLabel(rule.name)}>
-          <strong>{ruleLabel(rule.name)}</strong>
-          <Show when={reason(rule.name, "rule")}><p role="alert">{reason(rule.name, "rule")}</p></Show>
-          <For each={rule.editableFields}>{field => <div class="settings-row report-rule-field">
+      <For each={catalog()!.rules.filter(rule => rule.reportType === group).map(rule => rule.name)}>{name => {
+        const rule = () => catalog()!.rules.find(rule => rule.name === name)!;
+        return <section class="report-rule" aria-label={ruleLabel(name)}>
+          <strong>{ruleLabel(name)}</strong>
+          <Show when={reason(name, "rule")}><p role="alert">{reason(name, "rule")}</p></Show>
+          <For each={rule().editableFields}>{field => <div class="settings-row report-rule-field">
             <Show when={field === "executableNames"} fallback={(() => {
               const numericField = field as Exclude<ReportRuleField, "executableNames">;
-              const model = () => reportRuleNumberField(rule, overrides(rule), numericField);
+              const model = () => reportRuleNumberField(rule(), overrides(rule()), numericField);
               return <>
                 <NumberField label={text().fields[numericField]}
-                  ariaLabel={`${ruleLabel(rule.name)} · ${text().fields[numericField]}`}
+                  ariaLabel={`${ruleLabel(name)} · ${text().fields[numericField]}`}
                   value={model().value} min={model().min} max={model().max} step={model().step}
-                  onChange={value => change(rule, numericField, value * model().scale)} />
+                  onChange={value => change(rule(), numericField, value * model().scale)} />
                 <span>{text().units[model().unit]}</span>
                 <span class="report-rule-default">{text().defaultValue} {model().defaultValue} {text().units[model().unit]}</span>
               </>;
@@ -88,29 +79,29 @@ export function ReportRuleSettings(props: {
                 <label>
                   <strong>{text().fields.executableNames}</strong>
                   <textarea class="settings-text-field" rows={6}
-                    aria-label={`${ruleLabel(rule.name)} · ${text().fields.executableNames}`}
-                    value={(overrides(rule).executableNames ?? rule.defaults.executableNames ?? []).join("\n")}
+                    aria-label={`${ruleLabel(name)} · ${text().fields.executableNames}`}
+                    value={(overrides(rule()).executableNames ?? rule().defaults.executableNames ?? []).join("\n")}
                     onBlur={event => {
                       const names = parseExecutableNames(event.currentTarget.value);
                       event.currentTarget.value = names.join("\n");
-                      if (JSON.stringify(names) !== JSON.stringify(overrides(rule).executableNames ?? rule.defaults.executableNames)) {
-                        change(rule, "executableNames", names);
+                      if (JSON.stringify(names) !== JSON.stringify(overrides(rule()).executableNames ?? rule().defaults.executableNames)) {
+                        change(rule(), "executableNames", names);
                       }
                     }} />
                 </label>
                 <span>{text().executableNamesHelp}</span>
-                <span>{text().defaultValue}: {(rule.defaults.executableNames ?? []).join(", ")}</span>
+                <span>{text().defaultValue}: {(rule().defaults.executableNames ?? []).join(", ")}</span>
               </div>
             </Show>
-            <Show when={overrides(rule)[field] !== null}>
+            <Show when={overrides(rule())[field] !== null}>
               <button type="button" class="secondary-button"
-                aria-label={`${ruleLabel(rule.name)} · ${text().fields[field]} · ${text().reset}`}
-                onClick={() => change(rule, field, null)}>{text().reset}</button>
+                aria-label={`${ruleLabel(name)} · ${text().fields[field]} · ${text().reset}`}
+                onClick={() => change(rule(), field, null)}>{text().reset}</button>
             </Show>
-            <Show when={reason(rule.name, field)}><p class="report-rule-error" role="alert">{reason(rule.name, field)}</p></Show>
+            <Show when={reason(name, field)}><p class="report-rule-error" role="alert">{reason(name, field)}</p></Show>
           </div>}</For>
-        </section>
-      }</For>
+        </section>;
+      }}</For>
     </section>}</For>
   </section>;
 }

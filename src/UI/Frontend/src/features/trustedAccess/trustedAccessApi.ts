@@ -1,4 +1,5 @@
 import { ApiRequestError, requestJson, requestNoContent } from "../../api/httpTransport.ts";
+import { RequestProblem } from "../../frontendRuntime/request/RequestProblem.ts";
 import { sendElevatedBackendJson } from "../../api/elevatedBackendRequest.ts";
 import type { ResponseDecoder } from "../../frontendRuntime/request/ResponseDecoder.ts";
 import {
@@ -32,7 +33,7 @@ export class TrustedAccessRequestError extends Error {
 
 /** 按后端的状态码和错误码归类失败；其余错误原样作为 failed 的原因。 */
 export function classifyTrustedAccessFailure(error: unknown): TrustedAccessFailureReason {
-  if (!(error instanceof ApiRequestError) || error.kind !== "http") return "failed";
+  if (!(error instanceof ApiRequestError || error instanceof RequestProblem) || error.kind !== "http") return "failed";
   const code = typeof error.payload === "object" && error.payload !== null && "error" in error.payload
     ? (error.payload as { error: unknown }).error
     : null;

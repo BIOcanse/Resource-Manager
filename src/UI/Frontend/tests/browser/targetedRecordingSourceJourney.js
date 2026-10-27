@@ -1,5 +1,6 @@
 import { NOT_GHOST } from "./liveLocator.js";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
+import { ResourceManager } from "../../src/preferences/generated/frontendPoints.values.ts";
 
 export default async function targetedRecordingSourceJourney(page, baseUrl) {
   const failures = [];
@@ -45,8 +46,8 @@ export default async function targetedRecordingSourceJourney(page, baseUrl) {
       return pageFetch(input, init);
     };
   });
-  const passPollWindow = async () => {
-    await page.clock.runFor(pollWindowMs);
+  const passPollWindow = async (durationMs = pollWindowMs) => {
+    await page.clock.runFor(durationMs);
     const issued = await page.evaluate(() => structuredClone(window.__targetedRecordingRequestsIssued));
     const caughtUp = () => listReads >= issued.list
       && Object.entries(issued.reports).every(([id, count]) => (reportReads.get(id) ?? 0) >= count);
@@ -130,10 +131,11 @@ export default async function targetedRecordingSourceJourney(page, baseUrl) {
   });
   const control = detail.locator(".targeted-recording-control");
   await control.waitFor({ state: "visible", timeout: 3000 });
-  const readsBeforeHidden = listReads;
   await page.evaluate(() => window.setDocumentVisibilityForJourney(false));
   assert(await page.evaluate(() => document.visibilityState) === "hidden",
     "The fixture did not hide document visibility");
+  await passPollWindow(ResourceManager.FrontendPoints.VisibilityCooldownMs);
+  const readsBeforeHidden = listReads;
   await passPollWindow();
   assert(listReads === readsBeforeHidden,
     `The mounted recording control kept polling while the document was hidden: ${readsBeforeHidden} -> ${listReads}`);

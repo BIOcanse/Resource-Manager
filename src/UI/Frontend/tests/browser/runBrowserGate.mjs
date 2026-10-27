@@ -79,6 +79,7 @@ import accessibilitySemanticsJourney from "./accessibilitySemanticsJourney.js";
 // browserGateRunner.mjs，用法见那里的说明。
 const allJourneys = [
   ["core-lease-contract", async (...args) => (await import("./coreLeaseContractJourney.js")).default(...args)],
+  ["page-value-retention", async (...args) => (await import("./pageValueRetentionJourney.js")).default(...args)],
   ["realistic-data-sweep", async (...args) => (await import("./realisticDataSweepJourney.js")).default(...args)],
   ["management-source-states", managementSourceStatesJourney],
   ["monitor-page-task", async (...args) => (await import("./monitorPageTaskJourney.js")).default(...args)],

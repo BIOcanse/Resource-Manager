@@ -161,9 +161,9 @@ assert.doesNotMatch(
   /getHostManagerRollbackState|useFrontendWorkPoll|setObservation|ObservationStateBoundary|onRetry/);
 
 // GPU scheduling loads static scoring data once and displays three backend push streams directly.
-assert.match(gpuModel, /runtime\.sources\.metricCatalog\.acquire/);
-assert.match(gpuModel, /runtime\.sources\.gpuSchedulingModel\.acquire/);
-assert.match(gpuModel, /modelBinding\.switch/);
+assert.match(gpuModel, /useSource\(runtime\.sources\.metricCatalog,/);
+assert.match(gpuModel, /useSourceFamily\(runtime\.sources\.gpuSchedulingModel,/);
+assert.doesNotMatch(gpuModel, /modelBinding|SourceLeaseBinding/);
 assert.match(gpuModel, /usePushSource\(runtime\.sources\.metricSnapshot,/);
 assert.match(gpuModel, /usePushSource\(runtime\.sources\.resourceMonitor,/);
 assert.match(gpuModel, /usePushSource\(runtime\.sources\.gpuSpecializedTelemetry,/);

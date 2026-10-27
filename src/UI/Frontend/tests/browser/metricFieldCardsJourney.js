@@ -1,4 +1,5 @@
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
+import { NOT_GHOST } from "./liveLocator.js";
 import { uiStyles } from "../../src/presentation/uiStyles.ts";
 import {
   checkFieldCardDisplay,
@@ -57,7 +58,8 @@ export default async function metricFieldCardsJourney(page, baseUrl) {
     throw new Error(`saved card lacks the device-field binding: ${JSON.stringify(memory)}`);
   }
 
-  const row = () => page.locator(".metric-card").filter({ hasText: label }).locator(".metric-small-row").filter({ hasText: label });
+  const row = () => page.locator(`.metric-card${NOT_GHOST}`).filter({ hasText: label })
+    .locator(`.metric-small-row${NOT_GHOST}`).filter({ hasText: label });
   await row().locator(".metric-value").filter({ hasText: "137.5%" }).waitFor({ timeout: 15_000 });
   await row().locator(".metric-device").filter({ hasText: group }).waitFor();
 

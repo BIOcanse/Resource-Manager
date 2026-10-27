@@ -1,6 +1,11 @@
-import { Show, createSignal, onMount } from "solid-js";
+import { Show, createSignal } from "solid-js";
 import type { SettingsTextBundle } from "../../../text.ts";
 import { requestLoginStartup } from "../shellLoginStartup.ts";
+import { useFrontendRuntime } from "../../../frontendRuntime/FrontendRuntimeContext.tsx";
+import { useFrontendWork } from "../../../frontendWork/FrontendWorkContext.tsx";
+import { useSource } from "../../../frontendRuntime/source/useSource.ts";
+import { sourceCanRender } from "../../../frontendRuntime/source/SourceSnapshot.ts";
+import { acceptSourceCommand } from "../../../frontendRuntime/source/acceptSourceCommand.ts";
 
 /**
  * 当前用户的登录启动项，由原生壳读写。
@@ -8,41 +13,45 @@ import { requestLoginStartup } from "../shellLoginStartup.ts";
  * 写入失败时保留它并重新读取一次，开关显示读回的实际状态；读取失败时开关不可用，直到重试读到状态。
  */
 export function FrontendStartupSetting(props: { text: SettingsTextBundle["systemIntegration"] }) {
-  const [confirmed, setConfirmed] = createSignal<boolean | null>(null);
-  const [phase, setPhase] = createSignal<"reading" | "writing" | "idle">("reading");
-  const [failure, setFailure] = createSignal<"read" | "write" | null>(null);
+  const runtime = useFrontendRuntime();
+  const work = useFrontendWork();
+  const source = useSource(runtime.sources.loginStartup, () => ({ active: work.frontendVisible(), refreshIntervalMs: null }));
+  const confirmed = () => sourceCanRender(source.snapshot()) ? source.snapshot().data : null;
+  const [working, setWorking] = createSignal<"reading" | "writing" | null>(null);
+  const phase = () => working() ?? (["idle", "loading"].includes(source.snapshot().status) ? "reading" : "idle");
+  const [commandFailed, setCommandFailed] = createSignal(false);
+  const failure = () => ["error", "unavailable"].includes(source.snapshot().status) ? "read" : commandFailed() ? "write" : null;
   const [lastRequested, setLastRequested] = createSignal<boolean | null>(null);
   let toggle: HTMLInputElement | undefined;
   const read = async () => {
-    setPhase("reading");
+    setWorking("reading");
+    const lease = runtime.sources.loginStartup.acquire({ active: false });
     try {
-      setConfirmed(await requestLoginStartup());
-    } catch {
-      setConfirmed(null);
-      setFailure("read");
+      await lease.refresh();
     } finally {
-      setPhase("idle");
+      lease.release();
+      setWorking(null);
     }
   };
   const retryRead = async () => {
-    setFailure(null);
+    setCommandFailed(false);
     await read();
   };
   const write = async (value: boolean) => {
     setLastRequested(value);
-    setFailure(null);
-    setPhase("writing");
+    setCommandFailed(false);
+    setWorking("writing");
     try {
-      setConfirmed(await requestLoginStartup(value));
-      setPhase("idle");
+      await acceptSourceCommand(runtime.sources.loginStartup, () => requestLoginStartup(value), result => result);
     } catch {
       // 写入失败：重新读取一次（读取失败会改为 read 失败），开关同步成读回的状态。
-      setFailure("write");
+      setCommandFailed(true);
       await read();
       if (toggle) toggle.checked = confirmed() === true;
+    } finally {
+      setWorking(null);
     }
   };
-  onMount(() => { void read(); });
   const statusText = () => {
     if (phase() === "reading" && confirmed() === null) return props.text.loginStartLoading;
     if (failure() === "write") return props.text.loginStartWriteFailed;

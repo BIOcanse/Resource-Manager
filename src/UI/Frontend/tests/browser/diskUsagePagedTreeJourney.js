@@ -30,7 +30,7 @@ export default async function diskUsagePagedTreeJourney(page, baseUrl) {
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   let currentLanguage = "zh-CN";
   const checked = [];
-  const title = page.locator(".disk-usage-result .optimization-heading h2");
+  const title = page.locator(`.disk-usage-result .optimization-heading h2${NOT_GHOST}`);
   const canvas = page.locator(`.disk-usage-treemap-canvas${NOT_GHOST}`);
   for (const option of languageOptions.filter(option => option.id !== "system")) {
     if (currentLanguage !== option.id) {

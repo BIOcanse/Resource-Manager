@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { fanModeFacts } from "./fanModeFacts.js";
+import { waitForContentSettled } from "./contentSettled.js";
 
 export default async function fanManagementModesJourney(page, baseUrl) {
   let objects = [{ objectId: "fan:mixed", settings: [
@@ -54,12 +55,27 @@ export default async function fanManagementModesJourney(page, baseUrl) {
   // 选中项不可用时同样落到第一个可用项上。
   assert.equal(await limited.locator('.control-ownership-choice [role="radio"][tabindex="0"]').count(),1);
   assert.deepEqual(writes,[]);
+  let firmwareGeometry;
   for(const mode of ["固件写入","软件管理","固件管理"]) {
     await card.getByRole("radio",{name:mode,exact:true}).click();
     await card.locator(".control-readings dd").filter({hasText:"2500"}).waitFor();
     assert.equal(await card.locator(".control-capabilities").getByText("转速",{exact:true}).count(),0);
     assert.equal(await card.locator(".control-capability").count(),mode==="固件写入"?1:mode==="软件管理"?3:0);
     await card.locator(".control-fan-mode-hint").filter({hasText:mode==="固件写入"?"直到改回固件管理":mode==="软件管理"?"程序不在时风扇交还固件":"本程序只读取转速"}).waitFor();
+    if(mode === "固件管理") {
+      await waitForContentSettled(page);
+      firmwareGeometry = await card.evaluate(node => {
+        const list = node.querySelector(".control-capabilities");
+        const ownership = node.querySelector(".control-ownership");
+        const actions = node.querySelector(".control-object-actions");
+        return { emptyEditorHeight: list.getBoundingClientRect().height,
+          gapToActions: actions.getBoundingClientRect().top - ownership.getBoundingClientRect().bottom,
+          cardHeight: node.getBoundingClientRect().height };
+      });
+      assert(firmwareGeometry.emptyEditorHeight <= 1, JSON.stringify(firmwareGeometry));
+      assert(firmwareGeometry.gapToActions <= 32, JSON.stringify(firmwareGeometry));
+      console.log("FAN_FIRMWARE_GEOMETRY", JSON.stringify(firmwareGeometry));
+    }
     if(mode!=="固件管理") {
       await card.getByRole("checkbox",{name:"转速曲线",exact:true}).check();
       await card.locator(".fan-curve-chart").waitFor();
@@ -75,5 +91,5 @@ export default async function fanManagementModesJourney(page, baseUrl) {
   await mixed.getByRole("radio",{name:"软件管理",exact:true}).click();
   assert.equal(await mixed.getByRole("alert").count(),0);
   assert.equal(await mixed.getByRole("checkbox",{name:"转速曲线",exact:true}).isChecked(),false);
-  return {threeModes:true,disabledReason:true,mixedStateRequiresSelection:true,rpmVisibleInEveryMode:true,modeSetsExecution:true};
+  return {threeModes:true,disabledReason:true,mixedStateRequiresSelection:true,rpmVisibleInEveryMode:true,modeSetsExecution:true,firmwareGeometry};
 }

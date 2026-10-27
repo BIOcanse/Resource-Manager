@@ -43,6 +43,7 @@ export default async function diskUsageOperationInvalidationJourney(page, baseUr
   const initialSize = formatBytes(18_000_000, "storage", "native");
   const refreshedSize = formatBytes(19_000_000, "storage", "native");
   await waitForRootSize(initialSize);
+  const openedTreeReads = treeReads.length;
   const scanResponse = page.waitForResponse(response =>
     response.request().method() === "POST"
       && new URL(response.url()).pathname === "/api/disk-usage/scan");
@@ -60,8 +61,9 @@ export default async function diskUsageOperationInvalidationJourney(page, baseUr
   assert(await navigation.getByRole("button", { name: app.page.diskUsage, exact: true })
     .getAttribute("aria-current") === "page",
   "The disk page was not mounted while the scan was still running");
+  assert(treeReads.length === openedTreeReads, "Remounting rebuilt accepted scan facts");
   await waitForRootSize(refreshedSize);
-  assert(treeReads.length >= 3, "Opening, remounting and scan invalidation did not each read scan facts");
+  assert(treeReads.length === openedTreeReads + 1, "Scan invalidation did not issue exactly one new fact read");
   assert(treeReads.every(query => {
     const parameters = new URLSearchParams(query);
     return parameters.get("rootIndex") === "0" && parameters.get("maxNodes") === "400000"

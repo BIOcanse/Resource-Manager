@@ -1,6 +1,8 @@
 import { createSelector, createSignal, onCleanup, onMount, type Accessor } from "solid-js";
 import { subscribeShellHostMessages } from "../utils.ts";
 import { FrontendVisibilityDemandController } from "./FrontendVisibilityDemandController.ts";
+import { FrontendVisibilityCooldown } from "./FrontendVisibilityCooldown.ts";
+import { ResourceManager } from "../preferences/generated/frontendPoints.values.ts";
 import type { FrontendVisibilitySourceKind, FrontendWorkId } from "./frontendWorkIds";
 import {
   type FrontendVisibilitySourceDemand,
@@ -34,8 +36,14 @@ export interface FrontendWorkController {
 }
 
 export function useFrontendWorkController(): FrontendWorkController {
-  const [frontendVisible, setFrontendVisible] = createSignal(
-    document.visibilityState === "visible");
+  const [frontendVisible, setFrontendVisible] = createSignal(true);
+  const visibilityCooldown = new FrontendVisibilityCooldown(
+    ResourceManager.FrontendPoints.VisibilityCooldownMs,
+    visible => {
+      if (visible === frontendVisible()) return;
+      setFrontendVisible(visible);
+      publishSurfaceVisibility();
+    });
   const [activeSourceDemands, setActiveSourceDemands] =
     createSignal<readonly FrontendVisibilitySourceDemand[]>([]);
   const [activeWorkIds, setActiveWorkIds] = createSignal<readonly FrontendWorkId[]>([]);
@@ -136,11 +144,13 @@ export function useFrontendWorkController(): FrontendWorkController {
     });
 
     document.addEventListener("visibilitychange", handleDocumentVisibility);
+    syncFrontendVisibility();
     refreshVisibilitySurfaces();
 
     onCleanup(() => {
       document.removeEventListener("visibilitychange", handleDocumentVisibility);
       unsubscribeHostMessages();
+      visibilityCooldown.dispose();
       intersectionObserver?.disconnect();
       mutationObserver?.disconnect();
       for (const demandController of visibilityDemandControllers.values()) {
@@ -160,13 +170,7 @@ export function useFrontendWorkController(): FrontendWorkController {
 
   function syncFrontendVisibility() {
     const nextVisible = hostVisible && document.visibilityState === "visible";
-    if (nextVisible === frontendVisible()) {
-      return;
-    }
-
-    setFrontendVisible(nextVisible);
-    // 保留几何观察结果；宿主/文档可见性单独门控需求，恢复时不必同步量框。
-    publishSurfaceVisibility();
+    visibilityCooldown.setVisible(nextVisible);
   }
   function syncVisibilitySurfaces() {
     if (!root) {
@@ -213,6 +217,9 @@ export function useFrontendWorkController(): FrontendWorkController {
   }
 
   function handleSurfaceIntersections(entries: IntersectionObserverEntry[]) {
+    // A minimized/occluded document may deliver empty geometry. Preserve the
+    // last visible observation; only the cooldown may withdraw window demand.
+    if (!hostVisible || document.visibilityState !== "visible") return;
     let changed = false;
     for (const entry of entries) {
       const runtime = visibilitySurfaces.get(entry.target as HTMLElement);

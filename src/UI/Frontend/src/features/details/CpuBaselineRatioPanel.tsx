@@ -1,46 +1,40 @@
 import { formatTrimmedDigits } from "../../presentation/interfaceNumbers.ts";
-import { createSignal, onCleanup, Show } from "solid-js";
+import { createSignal, Show } from "solid-js";
 import {
-  getCpuBaselineRatio,
   isValidCpuBaselineRatio,
   resetCpuBaselineRatio,
   saveCpuBaselineRatio,
   type CpuBaselineRatioSettings,
   type CpuBaselineRatioUpdateResult
 } from "../../data/cpu/cpuBaselineRatioApi.ts";
+import { acceptSourceCommand } from "../../frontendRuntime/source/acceptSourceCommand.ts";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
+import { useSource } from "../../frontendRuntime/source/useSource.ts";
+import { sourceCanRender } from "../../frontendRuntime/source/SourceSnapshot.ts";
+import { useFrontendWork } from "../../frontendWork/FrontendWorkContext.tsx";
+import { frontendWorkIds } from "../../frontendWork/frontendWorkIds.ts";
 import { userFacingErrorMessage } from "../../presentation/userFacingText";
 import { uiText } from "../../text.ts";
 
 /** CPU 基准比例：显示当前 CPU 的默认值与来源，允许设定或清除用户值。 */
 export function CpuBaselineRatioPanel(props: { runtimeEffectsEnabled: boolean }) {
   const runtime = useFrontendRuntime();
-  const [settings, setSettings] = createSignal<CpuBaselineRatioSettings | null>(null);
-  const [readState, setReadState] = createSignal<"loading" | "ready" | "failed">("loading");
+  const frontendWork = useFrontendWork();
+  const source = useSource(runtime.sources.cpuBaselineRatio, () => ({
+    active: frontendWork.isNeeded(frontendWorkIds.detailsCpuModel),
+    refreshIntervalMs: null
+  }));
+  const settings = () => sourceCanRender(source.snapshot()) ? source.snapshot().data : null;
+  const readState = () => {
+    const snapshot = source.snapshot();
+    return snapshot.status === "ready" || snapshot.status === "refreshing" || snapshot.status === "stale" ? "ready"
+      : snapshot.status === "idle" || snapshot.status === "loading" ? "loading" : "failed";
+  };
   const [editing, setEditing] = createSignal(false);
   const [draft, setDraft] = createSignal("");
   const [saving, setSaving] = createSignal(false);
   const [commandError, setCommandError] = createSignal<string | null>(null);
   const [notice, setNotice] = createSignal<string | null>(null);
-  let readController: AbortController | null = null;
-  onCleanup(() => readController?.abort());
-
-  function load() {
-    readController?.abort();
-    const controller = new AbortController();
-    readController = controller;
-    setReadState("loading");
-    getCpuBaselineRatio(runtime.requestClient, controller.signal)
-      .then((value) => {
-        if (controller.signal.aborted) return;
-        setSettings(value);
-        setReadState("ready");
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setReadState("failed");
-      });
-  }
-  load();
 
   function startEditing(current: CpuBaselineRatioSettings) {
     setDraft(String(Number(current.ratio.toFixed(4))));
@@ -49,9 +43,7 @@ export function CpuBaselineRatioPanel(props: { runtimeEffectsEnabled: boolean })
     setEditing(true);
   }
 
-  // savedNotApplied 时运行计划仍是旧值，所以只有带 settings 的结果才替换显示。
   function applyResult(result: CpuBaselineRatioUpdateResult) {
-    if (result.settings) setSettings(result.settings);
     setNotice(result.runtimeApplicationDisposition === "savedNotApplied"
       ? uiText.cpuBaseline.savedNotApplied
       : result.runtimeApplicationDisposition === "appliedWithDeliveryFailures"
@@ -71,7 +63,9 @@ export function CpuBaselineRatioPanel(props: { runtimeEffectsEnabled: boolean })
     setSaving(true);
     setCommandError(null);
     try {
-      applyResult(await saveCpuBaselineRatio(runtime.requestClient, ratio));
+      applyResult(await acceptSourceCommand(runtime.sources.cpuBaselineRatio,
+        () => saveCpuBaselineRatio(runtime.requestClient, ratio),
+        (result) => result.settings ?? undefined));
     } catch (error) {
       setCommandError(userFacingErrorMessage(error, uiText.cpuBaseline.saveFailed));
     } finally {
@@ -84,7 +78,9 @@ export function CpuBaselineRatioPanel(props: { runtimeEffectsEnabled: boolean })
     setSaving(true);
     setCommandError(null);
     try {
-      applyResult(await resetCpuBaselineRatio(runtime.requestClient));
+      applyResult(await acceptSourceCommand(runtime.sources.cpuBaselineRatio,
+        () => resetCpuBaselineRatio(runtime.requestClient),
+        (result) => result.settings ?? undefined));
     } catch (error) {
       setCommandError(userFacingErrorMessage(error, uiText.cpuBaseline.resetFailed));
     } finally {
@@ -137,7 +133,7 @@ export function CpuBaselineRatioPanel(props: { runtimeEffectsEnabled: boolean })
             <p role="alert">
               {readState() === "failed" ? uiText.cpuBaseline.readFailed : uiText.cpuBaseline.unavailable}
             </p>
-            <button class="secondary" type="button" onClick={load}>{uiText.cpuBaseline.retry}</button>
+            <button class="secondary" type="button" onClick={() => void source.refresh()}>{uiText.cpuBaseline.retry}</button>
           </div>
         }>
           {(current) => (

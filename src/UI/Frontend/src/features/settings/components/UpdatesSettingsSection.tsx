@@ -1,36 +1,22 @@
 import { StableLabel } from "../../../ui/primitives/StableLabel.tsx";
-import { Show, createSignal, onMount } from "solid-js";
-import { getJson, postJson } from "../../../api";
+import { Show, createSignal } from "solid-js";
+import { postJson } from "../../../api";
+import { useFrontendRuntime } from "../../../frontendRuntime/FrontendRuntimeContext";
+import { useFrontendWork } from "../../../frontendWork/FrontendWorkContext";
+import { useSource } from "../../../frontendRuntime/source/useSource.ts";
+import { sourceCanRender } from "../../../frontendRuntime/source/SourceSnapshot.ts";
+import type { ProductVersionCatalog } from "../../../data/settingsReadSources.ts";
 import { ObservationStateNotice } from "../../../components/ObservationStateNotice";
 import { failedObservation, loadingObservation } from "../../../observation/observationState";
 import type { AppNotificationSettings, AppUpdateMode, AppUpdateSettings } from "../../../types";
 import type { SettingsTextBundle } from "../../../i18n/settingsTypes.ts";
-import { VersionSelector, type VersionChoice } from "./VersionSelector";
+import { VersionSelector } from "./VersionSelector";
 import { isUpdateBusy, productUpdateCopy, updateFailure, type ProductUpdateState } from "../productUpdatePresentation.ts";
 import type { ProductUpdateStore } from "../../../stores/productUpdateStore.ts";
 import { updateCheckIntervalHours } from "../../../stores/settingsStore.ts";
-import { formatConnectedDuration, formatUtcTime, parseUtcTime } from "../../../data/productUpdateStatus.ts";
+import { formatConnectedDuration, formatUtcTime } from "../../../data/productUpdateStatus.ts";
 import { NumberField, SegmentedControl } from "./SettingsControls";
 import { SwitchControl } from "../../../ui/primitives/Switch.tsx";
-
-interface ProductVersionOption extends Omit<VersionChoice, "unavailableReason"> {
-  version: string;
-  assetName: string;
-  downloadUrl: string;
-  checksumUrl: string;
-  selectable: boolean;
-  eligibility: "eligible" | "installedVersionUnknown" | "notNewer";
-}
-
-interface ProductVersionCatalog {
-  installedVersion?: string | null;
-  status: "loaded" | "partial" | "stale" | "error";
-  complete: boolean;
-  checkedAt: string;
-  options: ProductVersionOption[];
-  errorCode?: string | null;
-  errorParameters?: Record<string, string> | null;
-}
 
 export function UpdatesSettingsSection(props: {
   settings: AppUpdateSettings | undefined;
@@ -44,8 +30,18 @@ export function UpdatesSettingsSection(props: {
   onCheckIntervalChange: (hours: number) => void;
   onNotificationSwitchChange: (path: keyof AppNotificationSettings, enabled: boolean) => void;
 }) {
-  const [catalog, setCatalog] = createSignal<ProductVersionCatalog | null>(null);
-  const [loading, setLoading] = createSignal(false);
+  const runtime = useFrontendRuntime();
+  const frontendWork = useFrontendWork();
+  const source = useSource(runtime.sources.settingsReads.productVersions,
+    () => ({ active: frontendWork.frontendVisible(), refreshIntervalMs: null }));
+  const catalog = (): ProductVersionCatalog | null => {
+    const snapshot = source.snapshot();
+    if (sourceCanRender(snapshot)) return snapshot.data;
+    if (snapshot.status !== "error" && snapshot.status !== "unavailable") return null;
+    return { status: "error", complete: false, checkedAt: "", options: [], errorCode: "update.catalogUnavailable" };
+  };
+  const [refreshPending, setRefreshPending] = createSignal(false);
+  const loading = () => refreshPending() || source.snapshot().status === "loading";
   const [selected, setSelected] = createSignal<string | null>(null);
   const [preparePending, setPreparePending] = createSignal(false);
   const text = () => props.text.updates;
@@ -60,20 +56,13 @@ export function UpdatesSettingsSection(props: {
   const committedPeriodic = () => props.committedSettings?.mode !== "off" && props.committedSettings?.periodicCheckEnabled === true;
 
   async function refresh() {
-    setLoading(true);
+    setRefreshPending(true);
     try {
-      const result = await getJson<ProductVersionCatalog>("/api/updates/product/versions", { timeoutMs: 35000 });
-      // 目录的检查时间和更新状态一样是 UTC（「时间按照协调世界时」）；不带 Z 或 +00:00 的时间不是合同里的值。
-      if (!parseUtcTime(result.checkedAt)) throw new Error("catalog checkedAt is not UTC");
-      setCatalog(result);
-    } catch {
-      setCatalog({ status: "error", complete: false, checkedAt: new Date().toISOString(),
-        options: [], errorCode: "update.catalogUnavailable" });
+      await source.refresh();
     } finally {
-      setLoading(false);
+      setRefreshPending(false);
     }
   }
-  onMount(() => { void refresh(); });
 
   async function prepareUpdate() {
     const option = selectedOption();

@@ -4,14 +4,13 @@ import { isReservedSegment } from "../resourceBreakdown/resourceProcessIdentity.
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
 import { userFacingErrorMessage } from "../../presentation/userFacingText";
 import { RuntimePolicyDeliveryNotice } from "../../components/RuntimePolicyDeliveryNotice";
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import {
   resetGpuPerformanceScoreOverrides,
   saveGpuPerformanceScoreOverrides
 } from "../../api";
 import {
-  buildGpuSpecializedCounterIds,
-  type GpuSchedulingModelSnapshot
+  buildGpuSpecializedCounterIds
 } from "../../data/gpu/gpuSchedulingModelSource";
 import { frontendWorkIds } from "../../frontendWork/frontendWorkIds";
 import { frontendVisibilitySurface } from "../../frontendWork/frontendVisibilitySurface";
@@ -19,14 +18,8 @@ import { useFrontendWork } from "../../frontendWork/FrontendWorkContext";
 import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
 import { useSource } from "../../frontendRuntime/source/useSource";
-import type { SourceLease } from
-  "../../frontendRuntime/source/SourceDescriptor";
-import { SourceLeaseBinding } from
-  "../../frontendRuntime/source/SourceLeaseBinding";
-import {
-  sourceCanRender,
-  type SourceSnapshot
-} from "../../frontendRuntime/source/SourceSnapshot";
+import { useSourceFamily } from "../../frontendRuntime/source/useSourceFamily.ts";
+import { sourceCanRender } from "../../frontendRuntime/source/SourceSnapshot";
 import { resolveGpuDeviceName } from "./gpuDeviceName";
 import { metricDisplayValue } from "../../presentation/metricLabels";
 import {
@@ -104,18 +97,11 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
     active: frontendWork.isNeeded(frontendWorkIds.detailsGpuModel),
     refreshIntervalMs: null
   }));
-  const catalogLease = runtime.sources.metricCatalog.acquire({
-    active: true,
+  const catalogView = useSource(runtime.sources.metricCatalog, () => ({
+    active: frontendWork.isNeeded(frontendWorkIds.detailsGpuModel),
     refreshIntervalMs: null
-  });
-  const [catalogSource, setCatalogSource] =
-    createSignal<SourceSnapshot<MetricDefinition[]>>(catalogLease.snapshot);
-  const [modelSource, setModelSource] =
-    createSignal<SourceSnapshot<GpuSchedulingModelSnapshot> | null>(null);
-  const modelBinding = new SourceLeaseBinding<GpuSchedulingModelSnapshot>(
-    setModelSource);
-  let modelLease: SourceLease<GpuSchedulingModelSnapshot> | null = null;
-  const unsubscribeCatalog = catalogLease.subscribe(setCatalogSource);
+  }));
+  const catalogSource = catalogView.snapshot;
   const catalog = createMemo(() => {
     const source = catalogSource();
     return sourceCanRender(source) ? source.data ?? [] : [];
@@ -125,6 +111,13 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
     .split(",")
     .filter(Boolean)
     .map((value) => Number(value)));
+  const modelView = useSourceFamily(runtime.sources.gpuSchedulingModel,
+    () => ({ gpuIndexes: gpuIndexes() }),
+    () => ({
+      active: frontendWork.isNeeded(frontendWorkIds.detailsGpuModel),
+      refreshIntervalMs: null
+    }));
+  const modelSource = modelView.snapshot;
   const pushDemand = () => ({
     active: frontendWork.isNeeded(frontendWorkIds.detailsGpuModel) && gpuIndexes().length > 0,
     intervalMs: readIntervals.current()?.monitor
@@ -175,29 +168,10 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
     };
   });
 
-  createEffect(() => {
-    const indexes = gpuIndexes();
-    const active = frontendWork.isNeeded(frontendWorkIds.detailsGpuModel);
-    modelLease = modelBinding.switch(
-      JSON.stringify(indexes),
-      () => runtime.sources.gpuSchedulingModel.acquire(
-        { gpuIndexes: indexes },
-        { active: false, refreshIntervalMs: null }));
-    modelLease.setDemand({ active, refreshIntervalMs: null });
-  });
-
-  onCleanup(() => {
-    unsubscribeCatalog();
-    catalogLease.release();
-    modelBinding.release();
-    modelLease = null;
-  });
-
   const model = createMemo(() => {
     const catalogSnapshot = catalogSource();
     const modelSnapshot = modelSource();
-    if (!modelSnapshot
-        || !sourceCanRender(catalogSnapshot)
+    if (!sourceCanRender(catalogSnapshot)
         || !sourceCanRender(modelSnapshot)) {
       return null;
     }
@@ -484,8 +458,8 @@ export function GpuSchedulingModel(props: GpuSchedulingModelProps) {
 
   async function refreshAll() {
     await Promise.all([
-      catalogLease.refresh(),
-      modelLease?.refresh() ?? Promise.resolve(null),
+      catalogView.refresh(),
+      modelView.refresh(),
       appSettingsSource.refresh()
     ]);
   }

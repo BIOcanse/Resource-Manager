@@ -2,7 +2,7 @@ import { usePushSource } from "../../frontendRuntime/push/usePushSource.ts";
 import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
 import { controlReasonText } from "../../presentation/controlReasonText.ts";
 import { useFrontendReadIntervals } from "../../app/FrontendReadIntervalsContext.tsx";
-import { createEffect, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js";
+import { createMemo, createSignal, For, Match, onMount, onCleanup, Show, Switch } from "solid-js";
 import { useFrontendWork } from "../../frontendWork/FrontendWorkContext";
 import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisibilityDemand";
 import { frontendWorkIds } from "../../frontendWork/frontendWorkIds";
@@ -13,13 +13,6 @@ import {
   setControlObjectSettings,
   deleteControlPreset,
   forgetControlInstance,
-  getControlInstances,
-  getControlAccessLevel,
-  getControlNoticeAcknowledged,
-  getControlObjects,
-  getControlOverclockConsent,
-  getControlPresets,
-  getControlState,
   retryControlObject,
   redetectControlPlatform,
   setControlOverclockConsent,
@@ -41,6 +34,9 @@ import {
   canRetryControlObject,
   hasPendingChanges
 } from "./controlStateMachine.ts";
+import { useSource } from "../../frontendRuntime/source/useSource.ts";
+import { sourceCanRender } from "../../frontendRuntime/source/SourceSnapshot.ts";
+import { acceptSourceCommand } from "../../frontendRuntime/source/acceptSourceCommand.ts";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
 import { RadioGroupRoot, RadioGroupItem } from "../../ui/primitives/RadioGroup";
 import { SegmentedControl } from "../../ui/primitives/SegmentedControl";
@@ -52,14 +48,12 @@ import type {
   ControlActualState,
   ControlActualValue,
   ControlCapability,
-  ControlInstanceCatalog,
   ControlPreset,
   ControlObject,
-  ControlObjectCatalog,
   ControlObjectDesiredState,
-  ControlPresetCatalog,
-  ControlSetting,
-  ControlStateView
+  ControlStateView,
+  ControlInstanceCatalog,
+  ControlSetting
 } from "./controlTypes.ts";
 
 export function ControlWorkspace(props: { onNotice: (message: string) => void }) {
@@ -68,42 +62,32 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
   const frontendWork = useFrontendWork();
   useFrontendVisibilityDemand("control.workspace", [frontendWorkIds.controlActual]);
   const visible = () => frontendWork.isNeeded(frontendWorkIds.controlActual);
-  const [stateLoad, setStateLoad] = createSignal<"loading" | "ready" | "error">("loading");
-  const [readAttempt, setReadAttempt] = createSignal(0);
-  const reloadState = () => setReadAttempt(attempt => attempt + 1);
-
-  const [catalog, setCatalog] = createSignal<ControlObjectCatalog | null>(null);
-  const [state, setState] = createSignal<ControlStateView | null>(null);
-  const [instances, setInstances] = createSignal<ControlInstanceCatalog | null>(null);
-  const [failed, setFailed] = createSignal(false);
+  const demand = () => ({ active: visible(), refreshIntervalMs: null });
+  const objectsSource = useSource(runtime.sources.control.objects, demand);
+  const stateSource = useSource(runtime.sources.control.state, demand);
+  const instancesSource = useSource(runtime.sources.control.instances, demand);
+  const presetsSource = useSource(runtime.sources.control.presets, demand);
+  const consentSource = useSource(runtime.sources.control.overclockConsent, demand);
+  const accessSource = useSource(runtime.sources.control.accessLevel, demand);
+  const noticeSource = useSource(runtime.sources.control.notice, demand);
+  const sources = [objectsSource, stateSource, instancesSource, presetsSource, consentSource, accessSource, noticeSource];
+  const reloadState = () => { for (const source of sources) void source.refresh(); };
+  onMount(() => {
+    window.addEventListener("focus", reloadState);
+    onCleanup(() => window.removeEventListener("focus", reloadState));
+  });
+  const catalog = () => objectsSource.snapshot().data;
+  const state = () => stateSource.snapshot().data;
+  const instances = () => instancesSource.snapshot().data;
+  const presets = () => presetsSource.snapshot().data;
+  const failed = () => ["error", "unavailable"].includes(objectsSource.snapshot().status);
+  const stateLoad = () => sourceCanRender(stateSource.snapshot()) ? "ready"
+    : ["error", "unavailable"].includes(stateSource.snapshot().status) ? "error" : "loading";
+  const overclockAccepted = () => consentSource.snapshot().data;
+  const accessLevel = () => accessSource.snapshot().data ?? "normal";
+  const noticeSeen = () => noticeSource.snapshot().data;
+  const noticeReadFailed = () => ["error", "unavailable"].includes(noticeSource.snapshot().status);
   const [managingInstances, setManagingInstances] = createSignal(false);
-  const [presets, setPresets] = createSignal<ControlPresetCatalog | null>(null);
-  /**
-   * 超频免责声明答没答应。
-   *
-   * 这是**整机一份**的开关，不挂在某个对象上 —— 后端就是这么存的。
-   * 之所以要有它：Intel 的 IGCL 在用户接受之前拒绝一切超频调用，
-   * 并要求应用先把"会缩短部件寿命"这件事告诉用户。所以话要说在前面，
-   * 而且要能收回 —— 给得出去的同意也要收得回来。
-   */
-  const [overclockAccepted, setOverclockAccepted] = createSignal<boolean | null>(null);
-
-  /**
-   * 现在处在哪一档调节权限。整机一份，在设置里改。
-   *
-   * 读不到就按最低那一档画 —— 往安全的方向猜，不会因为一次请求失败
-   * 就把危险的项显示成可调。
-   */
-  const [accessLevel, setAccessLevel] = createSignal<ControlAccessLevel>("normal");
-
-  /**
-   * 首次须知看过没有。null 表示还没问到后端。
-   *
-   * **没问到之前不弹。** 每次开页都先闪一下须知，等回包再收起来，
-   * 比晚半秒弹出来糟得多。
-   */
-  const [noticeSeen, setNoticeSeen] = createSignal<boolean | null>(null);
-  const [noticeReadFailed, setNoticeReadFailed] = createSignal(false);
   const [noticeAckFailed, setNoticeAckFailed] = createSignal(false);
   const [acknowledging, setAcknowledging] = createSignal(false);
 
@@ -177,9 +161,9 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
     setSaving(true);
     try {
       const changed = hasPendingChanges(submitted, savedObjects().find(entry => entry.objectId === objectId)?.settings ?? []);
-      const next = await (changed
+      const next = await acceptSourceCommand(runtime.sources.control.state, () => changed
         ? setControlObjectSettings(runtime.requestClient, objectId, submitted)
-        : retryControlObject(runtime.requestClient, objectId));
+        : retryControlObject(runtime.requestClient, objectId), value => value);
       // Preserve other drafts and edits made while this request was in flight.
       const current = edited();
       const unchanged = !hasPendingChanges(settingsOf(objectId), submitted);
@@ -187,53 +171,12 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
       setDraft(unchanged
         ? [...current.filter(entry => entry.objectId !== objectId), ...(saved ? [saved] : [])]
         : current);
-      setState(next);
     } catch {
       props.onNotice(uiText.control.saveFailed);
     } finally {
       setSaving(false);
     }
   };
-
-  createEffect(() => {
-    if (!visible()) return;
-    readAttempt();
-    const controller = new AbortController();
-    const read = () => {
-      void getControlObjects(runtime.requestClient, controller.signal)
-        .then((next) => { setCatalog(next); setFailed(false); })
-        .catch(() => setFailed(true));
-      // 期望状态和回执分开取：对象清单是硬件事实，这份是用户设过什么。
-      setStateLoad("loading");
-      void getControlState(runtime.requestClient, controller.signal)
-        .then(next => { if (!controller.signal.aborted) { setState(next); setStateLoad("ready"); } })
-        .catch(() => { if (!controller.signal.aborted) setStateLoad("error"); });
-      void getControlInstances(runtime.requestClient, controller.signal)
-        .then(setInstances)
-        .catch(() => undefined);
-      void getControlPresets(runtime.requestClient, controller.signal)
-        .then(setPresets)
-        .catch(() => undefined);
-      void getControlOverclockConsent(runtime.requestClient, controller.signal)
-        .then(setOverclockAccepted)
-        .catch(() => undefined);
-      void getControlAccessLevel(runtime.requestClient, controller.signal)
-        .then(setAccessLevel)
-        .catch(() => undefined);
-      void getControlNoticeAcknowledged(runtime.requestClient, controller.signal)
-        .then(seen => { if (!controller.signal.aborted) { setNoticeSeen(seen); setNoticeReadFailed(false); } })
-        .catch(() => { if (!controller.signal.aborted) { setNoticeSeen(null); setNoticeReadFailed(true); } });
-    };
-
-    read();
-    // 显卡会热插拔，组件装上之后风扇会突然可控，所以回到窗口时重读一次。
-    const refresh = () => reloadState();
-    window.addEventListener("focus", refresh);
-    onCleanup(() => {
-      window.removeEventListener("focus", refresh);
-      controller.abort();
-    });
-  });
 
   /**
    * 这台机器上有没有 Intel 核显。
@@ -245,21 +188,11 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
       && object.gpuAttachment === "integrated"
       && object.platform.vendor === "intel");
 
-  const groups = () => {
-    const current = catalog();
-    if (!current) {
-      return [];
-    }
-    // 按种类分组，组内保持后端给的顺序（显卡按索引，风扇跟着它的宿主）。
-    return ["gpu", "cpu", "fan"]
-      .map((kind) => ({
-        kind,
-        label: uiText.control.kind[kind as keyof typeof uiText.control.kind] ?? kind,
-        objects: current.objects.filter((object) => object.kind === kind)
-      }))
-      .filter((group) => group.objects.length > 0);
-  };
-
+  // Key by domain identity. A refreshed catalog must update existing cards,
+  // including their drafts/focus, instead of replacing their DOM subtree.
+  const objectById = createMemo(() => new Map((catalog()?.objects ?? []).map(object => [object.id, object])));
+  const groups = () => ["gpu", "cpu", "fan"].filter(kind => (catalog()?.objects ?? []).some(object => object.kind === kind));
+  const objectIds = (kind: string) => (catalog()?.objects ?? []).filter(object => object.kind === kind).map(object => object.id);
   return (
     <div class="page control-page" data-frontend-visibility-surface="control.workspace" data-frontend-visibility-demands="control.workspace">
       <Show when={noticeSeen() === false}>
@@ -269,8 +202,8 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
             if (acknowledging()) return;
             setAcknowledging(true);
             setNoticeAckFailed(false);
-            void acknowledgeControlNotice(runtime.requestClient)
-              .then(() => setNoticeSeen(true))
+            void acceptSourceCommand(runtime.sources.control.notice,
+              () => acknowledgeControlNotice(runtime.requestClient), () => true)
               .catch(() => setNoticeAckFailed(true))
               .finally(() => setAcknowledging(false));
           }} />
@@ -317,10 +250,9 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
               <button
                 class="secondary"
                 type="button"
-                onClick={() => void setControlOverclockConsent(
+                onClick={() => void acceptSourceCommand(runtime.sources.control.overclockConsent, () => setControlOverclockConsent(
                   runtime.requestClient,
-                  overclockAccepted() !== true)
-                  .then(setOverclockAccepted)
+                  overclockAccepted() !== true), value => value)
                   .catch(() => props.onNotice(uiText.control.saveFailed))}
               >
                 <StableLabel
@@ -348,9 +280,9 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
             disabled={detecting()}
             onClick={() => {
               setDetecting(true);
-              void redetectControlPlatform(runtime.requestClient)
-                .then((next) => { setCatalog(next); setFailed(false); })
-                .catch(() => setFailed(true))
+              void acceptSourceCommand(runtime.sources.control.objects,
+                () => redetectControlPlatform(runtime.requestClient), value => value)
+                .catch(() => props.onNotice(uiText.control.loadFailed))
                 .finally(() => setDetecting(false));
             }}
           >
@@ -373,13 +305,12 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
         <Show when={managingInstances()}>
           <ControlInstancesPanel
             catalog={instances()}
-            onRefresh={() => void refreshControlInstances(runtime.requestClient)
-              .then(setInstances)
+            onRefresh={() => void acceptSourceCommand(runtime.sources.control.instances,
+              () => refreshControlInstances(runtime.requestClient), value => value)
               .catch(() => undefined)}
-            onForget={(instanceId) => void forgetControlInstance(
+            onForget={(instanceId) => void acceptSourceCommand(runtime.sources.control.instances, () => forgetControlInstance(
               runtime.requestClient,
-              instanceId)
-              .then(setInstances)
+              instanceId), value => value)
               // 删不成是**流程提示**：点了才说，说完就过去，不在页面上留一块常驻的红字。
               .catch(() => props.onNotice(uiText.control.forgetFailed))}
           />
@@ -387,55 +318,53 @@ export function ControlWorkspace(props: { onNotice: (message: string) => void })
 
         <Show when={stateLoad() === "ready"}>
         <For each={groups()}>
-          {(group) => (
+          {(kind) => (
             <section class="control-group">
-              <h3>{group.label}</h3>
+              <h3>{uiText.control.kind[kind as keyof typeof uiText.control.kind] ?? kind}</h3>
               <div class="control-object-grid">
-                <For each={group.objects}>
-                  {(object) => (
+                <For each={objectIds(kind)}>
+                  {(objectId) => (
                     <ControlObjectCard
-                      object={object}
-                      gpuName={controlFanGpuName(object, catalog()?.objects ?? [])}
-                      fanModeChoice={fanModes().get(object.id)}
-                      onFanModeChoice={(mode) => chooseFanMode(object.id, mode)}
-                      takingOver={takingOver().has(object.id)}
-                      onTakeOver={(enabled) => chooseOwnership(object.id, enabled)}
+                      object={objectById().get(objectId)!}
+                      gpuName={controlFanGpuName(objectById().get(objectId)!, catalog()?.objects ?? [])}
+                      fanModeChoice={fanModes().get(objectId)}
+                      onFanModeChoice={(mode) => chooseFanMode(objectId, mode)}
+                      takingOver={takingOver().has(objectId)}
+                      onTakeOver={(enabled) => chooseOwnership(objectId, enabled)}
                       /*
                         同一条通道上、会被一起软件接管的其他风扇。
                         这台机器上"交给软件管"是整机一个开关时才非空 ——
                         卡片自己看不到别的对象，所以由这一层给。
                       */
                       takenOverWith={siblingFansTakenOverWith(
-                        object,
+                        objectById().get(objectId)!,
                         catalog()?.objects ?? [])}
                       accessLevel={accessLevel()}
                       state={state()}
-                      edited={settingsOf(object.id)}
+                      edited={settingsOf(objectId)}
                       saving={saving()}
-                      onApply={() => void apply(object.id)}
-                      onDiscard={() => discard(object.id)}
+                      onApply={() => void apply(objectId)}
+                      onDiscard={() => discard(objectId)}
                       actual={actual()}
                       presets={(presets()?.presets ?? []).filter(
-                        (preset) => preset.objectId === object.id)}
+                        (preset) => preset.objectId === objectId)}
                       onEdit={(capabilityId, next) =>
-                        editCapability(object.id, capabilityId, next)}
+                        editCapability(objectId, capabilityId, next)}
                       onReplaceSettings={(settings) => setDraft([
-                        ...edited().filter((entry) => entry.objectId !== object.id),
+                        ...edited().filter((entry) => entry.objectId !== objectId),
                         ...(settings.length > 0
-                          ? [{ objectId: object.id, settings }]
+                          ? [{ objectId: objectId, settings }]
                           : [])
                       ])}
-                      onSavePreset={(name) => void saveControlPreset(
+                      onSavePreset={(name) => void acceptSourceCommand(runtime.sources.control.presets, () => saveControlPreset(
                         runtime.requestClient,
-                        object.id,
+                        objectId,
                         name,
-                        settingsOf(object.id))
-                        .then(setPresets)
+                        settingsOf(objectId)), value => value)
                         .catch(() => props.onNotice(uiText.control.saveFailed))}
-                      onDeletePreset={(presetId) => void deleteControlPreset(
+                      onDeletePreset={(presetId) => void acceptSourceCommand(runtime.sources.control.presets, () => deleteControlPreset(
                         runtime.requestClient,
-                        presetId)
-                        .then(setPresets)
+                        presetId), value => value)
                         .catch(() => props.onNotice(uiText.control.saveFailed))}
                     />
                   )}
@@ -848,18 +777,20 @@ function ControlObjectCard(props: {
       */}
 
       <ul class="control-capabilities">
-        <For each={adjustable()}>
-          {(capability) => (
+        <For each={adjustable().map(capability => capability.id)}>
+          {(capabilityId) => {
+            const capability = () => props.object.capabilities.find(item => item.id === capabilityId)!;
+            return (
             <li
               class="control-capability"
               classList={{
                 // 三种状态各有各的样子，不能都长成一个没勾的方框：
                 // 锁住的（动不了）、可勾但没勾的（下次应用交还固件）、
                 // 勾上的（下次应用会落实）。
-                "control-capability-locked": locked(capability),
+                "control-capability-locked": locked(capability()),
                 "control-capability-on": props.edited.some(
-                  (entry) => entry.capabilityId === capability.id),
-                "control-capability-off": !capability.supported || firmwareOwned()
+                  (entry) => entry.capabilityId === capability().id),
+                "control-capability-off": !capability().supported || firmwareOwned()
               }}
             >
               <span class="control-capability-label">
@@ -876,7 +807,7 @@ function ControlObjectCard(props: {
                   而且它自己说明了原因（title 里写着差什么）。
                 */}
                 <Show
-                  when={!locked(capability)}
+                  when={!locked(capability())}
                   fallback={
                     /*
                       **能解开的挂锁，解不开的打叉。**
@@ -900,23 +831,23 @@ function ControlObjectCard(props: {
                     */
                     <span
                       class="control-capability-lock-slot"
-                      title={lockReason(capability)}
+                      title={lockReason(capability())}
                     >
                     <Switch
                       fallback={
                         <Lock
                           class="control-capability-lock"
                           size={13}
-                          aria-label={lockReason(capability)}
+                          aria-label={lockReason(capability())}
                         />
                       }
                     >
                       {/* 这台机器做不到：没得解，打叉。 */}
-                      <Match when={blockedKind(capability) === "platform"}>
+                      <Match when={blockedKind(capability()) === "platform"}>
                         <X
                           class="control-capability-x"
                           size={14}
-                          aria-label={lockReason(capability)}
+                          aria-label={lockReason(capability())}
                         />
                       </Match>
                       {/*
@@ -925,19 +856,19 @@ function ControlObjectCard(props: {
                         自己的机器不行，两个都指错了地方。用一个中性的虚圈，
                         意思是"这一格留着，只是还空着"。
                       */}
-                      <Match when={blockedKind(capability) === "not-implemented"}>
+                      <Match when={blockedKind(capability()) === "not-implemented"}>
                         <CircleDashed
                           class="control-capability-pending"
                           size={13}
-                          aria-label={lockReason(capability)}
+                          aria-label={lockReason(capability())}
                         />
                       </Match>
                       {/* 缺组件：装上就有，指向能装它的地方。 */}
-                      <Match when={blockedKind(capability) === "component"}>
+                      <Match when={blockedKind(capability()) === "component"}>
                         <Download
                           class="control-capability-needs"
                           size={13}
-                          aria-label={lockReason(capability)}
+                          aria-label={lockReason(capability())}
                         />
                       </Match>
                     </Switch>
@@ -949,22 +880,22 @@ function ControlObjectCard(props: {
                     行首只留同宽的空位，让名字和其他行对齐。
                   */}
                   <Show
-                    when={capability.valueKind !== "toggle"}
+                    when={capability().valueKind !== "toggle"}
                     fallback={<span class="control-capability-check" aria-hidden="true" />}
                   >
                     <input
                       type="checkbox"
                       class="control-capability-check"
                       checked={props.edited.some(
-                        (entry) => entry.capabilityId === capability.id)}
-                      aria-label={controlCapabilityLabel(capability)}
+                        (entry) => entry.capabilityId === capability().id)}
+                      aria-label={controlCapabilityLabel(capability())}
                       onChange={(event) => editSetting(
-                        capability.id,
-                        event.currentTarget.checked ? initialSettingFor(capability, actualOf(capability.id)?.number) : null)}
+                        capability().id,
+                        event.currentTarget.checked ? initialSettingFor(capability(), actualOf(capability().id)?.number) : null)}
                     />
                   </Show>
                 </Show>
-                {controlCapabilityLabel(capability)}
+                {controlCapabilityLabel(capability())}
                 {/*
                   档位标记**一直挂着**，不是锁着才出现 —— 它的用处之一
                   就是让用户看得出哪些项算危险。安全档的不标：那是默认，
@@ -985,7 +916,7 @@ function ControlObjectCard(props: {
                   用户看到"这一项调不了"时，第一个该知道的就是是谁说不行；
                   我们自己排查时，一条链路挂了也能一眼看出哪些项会跟着受影响。
                 */}
-                <Show when={capability.channel}>
+                <Show when={capability().channel}>
                   {(channel) => (
                     <span
                       class="control-capability-channel"
@@ -995,9 +926,9 @@ function ControlObjectCard(props: {
                     </span>
                   )}
                 </Show>
-                <Show when={capability.requiredAccessLevel === "normal"
+                <Show when={capability().requiredAccessLevel === "normal"
                   ? null
-                  : capability.requiredAccessLevel}>
+                  : capability().requiredAccessLevel}>
                   {(level) => (
                     <span
                       class="control-capability-level"
@@ -1016,15 +947,15 @@ function ControlObjectCard(props: {
 
               <span class="control-capability-meta">
                 {/* 设过的才报状态。每行都挂个「未设定」就是纯噪音。 */}
-                <Show when={itemStatus(capability.id) !== "unset"}>
+                <Show when={itemStatus(capability().id) !== "unset"}>
                   <span
                     class="control-capability-tag"
                     // 失败或不支持时，后端给的原因停在标签上就有（交还固件失败也走这里）。
-                    title={itemStatus(capability.id) === "failed" || itemStatus(capability.id) === "unsupported"
-                      ? controlOutcomeReason(outcomes().find(outcome => outcome.capabilityId === capability.id)) ?? undefined : undefined}
-                    data-tone={controlItemTone(itemStatus(capability.id))}
+                    title={itemStatus(capability().id) === "failed" || itemStatus(capability().id) === "unsupported"
+                      ? controlOutcomeReason(outcomes().find(outcome => outcome.capabilityId === capability().id)) ?? undefined : undefined}
+                    data-tone={controlItemTone(itemStatus(capability().id))}
                   >
-                    {uiText.control.status[itemStatus(capability.id)]}
+                    {uiText.control.status[itemStatus(capability().id)]}
                   </span>
                 </Show>
                 {/*
@@ -1041,7 +972,7 @@ function ControlObjectCard(props: {
                   数字项的数字框已经显示这个值时（没设定，或设定值读出来相同）不再写第二遍，
                   规则见 controlNumber.ts 的 actualRepeatsNumberEditor。
                 */}
-                <Show when={actualReadoutOf(capability)}>
+                <Show when={actualReadoutOf(capability())}>
                   {(value) => (
                     <span
                       class="control-capability-actual"
@@ -1055,19 +986,19 @@ function ControlObjectCard(props: {
                 </Show>
               </span>
               <ControlCapabilityEditor
-                capability={capability}
+                capability={capability()}
                 objectId={props.object.id}
                 firmwareCurveKind={props.object.firmwareCurveKind ?? null}
-                curveExecution={mode()?.items.find(item => item.capabilityId === capability.id)?.curveExecution ?? null}
+                curveExecution={mode()?.items.find(item => item.capabilityId === capability().id)?.curveExecution ?? null}
                 takenOverWith={props.takenOverWith}
-                setting={edited().find((entry) => entry.capabilityId === capability.id)}
-                actual={actualOf(capability.id)?.number ?? null}
+                setting={edited().find((entry) => entry.capabilityId === capability().id)}
+                actual={actualOf(capability().id)?.number ?? null}
                 // 归固件管的时候这些设定不生效，所以不给动。
-                held={locked(capability)}
-                onChange={(next) => editSetting(capability.id, next)}
+                held={locked(capability())}
+                onChange={(next) => editSetting(capability().id, next)}
               />
             </li>
-          )}
+          ); }}
         </For>
       </ul>
       <div class="control-object-actions">

@@ -7,6 +7,8 @@ import { getDiskUsageTree } from "../src/features/diskUsage/diskUsageApi.ts";
 const workspace = readFileSync(
   new URL("../src/features/diskUsage/DiskUsageWorkspace.tsx", import.meta.url),
   "utf8");
+const owner = readFileSync(new URL("../src/features/diskUsage/diskUsageOwner.ts", import.meta.url), "utf8");
+const disk = workspace + owner;
 const layoutApi = readFileSync(
   new URL("../src/features/diskUsage/diskUsageApi.ts", import.meta.url),
   "utf8");
@@ -14,22 +16,22 @@ const resultPanel = readFileSync(
   new URL("../src/features/diskUsage/DiskUsageResultPanel.tsx", import.meta.url),
   "utf8");
 
-assert.match(workspace, /import \{ uiText \} from "\.\.\/\.\.\/text\.ts"/);
-assert.match(workspace, /const \[scanFailed, setScanFailed\] = createSignal\(false\)/);
-assert.match(workspace, /subscribeInvalidations\(/);
-assert.match(workspace, /invalidation\.kind !== "disk-usage\.scan"/);
-assert.match(workspace, /invalidation\.targets\.includes\("diskUsage"\)/);
-assert.match(workspace, /operation\?\.state !== "succeeded"/);
-assert.doesNotMatch(workspace, /waitForTerminal\(/);
-assert.doesNotMatch(workspace, /const \[scanning, setScanning\]/);
-assert.match(workspace, /catch \{\s*setScanFailed\(true\);\s*\}/);
-assert.match(workspace, /<p role="alert">\{uiText\.diskUsage\.scanFailed\}<\/p>/);
-assert.doesNotMatch(workspace, /catch \{\s*\/\/ 失败的原因已经进了任务中心/);
-assert.match(workspace, /const roots = summary\(\)\?\.roots/);
-assert.match(workspace, /getDiskUsageTree\(runtime\.requestClient, signal, rootIndex/);
-assert.match(workspace, /layoutWorker!\.replaceTree\(treeBuffer\)/);
-assert.match(workspace, /layoutWorker!\.layout\(rootNodeId, view\)/);
-assert.match(workspace, /layoutWorker\?\.dispose\(\)/);
+assert.match(disk, /import \{ uiText \} from "\.\.\/\.\.\/text\.ts"/);
+assert.match(disk, /const \[scanFailed, setScanFailed\] = createSignal\(false\)/);
+assert.match(disk, /subscribeInvalidations\(/);
+assert.match(disk, /invalidation\.kind !== "disk-usage\.scan"/);
+assert.match(disk, /invalidation\.targets\.includes\("diskUsage"\)/);
+assert.match(disk, /operation\?\.state !== "succeeded"/);
+assert.doesNotMatch(disk, /waitForTerminal\(/);
+assert.doesNotMatch(disk, /const \[scanning, setScanning\]/);
+assert.match(disk, /catch \{\s*setScanFailed\(true\);\s*\}/);
+assert.match(disk, /<p role="alert">\{uiText\.diskUsage\.scanFailed\}<\/p>/);
+assert.doesNotMatch(disk, /catch \{\s*\/\/ 失败的原因已经进了任务中心/);
+assert.match(disk, /const roots = summary\(\)\?\.roots/);
+assert.match(disk, /getDiskUsageTree\(runtime\.requestClient, signal, query\.rootIndex/);
+assert.match(disk, /candidate\.replaceTree\(treeBuffer\.slice\(0\)\)/);
+assert.match(disk, /layoutWorker!\.layout\(rootNodeId, view\)/);
+assert.match(disk, /layoutWorker\?\.dispose\(\)/);
 assert.doesNotMatch(layoutApi, /\/api\/disk-usage\/layout/);
 assert.doesNotMatch(layoutApi, /parameters\.set\("(?:pixelWidth|pixelHeight|scale|minX|minY|maxX|maxY)"/);
 assert.match(layoutApi, /parameters\.set\("rootIndex", String\(rootIndex\)\)/);
@@ -44,14 +46,14 @@ assert.match(resultPanel, /disabled=\{!props\.hasPreviousPage \|\| props\.queryB
 
 
 // Failure is independent of data: retain old results, label them stale and retry the failed selection.
-assert.match(workspace, /kind: "layout", retry: \(\) => requestLayout\(rootNodeId, view, reset, nextDrillStack\)/);
-assert.match(workspace, /refreshResult\(workspaceController\?\.signal, nodeId, rootIndex, cursor/);
-assert.match(workspace, /cancelled\(cause, signal\)/);
-assert.match(workspace, /cause instanceof Error && cause.name === "AbortError"/);
-assert.match(workspace, /setResultReadFailure\(null\)/);
-assert.match(workspace, /uiText\.diskUsage\.retainedResultStale/);
-assert.match(workspace, /onClick=\{\(\) => failure\(\)\.retry\(\)\}/);
-assert.doesNotMatch(workspace, /catch\([^)]*\) =>[^;]*setVolumes\(\[\]\)/);
+assert.match(disk, /kind: "layout", retry: \(\) => requestLayout\(rootNodeId, view, reset, nextDrillStack\)/);
+assert.match(disk, /refreshResult\(workspaceController\?\.signal, nodeId, rootIndex, cursor/);
+assert.match(disk, /cancelled\(cause, signal\)/);
+assert.match(disk, /cause instanceof Error && cause.name === "AbortError"/);
+assert.match(disk, /setResultReadFailure\(null\)/);
+assert.match(disk, /uiText\.diskUsage\.retainedResultStale/);
+assert.match(disk, /onClick=\{\(\) => failure\(\)\.retry\(\)\}/);
+assert.doesNotMatch(disk, /catch\([^)]*\) =>[^;]*setVolumes\(\[\]\)/);
 const page = readFileSync(new URL("../src/features/diskUsage/DiskUsagePage.tsx", import.meta.url), "utf8");
 assert.match(page, /props\.volumesReadState === "error"/);
 assert.match(page, /props\.volumesReadState === "ready"/);
@@ -59,12 +61,12 @@ assert.match(page, /uiText\.diskUsage\.volumesReadFailed/);
 assert.match(page, /uiText\.diskUsage\.retainedVolumesStale/);
 assert.match(page, /onClick=\{props\.onRetryVolumes\}/);
 
-assert.match(workspace, /if \(!current \|\| resultReadFailure\(\) \|\| queryBusy\(\)/);
-assert.match(workspace, /requestedLayoutRoot !== null && requestedLayoutRoot !== current\.rootNodeId/);
-assert.match(workspace, /failure\?\.kind === "result" \? failure : null/);
+assert.match(disk, /if \(!current \|\| resultReadFailure\(\) \|\| queryBusy\(\)/);
+assert.match(disk, /requestedLayoutRoot !== null && requestedLayoutRoot !== current\.rootNodeId/);
+assert.match(disk, /failure\?\.kind === "result" \? failure : null/);
 
-assert.match(workspace, /createSignal<DiskUsageScanSummary \| null \| undefined>\(undefined\)/);
-assert.match(workspace, /summary\(\) === undefined \|\| layout\(\) === undefined \? "loading" : "ready"/);
+assert.match(disk, /createSignal<DiskUsageScanSummary \| null \| undefined>\(undefined\)/);
+assert.match(disk, /summary\(\) === undefined \|\| layout\(\) === undefined \? "loading" : "ready"/);
 assert.match(page, /!props\.hasResult && props\.resultReadState !== "error"/);
 assert.match(page, /kind=\{props\.resultReadState === "loading" \? "waiting" : "empty"\}/);
 assert.match(page, /props\.resultReadState === "loading" \? undefined : uiText\.diskUsage\.emptyDetail/);
@@ -90,3 +92,7 @@ for (const language of languageOptions.filter(option => option.id !== "system"))
   assert.notEqual(copy.queryPage(1), copy.queryPage(2), `${language.id}: pagination copy ignored the page`);
 }
 console.log("diskUsageWorkspaceContract: ok");
+
+assert.match(workspace, /const owner = runtime\.diskUsage/);
+assert.doesNotMatch(workspace, /createSignal<DiskUsage(?:Layout|Volume|ScanSummary)|getDiskUsage(?:Tree|Summary|Volumes)\(/);
+assert.match(workspace, /createEffect\(on\(frontendWork\.frontendVisible, visible => owner\.setActive\(visible\)\)\)/);

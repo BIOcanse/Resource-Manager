@@ -50,7 +50,7 @@ export default async function diskUsageLocalTreemapJourney(page, baseUrl) {
   const copy = await loadAppCopy("zh-CN");
   const navigation = page.locator(".shell-pages");
   await navigation.getByRole("button", { name: copy.page.diskUsage, exact: true }).click();
-  const title = page.locator(".disk-usage-result .optimization-heading h2");
+  const title = page.locator(`.disk-usage-result .optimization-heading h2${NOT_GHOST}`);
   await title.getByText("C:\\", { exact: true }).waitFor();
   const acceptedReadCount = diskRequests.length;
   const canvas = page.locator(`.disk-usage-treemap-canvas${NOT_GHOST}`);
@@ -111,7 +111,14 @@ export default async function diskUsageLocalTreemapJourney(page, baseUrl) {
     && [...treeQuery.keys()].every(key => ["rootIndex", "maxNodes", "maxBytes"].includes(key)), "Tree endpoint received a view query, missing budgets or repeated read");
   assert(!diskRequests.some(url => url.startsWith("/api/disk-usage/layout")), "A server layout route was requested");
   await navigation.getByRole("button", { name: copy.page.monitor, exact: true }).click();
-  await page.waitForFunction(() => window.__diskWorkerEvidence.every(worker => worker.terminated));
+  const retained = await page.evaluate(() => window.__diskWorkerEvidence);
+  assert(retained.length === 1 && !retained[0].terminated, "Runtime must retain the accepted Worker when the page exits");
+  await navigation.getByRole("button", { name: copy.page.diskUsage, exact: true }).click();
+  await title.getByText("C:\\", { exact: true }).waitFor();
+  const returned = await page.evaluate(() => window.__diskWorkerEvidence);
+  assert(returned.length === 1 && !returned[0].terminated, "Returning must consume the same accepted Worker");
+  assert(diskRequests.filter(url => url.startsWith("/api/disk-usage/tree")).length === 1,
+    "Returning must not reconstruct the accepted tree");
   assert(errors.length === 0, errors.join("\n"));
-  return { sizes: checked, treeReads: 1, workerRetainedForLocalViews: true, workerTerminatedOnExit: true, pageErrors: errors };
+  return { sizes: checked, treeReads: 1, workerRetainedForLocalViews: true, workerRetainedOnExitAndReturn: true, pageErrors: errors };
 }

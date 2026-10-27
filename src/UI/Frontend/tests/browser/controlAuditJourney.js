@@ -1,5 +1,6 @@
 import { fanModeFacts } from "./fanModeFacts.js";
 import assert from "node:assert/strict";
+import { ResourceManager } from "../../src/preferences/generated/frontendPoints.values.ts";
 
 export default async function controlAuditJourney(page, baseUrl) {
   let stateAvailable = false;
@@ -70,15 +71,19 @@ export default async function controlAuditJourney(page, baseUrl) {
     Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
     document.dispatchEvent(new Event("visibilitychange"));
   });
+  await page.waitForTimeout(ResourceManager.FrontendPoints.VisibilityCooldownMs + 50);
   await page.waitForFunction(async () => {
     const telemetry = await (await fetch("/__test/requests")).json();
     return telemetry["/api/control/actual/subscribe"]?.inFlight === 0;
   });
   const hiddenReads = reads;
+  const resumedState = page.waitForResponse(response => response.request().method() === "GET"
+    && new URL(response.url()).pathname === "/api/control/state");
   await page.evaluate(() => {
     Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
     document.dispatchEvent(new Event("visibilitychange"));
   });
+  await (await resumedState).finished();
   await a.locator(".fan-curve-chart").waitFor();
   assert.ok(reads > hiddenReads, "Becoming visible reloads authoritative state");
   await page.getByRole("navigation", { name: "页面切换" }).getByRole("button", { name: "设置", exact: true }).click();

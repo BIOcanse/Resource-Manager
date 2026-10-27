@@ -1,11 +1,14 @@
-import { createSignal, For, onMount, Show } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
 import {
-  getControlAccessLevel,
   setControlAccessLevel
 } from "../../control/controlApi.ts";
 import { controlAccessLevels } from "../../control/controlTypes.ts";
 import type { ControlAccessLevel } from "../../control/controlTypes.ts";
 import { useFrontendRuntime } from "../../../frontendRuntime/FrontendRuntimeContext";
+import { useFrontendWork } from "../../../frontendWork/FrontendWorkContext.tsx";
+import { useSource } from "../../../frontendRuntime/source/useSource.ts";
+import { sourceCanRender } from "../../../frontendRuntime/source/SourceSnapshot.ts";
+import { acceptSourceCommand } from "../../../frontendRuntime/source/acceptSourceCommand.ts";
 import { DialogRoot } from "../../../ui/primitives/Dialog";
 import { RadioGroupItem, RadioGroupRoot } from "../../../ui/primitives/RadioGroup.tsx";
 import { uiText } from "../../../text.ts";
@@ -22,27 +25,24 @@ import { uiText } from "../../../text.ts";
  */
 export function ControlAccessLevelSetting() {
   const runtime = useFrontendRuntime();
+  const work = useFrontendWork();
+  const source = useSource(runtime.sources.control.accessLevel, () => ({ active: work.frontendVisible(), refreshIntervalMs: null }));
   const text = uiText.control.accessLevel;
-  const [level, setLevel] = createSignal<ControlAccessLevel | null>(null);
+  const level = () => sourceCanRender(source.snapshot()) ? source.snapshot().data : null;
   const [pending, setPending] = createSignal<ControlAccessLevel | null>(null);
   const [failed, setFailed] = createSignal(false);
 
-  const [readState, setReadState] = createSignal<"loading" | "ready" | "error">("loading");
+  const readState = () => sourceCanRender(source.snapshot()) ? "ready"
+    : ["idle", "loading"].includes(source.snapshot().status) ? "loading" : "error";
   const [saving, setSaving] = createSignal(false);
-  const read = () => {
-    setReadState("loading");
-    setLevel(null);
-    void getControlAccessLevel(runtime.requestClient)
-      .then(value => { setLevel(value); setReadState("ready"); })
-      .catch(() => setReadState("error"));
-  };
-  onMount(read);
+  const read = () => { void source.refresh(); };
 
   const commit = (next: ControlAccessLevel) => {
     setPending(null);
     setSaving(true);
-    void setControlAccessLevel(runtime.requestClient, next)
-      .then((applied) => { setLevel(applied); setFailed(false); })
+    void acceptSourceCommand(runtime.sources.control.accessLevel,
+      () => setControlAccessLevel(runtime.requestClient, next), value => value)
+      .then(() => setFailed(false))
       .catch(() => setFailed(true))
       .finally(() => setSaving(false));
   };

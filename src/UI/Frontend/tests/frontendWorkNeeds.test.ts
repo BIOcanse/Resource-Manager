@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { mock } from "node:test";
+import { ResourceManager } from "../src/preferences/generated/frontendPoints.values.ts";
 import { batch, createEffect, createRoot } from "solid-js";
 import { frontendVisibilitySourceKinds, frontendWorkIds } from "../src/frontendWork/frontendWorkIds.ts";
 import { frontendVisibilitySourceDemand, frontendVisibilitySurfaceSelector } from "../src/frontendWork/frontendVisibilitySurface.ts";
@@ -60,6 +62,7 @@ Object.assign(globalThis, {
   MutationObserver: InertObserver
 });
 
+mock.timers.enable({ apis: ["setTimeout"] });
 const { useFrontendWorkController } = await import("../src/frontendWork/useFrontendWorkController.ts");
 
 let metricsRuns = 0;
@@ -87,7 +90,19 @@ await flush();
 assert.equal(metricsNeeded, true, "visible card needs metrics");
 Object.assign(document, { visibilityState: "hidden" });
 documentVisibilityChanged();
-assert.equal(controller.isNeeded(frontendWorkIds.monitorMetrics), false);
+intersections.deliver(false);
+mock.timers.tick(1000);
+assert.equal(controller.isNeeded(frontendWorkIds.monitorMetrics), true, "hidden geometry cannot bypass the visibility cooldown");
+Object.assign(document, { visibilityState: "visible" });
+documentVisibilityChanged();
+mock.timers.tick(ResourceManager.FrontendPoints.VisibilityCooldownMs);
+assert.equal(controller.isNeeded(frontendWorkIds.monitorMetrics), true, "restore cancels the pending stop");
+Object.assign(document, { visibilityState: "hidden" });
+documentVisibilityChanged();
+mock.timers.tick(ResourceManager.FrontendPoints.VisibilityCooldownMs - 1);
+assert.equal(controller.isNeeded(frontendWorkIds.monitorMetrics), true);
+mock.timers.tick(1);
+assert.equal(controller.isNeeded(frontendWorkIds.monitorMetrics), false, "long hide releases work at the declared deadline");
 Object.assign(document, { visibilityState: "visible" });
 documentVisibilityChanged();
 assert.equal(controller.isNeeded(frontendWorkIds.monitorMetrics), true, "restore uses the latest observer state without a geometry read");
@@ -122,6 +137,7 @@ assert.equal(metricsRuns, baseline + 1);
 assert.deepEqual(controller.activeVisibilitySourceIds(frontendVisibilitySourceKinds.monitorCard), []);
 
 dispose();
+mock.timers.reset();
 assert.equal(intersections.targets.size, 0, "cleanup disconnects observations");
 
 async function flush() {

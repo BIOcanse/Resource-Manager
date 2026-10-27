@@ -15,7 +15,7 @@ interface PendingLayout {
   reject: (cause: Error) => void;
 }
 
-/** One in-flight layout and one latest requested view. The page owns and disposes the worker. */
+/** One in-flight layout and one latest requested view. The disk domain owner owns and disposes the worker. */
 export class DiskUsageLayoutWorker {
   private worker: Worker | null = null;
   private active: PendingLayout | null = null;

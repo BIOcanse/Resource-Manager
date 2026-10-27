@@ -1099,11 +1099,11 @@ async function handleApi(request, response, url) {
     const runtime = {
       id: "webview2:fixture",
       name: "Fixture WebView2 Runtime",
-      kind: "WebView2Runtime",
+      kind: "web_view2_runtime",
       version: "1.0.0",
       executablePath: "C:/Fixture/WebView2/msedgewebview2.exe",
       runtimeDirectory: "C:/Fixture/WebView2",
-      source: "Managed",
+      source: "managed",
       nativeWebView2Compatible: true,
       selected: true
     };

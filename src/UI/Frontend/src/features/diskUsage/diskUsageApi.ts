@@ -98,7 +98,7 @@ export const diskUsageSummaryDecoder =
       };
     });
 
-/** Fact buffers transfer directly to the page-owned worker for decoding. */
+/** Fact buffers are decoded by the disk domain owner's worker. */
 export const diskUsageTreeDecoder = defineResponseDecoder<ArrayBuffer>(
   "disk-usage.tree.v3", (value) => {
     if (!(value instanceof ArrayBuffer)) throw new ResponseDecodeError("$", "a disk tree buffer");

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { AUTO_ANIMATION_RECENT_INPUT_MS, AUTO_ANIMATION_OPTIMIZE_STYLE } from "../../src/app/selfScheduling/createAnimationStyleSelection.ts";
 import { seedFrontendPreferences, customRefresh } from "./frontendPreferencesFixture.js";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
+import { ResourceManager } from "../../src/preferences/generated/frontendPoints.values.ts";
 
 /**
  * 按自调度自动关闭动画（docs/animation_style_2026-10-26.md「设置」）：开着时，回到前台、近期没有操作的那一刻按自调度结果在选中的风格和无动画之间选；
@@ -158,5 +159,6 @@ export default async function automaticAnimationJourney(page, baseUrl) {
       Object.defineProperty(document, "hidden", { configurable: true, value: !value });
       document.dispatchEvent(new Event("visibilitychange"));
     }, value);
+    if (!value) await page.waitForTimeout(ResourceManager.FrontendPoints.VisibilityCooldownMs + 50);
   }
 }

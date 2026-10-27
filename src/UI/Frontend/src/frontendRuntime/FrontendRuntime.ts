@@ -1,3 +1,4 @@
+import { createDiskUsageOwner, type DiskUsageOwner } from "../features/diskUsage/diskUsageOwner.ts";
 import { getHostMessageTransport } from "../host/hostMessageTransport.ts";
 import { RequestClient } from "./request/RequestClient.ts";
 import { BackendSessionOwner } from "./session/BackendSessionOwner.ts";
@@ -16,6 +17,7 @@ import {
 } from "./source/FrontendSources.ts";
 
 export interface FrontendRuntime {
+  readonly diskUsage: DiskUsageOwner;
   readonly backendSession: BackendSessionOwner;
   readonly requestClient: RequestClient;
   readonly sourceRegistry: SourceRegistry;
@@ -58,10 +60,12 @@ export function createFrontendRuntime(
     requestClient,
     sources.operations,
     { active: false });
+  const diskUsage = createDiskUsageOwner({ requestClient, sourceRegistry, operationRegistry, backendSession });
   const taskCenter = new TaskCenterProjection(taskRegistry, operationRegistry);
   let disposed = false;
 
   return {
+    diskUsage,
     backendSession,
     requestClient,
     sourceRegistry,
@@ -76,6 +80,7 @@ export function createFrontendRuntime(
         return;
       }
       disposed = true;
+      diskUsage.dispose();
       taskCenter.dispose();
       taskRegistry.dispose();
       unsubscribePerformanceTasks();
