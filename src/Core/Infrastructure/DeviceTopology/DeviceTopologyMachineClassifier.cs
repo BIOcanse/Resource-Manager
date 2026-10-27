@@ -14,9 +14,11 @@ internal sealed partial class DeviceTopologyMachineClassifier
     private DeviceTopologyMachineClassifier(Rules rules)
     {
         this.rules = rules;
+        // NonBacktracking matches in time linear in the input, so a wall-clock timeout guards nothing here and only
+        // fails under machine load while the engine builds its automaton on first use.
         matches = rules.WorkstationRules.Select(rule => (rule, new Regex(rule.Pattern,
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking,
-            TimeSpan.FromMilliseconds(100)))).ToArray();
+            Regex.InfiniteMatchTimeout))).ToArray();
     }
 
     private static DeviceTopologyMachineClassifier Load()
