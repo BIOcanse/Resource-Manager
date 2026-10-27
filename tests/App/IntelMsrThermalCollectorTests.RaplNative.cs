@@ -62,7 +62,7 @@ public sealed partial class IntelMsrThermalCollectorTests
         Assert.Equal(1136, bindings.Length); Assert.Equal(1136, bindings.Select(static binding => binding.MetricHandle).Distinct().Count());
         Assert.Equal(272, bindings.Select(static binding => binding.DeviceIdentity).Distinct().Count());
         Assert.Equal(64UL * 1024 * 1024, compiled.Recreate.Capacity.ResidentByteBudget);
-        Assert.Equal(13_488U, compiled.Recreate.Capacity.MaximumMetricCount);
+        Assert.Equal(13_504U, compiled.Recreate.Capacity.MaximumMetricCount);
         var server = RaplPackage(0x306F0);
         var restricted = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(compiled, [], [], [], NativeMetricSnapshotCatalogHandleMap.Empty, intelCpus: [server]);
         Assert.Equal(8, restricted.MetricBindings.Values.Count(binding => IntelRaplFieldCatalog.Find(binding.FieldCode) is not null));

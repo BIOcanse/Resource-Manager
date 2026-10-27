@@ -16,6 +16,67 @@ public sealed partial class AdlxMetricsCollectorTests
     private static NativeAdlxGpuMetrics AvailabilityRow(int id, string pnp) => Row(id, pnp, 2 | 4 | 64) with
         { GraphicsClockMhz = 1200, MaxGraphicsClockMhz = 2000, MemoryClockMhz = 1800, VramUsedMb = 128, TotalVramMb = 8192 };
 
+    [Fact]
+    public async Task IntegratedAdapterReadsSupportedAdlxSensorsThroughOriginalWorkspaceAndSelection()
+    {
+        const string apuPnp = @"PCI\VEN_1002&DEV_164E&SUBSYS_50051D05&REV_D8\RECORDED_610M";
+        var inventory = Inventory() with { Adapters = Inventory().Adapters.Where(adapter => adapter.Index == 9)
+            .Select(adapter => adapter with { Kind = WindowsGpuAdapterKind.Integrated, DedicatedVideoMemoryBytes = 0,
+                DeviceId = 0x164E, SubSystemId = 0x50051D05,
+                PhysicalIdentities = adapter.PhysicalIdentities.Select(identity => identity with
+                    { PnpInstanceId = apuPnp, DeviceId = 0x164E, SubVendorId = 0x1D05, SubsystemId = 0x5005,
+                        RevisionId = 0xD8 }).ToArray() }).ToArray(),
+            ObservedCount = 1 };
+        var compiled = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
+        using var workspace = NativeMetricSnapshotHostConfiguration.CreateWorkspace(compiled,
+            Path.Combine(Path.GetTempPath(), $"adlx-integrated-{Guid.NewGuid():N}.bin"));
+        var catalog = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(compiled,
+            [new(9, "AMD Radeon 610M", "gpu-apu", 0xA1, 1, 2, false)], [], [], workspace.CreateCatalogHandleMap());
+        var codes = new[] { MetricFieldCode.GpuPower, MetricFieldCode.GpuBoardPower, MetricFieldCode.GpuTemperature,
+            MetricFieldCode.GpuHotspotTemperature, MetricFieldCode.GpuIntakeTemperature, MetricFieldCode.GpuVoltage,
+            MetricFieldCode.GpuGraphicsClock, MetricFieldCode.GpuGraphicsClockPercent, MetricFieldCode.GpuMemoryClock };
+        var bindings = catalog.MetricBindings.Values.Where(binding => binding.SourceId == "amd.adlx" && codes.Contains(binding.FieldCode)).ToArray();
+        Assert.Equal(codes.Length, bindings.Length);
+        var now = DateTimeOffset.UtcNow;
+        workspace.ReplaceCatalog(catalog, now);
+        var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle, 1,
+            NativeMetricSnapshotZoneMode.Normal, NativeMetricSnapshotSourceAvailability.Available)).ToArray();
+        var plan = workspace.PlanCollection(bindings.Select(binding => binding.MetricHandle).ToArray(), modes, false, now);
+        var source = Assert.Single(plan.Sources);
+        var row = AvailabilityRow(10, apuPnp) with { AvailableFlags = 2 | 4 | 8 | 16 | 32 | 128 | 512 | 1024,
+            SupportedFlags = 2 | 4 | 8 | 16 | 32 | 128 | 512 | 1024,
+            PowerWatts = 5, BoardPowerWatts = 7, TemperatureCelsius = 45, HotspotTemperatureCelsius = 51,
+            IntakeTemperatureCelsius = 30, VoltageMillivolts = 850 };
+        var native = new Bridge { Metadata = [row], Values = [row] };
+        var values = await new AmdAdlxBridgeReader(native).ReadAsync(
+            WindowsHardwareMetricSampler.CreateAdlxReadRequest(bindings), inventory, default);
+        Assert.Single(values);
+        var completion = WindowsHardwareMetricSampler.CreateAdlxCompletion(plan, source,
+            new(source.SourceHandle, 1, 1), now, values);
+        workspace.CompleteSource(plan, completion, now);
+        var tracker = new ResourceManager.ReadWrite.Windows.Metrics.Capture.MetricReadingSourceTracker();
+        var frame = workspace.ReadCommitted();
+        tracker.Observe(frame, 1, [completion]);
+        var snapshot = NativeMetricSnapshotCommittedProjection.Create(frame, 1, tracker.Select(frame, 1));
+        var definitions = MetricCatalog.FromSnapshot(snapshot);
+        foreach (var binding in bindings)
+        {
+            var definition = definitions.Single(item => item.Id == binding.LegacyMetricId);
+            Assert.True(definition.Selectable);
+            var selected = Assert.Single(definition.CandidateSources, candidate => candidate.IsSelected);
+            Assert.Equal("amd.adlx", selected.SourceId);
+            Assert.Equal("available", selected.SourceAvailability);
+        }
+        Assert.Equal(5d, snapshot.Items["gpu.9.power"].NumericValue);
+        Assert.Equal(1800d, snapshot.Items["gpu.9.memoryClock"].NumericValue);
+        Assert.Equal(0.85d, snapshot.Items["gpu.9.coreVoltage"].NumericValue);
+        var powerSource = Assert.Single(definitions.Single(item => item.Id == "gpu.9.power").CandidateSources,
+            candidate => candidate.IsSelected);
+        Assert.Equal("gpu.chip_power_reported", powerSource.Reading!.Quantity);
+        Assert.Equal(10, powerSource.Reading.SourceRank);
+        output.WriteLine(System.Text.Json.JsonSerializer.Serialize(definitions.Single(item => item.Id == "gpu.9.power")));
+    }
+
     [Theory]
     [InlineData(0, 0)] [InlineData(0, 1)] [InlineData(0, 2)] [InlineData(0, 3)]
     [InlineData(1, 0)] [InlineData(1, 1)] [InlineData(1, 2)] [InlineData(1, 3)]
@@ -68,7 +129,7 @@ public sealed partial class AdlxMetricsCollectorTests
             [new(9, "AMD A", "gpu-a", 0xA1, 1, 2, true), new(3, "AMD B", "gpu-b", 0xB1, 1, 2, true)], [], [], workspace.CreateCatalogHandleMap());
         var bindings = catalog.MetricBindings.Values.Where(binding => binding.SourceId == "amd.adlx" && AvailabilityCodes.Contains(binding.FieldCode)).ToArray();
         output.WriteLine("ADLX availability bindings: " + string.Join(", ", bindings.Select(binding => $"{binding.DisplayIndex}:{binding.FieldCode}")));
-        Assert.Equal(10, bindings.Length);
+        Assert.Equal(12, bindings.Length);
         Assert.Equal(2, bindings.Count(binding => binding.FieldCode == MetricFieldCode.GpuMemoryUsed));
         var now = DateTimeOffset.UtcNow; workspace.ReplaceCatalog(catalog, now);
         var modes = catalog.Sources.Select(source => new NativeMetricSnapshotSourceRuntimeMode(source.SourceHandle, 1,

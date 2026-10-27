@@ -317,7 +317,7 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
         Assert.DoesNotContain("gpu.1.vram", first.LegacyMetricHandles.Keys);
         Assert.Contains("gpu.1.graphicsClock", first.LegacyMetricHandles.Keys);
         Assert.DoesNotContain("gpu.0.boardPower", first.LegacyMetricHandles.Keys);
-        Assert.DoesNotContain("gpu.1.boardPower", first.LegacyMetricHandles.Keys);
+        Assert.Contains("gpu.1.boardPower", first.LegacyMetricHandles.Keys);
 
         var nvidiaScope = first.GpuScopeBindings.Single(
             static pair => pair.Value.DisplayIndex == 0).Key;
@@ -335,9 +335,12 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
         Assert.DoesNotContain(
             RulesForMetric(first, "gpu.1.usage"),
             static row => row.SourceHandle == 7);
-        Assert.Contains(
-            RulesForMetric(first, "gpu.1.graphicsClock"),
-            static row => row.SourceHandle == 9);
+        var clocks = first.MetricBindings.Values.Where(binding => binding.DisplayIndex == 1
+            && binding.FieldCode == MetricFieldCode.GpuGraphicsClock).ToArray();
+        Assert.Equal(2, clocks.Length);
+        Assert.Equal(2, clocks.Select(binding => binding.MetricHandle).Distinct().Count());
+        Assert.Contains(clocks, static binding => binding.SourceId == "amd.adlx");
+        Assert.Contains(clocks, static binding => binding.SourceId == "amd.smu");
         var samePhysicalInventory = recordedInventory.Reverse()
             .Select(static adapter => adapter with { Name = "Renamed " + adapter.Name }).ToArray();
         Assert.True(WindowsHardwareMetricSampler.MatchesExactGpuInventory(
@@ -675,7 +678,7 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
 
         using var workspace = new NativeMetricSnapshotWorkspace(
             NativeMetricSnapshotHostConfiguration.CreateConfiguration(plan), config);
-        Assert.Equal(13_488U, workspace.Capacity.MetricCapacity);
+        Assert.Equal(13_504U, workspace.Capacity.MetricCapacity);
         Assert.Equal(16384U, workspace.Capacity.RuleCapacity);
         Assert.True(checked(workspace.Capacity.ResidentByteCount + workspace.Capacity.ScratchByteCount) <= plan.Recreate.Capacity.ResidentByteBudget);
         var projection = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(plan, gpus, disks, fans,
@@ -700,8 +703,9 @@ public sealed class NativeMetricSnapshotCatalogProjectionTests
         Assert.Equal(660, projection.RuleBindings.Values.Count(row => row.Field?.Resource == MetricResource.Fan));
         Assert.Equal(16, projection.RuleBindings.Values.Count(row => row.FieldCode == MetricFieldCode.AmdCcdTdieTemperature));
         var addedNodeThreadAndDeviceFields = Bound(9) + Bound(12) + Bound(16) + amdCcds.Length;
-        Assert.Equal(12103 + addedNodeThreadAndDeviceFields, projection.Rules.Length);
-        Assert.Equal(12069 + addedNodeThreadAndDeviceFields, projection.MetricBindings.Count);
+        Assert.Equal(12103 + addedNodeThreadAndDeviceFields + gpus.Length, projection.Rules.Length);
+        var addedAdlxFields = gpus.Count(gpu => (gpu.VendorMask & VendorAmd) != 0) * 2;
+        Assert.Equal(12069 + addedNodeThreadAndDeviceFields + gpus.Length + addedAdlxFields, projection.MetricBindings.Count);
         // These are the original native replacement and native header, not a
         // managed row-count-only assertion or a replacement workspace stub.
         var header = workspace.ReplaceCatalog(projection, DateTimeOffset.UtcNow);

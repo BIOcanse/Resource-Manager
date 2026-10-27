@@ -1,12 +1,12 @@
 {
-  "profile_revision": 68,
+  "profile_revision": 69,
   "abi_version": 851968,
   "build_capacity": {
     "maximum_source_count": 32,
-    "maximum_metric_count": 13488,
+    "maximum_metric_count": 13504,
     "maximum_rule_count": 16384,
-    "maximum_requested_count": 13488,
-    "maximum_observation_count": 13488,
+    "maximum_requested_count": 13504,
+    "maximum_observation_count": 13504,
     "maximum_gpu_adapter_count": 64,
     "maximum_persistence_source_count": 32,
     "maximum_persistence_rule_count": 16384,
@@ -17,19 +17,19 @@
     "gpu_index_capacity": 128,
     "gpu_luid_index_capacity": 128,
     "gpu_key_index_capacity": 128,
-    "maximum_plan_metric_count": 13488,
+    "maximum_plan_metric_count": 13504,
     "maximum_source_mode_count": 32,
     "maximum_source_plan_count": 32,
-    "maximum_metric_plan_count": 13488,
+    "maximum_metric_plan_count": 13504,
     "resident_byte_budget": 134217728
   },
   "recreate": {
     "capacity": {
       "maximum_source_count": 32,
-      "maximum_metric_count": 13488,
+      "maximum_metric_count": 13504,
       "maximum_rule_count": 16384,
-      "maximum_requested_count": 13488,
-      "maximum_observation_count": 13488,
+      "maximum_requested_count": 13504,
+      "maximum_observation_count": 13504,
       "maximum_gpu_adapter_count": 16,
       "maximum_persistence_source_count": 32,
       "maximum_persistence_rule_count": 16384,
@@ -40,10 +40,10 @@
       "gpu_index_capacity": 32,
       "gpu_luid_index_capacity": 32,
       "gpu_key_index_capacity": 32,
-      "maximum_plan_metric_count": 13488,
+      "maximum_plan_metric_count": 13504,
       "maximum_source_mode_count": 32,
       "maximum_source_plan_count": 32,
-      "maximum_metric_plan_count": 13488,
+      "maximum_metric_plan_count": 13504,
       "resident_byte_budget": 67108864
     },
     "catalog_contract_version": 393216,
@@ -1576,6 +1576,22 @@
         "semantic_fingerprint": 1113
       },
       {
+        "template_id": "gpu.sharedMemoryUsed.pdh",
+        "metric_id_template": "gpu.{gpu}.sharedMemoryUsed",
+        "source_id": "pdh.gpu-engine",
+        "scope_expansion": "gpu_adapter",
+        "metric_kind": "custom_numeric",
+        "value_kind": "unsigned64",
+        "capability_mask": 32,
+        "metric_flags": ["nonnegative", "used_value"],
+        "minimum_value_bits": 0,
+        "maximum_value_bits": 18446744073709551615,
+        "gpu_vendor_mask": 15,
+        "applicability_mask": 0,
+        "maximum_instance_count": 32,
+        "semantic_fingerprint": 35234
+      },
+      {
         "template_id": "gpu.graphicsClock.adlx",
         "metric_id_template": "gpu.{gpu}.graphicsClock",
         "source_id": "amd.adlx",
@@ -1700,7 +1716,7 @@
         "minimum_value_bits": 0,
         "maximum_value_bits": 9218868437227405311,
         "gpu_vendor_mask": 2,
-        "applicability_mask": 1,
+        "applicability_mask": 0,
         "maximum_instance_count": 32,
         "semantic_fingerprint": 1124
       },
@@ -1736,7 +1752,7 @@
         "minimum_value_bits": 0,
         "maximum_value_bits": 9218868437227405311,
         "gpu_vendor_mask": 2,
-        "applicability_mask": 1,
+        "applicability_mask": 0,
         "maximum_instance_count": 32,
         "semantic_fingerprint": 1126
       },
@@ -1826,7 +1842,7 @@
         "minimum_value_bits": 0,
         "maximum_value_bits": 9218868437227405311,
         "gpu_vendor_mask": 2,
-        "applicability_mask": 1,
+        "applicability_mask": 0,
         "maximum_instance_count": 32,
         "semantic_fingerprint": 1201
       },
@@ -2421,7 +2437,7 @@
         "minimum_value_bits": 0,
         "maximum_value_bits": 9218868437227405311,
         "gpu_vendor_mask": 2,
-        "applicability_mask": 1,
+        "applicability_mask": 0,
         "maximum_instance_count": 32,
         "semantic_fingerprint": 21001
       },
@@ -4914,7 +4930,7 @@
         "minimum_value_bits": 0,
         "maximum_value_bits": 2147483647,
         "gpu_vendor_mask": 2,
-        "applicability_mask": 0,
+        "applicability_mask": 1,
         "maximum_instance_count": 32,
         "semantic_fingerprint": 35107
       },

@@ -60,6 +60,7 @@ public sealed partial class WindowsHardwareMetricResources
         var npuEngine = new WindowsNpuEngineReader(options.MaximumNpuEngineNameCharacters);
         var pdh = new NativePdhSession(new NativePdhApi(), pdhOptions, clock);
         var gpuUsage = new PdhGpuEngineUsageReader(pdh);
+        var gpuSharedMemory = new PdhGpuAdapterSharedMemoryReader();
         var systemIo = new PdhSystemIoReader(pdh);
         var nvidiaControl = new NvidiaGpuControlResource();
         var nvml = new NvidiaNvmlReader();
@@ -122,6 +123,7 @@ public sealed partial class WindowsHardwareMetricResources
             ReadNumaIdentities = WindowsMemoryMetricResource.ReadNumaIdentities,
             ReadGpuInventory = () => inventory.ReadInventory(true), ReadCpuFrequency = frequency.ReadFrequency,
             ReadGpuUsage = gpuUsage.ReadUsageSnapshotByAdapterIndex,
+            ReadGpuSharedMemory = gpuSharedMemory.ReadByAdapterIndex,
             ReadNvmlAsync = nvml.ReadAsync, ReadNvapiAsync = nvapi.ReadAsync, ReadAdlxAsync = adlx.ReadAsync,
             ReadNvapiDrs = nvapi.ReadDrs, DiscoverNvapiDrs = nvapi.DiscoverDrs,
             ReadNvmlFanIdentities = nvml.ReadFanIdentities, ReadNvmlFansAsync = nvml.ReadFansAsync,

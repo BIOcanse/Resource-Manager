@@ -34,6 +34,14 @@ internal static partial class PdhCounterMethods
         out uint counterType,
         out PdhFmtCounterValue value);
 
+    [LibraryImport("pdh.dll", EntryPoint = "PdhGetFormattedCounterArrayW")]
+    internal static partial int PdhGetFormattedCounterArray(
+        IntPtr counter,
+        uint format,
+        ref uint bufferSize,
+        ref uint itemCount,
+        IntPtr itemBuffer);
+
     [LibraryImport("pdh.dll")]
     internal static partial int PdhCloseQuery(IntPtr query);
 
@@ -57,4 +65,14 @@ internal struct PdhFmtCounterValue
 
     [FieldOffset(8)]
     public long LargeValue;
+}
+
+[StructLayout(LayoutKind.Explicit, Size = 24)]
+internal struct PdhFmtCounterValueItem
+{
+    [FieldOffset(0)]
+    public IntPtr Name;
+
+    [FieldOffset(8)]
+    public PdhFmtCounterValue Value;
 }

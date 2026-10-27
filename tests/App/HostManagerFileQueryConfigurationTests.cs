@@ -28,7 +28,7 @@ public sealed class HostManagerFileQueryConfigurationTests
         Assert.Equal(200, plan.Recreate.Capacity.MaximumResultCount);
         Assert.Equal(4096, plan.Recreate.Capacity.EntryIndexCapacity);
         Assert.Equal(4096, plan.Recreate.Capacity.OrdinalIndexCapacity);
-        Assert.Equal(68UL << 32, plan.ConfigurationGeneration);
+        Assert.Equal(69UL << 32, plan.ConfigurationGeneration);
         Assert.Equal(3, plan.HotPublish.ShortQueryRuneThreshold);
         Assert.Equal(
             NativeFileQueryAbi.UnicodeTokenizerVersion,

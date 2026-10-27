@@ -28,7 +28,7 @@ public sealed class MetricMemoryCatalogShapeTests
         var configuration = WindowsMetricConfiguration.Default.Configuration;
         using var session = new NativeMetricSnapshotSession(in configuration);
         Assert.Equal(16384U, session.Capacity.RuleCapacity);
-        Assert.Equal(13488U, session.Capacity.MetricCapacity);
+        Assert.Equal(13504U, session.Capacity.MetricCapacity);
         var smallHandles = fixture.Rules.Select(static row => row.MetricHandle).Distinct().Take(2).ToHashSet();
         var smallRules = fixture.Rules.Where(row => smallHandles.Contains(row.MetricHandle)).ToArray();
         Replace(smallRules, 1);

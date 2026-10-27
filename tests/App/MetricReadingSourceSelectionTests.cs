@@ -312,7 +312,7 @@ public sealed class MetricReadingSourceSelectionTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void AdlxRawChipPowerDoesNotBecomeIntegratedGraphicsComponentPower(bool dedicated)
+    public void AdlxReportedPowerIsRequestableForIntegratedAndDedicatedAdapters(bool dedicated)
     {
         var projection = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(
             HostManagerTestPlanFactory.CreatePlan().MetricSnapshot,
@@ -320,9 +320,10 @@ public sealed class MetricReadingSourceSelectionTests
             [], [], NativeMetricSnapshotCatalogHandleMap.Empty);
         var raw = Assert.Single(projection.MetricBindings.Values, row => row.SourceId == "amd.adlx"
             && row.FieldCode == MetricFieldCode.GpuPower);
-        Assert.Equal(dedicated ? "gpu.0.power" : string.Empty, raw.LegacyMetricId);
-        Assert.Equal(dedicated, projection.LegacyMetricHandles.ContainsKey("gpu.0.power"));
+        Assert.Equal("gpu.0.power", raw.LegacyMetricId);
+        Assert.True(projection.LegacyMetricHandles.ContainsKey("gpu.0.power"));
         Assert.NotNull(raw.Field);
+        Assert.Equal("gpu_amd_chip_power_watts", raw.Field.Name);
     }
 
     [Fact]

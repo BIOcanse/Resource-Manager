@@ -49,7 +49,7 @@ public sealed partial class HardwareMetricCatalogStateTests
     [InlineData("motherboard_all_chipset_temperature_celsius", "system.chipsetTemperature", "memory_all_temperature_reported_celsius", "hardware-monitor.core")]
     [InlineData("cpu_amd_stapm_power_watts", "cpu.stapmPower", "cpu_amd_actual_power_watts", "amd.smu")]
     [InlineData("cpu_amd_package_power_reported_watts", "cpu.packagePower", "cpu_amd_actual_power_watts", "amd.smu")]
-    public void RunningSourceDoesNotBecomeMissingComponentWhenAnotherFieldIsUnverified(
+    public void RunningSourceAllowsRequestingUnverifiedFieldsWithoutClaimingSupport(
         string fieldName, string alias, string availableFieldName, string source)
     {
         var initial = CreateSnapshot(1, "gpu", []);
@@ -59,9 +59,9 @@ public sealed partial class HardwareMetricCatalogStateTests
         initial = initial with { FieldBindings = new Dictionary<string, MetricDeviceFieldBinding>
             { ["target"] = target, ["sibling"] = sibling } };
         var definition = MetricCatalog.FromSnapshot(initial).Single(item => item.Id == alias);
-        Assert.False(definition.Selectable);
+        Assert.True(definition.Selectable);
         Assert.Null(definition.RequiredComponentId);
-        Assert.Equal(BackendMessageCodes.Metric.NoValidReading, definition.DisabledReason!.Code);
+        Assert.Null(definition.DisabledReason);
         Assert.Equal("unverified", initial.FieldBindings["target"].Field.Reading!.SourceAvailability);
         Assert.Empty(initial.Items);
 
@@ -109,8 +109,7 @@ public sealed partial class HardwareMetricCatalogStateTests
         Assert.True(state.PublishReadingMetadata(committed));
         Assert.NotEqual(revision, state.Revision);
         Assert.Empty(state.Current!.Items);
-        Assert.Equal(BackendMessageCodes.Metric.NoValidReading,
-            MetricCatalog.FromSnapshot(state.Current).Single(item => item.Id == "system.vrmTemperature").DisabledReason!.Code);
+        Assert.True(MetricCatalog.FromSnapshot(state.Current).Single(item => item.Id == "system.vrmTemperature").Selectable);
     }
 
     [Fact]
@@ -131,9 +130,9 @@ public sealed partial class HardwareMetricCatalogStateTests
         var installed = MetricCatalog.WithInstalledComponents(definitions,
                 new HashSet<string>(["Hardware-Sensors-PawnIO-Provider"], StringComparer.OrdinalIgnoreCase))
             .Single(item => item.Id == alias);
-        Assert.False(installed.Selectable);
         Assert.Null(installed.RequiredComponentId);
-        Assert.Equal(BackendMessageCodes.Metric.NoValidReading, installed.DisabledReason!.Code);
+        Assert.True(installed.Selectable);
+        Assert.Null(installed.DisabledReason);
     }
 
     private static MetricDeviceFieldBinding CatalogBinding(string name, string source, string request,

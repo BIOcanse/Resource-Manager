@@ -18,7 +18,7 @@ public sealed class HostManagerDisplayCoordinatorTests
         Assert.True(plan.IsPublished);
         Assert.Equal(NativeDisplayCoordinatorAbi.Version, plan.Build.AbiVersion);
         Assert.Equal("display_coordinator", plan.Build.NativeModule);
-        Assert.Equal(68UL << 32, plan.Recreate.ConfigurationGeneration);
+        Assert.Equal(69UL << 32, plan.Recreate.ConfigurationGeneration);
         Assert.Equal(5U, plan.Recreate.Capacity.MaximumSourceCount);
         Assert.Equal(256U, plan.Recreate.Capacity.MaximumObservationCount);
         Assert.Equal(512U, plan.Recreate.Capacity.MaximumNodeCount);

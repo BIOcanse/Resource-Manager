@@ -714,12 +714,6 @@ public sealed record NativeMetricSnapshotCatalogProjection(
             NpuEngine = identity is ResolvedNpuEngineIdentity engine ? engine.Engine : null,
             AmdCcd = identity is ResolvedAmdCcdIdentity ccd ? ccd.Sensor : null
         };
-            // ADLX's chip report on APUs is not a confirmed graphics-only
-            // power domain. Keep the raw field, but do not label it GPU power.
-            if (identity is ResolvedGpuIdentity gpu && !gpu.SupportsDedicatedMetrics
-                && template.SourceId == NativeMetricSnapshotSources.AmdAdlx
-                && expanded.Field?.Code == MetricFieldCode.GpuPower)
-                expanded = expanded with { LegacyMetricId = string.Empty };
             return expanded;
         });
     }

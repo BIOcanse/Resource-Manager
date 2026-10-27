@@ -94,7 +94,7 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
     }
 
     [Fact]
-    public void UnavailableSmuProviderTemporarilySelectsAdlxForSharedAmdGraphicsClock()
+    public void UnavailableSmuCooldownDoesNotSuppressIndependentAdlxGraphicsClock()
     {
         var compiled = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
         using var workspace = NativeMetricSnapshotHostConfiguration.CreateWorkspace(
@@ -114,7 +114,7 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
             rule.SourceId == NativeMetricSnapshotSources.AmdAdlx
             && rule.FieldCode == MetricFieldCode.GpuGraphicsClock
             && rule.DisplayIndex == 0));
-        Assert.Equal(binding.MetricHandle, adlxRule.MetricHandle);
+        Assert.NotEqual(binding.MetricHandle, adlxRule.MetricHandle);
         var at = DateTimeOffset.UtcNow;
         workspace.ReplaceCatalog(catalog, at);
 
@@ -161,8 +161,15 @@ public sealed class WindowsHardwareMetricCaptureSourceStatusTests
         Assert.Equal(
             NativeMetricSnapshotSourceAvailability.Unavailable,
             Assert.Single(duringCooldown.Where(mode => mode.SourceHandle == smuPlan.SourceHandle)).Availability);
+        var tracker = new MetricReadingSourceTracker();
+        var frame = workspace.ReadCommitted();
+        tracker.Observe(frame, 1, [unavailable]);
+        var expanded = tracker.ExpandLegacyRequest(MetricSampleRequest.ForIds(["gpu.0.graphicsClock"]), frame, 1);
+        var candidates = NativeMetricSnapshotRequestProjection.CreateMetricHandles(expanded, catalog);
+        Assert.Contains(binding.MetricHandle, candidates);
+        Assert.Contains(adlxRule.MetricHandle, candidates);
         var fallbackPlan = workspace.PlanCollection(
-            requested,
+            candidates,
             duringCooldown,
             includeGpuInventory: false,
             commandAt: at.AddSeconds(1));

@@ -4,9 +4,8 @@ namespace ResourceManager.App.Infrastructure.Monitoring;
 /// <summary>
 /// 核显的传感路由：**哪一块卡**的频率、温度、电压该去处理器的 SMU 读。
 ///
-/// 核显没有自己的传感库 —— ADLX 服务的是独显，问它核显的频率只会得到"没有"。
-/// 但那几个量一直都在：它们躺在处理器的 PM table 里（APU 频率 / 电压 / 温度），
-/// 因为核显本来就是这颗处理器的一部分。所以认出是核显之后，路由要改到 SMU 去。
+/// AMD 核显也可以由 ADLX 报告指标；本类只负责现有 SMU 字段的精确设备绑定，
+/// 不排除 ADLX 候选。哪些字段可读由各来源自己的支持与读数事实决定。
 ///
 /// **不按索引判。** GPU0 不一定是核显：插了独显、换了驱动、甚至改个 BIOS 选项，
 /// 顺序都可能变。判据是 Windows 自己给的适配器类型（Integrated / Dedicated）
@@ -62,8 +61,7 @@ public sealed class AmdIntegratedGpuSensorRoute
     /// <summary>
     /// 这个指标 id 是不是"核显的某个传感量"，是的话对应 PM table 里的哪一项。
     ///
-    /// 只认这三项：核显在 SMU 里就只有这三个量，其余的（显存、板卡功耗……）
-    /// 对核显本来就不成立 —— 它用的是系统内存，也没有独立供电。
+    /// 当前 SMU 映射实现这三项；其他量是否存在不能从本路由推断。
     /// </summary>
     internal static AmdIntegratedGpuSensorKind? SensorKindOf(string metricId, int adapterIndex)
     {

@@ -138,6 +138,9 @@ public static class BackendMessageCodes
 
         /// <summary>当前硬件或 Provider 未返回有效读数。参数：无。</summary>
         public const byte NoValidReading = 3;
+
+        /// <summary>The device has no such quantity. Parameters: none.</summary>
+        public const byte NotApplicable = 4;
     }
 
     public static class GpuPlacement

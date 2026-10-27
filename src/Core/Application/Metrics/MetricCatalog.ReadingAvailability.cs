@@ -6,8 +6,8 @@ namespace ResourceManager.App.Application.Metrics;
 public static partial class MetricCatalog
 {
     /// <summary>
-    /// "需要 X" 只说给没装 X 的机器听。组件已经装好、这一项只是还没读出值时，
-    /// 原因改成"暂无有效读数"，不再让用户去装一个已经装了的组件。
+    /// A registered, unprobed reading can be requested once its component is installed.
+    /// Missing samples do not prove that the device cannot expose that reading.
     /// </summary>
     public static IReadOnlyList<MetricDefinition> WithInstalledComponents(
         IEnumerable<MetricDefinition> definitions,
@@ -19,7 +19,9 @@ public static partial class MetricCatalog
                     ? definition with
                     {
                         RequiredComponentId = null,
-                        DisabledReason = BackendMessage.Create(
+                        Selectable = definition.CandidateSources.Any(static candidate => candidate.SourceAvailability != "unsupported"),
+                        DisabledReason = definition.CandidateSources.Any(static candidate => candidate.SourceAvailability != "unsupported")
+                            ? null : BackendMessage.Create(
                             BackendMessageDomains.Metric,
                             BackendMessageCodes.Metric.NoValidReading)
                     }
@@ -51,32 +53,35 @@ public static partial class MetricCatalog
                 candidates = candidates.Concat(candidates.Where(static binding => binding.Field.Reading is not null)
                         .SelectMany(binding => readings[binding.Field.Reading!.Id]))
                     .DistinctBy(static binding => binding.RequestAddress, StringComparer.OrdinalIgnoreCase).ToArray();
-                definition = definition with
-                {
-                    CandidateSources = candidates.OrderBy(static binding => binding.Field.Reading?.SourceRank ?? int.MaxValue)
+            }
+            definition = definition with
+            {
+                CandidateSources = candidates.OrderBy(static binding => binding.Field.Reading?.SourceRank ?? int.MaxValue)
                         .ThenBy(static binding => binding.RequestAddress, StringComparer.Ordinal)
                         .Select(binding => new MetricSourceCandidate(binding.Field.Name, binding.DeviceIdentity,
                             binding.SourceId, binding.Field.Reading, binding.Field.Reading?.SourceAvailability ?? "unverified",
                             binding.SelectedRequestAliases.Contains(definition.Id, StringComparer.OrdinalIgnoreCase))).ToArray()
-                };
-                definitions[index] = definition;
-            }
+            };
+            definitions[index] = definition;
+            // Managed setting declarations have their own readback contract.
+            // A control binding alone is not a telemetry capability declaration.
+            if (candidates.All(static binding => binding.Field.Reading is null)) continue;
             var preferredAvailable = candidates.Any(static binding => binding.Field.Reading is
                 { IsPreferredSource: true, SourceAvailability: "available" });
             var unsupported = candidates.All(static binding => binding.Field.Reading?.SourceAvailability == "unsupported");
-            // A confirmed field proves this provider can run, not that every
-            // sensor it declares exists. Do not infer support from a sibling.
+            // Selection permits requesting a bound reading; it is not a claim
+            // that an unprobed sensor has already produced a valid sample.
             var sourceAvailable = candidates.Any(binding => availableSources.Contains(binding.SourceId));
-            if (!preferredAvailable && !unsupported && !sourceAvailable) continue;
+            if (!preferredAvailable && !unsupported && !sourceAvailable && definition.RequiredComponentId is not null) continue;
 
-            var selectable = preferredAvailable || (!unsupported && definition.Selectable);
+            var selectable = !unsupported;
             definitions[index] = definition with
             {
                 Selectable = selectable,
                 RequiredComponentId = null,
                 DisabledReason = selectable ? null : BackendMessage.Create(
                     BackendMessageDomains.Metric,
-                    unsupported ? BackendMessageCodes.Metric.NotExposed : BackendMessageCodes.Metric.NoValidReading)
+                    BackendMessageCodes.Metric.NotExposed)
             };
         }
     }

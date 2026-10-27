@@ -15,7 +15,7 @@ public sealed class HostManagerReportCoordinatorConfigurationTests
         Assert.True(plan.IsPublished);
         Assert.Equal(NativeReportCoordinatorAbi.Version, plan.Build.AbiVersion);
         Assert.Equal("report_coordinator", plan.Build.NativeModule);
-        Assert.Equal(68UL << 32, plan.ConfigurationGeneration);
+        Assert.Equal(69UL << 32, plan.ConfigurationGeneration);
         Assert.Equal(16, plan.Recreate.Capacity.MaximumSourceCount);
         Assert.Equal(64, plan.Recreate.Capacity.MaximumRuleCount);
         Assert.Equal(2048, plan.Recreate.Capacity.MaximumObservationCount);

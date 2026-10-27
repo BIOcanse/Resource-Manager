@@ -225,7 +225,8 @@ public enum MetricFieldCode
     NumaNodeCapacityMiB,
     IntelEffectiveFrequencyMhz,
     NpuDeviceEngineBusyPercent,
-    AmdCcdTdieTemperature
+    AmdCcdTdieTemperature,
+    GpuSharedMemoryUsed
 }
 
 public sealed record MetricFieldDefinition(
@@ -500,6 +501,7 @@ public static partial class MetricFieldRegistry
         new(MetricFieldCode.GpuGraphicsClock, "gpu_all_graphics_clock_mhz", MetricResource.Gpu, MetricVendor.All, "MHz", "gpu.{gpu}.graphicsClock"),
         new(MetricFieldCode.GpuGraphicsClockPercent, "gpu_all_graphics_clock_reference_percent", MetricResource.Gpu, MetricVendor.All, "%", "gpu.{gpu}.graphicsClockPercent"),
         new(MetricFieldCode.GpuMemoryUsed, "gpu_all_memory_used_reported_bytes", MetricResource.Gpu, MetricVendor.All, "B", "gpu.{gpu}.vram"),
+        new(Code: MetricFieldCode.GpuSharedMemoryUsed, Name: "gpu_all_shared_memory_used_bytes", Resource: MetricResource.Gpu, Vendor: MetricVendor.All, Unit: "B", RequestTemplate: "gpu.{gpu}.sharedMemoryUsed") { ValueKind = "unsigned64", HasLegacyAddress = false },
         new(MetricFieldCode.GpuMemoryTotal, "gpu_all_memory_total_bytes", MetricResource.Gpu, MetricVendor.All, "B", "gpu.{gpu}.vramTotal"),
         new(MetricFieldCode.GpuMemoryPercent, "gpu_all_memory_used_reported_percent", MetricResource.Gpu, MetricVendor.All, "%", "gpu.{gpu}.vramPercent"),
         new(MetricFieldCode.GpuMemoryClock, "gpu_all_memory_clock_mhz", MetricResource.Gpu, MetricVendor.All, "MHz", "gpu.{gpu}.memoryClock"),
@@ -587,6 +589,8 @@ public static partial class MetricFieldRegistry
             (MetricFieldCode.CpuTemperature, "amd.smu") => field with { Name = "cpu_amd_smu_temperature_reported_celsius", Vendor = MetricVendor.Amd },
             (MetricFieldCode.GpuUsage, "nvidia.nvml") => field with { Name = "gpu_nvidia_processor_busy_percent", Vendor = MetricVendor.Nvidia },
             (MetricFieldCode.GpuUsage, "amd.adlx") => field with { Name = "gpu_amd_activity_percent", Vendor = MetricVendor.Amd },
+            (MetricFieldCode.GpuGraphicsClock, "amd.adlx") => field with { Name = "gpu_amd_adlx_graphics_clock_mhz", Vendor = MetricVendor.Amd },
+            (MetricFieldCode.GpuVoltage, "amd.adlx") => field with { Name = "gpu_amd_adlx_core_voltage_reported_volts", Vendor = MetricVendor.Amd },
             (MetricFieldCode.GpuTemperature, "amd.adlx") => field with { Name = "gpu_amd_edge_temperature_celsius", Vendor = MetricVendor.Amd },
             (MetricFieldCode.GpuTemperature, "nvidia.nvml") => field with { Name = "gpu_nvidia_core_temperature_celsius", Vendor = MetricVendor.Nvidia },
             (MetricFieldCode.GpuTemperature, "amd.smu") => field with { Name = "gpu_amd_apu_temperature_reported_celsius", Vendor = MetricVendor.Amd, HasLegacyAddress = false },

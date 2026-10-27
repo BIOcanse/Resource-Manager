@@ -244,7 +244,7 @@ public sealed partial class NetworkCounterInformationCollectorTests
         using var native=NativeMetricSnapshotHostConfiguration.CreateWorkspace(compiled,Path.Combine(Path.GetTempPath(),$"network-capacity-{Guid.NewGuid():N}.bin"));
         Assert.True(native.Capacity.ResidentByteCount <= 64UL*1024*1024);
         output.WriteLine($"Native resident bytes: {native.Capacity.ResidentByteCount}; budget: {compiled.Recreate.Capacity.ResidentByteBudget}.");
-        Assert.Equal(13_488U,native.Capacity.MetricCapacity);
+        Assert.Equal(13_504U,native.Capacity.MetricCapacity);
         var ids=Enumerable.Range(0,128).Select(i=>new NetworkInterfaceCatalogIdentity(i,new Guid(i+1,1,2,new byte[8]),(ulong)i+1,(uint)i+1)).ToArray();
         var catalog=NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(compiled,[],[],[],native.CreateCatalogHandleMap(),networkInterfaces:ids);
         native.ReplaceCatalog(catalog,DateTimeOffset.UtcNow);
@@ -307,9 +307,11 @@ public sealed partial class NetworkCounterInformationCollectorTests
         var ccd=Assert.Single(compiled.HotPublish.RuleTemplates,row=>row.SourceId=="amd.smn");
         Assert.Equal(16U,ccd.MaximumInstanceCount);
         addedNewRulesAndMetrics+=ccd.MaximumInstanceCount;
-        Assert.Equal(13488UL,(ulong)legacyMetricBoundary+addedNewRulesAndMetrics);
-        Assert.Equal(13859UL,legacyRuleBoundary+addedNewRulesAndMetrics);
-        Assert.Equal(13488,ids.Count);Assert.Equal(13859UL,rules);
+        var sharedMemory=Assert.Single(compiled.HotPublish.RuleTemplates,row=>row.TemplateId=="gpu.sharedMemoryUsed.pdh");
+        addedNewRulesAndMetrics+=Math.Min(sharedMemory.MaximumInstanceCount,compiled.Recreate.Capacity.MaximumGpuAdapterCount);
+        Assert.Equal(13504UL,(ulong)legacyMetricBoundary+addedNewRulesAndMetrics);
+        Assert.Equal(13875UL,legacyRuleBoundary+addedNewRulesAndMetrics);
+        Assert.Equal(13504,ids.Count);Assert.Equal(13875UL,rules);
         Assert.True(HostManagerTestPlanFactory.CreatePlan(root=>root["host_recreate"]!["metric_snapshot"]!["capacity"]!["maximum_metric_count"]=ids.Count).IsPublished);
         Assert.Throws<InvalidDataException>(()=>HostManagerTestPlanFactory.CreatePlan(root=>root["host_recreate"]!["metric_snapshot"]!["capacity"]!["maximum_metric_count"]=ids.Count-1));
     }

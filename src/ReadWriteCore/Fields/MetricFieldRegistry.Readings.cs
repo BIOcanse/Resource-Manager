@@ -27,6 +27,7 @@ public static partial class MetricFieldRegistry
                 => new("storage.composite_temperature", 20),
             (MetricFieldCode.GpuMemoryUsed, "amd.adlx") => new("gpu.dedicated_memory_used_reported", 10),
             (MetricFieldCode.AdlxDedicatedMemoryMb, "amd.adlx") => new("gpu.dedicated_memory_used_reported", 10, 1),
+            (MetricFieldCode.GpuSharedMemoryUsed, "pdh.gpu-engine") => new("gpu.adapter_shared_memory_used", 10),
             (MetricFieldCode.CpuUsage, _) => new("cpu.busy_percent", 10),
             (MetricFieldCode.CpuFrequency, _) => new("cpu.frequency_reported", 10),
             (MetricFieldCode.CpuFrequencyPercent, _) => new("cpu.frequency_reference_percent", 10),

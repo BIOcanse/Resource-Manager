@@ -354,13 +354,52 @@ internal sealed partial class WindowsHardwareMetricCapture
         DateTimeOffset capturedAt)
     {
         var inventory = RequireCurrentGpuInventory(plan.Catalog, plan.Catalog.SourceIds[sourcePlan.SourceHandle]);
-        var usage =
-            resources.ReadGpuUsage(
-                inventory.Adapters);
-        var completion = CreatePdhGpuCompletion(plan, sourcePlan, identity, capturedAt, usage);
-        if (completion.Status == NativeMetricSnapshotSourceStatus.Unavailable)
+        var selected = SelectedBindings(plan, sourcePlan.SourceHandle);
+        var readEngineUsage = selected.Any(static binding => binding.FieldCode is
+            MetricFieldCode.GpuUsage or MetricFieldCode.GpuEngineBusy);
+        var sharedMemoryAdapterIndexes = selected
+            .Where(static binding => binding.FieldCode == MetricFieldCode.GpuSharedMemoryUsed)
+            .Select(static binding => binding.DisplayIndex)
+            .ToHashSet();
+        var readSharedMemory = sharedMemoryAdapterIndexes.Count != 0;
+        PdhGpuEngineUsageRead? usage = null;
+        PdhGpuAdapterSharedMemoryRead? sharedMemory = null;
+
+        if (readEngineUsage)
+        {
+            try { usage = resources.ReadGpuUsage(inventory.Adapters); }
+            catch (Exception error) when (error is not (OperationCanceledException or OutOfMemoryException))
+            {
+                logFailure?.Invoke(error, NativeMetricSnapshotSources.PdhGpuEngine);
+                usage = new(new Dictionary<int, double>(), NativePdhProviderAvailability.Unavailable, null)
+                { ResultCode = NativePdhResultCode.PdhError };
+            }
+        }
+
+        if (readSharedMemory)
+        {
+            var selectedAdapters = inventory.Adapters
+                .Where(adapter => sharedMemoryAdapterIndexes.Contains(adapter.Index)).ToArray();
+            try { sharedMemory = resources.ReadGpuSharedMemory(selectedAdapters); }
+            catch (Exception error) when (error is not (OperationCanceledException or OutOfMemoryException))
+            {
+                logFailure?.Invoke(error, NativeMetricSnapshotSources.PdhGpuEngine);
+                sharedMemory = PdhGpuAdapterSharedMemoryRead.Unavailable(NativePdhResultCode.PdhError, 0);
+            }
+        }
+
+        var completion = CreatePdhGpuCompletion(plan, sourcePlan, identity, capturedAt, usage, sharedMemory);
+        if (readEngineUsage && usage is { ProviderAvailability: not NativePdhProviderAvailability.Available })
             logFailure?.Invoke(new InvalidOperationException(
                 $"GPU engine capture unavailable: {usage.ProviderAvailability}, {usage.ResultCode}, native status 0x{usage.NativeStatus:X8}."),
+                NativeMetricSnapshotSources.PdhGpuEngine);
+        if (readSharedMemory && sharedMemory is { ProviderAvailability: not NativePdhProviderAvailability.Available })
+            logFailure?.Invoke(new InvalidOperationException(
+                $"GPU shared-memory capture unavailable: {sharedMemory.ProviderAvailability}, {sharedMemory.ResultCode}, native status 0x{sharedMemory.NativeStatus:X8}."),
+                NativeMetricSnapshotSources.PdhGpuEngine);
+        if (sharedMemory is { FailedCounterCount: > 0 })
+            logFailure?.Invoke(new InvalidOperationException(
+                $"GPU shared-memory capture had {sharedMemory.FailedCounterCount} invalid PDH counter result(s); affected adapters remain unavailable."),
                 NativeMetricSnapshotSources.PdhGpuEngine);
         return completion;
     }
@@ -368,31 +407,64 @@ internal sealed partial class WindowsHardwareMetricCapture
     internal static NativeMetricSnapshotSourceCompletion CreatePdhGpuCompletion(
         NativeMetricSnapshotCollectionPlan plan, NativeMetricSnapshotSourcePlanOutput sourcePlan,
         NativeMetricSnapshotSourceObservationIdentity identity, DateTimeOffset capturedAt, PdhGpuEngineUsageRead usage)
+        => CreatePdhGpuCompletion(plan, sourcePlan, identity, capturedAt, usage, null);
+
+    internal static NativeMetricSnapshotSourceCompletion CreatePdhGpuCompletion(
+        NativeMetricSnapshotCollectionPlan plan, NativeMetricSnapshotSourcePlanOutput sourcePlan,
+        NativeMetricSnapshotSourceObservationIdentity identity, DateTimeOffset capturedAt,
+        PdhGpuEngineUsageRead? usage, PdhGpuAdapterSharedMemoryRead? sharedMemory)
     {
-        // Collecting a query baseline is a successful query without a rate yet.
-        // It must not disable the source for the transient-failure cooldown.
-        if (usage.ResultCode == NativePdhResultCode.NoData)
-            return CompleteWithValues(plan, sourcePlan, identity, capturedAt, static _ => null,
-                NativeMetricSnapshotObservationStatus.Skipped)
+        var selected = SelectedBindings(plan, sourcePlan.SourceHandle);
+        var includesEngine = selected.Any(static binding => binding.FieldCode is
+            MetricFieldCode.GpuUsage or MetricFieldCode.GpuEngineBusy);
+        var includesSharedMemory = Includes(selected, MetricFieldCode.GpuSharedMemoryUsed);
+        var engineAvailable = includesEngine
+            && usage is { ProviderAvailability: NativePdhProviderAvailability.Available, ObservedAt: not null };
+        var sharedMemoryAvailable = includesSharedMemory
+            && sharedMemory is { ProviderAvailability: NativePdhProviderAvailability.Available, ObservedAt: not null };
+        var hasValueDomain = engineAvailable || sharedMemoryAvailable;
+        var engineSkipped = includesEngine && usage?.ResultCode == NativePdhResultCode.NoData;
+        // Shared memory is a gauge, so there is no warm-up baseline that can be skipped.
+        var sharedMemorySkipped = false;
+
+        if (!hasValueDomain && !engineSkipped && !sharedMemorySkipped)
+            return Unavailable(sourcePlan.SourceHandle, identity, capturedAt)
                 with { PdhGpuEngineUsage = usage };
-        if (usage.ProviderAvailability
-                != NativePdhProviderAvailability.Available
-            || usage.ObservedAt is not { } observedAt)
-        {
-            return Unavailable(
-                sourcePlan.SourceHandle,
-                identity,
-                capturedAt) with { PdhGpuEngineUsage = usage };
-        }
+
+        var observedAt = MaxObservedAt(
+            engineAvailable ? usage!.ObservedAt : null,
+            sharedMemoryAvailable ? sharedMemory!.ObservedAt : null) ?? capturedAt;
         return CompleteWithValues(
             plan,
             sourcePlan,
             identity,
             observedAt,
-            id => id.FieldCode == MetricFieldCode.GpuUsage
-                && usage.UsageByAdapterIndex.TryGetValue(id.DisplayIndex, out var value)
-                    ? value : null) with { PdhGpuEngineUsage = usage };
+            binding => binding.FieldCode == MetricFieldCode.GpuUsage
+                && engineAvailable
+                && usage!.UsageByAdapterIndex.TryGetValue(binding.DisplayIndex, out var value)
+                    ? value : null,
+            binding => binding.FieldCode switch
+            {
+                MetricFieldCode.GpuUsage or MetricFieldCode.GpuEngineBusy when engineSkipped
+                    => NativeMetricSnapshotObservationStatus.Skipped,
+                MetricFieldCode.GpuSharedMemoryUsed when sharedMemorySkipped
+                    => NativeMetricSnapshotObservationStatus.Skipped,
+                _ => NativeMetricSnapshotObservationStatus.Unavailable
+            },
+            unsignedValue: binding => binding.FieldCode == MetricFieldCode.GpuSharedMemoryUsed
+                && sharedMemoryAvailable
+                && sharedMemory!.SharedUsageBytesByAdapterIndex.TryGetValue(binding.DisplayIndex, out var bytes)
+                    ? bytes : null,
+            observedAt: binding => binding.FieldCode switch
+            {
+                MetricFieldCode.GpuUsage or MetricFieldCode.GpuEngineBusy when engineAvailable => usage!.ObservedAt,
+                MetricFieldCode.GpuSharedMemoryUsed when sharedMemoryAvailable => sharedMemory!.ObservedAt,
+                _ => null
+            }) with { PdhGpuEngineUsage = usage };
     }
+
+    private static DateTimeOffset? MaxObservedAt(DateTimeOffset? first, DateTimeOffset? second)
+        => first is null ? second : second is null ? first : first.Value >= second.Value ? first : second;
 
     private async Task<NativeMetricSnapshotSourceCompletion>
         CollectNvmlAsync(

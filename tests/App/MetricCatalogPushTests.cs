@@ -99,6 +99,7 @@ public sealed class MetricCatalogPushTests
         var installed = Assert.Single(refreshed.GetProperty("metrics").EnumerateArray(),
             metric => metric.GetProperty("id").GetString() == metricId);
         Assert.Equal(JsonValueKind.Null, installed.GetProperty("requiredComponentId").ValueKind);
+        Assert.False(installed.GetProperty("selectable").GetBoolean());
         Assert.Equal(BackendMessageCodes.Metric.NoValidReading, installed.GetProperty("disabledReason").GetProperty("code").GetByte());
         Assert.Equal(revision, refreshed.GetProperty("catalogRevision").GetString());
         Assert.Equal(revision, first.GetProperty("catalogRevision").GetString());

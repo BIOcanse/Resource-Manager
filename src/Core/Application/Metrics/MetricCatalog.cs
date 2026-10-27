@@ -71,8 +71,18 @@ public static partial class MetricCatalog
         ApplyReadingAvailability(result, snapshot.FieldBindings.Values);
         for (var index = 0; index < result.Count; index++)
             if (GpuIndex(result[index].Id) is { } gpuIndex)
+            {
+                var dedicated = snapshot.Gpus.FirstOrDefault(gpu => gpu.Index == gpuIndex)?.HasDedicatedMemoryMetrics;
                 result[index] = result[index] with
-                { HasDedicatedMemoryMetrics = snapshot.Gpus.FirstOrDefault(gpu => gpu.Index == gpuIndex)?.HasDedicatedMemoryMetrics };
+                { HasDedicatedMemoryMetrics = dedicated };
+                if (dedicated == false && result[index].Id[(result[index].Id.IndexOf('.', 4) + 1)..]
+                    is "vram" or "vramTotal" or "vramPercent")
+                    result[index] = result[index] with
+                    {
+                        Selectable = false, RequiredComponentId = null,
+                        DisabledReason = BackendMessage.Create(BackendMessageDomains.Metric, BackendMessageCodes.Metric.NotApplicable)
+                    };
+            }
         return result;
 
         void Add(string id, string unit, string? dependency = null, bool capabilityKnown = false,

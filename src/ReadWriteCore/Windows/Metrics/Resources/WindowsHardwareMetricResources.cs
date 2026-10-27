@@ -38,6 +38,9 @@ public sealed partial class WindowsHardwareMetricResources : IDisposable
     public required Func<WindowsGpuAdapterInventoryRead> ReadGpuInventory { get; init; }
     public required Func<CpuFrequency> ReadCpuFrequency { get; init; }
     public required Func<IReadOnlyList<WindowsGpuAdapter>, PdhGpuEngineUsageRead> ReadGpuUsage { get; init; }
+    /// <summary>Selected adapter-level PDH shared-memory read. Injected sources are borrowed, not owned.</summary>
+    public Func<IReadOnlyList<WindowsGpuAdapter>, PdhGpuAdapterSharedMemoryRead> ReadGpuSharedMemory { get; init; }
+        = static _ => PdhGpuAdapterSharedMemoryRead.NotRequested;
     public required Func<NvidiaNvmlReadRequest, WindowsGpuAdapterInventoryRead, CancellationToken, Task<IReadOnlyList<GpuMetrics>>> ReadNvmlAsync { get; init; }
     public Func<WindowsGpuAdapterInventoryRead, IReadOnlyList<NvidiaNvmlFanIdentity>?> ReadNvmlFanIdentities { get; init; } = _ => null;
     public Func<IReadOnlyList<NvidiaNvmlFanReadTarget>, WindowsGpuAdapterInventoryRead, CancellationToken, Task<IReadOnlyList<NvidiaNvmlFanReading>>> ReadNvmlFansAsync { get; init; }

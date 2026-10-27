@@ -74,6 +74,7 @@ public sealed partial class WindowsHardwareMetricSampler
         ReadNumaIdentities = WindowsMemoryMonitoringZone.ReadNumaIdentities,
         ReadGpuInventory = () => gpuAdapterOrderZone.ReadInventory(requested: true), ReadCpuFrequency = () => cpuFrequencyZone.ReadFrequency(),
         ReadGpuUsage = adapters => gpuEngineZone.ReadUsageSnapshotByAdapterIndex(adapters),
+        ReadGpuSharedMemory = adapters => gpuEngineZone.ReadSharedMemoryByAdapterIndex(adapters),
         ReadNvmlAsync = (request, inventory, token) => nvidiaZone.ReadAsync(request, inventory, token),
         ReadNvmlFanIdentities = inventory => nvidiaZone.ReadFanIdentities(inventory),
         ReadNvmlFansAsync = (targets, inventory, token) => nvidiaZone.ReadFansAsync(targets, inventory, token),
