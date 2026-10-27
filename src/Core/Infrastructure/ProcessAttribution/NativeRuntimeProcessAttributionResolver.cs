@@ -463,7 +463,7 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
                         entry.Kind,
                         SoftwareDisplayKinds.Project(entry.Kind),
                         root is null ? [] : [root]),
-                    observation.EvidenceMask,
+                    observation.EvidenceMask | NativeSoftwareIdentityResolutionEvidence.ExactIdentity,
                     generation);
                 return entry;
             default:
@@ -494,7 +494,10 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
     {
         if (catalogObservation.Conflict)
         {
-            AddConflict(target, source, generation);
+            AddConflict(target, source, generation,
+                source == NativeRuntimeAttributionSources.KnownSoftware && catalogObservation.RootConflict
+                    ? NativeSoftwareIdentityResolutionEvidence.WeakRootConflict : SourceEvidence(source),
+                catalogObservation.ConflictCount);
             return;
         }
 
@@ -602,6 +605,10 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
         ulong evidenceMask,
         ulong generation)
     {
+        if (source is NativeRuntimeAttributionSources.Adapted or NativeRuntimeAttributionSources.Controlled
+            or NativeRuntimeAttributionSources.ResourceManagerSelf or NativeRuntimeAttributionSources.Package
+            or NativeRuntimeAttributionSources.Service)
+            evidenceMask |= NativeSoftwareIdentityResolutionEvidence.ExactIdentity;
         var payload = resolutionPayloads.GetOrAddAttribution(attribution);
         target.Add(new NativeSoftwareIdentityObservationInput
         {
@@ -622,30 +629,20 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
     private void AddConflict(
         ICollection<NativeSoftwareIdentityObservationInput> target,
         uint source,
-        ulong generation)
+        ulong generation,
+        ulong evidenceMask = 0,
+        uint conflictCount = 2)
     {
-        AddMatched(
-            target,
-            source,
-            new RuntimeSoftwareAttribution(
-                $"native-source-conflict:{source}:a",
-                "Identity conflict",
-                SoftwareKinds.Other,
-                SoftwareDisplayKinds.General,
-                []),
-            SourceEvidence(source),
-            generation);
-        AddMatched(
-            target,
-            source,
-            new RuntimeSoftwareAttribution(
-                $"native-source-conflict:{source}:b",
-                "Identity conflict",
-                SoftwareKinds.Other,
-                SoftwareDisplayKinds.General,
-                []),
-            SourceEvidence(source),
-            generation);
+        // Preserve the native tie count using the resolution ABI's distinct-identity rows.
+        for (uint index = 0; index < Math.Max(conflictCount, 2); index++)
+        {
+            AddMatched(target, source,
+                new RuntimeSoftwareAttribution(
+                    $"native-source-conflict:{source}:{index}", "Identity conflict",
+                    SoftwareKinds.Other, SoftwareDisplayKinds.General, []),
+                evidenceMask == 0 ? SourceEvidence(source) : evidenceMask,
+                generation);
+        }
     }
 
     private static void AddTerminal(
@@ -1190,7 +1187,9 @@ internal sealed class NativeRuntimeSourceCatalog : IDisposable
                 (uint)NativeSoftwareIdentityMatchStatus.NoMatch =>
                     NativeSourceCatalogObservation.NoMatch,
                 (uint)NativeSoftwareIdentityMatchStatus.Conflict =>
-                    NativeSourceCatalogObservation.Conflicted,
+                    new NativeSourceCatalogObservation(true, [],
+                        output.Mode == (uint)NativeSoftwareIdentityKnownMatchMode.Root,
+                        output.ConflictCount),
                 (uint)NativeSoftwareIdentityMatchStatus.Matched =>
                     NativeSourceCatalogObservation.Matched(
                         output.Mode
@@ -1422,7 +1421,9 @@ internal sealed class NativeRuntimeSourceCatalog : IDisposable
 
 internal readonly record struct NativeSourceCatalogObservation(
     bool Conflict,
-    IReadOnlyList<NativeSourceCatalogCandidate> Candidates)
+    IReadOnlyList<NativeSourceCatalogCandidate> Candidates,
+    bool RootConflict = false,
+    uint ConflictCount = 2)
 {
     internal static NativeSourceCatalogObservation NoMatch { get; } =
         new(false, []);

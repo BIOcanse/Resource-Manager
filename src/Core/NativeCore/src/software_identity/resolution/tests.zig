@@ -4,6 +4,74 @@ const protocol = @import("protocol.zig");
 const session_module = @import("session.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
 
+test "root conflict yields to exact catalog evidence and retains diagnostics" {
+    const weak_root = protocol.weak_root_conflict;
+    for ([_]u64{ 1, 2, 4, 8, 16 }) |exact_evidence| {
+        var config = testConfig(sourceMask(&.{ 6, 7 }), 0);
+        const session = try session_module.Session.create(&config);
+        defer session.destroy();
+        const policies = [_]protocol.SourcePolicyInput{ policy(6, 10), policy(7, 20) };
+        try std.testing.expectEqual(ResultCode.ok, applyPolicy(session, &config, 1, 1, &policies));
+        const observations = [_]protocol.ObservationInput{
+            matched(6, 10, 20, 1, 30, weak_root, 1),
+            matched(6, 11, 21, 1, 30, weak_root, 1),
+            matched(7, 12, 22, 2, 30, exact_evidence | protocol.exact_identity, 1),
+        };
+        const result = resolveFrame(session, &config, 1, 1, 1_000, 1_000, &observations);
+        try std.testing.expectEqual(ResultCode.ok, result.code);
+        try std.testing.expectEqual(@intFromEnum(protocol.ResolutionStatus.matched), result.output.status);
+        try std.testing.expectEqual(@as(u32, 7), result.output.selected_source_id);
+        try std.testing.expectEqual(@as(u64, 12), result.output.identity_handle);
+        try std.testing.expectEqual(@as(u32, 2), result.output.conflict_count);
+    }
+}
+
+test "strong conflicts stop but root-only conflicts remain if no unique match exists" {
+    const weak_root = protocol.weak_root_conflict;
+    for ([_]bool{ false, true }) |weak| {
+        var config = testConfig(sourceMask(&.{ 6, 7 }), 0);
+        const session = try session_module.Session.create(&config);
+        defer session.destroy();
+        const policies = [_]protocol.SourcePolicyInput{ policy(6, 10), policy(7, 20) };
+        try std.testing.expectEqual(ResultCode.ok, applyPolicy(session, &config, 1, 1, &policies));
+        const observations = [_]protocol.ObservationInput{
+            matched(6, 10, 20, 1, 30, if (weak) weak_root else 1, 1),
+            matched(6, 11, 21, 1, 30, if (weak) weak_root else 1, 1),
+            if (weak) terminal(7, .no_match, 1) else matched(7, 12, 22, 2, 30, 8, 1),
+        };
+        const result = resolveFrame(session, &config, 1, 1, 1_000, 1_000, &observations);
+        try std.testing.expectEqual(ResultCode.ok, result.code);
+        try std.testing.expectEqual(@intFromEnum(protocol.ResolutionStatus.conflict), result.output.status);
+        try std.testing.expectEqual(@as(u32, 6), result.output.decision_source_id);
+        try std.testing.expectEqual(@as(u32, 2), result.output.conflict_count);
+        try std.testing.expectEqual(@as(u64, 0), result.output.identity_handle);
+    }
+}
+test "weak conflict cannot be erased by a root fallback or mixed strong conflict" {
+    var config = testConfig(sourceMask(&.{ 6, 7, 9 }), 0);
+    const session = try session_module.Session.create(&config);
+    defer session.destroy();
+    const policies = [_]protocol.SourcePolicyInput{ policy(6, 10), policy(7, 20), policy(9, 30) };
+    try std.testing.expectEqual(ResultCode.ok, applyPolicy(session, &config, 1, 1, &policies));
+    var observations = [_]protocol.ObservationInput{
+        matched(6, 10, 20, 1, 30, protocol.weak_root_conflict, 1),
+        matched(6, 11, 21, 1, 30, protocol.weak_root_conflict, 1),
+        matched(6, 12, 22, 1, 30, protocol.weak_root_conflict, 1),
+        terminal(7, .no_match, 1),
+        matched(9, 13, 23, 1, 30, 1, 1),
+    };
+    const fallback = resolveFrame(session, &config, 1, 1, 1_000, 1_000, &observations);
+    try std.testing.expectEqual(ResultCode.ok, fallback.code);
+    try std.testing.expectEqual(@intFromEnum(protocol.ResolutionStatus.conflict), fallback.output.status);
+    try std.testing.expectEqual(@as(u32, 3), fallback.output.conflict_count);
+    observations[1].evidence_mask = 1;
+    observations[3] = matched(7, 14, 24, 2, 30, protocol.exact_identity | 8, 1);
+    const mixed = resolveFrame(session, &config, 1, 2, 2_000, 2_000, &observations);
+    try std.testing.expectEqual(ResultCode.ok, mixed.code);
+    try std.testing.expectEqual(@intFromEnum(protocol.ResolutionStatus.conflict), mixed.output.status);
+    try std.testing.expectEqual(@as(u32, 6), mixed.output.decision_source_id);
+}
+
 test "policy priority is the only source selection authority" {
     var config = testConfig(sourceMask(&.{ 1, 2, 3 }), 0);
     const session = try session_module.Session.create(&config);

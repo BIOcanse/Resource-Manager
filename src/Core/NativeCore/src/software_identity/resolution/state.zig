@@ -198,7 +198,7 @@ pub const Session = struct {
             return .stale_frame;
         }
 
-        var aggregates = std.mem.zeroes([protocol.maximum_source_count]SourceAggregate);
+        var aggregates = [_]SourceAggregate{.{}} ** protocol.maximum_source_count;
         const validation = validateObservations(
             &self.active,
             self.config.required_source_mask,
@@ -208,6 +208,7 @@ pub const Session = struct {
         if (validation.code != .ok) return validation.code;
 
         var decision = Decision.unattributed();
+        var deferred_root_conflict: ?Decision = null;
         for (self.active.policies[0..self.active.count]) |policy| {
             const aggregate = &aggregates[policy.source_id - 1];
             switch (aggregate.status) {
@@ -222,12 +223,30 @@ pub const Session = struct {
                 },
                 .matched => {
                     if (aggregate.conflict) {
+                        if (aggregate.only_weak_root_conflict and aggregate.distinct_identity_count > 1) {
+                            if (deferred_root_conflict) |*pending| {
+                                pending.conflict_count += aggregate.conflictCount();
+                            } else {
+                                deferred_root_conflict = Decision.conflict(policy.source_id, aggregate.conflictCount());
+                            }
+                            continue;
+                        }
                         decision = Decision.conflict(policy.source_id, aggregate.conflictCount());
                     } else {
+                        // A weaker product/root fallback cannot settle an ownership tie.
+                        if (deferred_root_conflict != null and (aggregate.evidence_mask & protocol.exact_identity) == 0) continue;
                         decision = Decision.matched(policy.source_id, aggregate);
                     }
                     break;
                 },
+            }
+        }
+
+        if (deferred_root_conflict) |pending| {
+            if (decision.status == .unattributed) {
+                decision = pending;
+            } else {
+                decision.conflict_count += pending.conflict_count;
             }
         }
 
@@ -291,6 +310,7 @@ const SourceAggregate = struct {
     distinct_identity_count: u32 = 0,
     matched_row_count: u32 = 0,
     conflict: bool = false,
+    only_weak_root_conflict: bool = true,
 
     fn conflictCount(self: *const SourceAggregate) u32 {
         return if (self.distinct_identity_count > 1)
@@ -371,6 +391,9 @@ fn validateObservations(
             .matched => {
                 result.matched_mask |= bit;
                 aggregate.matched_row_count += 1;
+                aggregate.only_weak_root_conflict = aggregate.only_weak_root_conflict and
+                    (observation.evidence_mask & protocol.weak_root_conflict) != 0 and
+                    (observation.evidence_mask & protocol.exact_identity) == 0;
                 if (aggregate.current_identity_handle != observation.identity_handle) {
                     aggregate.current_identity_handle = observation.identity_handle;
                     aggregate.current_display_name_handle = observation.display_name_handle;

@@ -8,6 +8,13 @@ internal static class NativeSoftwareIdentityResolutionAbi
     public const uint MaximumSourceCount = 64;
 }
 
+// Resolution reserves high evidence bits for explicit/exact identities and deferrable root ties.
+internal static class NativeSoftwareIdentityResolutionEvidence
+{
+    internal const ulong ExactIdentity = 1UL << 62;
+    internal const ulong WeakRootConflict = 1UL << 63;
+}
+
 internal enum NativeSoftwareIdentityObservationStatus : uint
 {
     NoMatch = 1,

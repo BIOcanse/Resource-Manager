@@ -3,6 +3,10 @@ const std = @import("std");
 pub const abi_version: u32 = 0x0001_0000;
 pub const maximum_source_count: u32 = 64;
 
+// Source-specific evidence occupies lower bits. Only root-containment ties may fall through.
+pub const exact_identity: u64 = 1 << 62;
+pub const weak_root_conflict: u64 = 1 << 63;
+
 pub const ObservationStatus = enum(u32) {
     no_match = 1,
     unavailable = 2,
