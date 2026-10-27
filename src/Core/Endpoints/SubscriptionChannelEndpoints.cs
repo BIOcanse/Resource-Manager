@@ -413,7 +413,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             ["/api/device-topology/network-endpoints/fields/subscribe"] =
                 new((subscription, services, interval) => subscription.Compile(async (writer, token) =>
                 {
-                    await foreach (var value in services.GetRequiredService<ResourceManager.App.Infrastructure.DeviceTopology.Snapshots.DeviceTopologySnapshotProvider>()
+                    await foreach (var value in services.GetRequiredService<IDeviceTopologySnapshotProvider>()
                         .SubscribeNetworkEndpointsAsync($"subscription:{subscription.Id}", interval, token))
                         await writer.WriteAsync(subscription.Id, value, token);
                 })),

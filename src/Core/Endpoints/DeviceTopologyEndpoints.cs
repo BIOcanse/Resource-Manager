@@ -36,7 +36,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 
         app.MapGet("/api/device-topology/network-endpoints/fields", async (
             HttpResponse response,
-            ResourceManager.App.Infrastructure.DeviceTopology.Snapshots.DeviceTopologySnapshotProvider provider,
+            [Microsoft.AspNetCore.Mvc.FromServices] IDeviceTopologySnapshotProvider provider,
             CancellationToken token) =>
         {
             DisableResponseCache(response);

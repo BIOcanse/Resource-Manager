@@ -96,7 +96,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             => Results.Ok(PublicCapabilityFields(core.Catalog.Fields))).AllowAnonymous();
 
         app.MapGet("/api/metrics/fields/catalog", async (HardwareMetricCatalogState catalogState, HttpContext context,
-            IComponentManager components, CancellationToken cancellationToken) =>
+            [Microsoft.AspNetCore.Mvc.FromServices] IComponentManager components, CancellationToken cancellationToken) =>
         {
             await catalogState.RefreshCompositionAsync(components,
                 context.RequestServices.GetService<IDeviceTopologySnapshotProvider>(), cancellationToken);

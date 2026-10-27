@@ -44,7 +44,6 @@ public sealed class IdleSubscriptionMeasurementTests
         builder.Services.AddSingleton<IMetricSnapshotPushSource>(new Discovery(catalog, snapshot));
         builder.Services.AddSingleton<IComponentManager>(new NoInstalledComponentManager());
         builder.Services.AddSingleton<IDeviceTopologySnapshotProvider>(topology);
-        builder.Services.AddSingleton(topology);
         builder.Services.AddHostedService(_ => topology);
         await using var app = TrustedAccessEndpointTestAuthentication.Build(builder);
         typeof(ResourceManagerEndpointRouteBuilderExtensions).GetMethod("MapSubscriptionChannelEndpoints",
@@ -73,13 +72,11 @@ public sealed class IdleSubscriptionMeasurementTests
         }
         catch (OperationCanceledException) when (deadline.IsCancellationRequested) { }
         finally { response.Dispose(); await app.StopAsync(); }
-        Assert.All(counts.Values, static counter => Assert.True(counter.Frames > 0));
-        var output = Environment.GetEnvironmentVariable("RM_IDLE_MEASUREMENT_OUTPUT")
-            ?? Path.Combine(Environment.CurrentDirectory, ".local", "reports", "idle-after.json");
-        File.WriteAllText(output, JsonSerializer.Serialize(new { seconds = 60, fixture = "1000 metric devices and 1000 rows per endpoint family", channels = counts },
-            new JsonSerializerOptions { WriteIndented = true }));
+        Assert.Equal(1, counts["catalog"].Frames);
+        Assert.InRange(counts["catalog"].Bytes, 1, 1_100_000);
+        Assert.Equal(1, counts["topology"].Frames);
+        Assert.InRange(counts["topology"].Bytes, 1, 16_384);
     }
-
     private sealed class Counter { public int Frames { get; set; } public long Bytes { get; set; } }
     private sealed class Discovery(HardwareMetricCatalogState catalog, HardwareMetricSnapshot snapshot) : IMetricSnapshotPushSource
     {

@@ -42,7 +42,6 @@ public sealed partial class DeviceInformationEndpointTests
         TrustedAccessEndpointTestAuthentication.Add(builder.Services, "read");
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.ClearProviders();
-        builder.Services.AddSingleton(provider);
         builder.Services.AddSingleton<IDeviceTopologySnapshotProvider>(provider);
         builder.Services.AddHostedService(_ => provider);
         var app = TrustedAccessEndpointTestAuthentication.Build(builder);

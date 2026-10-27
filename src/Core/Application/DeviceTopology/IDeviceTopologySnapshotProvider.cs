@@ -22,4 +22,8 @@ public interface IDeviceTopologySnapshotProvider
         string subscriptionId,
         TimeSpan interval,
         CancellationToken cancellationToken);
+
+    // The same Sampled owner serves named network holders and one-shot reads.
+    IAsyncEnumerable<DeviceInformationSnapshot> SubscribeNetworkEndpointsAsync(
+        string subscriptionId, TimeSpan interval, CancellationToken cancellationToken, bool includeCurrent = true);
 }
