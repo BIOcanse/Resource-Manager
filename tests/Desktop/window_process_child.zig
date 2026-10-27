@@ -11,21 +11,26 @@ pub fn main(init: std.process.Init.Minimal) !void {
     var write: ?wp.HANDLE = null;
     var mode: []const u8 = "close";
     var forbidden: ?wp.HANDLE = null;
+    var probe_only = false;
     _ = args.next();
     while (args.next()) |arg| {
         if (std.mem.eql(u8, arg, "--resident-pipe-read")) read = @ptrFromInt(try std.fmt.parseInt(usize, args.next() orelse return error.MissingArgument, 10));
         if (std.mem.eql(u8, arg, "--resident-pipe-write")) write = @ptrFromInt(try std.fmt.parseInt(usize, args.next() orelse return error.MissingArgument, 10));
         if (std.mem.eql(u8, arg, "--mode")) mode = args.next() orelse return error.MissingArgument;
         if (std.mem.eql(u8, arg, "--forbidden-handle")) forbidden = @ptrFromInt(try std.fmt.parseInt(usize, args.next() orelse return error.MissingArgument, 10));
+        if (std.mem.eql(u8, arg, "--probe-inheritance-only")) probe_only = true;
     }
     const input = read orelse return error.MissingPipe;
     const output = write orelse return error.MissingPipe;
     defer w.close(input);
     defer w.close(output);
     if (forbidden) |handle| {
-        var flags: u32 = 0;
-        if (w.GetHandleInformation(handle, &flags) != 0) return error.UnrelatedHandleInherited;
+        // Handle values may be reused by the child's runtime. Probe the parent
+        // event's identity by signalling, rather than treating a valid number
+        // for an unrelated child object as proof of inheritance.
+        _ = w.SetEvent(handle);
     }
+    if (probe_only) return;
     var line: [wp.protocol.max_line]u8 = undefined;
     var n: usize = 0;
     var got_start = false;
@@ -74,6 +79,12 @@ pub fn main(init: std.process.Init.Minimal) !void {
             // PID is a distinct, nonzero decimal stand-in for a window handle.
             var response: [128]u8 = undefined;
             try wp.writeAll(output, try std.fmt.bufPrint(&response, "{{\"type\":\"window-handle\",\"handle\":\"{d}\"}}\n", .{w.GetCurrentProcessId()}));
+            if (std.mem.eql(u8, mode, "ignore-stop")) {
+                const never = w.CreateEventW(null, 1, 0, null) orelse return error.Event;
+                defer w.close(never);
+                _ = w.WaitForSingleObject(never, w.infinite);
+                return;
+            }
             if (std.mem.eql(u8, mode, "close")) try wp.writeAll(output, "{\"type\":\"user-close\"}\n");
             if (std.mem.eql(u8, mode, "update")) try wp.writeAll(output, "{\"type\":\"applyExit\"}\n");
             if (std.mem.eql(u8, mode, "crash")) w.ExitProcess(42);

@@ -57,6 +57,9 @@ const Host = struct {
     tray: tray_module.Tray = .{},
     client: window.Client = .{},
     wake: c.HANDLE = null,
+    // Program stop cancels a window branch's cooperative shutdown wait.
+    // This token outlives all runs; per-run stop tokens still own normal close.
+    ending_stop: c.HANDLE = null,
     log_file: c.HANDLE = null,
     lock: usize = 0,
     // One queued notice per transition plus bounded shell/runtime events.
@@ -186,6 +189,13 @@ const Host = struct {
                 // there is no controller callback on this path, and no cached state.
                 self.engine.publish(self.wanted, .{ .value = false }, reason("window-crashed"), null) catch @panic("window-crashed publication");
             },
+            .stopped => |result| {
+                var message: Log = .{};
+                const text = std.fmt.bufPrint(&message.bytes, "window stopped: {s}; elapsed_ms={d}; exit_code={d}", .{ @tagName(result.outcome), result.elapsed_ms, result.exit_code }) catch unreachable;
+                message.length = text.len;
+                message.bytes[text.len] = 0;
+                self.push(.{ .log = message });
+            },
         }
     }
     fn entry(context: ?*anyopaque) callconv(.winapi) c.DWORD {
@@ -237,6 +247,12 @@ const Host = struct {
                     .language = language.bytes[0..language.len],
                     .show = show,
                     .cancel_poll_ms = points.window_cancel_poll_ms,
+                    .stop_deadline_ms = points.window_stop_deadline_ms,
+                    .timeout_policy = switch (points.window_stop_timeout_policy) {
+                        .terminate => .terminate,
+                        .wait => .wait,
+                    },
+                    .stop_wait_cancel = @ptrCast(self.ending_stop.?),
                 });
             },
             else => {
@@ -396,6 +412,7 @@ const Host = struct {
     fn beginEnding(self: *Host) !void {
         if (!self.ending) {
             self.ending = true;
+            _ = c.SetEvent(self.ending_stop);
             try self.engine.shutdown(reason("program-ending"), null);
         }
     }
@@ -489,6 +506,9 @@ const Host = struct {
         self.wake = c.CreateEventW(null, c.TRUE, c.FALSE, null);
         if (self.wake == null) return error.Event;
         defer _ = c.CloseHandle(self.wake);
+        self.ending_stop = c.CreateEventW(null, c.TRUE, c.FALSE, null);
+        if (self.ending_stop == null) return error.Event;
+        defer _ = c.CloseHandle(self.ending_stop);
         if (self.options.diagnostics.len != 0) {
             var name: [32768]u8 = undefined;
             const name_text = try std.fmt.bufPrint(&name, "{s}.log", .{self.options.diagnostics});

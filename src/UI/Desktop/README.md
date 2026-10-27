@@ -17,7 +17,9 @@ $env:ZIG_GLOBAL_CACHE_DIR = "$work\zig-global-cache"
 
 产物为 `debug/bin/ResourceManager.Desktop.exe`。`build test` 是最终全套；`test-blocks`、`test-pipe`、`test-integration` 可在失败后定向回归。登记表每次构建经共享生成器生成，输入依赖包含真实登记表和生成器；Debug 默认包含名字，其他优化配置默认不包含名字，可通过 `-Dstate-names` 显式选择。
 
-九个可调默认值只在 `src/Development/DesktopBuild/desktop.points.json` 声明，通过 FreedomPoint SDK 生成 Zig 值。固定队列、缓冲区和表容量属于结构上限，耗尽时明确失败。
+普通交互身份的文件夹具验收独立为 `test-key-fixture`：先由维护会话用既有 Initialize-BackendKeyFixture.ps1 准备，再运行该入口，原 owner/ACL/重复读取/取消断言不变。`check-key-fixture` 只编译此入口；默认 `test` 不访问该真实夹具。`-Dpipe-filter=<名称子串>` 可只补失败的管道测试。
+
+十一个可调默认值只在 `src/Development/DesktopBuild/desktop.points.json` 声明，通过 FreedomPoint SDK 生成 Zig 值。窗口停止期限和超期策略归窗口包装块；策略为正式枚举 `terminate`（默认强制结束）或 `wait`（继续等待）。固定队列、缓冲区和表容量属于结构上限，耗尽时明确失败。
 
 部署路径在打包步骤 6 接入前通过 `--package-root`、`--window-executable`、`--backend-path` 指定；未指定时只采用可执行文件所在目录与同级程序的布局。`--background-startup` 不启动窗口。已有单实例协议和默认管道名保持不变；测试必须显式传入 `--instance-pipe ResourceManager.Desktop.Test.<unique>`，并指定独立 `--backend-port`、不存在的 `--backend-service`，不得使用安装产品端口或服务。
 
@@ -25,4 +27,8 @@ $env:ZIG_GLOBAL_CACHE_DIR = "$work\zig-global-cache"
 
 `--diagnostics <file>` 是显式开发入口：导出带登记表版本的控制器快照、进程与 HWND，并在同目录 `<file>.log` 写诊断。仅在此模式下，托盘窗口接受 `WM_APP+10` 的坐标参数，用于副屏菜单的目标窗口截图；不移动鼠标或抓取桌面。真实验收入口为 `tests/Desktop/Invoke-ResidentSmoke.ps1`，同样经 JobQueue 运行。
 
-phase A 的热键、任务管理器替换、桌面观察、通知流和覆盖层均为等待停止的占位入口。WinHTTP 发送前鉴权 gate 与挂死子进程停止策略存在尚未裁决的合同冲突，不能将此阶段声明为完整 ready 后端或挂死恢复已通过。具体证据、测试结果和 phase B/C 边界以 `.local/reports/final-report.md` 为准。
+后端连接块自持一个 Winsock HTTP 传输：连接实际 TCP socket 后，先核验服务路径、PID、进程创建时间和 TCP 对端，再写含密钥的请求头。健康响应通过后才发布 ready；任何核验、HTTP、解析或超时失败都发布不可用及明确 reason，没有回退。并发探测只有一个，总网络期限使用既有 `backend_timeout_ms`，健康间隔仍为 `backend_probe_interval_ms`。原 WinHTTP 诊断用途保留。
+
+窗口包装块通过 `JOB_LIST` 在创建子进程时直接指定非继承 Job，并设置 `KILL_ON_JOB_CLOSE`。普通窗口块停止时先发送 stop/关闭管道，在已声明期限内汇合。超期按选择强制结束或继续等待；程序结束的独立 stop 会取消等待并关闭 Job 收尾。三种停止结果均回报宿主日志；没有 detach，崩溃仍先撤回开窗意愿。
+
+phase A 的热键、任务管理器替换、桌面观察、通知流和覆盖层均为等待停止的占位入口。真实托盘、NativeUi 管道入口、密钥文件夹具及 CPU/内存/窗口截图由维护会话以普通交互用户复测；本轮不执行 RunAs 或真实托盘回合。当前证据和复测步骤见 `.local/reports/final-report-2.md`，第一轮历史证据见 `final-report.md`。

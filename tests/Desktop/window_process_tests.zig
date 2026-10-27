@@ -6,6 +6,7 @@ const fixture = @import("fixture_options");
 const Harness = struct {
     client: wp.Client = .{},
     stop: wp.HANDLE,
+    cancel: wp.HANDLE,
     notice: wp.HANDLE,
     done: wp.HANDLE,
     worker: ?std.Thread = null,
@@ -22,22 +23,29 @@ const Harness = struct {
     forbidden: ?wp.HANDLE = null,
     executable: []const u8 = fixture.path,
     language: []const u8 = "zh-CN",
+    deadline_ms: u32 = 1000,
+    timeout_policy: wp.TimeoutPolicy = .terminate,
+    stopped: ?wp.StopResult = null,
 
     fn init(mode: []const u8) !Harness {
         const stop = w.CreateEventW(null, 1, 0, null) orelse return error.Event;
         errdefer w.close(stop);
+        const cancel = w.CreateEventW(null, 1, 0, null) orelse return error.Event;
+        errdefer w.close(cancel);
         const notice = w.CreateEventW(null, 1, 0, null) orelse return error.Event;
         errdefer w.close(notice);
         const done = w.CreateEventW(null, 1, 0, null) orelse return error.Event;
-        return .{ .stop = stop, .notice = notice, .done = done, .mode = mode };
+        return .{ .stop = stop, .cancel = cancel, .notice = notice, .done = done, .mode = mode };
     }
     fn start(self: *Harness) !void {
         self.worker = try std.Thread.spawn(.{}, run, .{self});
     }
     fn deinit(self: *Harness) void {
         _ = w.SetEvent(self.stop);
+        _ = w.SetEvent(self.cancel);
         if (self.worker) |thread| thread.join();
         w.close(self.stop);
+        w.close(self.cancel);
         w.close(self.notice);
         w.close(self.done);
     }
@@ -47,7 +55,7 @@ const Harness = struct {
             std.fmt.bufPrint(&args, "--mode {s} --forbidden-handle {d}", .{ self.mode, @intFromPtr(handle) }) catch unreachable
         else
             std.fmt.bufPrint(&args, "--mode {s}", .{self.mode}) catch unreachable;
-        self.client.run(self.stop, self, onEvent, .{ .executable = self.executable, .cancel_poll_ms = 10, .arguments = arguments, .session = .{ .ready = true, .generation = 21 }, .language = self.language }) catch {
+        self.client.run(self.stop, self, onEvent, .{ .executable = self.executable, .cancel_poll_ms = 10, .stop_deadline_ms = self.deadline_ms, .timeout_policy = self.timeout_policy, .stop_wait_cancel = self.cancel, .arguments = arguments, .session = .{ .ready = true, .generation = 21 }, .language = self.language }) catch {
             self.failed = true;
         };
         _ = w.SetEvent(self.done);
@@ -63,7 +71,7 @@ const Harness = struct {
             },
             .window_handle => |handle| {
                 self.handle = handle;
-                if (std.mem.eql(u8, self.mode, "hold") or std.mem.eql(u8, self.mode, "session")) _ = w.SetEvent(self.notice);
+                if (std.mem.eql(u8, self.mode, "hold") or std.mem.eql(u8, self.mode, "session") or std.mem.eql(u8, self.mode, "ignore-stop")) _ = w.SetEvent(self.notice);
             },
             .user_close => {
                 self.user_close = true;
@@ -82,6 +90,7 @@ const Harness = struct {
                 self.crashed = true;
                 _ = w.SetEvent(self.notice);
             },
+            .stopped => |result| self.stopped = result,
             else => {},
         }
     }
@@ -235,6 +244,159 @@ test "CreateProcess inherits only the explicitly designated two pipe handles" {
     host.forbidden = unrelated;
     try host.start();
     try host.waitNotice();
+    try std.testing.expectEqual(@as(u32, 258), w.WaitForSingleObject(unrelated, 0));
     try host.finish();
     try std.testing.expect(!host.failed and !host.crashed);
+}
+
+test "inheritance identity probe detects a deliberately allowed parent event" {
+    var security: w.Security = .{};
+    const probe = w.CreateEventW(&security, 1, 0, null) orelse return error.Event;
+    defer w.close(probe);
+    const cancel = w.CreateEventW(null, 1, 0, null) orelse return error.Event;
+    defer w.close(cancel);
+    var args: [128]u8 = undefined;
+    const child = try wp.test_support.launchWithInheritedHandle(.{
+        .executable = fixture.path,
+        .arguments = try std.fmt.bufPrint(&args, "--forbidden-handle {d} --probe-inheritance-only", .{@intFromPtr(probe)}),
+        .cancel_poll_ms = 10,
+        .stop_deadline_ms = 1000,
+        .timeout_policy = .terminate,
+        .stop_wait_cancel = cancel,
+    }, probe);
+    defer {
+        w.close(child.job);
+        _ = w.WaitForSingleObject(child.process, w.infinite);
+        w.close(child.process);
+        w.close(child.read);
+        w.close(child.write);
+    }
+    try std.testing.expectEqual(@as(u32, 0), w.WaitForSingleObject(probe, 10_000));
+    try std.testing.expectEqual(@as(u32, 0), w.WaitForSingleObject(child.process, 10_000));
+}
+
+test "ignore-stop child is terminated at the explicit deadline and joined" {
+    var host = try Harness.init("ignore-stop");
+    defer host.deinit();
+    host.deadline_ms = 40;
+    try host.start();
+    try host.waitNotice();
+    const child = w.OpenProcess(0x00100000, 0, host.pid) orelse return error.OpenChild;
+    defer w.close(child);
+    try host.finish();
+    try std.testing.expectEqual(wp.StopOutcome.deadline_terminated, host.stopped.?.outcome);
+    try std.testing.expect(host.stopped.?.elapsed_ms >= host.deadline_ms);
+    try std.testing.expectEqual(@as(u32, 0), w.WaitForSingleObject(child, 0));
+    try std.testing.expect(!host.failed and !host.crashed and host.window_wanted);
+}
+
+test "wait policy survives its deadline until the separate stop wait is cancelled" {
+    var host = try Harness.init("ignore-stop");
+    defer host.deinit();
+    host.deadline_ms = 20;
+    host.timeout_policy = .wait;
+    try host.start();
+    try host.waitNotice();
+    const child = w.OpenProcess(0x00100000, 0, host.pid) orelse return error.OpenChild;
+    defer w.close(child);
+    _ = w.SetEvent(host.stop);
+    try std.testing.expectEqual(@as(u32, 258), w.WaitForSingleObject(host.done, 80));
+    try std.testing.expectEqual(@as(u32, 258), w.WaitForSingleObject(child, 0));
+    _ = w.SetEvent(host.cancel);
+    try host.finish();
+    try std.testing.expectEqual(wp.StopOutcome.wait_cancelled, host.stopped.?.outcome);
+    try std.testing.expectEqual(@as(u32, 0), w.WaitForSingleObject(child, 0));
+    try std.testing.expect(!host.failed and !host.crashed and host.window_wanted);
+}
+
+test "TerminateProcess on a real resident parent closes its non-inherited Job and kills its child" {
+    const cancel = w.CreateEventW(null, 1, 0, null) orelse return error.Event;
+    defer w.close(cancel);
+    const done = w.CreateEventW(null, 1, 0, null) orelse return error.Event;
+    defer w.close(done);
+    var args: [32 * 1024]u8 = undefined;
+    const parent = try wp.test_support.launch(.{
+        .executable = fixture.parentPath,
+        .arguments = try std.fmt.bufPrint(&args, "--child-path \"{s}\"", .{fixture.path}),
+        .cancel_poll_ms = 10,
+        .stop_deadline_ms = 1000,
+        .timeout_policy = .wait,
+        .stop_wait_cancel = cancel,
+    });
+    var worker: ?std.Thread = null;
+    defer {
+        // This outer test-owned Job stays open throughout the child-death
+        // assertion; it must not hide a missing Job inside the real parent.
+        w.close(parent.job);
+        _ = w.WaitForSingleObject(parent.process, w.infinite);
+        if (worker) |thread| {
+            while (w.WaitForSingleObject(thread.getHandle(), 10) == 258) _ = w.CancelSynchronousIo(thread.getHandle());
+            thread.join();
+        }
+        w.close(parent.process);
+        w.close(parent.read);
+        w.close(parent.write);
+    }
+    var probe: ParentProbe = .{ .read = parent.read, .done = done };
+    worker = try std.Thread.spawn(.{}, ParentProbe.run, .{&probe});
+    try std.testing.expectEqual(@as(u32, 0), w.WaitForSingleObject(done, 10_000));
+    worker.?.join();
+    worker = null;
+    try std.testing.expect(!probe.failed and probe.pid != 0);
+    const child = w.OpenProcess(0x00100000, 0, probe.pid) orelse return error.OpenChild;
+    defer w.close(child);
+    try std.testing.expectEqual(@as(u32, 258), w.WaitForSingleObject(child, 0));
+    try std.testing.expect(w.TerminateProcess(parent.process, 77) != 0);
+    try std.testing.expectEqual(@as(u32, 0), w.WaitForSingleObject(parent.process, 10_000));
+    try std.testing.expectEqual(@as(u32, 0), w.WaitForSingleObject(child, 10_000));
+}
+
+const ParentProbe = struct {
+    read: w.HANDLE,
+    done: w.HANDLE,
+    pid: u32 = 0,
+    failed: bool = false,
+    fn run(self: *ParentProbe) void {
+        self.readPid() catch {
+            self.failed = true;
+        };
+        _ = w.SetEvent(self.done);
+    }
+    fn readPid(self: *ParentProbe) !void {
+        var line: [128]u8 = undefined;
+        var n: usize = 0;
+        while (n < line.len) {
+            var byte: [1]u8 = undefined;
+            var got: u32 = 0;
+            if (w.ReadFile(self.read, &byte, 1, &got, null) == 0 or got == 0) return error.PipeRead;
+            if (byte[0] == '\n') {
+                var storage: [4096]u8 = undefined;
+                var fixed = std.heap.FixedBufferAllocator.init(&storage);
+                const event = (try wp.protocol.parse(line[0..n], fixed.allocator())) orelse return error.MissingPid;
+                self.pid = switch (event) {
+                    .window_handle => |pid| @intCast(pid),
+                    else => return error.MissingPid,
+                };
+                return;
+            }
+            line[n] = byte[0];
+            n += 1;
+        }
+        return error.PidLineTooLong;
+    }
+};
+
+test "cooperative real child stop samples include writer EOF process exit and both I/O joins" {
+    var samples: [12]u64 = undefined;
+    for (&samples) |*sample| {
+        var host = try Harness.init("hold");
+        defer host.deinit();
+        try host.start();
+        try host.waitNotice();
+        try host.finish();
+        try std.testing.expectEqual(wp.StopOutcome.normal, host.stopped.?.outcome);
+        try std.testing.expectEqual(@as(u32, 0), host.stopped.?.exit_code);
+        sample.* = host.stopped.?.elapsed_ms;
+    }
+    std.debug.print("cooperative child stop samples ms={any}\n", .{samples});
 }

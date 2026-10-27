@@ -3,6 +3,8 @@ pub const max_line = 16 * 1024; // Includes LF; limit is bytes, not characters.
 pub const BackendSession = struct { ready: bool = false, generation: i64 = 0, reason: ?[]const u8 = null };
 pub const ShowCommand = enum { show, @"show-passive", @"show-passive-secondary" };
 pub const Scope = enum { frontend, backend };
+pub const StopOutcome = enum { normal, deadline_terminated, wait_cancelled };
+pub const StopResult = struct { outcome: StopOutcome, elapsed_ms: u64, exit_code: u32 };
 pub const Event = union(enum) {
     running: u32,
     window_handle: usize,
@@ -11,6 +13,7 @@ pub const Event = union(enum) {
     preferences_changed: Scope,
     language: []const u8,
     crashed: u32,
+    stopped: StopResult,
 };
 
 /// Fixed-capacity JSON string encoder. No escaping is delegated to shell syntax.

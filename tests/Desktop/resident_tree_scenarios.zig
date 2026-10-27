@@ -20,6 +20,7 @@ const Host = struct {
     client: wp.Client = .{},
     mutex: w.Mutex = .{},
     wake: w.HANDLE = undefined,
+    stop_wait_cancel: w.HANDLE = undefined,
     queue: [128]Event = undefined,
     head: usize = 0,
     count: usize = 0,
@@ -76,6 +77,8 @@ const Host = struct {
         self.mode = mode;
         self.wake = w.CreateEventW(null, 1, 0, null) orelse return error.Event;
         errdefer w.close(self.wake);
+        self.stop_wait_cancel = w.CreateEventW(null, 1, 0, null) orelse return error.Event;
+        errdefer w.close(self.stop_wait_cancel);
         self.engine = try topology.Engine.create(std.testing.allocator, .{
             .worker_count = 2,
             .history_capacity = 128,
@@ -98,6 +101,7 @@ const Host = struct {
     }
     fn end(self: *Host) !void {
         self.ending = true;
+        _ = w.SetEvent(self.stop_wait_cancel);
         try self.engine.shutdown(why(), null);
     }
     fn deinit(self: *Host) void {
@@ -105,13 +109,14 @@ const Host = struct {
         self.wait(.all_stopped) catch @panic("scenario cleanup did not stop");
         self.engine.destroy() catch @panic("scenario destroy");
         w.close(self.wake);
+        w.close(self.stop_wait_cancel);
     }
     fn entry(item: *Slot) void {
         const self = item.host;
         if (item.run.block == B.WindowProcess) {
             var args: [80]u8 = undefined;
             const arguments = std.fmt.bufPrint(&args, "--mode {s}", .{self.mode}) catch unreachable;
-            self.client.run(item.stop, item, windowEvent, .{ .executable = fixture.path, .cancel_poll_ms = 10, .arguments = arguments, .session = .{ .ready = true, .generation = 21 } }) catch {
+            self.client.run(item.stop, item, windowEvent, .{ .executable = fixture.path, .cancel_poll_ms = 10, .stop_deadline_ms = 1000, .timeout_policy = .terminate, .stop_wait_cancel = self.stop_wait_cancel, .arguments = arguments, .session = .{ .ready = true, .generation = 21 } }) catch {
                 _ = self.failures.fetchAdd(1, .monotonic);
             };
         } else {

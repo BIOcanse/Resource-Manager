@@ -37,24 +37,38 @@ internal static class Program
             var symbol = item.GetProperty("symbol").GetString()!;
             var path = new PointPath(PointPath.MainProgramPackage, 1, 0,
                 PointFamily.Build, PointKind.Simple, item.GetProperty("id").GetUInt16());
+            var isEnum = item.TryGetProperty("kind", out var kind) && kind.GetString() == "enum";
+            var slot = isEnum ? new SlotContract
+            {
+                Kind = ValueKind.Enumeration,
+                Enumeration = new EnumContract
+                {
+                    IsUnsigned = true, BitWidth = 8,
+                    Members = item.GetProperty("members").EnumerateObject()
+                        .Select(member => new EnumMemberContract(member.Name, member.Value.GetRawText()))
+                        .ToImmutableArray()
+                }
+            } : new SlotContract
+            {
+                Kind = ValueKind.Integer, IntegerBitWidth = 32,
+                IntegerMinimum = item.GetProperty("min").GetInt64(),
+                IntegerMaximum = item.GetProperty("max").GetInt64()
+            };
             points.Add(new PointDeclaration
             {
                 Path = path, Name = tree + "." + symbol,
                 Status = DeclarationStatus.Active, Update = UpdateClass.RebuildArtifact,
                 ValueSource = "desktop.defaults", SourcePointer = "/points/" + index + "/default",
-                Slots = [new SlotContract
-                {
-                    Kind = ValueKind.Integer, IntegerBitWidth = 32,
-                    IntegerMinimum = item.GetProperty("min").GetInt64(),
-                    IntegerMaximum = item.GetProperty("max").GetInt64()
-                }],
+                Slots = [slot],
                 GenerationTargets = [new()
                 {
                     Language = GenerationLanguage.Zig, Form = GenerationForm.BuildConstant,
                     Scope = "desktop", Symbol = symbol
                 }]
             });
-            values.Add(path, PointValueSet.Simple(PointValue.FromInteger(item.GetProperty("default").GetInt64())));
+            values.Add(path, PointValueSet.Simple(isEnum
+                ? PointValue.FromEnumMember(item.GetProperty("default").GetString()!)
+                : PointValue.FromInteger(item.GetProperty("default").GetInt64())));
             index++;
         }
         var registry = new PointRegistry(points.ToImmutable());

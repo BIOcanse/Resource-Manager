@@ -10,6 +10,8 @@
     { "id": 5, "symbol": "backend_timeout_ms", "default": 2000, "min": 100, "max": 60000 },
     { "id": 6, "symbol": "window_cancel_poll_ms", "default": 10, "min": 1, "max": 1000 },
     { "id": 7, "symbol": "instance_connect_timeout_ms", "default": 1500, "min": 1, "max": 60000 },
-    { "id": 8, "symbol": "instance_connect_poll_ms", "default": 10, "min": 1, "max": 1000 }
+    { "id": 8, "symbol": "instance_connect_poll_ms", "default": 10, "min": 1, "max": 1000 },
+    { "id": 9, "symbol": "window_stop_deadline_ms", "default": 1000, "min": 1, "max": 60000 },
+    { "id": 10, "symbol": "window_stop_timeout_policy", "kind": "enum", "default": "terminate", "members": { "terminate": 0, "wait": 1 } }
   ]
 }

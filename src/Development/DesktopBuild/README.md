@@ -1,6 +1,6 @@
 # Desktop freedom points
 
-`desktop.points.json` declares the independent desktop tree's nine build-time
+`desktop.points.json` declares the independent desktop tree's eleven build-time
 choices and their defaults. Fixed state-item limits remain structural facts in
 their owning modules. This tool uses the published FreedomPoint dev.45
 `TypedProjection.Emit` Zig backend; it does not implement a second emitter.
@@ -23,3 +23,13 @@ the defaults. Build wiring and production readers belong to the desktop host.
 Generation receipts establish generation only. Full development-time source
 tracking, reverse lookup, and debug-mode checking require the host's explicit
 production source inventory and are not claimed by this generator.
+
+The window wrapper owns `window_stop_deadline_ms` (milliseconds) and
+`window_stop_timeout_policy`, a generated native enum with the formal choices
+`terminate` (force termination, default) and `wait` (continue waiting).
+The deadline bounds cooperative stop, including pipe worker joins. A separate
+program-stop token cancels that wait regardless of the selected timeout policy;
+closing the non-inherited Job kills the child, and the wrapper still joins it.
+Defaults live only in the declaration; the host passes selected SDK values to
+the wrapper. The measured basis and remaining real NativeUi acceptance are in
+`.local/reports/final-report-2.md`.

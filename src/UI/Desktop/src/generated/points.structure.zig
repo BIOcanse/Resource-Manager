@@ -24,6 +24,10 @@ pub const ContractDescriptor = struct {
 };
 pub const EnumMember = struct { name: []const u8, literal: []const u8 };
 pub const EnumContract = struct { is_unsigned: bool, bit_width: u8, members: []const EnumMember };
+pub const __fpEnum_window_stop_timeout_policy = enum(u8) {
+    @"terminate" = 0,
+    @"wait" = 1,
+};
 pub fn Bind(comptime values: anytype) type {
     return struct {
         pub const @"controller_workers": i32 = values.@"controller_workers";
@@ -35,5 +39,7 @@ pub fn Bind(comptime values: anytype) type {
         pub const @"window_cancel_poll_ms": i32 = values.@"window_cancel_poll_ms";
         pub const @"instance_connect_timeout_ms": i32 = values.@"instance_connect_timeout_ms";
         pub const @"instance_connect_poll_ms": i32 = values.@"instance_connect_poll_ms";
+        pub const @"window_stop_deadline_ms": i32 = values.@"window_stop_deadline_ms";
+        pub const @"window_stop_timeout_policy": __fpEnum_window_stop_timeout_policy = values.@"window_stop_timeout_policy";
     };
 }

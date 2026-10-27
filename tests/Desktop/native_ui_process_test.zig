@@ -38,6 +38,7 @@ const Harness = struct {
     client: wp.Client = .{},
     mutex: w.Mutex = .{},
     stop: w.HANDLE,
+    cancel: w.HANDLE,
     changed: w.HANDLE,
     done: w.HANDLE,
     worker: ?std.Thread = null,
@@ -46,20 +47,24 @@ const Harness = struct {
     closed: bool = false,
     crashed: bool = false,
     failed: bool = false,
+    stopped: ?wp.StopResult = null,
     window_wanted: bool = true,
 
     fn init() !Harness {
         const stop = w.CreateEventW(null, 1, 0, null) orelse return error.Event;
         errdefer w.close(stop);
+        const cancel = w.CreateEventW(null, 1, 0, null) orelse return error.Event;
+        errdefer w.close(cancel);
         const changed = w.CreateEventW(null, 1, 0, null) orelse return error.Event;
         errdefer w.close(changed);
         const done = w.CreateEventW(null, 1, 0, null) orelse return error.Event;
-        return .{ .stop = stop, .changed = changed, .done = done };
+        return .{ .stop = stop, .cancel = cancel, .changed = changed, .done = done };
     }
     fn deinit(self: *Harness) void {
         _ = w.SetEvent(self.stop);
         if (self.worker) |thread| thread.join();
         w.close(self.stop);
+        w.close(self.cancel);
         w.close(self.changed);
         w.close(self.done);
     }
@@ -71,6 +76,9 @@ const Harness = struct {
             .language = "zh-CN",
             .show = .@"show-passive-secondary",
             .cancel_poll_ms = 10,
+            .stop_deadline_ms = 1000,
+            .timeout_policy = .terminate,
+            .stop_wait_cancel = self.cancel,
         }) catch |err| {
             std.debug.print("real NativeUi client failed: {s}\n", .{@errorName(err)});
             self.failed = true;
@@ -92,6 +100,10 @@ const Harness = struct {
                 self.window_wanted = false;
                 self.crashed = true;
                 std.debug.print("real NativeUi crashed code={d}\n", .{code});
+            },
+            .stopped => |result| {
+                self.stopped = result;
+                std.debug.print("real NativeUi stopped: {s}, elapsed_ms={d}, exit_code={d}\n", .{ @tagName(result.outcome), result.elapsed_ms, result.exit_code });
             },
             else => {},
         }
@@ -154,15 +166,23 @@ test "real Debug NativeUi reports close intent and waits for parent stop on seco
     host.worker.?.join();
     host.worker = null;
     try std.testing.expect(host.pid != 0 and host.closed and !host.failed and !host.crashed);
+    try std.testing.expect(host.stopped != null);
+    try std.testing.expectEqual(wp.StopOutcome.normal, host.stopped.?.outcome);
+    try std.testing.expectEqual(@as(u32, 0), host.stopped.?.exit_code);
     std.debug.print("real NativeUi close intent observed; parent stop joined child with exit 0\n", .{});
 }
 
 test "real Debug NativeUi headless false demand exits with the parent write endpoint still open" {
     if (options.realNativeUi.len == 0) return error.SkipZigTest;
+    const cancel = w.CreateEventW(null, 1, 0, null) orelse return error.Event;
+    defer w.close(cancel);
     const captured = try wp.test_support.launchCaptured(.{
         .executable = options.realNativeUi,
         .arguments = "--resident-api-base http://127.0.0.1:19321/",
         .cancel_poll_ms = 10,
+        .stop_deadline_ms = 1000,
+        .timeout_policy = .terminate,
+        .stop_wait_cancel = cancel,
     });
     const child = captured.child;
     defer w.close(captured.stderr);
@@ -170,6 +190,8 @@ test "real Debug NativeUi headless false demand exits with the parent write endp
     defer w.close(child.read);
     defer {
         w.close(child.write);
+        // Raw launch has no Client stop wrapper; its Job still owns failure cleanup.
+        w.close(child.job);
         _ = w.WaitForSingleObject(child.process, w.infinite);
     }
     std.debug.print("real headless NativeUi launched pid={d}; parent writer retained; running=true is never sent\n", .{child.pid});
