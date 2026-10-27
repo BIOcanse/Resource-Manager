@@ -1,4 +1,40 @@
 const std = @import("std");
+const kernel_etw_abi = @import("telemetry/kernel_etw/abi.zig");
+const kernel_etw_trace_abi = @import("telemetry/kernel_etw/trace_abi.zig");
+const kernel_etw_interrupt_abi = @import("telemetry/kernel_etw/interrupt_abi.zig");
+comptime {
+    _ = kernel_etw_interrupt_abi.rm_kernel_etw_interrupt_abi_version;
+    _ = kernel_etw_interrupt_abi.rm_kernel_etw_interrupt_create;
+    _ = kernel_etw_interrupt_abi.rm_kernel_etw_interrupt_create_in_region;
+    _ = kernel_etw_interrupt_abi.rm_kernel_etw_interrupt_query_region_usage;
+    _ = kernel_etw_interrupt_abi.rm_kernel_etw_interrupt_destroy;
+    _ = kernel_etw_interrupt_abi.rm_kernel_etw_interrupt_image;
+    _ = kernel_etw_interrupt_abi.rm_kernel_etw_interrupt_observe;
+    _ = kernel_etw_interrupt_abi.rm_kernel_etw_interrupt_reset;
+    _ = kernel_etw_interrupt_abi.rm_kernel_etw_interrupt_refresh_loss;
+    _ = kernel_etw_interrupt_abi.rm_kernel_etw_interrupt_acquire_view;
+    _ = kernel_etw_interrupt_abi.rm_kernel_etw_interrupt_release_view;
+    _ = kernel_etw_interrupt_abi.rm_kernel_etw_interrupt_query_usage;
+    _ = kernel_etw_trace_abi.rm_kernel_etw_trace_bind_interrupts;
+    _ = kernel_etw_trace_abi.rm_kernel_etw_trace_open;
+    _ = kernel_etw_trace_abi.rm_kernel_etw_trace_process;
+    _ = kernel_etw_trace_abi.rm_kernel_etw_trace_request_stop;
+    _ = kernel_etw_trace_abi.rm_kernel_etw_trace_stop;
+    _ = kernel_etw_trace_abi.rm_kernel_etw_trace_close;
+    _ = kernel_etw_trace_abi.rm_kernel_etw_trace_status;
+    _ = kernel_etw_trace_abi.rm_kernel_etw_trace_clock;
+    _ = kernel_etw_trace_abi.rm_kernel_etw_trace_query_path_mapping;
+    _ = kernel_etw_abi.rm_kernel_etw_abi_version;
+    _ = kernel_etw_abi.rm_kernel_etw_create;
+    _ = kernel_etw_abi.rm_kernel_etw_create_in_region;
+    _ = kernel_etw_abi.rm_kernel_etw_query_region_usage;
+    _ = kernel_etw_abi.rm_kernel_etw_destroy;
+    _ = kernel_etw_abi.rm_kernel_etw_apply;
+    _ = kernel_etw_abi.rm_kernel_etw_acquire_residency;
+    _ = kernel_etw_abi.rm_kernel_etw_release_residency;
+    _ = kernel_etw_abi.rm_kernel_etw_query_usage;
+    _ = kernel_etw_abi.rm_kernel_etw_query_capacity_failure;
+}
 
 // Capacity diagnostics have their own version so adding allocation details
 // cannot change the version stamped into persisted owner records.

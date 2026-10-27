@@ -6,8 +6,9 @@ using Microsoft.Diagnostics.Tracing.Session;
 // product services, real-time consumers or process/hardware control are involved.
 try
 {
-    if (args.Length != 1 || !OperatingSystem.IsWindows() || TraceEventSession.IsElevated() != true)
-        throw new InvalidOperationException("Pass a fresh ETL path and run this finite recorder elevated on Windows.");
+    if (args.Length is < 1 or > 2 || args.Length == 2 && args[1] != "--include-interrupts"
+        || !OperatingSystem.IsWindows() || TraceEventSession.IsElevated() != true)
+        throw new InvalidOperationException("Pass a fresh ETL path, optionally --include-interrupts, and run this finite recorder elevated on Windows.");
     var path = Path.GetFullPath(args[0]);
     if (File.Exists(path) || !Directory.Exists(Path.GetDirectoryName(path)))
         throw new IOException("The ETL must be a new file in an existing evidence directory.");
@@ -17,8 +18,12 @@ try
         throw new InvalidOperationException("The test session name is already owned.");
     using (var session = new TraceEventSession(name, path) { StopOnDispose = true })
     {
-        session.EnableKernelProvider(KernelTraceEventParser.Keywords.Process
-            | KernelTraceEventParser.Keywords.Thread | KernelTraceEventParser.Keywords.ContextSwitch);
+        var keywords = KernelTraceEventParser.Keywords.Process
+            | KernelTraceEventParser.Keywords.Thread | KernelTraceEventParser.Keywords.ContextSwitch;
+        if (args.Length == 2)
+            keywords |= KernelTraceEventParser.Keywords.Interrupt
+                | KernelTraceEventParser.Keywords.DeferedProcedureCalls | KernelTraceEventParser.Keywords.ImageLoad;
+        session.EnableKernelProvider(keywords);
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(12));
         var workers = Enumerable.Range(0, Math.Min(4, Environment.ProcessorCount)).Select(_ => Task.Run(() =>
         {
