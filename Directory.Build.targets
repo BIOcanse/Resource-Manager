@@ -1,4 +1,23 @@
 <Project>
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'ResourceManager.App' or '$(MSBuildProjectName)' == 'ResourceManager.ReadWriteCore' or '$(MSBuildProjectName)' == 'ResourceManager.Shared'">
+    <RuntimeReadStrict Condition="'$(RuntimeReadStrict)' == ''">false</RuntimeReadStrict>
+    <!-- Findings remain visible when the project treats its other warnings as errors. -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);RMR000</WarningsNotAsErrors>
+    <WarningsNotAsErrors Condition="'$(RuntimeReadStrict)' != 'true'">$(WarningsNotAsErrors);RMR001;RMR003;RMR103</WarningsNotAsErrors>
+    <WarningsAsErrors Condition="'$(RuntimeReadStrict)' == 'true'">$(WarningsAsErrors);RMR001;RMR003;RMR103</WarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Changing mode changes the generated analyzer configuration and reruns Csc. -->
+    <CompilerVisibleProperty Include="RuntimeReadStrict" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'ResourceManager.App' or '$(MSBuildProjectName)' == 'ResourceManager.ReadWriteCore' or '$(MSBuildProjectName)' == 'ResourceManager.Shared'">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)src/Development/RuntimeReadCheck/ResourceManager.RuntimeReadCheck.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'ResourceManager.App'">
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)src/Core/Native/**/*.c;$(MSBuildThisFileDirectory)src/Core/Native/**/*.cpp;$(MSBuildThisFileDirectory)src/Core/Native/**/*.h;$(MSBuildThisFileDirectory)src/Core/Native/**/*.hpp;$(MSBuildThisFileDirectory)src/Core/Native/**/*.inc;$(MSBuildThisFileDirectory)src/Core/NativeCore/**/*.zig;$(MSBuildThisFileDirectory)src/Core/NativeCore/**/*.h"
+                     Exclude="$(MSBuildThisFileDirectory)**/bin/**;$(MSBuildThisFileDirectory)**/obj/**;$(MSBuildThisFileDirectory)**/zig-out/**;$(MSBuildThisFileDirectory)**/.zig-cache/**;$(MSBuildThisFileDirectory)**/third_party/**;$(MSBuildThisFileDirectory)**/third-party/**;$(MSBuildThisFileDirectory)**/vendor/**" />
+  </ItemGroup>
   <PropertyGroup>
     <ResourceManagerStateNames Condition="'$(ResourceManagerStateNames)' == ''">true</ResourceManagerStateNames>
   </PropertyGroup>

@@ -36,7 +36,8 @@ public sealed record DeviceInformationDefinition(
     string ValueKind,
     string Unit,
     string Quantity,
-    string SourceId);
+    string SourceId,
+    ReadVolatility Volatility);
 
 /// <summary>Null means no current value. Unsigned integers are lossless decimal strings.</summary>
 public sealed record DeviceInformationField(

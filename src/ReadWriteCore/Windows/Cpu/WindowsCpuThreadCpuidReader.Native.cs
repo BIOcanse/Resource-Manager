@@ -16,6 +16,7 @@ public static partial class WindowsCpuThreadCpuidReader
         }
         public CpuProcessorAddress Current()
         { GetCurrentProcessorNumberEx(out var processor); return new(processor.Group, processor.Number); }
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
         public (int Eax, int Ebx, int Ecx, int Edx) Read(int leaf, int subleaf) => X86Base.CpuId(leaf, subleaf);
     }
 

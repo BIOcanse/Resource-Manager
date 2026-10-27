@@ -134,6 +134,7 @@ GpuShimPolicy ReadPolicyFile()
     return ResourceManagerGpuPolicy::ReadCurrentPolicy(ReadConfiguredPolicyPath());
 }
 
+// RuntimeRead: Fixed
 bool IsHardwareAdapter(IUnknown* adapter)
 {
     if (adapter == nullptr)
@@ -152,6 +153,7 @@ bool IsHardwareAdapter(IUnknown* adapter)
     return SUCCEEDED(result) && (description.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) == 0;
 }
 
+// RuntimeRead: Transport
 HRESULT SelectD3D11ReplacementAdapter(
     IDXGIAdapter* adapter, D3D_DRIVER_TYPE driverType, IDXGIAdapter1*& replacement)
 {
@@ -484,6 +486,7 @@ void SignalStartupReadyIfConfigured();
 #include "DxgiRuntimeRecreation.h"
 #include "VulkanRuntimeHooks.h"
 
+// RuntimeRead: EventDriven("Process environment changed")
 void InitializePolicyPathFromEnvironment()
 {
     wchar_t policyPath[PolicyPathCapacity]{};
@@ -503,6 +506,7 @@ void InitializePolicyPathFromEnvironment()
     // Other startup providers read this same per-process configuration later.
 }
 
+// RuntimeRead: EventDriven("Process environment changed")
 bool IsStartupHandshakeRequested()
 {
     return GetEnvironmentVariableW(L"RM_GPU_SHIM_READY_EVENT", nullptr, 0) > 1;
@@ -610,6 +614,7 @@ DWORD ReadStatus()
     return status;
 }
 
+// RuntimeRead: EventDriven("Process environment changed")
 void SignalStartupReadyIfConfigured()
 {
     if ((ReadStatus() & (StatusConfigured | StatusInitialized | StatusHooksEnabled))
@@ -755,6 +760,7 @@ extern "C" __declspec(dllexport) DWORD WINAPI ResourceManagerGpuPlacementConfigu
     return ReadStatus();
 }
 
+// RuntimeRead: Fixed
 extern "C" __declspec(dllexport) DWORD WINAPI ResourceManagerGpuPlacementConfigureOpenGl(LPVOID parameter)
 {
     if (!parameter) { SetLastError(ERROR_INVALID_PARAMETER); return 0; }
@@ -813,6 +819,7 @@ extern "C" __declspec(dllexport) DWORD_PTR WINAPI ResourceManagerGpuPlacementGet
     return reinterpret_cast<DWORD_PTR>(&D3D12CreateDevice);
 }
 
+// RuntimeRead: EventDriven("Process environment changed")
 BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
 {
     if (reason == DLL_PROCESS_ATTACH)

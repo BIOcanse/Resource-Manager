@@ -19,26 +19,26 @@ namespace ResourceManager.App.Infrastructure.Control;
 public sealed class WindowsChassisKindReader : IControlDetectionCache
 {
     private readonly object gate = new();
+    private readonly Func<string> query;
     private string? cached;
 
-    /// <summary>忘掉记下的机箱类型，下次重新问 SMBIOS。</summary>
-    public void ResetDetection()
-    {
-        lock (gate)
-        {
-            cached = null;
-        }
-    }
+    public WindowsChassisKindReader() : this(Query) { }
+    internal WindowsChassisKindReader(Func<string> query) => this.query = query;
 
+    /// <summary>机箱声明在本所有者存活期间固定；重新检测控制能力不重读 SMBIOS。</summary>
+    public void ResetDetection() { }
+
+    [ResourceManager.ReadWrite.RuntimeReadCache]
     public string Read()
     {
         lock (gate)
         {
-            cached ??= Query();
+            cached ??= query();
             return cached;
         }
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     private static string Query()
     {
         try
@@ -46,23 +46,27 @@ public sealed class WindowsChassisKindReader : IControlDetectionCache
             using var searcher = new ManagementObjectSearcher(
                 "SELECT ChassisTypes FROM Win32_SystemEnclosure");
             using var collection = searcher.Get();
+            string? kind = null;
             foreach (var row in collection.Cast<ManagementObject>())
             {
                 using (row)
                 {
+                    if (kind is not null) continue;
                     if (row["ChassisTypes"] is not ushort[] types)
                     {
                         continue;
                     }
                     foreach (var type in types)
                     {
-                        if (Classify(type) is { } kind)
+                        if (Classify(type) is { } classified)
                         {
-                            return kind;
+                            kind = classified;
+                            break;
                         }
                     }
                 }
             }
+            if (kind is not null) return kind;
         }
         catch (ManagementException)
         {

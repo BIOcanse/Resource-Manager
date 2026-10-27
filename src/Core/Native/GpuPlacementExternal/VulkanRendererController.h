@@ -12,6 +12,7 @@ template<class T> static T readState(HANDLE process,uint64_t address) {
 struct Call {uint64_t entry,returnAddress,returnStack,a,b,c;uint32_t capacity;};
 struct Present {uint64_t rhi=0,physical=0,queue=0,entry=0,frameReturn=0,frameStack=0,returnAddress=0,returnStack=0,luid=0;};
 
+// RuntimeRead: Sampled
 static int runQt(int argc,wchar_t** argv) {
     SetErrorMode(32771);setvbuf(stdout,nullptr,_IONBF,0);
     if(argc!=8)return 2;

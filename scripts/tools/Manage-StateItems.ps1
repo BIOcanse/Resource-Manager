@@ -12,6 +12,7 @@ param(
     [string]$OwnerComponent,
     [bool]$PerBlock,
     [ValidateSet('event', 'poll')][string]$Trigger,
+    [string]$ChangeEvent,
     [string]$PollInterval,
     [long]$Node,
     [System.Collections.IDictionary[]]$ItemReads = @(),
@@ -40,7 +41,7 @@ switch ($Action) {
             $next++
         }
         $new = [ordered]@{ uid = $next; kind = $Kind; process = $Process; name = $Name; comment = $Comment }
-        $itemParameters = @('Storage', 'Type', 'OwnerBlock', 'OwnerComponent', 'PerBlock', 'Trigger', 'PollInterval')
+        $itemParameters = @('Storage', 'Type', 'OwnerBlock', 'OwnerComponent', 'PerBlock', 'Trigger', 'ChangeEvent', 'PollInterval')
         $conditionParameters = @('Node', 'ItemReads', 'Conditions', 'Children', 'Decides')
         if ($Kind -ne 'condition') {
             foreach ($parameter in $conditionParameters) {
@@ -57,6 +58,7 @@ switch ($Action) {
             $new.owner = if ($PSBoundParameters.ContainsKey('OwnerBlock')) { [ordered]@{ block = $OwnerBlock } } else { [ordered]@{ component = $OwnerComponent } }
             $new.perBlock = $PerBlock
             $new.trigger = $Trigger
+            if ($PSBoundParameters.ContainsKey('ChangeEvent')) { $new.changeEvent = $ChangeEvent }
             if ($PSBoundParameters.ContainsKey('PollInterval')) { $new.pollInterval = $PollInterval }
         } elseif ($Kind -eq 'condition') {
             foreach ($parameter in $itemParameters | Where-Object { $_ -ne 'PerBlock' }) {
@@ -101,7 +103,7 @@ switch ($Action) {
                 } finally { $buffer.Dispose(); $git.Dispose() }
             }
             if ((Get-StateRegistryVersion $bytes) -cne $Version) { throw "Registry version ${Version}: blob hash mismatch." }
-            $table = Read-StateRegistry -Bytes $bytes
+            $table = Read-StateRegistry -Bytes $bytes -HistoricalTable
         } else { $table = Read-StateRegistry -Path $registryPath }
         $entry = @($table.entries | Where-Object uid -EQ $Uid)
         if ($entry.Count -ne 1) { throw "Registry entry uid=$Uid was not found." }

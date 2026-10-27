@@ -78,6 +78,7 @@ internal sealed class UniwillEcBridge : IDisposable
     /// 读一个 EC 字节。读到连续一致的值才返回，否则返回 null ——
     /// 单次读数不可信，见 <see cref="AgreeingReads"/>。
     /// </summary>
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     internal byte? Read(ushort address)
     {
         lock (operationGate)
@@ -87,6 +88,7 @@ internal sealed class UniwillEcBridge : IDisposable
         }
     }
 
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     private byte? ReadHeld(ushort address)
     {
         lock (gate)
@@ -124,6 +126,7 @@ internal sealed class UniwillEcBridge : IDisposable
     /// 固件对这个接口从不报错 —— 地址不认、值越界都一样返回成功，
     /// 所以"写成功"只能由回读来定义。核对不上就如实说没写进去。
     /// </summary>
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     internal bool Write(ushort address, byte value)
         => WriteReadingBack(address, value) == value;
 
@@ -132,6 +135,7 @@ internal sealed class UniwillEcBridge : IDisposable
     /// 回读不同不能区分固件限幅、写入未生效或其他写入者覆盖。
     /// </summary>
     // Serializes our cooperating clients, not the OEM service or firmware.
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     internal byte? WriteReadingBack(ushort address, byte value)
     {
         lock (operationGate)
@@ -141,6 +145,7 @@ internal sealed class UniwillEcBridge : IDisposable
         }
     }
 
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     private byte? WriteHeld(ushort address, byte value)
     {
         lock (gate)
@@ -164,6 +169,7 @@ internal sealed class UniwillEcBridge : IDisposable
         return readBack;
     }
 
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     private uint? Invoke(ulong data)
     {
         if (ResolveDevice() is not { } target)
@@ -196,6 +202,7 @@ internal sealed class UniwillEcBridge : IDisposable
         }
     }
 
+    [ResourceManager.ReadWrite.RuntimeReadCache]
     private IUniwillEcWmiSession? ResolveDevice()
     {
         lock (gate)
@@ -223,31 +230,28 @@ internal sealed class UniwillEcBridge : IDisposable
         }
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     private static IUniwillEcWmiSession? OpenWmiSession()
     {
         using var searcher = new ManagementObjectSearcher(
             Scope,
             $"SELECT * FROM {ClassName} WHERE InstanceName = '{InstanceName.Replace(@"\", @"\\")}'");
         using var collection = searcher.Get();
-        foreach (ManagementBaseObject found in collection)
+        ManagementObject? selected = null;
+        try
         {
-            if (found is not ManagementObject target)
+            foreach (ManagementBaseObject found in collection)
             {
-                found.Dispose();
-                continue;
+                if (selected is null && found is ManagementObject target) selected = target;
+                else found.Dispose();
             }
-
-            try
-            {
-                return new WmiSession(target);
-            }
-            catch
-            {
-                target.Dispose();
-                throw;
-            }
+            return selected is null ? null : new WmiSession(selected);
         }
-        return null;
+        catch
+        {
+            selected?.Dispose();
+            throw;
+        }
     }
 
     private void InvalidateDevice()
@@ -275,20 +279,38 @@ internal sealed class UniwillEcBridge : IDisposable
     private void ThrowIfDisposed()
         => ObjectDisposedException.ThrowIf(disposed, this);
 
-    private sealed class WmiSession(ManagementObject target) : IUniwillEcWmiSession
+    internal sealed class WmiSession(ManagementObject target, Func<ManagementBaseObject?>? readParameters = null) : IUniwillEcWmiSession
     {
         private ManagementBaseObject? parameters;
+        private bool parametersRead;
         private bool disposed;
 
+        [ResourceManager.ReadWrite.RuntimeReadTransport]
         public uint? Invoke(ulong data)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
-            parameters ??= target.GetMethodParameters(MethodName);
+            parameters = ResolveParameters();
             if (parameters is null) return null;
             parameters["Data"] = data;
             using var result = target.InvokeMethod(MethodName, parameters, null);
             return result?["Return"] is uint returned ? returned : null;
         }
+
+        [ResourceManager.ReadWrite.RuntimeReadCache]
+        internal ManagementBaseObject? ResolveParameters()
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            if (!parametersRead)
+            {
+                parametersRead = true;
+                parameters = ReadParameters();
+            }
+            return parameters;
+        }
+
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
+        private ManagementBaseObject? ReadParameters()
+            => readParameters is null ? target.GetMethodParameters(MethodName) : readParameters();
 
         public void Dispose()
         {
@@ -304,6 +326,7 @@ internal sealed class UniwillEcBridge : IDisposable
 
 internal interface IUniwillEcWmiSession : IDisposable
 {
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     uint? Invoke(ulong data);
 }
 

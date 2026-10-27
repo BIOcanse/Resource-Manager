@@ -2,6 +2,7 @@
 #include "ChromiumArguments.h"
 #include "../GpuPlacementCommon/ControllerOutputPipes.h"
 
+// RuntimeRead: Transport
 int wmain(int argc,wchar_t** argv) {
     if (!ResourceManagerGpuController::ConfigureOutput(argc, argv)) return 2;
     SetErrorMode(32771); setvbuf(stdout,nullptr,_IONBF,0);

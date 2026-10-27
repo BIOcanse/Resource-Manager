@@ -128,6 +128,7 @@ internal sealed class MechrevoUwAcpiSensorReader : IDisposable
         return string.IsNullOrWhiteSpace(imagePath) ? null : $"{serviceName} / {imagePath}";
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows device-bound driver package changed")]
     private static string? ReadServiceImagePath(string serviceName)
     {
         try

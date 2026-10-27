@@ -28,6 +28,7 @@ std::string PolicyToken(LUID luid)
     return token;
 }
 
+// RuntimeRead: Fixed
 LUID Target(ResourceManagerGpuPolicy::GpuShimPolicyMode mode)
 {
     ResourceManagerGpuPolicy::GpuShimPolicy policy; policy.mode = mode;

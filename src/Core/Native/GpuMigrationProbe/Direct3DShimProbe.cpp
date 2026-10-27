@@ -201,6 +201,7 @@ void Readback12(ID3D12Device* device)
     Require(pixels, "d3d12-all-256-pixels-match");
 }
 
+// RuntimeRead: Fixed
 LUID Luid11(ID3D11Device* device)
 {
     ComPtr<IDXGIDevice> dxgiDevice;
@@ -377,6 +378,7 @@ void ConcurrentFactories(ID3D12SDKConfiguration1* configuration, LUID expected)
     Require(completed == workerCount * factoriesPerWorker && failures == 0, "concurrent-factory-creation-and-device-selection");
 }
 
+// RuntimeRead: Transport
 int FactoryRun(const wchar_t* providerPath, const wchar_t* policyPath)
 {
     SetErrorMode(32771);
@@ -502,6 +504,7 @@ int FactoryRun(const wchar_t* providerPath, const wchar_t* policyPath)
     return 0;
 }
 
+// RuntimeRead: Transport
 int Run(const wchar_t* providerPath, const wchar_t* policyPath)
 {
     SetErrorMode(32771);

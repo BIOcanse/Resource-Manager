@@ -10,6 +10,8 @@ public static unsafe class WindowsDxgiDisplayCapabilityReader
     private static readonly Guid Factory1InterfaceId = new("770AAE78-F26F-4DBA-A829-253C83D1B387");
     private static readonly Guid Output6InterfaceId = new("068346E8-AAEC-4B84-ADD7-137F513F77A1");
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows display topology or settings changed")]
+
     public static DeviceTopologyDxgiDisplayReadResult ReadAll()
     {
         var result = new Dictionary<string, DeviceTopologyDxgiDisplayCapabilities>(StringComparer.OrdinalIgnoreCase);
@@ -57,6 +59,8 @@ public static unsafe class WindowsDxgiDisplayCapabilityReader
 
         return new DeviceTopologyDxgiDisplayReadResult(result, complete);
     }
+
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows display topology or settings changed")]
 
     private static bool ReadAdapterOutputs(
         IDXGIAdapter1 adapter,
@@ -112,6 +116,8 @@ public static unsafe class WindowsDxgiDisplayCapabilityReader
 
         return complete;
     }
+
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows display topology or settings changed")]
 
     private static bool TryReadDescription(IntPtr output6Pointer, out DxgiOutputDesc1 description)
     {

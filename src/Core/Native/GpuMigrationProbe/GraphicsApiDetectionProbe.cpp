@@ -84,6 +84,7 @@ IUnknown* CreateDirect3DDevice(HMODULE module, bool d12) {
     if (FAILED(result) || !device) throw std::runtime_error("Direct3D device creation");
     return device;
 }
+// RuntimeRead: Fixed
 uint64_t DeviceAdapter(IUnknown* device, bool d12) {
     LUID luid{};
     if (d12) {

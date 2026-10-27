@@ -89,6 +89,7 @@ public sealed class WindowsPlatformDeclarationReader
         };
     }
 
+    [RuntimeRead(ReadVolatilityKind.EventDriven, "Windows SoftwareLicensingProduct license status changed")]
     private IReadOnlyList<WindowsLicenseStatusRow>? ReadActivation(CancellationToken token)
     {
         var result = query(@"root\CIMV2", "SELECT ID, ApplicationID, LicenseStatus FROM SoftwareLicensingProduct WHERE ApplicationID = '55c92734-d682-4d71-983e-d6ec3f16059f'", timeout);
@@ -140,6 +141,7 @@ public sealed class WindowsPlatformDeclarationReader
     }
 
     [SupportedOSPlatform("windows")]
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Machine or explicit-user environment registry key changed")]
     private static void ReadHive(RegistryHive hive, string hiveName, RegistryView view, string? sid,
         List<WindowsConfiguredRegistryString> rows, bool startup, CancellationToken token)
     {

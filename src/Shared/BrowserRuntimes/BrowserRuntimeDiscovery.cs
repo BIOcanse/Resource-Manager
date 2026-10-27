@@ -170,6 +170,7 @@ public static class BrowserRuntimeDiscovery
         AddInstalledWebView2Runtime(candidates, RegistryHive.CurrentUser, RegistryView.Registry64, BrowserRuntimeSources.SystemUser);
     }
 
+    [System.ComponentModel.Description("RuntimeRead: EventDriven(\"Browser runtime registration changed\")")]
     private static void AddInstalledWebView2Runtime(
         IDictionary<string, BrowserRuntimeCandidate> candidates,
         RegistryHive hive,
@@ -271,6 +272,7 @@ public static class BrowserRuntimeDiscovery
         }
     }
 
+    [System.ComponentModel.Description("RuntimeRead: EventDriven(\"Browser runtime registration changed\")")]
     private static void AddRegisteredBrowsers(
         IDictionary<string, BrowserRuntimeCandidate> candidates)
     {
@@ -304,6 +306,7 @@ public static class BrowserRuntimeDiscovery
         }
     }
 
+    [System.ComponentModel.Description("RuntimeRead: EventDriven(\"Browser runtime registration changed\")")]
     private static void AddRegisteredStartMenuBrowsers(
         IDictionary<string, BrowserRuntimeCandidate> candidates)
     {

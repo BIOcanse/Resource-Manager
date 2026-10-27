@@ -187,7 +187,7 @@ public sealed class DeviceTopologyCaptureOwnerLibraryTests
     }
 
     [Fact]
-    public async Task CanonicalBackendUsesTheOwnersKnownIdentityFailureAndRecovery()
+    public async Task CanonicalBackendRetainsTheOriginalFixedAcpiFrame()
     {
         var count = 0;
         using var owner = new DeviceTopologyCaptureOwner(new FirmwareReader(() => ++count switch {
@@ -201,12 +201,57 @@ public sealed class DeviceTopologyCaptureOwnerLibraryTests
         await backend.DiscoverAsync(default);
         var known = owner.ReadState().AcpiInformationFields;
         var field = backend.Catalog.Fields.Single(f => f.Field.FieldName == "firmware_all_acpi_table_revision").Field;
-        Assert.Null((await backend.CollectAsync([field], default)).Single().Value);
-        Assert.Equal(known.Devices.Select(d => d.DeviceIdentity), owner.ReadState().AcpiInformationFields.Devices.Select(d => d.DeviceIdentity));
-        Assert.Null(owner.ReadState().AcpiInformationFields.ObservedAt);
-        Assert.Equal(MetricInteger.Parse("7"), (await backend.CollectAsync([field], default)).Single().Value!.Integer);
+        Assert.Equal(MetricInteger.Parse("6"), (await backend.CollectAsync([field], default)).Single().Value!.Integer);
+        Assert.Same(known, owner.ReadState().AcpiInformationFields);
+        Assert.Equal(MetricInteger.Parse("6"), (await backend.CollectAsync([field], default)).Single().Value!.Integer);
         await owner.CaptureAcpiInformationAsync(default);
-        Assert.Empty(owner.ReadState().AcpiInformationFields.Devices);
+        Assert.Same(known, owner.ReadState().AcpiInformationFields);
+        Assert.Equal(1, count);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FixedAcpiFailureIsLoggedAndQueriedOnceAndNewOwnerCanReadAgain(bool throws)
+    {
+        var unavailable = true;
+        var reader = new FirmwareReader(() => !unavailable ? AcpiFirmwareTestData.Tables(7)
+            : throws ? throw new InvalidOperationException("firmware unavailable") : null);
+        var logs = 0; var queries = 0;
+        using (var owner = new DeviceTopologyCaptureOwner(reader, logAcpiFailure: _ => logs++))
+        {
+            for (var index = 0; index < 100; index++)
+                Assert.Equal(DeviceTopologySampleCompletion.Failed,
+                    await owner.SampleAcpiAsync(null, default, sourceQueryStarted: () => queries++));
+            Assert.Equal(1, reader.ReadCount);
+            Assert.Equal(1, queries);
+            Assert.Equal(throws ? 1 : 0, logs);
+            Assert.Null(owner.ReadState().AcpiInformationFields.ObservedAt);
+        }
+        unavailable = false;
+        using var secondOwner = new DeviceTopologyCaptureOwner(reader);
+        var recovered = await secondOwner.CaptureAcpiInformationAsync(default);
+        Assert.Equal("7", AcpiFirmwareTestData.Field(recovered, "firmware_all_acpi_table_revision").Value!.Value.GetString());
+        Assert.Equal(2, reader.ReadCount);
+    }
+
+    [Fact]
+    public async Task FixedAcpiRawBytesAndObservationTimeAreCapturedBeforePublicationAndRemainImmutable()
+    {
+        var tables = AcpiFirmwareTestData.Tables();
+        var expectedRaw = tables[0].FirstTable!.Raw.ToArray();
+        var reader = new FirmwareReader(() => tables);
+        using var owner = new DeviceTopologyCaptureOwner(reader);
+        var queries = 0;
+        await owner.SampleAcpiAsync(new DeviceTopologyCapturePermission(() => true, _ => false, () => true),
+            default, sourceQueryStarted: () => queries++);
+        Assert.Null(owner.ReadState().AcpiInformationFields.ObservedAt);
+        tables[0].FirstTable!.Raw[8] = 99;
+        var frame = await owner.CaptureAcpiInformationAsync(default);
+        Assert.Equal(expectedRaw, AcpiFirmwareTestData.Field(frame, "firmware_all_acpi_table_raw").Value!.Value.GetBytesFromBase64());
+        for (var index = 0; index < 100; index++)
+            Assert.Same(frame, await owner.CaptureAcpiInformationAsync(default));
+        Assert.Equal(1, reader.ReadCount); Assert.Equal(1, queries);
     }
 
     private static DeviceTopologyCapturePolicy Policy(Func<DeviceTopologySnapshot> read,

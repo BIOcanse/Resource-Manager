@@ -6,6 +6,15 @@ namespace Resource_Manager_APP.Tests;
 public sealed class UniwillEcBridgeTests
 {
     [Fact]
+    public void MissingMethodMetadataIsResolvedOnceWithoutInvokingHardware()
+    {
+        var queries = 0;
+        using var session = new UniwillEcBridge.WmiSession(new ManagementObject(), () => { queries++; return null; });
+        for (var index = 0; index < 100; index++) Assert.Null(session.ResolveParameters());
+        Assert.Equal(1, queries);
+    }
+
+    [Fact]
     public void ReadReusesOneOwnedSessionForItsAgreeingCalls()
     {
         var session = new FakeSession(_ => 0x5A);

@@ -38,6 +38,7 @@ public sealed class WindowsCpuMonitoringZone : MonitoringSourceZone
             counters.MonotonicTicks, counters.MonotonicTicksPerSecond, counters.ObservedAt);
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     private static string ReadCpuName()
     {
         try

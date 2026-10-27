@@ -4,15 +4,29 @@ namespace ResourceManager.App.Infrastructure.Monitoring;
 
 public sealed class FirmwareIdentityReader
 {
-    public FirmwareIdentitySnapshot Read()
+    private readonly Lazy<FirmwareIdentitySnapshot> identity;
+
+    public FirmwareIdentityReader() : this(PlatformSensorWmiUtilities.QueryObjects) { }
+
+    internal FirmwareIdentityReader(Func<string, string, QueryResult> query)
     {
-        var bios = FirstRow(PlatformSensorWmiUtilities.QueryObjects(
+        ArgumentNullException.ThrowIfNull(query);
+        identity = new(() => ReadIdentity(query));
+    }
+
+    [ResourceManager.ReadWrite.RuntimeReadCache]
+    public FirmwareIdentitySnapshot Read() => identity.Value;
+
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
+    private static FirmwareIdentitySnapshot ReadIdentity(Func<string, string, QueryResult> query)
+    {
+        var bios = FirstRow(query(
             @"root\CIMV2",
             "SELECT Manufacturer, SMBIOSBIOSVersion, Version FROM Win32_BIOS"));
-        var system = FirstRow(PlatformSensorWmiUtilities.QueryObjects(
+        var system = FirstRow(query(
             @"root\CIMV2",
             "SELECT Manufacturer, Model FROM Win32_ComputerSystem"));
-        var baseBoard = FirstRow(PlatformSensorWmiUtilities.QueryObjects(
+        var baseBoard = FirstRow(query(
             @"root\CIMV2",
             "SELECT Manufacturer, Product FROM Win32_BaseBoard"));
 

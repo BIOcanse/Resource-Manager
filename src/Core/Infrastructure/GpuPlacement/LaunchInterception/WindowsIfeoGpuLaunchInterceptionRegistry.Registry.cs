@@ -4,6 +4,7 @@ namespace ResourceManager.App.Infrastructure.GpuPlacement;
 
 public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry
 {
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "IFEO launch interception registry changed")]
     private ViewInspection InspectView(
         RegistryView view,
         string imageName,
@@ -81,6 +82,7 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry
         return new ViewInspection(false, null);
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "IFEO launch interception registry changed")]
     private static void WriteRule(
         RegistryView view,
         string imageName,
@@ -119,6 +121,7 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry
 
     private sealed class WindowsIfeoOwnedRuleStore(string debuggerCommand) : IIfeoOwnedRuleStore
     {
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "IFEO launch interception registry changed")]
         public IReadOnlyList<string> EnumerateImageNames(RegistryView view)
         {
             using var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
@@ -126,6 +129,7 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry
             return root?.GetSubKeyNames() ?? [];
         }
 
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "IFEO launch interception registry changed")]
         public IfeoImageSnapshot? ReadImage(RegistryView view, string imageName)
         {
             using var baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
@@ -133,6 +137,7 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry
             return imageKey is null ? null : SnapshotImage(imageKey, imageName);
         }
 
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "IFEO launch interception registry changed")]
         public int DeleteOwnedRules(
             RegistryView view,
             string imageName,
@@ -183,6 +188,7 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry
             return removed;
         }
 
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "IFEO launch interception registry changed")]
         private static IfeoImageSnapshot SnapshotImage(RegistryKey imageKey, string imageName)
         {
             var complete = true;
@@ -218,6 +224,7 @@ public sealed partial class WindowsIfeoGpuLaunchInterceptionRegistry
                 imageKey.GetValue(UseFilterValueName) as int?);
         }
 
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "IFEO launch interception registry changed")]
         private static IfeoRuleSnapshot SnapshotRule(RegistryKey ruleKey, string ruleName)
         {
             return new IfeoRuleSnapshot(

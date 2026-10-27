@@ -31,8 +31,9 @@ internal static class UniwillGpuPowerFirmwareProfile
 
     /// <summary>
     /// Returns null only when the shared-board discriminator could not be read yet.
-    /// A determined result is stable for the lifetime of the hardware owner; unknown remains retryable.
+    /// The hardware owner retains the first result, including unknown, for its lifetime.
     /// </summary>
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     internal static bool? Detect(
         FirmwareIdentitySnapshot identity, bool? hasAcpiDevice, Func<ushort, byte?> read)
     {

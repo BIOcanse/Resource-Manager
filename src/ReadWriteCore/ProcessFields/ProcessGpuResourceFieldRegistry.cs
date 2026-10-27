@@ -48,7 +48,7 @@ public static class ProcessGpuResourceFieldRegistry
         ValidateAdapter(gpuIndex, scope.AdapterLuid);
         return new(ProcessMetricFieldCode.GpuResidency,
             FormattableString.Invariant($"{WindowsPdhProcessGpuFields.FieldName}_gpu_{gpuIndex}_luid_{scope.AdapterLuid:x16}_physical_{scope.PhysicalIndex}_engine_{scope.EngineIndex}"),
-            "float64", "%", "windows.pdh.gpu-engine", ProcessMetricDatasetIds.GpuResidency)
+            "float64", "%", ReadVolatility.Sampled, "windows.pdh.gpu-engine", ProcessMetricDatasetIds.GpuResidency)
         {
             ResourceFactMetricId = FormattableString.Invariant($"gpu.{gpuIndex}.usage"),
             ResourceFactAdditive = true,
@@ -73,7 +73,7 @@ public static class ProcessGpuResourceFieldRegistry
         // SharedBytes is an apportioned share of jointly owned dedicated residency,
         // not the Windows shared-system-memory counter. Shares may be fractional bytes.
         return new(code, FormattableString.Invariant($"{sourceName}_gpu_{gpuIndex}_luid_{adapterLuid:x16}"),
-            "float64", "B", AllocationSourceId, AllocationDatasetId)
+            "float64", "B", ReadVolatility.Sampled, AllocationSourceId, AllocationDatasetId)
         {
             ResourceFactMetricId = FormattableString.Invariant($"gpu.{gpuIndex}.vram"),
             ResourceFactAdditive = true,

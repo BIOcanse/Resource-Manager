@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Runtime.InteropServices;
+using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.ReadWrite.Native.Pdh;
 using ResourceManager.ReadWrite.Windows.Gpu;
 
@@ -23,6 +24,7 @@ public sealed class PdhGpuAdapterSharedMemoryReader
         this.clock = clock ?? TimeProvider.System;
     }
 
+    [RuntimeReadSource(typeof(NativeMetricSnapshotSources), nameof(NativeMetricSnapshotSources.PdhGpuEngine))]
     public PdhGpuAdapterSharedMemoryRead ReadByAdapterIndex(IReadOnlyList<WindowsGpuAdapter> adapters)
     {
         ArgumentNullException.ThrowIfNull(adapters);
@@ -302,9 +304,11 @@ internal sealed class WindowsPdhGpuAdapterSharedMemoryApi : IPdhGpuAdapterShared
     public int AddEnglishCounter(IntPtr query, string counterPath, out IntPtr counter)
         => PdhCounterMethods.PdhAddEnglishCounter(query, counterPath, UIntPtr.Zero, out counter);
 
+    [RuntimeRead(ReadVolatilityKind.Sampled)]
     public int CollectQueryData(IntPtr query)
         => PdhCounterMethods.PdhCollectQueryData(query);
 
+    [RuntimeRead(ReadVolatilityKind.Sampled)]
     public int GetFormattedCounterArray(IntPtr counter, uint format,
         out IReadOnlyList<PdhGpuAdapterSharedMemoryCounterValue> values)
     {

@@ -150,6 +150,7 @@ static void SafeRelease(IUnknown*& value)
     }
 }
 
+// RuntimeRead: Fixed
 static AdapterSnapshot ReadDeviceAdapter(ID3D11Device* device)
 {
     AdapterSnapshot snapshot;
@@ -259,6 +260,7 @@ static bool CreateWorkloadTextures()
     return SUCCEEDED(hr) && g_state.workloadTextureB != nullptr;
 }
 
+// RuntimeRead: Transport
 static IDXGIAdapter1* SelectLowPowerAdapter()
 {
     IDXGIFactory1* factory = nullptr;

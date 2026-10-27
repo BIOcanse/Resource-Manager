@@ -7,6 +7,27 @@ namespace ResourceManager.ReadWrite.Windows.Devices.Snapshots;
 
 public sealed partial class DeviceTopologyCaptureOwner
 {
+    private Lazy<(DeviceInformationSnapshot Snapshot, bool Failed)>? fixedAcpi;
+
+    [RuntimeReadCache]
+    private (DeviceInformationSnapshot Snapshot, bool Failed) ReadAcpiOnce(Action? sourceQueryStarted)
+        => (fixedAcpi ??= new(() => ReadAcpiSource(sourceQueryStarted))).Value;
+
+    [RuntimeRead(ReadVolatilityKind.Fixed)]
+    private (DeviceInformationSnapshot Snapshot, bool Failed) ReadAcpiSource(Action? sourceQueryStarted)
+    {
+        IReadOnlyList<AcpiFirmwareTable>? tables;
+        try { sourceQueryStarted?.Invoke(); tables = acpiReader.ReadTables(); }
+        catch (Exception error)
+        {
+            logAcpiFailure?.Invoke(error);
+            tables = null;
+        }
+        return (tables is null
+            ? WindowsInformationFieldProjection.ClearAcpiValues(ReadState().AcpiInformationFields)
+            : WindowsInformationFieldProjection.CreateAcpi(tables, DateTimeOffset.UtcNow), tables is null);
+    }
+
     public async Task<DeviceTopologySampleCompletion> SampleAcpiAsync(
         DeviceTopologyCapturePermission? permission, CancellationToken cancellationToken, bool requireDemand = true,
         Action? sourceQueryStarted = null)
@@ -28,23 +49,14 @@ public sealed partial class DeviceTopologyCaptureOwner
             // Settle retired demand in the existing plan without beginning a new firmware read.
             if (requireDemand && permission is not null && !permission.HasCurrentDemand())
                 return DeviceTopologySampleCompletion.Sampled;
-            IReadOnlyList<AcpiFirmwareTable>? tables;
-            try { sourceQueryStarted?.Invoke(); tables = acpiReader.ReadTables(); }
-            catch (Exception error)
-            {
-                logAcpiFailure?.Invoke(error);
-                tables = null;
-            }
-            var next = tables is null
-                ? WindowsInformationFieldProjection.ClearAcpiValues(ReadState().AcpiInformationFields)
-                : WindowsInformationFieldProjection.CreateAcpi(tables, DateTimeOffset.UtcNow);
+            var capture = ReadAcpiOnce(sourceQueryStarted);
             cancellationToken.ThrowIfCancellationRequested();
             if (!TryPublish(permission, () =>
             {
-                Volatile.Write(ref state, ReadState() with { AcpiInformationFields = next });
+                Volatile.Write(ref state, ReadState() with { AcpiInformationFields = capture.Snapshot });
                 acpiPublicationSignal.Publish();
             })) return DeviceTopologySampleCompletion.Canceled;
-            return tables is null ? DeviceTopologySampleCompletion.Failed : DeviceTopologySampleCompletion.Sampled;
+            return capture.Failed ? DeviceTopologySampleCompletion.Failed : DeviceTopologySampleCompletion.Sampled;
         }
         finally { sampleGate.Release(); }
     }

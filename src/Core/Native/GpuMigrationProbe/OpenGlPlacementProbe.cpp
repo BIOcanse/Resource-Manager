@@ -181,6 +181,7 @@ void Draw(Window& window, Context& context, const wchar_t* directory, const char
     Inventory(window.dc, context.context, phase);
     std::fflush(stdout);
 }
+// RuntimeRead: EventDriven("Windows graphics preferences registry value changed")
 void ChangeOwnPreference(const wchar_t* expected, const wchar_t* replacement)
 {
     wchar_t path[32768]{};

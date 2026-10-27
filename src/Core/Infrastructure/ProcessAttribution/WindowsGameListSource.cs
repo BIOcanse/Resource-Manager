@@ -62,6 +62,7 @@ public sealed class WindowsGameListSource : IWindowsGameListSource
         }
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Installed game registration changed")]
     private static string[] ReadChildren(string path)
     {
         using var users = RegistryKey.OpenBaseKey(RegistryHive.Users, RegistryView.Default);
@@ -70,6 +71,7 @@ public sealed class WindowsGameListSource : IWindowsGameListSource
         return key?.GetSubKeyNames() ?? [];
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Installed game registration changed")]
     private static string? ReadExecutablePath(string path)
     {
         using var users = RegistryKey.OpenBaseKey(RegistryHive.Users, RegistryView.Default);

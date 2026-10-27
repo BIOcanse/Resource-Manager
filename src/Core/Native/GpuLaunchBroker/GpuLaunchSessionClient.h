@@ -37,6 +37,7 @@ inline bool ProcessIdentity(HANDLE process, const std::wstring& expectedImage, u
     return true;
 }
 
+// RuntimeRead: Sampled
 inline bool Transfer(HANDLE pipe, void* bytes, DWORD length, bool writing, ULONGLONG deadline)
 {
     auto at = static_cast<unsigned char*>(bytes);
@@ -482,6 +483,7 @@ inline bool ParseResponse(const std::string& json, std::string& status, std::str
     return offset == json.size() && sawStatus && sawPayload && !(status == "ok" && (payloadNull || payload.empty()));
 }
 
+// RuntimeRead: Sampled
 inline bool Call(unsigned char operation, const std::string& body, const std::wstring& expectedBackend,
     const std::wstring& packageRoot, const std::wstring& testPipeName,
     BackendIdentity& backend, bool requireExistingBackend, std::string& reply)

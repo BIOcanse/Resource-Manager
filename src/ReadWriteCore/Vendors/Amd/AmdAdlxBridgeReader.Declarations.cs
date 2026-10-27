@@ -9,6 +9,7 @@ namespace ResourceManager.ReadWrite.Vendors.Amd;
 
 public sealed partial class AmdAdlxBridgeReader
 {
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows device-bound driver package changed")]
     public IReadOnlyList<DeviceTopologyAmdGpuInformation>? ReadDeclarations(WindowsGpuAdapterInventoryRead inventory, bool nativeAllowed = true)
     {
         var fallback = ReadDeclarationsCore(inventory, nativeAllowed: false);
@@ -38,9 +39,7 @@ public sealed partial class AmdAdlxBridgeReader
         if (known.Count == 0 || !nativeAllowed) return known.Values.ToArray();
         try
         {
-            if (bridge.GetAbiVersion() != BridgeAbiVersion || bridge.GetMetricsSize() != Marshal.SizeOf<NativeAdlxGpuMetrics>()
-                || bridge.GetSelectionSize() != Marshal.SizeOf<NativeAdlxGpuSelection>() || bridge.GetDeclarationAbiVersion() != 1
-                || bridge.GetDeclarationSize() != Marshal.SizeOf<NativeAdlxGpuDeclaration>()) return known.Values.ToArray();
+            if (!ReadDeclarationAbiOnce()) return known.Values.ToArray();
             var metadata = new NativeAdlxGpuMetrics[32]; var message = new StringBuilder(512);
             var count = bridge.ReadMetadata(metadata, message);
             ThrowIfFaulted(count);
@@ -101,8 +100,11 @@ public sealed partial class AmdAdlxBridgeReader
 
     private sealed partial class NativeBridge
     {
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
         public uint GetDeclarationAbiVersion() => NativeMethods.ResourceManagerAdlxGetDeclarationAbiVersion();
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
         public int GetDeclarationSize() => NativeMethods.ResourceManagerAdlxGetGpuDeclarationSize();
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows device-bound driver package changed")]
         public int ReadDeclarations(NativeAdlxGpuDeclaration[] output, NativeAdlxGpuSelection[] selections, StringBuilder message)
             => NativeMethods.ResourceManagerAdlxReadGpuDeclarations(output, output.Length, selections, selections.Length, message, message.Capacity);
     }

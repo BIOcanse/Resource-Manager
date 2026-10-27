@@ -31,6 +31,7 @@ typedef ADLX_RESULT (__stdcall *RmSetBool)(RmAdlxTuningInterface*, adlx_bool);
 /* Known GPU IDs from Infrastructure/Resources/DeviceIds/pci.ids (AMD 1002).
    Do not infer generation from marketing names, ASICFamilyType, or range signs.
    Unknown IDs require an explicit entry before GFX writes can be enabled. */
+// RuntimeRead: Fixed
 static int tuning_gfx_mode(IADLXGPU* gpu)
 {
     const char* text = NULL;
@@ -56,6 +57,7 @@ static int tuning_gfx_mode(IADLXGPU* gpu)
     return -1;
 }
 
+// RuntimeRead: Transport
 static IADLXGPU* tuning_gpu_at(IADLXGPUList* list, unsigned int index)
 {
     IADLXGPU* gpu = NULL;
@@ -63,6 +65,7 @@ static IADLXGPU* tuning_gpu_at(IADLXGPUList* list, unsigned int index)
     return gpu;
 }
 
+// RuntimeRead: Transport
 static int get_tuning_gpu_pnp_locked(int index, char* pnp, int capacity)
 {
     IADLXGPUList* list = NULL;
@@ -92,6 +95,7 @@ done:
 /* field: 0=power %, 1=min GFX MHz, 2=max GFX MHz, 3=voltage mV, 4=max VRAM MHz,
    5=minimum fan RPM, 6=target fan RPM, 7=Zero RPM, 8=max GFX offset MHz, 9=voltage offset mV.
    operation: 0=read only (also range discovery), 1=write and read back. */
+// RuntimeRead: Transport
 static int tuning_locked(const char* pnp, int field, int operation,
     int requested, int* current, int* minimum, int* maximum, int* step, int* gfxMode)
 {

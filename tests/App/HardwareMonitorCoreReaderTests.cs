@@ -43,13 +43,22 @@ public sealed class HardwareMonitorCoreReaderTests
     public void FailedOpenClosesPartialSessionAndReportsIncompleteCatalogWithoutFallback()
     {
         var session = new Session { FailOpen = true };
-        using var reader = new HardwareMonitorCoreReader(() => session);
+        var creations = 0;
+        using var reader = new HardwareMonitorCoreReader(() => { creations++; return session; });
         var value = reader.Read(TimeSpan.FromSeconds(1));
         Assert.False(value.CatalogComplete);
         Assert.Null(value.MemoryTemperatureCelsius);
         Assert.Null(value.CpuTemperatureCelsius);
         Assert.Empty(value.SystemFans);
         Assert.Equal(HardwareMonitorCoreReader.ProviderName, value.ProviderState.Provider);
+        session.FailOpen = false;
+        for (var index = 0; index < 100; index++)
+        {
+            Assert.Equal(value.ProviderState, reader.Read(TimeSpan.FromSeconds(1)).ProviderState);
+            Assert.False(reader.ReadFanIdentities(TimeSpan.FromSeconds(1)).Complete);
+        }
+        Assert.Equal(1, creations);
+        Assert.Equal(1, session.Opens);
         Assert.Equal(1, session.Closes);
     }
 

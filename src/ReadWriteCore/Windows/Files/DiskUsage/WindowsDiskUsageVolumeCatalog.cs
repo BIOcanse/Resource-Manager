@@ -122,6 +122,7 @@ public sealed class WindowsDiskUsageVolumeCatalog : IDiskUsageVolumeCatalog
         return target.ToString().StartsWith(@"\??\", StringComparison.Ordinal);
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows storage topology changed")]
     private static IReadOnlyDictionary<string, uint> ReadBusTypesByDriveLetter()
     {
         var map = new Dictionary<string, uint>(StringComparer.OrdinalIgnoreCase);

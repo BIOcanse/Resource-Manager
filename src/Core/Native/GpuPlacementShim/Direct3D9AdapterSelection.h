@@ -71,6 +71,7 @@ public:
     }
 };
 
+// RuntimeRead: Transport
 inline HRESULT SelectAdapterOrdinal(IDirect3D9* factory, UINT original, D3DDEVTYPE type, DWORD flags,
     const ResourceManagerGpuPolicy::GpuShimPolicy& policy, Create9Ex createEx, UINT& selected)
 {

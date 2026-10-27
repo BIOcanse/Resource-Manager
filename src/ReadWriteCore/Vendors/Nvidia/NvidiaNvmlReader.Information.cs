@@ -10,6 +10,8 @@ public sealed partial class NvidiaNvmlReader
     internal delegate int UInt32Query(IntPtr device, out uint value);
     internal delegate int EngineUtilizationQuery(IntPtr device, out uint percent, out uint samplingPeriodMicroseconds);
 
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
+
     internal static NvmlInformationReadings ReadAdditionalMetrics(
         IntPtr device,
         IReadOnlySet<MetricFieldCode> requested,

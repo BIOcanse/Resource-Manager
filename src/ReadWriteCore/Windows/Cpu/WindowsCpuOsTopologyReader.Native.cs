@@ -16,6 +16,8 @@ public sealed partial class WindowsCpuOsTopologyReader
         return ValidateCacheRelationships(QueryLogicalProcessorInformation(NativeMethods.RelationCache, ParseCacheRelationship));
     }
 
+    // GetSystemCpuSetInformation reports current OS CPU-set state, not the fixed processor specification.
+    [RuntimeRead(ReadVolatilityKind.Sampled)]
     internal static IReadOnlyList<CpuSetRecord> QueryCpuSetRecords()
     {
         Require64BitLayout();
@@ -48,6 +50,7 @@ public sealed partial class WindowsCpuOsTopologyReader
         }
     }
 
+    [RuntimeRead(ReadVolatilityKind.EventDriven, "Windows processor topology changed")]
     private static IReadOnlyList<T> QueryLogicalProcessorInformation<T>(
         int relationship,
         Func<LogicalProcessorInfoRecord, T> parse,

@@ -18,12 +18,16 @@ public enum WindowsOperatingSystemInformationFields : ushort
 /// not now-minus-uptime, last resume, user login or guaranteed cold boot time.</summary>
 public sealed record WindowsOperatingSystemDeclarations(string? BuildDeclared, DateTimeOffset? BootTimeActual);
 
-/// <summary>Stateless, explicitly selected OS singleton query using the existing
-/// WMI timeout and cleanup transport. Construction does not read.</summary>
+/// <summary>Selected, fixed OS singleton declarations. Each requested field is queried
+/// once per reader, including missing or failed results. Construction does not read.</summary>
 public sealed class WindowsOperatingSystemDeclarationReader
 {
     private readonly TimeSpan timeout;
     private readonly Func<string, string, TimeSpan, QueryResult> query;
+    private readonly object gate = new();
+    private WindowsOperatingSystemInformationFields attempted;
+    private string? buildDeclared;
+    private DateTimeOffset? bootTimeActual;
     public WindowsOperatingSystemDeclarationReader(TimeSpan queryTimeout)
         : this(queryTimeout, PlatformSensorWmiUtilities.QueryObjects) { }
     internal WindowsOperatingSystemDeclarationReader(TimeSpan queryTimeout, Func<string, string, TimeSpan, QueryResult> query)
@@ -32,11 +36,36 @@ public sealed class WindowsOperatingSystemDeclarationReader
         timeout = queryTimeout; this.query = query;
     }
     public WindowsOperatingSystemDeclarations Read(WindowsOperatingSystemInformationFields selected)
+        => Read(selected, null);
+
+    [RuntimeReadCache]
+    internal WindowsOperatingSystemDeclarations Read(WindowsOperatingSystemInformationFields selected,
+        Action<WindowsOperatingSystemInformationFields>? sourceQueryAttempted)
     {
         if ((selected & ~WindowsOperatingSystemInformationFields.All) != 0) throw new ArgumentOutOfRangeException(nameof(selected));
+        const WindowsOperatingSystemInformationFields fixedFields = WindowsOperatingSystemInformationFields.Build
+            | WindowsOperatingSystemInformationFields.BootTime;
+        lock (gate)
+        {
+            var missing = selected & fixedFields & ~attempted;
+            if (missing != WindowsOperatingSystemInformationFields.None)
+            {
+                attempted |= missing;
+                sourceQueryAttempted?.Invoke(missing);
+                var facts = Query(missing);
+                if ((missing & WindowsOperatingSystemInformationFields.Build) != 0) buildDeclared = facts.BuildDeclared;
+                if ((missing & WindowsOperatingSystemInformationFields.BootTime) != 0) bootTimeActual = facts.BootTimeActual;
+            }
+            return new((selected & WindowsOperatingSystemInformationFields.Build) != 0 ? buildDeclared : null,
+                (selected & WindowsOperatingSystemInformationFields.BootTime) != 0 ? bootTimeActual : null);
+        }
+    }
+
+    [RuntimeRead(ReadVolatilityKind.Fixed)]
+    private WindowsOperatingSystemDeclarations Query(WindowsOperatingSystemInformationFields selected)
+    {
         var build = (selected & WindowsOperatingSystemInformationFields.Build) != 0;
         var boot = (selected & WindowsOperatingSystemInformationFields.BootTime) != 0;
-        if (!build && !boot) return new(null, null);
         var columns = build && boot ? "BuildNumber, LastBootUpTime" : build ? "BuildNumber" : "LastBootUpTime";
         QueryResult result;
         try { result = query(@"root\CIMV2", $"SELECT {columns} FROM Win32_OperatingSystem", timeout); }

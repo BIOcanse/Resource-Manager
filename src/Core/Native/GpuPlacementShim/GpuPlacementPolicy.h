@@ -156,6 +156,7 @@ inline GpuShimPolicy ReadPolicyFile(const std::wstring& path, bool* fileMissing 
     return result;
 }
 
+// RuntimeRead: EventDriven("Process environment or GPU shim policy file changed")
 inline GpuShimPolicy ReadCurrentPolicy(const std::wstring& runtimePath)
 {
     wchar_t startupPath[2048]{};
@@ -185,6 +186,7 @@ inline bool IsBetterAdapter(
         : candidate.DedicatedVideoMemory > selectedDedicatedVideoMemory;
 }
 
+// RuntimeRead: Transport
 inline IDXGIAdapter1* SelectAdapter(const GpuShimPolicy& policy)
 {
     if (policy.mode == GpuShimPolicyMode::Default)

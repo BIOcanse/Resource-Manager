@@ -243,7 +243,7 @@ public sealed class NativeMetricSnapshotObservationProjectionTests
             MetricResource.Cpu,
             MetricVendor.Intel,
             bitmask ? "bitmask64" : "count",
-            "core.{core}.intelThermalStatus")
+            "core.{core}.intelThermalStatus", ResourceManager.ReadWrite.ReadVolatility.Sampled)
         { ValueKind = "unsigned64" };
         var bitmaskBinding = new NativeMetricSnapshotRuleCatalogBinding(
             bitmaskHandle, bitmaskHandle, cpuSource, 0, "cpu.core.status", "intel.msr",
@@ -328,7 +328,7 @@ public sealed class NativeMetricSnapshotObservationProjectionTests
                 (uint)NativeMetricSnapshotMetricKind.CustomNumeric,
                 (uint)NativeMetricSnapshotValueKind.Unsigned64, 0, 0, 0, ulong.MaxValue)
             {
-                Field = new MetricFieldDefinition(code, fieldName, resource, vendor, unit, metricId)
+                Field = new MetricFieldDefinition(code, fieldName, resource, vendor, unit, metricId, ResourceManager.ReadWrite.ReadVolatility.Sampled)
                 { ValueKind = "unsigned64" },
                 DeviceIdentity = metricId,
                 DisplayIndex = scope == 0 ? -1 : 0

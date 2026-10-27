@@ -46,6 +46,7 @@ public class NvidiaNvmlControlBridge
     }
 
     /// <summary>Revalidates cached handles' PCI evidence against the caller's current exact inventory. No second map.</summary>
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     public virtual IntPtr? FindHandleByIdentity(WindowsGpuAdapterInventoryRead inventory, ulong adapterKey)
     {
         lock (gate)
@@ -76,6 +77,7 @@ public class NvidiaNvmlControlBridge
     /// 配置挂在它上面，卡换个位置插回去，原来的设定还在。
     /// 读不到就返回 null，那时身份退到型号。
     /// </summary>
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     public string? ReadUniqueId(IntPtr device)
     {
         lock (gate)
@@ -110,6 +112,7 @@ public class NvidiaNvmlControlBridge
     /// 走 NVML 的字段接口一次问齐四个值。四个里少一个就整份放弃 ——
     /// 半份范围比没有更糟：界面会拿一个编出来的上界去画滑块。
     /// </summary>
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     private static NvidiaPowerLimitWatts? ReadPowerLimitFields(IntPtr device)
     {
         // 字段号取自 nvml.h。作用域 0 是整块 GPU（还有显存、整模组两种，这里不用）。
@@ -191,6 +194,7 @@ public class NvidiaNvmlControlBridge
     /// 先前只有旧接口这一条路，读不到就报"读不到当前功耗上限，无法确认能否改" ——
     /// 用户看到的是"这张卡不给读"，其实是我们问错了地方。
     /// </summary>
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     public virtual NvidiaPowerLimitWatts? ReadPowerLimit(IntPtr device)
     {
         lock (gate)
@@ -277,6 +281,7 @@ public class NvidiaNvmlControlBridge
     /// 相对值（"离墙还有 40 度"），但 NVML 这个接口给的仍然是绝对度数 ——
     /// 本机实测 105 / 102 / 89。照显示口径去理解会差出一整个量级。
     /// </summary>
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Sampled)]
     public virtual double? ReadTemperatureThreshold(IntPtr device, uint thresholdType)
     {
         lock (gate)
@@ -347,6 +352,7 @@ public class NvidiaNvmlControlBridge
     }
 
     /// <summary>这块卡这个时钟域最高能到多少 MHz。读不到就是 null。</summary>
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     public virtual double? ReadMaximumClockMhz(IntPtr device, uint clockType)
     {
         lock (gate)
@@ -472,6 +478,8 @@ public class NvidiaNvmlControlBridge
         return handleMap;
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows GPU adapter topology changed")]
+
     private Dictionary<int, IntPtr> EnumerateHandles()
     {
         var found = new Dictionary<int, IntPtr>();
@@ -588,11 +596,13 @@ public class NvidiaNvmlControlBridge
             out uint limitMilliwatts);
 
         [DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetPowerManagementDefaultLimit")]
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
         internal static extern int nvmlDeviceGetPowerManagementDefaultLimit(
             IntPtr device,
             out uint limitMilliwatts);
 
         [DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetPowerManagementLimitConstraints")]
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
         internal static extern int nvmlDeviceGetPowerManagementLimitConstraints(
             IntPtr device,
             out uint minimumMilliwatts,

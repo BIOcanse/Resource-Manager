@@ -108,6 +108,7 @@ struct PresentDevice {
 LRESULT CALLBACK ExternalWindow(HWND h,UINT m,WPARAM w,LPARAM l) { return DefWindowProcW(h,m,w,l); }
 }
 
+// RuntimeRead: Sampled
 int wmain(int argc,wchar_t** argv) {
     SetErrorMode(32771); setvbuf(stdout,nullptr,_IONBF,0);
     std::filesystem::path directory; bool cached=false;

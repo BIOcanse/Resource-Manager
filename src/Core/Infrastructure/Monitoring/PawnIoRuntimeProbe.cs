@@ -78,12 +78,14 @@ internal static class PawnIoRuntimeProbe
             installed?.InstallLocation ?? installed?.DisplayName);
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "PawnIO installation registration changed")]
     private static PawnIoInstallRecord? TryReadInstallRecord()
     {
         return TryReadInstallRecord(UninstallKey)
             ?? TryReadInstallRecord(Wow6432UninstallKey);
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "PawnIO installation registration changed")]
     private static PawnIoInstallRecord? TryReadInstallRecord(string keyPath)
     {
         try

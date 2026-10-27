@@ -9,6 +9,8 @@ namespace ResourceManager.ReadWrite.Vendors.Amd;
 public sealed partial class AmdAdlxBridgeReader
 {
     private readonly IAmdAdlxNativeBridge bridge;
+    private readonly Lazy<bool> metricAbiCompatible;
+    private readonly Lazy<bool> declarationAbiCompatible;
     private readonly Func<string, string, string?>? describeProviderMessage;
     private static readonly AdlxReadBoundary NativeReadBoundary = new();
     private readonly AdlxReadBoundary readBoundary;
@@ -24,6 +26,12 @@ public sealed partial class AmdAdlxBridgeReader
         TimeSpan? maximumReadDuration)
     {
         this.bridge = bridge ?? new NativeBridge();
+        metricAbiCompatible = new(() => this.bridge.GetAbiVersion() == BridgeAbiVersion
+            && this.bridge.GetMetricsSize() == Marshal.SizeOf<NativeAdlxGpuMetrics>()
+            && this.bridge.GetSelectionSize() == Marshal.SizeOf<NativeAdlxGpuSelection>());
+        declarationAbiCompatible = new(() => metricAbiCompatible.Value
+            && this.bridge.GetDeclarationAbiVersion() == 1
+            && this.bridge.GetDeclarationSize() == Marshal.SizeOf<NativeAdlxGpuDeclaration>());
         this.describeProviderMessage = describeProviderMessage;
         this.maximumReadDuration = maximumReadDuration ?? TimeSpan.FromSeconds(2);
         if (this.maximumReadDuration <= TimeSpan.Zero || this.maximumReadDuration.TotalMilliseconds > int.MaxValue)
@@ -49,6 +57,13 @@ public sealed partial class AmdAdlxBridgeReader
     private const int GpuTypeIntegrated = 1;
     private const int GpuTypeDiscrete = 2;
 
+    [ResourceManager.ReadWrite.RuntimeReadCache]
+    private bool ReadMetricAbiOnce() => metricAbiCompatible.Value;
+
+    [ResourceManager.ReadWrite.RuntimeReadCache]
+    private bool ReadDeclarationAbiOnce() => declarationAbiCompatible.Value;
+
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     public Task<IReadOnlyList<GpuMetrics>> ReadAsync(AmdAdlxReadRequest request,
         WindowsGpuAdapterInventoryRead windowsInventory, CancellationToken cancellationToken)
     {
@@ -64,6 +79,8 @@ public sealed partial class AmdAdlxBridgeReader
     private static WindowsGpuAdapterInventoryRead CopyInventory(WindowsGpuAdapterInventoryRead inventory)
         => inventory with { Adapters = inventory.Adapters.Select(adapter => adapter with
             { PhysicalIdentities = adapter.PhysicalIdentities.ToArray() }).ToArray() };
+
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
 
     private Task<IReadOnlyList<GpuMetrics>> ReadUnboundedAsync(
         AmdAdlxReadRequest request,
@@ -84,10 +101,7 @@ public sealed partial class AmdAdlxBridgeReader
 
         try
         {
-            if (bridge.GetAbiVersion()
-                    != BridgeAbiVersion
-                || bridge.GetMetricsSize() != Marshal.SizeOf<NativeAdlxGpuMetrics>()
-                || bridge.GetSelectionSize() != Marshal.SizeOf<NativeAdlxGpuSelection>())
+            if (!ReadMetricAbiOnce())
             {
                 return Task.FromResult<IReadOnlyList<GpuMetrics>>([]);
             }
@@ -399,11 +413,16 @@ public sealed partial class AmdAdlxBridgeReader
 
     private sealed partial class NativeBridge : IAmdAdlxNativeBridge
     {
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
         public uint GetAbiVersion() => NativeMethods.ResourceManagerAdlxGetAbiVersion();
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
         public int GetMetricsSize() => NativeMethods.ResourceManagerAdlxGetGpuMetricsSize();
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
         public int GetSelectionSize() => NativeMethods.ResourceManagerAdlxGetGpuSelectionSize();
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows GPU adapter topology changed")]
         public int ReadMetadata(NativeAdlxGpuMetrics[] output, StringBuilder message)
             => NativeMethods.ResourceManagerAdlxReadGpuMetrics(output, output.Length, 0, message, message.Capacity);
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Sampled)]
         public int ReadSelected(NativeAdlxGpuMetrics[] output, NativeAdlxGpuSelection[] selections, StringBuilder message)
             => NativeMethods.ResourceManagerAdlxReadSelectedGpuMetrics(output, output.Length, selections, selections.Length, message, message.Capacity);
     }

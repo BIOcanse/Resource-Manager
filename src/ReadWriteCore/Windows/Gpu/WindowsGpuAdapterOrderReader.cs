@@ -188,6 +188,7 @@ public sealed class WindowsGpuAdapterOrderReader
     }
 
     [SupportedOSPlatform("windows")]
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows GPU adapter topology changed")]
     private static WindowsGpuAdapterEnumeration ReadDxgiAdapters()
     {
         var iid = IdxgiFactory1Id;

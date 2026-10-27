@@ -7,6 +7,7 @@ namespace ResourceManager.ReadWrite.Vendors.Amd;
 public sealed class AdlxTuningHardware : IAdlxTuningHardware
 {
     private readonly WindowsGpuAdapterOrderReader inventoryReader = new();
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     public AdlxTuningValue Read(int? adapterIndex, int field)
     {
         if (!OperatingSystem.IsWindows()) throw new NotSupportedException("ADLX 调节需要 Windows。");
@@ -30,6 +31,7 @@ public sealed class AdlxTuningHardware : IAdlxTuningHardware
         if (min > max || step <= 0) throw new IOException("ADLX 返回的调节范围无效。");
         return new(identity, current, min, max, step, (AdlxGfxMode)mode);
     }
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Sampled)]
     public void Write(string pnp, int field, int value)
         => Check(Native.Tune(pnp, field, 1, value, out _, out _, out _, out _, out _));
     private static void Check(int result)

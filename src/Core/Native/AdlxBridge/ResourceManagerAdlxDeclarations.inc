@@ -25,6 +25,7 @@ static int copy_declaration_text(char* target, size_t capacity, const char* sour
     return 1;
 }
 
+// RuntimeRead: Transport
 static int read_gpu_declarations_locked(
     ResourceManagerAdlxGpuDeclaration* outputs, int capacity,
     const ResourceManagerAdlxGpuSelection* selections, int selectionCount,

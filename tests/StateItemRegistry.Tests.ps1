@@ -22,7 +22,7 @@ function Get-Fixture {
 {"entries":[
 {"uid":1,"kind":"block","process":"backend","name":"Program","comment":"Backend root."},
 {"uid":2,"kind":"block","process":"ui","name":"Program","comment":"UI root."},
-{"uid":3,"kind":"item","process":"backend","name":"Ready","comment":"Ready: café, 中文, \"quoted\" and \\path.\nSecond line.","storage":"reference","type":"bool","owner":{"block":1},"perBlock":false,"trigger":"event"},
+{"uid":3,"kind":"item","process":"backend","name":"Ready","comment":"Ready: café, 中文, \"quoted\" and \\path.\nSecond line.","storage":"reference","type":"bool","owner":{"block":1},"perBlock":false,"trigger":"event","changeEvent":"Fixture owner transition"},
 {"uid":4,"kind":"item","process":"ui","name":"Preference","comment":"Polled preference.","storage":"own","type":"bool","owner":{"component":"Preferences"},"perBlock":true,"trigger":"poll","pollInterval":"/ui/preference/interval"}
 ]}
 '@
@@ -81,6 +81,12 @@ Assert-Invalid { param($r) $r.entries[2].type = '' } 'Entry.*type'
 Assert-Invalid { param($r) $r.entries[2].type = 'not a type' } 'Entry.*type'
 Assert-Invalid { param($r) $r.entries[2].perBlock = 'false' } 'Entry.*boolean'
 Assert-Invalid { param($r) $r.entries[2].trigger = 'timer' } 'Entry.*trigger'
+Assert-Invalid { param($r) $r.entries[2].Remove('changeEvent') | Out-Null } 'Entry.*changeEvent'
+foreach ($eventName in @('', ' ', 42, $null)) {
+    Assert-Invalid { param($r) $r.entries[2].changeEvent = $eventName } 'Entry.*changeEvent'
+}
+Assert-Invalid { param($r) $r.entries[0].changeEvent = 'Unexpected' } 'Entry.*unknown field'
+Assert-Invalid { param($r) $r.entries[3].changeEvent = 'Unexpected' } 'Entry.*unknown field'
 Assert-Invalid { param($r) $r.entries[3].Remove('pollInterval') | Out-Null } 'Entry.*pollInterval'
 Assert-Invalid { param($r) $r.entries[3].pollInterval = ' ' } 'Entry.*pollInterval'
 Assert-Invalid { param($r) $r.entries[2].pollInterval = '/extra' } 'Entry.*unknown field'
@@ -115,6 +121,20 @@ $published = & $tool -Action Resolve -Registry $path -Uid 4 -Version $version -T
 Assert-True ($published.pollInterval -ceq '/ui/preference/interval') 'Resolve table directory.'
 $historical = & $tool -Action Resolve -Registry $path -Uid 3 -Version $version | ConvertFrom-Json
 Assert-True ($historical.comment -ceq $current.comment) 'Resolve git preserves UTF-8 and embedded newlines.'
+$oldTable = Get-Fixture
+$oldTable.entries[2].Remove('changeEvent') | Out-Null
+$oldBytes = [Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $oldTable -Depth 8 -Compress) + "`n")
+$oldPath = Join-Path $scratch 'published-before-named-events.json'
+[IO.File]::WriteAllBytes($oldPath, $oldBytes)
+$oldVersion = & git -C $scratch hash-object -w --no-filters -- $oldPath
+Assert-True ($LASTEXITCODE -eq 0) 'Historical pre-metadata registry fixture stored by exact blob version.'
+$oldEntry = & $tool -Action Resolve -Registry $path -Uid 3 -Version $oldVersion | ConvertFrom-Json
+Assert-True ($oldEntry.name -ceq 'Ready' -and 'changeEvent' -cnotin $oldEntry.PSObject.Properties.Name) 'Version lookup preserves honestly absent historical event metadata.'
+Assert-Rejected { Read-StateRegistry -Bytes $oldBytes } 'Entry.*changeEvent'
+Assert-Rejected { & $generator -Registry $oldPath -Process backend -Namespace Invalid -Output (Join-Path $scratch 'old-invalid.g.cs') } 'Entry.*changeEvent'
+Assert-Rejected { & $tool -Action Add -Registry $oldPath -Kind block -Process backend -Name Additional -Comment 'Current write must validate old input.' } 'Entry.*changeEvent'
+$historicalRead = Read-StateRegistry -Bytes $oldBytes -HistoricalTable
+Assert-Rejected { ConvertTo-StateRegistryBytes $historicalRead } 'Entry.*changeEvent'
 $fallback = & $tool -Action Resolve -Registry $path -Uid 1 -Version $version -TableDirectory (Join-Path $scratch 'absent') | ConvertFrom-Json
 Assert-True ($fallback.name -ceq 'Program') 'Missing published table falls back to git.'
 [IO.File]::WriteAllText($export, 'different')
@@ -131,7 +151,7 @@ $table.entries = @($table.entries | Where-Object { $_.uid -ne 2 })
 Write-StateRegistry $path $table
 $added = & $tool -Action Add -Registry $path -Kind block -Process ui -Name Replacement -Comment 'A replacement block.'
 Assert-True ($added -eq 2) 'Add fills smallest gap.'
-$added = & $tool -Action Add -Registry $path -Kind item -Process backend -Name Demand -Comment 'External demand.' -Storage reference -Type bool -OwnerComponent 'Demand table' -PerBlock $true -Trigger event
+$added = & $tool -Action Add -Registry $path -Kind item -Process backend -Name Demand -Comment 'External demand.' -Storage reference -Type bool -OwnerComponent 'Demand table' -PerBlock $true -Trigger event -ChangeEvent 'Fixture demand changed'
 Assert-True ($added -eq 5) 'Add appends when no gap remains.'
 $added = & $tool -Action Add -Registry $path -Kind item -Process backend -Name Poll -Comment 'Polled state.' -Storage own -Type bool -OwnerBlock 1 -PerBlock $false -Trigger poll -PollInterval '/poll/interval'
 Assert-True ($added -eq 6) 'Add accepts a block owner and polling interval.'
@@ -158,6 +178,9 @@ foreach ($process in @('backend','ui')) {
     Assert-True ($source.Contains('#if RM_STATE_NAMES') -and $source.Contains('internal static class StateNames') -and $source.Contains('_ => null')) "Generated $process conditional names."
     Assert-True ($source.Contains('IReadOnlyList<StateItemDeclaration> Items') -and $source.Contains('IReadOnlyList<int> Blocks')) "Generated $process typed declarations."
     Assert-True ($source.Contains('typeof(bool)') -and $source.Contains('StateItemTrigger.')) "Generated $process declaration type and trigger."
+    if ($process -eq 'backend') {
+        Assert-True (-not $source.Contains('"Fixture owner transition"')) 'Development event names are validated in the registry without runtime string state.'
+    }
     $other = if ($process -eq 'backend') { 'Preference' } else { 'Ready' }
     Assert-True (-not $source.Contains("public const int $other =")) "Generated $process excludes other process."
     [IO.File]::SetLastWriteTimeUtc($output, $fixedTime)

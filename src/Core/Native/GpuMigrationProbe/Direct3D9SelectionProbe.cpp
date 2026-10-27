@@ -113,6 +113,7 @@ struct Adapter
     LUID luid;
 };
 
+// RuntimeRead: Transport
 std::vector<LUID> HardwareAdapters()
 {
     ComPtr<IDXGIFactory1> factory;

@@ -26,6 +26,8 @@ public sealed class WindowsOperatingSystemInformationOwner : IDisposable
     private readonly TimeProvider clock;
     private readonly InformationReadWriteBackend backend;
     private DeviceInformationSnapshot current = DeviceInformationSnapshot.Empty;
+    private DateTimeOffset? buildObservedAt;
+    private DateTimeOffset? bootObservedAt;
     private int disposed;
     public SamplingPublicationSignal Publications { get; } = new();
 
@@ -157,8 +159,14 @@ public sealed class WindowsOperatingSystemInformationOwner : IDisposable
                 return new(InformationReadWriteBackend.Read(selection, snapshot), committed,
                     [.. selection.Where(item => (SelectFields([item]) & queried) != WindowsOperatingSystemInformationFields.None)
                         .Select(static item => item.Field)]);
-            }, FieldCollectionSourceKind.SourceQuery);
+            }, FieldCollectionSourceKind.SourceQuery,
+            field => IsFixedDeclaration(SelectFields(backend.Select([field])))
+                ? FieldCollectionSourceKind.CurrentValue : FieldCollectionSourceKind.SourceQuery);
     }
+
+    public static bool IsFixedDeclaration(WindowsOperatingSystemInformationFields fields)
+        => fields != WindowsOperatingSystemInformationFields.None
+            && (fields & ~(WindowsOperatingSystemInformationFields.Build | WindowsOperatingSystemInformationFields.BootTime)) == 0;
     public ValueTask<DeviceInformationSnapshot> CaptureInformationAsync(CancellationToken cancellationToken = default,
         Func<Action, bool>? tryPublish = null)
         => CaptureSelectedInformationAsync(WindowsOperatingSystemInformationFields.All, cancellationToken, tryPublish);
@@ -178,7 +186,12 @@ public sealed class WindowsOperatingSystemInformationOwner : IDisposable
         await captureGate.WaitAsync(cancellationToken);
         var queried = WindowsOperatingSystemInformationFields.None;
         var queryEvidenceReported = false;
-        void RecordSourceQuery(WindowsOperatingSystemInformationFields fields) => queried |= fields;
+        void RecordSourceQuery(WindowsOperatingSystemInformationFields fields)
+        {
+            queried |= fields;
+            if ((fields & WindowsOperatingSystemInformationFields.Build) != 0) buildObservedAt = clock.GetUtcNow();
+            if ((fields & WindowsOperatingSystemInformationFields.BootTime) != 0) bootObservedAt = clock.GetUtcNow();
+        }
         void ReportSourceQueries()
         {
             if (queryEvidenceReported) return;
@@ -198,8 +211,7 @@ public sealed class WindowsOperatingSystemInformationOwner : IDisposable
                 RecordSourceQuery(WindowsOperatingSystemInformationFields.KeyboardRemap);
             var keyboardRemap = (selected & WindowsOperatingSystemInformationFields.KeyboardRemap) != 0
                 ? keyboardScanCodeRemapReader.Read() : null;
-            RecordSourceQuery(selected & (WindowsOperatingSystemInformationFields.Build | WindowsOperatingSystemInformationFields.BootTime));
-            var facts = declarations.Read(selected); // Uptime-only performs no WMI query.
+            var facts = declarations.Read(selected, RecordSourceQuery); // Fixed cache hits and uptime-only perform no WMI query.
             var platform = platformDeclarations.Read(selected, cancellationToken, RecordSourceQuery);
             const WindowsOperatingSystemInformationFields componentFields = WindowsOperatingSystemInformationFields.Features
                 | WindowsOperatingSystemInformationFields.ComponentPackages | WindowsOperatingSystemInformationFields.DriverPackages;
@@ -216,7 +228,11 @@ public sealed class WindowsOperatingSystemInformationOwner : IDisposable
             DeviceInformationField Update(DeviceInformationDefinition definition, WindowsOperatingSystemInformationFields flag, string? value)
                 => (selected & flag) == 0
                     ? previous.FindField(new(MachineIdentity, definition.Name)) ?? new(definition, null)
-                    : new(definition, value is null ? null : JsonSerializer.SerializeToElement(value)) { ObservedAt = value is null ? null : observedAt };
+                    : new(definition, value is null ? null : JsonSerializer.SerializeToElement(value))
+                    {
+                        ObservedAt = value is null ? null : flag == WindowsOperatingSystemInformationFields.Build ? buildObservedAt
+                            : flag == WindowsOperatingSystemInformationFields.BootTime ? bootObservedAt : observedAt
+                    };
             DeviceInformationField[] fields = [
                 Update(DeviceInformationFieldRegistry.OsAllUptimeActual, WindowsOperatingSystemInformationFields.Uptime,
                     uptime?.Seconds.ToString(CultureInfo.InvariantCulture)),

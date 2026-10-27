@@ -17,6 +17,7 @@ public static class WindowsMonitorEdidReader
     }
 
     [SupportedOSPlatform("windows")]
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     private static DeviceTopologyEdidReadResult ReadCore(string normalizedMonitorDeviceId)
     {
         try

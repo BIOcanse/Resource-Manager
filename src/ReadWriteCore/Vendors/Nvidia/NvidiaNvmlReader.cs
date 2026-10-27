@@ -18,10 +18,14 @@ public sealed partial class NvidiaNvmlReader
     private NvidiaNvmlReader(Func<int> initialize, Func<string, string, string?>? describeProviderMessage)
         => (this.initialize, this.describeProviderMessage) = (initialize, describeProviderMessage);
 
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
+
     public Task<IReadOnlyList<GpuMetrics>> ReadAsync(CancellationToken cancellationToken)
     {
         return ReadAsync(NvidiaNvmlReadRequest.All, null, cancellationToken);
     }
+
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
 
     public Task<IReadOnlyList<GpuMetrics>> ReadAsync(
         NvidiaNvmlReadRequest request,

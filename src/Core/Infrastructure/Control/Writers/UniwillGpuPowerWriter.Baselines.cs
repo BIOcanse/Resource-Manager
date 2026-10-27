@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using ResourceManager.App.Domain.Control;
+using ResourceManager.ReadWrite;
 
 namespace ResourceManager.App.Infrastructure.Control.Writers;
 
@@ -36,6 +37,7 @@ public sealed partial class UniwillGpuPowerWriter
         baselines = stored;
     }
 
+    [RuntimeRead(ReadVolatilityKind.EventDriven, "Uniwill GPU power control takeover requested")]
     private bool CaptureBaseline(ControlObject target, byte enable)
     {
         LoadBaselines();

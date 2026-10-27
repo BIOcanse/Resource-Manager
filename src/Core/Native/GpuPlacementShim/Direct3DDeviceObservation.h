@@ -3,6 +3,7 @@
 
 namespace ResourceManagerGpuObservation
 {
+// RuntimeRead: Fixed
 inline void ObserveD3D11(Store& store, HRESULT result, ID3D11Device** device,
     ID3D11DeviceContext** context, IDXGISwapChain** swapChain = nullptr)
 {

@@ -12,11 +12,21 @@ public sealed partial class WindowsCpuOsTopologyReader
     private readonly object usageGate = new();
     private IReadOnlyDictionary<int, ProcessorTimes>? previousTimes;
     private readonly Func<IReadOnlyDictionary<int, ProcessorTimes>> readProcessorTimes;
+    private readonly Lazy<IReadOnlyList<string>?> osFeatures = new(WindowsCpuOsFeatureReader.Read);
+    private readonly Lazy<ulong?> osEnabledStateMask = new(WindowsCpuOsFeatureReader.ReadEnabledStateMask);
+    private readonly object cpuidGate = new();
+    private readonly Func<IReadOnlyList<int>, ICollection<string>, IReadOnlyList<CpuThreadCpuidInformation>> readThreadCpuid
+        = WindowsCpuThreadCpuidReader.Read;
+    private Lazy<(IReadOnlyList<CpuThreadCpuidInformation> Values, IReadOnlyList<string> Notes)>? threadCpuid;
 
     public WindowsCpuOsTopologyReader() => readProcessorTimes = QueryProcessorTimes;
 
     internal WindowsCpuOsTopologyReader(Func<IReadOnlyDictionary<int, ProcessorTimes>> readProcessorTimes)
         => this.readProcessorTimes = readProcessorTimes;
+
+    internal WindowsCpuOsTopologyReader(Func<IReadOnlyDictionary<int, ProcessorTimes>> readProcessorTimes,
+        Func<IReadOnlyList<int>, ICollection<string>, IReadOnlyList<CpuThreadCpuidInformation>> readThreadCpuid)
+        : this(readProcessorTimes) => this.readThreadCpuid = readThreadCpuid;
 
     /// <summary>Reads OS information without product scores, CCD heuristics or fallback cores. Static captures do not advance the busy baseline.</summary>
     public CpuOsTopologyInformation ReadInformation(bool includeUsage = false, ICollection<string>? notes = null)
@@ -33,13 +43,34 @@ public sealed partial class WindowsCpuOsTopologyReader
             Packages = packages,
             Dies = dies,
             NumaNodes = numa,
-            OsUsableFeatures = WindowsCpuOsFeatureReader.Read(),
-            OsEnabledXStateMask = WindowsCpuOsFeatureReader.ReadEnabledStateMask(),
-            ThreadCpuid = ids is null ? null : WindowsCpuThreadCpuidReader.Read(ids, notes),
+            OsUsableFeatures = osFeatures.Value,
+            OsEnabledXStateMask = osEnabledStateMask.Value,
+            ThreadCpuid = ids is null ? null : ReadThreadCpuidOnce(ids, notes),
             LogicalProcessorBusyPercent = includeUsage
                 ? ReadLogicalProcessorUsage(Math.Max(Environment.ProcessorCount, ids?.DefaultIfEmpty(-1).Max() + 1 ?? 0), notes)
                 : null
         };
+    }
+
+    // The processor capability records belong to this reader, independently of the live usage baseline.
+    // A failed first observation is retained along with its original diagnostics.
+    [RuntimeReadCache]
+    internal IReadOnlyList<CpuThreadCpuidInformation> ReadThreadCpuidOnce(IReadOnlyList<int> ids, ICollection<string> notes)
+    {
+        Lazy<(IReadOnlyList<CpuThreadCpuidInformation> Values, IReadOnlyList<string> Notes)> value;
+        lock (cpuidGate)
+        {
+            var processorIds = ids.ToArray();
+            value = threadCpuid ??= new(() =>
+            {
+                var messages = new List<string>();
+                var values = readThreadCpuid(processorIds, messages);
+                return (values, messages);
+            });
+        }
+        var result = value.Value;
+        foreach (var message in result.Notes) notes.Add(message);
+        return result.Values;
     }
 
     public DeviceInformationSnapshot ReadFields(bool includeUsage = false, ICollection<string>? notes = null)

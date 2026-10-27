@@ -74,6 +74,7 @@ struct Renderer
             handle.ptr += stride;
         }
     }
+    // RuntimeRead: Transport
     void Create()
     {
         IDXGIAdapter1* selected = nullptr;
@@ -180,6 +181,7 @@ BOOL CALLBACK SelectMonitor(HMONITOR monitor, HDC, LPRECT, LPARAM parameter)
     return TRUE;
 }
 }
+// RuntimeRead: Transport
 int main(int argc, char** argv)
 {
     unsigned duration = 12000;

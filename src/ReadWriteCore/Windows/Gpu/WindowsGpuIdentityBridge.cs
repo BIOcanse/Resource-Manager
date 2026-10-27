@@ -115,6 +115,7 @@ public sealed partial class WindowsGpuIdentityBridge
         }
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows PnP device properties changed")]
     private static WindowsGpuPhysicalIdentity ReadPhysical(
         uint adapterHandle,
         uint physicalIndex,
@@ -345,6 +346,7 @@ public sealed partial class WindowsGpuIdentityBridge
             : new PnpKeyRead(NativeMethods.StatusInvalidParameter, string.Empty);
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     private static CanonicalDeviceRead ReadCanonicalInstanceId(uint devInst)
     {
         var status = NativeMethods.GetDeviceIdSize(
@@ -367,6 +369,7 @@ public sealed partial class WindowsGpuIdentityBridge
             : new CanonicalDeviceRead(status, string.Empty);
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows PnP device properties changed")]
     private static PropertyRead ReadUint32Property(
         uint devInst,
         NativeMethods.DevPropKey key)

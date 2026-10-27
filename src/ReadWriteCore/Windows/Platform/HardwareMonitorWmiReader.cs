@@ -12,6 +12,7 @@ public sealed partial class HardwareMonitorWmiReader
     public HardwareMonitorWmiReader(Func<string, string, TimeSpan, QueryResult>? query = null)
         => this.query = query ?? QueryObjects;
 
+    [RuntimeRead(ReadVolatilityKind.EventDriven, "Hardware-monitor provider sensor catalogue changed")]
     public HardwareMonitorFanIdentityRead ReadFanIdentities(TimeSpan queryTimeout)
     {
         foreach (var provider in new[] { @"root\LibreHardwareMonitor", @"root\OpenHardwareMonitor" })
@@ -43,6 +44,7 @@ public sealed partial class HardwareMonitorWmiReader
     }
 
     private static string FanIdentity(string provider, string identifier) => provider + "|" + identifier;
+    [RuntimeRead(ReadVolatilityKind.Sampled)]
     public HardwareMonitorSensorSnapshot Read(TimeSpan queryTimeout)
     {
         var libre = QueryHardwareMonitorSensors(@"root\LibreHardwareMonitor", queryTimeout);
@@ -79,11 +81,13 @@ public sealed partial class HardwareMonitorWmiReader
             []);
     }
 
+    [RuntimeRead(ReadVolatilityKind.Sampled)]
     private QueryResult QueryHardwareMonitorSensors(string path, TimeSpan timeout)
     {
         return query(path, "SELECT Identifier, Name, Parent, SensorType, Value FROM Sensor", timeout);
     }
 
+    [RuntimeRead(ReadVolatilityKind.EventDriven, "Hardware-monitor provider hardware catalogue changed")]
     private QueryResult QueryHardwareMonitorHardware(string path, TimeSpan timeout)
     {
         return query(path, "SELECT Identifier, Name, HardwareType FROM Hardware", timeout);

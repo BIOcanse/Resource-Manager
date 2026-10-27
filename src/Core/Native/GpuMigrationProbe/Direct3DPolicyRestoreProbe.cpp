@@ -30,6 +30,7 @@ std::string Token(uint64_t value) {
 uint64_t Bits(LUID value) { return (static_cast<uint64_t>(static_cast<UINT>(value.HighPart)) << 32) | value.LowPart; }
 }
 
+// RuntimeRead: Transport
 int wmain(int argc, wchar_t** argv) {
     SetErrorMode(32771);
     HWND window = nullptr;

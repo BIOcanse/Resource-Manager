@@ -7,6 +7,7 @@ namespace ResourceManager.ReadWrite.Vendors.Nvidia;
 
 public sealed partial class NvidiaNvmlReader
 {
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     private GpuMetrics? ReadDevice(
         IntPtr device,
         WindowsGpuAdapterInventoryRead windowsInventory,
@@ -68,6 +69,8 @@ public sealed partial class NvidiaNvmlReader
         };
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
+
     private static string ReadName(IntPtr device)
     {
         var name = new StringBuilder(96);
@@ -76,6 +79,8 @@ public sealed partial class NvidiaNvmlReader
             : "NVIDIA GPU";
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Sampled)]
+
     private static GpuUtilizationReading ReadUtilization(IntPtr device)
     {
         return NativeMethods.nvmlDeviceGetUtilizationRates(device, out var utilization) == NvmlSuccess
@@ -83,12 +88,16 @@ public sealed partial class NvidiaNvmlReader
             : default;
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Sampled)]
+
     private static NvmlMemory ReadMemory(IntPtr device)
     {
         return NativeMethods.nvmlDeviceGetMemoryInfo(device, out var memory) == NvmlSuccess
             ? memory
             : default;
     }
+
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
 
     private static NvmlPciInfo? ReadPciInfo(IntPtr device)
     {
@@ -104,12 +113,16 @@ public sealed partial class NvidiaNvmlReader
         }
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Sampled)]
+
     private static int ReadClock(IntPtr device, NvmlClockType type)
     {
         return NativeMethods.nvmlDeviceGetClockInfo(device, type, out var clock) == NvmlSuccess
             ? checked((int)clock)
             : 0;
     }
+
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
 
     private static int ReadMaxClock(IntPtr device, NvmlClockType type)
     {

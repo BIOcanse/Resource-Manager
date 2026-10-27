@@ -40,6 +40,7 @@ pub const PathMap = struct {
         self.entries[self.len] = .{ .kernel = key, .user = value };
         self.len += 1;
     }
+    // RuntimeRead: EventDriven("Process environment changed")
     fn environment(a: std.mem.Allocator, comptime name: []const u8, cap: u32) ![]const u16 {
         const buffer = try a.alloc(u16, cap);
         const length = GetEnvironmentVariableW(std.unicode.utf8ToUtf16LeStringLiteral(name), buffer.ptr, cap);
@@ -47,6 +48,7 @@ pub const PathMap = struct {
         if (length >= cap) return error.CapacityExceeded;
         return buffer[0..length];
     }
+    // RuntimeRead: EventDriven("Windows drive topology or DOS device mapping changed")
     pub fn initLocal(allocator: std.mem.Allocator, max_path_units: u32) !PathMap {
         var self = PathMap.init(allocator);
         errdefer self.deinit();

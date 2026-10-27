@@ -25,14 +25,15 @@ public sealed partial class AcpiInformationSubscriptionTests
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await using var stream = subscriptions.SubscribeAsync("public", [field], TimeSpan.FromSeconds(1), cancellation.Token).GetAsyncEnumerator();
         var next = stream.MoveNextAsync().AsTask();
-        Assert.Equal(MetricInteger.Parse("7"), Assert.Single(await backend.CollectAsync([field], cancellation.Token)).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("6"), Assert.Single(await backend.CollectAsync([field], cancellation.Token)).Value?.Integer);
         Assert.True(await next);
-        Assert.Equal(MetricInteger.Parse("7"), Assert.Single(stream.Current).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("6"), Assert.Single(stream.Current).Value?.Integer);
         FieldReadingAssert.CurrentOrNewer(Assert.Single(stream.Current), backend.ReadCached(field));
         next = stream.MoveNextAsync().AsTask();
-        Assert.Null(Assert.Single(await backend.CollectAsync([field], cancellation.Token)).Value);
-        Assert.True(await next); Assert.Null(Assert.Single(stream.Current).ObservedAt);
-        Assert.Equal(MetricInteger.Parse("8"), Assert.Single(await backend.CollectAsync([field], cancellation.Token)).Value?.Integer);
+        Assert.Equal(MetricInteger.Parse("6"), Assert.Single(await backend.CollectAsync([field], cancellation.Token)).Value?.Integer);
+        Assert.True(await next); Assert.NotNull(Assert.Single(stream.Current).ObservedAt);
+        Assert.Equal(MetricInteger.Parse("6"), Assert.Single(await backend.CollectAsync([field], cancellation.Token)).Value?.Integer);
+        Assert.Equal(1, fixture.Acpi.ReadCount);
         Assert.Equal(0, fixture.Topology.ReadCount); Assert.Equal(0, fixture.Store.SaveCount);
     }
 
@@ -76,8 +77,8 @@ public sealed partial class AcpiInformationSubscriptionTests
             var third = fixture.Provider.CaptureAcpiInformationAsync(canceled.Token).AsTask(); canceled.Cancel();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => third);
             release.Set(); await first; var result = await second;
-            Assert.Equal(2, fixture.Acpi.ReadCount);
-            Assert.Equal("7", AcpiFirmwareTestData.Field(result, "firmware_all_acpi_table_revision").Value!.Value.GetString());
+            Assert.Equal(1, fixture.Acpi.ReadCount);
+            Assert.Equal("6", AcpiFirmwareTestData.Field(result, "firmware_all_acpi_table_revision").Value!.Value.GetString());
         }
         finally { release.Set(); await first; }
     }

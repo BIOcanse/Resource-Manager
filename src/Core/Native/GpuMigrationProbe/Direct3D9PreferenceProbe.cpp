@@ -225,6 +225,7 @@ struct Factory {
     }
 };
 
+// RuntimeRead: Sampled
 void WorkerMain(HANDLE done, bool requireNvidia, UINT hybridMode) {
     HWND window = CreateWindowExW(WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW, L"STATIC", L"RM D3D9 Preference Probe", WS_POPUP, 0, 0, Side, Side, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
     Check(window != nullptr, "own-hidden-window");

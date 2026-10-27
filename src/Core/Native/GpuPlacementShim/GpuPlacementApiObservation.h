@@ -34,6 +34,7 @@ class CallStore
     ULONGLONG startedAt_ = 0;
     bool enabled_ = false;
 
+    // RuntimeRead: Sampled
     bool IsRecording() const noexcept
     {
         return enabled_ && GetTickCount64() - startedAt_ < durationMilliseconds_;
@@ -48,6 +49,7 @@ public:
         return recording;
     }
 
+    // RuntimeRead: Sampled
     DWORD Start(uint32_t apis, uint32_t durationMilliseconds) noexcept
     {
         if (!apis || (apis & ~uint32_t{31}) || !durationMilliseconds) return ERROR_INVALID_PARAMETER;

@@ -185,6 +185,7 @@ internal sealed partial class WindowsHardwareMetricCapture
         }
     }
 
+    [ResourceManager.ReadWrite.RuntimeReadSource(typeof(NativeMetricSnapshotSources), nameof(NativeMetricSnapshotSources.WindowsCpu))]
     private NativeMetricSnapshotSourceCompletion CollectCpu(
         NativeMetricSnapshotCollectionPlan plan,
         NativeMetricSnapshotSourcePlanOutput sourcePlan,
@@ -215,6 +216,7 @@ internal sealed partial class WindowsHardwareMetricCapture
             nativeCounter);
     }
 
+    [ResourceManager.ReadWrite.RuntimeReadSource(typeof(NativeMetricSnapshotSources), nameof(NativeMetricSnapshotSources.WindowsMemory))]
     private NativeMetricSnapshotSourceCompletion CollectMemory(
         NativeMetricSnapshotCollectionPlan plan,
         NativeMetricSnapshotSourcePlanOutput sourcePlan,
@@ -234,6 +236,7 @@ internal sealed partial class WindowsHardwareMetricCapture
         return CreateMemoryCompletion(plan, sourcePlan, identity, capturedAt, metrics, values, capacityValues);
     }
 
+    [ResourceManager.ReadWrite.RuntimeReadSource(typeof(NativeMetricSnapshotSources), nameof(NativeMetricSnapshotSources.WindowsVirtualMemory))]
     private NativeMetricSnapshotSourceCompletion CollectVirtualMemory(
         NativeMetricSnapshotCollectionPlan plan,
         NativeMetricSnapshotSourcePlanOutput sourcePlan,
@@ -287,6 +290,7 @@ internal sealed partial class WindowsHardwareMetricCapture
             });
     }
 
+    [ResourceManager.ReadWrite.RuntimeReadSource(typeof(NativeMetricSnapshotSources), nameof(NativeMetricSnapshotSources.WindowsGpuAdapterOrder))]
     private NativeMetricSnapshotSourceCompletion CollectGpuInventory(
         NativeMetricSnapshotCollectionPlan plan,
         NativeMetricSnapshotSourcePlanOutput sourcePlan,
@@ -320,6 +324,7 @@ internal sealed partial class WindowsHardwareMetricCapture
             checked((uint)rows.Length));
     }
 
+    [ResourceManager.ReadWrite.RuntimeReadSource(typeof(NativeMetricSnapshotSources), nameof(NativeMetricSnapshotSources.PdhCpuFrequency))]
     private NativeMetricSnapshotSourceCompletion CollectCpuFrequency(
         NativeMetricSnapshotCollectionPlan plan,
         NativeMetricSnapshotSourcePlanOutput sourcePlan,
@@ -347,6 +352,7 @@ internal sealed partial class WindowsHardwareMetricCapture
             });
     }
 
+    [ResourceManager.ReadWrite.RuntimeReadSource(typeof(NativeMetricSnapshotSources), nameof(NativeMetricSnapshotSources.PdhGpuEngine))]
     private NativeMetricSnapshotSourceCompletion CollectPdhGpu(
         NativeMetricSnapshotCollectionPlan plan,
         NativeMetricSnapshotSourcePlanOutput sourcePlan,
@@ -466,6 +472,7 @@ internal sealed partial class WindowsHardwareMetricCapture
     private static DateTimeOffset? MaxObservedAt(DateTimeOffset? first, DateTimeOffset? second)
         => first is null ? second : second is null ? first : first.Value >= second.Value ? first : second;
 
+    [ResourceManager.ReadWrite.RuntimeReadSource(typeof(NativeMetricSnapshotSources), nameof(NativeMetricSnapshotSources.NvidiaNvml))]
     private async Task<NativeMetricSnapshotSourceCompletion>
         CollectNvmlAsync(
             NativeMetricSnapshotCollectionPlan plan,
@@ -549,6 +556,7 @@ internal sealed partial class WindowsHardwareMetricCapture
                 && gpu.AdditionalObservedAt.TryGetValue(binding.FieldCode, out var timestamp) ? timestamp : null);
     }
 
+    [ResourceManager.ReadWrite.RuntimeReadSource(typeof(NativeMetricSnapshotSources), nameof(NativeMetricSnapshotSources.NvidiaNvapi))]
     private async Task<NativeMetricSnapshotSourceCompletion>
         CollectNvapiAsync(
             NativeMetricSnapshotCollectionPlan plan,
@@ -598,6 +606,7 @@ internal sealed partial class WindowsHardwareMetricCapture
             });
     }
 
+    [ResourceManager.ReadWrite.RuntimeReadSource(typeof(NativeMetricSnapshotSources), nameof(NativeMetricSnapshotSources.AmdAdlx))]
     private async Task<NativeMetricSnapshotSourceCompletion>
         CollectAdlxAsync(
             NativeMetricSnapshotCollectionPlan plan,
@@ -664,6 +673,7 @@ internal sealed partial class WindowsHardwareMetricCapture
             Includes(selected, MetricFieldCode.AdlxNpuActivityPercent),
             Includes(selected, MetricFieldCode.AdlxNpuFrequencyMhz));
 
+    [ResourceManager.ReadWrite.RuntimeReadSource(typeof(NativeMetricSnapshotSources), nameof(NativeMetricSnapshotSources.AmdSmu))]
     private NativeMetricSnapshotSourceCompletion CollectAmdSmu(
         NativeMetricSnapshotCollectionPlan plan,
         NativeMetricSnapshotSourcePlanOutput sourcePlan,
@@ -831,6 +841,7 @@ internal sealed partial class WindowsHardwareMetricCapture
             : NativeMetricSnapshotObservationStatus.Unavailable;
     }
 
+    [ResourceManager.ReadWrite.RuntimeReadSource(typeof(NativeMetricSnapshotSources), nameof(NativeMetricSnapshotSources.WindowsStorageSensors))]
     private NativeMetricSnapshotSourceCompletion CollectStorageSensors(
         NativeMetricSnapshotCollectionPlan plan,
         NativeMetricSnapshotSourcePlanOutput sourcePlan,
@@ -843,6 +854,7 @@ internal sealed partial class WindowsHardwareMetricCapture
         return CreateStorageCompletion(plan, sourcePlan, identity, capturedAt, sensors);
     }
 
+    [ResourceManager.ReadWrite.RuntimeReadSource(typeof(NativeMetricSnapshotSources), nameof(NativeMetricSnapshotSources.WindowsNvmeHealth))]
     private NativeMetricSnapshotSourceCompletion CollectNvmeHealth(
         NativeMetricSnapshotCollectionPlan plan, NativeMetricSnapshotSourcePlanOutput sourcePlan,
         NativeMetricSnapshotSourceObservationIdentity identity, DateTimeOffset capturedAt)
@@ -856,6 +868,7 @@ internal sealed partial class WindowsHardwareMetricCapture
         return CreateStorageCompletion(plan, sourcePlan, identity, capturedAt, sensors);
     }
 
+    [ResourceManager.ReadWrite.RuntimeReadSource(typeof(NativeMetricSnapshotSources), nameof(NativeMetricSnapshotSources.WindowsAtaSmart))]
     private NativeMetricSnapshotSourceCompletion CollectAtaSmart(
         NativeMetricSnapshotCollectionPlan plan, NativeMetricSnapshotSourcePlanOutput sourcePlan,
         NativeMetricSnapshotSourceObservationIdentity identity, DateTimeOffset capturedAt)
@@ -872,6 +885,7 @@ internal sealed partial class WindowsHardwareMetricCapture
                 group.First().DeviceIdentity,
                 group.Aggregate(AtaSmartPages.None, static (pages, binding) => pages | WindowsAtaSmartReader.PageFor(binding.FieldCode)))));
 
+    [ResourceManager.ReadWrite.RuntimeReadSource(typeof(NativeMetricSnapshotSources), nameof(NativeMetricSnapshotSources.WindowsDiskPerformance))]
     private async Task<NativeMetricSnapshotSourceCompletion> CollectDiskPerformanceAsync(
         NativeMetricSnapshotCollectionPlan plan, NativeMetricSnapshotSourcePlanOutput sourcePlan,
         NativeMetricSnapshotSourceObservationIdentity identity, CancellationToken cancellationToken)
@@ -945,6 +959,7 @@ internal sealed partial class WindowsHardwareMetricCapture
             .Select(static disk => (disk.DisplayIndex, disk.ExactIdentityKey, disk.SupportsNvmeHealth, disk.SupportsAtaSmart)).Order()
             .SequenceEqual(sensors.Identities.Select(static disk => (disk.DisplayIndex, disk.ExactIdentityKey, disk.SupportsNvmeHealth, disk.SupportsAtaSmart)).Order());
 
+    [ResourceManager.ReadWrite.RuntimeReadSource(typeof(NativeMetricSnapshotSources), nameof(NativeMetricSnapshotSources.HardwareMonitorWmi))]
     private NativeMetricSnapshotSourceCompletion CollectHardwareMonitor(
         NativeMetricSnapshotCollectionPlan plan,
         NativeMetricSnapshotSourcePlanOutput sourcePlan,
@@ -996,6 +1011,7 @@ internal sealed partial class WindowsHardwareMetricCapture
         };
     }
 
+    [ResourceManager.ReadWrite.RuntimeReadSource(typeof(NativeMetricSnapshotSources), nameof(NativeMetricSnapshotSources.NotebookOemFan))]
     private NativeMetricSnapshotSourceCompletion CollectNotebookFans(
         NativeMetricSnapshotCollectionPlan plan,
         NativeMetricSnapshotSourcePlanOutput sourcePlan,

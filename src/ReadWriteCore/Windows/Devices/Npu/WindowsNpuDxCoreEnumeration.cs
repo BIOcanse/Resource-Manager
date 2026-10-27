@@ -10,6 +10,7 @@ internal static class WindowsNpuDxCoreEnumeration
     internal const uint MaximumAdapterCount = 256;
     internal static readonly Guid NpuAttribute = new("D46140C4-ADD7-451B-9E56-06FE8C3B58ED");
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows NPU adapter topology changed")]
     internal static IReadOnlyList<WindowsNpuDxCoreAdapter>? Read(IWindowsNpuDxCoreApi api)
     {
         nint factory = 0, list = 0;
@@ -52,6 +53,7 @@ internal static class WindowsNpuDxCoreEnumeration
         }
     }
 
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     private static unsafe bool TryReadProperty<T>(IWindowsNpuDxCoreApi api, nint adapter,
         WindowsNpuDxCoreProperty property, out T result) where T : unmanaged
     {
@@ -86,6 +88,7 @@ internal interface IWindowsNpuDxCoreApi
     bool IsValid(nint adapter);
     bool IsAttributeSupported(nint adapter, Guid attribute);
     bool IsPropertySupported(nint adapter, WindowsNpuDxCoreProperty property);
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     int GetProperty(nint adapter, WindowsNpuDxCoreProperty property, nuint size, nint data);
     void Release(nint instance);
 }
@@ -93,6 +96,7 @@ internal interface IWindowsNpuDxCoreApi
 // Kept separate so the existing identity-only recorded API need not implement dynamic queries.
 internal interface IWindowsNpuDxCoreMemoryApi : IWindowsNpuDxCoreApi
 {
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     int GetPropertySize(nint adapter, WindowsNpuDxCoreProperty property, out nuint size);
     bool IsQueryStateSupported(nint adapter, WindowsNpuDxCoreState state);
     int QueryState(nint adapter, WindowsNpuDxCoreState state, nuint inputSize, nint input,
@@ -103,6 +107,7 @@ internal interface IWindowsNpuDxCoreMemoryApi : IWindowsNpuDxCoreApi
 internal interface IWindowsNpuDxCoreEngineApi : IWindowsNpuDxCoreMemoryApi
 {
     int QueryAdapter1(nint adapter, out nint adapter1);
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     int GetPropertyWithInput(nint adapter1, WindowsNpuDxCoreProperty property,
         nuint inputSize, nint input, nuint outputSize, nint output);
 }

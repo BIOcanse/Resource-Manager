@@ -362,7 +362,8 @@
         "component": "BusinessBlockScheduler demand table"
       },
       "perBlock": true,
-      "trigger": "event"
+      "trigger": "event",
+      "changeEvent": "BusinessBlockScheduler.SetDemandAsync demand table changed"
     },
     {
       "uid": 52,
@@ -376,7 +377,8 @@
         "component": "BusinessBlockDependencyLifetime host stopping turn"
       },
       "perBlock": false,
-      "trigger": "event"
+      "trigger": "event",
+      "changeEvent": "BusinessBlockScheduler.ShutdownAsync terminal shutdown requested"
     },
     {
       "uid": 53,
@@ -390,7 +392,8 @@
         "component": "NativeEtwSessionAvailability"
       },
       "perBlock": false,
-      "trigger": "event"
+      "trigger": "event",
+      "changeEvent": "NativeEtwSessionAvailability initial publication or Report failure"
     },
     {
       "uid": 54,
@@ -404,7 +407,8 @@
         "component": "NativeEtwSessionAvailability"
       },
       "perBlock": false,
-      "trigger": "event"
+      "trigger": "event",
+      "changeEvent": "NativeEtwSessionAvailability initial publication or Report failure"
     },
     {
       "uid": 55,
@@ -418,7 +422,8 @@
         "component": "NativeEtwSessionAvailability"
       },
       "perBlock": false,
-      "trigger": "event"
+      "trigger": "event",
+      "changeEvent": "NativeEtwSessionAvailability initial publication or Report failure"
     },
     {
       "uid": 56,
@@ -432,7 +437,8 @@
         "component": "PresentFrameEtwSource compute mode"
       },
       "perBlock": false,
-      "trigger": "event"
+      "trigger": "event",
+      "changeEvent": "PresentFrameEtwSource.ApplyMode mode changed"
     },
     {
       "uid": 57,
@@ -446,7 +452,8 @@
         "component": "DxgkrnlVidMmEtwTelemetryZone compute mode"
       },
       "perBlock": false,
-      "trigger": "event"
+      "trigger": "event",
+      "changeEvent": "DxgkrnlVidMmEtwTelemetryZone.ApplyModeAsync mode changed"
     },
     {
       "uid": 58,
@@ -460,7 +467,8 @@
         "component": "NativeUiBlockTrees shutdown path"
       },
       "perBlock": false,
-      "trigger": "event"
+      "trigger": "event",
+      "changeEvent": "BusinessBlockScheduler.ShutdownAsync terminal shutdown requested"
     },
     {
       "uid": 59,
@@ -474,7 +482,8 @@
         "component": "NativeUiBlockTrees startup path"
       },
       "perBlock": false,
-      "trigger": "event"
+      "trigger": "event",
+      "changeEvent": "NativeUiBlockTrees.StartAsync process-started"
     },
     {
       "uid": 60,
@@ -488,7 +497,8 @@
         "component": "NativeUiBlockTrees user operation paths"
       },
       "perBlock": false,
-      "trigger": "event"
+      "trigger": "event",
+      "changeEvent": "NativeUiBlockTrees.SetWindowWantedAsync show-window or close-window"
     },
     {
       "uid": 61,
@@ -502,7 +512,8 @@
         "block": 44
       },
       "perBlock": false,
-      "trigger": "event"
+      "trigger": "event",
+      "changeEvent": "NativeUiBlockTrees backend session bind, transition or unbind"
     },
     {
       "uid": 62,
@@ -523,7 +534,8 @@
         "component": "HostMemoryProtectionService settings"
       },
       "perBlock": false,
-      "trigger": "event"
+      "trigger": "event",
+      "changeEvent": "HostMemoryProtectionService.ApplySettingsAsync settings-published"
     },
     {
       "uid": 64,
@@ -537,7 +549,8 @@
         "component": "HostMemoryProtectionService normal running point"
       },
       "perBlock": false,
-      "trigger": "event"
+      "trigger": "event",
+      "changeEvent": "HostMemoryProtectionService.CreatePointAsync normal-running-point-created"
     },
     {
       "uid": 65,
@@ -551,7 +564,8 @@
         "component": "HostMemoryProtectionService reserve readiness"
       },
       "perBlock": false,
-      "trigger": "event"
+      "trigger": "event",
+      "changeEvent": "HostMemoryProtectionService reserve-configuring, reserve-rebuilding or reserve-rebuilt publication"
     },
     {
       "uid": 66,
@@ -565,7 +579,8 @@
         "component": "EtwCpuResidencyCaptureOwner"
       },
       "perBlock": false,
-      "trigger": "event"
+      "trigger": "event",
+      "changeEvent": "EtwCpuResidencyCaptureOwner request-thread-diagnostic holder acquired or disposed"
     },
     {
       "uid": 67,
@@ -579,7 +594,8 @@
         "component": "EtwCpuResidencyCaptureOwner.ThreadDiagnosticRequest"
       },
       "perBlock": false,
-      "trigger": "event"
+      "trigger": "event",
+      "changeEvent": "EtwCpuResidencyCaptureOwner completed requested execution window publication"
     },
     {
       "uid": 68,
@@ -593,7 +609,8 @@
         "component": "JsonAppSettingsStore"
       },
       "perBlock": false,
-      "trigger": "event"
+      "trigger": "event",
+      "changeEvent": "JsonAppSettingsStore initial load or committed settings publication"
     },
     {
       "uid": 69,
@@ -607,35 +624,38 @@
         "component": "JsonStartupModuleSettingsStore"
       },
       "perBlock": false,
-      "trigger": "event"
+      "trigger": "event",
+      "changeEvent": "JsonStartupModuleSettingsStore initial load or committed module selections publication"
     },
     {
       "uid": 70,
       "kind": "item",
       "process": "backend",
       "name": "KernelLeakReport",
-      "comment": "Read-only suspected unbounded growth evidence; report subscriptions own the single named process sampling demand.",
+      "comment": "Read-only suspected unbounded growth evidence; the observer holds its own kernel-leak-observer sampling demand for the backend lifetime, independent of report readers.",
       "storage": "reference",
       "type": "ResourceManager.App.Domain.KernelLeak.KernelLeakReport",
       "owner": {
         "component": "KernelLeakObserver"
       },
       "perBlock": false,
-      "trigger": "event"
+      "trigger": "event",
+      "changeEvent": "KernelLeakObserver report publication after each sampling frame or run failure"
     },
     {
       "uid": 71,
       "kind": "item",
       "process": "backend",
       "name": "KernelLeakSeries",
-      "comment": "Bounded per-process-start-key handle rings; removed on holder exit, source failure and last report unsubscribe.",
+      "comment": "Bounded per-process-start-key handle rings; a holder's ring is removed on its exit or PID reuse, all rings on source failure and backend shutdown.",
       "storage": "own",
       "type": "ResourceManager.App.Infrastructure.KernelLeak.KernelLeakSeries",
       "owner": {
         "component": "KernelLeakObserver"
       },
       "perBlock": false,
-      "trigger": "event"
+      "trigger": "event",
+      "changeEvent": "KernelLeakObserver sampling frame, holder exit or run failure"
     }
   ]
 }

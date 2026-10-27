@@ -19,14 +19,17 @@ internal static class WindowsDeviceDriverPropertyReader
     internal readonly record struct PropertyKey(Guid FormatId, uint PropertyId);
     internal delegate uint PropertyQuery(uint devInst, in PropertyKey key, out uint type, byte[] buffer, ref uint size, uint flags);
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows device-bound driver package changed")]
     internal static DeviceTopologyDriverInformation Read(uint devInst, string deviceInstanceId)
         => Read(devInst, deviceInstanceId, QueryNative);
 
     /// <summary>Reads the exact CM devnode's declared driver version; the caller must first locate
     /// the devnode from a proven device relationship. This does not enumerate driver packages.</summary>
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows device-bound driver package changed")]
     internal static string? ReadDriverVersion(uint devInst)
         => ReadString(devInst, new(DriverPropertySet, 3), QueryNative);
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows device-bound driver package changed")]
     internal static DeviceTopologyDriverInformation Read(uint devInst, string deviceInstanceId, PropertyQuery query)
     {
         var provider = ReadString(devInst, new(DriverPropertySet, 9), query);

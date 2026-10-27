@@ -355,6 +355,7 @@ bool ConcurrentDevice(uint64_t target)
 }
 }
 
+// RuntimeRead: EventDriven("Process environment changed")
 int wmain(int argc, wchar_t** argv)
 {
     SetErrorMode(32771);

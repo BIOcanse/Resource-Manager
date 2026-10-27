@@ -290,6 +290,7 @@ pub const Collector = struct {
         return self.sampleCore(header, &scratch);
     }
 
+    // RuntimeRead: Sampled
     fn sampleCore(self: *Collector, header: *FrameHeader, scratch: ?*ExternalScratch.Scratch) ResultCode {
         if (self.pending_topology_refresh or self.query == null) {
             const rebuilt = self.rebuildQuery(scratch) catch {
@@ -413,6 +414,7 @@ pub const Collector = struct {
         diagnostics.* = self.diagnostics;
     }
 
+    // RuntimeRead: Sampled
     fn rebuildQuery(self: *Collector, scratch: ?*ExternalScratch.Scratch) !bool {
         self.pending_topology_refresh = false;
         var new_query: PdhHandle = null;
@@ -989,11 +991,13 @@ fn emptyDiagnostics() Diagnostics {
     };
 }
 
+// RuntimeRead: Sampled
 fn performanceCounter() i64 {
     var value: i64 = 0;
     return if (QueryPerformanceCounter(&value) != 0) value else 0;
 }
 
+// RuntimeRead: Fixed
 fn performanceNanoseconds(started: i64, finished: i64) u64 {
     if (started <= 0 or finished <= started) return 0;
     var frequency: i64 = 0;

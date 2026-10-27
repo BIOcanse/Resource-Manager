@@ -5,6 +5,7 @@ public static class WindowsNetworkAdapterTopologyReader
     public static DeviceTopologyNetworkAdapterSnapshot ReadSnapshot()
         => ReadSnapshot(TimeSpan.FromSeconds(2));
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Sampled)]
     public static DeviceTopologyNetworkAdapterSnapshot ReadSnapshot(TimeSpan timeout,
         Func<string, string, TimeSpan, DeviceTopologyWmiQueryResult>? query = null)
     {

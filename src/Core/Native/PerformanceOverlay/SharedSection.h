@@ -25,6 +25,7 @@ class Reader
     ULONGLONG lastOpenAttempt_ = 0;
     std::shared_ptr<const Bitmap> bitmap_;
 
+    // RuntimeRead: Sampled
     void OpenIfNeeded()
     {
         if (header_ || GetTickCount64() - lastOpenAttempt_ < 250) return;

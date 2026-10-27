@@ -22,31 +22,31 @@ public static class FrameFieldRegistry
 
     private const string PresentSource = "windows.present-etw";
     public static readonly DeviceInformationDefinition FrameAllDisplayIntervalMs =
-        new(DisplayIntervalMs, "frame", "all", "number", "ms", "frame.display.interval", PresentSource);
+        new(DisplayIntervalMs, "frame", "all", "number", "ms", "frame.display.interval", PresentSource, ReadVolatility.Sampled);
     public static readonly DeviceInformationDefinition FrameAllDisplayedFps =
-        new(DisplayedFps, "frame", "all", "number", "fps", "frame.display.average_fps", PresentSource);
+        new(DisplayedFps, "frame", "all", "number", "fps", "frame.display.average_fps", PresentSource, ReadVolatility.Sampled);
     public static readonly DeviceInformationDefinition FrameAllDroppedCount =
-        new(DroppedCount, "frame", "all", "unsigned-integer", "frames", "frame.display.dropped_count", PresentSource);
+        new(DroppedCount, "frame", "all", "unsigned-integer", "frames", "frame.display.dropped_count", PresentSource, ReadVolatility.Sampled);
     public static readonly DeviceInformationDefinition FrameAllFpsDerived =
-        new(FpsDerived, "frame", "all", "number", "fps", "frame.present.average_fps", PresentSource);
+        new(FpsDerived, "frame", "all", "number", "fps", "frame.present.average_fps", PresentSource, ReadVolatility.Sampled);
     public static readonly DeviceInformationDefinition FrameAllPresentIntervalMs =
-        new(PresentIntervalMs, "frame", "all", "number", "ms", "frame.present.mean_interval", PresentSource);
+        new(PresentIntervalMs, "frame", "all", "number", "ms", "frame.present.mean_interval", PresentSource, ReadVolatility.Sampled);
     public static readonly DeviceInformationDefinition FrameAllPresentTimeActual =
-        new(PresentTimeActual, "frame", "all", "number", "ms", "frame.present.unix_utc_milliseconds", PresentSource);
+        new(PresentTimeActual, "frame", "all", "number", "ms", "frame.present.unix_utc_milliseconds", PresentSource, ReadVolatility.Sampled);
     public static readonly DeviceInformationDefinition FrameAllPresentedFps =
-        new(PresentedFps, "frame", "all", "number", "fps", "frame.present.average_fps", PresentSource);
+        new(PresentedFps, "frame", "all", "number", "fps", "frame.present.average_fps", PresentSource, ReadVolatility.Sampled);
     public static readonly DeviceInformationDefinition FrameAllDisplayIntervalP95Ms =
-        new(DisplayIntervalP95Ms, "frame", "all", "number", "ms", "frame.display.nearest_rank.p95", PresentSource);
+        new(DisplayIntervalP95Ms, "frame", "all", "number", "ms", "frame.display.nearest_rank.p95", PresentSource, ReadVolatility.Sampled);
     public static readonly DeviceInformationDefinition FrameAllDisplayIntervalP99Ms =
-        new(DisplayIntervalP99Ms, "frame", "all", "number", "ms", "frame.display.nearest_rank.p99", PresentSource);
+        new(DisplayIntervalP99Ms, "frame", "all", "number", "ms", "frame.display.nearest_rank.p99", PresentSource, ReadVolatility.Sampled);
     public static readonly DeviceInformationDefinition FrameAllPresentIntervalP95Ms =
-        new(PresentIntervalP95Ms, "frame", "all", "number", "ms", "frame.present.nearest_rank.p95", PresentSource);
+        new(PresentIntervalP95Ms, "frame", "all", "number", "ms", "frame.present.nearest_rank.p95", PresentSource, ReadVolatility.Sampled);
     public static readonly DeviceInformationDefinition FrameAllPresentIntervalP99Ms =
-        new(PresentIntervalP99Ms, "frame", "all", "number", "ms", "frame.present.nearest_rank.p99", PresentSource);
+        new(PresentIntervalP99Ms, "frame", "all", "number", "ms", "frame.present.nearest_rank.p99", PresentSource, ReadVolatility.Sampled);
     public static readonly DeviceInformationDefinition FrameAllTimePercentileDerived =
-        new(TimePercentileDerived, "frame", "all", "number", "ms", "frame.present.nearest_rank.query_percentile", PresentSource);
+        new(TimePercentileDerived, "frame", "all", "number", "ms", "frame.present.nearest_rank.query_percentile", PresentSource, ReadVolatility.Sampled);
     public static readonly DeviceInformationDefinition FrameAllWindowDurationConfigured =
-        new(WindowDurationConfigured, "frame", "all", "number", "s", "frame.window.configured_duration", PresentSource);
+        new(WindowDurationConfigured, "frame", "all", "number", "s", "frame.window.configured_duration", PresentSource, ReadVolatility.EventDriven("Frame window duration configuration changed"));
 
     public static IReadOnlyList<DeviceInformationDefinition> Definitions { get; } = Array.AsReadOnly(new[]
     {

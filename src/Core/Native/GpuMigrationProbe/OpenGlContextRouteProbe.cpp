@@ -50,6 +50,7 @@ BOOL CALLBACK MonitorEntry(HMONITOR monitor, HDC, LPRECT, LPARAM argument) {
 #ifndef RESOURCE_MANAGER_OPENGL_ROUTE_ENTRY
 #define RESOURCE_MANAGER_OPENGL_ROUTE_ENTRY wmain
 #endif
+// RuntimeRead: Transport
 int RESOURCE_MANAGER_OPENGL_ROUTE_ENTRY(int argc, wchar_t** argv) {
     SetErrorMode(32771);
     try {

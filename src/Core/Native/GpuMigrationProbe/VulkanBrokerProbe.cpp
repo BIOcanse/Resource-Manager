@@ -179,6 +179,7 @@ int Worker(int argc, wchar_t** argv)
 }
 }
 
+// RuntimeRead: Sampled
 int wmain(int argc, wchar_t** argv)
 {
     SetErrorMode(32771);

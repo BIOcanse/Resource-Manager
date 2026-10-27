@@ -208,11 +208,17 @@ public sealed partial class NvidiaNvmlReader
     private sealed class FanApi(NvidiaNvmlReader owner) : INvmlFanApi
     {
         public bool Initialize() => owner.EnsureInitialized();
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows GPU adapter topology changed")]
         public int Count(out uint count) => NativeMethods.nvmlDeviceGetCount(out count);
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows GPU adapter topology changed")]
         public int Handle(uint index, out IntPtr device) => NativeMethods.nvmlDeviceGetHandleByIndex(index, out device);
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
         public int Pci(IntPtr device, out NvmlPciInfo pci) => NativeMethods.nvmlDeviceGetPciInfo(device, out pci);
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
         public int FanCount(IntPtr device, out uint count) => NativeMethods.nvmlDeviceGetNumFans(device, out count);
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Sampled)]
         public int Percent(IntPtr device, uint fan, out uint percent) => NativeMethods.nvmlDeviceGetFanSpeedV2(device, fan, out percent);
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Sampled)]
         public int Rpm(IntPtr device, ref NvmlFanSpeedInfoV1 speed) => NativeMethods.GetFanSpeedRpm(device, ref speed);
     }
 }

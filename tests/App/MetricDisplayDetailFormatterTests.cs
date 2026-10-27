@@ -17,7 +17,7 @@ public sealed class MetricRawContractTests
     {
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         using var value = JsonDocument.Parse(JsonSerializer.Serialize(new MetricReadingValue("cpu.usage", 25, "%"), options));
-        using var definition = JsonDocument.Parse(JsonSerializer.Serialize(new MetricDefinition("cpu.usage", "%"), options));
+        using var definition = JsonDocument.Parse(JsonSerializer.Serialize(new MetricDefinition("cpu.usage", "%", ResourceManager.ReadWrite.ReadVolatility.Sampled), options));
         Assert.False(value.RootElement.TryGetProperty(presentationProperty, out _));
         Assert.False(definition.RootElement.TryGetProperty(presentationProperty, out _));
         Assert.Equal(25, value.RootElement.GetProperty("numericValue").GetInt32());

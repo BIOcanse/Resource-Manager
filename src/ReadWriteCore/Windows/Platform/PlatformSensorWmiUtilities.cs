@@ -7,6 +7,7 @@ namespace ResourceManager.ReadWrite.Windows.Platform;
 
 public static class PlatformSensorWmiUtilities
 {
+    [RuntimeReadTransport]
     public static QueryResult QueryObjects(string path, string query, TimeSpan timeout)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("WMI queries require Windows.");

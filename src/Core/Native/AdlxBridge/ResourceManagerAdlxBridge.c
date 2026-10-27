@@ -309,6 +309,7 @@ typedef int (*RmAdlxGuardedOperation)(void*);
 /* GCC does not model the inline-asm SEH scope as a control-flow boundary.
    Keep this tiny wrapper unoptimized so the indirect call stays between the
    scope labels; the vendor bodies retain the product's normal -O2 build. */
+// RuntimeRead: Transport
 static int __attribute__((noinline, noclone, optimize("O0"))) guarded_adlx_call(
     RmAdlxGuardedOperation operation, void* context, char* message, int messageCapacity)
 {
@@ -353,6 +354,7 @@ static void debug_trace(const char* value)
 #endif
 }
 
+// RuntimeRead: Fixed
 static int load_adlx(char* message, int messageCapacity)
 {
     if (gInitAttempted)
@@ -446,6 +448,7 @@ static int load_adlx(char* message, int messageCapacity)
     return RM_ADLX_OK;
 }
 
+// RuntimeRead: Fixed
 static int get_range_max(ADLX_RESULT (__stdcall *rangeFn)(IADLXGPUMetricsSupport*, adlx_int*, adlx_int*), IADLXGPUMetricsSupport* support)
 {
     if (!rangeFn || !support)
@@ -473,6 +476,7 @@ static int gpu_system_loaded(int init)
         && gSystem && gSystem->pVtbl && gSystem->pVtbl->GetGPUs;
 }
 
+// RuntimeRead: Transport
 static int read_gpu_metrics_locked(
     ResourceManagerAdlxGpuMetrics* outputs,
     int capacity,

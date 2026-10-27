@@ -480,6 +480,7 @@ public sealed class ProductUpdateCoordinator
         }
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Resource Manager installation registration changed")]
     private static string ResolveInstalledManager(string installRoot)
     {
         var expected = UpdateManagerPaths.InstalledExecutable(installRoot);

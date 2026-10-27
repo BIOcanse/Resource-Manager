@@ -38,6 +38,7 @@ internal sealed unsafe class WindowsNpuDxCoreNativeApi : IWindowsNpuDxCoreEngine
 
     private static readonly Guid Adapter1Iid = new("A0783366-CFA3-43BE-9D79-55B2DA97C63C");
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     public int QueryAdapter1(nint adapter, out nint adapter1)
     {
         var iid = Adapter1Iid;
@@ -48,6 +49,7 @@ internal sealed unsafe class WindowsNpuDxCoreNativeApi : IWindowsNpuDxCoreEngine
         return status;
     }
 
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     public int GetPropertyWithInput(nint adapter1, WindowsNpuDxCoreProperty property,
         nuint inputSize, nint input, nuint outputSize, nint output)
         => ((delegate* unmanaged[Stdcall]<nint, WindowsNpuDxCoreProperty, nuint, nint, nuint, nint, int>)
@@ -62,6 +64,7 @@ internal sealed unsafe class WindowsNpuDxCoreNativeApi : IWindowsNpuDxCoreEngine
         return DXCoreCreateAdapterFactory(in iid, out factory);
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows PnP device properties changed")]
     public int CreateAdapterList(nint factory, Guid attribute, out nint list)
     {
         var iid = ListIid;
@@ -73,12 +76,15 @@ internal sealed unsafe class WindowsNpuDxCoreNativeApi : IWindowsNpuDxCoreEngine
         return status;
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows PnP device properties changed")]
     public uint GetAdapterCount(nint list)
         => ((delegate* unmanaged[Stdcall]<nint, uint>)Slot(list, (int)WindowsNpuDxCoreListSlot.GetAdapterCount))(list);
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Sampled)]
     public bool IsStale(nint list)
         => ((delegate* unmanaged[Stdcall]<nint, byte>)Slot(list, (int)WindowsNpuDxCoreListSlot.IsStale))(list) != 0;
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows PnP device properties changed")]
     public int GetAdapter(nint list, uint index, out nint adapter)
     {
         var iid = AdapterIid;
@@ -89,21 +95,26 @@ internal sealed unsafe class WindowsNpuDxCoreNativeApi : IWindowsNpuDxCoreEngine
         return status;
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Sampled)]
     public bool IsValid(nint adapter)
         => ((delegate* unmanaged[Stdcall]<nint, byte>)Slot(adapter, (int)WindowsNpuDxCoreAdapterSlot.IsValid))(adapter) != 0;
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     public bool IsAttributeSupported(nint adapter, Guid attribute)
         => ((delegate* unmanaged[Stdcall]<nint, Guid*, byte>)
             Slot(adapter, (int)WindowsNpuDxCoreAdapterSlot.IsAttributeSupported))(adapter, &attribute) != 0;
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     public bool IsPropertySupported(nint adapter, WindowsNpuDxCoreProperty property)
         => ((delegate* unmanaged[Stdcall]<nint, WindowsNpuDxCoreProperty, byte>)
             Slot(adapter, (int)WindowsNpuDxCoreAdapterSlot.IsPropertySupported))(adapter, property) != 0;
 
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     public int GetProperty(nint adapter, WindowsNpuDxCoreProperty property, nuint size, nint data)
         => ((delegate* unmanaged[Stdcall]<nint, WindowsNpuDxCoreProperty, nuint, nint, int>)
             Slot(adapter, (int)WindowsNpuDxCoreAdapterSlot.GetProperty))(adapter, property, size, data);
 
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     public int GetPropertySize(nint adapter, WindowsNpuDxCoreProperty property, out nuint size)
     {
         nuint value = 0;
@@ -113,10 +124,12 @@ internal sealed unsafe class WindowsNpuDxCoreNativeApi : IWindowsNpuDxCoreEngine
         return status;
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     public bool IsQueryStateSupported(nint adapter, WindowsNpuDxCoreState state)
         => ((delegate* unmanaged[Stdcall]<nint, WindowsNpuDxCoreState, byte>)
             Slot(adapter, (int)WindowsNpuDxCoreAdapterSlot.IsQueryStateSupported))(adapter, state) != 0;
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Sampled)]
     public int QueryState(nint adapter, WindowsNpuDxCoreState state, nuint inputSize, nint input,
         nuint outputSize, nint output)
         => ((delegate* unmanaged[Stdcall]<nint, WindowsNpuDxCoreState, nuint, nint, nuint, nint, int>)

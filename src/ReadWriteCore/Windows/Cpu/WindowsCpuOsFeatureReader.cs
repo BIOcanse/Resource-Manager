@@ -17,6 +17,7 @@ public static partial class WindowsCpuOsFeatureReader
         [(6, "SSE"), (10, "SSE2"), (13, "SSE3"), (36, "SSSE3"), (37, "SSE4.1"), (38, "SSE4.2"),
          (39, "AVX"), (40, "AVX2"), (41, "AVX512F")];
 
+    [RuntimeRead(ReadVolatilityKind.Fixed)]
     public static IReadOnlyList<string>? Read()
     {
         try { return Read(IsProcessorFeaturePresent); }
@@ -27,6 +28,7 @@ public static partial class WindowsCpuOsFeatureReader
     internal static IReadOnlyList<string> Read(Func<uint, bool> present)
         => InstructionFlags.Where(flag => present(flag.Flag)).Select(static flag => flag.Name).ToArray();
 
+    [RuntimeRead(ReadVolatilityKind.Fixed)]
     public static ulong? ReadEnabledStateMask()
         => RuntimeInformation.ProcessArchitecture is Architecture.X86 or Architecture.X64
             ? ReadEnabledStateMask(GetEnabledXStateFeatures) : null;

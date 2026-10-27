@@ -183,6 +183,7 @@ static void SafeRelease(IUnknown* value)
     }
 }
 
+// RuntimeRead: Transport
 static std::vector<AdapterInfo> EnumerateAdapters()
 {
     std::vector<AdapterInfo> adapters;
@@ -362,6 +363,7 @@ static StepResult CreateDefaultDevice(DeviceBundle& bundle)
     };
 }
 
+// RuntimeRead: Fixed
 static bool GetDeviceAdapterDesc(ID3D11Device* device, DXGI_ADAPTER_DESC1& desc)
 {
     IDXGIDevice* dxgiDevice = nullptr;
@@ -424,6 +426,7 @@ static std::string FormatPixel(const uint8_t* pixel)
     return buffer;
 }
 
+// RuntimeRead: Sampled
 static HRESULT ReadBackFirstPixel(DeviceBundle& bundle, ID3D11Texture2D* texture, std::string& sample)
 {
     D3D11_TEXTURE2D_DESC desc{};
@@ -613,6 +616,7 @@ static const wchar_t* GpuPreferenceRegistrySubKey()
     return L"Software\\Microsoft\\DirectX\\UserGpuPreferences";
 }
 
+// RuntimeRead: EventDriven("Windows graphics preferences registry value changed")
 static RegistryValueBackup ReadGpuPreferenceBackup(const std::wstring& executablePath)
 {
     RegistryValueBackup backup;

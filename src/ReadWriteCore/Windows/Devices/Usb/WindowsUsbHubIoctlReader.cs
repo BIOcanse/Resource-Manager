@@ -59,6 +59,8 @@ public static partial class WindowsUsbHubIoctlReader
         return new DeviceTopologyUsbPortSnapshot(ports, CreateDriverKeyIndex(ports), firstError);
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows PnP device properties changed")]
+
     private static IReadOnlyList<string> EnumerateHubDevicePaths(out string? error)
     {
         error = null;
@@ -110,6 +112,8 @@ public static partial class WindowsUsbHubIoctlReader
             SetupDiDestroyDeviceInfoList(deviceInfoSet);
         }
     }
+
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
 
     private static string? ReadDeviceInterfacePath(
         nint deviceInfoSet,

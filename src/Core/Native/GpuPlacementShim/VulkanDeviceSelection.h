@@ -16,6 +16,7 @@ struct Selection
     LUID target{};
 };
 using ResourceManagerGpuPolicy::ReadCurrentPolicy;
+// RuntimeRead: Transport
 inline Selection ResolveSelection(const ResourceManagerGpuPolicy::GpuShimPolicy& policy)
 {
     using namespace ResourceManagerGpuPolicy;

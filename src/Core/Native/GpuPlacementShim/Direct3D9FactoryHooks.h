@@ -97,6 +97,7 @@ bool ContainsTarget(IDirect3D9* factory, LUID target)
 }
 
 template<typename Factory, typename Create>
+// RuntimeRead: Transport
 HRESULT MakeFactory(UINT sdk, Factory** output, const Create& create)
 {
     FactoryAccess access;

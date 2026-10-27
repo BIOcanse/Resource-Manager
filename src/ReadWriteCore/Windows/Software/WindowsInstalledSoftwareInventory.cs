@@ -304,6 +304,7 @@ public sealed partial class WindowsInstalledSoftwareInventory : IInstalledSoftwa
     }
 
     [SupportedOSPlatform("windows")]
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Installed software registration changed")]
     private static void ReadUninstallRoot(
         RegistryInventoryRoot root,
         Dictionary<string, InstalledSoftwareEntry> records,
@@ -362,6 +363,7 @@ public sealed partial class WindowsInstalledSoftwareInventory : IInstalledSoftwa
     }
 
     [SupportedOSPlatform("windows")]
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Installed software registration changed")]
     private static InstalledSoftwareEntry? ReadEntry(
         RegistryInventoryRoot root,
         string subKeyName,
@@ -414,10 +416,12 @@ public sealed partial class WindowsInstalledSoftwareInventory : IInstalledSoftwa
     }
 
     [SupportedOSPlatform("windows")]
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Installed software registration changed")]
     internal static ulong? ReadEstimatedSizeBytes(RegistryKey key)
         => ReadEstimatedSizeBytes(() => key.GetValue("EstimatedSize"), () => key.GetValueKind("EstimatedSize"));
 
     [SupportedOSPlatform("windows")]
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Installed software registration changed")]
     internal static ulong? ReadEstimatedSizeBytes(Func<object?> readValue, Func<RegistryValueKind> readKind)
     {
         try
@@ -508,6 +512,7 @@ public sealed partial class WindowsInstalledSoftwareInventory : IInstalledSoftwa
     }
 
     [SupportedOSPlatform("windows")]
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     private static string? ReadString(RegistryKey key, string name, bool preserveEnvironmentVariables = false)
     {
         return key.GetValue(name, null, preserveEnvironmentVariables
@@ -516,6 +521,7 @@ public sealed partial class WindowsInstalledSoftwareInventory : IInstalledSoftwa
     }
 
     [SupportedOSPlatform("windows")]
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     private static int? ReadInt(RegistryKey key, string name, bool preserveEnvironmentVariables = false)
     {
         return key.GetValue(name, null, preserveEnvironmentVariables

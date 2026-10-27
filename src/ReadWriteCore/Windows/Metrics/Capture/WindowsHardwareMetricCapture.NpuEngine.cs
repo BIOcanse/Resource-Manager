@@ -7,6 +7,7 @@ namespace ResourceManager.ReadWrite.Windows.Metrics.Capture;
 
 internal sealed partial class WindowsHardwareMetricCapture
 {
+    [ResourceManager.ReadWrite.RuntimeReadSource(typeof(ResourceManager.App.Infrastructure.Monitoring.NativeMetricSnapshotSources), nameof(ResourceManager.App.Infrastructure.Monitoring.NativeMetricSnapshotSources.WindowsNpuEngine))]
     private NativeMetricSnapshotSourceCompletion CollectNpuEngine(NativeMetricSnapshotCollectionPlan plan,
         NativeMetricSnapshotSourcePlanOutput sourcePlan, NativeMetricSnapshotSourceObservationIdentity identity,
         DateTimeOffset capturedAt, NativeMetricSnapshotCatalogTopologySnapshot? topology, CancellationToken token)

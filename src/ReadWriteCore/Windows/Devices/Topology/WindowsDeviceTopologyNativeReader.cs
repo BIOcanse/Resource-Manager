@@ -19,6 +19,7 @@ public static partial class WindowsDeviceTopologyNativeReader
     private static readonly nint InvalidHandleValue = new(-1);
 
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows PnP device properties changed")]
     public static DeviceTopologyNativeSnapshot ReadSnapshot()
     {
         var deviceInfoSet = SetupDiGetClassDevs(
@@ -96,6 +97,7 @@ public static partial class WindowsDeviceTopologyNativeReader
         }
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     private static Guid? ReadBusTypeGuid(nint deviceInfoSet, ref SpDevInfoData info)
     {
         var buffer = new byte[16];
@@ -107,6 +109,7 @@ public static partial class WindowsDeviceTopologyNativeReader
     internal static Guid? DecodeBusTypeGuid(byte[] buffer, uint propertyType)
         => propertyType == 3 && buffer.Length == 16 && new Guid(buffer) != Guid.Empty ? new Guid(buffer) : null;
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     private static string? ReadDeviceInstanceId(nint deviceInfoSet, ref SpDevInfoData info)
     {
         var builder = new StringBuilder(256);
@@ -152,6 +155,7 @@ public static partial class WindowsDeviceTopologyNativeReader
         return data is null ? [] : DecodeRegistryString(data.Value.Buffer, data.Value.Type);
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows PnP device properties changed")]
     private static RegistryPropertyData? ReadRegistryProperty(
         nint deviceInfoSet,
         ref SpDevInfoData info,
@@ -233,6 +237,7 @@ public static partial class WindowsDeviceTopologyNativeReader
         return result;
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows PnP device properties changed")]
     private static string? ReadParentDeviceId(uint devInst)
     {
         if (CM_Get_Parent(out var parentDevInst, devInst, 0) != CrSuccess)
@@ -256,6 +261,7 @@ public static partial class WindowsDeviceTopologyNativeReader
             : null;
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows PnP device properties changed")]
     private static DevNodeState? ReadDevNodeState(uint devInst)
     {
         return CM_Get_DevNode_Status(out var status, out var problemCode, devInst, 0) == CrSuccess

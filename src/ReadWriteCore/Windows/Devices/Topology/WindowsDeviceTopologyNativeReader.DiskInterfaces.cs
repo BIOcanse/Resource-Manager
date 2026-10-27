@@ -63,8 +63,11 @@ public static partial class WindowsDeviceTopologyNativeReader
     internal struct DiskInterfaceData { public uint CbSize; public Guid ClassGuid; public uint Flags; public nint Reserved; }
     private sealed class DiskInterfaceDirectoryCalls : IWindowsDiskInterfaceDirectoryCalls
     {
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows PnP device properties changed")]
         public nint Open() => SetupDiGetDiskClassDevs(in DiskInterfaceClass, null, 0, DigcfPresent | 0x10);
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows PnP device properties changed")]
         public bool Next(nint set, uint index, ref DiskInterfaceData entry) => SetupDiEnumDeviceInterfaces(set, 0, in DiskInterfaceClass, index, ref entry);
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
         public bool Detail(nint set, ref DiskInterfaceData entry, nint buffer, uint capacity, out uint required, ref SpDevInfoData info)
             => SetupDiGetDeviceInterfaceDetailW(set, ref entry, buffer, capacity, out required, ref info);
         public string? Identity(nint set, ref SpDevInfoData info) => ReadDeviceInstanceId(set, ref info);

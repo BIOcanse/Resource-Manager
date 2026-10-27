@@ -8,6 +8,29 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class TopologyWmiPciLibraryIntegrationTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FixedFirmwareFactsAreOwnerReadOnceWhileDeviceFactsRemainDemandDriven(bool unavailable)
+    {
+        var calls = new List<string>();
+        var reader = new WindowsDeviceTopologyWmiFactsReader(TimeSpan.FromSeconds(1), (_, query, _) =>
+        {
+            calls.Add(query);
+            return new([], unavailable ? "unavailable" : null);
+        });
+        foreach (var fact in new[] { WindowsDeviceTopologyWmiFact.Bios, WindowsDeviceTopologyWmiFact.ComputerSystem,
+            WindowsDeviceTopologyWmiFact.BaseBoard })
+        {
+            var first = reader.Read(fact);
+            for (var index = 0; index < 100; index++) Assert.Same(first, reader.Read(fact));
+        }
+        Assert.Equal(3, calls.Count);
+        reader.Read(WindowsDeviceTopologyWmiFact.PnpEntities);
+        reader.Read(WindowsDeviceTopologyWmiFact.PnpEntities);
+        Assert.Equal(5, calls.Count);
+    }
+
     [Fact]
     public void SelectedWmiSourceIsExplicitAndConstructionDoesNotQuery()
     {

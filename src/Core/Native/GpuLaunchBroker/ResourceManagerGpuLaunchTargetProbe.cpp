@@ -7,6 +7,7 @@
 
 namespace
 {
+// RuntimeRead: EventDriven("Process environment changed")
 std::wstring ReadEnvironment(const wchar_t* name)
 {
     const DWORD required = GetEnvironmentVariableW(name, nullptr, 0);

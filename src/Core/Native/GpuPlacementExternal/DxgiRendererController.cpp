@@ -20,6 +20,7 @@ static bool returnsToQtGui(HANDLE process,DWORD pid,uint64_t stack) {
     return false;
 }
 
+// RuntimeRead: Transport
 int wmain(int argc,wchar_t** argv) {
     if (!ResourceManagerGpuController::ConfigureOutput(argc, argv)) return 2;
     SetErrorMode(32771); setvbuf(stdout,nullptr,_IONBF,0);

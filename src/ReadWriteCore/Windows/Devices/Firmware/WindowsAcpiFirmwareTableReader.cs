@@ -31,6 +31,7 @@ public sealed class WindowsAcpiFirmwareTableReader : IAcpiFirmwareTableReader
             : WindowsInformationFieldProjection.CreateAcpi(tables, DateTimeOffset.UtcNow);
     }
 
+    [RuntimeRead(ReadVolatilityKind.Fixed)]
     public IReadOnlyList<AcpiFirmwareTable>? ReadTables()
     {
         var enumerationBudget = MaximumTableIds * sizeof(uint) * 2;

@@ -98,10 +98,15 @@ public sealed partial class NvidiaNvmlReader
     private sealed class DeclarationApi(NvidiaNvmlReader owner) : INvmlGpuDeclarationApi
     {
         public bool Initialize() => owner.EnsureInitialized();
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows GPU adapter topology changed")]
         public int Count(out uint count) => NativeMethods.nvmlDeviceGetCount(out count);
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows GPU adapter topology changed")]
         public int Handle(uint index,out IntPtr device) => NativeMethods.nvmlDeviceGetHandleByIndex(index,out device);
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
         public int Pci(IntPtr device,out NvmlPciInfo pci) => NativeMethods.nvmlDeviceGetPciInfo(device,out pci);
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows device-bound driver package changed")]
         public int Vbios(IntPtr device,byte[] buffer) => NativeMethods.GetVbiosVersion(device,buffer,(uint)buffer.Length);
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
         public int Cuda(IntPtr device,out int major,out int minor) => NativeMethods.GetCudaComputeCapability(device,out major,out minor);
     }
 }

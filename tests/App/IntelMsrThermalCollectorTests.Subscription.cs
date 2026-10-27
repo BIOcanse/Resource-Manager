@@ -65,7 +65,7 @@ public sealed partial class IntelMsrThermalCollectorTests
                 await AssertNewInterval(observed);
             }
             await Task.Delay(150, timeout.Token); var reads = hardware.Reads.Count;
-            var cached = await sampler.GetSnapshotAsync(request, timeout.Token); Assert.Equal(1.5, Value(cached));
+            var cached = sampler.ReadLatest(request); Assert.NotNull(cached); Assert.Equal(1.5, Value(cached));
             sampler.ReadLatest(request); await Task.Delay(150, timeout.Token); Assert.Equal(reads, hardware.Reads.Count);
             observed = ObservationTime(sampler.ReadLatest(request));
             using (sampler.AcquireSubscription("ratio-second", request, TimeSpan.FromMilliseconds(100)))
@@ -73,7 +73,7 @@ public sealed partial class IntelMsrThermalCollectorTests
                 await AssertNewInterval(observed);
                 await sampler.StopAsync(CancellationToken.None);
                 var stoppedReads = hardware.Reads.Count;
-                Assert.Equal(1.5, Value(await sampler.GetSnapshotAsync(request, timeout.Token)));
+                var stopped = sampler.ReadLatest(request); Assert.NotNull(stopped); Assert.Equal(1.5, Value(stopped));
                 Assert.Equal(stoppedReads, hardware.Reads.Count);
             }
             // Stop drains the worker and clears demand. Restart requires a new
@@ -121,7 +121,7 @@ public sealed partial class IntelMsrThermalCollectorTests
     [InlineData(4)]
     [InlineData(5)]
     [InlineData(6)]
-    public async Task RealOriginalWorkerUsesSubscriptionTargetAndGetNeverReadsMsr(int family)
+    public async Task RealOriginalWorkerUsesSubscriptionTargetAndCachedReadNeverReadsMsr(int family)
     {
         using var temporaryRoot = new IntelWorkerTemporaryRoot("intel-msr-worker");
         var root = temporaryRoot.Root;
@@ -154,7 +154,7 @@ public sealed partial class IntelMsrThermalCollectorTests
             dashboard, registry, slots.Owner, slots.Provider, NullLogger<WindowsHardwareMetricSampler>.Instance, intelMsrZone: zone);
         var request = MetricDeviceFields.CreateRequest(dashboard.Current!, target.ExactIdentityKey,
             [family switch { 1 => "cpu_intel_package_energy_counter_raw", 2 => "cpu_intel_aperf_counter_raw", 3 => "cpu_intel_package_power_information_raw", 4 => "cpu_intel_die_package_energy_counter_raw", 5 or 6 => "cpu_intel_core_thermal_throttling_active", _ => "cpu_intel_core_dts_temperature" }]);
-        Assert.Single(request.Ids); await sampler.GetSnapshotAsync(request, CancellationToken.None); Assert.Empty(hardware.Reads);
+        Assert.Single(request.Ids); sampler.ReadLatest(request); Assert.Empty(hardware.Reads);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await sampler.StartAsync(timeout.Token);
         try
@@ -163,14 +163,14 @@ public sealed partial class IntelMsrThermalCollectorTests
             AssertSelected(await HardwareMetricCurrentTestWait.ReadAsync(sampler, request, timeout.Token));
             Assert.Equal(family switch { 1 or 4 => new uint[] { 0x611 }, 2 => [0xE8], 3 => [0x614], 5 or 6 => [0x19C], _ => [0x1A2, 0x19C] }, hardware.Reads.Select(static read => read.Register));
             Assert.All(hardware.Reads, read => Assert.Equal(target.Processor, read.Address));
-            AssertSelected(await sampler.GetSnapshotAsync(request, timeout.Token));
+            var cached = sampler.ReadLatest(request); Assert.NotNull(cached); AssertSelected(cached);
             sampler.ReadLatest(request); Assert.Equal(family == 0 ? 2 : 1, hardware.Reads.Count);
         }
         finally
         {
             await sampler.StopAsync(CancellationToken.None);
             var reads = hardware.Reads.Count;
-            await sampler.GetSnapshotAsync(request, CancellationToken.None);
+            sampler.ReadLatest(request);
             Assert.Equal(reads, hardware.Reads.Count); Assert.Equal(1, hardware.Opens); Assert.Equal(1, hardware.Disposals);
         }
         void AssertSelected(ResourceManager.App.Domain.Metrics.HardwareMetricSnapshot snapshot)

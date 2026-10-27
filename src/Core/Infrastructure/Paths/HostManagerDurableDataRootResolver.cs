@@ -183,6 +183,7 @@ internal static class HostManagerDurableDataRootResolver
         return installRoot;
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Host Manager durable data-root registration changed")]
     private static void ReadRegisteredValue(
         RegistryHive hive,
         RegistryView view,

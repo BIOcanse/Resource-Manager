@@ -13,6 +13,7 @@ public sealed record UninstallationPlan(string Root, string Backend, string Mana
         @"Software\Microsoft\Windows\CurrentVersion\App Paths\ResourceManager.UpdateManager.exe",
         @"Software\Microsoft\Windows\CurrentVersion\Uninstall\ResourceManager"];
 
+    [System.ComponentModel.Description("RuntimeRead: Sampled")]
     public static UninstallationPlan? ReadIfInstalled()
     {
         using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
@@ -20,6 +21,7 @@ public sealed record UninstallationPlan(string Root, string Backend, string Mana
         return product is null ? null : Read();
     }
 
+    [System.ComponentModel.Description("RuntimeRead: Sampled")]
     public static UninstallationPlan Read()
     {
         using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
@@ -38,6 +40,7 @@ public sealed record UninstallationPlan(string Root, string Backend, string Mana
         return plan;
     }
 
+    [System.ComponentModel.Description("RuntimeRead: Sampled")]
     public void RequireOwnedRegistration(RegistryKey machine)
     {
         foreach (var path in RegistrationKeys)

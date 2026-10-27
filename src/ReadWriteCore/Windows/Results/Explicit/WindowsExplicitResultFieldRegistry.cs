@@ -16,7 +16,7 @@ public static class WindowsExplicitResultFieldRegistry
     public static readonly DeviceInformationDefinition MouseAllTrajectoryManualTest = Unsigned64("mouse_all_trajectory_manual_test", "manual_test", "points");
     public static readonly DeviceInformationDefinition KeyboardAllComboManualTest = Unsigned64("keyboard_all_combo_manual_test", "manual_test", "event");
     public static readonly DeviceInformationDefinition KeyboardAllKeyTransitionManualTest = Unsigned64("keyboard_all_key_transition_manual_test", "manual_test", "event");
-    public static readonly DeviceInformationDefinition KeyboardAllScanCodeManualTest = new("keyboard_all_scan_code_manual_test", "manual_test", "all", "integer-list", "code", "keyboard.scan_code_manual_test", SourceId);
+    public static readonly DeviceInformationDefinition KeyboardAllScanCodeManualTest = new("keyboard_all_scan_code_manual_test", "manual_test", "all", "integer-list", "code", "keyboard.scan_code_manual_test", SourceId, ReadVolatility.EventDriven("WindowsExplicitResultOwner.Submit accepted result"));
     public static readonly DeviceInformationDefinition MouseAllButtonBounceManualTest = Unsigned64("mouse_all_button_bounce_manual_test", "manual_test", "count");
     public static readonly DeviceInformationDefinition MouseAllButtonTransitionManualTest = Unsigned64("mouse_all_button_transition_manual_test", "manual_test", "event");
     public static readonly DeviceInformationDefinition DisplayAllAnimationFpsManualTest = Number("display_all_animation_fps_manual_test", "manual_test", "fps");
@@ -159,13 +159,13 @@ public static class WindowsExplicitResultFieldRegistry
     }
 
     private static DeviceInformationDefinition Number(string name, string resource, string unit)
-        => new(name, resource, "all", "number", unit, name, SourceId);
+        => new(name, resource, "all", "number", unit, name, SourceId, ReadVolatility.EventDriven("WindowsExplicitResultOwner.Submit accepted result"));
     private static DeviceInformationDefinition Unsigned64(string name, string resource, string unit)
-        => new(name, resource, "all", "unsigned64", unit, name, SourceId);
+        => new(name, resource, "all", "unsigned64", unit, name, SourceId, ReadVolatility.EventDriven("WindowsExplicitResultOwner.Submit accepted result"));
     private static DeviceInformationDefinition Unsigned128(string name, string resource, string unit)
-        => new(name, resource, "all", "unsigned-integer", unit, name, SourceId);
+        => new(name, resource, "all", "unsigned-integer", unit, name, SourceId, ReadVolatility.EventDriven("WindowsExplicitResultOwner.Submit accepted result"));
     private static DeviceInformationDefinition Text(string name, string resource, string unit)
-        => new(name, resource, "all", "text", unit, name, SourceId);
+        => new(name, resource, "all", "text", unit, name, SourceId, ReadVolatility.EventDriven("WindowsExplicitResultOwner.Submit accepted result"));
 }
 
 internal sealed record WindowsExplicitResultValueEntry(string Name, string Unit, object Value);

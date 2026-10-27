@@ -104,6 +104,7 @@ pub const ClockSample = struct {
     qpc_after: i64,
     filetime_100ns: i64,
 
+    // RuntimeRead: Sampled
     pub fn read() error{ClockSamplingFailed}!ClockSample {
         var before: i64 = 0;
         var after: i64 = 0;
@@ -189,6 +190,7 @@ pub const Consumer = struct {
     pub fn openEtl(self: *Consumer, filename: [:0]const u16) ConsumerError!void {
         return self.open(filename, false);
     }
+    // RuntimeRead: Fixed
     fn open(self: *Consumer, name: [:0]const u16, realtime: bool) ConsumerError!void {
         if (self.processing.load(.acquire)) return error.Processing;
         if (self.handle.load(.acquire) != invalid_handle) return error.AlreadyOpen;
@@ -242,6 +244,7 @@ pub const Consumer = struct {
     }
     /// Run on the owner's dedicated registered native consumer thread. Returns
     /// the original Windows status (0 success, 1223 buffer cancellation, etc.).
+    // RuntimeRead: Sampled
     pub fn process(self: *Consumer) ConsumerError!u32 {
         if (self.processing.cmpxchgStrong(false, true, .acq_rel, .acquire) != null) return error.Processing;
         defer self.processing.store(false, .release);

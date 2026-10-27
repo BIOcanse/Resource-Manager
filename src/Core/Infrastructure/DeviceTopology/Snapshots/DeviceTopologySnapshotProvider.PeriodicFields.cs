@@ -96,7 +96,10 @@ public sealed partial class DeviceTopologySnapshotProvider
                     : scope == DeviceTopologySampleScope.OperatingSystem
                     ? [OperatingSystemPublicationKey(WindowsOperatingSystemInformationOwner.SelectFields([field]))]
                     : items,
-                scope == DeviceTopologySampleScope.PassiveCurrent ? FieldCollectionSourceKind.CurrentValue : FieldCollectionSourceKind.SourceQuery))
+                scope is DeviceTopologySampleScope.PassiveCurrent or DeviceTopologySampleScope.Acpi
+                    || (scope == DeviceTopologySampleScope.OperatingSystem
+                        && WindowsOperatingSystemInformationOwner.IsFixedDeclaration(WindowsOperatingSystemInformationOwner.SelectFields([field])))
+                    ? FieldCollectionSourceKind.CurrentValue : FieldCollectionSourceKind.SourceQuery))
                 .ToImmutableArray();
             var registration = deliver ? fieldSubscriptionDelivery.Register(key, backend, fields, bindings) : null;
             var flags = NativeSamplingSubscriptionSourceFlags.None;

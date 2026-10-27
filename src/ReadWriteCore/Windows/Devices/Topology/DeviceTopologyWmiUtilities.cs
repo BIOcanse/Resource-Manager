@@ -5,9 +5,11 @@ namespace ResourceManager.App.Infrastructure.DeviceTopology;
 
 internal static class DeviceTopologyWmiUtilities
 {
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     public static DeviceTopologyWmiQueryResult QueryObjects(string path, string query)
         => QueryObjects(path, query, TimeSpan.FromSeconds(2));
 
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     public static DeviceTopologyWmiQueryResult QueryObjects(string path, string query, TimeSpan timeout)
     {
         var result = PlatformSensorWmiUtilities.QueryObjects(path, query, timeout);

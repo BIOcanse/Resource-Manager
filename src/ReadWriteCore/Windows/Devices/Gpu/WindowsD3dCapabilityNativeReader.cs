@@ -205,6 +205,8 @@ internal sealed class WindowsD3dCapabilityNativeReader : IWindowsD3dCapabilityRe
         }
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows GPU adapter topology changed")]
+
     private static Dictionary<WindowsD3dAdapterIdentity, IntPtr>? FindExactAdapters(
         WindowsD3dCapabilityScope scope, CancellationToken cancellationToken)
     {

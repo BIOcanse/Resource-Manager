@@ -21,9 +21,13 @@ public static partial class WindowsCpuThreadCpuidReader
             captures.Count == 0 || captures.Any(static capture => capture.Data is not null) ? DateTimeOffset.UtcNow : null);
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
+
     public static IReadOnlyList<CpuThreadCpuidInformation> Read(IReadOnlyList<int> ids, ICollection<string> notes)
         => X86Base.IsSupported ? Read(ids, new NativeAccess(), notes)
             : ids.Select(static id => new CpuThreadCpuidInformation(id, null)).ToArray();
+
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
 
     internal static IReadOnlyList<CpuThreadCpuidInformation> Read(IReadOnlyList<int> ids, ICpuThreadCpuidAccess access,
         ICollection<string> notes)

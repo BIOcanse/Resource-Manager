@@ -13,6 +13,7 @@ public sealed class HardwareMonitorCoreReader : IDisposable
     private readonly object gate = new();
     private readonly Func<IHardwareMonitorCoreSession> createSession;
     private IHardwareMonitorCoreSession? computer;
+    private string? openError;
     private bool disposed;
 
     public HardwareMonitorCoreReader() : this(() => new LibrarySession()) { }
@@ -28,6 +29,7 @@ public sealed class HardwareMonitorCoreReader : IDisposable
         IsPsuEnabled = false, IsPowerMonitorEnabled = false
     };
 
+    [RuntimeRead(ReadVolatilityKind.Sampled)]
     public HardwareMonitorSensorSnapshot Read(TimeSpan timeout)
     {
         var rows = ReadRows(timeout);
@@ -35,6 +37,7 @@ public sealed class HardwareMonitorCoreReader : IDisposable
             new(rows.Sensors, rows.Error), new(rows.Hardware, rows.Error), ProviderIdentity);
     }
 
+    [RuntimeRead(ReadVolatilityKind.Sampled)]
     public HardwareMonitorFanIdentityRead ReadFanIdentities(TimeSpan timeout)
     {
         var rows = ReadRows(timeout, skipMemory: true);
@@ -48,14 +51,23 @@ public sealed class HardwareMonitorCoreReader : IDisposable
         lock (gate)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
+            if (openError is not null) return new([], [], openError);
             var started = System.Diagnostics.Stopwatch.StartNew();
             try
             {
                 if (computer is null)
                 {
-                    var opened = createSession();
-                    try { opened.Open(); computer = opened; }
-                    catch { opened.Close(); throw; }
+                    try
+                    {
+                        var opened = createSession();
+                        try { opened.Open(); computer = opened; }
+                        catch { opened.Close(); throw; }
+                    }
+                    catch (Exception error) when (error is not OutOfMemoryException)
+                    {
+                        openError = "lhm-core-" + error.GetType().Name;
+                        return new([], [], openError);
+                    }
                 }
                 var sensors = new List<Dictionary<string, object?>>();
                 var hardware = new List<Dictionary<string, object?>>();

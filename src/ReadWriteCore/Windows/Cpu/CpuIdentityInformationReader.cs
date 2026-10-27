@@ -7,9 +7,11 @@ namespace ResourceManager.ReadWrite.Windows.Cpu;
 
 public static class CpuIdentityInformationReader
 {
+    [RuntimeRead(ReadVolatilityKind.Fixed)]
     public static CpuIdentityInformation? Read()
         => Read(WindowsCpuOsFeatureReader.Read() ?? []);
 
+    [RuntimeRead(ReadVolatilityKind.Fixed)]
     public static CpuIdentityInformation? Read(IReadOnlyList<string> osFeatures)
         => X86Base.IsSupported ? ReadRegisters(static (leaf, subleaf) => X86Base.CpuId(leaf, subleaf), osFeatures) : null;
 

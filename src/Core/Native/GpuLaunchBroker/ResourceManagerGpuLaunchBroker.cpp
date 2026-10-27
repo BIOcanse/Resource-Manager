@@ -141,6 +141,7 @@ std::wstring ModulePath()
     return length > 0 && length < buffer.size() ? std::wstring(buffer.data(), length) : std::wstring();
 }
 
+// RuntimeRead: EventDriven("Process environment changed")
 std::wstring ReadEnvironment(const wchar_t* name)
 {
     const DWORD required = GetEnvironmentVariableW(name, nullptr, 0);
@@ -645,6 +646,7 @@ bool CanUseVulkanEnvironment()
         && elevation.TokenIsElevated == 0;
 }
 
+// RuntimeRead: Sampled
 int LaunchTarget(
     const std::wstring& targetPath,
     const std::wstring& originalCommandLine,
@@ -827,6 +829,7 @@ int LaunchTarget(
     return ERROR_DLL_INIT_FAILED;
 }
 
+// RuntimeRead: EventDriven("IFEO launch interception registry changed")
 std::wstring ReadRegistryString(HKEY key, const wchar_t* valueName)
 {
     DWORD type = 0;
@@ -875,6 +878,7 @@ bool FilterMatchesRule(const std::wstring& path, const std::wstring& ruleName)
     return expected == ruleName;
 }
 
+// RuntimeRead: EventDriven("IFEO launch interception registry changed")
 std::vector<std::wstring> EnumerateSubKeys(HKEY key, DWORD& firstError, bool* complete = nullptr)
 {
     std::vector<std::wstring> names;
@@ -894,6 +898,7 @@ std::vector<std::wstring> EnumerateSubKeys(HKEY key, DWORD& firstError, bool* co
     return names;
 }
 
+// RuntimeRead: EventDriven("IFEO launch interception registry changed")
 DWORD RemoveOwnedRulesFromView(REGSAM view, int& removed)
 {
     HKEY rawRoot = nullptr;

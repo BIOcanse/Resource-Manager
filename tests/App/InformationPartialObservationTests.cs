@@ -6,7 +6,7 @@ using Xunit;
 namespace Resource_Manager_APP.Tests;
 public sealed class InformationPartialObservationTests
 {
-    private static readonly DeviceInformationDefinition Definition = new("recorded_text", "recorded", "all", "text", "text", "recorded", "recorded");
+    private static readonly DeviceInformationDefinition Definition = new("recorded_text", "recorded", "all", "text", "text", "recorded", "recorded", ResourceManager.ReadWrite.ReadVolatility.Sampled);
     private static DeviceInformationField Value(string value, DateTimeOffset? observedAt = null)
         => new(Definition, JsonSerializer.SerializeToElement(value)) { ObservedAt = observedAt };
     [Fact] public void UnchangedDefaultFieldInheritsSnapshotTime()

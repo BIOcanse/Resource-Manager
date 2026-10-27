@@ -32,7 +32,8 @@ function Get-StateReference {
 }
 
 function Assert-StateRegistry {
-    param([Parameter(Mandatory)][System.Collections.IDictionary]$Registry)
+    param([Parameter(Mandatory)][System.Collections.IDictionary]$Registry,
+        [switch]$HistoricalTable)
     if (@($Registry.Keys).Count -ne 1 -or @($Registry.Keys)[0] -cne 'entries' -or $Registry.entries -isnot [array]) {
         throw 'Registry: expected exactly an entries array.'
     }
@@ -72,6 +73,13 @@ function Assert-StateRegistry {
             if ([Microsoft.CodeAnalysis.CSharp.SyntaxFactory]::ParseTypeName($entry.type).ContainsDiagnostics) { throw "${label}: type must be a C# type name." }
             if ($entry.perBlock -isnot [bool]) { throw "${label}: perBlock must be boolean." }
             if ($entry.trigger -isnot [string] -or $entry.trigger -cnotin @('event', 'poll')) { throw "${label}: trigger must be event or poll." }
+            if ($entry.trigger -ceq 'event') {
+                $allowed += 'changeEvent'
+                if ((-not $HistoricalTable -and -not $entry.Contains('changeEvent')) -or
+                    ($entry.Contains('changeEvent') -and ($entry.changeEvent -isnot [string] -or [string]::IsNullOrWhiteSpace($entry.changeEvent)))) {
+                    throw "${label}: event requires a non-empty changeEvent naming its producer transition."
+                }
+            }
             if ($entry.trigger -ceq 'poll') {
                 $allowed += 'pollInterval'
                 if (-not $entry.Contains('pollInterval') -or $entry.pollInterval -isnot [string] -or [string]::IsNullOrWhiteSpace($entry.pollInterval)) {
@@ -179,7 +187,10 @@ function Read-StateRegistry {
     [CmdletBinding(DefaultParameterSetName = 'Path')]
     param(
         [Parameter(Mandatory, ParameterSetName = 'Path')][string]$Path,
-        [Parameter(Mandatory, ParameterSetName = 'Bytes')][AllowEmptyCollection()][byte[]]$Bytes
+        [Parameter(Mandatory, ParameterSetName = 'Bytes')][AllowEmptyCollection()][byte[]]$Bytes,
+        # Versioned published tables predate named event metadata. They are read-only;
+        # writers and current generation always enforce the current schema.
+        [switch]$HistoricalTable
     )
     if ($PSCmdlet.ParameterSetName -eq 'Path') { $Bytes = [IO.File]::ReadAllBytes([IO.Path]::GetFullPath($Path)) }
     if ($Bytes.Length -ge 3 -and $Bytes[0] -eq 239 -and $Bytes[1] -eq 187 -and $Bytes[2] -eq 191) { throw 'Registry: UTF-8 BOM is not allowed.' }
@@ -209,7 +220,7 @@ function Read-StateRegistry {
         $registry = ConvertFrom-Json -InputObject $json -AsHashtable -Depth 16
     } catch { throw "Registry: invalid JSON: $_" }
     if ($registry -isnot [System.Collections.IDictionary]) { throw 'Registry: expected an object.' }
-    Assert-StateRegistry $registry
+    Assert-StateRegistry $registry -HistoricalTable:$HistoricalTable
     return $registry
 }
 
@@ -222,7 +233,7 @@ function ConvertTo-StateRegistryBytes {
     Assert-StateRegistry $canonical
     $entries = @(foreach ($entry in $canonical.entries) {
         $ordered = [ordered]@{}
-        foreach ($field in @('uid', 'kind', 'process', 'name', 'comment', 'storage', 'type', 'owner', 'perBlock', 'trigger', 'pollInterval', 'node', 'items', 'conditions', 'children', 'decides')) {
+        foreach ($field in @('uid', 'kind', 'process', 'name', 'comment', 'storage', 'type', 'owner', 'perBlock', 'trigger', 'changeEvent', 'pollInterval', 'node', 'items', 'conditions', 'children', 'decides')) {
             if ($entry.Contains($field)) {
                 if ($field -ceq 'items') {
                     $ordered[$field] = @(foreach ($read in $entry.items) {

@@ -7,6 +7,7 @@ namespace ResourceManager.ReadWrite.Windows.Devices.Battery;
 internal static class WindowsBatteryNative
 {
     private static readonly Guid BatteryInterface = new("72631e54-78a4-11d0-bcf7-00aa00b7b32a");
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows PnP device properties changed")]
     internal static IReadOnlyList<string>? Enumerate()
     {
         if (!OperatingSystem.IsWindows()) return null;

@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+// RuntimeRead: Sampled
 int wmain(int argc, wchar_t** argv)
 {
     const bool failBeforeResume = argc == 7 && std::wcscmp(argv[6], L"--fail-before-resume") == 0;

@@ -11,6 +11,7 @@ public sealed class WindowsGraphicsPreferenceStore : IWindowsGraphicsPreferenceS
     private const string IntegratedGpuPreference = "1";
     private const string DedicatedGpuPreference = "2";
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows graphics preferences registry value changed")]
     public RecoveryReadResult<string> ReadValueForRecovery(string executablePath)
     {
         try
@@ -49,6 +50,7 @@ public sealed class WindowsGraphicsPreferenceStore : IWindowsGraphicsPreferenceS
         key.SetValue(path, value, RegistryValueKind.String);
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows graphics preferences registry value changed")]
     public void DeleteValue(string executablePath)
     {
         var path = NormalizeExecutablePath(executablePath);

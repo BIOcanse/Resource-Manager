@@ -1,6 +1,7 @@
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Messages;
 using ResourceManager.App.Domain.Overlay;
+using ResourceManager.ReadWrite;
 
 namespace ResourceManager.App.Application.Metrics;
 
@@ -9,18 +10,18 @@ public static partial class MetricCatalog
     public static IReadOnlyList<MetricDefinition> FromSnapshot(HardwareMetricSnapshot snapshot)
     {
         var definitions = new Dictionary<string, MetricDefinition>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (id, unit) in BuiltInDeclarations)
-            Add(id, unit, capabilityKnown: true);
+        foreach (var (id, unit, volatility) in BuiltInDeclarations)
+            Add(id, unit, volatility, capabilityKnown: true);
 
         var cpuComponent = CpuComponent(snapshot.Cpu.Name);
-        foreach (var (id, unit) in CpuDeclarations)
-            Add(id, unit, id == "cpu.temperature" ? cpuComponent
+        foreach (var (id, unit, volatility) in CpuDeclarations)
+            Add(id, unit, volatility, id == "cpu.temperature" ? cpuComponent
                 : id is "cpu.fanRpm" or "cpu.fanPercent" ? FanComponent(id)
                 : cpuComponent == "amd-smu-pawnio-provider" ? cpuComponent : null);
-        foreach (var (id, unit) in SensorDeclarations)
-            Add(id, unit, "hardware-sensors-pawnio-provider");
-        Add("virtualMemory.usage", MetricUnits.Bytes);
-        Add("virtualMemory.percent", "%");
+        foreach (var (id, unit, volatility) in SensorDeclarations)
+            Add(id, unit, volatility, "hardware-sensors-pawnio-provider");
+        Add("virtualMemory.usage", MetricUnits.Bytes, ReadVolatility.Sampled);
+        Add("virtualMemory.percent", "%", ReadVolatility.Sampled);
 
         var gpuIndexes = snapshot.Gpus.Select(static gpu => gpu.Index)
             .Concat(snapshot.Items.Keys.Select(GpuIndex).OfType<int>())
@@ -31,17 +32,17 @@ public static partial class MetricCatalog
         {
             var gpu = snapshot.Gpus.FirstOrDefault(candidate => candidate.Index == index);
             var component = GpuComponent(gpu?.Name);
-            foreach (var (suffix, unit) in GpuDeclarations)
+            foreach (var (suffix, unit, volatility) in GpuDeclarations)
             {
                 var id = $"gpu.{index}.{suffix}";
                 var dependency = suffix is "fanRpm" or "fanPercent" ? FanComponent(id, component)
                     : suffix is "coreVoltage" or "current" && component == "nvidia-nvml-provider"
                         ? "nvidia-nvapi-provider" : component;
-                Add(id, unit, dependency, gpu is not null && suffix == "usage", "gpu", gpu?.IdentityKey);
+                Add(id, unit, volatility, dependency, gpu is not null && suffix == "usage", "gpu", gpu?.IdentityKey);
             }
         }
         foreach (var (id, value) in snapshot.Items)
-            if (!definitions.ContainsKey(id)) Add(id, value.Unit,
+            if (!definitions.ContainsKey(id)) Add(id, value.Unit, ReadVolatility.Sampled,
                 id.StartsWith("fan.", StringComparison.OrdinalIgnoreCase) ? "hardware-sensors-pawnio-provider" : null);
 
         // A field binding adds raw addresses and aliases, including unavailable
@@ -57,7 +58,7 @@ public static partial class MetricCatalog
                 var existing = definitions.GetValueOrDefault(id);
                 var dependency = Dependency(binding.SourceId) ?? existing?.RequiredComponentId;
                 var selectable = available || existing?.Selectable == true;
-                definitions[id] = new(id, binding.Field.Unit, selectable ? null : dependency,
+                definitions[id] = new(id, binding.Field.Unit, binding.Field.Volatility, selectable ? null : dependency,
                     Selectable: selectable, DisabledReason: selectable ? null : Reason(snapshot.Items.GetValueOrDefault(id), dependency),
                     ScopeKind: binding.Field.Resource == MetricResource.Gpu ? "gpu" : binding.Device.Kind,
                     ScopeKey: binding.DeviceIdentity)
@@ -85,14 +86,14 @@ public static partial class MetricCatalog
             }
         return result;
 
-        void Add(string id, string unit, string? dependency = null, bool capabilityKnown = false,
+        void Add(string id, string unit, ReadVolatility volatility, string? dependency = null, bool capabilityKnown = false,
             string? scopeKind = null, string? scopeKey = null)
         {
             var value = snapshot.Items.GetValueOrDefault(id);
             var field = DeclaredField(id, value?.SourceId);
             var selectable = capabilityKnown || HasValue(value);
             dependency = selectable ? null : Dependency(value?.SourceId) ?? dependency;
-            definitions[id] = new(id, unit, dependency, selectable,
+            definitions[id] = new(id, unit, field?.Volatility ?? volatility, dependency, selectable,
                 selectable ? null : Reason(value, dependency), scopeKind, scopeKey)
             {
                 FieldCode = value is { FieldCode: not MetricFieldCode.Unknown } ? value.FieldCode : field?.Code ?? default,
@@ -136,30 +137,30 @@ public static partial class MetricCatalog
             : value is null ? BackendMessageCodes.Metric.NotExposed : BackendMessageCodes.Metric.NoValidReading,
         dependency is null ? [] : [dependency]);
 
-    private static readonly (string Id, string Unit)[] BuiltInDeclarations =
-    [ ("cpu.usage", "%"), ("cpu.frequency", "MHz"), ("cpu.frequencyPercent", "%"),
-      ("memory.usage", MetricUnits.Bytes), ("memory.percent", "%"),
-      ("disk.total.activePercent", "%"), ("disk.total.readBytesPerSec", "B/s"),
-      ("disk.total.writeBytesPerSec", "B/s"), ("disk.total.queueLength", ""),
-      ("network.total.receiveBytesPerSec", "B/s"), ("network.total.sendBytesPerSec", "B/s"),
-      ("network.total.utilizationPercent", "%") ];
+    private static readonly (string Id, string Unit, ReadVolatility Volatility)[] BuiltInDeclarations =
+    [ ("cpu.usage", "%", ReadVolatility.Sampled), ("cpu.frequency", "MHz", ReadVolatility.Sampled), ("cpu.frequencyPercent", "%", ReadVolatility.Sampled),
+      ("memory.usage", MetricUnits.Bytes, ReadVolatility.Sampled), ("memory.percent", "%", ReadVolatility.Sampled),
+      ("disk.total.activePercent", "%", ReadVolatility.Sampled), ("disk.total.readBytesPerSec", "B/s", ReadVolatility.Sampled),
+      ("disk.total.writeBytesPerSec", "B/s", ReadVolatility.Sampled), ("disk.total.queueLength", "", ReadVolatility.Sampled),
+      ("network.total.receiveBytesPerSec", "B/s", ReadVolatility.Sampled), ("network.total.sendBytesPerSec", "B/s", ReadVolatility.Sampled),
+      ("network.total.utilizationPercent", "%", ReadVolatility.Sampled) ];
 
-    private static readonly (string Id, string Unit)[] CpuDeclarations =
-    [ ("cpu.packagePower", "W"), ("cpu.coreVoltage", "V"), ("cpu.packageCurrent", "A"),
-      ("cpu.temperature", "°C"), ("cpu.stapmPower", "W"), ("cpu.actualPower", "W"),
-      ("cpu.averagePower", "W"), ("cpu.tdcCurrent", "A"), ("cpu.edcCurrent", "A"),
-      ("cpu.platformPower", "W"), ("cpu.platformVoltage", "V"), ("cpu.smuFrequency", "MHz"),
-      ("cpu.fanRpm", "RPM"), ("cpu.fanPercent", "%") ];
+    private static readonly (string Id, string Unit, ReadVolatility Volatility)[] CpuDeclarations =
+    [ ("cpu.packagePower", "W", ReadVolatility.Sampled), ("cpu.coreVoltage", "V", ReadVolatility.Sampled), ("cpu.packageCurrent", "A", ReadVolatility.Sampled),
+      ("cpu.temperature", "°C", ReadVolatility.Sampled), ("cpu.stapmPower", "W", ReadVolatility.Sampled), ("cpu.actualPower", "W", ReadVolatility.Sampled),
+      ("cpu.averagePower", "W", ReadVolatility.Sampled), ("cpu.tdcCurrent", "A", ReadVolatility.Sampled), ("cpu.edcCurrent", "A", ReadVolatility.Sampled),
+      ("cpu.platformPower", "W", ReadVolatility.Sampled), ("cpu.platformVoltage", "V", ReadVolatility.Sampled), ("cpu.smuFrequency", "MHz", ReadVolatility.Sampled),
+      ("cpu.fanRpm", "RPM", ReadVolatility.Sampled), ("cpu.fanPercent", "%", ReadVolatility.Sampled) ];
 
-    private static readonly (string Id, string Unit)[] SensorDeclarations =
-    [ ("memory.temperature", "°C"), ("system.motherboardTemperature", "°C"), ("system.vrmTemperature", "°C"),
-      ("system.chipsetTemperature", "°C"), ("system.motherboardVoltage", "V") ];
+    private static readonly (string Id, string Unit, ReadVolatility Volatility)[] SensorDeclarations =
+    [ ("memory.temperature", "°C", ReadVolatility.Sampled), ("system.motherboardTemperature", "°C", ReadVolatility.Sampled), ("system.vrmTemperature", "°C", ReadVolatility.Sampled),
+      ("system.chipsetTemperature", "°C", ReadVolatility.Sampled), ("system.motherboardVoltage", "V", ReadVolatility.Sampled) ];
 
-    private static readonly (string Id, string Unit)[] GpuDeclarations =
-    [ ("usage", "%"), ("graphicsClock", "MHz"), ("graphicsClockPercent", "%"), ("power", "W"),
-      ("boardPower", "W"), ("powerLimit", "W"), ("temperature", "°C"), ("hotspotTemperature", "°C"),
-      ("intakeTemperature", "°C"), ("fanRpm", "RPM"), ("fanPercent", "%"), ("coreVoltage", "V"),
-      ("current", "A"), ("vram", MetricUnits.Bytes), ("vramPercent", "%"), ("memoryClock", "MHz") ];
+    private static readonly (string Id, string Unit, ReadVolatility Volatility)[] GpuDeclarations =
+    [ ("usage", "%", ReadVolatility.Sampled), ("graphicsClock", "MHz", ReadVolatility.Sampled), ("graphicsClockPercent", "%", ReadVolatility.Sampled), ("power", "W", ReadVolatility.Sampled),
+      ("boardPower", "W", ReadVolatility.Sampled), ("powerLimit", "W", ReadVolatility.Sampled), ("temperature", "°C", ReadVolatility.Sampled), ("hotspotTemperature", "°C", ReadVolatility.Sampled),
+      ("intakeTemperature", "°C", ReadVolatility.Sampled), ("fanRpm", "RPM", ReadVolatility.Sampled), ("fanPercent", "%", ReadVolatility.Sampled), ("coreVoltage", "V", ReadVolatility.Sampled),
+      ("current", "A", ReadVolatility.Sampled), ("vram", MetricUnits.Bytes, ReadVolatility.Sampled), ("vramPercent", "%", ReadVolatility.Sampled), ("memoryClock", "MHz", ReadVolatility.Sampled) ];
 
     private static int? GpuIndex(string id)
     {
@@ -204,13 +205,13 @@ public static partial class MetricCatalog
         => (snapshot is null ? [] : FromSnapshot(snapshot)).Concat(TargetSoftwareDefinitions(snapshot)).ToArray();
 
     public static IReadOnlyList<MetricDefinition> TargetSoftwareDefinitions(HardwareMetricSnapshot? snapshot) =>
-    [ new(PerformanceOverlayMetricIds.Fps, "FPS"), new(PerformanceOverlayMetricIds.FrameTime, "ms"),
-      new(PerformanceOverlayMetricIds.OnePercentLow, "FPS"), new(PerformanceOverlayMetricIds.PointOnePercentLow, "FPS"),
-      new(PerformanceOverlayMetricIds.Cpu, "%"), TargetGpu(PerformanceOverlayMetricIds.Gpu, "%", snapshot),
-      new(PerformanceOverlayMetricIds.Memory, MetricUnits.Bytes), TargetGpu(PerformanceOverlayMetricIds.Vram, MetricUnits.Bytes, snapshot) ];
+    [ new(PerformanceOverlayMetricIds.Fps, "FPS", ReadVolatility.Sampled), new(PerformanceOverlayMetricIds.FrameTime, "ms", ReadVolatility.Sampled),
+      new(PerformanceOverlayMetricIds.OnePercentLow, "FPS", ReadVolatility.Sampled), new(PerformanceOverlayMetricIds.PointOnePercentLow, "FPS", ReadVolatility.Sampled),
+      new(PerformanceOverlayMetricIds.Cpu, "%", ReadVolatility.Sampled), TargetGpu(PerformanceOverlayMetricIds.Gpu, "%", snapshot),
+      new(PerformanceOverlayMetricIds.Memory, MetricUnits.Bytes, ReadVolatility.Sampled), TargetGpu(PerformanceOverlayMetricIds.Vram, MetricUnits.Bytes, snapshot) ];
 
     private static MetricDefinition TargetGpu(string id, string unit, HardwareMetricSnapshot? snapshot)
-        => new(id, unit, Selectable: snapshot is null || snapshot.Gpus.Count > 0,
+        => new(id, unit, ReadVolatility.Sampled, Selectable: snapshot is null || snapshot.Gpus.Count > 0,
             DisabledReason: snapshot is not null && snapshot.Gpus.Count == 0
                 ? BackendMessage.Create(BackendMessageDomains.Metric, BackendMessageCodes.Metric.NotExposed) : null);
 }

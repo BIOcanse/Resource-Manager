@@ -1,9 +1,11 @@
 using ResourceManager.App.Domain.Messages;
+using ResourceManager.ReadWrite;
 namespace ResourceManager.App.Domain.Metrics;
 
 public sealed record MetricDefinition(
     string Id,
     string Unit,
+    ReadVolatility Volatility,
     string? RequiredComponentId = null,
     bool Selectable = true,
     BackendMessage? DisabledReason = null,

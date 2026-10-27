@@ -10,6 +10,7 @@ internal static unsafe class WindowsStartupShellLinkReader
     private static readonly Guid ShellLinkId = new("000214f9-0000-0000-c000-000000000046");
     private static readonly Guid PersistFileId = new("0000010b-0000-0000-c000-000000000046");
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Startup registry key, folder or boot/logon task registration changed")]
     internal static WindowsStartupFileDeclaration Read(string file)
     {
         nint link = 0, persistence = 0; var clsid = ShellLinkClass; var iid = ShellLinkId;
@@ -28,6 +29,7 @@ internal static unsafe class WindowsStartupShellLinkReader
         }
         finally { Release(persistence); Release(link); }
     }
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Startup registry key, folder or boot/logon task registration changed")]
     private static string GetText(nint value, int slot, bool path)
     {
         // GetPath's documented native ceiling is MAX_PATH; detect that ceiling

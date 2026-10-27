@@ -111,6 +111,7 @@ inline uint64_t Resolve(HANDLE process,DWORD pid,uint64_t address,EntryRole role
     throw std::runtime_error("Calibrated renderer module not present in target");
 }
 
+// RuntimeRead: Transport
 inline Entries Discover(HANDLE process,DWORD pid,Renderer renderer,bool observeSubmission=false) {
     Window window;
     Com<IDXGIFactory2> factory;

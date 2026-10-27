@@ -51,6 +51,7 @@ public sealed partial class NvidiaNvmlReader
         internal static extern int nvmlDeviceGetEnforcedPowerLimit(IntPtr device, out uint limitMilliwatts);
 
         [DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetPowerManagementDefaultLimit")]
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
         internal static extern int nvmlDeviceGetPowerManagementDefaultLimit(IntPtr device, out uint limitMilliwatts);
 
         [DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetTemperature")]
@@ -77,14 +78,17 @@ public sealed partial class NvidiaNvmlReader
         [DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetCurrentClocksEventReasons")]
         internal static extern int GetClockEvents(IntPtr device, out ulong reasons);
         [DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetSupportedClocksEventReasons")]
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
         internal static extern int GetSupportedClockEvents(IntPtr device, out ulong reasons);
         [DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetCurrPcieLinkGeneration")]
         internal static extern int GetCurrentPcieGeneration(IntPtr device, out uint value);
         [DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetCurrPcieLinkWidth")]
         internal static extern int GetCurrentPcieWidth(IntPtr device, out uint value);
         [DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetMaxPcieLinkGeneration")]
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
         internal static extern int GetMaximumPcieGeneration(IntPtr device, out uint value);
         [DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetMaxPcieLinkWidth")]
+        [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
         internal static extern int GetMaximumPcieWidth(IntPtr device, out uint value);
         [DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetEncoderUtilization")]
         internal static extern int GetEncoderUtilization(IntPtr device, out uint percent, out uint periodUs);

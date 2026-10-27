@@ -14,6 +14,7 @@ internal static unsafe class WindowsRegisteredPackageReader
     // IPackageManager.FindPackagesByUserSecurityId=12; IPackage.Id=6;
     // IPackageId.FullName=12, FamilyName=13; iterable.First=6;
     // iterator.Current=6, HasCurrent=7, MoveNext=8. IInspectable occupies 0..5.
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "PackageManager package registered or unregistered")]
     internal static IReadOnlyList<WindowsRegisteredPackageFamily> Read(string sid, CancellationToken token)
     {
         var initialized = RoInitialize(1); // MTA, or borrow the thread's existing apartment.
@@ -63,6 +64,7 @@ internal static unsafe class WindowsRegisteredPackageReader
         if (value == 0) throw new COMException("Windows returned a null interface.");
         return (*(nint**)value)[index];
     }
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "PackageManager package registered or unregistered")]
     private static nint Interface(nint value, Guid iid)
     {
         nint result = 0;
@@ -72,6 +74,7 @@ internal static unsafe class WindowsRegisteredPackageReader
         if (result == 0) throw new COMException("Windows returned a null typed interface.");
         return result;
     }
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "PackageManager package registered or unregistered")]
     private static nint Out(nint value, int slot)
     {
         nint result = 0;
@@ -80,12 +83,14 @@ internal static unsafe class WindowsRegisteredPackageReader
         if (hr < 0) { Release(result); Check(hr); }
         return result;
     }
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "PackageManager package registered or unregistered")]
     private static bool Boolean(nint value, int slot)
     {
         byte result = 0;
         var read = (delegate* unmanaged[Stdcall]<nint, byte*, int>)Slot(value, slot);
         Check(read(value, &result)); return result != 0;
     }
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "PackageManager package registered or unregistered")]
     private static string Text(nint value, int slot)
     {
         nint text = 0;

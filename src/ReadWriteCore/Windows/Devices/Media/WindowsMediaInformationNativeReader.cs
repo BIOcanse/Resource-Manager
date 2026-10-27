@@ -330,6 +330,7 @@ internal sealed class WindowsMediaInformationNativeReader : IWindowsMediaInforma
         }
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows PnP device properties changed")]
     private static ConnectedAudioDeviceRead ReadConnectedAudioDevice(IMMDeviceEnumerator enumerator, string endpointId,
         CancellationToken cancellationToken)
     {
@@ -640,6 +641,8 @@ internal sealed class WindowsMediaInformationNativeReader : IWindowsMediaInforma
         if (result < 0) return null;
         return value as string;
     }
+
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows device-bound driver package changed")]
 
     private static DeviceTopologyCodecModuleVersion? TryReadCodecModuleVersion(Guid classId,
         WindowsCodecRegistrationSource source, WindowsCodecRegistryView registryView,

@@ -1,16 +1,45 @@
 using static ResourceManager.ReadWrite.Windows.Cpu.WindowsCpuOsTopologyReader;
 using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Domain.CpuTopology;
+using ResourceManager.ReadWrite;
+using ResourceManager.ReadWrite.Windows.Platform;
 
 namespace ResourceManager.App.Infrastructure.CpuTopology;
 
-public sealed partial class WindowsCpuTopologyReader(
-    ICpuCorePerformanceOverrideStore performanceOverrideStore) : ICpuTopologySampler
+public sealed partial class WindowsCpuTopologyReader : ICpuTopologySampler
 {
+    private readonly ICpuCorePerformanceOverrideStore performanceOverrideStore;
     private readonly WindowsCpuOsTopologyReader osReader = new();
+    private readonly Lazy<IReadOnlyList<string>?> osFeatures = new(WindowsCpuOsFeatureReader.Read);
+    private readonly Lazy<ulong?> osEnabledStateMask = new(WindowsCpuOsFeatureReader.ReadEnabledStateMask);
+    private readonly Lazy<CpuSpecificationModel> specification;
+
+    public WindowsCpuTopologyReader(ICpuCorePerformanceOverrideStore performanceOverrideStore)
+        : this(performanceOverrideStore, QueryCpuSpecification) { }
+
+    [RuntimeRead(ReadVolatilityKind.Fixed)]
+    private static QueryResult QueryCpuSpecification(string query)
+        => PlatformSensorWmiUtilities.QueryObjects(@"root\CIMV2", query, TimeSpan.FromSeconds(2));
+
+    internal WindowsCpuTopologyReader(ICpuCorePerformanceOverrideStore performanceOverrideStore,
+        Func<string, QueryResult> query)
+    {
+        this.performanceOverrideStore = performanceOverrideStore;
+        specification = new(() => ResolveCpuSpecification(query) with
+        {
+            Cpuid = CpuIdentityInformationReader.Read(osFeatures.Value ?? [])
+        });
+    }
 
     internal WindowsCpuTopologyReader(ICpuCorePerformanceOverrideStore performanceOverrideStore,
         Func<IReadOnlyDictionary<int, ProcessorTimes>> readProcessorTimes) : this(performanceOverrideStore)
+    {
+        osReader = new WindowsCpuOsTopologyReader(readProcessorTimes);
+    }
+
+    internal WindowsCpuTopologyReader(ICpuCorePerformanceOverrideStore performanceOverrideStore,
+        Func<string, QueryResult> query, Func<IReadOnlyDictionary<int, ProcessorTimes>> readProcessorTimes)
+        : this(performanceOverrideStore, query)
     {
         osReader = new WindowsCpuOsTopologyReader(readProcessorTimes);
     }
@@ -19,12 +48,13 @@ public sealed partial class WindowsCpuTopologyReader(
 
     public CpuTopologySnapshot CaptureTopology() => Capture(includeUsage: false);
 
+    [RuntimeReadCache]
+    private CpuSpecificationModel ReadCpuSpecificationOnce() => specification.Value;
+
     private CpuTopologySnapshot Capture(bool includeUsage)
     {
         var notes = new List<string>();
-        var osFeatures = WindowsCpuOsFeatureReader.Read();
-        var osEnabledStateMask = WindowsCpuOsFeatureReader.ReadEnabledStateMask();
-        var cpuSpecification = ResolveCpuSpecification() with { Cpuid = CpuIdentityInformationReader.Read(osFeatures ?? []) };
+        var cpuSpecification = ReadCpuSpecificationOnce();
         var cpuName = cpuSpecification.Name;
         var cpuPreset = CpuCorePerformancePresetResolver.Classify(cpuName);
         var coreRecords = ReadPhysicalCoreRecords(notes, out var reportedCores);
@@ -34,7 +64,7 @@ public sealed partial class WindowsCpuTopologyReader(
         var cacheRecords = ReadCacheRecords(notes, out var cacheAvailable);
         var caches = cacheRecords.Select(ToCacheInformation).ToArray();
         var numaNodes = ReadNumaNodes(notes);
-        var threadCpuid = reportedCores is null ? null : WindowsCpuThreadCpuidReader.Read(
+        var threadCpuid = reportedCores is null ? null : osReader.ReadThreadCpuidOnce(
             reportedCores.SelectMany(static core => core.LogicalProcessorIds).Distinct().Order().ToArray(), notes);
         var logicalProcessorCount = Math.Max(
             Environment.ProcessorCount,
@@ -160,8 +190,8 @@ public sealed partial class WindowsCpuTopologyReader(
                 NumaNodes = numaNodes,
                 Packages = packages,
                 Dies = dies,
-                OsUsableFeatures = osFeatures,
-                OsEnabledXStateMask = osEnabledStateMask,
+                OsUsableFeatures = osFeatures.Value,
+                OsEnabledXStateMask = osEnabledStateMask.Value,
                 ThreadCpuid = threadCpuid,
                 LogicalProcessorBusyPercent = includeUsage ? usageValues : null
             }

@@ -110,6 +110,7 @@ pub const Trace = struct {
             },
         }
     }
+    // RuntimeRead: Sampled
     fn eventTick(self: *Trace, qpc: ?i64) !i64 {
         if (self.interrupt_qpc_origin) |origin| {
             const elapsed = @divTrunc((@as(i128, qpc orelse origin) - origin) * 1000, self.consumer.metadata.qpc_frequency);

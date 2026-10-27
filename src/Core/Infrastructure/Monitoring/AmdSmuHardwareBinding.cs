@@ -66,6 +66,7 @@ internal static class AmdSmuHardwareBinding
         }
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     internal static int ReadPhysicalCoreCount()
     {
         try

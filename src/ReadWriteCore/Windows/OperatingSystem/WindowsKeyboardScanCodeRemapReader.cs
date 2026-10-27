@@ -48,6 +48,7 @@ public sealed class WindowsKeyboardScanCodeRemapReader : IWindowsKeyboardScanCod
         => OperatingSystem.IsWindows() ? ReadWindows(maximumValueLength) : null;
 
     [SupportedOSPlatform("windows")]
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Keyboard scancode map registry value changed")]
     private static WindowsKeyboardScanCodeRemapReading? ReadWindows(int maximumValueLength)
     {
         try

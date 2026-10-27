@@ -16,7 +16,7 @@ namespace ResourceManager.App.Infrastructure.Control;
 ///
 /// 读一次就够，处理器不会在运行期间换掉。
 /// </summary>
-internal sealed class WindowsCpuIdentityReader(ILogger? logger = null)
+internal sealed class WindowsCpuIdentityReader(ILogger? logger = null, Func<string, string>? queryIdentity = null)
 {
     /// <summary>WMI 在没有真值时填的那些占位词，不能当标识用。</summary>
     private static readonly string[] Placeholders =
@@ -29,14 +29,16 @@ internal sealed class WindowsCpuIdentityReader(ILogger? logger = null)
     /// 这颗处理器的身份键。有真的唯一序列号就用它，否则用 CPUID 签名，
     /// 再不行退回名字。
     /// </summary>
+    [ResourceManager.ReadWrite.RuntimeReadCache]
     internal string Resolve(string cpuName)
     {
         lock (gate)
         {
-            return cached ??= ReadIdentity(cpuName);
+            return cached ??= queryIdentity is null ? ReadIdentity(cpuName) : queryIdentity(cpuName);
         }
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     private string ReadIdentity(string cpuName)
     {
         try
@@ -44,26 +46,29 @@ internal sealed class WindowsCpuIdentityReader(ILogger? logger = null)
             using var searcher = new ManagementObjectSearcher(
                 "SELECT ProcessorId, SerialNumber, UniqueId FROM Win32_Processor");
             using var collection = searcher.Get();
+            string? identity = null;
             foreach (var row in collection.Cast<ManagementObject>())
             {
                 using (row)
                 {
+                    if (identity is not null) continue;
                     // 真的唯一序列号优先。绝大多数机器上这一条读不到。
                     if (Meaningful(row["SerialNumber"]) is { } serial)
                     {
-                        return $"uid:{Normalize(serial)}";
+                        identity = $"uid:{Normalize(serial)}";
                     }
-                    if (Meaningful(row["UniqueId"]) is { } unique)
+                    else if (Meaningful(row["UniqueId"]) is { } unique)
                     {
-                        return $"uid:{Normalize(unique)}";
+                        identity = $"uid:{Normalize(unique)}";
                     }
-                    if (Meaningful(row["ProcessorId"]) is { } signature)
+                    else if (Meaningful(row["ProcessorId"]) is { } signature)
                     {
                         // 型号级：同款同步进的芯片是同一个值。**不标成唯一。**
-                        return $"model:{Normalize(signature)}";
+                        identity = $"model:{Normalize(signature)}";
                     }
                 }
             }
+            if (identity is not null) return identity;
         }
         catch (ManagementException error)
         {

@@ -1,21 +1,23 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using ResourceManager.App.Domain.CpuTopology;
+using ResourceManager.ReadWrite;
+using ResourceManager.ReadWrite.Windows.Platform;
 
 namespace ResourceManager.App.Infrastructure.CpuTopology;
 
 public sealed partial class WindowsCpuTopologyReader
 {
-    private static CpuSpecificationModel ResolveCpuSpecification()
+    [RuntimeRead(ReadVolatilityKind.Fixed)]
+    private static CpuSpecificationModel ResolveCpuSpecification(Func<string, QueryResult> query)
     {
         try
         {
-            using var searcher = new System.Management.ManagementObjectSearcher(
-                "select Name, Manufacturer, NumberOfCores, NumberOfLogicalProcessors, MaxClockSpeed, CurrentClockSpeed, L2CacheSize, L3CacheSize from Win32_Processor");
-            using var collection = searcher.Get();
-            foreach (var item in collection)
+            // The transport materializes and disposes the complete enumeration before selecting a row.
+            var result = query(
+                "select Name, Manufacturer, NumberOfCores, NumberOfLogicalProcessors, MaxClockSpeed, L2CacheSize, L3CacheSize from Win32_Processor");
+            foreach (var item in result.Error is null ? result.Rows : [])
             {
-                using var ownedItem = item;
                 var name = Convert.ToString(item["Name"])?.Trim();
                 if (string.IsNullOrWhiteSpace(name))
                 {
@@ -31,7 +33,7 @@ public sealed partial class WindowsCpuTopologyReader
                     ReadInt(item["NumberOfCores"]) ?? 0,
                     ReadInt(item["NumberOfLogicalProcessors"]) ?? 0,
                     ReadInt(item["MaxClockSpeed"]),
-                    ReadInt(item["CurrentClockSpeed"]),
+                    null,
                     ReadInt(item["L2CacheSize"]),
                     ReadInt(item["L3CacheSize"]),
                     "Win32_Processor");

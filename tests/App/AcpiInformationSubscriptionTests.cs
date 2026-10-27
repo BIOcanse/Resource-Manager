@@ -19,24 +19,19 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class AcpiInformationSubscriptionTests
 {
     [Fact]
-    public async Task FailureKeepsDeclarationsClearsCurrentRecoversAndDoesNotPersistAcpi()
+    public async Task FixedAcpiCaptureReusesOriginalFrameAndDoesNotPersistIt()
     {
         using var fixture = new Fixture(new AcpiReader(AcpiFirmwareTestData.Tables(), null,
             new InvalidOperationException("unavailable"), AcpiFirmwareTestData.Tables(7), Array.Empty<AcpiFirmwareTable>()));
         Assert.Equal(DeviceTopologySampleCompletion.Sampled, await fixture.Provider.SampleAcpiNowAsync(CancellationToken.None));
         var current = fixture.Provider.ReadState().AcpiInformationFields;
         Assert.Equal("6", AcpiFirmwareTestData.Field(current, "firmware_all_acpi_table_revision").Value!.Value.GetString());
-        Assert.Equal(DeviceTopologySampleCompletion.Failed, await fixture.Provider.SampleAcpiNowAsync(CancellationToken.None));
-        var failed = fixture.Provider.ReadState().AcpiInformationFields;
-        Assert.Null(failed.ObservedAt);
-        Assert.Equal(Assert.Single(current.Devices).DeviceIdentity, Assert.Single(failed.Devices).DeviceIdentity);
-        Assert.All(Assert.Single(failed.Devices).Fields, field => Assert.Null(field.Value));
-        Assert.Equal(DeviceTopologySampleCompletion.Failed, await fixture.Provider.SampleAcpiNowAsync(CancellationToken.None));
-        await fixture.Provider.SampleAcpiNowAsync(CancellationToken.None);
-        var recovered = fixture.Provider.ReadState().AcpiInformationFields;
-        Assert.Equal("7", AcpiFirmwareTestData.Field(recovered, "firmware_all_acpi_table_revision").Value!.Value.GetString());
-        await fixture.Provider.SampleAcpiNowAsync(CancellationToken.None);
-        Assert.Empty(fixture.Provider.ReadState().AcpiInformationFields.Devices);
+        for (var index = 0; index < 100; index++)
+        {
+            Assert.Equal(DeviceTopologySampleCompletion.Sampled, await fixture.Provider.SampleAcpiNowAsync(CancellationToken.None));
+            Assert.Same(current, fixture.Provider.ReadState().AcpiInformationFields);
+        }
+        Assert.Equal(1, fixture.Acpi.ReadCount);
         Assert.Equal(0, fixture.Topology.ReadCount);
         Assert.Equal(0, fixture.Store.SaveCount);
         Assert.Equal(DeviceTopologySnapshotStatus.Warming, fixture.Provider.ReadState().State);
@@ -96,7 +91,7 @@ public sealed partial class AcpiInformationSubscriptionTests
                 Assert.True(await fast.MoveNextAsync());
                 Assert.True(await fast.MoveNextAsync());
                 Assert.True(await fast.MoveNextAsync());
-                Assert.InRange(fixture.Acpi.ReadCount, 4, 5);
+                Assert.Equal(1, fixture.Acpi.ReadCount);
             }
             finally
             {
@@ -160,7 +155,7 @@ public sealed partial class AcpiInformationSubscriptionTests
     }
 
     [Fact]
-    public async Task HttpGetAcquiresFreshAcpiAndLegacyTopologyKeepsItsIndependentScope()
+    public async Task HttpGetReusesFixedAcpiAndLegacyTopologyKeepsItsIndependentScope()
     {
         using var fixture = new Fixture(new AcpiReader(AcpiFirmwareTestData.Tables()));
         await using var app = await StartAsync(fixture.Provider);
@@ -173,17 +168,19 @@ public sealed partial class AcpiInformationSubscriptionTests
         Assert.Contains("no-store", response.Headers.CacheControl!.ToString());
         using var current = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal("FACP", WireField(current.RootElement, "firmware_all_acpi_table_signature").GetString());
+        Assert.Equal(first.RootElement.GetProperty("observedAt").GetString(),
+            current.RootElement.GetProperty("observedAt").GetString());
         Assert.Equal(AcpiFirmwareTestData.Raw(AcpiFirmwareTestData.Id("FACP")),
             WireField(current.RootElement, "firmware_all_acpi_table_raw").GetBytesFromBase64());
         using var legacy = await client.GetFromJsonAsync<JsonDocument>("/api/device-topology/state");
         Assert.False(legacy!.RootElement.TryGetProperty("acpiInformationFields", out _));
-        Assert.Equal(2, fixture.Acpi.ReadCount);
+        Assert.Equal(1, fixture.Acpi.ReadCount);
         Assert.Equal(1, fixture.Topology.ReadCount);
         await app.StopAsync();
     }
 
     [Fact]
-    public async Task UnifiedHttpSubscriptionPublishesRecoveryAndStopsWithoutDemand()
+    public async Task UnifiedHttpSubscriptionPublishesFixedAcpiCurrentAndStopsWithoutDemand()
     {
         using var fixture = new Fixture(new AcpiReader(AcpiFirmwareTestData.Tables(), null, AcpiFirmwareTestData.Tables(7)));
         await using var app = await StartAsync(fixture.Provider);
@@ -197,12 +194,14 @@ public sealed partial class AcpiInformationSubscriptionTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var stream = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
         using var first = JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
-        using var failure = JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
-        using var recovery = JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
+        using var second = JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
+        using var third = JsonDocument.Parse((await stream.ReadLineAsync(timeout.Token))!);
         Assert.Equal("6", WireField(first.RootElement.GetProperty("value"), "firmware_all_acpi_table_revision").GetString());
-        Assert.Equal(JsonValueKind.Null, WireField(failure.RootElement.GetProperty("value"), "firmware_all_acpi_table_raw").ValueKind);
-        Assert.Equal(JsonValueKind.Null, failure.RootElement.GetProperty("value").GetProperty("observedAt").ValueKind);
-        Assert.Equal("7", WireField(recovery.RootElement.GetProperty("value"), "firmware_all_acpi_table_revision").GetString());
+        Assert.Equal("6", WireField(second.RootElement.GetProperty("value"), "firmware_all_acpi_table_revision").GetString());
+        Assert.Equal("6", WireField(third.RootElement.GetProperty("value"), "firmware_all_acpi_table_revision").GetString());
+        Assert.Equal(first.RootElement.GetProperty("value").GetProperty("observedAt").GetString(),
+            third.RootElement.GetProperty("value").GetProperty("observedAt").GetString());
+        Assert.Equal(1, fixture.Acpi.ReadCount);
         await timeout.CancelAsync();
         response.Dispose();
         await Task.Delay(250);

@@ -259,7 +259,7 @@ public sealed class MetricReadingSourceSelectionTests
     [Fact]
     public void MetadataMergePreservesCatalogShapeValuesAndOfflineControlBindings()
     {
-        var field = new MetricFieldDefinition(MetricFieldCode.GpuTemperature, "test", MetricResource.Gpu, MetricVendor.Amd, "°C", "raw");
+        var field = new MetricFieldDefinition(MetricFieldCode.GpuTemperature, "test", MetricResource.Gpu, MetricVendor.Amd, "°C", "raw", ResourceManager.ReadWrite.ReadVolatility.Sampled);
         var binding = new MetricDeviceFieldBinding("opaque", field, "raw", "amd.smu");
         var original = Snapshot(new Dictionary<string, MetricDeviceFieldBinding> { ["raw"] = binding, ["offline"] = binding with { RequestAddress = "offline" } });
         var reading = new MetricReadingSource("reading", "gpu.edge_temperature", 10, "available", true, "opaque", "test");
@@ -410,7 +410,7 @@ public sealed class MetricReadingSourceSelectionTests
 
     private static NativeMetricSnapshotRuleCatalogBinding Binding(ulong handle, ulong source, string sourceId, MetricFieldCode code, string device)
         => new(handle, handle, source, 1, "raw-" + handle, sourceId, 1, 1, 0, 0, 0, 0)
-        { DeviceIdentity = device, Field = new(code, "field-" + handle, MetricResource.Gpu, MetricVendor.Amd, "unit", "raw") };
+        { DeviceIdentity = device, Field = new(code, "field-" + handle, MetricResource.Gpu, MetricVendor.Amd, "unit", "raw", ResourceManager.ReadWrite.ReadVolatility.Sampled) };
 
     private static NativeMetricSnapshotCommittedFrame Frame(params NativeMetricSnapshotRuleCatalogBinding[] bindings)
     {

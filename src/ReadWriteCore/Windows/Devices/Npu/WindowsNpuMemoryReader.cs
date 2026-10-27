@@ -35,6 +35,7 @@ public sealed class WindowsNpuMemoryReader
         Func<AdapterLuid, uint, uint, uint, WindowsGpuIdentityRead> readIdentity)
     { _api = api; _readIdentity = readIdentity; }
 
+    [ResourceManager.ReadWrite.RuntimeReadSource(typeof(ResourceManager.App.Infrastructure.Monitoring.NativeMetricSnapshotSources), nameof(ResourceManager.App.Infrastructure.Monitoring.NativeMetricSnapshotSources.WindowsNpuMemory))]
     public IReadOnlyList<NpuMemoryRead> Read(IReadOnlyList<NpuMemoryCatalogIdentity> devices,
         IReadOnlyDictionary<string, NpuMemoryFields> requested, uint effectiveMaximumInstanceCount,
         CancellationToken cancellationToken = default)
@@ -146,6 +147,7 @@ public sealed class WindowsNpuMemoryReader
         }
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows NPU adapter topology changed")]
     private bool SameIdentity(Candidate candidate)
     {
         if (!_api.IsValid(candidate.Adapter)
@@ -161,10 +163,13 @@ public sealed class WindowsNpuMemoryReader
     }
 
     private static bool ValidBridge(WindowsGpuIdentityRead read) => WindowsNpuDxCoreIdentity.ValidBridge(read);
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     private bool TryAdapter(nint adapter, out WindowsNpuDxCoreAdapter value)
         => WindowsNpuDxCoreIdentity.TryAdapter(_api, adapter, out value);
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     private bool TryPhysicalCount(nint adapter, out uint count)
         => WindowsNpuDxCoreIdentity.TryPhysicalCount(_api, adapter, out count);
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     private bool TryProperty<T>(nint adapter, WindowsNpuDxCoreProperty property, out T value) where T : unmanaged
         => WindowsNpuDxCoreIdentity.TryProperty(_api, adapter, property, out value);
 

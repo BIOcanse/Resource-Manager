@@ -105,6 +105,8 @@ public sealed class WindowsVirtualMemoryMetricResource
         };
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows pagefile configuration changed")]
+
     public static WindowsPagefileConfiguration ReadPagefileConfiguration()
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Pagefile settings require Windows.");
@@ -139,6 +141,7 @@ public sealed class WindowsVirtualMemoryMetricResource
     }
 
     [SupportedOSPlatform("windows")]
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows pagefile configuration changed")]
     private static string[] ReadPagefileRegistryLines(RegistryKey? key)
     {
         var value = key?.GetValue("PagingFiles");

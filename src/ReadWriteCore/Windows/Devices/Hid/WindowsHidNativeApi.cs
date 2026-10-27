@@ -11,6 +11,8 @@ internal sealed partial class WindowsHidNativeApi : IWindowsHidCollectionApi
     private const int InsufficientBuffer = 122;
     private const int MaximumDetailBytes = 16384;
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows PnP device properties changed")]
+
     public IReadOnlyList<WindowsHidCollection>? Enumerate()
     {
         if (!OperatingSystem.IsWindows()) return null;

@@ -187,6 +187,7 @@ static HMODULE LoadRealD3D11()
     return g_realD3D11;
 }
 
+// RuntimeRead: EventDriven("Process environment or GPU shim policy file changed")
 static GpuShimPolicy ReadPolicyFile()
 {
     char policyPathUtf8[2048]{};
@@ -268,6 +269,7 @@ static bool IsBetterAdapter(
     return candidate.DedicatedVideoMemory > selectedDedicatedVideoMemory;
 }
 
+// RuntimeRead: Transport
 static IDXGIAdapter1* SelectAdapter(const GpuShimPolicy& policy)
 {
     if (policy.mode == GpuShimPolicyMode::Default)

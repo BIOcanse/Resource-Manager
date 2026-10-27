@@ -142,10 +142,14 @@ public static class SmbiosMemoryReader
         return [];
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
+
     internal static byte[]? ReadRawSmbiosData(uint provider)
         => ReadRawSmbiosData(buffer => buffer is null
             ? WindowsFirmwareNativeMethods.GetSystemFirmwareTableSize(provider, 0, IntPtr.Zero, 0)
             : WindowsFirmwareNativeMethods.GetSystemFirmwareTable(provider, 0, buffer, checked((uint)buffer.Length)));
+
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
 
     internal static byte[]? ReadRawSmbiosData(Func<byte[]?, uint> read)
     {

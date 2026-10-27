@@ -3,6 +3,7 @@ using SdkWmi = ResourceManager.ReadWrite.Windows.Platform.PlatformSensorWmiUtili
 namespace ResourceManager.App.Infrastructure.Monitoring;
 internal static class PlatformSensorWmiUtilities
 {
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     internal static QueryResult QueryObjects(string path, string query)
     {
         var result = SdkWmi.QueryObjects(path, query, TimeSpan.FromSeconds(2));

@@ -10,7 +10,8 @@ internal sealed class InformationCollectionBorrow(InformationReadWriteBackend ba
     SamplingPublicationSignal publications, string itemId,
     Func<ImmutableArray<InformationFieldSelection>, IMetricPublicationPermit, CancellationToken,
         ValueTask<FieldCollectionResult>> collect,
-    FieldCollectionSourceKind sourceKind = FieldCollectionSourceKind.CurrentValue) : IReadWriteCollectionBorrow
+    FieldCollectionSourceKind sourceKind = FieldCollectionSourceKind.CurrentValue,
+    Func<FieldReference, FieldCollectionSourceKind>? fieldSourceKind = null) : IReadWriteCollectionBorrow
 {
     private readonly object gate = new();
     private readonly Dictionary<FieldReference, InformationFieldSelection> selections = [];
@@ -24,7 +25,7 @@ internal sealed class InformationCollectionBorrow(InformationReadWriteBackend ba
     public ImmutableArray<FieldCollectionBinding> Bind(ImmutableArray<FieldReference> fields)
     {
         _ = Select(fields);
-        return [.. fields.Select(field => new FieldCollectionBinding(field, [itemId], [itemId], sourceKind))];
+        return [.. fields.Select(field => new FieldCollectionBinding(field, [itemId], [itemId], fieldSourceKind?.Invoke(field) ?? sourceKind))];
     }
     private ImmutableArray<InformationFieldSelection> Select(ImmutableArray<FieldReference> fields)
     {

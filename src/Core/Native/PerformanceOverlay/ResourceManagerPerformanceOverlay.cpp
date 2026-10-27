@@ -321,6 +321,7 @@ bool RenderD3D(ID3D11Device* device, ID3D11DeviceContext* context, ID3D11Texture
     return true;
 }
 
+// RuntimeRead: Fixed
 bool PrepareD3D12Chain(IDXGISwapChain* chain, D3D12Chain& resources)
 {
     if (resources.on12 && !resources.buffers.empty()) return true;
@@ -369,6 +370,7 @@ bool PrepareD3D12Chain(IDXGISwapChain* chain, D3D12Chain& resources)
     return true;
 }
 
+// RuntimeRead: Sampled
 void DrawD3D(IDXGISwapChain* chain)
 {
     std::lock_guard<std::mutex> guard(d3dMutex);
@@ -807,6 +809,7 @@ bool PatchMethod(void** methods, size_t slot, void* replacement, void** original
     return *original != nullptr;
 }
 
+// RuntimeRead: Fixed
 bool Install()
 {
     std::lock_guard<std::mutex> guard(installMutex);

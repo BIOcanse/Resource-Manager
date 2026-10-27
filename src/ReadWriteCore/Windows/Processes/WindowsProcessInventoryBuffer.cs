@@ -94,6 +94,7 @@ internal sealed class WindowsProcessInventoryBuffer : IDisposable
     private sealed class NativeApi : IWindowsProcessInventoryBufferApi
     {
         internal static readonly NativeApi Instance = new();
+        [RuntimeRead(ReadVolatilityKind.Sampled)]
         public int Query(IntPtr buffer, uint length, out uint returned)
             => NtQuerySystemInformation(5, buffer, length, out returned);
         public IntPtr Resize(IntPtr buffer, int length) => Marshal.ReAllocHGlobal(buffer, new IntPtr(length));

@@ -50,6 +50,8 @@ public sealed partial class NvidiaNvmlReader
             null);
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Sampled)]
+
     private static double? ReadPowerUsageWatts(IntPtr device)
     {
         try
@@ -64,6 +66,8 @@ public sealed partial class NvidiaNvmlReader
         }
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Sampled)]
+
     private static double? ReadPowerLimitWatts(IntPtr device)
     {
         try
@@ -77,6 +81,8 @@ public sealed partial class NvidiaNvmlReader
             return null;
         }
     }
+
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Sampled)]
 
     private static double? ReadTemperatureCelsius(IntPtr device)
     {
@@ -119,6 +125,8 @@ public sealed partial class NvidiaNvmlReader
         return speeds.Count == 0 ? null : speeds.Max();
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Sampled)]
+
     private static double? ReadLegacyFanSpeedPercent(IntPtr device)
     {
         try
@@ -133,6 +141,8 @@ public sealed partial class NvidiaNvmlReader
         }
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
+
     private static uint? ReadFanCount(IntPtr device)
     {
         try
@@ -146,6 +156,8 @@ public sealed partial class NvidiaNvmlReader
             return null;
         }
     }
+
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Sampled)]
 
     private static double? ReadFanSpeedV2Percent(IntPtr device, uint fan)
     {

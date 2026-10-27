@@ -37,7 +37,7 @@ public sealed partial class WindowsStorageOwner
         this.capabilityQuery = capabilityQuery ?? DeviceTopologyWmiUtilities.QueryObjects;
         usesWindowsCapabilityQuery = capabilityQuery is null;
         this.volumeQuery = volumeQuery ?? ReadVolume;
-        this.query = query ?? ((path, command) => QueryObjects(path, command, TimeSpan.FromSeconds(2)));
+        this.query = query ?? QueryStorage;
         this.readNvme = readNvme ?? WindowsNvmeHealthReader.Read;
         this.readAta = readAta ?? WindowsAtaSmartReader.Read;
         this.readIdentify = readIdentify ?? WindowsStorageIdentifyReader.Read;
@@ -54,6 +54,11 @@ public sealed partial class WindowsStorageOwner
             : new(false, null, null, null);
     }
 
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
+    private static QueryResult QueryStorage(string path, string command)
+        => QueryObjects(path, command, TimeSpan.FromSeconds(2));
+
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows storage topology changed")]
     public StorageIdentityRead ReadIdentities()
     {
         var result = query(@"root\Microsoft\Windows\Storage",

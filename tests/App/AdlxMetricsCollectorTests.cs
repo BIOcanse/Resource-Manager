@@ -34,6 +34,40 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
         false, false, false, false, false, false, true, false, true);
 
     [Fact]
+    public async Task FixedBridgeAbiIsSharedByMetricAndDeclarationReadsWhileMetricsRefresh()
+    {
+        var native = new Bridge { Metadata = [Row(10, PnpA)], Values = [Row(10, PnpA, AllFlags)] };
+        var reader = new AmdAdlxBridgeReader(native);
+        for (var index = 0; index < 24; index++)
+        {
+            Assert.Single(await reader.ReadAsync(Request(9), Inventory(), CancellationToken.None));
+            Assert.NotEmpty(reader.ReadDeclarations(Inventory())!);
+        }
+        Assert.Equal(1, native.AbiReads);
+        Assert.Equal(1, native.SizeReads);
+        Assert.Equal(1, native.SelectionSizeReads);
+        Assert.Equal(1, native.DeclarationAbiReads);
+        Assert.Equal(1, native.DeclarationSizeReads);
+        Assert.Equal(48, native.MetadataReads);
+        Assert.Equal(24, native.SelectedReads);
+    }
+
+    [Fact]
+    public async Task MissingFixedBridgeAbiIsRetainedUntilANewReaderOwnsTheBinding()
+    {
+        var native = new Bridge { Failure = new DllNotFoundException(), Metadata = [Row(10, PnpA)],
+            Values = [Row(10, PnpA, AllFlags)] };
+        var reader = new AmdAdlxBridgeReader(native);
+        for (var index = 0; index < 24; index++)
+            Assert.Empty(await reader.ReadAsync(Request(9), Inventory(), CancellationToken.None));
+        native.Failure = null;
+        Assert.Empty(await reader.ReadAsync(Request(9), Inventory(), CancellationToken.None));
+        Assert.Equal(1, native.AbiReads);
+        Assert.Single(await new AmdAdlxBridgeReader(native).ReadAsync(Request(9), Inventory(), CancellationToken.None));
+        Assert.Equal(2, native.AbiReads);
+    }
+
+    [Fact]
     public async Task MetadataFirstThenOnlySelectedDeviceAndFields()
     {
         var native = new Bridge { Metadata = [Row(10,PnpA),Row(20,PnpB)], Values = [Row(20,PnpB,AllFlags)] };
@@ -355,10 +389,14 @@ public sealed partial class AdlxMetricsCollectorTests(ITestOutputHelper output)
     private sealed class Bridge : IAmdAdlxNativeBridge
     {
         public uint Abi=6; public int Size=848,SelectionSize=520,AbiReads,MetadataReads,SelectedReads;
+        public int SizeReads, SelectionSizeReads, DeclarationAbiReads, DeclarationSizeReads;
         public Exception? Failure; public int? MetadataCount;
         public NativeAdlxGpuMetrics[] Metadata=[],Values=[]; public NativeAdlxGpuSelection[] Selections=[]; public Action? AfterMetadata, BeforeSelected;
         public uint GetAbiVersion() { AbiReads++; if(Failure is not null) throw Failure; return Abi; }
-        public int GetMetricsSize()=>Size; public int GetSelectionSize()=>SelectionSize;
+        public int GetMetricsSize() { SizeReads++; return Size; }
+        public int GetSelectionSize() { SelectionSizeReads++; return SelectionSize; }
+        public uint GetDeclarationAbiVersion() { DeclarationAbiReads++; return 1; }
+        public int GetDeclarationSize() { DeclarationSizeReads++; return Marshal.SizeOf<NativeAdlxGpuDeclaration>(); }
         public int ReadMetadata(NativeAdlxGpuMetrics[] output,StringBuilder message) { MetadataReads++; Metadata.CopyTo(output,0); AfterMetadata?.Invoke(); return MetadataCount ?? Metadata.Length; }
         public int ReadSelected(NativeAdlxGpuMetrics[] output,NativeAdlxGpuSelection[] selections,StringBuilder message)
         { Interlocked.Increment(ref SelectedReads); BeforeSelected?.Invoke(); Selections=selections; Values.CopyTo(output,0); return Values.Length; }

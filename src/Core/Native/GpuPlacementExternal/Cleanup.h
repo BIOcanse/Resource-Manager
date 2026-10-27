@@ -1,6 +1,7 @@
 #pragma once
 #include "Controller.h"
 
+// RuntimeRead: Sampled
 static void cleanupSession(std::map<DWORD,Attached>& attached,DWORD rootId,HANDLE root,
     ULONG originalFlags,DEBUG_EVENT& ev,bool& pending,DWORD& savedDisposition,bool& classified,bool& restoreFault,bool& continueFault) {
     // A pending exit can keep its kernel object unsignalled until it is continued.

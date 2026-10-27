@@ -65,6 +65,7 @@ internal sealed class WindowsStartupConfigurationReader
     }
 
     [SupportedOSPlatform("windows")]
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Startup registry key, folder or boot/logon task registration changed")]
     private static string ReadUserStartupPath(string sid)
     {
         using var users = RegistryKey.OpenBaseKey(RegistryHive.Users,

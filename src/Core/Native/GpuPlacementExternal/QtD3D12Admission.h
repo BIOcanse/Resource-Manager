@@ -73,6 +73,7 @@ class QtD3D12Admission {
         require(frame.rhi&&frame.chain,"Qt has no active RHI swapchain");
         return frame;
     }
+    // RuntimeRead: Sampled
     void checkEnvironment(uint64_t deadline,const char* adapterVariable) const {
         // Qualified UCRT dual-state narrow environments are the data Qt's getenv_s reads.
         require(read<uint64_t>(core.remote+0x5ab890)==0,"Qt environment mutation in progress");
@@ -164,6 +165,7 @@ public:
         const auto& prior=frames.at(tid);const auto now=inspect(prior.window);
         require(now.rhi==prior.rhi&&now.chain==prior.chain,"Qt frame device changed before loss authorization");
     }
+    // RuntimeRead: Sampled
     void authorizeLoss(DWORD tid,uint64_t deadline=UINT64_MAX,const char* adapterVariable="QT_D3D_ADAPTER_INDEX") const {
         require(canPresent(tid),"Qt frame has no current submission");
         validate(tid);checkEnvironment(std::min(deadline,GetTickCount64()+250),adapterVariable);

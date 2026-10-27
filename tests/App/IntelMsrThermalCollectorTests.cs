@@ -181,10 +181,16 @@ public sealed partial class IntelMsrThermalCollectorTests
         internal int Leaf1Edx;
         internal int WrongCurrentFromCall = int.MaxValue;
         internal int CurrentCalls;
-        public bool Select(CpuProcessorAddress address) { Address = address; CurrentCalls = 0; return true; }
-        public CpuProcessorAddress Current() => ++CurrentCalls >= WrongCurrentFromCall ? new(1, 1) : Address;
+        internal int SelectionCalls, TotalCurrentCalls, CpuidCaptures;
+        public bool Select(CpuProcessorAddress address) { Address = address; CurrentCalls = 0; SelectionCalls++; return true; }
+        public CpuProcessorAddress Current()
+        {
+            TotalCurrentCalls++;
+            return ++CurrentCalls >= WrongCurrentFromCall ? new(1, 1) : Address;
+        }
         public (int Eax, int Ebx, int Ecx, int Edx) Read(int leaf, int subleaf)
         {
+            if (leaf == 0 && subleaf == 0) CpuidCaptures++;
             var vendor = Encoding.ASCII.GetBytes(Vendor);
             return unchecked((uint)leaf) switch
             {

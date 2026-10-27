@@ -1,6 +1,7 @@
 using ResourceManager.App.Application.Control;
 using ResourceManager.App.Domain.Control;
 using ResourceManager.App.Infrastructure.Paths;
+using ResourceManager.ReadWrite;
 
 namespace ResourceManager.App.Infrastructure.Control.Writers;
 
@@ -45,6 +46,7 @@ public sealed partial class UniwillGpuPowerWriter : IControlWriter, IDisposable
     public string? ChannelOf(ControlObject target, string capabilityId)
         => IsMine(target, capabilityId) ? ControlChannels.OemEmbeddedController : null;
 
+    [RuntimeRead(ReadVolatilityKind.Sampled)]
     public ControlWriteAvailability Probe(ControlObject target, ControlCapability capability)
     {
         ArgumentNullException.ThrowIfNull(target);
@@ -79,6 +81,7 @@ public sealed partial class UniwillGpuPowerWriter : IControlWriter, IDisposable
             0));
     }
 
+    [RuntimeRead(ReadVolatilityKind.Sampled)]
     public Task<ControlActualValue?> ReadAsync(
         ControlObject target,
         ControlCapability capability,
@@ -118,6 +121,7 @@ public sealed partial class UniwillGpuPowerWriter : IControlWriter, IDisposable
             : null);
     }
 
+    [RuntimeRead(ReadVolatilityKind.EventDriven, "Uniwill GPU power apply completed and readback requested")]
     public Task<ControlApplyOutcome> WriteAsync(
         ControlObject target,
         ControlCapability capability,
@@ -156,6 +160,7 @@ public sealed partial class UniwillGpuPowerWriter : IControlWriter, IDisposable
         }
     }
 
+    [RuntimeRead(ReadVolatilityKind.EventDriven, "Uniwill GPU power restore completed and readback requested")]
     public Task<bool> RestoreAsync(
         ControlObject target,
         ControlCapability capability,
@@ -203,6 +208,7 @@ public sealed partial class UniwillGpuPowerWriter : IControlWriter, IDisposable
             }
         }
     }
+    [RuntimeRead(ReadVolatilityKind.EventDriven, "Uniwill Dynamic Boost enable setting changed")]
     private ControlApplyOutcome WriteDynamicBoostEnabled(
         ControlObject target,
         ControlCapability capability,
@@ -228,6 +234,7 @@ public sealed partial class UniwillGpuPowerWriter : IControlWriter, IDisposable
             : Failed(target, capability, EnableRefused);
     }
 
+    [RuntimeRead(ReadVolatilityKind.EventDriven, "Uniwill GPU power offset setting changed")]
     private ControlApplyOutcome WriteOffset(
         ControlObject target,
         ControlCapability capability,
@@ -279,6 +286,7 @@ public sealed partial class UniwillGpuPowerWriter : IControlWriter, IDisposable
             new(Unit: ControlUnits.Watt, Requested: wanted, Observed: effective)));
     }
 
+    [RuntimeRead(ReadVolatilityKind.EventDriven, "Uniwill GPU power control takeover requested")]
     private bool EnsureTakeover()
     {
         if (bridge.Read(UniwillEcRegisters.CtgpDbEnable) is not { } current)
@@ -289,6 +297,7 @@ public sealed partial class UniwillGpuPowerWriter : IControlWriter, IDisposable
         return current == wanted || bridge.WriteReadingBack(UniwillEcRegisters.CtgpDbEnable, wanted) == wanted;
     }
 
+    [RuntimeRead(ReadVolatilityKind.Sampled)]
     private GpuPowerBudget? ReadBudget(ControlObject target)
     {
         if (target.AdapterIndex is not { } adapterIndex

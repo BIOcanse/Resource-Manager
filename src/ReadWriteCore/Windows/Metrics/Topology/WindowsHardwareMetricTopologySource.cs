@@ -12,8 +12,11 @@ using ResourceManager.ReadWrite.Vendors.Nvidia;
 namespace ResourceManager.ReadWrite.Windows.Metrics.Topology;
 
 public sealed partial class WindowsHardwareMetricTopologySource(WindowsMetricTopologyResources resources,
-    Func<CpuOsTopologyInformation?> readCpuTopology)
+    Func<CpuOsTopologyInformation?> readCpuTopology, Func<CpuIdentityInformation?>? readCpuIdentity = null)
 {
+    private readonly Lazy<CpuIdentityInformation?> cpuIdentityInformation = new(readCpuIdentity ?? CpuIdentityInformationReader.Read);
+    [RuntimeReadCache]
+    private CpuIdentityInformation? ReadCpuIdentityOnce() => cpuIdentityInformation.Value;
     private NativeMetricSnapshotCatalogTopologySnapshot? published;
     public NativeMetricSnapshotCatalogTopologySnapshot Capture() => Capture(0, 0);
 
@@ -152,7 +155,7 @@ public sealed partial class WindowsHardwareMetricTopologySource(WindowsMetricTop
                     Device = new("fan", MetricDeviceAddress.GpuFan(fan.GpuPnpInstanceId, fan.FanIndex), null, nextFanIndex - 1)
                 });
         var batteries = resources.ReadBatteryIdentities();
-        var cpuIdentity = CpuIdentityInformationReader.Read();
+        var cpuIdentity = ReadCpuIdentityOnce();
         var topology = new NativeMetricSnapshotCatalogTopologySnapshot(
             generation,
             gpu.FailureCode is null ? NativeMetricSnapshotCatalogTopologyStatus.Complete : NativeMetricSnapshotCatalogTopologyStatus.Unavailable,

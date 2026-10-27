@@ -50,12 +50,15 @@ public sealed class OperatingSystemBuildBootOwnerTests
         Assert.Equal("SELECT BuildNumber FROM Win32_OperatingSystem", queries[0]);
         Assert.NotNull(reader.Read(WindowsOperatingSystemInformationFields.BootTime).BootTimeActual);
         Assert.Equal("SELECT LastBootUpTime FROM Win32_OperatingSystem", queries[1]);
-        multiple = true; var missing = reader.Read(WindowsOperatingSystemInformationFields.All);
-        Assert.Null(missing.BuildDeclared); Assert.Null(missing.BootTimeActual); Assert.Equal(3, queries.Count);
+        multiple = true; var cached = reader.Read(WindowsOperatingSystemInformationFields.All);
+        Assert.Equal("26100", cached.BuildDeclared); Assert.NotNull(cached.BootTimeActual); Assert.Equal(2, queries.Count);
+        var ambiguous = new WindowsOperatingSystemDeclarationReader(TimeSpan.FromSeconds(1), (_, _, _) => new([new(), new()], null));
+        var missing = ambiguous.Read(WindowsOperatingSystemInformationFields.All);
+        Assert.Null(missing.BuildDeclared); Assert.Null(missing.BootTimeActual);
     }
 
     [Fact]
-    public async Task SelectedCaptureMergesOnlyRequestedValuesAndTimesAndFailureDoesNotClearUptime()
+    public async Task SelectedCaptureRetainsFixedDeclarationsWithoutRepeatingSourceQueries()
     {
         var uptimeReads = 0; var queries = new List<string>(); var denied = false;
         var clock = new Clock();
@@ -74,15 +77,15 @@ public sealed class OperatingSystemBuildBootOwnerTests
         var oldUptime = backend.ReadCached(uptime); var oldBoot = backend.ReadCached(boot);
         clock.Now = clock.Now.AddHours(1);
         denied = true;
-        var failed = (await backend.CollectAsync([build], default)).Single();
-        Assert.Equal(FieldObservationStatus.Unavailable, failed.Status); Assert.Null(failed.Value); Assert.Null(failed.ObservedAt);
+        var cached = (await backend.CollectAsync([build], default)).Single();
+        Assert.Equal(FieldObservationStatus.Current, cached.Status); Assert.Equal("26100", cached.Value!.Text);
         Assert.Equal(oldUptime, backend.ReadCached(uptime)); Assert.Equal(oldBoot, backend.ReadCached(boot)); Assert.Equal(1, uptimeReads);
-        Assert.Equal("SELECT BuildNumber FROM Win32_OperatingSystem", queries.Last());
+        Assert.Single(queries);
         denied = false; clock.Now = clock.Now.AddHours(1);
         var updated = (await backend.CollectAsync([boot], default)).Single();
-        Assert.Equal(clock.Now, updated.ObservedAt); Assert.Equal(oldUptime, backend.ReadCached(uptime)); Assert.Equal(1, uptimeReads);
-        Assert.Equal("SELECT LastBootUpTime FROM Win32_OperatingSystem", queries.Last());
-        Assert.Equal(FieldObservationStatus.Unavailable, backend.ReadCached(build).Status);
+        Assert.Equal(oldBoot.ObservedAt, updated.ObservedAt); Assert.Equal(oldUptime, backend.ReadCached(uptime)); Assert.Equal(1, uptimeReads);
+        Assert.Single(queries);
+        Assert.Equal(FieldObservationStatus.Current, backend.ReadCached(build).Status);
         var queryCount = queries.Count; _ = backend.Catalog; _ = backend.ReadCached(boot); Assert.Equal(queryCount, queries.Count);
     }
 
@@ -102,7 +105,7 @@ public sealed class OperatingSystemBuildBootOwnerTests
         Assert.Same(previous, owner.ReadInformation());
         using var publication = borrow.Publications.Subscribe([WindowsOperatingSystemInformationOwner.CollectionItemId]);
         var committed = await borrow.CollectAsync([build], new Permit()); Assert.True(committed.Committed);
-        Assert.Equal("26200", committed.Readings.Single().Value!.Text); Assert.Equal(committed.Readings.Single(), backend.ReadCached(build));
+        Assert.Equal("26100", committed.Readings.Single().Value!.Text); Assert.Equal(committed.Readings.Single(), backend.ReadCached(build));
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10)); await publication.WaitAsync(timeout.Token);
     }
 
@@ -126,23 +129,26 @@ public sealed class OperatingSystemBuildBootOwnerTests
     public async Task CancellationAfterWmiReadAndAtomicRetirementRejectTheWholeSelectedCommit()
     {
         Action? duringQuery = null;
+        var queries = 0;
         using var owner = new WindowsOperatingSystemInformationOwner(() => new(TimeSpan.FromSeconds(7), 7),
             new WindowsOperatingSystemDeclarationReader(TimeSpan.FromSeconds(2), (_, _, _) =>
             {
-                duringQuery?.Invoke();
+                queries++; duringQuery?.Invoke();
                 return new([new() { ["BuildNumber"] = "26100", ["LastBootUpTime"] = "20240229120000.123456+330" }], null);
             }));
-        var backend = owner.CreateBackend(); var build = (await backend.DiscoverAsync(default)).Fields.Single(field => field.Field.FieldName == "os_all_build_declared").Field;
+        var backend = owner.CreateBackend();
+        var build = new FieldReference(WindowsOperatingSystemInformationOwner.MachineIdentity, "os_all_build_declared");
         var previous = owner.ReadInformation();
         using var canceled = new CancellationTokenSource(); duringQuery = canceled.Cancel;
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await backend.CollectAsync([build], canceled.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await owner.CaptureSelectedInformationAsync(WindowsOperatingSystemInformationFields.Build, canceled.Token));
         Assert.Same(previous, owner.ReadInformation());
-        using var borrow = owner.BorrowSubscriptionCapture(); _ = borrow.Bind([build]);
-        var active = true;
-        duringQuery = () => active = false;
-        var permit = new MutablePermit(() => active);
-        Assert.False((await borrow.CollectAsync([build], permit)).Committed);
+        duringQuery = null;
+        _ = await owner.CaptureSelectedInformationAsync(WindowsOperatingSystemInformationFields.Build, tryPublish: _ => false);
         Assert.Same(previous, owner.ReadInformation());
+        Assert.Equal(1, queries);
+        _ = await owner.CaptureSelectedInformationAsync(WindowsOperatingSystemInformationFields.Build);
+        Assert.Equal("26100", backend.ReadCached(build).Value!.Text);
+        Assert.Equal(1, queries);
     }
 
     [Fact]
@@ -164,7 +170,7 @@ public sealed class OperatingSystemBuildBootOwnerTests
         var build = catalog.Fields.Single(field => field.Field.FieldName == "os_all_build_declared").Field;
         var boot = catalog.Fields.Single(field => field.Field.FieldName == "os_all_boot_time_actual").Field;
         var direct = (await host.Reads.CollectAsync([build], default)).Single();
-        Assert.Equal("SELECT BuildNumber FROM Win32_OperatingSystem", queries.Last()); Assert.Equal(1, uptimeReads);
+        Assert.Single(queries); Assert.Equal(1, uptimeReads);
         Assert.Equal(direct, host.Reads.ReadCached(build));
         var slow = TimeSpan.FromMinutes(1);
         using var slowBoot = host.Subscriptions.Acquire("slow-boot", [boot], slow);
@@ -173,7 +179,7 @@ public sealed class OperatingSystemBuildBootOwnerTests
         using var publication = os.Publications.Subscribe([WindowsOperatingSystemInformationOwner.CollectionItemId]);
         var next = publication.WaitAsync(timeout.Token).AsTask();
         await provider.StartAsync(timeout.Token);
-        try { await next; Assert.Equal("SELECT BuildNumber, LastBootUpTime FROM Win32_OperatingSystem", queries.Last()); Assert.Equal(1, uptimeReads); }
+        try { await next; Assert.Single(queries); Assert.Equal(1, uptimeReads); }
         finally { await provider.StopAsync(default); }
         Assert.Same(os, provider.OperatingSystemInventory);
         _ = await os.CaptureSelectedInformationAsync(WindowsOperatingSystemInformationFields.Build);

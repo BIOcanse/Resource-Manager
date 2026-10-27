@@ -66,6 +66,7 @@ HRESULT STDMETHODCALLTYPE CreateComposition(IDXGIFactory2* factory, IUnknown* de
     return realCreateComposition(factory, device, desc, restrictTo, output);
 }
 
+// RuntimeRead: Sampled
 bool Armed()
 {
     AcquireSRWLockShared(&requestLock);
@@ -75,6 +76,7 @@ bool Armed()
     return result;
 }
 
+// RuntimeRead: Sampled
 bool InspectCall(IDXGISwapChain* chain, Method method, uint32_t supportedApis = 3u)
 {
     if (g_dxgiBootstrap || g_insideGraphicsRuntime) return false;
@@ -208,6 +210,7 @@ bool EnsureHooks()
     return ready;
 }
 
+// RuntimeRead: Sampled
 DWORD Arm(void* parameter)
 {
     if (!parameter) return 0;
@@ -239,6 +242,7 @@ DWORD Arm(void* parameter)
     return 1;
 }
 
+// RuntimeRead: Sampled
 DWORD Finish(void* parameter, bool cancel)
 {
     if (!parameter) return 0;

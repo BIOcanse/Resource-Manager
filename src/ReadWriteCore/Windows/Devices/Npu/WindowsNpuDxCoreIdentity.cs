@@ -21,6 +21,7 @@ internal static class WindowsNpuDxCoreIdentity
             && !string.IsNullOrWhiteSpace(identity.PnpInstanceId) && (identity.Evidence & RequiredEvidence) == RequiredEvidence);
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     internal static bool TryAdapter(IWindowsNpuDxCoreApi api, nint adapter, out WindowsNpuDxCoreAdapter value)
     {
         value = default;
@@ -31,6 +32,7 @@ internal static class WindowsNpuDxCoreIdentity
         return true;
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     internal static bool TryPhysicalCount(IWindowsNpuDxCoreMemoryApi api, nint adapter, out uint count)
     {
         count = 0;
@@ -39,6 +41,7 @@ internal static class WindowsNpuDxCoreIdentity
             && size == sizeof(uint) && TryProperty(api, adapter, WindowsNpuDxCoreProperty.PhysicalAdapterCount, out count);
     }
 
+    [ResourceManager.ReadWrite.RuntimeReadTransport]
     internal static unsafe bool TryProperty<T>(IWindowsNpuDxCoreApi api, nint adapter,
         WindowsNpuDxCoreProperty property, out T result) where T : unmanaged
     {

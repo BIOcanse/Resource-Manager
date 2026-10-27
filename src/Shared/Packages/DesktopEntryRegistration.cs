@@ -8,6 +8,7 @@ namespace ResourceManager.Shared.Packages;
 public static class DesktopEntryRegistration
 {
     /// <summary>Refresh owned desktop entries after an installation has been committed.</summary>
+    [System.ComponentModel.Description("RuntimeRead: Sampled")]
     public static void Refresh(string installRoot)
     {
         var plan = UninstallationPlan.Read();

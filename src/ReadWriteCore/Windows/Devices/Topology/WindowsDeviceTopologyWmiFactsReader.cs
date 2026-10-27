@@ -4,11 +4,23 @@ namespace ResourceManager.ReadWrite.Windows.Devices.Topology;
 
 public enum WindowsDeviceTopologyWmiFact { PnpEntities, Bios, ComputerSystem, BaseBoard, UsbControllers, UsbHubs, UsbAssociations }
 
-/// <summary>Seven original stateless topology queries. Construction performs no query.
-/// Each selected fact uses the explicit enumeration timeout; no aggregate cache or optional source reads.</summary>
-public sealed class WindowsDeviceTopologyWmiFactsReader(TimeSpan queryTimeout,
-    Func<string, string, TimeSpan, DeviceTopologyWmiQueryResult>? query = null)
+/// <summary>Selected topology queries. Fixed firmware declarations are read once per reader,
+/// including absence or query failure. Device and USB facts follow explicit capture demand.</summary>
+public sealed class WindowsDeviceTopologyWmiFactsReader
 {
+    private readonly TimeSpan queryTimeout;
+    private readonly Func<string, string, TimeSpan, DeviceTopologyWmiQueryResult> query;
+    private readonly Lazy<DeviceTopologyWmiQueryResult>[] fixedFacts;
+
+    public WindowsDeviceTopologyWmiFactsReader(TimeSpan queryTimeout,
+        Func<string, string, TimeSpan, DeviceTopologyWmiQueryResult>? query = null)
+    {
+        this.queryTimeout = queryTimeout;
+        this.query = query ?? DeviceTopologyWmiUtilities.QueryObjects;
+        fixedFacts = [new(() => QueryFixed(WindowsDeviceTopologyWmiFact.Bios)),
+            new(() => QueryFixed(WindowsDeviceTopologyWmiFact.ComputerSystem)),
+            new(() => QueryFixed(WindowsDeviceTopologyWmiFact.BaseBoard))];
+    }
     private static readonly (string Scope, string Query)[] Sources = [
         (@"root\CIMV2", "SELECT Name, Caption, Description, Manufacturer, Service, Status, PNPClass, PNPDeviceID, DeviceID, ClassGuid, HardwareID, CompatibleID FROM Win32_PnPEntity"),
         (@"root\CIMV2", "SELECT Manufacturer, SMBIOSBIOSVersion, Version FROM Win32_BIOS"),
@@ -19,10 +31,28 @@ public sealed class WindowsDeviceTopologyWmiFactsReader(TimeSpan queryTimeout,
         (@"root\CIMV2", "SELECT Antecedent, Dependent FROM Win32_USBControllerDevice")
     ];
 
+    [RuntimeReadCache]
     public DeviceTopologyWmiQueryResult Read(WindowsDeviceTopologyWmiFact fact)
     {
         if ((uint)fact >= (uint)Sources.Length) throw new ArgumentOutOfRangeException(nameof(fact));
+        if (fact is WindowsDeviceTopologyWmiFact.Bios or WindowsDeviceTopologyWmiFact.ComputerSystem or WindowsDeviceTopologyWmiFact.BaseBoard)
+        {
+            return fixedFacts[(int)fact - (int)WindowsDeviceTopologyWmiFact.Bios].Value;
+        }
+        return QueryDevice(fact);
+    }
+
+    [RuntimeRead(ReadVolatilityKind.Fixed)]
+    private DeviceTopologyWmiQueryResult QueryFixed(WindowsDeviceTopologyWmiFact fact)
+    {
         var source = Sources[(int)fact];
-        return (query ?? DeviceTopologyWmiUtilities.QueryObjects)(source.Scope, source.Query, queryTimeout);
+        return query(source.Scope, source.Query, queryTimeout);
+    }
+
+    [RuntimeRead(ReadVolatilityKind.EventDriven, "Windows device arrival, removal or device-property change")]
+    private DeviceTopologyWmiQueryResult QueryDevice(WindowsDeviceTopologyWmiFact fact)
+    {
+        var source = Sources[(int)fact];
+        return query(source.Scope, source.Query, queryTimeout);
     }
 }

@@ -94,6 +94,7 @@ public sealed class WindowsNpuEngineReader
     }
 
     /// <summary>Null is unavailable; an empty lease is a successful empty directory or no demand.</summary>
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows NPU adapter topology changed")]
     public WindowsNpuEngineDirectoryLease? OpenDirectory(uint effectiveMaximumInstanceCount,
         CancellationToken cancellationToken = default)
     {
@@ -177,6 +178,7 @@ public sealed class WindowsNpuEngineReader
         }
     }
 
+    [ResourceManager.ReadWrite.RuntimeReadSource(typeof(ResourceManager.App.Infrastructure.Monitoring.NativeMetricSnapshotSources), nameof(ResourceManager.App.Infrastructure.Monitoring.NativeMetricSnapshotSources.WindowsNpuEngine))]
     public IReadOnlyList<NpuEngineRead> Read(IReadOnlyList<NpuEngineCatalogIdentity> devices,
         IReadOnlySet<string> requestedEngineKeys, uint effectiveMaximumInstanceCount,
         CancellationToken cancellationToken = default)
@@ -198,6 +200,7 @@ public sealed class WindowsNpuEngineReader
         return directory.Read(selected, effectiveMaximumInstanceCount, cancellationToken);
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Fixed)]
     internal static unsafe bool TryEngineCount(IWindowsNpuDxCoreEngineApi api, nint adapter1, out uint count)
     {
         uint physicalIndex = 0, value = 0;
@@ -208,10 +211,12 @@ public sealed class WindowsNpuEngineReader
         return success;
     }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows device-bound driver package changed")]
     internal static ulong? ReadDriver(IWindowsNpuDxCoreApi api, nint adapter)
         => WindowsNpuDxCoreIdentity.TryProperty<ulong>(api, adapter, WindowsNpuDxCoreProperty.DriverVersion, out var driver)
             ? driver : null;
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows device-bound driver package changed")]
     private static unsafe string? ReadName(IWindowsNpuDxCoreEngineApi api, nint adapter1, uint engine,
         uint maximumCharacters, CancellationToken token)
     {
@@ -307,6 +312,7 @@ public sealed class WindowsNpuEngineDirectoryLease : IWindowsNpuEngineDirectory
 
     public IReadOnlyList<NpuEngineCatalogIdentity> Identities { get; }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows NPU adapter topology changed")]
     public bool IsCurrent(uint effectiveMaximumInstanceCount, CancellationToken cancellationToken = default)
     {
         lock (gate)
@@ -357,6 +363,7 @@ public sealed class WindowsNpuEngineDirectoryLease : IWindowsNpuEngineDirectory
         public void Dispose() => Interlocked.Exchange(ref owner, null)?.Release();
     }
 
+    [ResourceManager.ReadWrite.RuntimeReadSource(typeof(ResourceManager.App.Infrastructure.Monitoring.NativeMetricSnapshotSources), nameof(ResourceManager.App.Infrastructure.Monitoring.NativeMetricSnapshotSources.WindowsNpuEngine))]
     internal IReadOnlyList<NpuEngineRead> Read(IReadOnlyList<NpuEngineCatalogIdentity> targets,
         uint maximum, CancellationToken token)
     {
@@ -390,6 +397,7 @@ public sealed class WindowsNpuEngineDirectoryLease : IWindowsNpuEngineDirectory
 
     private Validation Changed() { invalidated = true; return Validation.Changed; }
 
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows NPU adapter topology changed")]
     private Validation Validate(CancellationToken token)
     {
         if (invalidated || references == 0) return Changed();

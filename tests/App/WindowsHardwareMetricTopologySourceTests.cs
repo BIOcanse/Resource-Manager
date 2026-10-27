@@ -8,6 +8,31 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class WindowsHardwareMetricTopologySourceTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RepeatedCatalogueCapturesReuseFixedCpuIdentityIncludingMissingResult(bool missing)
+    {
+        var reads = 0;
+        var inventoryReads = 0;
+        var source = new WindowsHardwareMetricTopologySource(new(
+            () => { inventoryReads++; return new(SamplingObservationStatus.Unavailable, 0, 0, 0, 0, 0, 0, []); },
+            _ => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []),
+            _ => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []),
+            () => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []),
+            () => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []),
+            () => new(NativeMetricSnapshotCatalogTopologyStatus.Complete, [])) { ReadNvmlFanIdentities = _ => [] },
+            () => null, () =>
+            {
+                reads++;
+                return missing ? null : new("GenuineIntel", 6, 1, 1, "recorded CPU", [], []);
+            });
+        for (var index = 0; index < 24; index++)
+            Assert.Equal(missing ? null : "recorded CPU", source.Capture().CpuModelName);
+        Assert.Equal(1, reads);
+        Assert.Equal(24, inventoryReads);
+    }
+
     [Fact]
     public void PhysicalPnpCaseDoesNotChangeTopologyContent()
     {

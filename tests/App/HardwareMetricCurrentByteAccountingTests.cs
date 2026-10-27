@@ -36,7 +36,7 @@ public sealed class HardwareMetricCurrentByteAccountingTests
         var fields = metrics.Select((row, index) => new MetricDeviceFieldBinding(
             scopes[row.GetProperty("ScopeHandle").GetUInt64()],
             new MetricFieldDefinition(MetricFieldCode.Unknown, $"recorded-field-{index}",
-                MetricResource.System, MetricVendor.All, "count", "recorded")
+                MetricResource.System, MetricVendor.All, "count", "recorded", ResourceManager.ReadWrite.ReadVolatility.Sampled)
             { ValueKind = Kind(row.GetProperty("ValueKind").GetUInt32()) },
             index < 4 ? DatasetIds[index] : $"recorded-metric-{row.GetProperty("MetricHandle").GetUInt64()}",
             sources[row.GetProperty("SourceHandle").GetUInt64()])).ToArray();

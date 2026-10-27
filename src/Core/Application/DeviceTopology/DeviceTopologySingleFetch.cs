@@ -20,9 +20,10 @@ public static class DeviceTopologySingleFetch
     public static Task<DeviceInformationSnapshot?> FetchAcpiOnceAsync(this IDeviceTopologySnapshotProvider source,
         string holder, CancellationToken cancellationToken)
     {
-        var started = DateTimeOffset.UtcNow;
+        // ACPI publishes its fixed current value with the original observation time.
+        // This stream starts with the requested publication, without a retained-state yield.
         return SubscriptionSingleFetch.ReadAsync(source.SubscribeAcpiAsync(holder,
             SubscriptionSingleFetch.Interval, cancellationToken),
-            snapshot => snapshot.ObservedAt is null || snapshot.ObservedAt >= started, cancellationToken);
+            static _ => true, cancellationToken);
     }
 }

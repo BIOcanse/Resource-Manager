@@ -24,6 +24,7 @@ public sealed class WindowsNpuInformationReader
     }
 
     /// <returns>Null for an unavailable or incomplete directory; an empty list only after successful enumeration.</returns>
+    [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.EventDriven, "Windows NPU adapter topology changed")]
     public IReadOnlyList<DeviceTopologyNpuInformation>? Read(DeviceTopologyNativeSnapshot native)
     {
         ArgumentNullException.ThrowIfNull(native);

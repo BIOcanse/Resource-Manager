@@ -35,6 +35,7 @@ struct CreationSelection
 // Owned only by the existing outer creation call, not a retained policy cache.
 inline thread_local const CreationSelection* activeCreationSelection{};
 
+// RuntimeRead: Transport
 inline CreationSelection SelectCreation(HDC dc)
 {
     if (activeCreationSelection && activeCreationSelection->dc == dc)
