@@ -21,7 +21,7 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class KernelLeakReportTests
 {
-    private static readonly KernelLeakOptions Fast = new(1000, 4, 8, 3, 2, 1000, 100, 25);
+    private static readonly KernelLeakOptions Fast = new(1000, 4, 8, 3, 2, 1000, 100, 25, true);
     [Theory]
     [InlineData(1000, 1100, 1200, true)]
     [InlineData(1200, 1400, 1200, false)]
@@ -33,7 +33,7 @@ public sealed partial class KernelLeakReportTests
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         await using var subscription = fixture.Reports.SubscribeAsync(cancellation.Token).GetAsyncEnumerator();
         Assert.True(await subscription.MoveNextAsync());
-        Assert.Equal(KernelLeakFailure.NotObserved, subscription.Current.Failure);
+        Assert.Equal(KernelLeakReportStatus.Observing, subscription.Current.Status);
         await fixture.Deliver(subscription, 0, first);
         await fixture.Deliver(subscription, 1, second);
         var report = await fixture.Deliver(subscription, 2, third);
@@ -44,21 +44,19 @@ public sealed partial class KernelLeakReportTests
         Assert.Equal(100, item.GrowthPerSecond);
         Assert.Equal(2, item.ObservationSeconds);
         Assert.Equal(3, item.SampleCount);
-        Assert.Equal("recorded-service", Assert.Single(item.Holder.ServiceNames));
+        Assert.Equal("recorded-service", Assert.Single(item.Holder.Services.Names));
         Assert.Equal("42", item.Holder.StartKey);
-        Assert.Equal("recorded-product", item.Holder.ProductName);
+        Assert.Equal("recorded-product", item.Holder.Image.ProductName);
         var wire = JsonSerializer.Serialize(new { subscriptionId = "leaks", value = report }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         Assert.Contains("\"resourceKind\":\"ProcessHandles\"", wire);
         WriteEvidence("wire-example.json", wire);
     }
     [Fact]
-    public async Task ExitAndPidReuseReleaseSeriesAndLastSubscriberDrainsDemand()
+    public async Task ExitAndPidReuseReleaseSeriesAndOnlyHostStopDrainsDemand()
     {
         using var fixture = new Fixture();
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-        Assert.Equal(0, fixture.Processes.Starts);
-        Assert.Equal(KernelLeakFailure.NotObserved, fixture.Reports.Read().Failure);
-        Assert.Equal(0, fixture.Processes.Starts); // Reads and diagnostics cannot start capture.
+        Assert.Equal(KernelLeakReportStatus.Observing, fixture.Reports.Read().Status);
         var subscription = fixture.Reports.SubscribeAsync(cancellation.Token).GetAsyncEnumerator();
         Assert.True(await subscription.MoveNextAsync());
         await fixture.Deliver(subscription, 0, 1000);
@@ -74,6 +72,8 @@ public sealed partial class KernelLeakReportTests
         Assert.Equal("kernel-leak-observer", fixture.Processes.Holder);
         Assert.Equal(TimeSpan.FromSeconds(1), fixture.Processes.Interval);
         await subscription.DisposeAsync();
+        Assert.Equal(1, fixture.Processes.Active);
+        await fixture.StopAsync();
         Assert.Equal(0, fixture.Processes.Active);
         Assert.Equal(0, fixture.Reports.ReadDiagnostics().HolderCount);
         Assert.Equal(0, fixture.Reports.ReadDiagnostics().SeriesBytes);
@@ -93,7 +93,7 @@ public sealed partial class KernelLeakReportTests
         Assert.Equal(1, fixture.Processes.Active);
         Assert.True(await second.MoveNextAsync());
         await second.DisposeAsync();
-        Assert.Equal(0, fixture.Processes.Active);
+        Assert.Equal(1, fixture.Processes.Active);
     }
     [Fact]
     public async Task FailedSourceClearsEvidenceRatherThanKeepingLastSuspect()
@@ -123,13 +123,13 @@ public sealed partial class KernelLeakReportTests
         for (var index = 0; index < 3; index++)
         {
             fixture.Raw!.Push(new(DateTimeOffset.UnixEpoch.AddSeconds(index), true,
-                [new(7, "42", KernelLeakResourceKind.FileCachePoolBytes, (ulong)(10000 + 1000 * index))]));
+                [new(7, "42", KernelLeakSampleKind.FileCachePoolBytes, (ulong)(10000 + 1000 * index))]));
             Assert.True(await subscription.MoveNextAsync());
             Assert.Empty(subscription.Current.Items);
             Assert.Equal(0, fixture.Reports.ReadDiagnostics().HolderCount);
         }
         fixture.Raw!.Push(new(DateTimeOffset.UnixEpoch.AddSeconds(4), true,
-            Enumerable.Range(1, 9).Select(pid => new KernelLeakSample(pid, "42", KernelLeakResourceKind.ProcessHandles, 1200)).ToArray()));
+            Enumerable.Range(1, 9).Select(pid => new KernelLeakSample(pid, "42", KernelLeakSampleKind.ProcessHandles, 1200)).ToArray()));
         Assert.True(await subscription.MoveNextAsync());
         Assert.Equal(KernelLeakFailure.CapacityExceeded, subscription.Current.Failure);
         Assert.Empty(subscription.Current.Items);
@@ -142,7 +142,7 @@ public sealed partial class KernelLeakReportTests
         for (var index = 0; index < values.Length; index++)
         {
             var result = series.Observe(new(DateTimeOffset.UnixEpoch.AddSeconds(index), true,
-                [new(7, "42", KernelLeakResourceKind.ProcessHandles, values[index])]));
+                [new(7, "42", KernelLeakSampleKind.ProcessHandles, values[index])]));
             Assert.Equal(index == 4 ? 1 : 0, result.Count);
         }
         Assert.Equal(64, series.Bytes);
@@ -181,14 +181,13 @@ public sealed partial class KernelLeakReportTests
         {
             var birth = current.StartTime.ToUniversalTime().ToFileTimeUtc().ToString(System.Globalization.CultureInfo.InvariantCulture);
             var timer = Stopwatch.StartNew();
-            var metadata = new WindowsKernelLeakAttributionReader().ReadBatch([new(Environment.ProcessId, birth, null, null, null, [],
-                KernelLeakMetadataStatus.Unavailable, KernelLeakMetadataStatus.Unavailable)]);
+            var metadata = new WindowsKernelLeakAttributionReader().ReadBatch([KernelLeakHolder.Unknown(Environment.ProcessId, birth)]);
             var attributionMs = timer.Elapsed.TotalMilliseconds;
-            Assert.Equal(KernelLeakMetadataStatus.Current, metadata[0].ImageStatus);
+            Assert.Equal(KernelLeakMetadataStatus.Current, metadata[0].Image.Status);
             var options = HostManagerTestPlanFactory.CreatePlan().KernelLeak!.Validate();
             var series = new KernelLeakSeries(options);
             var samples = Enumerable.Range(1, options.MaximumHolders).Select(pid =>
-                new KernelLeakSample(pid, "42", KernelLeakResourceKind.ProcessHandles, 1500)).ToArray();
+                new KernelLeakSample(pid, "42", KernelLeakSampleKind.ProcessHandles, 1500)).ToArray();
             timer.Restart();
             for (var round = 0; round < options.SeriesCapacity; round++)
                 series.Observe(new(DateTimeOffset.UnixEpoch.AddMilliseconds((long)round * options.IntervalMilliseconds), true, samples));
@@ -218,7 +217,7 @@ public sealed partial class KernelLeakReportTests
     public void KernelLeakFreedomPointDefaultsAreCompiledAndInvalidBoundsAreRejected()
     {
         var baseline = HostManagerTestPlanFactory.CreatePlan();
-        Assert.Equal(new KernelLeakOptions(30000, 32, 4096, 8, 600, 1024, 128, 25), baseline.KernelLeak);
+        Assert.Equal(new KernelLeakOptions(30000, 32, 4096, 8, 600, 1024, 128, 25, true), baseline.KernelLeak);
         var changed = HostManagerTestPlanFactory.CreatePlan(editFreedomPoints: root =>
             FreedomPointTestFactory.Point(root, "resource-manager/backend/monitoring/build/complex/0")["value"]!["handle_floor"] = 2000);
         Assert.Equal(2000, changed.KernelLeak!.HandleFloor);
@@ -240,8 +239,8 @@ public sealed partial class KernelLeakReportTests
         var suspect = Assert.Single(report.Items);
         Assert.Equal(KernelLeakReportStatus.Suspected, report.Status);
         Assert.Equal(KernelLeakFailure.None, report.Failure);
-        Assert.Equal(KernelLeakMetadataStatus.Unavailable, suspect.Holder.ImageStatus);
-        Assert.Equal(KernelLeakMetadataStatus.Unavailable, suspect.Holder.ServiceStatus);
+        Assert.Equal(KernelLeakMetadataStatus.Unavailable, suspect.Holder.Image.Status);
+        Assert.Equal(KernelLeakMetadataStatus.Unavailable, suspect.Holder.Services.Status);
         Assert.Equal(7, suspect.Holder.ProcessId); Assert.Equal("42", suspect.Holder.StartKey);
     }
     [Fact]
@@ -264,14 +263,14 @@ public sealed partial class KernelLeakReportTests
         }
     }
     [Fact]
-    public void DebugSnapshotUsesProductionJsonMetadataAndDoesNotStartSampling()
+    public void DebugSnapshotUsesProductionJsonMetadataWithoutStartingAnotherDemand()
     {
         using var fixture = new Fixture();
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         ResourceManager.App.Endpoints.ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
         var json = JsonSerializer.Serialize(new KernelLeakDebugSnapshot(fixture.Reports.Read(), fixture.Reports.ReadDiagnostics()), options);
-        Assert.Contains("\"NotObserved\"", json);
-        Assert.Equal(0, fixture.Processes.Starts);
+        Assert.Contains("\"Observing\"", json);
+        Assert.InRange(fixture.Processes.Starts, 0, 1);
     }
     [Theory]
     [InlineData(true, new int[] { 1000, 1030, 1100, 1099, 1200, 1195, 1300, 1297 })]
@@ -286,7 +285,8 @@ public sealed partial class KernelLeakReportTests
         for (var index = 0; index < values.Length; index++)
         {
             var report = await fixture.Deliver(subscription, index, values[index]);
-            Assert.Equal(suspected && index == values.Length - 1 ? KernelLeakReportStatus.Suspected : KernelLeakReportStatus.Empty, report.Status);
+            Assert.Equal(index < values.Length - 1 ? KernelLeakReportStatus.Observing
+                : suspected ? KernelLeakReportStatus.Suspected : KernelLeakReportStatus.Empty, report.Status);
         }
         if (suspected)
         {
@@ -308,7 +308,7 @@ public sealed partial class KernelLeakReportTests
             IReadOnlyList<KernelLeakSuspect> items = [];
             var values = new ulong[] { 1000, 1030, 1250, 1300, 1250, 1290, 1400, 1450 };
             for (var index = 0; index < values.Length; index++)
-                items = series.Observe(new(DateTimeOffset.UnixEpoch.AddSeconds(index), true, [new(7, "42", KernelLeakResourceKind.ProcessHandles, values[index])]));
+                items = series.Observe(new(DateTimeOffset.UnixEpoch.AddSeconds(index), true, [new(7, "42", KernelLeakSampleKind.ProcessHandles, values[index])]));
             Assert.Equal(percentage == 25 ? 1 : 0, items.Count);
         }
     }
@@ -331,7 +331,9 @@ public sealed partial class KernelLeakReportTests
         internal RecordedProcesses Processes { get; } = new();
         internal RawSamples? Raw { get; }
         internal IKernelLeakReportSource Reports => services.GetRequiredService<IKernelLeakReportSource>();
-        internal Fixture(bool rawSamples = false, bool failedAttribution = false, KernelLeakOptions? options = null)
+        internal Task StopAsync() => services.GetServices<Microsoft.Extensions.Hosting.IHostedService>().Single().StopAsync(default);
+        internal Fixture(bool rawSamples = false, bool failedAttribution = false, KernelLeakOptions? options = null,
+            IKernelLeakAttributionReader? attribution = null, bool publishAfterHostStart = false)
         {
             var collection = new ServiceCollection(); collection.AddLogging();
             var plans = new RuntimePlanProvider(new HostManagerDeploymentState());
@@ -347,14 +349,21 @@ public sealed partial class KernelLeakReportTests
                 value["handle_floor"] = configured.HandleFloor;
                 value["minimum_growth"] = configured.MinimumGrowth;
                 value["edge_percentage"] = configured.EdgePercentage;
+                value["enabled"] = configured.Enabled;
             });
-            plans.Publish(CompiledRuntimePlan.Default with { Version = 1, HostManager = plan });
+            if (!publishAfterHostStart) plans.Publish(CompiledRuntimePlan.Default with { Version = 1, HostManager = plan });
             collection.AddSingleton(plans);
             collection.AddSingleton<IResourceBreakdownPushSource>(Processes);
             collection.AddKernelLeakObservation();
-            collection.AddSingleton<IKernelLeakAttributionReader>(new RecordedAttribution(failedAttribution));
+            collection.AddSingleton<IKernelLeakAttributionReader>(attribution ?? new RecordedAttribution(failedAttribution));
             if (rawSamples) { Raw = new(); collection.AddSingleton<IKernelLeakSampleSource>(Raw); }
             services = collection.BuildServiceProvider();
+            services.GetServices<Microsoft.Extensions.Hosting.IHostedService>().Single().StartAsync(default).GetAwaiter().GetResult();
+            if (publishAfterHostStart)
+            {
+                Assert.Equal(0, Processes.Starts);
+                plans.Publish(CompiledRuntimePlan.Default with { Version = 1, HostManager = plan });
+            }
         }
         internal async Task<KernelLeakReport> Deliver(IAsyncEnumerator<KernelLeakReport> subscription, int second, int? value, string birth = "42")
         {
@@ -364,13 +373,14 @@ public sealed partial class KernelLeakReportTests
             do { Assert.True(await subscription.MoveNextAsync()); } while (subscription.Current.CapturedAt != at);
             return subscription.Current;
         }
-        public void Dispose() => services.Dispose();
+        public void Dispose() { StopAsync().GetAwaiter().GetResult(); services.Dispose(); }
     }
     internal sealed class RecordedProcesses : IResourceBreakdownPushSource
     {
         private readonly Channel<ResourceBreakdownSnapshot> channel = Channel.CreateBounded<ResourceBreakdownSnapshot>(16);
         internal int Starts, Active;
         internal TaskCompletionSource Released { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal string? Holder;
         internal TimeSpan Interval;
         internal void Push(ResourceBreakdownSnapshot snapshot) => Assert.True(channel.Writer.TryWrite(snapshot));
@@ -379,6 +389,7 @@ public sealed partial class KernelLeakReportTests
         {
             Assert.Equal([KernelLeakProcessSampleSource.HandleField], request.MetricIds);
             Holder = subscriptionId; Interval = interval; Interlocked.Increment(ref Starts); Interlocked.Increment(ref Active);
+            Started.TrySetResult();
             try { await foreach (var snapshot in channel.Reader.ReadAllAsync(cancellationToken)) yield return snapshot; }
             finally { Interlocked.Decrement(ref Active); Released.TrySetResult(); }
         }
@@ -393,7 +404,6 @@ public sealed partial class KernelLeakReportTests
     private sealed class RecordedAttribution(bool fail) : IKernelLeakAttributionReader
     {
         public IReadOnlyList<KernelLeakHolder> ReadBatch(IReadOnlyList<KernelLeakHolder> holders, CancellationToken cancellationToken = default)
-            => fail ? throw new IOException("Recorded metadata query failure.") : holders.Select(holder => holder with { Name = "recorded-holder", ImagePath = "C:\\recorded\\holder.exe", ProductName = "recorded-product",
-                ServiceNames = ["recorded-service"], ImageStatus = KernelLeakMetadataStatus.Current, ServiceStatus = KernelLeakMetadataStatus.Current }).ToArray();
+            => fail ? throw new IOException("Recorded metadata query failure.") : holders.Select(holder => holder with { Image = KernelLeakImage.Current("recorded-holder", "C:\\recorded\\holder.exe", "recorded-product"), Services = new(KernelLeakMetadataStatus.Current, ["recorded-service"]) }).ToArray();
     }
 }

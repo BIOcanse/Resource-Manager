@@ -42,12 +42,12 @@ public sealed partial class KernelLeakReportTests
         if (!allowed)
         {
             Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-            Assert.Equal(0, fixture.Processes.Starts); return;
+            Assert.InRange(fixture.Processes.Starts, 0, 1); return;
         }
         response.EnsureSuccessStatusCode();
         using var input = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
         using (var initial = JsonDocument.Parse((await input.ReadLineAsync(timeout.Token))!))
-            Assert.Equal("Unavailable", initial.RootElement.GetProperty("value").GetProperty("status").GetString());
+            Assert.Equal("Observing", initial.RootElement.GetProperty("value").GetProperty("status").GetString());
         for (var index = 0; index < 3; index++)
         {
             var at = DateTimeOffset.UnixEpoch.AddSeconds(index);
@@ -57,7 +57,7 @@ public sealed partial class KernelLeakReportTests
             using var frame = JsonDocument.Parse(line);
             Assert.Equal("leaks", frame.RootElement.GetProperty("subscriptionId").GetString());
             var value = frame.RootElement.GetProperty("value");
-            Assert.Equal(index == 2 ? "Suspected" : "Empty", value.GetProperty("status").GetString());
+            Assert.Equal(index == 2 ? "Suspected" : "Observing", value.GetProperty("status").GetString());
             if (index == 2)
             {
                 var item = Assert.Single(value.GetProperty("items").EnumerateArray());
@@ -68,6 +68,8 @@ public sealed partial class KernelLeakReportTests
             }
         }
         response.Dispose();
+        Assert.Equal(1, fixture.Processes.Active);
+        await fixture.StopAsync();
         await fixture.Processes.Released.Task.WaitAsync(timeout.Token);
         Assert.Equal(0, fixture.Processes.Active);
         Assert.True(TrustedAccessHttpPolicy.TryGetRequiredScopesForSubscription("/api/kernel-leaks/subscribe", out var scopes));

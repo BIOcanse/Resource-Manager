@@ -11,7 +11,8 @@ public sealed record KernelLeakOptions(
     [property: JsonPropertyName("minimum_observation_seconds")] int MinimumObservationSeconds,
     [property: JsonPropertyName("handle_floor")] int HandleFloor,
     [property: JsonPropertyName("minimum_growth")] int MinimumGrowth,
-    [property: JsonPropertyName("edge_percentage")] int EdgePercentage)
+    [property: JsonPropertyName("edge_percentage")] int EdgePercentage,
+    [property: JsonPropertyName("enabled")] bool Enabled)
 {
     public KernelLeakOptions Validate()
     {

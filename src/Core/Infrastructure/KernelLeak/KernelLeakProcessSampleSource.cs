@@ -18,6 +18,8 @@ public sealed class KernelLeakProcessSampleSource(IResourceBreakdownPushSource p
         DateTimeOffset? last = null;
         await foreach (var snapshot in processes.SubscribeAsync(holder, request, interval, cancellationToken))
         {
+            // Native source warm-up is not a failed observation or a sample. Keep the current progress until data arrives.
+            if (snapshot.Sampling.Status == ResourceBreakdownSamplingStatuses.Warming) continue;
             var fields = snapshot.ProcessFields;
             if (fields?.CapturedAt is not { } captured || snapshot.Sampling.Status != ResourceBreakdownSamplingStatuses.Ready)
             { last = null; yield return new(snapshot.CapturedAt, false, []); continue; }
@@ -33,7 +35,7 @@ public sealed class KernelLeakProcessSampleSource(IResourceBreakdownPushSource p
                 if (!ulong.TryParse(process.CreationWindowsFileTime100Ns, NumberStyles.None, CultureInfo.InvariantCulture, out var birth)
                     || birth == 0 || value is not { Negative: false, HighBits: 0 } count)
                 { unavailable++; continue; }
-                samples.Add(new(process.ProcessId, birth.ToString(CultureInfo.InvariantCulture), KernelLeakResourceKind.ProcessHandles, count.LowBits));
+                samples.Add(new(process.ProcessId, birth.ToString(CultureInfo.InvariantCulture), KernelLeakSampleKind.ProcessHandles, count.LowBits));
             }
             // Missing counts break only that holder's series. Missing identity cannot create a false holder.
             yield return new(captured, samples.Count > 0 || unavailable == 0, samples) { UnavailableHolderCount = unavailable };

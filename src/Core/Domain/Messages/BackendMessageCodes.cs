@@ -25,6 +25,9 @@ public static class BackendMessageDomains
 
     /// <summary>操作失败与恢复原因；无参数，原始异常仅作为独立诊断。</summary>
     public const byte Operation = 6;
+
+    /// <summary>Kernel leak action availability and risk facts; wording belongs to the consumer.</summary>
+    public const byte KernelLeak = 7;
 }
 
 /// <summary>
@@ -32,6 +35,15 @@ public static class BackendMessageDomains
 /// </summary>
 public static class BackendMessageCodes
 {
+    public static class KernelLeak
+    {
+        /// <summary>No action implementation is provided by this backend. Args: none.</summary>
+        public const byte ActionNotProvided = 1;
+        /// <summary>Restart interrupts the holder and may lose unsaved state or change behaviour. Args: none.</summary>
+        public const byte RestartHolderRisk = 2;
+        /// <summary>Forced release may crash the holder and does not stop further leakage; last resort. Args: none.</summary>
+        public const byte ForceReleaseHandlesRisk = 3;
+    }
     public static class Operation
     {
         public const byte NetworkFailure = 1;

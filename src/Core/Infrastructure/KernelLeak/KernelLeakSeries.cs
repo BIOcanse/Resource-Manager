@@ -6,7 +6,7 @@ namespace ResourceManager.App.Infrastructure.KernelLeak;
 // Owned small rings; maximum holders * capacity is validated before allocating.
 internal sealed class KernelLeakSeries(KernelLeakOptions options)
 {
-    private readonly Dictionary<(int Pid, string Start, KernelLeakResourceKind Kind), Ring> holders = new();
+    private readonly Dictionary<(int Pid, string Start, KernelLeakSampleKind Kind), Ring> holders = new();
     internal int Count => holders.Count;
     internal long Bytes => (long)Count * options.SeriesCapacity * 16;
     internal long PeakBytes { get; private set; }
@@ -14,11 +14,11 @@ internal sealed class KernelLeakSeries(KernelLeakOptions options)
     internal IReadOnlyList<KernelLeakSuspect> Observe(KernelLeakSampleFrame frame)
     {
         if (frame.Samples.Count > options.MaximumHolders) throw new OverflowException("Kernel leak holder capacity exceeded.");
-        var live = new HashSet<(int, string, KernelLeakResourceKind)>();
+        var live = new HashSet<(int, string, KernelLeakSampleKind)>();
         foreach (var sample in frame.Samples)
         {
             // Only process handle counts are eligible. Reclaimable cache measures never enter the rings.
-            if (sample.ResourceKind != KernelLeakResourceKind.ProcessHandles) continue;
+            if (sample.ResourceKind != KernelLeakSampleKind.ProcessHandles) continue;
             if (sample.ProcessId <= 0 || !ulong.TryParse(sample.StartKey, out var birth) || birth == 0
                 || sample.StartKey.Length > 20 || !live.Add((sample.ProcessId, sample.StartKey, sample.ResourceKind)))
                 throw new InvalidDataException("Invalid or repeated kernel leak holder identity.");
@@ -27,7 +27,7 @@ internal sealed class KernelLeakSeries(KernelLeakOptions options)
         var suspects = new List<KernelLeakSuspect>();
         foreach (var sample in frame.Samples)
         {
-            if (sample.ResourceKind != KernelLeakResourceKind.ProcessHandles) continue;
+            if (sample.ResourceKind != KernelLeakSampleKind.ProcessHandles) continue;
             var key = (sample.ProcessId, sample.StartKey, sample.ResourceKind);
             if (!holders.TryGetValue(key, out var ring))
             {
@@ -52,10 +52,9 @@ internal sealed class KernelLeakSeries(KernelLeakOptions options)
             }
             if (lateMinimum < earlyMaximum || lateMinimum - earlyMaximum < (ulong)options.MinimumGrowth) continue;
             // Published growth/rate retain their first-to-last definition, distinct from the edge veto.
-            suspects.Add(new(sample.ResourceKind, last.Value,
+            suspects.Add(new(KernelLeakResourceKind.ProcessHandles, last.Value,
                 (last.Value - first.Value) / seconds, seconds, ring.Count, last.Value - first.Value,
-                new(sample.ProcessId, sample.StartKey, null, null, null, [],
-                    KernelLeakMetadataStatus.Unavailable, KernelLeakMetadataStatus.Unavailable)));
+                KernelLeakHolder.Unknown(sample.ProcessId, sample.StartKey)));
         }
         PeakBytes = Math.Max(PeakBytes, Bytes);
         return suspects.ToArray();

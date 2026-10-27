@@ -16,7 +16,7 @@
                 "consumers": [
                   "HostManagerPlanCompiler.CompileKernelLeak"
                 ],
-                "description": "Low-rate handle observations, bounded rings and suspicion thresholds.",
+                "description": "Backend-lifetime named observation demand; enabled controls continuous low-rate sampling, bounded rings and sustained-growth thresholds. Report readers never control observation.",
                 "id": "kernel_leak_observation",
                 "value_type": "object",
                 "value": {
@@ -27,7 +27,8 @@
                   "minimum_observation_seconds": 600,
                   "maximum_holders": 4096,
                   "minimum_growth": 128,
-                  "edge_percentage": 25
+                  "edge_percentage": 25,
+                  "enabled": true
                 },
                 "status": "active",
                 "update_class": "rebuild_backend"

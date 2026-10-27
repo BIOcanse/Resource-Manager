@@ -10,38 +10,61 @@ namespace ResourceManager.App.Infrastructure.KernelLeak;
 public sealed class WindowsKernelLeakAttributionReader : IKernelLeakAttributionReader
 {
     private const int MaximumServiceBufferBytes = 1024 * 1024, MaximumServices = 16384, MaximumTextCharacters = 32768;
-    private readonly WindowsProcessBasicMetricReader reader = new();
+    private readonly Func<int, long, string?> readPath;
+    private readonly Func<int, ProcessCreationRead> readIdentity;
+    private readonly Func<string, string?> readProduct;
+    private readonly Func<CancellationToken, Dictionary<int, IReadOnlyList<string>>?> readServices;
+    private readonly ILogger<WindowsKernelLeakAttributionReader>? logger;
+    public WindowsKernelLeakAttributionReader(ILogger<WindowsKernelLeakAttributionReader>? logger = null)
+    {
+        var reader = new WindowsProcessBasicMetricReader();
+        readPath = (pid, birth) => reader.Read(pid, birth, ProcessMetricReadMask.ImagePath).ImagePath;
+        readIdentity = WindowsProcessCreationQuery.Read;
+        readProduct = path => FileVersionInfo.GetVersionInfo(path).ProductName;
+        readServices = ReadServices;
+        this.logger = logger;
+    }
+    // Recorded OS query outcomes exercise the real attribution composition, including product read failures.
+    internal WindowsKernelLeakAttributionReader(Func<int, long, string?> path, Func<int, ProcessCreationRead> identity,
+        Func<string, string?> product, Func<CancellationToken, Dictionary<int, IReadOnlyList<string>>?> services)
+        => (readPath, readIdentity, readProduct, readServices) = (path, identity, product, services);
     public IReadOnlyList<KernelLeakHolder> ReadBatch(IReadOnlyList<KernelLeakHolder> holders, CancellationToken cancellationToken = default)
     {
-        if (holders.Count > 16384) throw new OverflowException("Kernel leak attribution capacity exceeded.");
+        if (holders.Count > MaximumServices) throw new OverflowException("Kernel leak attribution capacity exceeded.");
         if (holders.Count == 0) return [];
-        var services = ReadServices(cancellationToken);
+        var services = readServices(cancellationToken);
         var result = new KernelLeakHolder[holders.Count];
         for (var index = 0; index < holders.Count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var holder = holders[index];
             var birth = long.Parse(holder.StartKey, CultureInfo.InvariantCulture);
-            var path = reader.Read(holder.ProcessId, birth, ProcessMetricReadMask.ImagePath).ImagePath;
-            string? name = null, product = null;
+            var path = readPath(holder.ProcessId, birth);
+            var image = KernelLeakImage.Unavailable;
             if (path is { Length: > 0 and <= MaximumTextCharacters })
             {
-                name = Path.GetFileNameWithoutExtension(path);
-                try { product = FileVersionInfo.GetVersionInfo(path).ProductName; }
-                catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or ArgumentException) { }
-                if (product?.Length > MaximumTextCharacters) product = null;
+                try
+                {
+                    var product = readProduct(path); // null is genuine absence; read failure makes the image unavailable.
+                    if (product?.Length > MaximumTextCharacters) throw new InvalidDataException("Kernel leak product name capacity exceeded.");
+                    if (string.IsNullOrWhiteSpace(product)) product = null;
+                    image = KernelLeakImage.Current(Path.GetFileNameWithoutExtension(path), path, product);
+                }
+                catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or ArgumentException)
+                {
+                    logger?.LogWarning(error, "Kernel leak image metadata unavailable for PID {ProcessId}.", holder.ProcessId);
+                }
             }
-            else path = null;
-            // Metadata cannot be attached to a reused PID. Failure affects attribution, not growth evidence.
-            var identity = WindowsProcessCreationQuery.Read(holder.ProcessId);
-            var valid = identity.Creation == birth;
+            // Reused PID also proves the original holder ended. Ended status never carries stale metadata.
+            var identity = readIdentity(holder.ProcessId);
+            var ended = identity.Status == ProcessReadStatus.Exited || identity.Creation is { } actual && actual != birth;
+            var valid = !ended && identity.Creation == birth;
             result[index] = holder with
             {
-                Name = valid ? name : null, ImagePath = valid ? path : null, ProductName = valid ? product : null,
-                ServiceNames = valid && services is not null ? services.GetValueOrDefault(holder.ProcessId) ?? [] : [],
-                ImageStatus = identity.Status == ProcessReadStatus.Exited ? KernelLeakMetadataStatus.ProcessEnded
-                    : valid && path is not null ? KernelLeakMetadataStatus.Current : KernelLeakMetadataStatus.Unavailable,
-                ServiceStatus = valid && services is not null ? KernelLeakMetadataStatus.Current : KernelLeakMetadataStatus.Unavailable
+                Image = ended ? KernelLeakImage.ProcessEnded : valid ? image : KernelLeakImage.Unavailable,
+                Services = ended ? new(KernelLeakMetadataStatus.ProcessEnded, [])
+                    : valid && services is not null ? new(KernelLeakMetadataStatus.Current, services.GetValueOrDefault(holder.ProcessId) ?? [])
+                    : new(KernelLeakMetadataStatus.Unavailable, [])
             };
         }
         return result;
