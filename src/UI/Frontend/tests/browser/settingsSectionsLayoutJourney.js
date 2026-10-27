@@ -7,6 +7,7 @@ import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
 import { writeFrontendPreferences } from "./frontendPreferencesFixture.js";
 import { NOT_GHOST } from "./liveLocator.js";
+import { waitForContentSettled } from "./contentSettled.js";
 
 const sectionOrder = ["runtimePolicy", "memory", "memoryProtection", "hardwareControl", "reportRules", "appearance", "performanceOverlay",
   "systemIntegration", "publicServices", "trustedAccess", "updates", "debug", "credits"];
@@ -177,6 +178,13 @@ export default async function settingsSectionsLayoutJourney(page, baseUrl) {
       await openSection(settings, section);
       for (const size of sizes) {
         await page.setViewportSize(size);
+        // 改窗口大小后等内容区里的动画放完再量：动画中的位移会临时撑出横向滚动。
+        await waitForContentSettled(page);
+        await page.evaluate(async () => {
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          const running = document.querySelector(".settings-content").getAnimations({ subtree: true });
+          await Promise.race([Promise.allSettled(running.map(animation => animation.finished)), new Promise(resolve => setTimeout(resolve, 3000))]);
+        });
         const layout = await page.evaluate(() => {
           const content = document.querySelector(".settings-content");
           const stage = document.querySelector(".settings-readonly-boundary:not([data-exit-ghost])");
@@ -187,10 +195,18 @@ export default async function settingsSectionsLayoutJourney(page, baseUrl) {
               .filter(control => control.getClientRects().length > 0)
               .some(control => { const own = control.getBoundingClientRect(); return own.left < box.left - 1 || own.right > box.right + 1; });
           }).map(row => row.textContent.trim().slice(0, 60));
+          // 溢出时写出越过内容区右边的最内层元素，失败信息直接指向原因。
+          const limit = content.getBoundingClientRect().right + 1;
+          const past = [...content.querySelectorAll("*")].filter(node => node.getClientRects().length > 0
+            && node.getBoundingClientRect().right > limit);
+          const widest = past.filter(node => !past.some(other => other !== node && node.contains(other)))
+            .slice(0, 5).map(node => `${node.tagName.toLowerCase()}.${[...node.classList].join(".")} ${Math.round(node.getBoundingClientRect().right - limit)}px "${node.textContent.trim().slice(0, 60)}"`);
           return {
             document: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
             content: content.scrollWidth <= content.clientWidth + 1,
-            clippedRows
+            clippedRows,
+            ...(widest.length ? { widest } : {}),
+            ...(content.scrollWidth > content.clientWidth + 1 ? { scrollWidth: content.scrollWidth, clientWidth: content.clientWidth } : {})
           };
         });
         if (!(layout.document && layout.content && layout.clippedRows.length === 0))
