@@ -136,14 +136,16 @@ export function AppShell(props: AppShellProps) {
             )}
           </For>
         </nav>
+        {/* 标题文字可以选中复制（用户 10-27「让这几个字可选中，鼠标放到上面优先准备选中而不是拖动窗口」）：
+            按在文字上不发拖动，按在文字两侧的空白处才拖动窗口。 */}
         <div class="window-drag-region" data-window-drag onPointerDown={(event) => {
-          if (event.button === 0) {
+          if (event.button === 0 && !(event.target instanceof Element && event.target.closest(".shell-title-text"))) {
             event.preventDefault();
             postShellMessage("window.drag");
           }
         }}>
-          <strong>{uiText.shell.productName}</strong>
-          <span class="shell-uptime" title={uiText.shell.uptimeTitle}>
+          <strong class="shell-title-text">{uiText.shell.productName}</strong>
+          <span class="shell-uptime shell-title-text" title={uiText.shell.uptimeTitle}>
             <span class="shell-uptime-label">{uiText.shell.uptime}</span>
             <span id="captureTime">{props.systemUptime()}</span>
           </span>

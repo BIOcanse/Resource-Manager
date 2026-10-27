@@ -56,6 +56,12 @@
   cursor: grabbing;
 }
 
+.window-drag-region .shell-title-text {
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 .window-drag-region strong {
   font-size: 13px;
   font-weight: 700;
