@@ -64,9 +64,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                         ? token => keys.ValidateCredentialAsync(key.Id, token) : null);
                 try
                 {
-                    await PublishAlignedPeriodicAsyncSubscriptionAsync(
-                        "decision-snapshot", coordinator.GetDecisionDiagnosticsAsync,
-                        TimeSpan.FromSeconds(5), writer, cancellationToken);
+                    await foreach (var observation in coordinator.SubscribeDecisionDiagnosticsAsync(cancellationToken))
+                        await writer.WriteAsync("decision-snapshot", observation, cancellationToken);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {

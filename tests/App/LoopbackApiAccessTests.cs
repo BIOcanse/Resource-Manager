@@ -206,7 +206,9 @@ public sealed partial class LoopbackApiAccessTests
     [Fact]
     public async Task DecisionSubscription_PushesTwoSnapshotsWithoutClientPollingOrSampling()
     {
-        await using var fixture = await Fixture.StartAsync();
+        var (coordinator, lifetime) = await HostManagerSmartCoordinatorScoreOnlyCompositionTests.CreateDecisionSubscriptionFixtureAsync();
+        await using var coordinatorLifetime = lifetime;
+        await using var fixture = await Fixture.StartAsync(decisionCoordinator: coordinator);
         fixture.Administrator.ThrowIfCalled = true;
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         using var request = new HttpRequestMessage(HttpMethod.Get,
@@ -219,12 +221,16 @@ public sealed partial class LoopbackApiAccessTests
         Assert.Equal("application/x-ndjson", response.Content.Headers.ContentType?.MediaType);
         using var stream = new StreamReader(await response.Content.ReadAsStreamAsync(deadline.Token));
         using var first = JsonDocument.Parse((await stream.ReadLineAsync(deadline.Token))!);
-        using var second = JsonDocument.Parse((await stream.ReadLineAsync(deadline.Token))!);
+        // Only a settled owner round replaces the observation; reading the stream never runs one.
+        var next = stream.ReadLineAsync(deadline.Token).AsTask();
+        Assert.False(next.IsCompleted);
+        await coordinator.RunOnceAsync(deadline.Token);
+        using var second = JsonDocument.Parse((await next)!);
         Assert.Equal("decision-snapshot", first.RootElement.GetProperty("subscriptionId").GetString());
         Assert.Equal("resource-manager-smart-decision-diagnostics-v2",
             second.RootElement.GetProperty("value").GetProperty("contract").GetString());
-        Assert.Equal("0", second.RootElement.GetProperty("value")
-            .GetProperty("schedulingAuthority").GetProperty("roundNumber").GetString());
+        Assert.NotEqual(first.RootElement.GetProperty("value").GetProperty("schedulingAuthority").GetProperty("roundNumber").GetString(),
+            second.RootElement.GetProperty("value").GetProperty("schedulingAuthority").GetProperty("roundNumber").GetString());
         Assert.Equal("unavailable", second.RootElement.GetProperty("value")
             .GetProperty("schedulingAuthority").GetProperty("availability").GetString());
         var firstTime = first.RootElement.GetProperty("value").GetProperty("capturedAtUtc").GetDateTimeOffset();
@@ -553,7 +559,8 @@ public sealed partial class LoopbackApiAccessTests
         }
 
         public static async Task<Fixture> StartAsync(ICpuTopologyReader? topology = null, ISoftwareFileIndex? fileIndex = null,
-            bool actualSessionCredentials = false)
+            bool actualSessionCredentials = false,
+            ResourceManager.App.Infrastructure.Optimization.HostManagerSmartCoordinator? decisionCoordinator = null)
         {
             Assert.True(string.IsNullOrEmpty(Environment.GetEnvironmentVariable("RESOURCE_MANAGER_PACKAGE_ROOT")));
             var fixture = new Fixture();
@@ -587,6 +594,11 @@ public sealed partial class LoopbackApiAccessTests
                 });
                 builder.Services.AddSingleton<ILoopbackApiAdministratorReader>(fixture.Administrator);
                 builder.Services.AddSingleton<IHostManagerSmartCoordinator>(fixture.Effects);
+                if (decisionCoordinator is not null)
+                {
+                    builder.Services.RemoveAll<ResourceManager.App.Infrastructure.Optimization.HostManagerSmartCoordinator>();
+                    builder.Services.AddSingleton(decisionCoordinator);
+                }
                 builder.Services.AddSingleton<IHostManagerProcessEffectValidationScopeControl>(fixture.Effects);
                 builder.Services.AddSingleton<IHostManagerMemoryCleanupValidationEvidenceControl>(fixture.Effects);
                 builder.Services.AddSingleton<IMetricSampler>(fixture.Sampler);

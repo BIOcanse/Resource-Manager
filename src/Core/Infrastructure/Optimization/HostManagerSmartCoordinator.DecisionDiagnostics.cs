@@ -7,6 +7,7 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 public sealed partial class HostManagerSmartCoordinator
 {
     private HostManagerCycleActionBudgetDiagnostics? lastCycleActionBudget;
+    private readonly ResourceManager.ReadWrite.Publications.CurrentValuePublicationSignal decisionPublications = new();
 
     // Coordinator-owned derived current value, never a native workspace borrow.
     // Replaced only after the segment has settled, while its caller owns gate.
@@ -31,6 +32,23 @@ public sealed partial class HostManagerSmartCoordinator
         RequireOperationAdmission();
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult(Volatile.Read(ref publishedObservation).Decisions);
+    }
+
+    internal async IAsyncEnumerable<HostManagerDecisionDiagnosticsSnapshot> SubscribeDecisionDiagnosticsAsync(
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        using var publication = decisionPublications.Subscribe();
+        var current = await GetDecisionDiagnosticsAsync(cancellationToken);
+        yield return current;
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            await publication.WaitAsync(cancellationToken);
+            var next = await GetDecisionDiagnosticsAsync(cancellationToken);
+            // A publication racing the initial read may already be included in current.
+            if (ReferenceEquals(current, next)) continue;
+            current = next;
+            yield return current;
+        }
     }
 
     private void PublishObservation()
@@ -67,6 +85,7 @@ public sealed partial class HostManagerSmartCoordinator
                 e.ProcessId, e.ProcessStartKey?.ToString(CultureInfo.InvariantCulture), e.TargetId, e.Fact, e.Reason)).ToArray()
         };
         Volatile.Write(ref publishedObservation, new(snapshot, rows, decisions));
+        decisionPublications.Publish();
     }
 
     private static HostManagerSchedulingAuthorityDiagnostics

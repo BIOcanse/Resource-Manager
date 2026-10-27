@@ -6,6 +6,49 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 {
+    internal static async Task<(HostManagerSmartCoordinator Coordinator, IAsyncDisposable Lifetime)> CreateDecisionSubscriptionFixtureAsync()
+    {
+        var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true,
+            optimizationMode: ResourceManager.App.Domain.Settings.AppOptimizationModes.Normal);
+        return (fixture.Coordinator, fixture);
+    }
+
+    [Fact]
+    public async Task DecisionSubscriptionReadsWithoutGateAndWaitsForSettledPublication()
+    {
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true);
+        await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
+        var previous = await fixture.Coordinator.GetDecisionDiagnosticsAsync(CancellationToken.None);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var probe = new PausedObservationRound();
+        fixture.Coordinator.OuterLoopProbe = probe;
+        var round = Task.Run(() => fixture.Coordinator.RunOnceAsync(cancellation.Token));
+        await using var stream = fixture.Coordinator.SubscribeDecisionDiagnosticsAsync(cancellation.Token).GetAsyncEnumerator();
+        try
+        {
+            await probe.Entered.Task.WaitAsync(cancellation.Token);
+            Assert.True(await stream.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.Same(previous, stream.Current);
+            var next = stream.MoveNextAsync().AsTask();
+            Assert.False(next.IsCompleted);
+            probe.Release.Set();
+            await round;
+            Assert.True(await next.WaitAsync(cancellation.Token));
+            Assert.Same(await fixture.Coordinator.GetDecisionDiagnosticsAsync(cancellation.Token), stream.Current);
+            Assert.NotSame(previous, stream.Current);
+            var canceled = stream.MoveNextAsync().AsTask();
+            Assert.False(canceled.IsCompleted);
+            await cancellation.CancelAsync();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => canceled);
+        }
+        finally
+        {
+            probe.Release.Set();
+            await round.WaitAsync(TimeSpan.FromSeconds(20));
+            fixture.Coordinator.OuterLoopProbe = null;
+        }
+    }
+
     [Theory]
     [InlineData("state")]
     [InlineData("status")]
