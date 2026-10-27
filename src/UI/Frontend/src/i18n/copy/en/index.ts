@@ -23,6 +23,7 @@ import { enStatusCopy } from "./status.ts";
 import { enStoresCopy } from "./stores.ts";
 import { enTaskCenterCopy } from "./taskCenter.ts";
 import { enTargetedReportCopy } from "./targetedReport.ts";
+import { enMemoryProtectionCopy } from "./memoryProtection.ts";
 import type { AppCopy } from "../zh/index.ts";
 
 // 英文基底：非中文语言在此之上合并各自补丁。
@@ -47,6 +48,7 @@ export const enAppCopy: AppCopy = {
   ...enHotkeysCopy,
   ...enTaskCenterCopy,
   ...enTargetedReportCopy,
+  ...enMemoryProtectionCopy,
   ...enRuntimeAndReportsCopy,
   ...enStoresCopy,
   ...enRuntimeErrorsCopy,

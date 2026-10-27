@@ -34,6 +34,8 @@ export function SettingsWorkspace(props: SettingsWorkspaceProps) {
         onResetFrontendPreferences={() => void settings.resetFrontendPreferences()}
         runtimeFailureCode={settings.runtimeFailureCode()}
         onReportsChange={settings.updateReports}
+        onMemoryProtectionChange={settings.updateMemoryProtection}
+        committedMemoryProtection={settings.settings().memoryProtection}
         onControlChange={settings.updateControl}
         onPreciseGpuPlacementChange={settings.updatePreciseGpuPlacement}
         onAutomaticMemoryCleanupLinesChange={settings.updateAutomaticMemoryCleanupLines}

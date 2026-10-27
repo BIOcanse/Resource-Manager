@@ -51,7 +51,7 @@ export const loadingSettingsText: SettingsTextBundle = {
   updates: loadingUpdatesCopy,
   language: "zh-CN",
   navigationLabel: "",
-  sections: { performance: "", appearance: "", systemIntegration: "", updates: "", debug: "", credits: "" },
+  sections: { performance: "", memoryProtection: "", appearance: "", systemIntegration: "", updates: "", debug: "", credits: "" },
   saveState: { saving: "", saved: "", constrained: "", partial: "", error: "", dirty: "", conflict: "" },
   loadState: {
     loading: "",

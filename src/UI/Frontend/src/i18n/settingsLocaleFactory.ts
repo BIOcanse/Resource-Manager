@@ -6,6 +6,7 @@ const zhCnSettingsCopy: SettingsCopy = {
   navigationLabel: "设置分区",
   sections: {
     performance: "性能",
+    memoryProtection: "主机内存保护",
     appearance: "外观",
     systemIntegration: "系统集成",
     updates: "更新与版本",
@@ -397,6 +398,7 @@ const enSettingsCopy: SettingsCopy = {
   navigationLabel: "Settings sections",
   sections: {
     performance: "Performance",
+    memoryProtection: "Host Memory Protection",
     appearance: "Appearance",
     systemIntegration: "System Integration",
     updates: "Updates & Versions",

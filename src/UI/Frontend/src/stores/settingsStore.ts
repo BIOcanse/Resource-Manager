@@ -105,6 +105,7 @@ export interface SettingsStore {
   resetDraftToDefaults: () => void;
   resetFrontendPreferences: () => Promise<void>;
   updateReports: (reports: NonNullable<AppSettings["reports"]>) => void;
+  updateMemoryProtection: (memoryProtection: NonNullable<AppSettings["memoryProtection"]>) => void;
   updateControl: (control: NonNullable<AppSettings["control"]>) => void;
   updatePreciseGpuPlacement: (enabled: boolean) => void;
   updateAutomaticMemoryCleanupLines: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
@@ -498,6 +499,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     discardDraftChanges,
     resetDraftToDefaults,
     updateReports: (reports) => updateDraft(current => ({ ...current, reports })),
+    updateMemoryProtection: (memoryProtection) => updateDraft(current => ({ ...current, memoryProtection })),
     updateControl: (control) => updateDraft(current => ({ ...current, control })),
     updatePreciseGpuPlacement: (enabled) => updatePerformance((performance) => ({
       ...performance,

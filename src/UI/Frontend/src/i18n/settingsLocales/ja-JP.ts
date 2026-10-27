@@ -70,6 +70,7 @@ export default createSettingsLocale("ja-JP", {
   "navigationLabel": "設定の分類",
   "sections": {
     "performance": "パフォーマンス",
+    "memoryProtection": "ホスト メモリ保護",
     "appearance": "外観",
     "systemIntegration": "システム統合",
     "updates": "更新とバージョン",

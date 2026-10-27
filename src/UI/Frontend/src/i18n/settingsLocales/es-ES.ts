@@ -70,6 +70,7 @@ export default createSettingsLocale("es-ES", {
   "navigationLabel": "Secciones de ajustes",
   "sections": {
     "performance": "Rendimiento",
+    "memoryProtection": "Protección de memoria del equipo",
     "appearance": "Apariencia",
     "systemIntegration": "Integración del sistema",
     "updates": "Actualizaciones y versiones",

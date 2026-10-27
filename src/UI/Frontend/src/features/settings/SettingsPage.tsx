@@ -1,6 +1,7 @@
 import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
 import { For, Show } from "solid-js";
 import { ReportRuleSettings } from "./components/ReportRuleSettings";
+import { MemoryProtectionSettingsSection } from "./components/MemoryProtectionSettingsSection";
 import { HardwareControlSettings } from "./components/HardwareControlSettings";
 import { AppearanceSettingsSection } from "./components/AppearanceSettingsSection";
 import { CreditsSettingsSection } from "./components/CreditsSettingsSection";
@@ -41,6 +42,9 @@ interface SettingsPageProps {
   runtimeCapabilityConstrainedPaths: readonly string[];
   runtimeFailureCode: string | null;
   onReportsChange: (reports: NonNullable<AppSettings["reports"]>) => void;
+  onMemoryProtectionChange: (memoryProtection: NonNullable<AppSettings["memoryProtection"]>) => void;
+  /** 已保存的内存保护设置：分区据此判断有没有未保存的更改，保存提交后重新读后端状态。 */
+  committedMemoryProtection: AppSettings["memoryProtection"];
   preciseGpuPlacementAvailable: boolean;
   publicServicesAvailable: boolean;
   optimizationRuntimeAvailable: boolean;
@@ -93,7 +97,7 @@ interface SettingsPageProps {
   onHostManagerSmartCoordinatorPerformanceLogChange: (enabled: boolean) => void;
 }
 
-const settingSections: SettingsSection[] = ["performance", "appearance", "systemIntegration", "updates", "debug", "credits"];
+const settingSections: SettingsSection[] = ["performance", "memoryProtection", "appearance", "systemIntegration", "updates", "debug", "credits"];
 
 export function SettingsPage(props: SettingsPageProps) {
   // 界面语言只有一个所有者（appTextStore）：设置页的文案跟着它走，
@@ -297,6 +301,14 @@ export function SettingsPage(props: SettingsPageProps) {
               onGpuOverflowThresholdsChange={props.onGpuOverflowThresholdsChange}
               onRealtimeActionBudgetChange={props.onRealtimeActionBudgetChange}
               onLogicRefreshIntervalChange={props.onLogicRefreshIntervalChange}
+            />
+          </Show>
+          <Show when={props.activeSection === "memoryProtection"}>
+            <MemoryProtectionSettingsSection
+              settings={props.settings.memoryProtection}
+              committed={props.committedMemoryProtection}
+              runtimeFailureCode={props.runtimeFailureCode}
+              onChange={props.onMemoryProtectionChange}
             />
           </Show>
           <Show when={props.activeSection === "appearance"}>

@@ -69,6 +69,7 @@ export default createSettingsLocale("zh-TW", {
   "navigationLabel": "設定分割槽",
   "sections": {
     "performance": "效能",
+    "memoryProtection": "主機記憶體保護",
     "appearance": "外觀",
     "systemIntegration": "系統整合",
     "updates": "更新與版本",

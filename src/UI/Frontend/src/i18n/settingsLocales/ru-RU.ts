@@ -70,6 +70,7 @@ export default createSettingsLocale("ru-RU", {
   "navigationLabel": "Разделы настроек",
   "sections": {
     "performance": "Производительность",
+    "memoryProtection": "Защита памяти компьютера",
     "appearance": "Внешний вид",
     "systemIntegration": "Интеграция с системой",
     "updates": "Обновления и версии",

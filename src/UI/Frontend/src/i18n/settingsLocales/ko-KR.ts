@@ -70,6 +70,7 @@ export default createSettingsLocale("ko-KR", {
   "navigationLabel": "설정 항목",
   "sections": {
     "performance": "성능",
+    "memoryProtection": "호스트 메모리 보호",
     "appearance": "모양",
     "systemIntegration": "시스템 통합",
     "updates": "업데이트 및 버전",

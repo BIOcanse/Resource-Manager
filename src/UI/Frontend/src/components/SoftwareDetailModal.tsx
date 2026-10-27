@@ -55,6 +55,8 @@ import { uiText } from "../text.ts";
 import { formatBytes } from "../presentation/byteUnits.ts";
 import { SoftwareOverlaySettings } from "../features/overlay/SoftwareOverlaySettings.tsx";
 import { moveRovingFocus } from "../ui/primitives/RovingFocus.ts";
+import { useSource } from "../frontendRuntime/source/useSource.ts";
+import { memoryProtectionDemand } from "../data/memoryProtection/memoryProtectionDemand.ts";
 
 type ScalarDetailValueType = Exclude<DetailValue, DetailValue[]>;
 type DetailTabId = "overview" | "policy" | "processes" | "overlay";
@@ -605,6 +607,7 @@ function GpuPlacementPolicySection(props: {
                   />
                 </div>
               </div>
+              <HostMemoryProtectionPolicyGroup policy={current()} onUpdate={updateDraft} />
             </>
           )}
         </Show>
@@ -646,6 +649,44 @@ function SchedulingParticipationGroup(props: {
           onChange={(gpuSchedulingExcluded) => props.onUpdate({ gpuSchedulingExcluded })}
         />
       </div>
+    </div>
+  );
+}
+
+// 主机内存保护的“不转储”（docs/host_memory_protection_2026-10-26.md）：存在软件策略里，随策略草稿保存。
+// 它只在全局处理方式为“转储后结束”时起作用；全局为“只结束”时照样显示，并说明现在不起作用。
+function HostMemoryProtectionPolicyGroup(props: {
+  policy: GpuPlacementSoftwarePolicy;
+  onUpdate: (patch: Partial<GpuPlacementSoftwarePolicy>) => void;
+}) {
+  const runtime = useFrontendRuntime();
+  const work = useFrontendWork();
+  const intervals = useFrontendReadIntervals();
+  const status = useSource(runtime.sources.memoryProtection, () => {
+    const current = intervals.current();
+    return current
+      ? memoryProtectionDemand(work.frontendVisible(), current)
+      : { active: work.frontendVisible(), refreshIntervalMs: null };
+  });
+  const actionMode = () => status.snapshot().data?.actionMode ?? null;
+  const copy = () => uiText.memoryProtection.software;
+  return (
+    <div class="software-policy-group software-memory-protection-group">
+      <h4>{copy().title}</h4>
+      <div class="software-policy-grid">
+        <PolicyToggle
+          label={copy().noDump}
+          hint={copy().noDumpHint}
+          checked={props.policy.hostMemoryProtectionNoDump}
+          onChange={(hostMemoryProtectionNoDump) => props.onUpdate({ hostMemoryProtectionNoDump })}
+        />
+      </div>
+      <Show when={actionMode() === "terminateOnly"}>
+        <p class="software-detail-hint software-memory-protection-inactive" role="status">{copy().noDumpInactiveNow}</p>
+      </Show>
+      <Show when={actionMode() === null && (status.snapshot().status === "error" || status.snapshot().status === "unavailable")}>
+        <p class="software-detail-hint" role="status">{copy().modeUnavailable}</p>
+      </Show>
     </div>
   );
 }

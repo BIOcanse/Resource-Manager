@@ -5,6 +5,7 @@ import { softwareFactsCopy } from "../softwareFacts.ts";
 import { physicalMemoryResidualCopy } from "../physicalMemoryResidual.ts";
 import type { AppCopy } from "../index.ts";
 import { targetedReport } from "./fr-FR-targetedReport.ts";
+import { memoryProtection } from "./fr-FR-memoryProtection.ts";
 import { fieldLabel, fieldValueLabel } from "./fr-FR-fieldLabels.ts";
 import { plural } from "../../plural.ts";
 
@@ -35,6 +36,7 @@ const frFrAppCopy: AppCopy = {
     uninstallerLaunchRequested: "Le programme de désinstallation Windows a été demandé. Actualisez la liste une fois terminé."
   },
   targetedReport,
+  memoryProtection,
   fieldLabel,
   fieldValueLabel,
   common: {

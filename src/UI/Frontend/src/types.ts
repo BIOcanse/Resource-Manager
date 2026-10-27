@@ -91,7 +91,7 @@ export type AppLogicRefreshIntervalKey =
   | "monitor"
   | "resourceTable"
   | "localSystem";
-export type SettingsSection = "performance" | "appearance" | "systemIntegration" | "updates" | "debug" | "credits";
+export type SettingsSection = "performance" | "memoryProtection" | "appearance" | "systemIntegration" | "updates" | "debug" | "credits";
 
 /** Frontend view model; backend wire facts are declared in data/monitor/metricWire.ts. */
 export interface MetricDefinition {
