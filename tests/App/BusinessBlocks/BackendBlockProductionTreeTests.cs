@@ -104,9 +104,16 @@ public sealed class BackendBlockProductionTreeTests
         Assert.DoesNotContain(production, node => node.HostedServiceType?.Name is "ResourceManagerDatabaseInitializer"
             or "SqliteLegacyDataImportHostedService" or "SharedMemoryPublicResourceBroker"
             or "TargetedRecordingService" or "GpuLaunchInterceptionReconciler");
-        Assert.Equal(5, services.Count(value => value.ServiceType == typeof(IHostedService)
+        var serialFlows = services.Where(value => value.ServiceType == typeof(IHostedService)
             && value.ImplementationType?.IsGenericType == true
-            && value.ImplementationType.GetGenericTypeDefinition() == typeof(SerialHostedService<>)));
+            && value.ImplementationType.GetGenericTypeDefinition() == typeof(SerialHostedService<>))
+            .Select(value => value.ImplementationType!.GetGenericArguments()[0].Name).Order().ToArray();
+        // KernelLeakObserver is the known pending Reports/KernelLeakObservation block (state authority 5c).
+        // Keep the exception explicit so another unregistered concurrent flow cannot hide behind a count.
+        Assert.Equal(new[] { "GpuLaunchInterceptionReconciler", "KernelLeakObserver",
+            "ResourceManagerDatabaseInitializer", "SharedMemoryPublicResourceBroker",
+            "SqliteLegacyDataImportHostedService", "TargetedRecordingService" }.Order(), serialFlows);
+        Assert.DoesNotContain(production, node => node.HostedServiceType?.Name == "KernelLeakObserver");
         Assert.Contains(BackendUids.EtwNetworkTcpIpAttributionReader,
             graph.Nodes.Single(node => node.Id == BackendUids.WindowsResourceBreakdownSampler).Inputs);
         Assert.True(rootBlocks.ToHashSet().SetEquals(graph.Children(BackendUids.Program)));
