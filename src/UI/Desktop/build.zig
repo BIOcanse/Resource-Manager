@@ -63,7 +63,8 @@ pub fn build(b: *std.Build) void {
     integration.addImport("desktop_tree", desktop_tree);
     integration.addImport("window_process", pipe);
     integration.addOptions("fixture_options", options);
-    const integration_run = b.addRunArtifact(b.addTest(.{ .root_module = integration }));
+    const integration_filter = b.option([]const u8, "integration-filter", "Run only matching resident tree scenarios");
+    const integration_run = b.addRunArtifact(b.addTest(.{ .root_module = integration, .filters = if (integration_filter) |filter| &.{filter} else &.{} }));
     test_step.dependOn(&integration_run.step);
     b.step("test-integration", "Run the resident controller with real child processes").dependOn(&integration_run.step);
     b.step("test-blocks", "Run resident declarations and block unit tests").dependOn(&run.step);

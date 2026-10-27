@@ -217,7 +217,7 @@ const Host = struct {
     fn runEntry(self: *Host, slot: *Slot) !void {
         switch (slot.run.block) {
             B.SingleInstance => try self.instance.run(slot.stop, self, instanceCommand, instanceRunning),
-            B.TrayRoot => try self.tray.run(slot.stop, self, trayEvent),
+            B.Tray => try self.tray.run(slot.stop, self, trayEvent),
             B.BackendConnection => {
                 running(slot);
                 backend.run(@ptrCast(slot.stop.?), self, backendEvent, .{
@@ -256,7 +256,7 @@ const Host = struct {
                 });
             },
             else => {
-                // MainRoot is a packaging block. The five future entries are
+                // Frontend and MainFrontend are packaging blocks. The five future entries are
                 // explicitly inert phase A stubs, with their declared conditions.
                 running(slot);
                 _ = c.WaitForSingleObject(slot.stop, c.INFINITE);
@@ -317,7 +317,7 @@ const Host = struct {
                     _ = c.SetEvent(slot.stop);
                     // TrackPopupMenu owns a nested message loop. Cancel its modal
                     // wait as part of the host's queued stop delivery.
-                    if (run.block == B.TrayRoot and self.tray_window != 0)
+                    if (run.block == B.Tray and self.tray_window != 0)
                         _ = c.PostMessageW(@ptrFromInt(self.tray_window), c.WM_CANCELMODE, 0, 0);
                 }
             },
@@ -333,7 +333,7 @@ const Host = struct {
                     self.window_handle = 0;
                     try self.removeBackendReader();
                 }
-                if (run.block == B.TrayRoot) self.tray_window = 0;
+                if (run.block == B.Tray) self.tray_window = 0;
                 if (run.block == B.BackendConnection) try self.engine.unbind(self.ready, reason("backend-owner-stopped"), null);
                 if (run.block == B.BackendConnection) try self.engine.unbind(self.backend_session, reason("backend-owner-stopped"), null);
                 try self.engine.reportReturned(run.block, run.number);
@@ -369,7 +369,7 @@ const Host = struct {
             },
             .tray_running => |hwnd| {
                 self.tray_window = hwnd;
-                const slot = self.find(B.TrayRoot);
+                const slot = self.find(B.Tray);
                 running(slot);
             },
             .window_handle => |hwnd| self.window_handle = hwnd,
@@ -570,14 +570,7 @@ const Host = struct {
             while (self.pop()) |event| try self.dispatch(event);
             self.engine.waitIdle();
             try self.snapshot();
-            if (self.ending) {
-                var stopped = true;
-                for (topology.host_blocks) |block| if (try self.engine.readState(block) != .stopped) {
-                    stopped = false;
-                    break;
-                };
-                if (stopped) break;
-            }
+            if (try topology.mayExitMessageLoop(self.engine, self.ending)) break;
         }
         try self.engine.destroy();
         owns_engine = false;

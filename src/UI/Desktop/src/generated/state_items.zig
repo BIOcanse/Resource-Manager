@@ -2,7 +2,7 @@
 const declarations = @import("rm_control").declarations;
 
 pub const registry: declarations.Registry = .{
-    .version = "06d423f881fd920e5641faa46305aca635389313",
+    .version = "8f4d2f876550bf631c0f086fe8e067753ec2fdc5",
     .process = "desktop",
     .blocks = &.{
         .{ .uid = 40, .name = null },
@@ -16,6 +16,7 @@ pub const registry: declarations.Registry = .{
         .{ .uid = 87, .name = null },
         .{ .uid = 88, .name = null },
         .{ .uid = 89, .name = null },
+        .{ .uid = 101, .name = null },
     },
     .items = &.{
         .{ .uid = 58, .storage = .own, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = null, .name = null },
@@ -33,17 +34,8 @@ pub const registry: declarations.Registry = .{
         .{ .uid = 99, .node = 40, .per_block = false,
             .items = &.{
                 .{ .item = 59, .block = null },
-                .{ .item = 58, .block = null },
             },
-            .conditions = &.{  }, .children = &.{  }, .decides = null, .name = null },
-        .{ .uid = 100, .node = 40, .per_block = false,
-            .items = &.{
-            },
-            .conditions = &.{ 99 }, .children = &.{  }, .decides = 41, .name = null },
-        .{ .uid = 101, .node = 40, .per_block = false,
-            .items = &.{
-            },
-            .conditions = &.{ 99 }, .children = &.{  }, .decides = 42, .name = null },
+            .conditions = &.{  }, .children = &.{  }, .decides = 101, .name = null },
         .{ .uid = 102, .node = null, .per_block = true,
             .items = &.{
             },
@@ -86,8 +78,8 @@ pub const registry: declarations.Registry = .{
 
 pub const BlockUids = struct {
     pub const @"Program" = 40;
-    pub const @"MainRoot" = 41;
-    pub const @"TrayRoot" = 42;
+    pub const @"MainFrontend" = 41;
+    pub const @"Tray" = 42;
     pub const @"SingleInstance" = 43;
     pub const @"BackendConnection" = 44;
     pub const @"DesktopObservation" = 46;
@@ -96,6 +88,7 @@ pub const BlockUids = struct {
     pub const @"ForceTerminateHotkey" = 87;
     pub const @"TaskManagerReplacement" = 88;
     pub const @"WindowProcess" = 89;
+    pub const @"Frontend" = 101;
 };
 
 pub const ItemUids = struct {
@@ -113,8 +106,6 @@ pub const ItemUids = struct {
 
 pub const ConditionUids = struct {
     pub const @"ProgramActive" = 99;
-    pub const @"MainTreeWanted" = 100;
-    pub const @"TrayTreeWanted" = 101;
     pub const @"AlwaysWanted" = 102;
     pub const @"ForceTerminateHotkeyWanted" = 103;
     pub const @"TaskManagerReplacementWanted" = 104;

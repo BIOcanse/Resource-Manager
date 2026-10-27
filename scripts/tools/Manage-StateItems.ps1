@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('Add', 'Move', 'Resolve', 'Export')][string]$Action,
+    [Parameter(Mandatory)][ValidateSet('Add', 'Rename', 'Remove', 'Move', 'SetCondition', 'Resolve', 'Export')][string]$Action,
     [string]$Registry = (Join-Path $PSScriptRoot '../../src/Shared/StateItems/state-items.json'),
     [ValidateSet('block', 'item', 'condition')][string]$Kind,
     [ValidateSet('backend', 'ui', 'desktop', 'window')][string]$Process,
@@ -31,6 +31,47 @@ Import-Module (Join-Path $PSScriptRoot '../build/StateItemRegistry.psm1') -Force
 
 $registryPath = [IO.Path]::GetFullPath($Registry)
 switch ($Action) {
+    'SetCondition' {
+        if (-not $PSBoundParameters.ContainsKey('Uid') -or $Uid -lt 1) { throw 'SetCondition requires a positive -Uid.' }
+        $table = Read-StateRegistry -Path $registryPath
+        $entry = @($table.entries | Where-Object uid -EQ $Uid)
+        if ($entry.Count -ne 1) { throw "Registry entry uid=$Uid was not found." }
+        if ($entry[0].kind -cne 'condition') { throw 'SetCondition requires a condition UID.' }
+        $changed = $false
+        foreach ($field in @{ Node='node'; ItemReads='items'; Conditions='conditions'; Children='children'; Decides='decides'; Comment='comment' }.GetEnumerator()) {
+            if ($PSBoundParameters.ContainsKey($field.Key)) {
+                $entry[0][$field.Value] = $PSBoundParameters[$field.Key]
+                $changed = $true
+            }
+        }
+        if (-not $changed) { throw 'SetCondition requires at least one condition field.' }
+        # Preserve identity; the shared validator checks all new references before writing.
+        Write-StateRegistry -Path $registryPath -Registry $table
+    }
+    'Rename' {
+        if (-not $PSBoundParameters.ContainsKey('Uid') -or $Uid -lt 1 -or [string]::IsNullOrWhiteSpace($Name)) {
+            throw 'Rename requires a positive -Uid and -Name.'
+        }
+        $table = Read-StateRegistry -Path $registryPath
+        $entry = @($table.entries | Where-Object uid -EQ $Uid)
+        if ($entry.Count -ne 1) { throw "Registry entry uid=$Uid was not found." }
+        $entry[0].name = $Name
+        if ($PSBoundParameters.ContainsKey('Comment')) { $entry[0].comment = $Comment }
+        # Validation precedes the atomic write, including process-wide names.
+        Write-StateRegistry -Path $registryPath -Registry $table
+    }
+    'Remove' {
+        if (-not $Uids -or $Uids.Count -eq 0) { throw 'Remove requires -Uids.' }
+        $table = Read-StateRegistry -Path $registryPath
+        $selected = [Collections.Generic.HashSet[long]]::new()
+        foreach ($id in $Uids) {
+            if ($id -lt 1 -or -not $selected.Add($id)) { throw 'Remove requires distinct positive Uids.' }
+            if (@($table.entries | Where-Object uid -EQ $id).Count -ne 1) { throw "Registry entry uid=$id was not found." }
+        }
+        $table.entries = @($table.entries | Where-Object { -not $selected.Contains([long]$_.uid) })
+        # A referenced owner/condition can only be removed with its dependents.
+        Write-StateRegistry -Path $registryPath -Registry $table
+    }
     'Move' {
         if (-not $Process -or -not $Uids -or $Uids.Count -eq 0) { throw 'Move requires -Process and -Uids.' }
         $table = Read-StateRegistry -Path $registryPath

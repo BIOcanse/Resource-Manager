@@ -12,8 +12,8 @@ internal sealed record DesktopBackendSession(bool Ready, long Generation, string
 internal static class BlockUids
 {
     public const int Program = Desktop.BlockUids.Program;
-    public const int MainRoot = Desktop.BlockUids.MainRoot;
-    public const int TrayRoot = Desktop.BlockUids.TrayRoot;
+    public const int MainRoot = Desktop.BlockUids.MainFrontend;
+    public const int TrayRoot = Desktop.BlockUids.Tray;
     public const int SingleInstance = Desktop.BlockUids.SingleInstance;
     public const int BackendConnection = Desktop.BlockUids.BackendConnection;
     public const int MainWindow = Window.BlockUids.MainWindow;

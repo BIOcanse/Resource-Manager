@@ -278,21 +278,21 @@
       "kind": "block",
       "process": "desktop",
       "name": "Program",
-      "comment": "Root of the UI control trees: the program itself."
+      "comment": "Root of the resident frontend control tree."
     },
     {
       "uid": 41,
       "kind": "block",
       "process": "desktop",
-      "name": "MainRoot",
-      "comment": "Owns the main UI service tree."
+      "name": "MainFrontend",
+      "comment": "Owns the main frontend branch under Frontend."
     },
     {
       "uid": 42,
       "kind": "block",
       "process": "desktop",
-      "name": "TrayRoot",
-      "comment": "Owns the independent system tray tree."
+      "name": "Tray",
+      "comment": "Owns the system tray icon, menu and notification branch under Frontend."
     },
     {
       "uid": 43,
@@ -991,49 +991,24 @@
       "kind": "condition",
       "process": "desktop",
       "name": "ProgramActive",
-      "comment": "The program has started and terminal shutdown has not begun; absent facts are false.",
+      "comment": "ProgramStarted wants Frontend; absent is false. Controller shutdown independently revokes the root permit.",
       "perBlock": false,
       "node": 40,
       "items": [
         {
           "item": 59
-        },
-        {
-          "item": 58
         }
       ],
       "conditions": [],
-      "children": []
-    },
-    {
-      "uid": 100,
-      "kind": "condition",
-      "process": "desktop",
-      "name": "MainTreeWanted",
-      "comment": "Run the main tree while the program is active.",
-      "perBlock": false,
-      "node": 40,
-      "items": [],
-      "conditions": [
-        99
-      ],
       "children": [],
-      "decides": 41
+      "decides": 101
     },
     {
       "uid": 101,
-      "kind": "condition",
+      "kind": "block",
       "process": "desktop",
-      "name": "TrayTreeWanted",
-      "comment": "Run the independent tray tree while the program is active.",
-      "perBlock": false,
-      "node": 40,
-      "items": [],
-      "conditions": [
-        99
-      ],
-      "children": [],
-      "decides": 42
+      "name": "Frontend",
+      "comment": "Owns the whole resident frontend: MainFrontend and Tray are sibling branches."
     },
     {
       "uid": 102,

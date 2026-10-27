@@ -223,10 +223,20 @@ foreach ($process in @('backend','ui')) {
 [IO.File]::WriteAllText($path, '{"entries":[{"uid":0}]}')
 Assert-Rejected { & $generator -Registry $path -Process backend -Namespace Invalid -Output (Join-Path $scratch 'invalid.g.cs') } 'Entry.*missing'
 $production = Read-StateRegistry -Path (Join-Path $repo 'src/Shared/StateItems/state-items.json')
-Assert-True ($production.entries.Count -eq 109) 'Production catalog contains 64 blocks, 29 items and 16 conditions.'
-Assert-True (@($production.entries | Where-Object kind -CEQ 'block').Count -eq 64) 'Production catalog contains 64 blocks.'
+Assert-True ($production.entries.Count -eq 108) 'Production catalog contains 65 blocks, 29 items and 14 conditions.'
+Assert-True (@($production.entries | Where-Object kind -CEQ 'block').Count -eq 65) 'Production catalog contains 65 blocks.'
 Assert-True (@($production.entries | Where-Object kind -CEQ 'item').Count -eq 29) 'Production catalog contains 29 items.'
-Assert-True (@($production.entries | Where-Object kind -CEQ 'condition').Count -eq 16) 'Production catalog contains 16 conditions.'
+Assert-True (@($production.entries | Where-Object kind -CEQ 'condition').Count -eq 14) 'Production catalog contains 14 conditions.'
+Assert-True (($production.entries | Where-Object uid -EQ 41).name -ceq 'MainFrontend') 'MainRoot is renamed without changing UID 41.'
+Assert-True (($production.entries | Where-Object uid -EQ 42).name -ceq 'Tray') 'TrayRoot is renamed without changing UID 42.'
+Assert-True (@($production.entries | Where-Object { $_.process -ceq 'desktop' -and $_.name -ceq 'Frontend' -and $_.kind -ceq 'block' }).Count -eq 1) 'The resident has one Frontend wrapper declaration.'
+Assert-True (@($production.entries | Where-Object name -CIn @('MainTreeWanted','TrayTreeWanted')).Count -eq 0) 'The obsolete root-to-two-branches conditions are removed.'
+$active = $production.entries | Where-Object { $_.process -ceq 'desktop' -and $_.name -ceq 'ProgramActive' }
+$frontend = $production.entries | Where-Object { $_.process -ceq 'desktop' -and $_.name -ceq 'Frontend' }
+$started = $production.entries | Where-Object { $_.process -ceq 'desktop' -and $_.name -ceq 'ProgramStarted' }
+$ending = $production.entries | Where-Object { $_.process -ceq 'desktop' -and $_.name -ceq 'ProgramShuttingDown' }
+Assert-True ($active.decides -eq $frontend.uid -and $active.items.Count -eq 1 -and $active.items[0].item -eq $started.uid) 'ProgramActive decides Frontend using only ProgramStarted.'
+Assert-True (@($production.entries | Where-Object kind -CEQ condition | ForEach-Object items | Where-Object item -EQ $ending.uid).Count -eq 0) 'ProgramShuttingDown is reserved for controller shutdown, with no condition readers.'
 Assert-True (@($production.entries | Where-Object process -CEQ 'ui').Count -eq 0) 'The old ui process has no remaining catalog entries.'
 foreach ($uid in @(40,41,42,43,44,46,47,50,58,59,60,61)) {
     Assert-True (($production.entries | Where-Object uid -EQ $uid).process -ceq 'desktop') "Existing resident UID $uid is preserved."
@@ -262,4 +272,45 @@ Assert-True ($zigSource.Contains('.uid = 109, .storage = .reference, .value_type
 $session = $production.entries | Where-Object uid -EQ 109
 Assert-True ($session.owner.block -eq 44 -and $session.type -ceq 'ResourceManager.NativeUi.LegacyStateItems.DesktopBackendSession') 'The complete session has the backend connection as its sole owner and a concrete host payload type.'
 Assert-True (@($production.entries | Where-Object kind -CEQ 'condition' | ForEach-Object items | Where-Object item -EQ 109).Count -eq 0) 'No decision condition reads a host payload.'
+Write-StateRegistry $path (Get-Fixture)
+& $tool -Action Rename -Registry $path -Uid 1 -Name MainFrontend -Comment 'Renamed wrapper.'
+$renamed = Read-StateRegistry -Path $path
+Assert-True ($renamed.entries[0].uid -eq 1 -and $renamed.entries[0].name -ceq 'MainFrontend' -and $renamed.entries[2].owner.block -eq 1) 'Rename preserves UID and references.'
+Assert-True ($renamed.entries[0].comment -ceq 'Renamed wrapper.') 'Rename can update the description together with the name.'
+$beforeEdit = [Convert]::ToBase64String([IO.File]::ReadAllBytes($path))
+Assert-Rejected { & $tool -Action Rename -Registry $path -Uid 3 -Name MainFrontend } 'duplicate name'
+Assert-Rejected { & $tool -Action Rename -Registry $path -Uid 1 -Name 'bad-name' } 'identifier'
+Assert-Rejected { & $tool -Action Rename -Registry $path -Uid 99 -Name Missing } 'not found'
+Assert-Rejected { & $tool -Action Remove -Registry $path -Uids @(1) } 'same process'
+Assert-Rejected { & $tool -Action Remove -Registry $path -Uids @(1,1) } 'distinct'
+Assert-Rejected { & $tool -Action Remove -Registry $path -Uids @(99) } 'not found'
+Assert-True ([Convert]::ToBase64String([IO.File]::ReadAllBytes($path)) -ceq $beforeEdit) 'Rejected renames and removals leave the registry unchanged.'
+& $tool -Action Remove -Registry $path -Uids @(1,3)
+$removed = Read-StateRegistry -Path $path
+Assert-True ($removed.entries.Count -eq 2 -and $removed.entries[0].uid -eq 2 -and $removed.entries[1].uid -eq 4) 'Remove keeps surviving UIDs and validates a whole dependency group.'
+Write-StateRegistry $path (Get-Fixture)
+$desktopAlways = & $tool -Action Add -Registry $path -Kind condition -Process desktop -Name AlwaysWanted -Comment 'Fixture per-block unconditional top.' -PerBlock $true
+$backendAlways = & $tool -Action Add -Registry $path -Kind condition -Process backend -Name AlwaysWanted -Comment 'Fixture backend unconditional top.' -PerBlock $true
+Assert-True ($desktopAlways -ne $backendAlways) 'The same condition name in two process catalogs receives different UIDs.'
+$scoped = Read-StateRegistry -Path $path
+Assert-True (@($scoped.entries | Where-Object name -CEQ AlwaysWanted).Count -eq 2) 'Per-process names permit separate AlwaysWanted declarations.'
+$scoped.entries[-1].uid = $desktopAlways
+Assert-Rejected { Write-StateRegistry $path $scoped } 'duplicate uid'
+$frontend = & $tool -Action Add -Registry $path -Kind block -Process backend -Name Frontend -Comment 'Fixture wrapper.'
+$active = & $tool -Action Add -Registry $path -Kind condition -Process backend -Name ProgramActive -Comment 'Fixture program gate.' -PerBlock $false -Node 1 -ItemReads @(@{item=3})
+& $tool -Action SetCondition -Registry $path -Uid $active -Decides $frontend -ItemReads @() -Comment 'The program start gate.'
+$updated = (Read-StateRegistry -Path $path).entries | Where-Object uid -EQ $active
+Assert-True ($updated.decides -eq $frontend -and $updated.node -eq 1 -and $updated.items.Count -eq 0) 'SetCondition preserves identity and node while atomically replacing target and reads.'
+Assert-True ($updated.comment -ceq 'The program start gate.') 'SetCondition updates the condition description.'
+& $tool -Action SetCondition -Registry $path -Uid $active -ItemReads @(@{item=3})
+$updated = (Read-StateRegistry -Path $path).entries | Where-Object uid -EQ $active
+Assert-True ($updated.items.Count -eq 1 -and $updated.items[0].item -eq 3 -and $updated.decides -eq $frontend) 'SetCondition changes only explicitly supplied fields.'
+$beforeCondition = [Convert]::ToBase64String([IO.File]::ReadAllBytes($path))
+Assert-Rejected { & $tool -Action SetCondition -Registry $path -Uid $active -Decides 2 } 'same process'
+Assert-Rejected { & $tool -Action SetCondition -Registry $path -Uid $desktopAlways -Decides $frontend } 'perBlock|per-block'
+Assert-Rejected { & $tool -Action SetCondition -Registry $path -Uid $active -ItemReads @(@{item=4}) } 'same process'
+Assert-Rejected { & $tool -Action SetCondition -Registry $path -Uid 1 -Decides $frontend } 'condition UID'
+Assert-Rejected { & $tool -Action SetCondition -Registry $path -Uid 999 -Decides $frontend } 'not found'
+Assert-Rejected { & $tool -Action SetCondition -Registry $path -Uid $active } 'at least one'
+Assert-True ([Convert]::ToBase64String([IO.File]::ReadAllBytes($path)) -ceq $beforeCondition) 'Rejected condition edits leave the registry unchanged.'
 "Passed $script:count assertions. Fixtures: $scratch"

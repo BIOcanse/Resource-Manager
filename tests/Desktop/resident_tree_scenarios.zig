@@ -11,7 +11,7 @@ const I = topology.ItemUids;
 const Run = struct { block: u32, number: u64 };
 const Event = union(enum) { start: Run, stop: Run, running: Run, returned: Run, window_ready, close, ending, session };
 const Claim = control.state.Claim;
-const Target = enum { roots_running, window_running, window_stopped, desktop_running, desktop_stopped, all_stopped, first_session, second_session };
+const Target = enum { roots_running, window_running, window_stopped, desktop_running, desktop_stopped, all_stopped, first_session, second_session, held_stops, main_stopped };
 
 const Host = struct {
     const Slot = struct { host: *Host = undefined, run: Run = undefined, stop: w.HANDLE = undefined, worker: ?std.Thread = null, starts: usize = 0 };
@@ -33,6 +33,9 @@ const Host = struct {
     sessions: usize = 0,
     failures: std.atomic.Value(usize) = .init(0),
     crash_retracted_before_return: bool = false,
+    // Controlled test-host delivery, not a business block refusing stop.
+    held_blocks: [2]u32 = .{ 0, 0 },
+    held_runs: [2]?Run = .{ null, null },
 
     fn why() control.Reason {
         return .{ .kind = 1, .owner = "tree-scenario", .cause = "test input", .plan_version = 0 };
@@ -152,6 +155,17 @@ const Host = struct {
             },
             .stop => |run| {
                 const item = self.slot(run.block);
+                for (topology.tree.blocks) |child| {
+                    if (child.parent != run.block) continue;
+                    try std.testing.expectEqual(control.types.BlockState.stopped, try self.state(child.uid));
+                    try std.testing.expect(self.slot(child.uid).worker == null);
+                }
+                for (self.held_blocks, 0..) |block, index| {
+                    if (block == run.block) {
+                        self.held_runs[index] = run;
+                        return;
+                    }
+                }
                 if (item.worker != null and item.run.number == run.number) _ = w.SetEvent(item.stop);
             },
             .running => |run| try self.engine.reportRunning(run.block, run.number),
@@ -186,7 +200,7 @@ const Host = struct {
     }
     fn reached(self: *Host, target: Target) !bool {
         return switch (target) {
-            .roots_running => try self.state(B.MainRoot) == .running and try self.state(B.TrayRoot) == .running and try self.state(B.BackendConnection) == .running and try self.state(B.SingleInstance) == .running,
+            .roots_running => try self.state(B.Frontend) == .running and try self.state(B.MainFrontend) == .running and try self.state(B.Tray) == .running and try self.state(B.BackendConnection) == .running and try self.state(B.SingleInstance) == .running,
             .window_running => self.window_ready and try self.state(B.WindowProcess) == .running,
             .window_stopped => self.slot(B.WindowProcess).starts != 0 and self.slot(B.WindowProcess).worker == null and try self.state(B.WindowProcess) == .stopped,
             .desktop_running => try self.state(B.DesktopObservation) == .running,
@@ -194,6 +208,8 @@ const Host = struct {
             .all_stopped => try self.allStopped(),
             .first_session => self.sessions >= 1,
             .second_session => self.sessions >= 2,
+            .held_stops => self.held_runs[0] != null and self.held_runs[1] != null,
+            .main_stopped => try self.state(B.MainFrontend) == .stopped and self.slot(B.MainFrontend).worker == null,
         };
     }
     fn wait(self: *Host, target: Target) !void {
@@ -208,10 +224,21 @@ const Host = struct {
         return error.ScenarioTimedOut;
     }
     fn rootsSurvive(self: *Host) !void {
-        for ([_]u32{ B.MainRoot, B.TrayRoot, B.BackendConnection, B.SingleInstance }) |uid| {
+        for ([_]u32{ B.Frontend, B.MainFrontend, B.Tray, B.BackendConnection, B.SingleInstance }) |uid| {
             try std.testing.expectEqual(control.types.BlockState.running, try self.state(uid));
             try std.testing.expectEqual(@as(usize, 1), self.slot(uid).starts);
         }
+    }
+    fn releaseStop(self: *Host, block: u32) !void {
+        for (self.held_blocks, 0..) |uid, index| {
+            if (uid != block) continue;
+            const run = self.held_runs[index] orelse return error.StopNotDelivered;
+            _ = w.SetEvent(self.slot(run.block).stop);
+            self.held_blocks[index] = 0;
+            self.held_runs[index] = null;
+            return;
+        }
+        return error.StopNotHeld;
     }
 };
 
@@ -273,6 +300,67 @@ test "tree scenario 5: program ending joins every branch before completion" {
     try host.wait(.window_running);
     try host.end();
     try host.wait(.all_stopped);
+    for (host.slots) |item| try std.testing.expect(item.worker == null);
+}
+
+test "program shutdown stops Frontend without changing ProgramActive inputs" {
+    var host: Host = .{};
+    try host.init(true, "hold");
+    defer host.deinit();
+    try host.wait(.window_running);
+    try host.wait(.roots_running);
+    const before = try host.engine.read(.{ .item = I.ProgramStarted });
+    try std.testing.expect(before.valueOr(false));
+    try std.testing.expectError(error.AlreadyClaimed, host.engine.claimWrite(.{ .item = I.ProgramShuttingDown }));
+    try host.end();
+    try host.wait(.all_stopped);
+    const after = try host.engine.read(.{ .item = I.ProgramStarted });
+    try std.testing.expectEqualDeep(before, after);
+    try std.testing.expect(after.valueOr(false));
+    try std.testing.expect((try host.engine.read(.{ .item = I.ProgramShuttingDown })).valueOr(false));
+    try std.testing.expectEqual(control.types.BlockState.stopped, try host.state(B.Frontend));
+    try std.testing.expect(try topology.mayExitMessageLoop(host.engine, host.ending));
+}
+
+test "program message loop waits for Frontend including both branches and their descendants" {
+    var host: Host = .{};
+    try host.init(true, "hold");
+    defer host.deinit();
+    // Always release held delivery on assertion failure so cleanup can cancel.
+    defer {
+        for (host.held_runs) |run| if (run) |held| {
+            _ = w.SetEvent(host.slot(held.block).stop);
+        };
+        host.held_blocks = .{ 0, 0 };
+        host.held_runs = .{ null, null };
+    }
+    try host.wait(.window_running);
+    try host.wait(.roots_running);
+    const notifications = try host.engine.claimWrite(.{ .item = I.NotificationsEnabled });
+    try host.engine.publish(notifications, .{ .value = true }, Host.why(), null);
+    try host.engine.publish(host.ready, .{ .value = true }, Host.why(), null);
+    try host.wait(.desktop_running);
+    // Wait until the notification grandchild is genuinely running.
+    for (0..2000) |_| {
+        host.engine.waitIdle();
+        while (host.pop()) |event| try host.dispatch(event);
+        if (try host.state(B.TrayNotifications) == .running) break;
+        _ = w.WaitForSingleObject(host.wake, 5);
+    }
+    try std.testing.expectEqual(control.types.BlockState.running, try host.state(B.TrayNotifications));
+    host.held_blocks = .{ B.SingleInstance, B.TrayNotifications };
+    try host.end();
+    try host.wait(.held_stops);
+    try std.testing.expect(!try topology.mayExitMessageLoop(host.engine, host.ending));
+    try std.testing.expectEqual(control.types.BlockState.running, try host.state(B.Frontend));
+    try host.releaseStop(B.SingleInstance);
+    try host.wait(.main_stopped);
+    try std.testing.expect(!try topology.mayExitMessageLoop(host.engine, host.ending));
+    try std.testing.expectEqual(control.types.BlockState.running, try host.state(B.Tray));
+    try std.testing.expect(host.slot(B.WindowProcess).worker == null);
+    try host.releaseStop(B.TrayNotifications);
+    try host.wait(.all_stopped);
+    try std.testing.expect(try topology.mayExitMessageLoop(host.engine, host.ending));
     for (host.slots) |item| try std.testing.expect(item.worker == null);
 }
 test "tree scenario 10: crash clears wanted before reportReturned and waits for explicit reopen" {

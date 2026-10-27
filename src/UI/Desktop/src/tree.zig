@@ -14,25 +14,26 @@ pub const tree: control.tree.Tree = .{
     .program = B.Program,
     .blocks = &.{
         .{ .uid = B.Program, .parent = null },
-        .{ .uid = B.MainRoot, .parent = B.Program },
-        .{ .uid = B.TrayRoot, .parent = B.Program },
-        .{ .uid = B.SingleInstance, .parent = B.MainRoot },
-        .{ .uid = B.ForceTerminateHotkey, .parent = B.MainRoot },
-        .{ .uid = B.TaskManagerReplacement, .parent = B.MainRoot },
-        .{ .uid = B.BackendConnection, .parent = B.MainRoot },
-        .{ .uid = B.WindowProcess, .parent = B.MainRoot },
+        .{ .uid = B.Frontend, .parent = B.Program },
+        .{ .uid = B.MainFrontend, .parent = B.Frontend },
+        .{ .uid = B.Tray, .parent = B.Frontend },
+        .{ .uid = B.SingleInstance, .parent = B.MainFrontend },
+        .{ .uid = B.ForceTerminateHotkey, .parent = B.MainFrontend },
+        .{ .uid = B.TaskManagerReplacement, .parent = B.MainFrontend },
+        .{ .uid = B.BackendConnection, .parent = B.MainFrontend },
+        .{ .uid = B.WindowProcess, .parent = B.MainFrontend },
         .{ .uid = B.DesktopObservation, .parent = B.BackendConnection, .inputs = &.{B.BackendConnection} },
         .{ .uid = B.Overlay, .parent = B.BackendConnection, .inputs = &.{B.BackendConnection} },
-        .{ .uid = B.TrayNotifications, .parent = B.TrayRoot, .inputs = &.{B.BackendConnection} },
+        .{ .uid = B.TrayNotifications, .parent = B.Tray, .inputs = &.{B.BackendConnection} },
     },
     .uses = &.{
-        .{ .node = B.MainRoot, .condition = C.AlwaysWanted, .child = B.SingleInstance },
-        .{ .node = B.MainRoot, .condition = C.AlwaysWanted, .child = B.BackendConnection },
+        .{ .node = B.Frontend, .condition = C.AlwaysWanted, .child = B.MainFrontend },
+        .{ .node = B.Frontend, .condition = C.AlwaysWanted, .child = B.Tray },
+        .{ .node = B.MainFrontend, .condition = C.AlwaysWanted, .child = B.SingleInstance },
+        .{ .node = B.MainFrontend, .condition = C.AlwaysWanted, .child = B.BackendConnection },
     },
     .computes = &.{
         .{ .condition = C.ProgramActive, .function = programActive },
-        .{ .condition = C.MainTreeWanted, .function = programTreeWanted },
-        .{ .condition = C.TrayTreeWanted, .function = programTreeWanted },
         .{ .condition = C.AlwaysWanted, .function = alwaysWanted },
         .{ .condition = C.ForceTerminateHotkeyWanted, .function = hotkeyWanted },
         .{ .condition = C.TaskManagerReplacementWanted, .function = taskManagerWanted },
@@ -44,6 +45,11 @@ pub const tree: control.tree.Tree = .{
 };
 
 pub const Engine = control.Controller(registry, tree);
+/// The wrapper cannot report stopped until its complete branch has drained.
+/// The native message loop and process scenarios share this exit guard.
+pub fn mayExitMessageLoop(engine: *Engine, ending: bool) !bool {
+    return ending and try engine.readState(B.Frontend) == .stopped;
+}
 pub const host_blocks = blk: {
     var result: [registry.blocks.len - 1]u32 = undefined;
     var index: usize = 0;
@@ -59,13 +65,8 @@ fn read(input: *Input, uid: u32) !bool {
     return (try input.read(.{ .item = uid })).valueOr(false);
 }
 fn programActive(input: *Input) anyerror!bool {
-    // Both reads are explicit even when one operand settles the result.
-    const started = try read(input, I.ProgramStarted);
-    const ending = try read(input, I.ProgramShuttingDown);
-    return started and !ending;
-}
-fn programTreeWanted(input: *Input) anyerror!bool {
-    return input.condition(C.ProgramActive);
+    // Shutdown is owned by Engine.shutdown(), which revokes the root permit.
+    return read(input, I.ProgramStarted);
 }
 fn alwaysWanted(_: *Input) anyerror!bool {
     return true;
@@ -101,6 +102,24 @@ test "the resident tree covers every registered block and direct-child decision"
     _ = Engine;
 }
 
+test "Program owns only Frontend and Frontend owns the two frontend branches" {
+    const std = @import("std");
+    var root_children: usize = 0;
+    var frontend_children: usize = 0;
+    for (tree.blocks) |block| {
+        if (block.parent == B.Program) {
+            root_children += 1;
+            try std.testing.expectEqual(B.Frontend, block.uid);
+        }
+        if (block.parent == B.Frontend) {
+            frontend_children += 1;
+            try std.testing.expect(block.uid == B.MainFrontend or block.uid == B.Tray);
+        }
+    }
+    try std.testing.expectEqual(@as(usize, 1), root_children);
+    try std.testing.expectEqual(@as(usize, 2), frontend_children);
+}
+
 test "resident conditions require ready sessions, explicit switches and valid keys" {
     const std = @import("std");
     const Fixture = struct {
@@ -134,7 +153,7 @@ test "resident conditions require ready sessions, explicit switches and valid ke
     fixture.set(I.ProgramStarted, .{ .value = true });
     try std.testing.expect(try programActive(&input));
     fixture.set(I.ProgramShuttingDown, .{ .value = true });
-    try std.testing.expect(!try programActive(&input));
+    try std.testing.expect(try programActive(&input));
     fixture.set(I.WindowWanted, .{ .value = true });
     try std.testing.expect(try windowWanted(&input));
     fixture.set(I.ForceTerminateHotkeyEnabled, .{ .value = true });

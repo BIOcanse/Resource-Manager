@@ -20,10 +20,10 @@ public sealed class BusinessBlockIdentityTests
         const string mode = "names-on";
         var expectedBackendName = ResourceManager.App.StateItems.StateNames.Name(BackendUids.PresentFrameEtwSource);
         var expectedBackendProgramName = ResourceManager.App.StateItems.StateNames.Name(BackendUids.Program);
-        var expectedUiName = ResourceManager.NativeUi.StateItems.StateNames.Name(UiUids.MainRoot);
-        var expectedUiProgramName = ResourceManager.NativeUi.StateItems.StateNames.Name(UiUids.Program);
+        var expectedUiName = ResourceManager.NativeUi.LegacyStateItems.StateNames.Name(UiUids.MainRoot);
+        var expectedUiProgramName = ResourceManager.NativeUi.LegacyStateItems.StateNames.Name(UiUids.Program);
         Assert.Equal("PresentFrameEtwSource", expectedBackendName);
-        Assert.Equal("MainRoot", expectedUiName);
+        Assert.Equal("MainFrontend", expectedUiName);
 #else
         const string mode = "names-off";
         string? expectedBackendName = null;
