@@ -9,7 +9,7 @@ public enum KernelLeakResourceKind { ProcessHandles }
 [JsonConverter(typeof(JsonStringEnumConverter<KernelLeakUnit>))]
 public enum KernelLeakUnit { [JsonStringEnumMemberName("count")] Count }
 [JsonConverter(typeof(JsonStringEnumConverter<KernelLeakReportStatus>))]
-public enum KernelLeakReportStatus { Disabled, Observing, Empty, Suspected, Unavailable, NotObserved }
+public enum KernelLeakReportStatus { NotObserved, Observing, Empty, Suspected, Unavailable }
 [JsonConverter(typeof(JsonStringEnumConverter<KernelLeakFailure>))]
 public enum KernelLeakFailure { None, SourceUnavailable, CapacityExceeded, InvalidObservation }
 [JsonConverter(typeof(JsonStringEnumConverter<KernelLeakMetadataStatus>))]
