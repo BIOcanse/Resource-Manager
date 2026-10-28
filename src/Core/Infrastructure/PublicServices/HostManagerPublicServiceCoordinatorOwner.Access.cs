@@ -12,9 +12,12 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
     {
         ArgumentNullException.ThrowIfNull(context);
         cancellationToken.ThrowIfCancellationRequested();
-        var holder = AcquireCurrent();
+        WorkspaceHolder? holder = null;
+        var transferred = false;
+        gate.EnterWriteLock();
         try
         {
+            holder = AcquireCurrentLocked();
             var output = holder.Workspace.Admit(
                 holder.Plan.HotPublish.AnonymousCallerHandle,
                 ResolveRemoteScope(context.Connection.RemoteIpAddress),
@@ -22,7 +25,6 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
                 context.Request.Path.Value ?? "/");
             if (output.Allowed == 0)
             {
-                holder.Release();
                 return Task.FromResult(new LocalPublicServiceAccessDecision(
                     false,
                     checked((int)output.StatusCode),
@@ -45,6 +47,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
                 throw new InvalidOperationException(
                     "The public-service request completion identity collided.");
             }
+            transferred = true;
             PublishPendingTasks();
             return Task.FromResult(new LocalPublicServiceAccessDecision(
                 true,
@@ -52,10 +55,10 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
                 ResolveReason((NativePublicServiceAccessReason)output.Reason),
                 completionHandle));
         }
-        catch
+        finally
         {
-            holder.Release();
-            throw;
+            try { if (!transferred) holder?.ReleaseLocked(); }
+            finally { gate.ExitWriteLock(); }
         }
     }
 
@@ -76,6 +79,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
                 "The public-service request completion is already in progress.");
         }
 
+        var settled = false;
         try
         {
             completion.Holder.Workspace.CompleteRequest(completion.NativeRequestHandle);
@@ -87,14 +91,15 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
                 throw new InvalidOperationException(
                     "The public-service request completion identity changed unexpectedly.");
             }
-            completion.Holder.Release();
+            settled = true;
             PublishPendingTasks();
+            completion.Holder.Release();
             RetryDesiredPlan();
             return ValueTask.CompletedTask;
         }
         catch
         {
-            completion.Retry();
+            if (!settled) completion.Retry();
             throw;
         }
     }

@@ -20,10 +20,10 @@ public sealed class HostManagerPublicServiceCoordinatorRuntime(
 
     internal HostManagerDeploymentAttemptToken BeginInitialCreate(
         CompiledHostManagerPlan plan)
-        => deploymentState.BeginAttempt(
+        => deploymentState.BeginResourceCreate(
             HostManagerModuleKind.PublicServiceCoordinator,
             plan,
-            HostManagerDeploymentOperation.InitialCreate);
+            HostManagerDeploymentOperation.HostRecreateAndHotPublish);
 
     internal HostManagerDeploymentAttemptToken BeginHostRecreateAndHotPublish(
         CompiledHostManagerPlan plan)

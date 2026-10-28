@@ -8,6 +8,7 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 internal sealed class NativeReportCoordinatorWorkspace : IDisposable
 {
     private readonly RowSizedComputeScratch scratch;
+    private readonly Action? onClosed;
     private bool retiring;
     private bool disposed;
 
@@ -15,10 +16,12 @@ internal sealed class NativeReportCoordinatorWorkspace : IDisposable
         CompiledHostManagerReportCoordinatorPlan plan,
         ulong sessionInstanceLow,
         ulong sessionInstanceHigh,
-        Func<ulong, IComputeScratch> createScratch)
+        Func<ulong, IComputeScratch> createScratch,
+        Action? onClosed = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(createScratch);
+        this.onClosed = onClosed;
         if (!plan.IsPublished)
         {
             throw new InvalidOperationException(
@@ -87,6 +90,7 @@ internal sealed class NativeReportCoordinatorWorkspace : IDisposable
         scratch.Dispose(); // InUse/error retains both this reference and the native session.
         Session.Dispose();
         disposed = true;
+        onClosed?.Invoke();
     }
 
     internal static NativeReportCoordinatorConfiguration CreateConfiguration(

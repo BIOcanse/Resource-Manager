@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.Security.Cryptography;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.NativeCore;
@@ -24,7 +25,8 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 }
                 return;
             }
-            if (pendingWorkspaceClose is not null)
+            if (pendingWorkspaceClose is not null
+                || workspace is not null && workspaceHolder is null)
             {
                 throw new InvalidOperationException(
                     "An operation workspace still requires explicit closure before replacement.");
@@ -47,9 +49,16 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 Volatile.Write(ref lastPlanApplicationError, null);
                 return;
             }
-            if (workspace is null)
+            if (store is null)
             {
                 ApplyInitialLocked(hostPlan, desired);
+                Volatile.Write(ref lastPlanApplicationError, null);
+                return;
+            }
+            if (workspace is null)
+            {
+                ApplyIdlePlanLocked(hostPlan, desired);
+                Volatile.Write(ref pendingQuiescentRecreate, 0);
                 Volatile.Write(ref lastPlanApplicationError, null);
                 return;
             }
@@ -105,109 +114,71 @@ public sealed partial class HostManagerOperationCoordinatorOwner
     {
         var token = deployment.BeginCreate(hostPlan);
         HostManagerOperationCanonicalStore? replacementStore = null;
-        NativeOperationCoordinatorWorkspace? replacementWorkspace = null;
         var settlementAttempted = false;
         try
         {
-            var envelopePath =
-                ResolveEnvelopePath(desired.Recreate.CanonicalEnvelopeRelativePath);
             replacementStore = new HostManagerOperationCanonicalStore(
-                envelopePath,
-                desired.Recreate.Capacity,
-                desired.HotPublish.ConfigurationGeneration,
-                logger);
+                ResolveEnvelopePath(desired.Recreate.CanonicalEnvelopeRelativePath),
+                desired.Recreate.Capacity, desired.HotPublish.ConfigurationGeneration, logger);
+            // Cross-process canonical writer lock: keep it independently of native state.
             replacementStore.AcquireOwnerLease();
             var persisted = replacementStore.LoadValidated();
-            var sessionId = persisted?.SessionInstanceId
-                ?? NativeOperationCoordinatorWorkspace.CreateRandomHandle();
-            var clockId = NativeOperationCoordinatorWorkspace.CreateRandomHandle();
-            replacementWorkspace = new NativeOperationCoordinatorWorkspace(
-                desired,
-                sessionId,
-                clockId,
-                createScratch);
-            if (persisted is not null)
-            {
-                try
-                {
-                    replacementWorkspace.ImportCanonicalNativeImageLocked(
-                        persisted.NativeImage,
-                        timeProvider.GetUtcNow().ToUnixTimeMilliseconds(),
-                        NativeOperationCoordinatorWorkspace.MonotonicMilliseconds());
-                }
-                catch (Exception error) when (error is InvalidDataException or ArgumentException or OverflowException)
-                {
-                    replacementStore.RejectLoadedImage(error);
-                    replacementWorkspace.Dispose();
-                    replacementWorkspace = new NativeOperationCoordinatorWorkspace(desired, sessionId, clockId, createScratch);
-                    persisted = null;
-                }
-            }
-
-            workspace = replacementWorkspace;
             store = replacementStore;
+            replacementStore = null;
             appliedPlan = desired;
-            payloads = persisted?.Payloads.Clone()
-                ?? new HostManagerOperationPayloadCatalog();
-            receipts = persisted?.Receipts.Clone()
-                ?? new HostManagerOperationEffectReceiptTable();
+            payloads = persisted?.Payloads.Clone() ?? new();
+            receipts = persisted?.Receipts.Clone() ?? new();
             publicationRevision = persisted?.PublicationRevision ?? 0;
             lastEnvelopeSha256 = persisted?.FullEnvelopeSha256.ToArray()
                 ?? HostManagerOperationCanonicalEnvelopeCodec.ZeroDigest();
-            replacementWorkspace = null;
-            replacementStore = null;
-            try { CommitCurrentLocked("initial-recovery-publication"); }
-            catch (HostManagerOperationMigrationDeferredException)
-            {
-                // Only a migration write that left both source files unchanged may publish empty instead of blocking startup.
-                workspace.Dispose();
-                workspace = new NativeOperationCoordinatorWorkspace(desired, sessionId, clockId, createScratch);
-                payloads = new();
-                receipts = new();
-                publicationRevision = 0;
-                lastEnvelopeSha256 = HostManagerOperationCanonicalEnvelopeCodec.ZeroDigest();
-                CommitCurrentLocked("initial-recovery-publication");
-            }
             ready = true;
-            PublishHealthOnlyLocked();
+            Volatile.Write(ref committedState, BuildCommittedState(
+                persisted?.NativeImage.Records ?? [], payloads,
+                desired.HotPublish.ConfigurationGeneration, publicationRevision,
+                NextCommittedStateRevisionLocked(), timeProvider.GetUtcNow()));
+            PublishPendingOperationsLocked();
+            publicationSignal.Publish();
             settlementAttempted = true;
             deployment.CompleteSucceeded(token);
         }
-        catch (Exception error)
+        catch
         {
             ready = false;
-            Exception failure = error;
-            try
-            {
-                try
-                {
-                    if (replacementWorkspace is not null)
-                        RetireWorkspaceLocked(replacementWorkspace);
-                }
-                finally { replacementStore?.Dispose(); }
-                workspace?.Dispose();
-                workspace = null;
-                store?.Dispose();
-                store = null;
-                appliedPlan = null;
-            }
-            catch (Exception cleanup) { failure = new AggregateException(error, cleanup); }
+            replacementStore?.Dispose();
+            store?.Dispose();
+            store = null;
+            appliedPlan = null;
             if (!settlementAttempted)
-            {
-                try
-                {
-                    deployment.CompleteFailed(
-                        token,
-                        "operation-coordinator-initial-create-failed");
-                }
-                catch (Exception settlementError)
-                {
-                    throw new AggregateException(failure, settlementError);
-                }
-            }
-            if (!ReferenceEquals(failure, error)) throw failure;
+                deployment.CompleteFailed(token, "operation-coordinator-initial-create-failed");
             throw;
         }
+    }
+
+    private void ApplyIdlePlanLocked(
+        CompiledHostManagerPlan hostPlan,
+        CompiledHostManagerOperationCoordinatorPlan desired)
+    {
+        var previous = appliedPlan!;
+        if (!string.Equals(ResolveEnvelopePath(previous.Recreate.CanonicalEnvelopeRelativePath),
+                ResolveEnvelopePath(desired.Recreate.CanonicalEnvelopeRelativePath), StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("The operation canonical envelope path requires an explicit offline migration.");
+        var token = previous.Build == desired.Build && previous.Recreate == desired.Recreate
+            ? deployment.BeginHotPublish(hostPlan)
+            : deployment.BeginHostRecreateAndHotPublish(hostPlan);
+        deployment.CompleteSucceeded(token);
+        appliedPlan = desired;
+        var current = Volatile.Read(ref committedState);
+        var operations = current.Recent.Select(operation => operation with
+            { ConfigurationGeneration = desired.HotPublish.ConfigurationGeneration }).ToArray();
+        Volatile.Write(ref committedState, current with
+        {
+            ConfigurationGeneration = desired.HotPublish.ConfigurationGeneration,
+            Recent = operations,
+            ById = operations.ToFrozenDictionary(static operation => operation.Id, StringComparer.Ordinal),
+            Health = CreateHealth(publicationRevision, desired.HotPublish.ConfigurationGeneration),
+            PublicationRevision = NextCommittedStateRevisionLocked()
+        });
+        publicationSignal.Publish();
     }
 
     private void ApplyHotLocked(
@@ -426,6 +397,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         PreparedCommittedState committed)
     {
         workspace = replacement;
+        workspaceHolder!.Workspace = replacement;
         appliedPlan = desired;
         AcceptCommittedStateLocked(committed);
     }
@@ -465,7 +437,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             CompiledHostManagerOperationCoordinatorPlan desired)
     {
         var exported = current.ExportCanonicalNativeImageLocked();
-        var replacement = new NativeOperationCoordinatorWorkspace(
+        var replacement = createWorkspace(
             desired,
             current.SessionInstanceId,
             current.ClockInstanceId,

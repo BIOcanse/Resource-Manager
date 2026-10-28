@@ -146,7 +146,11 @@ pub fn decodeReplace(
             },
             else => {},
         }
-        record.state_revision = base_revision + 1;
+        // Import changes the session publication, but an unchanged terminal
+        // operation retains the revision of its final business-state change.
+        if (!protocol.isTerminal(record.state)) {
+            record.state_revision = base_revision + 1;
+        }
         session.staging.records[record_index] = record;
         if (!session.staging.insertOperation(record.operation_id, record_index)) {
             session.staging.reset();

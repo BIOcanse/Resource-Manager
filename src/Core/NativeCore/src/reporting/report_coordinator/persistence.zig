@@ -98,7 +98,7 @@ pub fn importPersisted(
                     rolling_observation_count += 1;
                 }
                 session.staging_observations[observation_count] =
-                    observationFromRow(&row, rolling);
+                    observationFromRow(&row, &session.rules[rule_index].value);
                 maximum_observation_handle = @max(maximum_observation_handle, row.identity_handle);
                 observation_count += 1;
             },
@@ -175,6 +175,21 @@ pub fn importPersisted(
         ) orelse return .invalid_argument;
         const observation = session.staging_observations[observation_index];
         if (observation.rule_generation != bucket.rule_generation) return .invalid_argument;
+    }
+    // Observation indexes are session-local. Rebind retained reports to their
+    // imported observation so restoring a committed decision alone does not look
+    // like a new report/evidence update during the first maintenance pass.
+    for (session.staging_reports[0..report_count]) |*report| {
+        const rule_index = session.findRule(report.rule_handle) orelse continue;
+        const rule = session.rules[rule_index].value;
+        report.observation_index = state.findObservationIn(
+            session.staging_observations,
+            session.staging_observation_index,
+            rule.source_handle,
+            rule.coverage_scope_handle,
+            rule.rule_handle,
+            report.target_handle,
+        ) orelse state.no_index;
     }
 
     var imported_metadata_logical_utc_ms = if (metadata_count == 0)
@@ -668,13 +683,24 @@ fn sourceFromRow(row: *const protocol.PersistenceOperation) state.SourceSlot {
 
 fn observationFromRow(
     row: *const protocol.PersistenceOperation,
-    rolling: bool,
+    rule: *const protocol.RuleInput,
 ) state.ObservationSlot {
+    const active = (row.flags & protocol.PersistenceFlags.active) != 0;
     return .{
         .occupied = true,
-        .rolling = rolling,
+        // Restore the outcome already committed by the last source frame. Do
+        // not evaluate metrics or advance sample/hysteresis counters on import.
+        // Missing evidence and unavailable sources reset both counters to zero;
+        // a latched active observation during an incomplete clear stays unknown.
+        .decision = if (active and row.consecutive_hits != 0)
+            .active
+        else if (row.consecutive_misses >= rule.required_consecutive_misses)
+            .clear
+        else
+            .unknown,
+        .rolling = (rule.flags & protocol.RuleFlags.rolling) != 0,
         .slot_generation = row.slot_generation,
-        .active = (row.flags & protocol.PersistenceFlags.active) != 0,
+        .active = active,
         .current_valid = (row.flags & protocol.PersistenceFlags.current_valid) != 0,
         .secondary_current_valid = (row.flags & protocol.PersistenceFlags.secondary_current_valid) != 0,
         .observation_handle = row.identity_handle,

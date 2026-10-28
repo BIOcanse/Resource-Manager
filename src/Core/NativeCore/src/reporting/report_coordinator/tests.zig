@@ -2594,6 +2594,86 @@ test "full report capacity retains all identities and counts current unrecorded 
     try std.testing.expectEqual(identity, stale.reports[0].report_handle);
 }
 
+test "import preserves full capacity candidates and committed unknown clear and stale outcomes without source replay" {
+    const Scenario = enum { active, not_latched, clear_pending, clear, source_unavailable, fact_unavailable, stale };
+    for ([_]Scenario{ .active, .not_latched, .clear_pending, .clear, .source_unavailable, .fact_unavailable, .stale }) |scenario| {
+        var config = testConfig();
+        config.maximum_report_count = 1;
+        const report_rules = [_]protocol.RuleInput{rule()};
+        const original = try createReadySession(&config, &report_rules);
+        defer original.destroy();
+        var facts = [_]protocol.FactInput{ fact(1, 60), fact(1, 60), fact(1, 60) };
+        for (&facts, 0..) |*value, index| value.target_handle += @intCast(index);
+        try observeRows(original, sourceSnapshot(3, 3, 1, 100, .complete, facts.len), &facts);
+        if (scenario != .not_latched) {
+            for (&facts) |*value| value.fact_sequence = 2;
+            try observeRows(original, sourceSnapshot(4, 4, 2, 110, .complete, facts.len), &facts);
+        }
+        if (scenario == .clear_pending or scenario == .clear) {
+            for (&facts) |*value| {
+                value.fact_sequence = 3;
+                value.current_value = 10;
+                value.peak_value = 10;
+            }
+            try observeRows(original, sourceSnapshot(5, 5, 3, 120, .complete, facts.len), &facts);
+            if (scenario == .clear) {
+                for (&facts) |*value| value.fact_sequence = 4;
+                try observeRows(original, sourceSnapshot(6, 6, 4, 130, .complete, facts.len), &facts);
+            }
+        } else if (scenario == .source_unavailable) {
+            try observeRows(original, sourceSnapshot(5, 5, 3, 120, .unavailable, 0), &.{});
+        } else if (scenario == .fact_unavailable) {
+            for (&facts) |*value| {
+                value.fact_sequence = 3;
+                value.flags = 0;
+            }
+            try observeRows(original, sourceSnapshot(5, 5, 3, 120, .complete, facts.len), &facts);
+        }
+        const checkpoint = try lifecyclePlan(original, 10, 1, 150);
+        const active_decision = scenario == .active or scenario == .stale;
+        try std.testing.expectEqual(@as(u32, if (active_decision) 2 else 0), checkpoint.output.unrecorded_report_count);
+        const rows = checkpoint.operations[0..checkpoint.output.persistence_operation_count];
+        const source = try findOperation(rows, .source);
+        const restored = try state.Session.create(&config);
+        defer restored.destroy();
+        const now: i64 = if (scenario == .stale) 10_150 else 150;
+        var replace = ruleReplaceInput(1, 1, now, report_rules.len);
+        try expectCode(.ok, session_module.replaceRules(restored, &replace, &report_rules, report_rules.len));
+        var input = importInput(2, 2, now, 1, @intCast(rows.len));
+        try expectCode(.ok, session_module.importPersisted(restored, &input, rows.ptr, @intCast(rows.len)));
+        for (rows) |row| {
+            if (row.operation_kind != @intFromEnum(protocol.PersistenceKind.observation)) continue;
+            const index = restored.findObservation(row.source_handle, row.coverage_scope_handle, row.rule_handle, row.target_handle).?;
+            const observation = restored.observations[index];
+            try std.testing.expectEqual(row.sample_count, observation.sample_count);
+            try std.testing.expectEqual(row.fact_sequence, observation.last_fact_sequence);
+            if (active_decision) {
+                try std.testing.expect(observation.decision == .active);
+            } else if (scenario == .clear) {
+                try std.testing.expect(observation.decision == .clear);
+            } else {
+                try std.testing.expect(observation.decision == .unknown);
+            }
+        }
+        // A restored source watermark still rejects the exact old publication.
+        var replay = sourceSnapshot(3, 3, source.source_snapshot_epoch, now, .complete, 0);
+        replay.source_generation = source.source_generation;
+        try expectCode(.stale_frame, session_module.observe(restored, &replay, null, 0));
+        const planned = try lifecyclePlan(restored, 3, 1, now);
+        try std.testing.expectEqual(@as(u32, if (scenario == .active) 2 else 0), planned.output.unrecorded_report_count);
+        if (scenario == .active) {
+            try std.testing.expectEqual(checkpoint.reports[0].updated_at_utc_milliseconds, planned.reports[0].updated_at_utc_milliseconds);
+            try std.testing.expectEqual(checkpoint.reports[0].last_observed_at_utc_milliseconds, planned.reports[0].last_observed_at_utc_milliseconds);
+        }
+        for (rows) |row| {
+            if (row.operation_kind != @intFromEnum(protocol.PersistenceKind.observation)) continue;
+            const index = restored.findObservation(row.source_handle, row.coverage_scope_handle, row.rule_handle, row.target_handle).?;
+            try std.testing.expectEqual(row.sample_count, restored.observations[index].sample_count);
+            if (scenario == .stale) try std.testing.expect(restored.observations[index].decision == .unknown);
+        }
+    }
+}
+
 test "rule generation change clears rolling buckets without clearing the report snapshot" {
     var config = testConfig();
     var rolling = rule();

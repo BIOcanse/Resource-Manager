@@ -19,10 +19,10 @@ public sealed class HostManagerReportCoordinatorRuntime(
 
     internal HostManagerDeploymentAttemptToken BeginInitialCreate(
         CompiledHostManagerPlan plan)
-        => deploymentState.BeginAttempt(
+        => deploymentState.BeginResourceCreate(
             HostManagerModuleKind.ReportCoordinator,
             plan,
-            HostManagerDeploymentOperation.InitialCreate);
+            HostManagerDeploymentOperation.HostRecreateAndHotPublish);
 
     internal HostManagerDeploymentAttemptToken BeginHotPublish(
         CompiledHostManagerPlan plan)

@@ -143,7 +143,7 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
             Assert.Equal(1, fixture.ComponentExecutor.ExecuteCount);
             release.TrySetResult();
             await fixture.Owner.StopAsync(CancellationToken.None).WaitAsync(TestBound);
-            Assert.Same(workspace, OwnerField<object>(fixture.Owner, "workspace"));
+            Assert.Null(OwnerField<object>(fixture.Owner, "workspace"));
             Assert.Same(store, OwnerField<object>(fixture.Owner, "store"));
             Assert.True(fixture.Owner.GetHealth().Ready);
             Assert.Null(OwnerField<object>(fixture.Owner, "workerCancellation"));
@@ -431,6 +431,7 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
             {
                 await InvokeOwnerTask(fixture.Owner, "ApplyPlanAsync",
                     fixture.Plan, true, CancellationToken.None);
+                await HoldWorkspaceForManualWorkersAsync(fixture.Owner);
                 typeof(HostManagerOperationCoordinatorOwner)
                     .GetField("actionChannel", BindingFlags.Instance | BindingFlags.NonPublic)!
                     .SetValue(fixture.Owner,

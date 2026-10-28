@@ -31,7 +31,9 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
     ILogger<HostManagerReportCoordinatorOwner> logger,
     Func<ulong, IComputeScratch> createScratch,
     ISchedulingProcessFactObservationSource processSource,
-    ISoftwareRegistryView softwareRegistry)
+    ISoftwareRegistryView softwareRegistry,
+    Func<CompiledHostManagerReportCoordinatorPlan, ulong, ulong,
+        Func<ulong, IComputeScratch>, NativeReportCoordinatorWorkspace>? createWorkspace = null)
     : BackgroundService,
         IHostManagerReportService,
         IOptimizationSoftwareIssueSignalSource,
@@ -46,6 +48,8 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
     private readonly SemaphoreSlim planSignal = new(0, 1);
     private NativeReportCoordinatorWorkspace? workspace;
     private NativeReportCoordinatorWorkspace? pendingWorkspaceClose;
+    private readonly WorkspaceHolder workspaceHolds = new();
+    private WorkspaceHold? runHold;
     private int retiring;
     private bool disposed;
     private CompiledHostManagerReportCoordinatorPlan? appliedPlan;
@@ -68,21 +72,27 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
 
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
-        planProvider.Published += OnPlanPublished;
-        subscribed = true;
+        var hold = AcquireWorkspaceHold(cancellationToken);
+        var starting = false;
+        var retainHold = false;
         try
         {
             await executionGate.WaitAsync(cancellationToken);
             try
             {
                 ThrowIfRetiring();
+                if (runHold is not null) return;
+                starting = true;
+                subscribed = true;
                 using var publication = planProvider.AcquirePublicationLease();
                 await ApplyPlanCoreAsync(
                     publication.Plan.HostManager.RequirePublished(),
                     cancellationToken);
                 ThrowIfRetiring();
                 UpdateObservationSubscriptions(RequireAppliedPlan());
+                runHold = hold;
                 await base.StartAsync(cancellationToken);
+                retainHold = true;
             }
             finally
             {
@@ -93,15 +103,25 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
         catch (Exception startupFailure)
         {
             var failures = new List<Exception> { startupFailure };
-            ReleaseObservationSubscriptions(failures);
-            UnsubscribeFromPlanProvider();
+            if (starting)
+            {
+                ReleaseObservationSubscriptions(failures);
+                EndObservationRun();
+                Interlocked.CompareExchange(ref runHold, null, hold);
+            }
+            try { await hold.DisposeAsync(); }
+            catch (Exception failure) { failures.Add(failure); }
             ThrowFailures(failures);
+        }
+        finally
+        {
+            if (!retainHold) await hold.DisposeAsync();
         }
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        UnsubscribeFromPlanProvider();
+        EndObservationRun();
         var failures = new List<Exception>();
         try
         {
@@ -110,6 +130,25 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
         catch (Exception stopFailure)
         {
             failures.Add(stopFailure);
+        }
+        // .NET 10 may cancel the scheduled BackgroundService task before it
+        // invokes ExecuteAsync, so that method's finally never owns cleanup.
+        // A canceled Stop with an unfinished task must leave its run hold alone.
+        if (ExecuteTask is { IsCompleted: true })
+        {
+            WorkspaceHold? remainingHold = null;
+            await executionGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+            try
+            {
+                if (ExecuteTask is { IsCompleted: true })
+                    remainingHold = Interlocked.Exchange(ref runHold, null);
+            }
+            finally { executionGate.Release(); }
+            if (remainingHold is not null)
+            {
+                try { await remainingHold.DisposeAsync().ConfigureAwait(false); }
+                catch (Exception closeFailure) { failures.Add(closeFailure); }
+            }
         }
         ReleaseObservationSubscriptions(failures);
         if (failures.Count > 0)
@@ -138,6 +177,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
     public async Task<OptimizationReportOverview> RefreshReportsAsync(
         CancellationToken cancellationToken)
     {
+        await using var hold = AcquireWorkspaceHold(cancellationToken);
         await EvaluateLatestAsync(cancellationToken);
         return await GetReportsAsync(cancellationToken);
     }
@@ -163,11 +203,13 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(reportId);
+        await using var hold = AcquireWorkspaceHold(cancellationToken);
         await executionGate.WaitAsync(cancellationToken);
         try
         {
             ThrowIfRetiring();
-            await SettlePendingAsync(cancellationToken);
+            using var publication = planProvider.AcquirePublicationLease();
+            await ApplyPlanCoreAsync(publication.Plan.HostManager.RequirePublished(), cancellationToken);
             var current = Volatile.Read(ref readModel);
             if (!current.NativeReportById.TryGetValue(reportId, out var report))
             {
@@ -230,11 +272,13 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
         CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(trustId);
+        await using var hold = AcquireWorkspaceHold(cancellationToken);
         await executionGate.WaitAsync(cancellationToken);
         try
         {
             ThrowIfRetiring();
-            await SettlePendingAsync(cancellationToken);
+            using var publication = planProvider.AcquirePublicationLease();
+            await ApplyPlanCoreAsync(publication.Plan.HostManager.RequirePublished(), cancellationToken);
             var current = Volatile.Read(ref readModel);
             if (!current.NativeTrustById.TryGetValue(trustId, out var trust))
             {
@@ -293,42 +337,66 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        while (!stoppingToken.IsCancellationRequested)
+        try
         {
-            try
+            while (!stoppingToken.IsCancellationRequested)
             {
-                await EvaluateLatestAsync(stoppingToken);
-            }
-            catch (ObjectDisposedException) when (Volatile.Read(ref retiring) != 0)
-            {
-                break;
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                break;
-            }
-            catch (Exception exception)
-            {
-                logger.LogError(
-                    exception,
-                    "Host Manager report coordinator cycle failed; the last committed snapshot remains published.");
-            }
+                try
+                {
+                    await EvaluateLatestAsync(stoppingToken);
+                }
+                catch (ObjectDisposedException) when (Volatile.Read(ref retiring) != 0)
+                {
+                    break;
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception exception)
+                {
+                    logger.LogError(
+                        exception,
+                        "Host Manager report coordinator cycle failed; the last committed snapshot remains published.");
+                }
 
-            await planSignal.WaitAsync(SampleInterval, stoppingToken);
+                await planSignal.WaitAsync(SampleInterval, stoppingToken);
+            }
+        }
+        finally
+        {
+            var hold = Interlocked.Exchange(ref runHold, null);
+            if (hold is not null) await hold.DisposeAsync();
         }
     }
 
     private void OnPlanPublished(CompiledRuntimePlan _)
-        => SignalPlanChange();
-
-    private void UnsubscribeFromPlanProvider()
     {
-        if (!subscribed)
-        {
-            return;
-        }
+        // Publication delivery is finite and joined, including asynchronous
+        // persistence. It cannot inherit a publisher's synchronization context.
+        try { Task.Run(ApplyPublishedPlanAsync).GetAwaiter().GetResult(); }
+        finally { SignalPlanChange(); }
+    }
 
-        planProvider.Published -= OnPlanPublished;
+    private async Task ApplyPublishedPlanAsync()
+    {
+        await executionGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            if (Volatile.Read(ref retiring) != 0 || !workspaceHolds.HasReferences) return;
+            using var publication = planProvider.AcquirePublicationLease();
+            await ApplyPlanCoreAsync(publication.Plan.HostManager.RequirePublished(), CancellationToken.None);
+        }
+        catch (Exception) when (Volatile.Read(ref retiring) == 0)
+        {
+            RecordEvaluationFailure();
+            throw;
+        }
+        finally { executionGate.Release(); }
+    }
+
+    private void EndObservationRun()
+    {
         subscribed = false;
     }
 
@@ -397,21 +465,26 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
         }
         catch (Exception exception) when (exception is not OperationCanceledException && Volatile.Read(ref retiring) == 0)
         {
-            var current = Volatile.Read(ref readModel);
-            Volatile.Write(ref readModel, current with
-            {
-                Status = current.Status with
-                {
-                    LastEvaluationAt = DateTimeOffset.UtcNow,
-                    EvaluationState = "failed"
-                }
-            });
+            RecordEvaluationFailure();
             throw;
         }
         finally
         {
             executionGate.Release();
         }
+    }
+
+    private void RecordEvaluationFailure()
+    {
+        var current = Volatile.Read(ref readModel);
+        Volatile.Write(ref readModel, current with
+        {
+            Status = current.Status with
+            {
+                LastEvaluationAt = DateTimeOffset.UtcNow,
+                EvaluationState = "failed"
+            }
+        });
     }
 
     internal static IReadOnlySet<string>? BackgroundSoftwareIds(SchedulingProcessFactSnapshot? snapshot)

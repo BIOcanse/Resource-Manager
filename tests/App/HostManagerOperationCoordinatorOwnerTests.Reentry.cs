@@ -53,7 +53,7 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
         await using var fixture = await Fixture.CreateAsync();
         var workspace = OwnerField<object>(fixture.Owner, "workspace");
         await fixture.Owner.StopAsync(CancellationToken.None).WaitAsync(TestBound);
-        Assert.Same(workspace, OwnerField<object>(fixture.Owner, "workspace"));
+        Assert.Null(OwnerField<object>(fixture.Owner, "workspace"));
         Assert.True(fixture.Owner.GetHealth().Ready);
         Assert.False(fixture.Owner.HasPendingOperations);
         var settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -68,11 +68,11 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
         await settled.Task.WaitAsync(TestBound);
         Assert.Equal(HostManagerOperationStates.Succeeded, fixture.Owner.Get(submitted.Id)!.State);
         Assert.False(fixture.Owner.HasPendingOperations);
-        Assert.Same(workspace, OwnerField<object>(fixture.Owner, "workspace"));
+        Assert.NotSame(workspace, OwnerField<object>(fixture.Owner, "workspace"));
     }
 
     [Fact]
-    public async Task HostedStopStartRetainsDurableRuntimeAndProcessesNewCommands()
+    public async Task HostedStopStartReopensDurableRuntimeAndProcessesNewCommands()
     {
         await using var fixture = await Fixture.CreateAsync();
         var first = await fixture.SubmitComponentDownloadAsync();
@@ -82,14 +82,14 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
         var firstWorker = OwnerField<object>(fixture.Owner, "plannerWorker");
 
         await fixture.Owner.StopAsync(CancellationToken.None).WaitAsync(TestBound);
-        Assert.Same(firstWorkspace, OwnerField<object>(fixture.Owner, "workspace"));
+        Assert.Null(OwnerField<object>(fixture.Owner, "workspace"));
         Assert.NotNull(OwnerField<object>(fixture.Owner, "store"));
         Assert.Null(OwnerField<object>(fixture.Owner, "workerCancellation"));
         Assert.True(fixture.Owner.GetHealth().Ready);
 
         await fixture.Owner.StartAsync(CancellationToken.None).WaitAsync(TestBound);
         Assert.True(fixture.Owner.GetHealth().Ready);
-        Assert.Same(firstWorkspace, OwnerField<object>(fixture.Owner, "workspace"));
+        Assert.NotSame(firstWorkspace, OwnerField<object>(fixture.Owner, "workspace"));
         Assert.NotSame(firstWorker, OwnerField<object>(fixture.Owner, "plannerWorker"));
         Assert.Equal(HostManagerOperationStates.Succeeded, fixture.Owner.Get(first.Id)!.State);
         var second = await fixture.SubmitComponentDownloadAsync();

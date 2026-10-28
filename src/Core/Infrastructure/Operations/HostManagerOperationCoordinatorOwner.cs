@@ -35,7 +35,13 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
     private readonly TimeProvider timeProvider;
     private NativeOperationCoordinatorWorkspace? workspace;
     private NativeOperationCoordinatorWorkspace? pendingWorkspaceClose;
+    private WorkspaceHolder? workspaceHolder;
+    private WorkspaceHold? runWorkspaceHold;
+    private TaskCompletionSource workspaceDrained = CompletedWorkspaceDrain();
     private readonly Func<ulong, IComputeScratch> createScratch;
+    private readonly WorkspaceFactory createWorkspace;
+    private readonly NativeOperationHandle128 workspaceClockInstanceId =
+        NativeOperationCoordinatorWorkspace.CreateRandomHandle();
     private HostManagerOperationCanonicalStore? store;
     private HostManagerOperationPayloadCatalog payloads = new();
     private HostManagerOperationEffectReceiptTable receipts = new();
@@ -92,9 +98,12 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
         IHostEnvironment environment,
         ILogger<HostManagerOperationCoordinatorOwner> logger,
         Func<ulong, IComputeScratch> createScratch,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        WorkspaceFactory? createWorkspace = null)
     {
         this.createScratch = createScratch ?? throw new ArgumentNullException(nameof(createScratch));
+        this.createWorkspace = createWorkspace ?? (static (plan, sessionId, clockId, scratch) =>
+            new NativeOperationCoordinatorWorkspace(plan, sessionId, clockId, scratch));
         this.planProvider = planProvider;
         this.deployment = deployment;
         this.effectRouter = effectRouter;

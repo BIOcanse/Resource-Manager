@@ -11,10 +11,10 @@ internal sealed partial class HostManagerReportCoordinatorOwner
         try
         {
             if (disposed) return;
-            if (ExecuteTask is { IsCompleted: false })
+            if (ExecuteTask is { IsCompleted: false } || workspaceHolds.HasReferences)
                 throw new InvalidOperationException("The report coordinator is running; use DisposeAsync to drain it.");
             Interlocked.Exchange(ref retiring, 1);
-            UnsubscribeFromPlanProvider();
+            EndObservationRun();
             CloseResourcesLocked();
         }
         finally { executionGate.Release(); }
@@ -39,8 +39,11 @@ internal sealed partial class HostManagerReportCoordinatorOwner
                 try { await StopAsync(CancellationToken.None).ConfigureAwait(false); }
                 finally { await executionGate.WaitAsync(CancellationToken.None).ConfigureAwait(false); }
             }
-            if (!disposed) CloseResourcesLocked();
         }
+        finally { executionGate.Release(); }
+        await workspaceHolds.WaitForDrainAsync().ConfigureAwait(false);
+        await executionGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try { if (!disposed) CloseResourcesLocked(); }
         finally { executionGate.Release(); }
     }
 
@@ -48,14 +51,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner
     {
         var failures = new List<Exception>();
         ReleaseObservationSubscriptions(failures);
-        try
-        {
-            pendingWorkspaceClose?.Dispose();
-            pendingWorkspaceClose = null;
-            workspace?.Dispose();
-            workspace = null;
-        }
-        catch (Exception failure) { failures.Add(failure); }
+        CloseWorkspacesLocked(failures);
         if (failures.Count != 0) ThrowFailures(failures);
         base.Dispose();
         disposed = true;
@@ -81,4 +77,94 @@ internal sealed partial class HostManagerReportCoordinatorOwner
 
     private void ThrowIfRetiring()
         => ObjectDisposedException.ThrowIf(Volatile.Read(ref retiring) != 0 || disposed, this);
+
+    private WorkspaceHold AcquireWorkspaceHold(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        workspaceHolds.AddReference(ThrowIfRetiring, () => planProvider.Published += OnPlanPublished);
+        return new WorkspaceHold(this);
+    }
+
+    private async ValueTask ReleaseWorkspaceHoldAsync()
+    {
+        await executionGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            workspaceHolds.Release(() =>
+            {
+                planProvider.Published -= OnPlanPublished;
+                var failures = new List<Exception>();
+                CloseWorkspacesLocked(failures);
+                if (failures.Count != 0) ThrowFailures(failures);
+            });
+        }
+        finally { executionGate.Release(); }
+    }
+
+    private void CloseWorkspacesLocked(ICollection<Exception> failures)
+    {
+        try
+        {
+            pendingWorkspaceClose?.Dispose();
+            pendingWorkspaceClose = null;
+        }
+        catch (Exception failure) { failures.Add(failure); }
+        try
+        {
+            workspace?.Dispose();
+            workspace = null;
+        }
+        catch (Exception failure) { failures.Add(failure); }
+    }
+
+    // Admission precedes the execution gate, so a queued finite call retains the
+    // same workspace as the operation it overlaps. References only own resources;
+    // they never start the report block or change any control-tree facts.
+    private sealed class WorkspaceHolder
+    {
+        private readonly object lifecycleGate = new();
+        private int referenceCount;
+        private TaskCompletionSource? drained;
+
+        internal bool HasReferences
+        {
+            get { lock (lifecycleGate) return referenceCount != 0; }
+        }
+
+        internal void AddReference(Action checkAdmission, Action firstReference)
+        {
+            lock (lifecycleGate)
+            {
+                checkAdmission();
+                if (referenceCount == 0)
+                {
+                    firstReference();
+                    drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                }
+                referenceCount++;
+            }
+        }
+
+        internal void Release(Action close)
+        {
+            lock (lifecycleGate)
+            {
+                if (--referenceCount != 0) return;
+                try { close(); }
+                finally { drained!.TrySetResult(); }
+            }
+        }
+
+        internal Task WaitForDrainAsync()
+        {
+            lock (lifecycleGate) return drained?.Task ?? Task.CompletedTask;
+        }
+    }
+
+    private sealed class WorkspaceHold(HostManagerReportCoordinatorOwner owner) : IAsyncDisposable
+    {
+        private HostManagerReportCoordinatorOwner? owner = owner;
+        public ValueTask DisposeAsync()
+            => Interlocked.Exchange(ref owner, null)?.ReleaseWorkspaceHoldAsync() ?? ValueTask.CompletedTask;
+    }
 }

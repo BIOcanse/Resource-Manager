@@ -13,7 +13,7 @@ using ResourceManager.Ledger;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class HostManagerPublicServiceCoordinatorOwnerTests
+public sealed partial class HostManagerPublicServiceCoordinatorOwnerTests
 {
     [Fact]
     public async Task PreparedOwnerAdmitsAndSettlesRequestWithoutStartingWorkers()
@@ -437,8 +437,13 @@ public sealed class HostManagerPublicServiceCoordinatorOwnerTests
         RecordingModelProvider provider,
         RuntimePlanProvider planProvider,
         ResourceManagerLedgerOwner ledger,
-        List<PublicServiceLedgerScratchTests.FailingScratch> scratches) : IAsyncDisposable
+        List<PublicServiceLedgerScratchTests.FailingScratch> scratches,
+        PublicWorkspaceLifetimes lifetimes,
+        Action<JsonObject>? configurePlan,
+        bool enabled) : IAsyncDisposable
     {
+        private bool serviceEnabled = enabled;
+        internal PublicWorkspaceLifetimes Lifetimes { get; } = lifetimes;
         internal ResourceManagerLedgerOwner Ledger { get; } = ledger;
         internal HostManagerPublicServiceCoordinatorOwner Owner { get; } = owner;
 
@@ -455,10 +460,12 @@ public sealed class HostManagerPublicServiceCoordinatorOwnerTests
             bool failCatalogComplete = false,
             int catalogTimeoutMilliseconds = 10_000,
             int catalogIntervalMilliseconds = 15_000,
-            bool start = true)
+            bool start = true,
+            bool enabled = true,
+            Action<JsonObject>? configurePlan = null,
+            bool failWorkspaceClose = false)
         {
-            var hostPlan = HostManagerTestPlanFactory.CreatePlan(
-                root =>
+            Action<JsonObject> configure = root =>
                 {
                     var recreate = root["host_recreate"]![
                         "public_service_coordinator"]!;
@@ -468,8 +475,11 @@ public sealed class HostManagerPublicServiceCoordinatorOwnerTests
                     recreate["request_timeout_ms"] = requestTimeoutMilliseconds;
                     recreate["model_catalog_acquisition_timeout_ms"] = catalogTimeoutMilliseconds;
                     recreate["model_catalog_acquisition_interval_ms"] = catalogIntervalMilliseconds;
-                },
-                publicService: EnabledPublicServiceSettings);
+                    configurePlan?.Invoke(root);
+                };
+            var hostPlan = HostManagerTestPlanFactory.CreatePlan(
+                configure,
+                publicService: EnabledPublicServiceSettings with { Enabled = enabled });
             Assert.True(
                 hostPlan.IsPublished,
                 DescribeUnpublishedPlanSections(hostPlan));
@@ -488,6 +498,7 @@ public sealed class HostManagerPublicServiceCoordinatorOwnerTests
                 cancelFirstLoad);
             var ledger = new ResourceManagerLedgerOwner();
             var scratches = new List<PublicServiceLedgerScratchTests.FailingScratch>();
+            var lifetimes = new PublicWorkspaceLifetimes();
             var owner = new HostManagerPublicServiceCoordinatorOwner(
                 planProvider,
                 new HostManagerPublicServiceCoordinatorRuntime(
@@ -499,21 +510,28 @@ public sealed class HostManagerPublicServiceCoordinatorOwnerTests
                 length =>
                 {
                     var scratch = new PublicServiceLedgerScratchTests.FailingScratch(
-                        ledger.CreateScratch(length), failReturn: failCatalogReturn)
+                        ledger.CreateScratch(length), failReturn: failCatalogReturn,
+                        failClose: failWorkspaceClose)
                         { FailNextComplete = failCatalogComplete };
                     scratches.Add(scratch);
                     return scratch;
-                });
+                },
+                lifetimes.Create);
             if (start) await owner.StartAsync(CancellationToken.None);
             else await owner.InitializeAsync(CancellationToken.None);
-            return new Fixture(owner, provider, planProvider, ledger, scratches);
+            return new Fixture(owner, provider, planProvider, ledger, scratches, lifetimes, configure, enabled);
         }
 
-        internal void PublishPlan(Action<JsonObject> mutate)
+        internal void PublishPlan(Action<JsonObject> mutate, bool? enabled = null)
         {
+            if (enabled is { } desired) serviceEnabled = desired;
             var plan = HostManagerTestPlanFactory.CreatePlan(
-                mutate,
-                publicService: EnabledPublicServiceSettings);
+                root =>
+                {
+                    configurePlan?.Invoke(root);
+                    mutate(root);
+                },
+                publicService: EnabledPublicServiceSettings with { Enabled = serviceEnabled });
             planProvider.Publish(CompiledRuntimePlan.Default with
             {
                 Version = planProvider.Current.Version + 1,
@@ -574,8 +592,9 @@ public sealed class HostManagerPublicServiceCoordinatorOwnerTests
 
         public async ValueTask DisposeAsync()
         {
-            await Owner.StopAsync(CancellationToken.None);
-            Owner.Dispose();
+            Provider.ReleaseFirstLoad();
+            await Owner.StopAsync(CancellationToken.None).WaitAsync(PublicHoldBound);
+            await Owner.DisposeAsync().AsTask().WaitAsync(PublicHoldBound);
             Ledger.Dispose();
         }
 

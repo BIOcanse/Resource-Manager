@@ -1488,6 +1488,67 @@ test "older compatible durable generation imports after hot configuration" {
     );
 }
 
+test "same-clock terminal import preserves final record while session revision advances" {
+    try expectTerminalRecordRevisionOnImport(false);
+}
+
+test "cross-clock terminal import preserves final business revision and replay safety" {
+    try expectTerminalRecordRevisionOnImport(true);
+}
+
+fn expectTerminalRecordRevisionOnImport(new_clock: bool) !void {
+    var config = testConfig();
+    var source = try state.Session.create(&config);
+    defer source.destroy();
+    var submit_output = std.mem.zeroes(protocol.SubmitOutput);
+    var submit = submitInput(1, 0, 1, 100, 100);
+    submit.valid_mask = 0;
+    submit.domain_id = zeroHandle();
+    try std.testing.expectEqual(ResultCode.ok, source.submit(&submit, &submit_output));
+    const start_plan = try runPlan(source, 1, 101, 101, 8);
+    var actions = zeroActions();
+    try readCurrentActions(source, &start_plan, &actions);
+    var started = feedbackInput(&actions[0], 1, .started, 102, 102);
+    try std.testing.expectEqual(ResultCode.ok, source.feedback(&started));
+    var completed = completionInput(&actions[0], 1, .succeeded, 103, 103);
+    completed.result_handle = handle(700);
+    completed.valid_mask = protocol.CompletionValid.result;
+    try std.testing.expectEqual(ResultCode.ok, source.complete(&completed));
+    var header = std.mem.zeroes(protocol.PersistenceHeader);
+    var records = zeroOperations();
+    var export_input = persistenceInput(1);
+    try std.testing.expectEqual(ResultCode.ok, source.exportPersistence(&export_input, &header, &records));
+
+    var restored_config = config;
+    if (new_clock) restored_config.clock_instance_id = handle(900);
+    var restored = try state.Session.create(&restored_config);
+    defer restored.destroy();
+    var input = persistenceImportInput(1, 104, if (new_clock) 1_000 else 104, restored_config.clock_instance_id);
+    try std.testing.expectEqual(ResultCode.ok, restored.importPersistence(&input, &header, records[0..1]));
+    var snapshot = std.mem.zeroes(protocol.SnapshotOutput);
+    try std.testing.expectEqual(ResultCode.ok, restored.snapshot(&snapshot));
+    try std.testing.expect(snapshot.state_revision > header.state_revision);
+    var operations = zeroOperations();
+    try std.testing.expectEqual(ResultCode.ok, restored.readOperations(&readInput(snapshot.state_revision, 0), &operations));
+    try std.testing.expectEqual(records[0].state_revision, operations[0].state_revision);
+    try std.testing.expectEqual(records[0].state, operations[0].state);
+    try std.testing.expectEqual(records[0].flags, operations[0].flags);
+    try std.testing.expectEqual(records[0].result_handle, operations[0].result_handle);
+    try std.testing.expectEqual(records[0].attempt_token, operations[0].attempt_token);
+    try std.testing.expectEqual(records[0].created_utc_milliseconds, operations[0].created_utc_milliseconds);
+    try std.testing.expectEqual(records[0].updated_utc_milliseconds, operations[0].updated_utc_milliseconds);
+    if (!new_clock) try std.testing.expectEqualDeep(records[0], operations[0]);
+
+    const accepted_revision = snapshot.state_revision;
+    try std.testing.expectEqual(ResultCode.stale_frame, restored.importPersistence(&input, &header, records[0..1]));
+    var tampered = records;
+    tampered[0].state_revision += 1;
+    input.operation_epoch += 1;
+    try std.testing.expectEqual(ResultCode.invalid_argument, restored.importPersistence(&input, &header, tampered[0..1]));
+    try std.testing.expectEqual(ResultCode.ok, restored.snapshot(&snapshot));
+    try std.testing.expectEqual(accepted_revision, snapshot.state_revision);
+}
+
 test "older durable terminal set is pruned by the current hot limit on import" {
     var config = testConfig();
     var source = try state.Session.create(&config);

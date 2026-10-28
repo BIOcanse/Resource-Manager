@@ -119,6 +119,69 @@ public sealed class NativeOperationCoordinatorAbiTests
         Assert.Equal(0U, snapshot.OperationCount);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TerminalImportPreservesFinalRecordRevisionWhileSessionRevisionAdvances(bool newClock)
+    {
+        var plan = NativeOperationScratchTests.Plan();
+        var sessionId = new NativeOperationHandle128(1, 2);
+        var originalClock = new NativeOperationHandle128(3, 4);
+        NativeOperationCanonicalImage image;
+        using (var source = new NativeOperationCoordinatorWorkspace(plan, sessionId, originalClock, OperationScratchFixture.Create))
+        {
+            var submit = new NativeOperationSubmitInput
+            {
+                OperationId = new(11, 12), KindHandle = new(21, 22), RequestHandle = new(31, 32),
+                MaximumAttempts = 1, RetryDelayMilliseconds = 1,
+                ExecutionTimeoutMilliseconds = 30_000, CancelGraceMilliseconds = 5_000,
+                TerminalRetentionMilliseconds = 60_000,
+                CreatedUtcMilliseconds = 1_000, ObservedUtcMilliseconds = 1_000,
+                CreatedMonotonicMilliseconds = 100, ObservedMonotonicMilliseconds = 100,
+                ValidMask = (ulong)NativeOperationSubmitValidity.Request
+            };
+            source.SubmitLocked(ref submit);
+            var action = Assert.Single(source.PlanAndReadActionsLocked(1_001, 101).Actions);
+            var started = new NativeOperationActionFeedbackInput
+            {
+                ActionId = action.ActionId, PlanEpoch = action.PlanEpoch,
+                OperationId = action.OperationId, AttemptToken = action.AttemptToken,
+                ActionKind = action.Kind, Outcome = (uint)NativeOperationActionFeedbackOutcome.Started,
+                ObservedUtcMilliseconds = 1_002, ObservedMonotonicMilliseconds = 102
+            };
+            Assert.True(source.ApplyActionFeedbackLocked(ref started));
+            var completion = new NativeOperationCompletionInput
+            {
+                OperationId = action.OperationId, AttemptToken = action.AttemptToken,
+                Outcome = (uint)NativeOperationCompletionOutcome.Succeeded,
+                ObservedUtcMilliseconds = 1_003, ObservedMonotonicMilliseconds = 103,
+                ResultHandle = new(41, 42), ValidMask = (ulong)NativeOperationResultValidity.Result
+            };
+            Assert.True(source.CompleteLocked(ref completion));
+            image = source.ExportCanonicalNativeImageLocked();
+        }
+        using var restored = new NativeOperationCoordinatorWorkspace(plan, sessionId,
+            newClock ? new(5, 6) : originalClock, OperationScratchFixture.Create);
+        restored.ImportCanonicalNativeImageLocked(image, 1_004, newClock ? 1_000UL : 104UL);
+        var after = restored.ExportCanonicalNativeImageLocked();
+        var expected = Assert.Single(image.Records);
+        var actual = Assert.Single(after.Records);
+        Assert.True(after.Header.StateRevision > image.Header.StateRevision);
+        Assert.Equal(expected.StateRevision, actual.StateRevision);
+        Assert.Equal(expected.OperationId, actual.OperationId);
+        Assert.Equal(expected.State, actual.State);
+        Assert.Equal(expected.Flags, actual.Flags);
+        Assert.Equal(expected.ResultHandle, actual.ResultHandle);
+        Assert.Equal(expected.ErrorHandle, actual.ErrorHandle);
+        Assert.Equal(expected.AttemptToken, actual.AttemptToken);
+        Assert.Equal(expected.AttemptNumber, actual.AttemptNumber);
+        Assert.Equal(expected.CreatedUtcMilliseconds, actual.CreatedUtcMilliseconds);
+        Assert.Equal(expected.UpdatedUtcMilliseconds, actual.UpdatedUtcMilliseconds);
+        if (!newClock)
+            Assert.Equal(MemoryMarshal.AsBytes(image.Records.AsSpan()).ToArray(),
+                MemoryMarshal.AsBytes(after.Records.AsSpan()).ToArray());
+    }
+
     private static NativeOperationCoordinatorConfiguration CreateConfiguration()
         => new()
         {

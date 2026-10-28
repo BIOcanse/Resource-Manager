@@ -18,6 +18,7 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
     private readonly NativeOperationHandle128 clockInstanceId;
     private NativeOperationScratchLayout layout;
     private readonly RowSizedComputeScratch scratch;
+    private readonly Action? onClosed;
     private bool retiring;
     private ulong nextSubmitEpoch;
     private ulong nextRequestEpoch;
@@ -31,7 +32,8 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
         CompiledHostManagerOperationCoordinatorPlan plan,
         NativeOperationHandle128 sessionInstanceId,
         NativeOperationHandle128 clockInstanceId,
-        Func<ulong, IComputeScratch> createScratch)
+        Func<ulong, IComputeScratch> createScratch,
+        Action? onClosed = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(createScratch);
@@ -50,6 +52,7 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
         this.plan = plan;
         this.sessionInstanceId = sessionInstanceId;
         this.clockInstanceId = clockInstanceId;
+        this.onClosed = onClosed;
         layout = new(1, 1, 1);
         var configuration = CreateConfiguration(plan, sessionInstanceId, clockInstanceId);
         session = new NativeOperationCoordinatorSession(in configuration);
@@ -382,6 +385,7 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
         scratch.Dispose(); // InUse/failure retains this session and exact handle for retry.
         session.Dispose();
         disposed = true;
+        onClosed?.Invoke();
     }
 
     internal static NativeOperationHandle128 CreateRandomHandle()
@@ -440,7 +444,8 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
             || action.OperationId.IsZero
             || action.AttemptToken.IsZero
             || action.PlanEpoch != output.PlanEpoch
-            || action.AttemptNumber == 0
+            || (action.AttemptNumber == 0
+                && (NativeOperationActionKind)action.Kind != NativeOperationActionKind.Recover)
             || action.DeadlineMonotonicMilliseconds == 0
             || (action.Flags & ~(ulong)NativeOperationActionFlags.Known) != 0
             || ((action.Flags

@@ -57,13 +57,12 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
         NativePublicServiceTaskKind kind,
         Func<CompiledHostManagerPublicServiceCoordinatorPlan, long> selectBaseScore)
     {
-        gate.EnterReadLock();
+        WorkspaceHolder? holder = null;
+        var transferred = false;
+        gate.EnterWriteLock();
         try
         {
-            ThrowIfDisposed();
-            var holder = current
-                ?? throw new InvalidOperationException(
-                    "The Host Manager public-service coordinator is not ready.");
+            holder = AcquireCurrentLocked();
             lock (holder.ModelGate)
             {
                 var resolved = holder.Workspace.ResolveModel(alias);
@@ -92,6 +91,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
                         "The native model identity has no matching transport payload.");
                 }
                 operation.BindDescriptor(descriptor);
+                operation.Holder = holder;
 
                 var payloadHandle = NextHandle(
                     ref nextOperationPayloadHandle,
@@ -118,6 +118,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
                         throw new InvalidOperationException(
                             "The native public-service queue returned a non-canonical task.");
                     }
+                    transferred = true;
                 }
                 catch
                 {
@@ -129,7 +130,8 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
         }
         finally
         {
-            gate.ExitReadLock();
+            try { if (!transferred) holder?.ReleaseLocked(); }
+            finally { gate.ExitWriteLock(); }
         }
         PublishPendingTasks();
         Signal(taskWake);
@@ -143,7 +145,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
             ulong nextWake = 0;
             try
             {
-                holder = AcquireCurrent();
+                holder = AcquireRunWorkspace();
                 var batch = holder.Workspace.PlanTasks(
                     holder.Plan.Recreate.MaximumConcurrentModelTasks);
                 var flags = (NativePublicServiceTaskPlanFlags)batch.Flags;
@@ -268,7 +270,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
             == NativePublicServiceTaskCompletionDisposition.Succeeded)
         {
             operation.Complete();
-            QueueModelRefresh();
+            if (!cancellationToken.IsCancellationRequested) QueueModelRefresh();
         }
         else
         {
@@ -278,6 +280,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
                     "The local-model provider task failed without an exception."));
         }
         PublishPendingTasks();
+        operation.ReleaseHolder();
     }
 
     private static void ValidateTaskPlan(
@@ -342,6 +345,22 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
         NativePublicServiceTaskKind kind)
     {
         internal NativePublicServiceTaskKind Kind { get; } = kind;
+
+        internal WorkspaceHolder? Holder { get; set; }
+
+        internal void ReleaseHolder()
+        {
+            var holder = Holder;
+            Holder = null;
+            holder?.Release();
+        }
+
+        internal void ReleaseHolderLocked()
+        {
+            var holder = Holder;
+            Holder = null;
+            holder?.ReleaseLocked();
+        }
 
         internal abstract Task ExecuteAsync(
             IAiModelRuntimeProvider provider,

@@ -11,12 +11,14 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
     {
         cancellationToken.ThrowIfCancellationRequested();
         var holder = AcquireCurrent();
+        gate.EnterReadLock();
         try
         {
             return Task.FromResult(ProjectCatalog(holder));
         }
         finally
         {
+            gate.ExitReadLock();
             holder.Release();
         }
     }

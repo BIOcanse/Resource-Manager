@@ -102,7 +102,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
             ulong nextWake = 0;
             try
             {
-                holder = AcquireCurrent();
+                holder = AcquireRunWorkspace();
                 var plan = holder.Workspace.PlanModelAcquisition();
                 nextWake = plan.NextWakeMonotonicMilliseconds;
                 switch ((NativePublicServiceModelAcquisitionPlanStatus)plan.Status)

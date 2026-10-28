@@ -11,6 +11,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
     {
         ArgumentNullException.ThrowIfNull(command);
         cancellationToken.ThrowIfCancellationRequested();
+        await using var hold = await AcquireWorkspaceAsync(cancellationToken).ConfigureAwait(false);
         await mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -132,6 +133,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             return null;
         }
         cancellationToken.ThrowIfCancellationRequested();
+        await using var hold = await AcquireWorkspaceAsync(cancellationToken).ConfigureAwait(false);
         await mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {

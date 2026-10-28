@@ -1168,7 +1168,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
         }
     }
 
-    private sealed class EmptyProtectionService : IOptimizationProtectionService
+    private class EmptyProtectionService : IOptimizationProtectionService
     {
         public Task<ProtectedOptimizationTarget?> SetSoftwareProtectionAsync(string softwareId, bool enabled, CancellationToken cancellationToken)
             => throw new NotSupportedException();
@@ -1179,7 +1179,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
             CancellationToken cancellationToken)
             => Task.FromResult<ProtectedOptimizationTarget?>(null);
 
-        public Task<IReadOnlyList<ProtectedOptimizationTarget>> GetProtectedTargetsAsync(
+        public virtual Task<IReadOnlyList<ProtectedOptimizationTarget>> GetProtectedTargetsAsync(
             CancellationToken cancellationToken)
             => Task.FromResult<IReadOnlyList<ProtectedOptimizationTarget>>([]);
 

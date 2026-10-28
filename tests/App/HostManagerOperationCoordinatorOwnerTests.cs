@@ -511,7 +511,8 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
             Func<ulong, IComputeScratch>? createScratch = null,
             Microsoft.Extensions.Logging.ILogger<HostManagerOperationCoordinatorOwner>? operationLogger = null,
             TimeProvider? operationClock = null,
-            IHostManagerOperationEffectExecutor? dependencyInstallerExecutor = null)
+            IHostManagerOperationEffectExecutor? dependencyInstallerExecutor = null,
+            HostManagerOperationCoordinatorOwner.WorkspaceFactory? createWorkspace = null)
         {
             var deployment = new HostManagerDeploymentState();
             var provider = new RuntimePlanProvider(deployment);
@@ -545,7 +546,7 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
             var environment = new TestHostEnvironment(Path.Combine(root, "Resource Manager-APP"));
             var logger = operationLogger ?? NullLogger<HostManagerOperationCoordinatorOwner>.Instance;
             var owner = new HostManagerOperationCoordinatorOwner(provider, runtime, router,
-                environment, logger, createScratch ?? OperationScratchFixture.Create, operationClock);
+                environment, logger, createScratch ?? OperationScratchFixture.Create, operationClock, createWorkspace);
             if (start)
             {
                 await owner.StartAsync(CancellationToken.None);

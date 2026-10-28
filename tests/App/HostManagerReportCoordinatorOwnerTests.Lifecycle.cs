@@ -106,8 +106,9 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         provider.Publish(CompiledRuntimePlan.Default with { Version = 1, HostManager = plan });
         var resources = new CachedResourceSource();
         var processes = new StrayProcessSource();
+        var persistence = new NativeReportCoordinatorPersistenceStore(CreateDatabase());
         using var owner = new HostManagerReportCoordinatorOwner(provider, new HostManagerReportCoordinatorRuntime(deployment),
-            new HostManagerRuntimeIdentity(), new NativeReportCoordinatorPersistenceStore(CreateDatabase()),
+            new HostManagerRuntimeIdentity(), persistence,
             new CachedMetricSource(), resources, new UnavailableInterruptSource(), new EmptyProtectionService(),
             NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create, processes, new RegisteredSoftware(false));
         foreach (var seconds in new[] { 0, 900 })
@@ -140,7 +141,27 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         Assert.Equal(0, full.Status.ActiveReportCount);
         Assert.Equal(1, full.Status.UnrecordedReportCount);
         Assert.Equal("completed", full.Status.EvaluationState);
-        // Another evaluation of the same publication does not count the candidate twice.
+        var committed = await persistence.LoadAsync(CancellationToken.None);
+        var retainedHistory = Assert.Single(committed, row => row.OperationKind == (uint)NativeReportPersistenceKind.Report);
+        Assert.Equal(0U, retainedHistory.Flags & (uint)NativeReportPersistenceFlags.Active);
+        var activeCandidate = committed.Where(row => row.OperationKind == (uint)NativeReportPersistenceKind.Observation
+            && (row.Flags & (uint)NativeReportPersistenceFlags.Active) != 0).ToArray();
+        Assert.NotEmpty(activeCandidate);
+        Assert.All(activeCandidate, row =>
+        {
+            Assert.NotEqual(retainedHistory.TargetHandle, row.TargetHandle);
+            Assert.True(row.ConsecutiveHits > 0);
+        });
+        Assert.Null(ReportOwnerField<NativeReportCoordinatorWorkspace>(owner, "workspace"));
+        // Reloading the exact committed observations must retain the derived
+        // capacity candidate without replaying a source or adding a sample.
         Assert.Equal(1, (await owner.RefreshReportsAsync(CancellationToken.None)).Status.UnrecordedReportCount);
+        var reloaded = await persistence.LoadAsync(CancellationToken.None);
+        var beforeRows = committed.Where(row => row.OperationKind != (uint)NativeReportPersistenceKind.Metadata)
+            .OrderBy(row => row.OperationKind).ThenBy(row => row.IdentityHandle).ToArray();
+        var afterRows = reloaded.Where(row => row.OperationKind != (uint)NativeReportPersistenceKind.Metadata)
+            .OrderBy(row => row.OperationKind).ThenBy(row => row.IdentityHandle).ToArray();
+        Assert.Equal(System.Runtime.InteropServices.MemoryMarshal.AsBytes(beforeRows.AsSpan()).ToArray(),
+            System.Runtime.InteropServices.MemoryMarshal.AsBytes(afterRows.AsSpan()).ToArray());
     }
 }

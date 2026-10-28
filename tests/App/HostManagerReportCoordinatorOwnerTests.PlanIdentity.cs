@@ -17,6 +17,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
             OperationScratchFixture.Create, new CachedResourceSource(), out var provider);
         await owner.StartAsync(CancellationToken.None);
         await owner.StopAsync(CancellationToken.None);
+        await using var heldCall = await HoldReportCallAsync(owner);
         var first = ReportOwnerField<NativeReportCoordinatorWorkspace>(owner, "workspace")!;
 
         var recompiled = HostManagerTestPlanFactory.CreatePlan();

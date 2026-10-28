@@ -24,7 +24,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner
         await SettlePendingAsync(cancellationToken);
         var desired = hostPlan.ReportCoordinator;
         var desiredDigests = hostPlan.DeploymentDigests.ReportCoordinator;
-        if (appliedDigests == desiredDigests)
+        if (workspace is not null && appliedDigests == desiredDigests)
         {
             return;
         }
@@ -46,11 +46,14 @@ internal sealed partial class HostManagerReportCoordinatorOwner
         HostManagerReportReadModel replacementModel = null!;
         try
         {
-            replacement = new NativeReportCoordinatorWorkspace(
-                desired,
-                runtimeIdentity.InstanceId,
-                NextIncarnation(),
-                createScratch);
+            var nextIncarnation = NextIncarnation();
+            replacement = createWorkspace is { } factory
+                ? factory(desired, runtimeIdentity.InstanceId, nextIncarnation, createScratch)
+                : new NativeReportCoordinatorWorkspace(
+                    desired,
+                    runtimeIdentity.InstanceId,
+                    nextIncarnation,
+                    createScratch);
             var loadedRows = await persistenceStore.LoadAsync(cancellationToken);
             replacementState = new CoordinatorState(
                 NativeReportCoordinatorPersistenceMigration.RebindLoadedRows(

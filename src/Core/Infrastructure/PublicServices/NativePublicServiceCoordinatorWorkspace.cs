@@ -16,6 +16,8 @@ internal sealed class NativePublicServiceCoordinatorWorkspace : IDisposable
     private readonly NativePublicServiceCoordinatorSession session;
     private readonly IComputeScratch modelScratch;
     private readonly (ulong ByteCount, uint Alignment) modelScratchRequirement;
+    private readonly Action? onClosed;
+    private bool closed;
     private NativePublicServiceModelProjectionBatch? acceptedModels;
     private ModelUse? pendingModelUse;
     private ulong nextCommandEpoch;
@@ -25,8 +27,10 @@ internal sealed class NativePublicServiceCoordinatorWorkspace : IDisposable
         ulong hostInstanceId,
         ulong sessionIncarnation,
         ulong catalogGeneration,
-        Func<ulong, IComputeScratch> createScratch)
+        Func<ulong, IComputeScratch> createScratch,
+        Action? onClosed = null)
     {
+        this.onClosed = onClosed;
         ArgumentNullException.ThrowIfNull(plan);
         if (!plan.IsPublished)
         {
@@ -518,10 +522,13 @@ internal sealed class NativePublicServiceCoordinatorWorkspace : IDisposable
     {
         lock (commandGate)
         {
+            if (closed) return;
             pendingModelUse?.Dispose();
             pendingModelUse = null;
             modelScratch.Dispose();
             session.Dispose();
+            closed = true;
+            onClosed?.Invoke();
         }
     }
 

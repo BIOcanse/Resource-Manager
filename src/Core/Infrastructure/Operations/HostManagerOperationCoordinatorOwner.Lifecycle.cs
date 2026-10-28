@@ -67,6 +67,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 ThrowIfRetiringLocked();
                 if (started || workerCancellation is not null)
                     throw new InvalidOperationException("The operation coordinator owner is already started.");
+                runWorkspaceHold = AcquireWorkspaceLocked();
                 // The immediate first cycle covers mutations queued while stopped.
                 _ = plannerWake.Wait(0);
                 var plan = appliedPlan
@@ -165,6 +166,18 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             actionChannel = null;
             plannerWorker = null;
             actionWorkers = [];
+            if (runWorkspaceHold is not null)
+            {
+                // Native calls by workers have drained; finite commands retain
+                // their own references until their individual return paths.
+                if (workspaceHolder!.Release())
+                {
+                    workspace = null;
+                    workspaceHolder = null;
+                    workspaceDrained.TrySetResult();
+                }
+                runWorkspaceHold = null;
+            }
         }
         finally
         {
@@ -190,6 +203,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
                 return;
             }
             if (started || workerCancellation is not null
+                || workspaceHolder is not null
                 || plannerWorker is { IsCompleted: false }
                 || actionWorkers.Any(static worker => !worker.IsCompleted))
             {
@@ -222,6 +236,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         }
         finally { mutationGate.Release(); }
         await StopAsync(CancellationToken.None).ConfigureAwait(false);
+        await workspaceDrained.Task.ConfigureAwait(false);
         await mutationGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         try
         {
@@ -250,6 +265,8 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         pendingWorkspaceClose = null;
         workspace?.Dispose();
         workspace = null;
+        workspaceHolder = null;
+        runWorkspaceHold = null;
         store?.Dispose();
         store = null;
         appliedPlan = null;

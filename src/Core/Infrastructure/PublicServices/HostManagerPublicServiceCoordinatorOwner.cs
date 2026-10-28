@@ -15,7 +15,8 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
     ILocalPublicServiceAccessPolicy,
     ILocalAiModelService,
     IAiGatewayLocalModelPolicy,
-    IDisposable
+    IDisposable,
+    IAsyncDisposable
 {
     private readonly ReaderWriterLockSlim gate = new(LockRecursionPolicy.NoRecursion);
     private readonly SemaphoreSlim initializationGate = new(1, 1);
@@ -29,17 +30,22 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
     private readonly IAiModelRuntimeProvider runtimeProvider;
     private readonly ILogger<HostManagerPublicServiceCoordinatorOwner> logger;
     private readonly Func<ulong, IComputeScratch> createScratch;
+    private readonly Func<CompiledHostManagerPublicServiceCoordinatorPlan, ulong, ulong, ulong,
+        Func<ulong, IComputeScratch>, NativePublicServiceCoordinatorWorkspace> createWorkspace;
     private CancellationTokenSource? workerCancellation;
     private Task? modelWorker;
     private Task? taskWorker;
     private WorkspaceHolder? current;
     private WorkspaceHolder? pendingRetirement;
+    private WorkspaceHolder? runHolder;
+    private CompiledHostManagerPlan? desiredHostPlan;
     private CompiledHostManagerPublicServiceCoordinatorPlan? appliedPlan;
     private long nextRequestCompletionHandle;
     private long nextOperationPayloadHandle;
     private long nextSessionIncarnation;
     private bool started;
     private bool disposed;
+    private bool retiring;
     private Action<CompiledRuntimePlan>? publishedHandler;
     private readonly object activityGate = new();
     private bool hasPendingTasks;
@@ -85,7 +91,9 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
         HostManagerRuntimeIdentity runtimeIdentity,
         IAiModelRuntimeProvider runtimeProvider,
         ILogger<HostManagerPublicServiceCoordinatorOwner> logger,
-        Func<ulong, IComputeScratch> createScratch)
+        Func<ulong, IComputeScratch> createScratch,
+        Func<CompiledHostManagerPublicServiceCoordinatorPlan, ulong, ulong, ulong,
+            Func<ulong, IComputeScratch>, NativePublicServiceCoordinatorWorkspace>? createWorkspace = null)
     {
         this.planProvider = planProvider;
         this.deployment = deployment;
@@ -93,6 +101,8 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
         this.runtimeProvider = runtimeProvider;
         this.logger = logger;
         this.createScratch = createScratch;
+        this.createWorkspace = createWorkspace ?? (static (plan, host, incarnation, generation, scratch) =>
+            new NativePublicServiceCoordinatorWorkspace(plan, host, incarnation, generation, scratch));
     }
 
     internal async Task InitializeAsync(CancellationToken cancellationToken)
@@ -109,6 +119,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
             gate.EnterWriteLock();
             try
             {
+                ThrowIfDisposed();
                 publishedHandler = handler;
                 planProvider.Published += handler;
             }
@@ -137,94 +148,140 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
     {
         await InitializeAsync(cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
-        if (started) return;
-        if (workerCancellation is not null || modelWorker is not null || taskWorker is not null)
-            throw new InvalidOperationException("The prior Host Manager public-service stop has not completed.");
-        workerCancellation = new CancellationTokenSource();
-        modelWorker = Task.Run(
-            () => RunModelAcquisitionLoopAsync(workerCancellation.Token), CancellationToken.None);
-        taskWorker = Task.Run(
-            () => RunTaskLoopAsync(workerCancellation.Token), CancellationToken.None);
-        started = true;
-        Signal(taskWake);
+        gate.EnterWriteLock();
+        try
+        {
+            ThrowIfDisposed();
+            if (started) return;
+            if (workerCancellation is not null || modelWorker is not null || taskWorker is not null)
+                throw new InvalidOperationException("The prior Host Manager public-service stop has not completed.");
+            runHolder = AcquireCurrentLocked();
+            var cancellation = new CancellationTokenSource();
+            workerCancellation = cancellation;
+            modelWorker = Task.Run(
+                () => RunModelAcquisitionLoopAsync(cancellation.Token), CancellationToken.None);
+            taskWorker = Task.Run(
+                () => RunTaskLoopAsync(cancellation.Token), CancellationToken.None);
+            started = true;
+            Signal(taskWake);
+            if (Volatile.Read(ref modelRefreshQueued) != 0) Signal(modelWake);
+        }
+        finally { gate.ExitWriteLock(); }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        if (!started
-            && workerCancellation is null
-            && modelWorker is null
-            && taskWorker is null)
-        {
-            return;
-        }
-
+        CancellationTokenSource? cancellation;
+        Task[] workers;
         gate.EnterWriteLock();
         try
         {
+            if (workerCancellation is null && modelWorker is null && taskWorker is null) return;
             started = false;
+            cancellation = workerCancellation;
+            workers = new[] { modelWorker, taskWorker }
+                .Where(static worker => worker is not null).Cast<Task>().ToArray();
         }
         finally { gate.ExitWriteLock(); }
-        var cancellation = workerCancellation;
-        cancellation?.Cancel();
+        // Another Stop may already have joined and disposed this same source.
+        try { cancellation?.Cancel(); }
+        catch (ObjectDisposedException) { }
         Signal(modelWake);
         Signal(taskWake);
-        var workers = new[] { modelWorker, taskWorker }
-            .Where(static worker => worker is not null)
-            .Cast<Task>()
-            .ToArray();
+        // The caller may stop waiting, but the admitted Stop still joins the
+        // actual workers and returns its run reference when they finally exit.
+        await DrainStoppedRunAsync(cancellation, workers).WaitAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async Task DrainStoppedRunAsync(CancellationTokenSource? cancellation, Task[] workers)
+    {
+        Exception? workerFailure = null;
         try
         {
-            await Task.WhenAll(workers).WaitAsync(cancellationToken)
-                .ConfigureAwait(false);
+            await Task.WhenAll(workers).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (
-            !cancellationToken.IsCancellationRequested
-            && cancellation?.IsCancellationRequested == true)
+            cancellation?.IsCancellationRequested == true)
         {
         }
-        ThrowIfWorkerFaulted();
-        modelWorker = null;
-        taskWorker = null;
-        workerCancellation = null;
-        cancellation?.Dispose();
+        catch (Exception failure)
+        {
+            workerFailure = failure;
+        }
+        gate.EnterWriteLock();
+        try
+        {
+            if (!ReferenceEquals(workerCancellation, cancellation)) return;
+            // Queued operations retain their transferred references across Stop
+            // and are consumed by the next run. Only final disposal cancels them.
+            modelWorker = null;
+            taskWorker = null;
+            workerCancellation = null;
+            cancellation?.Dispose();
+            var holder = runHolder;
+            runHolder = null;
+            holder?.ReleaseLocked();
+        }
+        finally { gate.ExitWriteLock(); }
+        if (workerFailure is not null)
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(workerFailure).Throw();
     }
 
     public void Dispose()
     {
-        if (disposed)
-        {
-            return;
-        }
-
-        workerCancellation?.Cancel();
-        workerCancellation?.Dispose();
-        workerCancellation = null;
-        Interlocked.Exchange(ref modelRefreshQueued, 0);
-        CancelPendingOperations();
-        ReleaseRequestCompletions();
         gate.EnterWriteLock();
         try
         {
-            if (publishedHandler is { } handler) planProvider.Published -= handler;
-            publishedHandler = null;
-            started = false;
-            if (pendingRetirement?.Retire() == true) pendingRetirement = null;
-            if (current?.Retire() == true) current = null;
-            if (pendingRetirement is not null || current is not null)
+            if (disposed) return;
+            if (workerCancellation is not null || current?.HasReferences == true
+                || pendingRetirement?.HasReferences == true)
                 throw new InvalidOperationException(
-                    "Public-service workspaces are still in use; disposal must be retried after their retirement.");
-            appliedPlan = null;
-            disposed = true;
+                    "The public-service coordinator is in use; use DisposeAsync to drain it.");
+            retiring = true;
+            CloseResourcesLocked();
         }
-        finally
+        finally { gate.ExitWriteLock(); }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        gate.EnterWriteLock();
+        try
         {
-            gate.ExitWriteLock();
+            if (disposed) return;
+            retiring = true;
         }
-        // A publication may still hold the old delegate after unsubscription.
-        // Keep its admission gate usable so that callback can enter and reject it.
-        modelWake.Dispose();
-        taskWake.Dispose();
+        finally { gate.ExitWriteLock(); }
+        await StopAsync(CancellationToken.None).ConfigureAwait(false);
+        Task drain;
+        gate.EnterWriteLock();
+        try
+        {
+            // A stopped Load/Unload may still own a queued native task.
+            CancelQueuedOperationsLocked();
+            drain = Task.WhenAll(current?.Drain ?? Task.CompletedTask,
+                pendingRetirement?.Drain ?? Task.CompletedTask);
+        }
+        finally { gate.ExitWriteLock(); }
+        await drain.ConfigureAwait(false);
+        gate.EnterWriteLock();
+        try { CloseResourcesLocked(); }
+        finally { gate.ExitWriteLock(); }
+    }
+
+    private void CloseResourcesLocked()
+    {
+        if (publishedHandler is { } handler) planProvider.Published -= handler;
+        publishedHandler = null;
+        Interlocked.Exchange(ref modelRefreshQueued, 0);
+        if (pendingRetirement?.RetireLocked() == true) pendingRetirement = null;
+        if (current?.RetireLocked() == true) current = null;
+        appliedPlan = null;
+        disposed = true;
+        PublishPendingTasks();
+        // Managed gates stay usable for admitted completion and callbacks that
+        // captured the old publication delegate before unsubscription.
     }
 
     private void Apply(CompiledHostManagerPlan hostPlan, bool throwOnFailure,
@@ -235,7 +292,17 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
         try
         {
             if (expectedHandler is not null && !ReferenceEquals(publishedHandler, expectedHandler)) return;
-            if (pendingRetirement?.Retire() == true) pendingRetirement = null;
+            if (retiring || disposed) return;
+            desiredHostPlan = hostPlan;
+            if (pendingRetirement?.RetireLocked() == true) pendingRetirement = null;
+            if (current is { HasReferences: false } idle && idle.RetireLocked())
+            {
+                current = null;
+                appliedPlan = null;
+            }
+            // Preparation and idle publications only record configuration.
+            if (current is null) return;
+            PublishAdmissionStateLocked(current, desired.HotPublish.ServiceEnabled);
             if (appliedPlan?.ConfigurationSha256 == desired.ConfigurationSha256)
             {
                 return;
@@ -245,19 +312,15 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
                     "The previous public-service workspace is still in use; replacement must wait for its retirement.");
             if (current is not null)
             {
-                RequireReplaceable(current.Workspace.ReadSnapshot());
+                if (!IsReplaceable(current.Workspace.ReadSnapshot())) return;
             }
 
-            var initial = current is null;
-            var token = initial
-                ? deployment.BeginInitialCreate(hostPlan)
-                : deployment.BeginHostRecreateAndHotPublish(hostPlan);
-            NativePublicServiceCoordinatorWorkspace? replacement = null;
+            var token = deployment.BeginHostRecreateAndHotPublish(hostPlan);
             WorkspaceHolder? next = null;
             try
             {
                 var models = new NativePublicServiceModelProjection();
-                replacement = new NativePublicServiceCoordinatorWorkspace(
+                var replacement = createWorkspace(
                     desired,
                     runtimeIdentity.InstanceId,
                     NextHandle(
@@ -265,49 +328,50 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
                         "public-service session incarnation"),
                     desired.HotPublish.ConfigurationGeneration,
                     createScratch);
-                next = new WorkspaceHolder(replacement, desired, models);
-                replacement = null;
-                var previous = current;
-                var previousPlan = appliedPlan;
-                current = next;
-                appliedPlan = desired;
-                next = null;
-                try
-                {
-                    deployment.CompleteSucceeded(token);
-                }
-                catch
-                {
-                    var rejected = current;
-                    current = previous;
-                    appliedPlan = previousPlan;
-                    rejected?.Retire();
-                    throw;
-                }
-                pendingRetirement = previous;
-                if (!initial)
-                {
-                    Signal(modelWake);
-                }
-                Signal(taskWake);
+                next = new WorkspaceHolder(this, replacement, desired, models);
+                deployment.CompleteSucceeded(token);
             }
             catch (Exception ex)
             {
-                next?.Retire();
-                replacement?.Dispose();
+                var failures = new List<Exception> { ex };
+                if (next is not null)
+                {
+                    pendingRetirement = next;
+                    try { if (next.RetireLocked()) pendingRetirement = null; }
+                    catch (Exception close) { failures.Add(close); }
+                }
                 try
                 {
                     deployment.CompleteFailed(token, "public-service-coordinator-apply-failed");
                 }
                 catch (Exception settlement)
                 {
-                    throw new AggregateException(ex, settlement);
+                    failures.Add(settlement);
                 }
+                if (failures.Count > 1) throw new AggregateException(failures);
                 throw;
             }
             // Publication succeeded; retirement failures retain the old holder
             // without changing the already settled deployment attempt.
-            if (pendingRetirement?.Retire() == true) pendingRetirement = null;
+            var previous = current;
+            current = next!;
+            appliedPlan = desired;
+            current.AddReferenceLocked();
+            pendingRetirement = previous;
+            if (ReferenceEquals(runHolder, previous))
+            {
+                runHolder = current;
+                previous!.ReleaseLocked();
+            }
+            else
+            {
+                // A stopped finite call still owns the predecessor. Its final
+                // return releases this transferred reference to the replacement;
+                // current itself never receives an idle baseline reference.
+                previous!.ReplacementHold = current;
+            }
+            Signal(modelWake);
+            Signal(taskWake);
         }
         catch (Exception ex) when (!throwOnFailure)
         {
@@ -323,33 +387,135 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
 
     private WorkspaceHolder AcquireCurrent()
     {
+        gate.EnterWriteLock();
+        try { return AcquireCurrentLocked(); }
+        finally { gate.ExitWriteLock(); }
+    }
+
+    private WorkspaceHolder AcquireCurrentLocked()
+    {
         ThrowIfDisposed();
         ThrowIfWorkerFaulted();
-        gate.EnterReadLock();
+        if (pendingRetirement?.RetireLocked() == true) pendingRetirement = null;
+        if (current is { HasReferences: false } idle)
+        {
+            // A failed last close remains owned here until a later entry or
+            // disposal retries it successfully; never overwrite that obligation.
+            if (idle.RetireLocked()) current = null;
+        }
+        if (current is null)
+        {
+            if (pendingRetirement is not null)
+                throw new InvalidOperationException(
+                    "The previous public-service workspace must finish retirement before another workspace is opened.");
+            var hostPlan = desiredHostPlan ?? throw new InvalidOperationException(
+                "The Host Manager public-service coordinator is not ready.");
+            var desired = hostPlan.PublicServiceCoordinator;
+            var token = deployment.BeginInitialCreate(hostPlan);
+            WorkspaceHolder? candidate = null;
+            try
+            {
+                candidate = new WorkspaceHolder(this, createWorkspace(desired,
+                    runtimeIdentity.InstanceId,
+                    NextHandle(ref nextSessionIncarnation, "public-service session incarnation"),
+                    desired.HotPublish.ConfigurationGeneration, createScratch),
+                    desired, new NativePublicServiceModelProjection());
+                deployment.CompleteSucceeded(token);
+                current = candidate;
+                appliedPlan = desired;
+            }
+            catch (Exception failure)
+            {
+                var failures = new List<Exception> { failure };
+                if (candidate is not null)
+                {
+                    pendingRetirement = candidate;
+                    try { if (candidate.RetireLocked()) pendingRetirement = null; }
+                    catch (Exception close) { failures.Add(close); }
+                }
+                try { deployment.CompleteFailed(token, "public-service-coordinator-create-failed"); }
+                catch (Exception settlement) { failures.Add(settlement); }
+                if (failures.Count > 1) throw new AggregateException(failures);
+                throw;
+            }
+        }
+        current.AddReferenceLocked();
+        return current;
+    }
+
+    private WorkspaceHolder AcquireRunWorkspace()
+    {
+        gate.EnterWriteLock();
         try
         {
-            var holder = current
-                ?? throw new InvalidOperationException(
-                    "The Host Manager public-service coordinator is not ready.");
-            holder.AddReference();
+            var holder = runHolder ?? throw new InvalidOperationException(
+                "The public-service worker has no running workspace reference.");
+            holder.AddReferenceLocked();
             return holder;
         }
-        finally
+        finally { gate.ExitWriteLock(); }
+    }
+
+    private void PublishAdmissionStateLocked(WorkspaceHolder holder, bool enabled)
+    {
+        if (holder.Plan.HotPublish.ServiceEnabled == enabled) return;
+        var hot = holder.Plan.HotPublish with
         {
-            gate.ExitReadLock();
+            ServiceEnabled = enabled,
+            ConfigurationGeneration = checked(holder.Plan.HotPublish.ConfigurationGeneration + 1)
+        };
+        // Native retains its caller windows and admitted requests while a full
+        // replacement waits for those requests/tasks to settle.
+        holder.Workspace.PublishCatalog(hot, hot.ConfigurationGeneration);
+        holder.Plan = holder.Plan with { HotPublish = hot };
+    }
+
+    private void ReleaseHolderLocked(WorkspaceHolder holder)
+    {
+        List<Exception>? failures = null;
+        WorkspaceHolder? releasing = holder;
+        // The single pending-retirement slot permits at most one predecessor
+        // and its replacement. Drain both iteratively, including failed closes.
+        var remaining = 2;
+        while (releasing is not null)
+        {
+            if (--remaining < 0)
+                throw new InvalidOperationException("Public-service replacement references exceeded their bound.");
+            WorkspaceHolder? next = null;
+            try
+            {
+                if (releasing.ReleaseReferenceLocked())
+                {
+                    if (ReferenceEquals(current, releasing)) { current = null; appliedPlan = null; }
+                    if (ReferenceEquals(pendingRetirement, releasing)) pendingRetirement = null;
+                }
+            }
+            catch (Exception failure) { (failures ??= []).Add(failure); }
+            finally
+            {
+                if (!releasing.HasReferences)
+                {
+                    next = releasing.ReplacementHold;
+                    releasing.ReplacementHold = null;
+                }
+            }
+            releasing = next;
         }
+        if (failures is { Count: 1 })
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
+        if (failures is { Count: > 1 }) throw new AggregateException(failures);
     }
 
     private void RetryDesiredPlan()
     {
-        if (disposed || !started)
+        if (disposed || retiring)
         {
             return;
         }
         Apply(planProvider.Current.HostManager.RequirePublished(), throwOnFailure: false);
     }
 
-    private static void RequireReplaceable(
+    private static bool IsReplaceable(
         NativePublicServiceCoordinatorSnapshot snapshot)
     {
         var flags = (NativePublicServiceCoordinatorSnapshotFlags)snapshot.Flags;
@@ -361,9 +527,9 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
             || flags.HasFlag(
                 NativePublicServiceCoordinatorSnapshotFlags.ModelAcquisitionRunning))
         {
-            throw new InvalidOperationException(
-                "The current public-service workspace still owns active model work or references.");
+            return false;
         }
+        return true;
     }
 
     private static async Task WaitUntilAsync(
@@ -411,21 +577,10 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
             : throw new InvalidOperationException($"{name} handle space is exhausted.");
     }
 
-    private void CancelPendingOperations()
+    private void CancelQueuedOperationsLocked()
     {
-        foreach (var entry in pendingModelOperations.ToArray())
-        {
-            if (pendingModelOperations.TryRemove(entry.Key, out var operation))
-            {
-                operation.Cancel();
-            }
-        }
-        PublishPendingTasks();
-    }
-
-    private void CancelQueuedOperations()
-    {
-        var holder = AcquireCurrent();
+        var holder = current;
+        if (holder is null) return;
         try
         {
             foreach (var task in holder.Workspace.CancelQueuedTasks())
@@ -438,30 +593,13 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
                         "A cancelled native task lost its exact pending operation payload.");
                 }
                 operation.Cancel();
+                operation.ReleaseHolderLocked();
             }
-            PublishPendingTasks();
             if (!pendingModelOperations.IsEmpty)
-            {
                 throw new InvalidOperationException(
                     "Host Manager shutdown left public-service operation payloads unsettled.");
-            }
         }
-        finally
-        {
-            holder.Release();
-        }
-    }
-
-    private void ReleaseRequestCompletions()
-    {
-        foreach (var entry in requestCompletions.ToArray())
-        {
-            if (requestCompletions.TryRemove(entry.Key, out var completion))
-            {
-                completion.Holder.Release();
-            }
-        }
-        PublishPendingTasks();
+        finally { PublishPendingTasks(); }
     }
 
     private void ThrowIfWorkerFaulted()
@@ -498,64 +636,66 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
     }
 
     private void ThrowIfDisposed()
-        => ObjectDisposedException.ThrowIf(disposed, this);
+        => ObjectDisposedException.ThrowIf(disposed || retiring, this);
 
     private sealed class WorkspaceHolder(
+        HostManagerPublicServiceCoordinatorOwner owner,
         NativePublicServiceCoordinatorWorkspace workspace,
         CompiledHostManagerPublicServiceCoordinatorPlan plan,
         NativePublicServiceModelProjection models)
     {
-        private readonly object lifecycleGate = new();
-        private int referenceCount = 1;
-        private int retired;
+        private int referenceCount;
+        private readonly TaskCompletionSource drained =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private bool closed;
 
         internal NativePublicServiceCoordinatorWorkspace Workspace { get; } = workspace;
 
-        internal CompiledHostManagerPublicServiceCoordinatorPlan Plan { get; } = plan;
+        internal CompiledHostManagerPublicServiceCoordinatorPlan Plan { get; set; } = plan;
 
         internal object ModelGate { get; } = new();
 
         internal NativePublicServiceModelProjection Models { get; } = models;
 
-        internal void AddReference()
+        internal WorkspaceHolder? ReplacementHold { get; set; }
+
+        internal bool HasReferences => referenceCount != 0;
+
+        internal Task Drain => referenceCount == 0 ? Task.CompletedTask : drained.Task;
+
+        internal void AddReferenceLocked()
         {
-            lock (lifecycleGate)
-            {
-                if (retired != 0)
-                    throw new ObjectDisposedException(nameof(NativePublicServiceCoordinatorWorkspace));
-                referenceCount++;
-            }
+            ObjectDisposedException.ThrowIf(closed, this);
+            referenceCount++;
         }
 
-        internal bool Retire()
+        internal bool RetireLocked()
         {
-            lock (lifecycleGate)
-            {
-                if (retired == 0)
-                {
-                    retired = 1;
-                    try { Release(); }
-                    catch { retired = 0; throw; }
-                }
-                return referenceCount == 0;
-            }
+            if (referenceCount != 0) return false;
+            if (!closed) Workspace.Dispose();
+            closed = true;
+            return true;
         }
 
         internal void Release()
         {
-            lock (lifecycleGate)
+            owner.gate.EnterWriteLock();
+            try { ReleaseLocked(); }
+            finally { owner.gate.ExitWriteLock(); }
+        }
+
+        internal void ReleaseLocked() => owner.ReleaseHolderLocked(this);
+
+        internal bool ReleaseReferenceLocked()
+        {
+            if (referenceCount <= 0)
+                throw new InvalidOperationException("A public-service workspace reference was released twice.");
+            if (--referenceCount != 0) return false;
+            try
             {
-                if (--referenceCount == 0)
-                {
-                    try { Workspace.Dispose(); }
-                    catch
-                    {
-                        referenceCount++;
-                        retired = 0;
-                        throw;
-                    }
-                }
+                return RetireLocked();
             }
+            finally { drained.TrySetResult(); }
         }
     }
 
