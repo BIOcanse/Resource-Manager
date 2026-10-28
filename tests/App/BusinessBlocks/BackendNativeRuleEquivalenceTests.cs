@@ -63,6 +63,33 @@ public sealed class BackendNativeRuleEquivalenceTests
         await native.ShutdownAsync(Reason);
     }
 
+    [Theory]
+    [InlineData(1u)]
+    [InlineData(2u)]
+    [InlineData(3u)]
+    public async Task KernelLeakObservationConditionReadsOnlyEnablementAndRejectsEveryNoValue(uint profile)
+    {
+        await using var native = new NativeControl(BackendExpectedProductionTree.Parents(profile).Keys,
+            new NativeControlOptions { Profile = profile, ShutdownItemUid = BackendItems.ProgramShuttingDown },
+            NullLogger<NativeControl>.Instance);
+        var authority = NativeBackendBlockTestSupport.CreateAuthority(native);
+        var facts = new BackendPreciseRuleTestFacts(authority, native, nativeFacts: true);
+        await facts.InitializeAsync();
+        var enabled = facts[ResourceManager.App.StateItems.StateItemUids.KernelLeakObservationEnabled];
+        native.Activate(_ => new HoldingBlock());
+        await BusinessBlockTestSupport.Until(() => native.ReadState(BackendUids.Reports) == BusinessBlockState.Running);
+        foreach (var input in Values)
+        foreach (var hostPermitted in new[] { false, true })
+        {
+            await facts[new(BackendItems.HostStartPermitted, BackendUids.KernelLeakObservation)].PublishAsync(hostPermitted, Reason);
+            await PublishAsync(enabled, input);
+            var expected = input.GetValueOrDefault(false);
+            AssertCondition(native, BackendUids.Reports, ResourceManager.App.StateItems.ConditionUids.KernelLeakObservationShouldRun, null, expected);
+            await BusinessBlockTestSupport.Until(() => native.ReadState(BackendUids.KernelLeakObservation)
+                == (expected ? BusinessBlockState.Running : BusinessBlockState.Stopped));
+        }
+    }
+
     [Fact]
     public async Task TrayWithoutPageRunsSmartDefaultReportsAndProtectionButOnlyTheirProducerFields()
     {
@@ -114,6 +141,7 @@ public sealed class BackendNativeRuleEquivalenceTests
         bool Allocation() => P(BackendUids.GpuAllocationCollector) && T(BackendItems.ProcessDedicatedGpuMemoryInUse) && T(BackendItems.GpuAllocationNativeSessionAvailable);
         bool VidMm() => P(BackendUids.DxgkrnlVidMmEtwTelemetryZone) && T(BackendItems.VramResidualInUse)
             && T(BackendItems.VidMmNativeSessionAvailable) && M(BackendItems.VidMmUnfrozen);
+        if (child == BackendUids.KernelLeakObservation) return T(BackendItems.KernelLeakObservationEnabled);
         if (!P(child)) return false;
         return child switch
         {

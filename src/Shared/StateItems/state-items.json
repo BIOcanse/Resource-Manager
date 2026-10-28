@@ -672,7 +672,7 @@
       "kind": "item",
       "process": "backend",
       "name": "KernelLeakReport",
-      "comment": "Read-only suspected unbounded growth evidence; the observer holds its own kernel-leak-observer sampling demand for the backend lifetime, independent of report readers.",
+      "comment": "Read-only suspected growth report held by KernelLeakObserver; the KernelLeakObservation block writes it while running and resets it to normal NotObserved when stopped, independently of report readers.",
       "storage": "reference",
       "type": "ResourceManager.App.Domain.KernelLeak.KernelLeakReport",
       "owner": {
@@ -687,7 +687,7 @@
       "kind": "item",
       "process": "backend",
       "name": "KernelLeakSeries",
-      "comment": "Bounded per-process-start-key handle rings; a holder's ring is removed on its exit or PID reuse, all rings on source failure and backend shutdown.",
+      "comment": "Bounded per-process-start-key handle rings exist only during KernelLeakObservation execution and are cleared on stop; retained registry entry pending unified removal of non-decision hot-path data.",
       "storage": "own",
       "type": "ResourceManager.App.Infrastructure.KernelLeak.KernelLeakSeries",
       "owner": {
@@ -2212,6 +2212,45 @@
       "perBlock": false,
       "trigger": "event",
       "changeEvent": "FanReadingsChanged"
+    },
+    {
+      "uid": 162,
+      "kind": "item",
+      "process": "backend",
+      "name": "KernelLeakObservationEnabled",
+      "comment": "Current authoritative KernelLeakObservationEnabled fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "RuntimePlanProvider"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "RuntimePlanProvider.Published"
+    },
+    {
+      "uid": 163,
+      "kind": "block",
+      "process": "backend",
+      "name": "KernelLeakObservation",
+      "comment": "Observes suspected kernel-resource leaks in its own execution flow under Reports."
+    },
+    {
+      "uid": 164,
+      "kind": "condition",
+      "process": "backend",
+      "name": "KernelLeakObservationShouldRun",
+      "comment": "Run kernel leak observation only when its published enablement fact has a true value.",
+      "perBlock": false,
+      "node": 80,
+      "items": [
+        {
+          "item": 162
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 163
     }
   ]
 }

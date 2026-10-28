@@ -26,7 +26,7 @@ public sealed partial class KernelLeakReportTests
         Assert.Null(report.Observation.PreviousRunFailure);
     }
     [Fact]
-    public async Task HostLifetimeWaitsForCompiledPlanPublicationBeforeAcquiringOwnDemand()
+    public async Task HostLifetimeWaitsForCompiledPlanPublicationBeforeAcquiringOwnSubscription()
     {
         using var fixture = new Fixture(publishAfterHostStart: true);
         await fixture.Processes.Started.Task.WaitAsync(TimeSpan.FromSeconds(15));
@@ -36,7 +36,7 @@ public sealed partial class KernelLeakReportTests
         Assert.Equal(0, fixture.Processes.Active);
     }
     [Fact]
-    public async Task OwnDemandObservesWithZeroReportReadersAndSurvivesReaderDeparture()
+    public async Task OwnSubscriptionObservesWithZeroReportReadersAndSurvivesReaderDeparture()
     {
         using var fixture = new Fixture();
         await fixture.Processes.Started.Task.WaitAsync(TimeSpan.FromSeconds(15));
@@ -57,17 +57,17 @@ public sealed partial class KernelLeakReportTests
         Assert.Equal(0, fixture.Reports.ReadDiagnostics().SeriesBytes);
     }
     [Fact]
-    public async Task DisabledObservationIsTypedAndReadersNeverAcquireSamplingDemand()
+    public async Task DisabledObservationIsTypedAndReadersNeverAcquireSamplingSubscription()
     {
         using var fixture = new Fixture(options: Fast with { Enabled = false });
-        Assert.Equal(KernelLeakReportStatus.Disabled, fixture.Reports.Read().Status);
+        Assert.Equal(KernelLeakReportStatus.NotObserved, fixture.Reports.Read().Status);
         Assert.Equal(KernelLeakFailure.None, fixture.Reports.Read().Failure);
         Assert.Null(fixture.Reports.Read().Observation.StartedAt);
         Assert.Equal(0, fixture.Reports.Read().Observation.SampleCount);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         await using var reader = fixture.Reports.SubscribeAsync(cancellation.Token).GetAsyncEnumerator();
         Assert.True(await reader.MoveNextAsync());
-        Assert.Equal(KernelLeakReportStatus.Disabled, reader.Current.Status);
+        Assert.Equal(KernelLeakReportStatus.NotObserved, reader.Current.Status);
         Assert.Equal(0, fixture.Processes.Starts);
         Assert.Equal(0, fixture.Processes.Active);
         WriteEvidence("disabled-wire-example.json", SerializeProduction(reader.Current));

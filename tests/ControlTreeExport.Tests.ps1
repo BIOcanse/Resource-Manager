@@ -3,7 +3,8 @@
 param(
     [Parameter(Mandatory)][string]$WorkRoot,
     [switch]$TestDiscovery,
-    [string]$GeneratedJson
+    [string]$GeneratedJson,
+    [string]$RetentionPolicyPath
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
@@ -47,7 +48,7 @@ $batch='script-tests-'+[guid]::NewGuid().ToString('N')
 $outcome='failed'
 $prepared=$false
 try {
-    $workset=& (Join-Path $repo 'scripts/validation/Manage-ValidationWorkset.ps1') -Mode Prepare -WorkspaceRoot $WorkRoot -BatchId $batch -ConsumerId script -ExpectedGrowthGiB 1 -ReserveFreeGiB 2 -MaxWorksetGiB 8 | ConvertFrom-Json
+    $workset=& (Join-Path $repo 'scripts/validation/Manage-ValidationWorkset.ps1') -Mode Prepare -WorkspaceRoot $WorkRoot -BatchId $batch -ConsumerId script -ExpectedGrowthGiB 1 -ReserveFreeGiB 2 -MaxWorksetGiB 8 -RetentionPolicyPath $RetentionPolicyPath | ConvertFrom-Json
     $prepared=$true
     $desktopPath=Join-Path $workset.IsolatedScratchRoot 'desktop.json'
     $windowPath=Join-Path $workset.IsolatedScratchRoot 'window.json'
@@ -121,5 +122,5 @@ try {
     $outcome='success'
     "Control tree export: $script:count assertions passed."
 } finally {
-    if ($prepared) { & (Join-Path $repo 'scripts/validation/Manage-ValidationWorkset.ps1') -Mode Complete -WorkspaceRoot $WorkRoot -BatchId $batch -Outcome $outcome | Out-Null }
+    if ($prepared) { & (Join-Path $repo 'scripts/validation/Manage-ValidationWorkset.ps1') -Mode Complete -WorkspaceRoot $WorkRoot -BatchId $batch -Outcome $outcome -RetentionPolicyPath $RetentionPolicyPath | Out-Null }
 }

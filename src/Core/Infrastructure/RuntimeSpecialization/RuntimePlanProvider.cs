@@ -43,6 +43,7 @@ public sealed class RuntimePlanProvider(HostManagerDeploymentState hostManagerDe
                 GpuApiHistoryEnabled: true,
                 BackgroundReportsEnabled: !plan.HostManager.ReportCoordinator.Recreate.Rules.IsDefaultOrEmpty,
                 PortableDiscoveryEnabled: true,
+                KernelLeakObservationEnabled: plan.HostManager.KernelLeak?.Enabled == true,
                 plan.HostManager.PublicServiceCoordinator.HotPublish.ServiceEnabled);
         }
     }
@@ -129,4 +130,5 @@ internal readonly record struct RuntimePlanDecisionFacts(
     bool GpuApiHistoryEnabled,
     bool BackgroundReportsEnabled,
     bool PortableDiscoveryEnabled,
+    bool KernelLeakObservationEnabled,
     bool PublicServiceEnabled);

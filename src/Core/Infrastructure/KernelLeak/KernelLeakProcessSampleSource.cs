@@ -13,7 +13,7 @@ public sealed class KernelLeakProcessSampleSource(IResourceBreakdownPushSource p
     public async IAsyncEnumerable<KernelLeakSampleFrame> SubscribeAsync(string holder, TimeSpan interval,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        // Identity and handles are from the original process capture, no second inventory or ETW demand.
+        // Identity and handles are from the original process capture, no second inventory or ETW subscription.
         var request = ResourceBreakdownSampleRequest.ForResourceTable([HandleField], new Dictionary<string, string>());
         DateTimeOffset? last = null;
         await foreach (var snapshot in processes.SubscribeAsync(holder, request, interval, cancellationToken))

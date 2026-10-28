@@ -23,7 +23,8 @@ internal static class BackendExpectedProductionTree
 
         Group(BlockUids.Program, BlockUids.Backend);
         Group(BlockUids.Backend, BlockUids.ServiceHost, BlockUids.Monitoring, BlockUids.HardwareControl,
-            BlockUids.TrustedAccess);
+            BlockUids.TrustedAccess, BlockUids.Reports);
+        Group(BlockUids.Reports, BlockUids.KernelLeakObservation);
         Group(BlockUids.ServiceHost, BlockUids.RuntimeSpecializationCoordinator,
             BlockUids.ServiceAutoStartSettings, BlockUids.ServiceRecoverySettings);
         Group(BlockUids.Monitoring, BlockUids.HostManagerSamplingSubscriptionOwner,
@@ -39,7 +40,7 @@ internal static class BackendExpectedProductionTree
         if (profile != 3)
         {
             Group(BlockUids.Backend, BlockUids.SoftwareManagement, BlockUids.Optimization, BlockUids.HostMemoryProtection,
-                BlockUids.Reports, BlockUids.PublicServices, BlockUids.HostManagerOperationCoordinatorOwner);
+                BlockUids.PublicServices, BlockUids.HostManagerOperationCoordinatorOwner);
             Group(BlockUids.ServiceHost, BlockUids.JsonDebugDiagnosticLogWriter);
             Group(BlockUids.HardwareControl, BlockUids.ControlDesiredStateReassertion, BlockUids.ControlActualStateReader);
             Group(BlockUids.FanControlCoreLifetimeService, BlockUids.FanCurveTemperatureFeed);

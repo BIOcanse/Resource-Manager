@@ -5,22 +5,22 @@ using ResourceManager.App.Application.KernelLeak;
 using ResourceManager.App.Domain.KernelLeak;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using ResourceManager.Shared.BusinessBlocks;
 
 namespace ResourceManager.App.Infrastructure.KernelLeak;
 
-// Own named demand lasts for the backend lifetime. Report subscriptions only replay/read publications.
+// The persistent object owns publications and readers; its block entry owns observation subscription.
 public sealed class KernelLeakObserver(IKernelLeakSampleSource source, IKernelLeakAttributionReader attribution,
-    RuntimePlanProvider plans, ILogger<KernelLeakObserver> logger) : IKernelLeakReportSource, IHostedService, IDisposable
+    RuntimePlanProvider plans, ILogger<KernelLeakObserver> logger)
+    : IKernelLeakReportSource, IBusinessBlock, IHostedService, IDisposable
 {
     private const int MaximumSubscribers = 64;
     private readonly object gate = new();
     private readonly HashSet<Channel<KernelLeakReport>> readers = new();
-    private KernelLeakReport? current;
+    private KernelLeakReport current = NotObserved(null);
     private KernelLeakDiagnostics diagnostics = new(0, 0, 0, 0, 0, 0);
-    private CancellationTokenSource? stop;
-    private Task? pump;
     private bool started;
-    public KernelLeakReport Read() { lock (gate) return current ?? throw new InvalidOperationException("Kernel leak observation plan has not been published."); }
+    public KernelLeakReport Read() { lock (gate) return current; }
     public KernelLeakDiagnostics ReadDiagnostics() { lock (gate) return diagnostics; }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -30,49 +30,36 @@ public sealed class KernelLeakObserver(IKernelLeakSampleSource source, IKernelLe
         {
             if (started) return Task.CompletedTask;
             started = true;
-            plans.Published += StartFromPlan;
-            StartFromPlan(plans.Current);
+            plans.Published += UpdateNotObserved;
+            UpdateNotObserved(plans.Current);
         }
         return Task.CompletedTask;
     }
-    private void StartFromPlan(CompiledRuntimePlan plan)
+    private void UpdateNotObserved(CompiledRuntimePlan _)
     {
         lock (gate)
         {
-            // Options are rebuild-backend values; one immutable selection for this backend lifetime.
-            if (!started || current is not null || !plan.HostManager.IsPublished) return;
-            var options = (plan.HostManager.KernelLeak ?? throw new InvalidOperationException("Kernel leak observation plan is unavailable.")).Validate();
-            current = new(options.Enabled ? KernelLeakReportStatus.Observing : KernelLeakReportStatus.Disabled,
-                null, [], KernelLeakFailure.None, new(null, 0, 0, options.MinimumObservationSeconds, options.MinimumSamples, null));
-            foreach (var reader in readers) reader.Writer.TryWrite(current);
-            if (!options.Enabled) return;
-            stop = new();
-            var token = stop.Token;
-            pump = Task.Run(() => RunAsync(options, token), CancellationToken.None);
+            if (!started) return;
+            // Only report progress belongs here. The existing plan-fact binding owns enablement.
+            var plan = plans.Current;
+            if (current.Status == KernelLeakReportStatus.NotObserved)
+                SetReport(NotObserved(plan.HostManager.IsPublished ? plan.HostManager.KernelLeak : null));
         }
     }
-    public async Task StopAsync(CancellationToken cancellationToken)
+    public Task StopAsync(CancellationToken cancellationToken)
     {
-        CancellationTokenSource? cancellation;
-        Task? running;
+        Dispose();
+        return Task.CompletedTask;
+    }
+    public void Dispose()
+    {
         lock (gate)
         {
+            if (!started) return;
             started = false;
-            plans.Published -= StartFromPlan;
-            cancellation = stop; running = pump;
-        }
-        if (cancellation is not null)
-        {
-            await cancellation.CancelAsync().ConfigureAwait(false);
-            if (running is not null) await running.ConfigureAwait(false); // Drain the owned demand, including on host shutdown.
-            lock (gate)
-            {
-                if (ReferenceEquals(stop, cancellation)) { stop = null; pump = null; cancellation.Dispose(); }
-                diagnostics = diagnostics with { HolderCount = 0, SeriesBytes = 0 };
-            }
+            plans.Published -= UpdateNotObserved;
         }
     }
-    public void Dispose() => StopAsync(CancellationToken.None).GetAwaiter().GetResult();
 
     public async IAsyncEnumerable<KernelLeakReport> SubscribeAsync([EnumeratorCancellation] CancellationToken cancellationToken)
     {
@@ -82,14 +69,18 @@ public sealed class KernelLeakObserver(IKernelLeakSampleSource source, IKernelLe
         lock (gate)
         {
             if (readers.Count == MaximumSubscribers) throw new InvalidOperationException("Kernel leak subscriber capacity exceeded.");
-            channel.Writer.TryWrite(Read());
+            channel.Writer.TryWrite(current);
             readers.Add(channel);
         }
         try { await foreach (var report in channel.Reader.ReadAllAsync(cancellationToken)) yield return report; }
         finally { lock (gate) readers.Remove(channel); }
     }
-    private async Task RunAsync(KernelLeakOptions options, CancellationToken token)
+    public async Task RunAsync(BusinessBlockRunContext context)
     {
+        var token = context.StopNotification;
+        token.ThrowIfCancellationRequested();
+        var options = (plans.Current.HostManager.KernelLeak
+            ?? throw new InvalidOperationException("Kernel leak observation plan is unavailable.")).Validate();
         var series = new KernelLeakSeries(options);
         DateTimeOffset? runStart = null;
         var samples = 0;
@@ -107,7 +98,7 @@ public sealed class KernelLeakObserver(IKernelLeakSampleSource source, IKernelLe
         void Fail(KernelLeakFailure failure, DateTimeOffset at, int unavailable = 0)
         {
             series.Clear();
-            // A demand can fail/end before a frame starts a run. Publish its typed report
+            // A subscription can fail/end before a frame starts a run. Publish its typed report
             // failure without manufacturing a run start or replacing an already failed run.
             if (runStart is { } began && failedRun is null)
             {
@@ -119,6 +110,11 @@ public sealed class KernelLeakObserver(IKernelLeakSampleSource source, IKernelLe
         }
         try
         {
+            lock (gate)
+            {
+                SetReport(new(KernelLeakReportStatus.Observing, null, [], KernelLeakFailure.None, Progress()));
+            }
+            context.ReportRunning();
             while (!token.IsCancellationRequested)
             {
                 try
@@ -145,7 +141,7 @@ public sealed class KernelLeakObserver(IKernelLeakSampleSource source, IKernelLe
                                 identities = attribution.ReadBatch(unknownHolders, token);
                                 if (identities.Count != suspects.Count) throw new InvalidDataException("Kernel leak attribution result count mismatch.");
                             }
-                            catch (Exception error) when (error is not OperationCanceledException || !token.IsCancellationRequested)
+                            catch (Exception error) when (IsObservationFailure(error))
                             {
                                 logger.LogWarning(error, "Kernel leak attribution is unavailable; retaining independently observed growth evidence.");
                                 identities = unknownHolders;
@@ -159,7 +155,7 @@ public sealed class KernelLeakObserver(IKernelLeakSampleSource source, IKernelLe
                             Publish(new(status, frame.CapturedAt, items, KernelLeakFailure.None, Progress())
                                 { UnavailableHolderCount = frame.UnavailableHolderCount }, series, judgment, timer.Elapsed.TotalMilliseconds);
                         }
-                        catch (Exception error) when (error is not OperationCanceledException || !token.IsCancellationRequested)
+                        catch (Exception error) when (IsObservationFailure(error))
                         {
                             logger.LogWarning(error, "Kernel leak observation run failed; next interval starts a visible new run.");
                             Fail(Classify(error), frame.CapturedAt, frame.UnavailableHolderCount);
@@ -168,9 +164,9 @@ public sealed class KernelLeakObserver(IKernelLeakSampleSource source, IKernelLe
                     token.ThrowIfCancellationRequested();
                     if (failedRun is null) Fail(KernelLeakFailure.SourceUnavailable, DateTimeOffset.UtcNow);
                 }
-                catch (Exception error) when (error is not OperationCanceledException || !token.IsCancellationRequested)
+                catch (Exception error) when (IsObservationFailure(error))
                 {
-                    logger.LogWarning(error, "Kernel leak sampling demand failed; retrying at the next configured interval.");
+                    logger.LogWarning(error, "Kernel leak sampling subscription failed; retrying at the next configured interval.");
                     var at = DateTimeOffset.UtcNow;
                     Fail(Classify(error), at);
                 }
@@ -179,7 +175,25 @@ public sealed class KernelLeakObserver(IKernelLeakSampleSource source, IKernelLe
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
-        finally { series.Clear(); }
+        finally
+        {
+            series.Clear();
+            lock (gate)
+            {
+                diagnostics = diagnostics with { HolderCount = 0, SeriesBytes = 0 };
+                SetReport(NotObserved(options));
+            }
+        }
+    }
+    private static bool IsObservationFailure(Exception error)
+        => error is IOException or InvalidDataException or OverflowException or UnauthorizedAccessException or System.ComponentModel.Win32Exception;
+    private static KernelLeakReport NotObserved(KernelLeakOptions? options) => new(KernelLeakReportStatus.NotObserved,
+        null, [], KernelLeakFailure.None, new(null, 0, 0, options?.MinimumObservationSeconds ?? 0, options?.MinimumSamples ?? 0, null));
+    // Caller holds gate, so registering a reader and replaying the current report stay atomic.
+    private void SetReport(KernelLeakReport report)
+    {
+        current = report;
+        foreach (var reader in readers) reader.Writer.TryWrite(report);
     }
     private static KernelLeakFailure Classify(Exception error) => error is OverflowException ? KernelLeakFailure.CapacityExceeded
         : error is InvalidDataException ? KernelLeakFailure.InvalidObservation : KernelLeakFailure.SourceUnavailable;
@@ -187,10 +201,9 @@ public sealed class KernelLeakObserver(IKernelLeakSampleSource source, IKernelLe
     {
         lock (gate)
         {
-            current = report;
             diagnostics = new(series.Count, series.Bytes, Math.Max(diagnostics.PeakSeriesBytes, series.PeakBytes),
                 diagnostics.ObservedFrames + 1, judgement, attributionCost);
-            foreach (var reader in readers) reader.Writer.TryWrite(report);
+            SetReport(report);
         }
     }
 }

@@ -36,6 +36,7 @@ internal sealed class BackendDecisionStateBindings(IServiceProvider services,
         Plan(StateItemUids.GpuApiHistoryEnabled, () => plans.DecisionFacts.GpuApiHistoryEnabled);
         Plan(StateItemUids.BackgroundReportsEnabled, () => plans.DecisionFacts.BackgroundReportsEnabled);
         Plan(StateItemUids.PortableDiscoveryEnabled, () => plans.DecisionFacts.PortableDiscoveryEnabled);
+        Plan(StateItemUids.KernelLeakObservationEnabled, () => plans.DecisionFacts.KernelLeakObservationEnabled);
         Plan(StateItemUids.PublicServiceEnabled, () => plans.DecisionFacts.PublicServiceEnabled);
 
         if (services.GetService<IControlDesiredStateStore>() is JsonControlDesiredStateStore desired)

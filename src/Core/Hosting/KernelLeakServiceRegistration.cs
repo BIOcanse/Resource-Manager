@@ -1,6 +1,7 @@
 using ResourceManager.App.Application.KernelLeak;
 using ResourceManager.App.Infrastructure.KernelLeak;
-using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
+using ResourceManager.App.StateItems;
 
 namespace ResourceManager.App.Hosting;
 
@@ -12,8 +13,9 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<IKernelLeakAttributionReader, WindowsKernelLeakAttributionReader>();
         services.AddSingleton<KernelLeakObserver>();
         services.AddSingleton<IKernelLeakReportSource>(provider => provider.GetRequiredService<KernelLeakObserver>());
-        // Ordinary host lifetime; no new concurrent business block or block registration.
-        // The observer waits for the compiled plan publication before taking its own sampling demand.
+        services.AddSingleton(new BusinessBlockRegistration(BlockUids.KernelLeakObservation,
+            provider => provider.GetRequiredService<KernelLeakObserver>()));
+        // This serial host turn only tracks NotObserved report progress. Plan facts own enablement.
         services.AddSerialHostedServiceAlias<KernelLeakObserver>();
         return services;
     }

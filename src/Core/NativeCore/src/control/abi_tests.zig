@@ -121,9 +121,9 @@ test "profile host UID export reports exact lists and validates caller buffers" 
 
 test "production profiles have one backend root and preserve domain ownership and data edges" {
     const profiles = [_]struct { topology: control.tree.Tree, blocks: usize, inputs: usize, backend_children: usize }{
-        .{ .topology = backend_tree.topology, .blocks = backend_tree.full_host_block_uids.len + 1, .inputs = 41, .backend_children = 10 },
-        .{ .topology = backend_tree.service_topology, .blocks = backend_tree.service_host_block_uids.len + 1, .inputs = 42, .backend_children = 10 },
-        .{ .topology = backend_tree.normal_readonly_topology, .blocks = backend_tree.normal_readonly_host_block_uids.len + 1, .inputs = 19, .backend_children = 4 },
+        .{ .topology = backend_tree.topology, .blocks = backend_tree.full_host_block_uids.len + 1, .inputs = 42, .backend_children = 10 },
+        .{ .topology = backend_tree.service_topology, .blocks = backend_tree.service_host_block_uids.len + 1, .inputs = 43, .backend_children = 10 },
+        .{ .topology = backend_tree.normal_readonly_topology, .blocks = backend_tree.normal_readonly_host_block_uids.len + 1, .inputs = 20, .backend_children = 5 },
     };
     for (profiles) |profile| {
         try std.testing.expectEqual(profile.blocks, profile.topology.blocks.len);
@@ -141,6 +141,10 @@ test "production profiles have one backend root and preserve domain ownership an
                 if (block.uid == B.FanControlCoreLifetimeService) try std.testing.expectEqual(B.HardwareControl, parent);
                 if (block.uid == B.FanCurveTemperatureFeed) try std.testing.expectEqual(B.FanControlCoreLifetimeService, parent);
                 if (block.uid == B.HostMemoryProtection) try std.testing.expectEqual(B.Backend, parent);
+                if (block.uid == B.KernelLeakObservation) {
+                    try std.testing.expectEqual(B.Reports, parent);
+                    try std.testing.expectEqualSlices(u32, &.{B.WindowsResourceBreakdownSampler}, block.inputs);
+                }
             } else try std.testing.expectEqual(B.Program, block.uid);
         }
         try std.testing.expectEqual(@as(usize, 1), root_children);
@@ -263,7 +267,7 @@ test "NormalReadOnly profile selects its exact filtered host block set" {
     for (backend_tree.normal_readonly_topology.blocks) |block| {
         normal_readonly_input_edges += block.inputs.len;
     }
-    try std.testing.expectEqual(@as(usize, 19), normal_readonly_input_edges);
+    try std.testing.expectEqual(@as(usize, 20), normal_readonly_input_edges);
 
     var config = makeConfig(.normal_read_only);
     const callbacks = testCallbacks();

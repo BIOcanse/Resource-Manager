@@ -94,9 +94,15 @@ public sealed partial class StateRegistryTests
         {
             var perBlock = condition.GetProperty("perBlock").GetBoolean();
             var reads = condition.GetProperty("items").EnumerateArray().ToArray();
-            Assert.Contains(reads, read => read.GetProperty("item").GetInt32() == BackendItems.HostStartPermitted
-                && (perBlock ? !read.TryGetProperty("block", out _)
-                    : read.GetProperty("block").GetInt32() == condition.GetProperty("decides").GetInt32()));
+            if (condition.GetProperty("uid").GetInt32() == ResourceManager.App.StateItems.ConditionUids.KernelLeakObservationShouldRun)
+            {
+                Assert.False(perBlock);
+                Assert.Equal(BackendItems.KernelLeakObservationEnabled, Assert.Single(reads).GetProperty("item").GetInt32());
+            }
+            else
+                Assert.Contains(reads, read => read.GetProperty("item").GetInt32() == BackendItems.HostStartPermitted
+                    && (perBlock ? !read.TryGetProperty("block", out _)
+                        : read.GetProperty("block").GetInt32() == condition.GetProperty("decides").GetInt32()));
             foreach (var read in reads)
             {
                 var item = byUid[read.GetProperty("item").GetInt32()];

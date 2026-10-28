@@ -70,16 +70,16 @@ public sealed partial class KernelLeakReportTests
 
     private sealed class EndingSource(bool deliverFrame, bool endNormally) : IKernelLeakSampleSource
     {
-        private int demands;
+        private int subscriptions;
         internal Channel<KernelLeakSampleFrame> Recovery { get; } = Channel.CreateBounded<KernelLeakSampleFrame>(1);
         public async IAsyncEnumerable<KernelLeakSampleFrame> SubscribeAsync(string holder, TimeSpan interval,
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
-            var attempt = Interlocked.Increment(ref demands);
+            var attempt = Interlocked.Increment(ref subscriptions);
             if (attempt == 1)
             {
                 if (deliverFrame) yield return new(DateTimeOffset.UnixEpoch, true, []);
-                if (!endNormally) throw new IOException("Recorded sampling demand failure.");
+                if (!endNormally) throw new IOException("Recorded sampling subscription failure.");
                 yield break;
             }
             // Reacquiring the source without a frame must not manufacture another run

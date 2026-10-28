@@ -25,7 +25,8 @@ public sealed class BackendBlockProductionTreeTests
         BackendUids.EtwSystemInterruptSnapshotSource, BackendUids.EtwPhysicalDiskIoAttributionReader, BackendUids.EtwNetworkTcpIpAttributionReader,
         BackendUids.WindowsResourceBreakdownSampler, BackendUids.GpuPlacementProcessHistoryObserver,
         BackendUids.SharedResourceSubscriptionMaintenanceService, BackendUids.JsonDebugDiagnosticLogWriter,
-        BackendUids.HostManagerReportCoordinatorOwner, BackendUids.HostManagerSmartCoordinator, BackendUids.DeviceTopologySnapshotProvider, BackendUids.HostMemoryProtection
+        BackendUids.HostManagerReportCoordinatorOwner, BackendUids.HostManagerSmartCoordinator, BackendUids.DeviceTopologySnapshotProvider, BackendUids.HostMemoryProtection,
+        BackendUids.KernelLeakObservation
     ];
     private static readonly int[] NativeBlocks = [BackendUids.PresentFrameEtwSource, BackendUids.GpuAllocationCollector, BackendUids.DxgkrnlVidMmEtwTelemetryZone];
     private static readonly int[] SamplingLifetimeConsumers =
@@ -118,8 +119,8 @@ public sealed class BackendBlockProductionTreeTests
     }
 
     [Theory]
-    [InlineData(false, 42, 41)]
-    [InlineData(true, 43, 42)]
+    [InlineData(false, 43, 42)]
+    [InlineData(true, 44, 43)]
     public async Task ProductionTreeContainsConcurrentFlowsAndDrainsChildrenBeforeTheirOwners(bool windowsService, int expectedCount, int expectedDataEdges)
     {
         var services = new ServiceCollection();
@@ -145,12 +146,12 @@ public sealed class BackendBlockProductionTreeTests
             && value.ImplementationType?.IsGenericType == true
             && value.ImplementationType.GetGenericTypeDefinition() == typeof(SerialHostedService<>))
             .Select(value => value.ImplementationType!.GetGenericArguments()[0].Name).Order().ToArray();
-        // KernelLeakObserver is the known pending Reports/KernelLeakObservation block (state authority 5c).
-        // Keep the exception explicit so another unregistered concurrent flow cannot hide behind a count.
+        // KernelLeakObserver's serial turn only binds the plan publisher; its concurrent flow is registered separately.
         Assert.Equal(new[] { "GpuLaunchInterceptionReconciler", "KernelLeakObserver",
             "ResourceManagerDatabaseInitializer", "SharedMemoryPublicResourceBroker",
             "SqliteLegacyDataImportHostedService", "TargetedRecordingService" }.Order(), serialFlows);
         Assert.DoesNotContain(production, node => node.HostedServiceType?.Name == "KernelLeakObserver");
+        Assert.Contains(production, node => node.Id == BackendUids.KernelLeakObservation);
         Assert.Contains(BackendUids.EtwNetworkTcpIpAttributionReader,
             graph.Nodes.Single(node => node.Id == BackendUids.WindowsResourceBreakdownSampler).Inputs);
         Assert.Equal([BackendUids.Backend], graph.Children(BackendUids.Program));
@@ -342,8 +343,8 @@ public sealed class BackendBlockProductionTreeTests
         Assert.True(readOnlyIds.SetEquals(graph.BlockIds));
         Assert.DoesNotContain(graph.BlockIds, id => id == graph.Program);
         var readOnlyNodes = graph.Nodes;
-        Assert.Equal(25, readOnlyNodes.Count);
-        Assert.Equal(19, readOnlyNodes.Sum(node => node.Inputs.Count));
+        Assert.Equal(27, readOnlyNodes.Count);
+        Assert.Equal(20, readOnlyNodes.Sum(node => node.Inputs.Count));
         Assert.Equal([BackendUids.Backend], graph.Children(BackendUids.Program));
         Assert.True(SamplingLifetimeConsumers.ToHashSet().SetEquals(readOnlyNodes
             .Where(node => node.ParentId == BackendUids.HostManagerSamplingSubscriptionOwner).Select(node => node.Id)));

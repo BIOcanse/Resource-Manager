@@ -25,9 +25,9 @@ public sealed class BackendWrapperCompositionTests
         Assert.True(profileUids.ToHashSet().SetEquals(completed.Select(value => value.Id)));
         var expectedWrappers = (profile == 3
             ? new[] { BlockUids.Backend, BlockUids.ServiceHost, BlockUids.Monitoring,
-                BlockUids.HardwareControl, BlockUids.TrustedAccess }
+                BlockUids.HardwareControl, BlockUids.TrustedAccess, BlockUids.Reports }
             : BackendExpectedProductionTree.Wrappers).ToHashSet();
-        Assert.Equal(profile == 3 ? 5 : 9, expectedWrappers.Count);
+        Assert.Equal(profile == 3 ? 6 : 9, expectedWrappers.Count);
         Assert.True(expectedWrappers.SetEquals(profileUids.Intersect(BackendExpectedProductionTree.Wrappers)));
         Assert.True(expectedWrappers.SetEquals(completed.Where(value =>
             BackendExpectedProductionTree.Wrappers.Contains(value.Id)).Select(value => value.Id)));

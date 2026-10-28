@@ -159,9 +159,12 @@ Assert-True (@((Read-StateRegistry -Path $mutationPath).entries).Count -eq 3) 'R
 Assert-True (-not @((Read-StateRegistry -Path $mutationPath).entries | Where-Object uid -EQ 2).Count) 'Removed entry is absent.'
 $replacement = & $tool -Action Add -Registry $mutationPath -Kind block -Process ui -Name Replacement -Comment 'Reuses a removed identifier.'
 Assert-True ($replacement -eq 2) 'Tool removal makes the smallest UID reusable.'
-$changed = & $tool -Action SetItem -Registry $mutationPath -Uid 3 -Comment 'Updated: café, 中文.' -OwnerComponent 'Fixture owner'
+$changed = & $tool -Action SetItem -Registry $mutationPath -Uid 3 -Comment 'Updated: café, 中文.' -OwnerComponent 'Fixture owner' -ChangeEvent 'Fixture owner publication'
 $updated = @((Read-StateRegistry -Path $mutationPath).entries | Where-Object uid -EQ 3)[0]
 Assert-True ($changed -eq 3 -and $updated.comment -ceq 'Updated: café, 中文.' -and $updated.owner.component -ceq 'Fixture owner') 'SetItem preserves UID and applies canonical owner and comment.'
+Assert-True ($updated.changeEvent -ceq 'Fixture owner publication') 'SetItem updates event publication metadata.'
+& $tool -Action SetItem -Registry $mutationPath -Uid 3 -ChangeEvent 'Fixture owner changed again' | Out-Null
+Assert-True (@((Read-StateRegistry -Path $mutationPath).entries | Where-Object uid -EQ 3)[0].changeEvent -ceq 'Fixture owner changed again') 'SetItem permits a change-event-only update.'
 $mutationBytes = [IO.File]::ReadAllBytes($mutationPath)
 Assert-True ([Convert]::ToBase64String((ConvertTo-StateRegistryBytes (Read-StateRegistry -Path $mutationPath))) -ceq [Convert]::ToBase64String($mutationBytes)) 'SetItem round trip is canonical.'
 Assert-Rejected { & $tool -Action Rename -Registry $mutationPath -Uid 3 -Name Program } 'duplicate name'
@@ -169,6 +172,8 @@ Assert-Rejected { & $tool -Action SetItem -Registry $mutationPath -Uid 3 -Kind b
 Assert-Rejected { & $tool -Action SetItem -Registry $mutationPath -Uid 3 -OwnerBlock 1 -OwnerComponent Both } 'owner form'
 Assert-Rejected { & $tool -Action SetItem -Registry $mutationPath -Uid 99 -Comment 'Missing.' } '99.*not found'
 Assert-Rejected { & $tool -Action SetItem -Registry $mutationPath -Uid 3 -ItemReads @(@{item=99}) } 'does not accept -ItemReads'
+Assert-Rejected { & $tool -Action SetItem -Registry $mutationPath -Uid 3 -ChangeEvent ' ' } 'changeEvent'
+Assert-Rejected { & $tool -Action SetItem -Registry $mutationPath -Uid 4 -ChangeEvent 'Not a poll event' } 'unknown field'
 Assert-True ([Convert]::ToBase64String([IO.File]::ReadAllBytes($mutationPath)) -ceq [Convert]::ToBase64String($mutationBytes)) 'Rejected updates preserve exact bytes.'
 # Simulate removal of a released UID: allocation must reuse it with no exception.
 $table = Get-Fixture
@@ -252,10 +257,10 @@ $volume = @($production.entries | Where-Object name -CEQ 'DeviceTopologyVolumeFr
 Assert-True ($volume.Count -eq 1) 'The independent volume free-space current is registered.'
 Assert-True ($volume[0].kind -ceq 'item' -and $volume[0].owner.block -eq 33 -and $volume[0].trigger -ceq 'event') 'Volume free-space current belongs to the topology owner and publishes change events.'
 # Catalog counts retain all dev desktop/window entries and include the replayed no-demand facts.
-Assert-True ($production.entries.Count -eq 161) 'Production catalog contains 61 blocks, 62 items and 38 conditions.'
-Assert-True (@($production.entries | Where-Object kind -CEQ 'block').Count -eq 61) 'Production catalog contains 61 blocks.'
-Assert-True (@($production.entries | Where-Object kind -CEQ 'item').Count -eq 62) 'Production catalog contains 62 items.'
-Assert-True (@($production.entries | Where-Object kind -CEQ 'condition').Count -eq 38) 'Production catalog contains 38 conditions.'
+Assert-True ($production.entries.Count -eq 164) 'Production catalog contains 62 blocks, 63 items and 39 conditions.'
+Assert-True (@($production.entries | Where-Object kind -CEQ 'block').Count -eq 62) 'Production catalog contains 62 blocks.'
+Assert-True (@($production.entries | Where-Object kind -CEQ 'item').Count -eq 63) 'Production catalog contains 63 items.'
+Assert-True (@($production.entries | Where-Object kind -CEQ 'condition').Count -eq 39) 'Production catalog contains 39 conditions.'
 Assert-True (($production.entries | Where-Object uid -EQ 41).name -ceq 'MainFrontend') 'MainRoot is renamed without changing UID 41.'
 Assert-True (($production.entries | Where-Object uid -EQ 42).name -ceq 'Tray') 'TrayRoot is renamed without changing UID 42.'
 Assert-True (@($production.entries | Where-Object { $_.process -ceq 'desktop' -and $_.name -ceq 'Frontend' -and $_.kind -ceq 'block' }).Count -eq 1) 'The resident has one Frontend wrapper declaration.'

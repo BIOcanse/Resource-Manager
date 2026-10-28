@@ -3,6 +3,7 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const test_llvm = b.option(bool, "test-llvm", "Use LLVM for test artifacts; false selects the bounded self-hosted route") orelse true;
 
     const control_module = b.createModule(.{
         .root_source_file = b.path("../../Shared/Control/src/root.zig"),
@@ -120,9 +121,11 @@ pub fn build(b: *std.Build) void {
     test_module.linkSystemLibrary("advapi32", .{});
 
     const native_core_tests = b.addTest(.{
+        .use_llvm = test_llvm,
         .root_module = test_module,
     });
     const smart_coordinator_tests = b.addTest(.{
+        .use_llvm = test_llvm,
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/smart_coordinator_test_root.zig"),
             .target = target,
@@ -130,6 +133,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     const transaction_journal_tests = b.addTest(.{
+        .use_llvm = test_llvm,
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/transaction_journal_test_root.zig"),
             .target = target,
@@ -151,7 +155,7 @@ pub fn build(b: *std.Build) void {
     control_abi_test_module.addImport("rm_control", control_module);
     control_abi_test_module.addImport("backend_tree", backend_tree_module);
     control_abi_test_module.addImport("backend_declarations", backend_declarations_module);
-    const control_abi_tests = b.addTest(.{ .root_module = control_abi_test_module });
+    const control_abi_tests = b.addTest(.{ .root_module = control_abi_test_module, .use_llvm = test_llvm });
     const run_control_abi_tests = b.addRunArtifact(control_abi_tests);
     test_step.dependOn(&run_control_abi_tests.step);
     test_step.dependOn(&run_smart_coordinator_tests.step);
@@ -172,7 +176,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     kernel_etw_module.linkSystemLibrary("advapi32", .{});
-    const kernel_etw_tests = b.addTest(.{ .root_module = kernel_etw_module });
+    const kernel_etw_tests = b.addTest(.{ .root_module = kernel_etw_module, .use_llvm = test_llvm });
     const run_kernel_etw_tests = b.addRunArtifact(kernel_etw_tests);
     const kernel_etw_step = b.step("test-kernel-etw", "Run kernel ETW migration equivalence and allocation tests");
     kernel_etw_step.dependOn(&run_kernel_etw_tests.step);

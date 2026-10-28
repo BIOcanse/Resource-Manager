@@ -107,6 +107,7 @@ fn normalReadOnlyMember(uid: d.BlockUid) bool {
         BlockUids.EtwCpuCoreResidencyReader,
         BlockUids.EtwSystemInterruptSnapshotSource,
         BlockUids.WindowsResourceBreakdownSampler,
+        BlockUids.KernelLeakObservation,
         => true,
         else => false,
     };
@@ -195,6 +196,7 @@ const all_tree_blocks = [_]tree.Block{
     .{ .uid = BlockUids.SharedResourceSubscriptionMaintenanceService, .parent = BlockUids.PublicServices },
     .{ .uid = BlockUids.JsonDebugDiagnosticLogWriter, .parent = BlockUids.ServiceHost, .inputs = &.{BlockUids.RuntimeSpecializationCoordinator} },
     .{ .uid = BlockUids.HostManagerReportCoordinatorOwner, .parent = BlockUids.Reports, .inputs = &.{ BlockUids.RuntimeSpecializationCoordinator, BlockUids.WindowsResourceBreakdownSampler, BlockUids.WindowsHardwareMetricSampler, BlockUids.EtwSystemInterruptSnapshotSource, BlockUids.SqlitePortableSoftwareRegistry } },
+    .{ .uid = BlockUids.KernelLeakObservation, .parent = BlockUids.Reports, .inputs = &.{BlockUids.WindowsResourceBreakdownSampler} },
     .{ .uid = BlockUids.HostManagerSmartCoordinator, .parent = BlockUids.Optimization, .inputs = &.{ BlockUids.RuntimeSpecializationCoordinator, BlockUids.WindowsResourceBreakdownSampler, BlockUids.WindowsHardwareMetricSampler, BlockUids.EtwCpuCoreResidencyReader } },
     .{ .uid = BlockUids.DeviceTopologySnapshotProvider, .parent = BlockUids.HostManagerSamplingSubscriptionOwner, .inputs = &.{BlockUids.HostManagerSamplingSubscriptionOwner} },
     .{ .uid = BlockUids.PresentFrameEtwSource, .parent = BlockUids.NativeEtwLifetimeService },
@@ -348,6 +350,9 @@ fn hostMemoryProtectionReady(input: *control.Input) anyerror!bool {
         try isTrue(input, ItemUids.MemoryProtectionNormalRunningPointExists) and
         try isTrue(input, ItemUids.MemoryProtectionReserveBuilt);
 }
+fn kernelLeakObservationShouldRun(input: *control.Input) anyerror!bool {
+    return isTrue(input, ItemUids.KernelLeakObservationEnabled);
+}
 fn debugWriterShouldRun(input: *control.Input) anyerror!bool {
     return anyFact(input, BlockUids.JsonDebugDiagnosticLogWriter, &.{ ItemUids.DebugLoggingEnabled, ItemUids.DebugWriterPending });
 }
@@ -423,6 +428,7 @@ fn operationsShouldRun(input: *control.Input) anyerror!bool {
 const compute_functions = [_]control.types.Compute{
     .{ .condition = ConditionUids.AlwaysWanted, .function = alwaysWanted },
     .{ .condition = ConditionUids.HostMemoryProtectionReady, .function = hostMemoryProtectionReady },
+    .{ .condition = ConditionUids.KernelLeakObservationShouldRun, .function = kernelLeakObservationShouldRun },
     .{ .condition = ConditionUids.PresentEtwChildShouldRun, .function = presentEtwChildShouldRun },
     .{ .condition = ConditionUids.GpuAllocationEtwChildShouldRun, .function = gpuAllocationEtwChildShouldRun },
     .{ .condition = ConditionUids.VidMmEtwChildShouldRun, .function = vidMmEtwChildShouldRun },
@@ -584,6 +590,7 @@ const RuleTestFacts = struct {
         return .{ .context = self, .block = if (per_block) self.child else null, .read_fn = read, .condition_fn = noCondition, .child_fn = noChild };
     }
     fn expected(self: *const @This()) bool {
+        if (self.child == BlockUids.KernelLeakObservation) return self.truth(ItemUids.KernelLeakObservationEnabled);
         if (!self.permit(self.child)) return false;
         const I = ItemUids;
         return switch (self.child) {
