@@ -51,7 +51,7 @@ public sealed partial class DeviceTopologySnapshotProvider(
     private readonly object publicationGate = new();
     private readonly object resourceDisposeGate = new();
     private readonly DeviceTopologyCaptureOwner captureOwner = new(acpiReader,
-        new DeviceTopologyCapturePolicy(reader, semanticComparer.ComputeHash, DeviceTopologyInformationProjection.Create,
+        new DeviceTopologyCapturePolicy(reader, semanticComparer.ComputeHash, DeviceTopologyInformationProjection.Project,
             (changed, token) => store.SaveAsync(new DeviceTopologyPersistedSnapshot(
                 DeviceTopologySnapshotState.CurrentSchemaVersion, string.Empty, changed.ContentGeneration,
                 changed.SemanticHash, changed.Snapshot), token),

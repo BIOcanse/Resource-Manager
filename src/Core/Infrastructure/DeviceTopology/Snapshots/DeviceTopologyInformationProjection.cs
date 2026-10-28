@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using ResourceManager.App.Domain.DeviceTopology;
+using ResourceManager.ReadWrite.Windows.Devices.Snapshots;
 using F = ResourceManager.ReadWrite.Information.DeviceInformationFieldRegistry;
 
 namespace ResourceManager.App.Infrastructure.DeviceTopology.Snapshots;
@@ -11,8 +12,13 @@ public static partial class DeviceTopologyInformationProjection
     private static readonly JsonSerializerOptions JsonOptions = WindowsInformationFieldProjection.InformationJsonOptions;
 
     public static DeviceInformationSnapshot Create(DeviceTopologySnapshot? snapshot, DateTimeOffset? observedAt)
+        => Project(snapshot, observedAt).Information;
+
+    public static DeviceTopologyInformationProjectionResult Project(DeviceTopologySnapshot? snapshot, DateTimeOffset? observedAt)
     {
-        if (snapshot is null) return DeviceInformationSnapshot.Empty;
+        if (snapshot is null) return new(null, DeviceInformationSnapshot.Empty);
+        var ports = new List<DeviceTopologyPort>(snapshot.Ports.Count);
+        var portIdentitiesChanged = false;
         var devices = new List<DeviceInformationObject>();
         var disks = (snapshot.DiskLayoutInformation ?? []).GroupBy(static disk => disk.DeviceIdentity, StringComparer.Ordinal)
             .Where(static group => group.Count() == 1).Select(static group => group.Single()).ToArray();
@@ -83,6 +89,7 @@ public static partial class DeviceTopologyInformationProjection
 
         foreach (var port in snapshot.Ports)
         {
+            string? informationIdentity = null;
             var fields = new List<DeviceInformationField>();
             var pnpIdentity = "windows-pnp|" + port.DeviceId.Trim().ToUpperInvariant();
             var knownDisk = disksByIdentity.TryGetValue(pnpIdentity, out var diskLayout);
@@ -128,10 +135,14 @@ public static partial class DeviceTopologyInformationProjection
             }
             if (fields.Count > 0 && !string.IsNullOrWhiteSpace(port.DeviceId) && (!knownDisk || isDisk))
             {
+                informationIdentity = pnpIdentity;
                 Add(pnpIdentity,
                     isDisk ? "os_disk" : port.SmartDevice is not null ? "mobile_device"
                     : port.Network is not null ? "network_adapter" : port.Usb is not null ? "usb_device" : "pci_device", fields);
             }
+            var identityChanged = !string.Equals(port.InformationIdentity, informationIdentity, StringComparison.Ordinal);
+            ports.Add(identityChanged ? port with { InformationIdentity = informationIdentity } : port);
+            portIdentitiesChanged |= identityChanged;
             if (port.Display is { MonitorDevicePath.Length: > 0 } display)
             {
                 // Display path and attached monitor remain part of the caller-owned identity.
@@ -163,7 +174,8 @@ public static partial class DeviceTopologyInformationProjection
         var unique = devices.GroupBy(static device => device.DeviceIdentity, StringComparer.Ordinal)
             .Where(static group => group.Count() == 1).Select(static group => group.Single())
             .OrderBy(static device => device.DeviceIdentity, StringComparer.Ordinal).ToArray();
-        return new(observedAt, Array.AsReadOnly(unique));
+        return new(portIdentitiesChanged ? snapshot with { Ports = ports.AsReadOnly() } : snapshot,
+            new(observedAt, Array.AsReadOnly(unique)));
 
         void Add(string identity, string objectType, IReadOnlyCollection<DeviceInformationField> fields)
         {

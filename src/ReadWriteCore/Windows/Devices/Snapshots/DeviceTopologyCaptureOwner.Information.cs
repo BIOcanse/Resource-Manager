@@ -29,7 +29,7 @@ public sealed partial class DeviceTopologyCaptureOwner
             static snapshot => Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(
                 snapshot.DriverInformation?.OrderBy(static row => row.DeviceIdentity, StringComparer.Ordinal).ToArray(),
                 DeviceFingerprintJsonContext.Default.DeviceTopologyDriverInformationArray))),
-            static (snapshot, observedAt) => WindowsInformationFieldProjection.Drivers(snapshot?.DriverInformation, observedAt),
+            static (snapshot, observedAt) => new(snapshot, WindowsInformationFieldProjection.Drivers(snapshot?.DriverInformation, observedAt)),
             static (_, _) => Task.CompletedTask,
             static _ => new("driver-directory-unavailable", []),
             static (_, _, _, _) => { }, static _ => { }, static () => { }));

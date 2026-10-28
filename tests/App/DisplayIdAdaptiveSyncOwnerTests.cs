@@ -27,7 +27,7 @@ public sealed class DisplayIdAdaptiveSyncOwnerTests
             reads++; if (phase == 3) throw new IOException("recorded adaptive range failure");
             var read = WindowsMonitorEdidReader.CreateReadResult(Bytes());
             return DisplayEdidModeTestData.Snapshot(DisplayEdidModeTestData.Path(read) with { Active = false, TargetAvailable = false });
-        }), new DeviceTopologySemanticComparer().ComputeHash, DeviceTopologyInformationProjection.Create,
+        }), new DeviceTopologySemanticComparer().ComputeHash, DeviceTopologyInformationProjection.Project,
             static (_, _) => Task.CompletedTask, static _ => new("recorded-adaptive-range-failure", []),
             static (_, _, _, _) => { }, static _ => { }, static () => { }));
         var backend = owner.CreateBackend(); Assert.Empty(backend.Catalog.Fields); Assert.Equal(0, reads);

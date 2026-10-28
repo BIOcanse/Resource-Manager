@@ -71,8 +71,8 @@ internal static class DriverInformationConsumer
             reader,
             static snapshot => Convert.ToHexString(SHA256.HashData(
                 JsonSerializer.SerializeToUtf8Bytes(snapshot.DriverInformation))),
-            static (snapshot, observedAt) => WindowsInformationFieldProjection.Drivers(
-                snapshot?.DriverInformation, observedAt),
+            static (snapshot, observedAt) => new(snapshot, WindowsInformationFieldProjection.Drivers(
+                snapshot?.DriverInformation, observedAt)),
             static (_, _) => Task.CompletedTask,
             static _ => new DeviceTopologyCaptureFailure("recorded-driver-source-failure", []),
             static (_, _, _, _) => { },

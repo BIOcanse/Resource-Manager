@@ -8,12 +8,15 @@ namespace ResourceManager.ReadWrite.Windows.Devices.Snapshots;
 public sealed record DeviceTopologyCapturePolicy(
     IDeviceTopologyReader Reader,
     Func<DeviceTopologySnapshot, string> ComputeSemanticHash,
-    Func<DeviceTopologySnapshot?, DateTimeOffset?, DeviceInformationSnapshot> ProjectInformation,
+    Func<DeviceTopologySnapshot?, DateTimeOffset?, DeviceTopologyInformationProjectionResult> ProjectInformation,
     Func<DeviceTopologyChangedCapture, CancellationToken, Task> PersistChanged,
     Func<Exception, DeviceTopologyCaptureFailure> ClassifyFailure,
     Action<Exception, string, IReadOnlyList<DeviceTopologySourceDiagnostic>, bool> LogFailure,
     Action<Exception> LogPersistenceFailure,
     Action LogSmbiosUnavailable);
+
+/// <summary>One projection owns both information objects and their topology port references.</summary>
+public sealed record DeviceTopologyInformationProjectionResult(DeviceTopologySnapshot? Snapshot, DeviceInformationSnapshot Information);
 
 public sealed record DeviceTopologyChangedCapture(long ContentGeneration, string SemanticHash, DeviceTopologySnapshot Snapshot);
 public sealed record DeviceTopologyCaptureFailure(string Code, IReadOnlyList<DeviceTopologySourceDiagnostic> Diagnostics);

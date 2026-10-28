@@ -107,6 +107,8 @@ public sealed record DeviceTopologyPort(
     IReadOnlyList<DeviceTopologyPciInterrupt>? PciInterrupts = null,
     IReadOnlyList<DeviceTopologyPciDmaChannel>? PciDmaChannels = null)
 {
+    /// <summary>Identity of the information object projected by this port; null when none is projected.</summary>
+    public string? InformationIdentity { get; init; }
     public DeviceTopologyTransport Transport { get; init; } = DeviceTopologyTransport.Unqueried;
 }
 

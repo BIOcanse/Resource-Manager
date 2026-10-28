@@ -71,7 +71,7 @@ public sealed class DisplayIdLegacyVicTimingProductTests
         using var owner = new DeviceTopologyCaptureOwner(new NoAcpi(), new(new Reader(() => {
             if (Interlocked.Increment(ref reads) == 2) { entered.Set(); if (!release.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException(); return DisplayIdVicTimingTestData.LegacySnapshot() with { Ports = [] }; }
             return DisplayIdVicTimingTestData.LegacySnapshot();
-        }), new DeviceTopologySemanticComparer().ComputeHash, DeviceTopologyInformationProjection.Create,
+        }), new DeviceTopologySemanticComparer().ComputeHash, DeviceTopologyInformationProjection.Project,
             (_, _) => { persisted++; return Task.CompletedTask; }, static _ => new("recorded-iv-failure", []), static (_, _, _, _) => { }, static _ => { }, static () => { }));
         await owner.CaptureInformationAsync(timeout.Token); var original = owner.ReadState();
         DisplayIdVicTimingTestData.AssertLegacyValue(DisplayIdVicTimingTestData.Field(original.InformationFields).Value!.Value);

@@ -25,7 +25,7 @@ public sealed class DeviceTopologyVolumePublicationTests
             VolumeSpaceInformation = [new(VolumeSpaceInformationCollectorTests.IdA) { AvailableBytes = 500 }]
         };
         var policy = new DeviceTopologyCapturePolicy(new Reader(snapshot), new DeviceTopologySemanticComparer().ComputeHash,
-            DeviceTopologyInformationProjection.Create, static (_, _) => Task.CompletedTask,
+            DeviceTopologyInformationProjection.Project, static (_, _) => Task.CompletedTask,
             static _ => new("failed", []), static (_, _, _, _) => { }, static _ => { }, static () => { });
         using var owner = new DeviceTopologyCaptureOwner(new Firmware(), policy, volumeFreeSpacePublished: Publish);
         await owner.CaptureInformationAsync(timeout.Token);

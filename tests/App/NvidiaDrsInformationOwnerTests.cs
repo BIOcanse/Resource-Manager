@@ -153,7 +153,7 @@ public sealed class NvidiaDrsInformationOwnerTests
     public async Task OrdinaryTopologyPublicationPreservesTheOriginalDrsFields()
     {
         var policy = new DeviceTopologyCapturePolicy(new EmptyTopology(), static _ => "recorded",
-            static (_, _) => DeviceInformationSnapshot.Empty, static (_, _) => Task.CompletedTask,
+            static (snapshot, _) => new(snapshot, DeviceInformationSnapshot.Empty), static (_, _) => Task.CompletedTask,
             static _ => new("recorded-failure", []), static (_, _, _, _) => { }, static _ => { }, static () => { });
         using var owner = new DeviceTopologyCaptureOwner(new EmptyAcpi(), policy);
         var scope = Scope(7); var access = owner.CreateNvidiaDrsInformation(scope, (_, _, _) => Snapshot(7, 8));

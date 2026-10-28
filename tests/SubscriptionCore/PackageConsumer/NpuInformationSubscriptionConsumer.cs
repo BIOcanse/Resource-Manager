@@ -28,7 +28,7 @@ internal static class NpuInformationSubscriptionConsumer
         var reader = new RecordedReader(Snapshot([Row("Recorded NPU")]));
         var policy = new DeviceTopologyCapturePolicy(reader,
             static snapshot => Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(snapshot.NpuInformation))),
-            static (snapshot, time) => WindowsInformationFieldProjection.Npus(snapshot?.NpuInformation, time),
+            static (snapshot, time) => new(snapshot, WindowsInformationFieldProjection.Npus(snapshot?.NpuInformation, time)),
             static (_, _) => Task.CompletedTask,
             static _ => new DeviceTopologyCaptureFailure("recorded-npu-failure", []),
             static (_, _, _, _) => { }, static _ => { }, static () => { });

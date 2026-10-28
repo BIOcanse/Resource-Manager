@@ -65,7 +65,7 @@ public sealed partial class DisplayEdidModeOwnerIntegrationTests
 
     private static DeviceTopologyCaptureOwner Owner(Func<DeviceTopologySnapshot> read, Action? persisted = null)
         => new(new NoAcpi(), new(new Reader(read), new DeviceTopologySemanticComparer().ComputeHash,
-            DeviceTopologyInformationProjection.Create,
+            DeviceTopologyInformationProjection.Project,
             (_, _) => { persisted?.Invoke(); return Task.CompletedTask; },
             static _ => new("recorded-display-failure", []), static (_, _, _, _) => { }, static _ => { }, static () => { }));
     private sealed class Reader(Func<DeviceTopologySnapshot> read) : IDeviceTopologyReader

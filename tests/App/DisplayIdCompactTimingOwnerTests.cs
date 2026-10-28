@@ -21,7 +21,7 @@ public sealed class DisplayIdCompactTimingOwnerTests
             var d = DisplayIdCompactTimingTestData.Descriptor(); if (phase == 1) d[3] |= 1;
             var read = WindowsMonitorEdidReader.CreateReadResult(DisplayIdCompactTimingTestData.Bytes(d));
             return DisplayEdidModeTestData.Snapshot(DisplayEdidModeTestData.Path(read) with { Active = false, TargetAvailable = false });
-        }), new DeviceTopologySemanticComparer().ComputeHash, DeviceTopologyInformationProjection.Create,
+        }), new DeviceTopologySemanticComparer().ComputeHash, DeviceTopologyInformationProjection.Project,
             static (_, _) => Task.CompletedTask, static _ => new("recorded-compact-failure", []),
             static (_, _, _, _) => { }, static _ => { }, static () => { }));
         var backend = owner.CreateBackend(); Assert.Empty(backend.Catalog.Fields); Assert.Equal(0, reads);

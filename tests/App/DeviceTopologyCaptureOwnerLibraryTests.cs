@@ -271,7 +271,7 @@ public sealed class DeviceTopologyCaptureOwnerLibraryTests
     private static DeviceTopologyCapturePolicy Policy(Func<DeviceTopologySnapshot> read,
         Action<DeviceTopologyChangedCapture>? persist = null)
         => new(new TopologyReader(read), new DeviceTopologySemanticComparer().ComputeHash,
-            DeviceTopologyInformationProjection.Create,
+            DeviceTopologyInformationProjection.Project,
             (changed, _) => { persist?.Invoke(changed); return Task.CompletedTask; },
             static _ => new("device-topology-read-failed", []),
             static (_, _, _, _) => { }, static _ => { }, static () => { });

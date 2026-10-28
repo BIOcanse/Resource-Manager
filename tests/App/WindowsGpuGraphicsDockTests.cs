@@ -107,7 +107,7 @@ public sealed class WindowsGpuGraphicsDockTests
         var gpu = Assert.Single(WindowsGpuInformationProjection.Create(Inventory(Adapter(0x400)))!);
         var read = DeviceInformationTestData.Snapshot() with { GpuInformation = [gpu] };
         var policy = new DeviceTopologyCapturePolicy(new Reader(() => read),
-            new DeviceTopologySemanticComparer().ComputeHash, DeviceTopologyInformationProjection.Create,
+            new DeviceTopologySemanticComparer().ComputeHash, DeviceTopologyInformationProjection.Project,
             static (_, _) => Task.CompletedTask, static _ => new("device-topology-read-failed", []),
             static (_, _, _, _) => { }, static _ => { }, static () => { });
         using var owner = new DeviceTopologyCaptureOwner(new FirmwareReader(), policy);

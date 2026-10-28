@@ -25,7 +25,7 @@ public sealed partial class DeviceTopologyCaptureOwner
                     LocationPathsDeclared = row.LocationPathsDeclared?.Order(StringComparer.Ordinal).ToArray()
                 }).OrderBy(static row => row.DeviceIdentity, StringComparer.Ordinal).ToArray(),
                 DeviceFingerprintJsonContext.Default.DeviceTopologyNpuInformationArray))),
-            static (snapshot, observedAt) => WindowsInformationFieldProjection.Npus(snapshot?.NpuInformation, observedAt),
+            static (snapshot, observedAt) => new(snapshot, WindowsInformationFieldProjection.Npus(snapshot?.NpuInformation, observedAt)),
             static (_, _) => Task.CompletedTask,
             static _ => new("npu-directory-unavailable", []),
             static (_, _, _, _) => { }, static _ => { }, static () => { }));

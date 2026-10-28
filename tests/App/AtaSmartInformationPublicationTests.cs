@@ -124,7 +124,7 @@ public sealed class AtaSmartInformationPublicationTests
     private static DeviceTopologyCaptureOwner CreateOwner()
     {
         var policy = new DeviceTopologyCapturePolicy(new RecordedTopologyReader(), static _ => "recorded",
-            static (_, _) => DeviceInformationSnapshot.Empty, static (_, _) => Task.CompletedTask,
+            static (snapshot, _) => new(snapshot, DeviceInformationSnapshot.Empty), static (_, _) => Task.CompletedTask,
             static _ => new("recorded-failure", []), static (_, _, _, _) => { }, static _ => { }, static () => { });
         return new(new EmptyAcpiReader(), policy);
     }

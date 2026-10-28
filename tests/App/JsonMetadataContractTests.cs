@@ -23,6 +23,26 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class JsonMetadataContractTests
 {
+    [Theory]
+    [InlineData(null)]
+    [InlineData("windows-pnp|PHONE")]
+    public void TopologyPortInformationIdentityIsOnHttpAndStructureSubscriptionWire(string? identity)
+    {
+        var options = new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions;
+        ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
+        var port = DeviceInformationTestData.Port("phone") with { InformationIdentity = identity };
+        var snapshot = ResourceManager.ReadWrite.Windows.Devices.Snapshots.DeviceTopologyStructure.Create(
+            DeviceInformationTestData.Snapshot(port));
+        var wire = JsonSerializer.SerializeToElement(snapshot, options);
+        Assert.Equal(identity, wire.GetProperty("ports")[0].GetProperty("informationIdentity").GetString());
+        var state = ResourceManager.App.Domain.DeviceTopology.DeviceTopologySnapshotState.Warming with { Snapshot = snapshot };
+        var frame = new FrontendSubscriptionChannelFrame<ResourceManager.App.Domain.DeviceTopology.DeviceTopologySnapshotState>("topology", state);
+        var subscription = JsonSerializer.SerializeToElement(frame, options);
+        Assert.Equal(identity, subscription.GetProperty("value").GetProperty("snapshot").GetProperty("ports")[0].GetProperty("informationIdentity").GetString());
+        var restored = JsonSerializer.Deserialize<ResourceManager.App.Domain.DeviceTopology.DeviceTopologySnapshot>(wire, options)!;
+        Assert.Equal(identity, restored.Ports[0].InformationIdentity);
+    }
+
     [Fact]
     public void SchedulingDebugPayloadSerializesPopulatedProcessAndDatasetFacts()
     {

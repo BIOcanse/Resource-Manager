@@ -40,7 +40,10 @@ public sealed partial class DeviceTopologyCaptureOwner(
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
         if (topology is null) throw new InvalidOperationException("No topology policy is bound to this capture owner.");
-        semanticHash = hash;
+        var projection = topology.ProjectInformation(snapshot, null);
+        // A stored snapshot may predate the port reference; hash the enriched structure before the next capture.
+        semanticHash = ReferenceEquals(snapshot, projection.Snapshot) ? hash : topology.ComputeSemanticHash(projection.Snapshot!);
+        snapshot = projection.Snapshot!;
         contentGeneration = Math.Max(1, generation);
         stateRevision = 1;
         Publish(new DeviceTopologySnapshotState(DeviceTopologySnapshotState.CurrentSchemaVersion,
@@ -49,7 +52,7 @@ public sealed partial class DeviceTopologyCaptureOwner(
         {
             // Loading topology does not own the independently once-read firmware value.
             AcpiInformationFields = ReadState().AcpiInformationFields
-        });
+        }, projection.Information);
         // This synchronous data initialization also settles its reference publication.
         CompleteVolumeFreeSpacePublicationAsync().GetAwaiter().GetResult();
     }
@@ -194,6 +197,8 @@ public sealed partial class DeviceTopologyCaptureOwner(
                     .Select(static row => row with { InterfaceGuid = null, InterfaceLuid = null, InterfaceIndex = null,
                         UnicastAddresses = null, Routes = null }).ToArray() };
             }
+            var projection = policy.ProjectInformation(snapshot, snapshot.CapturedAt);
+            snapshot = projection.Snapshot!;
             var nextHash = policy.ComputeSemanticHash(snapshot);
             var changed = false;
             DeviceTopologySnapshotState? nextState = null;
@@ -223,7 +228,7 @@ public sealed partial class DeviceTopologyCaptureOwner(
                     FailureCode = null,
                     AttemptDiagnostics = snapshot.SourceDiagnostics.ToArray()
                 };
-                Publish(nextState, snapshot);
+                Publish(nextState, projection.Information);
                 failureFingerprint = null;
                 publicationSignal.Publish();
             }))
@@ -306,13 +311,16 @@ public sealed partial class DeviceTopologyCaptureOwner(
         return permission.TryPublish(publish);
     }
 
-    private void Publish(DeviceTopologySnapshotState next, DeviceTopologySnapshot? informationSnapshot = null)
+    private void Publish(DeviceTopologySnapshotState next, DeviceInformationSnapshot? projectedFields = null)
     {
-        var projectedFields = topology!.ProjectInformation(
-            informationSnapshot ?? next.Snapshot,
-            next.State == DeviceTopologySnapshotStatus.Ready && next.Source == DeviceTopologySnapshotSource.Live
-                ? next.LastSuccessAt
-                : null);
+        if (projectedFields is null)
+        {
+            var projection = topology!.ProjectInformation(next.Snapshot,
+                next.State == DeviceTopologySnapshotStatus.Ready && next.Source == DeviceTopologySnapshotSource.Live
+                    ? next.LastSuccessAt : null);
+            next = next with { Snapshot = projection.Snapshot };
+            projectedFields = projection.Information;
+        }
         var previousInformation = ReadState().InformationFields;
         var fields = WindowsInformationFieldProjection.PreservePrinterFields(
             WindowsInformationFieldProjection.PreserveMediaFields(projectedFields, previousInformation),
