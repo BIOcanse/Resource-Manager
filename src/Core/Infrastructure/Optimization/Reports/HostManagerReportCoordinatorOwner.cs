@@ -429,12 +429,12 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
     private async Task RestoreRegisteredTargetsAsync(CancellationToken cancellationToken)
     {
         foreach (var target in await persistenceStore.LoadTargetsAsync(cancellationToken))
-            targetCatalog[target.TargetHandle] = target;
+            targetCatalog.TryAdd(target.TargetHandle, target);
         foreach (var software in await softwareRegistry.GetSoftwareAsync(cancellationToken))
         {
             var handle = AdapterResourceKey.FromString($"report:software:{software.Id}");
-            targetCatalog[handle] = new HostManagerReportTargetDescriptor(handle,
-                software.Id, software.Name, software.Kind, SoftwareDisplayKinds.Project(software.Kind), [], []);
+            targetCatalog.TryAdd(handle, new HostManagerReportTargetDescriptor(handle,
+                software.Id, software.Name, software.Kind, SoftwareDisplayKinds.Project(software.Kind), [], []));
         }
     }
 

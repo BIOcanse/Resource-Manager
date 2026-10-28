@@ -1,8 +1,8 @@
 const std = @import("std");
 const protocol = @import("protocol.zig");
 
-test "report coordinator ABI v6 layout is fixed" {
-    try std.testing.expectEqual(@as(u32, 0x0006_0000), protocol.abi_version);
+test "report coordinator ABI v7 layout is fixed" {
+    try std.testing.expectEqual(@as(u32, 0x0007_0000), protocol.abi_version);
     try std.testing.expectEqual(@as(usize, 216), @sizeOf(protocol.Config));
     try std.testing.expectEqual(@as(usize, 96), @sizeOf(protocol.Capacity));
     try std.testing.expectEqual(@as(usize, 160), @sizeOf(protocol.RuleInput));
@@ -20,6 +20,7 @@ test "report coordinator ABI v6 layout is fixed" {
     );
     try std.testing.expectEqual(@as(usize, 80), @sizeOf(protocol.PersistenceFeedback));
     try std.testing.expectEqual(@as(usize, 176), @sizeOf(protocol.PlanOutput));
+    try std.testing.expectEqual(@as(usize, 40), @offsetOf(protocol.PlanOutput, "unrecorded_report_count"));
 
     try std.testing.expectEqual(@as(usize, 8), @offsetOf(protocol.Config, "generation"));
     try std.testing.expectEqual(

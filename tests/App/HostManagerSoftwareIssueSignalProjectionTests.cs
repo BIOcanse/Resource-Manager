@@ -131,7 +131,7 @@ public sealed class HostManagerSoftwareIssueSignalProjectionTests
         var target = new OptimizationReportTarget(OptimizationReportTargetTypes.Software,
             "software:fixture", "Fixture", "fixture", "Fixture", SoftwareKinds.Other, "other", [], [], null);
         var memory = Report("memory", OptimizationReportTypes.BackgroundHighUsage, OptimizationResourceKinds.Memory, target);
-        Assert.Null(HostManagerSoftwareIssueSignalProjection.ProjectReport(memory with { State = OptimizationReportStates.TrustedSuppressed },
+        Assert.Null(HostManagerSoftwareIssueSignalProjection.ProjectReport(memory with { Trusted = true },
             HostManagerReportFactKind.SoftwareMemoryBytes, SystemInterruptSnapshot.Unavailable("test", "test"), 4_000));
         var report = Report("interrupt", OptimizationReportTypes.SystemInterruptPressure, OptimizationResourceKinds.SystemInterrupt,
             target with { TargetType = OptimizationReportTargetTypes.System, SoftwareId = null });
@@ -144,6 +144,28 @@ public sealed class HostManagerSoftwareIssueSignalProjectionTests
         // but a normal current driver must not acquire the former driver's label.
         Assert.Null(HostManagerSoftwareIssueSignalProjection.ProjectReport(report,
             HostManagerReportFactKind.InterruptCpuCapacityPercent, snapshot, 5));
+    }
+
+    [Theory]
+    [InlineData(OptimizationReportStates.Active, false, true)]
+    [InlineData(OptimizationReportStates.Active, true, false)]
+    [InlineData(OptimizationReportStates.History, false, false)]
+    [InlineData(OptimizationReportStates.History, true, false)]
+    public void OnlyActiveUntrustedReportsProduceCurrentIssueSignals(string state, bool trusted, bool expected)
+    {
+        var target = new OptimizationReportTarget(OptimizationReportTargetTypes.Software,
+            "software:fixture", "Fixture", "fixture", "Fixture", SoftwareKinds.Other, "other", [], [], null);
+        var memory = Report("memory", OptimizationReportTypes.BackgroundHighUsage, OptimizationResourceKinds.Memory, target)
+            with { State = state, Trusted = trusted };
+        var interrupt = Report("interrupt", OptimizationReportTypes.SystemInterruptPressure, OptimizationResourceKinds.SystemInterrupt,
+            target with { TargetType = OptimizationReportTargetTypes.System, SoftwareId = null })
+            with { State = state, Trusted = trusted };
+        var snapshot = Interrupts([new SystemInterruptDriverSnapshot("large.sys", @"C:\Drivers\large.sys", 5, 12, 8, 6, 0.04)]);
+
+        Assert.Equal(expected, HostManagerSoftwareIssueSignalProjection.ProjectReport(memory,
+            HostManagerReportFactKind.SoftwareMemoryBytes, snapshot, 4_000) is not null);
+        Assert.Equal(expected, HostManagerSoftwareIssueSignalProjection.ProjectReport(interrupt,
+            HostManagerReportFactKind.InterruptMaximumSingleDurationMilliseconds, snapshot, 10) is not null);
     }
 
     private static OptimizationReportItem Report(

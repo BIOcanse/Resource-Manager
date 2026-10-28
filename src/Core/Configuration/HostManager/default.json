@@ -18,7 +18,7 @@
     "portable_software_registry_abi_version": 65536,
     "software_identity_catalog_abi_version": 327680,
     "software_identity_resolution_abi_version": 65536,
-    "report_coordinator_abi_version": 393216,
+    "report_coordinator_abi_version": 458752,
     "file_query_abi_version": 196608,
     "public_service_coordinator_abi_version": 262144,
     "display_coordinator_abi_version": 196608,

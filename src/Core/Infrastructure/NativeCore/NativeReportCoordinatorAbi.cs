@@ -4,7 +4,7 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal static class NativeReportCoordinatorAbi
 {
-    public const uint Version = 0x0006_0000;
+    public const uint Version = 0x0007_0000;
     public const ulong AllFamiliesTrustHandle = ulong.MaxValue;
 }
 
@@ -107,8 +107,8 @@ internal enum NativeReportOutputFlags : uint
 {
     None = 0,
     Active = 1U << 0,
-    TrustedSuppressed = 1U << 1,
-    Known = Active | TrustedSuppressed
+    Trusted = 1U << 1,
+    Known = Active | Trusted
 }
 
 [Flags]
@@ -117,10 +117,10 @@ internal enum NativeReportPersistenceFlags : uint
     None = 0,
     Delete = 1U << 0,
     Active = 1U << 1,
-    TrustedSuppressed = 1U << 2,
+    Trusted = 1U << 2,
     CurrentValid = 1U << 3,
     SecondaryCurrentValid = 1U << 4,
-    Known = Delete | Active | TrustedSuppressed | CurrentValid | SecondaryCurrentValid
+    Known = Delete | Active | Trusted | CurrentValid | SecondaryCurrentValid
 }
 
 [Flags]
@@ -543,7 +543,7 @@ internal unsafe struct NativeReportPlanOutput
     public uint BucketCount;
     public uint ReportTotalCount;
     public uint TrustCount;
-    public uint ReservedU32;
+    public uint UnrecordedReportCount;
     public ulong FirstMutationVersion;
     public ulong LastMutationVersion;
     public ulong SessionInstanceLow;

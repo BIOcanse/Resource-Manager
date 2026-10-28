@@ -16,10 +16,10 @@ internal static class HostManagerReportPresentation
             candidate.RuleHandle == ruleHandle);
         var target = CreateTarget(rule.FactKind, output.TargetHandle, targets);
         var type = ReportType(rule.FactKind);
-        var state = ((NativeReportOutputFlags)output.Flags)
-            .HasFlag(NativeReportOutputFlags.TrustedSuppressed)
-            ? OptimizationReportStates.TrustedSuppressed
-            : OptimizationReportStates.Active;
+        var flags = (NativeReportOutputFlags)output.Flags;
+        var state = flags.HasFlag(NativeReportOutputFlags.Active)
+            ? OptimizationReportStates.Active
+            : OptimizationReportStates.History;
         var createdAt = FromUnixMilliseconds(output.CreatedAtUtcMilliseconds);
         var updatedAt = FromUnixMilliseconds(output.UpdatedAtUtcMilliseconds);
         var observedAt = FromUnixMilliseconds(output.LastObservedAtUtcMilliseconds);
@@ -62,7 +62,10 @@ internal static class HostManagerReportPresentation
                     "dismiss",
                     "dismiss",
                     true)
-            ]);
+            ])
+        {
+            Trusted = flags.HasFlag(NativeReportOutputFlags.Trusted)
+        };
     }
 
     internal static TrustedOptimizationTarget CreateTrust(

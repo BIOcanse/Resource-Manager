@@ -50,7 +50,12 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         resources.Publish(StrayFixture.Memory(902, reason == "memory" ? 44.9 : 50));
         processes.Snapshot = StrayFixture.Processes(902, reason == "cpu" ? 0.001 : 0, reason == "gpu" ? 0.001 : 0);
         if (reason == "exit") processes.Snapshot = processes.Snapshot with { Processes = [], EnumeratedCount = 0, EmittedCount = 0 };
-        Assert.Empty((await owner.RefreshReportsAsync(CancellationToken.None)).Reports);
+        var cleared = await owner.RefreshReportsAsync(CancellationToken.None);
+        var history = Assert.Single(cleared.Reports);
+        Assert.Equal(report.Id, history.Id);
+        Assert.Equal(OptimizationReportStates.History, history.State);
+        Assert.Equal(0, cleared.Status.ActiveReportCount);
+        Assert.NotNull(await owner.GetReportAsync(report.Id, CancellationToken.None));
     }
 
     [Fact]
@@ -109,8 +114,10 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
             var first = reports.Single(report => report.Target.ProcessIds.Contains(424242));
             await owner.TrustReportAsync(first.Id, CancellationToken.None);
             var current = await owner.GetReportsAsync(CancellationToken.None);
-            Assert.Single(current.Reports, report => report.State == OptimizationReportStates.TrustedSuppressed);
-            Assert.Single(current.Reports, report => report.State == OptimizationReportStates.Active);
+            Assert.Single(current.Reports, report => report.Trusted);
+            Assert.Single(current.Reports, report => !report.Trusted);
+            Assert.All(current.Reports, report => Assert.Equal(OptimizationReportStates.Active, report.State));
+            Assert.Equal(2, current.Status.ActiveReportCount);
         }
         deployment = new HostManagerDeploymentState();
         provider = new RuntimePlanProvider(deployment);

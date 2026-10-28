@@ -45,7 +45,7 @@ internal static class HostManagerSoftwareIssueSignalProjection
         SystemInterruptSnapshot interrupts,
         double activationThreshold)
     {
-        if (report.State == OptimizationReportStates.TrustedSuppressed) return null;
+        if (report.State != OptimizationReportStates.Active || report.Trusted) return null;
         if (report.Target.TargetType == OptimizationReportTargetTypes.Software
             && !string.IsNullOrWhiteSpace(report.Target.SoftwareId)
             && report.Evidence.ResourceKind == OptimizationResourceKinds.Memory)

@@ -59,7 +59,6 @@ internal sealed class NativeReportCoordinatorPersistenceStore(
                 identity,
                 slotGeneration,
                 mutationVersion);
-            row = NativeReportCoordinatorPersistenceMigration.UpgradeLoadedRow(row);
             if (!keys.Add((kind, identity)))
             {
                 throw new InvalidDataException(
@@ -68,7 +67,20 @@ internal sealed class NativeReportCoordinatorPersistenceStore(
             rows.Add(row);
         }
 
-        return [.. rows];
+        await reader.DisposeAsync();
+        var upgraded = NativeReportCoordinatorPersistenceMigration.UpgradeLoadedRows(rows);
+        var changed = upgraded.Where((row, index) => !row.Equals(rows[index])).ToArray();
+        if (changed.Length != 0)
+        {
+            // Rewrite the checkpoint and report evidence together, so a later
+            // restart cannot see a v7 checkpoint beside unconverted report rows.
+            await using var transaction =
+                (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken);
+            foreach (var row in changed)
+                await UpsertAsync(connection, transaction, row, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        return upgraded;
     }
 
     public async Task PersistAsync(
@@ -258,7 +270,7 @@ internal sealed class NativeReportCoordinatorPersistenceStore(
             || !double.IsFinite(row.SecondaryCurrentValue))
         {
             throw new InvalidDataException(
-                "A report-coordinator persistence row violates the fixed v6 shape.");
+                "A report-coordinator persistence row violates the fixed v7 shape.");
         }
     }
 

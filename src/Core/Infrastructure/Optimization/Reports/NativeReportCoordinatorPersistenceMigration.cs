@@ -5,7 +5,8 @@ namespace ResourceManager.App.Infrastructure.Optimization.Reports;
 
 internal static class NativeReportCoordinatorPersistenceMigration
 {
-    private const uint PreviousCheckpointSchemaVersion = 0x0005_0000;
+    private const uint PreviousCheckpointSchemaVersion = 0x0006_0000;
+    private const uint OldestCheckpointSchemaVersion = 0x0005_0000;
     private const uint FirstCompatibleLegacyProfileRevision = 41;
     private const uint LastCompatibleLegacyProfileRevision = 46;
     private static readonly IReadOnlyDictionary<ulong, ulong>
@@ -19,25 +20,49 @@ internal static class NativeReportCoordinatorPersistenceMigration
             [1036] = 0xA3540B7221989A08
         };
 
-    internal static NativeReportPersistenceOperation UpgradeLoadedRow(
-        NativeReportPersistenceOperation row)
+    internal static NativeReportPersistenceOperation[] UpgradeLoadedRows(
+        IReadOnlyList<NativeReportPersistenceOperation> rows)
     {
-        if (row.OperationKind != (uint)NativeReportPersistenceKind.Metadata
-            || row.CheckpointSchemaVersion == NativeReportCoordinatorAbi.Version)
+        var metadata = rows.SingleOrDefault(static row =>
+            row.OperationKind == (uint)NativeReportPersistenceKind.Metadata);
+        if (metadata.CheckpointSchemaVersion == NativeReportCoordinatorAbi.Version)
         {
-            return row;
+            return rows.ToArray();
         }
-
-        if (row.CheckpointSchemaVersion != PreviousCheckpointSchemaVersion)
+        if (metadata.OperationKind != 0
+            && metadata.CheckpointSchemaVersion is not PreviousCheckpointSchemaVersion
+            and not OldestCheckpointSchemaVersion)
         {
             throw new InvalidDataException(
                 "The persisted report metadata uses an unsupported checkpoint schema.");
         }
 
-        return row with
+        // Before v7 numeric report evidence lived only in observation rows.
+        // Carry forward the evidence still present at upgrade; missing legacy
+        // observations cannot reconstruct values that were already discarded.
+        var observations = rows.Where(static row =>
+                row.OperationKind == (uint)NativeReportPersistenceKind.Observation)
+            .ToDictionary(static row => (row.SourceHandle, row.CoverageScopeHandle,
+                row.RuleHandle, row.TargetHandle));
+        return rows.Select(row =>
         {
-            CheckpointSchemaVersion = NativeReportCoordinatorAbi.Version
-        };
+            if (row.OperationKind == (uint)NativeReportPersistenceKind.Metadata)
+                return row with { CheckpointSchemaVersion = NativeReportCoordinatorAbi.Version };
+            if (row.OperationKind != (uint)NativeReportPersistenceKind.Report
+                || !observations.TryGetValue((row.SourceHandle, row.CoverageScopeHandle,
+                    row.RuleHandle, row.TargetHandle), out var observation))
+                return row;
+            return row with
+            {
+                CurrentValue = ((NativeReportPersistenceFlags)observation.Flags)
+                    .HasFlag(NativeReportPersistenceFlags.CurrentValid) ? observation.CurrentValue : 0,
+                ValueSum = observation.SampleCount == 0 ? 0
+                    : observation.ValueSum / observation.SampleCount,
+                PeakValue = observation.PeakValue,
+                SampleCount = observation.SampleCount,
+                ActiveSampleCount = observation.ActiveSampleCount
+            };
+        }).ToArray();
     }
 
     internal static NativeReportPersistenceOperation[] RebindLoadedRows(
@@ -89,6 +114,13 @@ internal static class NativeReportCoordinatorPersistenceMigration
             if (row.RuleGeneration == rule.RuleGeneration)
             {
                 rebound.Add(row);
+                continue;
+            }
+            // Rule values own observations and counters, not report identity or
+            // lifecycle. Rebind the retained entry after a settings change.
+            if (kind == NativeReportPersistenceKind.Report)
+            {
+                rebound.Add(row with { RuleGeneration = rule.RuleGeneration });
                 continue;
             }
             if (IsCompatibleLegacyProfileGeneration(row, rule))

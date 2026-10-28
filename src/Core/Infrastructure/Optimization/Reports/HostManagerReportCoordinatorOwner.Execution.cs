@@ -495,6 +495,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner
                 protectionService.ProtectedTargetCount,
                 SampleIntervalSeconds)
             {
+                UnrecordedReportCount = checked((int)native.UnrecordedReportCount),
                 EvaluationState = evaluation.EvaluationState,
                 UnavailableRules = unavailableRules
             },
@@ -583,6 +584,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner
         var flags = (NativeReportPlanFlags)output.Flags;
         if (output.StructSize != SizeOf<NativeReportPlanOutput>()
             || output.ReportCount > checked((uint)reportCapacity)
+            || output.ActiveReportCount > output.ReportCount
             || output.PersistenceOperationCount > checked((uint)persistenceCapacity)
             || output.LastPlanEpoch != input.PlanEpoch
             || output.LastOperationEpoch != input.OperationEpoch
@@ -591,13 +593,12 @@ internal sealed partial class HostManagerReportCoordinatorOwner
             || (flags & ~NativeReportPlanFlags.Known) != 0
             || flags.HasFlag(NativeReportPlanFlags.HasMoreReports)
             || flags.HasFlag(NativeReportPlanFlags.HasMorePersistence)
-            || output.ReservedU32 != 0
             || output.ResidentByteCount == 0
             || output.Reserved[0] != 0
             || output.Reserved[1] != 0)
         {
             throw new InvalidOperationException(
-                "The native report plan output violates the fixed v5 contract.");
+                "The native report plan output violates the fixed v7 contract.");
         }
     }
 
@@ -631,7 +632,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner
             || output.Reserved[1] != 0)
         {
             throw new InvalidDataException(
-                "A native report output violates the fixed v5 contract.");
+                "A native report output violates the fixed v7 contract.");
         }
     }
 

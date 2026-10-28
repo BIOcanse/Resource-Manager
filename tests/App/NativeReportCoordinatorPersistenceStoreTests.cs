@@ -155,8 +155,10 @@ public sealed class NativeReportCoordinatorPersistenceStoreTests : IDisposable
                 CancellationToken.None));
     }
 
-    [Fact]
-    public async Task PreviousMetadataCheckpointIsUpgradedAtThePersistenceBoundary()
+    [Theory]
+    [InlineData(0x0005_0000U)]
+    [InlineData(0x0006_0000U)]
+    public async Task PreviousMetadataCheckpointIsUpgradedAtThePersistenceBoundary(uint version)
     {
         var store = new NativeReportCoordinatorPersistenceStore(CreateDatabase());
         var metadata = CreateRow(
@@ -165,7 +167,7 @@ public sealed class NativeReportCoordinatorPersistenceStoreTests : IDisposable
             mutation: 1,
             slotGeneration: 1) with
         {
-            CheckpointSchemaVersion = 0x0005_0000,
+            CheckpointSchemaVersion = version,
             CheckpointLogicalUtcMilliseconds = 1234
         };
 
@@ -176,6 +178,134 @@ public sealed class NativeReportCoordinatorPersistenceStoreTests : IDisposable
 
         Assert.Equal(NativeReportCoordinatorAbi.Version, loaded.CheckpointSchemaVersion);
         Assert.Equal(1234, loaded.CheckpointLogicalUtcMilliseconds);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task LegacyReportUpgradeRetainsLifecycleTrustAndEvidenceAcrossRepeatedLoads(
+        bool active, bool trusted)
+    {
+        var store = new NativeReportCoordinatorPersistenceStore(CreateDatabase());
+        var observation = CreateRow(NativeReportPersistenceKind.Observation, 11, 1, 1) with
+        {
+            SourceHandle = 101, CoverageScopeHandle = 102, RuleHandle = 103, TargetHandle = 104,
+            Flags = (uint)NativeReportPersistenceFlags.CurrentValid,
+            CurrentValue = 75, ValueSum = 210, PeakValue = 90,
+            SampleCount = 3, ActiveSampleCount = 2
+        };
+        var report = CreateRow(NativeReportPersistenceKind.Report, 12, 2, 1) with
+        {
+            SourceHandle = 101, CoverageScopeHandle = 102, RuleHandle = 103, TargetHandle = 104,
+            ReportHandle = 12,
+            Flags = (uint)((active ? NativeReportPersistenceFlags.Active : 0)
+                | (trusted ? NativeReportPersistenceFlags.Trusted : 0))
+        };
+        var metadata = CreateRow(NativeReportPersistenceKind.Metadata, 1, 3, 1) with
+        {
+            CheckpointSchemaVersion = 0x0006_0000
+        };
+        await store.PersistAsync(new[] { observation, report, metadata }, CancellationToken.None);
+
+        for (var restart = 0; restart < 2; restart++)
+        {
+            var loaded = await store.LoadAsync(CancellationToken.None);
+            var retained = Assert.Single(loaded, row => row.OperationKind == (uint)NativeReportPersistenceKind.Report);
+            Assert.Equal(report.Flags, retained.Flags);
+            Assert.Equal(75, retained.CurrentValue);
+            Assert.Equal(70, retained.ValueSum);
+            Assert.Equal(90, retained.PeakValue);
+            Assert.Equal(3UL, retained.SampleCount);
+            Assert.Equal(2UL, retained.ActiveSampleCount);
+            Assert.Equal(NativeReportCoordinatorAbi.Version,
+                Assert.Single(loaded, row => row.OperationKind == (uint)NativeReportPersistenceKind.Metadata)
+                    .CheckpointSchemaVersion);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RuleRebindingKeepsReportStateAndEvidenceButDropsChangedRuleObservations(bool active)
+    {
+        var plan = HostManagerTestPlanFactory.CreatePlan().ReportCoordinator;
+        var rule = plan.Recreate.Rules[0];
+        var source = CreateRow(NativeReportPersistenceKind.Source, 10, 1, 1) with
+        {
+            SourceHandle = rule.SourceHandle, CoverageScopeHandle = rule.CoverageScopeHandle
+        };
+        var observation = CreateRow(NativeReportPersistenceKind.Observation, 11, 1, 1) with
+        {
+            SourceHandle = rule.SourceHandle, CoverageScopeHandle = rule.CoverageScopeHandle,
+            RuleHandle = rule.RuleHandle, RuleGeneration = rule.RuleGeneration ^ 1, TargetHandle = 104
+        };
+        var report = observation with
+        {
+            OperationKind = (uint)NativeReportPersistenceKind.Report, IdentityHandle = 12,
+            ReportHandle = 12, MutationVersion = 2, FamilyHandle = rule.FamilyHandle,
+            ReportTypeHandle = rule.ReportTypeHandle, ResourceKindHandle = rule.ResourceKindHandle,
+            PayloadHandle = rule.PayloadHandle,
+            Flags = (uint)(NativeReportPersistenceFlags.Trusted
+                | (active ? NativeReportPersistenceFlags.Active : 0)),
+            CurrentValue = 91, ValueSum = 87, PeakValue = 94, SampleCount = 6
+        };
+        var rebound = NativeReportCoordinatorPersistenceMigration.RebindLoadedRows([source, observation, report], plan);
+
+        Assert.Equal(2, rebound.Length);
+        Assert.Contains(source, rebound);
+        var retained = Assert.Single(rebound, row => row.OperationKind == (uint)NativeReportPersistenceKind.Report);
+        Assert.Equal(report with { RuleGeneration = rule.RuleGeneration }, retained);
+    }
+
+    [Fact]
+    public async Task CurrentCheckpointKeepsReportEvidenceIndependentOfLaterObservations()
+    {
+        var store = new NativeReportCoordinatorPersistenceStore(CreateDatabase());
+        var observation = CreateRow(NativeReportPersistenceKind.Observation, 11, 1, 1) with
+        {
+            SourceHandle = 101, CoverageScopeHandle = 102, RuleHandle = 103, TargetHandle = 104,
+            Flags = (uint)NativeReportPersistenceFlags.CurrentValid,
+            CurrentValue = 1, ValueSum = 1, PeakValue = 1, SampleCount = 1
+        };
+        var report = observation with
+        {
+            OperationKind = (uint)NativeReportPersistenceKind.Report, IdentityHandle = 12,
+            ReportHandle = 12, MutationVersion = 2, Flags = (uint)NativeReportPersistenceFlags.Trusted,
+            CurrentValue = 91, ValueSum = 87, PeakValue = 94, SampleCount = 6,
+            WindowDeltaValue = 18, SecondaryCurrentValue = 54
+        };
+        var metadata = CreateRow(NativeReportPersistenceKind.Metadata, 1, 3, 1) with
+        {
+            CheckpointSchemaVersion = NativeReportCoordinatorAbi.Version
+        };
+        await store.PersistAsync(new[] { observation, report, metadata }, CancellationToken.None);
+
+        var loaded = await store.LoadAsync(CancellationToken.None);
+        Assert.Equal(report, Assert.Single(loaded,
+            row => row.OperationKind == (uint)NativeReportPersistenceKind.Report));
+    }
+
+    [Fact]
+    public async Task UnsupportedCheckpointIsRejectedBeforeMigrationWrites()
+    {
+        var database = CreateDatabase();
+        var store = new NativeReportCoordinatorPersistenceStore(database);
+        var metadata = CreateRow(NativeReportPersistenceKind.Metadata, 1, 1, 1) with
+        {
+            CheckpointSchemaVersion = 0x0004_0000
+        };
+        await store.PersistAsync(new[] { metadata }, CancellationToken.None);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => store.LoadAsync(CancellationToken.None));
+        await using var connection = await database.OpenConnectionAsync(CancellationToken.None);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT row_payload FROM host_manager_report_coordinator_rows;";
+        var payload = Assert.IsType<byte[]>(await command.ExecuteScalarAsync());
+        Assert.Equal(0x0004_0000U,
+            System.Runtime.InteropServices.MemoryMarshal.Read<NativeReportPersistenceOperation>(payload)
+                .CheckpointSchemaVersion);
     }
 
     [Fact]

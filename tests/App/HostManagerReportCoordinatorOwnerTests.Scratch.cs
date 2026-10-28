@@ -503,22 +503,22 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         var report = Assert.Single((await owner.GetReportsAsync(CancellationToken.None)).Reports);
         Assert.Equal(OptimizationReportStates.Active, report.State);
         var before = ReportOwnerField<HostManagerReportReadModel>(owner, "readModel")!;
-        persistence.FailSuppressedReportBatchOnce = true;
+        persistence.FailTrustedReportBatchOnce = true;
         var failure = await Assert.ThrowsAsync<IOException>(() => owner.TrustReportAsync(report.Id, CancellationToken.None));
         Assert.Equal("recorded-derived-report-failure", failure.Message);
-        Assert.False(persistence.FailSuppressedReportBatchOnce);
+        Assert.False(persistence.FailTrustedReportBatchOnce);
         Assert.Same(before, ReportOwnerField<HostManagerReportReadModel>(owner, "readModel"));
         Assert.Equal(OptimizationReportStates.Active, (await owner.GetReportAsync(report.Id, CancellationToken.None))!.State);
         Assert.Empty(await owner.GetTrustedTargetsAsync(CancellationToken.None));
-        var failedBatch = persistence.FailedSuppressedReportBatch!;
+        var failedBatch = persistence.FailedTrustedReportBatch!;
         Assert.NotEmpty(failedBatch);
         Assert.DoesNotContain(failedBatch, row => row.OperationKind == (uint)NativeReportPersistenceKind.Trust);
         var derived = Assert.Single(failedBatch, row => row.OperationKind == (uint)NativeReportPersistenceKind.Report);
-        Assert.NotEqual(0U, derived.Flags & (uint)NativeReportPersistenceFlags.TrustedSuppressed);
+        Assert.NotEqual(0U, derived.Flags & (uint)NativeReportPersistenceFlags.Trusted);
         var partialRows = await inner.LoadAsync(CancellationToken.None);
         Assert.Single(partialRows, row => row.OperationKind == (uint)NativeReportPersistenceKind.Trust);
         Assert.Equal(0U, Assert.Single(partialRows, row => row.OperationKind == (uint)NativeReportPersistenceKind.Report)
-            .Flags & (uint)NativeReportPersistenceFlags.TrustedSuppressed);
+            .Flags & (uint)NativeReportPersistenceFlags.Trusted);
         var workspace = ReportOwnerField<NativeReportCoordinatorWorkspace>(owner, "workspace")!;
         Assert.NotNull(workspace.PendingPlan);
         ledger.SetMode(LedgerTableMode.Optimize);
@@ -526,25 +526,99 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
 
         var recovered = await owner.RefreshReportsAsync(CancellationToken.None);
         Assert.Null(workspace.PendingPlan);
-        Assert.Equal(OptimizationReportStates.TrustedSuppressed, Assert.Single(recovered.Reports).State);
-        Assert.Equal(OptimizationReportStates.TrustedSuppressed,
-            (await owner.GetReportAsync(report.Id, CancellationToken.None))!.State);
+        Assert.Equal(OptimizationReportStates.Active, Assert.Single(recovered.Reports).State);
+        Assert.True(Assert.Single(recovered.Reports).Trusted);
+        Assert.Equal(1, recovered.Status.ActiveReportCount);
+        Assert.Empty(owner.ReadSoftwareIssueSnapshot().Signals);
+        Assert.True((await owner.GetReportAsync(report.Id, CancellationToken.None))!.Trusted);
         var trust = Assert.Single(recovered.TrustedTargets);
         var stored = Assert.Single(await inner.LoadAsync(CancellationToken.None),
             row => row.OperationKind == (uint)NativeReportPersistenceKind.Report);
         Assert.Equal(derived.IdentityHandle, stored.IdentityHandle);
         Assert.Equal(derived.MutationVersion, stored.MutationVersion);
-        Assert.NotEqual(0U, stored.Flags & (uint)NativeReportPersistenceFlags.TrustedSuppressed);
+        Assert.NotEqual(0U, stored.Flags & (uint)NativeReportPersistenceFlags.Trusted);
 
         Assert.True(await owner.RemoveTrustedTargetAsync(trust.Id, CancellationToken.None));
         Assert.Equal(OptimizationReportStates.Active, Assert.Single((await owner.GetReportsAsync(CancellationToken.None)).Reports).State);
         Assert.Equal(OptimizationReportStates.Active, (await owner.GetReportAsync(report.Id, CancellationToken.None))!.State);
+        Assert.False((await owner.GetReportAsync(report.Id, CancellationToken.None))!.Trusted);
+        Assert.Single(owner.ReadSoftwareIssueSnapshot().Signals);
         Assert.Empty(await owner.GetTrustedTargetsAsync(CancellationToken.None));
         Assert.Equal(0U, Assert.Single(await inner.LoadAsync(CancellationToken.None),
             row => row.OperationKind == (uint)NativeReportPersistenceKind.Report)
-            .Flags & (uint)NativeReportPersistenceFlags.TrustedSuppressed);
+            .Flags & (uint)NativeReportPersistenceFlags.Trusted);
         Assert.Null(workspace.PendingPlan);
         Assert.Equal(ReportLedgerBytes(owner, ledger) == 0 ? 0UL : 1UL, ledger.Tick().Released);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RestartAfterCommittedTrustAndFailedReportBatchRestoresTrustedRetainedReport(bool history)
+    {
+        using var ledger = new ResourceManagerLedgerOwner();
+        var inner = new NativeReportCoordinatorPersistenceStore(CreateDatabase());
+        var persistence = new ControlledReportStore(inner);
+        var resources = new CachedResourceSource();
+        OptimizationReportItem retained;
+        NativeReportPersistenceOperation untrustedRow;
+        await using (var owner = ScratchOwner(persistence, ledger.CreateScratch, resources, out _))
+        {
+            var observed = DateTimeOffset.UtcNow.AddMinutes(-1);
+            for (var sample = 0; sample < (history ? 5 : 3); sample++)
+            {
+                resources.Publish(CreateSoftwareMemorySnapshot(41, observed.AddSeconds(sample * 10), sample < 3 ? 18 : 5));
+                await owner.RefreshReportsAsync(CancellationToken.None);
+            }
+            retained = Assert.Single((await owner.GetReportsAsync(CancellationToken.None)).Reports);
+            Assert.Equal(history ? OptimizationReportStates.History : OptimizationReportStates.Active, retained.State);
+            Assert.False(retained.Trusted);
+            persistence.FailTrustedReportBatchOnce = true;
+
+            var failure = await Assert.ThrowsAsync<IOException>(() => owner.TrustReportAsync(retained.Id, CancellationToken.None));
+
+            Assert.Equal("recorded-derived-report-failure", failure.Message);
+            Assert.False(persistence.FailTrustedReportBatchOnce);
+            var rows = await inner.LoadAsync(CancellationToken.None);
+            Assert.Single(rows, row => row.OperationKind == (uint)NativeReportPersistenceKind.Trust);
+            untrustedRow = Assert.Single(rows, row => row.OperationKind == (uint)NativeReportPersistenceKind.Report);
+            Assert.Equal(0U, untrustedRow.Flags & (uint)NativeReportPersistenceFlags.Trusted);
+            Assert.Equal(history ? 0U : (uint)NativeReportPersistenceFlags.Active,
+                untrustedRow.Flags & (uint)NativeReportPersistenceFlags.Active);
+            Assert.NotNull(ReportOwnerField<NativeReportCoordinatorWorkspace>(owner, "workspace")!.PendingPlan);
+            Assert.False((await owner.GetReportAsync(retained.Id, CancellationToken.None))!.Trusted);
+            // Dispose with the failed derived batch pending: no same-process Refresh recovery.
+        }
+        Assert.Equal(untrustedRow, Assert.Single(await inner.LoadAsync(CancellationToken.None),
+            row => row.OperationKind == (uint)NativeReportPersistenceKind.Report));
+
+        // An unavailable resource source cannot produce evidence or judge the restored lifecycle.
+        await using var restarted = ScratchOwner(persistence, ledger.CreateScratch, new CachedResourceSource(), out _);
+        var restored = await restarted.RefreshReportsAsync(CancellationToken.None);
+        var report = Assert.Single(restored.Reports);
+
+        Assert.Equal(retained.Id, report.Id);
+        Assert.Equal(retained.State, report.State);
+        Assert.Equal(retained.CreatedAt, report.CreatedAt);
+        Assert.Equal(retained.FirstObservedAt, report.FirstObservedAt);
+        Assert.Equal(retained.LastObservedAt, report.LastObservedAt);
+        Assert.Equal(retained.Evidence, report.Evidence);
+        Assert.Equal(retained.Target.SoftwareId, report.Target.SoftwareId);
+        Assert.Equal(retained.Target.SoftwareName, report.Target.SoftwareName);
+        Assert.True(report.Trusted);
+        Assert.True((await restarted.GetReportAsync(retained.Id, CancellationToken.None))!.Trusted);
+        Assert.Single(restored.TrustedTargets);
+        Assert.Equal(history ? 0 : 1, restored.Status.ActiveReportCount);
+        Assert.Empty(restarted.ReadSoftwareIssueSnapshot().Signals);
+        var reconciled = Assert.Single(await inner.LoadAsync(CancellationToken.None),
+            row => row.OperationKind == (uint)NativeReportPersistenceKind.Report);
+        Assert.NotEqual(0U, reconciled.Flags & (uint)NativeReportPersistenceFlags.Trusted);
+        Assert.Equal(untrustedRow.Flags & (uint)NativeReportPersistenceFlags.Active,
+            reconciled.Flags & (uint)NativeReportPersistenceFlags.Active);
+        Assert.Equal(untrustedRow.CurrentValue, reconciled.CurrentValue);
+        Assert.Equal(untrustedRow.ValueSum, reconciled.ValueSum);
+        Assert.Equal(untrustedRow.PeakValue, reconciled.PeakValue);
+        Assert.Equal(untrustedRow.SampleCount, reconciled.SampleCount);
     }
 
     private HostManagerReportCoordinatorOwner ScratchOwner(INativeReportCoordinatorPersistenceStore persistence,
@@ -593,8 +667,8 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         internal bool BlockNext;
         internal bool FailNext;
         internal bool FailAfterCommitNext;
-        internal bool FailSuppressedReportBatchOnce;
-        internal NativeReportPersistenceOperation[]? FailedSuppressedReportBatch;
+        internal bool FailTrustedReportBatchOnce;
+        internal NativeReportPersistenceOperation[]? FailedTrustedReportBatch;
         internal bool IgnoreWaitCancellation;
         internal TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -606,15 +680,15 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
             IReadOnlyDictionary<ulong, HostManagerReportTargetDescriptor>? targets = null)
         {
             if (FailNext) { FailNext = false; throw new IOException("recorded-persist-failure"); }
-            if (FailSuppressedReportBatchOnce)
+            if (FailTrustedReportBatchOnce)
             {
                 var batch = operations.ToArray();
                 if (!batch.Any(row => row.OperationKind == (uint)NativeReportPersistenceKind.Trust)
                     && batch.Any(row => row.OperationKind == (uint)NativeReportPersistenceKind.Report
-                        && (row.Flags & (uint)NativeReportPersistenceFlags.TrustedSuppressed) != 0))
+                        && (row.Flags & (uint)NativeReportPersistenceFlags.Trusted) != 0))
                 {
-                    FailSuppressedReportBatchOnce = false;
-                    FailedSuppressedReportBatch = batch;
+                    FailTrustedReportBatchOnce = false;
+                    FailedTrustedReportBatch = batch;
                     throw new IOException("recorded-derived-report-failure");
                 }
             }

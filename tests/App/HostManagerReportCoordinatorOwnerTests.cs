@@ -408,12 +408,32 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
                 systemPercent: 5));
             var cleared = await owner.RefreshReportsAsync(timeout.Token);
 
-            Assert.Empty(cleared.Reports);
+            var history = Assert.Single(cleared.Reports);
+            Assert.Equal(report.Id, history.Id);
+            Assert.Equal(OptimizationReportStates.History, history.State);
+            Assert.False(history.Trusted);
+            Assert.Equal(report.CreatedAt, history.CreatedAt);
+            Assert.Equal(report.LastObservedAt, history.LastObservedAt);
+            Assert.Equal(0, cleared.Status.ActiveReportCount);
             Assert.Empty(owner.ReadSoftwareIssueSnapshot().Signals);
             Assert.NotNull(cleared.Status.LastEvaluationAt);
             Assert.Equal(
                 firstObservedAt.AddSeconds(40),
                 cleared.Status.LastObservedAt);
+
+            for (var sample = 0; sample < 3; sample++)
+            {
+                resources.Publish(CreateSoftwareMemorySnapshot(46 + sample,
+                    firstObservedAt.AddSeconds(50 + sample * 10), 18));
+                await owner.RefreshReportsAsync(timeout.Token);
+            }
+            var reactivated = await owner.GetReportsAsync(timeout.Token);
+            var repeated = Assert.Single(reactivated.Reports);
+            Assert.Equal(report.Id, repeated.Id);
+            Assert.Equal(report.CreatedAt, repeated.CreatedAt);
+            Assert.Equal(OptimizationReportStates.Active, repeated.State);
+            Assert.Equal(1, reactivated.Status.ActiveReportCount);
+            Assert.Equal(report.Id, Assert.Single(owner.ReadSoftwareIssueSnapshot().Signals).ReportId);
         }
         finally
         {
@@ -644,7 +664,8 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
             var before = Assert.Single(await persistence.LoadAsync(timeout.Token),
                 row => row.OperationKind == (uint)NativeReportPersistenceKind.Observation
                     && row.RuleHandle == 1037);
-            Assert.Equal(7U, before.ConsecutiveMisses);
+            // Complete absence judges the target gone immediately, without safe-sample hysteresis.
+            Assert.Equal(0U, before.ConsecutiveMisses);
             Assert.Equal((ulong)initialSamples, before.SampleCount);
             Assert.Equal(0U, before.Flags & (uint)NativeReportPersistenceFlags.Active);
             Assert.Empty(owner.ReadSoftwareIssueSnapshot().Signals);
@@ -659,14 +680,17 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
             Assert.Equal(before.IdentityHandle, after.IdentityHandle);
             Assert.Equal(before.ConsecutiveMisses, after.ConsecutiveMisses);
             Assert.Equal(before.SampleCount, after.SampleCount);
-            Assert.Empty(reloaded.Reports);
+            Assert.Equal(initiallyActive ? 1 : 0, reloaded.Reports.Count);
+            Assert.All(reloaded.Reports, report => Assert.Equal(OptimizationReportStates.History, report.State));
+            Assert.Equal(0, reloaded.Status.ActiveReportCount);
 
             for (var index = 0; index < 3; index++)
             {
                 sample++;
                 resources.Publish(CreateSoftwareMemorySnapshot(restartProvider ? 41 + sample : 41, start.AddSeconds(sample), 18));
                 var refreshed = await owner.RefreshReportsAsync(timeout.Token);
-                Assert.Equal(index == 2 ? 1 : 0, refreshed.Reports.Count);
+                Assert.Equal(initiallyActive || index == 2 ? 1 : 0, refreshed.Reports.Count);
+                Assert.Equal(index == 2 ? 1 : 0, refreshed.Status.ActiveReportCount);
             }
             Assert.Equal("software:editor", Assert.Single(owner.ReadSoftwareIssueSnapshot().Signals).SoftwareId);
             Assert.Equal(1, metrics.ActiveSubscriptions);
@@ -794,10 +818,10 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
         Assert.Empty((await Observe(1.2, 0.1)).Reports);
         Assert.Equal(OptimizationReportTypes.SystemInterruptPressure, Assert.Single((await Observe(12, 0.1)).Reports).Type);
         Assert.Single((await Observe(0.2, 0.1)).Reports);
-        Assert.Empty((await Observe(0.2, 0.1)).Reports);
+        Assert.Equal(OptimizationReportStates.History, Assert.Single((await Observe(0.2, 0.1)).Reports).State);
         Assert.Single((await Observe(0.2, 5)).Reports);
         Assert.Single((await Observe(0.2, 0.1)).Reports);
-        Assert.Empty((await Observe(0.2, 0.1)).Reports);
+        Assert.Equal(OptimizationReportStates.History, Assert.Single((await Observe(0.2, 0.1)).Reports).State);
     }
 
     [Fact]
@@ -833,6 +857,8 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests : IDisposable
         Assert.Equal("Editor", trust.Name);
         Assert.Equal("software:software:editor", trust.TargetKey);
         var active = Assert.Single(restored.Reports);
+        Assert.Equal(OptimizationReportStates.Active, active.State);
+        Assert.True(active.Trusted);
         Assert.Equal("software:editor", active.Target.SoftwareId);
         Assert.Equal("Editor", active.Target.SoftwareName);
         Assert.Empty(active.Target.ProcessIds);

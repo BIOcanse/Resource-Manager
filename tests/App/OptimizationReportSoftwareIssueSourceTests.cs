@@ -1,11 +1,47 @@
 using ResourceManager.App.Application.SoftwareIssues;
 using ResourceManager.App.Domain.Software;
+using ResourceManager.App.Domain.Optimization;
+using ResourceManager.App.Domain.RuntimeSpecialization;
+using ResourceManager.App.Domain.SystemHealth;
+using ResourceManager.App.Infrastructure.Optimization.Reports;
 using ResourceManager.App.Infrastructure.SoftwareIssues;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed class OptimizationReportSoftwareIssueSourceTests
 {
+    [Theory]
+    [InlineData(OptimizationReportStates.Active, false, true)]
+    [InlineData(OptimizationReportStates.Active, true, false)]
+    [InlineData(OptimizationReportStates.History, false, false)]
+    [InlineData(OptimizationReportStates.History, true, false)]
+    public async Task CurrentDynamicTagsOnlyConsumeActiveUntrustedReportSignals(string state, bool trusted, bool expected)
+    {
+        var at = DateTimeOffset.UnixEpoch;
+        var report = new OptimizationReportItem("retained", OptimizationReportTypes.BackgroundHighUsage,
+            state, OptimizationSeverity.Warning, OptimizationConfidence.High, at, at, at, at,
+            OptimizationActivityContext.Unknown(),
+            new OptimizationReportTarget(OptimizationReportTargetTypes.Software, "software:app", "App",
+                "app", "App", SoftwareKinds.Other, "other", [], [], null),
+            new OptimizationReportEvidence(OptimizationResourceKinds.Memory, 100, 100, 100,
+                OptimizationValueUnits.Bytes, 1, 1, 1), []) { Trusted = trusted };
+        var signal = HostManagerSoftwareIssueSignalProjection.ProjectReport(report,
+            HostManagerReportFactKind.SoftwareMemoryBytes, SystemInterruptSnapshot.Unavailable("test", "test"), 10);
+        var source = new OptimizationReportSoftwareIssueSource(
+            new MutableSignalSource(new OptimizationSoftwareIssueSnapshot(at, signal is null ? [] : [signal])),
+            new StaticIssueCatalog());
+
+        var assignments = await source.CollectAsync([Software("app", SoftwareKinds.Other)], CancellationToken.None);
+
+        if (expected)
+        {
+            var tag = Assert.Single(assignments).Issue;
+            Assert.Equal("dynamic:abnormal_memory_usage:app", tag.Id);
+            Assert.Equal([report.Id], tag.ReportIds);
+        }
+        else Assert.Empty(assignments);
+    }
+
     [Fact]
     public async Task MemorySignalTargetsNonGameAndDisappearsWithReportSnapshot()
     {

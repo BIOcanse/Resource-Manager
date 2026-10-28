@@ -29,7 +29,7 @@ public static class OptimizationReportTypes
 public static class OptimizationReportStates
 {
     public const string Active = "active";
-    public const string TrustedSuppressed = "trusted_suppressed";
+    public const string History = "history";
 }
 
 public static class OptimizationSeverity
@@ -66,7 +66,10 @@ public sealed record OptimizationReportItem(
     OptimizationActivityContext Context,
     OptimizationReportTarget Target,
     OptimizationReportEvidence Evidence,
-    IReadOnlyList<OptimizationReportAction> SuggestedActions);
+    IReadOnlyList<OptimizationReportAction> SuggestedActions)
+{
+    public bool Trusted { get; init; }
+}
 
 public sealed record OptimizationReportAction(
     string Id,
@@ -83,6 +86,7 @@ public sealed record OptimizationRecorderStatus(
     int ProtectedCount,
     int SampleIntervalSeconds)
 {
+    public int UnrecordedReportCount { get; init; }
     public string EvaluationState { get; init; } = "notEvaluated";
     public IReadOnlyList<string> UnavailableRules { get; init; } = [];
 }

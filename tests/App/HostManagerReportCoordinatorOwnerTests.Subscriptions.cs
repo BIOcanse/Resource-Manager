@@ -142,7 +142,11 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
             Assert.Equal(50 * 1024 * 1024, report.Evidence.Process.MemoryBytes);
             sources.Resources.Publish(HostManagerStrayProcessReportFactProjectorTests.Memory(901));
             sources.ProcessSnapshot = HostManagerStrayProcessReportFactProjectorTests.Processes(901, cpu: 0.001);
-            Assert.Empty((await owner.RefreshReportsAsync(CancellationToken.None)).Reports);
+            var cleared = await owner.RefreshReportsAsync(CancellationToken.None);
+            var history = Assert.Single(cleared.Reports);
+            Assert.Equal(report.Id, history.Id);
+            Assert.Equal(ResourceManager.App.Domain.Optimization.OptimizationReportStates.History, history.State);
+            Assert.Equal(0, cleared.Status.ActiveReportCount);
         }
         finally { await owner.StopAsync(CancellationToken.None); }
     }

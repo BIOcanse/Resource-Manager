@@ -27,6 +27,8 @@ pub const RuleSlot = struct {
 
 pub const ObservationSlot = struct {
     occupied: bool = false,
+    decision: enum { unknown, active, clear, missing } = .unknown,
+    evidence_available: bool = false,
     rolling: bool = false,
     slot_generation: u64 = 0,
     active: bool = false,
@@ -84,7 +86,7 @@ pub const ReportSlot = struct {
     occupied: bool = false,
     slot_generation: u64 = 0,
     active: bool = false,
-    trusted_suppressed: bool = false,
+    trusted: bool = false,
     delete_pending: bool = false,
     report_handle: u64 = 0,
     target_handle: u64 = 0,
@@ -100,6 +102,13 @@ pub const ReportSlot = struct {
     last_observed_at_utc_ms: i64 = 0,
     priority: u32 = 0,
     severity: u32 = 0,
+    current_value: f64 = 0,
+    average_value: f64 = 0,
+    peak_value: f64 = 0,
+    window_24h_value: f64 = 0,
+    window_7d_value: f64 = 0,
+    sample_count: u64 = 0,
+    active_sample_count: u64 = 0,
     mutation_version: u64 = 0,
     persisted_mutation_version: u64 = 0,
 };
@@ -864,6 +873,16 @@ pub const Session = struct {
 
 pub fn lockMutex(mutex: *std.atomic.Mutex) void {
     while (!mutex.tryLock()) std.atomic.spinLoopHint();
+}
+
+pub fn reportTrustedIn(trusts: []const TrustSlot, index: []const u32, target: u64, family: u64) bool {
+    if (findPair(index, trusts, target, family, TrustSlot, trustKeys)) |slot| {
+        if (trusts[slot].committed) return true;
+    }
+    if (findPair(index, trusts, target, protocol.TrustFamily.all, TrustSlot, trustKeys)) |slot| {
+        return trusts[slot].committed;
+    }
+    return false;
 }
 
 pub fn firstFreeFrom(comptime T: type, slots: []T, cursor: u32) ?u32 {

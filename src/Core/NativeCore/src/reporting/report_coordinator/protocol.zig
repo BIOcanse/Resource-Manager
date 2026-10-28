@@ -1,7 +1,7 @@
 const growth = @import("../../common/workspace_growth.zig");
 const std = @import("std");
 
-pub const abi_version: u32 = 0x0006_0000;
+pub const abi_version: u32 = 0x0007_0000;
 
 pub const TrustFamily = struct {
     pub const all: u64 = std.math.maxInt(u64);
@@ -38,17 +38,17 @@ pub const ObservationFlags = struct {
 
 pub const ReportFlags = struct {
     pub const active: u32 = 1 << 0;
-    pub const trusted_suppressed: u32 = 1 << 1;
-    pub const known: u32 = active | trusted_suppressed;
+    pub const trusted: u32 = 1 << 1;
+    pub const known: u32 = active | trusted;
 };
 
 pub const PersistenceFlags = struct {
     pub const delete: u32 = 1 << 0;
     pub const active: u32 = 1 << 1;
-    pub const trusted_suppressed: u32 = 1 << 2;
+    pub const trusted: u32 = 1 << 2;
     pub const current_valid: u32 = 1 << 3;
     pub const secondary_current_valid: u32 = 1 << 4;
-    pub const known: u32 = delete | active | trusted_suppressed | current_valid |
+    pub const known: u32 = delete | active | trusted | current_valid |
         secondary_current_valid;
 };
 
@@ -488,7 +488,7 @@ pub const PlanOutput = extern struct {
     bucket_count: u32,
     report_total_count: u32,
     trust_count: u32,
-    reserved_u32: u32,
+    unrecorded_report_count: u32,
     first_mutation_version: u64,
     last_mutation_version: u64,
     session_instance_low: u64,

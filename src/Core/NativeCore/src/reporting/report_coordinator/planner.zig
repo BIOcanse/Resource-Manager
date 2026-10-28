@@ -205,14 +205,14 @@ pub fn plan(
         .struct_size = @sizeOf(protocol.PlanOutput),
         .report_count = @intCast(report_count),
         .persistence_operation_count = @intCast(operation_count),
-        .active_report_count = @intCast(report_total),
+        .active_report_count = activeReportCount(session),
         .trusted_report_count = trustedReportCount(session),
         .source_count = occupiedCount(state.SourceSlot, session.sources),
         .observation_count = occupiedCount(state.ObservationSlot, session.observations),
         .bucket_count = occupiedCount(state.BucketSlot, session.buckets),
         .report_total_count = occupiedCount(state.ReportSlot, session.reports),
         .trust_count = committedTrustCount(session),
-        .reserved_u32 = 0,
+        .unrecorded_report_count = rules.unrecordedReportCount(session),
         .first_mutation_version = if (operation_count == 0)
             0
         else
@@ -303,7 +303,7 @@ fn replayPending(
 fn collectReportOrder(session: *state.Session) usize {
     var count: usize = 0;
     for (session.reports, 0..) |report, index| {
-        if (!report.occupied or report.delete_pending or !report.active) continue;
+        if (!report.occupied or report.delete_pending) continue;
         session.report_order[count] = @intCast(index);
         count += 1;
     }
@@ -331,17 +331,8 @@ fn reportOutput(
     slot_index: u32,
 ) protocol.ReportOutput {
     const report = session.reports[slot_index];
-    const observation = if (report.observation_index != state.no_index and
-        report.observation_index < session.observations.len)
-        session.observations[report.observation_index]
-    else
-        state.ObservationSlot{};
-    const windows = if (report.observation_index == state.no_index)
-        window.WindowValues{}
-    else
-        window.values(session, report.observation_index);
-    var flags: u32 = protocol.ReportFlags.active;
-    if (report.trusted_suppressed) flags |= protocol.ReportFlags.trusted_suppressed;
+    var flags: u32 = if (report.active) protocol.ReportFlags.active else 0;
+    if (report.trusted) flags |= protocol.ReportFlags.trusted;
     return .{
         .struct_size = @sizeOf(protocol.ReportOutput),
         .flags = flags,
@@ -357,16 +348,13 @@ fn reportOutput(
         .created_at_utc_milliseconds = report.created_at_utc_ms,
         .updated_at_utc_milliseconds = report.updated_at_utc_ms,
         .last_observed_at_utc_milliseconds = report.last_observed_at_utc_ms,
-        .current_value = if (observation.current_valid) observation.current_value else 0,
-        .average_value = if (observation.sample_count == 0)
-            0
-        else
-            observation.value_sum / @as(f64, @floatFromInt(observation.sample_count)),
-        .peak_value = observation.peak_value,
-        .window_24h_value = windows.sum_24h,
-        .window_7d_value = windows.sum_7d,
-        .sample_count = observation.sample_count,
-        .active_sample_count = observation.active_sample_count,
+        .current_value = report.current_value,
+        .average_value = report.average_value,
+        .peak_value = report.peak_value,
+        .window_24h_value = report.window_24h_value,
+        .window_7d_value = report.window_7d_value,
+        .sample_count = report.sample_count,
+        .active_sample_count = report.active_sample_count,
         .priority = report.priority,
         .severity = report.severity,
         .slot_index = slot_index,
@@ -409,8 +397,16 @@ fn occupiedCount(comptime T: type, slots: []const T) u32 {
 fn trustedReportCount(session: *const state.Session) u32 {
     var count: u32 = 0;
     for (session.reports) |report| {
-        if (report.occupied and report.active and report.trusted_suppressed and
+        if (report.occupied and report.active and report.trusted and
             !report.delete_pending) count += 1;
+    }
+    return count;
+}
+
+fn activeReportCount(session: *const state.Session) u32 {
+    var count: u32 = 0;
+    for (session.reports) |report| {
+        if (report.occupied and !report.delete_pending and report.active) count += 1;
     }
     return count;
 }

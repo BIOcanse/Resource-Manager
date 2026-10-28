@@ -57,6 +57,10 @@ pub fn replace(
         if (session.staging_rules[found].value.rule_generation != rule.rule_generation) {
             return .invalid_argument;
         }
+        if (session.findRule(rule.rule_handle)) |index| {
+            const current = session.rules[index].value;
+            if (current.rule_generation == rule.rule_generation and !sameRuleDefinition(&current, &rule)) return .invalid_argument;
+        }
     }
 
     for (session.observations) |observation| {
@@ -69,20 +73,78 @@ pub fn replace(
         const replacement = session.staging_rules[replacement_index].value;
         const current_index = session.findRule(observation.rule_handle) orelse
             return .invalid_argument;
-        if (!sameRuleDefinition(
-            &session.rules[current_index].value,
-            &replacement,
-        ) or replacement.rule_generation != observation.rule_generation or
-            replacement.source_handle != observation.source_handle or
+        const current = session.rules[current_index].value;
+        if (replacement.source_handle != observation.source_handle or
             replacement.coverage_scope_handle != observation.coverage_scope_handle or
+            replacement.family_handle != current.family_handle or
+            replacement.report_type_handle != current.report_type_handle or
+            replacement.resource_kind_handle != current.resource_kind_handle or
             ((replacement.flags & protocol.RuleFlags.rolling) != 0) != observation.rolling)
         {
             return .invalid_argument;
         }
     }
 
+    // Reset only changed rules' evidence and counters. Retained report snapshots
+    // have their own lifetime and are never removed by a rule rebind.
+    var reset_count: u64 = 0;
+    for (session.observations) |observation| {
+        if (!observation.occupied or observation.delete_pending) continue;
+        const replacement = session.staging_rules[state.findRuleIn(session.staging_rules, session.staging_rule_index, observation.rule_handle).?].value;
+        const current = session.rules[session.findRule(observation.rule_handle).?].value;
+        if (!sameRuleDefinition(&current, &replacement)) reset_count += 1;
+    }
+    for (session.buckets) |bucket| {
+        if (!bucket.occupied or bucket.delete_pending) continue;
+        const replacement_index = state.findRuleIn(session.staging_rules, session.staging_rule_index, bucket.rule_handle) orelse return .invalid_argument;
+        const current = session.rules[session.findRule(bucket.rule_handle).?].value;
+        if (!sameRuleDefinition(&current, &session.staging_rules[replacement_index].value)) reset_count += 1;
+    }
+    if (reset_count != 0 and (session.next_mutation_version == 0 or reset_count > std.math.maxInt(u64) - session.next_mutation_version)) return .out_of_memory;
+    for (session.observations) |*observation| {
+        if (!observation.occupied or observation.delete_pending) continue;
+        const replacement = session.staging_rules[state.findRuleIn(session.staging_rules, session.staging_rule_index, observation.rule_handle).?].value;
+        const current = session.rules[session.findRule(observation.rule_handle).?].value;
+        if (sameRuleDefinition(&current, &replacement)) continue;
+        observation.* = .{
+            .occupied = true,
+            .rolling = observation.rolling,
+            .slot_generation = observation.slot_generation,
+            .observation_handle = observation.observation_handle,
+            .source_handle = observation.source_handle,
+            .coverage_scope_handle = observation.coverage_scope_handle,
+            .rule_handle = observation.rule_handle,
+            .rule_generation = replacement.rule_generation,
+            .target_handle = observation.target_handle,
+            .first_observed_at_utc_ms = @max(session.logical_utc_ms, input.command_utc_milliseconds),
+            .last_observed_at_utc_ms = @max(session.logical_utc_ms, input.command_utc_milliseconds),
+            .mutation_version = session.allocateMutation().?,
+            .persisted_mutation_version = observation.persisted_mutation_version,
+        };
+    }
+    for (session.buckets) |*bucket| {
+        if (!bucket.occupied or bucket.delete_pending) continue;
+        const replacement = session.staging_rules[state.findRuleIn(session.staging_rules, session.staging_rule_index, bucket.rule_handle).?].value;
+        const current = session.rules[session.findRule(bucket.rule_handle).?].value;
+        if (sameRuleDefinition(&current, &replacement)) continue;
+        // Keep the persistent identity while discarding all old window samples.
+        bucket.* = .{
+            .occupied = true,
+            .slot_generation = bucket.slot_generation,
+            .bucket_handle = bucket.bucket_handle,
+            .source_handle = bucket.source_handle,
+            .rule_handle = bucket.rule_handle,
+            .rule_generation = replacement.rule_generation,
+            .target_handle = bucket.target_handle,
+            .bucket_start_utc_ms = bucket.bucket_start_utc_ms,
+            .mutation_version = session.allocateMutation().?,
+            .persisted_mutation_version = bucket.persisted_mutation_version,
+        };
+    }
+
     std.mem.swap([]state.RuleSlot, &session.rules, &session.staging_rules);
     std.mem.swap([]u32, &session.rule_index, &session.staging_rule_index);
+    if (window.rebuildAggregate(session, session.logical_utc_ms) != .ok) unreachable;
     session.rules_ready = true;
     session.commitOperation(
         input.operation_epoch,
@@ -168,7 +230,7 @@ pub fn observe(
     var report_count: u32 = 0;
     const preview = observeInternal(session, input, facts, &report_count);
     if (preview != .ok) return preview;
-    const reserve = growth.reportRows(session, report_count);
+    const reserve = growth.reportRows(session, @min(report_count, session.config.maximum_report_count));
     if (reserve != .ok) return reserve;
     return observeInternal(session, input, facts, null);
 }
@@ -296,6 +358,8 @@ fn observeInternal(
             observation.consecutive_hits = 0;
             observation.consecutive_misses = 0;
             observation.active_sample_count = 0;
+            observation.decision = .unknown;
+            observation.evidence_available = false;
             observation.mutation_version = session.allocateMutation() orelse {
                 rollbackObserve(session, &checkpoint);
                 return .out_of_memory;
@@ -473,6 +537,8 @@ fn observeComplete(
                 observation.consecutive_hits = 0;
                 observation.consecutive_misses = 0;
                 observation.active_sample_count = 0;
+                observation.decision = .unknown;
+                observation.evidence_available = false;
                 observation.mutation_version = session.allocateMutation() orelse return .out_of_memory;
             }
             continue;
@@ -530,8 +596,11 @@ fn observeComplete(
             observation.consecutive_hits = 0;
             observation.consecutive_misses = 0;
             observation.active_sample_count = 0;
+            observation.decision = .unknown;
         }
+        if (observation.sample_count == 0) observation.first_observed_at_utc_ms = input.observed_at_utc_milliseconds;
         observation.evidence_payload_handle = fact.evidence_payload_handle;
+        observation.evidence_available = true;
         observation.last_observed_at_utc_ms = input.observed_at_utc_milliseconds;
         observation.seen_operation_epoch = input.operation_epoch;
         observation.last_fact_sequence = fact.fact_sequence;
@@ -591,14 +660,12 @@ fn observeComplete(
         session.snapshotObservation(@intCast(observation_index));
         observation.consecutive_hits = 0;
         observation.active_sample_count = 0;
-        observation.consecutive_misses = addSaturatingU32(observation.consecutive_misses, 1);
-        const rule_index = session.findRule(observation.rule_handle) orelse return .invalid_argument;
-        const rule = session.rules[rule_index].value;
-        if (observation.active and
-            observation.consecutive_misses >= rule.required_consecutive_misses)
-        {
-            observation.active = false;
-        }
+        // A complete source confirms disappearance; this is not a safe sample
+        // that must wait for the threshold's consecutive-miss count.
+        observation.consecutive_misses = 0;
+        observation.active = false;
+        observation.decision = .missing;
+        observation.evidence_available = false;
         observation.mutation_version = session.allocateMutation() orelse return .out_of_memory;
     }
 
@@ -608,7 +675,7 @@ fn observeComplete(
         count.* = requiredReportCount(session);
         return .ok;
     }
-    return recomputeReports(session, effective_now_utc_ms);
+    return recomputeReportsForSnapshot(session, effective_now_utc_ms, input);
 }
 
 fn applyMetricOutcome(
@@ -619,38 +686,34 @@ fn applyMetricOutcome(
     const comparison: protocol.Comparison = @enumFromInt(rule.comparison);
     const activation_hit = compare(metric, rule.activation_threshold, comparison);
     const clear_safe = !compare(metric, rule.clear_threshold, comparison);
-    if (!observation.active) {
-        observation.consecutive_misses = 0;
-        if (activation_hit) {
-            observation.consecutive_hits = addSaturatingU32(observation.consecutive_hits, 1);
-            observation.active_sample_count = observation.consecutive_hits;
-            if (observation.consecutive_hits >= rule.required_consecutive_hits) {
-                observation.active = true;
-            }
-        } else {
-            observation.consecutive_hits = 0;
-            observation.active_sample_count = 0;
-        }
-        return;
-    }
-
     if (clear_safe) {
         observation.consecutive_hits = 0;
         observation.active_sample_count = 0;
         observation.consecutive_misses = addSaturatingU32(observation.consecutive_misses, 1);
         if (observation.consecutive_misses >= rule.required_consecutive_misses) {
             observation.active = false;
+            observation.decision = .clear;
+        } else {
+            observation.decision = .unknown;
         }
-    } else {
+    } else if (activation_hit or observation.active) {
         observation.consecutive_misses = 0;
         observation.consecutive_hits = addSaturatingU32(observation.consecutive_hits, 1);
         observation.active_sample_count = observation.consecutive_hits;
+        if (observation.consecutive_hits >= rule.required_consecutive_hits) observation.active = true;
+        observation.decision = if (observation.active) .active else .unknown;
+    } else {
+        observation.consecutive_hits = 0;
+        observation.consecutive_misses = 0;
+        observation.active_sample_count = 0;
+        observation.decision = .unknown;
     }
 }
 
 fn evaluateChangedRollingWindows(session: *state.Session) ResultCode {
     for (session.observations, 0..) |*observation, observation_index| {
         if (!observation.occupied or observation.delete_pending or !observation.rolling or
+            !observation.evidence_available or
             observation.evaluated_window_revision == observation.window_revision) continue;
         const rule_index = session.findRule(observation.rule_handle) orelse
             return .invalid_argument;
@@ -691,7 +754,7 @@ fn updateStaleObservations(session: *state.Session, now_utc_ms: i64) ResultCode 
             rule.retention_milliseconds
         else
             session.config.default_retention_milliseconds;
-        if ((observation.active or observation.consecutive_hits != 0 or
+        if ((observation.active or observation.decision == .clear or observation.consecutive_hits != 0 or
             observation.consecutive_misses != 0) and elapsedAtLeast(
             now_utc_ms,
             observation.last_observed_at_utc_ms,
@@ -702,6 +765,8 @@ fn updateStaleObservations(session: *state.Session, now_utc_ms: i64) ResultCode 
             observation.consecutive_misses = 0;
             observation.consecutive_hits = 0;
             observation.active_sample_count = 0;
+            observation.decision = .unknown;
+            observation.evidence_available = false;
             observation.mutation_version = session.allocateMutation() orelse return .out_of_memory;
         }
         if (!observation.active and elapsedAtLeast(
@@ -739,7 +804,7 @@ pub fn prepareMaintenance(session: *state.Session, now_utc_ms: i64) ResultCode {
     restoreAggregateAfterRollback(session);
     session.next_mutation_version = saved_mutation;
     if (result != .ok) return result;
-    return growth.reportRows(session, count);
+    return growth.reportRows(session, @min(count, session.config.maximum_report_count));
 }
 
 // Every report needs a primary predicate observation. Existing reports already
@@ -769,14 +834,14 @@ pub fn reportAdditionBound(session: *const state.Session, facts: []const protoco
 fn requiredReportCount(session: *state.Session) u32 {
     var count = growth.occupied(session.reports);
     for (session.observations, 0..) |observation, index| {
-        if (!observation.occupied or observation.delete_pending or !observation.active) continue;
+        if (!observation.occupied or observation.delete_pending or observation.decision != .active) continue;
         const rule_index = session.findRule(observation.rule_handle) orelse continue;
         const rule = session.rules[rule_index].value;
         if (rule.predicate_index != 0 or !predicateGroupActive(session, observation.target_handle, &rule) or
             session.findReport(observation.target_handle, rule.family_handle) != null) continue;
         var duplicate = false;
         for (session.observations[0..index]) |previous| {
-            if (!previous.occupied or previous.delete_pending or !previous.active or previous.target_handle != observation.target_handle) continue;
+            if (!previous.occupied or previous.delete_pending or previous.decision != .active or previous.target_handle != observation.target_handle) continue;
             const previous_rule_index = session.findRule(previous.rule_handle) orelse continue;
             const previous_rule = session.rules[previous_rule_index].value;
             if (previous_rule.predicate_index == 0 and previous_rule.family_handle == rule.family_handle and
@@ -791,10 +856,18 @@ fn requiredReportCount(session: *state.Session) u32 {
     return count;
 }
 
+pub fn unrecordedReportCount(session: *state.Session) u32 {
+    return requiredReportCount(session) - growth.occupied(session.reports);
+}
+
 pub fn recomputeReports(session: *state.Session, now_utc_ms: i64) ResultCode {
+    return recomputeReportsForSnapshot(session, now_utc_ms, null);
+}
+
+fn recomputeReportsForSnapshot(session: *state.Session, now_utc_ms: i64, snapshot: ?*const protocol.SourceSnapshotInput) ResultCode {
     @memset(session.report_candidates, state.no_index);
     for (session.observations, 0..) |observation, observation_index| {
-        if (!observation.occupied or observation.delete_pending or !observation.active) continue;
+        if (!observation.occupied or observation.delete_pending or observation.decision != .active) continue;
         const rule_index = session.findRule(observation.rule_handle) orelse return .invalid_argument;
         const rule = session.rules[rule_index].value;
         if (rule.predicate_index != 0 or
@@ -804,7 +877,7 @@ pub fn recomputeReports(session: *state.Session, now_utc_ms: i64) ResultCode {
             state.ReportSlot,
             session.reports,
             session.next_report_slot,
-        ) orelse return .buffer_too_small;
+        ) orelse continue;
         if (existing == null) {
             session.snapshotReport(report_index);
             const generation = state.nextSlotGeneration(
@@ -841,18 +914,11 @@ pub fn recomputeReports(session: *state.Session, now_utc_ms: i64) ResultCode {
         if (!report.occupied or report.delete_pending) continue;
         const candidate = session.report_candidates[report_index];
         if (candidate == state.no_index) {
-            if (report.active) {
+            if (report.active and familyCleared(session, report.target_handle, report.family_handle, snapshot)) {
                 session.snapshotReport(@intCast(report_index));
                 report.active = false;
                 report.updated_at_utc_ms = now_utc_ms;
                 report.mutation_version = session.allocateMutation() orelse return .out_of_memory;
-            } else {
-                const retention = reportRetention(session, report);
-                if (elapsedAtLeast(now_utc_ms, report.updated_at_utc_ms, retention)) {
-                    session.snapshotReport(@intCast(report_index));
-                    report.delete_pending = true;
-                    report.mutation_version = session.allocateMutation() orelse return .out_of_memory;
-                }
             }
             continue;
         }
@@ -861,6 +927,7 @@ pub fn recomputeReports(session: *state.Session, now_utc_ms: i64) ResultCode {
         const rule_index = session.findRule(observation.rule_handle) orelse return .invalid_argument;
         const rule = session.rules[rule_index].value;
         const trusted = reportTrusted(session, report.target_handle, report.family_handle);
+        const windows = window.values(session, candidate);
         const changed = !report.active or report.observation_index != candidate or
             report.rule_handle != rule.rule_handle or
             report.report_type_handle != rule.report_type_handle or
@@ -868,12 +935,17 @@ pub fn recomputeReports(session: *state.Session, now_utc_ms: i64) ResultCode {
             report.payload_handle != rule.payload_handle or
             report.evidence_payload_handle != observation.evidence_payload_handle or
             report.last_observed_at_utc_ms != observation.last_observed_at_utc_ms or
-            report.trusted_suppressed != trusted or
+            report.trusted != trusted or
+            report.current_value != (if (observation.current_valid) observation.current_value else @as(f64, 0)) or
+            report.window_24h_value != windows.sum_24h or
+            report.window_7d_value != windows.sum_7d or
+            report.sample_count != observation.sample_count or
+            report.active_sample_count != observation.active_sample_count or
             report.priority != rule.priority or
             report.severity != rule.severity;
         if (changed) session.snapshotReport(@intCast(report_index));
         report.active = true;
-        report.trusted_suppressed = trusted;
+        report.trusted = trusted;
         report.observation_index = candidate;
         report.rule_handle = rule.rule_handle;
         report.report_type_handle = rule.report_type_handle;
@@ -883,6 +955,13 @@ pub fn recomputeReports(session: *state.Session, now_utc_ms: i64) ResultCode {
         report.last_observed_at_utc_ms = observation.last_observed_at_utc_ms;
         report.priority = rule.priority;
         report.severity = rule.severity;
+        report.current_value = if (observation.current_valid) observation.current_value else 0;
+        report.average_value = if (observation.sample_count == 0) 0 else observation.value_sum / @as(f64, @floatFromInt(observation.sample_count));
+        report.peak_value = observation.peak_value;
+        report.window_24h_value = windows.sum_24h;
+        report.window_7d_value = windows.sum_7d;
+        report.sample_count = observation.sample_count;
+        report.active_sample_count = observation.active_sample_count;
         if (changed) {
             report.updated_at_utc_ms = now_utc_ms;
             report.mutation_version = session.allocateMutation() orelse return .out_of_memory;
@@ -922,27 +1001,52 @@ fn predicateGroupActive(
             target_handle,
         ) orelse return false;
         const observation = session.observations[observation_index];
-        if (!observation.occupied or observation.delete_pending or !observation.active) return false;
+        if (!observation.occupied or observation.delete_pending or observation.decision != .active) return false;
         matched += 1;
     }
     return matched == primary.predicate_count;
 }
 
 fn reportTrusted(session: *const state.Session, target: u64, family: u64) bool {
-    if (session.findTrust(target, family)) |trust_index| {
-        if (session.trusts[trust_index].committed) return true;
-    }
-    if (session.findTrust(target, protocol.TrustFamily.all)) |trust_index| {
-        return session.trusts[trust_index].committed;
-    }
-    return false;
+    return state.reportTrustedIn(session.trusts, session.trust_index, target, family);
 }
 
-fn reportRetention(session: *const state.Session, report: *const state.ReportSlot) u64 {
-    const rule_index = session.findRule(report.rule_handle) orelse
-        return session.config.default_retention_milliseconds;
-    const configured = session.rules[rule_index].value.retention_milliseconds;
-    return if (configured == 0) session.config.default_retention_milliseconds else configured;
+fn familyCleared(session: *const state.Session, target: u64, family: u64, snapshot: ?*const protocol.SourceSnapshotInput) bool {
+    var groups: u32 = 0;
+    for (session.rules) |primary_slot| {
+        const primary = primary_slot.value;
+        if (!primary_slot.occupied or primary.family_handle != family or primary.predicate_index != 0) continue;
+        groups += 1;
+        var clear = false;
+        for (session.rules) |slot| {
+            const rule = slot.value;
+            if (!slot.occupied or rule.predicate_group_handle != primary.predicate_group_handle) continue;
+            if (snapshot) |input| {
+                if (rule.source_handle == input.source_handle and rule.coverage_scope_handle == input.coverage_scope_handle) {
+                    var present = false;
+                    for (session.fact_keys[0..input.fact_count]) |key| {
+                        if (key.rule_handle == rule.rule_handle and key.target_handle == target) {
+                            present = true;
+                            break;
+                        }
+                    }
+                    // Current complete coverage is authoritative even while an
+                    // older observation waits for its persisted deletion.
+                    if (!present) {
+                        clear = true;
+                        continue;
+                    }
+                }
+            }
+            if (session.findObservation(rule.source_handle, rule.coverage_scope_handle, rule.rule_handle, target)) |index| {
+                const observation = session.observations[index];
+                if (observation.decision == .missing or (!observation.delete_pending and observation.decision == .clear)) clear = true;
+            }
+        }
+        // Different groups in a family are OR: every group must be known clear.
+        if (!clear) return false;
+    }
+    return groups != 0;
 }
 
 fn compare(value: f64, threshold: f64, comparison: protocol.Comparison) bool {

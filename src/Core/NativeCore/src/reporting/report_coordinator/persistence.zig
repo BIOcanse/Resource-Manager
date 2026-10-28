@@ -200,6 +200,22 @@ pub fn importPersisted(
         }
     }
 
+    // A trust commit may survive a crash before the report's derived flag is
+    // flushed. Reconcile that flag without evaluating any report condition.
+    var trust_changes: u64 = 0;
+    for (session.staging_reports[0..report_count]) |report| {
+        if (report.trusted != state.reportTrustedIn(session.staging_trusts, session.staging_trust_index, report.target_handle, report.family_handle)) trust_changes += 1;
+    }
+    if (trust_changes != 0 and (imported_next_mutation_version == 0 or
+        trust_changes > std.math.maxInt(u64) - imported_next_mutation_version)) return .out_of_memory;
+    for (session.staging_reports[0..report_count]) |*report| {
+        const trusted = state.reportTrustedIn(session.staging_trusts, session.staging_trust_index, report.target_handle, report.family_handle);
+        if (report.trusted == trusted) continue;
+        report.trusted = trusted;
+        report.mutation_version = imported_next_mutation_version;
+        imported_next_mutation_version += 1;
+    }
+
     std.mem.swap([]state.SourceSlot, &session.sources, &session.staging_sources);
     std.mem.swap([]state.ObservationSlot, &session.observations, &session.staging_observations);
     std.mem.swap([]state.ReportSlot, &session.reports, &session.staging_reports);
@@ -386,7 +402,7 @@ fn suppressionChangesAfterFeedback(
             report.target_handle,
             report.family_handle,
         );
-        if (report.trusted_suppressed != trusted) count += 1;
+        if (report.trusted != trusted) count += 1;
     }
     return count;
 }
@@ -478,11 +494,15 @@ fn validImportedObservation(
         row.window_delta_value != 0 or row.event_count != 0 or
         row.request_event_count != 0 or row.connection_event_count != 0 or
         row.sample_hit_count != 0 or row.priority != 0 or row.severity != 0 or
-        row.fact_sequence == 0 or
+        (row.sample_count != 0 and row.fact_sequence == 0) or
         row.report_observed_at_utc_milliseconds != 0 or
         row.first_observed_at_utc_milliseconds < 0 or
         row.last_observed_at_utc_milliseconds < row.first_observed_at_utc_milliseconds or
-        row.sample_count == 0 or row.sample_duration_milliseconds == 0 or
+        (row.sample_count != 0 and row.sample_duration_milliseconds == 0) or
+        (row.sample_count == 0 and (row.flags != 0 or row.fact_sequence != 0 or
+            row.sample_duration_milliseconds != 0 or
+            row.first_observed_at_utc_milliseconds != row.last_observed_at_utc_milliseconds or row.evidence_payload_handle != 0 or
+            row.current_value != 0 or row.secondary_current_value != 0 or row.value_sum != 0 or row.peak_value != 0)) or
         row.active_sample_count != row.consecutive_hits or
         (row.consecutive_hits != 0 and row.consecutive_misses != 0) or
         ((row.flags & protocol.PersistenceFlags.current_valid) == 0 and
@@ -519,7 +539,9 @@ fn validImportedBucket(
         row.fact_sequence != 0 or
         row.report_observed_at_utc_milliseconds != 0 or
         row.bucket_start_utc_milliseconds < 0 or
-        row.sample_duration_milliseconds == 0 or
+        (row.sample_duration_milliseconds == 0 and (row.window_delta_value != 0 or
+            row.peak_value != 0 or row.event_count != 0 or row.request_event_count != 0 or
+            row.connection_event_count != 0 or row.sample_hit_count != 0)) or
         @rem(
             row.bucket_start_utc_milliseconds,
             @as(i64, @intCast(session.config.bucket_width_milliseconds)),
@@ -533,16 +555,13 @@ fn validImportedReport(
 ) bool {
     if (!sourceFieldsZero(row) or
         (row.flags & ~(protocol.PersistenceFlags.active |
-            protocol.PersistenceFlags.trusted_suppressed)) != 0 or
+            protocol.PersistenceFlags.trusted)) != 0 or
         row.report_handle != row.identity_handle or row.source_handle == 0 or
         row.coverage_scope_handle == 0 or row.rule_handle == 0 or
         row.rule_generation == 0 or row.target_handle == 0 or row.family_handle == 0 or
         row.report_type_handle == 0 or row.resource_kind_handle == 0 or
-        row.bucket_start_utc_milliseconds != 0 or row.current_value != 0 or
-        row.secondary_current_value != 0 or
-        row.value_sum != 0 or row.peak_value != 0 or row.window_delta_value != 0 or
-        row.sample_duration_milliseconds != 0 or row.sample_count != 0 or
-        row.active_sample_count != 0 or row.event_count != 0 or
+        row.bucket_start_utc_milliseconds != 0 or
+        row.sample_duration_milliseconds != 0 or row.event_count != 0 or
         row.request_event_count != 0 or row.connection_event_count != 0 or
         row.sample_hit_count != 0 or row.consecutive_hits != 0 or
         row.consecutive_misses != 0 or
@@ -709,7 +728,7 @@ fn reportFromRow(row: *const protocol.PersistenceOperation) state.ReportSlot {
         .occupied = true,
         .slot_generation = row.slot_generation,
         .active = (row.flags & protocol.PersistenceFlags.active) != 0,
-        .trusted_suppressed = (row.flags & protocol.PersistenceFlags.trusted_suppressed) != 0,
+        .trusted = (row.flags & protocol.PersistenceFlags.trusted) != 0,
         .report_handle = row.identity_handle,
         .target_handle = row.target_handle,
         .family_handle = row.family_handle,
@@ -723,6 +742,13 @@ fn reportFromRow(row: *const protocol.PersistenceOperation) state.ReportSlot {
         .last_observed_at_utc_ms = row.report_observed_at_utc_milliseconds,
         .priority = row.priority,
         .severity = row.severity,
+        .current_value = row.current_value,
+        .average_value = row.value_sum,
+        .peak_value = row.peak_value,
+        .window_24h_value = row.window_delta_value,
+        .window_7d_value = row.secondary_current_value,
+        .sample_count = row.sample_count,
+        .active_sample_count = row.active_sample_count,
         .mutation_version = row.mutation_version,
         .persisted_mutation_version = row.mutation_version,
     };
@@ -856,7 +882,7 @@ fn operationForReport(
     var flags: u32 = 0;
     if (slot.delete_pending) flags |= protocol.PersistenceFlags.delete;
     if (slot.active) flags |= protocol.PersistenceFlags.active;
-    if (slot.trusted_suppressed) flags |= protocol.PersistenceFlags.trusted_suppressed;
+    if (slot.trusted) flags |= protocol.PersistenceFlags.trusted;
     var output = baseOperation(
         session,
         plan_epoch,
@@ -884,6 +910,13 @@ fn operationForReport(
     output.first_observed_at_utc_milliseconds = slot.created_at_utc_ms;
     output.last_observed_at_utc_milliseconds = slot.updated_at_utc_ms;
     output.report_observed_at_utc_milliseconds = slot.last_observed_at_utc_ms;
+    output.current_value = slot.current_value;
+    output.value_sum = slot.average_value;
+    output.peak_value = slot.peak_value;
+    output.window_delta_value = slot.window_24h_value;
+    output.secondary_current_value = slot.window_7d_value;
+    output.sample_count = slot.sample_count;
+    output.active_sample_count = slot.active_sample_count;
     output.priority = slot.priority;
     output.severity = slot.severity;
     return output;
@@ -1057,20 +1090,9 @@ fn commitFeedbackRow(session: *state.Session, row: *const protocol.PersistenceFe
 fn syncTrustSuppression(session: *state.Session, now_utc_ms: i64) ResultCode {
     for (session.reports) |*report| {
         if (!report.occupied or report.delete_pending) continue;
-        const exact = if (session.findTrust(report.target_handle, report.family_handle)) |index|
-            session.trusts[index].committed
-        else
-            false;
-        const wildcard = if (session.findTrust(
-            report.target_handle,
-            protocol.TrustFamily.all,
-        )) |index|
-            session.trusts[index].committed
-        else
-            false;
-        const trusted = exact or wildcard;
-        if (report.trusted_suppressed == trusted) continue;
-        report.trusted_suppressed = trusted;
+        const trusted = state.reportTrustedIn(session.trusts, session.trust_index, report.target_handle, report.family_handle);
+        if (report.trusted == trusted) continue;
+        report.trusted = trusted;
         report.updated_at_utc_ms = now_utc_ms;
         report.mutation_version = session.allocateMutation() orelse return .out_of_memory;
     }

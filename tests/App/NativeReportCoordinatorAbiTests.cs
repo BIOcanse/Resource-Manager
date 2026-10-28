@@ -9,7 +9,7 @@ public sealed class NativeReportCoordinatorAbiTests
     [Fact]
     public void AbiUsesPublishedVersionSizesAndOffsets()
     {
-        Assert.Equal(0x0006_0000U, NativeReportCoordinatorAbi.Version);
+        Assert.Equal(0x0007_0000U, NativeReportCoordinatorAbi.Version);
         Assert.Equal(216, Unsafe.SizeOf<NativeReportCoordinatorConfiguration>());
         Assert.Equal(96, Unsafe.SizeOf<NativeReportCoordinatorCapacity>());
         Assert.Equal(160, Unsafe.SizeOf<NativeReportRuleInput>());
@@ -76,6 +76,9 @@ public sealed class NativeReportCoordinatorAbiTests
         AssertOffset<NativeReportTrustCommandInput>(
             nameof(NativeReportTrustCommandInput.FamilyHandle),
             48);
+        AssertOffset<NativeReportPlanOutput>(
+            nameof(NativeReportPlanOutput.UnrecordedReportCount),
+            40);
         AssertOffset<NativeReportPlanOutput>(
             nameof(NativeReportPlanOutput.LogicalUtcMilliseconds),
             112);
