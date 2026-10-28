@@ -74,7 +74,7 @@ public sealed partial class HostMemoryProtectionService
                     events.Add(new(next.Active ? "active" : "inactive", next.InactiveReason));
                 if (pointChanged)
                     events.Add(new("normal-running-point-changed"));
-                if (pointChanged && point is not null)
+                if (pointChanged && point is not null && ReferenceEquals(point, createdPoint))
                     events.Add(new("normal-running-point-created"));
                 if (previous.AtOrAboveThreshold != next.AtOrAboveThreshold && next.AtOrAboveThreshold is { } above)
                     events.Add(new(above ? "threshold-reached" : "below-threshold"));
@@ -92,6 +92,7 @@ public sealed partial class HostMemoryProtectionService
             }
             publishedStatus = next;
             publishedPoint = point;
+            if (pointChanged) createdPoint = null;
             var value = new HostMemoryProtectionPublication(next, events)
                 { NormalRunningPoint = point, PointChanged = pointChanged };
             foreach (var subscriber in subscribers)

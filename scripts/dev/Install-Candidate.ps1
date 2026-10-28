@@ -70,18 +70,14 @@ try {
     Log ("uninstall DisplayVersion=$($uninstall.DisplayVersion) Quiet=$($uninstall.QuietUninstallString)")
     Log ('installed manager matches package: ' + ((Get-FileHash -LiteralPath $expected).Hash -eq (Get-FileHash -LiteralPath $manager).Hash))
     Log ('service ' + (Get-Service ResourceManager.Service).Status)
-    # The normal running point lives only for one service run, so the restart switched host memory protection off
-    # (10-28: four installs left it at no-normal-running-point). Re-create it here, elevated, when protection is
-    # enabled; the route needs machine.write from an elevated caller, which the bundled UI is not.
+    # The service saves the normal running point and restores it on start, so an install keeps the user's point and
+    # never creates one at install time (a point taken mid-build is not a normal running point, user 10-28). Log the
+    # restored state so an install that leaves protection inactive is visible.
     $status = $null; $deadline = (Get-Date).AddMinutes(2)
     while ((Get-Date) -lt $deadline -and -not $status) {
         try { $status = Invoke-RestMethod -Uri "http://127.0.0.1:$ServicePort/api/memory-protection" -UseDefaultCredentials -AllowUnencryptedAuthentication -TimeoutSec 10 } catch { Start-Sleep -Seconds 3 }
     }
-    if ($status -and $status.enabled) {
-        Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:$ServicePort/api/memory-protection/normal-running-point" -UseDefaultCredentials -AllowUnencryptedAuthentication -TimeoutSec 60 | Out-Null
-        $status = Invoke-RestMethod -Uri "http://127.0.0.1:$ServicePort/api/memory-protection" -UseDefaultCredentials -AllowUnencryptedAuthentication -TimeoutSec 10
-        Log "memory protection active=$($status.active) inactiveReason=$($status.inactiveReason)"
-    } else { Log "memory protection enabled=$($status.enabled); running point not created" }
+    Log "memory protection enabled=$($status.enabled) active=$($status.active) inactiveReason=$($status.inactiveReason) point=$($status.normalRunningPoint.at)"
     Log 'done'
 }
 catch {

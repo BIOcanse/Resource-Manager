@@ -104,7 +104,7 @@ public sealed partial class HostMemoryProtectionTests
     }
 
     [Fact]
-    public async Task PublicChannelPublishesFullPointOnCreateReplaceAndClear()
+    public async Task PublicChannelPublishesFullPointOnCreateReplaceDeleteAndSelect()
     {
         await using var fixture = await Fixture.StartAsync();
         using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(25));
@@ -124,13 +124,17 @@ public sealed partial class HostMemoryProtectionTests
         Assert.Equal(25, replaced.GetProperty("processes")[0].GetProperty("processId").GetInt32());
         var wait = fixture.Client.GetAsync("/api/hooks/wait?condition=" + Uri.EscapeDataString("memory-protection normal-running-point-changed"), lifetime.Token);
         await Until(() => fixture.Source.Active == 2);
-        await fixture.Protection.ClearPointAsync();
+        // Deleting the point in effect leaves none in effect.
+        Assert.True(await fixture.Protection.DeletePointAsync(second.Id));
         Assert.Equal(JsonValueKind.Null, (await Point()).ValueKind);
         Assert.Null(fixture.Protection.ReadPoint());
         using var changed = await wait;
         changed.EnsureSuccessStatusCode();
         using var hook = JsonDocument.Parse(await changed.Content.ReadAsStringAsync());
         Assert.Equal("normal-running-point-changed", hook.RootElement.GetProperty("value").GetProperty("event").GetProperty("kind").GetString());
+        // Selecting a saved point publishes it in full again.
+        Assert.NotNull(await fixture.Protection.SelectPointAsync(first.Id));
+        Assert.Equal(first.Id, (await Point()).GetProperty("id").GetString());
 
         async Task<JsonElement> Point()
         {

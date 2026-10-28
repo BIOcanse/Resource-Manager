@@ -158,7 +158,6 @@ internal static class TrustedAccessHttpPolicy
             "DELETE /api/software/manual/{id}",
             "PATCH /api/settings/app",
             "PATCH /api/memory-protection",
-            "POST /api/memory-protection/normal-running-point",
             "POST /api/memory-protection/reserve/rebuild",
             "POST /api/components/{id}/install",
             "POST /api/control/instances/refresh",
@@ -196,8 +195,13 @@ internal static class TrustedAccessHttpPolicy
             "PUT /api/public/v1/sqlite/databases/{databaseId}",
             "PUT /api/settings/app",
             "PUT /api/settings/dashboard");
+        // Creating, selecting and deleting normal running points only records or picks the baseline; it changes
+        // nothing on the machine, so the user does it from the bundled UI without elevation (user 10-28).
         Add(Protected(AccessKeyScopes.Session),
             "DELETE /api/targeted-recordings/{id}",
+            "POST /api/memory-protection/normal-running-point",
+            "PUT /api/memory-protection/normal-running-points/active",
+            "DELETE /api/memory-protection/normal-running-points/{id}",
             "POST /api/operations/{id}/cancel",
             "POST /api/system/open-path",
             "POST /api/system/open-properties",
@@ -288,6 +292,7 @@ internal static class TrustedAccessHttpPolicy
         Add(Protected(AccessKeyScopes.ProcessesRead, allowKeylessLocal: true),
             "GET /api/memory-protection",
             "GET /api/memory-protection/normal-running-point",
+            "GET /api/memory-protection/normal-running-points",
             "GET /api/cpu/residency",
             "GET /api/debug/frame-timing",
             "GET /api/debug/thread-cpu",

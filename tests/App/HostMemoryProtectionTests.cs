@@ -119,6 +119,54 @@ public sealed partial class HostMemoryProtectionTests
     }
 
     [Fact]
+    public async Task SavedNormalRunningPointsAndTheSelectedOneSurviveServiceRestart()
+    {
+        string root;
+        NormalRunningPoint early, late;
+        await using (var first = await Fixture.StartAsync())
+        {
+            first.Source.Publish(200, 20, [Process(10, "1", 900), Process(11, "1", 10)]);
+            early = await first.CreatePoint();
+            first.Source.Publish(400, 40, [Process(10, "1", 1900), Process(12, "1", 500)]);
+            late = await first.CreatePoint();
+            Assert.Equal(late.Id, first.Protection.ListPoints().ActiveId);
+            using var enabled = await first.Patch(new { enabled = true });
+            Assert.Equal(HttpStatusCode.OK, enabled.StatusCode);
+            // The user picks the earlier, quieter point; creating the later one did not delete it.
+            using var select = await first.Client.PutAsJsonAsync("/api/memory-protection/normal-running-points/active", new { id = early.Id });
+            Assert.Equal(HttpStatusCode.OK, select.StatusCode);
+            root = first.Root;
+            first.KeepRoot = true;
+        }
+        await using var second = await Fixture.StartAsync(root: root);
+        // The restarted service protects from the saved choice without anyone creating a new point.
+        var status = await second.Status();
+        for (var attempt = 0; attempt < 1500 && !status.Active; attempt++) { await Task.Delay(10); status = await second.Status(); }
+        Assert.Null(status.InactiveReason);
+        Assert.True(status.Active);
+        Assert.Equal(new NormalRunningPointSummary(early.Id, early.At, early.ProcessCount, early.Commit), status.NormalRunningPoint);
+        var list = (await second.Client.GetFromJsonAsync<NormalRunningPointList>("/api/memory-protection/normal-running-points"))!;
+        Assert.Equal(early.Id, list.ActiveId);
+        Assert.Equal([early.Id, late.Id], list.Points.Select(item => item.Id));
+        Assert.Equal(HostMemoryProtectionService.PointLimit, list.Limit);
+        Assert.Equal(early.Processes.Select(item => (item.ProcessId, item.ProcessStartKey, item.Name, item.PrivateCommitBytes)),
+            second.Protection.ReadPoint()!.Processes.Select(item => (item.ProcessId, item.ProcessStartKey, item.Name, item.PrivateCommitBytes)));
+
+        using (var missing = await second.Client.PutAsJsonAsync("/api/memory-protection/normal-running-points/active", new { id = "missing" }))
+            Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        Assert.Equal(early.Id, second.Protection.ListPoints().ActiveId);
+        // Deleting the point in effect leaves none in effect; the other saved point stays.
+        using (var deleted = await second.Client.DeleteAsync("/api/memory-protection/normal-running-points/" + early.Id))
+            Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+        Assert.Equal("no-normal-running-point", (await second.Status()).InactiveReason);
+        list = second.Protection.ListPoints();
+        Assert.Null(list.ActiveId);
+        Assert.Equal([late.Id], list.Points.Select(item => item.Id));
+        Assert.Contains(late.Id, File.ReadAllText(second.PointsPath));
+        Assert.DoesNotContain(early.Id, File.ReadAllText(second.PointsPath));
+    }
+
+    [Fact]
     public async Task PointWithoutConfiguredReserveCannotEnableAndUnconfiguredRebuildDoesNotSample()
     {
         await using var fixture = await Fixture.StartAsync();
@@ -494,6 +542,10 @@ public sealed partial class HostMemoryProtectionTests
         public HttpClient Client { get; } = TrustedAccessEndpointTestAuthentication.Apply(new HttpClient
             { BaseAddress = new(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single()) }, app.Services);
         public FakeSource Source => source;
+        public string Root => root;
+        public string PointsPath => Path.Combine(root, "UserData", "MemoryProtection", "normal-running-points.json");
+        // Set when a later fixture restarts the service on the same content root and cleans it up.
+        public bool KeepRoot { get; set; }
         public FakeExecutor Executor => executor;
         public string ReserveDirectory => Path.Combine(root, "Slices");
         public string SecondReserveDirectory => Path.Combine(root, "SlicesSecond");
@@ -518,9 +570,9 @@ public sealed partial class HostMemoryProtectionTests
         public async Task<HostMemoryProtectionStatus> Status() => (await Client.GetFromJsonAsync<HostMemoryProtectionStatus>("/api/memory-protection"))!;
 
         public static async Task<Fixture> StartAsync(IHostMemoryProtectionExecutor? effects = null, IHostMemoryProtectionReserve? reserve = null,
-            string[]? scopes = null)
+            string[]? scopes = null, string? root = null)
         {
-            var root = Path.Combine(Path.GetTempPath(), "rm-memory-protection-host-" + Guid.NewGuid().ToString("N"));
+            root ??= Path.Combine(Path.GetTempPath(), "rm-memory-protection-host-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(root);
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
             builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -550,8 +602,9 @@ public sealed partial class HostMemoryProtectionTests
             await Until(() => Scheduler.ReadState(BlockUids.HostMemoryProtection) == BusinessBlockState.Stopped);
             Client.Dispose();
             await app.StopAsync(); await app.DisposeAsync();
+            if (KeepRoot) return;
             // All handles have closed. These are the only flat directories this fixture creates.
-            foreach (var name in new[] { "Config", "Slices", "SlicesSecond" })
+            foreach (var name in new[] { "Config", "Slices", "SlicesSecond", Path.Combine("UserData", "MemoryProtection") })
             {
                 var directory = Path.Combine(root, name);
                 if (!Directory.Exists(directory)) continue;
@@ -563,8 +616,8 @@ public sealed partial class HostMemoryProtectionTests
             {
                 foreach (var path in Directory.EnumerateFiles(profiles)) File.Delete(path);
                 Directory.Delete(profiles);
-                Directory.Delete(Path.Combine(root, "UserData"));
             }
+            if (Directory.Exists(Path.Combine(root, "UserData"))) Directory.Delete(Path.Combine(root, "UserData"));
             Directory.Delete(root);
         }
     }

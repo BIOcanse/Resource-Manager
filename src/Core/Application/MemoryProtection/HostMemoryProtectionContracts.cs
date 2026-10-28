@@ -15,9 +15,13 @@ public sealed record HostMemoryCommit(ulong CurrentBytes, ulong LimitBytes, doub
 public sealed record HostMemoryReading(DateTimeOffset At, HostMemoryCommit? Commit, IReadOnlyList<HostMemoryProcess>? Processes);
 public sealed record NormalRunningPoint(DateTimeOffset At, HostMemoryCommit Commit, IReadOnlyList<HostMemoryProcess> Processes)
 {
+    public required string Id { get; init; }
     public int ProcessCount => Processes.Count;
 }
-public sealed record NormalRunningPointSummary(DateTimeOffset At, int ProcessCount);
+public sealed record NormalRunningPointSummary(string Id, DateTimeOffset At, int ProcessCount, HostMemoryCommit Commit);
+// The saved normal running points, oldest first, and the one in effect (null: none in effect, protection inactive).
+public sealed record NormalRunningPointList(string? ActiveId, IReadOnlyList<NormalRunningPointSummary> Points, int Limit);
+public sealed record NormalRunningPointSelection(string Id);
 public sealed record HostMemoryExclusion(int ProcessId, string ProcessStartKey, string Name, string Reason);
 public sealed record HostMemoryActionResult(string Outcome, string? Reason, IReadOnlyList<string> DumpPaths, ulong BytesWritten)
 {
@@ -120,6 +124,10 @@ public interface IHostMemoryProtectionReserveLease : IDisposable
 }
 
 public sealed class HostMemoryProtectionSettingsException(string reason) : ArgumentException(reason)
+{
+    public string Reason { get; } = reason;
+}
+public sealed class NormalRunningPointException(string reason) : InvalidOperationException(reason)
 {
     public string Reason { get; } = reason;
 }

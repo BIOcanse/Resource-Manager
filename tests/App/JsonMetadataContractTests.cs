@@ -260,7 +260,7 @@ public sealed partial class JsonMetadataContractTests
 
     [Theory]
     [InlineData("null")]
-    [InlineData("{\"at\":\"2026-10-27T12:00:00+00:00\",\"commit\":{\"currentBytes\":200,\"limitBytes\":1000,\"percent\":20},\"processes\":[],\"processCount\":0}")]
+    [InlineData("{\"at\":\"2026-10-27T12:00:00+00:00\",\"commit\":{\"currentBytes\":200,\"limitBytes\":1000,\"percent\":20},\"processes\":[],\"id\":\"0123456789abcdef0123456789abcdef\",\"processCount\":0}")]
     public void MemoryProtectionPointFixturesRoundTripWithProductionMetadata(string point)
     {
         var fixture = "{\"type\":\"normalRunningPoint\",\"normalRunningPoint\":" + point + "}";

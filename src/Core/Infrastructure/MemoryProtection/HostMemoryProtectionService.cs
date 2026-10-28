@@ -81,6 +81,7 @@ public sealed partial class HostMemoryProtectionService(IHostMemoryProtectionSou
     {
         var error = ValidateSettings(value with { Enabled = false });
         if (error is not null) throw new HostMemoryProtectionSettingsException(error);
+        await RestorePointsOnceAsync();
         await configuration.WaitAsync();
         try
         {
@@ -134,42 +135,6 @@ public sealed partial class HostMemoryProtectionService(IHostMemoryProtectionSou
         await reserveBuilt.PublishAsync(accepted || ReserveUnavailableReason(current, reserve.ReadStatus()) is null, Reason(cause));
     }
 
-    public NormalRunningPoint? ReadPoint() { lock (gate) return point; }
-
-    public async Task ClearPointAsync()
-    {
-        await pointCreation.WaitAsync();
-        try
-        {
-            lock (gate) { point = null; cannotOpen.Clear(); exclusions = []; }
-            await pointExists.PublishAsync(false, Reason("normal-running-point-cleared"));
-            PublishStatus();
-        }
-        finally { pointCreation.Release(); }
-    }
-
-    public async Task<NormalRunningPoint> CreatePointAsync(CancellationToken cancellationToken)
-    {
-        await pointCreation.WaitAsync(cancellationToken);
-        try
-        {
-            HostMemoryProtectionSettings current;
-            lock (gate) current = settings;
-            await foreach (var reading in source.SubscribeAsync("host-memory-protection:normal-running-point",
-                TimeSpan.FromSeconds(current.CheckIntervalSeconds), cancellationToken))
-            {
-                if (reading.Commit is null || reading.Processes is null) continue;
-                var next = new NormalRunningPoint(reading.At, reading.Commit, reading.Processes.ToArray());
-                lock (gate) { point = next; cannotOpen.Clear(); exclusions = []; }
-                await pointExists.PublishAsync(true, Reason("normal-running-point-created"));
-                PublishStatus(reading.Commit, useReading: true, reading.At);
-                return next;
-            }
-            throw new InvalidOperationException("normal-running-point-source-ended");
-        }
-        finally { pointCreation.Release(); }
-    }
-
     public async Task<HostMemoryProtectionStatus> ReadStatusAsync(CancellationToken cancellationToken)
     {
         var commit = await source.ReadCurrentCommitAsync(cancellationToken);
@@ -184,7 +149,7 @@ public sealed partial class HostMemoryProtectionService(IHostMemoryProtectionSou
             decimal? trigger = commit is null ? null : (decimal)commit.LimitBytes * (decimal)settings.ThresholdPercent / 100m;
             return new(settings.Enabled, settings.ThresholdPercent, settings.CheckIntervalSeconds, currentReserve,
                 trigger, trigger - commit?.CurrentBytes, commit,
-                point is null ? null : new(point.At, point.ProcessCount),
+                point is null ? null : new(point.Id, point.At, point.ProcessCount, point.Commit),
                 point is null ? "no-normal-running-point" : !settings.Enabled ? "disabled" : reserveAccepted ? null : ReserveUnavailableReason(settings, currentReserve),
                 exclusions.ToArray(), RecordLimit, actions.Reverse().ToArray())
             {
