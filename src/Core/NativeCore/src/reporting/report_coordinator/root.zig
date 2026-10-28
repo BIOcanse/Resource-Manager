@@ -3,6 +3,7 @@ pub const state = @import("state.zig");
 pub const window = @import("window.zig");
 pub const rules = @import("rules.zig");
 pub const trust = @import("trust.zig");
+pub const history = @import("history.zig");
 pub const planner = @import("planner.zig");
 pub const persistence = @import("persistence.zig");
 pub const session = @import("session.zig");

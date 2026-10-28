@@ -69,7 +69,7 @@ public sealed record CompiledHostManagerReportCoordinatorBuildPlan(
     private static CompiledHostManagerReportCoordinatorCapacityPlan EmptyCapacity { get; } =
         new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
-    public bool IsPublished => AbiVersion == 0x0007_0000U
+    public bool IsPublished => AbiVersion == 0x0008_0000U
         && string.Equals(NativeModule, "report_coordinator", StringComparison.Ordinal)
         && !string.IsNullOrWhiteSpace(NativeBinaryFileName)
         && NativeBinarySha256.Length == 64

@@ -158,6 +158,7 @@ public sealed class NativeReportCoordinatorPersistenceStoreTests : IDisposable
     [Theory]
     [InlineData(0x0005_0000U)]
     [InlineData(0x0006_0000U)]
+    [InlineData(0x0007_0000U)]
     public async Task PreviousMetadataCheckpointIsUpgradedAtThePersistenceBoundary(uint version)
     {
         var store = new NativeReportCoordinatorPersistenceStore(CreateDatabase());
@@ -222,6 +223,9 @@ public sealed class NativeReportCoordinatorPersistenceStoreTests : IDisposable
             Assert.Equal(NativeReportCoordinatorAbi.Version,
                 Assert.Single(loaded, row => row.OperationKind == (uint)NativeReportPersistenceKind.Metadata)
                     .CheckpointSchemaVersion);
+            Assert.Equal(report.ReportHandle,
+                Assert.Single(loaded, row => row.OperationKind == (uint)NativeReportPersistenceKind.Metadata)
+                    .ReportHandle);
         }
     }
 
@@ -259,8 +263,10 @@ public sealed class NativeReportCoordinatorPersistenceStoreTests : IDisposable
         Assert.Equal(report with { RuleGeneration = rule.RuleGeneration }, retained);
     }
 
-    [Fact]
-    public async Task CurrentCheckpointKeepsReportEvidenceIndependentOfLaterObservations()
+    [Theory]
+    [InlineData(0x0007_0000U)]
+    [InlineData(0x0008_0000U)]
+    public async Task CurrentCheckpointKeepsReportEvidenceIndependentOfLaterObservations(uint version)
     {
         var store = new NativeReportCoordinatorPersistenceStore(CreateDatabase());
         var observation = CreateRow(NativeReportPersistenceKind.Observation, 11, 1, 1) with
@@ -278,13 +284,16 @@ public sealed class NativeReportCoordinatorPersistenceStoreTests : IDisposable
         };
         var metadata = CreateRow(NativeReportPersistenceKind.Metadata, 1, 3, 1) with
         {
-            CheckpointSchemaVersion = NativeReportCoordinatorAbi.Version
+            CheckpointSchemaVersion = version,
+            ReportHandle = version == 0x0007_0000U ? 0UL : 77UL
         };
         await store.PersistAsync(new[] { observation, report, metadata }, CancellationToken.None);
 
         var loaded = await store.LoadAsync(CancellationToken.None);
         Assert.Equal(report, Assert.Single(loaded,
             row => row.OperationKind == (uint)NativeReportPersistenceKind.Report));
+        Assert.Equal(version == 0x0007_0000U ? report.ReportHandle : 77UL,
+            Assert.Single(loaded, row => row.OperationKind == (uint)NativeReportPersistenceKind.Metadata).ReportHandle);
     }
 
     [Fact]

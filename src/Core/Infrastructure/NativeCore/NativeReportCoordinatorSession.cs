@@ -165,6 +165,24 @@ internal sealed partial class NativeReportCoordinatorSession : IDisposable
         }
     }
 
+    public NativeReportCoordinatorStatus ClearHistory(
+        in NativeReportClearHistoryInput input,
+        out uint removedCount)
+    {
+        lock (sync)
+        {
+            try
+            {
+                return (NativeReportCoordinatorStatus)NativeMethods.ClearHistory(
+                    RequireHandle(), in input, out removedCount);
+            }
+            finally
+            {
+                ObserveGrowth();
+            }
+        }
+    }
+
     public NativeReportCoordinatorStatus QueryPlanSize(
         in NativeReportPlanInput input,
         out uint reportCount,
@@ -369,6 +387,13 @@ internal sealed partial class NativeReportCoordinatorSession : IDisposable
         internal static partial int CommandTrust(
             IntPtr handle,
             in NativeReportTrustCommandInput input);
+
+        [LibraryImport(LibraryName, EntryPoint = "rm_report_coordinator_clear_history")]
+        [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+        internal static partial int ClearHistory(
+            IntPtr handle,
+            in NativeReportClearHistoryInput input,
+            out uint removedCount);
 
         [LibraryImport(LibraryName, EntryPoint = "rm_report_coordinator_query_plan_size")]
         [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]

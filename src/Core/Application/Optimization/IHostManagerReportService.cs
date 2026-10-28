@@ -8,6 +8,8 @@ public interface IHostManagerReportService
 
     Task<OptimizationReportOverview> RefreshReportsAsync(CancellationToken cancellationToken);
 
+    Task<int> ClearHistoryAsync(CancellationToken cancellationToken);
+
     Task<OptimizationReportItem?> GetReportAsync(
         string reportId,
         CancellationToken cancellationToken);

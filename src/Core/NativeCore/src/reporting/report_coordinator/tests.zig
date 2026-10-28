@@ -2824,6 +2824,356 @@ fn lifecyclePlan(session: *state.Session, epoch: u64, plan_epoch: u64, utc: i64)
     return result;
 }
 
+test "clear history persists every historical deletion together and leaves active reports and trust untouched" {
+    var config = testConfig();
+    const fast = clearTestRule();
+    const session = try createReadySession(&config, &.{fast});
+    defer session.destroy();
+    try observeRows(session, sourceSnapshot(3, 3, 1, 100, .complete, 3), &.{ factForTarget(1, 41, 60), factForTarget(1, 42, 70), factForTarget(1, 43, 80) });
+    var trust_input = trustCommand(4, 4, .add);
+    try expectCode(.ok, session_module.commandTrust(session, &trust_input));
+    try settleCurrentPlan(session, 5, 6, 1, 110);
+    try observeRows(session, sourceSnapshot(7, 7, 2, 120, .complete, 3), &.{ factForTarget(2, 41, 0), factForTarget(2, 42, 0), factForTarget(2, 43, 90) });
+    try settleCurrentPlan(session, 8, 9, 2, 130);
+    const active_index = session.findReport(43, family_handle).?;
+    const active = session.reports[active_index];
+    const trust_index = session.findTrust(41, family_handle).?;
+    const trusted = session.trusts[trust_index];
+    const old_handle = session.reports[session.findReport(41, family_handle).?].report_handle;
+    const observations = try std.testing.allocator.dupe(state.ObservationSlot, session.observations);
+    defer std.testing.allocator.free(observations);
+    var input = clearHistoryInput(10, 140);
+    var removed: u32 = 999;
+    try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_report_coordinator_clear_history(@ptrCast(session), &input, &removed));
+    try std.testing.expectEqual(@as(u32, 2), removed);
+    try std.testing.expectEqualDeep(active, session.reports[active_index]);
+    try std.testing.expectEqualDeep(trusted, session.trusts[trust_index]);
+    try std.testing.expectEqualDeep(observations, session.observations);
+    const planned = try lifecyclePlan(session, 11, 3, 150);
+    try std.testing.expectEqual(@as(u32, 1), planned.output.report_count);
+    try std.testing.expectEqual(@as(u64, 43), planned.reports[0].target_handle);
+    var deletes: u32 = 0;
+    for (planned.operations[0..planned.output.persistence_operation_count]) |operation| {
+        if (operation.operation_kind != @intFromEnum(protocol.PersistenceKind.report)) continue;
+        try std.testing.expectEqual(@as(u64, 3), operation.plan_epoch);
+        try std.testing.expect((operation.flags & protocol.PersistenceFlags.delete) != 0);
+        try std.testing.expect(operation.target_handle == 41 or operation.target_handle == 42);
+        deletes += 1;
+    }
+    try std.testing.expectEqual(@as(u32, 2), deletes);
+    input = clearHistoryInput(12, 151);
+    try expectCode(.unavailable, session_module.clearHistory(session, &input, &removed));
+    try std.testing.expectEqual(@as(u32, 0), removed);
+    try settlePlan(session, planned.operations[0..planned.output.persistence_operation_count], 12, 12, 3, 151);
+    try std.testing.expect(session.findReport(41, family_handle) == null);
+    try std.testing.expect(session.findReport(42, family_handle) == null);
+    const settled = try lifecyclePlan(session, 13, 4, 160);
+    try std.testing.expectEqual(@as(u32, 1), settled.output.report_count);
+    try std.testing.expectEqualDeep(active, session.reports[active_index]);
+    try std.testing.expectEqualDeep(trusted, session.trusts[trust_index]);
+    try observeRows(session, sourceSnapshot(14, 14, 3, 170, .complete, 2), &.{ factForTarget(3, 41, 100), factForTarget(3, 43, 95) });
+    const recreated = session.reports[session.findReport(41, family_handle).?];
+    try std.testing.expect(recreated.report_handle > old_handle);
+    try std.testing.expect(recreated.active);
+    try std.testing.expect(recreated.trusted);
+    try std.testing.expectEqual(@as(f64, 100), recreated.current_value);
+}
+
+test "clear history failed persistence retries the same deletions and restart restores only committed rows" {
+    var config = testConfig();
+    const fast = clearTestRule();
+    const session = try createReadySession(&config, &.{fast});
+    defer session.destroy();
+    try observeRows(session, sourceSnapshot(3, 3, 1, 100, .complete, 1), &.{fact(1, 60)});
+    try observeRows(session, sourceSnapshot(4, 4, 2, 110, .complete, 0), &.{});
+    const baseline = try lifecyclePlan(session, 5, 1, 120);
+    const baseline_rows = baseline.operations[0..baseline.output.persistence_operation_count];
+    const identity = baseline.reports[0].report_handle;
+    try settlePlan(session, baseline_rows, 6, 6, 1, 121);
+    var input = clearHistoryInput(7, 130);
+    var removed: u32 = 0;
+    try expectCode(.ok, session_module.clearHistory(session, &input, &removed));
+    try std.testing.expectEqual(@as(u32, 1), removed);
+    const first = try lifecyclePlan(session, 8, 2, 140);
+    const first_delete = try findOperation(first.operations[0..first.output.persistence_operation_count], .report);
+    var feedbacks: [32]protocol.PersistenceFeedback = undefined;
+    for (first.operations[0..first.output.persistence_operation_count], feedbacks[0..first.output.persistence_operation_count]) |operation, *feedback| feedback.* = feedbackFor(operation, .failed);
+    var feedback_input = persistenceFeedbackBatchInput(9, 9, 2, 141, first.output.persistence_operation_count);
+    try expectCode(.ok, session_module.applyFeedback(session, &feedback_input, &feedbacks, first.output.persistence_operation_count));
+    try std.testing.expect(session.reports[session.findReport(target_handle, family_handle).?].delete_pending);
+    input = clearHistoryInput(10, 142);
+    try expectCode(.ok, session_module.clearHistory(session, &input, &removed));
+    try std.testing.expectEqual(@as(u32, 0), removed);
+    const retry = try lifecyclePlan(session, 11, 3, 150);
+    const retry_delete = try findOperation(retry.operations[0..retry.output.persistence_operation_count], .report);
+    try std.testing.expectEqual(first_delete.identity_handle, retry_delete.identity_handle);
+    try std.testing.expectEqual(first_delete.mutation_version, retry_delete.mutation_version);
+    try std.testing.expect((retry_delete.flags & protocol.PersistenceFlags.delete) != 0);
+    {
+        const restored = try state.Session.create(&config);
+        defer restored.destroy();
+        var replace = ruleReplaceInput(1, 1, 121, 1);
+        try expectCode(.ok, session_module.replaceRules(restored, &replace, @ptrCast(&fast), 1));
+        var restore = importInput(2, 2, 121, 1, @intCast(baseline_rows.len));
+        try expectCode(.ok, session_module.importPersisted(restored, &restore, baseline_rows.ptr, @intCast(baseline_rows.len)));
+        const recovered = try lifecyclePlan(restored, 3, 1, 122);
+        try std.testing.expectEqual(@as(u32, 1), recovered.output.report_count);
+        try std.testing.expectEqual(identity, recovered.reports[0].report_handle);
+        try std.testing.expectEqual(@as(u32, 0), recovered.output.active_report_count);
+    }
+    try settlePlan(session, retry.operations[0..retry.output.persistence_operation_count], 12, 12, 3, 151);
+    const final = try lifecyclePlan(session, 13, 4, 160);
+    try std.testing.expectEqual(@as(u32, 0), final.output.report_count);
+    {
+        const restored = try state.Session.create(&config);
+        defer restored.destroy();
+        var replace = ruleReplaceInput(1, 1, 151, 1);
+        try expectCode(.ok, session_module.replaceRules(restored, &replace, @ptrCast(&fast), 1));
+        const rows = [_]protocol.PersistenceOperation{
+            try findOperation(retry.operations[0..retry.output.persistence_operation_count], .metadata),
+            try findOperation(baseline_rows, .source),
+            try findOperation(baseline_rows, .observation),
+        };
+        var restore = importInput(2, 2, 151, 1, rows.len);
+        try expectCode(.ok, session_module.importPersisted(restored, &restore, &rows, rows.len));
+        const recovered = try lifecyclePlan(restored, 3, 1, 152);
+        try std.testing.expectEqual(@as(u32, 0), recovered.output.report_count);
+        try settlePlan(restored, recovered.operations[0..recovered.output.persistence_operation_count], 4, 4, 1, 153);
+        try observeRows(restored, sourceSnapshot(5, 5, 3, 160, .complete, 1), &.{fact(2, 70)});
+        const recreated = restored.reports[restored.findReport(target_handle, family_handle).?];
+        try std.testing.expect(recreated.report_handle > identity);
+    }
+}
+
+test "clear history validates ABI and command ordering and preflights mutations atomically" {
+    var config = testConfig();
+    const fast = clearTestRule();
+    const session = try createReadySession(&config, &.{fast});
+    defer session.destroy();
+    try observeRows(session, sourceSnapshot(3, 3, 1, 100, .complete, 2), &.{ factForTarget(1, 41, 60), factForTarget(1, 42, 70) });
+    try observeRows(session, sourceSnapshot(4, 4, 2, 110, .complete, 0), &.{});
+    const before = try std.testing.allocator.dupe(state.ReportSlot, session.reports);
+    defer std.testing.allocator.free(before);
+    const revision = session.state_revision;
+    const mutation = session.next_mutation_version;
+    var removed: u32 = 999;
+    for (0..9) |field| {
+        var input = clearHistoryInput(5, 120);
+        switch (field) {
+            0 => input.abi_version = 0x0007_0000,
+            1 => input.struct_size -= 1,
+            2 => input.configuration_generation += 1,
+            3 => input.operation_epoch = 0,
+            4 => input.command_monotonic_milliseconds = 0,
+            5 => input.command_utc_milliseconds = -1,
+            6 => input.valid_mask = 0,
+            7 => input.flags = 1,
+            8 => input.reserved[0] = 1,
+            else => unreachable,
+        }
+        try expectCode(.abi_mismatch, session_module.clearHistory(session, &input, &removed));
+        try std.testing.expectEqual(@as(u32, 0), removed);
+        try std.testing.expectEqualDeep(before, session.reports);
+    }
+    var input = clearHistoryInput(5, 120);
+    try std.testing.expectEqual(@intFromEnum(ResultCode.invalid_argument), abi.rm_report_coordinator_clear_history(null, &input, &removed));
+    try std.testing.expectEqual(@as(u32, 0), removed);
+    try std.testing.expectEqual(@intFromEnum(ResultCode.invalid_argument), abi.rm_report_coordinator_clear_history(@ptrCast(session), null, &removed));
+    try std.testing.expectEqual(@intFromEnum(ResultCode.invalid_argument), abi.rm_report_coordinator_clear_history(@ptrCast(session), &input, null));
+    session.next_mutation_version = std.math.maxInt(u64) - 2;
+    try expectCode(.out_of_memory, session_module.clearHistory(session, &input, &removed));
+    try std.testing.expectEqual(@as(u32, 0), removed);
+    try std.testing.expectEqualDeep(before, session.reports);
+    try std.testing.expectEqual(revision, session.state_revision);
+    try std.testing.expectEqual(@as(u64, 4), session.last_operation_epoch);
+    session.next_mutation_version = mutation;
+    try expectCode(.ok, session_module.clearHistory(session, &input, &removed));
+    try std.testing.expectEqual(@as(u32, 2), removed);
+    try expectCode(.stale_frame, session_module.clearHistory(session, &input, &removed));
+    try std.testing.expectEqual(@as(u32, 0), removed);
+}
+
+test "clear history frees capacity only after persistence and old candidates wait for a new observation" {
+    var config = testConfig();
+    config.maximum_report_count = 1;
+    const fast = clearTestRule();
+    const session = try createReadySession(&config, &.{fast});
+    defer session.destroy();
+    try observeRows(session, sourceSnapshot(3, 3, 1, 100, .complete, 1), &.{factForTarget(1, 41, 60)});
+    const old = session.reports[0].report_handle;
+    try observeRows(session, sourceSnapshot(4, 4, 2, 110, .complete, 2), &.{ factForTarget(2, 41, 0), factForTarget(1, 42, 60) });
+    try std.testing.expectEqual(@as(u32, 1), @import("rules.zig").unrecordedReportCount(session));
+    try settleCurrentPlan(session, 5, 6, 1, 120);
+    var input = clearHistoryInput(7, 130);
+    var removed: u32 = 0;
+    try expectCode(.ok, session_module.clearHistory(session, &input, &removed));
+    const clearing = try lifecyclePlan(session, 8, 2, 140);
+    try std.testing.expectEqual(@as(u32, 0), clearing.output.report_count);
+    try std.testing.expectEqual(@as(u32, 1), clearing.output.unrecorded_report_count);
+    try std.testing.expect(session.findReport(42, family_handle) == null);
+    try settlePlan(session, clearing.operations[0..clearing.output.persistence_operation_count], 9, 9, 2, 141);
+    const settled = try lifecyclePlan(session, 10, 3, 160);
+    try std.testing.expectEqual(@as(u32, 0), settled.output.report_count);
+    try std.testing.expectEqual(@as(u32, 1), settled.output.unrecorded_report_count);
+    try std.testing.expect(session.findReport(42, family_handle) == null);
+    try observeRows(session, sourceSnapshot(11, 11, 3, 170, .complete, 2), &.{ factForTarget(3, 41, 0), factForTarget(2, 42, 70) });
+    const evaluated = try lifecyclePlan(session, 12, 4, 180);
+    try std.testing.expectEqual(@as(u32, 1), evaluated.output.report_count);
+    try std.testing.expectEqual(@as(u32, 0), evaluated.output.unrecorded_report_count);
+    try std.testing.expectEqual(@as(u64, 42), evaluated.reports[0].target_handle);
+    try std.testing.expect(evaluated.reports[0].report_handle > old);
+}
+
+test "clear history persists issued report highwater at identical UTC and imports both lagging and exhausted checkpoints" {
+    for ([_]u64{ 0, 500, std.math.maxInt(u64) }) |highwater| {
+        var config = testConfig();
+        const session = try state.Session.create(&config);
+        defer session.destroy();
+        const fast = clearTestRule();
+        var replace = ruleReplaceInput(1, 1, 150, 1);
+        try expectCode(.ok, session_module.replaceRules(session, &replace, @ptrCast(&fast), 1));
+        var metadata = persistedMetadataRow(4, 150);
+        metadata.report_handle = highwater;
+        var report = persistedReportRow();
+        report.flags = 0;
+        const rows = [_]protocol.PersistenceOperation{ metadata, report };
+        var restore = importInput(2, 2, 150, 1, rows.len);
+        try expectCode(.ok, session_module.importPersisted(session, &restore, &rows, rows.len));
+        const highest = @max(highwater, report.identity_handle);
+        try std.testing.expectEqual(if (highest == std.math.maxInt(u64)) @as(u64, 0) else highest + 1, session.next_report_handle);
+        var input = clearHistoryInput(3, 150);
+        var removed: u32 = 0;
+        try expectCode(.ok, session_module.clearHistory(session, &input, &removed));
+        try std.testing.expectEqual(@as(u32, 1), removed);
+        const clearing = try lifecyclePlan(session, 4, 1, 150);
+        const checkpoint = try findOperation(clearing.operations[0..clearing.output.persistence_operation_count], .metadata);
+        const deletion = try findOperation(clearing.operations[0..clearing.output.persistence_operation_count], .report);
+        try std.testing.expectEqual(highest, checkpoint.report_handle);
+        try std.testing.expect(checkpoint.mutation_version > metadata.mutation_version);
+        try std.testing.expectEqual(report.identity_handle, deletion.identity_handle);
+        try std.testing.expect((deletion.flags & protocol.PersistenceFlags.delete) != 0);
+        try std.testing.expectEqual(@as(u32, 2), clearing.output.persistence_operation_count);
+        const restarted = try state.Session.create(&config);
+        defer restarted.destroy();
+        replace = ruleReplaceInput(1, 1, 150, 1);
+        try expectCode(.ok, session_module.replaceRules(restarted, &replace, @ptrCast(&fast), 1));
+        restore = importInput(2, 2, 150, 1, 1);
+        try expectCode(.ok, session_module.importPersisted(restarted, &restore, @ptrCast(&checkpoint), 1));
+        if (highest == std.math.maxInt(u64)) {
+            try std.testing.expectEqual(@as(?u64, null), restarted.allocateReportHandle());
+        } else {
+            try observeRows(restarted, sourceSnapshot(3, 3, 1, 160, .complete, 1), &.{fact(1, 70)});
+            try std.testing.expect(restarted.reports[0].report_handle > highest);
+        }
+    }
+}
+
+test "clear settlement waits for a real rolling judgment and stale windows cannot recreate candidates" {
+    for ([_]bool{ false, true }) |stale| {
+        var config = testConfig();
+        config.maximum_report_count = 1;
+        var rolling = clearTestRule();
+        rolling.flags = protocol.RuleFlags.rolling;
+        rolling.metric_selector = @intFromEnum(protocol.MetricSelector.sum_24h);
+        rolling.activation_threshold = 1;
+        rolling.clear_threshold = 0.5;
+        const session = try createReadySession(&config, &.{rolling});
+        defer session.destroy();
+        const first = rollingFact(1, 4);
+        var candidate = first;
+        candidate.target_handle = 42;
+        try observeRows(session, sourceSnapshot(3, 3, 1, 1_000, .complete, 2), &.{ first, candidate });
+        candidate.fact_sequence = 2;
+        candidate.delta_value = 6;
+        try observeRows(session, sourceSnapshot(4, 4, 2, 2_000, .complete, 1), &.{candidate});
+        try settleCurrentPlan(session, 5, 6, 1, 2_001);
+        var input = clearHistoryInput(7, 2_010);
+        var removed: u32 = 0;
+        try expectCode(.ok, session_module.clearHistory(session, &input, &removed));
+        const clearing = try lifecyclePlan(session, 8, 2, 2_020);
+        try std.testing.expectEqual(@as(u32, 0), clearing.output.report_count);
+        try settlePlan(session, clearing.operations[0..clearing.output.persistence_operation_count], 9, 9, 2, 2_021);
+        const settled = try lifecyclePlan(session, 10, 3, 2_030);
+        try std.testing.expectEqual(@as(u32, 0), settled.output.report_count);
+        const evaluated = try lifecyclePlan(session, 11, 4, if (stale) 40_000 else 4_001);
+        try std.testing.expectEqual(@as(u32, if (stale) 0 else 1), evaluated.output.report_count);
+        try std.testing.expectEqual(@as(u32, 0), evaluated.output.unrecorded_report_count);
+        if (!stale) {
+            try std.testing.expectEqual(@as(u64, 42), evaluated.reports[0].target_handle);
+            try std.testing.expectEqual(@as(f64, 6), evaluated.reports[0].window_24h_value);
+        }
+    }
+}
+
+test "report capacity expansion measures actual initial and full configured allocations" {
+    var initial: [2]u64 = undefined;
+    var full: [2]u64 = undefined;
+    for (0..2) |index| {
+        const multiplier: u32 = if (index == 0) 1 else 4;
+        var config = testConfig();
+        config.maximum_source_count = 16;
+        config.maximum_rule_count = 64;
+        config.maximum_observation_count = 2048 * multiplier;
+        config.maximum_report_count = 1024 * multiplier;
+        config.maximum_trust_count = 2048 * multiplier;
+        config.maximum_bucket_count = 21632 * multiplier;
+        config.maximum_persistence_operation_count = 32768 * multiplier;
+        config.maximum_report_output_count = 1024 * multiplier;
+        config.maximum_rolling_observation_count = 128 * multiplier;
+        config.source_index_capacity = 32;
+        config.rule_index_capacity = 128;
+        config.observation_index_capacity = 4096 * multiplier;
+        config.report_index_capacity = 2048 * multiplier;
+        config.trust_index_capacity = 4096 * multiplier;
+        config.bucket_index_capacity = 65536 * multiplier;
+        config.planned_persistence_index_capacity = 65536 * multiplier;
+        config.bucket_width_milliseconds = 3_600_000;
+        config.window_24h_milliseconds = 86_400_000;
+        config.window_7d_milliseconds = 604_800_000;
+        config.maximum_future_skew_milliseconds = 300_000;
+        config.default_stale_after_milliseconds = 900_000;
+        config.default_retention_milliseconds = 604_800_000;
+        config.metadata_checkpoint_interval_milliseconds = 3_600_000;
+        config.resident_byte_budget = 128 * 1024 * 1024;
+        const session = try state.Session.create(&config);
+        defer session.destroy();
+        initial[index] = session.workspaceCapacity().resident_byte_count;
+        try expectCode(.ok, session.ensureShape(config, .report_reports));
+        const capacity = session.workspaceCapacity();
+        full[index] = capacity.resident_byte_count;
+        try std.testing.expectEqual(config.maximum_source_count, capacity.source_capacity);
+        try std.testing.expectEqual(config.maximum_rule_count, capacity.rule_capacity);
+        try std.testing.expectEqual(config.maximum_observation_count, capacity.observation_capacity);
+        try std.testing.expectEqual(config.maximum_report_count, capacity.report_capacity);
+        try std.testing.expectEqual(config.maximum_trust_count, capacity.trust_capacity);
+        try std.testing.expectEqual(config.maximum_bucket_count, capacity.bucket_capacity);
+        try std.testing.expectEqual(config.maximum_persistence_operation_count, capacity.persistence_operation_capacity);
+        try std.testing.expectEqual(try state.requiredResidentBytes(&config), full[index]);
+    }
+    try std.testing.expectEqual(initial[0], initial[1]);
+    try std.testing.expect(full[1] > full[0]);
+    std.debug.print("REPORT_CAPACITY_MEMORY oldInitial={d} newInitial={d} oldFull={d} newFull={d} difference={d}\n", .{ initial[0], initial[1], full[0], full[1], full[1] - full[0] });
+}
+
+fn clearTestRule() protocol.RuleInput {
+    var value = rule();
+    value.required_consecutive_hits = 1;
+    value.required_consecutive_misses = 1;
+    return value;
+}
+
+fn clearHistoryInput(epoch: u64, utc: i64) protocol.ClearHistoryInput {
+    var input = std.mem.zeroes(protocol.ClearHistoryInput);
+    input.abi_version = protocol.abi_version;
+    input.struct_size = @sizeOf(protocol.ClearHistoryInput);
+    input.configuration_generation = 1;
+    input.operation_epoch = epoch;
+    input.command_monotonic_milliseconds = epoch;
+    input.command_utc_milliseconds = utc;
+    input.valid_mask = protocol.ClearHistoryValid.required;
+    return input;
+}
+
 const Fixture = struct {
     config: protocol.Config,
     session: *state.Session,

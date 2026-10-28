@@ -24,6 +24,14 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             return Results.Ok(await reportService.RefreshReportsAsync(cancellationToken));
         });
 
+        app.MapPost("/api/optimization/reports/history/clear", async (
+            IHostManagerReportService reportService,
+            CancellationToken cancellationToken) =>
+        {
+            var removedCount = await reportService.ClearHistoryAsync(cancellationToken);
+            return Results.Ok(new OptimizationReportHistoryClearReply(removedCount));
+        });
+
         app.MapPost("/api/optimization/reports/{id}/dismiss", async (
             string id,
             IHostManagerReportService reportService,
@@ -46,3 +54,5 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         return app;
     }
 }
+
+public sealed record OptimizationReportHistoryClearReply(int RemovedCount);

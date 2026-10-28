@@ -9,7 +9,7 @@ public sealed class NativeReportCoordinatorAbiTests
     [Fact]
     public void AbiUsesPublishedVersionSizesAndOffsets()
     {
-        Assert.Equal(0x0007_0000U, NativeReportCoordinatorAbi.Version);
+        Assert.Equal(0x0008_0000U, NativeReportCoordinatorAbi.Version);
         Assert.Equal(216, Unsafe.SizeOf<NativeReportCoordinatorConfiguration>());
         Assert.Equal(96, Unsafe.SizeOf<NativeReportCoordinatorCapacity>());
         Assert.Equal(160, Unsafe.SizeOf<NativeReportRuleInput>());
@@ -17,6 +17,7 @@ public sealed class NativeReportCoordinatorAbiTests
         Assert.Equal(128, Unsafe.SizeOf<NativeReportFactInput>());
         Assert.Equal(112, Unsafe.SizeOf<NativeReportSourceSnapshotInput>());
         Assert.Equal(88, Unsafe.SizeOf<NativeReportTrustCommandInput>());
+        Assert.Equal(64, Unsafe.SizeOf<NativeReportClearHistoryInput>());
         Assert.Equal(72, Unsafe.SizeOf<NativeReportImportInput>());
         Assert.Equal(80, Unsafe.SizeOf<NativeReportPlanInput>());
         Assert.Equal(192, Unsafe.SizeOf<NativeReportOutput>());
@@ -76,6 +77,10 @@ public sealed class NativeReportCoordinatorAbiTests
         AssertOffset<NativeReportTrustCommandInput>(
             nameof(NativeReportTrustCommandInput.FamilyHandle),
             48);
+        AssertOffset<NativeReportClearHistoryInput>(nameof(NativeReportClearHistoryInput.ConfigurationGeneration), 8);
+        AssertOffset<NativeReportClearHistoryInput>(nameof(NativeReportClearHistoryInput.CommandUtcMilliseconds), 32);
+        AssertOffset<NativeReportClearHistoryInput>(nameof(NativeReportClearHistoryInput.ValidMask), 40);
+        AssertOffset<NativeReportClearHistoryInput>(nameof(NativeReportClearHistoryInput.Flags), 48);
         AssertOffset<NativeReportPlanOutput>(
             nameof(NativeReportPlanOutput.UnrecordedReportCount),
             40);
@@ -95,6 +100,7 @@ public sealed class NativeReportCoordinatorAbiTests
         Assert.Equal(0xFFUL, (ulong)NativeReportSourceSnapshotValidity.Required);
         Assert.Equal(0x07UL, (ulong)NativeReportRuleReplaceValidity.Required);
         Assert.Equal(0x0FUL, (ulong)NativeReportTrustCommandValidity.Required);
+        Assert.Equal(0x03UL, (ulong)NativeReportClearHistoryValidity.Required);
         Assert.Equal(0x07UL, (ulong)NativeReportImportValidity.Required);
         Assert.Equal(0x07UL, (ulong)NativeReportPlanValidity.Required);
         Assert.Equal(0x07UL, (ulong)NativeReportPersistenceFeedbackValidity.Required);

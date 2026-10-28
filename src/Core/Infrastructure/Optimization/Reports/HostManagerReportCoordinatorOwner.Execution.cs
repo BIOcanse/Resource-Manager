@@ -601,7 +601,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner
             || output.Reserved[1] != 0)
         {
             throw new InvalidOperationException(
-                "The native report plan output violates the fixed v7 contract.");
+                "The native report plan output violates the fixed v8 contract.");
         }
     }
 
@@ -635,7 +635,7 @@ internal sealed partial class HostManagerReportCoordinatorOwner
             || output.Reserved[1] != 0)
         {
             throw new InvalidDataException(
-                "A native report output violates the fixed v7 contract.");
+                "A native report output violates the fixed v8 contract.");
         }
     }
 

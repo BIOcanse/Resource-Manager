@@ -2,6 +2,7 @@ const protocol = @import("protocol.zig");
 const state = @import("state.zig");
 const rules = @import("rules.zig");
 const trust = @import("trust.zig");
+const history = @import("history.zig");
 const planner = @import("planner.zig");
 const persistence = @import("persistence.zig");
 const ResultCode = @import("../../common/result_codes.zig").ResultCode;
@@ -71,6 +72,12 @@ pub fn queryPlanSize(
     state.lockMutex(&session.mutex);
     defer session.mutex.unlock();
     return planner.queryPlanSize(session, input, report_count, operation_count);
+}
+
+pub fn clearHistory(session: *Session, input: *const protocol.ClearHistoryInput, removed_count: *u32) ResultCode {
+    state.lockMutex(&session.mutex);
+    defer session.mutex.unlock();
+    return history.clear(session, input, removed_count);
 }
 
 pub fn plan(

@@ -6,6 +6,7 @@ namespace ResourceManager.App.Infrastructure.Optimization.Reports;
 internal static class NativeReportCoordinatorPersistenceMigration
 {
     private const uint PreviousCheckpointSchemaVersion = 0x0006_0000;
+    private const uint SnapshotCheckpointSchemaVersion = 0x0007_0000;
     private const uint OldestCheckpointSchemaVersion = 0x0005_0000;
     private const uint FirstCompatibleLegacyProfileRevision = 41;
     private const uint LastCompatibleLegacyProfileRevision = 46;
@@ -29,6 +30,20 @@ internal static class NativeReportCoordinatorPersistenceMigration
         {
             return rows.ToArray();
         }
+        var maximumReportHandle = rows
+            .Where(static row => row.OperationKind == (uint)NativeReportPersistenceKind.Report)
+            .Select(static row => row.ReportHandle).DefaultIfEmpty(0UL).Max();
+        if (metadata.CheckpointSchemaVersion == SnapshotCheckpointSchemaVersion)
+        {
+            // v7 already stores report evidence snapshots in the current shape.
+            return rows.Select(row => row.OperationKind == (uint)NativeReportPersistenceKind.Metadata
+                ? row with
+                {
+                    CheckpointSchemaVersion = NativeReportCoordinatorAbi.Version,
+                    ReportHandle = maximumReportHandle
+                }
+                : row).ToArray();
+        }
         if (metadata.OperationKind != 0
             && metadata.CheckpointSchemaVersion is not PreviousCheckpointSchemaVersion
             and not OldestCheckpointSchemaVersion)
@@ -47,7 +62,11 @@ internal static class NativeReportCoordinatorPersistenceMigration
         return rows.Select(row =>
         {
             if (row.OperationKind == (uint)NativeReportPersistenceKind.Metadata)
-                return row with { CheckpointSchemaVersion = NativeReportCoordinatorAbi.Version };
+                return row with
+                {
+                    CheckpointSchemaVersion = NativeReportCoordinatorAbi.Version,
+                    ReportHandle = maximumReportHandle
+                };
             if (row.OperationKind != (uint)NativeReportPersistenceKind.Report
                 || !observations.TryGetValue((row.SourceHandle, row.CoverageScopeHandle,
                     row.RuleHandle, row.TargetHandle), out var observation))

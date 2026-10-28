@@ -80,6 +80,7 @@ public sealed class LoopbackApiAuthenticationPolicyTests
     [InlineData("POST", "/api/adapters/resource-manager/scheduling", "Protected", "adapters.register.self")]
     [InlineData("POST", "/api/operations/{id}/cancel", "Protected", "session")]
     [InlineData("POST", "/api/optimization/reports/refresh", "Protected", "processes.read")]
+    [InlineData("POST", "/api/optimization/reports/history/clear", "Protected", "session")]
     [InlineData("POST", "/api/gpu-placement/process-history/observe", "Protected", "gpu.report")]
     [InlineData("GET", "/api/targeted-recordings", "Protected", "processes.read")]
     [InlineData("HEAD", "/api/targeted-recordings", "Protected", "processes.read")]

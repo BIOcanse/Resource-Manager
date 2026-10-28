@@ -18,12 +18,23 @@ public sealed class HostManagerReportCoordinatorConfigurationTests
         Assert.Equal(69UL << 32, plan.ConfigurationGeneration);
         Assert.Equal(16, plan.Recreate.Capacity.MaximumSourceCount);
         Assert.Equal(64, plan.Recreate.Capacity.MaximumRuleCount);
-        Assert.Equal(2048, plan.Recreate.Capacity.MaximumObservationCount);
-        Assert.Equal(1024, plan.Recreate.Capacity.MaximumReportCount);
-        Assert.Equal(2048, plan.Recreate.Capacity.MaximumTrustCount);
-        Assert.Equal(21632, plan.Recreate.Capacity.MaximumBucketCount);
-        Assert.Equal(32768, plan.Recreate.Capacity.MaximumPersistenceOperationCount);
-        Assert.Equal(65536, plan.Recreate.Capacity.PlannedPersistenceIndexCapacity);
+        Assert.Equal(8192, plan.Recreate.Capacity.MaximumObservationCount);
+        Assert.Equal(4096, plan.Recreate.Capacity.MaximumReportCount);
+        Assert.Equal(8192, plan.Recreate.Capacity.MaximumTrustCount);
+        Assert.Equal(86528, plan.Recreate.Capacity.MaximumBucketCount);
+        Assert.Equal(131072, plan.Recreate.Capacity.MaximumPersistenceOperationCount);
+        Assert.Equal(4096, plan.Recreate.Capacity.MaximumReportOutputCount);
+        Assert.Equal(512, plan.Recreate.Capacity.MaximumRollingObservationCount);
+        Assert.Equal(32, plan.Recreate.Capacity.SourceIndexCapacity);
+        Assert.Equal(128, plan.Recreate.Capacity.RuleIndexCapacity);
+        Assert.Equal(16384, plan.Recreate.Capacity.ObservationIndexCapacity);
+        Assert.Equal(8192, plan.Recreate.Capacity.ReportIndexCapacity);
+        Assert.Equal(16384, plan.Recreate.Capacity.TrustIndexCapacity);
+        Assert.Equal(262144, plan.Recreate.Capacity.BucketIndexCapacity);
+        Assert.Equal(262144, plan.Recreate.Capacity.PlannedPersistenceIndexCapacity);
+        Assert.Equal(4096, plan.Build.CapacityLimits.MaximumReportCount);
+        Assert.Equal(8192, plan.Build.CapacityLimits.MaximumTrustCount);
+        Assert.Equal(16384, plan.Build.CapacityLimits.TrustIndexCapacity);
         Assert.Equal(9, plan.Recreate.Rules.Length);
         Assert.DoesNotContain(plan.Recreate.Rules, rule => rule.RuleHandle == 1035);
         Assert.All(plan.Recreate.Rules, rule => Assert.NotEqual(0UL, rule.RuleGeneration));
@@ -80,6 +91,34 @@ public sealed class HostManagerReportCoordinatorConfigurationTests
         var changed = HostManagerTestPlanFactory.CreatePlan(root =>
             root["host_recreate"]!["report_coordinator"]!["rules"]!.AsArray().Last()!["executable_names"] = new System.Text.Json.Nodes.JsonArray("custom"));
         Assert.NotEqual(idle.RuleGeneration, changed.ReportCoordinator.Recreate.Rules.Last().RuleGeneration);
+    }
+
+    [Theory]
+    [InlineData("maximum_report_count", 8192)]
+    [InlineData("maximum_observation_count", 16384)]
+    [InlineData("maximum_trust_count", 16384)]
+    [InlineData("maximum_persistence_operation_count", 393216)]
+    [InlineData("report_index_capacity", 16384)]
+    [InlineData("observation_index_capacity", 32768)]
+    [InlineData("trust_index_capacity", 32768)]
+    [InlineData("bucket_index_capacity", 524288)]
+    [InlineData("planned_persistence_index_capacity", 1048576)]
+    public void ReportCapacitiesStillRejectValuesAboveBuildLimits(string field, int value)
+    {
+        var failure = Assert.Throws<InvalidDataException>(() => HostManagerTestPlanFactory.CreatePlan(root =>
+        {
+            var capacity = root["host_recreate"]!["report_coordinator"]!["capacity"]!;
+            capacity[field] = value;
+            // Keep the requested shape valid so rejection exercises the build limit.
+            switch (field)
+            {
+                case "maximum_report_count": capacity["report_index_capacity"] = value * 2; break;
+                case "maximum_observation_count": capacity["observation_index_capacity"] = value * 2; break;
+                case "maximum_trust_count": capacity["trust_index_capacity"] = value * 2; break;
+                case "maximum_persistence_operation_count": capacity["planned_persistence_index_capacity"] = 1048576; break;
+            }
+        }));
+        Assert.Contains($"host_recreate.report_coordinator.capacity.{field}", failure.Message);
     }
 
     [Fact]

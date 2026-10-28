@@ -125,6 +125,7 @@ pub fn importPersisted(
                 metadata_count = 1;
                 metadata_mutation_version = row.mutation_version;
                 metadata_logical_utc_ms = row.checkpoint_logical_utc_milliseconds;
+                maximum_report_handle = @max(maximum_report_handle, row.report_handle);
             },
         }
     }
@@ -247,7 +248,7 @@ pub fn importPersisted(
     session.next_source_record_handle = nextIdentity(maximum_source_record_handle);
     session.next_observation_handle = nextIdentity(maximum_observation_handle);
     session.next_bucket_handle = nextIdentity(maximum_bucket_handle);
-    session.next_report_handle = nextIdentity(maximum_report_handle);
+    session.next_report_handle = if (maximum_report_handle == std.math.maxInt(u64)) 0 else nextIdentity(maximum_report_handle);
     session.next_trust_handle = nextIdentity(maximum_trust_handle);
     session.next_source_slot = 0;
     session.next_observation_slot = 0;
@@ -632,7 +633,7 @@ fn validImportedMetadata(row: *const protocol.PersistenceOperation) bool {
         row.source_status == 0 and row.source_reserved_u32 == 0 and
         row.coverage_scope_handle == 0 and row.rule_handle == 0 and
         row.rule_generation == 0 and row.target_handle == 0 and
-        row.family_handle == 0 and row.report_handle == 0 and
+        row.family_handle == 0 and
         row.report_type_handle == 0 and row.resource_kind_handle == 0 and
         row.payload_handle == 0 and row.evidence_payload_handle == 0 and
         row.first_observed_at_utc_milliseconds == 0 and
@@ -836,6 +837,7 @@ fn operationForMetadata(
         0,
     );
     output.checkpoint_schema_version = protocol.abi_version;
+    output.report_handle = if (session.next_report_handle == 0) std.math.maxInt(u64) else session.next_report_handle - 1;
     output.checkpoint_logical_utc_milliseconds = session.metadata_logical_utc_ms;
     return output;
 }

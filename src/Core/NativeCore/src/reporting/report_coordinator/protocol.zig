@@ -1,7 +1,7 @@
 const growth = @import("../../common/workspace_growth.zig");
 const std = @import("std");
 
-pub const abi_version: u32 = 0x0007_0000;
+pub const abi_version: u32 = 0x0008_0000;
 
 pub const TrustFamily = struct {
     pub const all: u64 = std.math.maxInt(u64);
@@ -99,6 +99,13 @@ pub const ImportValid = struct {
     pub const command_utc: u64 = 1 << 1;
     pub const rows: u64 = 1 << 2;
     pub const required: u64 = command_monotonic | command_utc | rows;
+    pub const known: u64 = required;
+};
+
+pub const ClearHistoryValid = struct {
+    pub const command_monotonic: u64 = 1 << 0;
+    pub const command_utc: u64 = 1 << 1;
+    pub const required: u64 = command_monotonic | command_utc;
     pub const known: u64 = required;
 };
 
@@ -361,6 +368,18 @@ pub const PlanInput = extern struct {
     valid_mask: u64,
     report_limit: u32,
     persistence_limit: u32,
+    flags: u64,
+    reserved: [1]u64,
+};
+
+pub const ClearHistoryInput = extern struct {
+    abi_version: u32,
+    struct_size: u32,
+    configuration_generation: u64,
+    operation_epoch: u64,
+    command_monotonic_milliseconds: u64,
+    command_utc_milliseconds: i64,
+    valid_mask: u64,
     flags: u64,
     reserved: [1]u64,
 };
@@ -686,6 +705,17 @@ pub fn validPlan(input: *const PlanInput, config: *const Config) bool {
         allZero(input.reserved[0..]);
 }
 
+pub fn validClearHistory(input: *const ClearHistoryInput, config: *const Config) bool {
+    return input.abi_version == abi_version and
+        input.struct_size == @sizeOf(ClearHistoryInput) and
+        input.configuration_generation == config.generation and
+        input.operation_epoch != 0 and
+        input.command_monotonic_milliseconds != 0 and
+        input.command_utc_milliseconds >= 0 and
+        input.valid_mask == ClearHistoryValid.required and
+        input.flags == 0 and allZero(input.reserved[0..]);
+}
+
 pub fn validFeedbackInput(input: *const PersistenceFeedbackInput, config: *const Config) bool {
     return input.abi_version == abi_version and
         input.struct_size == @sizeOf(PersistenceFeedbackInput) and
@@ -770,6 +800,7 @@ comptime {
     if (@sizeOf(TrustCommandInput) != 88) @compileError("report TrustCommandInput ABI drift");
     if (@sizeOf(ImportInput) != 72) @compileError("report ImportInput ABI drift");
     if (@sizeOf(PlanInput) != 80) @compileError("report PlanInput ABI drift");
+    if (@sizeOf(ClearHistoryInput) != 64) @compileError("report ClearHistoryInput ABI drift");
     if (@sizeOf(ReportOutput) != 192) @compileError("report ReportOutput ABI drift");
     if (@sizeOf(PersistenceOperation) != 352) @compileError("report PersistenceOperation ABI drift");
     if (@sizeOf(PersistenceFeedbackInput) != 72) @compileError("report PersistenceFeedbackInput ABI drift");

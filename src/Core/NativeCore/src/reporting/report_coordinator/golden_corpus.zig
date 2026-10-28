@@ -1,8 +1,8 @@
 const std = @import("std");
 const protocol = @import("protocol.zig");
 
-test "report coordinator ABI v7 layout is fixed" {
-    try std.testing.expectEqual(@as(u32, 0x0007_0000), protocol.abi_version);
+test "report coordinator ABI v8 layout is fixed" {
+    try std.testing.expectEqual(@as(u32, 0x0008_0000), protocol.abi_version);
     try std.testing.expectEqual(@as(usize, 216), @sizeOf(protocol.Config));
     try std.testing.expectEqual(@as(usize, 96), @sizeOf(protocol.Capacity));
     try std.testing.expectEqual(@as(usize, 160), @sizeOf(protocol.RuleInput));
@@ -12,6 +12,12 @@ test "report coordinator ABI v7 layout is fixed" {
     try std.testing.expectEqual(@as(usize, 88), @sizeOf(protocol.TrustCommandInput));
     try std.testing.expectEqual(@as(usize, 72), @sizeOf(protocol.ImportInput));
     try std.testing.expectEqual(@as(usize, 80), @sizeOf(protocol.PlanInput));
+    try std.testing.expectEqual(@as(usize, 64), @sizeOf(protocol.ClearHistoryInput));
+    try std.testing.expectEqual(@as(usize, 8), @offsetOf(protocol.ClearHistoryInput, "configuration_generation"));
+    try std.testing.expectEqual(@as(usize, 32), @offsetOf(protocol.ClearHistoryInput, "command_utc_milliseconds"));
+    try std.testing.expectEqual(@as(usize, 40), @offsetOf(protocol.ClearHistoryInput, "valid_mask"));
+    try std.testing.expectEqual(@as(usize, 56), @offsetOf(protocol.ClearHistoryInput, "reserved"));
+    try std.testing.expectEqual(@as(u64, 3), protocol.ClearHistoryValid.required);
     try std.testing.expectEqual(@as(usize, 192), @sizeOf(protocol.ReportOutput));
     try std.testing.expectEqual(@as(usize, 352), @sizeOf(protocol.PersistenceOperation));
     try std.testing.expectEqual(

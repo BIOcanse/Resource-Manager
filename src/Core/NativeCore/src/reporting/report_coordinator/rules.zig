@@ -672,7 +672,7 @@ fn observeComplete(
     const maintenance = maintainBeforeReports(session, effective_now_utc_ms);
     if (maintenance != .ok) return maintenance;
     if (preview_report_count) |count| {
-        count.* = requiredReportCount(session);
+        count.* = requiredReportCount(session, false);
         return .ok;
     }
     return recomputeReportsForSnapshot(session, effective_now_utc_ms, input);
@@ -728,7 +728,9 @@ fn evaluateChangedRollingWindows(session: *state.Session) ResultCode {
             rule,
             metricValue(session, @intCast(observation_index), rule),
         );
-        observation.evaluated_window_revision = observation.window_revision;
+        // Keep this revision pending until report recomputation consumes the
+        // actual window judgment. A pure Plan cannot create missing reports
+        // from an older retained decision after history deletion frees slots.
         if (observation.active != was_active or
             observation.consecutive_hits != previous_hits or
             observation.consecutive_misses != previous_misses or
@@ -799,7 +801,7 @@ pub fn prepareMaintenance(session: *state.Session, now_utc_ms: i64) ResultCode {
     const saved_mutation = session.next_mutation_version;
     session.beginFactTransaction();
     const result = maintainBeforeReports(session, now_utc_ms);
-    const count = if (result == .ok) requiredReportCount(session) else 0;
+    const count = if (result == .ok) requiredReportCount(session, true) else 0;
     session.rollbackFactTransaction();
     restoreAggregateAfterRollback(session);
     session.next_mutation_version = saved_mutation;
@@ -831,10 +833,11 @@ pub fn reportAdditionBound(session: *const state.Session, facts: []const protoco
     return count;
 }
 
-fn requiredReportCount(session: *state.Session) u32 {
+fn requiredReportCount(session: *state.Session, new_window_judgments_only: bool) u32 {
     var count = growth.occupied(session.reports);
     for (session.observations, 0..) |observation, index| {
         if (!observation.occupied or observation.delete_pending or observation.decision != .active) continue;
+        if (new_window_judgments_only and !hasNewWindowJudgment(observation)) continue;
         const rule_index = session.findRule(observation.rule_handle) orelse continue;
         const rule = session.rules[rule_index].value;
         if (rule.predicate_index != 0 or !predicateGroupActive(session, observation.target_handle, &rule) or
@@ -842,6 +845,7 @@ fn requiredReportCount(session: *state.Session) u32 {
         var duplicate = false;
         for (session.observations[0..index]) |previous| {
             if (!previous.occupied or previous.delete_pending or previous.decision != .active or previous.target_handle != observation.target_handle) continue;
+            if (new_window_judgments_only and !hasNewWindowJudgment(previous)) continue;
             const previous_rule_index = session.findRule(previous.rule_handle) orelse continue;
             const previous_rule = session.rules[previous_rule_index].value;
             if (previous_rule.predicate_index == 0 and previous_rule.family_handle == rule.family_handle and
@@ -857,7 +861,7 @@ fn requiredReportCount(session: *state.Session) u32 {
 }
 
 pub fn unrecordedReportCount(session: *state.Session) u32 {
-    return requiredReportCount(session) - growth.occupied(session.reports);
+    return requiredReportCount(session, false) - growth.occupied(session.reports);
 }
 
 pub fn recomputeReports(session: *state.Session, now_utc_ms: i64) ResultCode {
@@ -873,6 +877,9 @@ fn recomputeReportsForSnapshot(session: *state.Session, now_utc_ms: i64, snapsho
         if (rule.predicate_index != 0 or
             !predicateGroupActive(session, observation.target_handle, &rule)) continue;
         const existing = session.findReport(observation.target_handle, rule.family_handle);
+        if (existing) |index| {
+            if (session.reports[index].delete_pending) continue;
+        } else if (snapshot == null and !hasNewWindowJudgment(observation)) continue;
         const report_index = existing orelse state.firstFreeFrom(
             state.ReportSlot,
             session.reports,
@@ -967,7 +974,15 @@ fn recomputeReportsForSnapshot(session: *state.Session, now_utc_ms: i64, snapsho
             report.mutation_version = session.allocateMutation() orelse return .out_of_memory;
         }
     }
+    for (session.observations) |*observation| {
+        if (hasNewWindowJudgment(observation.*)) observation.evaluated_window_revision = observation.window_revision;
+    }
     return .ok;
+}
+
+fn hasNewWindowJudgment(observation: state.ObservationSlot) bool {
+    return observation.occupied and !observation.delete_pending and observation.rolling and
+        observation.evidence_available and observation.window_revision != observation.evaluated_window_revision;
 }
 
 fn candidateBetter(session: *const state.Session, candidate: u32, current: u32) bool {

@@ -209,6 +209,7 @@ comptime {
     _ = report_coordinator_abi.rm_report_coordinator_import;
     _ = report_coordinator_abi.rm_report_coordinator_observe;
     _ = report_coordinator_abi.rm_report_coordinator_command_trust;
+    _ = report_coordinator_abi.rm_report_coordinator_clear_history;
     _ = report_coordinator_abi.rm_report_coordinator_query_plan_size;
     _ = report_coordinator_abi.rm_report_coordinator_plan;
     _ = report_coordinator_abi.rm_report_coordinator_apply_feedback;

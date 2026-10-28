@@ -11,11 +11,54 @@ using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Endpoints;
 using ResourceManager.App.Infrastructure.Security;
+using ResourceManager.Shared.Runtime.TrustedAccess;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed class OptimizationTrustEndpointTests
 {
+    [Theory]
+    [InlineData(true, 0)]
+    [InlineData(true, 3)]
+    [InlineData(false, 3)]
+    public async Task ClearReportHistoryRequiresOnlySessionScopeAndReturnsTypedCount(bool session, int removedCount)
+    {
+        var reports = new Reports { HistoryRemovedCount = removedCount };
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Logging.ClearProviders();
+        TrustedAccessEndpointTestAuthentication.Add(builder.Services, session ? AccessKeyScopes.Session : AccessKeyScopes.ProcessesRead);
+        builder.Services.ConfigureHttpJsonOptions(options =>
+            ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options.SerializerOptions));
+        builder.Services.AddSingleton<IHostManagerReportService>(reports);
+        builder.Services.AddSingleton<IOptimizationProtectionService>(_ => throw new InvalidOperationException("unused"));
+        builder.Services.AddSingleton<IHostManagerSmartCoordinator>(_ => throw new InvalidOperationException("unused"));
+        await using var app = TrustedAccessEndpointTestAuthentication.Build(builder);
+        typeof(ResourceManagerEndpointRouteBuilderExtensions)
+            .GetMethod("MapOptimizationEndpoints", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [app, LoopbackApiPipelineMode.StandardUser]);
+        await app.StartAsync();
+        using var client = TrustedAccessEndpointTestAuthentication.Client(app);
+
+        using var response = await client.PostAsync("/api/optimization/reports/history/clear", null);
+        using var wire = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+        Assert.Equal(session ? HttpStatusCode.OK : HttpStatusCode.Forbidden, response.StatusCode);
+        if (session)
+        {
+            Assert.Equal(removedCount, wire.RootElement.GetProperty("removedCount").GetInt32());
+            Assert.Single(wire.RootElement.EnumerateObject());
+            Assert.Equal(1, reports.ClearHistoryCalls);
+        }
+        else
+        {
+            Assert.Equal("access-scope-required", wire.RootElement.GetProperty("error").GetString());
+            Assert.Equal(AccessKeyScopes.Session, Assert.Single(wire.RootElement.GetProperty("missingScopes").EnumerateArray()).GetString());
+            Assert.Equal(0, reports.ClearHistoryCalls);
+        }
+        await app.StopAsync();
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -119,6 +162,14 @@ public sealed class OptimizationTrustEndpointTests
     {
         internal List<string> Removed { get; } = [];
         internal OptimizationReportOverview? Overview { get; init; }
+        internal int HistoryRemovedCount { get; init; }
+        internal int ClearHistoryCalls { get; private set; }
+
+        public Task<int> ClearHistoryAsync(CancellationToken cancellationToken)
+        {
+            ClearHistoryCalls++;
+            return Task.FromResult(HistoryRemovedCount);
+        }
 
         public Task<bool> RemoveTrustedTargetAsync(string trustId, CancellationToken cancellationToken)
         {

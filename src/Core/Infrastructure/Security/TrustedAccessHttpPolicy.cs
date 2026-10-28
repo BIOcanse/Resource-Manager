@@ -201,6 +201,7 @@ internal static class TrustedAccessHttpPolicy
         // Creating, selecting and deleting normal running points only records or picks the baseline; it changes
         // nothing on the machine, so the user does it from the bundled UI without elevation (user 10-28).
         Add(Protected(AccessKeyScopes.Session),
+            "POST /api/optimization/reports/history/clear",
             "DELETE /api/targeted-recordings/{id}",
             "POST /api/kernel-leaks/history/clear",
             "POST /api/targeted-recordings/history/clear",

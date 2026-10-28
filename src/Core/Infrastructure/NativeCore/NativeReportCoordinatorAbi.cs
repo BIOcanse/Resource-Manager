@@ -4,7 +4,7 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal static class NativeReportCoordinatorAbi
 {
-    public const uint Version = 0x0007_0000;
+    public const uint Version = 0x0008_0000;
     public const ulong AllFamiliesTrustHandle = ulong.MaxValue;
 }
 
@@ -174,6 +174,16 @@ internal enum NativeReportTrustCommandValidity : ulong
     Target = 1UL << 2,
     Family = 1UL << 3,
     Required = CommandMonotonic | CommandUtc | Target | Family,
+    Known = Required
+}
+
+[Flags]
+internal enum NativeReportClearHistoryValidity : ulong
+{
+    None = 0,
+    CommandMonotonic = 1UL << 0,
+    CommandUtc = 1UL << 1,
+    Required = CommandMonotonic | CommandUtc,
     Known = Required
 }
 
@@ -374,6 +384,20 @@ internal unsafe struct NativeReportTrustCommandInput
     public ulong ValidMask;
     public uint CommandKind;
     public uint Flags;
+    public fixed ulong Reserved[1];
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 8, Size = 64)]
+internal unsafe struct NativeReportClearHistoryInput
+{
+    public uint AbiVersion;
+    public uint StructSize;
+    public ulong ConfigurationGeneration;
+    public ulong OperationEpoch;
+    public ulong CommandMonotonicMilliseconds;
+    public long CommandUtcMilliseconds;
+    public ulong ValidMask;
+    public ulong Flags;
     public fixed ulong Reserved[1];
 }
 

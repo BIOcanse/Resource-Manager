@@ -182,6 +182,39 @@ internal sealed partial class HostManagerReportCoordinatorOwner(
         return await GetReportsAsync(cancellationToken);
     }
 
+    public async Task<int> ClearHistoryAsync(CancellationToken cancellationToken)
+    {
+        await using var hold = AcquireWorkspaceHold(cancellationToken);
+        await executionGate.WaitAsync(cancellationToken);
+        try
+        {
+            ThrowIfRetiring();
+            using var publication = planProvider.AcquirePublicationLease();
+            await ApplyPlanCoreAsync(publication.Plan.HostManager.RequirePublished(), cancellationToken);
+            var activeWorkspace = RequireWorkspace();
+            var plan = RequireAppliedPlan();
+            var state = RequireCoordinatorState();
+            var stamp = NextCommandStamp(DateTimeOffset.UtcNow);
+            var input = new NativeReportClearHistoryInput
+            {
+                AbiVersion = NativeReportCoordinatorAbi.Version,
+                StructSize = SizeOf<NativeReportClearHistoryInput>(),
+                ConfigurationGeneration = plan.ConfigurationGeneration,
+                OperationEpoch = stamp.OperationEpoch,
+                CommandMonotonicMilliseconds = stamp.MonotonicMilliseconds,
+                CommandUtcMilliseconds = stamp.UtcMilliseconds,
+                ValidMask = (ulong)NativeReportClearHistoryValidity.Required
+            };
+            RequireStatus(activeWorkspace.Session.ClearHistory(in input, out var removedCount), "clear history command");
+            await SettleAndPublishAsync(activeWorkspace, plan, state, cancellationToken);
+            return checked((int)removedCount);
+        }
+        finally
+        {
+            executionGate.Release();
+        }
+    }
+
     public Task<OptimizationReportItem?> GetReportAsync(
         string reportId,
         CancellationToken cancellationToken)

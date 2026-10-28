@@ -140,6 +140,17 @@ pub export fn rm_report_coordinator_query_plan_size(
     ));
 }
 
+pub export fn rm_report_coordinator_clear_history(
+    handle: ?*anyopaque,
+    input: ?*const protocol.ClearHistoryInput,
+    removed_count: ?*u32,
+) callconv(.c) i32 {
+    const count = removed_count orelse return code(.invalid_argument);
+    count.* = 0;
+    const session: *session_module.Session = @ptrCast(@alignCast(handle orelse return code(.invalid_argument)));
+    return code(session_module.clearHistory(session, input orelse return code(.invalid_argument), count));
+}
+
 pub export fn rm_report_coordinator_plan(
     handle: ?*anyopaque,
     input: ?*const protocol.PlanInput,
@@ -194,6 +205,7 @@ comptime {
     _ = protocol.TrustCommandInput;
     _ = protocol.ImportInput;
     _ = protocol.PlanInput;
+    _ = protocol.ClearHistoryInput;
     _ = protocol.ReportOutput;
     _ = protocol.PersistenceOperation;
     _ = protocol.PersistenceFeedbackInput;

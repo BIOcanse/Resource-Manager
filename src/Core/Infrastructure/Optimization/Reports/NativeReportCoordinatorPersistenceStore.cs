@@ -270,7 +270,7 @@ internal sealed class NativeReportCoordinatorPersistenceStore(
             || !double.IsFinite(row.SecondaryCurrentValue))
         {
             throw new InvalidDataException(
-                "A report-coordinator persistence row violates the fixed v7 shape.");
+                "A report-coordinator persistence row violates the fixed v8 shape.");
         }
     }
 
