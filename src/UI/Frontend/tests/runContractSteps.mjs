@@ -6,9 +6,11 @@ import { fileURLToPath } from "node:url";
 /*
  * 并行运行一个 npm 脚本展开后的全部契约步骤。
  *
- *   node tests/runContractSteps.mjs [--jobs N] [--list] <脚本名>
+ *   node tests/runContractSteps.mjs [--jobs N] [--list] [--keep-going] <脚本名>
  *
  * --list：只打印展开后的步骤（每行：步骤名、所属脚本、命令），不运行。
+ * --keep-going：一个步骤失败后照样启动其余步骤（STEP_ORDER 里排在失败步骤之后的除外），最后列出全部失败；
+ *   不给时第一个失败之后不再启动新步骤。npm 里写成 npm run test:contracts -- --keep-going。
  *
  * 展开：脚本按 "&&" 切成步骤，"npm run X" 换成 X 的步骤，按原顺序排成一张表。命令文字完全相同的
  * 步骤只跑一次（第一次出现的位置），输出里列出它属于的所有脚本。test:contracts 用它跑
@@ -18,9 +20,9 @@ import { fileURLToPath } from "node:url";
  *
  * 顺序：步骤之间默认互不依赖，可以任意并行。要求先后的步骤写进 STEP_ORDER（下面写明当前为什么是空的）。
  *
- * 输出：每个步骤的输出先缓存，结束后连同步骤名、所属脚本、用时一起打印，不会交错。第一个失败的步骤
- * 之后不再启动新步骤（与原来 "&&" 链的停止语义一致），已在运行的步骤跑完；最后列出失败步骤的名字和
- * 退出码，以 1 退出。
+ * 输出：每个步骤的输出先缓存，结束后连同步骤名、所属脚本、用时一起打印，不会交错。默认第一个失败的步骤
+ * 之后不再启动新步骤（与原来 "&&" 链的停止语义一致），已在运行的步骤跑完；--keep-going 时继续。最后列出失败
+ * 步骤的名字和退出码，以及没有启动的步骤数，以 1 退出。
  */
 
 const DEFAULT_CONTRACT_JOBS = 4;
@@ -42,14 +44,16 @@ const args = process.argv.slice(2);
 let jobs = Number(process.env.RM_CONTRACT_JOBS || DEFAULT_CONTRACT_JOBS);
 let scriptName = null;
 let listOnly = false;
+let keepGoing = false;
 for (let index = 0; index < args.length; index += 1) {
   if (args[index] === "--jobs") jobs = Number(args[++index]);
   else if (args[index] === "--list") listOnly = true;
+  else if (args[index] === "--keep-going") keepGoing = true;
   else if (scriptName === null) scriptName = args[index];
   else throw new Error(`Unexpected argument: ${args[index]}`);
 }
 if (!Number.isInteger(jobs) || jobs < 1) throw new Error(`The job count must be a positive integer: ${jobs}`);
-if (!scriptName) throw new Error("Usage: runContractSteps.mjs [--jobs N] [--list] <npm script>");
+if (!scriptName) throw new Error("Usage: runContractSteps.mjs [--jobs N] [--list] [--keep-going] <npm script>");
 
 const scripts = JSON.parse(readFileSync(resolve(projectRoot, "package.json"), "utf8")).scripts;
 const steps = expandScript(scripts, scriptName);
@@ -148,7 +152,7 @@ async function runSteps(allSteps, prerequisites, concurrency) {
     results.set(step, result);
     finished += 1;
     printStep(step, result, finished, allSteps.length);
-    if (result.code !== 0) stopped = true;
+    if (result.code !== 0 && !keepGoing) stopped = true;
   }
   return results;
 }
@@ -193,7 +197,10 @@ function printSummary(allSteps, results, wallMs) {
     const result = results.get(step);
     lines.push(`FAILED ${step.name} [${step.scripts.join(", ")}] exit ${result.code}`);
   }
-  if (failed.length > 0 && notRun.length > 0) lines.push(`not started after the failure: ${notRun.length} steps`);
+  if (failed.length > 0 && notRun.length > 0) {
+    lines.push(keepGoing ? `not started because a step they wait for failed: ${notRun.length} steps`
+      : `not started after the failure: ${notRun.length} steps (--keep-going runs them)`);
+  }
   process.stdout.write(`${lines.join("\n")}\n`);
   process.exitCode = failed.length > 0 || notRun.length > 0 ? 1 : 0;
 }

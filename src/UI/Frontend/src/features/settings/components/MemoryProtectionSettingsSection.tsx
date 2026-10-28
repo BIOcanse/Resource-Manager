@@ -1,8 +1,6 @@
-import { createEffect, createSignal, For, Index, Show, type JSX } from "solid-js";
+import { createSignal, For, Index, Show, type JSX } from "solid-js";
 import { useFrontendRuntime } from "../../../frontendRuntime/FrontendRuntimeContext.tsx";
 import { usePushSource } from "../../../frontendRuntime/push/usePushSource.ts";
-import { useSource } from "../../../frontendRuntime/source/useSource.ts";
-import { sourceCanRender } from "../../../frontendRuntime/source/SourceSnapshot.ts";
 import type { ConfirmDialogRequest } from "../../../ui/patterns/ConfirmDialog.tsx";
 import { useFrontendWork } from "../../../frontendWork/FrontendWorkContext.tsx";
 import { useFrontendVisibilityDemand } from "../../../frontendWork/useFrontendVisibilityDemand";
@@ -57,10 +55,9 @@ type ActionMessage = { kind: "status" | "alert"; text: () => string };
 type Busy = "point" | "rebuild" | `select:${string}` | `delete:${string}`;
 
 // 主机内存保护分区（docs/host_memory_protection_2026-10-26.md）。可编辑的设置走设置页草稿；
-// 状态、处理记录和生效的正常运行点都来自订阅 /api/memory-protection/subscribe，由 runtime.sources.memoryProtection
-// 一个来源合成当前值（memoryProtectionSubscriptionSource），这里只读，不重读、不合并帧。已保存的点和生效的是哪一个
-// 来自 GET /api/memory-protection/normal-running-points（runtime.sources.memoryProtectionPoints），分区可见时读。
-// 数值照原样显示，触发点、剩余量、是否达到阈值、合计都不在前端计算；已保存的点也不在前端增删或改选，操作后重读。
+// 状态、处理记录、生效的正常运行点和已保存的点都来自订阅 /api/memory-protection/subscribe，由 runtime.sources.memoryProtection
+// 一个来源合成当前值（memoryProtectionSubscriptionSource），这里只读，不重读、不合并帧。数值照原样显示，
+// 触发点、剩余量、是否达到阈值、合计都不在前端计算；已保存的点也不在前端增删或改选，新建、切换、删除后由订阅送来新列表。
 export function MemoryProtectionSettingsSection(props: MemoryProtectionSettingsSectionProps) {
   const copy = () => uiText.memoryProtection;
   const runtime = useFrontendRuntime();
@@ -72,21 +69,10 @@ export function MemoryProtectionSettingsSection(props: MemoryProtectionSettingsS
   const view = () => protection.snapshot().data;
   const statusData = () => view()?.status ?? null;
   const unavailable = () => protection.snapshot().status === "error" || protection.snapshot().status === "unavailable";
-  const points = useSource(runtime.sources.memoryProtectionPoints, () => ({ active: work.isNeeded(workId) }));
-  const pointList = () => sourceCanRender(points.snapshot()) ? points.snapshot().data : null;
+  const pointList = () => view()?.normalRunningPoints ?? null;
   const [busy, setBusy] = createSignal<Busy | null>(null);
   const [pointMessage, setPointMessage] = createSignal<ActionMessage | null>(null);
   const [savedPointMessage, setSavedPointMessage] = createSignal<ActionMessage | null>(null);
-  // 已保存的点没有推送；生效的点有（订阅的 normalRunningPoint 帧）。生效的点换了（别处新建、切换或删除了生效的点）
-  // 就重读一次列表，让“生效中”和上面那一格一致。只比较订阅已到之后的变化，第一帧不算。
-  let shownActiveId: string | null | undefined;
-  createEffect(() => {
-    const current = view();
-    if (!current) return;
-    const activeId = current.normalRunningPoint?.id ?? null;
-    if (shownActiveId !== undefined && activeId !== shownActiveId) void points.refresh({ afterCurrent: true }).catch(() => undefined);
-    shownActiveId = activeId;
-  });
   const [rebuildMessage, setRebuildMessage] = createSignal<ActionMessage | null>(null);
 
   const unsaved = () => JSON.stringify(props.settings ?? null) !== JSON.stringify(props.committed ?? null);
@@ -114,14 +100,13 @@ export function MemoryProtectionSettingsSection(props: MemoryProtectionSettingsS
       setPointMessage(result.status === "done"
         ? { kind: "status", text: () => copy().pointCreated }
         : { kind: "alert", text: () => copy().failedBecause(copy().createPointFailed, memoryProtectionReasonText(result.reason)) });
-      await points.refresh({ afterCurrent: true }).catch(() => undefined);
     } catch (error) {
       setPointMessage({ kind: "alert", text: () => userFacingErrorMessage(error, copy().createPointFailed) });
     } finally {
       setBusy(null);
     }
   };
-  // 切换生效和删除都以后端为准：成功或被拒（点已不存在）后都重读列表，不在前端改列表。
+  // 切换生效和删除都以后端为准：列表不在前端改，后端处理后由订阅送来新列表。
   const changeSavedPoint = async (
     next: Busy,
     change: () => Promise<{ status: "done" } | { status: "refused"; reason: string }>,
@@ -136,7 +121,6 @@ export function MemoryProtectionSettingsSection(props: MemoryProtectionSettingsS
       setSavedPointMessage(result.status === "done"
         ? { kind: "status", text: done }
         : { kind: "alert", text: () => copy().failedBecause(failed(), memoryProtectionReasonText(result.reason)) });
-      await points.refresh({ afterCurrent: true }).catch(() => undefined);
     } catch (error) {
       setSavedPointMessage({ kind: "alert", text: () => userFacingErrorMessage(error, failed()) });
     } finally {
@@ -370,7 +354,7 @@ export function MemoryProtectionSettingsSection(props: MemoryProtectionSettingsS
             </div>
 
             {/* 已保存的点按后端顺序（从旧到新）列出，生效的那个标“生效中”，其余可以设为生效；每个都可以删除。
-                列表读到之前只占一行（和没有已保存的点时同高），正在读取读给读屏。 */}
+                订阅到之前只占一行（和没有已保存的点时同高），正在读取由分区顶部读给读屏；读不到时写明。 */}
             <div class="settings-row settings-row-block memory-protection-saved-points">
               <div class="settings-row-copy">
                 <strong>{copy().savedPointsTitle}</strong>
@@ -384,15 +368,7 @@ export function MemoryProtectionSettingsSection(props: MemoryProtectionSettingsS
               <Show
                 when={pointList()}
                 fallback={
-                  <Show
-                    when={points.snapshot().status === "error" || points.snapshot().status === "unavailable"}
-                    fallback={
-                      <>
-                        <p class="sr-only" role="status">{copy().savedPointsLoading}</p>
-                        <p class="memory-protection-empty" aria-hidden="true">--</p>
-                      </>
-                    }
-                  >
+                  <Show when={unavailable()} fallback={<p class="memory-protection-empty" aria-hidden="true">--</p>}>
                     <p class="memory-protection-empty" role="status">{copy().savedPointsUnavailable}</p>
                   </Show>
                 }

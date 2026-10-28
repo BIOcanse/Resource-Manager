@@ -66,7 +66,6 @@ export const zhMemoryProtectionCopy = {
     savedPointsDescription: "从旧到新排列，标为“生效中”的是当前作为基线的点。达到上限后需先删除再新建。",
     savedPointsCount: "已保存 / 上限",
     savedPointsEmpty: "还没有保存的正常运行点。",
-    savedPointsLoading: "正在读取已保存的正常运行点…",
     savedPointsUnavailable: "暂时无法读取已保存的正常运行点。",
     pointInEffect: "生效中",
     selectPoint: "设为生效",

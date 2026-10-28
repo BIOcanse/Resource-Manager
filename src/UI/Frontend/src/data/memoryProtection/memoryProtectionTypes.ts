@@ -51,7 +51,7 @@ export interface NormalRunningPointSummary { id: string; at: string; processCoun
 export interface NormalRunningPoint extends NormalRunningPointSummary {
   processes: HostMemoryProcess[];
 }
-/** GET /api/memory-protection/normal-running-points: the saved points, oldest first, and the one in effect. */
+/** The normalRunningPoints frame (and GET /api/memory-protection/normal-running-points): the saved points, oldest first, and the one in effect. */
 export interface NormalRunningPointList {
   /** Null when no point is in effect (protection inactive with no-normal-running-point). */
   activeId: string | null;
@@ -139,8 +139,9 @@ export type HostMemoryProtectionFrame =
   | { type: "status"; status: HostMemoryProtectionLiveStatus }
   | { type: "records"; records: HostMemoryActionRecord[]; limit: number }
   | { type: "record"; record: HostMemoryActionRecord }
-  | { type: "normalRunningPoint"; normalRunningPoint: NormalRunningPoint | null };
-/** What the subscription owner folds its frames into; ready only once status, records and point have all arrived. */
+  | { type: "normalRunningPoint"; normalRunningPoint: NormalRunningPoint | null }
+  | { type: "normalRunningPoints"; normalRunningPoints: NormalRunningPointList };
+/** What the subscription owner folds its frames into; ready only once status, records, the point and the saved points have all arrived. */
 export interface HostMemoryProtectionView {
   status: HostMemoryProtectionLiveStatus;
   /** Newest first, at most recordLimit. */
@@ -148,4 +149,6 @@ export interface HostMemoryProtectionView {
   recordLimit: number;
   /** The point in effect; null when none is in effect (none saved, or the one in effect was deleted). */
   normalRunningPoint: NormalRunningPoint | null;
+  /** Every saved point and the id in effect; sent on subscribe and whenever a point is created, selected or deleted. */
+  normalRunningPoints: NormalRunningPointList;
 }

@@ -2,13 +2,13 @@ import type { RequestClient } from "../../frontendRuntime/request/RequestClient.
 import { RequestProblem } from "../../frontendRuntime/request/RequestProblem.ts";
 import { defineResponseDecoder } from "../../frontendRuntime/request/ResponseDecoder.ts";
 import {
-  memoryProtectionStatusDecoder, normalRunningPointDecoder, normalRunningPointListDecoder
+  memoryProtectionStatusDecoder, normalRunningPointDecoder
 } from "./memoryProtectionDecoders.ts";
 import type { HostMemoryProtectionStatus, NormalRunningPoint } from "./memoryProtectionTypes.ts";
 import { uiText } from "../../text.ts";
 
 type Client = Pick<RequestClient, "request">;
-/** One subscription carries status, record and normal running point frames; see memoryProtectionSubscriptionSource. */
+/** One subscription carries status, record, point and saved points frames; see memoryProtectionSubscriptionSource. */
 export function buildMemoryProtectionSubscriptionUrl(): string {
   return "/api/memory-protection/subscribe";
 }
@@ -33,10 +33,6 @@ export function createNormalRunningPoint(client: Client, signal?: AbortSignal): 
   return pointChange(() => client.request({ key: "memory-protection.normal-running-point.create",
     url: "/api/memory-protection/normal-running-point", decoder: normalRunningPointDecoder,
     fallbackError: uiText.stores.actionFailed, signal, request: { method: "POST" } }), 409);
-}
-export function listNormalRunningPoints(client: Client, signal?: AbortSignal) {
-  return client.request({ key: "memory-protection.normal-running-points", url: "/api/memory-protection/normal-running-points",
-    decoder: normalRunningPointListDecoder, fallbackError: uiText.stores.actionFailed, signal });
 }
 export function selectNormalRunningPoint(client: Client, id: string): Promise<NormalRunningPointChange<NormalRunningPoint>> {
   return pointChange(() => client.request({ key: "memory-protection.normal-running-points.select",

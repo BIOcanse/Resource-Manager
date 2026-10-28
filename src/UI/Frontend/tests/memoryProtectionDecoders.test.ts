@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import * as d from "../src/data/memoryProtection/memoryProtectionDecoders.ts";
 import { appSettingsResultDecoder } from "../src/data/appSettings/appSettingsResultDecoder.ts";
 import { softwarePolicyDecoder } from "../src/data/softwarePolicy/softwarePolicyDecoder.ts";
@@ -17,7 +18,8 @@ for (const [decode, value] of [
   [d.decodeHostMemoryProtectionFrame, { type: "status", status: f.memoryLiveStatus }],
   [d.decodeHostMemoryProtectionFrame, { type: "records", records: [f.memoryAction, f.memoryTreeChild], limit: 64 }],
   [d.decodeHostMemoryProtectionFrame, { type: "record", record: f.memoryTreeRootRecord }],
-  [d.decodeHostMemoryProtectionFrame, { type: "normalRunningPoint", normalRunningPoint: f.memoryPoint }]
+  [d.decodeHostMemoryProtectionFrame, { type: "normalRunningPoint", normalRunningPoint: f.memoryPoint }],
+  [d.decodeHostMemoryProtectionFrame, { type: "normalRunningPoints", normalRunningPoints: f.memoryPointList }]
 ] as const) {
   assert.deepEqual(decode(value), value);
   for (const invalid of [null, [], {}, undefined]) assert.throws(() => decode(invalid));
@@ -135,13 +137,20 @@ assert.equal(d.decodeHostMemoryProtectionStatus({ ...f.memoryStatus, inactiveRea
 assert.deepEqual(d.normalRunningPointDecoder.decode(f.memoryPoint), f.memoryPoint);
 assert.throws(() => d.normalRunningPointDecoder.decode(null));
 // Saved points: none in effect is null; ids are unique, the id in effect is a saved point, and every id is non-empty.
-assert.deepEqual(d.normalRunningPointListDecoder.decode({ activeId: null, points: [], limit: 32 }), { activeId: null, points: [], limit: 32 });
-assert.equal(d.normalRunningPointListDecoder.decode({ ...f.memoryPointList, activeId: null }).activeId, null);
-assert.throws(() => d.normalRunningPointListDecoder.decode({ ...f.memoryPointList, activeId: "missing" }), /saved point/);
-assert.throws(() => d.normalRunningPointListDecoder.decode({ ...f.memoryPointList,
-  points: [f.memoryPointSummary, f.memoryPointSummary] }), /unique/);
+assert.deepEqual(d.decodeNormalRunningPointList({ activeId: null, points: [], limit: 32 }), { activeId: null, points: [], limit: 32 });
+assert.equal(d.decodeNormalRunningPointList({ ...f.memoryPointList, activeId: null }).activeId, null);
+assert.throws(() => d.decodeNormalRunningPointList({ ...f.memoryPointList, activeId: "missing" }), /saved point/);
+assert.throws(() => d.decodeNormalRunningPointList({ ...f.memoryPointList, points: [f.memoryPointSummary, f.memoryPointSummary] }), /unique/);
 assert.throws(() => d.decodeNormalRunningPointSummary({ ...f.memoryPointSummary, id: "" }));
-assert.throws(() => d.normalRunningPointListDecoder.decode({ ...f.memoryPointList, limit: -1 }));
+assert.throws(() => d.decodeNormalRunningPointList({ ...f.memoryPointList, limit: -1 }));
+assert.throws(() => d.memoryProtectionFrameDecoder.decode({ type: "normalRunningPoints", normalRunningPoints: null }));
+
+// Every frame type the backend sends is decoded: an unknown type fails the whole subscription, so the decoder's list
+// equals the Type of each frame record in the backend (HostMemoryProtectionFrames.cs and HostMemoryProtectionContracts.cs).
+const backendFrameTypes = ["HostMemoryProtectionFrames.cs", "HostMemoryProtectionContracts.cs"].flatMap(file =>
+  [...readFileSync(new URL(`../../../Core/Application/MemoryProtection/${file}`, import.meta.url), "utf8")
+    .matchAll(/record HostMemoryProtection\w*Frame\([\s\S]*?public string Type => "([^"]+)";/g)].map(match => match[1]!));
+assert.deepEqual([...d.memoryProtectionFrameTypes].sort(), [...new Set(backendFrameTypes)].sort(), "frame types match the backend");
 assert.deepEqual(d.decodeHostMemoryProcess({ ...f.memoryProcess, privateCommitBytes: null, softwareId: null, executablePath: null, parentProcessId: null }),
   { ...f.memoryProcess, privateCommitBytes: null, softwareId: null, executablePath: null, parentProcessId: null });
 assert.equal(d.decodeHostMemoryProtectionSettings({ ...f.memorySettings, reserves: null }).reserves, null);

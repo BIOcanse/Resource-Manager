@@ -107,7 +107,7 @@ export function decodeNormalRunningPoint(value: unknown, path = "$"): NormalRunn
   return { ...decodeNormalRunningPointSummary(row, path),
     processes: rows(row.processes, `${path}.processes`, decodeHostMemoryProcess) };
 }
-// HostMemoryProtectionService.ListPoints: ids are unique and the id in effect, when there is one, is a saved point.
+// HostMemoryProtectionService.PointList: ids are unique and the id in effect, when there is one, is a saved point.
 export function decodeNormalRunningPointList(value: unknown, path = "$"): NormalRunningPointList {
   const row = requireRecord(value, path);
   const points = rows(row.points, `${path}.points`, decodeNormalRunningPointSummary);
@@ -248,8 +248,9 @@ export function decodeHostMemoryProtectionStatus(value: unknown, path = "$"): Ho
     actions: rows(row.actions, `${path}.actions`, decodeHostMemoryActionRecord)
   };
 }
-const memoryProtectionFrameTypes = ["status", "records", "record", "normalRunningPoint"] as const;
-// HostMemoryProtectionFrames and HostMemoryProtectionPointFrame: every subscription value names its frame in type.
+// HostMemoryProtectionFrames, HostMemoryProtectionPointFrame and HostMemoryProtectionPointsFrame: every subscription
+// value names its frame in type. An unknown type fails the whole subscription, so tests compare this list with the backend's.
+export const memoryProtectionFrameTypes = ["status", "records", "record", "normalRunningPoint", "normalRunningPoints"] as const;
 export function decodeHostMemoryProtectionFrame(value: unknown, path = "$"): HostMemoryProtectionFrame {
   const row = requireRecord(value, path);
   const type = requireOneOf(row.type, `${path}.type`, memoryProtectionFrameTypes);
@@ -264,11 +265,12 @@ export function decodeHostMemoryProtectionFrame(value: unknown, path = "$"): Hos
     case "normalRunningPoint":
       return { type,
         normalRunningPoint: requireNullable(row.normalRunningPoint, `${path}.normalRunningPoint`, decodeNormalRunningPoint) };
+    case "normalRunningPoints":
+      return { type, normalRunningPoints: decodeNormalRunningPointList(row.normalRunningPoints, `${path}.normalRunningPoints`) };
   }
 }
 export const memoryProtectionSettingsDecoder = defineResponseDecoder("memory-protection.settings.v1", decodeHostMemoryProtectionSettings);
 // The reserve rebuild response is the full status; the subscription sends frames.
 export const memoryProtectionStatusDecoder = defineResponseDecoder("memory-protection.status.v4", decodeHostMemoryProtectionStatus);
-export const memoryProtectionFrameDecoder = defineResponseDecoder("memory-protection.frame.v2", decodeHostMemoryProtectionFrame);
+export const memoryProtectionFrameDecoder = defineResponseDecoder("memory-protection.frame.v3", decodeHostMemoryProtectionFrame);
 export const normalRunningPointDecoder = defineResponseDecoder("memory-protection.normal-running-point.v2", decodeNormalRunningPoint);
-export const normalRunningPointListDecoder = defineResponseDecoder("memory-protection.normal-running-points.v1", decodeNormalRunningPointList);

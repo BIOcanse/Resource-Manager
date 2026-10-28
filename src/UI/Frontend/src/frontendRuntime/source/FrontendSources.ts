@@ -176,8 +176,7 @@ import {
 } from "../../data/metricFields/metricFieldSource.ts";
 import type { SourceFamily, SourceHandle } from "./SourceDescriptor.ts";
 import { createMemoryProtectionSubscriptionSource } from "../../data/memoryProtection/memoryProtectionSubscriptionSource.ts";
-import type { HostMemoryProtectionView, NormalRunningPointList } from "../../data/memoryProtection/memoryProtectionTypes.ts";
-import { listNormalRunningPoints } from "../../data/memoryProtection/memoryProtectionApi.ts";
+import type { HostMemoryProtectionView } from "../../data/memoryProtection/memoryProtectionTypes.ts";
 import type { AiGatewayCredentialView } from "../../types.ts";
 import { getAiGatewayCredentials } from "../../data/aiGatewayCredentials.ts";
 import { getCpuBaselineRatio, type CpuBaselineRatioSettings } from "../../data/cpu/cpuBaselineRatioApi.ts";
@@ -188,8 +187,6 @@ import {
 
 export interface FrontendSources {
   readonly memoryProtection: CurrentValueSource<HostMemoryProtectionView>;
-  /** 已保存的正常运行点和生效的那一个：内存保护分区可见时读，新建、选择、删除后和生效点变化时重读。 */
-  readonly memoryProtectionPoints: SourceHandle<NormalRunningPointList>;
   readonly control: ReturnType<typeof createControlSources>;
   readonly loginStartup: SourceHandle<boolean>;
   readonly settingsReads: ReturnType<typeof createSettingsReadSources>;
@@ -266,11 +263,6 @@ export function createFrontendSources(
 ): FrontendSources {
   return Object.freeze({
     memoryProtection: createMemoryProtectionSubscriptionSource(subscriptionChannel),
-    memoryProtectionPoints: sourceRegistry.define<NormalRunningPointList>({
-      key: "memory-protection.normal-running-points",
-      load: signal => listNormalRunningPoints(requestClient, signal),
-      retainLastGood: false
-    }),
     control: createControlSources(sourceRegistry, requestClient),
     loginStartup: createLoginStartupSource(sourceRegistry),
     settingsReads: createSettingsReadSources(sourceRegistry, requestClient),

@@ -65,7 +65,6 @@ export const enMemoryProtectionCopy: Pick<AppCopy, "memoryProtection"> = {
     savedPointsDescription: "Oldest first; the point marked “In effect” is the current baseline. At the limit, delete a point before creating another.",
     savedPointsCount: "Saved / limit",
     savedPointsEmpty: "No normal running points have been saved.",
-    savedPointsLoading: "Reading saved normal running points…",
     savedPointsUnavailable: "Saved normal running points could not be read.",
     pointInEffect: "In effect",
     selectPoint: "Put into effect",

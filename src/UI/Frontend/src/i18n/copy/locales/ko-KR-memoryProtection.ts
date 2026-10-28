@@ -63,7 +63,6 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
   savedPointsDescription: "오래된 순서로 표시하며, “적용 중”으로 표시된 지점이 현재 기준입니다. 한도에 도달하면 먼저 삭제한 후 새로 만드십시오.",
   savedPointsCount: "저장됨 / 한도",
   savedPointsEmpty: "저장된 정상 실행 지점이 없습니다.",
-  savedPointsLoading: "저장된 정상 실행 지점을 읽는 중…",
   savedPointsUnavailable: "저장된 정상 실행 지점을 읽을 수 없습니다.",
   pointInEffect: "적용 중",
   selectPoint: "적용",

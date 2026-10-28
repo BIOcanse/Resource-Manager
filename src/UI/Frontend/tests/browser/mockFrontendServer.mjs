@@ -243,7 +243,8 @@ const subscriptionChannelResponses = new Set();
 const productUpdateStatusSubscribers = new Set();
 const kernelLeakReportSubscribers = new Set();
 // /api/memory-protection/subscribe：和后端一样按 type 分帧。订阅时依次重放 status、records、normalRunningPoint；
-// 之后状态每次变化发 status，每条新增或更新的记录发一个 record，生效的正常运行点换了（新建、切换、删除生效的点）时发 normalRunningPoint。
+// 之后状态每次变化发 status，每条新增或更新的记录发一个 record，生效的正常运行点换了（新建、切换、删除生效的点）时发 normalRunningPoint，
+// 已保存的点或生效的点一变就发 normalRunningPoints。
 const memoryProtectionSubscribers = new Set();
 // 后端帧的真实形状（codex/update-notice，与 GET /api/updates/product/status 相同）。
 const defaultProductUpdateStatus = Object.freeze({
@@ -767,6 +768,7 @@ async function handleApi(request, response, url) {
     if (created === null) return json(response, 409, { error: "normal-running-point-limit" });
     publishMemoryProtectionStatus();
     publishMemoryProtectionPoint();
+    publishMemoryProtectionPoints();
     return json(response, 200, created);
   }
   if (path === "/api/memory-protection/normal-running-points" && request.method === "GET") {
@@ -779,7 +781,7 @@ async function handleApi(request, response, url) {
     const selected = memoryProtection.selectPoint(body?.id);
     if (selected === null) return json(response, 404, { error: "normal-running-point-not-found" });
     publishMemoryProtectionStatus();
-    if (before !== selected.id) publishMemoryProtectionPoint();
+    if (before !== selected.id) { publishMemoryProtectionPoint(); publishMemoryProtectionPoints(); }
     return json(response, 200, selected);
   }
   const savedPoint = /^\/api\/memory-protection\/normal-running-points\/([^/]+)$/.exec(path);
@@ -789,6 +791,7 @@ async function handleApi(request, response, url) {
     if (!memoryProtection.deletePoint(decodeURIComponent(savedPoint[1]))) return json(response, 404, { error: "normal-running-point-not-found" });
     publishMemoryProtectionStatus();
     if ((memoryProtection.readPoint()?.id ?? null) !== before) publishMemoryProtectionPoint();
+    publishMemoryProtectionPoints();
     response.writeHead(204);
     return response.end();
   }
@@ -1637,7 +1640,10 @@ function applyScenarioPatch(patch) {
     publishMemoryProtectionFrame({ type: "record", record });
   }
   // 测试用：正常运行点的上限（后端是常量 32），列表照此报告、新建照此拒绝。
-  if (Object.hasOwn(patch, "memoryProtectionPointLimit")) memoryProtection.setPointLimit(patch.memoryProtectionPointLimit);
+  if (Object.hasOwn(patch, "memoryProtectionPointLimit")) {
+    memoryProtection.setPointLimit(patch.memoryProtectionPointLimit);
+    publishMemoryProtectionPoints();
+  }
   // 启动模块登记的起始值（[{ softwareId, moduleIds }]），和界面经原生桥保存的登记同一份。
   for (const selection of patch.startupModuleSelections ?? []) {
     startupModuleSelections.set(selection.softwareId.toLowerCase(), { softwareId: selection.softwareId, moduleIds: [...selection.moduleIds].sort() });
@@ -1720,11 +1726,17 @@ function publishMemoryProtectionPoint() {
   publishMemoryProtectionFrame({ type: "normalRunningPoint", normalRunningPoint: memoryProtection.readPoint() });
 }
 
-// SubscriptionChannelEndpoints 的重放顺序：status、records（最新的在前）、normalRunningPoint。
+// HostMemoryProtectionPointsFrame：已保存的点或生效的点一变就发，跟在 normalRunningPoint 帧之后。
+function publishMemoryProtectionPoints() {
+  publishMemoryProtectionFrame({ type: "normalRunningPoints", normalRunningPoints: memoryProtection.listPoints() });
+}
+
+// SubscriptionChannelEndpoints 的重放顺序：status、records（最新的在前）、normalRunningPoint、normalRunningPoints。
 function replayMemoryProtectionTo(subscriber) {
   writeMemoryProtectionFrame(subscriber, { type: "status", status: memoryProtection.liveStatus() });
   writeMemoryProtectionFrame(subscriber, { type: "records", ...memoryProtection.records() });
   writeMemoryProtectionFrame(subscriber, { type: "normalRunningPoint", normalRunningPoint: memoryProtection.readPoint() });
+  writeMemoryProtectionFrame(subscriber, { type: "normalRunningPoints", normalRunningPoints: memoryProtection.listPoints() });
 }
 
 function replayMemoryProtection() {

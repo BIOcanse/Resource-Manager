@@ -65,7 +65,6 @@ export const zhTwMemoryProtectionCopy: Pick<AppCopy, "memoryProtection"> = {
     savedPointsDescription: "由舊到新排列，標示「生效中」的是目前作為基準的點。達到上限後需先刪除再建立。",
     savedPointsCount: "已儲存 / 上限",
     savedPointsEmpty: "尚未儲存任何正常運行點。",
-    savedPointsLoading: "正在讀取已儲存的正常運行點…",
     savedPointsUnavailable: "目前無法讀取已儲存的正常運行點。",
     pointInEffect: "生效中",
     selectPoint: "設為生效",

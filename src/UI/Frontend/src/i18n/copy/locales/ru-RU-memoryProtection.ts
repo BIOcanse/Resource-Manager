@@ -64,7 +64,6 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
   savedPointsDescription: "От старых к новым; точка с отметкой «Действует» — текущая база. При достижении предела сначала удалите одну точку, затем создайте новую.",
   savedPointsCount: "Сохранено / предел",
   savedPointsEmpty: "Сохранённых точек нормальной работы нет.",
-  savedPointsLoading: "Чтение сохранённых точек нормальной работы…",
   savedPointsUnavailable: "Не удалось прочитать сохранённые точки нормальной работы.",
   pointInEffect: "Действует",
   selectPoint: "Сделать действующей",

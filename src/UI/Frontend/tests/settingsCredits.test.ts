@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -49,7 +49,11 @@ for (const [path, project] of [
     assert.ok(isAbsolute(mapped.projectPath) && isAbsolute(mapped.assetsPath), "Mapped project and assets must both be absolute");
     assert.match(mapped.sha256, /^[0-9a-f]{64}$/i);
   }
-  const assetsBytes = readFileSync(mapped?.assetsPath ?? new URL(path, appRoot));
+  // 这里读的是 dotnet restore 写下的依赖图；新建的工作树没还原过就没有，直接写明要先做什么。
+  const assetsFile = mapped?.assetsPath ?? fileURLToPath(new URL(path, appRoot));
+  assert.ok(existsSync(assetsFile), `No .NET restore output at ${assetsFile}: run dotnet restore "${expectedProject}" in this worktree`
+    + " (and dotnet restore -r win-x64 for src/Uninstaller and src/Updater/WinUI, see below), or set RM_MANAGED_ASSETS_MAP");
+  const assetsBytes = readFileSync(assetsFile);
   if (mapped) assert.equal(createHash("sha256").update(assetsBytes).digest("hex").toUpperCase(), mapped.sha256.toUpperCase(), "Mapped actual assets hash changed");
   const assets = JSON.parse(assetsBytes.toString("utf8"));
   assert.ok(isAbsolute(assets.project.restore.projectPath), "Assets must identify their absolute original project");
@@ -65,6 +69,11 @@ for (const [path, project] of [
     }
   }
 }
+// 三个 win-x64 运行时包只出现在带运行时标识的还原里（卸载器、更新管理器自包含发布时那种）；普通 dotnet restore 不记录它们。
+const missingRuntimePacks = managed.filter(item => item.kind === "runtime pack" && !actualManaged.has(`${item.name}/${item.version}`.toLowerCase()));
+assert.deepEqual(missingRuntimePacks.map(item => `${item.name}/${item.version}`), [],
+  "The win-x64 runtime packs are recorded only by a win-x64 restore: run dotnet restore src/Uninstaller/ResourceManager.Uninstaller.csproj -r win-x64"
+  + " and dotnet restore src/Updater/WinUI/ResourceManager.UpdateManager.csproj -r win-x64 in this worktree, or set RM_MANAGED_ASSETS_MAP");
 const acknowledged = new Set(managed.map((item) => `${item.name}/${item.version}`.toLowerCase()));
 assert.deepEqual([...actualManaged].filter((id) => !acknowledged.has(id)), [], "Every resolved package must be acknowledged");
 assert.deepEqual(managed.filter((item) => item.kind !== "publish tool" && !actualManaged.has(`${item.name}/${item.version}`.toLowerCase())).map(item => `${item.name}/${item.version}`), [], "Only explicitly identified publish tools may be absent from a plain build graph");

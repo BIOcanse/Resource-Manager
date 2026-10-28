@@ -64,7 +64,6 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
   savedPointsDescription: "古い順に並びます。「有効」と表示された点が現在の基準です。上限に達した場合は削除してから作成してください。",
   savedPointsCount: "保存済み / 上限",
   savedPointsEmpty: "保存済みの正常稼働点はありません。",
-  savedPointsLoading: "保存済みの正常稼働点を読み込んでいます…",
   savedPointsUnavailable: "保存済みの正常稼働点を読み込めません。",
   pointInEffect: "有効",
   selectPoint: "有効にする",

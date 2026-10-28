@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { buildMemoryProtectionSubscriptionUrl, createNormalRunningPoint, deleteNormalRunningPoint, listNormalRunningPoints,
+import { buildMemoryProtectionSubscriptionUrl, createNormalRunningPoint, deleteNormalRunningPoint,
   rebuildMemoryProtectionReserve, selectNormalRunningPoint } from "../src/data/memoryProtection/memoryProtectionApi.ts";
 import { getGpuPlacementSoftwareSettings, getDefaultGpuPlacementSoftwarePolicy, saveGpuPlacementSoftwarePolicy } from "../src/api.ts";
 import { RequestClient } from "../src/frontendRuntime/request/RequestClient.ts";
 import { RequestProblem } from "../src/frontendRuntime/request/RequestProblem.ts";
 import { BackendSessionOwner } from "../src/frontendRuntime/session/BackendSessionOwner.ts";
 import { ResponseDecodeError } from "../src/frontendRuntime/request/ResponseDecoder.ts";
-import { memoryPoint, memoryPointList, memoryStatus, softwarePolicy } from "./fixtures/memoryProtection.ts";
+import { memoryPoint, memoryStatus, softwarePolicy } from "./fixtures/memoryProtection.ts";
 
 const originalFetch = globalThis.fetch;
 const session = new BackendSessionOwner({ transport: null, allowStandalone: true });
@@ -19,7 +19,7 @@ globalThis.fetch = (async (input, init) => {
   return new Response(JSON.stringify(payload), { status, headers: { "Content-Type": "application/json" } });
 }) as typeof fetch;
 try {
-  // Status, records and the point have no GET consumer in the frontend: they are read from the subscription only.
+  // Status, records, the point and the saved points have no GET consumer in the frontend: they are read from the subscription only.
   assert.equal(buildMemoryProtectionSubscriptionUrl(), "/api/memory-protection/subscribe");
   payload = memoryPoint;
   assert.deepEqual(await createNormalRunningPoint(client), { status: "done", value: memoryPoint });
@@ -28,10 +28,7 @@ try {
   // Saved points: the refusals the backend names come back as their reason code; any other failure still throws.
   payload = { error: "normal-running-point-limit" }; status = 409;
   assert.deepEqual(await createNormalRunningPoint(client), { status: "refused", reason: "normal-running-point-limit" });
-  payload = memoryPointList; status = 200;
-  assert.deepEqual(await listNormalRunningPoints(client), memoryPointList);
-  assert.deepEqual([calls.at(-1)?.url, calls.at(-1)?.init?.method ?? "GET"], ["/api/memory-protection/normal-running-points", "GET"]);
-  payload = memoryPoint;
+  payload = memoryPoint; status = 200;
   assert.deepEqual(await selectNormalRunningPoint(client, memoryPoint.id), { status: "done", value: memoryPoint });
   assert.deepEqual([calls.at(-1)?.url, calls.at(-1)?.init?.method, JSON.parse(String(calls.at(-1)?.init?.body))],
     ["/api/memory-protection/normal-running-points/active", "PUT", { id: memoryPoint.id }]);

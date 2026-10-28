@@ -8,9 +8,9 @@ import type { ResponseDecoder } from "../src/frontendRuntime/request/ResponseDec
 import type { SourceSnapshot } from "../src/frontendRuntime/source/SourceSnapshot.ts";
 import { applyMemoryProtectionFrame } from "../src/data/memoryProtection/memoryProtectionSubscriptionSource.ts";
 import type { HostMemoryProtectionView } from "../src/data/memoryProtection/memoryProtectionTypes.ts";
-import { memoryAction, memoryLiveStatus, memoryPoint, memoryTreeChild, memoryTreeRootRecord } from "./fixtures/memoryProtection.ts";
+import { memoryAction, memoryLiveStatus, memoryPoint, memoryPointList, memoryTreeChild, memoryTreeRootRecord } from "./fixtures/memoryProtection.ts";
 
-// One subscription carries status, records, record and normalRunningPoint frames; one source owns the folded value.
+// One subscription carries status, records, record, normalRunningPoint and normalRunningPoints frames; one source owns the folded value.
 const session = new BackendSessionOwner({ transport: null, allowStandalone: true });
 type Lease = { key: string; path: string; decoder: ResponseDecoder<unknown>; stopped: boolean;
   publish: (value: SourceSnapshot<unknown>) => void };
@@ -47,15 +47,18 @@ try {
   assert.equal(leases[0].path, "/api/memory-protection/subscribe");
   const lease = leases[0];
 
-  // Replay: status, records, point. The view is ready only once all three have arrived.
+  // Replay: status, records, point, saved points. The view is ready only once all four have arrived.
   frame(lease, { type: "status", status: memoryLiveStatus });
   assert.equal(source.readSnapshot().status, "loading", "status alone is not the whole value");
   frame(lease, { type: "records", records: [record("b".repeat(32), 2), record("a".repeat(32), 1)], limit: 2 });
   assert.equal(source.readSnapshot().status, "loading");
   frame(lease, { type: "normalRunningPoint", normalRunningPoint: null });
+  assert.equal(source.readSnapshot().status, "loading", "the saved points are part of the value");
+  const noPoints = { activeId: null, points: [], limit: 32 };
+  frame(lease, { type: "normalRunningPoints", normalRunningPoints: noPoints });
   assert.equal(source.readSnapshot().status, "ready");
   assert.deepEqual(view(), { status: memoryLiveStatus, records: [record("b".repeat(32), 2), record("a".repeat(32), 1)],
-    recordLimit: 2, normalRunningPoint: null });
+    recordLimit: 2, normalRunningPoint: null, normalRunningPoints: noPoints });
   assert.deepEqual(seen.at(-1)?.data, view(), "listeners receive the folded value");
 
   // record: a new record is the newest and the list keeps the newest limit; the same action and process replaces in place.
@@ -79,7 +82,12 @@ try {
   assert.deepEqual(view()?.normalRunningPoint, memoryPoint, "a status frame leaves records and the point unchanged");
   assert.equal(view()?.records.length, 2);
   frame(lease, { type: "normalRunningPoint", normalRunningPoint: null });
-  assert.equal(view()?.normalRunningPoint, null, "a cleared point is null");
+  assert.equal(view()?.normalRunningPoint, null, "no point in effect is null");
+  // normalRunningPoints: the whole list replaces the previous one; other frames leave it unchanged.
+  frame(lease, { type: "normalRunningPoints", normalRunningPoints: memoryPointList });
+  assert.deepEqual(view()?.normalRunningPoints, memoryPointList);
+  frame(lease, { type: "status", status: memoryLiveStatus });
+  assert.deepEqual(view()?.normalRunningPoints, memoryPointList, "a status frame leaves the saved points unchanged");
   assert.equal(calls.length, 0, "nothing is polled");
 
   // A failure clears the fold: later frames cannot be trusted until the replay that a new subscription receives.
@@ -91,6 +99,7 @@ try {
   assert.equal(source.readSnapshot().status, "error", "frames after a failure do not resume a partial value");
   frame(lease, { type: "records", records: [record("d".repeat(32), 5)], limit: 64 });
   frame(lease, { type: "normalRunningPoint", normalRunningPoint: memoryPoint });
+  frame(lease, { type: "normalRunningPoints", normalRunningPoints: memoryPointList });
   assert.equal(source.readSnapshot().status, "ready", "the replay restores the value");
   assert.deepEqual(ids(), [["d".repeat(32), 5, "completed"]]);
   assert.throws(() => lease.decoder.decode({ type: "status", status: { ...memoryLiveStatus, active: true } }),
@@ -99,15 +108,17 @@ try {
   // A new backend session fences the previous fold.
   fakeChannel.backendEpoch = "epoch-2";
   frame(lease, { type: "status", status: memoryLiveStatus });
-  assert.equal(source.readSnapshot().status, "loading", "records and point of the previous session are dropped");
+  assert.equal(source.readSnapshot().status, "loading", "records, point and saved points of the previous session are dropped");
   frame(lease, { type: "records", records: [], limit: 64 });
   frame(lease, { type: "normalRunningPoint", normalRunningPoint: null });
-  assert.deepEqual(view(), { status: memoryLiveStatus, records: [], recordLimit: 64, normalRunningPoint: null });
+  assert.equal(source.readSnapshot().status, "loading", "the saved points of the previous session are dropped too");
+  frame(lease, { type: "normalRunningPoints", normalRunningPoints: noPoints });
+  assert.deepEqual(view(), { status: memoryLiveStatus, records: [], recordLimit: 64, normalRunningPoint: null, normalRunningPoints: noPoints });
 
   stopA(); stopB();
   assert.equal(lease.stopped, true, "the subscription closes with its last consumer");
   const kept = view();
-  assert.deepEqual(kept, { status: memoryLiveStatus, records: [], recordLimit: 64, normalRunningPoint: null },
+  assert.deepEqual(kept, { status: memoryLiveStatus, records: [], recordLimit: 64, normalRunningPoint: null, normalRunningPoints: noPoints },
     "closing keeps the current value readable");
   const again: SourceSnapshot<HostMemoryProtectionView>[] = [];
   const stopC = source.subscribeSnapshot(value => again.push(value));

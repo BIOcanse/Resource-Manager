@@ -64,7 +64,6 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
   savedPointsDescription: "Vom ältesten zum neuesten; der mit „Gültig“ markierte Punkt ist die aktuelle Basis. Ist die Grenze erreicht, zuerst einen Punkt löschen und dann einen neuen erstellen.",
   savedPointsCount: "Gespeichert / Grenze",
   savedPointsEmpty: "Es wurden keine Normalbetriebspunkte gespeichert.",
-  savedPointsLoading: "Gespeicherte Normalbetriebspunkte werden gelesen…",
   savedPointsUnavailable: "Die gespeicherten Normalbetriebspunkte konnten nicht gelesen werden.",
   pointInEffect: "Gültig",
   selectPoint: "Als gültig festlegen",

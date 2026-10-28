@@ -6,8 +6,8 @@ import { memoryProtectionShot } from "./memoryProtectionShots.js";
 
 // 设置 → 主机内存保护 → 已保存的正常运行点（用户 10-28：「可以存多个基准点并选择生效的基准点」）。
 // 新建的点成为生效的点，之前的点留在列表里；可以把别的点设为生效、删除任意一个（删除先确认，删生效的点写明后果）；
-// 满额时显示后端给的原因；别处改了生效的点，列表随之重读；读取中的占位和没有已保存的点时一样高。
-// 列表和生效的是哪一个都以后端为准：每一步都和 GET /api/memory-protection/normal-running-points 比对。
+// 满额时显示后端给的原因；别处新建或删除了点，订阅送来新列表；订阅到之前的占位和没有已保存的点时一样高。
+// 列表只来自订阅的 normalRunningPoints 帧，界面不读 GET；每一步都和后端的 GET /api/memory-protection/normal-running-points 比对。
 export default async function memoryProtectionPointsJourney(page, baseUrl) {
   const errors = [];
   page.on("pageerror", error => errors.push(String(error)));
@@ -18,11 +18,13 @@ export default async function memoryProtectionPointsJourney(page, baseUrl) {
   const timeFormat = new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" });
   const time = at => timeFormat.format(new Date(at));
   const writes = [];
+  const listReads = [];
   page.on("request", request => {
     const path = new URL(request.url()).pathname;
     if (path.startsWith("/api/memory-protection/normal-running-point") && request.method() !== "GET") {
       writes.push(`${request.method()} ${path}${request.postData() ? ` ${request.postData()}` : ""}`);
     }
+    if (path === "/api/memory-protection/normal-running-points" && request.method() === "GET") listReads.push(path);
   });
 
   const scenario = async body => {
@@ -65,25 +67,27 @@ export default async function memoryProtectionPointsJourney(page, baseUrl) {
     return list;
   }
 
-  // 1. 读取中的占位：列表请求挂起时这一行只占一行，和没有已保存的点时同高，正在读取读给读屏。
+  // 1. 订阅到之前的占位：内存保护的订阅挂起时这一行只占一行，和没有已保存的点时同高；正在读取由分区顶部读给读屏。
   await scenario({ memoryProtection: "no-point" });
   let release;
   const held = new Promise(resolve => { release = resolve; });
-  await page.route("**/api/memory-protection/normal-running-points", async route => {
-    if (route.request().method() === "GET") await held;
-    await route.continue();
-  });
+  const streamUrl = url => url.pathname === "/api/subscriptions/stream";
+  const hold = async route => {
+    if (route.request().method() === "POST" && (route.request().postData() ?? "").includes("/api/memory-protection/subscribe")) await held;
+    await route.continue().catch(() => {});
+  };
+  await page.route(streamUrl, hold);
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   await page.getByRole("navigation").getByRole("button", { name: app.page.settings, exact: true }).click();
   await page.getByRole("button", { name: settingsText.sections.memoryProtection, exact: true }).click();
-  await savedRow().getByRole("status").getByText(copy.savedPointsLoading, { exact: true }).waitFor({ state: "attached" });
+  await panel().getByRole("status").getByText(copy.statusLoading, { exact: true }).waitFor({ state: "attached" });
   assert.equal(await factText(savedRow(), copy.savedPointsCount), "--");
   const loadingHeight = await savedRow().evaluate(node => node.getBoundingClientRect().height);
   release();
   await savedRow().getByText(copy.savedPointsEmpty, { exact: true }).waitFor();
   const emptyHeight = await savedRow().evaluate(node => node.getBoundingClientRect().height);
   assert.ok(Math.abs(loadingHeight - emptyHeight) < 0.5, `loading ${loadingHeight}px and empty ${emptyHeight}px rows differ`);
-  await page.unroute("**/api/memory-protection/normal-running-points");
+  await page.unroute(streamUrl, hold);
   await expectShown([]);
 
   // 2. 新建两次：每个新点成为生效的点，之前的点留在列表里，上面那一格显示生效的点。
@@ -129,7 +133,7 @@ export default async function memoryProtectionPointsJourney(page, baseUrl) {
   assert.equal(writes.at(-1), `DELETE /api/memory-protection/normal-running-points/${second.id}`);
   await expectShown([first]);
 
-  // 5. 别处新建了一个点（另一个客户端或脚本）：生效的点换了，列表随订阅重读，新点标为生效。
+  // 5. 别处新建了一个点（另一个客户端或脚本）：订阅送来新列表，新点标为生效。
   const elsewhere = await createElsewhere();
   await inEffectButton(elsewhere.at).waitFor();
   list = await expectShown([first, elsewhere]);
@@ -159,19 +163,34 @@ export default async function memoryProtectionPointsJourney(page, baseUrl) {
     { exact: true }).waitFor();
   await expectShown([first]);
 
-  // 8. 不生效的点已经被别处删掉（生效的点没变，没有推送）时再删：后端 404 normal-running-point-not-found，
-  //    界面写出原因，列表重读后那一项消失。
-  await scenario({ memoryProtectionPointLimit: 2 });
+  // 8. 别处删掉一个不生效的点：生效的点没变，订阅照样送来新列表，那一项消失。
+  await scenario({ memoryProtectionPointLimit: 3 });
   const latest = await createElsewhere();
   await inEffectButton(latest.at).waitFor();
-  await fetch(`${baseUrl}/api/memory-protection/normal-running-points/${first.id}`, { method: "DELETE" });
+  const third = await createElsewhere();
+  await inEffectButton(third.at).waitFor();
+  await fetch(`${baseUrl}/api/memory-protection/normal-running-points/${latest.id}`, { method: "DELETE" });
+  await deleteButton(latest.at).waitFor({ state: "detached" });
+  await expectShown([first, third]);
+
+  // 9. 界面的删除请求到达之前，这个点已被别处删掉：后端 404 normal-running-point-not-found，界面写出原因，
+  //    订阅送来的列表里那一项消失。
+  const raced = async route => {
+    if (route.request().method() === "DELETE") {
+      await fetch(`${baseUrl}/api/memory-protection/normal-running-points/${first.id}`, { method: "DELETE" });
+    }
+    await route.continue();
+  };
+  await page.route(`**/api/memory-protection/normal-running-points/${first.id}`, raced);
   await deleteButton(first.at).click();
   await confirmDelete().getByRole("button", { name: copy.deletePoint, exact: true }).click();
   await savedRow().getByRole("alert").getByText(copy.failedBecause(copy.deletePointFailed, copy.reasons["normal-running-point-not-found"]),
     { exact: true }).waitFor();
-  await expectShown([latest]);
+  await page.unroute(`**/api/memory-protection/normal-running-points/${first.id}`, raced);
+  await expectShown([third]);
+  assert.deepEqual(listReads, [], "the page reads the saved points from the subscription only");
 
   assert.deepEqual(errors, []);
   await fetch(`${baseUrl}/__test/scenario/reset`, { method: "POST" });
-  return { steps: 8, writes };
+  return { steps: 9, writes };
 }

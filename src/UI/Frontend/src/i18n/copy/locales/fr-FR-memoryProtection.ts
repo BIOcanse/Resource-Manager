@@ -64,7 +64,6 @@ export const memoryProtection: AppCopy["memoryProtection"] = {
   savedPointsDescription: "Du plus ancien au plus récent ; le point marqué « En vigueur » est la référence actuelle. À la limite, supprimez un point avant d’en créer un autre.",
   savedPointsCount: "Enregistrés / limite",
   savedPointsEmpty: "Aucun point de fonctionnement normal n’a été enregistré.",
-  savedPointsLoading: "Lecture des points de fonctionnement normal enregistrés…",
   savedPointsUnavailable: "Impossible de lire les points de fonctionnement normal enregistrés.",
   pointInEffect: "En vigueur",
   selectPoint: "Mettre en vigueur",
