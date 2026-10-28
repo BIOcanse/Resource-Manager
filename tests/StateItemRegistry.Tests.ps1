@@ -223,9 +223,12 @@ foreach ($process in @('backend','ui')) {
 [IO.File]::WriteAllText($path, '{"entries":[{"uid":0}]}')
 Assert-Rejected { & $generator -Registry $path -Process backend -Namespace Invalid -Output (Join-Path $scratch 'invalid.g.cs') } 'Entry.*missing'
 $production = Read-StateRegistry -Path (Join-Path $repo 'src/Shared/StateItems/state-items.json')
-Assert-True ($production.entries.Count -eq 109) 'Production catalog contains 66 blocks, 29 items and 14 conditions.'
+$volume = @($production.entries | Where-Object name -CEQ 'DeviceTopologyVolumeFreeSpaceCurrent')
+Assert-True ($volume.Count -eq 1) 'The independent volume free-space current is registered.'
+Assert-True ($volume[0].kind -ceq 'item' -and $volume[0].owner.block -eq 33 -and $volume[0].trigger -ceq 'event') 'Volume free-space current belongs to the topology owner and publishes change events.'
+Assert-True ($production.entries.Count -eq 110) 'Production catalog contains 66 blocks, 30 items and 14 conditions.'
 Assert-True (@($production.entries | Where-Object kind -CEQ 'block').Count -eq 66) 'Production catalog contains 66 blocks.'
-Assert-True (@($production.entries | Where-Object kind -CEQ 'item').Count -eq 29) 'Production catalog contains 29 items.'
+Assert-True (@($production.entries | Where-Object kind -CEQ 'item').Count -eq 30) 'Production catalog contains 30 items.'
 Assert-True (@($production.entries | Where-Object kind -CEQ 'condition').Count -eq 14) 'Production catalog contains 14 conditions.'
 Assert-True (($production.entries | Where-Object uid -EQ 41).name -ceq 'MainFrontend') 'MainRoot is renamed without changing UID 41.'
 Assert-True (($production.entries | Where-Object uid -EQ 42).name -ceq 'Tray') 'TrayRoot is renamed without changing UID 42.'

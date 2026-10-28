@@ -11,7 +11,7 @@ using ResourceManager.Subscription.Native;
 
 namespace ResourceManager.App.Infrastructure.DeviceTopology.Snapshots;
 
-internal enum DeviceTopologyFieldScope { Snapshot, Acpi, Software, Services, OperatingSystem, PassiveCurrent, NvidiaDrs, NetworkEndpoints }
+internal enum DeviceTopologyFieldScope { Snapshot, Acpi, Software, Services, OperatingSystem, PassiveCurrent, NvidiaDrs, NetworkEndpoints, VolumeFreeSpace }
 
 public sealed partial class DeviceTopologySnapshotProvider
 {
@@ -73,6 +73,7 @@ public sealed partial class DeviceTopologySnapshotProvider
             DeviceTopologyFieldScope.OperatingSystem => DeviceTopologySampleScope.OperatingSystem,
             DeviceTopologyFieldScope.PassiveCurrent => DeviceTopologySampleScope.PassiveCurrent,
             DeviceTopologyFieldScope.NetworkEndpoints => DeviceTopologySampleScope.NetworkEndpoints,
+            DeviceTopologyFieldScope.VolumeFreeSpace => DeviceTopologySampleScope.VolumeFreeSpace,
             DeviceTopologyFieldScope.NvidiaDrs => DeviceTopologySampleScope.NvidiaDrs,
             _ => throw new ArgumentOutOfRangeException(nameof(publicScope))
         };
@@ -89,6 +90,7 @@ public sealed partial class DeviceTopologySnapshotProvider
                 IncludeServiceConfiguration: scope == DeviceTopologySampleScope.Services
                     && selection.Any(static field => field.Definition.Name == "service_all_start_type_configured"),
                 OperatingSystemFields: osFields,
+                VolumeFields: scope == DeviceTopologySampleScope.VolumeFreeSpace ? fields : [],
                 NvidiaDrsRequests: scope == DeviceTopologySampleScope.NvidiaDrs
                     ? [nvidiaDrsRequest?.Select(selection) ?? throw new ArgumentNullException(nameof(nvidiaDrsRequest))] : []);
             var items = subscriptions.GetDeliveryItemIds(request).ToImmutableArray();
@@ -103,16 +105,21 @@ public sealed partial class DeviceTopologySnapshotProvider
                     ? FieldCollectionSourceKind.CurrentValue : FieldCollectionSourceKind.SourceQuery))
                 .ToImmutableArray();
             var registration = deliver ? fieldSubscriptionDelivery.Register(key, backend, fields, bindings) : null;
+            IDisposable? itemUse = null;
             var flags = NativeSamplingSubscriptionSourceFlags.None;
             if (deliver || options.SamplingMode == FieldSubscriptionSamplingMode.FreshOnTrigger || options.AlignSameItemPhase)
                 flags |= NativeSamplingSubscriptionSourceFlags.PeriodicTriggers;
             if (options.SamplingMode == FieldSubscriptionSamplingMode.FreshOnTrigger)
                 flags |= NativeSamplingSubscriptionSourceFlags.FreshOnTrigger;
             if (options.AlignSameItemPhase) flags |= NativeSamplingSubscriptionSourceFlags.AlignSameItemPhase;
-            try { subscriptions.TrackPersistent(request, DateTimeOffset.UtcNow, interval, flags); }
-            catch { registration?.Dispose(); throw; }
+            try
+            {
+                itemUse = scope == DeviceTopologySampleScope.VolumeFreeSpace ? SubscribeVolumeFreeSpaceItem(key) : null;
+                subscriptions.TrackPersistent(request, DateTimeOffset.UtcNow, interval, flags);
+            }
+            catch { registration?.Dispose(); itemUse?.Dispose(); throw; }
             SignalDemand();
-            return (new FieldDemandLease(this, key, registration), registration);
+            return (new FieldDemandLease(this, key, registration, itemUse), registration);
         }
     }
 
@@ -170,7 +177,7 @@ public sealed partial class DeviceTopologySnapshotProvider
             .ToHashSet(StringComparer.Ordinal);
 
     private sealed class FieldDemandLease(DeviceTopologySnapshotProvider provider, string key,
-        NativeFieldSubscriptionDelivery.Registration? registration) : IDisposable
+        NativeFieldSubscriptionDelivery.Registration? registration, IDisposable? itemUse) : IDisposable
     {
         private DeviceTopologySnapshotProvider? owner = provider;
         public void Dispose()
@@ -178,6 +185,7 @@ public sealed partial class DeviceTopologySnapshotProvider
             var current = Interlocked.Exchange(ref owner, null);
             if (current is null) return;
             registration?.Dispose();
+            itemUse?.Dispose();
             if (Volatile.Read(ref current.disposed) != 0) return;
             current.subscriptions.Remove(key, DateTimeOffset.UtcNow);
             current.SignalDemand();

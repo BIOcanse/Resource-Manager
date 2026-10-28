@@ -29,7 +29,9 @@ public sealed partial class DeviceTopologySnapshotProvider(
     WindowsServiceInformationOwner? serviceInventory = null,
     WindowsOperatingSystemInformationOwner? operatingSystemInventory = null,
     NvidiaNvapiMonitoringZone? nvidiaDrsZone = null,
-    WindowsNetworkEndpointInformationReader? networkEndpoints = null)
+    WindowsNetworkEndpointInformationReader? networkEndpoints = null,
+    WindowsVolumeSpaceInformationReader? volumeSpace = null,
+    ResourceManager.Shared.BusinessBlocks.State.StateAuthority? stateAuthority = null)
     : IDeviceTopologySnapshotProvider, IHostedService, IDisposable
 {
     internal const string NetworkEndpointsItemId = "deviceTopology.network-endpoints";
@@ -64,7 +66,7 @@ public sealed partial class DeviceTopologySnapshotProvider(
             },
             error => logger.LogWarning(error, "Unable to persist the device topology snapshot."),
             () => logger.LogDebug("Raw SMBIOS declarations are unavailable; current values were cleared.")),
-        error => logger.LogWarning(error, "ACPI firmware enumeration failed."));
+        error => logger.LogWarning(error, "ACPI firmware enumeration failed."), CreateVolumeFreeSpacePublisher(stateAuthority));
     private readonly NativeItemSamplingSubscriptionTracker<DeviceTopologySampleRequest> subscriptions =
         CreateSubscriptions(samplingSubscriptionOwner, null);
     private CancellationTokenSource? samplingCts;
@@ -93,9 +95,11 @@ public sealed partial class DeviceTopologySnapshotProvider(
         WindowsServiceInformationOwner? serviceInventory = null,
         WindowsOperatingSystemInformationOwner? operatingSystemInventory = null,
         NvidiaNvapiMonitoringZone? nvidiaDrsZone = null,
-        WindowsNetworkEndpointInformationReader? networkEndpoints = null)
+        WindowsNetworkEndpointInformationReader? networkEndpoints = null,
+        WindowsVolumeSpaceInformationReader? volumeSpace = null,
+        ResourceManager.Shared.BusinessBlocks.State.StateAuthority? stateAuthority = null)
         : this(reader, store, semanticComparer, samplingSubscriptionOwner, logger, acpiReader,
-            softwareInventory, serviceInventory, operatingSystemInventory, nvidiaDrsZone, networkEndpoints)
+            softwareInventory, serviceInventory, operatingSystemInventory, nvidiaDrsZone, networkEndpoints, volumeSpace, stateAuthority)
     {
         ArgumentNullException.ThrowIfNull(ledgerOwner);
         subscriptions = CreateSubscriptions(samplingSubscriptionOwner,
@@ -276,7 +280,7 @@ public sealed partial class DeviceTopologySnapshotProvider(
             var completion = await SampleRequestedAsync(plan.Request!.Scope, plan.OwnerToken, token,
                 plan.Request.IncludeServiceConfiguration, plan.Request.OperatingSystemFields,
                 (scope, queriedKeys) => pendingFieldResult = MergeFieldCapture(pendingFieldResult,
-                    CaptureFieldResult(plan.Triggers, scope, queriedKeys)), plan.Request.NvidiaDrsRequests);
+                    CaptureFieldResult(plan.Triggers, scope, queriedKeys)), plan.Request.NvidiaDrsRequests, plan.Request.VolumeFields);
             return completion switch
             {
                 DeviceTopologySampleCompletion.Sampled => SubscriptionSampleCompletion.Sampled,
@@ -350,6 +354,7 @@ public sealed partial class DeviceTopologySnapshotProvider(
 
     private static IEnumerable<string> SamplingItemIds(DeviceTopologySampleScope scope)
     {
+        if ((scope & DeviceTopologySampleScope.VolumeFreeSpace) != 0) yield return VolumeFreeSpaceItemId;
         if ((scope & DeviceTopologySampleScope.NetworkEndpoints) != 0) yield return NetworkEndpointsItemId;
         if ((scope & DeviceTopologySampleScope.Snapshot) != 0) yield return SnapshotItemId;
         if ((scope & DeviceTopologySampleScope.Acpi) != 0) yield return AcpiItemId;
@@ -364,6 +369,7 @@ public sealed partial class DeviceTopologySnapshotProvider(
         IReadOnlyList<ResourceManager.Subscription.NativeItemSamplingSubscriptionSourceView<DeviceTopologySampleRequest>> sources)
     {
         var scope = DeviceTopologySampleScope.None;
+        if (items.Contains(VolumeFreeSpaceItemId, StringComparer.OrdinalIgnoreCase)) scope |= DeviceTopologySampleScope.VolumeFreeSpace;
         if (items.Contains(NetworkEndpointsItemId, StringComparer.OrdinalIgnoreCase)) scope |= DeviceTopologySampleScope.NetworkEndpoints;
         if (items.Contains(SnapshotItemId, StringComparer.OrdinalIgnoreCase)) scope |= DeviceTopologySampleScope.Snapshot;
         if (items.Contains(AcpiItemId, StringComparer.OrdinalIgnoreCase)) scope |= DeviceTopologySampleScope.Acpi;
@@ -378,6 +384,9 @@ public sealed partial class DeviceTopologySnapshotProvider(
             OperatingSystemFields: sources.Where(source => (source.Request.Scope & DeviceTopologySampleScope.OperatingSystem) != 0
                 && !source.Request.CancellationToken.IsCancellationRequested)
                 .Aggregate(WindowsOperatingSystemInformationFields.None, static (fields, source) => fields | source.Request.OperatingSystemFields),
+            VolumeFields: sources.Where(source => (source.Request.Scope & DeviceTopologySampleScope.VolumeFreeSpace) != 0
+                && !source.Request.CancellationToken.IsCancellationRequested).SelectMany(source => source.Request.VolumeFields.IsDefault
+                    ? ImmutableArray<FieldReference>.Empty : source.Request.VolumeFields).Distinct().ToImmutableArray(),
             NvidiaDrsRequests: sources.Where(source => (source.Request.Scope & DeviceTopologySampleScope.NvidiaDrs) != 0
                 && !source.Request.CancellationToken.IsCancellationRequested)
                 .SelectMany(source => source.Request.NvidiaDrsRequests.IsDefault
@@ -389,7 +398,8 @@ public sealed partial class DeviceTopologySnapshotProvider(
         bool includeServiceConfiguration = false,
         WindowsOperatingSystemInformationFields operatingSystemFields = WindowsOperatingSystemInformationFields.All,
         Action<DeviceTopologySampleScope, IReadOnlySet<string>>? collectionCommitted = null,
-        ImmutableArray<NvidiaDrsInformationRequest> nvidiaDrsRequests = default)
+        ImmutableArray<NvidiaDrsInformationRequest> nvidiaDrsRequests = default,
+        ImmutableArray<FieldReference> volumeFields = default)
     {
         var completion = DeviceTopologySampleCompletion.Sampled;
         if ((scope & DeviceTopologySampleScope.Snapshot) != 0)
@@ -436,11 +446,17 @@ public sealed partial class DeviceTopologySnapshotProvider(
             if (drsCompletion is DeviceTopologySampleCompletion.Canceled or DeviceTopologySampleCompletion.SkippedBusy) return drsCompletion;
             if (drsCompletion == DeviceTopologySampleCompletion.Failed) completion = drsCompletion;
         }
+        if ((scope & DeviceTopologySampleScope.VolumeFreeSpace) != 0)
+        {
+            var volumeCompletion = await TrySampleVolumeFreeSpaceAsync(ownerToken, volumeFields, cancellationToken, collectionCommitted);
+            if (volumeCompletion is DeviceTopologySampleCompletion.Canceled or DeviceTopologySampleCompletion.SkippedBusy) return volumeCompletion;
+            if (volumeCompletion == DeviceTopologySampleCompletion.Failed) completion = volumeCompletion;
+        }
         return completion;
     }
 
     [Flags]
-    private enum DeviceTopologySampleScope : byte { None = 0, Snapshot = 1, Acpi = 2, Software = 4, Services = 8, OperatingSystem = 16, PassiveCurrent = 32, NvidiaDrs = 64, NetworkEndpoints = 128 }
+    private enum DeviceTopologySampleScope : ushort { None = 0, Snapshot = 1, Acpi = 2, Software = 4, Services = 8, OperatingSystem = 16, PassiveCurrent = 32, NvidiaDrs = 64, NetworkEndpoints = 128, VolumeFreeSpace = 256 }
 
     private bool HasCurrentDemand(DeviceTopologySampleScope scope)
         => subscriptions.HasPersistentDemand(request =>
@@ -450,7 +466,8 @@ public sealed partial class DeviceTopologySnapshotProvider(
         string SourceKey, DeviceTopologySampleScope Scope, CancellationToken CancellationToken = default,
         bool IncludeServiceConfiguration = false,
         WindowsOperatingSystemInformationFields OperatingSystemFields = WindowsOperatingSystemInformationFields.All,
-        ImmutableArray<NvidiaDrsInformationRequest> NvidiaDrsRequests = default);
+        ImmutableArray<NvidiaDrsInformationRequest> NvidiaDrsRequests = default,
+        ImmutableArray<FieldReference> VolumeFields = default);
 }
 
 

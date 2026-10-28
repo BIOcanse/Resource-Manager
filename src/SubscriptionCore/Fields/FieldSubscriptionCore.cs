@@ -5,7 +5,7 @@ namespace ResourceManager.Subscription;
 
 /// <summary>External subscriptions use the read/write core's exact device fields.
 /// Validation is metadata-only; the supplied backend owns demand and notification.</summary>
-public sealed class FieldSubscriptionCore(ReadWriteCore core, IFieldSubscriptionBackend backend)
+public sealed partial class FieldSubscriptionCore(ReadWriteCore core, IFieldSubscriptionBackend backend)
 {
     private readonly ReadWriteCore core = core ?? throw new ArgumentNullException(nameof(core));
     private readonly IFieldSubscriptionBackend backend = backend ?? throw new ArgumentNullException(nameof(backend));

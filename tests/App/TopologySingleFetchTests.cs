@@ -173,6 +173,8 @@ public sealed class TopologySingleFetchTests
             }
             finally { Interlocked.Decrement(ref Active); }
         }
+        public IAsyncEnumerable<DeviceInformationSnapshot> SubscribeInformationChangesAsync(string id, TimeSpan interval, CancellationToken token)
+            => throw new InvalidOperationException("This fixture does not subscribe to all information fields.");
         public IAsyncEnumerable<DeviceInformationSnapshot> SubscribeNetworkEndpointsAsync(string id, TimeSpan interval,
             CancellationToken token, bool includeCurrent = true)
             => throw new InvalidOperationException("This consumer must not collect network endpoint information.");

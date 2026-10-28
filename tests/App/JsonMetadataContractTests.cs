@@ -44,6 +44,25 @@ public sealed partial class JsonMetadataContractTests
     }
 
     [Fact]
+    public void InformationSelectionWireUsesExactCoreFieldReferencesAndOmissionKeepsWholeSet()
+    {
+        var options = new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions;
+        ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
+        const string wire = """
+            {"version":1,"subscriptions":[{"id":"free","path":"/api/device-topology/fields/subscribe","fields":[{"deviceIdentity":"windows-volume|AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE","fieldName":"volume_all_free_bytes_actual"}]}]}
+            """;
+        var request = JsonSerializer.Deserialize<FrontendSubscriptionChannelRequest>(wire, options)!;
+        var field = Assert.Single(Assert.Single(request.Subscriptions!)!.Fields!);
+        Assert.Equal(VolumeSpaceInformationCollectorTests.IdA, field.DeviceIdentity);
+        Assert.Equal("volume_all_free_bytes_actual", field.FieldName);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(wire), JsonSerializer.SerializeToNode(request, options)));
+        const string whole = """{"version":1,"subscriptions":[{"id":"all","path":"/api/device-topology/fields/subscribe"}]}""";
+        var defaultRequest = JsonSerializer.Deserialize<FrontendSubscriptionChannelRequest>(whole, options)!;
+        Assert.Null(Assert.Single(defaultRequest.Subscriptions!)!.Fields);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(whole), JsonSerializer.SerializeToNode(defaultRequest, options)));
+    }
+
+    [Fact]
     public void KernelLeakRunFailureFixturePinsRequiredStartOnHttpAndSubscriptionWire()
     {
         const string fixture = """

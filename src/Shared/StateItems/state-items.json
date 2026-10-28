@@ -1153,6 +1153,21 @@
       "perBlock": false,
       "trigger": "event",
       "changeEvent": "Desktop backend session bind, transition or unbind"
+    },
+    {
+      "uid": 110,
+      "kind": "item",
+      "process": "backend",
+      "name": "DeviceTopologyVolumeFreeSpaceCurrent",
+      "comment": "Current exact-volume free-space fields from deviceTopology.volume-free-space; consumer item use is a fact for the topology node, never a business start/stop decision here.",
+      "storage": "reference",
+      "type": "ResourceManager.ReadWrite.Information.DeviceInformationSnapshot",
+      "owner": {
+        "block": 33
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "DeviceTopologyCaptureOwner selected volume free-space content changed"
     }
   ]
 }

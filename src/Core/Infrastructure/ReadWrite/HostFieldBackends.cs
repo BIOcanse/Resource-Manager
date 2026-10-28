@@ -32,17 +32,22 @@ public sealed class HostFieldBackends
         this.presentFrameQueries = presentFrameQueries;
         var information = new InformationReadWriteBackend(() => devices.ReadState().InformationFields,
             devices.CaptureInformationAsync, ReadSupport, null,
-            static definition => definition != DeviceInformationFieldRegistry.GpuNvidiaDriverProfileSettingValue);
+            static definition => definition != DeviceInformationFieldRegistry.GpuNvidiaDriverProfileSettingValue
+                && definition != DeviceInformationFieldRegistry.VolumeAllFreeBytesActual);
+        var volumeFreeSpace = new InformationReadWriteBackend(devices.ReadVolumeFreeSpaceInformation,
+            devices.CaptureAllVolumeFreeSpaceInformationAsync, ReadSupport,
+            (selection, token) => devices.CaptureVolumeFreeSpaceInformationAsync(selection.Select(static field => field.Field).ToImmutableArray(), token));
         var networkEndpoints = new InformationReadWriteBackend(devices.ReadNetworkEndpointInformation,
             devices.CaptureNetworkEndpointInformationAsync, ReadSupport);
         var acpi = new InformationReadWriteBackend(() => devices.ReadState().AcpiInformationFields,
             devices.CaptureAcpiInformationAsync, ReadSupport);
         var topology = new InformationReadWriteBackend(cpu.GetInformationSnapshot, cpu.CaptureInformationAsync, ReadSupport);
-        var backends = new List<IReadWriteBackend> { metrics, information, networkEndpoints, acpi, topology, processes };
+        var backends = new List<IReadWriteBackend> { metrics, information, volumeFreeSpace, networkEndpoints, acpi, topology, processes };
         var subscriptions = new Dictionary<IReadWriteBackend, IFieldSubscriptionBackend>
         {
             [metrics] = metricSubscriptions,
             [information] = new DeviceFields(information, devices, DeviceTopologyFieldScope.Snapshot),
+            [volumeFreeSpace] = new DeviceFields(volumeFreeSpace, devices, DeviceTopologyFieldScope.VolumeFreeSpace),
             [networkEndpoints] = new DeviceFields(networkEndpoints, devices, DeviceTopologyFieldScope.NetworkEndpoints),
             [acpi] = new DeviceFields(acpi, devices, DeviceTopologyFieldScope.Acpi),
             [topology] = new CpuFields(topology, cpu),

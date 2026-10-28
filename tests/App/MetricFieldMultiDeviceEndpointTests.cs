@@ -498,6 +498,8 @@ public sealed class MetricFieldMultiDeviceEndpointTests(ITestOutputHelper output
         };
         public IAsyncEnumerable<DeviceTopologySnapshotState> SubscribeAsync(string id, TimeSpan interval, CancellationToken token)
             => throw new InvalidOperationException("Address projection must only read the existing topology cache.");
+        public IAsyncEnumerable<DeviceInformationSnapshot> SubscribeInformationChangesAsync(string id, TimeSpan interval, CancellationToken token)
+            => throw new InvalidOperationException("This fixture does not subscribe to all information fields.");
         public IAsyncEnumerable<DeviceInformationSnapshot> SubscribeNetworkEndpointsAsync(string id, TimeSpan interval,
             CancellationToken token, bool includeCurrent = true)
             => throw new InvalidOperationException("This consumer must not collect network endpoint information.");

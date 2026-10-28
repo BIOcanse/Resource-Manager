@@ -58,6 +58,28 @@ public sealed class WindowsVolumeSpaceInformationReader
         return Information.WindowsInformationFieldProjection.Volumes(rows, rows is null ? null : DateTimeOffset.UtcNow);
     }
 
+    /// <summary>Read only known exact volume GUIDs. No volume, mount-path, extent or filesystem enumeration.</summary>
+    [RuntimeRead(ReadVolatilityKind.Sampled)]
+    public IReadOnlyList<DeviceTopologyVolumeSpaceInformation> ReadSelected(IReadOnlyList<string> identities)
+    {
+        ArgumentNullException.ThrowIfNull(identities);
+        if (identities.Count > MaximumVolumes) throw new ArgumentOutOfRangeException(nameof(identities));
+        var roots = identities.Distinct(StringComparer.Ordinal).Select(identity =>
+        {
+            const string prefix = "windows-volume|";
+            if (!identity.StartsWith(prefix, StringComparison.Ordinal)
+                || !Guid.TryParseExact(identity.AsSpan(prefix.Length), "D", out var guid))
+                throw new ArgumentException("Select exact volume GUID identities.", nameof(identities));
+            return (Identity: identity, Root: @"\\?\Volume{" + guid.ToString("D").ToUpperInvariant() + "}\\");
+        }).ToArray();
+        return roots.Select(item =>
+        {
+            try { return api.ReadSpace(item.Root, out var data, out var sid) == 0
+                ? Create(item.Identity, data, sid) : new(item.Identity); }
+            catch (Exception error) when (IsSourceFailure(error)) { return new DeviceTopologyVolumeSpaceInformation(item.Identity); }
+        }).ToArray();
+    }
+
     private static T? ReadSource<T>(Func<T?> read) where T : class
     {
         try { return read(); }

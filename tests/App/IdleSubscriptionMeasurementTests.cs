@@ -51,12 +51,13 @@ public sealed class IdleSubscriptionMeasurementTests
         await app.StartAsync();
         using var client = TrustedAccessEndpointTestAuthentication.Client(app);
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-        var counts = new Dictionary<string, Counter> { ["catalog"] = new(), ["topology"] = new() };
+        var counts = new Dictionary<string, Counter> { ["catalog"] = new(), ["topology"] = new(), ["fields"] = new() };
         using var response = await client.SendAsync(new(HttpMethod.Post, "/api/subscriptions/stream")
         {
             Content = JsonContent.Create(new { version = 1, subscriptions = new[] {
                 new { id = "catalog", path = "/api/metrics/fields/catalog/subscribe?intervalMs=1000" },
-                new { id = "topology", path = "/api/device-topology/state/subscribe?intervalMs=1000" } } })
+                new { id = "topology", path = "/api/device-topology/state/subscribe?intervalMs=1000" },
+                new { id = "fields", path = "/api/device-topology/fields/subscribe?intervalMs=1000" } } })
         }, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
         response.EnsureSuccessStatusCode();
         using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(deadline.Token));
@@ -76,6 +77,8 @@ public sealed class IdleSubscriptionMeasurementTests
         Assert.InRange(counts["catalog"].Bytes, 1, 1_100_000);
         Assert.Equal(1, counts["topology"].Frames);
         Assert.InRange(counts["topology"].Bytes, 1, 16_384);
+        Assert.Equal(1, counts["fields"].Frames);
+        Assert.True(counts["fields"].Bytes > 0);
     }
     private sealed class Counter { public int Frames { get; set; } public long Bytes { get; set; } }
     private sealed class Discovery(HardwareMetricCatalogState catalog, HardwareMetricSnapshot snapshot) : IMetricSnapshotPushSource

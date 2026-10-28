@@ -135,6 +135,8 @@ public static partial class WindowsInformationFieldProjection
         var objects = projected.Devices.ToDictionary(static device => device.DeviceIdentity, StringComparer.Ordinal);
         foreach (var device in previous.Devices)
         {
+            // Only the independent WPD owner retains its own exact identities across topology captures.
+            if (!IsWpdIdentity(device.DeviceIdentity)) continue;
             var fields = device.Fields.Where(static field => IsWpdDefinition(field.Definition)).ToArray();
             if (fields.Length == 0) continue;
             if (objects.TryGetValue(device.DeviceIdentity, out var current))

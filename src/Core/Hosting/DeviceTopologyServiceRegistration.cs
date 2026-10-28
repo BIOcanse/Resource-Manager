@@ -29,7 +29,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetService<ResourceManager.App.Infrastructure.Software.WindowsInstalledSoftwareInventory>(),
             provider.GetService<ResourceManager.ReadWrite.Windows.Services.WindowsServiceInformationOwner>(),
             provider.GetService<ResourceManager.ReadWrite.Windows.SystemInformation.WindowsOperatingSystemInformationOwner>(),
-            provider.GetService<ResourceManager.App.Infrastructure.Monitoring.NvidiaNvapiMonitoringZone>()));
+            provider.GetService<ResourceManager.App.Infrastructure.Monitoring.NvidiaNvapiMonitoringZone>(),
+            stateAuthority: provider.GetRequiredService<ResourceManager.Shared.BusinessBlocks.State.StateAuthority>()));
         services.AddSingleton<IDeviceTopologySnapshotProvider>(static provider =>
             provider.GetRequiredService<DeviceTopologySnapshotProvider>());
         services.AddHostedServiceAlias<DeviceTopologySnapshotProvider>();

@@ -12,7 +12,8 @@ namespace ResourceManager.ReadWrite.Windows.Devices.Snapshots;
 public sealed partial class DeviceTopologyCaptureOwner(
     IAcpiFirmwareTableReader acpiReader,
     DeviceTopologyCapturePolicy? topology = null,
-    Action<Exception>? logAcpiFailure = null) : IDisposable
+    Action<Exception>? logAcpiFailure = null,
+    Func<DeviceInformationSnapshot, Task>? volumeFreeSpacePublished = null) : IDisposable
 {
     private readonly SemaphoreSlim sampleGate = new(1, 1);
     private readonly CurrentValuePublicationSignal publicationSignal = new();
@@ -49,6 +50,8 @@ public sealed partial class DeviceTopologyCaptureOwner(
             // Loading topology does not own the independently once-read firmware value.
             AcpiInformationFields = ReadState().AcpiInformationFields
         });
+        // This synchronous data initialization also settles its reference publication.
+        CompleteVolumeFreeSpacePublicationAsync().GetAwaiter().GetResult();
     }
 
     public async ValueTask<DeviceInformationSnapshot> CaptureInformationAsync(CancellationToken cancellationToken,
@@ -260,7 +263,8 @@ public sealed partial class DeviceTopologyCaptureOwner(
         }
         finally
         {
-            sampleGate.Release();
+            try { await CompleteVolumeFreeSpacePublicationAsync(); }
+            finally { sampleGate.Release(); }
         }
     }
 
@@ -322,6 +326,7 @@ public sealed partial class DeviceTopologyCaptureOwner(
         fields = WindowsInformationFieldProjection.PreserveOpenGlCapabilityFields(fields, previousInformation);
         fields = WindowsInformationFieldProjection.PreserveNvidiaDrsInformation(fields, previousInformation);
         Volatile.Write(ref state, next with { InformationFields = fields });
+        PublishVolumeFreeSpaceCurrent();
         InformationPublications.Publish([InformationCollectionItemId]);
         PublishTopologyChange();
     }

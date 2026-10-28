@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ResourceManager.ReadWrite;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
@@ -230,10 +231,13 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 rejections.Add(new(item.Id!, new(StatusCodes.Status503ServiceUnavailable, "access-policy-missing")));
                 continue;
             }
+            if (item.Fields is not null && selector != "/api/device-topology/fields/subscribe")
+                return Failed(statusCode, "Field selection is supported by the device information subscription.");
             descriptors.Add(new ParsedFrontendSubscription(
                 item.Id!,
                 selector,
-                query));
+                query,
+                item.Fields));
         }
 
         var keyService = httpContext.RequestServices.GetRequiredService<ITrustedAccessKeyService>();
@@ -403,11 +407,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     services.GetRequiredService<IDeviceTopologySnapshotProvider>(),
                     interval)),
             ["/api/device-topology/fields/subscribe"] =
-                new((subscription, services, interval) => CompileDeviceTopologySubscription(
-                    subscription,
-                    services.GetRequiredService<IDeviceTopologySnapshotProvider>(),
-                    interval,
-                    fieldsOnly: true)),
+                new((subscription, services, interval) => CompileInformationFieldsSubscription(subscription, services, interval)),
             ["/api/device-topology/nvidia-drs/fields/subscribe"] =
                 new((subscription, services, interval) => CompileNvidiaDrsSubscription(subscription, services, interval)),
             ["/api/device-topology/network-endpoints/fields/subscribe"] =
@@ -762,15 +762,16 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     {
         return subscription.Compile(async (writer, cancellationToken) =>
         {
-            var values = fieldsOnly
-                ? topology.SubscribeAsync($"frontend-channel:{subscription.Id}", interval, cancellationToken)
-                : topology.SubscribeChangesAsync($"frontend-channel:{subscription.Id}", interval, cancellationToken);
+            if (fieldsOnly)
+            {
+                await foreach (var fields in topology.SubscribeInformationChangesAsync($"frontend-channel:{subscription.Id}", interval, cancellationToken))
+                    await writer.WriteAsync(subscription.Id, fields, cancellationToken);
+                return;
+            }
+            var values = topology.SubscribeChangesAsync($"frontend-channel:{subscription.Id}", interval, cancellationToken);
             await foreach (var snapshot in values)
             {
-                if (fieldsOnly)
-                    await writer.WriteAsync(subscription.Id, snapshot.InformationFields, cancellationToken);
-                else
-                    await writer.WriteAsync(subscription.Id, snapshot, cancellationToken);
+                await writer.WriteAsync(subscription.Id, snapshot, cancellationToken);
             }
         });
     }
@@ -931,7 +932,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     private sealed record ParsedFrontendSubscription(
         string Id,
         string Selector,
-        IQueryCollection Query)
+        IQueryCollection Query,
+        IReadOnlyList<FieldReference>? Fields = null)
     {
         public CompiledFrontendSubscription Compile(
             Func<FrontendSubscriptionChannelWriter, CancellationToken, Task> runAsync)
@@ -1015,7 +1017,9 @@ internal sealed record FrontendSubscriptionChannelRequest(
 
 internal sealed record FrontendSubscriptionChannelRequestItem(
     string? Id,
-    string? Path);
+    string? Path,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<FieldReference>? Fields = null);
 
 internal sealed record FrontendSubscriptionChannelFrame<T>(
     string SubscriptionId,

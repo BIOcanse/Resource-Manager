@@ -36,7 +36,7 @@ public sealed partial class DeviceInformationEndpointTests
             .GetProperty("fields").EnumerateArray(),
             field => field.GetProperty("definition").GetProperty("name").GetString() == name);
 
-    private static async Task<WebApplication> StartAsync(DeviceTopologySnapshotProvider provider)
+    private static async Task<WebApplication> StartAsync(DeviceTopologySnapshotProvider provider, Action<IServiceCollection>? configure = null)
     {
         var builder = WebApplication.CreateBuilder();
         TrustedAccessEndpointTestAuthentication.Add(builder.Services, "read");
@@ -44,6 +44,7 @@ public sealed partial class DeviceInformationEndpointTests
         builder.Logging.ClearProviders();
         builder.Services.AddSingleton<IDeviceTopologySnapshotProvider>(provider);
         builder.Services.AddHostedService(_ => provider);
+        configure?.Invoke(builder.Services);
         var app = TrustedAccessEndpointTestAuthentication.Build(builder);
         foreach (var method in new[] { "MapDeviceTopologyEndpoints", "MapSubscriptionChannelEndpoints" })
             typeof(ResourceManagerEndpointRouteBuilderExtensions).GetMethod(method, BindingFlags.Static | BindingFlags.NonPublic)!
@@ -85,8 +86,8 @@ public sealed partial class DeviceInformationEndpointTests
     {
         private readonly HostManagerSamplingSubscriptionTestFixture sampling = new();
         public DeviceTopologySnapshotProvider Provider { get; }
-        public Fixture(Reader reader,DeviceTopologyPersistedSnapshot? persisted=null, WindowsNetworkEndpointInformationReader? networkEndpoints=null) => Provider = new(reader, new Store(persisted), new(), sampling.Owner, NullLogger<DeviceTopologySnapshotProvider>.Instance,
-            new WindowsAcpiFirmwareTableReader(), networkEndpoints: networkEndpoints);
+        public Fixture(Reader reader,DeviceTopologyPersistedSnapshot? persisted=null, WindowsNetworkEndpointInformationReader? networkEndpoints=null, WindowsVolumeSpaceInformationReader? volumeSpace=null, ResourceManager.Shared.BusinessBlocks.State.StateAuthority? stateAuthority=null) => Provider = new(reader, new Store(persisted), new(), sampling.Owner, NullLogger<DeviceTopologySnapshotProvider>.Instance,
+            new WindowsAcpiFirmwareTableReader(), networkEndpoints: networkEndpoints, volumeSpace: volumeSpace, stateAuthority: stateAuthority);
         internal async Task WaitForNoDemandAndIdleAsync()
         {
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));

@@ -56,6 +56,7 @@ public static partial class WindowsInformationFieldProjection
     [JsonSerializable(typeof(ResourceManager.App.Domain.DeviceTopology.DeviceTopologyPort))]
     [JsonSerializable(typeof(ResourceManager.App.Domain.DeviceTopology.DeviceTopologySmartDeviceCapabilities))]
     [JsonSerializable(typeof(ResourceManager.App.Domain.DeviceTopology.DeviceTopologySmartDeviceStorage))]
+    [JsonSerializable(typeof(MobileStorageFreeBytesRow[]))]
     [JsonSerializable(typeof(ResourceManager.App.Domain.DeviceTopology.DeviceTopologySnapshot))]
     [JsonSerializable(typeof(ResourceManager.App.Domain.DeviceTopology.DeviceTopologySourceDiagnostic))]
     [JsonSerializable(typeof(ResourceManager.App.Domain.DeviceTopology.DeviceTopologyStorageDevice))]

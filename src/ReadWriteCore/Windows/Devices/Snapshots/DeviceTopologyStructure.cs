@@ -28,6 +28,11 @@ public static class DeviceTopologyStructure
         { UsedPages = null, PeakUsedPages = null }).ToArray(),
         Ports = snapshot.Ports.Select(static port => port with
         {
+            SmartDevice = port.SmartDevice is null ? null : port.SmartDevice with
+            {
+                BatteryPercent = null,
+                Storages = port.SmartDevice.Storages.Select(static storage => storage with { FreeBytes = null }).ToArray()
+            },
             Storage = port.Storage is null ? null : port.Storage with
             {
                 Partitions = port.Storage.Partitions.Select(static partition => partition with

@@ -96,6 +96,13 @@ public static partial class DeviceTopologyInformationProjection
             {
                 fields.AddRange(PciFields(port));
             }
+            if (port.SmartDevice is { } smartDevice)
+            {
+                fields.Add(Value(F.MobileAllBatteryPercentReported, smartDevice.BatteryPercent));
+                fields.Add(Value(F.MobileAllStorageFreeBytesReported, smartDevice.Storages.Select(static storage =>
+                    new MobileStorageFreeBytesRow(storage.Name,
+                        storage.FreeBytes?.ToString(CultureInfo.InvariantCulture))).ToArray()));
+            }
             if (port.Network is { } network)
             {
                 fields.AddRange([
@@ -122,7 +129,8 @@ public static partial class DeviceTopologyInformationProjection
             if (fields.Count > 0 && !string.IsNullOrWhiteSpace(port.DeviceId) && (!knownDisk || isDisk))
             {
                 Add(pnpIdentity,
-                    isDisk ? "os_disk" : port.Network is not null ? "network_adapter" : port.Usb is not null ? "usb_device" : "pci_device", fields);
+                    isDisk ? "os_disk" : port.SmartDevice is not null ? "mobile_device"
+                    : port.Network is not null ? "network_adapter" : port.Usb is not null ? "usb_device" : "pci_device", fields);
             }
             if (port.Display is { MonitorDevicePath.Length: > 0 } display)
             {

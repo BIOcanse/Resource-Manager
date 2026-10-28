@@ -6,6 +6,9 @@ public interface IDeviceTopologySnapshotProvider
 {
     DeviceTopologySnapshotState ReadState();
 
+    IAsyncEnumerable<DeviceInformationSnapshot> SubscribeInformationChangesAsync(
+        string subscriptionId, TimeSpan interval, CancellationToken cancellationToken);
+
     IAsyncEnumerable<DeviceTopologySnapshotState> SubscribeAsync(
         string subscriptionId,
         TimeSpan interval,
