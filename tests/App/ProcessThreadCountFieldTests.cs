@@ -182,11 +182,11 @@ public sealed class ProcessThreadCountFieldTests
         var image = fields.Single(field => field.FieldName == names[1]);
         Assert.Null(owner.Backend.ReadCached(thread).Value);
         Assert.NotNull(owner.Backend.ReadCached(image).Value);
-        Assert.Equal(2, api.Basic.ImageCalls);
+        Assert.Equal(1, api.Basic.ImageCalls); // the verified instance retains its fixed image
         api.Basic.Fault = "identity-before";
         await owner.CollectAsync(names, timeout.Token);
         Assert.Equal(1, api.Calls.Snapshots);
-        Assert.Null(owner.Backend.ReadCached(thread).Value); Assert.Null(owner.Backend.ReadCached(image).Value);
+        Assert.Null(owner.Backend.ReadCached(thread).Value); Assert.NotNull(owner.Backend.ReadCached(image).Value);
         Assert.Equal(3, api.Basic.Closes);
     }
 

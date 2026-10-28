@@ -105,7 +105,7 @@ public sealed class ItemSamplingSubscriptionTrackerTests
     public void ActiveItemsIncludeSlowDemandDuringNoDueAndFastOnlyPlans()
     {
         using var fixture = new HostManagerSamplingSubscriptionTestFixture();
-        var tracker = CreateMetricTracker(fixture);
+        var tracker = CreateMetricTracker(fixture, clock: new FrozenClock());
         Assert.Equal("ResourceManager.SubscriptionCore", tracker.GetType().BaseType!.Assembly.GetName().Name);
         var now = DateTimeOffset.Parse("2026-10-06T00:00:00Z");
         tracker.TrackPersistent("slow", MetricSampleRequest.ForIds(["slow.ratio"]), now, TimeSpan.FromMinutes(1));
@@ -121,9 +121,15 @@ public sealed class ItemSamplingSubscriptionTrackerTests
         Assert.Equal(initial.ActiveItemIds, fast.ActiveItemIds);
         tracker.MarkSampled(fast.Request!, now.AddSeconds(2));
         Assert.True(tracker.Remove("slow", now.AddSeconds(2)));
-        Assert.Equal(new[] { "cpu.usage" }, tracker.CreatePlan(now.AddSeconds(2).AddMilliseconds(1)).ActiveItemIds);
-        Assert.True(tracker.Remove("fast", now.AddSeconds(2).AddMilliseconds(2)));
-        var removed = tracker.CreatePlan(now.AddSeconds(2).AddMilliseconds(3));
+        var remainingAt = now.AddSeconds(3);
+        var remaining = tracker.CreatePlan(remainingAt);
+        Assert.Equal(new[] { "cpu.usage" }, remaining.ActiveItemIds);
+        // This plan is due again. Its workspace lease belongs to the test until settlement.
+        Assert.NotNull(remaining.Request);
+        Assert.Equal(new[] { "cpu.usage" }, remaining.DueItemIds);
+        tracker.MarkSampled(remaining.Request!, remainingAt);
+        Assert.True(tracker.Remove("fast", remainingAt.AddMilliseconds(1)));
+        var removed = tracker.CreatePlan(remainingAt.AddMilliseconds(2));
         Assert.False(removed.IsActive); Assert.Empty(removed.ActiveItemIds);
     }
 
@@ -439,7 +445,7 @@ public sealed class ItemSamplingSubscriptionTrackerTests
     public void ContinuousRenewalKeepsOneSecondSamplingActiveBeyondSourceTtl()
     {
         using var fixture = new HostManagerSamplingSubscriptionTestFixture();
-        var tracker = CreateMetricTracker(fixture);
+        var tracker = CreateMetricTracker(fixture, clock: new FrozenClock());
         var startedAt = DateTimeOffset.Parse("2026-08-23T12:00:00Z");
         var request = MetricSampleRequest.ForIds(["cpu.usage"]);
         var sampledCount = 0;
@@ -745,10 +751,11 @@ public sealed class ItemSamplingSubscriptionTrackerTests
             return (sources[..checked((int)header.SourceOutputCount)], items[..checked((int)header.ItemOutputCount)]);
         });
 
-    private static NativeItemSamplingSubscriptionTracker<MetricSampleRequest> CreateMetricTracker(
+    private static ResourceManager.Subscription.NativeItemSamplingSubscriptionTracker<MetricSampleRequest, SamplingOwnerToken> CreateMetricTracker(
         HostManagerSamplingSubscriptionTestFixture fixture,
-        bool coalesceItemsIntoLatestCapture = false)
+        bool coalesceItemsIntoLatestCapture = false, TimeProvider? clock = null)
     {
+        if (clock is not null) return new ClockedMetricTracker(fixture.Owner, coalesceItemsIntoLatestCapture, clock);
         return new NativeItemSamplingSubscriptionTracker<MetricSampleRequest>(
             fixture.Owner,
             roleId: 1,
@@ -757,4 +764,16 @@ public sealed class ItemSamplingSubscriptionTrackerTests
             static (ids, _) => MetricSampleRequest.ForIds(ids),
             coalesceItemsIntoLatestCapture);
     }
+
+    private sealed class FrozenClock : TimeProvider
+    {
+        public override long GetTimestamp() => 0;
+    }
+
+    private sealed class ClockedMetricTracker(HostManagerSamplingSubscriptionOwner owner, bool coalesce, TimeProvider clock)
+        : ResourceManager.Subscription.NativeItemSamplingSubscriptionTracker<MetricSampleRequest, SamplingOwnerToken>(
+            new HostSamplingSessionOwnerAdapter(owner), 1,
+            static request => request.CacheKey,
+            static request => request.IsCatalogProbe || request.IsEmpty ? [] : request.Ids,
+            static (ids, _) => MetricSampleRequest.ForIds(ids), coalesce, clock);
 }

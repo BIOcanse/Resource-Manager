@@ -39,9 +39,13 @@ public sealed class ProcessImmutableTextSharingTests
         Assert.Same(identity.CommandLine, repeated.Processes[0].Values.Single(value => value.Field == Command).StringValue);
         Assert.Same(identity.UserSid, repeated.Processes[0].Values.Single(value => value.Field == SidField).StringValue);
 
+        var fixedReads = (api.CommandReads, api.SidReads);
         api.Fail = true;
         var failed = await owner.CollectAsync([Command, SidField]);
-        Assert.All(failed.Processes[0].Values, value => Assert.Null(value.StringValue));
+        // fb6b23df: a verified instance keeps its fixed facts; no new read can fail this frame.
+        Assert.Same(identity.CommandLine, failed.Processes[0].Values.Single(value => value.Field == Command).StringValue);
+        Assert.Same(identity.UserSid, failed.Processes[0].Values.Single(value => value.Field == SidField).StringValue);
+        Assert.Equal(fixedReads, (api.CommandReads, api.SidReads));
         api.Fail = false;
         inventory.Birth++; api.Birth++;
         var next = await owner.CollectAsync([Command, SidField]);
@@ -66,15 +70,15 @@ public sealed class ProcessImmutableTextSharingTests
 
     private sealed class Api : IWindowsProcessBasicMetricApi
     {
-        internal ulong Birth = 100; internal bool Fail;
+        internal ulong Birth = 100; internal bool Fail; internal int CommandReads, SidReads;
         public IntPtr Open(int pid) => new(pid);
         public bool Times(IntPtr handle, out ulong creation, out ulong kernel, out ulong user)
         { creation = Birth; kernel = user = 0; return true; }
         public ProcessMemoryObservation? Memory(IntPtr handle, bool privateWorkingSet) => null;
         public ProcessIoObservation? Io(IntPtr handle) => null;
         public uint? HandleCount(IntPtr handle) => null;
-        public string? CommandLine(IntPtr handle) => Fail ? null : new string("child.exe --type=utility".ToCharArray());
-        public string? UserSid(IntPtr handle) => Fail ? null : new string(Sid.ToCharArray());
+        public string? CommandLine(IntPtr handle) { CommandReads++; return Fail ? null : new string("child.exe --type=utility".ToCharArray()); }
+        public string? UserSid(IntPtr handle) { SidReads++; return Fail ? null : new string(Sid.ToCharArray()); }
         public bool Close(IntPtr handle) => true;
     }
 }

@@ -15,6 +15,8 @@ using ResourceManager.App.Infrastructure.DeviceTopology.Snapshots;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Infrastructure.Monitoring.GpuTelemetry;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
+using ResourceManager.App.Infrastructure.Security;
 using ResourceManager.App.Infrastructure.SystemHealth.Interrupts;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
 using ResourceManager.Subscription;
@@ -35,7 +37,16 @@ public sealed class SamplingOutputLedgerProvidersTests
         using var host = Host.CreateDefaultBuilder()
             .ConfigureServices(services =>
             {
+                // Production configures the API pipeline before the app composition, including UIDs 3 and 4.
+                LoopbackApiPipelineConfigurator.Compile(false).ConfigureServices(services);
                 services.AddResourceManagerApp(["--no-native-ui"], StartupCapabilitySet.NormalReadOnly);
+                var declared = services.Select(row => row.ImplementationInstance)
+                    .OfType<BusinessBlockRegistration>();
+                var nativeUids = NativeControl.GetProfileHostBlockUids(3);
+                var bound = BackendNativeControlFactory
+                    .WithWrappers(declared, nativeUids).Select(row => row.Id).ToHashSet();
+                Assert.True(bound.SetEquals(nativeUids),
+                    $"Missing host UIDs: {string.Join(',', nativeUids.Except(bound))}; extra host UIDs: {string.Join(',', bound.Except(nativeUids))}");
                 // Keep the production factories and normal host environment while
                 // replacing sources with fixtures that reject unexpected sampling.
                 services.AddSingleton(sampling.Deployment);

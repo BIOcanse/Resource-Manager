@@ -101,11 +101,11 @@ public sealed class ProcessIdentityFieldTests
             var direct = await backend.CollectAsync(references, timeout.Token);
             Assert.Equal(api.Image, direct[1].Value?.Text); Assert.Equal(MetricInteger.Parse("42"), direct[2].Value?.Integer); Assert.Equal(api.Sid, direct[3].Value?.Text);
             Assert.All(direct, reading => Assert.Null(reading.SampleDurationMilliseconds));
-            Assert.Equal(2, api.Opens); // discovery query and explicit direct identity query
+            Assert.Equal(1, api.Opens); // discovery populated fixed facts for this instance
             Assert.Equal(direct[1], backend.ReadCached(references[1]));
             Assert.Equal(direct[2], backend.ReadCached(references[2]));
             Assert.Equal(direct[3], backend.ReadCached(references[3]));
-            Assert.Equal(2, api.Opens);
+            Assert.Equal(1, api.Opens);
 
             using var subscriptionTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             await using var stream = backend.SubscribeAsync("identity", references, TimeSpan.FromSeconds(1),
@@ -116,9 +116,9 @@ public sealed class ProcessIdentityFieldTests
             Assert.Equal(references.ToArray(), fresh.Select(static reading => reading.Field).ToArray());
             Assert.Equal(api.Image, fresh[1].Value?.Text); Assert.Equal(MetricInteger.Parse("42"), fresh[2].Value?.Integer); Assert.Equal(api.Sid, fresh[3].Value?.Text);
             Assert.All(fresh, reading => Assert.Null(reading.SampleDurationMilliseconds));
-            Assert.Equal(3, api.Opens); // one real query for this fresh original-worker trigger
+            Assert.Equal(1, api.Opens); // a fresh trigger reuses this instance's fixed facts
             Assert.All(fresh, reading => Assert.Equal(reading, backend.ReadCached(reading.Field)));
-            Assert.Equal(3, api.Opens);
+            Assert.Equal(1, api.Opens);
 
             var opensAtCancellation = api.Opens;
             var pending = stream.MoveNextAsync().AsTask();
@@ -128,9 +128,13 @@ public sealed class ProcessIdentityFieldTests
             Assert.Equal(opensAtCancellation, api.Opens);
 
             api.Fault = "identity-after";
-            var failed = await backend.CollectAsync(references, timeout.Token);
-            Assert.All(failed, reading => { Assert.Equal(FieldObservationStatus.Unavailable, reading.Status); Assert.Null(reading.Value); });
-            Assert.Equal(opensAtCancellation + 1, api.Opens); // only the explicit failure query ran
+            var retained = await backend.CollectAsync(references, timeout.Token);
+            // These fixed facts are already established; this frame performs no failing query.
+            Assert.All(retained, reading => { Assert.Equal(FieldObservationStatus.Current, reading.Status); Assert.NotNull(reading.Value); });
+            Assert.Equal(api.Image, retained[1].Value?.Text);
+            Assert.Equal(MetricInteger.Parse("42"), retained[2].Value?.Integer);
+            Assert.Equal(api.Sid, retained[3].Value?.Text);
+            Assert.Equal(opensAtCancellation, api.Opens);
             var captured = fixture.Sampler.ReadLatest(Basic.Request(Names)).ProcessFields!;
             Assert.All(captured.Clear().Processes.SelectMany(row => row.Values), value => Assert.Null(value.StringValue));
             using var json = JsonDocument.Parse(JsonSerializer.Serialize(captured.Clear(), Basic.WebJson));
@@ -153,7 +157,7 @@ public sealed class ProcessIdentityFieldTests
         Assert.Equal(0, Basic.Value(sample, "process_all_cpu_usage_actual").NumericValue);
         Assert.NotNull(sample.ProcessFields!.Select(new HashSet<string> { "process_all_cpu_usage_actual" }).WindowMilliseconds);
         Assert.Null(sample.ProcessFields.Select(Names.ToHashSet()).WindowMilliseconds);
-        Assert.Equal(2, api.Opens); Assert.Equal(4, api.TimeCalls); Assert.Equal(2, api.ImageCalls);
+        Assert.Equal(2, api.Opens); Assert.Equal(4, api.TimeCalls); Assert.Equal(1, api.ImageCalls); // fixed image is read once; CPU counters are read twice
         Assert.Equal(0, api.MemoryCalls + api.IoCalls + api.HandleCalls);
     }
 }
