@@ -328,7 +328,7 @@ public sealed class HostManagerDisplayCoordinatorTests
         var ownerIndex = runtimeRegistration.IndexOf(
             "AddHostedServiceAlias<HostManagerDisplayCoordinatorOwner>(",
             StringComparison.Ordinal);
-        Assert.True(ownerIndex >= 0);
+        Assert.Equal(-1, ownerIndex);
         Assert.DoesNotContain(
             "DisplayOutputCapabilityProvider",
             runtimeRegistration,

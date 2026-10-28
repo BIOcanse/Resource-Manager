@@ -70,7 +70,7 @@ internal static class NvidiaFanSubscriptionConsumer
             };
             var failures = new List<SubscriptionWorkerFailure>();
             await using var composition = new NativeFieldSubscriptionComposition(owner.BorrowSubscriptionCapture(), settings,
-                in configuration, failure => failures.Add(failure), TimeSpan.FromMilliseconds(250));
+                in configuration, failure => failures.Add(failure));
             await composition.StartAsync(timeout.Token);
             var subscriptions = new FieldSubscriptionCore(core, composition);
             await using var stream = subscriptions.SubscribeAsync("recorded-nvml-fans", fields,

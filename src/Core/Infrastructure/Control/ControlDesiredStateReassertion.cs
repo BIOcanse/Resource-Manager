@@ -20,7 +20,6 @@ public sealed class ControlDesiredStateReassertion(
         plans.Published += Changed;
         try
         {
-            await plane.InitializeAsync(stoppingToken).ConfigureAwait(false);
             var lastPass = Environment.TickCount64;
             while (!stoppingToken.IsCancellationRequested)
             {

@@ -31,8 +31,8 @@ public sealed class SubscriptionHolderFanCompositionTests
         await using var client = new FanControlCoreClient(new FanTestEnvironment(),
             (_, _) => new LibraryFanSession(new FanControlCore.Discovery.FanCore(backend)),
             NullLogger<FanControlCoreClient>.Instance);
+        await client.StartSession();
         using var feed = new FanCurveTemperatureFeed(fixture.Sampler, client, fixture.Owner.Catalog);
-        await feed.StartAsync(deadline.Token);
         try
         {
             Assert.True(Assert.Single(client.Describe()).SupportsSoftwareCurve);
@@ -46,6 +46,8 @@ public sealed class SubscriptionHolderFanCompositionTests
                 CurveExecution: ControlFanCurveExecutions.Software);
             Assert.Equal(ControlApplyStatuses.Applied,
                 (await writer.WriteAsync(target, capability, setting, deadline.Token)).Status);
+            // The parent node enters the feed only while software curves are enabled.
+            await feed.StartAsync(deadline.Token);
 
             await WaitUntilAsync(() => backend.Read()[0].DutyPercent == 40, deadline.Token);
             Assert.True(fixture.HardwareMonitorProbes > 0);
@@ -65,6 +67,8 @@ public sealed class SubscriptionHolderFanCompositionTests
             Assert.True(await writer.RestoreAsync(target, capability, new HashSet<string>(), deadline.Token, setting));
             Assert.True(backend.Read()[0].AutomaticControl);
             Assert.False(client.NeedsTemperatures());
+            // Restoring settings changes the parent's fact; block exit releases its subscription.
+            await feed.StopAsync(deadline.Token);
             Assert.Equal(0u, fixture.ReadDemand().ActiveSourceCount);
             Assert.Equal(0u, fixture.ReadDemand().MembershipCount);
             // Allow a capture already accepted before withdrawal to finish, then
@@ -111,40 +115,71 @@ public sealed class SubscriptionHolderFanCompositionTests
     {
         await using var fixture = new TemperatureFixture();
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var operations = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
         await fixture.StartAsync(deadline.Token);
         await using (var stream = fixture.Sampler.SubscribeAsync("continuous-temperature",
-            TemperatureFixture.Request, TimeSpan.FromMilliseconds(100), deadline.Token).GetAsyncEnumerator(deadline.Token))
+            TemperatureFixture.Request, TimeSpan.FromMilliseconds(100), operations.Token).GetAsyncEnumerator(operations.Token))
         {
-            Assert.True(await stream.MoveNextAsync());
-            var demand = fixture.ReadDemand();
-            Assert.Equal(1u, demand.ActiveSourceCount);
-            Assert.Equal(100ul, demand.IntervalMilliseconds);
-            fixture.Temperature = 80;
-            var pending = fixture.Sampler.GetSnapshotAsync(TemperatureFixture.Request, deadline.Token);
-            using (var whileFetching = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token))
+            Task<bool>? pendingMove = null;
+            Task<HardwareMetricSnapshot>? pendingFetch = null;
+            async Task<bool> NextAsync(CancellationToken cancellation, string phase)
             {
-                whileFetching.CancelAfter(TimeSpan.FromMilliseconds(750));
-                do { Assert.True(await stream.MoveNextAsync().AsTask().WaitAsync(whileFetching.Token)); }
-                while (stream.Current.Items["cpu.temperature"].NumericValue != 80d);
-                // A slower single fetch must not suspend deliveries from the
-                // existing fast holder while waiting for its own delivery.
-                Assert.True(await stream.MoveNextAsync().AsTask().WaitAsync(whileFetching.Token));
-                Assert.True(await stream.MoveNextAsync().AsTask().WaitAsync(whileFetching.Token));
+                pendingMove = stream.MoveNextAsync().AsTask();
+                try { return await pendingMove.WaitAsync(cancellation); }
+                catch (OperationCanceledException error) when (cancellation.IsCancellationRequested && !deadline.IsCancellationRequested)
+                {
+                    throw new TimeoutException($"Continuous temperature delivery exceeded its 750 ms deadline during {phase}.", error);
+                }
             }
-            var fetched = await pending;
-            Assert.Equal(80d, fetched.Items["cpu.temperature"].NumericValue);
-            Assert.Equal(1u, fixture.ReadDemand().ActiveSourceCount);
-            Assert.Equal(100ul, fixture.ReadDemand().IntervalMilliseconds);
+            try
+            {
+                Assert.True(await NextAsync(deadline.Token, "initial publication"));
+                var demand = fixture.ReadDemand();
+                Assert.Equal(1u, demand.ActiveSourceCount);
+                Assert.Equal(100ul, demand.IntervalMilliseconds);
+                fixture.Temperature = 80;
+                pendingFetch = fixture.Sampler.GetSnapshotAsync(TemperatureFixture.Request, operations.Token);
+                using (var whileFetching = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token))
+                {
+                    whileFetching.CancelAfter(TimeSpan.FromMilliseconds(750));
+                    do { Assert.True(await NextAsync(whileFetching.Token, "temperature 80 while fetching")); }
+                    while (stream.Current.Items["cpu.temperature"].NumericValue != 80d);
+                    // A slower single fetch must not suspend deliveries from the
+                    // existing fast holder while waiting for its own delivery.
+                    Assert.True(await NextAsync(whileFetching.Token, "first continuous publication while fetching"));
+                    Assert.True(await NextAsync(whileFetching.Token, "second continuous publication while fetching"));
+                }
+                var fetched = await pendingFetch;
+                Assert.Equal(80d, fetched.Items["cpu.temperature"].NumericValue);
+                Assert.Equal(1u, fixture.ReadDemand().ActiveSourceCount);
+                Assert.Equal(100ul, fixture.ReadDemand().IntervalMilliseconds);
 
-            // The same enumerator and original 100 ms demand must continue
-            // after the temporary 1 s holder has been released.
-            fixture.Temperature = 95;
-            using var cadence = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
-            cadence.CancelAfter(TimeSpan.FromMilliseconds(750));
-            do { Assert.True(await stream.MoveNextAsync().AsTask().WaitAsync(cadence.Token)); }
-            while (stream.Current.Items["cpu.temperature"].NumericValue != 95d);
-            Assert.Equal(1u, fixture.ReadDemand().ActiveSourceCount);
-            Assert.Equal(100ul, fixture.ReadDemand().IntervalMilliseconds);
+                // The same enumerator and original 100 ms demand must continue
+                // after the temporary 1 s holder has been released.
+                fixture.Temperature = 95;
+                using var cadence = CancellationTokenSource.CreateLinkedTokenSource(deadline.Token);
+                cadence.CancelAfter(TimeSpan.FromMilliseconds(750));
+                do { Assert.True(await NextAsync(cadence.Token, "temperature 95 after single fetch")); }
+                while (stream.Current.Items["cpu.temperature"].NumericValue != 95d);
+                Assert.Equal(1u, fixture.ReadDemand().ActiveSourceCount);
+                Assert.Equal(100ul, fixture.ReadDemand().IntervalMilliseconds);
+            }
+            finally
+            {
+                // WaitAsync cancels only its wait. End and join the actual iterator
+                // operation before await-using can dispose the generated iterator.
+                await operations.CancelAsync();
+                if (pendingMove is not null)
+                {
+                    try { await pendingMove; }
+                    catch (OperationCanceledException) when (operations.IsCancellationRequested) { }
+                }
+                if (pendingFetch is not null)
+                {
+                    try { await pendingFetch; }
+                    catch (OperationCanceledException) when (operations.IsCancellationRequested) { }
+                }
+            }
         }
         Assert.Equal(0u, fixture.ReadDemand().ActiveSourceCount);
         Assert.Empty(fixture.UnexpectedReads);

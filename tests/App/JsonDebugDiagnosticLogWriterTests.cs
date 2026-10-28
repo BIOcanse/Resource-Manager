@@ -13,6 +13,38 @@ namespace Resource_Manager_APP.Tests;
 public sealed class JsonDebugDiagnosticLogWriterTests
 {
     [Fact]
+    public async Task AcceptedRecordsKeepPendingFactUntilWrittenAfterLoggingIsDisabled()
+    {
+        var root = CreateRoot();
+        try
+        {
+            var plans = new TestRuntimePlanProvider(CreatePlan(debugLogEnabled: true));
+            using var writer = new JsonDebugDiagnosticLogWriter(
+                new TestHostEnvironment(root), plans, NullLogger<JsonDebugDiagnosticLogWriter>.Instance);
+            var changes = new ConcurrentQueue<bool>();
+            var drained = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            writer.PendingRecordsChanged += () =>
+            {
+                changes.Enqueue(writer.HasPendingRecords);
+                if (!writer.HasPendingRecords) drained.TrySetResult();
+            };
+            Assert.False(writer.HasPendingRecords);
+            Assert.True(writer.TryWrite(CreateRecord()));
+            Assert.True(writer.TryWrite(CreateRecord()));
+            Assert.True(writer.HasPendingRecords);
+            plans.Publish(CreatePlan(debugLogEnabled: false));
+            Assert.False(writer.TryWrite(CreateRecord()));
+            await writer.StartAsync(CancellationToken.None);
+            await drained.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await writer.StopAsync(CancellationToken.None);
+            Assert.Equal(new[] { true, false }, changes.ToArray());
+            Assert.Equal(2, writer.CaptureStatus().WrittenRecordCount);
+            Assert.Equal(0, writer.CaptureStatus().FailedRecordCount);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
     public async Task DisabledLoggingDoesNotQueueOrTouchTheFileSystem()
     {
         var root = CreateRoot();

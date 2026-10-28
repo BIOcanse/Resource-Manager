@@ -75,6 +75,40 @@ public sealed partial class StateRegistryTests
             ResourceManager.NativeUi.StateItems.StateRegistry.Blocks.Order());
     }
 
+    [Fact]
+    public void BackendRulesDeclareHostAdmissionAndOnlyAuthoritativeBusinessInputs()
+    {
+        using var document = JsonDocument.Parse(File.ReadAllBytes(RegistryPath()));
+        var backend = document.RootElement.GetProperty("entries").EnumerateArray()
+            .Where(entry => entry.GetProperty("process").GetString() == "backend").ToArray();
+        var byUid = backend.ToDictionary(entry => entry.GetProperty("uid").GetInt32());
+        Assert.DoesNotContain(backend, entry => entry.GetProperty("name").GetString() is "BlockDemand" or "HasExternalDemand");
+        var removedResources = new[] { "KernelEtwSessionBroker", "HostManagerMetricSnapshotOwner",
+            "HostManagerSoftwareIdentityOwner", "HostManagerFileQueryOwner", "HostManagerDisplayCoordinatorOwner" };
+        Assert.DoesNotContain(backend.Where(entry => entry.GetProperty("kind").GetString() == "block"),
+            entry => removedResources.Contains(entry.GetProperty("name").GetString()));
+        var permit = byUid[BackendItems.HostStartPermitted];
+        Assert.True(permit.GetProperty("perBlock").GetBoolean());
+        Assert.Equal("BackendHostPermitFacts", permit.GetProperty("owner").GetProperty("component").GetString());
+        foreach (var condition in backend.Where(entry => entry.GetProperty("kind").GetString() == "condition"))
+        {
+            var perBlock = condition.GetProperty("perBlock").GetBoolean();
+            var reads = condition.GetProperty("items").EnumerateArray().ToArray();
+            Assert.Contains(reads, read => read.GetProperty("item").GetInt32() == BackendItems.HostStartPermitted
+                && (perBlock ? !read.TryGetProperty("block", out _)
+                    : read.GetProperty("block").GetInt32() == condition.GetProperty("decides").GetInt32()));
+            foreach (var read in reads)
+            {
+                var item = byUid[read.GetProperty("item").GetInt32()];
+                Assert.Equal("bool", item.GetProperty("type").GetString());
+                Assert.Equal("reference", item.GetProperty("storage").GetString());
+                Assert.Equal("event", item.GetProperty("trigger").GetString());
+                Assert.True(item.GetProperty("owner").TryGetProperty("component", out _));
+                Assert.False(string.IsNullOrWhiteSpace(item.GetProperty("changeEvent").GetString()));
+            }
+        }
+    }
+
     internal static void AssertBlocks(string process, IEnumerable<int> productionIds, params int[] inactive)
     {
         var blockType = process switch {
@@ -92,6 +126,8 @@ public sealed partial class StateRegistryTests
         Assert.Equal(generated.Except(inactive).Order(), production.Order());
     }
 
-    private static string RegistryPath([CallerFilePath] string source = "")
-        => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(source)!, "../../src/Shared/StateItems/state-items.json"));
+    // Capture this helper file, so callers in nested test folders resolve the same repository input.
+    private static string SourceFile([CallerFilePath] string source = "") => source;
+    internal static string RegistryPath()
+        => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(SourceFile())!, "../../src/Shared/StateItems/state-items.json"));
 }

@@ -32,7 +32,7 @@ internal static class WindowsRawInputSessionSubscriptionConsumer
         var configuration = Configuration();
         await using var composition = new NativeFieldSubscriptionComposition(recordingBorrow,
             new SubscriptionRoleSettings(1, 1000, 1, 3000, 1000, 1000), in configuration,
-            failures.Enqueue, TimeSpan.FromMilliseconds(25));
+            failures.Enqueue);
         await composition.StartAsync(timeout.Token);
         using var demand = composition.Acquire("recorded-raw-input-demand",
             [rate, jitter], TimeSpan.FromMilliseconds(100));

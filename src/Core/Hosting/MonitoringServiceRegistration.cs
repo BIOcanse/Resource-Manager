@@ -83,7 +83,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetRequiredService<Infrastructure.Adaptation.ResourceManagerLedgerOwner>()));
         services.AddSingleton<IGpuTelemetryWorkerClient>(static provider => provider.GetRequiredService<GpuTelemetryWorkerSupervisor>());
         services.AddSingleton<IGpuTelemetryPushSource>(static provider => provider.GetRequiredService<GpuTelemetryWorkerSupervisor>());
-        services.AddHostedServiceAlias<GpuTelemetryWorkerSupervisor>(BlockUids.GpuTelemetryWorkerSupervisor);
+        services.AddHostedServiceAlias<GpuTelemetryWorkerSupervisor>(BlockUids.GpuTelemetryWorkerSupervisor, static service => service.CaptureSamplingWorkerTask(),
+            forwardRunFailureToHost: false);
 
         services.AddSingleton<FirmwareIdentityReader>();
         services.AddSingleton<FirmwareProviderPlanCompiler>();
@@ -150,7 +151,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<ResourceManager.Subscription.IFieldSubscriptionBackend>(provider =>
             provider.GetRequiredService<Infrastructure.ReadWrite.HostFieldBackends>().Subscriptions);
         services.AddSingleton<ResourceManager.Subscription.FieldSubscriptionCore>();
-        services.AddHostedServiceAlias<WindowsHardwareMetricSampler>(BlockUids.WindowsHardwareMetricSampler);
+        services.AddHostedServiceAlias<WindowsHardwareMetricSampler>(BlockUids.WindowsHardwareMetricSampler, static service => service.CaptureSamplingWorkerTask(),
+            forwardRunFailureToHost: false);
         services.AddSingleton<ICpuCorePerformanceOverrideStore, JsonCpuCorePerformanceOverrideStore>();
         services.AddSingleton<ICpuTopologySampler, WindowsCpuTopologyReader>();
         services.AddSingleton<CpuTopologySnapshotProvider>(static provider => new(
@@ -159,13 +161,13 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetRequiredService<ILogger<CpuTopologySnapshotProvider>>(),
             provider.GetRequiredService<Infrastructure.Adaptation.ResourceManagerLedgerOwner>()));
         services.AddSingleton<ICpuTopologyReader>(static provider => provider.GetRequiredService<CpuTopologySnapshotProvider>());
-        services.AddHostedServiceAlias<CpuTopologySnapshotProvider>(BlockUids.CpuTopologySnapshotProvider);
+        services.AddHostedServiceAlias<CpuTopologySnapshotProvider>(BlockUids.CpuTopologySnapshotProvider, static service => service.ExecuteTask,
+            forwardRunFailureToHost: false);
 
         // 磁盘占用：卷清单只读，随叫随取。
         services.AddSingleton<IDiskUsageVolumeCatalog, WindowsDiskUsageVolumeCatalog>();
         services.AddSingleton<Infrastructure.Adaptation.ResourceManagerLedgerOwner>();
-        services.AddSingleton<IDiskUsageTreePayloadAllocator>(static provider =>
-            provider.GetRequiredService<Infrastructure.Adaptation.ResourceManagerLedgerOwner>());
+        services.AddSingleton<IDiskUsageTreePayloadAllocator, Infrastructure.Adaptation.LedgerDiskUsageTreePayloadAllocator>();
         services.AddSingleton<DiskUsageTreeStore>(static provider =>
             new DiskUsageTreeStore(provider.GetRequiredService<IDiskUsageTreePayloadAllocator>()));
         services.AddSingleton<IDiskUsageTreeStore>(static provider => provider.GetRequiredService<DiskUsageTreeStore>());
@@ -224,7 +226,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
 
         services.AddSingleton<KernelEtwSessionBroker>();
         services.AddSingleton<IKernelEtwSessionBroker>(static provider => provider.GetRequiredService<KernelEtwSessionBroker>());
-        services.AddHostedServiceAlias<KernelEtwSessionBroker>(BlockUids.KernelEtwSessionBroker);
+
 
         services.AddSingleton<PortableSoftwareDiscoveryService>();
         services.AddSingleton<IPortableSoftwareDiscovery>(static provider => provider.GetRequiredService<PortableSoftwareDiscoveryService>());
@@ -247,7 +249,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<ICpuCoreResidencyReader>(static provider => provider.GetRequiredService<EtwCpuCoreResidencyReader>());
         services.AddSingleton<IResourceTableProviderStateSource>(static provider => provider.GetRequiredService<EtwCpuCoreResidencyReader>());
         services.AddSingleton<IResourceManagerSelfComputeZone>(static provider => provider.GetRequiredService<EtwCpuCoreResidencyReader>());
-        services.AddHostedServiceAlias<EtwCpuCoreResidencyReader>(BlockUids.EtwCpuCoreResidencyReader);
+        services.AddHostedServiceAlias<EtwCpuCoreResidencyReader>(BlockUids.EtwCpuCoreResidencyReader, static service => service.ExecuteTask,
+            forwardRunFailureToHost: false);
 
         services.AddSingleton<EtwSystemInterruptSnapshotSource>(static provider => new(
             provider.GetRequiredService<IKernelEtwSessionBroker>(),
@@ -256,7 +259,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetRequiredService<Infrastructure.Adaptation.ResourceManagerLedgerOwner>()));
         services.AddSingleton<ISystemInterruptSnapshotSource>(static provider => provider.GetRequiredService<EtwSystemInterruptSnapshotSource>());
         services.AddSingleton<IResourceManagerSelfComputeZone>(static provider => provider.GetRequiredService<EtwSystemInterruptSnapshotSource>());
-        services.AddHostedServiceAlias<EtwSystemInterruptSnapshotSource>(BlockUids.EtwSystemInterruptSnapshotSource);
+        services.AddHostedServiceAlias<EtwSystemInterruptSnapshotSource>(BlockUids.EtwSystemInterruptSnapshotSource, static service => service.ExecuteTask,
+            forwardRunFailureToHost: false);
 
         services.AddSingleton<EtwPhysicalDiskIoAttributionReader>(static provider => new(
             provider.GetRequiredService<IKernelEtwSessionBroker>(),
@@ -308,7 +312,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<ISchedulingProcessFactSource>(static provider => provider.GetRequiredService<WindowsResourceBreakdownSampler>());
         services.AddSingleton<ISchedulingProcessFactObservationSource>(static provider => provider.GetRequiredService<WindowsResourceBreakdownSampler>());
         services.AddSingleton<ResourceManager.App.Application.ProcessAttribution.IRuntimeSoftwareObservationSource>(static provider => provider.GetRequiredService<WindowsResourceBreakdownSampler>());
-        services.AddHostedServiceAlias<WindowsResourceBreakdownSampler>(BlockUids.WindowsResourceBreakdownSampler);
+        services.AddHostedServiceAlias<WindowsResourceBreakdownSampler>(BlockUids.WindowsResourceBreakdownSampler, static service => service.CaptureSamplingWorkerTask(),
+            forwardRunFailureToHost: false);
         return services;
     }
 

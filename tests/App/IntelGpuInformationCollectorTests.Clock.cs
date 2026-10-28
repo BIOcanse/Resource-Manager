@@ -62,11 +62,11 @@ public sealed partial class IntelGpuInformationCollectorTests
     }
 
     [Fact]
-    public async Task CompiledPlanUsesIntelClocksAndKeepsDedicatedMemoryApplicability()
+    public void CompiledPlanUsesIntelClocksAndKeepsDedicatedMemoryApplicability()
     {
         using var slots = new HostManagerSamplingSubscriptionTestFixture();
         using var owner = CreateClockOwner(slots, secondHasDedicatedMemory: false);
-        await owner.StartAsync(CancellationToken.None);
+        using var workspaceHolding = owner.Hold();
         var dashboard = PublishClockCatalog(owner);
         var bound = dashboard.Current!.FieldBindings.Values.Where(binding => ClockCodes.Contains(binding.Field.Code) && binding.SourceId == "intel.igcl").ToArray();
         Assert.Equal(3, bound.Length);
@@ -82,7 +82,7 @@ public sealed partial class IntelGpuInformationCollectorTests
     {
         using var slots = new HostManagerSamplingSubscriptionTestFixture();
         using var owner = CreateClockOwner(slots, secondHasDedicatedMemory: true);
-        await owner.StartAsync(CancellationToken.None);
+        using var workspaceHolding = owner.Hold();
         var dashboard = PublishClockCatalog(owner);
         var gpuIdentity = RecordedGpuIdentities().Single(static gpu => gpu.DisplayIndex == 9).ExactIdentityKey;
         var device = dashboard.Current!.FieldBindings.Values.Single(binding => binding.SourceId == "intel.igcl" &&

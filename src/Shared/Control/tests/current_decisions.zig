@@ -35,6 +35,7 @@ test "current decisions remain queryable when history retention is disabled" {
     var host: Host = .{};
     const controller = try Engine.create(std.testing.allocator, support.config(0), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     defer {
         host.cleanup();
@@ -42,7 +43,7 @@ test "current decisions remain queryable when history retention is disabled" {
     }
     controller.waitIdle();
 
-    try controller.setDemand("current-decision-child", 2, support.reason, null);
+    try support.setFact(controller, 2, true, support.reason, null);
     controller.waitIdle();
     try support.waitFor(Engine, controller, 2, .running);
 
@@ -54,10 +55,10 @@ test "current decisions remain queryable when history retention is disabled" {
     const wanted_children = wanted.object.get("shouldRun").?.array.items;
     try std.testing.expectEqual(@as(usize, 1), wanted_children.len);
     try std.testing.expectEqual(@as(i64, 2), wanted_children[0].integer);
-    const wanted_demand = try itemFor(wanted, 10, 2);
-    try std.testing.expect(wanted_demand.object.get("value").?.bool);
+    const wanted_fact = try itemFor(wanted, 10, 2);
+    try std.testing.expect(wanted_fact.object.get("value").?.bool);
 
-    try controller.clearDemand("current-decision-child", support.reason, null);
+    try support.setFact(controller, 2, false, support.reason, null);
     controller.waitIdle();
     try support.waitFor(Engine, controller, 2, .stopped);
 
@@ -66,6 +67,6 @@ test "current decisions remain queryable when history retention is disabled" {
     try expectEmptyHistory(parsed.value);
     const stopped = try decisionFor(parsed.value, 1);
     try std.testing.expectEqual(@as(usize, 0), stopped.object.get("shouldRun").?.array.items.len);
-    const stopped_demand = try itemFor(stopped, 10, 2);
-    try std.testing.expect(!stopped_demand.object.get("value").?.bool);
+    const stopped_fact = try itemFor(stopped, 10, 2);
+    try std.testing.expect(!stopped_fact.object.get("value").?.bool);
 }

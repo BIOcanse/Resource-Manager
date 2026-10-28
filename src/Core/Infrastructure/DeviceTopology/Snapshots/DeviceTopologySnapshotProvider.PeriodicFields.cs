@@ -132,8 +132,7 @@ public sealed partial class DeviceTopologySnapshotProvider
     private void ValidateSubscriptionAdmission()
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
-        if (samplingCts?.IsCancellationRequested == true)
-            throw new InvalidOperationException("The device sampling worker is stopped or draining.");
+
     }
 
     private IDisposable TrackInformationDemand(DeviceTopologySampleRequest request, TimeSpan interval)

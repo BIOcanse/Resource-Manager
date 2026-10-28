@@ -9,8 +9,8 @@ internal sealed class StartupDisabledPortableSoftwareRegistry
     internal const string DisabledReason =
         "profile-disabled: portable software registry mutation is disabled by the startup profile.";
 
-    public void Observe(PortableSoftwareObservation observation)
-        => throw CreateDisabledException();
+    public Task ObserveAsync(PortableSoftwareObservation observation, CancellationToken cancellationToken)
+        => Task.FromException(CreateDisabledException());
 
     public IReadOnlyList<PortableSoftwareRegistration> GetSnapshot() => [];
 

@@ -147,7 +147,7 @@ internal static class SubscriptionSamplingModeConsumer
     {
         var settings = new SubscriptionRoleSettings(1, 1000, 1, 3000, 1000, 1000);
         var configuration = Configuration();
-        return new(borrow, settings, in configuration, reportFailure, TimeSpan.FromMilliseconds(20));
+        return new(borrow, settings, in configuration, reportFailure);
     }
 
     private static NativeSamplingSubscriptionConfiguration Configuration() => new()

@@ -101,11 +101,24 @@ public sealed partial class WindowsResourceBreakdownSampler(
     private static NativeItemSamplingSubscriptionTracker<ResourceBreakdownSampleRequest> CreateSubscriptions(
         HostManagerSamplingSubscriptionOwner owner,
         Func<ulong, uint, INativeSamplingOutputScratch>? createOutputScratch)
-        => new(owner, SamplingRoleId,
+    {
+        var tracker = new NativeItemSamplingSubscriptionTracker<ResourceBreakdownSampleRequest>(owner, SamplingRoleId,
             static request => $"resource-breakdown:{request.CacheKey}", GetSubscriptionDatasetIds,
-            // Keep each dataset's native due time: the expensive PFN item must never be
-            // pulled into a faster ordinary capture. Shared basic fields still share their dataset.
             CreateResourceBreakdownSampleRequest, coalesceItemsIntoLatestCapture: false, createOutputScratch);
+        void Bind(SubscriptionFieldGroup group, Func<ResourceBreakdownSampleRequest, bool> matches)
+            => owner.Activity.BindField(group, tracker.CreateActivityRead(matches),
+                handler => tracker.SubscriptionsChanged += handler);
+        Bind(SubscriptionFieldGroup.ProcessDedicatedGpuMemory, NeedsGpuAllocations);
+        Bind(SubscriptionFieldGroup.VramResidual, static request => request.MetricIds.Any(
+            static id => TryParseGpuMetric(id, out _, out var kind) && kind == "vram"));
+        Bind(SubscriptionFieldGroup.DiskAttribution, static request => request.MetricIds.Any(IsDiskMetric)
+            || request.PublicationDatasetIds.Contains(SamplingDatasetIds.ProcessObservedPhysicalDiskIo)
+            || request.MetricIds.Any(static id => ProcessMetricFieldRegistry.Find(id)?.DatasetId == SamplingDatasetIds.ProcessObservedPhysicalDiskIo));
+        Bind(SubscriptionFieldGroup.NetworkAttribution, static request => request.MetricIds.Any(IsNetworkMetric)
+            || request.PublicationDatasetIds.Contains(SamplingDatasetIds.ProcessObservedNetworkTraffic)
+            || request.MetricIds.Any(static id => ProcessMetricFieldRegistry.Find(id)?.DatasetId == SamplingDatasetIds.ProcessObservedNetworkTraffic));
+        return tracker;
+    }
     private readonly Func<WindowsGpuAdapterInventoryRead> gpuAdapterInventory = new WindowsGpuAdapterOrderReader().ReadInventory;
     private readonly WindowsShellProcessIdentityReader shellIdentityReader = new();
     private readonly ConcurrentDictionary<string, ProcessFileMetadata> fileMetadataCache = new(StringComparer.OrdinalIgnoreCase);
@@ -429,8 +442,6 @@ public sealed partial class WindowsResourceBreakdownSampler(
                     new OperationCanceledException(
                         "Resource breakdown owner stopped."));
             }
-            fieldSubscriptionDelivery.RetireAll();
-            snapshotSubscriptionDelivery.RetireAll();
             pendingFieldCollectionResult = null;
             if (samplingTask is null)
             {
@@ -493,6 +504,7 @@ public sealed partial class WindowsResourceBreakdownSampler(
             logger?.LogError(
                 error,
                 "Resource breakdown worker failed during disposal.");
+            if (subscriptions.HasOutstandingOutputResources) throw;
         }
         DisposeOwnedResources();
     }
@@ -514,6 +526,7 @@ public sealed partial class WindowsResourceBreakdownSampler(
             logger?.LogError(
                 error,
                 "Resource breakdown worker failed while draining after stop.");
+            if (subscriptions.HasOutstandingOutputResources) throw;
         }
         finally
         {
@@ -540,6 +553,8 @@ public sealed partial class WindowsResourceBreakdownSampler(
         CancellationToken cancellationToken)
     {
         var ownerRevoked = false;
+        IDisposable? hardwareSubscription = null;
+        string? hardwareSubscriptionKey = null;
         var worker = new NativeSamplingSubscriptionWorker<ResourceBreakdownSampleRequest, SamplingOwnerToken>(
             subscriptions, demandSignal, static _ => { }, failure =>
             {
@@ -552,13 +567,31 @@ public sealed partial class WindowsResourceBreakdownSampler(
                     System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
                 }
                 logger?.LogError(error,
-                    "Resource breakdown background sampling iteration failed; the owner will retry.");
-            }, TimeSpan.FromSeconds(1));
+                    "Resource breakdown background sampling failed and returned.");
+            });
         try
         {
             await worker.RunAsync((plan, token) => CollectAndPublishAsync(ownerToken, plan, token),
                 cancellationToken, planCreated: plan =>
                 {
+                    var hardwareRequest = MetricSampleRequest.Merge(plan.SourceViews.Select(static source => CreateHardwareRequest(source.Request)));
+                    var hardwareInterval = plan.SourceViews.Count == 0 ? plan.Schedule.DefaultInterval
+                        : plan.SourceViews.Min(static source => source.Interval);
+                    var hardwareKey = hardwareRequest.CacheKey + hardwareInterval.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    if (hardwareKey != hardwareSubscriptionKey)
+                    {
+                        hardwareSubscription?.Dispose();
+                        hardwareSubscription = null;
+                        hardwareSubscriptionKey = null;
+                        if (!hardwareRequest.IsEmpty)
+                        {
+                            var source = metricSampler as IMetricSnapshotObservationSource
+                                ?? throw new InvalidOperationException("Hosted resource sampling requires a hardware observation source.");
+                            hardwareSubscription = source.AcquireSubscription("resource-breakdown:running", hardwareRequest,
+                                hardwareInterval);
+                        }
+                        hardwareSubscriptionKey = hardwareKey;
+                    }
                     pendingFieldCollectionResult = null;
                     if (plan.DueItemIds.Count == 0 && !hostedPublicationState.TryAcceptSchedule(
                             ownerToken, plan.OwnerToken, plan.Schedule))
@@ -583,8 +616,15 @@ public sealed partial class WindowsResourceBreakdownSampler(
                         snapshotSubscriptionDelivery.Deliver(plan.Triggers);
                 });
         }
-        catch (Exception) when (ownerRevoked) { }
-        finally { await processFieldOwner.ReleaseProcessInventoryBufferAsync(CancellationToken.None); }
+        catch (Exception) when (ownerRevoked && !subscriptions.HasOutstandingOutputResources) { }
+        finally
+        {
+            pendingFieldCollectionResult = null;
+            fieldSubscriptionDelivery.DiscardRunRounds();
+            snapshotSubscriptionDelivery.DiscardRunRounds();
+            try { hardwareSubscription?.Dispose(); }
+            finally { await processFieldOwner.ReleaseProcessInventoryBufferAsync(CancellationToken.None); }
+        }
     }
 
     private async Task<SubscriptionSampleCompletion> CollectAndPublishAsync(
@@ -593,7 +633,9 @@ public sealed partial class WindowsResourceBreakdownSampler(
         CancellationToken cancellationToken)
     {
         var request = plan.Request!;
-        var attempt = await TryRefreshCacheAsync(request, cancellationToken);
+        var gpuInterval = plan.SourceViews.Where(static source => NeedsGpuAllocations(source.Request))
+            .Select(static source => source.Interval).DefaultIfEmpty(plan.Schedule.DefaultInterval).Min();
+        var attempt = await TryRefreshCacheAsync(request, cancellationToken, gpuInterval);
         cancellationToken.ThrowIfCancellationRequested();
         if (attempt.Completion == ResourceBreakdownSampleCompletion.Sampled)
         {
@@ -678,7 +720,7 @@ public sealed partial class WindowsResourceBreakdownSampler(
 
     private async Task<ResourceBreakdownSampleAttempt> TryRefreshCacheAsync(
         ResourceBreakdownSampleRequest request,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, TimeSpan gpuAllocationInterval)
     {
         bool entered;
         try
@@ -712,7 +754,7 @@ public sealed partial class WindowsResourceBreakdownSampler(
                 request,
                 hostedProcessCpuDeltaTracker,
                 cancellationToken,
-                requireHostedHardwareObservation: true);
+                requireHostedHardwareObservation: true, gpuAllocationInterval);
             cancellationToken.ThrowIfCancellationRequested();
             return new ResourceBreakdownSampleAttempt(
                 ResourceBreakdownSampleCompletion.Sampled,
@@ -784,7 +826,7 @@ public sealed partial class WindowsResourceBreakdownSampler(
         ResourceBreakdownSampleRequest request,
         ProcessCpuDeltaTracker cpuDeltaTracker,
         CancellationToken cancellationToken,
-        bool requireHostedHardwareObservation)
+        bool requireHostedHardwareObservation, TimeSpan? gpuAllocationInterval = null)
     {
         var cleanMetricIds = request.MetricIds
             .Where(IsSupportedMetric)
@@ -930,7 +972,7 @@ public sealed partial class WindowsResourceBreakdownSampler(
             ? source.CaptureResiduals(cancellationToken) : residualBreakdownProvider;
         var bars = new List<ResourceBreakdownBar>();
         if (requireHostedHardwareObservation && NeedsGpuAllocations(request) && gpuAllocations is not null)
-            await gpuAllocations.CaptureAsync(GpuAllocationProcesses(processSamples), cancellationToken);
+            await gpuAllocations.CaptureAsync(GpuAllocationProcesses(processSamples), gpuAllocationInterval ?? CurrentDirectCaptureTiming().DefaultInterval, cancellationToken);
         var allocationReading = NeedsGpuAllocations(request)
             ? ReadGpuAllocations(processSamples)
             : null;
@@ -1067,74 +1109,16 @@ public sealed partial class WindowsResourceBreakdownSampler(
     }
 
     private sealed class ObservationSubscriptionLease(
-        WindowsResourceBreakdownSampler owner,
-        string sourceKey,
-        IDisposable? hardwareLease,
-        IDisposable? allocationLease,
-        IDisposable? fieldDeliveryLease = null,
-        IDisposable? residualLease = null) : IDisposable
+        WindowsResourceBreakdownSampler owner, string sourceKey, IDisposable? fieldDeliveryLease = null) : IDisposable
     {
-        private int state;
-
+        private int disposed;
         public void Dispose()
         {
-            if (Interlocked.CompareExchange(ref state, 1, 0) != 0)
-            {
-                return;
-            }
-
-            Exception? resourceReleaseError = null;
-            Exception? hardwareReleaseError = null;
-            Exception? allocationReleaseError = null;
-            Exception? residualReleaseError = null;
-            Exception? fieldDeliveryReleaseError = null;
-            try
-            {
-                owner.ReleaseObservationLease(sourceKey);
-            }
-            catch (Exception error)
-            {
-                resourceReleaseError = error;
-            }
-
-            try
-            {
-                hardwareLease?.Dispose();
-            }
-            catch (Exception error)
-            {
-                hardwareReleaseError = error;
-            }
-
-            try { residualLease?.Dispose(); }
-            catch (Exception error) { residualReleaseError = error; }
-            try { allocationLease?.Dispose(); }
-            catch (Exception error) { allocationReleaseError = error; }
-            try { fieldDeliveryLease?.Dispose(); }
-            catch (Exception error) { fieldDeliveryReleaseError = error; }
-            Volatile.Write(ref state, 2);
-            if (allocationReleaseError is not null || fieldDeliveryReleaseError is not null || residualReleaseError is not null)
-                throw new AggregateException(new[] { resourceReleaseError, hardwareReleaseError, allocationReleaseError,
-                    fieldDeliveryReleaseError, residualReleaseError }.OfType<Exception>());
-            if (resourceReleaseError is not null
-                && hardwareReleaseError is not null)
-            {
-                throw new AggregateException(
-                    "Resource and hardware observation leases both failed to release.",
-                    resourceReleaseError,
-                    hardwareReleaseError);
-            }
-            if (resourceReleaseError is not null)
-            {
-                throw resourceReleaseError;
-            }
-            if (hardwareReleaseError is not null)
-            {
-                throw hardwareReleaseError;
-            }
+            if (Interlocked.Exchange(ref disposed, 1) != 0) return;
+            try { owner.ReleaseObservationLease(sourceKey); }
+            finally { fieldDeliveryLease?.Dispose(); }
         }
     }
-
     private sealed class EmptyObservationSubscription : IDisposable
     {
         internal static EmptyObservationSubscription Instance { get; } = new();

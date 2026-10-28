@@ -64,6 +64,7 @@ public sealed class WindowsControlObjectCatalog(
         var request = MetricSampleRequest.ForIds(ids).WithCatalog();
         var snapshot = await metrics.FetchOnceAsync("control-object-catalog", request, cancellationToken);
         if (snapshot is null) return new([], DateTimeOffset.UtcNow);
+        await fanCore.DiscoverAsync(cancellationToken).ConfigureAwait(false);
         var declared = ReadDeclaredObjects(snapshot);
         return declared with { Objects = declared.Objects.Select(ResolveAvailability).ToArray() };
     }

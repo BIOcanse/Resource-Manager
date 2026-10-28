@@ -26,7 +26,7 @@ internal static class SecurityProductSubscriptionConsumer
         };
         await using (var subscription = new NativeFieldSubscriptionComposition(owner.BorrowSubscriptionCapture(),
             new SubscriptionRoleSettings(2, 1000, 1, 3000, 1000, 1000), in configuration,
-            failures.Enqueue, TimeSpan.FromMilliseconds(250)))
+            failures.Enqueue))
         {
             await subscription.StartAsync(timeout.Token);
             SecurityProductConsumer.Require(source.Reads == reads, "starting without demand does not capture");

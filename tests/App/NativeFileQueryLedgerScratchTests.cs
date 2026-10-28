@@ -14,6 +14,44 @@ namespace Resource_Manager_APP.Tests;
 public sealed class NativeFileQueryLedgerScratchTests
 {
     [Fact]
+    public async Task OwnerAllocatesOnlyWhileQueriesAreHeldAndClosesOnFinalReturn()
+    {
+        using var memory = new ResourceManagerLedgerOwner();
+        var resources = new List<FaultingScratch>();
+        var deployment = new HostManagerDeploymentState();
+        var provider = new RuntimePlanProvider(deployment);
+        provider.Publish(CompiledRuntimePlan.Default with
+        {
+            Version = 1,
+            HostManager = HostManagerTestPlanFactory.CreatePlan(root =>
+                root["host_recreate"]!["file_query"]!["query_session_count"] = 2)
+        });
+        using var owner = new HostManagerFileQueryOwner(provider,
+            new HostManagerFileQueryRuntime(provider, deployment),
+            NullLogger<HostManagerFileQueryOwner>.Instance, (length, alignment) =>
+            {
+                var scratch = new FaultingScratch(FileQueryScratch.Create(memory.CreateScratch, length, alignment));
+                resources.Add(scratch);
+                return scratch;
+            });
+        Assert.Empty(resources);
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await owner.AcquireAsync(cancelled.Token));
+        Assert.Empty(resources);
+        var first = await owner.AcquireAsync(CancellationToken.None);
+        var second = await owner.AcquireAsync(CancellationToken.None);
+        Assert.Equal(2, resources.Count);
+        first.MarkReusable(); second.MarkReusable();
+        first.Dispose();
+        Assert.All(resources, scratch => Assert.False(scratch.Closed));
+        second.Dispose(); second.Dispose();
+        Assert.All(resources, scratch => Assert.True(scratch.Closed));
+        using var reopened = await owner.AcquireAsync(CancellationToken.None);
+        Assert.Equal(4, resources.Count);
+    }
+
+    [Fact]
     public async Task DefaultPoolConstructsOnlyMetadataAndRegistersScratchOnlyForBorrowedSessions()
     {
         using var owner = new ResourceManagerLedgerOwner();
@@ -234,7 +272,6 @@ public sealed class NativeFileQueryLedgerScratchTests
                 resources.Add(scratch);
                 return scratch;
             });
-        await owner.StartAsync(CancellationToken.None);
         var query = await owner.AcquireAsync(CancellationToken.None);
         query.MarkReusable();
         if (failComplete) resources[0].FailComplete = true;
@@ -279,7 +316,6 @@ public sealed class NativeFileQueryLedgerScratchTests
                 resources.Add(scratch);
                 return scratch;
             });
-        await owner.StartAsync(CancellationToken.None);
         var query = await owner.AcquireAsync(CancellationToken.None);
         query.MarkReusable();
         if (disposeOwnerFirst) owner.Dispose();
@@ -290,8 +326,7 @@ public sealed class NativeFileQueryLedgerScratchTests
         Assert.False(resources[0].Closed);
         query.Dispose(); // No second holder release or session return.
         Assert.False(resources[0].Closed);
-        if (disposeOwnerFirst) owner.Dispose();
-        else Publish(3);
+        owner.Dispose();
         Assert.True(resources[0].Closed);
         owner.Dispose();
         Assert.All(resources, scratch => Assert.True(scratch.Closed));
@@ -309,7 +344,7 @@ public sealed class NativeFileQueryLedgerScratchTests
     }
 
     [Fact]
-    public async Task AStillLeasedRetiredPoolBlocksFurtherReplacementAndKeepsBothHoldersOwned()
+    public async Task OutstandingRetiredPoolsAllowPlanReplacementAndKeepEveryBorrowedHolderOwned()
     {
         using var memoryOwner = new ResourceManagerLedgerOwner();
         var resources = new List<FaultingScratch>();
@@ -325,19 +360,18 @@ public sealed class NativeFileQueryLedgerScratchTests
                 resources.Add(scratch);
                 return scratch;
             });
-        await owner.StartAsync(CancellationToken.None);
         var first = await owner.AcquireAsync(CancellationToken.None);
         first.MarkReusable();
         Publish(2);
         var current = await owner.AcquireAsync(CancellationToken.None);
         current.MarkReusable();
         Publish(3);
-        Assert.Equal(2, resources.Count); // Current plus one pending; no third pool.
+        Assert.Equal(3, resources.Count); // Every active borrower retains its own retired pool.
         Assert.False(resources[0].Closed);
         first.Dispose();
         Assert.True(resources[0].Closed);
         Publish(4);
-        Assert.Equal(3, resources.Count);
+        Assert.Equal(4, resources.Count);
         owner.Dispose(); // The prior current is still leased.
         Assert.False(resources[1].Closed);
         current.Dispose();

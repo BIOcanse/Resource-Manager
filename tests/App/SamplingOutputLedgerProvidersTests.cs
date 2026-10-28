@@ -27,13 +27,35 @@ namespace Resource_Manager_APP.Tests;
 public sealed class SamplingOutputLedgerProvidersTests
 {
     [Fact]
-    public async Task ProductionWorkersUseTheSharedLedgerForRealPlansAndDisposeClosesAllSixOutputs()
+    public Task ProductionWorkersUseTheSharedLedgerForRealPlansAndDisposeClosesAllSixOutputs()
+        => ExerciseProductionWorkersAsync(blockFirstTopology: false);
+
+    [Fact]
+    public Task BlockedFiniteTopologyPreparationExplainsAnUnplannedMetricRoleAndIsJoinedBeforeRestart()
+        => ExerciseProductionWorkersAsync(blockFirstTopology: true);
+
+    private static async Task ExerciseProductionWorkersAsync(bool blockFirstTopology)
     {
+        using var topologyEntered = new ManualResetEventSlim(false);
+        using var releaseTopology = new ManualResetEventSlim(false);
         using var sampling = new HostManagerSamplingSubscriptionTestFixture();
         var cpuSampler = new NoCaptureCpuSampler();
         var deviceReader = new NoCaptureDeviceTopologyReader();
         var store = new NoWriteTopologyStore();
         var etwBroker = new NoCaptureKernelEtwBroker();
+        var catalogTopology = MetricSnapshotOwnerTestFixture.Topology([]);
+        var catalogTopologyDiscoveries = 0;
+        var catalogTopologySource = new HostManagerMetricSnapshotCatalogTopologySource(() =>
+        {
+            var discovery = Interlocked.Increment(ref catalogTopologyDiscoveries);
+            if (blockFirstTopology && discovery == 1)
+            {
+                topologyEntered.Set();
+                if (!releaseTopology.Wait(TimeSpan.FromSeconds(15)))
+                    throw new TimeoutException("The test did not release its finite topology preparation.");
+            }
+            return catalogTopology;
+        });
         using var host = Host.CreateDefaultBuilder()
             .ConfigureServices(services =>
             {
@@ -57,6 +79,10 @@ public sealed class SamplingOutputLedgerProvidersTests
                 services.AddSingleton<IDeviceTopologyReader>(deviceReader);
                 services.AddSingleton<IDeviceTopologySnapshotStore>(store);
                 services.AddSingleton<IKernelEtwSessionBroker>(etwBroker);
+                // Hold() prepares the real metric workspace before its first Plan.
+                // Isolate inventory discovery here, while keeping the production
+                // owner factory, native planner and shared ledger/output storage.
+                services.AddSingleton(catalogTopologySource);
                 services.AddSingleton<ResourceManager.ReadWrite.Windows.Services.WindowsServiceInformationOwner>();
                 services.AddSingleton<ResourceManager.ReadWrite.Windows.SystemInformation.WindowsOperatingSystemInformationOwner>();
                 Assert.Single(services.Where(row => row.ServiceType == typeof(ResourceManagerLedgerOwner)));
@@ -68,6 +94,7 @@ public sealed class SamplingOutputLedgerProvidersTests
             })
             .Build();
         var provider = host.Services;
+        Assert.Same(catalogTopologySource, provider.GetRequiredService<HostManagerMetricSnapshotCatalogTopologySource>());
         Assert.Same(sampling.Deployment, provider.GetRequiredService<HostManagerDeploymentState>());
         Assert.Same(sampling.Provider, provider.GetRequiredService<RuntimePlanProvider>());
         Assert.Same(sampling.Provider,
@@ -107,10 +134,65 @@ public sealed class SamplingOutputLedgerProvidersTests
         await topology.StartAsync(CancellationToken.None);
 
         var expectedBytes = roleBytes.Values.Aggregate(0UL, static (total, bytes) => checked(total + bytes));
+        var workers = new Dictionary<int, Func<Task?>>
+        {
+            [1] = metric.CaptureSamplingWorkerTask,
+            [2] = device.CaptureSamplingWorkerTask,
+            [4] = gpu.CaptureSamplingWorkerTask,
+            [5] = () => interrupts.ExecuteTask,
+            [6] = () => residency.ExecuteTask,
+            [7] = () => topology.ExecuteTask
+        };
+        if (blockFirstTopology)
+        {
+            try
+            {
+                await BusinessBlockTestSupport.Until(() => topologyEntered.IsSet);
+                await BusinessBlockTestSupport.Until(() => workers.Keys.Where(role => role != 1)
+                    .All(role => ReadPlanSnapshot(sampling, role).LastPlanEpoch != 0));
+                Assert.Equal(0UL, ReadPlanSnapshot(sampling, 1).LastPlanEpoch);
+                Assert.Equal(1, Volatile.Read(ref catalogTopologyDiscoveries));
+                var stopping = metric.StopAsync(CancellationToken.None);
+                Assert.False(stopping.IsCompleted); // Finite preparation owns the entry until it returns.
+                releaseTopology.Set();
+                await stopping.WaitAsync(TimeSpan.FromSeconds(5));
+                await metric.StartAsync(CancellationToken.None);
+            }
+            finally { releaseTopology.Set(); }
+        }
         using (var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
         {
-            while (!roleBytes.Keys.All(roleId => HasPlanned(sampling, roleId)))
-                await Task.Delay(10, deadline.Token);
+            var observations = new Dictionary<int, NativeSamplingSubscriptionSnapshotHeader>();
+            try
+            {
+                while (true)
+                {
+                    // Observe every role, rather than short-circuiting on the first
+                    // unplanned role and losing the phase that actually stalled.
+                    foreach (var role in workers.Keys)
+                    {
+                        observations[role] = ReadPlanSnapshot(sampling, role);
+                        if (workers[role]() is { IsFaulted: true } failed) await failed;
+                    }
+                    if (observations.Values.All(observation => observation.LastPlanEpoch != 0)) break;
+                    await Task.Delay(10, deadline.Token);
+                }
+            }
+            catch (OperationCanceledException error) when (deadline.IsCancellationRequested)
+            {
+                ThreadPool.GetAvailableThreads(out var availableWorkers, out var availableIo);
+                var roles = string.Join("; ", observations.Select(pair =>
+                    $"role={pair.Key} task={workers[pair.Key]()?.Status.ToString() ?? "absent"} "
+                    + $"generation={pair.Value.ConfigurationGeneration} revision={pair.Value.StateRevision} "
+                    + $"operation={pair.Value.LastOperationEpoch} plan={pair.Value.LastPlanEpoch} "
+                    + $"sources={pair.Value.ActiveSourceCount} items={pair.Value.KnownItemCount}"));
+                throw new TimeoutException($"Six production workers did not all plan within 5 seconds. {roles}. "
+                    + $"catalog topology discoveries={Volatile.Read(ref catalogTopologyDiscoveries)}; "
+                    + $"kernel leases={etwBroker.SubscribeCount}/{etwBroker.ReleaseCount}; "
+                    + $"captures cpu/device={cpuSampler.CaptureCount}/{deviceReader.ReadCount}; "
+                    + $"threadpool threads/pending/availableWorkers/availableIo="
+                    + $"{ThreadPool.ThreadCount}/{ThreadPool.PendingWorkItemCount}/{availableWorkers}/{availableIo}.", error);
+            }
         }
 
         await metric.StopAsync(CancellationToken.None);
@@ -120,10 +202,12 @@ public sealed class SamplingOutputLedgerProvidersTests
         await residency.StopAsync(CancellationToken.None);
         await topology.StopAsync(CancellationToken.None);
         Assert.Equal(expectedBytes, ledger.ReadTable().RegisteredBytes);
+        Assert.Equal(blockFirstTopology ? 2 : 1, Volatile.Read(ref catalogTopologyDiscoveries));
         Assert.Equal(0, cpuSampler.CaptureCount);
         Assert.Equal(0, deviceReader.ReadCount);
         Assert.Equal(0, store.SaveCount);
-        Assert.Equal(0, etwBroker.SubscribeCount);
+        Assert.Equal(2, etwBroker.SubscribeCount); // Interrupts and CPU residency each hold their resource on entry.
+        Assert.Equal(etwBroker.SubscribeCount, etwBroker.ReleaseCount);
 
         metric.Dispose();
         expectedBytes -= roleBytes[1];
@@ -186,30 +270,40 @@ public sealed class SamplingOutputLedgerProvidersTests
             GpuTelemetryWorkerRequest.Create(["gpu.0.compute"]), TimeSpan.FromMilliseconds(100),
             enumerationCancellation.Token).GetAsyncEnumerator();
         var move = subscription.MoveNextAsync().AsTask();
-        Assert.True(captureEntered.Wait(TimeSpan.FromSeconds(5)));
-        using var role = sampling.Owner.Acquire(4);
-        var layout = SamplingOutputScratchTests.RealLayout(1, 1, 1);
-        var store = Assert.Single(stores);
-        Assert.Equal(layout.StorageLength, store.Length);
-        Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
+        try
+        {
+            Assert.True(captureEntered.Wait(TimeSpan.FromSeconds(5)));
+            using var role = sampling.Owner.Acquire(4);
+            var layout = SamplingOutputScratchTests.RealLayout(1, 1, 1);
+            var store = Assert.Single(stores);
+            Assert.Equal(layout.StorageLength, store.Length);
+            Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
 
-        Assert.Throws<IOException>(() => source.Dispose());
-        Assert.True(captureExited.IsSet);
-        Assert.False(store.Closed);
-        Assert.Equal(1, store.CloseCalls);
-        Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
+            Assert.Throws<IOException>(() => source.Dispose());
+            Assert.True(captureExited.IsSet);
+            Assert.False(store.Closed);
+            Assert.Equal(1, store.CloseCalls);
+            Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
 
-        enumerationCancellation.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await move);
-        source.Dispose();
-        Assert.True(store.Closed);
-        Assert.Equal(2, store.CloseCalls);
-        Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
-        source.Dispose();
-        Assert.Equal(2, store.CloseCalls);
+            enumerationCancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await move);
+            source.Dispose();
+            Assert.True(store.Closed);
+            Assert.Equal(2, store.CloseCalls);
+            Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
+            source.Dispose();
+            Assert.Equal(2, store.CloseCalls);
+        }
+        finally
+        {
+            enumerationCancellation.Cancel();
+            // A failing assertion must still join MoveNext before disposing the async iterator.
+            try { await move; }
+            catch (OperationCanceledException) when (enumerationCancellation.IsCancellationRequested) { }
+        }
     }
 
-    private static bool HasPlanned(HostManagerSamplingSubscriptionTestFixture sampling, int roleId)
+    private static NativeSamplingSubscriptionSnapshotHeader ReadPlanSnapshot(HostManagerSamplingSubscriptionTestFixture sampling, int roleId)
     {
         using var role = sampling.Owner.Acquire(roleId);
         var cap = role.Session.Capacity;
@@ -221,7 +315,7 @@ public sealed class SamplingOutputLedgerProvidersTests
         Assert.Equal(NativeSamplingSubscriptionStatus.Ok, role.Session.Snapshot(ref header,
             new NativeSamplingSubscriptionSourceView[checked((int)cap.SourceCapacity)],
             new NativeSamplingSubscriptionItemState[checked((int)cap.ItemCapacity)]));
-        return header.LastPlanEpoch != 0;
+        return header;
     }
 
     private static readonly Type[] ProviderTypes =
@@ -272,14 +366,24 @@ public sealed class SamplingOutputLedgerProvidersTests
 
     private sealed class NoCaptureKernelEtwBroker : IKernelEtwSessionBroker
     {
-        internal int SubscribeCount { get; private set; }
+        private int subscribeCount;
+        private int releaseCount;
+        internal int SubscribeCount => Volatile.Read(ref subscribeCount);
+        internal int ReleaseCount => Volatile.Read(ref releaseCount);
         public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
         {
-            SubscribeCount++;
-            throw new InvalidOperationException("No ETW session is expected without demand.");
+            Interlocked.Increment(ref subscribeCount);
+            return new Lease(this);
         }
         public KernelEtwSessionSnapshot GetSnapshot()
-            => throw new InvalidOperationException("No ETW status read is expected without demand.");
+            => new("Unavailable", "Recorded idle resource; no native event stream is started.", 0,
+                DateTimeOffset.MinValue, 0, SubscribeCount - ReleaseCount, 0);
+        private sealed class Lease(NoCaptureKernelEtwBroker owner) : IKernelEtwSubscription
+        {
+            private int disposed;
+            public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
+            public void Dispose() { if (Interlocked.Exchange(ref disposed, 1) == 0) Interlocked.Increment(ref owner.releaseCount); }
+        }
     }
 }
 

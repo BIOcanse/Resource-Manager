@@ -21,7 +21,13 @@ public sealed class ControlPlane(
     private readonly object gate = new();
     private readonly SemaphoreSlim operations = new(1, 1);
     private ControlApplyReport lastApply = ControlApplyReport.Empty;
+    private ControlDesiredState lastDesired = ControlDesiredState.Empty;
     private bool initialized;
+    private bool appliedControlIntentsExist;
+    private bool appliedFanControlExists;
+    internal bool AppliedControlIntentsExist => Volatile.Read(ref appliedControlIntentsExist);
+    internal bool AppliedFanControlExists => Volatile.Read(ref appliedFanControlExists);
+    internal event Action? AppliedIntentsChanged;
 
     private bool CanMutate => capabilities is null || capabilities.Allows(
         StartupCapability.MutablePersistence | StartupCapability.RuntimeEffectOwners);
@@ -221,7 +227,7 @@ public sealed class ControlPlane(
         var blockedOutcomes = blocked.SelectMany(target => target.Settings.Select(setting =>
             new ControlApplyOutcome(target.ObjectId, setting.CapabilityId, ControlApplyStatuses.Failed, "control-release-failed")));
         var report = new ControlApplyReport(retained.Concat(releaseReport.Outcomes).Concat(applied.Outcomes).Concat(blockedOutcomes).ToArray(), DateTimeOffset.UtcNow);
-        WriteLastApply(report);
+        WriteLastApply(report, next);
         return new ControlStateView(next, report);
     }
 
@@ -241,7 +247,7 @@ public sealed class ControlPlane(
             var report = await writeLayer.WriteAsync(selected, cancellationToken).ConfigureAwait(false);
             var updated = new ControlApplyReport(previous.Outcomes.Where(old => !report.Outcomes.Any(next =>
                 next.ObjectId == old.ObjectId && next.CapabilityId == old.CapabilityId)).Concat(report.Outcomes).ToArray(), DateTimeOffset.UtcNow);
-            WriteLastApply(updated);
+            WriteLastApply(updated, saved);
             return updated;
         }
         finally
@@ -290,11 +296,19 @@ public sealed class ControlPlane(
         }
     }
 
-    private void WriteLastApply(ControlApplyReport report)
+    private void WriteLastApply(ControlApplyReport report, ControlDesiredState? desired = null)
     {
         lock (gate)
         {
             lastApply = report;
+            if (desired is not null) lastDesired = desired;
+            var applied = report.Outcomes.Where(outcome => outcome.Status == ControlApplyStatuses.Applied
+                && lastDesired.Objects.Any(target => target.ObjectId == outcome.ObjectId
+                    && target.Settings.Any(setting => setting.CapabilityId == outcome.CapabilityId))).ToArray();
+            Volatile.Write(ref appliedControlIntentsExist, applied.Length != 0);
+            Volatile.Write(ref appliedFanControlExists,
+                applied.Any(outcome => outcome.ObjectId.StartsWith("fan:", StringComparison.Ordinal)));
         }
+        AppliedIntentsChanged?.Invoke();
     }
 }

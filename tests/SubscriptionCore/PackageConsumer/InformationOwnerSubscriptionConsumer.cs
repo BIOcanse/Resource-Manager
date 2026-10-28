@@ -40,7 +40,7 @@ internal static class InformationOwnerSubscriptionConsumer
             ActiveTtlMilliseconds = 3000, MaximumFutureSkewMilliseconds = 1000
         };
         await using var composition = new NativeFieldSubscriptionComposition(borrow, settings, in configuration,
-            failure => Console.WriteLine($"{id}: worker failure={failure.Stage}; {failure.Error.Message}"), TimeSpan.FromMilliseconds(250));
+            failure => Console.WriteLine($"{id}: worker failure={failure.Stage}; {failure.Error.Message}"));
         await composition.StartAsync(cancellationToken);
         await using var stream = composition.SubscribeAsync(id, fields, TimeSpan.FromSeconds(1), cancellationToken).GetAsyncEnumerator();
         if (!await stream.MoveNextAsync()) throw new InvalidDataException("Native information subscription ended without an observation.");

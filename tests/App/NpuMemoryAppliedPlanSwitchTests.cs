@@ -36,7 +36,7 @@ public sealed class NpuMemoryAppliedPlanSwitchTests
                 { NpuMemoryStatus = NativeMetricSnapshotCatalogTopologyStatus.Complete, NpuMemoryIdentities = [new(pnp)] }),
             new RecordedEnvironment(Path.Combine(AppContext.BaseDirectory, "npu-plan-switch", Guid.NewGuid().ToString("N"))),
             NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
-        await owner.StartAsync(timeout.Token);
+        using var workspaceHolding = owner.Hold();
         var dashboard = new HardwareMetricCatalogState();
         var registry = new MonitoringSourceZoneRegistry([new WindowsMemoryMonitoringZone(), zone]);
         using var sampler = new WindowsHardwareMetricSampler(null!, null!, null!, null!, null!, null!, null!, null!,
@@ -56,7 +56,7 @@ public sealed class NpuMemoryAppliedPlanSwitchTests
         finally
         {
             await sampler.StopAsync(CancellationToken.None);
-            await owner.StopAsync(CancellationToken.None);
+            workspaceHolding.Dispose();
         }
 
         async Task Observe(uint expected)

@@ -24,6 +24,7 @@ internal static class MetricSnapshotOwnerTestFixture
         private readonly string root = Path.Combine(Path.GetTempPath(), $"metric-catalog-{Guid.NewGuid():N}");
         private NativeMetricSnapshotCatalogTopologySnapshot topology;
         private int topologyReads;
+        private IDisposable? workspaceHolding;
         public Fixture(NativeMetricSnapshotCatalogTopologySnapshot topology,
             Func<ulong, uint, ResourceManager.ReadWrite.Native.INativeMetricSnapshotScratch>? createScratch = null,
             Func<string>? readComponentRevision = null)
@@ -40,7 +41,7 @@ internal static class MetricSnapshotOwnerTestFixture
                 new HostManagerMetricSnapshotRuntime(Slots.Provider, Slots.Deployment), source,
                 new EnvironmentInfo(root), NullLogger<HostManagerMetricSnapshotOwner>.Instance, createScratch ?? ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary,
                 readComponentRevision);
-            Owner.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
+            workspaceHolding = Owner.Hold();
         }
         public NativeMetricSnapshotCatalogTopologySnapshot Topology { set => Volatile.Write(ref topology, value); }
         public Exception? TopologyFailure { get; set; }
@@ -48,8 +49,10 @@ internal static class MetricSnapshotOwnerTestFixture
         public HardwareMetricCatalogState Catalog { get; } = new();
         public HostManagerSamplingSubscriptionTestFixture Slots { get; }
         public HostManagerMetricSnapshotOwner Owner { get; }
+        public void ReleaseWorkspace() => Interlocked.Exchange(ref workspaceHolding, null)?.Dispose();
         public void Dispose()
         {
+            ReleaseWorkspace();
             Owner.Dispose();
             Slots.Dispose();
             if (Directory.Exists(root)) Directory.Delete(root, true);

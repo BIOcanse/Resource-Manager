@@ -353,27 +353,4 @@ public sealed partial class HostManagerSmartCoordinator
         }
     }
 
-    private async Task<bool> CanParkNormalSchedulingAsync(CancellationToken cancellationToken)
-    {
-        if (runtimeCpuLeases.HasLeases || HasPendingGpuOwnerWork()
-            || lastCycleActionBudget?.DeferredReason is not null
-            || publicResourceNotifications is null
-            || HasAvailablePublicResourceLifecycle()
-            || !legacyStatePrepared
-            || nativeWorkspace?.Snapshot.PendingCount > 0)
-        {
-            return false;
-        }
-
-        var ownership = await nativeActionTransactions.AppliedOwnership.ReadSnapshotAsync(
-            cancellationToken);
-        if (ownership.Records.Count != 0)
-        {
-            return false;
-        }
-
-        var state = await LoadRollbackStateAsync(cancellationToken);
-        return !GpuActionFacts.HasPlacementEffects(state.AppliedPlacements)
-            && !GpuActionFacts.HasUnsettledActions(state.AppliedPlacements);
-    }
 }

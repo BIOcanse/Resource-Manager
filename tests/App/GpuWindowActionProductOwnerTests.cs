@@ -155,6 +155,7 @@ public sealed partial class GpuPlacementWindowNativeThreadTests
 
     private sealed class ProductWindowBatchFixture(GpuWindowActionRequest[] requests) : IRunningGpuPlacementActionService
     {
+        public IDisposable? AcquireRendererObservation() => null;
         public Task<RunningGpuPlacementPreparation> PrepareWithFirstApiObservationAsync(RunningGpuPlacementActionRequest request,
             RunningGpuApiObservationExecution execution, CancellationToken token)
             => throw new InvalidOperationException("This fixture starts after the existing policy preparation.");

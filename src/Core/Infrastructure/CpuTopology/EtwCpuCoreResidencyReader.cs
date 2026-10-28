@@ -147,7 +147,7 @@ public sealed partial class EtwCpuCoreResidencyReader(
         var sourceKey = $"lease:{leaseId}:{subscriptionId.Trim()}";
         lock (subscriptionGate)
         {
-            if (stopped)
+            if (ownedResourcesDisposed)
             {
                 throw new InvalidOperationException("The CPU-residency reader has stopped.");
             }
@@ -216,22 +216,20 @@ public sealed partial class EtwCpuCoreResidencyReader(
     {
         var worker = new NativeSamplingSubscriptionWorker<CpuResidencySampleRequest, SamplingOwnerToken>(
             subscriptions, demandSignal,
-            items =>
-            {
-                if ((items.Count == 0
-                    || !subscriptions.HasPersistentDemand(static request => !request.CancellationToken.IsCancellationRequested))
-                    && HasSessionLease)
-                    StopSession("ETW CPU 执行时长归因已因无订阅而停止。");
-            },
-            static failure => System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure.Error).Throw(),
-            TimeSpan.Zero, waitForNextPlan: WaitForNextWindowPlanAsync);
+            static _ => { },
+            static failure => System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure.Error).Throw(), waitForNextPlan: WaitForNextWindowPlanAsync);
         try
         {
+            await Task.Yield();
+            stoppingToken.ThrowIfCancellationRequested();
+            Capture.EnsureStarted();
             await worker.RunAsync(async (plan, token) =>
             {
                 if (!subscriptions.HasPersistentDemand(static request => !request.CancellationToken.IsCancellationRequested))
                     return SubscriptionSampleCompletion.Skipped;
-                EnsureStarted();
+                if (currentComputeMode == ResourceManagerComputeZoneMode.Freeze)
+                    return SubscriptionSampleCompletion.Skipped;
+                Capture.BeginWindow();
                 if (WindowedCapture && await WaitForWindowOrDemandAsync(token))
                     return SubscriptionSampleCompletion.Skipped;
                 var committed = false;
@@ -244,7 +242,7 @@ public sealed partial class EtwCpuCoreResidencyReader(
                     pendingFieldCollection = fieldDeliveries.CaptureCompleted<CpuResidencySampleRequest>(
                         plan.Triggers, queried, committed: true);
                 });
-                if (WindowedCapture) Capture.Stop("CPU residency window has been published; ContextSwitch is paused until the next window.");
+                if (WindowedCapture) Capture.PauseWindow("CPU residency window has been published; aggregation is paused until the next window.");
                 return token.IsCancellationRequested || Volatile.Read(ref stopped)
                     || !plan.OwnerToken.IsActive ? SubscriptionSampleCompletion.Skipped
                     : committed ? SubscriptionSampleCompletion.Sampled : SubscriptionSampleCompletion.Skipped;
@@ -268,12 +266,9 @@ public sealed partial class EtwCpuCoreResidencyReader(
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested || Volatile.Read(ref stopped)) { }
         finally
         {
-            try { StopSession("ETW CPU 执行时长归因正在随程序停止。"); }
-            finally
-            {
-                fieldDeliveries.RetireAll();
-                lock (subscriptionGate) subscriptions.Clear(DateTimeOffset.UtcNow);
-            }
+            pendingFieldCollection = null;
+            fieldDeliveries.DiscardRunRounds();
+            StopSession("ETW CPU 执行时长归因正在随程序停止。");
         }
     }
 
@@ -286,6 +281,7 @@ public sealed partial class EtwCpuCoreResidencyReader(
     public override void Dispose()
     {
         BeginStop();
+        fieldDeliveries.RetireAll();
         try
         {
             base.StopAsync(CancellationToken.None).GetAwaiter().GetResult();
@@ -316,7 +312,7 @@ public sealed partial class EtwCpuCoreResidencyReader(
     {
         lock (subscriptionGate)
         {
-            if (stopped)
+            if (ownedResourcesDisposed)
             {
                 return;
             }
@@ -332,57 +328,19 @@ public sealed partial class EtwCpuCoreResidencyReader(
         {
             if (stopped) return; currentComputeMode = mode;
             Capture.SetCaptureEnabled(mode != ResourceManagerComputeZoneMode.Freeze, "ETW CPU 执行时长归因已按功能区冻结停止。");
-            if (mode == ResourceManagerComputeZoneMode.Freeze) ReleaseMetadata();
         }
         if (mode != ResourceManagerComputeZoneMode.Freeze) SignalDemand();
     }
-    private bool HasSessionLease => Capture.HasSessionLease || metadataSubscription is not null;
-    private void EnsureStarted()
-    {
-        if (currentComputeMode == ResourceManagerComputeZoneMode.Freeze) return;
-        EnsureMetadata();
-        Capture.EnsureStarted();
-        if (!WindowedCapture) ReleaseMetadata();
-    }
-    private void EnsureMetadata()
-    {
-        lock (subscriptionGate)
-        {
-            if (stopped || currentComputeMode == ResourceManagerComputeZoneMode.Freeze) return;
-            if (WindowedCapture)
-            {
-                try
-                {
-                    metadataSubscription ??= kernelEtwBroker.Subscribe(new("cpu-core-residency:metadata",
-                        KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread, static (_, _) => { }));
-                }
-                catch (ObjectDisposedException error)
-                {
-                    logger.LogDebug(error, "The shared kernel ETW broker is unavailable for CPU residency metadata.");
-                }
-            }
-        }
-    }
-    private void ReleaseMetadata()
-    {
-        IKernelEtwSubscription? previous;
-        lock (subscriptionGate) { previous = metadataSubscription; metadataSubscription = null; }
-        previous?.Dispose();
-    }
     private void StopSession(string idleMessage)
     {
-        try { Capture.Stop(idleMessage); }
-        finally { ReleaseMetadata(); }
+        Capture.Stop(idleMessage);
     }
     private void BeginStop()
     {
-        var retireDeliveries = false;
         lock (subscriptionGate)
         {
-            if (stopped) return; stopped = true; retireDeliveries = true;
-            if (ExecuteTask is null || ExecuteTask.IsCompleted) subscriptions.Clear(DateTimeOffset.UtcNow);
+            if (stopped) return; stopped = true;
         }
-        if (retireDeliveries) fieldDeliveries.RetireAll();
         SignalDemand();
     }
     private static CpuResidencyCaptureConfiguration MapPlan(CompiledCpuCoreResidencyPlan plan)

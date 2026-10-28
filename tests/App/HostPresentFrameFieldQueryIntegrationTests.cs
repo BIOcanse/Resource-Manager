@@ -96,7 +96,7 @@ public sealed class HostPresentFrameFieldQueryIntegrationTests
         var configuration = Configuration();
         await using var composition = new NativeFieldSubscriptionComposition(borrow,
             new SubscriptionRoleSettings(2, 1000, 1, 3000, 1000, 1000), in configuration,
-            failures.Enqueue, TimeSpan.FromMilliseconds(25));
+            failures.Enqueue);
         await composition.StartAsync(timeout.Token);
         using var fastDemand = composition.Acquire("host-present-query-role-2-fast", [fps, percentile], TimeSpan.FromMilliseconds(100));
         using var subscriptionCancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);

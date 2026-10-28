@@ -132,7 +132,7 @@ internal static class IntelPsysSubscriptionConsumer
             };
             var failures = new List<SubscriptionWorkerFailure>();
             await using var composition = new NativeFieldSubscriptionComposition(owner.BorrowSubscriptionCapture(), settings,
-                in configuration, failure => failures.Add(failure), TimeSpan.FromMilliseconds(250));
+                in configuration, failure => failures.Add(failure));
             await composition.StartAsync(timeout.Token);
             var publicFields = new FieldSubscriptionCore(core, composition);
             await using var stream = publicFields.SubscribeAsync("recorded-psys", fields, TimeSpan.FromMilliseconds(250), timeout.Token).GetAsyncEnumerator();

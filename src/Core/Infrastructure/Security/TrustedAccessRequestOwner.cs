@@ -30,6 +30,10 @@ public sealed class TrustedAccessRequestOwner(
     private Task? expirationPump;
     private int activeWaiters;
     private int activeSubscribers;
+    private bool hasPendingRequests;
+
+    internal bool HasPendingRequests => Volatile.Read(ref hasPendingRequests);
+    internal event Action? PendingRequestsChanged;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -503,6 +507,12 @@ public sealed class TrustedAccessRequestOwner(
 
     private void SignalChangedUnderLock()
     {
+        var pending = requests.Count != 0;
+        if (hasPendingRequests != pending)
+        {
+            Volatile.Write(ref hasPendingRequests, pending);
+            PendingRequestsChanged?.Invoke();
+        }
         var previous = changed;
         changed = NewSignal();
         previous.TrySetResult(true);

@@ -71,9 +71,6 @@ public sealed partial class NativeControl
             RegistryVersion = json.GetProperty("registryVersion").GetString()!, Program = program,
             ProgramName = Name(blocks.Single(row => row.GetProperty("uid").GetInt32() == program)), Graph = Graph.Nodes,
             ShuttingDown = json.GetProperty("shuttingDown").GetBoolean(), Items = json.GetProperty("items").EnumerateArray().Select(Item).ToArray(),
-            Demands = json.GetProperty("demands").EnumerateArray().Select(row => new BusinessBlockDemand(row.GetProperty("key").GetString()!, row.GetProperty("blockUid").GetInt32(),
-                new((BusinessBlockRequestKind)row.GetProperty("kind").GetInt32(), row.GetProperty("owner").GetString()!,
-                    row.GetProperty("cause").GetString()!, unchecked((long)row.GetProperty("planVersion").GetUInt64())))).ToArray(),
             Decisions = decisions, CurrentDecisions = currentDecisions,
             NativeSnapshot = json
         };

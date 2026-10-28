@@ -17,12 +17,7 @@ public sealed class BusinessBlockConsumerDrainTests
         var registrations = new[] { new BusinessBlockRegistration(blockId, _ => block) };
         var diagnostics = new BusinessBlockDiagnosticsRegistry(registrations, NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
         block.Diagnostics = diagnostics;
-        var fixture = NativeBackendBlockTestSupport.CreateFullTreeFixture(new Dictionary<int, IBusinessBlock>
-        {
-            [blockId] = block
-        });
-        await using var owner = fixture;
-        var scheduler = fixture.Scheduler;
+        await using var scheduler = Create([Register(blockId, block)]);
         try
         {
             await scheduler.StartAsync(blockId, Reason());
@@ -52,12 +47,7 @@ public sealed class BusinessBlockConsumerDrainTests
         var registrations = new[] { new BusinessBlockRegistration(blockId, _ => block) };
         var diagnostics = new BusinessBlockDiagnosticsRegistry(registrations, NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
         block.Diagnostics = diagnostics;
-        var fixture = NativeBackendBlockTestSupport.CreateFullTreeFixture(new Dictionary<int, IBusinessBlock>
-        {
-            [blockId] = block
-        });
-        await using var owner = fixture;
-        var scheduler = fixture.Scheduler;
+        await using var scheduler = Create([Register(blockId, block)]);
         try
         {
             await scheduler.StartAsync(blockId, Reason());

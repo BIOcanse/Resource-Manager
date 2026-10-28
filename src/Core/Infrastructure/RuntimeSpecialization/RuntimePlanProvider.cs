@@ -13,6 +13,40 @@ public sealed class RuntimePlanProvider(HostManagerDeploymentState hostManagerDe
 
     public CompiledRuntimePlan Current => hostManagerDeploymentState.CurrentRuntimePlan;
 
+    /// <summary>Waits for the first real input publication without starting or sampling an owner.</summary>
+    internal async Task<CompiledRuntimePlan> WaitForPublishedAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (Current is { HostManager.IsPublished: true } current) return current;
+        var published = new TaskCompletionSource<CompiledRuntimePlan>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Changed(CompiledRuntimePlan plan)
+        { if (plan.HostManager.IsPublished) published.TrySetResult(plan); }
+        Published += Changed;
+        try
+        {
+            Changed(Current);
+            return await published.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally { Published -= Changed; }
+    }
+
+    // Capture one immutable publication; reading these facts never starts work.
+    internal RuntimePlanDecisionFacts DecisionFacts
+    {
+        get
+        {
+            var plan = Current;
+            return new(
+                plan.Diagnostics.DebugLogEnabled,
+                plan.AutomaticUpdatesEnabled,
+                plan.OptimizationMode.SchedulingEnabled,
+                GpuApiHistoryEnabled: true,
+                BackgroundReportsEnabled: !plan.HostManager.ReportCoordinator.Recreate.Rules.IsDefaultOrEmpty,
+                PortableDiscoveryEnabled: true,
+                plan.HostManager.PublicServiceCoordinator.HotPublish.ServiceEnabled);
+        }
+    }
+
     public RuntimePlanPublicationLease AcquirePublicationLease()
     {
         lock (publicationGate)
@@ -87,3 +121,12 @@ public sealed class RuntimePlanProvider(HostManagerDeploymentState hostManagerDe
         }
     }
 }
+
+internal readonly record struct RuntimePlanDecisionFacts(
+    bool DebugLoggingEnabled,
+    bool AutomaticUpdatesEnabled,
+    bool OptimizationEnabled,
+    bool GpuApiHistoryEnabled,
+    bool BackgroundReportsEnabled,
+    bool PortableDiscoveryEnabled,
+    bool PublicServiceEnabled);

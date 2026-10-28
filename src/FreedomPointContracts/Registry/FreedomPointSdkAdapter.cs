@@ -148,8 +148,6 @@ internal sealed class FreedomPointSdkAdapter
             BackendFreedomPointPositions.RequestLifetimeMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "TrustedAccessRequestLifetimeMilliseconds"),
             BackendFreedomPointPositions.WorkerCount => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledBackendControlSettings", "WorkerCount"),
             BackendFreedomPointPositions.HistoryCapacity => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledBackendControlSettings", "HistoryCapacity"),
-            BackendFreedomPointPositions.DemandCapacity => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledBackendControlSettings", "DemandCapacity"),
-            BackendFreedomPointPositions.DemandBytes => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledBackendControlSettings", "DemandBytes"),
             BackendFreedomPointPositions.CompletionCapacity => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledBackendControlSettings", "CompletionCapacity"),
             BackendFreedomPointPositions.ReaderCapacity => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledBackendControlSettings", "ReaderCapacity"),
             BackendFreedomPointPositions.ReaderBytes => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledBackendControlSettings", "ReaderBytes"),

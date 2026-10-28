@@ -30,6 +30,12 @@ public sealed partial class CpuTopologySnapshotProvider(
     private bool stopped;
     private int ownedResourcesDisposed;
 
+#if RM_STATE_NAMES
+    internal (int SourceRegistrations, bool PendingSessionLease, ulong OutputScratchBytes,
+        ulong PendingOutputCloseBytes, bool OutputUseActive, int ManagedOutputRows) ReadSamplingResourceDiagnostics()
+        => subscriptions.CaptureResourceDiagnostics();
+#endif
+
     private static NativeItemSamplingSubscriptionTracker<TopologyRequest> CreateSubscriptions(
         HostManagerSamplingSubscriptionOwner owner,
         Func<ulong, uint, ResourceManager.Subscription.INativeSamplingOutputScratch>? createOutputScratch)
@@ -104,12 +110,10 @@ public sealed partial class CpuTopologySnapshotProvider(
             subscriptions, demandSignal,
             _ =>
             {
-                // Canceled enumerators may remain paused at their last value without removing their lease yet.
                 if (!subscriptions.HasPersistentDemand(static request => !request.CancellationToken.IsCancellationRequested))
                     ResetUsageBaselineBeforeNextCapture();
             },
-            static failure => System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure.Error).Throw(),
-            TimeSpan.Zero);
+            static failure => System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure.Error).Throw());
         try
         {
             await worker.RunAsync(async (plan, token) =>
@@ -145,9 +149,9 @@ public sealed partial class CpuTopologySnapshotProvider(
             lock (publicationGate)
             {
                 stopped = true;
-                subscriptions.Clear(DateTimeOffset.UtcNow);
             }
-            fieldDeliveries.RetireAll();
+            pendingFieldCollection = null;
+            fieldDeliveries.DiscardRunRounds();
             await captureOwner.DrainAndResetUsageBaselineAsync();
         }
     }
@@ -157,12 +161,7 @@ public sealed partial class CpuTopologySnapshotProvider(
         lock (publicationGate)
         {
             stopped = true;
-            if (ExecuteTask is null)
-            {
-                subscriptions.Clear(DateTimeOffset.UtcNow);
-            }
         }
-        fieldDeliveries.RetireAll();
         return base.StopAsync(cancellationToken);
     }
 
@@ -171,10 +170,6 @@ public sealed partial class CpuTopologySnapshotProvider(
         lock (publicationGate)
         {
             stopped = true;
-            if (ExecuteTask is null)
-            {
-                subscriptions.Clear(DateTimeOffset.UtcNow);
-            }
         }
         fieldDeliveries.RetireAll();
         try

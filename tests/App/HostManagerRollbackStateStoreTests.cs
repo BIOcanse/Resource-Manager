@@ -147,6 +147,12 @@ public sealed class HostManagerRollbackStateStoreTests
                        new ManualTimeProvider(now),
                        TimeSpan.FromMinutes(1)))
             {
+                Assert.Null(store.OwnedStatePendingPublication);
+                var initialChanges = 0;
+                store.OwnedStateChanged += () => initialChanges++;
+                await store.LoadAsync(CancellationToken.None);
+                Assert.Equal(false, store.OwnedStatePendingPublication);
+                Assert.Equal(1, initialChanges);
                 var reserved = await store.ReserveNativeHostSessionIncarnationAsync(
                     CancellationToken.None);
                 var state = reserved with
@@ -154,7 +160,15 @@ public sealed class HostManagerRollbackStateStoreTests
                     AppliedPlacements = [Placement("cpu", "cpu-record")],
                     Coordinator = new(1, 953, 0, 0)
                 };
+                var ownershipChanges = 0;
+                store.OwnedStateChanged += () => ownershipChanges++;
+                Assert.False(store.OwnedStatePending);
                 await store.SaveAsync(state, CancellationToken.None);
+                Assert.True(store.OwnedStatePending);
+                Assert.Equal(true, store.OwnedStatePendingPublication);
+                Assert.Equal(1, ownershipChanges);
+                await store.SaveAsync(state, CancellationToken.None);
+                Assert.Equal(1, ownershipChanges);
             }
 
             Assert.True(File.Exists(path));
@@ -162,9 +176,22 @@ public sealed class HostManagerRollbackStateStoreTests
                 path,
                 new ManualTimeProvider(now),
                 TimeSpan.FromMinutes(1));
+            var reopenChanges = 0;
+            reopened.OwnedStateChanged += () => reopenChanges++;
+            Assert.Null(reopened.OwnedStatePendingPublication);
             var restored = await reopened.LoadAsync(CancellationToken.None);
             Assert.Single(restored.AppliedPlacements);
+            Assert.True(reopened.OwnedStatePending);
+            Assert.Equal(true, reopened.OwnedStatePendingPublication);
+            Assert.Equal(1, reopenChanges);
             Assert.Equal<ulong>(1, restored.NativeHostSessionIncarnation);
+            // Reading the decision fact must not reopen the file or acquire the store gate.
+            using (var probe = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))
+                Assert.True(reopened.OwnedStatePending);
+            await reopened.SaveAsync(restored with { AppliedPlacements = [] }, CancellationToken.None);
+            Assert.False(reopened.OwnedStatePending);
+            Assert.Equal(false, reopened.OwnedStatePendingPublication);
+            Assert.Equal(2, reopenChanges);
         }
         finally
         {

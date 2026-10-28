@@ -47,21 +47,26 @@ internal static class CpuResidencyOwnerConsumer
         { Console.WriteLine("CPU residency real Windows ETW consumer not requested; no native availability claimed."); return; }
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         using var owner = WindowsProcessFieldOwner.CreateDefault();
-        await owner.CollectAsync([Name], timeout.Token); // selected-only: no thread-count snapshot, network or disk lease
-        var fields = owner.Backend.Catalog.Fields.Where(field => field.Definition.Name == Name
-            && field.Field.DeviceIdentity.StartsWith($"windows-process|{Environment.ProcessId}:", StringComparison.Ordinal))
-            .Select(field => field.Field).ToImmutableArray();
-        if (fields.IsEmpty) { Console.WriteLine("CPU residency actual ETW/topology unavailable; complete execution not claimed."); return; }
-        await Task.Delay(TimeSpan.FromSeconds(6), timeout.Token);
-        owner.ReconcileOwnedEtw();
-        var current = await owner.Backend.CollectAsync(fields, timeout.Token);
-        foreach (var reading in current)
+        owner.StartCpuResidencyCapture();
+        try
         {
-            if (owner.Backend.ReadCached(reading.Field) != reading) throw new InvalidDataException("Default canonical current differs.");
-            if (reading.Value is not null && (reading.SourceId != "windows.etw.cpu-residency" || reading.SampleDurationMilliseconds != 5000))
-                throw new InvalidDataException("Actual residency observation omitted its closed window.");
-        }
-        Console.WriteLine($"CPU residency actual default Windows canonical consumer completed: selected={current.Length}, current={current.Count(reading => reading.Status == FieldObservationStatus.Current)}; unavailable entries are not inferred zeros.");
+            await owner.CollectAsync([Name], timeout.Token); // selected-only: no thread-count snapshot, network or disk lease
+            var fields = owner.Backend.Catalog.Fields.Where(field => field.Definition.Name == Name
+                && field.Field.DeviceIdentity.StartsWith($"windows-process|{Environment.ProcessId}:", StringComparison.Ordinal))
+                .Select(field => field.Field).ToImmutableArray();
+            if (fields.IsEmpty) { Console.WriteLine("CPU residency actual ETW/topology unavailable; complete execution not claimed."); return; }
+            await Task.Delay(TimeSpan.FromSeconds(6), timeout.Token);
+            owner.ReconcileOwnedEtw();
+            var current = await owner.Backend.CollectAsync(fields, timeout.Token);
+            foreach (var reading in current)
+            {
+                if (owner.Backend.ReadCached(reading.Field) != reading) throw new InvalidDataException("Default canonical current differs.");
+                if (reading.Value is not null && (reading.SourceId != "windows.etw.cpu-residency" || reading.SampleDurationMilliseconds != 5000))
+                    throw new InvalidDataException("Actual residency observation omitted its closed window.");
+            }
+            Console.WriteLine($"CPU residency actual default Windows canonical consumer completed: selected={current.Length}, current={current.Count(reading => reading.Status == FieldObservationStatus.Current)}; unavailable entries are not inferred zeros.");
+            }
+        finally { owner.StopCpuResidencyCapture(); }
     }
 
     private sealed class PassiveBroker : IKernelEtwSessionBroker

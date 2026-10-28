@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Runtime.InteropServices;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using ResourceManager.App.Application.ResourceBreakdown;
@@ -65,7 +65,6 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
     public PhysicalDiskIoAttributionSnapshot Read(bool includeObservedTraffic = false)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
-        EnsureStarted();
         var currentSubscription = Volatile.Read(ref subscription);
         if (currentSubscription is null)
             return new(DateTimeOffset.UtcNow, new Dictionary<int, PhysicalDiskProcessAttribution>(),
@@ -102,7 +101,7 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
         }
     }
 
-    private void EnsureStarted()
+    public void Start()
     {
         lock (subscriptionGate)
         {
@@ -332,7 +331,7 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
     private static ulong? ToFileTime(DateTime timestamp)
     { try { return checked((ulong)timestamp.ToUniversalTime().ToFileTimeUtc()); } catch (ArgumentOutOfRangeException) { return null; } catch (OverflowException) { return null; } }
 
-    public void Stop(string idleMessage = "ETW DiskIO 物理磁盘归因已因无请求而停止。")
+    public void Stop(string idleMessage = "ETW DiskIO 物理磁盘归因已停止。")
     {
         IKernelEtwSubscription? retired;
         lock (subscriptionGate) { retired = subscription; subscription = null; Volatile.Write(ref generation, 0); }

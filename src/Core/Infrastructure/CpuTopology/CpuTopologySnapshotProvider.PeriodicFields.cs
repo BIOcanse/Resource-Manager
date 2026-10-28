@@ -62,7 +62,7 @@ public sealed partial class CpuTopologySnapshotProvider
         {
             lock (publicationGate)
             {
-                if (stopped) throw new InvalidOperationException("The CPU topology provider has stopped.");
+                ObjectDisposedException.ThrowIf(Volatile.Read(ref ownedResourcesDisposed) != 0, this);
                 var flags = NativeSamplingSubscriptionSourceFlags.PeriodicTriggers;
                 if (options.SamplingMode == FieldSubscriptionSamplingMode.FreshOnTrigger)
                     flags |= NativeSamplingSubscriptionSourceFlags.FreshOnTrigger;
@@ -97,7 +97,7 @@ public sealed partial class CpuTopologySnapshotProvider
     {
         lock (publicationGate)
         {
-            if (stopped) return;
+            if (Volatile.Read(ref ownedResourcesDisposed) != 0) return;
             subscriptions.Remove(key, DateTimeOffset.UtcNow);
         }
         SignalDemand();

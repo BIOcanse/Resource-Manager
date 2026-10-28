@@ -2044,7 +2044,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task NormalModeParksScheduledWakeAndResumesOnPlanOrPublicResourcePublication(
+    public async Task DirectNormalWorkerMaintainsCadenceAndTracksPlanOrPublicResourcePublication(
         bool warm)
     {
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
@@ -2066,7 +2066,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             while (fixture.Coordinator.SchedulingAuthority.UnavailableReason
                     != "optimization-mode-normal"
-                || deadline.Snapshot.HasDeadline)
+                || !deadline.Snapshot.HasDeadline)
             {
                 await Task.Delay(10, timeout.Token);
             }
@@ -2088,7 +2088,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 
             fixture.RuntimePlanProvider.Publish(fixture.RuntimePlan with { Version = 3 });
             while (fixture.ProcessFacts.ActiveSubscriptionCount != 0
-                || deadline.Snapshot.HasDeadline)
+                || !deadline.Snapshot.HasDeadline)
             {
                 await Task.Delay(10, timeout.Token);
             }
@@ -2126,8 +2126,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            while (fixture.Coordinator.SchedulingAuthority.UnavailableReason != "optimization-mode-normal"
-                || deadline.Snapshot.HasDeadline)
+            while (fixture.Coordinator.SchedulingAuthority.UnavailableReason != "optimization-mode-normal")
                 await Task.Delay(10, timeout.Token);
             Assert.Equal(0, fixture.ProcessFacts.ActiveSubscriptionCount);
             Assert.Equal(0, fixture.ProcessFacts.ReadLatestCalls);
@@ -2145,8 +2144,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 await Task.Delay(10, timeout.Token);
                 diagnostics = await fixture.Coordinator.GetDecisionDiagnosticsAsync(timeout.Token);
             }
-            while (diagnostics.ActionBudget?.Mode != AppRealtimeActionBudgetModes.Percent
-                || deadline.Snapshot.HasDeadline);
+            while (diagnostics.ActionBudget?.Mode != AppRealtimeActionBudgetModes.Percent);
 
             Assert.Equal(1, fixture.ProcessFacts.ActiveSubscriptionCount);
             Assert.Equal(SchedulingProcessMetricMask.RuntimeState,
@@ -2160,11 +2158,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.Empty(fixture.MetricSampler.SubscriptionHistory);
             Assert.Equal(0, fixture.MetricSampler.ReadLatestCalls);
 
-            var reads = fixture.ProcessFacts.ReadLatestCalls;
             var fixedPlan = HostManagerTestPlanFactory.CreatePlan(
                 performance: performance with { RealtimeActionBudgetMode = AppRealtimeActionBudgetModes.Fixed },
                 planEpoch: 3);
             fixture.RuntimePlanProvider.Publish(fixture.RuntimePlan with { Version = 3, HostManager = fixedPlan });
+            var reads = fixture.ProcessFacts.ReadLatestCalls;
             do
             {
                 await Task.Delay(10, timeout.Token);
@@ -2172,7 +2170,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             }
             while (diagnostics.ActionBudget?.Mode != AppRealtimeActionBudgetModes.Fixed
                 || fixture.ProcessFacts.ActiveSubscriptionCount != 0
-                || deadline.Snapshot.HasDeadline);
+                || !deadline.Snapshot.HasDeadline);
 
             Assert.Equal(reads, fixture.ProcessFacts.ReadLatestCalls);
             Assert.Null(diagnostics.ActionBudget!.ProcessCount);

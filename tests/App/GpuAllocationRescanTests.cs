@@ -8,9 +8,9 @@ public sealed class GpuAllocationRescanTests
         var factory = new GpuAllocationTestSessionFactory();
         await using var harness = factory.Harness();
         var collector = harness.Collector;
-        using var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(30));
-        await EtwTestRunRecorder.ReadyAsync(lease);
-        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+        await harness.SetInUseAsync(true);
+        await harness.WaitRunningAsync();
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(30), default);
         var old = collector.ReadCurrent(GpuAllocationTestSession.Processes)!;
         Assert.Equal(1024, old.Adapters[23][41].PrivateBytes);
         Assert.Empty(factory.Current.Enabled);
@@ -18,7 +18,7 @@ public sealed class GpuAllocationRescanTests
         Assert.Same(old, collector.ReadCurrent(GpuAllocationTestSession.Processes));
         factory.Current.Bytes = 2048;
         factory.Current.HoldEnd = true;
-        var capture = collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+        var capture = collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(30), default);
         Assert.False(capture.IsCompleted);
         Assert.Same(old, collector.ReadCurrent(GpuAllocationTestSession.Processes));
         factory.Current.DeliverEnd();
@@ -40,22 +40,22 @@ public sealed class GpuAllocationRescanTests
         var factory = new GpuAllocationTestSessionFactory();
         await using var harness = factory.Harness(TimeSpan.FromMilliseconds(40));
         var collector = harness.Collector;
-        using var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(30));
-        await EtwTestRunRecorder.ReadyAsync(lease);
-        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+        await harness.SetInUseAsync(true);
+        await harness.WaitRunningAsync();
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(30), default);
         var session = factory.Current;
         session.LoseEvents = failure == "loss";
         session.FailCapture = failure == "capture";
         session.Malformed = failure == "malformed";
         session.Incomplete = failure == "incomplete";
         session.HoldEnd = failure == "timeout";
-        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(30), default);
         Assert.Null(collector.ReadCurrent(GpuAllocationTestSession.Processes));
         Assert.Empty(session.Enabled);
         Assert.Equal(2, session.Captures);
         session.DeliverEnd(); // A late end cannot publish or complete the next capture.
         session.LoseEvents = session.FailCapture = session.Malformed = session.Incomplete = session.HoldEnd = false;
-        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(30), default);
         Assert.NotNull(collector.ReadCurrent(GpuAllocationTestSession.Processes));
         Assert.Empty(factory.Current.Enabled);
     }
@@ -66,9 +66,9 @@ public sealed class GpuAllocationRescanTests
         var factory = new GpuAllocationTestSessionFactory();
         await using var harness = factory.Harness();
         var collector = harness.Collector;
-        using var lease = collector.AcquireSubscription(TimeSpan.FromSeconds(1));
-        await EtwTestRunRecorder.ReadyAsync(lease);
-        await collector.CaptureAsync(GpuAllocationTestSession.Processes, default);
+        await harness.SetInUseAsync(true);
+        await harness.WaitRunningAsync();
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(30), default);
         var reused = collector.ReadCurrent(new Dictionary<int, long> { [41] = 101 })!;
         Assert.Empty(reused.Adapters[23]);
         Assert.Equal(1024, collector.ReadCurrent(GpuAllocationTestSession.Processes)!.Adapters[23][41].PrivateBytes);

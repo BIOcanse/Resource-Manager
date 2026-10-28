@@ -24,7 +24,8 @@ public sealed class TrustedAccessInvocationHostedService(
     IGpuLaunchExecutionReportStore reports,
     IInteractiveUserSessionBroker sessions,
     HostManagerRuntimeIdentity runtime,
-    ILogger<TrustedAccessInvocationHostedService> logger) : BackgroundService
+    ILogger<TrustedAccessInvocationHostedService> logger,
+    string pipeName = TrustedAccessInvocationContract.PipeName) : BackgroundService
 {
     private const string PipeAcl = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;BU)";
     private const int MaximumPayloadCharacters = 64 * 1024;
@@ -42,7 +43,7 @@ public sealed class TrustedAccessInvocationHostedService(
             while (!stoppingToken.IsCancellationRequested)
             {
                 using var pipe = WindowsLocalPipeFactory.Create(
-                    TrustedAccessInvocationContract.PipeName,
+                    pipeName,
                     PipeAcl,
                     TrustedAccessInvocationContract.MaximumFrameBytes,
                     TrustedAccessInvocationContract.MaximumFrameBytes);

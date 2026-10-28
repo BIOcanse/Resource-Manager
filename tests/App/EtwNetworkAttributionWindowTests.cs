@@ -43,24 +43,38 @@ public sealed partial class EtwNetworkAttributionWindowTests
     }
 
     [Fact]
-    public void LossBetweenSnapshotChecksSuppressesTheResultBeingBuilt()
+    public void LossBetweenSnapshotChecksIsStampedAndNextFullWindowRecovers()
     {
         var broker = new Broker();
         long tick = 0;
         using var reader = NewReader(broker, () => tick);
         reader.Read();
         Observe(reader, broker, 41, 4000, 1500);
-        // The second query in this read captures the pre-build broker state.
-        var loseAfter = broker.SnapshotCount + 2;
-        broker.AfterSnapshot = count => { if (count == loseAfter) broker.EventsLost = 1; };
+        // Lose an event after the pre-build value is captured, so the final
+        // snapshot sees a changed cumulative loss count in this same read.
+        broker.AfterNextSnapshot = () => broker.EventsLost = 1;
         tick = 2500;
 
-        var result = reader.Read();
+        var result = reader.Read(includeObservedTraffic: true);
 
         Assert.Empty(result.RawProcessValues);
         Assert.Empty(result.Processes);
         Assert.Null(result.ObservedTraffic);
         Assert.Equal(NetworkAttributionProviderStates.Warming, result.ProviderState.State);
+        Assert.Equal(1, broker.SubscribeCount);
+
+        var stillIncomplete = reader.Read(includeObservedTraffic: true);
+        Assert.Empty(stillIncomplete.RawProcessValues);
+        Assert.Null(stillIncomplete.ObservedTraffic);
+        Observe(reader, broker, 99, 8000, 2000); // Already queued before the loss was stamped.
+        Observe(reader, broker, 42, 8192, 4500);
+        tick = 4501;
+        var recovered = reader.Read(includeObservedTraffic: true);
+        var row = Assert.Single(recovered.RawProcessValues);
+        Assert.Equal(42, row.Key);
+        Assert.Equal(4096, row.Value.SendBytesPerSecond);
+        Assert.Equal(NetworkAttributionProviderStates.Running, recovered.ProviderState.State);
+        Assert.NotNull(recovered.ObservedTraffic);
         Assert.Equal(1, broker.SubscribeCount);
     }
 
@@ -117,7 +131,7 @@ public sealed partial class EtwNetworkAttributionWindowTests
     }
 
     [Fact]
-    public void DisposalReleasesALeaseStartedByReadAndPreventsRestart()
+    public void DisposalReleasesTheHostedLeaseAndPreventsRestart()
     {
         var broker = new Broker();
         var reader = NewReader(broker, () => 1000);
@@ -132,8 +146,18 @@ public sealed partial class EtwNetworkAttributionWindowTests
     }
 
     private static EtwNetworkTcpIpAttributionReader NewReader(Broker broker, Func<long> clock)
-        => new(new EtwNetworkTcpIpMonitoringZone(), broker,
-            NullLogger<EtwNetworkTcpIpAttributionReader>.Instance, clock, pid => new ProcessLease(pid, 100));
+        => StartReader(new(new EtwNetworkTcpIpMonitoringZone(), broker,
+            NullLogger<EtwNetworkTcpIpAttributionReader>.Instance, clock, pid => new ProcessLease(pid, 100)), broker);
+
+    private static EtwNetworkTcpIpAttributionReader StartReader(EtwNetworkTcpIpAttributionReader reader, Broker broker)
+    {
+        reader.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
+        Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref broker.SubscribeCount) > 0,
+            TimeSpan.FromSeconds(5)), "Hosted network reader did not acquire its session lease.");
+        // Start holds the capture gate until binding and activation are complete.
+        reader.Read();
+        return reader;
+    }
 
     private static void Observe(EtwNetworkTcpIpAttributionReader reader, Broker broker, int pid, int bytes, long tick)
         => reader.ObserveBoundNetworkTransfer(broker.Source, broker.Context, pid, bytes, true, false,
@@ -147,14 +171,13 @@ public sealed partial class EtwNetworkAttributionWindowTests
         internal int EventsLost;
         internal int SubscribeCount;
         internal int DisposeCount;
-        internal int SnapshotCount;
-        internal Action<int>? AfterSnapshot;
+        internal Action? AfterNextSnapshot;
 
         public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
         {
-            SubscribeCount++;
             Request = request;
             Rebind();
+            Interlocked.Increment(ref SubscribeCount);
             return new Lease(this);
         }
 
@@ -169,7 +192,9 @@ public sealed partial class EtwNetworkAttributionWindowTests
         {
             var snapshot = new KernelEtwSessionSnapshot("Running", "fixture", Context.Generation,
                 Context.StartedAt, KernelTraceEventParser.Keywords.NetworkTCPIP, 1 - DisposeCount, EventsLost);
-            AfterSnapshot?.Invoke(++SnapshotCount);
+            var afterSnapshot = AfterNextSnapshot;
+            AfterNextSnapshot = null;
+            afterSnapshot?.Invoke();
             return snapshot;
         }
 

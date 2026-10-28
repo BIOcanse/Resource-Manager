@@ -383,6 +383,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     private sealed class CapturingGpuCycleActions(IRunningGpuPlacementActionService inner,
         IHostManagerRollbackStateStore ledger, D3d11ProxyShimRuntime runtime) : IRunningGpuPlacementActionService
     {
+        public IDisposable? AcquireRendererObservation() => inner.AcquireRendererObservation();
         internal int ApplyCount { get; private set; }
         internal RunningGpuPlacementActionPlan? Plan { get; private set; }
         internal List<Guid> CallIds { get; } = [];

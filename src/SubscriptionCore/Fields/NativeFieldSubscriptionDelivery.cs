@@ -136,6 +136,13 @@ public sealed class NativeFieldSubscriptionDelivery
         }
     }
 
+    /// <summary>Drops the completed run's partial and buffered rounds while consumers retain their registrations.</summary>
+    public void DiscardRunRounds()
+    {
+        lock (gate)
+            foreach (var registration in registrations.Values) registration.DiscardRunRounds();
+    }
+
     /// <summary>Closes all active registrations and drops their buffered rounds. The delivery object remains reusable.</summary>
     public void RetireAll()
     {
@@ -290,9 +297,14 @@ public sealed class NativeFieldSubscriptionDelivery
         internal void Retire()
         {
             if (Interlocked.Exchange(ref active, 0) == 0) return;
+            DiscardRunRounds();
+            values.Writer.TryComplete();
+        }
+
+        internal void DiscardRunRounds()
+        {
             rounds.Clear();
             while (values.Reader.TryRead(out _)) { }
-            values.Writer.TryComplete();
         }
 
         private sealed class Round(int count)

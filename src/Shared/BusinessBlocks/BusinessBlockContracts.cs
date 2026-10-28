@@ -12,13 +12,6 @@ public interface IBusinessBlock
     Task RunAsync(BusinessBlockRunContext context);
 }
 
-/// <summary>A data-need fact. Ready/Released acknowledge its parent's decision, not producer readiness.</summary>
-public interface IBusinessBlockDependency : IDisposable, IAsyncDisposable
-{
-    Task Ready { get; }
-    Task Released { get; }
-}
-
 public sealed record BusinessBlockReason(
     BusinessBlockRequestKind Kind, string Owner, string ConfigurationOrDependency, long PlanVersion);
 
@@ -41,7 +34,6 @@ public sealed record BusinessBlocksSnapshot(DateTimeOffset At, int HistoryLimit,
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ProgramName { get; init; }
     public IReadOnlyList<BusinessBlockNode> Graph { get; init; } = [];
-    public IReadOnlyList<BusinessBlockDemand> Demands { get; init; } = [];
     public IReadOnlyList<BusinessBlockDecision> Decisions { get; init; } = [];
     public IReadOnlyList<BusinessBlockDecision> CurrentDecisions { get; init; } = [];
     public IReadOnlyList<BusinessBlockItem> Items { get; init; } = [];
@@ -52,7 +44,6 @@ public sealed record BusinessBlocksSnapshot(DateTimeOffset At, int HistoryLimit,
 
 public sealed record BusinessBlockNode(int Id, int ParentId,
     IReadOnlyList<int> Inputs);
-public sealed record BusinessBlockDemand(string Key, int BlockId, BusinessBlockReason Reason);
 public sealed record BusinessBlockItem(int ItemUid, int? BlockUid, object? Value, NoValueReason? NoValueReason)
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

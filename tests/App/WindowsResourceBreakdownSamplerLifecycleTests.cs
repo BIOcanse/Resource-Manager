@@ -346,7 +346,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             null!,
             null!,
             null!,
-            null!,
+            subscriptions.Provider,
             subscriptions.Owner,
             null!);
 
@@ -372,14 +372,15 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
     [Fact]
     public void DisposeIsIdempotentForAliasedSingletonRegistrations()
     {
-        var sampler = new WindowsResourceBreakdownSampler(
+        using var subscriptions = new HostManagerSamplingSubscriptionTestFixture(startOwner: false);
+        using var sampler = new WindowsResourceBreakdownSampler(
             null!,
             null!,
             null!,
             null!,
             null!,
-            null!,
-            null!,
+            subscriptions.Provider,
+            subscriptions.Owner,
             null!);
 
         sampler.Dispose();
@@ -389,14 +390,15 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
     [Fact]
     public void SchedulingProcessAccounting_LiveWindowsEnumerationIsClosedAndExcludesIdle()
     {
+        using var subscriptions = new HostManagerSamplingSubscriptionTestFixture(startOwner: false);
         using var sampler = new WindowsResourceBreakdownSampler(
             null!,
             null!,
             null!,
             null!,
             null!,
-            null!,
-            null!,
+            subscriptions.Provider,
+            subscriptions.Owner,
             null!);
 
         var first = sampler.CaptureSchedulingProcessSampleAccounting();
@@ -427,14 +429,15 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         var inner = new DelegateWindowsProcessInventoryReader(
             static () => [Process.GetCurrentProcess()]);
         var guarded = new SingleCaptureWindowsProcessInventoryReader(inner);
+        using var subscriptions = new HostManagerSamplingSubscriptionTestFixture(startOwner: false);
         using var sampler = new WindowsResourceBreakdownSampler(
             null!,
             null!,
             null!,
             null!,
             null!,
-            null!,
-            null!,
+            subscriptions.Provider,
+            subscriptions.Owner,
             null!,
             guarded);
 
@@ -599,7 +602,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
     }
 
     [Fact]
-    public void SchedulingSubscription_OwnsItsHardwarePrerequisiteLease()
+    public async Task RunningSamplingBlockOwnsItsHardwareObservation()
     {
         using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
         using var catalogProvider = new VersionedProcessAttributionCatalogProvider();
@@ -623,6 +626,10 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
                 | SchedulingProcessMetricMask.GpuDedicatedMemory,
             TimeSpan.FromSeconds(5));
 
+        Assert.Equal(0, metricSampler.ActiveSubscriptions);
+        await sampler.StartAsync(CancellationToken.None);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (metricSampler.ActiveSubscriptions == 0) await Task.Delay(10, deadline.Token);
         Assert.Equal(1, metricSampler.ActiveSubscriptions);
         Assert.NotNull(metricSampler.LastSubscriptionRequest);
         Assert.True(metricSampler.LastSubscriptionRequest!.Includes("memory.usage"));
@@ -631,6 +638,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         Assert.False(metricSampler.LastSubscriptionRequest.IncludesPrefix("gpu."));
 
         lease.Dispose();
+        await sampler.StopAsync(deadline.Token);
         Assert.Equal(0, metricSampler.ActiveSubscriptions);
     }
 

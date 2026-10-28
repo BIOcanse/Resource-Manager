@@ -1,32 +1,24 @@
-using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
-using ResourceManager.ReadWrite.Windows.Processes.Etw;
-using BlockUids = ResourceManager.App.StateItems.BlockUids;
+﻿using ResourceManager.ReadWrite.Windows.Processes.Etw;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
-/// <summary>Host retry/lifetime adapter over the single SDK session resource owner.</summary>
-public sealed class KernelEtwSessionBroker : BackgroundService, IKernelEtwSessionBroker
+/// <summary>Held kernel ETW resource. The first holder opens it and the last holder releases it.</summary>
+public sealed class KernelEtwSessionBroker : IKernelEtwSessionBroker, IDisposable
 {
     private readonly object lifetimeGate = new();
     private readonly KernelEtwSessionOwner owner;
     private bool disposed;
-    private int stoppingRuns;
+    private int holders;
+    private Timer? reconciliation;
     private readonly TimeSpan reconciliationInterval;
-    private readonly IBusinessBlockDiagnostics? blockDiagnostics;
-    public KernelEtwSessionBroker(ILogger<KernelEtwSessionBroker> logger,
-        IEtwConsumerThreadObserver? consumerThreadObserver = null,
-        IBusinessBlockDiagnostics? blockDiagnostics = null)
+    private readonly ILogger<KernelEtwSessionBroker> logger;
+    public KernelEtwSessionBroker(ILogger<KernelEtwSessionBroker> logger)
     {
-        this.blockDiagnostics = blockDiagnostics;
+        this.logger = logger;
         owner = new(new TraceEventKernelEtwSessionRuntimeFactory(sessionName =>
             ProcessOwnedEtwSessionOrphanReconciler.CreateDefault(logger).Reconcile(
-                ResourceManagerEtwSessionNames.KernelPrefix, ResourceManagerEtwSessionNames.CurrentOwner, sessionName), consumerThreadObserver, BlockUids.KernelEtwSessionBroker),
-            new(value =>
-            {
-                Report(logger, value);
-                if (value.Exception is { } error)
-                    blockDiagnostics?.ReportFailure(BlockUids.KernelEtwSessionBroker, error, "kernel-session");
-            }));
+                ResourceManagerEtwSessionNames.KernelPrefix, ResourceManagerEtwSessionNames.CurrentOwner, sessionName)),
+            new(value => Report(logger, value)));
         reconciliationInterval = TimeSpan.FromSeconds(5);
     }
     internal KernelEtwSessionBroker(IKernelEtwSessionRuntimeFactory factory, ILogger<KernelEtwSessionBroker> logger)
@@ -34,6 +26,7 @@ public sealed class KernelEtwSessionBroker : BackgroundService, IKernelEtwSessio
     internal KernelEtwSessionBroker(IKernelEtwSessionRuntimeFactory factory, ILogger<KernelEtwSessionBroker> logger, TimeSpan interval)
     {
         if (interval <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(interval));
+        this.logger = logger;
         reconciliationInterval = interval;
         owner = new(factory, new(value => Report(logger, value)));
     }
@@ -46,73 +39,57 @@ public sealed class KernelEtwSessionBroker : BackgroundService, IKernelEtwSessio
             KernelEtwDiagnosticLevel.Warning => LogLevel.Warning,
             _ => LogLevel.Error
         }, value.Exception, value.MessageTemplate, value.Arguments.ToArray());
-    public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request) => owner.Subscribe(request);
-    public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
-    public override Task StartAsync(CancellationToken cancellationToken)
+    public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
     {
         lock (lifetimeGate)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
-            if (stoppingRuns != 0 || ExecuteTask is { IsCompleted: false })
-                throw new InvalidOperationException("The previous kernel ETW run has not drained.");
-            // BackgroundService can cancel its scheduled delegate before ExecuteAsync
-            // ever enters. Finish that run's resources before resuming the owner.
-            if (ExecuteTask is not null) owner.StopRun();
-            owner.ResumeRun();
-            return base.StartAsync(cancellationToken);
+            var subscription = owner.Subscribe(request);
+            if (holders++ == 0)
+                reconciliation = new Timer(_ => Reconcile(), null, reconciliationInterval, reconciliationInterval);
+            return new Holder(this, subscription);
         }
     }
-    public override async Task StopAsync(CancellationToken cancellationToken)
+    public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
+    private void Release(IKernelEtwSubscription subscription)
     {
-        Task? execution;
         lock (lifetimeGate)
         {
-            execution = ExecuteTask;
-            stoppingRuns++;
-        }
-        try { await base.StopAsync(cancellationToken); }
-        finally
-        {
-            bool drainOwner;
-            lock (lifetimeGate)
-            {
-                drainOwner = ReferenceEquals(ExecuteTask, execution) && (execution is null || execution.IsCompleted);
-            }
-            try
-            {
-                if (drainOwner) owner.StopRun();
-            }
+            try { subscription.Dispose(); }
             finally
             {
-                lock (lifetimeGate) stoppingRuns--;
+                if (--holders == 0)
+                {
+                    reconciliation?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                    reconciliation = null;
+                }
             }
         }
     }
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    private void Reconcile()
     {
-        try
-        {
-            while (!stoppingToken.IsCancellationRequested)
-            {
-                await Task.Delay(reconciliationInterval, stoppingToken);
-                using var segment = blockDiagnostics?.MeasureSegment(BlockUids.KernelEtwSessionBroker);
-                owner.Reconcile();
-            }
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
-        finally { owner.StopRun(); }
+        try { owner.Reconcile(); }
+        catch (Exception error) { logger.LogWarning(error, "Shared kernel ETW resource reconciliation failed."); }
     }
-    public override void Dispose()
+    public void Dispose()
     {
-        Task? execution;
         lock (lifetimeGate)
         {
+            if (disposed)
+            {
+                owner.Dispose();
+                return;
+            }
             disposed = true;
-            base.Dispose();
-            execution = ExecuteTask;
+            reconciliation?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            reconciliation = null;
+            owner.Dispose();
         }
-        try { execution?.GetAwaiter().GetResult(); }
-        catch (OperationCanceledException) when (execution is { IsCanceled: true }) { }
-        finally { owner.Dispose(); }
+    }
+    private sealed class Holder(KernelEtwSessionBroker broker, IKernelEtwSubscription subscription) : IKernelEtwSubscription
+    {
+        private KernelEtwSessionBroker? owner = broker;
+        public KernelEtwSessionSnapshot GetSnapshot() => subscription.GetSnapshot();
+        public void Dispose() => Interlocked.Exchange(ref owner, null)?.Release(subscription);
     }
 }

@@ -11,6 +11,8 @@ using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.Optimization;
 using ResourceManager.App.Infrastructure.ResourceBreakdown;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -45,6 +47,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var catalogProvider = new StaticProcessAttributionCatalogProvider(catalog);
         var inventoryReader = new ExactTwoCaptureWindowsProcessInventoryReader(
             WindowsProcessInventoryReader.Instance);
+        using var providerResources = new FiniteRealProviderResources();
         WindowsResourceBreakdownSampler? sampler = null;
         CpuMemoryCapturingSchedulingProcessFactSource? realSource = null;
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
@@ -54,14 +57,20 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             cpuCoreReader: new RecordingCpuCoreResidencyReader(() => null),
             processFactsFactory: runtimePlanProvider =>
             {
-                sampler = new WindowsResourceBreakdownSampler(
+                var plans = Assert.IsType<RuntimePlanProvider>(runtimePlanProvider);
+                providerResources.SubscriptionOwner = new HostManagerSamplingSubscriptionOwner(plans,
+                    new HostManagerSamplingSubscriptionRuntime(plans, new HostManagerDeploymentState()),
+                    NullLogger<HostManagerSamplingSubscriptionOwner>.Instance);
+                // This fixture performs exactly two finite captures. It supplies the
+                // real subscription owner without entering a background sampling block.
+                providerResources.Sampler = sampler = new WindowsResourceBreakdownSampler(
                     metricSampler: null!,
                     processAttributionCatalogProvider: catalogProvider,
                     residualBreakdownProvider: null!,
                     physicalDiskIoAttributionReader: null!,
                     networkAttributionReader: null!,
                     runtimePlanProvider: runtimePlanProvider,
-                    samplingSubscriptionOwner: null!,
+                    samplingSubscriptionOwner: providerResources.SubscriptionOwner,
                     processGpuReader: new PdhProcessGpuReader(),
                     processInventoryReader: inventoryReader);
                 realSource = new CpuMemoryCapturingSchedulingProcessFactSource(sampler);
@@ -1627,6 +1636,18 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         string AssemblyName,
         string AssemblyVersion,
         string ModuleVersionId);
+
+    private sealed class FiniteRealProviderResources : IDisposable
+    {
+        internal HostManagerSamplingSubscriptionOwner? SubscriptionOwner { get; set; }
+        internal WindowsResourceBreakdownSampler? Sampler { get; set; }
+
+        public void Dispose()
+        {
+            try { Sampler?.Dispose(); }
+            finally { SubscriptionOwner?.Dispose(); }
+        }
+    }
 
     private sealed class NoMatchPackageIdentityResolver : IRuntimePackageIdentityResolver
     {

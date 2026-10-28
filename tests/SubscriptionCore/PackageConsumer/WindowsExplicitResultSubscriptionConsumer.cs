@@ -25,7 +25,7 @@ internal static class WindowsExplicitResultSubscriptionConsumer
         var configuration = Configuration();
         await using var composition = new NativeFieldSubscriptionComposition(recordingBorrow,
             new SubscriptionRoleSettings(1, 1000, 1, 3000, 1000, 1000), in configuration,
-            failures.Enqueue, TimeSpan.FromMilliseconds(25));
+            failures.Enqueue);
         await composition.StartAsync(timeout.Token);
         using var fastDemand = composition.Acquire("recorded-fast-result-demand", [score], TimeSpan.FromMilliseconds(100));
 

@@ -67,7 +67,7 @@ internal static class GpuApiCapabilitySubscriptionConsumer
         var settings = new SubscriptionRoleSettings(2, 1000, 1, 3000, 1000, 1000);
         var configuration = Configuration();
         await using var composition = new NativeFieldSubscriptionComposition(borrow, settings, in configuration,
-            failure => failures.Enqueue($"{failure.Stage}: {failure.Error.Message}"), TimeSpan.FromMilliseconds(10));
+            failure => failures.Enqueue($"{failure.Stage}: {failure.Error.Message}"));
         await composition.StartAsync();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         await using (var stream = composition.SubscribeAsync("recorded-opengl-api-capabilities", [version, extension],
@@ -148,7 +148,7 @@ internal static class GpuApiCapabilitySubscriptionConsumer
         var settings = new SubscriptionRoleSettings(2, 1000, 1, 3000, 1000, 1000);
         var configuration = Configuration();
         await using var composition = new NativeFieldSubscriptionComposition(borrow, settings, in configuration,
-            failure => failures.Enqueue($"{failure.Stage}: {failure.Error.Message}"), TimeSpan.FromMilliseconds(10));
+            failure => failures.Enqueue($"{failure.Stage}: {failure.Error.Message}"));
         await composition.StartAsync();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         await using (var stream = composition.SubscribeAsync("recorded-opengl-limit-capabilities",
@@ -247,7 +247,7 @@ internal static class GpuApiCapabilitySubscriptionConsumer
         var settings = new SubscriptionRoleSettings(2, 1000, 1, 3000, 1000, 1000);
         var configuration = Configuration();
         await using var composition = new NativeFieldSubscriptionComposition(borrow, settings, in configuration,
-            failure => failures.Enqueue($"{failure.Stage}: {failure.Error.Message}"), TimeSpan.FromMilliseconds(10));
+            failure => failures.Enqueue($"{failure.Stage}: {failure.Error.Message}"));
         await composition.StartAsync();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         await using (var stream = composition.SubscribeAsync("recorded-vulkan-api-capabilities",

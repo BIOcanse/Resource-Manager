@@ -438,6 +438,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         publicationRevision = committed.PublicationRevision;
         lastEnvelopeSha256 = committed.FullEnvelopeSha256;
         Volatile.Write(ref committedState, committed.State);
+        PublishPendingOperationsLocked();
     }
 
     private PreparedCommittedState PrepareCommittedState(

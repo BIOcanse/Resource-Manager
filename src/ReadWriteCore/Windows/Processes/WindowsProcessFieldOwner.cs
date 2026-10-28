@@ -8,7 +8,7 @@ using ResourceManager.ReadWrite.Publications;
 namespace ResourceManager.ReadWrite.Windows.Processes;
 
 /// <summary>Owns the original process capture gate, two CPU lanes and canonical current slots.
-/// Explicit collection starts selected sources; construction and cached reads do not.</summary>
+/// Construction and cached reads do not acquire sources; the SDK host explicitly starts and stops network, disk and CPU residency capture.</summary>
 public sealed partial class WindowsProcessFieldOwner : IDisposable
 {
     internal SemaphoreSlim CaptureGate { get; } = new(1, 1);
@@ -51,6 +51,48 @@ public sealed partial class WindowsProcessFieldOwner : IDisposable
         if (borrowedBroker is not null) return new(borrowedBroker, null, cpuConfiguration) { borrowedGpuSource = borrowedPdhSource };
         var broker = new KernelEtwSessionOwner(new TraceEventKernelEtwSessionRuntimeFactory());
         return new(broker, broker, cpuConfiguration) { borrowedGpuSource = borrowedPdhSource };
+    }
+    /// <summary>Called by the SDK host's run entry to acquire this owner's network capture.
+    /// Field collection and cached reads never start it. Hosted product owners use their shared reader instead.</summary>
+    public void StartNetworkCapture()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
+        (network ?? throw new InvalidOperationException("This owner uses the hosted shared network reader and has no standalone network capture.")).Start();
+    }
+    /// <summary>Called when the SDK host's run returns to release its network capture.
+    /// Collection stays empty until the next explicit start.</summary>
+    public void StopNetworkCapture()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
+        (network ?? throw new InvalidOperationException("This owner uses the hosted shared network reader and has no standalone network capture.")).Stop();
+    }
+    /// <summary>Called by the SDK host's run entry to acquire this owner's physical-disk capture.
+    /// Field collection and cached reads never start it. Hosted product owners use their shared reader instead.</summary>
+    public void StartDiskCapture()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
+        (disk ?? throw new InvalidOperationException("This owner uses the hosted shared disk reader and has no standalone disk capture.")).Start();
+    }
+    /// <summary>Called when the SDK host's run returns to release its physical-disk capture.
+    /// Collection stays empty until the next explicit start.</summary>
+    public void StopDiskCapture()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
+        (disk ?? throw new InvalidOperationException("This owner uses the hosted shared disk reader and has no standalone disk capture.")).Stop();
+    }
+    /// <summary>Called by the SDK host's run entry to acquire this owner's CPU residency capture.
+    /// Field collection and cached reads never start it. Hosted product owners use their shared reader instead.</summary>
+    public void StartCpuResidencyCapture()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
+        (residency ?? throw new InvalidOperationException("This owner uses the hosted shared CPU residency reader and has no standalone CPU residency capture.")).EnsureStarted();
+    }
+    /// <summary>Called when the SDK host's run returns to release its CPU residency capture.
+    /// Field collection and subscription changes never release the run's holder.</summary>
+    public void StopCpuResidencyCapture()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
+        (residency ?? throw new InvalidOperationException("This owner uses the hosted shared CPU residency reader and has no standalone CPU residency capture.")).Stop();
     }
     public IReadWriteBackend Backend
     {
@@ -128,8 +170,6 @@ public sealed partial class WindowsProcessFieldOwner : IDisposable
             if (definitions.Any(static field => field.DatasetId == ProcessMetricDatasetIds.ObservedCpuResidency))
             {
                 if (residency is null) throw new InvalidOperationException("Hosted residency uses its original role6 reader.");
-                if (borrow is null) directResidencyDemand = true;
-                residency.EnsureStarted();
                 residency.Collect(permit);
                 var inventory = new ProcessMetricFieldSnapshot(batch.CapturedAt, null, [], rows.Select(row =>
                     new ProcessMetricFieldValues(row.ProcessId, row.StartKey?.ToString(System.Globalization.CultureInfo.InvariantCulture), [])).ToArray());

@@ -296,7 +296,7 @@ public sealed partial class EtwNetworkAttributionWindowTests
     }
 
     [Fact]
-    public void FrozenSourceStartsNoSessionAndPerformsNoIdentityQueries()
+    public void FrozenReadAcquiresNoSessionAndPerformsNoIdentityQueries()
     {
         var broker = new Broker();
         var zone = new EtwNetworkTcpIpMonitoringZone();
@@ -314,6 +314,26 @@ public sealed partial class EtwNetworkAttributionWindowTests
     }
 
     [Fact]
+    public async Task ExplicitHostedStartRetainsItsLeaseWhileReadsAreFrozen()
+    {
+        var broker = new Broker();
+        var zone = new EtwNetworkTcpIpMonitoringZone();
+        zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
+        using var reader = new EtwNetworkTcpIpAttributionReader(zone, broker,
+            NullLogger<EtwNetworkTcpIpAttributionReader>.Instance, () => 1000,
+            _ => throw new InvalidOperationException("Frozen reads cannot query process identity."));
+        StartReader(reader, broker);
+        try
+        {
+            Assert.Equal(NetworkAttributionProviderStates.Frozen, reader.Read(true).ProviderState.State);
+            Assert.Equal(1, broker.SubscribeCount);
+            Assert.Equal(0, broker.DisposeCount);
+        }
+        finally { await reader.StopAsync(CancellationToken.None); }
+        Assert.Equal(1, broker.DisposeCount);
+    }
+
+    [Fact]
     public void FreezeWhileIdentitiesAreBeingReadDiscardsTheWindow()
     {
         var broker = new Broker();
@@ -323,6 +343,7 @@ public sealed partial class EtwNetworkAttributionWindowTests
         using var reader = new EtwNetworkTcpIpAttributionReader(zone, broker,
             NullLogger<EtwNetworkTcpIpAttributionReader>.Instance, () => tick,
             _ => { zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze); return lease; });
+        StartReader(reader, broker);
         reader.Read(includeObservedTraffic: true);
         Transfer(reader, broker, 41, 100, true, false, IPAddress.Loopback, 1000, 100);
         tick = 2001;
@@ -344,6 +365,7 @@ public sealed partial class EtwNetworkAttributionWindowTests
         using var reader = new EtwNetworkTcpIpAttributionReader(zone, broker,
             NullLogger<EtwNetworkTcpIpAttributionReader>.Instance, () => tick,
             pid => new ProcessLease(pid, 100));
+        StartReader(reader, broker);
         reader.Read(includeObservedTraffic: true);
         Transfer(reader, broker, 41, 5000, true, false, IPAddress.Loopback, 1000, 100);
         zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
@@ -361,8 +383,9 @@ public sealed partial class EtwNetworkAttributionWindowTests
     {
         var broker = new Broker();
         long tick = 0;
-        using var reader = ObservationReader(broker, () => tick, pid => new ProcessLease(pid, 100));
+        using var reader = ObservationReader(broker, () => tick, pid => new ProcessLease(pid, 100), start: false);
         await reader.StartAsync(CancellationToken.None);
+        Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref broker.SubscribeCount) > 0, TimeSpan.FromSeconds(5)));
         reader.Read(includeObservedTraffic: true);
         Transfer(reader, broker, 41, 100, true, false, IPAddress.Loopback, 1000, 100);
 
@@ -373,8 +396,12 @@ public sealed partial class EtwNetworkAttributionWindowTests
     }
 
     private static EtwNetworkTcpIpAttributionReader ObservationReader(Broker broker, Func<long> clock,
-        Func<uint, IWindowsNetworkEndpointProcessLease?> open)
-        => new(new EtwNetworkTcpIpMonitoringZone(), broker, NullLogger<EtwNetworkTcpIpAttributionReader>.Instance, clock, open);
+        Func<uint, IWindowsNetworkEndpointProcessLease?> open, bool start = true)
+    {
+        var reader = new EtwNetworkTcpIpAttributionReader(new EtwNetworkTcpIpMonitoringZone(), broker,
+            NullLogger<EtwNetworkTcpIpAttributionReader>.Instance, clock, open);
+        return start ? StartReader(reader, broker) : reader;
+    }
 
     private static void Transfer(EtwNetworkTcpIpAttributionReader reader, Broker broker, int pid, int size,
         bool send, bool udp, IPAddress remote, long tick, ulong? fileTime)

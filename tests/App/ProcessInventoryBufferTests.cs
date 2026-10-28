@@ -120,7 +120,9 @@ public sealed class ProcessInventoryBufferTests(ITestOutputHelper output)
     [Fact]
     public async Task SamplerStopReleasesWorkspaceEvenWithoutABackgroundWorkerAndCanRestart()
     {
-        using var sampler = new WindowsResourceBreakdownSampler(null!, null!, null!, null!, null!, null!, null!, null!);
+        using var subscriptions = new HostManagerSamplingSubscriptionTestFixture(startOwner: false);
+        using var sampler = new WindowsResourceBreakdownSampler(null!, null!, null!, null!, null!,
+            subscriptions.Provider, subscriptions.Owner, null!);
         var owner = (WindowsProcessFieldOwner)typeof(WindowsResourceBreakdownSampler)
             .GetProperty("processFieldOwner", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(sampler)!;
         sampler.CaptureSchedulingProcessSampleAccounting();

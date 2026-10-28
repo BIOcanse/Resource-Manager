@@ -134,7 +134,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             store.Closing = () =>
             {
                 Assert.Equal(0, store.LiveLeases);
-                Assert.True(sampler!.CaptureSamplingWorkerTask() is null or { IsCompleted: true });
+                Assert.True(releasePlan.IsSet); // Plan/collection has drained before the worker returns its own output.
             };
         });
         sampler = new WindowsResourceBreakdownSampler(new StaticMetricSampler(CreateMemorySnapshot()),

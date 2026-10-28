@@ -8,6 +8,57 @@ namespace Resource_Manager_APP.Tests;
 public sealed class HostManagerSoftwareIdentityConfigurationTests
 {
     [Fact]
+    public void ReturningTheLastResourceDoesNotEraseSoftwareIdentityGenerationProofs()
+    {
+        var deployment = new HostManagerDeploymentState();
+        var provider = new RuntimePlanProvider(deployment);
+        provider.Publish(CreateRuntimePlan(1, HostManagerTestPlanFactory.CreatePlan()));
+        using var owner = new HostManagerSoftwareIdentityOwner(provider,
+            new HostManagerSoftwareIdentityRuntime(provider, deployment),
+            NullLogger<HostManagerSoftwareIdentityOwner>.Instance);
+        using (owner.Acquire()) { }
+        var initialAttempt = deployment.Snapshot.SoftwareIdentityCatalog.LastSettledAttemptId;
+        var drift = HostManagerTestPlanFactory.CreatePlan(root =>
+            root["hot_publish"]!["software_identity_catalog"]!["exact_text_score"] = 121);
+        provider.Publish(CreateRuntimePlan(2, drift));
+        var error = Assert.Throws<InvalidOperationException>(() => owner.Acquire());
+        Assert.Contains("cannot drift within one generation", error.Message, StringComparison.Ordinal);
+        Assert.Equal(initialAttempt, deployment.Snapshot.SoftwareIdentityCatalog.LastSettledAttemptId);
+        var next = HostManagerTestPlanFactory.CreatePlan(root =>
+        {
+            root["profile_revision"] = root["profile_revision"]!.GetValue<int>() + 1;
+            root["hot_publish"]!["software_identity_catalog"]!["exact_text_score"] = 121;
+        }, planEpoch: 2);
+        provider.Publish(CreateRuntimePlan(3, next));
+        using var reopened = owner.Acquire();
+        Assert.Equal(next.SoftwareIdentityCatalog.ConfigurationSha256, reopened.CatalogPlan.ConfigurationSha256);
+        Assert.True(deployment.Snapshot.SoftwareIdentityCatalog.LastSettledAttemptId > initialAttempt);
+    }
+
+    [Fact]
+    public void FirstHolderCreatesSharedSessionsAndFinalReturnClosesWithoutAHostLifecycle()
+    {
+        var deployment = new HostManagerDeploymentState();
+        var provider = new RuntimePlanProvider(deployment);
+        provider.Publish(CreateRuntimePlan(1, HostManagerTestPlanFactory.CreatePlan()));
+        using var owner = new HostManagerSoftwareIdentityOwner(provider,
+            new HostManagerSoftwareIdentityRuntime(provider, deployment),
+            NullLogger<HostManagerSoftwareIdentityOwner>.Instance);
+        Assert.Equal(HostManagerDeploymentStatus.Initializing, deployment.Snapshot.SoftwareIdentityResolution.Status);
+        var first = owner.Acquire();
+        var second = owner.Acquire();
+        var session = first.ResolutionSession;
+        Assert.Same(session, second.ResolutionSession);
+        first.Dispose();
+        _ = session.Capacity;
+        second.Dispose();
+        second.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => session.Capacity);
+        using var reopened = owner.Acquire();
+        Assert.NotSame(session, reopened.ResolutionSession);
+    }
+
+    [Fact]
     public void DefaultProfilePublishesExactCatalogAndResolutionPlans()
     {
         var plan = HostManagerTestPlanFactory.CreatePlan();
@@ -97,7 +148,7 @@ public sealed class HostManagerSoftwareIdentityConfigurationTests
     }
 
     [Fact]
-    public async Task OwnerSettlesBothModulesAndRejectsSameGenerationDrift()
+    public void OwnerSettlesBothModulesAndRejectsSameGenerationDrift()
     {
         var initial = HostManagerTestPlanFactory.CreatePlan();
         var deployment = new HostManagerDeploymentState();
@@ -107,7 +158,7 @@ public sealed class HostManagerSoftwareIdentityConfigurationTests
             provider,
             new HostManagerSoftwareIdentityRuntime(provider, deployment),
             NullLogger<HostManagerSoftwareIdentityOwner>.Instance);
-        await owner.StartAsync(CancellationToken.None);
+        using var workspaceHolding = owner.Acquire();
 
         Assert.Equal(
             HostManagerDeploymentStatus.InSync,

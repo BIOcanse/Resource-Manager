@@ -54,7 +54,7 @@ public sealed class ItemSamplingSubscriptionTrackerTests
         using var signal = new SemaphoreSlim(0, 1);
         var clock = new ManualWakeClock();
         var worker = new NativeSamplingSubscriptionWorker<MetricSampleRequest, SamplingOwnerToken>(
-            tracker, signal, _ => { }, failure => throw failure.Error, TimeSpan.Zero, clock);
+            tracker, signal, _ => { }, failure => throw failure.Error, clock);
         var wait = worker.GetType().GetMethod("WaitForDelaySegmentAsync", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
         var cancellations = 0;
         var observing = new AsyncLocal<bool> { Value = true };

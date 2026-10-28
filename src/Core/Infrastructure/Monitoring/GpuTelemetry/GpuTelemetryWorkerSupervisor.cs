@@ -116,6 +116,11 @@ public sealed class GpuTelemetryWorkerSupervisor(
         }
     }
 
+    internal Task? CaptureSamplingWorkerTask()
+    {
+        lock (gate) return samplingTask;
+    }
+
     public Task StartAsync(CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
@@ -159,8 +164,7 @@ public sealed class GpuTelemetryWorkerSupervisor(
     {
         var worker = new NativeSamplingSubscriptionWorker<GpuTelemetryWorkerRequest, SamplingOwnerToken>(
             subscriptions, demandSignal, static _ => { },
-            static failure => System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure.Error).Throw(),
-            TimeSpan.Zero);
+            static failure => System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure.Error).Throw());
         return worker.RunAsync(async (plan, token) =>
         {
             var outcome = await RefreshCacheAsync(plan.Request!, plan.OwnerToken, token);
@@ -433,6 +437,14 @@ public sealed class GpuTelemetryWorkerSupervisor(
         catch (Exception error)
         {
             logger.LogError(error, "GPU telemetry worker failed while draining for disposal.");
+            if (subscriptions.HasOutstandingOutputResources)
+            {
+                // The joined worker already attempted this release. Preserve its
+                // actual resource and fault for the next explicit Dispose call.
+                lock (gate)
+                    if (ReferenceEquals(samplingTask, task)) samplingTask = null;
+                throw;
+            }
         }
         lock (resourceDisposeGate)
         {

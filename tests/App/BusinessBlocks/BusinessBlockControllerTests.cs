@@ -36,11 +36,10 @@ public sealed class BusinessBlockControllerTests
         Assert.Equal(before.Decisions, scheduler.Read().Decisions);
         Assert.Equal(0, constructions);
         Assert.Throws<KeyNotFoundException>(() => scheduler.ReadState(133));
-        Assert.Throws<KeyNotFoundException>(() => scheduler.AcquireDependency(133, Reason()));
-        Assert.Throws<KeyNotFoundException>(() => { _ = scheduler.SetDemandAsync("unknown", 133, Reason()); });
-        Assert.Throws<KeyNotFoundException>(() => scheduler.Authority.Read<bool>(new(BackendItems.BlockDemand, 9999)));
+        Assert.Throws<KeyNotFoundException>(() => { _ = scheduler.StartAsync(133, Reason()); });
+        Assert.Throws<KeyNotFoundException>(() => scheduler.Authority.Read<bool>(ExecutionKey(9999)));
         Assert.Throws<KeyNotFoundException>(() => scheduler.Authority.Read<bool>(9999));
-        Assert.Empty(scheduler.Read().Demands);
+        Assert.All(scheduler.Read().Blocks, block => Assert.Equal(BusinessBlockState.Stopped, block.State));
     }
 
     [Theory]

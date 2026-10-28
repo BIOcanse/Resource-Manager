@@ -7,7 +7,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed class BusinessBlockConfigurationTests
 {
     [Fact]
-    public async Task EnablementDoesNotCreateDemandAndDisablePreservesExistingDemand()
+    public async Task ConfigurationGateDoesNotEnableExecutionAndDisablingPreservesTheExecutionFact()
     {
         var worker = new Probe();
         await using var scheduler = Create([Register(154, worker)]);
@@ -16,16 +16,16 @@ public sealed class BusinessBlockConfigurationTests
         {
             await enabled154.PublishAsync(true, Reason(BusinessBlockRequestKind.Configuration));
             Assert.Equal(0, worker.Runs);
-            Assert.Empty(scheduler.Read().Demands);
+            Assert.False(scheduler.Authority.Read<bool>(ExecutionKey(154)).GetValueOrDefault(false));
             await enabled154.PublishAsync(false, Reason(BusinessBlockRequestKind.Configuration));
             await scheduler.StartAsync(154, Reason());
             Assert.Equal(0, worker.Runs);
-            Assert.Single(scheduler.Read().Demands);
+            Assert.True(scheduler.Authority.Read<bool>(ExecutionKey(154)).Value);
             await enabled154.PublishAsync(true, Reason(BusinessBlockRequestKind.Configuration));
             await Until(() => worker.Runs == 1);
             await enabled154.PublishAsync(false, Reason(BusinessBlockRequestKind.Configuration));
             await State(scheduler, 154, BusinessBlockState.Stopped);
-            Assert.Single(scheduler.Read().Demands);
+            Assert.True(scheduler.Authority.Read<bool>(ExecutionKey(154)).Value);
             await enabled154.PublishAsync(true, Reason(BusinessBlockRequestKind.Configuration));
             await Until(() => worker.Runs == 2 && scheduler.ReadState(154) == BusinessBlockState.Running);
             Assert.Equal(1, worker.Returns);
@@ -34,7 +34,7 @@ public sealed class BusinessBlockConfigurationTests
     }
 
     [Fact]
-    public async Task ShutdownKeepsEveryDecisionEmptyForeverWhileLaterDemandFactsRemainRecorded()
+    public async Task ShutdownKeepsEveryDecisionEmptyForeverWhileLaterFixtureFactsRemainRecorded()
     {
         var worker = new Probe();
         await using var scheduler = Create([Register(154, worker)]);
@@ -46,14 +46,13 @@ public sealed class BusinessBlockConfigurationTests
         var runs = worker.Runs;
         var shutdownSequence = scheduler.Read().Decisions.Max(item => item.Sequence);
         foreach (var kind in Enum.GetValues<BusinessBlockRequestKind>())
-            await scheduler.SetDemandAsync("late:" + kind, 154, Reason(kind, "late-owner", "late-demand"));
+            await scheduler.StartAsync(154, Reason(kind, "late-owner", "late-execution-fact"));
         await enabled154.PublishAsync(false, Reason());
         await enabled154.PublishAsync(true, Reason());
         await scheduler.ShutdownAsync(Reason(cause: "repeat-shutdown"));
         var snapshot = scheduler.Read();
         Assert.True(snapshot.ShuttingDown);
-        Assert.Equal(4, snapshot.Demands.Count);
-        Assert.True(Assert.IsType<bool>(snapshot.Items.Single(item => item.ItemUid == BackendItems.BlockDemand && item.BlockUid == 154).Value));
+        Assert.True(Assert.IsType<bool>(snapshot.Items.Single(item => item.ItemUid == TestStateUids.ExecutionEnabled && item.BlockUid == 154).Value));
         Assert.All(snapshot.Decisions.Where(item => item.Sequence > shutdownSequence), item => Assert.Empty(item.ShouldRun));
         Assert.Equal(runs, worker.Runs);
         Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState(154));
@@ -73,11 +72,24 @@ public sealed class BusinessBlockConfigurationTests
     }
 
     [Fact]
-    public async Task SchedulerOwnedItemsRejectASecondOwner()
+    public async Task SchedulerAndFixtureFactsRejectASecondOwner()
     {
         await using var scheduler = Create([Register(154, new Probe())]);
         Assert.Throws<InvalidOperationException>(() => scheduler.Authority.ClaimWrite<bool>(BackendItems.ProgramShuttingDown));
-        Assert.Throws<InvalidOperationException>(() => scheduler.Authority.ClaimCell<bool>(BusinessBlockTestSupport.DemandKey(154)));
+        await scheduler.StartAsync(154, Reason());
+        Assert.Throws<InvalidOperationException>(() => scheduler.Authority.ClaimWrite<bool>(ExecutionKey(154)));
         Assert.Throws<ArgumentOutOfRangeException>(() => Create([], historyLimit: -1));
     }
+
+    [Fact]
+    public void EveryParentRequiresItsOwnExplicitDecisionRule()
+    {
+        var graph = TestBlockScheduler.CreateGraph([Register(154, new Probe())]);
+        var authority = CreateAuthority(graph.BlockIds);
+        var error = Assert.Throws<ArgumentException>(() => new ResourceManager.Shared.BusinessBlocks.BusinessBlockScheduler(
+            graph, _ => new Probe(), 128, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
+            "explicit-rule-fixture", static _ => null, authority, BackendItems.ProgramShuttingDown));
+        Assert.Contains($"Parent {BackendUids.Program} requires an explicit decision rule.", error.Message);
+    }
+
 }

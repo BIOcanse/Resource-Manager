@@ -4,6 +4,7 @@ using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.ProcessAttribution;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
+using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.ReadWrite;
 using ResourceManager.App.Infrastructure.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
@@ -17,6 +18,77 @@ namespace Resource_Manager_APP.Tests;
 public sealed class HostProcessPeriodicSubscriptionTests
 {
     private const string PrivateCommitField = "process_all_private_commit_actual";
+
+    [Fact]
+    public async Task ProcessFieldAndSnapshotStreamsSurviveAProducerFaultAndControllerRestart()
+    {
+        using var fixture = await Fixture.CreateAsync();
+        var backend = new ProducerSubscriptionCurrentBackend(fixture.Backend);
+        var selection = new ProcessFieldReadWriteBackend.Selection(fixture.Field, fixture.Api.ProcessId,
+            fixture.Api.CreationFileTime.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ProcessMetricFieldRegistry.Find(PrivateCommitField)!);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var stream = fixture.Sampler.SubscribeFieldAsync("held-through-fault", [fixture.Field],
+            [selection], TimeSpan.FromMilliseconds(100), FieldSubscriptionOptions.Default, backend, timeout.Token)
+            .GetAsyncEnumerator(timeout.Token);
+        var pending = stream.MoveNextAsync().AsTask();
+        await using var snapshots = fixture.Sampler.SubscribeAsync("snapshot-held-through-fault",
+            ResourceBreakdownSampleRequest.ForResourceTable([PrivateCommitField], new Dictionary<string, string>()),
+            TimeSpan.FromMilliseconds(100), timeout.Token).GetAsyncEnumerator(timeout.Token);
+        var pendingSnapshot = snapshots.MoveNextAsync().AsTask();
+        await using var controller = await ProducerSubscriptionRestartHost<WindowsResourceBreakdownSampler>
+            .StartAsync(fixture.Sampler, static producer => producer.CaptureSamplingWorkerTask(), backend);
+        var firstRun = await controller.FirstRun;
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => firstRun.WaitAsync(timeout.Token));
+        Assert.Equal(ProducerSubscriptionCurrentBackend.FailureMessage, failure.Message);
+        await controller.AssertControllerRestartedAsync();
+        Assert.True(await pending.WaitAsync(timeout.Token));
+        Assert.True(await pendingSnapshot.WaitAsync(timeout.Token));
+        Assert.Equal(MetricInteger.Parse("11"), Assert.Single(stream.Current).Value?.Integer);
+        Assert.True(fixture.Api.MemoryReads >= 3);
+    }
+
+    [Fact]
+    public async Task ProcessFieldDemandAcceptedWhileStoppingNotifiesActivityAndSurvivesNextEntry()
+    {
+        using var fixture = await Fixture.CreateAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var activity = new List<bool>();
+        fixture.SamplingOwner.Activity.RoleChanged += role =>
+        {
+            if (role == 3) activity.Add(fixture.SamplingOwner.Activity.HasInUseSubscriptions(3));
+        };
+        var first = fixture.Backend.Acquire("first-run", [fixture.Field], TimeSpan.FromMilliseconds(100));
+        fixture.Api.BlockNextMemoryRead();
+        await fixture.Sampler.StartAsync(CancellationToken.None);
+        await fixture.Api.MemoryReadBlocked.WaitAsync(timeout.Token);
+        var stop = fixture.Sampler.StopAsync(CancellationToken.None);
+        try
+        {
+            Assert.False(stop.IsCompleted);
+            first.Dispose();
+            Assert.False(fixture.SamplingOwner.Activity.HasInUseSubscriptions(3));
+            await using var late = fixture.Backend.SubscribeAsync("accepted-while-stopping", [fixture.Field],
+                TimeSpan.FromMilliseconds(100), new(FieldSubscriptionSamplingMode.FreshOnTrigger), timeout.Token)
+                .GetAsyncEnumerator(timeout.Token);
+            var pending = late.MoveNextAsync().AsTask();
+            Assert.False(pending.IsCompleted);
+            Assert.True(fixture.SamplingOwner.Activity.HasInUseSubscriptions(3));
+            Assert.Equal(new[] { true, false, true }, activity);
+            fixture.Api.PrivateCommit = 37;
+            fixture.Api.ReleaseBlockedMemoryRead();
+            await stop.WaitAsync(timeout.Token);
+            Assert.False(pending.IsCompleted);
+            await fixture.Sampler.StartAsync(CancellationToken.None);
+            Assert.True(await pending.WaitAsync(timeout.Token));
+            Assert.Equal(MetricInteger.Parse("37"), Assert.Single(late.Current).Value?.Integer);
+            await late.DisposeAsync();
+            Assert.False(fixture.SamplingOwner.Activity.HasInUseSubscriptions(3));
+            Assert.Equal(new[] { true, false, true, false }, activity);
+        }
+        finally { first.Dispose(); fixture.Api.ReleaseBlockedMemoryRead(); await fixture.Sampler.StopAsync(CancellationToken.None); }
+    }
 
     [Fact]
     public async Task RoleSixCpuResidencyIsNotAdmittedByTheRoleThreeProcessBackend()
@@ -126,7 +198,7 @@ public sealed class HostProcessPeriodicSubscriptionTests
     }
 
     [Fact]
-    public async Task BusyFreshCaptureIsUnavailableAndStopRetiresStreamWithoutDisablingDirectCapture()
+    public async Task BusyFreshCaptureIsUnavailableAndStopPreservesStreamWithoutDisablingDirectCapture()
     {
         using var fixture = await Fixture.CreateAsync();
         await fixture.Sampler.StartAsync(CancellationToken.None);
@@ -160,7 +232,7 @@ public sealed class HostProcessPeriodicSubscriptionTests
             TimeSpan.FromSeconds(4), streamCancellation.Token).GetAsyncEnumerator(streamCancellation.Token);
         var stoppedRound = stopped.MoveNextAsync().AsTask();
         await fixture.Sampler.StopAsync(CancellationToken.None);
-        Assert.False(await stoppedRound.WaitAsync(TimeSpan.FromSeconds(3)));
+        Assert.False(stoppedRound.IsCompleted);
 
         fixture.Api.ReleaseBlockedMemoryRead();
         _ = await directCapture.WaitAsync(TimeSpan.FromSeconds(4));
@@ -168,6 +240,9 @@ public sealed class HostProcessPeriodicSubscriptionTests
         var direct = await fixture.Backend.CollectAsync([fixture.Field], CancellationToken.None);
         Assert.Equal(MetricInteger.Parse("11"), Assert.Single(direct).Value?.Integer);
         Assert.True(fixture.Api.MemoryReads > readsBeforeDirectCapture);
+        await fixture.Sampler.StartAsync(CancellationToken.None);
+        Assert.True(await stoppedRound.WaitAsync(TimeSpan.FromSeconds(6)));
+        Assert.Equal(MetricInteger.Parse("11"), Assert.Single(stopped.Current).Value?.Integer);
     }
 
     private sealed class Fixture : IDisposable
@@ -193,6 +268,7 @@ public sealed class HostProcessPeriodicSubscriptionTests
 
         internal RecordedProcessApi Api { get; }
         internal WindowsResourceBreakdownSampler Sampler { get; }
+        internal HostManagerSamplingSubscriptionOwner SamplingOwner => subscriptions.Owner;
         internal HostProcessFieldBackend Backend { get; }
         internal FieldReference Field { get; private set; }
 

@@ -12,14 +12,71 @@ public sealed class VidMmBusinessBlockTests
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(10);
     private static readonly int BlockId = BackendUids.DxgkrnlVidMmEtwTelemetryZone;
 
+    [Fact]
+    public async Task CallbackFailureFinishesReportingBeforePublishingItsFinalRunResult()
+    {
+        await using var harness = VidMmBusinessBlockTestHarness.Create();
+        await harness.Fixture.SetNativeSubscriptionInUseAsync(BlockId, true).WaitAsync(TestTimeout);
+        await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Running);
+        var session = harness.Sessions.Current;
+        await session.ProcessEntered.WaitAsync(TestTimeout);
+        using var releasePublication = new ManualResetEventSlim();
+        var publicationEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var reader = harness.Fixture.Authority.Subscribe(BackendItems.VidMmNativeSessionAvailable,
+            "vidmm-held-failure-publication", _ =>
+            {
+                if (!harness.Fixture.Authority.Read<bool>(BackendItems.VidMmNativeSessionAvailable).Value)
+                {
+                    publicationEntered.TrySetResult();
+                    if (!releasePublication.Wait(TestTimeout))
+                        throw new TimeoutException("The test did not release the native failure publication.");
+                }
+                return Task.CompletedTask;
+            });
+        var error = new UnauthorizedAccessException("injected callback permission failure");
+        var signalFailure = typeof(DxgkrnlVidMmEtwTelemetryZone)
+            .GetMethod("SignalFailure", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var resultTask = harness.NextResultAsync();
+        var reporting = Task.Run(() => signalFailure.Invoke(harness.Zone, [error]));
+        try
+        {
+            await publicationEntered.Task.WaitAsync(TestTimeout);
+            await session.ProcessExited.WaitAsync(TestTimeout);
+            // Cleanup has run, but the callback still owns an unfinished failure publication.
+            await Task.WhenAny(resultTask, Task.Delay(TimeSpan.FromMilliseconds(250)));
+            Assert.False(resultTask.IsCompleted);
+        }
+        finally
+        {
+            releasePublication.Set();
+            await reporting.WaitAsync(TestTimeout);
+        }
+        var result = await resultTask;
+        Assert.Equal(BusinessBlockOutcome.Failed, result.Outcome);
+        Assert.Equal(BusinessBlockFailureStage.Run, result.FailureStage);
+        Assert.Equal(typeof(UnauthorizedAccessException).FullName, result.FailureType);
+        await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Stopped);
+        Assert.NotNull(harness.Availability.ReadFailure(BlockId));
+        Assert.False(harness.Fixture.Authority.Read<bool>(BackendItems.VidMmNativeSessionAvailable).Value);
+        Assert.Equal(1, session.DisposeCount);
+        Assert.False(session.ConsumerThread!.IsAlive);
+        Assert.Empty(harness.Diagnostics.Read(BlockId).Metrics.ActiveThreads);
+
+        signalFailure.Invoke(harness.Zone, [new IOException("late callback after run completion")]);
+        Assert.Equal(result, harness.Diagnostics.Read(BlockId).Result);
+        Assert.Equal(1, harness.Sessions.Attempts);
+        AssertFieldInUse(harness, true);
+        await harness.Fixture.SetNativeSubscriptionInUseAsync(BlockId, false).WaitAsync(TestTimeout);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task RunningPermissionFailureRemainsUnavailableAfterConfirmedCleanup(bool signalFailure)
     {
         await using var harness = VidMmBusinessBlockTestHarness.Create();
-        var subscription = harness.Zone.AcquireSubscription("running-permission-test", TimeSpan.FromSeconds(1));
-        await subscription.Ready.WaitAsync(TestTimeout);
+        await harness.Fixture.SetNativeSubscriptionInUseAsync(BlockId, true).WaitAsync(TestTimeout);
+        await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Running);
         var session = harness.Sessions.Current;
         await session.ProcessEntered.WaitAsync(TestTimeout);
         var error = new UnauthorizedAccessException("injected running native permission failure");
@@ -31,7 +88,7 @@ public sealed class VidMmBusinessBlockTests
         Assert.Equal(BusinessBlockOutcome.Failed, result.Outcome);
         Assert.Equal(BusinessBlockFailureStage.Run, result.FailureStage);
         Assert.Equal(typeof(UnauthorizedAccessException).FullName, result.FailureType);
-        await EtwTestRunRecorder.UntilAsync(() => harness.Zone.State == "Stopped");
+        await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Stopped);
         Assert.NotNull(harness.Availability.ReadFailure(BackendUids.DxgkrnlVidMmEtwTelemetryZone));
         await Task.Delay(TimeSpan.FromMilliseconds(100));
         Assert.Equal(1, harness.Sessions.Attempts);
@@ -41,38 +98,40 @@ public sealed class VidMmBusinessBlockTests
         Assert.False(Assert.IsType<bool>(Assert.Single(harness.Controller.Read().Items,
             fact => fact.ItemUid == BackendItems.VidMmNativeSessionAvailable).Value));
         Assert.Empty(harness.Diagnostics.Read(BlockId).Metrics.ActiveThreads);
-        Assert.Single(harness.Controller.Read().Demands, demand => demand.BlockId == BlockId);
-        await EtwTestRunRecorder.ReleaseAsync(subscription);
+        AssertFieldInUse(harness, true);
+        await harness.Fixture.SetNativeSubscriptionInUseAsync(BlockId, false).WaitAsync(TestTimeout);
+        await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Stopped);
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task UnreleasedRuntimePublishesUnavailableAndParentDoesNotRestartHeldDemand(bool creationCleanupFailure)
+    public async Task UnreleasedRuntimePublishesUnavailableAndParentDoesNotRestartActiveField(bool creationCleanupFailure)
     {
         await using var harness = VidMmBusinessBlockTestHarness.Create();
         if (creationCleanupFailure)
             harness.Sessions.BeforeCreate = () => throw new KernelEtwSessionCreationCleanupException(
                 new IOException("create failed"), new IOException("cleanup failed"));
-        var subscription = harness.Zone.AcquireSubscription("unreleased-runtime", TimeSpan.FromSeconds(1));
+        await harness.Fixture.SetNativeSubscriptionInUseAsync(BlockId, true).WaitAsync(TestTimeout);
         if (!creationCleanupFailure)
         {
-            await subscription.Ready.WaitAsync(TestTimeout);
+            await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Running);
             var session = harness.Sessions.Current;
             await session.ProcessEntered.WaitAsync(TestTimeout);
             session.BeforeDispose = () => throw new IOException("disposal failed");
             session.Complete();
         }
         Assert.Equal(BusinessBlockOutcome.Failed, (await harness.NextResultAsync()).Outcome);
-        await EtwTestRunRecorder.UntilAsync(() => harness.Zone.State == "Stopped");
+        await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Stopped);
         Assert.NotNull(harness.Availability.ReadFailure(BackendUids.DxgkrnlVidMmEtwTelemetryZone));
         await Task.Delay(TimeSpan.FromMilliseconds(100));
         Assert.Equal(1, harness.Sessions.Attempts);
         Assert.False(Assert.IsType<bool>(Assert.Single(harness.Controller.Read().Items,
             fact => fact.ItemUid == BackendItems.VidMmNativeSessionAvailable).Value));
-        Assert.Single(harness.Controller.Read().Demands, demand => demand.BlockId == BlockId);
+        AssertFieldInUse(harness, true);
         Assert.Empty(harness.Diagnostics.Read(BlockId).Metrics.ActiveThreads);
-        await EtwTestRunRecorder.ReleaseAsync(subscription);
+        await harness.Fixture.SetNativeSubscriptionInUseAsync(BlockId, false).WaitAsync(TestTimeout);
+        await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Stopped);
     }
 
     [Theory]
@@ -84,11 +143,11 @@ public sealed class VidMmBusinessBlockTests
         var error = new UnauthorizedAccessException("injected non-admin ETW startup");
         if (afterCreation) harness.Sessions.Configure = session => session.BindFailure = error;
         else harness.Sessions.BeforeCreate = () => throw error;
-        var subscription = harness.Zone.AcquireSubscription("permission-test", TimeSpan.FromSeconds(1));
+        await harness.Fixture.SetNativeSubscriptionInUseAsync(BlockId, true).WaitAsync(TestTimeout);
         Assert.Equal(BusinessBlockOutcome.Failed, (await harness.NextResultAsync()).Outcome);
-        await EtwTestRunRecorder.UntilAsync(() => harness.Zone.State == "Stopped");
+        await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Stopped);
         Assert.NotNull(harness.Availability.ReadFailure(BackendUids.DxgkrnlVidMmEtwTelemetryZone));
-        var second = harness.Zone.AcquireSubscription("another-consumer", TimeSpan.FromSeconds(1));
+        await harness.Fixture.SetNativeSubscriptionInUseAsync(BlockId, true).WaitAsync(TestTimeout);
         await Task.Delay(TimeSpan.FromMilliseconds(100));
         Assert.Equal(1, harness.Sessions.Attempts);
         Assert.Equal("Stopped", harness.Zone.State);
@@ -97,12 +156,12 @@ public sealed class VidMmBusinessBlockTests
         Assert.False(Assert.IsType<bool>(Assert.Single(harness.Controller.Read().Items,
             fact => fact.ItemUid == BackendItems.VidMmNativeSessionAvailable).Value));
         if (afterCreation) Assert.Equal(1, harness.Sessions.Current.DisposeCount);
-        await EtwTestRunRecorder.ReleaseAsync(subscription);
-        await EtwTestRunRecorder.ReleaseAsync(second);
+        await harness.Fixture.SetNativeSubscriptionInUseAsync(BlockId, false).WaitAsync(TestTimeout);
+        await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Stopped);
     }
 
     [Fact]
-    public async Task DecisionDispatchDoesNotWaitForNativeStartupAndDomainReleaseWaitsForNativeDrain()
+    public async Task DecisionDispatchDoesNotWaitForNativeStartupAndStoppedWaitsForNativeDrain()
     {
         await using var harness = VidMmBusinessBlockTestHarness.Create();
         using var startGate = new ManualResetEventSlim();
@@ -110,15 +169,13 @@ public sealed class VidMmBusinessBlockTests
         var creating = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var disposing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         harness.Sessions.BeforeCreate = () => { creating.TrySetResult(); startGate.Wait(TestTimeout); };
-        var dependency = harness.Zone.AcquireSubscription("native-readiness", TimeSpan.FromSeconds(1));
+        await harness.Fixture.SetNativeSubscriptionInUseAsync(BlockId, true).WaitAsync(TestTimeout);
         try
         {
             await creating.Task.WaitAsync(TestTimeout);
-            await harness.Controller.SetDemandAsync(Assert.Single(harness.Controller.Read().Demands,
-                    demand => demand.BlockId == BlockId).Key, BlockId,
-                new(BusinessBlockRequestKind.Configuration, "test", "same-current-enable", 0)).WaitAsync(TestTimeout);
+            await harness.Fixture.SetNativeSubscriptionInUseAsync(BlockId, true).WaitAsync(TestTimeout);
             Assert.Equal("Starting", harness.Zone.State);
-            var ready = Task.Run(async () => await dependency.Ready);
+            var ready = harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Running);
             Assert.False(ready.IsCompleted);
             startGate.Set();
             await ready.WaitAsync(TestTimeout);
@@ -126,7 +183,8 @@ public sealed class VidMmBusinessBlockTests
             var session = harness.Sessions.Current;
             await session.ProcessEntered.WaitAsync(TestTimeout);
             session.BeforeDispose = () => { disposing.TrySetResult(); stopGate.Wait(TestTimeout); };
-            var released = dependency.DisposeAsync().AsTask();
+            await harness.Fixture.SetNativeSubscriptionInUseAsync(BlockId, false).WaitAsync(TestTimeout);
+            var released = harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Stopped);
             await disposing.Task.WaitAsync(TestTimeout);
             Assert.Equal("Stopping", harness.Zone.State);
             Assert.False(released.IsCompleted);
@@ -134,10 +192,16 @@ public sealed class VidMmBusinessBlockTests
             stopGate.Set();
             await released.WaitAsync(TestTimeout);
             await harness.NextResultAsync();
-            await EtwTestRunRecorder.UntilAsync(() => harness.Zone.State == "Stopped");
+            await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Stopped);
             Assert.False(session.ConsumerThread.IsAlive);
         }
-        finally { startGate.Set(); stopGate.Set(); await EtwTestRunRecorder.ReleaseAsync(dependency); }
+        finally
+        {
+            startGate.Set();
+            stopGate.Set();
+            await harness.Fixture.SetNativeSubscriptionInUseAsync(BlockId, false).WaitAsync(TestTimeout);
+            await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Stopped);
+        }
     }
 
     [Fact]
@@ -164,11 +228,11 @@ public sealed class VidMmBusinessBlockTests
     }
 
     [Fact]
-    public async Task MultipleSubscriptionsShareOneRunAndLastWithdrawalJoinsTheConsumerThread()
+    public async Task RepeatedActiveFieldUsesOneRunAndWithdrawalJoinsTheConsumerThread()
     {
         await using var harness = VidMmBusinessBlockTestHarness.Create();
-        var slow = harness.Zone.AcquireSubscription("residual-slow", TimeSpan.FromSeconds(30));
-        await slow.Ready.WaitAsync(TestTimeout);
+        await harness.Fixture.SetNativeSubscriptionInUseAsync(BlockId, true).WaitAsync(TestTimeout);
+        await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Running);
         var session = harness.Sessions.Current;
         await session.ProcessEntered.WaitAsync(TestTimeout);
         var registration = Assert.Single(harness.Observer.Registrations);
@@ -182,21 +246,17 @@ public sealed class VidMmBusinessBlockTests
         harness.Zone.ObserveProcessMemory(41, "game.exe", 64 * 1024 * 1024,
             "VidMmProcessUsageChange", checked((ulong)now.UtcDateTime.ToFileTimeUtc()), now);
         var evidence = Assert.Single(harness.Zone.ReadEvidence(TimeSpan.FromSeconds(45)));
-        var fast = harness.Zone.AcquireSubscription("residual-fast", TimeSpan.FromSeconds(1));
-        await fast.Ready.WaitAsync(TestTimeout);
+        await harness.Fixture.SetNativeSubscriptionInUseAsync(BlockId, true).WaitAsync(TestTimeout);
         Assert.Equal(1, harness.Sessions.Attempts);
         var thread = Assert.Single(harness.Diagnostics.Read(BlockId).Metrics.ActiveThreads);
         Assert.True(thread.NativeThreadId > 0);
         Assert.Equal(session.SessionName, thread.SessionName);
-        Assert.Equal(2, harness.Controller.Read().Demands.Count(demand => demand.BlockId == BlockId));
-        Assert.Contains(harness.Controller.Read().Demands, demand => demand.Reason.Owner == "residual-slow"
-            && demand.Reason.ConfigurationOrDependency == "gpu-vram-residual-subscription");
-        await EtwTestRunRecorder.ReleaseAsync(slow);
+        AssertFieldInUse(harness, true);
         Assert.Equal("Running", harness.Zone.State);
         Assert.Equal(0, session.DisposeCount);
-        await EtwTestRunRecorder.ReleaseAsync(fast);
+        await harness.Fixture.SetNativeSubscriptionInUseAsync(BlockId, false).WaitAsync(TestTimeout);
         Assert.Equal(BusinessBlockOutcome.Stopped, (await harness.NextResultAsync()).Outcome);
-        await EtwTestRunRecorder.UntilAsync(() => harness.Zone.State == "Stopped");
+        await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Stopped);
         Assert.Equal(1, session.DisposeCount);
         Assert.NotSame(session.ConsumerThread, session.DisposeThread);
         Assert.True(session.ConsumerWasAliveAtDispose);
@@ -205,16 +265,17 @@ public sealed class VidMmBusinessBlockTests
         Assert.True(registration.IsDisposed);
         Assert.Equal(evidence, Assert.Single(harness.Zone.ReadEvidence(TimeSpan.FromSeconds(45))));
         Assert.Empty(harness.Diagnostics.Read(BlockId).Metrics.ActiveThreads);
+        AssertFieldInUse(harness, false);
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task SessionReturnRecordsItsOwnResultAndParentRestartsHeldDemand(bool fail)
+    public async Task SessionReturnRecordsItsOwnResultAndParentRestartsActiveField(bool fail)
     {
         await using var harness = VidMmBusinessBlockTestHarness.Create();
-        var dependency = harness.Zone.AcquireSubscription("residual-consumer", TimeSpan.FromSeconds(5));
-        await dependency.Ready.WaitAsync(TestTimeout);
+        await harness.Fixture.SetNativeSubscriptionInUseAsync(BlockId, true).WaitAsync(TestTimeout);
+        await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Running);
         var session = harness.Sessions.Current;
         await session.ProcessEntered.WaitAsync(TestTimeout);
         var error = fail ? new IOException("injected VidMm failure") : null;
@@ -236,28 +297,29 @@ public sealed class VidMmBusinessBlockTests
         Assert.False(session.ConsumerThread!.IsAlive);
         Assert.Equal(1, session.DisposeCount);
         await EtwTestRunRecorder.UntilAsync(() => harness.Sessions.Attempts == 2);
-        await dependency.Ready.WaitAsync(TestTimeout);
+        await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Running);
         Assert.Equal("Running", harness.Zone.State);
         if (fail) Assert.Empty(harness.Zone.ReadEvidence(TimeSpan.FromSeconds(45)));
         else Assert.Equal(evidence, Assert.Single(harness.Zone.ReadEvidence(TimeSpan.FromSeconds(45))));
-        Assert.Single(harness.Controller.Read().Demands, demand => demand.BlockId == BlockId);
-        Assert.False(dependency.Released.IsCompleted);
-        await EtwTestRunRecorder.ReleaseAsync(dependency);
+        AssertFieldInUse(harness, true);
+        await harness.Fixture.SetNativeSubscriptionInUseAsync(BlockId, false).WaitAsync(TestTimeout);
+        await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Stopped);
     }
 
     [Fact]
-    public async Task ActiveDemandDoesNotExpireWhenThereAreNoEvidenceReads()
+    public async Task ActiveFieldDoesNotExpireWhenThereAreNoEvidenceReads()
     {
         await using var harness = VidMmBusinessBlockTestHarness.Create();
-        var dependency = harness.Zone.AcquireSubscription("idle-consumer", TimeSpan.FromSeconds(30));
-        await dependency.Ready.WaitAsync(TestTimeout);
+        await harness.Fixture.SetNativeSubscriptionInUseAsync(BlockId, true).WaitAsync(TestTimeout);
+        await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Running);
         var session = harness.Sessions.Current;
         await session.ProcessEntered.WaitAsync(TestTimeout);
         await Task.Delay(TimeSpan.FromSeconds(6.25));
         Assert.Equal("Running", harness.Zone.State);
         Assert.Equal(1, harness.Sessions.Attempts);
         Assert.Equal(0, session.DisposeCount);
-        await EtwTestRunRecorder.ReleaseAsync(dependency);
+        await harness.Fixture.SetNativeSubscriptionInUseAsync(BlockId, false).WaitAsync(TestTimeout);
+        await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Stopped);
         Assert.Equal(BusinessBlockOutcome.Stopped, (await harness.NextResultAsync()).Outcome);
     }
 
@@ -265,8 +327,8 @@ public sealed class VidMmBusinessBlockTests
     public async Task FreezeAndThawRetainEvidenceWhileNativeResourcesAreReleased()
     {
         await using var harness = VidMmBusinessBlockTestHarness.Create();
-        var dependency = harness.Zone.AcquireSubscription("residual-consumer", TimeSpan.FromSeconds(30));
-        await dependency.Ready.WaitAsync(TestTimeout);
+        await harness.Fixture.SetNativeSubscriptionInUseAsync(BlockId, true).WaitAsync(TestTimeout);
+        await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Running);
         var firstSession = harness.Sessions.Current;
         await firstSession.ProcessEntered.WaitAsync(TestTimeout);
         var now = DateTimeOffset.UtcNow;
@@ -274,15 +336,22 @@ public sealed class VidMmBusinessBlockTests
             "VidMmProcessUsageChange", checked((ulong)now.UtcDateTime.ToFileTimeUtc()), now);
         var evidence = Assert.Single(harness.Zone.ReadEvidence(TimeSpan.FromSeconds(45)));
         await harness.Zone.ApplyModeAsync(ResourceManagerComputeZoneMode.Freeze).WaitAsync(TestTimeout);
+        await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Stopped);
         Assert.Equal(BusinessBlockOutcome.Stopped, (await harness.NextResultAsync()).Outcome);
         Assert.Equal(evidence, Assert.Single(harness.Zone.ReadEvidence(TimeSpan.FromSeconds(45))));
         Assert.Equal(1, firstSession.DisposeCount);
         Assert.False(firstSession.ConsumerThread!.IsAlive);
+        AssertFieldInUse(harness, true);
         await harness.Zone.ApplyModeAsync(ResourceManagerComputeZoneMode.Normal).WaitAsync(TestTimeout);
-        await dependency.Ready.WaitAsync(TestTimeout);
+        await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Running);
         Assert.Equal(2, harness.Sessions.Attempts);
         Assert.Equal(evidence, Assert.Single(harness.Zone.ReadEvidence(TimeSpan.FromSeconds(45))));
         Assert.Equal("Running", harness.Zone.State);
-        await EtwTestRunRecorder.ReleaseAsync(dependency);
+        await harness.Fixture.SetNativeSubscriptionInUseAsync(BlockId, false).WaitAsync(TestTimeout);
+        await harness.Fixture.WaitForStateAsync(BlockId, BusinessBlockState.Stopped);
     }
+
+    private static void AssertFieldInUse(VidMmBusinessBlockTestHarness harness, bool expected)
+        => Assert.Equal(expected, Assert.IsType<bool>(Assert.Single(harness.Controller.Read().Items,
+            item => item.ItemUid == BackendItems.VramResidualInUse).Value));
 }

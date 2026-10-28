@@ -64,7 +64,7 @@ public sealed partial class EtwCpuCoreResidencyReader
         {
             lock (subscriptionGate)
             {
-                if (stopped) throw new InvalidOperationException("The CPU-residency reader has stopped.");
+                ObjectDisposedException.ThrowIf(ownedResourcesDisposed, this);
                 var flags = NativeSamplingSubscriptionSourceFlags.PeriodicTriggers;
                 if (options.SamplingMode == FieldSubscriptionSamplingMode.FreshOnTrigger)
                     flags |= NativeSamplingSubscriptionSourceFlags.FreshOnTrigger;

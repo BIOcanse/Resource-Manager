@@ -96,7 +96,8 @@ public sealed class NormalReadOnlyServiceGraphTests
         Assert.DoesNotContain(hostedServices, static service => service.GetType().Name == "GpuGraphicsApiDiscoveryService");
         AssertNoHostedAlias<SqlitePortableSoftwareRegistry>(hostedServices);
         AssertNoHostedAlias<HostManagerPublicServiceCoordinatorOwner>(hostedServices);
-        AssertHostedAlias<HostManagerDisplayCoordinatorOwner>(hostedServices);
+        Assert.DoesNotContain(hostedServices, service => service.GetType().IsGenericType
+            && service.GetType().GenericTypeArguments.Contains(typeof(HostManagerDisplayCoordinatorOwner)));
         Assert.False(host.Services
             .GetRequiredService<HostManagerDisplayCoordinatorOwner>()
             .PersistenceEnabled);
@@ -137,14 +138,14 @@ public sealed class NormalReadOnlyServiceGraphTests
         var disabled = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             portableSoftwareRegistry.RefreshAsync(CancellationToken.None));
         Assert.Contains("profile-disabled", disabled.Message, StringComparison.Ordinal);
-        var observeDisabled = Assert.Throws<InvalidOperationException>(() =>
-            portableSoftwareRegistry.Observe(new PortableSoftwareObservation(
+        var observeDisabled = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            portableSoftwareRegistry.ObserveAsync(new PortableSoftwareObservation(
                 "test",
                 "test",
                 "Test",
                 "portable",
                 @"C:\Test\test.exe",
-                @"C:\Test")));
+                @"C:\Test"), CancellationToken.None));
         Assert.Contains("profile-disabled", observeDisabled.Message, StringComparison.Ordinal);
         var confirmDisabled = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             portableSoftwareRegistry.ConfirmRootPathAsync(

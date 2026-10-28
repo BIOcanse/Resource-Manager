@@ -46,6 +46,22 @@ internal sealed partial class HostManagerTransactionJournalRuntime : IAsyncDispo
     private NativeTransactionJournalOwner? journalOwner;
     private HostManagerTransactionJournalShutdownResult? lastShutdownResult;
     private NativeTransactionJournalSnapshot? lastSnapshot;
+    private int ownedStatePending = -1;
+    internal bool? OwnedStatePendingPublication => Volatile.Read(ref ownedStatePending) switch
+    {
+        < 0 => null,
+        0 => false,
+        _ => true
+    };
+    internal bool OwnedStatePending => OwnedStatePendingPublication == true;
+    internal event Action? OwnedStateChanged;
+
+    internal void PublishOwnedState(NativeTransactionJournalSnapshot snapshot)
+    {
+        var pending = snapshot.Records.Count != 0;
+        if (Interlocked.Exchange(ref ownedStatePending, pending ? 1 : 0) != (pending ? 1 : 0))
+            OwnedStateChanged?.Invoke();
+    }
     private NativeTransactionJournalPayloadStore? payloadStore;
     private bool payloadReconciliationRequired = true;
     private ulong nextAdmissionId;
@@ -558,6 +574,7 @@ internal sealed partial class HostManagerTransactionJournalRuntime : IAsyncDispo
     internal void ObserveSnapshot(NativeTransactionJournalSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        PublishOwnedState(snapshot);
         lock (sync)
         {
             lastSnapshot = snapshot;
@@ -664,6 +681,7 @@ internal sealed partial class HostManagerTransactionJournalRuntime : IAsyncDispo
                 configuration.PayloadByteBudget);
             lock (sync) { payloadStore = openedPayloadStore; }
             var snapshot = await openedOwner.ReadSnapshotAsync(cancellationToken);
+            PublishOwnedState(snapshot);
             lock (sync)
             {
                 StartupSnapshot = snapshot;

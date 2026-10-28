@@ -37,7 +37,7 @@ public sealed class EtwSystemInterruptSnapshotSource(
     private bool disposed;
     private bool ownedResourcesDisposed;
     private long nextLeaseId;
-    private ResourceManagerComputeZoneMode currentComputeMode = ResourceManagerComputeZoneMode.Normal;
+    private volatile ResourceManagerComputeZoneMode currentComputeMode = ResourceManagerComputeZoneMode.Normal;
     private volatile string state = SystemInterruptProviderStates.Idle;
     private volatile string message = "ETW 系统中断监控按报告需求启动。";
     private SystemInterruptSnapshot latestSnapshot =
@@ -104,35 +104,33 @@ public sealed class EtwSystemInterruptSnapshotSource(
 
     public void ApplyMode(ResourceManagerComputeZoneMode mode)
     {
-        currentComputeMode = mode;
-        if (mode == ResourceManagerComputeZoneMode.Freeze)
+        lock (subscriptionGate)
         {
-            StopSession(
-                "ETW 系统中断监控已按功能区冻结停止。",
-                SystemInterruptProviderStates.Frozen);
+            if (disposed || currentComputeMode == mode) return;
+            lock (eventGate)
+            {
+                if (currentComputeMode == ResourceManagerComputeZoneMode.Freeze
+                    && Volatile.Read(ref currentSession) is { } session)
+                    session.ResetWindow(readTickMilliseconds(), session.Window.EventsLost, preserveModules: true);
+                currentComputeMode = mode;
+                if (mode == ResourceManagerComputeZoneMode.Freeze)
+                    PublishFrozen();
+            }
         }
-        else
-        {
-            SignalDemand();
-        }
+        SignalDemand();
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var worker = new NativeSamplingSubscriptionWorker<InterruptSampleRequest, SamplingOwnerToken>(
             subscriptions, demandSignal,
-            items =>
-            {
-                if (items.Count == 0 && HasSessionLease)
-                    StopSession("ETW 系统中断监控已因无订阅而停止。", publishStoppedValue: false);
-            },
-            static failure => System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure.Error).Throw(),
-            TimeSpan.Zero);
+            static _ => { },
+            static failure => System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure.Error).Throw());
         try
         {
+            EnsureStarted();
             await worker.RunAsync((plan, _) =>
             {
-                EnsureStarted();
                 var sampled = TryPublishCurrentSnapshot(readUtcNow(), plan.OwnerToken);
                 return Task.FromResult(!plan.OwnerToken.IsActive ? SubscriptionSampleCompletion.Skipped
                     : sampled ? SubscriptionSampleCompletion.Sampled : SubscriptionSampleCompletion.Failed);
@@ -208,11 +206,6 @@ public sealed class EtwSystemInterruptSnapshotSource(
 
     private void EnsureStarted()
     {
-        if (currentComputeMode == ResourceManagerComputeZoneMode.Freeze)
-        {
-            return;
-        }
-
         lock (subscriptionGate)
         {
             if (disposed) return;
@@ -231,9 +224,14 @@ public sealed class EtwSystemInterruptSnapshotSource(
             }
             catch (Exception ex)
             {
-                state = SystemInterruptProviderStates.Unavailable;
-                message = $"ETW 系统中断监控启动失败：{ex.Message}";
-                PublishUnavailable(state, message);
+                if (currentComputeMode == ResourceManagerComputeZoneMode.Freeze)
+                    PublishFrozen();
+                else
+                {
+                    state = SystemInterruptProviderStates.Unavailable;
+                    message = $"ETW 系统中断监控启动失败：{ex.Message}";
+                    PublishUnavailable(state, message);
+                }
                 logger.LogWarning(ex, "Failed to start ETW system interrupt source.");
             }
 
@@ -249,9 +247,14 @@ public sealed class EtwSystemInterruptSnapshotSource(
         lock (eventGate)
         {
             Volatile.Write(ref currentSession, session);
-            state = SystemInterruptProviderStates.Running;
-            message = "ETW 系统中断监控正在采集 ISR/DPC，并解析驱动模块。";
-            PublishCurrentWindow(readUtcNow(), session);
+            if (currentComputeMode == ResourceManagerComputeZoneMode.Freeze)
+                PublishFrozen();
+            else
+            {
+                state = SystemInterruptProviderStates.Running;
+                message = "ETW 系统中断监控正在采集 ISR/DPC，并解析驱动模块。";
+                PublishCurrentWindow(readUtcNow(), session);
+            }
         }
         kernel.PerfInfoISR += data => ObserveBoundInterrupt(
             kernel, context, session,
@@ -283,6 +286,7 @@ public sealed class EtwSystemInterruptSnapshotSource(
 
     private void RefreshBrokerState(KernelEtwSessionSnapshot? observedSnapshot = null)
     {
+        if (currentComputeMode == ResourceManagerComputeZoneMode.Freeze) return;
         var snapshot = (observedSnapshot ?? (Volatile.Read(ref kernelSubscription)?.GetSnapshot() ?? kernelEtwBroker.GetSnapshot()));
         var session = Volatile.Read(ref currentSession);
         if (snapshot.IsRunning
@@ -324,6 +328,7 @@ public sealed class EtwSystemInterruptSnapshotSource(
     {
         lock (subscriptionGate)
         {
+            if (currentComputeMode == ResourceManagerComputeZoneMode.Freeze) return false;
             var brokerSnapshot = (Volatile.Read(ref kernelSubscription)?.GetSnapshot() ?? kernelEtwBroker.GetSnapshot());
             RefreshBrokerState(brokerSnapshot);
             var session = Volatile.Read(ref currentSession);
@@ -386,6 +391,13 @@ public sealed class EtwSystemInterruptSnapshotSource(
                 snapshotState,
                 snapshotMessage));
 
+    private void PublishFrozen()
+    {
+        state = SystemInterruptProviderStates.Frozen;
+        message = "ETW 系统中断监控已按功能区冻结暂停采集。";
+        PublishUnavailable(state, message);
+    }
+
     private void ObserveBoundInterrupt(KernelEtwEventSource source, KernelEtwSessionContext context,
         InterruptSessionState session,
         string kind, double durationMilliseconds, ulong routineAddress, long observedTick)
@@ -395,7 +407,8 @@ public sealed class EtwSystemInterruptSnapshotSource(
             return;
         }
 
-        if (!source.IsActive || context.Generation != session.Generation
+        if (currentComputeMode == ResourceManagerComputeZoneMode.Freeze
+            || !source.IsActive || context.Generation != session.Generation
             || !ReferenceEquals(session, Volatile.Read(ref currentSession))) return;
         var window = session.Window;
         if (observedTick < window.StartedTick) return;
@@ -408,6 +421,8 @@ public sealed class EtwSystemInterruptSnapshotSource(
         InterruptSessionState session, ulong imageBase, int imageSize,
         string? fileName, bool unload, long observedTick)
     {
+        // Keep image ownership current while ISR/DPC intake is paused, just as CPU
+        // residency retains process/thread metadata on its held kernel session.
         if (!source.IsActive || context.Generation != session.Generation
             || !ReferenceEquals(session, Volatile.Read(ref currentSession))) return;
         var window = session.Window;
@@ -455,9 +470,9 @@ public sealed class EtwSystemInterruptSnapshotSource(
 
         public long Generation { get; } = generation;
         public InterruptObservationWindow Window => Volatile.Read(ref window);
-        public void ResetWindow(long atTick, int lost)
+        public void ResetWindow(long atTick, int lost, bool preserveModules = false)
             => Volatile.Write(ref window, new InterruptObservationWindow(atTick, lost,
-                new KernelModuleAddressMap(), new SystemInterruptWindowAggregator()));
+                preserveModules ? Window.Modules : new KernelModuleAddressMap(), new SystemInterruptWindowAggregator()));
     }
 
     private sealed record InterruptSampleRequest(string SourceKey);

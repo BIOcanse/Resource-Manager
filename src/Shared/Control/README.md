@@ -1,10 +1,10 @@
 # Shared Zig controller
 
-`rm_control` owns block states and run numbers, node permits and drained summaries, condition values and marks, item publications, demands, named runtime-reader registrations and fixed histories. The host owns run entries, cancellation signals, diagnostics and its mapping from reader registration IDs to reader functions. Host-valued objects remain with their owner; the controller holds only their presence and events.
+`rm_control` owns block states and run numbers, node permits and drained summaries, condition values and marks, item publications, reference read functions, named runtime-reader registrations and fixed histories. The host owns run entries, cancellation signals, diagnostics and its mapping from reader registration IDs to reader functions. Host-valued objects remain with their owner; the controller holds only their presence and events.
 
 A node computes marked conditions in a fixed bottom-up order. Changed values mark their readers. A changed top value or structural change makes the node align its direct children. A branch is stopped or restarted only after its permit has been revoked and its node has acknowledged that the whole branch is stopped. The root always acts and shutdown makes it want no children; other nodes act while their block is Running.
 
-Boolean reads return a value or `not_published`, `owner_stopped`, or `read_failed`. Host items expose `Presence.present` or the same absence reasons. Reads never sample, allocate or acquire a lock. Conditions must choose their no-value policy. An undeclared read is an error; conditions reading host-valued items fail compilation. Compute failure retains the previous value and last error without propagating upward or itself causing an action. Structural revocation still drains a broken branch.
+Boolean reads return a value or `not_published`, `owner_stopped`, or `read_failed`. Host items expose `Presence.present` or the same absence reasons. Owner reads never sample, allocate, block or acquire an owner lock. Conditions must choose their no-value policy. An undeclared read is an error; conditions reading host-valued items fail compilation. Compute failure retains the previous value and last error without propagating upward or itself causing an action. Structural revocation still drains a broken branch.
 
 ## Import and declarations
 
@@ -173,8 +173,10 @@ const reader_id = try controller.registerReader(.{ .item = HostObjectItemUid }, 
 try controller.unregisterReader(reader_id);
 try controller.unregisterReader(reader_id); // harmless
 
-try controller.setDemand("subscription-key", BlockUid, reason, null);
-try controller.clearDemand("subscription-key", reason, null);
+const read_function = try controller.claimReadFunction(.{ .item = ActiveSubscriptionsUid }, .{ .context = tracker, .read = readActiveSubscriptions });
+try controller.notifyChanged(read_function, reason, null);
+try controller.unbind(read_function, reason, null);
+try controller.bind(read_function, reason, null);
 try controller.reportRunning(BlockUid, run_number);
 try controller.reportReturned(BlockUid, run_number);
 try controller.shutdown(reason, token);
@@ -184,7 +186,9 @@ try controller.destroy();
 
 Attach the returned handle before `activate()` dispatches initial rounds. Tokens before activation return `NotActive`. Each start receives a new run number; reports for old runs are ignored, and Running cannot reverse Stopping. Claims are opaque handles tied to their authority, issued once per item key.
 
-Every publishing operation, bind, unbind and shutdown takes an explicit `Reason {kind,owner,cause,plan_version}`. It is forwarded unchanged to runtime readers and retained when needed for decisions. Empty owner/cause or a reason exceeding the configured bound fails before mutation. Boolean access to host items, and presence access to Boolean items, return `TypeMismatch`. Host item values never cross the boundary.
+Every publishing operation, change notification, bind, unbind and shutdown takes an explicit `Reason {kind,owner,cause,plan_version}`. It is forwarded unchanged to runtime readers and retained when needed for decisions. Empty owner/cause or a reason exceeding the configured bound fails before mutation. Boolean access to host items, and presence access to Boolean items, return `TypeMismatch`. Host item values never cross the boundary.
+
+A reference bool item may be claimed with `claimReadFunction(key, ReadFunction)` instead of a publication cell. The sole-owner claim excludes both other function registrations and cell claims. The callback is `read(context, *ReadView) callconv(.c) void`; `ReadView` contains u32 `kind` and u32 `value`. Kinds 0/1/2 mean not published, owner stopped and read failed; kind 3 contains a bool encoded as 0/1. Invalid outputs read as failure. The host translates callback exceptions to read failure and logs them. A read function reads the owner's current published state synchronously, excluding expired sources by the current time; it must not sample, allocate, block or take an owner lock. Each node round captures its binding and reads it once outside the controller lock, then all of that round's conditions reuse the result. `notifyChanged` carries only a wake-up and reason. Binding starts enabled; unbinding returns owner stopped and rebinding reads the latest owner state. The function and context remain valid through controller destruction, including after unbinding, because an earlier captured round may still be finishing. Direct reads and snapshots also invoke the function outside the controller lock.
 
 The C-compatible `Host` has a persistent context and these `.c` callbacks:
 
@@ -207,11 +211,11 @@ A completion token covers only the declared conditions' required rounds. It may 
 
 ## Configuration, snapshot and memory
 
-Config explicitly supplies worker count, history capacity, demand entry/text capacities, reader entry/holder-text capacities (`reader_capacity`, `reader_bytes`), completion capacity, worker arena bytes, optional demand item UID, shutdown item UID and the exact non-root block UIDs the host can run. `reason_text_capacity` has the visible default 256 combined owner/cause bytes. Invalid capacity, exhausted bounded storage and overlong reasons return errors without growing or partial mutation.
+Config explicitly supplies worker count, history capacity, reader entry/holder-text capacities (`reader_capacity`, `reader_bytes`), completion capacity, worker arena bytes, shutdown item UID and the exact non-root block UIDs the host can run. `reason_text_capacity` has the visible default 256 combined owner/cause bytes. Invalid capacity, exhausted bounded storage and overlong reasons return errors without growing or partial mutation.
 
-`snapshot(buffer)` returns the complete needed byte count, even for an empty or short buffer; it writes no trailing NUL. Retry with enough space if concurrent changes enlarge the result. The JSON includes registry version, blocks and inputs, transitions, demands, items, readers, node conditions, bounded `decisions` history, and `currentDecisions` containing the latest alignment for each node that has aligned. Current decisions remain available when `history_capacity` is zero. Host-item rows expose `hasValue` and `noValueReason`, with no object payload. Registry names are omitted when absent. Reader holders are caller-supplied ownership labels and remain available independently of registry names. Demand and reader pools each expose current, peak and capacity.
+`snapshot(buffer)` returns the complete needed byte count, even for an empty or short buffer; it writes no trailing NUL. Retry with enough space if concurrent changes enlarge the result. The JSON includes registry version, blocks and inputs, transitions, items, readers, node conditions, bounded `decisions` history, and `currentDecisions` containing the latest alignment for each node that has aligned. Current decisions remain available when `history_capacity` is zero. Host-item rows expose `hasValue` and `noValueReason`, with no object payload. Registry names are omitted when absent. Reader holders are caller-supplied ownership labels and remain available independently of registry names. The reader pool exposes current, peak and capacity.
 
-Tables and histories are allocated once with fixed sizes. Demand keys/reasons and reader holders use bounded copied-text pools. Each worker resets its fixed arena every round. Snapshot output is caller-owned. Destroy requires shutdown and all runs returned; it waits for current rounds/callbacks, joins workers and releases creation allocations. The host finishes its callers and queued reader work, retains the Host context until destroy returns, and makes no calls afterward.
+Tables and histories are allocated once with fixed sizes. Decision reasons and reader holders use bounded copied-text storage. Each worker resets its fixed arena every round. Snapshot output is caller-owned. Destroy requires shutdown and all runs returned; it waits for current rounds/callbacks, joins workers and releases creation allocations. The host finishes its callers and queued reader work, retains all callback contexts until destroy returns, and makes no calls afterward.
 
 ## Tests
 

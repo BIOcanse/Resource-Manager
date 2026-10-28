@@ -112,7 +112,7 @@ public sealed class NvidiaDrsHttpIntegrationTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public async Task UnifiedSelectorUsesOriginalWorkerAndStoppedSingleFetchIsExplicitlyUnavailable()
+    public async Task UnifiedSelectorUsesOriginalWorkerAndStoppedSingleFetchWaitsForExplicitRun()
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await using var fixture = await Fixture.StartAsync(deadline.Token);
@@ -127,14 +127,40 @@ public sealed class NvidiaDrsHttpIntegrationTests(ITestOutputHelper output)
         Assert.Equal("drs", frame.GetProperty("subscriptionId").GetString());
         AssertQword(frame.GetProperty("value"));
         Assert.True(fixture.Recording.Reads > 0);
-        await streamCancellation.CancelAsync(); response.Dispose();
+        var activity = fixture.Sampling.Owner.Activity;
+        var streamReleased = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Released(int role) { if (role == 2 && !activity.HasInUseSubscriptions(2)) streamReleased.TrySetResult(); }
+        activity.RoleChanged += Released;
+        try
+        {
+            await streamCancellation.CancelAsync(); response.Dispose();
+            Released(2);
+            await streamReleased.Task.WaitAsync(deadline.Token);
+        }
+        finally { activity.RoleChanged -= Released; }
         await fixture.Provider.StopAsync(deadline.Token);
         var before = fixture.Provider.ReadState(); var reads = fixture.Recording.Reads;
         using var current = await fixture.PostAsync("current", Request(), deadline.Token);
         AssertQword(await current.Content.ReadFromJsonAsync<JsonElement>(deadline.Token));
         Assert.Same(before, fixture.Provider.ReadState()); Assert.Equal(reads, fixture.Recording.Reads);
-        using var direct = await fixture.PostAsync("read", Request(), deadline.Token);
-        Assert.Equal(HttpStatusCode.ServiceUnavailable, direct.StatusCode); Assert.Equal(reads, fixture.Recording.Reads);
+        var singleFetchSubscribed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Subscribed(int role) { if (role == 2 && activity.HasInUseSubscriptions(2)) singleFetchSubscribed.TrySetResult(); }
+        activity.RoleChanged += Subscribed;
+        try
+        {
+            var direct = fixture.PostAsync("read", Request(), deadline.Token);
+            await singleFetchSubscribed.Task.WaitAsync(deadline.Token);
+            Assert.False(direct.IsCompleted);
+            Assert.Same(before, fixture.Provider.ReadState());
+            Assert.Equal(reads, fixture.Recording.Reads);
+            // The parent observes the subscription fact and enters the original worker.
+            await fixture.Provider.StartAsync(deadline.Token);
+            using var observed = await direct;
+            Assert.Equal(HttpStatusCode.OK, observed.StatusCode);
+            AssertQword(await observed.Content.ReadFromJsonAsync<JsonElement>(deadline.Token));
+            Assert.True(fixture.Recording.Reads > reads);
+        }
+        finally { activity.RoleChanged -= Subscribed; }
     }
 
     [Fact]

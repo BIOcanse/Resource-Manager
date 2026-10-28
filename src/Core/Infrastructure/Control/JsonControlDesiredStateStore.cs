@@ -21,6 +21,9 @@ public sealed class JsonControlDesiredStateStore : IControlDesiredStateStore
     private readonly string statePath;
     private readonly ILogger<JsonControlDesiredStateStore>? logger;
     private ControlDesiredState? cached;
+    private bool softwareFanCurveEnabled;
+    internal bool SoftwareFanCurveEnabled => Volatile.Read(ref softwareFanCurveEnabled);
+    internal event Action? DesiredStateChanged;
 
     public JsonControlDesiredStateStore(
         IHostEnvironment environment,
@@ -43,8 +46,8 @@ public sealed class JsonControlDesiredStateStore : IControlDesiredStateStore
             {
                 return cached;
             }
-            cached = ReadFromDisk();
-            return cached;
+            PublishCurrent(ReadFromDisk());
+            return cached!;
         }
         finally
         {
@@ -67,12 +70,21 @@ public sealed class JsonControlDesiredStateStore : IControlDesiredStateStore
             await File.WriteAllTextAsync(temporaryPath, json, cancellationToken)
                 .ConfigureAwait(false);
             File.Move(temporaryPath, statePath, overwrite: true);
-            cached = desired;
+            PublishCurrent(desired);
         }
         finally
         {
             gate.Release();
         }
+    }
+
+    private void PublishCurrent(ControlDesiredState desired)
+    {
+        cached = desired;
+        Volatile.Write(ref softwareFanCurveEnabled, desired.Objects.Any(target =>
+            target.ObjectId.StartsWith("fan:", StringComparison.Ordinal)
+            && target.Settings.Any(setting => setting.CurveExecution == ControlFanCurveExecutions.Software)));
+        DesiredStateChanged?.Invoke();
     }
 
     private ControlDesiredState ReadFromDisk()

@@ -47,6 +47,52 @@ public sealed class EtwSystemInterruptLossTests
 
     private static readonly DateTimeOffset Start = new(2026, 10, 3, 0, 0, 0, TimeSpan.Zero);
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FreezePausesIntakeAndResumeSamplesFreshWindowsOnTheSameHolder(bool initiallyFrozen)
+    {
+        using var fixture = new HostManagerSamplingSubscriptionTestFixture();
+        var broker = new Broker();
+        var now = Start;
+        using var source = NewSource(broker, fixture, () => now);
+        if (initiallyFrozen) source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
+        Invoke(source, "EnsureStarted");
+        var binding = Capture(source, broker);
+        for (var cycle = 0; cycle < 3; cycle++)
+        {
+            source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
+            var frozen = source.Read();
+            now = now.AddSeconds(20);
+            if (cycle == 1)
+                Invoke(source, "ObserveBoundImage", binding.Source, binding.Context, binding.Session,
+                    0x1000UL, 0x100, "frozen-driver.sys", true, now.ToUnixTimeMilliseconds());
+            else
+                Image(source, binding, "frozen-driver.sys", now);
+            Interrupt(source, binding, now, 50);
+            Assert.False(Publish(source, now));
+            Assert.Same(frozen, source.Read());
+            Assert.Equal(1, broker.SubscribeCount);
+            Assert.Equal(0, broker.DisposeCount);
+
+            source.ApplyMode(ResourceManagerComputeZoneMode.Normal);
+            Assert.True(Publish(source, now));
+            Assert.False(source.Read().Available);
+            Assert.Equal(TimeSpan.Zero, source.Read().Window);
+            now = now.AddSeconds(1);
+            Interrupt(source, binding, now, 3);
+            now = now.AddSeconds(10);
+            Assert.True(Publish(source, now));
+            Assert.True(source.Read().Available);
+            Assert.Equal(1, source.Read().EventCount);
+            Assert.Equal(3, source.Read().TotalDurationMilliseconds);
+            Assert.Equal(cycle == 1 ? KernelModuleAddressMap.UnknownModuleName : "frozen-driver.sys",
+                Assert.Single(source.Read().Drivers).ModuleName);
+        }
+        source.Dispose();
+        Assert.Equal(1, broker.DisposeCount);
+    }
+
     [Fact]
     public void RequestsBothHardwareInterruptsAndDeferredProcedureCalls()
     {

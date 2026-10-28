@@ -58,7 +58,12 @@ public sealed class BackendHostedAliasOrderTests
                 services.AddSingleton(new NativeEtwSessionAvailability(authority));
                 services.AddSingleton<BusinessBlockDiagnosticsRegistry>();
                 services.AddSingleton<HostedBusinessBlockRegistry>();
-                services.AddSingleton<BusinessBlockScheduler>();
+                services.AddSingleton<BackendHostPermitFacts>();
+                services.AddSingleton<BusinessBlockScheduler>(provider =>
+                {
+                    _ = provider.GetRequiredService<BackendHostPermitFacts>();
+                    return new(provider, provider.GetServices<BusinessBlockRegistration>(), native, authority);
+                });
                 services.AddSingleton<IHostedService, BusinessBlockDependencyLifetime>();
                 services.AddSingleton(core);
                 services.AddSingleton(feed);
@@ -77,6 +82,7 @@ public sealed class BackendHostedAliasOrderTests
                 // Copy the order selected by production, substituting only harmless underlying services.
                 foreach (var alias in fanOrder)
                 {
+                    services.AddSingleton(new HostedBusinessBlockAlias(alias.Id));
                     if (alias.Id == BlockUids.FanControlCoreLifetimeService)
                         services.AddSingleton<IHostedService>(provider => new NonOwningHostedService<CoreProbe>(provider, alias.Id, true));
                     else
@@ -93,6 +99,9 @@ public sealed class BackendHostedAliasOrderTests
             Assert.All(BackendExpectedProductionTree.Wrappers, uid => Assert.Contains(uid, scheduler.Graph.BlockIds));
             Assert.Equal(BlockUids.FanControlCoreLifetimeService,
                 scheduler.Graph.Nodes.Single(row => row.Id == BlockUids.FanCurveTemperatureFeed).ParentId);
+            // These fake services own the same exact fan-configuration fact as production.
+            await authority.ClaimCell<bool>(StateItemUids.SoftwareFanCurveEnabled).PublishAsync(true,
+                new(BusinessBlockRequestKind.Configuration, "fan-pair-fixture", "software-curve-enabled", 0));
             using var startupLimit = new CancellationTokenSource(BusinessBlockTestSupport.TestTimeout);
             await host.StartAsync(startupLimit.Token).WaitAsync(BusinessBlockTestSupport.TestTimeout);
             await Task.WhenAll(core.Started.Task, feed.Started.Task).WaitAsync(BusinessBlockTestSupport.TestTimeout);

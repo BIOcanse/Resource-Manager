@@ -466,9 +466,8 @@ public sealed class SoftwareRegistryViewTests
     {
         public int RefreshCount { get; private set; }
 
-        public void Observe(PortableSoftwareObservation observation)
-        {
-        }
+        public Task ObserveAsync(PortableSoftwareObservation observation, CancellationToken cancellationToken)
+            => Task.CompletedTask;
 
         public IReadOnlyList<PortableSoftwareRegistration> GetSnapshot()
         {

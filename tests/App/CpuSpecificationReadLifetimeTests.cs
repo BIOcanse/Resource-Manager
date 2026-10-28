@@ -87,7 +87,11 @@ public sealed class CpuSpecificationReadLifetimeTests
         {
             Assert.True(await first.WaitAsync(timeout.Token));
             var firstReads = Volatile.Read(ref usageReads);
-            Assert.True(await stream.MoveNextAsync());
+            var firstCapturedAt = Assert.IsType<CpuTopologySnapshot>(stream.Current).CapturedAt;
+            // A coalesced wake may already represent the value observed above.
+            // Wait for actual new production data, rather than another queued signal.
+            do { Assert.True(await stream.MoveNextAsync().AsTask().WaitAsync(timeout.Token)); }
+            while (Volatile.Read(ref usageReads) <= firstReads || stream.Current!.CapturedAt <= firstCapturedAt);
             Assert.True(Volatile.Read(ref usageReads) > firstReads);
             Assert.Equal(1, Volatile.Read(ref queries));
         }

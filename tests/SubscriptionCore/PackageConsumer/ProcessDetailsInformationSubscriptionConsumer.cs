@@ -49,8 +49,7 @@ internal static class ProcessDetailsInformationSubscriptionConsumer
             MaximumFutureSkewMilliseconds = 1000
         };
         await using var composition = new NativeFieldSubscriptionComposition(borrow, settings, in configuration,
-            failure => Console.WriteLine($"Process details worker failure: stage={failure.Stage}; {failure.Error.Message}"),
-            TimeSpan.FromMilliseconds(100));
+            failure => Console.WriteLine($"Process details worker failure: stage={failure.Stage}; {failure.Error.Message}"));
         await composition.StartAsync(timeout.Token);
         await using (var stream = composition.SubscribeAsync("selected-process-details", selected,
             TimeSpan.FromSeconds(1), timeout.Token).GetAsyncEnumerator())

@@ -56,8 +56,7 @@ internal static class AtaSmartInformationSubscriptionConsumer
         var settings = new SubscriptionRoleSettings(2, 1_000, 1, 3_000, 1_000, 1_000);
         var configuration = Configuration();
         await using var composition = new NativeFieldSubscriptionComposition(access.BorrowSubscriptionCapture(),
-            settings, in configuration, failure => failures.Enqueue($"{failure.Stage}: {failure.Error.Message}"),
-            TimeSpan.FromMilliseconds(10));
+            settings, in configuration, failure => failures.Enqueue($"{failure.Stage}: {failure.Error.Message}"));
         await composition.StartAsync();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         await using (var stream = composition.SubscribeAsync("recorded-ata-smart", [catalogNormalized],

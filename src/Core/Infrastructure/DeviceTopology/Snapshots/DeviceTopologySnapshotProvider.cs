@@ -146,6 +146,11 @@ public sealed partial class DeviceTopologySnapshotProvider(
         return captureOwner.ReadState();
     }
 
+    internal Task? CaptureSamplingWorkerTask()
+    {
+        lock (publicationGate) return samplingTask;
+    }
+
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
@@ -175,10 +180,8 @@ public sealed partial class DeviceTopologySnapshotProvider(
             task = samplingTask;
             cts = samplingCts;
             cts?.Cancel();
-            fieldSubscriptionDelivery.RetireAll();
             if (task is null)
             {
-                subscriptions.Clear(DateTimeOffset.UtcNow);
                 return;
             }
         }
@@ -192,17 +195,12 @@ public sealed partial class DeviceTopologySnapshotProvider(
         {
         }
 
-        lock (publicationGate)
+        finally
         {
-            // Another concurrent StopAsync may have already retired this run and
-            // allowed StartAsync to publish its successor. Only the owner of the
-            // captured task may clear its subscriptions or cancellation source.
-            if (ReferenceEquals(samplingTask, task))
+            lock (publicationGate)
             {
-                subscriptions.Clear(DateTimeOffset.UtcNow);
-                samplingTask = null;
-                // The cancelled CTS is also the existing stopped-admission state.
-                // StartAsync replaces/disposes it; final disposal owns its release.
+                // Only this captured run's cleanup can clear it, including when its task faulted.
+                if (task.IsCompleted && ReferenceEquals(samplingTask, task)) samplingTask = null;
             }
         }
     }
@@ -268,40 +266,43 @@ public sealed partial class DeviceTopologySnapshotProvider(
         return TrySampleAsync(null, cancellationToken);
     }
 
-    private Task RunSamplingLoopAsync(CancellationToken cancellationToken)
+    private async Task RunSamplingLoopAsync(CancellationToken cancellationToken)
     {
         FieldCollectionResult? pendingFieldResult = null;
         var worker = new NativeSamplingSubscriptionWorker<DeviceTopologySampleRequest, SamplingOwnerToken>(
             subscriptions, demandSignal, static _ => { },
-            static failure => System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure.Error).Throw(),
-            TimeSpan.Zero);
-        return worker.RunAsync(async (plan, token) =>
+            static failure => System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure.Error).Throw());
+        try
         {
-            var completion = await SampleRequestedAsync(plan.Request!.Scope, plan.OwnerToken, token,
-                plan.Request.IncludeServiceConfiguration, plan.Request.OperatingSystemFields,
-                (scope, queriedKeys) => pendingFieldResult = MergeFieldCapture(pendingFieldResult,
-                    CaptureFieldResult(plan.Triggers, scope, queriedKeys)), plan.Request.NvidiaDrsRequests, plan.Request.VolumeFields);
-            return completion switch
+            await worker.RunAsync(async (plan, token) =>
             {
-                DeviceTopologySampleCompletion.Sampled => SubscriptionSampleCompletion.Sampled,
-                DeviceTopologySampleCompletion.Failed => SubscriptionSampleCompletion.Failed,
-                DeviceTopologySampleCompletion.SkippedBusy => SubscriptionSampleCompletion.Skipped,
-                DeviceTopologySampleCompletion.Canceled => SubscriptionSampleCompletion.Canceled,
-                _ => throw new InvalidOperationException("Device topology sampling returned an unknown completion.")
-            };
-        }, cancellationToken, planCreated: plan =>
-        {
-            pendingFieldResult = null;
-            if (plan.DueItemIds.Count == 0)
-                fieldSubscriptionDelivery.Deliver(plan.Triggers, null, freshOnly: false);
-        }, collectionCompleted: (plan, completion) =>
-        {
-            var result = pendingFieldResult;
-            pendingFieldResult = null;
-            if (completion != SubscriptionSampleCompletion.Canceled)
-                fieldSubscriptionDelivery.Deliver(plan.Triggers, result,
-                    freshOnly: plan.DueItemIds.Count == 0 ? true : null);
-        });
+                var completion = await SampleRequestedAsync(plan.Request!.Scope, plan.OwnerToken, token,
+                    plan.Request.IncludeServiceConfiguration, plan.Request.OperatingSystemFields,
+                    (scope, queriedKeys) => pendingFieldResult = MergeFieldCapture(pendingFieldResult,
+                        CaptureFieldResult(plan.Triggers, scope, queriedKeys)), plan.Request.NvidiaDrsRequests, plan.Request.VolumeFields);
+                return completion switch
+                {
+                    DeviceTopologySampleCompletion.Sampled => SubscriptionSampleCompletion.Sampled,
+                    DeviceTopologySampleCompletion.Failed => SubscriptionSampleCompletion.Failed,
+                    DeviceTopologySampleCompletion.SkippedBusy => SubscriptionSampleCompletion.Skipped,
+                    DeviceTopologySampleCompletion.Canceled => SubscriptionSampleCompletion.Canceled,
+                    _ => throw new InvalidOperationException("Device topology sampling returned an unknown completion.")
+                };
+            }, cancellationToken, planCreated: plan =>
+            {
+                pendingFieldResult = null;
+                if (plan.DueItemIds.Count == 0)
+                    fieldSubscriptionDelivery.Deliver(plan.Triggers, null, freshOnly: false);
+            }, collectionCompleted: (plan, completion) =>
+            {
+                var result = pendingFieldResult;
+                pendingFieldResult = null;
+                if (completion != SubscriptionSampleCompletion.Canceled)
+                    fieldSubscriptionDelivery.Deliver(plan.Triggers, result,
+                        freshOnly: plan.DueItemIds.Count == 0 ? true : null);
+            });
+        }
+        finally { fieldSubscriptionDelivery.DiscardRunRounds(); }
     }
 
     private Task<DeviceTopologySampleCompletion> TrySampleAsync(SamplingOwnerToken? ownerToken,

@@ -7,36 +7,6 @@ namespace Resource_Manager_APP.Tests;
 public sealed class BusinessBlockDependencyTests
 {
     [Fact]
-    public async Task ConcurrentRetargetsOfOneDemandLeaveOnlyTheFinalTargetsFactAndExecutionActive()
-    {
-        var ids = new[] { 124, 146, 151 };
-        await using var scheduler = Create(ids.Select(id => Register(id, new Probe())));
-        try
-        {
-            for (var round = 0; round < 32; round++)
-            {
-                var releasePublishers = Signal();
-                var updates = Enumerable.Range(0, 12).Select(index => Task.Run(async () =>
-                {
-                    await releasePublishers.Task;
-                    await scheduler.SetDemandAsync("one-owner", ids[index % ids.Length], Reason(owner: "publisher-" + index));
-                })).ToArray();
-                releasePublishers.TrySetResult();
-                await Task.WhenAll(updates).WaitAsync(TestTimeout);
-                var snapshot = scheduler.Read();
-                var finalTarget = Assert.Single(snapshot.Demands).BlockId;
-                foreach (var id in ids)
-                    Assert.Equal(id == finalTarget, Assert.IsType<bool>(snapshot.Items.Single(item => item.ItemUid == BackendItems.BlockDemand && item.BlockUid == id).Value));
-                await Until(() => ids.All(id => scheduler.ReadState(id) ==
-                    (id == finalTarget ? BusinessBlockState.Running : BusinessBlockState.Stopped)));
-            }
-            await scheduler.SetDemandAsync("one-owner", null, Reason());
-            await Until(() => scheduler.Read().Blocks.All(item => item.State == BusinessBlockState.Stopped));
-        }
-        finally { await StopAll(scheduler); }
-    }
-
-    [Fact]
     public async Task RuleReadsItsImmediateChildStatesWithoutOrderingTheirStartup()
     {
         var first = new Probe(reportRunning: false);
@@ -65,38 +35,6 @@ public sealed class BusinessBlockDependencyTests
             Assert.Equal(1, next.Runs);
         }
         finally { await StopAll(scheduler); }
-    }
-
-    [Fact]
-    public async Task MultipleExternalNeedsRemainFactsUntilTheLastLeaseIsReleased()
-    {
-        var producer = new Probe();
-        await using var scheduler = Create([Register(141, producer)]);
-        var firstReason = Reason(BusinessBlockRequestKind.Dependency, "first-reader", "needs-value");
-        var secondReason = Reason(BusinessBlockRequestKind.Dependency, "second-reader", "needs-value");
-        var first = scheduler.AcquireDependency(141, firstReason);
-        var second = scheduler.AcquireDependency(141, secondReason);
-        try
-        {
-            await Task.WhenAll(first.Ready, second.Ready).WaitAsync(TestTimeout);
-            await producer.Entered.Task.WaitAsync(TestTimeout);
-            Assert.Equal(1, producer.Runs);
-            var fact = scheduler.Read().Items.Single(item => item.ItemUid == BackendItems.BlockDemand && item.BlockUid == 141);
-            Assert.True(Assert.IsType<bool>(fact.Value));
-            var reasons = scheduler.Read().Demands.Where(item => item.BlockId == 141).Select(item => item.Reason);
-            Assert.Contains(firstReason, reasons);
-            Assert.Contains(secondReason, reasons);
-            first.Dispose();
-            await first.Released.WaitAsync(TestTimeout);
-            Assert.Single(scheduler.Read().Demands);
-            Assert.Equal(BusinessBlockState.Running, scheduler.ReadState(141));
-            Assert.Equal(0, producer.Returns);
-            await second.DisposeAsync();
-            await State(scheduler, 141, BusinessBlockState.Stopped);
-            Assert.Empty(scheduler.Read().Demands);
-            Assert.False(Assert.IsType<bool>(scheduler.Read().Items.Single(item => item.ItemUid == BackendItems.BlockDemand && item.BlockUid == 141).Value));
-        }
-        finally { first.Dispose(); second.Dispose(); await StopAll(scheduler); }
     }
 
     [Fact]
@@ -177,33 +115,33 @@ public sealed class BusinessBlockDependencyTests
         var enteredRule = Signal();
         var blockOnce = 0;
         var worker = new Probe();
-        var demandKey = BusinessBlockTestSupport.DemandKey(154);
+        var executionKey = BusinessBlockTestSupport.ExecutionKey(154);
         await using var scheduler = Create([Register(154, worker)],
-            [new(BackendUids.Program, [demandKey, TestStateUids.BlockRule], input =>
+            [new(BackendUids.Program, [executionKey, TestStateUids.BlockRule], input =>
             {
                 if (input.Read<bool>(TestStateUids.BlockRule).GetValueOrDefault(false) && Interlocked.Exchange(ref blockOnce, 1) == 0)
                 {
                     enteredRule.TrySetResult();
                     if (!releaseRule.Wait(TestTimeout)) throw new TimeoutException("The test did not release its rule.");
                 }
-                return input.Read<bool>(demandKey).GetValueOrDefault(false) ? [154] : [];
+                return input.Read<bool>(executionKey).GetValueOrDefault(false) ? [154] : [];
             })]);
         var blockRuleWriter = scheduler.Authority.ClaimWrite<bool>(TestStateUids.BlockRule);
         try
         {
-            await scheduler.SetDemandAsync("lease", 154, Reason());
+            await scheduler.StartAsync(154, Reason());
             await worker.Entered.Task.WaitAsync(TestTimeout);
             var blocked = blockRuleWriter.PublishAsync(true, Reason());
             await enteredRule.Task.WaitAsync(TestTimeout);
-            var withdrawal = scheduler.SetDemandAsync("lease", null, Reason());
-            var reacquire = scheduler.SetDemandAsync("lease", 154, Reason());
+            var withdrawal = scheduler.StopAsync(154, Reason());
+            var reacquire = scheduler.StartAsync(154, Reason());
             releaseRule.Set();
             await Task.WhenAll(blocked, withdrawal, reacquire).WaitAsync(TestTimeout);
             Assert.Equal(1, worker.Runs);
             Assert.Equal(0, worker.Returns);
             Assert.False(worker.Notified.Task.IsCompleted);
             Assert.Equal(BusinessBlockState.Running, scheduler.ReadState(154));
-            Assert.Single(scheduler.Read().Demands);
+            Assert.True(scheduler.Authority.Read<bool>(ExecutionKey(154)).Value);
         }
         finally { releaseRule.Set(); await StopAll(scheduler); }
     }

@@ -15,6 +15,70 @@ public sealed class HostCpuPeriodicSubscriptionTests
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(8);
 
     [Fact]
+    public async Task CpuTopologyFieldStreamSurvivesAProducerFaultAndControllerRestart()
+    {
+        await using var fixture = new CpuTopologyProviderTestFixture();
+        var current = CreateTopologyBackend(fixture.Reader);
+        fixture.Sampler.Complete(CpuTopologyInformationFieldTests.Snapshot());
+        await current.DiscoverAsync(CancellationToken.None);
+        _ = await fixture.Sampler.WaitForCaptureAsync();
+        var field = SelectPhysicalCoreCount(current);
+        var backend = new ProducerSubscriptionCurrentBackend(current);
+        using var timeout = new CancellationTokenSource(Deadline);
+        await using var stream = fixture.Reader.SubscribeFieldsAsync("held-through-fault", [field],
+            TimeSpan.FromMilliseconds(100), FieldSubscriptionOptions.Default, backend, timeout.Token)
+            .GetAsyncEnumerator(timeout.Token);
+        var pending = stream.MoveNextAsync().AsTask();
+        var captureSequence = 0;
+        var captureTemplate = CpuTopologyInformationFieldTests.Snapshot();
+        fixture.Sampler.CaptureFactory = () => captureTemplate with
+        {
+            CapturedAt = captureTemplate.CapturedAt.AddSeconds(Interlocked.Increment(ref captureSequence))
+        };
+        await using var controller = await ProducerSubscriptionRestartHost<CpuTopologySnapshotProvider>
+            .StartAsync(fixture.Reader, static producer => producer.ExecuteTask, backend);
+        var firstRun = await controller.FirstRun;
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => firstRun.WaitAsync(Deadline));
+        Assert.Equal(ProducerSubscriptionCurrentBackend.FailureMessage, failure.Message);
+        await controller.AssertControllerRestartedAsync();
+        Assert.Equal(1u, fixture.ReadDemand().SourceCount);
+        Assert.True(await pending.WaitAsync(Deadline));
+        var restarted = Assert.Single(stream.Current);
+        Assert.Equal(FieldObservationStatus.Current, restarted.Status);
+        Assert.True(restarted.ObservedAt > captureTemplate.CapturedAt);
+        FieldReadingAssert.CurrentOrNewer(restarted, current.ReadCached(field));
+        Assert.True(fixture.Sampler.CaptureCount >= 2); // Discovery plus a fresh source capture; shared delivery can fault before its run needs another query.
+    }
+
+    [Fact]
+    public async Task CpuResidencyFieldStreamSurvivesAProducerFaultAndControllerRestart()
+    {
+        using var sampling = new HostManagerSamplingSubscriptionTestFixture();
+        var broker = new WarmingBroker();
+        using var reader = new EtwCpuCoreResidencyReader(broker, sampling.Provider, sampling.Owner,
+            NullLogger<EtwCpuCoreResidencyReader>.Instance, static (_, _) => { });
+        var current = new RecordedResidencyBackend();
+        var backend = new ProducerSubscriptionCurrentBackend(current);
+        using var timeout = new CancellationTokenSource(Deadline);
+        await using var stream = reader.SubscribeFieldsAsync("held-through-fault", [current.Field],
+            TimeSpan.FromMilliseconds(100), FieldSubscriptionOptions.Default, backend, timeout.Token)
+            .GetAsyncEnumerator(timeout.Token);
+        var pending = stream.MoveNextAsync().AsTask();
+        await using var controller = await ProducerSubscriptionRestartHost<EtwCpuCoreResidencyReader>
+            .StartAsync(reader, static producer => producer.ExecuteTask, backend);
+        var firstRun = await controller.FirstRun;
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => firstRun.WaitAsync(Deadline));
+        Assert.Equal(ProducerSubscriptionCurrentBackend.FailureMessage, failure.Message);
+        await controller.AssertControllerRestartedAsync();
+        Assert.True(await pending.WaitAsync(Deadline));
+        Assert.Equal(37.5, Assert.Single(stream.Current).Value?.Number);
+        Assert.Equal(2, broker.SubscribeCount);
+        Assert.Equal(1, broker.DisposeCount);
+    }
+
+    [Fact]
     public async Task CpuTopologyFieldLeasesShareTheOriginalNativeItemAndReleaseAtTheirOwnPeriods()
     {
         await using var fixture = new CpuTopologyProviderTestFixture();

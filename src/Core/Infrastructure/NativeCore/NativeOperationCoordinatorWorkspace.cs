@@ -107,8 +107,10 @@ internal sealed class NativeOperationCoordinatorWorkspace : IDisposable
         input.SubmitEpoch = Next(ref nextSubmitEpoch, "submit epoch");
         ZeroReserved(ref input);
         RequireOk(session.Submit(in input, out var output), "submit");
+        var duplicateDomain = output.Flags == (uint)NativeOperationSubmitOutputFlags.ActiveDomainDuplicate;
         if (output.StructSize != SizeOf<NativeOperationSubmitOutput>()
-            || output.OperationId != input.OperationId
+            || output.OperationId.IsZero
+            || (!duplicateDomain && output.OperationId != input.OperationId)
             || output.StateRevision == 0
             || output.SubmitSequence == 0
             || !Enum.IsDefined((NativeOperationState)output.State)

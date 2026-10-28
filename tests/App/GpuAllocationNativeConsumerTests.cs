@@ -4,6 +4,8 @@ using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.ResourceBreakdown;
+using ResourceManager.Subscription;
+using ResourceManager.Shared.BusinessBlocks.State;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -32,6 +34,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             }
         };
         await using var harness = factory.Harness();
+        using var allocationActivity = new AllocationActivityBinding(harness, subscriptions.Owner.Activity);
         var collector = harness.Collector;
         var now = DateTimeOffset.UtcNow.UtcTicks;
         var hardware = CreateMemorySnapshot() with
@@ -46,11 +49,12 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             new StaticResourceResidualBreakdownProvider(), null!, null!, subscriptions.Provider, subscriptions.Owner,
             new PdhProcessGpuReader(), new DelegateWindowsProcessInventoryReader(static () => [Process.GetCurrentProcess()]),
             gpuAllocations: collector);
-        await sampler.StartAsync(default);
         using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var request = new ResourceBreakdownSampleRequest([], new Dictionary<string, string>(),
             ProcessSampleDetailLevel.SmartSchedulingLite, SchedulingProcessMetricMask.GpuDedicatedMemory);
         using var demand = sampler.AcquireSubscription("smart.gpu", request, TimeSpan.FromSeconds(30));
+        await harness.WaitRunningAsync();
+        await sampler.StartAsync(default);
         var factRequest = new SchedulingProcessFactRequest(SchedulingProcessMetricMask.GpuDedicatedMemory, hardware.GpuInventory);
         async Task WaitForCurrentRundown()
         {
@@ -91,6 +95,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         using var catalog = new VersionedProcessAttributionCatalogProvider();
         var factory = new GpuAllocationTestSessionFactory { Configure = session => session.Pid = Environment.ProcessId };
         await using var harness = factory.Harness();
+        using var allocationActivity = new AllocationActivityBinding(harness, subscriptions.Owner.Activity);
         var collector = harness.Collector;
         using var sampler = new WindowsResourceBreakdownSampler(new StaticMetricSampler(CreateAllocationHardware()), catalog,
             new StaticResourceResidualBreakdownProvider(), null!, null!, subscriptions.Provider, subscriptions.Owner,
@@ -103,6 +108,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             : ResourceBreakdownSampleRequest.ForResourceTable(["gpu.0.vram"], new Dictionary<string, string>());
         using var smart = sampler.AcquireSubscription("smart", SchedulingProcessMetricMask.GpuDedicatedMemory, TimeSpan.FromSeconds(30));
         using var ui = sampler.AcquireSubscription("ui", request, TimeSpan.FromSeconds(1));
+        await harness.WaitRunningAsync();
         await sampler.StartAsync(default);
         await AwaitGpuAsync(() => factory.Sessions.Count > 0 && factory.Current.Captures >= 1);
         // Multiple coalesced subscribers produce one capture for the first due time.
@@ -128,6 +134,32 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         await AwaitGpuAsync(() => factory.Current.Stops == 1);
         Assert.Empty(factory.Current.Enabled);
         await sampler.StopAsync(default);
+    }
+
+    private sealed class AllocationActivityBinding : IDisposable
+    {
+        private readonly SubscriptionActivity activity;
+        private readonly StateReadFunction<bool> field;
+        private static readonly BusinessBlockReason Reason = new(BusinessBlockRequestKind.Configuration,
+            nameof(AllocationActivityBinding), "allocation-field-changed", 0);
+        internal AllocationActivityBinding(GpuAllocationTestHarness harness, SubscriptionActivity activity)
+        {
+            this.activity = activity;
+            field = harness.Fixture.Authority.ClaimReadFunction<bool>(BackendItems.ProcessDedicatedGpuMemoryInUse,
+                () => StateRead<bool>.FromValue(activity.HasInUseSubscriptions(SubscriptionFieldGroup.ProcessDedicatedGpuMemory)));
+            activity.FieldChanged += Changed;
+            field.NotifyChangedAsync(Reason).GetAwaiter().GetResult();
+        }
+        private void Changed(SubscriptionFieldGroup group)
+        {
+            if (group == SubscriptionFieldGroup.ProcessDedicatedGpuMemory)
+                field.NotifyChangedAsync(Reason).GetAwaiter().GetResult();
+        }
+        public void Dispose()
+        {
+            activity.FieldChanged -= Changed;
+            field.UnbindAsync(Reason).GetAwaiter().GetResult();
+        }
     }
 
     private static async Task AwaitGpuAsync(Func<bool> condition)

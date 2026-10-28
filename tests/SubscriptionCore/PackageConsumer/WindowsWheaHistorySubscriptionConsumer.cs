@@ -26,7 +26,7 @@ internal static class WindowsWheaHistorySubscriptionConsumer
             ActiveTtlMilliseconds = 3000, MaximumFutureSkewMilliseconds = 1000
         };
         await using var composition = new NativeFieldSubscriptionComposition(owner.BorrowSubscriptionCapture(), settings, in configuration,
-            failure => Console.WriteLine($"WHEA worker failure: {failure.Stage}; {failure.Error.Message}"), TimeSpan.FromMilliseconds(250));
+            failure => Console.WriteLine($"WHEA worker failure: {failure.Stage}; {failure.Error.Message}"));
         await composition.StartAsync(timeout.Token);
         await using var stream = composition.SubscribeAsync("whea-history", fields, TimeSpan.FromSeconds(1), timeout.Token).GetAsyncEnumerator();
         if (!await stream.MoveNextAsync()) throw new InvalidDataException("WHEA composition ended before its same-owner publication.");

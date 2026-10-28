@@ -96,7 +96,7 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
     }
 
     [Fact]
-    public async Task StopCancelledAfterRetirementRetainsRuntimeAndFileLeaseUntilRetry()
+    public async Task StopCancelledWhileDrainingRetainsAdmissionAndRuntimeUntilFinalDisposal()
     {
         await using var fixture = await Fixture.CreateAsync();
         var entered = NewSignal();
@@ -111,7 +111,7 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
         };
         try
         {
-            _ = await fixture.SubmitComponentDownloadAsync();
+            var original = await fixture.SubmitComponentDownloadAsync();
             await entered.Task.WaitAsync(TestBound);
             var workspace = OwnerField<object>(fixture.Owner, "workspace");
             var store = OwnerField<object>(fixture.Owner, "store");
@@ -121,7 +121,8 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
             using var stopCancellation = new CancellationTokenSource();
             var stop = fixture.Owner.StopAsync(stopCancellation.Token);
             await stopping.Task.WaitAsync(TestBound);
-            Assert.True(OwnerField<bool>(fixture.Owner, "retiring"));
+            Assert.False(OwnerField<bool>(fixture.Owner, "retiring"));
+            Assert.True(fixture.Owner.GetHealth().Ready);
             Assert.True(cancellation.IsCancellationRequested);
             stopCancellation.Cancel();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => stop);
@@ -136,13 +137,24 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
                 using var conflict = new FileStream(fixture.EnvelopePath + ".lock",
                     FileMode.Open, FileAccess.ReadWrite, FileShare.None);
             });
-            await Assert.ThrowsAsync<InvalidOperationException>(
-                () => fixture.SubmitComponentDownloadAsync());
+            var admitted = await fixture.SubmitComponentDownloadAsync();
+            Assert.Equal(original.Id, admitted.Id);
+            Assert.NotNull(fixture.Owner.Get(admitted.Id));
+            Assert.Equal(1, fixture.ComponentExecutor.ExecuteCount);
             release.TrySetResult();
             await fixture.Owner.StopAsync(CancellationToken.None).WaitAsync(TestBound);
+            Assert.Same(workspace, OwnerField<object>(fixture.Owner, "workspace"));
+            Assert.Same(store, OwnerField<object>(fixture.Owner, "store"));
+            Assert.True(fixture.Owner.GetHealth().Ready);
+            Assert.Null(OwnerField<object>(fixture.Owner, "workerCancellation"));
+            Assert.Throws<IOException>(() =>
+            {
+                using var conflict = new FileStream(fixture.EnvelopePath + ".lock",
+                    FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            });
+            await fixture.Owner.DisposeAsync();
             Assert.Null(OwnerField<object>(fixture.Owner, "workspace"));
             Assert.Null(OwnerField<object>(fixture.Owner, "store"));
-            Assert.Null(OwnerField<object>(fixture.Owner, "workerCancellation"));
             using var available = new FileStream(fixture.EnvelopePath + ".lock",
                 FileMode.Open, FileAccess.ReadWrite, FileShare.None);
             fixture.Owner.Dispose();
@@ -195,7 +207,7 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
     }
 
     [Fact]
-    public async Task QueuedDirectAndPublicationCannotReopenAfterStopClosesRuntime()
+    public async Task QueuedDirectAndPublicationCannotReopenAfterFinalDisposalClosesRuntime()
     {
         await using var fixture = await Fixture.CreateAsync();
         var gate = OwnerGate(fixture.Owner);
@@ -205,7 +217,7 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
         try
         {
             // Both calls synchronously enqueue their first WaitAsync, in order.
-            stop = fixture.Owner.StopAsync(CancellationToken.None);
+            stop = fixture.Owner.DisposeAsync().AsTask();
             direct = fixture.SubmitComponentDownloadAsync();
             fixture.Provider.Publish(CompiledRuntimePlan.Default with
             {
@@ -240,7 +252,7 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
     }
 
     [Fact]
-    public async Task StoppedOwnerKeepsManagedGateForLateRequestsAndCannotRestart()
+    public async Task DisposedOwnerKeepsManagedGateForLateRequestsAndCannotRestart()
     {
         await using var fixture = await Fixture.CreateAsync();
         await fixture.Owner.StopAsync(CancellationToken.None);
@@ -293,7 +305,7 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
             fixture.Owner, "actionChannel")!;
         await InvokeOwnerTask(fixture.Owner, "PlanOnceAsync", CancellationToken.None);
         var ticket = await channel.Reader.ReadAsync().AsTask().WaitAsync(TestBound);
-        await fixture.Owner.StopAsync(CancellationToken.None);
+        await fixture.Owner.DisposeAsync();
         var before = fixture.Owner.GetPublishedState();
         await InvokeOwnerTask(fixture.Owner, "PlanOnceAsync", CancellationToken.None);
         await InvokeOwnerTask(fixture.Owner, "MarkActionStartedAsync",
@@ -327,7 +339,7 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
         var before = fixture.Owner.GetHealth();
         Assert.True(before.PersistenceFaulted);
         Assert.Equal("submit-publication", before.FaultStage);
-        await fixture.Owner.StopAsync(CancellationToken.None).WaitAsync(TestBound);
+        await fixture.Owner.DisposeAsync().AsTask().WaitAsync(TestBound);
         await InvokeOwnerTask(fixture.Owner, "LatchWorkerFaultAsync",
             new IOException("normal retirement must not replace this"), "retired");
         var after = fixture.Owner.GetHealth();

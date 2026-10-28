@@ -106,7 +106,7 @@ public sealed class OperatingSystemUptimeOwnerTests
         var configuration = DefaultFieldSubscriptionCompositionTests.Configuration();
         await using var composition = new NativeFieldSubscriptionComposition(owner.BorrowSubscriptionCapture(),
             DefaultFieldSubscriptionCompositionTests.Settings(), in configuration,
-            failure => throw new InvalidOperationException("Unexpected original worker failure", failure.Error), TimeSpan.Zero);
+            failure => throw new InvalidOperationException("Unexpected original worker failure", failure.Error));
         await composition.StartAsync();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await using var stream = composition.SubscribeAsync("uptime", [field], TimeSpan.FromSeconds(1), timeout.Token).GetAsyncEnumerator();
@@ -137,7 +137,7 @@ public sealed class OperatingSystemUptimeOwnerTests
         await provider.CaptureOperatingSystemInformationAsync(default);
         var field = Assert.Single(fields.Reads.Catalog.Fields.Where(static field => field.Definition.Name == "os_all_uptime_actual")).Field;
         var slow = TimeSpan.FromSeconds(3);
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         using var nextOwnerPublication = os.Publications.Subscribe([WindowsOperatingSystemInformationOwner.CollectionItemId]);
         await using (var stream = fields.Subscriptions.SubscribeAsync("slow", [field], slow, timeout.Token).GetAsyncEnumerator())
         {
@@ -187,7 +187,21 @@ public sealed class OperatingSystemUptimeOwnerTests
                 }
                 finally { await provider.StopAsync(CancellationToken.None); }
 
-                Assert.False(await stream.MoveNextAsync()); // StopAsync drains the periodic field delivery.
+                var beforeRestart = fields.Reads.ReadCached(field);
+                var resumed = stream.MoveNextAsync().AsTask();
+                Assert.False(resumed.IsCompleted); // The consumer retains its stream while the producer is stopped.
+                await provider.StartAsync(timeout.Token);
+                try
+                {
+                    Assert.True(await resumed.WaitAsync(timeout.Token));
+                    var resumedCurrent = Assert.Single(stream.Current);
+                    Assert.Equal(FieldObservationStatus.Current, resumedCurrent.Status);
+                    Assert.True(resumedCurrent.ObservedAt > beforeRestart.ObservedAt);
+                    Assert.True(Assert.IsType<MetricInteger>(resumedCurrent.Value?.Integer).ToSigned64()
+                        > Assert.IsType<MetricInteger>(beforeRestart.Value?.Integer).ToSigned64());
+                    FieldReadingAssert.CurrentOrNewer(resumedCurrent, fields.Reads.ReadCached(field));
+                }
+                finally { await provider.StopAsync(CancellationToken.None); }
             }
         }
         Assert.Same(os, provider.OperatingSystemInventory);

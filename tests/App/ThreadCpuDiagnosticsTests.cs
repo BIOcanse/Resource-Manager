@@ -32,22 +32,28 @@ public sealed class ThreadCpuDiagnosticsTests
         using var sampling = new HostManagerSamplingSubscriptionTestFixture();
         var broker = new Broker();
         using var reader = Reader(sampling, broker);
-        broker.WindowReady = () => FeedWindow(reader, sampling, process.Id, birth, target.Id, false);
         using var slow = reader.AcquireSubscription("ordinary.paused", TimeSpan.FromSeconds(30));
         await reader.StartAsync(default);
         try
         {
+            var first = await FeedPreparedWindowAsync(reader, sampling, process.Id, birth, target.Id, false);
             await Until(() => reader.Read() is not null && Owner(reader).State == "Idle");
             var previous = reader.Read()!;
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var result = Assert.IsType<CpuProcessThreadWindow>(await reader.CaptureThreadWindowAsync(
-                "paused", process.Id, birth, timeout.Token));
+            var capture = reader.CaptureThreadWindowAsync("paused", process.Id, birth, timeout.Token);
+            await Until(() => Owner(reader).DiagnosticRequestCount == 1);
+            await FeedPreparedWindowAsync(reader, sampling, process.Id, birth, target.Id, false,
+                previousWindow: first.Window, previousEnd: first.End);
+            var result = Assert.IsType<CpuProcessThreadWindow>(await capture);
             Assert.True(result.MeasuredFrom > previous.MeasuredFrom);
             Assert.Equal(process.Id, result.Process.ProcessId);
             Assert.Equal(NamedThread.Description, Assert.Single(result.Process.Threads).Diagnostic!.Description);
             Assert.Equal(0, Owner(reader).DiagnosticRequestCount);
+            Assert.Equal(1, broker.Acquires);
+            Assert.Equal(0, broker.Releases);
         }
         finally { await reader.StopAsync(default); }
+        Assert.Equal(1, broker.Releases);
     }
 
     [Theory]
@@ -62,20 +68,27 @@ public sealed class ThreadCpuDiagnosticsTests
         using var sampling = new HostManagerSamplingSubscriptionTestFixture();
         var broker = new Broker();
         using var reader = Reader(sampling, broker);
-        broker.WindowReady = () =>
-        {
-            FeedWindow(reader, sampling, process.Id, birth, target.Id, exited: true,
-                secondTid: survivor.Id, duringWindow: !initiallyPaused || broker.Windows > 1 ? target.BurnAndExit : null);
-        };
         using var slow = initiallyPaused ? reader.AcquireSubscription("endpoint.paused", TimeSpan.FromSeconds(30)) : null;
         await using var app = BuildDebugApp(reader);
         await app.StartAsync();
         using var client = DebugClient(app, TimeSpan.FromSeconds(20));
-        await reader.StartAsync(default);
         try
         {
-            if (initiallyPaused) await Until(() => reader.Read() is not null && Owner(reader).State == "Idle");
-            using var response = await client.GetAsync($"/api/debug/thread-cpu?processId={process.Id}&processStartKey={birth}");
+            (object? Window, long End) first = (null, 0);
+            if (initiallyPaused)
+            {
+                await reader.StartAsync(default);
+                first = await FeedPreparedWindowAsync(reader, sampling, process.Id, birth, target.Id,
+                    exited: true, secondTid: survivor.Id);
+                await Until(() => reader.Read() is not null && Owner(reader).State == "Idle");
+            }
+            var pendingResponse = client.GetAsync($"/api/debug/thread-cpu?processId={process.Id}&processStartKey={birth}");
+            await Until(() => Owner(reader)?.DiagnosticRequestCount == 1);
+            if (!initiallyPaused) await reader.StartAsync(default);
+            await FeedPreparedWindowAsync(reader, sampling, process.Id, birth, target.Id, exited: true,
+                secondTid: survivor.Id, duringWindow: target.BurnAndExit,
+                previousWindow: first.Window, previousEnd: first.End);
+            using var response = await pendingResponse;
             response.EnsureSuccessStatusCode();
             Assert.Equal("no-store", response.Headers.CacheControl!.ToString());
             var json = await response.Content.ReadAsStringAsync();
@@ -97,10 +110,13 @@ public sealed class ThreadCpuDiagnosticsTests
             Assert.True(counters.ReadThrough >= counters.ReadFrom);
             Assert.False(target.IsAlive);
             await Until(() => Owner(reader).DiagnosticRequestCount == 0);
+            Assert.Equal(1, broker.Acquires);
+            Assert.Equal(0, broker.Releases);
             var evidence = Environment.GetEnvironmentVariable("RM_THREAD_CPU_EXAMPLE_PATH");
             if (!string.IsNullOrWhiteSpace(evidence)) await File.WriteAllTextAsync(evidence, json);
         }
         finally { await reader.StopAsync(default); }
+        Assert.Equal(1, broker.Releases);
     }
 
     [Fact]
@@ -111,8 +127,6 @@ public sealed class ThreadCpuDiagnosticsTests
         using var sampling = new HostManagerSamplingSubscriptionTestFixture();
         var broker = new Broker();
         using var reader = Reader(sampling, broker);
-        broker.WindowReady = () => FeedWindow(reader, sampling, process.Id, birth, 10, false,
-            timestampOffset: -TimeSpan.FromMinutes(2));
         using var slow = reader.AcquireSubscription("timeout.paused", TimeSpan.FromSeconds(30));
         await using var app = BuildDebugApp(reader);
         await app.StartAsync();
@@ -120,8 +134,14 @@ public sealed class ThreadCpuDiagnosticsTests
         await reader.StartAsync(default);
         try
         {
+            var first = await FeedPreparedWindowAsync(reader, sampling, process.Id, birth, 10, false,
+                timestampOffset: -TimeSpan.FromMinutes(2));
             await Until(() => reader.Read() is not null && Owner(reader).State == "Idle");
-            using var response = await client.GetAsync($"/api/debug/thread-cpu?processId={process.Id}&processStartKey={birth}");
+            var pendingResponse = client.GetAsync($"/api/debug/thread-cpu?processId={process.Id}&processStartKey={birth}");
+            await Until(() => Owner(reader).DiagnosticRequestCount == 1);
+            await FeedPreparedWindowAsync(reader, sampling, process.Id, birth, 10, false,
+                timestampOffset: -TimeSpan.FromMinutes(2), previousWindow: first.Window, previousEnd: first.End);
+            using var response = await pendingResponse;
             Assert.Equal(System.Net.HttpStatusCode.GatewayTimeout, response.StatusCode);
             Assert.Equal("no-store", response.Headers.CacheControl!.ToString());
             using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
@@ -136,8 +156,11 @@ public sealed class ThreadCpuDiagnosticsTests
             Assert.True(wait.GetProperty("hasSessionLease").GetBoolean());
             Assert.Equal("Running", wait.GetProperty("residency").GetProperty("state").GetString());
             Assert.Equal(0, Owner(reader).DiagnosticRequestCount);
+            Assert.Equal(1, broker.Acquires);
+            Assert.Equal(0, broker.Releases);
         }
         finally { await reader.StopAsync(default); }
+        Assert.Equal(1, broker.Releases);
     }
 
     private static WebApplication BuildDebugApp(EtwCpuCoreResidencyReader reader)
@@ -170,17 +193,14 @@ public sealed class ThreadCpuDiagnosticsTests
         using var sampling = new HostManagerSamplingSubscriptionTestFixture();
         var broker = new Broker();
         using var reader = Reader(sampling, broker);
-        broker.WindowReady = () =>
-        {
-            target.BurnAndExit();
-            // The retained native instance has ended. Later replayed execution under this numeric TID is not it.
-            FeedWindow(reader, sampling, process.Id, birth, target.Id, false);
-        };
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var capture = reader.CaptureThreadWindowAsync("reused-tid", process.Id, birth, timeout.Token);
         await reader.StartAsync(default);
         try
         {
+            target.BurnAndExit();
+            // The retained native instance has ended. Later replayed execution under this numeric TID is not it.
+            await FeedPreparedWindowAsync(reader, sampling, process.Id, birth, target.Id, false);
             var result = Assert.IsType<CpuProcessThreadWindow>(await capture);
             var row = Assert.Single(result.Process.Threads);
             Assert.True(row.ExecutionTimeMilliseconds > 0);
@@ -194,13 +214,13 @@ public sealed class ThreadCpuDiagnosticsTests
         using var sampling = new HostManagerSamplingSubscriptionTestFixture();
         var broker = new Broker();
         using var reader = Reader(sampling, broker);
-        broker.WindowReady = () => FeedWindow(reader, sampling, 100, 1000, 10, false);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await using var stream = reader.SubscribeAsync("ordinary", TimeSpan.FromSeconds(1), timeout.Token).GetAsyncEnumerator();
         var next = stream.MoveNextAsync().AsTask();
         await reader.StartAsync(default);
         try
         {
+            await FeedPreparedWindowAsync(reader, sampling, 100, 1000, 10, false);
             Assert.True(await next);
             Assert.NotNull(stream.Current);
             Assert.Equal(0, Owner(reader).DiagnosticNativeReads);
@@ -229,7 +249,7 @@ public sealed class ThreadCpuDiagnosticsTests
         Assert.Null(wait.WorkerStatus);
         Assert.Equal(cancellation.Token, canceled.CancellationToken);
         Assert.Equal(0, Owner(reader).DiagnosticRequestCount);
-        Assert.Equal(0, broker.Windows);
+        Assert.Equal(0, broker.Acquires);
     }
 
     [Fact]
@@ -240,11 +260,14 @@ public sealed class ThreadCpuDiagnosticsTests
         using var reader = Reader(sampling, broker);
         using var process = Process.GetCurrentProcess();
         var birth = process.StartTime.ToUniversalTime().ToFileTimeUtc();
-        broker.WindowReady = () => FeedWindow(reader, sampling, process.Id, birth, 10, false);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var capture = reader.CaptureThreadWindowAsync("wrong-birth", process.Id, birth + 1, timeout.Token);
         await reader.StartAsync(default);
-        try { Assert.Null(await capture); Assert.Equal(0, Owner(reader).DiagnosticRequestCount); }
+        try
+        {
+            await FeedPreparedWindowAsync(reader, sampling, process.Id, birth, 10, false);
+            Assert.Null(await capture); Assert.Equal(0, Owner(reader).DiagnosticRequestCount);
+        }
         finally { await reader.StopAsync(default); }
     }
 
@@ -270,16 +293,38 @@ public sealed class ThreadCpuDiagnosticsTests
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         while (!condition()) await Task.Delay(5, timeout.Token);
     }
-    private static void FeedWindow(EtwCpuCoreResidencyReader reader, HostManagerSamplingSubscriptionTestFixture sampling,
+    private static async Task<(object Window, long End)> FeedPreparedWindowAsync(
+        EtwCpuCoreResidencyReader reader, HostManagerSamplingSubscriptionTestFixture sampling,
         int pid, long birth, int tid, bool exited, int secondTid = 0, Action? duringWindow = null,
-        TimeSpan timestampOffset = default)
+        TimeSpan timestampOffset = default, object? previousWindow = null, long previousEnd = 0)
+    {
+        object? window = null;
+        await Until(() =>
+        {
+            var owner = Owner(reader);
+            if (owner is null || !owner.IsWindowActive) return false;
+            var session = typeof(EtwCpuResidencyCaptureOwner)
+                .GetField("activeSession", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner)!;
+            window = session.GetType().GetProperty("Window")!.GetValue(session)!;
+            return !ReferenceEquals(window, previousWindow);
+        });
+        var end = FeedWindow(reader, sampling, pid, birth, tid, exited, secondTid, duringWindow,
+            timestampOffset, previousEnd);
+        return (window!, end);
+    }
+
+    private static long FeedWindow(EtwCpuCoreResidencyReader reader, HostManagerSamplingSubscriptionTestFixture sampling,
+        int pid, long birth, int tid, bool exited, int secondTid = 0, Action? duringWindow = null,
+        TimeSpan timestampOffset = default, long previousEnd = 0)
     {
         var session = typeof(EtwCpuResidencyCaptureOwner).GetField("activeSession", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(Owner(reader))!;
         var buffer = (CpuResidencyAggregationBuffer)session.GetType().GetProperty("Buffer")!.GetValue(session)!;
         var completion = (CpuResidencyWindowCompletion)session.GetType().GetProperty("Window")!.GetValue(session)!;
         var plan = sampling.Provider.Current.HostManager.CpuCoreResidency;
         var processors = plan.PhysicalCoreByLogicalProcessor.Keys.Order().ToArray();
-        var start = Stopwatch.GetTimestamp();
+        // The preceding recorded window may extend past wall-clock now. Preserve the buffer's
+        // monotonic event-time contract while feeding the next prepared window on the same session.
+        var start = Math.Max(Stopwatch.GetTimestamp(), checked(previousEnd + 1));
         var now = DateTimeOffset.UtcNow + timestampOffset;
         var duration = Stopwatch.Frequency * plan.ObservationWindowMilliseconds / 1000;
         buffer.ObserveProcessStart(start, now, pid, (ulong)pid, birth, "recorded-thread-cpu");
@@ -301,19 +346,19 @@ public sealed class ThreadCpuDiagnosticsTests
             buffer.ObserveContextSwitch(start + duration, now + plan.ObservationWindow, cpu, 0, 0, 0, null, 0);
             completion.Observe(cpu, start + duration);
         }
+        return start + duration;
     }
     private sealed class Broker : IKernelEtwSessionBroker
     {
-        public Action? WindowReady;
         public bool Running = true;
-        public int Windows;
+        public int Acquires, Releases;
         public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
         {
             if (!Running) throw new ObjectDisposedException(nameof(Broker));
+            Acquires++;
             var source = new KernelEtwEventSource();
             request.Bind(source, new(7, DateTimeOffset.UtcNow));
             source.Activate();
-            if (request.Keywords.HasFlag(KernelTraceEventParser.Keywords.ContextSwitch)) { Windows++; WindowReady?.Invoke(); }
             return new Lease(this, source);
         }
         public KernelEtwSessionSnapshot GetSnapshot() => new(Running ? "Running" : "Stopped", "recorded", 7,
@@ -321,7 +366,13 @@ public sealed class ThreadCpuDiagnosticsTests
         private sealed class Lease(Broker owner, KernelEtwEventSource source) : IKernelEtwSubscription
         {
             public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
-            public void Dispose() => source.Cancel();
+            private int disposed;
+            public void Dispose()
+            {
+                if (Interlocked.Exchange(ref disposed, 1) != 0) return;
+                source.Cancel();
+                Interlocked.Increment(ref owner.Releases);
+            }
         }
     }
     private sealed class NamedThread : IDisposable

@@ -89,14 +89,18 @@ public sealed class HostManagerTransactionJournalRuntimeTests
     {
         var root = CreateTempDirectory();
         var (recreate, hot) = CreatePlans();
-        var runtime = await JournalRuntimeTestStorage.OpenAsync(
-            root,
-            recreate,
-            hot,
-            CancellationToken.None);
+        var runtime = HostManagerTransactionJournalRuntime.Create(
+            root, recreate, hot, NativeAppliedOwnershipTestStorage.Create);
 
         try
         {
+            Assert.Null(runtime.OwnedStatePendingPublication);
+            var changes = 0;
+            runtime.OwnedStateChanged += () => changes++;
+            await runtime.InitializeAsync(CancellationToken.None);
+            Assert.Equal(false, runtime.OwnedStatePendingPublication);
+            Assert.False(runtime.OwnedStatePending);
+            Assert.Equal(1, changes);
             Assert.Equal(HostManagerTransactionJournalRuntimeState.ReadyForExecution, runtime.State);
             Assert.Null(runtime.Failure);
             Assert.NotNull(runtime.StartupSnapshot);
@@ -231,10 +235,17 @@ public sealed class HostManagerTransactionJournalRuntimeTests
                     hot.ConfigurationGeneration,
                     initialJournalRevision,
                     actionId: 101);
+                var ownershipChanges = 0;
+                first.OwnedStateChanged += () => ownershipChanges++;
+                Assert.False(first.OwnedStatePending);
                 Assert.Equal(
                     NativeTransactionJournalStatus.Ok,
                     await admission!.PrepareAsync(prepare, CancellationToken.None));
+                Assert.True(first.OwnedStatePending);
+                Assert.Equal(true, first.OwnedStatePendingPublication);
+                Assert.Equal(1, ownershipChanges);
                 var preparedSnapshot = await admission.ReadSnapshotAsync(CancellationToken.None);
+                Assert.Equal(1, ownershipChanges);
                 Assert.Single(preparedSnapshot.Records);
                 Assert.Equal(
                     HostManagerTransactionJournalRuntimeState.ReadyForExecution,
@@ -275,6 +286,8 @@ public sealed class HostManagerTransactionJournalRuntimeTests
                     HostManagerTransactionJournalRuntimeState.RecoveryRequired,
                     reopened.State);
                 Assert.Single(reopened.StartupSnapshot!.Records);
+                Assert.True(reopened.OwnedStatePending);
+                Assert.Equal(true, reopened.OwnedStatePendingPublication);
                 Assert.True(reopened.TryAcquireExecutionAdmission(out var independentAdmission));
                 await independentAdmission!.DisposeAsync();
                 Assert.True(reopened.TryAcquireRecoveryAdmission(out var recoveryAdmission));
@@ -307,6 +320,8 @@ public sealed class HostManagerTransactionJournalRuntimeTests
                 var recoverySnapshot = await recoveryAdmission.ReadSnapshotAsync(
                     CancellationToken.None);
                 var pendingRecord = Assert.Single(recoverySnapshot.Records);
+                var recoveryChanges = 0;
+                reopened.OwnedStateChanged += () => recoveryChanges++;
                 Assert.Equal(
                     HostManagerTransactionJournalRuntimeState.RecoveryRequired,
                     reopened.State);
@@ -318,6 +333,8 @@ public sealed class HostManagerTransactionJournalRuntimeTests
                             recoverySnapshot.Header.JournalRevision,
                             pendingRecord.EntryRevision),
                         CancellationToken.None));
+                Assert.False(reopened.OwnedStatePending);
+                Assert.Equal(1, recoveryChanges);
                 Assert.Equal(
                     HostManagerTransactionJournalRuntimeState.RecoveryRequired,
                     reopened.State);

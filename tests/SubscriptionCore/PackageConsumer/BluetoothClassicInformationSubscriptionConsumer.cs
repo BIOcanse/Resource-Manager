@@ -35,8 +35,7 @@ internal static class BluetoothClassicInformationSubscriptionConsumer
         var settings = new SubscriptionRoleSettings(2, 1000, 1, 3000, 1000, 1000);
         var configuration = Configuration();
         await using var composition = new NativeFieldSubscriptionComposition(access.BorrowSubscriptionCapture(),
-            settings, in configuration, failure => failures.Enqueue($"{failure.Stage}: {failure.Error.Message}"),
-            TimeSpan.FromMilliseconds(10));
+            settings, in configuration, failure => failures.Enqueue($"{failure.Stage}: {failure.Error.Message}"));
         await composition.StartAsync();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         await using (var stream = composition.SubscribeAsync("recorded-classic-bluetooth", [connected, paired],

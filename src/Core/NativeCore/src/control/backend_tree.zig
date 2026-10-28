@@ -13,6 +13,8 @@ const ItemUids = generated.ItemUids;
 const ConditionUids = generated.ConditionUids;
 
 const all_registry = generated.registry;
+// Profile filters scan at most blocks x declarations, with a fixed allowance per entry.
+const declaration_branch_quota = 16 * (all_registry.blocks.len + 1) * (all_registry.conditions.len + 1);
 
 fn withoutAutomaticUpdate() [all_registry.blocks.len - 1]d.Block {
     var selected: [all_registry.blocks.len - 1]d.Block = undefined;
@@ -27,6 +29,34 @@ fn withoutAutomaticUpdate() [all_registry.blocks.len - 1]d.Block {
 }
 
 const full_registry_blocks = withoutAutomaticUpdate();
+fn normalReadOnlyBlockCount() usize {
+    @setEvalBranchQuota(declaration_branch_quota);
+    var count: usize = 0;
+    for (all_registry.blocks) |block| {
+        if (normalReadOnlyBlock(block.uid)) count += 1;
+    }
+    return count;
+}
+fn normalReadOnlyConditionCount() usize {
+    @setEvalBranchQuota(declaration_branch_quota);
+    var count: usize = 0;
+    for (all_registry.conditions) |condition| {
+        if (normalReadOnlyCondition(condition.uid)) count += 1;
+    }
+    return count;
+}
+fn fullConditions() [all_registry.conditions.len - 1]d.Condition {
+    var result: [all_registry.conditions.len - 1]d.Condition = undefined;
+    var next: usize = 0;
+    for (all_registry.conditions) |condition| {
+        if (condition.decides == BlockUids.AutomaticProductUpdateService) continue;
+        result[next] = condition;
+        next += 1;
+    }
+    if (next != result.len) @compileError("full profile must exclude exactly the automatic-update rule");
+    return result;
+}
+const full_conditions = fullConditions();
 
 /// The Full host composition has all backend declarations except the service-only update worker.
 pub const registry: d.Registry = .{
@@ -34,7 +64,7 @@ pub const registry: d.Registry = .{
     .process = all_registry.process,
     .blocks = &full_registry_blocks,
     .items = all_registry.items,
-    .conditions = all_registry.conditions,
+    .conditions = &full_conditions,
 };
 
 /// The Windows Service + MutablePersistence composition includes the update worker.
@@ -62,14 +92,9 @@ fn normalReadOnlyMember(uid: d.BlockUid) bool {
         BlockUids.TrustedAccessInvocationHostedService,
         BlockUids.RuntimeSpecializationCoordinator,
         BlockUids.HostManagerSamplingSubscriptionOwner,
-        BlockUids.HostManagerMetricSnapshotOwner,
-        BlockUids.HostManagerSoftwareIdentityOwner,
-        BlockUids.HostManagerFileQueryOwner,
-        BlockUids.HostManagerDisplayCoordinatorOwner,
         BlockUids.ServiceAutoStartSettings,
         BlockUids.ServiceRecoverySettings,
         BlockUids.FanControlCoreLifetimeService,
-        BlockUids.KernelEtwSessionBroker,
         BlockUids.EtwPhysicalDiskIoAttributionReader,
         BlockUids.EtwNetworkTcpIpAttributionReader,
         BlockUids.PresentFrameEtwSource,
@@ -87,8 +112,8 @@ fn normalReadOnlyMember(uid: d.BlockUid) bool {
     };
 }
 
-fn normalReadOnlyRegistryBlocks() [32]d.Block {
-    var selected: [32]d.Block = undefined;
+fn normalReadOnlyRegistryBlocks() [normalReadOnlyBlockCount()]d.Block {
+    var selected: [normalReadOnlyBlockCount()]d.Block = undefined;
     var next: usize = 0;
     for (all_registry.blocks) |block| {
         if (!normalReadOnlyBlock(block.uid)) continue;
@@ -100,8 +125,9 @@ fn normalReadOnlyRegistryBlocks() [32]d.Block {
     return selected;
 }
 
-fn normalReadOnlyConditions() [5]d.Condition {
-    var selected: [5]d.Condition = undefined;
+fn normalReadOnlyConditions() [normalReadOnlyConditionCount()]d.Condition {
+    @setEvalBranchQuota(declaration_branch_quota);
+    var selected: [normalReadOnlyConditionCount()]d.Condition = undefined;
     var next: usize = 0;
     for (all_registry.conditions) |condition| {
         if (!normalReadOnlyCondition(condition.uid)) continue;
@@ -109,7 +135,7 @@ fn normalReadOnlyConditions() [5]d.Condition {
         selected[next] = condition;
         next += 1;
     }
-    if (next != selected.len) @compileError("normal-read-only registry must retain demand and native ETW conditions");
+    if (next != selected.len) @compileError("normal-read-only registry must retain its exact registered conditions");
     return selected;
 }
 
@@ -144,10 +170,6 @@ const all_tree_blocks = [_]tree.Block{
     .{ .uid = BlockUids.RuntimeSpecializationCoordinator, .parent = BlockUids.ServiceHost },
     .{ .uid = BlockUids.AutomaticProductUpdateService, .parent = BlockUids.ServiceHost, .inputs = &.{BlockUids.RuntimeSpecializationCoordinator} },
     .{ .uid = BlockUids.HostManagerSamplingSubscriptionOwner, .parent = BlockUids.Monitoring, .inputs = &.{BlockUids.RuntimeSpecializationCoordinator} },
-    .{ .uid = BlockUids.HostManagerMetricSnapshotOwner, .parent = BlockUids.Monitoring, .inputs = &.{BlockUids.RuntimeSpecializationCoordinator} },
-    .{ .uid = BlockUids.HostManagerSoftwareIdentityOwner, .parent = BlockUids.SoftwareManagement, .inputs = &.{BlockUids.RuntimeSpecializationCoordinator} },
-    .{ .uid = BlockUids.HostManagerFileQueryOwner, .parent = BlockUids.SoftwareManagement, .inputs = &.{BlockUids.RuntimeSpecializationCoordinator} },
-    .{ .uid = BlockUids.HostManagerDisplayCoordinatorOwner, .parent = BlockUids.Monitoring, .inputs = &.{BlockUids.RuntimeSpecializationCoordinator} },
     .{ .uid = BlockUids.HostManagerPublicServiceCoordinatorOwner, .parent = BlockUids.PublicServices, .inputs = &.{BlockUids.RuntimeSpecializationCoordinator} },
     .{ .uid = BlockUids.HostManagerOperationCoordinatorOwner, .parent = BlockUids.Backend, .inputs = &.{BlockUids.RuntimeSpecializationCoordinator} },
     .{ .uid = BlockUids.SqlitePortableSoftwareRegistry, .parent = BlockUids.SoftwareManagement, .inputs = &.{BlockUids.RuntimeSpecializationCoordinator} },
@@ -157,15 +179,17 @@ const all_tree_blocks = [_]tree.Block{
     .{ .uid = BlockUids.FanCurveTemperatureFeed, .parent = BlockUids.FanControlCoreLifetimeService, .inputs = &.{BlockUids.WindowsHardwareMetricSampler} },
     .{ .uid = BlockUids.ControlActualStateReader, .parent = BlockUids.HardwareControl },
     .{ .uid = BlockUids.GpuTelemetryWorkerSupervisor, .parent = BlockUids.HostManagerSamplingSubscriptionOwner, .inputs = &.{BlockUids.HostManagerSamplingSubscriptionOwner} },
-    .{ .uid = BlockUids.WindowsHardwareMetricSampler, .parent = BlockUids.HostManagerSamplingSubscriptionOwner, .inputs = &.{ BlockUids.RuntimeSpecializationCoordinator, BlockUids.HostManagerSamplingSubscriptionOwner, BlockUids.HostManagerMetricSnapshotOwner } },
+    .{ .uid = BlockUids.WindowsHardwareMetricSampler, .parent = BlockUids.HostManagerSamplingSubscriptionOwner, .inputs = &.{
+        BlockUids.RuntimeSpecializationCoordinator,
+        BlockUids.HostManagerSamplingSubscriptionOwner,
+    } },
     .{ .uid = BlockUids.CpuTopologySnapshotProvider, .parent = BlockUids.HostManagerSamplingSubscriptionOwner, .inputs = &.{BlockUids.HostManagerSamplingSubscriptionOwner} },
     .{ .uid = BlockUids.FanControlCoreLifetimeService, .parent = BlockUids.HardwareControl },
-    .{ .uid = BlockUids.KernelEtwSessionBroker, .parent = BlockUids.Monitoring },
-    .{ .uid = BlockUids.PortableSoftwareDiscoveryService, .parent = BlockUids.SoftwareManagement, .inputs = &.{ BlockUids.KernelEtwSessionBroker, BlockUids.SqlitePortableSoftwareRegistry } },
-    .{ .uid = BlockUids.EtwCpuCoreResidencyReader, .parent = BlockUids.HostManagerSamplingSubscriptionOwner, .inputs = &.{ BlockUids.RuntimeSpecializationCoordinator, BlockUids.KernelEtwSessionBroker, BlockUids.HostManagerSamplingSubscriptionOwner } },
-    .{ .uid = BlockUids.EtwSystemInterruptSnapshotSource, .parent = BlockUids.HostManagerSamplingSubscriptionOwner, .inputs = &.{ BlockUids.KernelEtwSessionBroker, BlockUids.HostManagerSamplingSubscriptionOwner } },
-    .{ .uid = BlockUids.EtwPhysicalDiskIoAttributionReader, .parent = BlockUids.Monitoring, .inputs = &.{BlockUids.KernelEtwSessionBroker} },
-    .{ .uid = BlockUids.EtwNetworkTcpIpAttributionReader, .parent = BlockUids.Monitoring, .inputs = &.{BlockUids.KernelEtwSessionBroker} },
+    .{ .uid = BlockUids.PortableSoftwareDiscoveryService, .parent = BlockUids.SoftwareManagement, .inputs = &.{BlockUids.SqlitePortableSoftwareRegistry} },
+    .{ .uid = BlockUids.EtwCpuCoreResidencyReader, .parent = BlockUids.HostManagerSamplingSubscriptionOwner, .inputs = &.{ BlockUids.RuntimeSpecializationCoordinator, BlockUids.HostManagerSamplingSubscriptionOwner } },
+    .{ .uid = BlockUids.EtwSystemInterruptSnapshotSource, .parent = BlockUids.HostManagerSamplingSubscriptionOwner, .inputs = &.{BlockUids.HostManagerSamplingSubscriptionOwner} },
+    .{ .uid = BlockUids.EtwPhysicalDiskIoAttributionReader, .parent = BlockUids.Monitoring },
+    .{ .uid = BlockUids.EtwNetworkTcpIpAttributionReader, .parent = BlockUids.Monitoring },
     .{ .uid = BlockUids.WindowsResourceBreakdownSampler, .parent = BlockUids.HostManagerSamplingSubscriptionOwner, .inputs = &.{ BlockUids.RuntimeSpecializationCoordinator, BlockUids.WindowsHardwareMetricSampler, BlockUids.HostManagerSamplingSubscriptionOwner, BlockUids.EtwPhysicalDiskIoAttributionReader, BlockUids.EtwNetworkTcpIpAttributionReader, BlockUids.GpuAllocationCollector, BlockUids.DxgkrnlVidMmEtwTelemetryZone } },
     .{ .uid = BlockUids.GpuPlacementProcessHistoryObserver, .parent = BlockUids.Optimization, .inputs = &.{ BlockUids.RuntimeSpecializationCoordinator, BlockUids.WindowsResourceBreakdownSampler, BlockUids.PresentFrameEtwSource, BlockUids.SqlitePortableSoftwareRegistry } },
     .{ .uid = BlockUids.SharedResourceSubscriptionMaintenanceService, .parent = BlockUids.PublicServices },
@@ -179,10 +203,9 @@ const all_tree_blocks = [_]tree.Block{
     .{ .uid = BlockUids.HostMemoryProtection, .parent = BlockUids.Backend, .inputs = &.{ BlockUids.WindowsHardwareMetricSampler, BlockUids.WindowsResourceBreakdownSampler } },
 };
 
-fn normalReadOnlyTreeBlocks() [32]tree.Block {
-    var selected: [32]tree.Block = undefined;
+fn normalReadOnlyTreeBlocks() [normalReadOnlyBlockCount()]tree.Block {
+    var selected: [normalReadOnlyBlockCount()]tree.Block = undefined;
     var next: usize = 0;
-    var edge_count: usize = 0;
     var root_child_count: usize = 0;
     for (all_tree_blocks) |block| {
         if (!normalReadOnlyBlock(block.uid)) continue;
@@ -193,13 +216,11 @@ fn normalReadOnlyTreeBlocks() [32]tree.Block {
         if (block.parent) |parent| if (parent == BlockUids.Program) {
             root_child_count += 1;
         };
-        edge_count += block.inputs.len;
         selected[next] = block;
         next += 1;
     }
     if (next != selected.len) @compileError("normal-read-only topology must contain its exact fixed block set");
-    if (edge_count != 28 or root_child_count != 1)
-        @compileError("normal-read-only topology must retain 28 inputs and only Backend under Program");
+    if (root_child_count != 1) @compileError("only Backend belongs directly under Program");
     return selected;
 }
 
@@ -219,27 +240,20 @@ fn fullTreeBlocks() [all_tree_blocks.len - 1]tree.Block {
 
 const full_tree_blocks = fullTreeBlocks();
 
-const FixedChildCondition = struct { child: d.BlockUid, condition: d.ConditionUid };
-
-// These children keep their own fixed-node condition when their parent moves.
-// KernelLeakObservation will join this list when its block is registered.
-const fixed_child_conditions = [_]FixedChildCondition{
-    .{ .child = BlockUids.HostMemoryProtection, .condition = ConditionUids.HostMemoryProtectionReady },
-    .{ .child = BlockUids.PresentFrameEtwSource, .condition = ConditionUids.PresentEtwChildShouldRun },
-    .{ .child = BlockUids.GpuAllocationCollector, .condition = ConditionUids.GpuAllocationEtwChildShouldRun },
-    .{ .child = BlockUids.DxgkrnlVidMmEtwTelemetryZone, .condition = ConditionUids.VidMmEtwChildShouldRun },
-};
-
 fn hasFixedCondition(child: d.BlockUid) bool {
-    for (fixed_child_conditions) |fixed| if (fixed.child == child) return true;
+    @setEvalBranchQuota(declaration_branch_quota);
+    for (all_registry.conditions) |condition| {
+        if (condition.decides == child) return true;
+    }
     return false;
 }
-
-fn normalReadOnlyCondition(condition: d.ConditionUid) bool {
-    for (fixed_child_conditions) |fixed| {
-        if (fixed.condition == condition) return normalReadOnlyBlock(fixed.child);
+fn normalReadOnlyCondition(uid: d.ConditionUid) bool {
+    @setEvalBranchQuota(declaration_branch_quota);
+    for (all_registry.conditions) |condition| {
+        if (condition.uid != uid) continue;
+        return if (condition.decides) |child| normalReadOnlyBlock(child) else true;
     }
-    return true;
+    return false;
 }
 
 fn domainBlock(uid: d.BlockUid) bool {
@@ -258,6 +272,7 @@ fn domainBlock(uid: d.BlockUid) bool {
 }
 
 fn perBlockUseCount(comptime blocks: []const tree.Block) usize {
+    @setEvalBranchQuota(declaration_branch_quota);
     var count: usize = 0;
     for (blocks) |block| {
         if (block.parent == null or hasFixedCondition(block.uid)) continue;
@@ -267,6 +282,7 @@ fn perBlockUseCount(comptime blocks: []const tree.Block) usize {
 }
 
 fn usesFor(comptime blocks: []const tree.Block) [perBlockUseCount(blocks)]tree.PerBlockUse {
+    @setEvalBranchQuota(declaration_branch_quota);
     var uses: [perBlockUseCount(blocks)]tree.PerBlockUse = undefined;
     var next: usize = 0;
     for (blocks) |block| {
@@ -274,7 +290,7 @@ fn usesFor(comptime blocks: []const tree.Block) [perBlockUseCount(blocks)]tree.P
         if (hasFixedCondition(block.uid)) continue;
         uses[next] = .{
             .node = parent,
-            .condition = if (block.uid == BlockUids.Backend or domainBlock(block.uid)) ConditionUids.AlwaysWanted else ConditionUids.HasExternalDemand,
+            .condition = ConditionUids.AlwaysWanted,
             .child = block.uid,
         };
         next += 1;
@@ -283,10 +299,15 @@ fn usesFor(comptime blocks: []const tree.Block) [perBlockUseCount(blocks)]tree.P
     return uses;
 }
 
-fn itemValueOrFalse(read: control.Read) bool {
-    return read.valueOr(false);
+fn readBool(input: *control.Input, item: d.ItemUid, block: ?d.BlockUid) anyerror!control.Read {
+    return input.read(.{ .item = item, .block = block });
 }
-
+fn isTrue(input: *control.Input, item: d.ItemUid) anyerror!bool {
+    return (try readBool(input, item, null)).valueOr(false);
+}
+fn hostPermitted(input: *control.Input, child: ?d.BlockUid) anyerror!bool {
+    return (try readBool(input, ItemUids.HostStartPermitted, child)).valueOr(false);
+}
 fn unfrozenOrNotPublished(read: control.Read) bool {
     return switch (read) {
         .value => |value| value,
@@ -294,69 +315,159 @@ fn unfrozenOrNotPublished(read: control.Read) bool {
         .owner_stopped, .read_failed => false,
     };
 }
-
-fn memoryProtectionFactsAllow(enabled: control.Read, normal_point_exists: control.Read, reserve_built: control.Read) bool {
-    return itemValueOrFalse(enabled) and itemValueOrFalse(normal_point_exists) and itemValueOrFalse(reserve_built);
+fn anyFact(input: *control.Input, child: d.BlockUid, comptime facts: []const d.ItemUid) anyerror!bool {
+    if (!try hostPermitted(input, child)) return false;
+    for (facts) |item| {
+        if (try isTrue(input, item)) return true;
+    }
+    return false;
 }
-
-fn nativeChildFactsAllow(demand: control.Read, available: control.Read, mode: ?control.Read) bool {
-    if (!itemValueOrFalse(demand) or !itemValueOrFalse(available)) return false;
-    if (mode) |value| return unfrozenOrNotPublished(value);
-    return true;
+fn alwaysWanted(input: *control.Input) anyerror!bool {
+    return hostPermitted(input, input.block);
 }
-
-fn readBool(input: *control.Input, item: d.ItemUid, block: ?d.BlockUid) anyerror!control.Read {
-    return input.read(.{ .item = item, .block = block });
+fn nativeChild(input: *control.Input, child: d.BlockUid, field: d.ItemUid, available: d.ItemUid, mode: ?d.ItemUid) anyerror!bool {
+    if (!try hostPermitted(input, child) or !try isTrue(input, field) or !try isTrue(input, available)) return false;
+    return if (mode) |item| unfrozenOrNotPublished(try readBool(input, item, null)) else true;
 }
-
-fn hasExternalDemand(input: *control.Input) anyerror!bool {
-    // The declaration leaves the per-block key unbound; each compiled use
-    // supplies its concrete block through input.block.
-    return itemValueOrFalse(try readBool(input, ItemUids.BlockDemand, input.block));
-}
-
-fn alwaysWanted(_: *control.Input) anyerror!bool {
-    return true;
-}
-
-fn hostMemoryProtectionReady(input: *control.Input) anyerror!bool {
-    return memoryProtectionFactsAllow(
-        try readBool(input, ItemUids.HostMemoryProtectionEnabled, null),
-        try readBool(input, ItemUids.MemoryProtectionNormalRunningPointExists, null),
-        try readBool(input, ItemUids.MemoryProtectionReserveBuilt, null),
-    );
-}
-
-fn nativeChildShouldRun(input: *control.Input, child: d.BlockUid, availability_item: d.ItemUid, mode_item: ?d.ItemUid) anyerror!bool {
-    const demand = try readBool(input, ItemUids.BlockDemand, child);
-    const available = try readBool(input, availability_item, null);
-    const mode: ?control.Read = if (mode_item) |item| try readBool(input, item, null) else null;
-    return nativeChildFactsAllow(demand, available, mode);
-}
-
 fn presentEtwChildShouldRun(input: *control.Input) anyerror!bool {
-    return nativeChildShouldRun(input, BlockUids.PresentFrameEtwSource, ItemUids.PresentNativeSessionAvailable, ItemUids.PresentUnfrozen);
+    return nativeChild(input, BlockUids.PresentFrameEtwSource, ItemUids.GraphicsApiObservationInUse, ItemUids.PresentNativeSessionAvailable, ItemUids.PresentUnfrozen);
 }
-
 fn gpuAllocationEtwChildShouldRun(input: *control.Input) anyerror!bool {
-    return nativeChildShouldRun(input, BlockUids.GpuAllocationCollector, ItemUids.GpuAllocationNativeSessionAvailable, null);
+    return nativeChild(input, BlockUids.GpuAllocationCollector, ItemUids.ProcessDedicatedGpuMemoryInUse, ItemUids.GpuAllocationNativeSessionAvailable, null);
 }
-
 fn vidMmEtwChildShouldRun(input: *control.Input) anyerror!bool {
-    return nativeChildShouldRun(input, BlockUids.DxgkrnlVidMmEtwTelemetryZone, ItemUids.VidMmNativeSessionAvailable, ItemUids.VidMmUnfrozen);
+    return nativeChild(input, BlockUids.DxgkrnlVidMmEtwTelemetryZone, ItemUids.VramResidualInUse, ItemUids.VidMmNativeSessionAvailable, ItemUids.VidMmUnfrozen);
 }
-
+fn nativeEtwGroupShouldRun(input: *control.Input) anyerror!bool {
+    return try hostPermitted(input, BlockUids.NativeEtwLifetimeService) and
+        (try presentEtwChildShouldRun(input) or try gpuAllocationEtwChildShouldRun(input) or try vidMmEtwChildShouldRun(input));
+}
+fn hostMemoryProtectionReady(input: *control.Input) anyerror!bool {
+    return try hostPermitted(input, BlockUids.HostMemoryProtection) and
+        try isTrue(input, ItemUids.HostMemoryProtectionEnabled) and
+        try isTrue(input, ItemUids.MemoryProtectionNormalRunningPointExists) and
+        try isTrue(input, ItemUids.MemoryProtectionReserveBuilt);
+}
+fn debugWriterShouldRun(input: *control.Input) anyerror!bool {
+    return anyFact(input, BlockUids.JsonDebugDiagnosticLogWriter, &.{ ItemUids.DebugLoggingEnabled, ItemUids.DebugWriterPending });
+}
+fn automaticUpdateShouldRun(input: *control.Input) anyerror!bool {
+    return anyFact(input, BlockUids.AutomaticProductUpdateService, &.{ItemUids.AutomaticUpdatesEnabled});
+}
+fn samplingOwnerShouldRun(input: *control.Input) anyerror!bool {
+    return anyFact(input, BlockUids.HostManagerSamplingSubscriptionOwner, &.{ ItemUids.SamplingGpuTelemetryInUse, ItemUids.SamplingHardwareMetricsInUse, ItemUids.SamplingCpuTopologyInUse, ItemUids.SamplingCpuResidencyInUse, ItemUids.SamplingInterruptsInUse, ItemUids.SamplingResourceBreakdownInUse, ItemUids.SamplingDeviceTopologyInUse });
+}
+fn gpuTelemetryShouldRun(input: *control.Input) anyerror!bool {
+    return anyFact(input, BlockUids.GpuTelemetryWorkerSupervisor, &.{ItemUids.SamplingGpuTelemetryInUse});
+}
+fn hardwareMetricsShouldRun(input: *control.Input) anyerror!bool {
+    return anyFact(input, BlockUids.WindowsHardwareMetricSampler, &.{ItemUids.SamplingHardwareMetricsInUse});
+}
+fn cpuTopologyShouldRun(input: *control.Input) anyerror!bool {
+    return anyFact(input, BlockUids.CpuTopologySnapshotProvider, &.{ItemUids.SamplingCpuTopologyInUse});
+}
+fn cpuResidencyShouldRun(input: *control.Input) anyerror!bool {
+    return anyFact(input, BlockUids.EtwCpuCoreResidencyReader, &.{ItemUids.SamplingCpuResidencyInUse});
+}
+fn interruptsShouldRun(input: *control.Input) anyerror!bool {
+    return anyFact(input, BlockUids.EtwSystemInterruptSnapshotSource, &.{ItemUids.SamplingInterruptsInUse});
+}
+fn resourceBreakdownShouldRun(input: *control.Input) anyerror!bool {
+    return anyFact(input, BlockUids.WindowsResourceBreakdownSampler, &.{ItemUids.SamplingResourceBreakdownInUse});
+}
+fn deviceTopologyShouldRun(input: *control.Input) anyerror!bool {
+    return anyFact(input, BlockUids.DeviceTopologySnapshotProvider, &.{ItemUids.SamplingDeviceTopologyInUse});
+}
+fn diskAttributionShouldRun(input: *control.Input) anyerror!bool {
+    return anyFact(input, BlockUids.EtwPhysicalDiskIoAttributionReader, &.{ItemUids.DiskAttributionInUse});
+}
+fn networkAttributionShouldRun(input: *control.Input) anyerror!bool {
+    return anyFact(input, BlockUids.EtwNetworkTcpIpAttributionReader, &.{ItemUids.NetworkAttributionInUse});
+}
+fn fanCoreShouldRun(input: *control.Input) anyerror!bool {
+    return anyFact(input, BlockUids.FanControlCoreLifetimeService, &.{ ItemUids.SoftwareFanCurveEnabled, ItemUids.AppliedFanControlExists, ItemUids.FanCommandPending });
+}
+fn fanTemperatureShouldRun(input: *control.Input) anyerror!bool {
+    return anyFact(input, BlockUids.FanCurveTemperatureFeed, &.{ItemUids.SoftwareFanCurveEnabled});
+}
+fn controlReassertionShouldRun(input: *control.Input) anyerror!bool {
+    return anyFact(input, BlockUids.ControlDesiredStateReassertion, &.{ItemUids.AppliedControlIntentsExist});
+}
+fn actualControlShouldRun(input: *control.Input) anyerror!bool {
+    return anyFact(input, BlockUids.ControlActualStateReader, &.{ItemUids.ActualControlValuesInUse});
+}
+fn smartShouldRun(input: *control.Input) anyerror!bool {
+    return anyFact(input, BlockUids.HostManagerSmartCoordinator, &.{ ItemUids.OptimizationEnabled, ItemUids.ActiveCpuLeasesExist, ItemUids.SmartOwnedStatePending });
+}
+fn gpuApiHistoryShouldRun(input: *control.Input) anyerror!bool {
+    return anyFact(input, BlockUids.GpuPlacementProcessHistoryObserver, &.{ItemUids.GpuApiHistoryEnabled});
+}
+fn backgroundReportsShouldRun(input: *control.Input) anyerror!bool {
+    return anyFact(input, BlockUids.HostManagerReportCoordinatorOwner, &.{ItemUids.BackgroundReportsEnabled});
+}
+fn portableDiscoveryShouldRun(input: *control.Input) anyerror!bool {
+    return anyFact(input, BlockUids.PortableSoftwareDiscoveryService, &.{ItemUids.PortableDiscoveryEnabled});
+}
+fn trustedRequestsShouldRun(input: *control.Input) anyerror!bool {
+    return anyFact(input, BlockUids.TrustedAccessRequestOwner, &.{ItemUids.TrustedRequestsPending});
+}
+fn publicServiceShouldRun(input: *control.Input) anyerror!bool {
+    return anyFact(input, BlockUids.HostManagerPublicServiceCoordinatorOwner, &.{ ItemUids.PublicServiceEnabled, ItemUids.PublicServiceTasksPending });
+}
+fn sharedResourceShouldRun(input: *control.Input) anyerror!bool {
+    return anyFact(input, BlockUids.SharedResourceSubscriptionMaintenanceService, &.{ItemUids.SharedResourceActivityExists});
+}
+fn operationsShouldRun(input: *control.Input) anyerror!bool {
+    return anyFact(input, BlockUids.HostManagerOperationCoordinatorOwner, &.{ItemUids.OperationsPending});
+}
 const compute_functions = [_]control.types.Compute{
-    .{ .condition = ConditionUids.HasExternalDemand, .function = hasExternalDemand },
     .{ .condition = ConditionUids.AlwaysWanted, .function = alwaysWanted },
     .{ .condition = ConditionUids.HostMemoryProtectionReady, .function = hostMemoryProtectionReady },
     .{ .condition = ConditionUids.PresentEtwChildShouldRun, .function = presentEtwChildShouldRun },
     .{ .condition = ConditionUids.GpuAllocationEtwChildShouldRun, .function = gpuAllocationEtwChildShouldRun },
     .{ .condition = ConditionUids.VidMmEtwChildShouldRun, .function = vidMmEtwChildShouldRun },
+    .{ .condition = ConditionUids.NativeEtwGroupShouldRun, .function = nativeEtwGroupShouldRun },
+    .{ .condition = ConditionUids.DebugWriterShouldRun, .function = debugWriterShouldRun },
+    .{ .condition = ConditionUids.AutomaticUpdateShouldRun, .function = automaticUpdateShouldRun },
+    .{ .condition = ConditionUids.SamplingOwnerShouldRun, .function = samplingOwnerShouldRun },
+    .{ .condition = ConditionUids.GpuTelemetryShouldRun, .function = gpuTelemetryShouldRun },
+    .{ .condition = ConditionUids.HardwareMetricsShouldRun, .function = hardwareMetricsShouldRun },
+    .{ .condition = ConditionUids.CpuTopologyShouldRun, .function = cpuTopologyShouldRun },
+    .{ .condition = ConditionUids.CpuResidencyShouldRun, .function = cpuResidencyShouldRun },
+    .{ .condition = ConditionUids.InterruptsShouldRun, .function = interruptsShouldRun },
+    .{ .condition = ConditionUids.ResourceBreakdownShouldRun, .function = resourceBreakdownShouldRun },
+    .{ .condition = ConditionUids.DeviceTopologyShouldRun, .function = deviceTopologyShouldRun },
+    .{ .condition = ConditionUids.DiskAttributionShouldRun, .function = diskAttributionShouldRun },
+    .{ .condition = ConditionUids.NetworkAttributionShouldRun, .function = networkAttributionShouldRun },
+    .{ .condition = ConditionUids.FanCoreShouldRun, .function = fanCoreShouldRun },
+    .{ .condition = ConditionUids.FanTemperatureShouldRun, .function = fanTemperatureShouldRun },
+    .{ .condition = ConditionUids.ControlReassertionShouldRun, .function = controlReassertionShouldRun },
+    .{ .condition = ConditionUids.ActualControlShouldRun, .function = actualControlShouldRun },
+    .{ .condition = ConditionUids.SmartShouldRun, .function = smartShouldRun },
+    .{ .condition = ConditionUids.GpuApiHistoryShouldRun, .function = gpuApiHistoryShouldRun },
+    .{ .condition = ConditionUids.BackgroundReportsShouldRun, .function = backgroundReportsShouldRun },
+    .{ .condition = ConditionUids.PortableDiscoveryShouldRun, .function = portableDiscoveryShouldRun },
+    .{ .condition = ConditionUids.TrustedRequestsShouldRun, .function = trustedRequestsShouldRun },
+    .{ .condition = ConditionUids.PublicServiceShouldRun, .function = publicServiceShouldRun },
+    .{ .condition = ConditionUids.SharedResourceShouldRun, .function = sharedResourceShouldRun },
+    .{ .condition = ConditionUids.OperationsShouldRun, .function = operationsShouldRun },
 };
+fn fullComputes() [compute_functions.len - 1]control.types.Compute {
+    var result: [compute_functions.len - 1]control.types.Compute = undefined;
+    var next: usize = 0;
+    for (compute_functions) |compute| {
+        if (compute.condition == ConditionUids.AutomaticUpdateShouldRun) continue;
+        result[next] = compute;
+        next += 1;
+    }
+    if (next != result.len) @compileError("full profile must exclude exactly the automatic-update compute");
+    return result;
+}
+const full_computes = fullComputes();
 
-fn normalReadOnlyComputes() [5]control.types.Compute {
-    var selected: [5]control.types.Compute = undefined;
+fn normalReadOnlyComputes() [normalReadOnlyConditionCount()]control.types.Compute {
+    @setEvalBranchQuota(declaration_branch_quota);
+    var selected: [normalReadOnlyConditionCount()]control.types.Compute = undefined;
     var next: usize = 0;
     for (compute_functions) |compute| {
         if (!normalReadOnlyCondition(compute.condition)) continue;
@@ -364,7 +475,7 @@ fn normalReadOnlyComputes() [5]control.types.Compute {
         selected[next] = compute;
         next += 1;
     }
-    if (next != selected.len) @compileError("normal-read-only topology must compute its five registered conditions");
+    if (next != selected.len) @compileError("normal-read-only topology must compute its exact registered conditions");
     return selected;
 }
 
@@ -374,12 +485,12 @@ const full_uses = usesFor(&full_tree_blocks);
 const service_uses = usesFor(&all_tree_blocks);
 const normal_readonly_uses = usesFor(&normal_readonly_tree_blocks);
 
-/// Full host topology (47 runnable blocks, 51 input edges, only Backend under Program).
+/// Full host topology with precise business conditions and no resource-only blocks.
 pub const topology: tree.Tree = .{
     .program = BlockUids.Program,
     .blocks = &full_tree_blocks,
     .uses = &full_uses,
-    .computes = &compute_functions,
+    .computes = &full_computes,
 };
 
 /// Windows Service + MutablePersistence topology (adds the update worker).
@@ -390,8 +501,7 @@ pub const service_topology: tree.Tree = .{
     .computes = &compute_functions,
 };
 
-/// Exact `normal-read-only` startup topology: 31 runnable blocks, 28 data inputs,
-/// and only Backend directly under Program.
+/// Exact normal-read-only profile; structural domains exist only with retained children.
 pub const normal_readonly_topology: tree.Tree = .{
     .program = BlockUids.Program,
     .blocks = &normal_readonly_tree_blocks,
@@ -420,28 +530,167 @@ pub const Engine = control.Controller(registry, topology);
 pub const ServiceEngine = control.Controller(service_registry, service_topology);
 pub const NormalReadOnlyEngine = control.Controller(normal_readonly_registry, normal_readonly_topology);
 
-test "backend rule no-value behavior matches the C# composition" {
+// Independent business-rule oracle: never calls a production predicate.
+const RuleTestFacts = struct {
+    reads: []const d.ItemRead,
+    values: [16]control.Read = undefined,
+    child: d.BlockUid,
+    fn get(self: *const @This(), item: d.ItemUid, block: ?d.BlockUid) control.Read {
+        for (self.reads, 0..) |declared, index| {
+            const key_block = if (declared.item == ItemUids.HostStartPermitted) declared.block orelse self.child else declared.block;
+            if (declared.item == item and key_block == block) return self.values[index];
+        }
+        return .not_published;
+    }
+    fn truth(self: *const @This(), item: d.ItemUid) bool {
+        return self.get(item, null).valueOr(false);
+    }
+    fn permit(self: *const @This(), child: d.BlockUid) bool {
+        return self.get(ItemUids.HostStartPermitted, child).valueOr(false);
+    }
+    fn mode(self: *const @This(), item: d.ItemUid) bool {
+        return switch (self.get(item, null)) {
+            .not_published => true,
+            .value => |v| v,
+            else => false,
+        };
+    }
+    fn present(self: *const @This()) bool {
+        return self.permit(BlockUids.PresentFrameEtwSource) and self.truth(ItemUids.GraphicsApiObservationInUse) and
+            self.truth(ItemUids.PresentNativeSessionAvailable) and self.mode(ItemUids.PresentUnfrozen);
+    }
+    fn allocation(self: *const @This()) bool {
+        return self.permit(BlockUids.GpuAllocationCollector) and self.truth(ItemUids.ProcessDedicatedGpuMemoryInUse) and self.truth(ItemUids.GpuAllocationNativeSessionAvailable);
+    }
+    fn vidmm(self: *const @This()) bool {
+        return self.permit(BlockUids.DxgkrnlVidMmEtwTelemetryZone) and self.truth(ItemUids.VramResidualInUse) and
+            self.truth(ItemUids.VidMmNativeSessionAvailable) and self.mode(ItemUids.VidMmUnfrozen);
+    }
+    fn read(context: *anyopaque, key: control.types.ItemKey) anyerror!control.Read {
+        const self: *@This() = @ptrCast(@alignCast(context));
+        for (self.reads) |declared| {
+            const block = if (declared.item == ItemUids.HostStartPermitted) declared.block orelse self.child else declared.block;
+            if (declared.item == key.item and block == key.block) return self.get(key.item, key.block);
+        }
+        return error.UndeclaredTestRead;
+    }
+    fn noCondition(_: *anyopaque, _: u32) anyerror!bool {
+        return error.UnexpectedConditionRead;
+    }
+    fn noChild(_: *anyopaque, _: u32) anyerror!control.types.BlockState {
+        return error.UnexpectedChildRead;
+    }
+    fn input(self: *@This(), per_block: bool) control.Input {
+        return .{ .context = self, .block = if (per_block) self.child else null, .read_fn = read, .condition_fn = noCondition, .child_fn = noChild };
+    }
+    fn expected(self: *const @This()) bool {
+        if (!self.permit(self.child)) return false;
+        const I = ItemUids;
+        return switch (self.child) {
+            BlockUids.PresentFrameEtwSource => self.present(),
+            BlockUids.GpuAllocationCollector => self.allocation(),
+            BlockUids.DxgkrnlVidMmEtwTelemetryZone => self.vidmm(),
+            BlockUids.NativeEtwLifetimeService => self.present() or self.allocation() or self.vidmm(),
+            BlockUids.HostMemoryProtection => self.truth(I.HostMemoryProtectionEnabled) and self.truth(I.MemoryProtectionNormalRunningPointExists) and self.truth(I.MemoryProtectionReserveBuilt),
+            BlockUids.JsonDebugDiagnosticLogWriter => self.truth(I.DebugLoggingEnabled) or self.truth(I.DebugWriterPending),
+            BlockUids.AutomaticProductUpdateService => self.truth(I.AutomaticUpdatesEnabled),
+            BlockUids.HostManagerSamplingSubscriptionOwner => self.truth(I.SamplingGpuTelemetryInUse) or self.truth(I.SamplingHardwareMetricsInUse) or self.truth(I.SamplingCpuTopologyInUse) or self.truth(I.SamplingCpuResidencyInUse) or self.truth(I.SamplingInterruptsInUse) or self.truth(I.SamplingResourceBreakdownInUse) or self.truth(I.SamplingDeviceTopologyInUse),
+            BlockUids.GpuTelemetryWorkerSupervisor => self.truth(I.SamplingGpuTelemetryInUse),
+            BlockUids.WindowsHardwareMetricSampler => self.truth(I.SamplingHardwareMetricsInUse),
+            BlockUids.CpuTopologySnapshotProvider => self.truth(I.SamplingCpuTopologyInUse),
+            BlockUids.EtwCpuCoreResidencyReader => self.truth(I.SamplingCpuResidencyInUse),
+            BlockUids.EtwSystemInterruptSnapshotSource => self.truth(I.SamplingInterruptsInUse),
+            BlockUids.WindowsResourceBreakdownSampler => self.truth(I.SamplingResourceBreakdownInUse),
+            BlockUids.DeviceTopologySnapshotProvider => self.truth(I.SamplingDeviceTopologyInUse),
+            BlockUids.EtwPhysicalDiskIoAttributionReader => self.truth(I.DiskAttributionInUse),
+            BlockUids.EtwNetworkTcpIpAttributionReader => self.truth(I.NetworkAttributionInUse),
+            BlockUids.FanControlCoreLifetimeService => self.truth(I.SoftwareFanCurveEnabled) or self.truth(I.AppliedFanControlExists) or self.truth(I.FanCommandPending),
+            BlockUids.FanCurveTemperatureFeed => self.truth(I.SoftwareFanCurveEnabled),
+            BlockUids.ControlDesiredStateReassertion => self.truth(I.AppliedControlIntentsExist),
+            BlockUids.ControlActualStateReader => self.truth(I.ActualControlValuesInUse),
+            BlockUids.HostManagerSmartCoordinator => self.truth(I.OptimizationEnabled) or self.truth(I.ActiveCpuLeasesExist) or self.truth(I.SmartOwnedStatePending),
+            BlockUids.GpuPlacementProcessHistoryObserver => self.truth(I.GpuApiHistoryEnabled),
+            BlockUids.HostManagerReportCoordinatorOwner => self.truth(I.BackgroundReportsEnabled),
+            BlockUids.PortableSoftwareDiscoveryService => self.truth(I.PortableDiscoveryEnabled),
+            BlockUids.TrustedAccessRequestOwner => self.truth(I.TrustedRequestsPending),
+            BlockUids.HostManagerPublicServiceCoordinatorOwner => self.truth(I.PublicServiceEnabled) or self.truth(I.PublicServiceTasksPending),
+            BlockUids.SharedResourceSubscriptionMaintenanceService => self.truth(I.SharedResourceActivityExists),
+            BlockUids.HostManagerOperationCoordinatorOwner => self.truth(I.OperationsPending),
+            else => true,
+        };
+    }
+};
+
+test "every precise rule matches business oracle for all booleans and each no-value input" {
     const std = @import("std");
-    const not_published: control.Read = .not_published;
-    const owner_stopped: control.Read = .owner_stopped;
-    const read_failed: control.Read = .read_failed;
-    const yes: control.Read = .{ .value = true };
-    const no: control.Read = .{ .value = false };
+    const absent = [_]control.Read{ .not_published, .owner_stopped, .read_failed };
+    for (all_registry.conditions) |condition| {
+        const child = condition.decides orelse BlockUids.Backend;
+        var facts = RuleTestFacts{ .reads = condition.items, .child = child };
+        try std.testing.expect(condition.items.len <= facts.values.len);
+        var input = facts.input(condition.per_block);
+        var compute: ?control.types.Compute = null;
+        for (compute_functions) |candidate| {
+            if (candidate.condition == condition.uid) {
+                compute = candidate;
+                break;
+            }
+        }
+        try std.testing.expect(compute != null);
+        const combinations = @as(usize, 1) << @intCast(condition.items.len);
+        for (0..combinations) |bits| {
+            for (0..condition.items.len) |index| facts.values[index] = .{ .value = bits & (@as(usize, 1) << @intCast(index)) != 0 };
+            try std.testing.expectEqual(facts.expected(), try compute.?.function(&input));
+            for (0..condition.items.len) |index| {
+                const original = facts.values[index];
+                for (absent) |missing| {
+                    facts.values[index] = missing;
+                    try std.testing.expectEqual(facts.expected(), try compute.?.function(&input));
+                }
+                facts.values[index] = original;
+            }
+        }
+    }
+}
 
-    try std.testing.expect(!itemValueOrFalse(not_published));
-    try std.testing.expect(!itemValueOrFalse(owner_stopped));
-    try std.testing.expect(!itemValueOrFalse(read_failed));
-    try std.testing.expect(itemValueOrFalse(yes));
-    try std.testing.expect(!memoryProtectionFactsAllow(yes, not_published, yes));
-    try std.testing.expect(memoryProtectionFactsAllow(yes, yes, yes));
-
-    try std.testing.expect(unfrozenOrNotPublished(not_published));
-    try std.testing.expect(unfrozenOrNotPublished(yes));
-    try std.testing.expect(!unfrozenOrNotPublished(no));
-    try std.testing.expect(!unfrozenOrNotPublished(owner_stopped));
-    try std.testing.expect(!unfrozenOrNotPublished(read_failed));
-    try std.testing.expect(nativeChildFactsAllow(yes, yes, not_published));
-    try std.testing.expect(nativeChildFactsAllow(yes, yes, null));
-    try std.testing.expect(!nativeChildFactsAllow(not_published, yes, null));
-    try std.testing.expect(!nativeChildFactsAllow(yes, not_published, null));
+test "tray Smart default reports and memory protection run only their subscribed producers" {
+    const std = @import("std");
+    const enabled = [_]d.ItemUid{
+        ItemUids.SamplingHardwareMetricsInUse,             ItemUids.SamplingCpuResidencyInUse,
+        ItemUids.SamplingInterruptsInUse,                  ItemUids.SamplingResourceBreakdownInUse,
+        ItemUids.ProcessDedicatedGpuMemoryInUse,           ItemUids.OptimizationEnabled,
+        ItemUids.GpuApiHistoryEnabled,                     ItemUids.BackgroundReportsEnabled,
+        ItemUids.PortableDiscoveryEnabled,                 ItemUids.HostMemoryProtectionEnabled,
+        ItemUids.MemoryProtectionNormalRunningPointExists, ItemUids.MemoryProtectionReserveBuilt,
+        ItemUids.PresentNativeSessionAvailable,            ItemUids.GpuAllocationNativeSessionAvailable,
+        ItemUids.VidMmNativeSessionAvailable,
+    };
+    const running = [_]d.BlockUid{
+        BlockUids.NativeEtwLifetimeService,           BlockUids.HostManagerSamplingSubscriptionOwner,
+        BlockUids.WindowsHardwareMetricSampler,       BlockUids.EtwCpuCoreResidencyReader,
+        BlockUids.EtwSystemInterruptSnapshotSource,   BlockUids.WindowsResourceBreakdownSampler,
+        BlockUids.GpuAllocationCollector,             BlockUids.HostManagerSmartCoordinator,
+        BlockUids.GpuPlacementProcessHistoryObserver, BlockUids.HostManagerReportCoordinatorOwner,
+        BlockUids.PortableSoftwareDiscoveryService,   BlockUids.HostMemoryProtection,
+    };
+    for (all_registry.conditions) |condition| {
+        const child = condition.decides orelse BlockUids.Backend;
+        var facts = RuleTestFacts{ .reads = condition.items, .child = child };
+        for (condition.items, 0..) |read, index| {
+            var value = read.item == ItemUids.HostStartPermitted;
+            for (enabled) |item| {
+                if (read.item == item) value = true;
+            }
+            facts.values[index] = .{ .value = value };
+        }
+        var input = facts.input(condition.per_block);
+        var expected = condition.per_block;
+        for (running) |block| {
+            if (child == block) expected = true;
+        }
+        for (compute_functions) |compute| {
+            if (compute.condition != condition.uid) continue;
+            try std.testing.expectEqual(expected, try compute.function(&input));
+        }
+    }
 }

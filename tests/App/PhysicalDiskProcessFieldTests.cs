@@ -18,6 +18,9 @@ public sealed class PhysicalDiskProcessFieldTests
         long tick = 1000; var broker = new Broker(); var releases = 0;
         using var owner = new EtwPhysicalDiskIoCaptureOwner(broker, new(), () => tick,
             pid => new ProcessLease(pid, 100, () => releases++));
+        Assert.Null(owner.Read(true).ObservedTraffic);
+        Assert.Equal(0, broker.Acquires);
+        owner.Start();
         Assert.Null(owner.Read(true).ObservedTraffic!.Processes.FirstOrDefault());
         Assert.Equal(1, broker.Acquires);
         owner.ObserveBoundDiskTransfer(broker.Source!, broker.Context, 41, 9007199254740993UL, false, 2000, 0, 101);
@@ -44,6 +47,7 @@ public sealed class PhysicalDiskProcessFieldTests
         long tick = 1000; var broker = new Broker(); var recheck = false;
         using var owner = new EtwPhysicalDiskIoCaptureOwner(broker, new(), () => tick,
             pid => { var reads = 0; return new ProcessLease(pid, 200, static () => { }, () => !recheck || ++reads == 1); });
+        owner.Start();
         owner.Read(true);
         owner.ObserveDiskTransfer(41, 4096UL, false, 2000, 3, 199);
         owner.ObserveDiskTransfer(41, 7UL, false, 2000, 3, 201);
@@ -66,6 +70,7 @@ public sealed class PhysicalDiskProcessFieldTests
         long tick = 1000; var broker = new Broker();
         using var owner = new EtwPhysicalDiskIoCaptureOwner(broker, new(), () => tick,
             pid => new ProcessLease(pid, 100, static () => { }));
+        owner.Start();
         owner.Read(true); var previous = broker.Source!;
         owner.ObserveDiskTransfer(41, 3UL, false, 2000, 0, 101); tick = 3100;
         Assert.True(owner.Read(true).ObservedTraffic!.Complete);
@@ -73,6 +78,7 @@ public sealed class PhysicalDiskProcessFieldTests
         var lost = owner.Read(true);
         Assert.False(lost.ObservedTraffic!.Complete); Assert.Empty(lost.Processes);
         owner.Stop(); Assert.Equal(1, broker.Releases);
+        owner.Start();
         owner.Read(true);
         owner.ObserveBoundDiskTransfer(previous, broker.Context, 41, 9UL, false, 4200, 0, 102);
         Assert.Equal(0, owner.RetainedPairCount);
@@ -86,6 +92,7 @@ public sealed class PhysicalDiskProcessFieldTests
         long tick = 1000; var broker = new Broker();
         using var owner = new EtwPhysicalDiskIoCaptureOwner(broker, new(), () => tick,
             pid => new ProcessLease(pid, 100, static () => { }));
+        owner.Start();
         owner.Read(true);
         owner.ObserveDiskTransfer(41, ulong.MaxValue, false, 2000, 0, 101);
         owner.ObserveDiskTransfer(41, 1UL, false, 2000, 0, 101); tick = 3100;

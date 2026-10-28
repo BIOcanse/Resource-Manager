@@ -51,31 +51,63 @@
     },
     {
       "uid": 8,
-      "kind": "block",
+      "kind": "item",
       "process": "backend",
-      "name": "HostManagerMetricSnapshotOwner",
-      "comment": "Owns the workspace that publishes current metric snapshots."
+      "name": "HostStartPermitted",
+      "comment": "Current authoritative HostStartPermitted fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "BackendHostPermitFacts"
+      },
+      "perBlock": true,
+      "trigger": "event",
+      "changeEvent": "NonOwningHostedService.StartStop"
     },
     {
       "uid": 9,
-      "kind": "block",
+      "kind": "item",
       "process": "backend",
-      "name": "HostManagerSoftwareIdentityOwner",
-      "comment": "Owns the workspace that produces resolved software identities."
+      "name": "SamplingGpuTelemetryInUse",
+      "comment": "Current authoritative SamplingGpuTelemetryInUse fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ResourceManager.Subscription.SubscriptionActivity"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SubscriptionActivity.RoleChanged"
     },
     {
       "uid": 10,
-      "kind": "block",
+      "kind": "item",
       "process": "backend",
-      "name": "HostManagerFileQueryOwner",
-      "comment": "Owns the workspace that provides file queries and their results."
+      "name": "SamplingHardwareMetricsInUse",
+      "comment": "Current authoritative SamplingHardwareMetricsInUse fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ResourceManager.Subscription.SubscriptionActivity"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SubscriptionActivity.RoleChanged"
     },
     {
       "uid": 11,
-      "kind": "block",
+      "kind": "item",
       "process": "backend",
-      "name": "HostManagerDisplayCoordinatorOwner",
-      "comment": "Owns the workspace that publishes display topology."
+      "name": "SamplingCpuTopologyInUse",
+      "comment": "Current authoritative SamplingCpuTopologyInUse fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ResourceManager.Subscription.SubscriptionActivity"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SubscriptionActivity.RoleChanged"
     },
     {
       "uid": 12,
@@ -142,10 +174,18 @@
     },
     {
       "uid": 21,
-      "kind": "block",
+      "kind": "item",
       "process": "backend",
-      "name": "KernelEtwSessionBroker",
-      "comment": "Owns the shared kernel ETW session and provides its kernel events to consumers."
+      "name": "SamplingCpuResidencyInUse",
+      "comment": "Current authoritative SamplingCpuResidencyInUse fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ResourceManager.Subscription.SubscriptionActivity"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SubscriptionActivity.RoleChanged"
     },
     {
       "uid": 22,
@@ -354,16 +394,16 @@
       "uid": 51,
       "kind": "item",
       "process": "backend",
-      "name": "BlockDemand",
-      "comment": "Whether a block currently has external demand. Demand updates provide the change event.",
+      "name": "SamplingInterruptsInUse",
+      "comment": "Current authoritative SamplingInterruptsInUse fact; any no-value read is false.",
       "storage": "reference",
       "type": "bool",
       "owner": {
-        "component": "BusinessBlockScheduler demand table"
+        "component": "ResourceManager.Subscription.SubscriptionActivity"
       },
-      "perBlock": true,
+      "perBlock": false,
       "trigger": "event",
-      "changeEvent": "BusinessBlockScheduler.SetDemandAsync demand table changed"
+      "changeEvent": "SubscriptionActivity.RoleChanged"
     },
     {
       "uid": 52,
@@ -662,13 +702,16 @@
       "kind": "condition",
       "process": "backend",
       "name": "PresentEtwChildShouldRun",
-      "comment": "Whether Present ETW is demanded, its native session is available, and its mode is unfrozen or not yet published.",
+      "comment": "Host admitted and subscribed field in use, session available, and unfrozen (NotPublished mode permits running).",
       "perBlock": false,
       "node": 2,
       "items": [
         {
-          "item": 51,
+          "item": 8,
           "block": 30
+        },
+        {
+          "item": 112
         },
         {
           "item": 53
@@ -686,13 +729,16 @@
       "kind": "condition",
       "process": "backend",
       "name": "GpuAllocationEtwChildShouldRun",
-      "comment": "Whether GPU allocation ETW is demanded and its native session is available.",
+      "comment": "Host admitted and subscribed field in use, session available, and unfrozen (NotPublished mode permits running).",
       "perBlock": false,
       "node": 2,
       "items": [
         {
-          "item": 51,
+          "item": 8,
           "block": 31
+        },
+        {
+          "item": 113
         },
         {
           "item": 54
@@ -707,13 +753,16 @@
       "kind": "condition",
       "process": "backend",
       "name": "VidMmEtwChildShouldRun",
-      "comment": "Whether VidMm ETW is demanded, its native session is available, and its mode is unfrozen or not yet published.",
+      "comment": "Host admitted and subscribed field in use, session available, and unfrozen (NotPublished mode permits running).",
       "perBlock": false,
       "node": 2,
       "items": [
         {
-          "item": 51,
+          "item": 8,
           "block": 32
+        },
+        {
+          "item": 114
         },
         {
           "item": 55
@@ -794,36 +843,44 @@
       "kind": "condition",
       "process": "backend",
       "name": "AlwaysWanted",
-      "comment": "Wants the backend whole or a present feature domain whenever its parent is running.",
-      "perBlock": true,
-      "items": [],
-      "conditions": [],
-      "children": []
-    },
-    {
-      "uid": 85,
-      "kind": "condition",
-      "process": "backend",
-      "name": "HasExternalDemand",
-      "comment": "Whether the corresponding block currently has external demand.",
+      "comment": "Runs with its parent only after explicit host admission; admission never implies business activity.",
       "perBlock": true,
       "items": [
         {
-          "item": 51
+          "item": 8
         }
       ],
       "conditions": [],
       "children": []
     },
     {
+      "uid": 85,
+      "kind": "item",
+      "process": "backend",
+      "name": "SamplingResourceBreakdownInUse",
+      "comment": "Current authoritative SamplingResourceBreakdownInUse fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ResourceManager.Subscription.SubscriptionActivity"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SubscriptionActivity.RoleChanged"
+    },
+    {
       "uid": 86,
       "kind": "condition",
       "process": "backend",
       "name": "HostMemoryProtectionReady",
-      "comment": "Whether memory protection is enabled, has a normal running point, and has built its reserve.",
+      "comment": "Explicit host admission and memory protection enabled, normal running point present, reserve built.",
       "perBlock": false,
       "node": 75,
       "items": [
+        {
+          "item": 8,
+          "block": 62
+        },
         {
           "item": 63
         },
@@ -1168,6 +1225,975 @@
       "perBlock": false,
       "trigger": "event",
       "changeEvent": "DeviceTopologyCaptureOwner selected volume free-space content changed"
+    },
+    {
+      "uid": 111,
+      "kind": "item",
+      "process": "backend",
+      "name": "SamplingDeviceTopologyInUse",
+      "comment": "Current authoritative SamplingDeviceTopologyInUse fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ResourceManager.Subscription.SubscriptionActivity"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SubscriptionActivity.RoleChanged"
+    },
+    {
+      "uid": 112,
+      "kind": "item",
+      "process": "backend",
+      "name": "GraphicsApiObservationInUse",
+      "comment": "Current authoritative GraphicsApiObservationInUse fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ResourceManager.Subscription.SubscriptionActivity"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SubscriptionActivity.FieldChanged"
+    },
+    {
+      "uid": 113,
+      "kind": "item",
+      "process": "backend",
+      "name": "ProcessDedicatedGpuMemoryInUse",
+      "comment": "Current authoritative ProcessDedicatedGpuMemoryInUse fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ResourceManager.Subscription.SubscriptionActivity"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SubscriptionActivity.FieldChanged"
+    },
+    {
+      "uid": 114,
+      "kind": "item",
+      "process": "backend",
+      "name": "VramResidualInUse",
+      "comment": "Current authoritative VramResidualInUse fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ResourceManager.Subscription.SubscriptionActivity"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SubscriptionActivity.FieldChanged"
+    },
+    {
+      "uid": 115,
+      "kind": "item",
+      "process": "backend",
+      "name": "DiskAttributionInUse",
+      "comment": "Current authoritative DiskAttributionInUse fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ResourceManager.Subscription.SubscriptionActivity"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SubscriptionActivity.FieldChanged"
+    },
+    {
+      "uid": 116,
+      "kind": "item",
+      "process": "backend",
+      "name": "NetworkAttributionInUse",
+      "comment": "Current authoritative NetworkAttributionInUse fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ResourceManager.Subscription.SubscriptionActivity"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SubscriptionActivity.FieldChanged"
+    },
+    {
+      "uid": 117,
+      "kind": "item",
+      "process": "backend",
+      "name": "DebugLoggingEnabled",
+      "comment": "Current authoritative DebugLoggingEnabled fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "RuntimePlanProvider"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "RuntimePlanProvider.Published"
+    },
+    {
+      "uid": 118,
+      "kind": "item",
+      "process": "backend",
+      "name": "AutomaticUpdatesEnabled",
+      "comment": "Current authoritative AutomaticUpdatesEnabled fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "RuntimePlanProvider"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "RuntimePlanProvider.Published"
+    },
+    {
+      "uid": 119,
+      "kind": "item",
+      "process": "backend",
+      "name": "SoftwareFanCurveEnabled",
+      "comment": "Current authoritative SoftwareFanCurveEnabled fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "JsonControlDesiredStateStore"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "DesiredStateChanged"
+    },
+    {
+      "uid": 120,
+      "kind": "item",
+      "process": "backend",
+      "name": "AppliedFanControlExists",
+      "comment": "Current authoritative AppliedFanControlExists fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ControlPlane"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "AppliedIntentsChanged"
+    },
+    {
+      "uid": 121,
+      "kind": "item",
+      "process": "backend",
+      "name": "AppliedControlIntentsExist",
+      "comment": "Current authoritative AppliedControlIntentsExist fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ControlPlane"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "AppliedIntentsChanged"
+    },
+    {
+      "uid": 122,
+      "kind": "item",
+      "process": "backend",
+      "name": "OptimizationEnabled",
+      "comment": "Current authoritative OptimizationEnabled fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "RuntimePlanProvider"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "RuntimePlanProvider.Published"
+    },
+    {
+      "uid": 123,
+      "kind": "item",
+      "process": "backend",
+      "name": "ActiveCpuLeasesExist",
+      "comment": "Current authoritative ActiveCpuLeasesExist fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "RuntimeCpuLeaseStore"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "ActiveCpuLeasesChanged"
+    },
+    {
+      "uid": 124,
+      "kind": "item",
+      "process": "backend",
+      "name": "SmartOwnedStatePending",
+      "comment": "Current authoritative SmartOwnedStatePending fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "HostManagerSmartCoordinator"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SmartOwnedStateChanged"
+    },
+    {
+      "uid": 125,
+      "kind": "item",
+      "process": "backend",
+      "name": "GpuApiHistoryEnabled",
+      "comment": "Current authoritative GpuApiHistoryEnabled fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "RuntimePlanProvider"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "RuntimePlanProvider.Published"
+    },
+    {
+      "uid": 126,
+      "kind": "item",
+      "process": "backend",
+      "name": "BackgroundReportsEnabled",
+      "comment": "Current authoritative BackgroundReportsEnabled fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "RuntimePlanProvider"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "RuntimePlanProvider.Published"
+    },
+    {
+      "uid": 127,
+      "kind": "item",
+      "process": "backend",
+      "name": "PortableDiscoveryEnabled",
+      "comment": "Current authoritative PortableDiscoveryEnabled fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "RuntimePlanProvider"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "RuntimePlanProvider.Published"
+    },
+    {
+      "uid": 128,
+      "kind": "item",
+      "process": "backend",
+      "name": "PublicServiceEnabled",
+      "comment": "Current authoritative PublicServiceEnabled fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "RuntimePlanProvider"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "RuntimePlanProvider.Published"
+    },
+    {
+      "uid": 129,
+      "kind": "item",
+      "process": "backend",
+      "name": "DebugWriterPending",
+      "comment": "Current authoritative DebugWriterPending fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "JsonDebugDiagnosticLogWriter"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "PendingRecordsChanged"
+    },
+    {
+      "uid": 130,
+      "kind": "item",
+      "process": "backend",
+      "name": "TrustedRequestsPending",
+      "comment": "Current authoritative TrustedRequestsPending fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "TrustedAccessRequestOwner"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "PendingRequestsChanged"
+    },
+    {
+      "uid": 131,
+      "kind": "item",
+      "process": "backend",
+      "name": "PublicServiceTasksPending",
+      "comment": "Current authoritative PublicServiceTasksPending fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "HostManagerPublicServiceCoordinatorOwner"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "PendingTasksChanged"
+    },
+    {
+      "uid": 132,
+      "kind": "item",
+      "process": "backend",
+      "name": "SharedResourceActivityExists",
+      "comment": "Current authoritative SharedResourceActivityExists fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "SharedMemoryPublicResourceBroker"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "ActivityChanged"
+    },
+    {
+      "uid": 133,
+      "kind": "item",
+      "process": "backend",
+      "name": "OperationsPending",
+      "comment": "Current authoritative OperationsPending fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "HostManagerOperationCoordinatorOwner"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "PendingOperationsChanged"
+    },
+    {
+      "uid": 134,
+      "kind": "item",
+      "process": "backend",
+      "name": "ActualControlValuesInUse",
+      "comment": "Current authoritative ActualControlValuesInUse fact; any no-value read is false.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ControlActualStateReader"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SubscriptionsChanged"
+    },
+    {
+      "uid": 135,
+      "kind": "condition",
+      "process": "backend",
+      "name": "DebugWriterShouldRun",
+      "comment": "Explicit host admission and precise business facts for JsonDebugDiagnosticLogWriter; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 76,
+      "items": [
+        {
+          "item": 8,
+          "block": 27
+        },
+        {
+          "item": 117
+        },
+        {
+          "item": 129
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 27
+    },
+    {
+      "uid": 136,
+      "kind": "condition",
+      "process": "backend",
+      "name": "AutomaticUpdateShouldRun",
+      "comment": "Explicit host admission and precise business facts for AutomaticProductUpdateService; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 76,
+      "items": [
+        {
+          "item": 8,
+          "block": 6
+        },
+        {
+          "item": 118
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 6
+    },
+    {
+      "uid": 137,
+      "kind": "condition",
+      "process": "backend",
+      "name": "SamplingOwnerShouldRun",
+      "comment": "Explicit host admission and precise business facts for HostManagerSamplingSubscriptionOwner; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 77,
+      "items": [
+        {
+          "item": 8,
+          "block": 7
+        },
+        {
+          "item": 9
+        },
+        {
+          "item": 10
+        },
+        {
+          "item": 11
+        },
+        {
+          "item": 21
+        },
+        {
+          "item": 51
+        },
+        {
+          "item": 85
+        },
+        {
+          "item": 111
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 7
+    },
+    {
+      "uid": 138,
+      "kind": "condition",
+      "process": "backend",
+      "name": "GpuTelemetryShouldRun",
+      "comment": "Explicit host admission and precise business facts for GpuTelemetryWorkerSupervisor; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 7,
+      "items": [
+        {
+          "item": 8,
+          "block": 34
+        },
+        {
+          "item": 9
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 34
+    },
+    {
+      "uid": 139,
+      "kind": "condition",
+      "process": "backend",
+      "name": "HardwareMetricsShouldRun",
+      "comment": "Explicit host admission and precise business facts for WindowsHardwareMetricSampler; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 7,
+      "items": [
+        {
+          "item": 8,
+          "block": 35
+        },
+        {
+          "item": 10
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 35
+    },
+    {
+      "uid": 140,
+      "kind": "condition",
+      "process": "backend",
+      "name": "CpuTopologyShouldRun",
+      "comment": "Explicit host admission and precise business facts for CpuTopologySnapshotProvider; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 7,
+      "items": [
+        {
+          "item": 8,
+          "block": 36
+        },
+        {
+          "item": 11
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 36
+    },
+    {
+      "uid": 141,
+      "kind": "condition",
+      "process": "backend",
+      "name": "CpuResidencyShouldRun",
+      "comment": "Explicit host admission and precise business facts for EtwCpuCoreResidencyReader; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 7,
+      "items": [
+        {
+          "item": 8,
+          "block": 37
+        },
+        {
+          "item": 21
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 37
+    },
+    {
+      "uid": 142,
+      "kind": "condition",
+      "process": "backend",
+      "name": "InterruptsShouldRun",
+      "comment": "Explicit host admission and precise business facts for EtwSystemInterruptSnapshotSource; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 7,
+      "items": [
+        {
+          "item": 8,
+          "block": 38
+        },
+        {
+          "item": 51
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 38
+    },
+    {
+      "uid": 143,
+      "kind": "condition",
+      "process": "backend",
+      "name": "ResourceBreakdownShouldRun",
+      "comment": "Explicit host admission and precise business facts for WindowsResourceBreakdownSampler; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 7,
+      "items": [
+        {
+          "item": 8,
+          "block": 39
+        },
+        {
+          "item": 85
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 39
+    },
+    {
+      "uid": 144,
+      "kind": "condition",
+      "process": "backend",
+      "name": "DeviceTopologyShouldRun",
+      "comment": "Explicit host admission and precise business facts for DeviceTopologySnapshotProvider; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 7,
+      "items": [
+        {
+          "item": 8,
+          "block": 33
+        },
+        {
+          "item": 111
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 33
+    },
+    {
+      "uid": 145,
+      "kind": "condition",
+      "process": "backend",
+      "name": "NativeEtwGroupShouldRun",
+      "comment": "Explicit host admission and precise business facts for NativeEtwLifetimeService; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 77,
+      "items": [
+        {
+          "item": 8,
+          "block": 2
+        },
+        {
+          "item": 112
+        },
+        {
+          "item": 53
+        },
+        {
+          "item": 56
+        },
+        {
+          "item": 113
+        },
+        {
+          "item": 54
+        },
+        {
+          "item": 114
+        },
+        {
+          "item": 55
+        },
+        {
+          "item": 57
+        },
+        {
+          "item": 8,
+          "block": 30
+        },
+        {
+          "item": 8,
+          "block": 31
+        },
+        {
+          "item": 8,
+          "block": 32
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 2
+    },
+    {
+      "uid": 146,
+      "kind": "condition",
+      "process": "backend",
+      "name": "DiskAttributionShouldRun",
+      "comment": "Explicit host admission and precise business facts for EtwPhysicalDiskIoAttributionReader; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 77,
+      "items": [
+        {
+          "item": 8,
+          "block": 23
+        },
+        {
+          "item": 115
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 23
+    },
+    {
+      "uid": 147,
+      "kind": "condition",
+      "process": "backend",
+      "name": "NetworkAttributionShouldRun",
+      "comment": "Explicit host admission and precise business facts for EtwNetworkTcpIpAttributionReader; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 77,
+      "items": [
+        {
+          "item": 8,
+          "block": 24
+        },
+        {
+          "item": 116
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 24
+    },
+    {
+      "uid": 148,
+      "kind": "condition",
+      "process": "backend",
+      "name": "FanCoreShouldRun",
+      "comment": "Runs the fan core while software fan curves, applied fan control, or queued or executing fan commands require its held session.",
+      "perBlock": false,
+      "node": 78,
+      "items": [
+        {
+          "item": 8,
+          "block": 20
+        },
+        {
+          "item": 119
+        },
+        {
+          "item": 120
+        },
+        {
+          "item": 160
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 20
+    },
+    {
+      "uid": 149,
+      "kind": "condition",
+      "process": "backend",
+      "name": "FanTemperatureShouldRun",
+      "comment": "Explicit host admission and precise business facts for FanCurveTemperatureFeed; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 20,
+      "items": [
+        {
+          "item": 8,
+          "block": 18
+        },
+        {
+          "item": 119
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 18
+    },
+    {
+      "uid": 150,
+      "kind": "condition",
+      "process": "backend",
+      "name": "ControlReassertionShouldRun",
+      "comment": "Explicit host admission and precise business facts for ControlDesiredStateReassertion; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 78,
+      "items": [
+        {
+          "item": 8,
+          "block": 17
+        },
+        {
+          "item": 121
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 17
+    },
+    {
+      "uid": 151,
+      "kind": "condition",
+      "process": "backend",
+      "name": "ActualControlShouldRun",
+      "comment": "Explicit host admission and precise business facts for ControlActualStateReader; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 78,
+      "items": [
+        {
+          "item": 8,
+          "block": 19
+        },
+        {
+          "item": 134
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 19
+    },
+    {
+      "uid": 152,
+      "kind": "condition",
+      "process": "backend",
+      "name": "SmartShouldRun",
+      "comment": "Explicit host admission and precise business facts for HostManagerSmartCoordinator; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 79,
+      "items": [
+        {
+          "item": 8,
+          "block": 29
+        },
+        {
+          "item": 122
+        },
+        {
+          "item": 123
+        },
+        {
+          "item": 124
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 29
+    },
+    {
+      "uid": 153,
+      "kind": "condition",
+      "process": "backend",
+      "name": "GpuApiHistoryShouldRun",
+      "comment": "Explicit host admission and precise business facts for GpuPlacementProcessHistoryObserver; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 79,
+      "items": [
+        {
+          "item": 8,
+          "block": 25
+        },
+        {
+          "item": 125
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 25
+    },
+    {
+      "uid": 154,
+      "kind": "condition",
+      "process": "backend",
+      "name": "BackgroundReportsShouldRun",
+      "comment": "Explicit host admission and precise business facts for HostManagerReportCoordinatorOwner; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 80,
+      "items": [
+        {
+          "item": 8,
+          "block": 28
+        },
+        {
+          "item": 126
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 28
+    },
+    {
+      "uid": 155,
+      "kind": "condition",
+      "process": "backend",
+      "name": "PortableDiscoveryShouldRun",
+      "comment": "Explicit host admission and precise business facts for PortableSoftwareDiscoveryService; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 81,
+      "items": [
+        {
+          "item": 8,
+          "block": 22
+        },
+        {
+          "item": 127
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 22
+    },
+    {
+      "uid": 156,
+      "kind": "condition",
+      "process": "backend",
+      "name": "TrustedRequestsShouldRun",
+      "comment": "Explicit host admission and precise business facts for TrustedAccessRequestOwner; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 82,
+      "items": [
+        {
+          "item": 8,
+          "block": 3
+        },
+        {
+          "item": 130
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 3
+    },
+    {
+      "uid": 157,
+      "kind": "condition",
+      "process": "backend",
+      "name": "PublicServiceShouldRun",
+      "comment": "Explicit host admission and precise business facts for HostManagerPublicServiceCoordinatorOwner; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 83,
+      "items": [
+        {
+          "item": 8,
+          "block": 12
+        },
+        {
+          "item": 128
+        },
+        {
+          "item": 131
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 12
+    },
+    {
+      "uid": 158,
+      "kind": "condition",
+      "process": "backend",
+      "name": "SharedResourceShouldRun",
+      "comment": "Explicit host admission and precise business facts for SharedResourceSubscriptionMaintenanceService; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 83,
+      "items": [
+        {
+          "item": 8,
+          "block": 26
+        },
+        {
+          "item": 132
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 26
+    },
+    {
+      "uid": 159,
+      "kind": "condition",
+      "process": "backend",
+      "name": "OperationsShouldRun",
+      "comment": "Explicit host admission and precise business facts for HostManagerOperationCoordinatorOwner; absent ordinary facts are false.",
+      "perBlock": false,
+      "node": 75,
+      "items": [
+        {
+          "item": 8,
+          "block": 13
+        },
+        {
+          "item": 133
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 13
+    },
+    {
+      "uid": 160,
+      "kind": "item",
+      "process": "backend",
+      "name": "FanCommandPending",
+      "comment": "Whether a fan command is queued or executing. The command entry publishes only changes between zero and nonzero pending commands.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "FanControlCoreClient"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "FanControlCoreClient pending command count crosses zero"
     }
   ]
 }

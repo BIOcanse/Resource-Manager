@@ -10,6 +10,7 @@ using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Infrastructure.Paths;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using ResourceManager.Shared.BusinessBlocks.State;
 
 namespace ResourceManager.App.Infrastructure.Operations;
 
@@ -22,6 +23,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
     IAsyncDisposable
 {
     private readonly SemaphoreSlim mutationGate = new(1, 1);
+    private readonly SemaphoreSlim initializationGate = new(1, 1);
     private readonly SemaphoreSlim plannerWake = new(0, 1);
     private readonly CurrentValuePublicationSignal publicationSignal = new();
     private readonly RuntimePlanProvider planProvider;
@@ -56,6 +58,20 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
     private bool started;
     private bool retiring;
     private bool disposed;
+    private bool initialized;
+    private int hasPendingOperations = -1;
+
+    internal bool HasPendingOperations => Volatile.Read(ref hasPendingOperations) > 0;
+    internal StateRead<bool> PendingOperationsPublication
+    {
+        get
+        {
+            var pending = Volatile.Read(ref hasPendingOperations);
+            return pending < 0 ? StateRead<bool>.NoValue(NoValueReason.NotPublished)
+                : StateRead<bool>.FromValue(pending != 0);
+        }
+    }
+    internal event Action? PendingOperationsChanged;
 
     public HostManagerOperationCoordinatorOwner(
         RuntimePlanProvider planProvider,
@@ -183,7 +199,18 @@ public sealed partial class HostManagerOperationCoordinatorOwner :
             NextCommittedStateRevisionLocked(),
             timeProvider.GetUtcNow());
         Volatile.Write(ref committedState, next);
+        PublishPendingOperationsLocked();
         publicationSignal.Publish();
+    }
+
+    private void PublishPendingOperationsLocked()
+    {
+        var pending = Volatile.Read(ref committedState).Recent.Any(
+            static operation => !HostManagerOperationStates.IsTerminal(operation.State))
+            || !attemptArbiter.IsEmpty;
+        var next = pending ? 1 : 0;
+        if (Interlocked.Exchange(ref hasPendingOperations, next) == next) return;
+        PendingOperationsChanged?.Invoke();
     }
 
     private void PublishHealthOnlyLocked()

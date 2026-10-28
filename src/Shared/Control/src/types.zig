@@ -2,7 +2,7 @@ const declarations = @import("declarations.zig");
 pub const BlockState = enum(u32) { stopped, starting, running, stopping };
 pub const ItemKey = struct { item: u32, block: ?u32 = null };
 pub const Reason = struct { kind: u32, owner: []const u8, cause: []const u8, plan_version: u64 };
-pub const EventCause = enum { initial, item, demand, state, permit, branch_summary, bind, unbind, shutdown };
+pub const EventCause = enum { initial, item, state, permit, branch_summary, bind, unbind, shutdown };
 pub const EventSource = struct { cause: EventCause = .initial, uid: u32 = 0, block: ?u32 = null };
 /// Presence only: host objects stay with their host-language owner.
 pub const Presence = union(enum) { present, not_published, owner_stopped, read_failed };
@@ -35,6 +35,27 @@ pub const Input = struct {
     }
 };
 pub const Compute = struct { condition: declarations.ConditionUid, function: *const fn (*Input) anyerror!bool };
+/// A synchronous read of an owner's already published boolean. No sampling,
+/// waiting, allocation, or owner locks are permitted in this callback.
+pub const ReadView = extern struct {
+    kind: u32,
+    value: u32,
+    pub fn toRead(self: ReadView) Read {
+        return switch (self.kind) {
+            0 => .not_published,
+            1 => .owner_stopped,
+            2 => .read_failed,
+            3 => if (self.value <= 1) .{ .value = self.value != 0 } else .read_failed,
+            else => .read_failed,
+        };
+    }
+};
+/// Registered once; the host retains the context until controller destruction,
+/// including across unbind, so a captured read may safely finish.
+pub const ReadFunction = extern struct {
+    context: ?*anyopaque,
+    read: *const fn (?*anyopaque, *ReadView) callconv(.c) void,
+};
 /// C-compatible view of an item key; block zero denotes a single-valued item.
 pub const ItemKeyView = extern struct {
     item: u32,
@@ -73,15 +94,12 @@ pub const Host = extern struct {
 pub const Config = struct {
     worker_count: usize,
     history_capacity: usize,
-    demand_capacity: usize,
-    demand_bytes: usize,
     completion_capacity: usize,
     reader_capacity: usize,
     reader_bytes: usize,
     worker_arena_bytes: usize,
     /// Maximum combined owner/cause bytes retained for one decision reason.
     reason_text_capacity: usize = 256,
-    demand_item: ?u32,
     shutdown_item: u32,
     host_blocks: []const u32,
 };

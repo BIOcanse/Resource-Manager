@@ -13,12 +13,6 @@ public interface IResourceResidualCaptureSource
     IResourceResidualBreakdownProvider CaptureResiduals(CancellationToken cancellationToken);
 }
 
-/// <summary>A held GPU VRAM output subscription needs residual evidence independently of reads.</summary>
-public interface IGpuVramResidualObservationSource
-{
-    IDisposable AcquireSubscription(string owner, TimeSpan interval);
-}
-
 public sealed record ResourceResidualBreakdownRequest(
     string MetricId,
     double Value,

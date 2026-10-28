@@ -33,7 +33,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
             stateAuthority: provider.GetRequiredService<ResourceManager.Shared.BusinessBlocks.State.StateAuthority>()));
         services.AddSingleton<IDeviceTopologySnapshotProvider>(static provider =>
             provider.GetRequiredService<DeviceTopologySnapshotProvider>());
-        services.AddHostedServiceAlias<DeviceTopologySnapshotProvider>();
+        services.AddHostedServiceAlias<DeviceTopologySnapshotProvider>(static service => service.CaptureSamplingWorkerTask(),
+            forwardRunFailureToHost: false);
         return services;
     }
 }

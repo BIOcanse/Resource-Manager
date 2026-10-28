@@ -109,7 +109,7 @@ public sealed partial class IntelGpuInformationCollectorTests
     {
         using var slots = new HostManagerSamplingSubscriptionTestFixture();
         using var owner = CreateClockOwner(slots, secondHasDedicatedMemory: true);
-        await owner.StartAsync(CancellationToken.None); var dashboard = PublishClockCatalog(owner);
+        using var workspaceHolding = owner.Hold(); var dashboard = PublishClockCatalog(owner);
         var bound = dashboard.Current!.FieldBindings.Values.Where(binding => PciCodes.Contains(binding.Field.Code)).ToArray();
         Assert.Equal(4, bound.Length); Assert.All(bound, binding => { Assert.Equal("intel.igcl", binding.SourceId); Assert.Equal(MetricVendor.Intel, binding.Field.Vendor); });
         var gpuIdentity = RecordedGpuIdentities().Single(static gpu => gpu.DisplayIndex == 9).ExactIdentityKey;

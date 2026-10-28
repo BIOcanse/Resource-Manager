@@ -35,6 +35,7 @@ public sealed partial class WindowsExternalGpuPlacementRuntime(
         => rendererAbsenceCache = absenceCache;
 
     public bool HasUnreleasedControl => HasUnreleasedControlCore();
+    internal IDisposable? AcquireRendererObservation() => rendererAbsenceCache?.Acquire();
 
     internal bool HasUnreleasedControlCore(Func<GpuPlacementProcessInstance, bool>? isAlive = null)
     {

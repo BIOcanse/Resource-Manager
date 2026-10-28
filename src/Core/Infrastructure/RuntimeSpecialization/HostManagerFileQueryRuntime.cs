@@ -19,6 +19,11 @@ public sealed class HostManagerFileQueryRuntime(
                 "The Host Manager file-query configuration is not published.");
     }
 
+    internal HostManagerDeploymentAttemptToken BeginCreate(CompiledHostManagerPlan plan)
+        => deploymentState.BeginResourceCreate(
+            HostManagerModuleKind.FileQuery, plan,
+            HostManagerDeploymentOperation.HostRecreateAndHotPublish);
+
     internal HostManagerDeploymentAttemptToken BeginInitialCreate(CompiledHostManagerPlan plan)
         => deploymentState.BeginAttempt(
             HostManagerModuleKind.FileQuery,
@@ -53,7 +58,6 @@ public sealed class HostManagerFileQueryRuntime(
 }
 
 public sealed class HostManagerFileQueryOwner :
-    IHostedService,
     INativeFileQueryLeaseSource,
     IDisposable
 {
@@ -63,10 +67,11 @@ public sealed class HostManagerFileQueryOwner :
     private readonly HostManagerFileQueryRuntime deployment;
     private readonly ILogger<HostManagerFileQueryOwner> logger;
     private WorkspaceHolder? current;
-    private WorkspaceHolder? pendingRetirement;
+    private readonly List<WorkspaceHolder> pendingRetirements = [];
     private CompiledHostManagerFileQueryPlan? appliedPlan;
     private long nextEpoch;
-    private bool started;
+    private readonly object lifetimeGate = new();
+    private int holders;
     private bool disposed;
     private Action<CompiledRuntimePlan>? publishedHandler;
 
@@ -90,56 +95,35 @@ public sealed class HostManagerFileQueryOwner :
         this.createScratch = createScratch;
     }
 
-    public Task StartAsync(CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        Action<CompiledRuntimePlan> handler = null!;
-        handler = plan => Apply(plan.HostManager.RequirePublished(), throwOnFailure: false, handler);
-        gate.EnterWriteLock();
-        try
-        {
-            ThrowIfDisposed();
-            if (started) return Task.CompletedTask;
-            publishedHandler = handler;
-            planProvider.Published += handler;
-            started = true;
-        }
-        finally { gate.ExitWriteLock(); }
-        try { Apply(planProvider.Current.HostManager.RequirePublished(), throwOnFailure: true, handler); }
-        catch { StopAsync(CancellationToken.None).GetAwaiter().GetResult(); throw; }
-        return Task.CompletedTask;
-    }
-
-    public Task StopAsync(CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        gate.EnterWriteLock();
-        try
-        {
-            if (publishedHandler is { } handler) planProvider.Published -= handler;
-            publishedHandler = null;
-            started = false;
-        }
-        finally { gate.ExitWriteLock(); }
-        return Task.CompletedTask;
-    }
-
     public async ValueTask<NativeFileQueryLease> AcquireAsync(
         CancellationToken cancellationToken)
     {
-        ThrowIfDisposed();
+        cancellationToken.ThrowIfCancellationRequested();
         WorkspaceHolder holder;
-        gate.EnterReadLock();
-        try
+        lock (lifetimeGate)
         {
-            holder = current
-                ?? throw new InvalidOperationException(
-                    "The Host Manager file-query workspace is not ready.");
+            ThrowIfDisposed();
+            if (holders == 0)
+            {
+                Action<CompiledRuntimePlan> handler = null!;
+                handler = plan =>
+                {
+                    lock (lifetimeGate)
+                        Apply(plan.HostManager.RequirePublished(), throwOnFailure: false, handler);
+                };
+                publishedHandler = handler;
+                planProvider.Published += handler;
+                try { Apply(planProvider.Current.HostManager.RequirePublished(), throwOnFailure: true, handler); }
+                catch
+                {
+                    planProvider.Published -= handler;
+                    publishedHandler = null;
+                    throw;
+                }
+            }
+            holder = current!;
             holder.AddReference();
-        }
-        finally
-        {
-            gate.ExitReadLock();
+            holders++;
         }
 
         NativeFileQueryLease? inner = null;
@@ -177,35 +161,50 @@ public sealed class HostManagerFileQueryOwner :
 
     public void Dispose()
     {
-        gate.EnterWriteLock();
-        try
+        lock (lifetimeGate)
         {
             if (publishedHandler is { } handler) planProvider.Published -= handler;
             publishedHandler = null;
-            started = false;
             disposed = true;
+            RetireCurrent();
             DrainPendingRetirement();
-            if (current?.Retire() == true) current = null;
-            appliedPlan = null;
         }
-        finally
+        // Late lease callbacks retain close obligations for explicit Dispose retry.
+    }
+
+    private void RetireCurrent()
+    {
+        if (current is { } previous)
         {
-            gate.ExitWriteLock();
+            current = null;
+            appliedPlan = null;
+            pendingRetirements.Add(previous);
         }
-        // Late lease callbacks can still retain a failed close after shutdown.
-        // Keep the gate usable so another Dispose can retry those obligations.
     }
 
     private void DrainPendingRetirement()
     {
-        if (pendingRetirement?.Retire() == true) pendingRetirement = null;
+        for (var index = pendingRetirements.Count - 1; index >= 0; index--)
+            if (pendingRetirements[index].Retire()) pendingRetirements.RemoveAt(index);
     }
 
     private void Release(WorkspaceHolder holder)
     {
-        gate.EnterWriteLock();
-        try { holder.Release(); }
-        finally { gate.ExitWriteLock(); }
+        lock (lifetimeGate)
+        {
+            var released = false;
+            try { holder.Release(); released = true; }
+            finally
+            {
+                if (--holders == 0)
+                {
+                    if (publishedHandler is { } handler) planProvider.Published -= handler;
+                    publishedHandler = null;
+                    RetireCurrent();
+                }
+                if (released) DrainPendingRetirement();
+            }
+        }
     }
 
     private void Apply(CompiledHostManagerPlan hostPlan, bool throwOnFailure,
@@ -217,9 +216,6 @@ public sealed class HostManagerFileQueryOwner :
         {
             if (expectedHandler is not null && !ReferenceEquals(publishedHandler, expectedHandler)) return;
             DrainPendingRetirement();
-            if (pendingRetirement is not null)
-                throw new InvalidOperationException(
-                    "The previous file-query session pool is still in use; replacement must wait for its retirement.");
             if (appliedPlan?.ConfigurationSha256 == desired.ConfigurationSha256
                 && appliedPlan.Build == desired.Build
                 && appliedPlan.Recreate == desired.Recreate)
@@ -231,7 +227,7 @@ public sealed class HostManagerFileQueryOwner :
             var recreate = !initial
                 && (appliedPlan!.Build != desired.Build || appliedPlan.Recreate != desired.Recreate);
             var token = initial
-                ? deployment.BeginInitialCreate(hostPlan)
+                ? deployment.BeginCreate(hostPlan)
                 : recreate
                     ? deployment.BeginHostRecreateAndHotPublish(hostPlan)
                     : deployment.BeginHotPublish(hostPlan);
@@ -243,7 +239,7 @@ public sealed class HostManagerFileQueryOwner :
                 next = new WorkspaceHolder(replacement);
                 replacement = null;
                 deployment.CompleteSucceeded(token);
-                pendingRetirement = current;
+                if (current is { } previous) pendingRetirements.Add(previous);
                 current = next;
                 appliedPlan = desired;
                 next = null;

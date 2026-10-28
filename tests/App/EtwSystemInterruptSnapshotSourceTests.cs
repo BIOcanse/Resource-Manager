@@ -52,29 +52,36 @@ public sealed class EtwSystemInterruptSnapshotSourceTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task ActualWorkerReleasesLastKernelLeaseRetainsValueAndCanSubscribeAgain(bool running)
+    public async Task ExplicitWorkerRunsReleaseKernelLeaseRetainValueAndCanSubscribeAgain(bool running)
     {
         using var fixture = new HostManagerSamplingSubscriptionTestFixture();
         var broker = new DemandBroker(running);
         using var source = new EtwSystemInterruptSnapshotSource(broker, fixture.Owner,
             NullLogger<EtwSystemInterruptSnapshotSource>.Instance);
-        await source.StartAsync(CancellationToken.None);
         IDisposable? lease = null;
         try
         {
             Assert.Equal(0, broker.SubscribeCount);
             lease = source.AcquireSubscription("report", TimeSpan.FromMilliseconds(250));
+            Assert.Equal(0, broker.SubscribeCount);
+            await source.StartAsync(CancellationToken.None);
             await WaitUntilAsync(() => broker.SubscribeCount == 1);
             lease.Dispose();
-            await WaitUntilAsync(() => broker.DisposeCount == 1);
+            // Subscription withdrawal changes activity; the owner stops the run.
+            Assert.Equal(0, broker.DisposeCount);
+            await source.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(1, broker.DisposeCount);
             var saved = source.Read();
             await Task.Delay(500);
             Assert.Same(saved, source.Read());
             Assert.Equal(1, broker.SubscribeCount);
 
             lease = source.AcquireSubscription("report-again", TimeSpan.FromMilliseconds(250));
+            Assert.Equal(1, broker.SubscribeCount);
+            Assert.Same(saved, source.Read());
+            await source.StartAsync(CancellationToken.None);
             await WaitUntilAsync(() => broker.SubscribeCount == 2);
-            await source.StopAsync(CancellationToken.None);
+            await source.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
             Assert.Equal(2, broker.DisposeCount);
         }
         finally
@@ -88,6 +95,37 @@ public sealed class EtwSystemInterruptSnapshotSourceTests
     {
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         while (!condition()) await Task.Delay(10, cancellation.Token);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FrozenRunRetainsOneKernelHolderUntilItsFinalReturn(bool initiallyFrozen)
+    {
+        using var fixture = new HostManagerSamplingSubscriptionTestFixture();
+        var broker = new DemandBroker(true);
+        using var source = new EtwSystemInterruptSnapshotSource(broker, fixture.Owner,
+            NullLogger<EtwSystemInterruptSnapshotSource>.Instance);
+        if (initiallyFrozen) source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
+        Assert.Equal(0, broker.SubscribeCount);
+        await source.StartAsync(CancellationToken.None);
+        try
+        {
+            await WaitUntilAsync(() => broker.SubscribeCount == 1);
+            for (var cycle = 0; cycle < 3; cycle++)
+            {
+                source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
+                source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
+                Assert.Equal(SystemInterruptProviderStates.Frozen, source.Read().ProviderState.State);
+                Assert.Equal(1, broker.SubscribeCount);
+                Assert.Equal(0, broker.DisposeCount);
+                source.ApplyMode(ResourceManagerComputeZoneMode.Normal);
+                Assert.Equal(1, broker.SubscribeCount);
+                Assert.Equal(0, broker.DisposeCount);
+            }
+        }
+        finally { await source.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5)); }
+        Assert.Equal(1, broker.DisposeCount);
     }
 
     private sealed class DemandBroker(bool running) : IKernelEtwSessionBroker

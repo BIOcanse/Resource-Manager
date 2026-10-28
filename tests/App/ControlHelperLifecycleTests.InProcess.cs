@@ -19,6 +19,7 @@ public sealed partial class ControlHelperLifecycleTests
             creates++;
             return new DelegateFanSession(_ => throw new ApplicationException("injected fan failure"), () => closes++);
         }, log);
+        await client.StartSession();
         Assert.Null(await client.SendAsync("read", null, default));
         Assert.Equal("fan-core-failed", client.UnavailableReason);
         Assert.Contains(log.Messages, message => message.Contains("request failed (read)", StringComparison.Ordinal));
@@ -38,23 +39,30 @@ public sealed partial class ControlHelperLifecycleTests
         using var cancellation = new CancellationTokenSource();
         var closes = 0;
         await using var client = new FanControlCoreClient(new FanTestEnvironment(), (_, _) =>
-            new DelegateFanSession(_ =>
+            new DelegateFanSession(request =>
             {
+                if (request.GetProperty("op").GetString() == "describe") return FanOk;
                 entered.SetResult();
                 Assert.True(release.Wait(TimeSpan.FromSeconds(10)));
                 Assert.Equal(0, closes);
                 return FanOk;
             }, () => Interlocked.Increment(ref closes)));
+        await client.StartSession();
         var pending = client.SendAsync("set", null, cancellation.Token);
         try
         {
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
             if (dispose) client.Dispose(); else cancellation.Cancel();
-            Assert.False(pending.IsCompleted);
+            if (dispose) Assert.False(pending.IsCompleted);
+            else
+            {
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending.WaitAsync(TimeSpan.FromSeconds(2)));
+                Assert.True(client.PendingCommands);
+            }
             Assert.Equal(0, closes);
         }
         finally { release.Set(); }
-        Assert.True((await pending)!.Value.GetProperty("ok").GetBoolean());
+        if (dispose) Assert.True((await pending)!.Value.GetProperty("ok").GetBoolean());
         await client.DisposeAsync();
         Assert.Equal(1, closes);
     }
@@ -66,12 +74,14 @@ public sealed partial class ControlHelperLifecycleTests
         using var release = new ManualResetEventSlim();
         var restored = false;
         var client = new FanControlCoreClient(new FanTestEnvironment(), (_, _) =>
-            new DelegateFanSession(_ =>
+            new DelegateFanSession(request =>
             {
+                if (request.GetProperty("op").GetString() == "describe") return FanOk;
                 entered.SetResult();
                 Assert.True(release.Wait(TimeSpan.FromSeconds(10)));
                 return FanOk;
             }, () => restored = true));
+        await client.StartSession();
         var pending = client.SendAsync("set", null, default);
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         var stopping = client.DisposeAsync();
@@ -96,11 +106,13 @@ public sealed partial class ControlHelperLifecycleTests
             Assert.True(release.Wait(TimeSpan.FromSeconds(10)));
             return new DelegateFanSession(_ => { calls++; return FanOk; }, () => closes++);
         });
+        var startup = client.StartSession();
         var pending = client.SendAsync("set", null, default);
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         client.Dispose();
         release.Set();
-        Assert.Null(await pending);
+        await startup;
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => pending);
         await client.DisposeAsync();
         Assert.Equal(0, calls);
         Assert.Equal(1, closes);
@@ -126,7 +138,7 @@ public sealed partial class ControlHelperLifecycleTests
                 }
                 return FanOk;
             }));
-        await client.SendAsync("describe", null, default);
+        await client.StartSession();
         var read = client.SendAsync("read", null, default);
         await readEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         var samples = new Dictionary<string, FanTemperatureSample> { ["cpu"] = new(60, DateTime.UtcNow.Ticks) };

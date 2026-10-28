@@ -10,7 +10,6 @@ using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 namespace ResourceManager.App.Infrastructure.DeviceTopology;
 
 public sealed class HostManagerDisplayCoordinatorOwner :
-    IHostedService,
     IDisposable
 {
     private readonly ReaderWriterLockSlim gate = new(LockRecursionPolicy.NoRecursion);
@@ -32,7 +31,9 @@ public sealed class HostManagerDisplayCoordinatorOwner :
     private WorkspaceHolder? current;
     private CompiledHostManagerDisplayCoordinatorPlan? appliedPlan;
     private IReadOnlyList<DeviceTopologyOemDisplayConnectorProfile> profiles = [];
-    private bool started;
+    private readonly object lifetimeGate = new();
+    private int holders;
+    private Action<CompiledRuntimePlan>? publishedHandler;
     private bool disposed;
 
     internal bool PersistenceEnabled =>
@@ -74,15 +75,8 @@ public sealed class HostManagerDisplayCoordinatorOwner :
             "HostManager"));
     }
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    private void DiscoverProfiles()
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        ThrowIfDisposed();
-        if (started)
-        {
-            return Task.CompletedTask;
-        }
-
         var notes = new List<BackendMessage>();
         DeviceTopologySystemIdentity system;
         try
@@ -97,30 +91,6 @@ public sealed class HostManagerDisplayCoordinatorOwner :
                 "Display OEM profile discovery failed; native display facts will omit OEM profile rows.");
             profiles = [];
         }
-
-        planProvider.Published += OnPublished;
-        try
-        {
-            Apply(planProvider.Current.HostManager.RequirePublished(), throwOnFailure: true);
-            started = true;
-            return Task.CompletedTask;
-        }
-        catch
-        {
-            planProvider.Published -= OnPublished;
-            throw;
-        }
-    }
-
-    public Task StopAsync(CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (started)
-        {
-            planProvider.Published -= OnPublished;
-            started = false;
-        }
-        return Task.CompletedTask;
     }
 
     internal HostManagerDisplayCoordinatorReadModel Refresh()
@@ -131,42 +101,41 @@ public sealed class HostManagerDisplayCoordinatorOwner :
 
     public void Dispose()
     {
-        // Repeated disposal may retry a failed normal Close, but H is already disposed.
-        if (Interlocked.Exchange(ref disposeStarted, 1) != 0)
+        lock (lifetimeGate)
         {
-            lock (checkpointGate) RetryPendingCheckpointCloses();
-            RetryRetiredWorkspaces();
-            return;
-        }
-        if (started)
-        {
-            planProvider.Published -= OnPublished;
-            started = false;
-        }
-        gate.EnterWriteLock();
-        try
-        {
-            lock (checkpointGate)
+            // Repeated disposal retries failed normal Close obligations.
+            if (Interlocked.Exchange(ref disposeStarted, 1) != 0)
             {
-                if (allowedBinding is not null) allowedBinding.Store = null;
-                allowedBinding = null;
-                RetryPendingCheckpointCloses();
-                var previousStore = currentCheckpointStore;
-                currentCheckpointStore = null;
-                if (previousStore is not null) CloseCheckpointStore(previousStore);
+                lock (checkpointGate) RetryPendingCheckpointCloses();
+                RetryRetiredWorkspaces();
+                return;
             }
-            // Native leases can complete later. Never wait for W while holding P.
-            var previous = current;
-            current = null;
-            appliedPlan = null;
-            disposed = true;
-            RetireWorkspace(previous);
-            RetryRetiredWorkspaces();
-        }
-        finally
-        {
-            gate.ExitWriteLock();
-            gate.Dispose();
+            if (publishedHandler is { } handler) planProvider.Published -= handler;
+            publishedHandler = null;
+            gate.EnterWriteLock();
+            try
+            {
+                lock (checkpointGate)
+                {
+                    if (allowedBinding is not null) allowedBinding.Store = null;
+                    allowedBinding = null;
+                    RetryPendingCheckpointCloses();
+                    var previousStore = currentCheckpointStore;
+                    currentCheckpointStore = null;
+                    if (previousStore is not null) CloseCheckpointStore(previousStore);
+                }
+                // Native leases can complete later. Never wait for W while holding P.
+                var previous = current;
+                current = null;
+                appliedPlan = null;
+                disposed = true;
+                RetireWorkspace(previous);
+                RetryRetiredWorkspaces();
+            }
+            finally
+            {
+                gate.ExitWriteLock();
+            }
         }
     }
 
@@ -204,9 +173,6 @@ public sealed class HostManagerDisplayCoordinatorOwner :
         };
     }
 
-    private void OnPublished(CompiledRuntimePlan plan)
-        => Apply(plan.HostManager.RequirePublished(), throwOnFailure: false);
-
     internal void Apply(CompiledHostManagerPlan hostPlan, bool throwOnFailure)
     {
         ThrowIfDisposed();
@@ -217,8 +183,8 @@ public sealed class HostManagerDisplayCoordinatorOwner :
             RetryRetiredWorkspaces();
             if (appliedPlan?.ConfigurationSha256 == desired.ConfigurationSha256) return;
             var token = current is null
-                ? deployment.BeginInitialCreate(hostPlan)
-                : deployment.BeginHostRecreate(hostPlan);
+                ? deployment.BeginCreate(hostPlan)
+                : deployment.BeginHostRecreateAndHotPublish(hostPlan);
             NativeDisplayCoordinatorWorkspace? replacement = null;
             WorkspaceHolder? next = null;
             CheckpointBinding? nextBinding = null;
@@ -419,22 +385,96 @@ public sealed class HostManagerDisplayCoordinatorOwner :
         internal CheckpointStore? Store { get; set; } = store;
     }
 
+    internal IDisposable Hold()
+    {
+        lock (lifetimeGate)
+        {
+            AddHolding();
+            return new ResourceHolding(this);
+        }
+    }
+
     internal WorkspaceLease Acquire()
     {
+        lock (lifetimeGate)
+        {
+            AddHolding();
+            current!.AddReference();
+            return new WorkspaceLease(current, Release);
+        }
+    }
+
+    private void AddHolding()
+    {
         ThrowIfDisposed();
-        gate.EnterReadLock();
-        try
+        if (current is null)
         {
-            var holder = current
-                ?? throw new InvalidOperationException(
-                    "The Host Manager display-coordinator workspace is not ready.");
-            holder.AddReference();
-            return new WorkspaceLease(holder);
+            DiscoverProfiles();
+            Action<CompiledRuntimePlan> handler = null!;
+            handler = plan =>
+            {
+                lock (lifetimeGate)
+                {
+                    if (ReferenceEquals(publishedHandler, handler))
+                        Apply(plan.HostManager.RequirePublished(), throwOnFailure: false);
+                }
+            };
+            publishedHandler = handler;
+            planProvider.Published += handler;
+            try { Apply(planProvider.Current.HostManager.RequirePublished(), throwOnFailure: true); }
+            catch
+            {
+                planProvider.Published -= handler;
+                publishedHandler = null;
+                throw;
+            }
         }
-        finally
+        holders++;
+    }
+
+    private void Release(WorkspaceHolder holder)
+    {
+        lock (lifetimeGate)
         {
-            gate.ExitReadLock();
+            try { holder.Release(); }
+            finally { ReleaseHolding(); }
         }
+    }
+
+    private void ReleaseHolding()
+    {
+        lock (lifetimeGate)
+        {
+            if (--holders == 0)
+            {
+                if (publishedHandler is { } handler) planProvider.Published -= handler;
+                publishedHandler = null;
+                gate.EnterWriteLock();
+                try
+                {
+                    lock (checkpointGate)
+                    {
+                        if (allowedBinding is { } binding) binding.Store = null;
+                        allowedBinding = null;
+                        var previousStore = currentCheckpointStore;
+                        currentCheckpointStore = null;
+                        if (previousStore is not null) CloseCheckpointStore(previousStore);
+                    }
+                    var previous = current;
+                    current = null;
+                    appliedPlan = null;
+                    RetireWorkspace(previous);
+                    RetryRetiredWorkspaces();
+                }
+                finally { gate.ExitWriteLock(); }
+            }
+        }
+    }
+
+    private sealed class ResourceHolding(HostManagerDisplayCoordinatorOwner owner) : IDisposable
+    {
+        private HostManagerDisplayCoordinatorOwner? owner = owner;
+        public void Dispose() => Interlocked.Exchange(ref owner, null)?.ReleaseHolding();
     }
 
     private string ResolvePersistencePath(string relativePath)
@@ -512,7 +552,7 @@ public sealed class HostManagerDisplayCoordinatorOwner :
         }
     }
 
-    internal sealed class WorkspaceLease(WorkspaceHolder holder) : IDisposable
+    internal sealed class WorkspaceLease(WorkspaceHolder holder, Action<WorkspaceHolder>? release = null) : IDisposable
     {
         private WorkspaceHolder? holder = holder;
 
@@ -522,7 +562,10 @@ public sealed class HostManagerDisplayCoordinatorOwner :
 
         public void Dispose()
         {
-            Interlocked.Exchange(ref holder, null)?.Release();
+            var previous = Interlocked.Exchange(ref holder, null);
+            if (previous is null) return;
+            if (release is null) previous.Release();
+            else release(previous);
         }
     }
 }

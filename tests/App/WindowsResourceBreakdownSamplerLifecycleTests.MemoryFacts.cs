@@ -72,11 +72,12 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
                 TimeSpan.FromMilliseconds(100)) : null)
             using (sampler.AcquireSubscription("memory-facts", request, TimeSpan.FromMilliseconds(100)))
             {
-                Assert.Contains(totalId, hardware.LastSubscriptionRequest!.Ids);
                 var deadline = DateTime.UtcNow.AddSeconds(10);
                 while (sampler.ReadLatest(request)?.ProcessMemoryFacts.Count != 1 && DateTime.UtcNow < deadline)
                     await Task.Delay(20);
                 var current = sampler.ReadLatest(request)!;
+                Assert.NotNull(hardware.LastSubscriptionRequest);
+                Assert.Contains(totalId, hardware.LastSubscriptionRequest!.Ids);
                 var foundations = sampler.ReadLatest(new SchedulingProcessFactRequest(SchedulingProcessMetricMask.None,
                     new(SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, [])));
                 Assert.NotNull(foundations);

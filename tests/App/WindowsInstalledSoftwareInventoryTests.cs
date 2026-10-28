@@ -28,25 +28,74 @@ public sealed class WindowsInstalledSoftwareInventoryTests : IDisposable
     }
 
     [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void UnreadableEntryDoesNotPreventLaterEntries(bool denied)
+    [InlineData("access")]
+    [InlineData("io")]
+    [InlineData("security")]
+    public void UnreadableEntryDoesNotPreventLaterEntries(string failure)
     {
         var visited = new List<string>();
         foreach (var name in new[] { "first", "bad", "last" })
             WindowsInstalledSoftwareInventory.ReadInventoryEntry(name, entry =>
             {
-                if (entry == "bad")
-                {
-                    if (denied) throw new UnauthorizedAccessException();
-                    throw new IOException();
-                }
+                if (entry == "bad") throw UnreadableRegistryFailure(failure);
                 visited.Add(entry);
             });
         Assert.Equal(new[] { "first", "last" }, visited);
         Assert.Throws<OperationCanceledException>(() => WindowsInstalledSoftwareInventory.ReadInventoryEntry(
             "cancel", _ => throw new OperationCanceledException()));
     }
+
+    [Theory]
+    [InlineData("access")]
+    [InlineData("io")]
+    [InlineData("security")]
+    public async Task UnreadableRootRetainsAccessibleInventoryAndReadsLaterRoots(string failure)
+    {
+        WindowsInstalledSoftwareInventory.RegistryInventoryRoot[] roots = [
+            new(RegistryHive.LocalMachine, RegistryView.Registry64, null),
+            new(RegistryHive.LocalMachine, RegistryView.Registry32, null),
+            new(RegistryHive.CurrentUser, RegistryView.Registry64, null)
+        ];
+        var visited = new List<RegistryView>();
+        var inventory = new WindowsInstalledSoftwareInventory(_ =>
+        {
+            var entries = new List<InstalledSoftwareEntry>();
+            foreach (var root in roots)
+                WindowsInstalledSoftwareInventory.ReadInventoryRoot(root, () =>
+                {
+                    visited.Add(root.View);
+                    if (root.View == RegistryView.Registry32) throw UnreadableRegistryFailure(failure);
+                    var name = $"{root.Hive}-{root.View}";
+                    entries.Add(Software(name, name));
+                });
+            return entries;
+        });
+
+        var observed = await inventory.GetInstalledSoftwareAsync(default);
+
+        Assert.Equal(new[] { "LocalMachine-Registry64", "CurrentUser-Registry64" }, observed.Select(entry => entry.Name));
+        Assert.Equal(new[] { RegistryView.Registry64, RegistryView.Registry32, RegistryView.Registry64 }, visited);
+    }
+
+    [Fact]
+    public void RegistryBoundariesPropagateCancellationAndUnrelatedFailures()
+    {
+        var root = new WindowsInstalledSoftwareInventory.RegistryInventoryRoot(RegistryHive.LocalMachine, RegistryView.Registry64, null);
+        Assert.Throws<OperationCanceledException>(() => WindowsInstalledSoftwareInventory.ReadInventoryRoot(
+            root, () => throw new OperationCanceledException()));
+        Assert.Throws<InvalidOperationException>(() => WindowsInstalledSoftwareInventory.ReadInventoryRoot(
+            root, () => throw new InvalidOperationException()));
+        Assert.Throws<InvalidOperationException>(() => WindowsInstalledSoftwareInventory.ReadInventoryEntry(
+            "unrelated", _ => throw new InvalidOperationException()));
+    }
+
+    private static Exception UnreadableRegistryFailure(string failure) => failure switch
+    {
+        "access" => new UnauthorizedAccessException(),
+        "io" => new IOException(),
+        "security" => new System.Security.SecurityException(),
+        _ => throw new ArgumentOutOfRangeException(nameof(failure))
+    };
 
     [Fact]
     public async Task SubscriptionFramesReuseInventoryUntilExplicitRefreshPublishesChangedContent()

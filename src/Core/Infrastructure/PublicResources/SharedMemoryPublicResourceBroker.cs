@@ -27,7 +27,13 @@ internal sealed partial class SharedMemoryPublicResourceBroker :
     private readonly HostManagerDeploymentState deploymentState;
     private readonly HostManagerRuntimeIdentity hostIdentity;
     private BrokerState? state;
+    private CancellationTokenSource? initializationCancellation;
+    private Task? initialization;
     private int hostPublisherObserved;
+    private bool hasActivity;
+
+    internal bool HasActivity => Volatile.Read(ref hasActivity);
+    internal event Action? ActivityChanged;
 
     public event Action? HostResourcePublished;
 
@@ -55,109 +61,167 @@ internal sealed partial class SharedMemoryPublicResourceBroker :
             {
                 return Task.CompletedTask;
             }
+            if (initialization is { IsCompleted: false }) return initialization;
+            initializationCancellation?.Dispose();
+            initializationCancellation = null;
+            initialization = null;
 
-            var hostPlan = runtimePlanProvider.Current.HostManager.RequirePublished();
-            var recreatePlan = hostPlan.HostRecreate.SharedResources;
-            var hotPlan = hostPlan.HotPublish.SharedResources;
-            var nonce = Guid.NewGuid().ToString("N");
-            var attempt = deploymentState.BeginAttempt(
-                HostManagerModuleKind.SharedResources,
-                hostPlan,
-                HostManagerDeploymentOperation.InitialCreate);
-            NativeSharedResourceSession? session = null;
-            BrokerState? created = null;
-            try
+            var hostPlan = runtimePlanProvider.Current.HostManager;
+            if (!hostPlan.IsPublished)
             {
-                session = NativeSharedResourceSession.Create(
-                    $"Local\\ResourceManager.SharedResources.{nonce}.Host",
-                    $"Local\\ResourceManager.SharedResources.{nonce}.Mutex",
-                    new SharedResourceSessionOptions(
-                        recreatePlan.ResourceCapacity,
-                        recreatePlan.SubscriptionCapacity,
-                        recreatePlan.TaskCapacity,
-                        hotPlan.SubscriptionCoefficient,
-                        HostOwnerApplicationKey,
-                        hostIdentity.ProcessId,
-                        hostIdentity.ProcessCreatedAt,
-                        TimeSpan.FromMilliseconds(
-                            recreatePlan.MaximumSubscriptionLeaseDurationMilliseconds),
-                        TimeSpan.FromMilliseconds(
-                            recreatePlan.MaximumQueueDurationMilliseconds),
-                        TimeSpan.FromMilliseconds(
-                            recreatePlan.MaximumGrantDurationMilliseconds)));
-                created = new BrokerState(
-                    session,
-                    hostIdentity.InstanceId,
-                    new SharedResourceAuthorityId(
-                        CreateNonZeroId(),
-                        hostIdentity.InstanceId));
-                session = null;
-                state = created;
-                created = null;
-                HostManagerDeploymentAttemptSettlementGuard.RequireApplied(
-                    deploymentState.CompleteAttemptSucceeded(attempt),
-                    HostManagerModuleKind.SharedResources);
+                if (runtimePlanProvider is not RuntimePlanProvider provider)
+                    throw new InvalidOperationException(
+                        "An unpublished shared-resource runtime plan requires publication notifications.");
+                initializationCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                initialization = InitializeAfterPublicationAsync(provider, initializationCancellation.Token);
+                return initialization;
             }
-            catch (Exception exception)
-            {
-                IReadOnlyList<Exception> cleanupExceptions = [];
-                Exception? settlementException = null;
-                try
-                {
-                    var published = state;
-                    state = null;
-                    cleanupExceptions = HostManagerBestEffortCleanup.DisposeAll(
-                        published,
-                        created,
-                        session);
-                }
-                finally
-                {
-                    try
-                    {
-                        HostManagerDeploymentAttemptSettlementGuard.RequireFailed(
-                            deploymentState.CompleteAttemptFailed(
-                                attempt,
-                                "shared-resource-initial-create-failed",
-                                ToNativeResult(exception)),
-                            HostManagerModuleKind.SharedResources);
-                    }
-                    catch (Exception settlement)
-                    {
-                        settlementException = settlement;
-                    }
-                }
-                if (cleanupExceptions.Count != 0 || settlementException is not null)
-                {
-                    var failures = new List<Exception>(cleanupExceptions.Count + 2) { exception };
-                    failures.AddRange(cleanupExceptions);
-                    if (settlementException is not null) failures.Add(settlementException);
-                    throw new AggregateException(
-                        "Shared-resource Host initialization and cleanup or deployment settlement also failed.",
-                        failures);
-                }
-                throw;
-            }
+            CreateStateUnderLock(hostPlan);
         }
 
         return Task.CompletedTask;
     }
 
-    public Task StopAsync(CancellationToken cancellationToken)
+    private async Task InitializeAfterPublicationAsync(RuntimePlanProvider provider, CancellationToken cancellationToken)
     {
+        _ = await provider.WaitForPublishedAsync(cancellationToken).ConfigureAwait(false);
         lock (lifecycleGate)
         {
-            var stopped = state;
-            if (stopped is not null)
-            {
-                RequireNoPendingLifecycleOperations(stopped);
-            }
-            state = null;
-            Volatile.Write(ref hostPublisherObserved, 0);
-            stopped?.Dispose();
+            cancellationToken.ThrowIfCancellationRequested();
+            using var publication = provider.AcquirePublicationLease();
+            if (state is null) CreateStateUnderLock(publication.Plan.HostManager.RequirePublished());
         }
+    }
 
-        return Task.CompletedTask;
+    private void CreateStateUnderLock(CompiledHostManagerPlan hostPlan)
+    {
+        var recreatePlan = hostPlan.HostRecreate.SharedResources;
+        var hotPlan = hostPlan.HotPublish.SharedResources;
+        var nonce = Guid.NewGuid().ToString("N");
+        var attempt = deploymentState.BeginAttempt(
+            HostManagerModuleKind.SharedResources,
+            hostPlan,
+            HostManagerDeploymentOperation.InitialCreate);
+        NativeSharedResourceSession? session = null;
+        BrokerState? created = null;
+        try
+        {
+            session = NativeSharedResourceSession.Create(
+                $"Local\\ResourceManager.SharedResources.{nonce}.Host",
+                $"Local\\ResourceManager.SharedResources.{nonce}.Mutex",
+                new SharedResourceSessionOptions(
+                    recreatePlan.ResourceCapacity,
+                    recreatePlan.SubscriptionCapacity,
+                    recreatePlan.TaskCapacity,
+                    hotPlan.SubscriptionCoefficient,
+                    HostOwnerApplicationKey,
+                    hostIdentity.ProcessId,
+                    hostIdentity.ProcessCreatedAt,
+                    TimeSpan.FromMilliseconds(
+                        recreatePlan.MaximumSubscriptionLeaseDurationMilliseconds),
+                    TimeSpan.FromMilliseconds(
+                        recreatePlan.MaximumQueueDurationMilliseconds),
+                    TimeSpan.FromMilliseconds(
+                        recreatePlan.MaximumGrantDurationMilliseconds)));
+            created = new BrokerState(
+                session,
+                hostIdentity.InstanceId,
+                new SharedResourceAuthorityId(
+                    CreateNonZeroId(),
+                    hostIdentity.InstanceId));
+            session = null;
+            state = created;
+            PublishActivityUnderLock();
+            created = null;
+            HostManagerDeploymentAttemptSettlementGuard.RequireApplied(
+                deploymentState.CompleteAttemptSucceeded(attempt),
+                HostManagerModuleKind.SharedResources);
+        }
+        catch (Exception exception)
+        {
+            IReadOnlyList<Exception> cleanupExceptions = [];
+            Exception? settlementException = null;
+            try
+            {
+                var published = state;
+                state = null;
+                PublishActivityUnderLock();
+                cleanupExceptions = HostManagerBestEffortCleanup.DisposeAll(
+                    published,
+                    created,
+                    session);
+            }
+            finally
+            {
+                try
+                {
+                    HostManagerDeploymentAttemptSettlementGuard.RequireFailed(
+                        deploymentState.CompleteAttemptFailed(
+                            attempt,
+                            "shared-resource-initial-create-failed",
+                            ToNativeResult(exception)),
+                        HostManagerModuleKind.SharedResources);
+                }
+                catch (Exception settlement)
+                {
+                    settlementException = settlement;
+                }
+            }
+            if (cleanupExceptions.Count != 0 || settlementException is not null)
+            {
+                var failures = new List<Exception>(cleanupExceptions.Count + 2) { exception };
+                failures.AddRange(cleanupExceptions);
+                if (settlementException is not null) failures.Add(settlementException);
+                throw new AggregateException(
+                    "Shared-resource Host initialization and cleanup or deployment settlement also failed.",
+                    failures);
+            }
+            throw;
+        }
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        Task? pending;
+        CancellationTokenSource? cancellation;
+        lock (lifecycleGate)
+        {
+            pending = initialization;
+            cancellation = initializationCancellation;
+        }
+        if (cancellation is not null) await cancellation.CancelAsync().ConfigureAwait(false);
+        try
+        {
+            if (pending is not null) await pending.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellation?.IsCancellationRequested == true
+            && !cancellationToken.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            try
+            {
+                lock (lifecycleGate)
+                {
+                    if (ReferenceEquals(initialization, pending))
+                    {
+                        initialization = null;
+                        initializationCancellation = null;
+                    }
+                    var stopped = state;
+                    if (stopped is not null)
+                    {
+                        RequireNoPendingLifecycleOperations(stopped);
+                    }
+                    state = null;
+                    Volatile.Write(ref hostPublisherObserved, 0);
+                    stopped?.Dispose();
+                    PublishActivityUnderLock();
+                }
+            }
+            finally { cancellation?.Dispose(); }
+        }
     }
 
     public SharedResourceId PublishHostResource(
@@ -176,6 +240,7 @@ internal sealed partial class SharedMemoryPublicResourceBroker :
                 id,
                 definition with { PublicResourceId = id.PublicResourceId });
             Volatile.Write(ref hostPublisherObserved, 1);
+            PublishActivityUnderLock();
         }
         HostResourcePublished?.Invoke();
         return id;
@@ -214,6 +279,7 @@ internal sealed partial class SharedMemoryPublicResourceBroker :
             if (updated)
             {
                 current.Definitions[id] = normalized;
+                PublishActivityUnderLock();
             }
             return updated;
         }
@@ -237,6 +303,7 @@ internal sealed partial class SharedMemoryPublicResourceBroker :
             {
                 current.Lifecycles.Remove(id);
                 current.Definitions.Remove(id);
+                PublishActivityUnderLock();
             }
             return removed;
         }
@@ -247,6 +314,8 @@ internal sealed partial class SharedMemoryPublicResourceBroker :
     {
         lock (lifecycleGate)
         {
+            try
+            {
             var current = RequireState();
             var shortage = request.Shortage;
             var plannedCount = 0;
@@ -357,6 +426,8 @@ internal sealed partial class SharedMemoryPublicResourceBroker :
                 releasedBytes,
                 restoredBytes,
                 plan.SampleGeneration);
+            }
+            finally { PublishActivityUnderLock(); }
         }
     }
 
@@ -382,7 +453,7 @@ internal sealed partial class SharedMemoryPublicResourceBroker :
 
         lock (lifecycleGate)
         {
-            return RequireState().Session.TryFindResource(publicResourceId, out var snapshot)
+            return state is { } current && current.Session.TryFindResource(publicResourceId, out var snapshot)
                 ? ToDescriptor(snapshot!)
                 : null;
         }
@@ -430,25 +501,29 @@ internal sealed partial class SharedMemoryPublicResourceBroker :
         {
             var current = RequireState();
             var session = current.Session;
-            return new SharedResourceMaintenanceResult(
-                session.SweepSubscriptions(),
-                session.SweepUses());
+            try
+            {
+                return new SharedResourceMaintenanceResult(
+                    session.SweepSubscriptions(), session.SweepUses());
+            }
+            finally { PublishActivityUnderLock(); }
         }
     }
 
-    public void Dispose()
+    public void Dispose() => StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+
+    private void PublishActivityUnderLock()
     {
-        lock (lifecycleGate)
-        {
-            var disposed = state;
-            if (disposed is not null)
-            {
-                RequireNoPendingLifecycleOperations(disposed);
-            }
-            state = null;
-            Volatile.Write(ref hostPublisherObserved, 0);
-            disposed?.Dispose();
-        }
+        var current = state;
+        var active = current is not null &&
+            (current.PendingUnloads.Count != 0 || current.PendingRecalls.Count != 0
+            || current.Session.ListResources(out _).Any(static resource =>
+                resource.ActiveSubscriberCount != 0 || resource.QueuedRequestCount != 0
+                || resource.ReservedGrantCount != 0 || resource.ActiveUseCount != 0
+                || resource.DestructiveActionActive));
+        if (hasActivity == active) return;
+        Volatile.Write(ref hasActivity, active);
+        ActivityChanged?.Invoke();
     }
 
     private BrokerState RequireState()

@@ -53,7 +53,7 @@ internal static class D3dCapabilitySubscriptionConsumer
         var configuration = Configuration();
         var workerFailures = new ConcurrentQueue<string>();
         await using var composition = new NativeFieldSubscriptionComposition(borrow, settings, in configuration,
-            failure => workerFailures.Enqueue($"{failure.Stage}: {failure.Error.Message}"), TimeSpan.FromMilliseconds(10));
+            failure => workerFailures.Enqueue($"{failure.Stage}: {failure.Error.Message}"));
 
         await composition.StartAsync();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -175,7 +175,7 @@ internal static class D3dCapabilitySubscriptionConsumer
         var configuration = Configuration();
         var failures = new ConcurrentQueue<string>();
         await using var composition = new NativeFieldSubscriptionComposition(access.BorrowSubscriptionCapture(), settings,
-            in configuration, failure => failures.Enqueue(failure.Error.Message), TimeSpan.FromMilliseconds(10));
+            in configuration, failure => failures.Enqueue(failure.Error.Message));
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         foreach (uint? tier in new uint?[] { 0, null, uint.MaxValue, 12 })
         {

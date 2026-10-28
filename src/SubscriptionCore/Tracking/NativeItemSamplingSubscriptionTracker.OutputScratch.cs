@@ -13,6 +13,26 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
     private bool outputOperationActive;
     private bool outputClosing;
 
+    internal bool HasOutstandingOutputResources
+    {
+        get
+        {
+            lock (gate) return outputScratch is not null || pendingOutputClose is not null || outputUse is not null;
+        }
+    }
+
+    // Internal observation only. The host exposes this solely in its named development build.
+    internal (int SourceRegistrations, bool PendingSessionLease, ulong OutputScratchBytes,
+        ulong PendingOutputCloseBytes, bool OutputUseActive, int ManagedOutputRows) CaptureResourceDiagnostics()
+    {
+        lock (gate)
+        {
+            return (sourcePayloads.Count, pendingSessionLease is not null, outputScratch?.Length ?? 0,
+                pendingOutputClose?.Length ?? 0, outputUse is not null,
+                checked(dueBuffer.Length + sourceBuffer.Length + expiredBuffer.Length + triggerBuffer.Length));
+        }
+    }
+
     internal NativeItemSamplingSubscriptionTracker(ISamplingSubscriptionSessionOwner<TContext> owner, int roleId,
         Func<TRequest, string> createSourceKey, Func<TRequest, IEnumerable<string>> getItemIds,
         Func<IReadOnlyList<string>, IReadOnlyList<NativeItemSamplingSubscriptionSourceView<TRequest>>, TRequest?> createRequest,

@@ -23,6 +23,7 @@ public sealed class PhysicalDiskIoWindowTests
         var broker = new Broker();
         long tick = 1000;
         using var owner = new EtwPhysicalDiskIoCaptureOwner(broker, new(), () => tick, pid => new ProcessLease(pid));
+        owner.Start();
         owner.Read();
         var source = new KernelEtwEventSource();
         broker.Request!.Bind(source, new(0, DateTimeOffset.UnixEpoch));
@@ -48,6 +49,7 @@ public sealed class PhysicalDiskIoWindowTests
         var broker = new Broker();
         long tick = 1000;
         using var owner = new EtwPhysicalDiskIoCaptureOwner(broker, new(), () => tick, pid => new ProcessLease(pid));
+        owner.Start();
         owner.Read();
         var source = new KernelEtwEventSource();
         broker.Request!.Bind(source, new(0, DateTimeOffset.UnixEpoch));
@@ -61,7 +63,7 @@ public sealed class PhysicalDiskIoWindowTests
         Assert.Equal(2048, Assert.Single(snapshot.Processes).Value.ReadBytesPerSecond);
     }
     [Fact]
-    public void DisposeReleasesReadAcquiredLeaseAndPreventsReacquisition()
+    public void DisposeReleasesExplicitlyAcquiredLeaseAndPreventsReacquisition()
     {
         var broker = new Broker();
         var reader = NewReader(broker);
@@ -109,28 +111,25 @@ public sealed class PhysicalDiskIoWindowTests
     }
 
     [Fact]
-    public void ReacquisitionDuringOldLeaseReleasePreservesTheNewWindowAndState()
+    public void FrozenReadsDoNotReleaseOrReacquireTheExplicitlyHeldCapture()
     {
         var broker = new Broker();
         using var reader = NewReader(broker);
+        var request = broker.Request;
+        var released = 0;
+        broker.OnRelease = () => released++;
+        reader.ApplyMode(ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Freeze);
+        var frozen = reader.Read();
+        Assert.Equal(PhysicalDiskIoProviderStates.Frozen, frozen.ProviderState.State);
+        Assert.Empty(frozen.Processes);
+        Assert.Same(request, broker.Request);
+        Assert.Equal(0, released);
+        reader.ApplyMode(ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Normal);
         reader.Read();
-        broker.OnRelease = () =>
-        {
-            reader.ApplyMode(ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Normal);
-            reader.Read();
-            var source = new KernelEtwEventSource();
-            var context = new KernelEtwSessionContext(0, DateTimeOffset.UnixEpoch);
-            broker.Request!.Bind(source, context);
-            source.Activate();
-            reader.CaptureResource.ObserveBoundDiskTransfer(source, context, 42, (ulong)(8192), true, Environment.TickCount64, null, 100);
-        };
-
-        reader.ApplyMode(ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Freeze);
-
-        var snapshot = reader.Read();
-        Assert.Equal(PhysicalDiskIoProviderStates.Warming, snapshot.ProviderState.State);
-        Assert.Empty(snapshot.Processes); // Replacement collection needs its own complete two-second window.
-        reader.ApplyMode(ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Freeze);
+        Assert.Same(request, broker.Request);
+        Assert.Equal(0, released);
+        reader.Dispose();
+        Assert.Equal(1, released);
     }
 
     [Fact]
@@ -231,7 +230,12 @@ public sealed class PhysicalDiskIoWindowTests
         Assert.True(recovered.Complete); Assert.Equal(2048, recovered.Processes[41].ReadBytesPerSecond);
     }
 
-    private static EtwPhysicalDiskIoAttributionReader NewReader(Broker broker) => new(new EtwPhysicalDiskIoCaptureOwner(broker, new(), () => Environment.TickCount64, pid => new ProcessLease(pid)));
+    private static EtwPhysicalDiskIoAttributionReader NewReader(Broker broker)
+    {
+        var capture = new EtwPhysicalDiskIoCaptureOwner(broker, new(), () => Environment.TickCount64, pid => new ProcessLease(pid));
+        capture.Start();
+        return new(capture);
+    }
     private sealed class ProcessLease(uint pid) : ResourceManager.ReadWrite.Windows.Devices.IWindowsNetworkEndpointProcessLease
     {
         public uint ProcessId => pid;

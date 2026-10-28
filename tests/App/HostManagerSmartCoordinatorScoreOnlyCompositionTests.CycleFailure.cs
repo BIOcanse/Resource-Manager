@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ResourceManager.App.Hosting;
 using ResourceManager.App.Domain.Settings;
+using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.FreedomPoints;
 
 namespace Resource_Manager_APP.Tests;
@@ -16,10 +17,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: true,
             scoreOnlyEnabled: false,
-            optimizationMode: AppOptimizationModes.Normal,
+            optimizationMode: AppOptimizationModes.CpuOnly,
+            optimizationCapabilities: OptimizationModeCapabilities.None,
             automaticMemoryCleanupEnabled: false,
             editFreedomPoints: root => FreedomPointTestFactory.Point(root,
                 BackendFreedomPointPaths.SchedulerSamplingInterval)["value"] = 100);
+        fixture.PublicResourceManager.Available = false;
         var broken = 1;
         var failures = 0;
         var failedCycles = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -39,6 +42,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             .ConfigureServices(services =>
             {
                 services.AddSingleton(fixture.Coordinator);
+                services.AddSingleton<IHostedService>(provider => new HostedScoreOnlyPlanFacts(
+                    fixture, provider.GetRequiredService<ResourceManager.Shared.BusinessBlocks.State.StateAuthority>()));
                 services.AddHostedServiceAlias<ResourceManager.App.Infrastructure.Optimization.HostManagerSmartCoordinator>(BackendUids.HostManagerSmartCoordinator);
                 NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
             })
@@ -47,7 +52,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             host.Services.GetRequiredService<IOptions<HostOptions>>().Value.BackgroundServiceExceptionBehavior);
         var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await host.StartAsync(deadline.Token);
+        await StartHostedScoreOnlyTestHostAsync(host, deadline.Token);
         try
         {
             var worker = fixture.Coordinator.ExecuteTask;

@@ -3,8 +3,7 @@ const control = @import("rm_control");
 const backend_tree = @import("backend_tree");
 const ResultCode = @import("../common/result_codes.zig").ResultCode;
 
-pub const abi_version: u32 = 0x0001_0000;
-pub const no_uid: u32 = std.math.maxInt(u32);
+pub const abi_version: u32 = 0x0002_0000;
 
 pub const Profile = enum(u32) {
     full = 1,
@@ -19,14 +18,11 @@ pub const Config = extern struct {
     profile: u32,
     worker_count: u32,
     history_capacity: u32,
-    demand_capacity: u32,
-    demand_bytes: u32,
     completion_capacity: u32,
     reader_capacity: u32,
     reader_bytes: u32,
     worker_arena_bytes: u32,
     reason_text_capacity: u32,
-    demand_item_uid: u32,
     shutdown_item_uid: u32,
     host_blocks: ?[*]const u32,
     host_block_count: u32,
@@ -45,6 +41,8 @@ pub const HostCallbacks = extern struct {
 
 pub const ItemKeyView = control.types.ItemKeyView;
 pub const ReasonView = control.types.ReasonView;
+pub const ReadFunction = control.types.ReadFunction;
+pub const FunctionRead = control.types.ReadView;
 
 /// Values cross the ABI as `u32`; invalid values are rejected before they
 /// reach the controller's tagged unions.
@@ -79,9 +77,9 @@ const Controller = union(enum) {
 const Session = struct { controller: Controller };
 
 comptime {
-    if (@sizeOf(Config) != 72) @compileError("rm_control Config ABI size changed");
-    if (@offsetOf(Config, "host_blocks") != 56) @compileError("rm_control Config ABI layout changed");
-    if (@offsetOf(Config, "host_block_count") != 64) @compileError("rm_control Config ABI layout changed");
+    if (@sizeOf(Config) != 56) @compileError("rm_control Config ABI size changed");
+    if (@offsetOf(Config, "host_blocks") != 40) @compileError("rm_control Config ABI layout changed");
+    if (@offsetOf(Config, "host_block_count") != 48) @compileError("rm_control Config ABI layout changed");
     if (@sizeOf(HostCallbacks) != 48) @compileError("rm_control HostCallbacks ABI size changed");
 }
 
@@ -218,6 +216,43 @@ pub export fn rm_control_claim_cell(
     return code(.ok);
 }
 
+pub export fn rm_control_claim_read_function(
+    handle: ?*anyopaque,
+    key_pointer: ?*const ItemKeyView,
+    function_pointer: ?*const ReadFunction,
+    output_claim: ?*?*anyopaque,
+) callconv(.c) i32 {
+    const output = output_claim orelse return code(.invalid_argument);
+    output.* = null;
+    const session = castSession(handle) orelse return code(.invalid_argument);
+    const key = key_pointer orelse return code(.invalid_argument);
+    const function = function_pointer orelse return code(.invalid_argument);
+    const claim = switch (session.controller) {
+        .full => |controller| controller.claimReadFunction(key.toKey(), function.*) catch |err| return codeFor(err),
+        .windows_service => |controller| controller.claimReadFunction(key.toKey(), function.*) catch |err| return codeFor(err),
+        .normal_readonly => |controller| controller.claimReadFunction(key.toKey(), function.*) catch |err| return codeFor(err),
+    };
+    output.* = @ptrCast(claim);
+    return code(.ok);
+}
+
+pub export fn rm_control_notify_changed(
+    handle: ?*anyopaque,
+    claim_pointer: ?*anyopaque,
+    reason_pointer: ?*const ReasonView,
+    completion_token: u64,
+) callconv(.c) i32 {
+    const session = castSession(handle) orelse return code(.invalid_argument);
+    const claim = castClaim(claim_pointer) orelse return code(.invalid_argument);
+    const reason = reason_pointer orelse return code(.invalid_argument);
+    const token = optionalToken(completion_token);
+    return switch (session.controller) {
+        .full => |controller| finish(controller.notifyChanged(claim, reason.toReason(), token)),
+        .windows_service => |controller| finish(controller.notifyChanged(claim, reason.toReason(), token)),
+        .normal_readonly => |controller| finish(controller.notifyChanged(claim, reason.toReason(), token)),
+    };
+}
+
 pub export fn rm_control_read(
     handle: ?*anyopaque,
     key_pointer: ?*const ItemKeyView,
@@ -340,43 +375,6 @@ pub export fn rm_control_unbind(
     };
 }
 
-pub export fn rm_control_set_demand(
-    handle: ?*anyopaque,
-    key_pointer: ?[*]const u8,
-    key_length: u32,
-    block_uid: u32,
-    reason_pointer: ?*const ReasonView,
-    completion_token: u64,
-) callconv(.c) i32 {
-    const session = castSession(handle) orelse return code(.invalid_argument);
-    const key = bytesFrom(key_pointer, key_length) catch return code(.invalid_argument);
-    const reason = reason_pointer orelse return code(.invalid_argument);
-    const token = optionalToken(completion_token);
-    return switch (session.controller) {
-        .full => |controller| finish(controller.setDemand(key, block_uid, reason.toReason(), token)),
-        .windows_service => |controller| finish(controller.setDemand(key, block_uid, reason.toReason(), token)),
-        .normal_readonly => |controller| finish(controller.setDemand(key, block_uid, reason.toReason(), token)),
-    };
-}
-
-pub export fn rm_control_clear_demand(
-    handle: ?*anyopaque,
-    key_pointer: ?[*]const u8,
-    key_length: u32,
-    reason_pointer: ?*const ReasonView,
-    completion_token: u64,
-) callconv(.c) i32 {
-    const session = castSession(handle) orelse return code(.invalid_argument);
-    const key = bytesFrom(key_pointer, key_length) catch return code(.invalid_argument);
-    const reason = reason_pointer orelse return code(.invalid_argument);
-    const token = optionalToken(completion_token);
-    return switch (session.controller) {
-        .full => |controller| finish(controller.clearDemand(key, reason.toReason(), token)),
-        .windows_service => |controller| finish(controller.clearDemand(key, reason.toReason(), token)),
-        .normal_readonly => |controller| finish(controller.clearDemand(key, reason.toReason(), token)),
-    };
-}
-
 pub export fn rm_control_register_reader(
     handle: ?*anyopaque,
     key_pointer: ?*const ItemKeyView,
@@ -470,14 +468,11 @@ fn configFrom(view: *const Config) !control.Config {
     return .{
         .worker_count = view.worker_count,
         .history_capacity = view.history_capacity,
-        .demand_capacity = view.demand_capacity,
-        .demand_bytes = view.demand_bytes,
         .completion_capacity = view.completion_capacity,
         .reader_capacity = view.reader_capacity,
         .reader_bytes = view.reader_bytes,
         .worker_arena_bytes = view.worker_arena_bytes,
         .reason_text_capacity = view.reason_text_capacity,
-        .demand_item = if (view.demand_item_uid == no_uid) null else view.demand_item_uid,
         .shutdown_item = view.shutdown_item_uid,
         .host_blocks = host_blocks,
     };
@@ -578,9 +573,6 @@ fn codeFor(err: anyerror) i32 {
         error.CompletionFull => .control_completion_full,
         error.InvalidReason => .invalid_argument,
         error.ReasonTooLong => .control_reason_too_long,
-        error.InvalidDemand => .control_invalid_demand,
-        error.NoDemandItem => .control_no_demand_item,
-        error.DemandFull => .control_demand_full,
         error.InvalidHolder => .control_invalid_holder,
         error.DuplicateHolder => .control_duplicate_reader,
         error.ReaderFull => .control_reader_full,
@@ -614,9 +606,6 @@ test "every reachable controller error has an explicit result code" {
     try std.testing.expectEqual(code(.control_completion_full), codeFor(error.CompletionFull));
     try std.testing.expectEqual(code(.invalid_argument), codeFor(error.InvalidReason));
     try std.testing.expectEqual(code(.control_reason_too_long), codeFor(error.ReasonTooLong));
-    try std.testing.expectEqual(code(.control_invalid_demand), codeFor(error.InvalidDemand));
-    try std.testing.expectEqual(code(.control_no_demand_item), codeFor(error.NoDemandItem));
-    try std.testing.expectEqual(code(.control_demand_full), codeFor(error.DemandFull));
     try std.testing.expectEqual(code(.control_invalid_holder), codeFor(error.InvalidHolder));
     try std.testing.expectEqual(code(.control_duplicate_reader), codeFor(error.DuplicateHolder));
     try std.testing.expectEqual(code(.control_reader_full), codeFor(error.ReaderFull));

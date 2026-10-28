@@ -86,6 +86,8 @@ comptime {
     _ = control_abi.rm_control_destroy;
     _ = control_abi.rm_control_claim_write;
     _ = control_abi.rm_control_claim_cell;
+    _ = control_abi.rm_control_claim_read_function;
+    _ = control_abi.rm_control_notify_changed;
     _ = control_abi.rm_control_read;
     _ = control_abi.rm_control_read_presence;
     _ = control_abi.rm_control_read_state;
@@ -93,8 +95,6 @@ comptime {
     _ = control_abi.rm_control_publish_presence;
     _ = control_abi.rm_control_bind;
     _ = control_abi.rm_control_unbind;
-    _ = control_abi.rm_control_set_demand;
-    _ = control_abi.rm_control_clear_demand;
     _ = control_abi.rm_control_register_reader;
     _ = control_abi.rm_control_unregister_reader;
     _ = control_abi.rm_control_run_running;

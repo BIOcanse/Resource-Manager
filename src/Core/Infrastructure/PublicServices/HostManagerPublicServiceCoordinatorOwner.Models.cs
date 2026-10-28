@@ -23,7 +23,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
                 if (!flags.HasFlag(
                         NativePublicServiceCoordinatorSnapshotFlags.ModelCatalogUsable))
                 {
-                    Signal(modelWake);
+                    QueueModelRefresh();
                     throw new AiModelRuntimeUnavailableException(
                         "The native local-model catalog has no usable provider snapshot.");
                 }
@@ -60,7 +60,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
                 if ((NativePublicServiceModelResolveStatus)output.Status
                     == NativePublicServiceModelResolveStatus.CatalogUnavailable)
                 {
-                    Signal(modelWake);
+                    QueueModelRefresh();
                     throw new AiModelRuntimeUnavailableException(
                         "The native local-model catalog has no usable provider snapshot.");
                 }
@@ -93,6 +93,8 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
 
     private async Task RunModelAcquisitionLoopAsync(CancellationToken cancellationToken)
     {
+        // A catalog refresh is finite work queued by the query API; this signal
+        // schedules that work within the already running owner.
         await modelWake.WaitAsync(cancellationToken).ConfigureAwait(false);
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -106,14 +108,24 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
                 switch ((NativePublicServiceModelAcquisitionPlanStatus)plan.Status)
                 {
                     case NativePublicServiceModelAcquisitionPlanStatus.Start:
-                        await AcquireModelCatalogAsync(
-                            holder,
-                            plan,
-                            cancellationToken).ConfigureAwait(false);
+                        Interlocked.Increment(ref activeModelAcquisitions);
+                        Interlocked.Exchange(ref modelRefreshQueued, 0);
+                        PublishPendingTasks();
+                        try
+                        {
+                            await AcquireModelCatalogAsync(holder, plan, cancellationToken).ConfigureAwait(false);
+                        }
+                        finally
+                        {
+                            Interlocked.Decrement(ref activeModelAcquisitions);
+                            PublishPendingTasks();
+                        }
                         nextWake = holder.Workspace.PlanModelAcquisition().NextWakeMonotonicMilliseconds;
                         break;
                     case NativePublicServiceModelAcquisitionPlanStatus.NotDue:
                     case NativePublicServiceModelAcquisitionPlanStatus.Running:
+                        Interlocked.Exchange(ref modelRefreshQueued, 0);
+                        PublishPendingTasks();
                         break;
                     default:
                         throw new InvalidOperationException(

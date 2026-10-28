@@ -12,7 +12,8 @@ internal sealed class HostManagerSamplingSubscriptionTestFixture : IDisposable
 
     public HostManagerSamplingSubscriptionTestFixture(
         CompiledHostManagerPlan? hostManagerPlan = null,
-        ResourceManagerLedgerOwner? ledgerOwner = null)
+        ResourceManagerLedgerOwner? ledgerOwner = null,
+        bool startOwner = true)
     {
         provider = new RuntimePlanProvider(deployment);
         provider.Publish(CompiledRuntimePlan.Default with
@@ -24,7 +25,7 @@ internal sealed class HostManagerSamplingSubscriptionTestFixture : IDisposable
             provider,
             new HostManagerSamplingSubscriptionRuntime(provider, deployment),
             NullLogger<HostManagerSamplingSubscriptionOwner>.Instance, ledgerOwner);
-        Owner.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
+        if (startOwner) Owner.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
     }
 
     public HostManagerSamplingSubscriptionOwner Owner { get; }

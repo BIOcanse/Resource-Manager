@@ -87,6 +87,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
             .AddResourceManagerRuntimeIdentity()
             .AddResourceManagerDependencies();
 
+        services.AddBackendDecisionStateBindings();
         services.AddEtwBusinessBlocks();
         if (startupCapabilities.Allows(StartupCapability.RuntimeEffectOwners)) services.AddHostMemoryProtection();
 

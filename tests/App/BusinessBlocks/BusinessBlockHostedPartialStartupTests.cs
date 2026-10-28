@@ -12,7 +12,7 @@ public sealed class BusinessBlockHostedPartialStartupTests
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(5);
 
     [Fact]
-    public async Task HostStopAwaitsExternallyStartedServiceWhoseAliasStartWasNeverReached()
+    public async Task HostStopAwaitsAnAlreadyPermittedServiceWhoseAliasStartWasNeverReached()
     {
         var earlier = new FailingStartService();
         var later = new GatedStopService();
@@ -26,8 +26,8 @@ public sealed class BusinessBlockHostedPartialStartupTests
                 NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
             }).Build();
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
-        await scheduler.SetDemandAsync("external", BackendUids.RuntimeSpecializationCoordinator, new(BusinessBlockRequestKind.User,
-            "partial-startup-test", "external-start", 0)).WaitAsync(TestTimeout);
+        await host.Services.GetRequiredService<BackendHostPermitFacts>().SetAsync(BackendUids.RuntimeSpecializationCoordinator, true, new(BusinessBlockRequestKind.Configuration,
+            "partial-startup-test", "early-permit", 0)).WaitAsync(TestTimeout);
         await WaitUntilAsync(() => scheduler.ReadState(BackendUids.RuntimeSpecializationCoordinator) == BusinessBlockState.Running);
         Assert.Equal(1, later.StartCount);
         var failure = await Assert.ThrowsAsync<IOException>(() => host.StartAsync().WaitAsync(TestTimeout));

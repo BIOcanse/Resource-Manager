@@ -10,7 +10,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed class EtwResourceOwnerLibraryIntegrationTests
 {
     [Fact]
-    public void IndependentOwnersAndContractsBelongToSdkAndConstructionDoesNotAcquireEtw()
+    public void IndependentOwnersAndContractsBelongToSdkAndReadsDoNotAcquireEtw()
     {
         var sdk = typeof(ProcessCpuDeltaTracker).Assembly;
         Assert.Equal(sdk, typeof(KernelEtwSessionOwner).Assembly);
@@ -20,6 +20,9 @@ public sealed class EtwResourceOwnerLibraryIntegrationTests
         var factory = new Factory();
         using var broker = new KernelEtwSessionOwner(factory);
         using var network = new EtwNetworkTcpIpCaptureOwner(broker);
+        using var disk = new ResourceManager.ReadWrite.Windows.Processes.EtwPhysicalDiskIoCaptureOwner(broker);
+        Assert.Empty(network.Read(true).RawProcessValues);
+        Assert.Empty(disk.Read(true).Processes);
         Assert.Equal(0, factory.Created);
         Assert.Equal(0, broker.GetSnapshot().SubscriptionCount);
     }
@@ -31,6 +34,7 @@ public sealed class EtwResourceOwnerLibraryIntegrationTests
         using var broker = new KernelEtwSessionOwner(factory);
         using var cpu = broker.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
         var network = new EtwNetworkTcpIpCaptureOwner(broker);
+        network.Start();
         network.Read();
         Assert.Equal(1, factory.Created);
         Assert.Equal(2, broker.GetSnapshot().SubscriptionCount);
@@ -54,6 +58,7 @@ public sealed class EtwResourceOwnerLibraryIntegrationTests
         var handles = new List<ProcessLease>();
         using var network = new EtwNetworkTcpIpCaptureOwner(broker, static () => true, new(), () => tick,
             pid => { var lease = new ProcessLease(pid, 100); handles.Add(lease); return lease; });
+        network.Start();
         Assert.Null(network.Read(true).ObservedTraffic);
         var runtime = factory.Current!;
         network.ObserveBoundNetworkTransfer(runtime.NetworkSource!, runtime.Context!, 41, 4000, true, false,
@@ -80,6 +85,7 @@ public sealed class EtwResourceOwnerLibraryIntegrationTests
         long tick = 0;
         var allowed = true;
         using var network = new EtwNetworkTcpIpCaptureOwner(broker, () => allowed, new(), () => tick);
+        network.Start();
         network.Read(true);
         tick = 2001;
         Assert.NotNull(network.Read(true).ObservedTraffic); // Complete empty is a valid window.

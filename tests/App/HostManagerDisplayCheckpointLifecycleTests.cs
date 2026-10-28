@@ -15,6 +15,76 @@ namespace Resource_Manager_APP.Tests;
 public sealed class HostManagerDisplayCheckpointLifecycleTests
 {
     [Fact]
+    public void NativeWorkspaceAndCheckpointWriterExistOnlyWhileHeldAndPlansReplaceWhileHeld()
+    {
+        using var fixture = new Fixture();
+        var initialPlan = fixture.Publish("a.bin");
+        Assert.Empty(fixture.Contexts);
+        Assert.Empty(fixture.Stores);
+        var first = fixture.Owner.Acquire();
+        var second = fixture.Owner.Acquire();
+        Assert.Same(first.Workspace, second.Workspace);
+        AssertApplied(initialPlan);
+        var updatedPlan = fixture.Publish("b.bin");
+        AssertApplied(updatedPlan);
+        Assert.Equal(2, fixture.Contexts.Count);
+        Assert.Equal(0, fixture.Contexts[0].Session.DisposeCount);
+        first.Dispose();
+        Assert.Equal(0, fixture.Contexts[0].Session.DisposeCount);
+        second.Dispose(); second.Dispose();
+        Assert.All(fixture.Contexts, context => Assert.Equal(1, context.Session.DisposeCount));
+        Assert.All(fixture.Stores, store => Assert.Equal(1, store.DisposeCount));
+        var latestPlan = fixture.Publish("c.bin");
+        Assert.Equal(2, fixture.Contexts.Count);
+        using var reopened = fixture.Owner.Acquire();
+        Assert.Equal(3, fixture.Contexts.Count);
+        Assert.EndsWith("c.bin", fixture.Stores[2].Path, StringComparison.Ordinal);
+        AssertApplied(latestPlan);
+
+        void AssertApplied(CompiledHostManagerPlan plan)
+        {
+            var applied = fixture.Deployment.Snapshot.DisplayCoordinator;
+            Assert.Equal(HostManagerDeploymentStatus.InSync, applied.Status);
+            Assert.Equal(plan.PlanEpoch, applied.AppliedPlanEpoch);
+            Assert.Equal(plan.DeploymentDigests.DisplayCoordinator.RecreateSha256, applied.AppliedRecreateSha256);
+            Assert.Equal(plan.DeploymentDigests.DisplayCoordinator.HotPublishSha256, applied.AppliedHotPublishSha256);
+        }
+    }
+
+    [Fact]
+    public async Task PlanCallbackCapturedBeforeFinalReturnCannotRecreateTheWorkspace()
+    {
+        using var fixture = new Fixture(mutable: false);
+        fixture.Publish("a.bin");
+        using var release = new ManualResetEventSlim();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Block(CompiledRuntimePlan _)
+        {
+            entered.TrySetResult();
+            Assert.True(release.Wait(TimeSpan.FromSeconds(10)));
+        }
+        fixture.Provider.Published += Block;
+        using var holding = fixture.Owner.Acquire();
+        Task? publication = null;
+        try
+        {
+            publication = Task.Run(() => fixture.Publish("b.bin"));
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            holding.Dispose();
+            release.Set();
+            await publication.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Single(fixture.Contexts);
+            Assert.Equal(1, fixture.Contexts[0].Session.DisposeCount);
+        }
+        finally
+        {
+            release.Set();
+            if (publication is not null) await publication.WaitAsync(TimeSpan.FromSeconds(5));
+            fixture.Provider.Published -= Block;
+        }
+    }
+
+    [Fact]
     public void RetiredWorkspaceCloseFailureStaysOwnedAndBlocksAnotherReplacementUntilRetrySucceeds()
     {
         using var fixture = new Fixture(mutable: false);
@@ -195,7 +265,7 @@ public sealed class HostManagerDisplayCheckpointLifecycleTests
         {
             await save.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
             var enteredDispose = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            disposal = Task.Run(() => { enteredDispose.SetResult(); fixture.Owner.Dispose(); });
+            disposal = Task.Run(() => { enteredDispose.SetResult(); fixture.ReleaseWorkspace(); fixture.Owner.Dispose(); });
             await enteredDispose.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.Equal(0, fixture.Stores[0].DisposeCount);
             Assert.False(disposal.IsCompleted);
@@ -221,16 +291,16 @@ public sealed class HostManagerDisplayCheckpointLifecycleTests
         fixture.Apply("a.bin");
         using var old = fixture.Owner.Acquire();
         fixture.Stores[0].CloseFailuresRemaining = 1;
-        fixture.Owner.Dispose();
+        fixture.ReleaseWorkspace(); fixture.Owner.Dispose();
         Assert.Equal(1, fixture.Stores[0].DisposeAttempts);
         Assert.Equal(0, fixture.Stores[0].DisposeCount);
         Assert.Equal(0, fixture.Contexts[0].Session.DisposeCount);
         old.Workspace.Refresh([]);
         Assert.Equal(0, fixture.Stores[0].SaveCount);
-        fixture.Owner.Dispose();
+        fixture.ReleaseWorkspace(); fixture.Owner.Dispose();
         Assert.Equal(2, fixture.Stores[0].DisposeAttempts);
         Assert.Equal(1, fixture.Stores[0].DisposeCount);
-        fixture.Owner.Dispose();
+        fixture.ReleaseWorkspace(); fixture.Owner.Dispose();
         Assert.Equal(2, fixture.Stores[0].DisposeAttempts);
     }
 
@@ -255,7 +325,10 @@ public sealed class HostManagerDisplayCheckpointLifecycleTests
     private sealed class Fixture : IDisposable
     {
         private readonly RuntimePlanProvider provider;
+        internal RuntimePlanProvider Provider => provider;
+        internal HostManagerDeploymentState Deployment { get; }
         private ulong version;
+        private IDisposable? workspaceHolding;
         internal string Root { get; } = Path.Combine(Path.GetTempPath(), "rm-display-checkpoint-recorded-" + Guid.NewGuid().ToString("N"));
         internal HostManagerDisplayCoordinatorOwner Owner { get; }
         internal List<Store> Stores { get; } = [];
@@ -267,6 +340,7 @@ public sealed class HostManagerDisplayCheckpointLifecycleTests
         internal Fixture(bool mutable = true)
         {
             var state = new HostManagerDeploymentState();
+            Deployment = state;
             provider = new RuntimePlanProvider(state);
             Owner = new(provider, new HostManagerDisplayCoordinatorRuntime(provider, state),
                 new RuntimePersistenceCapabilityPolicy(mutable), new EnvironmentInfo(Root),
@@ -292,7 +366,10 @@ public sealed class HostManagerDisplayCheckpointLifecycleTests
         }
 
         internal void Apply(string path, int? revision = null, uint maximumNodes = 512)
-            => Owner.Apply(Publish(path, revision, maximumNodes), throwOnFailure: true);
+        {
+            Owner.Apply(Publish(path, revision, maximumNodes), throwOnFailure: true);
+            workspaceHolding ??= Owner.Hold();
+        }
 
         private IDisplayCoordinatorCheckpointStore CreateStore(string path)
         {
@@ -317,7 +394,8 @@ public sealed class HostManagerDisplayCheckpointLifecycleTests
             return workspace;
         }
 
-        public void Dispose() => Owner.Dispose();
+        internal void ReleaseWorkspace() => Interlocked.Exchange(ref workspaceHolding, null)?.Dispose();
+        public void Dispose() { ReleaseWorkspace(); Owner.Dispose(); }
     }
 
     private sealed record Context(NativeDisplayCoordinatorConfiguration Configuration,

@@ -75,7 +75,7 @@ internal sealed class VidMmBusinessBlockTestHarness : IAsyncDisposable
         zone = new DxgkrnlVidMmEtwTelemetryZone(NullLogger<DxgkrnlVidMmEtwTelemetryZone>.Instance,
             controller, diagnostics, availability, processMetadata.Open, sessions.Create, observer);
         recorder = new(zone, diagnostics, BackendUids.DxgkrnlVidMmEtwTelemetryZone);
-        fixture.HoldNativeEtwGroup();
+        fixture.InitializeHostPermitsAsync().WaitAsync(CleanupTimeout).GetAwaiter().GetResult();
         return new VidMmBusinessBlockTestHarness(fixture,
             zone,
             sessions,

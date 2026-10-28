@@ -17,8 +17,8 @@ public sealed class HostManagerFreedomPointPlanTests
     {
         var plan = HostManagerTestPlanFactory.CreatePlan();
         var points = plan.FreedomPoints.EnumeratePoints().ToArray();
-        Assert.Equal(34, points.Length);
-        Assert.Equal(28, points.Count(point => point.Status == "active"));
+        Assert.Equal(32, points.Length);
+        Assert.Equal(26, points.Count(point => point.Status == "active"));
         Assert.Equal(6, points.Count(point => point.Status == "pending"));
         Assert.Equal(new CompiledGpuOverflowPolicy(95, 80), plan.HotPublish.PlacementCoordinator.GpuOverflow);
         Assert.DoesNotContain(points, point => point.Address == "resource-manager/backend/scheduling/placement/runtime/complex/1");
@@ -80,8 +80,6 @@ public sealed class HostManagerFreedomPointPlanTests
         Assert.Equal(new CompiledBackendControlSettings(
             WorkerCount: 4,
             HistoryCapacity: historyCapacity,
-            DemandCapacity: 64,
-            DemandBytes: 8192,
             CompletionCapacity: 128,
             ReaderCapacity: 16,
             ReaderBytes: 4096,

@@ -239,7 +239,7 @@ public sealed partial class AutomaticProductUpdateTests
     }
 
     [Fact]
-    public async Task TurningOffWhileWaitingPreventsConnectivityFromStartingCheck()
+    public async Task ControllerStopWhileWaitingPreventsConnectivityFromStartingCheck()
     {
         using var fixture = new Fixture { Mode = "notify", PeriodicCheckEnabled = false };
         fixture.Connectivity.Set(false);
@@ -254,6 +254,8 @@ public sealed partial class AutomaticProductUpdateTests
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
             await foreach (var status in coordinator.SubscribeAsync(timeout.Token))
                 if (status.AutomaticCheckStatus == "disabled") break;
+            Assert.False(fixture.Plans.DecisionFacts.AutomaticUpdatesEnabled);
+            await service.StopAsync(default);
             fixture.Connectivity.Set(true);
             fixture.Clock.Advance(TimeSpan.FromDays(10));
         }

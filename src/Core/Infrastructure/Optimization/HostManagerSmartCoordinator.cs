@@ -302,6 +302,8 @@ public sealed partial class HostManagerSmartCoordinator(
         try
         {
             await Task.Yield();
+            stoppingToken.ThrowIfCancellationRequested();
+            using var rendererObservation = runningGpuPlacementActions.AcquireRendererObservation();
             await gate.WaitAsync(stoppingToken);
             try { await SynchronizeSmartSubscriptionsAsync(stoppingToken); }
             finally { gate.Release(); }
@@ -321,28 +323,14 @@ public sealed partial class HostManagerSmartCoordinator(
                     HostManagerSmartCoordinatorOuterLoopPhase.GateAcquired);
                 try
                 {
-                    var dispatchedPlan = runtimePlanProvider.Current;
                     schedulerRunning = true;
                     await SynchronizeSmartSubscriptionsAsync(stoppingToken);
                     ObserveOuterLoop(
                         outerLoopContext,
                         HostManagerSmartCoordinatorOuterLoopPhase.DispatchStarted);
-                    var published = await RunScheduledNativeCycleAsync(
+                    await RunScheduledNativeCycleAsync(
                         outerLoopContext,
                         stoppingToken);
-                    using var parkingPublication = runtimePlanProvider.AcquirePublicationLease();
-                    var currentPlan = parkingPublication.Plan;
-                    // A newly published plan needs a round to settle its demand.
-                    // Normal must not park while the old subscriptions are active.
-                    if (currentPlan.Version != dispatchedPlan.Version)
-                    {
-                        schedulingWakeDeadline.PublishForeground(TimeSpan.Zero);
-                    }
-                    else if (!currentPlan.OptimizationMode.SchedulingEnabled
-                        && await CanParkNormalSchedulingAsync(stoppingToken))
-                    {
-                        schedulingWakeDeadline.ClearScheduled(published.Version);
-                    }
                 }
                 catch (Exception error) when (!stoppingToken.IsCancellationRequested)
                 {

@@ -14,12 +14,17 @@ internal sealed class NativeItemSamplingSubscriptionTracker<TRequest> :
         Func<ulong, uint, ResourceManager.Subscription.INativeSamplingOutputScratch>? createOutputScratch = null)
         : base(new HostSamplingSessionOwnerAdapter(owner), roleId, createSourceKey, getItemIds, createRequest,
             coalesceItemsIntoLatestCapture, createOutputScratch)
-        => ResizeLog = owner is null ? null : owner.ReportWorkspaceResize;
+    {
+        ResizeLog = owner is null ? null : owner.ReportWorkspaceResize;
+        owner?.Activity.BindRole(roleId, () => HasInUseSubscriptions,
+            handler => SubscriptionsChanged += handler);
+    }
 }
 
 internal sealed class HostSamplingSessionOwnerAdapter(HostManagerSamplingSubscriptionOwner owner) :
-    ISamplingSubscriptionSessionOwner<SamplingOwnerToken>
+    ISamplingSubscriptionSessionOwner<SamplingOwnerToken>, ISamplingSubscriptionSettingsSource
 {
+    public ISubscriptionRoleSettings? GetRoleSettings(int roleId) => owner.GetRoleSettings(roleId);
     public ISamplingSubscriptionSessionLease<SamplingOwnerToken> Acquire(int roleId) => owner.Acquire(roleId);
     public ISamplingSubscriptionSessionLease<SamplingOwnerToken>? TryAcquireForCleanup(int roleId) => owner.TryAcquireForCleanup(roleId);
 }

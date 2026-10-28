@@ -13,9 +13,6 @@ internal interface IBusinessBlockRuntime : IBusinessBlockQuery, IAsyncDisposable
     BusinessBlockGraph Graph { get; }
     StateAuthority Authority { get; }
     long CurrentPlanVersion { get; }
-    StateItemKey DemandKey(int blockUid);
-    Task SetDemandAsync(string key, int? blockId, BusinessBlockReason reason, CancellationToken cancellation = default);
-    IBusinessBlockDependency AcquireDependency(int id, BusinessBlockReason reason);
     Task ShutdownAsync(BusinessBlockReason reason);
     BusinessBlockState ReadState(int id);
 }
@@ -27,15 +24,14 @@ public class BusinessBlockScheduler : IBusinessBlockQuery, IAsyncDisposable
     public BusinessBlockGraph Graph => runtime.Graph;
     public StateAuthority Authority => runtime.Authority;
     public long CurrentPlanVersion => runtime.CurrentPlanVersion;
-    public StateItemKey DemandKey(int blockUid) => runtime.DemandKey(blockUid);
 
     /// <summary>Transitional managed selection for the window process and isolated managed fixtures, removed in 5d.</summary>
     public BusinessBlockScheduler(BusinessBlockGraph graph, Func<int, IBusinessBlock> create,
         int historyLimit, ILogger logger, string registryVersion, Func<int, string?> nameLookup,
-        StateAuthority authority, int? demandItemUid, int shutdownItemUid, BusinessBlockController? control = null,
+        StateAuthority authority, int shutdownItemUid, BusinessBlockController? control = null,
         IEnumerable<BusinessBlockDecisionRegistration>? decisions = null, Func<long>? currentPlanVersion = null)
         => runtime = new ManagedBusinessBlockRuntime(graph, create, historyLimit, logger, registryVersion,
-            nameLookup, authority, demandItemUid, shutdownItemUid, control, decisions, currentPlanVersion);
+            nameLookup, authority, shutdownItemUid, control, decisions, currentPlanVersion);
 
     /// <summary>Explicit native selection. Load and create errors propagate; no managed fallback exists.</summary>
     public BusinessBlockScheduler(NativeControl native, StateAuthority authority,
@@ -46,9 +42,6 @@ public class BusinessBlockScheduler : IBusinessBlockQuery, IAsyncDisposable
         native.Activate(create, currentPlanVersion);
     }
 
-    public Task SetDemandAsync(string key, int? blockId, BusinessBlockReason reason, CancellationToken cancellation = default)
-        => runtime.SetDemandAsync(key, blockId, reason, cancellation);
-    public IBusinessBlockDependency AcquireDependency(int id, BusinessBlockReason reason) => runtime.AcquireDependency(id, reason);
     public Task ShutdownAsync(BusinessBlockReason reason) => runtime.ShutdownAsync(reason);
     public BusinessBlockState ReadState(int id) => runtime.ReadState(id);
     public BusinessBlocksSnapshot Read() => runtime.Read();

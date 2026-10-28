@@ -985,7 +985,6 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
         var owner = new HostManagerSoftwareIdentityOwner(provider,
             new HostManagerSoftwareIdentityRuntime(provider, deployment),
             NullLogger<HostManagerSoftwareIdentityOwner>.Instance);
-        owner.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
         return (owner, provider);
     }
 

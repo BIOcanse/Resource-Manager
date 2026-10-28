@@ -18,8 +18,6 @@ internal static class BackendControlSettings
         var settings = new CompiledBackendControlSettings(
             freedom.Consume<int>(BackendFreedomPointPaths.BusinessBlockWorkerCount, Consumer),
             freedom.Consume<int>(BackendFreedomPointPaths.BusinessBlockHistoryCapacity, Consumer),
-            freedom.Consume<int>(BackendFreedomPointPaths.BusinessBlockDemandCapacity, Consumer),
-            freedom.Consume<int>(BackendFreedomPointPaths.BusinessBlockDemandBytes, Consumer),
             freedom.Consume<int>(BackendFreedomPointPaths.BusinessBlockCompletionCapacity, Consumer),
             freedom.Consume<int>(BackendFreedomPointPaths.BusinessBlockReaderCapacity, Consumer),
             freedom.Consume<int>(BackendFreedomPointPaths.BusinessBlockReaderBytes, Consumer),

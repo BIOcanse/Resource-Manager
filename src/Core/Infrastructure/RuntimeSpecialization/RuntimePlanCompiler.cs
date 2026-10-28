@@ -104,6 +104,7 @@ public sealed class RuntimePlanCompiler(
         {
             RuntimeCapabilityConstrainedPaths = runtimeProjection.ConstrainedPaths,
             AutoStartEnabled = settings.SystemIntegration.AutoStartEnabled,
+            AutomaticUpdatesEnabled = settings.Update is { Mode: not AppUpdateModes.Off, PeriodicCheckEnabled: true },
             MemoryProtection = settings.MemoryProtection ?? new(),
             ServiceRecovery = settings.SystemIntegration,
             CpuBaseline = cpuBaseline,

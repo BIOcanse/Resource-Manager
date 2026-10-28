@@ -26,9 +26,9 @@ public sealed partial class SqlitePersistenceTests
         await registry.StartAsync(CancellationToken.None);
         try
         {
-            registry.Observe(new PortableSoftwareObservation(
+            await registry.ObserveAsync(new PortableSoftwareObservation(
                 "catalog:game-genshin-impact", "game-genshin-impact", "Portable Genshin registration",
-                SoftwareKinds.Game, executable, root, IdentityConfirmed: true));
+                SoftwareKinds.Game, executable, root, IdentityConfirmed: true), default);
             var registration = Assert.Single(registry.GetSnapshot());
             Assert.Equal(SoftwareKinds.Game, registration.Kind);
             var software = new SoftwareRecord(registration.SoftwareId, registration.Name,

@@ -14,7 +14,7 @@ public sealed class FanControlIsolationBoundaryTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task StartupReturnsWhileDescribeIsBlockedAndStopDrainsTheSameOperation(bool blockDuringRecovery)
+    public async Task StartupWaitsForDescribeAndStopDrainsTheSameOperation(bool blockDuringRecovery)
     {
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var release = new ManualResetEventSlim();
@@ -37,7 +37,7 @@ public sealed class FanControlIsolationBoundaryTests
         try
         {
             var starting = lifetime.StartAsync(default);
-            Assert.True(starting.IsCompletedSuccessfully);
+            Assert.False(starting.IsCompleted);
             var startup = lifetime.StartupTask;
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.False(startup.IsCompleted);
@@ -65,16 +65,15 @@ public sealed class FanControlIsolationBoundaryTests
     }
 
     [Fact]
-    public async Task StartupFailureIsLoggedOnceByTheExistingRequestBoundary()
+    public async Task StartupFailureIsLoggedOnceAndPropagatesToTheBusinessBlock()
     {
         var clientLog = new FanBoundaryLogger<FanControlCoreClient>();
         var lifetimeLog = new FanBoundaryLogger<FanControlCoreLifetimeService>();
         await using var client = new FanControlCoreClient(new FanTestEnvironment(),
             (_, _) => throw new ApplicationException("injected startup discovery failure"), clientLog);
         var lifetime = new FanControlCoreLifetimeService(client, lifetimeLog);
-        await lifetime.StartAsync(default);
-        await lifetime.StartupTask;
-        Assert.Single(clientLog.Messages, message => message.Contains("request failed (describe)"));
+        await Assert.ThrowsAsync<ApplicationException>(() => lifetime.StartAsync(default));
+        Assert.Single(clientLog.Messages, message => message.Contains("startup discovery/recovery failed"));
         Assert.Empty(lifetimeLog.Messages);
     }
 
@@ -89,7 +88,7 @@ public sealed class FanControlIsolationBoundaryTests
         var log = new FanBoundaryLogger<FanControlCoreClient>();
         await using var client = new FanControlCoreClient(new FanTestEnvironment(),
             (_, _) => new LibraryFanSession(libraryCore), log);
-        await client.SendAsync("describe", null, default);
+        await client.StartSession();
         await client.PushTemperaturesAsync(new Dictionary<string, FanTemperatureSample> {
             ["cpu"] = new(60, DateTime.UtcNow.Ticks) }, default, skipIfBusy: false);
         var arguments = new Dictionary<string, object?> {
@@ -117,7 +116,7 @@ public sealed class FanControlIsolationBoundaryTests
         Assert.Contains(describe.GetProperty("diagnostics").EnumerateArray(), entry => entry.GetString()!.Contains("injected background"));
         Assert.All(backend.Read(), fan => Assert.True(fan.AutomaticControl));
         client.ResetDetection();
-        client.Describe();
+        await client.DiscoverAsync(default);
         Assert.Single(log.Messages, message => message.Contains("injected background"));
         if (fault == "release")
         {
@@ -142,8 +141,9 @@ public sealed class FanControlIsolationBoundaryTests
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var release = new ManualResetEventSlim();
         var client = new FanControlCoreClient(new FanTestEnvironment(), (_, _) => new DelegateFanSession(
-            _ => { if (!blockDisposal) { entered.TrySetResult(); release.Wait(); } return JsonSerializer.SerializeToElement(new { ok = true }); },
+            request => { if (!blockDisposal && request.GetProperty("op").GetString() != "describe") { entered.TrySetResult(); release.Wait(); } return JsonSerializer.SerializeToElement(new { ok = true }); },
             () => { if (blockDisposal) { entered.TrySetResult(); release.Wait(); } }));
+        await client.StartSession();
         var pending = client.SendAsync("set", null, default);
         if (blockDisposal) await pending;
         else await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -176,6 +176,7 @@ public sealed class FanControlIsolationBoundaryTests
             new FanCore(backend, new FanCoreOptions(path, MachineIdentity: () => "stop-fixture"))));
         try
         {
+            await client.StartSession();
             var pending = client.SendAsync("set", new Dictionary<string, object?> { ["fan"] = 0, ["percent"] = 60 }, default);
             await backend.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
             var log = new FanBoundaryLogger<FanControlCoreLifetimeService>();
@@ -227,6 +228,7 @@ public sealed class FanControlIsolationBoundaryTests
             new DelegateFanSession(_ => JsonSerializer.SerializeToElement(new {
                 ok = true, execution = "software", curve = new[] { new { temperatureCelsius = 50, percent = 40 } }
             })), log);
+        await client.StartSession();
         var observed = false;
         client.TemperatureDemandChanged += () => throw new ApplicationException("injected callback");
         client.TemperatureDemandChanged += () => observed = true;
@@ -247,7 +249,7 @@ public sealed class FanControlIsolationBoundaryTests
                 if (request.GetProperty("op").GetString() == "temp") { entered.TrySetResult(); release.Wait(); }
                 return JsonSerializer.SerializeToElement(new { ok = true });
             }, () => closed = true));
-        await client.SendAsync("describe", null, default);
+        await client.StartSession();
         using var cancellation = new CancellationTokenSource();
         var push = client.PushTemperaturesAsync(new Dictionary<string, FanTemperatureSample>(), cancellation.Token);
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));

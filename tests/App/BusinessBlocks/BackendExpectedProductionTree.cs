@@ -23,13 +23,11 @@ internal static class BackendExpectedProductionTree
 
         Group(BlockUids.Program, BlockUids.Backend);
         Group(BlockUids.Backend, BlockUids.ServiceHost, BlockUids.Monitoring, BlockUids.HardwareControl,
-            BlockUids.SoftwareManagement, BlockUids.TrustedAccess);
+            BlockUids.TrustedAccess);
         Group(BlockUids.ServiceHost, BlockUids.RuntimeSpecializationCoordinator,
             BlockUids.ServiceAutoStartSettings, BlockUids.ServiceRecoverySettings);
         Group(BlockUids.Monitoring, BlockUids.HostManagerSamplingSubscriptionOwner,
-            BlockUids.NativeEtwLifetimeService, BlockUids.KernelEtwSessionBroker,
-            BlockUids.EtwPhysicalDiskIoAttributionReader, BlockUids.EtwNetworkTcpIpAttributionReader,
-            BlockUids.HostManagerMetricSnapshotOwner, BlockUids.HostManagerDisplayCoordinatorOwner);
+            BlockUids.NativeEtwLifetimeService, BlockUids.EtwPhysicalDiskIoAttributionReader, BlockUids.EtwNetworkTcpIpAttributionReader);
         Group(BlockUids.HostManagerSamplingSubscriptionOwner, BlockUids.GpuTelemetryWorkerSupervisor,
             BlockUids.WindowsHardwareMetricSampler, BlockUids.CpuTopologySnapshotProvider,
             BlockUids.EtwCpuCoreResidencyReader, BlockUids.EtwSystemInterruptSnapshotSource,
@@ -37,11 +35,10 @@ internal static class BackendExpectedProductionTree
         Group(BlockUids.NativeEtwLifetimeService, BlockUids.PresentFrameEtwSource,
             BlockUids.GpuAllocationCollector, BlockUids.DxgkrnlVidMmEtwTelemetryZone);
         Group(BlockUids.HardwareControl, BlockUids.FanControlCoreLifetimeService);
-        Group(BlockUids.SoftwareManagement, BlockUids.HostManagerSoftwareIdentityOwner, BlockUids.HostManagerFileQueryOwner);
         Group(BlockUids.TrustedAccess, BlockUids.TrustedAccessRequestOwner, BlockUids.TrustedAccessInvocationHostedService);
         if (profile != 3)
         {
-            Group(BlockUids.Backend, BlockUids.Optimization, BlockUids.HostMemoryProtection,
+            Group(BlockUids.Backend, BlockUids.SoftwareManagement, BlockUids.Optimization, BlockUids.HostMemoryProtection,
                 BlockUids.Reports, BlockUids.PublicServices, BlockUids.HostManagerOperationCoordinatorOwner);
             Group(BlockUids.ServiceHost, BlockUids.JsonDebugDiagnosticLogWriter);
             Group(BlockUids.HardwareControl, BlockUids.ControlDesiredStateReassertion, BlockUids.ControlActualStateReader);

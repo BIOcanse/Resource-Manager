@@ -126,7 +126,7 @@ public sealed class DriverInformationOwnerTests
         var configuration = DefaultFieldSubscriptionCompositionTests.Configuration();
         await using var composition = new NativeFieldSubscriptionComposition(owner.BorrowSubscriptionCapture(),
             DefaultFieldSubscriptionCompositionTests.Settings(), in configuration,
-            failure => throw new InvalidOperationException("Unexpected worker failure", failure.Error), TimeSpan.FromMilliseconds(1));
+            failure => throw new InvalidOperationException("Unexpected worker failure", failure.Error));
         await composition.StartAsync();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await using var stream = composition.SubscribeAsync("driver", [field], TimeSpan.FromMilliseconds(5), timeout.Token).GetAsyncEnumerator();

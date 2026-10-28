@@ -19,6 +19,7 @@ public sealed partial class WindowsRunningGpuPlacementActionService(
     WindowsGpuCallbackPreparationRuntime callbackPreparationRuntime,
     WindowsExternalGpuPlacementRuntime? externalRuntime = null) : IRunningGpuPlacementActionService
 {
+    public IDisposable? AcquireRendererObservation() => externalRuntime?.AcquireRendererObservation();
     public bool HasUnreleasedExternalControl => externalRuntime?.HasUnreleasedControl == true;
 
     public void ReconcileExitedProcessInstances(

@@ -83,7 +83,7 @@ public sealed class NonOwningHostedServiceTests
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
-                services.AddBusinessBlockHostedService<PlainService>(BackendUids.TrustedAccessRequestOwner, _ =>
+                services.AddBusinessBlockHostedService<PlainService>(BackendUids.RuntimeSpecializationCoordinator, _ =>
                 {
                     created++;
                     return service = new PlainService();
@@ -100,6 +100,8 @@ public sealed class NonOwningHostedServiceTests
             Assert.Same(constructedService, owner.Service);
             Assert.Equal(0, constructedService.StartCount);
             await host.StartAsync();
+            await BusinessBlockTestSupport.State(host.Services.GetRequiredService<BusinessBlockScheduler>(),
+                BackendUids.RuntimeSpecializationCoordinator, BusinessBlockState.Running);
             Assert.Equal(1, created);
             Assert.Equal(1, constructedService.StartCount);
             await host.StopAsync();

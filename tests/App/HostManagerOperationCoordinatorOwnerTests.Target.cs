@@ -21,7 +21,7 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
             Assert.Equal(command.Subject, terminal.Subject);
             accepted.Add(terminal);
         }
-        await fixture.Owner.StopAsync(CancellationToken.None);
+        await fixture.Owner.DisposeAsync();
         await using var restarted = await Fixture.CreateAsync(fixture.Root, fixture.Plan);
         foreach (var operation in accepted)
         {
@@ -54,7 +54,7 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
         await fixture.WaitForTerminalAsync(second.Id);
         Assert.NotEqual(first.Id, second.Id);
         Assert.Equal("Recorded 产品名称", fixture.Owner.Get(first.Id)!.Subject!.TargetName);
-        await fixture.Owner.StopAsync(CancellationToken.None);
+        await fixture.Owner.DisposeAsync();
         await using var restarted = await Fixture.CreateAsync(fixture.Root, fixture.Plan);
         Assert.Equal("Recorded 产品名称", restarted.Owner.Get(first.Id)!.Subject!.TargetName);
         Assert.Equal("Renamed", restarted.Owner.Get(second.Id)!.Subject!.TargetName);
@@ -104,7 +104,7 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
         Assert.Equal(0, recovery.ExecuteCount);
         var renamed = await fixture.Owner.SubmitAsync(command with { Subject = command.Subject with { TargetName = "Renamed" } }, CancellationToken.None);
         await fixture.WaitForTerminalAsync(renamed.Id);
-        await fixture.Owner.StopAsync(CancellationToken.None);
+        await fixture.Owner.DisposeAsync();
         await using var restarted = await Fixture.CreateAsync(fixture.Root, fixture.Plan);
         Assert.Equal(HostManagerOperationStates.Failed, restarted.Owner.Get(submitted.Id)!.State);
         Assert.Equal("Recorded 产品名称", restarted.Owner.Get(submitted.Id)!.Subject!.TargetName);
@@ -139,7 +139,7 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
         foreach (var receipt in source.Receipts.ExportCanonical())
             Assert.Equal(receipt, persisted.Receipts.Require(receipt.ReceiptId));
         Assert.Equal(0, fixture.ComponentExecutor.ExecuteCount);
-        await fixture.Owner.StopAsync(CancellationToken.None);
+        await fixture.Owner.DisposeAsync();
         await using var restarted = await Fixture.CreateAsync(fixture.Root, fixture.Plan);
         Assert.Equal(restored.Subject, restarted.Owner.Get(id)!.Subject);
     }

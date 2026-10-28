@@ -15,6 +15,7 @@ public sealed class ExternalOnlyRunningGpuPlacementActionService(
     InteractiveDesktopObservationStore? desktops = null,
     ILogger<ExternalOnlyRunningGpuPlacementActionService>? logger = null) : IRunningGpuPlacementActionService
 {
+    public IDisposable? AcquireRendererObservation() => runtime.AcquireRendererObservation();
     public bool HasUnreleasedExternalControl => runtime.HasUnreleasedControl;
     public Task RecoverExternalControlAsync(CancellationToken cancellationToken) => runtime.RecoverAsync(cancellationToken);
 

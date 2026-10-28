@@ -18,6 +18,22 @@ internal sealed class HostManagerAppliedOwnershipRuntime(
     private string? ledgerPath;
     private bool disposed;
     private bool closing;
+    private int ownedStatePending = -1;
+    internal bool? OwnedStatePendingPublication => Volatile.Read(ref ownedStatePending) switch
+    {
+        < 0 => null,
+        0 => false,
+        _ => true
+    };
+    internal bool OwnedStatePending => OwnedStatePendingPublication == true;
+    internal event Action? OwnedStateChanged;
+
+    private void PublishOwnedState(NativeAppliedOwnershipSnapshot snapshot)
+    {
+        var pending = snapshot.Records.Count != 0;
+        if (Interlocked.Exchange(ref ownedStatePending, pending ? 1 : 0) != (pending ? 1 : 0))
+            OwnedStateChanged?.Invoke();
+    }
     private readonly Func<ulong, IComputeScratch> createScratch = scratchFactory
         ?? throw new ArgumentNullException(nameof(scratchFactory));
 
@@ -164,14 +180,14 @@ internal sealed class HostManagerAppliedOwnershipRuntime(
         CancellationToken cancellationToken)
         => await WithOwnerAsync(
             (current, token) => current.PromoteAsync(input, token),
-            cancellationToken);
+            cancellationToken, mutation: true);
 
     public async Task<NativeAppliedOwnershipStatus> TransitionAsync(
         NativeAppliedOwnershipTransitionInput input,
         CancellationToken cancellationToken)
         => await WithOwnerAsync(
             (current, token) => current.TransitionAsync(input, token),
-            cancellationToken);
+            cancellationToken, mutation: true);
 
     public async Task<NativeAppliedOwnershipTransitionPlanResult> PlanTransitionAsync(
         NativeAppliedOwnershipPrimaryIdentity primary,
@@ -191,7 +207,7 @@ internal sealed class HostManagerAppliedOwnershipRuntime(
         CancellationToken cancellationToken)
         => await WithOwnerAsync(
             (current, token) => current.RemoveAsync(input, token),
-            cancellationToken);
+            cancellationToken, mutation: true);
 
     public async ValueTask DisposeAsync()
     {
@@ -218,7 +234,8 @@ internal sealed class HostManagerAppliedOwnershipRuntime(
 
     private async Task<T> WithOwnerAsync<T>(
         Func<NativeAppliedOwnershipOwner, CancellationToken, Task<T>> action,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool mutation = false)
     {
         await gate.WaitAsync(cancellationToken);
         try
@@ -226,7 +243,16 @@ internal sealed class HostManagerAppliedOwnershipRuntime(
             ThrowIfDisposed();
             var current = owner
                 ?? throw new InvalidOperationException("Applied ownership is not ready.");
-            return await action(current, cancellationToken);
+            try
+            {
+                return await action(current, cancellationToken);
+            }
+            finally
+            {
+                // Complete the mutation publication even if the caller canceled after commit.
+                if (mutation && current.State == NativeAppliedOwnershipOwnerState.Ready)
+                    PublishOwnedState(await current.ReadSnapshotAsync(CancellationToken.None));
+            }
         }
         finally
         {
@@ -247,11 +273,13 @@ internal sealed class HostManagerAppliedOwnershipRuntime(
             retirements.RequireAvailable(path);
             opened = await OpenOwnerAsync(path, desired, cancellationToken);
             ValidateCapacity(opened.Capacity, desired.Recreate);
+            var openedSnapshot = await opened.ReadSnapshotAsync(cancellationToken);
             successSettlementAttempted = true;
             HostManagerDeploymentAttemptSettlementGuard.RequireApplied(
                 deploymentRuntime.CompleteSucceeded(attempt),
                 HostManagerModuleKind.AppliedOwnership);
             owner = opened;
+            PublishOwnedState(openedSnapshot);
             ledgerPath = path;
             appliedPlan = desired;
         }
@@ -303,6 +331,7 @@ internal sealed class HostManagerAppliedOwnershipRuntime(
             retirements.RequireAvailable(nextPath);
             replacement = await OpenOwnerAsync(nextPath, desired, cancellationToken);
             ValidateCapacity(replacement.Capacity, desired.Recreate);
+            var replacementSnapshot = await replacement.ReadSnapshotAsync(cancellationToken);
             retirementTicket = await retirements.PrepareAppliedOwnershipAsync(
                 previousPath,
                 cancellationToken);
@@ -312,6 +341,7 @@ internal sealed class HostManagerAppliedOwnershipRuntime(
                 deploymentRuntime.CompleteSucceeded(attempt),
                 HostManagerModuleKind.AppliedOwnership);
             owner = replacement;
+            PublishOwnedState(replacementSnapshot);
             ledgerPath = nextPath;
             appliedPlan = desired;
             replacementPublished = true;
@@ -393,11 +423,13 @@ internal sealed class HostManagerAppliedOwnershipRuntime(
             retirements.RequireAvailable(nextPath);
             replacement = await OpenOwnerAsync(nextPath, desired, cancellationToken);
             ValidateCapacity(replacement.Capacity, desired.Recreate);
+            var replacementSnapshot = await replacement.ReadSnapshotAsync(cancellationToken);
             successSettlementAttempted = true;
             HostManagerDeploymentAttemptSettlementGuard.RequireApplied(
                 deploymentRuntime.CompleteSucceeded(attempt),
                 HostManagerModuleKind.AppliedOwnership);
             owner = replacement;
+            PublishOwnedState(replacementSnapshot);
             ledgerPath = nextPath;
             appliedPlan = desired;
         }

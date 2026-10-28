@@ -17,7 +17,7 @@ public sealed class PresentFrameEtwRecoveryTests
         Assert.Equal(BusinessBlockOutcome.Failed, failed.Outcome);
         Assert.Equal(BusinessBlockFailureStage.Start, failed.FailureStage);
         await EtwTestRunRecorder.UntilAsync(() => harness.Sessions.Attempts == 2);
-        await PresentFrameEtwTestHarness.ReadyAsync(first);
+        await harness.WaitRunningAsync();
         var session = harness.Sessions.Current;
         for (var index = 0; index < 3; index++)
         {
@@ -26,7 +26,7 @@ public sealed class PresentFrameEtwRecoveryTests
             _ = harness.Controller.Read();
         }
         Assert.Equal(2, harness.Sessions.Attempts);
-        await PresentFrameEtwTestHarness.ReleaseAsync(first);
+        await harness.ReleaseAsync(first);
         Assert.Equal(1, session.Stops);
         Assert.False(session.ConsumerThread!.IsAlive);
     }

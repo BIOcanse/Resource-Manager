@@ -3,7 +3,6 @@ pub const declarations = @import("declarations.zig");
 pub const types = @import("types.zig");
 pub const tree = @import("tree.zig");
 pub const state = @import("state.zig");
-pub const demand = @import("demand.zig");
 pub const BlockState = types.BlockState;
 pub const Read = types.Read;
 pub const Presence = types.Presence;

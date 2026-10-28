@@ -16,6 +16,62 @@ public sealed class StateAuthorityTests
     private static readonly BusinessBlockReason Reason = new(BusinessBlockRequestKind.User, "state-authority-test", "explicit", 7);
 
     [Fact]
+    public async Task ReadFunctionReadsCurrentOwnerValueAndNotifiesWithoutCachingOrInvokingWhileUnbound()
+    {
+        var authority = CreateAuthority();
+        var current = false;
+        var reads = 0;
+        var function = authority.ClaimReadFunction<bool>(BackendItems.PresentUnfrozen, () =>
+        {
+            reads++;
+            return StateRead<bool>.FromValue(current);
+        });
+        Assert.Throws<InvalidOperationException>(() => authority.ClaimCell<bool>(BackendItems.PresentUnfrozen));
+        Assert.False(authority.Read<bool>(BackendItems.PresentUnfrozen).Value);
+        current = true;
+        Assert.True(authority.Read<bool>(BackendItems.PresentUnfrozen).Value);
+        var notifications = 0;
+        using var subscription = authority.Subscribe(BackendItems.PresentUnfrozen, "read-function", _ =>
+        { notifications++; return Task.CompletedTask; });
+        var before = reads;
+        await function.NotifyChangedAsync(Reason);
+        Assert.Equal(before, reads);
+        Assert.Equal(1, notifications);
+        await function.UnbindAsync(Reason);
+        Assert.Equal(NoValueReason.OwnerStopped, authority.Read<bool>(BackendItems.PresentUnfrozen).NoValueReason);
+        Assert.Equal(before, reads);
+        current = false;
+        await function.BindAsync(Reason);
+        Assert.False(authority.Read<bool>(BackendItems.PresentUnfrozen).Value);
+        Assert.Equal(before + 1, reads);
+    }
+
+    [Fact]
+    public void ReadFunctionReportsReadFailedWhenItsOwnerThrows()
+    {
+        var authority = CreateAuthority();
+        authority.ClaimReadFunction<bool>(BackendItems.PresentUnfrozen, () => throw new InvalidOperationException("read"));
+        Assert.Equal(NoValueReason.ReadFailed, authority.Read<bool>(BackendItems.PresentUnfrozen).NoValueReason);
+        Assert.Throws<InvalidOperationException>(() => authority.ClaimReadFunction<bool>(BackendItems.ProgramShuttingDown,
+            () => StateRead<bool>.FromValue(true)));
+    }
+
+    [Fact]
+    public void CurrentReadFunctionDoesNotAllocateManagedMemory()
+    {
+        var authority = CreateAuthority();
+        authority.ClaimReadFunction<bool>(BackendItems.PresentUnfrozen, static () => StateRead<bool>.FromValue(true));
+        for (var index = 0; index < 4096; index++) _ = authority.Read<bool>(BackendItems.PresentUnfrozen);
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var observed = 0;
+        for (var index = 0; index < 100_000; index++)
+            if (authority.Read<bool>(BackendItems.PresentUnfrozen).Value) observed++;
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.Equal(100_000, observed);
+        Assert.Equal(0L, allocated);
+    }
+
+    [Fact]
     public async Task DynamicHoldersAreUniquePerItemAndReleaseOnlyTheirOwnRegistration()
     {
         var authority = CreateAuthority();
@@ -62,11 +118,11 @@ public sealed class StateAuthorityTests
     {
         var authority = CreateAuthority();
         Assert.Throws<KeyNotFoundException>(() => authority.Read<bool>(int.MaxValue));
-        Assert.Throws<KeyNotFoundException>(() => authority.Read<bool>(BackendItems.BlockDemand));
-        Assert.Throws<KeyNotFoundException>(() => authority.Read<bool>(new(BackendItems.BlockDemand, int.MaxValue)));
+        Assert.Throws<KeyNotFoundException>(() => authority.Read<bool>(BackendItems.HostStartPermitted));
+        Assert.Throws<KeyNotFoundException>(() => authority.Read<bool>(new(BackendItems.HostStartPermitted, int.MaxValue)));
         Assert.Throws<KeyNotFoundException>(() => authority.Read<bool>(new(BackendItems.PresentUnfrozen, BackendUids.PresentFrameEtwSource)));
         Assert.Equal(NoValueReason.NotPublished,
-            authority.Read<bool>(new(BackendItems.BlockDemand, BackendUids.PresentFrameEtwSource)).NoValueReason);
+            authority.Read<bool>(new(BackendItems.HostStartPermitted, BackendUids.PresentFrameEtwSource)).NoValueReason);
     }
 
     [Fact]
@@ -170,17 +226,18 @@ public sealed class StateAuthorityTests
         var cell = authority.ClaimCell<bool>(BackendItems.PresentUnfrozen);
         await cell.PublishAsync(true, Reason);
         var block = new HoldingBlock();
-        var demand = new StateItemKey(BackendItems.BlockDemand, BackendUids.PresentFrameEtwSource);
-        var rule = new BusinessBlockDecisionRegistration(BackendUids.Program, [demand],
-            input => input.Read<bool>(demand).GetValueOrDefault(false) ? [BackendUids.PresentFrameEtwSource] : []);
-        await using var scheduler = CreateSingleBlockScheduler(authority, block, rule, demandItemUid: BackendItems.BlockDemand);
+        var executionKey = new StateItemKey(BackendItems.HostStartPermitted, BackendUids.PresentFrameEtwSource);
+        var permit = authority.ClaimCell<bool>(executionKey);
+        var rule = new BusinessBlockDecisionRegistration(BackendUids.Program, [executionKey],
+            input => input.Read<bool>(executionKey).GetValueOrDefault(false) ? [BackendUids.PresentFrameEtwSource] : []);
+        await using var scheduler = CreateSingleBlockScheduler(authority, block, rule);
         try
         {
-            await scheduler.SetDemandAsync("present", BackendUids.PresentFrameEtwSource, Reason).WaitAsync(Timeout);
+            await permit.PublishAsync(true, Reason).WaitAsync(Timeout);
             await Until(() => scheduler.ReadState(BackendUids.PresentFrameEtwSource) == BusinessBlockState.Running);
             await cell.PublishAsync(false, Reason).WaitAsync(Timeout);
             // Force an actual completed decision after the unrelated mode publication.
-            await scheduler.SetDemandAsync("present", BackendUids.PresentFrameEtwSource, Reason).WaitAsync(Timeout);
+            await permit.PublishAsync(true, Reason).WaitAsync(Timeout);
             Assert.Equal(BusinessBlockState.Running, scheduler.ReadState(BackendUids.PresentFrameEtwSource));
             Assert.Equal(1, block.Runs);
             Assert.DoesNotContain(scheduler.Read().CurrentDecisions.Single().Items,
@@ -190,57 +247,11 @@ public sealed class StateAuthorityTests
         finally { await Stop(scheduler); }
     }
 
-    [Theory]
-    [InlineData(BackendUids.PresentFrameEtwSource, BackendItems.PresentUnfrozen)]
-    [InlineData(BackendUids.DxgkrnlVidMmEtwTelemetryZone, BackendItems.VidMmUnfrozen)]
-    public async Task ProductionNativeRuleStopsOnlyTheExplicitlyFrozenProducerAndLeavesGpuRunning(int target, int modeUid)
-    {
-        var services = new ServiceCollection();
-        ResourceManager.App.Infrastructure.Security.LoopbackApiPipelineConfigurator.Compile(false).ConfigureServices(services);
-        ResourceManagerServiceCollectionExtensions.AddResourceManagerApp(services, ["--startup-profile=full"]);
-        var registrations = services.Select(value => value.ImplementationInstance).OfType<BusinessBlockRegistration>().ToArray();
-        var blocks = new[] { BackendUids.NativeEtwLifetimeService, BackendUids.PresentFrameEtwSource,
-            BackendUids.GpuAllocationCollector, BackendUids.DxgkrnlVidMmEtwTelemetryZone }.ToDictionary(id => id, _ => new HoldingBlock());
-        var probes = registrations.Select(registration => registration with
-        {
-            Create = _ => blocks.TryGetValue(registration.Id, out var block) ? block : new HoldingBlock()
-        }).ToArray();
-        await using var native = NativeBackendBlockTestSupport.CreateControl(probes);
-        var authority = NativeBackendBlockTestSupport.CreateAuthority(native);
-        var availability = new NativeEtwSessionAvailability(authority);
-        var presentMode = authority.ClaimCell<bool>(BackendItems.PresentUnfrozen);
-        var vidMmMode = authority.ClaimCell<bool>(BackendItems.VidMmUnfrozen);
-        await presentMode.PublishAsync(true, Reason);
-        await vidMmMode.PublishAsync(true, Reason);
-        var mode = modeUid == BackendItems.PresentUnfrozen ? presentMode : vidMmMode;
-        using var provider = new ServiceCollection().AddSingleton(availability).BuildServiceProvider();
-        await using var scheduler = new BusinessBlockScheduler(provider, probes, native, authority);
-        try
-        {
-            await scheduler.SetDemandAsync("target", target, Reason).WaitAsync(Timeout);
-            await scheduler.SetDemandAsync("gpu", BackendUids.GpuAllocationCollector, Reason).WaitAsync(Timeout);
-            await scheduler.SetDemandAsync("group", BackendUids.NativeEtwLifetimeService, Reason).WaitAsync(Timeout);
-            await Until(() => scheduler.ReadState(target) == BusinessBlockState.Running
-                && scheduler.ReadState(BackendUids.GpuAllocationCollector) == BusinessBlockState.Running);
-            await mode.PublishAsync(false, Reason).WaitAsync(Timeout);
-            await Until(() => scheduler.ReadState(target) == BusinessBlockState.Stopped);
-            Assert.Equal(BusinessBlockState.Running, scheduler.ReadState(BackendUids.GpuAllocationCollector));
-            Assert.Equal(1, blocks[BackendUids.GpuAllocationCollector].Runs);
-            Assert.Contains(scheduler.Read().Demands, demand => demand.Key == "target" && demand.BlockId == target);
-            Assert.DoesNotContain(scheduler.Read().History, transition => transition.BlockId == BackendUids.GpuAllocationCollector
-                && transition.To == BusinessBlockState.Stopping);
-            await mode.PublishAsync(true, Reason).WaitAsync(Timeout);
-            await Until(() => scheduler.ReadState(target) == BusinessBlockState.Running && blocks[target].Runs == 2);
-            Assert.Equal(1, blocks[BackendUids.GpuAllocationCollector].Runs);
-        }
-        finally { await Stop(scheduler); }
-    }
-
     private static StateAuthority CreateAuthority() => new(BackendRegistry.Items, BackendRegistry.Blocks);
     private static TestBlockScheduler CreateSingleBlockScheduler(StateAuthority authority, IBusinessBlock block,
-        BusinessBlockDecisionRegistration rule, int? demandItemUid = null)
+        BusinessBlockDecisionRegistration rule)
         => new([new TestBlockRegistration(BackendUids.PresentFrameEtwSource, [], _ => block)], authority,
-            historyLimit: 64, logger: NullLogger.Instance, decisions: [rule], demandItemUid: demandItemUid);
+            historyLimit: 64, logger: NullLogger.Instance, decisions: [rule]);
     private static async Task Until(Func<bool> predicate)
     {
         using var timeout = new CancellationTokenSource(Timeout);

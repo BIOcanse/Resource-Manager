@@ -11,6 +11,30 @@ public sealed class TrustedAccessRequestOwnerTests
     private static readonly DateTimeOffset InitialTime = DateTimeOffset.FromUnixTimeSeconds(1_800_000_000);
 
     [Fact]
+    public async Task PendingFactIncludesTerminalRetentionAndSurvivesWorkerStop()
+    {
+        var clock = new ManualTimeProvider(InitialTime);
+        var owner = CreateOwner(TrustedAccessTestFactory.Create().Owner, clock, 1);
+        var changes = new List<bool>();
+        owner.PendingRequestsChanged += () => changes.Add(owner.HasPendingRequests);
+        Assert.False(owner.HasPendingRequests);
+        var created = await owner.CreateAsync(new TrustedAccessRequestCreateCommand(
+            "Pending helper", ["read"], @"C:\Tools\helper.exe", 1234), CancellationToken.None);
+        Assert.True(owner.HasPendingRequests);
+        await owner.StartAsync(CancellationToken.None);
+        await owner.StopAsync(CancellationToken.None);
+        Assert.True(owner.HasPendingRequests);
+        await owner.DenyAsync(created.RequestId!, TrustedAccessRequestDenialReason.Unsupported, CancellationToken.None);
+        Assert.True(owner.HasPendingRequests);
+        clock.Advance(TimeSpan.FromMilliseconds(2));
+        await using var subscription = owner.SubscribePendingAsync(CancellationToken.None).GetAsyncEnumerator();
+        Assert.True(await subscription.MoveNextAsync());
+        Assert.Empty(subscription.Current);
+        Assert.False(owner.HasPendingRequests);
+        Assert.Equal(new[] { true, false }, changes);
+    }
+
+    [Fact]
     public async Task RequestSnapshotApprovalAndDeliveryAreBoundedAndOneTime()
     {
         var keys = TrustedAccessTestFactory.Create().Owner;

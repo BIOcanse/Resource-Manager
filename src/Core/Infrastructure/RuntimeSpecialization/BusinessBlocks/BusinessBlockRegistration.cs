@@ -7,6 +7,14 @@ public sealed record BusinessBlockRegistration(
     int Id, Func<IServiceProvider, IBusinessBlock> Create)
 {
     public Type? HostedServiceType { get; init; }
+    internal HostedBusinessBlockExecution? HostedExecution { get; init; }
+}
+
+/// <summary>The entry task and host error policy explicitly selected by this hosted block's owner.</summary>
+internal sealed record HostedBusinessBlockExecution(Func<IHostedService, Task?> ReadTask, bool ForwardRunFailureToHost)
+{
+    internal static readonly HostedBusinessBlockExecution GenericHost = new(
+        static service => (service as BackgroundService)?.ExecuteTask, true);
 }
 
 /// <summary>An observation-only component can publish diagnostics without being a runnable block.</summary>

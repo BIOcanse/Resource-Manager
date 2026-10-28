@@ -42,15 +42,32 @@ pub const Entry = struct {
     bound: bool = true,
     current: std.atomic.Value(u8) = .init(0),
     cell_value: Read = .not_published,
+    read_function: ?types.ReadFunction = null,
 
     pub fn readCurrent(self: *const Entry) Read {
         return decode(self.current.load(.acquire));
     }
 };
 
-/// Current values and sole-owner claims. Reads load one atomic byte. Only
-/// mutations require synchronization from the controller, which also owns
-/// event points after these mutations; this table calls no host.
+/// A round retains this binding, not a second copy of the owner's state.
+pub const Capture = union(enum) {
+    publication: Read,
+    function: types.ReadFunction,
+    pub fn read(self: Capture) Read {
+        return switch (self) {
+            .publication => |value| value,
+            .function => |function| blk: {
+                var value: types.ReadView = .{ .kind = 2, .value = 0 };
+                function.read(function.context, &value);
+                break :blk value.toRead();
+            },
+        };
+    }
+};
+
+/// Current values and sole-owner claims. Publications load one atomic byte.
+/// The controller synchronizes captures and mutations; it resolves captured
+/// read functions outside its lock and owns the event points after mutations.
 pub const State = struct {
     allocator: std.mem.Allocator,
     entries: []Entry,
@@ -98,10 +115,24 @@ pub const State = struct {
     pub fn claimCell(self: *State, key: ItemKey) !Claim {
         return self.claim(key, .reference);
     }
-    pub fn read(self: *const State, key: ItemKey) !Read {
+    pub fn claimReadFunction(self: *State, key: ItemKey, function: types.ReadFunction) !Claim {
         const entry = &self.entries[try self.indexOf(key)];
         if (entry.declaration.value_type != .bool) return error.TypeMismatch;
-        return entry.readCurrent();
+        const capability = try self.claim(key, .reference);
+        entry.read_function = function;
+        return capability;
+    }
+    pub fn capture(self: *const State, key: ItemKey) !Capture {
+        const entry = &self.entries[try self.indexOf(key)];
+        if (entry.declaration.value_type != .bool) return error.TypeMismatch;
+        if (entry.read_function) |function| {
+            if (!entry.bound) return .{ .publication = .owner_stopped };
+            return .{ .function = function };
+        }
+        return .{ .publication = entry.readCurrent() };
+    }
+    pub fn read(self: *const State, key: ItemKey) !Read {
+        return (try self.capture(key)).read();
     }
     pub fn readPresence(self: *const State, key: ItemKey) !Presence {
         const entry = &self.entries[try self.indexOf(key)];
@@ -130,6 +161,7 @@ pub const State = struct {
     pub fn publish(self: *State, capability: Claim, value: Read) !bool {
         const entry = try self.claimedEntry(capability);
         if (entry.declaration.value_type != .bool) return error.TypeMismatch;
+        if (entry.read_function != null) return error.StorageMismatch;
         return publishCurrent(entry, value);
     }
     pub fn publishPresence(self: *State, capability: Claim, value: Presence) !bool {

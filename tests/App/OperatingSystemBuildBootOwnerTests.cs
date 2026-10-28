@@ -117,7 +117,7 @@ public sealed class OperatingSystemBuildBootOwnerTests
         var backend = owner.CreateBackend(); var field = (await backend.DiscoverAsync(default)).Fields.Single(field => field.Field.FieldName == "os_all_boot_time_actual").Field;
         var config = DefaultFieldSubscriptionCompositionTests.Configuration();
         await using var composition = new NativeFieldSubscriptionComposition(owner.BorrowSubscriptionCapture(),
-            DefaultFieldSubscriptionCompositionTests.Settings(), in config, failure => throw new InvalidOperationException("Unexpected worker failure", failure.Error), TimeSpan.Zero);
+            DefaultFieldSubscriptionCompositionTests.Settings(), in config, failure => throw new InvalidOperationException("Unexpected worker failure", failure.Error));
         await composition.StartAsync(); using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await using var stream = composition.SubscribeAsync("boot", [field], TimeSpan.FromSeconds(1), timeout.Token).GetAsyncEnumerator();
         Assert.True(await stream.MoveNextAsync()); Assert.Equal(stream.Current.Single(), backend.ReadCached(field));

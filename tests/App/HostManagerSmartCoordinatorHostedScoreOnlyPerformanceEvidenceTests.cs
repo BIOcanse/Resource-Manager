@@ -17,6 +17,8 @@ using ResourceManager.App.Hosting;
 using ResourceManager.App.Infrastructure.Diagnostics;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.Optimization;
+using ResourceManager.App.StateItems;
+using ResourceManager.Shared.BusinessBlocks.State;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -162,7 +164,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 await evidenceWriter.StartAsync(CancellationToken.None);
             }
 
-            host = BuildHostedScoreOnlyTestHost(fixture.Coordinator);
+            host = BuildHostedScoreOnlyTestHost(fixture);
             var concrete = host.Services.GetRequiredService<HostManagerSmartCoordinator>();
             var contract = host.Services.GetRequiredService<IHostManagerSmartCoordinator>();
             var hostedOwner = Assert.Single(host.Services.GetServices<IHostedService>()
@@ -176,7 +178,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             source.Enqueue(permits[0]);
             using (var startCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
             {
-                await host.StartAsync(startCancellation.Token);
+                await StartHostedScoreOnlyTestHostAsync(host, startCancellation.Token);
             }
             Assert.Equal(
                 HostManagerSmartCoordinatorLifecycleState.Running,
@@ -364,17 +366,52 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     }
 
     private static IHost BuildHostedScoreOnlyTestHost(
-        HostManagerSmartCoordinator coordinator)
+        ScoreOnlyCoordinatorFixture fixture)
         => new HostBuilder()
             .ConfigureServices(services =>
             {
-                services.AddSingleton(coordinator);
+                services.AddSingleton(fixture.Coordinator);
                 services.AddSingleton<IHostManagerSmartCoordinator>(static provider =>
                     provider.GetRequiredService<HostManagerSmartCoordinator>());
+                services.AddSingleton<IHostedService>(provider => new HostedScoreOnlyPlanFacts(
+                    fixture, provider.GetRequiredService<StateAuthority>()));
                 services.AddHostedServiceAlias<HostManagerSmartCoordinator>(BackendUids.HostManagerSmartCoordinator);
                 NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
             })
             .Build();
+
+    private static async Task StartHostedScoreOnlyTestHostAsync(IHost host, CancellationToken token)
+    {
+        await host.StartAsync(token);
+        // Host aliases only permit execution. The test observes the native node's
+        // Running state at its assertion seam, without adding a production readiness wait.
+        var scheduler = host.Services.GetRequiredService<ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks.BusinessBlockScheduler>();
+        await BusinessBlockTestSupport.State(scheduler, BackendUids.HostManagerSmartCoordinator,
+            BusinessBlockState.Running);
+    }
+
+    private sealed class HostedScoreOnlyPlanFacts(ScoreOnlyCoordinatorFixture fixture,
+        StateAuthority authority) : IHostedService, IDisposable
+    {
+        private StateReadFunction<bool>? publication;
+        public async Task StartAsync(CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            publication = authority.ClaimReadFunction<bool>(StateItemUids.OptimizationEnabled,
+                () => StateRead<bool>.FromValue(fixture.RuntimePlanProvider.Current.OptimizationMode.SchedulingEnabled));
+            fixture.RuntimePlanProvider.Published += Changed;
+            await publication.NotifyChangedAsync(Reason());
+        }
+        private void Changed(CompiledRuntimePlan plan) => _ = publication!.NotifyChangedAsync(Reason());
+        public async Task StopAsync(CancellationToken token)
+        {
+            Dispose();
+            if (publication is { } current) await current.UnbindAsync(Reason());
+        }
+        public void Dispose() => fixture.RuntimePlanProvider.Published -= Changed;
+        private static BusinessBlockReason Reason() => new(BusinessBlockRequestKind.Configuration,
+            "score-only-host-plan", "actual-plan-publication", 0);
+    }
 
     // Hang detection only. Under full-suite parallel load one cycle can take several seconds;
     // the measured bounds of each evidence test stay separate and unchanged.
@@ -1209,6 +1246,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         private long nextPublicationAt;
         private readonly ResourceManager.ReadWrite.Publications.CurrentValuePublicationSignal publications = new();
         private readonly TaskCompletionSource subscribed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal Task InitialPublicationReady { get; init; } = Task.CompletedTask;
         internal long NextPublicationAt => Interlocked.Read(ref nextPublicationAt);
         internal HostedResidencyOutput(HostedScoreOnlyEpochSource source, TimeProvider clock, bool controlled = false)
             : this(source.ReadCpuCoreResidency, clock, controlled) { }
@@ -1243,6 +1281,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             subscribed.TrySetResult();
             try
             {
+                await InitialPublicationReady.WaitAsync(cancellationToken);
                 while (!cancellationToken.IsCancellationRequested)
                 {
                     if (publication is not null)

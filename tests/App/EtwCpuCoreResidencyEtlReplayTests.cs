@@ -100,9 +100,10 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
             await WaitUntilAsync(() => (next = reader.Read()) is not null && !ReferenceEquals(complete, next));
             AssertPublishedCoreMapping(next!, topology);
             subscription.Dispose();
+            await reader.StopAsync(CancellationToken.None);
             await WaitUntilAsync(() => !broker.IsRunning);
-            // Demand retirement stops capture, while the canonical published
-            // value stays readable (EtwCpuResidencyWindowDemandTests).
+            // The owner stops the worker to release capture; the canonical
+            // published value remains readable after that run has drained.
             var retained = Assert.IsType<CpuCoreResidencySnapshot>(reader.Read());
             AssertPublishedCoreMapping(retained, topology);
 

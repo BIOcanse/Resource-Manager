@@ -24,7 +24,6 @@ public sealed class EtwCpuCoreResidencyLiveSmokeTests
             sampling.Provider,
             sampling.Owner,
             NullLogger<EtwCpuCoreResidencyReader>.Instance);
-        await broker.StartAsync(CancellationToken.None);
         await reader.StartAsync(CancellationToken.None);
         try
         {
@@ -68,7 +67,7 @@ public sealed class EtwCpuCoreResidencyLiveSmokeTests
         finally
         {
             await reader.StopAsync(CancellationToken.None);
-            await broker.StopAsync(CancellationToken.None);
+            broker.Dispose();
         }
     }
 

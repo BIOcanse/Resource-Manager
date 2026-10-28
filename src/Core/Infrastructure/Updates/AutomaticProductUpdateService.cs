@@ -61,13 +61,14 @@ public sealed class AutomaticProductUpdateService : BackgroundService
     {
         var settings = await readSettings(token);
         ConfigureSchedule(settings);
+        // The finite entry remains callable independently of the running block.
+        if (settings.Mode == AppUpdateModes.Off) { checkAtStart = true; return; }
         await RunPassAsync(settings, checkPackageUse: true, token);
     }
 
     private async Task RunPassAsync(AppUpdateSettings settings, bool checkPackageUse, CancellationToken token)
     {
         var status = coordinator.Status;
-        if (settings.Mode == AppUpdateModes.Off) { checkAtStart = true; return; }
         if (connectivity.IsOnline && (checkAtStart || settings.PeriodicCheckEnabled
             && status.NextCheckAt is { } next && clock.GetUtcNow().ToUniversalTime() >= next))
         {
@@ -89,7 +90,6 @@ public sealed class AutomaticProductUpdateService : BackgroundService
 
     private TimeSpan NextDelay(AppUpdateSettings settings)
     {
-        if (settings.Mode == AppUpdateModes.Off) return Timeout.InfiniteTimeSpan;
         var status = coordinator.Status;
         var now = clock.GetUtcNow().ToUniversalTime();
         // An in-flight prepare is awaited below. After handoff, the registered
@@ -133,6 +133,7 @@ public sealed class AutomaticProductUpdateService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        checkAtStart = true;
         Task? activePass = null;
         string? activePassMode = null;
         CancellationTokenSource? passCancellation = null;
@@ -171,9 +172,8 @@ public sealed class AutomaticProductUpdateService : BackgroundService
                         nextPackageUseCheck = null;
                         // A notify check is allowed to finish; only preparation
                         // started in automatic mode must be cancelled.
-                        if (settings.Mode == AppUpdateModes.Off || activePassMode == AppUpdateModes.Automatic) passCancellation?.Cancel();
+                        if (activePassMode == AppUpdateModes.Automatic) passCancellation?.Cancel();
                     }
-                    if (settings.Mode == AppUpdateModes.Off) checkAtStart = true;
                     Volatile.Write(ref currentSettings, settings);
                     ConfigureSchedule(settings);
                     if (activePass?.IsCompleted == true)

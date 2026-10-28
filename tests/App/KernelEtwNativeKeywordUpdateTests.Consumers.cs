@@ -54,11 +54,13 @@ public sealed partial class KernelEtwNativeKeywordUpdateTests
                 "CPU consumer did not publish owned execution durations", TimeSpan.FromSeconds(20));
             var initial = broker.GetSnapshot();
             Assert.Equal(1, initial.SubscriptionCount);
+            await network.StartAsync(CancellationToken.None);
             network.Read();
             var interruptInterval = TimeSpan.FromMilliseconds(sampling.Provider.Current.HostManager.RequirePublished()
                 .HotPublish.SamplingSubscription.Roles.Single(role => role.RoleId == 5).MinimumIntervalMilliseconds);
             using var interruptDemand = interrupts.AcquireSubscription("owned.native.interrupts", interruptInterval);
             await interrupts.StartAsync(CancellationToken.None);
+            await disk.StartAsync(CancellationToken.None);
             disk.Read();
             await UntilAsync(() => broker.GetSnapshot().SubscriptionCount == 4, "four production consumers did not subscribe");
             var combined = broker.GetSnapshot();
@@ -107,8 +109,8 @@ public sealed partial class KernelEtwNativeKeywordUpdateTests
             stopWriter.Cancel();
             Assert.True(writer.Join(TimeSpan.FromSeconds(5)));
             Assert.Null(writerFailure);
-            disk.Dispose();
-            network.Dispose();
+            await disk.StopAsync(CancellationToken.None);
+            await network.StopAsync(CancellationToken.None);
             interruptDemand.Dispose();
             await interrupts.StopAsync(CancellationToken.None);
             var retained = broker.GetSnapshot();
@@ -129,6 +131,8 @@ public sealed partial class KernelEtwNativeKeywordUpdateTests
         {
             stopWriter.Cancel();
             if (writer is not null) Assert.True(writer.Join(TimeSpan.FromSeconds(5)));
+            await disk.StopAsync(CancellationToken.None);
+            await network.StopAsync(CancellationToken.None);
             await interrupts.StopAsync(CancellationToken.None);
             await cpu.StopAsync(CancellationToken.None);
             if (File.Exists(file)) File.Delete(file);

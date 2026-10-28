@@ -55,11 +55,11 @@ internal sealed class GpuAllocationTestHarness : IAsyncDisposable
         Controller = Fixture.Scheduler;
         Availability = Fixture.Availability;
         Collector = new GpuAllocationCollector(logger ?? NullLogger<GpuAllocationCollector>.Instance,
-            resolvedConfiguration, Controller, Diagnostics, Availability, factory,
+            resolvedConfiguration, Diagnostics, Availability, factory,
             timeProvider ?? TimeProvider.System, budget, observer);
         collector = Collector;
         Recorder = recorder = new(collector, Diagnostics, BackendUids.GpuAllocationCollector);
-        Fixture.HoldNativeEtwGroup();
+        Fixture.InitializeHostPermitsAsync().GetAwaiter().GetResult();
     }
 
     internal GpuAllocationCollector Collector { get; }
@@ -69,8 +69,15 @@ internal sealed class GpuAllocationTestHarness : IAsyncDisposable
     internal EtwTestRunRecorder Recorder { get; }
     internal NativeEtwSessionAvailability Availability { get; }
     internal Task<BusinessBlockResult> NextResultAsync() => Recorder.NextResultAsync();
-    internal Task SetNativeEtwGroupDemandAsync(bool hold, BusinessBlockReason reason)
-        => Fixture.SetNativeEtwGroupDemandAsync(hold, reason);
+    internal Task SetInUseAsync(bool inUse)
+        => Fixture.SetNativeSubscriptionInUseAsync(BackendUids.GpuAllocationCollector, inUse);
+    internal Task WaitRunningAsync()
+        => Fixture.WaitForStateAsync(BackendUids.GpuAllocationCollector, BusinessBlockState.Running);
+    internal async Task StopAsync()
+    {
+        await SetInUseAsync(false);
+        await Fixture.WaitForStateAsync(BackendUids.GpuAllocationCollector, BusinessBlockState.Stopped);
+    }
 
     public async ValueTask DisposeAsync()
     {
@@ -86,6 +93,9 @@ internal sealed class GpuAllocationTestSession(string name) : IGpuAllocationSess
     internal static readonly IReadOnlyDictionary<int, long> Processes = new Dictionary<int, long> { [41] = 100 };
     private Action<Guid, int, IGpuAllocationPayload, DateTime>? handler;
     private Action<Exception?>? completed;
+    private readonly object processingGate = new();
+    private int completionCallbacks;
+    private TaskCompletionSource? completionCallbacksDrained;
     private (string Name, long Scan)? end;
     private readonly TaskCompletionSource firstEndScanQueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal Task FirstEndScanQueued => firstEndScanQueued.Task;
@@ -117,8 +127,11 @@ internal sealed class GpuAllocationTestSession(string name) : IGpuAllocationSess
     public void Bind(Action<Guid, int, IGpuAllocationPayload, DateTime> callback) => handler = callback;
     public void StartProcessing(Action<Exception?> callback)
     {
-        completed = callback;
-        IsProcessing = true;
+        lock (processingGate)
+        {
+            completed = callback;
+            IsProcessing = true;
+        }
         if (ProcessingFailureOnStart is { } error) End(error);
     }
     public void EnableProvider(Guid provider, ulong keywords = 0, int[]? eventIds = null)
@@ -180,7 +193,24 @@ internal sealed class GpuAllocationTestSession(string name) : IGpuAllocationSess
         handler?.Invoke(GpuAllocationCollector.Provider, id, new GpuAllocationNamedPayload(key => payload[key]), DateTime.UtcNow);
     }
     internal void LoseEvent() => EventsLost++;
-    internal void End(Exception? error = null) { IsProcessing = false; completed?.Invoke(error); }
+    internal void End(Exception? error = null)
+    {
+        Action<Exception?>? callback;
+        lock (processingGate)
+        {
+            IsProcessing = false;
+            callback = completed;
+            if (callback is null) return;
+            if (completionCallbacks++ == 0)
+                completionCallbacksDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+        try { callback(error); }
+        finally
+        {
+            lock (processingGate)
+                if (--completionCallbacks == 0) completionCallbacksDrained!.TrySetResult();
+        }
+    }
     public KernelEtwSessionStopResult Stop(TimeSpan timeout)
     {
         handler = null;
@@ -194,7 +224,15 @@ internal sealed class GpuAllocationTestSession(string name) : IGpuAllocationSess
     {
         BeforeJoin?.Invoke();
         Assert.False(IsProcessing);
+        Task drain;
+        lock (processingGate)
+        {
+            completed = null;
+            drain = completionCallbacks == 0 ? Task.CompletedTask : completionCallbacksDrained!.Task;
+        }
+        // The production processing task includes its completion continuation.
+        // Joining the fake must also wait until that callback has returned.
+        drain.GetAwaiter().GetResult();
         Joined = true;
-        completed = null;
     }
 }

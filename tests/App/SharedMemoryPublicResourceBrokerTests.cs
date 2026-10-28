@@ -2,6 +2,7 @@ using System.Reflection;
 using ResourceManager.Adapter;
 using ResourceManager.Adapter.SharedMemory;
 using ResourceManager.App.Application.PublicResources;
+using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.Settings;
 using ResourceManager.App.Domain.PublicResources;
 using ResourceManager.App.Domain.RuntimeSpecialization;
@@ -13,6 +14,93 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class SharedMemoryPublicResourceBrokerTests
 {
+    [Fact]
+    public async Task StartupWaitsForActualPublicationAndEarlyDirectoryReadHasNoValue()
+    {
+        var deployment = new HostManagerDeploymentState();
+        var plans = new RuntimePlanProvider(deployment);
+        using var broker = new SharedMemoryPublicResourceBroker(plans, deployment, new HostManagerRuntimeIdentity());
+        var start = broker.StartAsync(CancellationToken.None);
+        Assert.False(start.IsCompleted);
+        Assert.Same(start, broker.StartAsync(CancellationToken.None));
+        Assert.Null(((IPublicResourceDirectoryQueries)broker).Find(501));
+        Assert.False(broker.GetCapability().Available);
+        Assert.False(broker.HasActivity);
+        AssertNoSession(broker);
+        Assert.Equal(0UL, deployment.Snapshot.SharedResources.LastSettledAttemptId);
+
+        PublishRuntimePlan(plans);
+        await start.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(GetSession(broker));
+        Assert.Empty(((IPublicResourceDirectoryQueries)broker).GetCatalog().Resources);
+        await broker.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task StartupCancellationBeforePublicationLeavesNoNativeSession()
+    {
+        var deployment = new HostManagerDeploymentState();
+        var plans = new RuntimePlanProvider(deployment);
+        using var broker = new SharedMemoryPublicResourceBroker(plans, deployment, new HostManagerRuntimeIdentity());
+        using var cancellation = new CancellationTokenSource();
+        var start = broker.StartAsync(cancellation.Token);
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => start.WaitAsync(TimeSpan.FromSeconds(5)));
+        await broker.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+        PublishRuntimePlan(plans);
+        AssertNoSession(broker);
+        Assert.Null(((IPublicResourceDirectoryQueries)broker).Find(501));
+    }
+
+    [Fact]
+    public async Task StopBeforePublicationCancelsAndJoinsStartupWithoutLateResourceCreation()
+    {
+        var deployment = new HostManagerDeploymentState();
+        var plans = new RuntimePlanProvider(deployment);
+        using var broker = new SharedMemoryPublicResourceBroker(plans, deployment, new HostManagerRuntimeIdentity());
+        var start = broker.StartAsync(CancellationToken.None);
+        await broker.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => start);
+        PublishRuntimePlan(plans);
+        AssertNoSession(broker);
+        await broker.StartAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.NotNull(GetSession(broker));
+        await broker.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+        AssertNoSession(broker);
+    }
+
+    [Fact]
+    public async Task PublishedSnapshotProviderStillStartsWhileUnpublishedProviderRequiresNotifications()
+    {
+        var deployment = new HostManagerDeploymentState();
+        var plans = CreateRuntimePlanProvider(deployment);
+        using (var published = new SharedMemoryPublicResourceBroker(
+            new SnapshotRuntimePlanProvider(plans.Current), deployment, new HostManagerRuntimeIdentity()))
+        {
+            await published.StartAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.NotNull(GetSession(published));
+            await published.StopAsync(CancellationToken.None);
+        }
+        using var unpublished = new SharedMemoryPublicResourceBroker(
+            new SnapshotRuntimePlanProvider(CompiledRuntimePlan.Default), new HostManagerDeploymentState(),
+            new HostManagerRuntimeIdentity());
+        var error = Assert.Throws<InvalidOperationException>(() => { _ = unpublished.StartAsync(CancellationToken.None); });
+        Assert.Contains("publication notifications", error.Message);
+        AssertNoSession(unpublished);
+    }
+
+    private static void AssertNoSession(SharedMemoryPublicResourceBroker broker)
+        => Assert.Null(typeof(SharedMemoryPublicResourceBroker)
+            .GetField("state", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(broker));
+
+    private sealed class SnapshotRuntimePlanProvider(CompiledRuntimePlan plan) : IRuntimePlanProvider
+    {
+        public CompiledRuntimePlan Current => plan;
+        public RuntimePlanPublicationLease AcquirePublicationLease()
+            => RuntimePlanPublicationLease.CreateUntracked(plan, 0);
+        public RuntimePlanPublicationResult Publish(CompiledRuntimePlan next) => throw new NotSupportedException();
+    }
 
     [Fact]
     public async Task Capability_RemainsUnavailableUntilAHostPublisherSucceeds()
@@ -598,6 +686,13 @@ public sealed class SharedMemoryPublicResourceBrokerTests
     private static RuntimePlanProvider CreateRuntimePlanProvider(
         HostManagerDeploymentState deploymentState)
     {
+        var runtimePlanProvider = new RuntimePlanProvider(deploymentState);
+        PublishRuntimePlan(runtimePlanProvider);
+        return runtimePlanProvider;
+    }
+
+    private static void PublishRuntimePlan(RuntimePlanProvider runtimePlanProvider)
+    {
         var loaded = StrictHostManagerProfileLoader.LoadBytes(
             ReadDefaultProfile(),
             "test/default.json");
@@ -607,7 +702,6 @@ public sealed class SharedMemoryPublicResourceBrokerTests
             1,
             HostManagerTestPlanFactory.CreateCpuTopology(1),
             HostManagerTestPlanFactory.CreateCpuScoring(HostManagerTestPlanFactory.CreateCpuTopology(1)));
-        var runtimePlanProvider = new RuntimePlanProvider(deploymentState);
         runtimePlanProvider.Publish(CompiledRuntimePlan.Default with
         {
             Version = 1,
@@ -615,7 +709,6 @@ public sealed class SharedMemoryPublicResourceBrokerTests
             Reason = "shared-resource-broker-test",
             HostManager = hostManager
         });
-        return runtimePlanProvider;
     }
 
     private static HostPublicResourceSelfManagerTickResult Tick(

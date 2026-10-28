@@ -153,22 +153,24 @@ public sealed class DefaultFieldSubscriptionCompositionTests
     }
 
     [Fact]
-    public async Task PublicCompositionSegmentsLongFailureRetryDelayAndStopCancelsIt()
+    public async Task PublicCompositionReturnsCollectionFailureWithoutRetrying()
     {
         using var scope = new RecordedScope();
         var configuration = Configuration();
         var failureReported = new TaskCompletionSource<SubscriptionWorkerFailure>(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var composition = new NativeFieldSubscriptionComposition(scope, Settings(), in configuration,
-            failure => failureReported.TrySetResult(failure), TimeSpan.FromDays(365 * 50));
+            failure => failureReported.TrySetResult(failure));
         await composition.StartAsync();
-        scope.BeforeCollect = _ => throw new InvalidOperationException("Expected retry-delay probe.");
-        using var lease = composition.Acquire("long-retry", [scope.A], TimeSpan.FromSeconds(1));
+        scope.BeforeCollect = _ => throw new InvalidOperationException("Expected collection failure.");
+        using var lease = composition.Acquire("fault-return", [scope.A], TimeSpan.FromSeconds(1));
 
         var failure = await failureReported.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal(SubscriptionWorkerFailureStage.Collection, failure.Stage);
         Assert.Equal(1, scope.Captures);
         await Task.Delay(TimeSpan.FromMilliseconds(100));
-        await composition.StopAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => composition.StopAsync().WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal("Expected collection failure.", error.Message);
         Assert.Equal(1, scope.Captures);
     }
 
@@ -181,7 +183,7 @@ public sealed class DefaultFieldSubscriptionCompositionTests
         var configuration = Configuration();
         var failureReported = new TaskCompletionSource<SubscriptionWorkerFailure>(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var composition = new NativeFieldSubscriptionComposition(scope, Settings(), in configuration,
-            failure => failureReported.TrySetResult(failure), TimeSpan.FromMilliseconds(1));
+            failure => failureReported.TrySetResult(failure));
         await composition.StartAsync();
 
         var bothDemanded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -228,7 +230,7 @@ public sealed class DefaultFieldSubscriptionCompositionTests
     private static NativeFieldSubscriptionComposition Create(RecordedScope scope)
     {
         var configuration = Configuration();
-        return new(scope, Settings(), in configuration, failure => throw new InvalidOperationException("Unexpected worker failure", failure.Error), TimeSpan.FromMilliseconds(1));
+        return new(scope, Settings(), in configuration, failure => throw new InvalidOperationException("Unexpected worker failure", failure.Error));
     }
     private sealed class FrozenClock : TimeProvider
     {

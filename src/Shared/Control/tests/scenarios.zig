@@ -9,6 +9,7 @@ const eq = std.testing.expectEqual;
 fn make(host: *H, history: usize) !*C {
     const c = try C.create(std.testing.allocator, s.config(history), host.callbacks());
     host.controller = c;
+    try s.initFacts(c);
     c.activate();
     return c;
 }
@@ -16,12 +17,12 @@ fn close(host: *H, c: *C) void {
     host.cleanup();
     c.destroy() catch @panic("controller did not destroy after all runs returned");
 }
-fn demand(c: *C, key: []const u8, uid: u32) !void {
-    try c.setDemand(key, uid, s.reason, null);
+fn request(c: *C, uid: u32) !void {
+    try s.setFact(c, uid, true, s.reason, null);
     c.waitIdle();
 }
-fn withdraw(c: *C, key: []const u8) !void {
-    try c.clearDemand(key, s.reason, null);
+fn withdraw(c: *C, uid: u32) !void {
+    try s.setFact(c, uid, false, s.reason, null);
     c.waitIdle();
 }
 fn state(c: *C, uid: u32, wanted: s.types.BlockState) !void {
@@ -38,7 +39,7 @@ test "four states and late Running never undo a dispatched stop" {
         host.auto_return[2].store(false, .release);
         const c = try make(&host, 128);
         defer close(&host, c);
-        try demand(c, "worker", 2);
+        try request(c, 2);
         try state(c, 2, .starting);
         const count = c.transitionCount();
         try eq(s.types.BlockState.starting, try c.readState(2));
@@ -48,7 +49,7 @@ test "four states and late Running never undo a dispatched stop" {
             try c.reportRunning(2, host.run(2));
             try state(c, 2, .running);
         }
-        try withdraw(c, "worker");
+        try withdraw(c, 2);
         try state(c, 2, .stopping);
         try eq(@as(u32, 1), host.stopCount(2));
         try c.reportRunning(2, host.run(2));
@@ -72,19 +73,19 @@ test "reads are pure and unknown block and item identities fail" {
     try eq(decisions, c.decisionSequence(1));
     try eq(@as(u32, 0), host.startCount(2));
     if (c.readState(999)) |_| return error.UnknownBlockWasAccepted else |_| {}
-    if (c.setDemand("unknown", 999, s.reason, null)) |_| return error.UnknownDemandWasAccepted else |_| {}
+    if (s.setFact(c, 999, true, s.reason, null)) |_| return error.UnknownFactWasAccepted else |_| {}
     if (c.read(.{ .item = 999 })) |_| return error.UnknownItemWasAccepted else |_| {}
     if (c.read(.{ .item = 10, .block = 999 })) |_| return error.UnknownPerBlockWasAccepted else |_| {}
 }
 
-// C#: ReturningEntryTriggersItsParentToRestartWhenStillDemandedWithoutFailingAnotherBlock;
+// C#: ReturningEntryTriggersItsParentToRestartWhenStillFactedWithoutFailingAnotherBlock;
 // EntryReturnIsStoppedRegardlessOfItsOutcome. The host owns outcome classification.
-test "an early return restarts a demanded run and leaves its peer alone" {
+test "an early return restarts a fact run and leaves its peer alone" {
     var host: H = .{};
     const c = try make(&host, 128);
     defer close(&host, c);
-    try demand(c, "worker", 2);
-    try demand(c, "peer", 4);
+    try request(c, 2);
+    try request(c, 4);
     try state(c, 2, .running);
     try state(c, 4, .running);
     const old_run = host.run(2);
@@ -101,45 +102,16 @@ test "an early return restarts a demanded run and leaves its peer alone" {
     try eq(@as(u32, 2), host.startCount(2));
 }
 
-// C#: MultipleExternalNeedsRemainFactsUntilTheLastLeaseIsReleased;
-// RootAcceptsAllThreeDemandKindsAndLastWithdrawalStopsTheBlock.
-test "all demand kinds retain reasons and only the last withdrawal stops a block" {
-    for (0..3) |kind| {
-        var host: H = .{};
-        const c = try make(&host, 128);
-        defer close(&host, c);
-        const why = s.types.Reason{ .kind = @intCast(kind), .owner = "external-owner", .cause = "needs-output", .plan_version = 42 };
-        try c.setDemand("first", 2, why, null);
-        try c.setDemand("second", 2, why, null);
-        c.waitIdle();
-        try state(c, 2, .running);
-        try withdraw(c, "first");
-        var buffer: [32768]u8 = undefined;
-        const used = try c.snapshot(&buffer);
-        try expect(used <= buffer.len);
-        const json = buffer[0..used];
-        try expect(std.mem.indexOf(u8, json, "\"owner\":\"external-owner\"") != null);
-        try expect(std.mem.indexOf(u8, json, "\"cause\":\"needs-output\"") != null);
-        try expect(std.mem.indexOf(u8, json, "\"planVersion\":42") != null);
-        try eq(s.types.BlockState.running, try c.readState(2));
-        try eq(@as(u32, 1), host.startCount(2));
-        try expect((try c.read(.{ .item = 10, .block = 2 })).valueOr(false));
-        try withdraw(c, "second");
-        try state(c, 2, .stopped);
-        try expect(!(try c.read(.{ .item = 10, .block = 2 })).valueOr(true));
-    }
-}
-
 // C#: ParentMustReportRunningBeforeItsChildCanStart.
-test "a parent must report Running before a demanded descendant starts" {
+test "a parent must report Running before a fact descendant starts" {
     var host: H = .{};
     host.auto_running[2].store(false, .release);
     const c = try make(&host, 128);
     defer close(&host, c);
-    try demand(c, "child", 3);
+    try request(c, 3);
     try eq(@as(u32, 0), host.startCount(2));
     try eq(@as(u32, 0), host.startCount(3));
-    try demand(c, "parent", 2);
+    try request(c, 2);
     try state(c, 2, .starting);
     try eq(@as(u32, 0), host.startCount(3));
     try c.reportRunning(2, host.run(2));
@@ -153,11 +125,11 @@ test "a parent stop waits for the whole branch to return" {
     host.auto_return[6].store(false, .release);
     const c = try make(&host, 128);
     defer close(&host, c);
-    try demand(c, "leaf", 6);
-    try demand(c, "child", 3);
-    try demand(c, "parent", 2);
+    try request(c, 6);
+    try request(c, 3);
+    try request(c, 2);
     try state(c, 6, .running);
-    try withdraw(c, "parent");
+    try withdraw(c, 2);
     try state(c, 6, .stopping);
     try eq(@as(u32, 0), host.stopCount(3));
     try eq(@as(u32, 0), host.stopCount(2));
@@ -173,17 +145,17 @@ test "an early returned branch cannot restart until its descendants acknowledge 
     host.auto_return[6].store(false, .release);
     const c = try make(&host, 128);
     defer close(&host, c);
-    try demand(c, "leaf", 6);
-    try demand(c, "child", 3);
-    try demand(c, "parent", 2);
+    try request(c, 6);
+    try request(c, 3);
+    try request(c, 2);
     try state(c, 6, .running);
     try host.finish(3);
     try state(c, 6, .stopping);
     try eq(s.types.BlockState.stopped, try c.readState(3));
     try eq(@as(u32, 1), host.startCount(3));
-    try withdraw(c, "parent");
+    try withdraw(c, 2);
     try eq(@as(u32, 0), host.stopCount(2));
-    try demand(c, "parent", 2);
+    try request(c, 2);
     try eq(@as(u32, 1), host.startCount(2));
     try eq(@as(u32, 1), host.startCount(3));
     try host.finish(6);
@@ -200,9 +172,9 @@ test "a slow branch never delays an independent sibling's preparation or stop" {
     host.auto_return[5].store(false, .release);
     const c = try make(&host, 128);
     defer close(&host, c);
-    try demand(c, "left", 2);
-    try demand(c, "right", 4);
-    try demand(c, "right-child", 5);
+    try request(c, 2);
+    try request(c, 4);
+    try request(c, 5);
     try state(c, 2, .starting);
     try state(c, 5, .running);
     try c.reportRunning(2, host.run(2));
@@ -212,7 +184,7 @@ test "a slow branch never delays an independent sibling's preparation or stop" {
     try state(c, 5, .stopping);
     try state(c, 2, .stopped);
     try eq(s.types.BlockState.running, try c.readState(4));
-    try demand(c, "late-left-child", 3);
+    try request(c, 3);
     try eq(@as(u32, 0), host.startCount(3));
     try host.finish(5);
     try state(c, 4, .stopped);
@@ -220,12 +192,12 @@ test "a slow branch never delays an independent sibling's preparation or stop" {
 
 // C#: CrossBranchDataInputNeverStartsItsProducerOrParent;
 // GraphCopiesDeclarationsAndAllowsCrossBranchDataCycles (inputs are comptime immutable).
-test "data inputs describe the snapshot but never create control demand" {
+test "data inputs describe the snapshot but never create control fact" {
     var host: H = .{};
     const c = try make(&host, 128);
     defer close(&host, c);
-    try demand(c, "consumer", 5);
-    try demand(c, "consumer-parent", 4);
+    try request(c, 5);
+    try request(c, 4);
     try state(c, 5, .running);
     try eq(s.types.BlockState.stopped, try c.readState(2));
     try eq(s.types.BlockState.stopped, try c.readState(3));
@@ -234,26 +206,26 @@ test "data inputs describe the snapshot but never create control demand" {
     try eq(@as(u32, 6), s.tree.blocks[4].inputs[0]);
 }
 
-// C#: ConcurrentChildReturnAndDemandWithdrawalAlwaysDrainBeforeTheNextParentRun.
-test "repeated child returns and demand withdrawals drain before the next parent run" {
+// C#: ConcurrentChildReturnAndFactWithdrawalAlwaysDrainBeforeTheNextParentRun.
+test "repeated child returns and fact changes drain before the next parent run" {
     var host: H = .{};
     const c = try make(&host, 128);
     defer close(&host, c);
     for (0..48) |_| {
-        try demand(c, "child", 3);
-        try demand(c, "parent", 2);
+        try request(c, 3);
+        try request(c, 2);
         try state(c, 3, .running);
         const run = host.run(3);
         const Op = struct {
-            fn clear(controller: *C, key: []const u8) void {
-                controller.clearDemand(key, s.reason, null) catch @panic("clear failed");
+            fn clear(controller: *C, uid: u32) void {
+                s.setFact(controller, uid, false, s.reason, null) catch @panic("clear failed");
             }
             fn returned(controller: *C, number: u64) void {
                 controller.reportReturned(3, number) catch @panic("return failed");
             }
         };
-        const a = try std.Thread.spawn(.{}, Op.clear, .{ c, "parent" });
-        const b = try std.Thread.spawn(.{}, Op.clear, .{ c, "child" });
+        const a = try std.Thread.spawn(.{}, Op.clear, .{ c, 2 });
+        const b = try std.Thread.spawn(.{}, Op.clear, .{ c, 3 });
         const z = try std.Thread.spawn(.{}, Op.returned, .{ c, run });
         a.join();
         b.join();
@@ -265,44 +237,18 @@ test "repeated child returns and demand withdrawals drain before the next parent
     try eq(@as(u32, 48), host.startCount(2));
 }
 
-// C#: ConcurrentRetargetsOfOneDemandLeaveOnlyTheFinalTargetsFactAndExecutionActive.
-test "concurrent retargets leave only the final target's demand and execution" {
+// C#: ShutdownKeepsEveryDecisionEmptyForeverWhileLaterFactFactsRemainRecorded.
+test "shutdown dominates later fact and remains an owned state item" {
     var host: H = .{};
     const c = try make(&host, 128);
     defer close(&host, c);
-    const Op = struct {
-        fn set(controller: *C, target: u32) void {
-            controller.setDemand("one-owner", target, s.reason, null) catch @panic("retarget failed");
-        }
-    };
-    for (0..32) |_| {
-        var threads: [12]std.Thread = undefined;
-        for (&threads, 0..) |*thread, index| thread.* = try std.Thread.spawn(.{}, Op.set, .{ c, @as(u32, if (index % 2 == 0) 2 else 4) });
-        for (threads) |thread| thread.join();
-        c.waitIdle();
-        const left = (try c.read(.{ .item = 10, .block = 2 })).valueOr(false);
-        const right = (try c.read(.{ .item = 10, .block = 4 })).valueOr(false);
-        try expect(left != right);
-        try state(c, 2, if (left) .running else .stopped);
-        try state(c, 4, if (right) .running else .stopped);
-    }
-    try withdraw(c, "one-owner");
-    try state(c, 2, .stopped);
-    try state(c, 4, .stopped);
-}
-
-// C#: ShutdownKeepsEveryDecisionEmptyForeverWhileLaterDemandFactsRemainRecorded.
-test "shutdown dominates later demand and remains an owned state item" {
-    var host: H = .{};
-    const c = try make(&host, 128);
-    defer close(&host, c);
-    try demand(c, "worker", 2);
+    try request(c, 2);
     try state(c, 2, .running);
     try c.shutdown(s.reason, null);
     c.waitIdle();
     try state(c, 2, .stopped);
     const runs = host.startCount(2);
-    try demand(c, "late", 2);
+    try request(c, 2);
     try c.shutdown(s.reason, null);
     c.waitIdle();
     try expect((try c.read(.{ .item = 11 })).valueOr(false));
@@ -310,7 +256,7 @@ test "shutdown dominates later demand and remains an owned state item" {
     try eq(runs, host.startCount(2));
     try eq(s.types.BlockState.stopped, try c.readState(2));
     if (c.claimWrite(.{ .item = 11 })) |_| return error.ShutdownOwnerWasDuplicated else |_| {}
-    if (c.claimCell(.{ .item = 10, .block = 2 })) |_| return error.DemandOwnerWasDuplicated else |_| {}
+    if (c.claimCell(.{ .item = 10, .block = 2 })) |_| return error.FactOwnerWasDuplicated else |_| {}
 }
 
 // C#: ControlHistoryIsBoundedAndZeroRetentionStillLogsTransitions.
@@ -320,9 +266,9 @@ test "fixed transition rings retain only their configured capacity and zero stil
         const c = try make(&host, capacity);
         defer close(&host, c);
         for (0..4) |_| {
-            try demand(c, "worker", 2);
+            try request(c, 2);
             try state(c, 2, .running);
-            try withdraw(c, "worker");
+            try withdraw(c, 2);
             try state(c, 2, .stopped);
         }
         try eq(capacity, c.transitionCount());
@@ -334,7 +280,7 @@ test "fixed transition rings retain only their configured capacity and zero stil
 
 // Seeded random events run against real host entry threads; host callbacks only
 // create entries or set their stop flag, as the cross-language boundary requires.
-test "seeded threaded demand and early-return stress respects the tree and shutdown" {
+test "seeded threaded fact and early-return stress respects the tree and shutdown" {
     const Entry = struct {
         controller: *C,
         uid: u32,
@@ -417,13 +363,12 @@ test "seeded threaded demand and early-return stress respects the tree and shutd
     const writer = try c.claimWrite(.{ .item = 12 });
     var random = std.Random.DefaultPrng.init(0x726d_636f_6e74_726f);
     const rng = random.random();
-    const keys = [_][]const u8{ "parent", "child", "peer", "peer-child", "leaf" };
     const ids = [_]u32{ 2, 3, 4, 5, 6 };
     for (0..512) |_| {
         const index = rng.uintLessThan(usize, ids.len);
         switch (rng.uintLessThan(u8, 5)) {
-            0 => try c.setDemand(keys[index], ids[index], s.reason, null),
-            1 => try c.clearDemand(keys[index], s.reason, null),
+            0 => try s.setFact(c, ids[index], true, s.reason, null),
+            1 => try s.setFact(c, ids[index], false, s.reason, null),
             2 => try c.publish(writer, .{ .value = rng.boolean() }, s.reason, null),
             3 => {
                 const uid: u32 = if (rng.boolean()) 5 else 6;
@@ -456,10 +401,10 @@ test "forty block declarations and full default history stay within the C sharp 
     var bounded = std.heap.FixedBufferAllocator.init(storage);
     var options = s.config(128);
     options.host_blocks = &fixture.flat_host_blocks;
-    options.demand_item = 100;
     options.shutdown_item = 101;
     const c = try Many.create(bounded.allocator(), options, host.callbacks());
     host.controller = c;
+    try s.initFacts(c);
     c.activate();
     defer {
         host.cleanup();
@@ -469,7 +414,7 @@ test "forty block declarations and full default history stay within the C sharp 
     const constructed = bounded.end_index;
     try expect(constructed <= 2 * 1024 * 1024);
     for (0..128) |index| {
-        if (index % 2 == 0) try c.setDemand("memory-probe", 2, s.reason, null) else try c.clearDemand("memory-probe", s.reason, null);
+        if (index % 2 == 0) try s.setFact(c, 2, true, s.reason, null) else try s.setFact(c, 2, false, s.reason, null);
         c.waitIdle();
     }
     const history_retained = bounded.end_index - constructed;
@@ -500,11 +445,11 @@ fn blockedRequested(input: *s.types.Input) anyerror!bool {
     return requested;
 }
 const isolated_registry = s.d.Registry{ .version = "isolated-fixture", .process = "test", .blocks = &s.blocks, .items = &s.items, .conditions = &.{
-    s.demand_condition,
+    s.fact_condition,
     .{ .uid = 21, .node = 2, .per_block = false, .items = &.{.{ .item = 12, .block = null }}, .conditions = &.{}, .children = &.{}, .decides = 3, .name = "LeftRequested" },
     .{ .uid = 22, .node = 4, .per_block = false, .items = &.{.{ .item = 13, .block = null }}, .conditions = &.{}, .children = &.{}, .decides = 5, .name = "RightRequested" },
 } };
-const isolated_tree = s.t.Tree{ .program = 1, .blocks = s.tree.blocks, .uses = &.{ .{ .node = 1, .condition = 20, .child = 2 }, .{ .node = 1, .condition = 20, .child = 4 }, .{ .node = 3, .condition = 20, .child = 6 } }, .computes = &.{ .{ .condition = 20, .function = s.demanded }, .{ .condition = 21, .function = blockedRequested }, .{ .condition = 22, .function = s.right } } };
+const isolated_tree = s.t.Tree{ .program = 1, .blocks = s.tree.blocks, .uses = &.{ .{ .node = 1, .condition = 20, .child = 2 }, .{ .node = 1, .condition = 20, .child = 4 }, .{ .node = 3, .condition = 20, .child = 6 } }, .computes = &.{ .{ .condition = 20, .function = s.fact }, .{ .condition = 21, .function = blockedRequested }, .{ .condition = 22, .function = s.right } } };
 
 // C#: BlockedDecisionInOneBranchDoesNotDelayAnotherBranch.
 test "a held compute in one branch leaves another branch free to decide" {
@@ -515,6 +460,7 @@ test "a held compute in one branch leaves another branch free to decide" {
     defer compute_gate = null;
     const c = try Isolated.create(std.testing.allocator, s.config(128), host.callbacks());
     host.controller = c;
+    try s.initFacts(c);
     c.activate();
     defer {
         gate.release.store(true, .release);
@@ -523,8 +469,8 @@ test "a held compute in one branch leaves another branch free to decide" {
     }
     const left = try c.claimWrite(.{ .item = 12 });
     const right = try c.claimWrite(.{ .item = 13 });
-    try c.setDemand("left-parent", 2, s.reason, null);
-    try c.setDemand("right-parent", 4, s.reason, null);
+    try s.setFact(c, 2, true, s.reason, null);
+    try s.setFact(c, 4, true, s.reason, null);
     c.waitIdle();
     try c.publish(left, .{ .value = true }, s.reason, null);
     try gate.awaitEntered();
@@ -555,11 +501,11 @@ test "a held callback in one branch does not hold the controller lock or another
         gate.release.store(true, .release);
         close(&host, c);
     }
-    try demand(c, "left", 2);
-    try demand(c, "right", 4);
-    try c.setDemand("left-child", 3, s.reason, null);
+    try request(c, 2);
+    try request(c, 4);
+    try s.setFact(c, 3, true, s.reason, null);
     try gate.awaitEntered();
-    try c.setDemand("right-child", 5, s.reason, null);
+    try s.setFact(c, 5, true, s.reason, null);
     try s.waitFor(C, c, 5, .running);
     try eq(s.types.BlockState.starting, try c.readState(3));
     gate.release.store(true, .release);
@@ -576,6 +522,7 @@ test "a parent returning during its condition round converges to a stopped branc
     defer compute_gate = null;
     const c = try Isolated.create(std.testing.allocator, s.config(128), host.callbacks());
     host.controller = c;
+    try s.initFacts(c);
     c.activate();
     defer {
         gate.release.store(true, .release);
@@ -583,11 +530,11 @@ test "a parent returning during its condition round converges to a stopped branc
         c.destroy() catch @panic("return-during-compute controller did not destroy");
     }
     const left = try c.claimWrite(.{ .item = 12 });
-    try c.setDemand("parent", 2, s.reason, null);
+    try s.setFact(c, 2, true, s.reason, null);
     c.waitIdle();
     try c.publish(left, .{ .value = true }, s.reason, null);
     try gate.awaitEntered();
-    try c.clearDemand("parent", s.reason, null);
+    try s.setFact(c, 2, false, s.reason, null);
     try host.finish(2);
     gate.release.store(true, .release);
     c.waitIdle();
@@ -596,15 +543,15 @@ test "a parent returning during its condition round converges to a stopped branc
     try eq(host.startCount(3), host.stopCount(3));
 }
 
-fn heldDemand(input: *s.types.Input) anyerror!bool {
+fn heldFact(input: *s.types.Input) anyerror!bool {
     if ((try input.read(.{ .item = 12 })).valueOr(false)) if (compute_gate) |gate| gate.hold();
     return (try input.read(.{ .item = 10, .block = 3 })).valueOr(false);
 }
-const held_registry = s.d.Registry{ .version = "held-demand-fixture", .process = "test", .blocks = &s.blocks, .items = &s.items, .conditions = &.{
-    s.demand_condition,
+const held_registry = s.d.Registry{ .version = "held-fact-fixture", .process = "test", .blocks = &s.blocks, .items = &s.items, .conditions = &.{
+    s.fact_condition,
     .{ .uid = 21, .node = 2, .per_block = false, .items = &.{ .{ .item = 10, .block = 3 }, .{ .item = 12, .block = null } }, .conditions = &.{}, .children = &.{}, .decides = 3, .name = null },
 } };
-const held_tree = s.t.Tree{ .program = 1, .blocks = s.tree.blocks, .uses = &.{ .{ .node = 1, .condition = 20, .child = 2 }, .{ .node = 1, .condition = 20, .child = 4 }, .{ .node = 3, .condition = 20, .child = 6 }, .{ .node = 4, .condition = 20, .child = 5 } }, .computes = &.{ .{ .condition = 20, .function = s.demanded }, .{ .condition = 21, .function = heldDemand } } };
+const held_tree = s.t.Tree{ .program = 1, .blocks = s.tree.blocks, .uses = &.{ .{ .node = 1, .condition = 20, .child = 2 }, .{ .node = 1, .condition = 20, .child = 4 }, .{ .node = 3, .condition = 20, .child = 6 }, .{ .node = 4, .condition = 20, .child = 5 } }, .computes = &.{ .{ .condition = 20, .function = s.fact }, .{ .condition = 21, .function = heldFact } } };
 
 // C#: WithdrawalAndReacquireBeforeDecisionUseCurrentFactsWithoutRestart.
 test "withdrawal and reacquire before a condition read use current state without restart" {
@@ -615,21 +562,22 @@ test "withdrawal and reacquire before a condition read use current state without
     defer compute_gate = null;
     const c = try Held.create(std.testing.allocator, s.config(128), host.callbacks());
     host.controller = c;
+    try s.initFacts(c);
     c.activate();
     defer {
         gate.release.store(true, .release);
         host.cleanup();
-        c.destroy() catch @panic("held demand controller did not destroy");
+        c.destroy() catch @panic("held fact controller did not destroy");
     }
     const pulse = try c.claimWrite(.{ .item = 12 });
-    try c.setDemand("parent", 2, s.reason, null);
-    try c.setDemand("child", 3, s.reason, null);
+    try s.setFact(c, 2, true, s.reason, null);
+    try s.setFact(c, 3, true, s.reason, null);
     c.waitIdle();
     try s.waitFor(Held, c, 3, .running);
     try c.publish(pulse, .{ .value = true }, s.reason, null);
     try gate.awaitEntered();
-    try c.clearDemand("child", s.reason, null);
-    try c.setDemand("child", 3, s.reason, null);
+    try s.setFact(c, 3, false, s.reason, null);
+    try s.setFact(c, 3, true, s.reason, null);
     gate.release.store(true, .release);
     c.waitIdle();
     try eq(@as(u32, 1), host.startCount(3));
@@ -662,10 +610,10 @@ test "concurrent transitions retain the newest bounded history" {
         var host: Host = .{};
         var cfg = s.config(4);
         cfg.host_blocks = &flat.flat_host_blocks;
-        cfg.demand_item = 100;
         cfg.shutdown_item = 101;
         const c = try Parallel.create(std.testing.allocator, cfg, .{ .context = &host, .start = Host.start, .stop = Host.stop, .complete = Host.complete, .log = Host.log, .item_changed = Host.itemChanged });
         host.controller = c;
+        try s.initFacts(c);
         c.activate();
         defer {
             c.shutdown(s.reason, null) catch {};
@@ -674,9 +622,7 @@ test "concurrent transitions retain the newest bounded history" {
         }
         const Op = struct {
             fn set(controller: *Parallel, uid: u32) void {
-                var key: [8]u8 = undefined;
-                const text = std.fmt.bufPrint(&key, "{d}", .{uid}) catch unreachable;
-                controller.setDemand(text, uid, s.reason, null) catch @panic("parallel demand failed");
+                s.setFact(controller, uid, true, s.reason, null) catch @panic("parallel fact failed");
             }
         };
         var threads: [32]std.Thread = undefined;
@@ -698,11 +644,11 @@ test "an unchanged top condition neither records nor logs another decision" {
     var host: H = .{};
     const c = try make(&host, 128);
     defer close(&host, c);
-    try demand(c, "worker", 2);
+    try request(c, 2);
     try state(c, 2, .running);
     const decisions = c.decisionSequence(1);
     const logs = host.logs.load(.acquire);
-    for (0..8) |_| try demand(c, "worker", 2);
+    for (0..8) |_| try request(c, 2);
     try eq(decisions, c.decisionSequence(1));
     try eq(logs, host.logs.load(.acquire));
     try eq(@as(u32, 1), host.startCount(2));

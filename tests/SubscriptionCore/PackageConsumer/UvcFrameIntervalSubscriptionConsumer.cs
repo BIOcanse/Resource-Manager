@@ -32,7 +32,7 @@ internal static class UvcFrameIntervalSubscriptionConsumer
             ActiveTtlMilliseconds = 3000, MaximumFutureSkewMilliseconds = 1000 };
         var failures = new List<SubscriptionWorkerFailure>();
         await using (var subscription = new NativeFieldSubscriptionComposition(owner.BorrowSubscriptionCapture(),
-            settings, in configuration, failure => failures.Add(failure), TimeSpan.FromMilliseconds(250)))
+            settings, in configuration, failure => failures.Add(failure)))
         {
             await subscription.StartAsync(timeout.Token);
             await using var stream = subscription.SubscribeAsync("recorded-uvc", [field],

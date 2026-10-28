@@ -42,6 +42,13 @@ public sealed class NativeCurrentValueSubscriptionDelivery<T>
         }
     }
 
+    /// <summary>Drops the completed run's partial and buffered rounds without closing consumer streams.</summary>
+    public void DiscardRunRounds()
+    {
+        lock (gate)
+            foreach (var registration in registrations.Values) registration.DiscardRunRounds();
+    }
+
     public void RetireAll()
     {
         lock (gate)
@@ -114,9 +121,14 @@ public sealed class NativeCurrentValueSubscriptionDelivery<T>
         internal void Retire()
         {
             if (Interlocked.Exchange(ref active, 0) == 0) return;
+            DiscardRunRounds();
+            values.Writer.TryComplete();
+        }
+
+        internal void DiscardRunRounds()
+        {
             rounds.Clear();
             while (values.Reader.TryRead(out _)) { }
-            values.Writer.TryComplete();
         }
 
         public void Dispose() => owner.Unregister(this);

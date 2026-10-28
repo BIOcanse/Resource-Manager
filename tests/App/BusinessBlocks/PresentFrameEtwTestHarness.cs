@@ -67,19 +67,21 @@ internal sealed class PresentFrameEtwTestHarness : IAsyncDisposable
         }
 
         recorder = new(source, diagnostics, BackendUids.PresentFrameEtwSource);
-        fixture.HoldNativeEtwGroup();
+        fixture.InitializeHostPermitsAsync().GetAwaiter().GetResult();
+        source.SubscriptionsChanged += () => fixture.SetNativeSubscriptionInUseAsync(
+            BackendUids.PresentFrameEtwSource, source.HasActiveSubscriptions).GetAwaiter().GetResult();
         return new(fixture, source, sessions, diagnostics, recorder);
     }
 
-    internal static Task ReadyAsync(IDisposable lease)
-        => EtwTestRunRecorder.ReadyAsync(Dependency(lease));
+    internal Task WaitRunningAsync()
+        => Fixture.WaitForStateAsync(BackendUids.PresentFrameEtwSource, BusinessBlockState.Running);
 
-    internal static ValueTask ReleaseAsync(IDisposable lease)
-        => new(EtwTestRunRecorder.ReleaseAsync(Dependency(lease)));
-
-    internal static IBusinessBlockDependency Dependency(IDisposable lease)
-        => lease as IBusinessBlockDependency
-            ?? throw new InvalidOperationException("A Present ETW lease must expose its controller dependency lifetime.");
+    internal async Task ReleaseAsync(IDisposable subscription)
+    {
+        subscription.Dispose();
+        if (!Source.HasActiveSubscriptions)
+            await Fixture.WaitForStateAsync(BackendUids.PresentFrameEtwSource, BusinessBlockState.Stopped);
+    }
 
     public async ValueTask DisposeAsync()
     {
@@ -114,10 +116,6 @@ internal sealed class EtwTestRunRecorder(IBusinessBlock block, BusinessBlockDiag
     internal Task<BusinessBlockResult> NextResultAsync()
         => results.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
     internal Task DrainAsync() => running.WaitAsync(TimeSpan.FromSeconds(10));
-    internal static Task ReadyAsync(IBusinessBlockDependency dependency)
-        => dependency.Ready.WaitAsync(TimeSpan.FromSeconds(10));
-    internal static Task ReleaseAsync(IBusinessBlockDependency dependency)
-        => dependency.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
     internal static async Task UntilAsync(Func<bool> condition)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));

@@ -10,7 +10,7 @@ public sealed class BusinessBlockSchedulerFailureTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task ReturningEntryTriggersItsParentToRestartWhenStillDemandedWithoutFailingAnotherBlock(bool throws)
+    public async Task ReturningEntryTriggersItsParentToRestartWhileItsExecutionFactRemainsTrueWithoutFailingAnotherBlock(bool throws)
     {
         var releaseFirst = Signal();
         var firstEntered = Signal();
@@ -66,21 +66,15 @@ public sealed class BusinessBlockSchedulerFailureTests
     }
 
     [Fact]
-    public async Task DiagnosticFailureCannotCancelABlockOrWithdrawAnyDemand()
+    public async Task DiagnosticFailureCannotCancelABlockOrChangeDecisionFacts()
     {
         const int firstId = BackendUids.RuntimeSpecializationCoordinator;
         const int peerId = BackendUids.TrustedAccessRequestOwner;
         var first = new Probe(); var peer = new Probe();
-        var fixture = NativeBackendBlockTestSupport.CreateFullTreeFixture(new Dictionary<int, IBusinessBlock>
-        {
-            [firstId] = first,
-            [peerId] = peer
-        });
-        await using var owner = fixture;
+        await using var scheduler = Create([Register(firstId, first), Register(peerId, peer)]);
         var diagnostics = new BusinessBlockDiagnosticsRegistry(
             [new(firstId, _ => first), new(peerId, _ => peer)],
             NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
-        var scheduler = fixture.Scheduler;
         try
         {
             await scheduler.StartAsync(firstId, Reason());
@@ -90,7 +84,7 @@ public sealed class BusinessBlockSchedulerFailureTests
             diagnostics.ReportFailure(firstId, new IOException("reported by the block"), "read");
             Assert.Equal(BusinessBlockOutcome.Failed, diagnostics.Read(firstId).Result!.Outcome);
             Assert.Equal(before.History, scheduler.Read().History);
-            Assert.Equal(before.Demands.OrderBy(item => item.Key), scheduler.Read().Demands.OrderBy(item => item.Key));
+            Assert.Equal(before.Items, scheduler.Read().Items);
             Assert.False(first.Notified.Task.IsCompleted);
             Assert.False(peer.Notified.Task.IsCompleted);
         }

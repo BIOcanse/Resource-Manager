@@ -46,7 +46,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
             new HostManagerMetricSnapshotCatalogTopologySource(() => topology.Capture()),
             new TestEnvironment(Path.Combine(Path.GetTempPath(), $"fan-http-{Guid.NewGuid():N}")),
             NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
-        await owner.StartAsync(timeout.Token);
+        using var workspaceHolding = owner.Hold();
         var dashboard = new HardwareMetricCatalogState();
         using (var lease = owner.Acquire())
             dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
@@ -186,7 +186,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
         {
             await sampler.StopAsync(CancellationToken.None);
             await app.StopAsync(CancellationToken.None);
-            await owner.StopAsync(CancellationToken.None);
+            workspaceHolding.Dispose();
         }
     }
 

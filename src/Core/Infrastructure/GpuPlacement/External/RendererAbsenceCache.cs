@@ -1,4 +1,4 @@
-using Microsoft.Diagnostics.Tracing.Parsers;
+﻿using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
@@ -14,6 +14,7 @@ internal sealed class RendererAbsenceCache : IDisposable
         | KernelTraceEventParser.Keywords.ImageLoad;
 
     private readonly object gate = new();
+    private readonly object lifetimeGate = new();
     private readonly IKernelEtwSessionBroker broker;
     private readonly Dictionary<CacheKey, CacheEntry> entries = new(CacheKeyComparer.Instance);
     // Hash collisions only cause conservative misses. The fixed table bounds invalidation stamps.
@@ -25,7 +26,7 @@ internal sealed class RendererAbsenceCache : IDisposable
     private long nextBindingId;
     private long? observedGeneration;
     private int? observedEventsLost;
-    private bool leaseAttempted;
+    private int holders;
     private bool disposed;
 
     public RendererAbsenceCache(IKernelEtwSessionBroker broker)
@@ -39,7 +40,7 @@ internal sealed class RendererAbsenceCache : IDisposable
     internal Observation Read(GpuPlacementProcessInstance identity)
     {
         if (!TryCreateKey(identity, out var key)) return default;
-        var subscription = EnsureLease();
+        var subscription = Volatile.Read(ref lease);
         if (subscription is null || !TryGetUsableBinding(subscription, out var binding, out var snapshot))
             return default;
 
@@ -70,7 +71,7 @@ internal sealed class RendererAbsenceCache : IDisposable
             || !CacheKeyComparer.Instance.Equals(key, stamp.Key))
             return;
 
-        var subscription = EnsureLease();
+        var subscription = Volatile.Read(ref lease);
         if (subscription is null || !TryGetUsableBinding(subscription, out var binding, out var snapshot))
             return;
 
@@ -113,60 +114,77 @@ internal sealed class RendererAbsenceCache : IDisposable
         OnProcessChanged(binding, processId);
     }
 
+    /// <summary>Held by the owning Smart block for its entire run, never by a read or sampling round.</summary>
+    internal IDisposable Acquire()
+    {
+        lock (lifetimeGate)
+        {
+            lock (gate)
+            {
+                ObjectDisposedException.ThrowIf(disposed, this);
+                if (holders++ != 0) return new Hold(this);
+            }
+            try
+            {
+                var acquired = broker.Subscribe(new(subscriptionId, RequiredKeywords, BindSource));
+                lock (gate) Volatile.Write(ref lease, acquired);
+                return new Hold(this);
+            }
+            catch
+            {
+                lock (gate) holders = 0;
+                ReleaseCapture();
+                throw;
+            }
+        }
+    }
+
+    private void Release()
+    {
+        lock (lifetimeGate)
+        {
+            lock (gate)
+            {
+                if (holders == 0 || --holders != 0) return;
+            }
+            ReleaseCapture();
+        }
+    }
+
     public void Dispose()
+    {
+        lock (lifetimeGate)
+        {
+            lock (gate)
+            {
+                if (disposed) return;
+                disposed = true;
+                holders = 0;
+            }
+            ReleaseCapture();
+        }
+    }
+
+    private void ReleaseCapture()
     {
         IKernelEtwSubscription? ownedLease;
         Binding? binding;
         lock (gate)
         {
-            if (disposed) return;
-            disposed = true;
             ownedLease = lease;
-            lease = null;
+            Volatile.Write(ref lease, null);
             binding = currentBinding;
             currentBinding = null;
             ClearTrackingLocked();
         }
-
-        if (binding is not null) Detach(binding);
-        ownedLease?.Dispose();
+        try { if (binding is not null) Detach(binding); }
+        finally { ownedLease?.Dispose(); }
     }
 
-    private IKernelEtwSubscription? EnsureLease()
+    private sealed class Hold(RendererAbsenceCache cache) : IDisposable
     {
-        lock (gate)
-        {
-            if (disposed) return null;
-            if (lease is not null) return lease;
-            if (leaseAttempted) return null;
-            leaseAttempted = true;
-        }
-
-        IKernelEtwSubscription acquired;
-        try
-        {
-            acquired = broker.Subscribe(new KernelEtwSubscriptionRequest(
-                subscriptionId, RequiredKeywords, BindSource));
-        }
-        catch (ObjectDisposedException)
-        {
-            return null;
-        }
-
-        var disposeAcquired = false;
-        lock (gate)
-        {
-            if (disposed) disposeAcquired = true;
-            else lease = acquired;
-        }
-
-        if (disposeAcquired)
-        {
-            acquired.Dispose();
-            return null;
-        }
-
-        return acquired;
+        private RendererAbsenceCache? owner = cache;
+        public void Dispose() => Interlocked.Exchange(ref owner, null)?.Release();
     }
 
     private void BindSource(KernelEtwEventSource source, KernelEtwSessionContext context)
@@ -174,7 +192,7 @@ internal sealed class RendererAbsenceCache : IDisposable
         Binding candidate;
         lock (gate)
         {
-            if (disposed) return;
+            if (disposed || holders == 0) return;
             candidate = new Binding(this, ++nextBindingId, source, context);
         }
 
@@ -184,7 +202,7 @@ internal sealed class RendererAbsenceCache : IDisposable
         var accepted = false;
         lock (gate)
         {
-            if (!disposed && (currentBinding is null || candidate.Id > currentBinding.Id))
+            if (!disposed && holders != 0 && (currentBinding is null || candidate.Id > currentBinding.Id))
             {
                 previous = currentBinding;
                 currentBinding = candidate;

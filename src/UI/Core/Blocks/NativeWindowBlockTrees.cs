@@ -31,7 +31,7 @@ internal sealed class NativeWindowBlockTrees : IAsyncDisposable
             new(BlockUids.LoopbackProxy, BlockUids.MainWindow, []),
             new(BlockUids.WebViewHost, BlockUids.LoopbackProxy, [])
         ]);
-        scheduler = new(graph, create, 128, logger, StateRegistry.Version, names, authority, null,
+        scheduler = new(graph, create, 128, logger, StateRegistry.Version, names, authority,
             StateItemUids.ProgramShuttingDown, control, [
                 new(BlockUids.Program, [StateItemUids.ParentWantsMeRunning], input =>
                     input.Read<bool>(StateItemUids.ParentWantsMeRunning).GetValueOrDefault(false)

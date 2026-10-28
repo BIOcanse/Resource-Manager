@@ -22,23 +22,22 @@ public sealed class NativeEtwSessionAvailabilityTests
 
     [Theory]
     [MemberData(nameof(Failures))]
-    public async Task FailedSessionRemainsUnavailableWhileDemandIsHeld(int block, Failure failure)
+    public async Task FailedSessionRemainsUnavailableWhileItsSubscriptionFieldIsInUse(int block, Failure failure)
     {
         await using var rig = new Rig(block, failure);
-        var lease = rig.Subscribe();
+        await rig.ActivateAsync();
         if (failure == Failure.Release)
         {
-            await lease.Ready.WaitAsync(TimeSpan.FromSeconds(10));
+            await rig.WaitRunningAsync();
             rig.Session.Complete(new IOException("run failed before release"));
         }
-        // A failed startup can finish before Ready reads the current run. Ready
-        // deliberately waits for the next run in that case; the recorded failed
-        // result is the completion signal for this test's injected startup.
+        // Failed startup is synchronized by its recorded result, since the
+        // block can return without ever reporting Running.
         var result = await rig.Recorder.NextResultAsync();
         Assert.Equal(BusinessBlockOutcome.Failed, result.Outcome);
         await EtwTestRunRecorder.UntilAsync(() => rig.Controller.ReadState(block) == BusinessBlockState.Stopped);
         Assert.False(rig.Authority.Read<bool>(rig.AvailabilityUid).Value);
-        Assert.Single(rig.Controller.Read().Demands, demand => demand.BlockId == block);
+        Assert.True(rig.Authority.Read<bool>(rig.SubscriptionUid).Value);
         var expected = failure is Failure.PermissionCreate or Failure.PermissionProvider
             ? NativeEtwSessionUnavailableCause.NoPermission
             : failure is Failure.CapacityCreate or Failure.CapacityProvider
@@ -52,14 +51,13 @@ public sealed class NativeEtwSessionAvailabilityTests
             Assert.DoesNotContain(Guid.Empty, recorded.Providers);
             Assert.Contains(PresentFrameEtwSource.GraphicsKernelProvider, recorded.Providers);
         }
-        // Explicit fresh alignments prove held demand cannot start another native session.
+        // Repeated owner notifications cannot restart an unavailable session.
         for (var index = 0; index < 3; index++)
         {
-            await rig.Controller.SetDemandAsync("availability-test:" + index, block,
-                new(BusinessBlockRequestKind.Dependency, "availability-test", "held", index));
+            await rig.NotifyActiveAsync();
         }
         Assert.Equal(1, rig.Attempts);
-        await lease.DisposeAsync();
+        await rig.DeactivateAsync();
     }
 
     [Theory]
@@ -68,20 +66,20 @@ public sealed class NativeEtwSessionAvailabilityTests
     public async Task GpuRuntimeProviderFailureStopsFurtherDueCaptures(bool permission)
     {
         await using var rig = new Rig(BlockUids.GpuAllocationCollector, null);
-        var lease = rig.Subscribe();
-        await lease.Ready.WaitAsync(TimeSpan.FromSeconds(10));
+        await rig.ActivateAsync();
+        await rig.WaitRunningAsync();
         rig.Session.ProviderFailure = permission ? new UnauthorizedAccessException("runtime enable")
             : new InvalidOperationException("runtime wrapper", new COMException("capacity", unchecked((int)0x800705AA)));
-        await rig.Gpu!.CaptureAsync(new Dictionary<int, long>(), default);
+        await rig.Gpu!.CaptureAsync(new Dictionary<int, long>(), TimeSpan.FromSeconds(1), default);
         await rig.Recorder.NextResultAsync();
         await EtwTestRunRecorder.UntilAsync(() => rig.Controller.ReadState(rig.Block) == BusinessBlockState.Stopped);
         var enables = rig.Session.Enables;
-        await rig.Gpu.CaptureAsync(new Dictionary<int, long>(), default);
+        await rig.Gpu.CaptureAsync(new Dictionary<int, long>(), TimeSpan.FromSeconds(1), default);
         Assert.Equal(enables, rig.Session.Enables);
         Assert.Null(rig.Gpu.ReadCurrent(new Dictionary<int, long>()));
         Assert.False(rig.Authority.Read<bool>(rig.AvailabilityUid).Value);
         Assert.Equal(1, rig.Attempts);
-        await lease.DisposeAsync();
+        await rig.DeactivateAsync();
     }
 
     [Theory]
@@ -90,29 +88,29 @@ public sealed class NativeEtwSessionAvailabilityTests
     public async Task PresentRuntimeProviderFailureIsHandedToPersistentPublisher(bool permission)
     {
         await using var rig = new Rig(BlockUids.PresentFrameEtwSource, null);
-        // Graphics-API demand starts the session without the two display providers.
-        var api = rig.Present!.AcquireGraphicsApiSubscription(new(123, 456, "test", "test.exe"));
-        await ((IBusinessBlockDependency)api).Ready.WaitAsync(TimeSpan.FromSeconds(10));
+        // Graphics-API activity starts the session without the two display providers.
+        await rig.ActivateAsync(graphicsApiOnly: true);
+        await rig.WaitRunningAsync();
         rig.Session.ProviderFailure = permission ? new UnauthorizedAccessException("runtime enable")
             : new InvalidOperationException("runtime wrapper", new COMException("capacity", unchecked((int)0x800705AA)));
-        var frames = rig.Present.AcquireSubscription();
+        using var frames = rig.Present!.AcquireSubscription();
         await rig.Recorder.NextResultAsync();
         await EtwTestRunRecorder.UntilAsync(() => rig.Controller.ReadState(rig.Block) == BusinessBlockState.Stopped);
         Assert.False(rig.Authority.Read<bool>(rig.AvailabilityUid).Value);
         Assert.Equal(permission ? NativeEtwSessionUnavailableCause.NoPermission : NativeEtwSessionUnavailableCause.Capacity,
             rig.Availability.ReadFailure(rig.Block)!.Cause);
         Assert.Equal(1, rig.Attempts);
-        await ((IBusinessBlockDependency)frames).DisposeAsync();
-        await ((IBusinessBlockDependency)api).DisposeAsync();
+        frames.Dispose();
+        await rig.DeactivateAsync();
     }
 
     [Fact]
     public async Task PresentTimerReleaseFailureDoesNotChangeWindowsSessionAvailability()
     {
         await using var rig = new Rig(BlockUids.PresentFrameEtwSource, null, new TimerDisposeFailureTimeProvider());
-        var lease = rig.Subscribe();
-        await lease.Ready.WaitAsync(TimeSpan.FromSeconds(10));
-        await lease.DisposeAsync();
+        await rig.ActivateAsync();
+        await rig.WaitRunningAsync();
+        await rig.DeactivateAsync();
         Assert.Equal(BusinessBlockOutcome.Failed, (await rig.Recorder.NextResultAsync()).Outcome);
         Assert.True(rig.Authority.Read<bool>(rig.AvailabilityUid).Value);
         Assert.Null(rig.Availability.ReadFailure(rig.Block));
@@ -146,8 +144,12 @@ public sealed class NativeEtwSessionAvailabilityTests
     {
         private readonly Failure? failure;
         private readonly NativeBackendBlockFixture fixture;
+        private readonly StateReadFunction<bool>? presentActivity;
+        private IDisposable? sourceSubscription;
+        private Task activityPublication = Task.CompletedTask;
         internal int Block { get; }
         internal int AvailabilityUid { get; }
+        internal int SubscriptionUid { get; }
         internal StateAuthority Authority => fixture.Authority;
         internal NativeEtwSessionAvailability Availability { get; }
         internal BusinessBlockScheduler Controller { get; }
@@ -164,6 +166,8 @@ public sealed class NativeEtwSessionAvailabilityTests
             this.failure = failure;
             AvailabilityUid = block == BlockUids.PresentFrameEtwSource ? StateItemUids.PresentNativeSessionAvailable
                 : block == BlockUids.GpuAllocationCollector ? StateItemUids.GpuAllocationNativeSessionAvailable : StateItemUids.VidMmNativeSessionAvailable;
+            SubscriptionUid = block == BlockUids.PresentFrameEtwSource ? StateItemUids.GraphicsApiObservationInUse
+                : block == BlockUids.GpuAllocationCollector ? StateItemUids.ProcessDedicatedGpuMemoryInUse : StateItemUids.VramResidualInUse;
             EtwTestRunRecorder? recorder = null;
             var registration = new BusinessBlockRegistration(block, _ => recorder!);
             var diagnostics = new BusinessBlockDiagnosticsRegistry([registration], NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
@@ -176,12 +180,19 @@ public sealed class NativeEtwSessionAvailabilityTests
                 source = Present = new(NullLogger<PresentFrameEtwSource>.Instance, Controller, diagnostics, Availability,
                     _ => CreateSession(), timeProvider ?? new PresentFrameEtwManualTimeProvider());
             else if (block == BlockUids.GpuAllocationCollector)
-                source = Gpu = new(NullLogger<GpuAllocationCollector>.Instance, new ConfigurationBuilder().Build(), Controller, diagnostics,
+                source = Gpu = new(NullLogger<GpuAllocationCollector>.Instance, new ConfigurationBuilder().Build(), diagnostics,
                     Availability, this, TimeProvider.System);
             else source = VidMm = new(NullLogger<DxgkrnlVidMmEtwTelemetryZone>.Instance, Controller, diagnostics, Availability,
                 _ => null, _ => CreateSession());
             Recorder = recorder = new(source, diagnostics, block);
-            fixture.HoldNativeEtwGroup();
+            if (Present is not null)
+            {
+                presentActivity = Authority.ClaimReadFunction<bool>(SubscriptionUid,
+                    () => StateRead<bool>.FromValue(Present.HasActiveSubscriptions));
+                Present.SubscriptionsChanged += PresentActivityChanged;
+                PresentActivityChanged();
+            }
+            fixture.InitializeHostPermitsAsync().WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
         }
 
         private Session CreateSession()
@@ -198,11 +209,52 @@ public sealed class NativeEtwSessionAvailabilityTests
             return Session;
         }
         public IGpuAllocationSession Create(string name) => CreateSession();
-        internal IBusinessBlockDependency Subscribe() => Present is not null ? (IBusinessBlockDependency)Present.AcquireSubscription()
-            : Gpu is not null ? Gpu.AcquireSubscription(TimeSpan.FromSeconds(1)) : VidMm!.AcquireSubscription("test", TimeSpan.FromSeconds(1));
+
+        internal async Task ActivateAsync(bool graphicsApiOnly = false)
+        {
+            if (Present is not null)
+            {
+                sourceSubscription = graphicsApiOnly
+                    ? Present.AcquireGraphicsApiSubscription(new(123, 456, "test", "test.exe"))
+                    : Present.AcquireSubscription();
+                await activityPublication.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            else await fixture.SetNativeSubscriptionInUseAsync(Block, true).WaitAsync(TimeSpan.FromSeconds(10));
+        }
+
+        internal Task WaitRunningAsync() => fixture.WaitForStateAsync(Block, BusinessBlockState.Running);
+
+        internal Task NotifyActiveAsync() => presentActivity is not null
+            ? presentActivity.NotifyChangedAsync(Reason("subscription-activity"))
+            : fixture.SetNativeSubscriptionInUseAsync(Block, true);
+
+        internal async Task DeactivateAsync()
+        {
+            if (Present is not null)
+            {
+                sourceSubscription?.Dispose();
+                sourceSubscription = null;
+                await activityPublication.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            else await fixture.SetNativeSubscriptionInUseAsync(Block, false).WaitAsync(TimeSpan.FromSeconds(10));
+            await fixture.WaitForStateAsync(Block, BusinessBlockState.Stopped);
+        }
+
+        private void PresentActivityChanged()
+            => activityPublication = presentActivity!.NotifyChangedAsync(Reason("subscription-activity"));
+
+        private static BusinessBlockReason Reason(string detail)
+            => new(BusinessBlockRequestKind.Configuration, nameof(Rig), detail, 0);
+
         public async ValueTask DisposeAsync()
         {
+            await DeactivateAsync();
             await Controller.ShutdownAsync(new(BusinessBlockRequestKind.Dependency, "test", "cleanup", 0)).WaitAsync(TimeSpan.FromSeconds(10));
+            if (Present is not null)
+            {
+                Present.SubscriptionsChanged -= PresentActivityChanged;
+                await presentActivity!.UnbindAsync(Reason("cleanup"));
+            }
             Present?.Dispose();
             await fixture.DisposeAsync();
         }

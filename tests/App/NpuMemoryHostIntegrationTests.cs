@@ -53,7 +53,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
             new HostManagerMetricSnapshotCatalogTopologySource(recording.Topology),
             new TestEnvironment(Path.Combine(AppContext.BaseDirectory, "npu-memory-host", Guid.NewGuid().ToString("N"))),
             NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
-        await owner.StartAsync(timeout.Token);
+        using var workspaceHolding = owner.Hold();
         var dashboard = new HardwareMetricCatalogState();
         using (var lease = owner.Acquire())
             dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
@@ -107,13 +107,22 @@ public sealed partial class NvidiaFanHttpIntegrationTests
                 Assert.Equal("windows.npu-memory", delivered.SourceId);
             }
             Assert.True(recording.Reads > 0);
-            var count = recording.Reads;
-            var current = sampler.ReadLatest(request);
-            Assert.Equal(MetricInteger.FromUnsigned128(resident), core.ReadCached(reference).Value!.Integer);
-            Assert.Null(core.ReadCached(reference).Value!.Number);
-            Assert.Equal(current!.CommittedGeneration, sampler.ReadLatest(request)!.CommittedGeneration);
-            Assert.Equal(NpuMemoryCaptureIntegrationTests.Npu(current, name),
-                NpuMemoryCaptureIntegrationTests.Npu(sampler.ReadLatest(request)!, name));
+            var sampleGate = (SemaphoreSlim)typeof(WindowsHardwareMetricSampler).GetField("sampleGate",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(sampler)!;
+            int count;
+            await sampleGate.WaitAsync(timeout.Token);
+            try
+            {
+                count = recording.Reads;
+                var current = sampler.ReadLatest(request);
+                Assert.Equal(MetricInteger.FromUnsigned128(resident), core.ReadCached(reference).Value!.Integer);
+                Assert.Null(core.ReadCached(reference).Value!.Number);
+                Assert.Equal(current!.CommittedGeneration, sampler.ReadLatest(request)!.CommittedGeneration);
+                Assert.Equal(NpuMemoryCaptureIntegrationTests.Npu(current, name),
+                    NpuMemoryCaptureIntegrationTests.Npu(sampler.ReadLatest(request)!, name));
+                Assert.Equal(count, recording.Reads);
+            }
+            finally { sampleGate.Release(); }
             var ended = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             await using var app = await StartHttpAsync(sampler, dashboard, slots.Provider, core, ended, timeout.Token);
             using var client = new HttpClient { BaseAddress = new Uri(Assert.Single(app.Services.GetRequiredService<IServer>()
@@ -162,7 +171,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
         finally
         {
             await sampler.StopAsync(CancellationToken.None);
-            await owner.StopAsync(CancellationToken.None);
+            workspaceHolding.Dispose();
         }
     }
 }

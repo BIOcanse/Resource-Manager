@@ -12,7 +12,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
     {
         try
         {
-            ulong? nextWake = null;
+            ulong? nextWake = 0;
             while (!ownerStopping.IsCancellationRequested)
             {
                 if (nextWake is null)
@@ -249,6 +249,9 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             attemptArbiter.Complete(
                 ticket.Action.OperationId,
                 ticket.Action.AttemptToken);
+            await mutationGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+            try { PublishPendingOperationsLocked(); }
+            finally { mutationGate.Release(); }
         }
     }
 

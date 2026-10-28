@@ -86,6 +86,7 @@ test "layers: lower change with unchanged top neither aligns nor records a decis
     var host: Host = .{};
     const controller = try C.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     defer {
         host.cleanup();
@@ -111,6 +112,7 @@ test "layers: only readers of the changed item and changed lower recompute" {
     var host: Host = .{};
     const controller = try C.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     defer {
         host.cleanup();
@@ -143,6 +145,7 @@ test "layers: failed compute preserves value and actions then recovers at next e
     var host: Host = .{};
     const controller = try C.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     defer {
         host.cleanup();
@@ -183,6 +186,7 @@ test "boundary: completion token waits for the readers current round" {
     var host: Host = .{};
     const controller = try C.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     defer {
         release_lower.store(true, .release);
@@ -202,12 +206,12 @@ test "boundary: completion token waits for the readers current round" {
     try expectEqual(@as(u32, 1), host.complete_calls.load(.acquire));
 }
 
-const per_registry = d.Registry{ .version = "per-block-fixture", .process = "test", .blocks = &blocks, .items = &support.items, .conditions = &.{support.demand_condition} };
+const per_registry = d.Registry{ .version = "per-block-fixture", .process = "test", .blocks = &blocks, .items = &support.items, .conditions = &.{support.fact_condition} };
 const per_tree = control.tree.Tree{
     .program = 1,
     .blocks = tree.blocks,
     .uses = &.{ .{ .node = 1, .condition = 20, .child = 2 }, .{ .node = 1, .condition = 20, .child = 3 } },
-    .computes = &.{.{ .condition = 20, .function = support.demanded }},
+    .computes = &.{.{ .condition = 20, .function = support.fact }},
 };
 const PerC = control.Controller(per_registry, per_tree);
 const PerHost = support.TestHost(PerC);
@@ -216,20 +220,21 @@ test "layers: one per-block condition decides several children independently" {
     var host: PerHost = .{};
     const controller = try PerC.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     defer {
         host.cleanup();
         controller.destroy() catch @panic("destroy failed");
     }
-    try controller.setDemand("one", 2, support.reason, null);
+    try support.setFact(controller, 2, true, support.reason, null);
     controller.waitIdle();
     try expectEqual(types.BlockState.running, try controller.readState(2));
     try expectEqual(types.BlockState.stopped, try controller.readState(3));
-    try controller.setDemand("two", 3, support.reason, null);
+    try support.setFact(controller, 3, true, support.reason, null);
     controller.waitIdle();
     try expectEqual(types.BlockState.running, try controller.readState(2));
     try expectEqual(types.BlockState.running, try controller.readState(3));
-    try controller.clearDemand("one", support.reason, null);
+    try support.setFact(controller, 2, false, support.reason, null);
     controller.waitIdle();
     try expectEqual(types.BlockState.stopped, try controller.readState(2));
     try expectEqual(types.BlockState.running, try controller.readState(3));
@@ -241,15 +246,16 @@ test "boundary: reentrant callbacks report runs without a controller lock" {
     var host: PerHost = .{};
     const controller = try PerC.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     defer {
         host.cleanup();
         controller.destroy() catch @panic("destroy failed");
     }
-    try controller.setDemand("reentrant", 2, support.reason, null);
+    try support.setFact(controller, 2, true, support.reason, null);
     controller.waitIdle();
     try expectEqual(types.BlockState.running, try controller.readState(2));
-    try controller.clearDemand("reentrant", support.reason, null);
+    try support.setFact(controller, 2, false, support.reason, null);
     controller.waitIdle();
     try expectEqual(types.BlockState.stopped, try controller.readState(2));
     try expect(!host.callback_failed.load(.acquire));
@@ -261,17 +267,18 @@ test "boundary: old run reports cannot change a newer run or undo dispatched sto
     var host: PerHost = .{};
     const controller = try PerC.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     defer {
         host.cleanup();
         controller.destroy() catch @panic("destroy failed");
     }
-    try controller.setDemand("run", 2, support.reason, null);
+    try support.setFact(controller, 2, true, support.reason, null);
     controller.waitIdle();
     const old_run = host.run(2);
-    try controller.clearDemand("run", support.reason, null);
+    try support.setFact(controller, 2, false, support.reason, null);
     controller.waitIdle();
-    try controller.setDemand("run", 2, support.reason, null);
+    try support.setFact(controller, 2, true, support.reason, null);
     controller.waitIdle();
     const new_run = host.run(2);
     try expect(new_run > old_run);
@@ -281,7 +288,7 @@ test "boundary: old run reports cannot change a newer run or undo dispatched sto
     try expectEqual(types.BlockState.running, try controller.readState(2));
     try expectEqual(new_run, host.run(2));
     host.auto_return[2].store(false, .release);
-    try controller.clearDemand("run", support.reason, null);
+    try support.setFact(controller, 2, false, support.reason, null);
     controller.waitIdle();
     try expectEqual(types.BlockState.stopping, try controller.readState(2));
     try controller.reportRunning(2, new_run);
@@ -291,37 +298,18 @@ test "boundary: old run reports cannot change a newer run or undo dispatched sto
     try expectEqual(types.BlockState.stopped, try controller.readState(2));
 }
 
-test "boundary: full demand allocator returns failure without replacing its entries" {
-    var host: PerHost = .{};
-    var cfg = config();
-    cfg.demand_capacity = 1;
-    cfg.demand_bytes = 128;
-    const controller = try PerC.create(std.testing.allocator, cfg, host.callbacks());
-    host.controller = controller;
-    controller.activate();
-    defer {
-        host.cleanup();
-        controller.destroy() catch @panic("destroy failed");
-    }
-    try controller.setDemand("one", 2, support.reason, null);
-    controller.waitIdle();
-    try std.testing.expectError(error.DemandFull, controller.setDemand("two", 3, support.reason, null));
-    controller.waitIdle();
-    try expectEqual(types.BlockState.running, try controller.readState(2));
-    try expectEqual(types.BlockState.stopped, try controller.readState(3));
-}
-
 test "boundary: destroy joins workers after all runs return during shutdown" {
     var host: PerHost = .{};
     const controller = try PerC.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     errdefer {
         host.cleanup();
         controller.destroy() catch {};
     }
-    try controller.setDemand("shutdown", 2, support.reason, null);
-    try controller.setDemand("shutdown-peer", 3, support.reason, null);
+    try support.setFact(controller, 2, true, support.reason, null);
+    try support.setFact(controller, 3, true, support.reason, null);
     controller.waitIdle();
     try expectEqual(types.BlockState.running, try controller.readState(2));
     try expectEqual(types.BlockState.running, try controller.readState(3));
@@ -338,6 +326,7 @@ test "layers: shutdown overrides a custom true top without changing its inputs" 
     var host: Host = .{};
     const controller = try C.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     defer {
         host.cleanup();
@@ -361,6 +350,7 @@ test "layers: an explicit condition treats each no-value reason as false" {
     var host: Host = .{};
     const controller = try C.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     defer {
         host.cleanup();
@@ -387,6 +377,7 @@ test "layers: a custom condition that omits mode has no hidden freeze filter" {
     var host: Host = .{};
     const controller = try C.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     defer {
         host.cleanup();
@@ -453,6 +444,7 @@ test "layers: condition input rejects undeclared items lower conditions and chil
     var host: support.TestHost(D) = .{};
     const controller = try D.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     defer {
         host.cleanup();
@@ -464,29 +456,30 @@ test "layers: condition input rejects undeclared items lower conditions and chil
     try expectEqual(@as(u32, 0), host.startCount(3));
 }
 
-fn enabledDemand(input: *types.Input) anyerror!bool {
-    const demand = (try input.read(.{ .item = 10, .block = input.block })).valueOr(false);
+fn enabledFact(input: *types.Input) anyerror!bool {
+    const fact = (try input.read(.{ .item = 10, .block = input.block })).valueOr(false);
     const enabled = (try input.read(.{ .item = 12 })).valueOr(false);
-    return demand and enabled;
+    return fact and enabled;
 }
 const enabled_registry = d.Registry{
-    .version = "enabled-demand-fixture",
+    .version = "enabled-fact-fixture",
     .process = "test",
     .blocks = &blocks,
     .items = &support.items,
-    .conditions = &.{.{ .uid = 20, .node = null, .per_block = true, .items = &.{ .{ .item = 10, .block = null }, .{ .item = 12, .block = null } }, .conditions = &.{}, .children = &.{}, .decides = null, .name = "DemandAndEnabled" }},
+    .conditions = &.{.{ .uid = 20, .node = null, .per_block = true, .items = &.{ .{ .item = 10, .block = null }, .{ .item = 12, .block = null } }, .conditions = &.{}, .children = &.{}, .decides = null, .name = "FactAndEnabled" }},
 };
 const enabled_tree = control.tree.Tree{
     .program = 1,
     .blocks = tree.blocks,
     .uses = per_tree.uses,
-    .computes = &.{.{ .condition = 20, .function = enabledDemand }},
+    .computes = &.{.{ .condition = 20, .function = enabledFact }},
 };
-test "layers: explicit enable read creates no demand and disable preserves demand" {
+test "layers: explicit enable read creates no fact and disable preserves facts" {
     const E = control.Controller(enabled_registry, enabled_tree);
     var host: support.TestHost(E) = .{};
     const controller = try E.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     defer {
         host.cleanup();
@@ -496,7 +489,7 @@ test "layers: explicit enable read creates no demand and disable preserves deman
     try controller.publish(enabled, .{ .value = true }, support.reason, null);
     controller.waitIdle();
     try expectEqual(types.BlockState.stopped, try controller.readState(2));
-    try controller.setDemand("held", 2, support.reason, null);
+    try support.setFact(controller, 2, true, support.reason, null);
     controller.waitIdle();
     try expectEqual(types.BlockState.running, try controller.readState(2));
     try controller.publish(enabled, .{ .value = false }, support.reason, null);
@@ -537,6 +530,7 @@ test "snapshot: condition errors and UIDs remain available without names" {
     var host: support.TestHost(Anonymous) = .{};
     const controller = try Anonymous.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     defer {
         host.cleanup();
@@ -596,6 +590,7 @@ test "layers: declared direct child state reads do not order sibling startup" {
     host.auto_running[2].store(false, .release);
     const controller = try S.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     defer {
         host.cleanup();
@@ -630,7 +625,7 @@ const branch_failure_registry = d.Registry{
     .blocks = &blocks,
     .items = &support.items,
     .conditions = &.{
-        support.demand_condition,
+        support.fact_condition,
         .{ .uid = 30, .node = 2, .per_block = false, .items = &.{.{ .item = 12, .block = null }}, .conditions = &.{}, .children = &.{}, .decides = null, .name = "BranchRequested" },
         .{ .uid = 31, .node = 2, .per_block = false, .items = &.{}, .conditions = &.{30}, .children = &.{}, .decides = 3, .name = "RunBranchChild" },
     },
@@ -639,7 +634,7 @@ const branch_failure_tree = control.tree.Tree{
     .program = 1,
     .blocks = &.{ .{ .uid = 1, .parent = null }, .{ .uid = 2, .parent = 1 }, .{ .uid = 3, .parent = 2 } },
     .uses = &.{.{ .node = 1, .condition = 20, .child = 2 }},
-    .computes = &.{ .{ .condition = 20, .function = support.demanded }, .{ .condition = 30, .function = lower }, .{ .condition = 31, .function = branchTop } },
+    .computes = &.{ .{ .condition = 20, .function = support.fact }, .{ .condition = 30, .function = lower }, .{ .condition = 31, .function = branchTop } },
 };
 test "layers: persistent compute failure cannot prevent a revoked branch draining" {
     resetCounters();
@@ -647,6 +642,7 @@ test "layers: persistent compute failure cannot prevent a revoked branch drainin
     var host: support.TestHost(B) = .{};
     const controller = try B.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     defer {
         fail_lower.store(false, .release);
@@ -655,7 +651,7 @@ test "layers: persistent compute failure cannot prevent a revoked branch drainin
     }
     const requested = try controller.claimWrite(.{ .item = 12 });
     try controller.publish(requested, .{ .value = true }, support.reason, null);
-    try controller.setDemand("branch", 2, support.reason, null);
+    try support.setFact(controller, 2, true, support.reason, null);
     controller.waitIdle();
     try expectEqual(types.BlockState.running, try controller.readState(2));
     try expectEqual(types.BlockState.running, try controller.readState(3));
@@ -663,7 +659,7 @@ test "layers: persistent compute failure cannot prevent a revoked branch drainin
     try controller.publish(requested, .{ .value = false }, support.reason, null);
     controller.waitIdle();
     try expectEqual(types.BlockState.running, try controller.readState(3));
-    try controller.clearDemand("branch", support.reason, null);
+    try support.setFact(controller, 2, false, support.reason, null);
     controller.waitIdle();
     try expectEqual(types.BlockState.stopped, try controller.readState(3));
     try expectEqual(types.BlockState.stopped, try controller.readState(2));
@@ -699,6 +695,7 @@ test "snapshot and logs: names are emitted only when supplied by the registry" {
         var host: Host = .{ .user_context = &probe, .log_hook = namedLog };
         const controller = try C.create(std.testing.allocator, config(), host.callbacks());
         host.controller = controller;
+        try support.initFacts(controller);
         controller.activate();
         defer {
             host.cleanup();
@@ -722,6 +719,7 @@ test "snapshot and logs: names are emitted only when supplied by the registry" {
         var host: AnonymousHost = .{ .user_context = &probe, .log_hook = anonymousLog };
         const controller = try AnonymousC.create(std.testing.allocator, config(), host.callbacks());
         host.controller = controller;
+        try support.initFacts(controller);
         controller.activate();
         defer {
             host.cleanup();
@@ -788,6 +786,7 @@ test "layers: repeated item reads use one captured value until the next round" {
     var host: support.TestHost(Captured) = .{};
     const controller = try Captured.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     defer {
         capture_release.store(true, .release);
@@ -812,29 +811,30 @@ test "layers: repeated item reads use one captured value until the next round" {
     try expectEqual(@as(u32, 1), host.startCount(2));
 }
 
-test "history: retained demand reason and item basis survive caller mutation and compaction" {
+test "history: retained fact reason and item basis survive caller mutation and later publication" {
     var host: PerHost = .{};
     const controller = try PerC.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     defer {
         host.cleanup();
         controller.destroy() catch @panic("destroy failed");
     }
-    var key = "mutable-key".*;
     var owner = "owner-one".*;
     var cause = "capture-one".*;
     const why: types.Reason = .{ .kind = 2, .owner = &owner, .cause = &cause, .plan_version = 123 };
-    try controller.setDemand(&key, 2, why, null);
-    @memset(&key, 'k');
+    try support.setFact(controller, 2, true, why, null);
     @memset(&owner, 'o');
     @memset(&cause, 'c');
     controller.waitIdle();
     try expectEqual(types.BlockState.running, try controller.readState(2));
-    // Retargeting compacts/replaces the demand allocator's original texts.
-    try controller.setDemand("mutable-key", 3, support.reason, null);
+    // Later publications cannot overwrite a retained decision's reason.
+    try support.setFact(controller, 2, false, support.reason, null);
     controller.waitIdle();
-    try controller.clearDemand("mutable-key", support.reason, null);
+    try support.setFact(controller, 3, true, support.reason, null);
+    controller.waitIdle();
+    try support.setFact(controller, 3, false, support.reason, null);
     controller.waitIdle();
     try expectEqual(types.BlockState.stopped, try controller.readState(2));
     try expectEqual(types.BlockState.stopped, try controller.readState(3));
@@ -850,39 +850,40 @@ test "history: retained demand reason and item basis survive caller mutation and
         try expectEqual(@as(u32, 2), retained_reason.kind);
         try std.testing.expectEqualStrings("capture-one", retained_reason.cause);
         try expectEqual(@as(u64, 123), retained_reason.plan_version);
-        try expectEqual(types.EventCause.demand, row.source.cause);
+        try expectEqual(types.EventCause.item, row.source.cause);
         try expectEqual(@as(u32, 10), row.source.uid);
         try expectEqual(@as(?u32, 2), row.source.block);
-        var had_demand_basis = false;
+        var had_fact_basis = false;
         for (row.items) |item| {
             if (item.key.item == 10 and item.key.block == 2) {
-                had_demand_basis = item.value.valueOr(false);
+                had_fact_basis = item.value.valueOr(false);
             }
         }
-        try expect(had_demand_basis);
+        try expect(had_fact_basis);
     }
     try expect(found);
     try expect(!(try controller.read(.{ .item = 10, .block = 2 })).valueOr(true));
 }
 
-test "boundary: overlong decision reasons fail before demand or completion mutation" {
+test "boundary: overlong decision reasons fail before fact or completion mutation" {
     var host: PerHost = .{};
     var cfg = config();
     cfg.reason_text_capacity = 8;
     const controller = try PerC.create(std.testing.allocator, cfg, host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     defer {
         host.cleanup();
         controller.destroy() catch @panic("destroy failed");
     }
     const short: types.Reason = .{ .kind = 1, .owner = "a", .cause = "b", .plan_version = 9 };
-    try controller.setDemand("kept", 2, short, null);
+    try support.setFact(controller, 2, true, short, null);
     controller.waitIdle();
     const sequence = controller.decisionSequence(1);
     const long: types.Reason = .{ .kind = 1, .owner = "owner-too-long", .cause = "cause", .plan_version = 10 };
-    try std.testing.expectError(error.ReasonTooLong, controller.setDemand("kept", 3, long, 55));
-    try std.testing.expectError(error.ReasonTooLong, controller.clearDemand("kept", long, 56));
+    try std.testing.expectError(error.ReasonTooLong, support.setFact(controller, 3, true, long, 55));
+    try std.testing.expectError(error.ReasonTooLong, support.setFact(controller, 2, false, long, 56));
     controller.waitIdle();
     try expectEqual(sequence, controller.decisionSequence(1));
     try expectEqual(types.BlockState.running, try controller.readState(2));
@@ -892,7 +893,7 @@ test "boundary: overlong decision reasons fail before demand or completion mutat
     try expectEqual(@as(u32, 0), host.complete_calls.load(.acquire));
     var buffer: [32768]u8 = undefined;
     const size = try controller.snapshot(&buffer);
-    try expect(std.mem.indexOf(u8, buffer[0..size], "\"key\":\"kept\",\"blockUid\":2,\"kind\":1,\"owner\":\"a\",\"cause\":\"b\",\"planVersion\":9") != null);
+    try expect(std.mem.indexOf(u8, buffer[0..size], "\"kind\":1,\"owner\":\"a\",\"cause\":\"b\",\"planVersion\":9") != null);
     try expect(std.mem.indexOf(u8, buffer[0..size], "owner-too-long") == null);
 }
 
@@ -924,6 +925,7 @@ test "layers: a failed peer condition does not freeze restart of a still-wanted 
     var host: support.TestHost(PeerFailure) = .{ .log_hook = peerFailureLog };
     const controller = try PeerFailure.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     defer {
         fail_lower.store(false, .release);
@@ -1010,6 +1012,7 @@ test "layers: repeated child reads use one captured state and a concurrent repor
     host.auto_running[2].store(false, .release);
     const controller = try CapturedChild.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     defer {
         child_capture_release.store(true, .release);

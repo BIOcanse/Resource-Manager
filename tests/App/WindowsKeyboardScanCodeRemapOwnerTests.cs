@@ -406,8 +406,7 @@ public sealed class WindowsKeyboardScanCodeRemapOwnerTests
         var configuration = DefaultFieldSubscriptionCompositionTests.Configuration();
         var settings = new SubscriptionRoleSettings(2, 1000, 1, 3000, 1000, 1000);
         await using var composition = new NativeFieldSubscriptionComposition(owner.BorrowSubscriptionCapture(), settings,
-            in configuration, failure => throw new InvalidOperationException("Unexpected role-2 keyboard-remap worker failure", failure.Error),
-            TimeSpan.Zero);
+            in configuration, failure => throw new InvalidOperationException("Unexpected role-2 keyboard-remap worker failure", failure.Error));
         await composition.StartAsync();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await using var stream = composition.SubscribeAsync("machine-keyboard-remap", [field], TimeSpan.FromSeconds(1),

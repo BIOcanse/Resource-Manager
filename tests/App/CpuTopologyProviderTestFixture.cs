@@ -75,6 +75,7 @@ internal sealed class CpuTopologyProviderTestFixture : IAsyncDisposable
         internal int CaptureCount => Volatile.Read(ref captureCount);
         internal int ResetCount => Volatile.Read(ref resetCount);
         internal Func<CpuTopologySnapshot, CpuTopologySnapshot>? CaptureTransform { get; set; }
+        internal Func<CpuTopologySnapshot>? CaptureFactory { get; set; }
         internal Action? UsageBaselineReset { get; set; }
 
         public void ResetUsageBaseline()
@@ -86,6 +87,7 @@ internal sealed class CpuTopologyProviderTestFixture : IAsyncDisposable
         public CpuTopologySnapshot CaptureSnapshot()
         {
             attempts.Writer.TryWrite(Interlocked.Increment(ref captureCount));
+            if (CaptureFactory is { } factory) return factory();
             if (!completions.TryTake(out var result, Deadline))
             {
                 throw new TimeoutException("Test did not complete the native capture boundary.");

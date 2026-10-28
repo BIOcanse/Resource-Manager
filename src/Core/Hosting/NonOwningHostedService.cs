@@ -9,7 +9,6 @@ internal sealed class NonOwningHostedService<TService> : BackgroundService where
     private readonly IServiceProvider provider;
     private readonly int id;
     private TService? service;
-    private HostedBusinessBlock.Session? hostSession;
 
     private HostedBusinessBlock Block => provider.GetRequiredService<HostedBusinessBlockRegistry>()
         .GetOrAdd(id, () => Service);
@@ -24,20 +23,18 @@ internal sealed class NonOwningHostedService<TService> : BackgroundService where
     public override async Task StartAsync(CancellationToken cancellationToken)
     {
         _ = Service;
-        var scheduler = provider.GetRequiredService<BusinessBlockScheduler>();
+        _ = provider.GetRequiredService<BusinessBlockScheduler>();
         var block = Block;
-        var session = block.PrepareStart(cancellationToken);
-        hostSession = session;
+        _ = block.PrepareStart(cancellationToken);
         try
         {
-            await scheduler.SetDemandAsync("host:" + id, id, Reason("host-start"), cancellationToken).ConfigureAwait(false);
-            await session.Readiness.Task.ConfigureAwait(false);
+            await provider.GetRequiredService<BackendHostPermitFacts>().SetAsync(id, true, Reason("host-start")).ConfigureAwait(false);
             await base.StartAsync(cancellationToken).ConfigureAwait(false);
         }
         catch
         {
             block.SetHostStopTurn();
-            await scheduler.SetDemandAsync("host:" + id, null, Reason("host-start-failed")).ConfigureAwait(false);
+            await provider.GetRequiredService<BackendHostPermitFacts>().SetAsync(id, false, Reason("host-start-failed")).ConfigureAwait(false);
             try { await block.CurrentStopCompletion().ConfigureAwait(false); }
             catch { /* The original StartAsync exception belongs to this host turn. */ }
             throw;
@@ -45,23 +42,16 @@ internal sealed class NonOwningHostedService<TService> : BackgroundService where
     }
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var session = hostSession;
-        if (session?.Execution is not { } execution) return;
-        try { await execution.ConfigureAwait(false); }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested
-            || session.StopNotification.IsCancellationRequested) { }
+        try { await Block.ExecutionFailure.WaitAsync(stoppingToken).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
     }
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         try
         {
-            // External demand can start this block before Host reaches this alias's StartAsync.
             var block = Block;
             block.SetHostStopTurn();
-            // Withdrawal remains a fact even after the host stops waiting. Its
-            // original token bounds this caller, not the block's real cleanup.
-            var withdrawal = provider.GetRequiredService<BusinessBlockScheduler>().SetDemandAsync(
-                "host:" + id, null, Reason("host-stop"));
+            var withdrawal = provider.GetRequiredService<BackendHostPermitFacts>().SetAsync(id, false, Reason("host-stop"));
             try
             {
                 await withdrawal.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -78,9 +68,38 @@ internal sealed class NonOwningHostedService<TService> : BackgroundService where
 internal static class NonOwningHostedServiceRegistration
 {
     internal static IServiceCollection AddHostedServiceAlias<TService>(this IServiceCollection services,
+        int id, Func<TService, Task?> executionTask, bool forwardRunFailureToHost) where TService : class, IHostedService
+    {
+        services.AddHostedServiceAlias<TService>(id);
+        return WithExecution(services, executionTask, forwardRunFailureToHost);
+    }
+
+    internal static IServiceCollection AddHostedServiceAlias<TService>(this IServiceCollection services,
+        Func<TService, Task?> executionTask, bool forwardRunFailureToHost) where TService : class, IHostedService
+    {
+        services.AddHostedServiceAlias<TService>();
+        return WithExecution(services, executionTask, forwardRunFailureToHost);
+    }
+
+    private static IServiceCollection WithExecution<TService>(IServiceCollection services,
+        Func<TService, Task?> executionTask, bool forwardRunFailureToHost) where TService : class, IHostedService
+    {
+        ArgumentNullException.ThrowIfNull(executionTask);
+        var descriptor = services.Single(value => value.ImplementationInstance is BusinessBlockRegistration registration
+            && registration.HostedServiceType == typeof(TService));
+        var declaration = (BusinessBlockRegistration)descriptor.ImplementationInstance!;
+        services[services.IndexOf(descriptor)] = ServiceDescriptor.Singleton(declaration with
+        {
+            HostedExecution = new(service => executionTask((TService)service), forwardRunFailureToHost)
+        });
+        return services;
+    }
+
+    internal static IServiceCollection AddHostedServiceAlias<TService>(this IServiceCollection services,
         int id, bool constructService = false) where TService : class, IHostedService
     {
         ResourceManagerServiceCollectionExtensions.RegisterHostedBusinessBlock<TService>(services, id);
+        services.AddSingleton(new HostedBusinessBlockAlias(id));
         services.AddSingleton<IHostedService>(provider => new NonOwningHostedService<TService>(provider, id, constructService));
         return services;
     }
@@ -91,7 +110,11 @@ internal static class NonOwningHostedServiceRegistration
     {
         var declaration = services.Select(value => value.ImplementationInstance).OfType<BusinessBlockRegistration>()
             .Single(value => value.HostedServiceType == typeof(TService));
+        services.AddSingleton(new HostedBusinessBlockAlias(declaration.Id));
         services.AddSingleton<IHostedService>(provider => new NonOwningHostedService<TService>(provider, declaration.Id, constructService));
         return services;
     }
 }
+
+/// <summary>Composition metadata for host admission only; it carries no control topology.</summary>
+internal sealed record HostedBusinessBlockAlias(int Id);

@@ -1,4 +1,4 @@
-using BlockUids = ResourceManager.App.StateItems.BlockUids;
+﻿using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using Microsoft.Extensions.Configuration;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
@@ -9,28 +9,23 @@ namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 public sealed partial class GpuAllocationCollector
 {
     private static Guid[] RequiredProviders => [Provider, BoundaryProvider];
-    private const string SubscriptionCause = "gpu-allocation-subscription";
 
     private readonly ILogger<GpuAllocationCollector> logger;
-    private readonly BusinessBlockScheduler controller;
     private readonly BusinessBlockDiagnosticsRegistry diagnostics;
     private readonly object lifecycle = new();
     private readonly SemaphoreSlim captureGate = new(1, 1);
     private readonly IGpuAllocationSessionFactory sessionFactory;
     private readonly TimeProvider timeProvider;
     private readonly TimeSpan deliveryBudget;
-    private readonly HashSet<Lease> leases = [];
     private IGpuAllocationSession? session;
     private string? sessionName;
     private Run? activeRun;
-    private TaskCompletionSource<Run> nextRun = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly NativeEtwSessionAvailability availability;
 
     public GpuAllocationCollector(ILogger<GpuAllocationCollector> logger, IConfiguration configuration,
-        BusinessBlockScheduler controller, BusinessBlockDiagnosticsRegistry diagnostics, NativeEtwSessionAvailability availability, IEtwConsumerThreadObserver? consumerThreadObserver = null)
+        BusinessBlockDiagnosticsRegistry diagnostics, NativeEtwSessionAvailability availability, IEtwConsumerThreadObserver? consumerThreadObserver = null)
     {
         this.logger = logger;
-        this.controller = controller;
         this.diagnostics = diagnostics;
         this.availability = availability;
         plan = GpuAllocationCapturePlan.Compile(configuration);
@@ -40,31 +35,14 @@ public sealed partial class GpuAllocationCollector
     }
 
     internal GpuAllocationCollector(ILogger<GpuAllocationCollector> logger, IConfiguration configuration,
-        BusinessBlockScheduler controller, BusinessBlockDiagnosticsRegistry diagnostics, NativeEtwSessionAvailability availability, IGpuAllocationSessionFactory sessionFactory,
+        BusinessBlockDiagnosticsRegistry diagnostics, NativeEtwSessionAvailability availability, IGpuAllocationSessionFactory sessionFactory,
         TimeProvider timeProvider, TimeSpan? deliveryBudget = null,
         IEtwConsumerThreadObserver? consumerThreadObserver = null)
-        : this(logger, configuration, controller, diagnostics, availability, consumerThreadObserver)
+        : this(logger, configuration, diagnostics, availability, consumerThreadObserver)
     {
         this.sessionFactory = sessionFactory;
         this.timeProvider = timeProvider;
         this.deliveryBudget = deliveryBudget ?? TimeSpan.FromSeconds(5);
-    }
-
-    // Native resource subscriptions still own due times. Held intervals select
-    // the execution mechanism only; acquisition and release never collect.
-    public IBusinessBlockDependency AcquireSubscription(TimeSpan refreshInterval, string owner = "resource-sampling")
-    {
-        if (refreshInterval <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(refreshInterval));
-        var reason = new BusinessBlockReason(BusinessBlockRequestKind.Dependency, owner, SubscriptionCause,
-            controller.CurrentPlanVersion);
-        lock (lifecycle)
-        {
-            var dependency = controller.AcquireDependency(BlockUids.GpuAllocationCollector, reason);
-            var lease = new Lease(this, refreshInterval, dependency);
-            leases.Add(lease);
-            lease.ObserveRelease();
-            return lease;
-        }
     }
 
     public Task RunAsync(BusinessBlockRunContext context)
@@ -76,8 +54,6 @@ public sealed partial class GpuAllocationCollector
                 throw new InvalidOperationException("The GPU allocation block already has an active run.");
             run = new Run(context.StopNotification);
             activeRun = run;
-            nextRun.TrySetResult(run);
-            nextRun = new(TaskCreationOptions.RunContinuationsAsynchronously);
             diagnostics.BeginRun(BlockUids.GpuAllocationCollector);
         }
         return RunSessionAsync(run, context);
@@ -315,39 +291,6 @@ public sealed partial class GpuAllocationCollector
         return null;
     }
 
-    private void Release(Lease lease)
-    {
-        lock (lifecycle)
-        {
-            if (!leases.Remove(lease)) return;
-        }
-        lease.Dependency.Dispose();
-    }
-
-    private Lease[] ActiveSubscriptionsLocked()
-    {
-        return leases.ToArray();
-    }
-
-    private async Task AwaitReadyAsync(Task dispatch, CancellationToken withdrawal)
-    {
-        await dispatch.WaitAsync(withdrawal).ConfigureAwait(false);
-        Task<Run> pending;
-        lock (lifecycle) pending = activeRun is { StopNotification.IsCancellationRequested: false } current
-            ? Task.FromResult(current) : nextRun.Task;
-        var run = await pending.WaitAsync(withdrawal).ConfigureAwait(false);
-        await run.Started.Task.WaitAsync(withdrawal).ConfigureAwait(false);
-    }
-
-    private async Task AwaitReleasedAsync(Task dispatch)
-    {
-        await dispatch.ConfigureAwait(false);
-        Task drain;
-        lock (lifecycle) drain = activeRun is { StopNotification.IsCancellationRequested: true } current
-            ? current.Completed.Task : Task.CompletedTask;
-        await drain.ConfigureAwait(false);
-    }
-
     private sealed class Run(CancellationToken stopNotification)
     {
         internal bool Failed;
@@ -372,50 +315,6 @@ public sealed partial class GpuAllocationCollector
         internal void ReleaseCapture()
         {
             if (--captureRequests == 0) captureRequestsDrained!.TrySetResult();
-        }
-    }
-
-    private sealed class Lease : IBusinessBlockDependency
-    {
-        private readonly GpuAllocationCollector owner;
-        private readonly CancellationTokenSource withdrawal = new();
-        private readonly CancellationToken withdrawalToken;
-        private int disposed;
-        internal TimeSpan Interval { get; }
-        internal IBusinessBlockDependency Dependency { get; }
-        private Task? released;
-        public Task Ready => owner.AwaitReadyAsync(Dependency.Ready, withdrawalToken);
-        public Task Released => released ??= owner.AwaitReleasedAsync(Dependency.Released);
-
-        internal Lease(GpuAllocationCollector owner, TimeSpan interval, IBusinessBlockDependency dependency)
-        {
-            this.owner = owner;
-            Interval = interval;
-            Dependency = dependency;
-            withdrawalToken = withdrawal.Token;
-        }
-
-        internal async Task AwaitCaptureReadyAsync(Task ready)
-        {
-            try { await ready.WaitAsync(withdrawalToken).ConfigureAwait(false); }
-            catch (OperationCanceledException) when (withdrawalToken.IsCancellationRequested) { }
-        }
-
-        internal void ObserveRelease()
-            => _ = Dependency.Released.ContinueWith(static (_, state) => ((Lease)state!).Dispose(), this, CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-
-        public void Dispose()
-        {
-            if (Interlocked.Exchange(ref disposed, 1) != 0) return;
-            owner.Release(this);
-            withdrawal.Cancel();
-            withdrawal.Dispose();
-        }
-        public async ValueTask DisposeAsync()
-        {
-            Dispose();
-            await Released.ConfigureAwait(false);
         }
     }
 

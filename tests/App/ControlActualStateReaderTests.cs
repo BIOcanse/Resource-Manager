@@ -10,45 +10,50 @@ public sealed class ControlActualStateReaderTests
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(5);
 
     [Fact]
-    public async Task SingleFetchWaitsForNewWriterResultAndWithdrawsDemandAfterDeliveryOrCancellation()
+    public async Task SingleFetchWaitsForNewWriterResultAndReleasesItsSubscriptionAfterDeliveryOrCancellation()
     {
         var clock = new ControlledClock();
         var writer = new CountingWriter();
         using var reader = new ControlActualStateReader(new Catalog(), [writer], clock);
-        await reader.StartAsync(default);
         try
         {
             var first = reader.FetchOnceAsync("control-test:first", default);
+            await reader.StartAsync(default);
             var startup = await clock.NextTimerAsync();
             Assert.False(first.IsCompleted);
             startup.Fire();
             var periodic = await clock.NextTimerAsync();
             Assert.NotNull(await first.WaitAsync(Deadline));
-            await WaitUntilAsync(() => periodic.Disposed);
+            await StopWhenUnusedAsync(reader);
+            Assert.True(periodic.Disposed);
             Assert.Equal(1, writer.Reads);
 
             writer.Read = _ => Task.FromResult<ControlActualValue?>(new("device", "power", 77));
             var second = reader.FetchOnceAsync("control-test:second", default);
+            await reader.StartAsync(default);
             var resumed = await clock.NextTimerAsync();
-            Assert.False(second.IsCompleted); // The retained result must not satisfy a new demand.
+            Assert.False(second.IsCompleted); // A retained result must not satisfy a new fetch.
             resumed.Fire();
             var resumedPeriodic = await clock.NextTimerAsync();
             Assert.Equal(77, Assert.Single((await second.WaitAsync(Deadline))!.Values).Number);
-            await WaitUntilAsync(() => resumedPeriodic.Disposed);
+            await StopWhenUnusedAsync(reader);
+            Assert.True(resumedPeriodic.Disposed);
 
             using var cancellation = new CancellationTokenSource();
             var cancelled = reader.FetchOnceAsync("control-test:cancel", cancellation.Token);
+            await reader.StartAsync(default);
             var cancelledStartup = await clock.NextTimerAsync();
             cancellation.Cancel();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelled);
-            await WaitUntilAsync(() => cancelledStartup.Disposed);
+            await StopWhenUnusedAsync(reader);
+            Assert.True(cancelledStartup.Disposed);
             Assert.Equal(2, writer.Reads);
         }
         finally { await reader.StopAsync(default); }
     }
 
     [Fact]
-    public async Task PreviousRunLeaseCannotCancelFreshDemandAfterRestart()
+    public async Task LeasesRemainInUseAcrossWorkerRestartsUntilTheirOwnersReleaseThem()
     {
         var clock = new ControlledClock();
         var writer = new CountingWriter();
@@ -57,6 +62,7 @@ public sealed class ControlActualStateReaderTests
         using var previous = reader.AcquireSubscription();
         _ = await clock.NextTimerAsync();
         await reader.StopAsync(default);
+        Assert.True(reader.ActualControlValuesInUse);
 
         await reader.StartAsync(default);
         try
@@ -64,6 +70,7 @@ public sealed class ControlActualStateReaderTests
             using var current = reader.AcquireSubscription();
             var startup = await clock.NextTimerAsync();
             previous.Dispose();
+            Assert.True(reader.ActualControlValuesInUse);
             startup.Fire();
             _ = await clock.NextTimerAsync();
             await WaitUntilAsync(() => reader.Current.Values.Count == 1);
@@ -103,13 +110,17 @@ public sealed class ControlActualStateReaderTests
     }
 
     [Fact]
-    public async Task NoSubscriptionDoesNotProbeOrReadWriters()
+    public void SubscriptionPublishesInUseFactWithoutStartingOrReadingTheWorker()
     {
         var clock = new ControlledClock();
         var writer = new CountingWriter();
         var catalog = new Catalog();
         using var reader = new ControlActualStateReader(catalog, [writer], clock);
-        await reader.StartAsync(default);
+        var changes = new List<bool>();
+        reader.SubscriptionsChanged += () => changes.Add(reader.ActualControlValuesInUse);
+        Assert.False(reader.ActualControlValuesInUse);
+        var lease = reader.AcquireSubscription();
+        Assert.True(reader.ActualControlValuesInUse);
         clock.Advance(TimeSpan.FromHours(1));
         _ = reader.Current;
         Assert.Equal(0, catalog.Reads);
@@ -117,7 +128,10 @@ public sealed class ControlActualStateReaderTests
         Assert.Equal(0, writer.Reads);
         Assert.Equal(0, clock.CreatedTimers);
         Assert.Same(ControlActualState.Empty, reader.Current);
-        await reader.StopAsync(default);
+        lease.Dispose();
+        lease.Dispose();
+        Assert.False(reader.ActualControlValuesInUse);
+        Assert.Equal([true, false], changes);
     }
 
     [Fact]
@@ -144,13 +158,17 @@ public sealed class ControlActualStateReaderTests
         await WaitUntilAsync(() => writer.Reads == 2 && !ReferenceEquals(initial, reader.Current));
         var latest = reader.Current;
         second.Dispose();
-        await WaitUntilAsync(() => periodic.Disposed);
+        Assert.False(reader.ActualControlValuesInUse);
+        Assert.False(periodic.Disposed); // The controller owns stopping the worker.
+        await reader.StopAsync(default);
+        Assert.True(periodic.Disposed);
         periodic.Fire();
         clock.Advance(TimeSpan.FromHours(1));
         Assert.Equal(2, writer.Reads);
         Assert.Same(latest, reader.Current);
 
         using var resumed = reader.AcquireSubscription();
+        await reader.StartAsync(default);
         var resumedStartup = await clock.NextTimerAsync();
         Assert.Equal(TimeSpan.FromSeconds(12), resumedStartup.DueTime);
         Assert.Same(latest, reader.Current);
@@ -161,7 +179,7 @@ public sealed class ControlActualStateReaderTests
     }
 
     [Fact]
-    public async Task DemandEndingDuringStartupDoesNotReadAndResubscriptionGetsItsOwnDelay()
+    public async Task ControllerStopDuringStartupDoesNotReadAndRestartGetsItsOwnDelay()
     {
         var clock = new ControlledClock();
         var writer = new CountingWriter();
@@ -170,7 +188,12 @@ public sealed class ControlActualStateReaderTests
         var lease = reader.AcquireSubscription();
         var startup = await clock.NextTimerAsync();
         lease.Dispose();
+        Assert.False(reader.ActualControlValuesInUse);
+        Assert.False(startup.Disposed);
+        await reader.StopAsync(default);
+        Assert.True(startup.Disposed);
         using var resumed = reader.AcquireSubscription();
+        await reader.StartAsync(default);
         var nextStartup = await clock.NextTimerAsync();
         startup.Fire();
         Assert.Equal(0, writer.Reads);
@@ -206,7 +229,7 @@ public sealed class ControlActualStateReaderTests
     }
 
     [Fact]
-    public async Task UnsubscribeCancelsInFlightReadAndRejectsItsLateResult()
+    public async Task ControllerStopAfterLastUnsubscribeCancelsInFlightReadAndRejectsItsLateResult()
     {
         var clock = new ControlledClock();
         var pending = new TaskCompletionSource<ControlActualValue?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -218,13 +241,23 @@ public sealed class ControlActualStateReaderTests
         var periodic = await clock.NextTimerAsync();
         await WaitUntilAsync(() => writer.Reads == 1);
         lease.Dispose();
+        Assert.False(reader.ActualControlValuesInUse);
+        Assert.False(writer.LastToken.IsCancellationRequested);
+        var stop = reader.StopAsync(default);
         Assert.True(writer.LastToken.IsCancellationRequested);
         pending.SetResult(new("device", "power", 90)); // A native operation may finish after cancellation.
-        await WaitUntilAsync(() => periodic.Disposed);
+        await stop.WaitAsync(Deadline);
+        Assert.True(periodic.Disposed);
         Assert.Same(ControlActualState.Empty, reader.Current);
         Assert.Equal(1, writer.Reads);
-        await reader.StopAsync(default);
+        reader.Dispose();
         Assert.Throws<ObjectDisposedException>(() => reader.AcquireSubscription());
+    }
+
+    private static async Task StopWhenUnusedAsync(ControlActualStateReader reader)
+    {
+        await WaitUntilAsync(() => !reader.ActualControlValuesInUse);
+        await reader.StopAsync(default).WaitAsync(Deadline);
     }
 
     private static async Task WaitUntilAsync(Func<bool> condition)

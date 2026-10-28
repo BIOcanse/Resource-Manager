@@ -16,6 +16,25 @@ namespace Resource_Manager_APP.Tests;
 public sealed class HostManagerPublicServiceCoordinatorOwnerTests
 {
     [Fact]
+    public async Task PreparedOwnerAdmitsAndSettlesRequestWithoutStartingWorkers()
+    {
+        await using var fixture = await Fixture.CreateAsync(start: false);
+        var changes = new List<bool>();
+        fixture.Owner.PendingTasksChanged += () => changes.Add(fixture.Owner.HasPendingTasks);
+        Assert.False(fixture.Owner.HasPendingTasks);
+        var decision = await fixture.Owner.EvaluateAsync(CreateContext(
+            "/api/public/v1/index/status", HttpMethods.Get, IPAddress.Loopback), CancellationToken.None);
+        Assert.True(decision.Allowed);
+        Assert.True(fixture.Owner.HasPendingTasks);
+        await fixture.Owner.StopAsync(CancellationToken.None);
+        Assert.True(fixture.Owner.HasPendingTasks);
+        await fixture.Owner.CompleteAsync(decision.CompletionHandle, CancellationToken.None);
+        Assert.False(fixture.Owner.HasPendingTasks);
+        Assert.Equal(new[] { true, false }, changes);
+        Assert.Equal(0, fixture.Provider.CatalogCallCount);
+    }
+
+    [Fact]
     public async Task InferenceDemandAcquiresCatalogAndUnknownModelsRemainDistinct()
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -286,7 +305,7 @@ public sealed class HostManagerPublicServiceCoordinatorOwnerTests
     }
 
     [Fact]
-    public async Task StopCancelsRunningAndQueuedOperationsThenSupportsRestart()
+    public async Task StopDrainsRunningOperationAndPreservesQueuedOperationForRestart()
     {
         await using var fixture = await Fixture.CreateAsync(cancelFirstLoad: true);
         await WaitForCatalogAsync(fixture.Owner);
@@ -314,17 +333,16 @@ public sealed class HostManagerPublicServiceCoordinatorOwnerTests
         Assert.True(
             first.IsCompleted,
             $"Running operation remained {first.Status} after Host Manager stop.");
-        Assert.True(
-            second.IsCompleted,
-            $"Queued operation remained {second.Status} after Host Manager stop; provider calls={fixture.Provider.LoadCallCount}.");
+        Assert.False(second.IsCompleted);
+        Assert.True(fixture.Owner.HasPendingTasks);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             async () => await first.WaitAsync(TimeSpan.FromSeconds(5)));
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            async () => await second.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.Equal(1, fixture.Provider.LoadCallCount);
 
         await fixture.Owner.StartAsync(CancellationToken.None)
             .WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("community/open-model",
+            (await second.WaitAsync(TimeSpan.FromSeconds(5))).InstanceId);
         await WaitForCatalogAsync(fixture.Owner);
         var restarted = await fixture.Owner.LoadAsync(
             new AiModelLoadRequest(
@@ -335,7 +353,7 @@ public sealed class HostManagerPublicServiceCoordinatorOwnerTests
                 null),
             CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal("community/open-model", restarted.InstanceId);
-        Assert.Equal(2, fixture.Provider.LoadCallCount);
+        Assert.Equal(3, fixture.Provider.LoadCallCount);
     }
 
     [Fact]
@@ -436,7 +454,8 @@ public sealed class HostManagerPublicServiceCoordinatorOwnerTests
             bool failCatalogReturn = false,
             bool failCatalogComplete = false,
             int catalogTimeoutMilliseconds = 10_000,
-            int catalogIntervalMilliseconds = 15_000)
+            int catalogIntervalMilliseconds = 15_000,
+            bool start = true)
         {
             var hostPlan = HostManagerTestPlanFactory.CreatePlan(
                 root =>
@@ -485,7 +504,8 @@ public sealed class HostManagerPublicServiceCoordinatorOwnerTests
                     scratches.Add(scratch);
                     return scratch;
                 });
-            await owner.StartAsync(CancellationToken.None);
+            if (start) await owner.StartAsync(CancellationToken.None);
+            else await owner.InitializeAsync(CancellationToken.None);
             return new Fixture(owner, provider, planProvider, ledger, scratches);
         }
 

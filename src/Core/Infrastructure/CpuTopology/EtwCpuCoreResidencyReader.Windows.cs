@@ -7,7 +7,6 @@ namespace ResourceManager.App.Infrastructure.CpuTopology;
 
 public sealed partial class EtwCpuCoreResidencyReader
 {
-    private IKernelEtwSubscription? metadataSubscription;
     private TimeSpan captureInterval;
     private TimeSpan deliveryGrace;
     private TimeSpan ObservationWindow => runtimePlanProvider.Current.HostManager.RequirePublished().CpuCoreResidency.ObservationWindow;
@@ -16,12 +15,12 @@ public sealed partial class EtwCpuCoreResidencyReader
     private void UpdateCaptureFrequency(NativeItemSamplingSubscriptionPlan<CpuResidencySampleRequest, SamplingOwnerToken> plan)
     {
         var wasWindowed = WindowedCapture;
+        var previousInterval = captureInterval;
         captureInterval = plan.SourceViews.Count == 0 ? TimeSpan.Zero : plan.SourceViews.Min(static source => source.Interval);
         deliveryGrace = plan.Schedule.FreshnessGrace;
-        if (!wasWindowed && WindowedCapture && Capture.HasSessionLease)
+        if (previousInterval > TimeSpan.Zero && !wasWindowed && WindowedCapture && Capture.IsWindowActive)
         {
-            EnsureMetadata();
-            Capture.Stop("ContextSwitch is paused after demand changes from continuous to windowed capture.");
+            Capture.PauseWindow("Aggregation is paused after the source cadence changes from continuous to finite windows.");
         }
     }
 
@@ -34,14 +33,13 @@ public sealed partial class EtwCpuCoreResidencyReader
             return;
         }
         // The native tracker still owns the due time. Only its observation window is prepared ahead of it.
-        EnsureMetadata();
         // A timer can return just before the native due time. Retain the same
         // unpublished window across that final wait rather than opening it twice.
-        if (!Capture.HasSessionLease)
+        if (!Capture.IsWindowActive)
         {
             var idle = delay - ObservationWindow;
             if (idle > TimeSpan.Zero && await demandSignal.WaitAsync(RoundUpTimerDelay(idle), cancellationToken)) return;
-            EnsureStarted();
+            Capture.BeginWindow();
         }
         if (await WaitForWindowOrDemandAsync(cancellationToken)) return;
         // A failed or already-ready preparation must not spin/retry before the native due time.

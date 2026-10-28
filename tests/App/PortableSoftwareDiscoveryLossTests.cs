@@ -20,7 +20,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed class PortableSoftwareDiscoveryLossTests
 {
     [Fact]
-    public async Task RunningDiscoveryReceivesProcessStartsAfterBrokerRestarts()
+    public async Task RunningDiscoveryReceivesProcessStartsAfterItsHeldRuntimeIsRebuilt()
     {
         using var catalog = RuntimeProcessAttributionCatalog.CreateOrReuse(null, [], [], [],
             new CandidateResolver(), new NullResolvers(), new NullResolvers(), new NullResolvers(),
@@ -32,7 +32,6 @@ public sealed class PortableSoftwareDiscoveryLossTests
         using var service = new PortableSoftwareDiscoveryService(broker, new CatalogProvider(catalog),
             new MatchingCatalog(), registry, new RecordingLogger(), () => [], ReadFixtureIdentity);
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        await broker.StartAsync(default);
         await service.StartAsync(default);
         var discoveryWorker = Worker(service);
         try
@@ -41,12 +40,12 @@ public sealed class PortableSoftwareDiscoveryLossTests
             firstRuntime.EmitProcessStart();
             await registry.Observed.Reader.ReadAsync(deadline.Token);
 
-            await broker.StopAsync(default);
+            firstRuntime.StopProcessingUnexpectedly();
+            broker.Owner.Reconcile();
             Assert.True(firstRuntime.Disposed);
             Assert.False(discoveryWorker.IsCompleted);
-            await broker.StartAsync(default);
-            // An independent reader also needs the second run. It cannot restore
-            // discovery's subscription or cause discovery to enumerate inventory.
+            // Rebuilding the held resource retains discovery's active reader.
+            // An independent reader cannot restore discovery or enumerate inventory.
             using var independentReader = broker.Subscribe(new("independent-process-reader",
                 KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
             var secondRuntime = factory.Runtimes[1];
@@ -60,7 +59,6 @@ public sealed class PortableSoftwareDiscoveryLossTests
         finally
         {
             await service.StopAsync(default);
-            await broker.StopAsync(default);
         }
     }
 
@@ -89,6 +87,51 @@ public sealed class PortableSoftwareDiscoveryLossTests
             Assert.True(Worker(service).IsCompletedSuccessfully);
             Assert.Equal(run, broker.ReleaseCount);
         }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PendingRegistryAdmissionIsCanceledByWorkerStopOrScanCancellation(bool explicitScan)
+    {
+        using var catalog = RuntimeProcessAttributionCatalog.CreateOrReuse(null, [], [], [],
+            new CandidateResolver(), new NullResolvers(), new NullResolvers(), new NullResolvers(),
+            SoftwareIdentityCatalogTestData.Empty, SoftwareIdentityCatalogTestData.Owner);
+        var provider = new CatalogProvider(catalog);
+        var registry = new RecordingRegistry { BlockAdmission = true };
+        var broker = new Broker();
+        var logger = new RecordingLogger();
+        using var service = new PortableSoftwareDiscoveryService(broker, provider,
+            new MatchingCatalog(), registry, logger,
+            () => [new(Environment.ProcessId, 2)], ReadFixtureIdentity);
+        using var cancellation = new CancellationTokenSource();
+        if (explicitScan)
+        {
+            var scan = service.ScanRunningProcessesAsync(cancellation.Token);
+            try
+            {
+                await registry.AdmissionStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.False(scan.IsCompleted);
+            }
+            finally { cancellation.Cancel(); }
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => scan.WaitAsync(TimeSpan.FromSeconds(5)));
+        }
+        else
+        {
+            await service.StartAsync(default);
+            try
+            {
+                await registry.AdmissionStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.False(Worker(service).IsCompleted);
+            }
+            finally { await service.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(5)); }
+            Assert.True(Worker(service).IsCompletedSuccessfully);
+            Assert.Equal(1, broker.ReleaseCount);
+        }
+        Assert.Equal(0, registry.Observations);
+        Assert.Equal(0, provider.ActiveReaders);
+        Assert.Empty(logger.Warnings);
+        Assert.Empty(logger.Errors);
     }
 
     [Fact]
@@ -318,9 +361,16 @@ public sealed class PortableSoftwareDiscoveryLossTests
     private sealed class RecordingRegistry : ResourceManager.App.Application.SoftwareDiscovery.IPortableSoftwareRegistry
     {
         internal int Observations;
+        internal bool BlockAdmission;
+        internal TaskCompletionSource AdmissionStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal Channel<bool> Observed { get; } = Channel.CreateUnbounded<bool>();
-        public void Observe(ResourceManager.App.Domain.SoftwareDiscovery.PortableSoftwareObservation observation)
+        public async Task ObserveAsync(ResourceManager.App.Domain.SoftwareDiscovery.PortableSoftwareObservation observation, CancellationToken cancellationToken)
         {
+            if (BlockAdmission)
+            {
+                AdmissionStarted.TrySetResult();
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+            }
             Interlocked.Increment(ref Observations);
             Observed.Writer.TryWrite(true);
         }
@@ -500,6 +550,7 @@ public sealed class PortableSoftwareDiscoveryLossTests
         public bool IsProcessing { get; private set; }
         public int EventsLost => 0;
         public void StartProcessing(Action<Exception?> completed) => IsProcessing = true;
+        internal void StopProcessingUnexpectedly() => IsProcessing = false;
         public void UpdateSubscriptions(IReadOnlyList<KernelEtwSubscriptionRegistration> subscriptions,
             KernelEtwSessionContext context) => Dispatcher.UpdateSubscriptions(subscriptions, context, static _ => { });
         public KernelEtwSessionStopResult Stop(TimeSpan waitTimeout)

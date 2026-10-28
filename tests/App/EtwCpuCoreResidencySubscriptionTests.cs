@@ -9,6 +9,9 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class EtwCpuCoreResidencySubscriptionTests
 {
+    private const KernelTraceEventParser.Keywords HeldKeywords = KernelTraceEventParser.Keywords.Process
+        | KernelTraceEventParser.Keywords.Thread | KernelTraceEventParser.Keywords.ContextSwitch;
+
     [Fact]
     public async Task SameReaderCanRestartAndBindFreshSubscriptionAfterStop()
     {
@@ -16,8 +19,12 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
         var broker = new CrossThreadBindingBroker();
         using var reader = new EtwCpuCoreResidencyReader(broker, sampling.Provider, sampling.Owner,
             NullLogger<EtwCpuCoreResidencyReader>.Instance, static (_, _) => { });
-        broker.BeforeLeaseReturn = () => FeedCpuWindow(reader, sampling, broker.SubscribeCount * 100);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        long previousWindowEnd = 0;
+        // Finish this fixture's initial boundaries during each run-entry bind,
+        // before the fast worker can legitimately publish a warming value.
+        broker.BeforeLeaseReturn = () => previousWindowEnd = FeedCpuWindow(
+            reader, sampling, broker.SubscribeCount * 100, previousWindowEnd);
         ResourceManager.App.Domain.CpuTopology.CpuCoreResidencySnapshot firstValue;
         await using (var firstRun = reader.SubscribeAsync("first-run", TimeSpan.FromMilliseconds(100), timeout.Token)
             .GetAsyncEnumerator(timeout.Token))
@@ -26,6 +33,7 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
             await reader.StartAsync(default);
             await broker.BindingCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.Equal(37, reader.GetDiagnostics().SessionGeneration);
+            await WaitUntilAsync(() => IsWindowActive(reader));
             Assert.True(await next.WaitAsync(TimeSpan.FromSeconds(5)));
             firstValue = Assert.IsType<ResourceManager.App.Domain.CpuTopology.CpuCoreResidencySnapshot>(firstRun.Current);
             Assert.Contains(firstValue.Processes, process => process.ProcessId == 100);
@@ -40,6 +48,7 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
             var next = secondRun.MoveNextAsync().AsTask();
             await WaitUntilAsync(() => broker.SubscribeCount == 2 && reader.GetDiagnostics().SessionGeneration == 37);
             Assert.Equal(37, reader.GetDiagnostics().SessionGeneration);
+            await WaitUntilAsync(() => IsWindowActive(reader));
             Assert.True(await next.WaitAsync(TimeSpan.FromSeconds(5)));
             var secondValue = Assert.IsType<ResourceManager.App.Domain.CpuTopology.CpuCoreResidencySnapshot>(secondRun.Current);
             Assert.NotSame(firstValue, secondValue);
@@ -51,8 +60,16 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
         Assert.Equal(2, broker.DisposeCount);
     }
 
-    private static void FeedCpuWindow(EtwCpuCoreResidencyReader reader,
-        HostManagerSamplingSubscriptionTestFixture sampling, int processId)
+    private static bool IsWindowActive(EtwCpuCoreResidencyReader reader)
+    {
+        var owner = typeof(EtwCpuCoreResidencyReader)
+            .GetField("captureOwner", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(reader);
+        return owner is not null && (bool)typeof(EtwCpuResidencyCaptureOwner).GetProperty("IsWindowActive",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.GetValue(owner)!;
+    }
+
+    private static long FeedCpuWindow(EtwCpuCoreResidencyReader reader,
+        HostManagerSamplingSubscriptionTestFixture sampling, int processId, long previousWindowEnd)
     {
         // Use the actual reader's session buffer, as in EtwCpuResidencyWindowDemandTests.
         var owner = (EtwCpuResidencyCaptureOwner)typeof(EtwCpuCoreResidencyReader)
@@ -63,7 +80,7 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
         var completion = (CpuResidencyWindowCompletion)session.GetType().GetProperty("Window")!.GetValue(session)!;
         var plan = sampling.Provider.Current.HostManager.CpuCoreResidency;
         var processors = plan.PhysicalCoreByLogicalProcessor.Keys.Order().ToArray();
-        var start = Stopwatch.GetTimestamp();
+        var start = Math.Max(Stopwatch.GetTimestamp(), previousWindowEnd + 1);
         var now = DateTimeOffset.UtcNow;
         buffer.ObserveProcessStart(start, now, processId, checked((ulong)processId), processId * 10L, "recorded");
         foreach (var processor in processors)
@@ -80,6 +97,7 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
                 processId, processId + processor, 0, null, 0);
             completion.Observe(processor, end);
         }
+        return end;
     }
 
     [Fact]
@@ -182,7 +200,7 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
     }
 
     [Fact]
-    public async Task FreezeWhileSubscriptionIsBeingAcquiredReleasesTheReturnedLease()
+    public async Task FreezeWhileRunLeaseIsBeingAcquiredRetainsTheReturnedLeaseUntilStop()
     {
         using var sampling = new HostManagerSamplingSubscriptionTestFixture();
         var broker = new CrossThreadBindingBroker();
@@ -195,8 +213,12 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
         try
         {
             Assert.True(await broker.BindingCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5)));
-            await WaitUntilAsync(() => broker.DisposeCount == 1);
-            Assert.Null(reader.GetDiagnostics().SessionGeneration);
+            await WaitUntilAsync(() => reader.GetDiagnostics().SessionGeneration == 37);
+            Assert.False(IsWindowActive(reader));
+            Assert.Equal(0, broker.DisposeCount);
+            Assert.Equal(1, broker.SubscribeCount);
+            Assert.Equal(HeldKeywords, broker.Keywords);
+            Assert.Equal(1, broker.GetSnapshot().SubscriptionCount);
             Assert.Null(reader.Read());
         }
         finally
@@ -204,6 +226,7 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
             await reader.StopAsync(CancellationToken.None);
         }
         Assert.Equal(1, broker.DisposeCount);
+        Assert.Equal(KernelTraceEventParser.Keywords.None, broker.GetSnapshot().EnabledKeywords);
     }
 
     [Fact]
@@ -252,19 +275,8 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
             Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
             if (dispose) stopping = Task.Run(reader.Dispose);
             else stopping = reader.StopAsync(CancellationToken.None);
-            await WaitUntilAsync(() =>
-            {
-                try
-                {
-                    using var admitted = reader.AcquireSubscription("test.await-stop", TimeSpan.FromSeconds(1));
-                    return false;
-                }
-                catch (InvalidOperationException) { return true; }
-            });
             Assert.False(stopping.IsCompleted);
             Assert.Equal(0, broker.DisposeCount);
-            Assert.Throws<InvalidOperationException>(() => reader.AcquireSubscription(
-                "test.after-stop", TimeSpan.FromSeconds(1)));
         }
         finally
         {
@@ -276,6 +288,14 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
         Assert.Equal(1, broker.DisposeCount);
         Assert.Null(reader.GetDiagnostics().SessionGeneration);
         Assert.Null(reader.Read());
+        if (dispose)
+            Assert.Throws<InvalidOperationException>(() => reader.AcquireSubscription(
+                "test.after-dispose", TimeSpan.FromSeconds(1)));
+        else
+        {
+            using var retained = reader.AcquireSubscription("test.after-stop", TimeSpan.FromSeconds(1));
+            Assert.Equal(1, broker.SubscribeCount);
+        }
     }
 
     [Fact]
@@ -325,7 +345,7 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
     }
 
     [Fact]
-    public async Task RemovingTheLastDemandReleasesAnUnavailableKernelLease()
+    public async Task RemovingTheLastSubscriptionPublishesInactiveAndExplicitStopReleasesTheUnavailableKernelLease()
     {
         using var sampling = new HostManagerSamplingSubscriptionTestFixture();
         var broker = new PassiveUnavailableBroker();
@@ -342,6 +362,9 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
         {
             await WaitUntilAsync(() => broker.SubscribeCount == 1);
             subscription.Dispose();
+            Assert.False(sampling.Owner.Activity.HasInUseSubscriptions(6));
+            Assert.Equal(0, broker.DisposeCount);
+            await reader.StopAsync(CancellationToken.None);
             await WaitUntilAsync(() => broker.DisposeCount == 1);
 
             Assert.Null(reader.Read());
@@ -354,7 +377,7 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
     }
 
     [Fact]
-    public async Task StopBeforeStartRevokesOldDemandAndRestartAcceptsFreshSubscriptions()
+    public async Task StopBeforeStartRetainsSubscriptionsAndExplicitStartResumesThem()
     {
         using var sampling = new HostManagerSamplingSubscriptionTestFixture();
         var broker = new PassiveUnavailableBroker();
@@ -368,24 +391,25 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
             TimeSpan.FromSeconds(1));
 
         await reader.StopAsync(CancellationToken.None);
-        Assert.Throws<InvalidOperationException>(() => reader.AcquireSubscription(
-            "test.while-stopped", TimeSpan.FromSeconds(1)));
+        using var whileStopped = reader.AcquireSubscription("test.while-stopped", TimeSpan.FromSeconds(1));
+        Assert.Equal(0, broker.SubscribeCount);
+        Assert.True(sampling.Owner.Activity.HasInUseSubscriptions(6));
         await reader.StartAsync(CancellationToken.None);
         try
         {
-            await Task.Delay(50);
-            Assert.Equal(0, broker.SubscribeCount);
+            await WaitUntilAsync(() => broker.SubscribeCount == 1);
             Assert.Equal(0, broker.DisposeCount);
             Assert.Null(reader.Read());
             pending.Dispose();
             using var fresh = reader.AcquireSubscription("test.after-restart", TimeSpan.FromSeconds(1));
-            await WaitUntilAsync(() => broker.SubscribeCount == 1);
+            Assert.Equal(1, broker.SubscribeCount);
         }
         finally
         {
             pending.Dispose();
             await reader.StopAsync(CancellationToken.None);
         }
+        Assert.Equal(1, broker.DisposeCount);
     }
 
     [Fact]
@@ -443,10 +467,14 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
         public int DisposeCount => Volatile.Read(ref disposed);
         public TaskCompletionSource<bool> BindingCompleted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Action? BeforeLeaseReturn { get; set; }
+        private KernelTraceEventParser.Keywords requestedKeywords;
+        public KernelTraceEventParser.Keywords Keywords => SubscribeCount > DisposeCount
+            ? requestedKeywords : KernelTraceEventParser.Keywords.None;
 
         public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
         {
             Interlocked.Increment(ref subscribeCount);
+            requestedKeywords = request.Keywords;
             var source = new KernelEtwEventSource();
             var binding = Task.Run(() => request.Bind(source, new(37, DateTimeOffset.UnixEpoch)));
             var completed = binding.Wait(TimeSpan.FromSeconds(1));
@@ -463,8 +491,7 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
 
         public KernelEtwSessionSnapshot GetSnapshot()
             => new("Running", "fixture", 37, DateTimeOffset.UnixEpoch,
-                KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread
-                    | KernelTraceEventParser.Keywords.ContextSwitch, 1 - DisposeCount, Volatile.Read(ref EventsLost));
+                Keywords, SubscribeCount - DisposeCount, Volatile.Read(ref EventsLost));
 
         private sealed class Lease(CrossThreadBindingBroker owner, KernelEtwEventSource source) : IKernelEtwSubscription
         {

@@ -21,8 +21,8 @@ public sealed partial class FanControlCoreClient(
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly SemaphoreSlim temperatureGate = new(1, 1);
     private readonly object sessionSync = new();
-    private TaskCompletionSource drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private volatile bool sessionStopped;
+    private TaskCompletionSource drained = CompletedSignal();
+    private volatile bool sessionStopped = true;
     private IFanControlCoreSession? session;
     private Func<string, string?, IFanControlCoreSession>? sessionFactory;
     private int activeCalls;
@@ -59,31 +59,15 @@ public sealed partial class FanControlCoreClient(
     /// <summary>
     /// 这台机器上有哪几个风扇、各自叫什么。
     ///
-    /// **这是"有什么"，不是"现在多少"。** 普通 describe 返回已探测能力；
-    /// 显式 ResetDetection 后才重新探测，其他读取复用当前清单。
+    /// **这是"有什么"，不是"现在多少"。** 普通读取只返回已探测能力；
+    /// DiscoverAsync 显式探测，ResetDetection 仅使清单失效。
     ///
     /// 缓存是必须的，不是优化：目录每列一次可控对象都要问它，
     /// 每次重探底层通道都可能耗时数秒。
     /// </summary>
-    public IReadOnlyList<FanCoreFan> Describe()
-    {
-        lock (describeGate)
-        {
-            if (describedFans is { } cached)
-            {
-                return cached;
-            }
-            describedFans = ReadDescription();
-            return describedFans;
-        }
-    }
+    public IReadOnlyList<FanCoreFan> Describe() => Volatile.Read(ref describedFans) ?? [];
 
-    /// <summary>
-    /// 把缓存的风扇清单丢掉，下次问的时候重新探一遍。
-    ///
-    /// 给"检测平台"用：用户换了驱动或机器状态之后，
-    /// 他要的是重新问一遍硬件，而不是看我们开机时记下的那份答案。
-    /// </summary>
+    /// <summary>Invalidate the finite inventory result; ordinary reads stay passive.</summary>
     public void ResetDetection()
     {
         lock (describeGate)
@@ -93,50 +77,61 @@ public sealed partial class FanControlCoreClient(
         }
     }
 
-    private IReadOnlyList<FanCoreFan> ReadDescription()
+    /// <summary>Finite discovery holds the session resource without starting a business block.</summary>
+    public async Task<IReadOnlyList<FanCoreFan>> DiscoverAsync(CancellationToken cancellationToken)
     {
-        JsonElement? response;
-        try
+        cancellationToken.ThrowIfCancellationRequested();
+        if (Volatile.Read(ref describedFans) is { } cached) return cached;
+        var discovery = DiscoverOwnedAsync(cancellationToken);
+        try { return await discovery.WaitAsync(RequestTimeout, cancellationToken).ConfigureAwait(false); }
+        catch (TimeoutException error)
         {
-            response = SendAsync("describe", refreshDetection ? new Dictionary<string, object?> { ["refresh"] = true } : null, CancellationToken.None)
-                .GetAwaiter()
-                .GetResult();
-        }
-        catch (Exception error) when (error is IOException or InvalidOperationException)
-        {
+            logger?.LogWarning(error, "Fan Control Core inventory discovery timed out; its resource remains owned until completion.");
             return [];
         }
-
-        if (response is not { } result
-            || !result.TryGetProperty("fans", out var fans)
-            || fans.ValueKind != JsonValueKind.Array)
-        {
-            return [];
-        }
-
-        var backend = result.TryGetProperty("backend", out var name)
-            && name.ValueKind == JsonValueKind.String
-                ? name.GetString()
-                : null;
-
-        /*
-         * 通道用不上时那句**具体**原因。
-         *
-         * "这台机器上没有 Uniwill 的 ACPI WMI 接口" 和 "没有管理员权限" 对用户
-         * 是完全不同的两件事，笼统说一句"没有可用的风扇控制通道"，
-         * 前者只能去换机器，后者其实重启一下就好了。
-         */
-        if (Text(result, "reason") is { } unavailableDetail) ReportDiagnostic(unavailableDetail);
-        unavailableReason = Flag(result, "available") ? null : "fan-channel-missing";
-        foreach (var fan in fans.EnumerateArray())
-            if (Text(fan, "firmwareCurveRequires") is { } prerequisite) ReportDiagnostic(prerequisite);
-
-        if (result.TryGetProperty("diagnostics", out var diagnostics) && diagnostics.ValueKind == JsonValueKind.Array)
-            foreach (var detail in diagnostics.EnumerateArray()) if (detail.GetString() is { } text) ReportDiagnostic(text);
-        refreshDetection = false;
-        return ParseFans(fans, backend);
     }
 
+    private async Task<IReadOnlyList<FanCoreFan>> DiscoverOwnedAsync(CancellationToken cancellationToken)
+    {
+        await discoveryGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (Volatile.Read(ref describedFans) is { } cached) return cached;
+            var held = await AcquireSessionAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await Task.Run(() => ExecuteRequest(held, "describe",
+                        refreshDetection ? new Dictionary<string, object?> { ["refresh"] = true } : null)).ConfigureAwait(false);
+                    return Describe();
+                }
+                finally { gate.Release(); }
+            }
+            finally { await ReleaseSessionAsync().ConfigureAwait(false); }
+        }
+        finally { discoveryGate.Release(); }
+    }
+
+    private void ObserveDescription(JsonElement response)
+    {
+        if (!response.TryGetProperty("fans", out var fans) || fans.ValueKind != JsonValueKind.Array) return;
+        var backend = Text(response, "backend");
+        if (Text(response, "reason") is { } detail) ReportDiagnostic(detail);
+        foreach (var fan in fans.EnumerateArray())
+            if (Text(fan, "firmwareCurveRequires") is { } prerequisite) ReportDiagnostic(prerequisite);
+        if (response.TryGetProperty("diagnostics", out var diagnostics) && diagnostics.ValueKind == JsonValueKind.Array)
+            foreach (var entry in diagnostics.EnumerateArray())
+                if (entry.GetString() is { } text) ReportDiagnostic(text);
+        lock (describeGate)
+        {
+            unavailableReason = Flag(response, "available") ? null : "fan-channel-missing";
+            Volatile.Write(ref describedFans, ParseFans(fans, backend));
+            refreshDetection = false;
+        }
+    }
     internal static IReadOnlyList<FanCoreFan> ParseFans(JsonElement fans, string? backend)
     {
         var list = new List<FanCoreFan>();
@@ -291,17 +286,7 @@ public sealed partial class FanControlCoreClient(
     /// 和风扇清单同一次 describe 的结果 —— 清单是空的时候，
     /// **为什么空**就在这里。
     /// </summary>
-    public string? UnavailableReason
-    {
-        get
-        {
-            lock (describeGate)
-            {
-                describedFans ??= ReadDescription();
-            }
-            return unavailableReason;
-        }
-    }
+    public string? UnavailableReason => unavailableReason;
 
     private volatile string? unavailableReason;
 
@@ -334,7 +319,11 @@ public sealed partial class FanControlCoreClient(
         lock (sessionSync)
         {
             current = disposed || sessionStopped ? null : session;
-            if (current is not null) { activeCalls++; temperatureInFlight = true; }
+            if (current is not null)
+            {
+                if (activeCalls++ == 0) drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                temperatureInFlight = true;
+            }
         }
         if (current is null) { temperatureGate.Release(); return false; }
         var pending = Task.Run(() =>
@@ -360,184 +349,6 @@ public sealed partial class FanControlCoreClient(
     private readonly object describeGate = new();
     private IReadOnlyList<FanCoreFan>? describedFans;
 
-    public async Task<JsonElement?> SendAsync(
-        string operation,
-        IReadOnlyDictionary<string, object?>? arguments,
-        CancellationToken cancellationToken,
-        bool skipIfBusy = false)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(operation);
-        TaskCompletionSource runDrain;
-        lock (sessionSync)
-        {
-            ObjectDisposedException.ThrowIf(disposed, this);
-            if (sessionStopped) return null;
-            runDrain = drained;
-        }
-        if (skipIfBusy)
-        {
-            if (!await gate.WaitAsync(0, cancellationToken).ConfigureAwait(false)) return null;
-        }
-        else await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-
-        // 已接下的操作真正完成前一直持有请求门；等待超时不能中止原生 I/O，也不能放进第二个硬件所有者。
-        var pending = Task.Run(() => ExecuteOwned(operation, arguments, cancellationToken, runDrain));
-        try { return await pending.WaitAsync(RequestTimeout).ConfigureAwait(false); }
-        catch (TimeoutException error)
-        {
-            logger?.LogWarning(error, "Fan Control Core request timed out ({Operation}); the session remains owned until completion.", operation);
-            unavailableReason = "fan-core-timeout";
-            return null;
-        }
-    }
-
-    private JsonElement? ExecuteOwned(string operation, IReadOnlyDictionary<string, object?>? arguments,
-        CancellationToken cancellationToken, TaskCompletionSource runDrain)
-    {
-        var acquired = false;
-        try
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            IFanControlCoreSession? current;
-            lock (sessionSync)
-            {
-                if (disposed || sessionStopped || !ReferenceEquals(runDrain, drained)) return null;
-                activeCalls++;
-                commandOperation = session is null ? $"start/recovery for {operation}" : operation;
-                acquired = true;
-                current = session;
-            }
-            if (current is null)
-            {
-                var stateDirectory = Path.Combine(PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath),
-                    "UserData", "Control", "FanControlCore");
-                current = sessionFactory is { } factory
-                    ? factory(stateDirectory, ResolveLibreHardwareMonitorPath())
-                    : new EmbeddedFanControlCoreSession(stateDirectory, ResolveLibreHardwareMonitorPath());
-                current.SetDiagnosticSink(ReportDiagnostic);
-                lock (sessionSync) { session = current; commandOperation = operation; }
-            }
-            // 停止期间才完成创建的会话仍归本客户端收尾，不能再给它派发新命令。
-            if (disposed || sessionStopped) return null;
-            var request = new Dictionary<string, object?>(arguments ?? new Dictionary<string, object?>())
-            {
-                ["id"] = Interlocked.Increment(ref nextRequestId),
-                ["op"] = operation
-            };
-            var response = Handle(current, JsonSerializer.SerializeToElement(request), operation);
-            if (response is { } result) ObserveSoftwareCurveReceipt(operation, arguments, result);
-            return response;
-        }
-        catch (OperationCanceledException) when (!acquired && cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception error)
-        {
-            logger?.LogWarning(error, "Fan Control Core request failed ({Operation}).", operation);
-            unavailableReason = "fan-core-failed";
-            ClearSoftwareCurves();
-            return null;
-        }
-        finally { lock (sessionSync) commandOperation = null; if (acquired) EndCall(); gate.Release(); }
-    }
-
-    private JsonElement? Handle(IFanControlCoreSession current, JsonElement request, string operation)
-    {
-        try { return current.Handle(request); }
-        catch (Exception error)
-        {
-            logger?.LogWarning(error, "Fan Control Core request failed ({Operation}).", operation);
-            unavailableReason = "fan-core-failed";
-            ClearSoftwareCurves();
-            return null;
-        }
-    }
-
-    private void EndCall()
-    {
-        IFanControlCoreSession? closing = null;
-        var complete = false;
-        lock (sessionSync)
-        {
-            activeCalls--;
-            if (sessionStopped && activeCalls == 0)
-            {
-                closing = session; session = null; complete = true;
-            }
-        }
-        if (complete) CloseSession(closing);
-    }
-
-    private void CloseSession(IFanControlCoreSession? closing)
-    {
-        lock (sessionSync) closingSession = closing;
-        try { closing?.Dispose(); }
-        catch (Exception error)
-        {
-            logger?.LogError(error, "Fan Control Core shutdown restoration failed; durable recovery remains for next startup.");
-        }
-        finally { lock (sessionSync) closingSession = null; drained.TrySetResult(); }
-    }
-
-    private static string? ResolveLibreHardwareMonitorPath()
-    {
-        var path = Path.GetDirectoryName(typeof(LibreHardwareMonitor.Hardware.Computer).Assembly.Location);
-        return path is not null && File.Exists(Path.Combine(path, "LibreHardwareMonitorLib.dll")) ? path : null;
-    }
-
-    internal void StartSession()
-    {
-        lock (describeGate)
-        {
-            lock (sessionSync)
-            {
-                ObjectDisposedException.ThrowIf(disposed, this);
-                if (sessionStopped)
-                {
-                    if (!drained.Task.IsCompleted)
-                        throw new InvalidOperationException("The preceding fan session has not drained.");
-                    drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
-                    sessionStopped = false;
-                }
-            }
-            describedFans = null;
-            unavailableReason = null;
-            refreshDetection = false;
-        }
-    }
-
-    private void BeginSessionStop()
-    {
-        IFanControlCoreSession? closing = null;
-        var complete = false;
-        lock (sessionSync)
-        {
-            if (sessionStopped) return;
-            sessionStopped = true;
-            if (activeCalls == 0) { closing = session; session = null; complete = true; }
-        }
-        ClearSoftwareCurves();
-        if (complete) CloseSession(closing);
-    }
-
-    internal async ValueTask StopSessionAsync()
-    {
-        Task drain;
-        lock (sessionSync) drain = drained.Task;
-        await Task.Run(BeginSessionStop).ConfigureAwait(false);
-        await drain.ConfigureAwait(false);
-    }
-
-    public void Dispose()
-    {
-        lock (sessionSync) disposed = true;
-        BeginSessionStop();
-    }
-
-    // 主机正常停止时，要等已接下的命令结束并交还临时接管；外层停止期限只限制等待。
-    public async ValueTask DisposeAsync()
-    {
-        await Task.Run(Dispose).ConfigureAwait(false);
-        await drained.Task.ConfigureAwait(false);
-    }
 }
 
 internal interface IFanControlCoreSession : IDisposable

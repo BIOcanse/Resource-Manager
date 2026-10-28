@@ -6,6 +6,8 @@ namespace ResourceManager.App.Application.GpuPlacement;
 
 public interface IRunningGpuPlacementActionService
 {
+    /// <summary>Acquires optional renderer observation resources for the owning block's entire run.</summary>
+    IDisposable? AcquireRendererObservation();
     IRunningGpuPlacementPreparationCycle CreatePreparationReadCycle()
         => new DelegatingGpuPlacementPreparationCycle(this);
     bool HasUnreleasedExternalControl => false;

@@ -17,7 +17,6 @@ internal static class NativeBackendBlockTestSupport
             .Select(value => value.Id), new NativeControlOptions
         {
             Profile = profile,
-            DemandItemUid = StateItemUids.BlockDemand,
             ShutdownItemUid = StateItemUids.ProgramShuttingDown,
             HistoryCapacity = historyCapacity
         }, NullLogger<NativeControl>.Instance);
@@ -100,43 +99,46 @@ internal sealed class NativeBackendBlockFixture(
     BusinessBlockScheduler scheduler,
     ServiceProvider provider) : IAsyncDisposable
 {
-    private IBusinessBlockDependency? nativeEtwGroupDemand;
+    private readonly Dictionary<int, StateCell<bool>> nativeSubscriptions = [];
+    private readonly Dictionary<int, StateCell<bool>> hostPermits = [];
     internal IReadOnlyList<BusinessBlockRegistration> Registrations { get; } = registrations;
     internal NativeControl Native { get; } = native;
     internal StateAuthority Authority { get; } = authority;
     internal NativeEtwSessionAvailability Availability { get; } = availability;
     internal BusinessBlockScheduler Scheduler { get; } = scheduler;
 
-    internal void HoldNativeEtwGroup()
+    internal async Task InitializeHostPermitsAsync()
     {
-        var reason = new BusinessBlockReason(BusinessBlockRequestKind.Configuration,
-            nameof(NativeBackendBlockFixture), "hold-native-etw-group", 0);
-        SetNativeEtwGroupDemandAsync(true, reason).WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
-        BusinessBlockTestSupport.Until(() =>
-            Scheduler.ReadState(BlockUids.NativeEtwLifetimeService) == BusinessBlockState.Running)
-            .GetAwaiter().GetResult();
-    }
-
-    internal Task SetNativeEtwGroupDemandAsync(bool hold, BusinessBlockReason reason)
-    {
-        if (hold)
+        foreach (var registration in Registrations)
         {
-            nativeEtwGroupDemand ??= Scheduler.AcquireDependency(BlockUids.NativeEtwLifetimeService, reason);
-            return nativeEtwGroupDemand.Ready;
+            if (!hostPermits.TryGetValue(registration.Id, out var cell))
+                hostPermits.Add(registration.Id, cell = Authority.ClaimCell<bool>(new(StateItemUids.HostStartPermitted, registration.Id)));
+            await cell.PublishAsync(true, Reason("host-start-permitted"));
         }
-
-        var demand = nativeEtwGroupDemand;
-        nativeEtwGroupDemand = null;
-        return demand?.DisposeAsync().AsTask() ?? Task.CompletedTask;
     }
+
+    internal Task SetNativeSubscriptionInUseAsync(int block, bool inUse)
+    {
+        var uid = block switch
+        {
+            BlockUids.PresentFrameEtwSource => StateItemUids.GraphicsApiObservationInUse,
+            BlockUids.GpuAllocationCollector => StateItemUids.ProcessDedicatedGpuMemoryInUse,
+            BlockUids.DxgkrnlVidMmEtwTelemetryZone => StateItemUids.VramResidualInUse,
+            _ => throw new ArgumentOutOfRangeException(nameof(block))
+        };
+        if (!nativeSubscriptions.TryGetValue(block, out var cell))
+            nativeSubscriptions.Add(block, cell = Authority.ClaimCell<bool>(uid));
+        return cell.PublishAsync(inUse, Reason("native-subscription-field"));
+    }
+
+    internal Task WaitForStateAsync(int block, BusinessBlockState state)
+        => EtwTestRunRecorder.UntilAsync(() => Scheduler.ReadState(block) == state);
+
+    private static BusinessBlockReason Reason(string detail)
+        => new(BusinessBlockRequestKind.Configuration, nameof(NativeBackendBlockFixture), detail, 0);
 
     public async ValueTask DisposeAsync()
     {
-        if (nativeEtwGroupDemand is { } demand)
-        {
-            nativeEtwGroupDemand = null;
-            await demand.DisposeAsync();
-        }
         await Scheduler.DisposeAsync();
         await Native.DisposeAsync();
         await provider.DisposeAsync();

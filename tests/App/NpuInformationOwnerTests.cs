@@ -199,7 +199,7 @@ public sealed class NpuInformationOwnerTests
         var configuration = DefaultFieldSubscriptionCompositionTests.Configuration();
         await using var composition = new NativeFieldSubscriptionComposition(owner.BorrowSubscriptionCapture(),
             DefaultFieldSubscriptionCompositionTests.Settings(), in configuration,
-            failure => throw new InvalidOperationException("Unexpected worker failure", failure.Error), TimeSpan.FromMilliseconds(1));
+            failure => throw new InvalidOperationException("Unexpected worker failure", failure.Error));
         await composition.StartAsync();
         using var slow = composition.Acquire("slow-npu", [field], TimeSpan.FromMinutes(1));
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));

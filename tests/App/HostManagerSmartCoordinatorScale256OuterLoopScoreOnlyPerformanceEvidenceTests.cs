@@ -52,6 +52,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var source = new HostedScoreOnlyEpochSource();
         var schedulingClock = new Scale256OneShotTimeProvider();
         var clockTrace = new Scale256ClockTrace(source, "controlled");
+        var initialPublicationReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var residencyOutput = new HostedResidencyOutput(source, schedulingClock)
+        {
+            InitialPublicationReady = initialPublicationReady.Task
+        };
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
             warm: true,
             // This corpus measures raw-score execution; welfare is tested by the capacity cases.
@@ -61,7 +66,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             smartCoordinatorMaximumProcesses: Scale256HostedProcessCount,
             metricSamplerOverride: source,
             processFactsOverride: source,
-            cpuCoreReader: new HostedResidencyOutput(source, schedulingClock),
+            cpuCoreReader: residencyOutput,
             normalIntervalMilliseconds: HostedScoreOnlyNormalIntervalMilliseconds,
             eventIntervalMilliseconds: HostedScoreOnlyEventIntervalMilliseconds,
             timeProvider: schedulingClock,
@@ -126,18 +131,19 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             writerStarted = true;
             fixture.DebugLogWriter.AttachForwardingWriter(evidenceWriter);
             forwardingWriterAttached = true;
-            host = BuildHostedScoreOnlyTestHost(fixture.Coordinator);
+            host = BuildHostedScoreOnlyTestHost(fixture);
             var concrete = host.Services.GetRequiredService<HostManagerSmartCoordinator>();
             Assert.Same(fixture.Coordinator, concrete);
 
-            EnqueueScale256ClockPermit(source, clockTrace, permits[0]);
             hostStartRequestedAtQpcTicks = Stopwatch.GetTimestamp();
             using (var cancellation =
                    new CancellationTokenSource(TimeSpan.FromSeconds(10)))
             {
-                await host.StartAsync(cancellation.Token);
+                await StartHostedScoreOnlyTestHostAsync(host, cancellation.Token);
             }
             hostStartReturnedAtQpcTicks = Stopwatch.GetTimestamp();
+            EnqueueScale256ClockPermit(source, clockTrace, permits[0]);
+            initialPublicationReady.TrySetResult();
             await WaitForHostedScoreOnlyCycleAsync(
                 traceProbe,
                 expectedCycle: 1);
@@ -342,11 +348,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             }
         };
         fixture.Coordinator.OuterLoopProbe = trace;
-        using var host = BuildHostedScoreOnlyTestHost(fixture.Coordinator);
+        using var host = BuildHostedScoreOnlyTestHost(fixture);
         try
         {
             EnqueueScale256ClockPermit(source, trace, permits[0]);
-            await host.StartAsync(CancellationToken.None);
+            await StartHostedScoreOnlyTestHostAsync(host, CancellationToken.None);
             await bootstrapReached.Task.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.Equal(1UL, checked((ulong)traceProbe.CompletedCount));
             EnqueueScale256ClockPermit(source, trace, permits[1]);
@@ -394,11 +400,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         await using var fixture = await CreateScale256ClockFixtureAsync(source, trace, clock);
         var deadline = ReadPrivateField<HostManagerVersionedWakeDeadline>(fixture.Coordinator, "schedulingWakeDeadline")!;
         fixture.Coordinator.OuterLoopProbe = trace;
-        using var host = BuildHostedScoreOnlyTestHost(fixture.Coordinator);
+        using var host = BuildHostedScoreOnlyTestHost(fixture);
         try
         {
             EnqueueScale256ClockPermit(source, trace, permits[0]);
-            await host.StartAsync(CancellationToken.None);
+            await StartHostedScoreOnlyTestHostAsync(host, CancellationToken.None);
             await WaitForHostedScoreOnlyCycleAsync(traceProbe, 1);
             EnqueueScale256ClockPermit(source, trace, permits[1]);
             EnqueueScale256ClockPermit(source, trace, permits[2]);

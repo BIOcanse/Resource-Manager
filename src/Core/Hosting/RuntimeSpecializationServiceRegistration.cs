@@ -61,15 +61,11 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddSingleton<HostManagerSamplingSubscriptionOwner>();
         services.AddHostedServiceAlias<HostManagerSamplingSubscriptionOwner>(BlockUids.HostManagerSamplingSubscriptionOwner);
         services.AddSingleton<HostManagerMetricSnapshotOwner>();
-        services.AddHostedServiceAlias<HostManagerMetricSnapshotOwner>(BlockUids.HostManagerMetricSnapshotOwner);
         services.AddSingleton<HostManagerSoftwareIdentityOwner>();
-        services.AddHostedServiceAlias<HostManagerSoftwareIdentityOwner>(BlockUids.HostManagerSoftwareIdentityOwner);
         services.AddSingleton<HostManagerFileQueryOwner>();
         services.AddSingleton<INativeFileQueryLeaseSource>(static provider =>
             provider.GetRequiredService<HostManagerFileQueryOwner>());
-        services.AddHostedServiceAlias<HostManagerFileQueryOwner>(BlockUids.HostManagerFileQueryOwner);
         services.AddSingleton<HostManagerDisplayCoordinatorOwner>();
-        services.AddHostedServiceAlias<HostManagerDisplayCoordinatorOwner>(BlockUids.HostManagerDisplayCoordinatorOwner);
         if (startupCapabilities.Allows(StartupCapability.PublicServiceCoordination))
         {
             services.AddSingleton<HostManagerPublicServiceCoordinatorOwner>();

@@ -41,9 +41,8 @@ internal static class BackendNativeControlFactory
         return new(bindings.Select(value => value.Id), new NativeControlOptions
         {
             Profile = profile,
-            DemandItemUid = StateItemUids.BlockDemand, ShutdownItemUid = StateItemUids.ProgramShuttingDown,
+            ShutdownItemUid = StateItemUids.ProgramShuttingDown,
             WorkerCount = limits.WorkerCount, HistoryCapacity = limits.HistoryCapacity,
-            DemandCapacity = limits.DemandCapacity, DemandBytes = limits.DemandBytes,
             CompletionCapacity = limits.CompletionCapacity, ReaderCapacity = limits.ReaderCapacity,
             ReaderBytes = limits.ReaderBytes, WorkerArenaBytes = limits.WorkerArenaBytes,
             ReasonTextCapacity = limits.ReasonTextCapacity

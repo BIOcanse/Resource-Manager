@@ -29,7 +29,7 @@ internal static class OperatingSystemBuildBootSubscriptionConsumer
             ActiveTtlMilliseconds = 3000, MaximumFutureSkewMilliseconds = 1000
         };
         await using var composition = new NativeFieldSubscriptionComposition(owner.BorrowSubscriptionCapture(), settings, in configuration,
-            failure => Console.WriteLine($"OS declaration worker failure: {failure.Stage}; {failure.Error.Message}"), TimeSpan.FromMilliseconds(250));
+            failure => Console.WriteLine($"OS declaration worker failure: {failure.Stage}; {failure.Error.Message}"));
         await composition.StartAsync(timeout.Token);
         await using var stream = composition.SubscribeAsync("os-build-boot", [build, boot], TimeSpan.FromSeconds(1), timeout.Token).GetAsyncEnumerator();
         if (!await stream.MoveNextAsync()) throw new InvalidDataException("OS native subscription ended without observation.");

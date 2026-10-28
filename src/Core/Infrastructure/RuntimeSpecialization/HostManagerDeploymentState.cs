@@ -115,6 +115,28 @@ public sealed class HostManagerDeploymentState : IHostManagerDeploymentState
         }
     }
 
+    internal HostManagerDeploymentAttemptToken BeginResourceCreate(
+        HostManagerModuleKind module,
+        CompiledHostManagerPlan plan,
+        HostManagerDeploymentOperation recreateOperation)
+    {
+        if (recreateOperation is not HostManagerDeploymentOperation.HostRecreate
+            and not HostManagerDeploymentOperation.HostRecreateAndHotPublish)
+        {
+            throw new ArgumentOutOfRangeException(nameof(recreateOperation), recreateOperation, null);
+        }
+        lock (sync)
+        {
+            // Resource absence does not erase this module's applied configuration.
+            // Returning after the last holder therefore recreates, rather than
+            // pretending the module has never been initialized.
+            var operation = Get(module).AppliedPlanEpoch == 0
+                ? HostManagerDeploymentOperation.InitialCreate
+                : recreateOperation;
+            return BeginAttempt(module, plan, operation);
+        }
+    }
+
     internal HostManagerDeploymentAttemptToken BeginAttempt(
         HostManagerModuleKind module,
         CompiledHostManagerPlan plan,

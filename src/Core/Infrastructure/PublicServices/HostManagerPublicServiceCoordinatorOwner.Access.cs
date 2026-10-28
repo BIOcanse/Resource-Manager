@@ -45,6 +45,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
                 throw new InvalidOperationException(
                     "The public-service request completion identity collided.");
             }
+            PublishPendingTasks();
             return Task.FromResult(new LocalPublicServiceAccessDecision(
                 true,
                 checked((int)output.StatusCode),
@@ -87,6 +88,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
                     "The public-service request completion identity changed unexpectedly.");
             }
             completion.Holder.Release();
+            PublishPendingTasks();
             RetryDesiredPlan();
             return ValueTask.CompletedTask;
         }

@@ -7,7 +7,7 @@ using ResourceManager.App.Infrastructure.Telemetry.Etw;
 namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 
 public sealed partial class DxgkrnlVidMmEtwResidualBreakdownProvider(
-    DxgkrnlVidMmEtwTelemetryZone etwZone) : IResourceResidualBreakdownProvider, IResourceTableProviderStateSource, IGpuVramResidualObservationSource
+    DxgkrnlVidMmEtwTelemetryZone etwZone) : IResourceResidualBreakdownProvider, IResourceTableProviderStateSource
 {
     private static readonly TimeSpan EvidenceWindow = TimeSpan.FromSeconds(45);
 
@@ -19,8 +19,6 @@ public sealed partial class DxgkrnlVidMmEtwResidualBreakdownProvider(
         DxgkrnlVidMmEtwTelemetryZone etwZone,
         Func<TimeSpan, IReadOnlyList<DxgkrnlVidMmEtwMemoryEvidence>> readEvidence) : this(etwZone)
         => this.readEvidence = readEvidence;
-
-    public IDisposable AcquireSubscription(string owner, TimeSpan interval) => etwZone.AcquireSubscription(owner, interval);
 
     public IReadOnlyList<ResourceTableProviderState> GetStates(IReadOnlyList<ResourceTableColumn> columns)
     {

@@ -16,6 +16,8 @@ public sealed partial class KernelEtwNativeKeywordUpdateTests
         var factory = new OwnedRuntimeFactory();
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
         using var reader = new EtwPhysicalDiskIoAttributionReader(broker, NullLogger<EtwPhysicalDiskIoAttributionReader>.Instance);
+        await reader.StartAsync(CancellationToken.None);
+        await UntilAsync(() => broker.GetSnapshot().SubscriptionCount == 1, "disk reader did not subscribe");
         reader.Read();
         var initial = broker.GetSnapshot();
         var children = new ConcurrentDictionary<int, ulong>();
@@ -49,6 +51,8 @@ public sealed partial class KernelEtwNativeKeywordUpdateTests
         var factory = new OwnedRuntimeFactory();
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
         using var reader = new EtwPhysicalDiskIoAttributionReader(broker, NullLogger<EtwPhysicalDiskIoAttributionReader>.Instance);
+        await reader.StartAsync(CancellationToken.None);
+        await UntilAsync(() => broker.GetSnapshot().SubscriptionCount == 1, "disk reader did not subscribe");
         reader.Read(); // Only the production disk consumer requests this session.
         var initial = broker.GetSnapshot();
         Assert.True(initial.IsRunning, initial.Message);

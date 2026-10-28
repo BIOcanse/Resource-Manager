@@ -7,18 +7,21 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlock
 /// <summary>Records terminal root shutdown before the original hosted-service stop turns.</summary>
 public sealed class BusinessBlockDependencyLifetime(IServiceProvider services) : IHostedLifecycleService
 {
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _ = services.GetRequiredService<BusinessBlockScheduler>();
-        return Task.CompletedTask;
+        var scheduler = services.GetRequiredService<BusinessBlockScheduler>();
+        foreach (var bindings in services.GetServices<BackendDecisionStateBindings>())
+            await bindings.InitializeAsync(scheduler.Authority, cancellationToken).ConfigureAwait(false);
+        foreach (var activity in services.GetServices<SubscriptionActivityFacts>()) activity.Initialize(scheduler.Authority);
     }
 
-    public Task StoppingAsync(CancellationToken cancellationToken)
+    public async Task StoppingAsync(CancellationToken cancellationToken)
     {
         services.GetRequiredService<HostedBusinessBlockRegistry>().BeginHostStopping();
+        foreach (var bindings in services.GetServices<BackendDecisionStateBindings>()) await bindings.StopAsync().ConfigureAwait(false);
         var scheduler = services.GetRequiredService<BusinessBlockScheduler>();
-        return scheduler.ShutdownAsync(new BusinessBlockReason(BusinessBlockRequestKind.Configuration,
-            "generic-host", "host-shutdown", scheduler.CurrentPlanVersion));
+        await scheduler.ShutdownAsync(new BusinessBlockReason(BusinessBlockRequestKind.Configuration,
+            "generic-host", "host-shutdown", scheduler.CurrentPlanVersion)).ConfigureAwait(false);
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

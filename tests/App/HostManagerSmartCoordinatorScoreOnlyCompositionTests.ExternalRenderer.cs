@@ -346,6 +346,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     private sealed class CapturingExternalActions(IRunningGpuPlacementActionService inner, GpuPlacementProcessInstance identity,
         IHostManagerRollbackStateStore ledger, string root) : IRunningGpuPlacementActionService
     {
+        public IDisposable? AcquireRendererObservation() => inner.AcquireRendererObservation();
         public int ApplyCount;
         public RunningGpuPlacementActionResult? Result;
         public bool HasUnreleasedExternalControl => inner.HasUnreleasedExternalControl;

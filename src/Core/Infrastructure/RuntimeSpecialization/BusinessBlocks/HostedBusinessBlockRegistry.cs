@@ -1,8 +1,12 @@
 namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 
 /// <summary>Shares concrete hosted wrappers between block factories and Generic Host adapters.</summary>
-internal sealed class HostedBusinessBlockRegistry(BusinessBlockDiagnosticsRegistry diagnostics)
+internal sealed class HostedBusinessBlockRegistry(BusinessBlockDiagnosticsRegistry diagnostics,
+    IEnumerable<BusinessBlockRegistration> registrations)
 {
+    private readonly Dictionary<int, HostedBusinessBlockExecution> executions = registrations
+        .Where(registration => registration.HostedExecution is not null)
+        .ToDictionary(registration => registration.Id, registration => registration.HostedExecution!);
     private readonly object sync = new();
     private readonly Dictionary<int, HostedBusinessBlock> blocks = new();
     private bool hostStopping;
@@ -14,7 +18,8 @@ internal sealed class HostedBusinessBlockRegistry(BusinessBlockDiagnosticsRegist
         lock (sync)
         {
             if (!blocks.TryGetValue(id, out var block))
-                blocks.Add(id, block = new(id, resolve, this, diagnostics));
+                blocks.Add(id, block = new(id, resolve, this, diagnostics,
+                    executions.GetValueOrDefault(id) ?? HostedBusinessBlockExecution.GenericHost));
             return block;
         }
     }

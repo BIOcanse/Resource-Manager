@@ -25,6 +25,40 @@ public sealed class HostDevicePeriodicSubscriptionTests
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(10);
 
     [Fact]
+    public async Task DeviceFieldStreamSurvivesAProducerFaultAndControllerRestart()
+    {
+        await using var fixture = new DeviceFixture();
+        await fixture.Provider.SampleNowAsync(CancellationToken.None);
+        var field = fixture.Backend.Catalog.Fields.Single(static capability =>
+            capability.Field.FieldName == "machine_all_manufacturer").Field;
+        var failReads = 0;
+        var backend = new InformationReadWriteBackend(() =>
+        {
+            if (Volatile.Read(ref failReads) != 0)
+                throw new InvalidOperationException(ProducerSubscriptionCurrentBackend.FailureMessage);
+            return fixture.Provider.ReadState().InformationFields;
+        }, fixture.Provider.CaptureInformationAsync, static _ => new(true, null, []));
+        using var timeout = new CancellationTokenSource(Deadline);
+        await using var stream = fixture.Provider.SubscribeFieldsAsync("held-through-fault", [field],
+            TimeSpan.FromMilliseconds(200), FieldSubscriptionOptions.Default, backend,
+            DeviceTopologyFieldScope.Snapshot, timeout.Token).GetAsyncEnumerator(timeout.Token);
+        var pending = stream.MoveNextAsync().AsTask();
+        Volatile.Write(ref failReads, 1); // Registration uses the real typed backend before the recorded run fault is armed.
+        await using var controller = await ProducerSubscriptionRestartHost<DeviceTopologySnapshotProvider>
+            .StartAsync(fixture.Provider, static producer => producer.CaptureSamplingWorkerTask(),
+                () => Volatile.Write(ref failReads, 0));
+        var firstRun = await controller.FirstRun;
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => firstRun.WaitAsync(Deadline));
+        Assert.Equal(ProducerSubscriptionCurrentBackend.FailureMessage, failure.Message);
+        await controller.AssertControllerRestartedAsync();
+        Assert.Equal((1u, 1u), fixture.ReadDemand());
+        Assert.True(await pending.WaitAsync(Deadline));
+        Assert.Equal(FieldObservationStatus.Current, Assert.Single(stream.Current).Status);
+        Assert.True(fixture.Topology.ReadCount >= 3); // Discovery, failed run, restarted run.
+    }
+
+    [Fact]
     public async Task DeviceHighestFrequencyKeepsIndependentPeriodsOnTheOriginalCaptureCurrent()
     {
         await using var fixture = new DeviceFixture();
@@ -173,7 +207,7 @@ public sealed class HostDevicePeriodicSubscriptionTests
     }
 
     [Fact]
-    public async Task StopRetiresAnInFlightDeviceCaptureBeforeItCanCommitOrReachTheStream()
+    public async Task StopDiscardsAnInFlightDeviceCaptureAndTheHeldStreamResumesOnRestart()
     {
         var topology = new BlockingTopologyReader();
         await using var fixture = new DeviceFixture(topology);
@@ -193,12 +227,18 @@ public sealed class HostDevicePeriodicSubscriptionTests
 
         var stop = fixture.Provider.StopAsync(CancellationToken.None);
         Assert.False(stop.IsCompleted, "Stop waits for the synchronous recorded source call to drain.");
-        Assert.False(await pendingRound.WaitAsync(Deadline), "Retiring the owner closes the delivery stream before the read is released.");
+        Assert.False(pendingRound.IsCompleted);
         topology.ReleaseBlockedRead.TrySetResult();
         await stop.WaitAsync(Deadline);
 
         Assert.Same(committedBeforeStop, fixture.Provider.ReadState().Snapshot);
         Assert.Equal(2, topology.ReadCount);
+        Assert.False(pendingRound.IsCompleted);
+        Assert.Equal((1u, 1u), fixture.ReadDemand());
+        await fixture.Provider.StartAsync(CancellationToken.None);
+        Assert.True(await pendingRound.WaitAsync(Deadline));
+        Assert.Equal(FieldObservationStatus.Current, Assert.Single(stream.Current).Status);
+        Assert.NotEqual(committedBeforeStop!.CapturedAt, Assert.Single(stream.Current).ObservedAt);
     }
 
     [Fact]
@@ -275,7 +315,7 @@ public sealed class HostDevicePeriodicSubscriptionTests
     }
 
     [Fact]
-    public async Task StopRejectsLegacyTypedAcquiresAndRestartHasNoResidualDemand()
+    public async Task StopRetainsHeldTypedSubscriptionsAndAcceptsNewSourcesForRestart()
     {
         var softwareInventory = new WindowsInstalledSoftwareInventory(_ => []);
         using var serviceInventory = new WindowsServiceInformationOwner(WindowsServiceScope.Win32,
@@ -292,22 +332,27 @@ public sealed class HostDevicePeriodicSubscriptionTests
         await fixture.Provider.StartAsync(CancellationToken.None);
         await fixture.Provider.StopAsync(CancellationToken.None);
 
-        Assert.Equal((0u, 0u), fixture.ReadDemand());
-        Assert.Throws<InvalidOperationException>(() => fixture.Provider.AcquireInformationSubscription("late-snapshot", interval));
-        Assert.Throws<InvalidOperationException>(() => fixture.Provider.AcquireSoftwareInformationSubscription("late-software", interval));
-        Assert.Throws<InvalidOperationException>(() => fixture.Provider.AcquireServiceInformationSubscription(
-            "late-services", interval, includeConfiguration: false));
-        Assert.Throws<InvalidOperationException>(() => fixture.Provider.AcquireOperatingSystemInformationSubscription(
-            "late-os", interval, fields: WindowsOperatingSystemInformationFields.None));
-        Assert.Equal((0u, 0u), fixture.ReadDemand());
+        Assert.Equal((4u, 4u), fixture.ReadDemand());
+        using var lateSnapshot = fixture.Provider.AcquireInformationSubscription("late-snapshot", interval);
+        using var lateSoftware = fixture.Provider.AcquireSoftwareInformationSubscription("late-software", interval);
+        using var lateServices = fixture.Provider.AcquireServiceInformationSubscription("late-services", interval, includeConfiguration: false);
+        using var lateOperatingSystem = fixture.Provider.AcquireOperatingSystemInformationSubscription(
+            "late-os", interval, fields: WindowsOperatingSystemInformationFields.None);
+        Assert.Equal((8u, 8u), fixture.ReadDemand());
 
         snapshot.Dispose();
         software.Dispose();
         services.Dispose();
         operatingSystem.Dispose();
+        Assert.Equal((4u, 4u), fixture.ReadDemand());
         await fixture.Provider.StartAsync(CancellationToken.None);
-        Assert.Equal((0u, 0u), fixture.ReadDemand());
+        Assert.Equal((4u, 4u), fixture.ReadDemand());
         await fixture.Provider.StopAsync(CancellationToken.None);
+        lateSnapshot.Dispose();
+        lateSoftware.Dispose();
+        lateServices.Dispose();
+        lateOperatingSystem.Dispose();
+        Assert.Equal((0u, 0u), fixture.ReadDemand());
     }
 
     private static string Suffix(string value, string prefix)

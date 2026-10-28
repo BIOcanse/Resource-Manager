@@ -1,4 +1,4 @@
-using Microsoft.Diagnostics.Tracing.Parsers;
+﻿using Microsoft.Diagnostics.Tracing.Parsers;
 using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Infrastructure.GpuPlacement.External;
 using ResourceManager.App.Infrastructure.Telemetry.Etw;
@@ -8,10 +8,45 @@ namespace Resource_Manager_APP.Tests;
 public sealed class RendererAbsenceCacheTests
 {
     [Fact]
+    public void PassiveReadsAndPublicationNeverAcquireAndRunReleaseRejectsOldEvidence()
+    {
+        var broker = new FakeBroker();
+        using var cache = new RendererAbsenceCache(broker);
+        var identity = Process(601, 6001, @"C:\Apps\renderer.exe");
+        var inactive = cache.Read(identity);
+        cache.PublishAbsent(identity, inactive);
+        Assert.False(inactive.IsAbsent);
+        Assert.False(inactive.CanPublishAbsent);
+        Assert.Equal(0, broker.SubscribeCount);
+
+        var first = cache.Acquire();
+        var second = cache.Acquire();
+        var old = cache.Read(identity);
+        cache.PublishAbsent(identity, old);
+        Assert.True(cache.Read(identity).IsAbsent);
+        first.Dispose();
+        Assert.Equal(0, broker.DisposeCount);
+        Assert.True(cache.Read(identity).IsAbsent);
+        second.Dispose();
+        Assert.Equal(1, broker.DisposeCount);
+        Assert.False(broker.Source.IsActive);
+        cache.PublishAbsent(identity, old);
+        Assert.False(cache.Read(identity).CanPublishAbsent);
+        Assert.Equal(1, broker.SubscribeCount);
+
+        using var next = cache.Acquire();
+        cache.PublishAbsent(identity, old);
+        Assert.False(cache.Read(identity).IsAbsent);
+        Assert.True(cache.Read(identity).CanPublishAbsent);
+        Assert.Equal(2, broker.SubscribeCount);
+    }
+
+    [Fact]
     public void TypedUnknownArgumentsNeverPublishNegativeAndAreRetriedNextCycle()
     {
         var broker = new FakeBroker();
         using var cache = new RendererAbsenceCache(broker);
+        using var observationRun = cache.Acquire();
         var api = new RendererQualificationReadCycleTests.Api();
         var parent = api.Add(90, 133_899_999_999_999_990);
         var gpu = api.Add(100);
@@ -45,6 +80,7 @@ public sealed class RendererAbsenceCacheTests
     {
         var broker = new FakeBroker();
         using var cache = new RendererAbsenceCache(broker);
+        using var observationRun = cache.Acquire();
         var api = new RendererQualificationReadCycleTests.Api();
         var identity = api.Add(100);
         for (var cycle = 0; cycle < 2; cycle++)
@@ -78,6 +114,7 @@ public sealed class RendererAbsenceCacheTests
     {
         var broker = new FakeBroker();
         using var cache = new RendererAbsenceCache(broker);
+        using var observationRun = cache.Acquire();
         var api = new RendererQualificationReadCycleTests.Api();
         var identity = api.Add(100);
         using (var reads = new RendererQualificationReadCycle(api))
@@ -104,6 +141,7 @@ public sealed class RendererAbsenceCacheTests
     {
         var broker = new FakeBroker();
         using var cache = new RendererAbsenceCache(broker);
+        using var observationRun = cache.Acquire();
         var api = new RendererQualificationReadCycleTests.Api();
         var identity = api.Add(100);
         using (var reads = new RendererQualificationReadCycle(api))
@@ -125,9 +163,10 @@ public sealed class RendererAbsenceCacheTests
     {
         var broker = new FakeBroker();
         using var cache = new RendererAbsenceCache(broker);
+        using var observationRun = cache.Acquire();
         var identity = Process(101, 1001, @"C:\Apps\browser.exe");
 
-        Assert.Equal(0, broker.SubscribeCount);
+        Assert.Equal(1, broker.SubscribeCount);
         var observation = cache.Read(identity);
         Assert.False(observation.IsAbsent);
         Assert.True(observation.CanPublishAbsent);
@@ -147,6 +186,7 @@ public sealed class RendererAbsenceCacheTests
     {
         var broker = new FakeBroker();
         using var cache = new RendererAbsenceCache(broker);
+        using var observationRun = cache.Acquire();
         var identity = Process(201, 2001, @"C:\Apps\renderer.exe");
         var first = cache.Read(identity);
         cache.PublishAbsent(identity, first);
@@ -167,6 +207,7 @@ public sealed class RendererAbsenceCacheTests
     {
         var broker = new FakeBroker();
         using var cache = new RendererAbsenceCache(broker);
+        using var observationRun = cache.Acquire();
         var oldIdentity = Process(301, 3001, @"C:\Apps\renderer.exe");
         var newIdentity = Process(301, 3002, oldIdentity.ExecutablePath);
         var oldObservation = cache.Read(oldIdentity);
@@ -186,6 +227,7 @@ public sealed class RendererAbsenceCacheTests
     {
         var broker = new FakeBroker();
         using var cache = new RendererAbsenceCache(broker);
+        using var observationRun = cache.Acquire();
         var identity = Process(401, 4001, @"C:\Apps\renderer.exe");
         var beforeLoss = cache.Read(identity);
         cache.PublishAbsent(identity, beforeLoss);
@@ -231,6 +273,7 @@ public sealed class RendererAbsenceCacheTests
     {
         var broker = new FakeBroker();
         using var cache = new RendererAbsenceCache(broker);
+        using var observationRun = cache.Acquire();
         var first = Process(10_000, 10_000, @"C:\Apps\renderer.exe");
 
         for (var index = 0; index < RendererAbsenceCache.MaximumCachedEntries; index++)
@@ -252,10 +295,11 @@ public sealed class RendererAbsenceCacheTests
     }
 
     [Fact]
-    public void DisposalReleasesOnlyTheLazilyAcquiredLease()
+    public void DisposalReleasesOnlyItsExplicitlyAcquiredLease()
     {
         var broker = new FakeBroker();
         var cache = new RendererAbsenceCache(broker);
+        using var observationRun = cache.Acquire();
         _ = cache.Read(Process(501, 5001, @"C:\Apps\renderer.exe"));
 
         cache.Dispose();

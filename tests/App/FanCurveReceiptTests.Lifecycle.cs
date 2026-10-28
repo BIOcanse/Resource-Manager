@@ -25,7 +25,7 @@ public sealed partial class FanCurveReceiptTests
         var unseeded = await new FanControlWriter(helper.Client).WriteAsync(Target, capability, setting, default);
         Assert.Equal(ControlApplyStatuses.Failed, unseeded.Status);
         Assert.False(helper.Client.NeedsTemperatures());
-        Assert.Equal(0, metrics.ActiveCount);
+        await WaitForLeaseAsync(metrics); // The parent already started this configured feed.
 
         var sampler = new ApplyTemperatureSampler(0);
         var outcome = await new FanControlWriter(helper.Client, sampler: sampler).WriteAsync(Target, capability, setting, default);
@@ -33,9 +33,9 @@ public sealed partial class FanCurveReceiptTests
         Assert.Equal(1, sampler.Captures);
         Assert.Equal(["describe", "setcurve", "temp", "setcurve"], File.ReadAllLines(helper.Operations));
         await WaitForLeaseAsync(metrics);
-        helper.Client.Dispose();
-        Assert.Equal(0, metrics.ActiveCount);
         await feed.StopAsync(default);
+        Assert.Equal(0, metrics.ActiveCount);
+        helper.Client.Dispose(); // The child drains before its core parent stops.
     }
 
     [Theory]
@@ -56,7 +56,7 @@ public sealed partial class FanCurveReceiptTests
     }
 
     [Fact]
-    public async Task FailedApplyAfterTemperatureBootstrapDoesNotCreateOngoingDemand()
+    public async Task FailedApplyAfterTemperatureBootstrapDoesNotRequireOngoingTemperatures()
     {
         await using var helper = new CurveHelper("\"ok\":false", requireSeed: true);
         var outcome = await new FanControlWriter(helper.Client, sampler: new ApplyTemperatureSampler(0)).WriteAsync(Target,
@@ -85,17 +85,18 @@ public sealed partial class FanCurveReceiptTests
     }
 
     [Fact]
-    public async Task CapabilityAndReadsDoNotAcquireDemandAndOnlyLastAppliedSoftwareReleaseDropsTheLease()
+    public async Task CapabilityAndReadsDoNotStartFeedAndControllerStopReleasesItsTemperatureLease()
     {
         await using var helper = new CurveHelper(SoftwareReceipt, SoftwareReceipt, AutomaticReceipt);
         var metrics = new TemperatureSubscriptions();
         using var feed = new FanCurveTemperatureFeed(metrics, helper.Client, new HardwareMetricCatalogState());
-        await feed.StartAsync(default);
         Assert.True(helper.Client.Describe().All(fan => fan.SupportsSoftwareCurve));
         Assert.False(helper.Client.NeedsTemperatures());
         Assert.NotNull(await helper.Client.ReadCurveAsync(0, default));
         Assert.False(helper.Client.NeedsTemperatures());
         Assert.Equal(0, metrics.ActiveCount);
+        await feed.StartAsync(default);
+        await WaitForLeaseAsync(metrics);
         var writer = new FanControlWriter(helper.Client);
         var capability = new ControlCapability("fan.curve", ControlValueKinds.Curve, true);
         var setting = new ControlSetting("fan.curve", Curve: [new(60, 35), new(120, 100)],
@@ -112,16 +113,16 @@ public sealed partial class FanCurveReceiptTests
         Assert.Equal(1, metrics.ActiveCount);
         Assert.True(await writer.RestoreAsync(other, capability, new HashSet<string>(), default, setting));
         Assert.False(helper.Client.NeedsTemperatures());
-        Assert.Equal(0, metrics.ActiveCount); // Disposed before RestoreAsync returns, without a polling delay.
+        Assert.Equal(1, metrics.ActiveCount); // Application receipts do not stop the feed.
         await feed.StopAsync(default);
+        Assert.Equal(0, metrics.ActiveCount);
     }
 
     [Theory]
     [InlineData("firmware")]
     [InlineData("duty")]
     [InlineData("boost")]
-    [InlineData("dispose")]
-    public async Task EndingSoftwareExecutionDropsDemandSynchronously(string action)
+    public async Task EndingSoftwareExecutionLeavesTemperatureLeaseUntilControllerStopsFeed(string action)
     {
         await using var helper = new CurveHelper(SoftwareReceipt,
             $"\"ok\":true,\"execution\":\"firmware\",\"curve\":{CompleteCurve}", AutomaticReceipt);
@@ -134,24 +135,21 @@ public sealed partial class FanCurveReceiptTests
             CurveExecution: ControlFanCurveExecutions.Software);
         Assert.Equal(ControlApplyStatuses.Applied, (await writer.WriteAsync(Target, capability, setting, default)).Status);
         await WaitForLeaseAsync(metrics);
-        if (action == "dispose") helper.Client.Dispose();
-        else
-        {
-            var id = action == "firmware" ? "fan.curve" : action == "duty" ? "fan.duty" : "fan.lock-maximum";
-            var next = setting with { CapabilityId = id, CurveExecution = ControlFanCurveExecutions.Firmware, Number = 55, Toggle = true };
-            // The boost fixture reports automatic, so the writer rejects its full-duty readback;
-            // a successful helper boost nevertheless ends the previous software plan.
-            await writer.WriteAsync(Target, capability with { Id = id }, next, default);
-        }
+        var id = action == "firmware" ? "fan.curve" : action == "duty" ? "fan.duty" : "fan.lock-maximum";
+        var next = setting with { CapabilityId = id, CurveExecution = ControlFanCurveExecutions.Firmware, Number = 55, Toggle = true };
+        // The boost fixture reports automatic, so the writer rejects its full-duty readback;
+        // a successful helper boost nevertheless ends the previous software plan.
+        await writer.WriteAsync(Target, capability with { Id = id }, next, default);
         Assert.False(helper.Client.NeedsTemperatures());
-        Assert.Equal(0, metrics.ActiveCount);
+        Assert.Equal(1, metrics.ActiveCount);
         await feed.StopAsync(default);
+        Assert.Equal(0, metrics.ActiveCount);
     }
 
     [Theory]
     [InlineData("\"ok\":false,\"execution\":\"software\",\"curve\":null")]
     [InlineData("\"ok\":true,\"execution\":\"software\",\"curve\":[{}]")]
-    public async Task FailedSoftwareApplyNeverStartsDemand(string receipt)
+    public async Task FailedSoftwareApplyNeverRequiresOngoingTemperatures(string receipt)
     {
         await using var helper = new CurveHelper(receipt);
         var outcome = await new FanControlWriter(helper.Client).WriteAsync(Target,
@@ -162,7 +160,7 @@ public sealed partial class FanCurveReceiptTests
     }
 
     [Fact]
-    public async Task ExitedHelperReleasesItsTemperatureLeaseWithoutAnotherHardwareRequest()
+    public async Task HelperFailureLeavesTemperatureLeaseForControllerStopWithoutAnotherHardwareRequest()
     {
         await using var helper = new CurveHelper(SoftwareReceipt);
         var metrics = new TemperatureSubscriptions();
@@ -173,10 +171,12 @@ public sealed partial class FanCurveReceiptTests
             new("fan.curve", Curve: [new(60, 35)], CurveExecution: ControlFanCurveExecutions.Software), default)).Status);
         await WaitForLeaseAsync(metrics);
         await helper.Client.SendAsync("exit-fixture", null, default);
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        while (metrics.ActiveCount != 0) await Task.Delay(10, deadline.Token);
         Assert.False(helper.Client.NeedsTemperatures());
+        Assert.Equal(1, metrics.ActiveCount);
+        var requests = File.ReadAllLines(helper.Operations);
         await feed.StopAsync(default);
+        Assert.Equal(0, metrics.ActiveCount);
+        Assert.Equal(requests, File.ReadAllLines(helper.Operations));
     }
 
     private static async Task WaitForLeaseAsync(TemperatureSubscriptions metrics)

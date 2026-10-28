@@ -20,22 +20,19 @@ public sealed class NativeSamplingSubscriptionWorker<TRequest, TContext>
     private readonly SemaphoreSlim demandSignal;
     private readonly Action<IReadOnlyList<string>> synchronizeDemand;
     private readonly Action<SubscriptionWorkerFailure> reportFailure;
-    private readonly TimeSpan failureRetryDelay;
     private readonly TimeProvider clock;
     private readonly Func<TimeSpan, CancellationToken, Task>? waitForNextPlan;
     private int running;
 
     public NativeSamplingSubscriptionWorker(NativeItemSamplingSubscriptionTracker<TRequest, TContext> subscriptions,
         SemaphoreSlim demandSignal, Action<IReadOnlyList<string>> synchronizeDemand,
-        Action<SubscriptionWorkerFailure> reportFailure, TimeSpan failureRetryDelay, TimeProvider? clock = null,
+        Action<SubscriptionWorkerFailure> reportFailure, TimeProvider? clock = null,
         Func<TimeSpan, CancellationToken, Task>? waitForNextPlan = null)
     {
         this.subscriptions = subscriptions ?? throw new ArgumentNullException(nameof(subscriptions));
         this.demandSignal = demandSignal ?? throw new ArgumentNullException(nameof(demandSignal));
         this.synchronizeDemand = synchronizeDemand ?? throw new ArgumentNullException(nameof(synchronizeDemand));
         this.reportFailure = reportFailure ?? throw new ArgumentNullException(nameof(reportFailure));
-        if (failureRetryDelay < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(failureRetryDelay));
-        this.failureRetryDelay = failureRetryDelay;
         this.clock = clock ?? TimeProvider.System;
         this.waitForNextPlan = waitForNextPlan;
     }
@@ -66,7 +63,7 @@ public sealed class NativeSamplingSubscriptionWorker<TRequest, TContext>
                 try { synchronizeDemand([]); }
                 catch (Exception error) { reportFailure(new(SubscriptionWorkerFailureStage.Cleanup, error)); }
             }
-            finally { Volatile.Write(ref running, 0); }
+            finally { try { subscriptions.ReleaseRunResources(); } finally { Volatile.Write(ref running, 0); } }
         }
     }
 
@@ -86,8 +83,7 @@ public sealed class NativeSamplingSubscriptionWorker<TRequest, TContext>
             catch (Exception error)
             {
                 reportFailure(new(SubscriptionWorkerFailureStage.Planning, error));
-                await DelayAfterFailureAsync(cancellationToken);
-                continue;
+                throw;
             }
 
             try
@@ -114,14 +110,7 @@ public sealed class NativeSamplingSubscriptionWorker<TRequest, TContext>
                             SubscriptionSampleCompletion.Skipped);
                 }
                 reportFailure(new(SubscriptionWorkerFailureStage.Demand, error));
-                await DelayAfterFailureAsync(cancellationToken);
-                continue;
-            }
-            if (!plan.IsActive)
-            {
-                try { await demandSignal.WaitAsync(cancellationToken); }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return; }
-                continue;
+                throw;
             }
             if (!HasCollectionRequest(plan))
             {
@@ -144,11 +133,11 @@ public sealed class NativeSamplingSubscriptionWorker<TRequest, TContext>
                     catch (Exception error)
                     {
                         reportFailure(new(SubscriptionWorkerFailureStage.FaultedSettlement, error));
-                        await DelayAfterFailureAsync(cancellationToken);
+                        throw;
                     }
                     continue;
                 }
-                try { await WaitForDemandOrDelayAsync(plan.Delay, cancellationToken); }
+                try { await WaitForDemandOrDelayAsync(plan.Delay > TimeSpan.Zero ? plan.Delay : plan.Schedule.DefaultInterval, cancellationToken); }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return; }
                 continue;
             }
@@ -178,7 +167,7 @@ public sealed class NativeSamplingSubscriptionWorker<TRequest, TContext>
                         InvokeCollectionCompleted(collectionCompleted, plan, SubscriptionSampleCompletion.Failed);
                 }
                 reportFailure(new(SubscriptionWorkerFailureStage.Collection, error));
-                await DelayAfterFailureAsync(cancellationToken);
+                throw;
             }
         }
     }
@@ -240,21 +229,6 @@ public sealed class NativeSamplingSubscriptionWorker<TRequest, TContext>
     {
         if (callback is null || !plan.Triggers.Any(static trigger => trigger.IsFresh)) return;
         InvokeCollectionCompleted(callback, plan, completion);
-    }
-
-    private async Task DelayAfterFailureAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            var remaining = failureRetryDelay;
-            while (remaining > TimeSpan.Zero)
-            {
-                var segment = LimitTimerDelay(remaining);
-                await WaitForDelaySegmentAsync(segment, false, cancellationToken);
-                remaining -= segment;
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
     }
 
     private async Task WaitForDemandOrDelayAsync(TimeSpan delay, CancellationToken cancellationToken)

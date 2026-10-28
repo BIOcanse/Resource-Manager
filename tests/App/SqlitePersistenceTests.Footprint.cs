@@ -16,8 +16,8 @@ public sealed partial class SqlitePersistenceTests
             for (var i = 0; i < 32; i++)
             {
                 var root = Path.Combine(testRoot, $"absent-{i}");
-                registry.Observe(new PortableSoftwareObservation($"catalog:tool-{i}", $"tool-{i}",
-                    $"Tool {i}", SoftwareKinds.Other, Path.Combine(root, "tool.exe"), root, true, false));
+                await registry.ObserveAsync(new PortableSoftwareObservation($"catalog:tool-{i}", $"tool-{i}",
+                    $"Tool {i}", SoftwareKinds.Other, Path.Combine(root, "tool.exe"), root, true, false), default);
             }
             Assert.True(registry.RetainedPayloadCount > 32);
             await registry.RefreshAsync(default); // Every nonexistent file is deleted and feedback settles.

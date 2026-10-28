@@ -1,4 +1,4 @@
-using BlockUids = ResourceManager.App.StateItems.BlockUids;
+﻿using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using System.Collections.Concurrent;
 using Microsoft.Diagnostics.Tracing;
 using ResourceManager.Adapter;
@@ -51,10 +51,6 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone(
         this.openProcess = openProcess;
         if (createSession is not null) this.createSession = createSession;
     }
-
-    public IBusinessBlockDependency AcquireSubscription(string owner, TimeSpan interval)
-        => new Subscription(this, controller.AcquireDependency(BlockUids.DxgkrnlVidMmEtwTelemetryZone,
-            new(BusinessBlockRequestKind.Dependency, owner, "gpu-vram-residual-subscription", controller.CurrentPlanVersion)));
 
     public IReadOnlyList<DxgkrnlVidMmEtwMemoryEvidence> ReadEvidence(TimeSpan evidenceWindow)
     {

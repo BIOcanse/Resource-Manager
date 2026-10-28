@@ -18,6 +18,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
     IDisposable
 {
     private readonly ReaderWriterLockSlim gate = new(LockRecursionPolicy.NoRecursion);
+    private readonly SemaphoreSlim initializationGate = new(1, 1);
     private readonly ConcurrentDictionary<ulong, RequestCompletion> requestCompletions = new();
     private readonly ConcurrentDictionary<ulong, PendingModelOperation> pendingModelOperations = new();
     private readonly SemaphoreSlim modelWake = new(0, 1);
@@ -40,6 +41,33 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
     private bool started;
     private bool disposed;
     private Action<CompiledRuntimePlan>? publishedHandler;
+    private readonly object activityGate = new();
+    private bool hasPendingTasks;
+    private int activeModelAcquisitions;
+    private int modelRefreshQueued;
+
+    internal bool HasPendingTasks => Volatile.Read(ref hasPendingTasks);
+    internal event Action? PendingTasksChanged;
+
+    private void PublishPendingTasks()
+    {
+        lock (activityGate)
+        {
+            var pending = !requestCompletions.IsEmpty || !pendingModelOperations.IsEmpty
+                || Volatile.Read(ref activeModelAcquisitions) != 0
+                || Volatile.Read(ref modelRefreshQueued) != 0;
+            if (hasPendingTasks == pending) return;
+            Volatile.Write(ref hasPendingTasks, pending);
+            PendingTasksChanged?.Invoke();
+        }
+    }
+
+    private void QueueModelRefresh()
+    {
+        Interlocked.Exchange(ref modelRefreshQueued, 1);
+        PublishPendingTasks();
+        Signal(modelWake);
+    }
 
     public HostManagerPublicServiceCoordinatorOwner(
         RuntimePlanProvider planProvider,
@@ -67,56 +95,58 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
         this.createScratch = createScratch;
     }
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    internal async Task InitializeAsync(CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        ThrowIfDisposed();
-        if (started)
+        await initializationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            return Task.CompletedTask;
-        }
-        if (workerCancellation is not null
-            || modelWorker is not null
-            || taskWorker is not null)
-        {
-            throw new InvalidOperationException(
-                "The prior Host Manager public-service stop has not completed.");
-        }
+            cancellationToken.ThrowIfCancellationRequested();
+            ThrowIfDisposed();
+            if (publishedHandler is not null) return;
 
-        Action<CompiledRuntimePlan> handler = null!;
-        handler = plan => Apply(plan.HostManager.RequirePublished(), throwOnFailure: false, handler);
-        gate.EnterWriteLock();
-        try
-        {
-            publishedHandler = handler;
-            planProvider.Published += handler;
-        }
-        finally { gate.ExitWriteLock(); }
-        try
-        {
-            Apply(planProvider.Current.HostManager.RequirePublished(), throwOnFailure: true, handler);
-            workerCancellation = new CancellationTokenSource();
-            modelWorker = Task.Run(
-                () => RunModelAcquisitionLoopAsync(workerCancellation.Token),
-                CancellationToken.None);
-            taskWorker = Task.Run(
-                () => RunTaskLoopAsync(workerCancellation.Token),
-                CancellationToken.None);
-            started = true;
-            Signal(taskWake);
-            return Task.CompletedTask;
-        }
-        catch
-        {
+            Action<CompiledRuntimePlan> handler = null!;
+            handler = plan => Apply(plan.HostManager.RequirePublished(), throwOnFailure: false, handler);
             gate.EnterWriteLock();
             try
             {
-                planProvider.Published -= handler;
-                if (ReferenceEquals(publishedHandler, handler)) publishedHandler = null;
+                publishedHandler = handler;
+                planProvider.Published += handler;
             }
             finally { gate.ExitWriteLock(); }
-            throw;
+            try
+            {
+                Apply(planProvider.Current.HostManager.RequirePublished(), throwOnFailure: true, handler);
+                return;
+            }
+            catch
+            {
+                gate.EnterWriteLock();
+                try
+                {
+                    planProvider.Published -= handler;
+                    if (ReferenceEquals(publishedHandler, handler)) publishedHandler = null;
+                }
+                finally { gate.ExitWriteLock(); }
+                throw;
+            }
         }
+        finally { initializationGate.Release(); }
+    }
+
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (started) return;
+        if (workerCancellation is not null || modelWorker is not null || taskWorker is not null)
+            throw new InvalidOperationException("The prior Host Manager public-service stop has not completed.");
+        workerCancellation = new CancellationTokenSource();
+        modelWorker = Task.Run(
+            () => RunModelAcquisitionLoopAsync(workerCancellation.Token), CancellationToken.None);
+        taskWorker = Task.Run(
+            () => RunTaskLoopAsync(workerCancellation.Token), CancellationToken.None);
+        started = true;
+        Signal(taskWake);
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
@@ -132,8 +162,6 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
         gate.EnterWriteLock();
         try
         {
-            if (publishedHandler is { } handler) planProvider.Published -= handler;
-            publishedHandler = null;
             started = false;
         }
         finally { gate.ExitWriteLock(); }
@@ -156,7 +184,6 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
         {
         }
         ThrowIfWorkerFaulted();
-        CancelQueuedOperations();
         modelWorker = null;
         taskWorker = null;
         workerCancellation = null;
@@ -173,6 +200,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
         workerCancellation?.Cancel();
         workerCancellation?.Dispose();
         workerCancellation = null;
+        Interlocked.Exchange(ref modelRefreshQueued, 0);
         CancelPendingOperations();
         ReleaseRequestCompletions();
         gate.EnterWriteLock();
@@ -392,6 +420,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
                 operation.Cancel();
             }
         }
+        PublishPendingTasks();
     }
 
     private void CancelQueuedOperations()
@@ -410,6 +439,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
                 }
                 operation.Cancel();
             }
+            PublishPendingTasks();
             if (!pendingModelOperations.IsEmpty)
             {
                 throw new InvalidOperationException(
@@ -431,6 +461,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner :
                 completion.Holder.Release();
             }
         }
+        PublishPendingTasks();
     }
 
     private void ThrowIfWorkerFaulted()

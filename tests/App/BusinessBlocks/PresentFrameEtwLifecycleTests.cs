@@ -14,7 +14,7 @@ public sealed class PresentFrameEtwLifecycleTests
     {
         await using var harness = PresentFrameEtwTestHarness.Create();
         var api = harness.Source.AcquireGraphicsApiSubscription(Instance());
-        await PresentFrameEtwTestHarness.ReadyAsync(api);
+        await harness.WaitRunningAsync();
         var session = harness.Sessions.Current;
         await session.ProcessStarted.WaitAsync(TimeSpan.FromSeconds(5));
         session.AfterEnable = _ => throw new UnauthorizedAccessException("injected running frame provider permission failure");
@@ -32,10 +32,10 @@ public sealed class PresentFrameEtwLifecycleTests
         Assert.True(session.ProcessExited.IsCompleted);
         Assert.False(session.ConsumerThread!.IsAlive);
         Assert.False(Assert.IsType<bool>(Assert.Single(harness.Controller.Read().Items, fact => fact.ItemUid == BackendItems.PresentNativeSessionAvailable).Value));
-        Assert.Equal(2, harness.Controller.Read().Demands.Count(demand => demand.BlockId == BackendUids.PresentFrameEtwSource));
+        Assert.True(harness.Source.HasActiveSubscriptions);
         Assert.Empty(harness.Diagnostics.Read(BackendUids.PresentFrameEtwSource).Metrics.ActiveThreads);
-        await PresentFrameEtwTestHarness.ReleaseAsync(frame);
-        await PresentFrameEtwTestHarness.ReleaseAsync(api);
+        await harness.ReleaseAsync(frame);
+        await harness.ReleaseAsync(api);
     }
 
     [Fact]
@@ -56,9 +56,9 @@ public sealed class PresentFrameEtwLifecycleTests
         Assert.Equal(1, harness.Sessions.Current.Stops);
         Assert.False(harness.Sessions.Current.HasBoundHandler);
         Assert.False(Assert.IsType<bool>(Assert.Single(harness.Controller.Read().Items, fact => fact.ItemUid == BackendItems.PresentNativeSessionAvailable).Value));
-        Assert.Single(harness.Controller.Read().Demands, demand => demand.BlockId == BackendUids.PresentFrameEtwSource);
+        Assert.True(harness.Source.HasActiveSubscriptions);
         Assert.Empty(harness.Diagnostics.Read(BackendUids.PresentFrameEtwSource).Metrics.ActiveThreads);
-        await PresentFrameEtwTestHarness.ReleaseAsync(subscription);
+        await harness.ReleaseAsync(subscription);
     }
 
     [Theory]
@@ -72,7 +72,7 @@ public sealed class PresentFrameEtwLifecycleTests
         var subscription = harness.Source.AcquireSubscription();
         if (releaseFailure)
         {
-            await PresentFrameEtwTestHarness.ReadyAsync(subscription);
+            await harness.WaitRunningAsync();
             harness.Sessions.Current.DisposeFailure = new IOException("injected native release failure");
             harness.Sessions.Current.Complete();
         }
@@ -83,8 +83,8 @@ public sealed class PresentFrameEtwLifecycleTests
         Assert.Equal(1, harness.Sessions.Attempts);
         Assert.False(Assert.IsType<bool>(Assert.Single(harness.Controller.Read().Items, fact => fact.ItemUid == BackendItems.PresentNativeSessionAvailable).Value));
         Assert.Empty(harness.Diagnostics.Read(BackendUids.PresentFrameEtwSource).Metrics.ActiveThreads);
-        Assert.Single(harness.Controller.Read().Demands, demand => demand.BlockId == BackendUids.PresentFrameEtwSource);
-        await PresentFrameEtwTestHarness.ReleaseAsync(subscription);
+        Assert.True(harness.Source.HasActiveSubscriptions);
+        await harness.ReleaseAsync(subscription);
     }
 
     [Fact]
@@ -93,7 +93,7 @@ public sealed class PresentFrameEtwLifecycleTests
         var clock = new PresentFrameEtwManualTimeProvider();
         await using var harness = PresentFrameEtwTestHarness.Create(timeProvider: clock);
         var frame = harness.Source.AcquireSubscription();
-        await PresentFrameEtwTestHarness.ReadyAsync(frame);
+        await harness.WaitRunningAsync();
         var ledger = Assert.IsType<PresentFrameLedger>(typeof(PresentFrameEtwSource)
             .GetField("ledger", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(harness.Source));
         var at = clock.GetUtcNow().UtcTicks;
@@ -104,7 +104,7 @@ public sealed class PresentFrameEtwLifecycleTests
         var before = Assert.Single(Assert.Single(harness.Source.Read(TimeSpan.FromSeconds(1))!.Processes).Streams);
         Assert.Equal(2, before.PresentCount);
 
-        await PresentFrameEtwTestHarness.ReleaseAsync(frame);
+        await harness.ReleaseAsync(frame);
         clock.Advance(TimeSpan.FromMinutes(1));
         var future = harness.Source.ReadIntervals(clock.GetUtcNow().AddSeconds(-1), clock.GetUtcNow());
         Assert.False(future!.Complete);
@@ -118,12 +118,12 @@ public sealed class PresentFrameEtwLifecycleTests
     {
         await using var harness = PresentFrameEtwTestHarness.Create();
         var frame = harness.Source.AcquireSubscription();
-        await PresentFrameEtwTestHarness.ReadyAsync(frame);
+        await harness.WaitRunningAsync();
         var session = Assert.Single(harness.Sessions.Snapshot());
         await session.ProcessStarted.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Single(harness.Diagnostics.Read(BackendUids.PresentFrameEtwSource).Metrics.ActiveThreads);
 
-        await PresentFrameEtwTestHarness.ReleaseAsync(frame);
+        await harness.ReleaseAsync(frame);
         var completion = await harness.NextResultAsync();
         Assert.Equal(BusinessBlockOutcome.Stopped, completion.Outcome);
         Assert.Equal(1, session.Stops);
@@ -139,7 +139,7 @@ public sealed class PresentFrameEtwLifecycleTests
     {
         await using var harness = PresentFrameEtwTestHarness.Create();
         var api = harness.Source.AcquireGraphicsApiSubscription(Instance());
-        await PresentFrameEtwTestHarness.ReadyAsync(api);
+        await harness.WaitRunningAsync();
         var session = harness.Sessions.Current;
         await session.ProcessStarted.WaitAsync(TimeSpan.FromSeconds(5));
         session.Complete(fail ? new IOException("injected consumer failure") : null);
@@ -150,13 +150,13 @@ public sealed class PresentFrameEtwLifecycleTests
         Assert.True(session.ProcessExited.IsCompleted);
         Assert.False(session.ConsumerThread!.IsAlive);
         await EtwTestRunRecorder.UntilAsync(() => harness.Sessions.Attempts == 2);
-        await PresentFrameEtwTestHarness.ReadyAsync(api);
-        Assert.False(PresentFrameEtwTestHarness.Dependency(api).Released.IsCompleted);
+        await harness.WaitRunningAsync();
+        Assert.True(harness.Source.HasActiveSubscriptions);
         var additional = harness.Source.AcquireGraphicsApiSubscription(Instance(74));
-        await PresentFrameEtwTestHarness.ReadyAsync(additional);
+        await harness.WaitRunningAsync();
         Assert.Equal(2, harness.Sessions.Attempts);
-        await PresentFrameEtwTestHarness.ReleaseAsync(api);
-        await PresentFrameEtwTestHarness.ReleaseAsync(additional);
+        await harness.ReleaseAsync(api);
+        await harness.ReleaseAsync(additional);
     }
 
     [Fact]
@@ -170,7 +170,7 @@ public sealed class PresentFrameEtwLifecycleTests
         Assert.Empty(harness.Sessions.Snapshot());
 
         var frame = harness.Source.AcquireSubscription();
-        await PresentFrameEtwTestHarness.ReadyAsync(frame);
+        await harness.WaitRunningAsync();
         var session = Assert.Single(harness.Sessions.Snapshot());
         session.ReportedEventsLost = 1;
         _ = harness.Source.Read(TimeSpan.FromSeconds(1));
@@ -181,7 +181,7 @@ public sealed class PresentFrameEtwLifecycleTests
         clock.Advance(PresentFrameEtwSource.FlushInterval);
         Assert.Equal(1, session.Flushes);
         Assert.Equal(1, session.EventsLostReads);
-        await PresentFrameEtwTestHarness.ReleaseAsync(frame);
+        await harness.ReleaseAsync(frame);
         clock.Advance(PresentFrameEtwSource.FlushInterval);
         Assert.Equal(1, session.Flushes);
     }
@@ -192,7 +192,7 @@ public sealed class PresentFrameEtwLifecycleTests
         var clock = new PresentFrameEtwManualTimeProvider();
         await using var harness = PresentFrameEtwTestHarness.Create(timeProvider: clock);
         var frame = harness.Source.AcquireSubscription();
-        await PresentFrameEtwTestHarness.ReadyAsync(frame);
+        await harness.WaitRunningAsync();
         var session = Assert.Single(harness.Sessions.Snapshot());
         session.FlushFailure = new IOException("injected flush failure");
         var ledger = Assert.IsType<PresentFrameLedger>(typeof(PresentFrameEtwSource)
@@ -217,10 +217,10 @@ public sealed class PresentFrameEtwLifecycleTests
         Assert.True(session.ProcessExited.IsCompleted);
         Assert.False(session.ConsumerThread!.IsAlive);
         await EtwTestRunRecorder.UntilAsync(() => harness.Sessions.Attempts == 2);
-        await PresentFrameEtwTestHarness.ReadyAsync(frame);
+        await harness.WaitRunningAsync();
         Assert.Equal(2, harness.Sessions.Attempts);
         Assert.Empty(harness.Source.Read(TimeSpan.FromSeconds(1))!.Processes);
-        await PresentFrameEtwTestHarness.ReleaseAsync(frame);
+        await harness.ReleaseAsync(frame);
     }
 
     [Fact]
@@ -229,7 +229,7 @@ public sealed class PresentFrameEtwLifecycleTests
         var clock = new PresentFrameEtwManualTimeProvider();
         await using var harness = PresentFrameEtwTestHarness.Create(timeProvider: clock);
         var frame = harness.Source.AcquireSubscription();
-        await PresentFrameEtwTestHarness.ReadyAsync(frame);
+        await harness.WaitRunningAsync();
         var session = Assert.Single(harness.Sessions.Snapshot());
         var before = harness.Source.Read(TimeSpan.FromSeconds(1));
         Assert.NotNull(before);
@@ -242,7 +242,7 @@ public sealed class PresentFrameEtwLifecycleTests
         clock.Advance(TimeSpan.FromSeconds(10));
         Assert.Equal(stopped.ObservedAt, harness.Source.Read(TimeSpan.FromSeconds(1))!.ObservedAt);
 
-        await PresentFrameEtwTestHarness.ReleaseAsync(frame);
+        await harness.ReleaseAsync(frame);
     }
 
     private static GpuPlacementProcessInstance Instance(int pid = 73)

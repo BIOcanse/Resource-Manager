@@ -8,6 +8,52 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class HostManagerDeploymentStateTests
 {
+    [Theory]
+    [InlineData(HostManagerModuleKind.MetricSnapshot, HostManagerDeploymentOperation.HostRecreateAndHotPublish)]
+    [InlineData(HostManagerModuleKind.SoftwareIdentityCatalog, HostManagerDeploymentOperation.HostRecreateAndHotPublish)]
+    [InlineData(HostManagerModuleKind.SoftwareIdentityResolution, HostManagerDeploymentOperation.HostRecreateAndHotPublish)]
+    [InlineData(HostManagerModuleKind.FileQuery, HostManagerDeploymentOperation.HostRecreateAndHotPublish)]
+    [InlineData(HostManagerModuleKind.DisplayCoordinator, HostManagerDeploymentOperation.HostRecreateAndHotPublish)]
+    public void ResourceCreationUsesDeploymentHistoryAndStillRequiresTheExactPublishedPlan(
+        HostManagerModuleKind module, HostManagerDeploymentOperation recreate)
+    {
+        var state = new HostManagerDeploymentState();
+        var first = HostManagerTestPlanFactory.CreatePlan();
+        Publish(state, first, 1);
+        var initial = state.BeginResourceCreate(module, first, recreate);
+        Assert.Equal(HostManagerDeploymentOperation.InitialCreate, Read().ActiveAttempt!.Operation);
+        Assert.Equal(HostManagerDeploymentAttemptSettlement.Applied, state.CompleteAttemptSucceeded(initial));
+
+        // Closing a native resource does not undo its applied configuration.
+        var reopened = state.BeginResourceCreate(module, first, recreate);
+        Assert.Equal(recreate, Read().ActiveAttempt!.Operation);
+        Assert.Equal(HostManagerDeploymentAttemptSettlement.Applied, state.CompleteAttemptSucceeded(reopened));
+        Assert.Equal(HostManagerDeploymentStatus.InSync, Read().Status);
+
+        var second = HostManagerTestPlanFactory.CreatePlan(root =>
+            root["profile_revision"] = root["profile_revision"]!.GetValue<int>() + 1, planEpoch: 2);
+        Publish(state, second, 2);
+        Assert.Throws<InvalidOperationException>(() => state.BeginResourceCreate(module, first, recreate));
+        Assert.Null(Read().ActiveAttempt);
+        var replacement = state.BeginResourceCreate(module, second, recreate);
+        Assert.Equal(recreate, Read().ActiveAttempt!.Operation);
+        Assert.Equal(HostManagerDeploymentAttemptSettlement.Applied, state.CompleteAttemptSucceeded(replacement));
+        Assert.Equal(2UL, Read().AppliedPlanEpoch);
+        Assert.Equal(HostManagerDeploymentStatus.InSync, Read().Status);
+        Assert.Equal(Read().DesiredRecreateSha256, Read().AppliedRecreateSha256);
+        Assert.Equal(Read().DesiredHotPublishSha256, Read().AppliedHotPublishSha256);
+
+        HostManagerModuleDeploymentSnapshot Read() => module switch
+        {
+            HostManagerModuleKind.MetricSnapshot => state.Snapshot.MetricSnapshot,
+            HostManagerModuleKind.SoftwareIdentityCatalog => state.Snapshot.SoftwareIdentityCatalog,
+            HostManagerModuleKind.SoftwareIdentityResolution => state.Snapshot.SoftwareIdentityResolution,
+            HostManagerModuleKind.FileQuery => state.Snapshot.FileQuery,
+            HostManagerModuleKind.DisplayCoordinator => state.Snapshot.DisplayCoordinator,
+            _ => throw new ArgumentOutOfRangeException(nameof(module))
+        };
+    }
+
     [Fact]
     public void DeploymentState_TracksExactInitialAndHotAttempts()
     {

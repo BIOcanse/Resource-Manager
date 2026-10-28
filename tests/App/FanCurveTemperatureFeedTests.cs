@@ -24,6 +24,7 @@ public sealed class FanCurveTemperatureFeedTests
             return JsonSerializer.SerializeToElement(new { ok = true, execution = "software",
                 curve = new[] { new { temperatureCelsius = 60, percent = 35 } } });
         }));
+        await core.StartSession();
         await core.SendAsync("setcurve", new Dictionary<string, object?> { ["fan"] = 0 }, default);
         Assert.True(core.NeedsTemperatures());
         var metrics = new RestartTemperatureSource();

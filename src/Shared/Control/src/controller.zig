@@ -3,7 +3,6 @@ const d = @import("declarations.zig");
 const t = @import("types.zig");
 const tr = @import("tree.zig");
 const state = @import("state.zig");
-const demand = @import("demand.zig");
 const sync = @import("sync.zig");
 const reader_storage = @import("readers.zig");
 
@@ -158,9 +157,7 @@ pub fn Controller(comptime registry: d.Registry, comptime topology: tr.Tree) typ
         nodes: [node_count]Node = @splat(.{}),
         conditions: [instance_count]ConditionValue = @splat(.{}),
         authority: state.State,
-        demands: demand.Demands,
         shutdown_claim: state.Claim,
-        demand_claims: [block_count]?state.Claim = @splat(null),
         workers: []Worker,
         transitions: []Transition,
         transition_sequence: u64 = 0,
@@ -180,12 +177,12 @@ pub fn Controller(comptime registry: d.Registry, comptime topology: tr.Tree) typ
         callbacks: usize = 0,
 
         pub fn create(allocator: std.mem.Allocator, config: t.Config, host: t.Host) !*Self {
-            const item_scratch = std.math.mul(usize, node_items.len, @sizeOf(ItemValue)) catch return error.InvalidConfiguration;
+            const item_scratch = std.math.mul(usize, node_items.len, @sizeOf(ItemValue) + @sizeOf(state.Capture)) catch return error.InvalidConfiguration;
             const scratch = std.math.add(usize, @sizeOf(Action) * (block_count * 3 + instance_count + 1), item_scratch) catch return error.InvalidConfiguration;
             const child_scratch = std.math.mul(usize, block_count, @sizeOf(t.BlockState)) catch return error.InvalidConfiguration;
             const scratch_with_children = std.math.add(usize, scratch, child_scratch) catch return error.InvalidConfiguration;
             const scratch_with_reason = std.math.add(usize, scratch_with_children, config.reason_text_capacity) catch return error.InvalidConfiguration;
-            const scratch_with_alignment = std.math.add(usize, scratch_with_reason, @alignOf(Action) + @alignOf(ItemValue) + @alignOf(t.BlockState)) catch return error.InvalidConfiguration;
+            const scratch_with_alignment = std.math.add(usize, scratch_with_reason, @alignOf(Action) + @alignOf(ItemValue) + @alignOf(state.Capture) + @alignOf(t.BlockState)) catch return error.InvalidConfiguration;
             if (config.worker_count == 0 or config.worker_arena_bytes < scratch_with_alignment) return error.InvalidConfiguration;
             if (config.host_blocks.len != block_count - 1) return error.HostBlocksMismatch;
             for (registry.blocks) |b| {
@@ -200,8 +197,6 @@ pub fn Controller(comptime registry: d.Registry, comptime topology: tr.Tree) typ
             errdefer authority.deinit();
             const shutdown_claim = try authority.claimWrite(.{ .item = config.shutdown_item });
             _ = try authority.publish(shutdown_claim, .{ .value = false });
-            var demands = try demand.Demands.init(allocator, config.demand_capacity, config.demand_bytes);
-            errdefer demands.deinit();
             const self = try allocator.create(Self);
             errdefer allocator.destroy(self);
             const workers = try allocator.alloc(Worker, config.worker_count);
@@ -236,20 +231,13 @@ pub fn Controller(comptime registry: d.Registry, comptime topology: tr.Tree) typ
             for (completions) |*c| c.* = .{};
             var runtime_readers = try reader_storage.Readers.init(allocator, config.reader_capacity, config.reader_bytes);
             errdefer runtime_readers.deinit();
-            self.* = .{ .allocator = allocator, .config = config, .host = host, .authority = authority, .demands = demands, .shutdown_claim = shutdown_claim, .workers = workers, .transitions = transitions, .decisions = decisions, .history_items = history_items, .current_items = current_items, .pending_reason_bytes = pending_reason_bytes, .history_reason_bytes = history_reason_bytes, .current_reason_bytes = current_reason_bytes, .completions = completions, .readers = runtime_readers };
+            self.* = .{ .allocator = allocator, .config = config, .host = host, .authority = authority, .shutdown_claim = shutdown_claim, .workers = workers, .transitions = transitions, .decisions = decisions, .history_items = history_items, .current_items = current_items, .pending_reason_bytes = pending_reason_bytes, .history_reason_bytes = history_reason_bytes, .current_reason_bytes = current_reason_bytes, .completions = completions, .readers = runtime_readers };
             self.config.host_blocks = &host_block_uids;
             for (&self.nodes, 0..) |*node, ni| {
                 node.permitted = node_uids[ni] == topology.program;
                 node.source = .{ .cause = .initial, .uid = node_uids[ni] };
                 for (metadata) |m| {
                     if (m.node == ni) node.marks |= @as(u64, 1) << m.bit;
-                }
-            }
-            if (config.demand_item) |uid| {
-                for (registry.blocks, 0..) |b, bi| {
-                    const claim = try self.authority.claimCell(.{ .item = uid, .block = b.uid });
-                    self.demand_claims[bi] = claim;
-                    _ = try self.authority.publish(claim, .{ .value = false });
                 }
             }
             var started: usize = 0;
@@ -392,8 +380,19 @@ pub fn Controller(comptime registry: d.Registry, comptime topology: tr.Tree) typ
             defer self.mutex.unlock();
             return self.authority.claimCell(key);
         }
+        pub fn claimReadFunction(self: *Self, key: t.ItemKey, function: t.ReadFunction) !state.Claim {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+            return self.authority.claimReadFunction(key, function);
+        }
         pub fn read(self: *Self, key: t.ItemKey) !t.Read {
-            return self.authority.read(key);
+            self.mutex.lock();
+            const captured = self.authority.capture(key) catch |err| {
+                self.mutex.unlock();
+                return err;
+            };
+            self.mutex.unlock();
+            return captured.read();
         }
         pub fn readPresence(self: *Self, key: t.ItemKey) !t.Presence {
             return self.authority.readPresence(key);
@@ -487,59 +486,33 @@ pub fn Controller(comptime registry: d.Registry, comptime topology: tr.Tree) typ
         pub fn unbind(self: *Self, claim: state.Claim, why: t.Reason, token: ?u64) !void {
             return self.binding(claim, false, why, token);
         }
-        pub fn shutdown(self: *Self, why: t.Reason, token: ?u64) !void {
-            return self.publish(self.shutdown_claim, .{ .value = true }, why, token);
-        }
-        pub fn setDemand(self: *Self, key: []const u8, block: u32, why: t.Reason, token: ?u64) !void {
-            return self.changeDemand(key, block, why, token);
-        }
-        pub fn clearDemand(self: *Self, key: []const u8, why: t.Reason, token: ?u64) !void {
-            return self.changeDemand(key, null, why, token);
-        }
-        fn changeDemand(self: *Self, key: []const u8, block: ?u32, why: t.Reason, token: ?u64) !void {
-            if (why.owner.len == 0 or why.cause.len == 0) return error.InvalidDemand;
-            if (why.owner.len > self.config.reason_text_capacity or why.cause.len > self.config.reason_text_capacity - why.owner.len) return error.ReasonTooLong;
+        /// Change notification carries no value. The next round reads the owner.
+        pub fn notifyChanged(self: *Self, claim: state.Claim, why: t.Reason, token: ?u64) !void {
+            try self.validateReason(why);
             self.mutex.lock();
-            if (self.config.demand_item == null) {
+            const index = self.authority.claimIndex(claim) catch |err| {
                 self.mutex.unlock();
-                return error.NoDemandItem;
-            }
-            if (block) |uid| {
-                _ = blockIndex(uid) catch |err| {
-                    self.mutex.unlock();
-                    return err;
-                };
-                if (uid == topology.program) {
-                    self.mutex.unlock();
-                    return error.InvalidDemand;
-                }
+                return err;
+            };
+            const entry = &self.authority.entries[index];
+            if (entry.read_function == null) {
+                self.mutex.unlock();
+                return error.StorageMismatch;
             }
             const ci = self.tokenLocked(token) catch |err| {
                 self.mutex.unlock();
                 return err;
             };
-            const change = (if (block) |uid| self.demands.set(key, uid, why) else self.demands.clear(key)) catch |err| {
-                if (ci) |i| self.completions[i].used = false;
-                self.mutex.unlock();
-                return err;
-            };
-            const affected = [_]?u32{ change.previous, change.current };
-            for (affected, 0..) |uid_opt, index| {
-                const uid = uid_opt orelse continue;
-                if (index == 1 and change.previous == uid) continue;
-                const bi = blockIndex(uid) catch unreachable;
-                const claim = self.demand_claims[bi].?;
-                _ = self.authority.publish(claim, .{ .value = self.demands.has(uid) }) catch unreachable;
-                self.eventLocked(.{ .item = self.config.demand_item.?, .block = uid }, ci, .demand, why);
-            }
+            if (entry.bound) self.eventLocked(entry.key, ci, .item, why);
+            const key = entry.key;
+            const bound = entry.bound;
             const last_reader = self.readers.last_id;
             self.mutex.unlock();
             self.completeReady();
-            for (affected, 0..) |uid_opt, index| {
-                const uid = uid_opt orelse continue;
-                if (index == 1 and change.previous == uid) continue;
-                self.notifyReaders(.{ .item = self.config.demand_item.?, .block = uid }, why, last_reader);
-            }
+            if (bound) self.notifyReaders(key, why, last_reader);
+        }
+        pub fn shutdown(self: *Self, why: t.Reason, token: ?u64) !void {
+            return self.publish(self.shutdown_claim, .{ .value = true }, why, token);
         }
         pub fn registerReader(self: *Self, key: t.ItemKey, holder: []const u8) !u64 {
             self.mutex.lock();
@@ -768,15 +741,20 @@ pub fn Controller(comptime registry: d.Registry, comptime topology: tr.Tree) typ
                 var arena = std.heap.FixedBufferAllocator.init(worker.buffer);
                 const actions = arena.allocator().alloc(Action, block_count * 3 + instance_count + 1) catch unreachable;
                 const captured = arena.allocator().alloc(ItemValue, key_offsets[ni + 1] - key_offsets[ni]) catch unreachable;
-                for (node_items[key_offsets[ni]..key_offsets[ni + 1]], captured) |entry, *value| value.* = .{ .key = entry.key, .value = self.authority.read(entry.key) catch unreachable };
-                // Items and child states share one locked round basis. Compute
-                // reads use this capture; alignment still reads live states.
+                const bindings = arena.allocator().alloc(state.Capture, captured.len) catch unreachable;
+                for (node_items[key_offsets[ni]..key_offsets[ni + 1]], bindings) |entry, *binding_value| binding_value.* = self.authority.capture(entry.key) catch unreachable;
+                // Publication bindings and child states share one locked
+                // basis. Owner functions resolve after unlocking; alignment
+                // still reads live block states.
                 const captured_children = arena.allocator().alloc(t.BlockState, block_count) catch unreachable;
                 for (self.blocks, captured_children) |block, *value| value.* = block.value;
                 const source = node.source;
                 const reason_buffer = arena.allocator().alloc(u8, self.config.reason_text_capacity) catch unreachable;
                 const reason: ?t.Reason = if (node.reason) |why| copyReason(reason_buffer, why) else null;
                 self.mutex.unlock();
+                // Invoke each captured host reader exactly once, with no
+                // controller lock held. All conditions reuse these values.
+                for (node_items[key_offsets[ni]..key_offsets[ni + 1]], bindings, captured) |entry, binding_value, *value| value.* = .{ .key = entry.key, .value = binding_value.read() };
                 var action_count: usize = 0;
                 for (metadata, 0..) |m, mi| {
                     if (m.node != ni or marks & (@as(u64, 1) << m.bit) == 0) continue;
@@ -922,7 +900,6 @@ pub fn Controller(comptime registry: d.Registry, comptime topology: tr.Tree) typ
             self.allocator.free(self.completions);
             self.readers.deinit();
             self.authority.deinit();
-            self.demands.deinit();
             const allocator = self.allocator;
             allocator.destroy(self);
         }
@@ -996,6 +973,13 @@ pub fn Controller(comptime registry: d.Registry, comptime topology: tr.Tree) typ
             w.raw("]}");
         }
         pub fn snapshot(self: *Self, buffer: []u8) !usize {
+            const item_count = comptime blk: {
+                var count: usize = 0;
+                for (registry.items) |item| count += if (item.per_block) block_count else 1;
+                break :blk count;
+            };
+            var publications: [item_count]t.Read = undefined;
+            for (self.authority.entries, &publications) |*entry, *value| value.* = if (entry.declaration.value_type == .bool) try self.read(entry.key) else entry.readCurrent();
             self.mutex.lock();
             defer self.mutex.unlock();
             var w = Json.init(buffer);
@@ -1042,28 +1026,8 @@ pub fn Controller(comptime registry: d.Registry, comptime topology: tr.Tree) typ
                 w.string(@tagName(row.to));
                 w.raw("}");
             }
-            w.raw("],\"demands\":[");
-            var first = true;
-            for (self.demands.entries) |entry| {
-                if (!entry.used) continue;
-                if (!first) w.raw(",");
-                first = false;
-                w.raw("{\"key\":");
-                w.string(entry.key);
-                w.raw(",\"blockUid\":");
-                w.number(entry.block);
-                w.raw(",\"kind\":");
-                w.number(entry.reason.kind);
-                w.raw(",\"owner\":");
-                w.string(entry.reason.owner);
-                w.raw(",\"cause\":");
-                w.string(entry.reason.cause);
-                w.raw(",\"planVersion\":");
-                w.number(entry.reason.plan_version);
-                w.raw("}");
-            }
             w.raw("],\"readers\":[");
-            first = true;
+            var first = true;
             for (self.readers.entries) |entry| {
                 if (!entry.used) continue;
                 if (!first) w.raw(",");
@@ -1092,12 +1056,12 @@ pub fn Controller(comptime registry: d.Registry, comptime topology: tr.Tree) typ
                 }
                 w.raw(",");
                 if (entry.declaration.value_type == .host) {
-                    const publication = entry.readCurrent();
+                    const publication = publications[index];
                     w.raw("\"hasValue\":");
                     w.boolean(publication == .value);
                     w.raw(",\"noValueReason\":");
                     if (publication == .value) w.raw("null") else w.string(@tagName(publication));
-                } else jsonRead(&w, entry.readCurrent());
+                } else jsonRead(&w, publications[index]);
                 w.raw("}");
             }
             w.raw("],\"nodes\":[");
@@ -1150,13 +1114,7 @@ pub fn Controller(comptime registry: d.Registry, comptime topology: tr.Tree) typ
                 first = false;
                 jsonDecision(&w, row);
             }
-            w.raw("],\"allocator\":{\"current\":");
-            w.number(self.demands.current());
-            w.raw(",\"peak\":");
-            w.number(self.demands.peak);
-            w.raw(",\"capacity\":");
-            w.number(self.demands.capacity());
-            w.raw("},\"readerAllocator\":{\"current\":");
+            w.raw("],\"readerAllocator\":{\"current\":");
             w.number(self.readers.current());
             w.raw(",\"peak\":");
             w.number(self.readers.peak);

@@ -215,7 +215,7 @@ public sealed partial class AutomaticProductUpdateTests
     }
 
     [Fact]
-    public async Task PublicationCancelsActivePreparationWhenSwitchTurnsOff()
+    public async Task ControllerStopCancelsActivePreparationWhenSwitchTurnsOff()
     {
         using var fixture = new Fixture();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -236,6 +236,8 @@ public sealed partial class AutomaticProductUpdateTests
             Assert.Equal(0, fixture.Clock.ActiveTimers);
             fixture.Enabled = false;
             fixture.PublishSettings();
+            Assert.False(fixture.Plans.DecisionFacts.AutomaticUpdatesEnabled);
+            await service.StopAsync(CancellationToken.None);
             await cancelled.Task.WaitAsync(TimeSpan.FromSeconds(3));
         }
         finally { await service.StopAsync(CancellationToken.None); }
@@ -245,45 +247,41 @@ public sealed partial class AutomaticProductUpdateTests
     }
 
     [Fact]
-    public async Task DisabledIdleHasNoTimersPackageUseChecksOrSettingsReadsUntilPublication()
+    public async Task DisabledFiniteRunHasNoTimersPackageUseChecksOrBackgroundSettingsReads()
     {
         using var fixture = new Fixture { Enabled = false };
         using var service = fixture.Service(fixture.Coordinator());
-        await service.StartAsync(CancellationToken.None);
-        try
-        {
-            await fixture.WaitForSettingsReadsAsync(1);
-            fixture.Clock.Advance(TimeSpan.FromDays(30));
-            Assert.Equal(1, fixture.SettingsReads);
-            Assert.Equal(0, fixture.Clock.ActiveTimers);
-            Assert.Equal(0, fixture.PackageUsage.Checks);
-            Assert.Equal(0, fixture.Checks);
-            fixture.PublishSettings();
-            await fixture.WaitForSettingsReadsAsync(2);
-        }
-        finally { await service.StopAsync(CancellationToken.None); }
+        await service.RunOnceAsync(CancellationToken.None);
+        fixture.Clock.Advance(TimeSpan.FromDays(30));
+        fixture.PublishSettings();
+        Assert.False(fixture.Plans.DecisionFacts.AutomaticUpdatesEnabled);
+        Assert.Equal(1, fixture.SettingsReads);
+        Assert.Equal(0, fixture.Checks);
+        await service.RunOnceAsync(CancellationToken.None);
         Assert.Equal(2, fixture.SettingsReads);
         Assert.Equal(0, fixture.Clock.ActiveTimers);
         Assert.Equal(0, fixture.PackageUsage.Checks);
         fixture.PublishSettings();
-        Assert.Equal(2, fixture.SettingsReads); // Subscription is detached on stop.
+        Assert.Equal(2, fixture.SettingsReads); // Finite calls never attach a publication callback.
     }
 
     [Fact]
-    public async Task EnablingPublicationStartsCheckWithoutWaitingForTimer()
+    public async Task ControllerStartAfterEnablingChecksWithoutWaitingForTimer()
     {
         using var fixture = new Fixture { Enabled = false, Listing = Catalog("0.2.4") };
         using var service = fixture.Service(fixture.Coordinator());
+        Assert.Equal(0, fixture.SettingsReads);
+        Assert.Equal(0, fixture.Checks);
+        fixture.Enabled = true;
+        fixture.PublishSettings();
+        Assert.True(fixture.Plans.DecisionFacts.AutomaticUpdatesEnabled);
+        Assert.Equal(0, fixture.SettingsReads);
         await service.StartAsync(CancellationToken.None);
         try
         {
-            await fixture.WaitForSettingsReadsAsync(1);
-            Assert.Equal(0, fixture.Checks);
-            fixture.Enabled = true;
-            fixture.PublishSettings();
             await fixture.Clock.WaitForTimerAsync(TimeSpan.FromHours(24));
             Assert.Equal(1, fixture.Checks);
-            Assert.True(fixture.SettingsReads >= 2); // State changes also wake the owner.
+            Assert.True(fixture.SettingsReads >= 1);
             Assert.Equal(0, fixture.PackageUsage.Checks);
         }
         finally { await service.StopAsync(CancellationToken.None); }
@@ -370,26 +368,18 @@ public sealed partial class AutomaticProductUpdateTests
     }
 
     [Fact]
-    public async Task ManualPendingUpdateWakesDisabledOwnerWithoutPackageUseCheckOrAutomaticApply()
+    public async Task ManualPendingUpdateRemainsAvailableWithAutomaticWorkerStopped()
     {
         using var fixture = new Fixture { Enabled = false };
         var coordinator = fixture.Coordinator();
-        var observedPending = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        fixture.SettingsReadObserved = () =>
-        {
-            if (coordinator.Status.Stage == "pendingApply") observedPending.TrySetResult();
-        };
         using var service = fixture.Service(coordinator);
-        await service.StartAsync(CancellationToken.None);
-        try
-        {
-            await fixture.WaitForSettingsReadsAsync(1);
-            coordinator.Submit("version:0.3.0");
-            await observedPending.Task.WaitAsync(TimeSpan.FromSeconds(3));
-            Assert.Equal("pendingApply", coordinator.Status.Stage);
-            fixture.Clock.Advance(TimeSpan.FromDays(30));
-        }
-        finally { await service.StopAsync(CancellationToken.None); }
+        await service.RunOnceAsync(CancellationToken.None);
+        coordinator.Submit("version:0.3.0");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        await foreach (var status in coordinator.SubscribeAsync(timeout.Token))
+            if (status.Stage == "pendingApply") break;
+        fixture.Clock.Advance(TimeSpan.FromDays(30));
+        Assert.Equal(1, fixture.SettingsReads);
         Assert.Equal(0, fixture.PackageUsage.Checks);
         Assert.Equal(0, fixture.Launches);
         Assert.Equal(0, fixture.Clock.ActiveTimers);
@@ -668,6 +658,7 @@ public sealed partial class AutomaticProductUpdateTests
             Plans.Current with
             {
                 Version = Plans.Current.Version + 1,
+                AutomaticUpdatesEnabled = Enabled && PeriodicCheckEnabled,
                 HostManager = Plans.Current.Version == 0 ? HostManagerTestPlanFactory.CreatePlan() : Plans.Current.HostManager
             }).HasDeliveryFailures);
 

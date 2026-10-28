@@ -6,6 +6,7 @@ using ResourceManager.Subscription.Native;
 
 namespace ResourceManager.Subscription;
 
+/// <summary>Tracks subscription-source items and their current sampling plans.</summary>
 public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
 {
     private const string CoalescedCaptureItemId = "\u001fcapture";
@@ -43,6 +44,7 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
     private ulong lastCommandMilliseconds;
     private long lastCommandTimestamp;
     private readonly TimeProvider clock = TimeProvider.System;
+    private ISubscriptionRoleSettings? lastRoleSettings;
 
     public NativeItemSamplingSubscriptionTracker(
         ISamplingSubscriptionSessionOwner<TContext> owner,
@@ -89,8 +91,15 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
         if (interval.Ticks % TimeSpan.TicksPerMillisecond != 0)
             throw new ArgumentOutOfRangeException(nameof(interval), "The sampling period must be a whole number of milliseconds.");
         var milliseconds = interval.Ticks / TimeSpan.TicksPerMillisecond;
-        using var lease = owner.Acquire(roleId);
-        var minimum = lease.HotPublish.MinimumIntervalMilliseconds;
+        using var lease = owner is ISamplingSubscriptionSettingsSource ? null : owner.Acquire(roleId);
+        var roleSettings = owner is ISamplingSubscriptionSettingsSource settings
+            ? settings.GetRoleSettings(roleId) : lease!.HotPublish;
+        if (milliseconds <= 0)
+            throw new ArgumentOutOfRangeException(nameof(interval), "The sampling period must be positive.");
+        // Before policy publication, retain the explicit subscription. The native
+        // owner validates it against the real policy when its session is created.
+        if (roleSettings is null) return;
+        var minimum = roleSettings.MinimumIntervalMilliseconds;
         if (minimum <= 0 || milliseconds < minimum)
             throw new ArgumentOutOfRangeException(nameof(interval), "The sampling period must meet the current role minimum.");
     }
@@ -156,8 +165,10 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
             var lease = AcquireMutationLease();
             try
             {
-                var session = MutationSession(lease);
-                EnsureBoundSession(session, now);
+                lastRoleSettings = lease?.HotPublish ?? pendingSessionLease?.HotPublish ?? lastRoleSettings;
+                var session = pendingSessionLease?.Session ?? lease?.Session;
+                if (session is not null) EnsureBoundSession(session, now);
+                SubscriptionsChanged?.Invoke();
                 if (!sourceHandles.TryGetValue(sourceKey, out var handle))
                 {
                     return false;
@@ -167,13 +178,13 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
                 {
                     AbiVersion = NativeSamplingSubscriptionAbi.Version,
                     StructSize = SizeOf<NativeSamplingSubscriptionRemoveInput>(),
-                    ConfigurationGeneration = session.ConfigurationGeneration,
+                    ConfigurationGeneration = session?.ConfigurationGeneration ?? 0,
                     OperationEpoch = NextOperationEpoch(),
                     CommandAtMilliseconds = CommandTimestamp(now),
                     SourceHandle = handle,
                     ValidMask = (ulong)NativeSamplingSubscriptionRemoveValidity.Required
                 };
-                var status = session.Remove(in input);
+                var status = session?.Remove(in input) ?? NativeSamplingSubscriptionStatus.Ok;
                 if (status != NativeSamplingSubscriptionStatus.Ok)
                 {
                     throw new InvalidOperationException(
@@ -185,6 +196,7 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
                     latestMergedItemIdsDirty = true;
                 }
                 sourceHandles.Remove(sourceKey);
+                RefreshActivity();
                 ReleaseUnusedItemMappings();
                 return true;
             }
@@ -218,6 +230,7 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
             try
             {
                 var session = lease.Session;
+                lastRoleSettings = lease.HotPublish;
                 EnsureBoundSession(session, now);
                 outputs = BorrowPlanOutputs(session.Capacity);
                 var dueBuffer = outputs.DueItems;
@@ -272,6 +285,7 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
                     }
                 }
                 ReleaseUnusedItemMappings();
+                if (header.ExpiredSourceCount != 0) RefreshActivity();
 
                 var active = (header.Flags & (ulong)NativeSamplingSubscriptionPlanFlags.Active) != 0;
                 var triggers = ProjectTriggers(header, triggerBuffer);
@@ -552,6 +566,7 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
             pendingTriggers = [];
             pendingPlanEpoch = 0;
             nextHandle = 0;
+            RefreshActivity();
         }
     }
 
@@ -599,8 +614,10 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
         {
             var lease = AcquireMutationLease();
             using var ownedLease = lease;
-            var session = MutationSession(lease);
-            EnsureBoundSession(session, now);
+            lastRoleSettings = lease?.HotPublish ?? pendingSessionLease?.HotPublish ?? lastRoleSettings;
+            var session = pendingSessionLease?.Session ?? lease?.Session;
+            if (session is not null) EnsureBoundSession(session, now);
+            SubscriptionsChanged?.Invoke();
             var sourceHandle = sourceHandles.GetValueOrDefault(sourceKey);
             var newSource = sourceHandle == 0;
             if (newSource)
@@ -645,7 +662,7 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
             {
                 AbiVersion = NativeSamplingSubscriptionAbi.Version,
                 StructSize = SizeOf<NativeSamplingSubscriptionTrackInput>(),
-                ConfigurationGeneration = session.ConfigurationGeneration,
+                ConfigurationGeneration = session?.ConfigurationGeneration ?? 0,
                 OperationEpoch = NextOperationEpoch(),
                 CommandAtMilliseconds = commandTimestamp,
                 ObservedAtMilliseconds = commandTimestamp,
@@ -655,7 +672,7 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
                 ItemCount = checked((uint)nativeItems.Length),
                 Flags = (uint)flags
             };
-            var status = session.Track(in input, nativeItems);
+            var status = session?.Track(in input, nativeItems) ?? NativeSamplingSubscriptionStatus.Ok;
             ThrowIfCapacityExceeded(status);
             if (status != NativeSamplingSubscriptionStatus.Ok)
             {
@@ -683,6 +700,7 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
                 samplingFlags);
             ReleaseUnusedItemMappings();
             latestMergedItemIdsDirty = true;
+            RefreshActivity();
         }
     }
 
@@ -707,15 +725,8 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
 
     private ISamplingSubscriptionSessionLease<TContext>? AcquireMutationLease()
         => pendingSessionLease is null
-            ? owner.Acquire(roleId)
+            ? owner.TryAcquireForCleanup(roleId)
             : null;
-
-    private NativeSamplingSubscriptionSession MutationSession(
-        ISamplingSubscriptionSessionLease<TContext>? lease)
-        => pendingSessionLease?.Session
-            ?? lease?.Session
-            ?? throw new InvalidOperationException(
-                "The sampling mutation has no active workspace session.");
 
     internal NativeItemSamplingSubscriptionCompletion Complete(
         TRequest request,
@@ -835,7 +846,12 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
                 $"Native sampling subscription incarnation reset failed with {resetStatus}.");
         }
 
+        var priorPayloadCount = sourcePayloads.Count;
+        var replayAt = CommandTimestamp(commandAt);
+        var roleSettings = CurrentSettings()
+            ?? throw new InvalidOperationException("The subscription role settings have not been published.");
         var priorPayloads = sourcePayloads.Values
+            .Where(payload => IsInUse(payload, replayAt, roleSettings))
             .OrderBy(static payload => payload.SourceKey, StringComparer.Ordinal)
             .ToArray();
         var nextSourceHandles = new Dictionary<string, ulong>(StringComparer.Ordinal);
@@ -929,6 +945,7 @@ public partial class NativeItemSamplingSubscriptionTracker<TRequest, TContext>
         operationEpoch = replayOperationEpoch;
         planEpoch = 0;
         boundSession = session;
+        if (priorPayloadCount != sourcePayloads.Count) RefreshActivity();
     }
 
     private NativeItemSamplingSubscriptionCompletion CompletePendingWithSession(

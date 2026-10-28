@@ -5,27 +5,46 @@ pub const t = control.tree;
 pub const types = control.types;
 pub const reason: types.Reason = .{ .kind = 1, .owner = "test", .cause = "explicit", .plan_version = 7 };
 
+/// Fixtures own their facts directly; there are no lease keys or controller
+/// fact aggregation in these tests. Run before activating workers.
+pub fn initFacts(controller: anytype) !void {
+    for (controller.authority.entries) |*entry| {
+        if (!entry.declaration.per_block or entry.declaration.value_type != .bool) continue;
+        const claim = try controller.claimCell(entry.key);
+        _ = try controller.authority.publish(claim, .{ .value = false });
+    }
+}
+pub fn setFact(controller: anytype, uid: u32, value: bool, why: types.Reason, token: ?u64) !void {
+    for (controller.authority.entries) |*entry| {
+        if (entry.key.block == uid and entry.declaration.per_block and entry.declaration.value_type == .bool) {
+            const claim: control.state.Claim = @ptrCast(entry);
+            return controller.publish(claim, .{ .value = value }, why, token);
+        }
+    }
+    return error.UnregisteredItem;
+}
+
 pub const blocks = [_]d.Block{
     .{ .uid = 1, .name = "Program" },   .{ .uid = 2, .name = "Parent" },
     .{ .uid = 3, .name = "Child" },     .{ .uid = 4, .name = "Peer" },
     .{ .uid = 5, .name = "PeerChild" }, .{ .uid = 6, .name = "Leaf" },
 };
 pub const items = [_]d.Item{
-    .{ .uid = 10, .storage = .reference, .value_type = .bool, .per_block = true, .trigger = .event, .owner_block = null, .name = "Demand" },
+    .{ .uid = 10, .storage = .reference, .value_type = .bool, .per_block = true, .trigger = .event, .owner_block = null, .name = "FixtureFact" },
     .{ .uid = 11, .storage = .own, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = null, .name = "ShuttingDown" },
     .{ .uid = 12, .storage = .own, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = null, .name = "Requested" },
     .{ .uid = 13, .storage = .own, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = null, .name = "Right" },
     .{ .uid = 14, .storage = .reference, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = null, .name = "Mode" },
 };
-pub const demand_condition = d.Condition{ .uid = 20, .node = null, .per_block = true, .items = &.{.{ .item = 10, .block = null }}, .conditions = &.{}, .children = &.{}, .decides = null, .name = "Demanded" };
-pub const registry = d.Registry{ .version = "fixture-registry", .process = "test", .blocks = &blocks, .items = &items, .conditions = &.{demand_condition} };
+pub const fact_condition = d.Condition{ .uid = 20, .node = null, .per_block = true, .items = &.{.{ .item = 10, .block = null }}, .conditions = &.{}, .children = &.{}, .decides = null, .name = "Fact" };
+pub const registry = d.Registry{ .version = "fixture-registry", .process = "test", .blocks = &blocks, .items = &items, .conditions = &.{fact_condition} };
 pub const tree = t.Tree{
     .program = 1,
     .blocks = &.{ .{ .uid = 1, .parent = null }, .{ .uid = 2, .parent = 1 }, .{ .uid = 3, .parent = 2 }, .{ .uid = 4, .parent = 1 }, .{ .uid = 5, .parent = 4, .inputs = &.{6} }, .{ .uid = 6, .parent = 3 } },
     .uses = &.{ .{ .node = 1, .condition = 20, .child = 2 }, .{ .node = 1, .condition = 20, .child = 4 }, .{ .node = 2, .condition = 20, .child = 3 }, .{ .node = 3, .condition = 20, .child = 6 }, .{ .node = 4, .condition = 20, .child = 5 } },
-    .computes = &.{.{ .condition = 20, .function = demanded }},
+    .computes = &.{.{ .condition = 20, .function = fact }},
 };
-pub fn demanded(input: *types.Input) anyerror!bool {
+pub fn fact(input: *types.Input) anyerror!bool {
     return (try input.read(.{ .item = 10, .block = input.block })).valueOr(false);
 }
 pub fn truth(_: *types.Input) anyerror!bool {
@@ -47,7 +66,7 @@ pub fn waitFor(comptime C: type, controller: *C, uid: u32, wanted: types.BlockSt
     return error.TestTimeout;
 }
 pub fn config(history: usize) types.Config {
-    return .{ .worker_count = 4, .history_capacity = history, .demand_capacity = 64, .demand_bytes = 8192, .completion_capacity = 128, .reader_capacity = 16, .reader_bytes = 4096, .worker_arena_bytes = 65536, .demand_item = 10, .shutdown_item = 11, .host_blocks = &.{ 2, 3, 4, 5, 6 } };
+    return .{ .worker_count = 4, .history_capacity = history, .completion_capacity = 128, .reader_capacity = 16, .reader_bytes = 4096, .worker_arena_bytes = 65536, .shutdown_item = 11, .host_blocks = &.{ 2, 3, 4, 5, 6 } };
 }
 
 /// A host that immediately reports transitions, unless a test holds a run.
@@ -164,10 +183,10 @@ pub fn Flat(comptime count: usize) type {
             .{ .uid = 101, .storage = .own, .value_type = .bool, .per_block = false, .trigger = .event, .owner_block = null, .name = null },
         };
         pub const flat_condition = d.Condition{ .uid = 200, .node = null, .per_block = true, .items = &.{.{ .item = 100, .block = null }}, .conditions = &.{}, .children = &.{}, .decides = null, .name = null };
-        pub fn flatDemanded(input: *types.Input) anyerror!bool {
+        pub fn flatFact(input: *types.Input) anyerror!bool {
             return (try input.read(.{ .item = 100, .block = input.block })).valueOr(false);
         }
         pub const registry = d.Registry{ .version = "flat-fixture", .process = "test", .blocks = &flat_blocks, .items = &flat_items, .conditions = &.{flat_condition} };
-        pub const tree = t.Tree{ .program = 1, .blocks = &flat_tree_blocks, .uses = &flat_uses, .computes = &.{.{ .condition = 200, .function = flatDemanded }} };
+        pub const tree = t.Tree{ .program = 1, .blocks = &flat_tree_blocks, .uses = &flat_uses, .computes = &.{.{ .condition = 200, .function = flatFact }} };
     };
 }

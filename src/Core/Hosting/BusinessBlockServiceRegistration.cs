@@ -21,15 +21,29 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.TryAddSingleton<NativeEtwSessionAvailability>();
         services.TryAddSingleton<BusinessBlockDiagnosticsRegistry>();
         services.TryAddSingleton<HostedBusinessBlockRegistry>();
-        services.TryAddSingleton<BusinessBlockScheduler>();
+        services.TryAddSingleton<BackendHostPermitFacts>();
+        services.TryAddSingleton<BusinessBlockScheduler>(provider =>
+        {
+            _ = provider.GetRequiredService<BackendHostPermitFacts>();
+            return new(provider, provider.GetServices<BusinessBlockRegistration>(),
+                provider.GetRequiredService<NativeControl>(), provider.GetRequiredService<StateAuthority>());
+        });
         services.TryAddSingleton<IBusinessBlockQuery>(provider => provider.GetRequiredService<BusinessBlockScheduler>());
         services.TryAddSingleton<IBusinessBlockDiagnostics>(provider => provider.GetRequiredService<BusinessBlockDiagnosticsRegistry>());
         services.TryAddSingleton<IEtwConsumerThreadObserver, BusinessBlockEtwThreadObserver>();
         services.AddSingleton<IHostedService, BusinessBlockDependencyLifetime>();
         services.TryAddSingleton<NativeEtwLifetimeService>();
         AddHostedBlockDeclaration<NativeEtwLifetimeService>(services, BlockUids.NativeEtwLifetimeService);
+        services.AddSingleton(new HostedBusinessBlockAlias(BlockUids.NativeEtwLifetimeService));
         services.AddSingleton<IHostedService>(provider => new NonOwningHostedService<NativeEtwLifetimeService>(
             provider, BlockUids.NativeEtwLifetimeService, constructService: true));
+        return services;
+    }
+
+    internal static IServiceCollection AddBackendDecisionStateBindings(this IServiceCollection services)
+    {
+        services.TryAddSingleton<BackendDecisionStateBindings>();
+        services.TryAddSingleton<SubscriptionActivityFacts>();
         return services;
     }
 

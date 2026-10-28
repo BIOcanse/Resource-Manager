@@ -185,7 +185,7 @@ public sealed partial class WindowsHardwareMetricSampler :
         subscriptions = CreateSubscriptions(samplingSubscriptionOwner, createOutputScratch);
         this.logger = logger;
         samplingWorker = new(subscriptions, demandSignal, SynchronizeCounterDemand,
-            ReportSamplingWorkerFailure, TimeSpan.FromSeconds(1));
+            ReportSamplingWorkerFailure);
         this.runtimePlanProvider = runtimePlanProvider;
         ConfigureHistoryFromCurrentPlan();
     }
@@ -453,30 +453,43 @@ public sealed partial class WindowsHardwareMetricSampler :
             runtimePlanPublished = plan => OnRuntimePlanPublished(runId, plan);
             runtimePlanProvider.Published += runtimePlanPublished;
             samplingTask = Task.Run(
-                () => samplingWorker.RunAsync((plan, token) => TryRefreshCacheAsync(runId, plan.OwnerToken,
-                    plan.Schedule, plan.Request!, plan.DueItemIds, plan.Triggers,
-                    result => completedFieldResult = result, token), cts.Token,
-                    planCreated: plan =>
+                async () =>
+                {
+                    try
                     {
-                        completedFieldResult = null;
-                        if (plan.Request is null)
+                        using var metricWorkspaceHolding = metricSnapshotOwner.Hold();
+                        await samplingWorker.RunAsync((plan, token) => TryRefreshCacheAsync(runId, plan.OwnerToken,
+                        plan.Schedule, plan.Request!, plan.DueItemIds, plan.Triggers,
+                        result => completedFieldResult = result, token), cts.Token,
+                        planCreated: plan =>
                         {
-                            fieldSubscriptionDelivery.Deliver(plan.Triggers, null, freshOnly: false);
+                            completedFieldResult = null;
+                            if (plan.Request is null)
+                            {
+                                fieldSubscriptionDelivery.Deliver(plan.Triggers, null, freshOnly: false);
+                                snapshotSubscriptionDelivery.Deliver(plan.Triggers);
+                            }
+                        },
+                        collectionCompleted: (plan, _) =>
+                        {
+                            if (plan.Request is null)
+                            {
+                                fieldSubscriptionDelivery.Deliver(plan.Triggers, null, freshOnly: true);
+                                return;
+                            }
+                            var result = completedFieldResult;
+                            completedFieldResult = null;
+                            fieldSubscriptionDelivery.Deliver(plan.Triggers, result);
                             snapshotSubscriptionDelivery.Deliver(plan.Triggers);
-                        }
-                    },
-                    collectionCompleted: (plan, _) =>
+                        });
+                    }
+                    finally
                     {
-                        if (plan.Request is null)
-                        {
-                            fieldSubscriptionDelivery.Deliver(plan.Triggers, null, freshOnly: true);
-                            return;
-                        }
-                        var result = completedFieldResult;
                         completedFieldResult = null;
-                        fieldSubscriptionDelivery.Deliver(plan.Triggers, result);
-                        snapshotSubscriptionDelivery.Deliver(plan.Triggers);
-                    }),
+                        fieldSubscriptionDelivery.DiscardRunRounds();
+                        snapshotSubscriptionDelivery.DiscardRunRounds();
+                    }
+                },
                 CancellationToken.None);
         }
         return Task.CompletedTask;
@@ -490,8 +503,6 @@ public sealed partial class WindowsHardwareMetricSampler :
             if (runtimePlanPublished is { } handler)
                 runtimePlanProvider.Published -= handler;
             runtimePlanPublished = null;
-            fieldSubscriptionDelivery.RetireAll();
-            snapshotSubscriptionDelivery.RetireAll();
             if (samplingRunId is { } activeRun)
             {
                 _ = publishedSnapshot.CloseHostedRun(
@@ -501,7 +512,6 @@ public sealed partial class WindowsHardwareMetricSampler :
             }
             if (samplingTask is null)
             {
-                subscriptions.Clear(DateTimeOffset.UtcNow);
                 samplingRunId = null;
                 return;
             }
@@ -599,7 +609,6 @@ public sealed partial class WindowsHardwareMetricSampler :
             {
                 if (ReferenceEquals(samplingTask, task))
                 {
-                    subscriptions.Clear(DateTimeOffset.UtcNow);
                     samplingTask = null;
                     samplingCts = null;
                     if (samplingRunId == runId)

@@ -33,7 +33,7 @@ internal static partial class EdidModeSubscriptionConsumer
         var failures = new List<SubscriptionWorkerFailure>();
         var borrow = new FirstQueryBorrow(owner.BorrowSubscriptionCapture());
         await using (var subscription = new NativeFieldSubscriptionComposition(borrow,
-            settings, in configuration, failure => failures.Add(failure), TimeSpan.FromMilliseconds(250)))
+            settings, in configuration, failure => failures.Add(failure)))
         {
             await subscription.StartAsync(timeout.Token);
             await using var stream = subscription.SubscribeAsync("recorded-edid-mode", [field], TimeSpan.FromMilliseconds(250), new(FieldSubscriptionSamplingMode.FreshOnTrigger), timeout.Token).GetAsyncEnumerator();
@@ -95,7 +95,7 @@ internal static partial class EdidModeSubscriptionConsumer
         var failures = new List<SubscriptionWorkerFailure>();
         var borrow = new FirstQueryBorrow(owner.BorrowSubscriptionCapture());
         await using (var subscription = new NativeFieldSubscriptionComposition(borrow,
-            settings, in configuration, failure => failures.Add(failure), TimeSpan.FromMilliseconds(250)))
+            settings, in configuration, failure => failures.Add(failure)))
         {
             await subscription.StartAsync(cancellationToken);
             await using var stream = subscription.SubscribeAsync("recorded-edid-mode-selection", [field],
@@ -161,7 +161,7 @@ internal static partial class EdidModeSubscriptionConsumer
         Require(backend.ReadCached(new(RecordedSource.Identity, "display_all_resolution_actual")).Value is null, "TypeX role2 static inactive declaration");
         var failures = new List<SubscriptionWorkerFailure>(); var borrow = new FirstQueryBorrow(owner.BorrowSubscriptionCapture());
         await using (var subscription = new NativeFieldSubscriptionComposition(borrow,
-            settings, in configuration, failure => failures.Add(failure), TimeSpan.FromMilliseconds(250)))
+            settings, in configuration, failure => failures.Add(failure)))
         {
             await subscription.StartAsync(cancellationToken);
             await using var stream = subscription.SubscribeAsync("recorded-edid-mode-typex", [field], TimeSpan.FromMilliseconds(250),
@@ -206,7 +206,7 @@ internal static partial class EdidModeSubscriptionConsumer
         Require(backend.ReadCached(new(RecordedSource.Identity, "display_all_resolution_actual")).Value is null, "embedded-SVD role2 static inactive declaration");
         var failures = new List<SubscriptionWorkerFailure>(); var borrow = new FirstQueryBorrow(owner.BorrowSubscriptionCapture());
         await using (var subscription = new NativeFieldSubscriptionComposition(borrow,
-            settings, in configuration, failure => failures.Add(failure), TimeSpan.FromMilliseconds(250)))
+            settings, in configuration, failure => failures.Add(failure)))
         {
             await subscription.StartAsync(cancellationToken);
             await using var stream = subscription.SubscribeAsync("recorded-edid-mode-typex", [field], TimeSpan.FromMilliseconds(250),
@@ -251,7 +251,7 @@ internal static partial class EdidModeSubscriptionConsumer
         Require(backend.ReadCached(new(RecordedSource.Identity, "display_all_resolution_actual")).Value is null, "embedded-colour role2 static inactive declaration");
         var failures = new List<SubscriptionWorkerFailure>(); var borrow = new FirstQueryBorrow(owner.BorrowSubscriptionCapture());
         await using (var subscription = new NativeFieldSubscriptionComposition(borrow,
-            settings, in configuration, failure => failures.Add(failure), TimeSpan.FromMilliseconds(250)))
+            settings, in configuration, failure => failures.Add(failure)))
         {
             await subscription.StartAsync(cancellationToken);
             await using var stream = subscription.SubscribeAsync("recorded-edid-mode-typex", [field], TimeSpan.FromMilliseconds(250),
@@ -296,7 +296,7 @@ internal static partial class EdidModeSubscriptionConsumer
         Require(backend.ReadCached(new(RecordedSource.Identity, "display_all_resolution_actual")).Value is null, "embedded-hdmi role2 static inactive declaration");
         var failures = new List<SubscriptionWorkerFailure>(); var borrow = new FirstQueryBorrow(owner.BorrowSubscriptionCapture());
         await using (var subscription = new NativeFieldSubscriptionComposition(borrow,
-            settings, in configuration, failure => failures.Add(failure), TimeSpan.FromMilliseconds(250)))
+            settings, in configuration, failure => failures.Add(failure)))
         {
             await subscription.StartAsync(cancellationToken);
             await using var stream = subscription.SubscribeAsync("recorded-edid-mode-typex", [field], TimeSpan.FromMilliseconds(250),
@@ -343,7 +343,7 @@ internal static partial class EdidModeSubscriptionConsumer
         Require(backend.ReadCached(new(RecordedSource.Identity, "display_all_resolution_actual")).Value is null, "type-ix role2 static inactive declaration");
         var failures = new List<SubscriptionWorkerFailure>(); var borrow = new FirstQueryBorrow(owner.BorrowSubscriptionCapture());
         await using (var subscription = new NativeFieldSubscriptionComposition(borrow,
-            settings, in configuration, failure => failures.Add(failure), TimeSpan.FromMilliseconds(250)))
+            settings, in configuration, failure => failures.Add(failure)))
         {
             await subscription.StartAsync(cancellationToken);
             await using var stream = subscription.SubscribeAsync("recorded-edid-mode-formula", [field], TimeSpan.FromMilliseconds(250),
@@ -425,7 +425,7 @@ internal static partial class EdidModeSubscriptionConsumer
         Require(backend.ReadCached(new(RecordedSource.Identity, "display_all_resolution_actual")).Value is null, "TypeIII role2 static inactive declaration");
         var failures = new List<SubscriptionWorkerFailure>(); var borrow = new FirstQueryBorrow(owner.BorrowSubscriptionCapture());
         await using (var subscription = new NativeFieldSubscriptionComposition(borrow,
-            settings, in configuration, failure => failures.Add(failure), TimeSpan.FromMilliseconds(250)))
+            settings, in configuration, failure => failures.Add(failure)))
         {
             await subscription.StartAsync(cancellationToken);
             await using var stream = subscription.SubscribeAsync("recorded-edid-mode-type3", [field], TimeSpan.FromMilliseconds(250),

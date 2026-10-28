@@ -15,7 +15,7 @@ public sealed partial class CpuTopologySnapshotProvider
         var sourceKey = $"lease:{Interlocked.Increment(ref nextLeaseId)}:{subscriptionId.Trim()}";
         lock (publicationGate)
         {
-            if (stopped) throw new InvalidOperationException("The CPU topology provider has stopped.");
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref ownedResourcesDisposed) != 0, this);
             subscriptions.TrackPersistent(new TopologyRequest(sourceKey, cancellationToken), DateTimeOffset.UtcNow, interval);
         }
         SignalDemand();
@@ -25,7 +25,7 @@ public sealed partial class CpuTopologySnapshotProvider
     internal async ValueTask<DeviceInformationSnapshot> CaptureInformationAsync(CancellationToken cancellationToken)
     {
         lock (publicationGate)
-            if (stopped) throw new InvalidOperationException("The CPU topology provider has stopped.");
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref ownedResourcesDisposed) != 0, this);
         using var lease = samplingOwner.Acquire(SamplingRoleId);
         await CaptureAndPublishAsync(lease.OwnerToken, requireDemand: false, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
@@ -68,7 +68,7 @@ public sealed partial class CpuTopologySnapshotProvider
             var source = Interlocked.Exchange(ref current, null);
             if (source is null) return;
             lock (source.publicationGate)
-                if (!source.stopped) { source.subscriptions.Remove(key, DateTimeOffset.UtcNow); source.SignalDemand(); }
+                if (Volatile.Read(ref source.ownedResourcesDisposed) == 0) { source.subscriptions.Remove(key, DateTimeOffset.UtcNow); source.SignalDemand(); }
         }
     }
 }

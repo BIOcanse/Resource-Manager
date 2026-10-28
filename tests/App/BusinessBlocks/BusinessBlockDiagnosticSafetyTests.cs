@@ -17,19 +17,24 @@ public sealed class BusinessBlockDiagnosticSafetyTests
         await using var scheduler = Create([Register(116, block)], historyLimit: 0);
         try
         {
-            var demand = Reason(BusinessBlockRequestKind.User, "operator", "observe", 19);
-            await scheduler.SetDemandAsync("observe", 116, demand);
+            var reason = Reason(BusinessBlockRequestKind.User, "operator", "observe", 19);
+            await scheduler.StartAsync(116, reason);
             await State(scheduler, 116, BusinessBlockState.Running);
+            // Running is itself a decision input event. Publish after that round so the
+            // current decision unambiguously describes this fixture fact publication.
+            await Until(() => scheduler.Read().CurrentDecisions.Any(decision =>
+                decision.Reason.ConfigurationOrDependency == "state:Running"));
+            await scheduler.StartAsync(116, reason);
             var snapshot = scheduler.Read();
             Assert.Empty(snapshot.History);
             Assert.Empty(snapshot.Decisions);
             var current = Assert.Single(snapshot.CurrentDecisions);
             Assert.Equal(BackendUids.Program, current.ParentId);
             Assert.Equal([116], current.ShouldRun);
-            Assert.Contains(current.Items, fact => fact.ItemUid == BackendItems.BlockDemand && fact.BlockUid == 116
+            Assert.Contains(current.Items, fact => fact.ItemUid == TestStateUids.ExecutionEnabled && fact.BlockUid == 116
                 && fact.Value is true);
-            Assert.Equal(demand, Assert.Single(snapshot.Demands, value => value.BlockId == 116 && value.Key == "observe").Reason);
-            await scheduler.SetDemandAsync("observe", null, demand);
+            Assert.Equal(reason, current.Reason);
+            await scheduler.StopAsync(116, reason);
             await State(scheduler, 116, BusinessBlockState.Stopped);
             Assert.Empty(Assert.Single(scheduler.Read().CurrentDecisions).ShouldRun);
         }

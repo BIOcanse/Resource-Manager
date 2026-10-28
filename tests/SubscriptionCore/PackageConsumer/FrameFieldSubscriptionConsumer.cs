@@ -173,7 +173,7 @@ internal static class FrameFieldSubscriptionConsumer
             ActiveTtlMilliseconds = 3000,
             MaximumFutureSkewMilliseconds = 1000
         };
-        return new(borrow, settings, in configuration, reportFailure, TimeSpan.FromMilliseconds(250));
+        return new(borrow, settings, in configuration, reportFailure);
     }
 
     private static async Task WaitForReadCountAsync(RecordedPresentSource source, int minimum,

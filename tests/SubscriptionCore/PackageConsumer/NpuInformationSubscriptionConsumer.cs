@@ -86,7 +86,7 @@ internal static class NpuInformationSubscriptionConsumer
             };
             var failures = new List<SubscriptionWorkerFailure>();
             await using var composition = new NativeFieldSubscriptionComposition(owner.BorrowSubscriptionCapture(), settings,
-                in configuration, failure => failures.Add(failure), TimeSpan.FromMilliseconds(250));
+                in configuration, failure => failures.Add(failure));
             Require(reader.Reads >= 1, "composition retains the already discovered original owner");
             await composition.StartAsync(timeout.Token);
             await using var stream = composition.SubscribeAsync("recorded-npu", fields, TimeSpan.FromMilliseconds(250), timeout.Token).GetAsyncEnumerator();

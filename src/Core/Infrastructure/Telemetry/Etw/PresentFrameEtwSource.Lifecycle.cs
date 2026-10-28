@@ -1,4 +1,4 @@
-using BlockUids = ResourceManager.App.StateItems.BlockUids;
+﻿using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.ReadWrite.Windows.Processes.Etw;
 using ResourceManager.ReadWrite.Windows.Frames;
@@ -9,7 +9,6 @@ public sealed partial class PresentFrameEtwSource
 {
     private PresentRun? activeRun;
     private static Guid[] RequiredProviders => [DxgiProvider, Direct3D9Provider, GraphicsKernelProvider, KernelProcessProvider, Win32kProvider];
-    private TaskCompletionSource<PresentRun> nextRun = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public Task RunAsync(BusinessBlockRunContext context)
     {
@@ -18,8 +17,6 @@ public sealed partial class PresentFrameEtwSource
         {
             if (activeRun is not null) throw new InvalidOperationException("Present already has an active run.");
             activeRun = run = new PresentRun(context.StopNotification);
-            nextRun.TrySetResult(run);
-            nextRun = new(TaskCreationOptions.RunContinuationsAsynchronously);
             diagnostics.BeginRun(BlockUids.PresentFrameEtwSource);
         }
         return RunSessionAsync(run, context);
@@ -174,7 +171,7 @@ public sealed partial class PresentFrameEtwSource
         }
     }
 
-    private void UpdateOutputDemand(int previousFrameLeases)
+    private void UpdateOutputProviders(int previousFrameLeases)
     {
         if (activeRun is not { } run || Volatile.Read(ref run.Accepting) == 0 || run.Session is null) return;
         try { UpdateProviders(run.Session, previousFrameLeases); }
@@ -185,12 +182,13 @@ public sealed partial class PresentFrameEtwSource
     {
         lock (lifecycle)
         {
+            var wasActive = HasActiveSubscriptions;
             if (!frameSubscriptions.Remove(subscription)) return;
             var previous = frameLeases;
             Volatile.Write(ref frameLeases, frameSubscriptions.Count);
-            UpdateOutputDemand(previous);
+            UpdateOutputProviders(previous);
+            PublishSubscriptionActivity(wasActive);
         }
-        subscription.Dependency.Dispose();
     }
 
     public void Dispose()
@@ -203,16 +201,6 @@ public sealed partial class PresentFrameEtwSource
             lock (gate) subscriptions = frameSubscriptions.Cast<IDisposable>().Concat(graphicsApiSubscriptions).ToArray();
         }
         foreach (var subscription in subscriptions) subscription.Dispose();
-    }
-
-    private async Task AwaitReadyAsync(Task dispatch)
-    {
-        await dispatch.ConfigureAwait(false);
-        Task<PresentRun> pending;
-        lock (lifecycle) pending = activeRun is { StopNotification.IsCancellationRequested: false } current
-            ? Task.FromResult(current) : nextRun.Task;
-        var run = await pending.ConfigureAwait(false);
-        await run.Started.Task.ConfigureAwait(false);
     }
 
     private async Task AwaitReleasedAsync(Task dispatch)
@@ -237,25 +225,10 @@ public sealed partial class PresentFrameEtwSource
         internal Thread? ConsumerThread;
     }
 
-    private sealed class FrameSubscription : IBusinessBlockDependency
+    private sealed class FrameSubscription(PresentFrameEtwSource source) : IDisposable
     {
-        private PresentFrameEtwSource? owner;
-        private readonly IBusinessBlockDependency dependency;
-        private readonly PresentFrameEtwSource source;
-        private Task? released;
-        internal FrameSubscription(PresentFrameEtwSource owner, IBusinessBlockDependency dependency)
-        {
-            this.owner = owner;
-            source = owner;
-            this.dependency = dependency;
-        }
-        internal void ObserveRelease() => _ = dependency.Released.ContinueWith(_ => Dispose(), CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-        internal IBusinessBlockDependency Dependency => dependency;
-        public Task Ready => source.AwaitReadyAsync(dependency.Ready);
-        public Task Released => released ??= source.AwaitReleasedAsync(dependency.Released);
+        private PresentFrameEtwSource? owner = source;
         public void Dispose() => Interlocked.Exchange(ref owner, null)?.Release(this);
-        public async ValueTask DisposeAsync() { Dispose(); await Released.ConfigureAwait(false); }
     }
 
     private static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);

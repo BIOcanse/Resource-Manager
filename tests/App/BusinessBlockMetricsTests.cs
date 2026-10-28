@@ -273,7 +273,7 @@ public sealed class BusinessBlockMetricsTests
         var started = false;
         try
         {
-            await controller.SetDemandAsync("metrics", 117, reason);
+            await controller.StartAsync(117, reason);
             started = true;
             var thread = await block.Started.WaitAsync(TimeSpan.FromSeconds(5));
             var threadHandle = NativeThreadTimes.Open(thread.NativeThreadId);
@@ -311,7 +311,7 @@ public sealed class BusinessBlockMetricsTests
                 NativeThreadTimes.Close(threadHandle);
             }
 
-            await controller.SetDemandAsync("metrics", null, reason);
+            await controller.StopAsync(117, reason);
             await block.Completed.WaitAsync(TimeSpan.FromSeconds(5));
             started = false;
 
@@ -323,7 +323,7 @@ public sealed class BusinessBlockMetricsTests
         {
             if (started)
             {
-                await controller.SetDemandAsync("metrics", null, reason);
+                await controller.StopAsync(117, reason);
                 await block.Completed.WaitAsync(TimeSpan.FromSeconds(5));
             }
         }

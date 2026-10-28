@@ -134,13 +134,67 @@ public sealed class WindowsProcessFieldOwnerLibraryIntegrationTests
         Assert.Equal(0, broker.Acquires);
         var names = ProcessMetricFieldRegistry.Definitions.Where(field => field.DatasetId == ProcessMetricDatasetIds.ObservedNetworkTraffic).Select(field => field.Name).ToArray();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var stopped = await owner.CollectAsync(names, timeout.Token);
+        Assert.Null(stopped.CapturedAt); Assert.Equal(0, broker.Acquires);
+        owner.StartNetworkCapture();
         var warming = await owner.CollectAsync(names, timeout.Token);
         Assert.Null(warming.CapturedAt); Assert.Equal(1, broker.Acquires);
         await Task.Delay(2100, timeout.Token);
         var complete = await owner.CollectAsync(names, timeout.Token);
         Assert.Equal(2000, complete.WindowMilliseconds);
         Assert.All(complete.Processes.Single().Values, value => Assert.True(value.IntegerValue == new MetricInteger(0) || value.NumericValue == 0));
-        Assert.Equal(1, broker.Acquires); owner.Dispose(); Assert.Equal(1, broker.Releases);
+        Assert.Equal(1, broker.Acquires);
+        owner.StopNetworkCapture(); Assert.Equal(1, broker.Releases);
+        var afterStop = await owner.CollectAsync(names, timeout.Token);
+        Assert.Null(afterStop.CapturedAt); Assert.Equal(1, broker.Acquires);
+        owner.StartNetworkCapture();
+        var restarted = await owner.CollectAsync(names, timeout.Token);
+        Assert.Null(restarted.CapturedAt); Assert.Equal(2, broker.Acquires);
+        owner.Dispose(); Assert.Equal(2, broker.Releases);
+    }
+
+    [Fact]
+    public void HostedOwnerRejectsStandaloneNetworkLifecycle()
+    {
+        using var owner = new WindowsProcessFieldOwner(new ProcessFieldCurrentState());
+        Assert.Throws<InvalidOperationException>(() => owner.StartNetworkCapture());
+        Assert.Throws<InvalidOperationException>(() => owner.StopNetworkCapture());
+    }
+
+    [Fact]
+    public async Task TwoDiskFieldsReadTheSdkWindowOnlyAfterExplicitCaptureStart()
+    {
+        var broker = new Broker();
+        using var owner = Owner(new Basic.Api(), broker);
+        var names = ProcessMetricFieldRegistry.Definitions
+            .Where(field => field.DatasetId == ProcessMetricDatasetIds.ObservedPhysicalDiskIo)
+            .Select(field => field.Name).ToArray();
+        Assert.Equal(2, names.Length);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var stopped = await owner.CollectAsync(names, timeout.Token);
+        Assert.Null(stopped.CapturedAt); Assert.Equal(0, broker.Acquires);
+        owner.StartDiskCapture();
+        var warming = await owner.CollectAsync(names, timeout.Token);
+        Assert.Null(warming.CapturedAt); Assert.Equal(1, broker.Acquires);
+        await Task.Delay(2100, timeout.Token);
+        var complete = await owner.CollectAsync(names, timeout.Token);
+        Assert.NotNull(complete.CapturedAt); Assert.Equal(2000, complete.WindowMilliseconds);
+        Assert.Equal(names, complete.Fields.Select(field => field.Name).ToArray());
+        owner.StopDiskCapture(); Assert.Equal(1, broker.Releases);
+        var afterStop = await owner.CollectAsync(names, timeout.Token);
+        Assert.Null(afterStop.CapturedAt); Assert.Equal(1, broker.Acquires);
+        owner.StartDiskCapture();
+        var restarted = await owner.CollectAsync(names, timeout.Token);
+        Assert.Null(restarted.CapturedAt); Assert.Equal(2, broker.Acquires);
+        owner.Dispose(); Assert.Equal(2, broker.Releases);
+    }
+
+    [Fact]
+    public void HostedOwnerRejectsStandaloneDiskLifecycle()
+    {
+        using var owner = new WindowsProcessFieldOwner(new ProcessFieldCurrentState());
+        Assert.Throws<InvalidOperationException>(() => owner.StartDiskCapture());
+        Assert.Throws<InvalidOperationException>(() => owner.StopDiskCapture());
     }
 
     [Fact]

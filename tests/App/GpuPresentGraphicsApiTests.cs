@@ -44,10 +44,10 @@ public sealed class GpuPresentGraphicsApiTests
         await using var harness = PresentFrameEtwTestHarness.Create();
         var source = harness.Source;
         var lease = source.AcquireGraphicsApiSubscription(Instance());
-        await PresentFrameEtwTestHarness.ReadyAsync(lease);
+        await harness.WaitRunningAsync();
         Assert.Null(lease.Read());
         Assert.Single(harness.Sessions.Snapshot());
-        await PresentFrameEtwTestHarness.ReleaseAsync(lease);
+        await harness.ReleaseAsync(lease);
     }
 
     [Fact]
@@ -57,7 +57,7 @@ public sealed class GpuPresentGraphicsApiTests
         var source = harness.Source;
         var instance = Instance();
         var lease = source.AcquireGraphicsApiSubscription(instance);
-        await PresentFrameEtwTestHarness.ReadyAsync(lease);
+        await harness.WaitRunningAsync();
         var birth = DateTime.FromFileTimeUtc((long)instance.ProcessStartKey);
         source.ObserveGraphicsApiPresent(PresentFrameEtwSource.DxgiProvider, 42, instance.ProcessId, birth.AddTicks(-1));
         source.ObserveGraphicsApiPresent(PresentFrameEtwSource.DxgiProvider, 42, instance.ProcessId + 1, birth);
@@ -69,28 +69,24 @@ public sealed class GpuPresentGraphicsApiTests
         source.ObserveGraphicsApiPresent(PresentFrameEtwSource.Direct3D9Provider, 1, instance.ProcessId, birth.AddSeconds(1));
         Assert.Null(lease.Read());
         var second = source.AcquireGraphicsApiSubscription(instance);
-        await PresentFrameEtwTestHarness.ReadyAsync(second);
+        await harness.WaitRunningAsync();
         source.ObserveGraphicsApiProcessLifetime(instance.ProcessId, null);
         source.ObserveGraphicsApiPresent(PresentFrameEtwSource.DxgiProvider, 42, instance.ProcessId, birth);
         Assert.Null(second.Read());
-        await PresentFrameEtwTestHarness.ReleaseAsync(lease);
-        await PresentFrameEtwTestHarness.ReleaseAsync(second);
+        await harness.ReleaseAsync(lease);
+        await harness.ReleaseAsync(second);
     }
 
     [Fact]
-    public async Task GraphicsApiHistoryKeepsItsObservationWindowPollingAndVisibleReason()
+    public async Task GraphicsApiHistoryKeepsItsObservationWindowPollingAndPublishesSourceActivity()
     {
         Assert.Equal(TimeSpan.FromSeconds(30), GpuPlacementProcessHistoryObserver.ObservationWindow);
         Assert.Equal(TimeSpan.FromSeconds(5), GpuPlacementProcessHistoryObserver.RefreshInterval);
         await using var harness = PresentFrameEtwTestHarness.Create();
         var lease = harness.Source.AcquireGraphicsApiSubscription(Instance());
-        await PresentFrameEtwTestHarness.ReadyAsync(lease);
-        var dependency = Assert.Single(harness.Controller.Read().Demands,
-            demand => demand.BlockId == BackendUids.PresentFrameEtwSource);
-        Assert.Equal("graphics-api-history", dependency.Reason.Owner);
-        Assert.Equal("present-graphics-api-subscription", dependency.Reason.ConfigurationOrDependency);
-        Assert.Equal(BackendUids.PresentFrameEtwSource, dependency.BlockId);
-        await PresentFrameEtwTestHarness.ReleaseAsync(lease);
+        await harness.WaitRunningAsync();
+        Assert.True(harness.Fixture.Authority.Read<bool>(ResourceManager.App.StateItems.StateItemUids.GraphicsApiObservationInUse).Value);
+        await harness.ReleaseAsync(lease);
     }
 
     [Fact]

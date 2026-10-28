@@ -11,9 +11,9 @@ namespace Resource_Manager_APP.Tests;
 public sealed class BusinessBlockHostingTests
 {
     [Fact]
-    public async Task HostedAliasesKeepHostOrderRegardlessOfDataInputs()
+    public async Task HostedAliasesPreserveRegistrationAndStopOrderWithoutOrderingSiblingStartup()
     {
-        var events = new List<string>();
+        var events = new System.Collections.Concurrent.ConcurrentQueue<string>();
         using var host = Host.CreateDefaultBuilder()
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
@@ -36,12 +36,16 @@ public sealed class BusinessBlockHostingTests
             service => Assert.IsType<NonOwningHostedService<ConsumerService>>(service),
             service => Assert.IsType<NonOwningHostedService<DependencyService>>(service));
 
+        var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
+        var pendingRequests = scheduler.Authority.ClaimCell<bool>(BackendItems.TrustedRequestsPending);
+        await pendingRequests.PublishAsync(true, BusinessBlockTestSupport.Reason());
         await host.StartAsync();
+        await BusinessBlockTestSupport.State(scheduler, BackendUids.TrustedAccessRequestOwner, BusinessBlockState.Running);
+        await BusinessBlockTestSupport.State(scheduler, BackendUids.RuntimeSpecializationCoordinator, BusinessBlockState.Running);
         await host.StopAsync();
 
-        Assert.Equal(
-            new[] { "consumer:start", "dependency:start", "dependency:stop", "consumer:stop" },
-            events);
+        Assert.Equal(new[] { "consumer:start", "dependency:start" }.Order(), events.Take(2).Order());
+        Assert.Equal(new[] { "dependency:stop", "consumer:stop" }, events.Skip(2));
         // The host waits for each StopAsync, not for the block's run tail that records the final state;
         // under a synchronization context that tail continues on the thread pool.
         var controller = host.Services.GetRequiredService<BusinessBlockScheduler>();
@@ -58,33 +62,65 @@ public sealed class BusinessBlockHostingTests
     }
 
     [Fact]
-    public async Task FailedHostedStartupDoesNotStartItsDataInputs()
+    public async Task HostAdmissionDoesNotWaitForServicePreparationAndFailureDoesNotStartItsDataInputs()
     {
-        var events = new List<string>();
+        var events = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        var failed = new ThrowingStartService();
         using var host = Host.CreateDefaultBuilder()
             .ConfigureLogging(logging => logging.ClearProviders())
             .ConfigureServices(services =>
             {
-                services.AddBusinessBlockHostedService<ThrowingStartService>(BackendUids.TrustedAccessRequestOwner);
+                services.AddBusinessBlockHostedService<ThrowingStartService>(BackendUids.TrustedAccessRequestOwner, _ => failed);
                 services.AddBusinessBlockHostedService<DependencyService>(BackendUids.RuntimeSpecializationCoordinator,
                     _ => new DependencyService(events));
                 NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
             }).Build();
-        await Assert.ThrowsAsync<IOException>(() => host.StartAsync().WaitAsync(TimeSpan.FromSeconds(10)));
-        Assert.Empty(events);
-        // The native ETW scope starts before this test's service; close the real Host
-        // even when the later service fails to start.
-        await host.StopAsync().WaitAsync(TimeSpan.FromSeconds(5));
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
-        Assert.Empty(scheduler.Read().Demands);
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        while (scheduler.Read().Blocks.Any(block => block.State != BusinessBlockState.Stopped))
-            await Task.Delay(5, timeout.Token);
+        var pendingRequests = scheduler.Authority.ClaimCell<bool>(BackendItems.TrustedRequestsPending);
+        await pendingRequests.PublishAsync(true, BusinessBlockTestSupport.Reason());
+        var block = host.Services.GetRequiredService<HostedBusinessBlockRegistry>()
+            .GetOrAdd(BackendUids.TrustedAccessRequestOwner, () => failed);
+        var session = block.PrepareStart(CancellationToken.None);
+        var alias = host.Services.GetServices<IHostedService>().OfType<NonOwningHostedService<ThrowingStartService>>().Single();
+        try
+        {
+            await alias.StartAsync(CancellationToken.None).WaitAsync(BusinessBlockTestSupport.TestTimeout);
+            await failed.Entered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
+            Assert.False(session.Readiness.Task.IsCompleted);
+            Assert.Equal(BusinessBlockState.Starting, scheduler.ReadState(BackendUids.TrustedAccessRequestOwner));
+            Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState(BackendUids.RuntimeSpecializationCoordinator));
+            Assert.Empty(events);
+            // Withdraw permission before releasing preparation so the failed entry cannot restart.
+            await host.Services.GetRequiredService<BackendHostPermitFacts>().SetAsync(BackendUids.TrustedAccessRequestOwner,
+                false, BusinessBlockTestSupport.Reason());
+            failed.Release.TrySetResult();
+            var error = await Assert.ThrowsAsync<IOException>(() => session.Readiness.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout));
+            Assert.Same(failed.Failure, error);
+            await BusinessBlockTestSupport.State(scheduler, BackendUids.TrustedAccessRequestOwner, BusinessBlockState.Stopped);
+            Assert.Empty(events);
+            var result = host.Services.GetRequiredService<BusinessBlockDiagnosticsRegistry>().Read(BackendUids.TrustedAccessRequestOwner).Result!;
+            Assert.Equal(BusinessBlockFailureStage.Start, result.FailureStage);
+        }
+        finally
+        {
+            failed.Release.TrySetResult();
+            try { await alias.StopAsync(CancellationToken.None).WaitAsync(BusinessBlockTestSupport.TestTimeout); }
+            catch (IOException error) when (ReferenceEquals(error, failed.Failure)) { }
+            await BusinessBlockTestSupport.StopAll(scheduler);
+        }
     }
 
     private sealed class ThrowingStartService : IHostedService
     {
-        public Task StartAsync(CancellationToken cancellationToken) => throw new IOException("startup failed");
+        internal TaskCompletionSource Entered { get; } = BusinessBlockTestSupport.Signal();
+        internal TaskCompletionSource Release { get; } = BusinessBlockTestSupport.Signal();
+        internal IOException Failure { get; } = new("startup failed");
+        public async Task StartAsync(CancellationToken cancellationToken)
+        {
+            Entered.TrySetResult();
+            await Release.Task;
+            throw Failure;
+        }
         public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }
     [Fact]
@@ -121,29 +157,29 @@ public sealed class BusinessBlockHostingTests
         Assert.Equal(typeof(BusinessBlocksSnapshot), metadata.Type);
     }
 
-    private abstract class RecordingService(List<string> events) : IHostedService
+    private abstract class RecordingService(System.Collections.Concurrent.ConcurrentQueue<string> events) : IHostedService
     {
         protected abstract string Label { get; }
 
         public Task StartAsync(CancellationToken cancellationToken)
         {
-            events.Add($"{Label}:start");
+            events.Enqueue($"{Label}:start");
             return Task.CompletedTask;
         }
 
         public Task StopAsync(CancellationToken cancellationToken)
         {
-            events.Add($"{Label}:stop");
+            events.Enqueue($"{Label}:stop");
             return Task.CompletedTask;
         }
     }
 
-    private sealed class DependencyService(List<string> events) : RecordingService(events)
+    private sealed class DependencyService(System.Collections.Concurrent.ConcurrentQueue<string> events) : RecordingService(events)
     {
         protected override string Label => "dependency";
     }
 
-    private sealed class ConsumerService(List<string> events) : RecordingService(events)
+    private sealed class ConsumerService(System.Collections.Concurrent.ConcurrentQueue<string> events) : RecordingService(events)
     {
         protected override string Label => "consumer";
     }

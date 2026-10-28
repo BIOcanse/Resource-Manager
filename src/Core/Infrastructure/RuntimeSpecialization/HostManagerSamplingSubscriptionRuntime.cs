@@ -1,3 +1,4 @@
+using ResourceManager.Subscription;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.NativeCore;
@@ -55,6 +56,16 @@ public sealed class HostManagerSamplingSubscriptionRuntime(
 
 public sealed class HostManagerSamplingSubscriptionOwner : IHostedService, IDisposable
 {
+    public ResourceManager.Subscription.SubscriptionActivity Activity { get; } = new();
+
+    internal bool HasPublishedSettings => planProvider.Current.Version > 0;
+    internal event Action? SettingsPublished;
+
+    internal ISubscriptionRoleSettings? GetRoleSettings(int roleId)
+    {
+        var plan = planProvider.Current;
+        return plan.Version == 0 ? null : plan.HostManager.SamplingSubscription.HotPublish.Roles[roleId - 1];
+    }
     private readonly object lifecycleGate = new();
     private readonly ReaderWriterLockSlim gate = new(LockRecursionPolicy.NoRecursion);
     private readonly RuntimePlanProvider planProvider;
@@ -81,7 +92,10 @@ public sealed class HostManagerSamplingSubscriptionOwner : IHostedService, IDisp
         this.deployment = deployment;
         this.logger = logger;
         createScratch = ledgerOwner is null ? null : ledgerOwner.CreateScratch;
+        planProvider.Published += OnSettingsPublished;
     }
+
+    private void OnSettingsPublished(CompiledRuntimePlan _) => SettingsPublished?.Invoke();
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -196,6 +210,7 @@ public sealed class HostManagerSamplingSubscriptionOwner : IHostedService, IDisp
             RetireCurrentWorkspace();
             if (current is not null || pending is not null)
                 throw new InvalidOperationException("Sampling subscription workspace is still in use; dispose after its readers finish.");
+            planProvider.Published -= OnSettingsPublished;
             disposed = true;
         }
         gate.Dispose();

@@ -33,7 +33,7 @@ public sealed class BusinessBlockIdentityTests
 #endif
         try
         {
-            await scheduler.SetDemandAsync("production-observer", BackendUids.PresentFrameEtwSource,
+            await scheduler.StartAsync(BackendUids.PresentFrameEtwSource,
                 BusinessBlockTestSupport.Reason());
             await block.Entered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             var snapshot = scheduler.Read();
@@ -41,15 +41,11 @@ public sealed class BusinessBlockIdentityTests
             Assert.Equal(BackendUids.Program, snapshot.Program);
             Assert.Equal(expectedBackendProgramName, snapshot.ProgramName);
             Assert.Equal(expectedBackendName, Assert.Single(snapshot.Blocks).Name);
-            var backendDemand = Assert.Single(snapshot.Items, item => item.ItemUid == BackendItems.BlockDemand
+            var backendExecution = Assert.Single(snapshot.Items, item => item.ItemUid == TestStateUids.ExecutionEnabled
                 && item.BlockUid == BackendUids.PresentFrameEtwSource);
-            Assert.True(Assert.IsType<bool>(backendDemand.Value));
-            Assert.Equal(expectedBackendName, backendDemand.BlockName);
-#if RM_STATE_NAMES
-            Assert.Equal("BlockDemand", backendDemand.Name);
-#else
-            Assert.Null(backendDemand.Name);
-#endif
+            Assert.True(Assert.IsType<bool>(backendExecution.Value));
+            Assert.Equal(expectedBackendName, backendExecution.BlockName);
+            Assert.Null(backendExecution.Name);
             var uiSnapshot = ui.Read();
             Assert.Equal(ResourceManager.NativeUi.StateItems.StateRegistry.Version, uiSnapshot.RegistryVersion);
             Assert.Equal(UiUids.Program, uiSnapshot.Program);
@@ -65,6 +61,8 @@ public sealed class BusinessBlockIdentityTests
             var uiJson = JsonSerializer.Serialize(uiSnapshot, options);
             using var backendDocument = JsonDocument.Parse(json);
             using var uiDocument = JsonDocument.Parse(uiJson);
+            Assert.False(backendDocument.RootElement.TryGetProperty("demands", out _));
+            Assert.False(uiDocument.RootElement.TryGetProperty("demands", out _));
             Assert.Equal(expectedBackendName is not null,
                 backendDocument.RootElement.GetProperty("blocks")[0].TryGetProperty("name", out _));
             Assert.Equal(expectedUiName is not null,
@@ -89,7 +87,7 @@ public sealed class BusinessBlockIdentityTests
         const string registryVersion = "fixture-registry-version";
         string? Lookup(int id) => namesEnabled ? id switch
         {
-            program => "Program", worker => "Worker", BackendItems.BlockDemand => "BlockDemand",
+            program => "Program", worker => "Worker", TestStateUids.ExecutionEnabled => "ExecutionEnabled",
             BackendItems.ProgramShuttingDown => "ProgramShuttingDown", _ => null
         } : null;
         var controlLog = new BusinessBlockControlSystemTests.CapturedLogger<BusinessBlockController>();
@@ -100,13 +98,13 @@ public sealed class BusinessBlockIdentityTests
         await using var scheduler = new TestBlockScheduler(
             [new TestBlockRegistration(worker, [], _ => block) { ParentId = program }], authority,
             historyLimit: 8, logger: decisionLog, control: control, program: program,
-            demandItemUid: BackendItems.BlockDemand, shutdownItemUid: BackendItems.ProgramShuttingDown,
+            shutdownItemUid: BackendItems.ProgramShuttingDown,
             registryVersion: registryVersion, nameLookup: Lookup);
         var graph = scheduler.Graph;
         var reason = BusinessBlockTestSupport.Reason(owner: "operator", cause: "observe", version: 19);
         try
         {
-            await scheduler.SetDemandAsync("request", worker, reason);
+            await scheduler.StartAsync(worker, reason);
             await block.Entered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             var snapshot = scheduler.Read();
             Assert.Equal(program, graph.Program);
@@ -117,11 +115,10 @@ public sealed class BusinessBlockIdentityTests
             Assert.Equal(worker, fact.Id);
             Assert.Equal(program, fact.ParentId);
             Assert.Equal(namesEnabled ? "Worker" : null, fact.Name);
-            Assert.Equal(worker, Assert.Single(snapshot.Demands).BlockId);
-            var demandItem = Assert.Single(snapshot.Items, value => value.ItemUid == BackendItems.BlockDemand && value.BlockUid == worker);
-            Assert.True(Assert.IsType<bool>(demandItem.Value));
-            Assert.Equal(namesEnabled ? "BlockDemand" : null, demandItem.Name);
-            Assert.Equal(namesEnabled ? "Worker" : null, demandItem.BlockName);
+            var executionItem = Assert.Single(snapshot.Items, value => value.ItemUid == TestStateUids.ExecutionEnabled && value.BlockUid == worker);
+            Assert.True(Assert.IsType<bool>(executionItem.Value));
+            Assert.Equal(namesEnabled ? "ExecutionEnabled" : null, executionItem.Name);
+            Assert.Equal(namesEnabled ? "Worker" : null, executionItem.BlockName);
             Assert.Contains(snapshot.CurrentDecisions, value => value.ParentId == program && value.ShouldRun.SequenceEqual([worker]));
             Assert.Contains(controlLog.Messages, value => value == (namesEnabled
                 ? "Business block 101 (Worker): Stopped -> Starting"
@@ -142,16 +139,17 @@ public sealed class BusinessBlockIdentityTests
             var root = document.RootElement;
             Assert.Equal(program, root.GetProperty("program").GetInt32());
             Assert.Equal(registryVersion, root.GetProperty("registryVersion").GetString());
-            var serializedDemand = root.GetProperty("items").EnumerateArray().Single(row =>
-                row.GetProperty("itemUid").GetInt32() == BackendItems.BlockDemand
+            var serializedExecution = root.GetProperty("items").EnumerateArray().Single(row =>
+                row.GetProperty("itemUid").GetInt32() == TestStateUids.ExecutionEnabled
                 && row.GetProperty("blockUid").GetInt32() == worker);
-            Assert.True(serializedDemand.GetProperty("value").GetBoolean());
-            Assert.Equal(namesEnabled, serializedDemand.TryGetProperty("name", out var serializedItemName));
-            Assert.Equal(namesEnabled, serializedDemand.TryGetProperty("blockName", out var serializedItemBlockName));
+            Assert.True(serializedExecution.GetProperty("value").GetBoolean());
+            Assert.Equal(namesEnabled, serializedExecution.TryGetProperty("name", out var serializedItemName));
+            Assert.Equal(namesEnabled, serializedExecution.TryGetProperty("blockName", out var serializedItemBlockName));
             Assert.False(root.TryGetProperty("facts", out _));
+            Assert.False(root.TryGetProperty("demands", out _));
             if (namesEnabled)
             {
-                Assert.Equal("BlockDemand", serializedItemName.GetString());
+                Assert.Equal("ExecutionEnabled", serializedItemName.GetString());
                 Assert.Equal("Worker", serializedItemBlockName.GetString());
             }
             Assert.All(root.GetProperty("blocks").EnumerateArray(), row => Assert.False(row.TryGetProperty("outputs", out _)));

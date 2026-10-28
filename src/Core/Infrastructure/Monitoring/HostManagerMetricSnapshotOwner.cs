@@ -10,7 +10,6 @@ using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
 public sealed class HostManagerMetricSnapshotOwner :
-    IHostedService,
     IDisposable
 {
     private readonly ReaderWriterLockSlim gate =
@@ -23,8 +22,6 @@ public sealed class HostManagerMetricSnapshotOwner :
         topologySource;
     private readonly string hostManagerDataRoot;
     private readonly ILogger<HostManagerMetricSnapshotOwner> logger;
-    private readonly TaskCompletionSource ready =
-        new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Func<ulong, uint, INativeMetricSnapshotScratch> createScratch;
     private readonly Func<string>? readComponentRevision;
     private string? capturedComponentRevision;
@@ -34,7 +31,7 @@ public sealed class HostManagerMetricSnapshotOwner :
     private WorkspaceHolder? current;
     private CompiledHostManagerMetricSnapshotPlan? appliedPlan;
     private ulong workspaceIdentitySequence;
-    private bool started;
+    private int holders;
     private bool disposed;
     private Action<CompiledRuntimePlan>? publishedHandler;
 
@@ -76,25 +73,48 @@ public sealed class HostManagerMetricSnapshotOwner :
             "HostManager"));
     }
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    internal bool TryAcquire(out WorkspaceLease? lease)
     {
-        cancellationToken.ThrowIfCancellationRequested();
         lock (reconfigurationGate)
         {
             ThrowIfDisposed();
-            if (started) return Task.CompletedTask;
+            if (current is null) { lease = null; return false; }
+            current.AddReference();
+            holders++;
+            lease = new WorkspaceLease(current, Release);
+            return true;
+        }
+    }
 
+    internal IDisposable Hold()
+    {
+        lock (reconfigurationGate)
+        {
+            AddHolding();
+            return new ResourceHolding(this);
+        }
+    }
+
+    internal WorkspaceLease Acquire()
+    {
+        lock (reconfigurationGate)
+        {
+            AddHolding();
+            current!.AddReference();
+            return new WorkspaceLease(current, Release);
+        }
+    }
+
+    private void AddHolding()
+    {
+        ThrowIfDisposed();
+        if (holders == 0)
+        {
             Action<CompiledRuntimePlan> handler = null!;
             handler = plan => Apply(plan.HostManager.RequirePublished(), throwOnFailure: false, handler);
             publishedHandler = handler;
             planProvider.Published += handler;
-            try
-            {
-                Apply(planProvider.Current.HostManager.RequirePublished(), throwOnFailure: true, handler);
-                started = true;
-                ready.TrySetResult();
-                return Task.CompletedTask;
-            }
+            try { Apply(planProvider.Current.HostManager.RequirePublished(), throwOnFailure: true, handler); }
             catch
             {
                 planProvider.Published -= handler;
@@ -102,57 +122,51 @@ public sealed class HostManagerMetricSnapshotOwner :
                 throw;
             }
         }
+        holders++;
     }
 
-    public Task StopAsync(CancellationToken cancellationToken)
+    internal ValueTask<WorkspaceLease> AcquireAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(Acquire());
+    }
+
+    private void Release(WorkspaceHolder holder)
+    {
         lock (reconfigurationGate)
         {
-            if (publishedHandler is { } handler) planProvider.Published -= handler;
-            publishedHandler = null;
-            started = false;
-        }
-        return Task.CompletedTask;
-    }
-
-    internal bool TryAcquire(out WorkspaceLease? lease)
-    {
-        ThrowIfDisposed();
-        gate.EnterReadLock();
-        try
-        {
-            if (current is null) { lease = null; return false; }
-            current.AddReference();
-            lease = new WorkspaceLease(current);
-            return true;
-        }
-        finally { gate.ExitReadLock(); }
-    }
-
-    internal WorkspaceLease Acquire()
-    {
-        ThrowIfDisposed();
-        gate.EnterReadLock();
-        try
-        {
-            var holder = current
-                ?? throw new InvalidOperationException(
-                    "The Host Manager metric-snapshot workspace is not ready.");
-            holder.AddReference();
-            return new WorkspaceLease(holder);
-        }
-        finally
-        {
-            gate.ExitReadLock();
+            try { holder.Release(); }
+            finally { ReleaseHolding(); }
         }
     }
 
-    internal async ValueTask<WorkspaceLease> AcquireAsync(
-        CancellationToken cancellationToken)
+    private void ReleaseHolding()
     {
-        await ready.Task.WaitAsync(cancellationToken);
-        return Acquire();
+        lock (reconfigurationGate)
+        {
+            if (--holders == 0)
+            {
+                if (publishedHandler is { } handler) planProvider.Published -= handler;
+                publishedHandler = null;
+                WorkspaceHolder? previous;
+                gate.EnterWriteLock();
+                try
+                {
+                    previous = current;
+                    previous?.StopPublication();
+                    current = null;
+                    appliedPlan = null;
+                }
+                finally { gate.ExitWriteLock(); }
+                previous?.ReleaseOwnerReference();
+            }
+        }
+    }
+
+    private sealed class ResourceHolding(HostManagerMetricSnapshotOwner owner) : IDisposable
+    {
+        private HostManagerMetricSnapshotOwner? owner = owner;
+        public void Dispose() => Interlocked.Exchange(ref owner, null)?.ReleaseHolding();
     }
 
     internal void RequestTopologyRefresh()
@@ -330,7 +344,6 @@ public sealed class HostManagerMetricSnapshotOwner :
             }
             if (publishedHandler is { } handler) planProvider.Published -= handler;
             publishedHandler = null;
-            started = false;
 
             WorkspaceHolder? previous;
             gate.EnterWriteLock();
@@ -341,8 +354,6 @@ public sealed class HostManagerMetricSnapshotOwner :
                 current = null;
                 appliedPlan = null;
                 disposed = true;
-                ready.TrySetException(new ObjectDisposedException(
-                    nameof(HostManagerMetricSnapshotOwner)));
             }
             finally
             {
@@ -353,7 +364,7 @@ public sealed class HostManagerMetricSnapshotOwner :
             catch (Exception exception) { failures.Add(exception); }
             try { RetryWorkspaceCloses(previous); }
             catch (Exception exception) { failures.Add(exception); }
-            finally { gate.Dispose(); }
+
             if (failures.Count == 1) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failures[0]).Throw();
             if (failures.Count > 1) throw new AggregateException(failures);
         }
@@ -408,7 +419,7 @@ public sealed class HostManagerMetricSnapshotOwner :
             var requestedTicket = topologyRefresh.CaptureRequested();
             var componentRevision = readComponentRevision?.Invoke();
             var token = initial
-                ? deployment.BeginInitialCreate(hostPlan)
+                ? deployment.BeginCreate(hostPlan)
                 : canApplyHot
                     ? deployment.BeginHotPublish(hostPlan)
                     : deployment.BeginHostRecreateAndHotPublish(hostPlan);
@@ -653,9 +664,12 @@ public sealed class HostManagerMetricSnapshotOwner :
     {
         private WorkspaceHolder? holder;
 
-        internal WorkspaceLease(WorkspaceHolder holder)
+        private readonly Action<WorkspaceHolder>? release;
+
+        internal WorkspaceLease(WorkspaceHolder holder, Action<WorkspaceHolder>? release = null)
         {
             this.holder = holder;
+            this.release = release;
             Workspace = holder.Workspace;
             WorkspaceIdentity = holder.Identity;
         }
@@ -681,7 +695,12 @@ public sealed class HostManagerMetricSnapshotOwner :
         }
 
         public void Dispose()
-            => Interlocked.Exchange(ref holder, null)?.Release();
+        {
+            var previous = Interlocked.Exchange(ref holder, null);
+            if (previous is null) return;
+            if (release is null) previous.Release();
+            else release(previous);
+        }
     }
 
     internal sealed class WorkspaceHolder

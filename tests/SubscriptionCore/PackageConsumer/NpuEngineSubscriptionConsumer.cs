@@ -23,7 +23,7 @@ internal static class NpuEngineSubscriptionConsumer
         };
         var failures = new List<SubscriptionWorkerFailure>();
         await using var composition = new NativeFieldSubscriptionComposition(owner.BorrowSubscriptionCapture(), settings,
-            in configuration, failure => failures.Add(failure), TimeSpan.FromMilliseconds(100));
+            in configuration, failure => failures.Add(failure));
         await composition.StartAsync(token);
         var subscriptions = new FieldSubscriptionCore(core, composition);
         await using var stream = subscriptions.SubscribeAsync("recorded-npu-engine", fields, TimeSpan.FromMilliseconds(100), token).GetAsyncEnumerator();

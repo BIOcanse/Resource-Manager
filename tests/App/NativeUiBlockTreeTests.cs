@@ -43,7 +43,12 @@ public sealed class NativeUiBlockTreeTests
         await probes.Next(UiUids.TrayRoot);
         var root = Assert.Single(trees.Read().CurrentDecisions, decision => decision.ParentId == UiUids.Program);
         Assert.Equal(new[] { UiUids.MainRoot, UiUids.TrayRoot }, root.ShouldRun);
-        Assert.Empty(trees.Read().Demands);
+        var started = Assert.Single(root.Items, item => item.ItemUid == UiItems.ProgramStarted);
+        Assert.True(Assert.IsType<bool>(started.Value));
+        Assert.Equal(new[] { UiItems.ProgramStarted, UiItems.ProgramShuttingDown }.Order(), root.Items.Select(item => item.ItemUid).Order());
+        using var snapshot = System.Text.Json.JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(trees.Read()));
+        Assert.False(snapshot.RootElement.TryGetProperty("Demands", out _));
+        Assert.False(snapshot.RootElement.TryGetProperty("demands", out _));
     }
 
     [Fact]

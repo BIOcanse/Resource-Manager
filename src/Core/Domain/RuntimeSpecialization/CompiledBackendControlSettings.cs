@@ -7,10 +7,6 @@ public sealed record CompiledBackendControlSettings(
     int WorkerCount,
     [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.HistoryCapacity)]
     int HistoryCapacity,
-    [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.DemandCapacity)]
-    int DemandCapacity,
-    [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.DemandBytes)]
-    int DemandBytes,
     [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.CompletionCapacity)]
     int CompletionCapacity,
     [property: global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.ReaderCapacity)]
@@ -24,13 +20,11 @@ public sealed record CompiledBackendControlSettings(
 {
     public bool IsPublished => WorkerCount > 0
         && HistoryCapacity >= 0
-        && DemandCapacity > 0
-        && DemandBytes > 0
         && CompletionCapacity > 0
         && ReaderCapacity > 0
         && ReaderBytes > 0
         && WorkerArenaBytes > 0
         && ReasonTextCapacity > 0;
 
-    public static CompiledBackendControlSettings Unpublished { get; } = new(0, 0, 0, 0, 0, 0, 0, 0, 0);
+    public static CompiledBackendControlSettings Unpublished { get; } = new(0, 0, 0, 0, 0, 0, 0);
 }

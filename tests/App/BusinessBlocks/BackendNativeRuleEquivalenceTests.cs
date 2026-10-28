@@ -6,219 +6,160 @@ using ResourceManager.Shared.BusinessBlocks.State;
 
 namespace Resource_Manager_APP.Tests;
 
-/// <summary>Runs the backend's compiled production conditions through the native ABI.</summary>
+/// <summary>Real ABI notifications and current-value decisions, with an independent business oracle.</summary>
 public sealed class BackendNativeRuleEquivalenceTests
 {
-    private static readonly PublicationValue[] Values =
-    [
-        new(false), new(true), new(NoValueReason.NotPublished),
-        new(NoValueReason.OwnerStopped), new(NoValueReason.ReadFailed)
-    ];
-    private static readonly BusinessBlockReason Reason = new(
-        BusinessBlockRequestKind.Configuration, "native-rule-equivalence", "matrix", 1);
+    private static readonly StateRead<bool>[] Values = [StateRead<bool>.FromValue(false), StateRead<bool>.FromValue(true),
+        StateRead<bool>.NoValue(NoValueReason.NotPublished), StateRead<bool>.NoValue(NoValueReason.OwnerStopped),
+        StateRead<bool>.NoValue(NoValueReason.ReadFailed)];
+    private static readonly BusinessBlockReason Reason = BusinessBlockTestSupport.Reason();
 
     [Theory]
     [InlineData(1u)]
     [InlineData(2u)]
     [InlineData(3u)]
-    public async Task EveryExternalDemandConditionMatchesEveryNativeReadState(uint profile)
+    public async Task EveryDeclaredFactAndNoValueReachesItsPreciseProductionCondition(uint profile)
     {
-        await using var native = CreateNative(profile);
+        await using var native = new NativeControl(BackendExpectedProductionTree.Parents(profile).Keys,
+            new NativeControlOptions { Profile = profile, ShutdownItemUid = BackendItems.ProgramShuttingDown, HistoryCapacity = 16 },
+            NullLogger<NativeControl>.Instance);
         var authority = NativeBackendBlockTestSupport.CreateAuthority(native);
-        var targets = native.Graph.Nodes.Where(node => node.Id != BackendUids.HostMemoryProtection
-            && !BackendExpectedProductionTree.Wrappers.Contains(node.Id)
-            && node.ParentId != BackendUids.NativeEtwLifetimeService).ToArray();
-        Assert.Equal(profile switch { 1 => 34, 2 => 35, 3 => 22, _ => throw new ArgumentOutOfRangeException(nameof(profile)) }, targets.Length);
-        var demands = targets.ToDictionary(node => node.Id,
-            node => authority.ClaimCell<bool>(new(BackendItems.BlockDemand, node.Id)));
+        var facts = new BackendPreciseRuleTestFacts(authority, native, nativeFacts: true);
+        await facts.InitializeAsync(true);
         native.Activate(_ => new HoldingBlock());
-        foreach (var node in targets)
+        using var registry = JsonDocument.Parse(File.ReadAllBytes(StateRegistryTests.RegistryPath()));
+        var conditions = registry.RootElement.GetProperty("entries").EnumerateArray()
+            .Where(entry => entry.GetProperty("process").GetString() == "backend" && entry.GetProperty("kind").GetString() == "condition")
+            .ToArray();
+        foreach (var declaration in conditions)
         {
-            // Each actual owner must run while its child's rule is evaluated.
-            // An earlier matrix may have withdrawn this owner's own demand.
-            if (demands.TryGetValue(node.ParentId, out var parentDemand))
-                await parentDemand.PublishAsync(true, Reason);
-            await BusinessBlockTestSupport.Until(() => native.ReadState(node.ParentId) == BusinessBlockState.Running);
-            foreach (var input in Values)
+            var perBlock = declaration.GetProperty("perBlock").GetBoolean();
+            var child = perBlock ? BackendUids.Backend : declaration.GetProperty("decides").GetInt32();
+            if (!native.Graph.BlockIds.Contains(child)) continue;
+            var parent = native.Graph.Nodes.Single(node => node.Id == child).ParentId;
+            await facts.InitializeAsync(true);
+            var keys = declaration.GetProperty("items").EnumerateArray().Select(read => new StateItemKey(
+                read.GetProperty("item").GetInt32(), read.TryGetProperty("block", out var block) ? block.GetInt32()
+                    : read.GetProperty("item").GetInt32() == BackendItems.HostStartPermitted ? child : null)).ToArray();
+            foreach (var baseline in new[] { false, true })
             {
-                await PublishAsync(demands[node.Id], input);
-                AssertCondition(native, node.ParentId, ResourceManager.App.StateItems.ConditionUids.HasExternalDemand, node.Id, input.IsTrue);
-            }
-        }
-    }
-
-    [Theory]
-    [InlineData(1u)]
-    [InlineData(2u)]
-    [InlineData(3u)]
-    public async Task WrappersRemainWantedWithoutDemandUntilRootShutdown(uint profile)
-    {
-        await using var native = CreateNative(profile);
-        var authority = NativeBackendBlockTestSupport.CreateAuthority(native);
-        var wrappers = native.Graph.Nodes.Where(node => BackendExpectedProductionTree.Wrappers.Contains(node.Id)).ToArray();
-        Assert.Equal(profile == 3 ? 6 : 9, wrappers.Length);
-        native.Activate(_ => new HoldingBlock());
-        await BusinessBlockTestSupport.Until(() => wrappers.All(node => native.ReadState(node.Id) == BusinessBlockState.Running));
-        foreach (var node in wrappers)
-        {
-            var demand = authority.ClaimCell<bool>(new(BackendItems.BlockDemand, node.Id));
-            foreach (var value in Values)
-            {
-                await PublishAsync(demand, value);
-                AssertCondition(native, node.ParentId, ResourceManager.App.StateItems.ConditionUids.AlwaysWanted, node.Id, true);
-                Assert.Equal(BusinessBlockState.Running, native.ReadState(node.Id));
-                Assert.Equal([BackendUids.Backend], Assert.Single(native.Read().CurrentDecisions,
-                    row => row.ParentId == BackendUids.Program).ShouldRun);
+                foreach (var key in keys)
+                    await facts[key].PublishAsync(key.ItemUid == BackendItems.HostStartPermitted || baseline, Reason);
+                foreach (var key in keys)
+                {
+                    foreach (var value in Values)
+                    {
+                        await PublishAsync(facts[key], value);
+                        // Program is the decision root, not a hosted run entry exposed by ReadState.
+                        if (parent != native.Graph.Program)
+                            await BusinessBlockTestSupport.Until(() => native.ReadState(parent) == BusinessBlockState.Running);
+                        AssertCondition(native, parent, declaration.GetProperty("uid").GetInt32(), perBlock ? child : null,
+                            Expected(child, authority));
+                    }
+                    await facts[key].PublishAsync(key.ItemUid == BackendItems.HostStartPermitted || baseline, Reason);
+                }
             }
         }
         await native.ShutdownAsync(Reason);
-        await BusinessBlockTestSupport.Until(() => native.Read().Blocks.All(row => row.State == BusinessBlockState.Stopped));
-        Assert.Empty(Assert.Single(native.Read().CurrentDecisions, row => row.ParentId == BackendUids.Program).ShouldRun);
     }
 
     [Fact]
-    public async Task HostMemoryProtectionConditionRequiresAllThreeTrueFacts()
+    public async Task TrayWithoutPageRunsSmartDefaultReportsAndProtectionButOnlyTheirProducerFields()
     {
-        await using var native = CreateNative();
+        await using var native = new NativeControl(BackendExpectedProductionTree.Parents(1).Keys,
+            new NativeControlOptions { Profile = 1, ShutdownItemUid = BackendItems.ProgramShuttingDown, HistoryCapacity = 128 },
+            NullLogger<NativeControl>.Instance);
         var authority = NativeBackendBlockTestSupport.CreateAuthority(native);
-        var enabled = authority.ClaimCell<bool>(BackendItems.HostMemoryProtectionEnabled);
-        var normalPoint = authority.ClaimCell<bool>(BackendItems.MemoryProtectionNormalRunningPointExists);
-        var reserveBuilt = authority.ClaimCell<bool>(BackendItems.MemoryProtectionReserveBuilt);
+        var facts = new BackendPreciseRuleTestFacts(authority, native, nativeFacts: true);
+        await facts.InitializeAsync();
+        foreach (var item in new[] { BackendItems.SamplingHardwareMetricsInUse, BackendItems.SamplingCpuResidencyInUse,
+            BackendItems.SamplingInterruptsInUse, BackendItems.SamplingResourceBreakdownInUse,
+            BackendItems.ProcessDedicatedGpuMemoryInUse, BackendItems.OptimizationEnabled, BackendItems.GpuApiHistoryEnabled,
+            BackendItems.BackgroundReportsEnabled, BackendItems.PortableDiscoveryEnabled,
+            BackendItems.HostMemoryProtectionEnabled, BackendItems.MemoryProtectionNormalRunningPointExists,
+            BackendItems.MemoryProtectionReserveBuilt, BackendItems.PresentNativeSessionAvailable,
+            BackendItems.GpuAllocationNativeSessionAvailable, BackendItems.VidMmNativeSessionAvailable })
+            await facts.PublishAsync(item, true);
+        await facts[BackendItems.PresentUnfrozen].PublishNoValueAsync(NoValueReason.NotPublished, Reason);
+        await facts[BackendItems.VidMmUnfrozen].PublishNoValueAsync(NoValueReason.NotPublished, Reason);
         native.Activate(_ => new HoldingBlock());
-        await BusinessBlockTestSupport.Until(() => native.ReadState(BackendUids.Backend) == BusinessBlockState.Running);
+        var running = BackendExpectedProductionTree.Wrappers.Concat(new[] {
+            BackendUids.RuntimeSpecializationCoordinator, BackendUids.ServiceAutoStartSettings, BackendUids.ServiceRecoverySettings,
+            BackendUids.SqlitePortableSoftwareRegistry, BackendUids.TrustedAccessInvocationHostedService,
+            BackendUids.NativeEtwLifetimeService, BackendUids.HostManagerSamplingSubscriptionOwner,
+            BackendUids.WindowsHardwareMetricSampler, BackendUids.EtwCpuCoreResidencyReader,
+            BackendUids.EtwSystemInterruptSnapshotSource, BackendUids.WindowsResourceBreakdownSampler,
+            BackendUids.GpuAllocationCollector, BackendUids.HostManagerSmartCoordinator,
+            BackendUids.GpuPlacementProcessHistoryObserver, BackendUids.HostManagerReportCoordinatorOwner,
+            BackendUids.PortableSoftwareDiscoveryService, BackendUids.HostMemoryProtection }).ToHashSet();
+        await BusinessBlockTestSupport.Until(() => running.SetEquals(native.Read().Blocks
+            .Where(row => row.State == BusinessBlockState.Running).Select(row => row.Id)));
+        Assert.DoesNotContain(native.Read().History, row => row.To == BusinessBlockState.Starting && !running.Contains(row.BlockId));
+        await facts.PublishAsync(BackendItems.GraphicsApiObservationInUse, true);
+        await BusinessBlockTestSupport.Until(() => native.ReadState(BackendUids.PresentFrameEtwSource) == BusinessBlockState.Running);
+        await facts.PublishAsync(BackendItems.GraphicsApiObservationInUse, false);
+        await BusinessBlockTestSupport.Until(() => native.ReadState(BackendUids.PresentFrameEtwSource) == BusinessBlockState.Stopped);
+        Assert.Equal(BusinessBlockState.Running, native.ReadState(BackendUids.GpuAllocationCollector));
+        await native.ShutdownAsync(Reason);
+    }
 
-        var cells = new[] { enabled, normalPoint, reserveBuilt };
-        var previous = new PublicationValue?[cells.Length];
-        foreach (var enabledValue in Values)
-        foreach (var normalPointValue in Values)
-        foreach (var reserveValue in Values)
+    // These expressions follow the old local business gates, independently of native rule metadata.
+    private static bool Expected(int child, StateAuthority authority)
+    {
+        bool T(int item) => authority.Read<bool>(item).GetValueOrDefault(false);
+        bool P(int block) => authority.Read<bool>(new(BackendItems.HostStartPermitted, block)).GetValueOrDefault(false);
+        bool M(int item) { var value = authority.Read<bool>(item); return value.HasValue ? value.Value : value.NoValueReason == NoValueReason.NotPublished; }
+        bool Present() => P(BackendUids.PresentFrameEtwSource) && T(BackendItems.GraphicsApiObservationInUse)
+            && T(BackendItems.PresentNativeSessionAvailable) && M(BackendItems.PresentUnfrozen);
+        bool Allocation() => P(BackendUids.GpuAllocationCollector) && T(BackendItems.ProcessDedicatedGpuMemoryInUse) && T(BackendItems.GpuAllocationNativeSessionAvailable);
+        bool VidMm() => P(BackendUids.DxgkrnlVidMmEtwTelemetryZone) && T(BackendItems.VramResidualInUse)
+            && T(BackendItems.VidMmNativeSessionAvailable) && M(BackendItems.VidMmUnfrozen);
+        if (!P(child)) return false;
+        return child switch
         {
-            await PublishChangedAsync(cells, [enabledValue, normalPointValue, reserveValue], previous);
-            AssertCondition(native, BackendUids.Backend, ResourceManager.App.StateItems.ConditionUids.HostMemoryProtectionReady, null,
-                enabledValue.IsTrue && normalPointValue.IsTrue && reserveValue.IsTrue);
-        }
+            BackendUids.PresentFrameEtwSource => Present(),
+            BackendUids.GpuAllocationCollector => Allocation(),
+            BackendUids.DxgkrnlVidMmEtwTelemetryZone => VidMm(),
+            BackendUids.NativeEtwLifetimeService => Present() || Allocation() || VidMm(),
+            BackendUids.HostMemoryProtection => T(BackendItems.HostMemoryProtectionEnabled) && T(BackendItems.MemoryProtectionNormalRunningPointExists) && T(BackendItems.MemoryProtectionReserveBuilt),
+            BackendUids.JsonDebugDiagnosticLogWriter => T(BackendItems.DebugLoggingEnabled) || T(BackendItems.DebugWriterPending),
+            BackendUids.AutomaticProductUpdateService => T(BackendItems.AutomaticUpdatesEnabled),
+            BackendUids.HostManagerSamplingSubscriptionOwner => T(BackendItems.SamplingGpuTelemetryInUse) || T(BackendItems.SamplingHardwareMetricsInUse) || T(BackendItems.SamplingCpuTopologyInUse) || T(BackendItems.SamplingCpuResidencyInUse) || T(BackendItems.SamplingInterruptsInUse) || T(BackendItems.SamplingResourceBreakdownInUse) || T(BackendItems.SamplingDeviceTopologyInUse),
+            BackendUids.GpuTelemetryWorkerSupervisor => T(BackendItems.SamplingGpuTelemetryInUse),
+            BackendUids.WindowsHardwareMetricSampler => T(BackendItems.SamplingHardwareMetricsInUse),
+            BackendUids.CpuTopologySnapshotProvider => T(BackendItems.SamplingCpuTopologyInUse),
+            BackendUids.EtwCpuCoreResidencyReader => T(BackendItems.SamplingCpuResidencyInUse),
+            BackendUids.EtwSystemInterruptSnapshotSource => T(BackendItems.SamplingInterruptsInUse),
+            BackendUids.WindowsResourceBreakdownSampler => T(BackendItems.SamplingResourceBreakdownInUse),
+            BackendUids.DeviceTopologySnapshotProvider => T(BackendItems.SamplingDeviceTopologyInUse),
+            BackendUids.EtwPhysicalDiskIoAttributionReader => T(BackendItems.DiskAttributionInUse),
+            BackendUids.EtwNetworkTcpIpAttributionReader => T(BackendItems.NetworkAttributionInUse),
+            BackendUids.FanControlCoreLifetimeService => T(BackendItems.SoftwareFanCurveEnabled) || T(BackendItems.AppliedFanControlExists) || T(BackendItems.FanCommandPending),
+            BackendUids.FanCurveTemperatureFeed => T(BackendItems.SoftwareFanCurveEnabled),
+            BackendUids.ControlDesiredStateReassertion => T(BackendItems.AppliedControlIntentsExist),
+            BackendUids.ControlActualStateReader => T(BackendItems.ActualControlValuesInUse),
+            BackendUids.HostManagerSmartCoordinator => T(BackendItems.OptimizationEnabled) || T(BackendItems.ActiveCpuLeasesExist) || T(BackendItems.SmartOwnedStatePending),
+            BackendUids.GpuPlacementProcessHistoryObserver => T(BackendItems.GpuApiHistoryEnabled),
+            BackendUids.HostManagerReportCoordinatorOwner => T(BackendItems.BackgroundReportsEnabled),
+            BackendUids.PortableSoftwareDiscoveryService => T(BackendItems.PortableDiscoveryEnabled),
+            BackendUids.TrustedAccessRequestOwner => T(BackendItems.TrustedRequestsPending),
+            BackendUids.HostManagerPublicServiceCoordinatorOwner => T(BackendItems.PublicServiceEnabled) || T(BackendItems.PublicServiceTasksPending),
+            BackendUids.SharedResourceSubscriptionMaintenanceService => T(BackendItems.SharedResourceActivityExists),
+            BackendUids.HostManagerOperationCoordinatorOwner => T(BackendItems.OperationsPending),
+            _ => true
+        };
     }
-
-    [Fact]
-    public async Task NativeProducerConditionsMatchAllDemandAvailabilityAndModeStates()
+    private static Task PublishAsync(StateCell<bool> cell, StateRead<bool> value)
+        => value.HasValue ? cell.PublishAsync(value.Value, Reason) : cell.PublishNoValueAsync(value.NoValueReason!.Value, Reason);
+    private static void AssertCondition(NativeControl native, int parent, int uid, int? blockUid, bool expected)
     {
-        await AssertNativeProducerMatrix(
-            BackendUids.PresentFrameEtwSource,
-            BackendItems.PresentNativeSessionAvailable,
-            BackendItems.PresentUnfrozen,
-            ResourceManager.App.StateItems.ConditionUids.PresentEtwChildShouldRun,
-            modeAllowsWhenAbsent: true);
-        await AssertNativeProducerMatrix(
-            BackendUids.GpuAllocationCollector,
-            BackendItems.GpuAllocationNativeSessionAvailable,
-            null,
-            ResourceManager.App.StateItems.ConditionUids.GpuAllocationEtwChildShouldRun,
-            modeAllowsWhenAbsent: false);
-        await AssertNativeProducerMatrix(
-            BackendUids.DxgkrnlVidMmEtwTelemetryZone,
-            BackendItems.VidMmNativeSessionAvailable,
-            BackendItems.VidMmUnfrozen,
-            ResourceManager.App.StateItems.ConditionUids.VidMmEtwChildShouldRun,
-            modeAllowsWhenAbsent: true);
-    }
-
-    private static async Task AssertNativeProducerMatrix(int target, int availabilityItem,
-        int? modeItem, int conditionUid, bool modeAllowsWhenAbsent)
-    {
-        await using var native = CreateNative();
-        var authority = NativeBackendBlockTestSupport.CreateAuthority(native);
-        var demand = authority.ClaimCell<bool>(new(BackendItems.BlockDemand, target));
-        var available = authority.ClaimCell<bool>(availabilityItem);
-        var mode = modeItem is { } uid ? authority.ClaimCell<bool>(uid) : null;
-        native.Activate(_ => new HoldingBlock());
-        await ActivateNativeEtwGroupAsync(native, authority);
-
-        StateCell<bool>[] cells = mode is null ? [demand, available] : [demand, available, mode];
-        var previous = new PublicationValue?[cells.Length];
-        if (mode is null)
-        {
-            foreach (var demandValue in Values)
-            foreach (var availabilityValue in Values)
-            {
-                await PublishChangedAsync(cells, [demandValue, availabilityValue], previous);
-                AssertCondition(native, BackendUids.NativeEtwLifetimeService, conditionUid, null,
-                    demandValue.IsTrue && availabilityValue.IsTrue);
-            }
-            return;
-        }
-
-        foreach (var demandValue in Values)
-        foreach (var availabilityValue in Values)
-        foreach (var modeValue in Values)
-        {
-            await PublishChangedAsync(cells, [demandValue, availabilityValue, modeValue], previous);
-            var modeAllows = modeValue.HasValue ? modeValue.Value
-                : modeAllowsWhenAbsent && modeValue.NoValueReason == NoValueReason.NotPublished;
-            AssertCondition(native, BackendUids.NativeEtwLifetimeService, conditionUid, null,
-                demandValue.IsTrue && availabilityValue.IsTrue && modeAllows);
-        }
-    }
-
-    private static NativeControl CreateNative(uint profile = 1)
-    {
-        var hostUids = BackendExpectedProductionTree.Parents(profile).Keys.ToArray();
-        return new(hostUids, new NativeControlOptions
-        {
-            Profile = profile,
-            DemandItemUid = null,
-            ShutdownItemUid = BackendItems.ProgramShuttingDown,
-            HistoryCapacity = 32
-        }, NullLogger<NativeControl>.Instance);
-    }
-
-    private static async Task PublishAsync(StateCell<bool> cell, PublicationValue value)
-    {
-        if (value.HasValue) await cell.PublishAsync(value.Value, Reason);
-        else await cell.PublishNoValueAsync(value.NoValueReason!.Value, Reason);
-    }
-
-    private static async Task ActivateNativeEtwGroupAsync(NativeControl native, StateAuthority authority)
-    {
-        var demand = authority.ClaimCell<bool>(new(BackendItems.BlockDemand, BackendUids.NativeEtwLifetimeService));
-        await demand.PublishAsync(true, Reason);
-        await BusinessBlockTestSupport.Until(() =>
-            native.ReadState(BackendUids.NativeEtwLifetimeService) == BusinessBlockState.Running);
-    }
-
-    private static void AssertCondition(NativeControl native, int nodeUid, int conditionUid,
-        int? conditionBlockUid, bool expected)
-    {
-        var node = native.SnapshotJson().GetProperty("nodes").EnumerateArray()
-            .Single(value => value.GetProperty("uid").GetInt32() == nodeUid);
-        var condition = node.GetProperty("conditions").EnumerateArray().Single(value =>
-            value.GetProperty("uid").GetInt32() == conditionUid
-            && (conditionBlockUid is null
-                ? !value.TryGetProperty("blockUid", out _)
-                : value.TryGetProperty("blockUid", out var block) && block.GetInt32() == conditionBlockUid));
+        var node = native.SnapshotJson().GetProperty("nodes").EnumerateArray().Single(node => node.GetProperty("uid").GetInt32() == parent);
+        var condition = node.GetProperty("conditions").EnumerateArray().Single(value => value.GetProperty("uid").GetInt32() == uid
+            && (blockUid is null ? !value.TryGetProperty("blockUid", out _)
+                : value.TryGetProperty("blockUid", out var block) && block.GetInt32() == blockUid));
         Assert.Equal(JsonValueKind.Null, condition.GetProperty("lastError").ValueKind);
         Assert.Equal(expected, condition.GetProperty("value").GetBoolean());
     }
-
-    private static async Task PublishChangedAsync(StateCell<bool>[] cells,
-        PublicationValue[] values, PublicationValue?[] previous)
-    {
-        Assert.Equal(cells.Length, values.Length);
-        Assert.Equal(cells.Length, previous.Length);
-        for (var index = 0; index < cells.Length; index++)
-        {
-            if (previous[index] is not { } prior || prior != values[index])
-                await PublishAsync(cells[index], values[index]);
-            previous[index] = values[index];
-        }
-    }
-
-    private readonly record struct PublicationValue(bool HasValue, bool Value, NoValueReason? NoValueReason)
-    {
-        internal PublicationValue(bool value) : this(true, value, null) { }
-        internal PublicationValue(NoValueReason noValueReason) : this(false, false, noValueReason) { }
-        internal bool IsTrue => HasValue && Value;
-    }
-
     private sealed class HoldingBlock : IBusinessBlock
     {
         public async Task RunAsync(BusinessBlockRunContext context)

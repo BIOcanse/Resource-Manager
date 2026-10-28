@@ -127,7 +127,5 @@ public sealed partial class WindowsHardwareMetricSampler
     private void ValidateFieldSubscriptionAdmission()
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
-        if (samplingStopInProgress)
-            throw new InvalidOperationException("The hardware sampling worker is stopping; field demand cannot be admitted.");
     }
 }

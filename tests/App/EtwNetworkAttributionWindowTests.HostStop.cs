@@ -1,36 +1,38 @@
-using System.Net;
-
 namespace Resource_Manager_APP.Tests;
 
 public sealed partial class EtwNetworkAttributionWindowTests
 {
     [Fact]
-    public async Task StopWithoutHostedStartReleasesReadCreatedLeaseAndRepeatedCleanupIsIdempotent()
+    public async Task ReadWithoutHostedStartDoesNotAcquireALeaseAndRepeatedCleanupIsIdempotent()
     {
         var broker = new Broker();
-        using var reader = ObservationReader(broker, () => 0, pid => new ProcessLease(pid, 100));
-        reader.Read(includeObservedTraffic: true);
-        Transfer(reader, broker, 41, 100, true, false, IPAddress.Loopback, 1000, 100);
-        Assert.Null(reader.ExecuteTask); Assert.Equal(1, broker.SubscribeCount);
+        using var reader = ObservationReader(broker, () => 0, pid => new ProcessLease(pid, 100), start: false);
+        var snapshot = reader.Read(includeObservedTraffic: true);
+        Assert.Null(snapshot.ObservedTraffic);
+        Assert.Empty(snapshot.RawProcessValues);
+        Assert.Null(reader.ExecuteTask);
+        Assert.Equal(0, broker.SubscribeCount);
         await reader.StopAsync(CancellationToken.None);
         await reader.StopAsync(CancellationToken.None);
         reader.Dispose();
-        Assert.Equal(1, broker.DisposeCount); Assert.False(broker.Source.IsActive);
+        Assert.Equal(0, broker.DisposeCount);
+        Assert.Equal(0, broker.SubscribeCount);
     }
 
     [Fact]
-    public async Task StopAfterCancelledBackgroundStartReleasesLeaseWithoutExecutingWorkerBody()
+    public async Task CancelledHostedStartDoesNotAcquireALease()
     {
         var broker = new Broker();
-        using var reader = ObservationReader(broker, () => 0, pid => new ProcessLease(pid, 100));
-        reader.Read(includeObservedTraffic: true);
-        Transfer(reader, broker, 41, 100, true, false, IPAddress.Loopback, 1000, 100);
-        using var canceled = new CancellationTokenSource(); canceled.Cancel();
+        using var reader = ObservationReader(broker, () => 0, pid => new ProcessLease(pid, 100), start: false);
+        using var canceled = new CancellationTokenSource();
+        canceled.Cancel();
         await reader.StartAsync(canceled.Token);
         Assert.NotNull(reader.ExecuteTask);
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => reader.ExecuteTask!);
+        try { await reader.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(5)); }
+        catch (OperationCanceledException) when (canceled.IsCancellationRequested) { }
         await reader.StopAsync(CancellationToken.None);
-        Assert.Equal(1, broker.DisposeCount); Assert.False(broker.Source.IsActive);
-        reader.Dispose(); Assert.Equal(1, broker.DisposeCount);
+        reader.Dispose();
+        Assert.Equal(0, broker.SubscribeCount);
+        Assert.Equal(0, broker.DisposeCount);
     }
 }

@@ -18,7 +18,7 @@ public sealed partial class NumaMemoryInformationCollectorTests
             new HostManagerMetricSnapshotRuntime(slots.Provider, slots.Deployment),
             new HostManagerMetricSnapshotCatalogTopologySource(() => Topology([new(0), new(9)])), new NumaEnvironment(root),
             NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
-        await owner.StartAsync(CancellationToken.None);
+        using var workspaceHolding = owner.Hold();
         var dashboard = new HardwareMetricCatalogState();
         using (var lease = owner.Acquire())
             dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));

@@ -211,6 +211,8 @@ public sealed partial class NativeControl
                     Check(Destroy(handle.DangerousGetHandle()));
                     handle.SetHandleAsInvalid();
                     handle.Dispose();
+                    foreach (var readFunction in readFunctions) readFunction.Free();
+                    readFunctions.Clear();
                     context.Free();
                 }
             }

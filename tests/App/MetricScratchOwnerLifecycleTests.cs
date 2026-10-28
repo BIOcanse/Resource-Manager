@@ -10,6 +10,42 @@ namespace Resource_Manager_APP.Tests;
 public sealed class MetricScratchOwnerLifecycleTests
 {
     [Fact]
+    public async Task FirstHolderCreatesLastReturnClosesAndLaterAcquireUsesCurrentPlan()
+    {
+        var regions = new List<MetricScratchRecording>();
+        using var fixture = new Fixture(Topology([]), (length, alignment) =>
+        { var region = new MetricScratchRecording(length, alignment); regions.Add(region); return region; });
+        fixture.ReleaseWorkspace();
+        Assert.Equal(0UL, fixture.Owner.CurrentWorkspaceIdentity);
+        Assert.False(fixture.Owner.TryAcquire(out _));
+        Assert.Equal(1, regions[0].Retires);
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await fixture.Owner.AcquireAsync(cancelled.Token));
+        Assert.Single(regions);
+
+        var first = fixture.Owner.Acquire();
+        var second = fixture.Owner.Acquire();
+        var identity = first.WorkspaceIdentity;
+        Assert.Same(first.Workspace, second.Workspace);
+        first.Dispose();
+        Assert.Equal(0, regions[1].Retires);
+        second.Dispose();
+        second.Dispose();
+        Assert.Equal(1, regions[1].Retires);
+        Assert.Equal(0UL, fixture.Owner.CurrentWorkspaceIdentity);
+
+        var next = HostManagerTestPlanFactory.CreatePlan(root =>
+            root["profile_revision"] = root["profile_revision"]!.GetValue<int>() + 1, planEpoch: 2);
+        fixture.Slots.Provider.Publish(fixture.Slots.Provider.Current with { Version = 2, HostManager = next });
+        Assert.Equal(2, regions.Count);
+        using var reopened = fixture.Owner.Acquire();
+        Assert.NotEqual(identity, reopened.WorkspaceIdentity);
+        Assert.Equal(next.MetricSnapshot.HotPublish.ConfigurationGeneration, reopened.Workspace.Configuration.Generation);
+    }
+
+    [Fact]
     public void MultipleAlreadyRetiredHoldersKeepTheirOwnCloseFailuresAndBlockAnotherReplacement()
     {
         var regions = new List<MetricScratchRecording>();
@@ -42,7 +78,7 @@ public sealed class MetricScratchOwnerLifecycleTests
         fixture.Owner.RefreshTopologyIfRequested();
         Assert.Equal(4, regions.Count);
         Assert.NotEqual(current, fixture.Owner.CurrentWorkspaceIdentity);
-        fixture.Owner.Dispose(); fixture.Owner.Dispose();
+        fixture.ReleaseWorkspace(); fixture.Owner.Dispose(); fixture.ReleaseWorkspace(); fixture.Owner.Dispose();
         Assert.All(regions, region => Assert.Equal(1, region.Retires));
 
         void Replace(int ordinal)
@@ -61,14 +97,14 @@ public sealed class MetricScratchOwnerLifecycleTests
         var lease = fixture.Owner.Acquire();
         OpenCompletion(lease.Workspace);
         region!.FailReturn = true;
-        fixture.Owner.Dispose(); // The external lease is still live; no forced drain.
+        fixture.ReleaseWorkspace(); fixture.Owner.Dispose(); // The external lease is still live; no forced drain.
         Assert.Equal(1, region.Returns); // Only the completed Plan has returned.
         Assert.Same(region.ReturnFailure, Assert.Throws<InvalidOperationException>(() => lease.Dispose()));
         Assert.Equal(region.Pins, region.Unpins);
         Assert.Equal(0, region.Retires);
         Assert.Same(region.ReturnFailure, Assert.Throws<InvalidOperationException>(() => fixture.Owner.Dispose()));
         region.FailReturn = false;
-        fixture.Owner.Dispose(); fixture.Owner.Dispose(); lease.Dispose();
+        fixture.ReleaseWorkspace(); fixture.Owner.Dispose(); fixture.ReleaseWorkspace(); fixture.Owner.Dispose(); lease.Dispose();
         Assert.Equal(2, region.Returns);
         Assert.Equal(2, region.Unpins);
         Assert.Equal(1, region.Retires);
@@ -133,7 +169,7 @@ public sealed class MetricScratchOwnerLifecycleTests
             Assert.Throws<InvalidOperationException>(() => fixture.Owner.RefreshTopologyIfRequested()));
         Assert.Equal(2, regions.Count); // Another replacement cannot hide the failed candidate.
         intel.Fail = false; npu.Fail = false; regions[1].FailRetire = false;
-        fixture.Owner.Dispose(); fixture.Owner.Dispose();
+        fixture.ReleaseWorkspace(); fixture.Owner.Dispose(); fixture.ReleaseWorkspace(); fixture.Owner.Dispose();
         Assert.Equal(2, intel.Attempts); Assert.Equal(2, npu.Attempts);
         Assert.All(regions, region => Assert.Equal(1, region.Retires));
     }

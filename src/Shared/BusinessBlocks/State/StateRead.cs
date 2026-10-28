@@ -2,7 +2,7 @@ namespace ResourceManager.Shared.BusinessBlocks.State;
 
 public enum NoValueReason { NotPublished, OwnerStopped, ReadFailed }
 
-/// <summary>A current immutable value, or an explicit absence. Reading never invokes the owner.</summary>
+/// <summary>A current immutable value or an explicit absence; it never samples or waits.</summary>
 public readonly struct StateRead<T>
 {
     private readonly T? value;

@@ -273,9 +273,27 @@ internal sealed class HostManagerTransactionJournalAdmission : IAsyncDisposable
             try
             {
                 validate?.Invoke(currentRuntime);
-                var result = await operation();
-                completed?.Invoke(currentRuntime, result);
-                return result;
+                try
+                {
+                    var result = await operation();
+                    completed?.Invoke(currentRuntime, result);
+                    return result;
+                }
+                finally
+                {
+                    if (journalOwner.State == NativeTransactionJournalOwnerState.Ready
+                        && operationKind is (HostManagerTransactionJournalOperation.Prepare
+                        or HostManagerTransactionJournalOperation.PrepareBatch
+                        or HostManagerTransactionJournalOperation.Mutate
+                        or HostManagerTransactionJournalOperation.StageFeedback
+                        or HostManagerTransactionJournalOperation.ApplyRecoveryEvidence
+                        or HostManagerTransactionJournalOperation.Acknowledge))
+                    {
+                        // Mutation completion publishes current records, never a later fact read.
+                        currentRuntime.PublishOwnedState(
+                            await journalOwner.ReadSnapshotAsync(CancellationToken.None));
+                    }
+                }
             }
             finally
             {

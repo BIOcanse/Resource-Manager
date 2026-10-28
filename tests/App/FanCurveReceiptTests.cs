@@ -185,6 +185,7 @@ public sealed partial class FanCurveReceiptTests
                         return System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>("{\"id\":" + id + "," + body + "}");
                     }
                 }));
+            Client.StartSession().GetAwaiter().GetResult();
         }
 
         public async ValueTask DisposeAsync()

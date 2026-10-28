@@ -38,14 +38,18 @@ public sealed class SqlitePortableSoftwareRegistry(
     private RegistryContext? pendingContextClose;
     private CancellationTokenSource? writerCts;
     private Task? writerTask;
+    private Task? initializationTask;
     private Action<CompiledRuntimePlan>? publicationHandler;
     private bool started;
     private bool disposed;
 
     internal int RetainedPayloadCount => context?.Payloads.Count ?? 0;
+    internal Task? ExecuteTask => writerTask;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        Task initialization;
+        bool published;
         await operationGate.WaitAsync(cancellationToken);
         try
         {
@@ -54,27 +58,69 @@ public sealed class SqlitePortableSoftwareRegistry(
             if (writerTask is { IsCompleted: false })
                 throw new InvalidOperationException("The preceding portable registry writer has not drained.");
 
-            await database.EnsureInitializedAsync(cancellationToken);
-            await ApplyPlanCoreAsync(
-                runtimePlanProvider.Current.HostManager.RequirePublished(),
-                cancellationToken,
-                throwOnFailure: true);
             writerCts?.Dispose();
             var runSignals = writerSignals = CreateWriterSignals();
             writerCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             var writerToken = writerCts.Token;
-            writerTask = Task.Run(() => RunWriterAsync(runSignals, writerToken), CancellationToken.None);
+            published = runtimePlanProvider.Current.HostManager.IsPublished;
+            initialization = initializationTask = InitializeAsync(writerToken);
+            writerTask = RunOwnerAsync(initialization, runSignals, writerToken);
+            started = true;
+        }
+        finally { operationGate.Release(); }
+        // Existing callers with a published input still receive a prepared registry.
+        // Cold entry registers owned execution immediately so Stop can cancel its input wait.
+        if (published)
+        {
+            try { await initialization.ConfigureAwait(false); }
+            catch
+            {
+                await operationGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+                try
+                {
+                    DetachPublication();
+                }
+                finally { operationGate.Release(); }
+                throw;
+            }
+        }
+    }
+
+    private async Task InitializeAsync(CancellationToken cancellationToken)
+    {
+        await runtimePlanProvider.WaitForPublishedAsync(cancellationToken).ConfigureAwait(false);
+        await operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ThrowIfDisposed();
+            await database.EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+            using var publication = runtimePlanProvider.AcquirePublicationLease();
+            await ApplyPlanCoreAsync(publication.Plan.HostManager.RequirePublished(), cancellationToken,
+                throwOnFailure: true).ConfigureAwait(false);
             Action<CompiledRuntimePlan> handler = null!;
             handler = plan => OnPublished(plan, handler);
             publicationHandler = handler;
             runtimePlanProvider.Published += handler;
-            started = true;
         }
         finally { operationGate.Release(); }
     }
 
+    private async Task RunOwnerAsync(Task initialization, Channel<bool> signals, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await initialization.ConfigureAwait(false);
+            await RunWriterAsync(signals, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
+
     public async Task StopAsync(CancellationToken cancellationToken)
     {
+        // Initialization can own operationGate while awaiting database work.
+        // Cancel that work before waiting for its admission gate.
+        var cts = writerCts;
+        cts?.Cancel();
         await operationGate.WaitAsync(cancellationToken);
         try
         {
@@ -83,12 +129,13 @@ public sealed class SqlitePortableSoftwareRegistry(
             writerSignals.Writer.TryComplete();
         }
         finally { operationGate.Release(); }
-        var cts = writerCts;
-        cts?.Cancel();
         if (writerTask is { } task)
         {
             try { await task.WaitAsync(cancellationToken); }
             catch (OperationCanceledException) when (task.IsCompleted) { }
+            // Run failure remains visible through StartAsync and ExecuteTask.
+            // Cleanup joins that failed run without reporting the same failure again.
+            catch (Exception) when (task.IsFaulted) { }
             finally
             {
                 if (task.IsCompleted && ReferenceEquals(writerCts, cts))
@@ -112,11 +159,13 @@ public sealed class SqlitePortableSoftwareRegistry(
         }
     }
 
-    public void Observe(PortableSoftwareObservation observation)
+    public async Task ObserveAsync(PortableSoftwareObservation observation, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(observation);
         ThrowIfDisposed();
-        operationGate.Wait();
+        if (initializationTask is { } initialization)
+            await initialization.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var current = RequireContext();
@@ -152,10 +201,13 @@ public sealed class SqlitePortableSoftwareRegistry(
     public IReadOnlyList<PortableSoftwareRegistration> GetSnapshot()
     {
         ThrowIfDisposed();
+        if (Volatile.Read(ref context) is null) return [];
         operationGate.Wait();
         try
         {
-            return CaptureSnapshot(RequireContext()).Registrations;
+            // This list API represents no published registry as an empty result,
+            // matching the disabled registry. Reading never starts initialization.
+            return context is { } current ? CaptureSnapshot(current).Registrations : [];
         }
         finally
         {
@@ -167,6 +219,8 @@ public sealed class SqlitePortableSoftwareRegistry(
         CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
+        if (initializationTask is { } initialization)
+            await initialization.WaitAsync(cancellationToken).ConfigureAwait(false);
         await operationGate.WaitAsync(cancellationToken);
         try
         {
@@ -207,6 +261,8 @@ public sealed class SqlitePortableSoftwareRegistry(
             ?? throw new ArgumentException("请选择真实存在的软件根目录。", nameof(request));
 
         ThrowIfDisposed();
+        if (initializationTask is { } initialization)
+            await initialization.WaitAsync(cancellationToken).ConfigureAwait(false);
         await operationGate.WaitAsync(cancellationToken);
         try
         {
@@ -265,6 +321,7 @@ public sealed class SqlitePortableSoftwareRegistry(
 
     public void Dispose()
     {
+        writerCts?.Cancel();
         operationGate.Wait();
         try
         {
@@ -273,9 +330,9 @@ public sealed class SqlitePortableSoftwareRegistry(
             writerSignals.Writer.TryComplete();
         }
         finally { operationGate.Release(); }
-        writerCts?.Cancel();
         try { writerTask?.GetAwaiter().GetResult(); }
         catch (OperationCanceledException) { }
+        catch (Exception) when (writerTask is { IsFaulted: true }) { }
         writerCts?.Dispose();
         writerCts = null;
         operationGate.Wait();

@@ -15,6 +15,35 @@ public sealed class NativeFieldSubscriptionDeliveryTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task RunCleanupDiscardsBufferedAndPartialRoundsWithoutClosingConsumer(bool fresh)
+    {
+        var backend = new RecordedBackend();
+        var delivery = new NativeFieldSubscriptionDelivery();
+        using var registration = delivery.Register(SourceKey, backend, [QueryA, QueryB], [Bindings()[0], Bindings()[1]]);
+        backend.Publish(Current(QueryA, "previous-a"), Current(QueryB, "previous-b"));
+        var previous = Triggers(1, fresh, ("item-a", SourceKey), ("item-b", SourceKey));
+        var result = delivery.CaptureCompleted(previous, new HashSet<string>(["publication-a", "publication-b"]), true);
+        delivery.Deliver(previous, result);
+        delivery.Deliver(Triggers(2, fresh, ("item-a", SourceKey)), result);
+
+        delivery.DiscardRunRounds();
+
+        await using var reader = registration.ReadAllAsync().GetAsyncEnumerator();
+        var next = reader.MoveNextAsync().AsTask();
+        Assert.False(next.IsCompleted);
+        delivery.Deliver(Triggers(2, fresh, ("item-b", SourceKey)), result);
+        Assert.False(next.IsCompleted);
+        backend.Publish(Current(QueryA, "next-a"), Current(QueryB, "next-b"));
+        var restarted = Triggers(3, fresh, ("item-a", SourceKey), ("item-b", SourceKey));
+        delivery.Deliver(restarted, delivery.CaptureCompleted(restarted,
+            new HashSet<string>(["publication-a", "publication-b"]), true));
+        Assert.True(await next.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal(new[] { "next-a", "next-b" }, reader.Current.Select(static reading => reading.Value?.Text));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task HundredSelectedFieldsReadOneBatchPerBackendAcrossDeliveryRegistrations(bool fresh)
     {
         var fields = Enumerable.Range(0, 100).Select(index => new FieldReference("delivery-recorded", $"field-{index}"))

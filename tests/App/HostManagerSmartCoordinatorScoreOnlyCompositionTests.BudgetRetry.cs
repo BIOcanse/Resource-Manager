@@ -10,7 +10,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     [Theory]
     [InlineData(false, "process-inventory-unavailable")]
     [InlineData(true, "process-inventory-empty")]
-    public async Task NormalPercentBudgetRetriesAfterParkedFixedCycleUntilInventoryArrives(
+    public async Task NormalPercentBudgetRetriesAfterFixedCycleUntilInventoryArrives(
         bool empty, string deferredReason)
     {
         await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
@@ -33,7 +33,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 diagnostics = await fixture.Coordinator.GetDecisionDiagnosticsAsync(timeout.Token);
             }
             while (diagnostics.ActionBudget?.Mode != AppRealtimeActionBudgetModes.Fixed
-                || deadline.Snapshot.HasDeadline);
+                || !deadline.Snapshot.HasDeadline);
+            Assert.True(deadline.Snapshot.HasDeadline);
             Assert.Equal(0, fixture.ProcessFacts.ReadLatestCalls);
 
             var unavailableInventory = empty ? CreateRealtimeBudgetInventory(0) : null;
@@ -81,7 +82,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             }
             while (diagnostics.ActionBudget?.DeferredReason is not null
                 || diagnostics.ActionBudget?.ProcessCount != 12
-                || deadline.Snapshot.HasDeadline);
+                || !deadline.Snapshot.HasDeadline);
 
             Assert.Equal(1U, diagnostics.ActionBudget!.MaximumActionsThisCycle);
             Assert.True(Volatile.Read(ref inventoryReads) >= 3);

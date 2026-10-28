@@ -18,6 +18,11 @@ public sealed class HostManagerDisplayCoordinatorRuntime(
                 "The Host Manager display-coordinator plan is not published.");
     }
 
+    internal HostManagerDeploymentAttemptToken BeginCreate(CompiledHostManagerPlan plan)
+        => deploymentState.BeginResourceCreate(
+            HostManagerModuleKind.DisplayCoordinator, plan,
+            HostManagerDeploymentOperation.HostRecreateAndHotPublish);
+
     internal HostManagerDeploymentAttemptToken BeginInitialCreate(
         CompiledHostManagerPlan plan)
         => deploymentState.BeginAttempt(
@@ -25,12 +30,12 @@ public sealed class HostManagerDisplayCoordinatorRuntime(
             plan,
             HostManagerDeploymentOperation.InitialCreate);
 
-    internal HostManagerDeploymentAttemptToken BeginHostRecreate(
+    internal HostManagerDeploymentAttemptToken BeginHostRecreateAndHotPublish(
         CompiledHostManagerPlan plan)
         => deploymentState.BeginAttempt(
             HostManagerModuleKind.DisplayCoordinator,
             plan,
-            HostManagerDeploymentOperation.HostRecreate);
+            HostManagerDeploymentOperation.HostRecreateAndHotPublish);
 
     internal HostManagerDeploymentAttemptSettlement CompleteSucceeded(
         HostManagerDeploymentAttemptToken token)

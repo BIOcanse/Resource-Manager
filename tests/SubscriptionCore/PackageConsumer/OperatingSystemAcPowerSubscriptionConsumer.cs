@@ -26,8 +26,7 @@ internal static class OperatingSystemAcPowerSubscriptionConsumer
             ActiveTtlMilliseconds = 3000, MaximumFutureSkewMilliseconds = 1000
         };
         await using var composition = new NativeFieldSubscriptionComposition(owner.BorrowSubscriptionCapture(), settings,
-            in configuration, failure => throw new InvalidOperationException("Unexpected role-2 AC-power worker failure", failure.Error),
-            TimeSpan.FromMilliseconds(250));
+            in configuration, failure => throw new InvalidOperationException("Unexpected role-2 AC-power worker failure", failure.Error));
         await composition.StartAsync(timeout.Token);
         await using var stream = composition.SubscribeAsync("machine-ac-power", [field], TimeSpan.FromSeconds(1),
             new FieldSubscriptionOptions(FieldSubscriptionSamplingMode.FreshOnTrigger), timeout.Token)

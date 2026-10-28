@@ -198,7 +198,7 @@ public sealed class InformationGapFieldOwnerTests
         var configuration = DefaultFieldSubscriptionCompositionTests.Configuration();
         await using var composition = new NativeFieldSubscriptionComposition(owner.BorrowSubscriptionCapture(),
             DefaultFieldSubscriptionCompositionTests.Settings(), in configuration,
-            failure => throw new InvalidOperationException("Unexpected native worker failure", failure.Error), TimeSpan.Zero);
+            failure => throw new InvalidOperationException("Unexpected native worker failure", failure.Error));
         await composition.StartAsync();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await using var stream = composition.SubscribeAsync("service-config", [field], TimeSpan.FromSeconds(1), timeout.Token).GetAsyncEnumerator();
@@ -226,7 +226,7 @@ public sealed class InformationGapFieldOwnerTests
         var configuration = DefaultFieldSubscriptionCompositionTests.Configuration();
         await using var composition = new NativeFieldSubscriptionComposition(inventory.BorrowSubscriptionCapture(),
             DefaultFieldSubscriptionCompositionTests.Settings(), in configuration,
-            failure => throw new InvalidOperationException("Unexpected native worker failure", failure.Error), TimeSpan.Zero);
+            failure => throw new InvalidOperationException("Unexpected native worker failure", failure.Error));
         await composition.StartAsync();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await using var stream = composition.SubscribeAsync("size", [field], TimeSpan.FromSeconds(1), timeout.Token).GetAsyncEnumerator();

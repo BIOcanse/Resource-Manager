@@ -2,7 +2,7 @@ using System.Runtime.CompilerServices;
 
 namespace ResourceManager.Shared.BusinessBlocks.State;
 
-/// <summary>Per-process UID directory. Claiming creates the sole write capability; readers only load publications.</summary>
+/// <summary>Per-process UID directory. Claims create sole owner capabilities; reads load publications or invoke current-value functions.</summary>
 public sealed class StateAuthority
 {
     private readonly StateItemDeclaration?[] declarations;
@@ -56,6 +56,27 @@ public sealed class StateAuthority
         var entry = Claim<T>(key, StateItemStorage.Reference);
         return new(this, entry);
     }
+    /// <summary>Claims a synchronous, nonblocking current-value reader. Reading never samples or waits.</summary>
+    public StateReadFunction<T> ClaimReadFunction<T>(StateItemKey key, Func<StateRead<T>> read)
+    {
+        ArgumentNullException.ThrowIfNull(read);
+        var entry = Get(key); CheckType<T>(entry);
+        if (entry.Declaration.Storage != StateItemStorage.Reference)
+            throw new InvalidOperationException($"Item {key} uses {entry.Declaration.Storage} storage.");
+        if (runtime is { } native && typeof(T) == typeof(bool))
+            entry.NativeClaim = native.ClaimReadFunction(key, () => AsBoolean(read()));
+        else if (runtime is { } host) entry.NativeClaim = host.Claim(key, StateItemStorage.Reference);
+        else if (Interlocked.CompareExchange(ref entry.Claimed, 1, 0) != 0)
+            throw new InvalidOperationException($"Item {key} already has an owner.");
+        entry.ReadFunction = () =>
+        {
+            try { return new StatePublication<T>(read()); }
+            catch { return new StatePublication<T>(StateRead<T>.NoValue(NoValueReason.ReadFailed)); }
+        };
+        entry.ReadValue = read;
+        Volatile.Write(ref entry.ReadFunctionBound, 1);
+        return new(this, entry);
+    }
     private Entry Claim<T>(StateItemKey key, StateItemStorage storage)
     {
         var entry = Get(key); CheckType<T>(entry);
@@ -70,7 +91,12 @@ public sealed class StateAuthority
         var entry = Get(key); CheckType<T>(entry);
         if (runtime is { } native && typeof(T) == typeof(bool))
             return FromBoolean<T>(native.ReadBool(key));
-        return Volatile.Read(ref entry.Current) is StatePublication<T> publication ? publication.Read : StateRead<T>.NoValue(NoValueReason.NotPublished);
+        if (entry.ReadValue is Func<StateRead<T>> read && Volatile.Read(ref entry.ReadFunctionBound) != 0)
+        {
+            try { return read(); }
+            catch { return StateRead<T>.NoValue(NoValueReason.ReadFailed); }
+        }
+        return ReadPublication(entry) is StatePublication<T> publication ? publication.Read : StateRead<T>.NoValue(NoValueReason.NotPublished);
     }
     internal IStatePublication? ReadPublication(StateItemKey key)
     {
@@ -138,7 +164,7 @@ public sealed class StateAuthority
         => Snapshot(Get(key), publication, nameLookup);
     private BusinessBlockItem Snapshot(Entry entry, IStatePublication? publication, Func<int, string?> nameLookup)
     {
-        var cacheSnapshot = runtime is null || entry.Declaration.ValueType != typeof(bool);
+        var cacheSnapshot = entry.ReadFunction is null && (runtime is null || entry.Declaration.ValueType != typeof(bool));
         var cached = cacheSnapshot ? Volatile.Read(ref entry.Snapshot) : null;
         if (cached is not null && ReferenceEquals(cached.Publication, publication) && ReferenceEquals(cached.NameLookup, nameLookup))
             return cached.Row;
@@ -163,6 +189,8 @@ public sealed class StateAuthority
     {
         if (runtime is { } native && entry.Declaration.ValueType == typeof(bool))
             return new StatePublication<bool>(native.ReadBool(entry.Key));
+        if (entry.ReadFunction is { } read)
+            return Volatile.Read(ref entry.ReadFunctionBound) != 0 ? read() : Volatile.Read(ref entry.Current);
         return Volatile.Read(ref entry.Current);
     }
 
@@ -184,6 +212,9 @@ public sealed class StateAuthority
         internal readonly StateItemKey Key = key;
         internal readonly StateItemDeclaration Declaration = declaration;
         internal IStatePublication? Current;
+        internal Func<IStatePublication>? ReadFunction;
+        internal object? ReadValue;
+        internal int ReadFunctionBound;
         internal SnapshotRow? Snapshot;
         internal int Claimed;
         internal nint NativeClaim;

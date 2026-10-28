@@ -21,8 +21,8 @@ public sealed class FreedomPointSdkIntegrationTests
             .SelectMany(static type => type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static))
             .SelectMany(static member => member.GetCustomAttributes<FreedomPointBindingAttribute>().Select(attribute => (Member: member, Path: PointPath.FromRaw(attribute.Path))))
             .ToArray();
-        Assert.Equal(28, members.Length);
-        Assert.Equal(28, members.Select(static m => m.Path).Distinct().Count());
+        Assert.Equal(26, members.Length);
+        Assert.Equal(26, members.Select(static m => m.Path).Distinct().Count());
         Assert.All(registry.Points, point =>
         {
             if (point.Status == DeclarationStatus.Active)
@@ -69,7 +69,7 @@ public sealed class FreedomPointSdkIntegrationTests
         var host = FreedomPointRegistry.LoadEmbedded();
         var cpu = new CompiledCpuScoringPlan(1.25, CompiledCpuCoreWeights.Empty);
         var compilation = host.BeginCompilation(Profile(), cpu);
-        Assert.Equal(28, compilation.Facts.Items.Length);
+        Assert.Equal(26, compilation.Facts.Items.Length);
         var ratio = host.Sdk.RequirePath(BackendFreedomPointPaths.CpuBaselineRatio);
         Assert.Equal(1.25, compilation.Facts.Require(ratio).Value.Slots[0].Decimal);
         Assert.Equal(1.25, compilation.Consume<double>(BackendFreedomPointPaths.CpuBaselineRatio, "HostManagerPlanCompiler.CompileCpuScoring"));

@@ -17,6 +17,75 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class MetricCatalogueSubscriptionTests
 {
     [Fact]
+    public async Task HardwareFieldStreamSurvivesAProducerFaultAndControllerRestart()
+    {
+        using var harness = new RecordedHostMetricFieldHarness(() => Memory(345));
+        var backend = new ProducerSubscriptionCurrentBackend(harness.Backend);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var snapshots = harness.Sampler.SubscribeAsync("snapshot-held-through-fault",
+            MetricSampleRequest.ForIds([harness.RequestAddress]), TimeSpan.FromMilliseconds(100), timeout.Token)
+            .GetAsyncEnumerator(timeout.Token);
+        var pendingSnapshot = snapshots.MoveNextAsync().AsTask();
+        await using var stream = harness.Sampler.SubscribeFieldAsync("held-through-fault", [harness.Field],
+            harness.Backend.ResolveBindings([harness.Field]), TimeSpan.FromMilliseconds(100),
+            FieldSubscriptionOptions.Default, backend, timeout.Token).GetAsyncEnumerator(timeout.Token);
+        var pending = stream.MoveNextAsync().AsTask();
+        await using var controller = await ProducerSubscriptionRestartHost<WindowsHardwareMetricSampler>
+            .StartAsync(harness.Sampler, static producer => producer.CaptureSamplingWorkerTask(), backend);
+        var firstRun = await controller.FirstRun;
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => firstRun.WaitAsync(timeout.Token));
+        Assert.Equal(ProducerSubscriptionCurrentBackend.FailureMessage, failure.Message);
+        await controller.AssertControllerRestartedAsync();
+        Assert.True(await pending.WaitAsync(timeout.Token));
+        Assert.True(await pendingSnapshot.WaitAsync(timeout.Token));
+        Assert.NotNull(snapshots.Current);
+        Assert.Equal(345d, Assert.Single(stream.Current).Value?.Number);
+        Assert.True(harness.MemoryReads >= 1); // Shared delivery may reuse original current before the next source query is due.
+    }
+
+    [Fact]
+    public async Task HardwareFieldDemandAcceptedWhileStoppingNotifiesActivityAndSurvivesNextEntry()
+    {
+        var source = new GatedRecordedMemorySource(456);
+        using var harness = new RecordedHostMetricFieldHarness(source.Read);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var activity = new List<bool>();
+        harness.SamplingOwner.Activity.RoleChanged += role =>
+        {
+            if (role == 1) activity.Add(harness.SamplingOwner.Activity.HasInUseSubscriptions(1));
+        };
+        var first = harness.Subscriptions.Acquire("first-run", [harness.Field], TimeSpan.FromMilliseconds(100));
+        source.ArmNextRead();
+        await harness.Sampler.StartAsync(CancellationToken.None);
+        await source.ArmedReadStarted.WaitAsync(timeout.Token);
+        var stop = harness.Sampler.StopAsync(CancellationToken.None);
+        try
+        {
+            Assert.False(stop.IsCompleted);
+            first.Dispose();
+            Assert.False(harness.SamplingOwner.Activity.HasInUseSubscriptions(1));
+            await using var late = harness.Subscriptions.SubscribeAsync("accepted-while-stopping", [harness.Field],
+                TimeSpan.FromMilliseconds(100), new(FieldSubscriptionSamplingMode.FreshOnTrigger), timeout.Token)
+                .GetAsyncEnumerator(timeout.Token);
+            var pending = late.MoveNextAsync().AsTask();
+            Assert.False(pending.IsCompleted);
+            Assert.True(harness.SamplingOwner.Activity.HasInUseSubscriptions(1));
+            Assert.Equal(new[] { true, false, true }, activity);
+            source.SetValueAndReleaseArmedRead(789);
+            await stop.WaitAsync(timeout.Token);
+            Assert.False(pending.IsCompleted);
+            await harness.Sampler.StartAsync(CancellationToken.None);
+            Assert.True(await pending.WaitAsync(timeout.Token));
+            Assert.Equal(789d, Assert.Single(late.Current).Value?.Number);
+            await late.DisposeAsync();
+            Assert.False(harness.SamplingOwner.Activity.HasInUseSubscriptions(1));
+            Assert.Equal(new[] { true, false, true, false }, activity);
+        }
+        finally { first.Dispose(); source.ReleaseArmedRead(); await harness.Sampler.StopAsync(CancellationToken.None); }
+    }
+
+    [Fact]
     public void HostAdapterAdvertisesOnlyTheOriginalSamplerPeriodicBinding()
     {
         using var harness = new RecordedHostMetricFieldHarness(() => Memory(128));
@@ -191,7 +260,7 @@ public sealed partial class MetricCatalogueSubscriptionTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task StopWithdrawsOldLeasesAndPausedFieldDemand(bool start)
+    public async Task StopRetainsHeldLeasesAndPausedFieldSubscriptionsUntilTheyAreReleased(bool start)
     {
         using var harness = new RecordedHostMetricFieldHarness(() => Memory(456));
         using var oldLease = harness.Subscriptions.Acquire("old-lease", [harness.Field], TimeSpan.FromMilliseconds(100));
@@ -206,22 +275,31 @@ public sealed partial class MetricCatalogueSubscriptionTests
             Assert.True(await next.WaitAsync(timeout.Token));
         }
         await harness.Sampler.StopAsync(CancellationToken.None);
-        if (!start) Assert.False(await next.WaitAsync(timeout.Token));
+        if (start) next = stream.MoveNextAsync().AsTask();
+        Assert.False(next.IsCompleted);
         var tracker = Assert.IsType<NativeItemSamplingSubscriptionTracker<MetricSampleRequest>>(
             typeof(WindowsHardwareMetricSampler).GetField("subscriptions",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(harness.Sampler));
-        Assert.Equal((0, 0), tracker.CaptureManagedSourceState());
+        Assert.Equal((2, 2), tracker.CaptureManagedSourceState());
         var current = harness.Core.ReadCached(harness.Field);
+        using (var stoppedLease = harness.Subscriptions.Acquire("while-stopped", [harness.Field], TimeSpan.FromSeconds(1)))
+            Assert.Equal((3, 3), tracker.CaptureManagedSourceState());
+        Assert.Equal((2, 2), tracker.CaptureManagedSourceState());
+        Assert.Equal(current, harness.Core.ReadCached(harness.Field));
         await harness.Sampler.StartAsync(timeout.Token);
         try
         {
-            Assert.Equal((0, 0), tracker.CaptureManagedSourceState());
-            Assert.Equal(current, harness.Core.ReadCached(harness.Field));
+            Assert.True(await next.WaitAsync(timeout.Token));
+            Assert.Equal(456d, Assert.Single(stream.Current).Value?.Number);
+            Assert.Equal((2, 2), tracker.CaptureManagedSourceState());
+            await stream.DisposeAsync();
+            Assert.Equal((1, 1), tracker.CaptureManagedSourceState());
             using var newLease = harness.Subscriptions.Acquire("new-lease", [harness.Field], TimeSpan.FromSeconds(1));
             oldLease.Dispose();
             Assert.Equal((1, 1), tracker.CaptureManagedSourceState());
         }
         finally { await harness.Sampler.StopAsync(CancellationToken.None); }
+        Assert.Equal((0, 0), tracker.CaptureManagedSourceState());
     }
 
     private static MemoryMetrics Memory(ulong available)
@@ -299,6 +377,7 @@ public sealed partial class MetricCatalogueSubscriptionTests
 
         internal WindowsMemoryMonitoringZone MemoryZone { get; }
         internal HardwareMetricCatalogState Catalog => fixture.Catalog;
+        internal HostManagerSamplingSubscriptionOwner SamplingOwner => fixture.Slots.Owner;
         internal WindowsHardwareMetricSampler Sampler { get; }
         internal HostReadWriteBackend Backend { get; }
         internal HostFieldSubscriptionBackend Adapter { get; }

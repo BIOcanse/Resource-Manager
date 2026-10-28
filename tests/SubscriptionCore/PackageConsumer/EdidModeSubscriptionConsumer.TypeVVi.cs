@@ -26,7 +26,7 @@ internal static partial class EdidModeSubscriptionConsumer
         var borrow = new FirstQueryBorrow(owner.BorrowSubscriptionCapture());
         var readsAfterStop = 0;
         await using (var subscription = new NativeFieldSubscriptionComposition(borrow, settings, in configuration,
-            failure => failures.Add(failure), TimeSpan.FromMilliseconds(250)))
+            failure => failures.Add(failure)))
         {
             await subscription.StartAsync(token);
             await using var stream = subscription.SubscribeAsync("recorded-displayid13-type-v-vi", [field],

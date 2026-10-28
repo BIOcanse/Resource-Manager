@@ -128,9 +128,6 @@ public sealed partial class WindowsResourceBreakdownSampler
     private void ValidateFieldSubscriptionAdmission()
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
-        if (samplingStopInProgress)
-            throw new InvalidOperationException(
-                "The resource breakdown worker is stopping; field demand cannot be admitted.");
     }
 
     private IDisposable AcquireHostedSubscription(string sourceKey,
@@ -139,40 +136,18 @@ public sealed partial class WindowsResourceBreakdownSampler
     {
         if (request.MetricIds.Contains(PhysicalMemoryResidualFrame.MetricId))
             interval = PhysicalMemoryDetailsInterval(interval);
-        IDisposable? hardwareLease = null;
-        IDisposable? allocationLease = null;
-        IDisposable? residualLease = null;
         try
         {
-            var hardwareRequest = CreateHardwareRequest(request);
-            if (!hardwareRequest.IsEmpty)
-            {
-                var observationSource = metricSampler as IMetricSnapshotObservationSource
-                    ?? throw new InvalidOperationException(
-                        "Hosted resource subscriptions require a hosted hardware observation source.");
-                hardwareLease = observationSource.AcquireSubscription(
-                    $"resource-breakdown:{sourceKey}", hardwareRequest, interval);
-            }
-            if (NeedsGpuAllocations(request))
-                allocationLease = gpuAllocations?.AcquireSubscription(interval, $"resource-breakdown:{sourceKey}");
-            if (request.MetricIds.Any(static id => TryParseGpuMetric(id, out _, out var kind) && kind == "vram")
-                && residualBreakdownProvider is IGpuVramResidualObservationSource residualSource)
-                residualLease = residualSource.AcquireSubscription($"resource-breakdown:{sourceKey}", interval);
             subscriptions.TrackPersistent(sourceKey, request, DateTimeOffset.UtcNow, interval, flags);
             SignalDemand();
-            return new ObservationSubscriptionLease(this, sourceKey, hardwareLease, allocationLease,
-                fieldDeliveryLease, residualLease);
+            return new ObservationSubscriptionLease(this, sourceKey, fieldDeliveryLease);
         }
         catch
         {
-            hardwareLease?.Dispose();
-            residualLease?.Dispose();
-            allocationLease?.Dispose();
             fieldDeliveryLease?.Dispose();
             throw;
         }
     }
-
     internal TimeSpan PhysicalMemoryDetailsInterval(TimeSpan requested)
     {
         if (requested <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(requested));

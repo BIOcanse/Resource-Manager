@@ -38,7 +38,7 @@ internal sealed class NativeUiBlockTrees : IAsyncDisposable
             Node(BlockUids.WebViewHost, BlockUids.LoopbackProxy, BlockUids.LoopbackProxy),
             Node(BlockUids.TrayNotifications, BlockUids.TrayRoot, BlockUids.BackendConnection)
         ]);
-        scheduler = new(graph, create, historyLimit, logger, StateRegistry.Version, nameLookup, state.Authority, null, StateItemUids.ProgramShuttingDown, control, [
+        scheduler = new(graph, create, historyLimit, logger, StateRegistry.Version, nameLookup, state.Authority, StateItemUids.ProgramShuttingDown, control, [
             // Whether a whole tree runs is decided here, never by the tree itself; program exit is the scheduler's shutdown item.
             new(BlockUids.Program, [StateItemUids.ProgramStarted], input => input.Read<bool>(StateItemUids.ProgramStarted).GetValueOrDefault(false)
                 ? [BlockUids.MainRoot, BlockUids.TrayRoot] : []),

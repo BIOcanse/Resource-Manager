@@ -28,7 +28,7 @@ internal static partial class EdidModeSubscriptionConsumer
         var borrow = new FirstQueryBorrow(owner.BorrowSubscriptionCapture());
         var failures = new List<SubscriptionWorkerFailure>();
         await using (var subscription = new NativeFieldSubscriptionComposition(borrow, settings,
-            in configuration, failure => failures.Add(failure), TimeSpan.FromMilliseconds(250)))
+            in configuration, failure => failures.Add(failure)))
         {
             await subscription.StartAsync(timeout.Token);
             await using var stream = subscription.SubscribeAsync("recorded-edid13-chromaticity", [field],

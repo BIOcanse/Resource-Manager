@@ -21,6 +21,18 @@ public sealed class HostManagerSoftwareIdentityRuntime(
         return new HostManagerSoftwareIdentityRuntimePlan(hostPlan, catalog, resolution);
     }
 
+    internal HostManagerDeploymentAttemptToken BeginCreate(
+        HostManagerModuleKind module, CompiledHostManagerPlan plan)
+    {
+        if (module is not HostManagerModuleKind.SoftwareIdentityCatalog
+            and not HostManagerModuleKind.SoftwareIdentityResolution)
+        {
+            throw new ArgumentOutOfRangeException(nameof(module), module, null);
+        }
+        return deploymentState.BeginResourceCreate(module, plan,
+            HostManagerDeploymentOperation.HostRecreateAndHotPublish);
+    }
+
     internal HostManagerDeploymentAttemptToken Begin(
         HostManagerModuleKind module,
         CompiledHostManagerPlan plan,
@@ -53,14 +65,18 @@ internal sealed record HostManagerSoftwareIdentityRuntimePlan(
     CompiledHostManagerSoftwareIdentityCatalogPlan Catalog,
     CompiledHostManagerSoftwareIdentityResolutionPlan Resolution);
 
-public sealed class HostManagerSoftwareIdentityOwner : IHostedService, IDisposable
+public sealed class HostManagerSoftwareIdentityOwner : IDisposable
 {
     private readonly ReaderWriterLockSlim gate = new(LockRecursionPolicy.NoRecursion);
     private readonly RuntimePlanProvider planProvider;
     private readonly HostManagerSoftwareIdentityRuntime deployment;
     private readonly ILogger<HostManagerSoftwareIdentityOwner> logger;
     private WorkspaceHolder? current;
-    private bool started;
+    private CompiledHostManagerSoftwareIdentityCatalogPlan? appliedCatalogPlan;
+    private CompiledHostManagerSoftwareIdentityResolutionPlan? appliedResolutionPlan;
+    private readonly List<WorkspaceHolder> retiredWorkspaces = [];
+    private readonly object lifetimeGate = new();
+    private int holders;
     private bool disposed;
     private Action<CompiledRuntimePlan>? publishedHandler;
 
@@ -74,95 +90,86 @@ public sealed class HostManagerSoftwareIdentityOwner : IHostedService, IDisposab
         this.logger = logger;
     }
 
-    public Task StartAsync(CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        Action<CompiledRuntimePlan> handler = null!;
-        handler = plan => Apply(plan.HostManager.RequirePublished(), throwOnFailure: false, handler);
-        gate.EnterWriteLock();
-        try
-        {
-            ThrowIfDisposed();
-            if (started) return Task.CompletedTask;
-            publishedHandler = handler;
-            planProvider.Published += handler;
-            started = true;
-        }
-        finally { gate.ExitWriteLock(); }
-        try { Apply(planProvider.Current.HostManager.RequirePublished(), throwOnFailure: true, handler); }
-        catch { StopAsync(CancellationToken.None).GetAwaiter().GetResult(); throw; }
-        return Task.CompletedTask;
-    }
-
-    public Task StopAsync(CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        gate.EnterWriteLock();
-        try
-        {
-            if (publishedHandler is { } handler) planProvider.Published -= handler;
-            publishedHandler = null;
-            started = false;
-        }
-        finally { gate.ExitWriteLock(); }
-        return Task.CompletedTask;
-    }
-
     internal SessionLease Acquire()
     {
-        ThrowIfDisposed();
-        EnsureReady();
-        gate.EnterReadLock();
-        try
+        lock (lifetimeGate)
         {
-            return (current
-                ?? throw new InvalidOperationException(
-                    "The Host Manager software identity workspace is not ready."))
-                .Acquire();
+            ThrowIfDisposed();
+            RetryRetiredWorkspaces();
+            if (holders == 0)
+            {
+                Action<CompiledRuntimePlan> handler = null!;
+                handler = plan =>
+                {
+                    lock (lifetimeGate)
+                        Apply(plan.HostManager.RequirePublished(), throwOnFailure: false, handler);
+                };
+                publishedHandler = handler;
+                planProvider.Published += handler;
+                try { Apply(planProvider.Current.HostManager.RequirePublished(), throwOnFailure: true, handler); }
+                catch
+                {
+                    planProvider.Published -= handler;
+                    publishedHandler = null;
+                    throw;
+                }
+            }
+            holders++;
+            return current!.Acquire(Release);
         }
-        finally
+    }
+
+    private void Release(WorkspaceHolder holder)
+    {
+        lock (lifetimeGate)
         {
-            gate.ExitReadLock();
+            try { holder.Release(); }
+            finally
+            {
+                if (--holders == 0)
+                {
+                    if (publishedHandler is { } handler) planProvider.Published -= handler;
+                    publishedHandler = null;
+                    var previous = current;
+                    current = null;
+                    RetireWorkspace(previous);
+                }
+            }
         }
     }
 
     public void Dispose()
     {
-        if (disposed)
+        lock (lifetimeGate)
         {
-            return;
-        }
-        gate.EnterWriteLock();
-        try
-        {
-            if (publishedHandler is { } handler) planProvider.Published -= handler;
-            publishedHandler = null;
-            started = false;
-            current?.Retire();
-            current = null;
-            disposed = true;
-        }
-        finally
-        {
-            gate.ExitWriteLock();
+            if (disposed) { RetryRetiredWorkspaces(); return; }
+            gate.EnterWriteLock();
+            try
+            {
+                if (publishedHandler is { } handler) planProvider.Published -= handler;
+                publishedHandler = null;
+                disposed = true;
+                var previous = current;
+                current = null;
+                RetireWorkspace(previous);
+                RetryRetiredWorkspaces();
+            }
+            finally { gate.ExitWriteLock(); }
         }
     }
 
-    private void EnsureReady()
+    private void RetireWorkspace(WorkspaceHolder? holder)
     {
-        gate.EnterReadLock();
-        try
-        {
-            if (current is not null)
-            {
-                return;
-            }
-        }
-        finally
-        {
-            gate.ExitReadLock();
-        }
-        Apply(planProvider.Current.HostManager.RequirePublished(), throwOnFailure: true);
+        if (holder is null) return;
+        retiredWorkspaces.Add(holder);
+        holder.Retire();
+        if (holder.TryClose()) retiredWorkspaces.Remove(holder);
+    }
+
+    private void RetryRetiredWorkspaces()
+    {
+        for (var index = retiredWorkspaces.Count - 1; index >= 0; index--)
+            if (retiredWorkspaces[index].TryClose()) retiredWorkspaces.RemoveAt(index);
     }
 
     private void Apply(CompiledHostManagerPlan hostPlan, bool throwOnFailure,
@@ -180,17 +187,17 @@ public sealed class HostManagerSoftwareIdentityOwner : IHostedService, IDisposab
             {
                 return;
             }
-            if (current is not null)
+            if (appliedCatalogPlan is not null && appliedResolutionPlan is not null)
             {
                 ValidateGeneration(
-                    current.CatalogPlan.ConfigurationGeneration,
-                    current.CatalogPlan.ConfigurationSha256,
+                    appliedCatalogPlan.ConfigurationGeneration,
+                    appliedCatalogPlan.ConfigurationSha256,
                     catalogPlan.ConfigurationGeneration,
                     catalogPlan.ConfigurationSha256,
                     "catalog");
                 ValidateGeneration(
-                    current.ResolutionPlan.ConfigurationGeneration,
-                    current.ResolutionPlan.ConfigurationSha256,
+                    appliedResolutionPlan.ConfigurationGeneration,
+                    appliedResolutionPlan.ConfigurationSha256,
                     resolutionPlan.ConfigurationGeneration,
                     resolutionPlan.ConfigurationSha256,
                     "resolution");
@@ -214,14 +221,12 @@ public sealed class HostManagerSoftwareIdentityOwner : IHostedService, IDisposab
                     initial,
                     current?.ResolutionPlan,
                     resolutionPlan);
-                catalogAttempt = deployment.Begin(
-                    HostManagerModuleKind.SoftwareIdentityCatalog,
-                    hostPlan,
-                    catalogOperation);
-                resolutionAttempt = deployment.Begin(
-                    HostManagerModuleKind.SoftwareIdentityResolution,
-                    hostPlan,
-                    resolutionOperation);
+                catalogAttempt = initial
+                    ? deployment.BeginCreate(HostManagerModuleKind.SoftwareIdentityCatalog, hostPlan)
+                    : deployment.Begin(HostManagerModuleKind.SoftwareIdentityCatalog, hostPlan, catalogOperation);
+                resolutionAttempt = initial
+                    ? deployment.BeginCreate(HostManagerModuleKind.SoftwareIdentityResolution, hostPlan)
+                    : deployment.Begin(HostManagerModuleKind.SoftwareIdentityResolution, hostPlan, resolutionOperation);
 
                 deployment.CompleteSucceeded(catalogAttempt.Value);
                 catalogAttempt = null;
@@ -232,7 +237,9 @@ public sealed class HostManagerSoftwareIdentityOwner : IHostedService, IDisposab
                 resolution = null;
                 var previous = current;
                 current = next;
-                previous?.Retire();
+                appliedCatalogPlan = catalogPlan;
+                appliedResolutionPlan = resolutionPlan;
+                RetireWorkspace(previous);
             }
             catch (Exception applyFailure)
             {
@@ -359,9 +366,12 @@ public sealed class HostManagerSoftwareIdentityOwner : IHostedService, IDisposab
     {
         private WorkspaceHolder? holder;
 
-        internal SessionLease(WorkspaceHolder holder)
+        private readonly Action<WorkspaceHolder>? release;
+
+        internal SessionLease(WorkspaceHolder holder, Action<WorkspaceHolder>? release = null)
         {
             this.holder = holder;
+            this.release = release;
             CatalogPlan = holder.CatalogPlan;
             ResolutionPlan = holder.ResolutionPlan;
             ResolutionSession = holder.ResolutionWorkspace.Session;
@@ -387,7 +397,12 @@ public sealed class HostManagerSoftwareIdentityOwner : IHostedService, IDisposab
                 .NextFrame(now);
 
         public void Dispose()
-            => Interlocked.Exchange(ref holder, null)?.Release();
+        {
+            var previous = Interlocked.Exchange(ref holder, null);
+            if (previous is null) return;
+            if (release is null) previous.Release();
+            else release(previous);
+        }
     }
 
     internal sealed class WorkspaceHolder(
@@ -397,6 +412,8 @@ public sealed class HostManagerSoftwareIdentityOwner : IHostedService, IDisposab
     {
         private int referenceCount = 1;
         private int retired;
+        private readonly object closeGate = new();
+        private bool closed;
         internal object ResolutionGate { get; } = new();
         private ulong frameEpoch;
         private long lastCommandUtcMilliseconds;
@@ -409,14 +426,14 @@ public sealed class HostManagerSoftwareIdentityOwner : IHostedService, IDisposab
         internal NativeSoftwareIdentityResolutionWorkspace ResolutionWorkspace { get; } =
             resolutionWorkspace;
 
-        internal SessionLease Acquire()
+        internal SessionLease Acquire(Action<WorkspaceHolder>? release = null)
         {
             if (Volatile.Read(ref retired) != 0)
             {
                 throw new ObjectDisposedException(nameof(NativeSoftwareIdentityResolutionWorkspace));
             }
             Interlocked.Increment(ref referenceCount);
-            return new SessionLease(this);
+            return new SessionLease(this, release);
         }
 
         internal HostManagerSoftwareIdentityFrameStamp NextFrame(DateTimeOffset now)
@@ -457,9 +474,22 @@ public sealed class HostManagerSoftwareIdentityOwner : IHostedService, IDisposab
         {
             if (Interlocked.Decrement(ref referenceCount) == 0)
             {
-                ResolutionWorkspace.Dispose();
+                _ = TryClose();
             }
         }
+
+        internal bool TryClose()
+        {
+            lock (closeGate)
+            {
+                if (closed) return true;
+                if (Volatile.Read(ref referenceCount) != 0) return false;
+                ResolutionWorkspace.Dispose();
+                closed = true;
+                return true;
+            }
+        }
+
     }
 }
 

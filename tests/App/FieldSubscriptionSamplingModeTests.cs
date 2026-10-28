@@ -176,7 +176,9 @@ public sealed class FieldSubscriptionSamplingModeTests
         Assert.Equal("old-current", scope.PeekCurrent(scope.QueryA).Value?.Text);
 
         await subscription.DisposeAsync();
-        await composition.StopAsync().WaitAsync(TimeSpan.FromSeconds(8));
+        var returnedFailure = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => composition.StopAsync().WaitAsync(TimeSpan.FromSeconds(8)));
+        Assert.Equal("Recorded query failure.", returnedFailure.Message);
         Assert.Empty(scope.ActiveFields);
     }
 
@@ -242,7 +244,6 @@ public sealed class FieldSubscriptionSamplingModeTests
     {
         var configuration = DefaultFieldSubscriptionCompositionTests.Configuration();
         return new(scope, DefaultFieldSubscriptionCompositionTests.Settings(), in configuration,
-            reportFailure ?? (failure => throw new InvalidOperationException("Unexpected recorded worker failure.", failure.Error)),
-            TimeSpan.FromDays(30));
+            reportFailure ?? (failure => throw new InvalidOperationException("Unexpected recorded worker failure.", failure.Error)));
     }
 }

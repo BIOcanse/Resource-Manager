@@ -32,7 +32,6 @@ public sealed class NativeControlAbiTests
         [20, typeof(InvalidOperationException)],
         [21, typeof(KeyNotFoundException)],
         [22, typeof(InvalidOperationException)],
-        [23, typeof(InvalidOperationException)],
         [24, typeof(ArgumentException)],
         [25, typeof(ArgumentOutOfRangeException)],
         [26, typeof(InvalidOperationException)],
@@ -41,8 +40,6 @@ public sealed class NativeControlAbiTests
         [29, typeof(InvalidOperationException)],
         [30, typeof(InvalidOperationException)],
         [31, typeof(InvalidOperationException)],
-        [32, typeof(NotSupportedException)],
-        [33, typeof(ArgumentException)],
         [34, typeof(ArgumentException)],
         [35, typeof(InvalidOperationException)],
         [36, typeof(InvalidOperationException)],
@@ -54,6 +51,46 @@ public sealed class NativeControlAbiTests
     public void CheckAcceptsSuccessCode()
     {
         NativeControl.Check(0);
+    }
+
+    [Fact]
+    public unsafe void VersionTwoAbiHasNoDemandAllocationFieldsAndReadFunctionUsesFixedWidths()
+    {
+        Assert.Equal(0x0002_0000u, NativeControl.AbiVersion());
+        Assert.Equal(56, sizeof(NativeControl.Config));
+        Assert.Equal(40, System.Runtime.InteropServices.Marshal.OffsetOf<NativeControl.Config>(nameof(NativeControl.Config.HostBlocks)).ToInt32());
+        Assert.Equal(48, System.Runtime.InteropServices.Marshal.OffsetOf<NativeControl.Config>(nameof(NativeControl.Config.HostBlockCount)).ToInt32());
+        Assert.Equal(8, sizeof(NativeControl.FunctionRead));
+        Assert.Equal(16, sizeof(NativeControl.ReadFunction));
+    }
+
+    [Fact]
+    public async Task NativeReadFunctionReadsCurrentValueOutsideControllerLockAndUnbindSuppressesCallback()
+    {
+        await using var fixture = await NativeFixture.CreateAsync();
+        var key = new StateItemKey(BackendItems.PresentUnfrozen);
+        var current = false;
+        var fail = false;
+        var calls = 0;
+        var function = fixture.Authority.ClaimReadFunction<bool>(key, () =>
+        {
+            // Reentry would deadlock if the reader ran while the controller held its lock.
+            _ = fixture.Control.ReadState(BackendBlocks.PresentFrameEtwSource);
+            Interlocked.Increment(ref calls);
+            if (fail) throw new InvalidOperationException("owner read failed");
+            return StateRead<bool>.FromValue(current);
+        });
+        Assert.False(await Task.Run(() => fixture.Authority.Read<bool>(key).Value).WaitAsync(Timeout));
+        current = true;
+        Assert.True(fixture.Authority.Read<bool>(key).Value);
+        await function.NotifyChangedAsync(Reason).WaitAsync(Timeout);
+        await function.UnbindAsync(Reason).WaitAsync(Timeout);
+        var unboundCalls = Volatile.Read(ref calls);
+        Assert.Equal(NoValueReason.OwnerStopped, fixture.Authority.Read<bool>(key).NoValueReason);
+        Assert.Equal(unboundCalls, Volatile.Read(ref calls));
+        fail = true;
+        await function.BindAsync(Reason).WaitAsync(Timeout);
+        Assert.Equal(NoValueReason.ReadFailed, fixture.Authority.Read<bool>(key).NoValueReason);
     }
 
     [Theory]
@@ -148,7 +185,7 @@ public sealed class NativeControlAbiTests
         Assert.DoesNotContain("csharp-only-software", json, StringComparison.Ordinal);
         Assert.DoesNotContain("csharp-only-module", json, StringComparison.Ordinal);
         var evidenceBlock = BackendBlocks.TrustedAccessInvocationHostedService;
-        await fixture.Control.SetDemandAsync("native-abi-evidence", evidenceBlock, Reason).WaitAsync(Timeout);
+        await fixture.Authority.ClaimCell<bool>(new(BackendItems.HostStartPermitted, evidenceBlock)).PublishAsync(true, Reason).WaitAsync(Timeout);
         await Until(() => fixture.Control.ReadState(evidenceBlock) == BusinessBlockState.Running);
         var runningSnapshot = fixture.Control.SnapshotJson();
         var programRow = runningSnapshot.GetProperty("blocks").EnumerateArray()
@@ -315,7 +352,7 @@ public sealed class NativeControlAbiTests
     {
         await using var fixture = await NativeFixture.CreateAsync();
         var block = BackendBlocks.TrustedAccessInvocationHostedService;
-        await fixture.Control.SetDemandAsync("native-destroy-active-run", block, Reason).WaitAsync(Timeout);
+        await fixture.Authority.ClaimCell<bool>(new(BackendItems.HostStartPermitted, block)).PublishAsync(true, Reason).WaitAsync(Timeout);
         await Until(() => fixture.Control.ReadState(block) == BusinessBlockState.Running);
 
         var result = NativeControl.Destroy(fixture.Control.Handle.DangerousGetHandle());
@@ -331,7 +368,7 @@ public sealed class NativeControlAbiTests
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var fixture = await NativeFixture.CreateAsync(_ => new GatedHoldingRun(release.Task));
         var block = BackendBlocks.TrustedAccessInvocationHostedService;
-        await fixture.Control.SetDemandAsync("native-concurrent-dispose", block, Reason).WaitAsync(Timeout);
+        await fixture.Authority.ClaimCell<bool>(new(BackendItems.HostStartPermitted, block)).PublishAsync(true, Reason).WaitAsync(Timeout);
         await Until(() => fixture.Control.ReadState(block) == BusinessBlockState.Running);
 
         var first = fixture.Control.DisposeAsync().AsTask();
@@ -365,8 +402,7 @@ public sealed class NativeControlAbiTests
     private static NativeControlOptions Options() => new()
     {
         Profile = 1,
-        ShutdownItemUid = BackendItems.ProgramShuttingDown,
-        DemandItemUid = BackendItems.BlockDemand
+        ShutdownItemUid = BackendItems.ProgramShuttingDown
     };
 
     private static async Task Until(Func<bool> predicate)
@@ -405,6 +441,8 @@ public sealed class NativeControlAbiTests
             try
             {
                 var authority = control.CreateAuthority(BackendRegistry.Items, BackendRegistry.Blocks);
+                foreach (var uid in control.Graph.BlockIds.Where(uid => uid != BackendBlocks.TrustedAccessInvocationHostedService))
+                    await authority.ClaimCell<bool>(new(BackendItems.HostStartPermitted, uid)).PublishAsync(true, Reason);
                 control.Activate(runFactory ?? (static _ => new HoldingRun()));
                 return new(control, authority, logger);
             }

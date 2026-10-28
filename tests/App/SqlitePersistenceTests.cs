@@ -124,13 +124,13 @@ public sealed partial class SqlitePersistenceTests : IDisposable
             await registry.StartAsync(default);
             var observation = new PortableSoftwareObservation("catalog:delayed", "delayed", "Delayed", "other",
                 "c:/portable/" + new string('a', 128) + ".exe", "c:/portable");
-            Assert.Throws<ArgumentOutOfRangeException>(() => registry.Observe(observation));
+            await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => registry.ObserveAsync(observation, default));
 
             releaseCallback.Set();
             Assert.Empty((await delayed.WaitAsync(TimeSpan.FromSeconds(5))).DeliveryFailures);
 
             // The real projection must still enforce the restarted run's shorter path limit.
-            Assert.Throws<ArgumentOutOfRangeException>(() => registry.Observe(observation));
+            await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => registry.ObserveAsync(observation, default));
         }
         finally
         {
@@ -151,8 +151,8 @@ public sealed partial class SqlitePersistenceTests : IDisposable
             try
             {
                 var root = Path.Combine(testRoot, "Portable", "Restart" + run);
-                registry.Observe(new PortableSoftwareObservation("catalog:restart" + run, "restart" + run,
-                    "Restart " + run, "other", Path.Combine(root, "restart.exe"), root));
+                await registry.ObserveAsync(new PortableSoftwareObservation("catalog:restart" + run, "restart" + run,
+                    "Restart " + run, "other", Path.Combine(root, "restart.exe"), root), default);
                 using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
                 await using var connection = await database.OpenConnectionAsync(deadline.Token);
                 await using var command = connection.CreateCommand();
@@ -197,7 +197,12 @@ public sealed partial class SqlitePersistenceTests : IDisposable
         await InsertPortableRowAsync(database, "catalog:legacy", "legacy", "Legacy", "not_a_kind",
             "f:/genshin impact game/yuanshen.exe", "f:/genshin impact game", 0, 1, 1);
         using var registry = CreatePortableRegistry(database);
-        await Assert.ThrowsAsync<InvalidDataException>(() => registry.StartAsync(CancellationToken.None));
+        var failure = await Assert.ThrowsAsync<InvalidDataException>(() => registry.StartAsync(CancellationToken.None));
+        var execution = registry.ExecuteTask;
+        Assert.NotNull(execution);
+        Assert.Same(failure, await Assert.ThrowsAsync<InvalidDataException>(() => execution!));
+        await registry.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(execution!.IsFaulted);
         await using var connection = await database.OpenConnectionAsync(CancellationToken.None);
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT kind FROM portable_software_executables;";
@@ -335,8 +340,8 @@ public sealed partial class SqlitePersistenceTests : IDisposable
 
         var first = CreatePortableRegistry(database);
         await first.StartAsync(CancellationToken.None);
-        first.Observe(observation);
-        first.Observe(observation);
+        await first.ObserveAsync(observation, CancellationToken.None);
+        await first.ObserveAsync(observation, CancellationToken.None);
         var firstSnapshot = Assert.Single(first.GetSnapshot());
         Assert.Single(firstSnapshot.ExecutablePaths);
         Assert.Empty(firstSnapshot.RootPaths);
@@ -544,8 +549,13 @@ public sealed partial class SqlitePersistenceTests : IDisposable
             rootConfirmed: 0);
 
         using var registry = CreatePortableRegistry(database);
-        await Assert.ThrowsAsync<InvalidDataException>(
+        var failure = await Assert.ThrowsAsync<InvalidDataException>(
             () => registry.StartAsync(CancellationToken.None));
+        var execution = registry.ExecuteTask;
+        Assert.NotNull(execution);
+        Assert.Same(failure, await Assert.ThrowsAsync<InvalidDataException>(() => execution!));
+        await registry.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(execution!.IsFaulted);
 
         await using var connection = await database.OpenConnectionAsync(CancellationToken.None);
         Assert.Equal(

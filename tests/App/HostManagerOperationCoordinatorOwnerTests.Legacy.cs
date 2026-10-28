@@ -66,7 +66,7 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
         Assert.Contains(log.Messages, text => text.Contains("migrated from envelope-v1/ABI1", StringComparison.Ordinal));
         var backupWriteTime = File.GetLastWriteTimeUtc(backup);
         var migrationLogCount = log.Messages.Count(text => text.Contains("migrated from envelope-v1/ABI1", StringComparison.Ordinal));
-        await fixture.Owner.StopAsync(CancellationToken.None);
+        await fixture.Owner.DisposeAsync();
         await using var restarted = await Fixture.CreateStartedWithMigrationLogAsync(fixture.Root, fixture.Plan, log, clock);
         Assert.True(restarted.Owner.GetHealth().Ready);
         Assert.Equal(backup, Assert.Single(OperationBackups(fixture.EnvelopePath)));
@@ -231,7 +231,7 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
         Assert.Single(current.NativeImage.Records);
         Assert.Equal(HostManagerOperationStates.Succeeded, fixture.Owner.Get(submitted.Id)!.State);
         var beforeRestart = backupFiles.ToDictionary(path => path, File.ReadAllBytes);
-        await fixture.Owner.StopAsync(CancellationToken.None);
+        await fixture.Owner.DisposeAsync();
         await using var restarted = await Fixture.CreateAsync(fixture.Root, fixture.Plan);
         Assert.True(restarted.Owner.GetHealth().Ready);
         foreach (var saved in beforeRestart) Assert.Equal(saved.Value, File.ReadAllBytes(saved.Key));

@@ -24,7 +24,7 @@ internal static class OperatingSystemUptimeSubscriptionConsumer
             ActiveTtlMilliseconds = 3000, MaximumFutureSkewMilliseconds = 1000
         };
         await using var composition = new NativeFieldSubscriptionComposition(owner.BorrowSubscriptionCapture(), settings, in configuration,
-            failure => Console.WriteLine($"OS uptime worker failure: {failure.Stage}; {failure.Error.Message}"), TimeSpan.FromMilliseconds(250));
+            failure => Console.WriteLine($"OS uptime worker failure: {failure.Stage}; {failure.Error.Message}"));
         await composition.StartAsync(timeout.Token);
         await using var stream = composition.SubscribeAsync("machine-uptime", [field], TimeSpan.FromSeconds(1), timeout.Token).GetAsyncEnumerator();
         if (!await stream.MoveNextAsync()) throw new InvalidDataException("Uptime native subscription ended without observation.");

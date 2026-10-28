@@ -92,7 +92,7 @@ public sealed partial class AdlxMetricsCollectorTests
             new HostManagerMetricSnapshotCatalogTopologySource(() => new(1, NativeMetricSnapshotCatalogTopologyStatus.Complete,
                 RecordedGpuIdentities(Inventory()), NativeMetricSnapshotCatalogTopologyStatus.Complete, [], NativeMetricSnapshotCatalogTopologyStatus.Complete, [])),
             new Environment(root), NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
-        await owner.StartAsync(CancellationToken.None); var dashboard = new HardwareMetricCatalogState();
+        using var workspaceHolding = owner.Hold(); var dashboard = new HardwareMetricCatalogState();
         using (var lease = owner.Acquire()) dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         var device = dashboard.Current!.FieldBindings.Values.Single(binding => binding.Field.Code == MetricFieldCode.AdlxDedicatedMemoryMb && binding.DeviceIdentity == RecordedGpuIdentities(Inventory()).Single(static gpu => gpu.DisplayIndex == 9).ExactIdentityKey).DeviceIdentity;
         var row = Row(10, PnpA, 64); row.VramUsedMb = 321;

@@ -35,7 +35,7 @@ public sealed class FanManagementModesTests
     }
 
     [Fact]
-    public void CatalogPublishesModesFromFakeCoreWithoutWriting()
+    public async Task CatalogPublishesModesFromFakeCoreWithoutWriting()
     {
         using var client = new FanControlCoreClient(new FanTestEnvironment(), (_, _) => new DelegateFanSession(request => {
             Assert.Equal("describe", request.GetProperty("op").GetString());
@@ -43,6 +43,7 @@ public sealed class FanManagementModesTests
                 fans = new[] { new { index = 0, writable = true, supportsDuty = true, role = "cpu", firmwareCurve = "table",
                     supportsSoftwareCurve = true, softwareTakeoverCoversAllFans = true, curvePoints = 10, supportsFirmwareCurveReset = true } } });
         }));
+        await client.DiscoverAsync(default);
         var writer = new FanControlWriter(client);
         var catalog = new WindowsControlObjectCatalog(null!, [writer], new Access(), client, null!, null!, null!);
         var target = new ControlObject("fan:oem0", "fan", null, new("windows", "oem"), Capabilities);

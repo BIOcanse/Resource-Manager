@@ -12,7 +12,7 @@ internal static class WorkerConsumer
         await RunDemandAndCancellationAsync();
         await RunFailureRecoveryAsync();
         await RunValueRequestAsync();
-        Console.WriteLine("SubscriptionCore worker package consumer passed: actual timed native plans, public collection, shared publication, removal, cancellation settlement, failure retry and restart.");
+        Console.WriteLine("SubscriptionCore worker package consumer passed: actual timed native plans, public collection, shared publication, removal, cancellation settlement, fault return and external restart.");
     }
 
     private static async Task RunDemandAndCancellationAsync()
@@ -36,7 +36,7 @@ internal static class WorkerConsumer
         {
             if (items.Count > 0) sawDemand = true;
             else if (sawDemand) { Interlocked.Increment(ref cleanups); idleAfterDemand.TrySetResult(); }
-        }, failures.Enqueue, TimeSpan.FromMilliseconds(25));
+        }, failures.Enqueue);
         using var cancellation = new CancellationTokenSource();
         async Task<SubscriptionSampleCompletion> Capture(NativeItemSamplingSubscriptionPlan<Request, string> plan, CancellationToken token)
         {
@@ -114,10 +114,10 @@ internal static class WorkerConsumer
         var worker = new NativeSamplingSubscriptionWorker<Request, string>(tracker, signal, items =>
         {
             if (items.Count > 0 && !failedDemand) { failedDemand = true; throw new IOException("recorded demand failure"); }
-        }, failures.Enqueue, TimeSpan.FromMilliseconds(25));
+        }, failures.Enqueue);
         tracker.TrackPersistent("recovery", new("recovery", ["one"]), DateTimeOffset.UtcNow, TimeSpan.FromMilliseconds(50));
         using var cancellation = new CancellationTokenSource();
-        var task = worker.RunAsync(async (plan, token) =>
+        async Task<SubscriptionSampleCompletion> Capture(NativeItemSamplingSubscriptionPlan<Request, string> plan, CancellationToken token)
         {
             switch (++attempts)
             {
@@ -134,10 +134,22 @@ internal static class WorkerConsumer
                     completed.TrySetResult();
                     return SubscriptionSampleCompletion.Sampled;
             }
-        }, cancellation.Token);
+        }
+        for (var run = 0; run < 3; run++)
+        {
+            try
+            {
+                await worker.RunAsync(Capture, cancellation.Token);
+                throw new InvalidOperationException("Faulted worker did not return its failure.");
+            }
+            catch (IOException) when (run < 2) { }
+            catch (InvalidOperationException error) when (run == 2 && error.Message == "Sampling returned an unknown completion.") { }
+            Require(owner.Leases == 0, "failed entry settles and returns its native workspace lease");
+        }
+        var task = worker.RunAsync(Capture, cancellation.Token);
         try { await completed.Task.WaitAsync(TimeSpan.FromSeconds(5)); }
         finally { cancellation.Cancel(); await task.WaitAsync(TimeSpan.FromSeconds(5)); }
-        Require(attempts >= 4 && owner.Leases == 0, "failed demand/capture/invalid completion retry and settle on the same native session");
+        Require(attempts >= 4 && owner.Leases == 0, "external restart resumes after settled faults");
         Require(failures.Count(item => item.Stage == SubscriptionWorkerFailureStage.Demand) == 1
             && failures.Count(item => item.Stage == SubscriptionWorkerFailureStage.Collection) == 2,
             "diagnostics report actual faults separately from current values");
@@ -158,11 +170,10 @@ internal static class WorkerConsumer
         tracker.TrackPersistent(0, clock.GetUtcNow(), TimeSpan.FromMinutes(1));
         var first = Completion();
         var observedWaiting = Completion();
-        var waitingFaulted = 0;
         var captures = 0;
         var failures = new ConcurrentQueue<SubscriptionWorkerFailure>();
         var worker = new NativeSamplingSubscriptionWorker<int, string>(tracker, signal, static _ => { },
-            failures.Enqueue, TimeSpan.FromMilliseconds(5), clock);
+            failures.Enqueue, clock);
         using var cancellation = new CancellationTokenSource();
         var task = worker.RunAsync((plan, _) =>
         {
@@ -175,8 +186,6 @@ internal static class WorkerConsumer
             Require(plan.OwnerToken == "exact caller context", "explicit plan observer gets the caller context even without due collection");
             if (plan.DueItemIds.Count == 0)
             {
-                if (Interlocked.Exchange(ref waitingFaulted, 1) == 0)
-                    throw new InvalidOperationException("recorded idle-plan adapter failure");
                 observedWaiting.TrySetResult();
             }
         });
@@ -187,8 +196,8 @@ internal static class WorkerConsumer
             await observedWaiting.Task.WaitAsync(TimeSpan.FromSeconds(5));
         }
         finally { cancellation.Cancel(); await task.WaitAsync(TimeSpan.FromSeconds(5)); }
-        Require(captures == 1 && failures.Count == 1 && failures.Single().Stage == SubscriptionWorkerFailureStage.Demand
-            && owner.Leases == 0, "idle-plan adapter failure does not settle a default value-type request or start another collection");
+        Require(captures == 1 && failures.IsEmpty && owner.Leases == 0,
+            "an idle plan does not settle a default value-type request or start another collection");
         tracker.Clear(clock.GetUtcNow());
     }
 

@@ -5,10 +5,9 @@ namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 
 /// <summary>Composes physical-memory capture with the existing GPU residual provider.</summary>
 public sealed class WindowsResourceResidualBreakdownProvider : IResourceResidualBreakdownProvider,
-    IResourceResidualCaptureSource, IGpuVramResidualObservationSource
+    IResourceResidualCaptureSource
 {
     private readonly IResourceResidualBreakdownProvider gpu;
-    private readonly IGpuVramResidualObservationSource? gpuObservation;
     private readonly ILogger<WindowsResourceResidualBreakdownProvider> logger;
     private readonly Func<CancellationToken, PhysicalMemoryResidualCapture> capture;
     private readonly object stateGate = new();
@@ -24,7 +23,6 @@ public sealed class WindowsResourceResidualBreakdownProvider : IResourceResidual
         Func<CancellationToken, PhysicalMemoryResidualCapture> capture)
     {
         this.gpu = gpu;
-        gpuObservation = gpu as IGpuVramResidualObservationSource;
         this.logger = logger;
         this.capture = capture;
     }
@@ -44,9 +42,6 @@ public sealed class WindowsResourceResidualBreakdownProvider : IResourceResidual
                 static _ => { }).CreateResidualSegments(request)
             : gpu.CreateResidualSegments(request);
 
-    public IDisposable AcquireSubscription(string owner, TimeSpan interval)
-        => gpuObservation?.AcquireSubscription(owner, interval) ?? EmptyLease.Instance;
-
     private void ReportState(string state, bool isCapture)
     {
         lock (stateGate)
@@ -61,9 +56,4 @@ public sealed class WindowsResourceResidualBreakdownProvider : IResourceResidual
         }
     }
 
-    private sealed class EmptyLease : IDisposable
-    {
-        internal static readonly EmptyLease Instance = new();
-        public void Dispose() { }
-    }
 }

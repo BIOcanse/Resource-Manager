@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Application.ResourceTable;
 using ResourceManager.App.Domain.ResourceTable;
@@ -8,7 +8,7 @@ using ResourceManager.ReadWrite.Windows.Devices;
 
 namespace ResourceManager.App.Infrastructure.ResourceBreakdown;
 
-/// <summary>Host zone/idle/display adapter; SDK owns the actual TCPIP lease and window.</summary>
+/// <summary>Host zone/run/display adapter; SDK owns the actual TCPIP lease and window.</summary>
 public sealed partial class EtwNetworkTcpIpAttributionReader : BackgroundService, IEtwNetworkAttributionReader, IResourceTableProviderStateSource
 {
     private readonly EtwNetworkTcpIpMonitoringZone sourceZone;
@@ -60,45 +60,20 @@ public sealed partial class EtwNetworkTcpIpAttributionReader : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        while (!stoppingToken.IsCancellationRequested)
+        try
         {
-            try
-            {
-                await Task.Delay(1000, stoppingToken);
-                StopIfIdle(DateTimeOffset.UtcNow);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
+            stoppingToken.ThrowIfCancellationRequested();
+            owner.Start();
+            await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
         }
-
-        owner.Stop("ETW 网络事件归因正在随程序停止。");
-    }
-
-    public override async Task StopAsync(CancellationToken cancellationToken)
-    {
-        try { await base.StopAsync(cancellationToken); }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
         finally { owner.Stop("ETW 网络事件归因正在随程序停止。"); }
-    }
-
-    internal void StopIfIdle(DateTimeOffset now)
-    {
-        if (!sourceZone.CanRead) owner.Stop("ETW 网络事件归因已按功能区冻结停止。");
-        else if (now - owner.LastRequestAt > CurrentIdleStopAfter()) owner.Stop("ETW 网络事件归因已因无请求而停止。");
     }
 
     public override void Dispose()
     {
         try { owner.Dispose("ETW 网络事件归因正在随程序停止。"); }
         finally { base.Dispose(); }
-    }
-
-    private TimeSpan CurrentIdleStopAfter()
-    {
-        return sourceZone.IsLowPower
-            ? TimeSpan.FromSeconds(2)
-            : TimeSpan.FromSeconds(5);
     }
 
 }

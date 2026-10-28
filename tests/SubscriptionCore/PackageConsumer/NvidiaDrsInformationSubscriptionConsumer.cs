@@ -28,7 +28,7 @@ internal static class NvidiaDrsInformationSubscriptionConsumer
         var configuration = Configuration();
         await using var composition = new NativeFieldSubscriptionComposition(access.BorrowSubscriptionCapture(),
             new SubscriptionRoleSettings(2, 1000, 1, 3000, 1000, 1000), in configuration,
-            failure => failures.Enqueue(failure.Stage + ": " + failure.Error.Message), TimeSpan.FromMilliseconds(10));
+            failure => failures.Enqueue(failure.Stage + ": " + failure.Error.Message));
         await composition.StartAsync();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         await using (var stream = composition.SubscribeAsync("drs-recorded", [scope.Fields[0]],

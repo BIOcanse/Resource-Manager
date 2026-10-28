@@ -17,13 +17,11 @@ public sealed class BackendBlockProductionTreeTests
     private static readonly int[] FullHostedBlocks =
     [
         BackendUids.NativeEtwLifetimeService, BackendUids.TrustedAccessRequestOwner, BackendUids.TrustedAccessInvocationHostedService,
-        BackendUids.RuntimeSpecializationCoordinator, BackendUids.HostManagerSamplingSubscriptionOwner, BackendUids.HostManagerMetricSnapshotOwner,
-        BackendUids.HostManagerSoftwareIdentityOwner, BackendUids.HostManagerFileQueryOwner, BackendUids.HostManagerDisplayCoordinatorOwner,
-        BackendUids.HostManagerPublicServiceCoordinatorOwner, BackendUids.HostManagerOperationCoordinatorOwner,
+        BackendUids.RuntimeSpecializationCoordinator, BackendUids.HostManagerSamplingSubscriptionOwner, BackendUids.HostManagerPublicServiceCoordinatorOwner, BackendUids.HostManagerOperationCoordinatorOwner,
         BackendUids.SqlitePortableSoftwareRegistry,
         BackendUids.ServiceAutoStartSettings, BackendUids.ServiceRecoverySettings, BackendUids.ControlDesiredStateReassertion, BackendUids.FanCurveTemperatureFeed,
         BackendUids.ControlActualStateReader, BackendUids.GpuTelemetryWorkerSupervisor, BackendUids.WindowsHardwareMetricSampler, BackendUids.CpuTopologySnapshotProvider,
-        BackendUids.FanControlCoreLifetimeService, BackendUids.KernelEtwSessionBroker, BackendUids.PortableSoftwareDiscoveryService, BackendUids.EtwCpuCoreResidencyReader,
+        BackendUids.FanControlCoreLifetimeService, BackendUids.PortableSoftwareDiscoveryService, BackendUids.EtwCpuCoreResidencyReader,
         BackendUids.EtwSystemInterruptSnapshotSource, BackendUids.EtwPhysicalDiskIoAttributionReader, BackendUids.EtwNetworkTcpIpAttributionReader,
         BackendUids.WindowsResourceBreakdownSampler, BackendUids.GpuPlacementProcessHistoryObserver,
         BackendUids.SharedResourceSubscriptionMaintenanceService, BackendUids.JsonDebugDiagnosticLogWriter,
@@ -48,8 +46,9 @@ public sealed class BackendBlockProductionTreeTests
         var reason = BusinessBlockTestSupport.Reason();
         try
         {
-            await fixture.Scheduler.SetDemandAsync("fan-core", BackendUids.FanControlCoreLifetimeService, reason);
-            await fixture.Scheduler.SetDemandAsync("fan-curve", BackendUids.FanCurveTemperatureFeed, reason);
+            var facts = new BackendPreciseRuleTestFacts(fixture.Authority, fixture.Native);
+            await facts.InitializeAsync();
+            await facts.PublishAsync(BackendItems.SoftwareFanCurveEnabled, true);
             await curve.Started.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             await fixture.Scheduler.ShutdownAsync(reason);
             await curve.StopNotified.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
@@ -86,12 +85,16 @@ public sealed class BackendBlockProductionTreeTests
         var authority = NativeBackendBlockTestSupport.CreateAuthority(native);
         var availability = new NativeEtwSessionAvailability(authority);
         using var provider = new ServiceCollection().AddSingleton(availability).BuildServiceProvider();
+        var preciseFacts = new BackendPreciseRuleTestFacts(authority, native);
+        await preciseFacts.InitializeAsync();
         await using var scheduler = new BusinessBlockScheduler(provider, probes, native, authority);
         var reason = BusinessBlockTestSupport.Reason();
         try
         {
-            await scheduler.SetDemandAsync("sampling-owner", BackendUids.HostManagerSamplingSubscriptionOwner, reason);
-            foreach (var id in SamplingLifetimeConsumers) await scheduler.SetDemandAsync("sampling:" + id, id, reason);
+            foreach (var uid in new[] { BackendItems.SamplingGpuTelemetryInUse, BackendItems.SamplingHardwareMetricsInUse,
+                BackendItems.SamplingCpuTopologyInUse, BackendItems.SamplingCpuResidencyInUse, BackendItems.SamplingInterruptsInUse,
+                BackendItems.SamplingResourceBreakdownInUse, BackendItems.SamplingDeviceTopologyInUse })
+                await preciseFacts.PublishAsync(uid, true);
             await BusinessBlockTestSupport.Until(() => SamplingLifetimeConsumers.All(id => scheduler.ReadState(id) == BusinessBlockState.Running));
             await scheduler.ShutdownAsync(reason);
             await Task.WhenAll(consumers.Values.Select(consumer => consumer.StopNotified.Task)).WaitAsync(BusinessBlockTestSupport.TestTimeout);
@@ -115,8 +118,8 @@ public sealed class BackendBlockProductionTreeTests
     }
 
     [Theory]
-    [InlineData(false, 47, 51)]
-    [InlineData(true, 48, 52)]
+    [InlineData(false, 42, 41)]
+    [InlineData(true, 43, 42)]
     public async Task ProductionTreeContainsConcurrentFlowsAndDrainsChildrenBeforeTheirOwners(bool windowsService, int expectedCount, int expectedDataEdges)
     {
         var services = new ServiceCollection();
@@ -127,11 +130,12 @@ public sealed class BackendBlockProductionTreeTests
         var probes = production.Select(registration => registration with { Create = _ => new Probe() }).ToArray();
         await using var native = NativeBackendBlockTestSupport.CreateControl(probes, windowsService ? 2u : 1u);
         var graph = native.Graph;
-        var demandedBlocks = FullHostedBlocks.ToList();
+        var admittedHostedBlocks = FullHostedBlocks.ToList();
         StateRegistryTests.AssertBlocks("backend",
             graph.BlockIds.Prepend(BackendUids.Program), windowsService ? [] : [BackendUids.AutomaticProductUpdateService]);
-        if (windowsService) demandedBlocks.Add(BackendUids.AutomaticProductUpdateService);
-        var hostedBlocks = demandedBlocks.Concat(BackendExpectedProductionTree.Wrappers).ToArray();
+        if (windowsService) admittedHostedBlocks.Add(BackendUids.AutomaticProductUpdateService);
+        var hostedBlocks = admittedHostedBlocks.Where(id => id != BackendUids.NativeEtwLifetimeService)
+            .Concat(BackendExpectedProductionTree.Wrappers).ToArray();
         Assert.Equal(expectedCount, graph.Nodes.Count);
         Assert.Equal(expectedDataEdges, graph.Nodes.Sum(node => node.Inputs.Count));
         Assert.DoesNotContain(production, node => node.HostedServiceType?.Name is "ResourceManagerDatabaseInitializer"
@@ -158,28 +162,26 @@ public sealed class BackendBlockProductionTreeTests
         // Exercise the real topology with inert entries; this never starts native sessions or product services.
         var authority = NativeBackendBlockTestSupport.CreateAuthority(native);
         var availability = new NativeEtwSessionAvailability(authority);
-        var protectionFacts = new[]
-        {
-            StateItemUids.HostMemoryProtectionEnabled,
-            StateItemUids.MemoryProtectionNormalRunningPointExists,
-            StateItemUids.MemoryProtectionReserveBuilt
-        }.Select(uid => authority.ClaimCell<bool>(uid)).ToArray();
         using var provider = new ServiceCollection().AddSingleton(availability).BuildServiceProvider();
+        var preciseFacts = new BackendPreciseRuleTestFacts(authority, native);
+        await preciseFacts.InitializeAsync();
         await using var scheduler = new BusinessBlockScheduler(provider, probes, native, authority);
         var reason = new BusinessBlockReason(BusinessBlockRequestKind.Configuration, "host-profile", "full", 1);
         try
         {
-            foreach (var fact in protectionFacts) await fact.PublishAsync(true, reason);
-            foreach (var id in demandedBlocks) await scheduler.SetDemandAsync("block:" + id, id, reason);
+            foreach (var key in preciseFacts.Keys.Where(key => key.ItemUid != BackendItems.HostStartPermitted
+                && key.ItemUid != BackendItems.GraphicsApiObservationInUse && key.ItemUid != BackendItems.ProcessDedicatedGpuMemoryInUse
+                && key.ItemUid != BackendItems.VramResidualInUse)) await preciseFacts[key].PublishAsync(true, reason);
             await BusinessBlockTestSupport.Until(() => hostedBlocks.All(id => scheduler.ReadState(id) == BusinessBlockState.Running));
             Assert.True(hostedBlocks.ToHashSet().SetEquals(scheduler.Read().History.Where(row => row.To == BusinessBlockState.Starting).Select(row => row.BlockId)));
-            Assert.Equal(BusinessBlockState.Running, scheduler.ReadState(BackendUids.NativeEtwLifetimeService));
+            Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState(BackendUids.NativeEtwLifetimeService));
             Assert.All(NativeBlocks, id => Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState(id)));
-            foreach (var id in NativeBlocks) await scheduler.SetDemandAsync("native:" + id, id, reason);
+            foreach (var uid in new[] { BackendItems.GraphicsApiObservationInUse, BackendItems.ProcessDedicatedGpuMemoryInUse, BackendItems.VramResidualInUse })
+                await preciseFacts.PublishAsync(uid, true);
             // The independent publisher initializes availability before the group runs; no group republish is needed.
             await BusinessBlockTestSupport.Until(() => NativeBlocks.All(id => scheduler.ReadState(id) == BusinessBlockState.Running));
             var started = scheduler.Read().History;
-            Assert.True(hostedBlocks.Concat(NativeBlocks).ToHashSet().SetEquals(started.Where(row => row.To == BusinessBlockState.Starting).Select(row => row.BlockId)));
+            Assert.True(hostedBlocks.Append(BackendUids.NativeEtwLifetimeService).Concat(NativeBlocks).ToHashSet().SetEquals(started.Where(row => row.To == BusinessBlockState.Starting).Select(row => row.BlockId)));
             var groupRunning = started.Single(row => row.BlockId == BackendUids.NativeEtwLifetimeService && row.To == BusinessBlockState.Running).Sequence;
             Assert.All(started.Where(row => NativeBlocks.Contains(row.BlockId) && row.To == BusinessBlockState.Starting), row => Assert.True(row.Sequence > groupRunning));
             var samplingOwnerRunning = started.Single(row => row.BlockId == BackendUids.HostManagerSamplingSubscriptionOwner && row.To == BusinessBlockState.Running).Sequence;
@@ -189,7 +191,7 @@ public sealed class BackendBlockProductionTreeTests
             await scheduler.ShutdownAsync(reason);
             await BusinessBlockTestSupport.Until(() => scheduler.Read().Blocks.All(block => block.State == BusinessBlockState.Stopped));
             var stopped = scheduler.Read().History;
-            Assert.True(hostedBlocks.Concat(NativeBlocks).ToHashSet().SetEquals(stopped.Where(row => row.To == BusinessBlockState.Stopping).Select(row => row.BlockId)));
+            Assert.True(hostedBlocks.Append(BackendUids.NativeEtwLifetimeService).Concat(NativeBlocks).ToHashSet().SetEquals(stopped.Where(row => row.To == BusinessBlockState.Stopping).Select(row => row.BlockId)));
             var groupStop = stopped.Single(row => row.BlockId == BackendUids.NativeEtwLifetimeService && row.To == BusinessBlockState.Stopping).Sequence;
             Assert.All(stopped.Where(row => NativeBlocks.Contains(row.BlockId) && row.To == BusinessBlockState.Stopped), row => Assert.True(row.Sequence < groupStop));
             var samplingOwnerStop = stopped.Single(row => row.BlockId == BackendUids.HostManagerSamplingSubscriptionOwner && row.To == BusinessBlockState.Stopping).Sequence;
@@ -300,7 +302,9 @@ public sealed class BackendBlockProductionTreeTests
         Task? stopping = null;
         try
         {
-            await scheduler.SetDemandAsync("native-consumer", BackendUids.GpuAllocationCollector, BusinessBlockTestSupport.Reason());
+            var preciseFacts = new BackendPreciseRuleTestFacts(authority, nativeControl, hostPermits: false);
+            await preciseFacts.InitializeAsync();
+            await preciseFacts.PublishAsync(BackendItems.ProcessDedicatedGpuMemoryInUse, true);
             Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState(BackendUids.GpuAllocationCollector));
             await host.StartAsync().WaitAsync(BusinessBlockTestSupport.TestTimeout);
             await native.Started.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
@@ -338,8 +342,8 @@ public sealed class BackendBlockProductionTreeTests
         Assert.True(readOnlyIds.SetEquals(graph.BlockIds));
         Assert.DoesNotContain(graph.BlockIds, id => id == graph.Program);
         var readOnlyNodes = graph.Nodes;
-        Assert.Equal(31, readOnlyNodes.Count);
-        Assert.Equal(28, readOnlyNodes.Sum(node => node.Inputs.Count));
+        Assert.Equal(25, readOnlyNodes.Count);
+        Assert.Equal(19, readOnlyNodes.Sum(node => node.Inputs.Count));
         Assert.Equal([BackendUids.Backend], graph.Children(BackendUids.Program));
         Assert.True(SamplingLifetimeConsumers.ToHashSet().SetEquals(readOnlyNodes
             .Where(node => node.ParentId == BackendUids.HostManagerSamplingSubscriptionOwner).Select(node => node.Id)));

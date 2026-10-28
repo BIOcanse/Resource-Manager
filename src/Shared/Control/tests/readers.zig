@@ -39,7 +39,6 @@ const Host = support.TestHost(C);
 const why: types.Reason = .{ .kind = 2, .owner = "reader-test", .cause = "one-event", .plan_version = 12345 };
 fn config() types.Config {
     var cfg = support.config(32);
-    cfg.demand_item = 15;
     cfg.host_blocks = &.{ 2, 3 };
     cfg.reader_capacity = 16;
     cfg.reader_bytes = 4096;
@@ -80,6 +79,7 @@ test "runtime readers: holder identity is per key copied and safe after idempote
     var host: Host = .{};
     const controller = try C.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     controller.waitIdle();
     defer {
@@ -112,6 +112,7 @@ test "runtime readers: each matching item and block is delivered once on its pub
     var host: Host = .{ .user_context = &delivery, .item_changed_hook = Delivery.changed };
     const controller = try C.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     controller.waitIdle();
     defer {
@@ -135,11 +136,11 @@ test "runtime readers: each matching item and block is delivered once on its pub
     try expectEqual(@as(u32, 0), delivery.counts[2].load(.acquire));
     try controller.publish(right, .{ .value = false }, why, null);
     try expectEqual(@as(u32, 1), delivery.counts[2].load(.acquire));
-    try controller.setDemand("third", 3, why, null);
+    try support.setFact(controller, 3, true, why, null);
     try expectEqual(@as(u32, 0), delivery.counts[3].load(.acquire));
     try expectEqual(@as(u32, 1), delivery.counts[4].load(.acquire));
-    try controller.setDemand("second", 2, why, null);
-    try controller.clearDemand("second", why, null);
+    try support.setFact(controller, 2, true, why, null);
+    try support.setFact(controller, 2, false, why, null);
     try expectEqual(@as(u32, 2), delivery.counts[3].load(.acquire));
     try expectEqual(@as(u32, 1), delivery.counts[4].load(.acquire));
     try controller.publish(cell, .{ .value = true }, why, null);
@@ -199,6 +200,7 @@ test "runtime readers: callbacks can read register and unregister without holdin
     var host: Host = .{ .user_context = &probe, .item_changed_hook = Reentrant.changed };
     const controller = try C.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     controller.waitIdle();
     defer {
@@ -263,6 +265,7 @@ test "runtime readers: completion covers declared rounds while a runtime callbac
     var host: Host = .{ .user_context = &probe, .item_changed_hook = HeldReader.changed, .complete_hook = HeldReader.complete };
     const controller = try C.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     controller.waitIdle();
     defer {
@@ -303,6 +306,7 @@ test "runtime readers: bounded holder storage is reused without any allocation a
     var host: Host = .{};
     const controller = try C.create(allocator.allocator(), cfg, host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     controller.waitIdle();
     defer {

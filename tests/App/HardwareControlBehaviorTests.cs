@@ -122,6 +122,8 @@ public sealed class HardwareControlBehaviorTests
         var plans = new RuntimePlanProvider(new HostManagerDeploymentState());
         var plane = new ScheduledPlane();
         using var loop = new ControlDesiredStateReassertion(plane, settings, plans);
+        // Saved-intent application is finite bootstrap work; the worker only maintains it.
+        await plane.InitializeAsync(default);
         await loop.StartAsync(default);
         await plane.Initialized.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.False(plane.Reasserted.Task.IsCompleted);

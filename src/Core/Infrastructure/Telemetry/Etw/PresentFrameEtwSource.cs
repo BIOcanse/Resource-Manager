@@ -1,4 +1,4 @@
-using BlockUids = ResourceManager.App.StateItems.BlockUids;
+﻿using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using Microsoft.Diagnostics.Tracing;
 using ResourceManager.ReadWrite.Windows.Processes.Etw;
 using ResourceManager.Adapter;
@@ -13,7 +13,7 @@ namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
 /// <summary>
 /// 按进程采集 Present 帧时间。独立 ETW 会话，不并入内核会话：内核会话在订阅变化或丢事件时会整体重启，
-/// 高频的 Present 事件不能连累其他采集。有订阅才开，最后一个订阅释放就停；功能区冻结时停。
+/// 高频的 Present 事件不能连累其他采集。订阅活动和冻结状态由上级决策节点判断；运行入口独占会话的取得和释放。
 /// 事件口径见 docs/performance_overlay_and_targeted_report_2026-10-02.md 的“第 1 片合同”。
 /// </summary>
 public sealed partial class PresentFrameEtwSource(
@@ -69,6 +69,7 @@ public sealed partial class PresentFrameEtwSource(
         ComputeZoneModeCell.ClaimUnfrozen(controller.Authority, ResourceManager.App.StateItems.StateItemUids.PresentUnfrozen);
     private readonly HashSet<FrameSubscription> frameSubscriptions = [];
     private int frameLeases;
+    private bool hasActiveSubscriptions;
     private bool disposed;
     private bool hasFrameCurrent;
     private long frameStoppedAt;
@@ -97,16 +98,24 @@ public sealed partial class PresentFrameEtwSource(
         lock (lifecycle)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
+            var wasActive = HasActiveSubscriptions;
             var previousFrameLeases = frameLeases;
-            var dependency = controller.AcquireDependency(BlockUids.PresentFrameEtwSource,
-                new(BusinessBlockRequestKind.Dependency, "frame-observation", "present-frame-subscription", controller.CurrentPlanVersion));
-            var subscription = new FrameSubscription(this, dependency);
+            var subscription = new FrameSubscription(this);
             frameSubscriptions.Add(subscription);
             Volatile.Write(ref frameLeases, frameSubscriptions.Count);
-            UpdateOutputDemand(previousFrameLeases);
-            subscription.ObserveRelease();
+            UpdateOutputProviders(previousFrameLeases);
+            PublishSubscriptionActivity(wasActive);
             return subscription;
         }
+    }
+
+    public bool HasActiveSubscriptions => Volatile.Read(ref hasActiveSubscriptions);
+    public event Action? SubscriptionsChanged;
+    private void PublishSubscriptionActivity(bool wasActive)
+    {
+        var active = frameSubscriptions.Count != 0 || graphicsApiSubscriptions.Count != 0;
+        Volatile.Write(ref hasActiveSubscriptions, active);
+        if (wasActive != active) SubscriptionsChanged?.Invoke();
     }
 
     public FrameTimingSnapshot? Read(TimeSpan window)

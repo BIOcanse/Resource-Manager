@@ -30,6 +30,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             Assert.True(Assert.Single(first.Datasets).LastAttemptAt >= firstStarted);
             Assert.True(inventoryReads > 0);
             Assert.Equal(catalog.CaptureCount, catalog.ReturnedLeases);
+            while (hardware.ActiveSubscriptions != 0) await Task.Delay(10, timeout.Token);
             Assert.Equal(0, hardware.ActiveSubscriptions);
             Assert.Equal(0U, ReadResourceSubscriptionCounts(subscriptions.Owner).ActiveSourceCount);
 
@@ -41,6 +42,7 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             Assert.True(second.Sampling.LastAttemptAt > first.Sampling.LastAttemptAt);
             Assert.True(inventoryReads > captureCount);
             Assert.Equal(catalog.CaptureCount, catalog.ReturnedLeases);
+            while (hardware.ActiveSubscriptions != 0) await Task.Delay(10, timeout.Token);
             Assert.Equal(0, hardware.ActiveSubscriptions);
             Assert.Equal(0U, ReadResourceSubscriptionCounts(subscriptions.Owner).ActiveSourceCount);
         }
@@ -64,12 +66,18 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         using var cancellation = new CancellationTokenSource();
         var pending = sampler.GetSnapshotAsync(request, cancellation.Token);
 
-        Assert.False(pending.IsCompleted);
-        Assert.Equal(1, hardware.ActiveSubscriptions);
-        Assert.Equal(1U, ReadResourceSubscriptionCounts(subscriptions.Owner).ActiveSourceCount);
-        Assert.Equal(0, catalog.CaptureCount);
-        cancellation.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+        try
+        {
+            Assert.False(pending.IsCompleted);
+            Assert.Equal(0, hardware.ActiveSubscriptions); // Only the running block owns hardware observations.
+            Assert.Equal(1U, ReadResourceSubscriptionCounts(subscriptions.Owner).ActiveSourceCount);
+            Assert.Equal(0, catalog.CaptureCount);
+        }
+        finally
+        {
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+        }
         Assert.Equal(0, hardware.ActiveSubscriptions);
         Assert.Equal(0U, ReadResourceSubscriptionCounts(subscriptions.Owner).ActiveSourceCount);
         Assert.Equal(0, catalog.CaptureCount);

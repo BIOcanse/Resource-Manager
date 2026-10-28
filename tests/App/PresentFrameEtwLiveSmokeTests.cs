@@ -34,12 +34,12 @@ public sealed class PresentFrameEtwLiveSmokeTests
             var lease = source.AcquireSubscription();
             try
             {
-                await PresentFrameEtwTestHarness.ReadyAsync(lease);
+                await harness.WaitRunningAsync();
                 var stream = MeasureOnce(source, mode);
                 Assert.True(stream is not null, $"{mode}: generator not measured after restart. Warnings: {string.Join(" | ", logger.Messages)}");
                 Assert.InRange(stream.Statistics.AverageFps, 95, 105);
             }
-            finally { await PresentFrameEtwTestHarness.ReleaseAsync(lease); }
+            finally { await harness.ReleaseAsync(lease); }
         }
     }
 
@@ -52,13 +52,13 @@ public sealed class PresentFrameEtwLiveSmokeTests
         var lease = source.AcquireSubscription();
         try
         {
-            await PresentFrameEtwTestHarness.ReadyAsync(lease);
+            await harness.WaitRunningAsync();
             var stream = MeasureOnce(source, mode);
             Assert.NotNull(stream);
             Assert.Equal(expectedSource, stream.Source);
             Assert.InRange(stream.Statistics.AverageFps, 95, 105);
         }
-        finally { await PresentFrameEtwTestHarness.ReleaseAsync(lease); }
+        finally { await harness.ReleaseAsync(lease); }
     }
 
     private static FrameTimingStream? MeasureOnce(PresentFrameEtwSource source, string mode)

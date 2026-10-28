@@ -122,7 +122,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             ulong completedRoundsBeforeStop = 0;
             try
             {
-                host = BuildHostedScoreOnlyTestHost(fixture.Coordinator);
+                host = BuildHostedScoreOnlyTestHost(fixture);
                 var concrete = host.Services.GetRequiredService<HostManagerSmartCoordinator>();
                 var contract = host.Services.GetRequiredService<IHostManagerSmartCoordinator>();
                 var hostedOwner = Assert.Single(host.Services.GetServices<IHostedService>()
@@ -135,7 +135,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 
                 using (var startCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
                 {
-                    await host.StartAsync(startCancellation.Token);
+                    await StartHostedScoreOnlyTestHostAsync(host, startCancellation.Token);
                 }
                 if (fixture.Coordinator.LifecycleState
                     != HostManagerSmartCoordinatorLifecycleState.Running)

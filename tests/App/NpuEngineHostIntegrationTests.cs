@@ -48,7 +48,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
             new HostManagerMetricSnapshotCatalogTopologySource((memory, fan, prior, engine) => topology.Capture(memory, fan, prior, engine)),
             new TestEnvironment(Path.Combine(AppContext.BaseDirectory, "npu-engine-host", Guid.NewGuid().ToString("N"))),
             NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
-        await owner.StartAsync(timeout.Token);
+        using var workspaceHolding = owner.Hold();
         var dashboard = new HardwareMetricCatalogState();
         using (var lease = owner.Acquire()) dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));
         var zone = new WindowsNpuEngineMonitoringZone(recording.Open, recording.Read);
@@ -150,7 +150,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
             retired.Dispose(); Assert.True(recording.Opened[0].Disposed);
         }
         finally
-        { await sampler.StopAsync(CancellationToken.None); await app.StopAsync(CancellationToken.None); await owner.StopAsync(CancellationToken.None); }
+        { await sampler.StopAsync(CancellationToken.None); await app.StopAsync(CancellationToken.None); workspaceHolding.Dispose(); }
 
         static JsonElement? EngineRatio(JsonElement json)
         {

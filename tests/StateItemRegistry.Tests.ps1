@@ -145,13 +145,38 @@ Assert-Rejected { & $tool -Action Resolve -Registry $path -Uid 99 } 'uid=99.*not
 Assert-Rejected { & $tool -Action Resolve -Registry $path -Uid 0 } 'Uid'
 Assert-Rejected { & $tool -Action Resolve -Registry $path -Uid 1 -Version '../invalid' } 'Version'
 
+# Catalog maintenance uses the same validator as generation, and preserves the
+# original bytes whenever an edit would leave an invalid reference or field.
+$mutationPath = Join-Path $scratch 'mutation-registry.json'
+Write-StateRegistry $mutationPath (Get-Fixture)
+$mutationBytes = [IO.File]::ReadAllBytes($mutationPath)
+Assert-Rejected { & $tool -Action Remove -Registry $mutationPath } 'Uid'
+Assert-Rejected { & $tool -Action Remove -Registry $mutationPath -Uids 99 } '99.*not found'
+Assert-Rejected { & $tool -Action Remove -Registry $mutationPath -Uids 1 } 'owner.block'
+Assert-True ([Convert]::ToBase64String([IO.File]::ReadAllBytes($mutationPath)) -ceq [Convert]::ToBase64String($mutationBytes)) 'Rejected removal preserves exact bytes.'
+$removed = & $tool -Action Remove -Registry $mutationPath -Uids 2
+Assert-True (@((Read-StateRegistry -Path $mutationPath).entries).Count -eq 3) 'Remove leaves a valid registry with the selected UID absent.'
+Assert-True (-not @((Read-StateRegistry -Path $mutationPath).entries | Where-Object uid -EQ 2).Count) 'Removed entry is absent.'
+$replacement = & $tool -Action Add -Registry $mutationPath -Kind block -Process ui -Name Replacement -Comment 'Reuses a removed identifier.'
+Assert-True ($replacement -eq 2) 'Tool removal makes the smallest UID reusable.'
+$changed = & $tool -Action SetItem -Registry $mutationPath -Uid 3 -Comment 'Updated: café, 中文.' -OwnerComponent 'Fixture owner'
+$updated = @((Read-StateRegistry -Path $mutationPath).entries | Where-Object uid -EQ 3)[0]
+Assert-True ($changed -eq 3 -and $updated.comment -ceq 'Updated: café, 中文.' -and $updated.owner.component -ceq 'Fixture owner') 'SetItem preserves UID and applies canonical owner and comment.'
+$mutationBytes = [IO.File]::ReadAllBytes($mutationPath)
+Assert-True ([Convert]::ToBase64String((ConvertTo-StateRegistryBytes (Read-StateRegistry -Path $mutationPath))) -ceq [Convert]::ToBase64String($mutationBytes)) 'SetItem round trip is canonical.'
+Assert-Rejected { & $tool -Action Rename -Registry $mutationPath -Uid 3 -Name Program } 'duplicate name'
+Assert-Rejected { & $tool -Action SetItem -Registry $mutationPath -Uid 3 -Kind block } 'does not accept -Kind'
+Assert-Rejected { & $tool -Action SetItem -Registry $mutationPath -Uid 3 -OwnerBlock 1 -OwnerComponent Both } 'owner form'
+Assert-Rejected { & $tool -Action SetItem -Registry $mutationPath -Uid 99 -Comment 'Missing.' } '99.*not found'
+Assert-Rejected { & $tool -Action SetItem -Registry $mutationPath -Uid 3 -ItemReads @(@{item=99}) } 'does not accept -ItemReads'
+Assert-True ([Convert]::ToBase64String([IO.File]::ReadAllBytes($mutationPath)) -ceq [Convert]::ToBase64String($mutationBytes)) 'Rejected updates preserve exact bytes.'
 # Simulate removal of a released UID: allocation must reuse it with no exception.
 $table = Get-Fixture
 $table.entries = @($table.entries | Where-Object { $_.uid -ne 2 })
 Write-StateRegistry $path $table
 $added = & $tool -Action Add -Registry $path -Kind block -Process ui -Name Replacement -Comment 'A replacement block.'
 Assert-True ($added -eq 2) 'Add fills smallest gap.'
-$added = & $tool -Action Add -Registry $path -Kind item -Process backend -Name Demand -Comment 'External demand.' -Storage reference -Type bool -OwnerComponent 'Demand table' -PerBlock $true -Trigger event -ChangeEvent 'Fixture demand changed'
+$added = & $tool -Action Add -Registry $path -Kind item -Process backend -Name Active -Comment 'Fixture activity.' -Storage reference -Type bool -OwnerComponent 'Fixture owner' -PerBlock $true -Trigger event -ChangeEvent 'Fixture activity changed'
 Assert-True ($added -eq 5) 'Add appends when no gap remains.'
 $added = & $tool -Action Add -Registry $path -Kind item -Process backend -Name Poll -Comment 'Polled state.' -Storage own -Type bool -OwnerBlock 1 -PerBlock $false -Trigger poll -PollInterval '/poll/interval'
 Assert-True ($added -eq 6) 'Add accepts a block owner and polling interval.'
@@ -226,10 +251,11 @@ $production = Read-StateRegistry -Path (Join-Path $repo 'src/Shared/StateItems/s
 $volume = @($production.entries | Where-Object name -CEQ 'DeviceTopologyVolumeFreeSpaceCurrent')
 Assert-True ($volume.Count -eq 1) 'The independent volume free-space current is registered.'
 Assert-True ($volume[0].kind -ceq 'item' -and $volume[0].owner.block -eq 33 -and $volume[0].trigger -ceq 'event') 'Volume free-space current belongs to the topology owner and publishes change events.'
-Assert-True ($production.entries.Count -eq 110) 'Production catalog contains 66 blocks, 30 items and 14 conditions.'
-Assert-True (@($production.entries | Where-Object kind -CEQ 'block').Count -eq 66) 'Production catalog contains 66 blocks.'
-Assert-True (@($production.entries | Where-Object kind -CEQ 'item').Count -eq 30) 'Production catalog contains 30 items.'
-Assert-True (@($production.entries | Where-Object kind -CEQ 'condition').Count -eq 14) 'Production catalog contains 14 conditions.'
+# Catalog counts retain all dev desktop/window entries and include the replayed no-demand facts.
+Assert-True ($production.entries.Count -eq 160) 'Production catalog contains 61 blocks, 61 items and 38 conditions.'
+Assert-True (@($production.entries | Where-Object kind -CEQ 'block').Count -eq 61) 'Production catalog contains 61 blocks.'
+Assert-True (@($production.entries | Where-Object kind -CEQ 'item').Count -eq 61) 'Production catalog contains 61 items.'
+Assert-True (@($production.entries | Where-Object kind -CEQ 'condition').Count -eq 38) 'Production catalog contains 38 conditions.'
 Assert-True (($production.entries | Where-Object uid -EQ 41).name -ceq 'MainFrontend') 'MainRoot is renamed without changing UID 41.'
 Assert-True (($production.entries | Where-Object uid -EQ 42).name -ceq 'Tray') 'TrayRoot is renamed without changing UID 42.'
 Assert-True (@($production.entries | Where-Object { $_.process -ceq 'desktop' -and $_.name -ceq 'Frontend' -and $_.kind -ceq 'block' }).Count -eq 1) 'The resident has one Frontend wrapper declaration.'

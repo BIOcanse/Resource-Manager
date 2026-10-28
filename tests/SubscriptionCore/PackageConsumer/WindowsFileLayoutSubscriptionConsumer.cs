@@ -27,8 +27,7 @@ internal static class WindowsFileLayoutSubscriptionConsumer
             ActiveTtlMilliseconds = 3000, MaximumFutureSkewMilliseconds = 1000
         };
         await using var composition = new NativeFieldSubscriptionComposition(borrow, settings, in configuration,
-            failure => throw new InvalidOperationException("Unexpected file-layout subscription worker failure", failure.Error),
-            TimeSpan.FromMilliseconds(250));
+            failure => throw new InvalidOperationException("Unexpected file-layout subscription worker failure", failure.Error));
         await composition.StartAsync(timeout.Token);
         await using var stream = composition.SubscribeAsync("volume-file-layout", [field], TimeSpan.FromSeconds(1), timeout.Token)
             .GetAsyncEnumerator();

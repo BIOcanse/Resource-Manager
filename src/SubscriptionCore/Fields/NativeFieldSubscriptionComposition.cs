@@ -17,7 +17,6 @@ public sealed class NativeFieldSubscriptionComposition : IFieldSubscriptionBacke
     private readonly SubscriptionRoleSettings settings;
     private readonly NativeSamplingSubscriptionConfiguration configuration;
     private readonly Action<SubscriptionWorkerFailure> reportFailure;
-    private readonly TimeSpan failureRetryDelay;
     private readonly TimeProvider clock;
     private Run? run;
     private ulong incarnation;
@@ -27,7 +26,7 @@ public sealed class NativeFieldSubscriptionComposition : IFieldSubscriptionBacke
 
     public NativeFieldSubscriptionComposition(IReadWriteCollectionBorrow capture,
         ISubscriptionRoleSettings settings, in NativeSamplingSubscriptionConfiguration configuration,
-        Action<SubscriptionWorkerFailure> reportFailure, TimeSpan failureRetryDelay, TimeProvider? clock = null)
+        Action<SubscriptionWorkerFailure> reportFailure, TimeProvider? clock = null)
     {
         this.capture = capture ?? throw new ArgumentNullException(nameof(capture));
         ArgumentNullException.ThrowIfNull(settings);
@@ -35,8 +34,6 @@ public sealed class NativeFieldSubscriptionComposition : IFieldSubscriptionBacke
             settings.ActiveTtlMilliseconds, settings.MaximumFutureSkewMilliseconds, settings.FreshnessGraceMilliseconds);
         this.configuration = configuration;
         this.reportFailure = reportFailure ?? throw new ArgumentNullException(nameof(reportFailure));
-        if (failureRetryDelay < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(failureRetryDelay));
-        this.failureRetryDelay = failureRetryDelay;
         this.clock = clock ?? TimeProvider.System;
         if (configuration.Generation == 0 || settings.MinimumIntervalMilliseconds <= 0
             || settings.DefaultIntervalMilliseconds < settings.MinimumIntervalMilliseconds
@@ -65,7 +62,7 @@ public sealed class NativeFieldSubscriptionComposition : IFieldSubscriptionBacke
                     CreateRequest, false);
                 current.Worker = new(current.Tracker, current.Signal,
                     items => capture.SynchronizeDemand(items.Count == 0 ? [] : current.ActiveFields),
-                    reportFailure, failureRetryDelay, clock);
+                    reportFailure, clock);
                 run = current;
                 current.Task = current.Worker.RunAsync(async (plan, token) =>
                 {

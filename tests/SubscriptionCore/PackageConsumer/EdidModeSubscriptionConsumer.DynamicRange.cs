@@ -15,7 +15,7 @@ internal static partial class EdidModeSubscriptionConsumer
         var rawField = new FieldReference(RecordedSource.Identity, "display_all_edid_raw_declared");
         var borrow = new FirstQueryBorrow(owner.BorrowSubscriptionCapture()); var failures = new List<SubscriptionWorkerFailure>();
         await using (var subscription = new NativeFieldSubscriptionComposition(borrow, settings, in configuration,
-            failure => failures.Add(failure), TimeSpan.FromMilliseconds(250)))
+            failure => failures.Add(failure)))
         {
             await subscription.StartAsync(token);
             await using var stream = subscription.SubscribeAsync("recorded-displayid20-dynamic-range", [field], TimeSpan.FromMilliseconds(250),

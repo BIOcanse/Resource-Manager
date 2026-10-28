@@ -12,7 +12,7 @@ const registry: d.Registry = .{
     .conditions = &.{
         .{ .uid = 20, .name = "AlwaysWanted", .node = 1, .per_block = false, .items = &.{}, .conditions = &.{21}, .children = &.{2}, .decides = 2 },
         .{ .uid = 21, .name = "Lower", .node = 1, .per_block = false, .items = &.{.{ .item = 10, .block = 2 }}, .conditions = &.{}, .children = &.{}, .decides = null },
-        .{ .uid = 22, .name = "HasDemand", .node = null, .per_block = true, .items = &.{.{ .item = 10, .block = null }}, .conditions = &.{}, .children = &.{}, .decides = null },
+        .{ .uid = 22, .name = "ItemIsTrue", .node = null, .per_block = true, .items = &.{.{ .item = 10, .block = null }}, .conditions = &.{}, .children = &.{}, .decides = null },
     },
 };
 const full: t.Tree = .{ .program = 1, .blocks = &.{

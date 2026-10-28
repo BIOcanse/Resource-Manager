@@ -32,6 +32,7 @@ public sealed class FanControlRestoreProtocolTests
             }));
         try
         {
+            await client.StartSession();
             var target = new ControlObject("fan:oem0", ControlObjectKinds.Fan, "Fixture fan",
                 new(ControlOperatingSystems.Windows, ControlVendors.Oem), []);
             var capability = new ControlCapability("fan.lock-maximum", ControlValueKinds.Toggle, true);
@@ -97,6 +98,7 @@ public sealed class FanControlRestoreProtocolTests
             });
         try
         {
+            await client.StartSession();
             var target = new ControlObject("fan:oem0", ControlObjectKinds.Fan, "Fixture fan",
                 new(ControlOperatingSystems.Windows, ControlVendors.Oem), []);
             var writer = new FanControlWriter(client);
@@ -135,6 +137,7 @@ public sealed class FanControlRestoreProtocolTests
             if (execution == "software")
             {
                 client.ResetDetection();
+                await client.DiscoverAsync(default);
                 Assert.True(Assert.Single(client.Describe()).SupportsFirmwareCurveReset);
                 using var refreshed = System.Text.Json.JsonDocument.Parse(File.ReadAllLines(operationsPath).Last());
                 Assert.Equal("describe", refreshed.RootElement.GetProperty("op").GetString());

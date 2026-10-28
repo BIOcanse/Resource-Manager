@@ -18,6 +18,11 @@ public sealed class HostManagerMetricSnapshotRuntime(
                 "The Host Manager metric-snapshot plan is not published.");
     }
 
+    internal HostManagerDeploymentAttemptToken BeginCreate(CompiledHostManagerPlan plan)
+        => deploymentState.BeginResourceCreate(
+            HostManagerModuleKind.MetricSnapshot, plan,
+            HostManagerDeploymentOperation.HostRecreateAndHotPublish);
+
     internal HostManagerDeploymentAttemptToken BeginInitialCreate(
         CompiledHostManagerPlan plan)
         => deploymentState.BeginAttempt(

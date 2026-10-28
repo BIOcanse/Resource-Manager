@@ -126,12 +126,12 @@ public sealed partial class IntelFanOwnerHostIntegrationTests
     }
 
     [Fact]
-    public async Task RealHostHolderPreservesDirectoryAcrossProbeAndClosesOnlyAfterOldLeaseEnds()
+    public void RealHostHolderPreservesDirectoryAcrossProbeAndClosesOnlyAfterOldLeaseEnds()
     {
         using var slots = new HostManagerSamplingSubscriptionTestFixture();
         var fixture = new NativeRecording();
         using var owner = fixture.Host(slots);
-        await owner.StartAsync(default);
+        using var workspaceHolding = owner.Hold();
         using var old = owner.Acquire();
         var identity = old.WorkspaceIdentity;
         var catalog = old.Workspace.ReadCatalog();
@@ -162,7 +162,7 @@ public sealed partial class IntelFanOwnerHostIntegrationTests
         using var slots = new HostManagerSamplingSubscriptionTestFixture();
         var fixture = new NativeRecording();
         using var owner = fixture.Host(slots);
-        await owner.StartAsync(default);
+        using var workspaceHolding = owner.Hold();
         var dashboard = new HardwareMetricCatalogState();
         IntelGclFanIdentity fan;
         using (var lease = owner.Acquire())

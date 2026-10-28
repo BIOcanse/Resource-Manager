@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Net;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using ResourceManager.App.Application.ResourceBreakdown;
@@ -41,7 +41,6 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
     private long windowRevision;
     private int retainedEventCount;
     private bool disposed;
-    private DateTimeOffset lastRequestAt = DateTimeOffset.MinValue;
     private volatile string state = NetworkAttributionProviderStates.Idle;
     private volatile string message = "ETW 网络事件归因按需启动。";
 
@@ -51,7 +50,6 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
     {
         readTickMilliseconds = clock ?? throw new ArgumentNullException(nameof(clock));
     }
-    public DateTimeOffset LastRequestAt => lastRequestAt;
     public string State => state;
     public string Message => message;
 
@@ -79,10 +77,11 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
                 new Dictionary<int, NetworkProcessAttribution>());
         }
 
+        if (kernelSubscription is null)
+            return new(DateTimeOffset.UtcNow, new Dictionary<int, NetworkProcessAttribution>(),
+                new("etw-network-tcpip", state, message), new Dictionary<int, NetworkProcessAttribution>());
         var now = DateTimeOffset.UtcNow;
         var nowTickMilliseconds = readTickMilliseconds();
-        lastRequestAt = now;
-        EnsureStarted();
         var brokerBefore = (Volatile.Read(ref kernelSubscription)?.GetSnapshot() ?? kernelEtwBroker.GetSnapshot());
         RefreshBrokerState(brokerBefore);
         Prune(nowTickMilliseconds);
@@ -151,17 +150,11 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
         }
     }
 
-    private void EnsureStarted()
+    public void Start()
     {
-        if (!canRead())
-        {
-            state = NetworkAttributionProviderStates.Idle;
-            message = "ETW 网络事件归因当前处于功能区冻结。";
-            return;
-        }
-
         lock (subscriptionGate)
         {
+            ObjectDisposedException.ThrowIf(disposed, this);
             if (kernelSubscription is not null)
             {
                 RefreshBrokerState();

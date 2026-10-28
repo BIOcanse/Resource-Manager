@@ -159,8 +159,7 @@ public sealed class FieldSubscriptionSingleFetchTests
     {
         var configuration = DefaultFieldSubscriptionCompositionTests.Configuration();
         return new(scope, DefaultFieldSubscriptionCompositionTests.Settings(), in configuration,
-            failure => throw new InvalidOperationException("Unexpected recorded collection failure.", failure.Error),
-            TimeSpan.FromDays(30));
+            failure => throw new InvalidOperationException("Unexpected recorded collection failure.", failure.Error));
     }
 
     // Records admission at the public backend boundary and forwards every

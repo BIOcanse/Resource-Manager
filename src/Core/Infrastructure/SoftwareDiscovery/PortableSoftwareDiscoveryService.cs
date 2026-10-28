@@ -149,11 +149,10 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
                 CancellationToken = cancellationToken,
                 MaxDegreeOfParallelism = 4
             },
-            (candidate, _) =>
+            async (candidate, token) =>
             {
                 using var segment = blockDiagnostics?.MeasureSegment(BlockUids.PortableSoftwareDiscoveryService);
-                ObserveCandidate(candidate, catalog.Catalog.Pipeline, cancellationToken);
-                return ValueTask.CompletedTask;
+                await ObserveCandidateAsync(candidate, catalog.Catalog.Pipeline, token).ConfigureAwait(false);
             });
     }
 
@@ -193,7 +192,7 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
                 nextCandidate = runStarts.Reader.WaitToReadAsync(cancellationToken).AsTask();
                 using var catalog = await attributionCatalogProvider.AcquireCatalogAsync(cancellationToken);
                 using var segment = blockDiagnostics?.MeasureSegment(BlockUids.PortableSoftwareDiscoveryService);
-                ObserveCandidate(candidate, catalog.Catalog.Pipeline, cancellationToken);
+                await ObserveCandidateAsync(candidate, catalog.Catalog.Pipeline, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -206,14 +205,14 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
         }
     }
 
-    private void ObserveCandidate(PortableProcessCandidate candidate,
+    private async Task ObserveCandidateAsync(PortableProcessCandidate candidate,
         RuntimeProcessAttributionPipeline pipeline, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (candidate.ProcessId <= 4 || candidate.HasExited) return;
         try
         {
-            if (!Observe(candidate, pipeline) && !candidate.HasExited)
+            if (!await ObserveAsync(candidate, pipeline, cancellationToken).ConfigureAwait(false) && !candidate.HasExited)
                 LogCandidateFailure(candidate, new IOException("Process identity could not be read."));
         }
         catch (OperationCanceledException error) when (!cancellationToken.IsCancellationRequested)
@@ -240,9 +239,10 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
             candidate.ProcessId, kind);
     }
 
-    private bool Observe(
+    private async Task<bool> ObserveAsync(
         PortableProcessCandidate candidate,
-        RuntimeProcessAttributionPipeline attributionPipeline)
+        RuntimeProcessAttributionPipeline attributionPipeline,
+        CancellationToken cancellationToken)
     {
         var identity = readIdentity(candidate);
         if (identity is null)
@@ -270,7 +270,7 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
             identityMatch.Confidence == PortableSoftwareIdentityConfidence.Confirmed);
         if (observation is not null)
         {
-            portableSoftwareRegistry.Observe(observation);
+            await portableSoftwareRegistry.ObserveAsync(observation, cancellationToken).ConfigureAwait(false);
         }
 
         return true;

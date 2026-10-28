@@ -147,7 +147,7 @@ public sealed class NvidiaVideoMetricsRecordedTests
                 [])),
             new TestEnvironment(root),
             NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
-        await owner.StartAsync(CancellationToken.None);
+        using var workspaceHolding = owner.Hold();
 
         var dashboard = new HardwareMetricCatalogState();
         using (var lease = owner.Acquire())

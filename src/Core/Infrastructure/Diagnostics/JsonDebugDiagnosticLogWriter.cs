@@ -33,6 +33,10 @@ public sealed class JsonDebugDiagnosticLogWriter(
     private long failedRecordCount;
     private long rejectedRecordCount;
     private int sealedForEvidence;
+    private bool hasPendingRecords;
+
+    internal bool HasPendingRecords => Volatile.Read(ref hasPendingRecords);
+    internal event Action? PendingRecordsChanged;
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -58,6 +62,7 @@ public sealed class JsonDebugDiagnosticLogWriter(
             }
 
             Interlocked.Increment(ref acceptedRecordCount);
+            PublishPendingRecordsUnderLock();
             return true;
         }
     }
@@ -178,13 +183,25 @@ public sealed class JsonDebugDiagnosticLogWriter(
         {
             await foreach (var record in channel.Reader.ReadAllAsync(stoppingToken))
             {
-                if (await WriteRecordAsync(record, stoppingToken))
+                bool written;
+                try
                 {
-                    Interlocked.Increment(ref writtenRecordCount);
+                    written = await WriteRecordAsync(record, stoppingToken);
                 }
-                else
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
-                    Interlocked.Increment(ref failedRecordCount);
+                    lock (admissionSync)
+                    {
+                        Interlocked.Increment(ref failedRecordCount);
+                        PublishPendingRecordsUnderLock();
+                    }
+                    throw;
+                }
+                lock (admissionSync)
+                {
+                    if (written) Interlocked.Increment(ref writtenRecordCount);
+                    else Interlocked.Increment(ref failedRecordCount);
+                    PublishPendingRecordsUnderLock();
                 }
             }
         }
@@ -204,11 +221,6 @@ public sealed class JsonDebugDiagnosticLogWriter(
     {
         try
         {
-            if (!runtimePlanProvider.Current.Diagnostics.DebugLogEnabled)
-            {
-                return false;
-            }
-
             string line;
             using (blockDiagnostics?.MeasureSegment(BlockUids.JsonDebugDiagnosticLogWriter))
             {
@@ -247,6 +259,14 @@ public sealed class JsonDebugDiagnosticLogWriter(
         }
 
         File.Move(logPath, archivePath);
+    }
+
+    private void PublishPendingRecordsUnderLock()
+    {
+        var pending = acceptedRecordCount > writtenRecordCount + failedRecordCount;
+        if (hasPendingRecords == pending) return;
+        Volatile.Write(ref hasPendingRecords, pending);
+        PendingRecordsChanged?.Invoke();
     }
 }
 

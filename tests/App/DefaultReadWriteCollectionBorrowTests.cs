@@ -78,11 +78,19 @@ public sealed class DefaultReadWriteCollectionBorrowTests
         using var first = owner.BorrowSubscriptionCapture(); using var second = owner.BorrowSubscriptionCapture();
         first.SynchronizeDemand(fields); second.SynchronizeDemand(fields);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var stopped = await first.CollectAsync(fields, new Permit(), timeout.Token);
+        Assert.True(stopped.Committed);
+        Assert.All(stopped.Readings, reading => Assert.Equal(FieldObservationStatus.Unavailable, reading.Status));
+        Assert.Equal(0, broker.Acquires);
+        owner.StartNetworkCapture();
         var warming = await first.CollectAsync(fields, new Permit(), timeout.Token);
         Assert.True(warming.Committed); Assert.Equal(1, broker.Acquires);
         first.SynchronizeDemand([]); Assert.Equal(0, broker.Releases);
         second.SynchronizeDemand([]); Assert.Equal(1, broker.Releases);
         second.SynchronizeDemand(fields);
+        await second.CollectAsync(fields, new Permit(), timeout.Token);
+        Assert.Equal(1, broker.Acquires);
+        owner.StartNetworkCapture();
         var restarted = await second.CollectAsync(fields, new Permit(), timeout.Token);
         Assert.Equal(2, broker.Acquires);
         Assert.All(restarted.Readings, reading => Assert.Equal(FieldObservationStatus.Unavailable, reading.Status));
@@ -96,11 +104,18 @@ public sealed class DefaultReadWriteCollectionBorrowTests
     {
         var broker = new Broker(); using var owner = ProcessOwner(new(), broker);
         await owner.CollectAsync(["process_all_network_send_bytes_attributed"]);
+        Assert.Equal(0, broker.Acquires);
+        owner.StartNetworkCapture();
+        await owner.CollectAsync(["process_all_network_send_bytes_attributed"]);
         using var borrow = owner.BorrowSubscriptionCapture();
         var fields = ProcessFields(owner, "process_all_network_send_bytes_attributed");
         borrow.SynchronizeDemand(fields); borrow.SynchronizeDemand([]); borrow.Dispose();
         Assert.Equal(1, broker.Acquires); Assert.Equal(0, broker.Releases);
-        owner.Dispose(); Assert.Equal(1, broker.Releases); Assert.False(broker.Disposed);
+        owner.StopNetworkCapture(); Assert.Equal(1, broker.Releases);
+        await owner.CollectAsync(["process_all_network_send_bytes_attributed"]);
+        Assert.Equal(1, broker.Acquires);
+        owner.StartNetworkCapture(); Assert.Equal(2, broker.Acquires);
+        owner.Dispose(); Assert.Equal(2, broker.Releases); Assert.False(broker.Disposed);
     }
 
     [Fact]

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('Add', 'Rename', 'Remove', 'Move', 'SetCondition', 'Resolve', 'Export')][string]$Action,
+    [Parameter(Mandatory)][ValidateSet('Add', 'Rename', 'Remove', 'Move', 'SetCondition', 'SetItem', 'Resolve', 'Export')][string]$Action,
     [string]$Registry = (Join-Path $PSScriptRoot '../../src/Shared/StateItems/state-items.json'),
     [ValidateSet('block', 'item', 'condition')][string]$Kind,
     [ValidateSet('backend', 'ui', 'desktop', 'window')][string]$Process,
@@ -31,6 +31,29 @@ Import-Module (Join-Path $PSScriptRoot '../build/StateItemRegistry.psm1') -Force
 
 $registryPath = [IO.Path]::GetFullPath($Registry)
 switch ($Action) {
+    'SetItem' {
+        if (-not $PSBoundParameters.ContainsKey('Uid') -or $Uid -lt 1) { throw 'SetItem requires a positive -Uid.' }
+        foreach ($parameter in $PSBoundParameters.Keys) {
+            if ($parameter -notin @('Action', 'Registry', 'Uid', 'Comment', 'OwnerBlock', 'OwnerComponent')) {
+                throw "SetItem does not accept -$parameter; it changes only an item's comment or owner."
+            }
+        }
+        $table = Read-StateRegistry -Path $registryPath
+        $entry = @($table.entries | Where-Object uid -EQ $Uid)
+        if ($entry.Count -ne 1) { throw "Registry entry uid=$Uid was not found." }
+        if ($entry[0].kind -cne 'item') { throw 'SetItem requires an item UID.' }
+        $ownerBlockSpecified = $PSBoundParameters.ContainsKey('OwnerBlock')
+        $ownerComponentSpecified = $PSBoundParameters.ContainsKey('OwnerComponent')
+        if ($ownerBlockSpecified -and $ownerComponentSpecified) { throw 'SetItem requires exactly one owner form.' }
+        if (-not $PSBoundParameters.ContainsKey('Comment') -and -not $ownerBlockSpecified -and -not $ownerComponentSpecified) {
+            throw 'SetItem requires a comment or owner.'
+        }
+        if ($PSBoundParameters.ContainsKey('Comment')) { $entry[0].comment = $Comment }
+        if ($ownerBlockSpecified) { $entry[0].owner = [ordered]@{ block = $OwnerBlock } }
+        if ($ownerComponentSpecified) { $entry[0].owner = [ordered]@{ component = $OwnerComponent } }
+        Write-StateRegistry -Path $registryPath -Registry $table
+        $Uid
+    }
     'SetCondition' {
         if (-not $PSBoundParameters.ContainsKey('Uid') -or $Uid -lt 1) { throw 'SetCondition requires a positive -Uid.' }
         $table = Read-StateRegistry -Path $registryPath

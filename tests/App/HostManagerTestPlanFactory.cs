@@ -136,7 +136,6 @@ internal static class HostManagerTestPlanFactory
             provider,
             new HostManagerSoftwareIdentityRuntime(provider, deployment),
             NullLogger<HostManagerSoftwareIdentityOwner>.Instance);
-        owner.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
         return owner;
     }
 }

@@ -527,6 +527,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 
     private sealed class RecordingRunningGpuActions : IRunningGpuPlacementActionService
     {
+        internal Func<IDisposable?>? AcquireObservation { get; set; }
+        public IDisposable? AcquireRendererObservation() => AcquireObservation?.Invoke();
         public bool HasUnreleasedExternalControl { get; set; }
         public Task<RunningGpuPlacementPreparation> PrepareWithFirstApiObservationAsync(RunningGpuPlacementActionRequest request,
             RunningGpuApiObservationExecution execution, CancellationToken token)

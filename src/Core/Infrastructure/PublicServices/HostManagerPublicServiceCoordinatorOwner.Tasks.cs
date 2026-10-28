@@ -70,7 +70,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
                 var status = (NativePublicServiceModelResolveStatus)resolved.Status;
                 if (status == NativePublicServiceModelResolveStatus.CatalogUnavailable)
                 {
-                    Signal(modelWake);
+                    QueueModelRefresh();
                     throw new AiModelRuntimeUnavailableException(
                         "The native local-model catalog has no usable provider snapshot.");
                 }
@@ -122,6 +122,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
                 catch
                 {
                     _ = pendingModelOperations.TryRemove(payloadHandle, out _);
+                    PublishPendingTasks();
                     throw;
                 }
             }
@@ -130,6 +131,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
         {
             gate.ExitReadLock();
         }
+        PublishPendingTasks();
         Signal(taskWake);
     }
 
@@ -266,7 +268,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
             == NativePublicServiceTaskCompletionDisposition.Succeeded)
         {
             operation.Complete();
-            Signal(modelWake);
+            QueueModelRefresh();
         }
         else
         {
@@ -275,6 +277,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
                 ?? new InvalidOperationException(
                     "The local-model provider task failed without an exception."));
         }
+        PublishPendingTasks();
     }
 
     private static void ValidateTaskPlan(

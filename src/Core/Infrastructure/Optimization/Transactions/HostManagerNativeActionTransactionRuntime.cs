@@ -27,6 +27,29 @@ public sealed class HostManagerNativeActionTransactionRuntime : IAsyncDisposable
         this.appliedOwnership = appliedOwnership;
         this.retirements = retirements;
         this.createJournalScratch = createJournalScratch ?? throw new ArgumentNullException(nameof(createJournalScratch));
+        appliedOwnership.OwnedStateChanged += OnOwnedStateChanged;
+    }
+
+    internal bool? OwnedStatePendingPublication
+    {
+        get
+        {
+            var applied = appliedOwnership.OwnedStatePendingPublication;
+            var pending = Volatile.Read(ref journal)?.OwnedStatePendingPublication;
+            return applied == true || pending == true ? true
+                : applied.HasValue && pending.HasValue ? false : null;
+        }
+    }
+    internal bool OwnedStatePending => OwnedStatePendingPublication == true;
+    internal event Action? OwnedStateChanged;
+    private void OnOwnedStateChanged() => OwnedStateChanged?.Invoke();
+
+    private void PublishJournal(HostManagerTransactionJournalRuntime current)
+    {
+        if (journal is { } previous) previous.OwnedStateChanged -= OnOwnedStateChanged;
+        current.OwnedStateChanged += OnOwnedStateChanged;
+        Volatile.Write(ref journal, current);
+        OnOwnedStateChanged();
     }
 
     internal HostManagerAppliedOwnershipRuntime AppliedOwnership => appliedOwnership;
@@ -130,6 +153,7 @@ public sealed class HostManagerNativeActionTransactionRuntime : IAsyncDisposable
                 try
                 {
                     await journal.DisposeAsync();
+                    journal.OwnedStateChanged -= OnOwnedStateChanged;
                     journal = null;
                 }
                 catch (Exception exception)
@@ -164,6 +188,7 @@ public sealed class HostManagerNativeActionTransactionRuntime : IAsyncDisposable
                     disposeFailure);
             }
             retirements.Dispose();
+            appliedOwnership.OwnedStateChanged -= OnOwnedStateChanged;
             disposed = true;
         }
         finally
@@ -195,7 +220,7 @@ public sealed class HostManagerNativeActionTransactionRuntime : IAsyncDisposable
             HostManagerDeploymentAttemptSettlementGuard.RequireApplied(
                 journalDeployment.CompleteSucceeded(attempt),
                 HostManagerModuleKind.TransactionJournal);
-            journal = opened;
+            PublishJournal(opened);
             appliedJournalPlan = desired;
         }
         catch (Exception exception)
@@ -324,7 +349,7 @@ public sealed class HostManagerNativeActionTransactionRuntime : IAsyncDisposable
             HostManagerDeploymentAttemptSettlementGuard.RequireApplied(
                 journalDeployment.CompleteSucceeded(recreateAttempt),
                 HostManagerModuleKind.TransactionJournal);
-            journal = replacement;
+            PublishJournal(replacement);
             appliedJournalPlan = desired;
             replacementPublished = true;
         }
@@ -433,7 +458,7 @@ public sealed class HostManagerNativeActionTransactionRuntime : IAsyncDisposable
             HostManagerDeploymentAttemptSettlementGuard.RequireApplied(
                 journalDeployment.CompleteSucceeded(attempt),
                 HostManagerModuleKind.TransactionJournal);
-            journal = replacement;
+            PublishJournal(replacement);
             appliedJournalPlan = desired;
         }
         catch (Exception exception)

@@ -1,4 +1,4 @@
-using Microsoft.Diagnostics.Tracing.Parsers;
+﻿using Microsoft.Diagnostics.Tracing.Parsers;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
@@ -24,6 +24,8 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
     private string message = "共享 kernel ETW 会话等待订阅。";
     private string? lastLoggedFailure;
     private bool restartBlockedByUnreleasedRuntime;
+    private bool runtimeDisposalPending;
+    private bool pendingNativeReleaseConfirmed;
     private bool disposed;
     private int stopping;
 
@@ -38,14 +40,12 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
     {
         lock (reconciliationGate)
         {
+            if (RetryPendingDisposal()) return;
             if (NeedsReconciliation()) ReconcileCore();
         }
     }
 
-    /// <summary>
-    /// Registers a managed reader. Before the first host run, SDK consumers retain
-    /// eager reconciliation; after StopRun, changes wait for explicit ResumeRun.
-    /// </summary>
+    /// <summary>Acquires a reader and reconciles the held resource synchronously.</summary>
     public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -71,8 +71,21 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
                 configurationVersion++;
             }
 
-            ReconcileCore();
-            return new SubscriptionLease(this, leaseId);
+            try
+            {
+                ReconcileCore();
+                return new SubscriptionLease(this, leaseId);
+            }
+            catch (Exception acquisitionFailure)
+            {
+                try { RollbackAcquisition(leaseId); }
+                catch (Exception cleanupFailure)
+                {
+                    throw new AggregateException("Kernel ETW acquisition and registration rollback failed.",
+                        acquisitionFailure, cleanupFailure);
+                }
+                throw;
+            }
         }
     }
 
@@ -107,22 +120,8 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
         }
     }
 
-    /// <summary>Drains this run's native resources while retaining managed subscriptions.</summary>
-    public void StopRun() => StopBroker(dispose: false);
-
-    /// <summary>Resumes retained subscriptions after the preceding run has drained.</summary>
-    public void ResumeRun()
-    {
-        lock (reconciliationGate)
-        {
-            ObjectDisposedException.ThrowIf(disposed, this);
-            if (Interlocked.Exchange(ref stopping, 0) == 0) return;
-            ReconcileCore();
-        }
-    }
-
     /// <summary>Drains native resources and permanently releases all managed subscriptions.</summary>
-    public void Dispose() => StopBroker(dispose: true);
+    public void Dispose() => StopBroker();
 
     private bool NeedsReconciliation()
     {
@@ -231,19 +230,46 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
         // Do not drop ownership or enabled flags until stop has actually released them.
         if (currentSubscriptions.Length == 0 && previousRuntime is { IsProcessing: true })
         {
-            previousRuntime.UpdateSubscriptions(currentSubscriptions,
-                new KernelEtwSessionContext(currentGeneration, currentStartedAt));
+            try
+            {
+                previousRuntime.UpdateSubscriptions(currentSubscriptions,
+                    new KernelEtwSessionContext(currentGeneration, currentStartedAt));
+            }
+            catch (Exception updateFailure)
+            {
+                // There are no readers left to keep this session alive. Failure
+                // to unregister callbacks cannot prevent stopping the resource.
+                failedUpdate = updateFailure;
+            }
         }
-        var previousStop = previousRuntime?.Stop(StopWait);
+        KernelEtwSessionStopResult? previousStop;
+        try { previousStop = previousRuntime?.Stop(StopWait); }
+        catch (Exception stopFailure)
+        {
+            RecordStopException(previousRuntime!, stopFailure);
+            if (currentSubscriptions.Length == 0) DisposeRuntime(previousRuntime!, false);
+            throw;
+        }
         if (previousStop is not null && !previousStop.IsReleased)
         {
-            if (failedUpdate is not null)
-                logger.LogDebug(failedUpdate, "Shared kernel ETW subscription update failed; runtime release was not proven.");
-            RecordStopFailure(previousRuntime!, previousStop,
-                Volatile.Read(ref stopping) != 0 ? "shutdown"
-                    : currentSubscriptions.Length == 0 ? "last subscription release" : "restart");
+            try
+            {
+                RecordStopFailure(previousRuntime!, previousStop,
+                    Volatile.Read(ref stopping) != 0 ? "shutdown"
+                        : currentSubscriptions.Length == 0 ? "last subscription release" : "restart");
+                if (failedUpdate is not null)
+                    logger.LogDebug(failedUpdate, "Shared kernel ETW subscription update failed; runtime release was not proven.");
+            }
+            finally
+            {
+                // With no holder, even a diagnostics failure cannot leave the
+                // local consumer running. Native replacement stays blocked.
+                if (currentSubscriptions.Length == 0) DisposeRuntime(previousRuntime!, false);
+            }
             return;
         }
+
+        if (previousRuntime is not null) DisposeRuntime(previousRuntime, true);
 
         if (failedUpdate is not null)
             logger.LogWarning(failedUpdate, "Shared kernel ETW subscription update failed; released the runtime.");
@@ -304,11 +330,6 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
         {
             lock (stateGate)
             {
-                if (ReferenceEquals(runtime, nextRuntime))
-                {
-                    runtime = null;
-                }
-
                 appliedConfigurationVersion = -1;
                 enabledKeywords = KernelTraceEventParser.Keywords.None;
                 startedAt = DateTimeOffset.MinValue;
@@ -316,7 +337,13 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
                 message = $"共享 kernel ETW 会话启动失败：{ex.Message}";
             }
 
-            var failedStartStop = nextRuntime?.Stop(StopWait);
+            KernelEtwSessionStopResult? failedStartStop;
+            try { failedStartStop = nextRuntime?.Stop(StopWait); }
+            catch (Exception stopFailure)
+            {
+                RecordStopException(nextRuntime!, stopFailure);
+                throw;
+            }
             if (failedStartStop is not null && !failedStartStop.IsReleased)
             {
                 RecordStopFailure(nextRuntime!, failedStartStop, "failed-start cleanup");
@@ -324,6 +351,15 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
             else if (ex is KernelEtwSessionCreationCleanupException creationCleanupFailure)
             {
                 RecordCreationCleanupFailure(creationCleanupFailure);
+            }
+            if (failedStartStop?.IsReleased == true)
+            {
+                DisposeRuntime(nextRuntime!, true);
+                lock (stateGate)
+                {
+                    state = "Unavailable";
+                    message = $"共享 kernel ETW 会话启动失败：{ex.Message}";
+                }
             }
             LogStartFailure(ex);
         }
@@ -360,33 +396,37 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
     {
         lock (reconciliationGate)
         {
+            bool lastHolder;
             lock (stateGate)
             {
-                if (!subscriptions.Remove(leaseId))
-                {
-                    return;
-                }
-
+                if (!subscriptions.Remove(leaseId)) return;
                 configurationVersion++;
+                lastHolder = subscriptions.Count == 0;
             }
-
+            if (RetryPendingDisposal()) return;
+            if (lastHolder && restartBlockedByUnreleasedRuntime && runtime is not null)
+            {
+                DisposeRuntime(runtime, false);
+                return;
+            }
             ReconcileCore();
         }
     }
 
-    private void StopBroker(bool dispose)
+    private void StopBroker()
     {
         lock (reconciliationGate)
         {
-            if (disposed) return;
-            if (dispose)
+            if (disposed)
             {
-                disposed = true;
-                lock (stateGate)
-                {
-                    subscriptions.Clear();
-                    configurationVersion++;
-                }
+                RetryPendingDisposal();
+                return;
+            }
+            disposed = true;
+            lock (stateGate)
+            {
+                subscriptions.Clear();
+                configurationVersion++;
             }
             // A concurrent caller waits on the same gate until the actual consumer
             // disposal has completed instead of returning on the stopping flag.
@@ -419,34 +459,116 @@ public sealed class KernelEtwSessionOwner : IKernelEtwSessionBroker, IDisposable
                 logger.LogError(ex, "Shared kernel ETW shutdown failed before local consumer disposal.");
             }
 
-            try
+            // Retain the runtime until its local consumer actually confirms release.
+            if (stoppedRuntime is not null)
             {
-                // Stop has a bounded reconciliation budget; terminal Dispose owns
-                // the local handles and waits for the task and consumer thread.
-                stoppedRuntime?.Dispose();
+                DisposeRuntime(stoppedRuntime, runtimeDisposalPending
+                    ? pendingNativeReleaseConfirmed : !releaseFailed);
             }
-            catch (Exception ex)
-            {
-                releaseFailed = true;
-                lock (stateGate) message = $"{message} 本地消费者释放失败：{ex.Message}";
-                logger.LogError(ex, "Shared kernel ETW local consumer disposal failed.");
-                throw;
-            }
-            finally
+            else
             {
                 lock (stateGate)
-                {
-                    runtime = null;
-                    // Local consumer disposal does not prove native session release.
-                    // A later run must retain the existing refusal to replace it.
-                    restartBlockedByUnreleasedRuntime |= releaseFailed;
-                    appliedConfigurationVersion = -1;
-                    enabledKeywords = KernelTraceEventParser.Keywords.None;
-                    startedAt = DateTimeOffset.MinValue;
                     state = releaseFailed ? "StopFailed" : "Stopped";
-                    if (!releaseFailed) message = "共享 kernel ETW 会话已随程序停止。";
-                }
             }
+        }
+    }
+
+    private void RollbackAcquisition(long leaseId)
+    {
+        KernelEtwSubscriptionRegistration[] remainingSubscriptions;
+        IKernelEtwSessionRuntime? remainingRuntime;
+        lock (stateGate)
+        {
+            subscriptions.Remove(leaseId);
+            configurationVersion++;
+            remainingSubscriptions = subscriptions.Values.OrderBy(static item => item.LeaseId).ToArray();
+            remainingRuntime = runtime;
+        }
+
+        // A failed disposal already owns the cleanup obligation. Never retry it
+        // in the failed acquisition call or deliver a lease that did not succeed.
+        if (remainingRuntime is null || runtimeDisposalPending) return;
+        if (remainingSubscriptions.Length > 0 && !restartBlockedByUnreleasedRuntime && remainingRuntime.IsProcessing)
+        {
+            try
+            {
+                remainingRuntime.UpdateSubscriptions(remainingSubscriptions, new(generation, startedAt));
+                return;
+            }
+            catch
+            {
+                // If callbacks cannot be rolled back, drain this runtime rather
+                // than leave an undelivered holder's bindings in it.
+            }
+        }
+        if (restartBlockedByUnreleasedRuntime)
+        {
+            DisposeRuntime(remainingRuntime, false);
+            return;
+        }
+        KernelEtwSessionStopResult result;
+        try { result = remainingRuntime.Stop(StopWait); }
+        catch (Exception stopFailure)
+        {
+            RecordStopException(remainingRuntime, stopFailure);
+            DisposeRuntime(remainingRuntime, false);
+            throw;
+        }
+        try
+        {
+            if (!result.IsReleased) RecordStopFailure(remainingRuntime, result, "failed acquisition rollback");
+        }
+        finally { DisposeRuntime(remainingRuntime, result.IsReleased); }
+    }
+
+    private bool RetryPendingDisposal()
+    {
+        if (!runtimeDisposalPending) return false;
+        DisposeRuntime(runtime!, pendingNativeReleaseConfirmed);
+        return true;
+    }
+
+    private void DisposeRuntime(IKernelEtwSessionRuntime remainingRuntime, bool nativeReleaseConfirmed)
+    {
+        try { remainingRuntime.Dispose(); }
+        catch (Exception failure)
+        {
+            lock (stateGate)
+            {
+                runtime = remainingRuntime;
+                runtimeDisposalPending = true;
+                pendingNativeReleaseConfirmed = nativeReleaseConfirmed;
+                restartBlockedByUnreleasedRuntime = true;
+                appliedConfigurationVersion = -1;
+                enabledKeywords = KernelTraceEventParser.Keywords.None;
+                startedAt = DateTimeOffset.MinValue;
+                state = "StopFailed";
+                message = $"共享 kernel ETW 本地消费者释放失败：{failure.Message}";
+            }
+            throw;
+        }
+        lock (stateGate)
+        {
+            runtime = null;
+            runtimeDisposalPending = false;
+            restartBlockedByUnreleasedRuntime = !nativeReleaseConfirmed;
+            appliedConfigurationVersion = -1;
+            enabledKeywords = KernelTraceEventParser.Keywords.None;
+            startedAt = DateTimeOffset.MinValue;
+            state = !nativeReleaseConfirmed ? "StopFailed" : Volatile.Read(ref stopping) != 0 ? "Stopped" : "Idle";
+            if (nativeReleaseConfirmed)
+                message = Volatile.Read(ref stopping) != 0 ? "共享 kernel ETW 会话已随程序停止。" : "共享 kernel ETW 会话等待订阅。";
+        }
+    }
+
+    private void RecordStopException(IKernelEtwSessionRuntime remainingRuntime, Exception failure)
+    {
+        lock (stateGate)
+        {
+            runtime = remainingRuntime;
+            restartBlockedByUnreleasedRuntime = true;
+            state = "StopFailed";
+            message = $"共享 kernel ETW 会话停止失败：{failure.Message}";
         }
     }
 

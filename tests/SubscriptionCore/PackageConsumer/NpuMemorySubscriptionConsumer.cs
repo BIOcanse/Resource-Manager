@@ -234,7 +234,7 @@ internal static class NpuMemorySubscriptionConsumer
         var settings = new SubscriptionRoleSettings(2, 1000, 1, 3000, 1000, 1000);
         var failures = new List<SubscriptionWorkerFailure>();
         await using var composition = new NativeFieldSubscriptionComposition(owner.BorrowSubscriptionCapture(), settings,
-            in configuration, failure => failures.Add(failure), TimeSpan.FromMilliseconds(250));
+            in configuration, failure => failures.Add(failure));
         await composition.StartAsync(token);
         var publicFields = new FieldSubscriptionCore(core, composition);
         await using var stream = publicFields.SubscribeAsync("recorded-npu-memory", fields,

@@ -302,6 +302,7 @@ public sealed class ResourceManagerSelfLocalResourceManager : IDisposable, IWork
         if (closing) throw new InvalidOperationException("Resource Manager self memory owner is closing; new ticks are stopped.");
     }
 
+    // Explicit process-wide close; façade disposal alone does not close shared memory.
     public LedgerStatus TryClose()
     {
         tickGate.Wait();
@@ -309,7 +310,6 @@ public sealed class ResourceManagerSelfLocalResourceManager : IDisposable, IWork
         {
             lock (modeGate)
             {
-                if (disposed) return LedgerStatus.Ok;
                 closing = true;
             }
             diskUsageTrees.Clear();
@@ -326,8 +326,19 @@ public sealed class ResourceManagerSelfLocalResourceManager : IDisposable, IWork
 
     public void Dispose()
     {
-        var status = TryClose();
-        if (status is not (LedgerStatus.Completed or LedgerStatus.Ok))
-            throw new LedgerException(status, "close Resource Manager self memory owner");
+        tickGate.Wait();
+        try
+        {
+            lock (modeGate)
+            {
+                if (disposed) return;
+                closing = true;
+            }
+            diskUsageTrees.Clear();
+            lock (modeGate) disposed = true;
+            // This façade borrows the product's shared Ledger. Its DI owner
+            // closes that Ledger after the remaining resource users are disposed.
+        }
+        finally { tickGate.Release(); }
     }
 }

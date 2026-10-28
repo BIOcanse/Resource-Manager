@@ -6,6 +6,28 @@ namespace Resource_Manager_APP.Tests;
 public sealed class NativeCurrentValueSubscriptionDeliveryTests
 {
     [Fact]
+    public async Task RunCleanupDiscardsBufferedAndPartialRoundsWithoutClosingConsumer()
+    {
+        var delivery = new NativeCurrentValueSubscriptionDelivery<int>();
+        var current = 1;
+        using var registration = delivery.Register("snapshot", ["a", "b"], () => current);
+        delivery.Deliver(Triggers(1, "a", "b"));
+        delivery.Deliver(Triggers(2, "a"));
+
+        delivery.DiscardRunRounds();
+
+        await using var reader = registration.ReadAllAsync().GetAsyncEnumerator();
+        var next = reader.MoveNextAsync().AsTask();
+        Assert.False(next.IsCompleted);
+        delivery.Deliver(Triggers(2, "b"));
+        Assert.False(next.IsCompleted);
+        current = 2;
+        delivery.Deliver(Triggers(3, "a", "b"));
+        Assert.True(await next.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal(2, reader.Current);
+    }
+
+    [Fact]
     public async Task CurrentSnapshotWaitsForAllOriginalMembersAndKeepsOnlyLatestCompleteRound()
     {
         var delivery = new NativeCurrentValueSubscriptionDelivery<(int A, int B)>();

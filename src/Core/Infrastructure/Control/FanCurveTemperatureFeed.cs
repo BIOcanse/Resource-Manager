@@ -18,8 +18,8 @@ namespace ResourceManager.App.Infrastructure.Control;
 /// <item><b>间隔 0.1 秒，而且必须这么小。</b> 温度能在一秒内冲上去十几度；
 ///   0.1 秒推送让核心及时看到最新读数，再按曲线目标和加速度调速。
 ///   核心不对温度做滤波；放大推送间隔只会增加读数等待，拖慢对温度上冲的响应。</item>
-/// <item><b>用不上就一次都不推。</b> 只有成功应用的软件曲线持有温度订阅，
-///   最后一条撤销或核心退出时立即释放；支持软件曲线不等于正在执行。</item>
+/// <item><b>订阅随块的生命周期。</b> 父决策节点根据软件曲线设置决定本块启停，
+///   运行入口打开温度订阅，停止时释放。</item>
 /// <item><b>推送停了要能被发现。</b> 推的是"现在多少"，核心那边带时效：
 ///   连续几秒收不到就把风扇交还固件。所以这里**不补推历史、不排队**，
 ///   赶不上的那一拍直接丢掉 —— 迟到的温度比没有温度更糟。</item>
@@ -40,7 +40,6 @@ public sealed class FanCurveTemperatureFeed(
     private static readonly string[] CpuTemperatureMetricIds = ["cpu.temperature"];
     internal static readonly TimeSpan MaximumSampleAge = TimeSpan.FromSeconds(3);
     private readonly object subscriptionGate = new();
-    private readonly SemaphoreSlim activated = new(0, 1);
     private IDisposable? lease;
     private MetricSampleRequest? request;
     private bool finished;
@@ -62,10 +61,9 @@ public sealed class FanCurveTemperatureFeed(
             lease?.Dispose();
             lease = null;
             request = null;
-            if (finished || !core.NeedsTemperatures()) return;
+            if (finished) return;
             request = TemperatureRequest(catalog.Current);
             lease = metrics.AcquireSubscription(SubscriptionId, request, Interval);
-            if (activated.CurrentCount == 0) activated.Release();
         }
     }
 
@@ -74,31 +72,26 @@ public sealed class FanCurveTemperatureFeed(
         lock (subscriptionGate) finished = false;
         try
         {
-            core.TemperatureDemandChanged += UpdateSubscription;
             catalog.Changed += UpdateSubscription;
             UpdateSubscription();
-            while (!stoppingToken.IsCancellationRequested)
+            using var timer = new PeriodicTimer(Interval);
+            while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
             {
-                await activated.WaitAsync(stoppingToken).ConfigureAwait(false);
-                using var timer = new PeriodicTimer(Interval);
-                while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
+                MetricSampleRequest? currentRequest;
+                lock (subscriptionGate) currentRequest = request;
+                if (currentRequest is null) continue;
+                try
                 {
-                    MetricSampleRequest? currentRequest;
-                    lock (subscriptionGate) currentRequest = request;
-                    if (currentRequest is null) break;
-                    try
+                    // ReadLatest only reads; sampling belongs to the subscription.
+                    if (metrics.ReadLatest(currentRequest) is { } snapshot
+                        && Collect(snapshot, DateTimeOffset.UtcNow) is { Count: > 0 } samples)
                     {
-                        // ReadLatest only reads; sampling belongs to the lease.
-                        if (metrics.ReadLatest(currentRequest) is { } snapshot
-                            && Collect(snapshot, DateTimeOffset.UtcNow) is { Count: > 0 } samples)
-                        {
-                            await core.PushTemperaturesAsync(samples, stoppingToken).ConfigureAwait(false);
-                        }
+                        await core.PushTemperaturesAsync(samples, stoppingToken).ConfigureAwait(false);
                     }
-                    catch (Exception error) when (error is not OperationCanceledException)
-                    {
-                        logger?.LogDebug(error, "这一拍温度没推过去。");
-                    }
+                }
+                catch (Exception error) when (error is not OperationCanceledException)
+                {
+                    logger?.LogDebug(error, "这一拍温度没推过去。");
                 }
             }
         }
@@ -112,7 +105,6 @@ public sealed class FanCurveTemperatureFeed(
         }
         finally
         {
-            core.TemperatureDemandChanged -= UpdateSubscription;
             catalog.Changed -= UpdateSubscription;
             lock (subscriptionGate)
             {

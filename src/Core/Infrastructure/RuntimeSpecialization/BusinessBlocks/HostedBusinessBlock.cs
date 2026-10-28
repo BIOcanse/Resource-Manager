@@ -4,14 +4,19 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlock
 
 /// <summary>Owns the original hosted service's readiness and stop contract.</summary>
 internal sealed class HostedBusinessBlock(int id, Func<IHostedService> resolve,
-    HostedBusinessBlockRegistry registry, BusinessBlockDiagnosticsRegistry diagnostics) : IBusinessBlock
+    HostedBusinessBlockRegistry registry, BusinessBlockDiagnosticsRegistry diagnostics,
+    HostedBusinessBlockExecution executionContract) : IBusinessBlock
 {
     private readonly object sync = new();
     private readonly SemaphoreSlim lifecycle = new(1, 1);
     private readonly TaskCompletionSource hostStopTurn = NewSignal();
+    private readonly TaskCompletionSource executionFailure = NewSignal();
     private CancellationToken startupCancellation;
     private Session? pendingSession;
     private Session? current;
+
+    // Host observation spans all fact-driven runs; normal run completion is not host completion.
+    internal Task ExecutionFailure => executionFailure.Task;
 
     internal Session PrepareStart(CancellationToken cancellation)
     {
@@ -32,8 +37,7 @@ internal sealed class HostedBusinessBlock(int id, Func<IHostedService> resolve,
         }
     }
 
-    // Read after demand withdrawal is dispatched: Host must wait for a restarted run,
-    // while its original session remains the source of the original execution failure.
+    // Read after permit withdrawal is dispatched: Host waits for this run's real cleanup.
     internal Task CurrentStopCompletion()
     {
         lock (sync) return current?.StopCompleted.Task ?? Task.CompletedTask;
@@ -55,6 +59,7 @@ internal sealed class HostedBusinessBlock(int id, Func<IHostedService> resolve,
             lock (sync) BeginStop(session);
         });
         var result = BusinessBlockResult.Done;
+        Exception? stopFailure = null;
         var stage = BusinessBlockFailureStage.Start;
         try
         {
@@ -69,7 +74,7 @@ internal sealed class HostedBusinessBlock(int id, Func<IHostedService> resolve,
                 lifecycle.Release();
                 session.StartFinished.TrySetResult();
             }
-            session.Execution = (session.Service as BackgroundService)?.ExecuteTask;
+            session.Execution = executionContract.ReadTask(session.Service);
             context.ReportRunning();
             session.Readiness.TrySetResult();
             stage = BusinessBlockFailureStage.Run;
@@ -105,11 +110,15 @@ internal sealed class HostedBusinessBlock(int id, Func<IHostedService> resolve,
         {
             // Complete this run's real-service cleanup before the controller can start
             // another run on the same container-owned service instance.
-            session.Execution ??= (session.Service as BackgroundService)?.ExecuteTask;
+            if (session.Service is { } startedService) session.Execution ??= executionContract.ReadTask(startedService);
             lock (sync) BeginStop(session);
             try { await session.StopCompleted.Task.ConfigureAwait(false); }
             catch (Exception error)
             {
+                // Some hosted StopAsync implementations join the already failed entry task.
+                // That same exception remains a Run failure; an independent cleanup failure is host-fatal.
+                if (result.FailureStage != BusinessBlockFailureStage.Run || !ReferenceEquals(result.Error, error))
+                    stopFailure = error;
                 if (result.Outcome != BusinessBlockOutcome.Failed)
                     result = BusinessBlockResult.Failed(error, BusinessBlockFailureStage.Stop);
             }
@@ -127,6 +136,10 @@ internal sealed class HostedBusinessBlock(int id, Func<IHostedService> resolve,
         if (result.Error is { } failure) session.Readiness.TrySetException(failure);
         else if (context.StopNotification.IsCancellationRequested) session.Readiness.TrySetCanceled(context.StopNotification);
         RecordResult(session, result);
+        if (stopFailure is not null) executionFailure.TrySetException(stopFailure);
+        else if (result.Error is { } hostFailure
+            && (result.FailureStage != BusinessBlockFailureStage.Run || executionContract.ForwardRunFailureToHost))
+            executionFailure.TrySetException(hostFailure);
     }
 
     // Called under sync; each run owns exactly one original StopAsync operation.

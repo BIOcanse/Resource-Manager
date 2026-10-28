@@ -147,7 +147,7 @@ public sealed class IntelPsysOwnerIntegrationTests
         var configuration = DefaultFieldSubscriptionCompositionTests.Configuration();
         await using var composition = new NativeFieldSubscriptionComposition(owner.BorrowSubscriptionCapture(),
             DefaultFieldSubscriptionCompositionTests.Settings(), in configuration,
-            failure => throw new InvalidOperationException("Unexpected PSys subscription failure", failure.Error), TimeSpan.FromMilliseconds(1));
+            failure => throw new InvalidOperationException("Unexpected PSys subscription failure", failure.Error));
         await composition.StartAsync();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await using (var stream = composition.SubscribeAsync("psys-platform", [raw], TimeSpan.FromMilliseconds(100),
@@ -185,7 +185,7 @@ public sealed class IntelPsysOwnerIntegrationTests
             new HostManagerMetricSnapshotRuntime(slots.Provider, slots.Deployment),
             new HostManagerMetricSnapshotCatalogTopologySource(() => topology.Capture()), new TestEnvironment(root),
             NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
-        await owner.StartAsync(default);
+        using var workspaceHolding = owner.Hold();
         var dashboard = new HardwareMetricCatalogState();
         using (var lease = owner.Acquire())
             dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));

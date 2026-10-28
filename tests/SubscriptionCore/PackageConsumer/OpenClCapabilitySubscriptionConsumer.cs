@@ -32,7 +32,7 @@ internal static class OpenClCapabilitySubscriptionConsumer
         var configuration = Configuration();
         var workerFailures = new ConcurrentQueue<string>();
         await using var composition = new NativeFieldSubscriptionComposition(borrow, settings, in configuration,
-            failure => workerFailures.Enqueue($"{failure.Stage}: {failure.Error.Message}"), TimeSpan.FromMilliseconds(10));
+            failure => workerFailures.Enqueue($"{failure.Stage}: {failure.Error.Message}"));
 
         await composition.StartAsync();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));

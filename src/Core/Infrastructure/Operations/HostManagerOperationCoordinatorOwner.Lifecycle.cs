@@ -5,51 +5,70 @@ namespace ResourceManager.App.Infrastructure.Operations;
 
 public sealed partial class HostManagerOperationCoordinatorOwner
 {
+    internal async Task InitializeAsync(CancellationToken cancellationToken)
+    {
+        await initializationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                ThrowIfDisposed();
+                if (initialized) return;
+                if (retiring)
+                {
+                    // A canceled or failed stop still owns its runtime. Only a
+                    // fully drained hosted run can reopen admission.
+                    if (workspace is not null || pendingWorkspaceClose is not null || store is not null)
+                        ThrowIfRetiringLocked();
+                    attemptArbiter = new();
+                    retiring = false;
+                    persistenceFaulted = false;
+                    faultStage = null;
+                    faultMessage = null;
+                    Volatile.Write(ref pendingQuiescentRecreate, 0);
+                    Volatile.Write(ref lastPlanApplicationError, null);
+                }
+                planProvider.Published += OnPublished;
+            }
+            finally
+            {
+                mutationGate.Release();
+            }
+
+            try
+            {
+                await ApplyPlanAsync(
+                        planProvider.Current.HostManager.RequirePublished(),
+                        throwOnFailure: true,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                initialized = true;
+            }
+            catch
+            {
+                planProvider.Published -= OnPublished;
+                throw;
+            }
+        }
+        finally { initializationGate.Release(); }
+    }
+
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        await mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            ThrowIfDisposed();
-            if (started || workerCancellation is not null)
-            {
-                throw new InvalidOperationException(
-                    "The operation coordinator owner is already started.");
-            }
-            if (retiring)
-            {
-                // A canceled or failed stop still owns its runtime. Only a
-                // fully drained hosted run can reopen admission.
-                if (workspace is not null || pendingWorkspaceClose is not null || store is not null)
-                    ThrowIfRetiringLocked();
-                attemptArbiter = new();
-                retiring = false;
-                persistenceFaulted = false;
-                faultStage = null;
-                faultMessage = null;
-                Volatile.Write(ref pendingQuiescentRecreate, 0);
-                Volatile.Write(ref lastPlanApplicationError, null);
-            }
-            planProvider.Published += OnPublished;
-        }
-        finally
-        {
-            mutationGate.Release();
-        }
-
-        try
-        {
-            await ApplyPlanAsync(
-                    planProvider.Current.HostManager.RequirePublished(),
-                    throwOnFailure: true,
-                    cancellationToken)
-                .ConfigureAwait(false);
             var firstPlannerCycle = new TaskCompletionSource(
                 TaskCreationOptions.RunContinuationsAsynchronously);
             await mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 ThrowIfRetiringLocked();
+                if (started || workerCancellation is not null)
+                    throw new InvalidOperationException("The operation coordinator owner is already started.");
+                // The immediate first cycle covers mutations queued while stopped.
+                _ = plannerWake.Wait(0);
                 var plan = appliedPlan
                     ?? throw new InvalidOperationException(
                         "The operation coordinator plan was not applied.");
@@ -89,7 +108,6 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             {
                 mutationGate.Release();
             }
-            SignalPlanner();
             await firstPlannerCycle.Task.WaitAsync(cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -112,14 +130,7 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             {
                 return;
             }
-            if (!retiring)
-            {
-                retiring = true;
-                ready = false;
-                started = false;
-                planProvider.Published -= OnPublished;
-                PublishHealthOnlyLocked();
-            }
+            started = false;
             workers = actionWorkers
                 .Append(plannerWorker)
                 .Where(static worker => worker is not null)
@@ -141,7 +152,6 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         }
         cancellation?.Cancel();
         channel?.Writer.TryComplete();
-        SignalPlanner();
         if (workers.Length != 0)
         {
             await Task.WhenAll(workers).WaitAsync(cancellationToken)
@@ -150,7 +160,11 @@ public sealed partial class HostManagerOperationCoordinatorOwner
         await mutationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            CloseRuntimeLocked();
+            workerCancellation?.Dispose();
+            workerCancellation = null;
+            actionChannel = null;
+            plannerWorker = null;
+            actionWorkers = [];
         }
         finally
         {
@@ -197,6 +211,16 @@ public sealed partial class HostManagerOperationCoordinatorOwner
 
     public async ValueTask DisposeAsync()
     {
+        await mutationGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            if (disposed) return;
+            retiring = true;
+            ready = false;
+            planProvider.Published -= OnPublished;
+            PublishHealthOnlyLocked();
+        }
+        finally { mutationGate.Release(); }
         await StopAsync(CancellationToken.None).ConfigureAwait(false);
         await mutationGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         try
@@ -205,6 +229,9 @@ public sealed partial class HostManagerOperationCoordinatorOwner
             {
                 return;
             }
+            retiring = true;
+            ready = false;
+            planProvider.Published -= OnPublished;
             CloseRuntimeLocked();
             plannerWake.Dispose();
             disposed = true;

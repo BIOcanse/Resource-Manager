@@ -25,7 +25,7 @@ public sealed partial class BatteryInformationCollectorTests
             new HostManagerMetricSnapshotRuntime(slots.Provider, slots.Deployment),
             new HostManagerMetricSnapshotCatalogTopologySource(() => topology), new BatteryEnvironment(root),
             NullLogger<HostManagerMetricSnapshotOwner>.Instance, ResourceManager.ReadWrite.Native.NativeMetricSnapshotScratch.CreateOrdinary);
-        await owner.StartAsync(CancellationToken.None);
+        using var workspaceHolding = owner.Hold();
         var dashboard = new HardwareMetricCatalogState();
         using (var lease = owner.Acquire())
             dashboard.PublishCatalogProbe(NativeMetricSnapshotCommittedProjection.Create(frame: lease.Workspace.ReadCommitted(), workspaceIdentity: lease.WorkspaceIdentity));

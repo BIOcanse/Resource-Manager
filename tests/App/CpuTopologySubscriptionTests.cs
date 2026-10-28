@@ -102,6 +102,8 @@ public sealed class CpuTopologySubscriptionTests
         var stopping = fixture.Reader.StopAsync(CancellationToken.None);
         fixture.Sampler.Complete(CpuTopologyProviderTestFixture.CreateSnapshot(34));
         await stopping.WaitAsync(CpuTopologyProviderTestFixture.Deadline);
+        Assert.Equal(1u, fixture.ReadDemand().SourceCount);
+        await subscription.DisposeAsync();
         Assert.Equal(0u, fixture.ReadDemand().SourceCount);
         for (var role = 1; role <= 6; role++)
         {
@@ -232,9 +234,10 @@ public sealed class CpuTopologySubscriptionTests
 
         Assert.False(pending.IsCompleted);
         Assert.Same(saved, fixture.Reader.GetSnapshot());
-        Assert.Equal(0u, fixture.ReadDemand().SourceCount);
+        Assert.Equal(1u, fixture.ReadDemand().SourceCount);
         Assert.Equal(2, fixture.Sampler.CaptureCount);
         await subscription.DisposeAsync();
+        Assert.Equal(0u, fixture.ReadDemand().SourceCount);
     }
 
     [Fact]

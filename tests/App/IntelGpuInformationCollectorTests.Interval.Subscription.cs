@@ -20,7 +20,7 @@ public sealed partial class IntelGpuInformationCollectorTests
     public async Task IntervalSingleFetchAfterIdleReturnsTypedEmptyAndContinuousDemandRewarms()
     {
         using var slots = new HostManagerSamplingSubscriptionTestFixture(); using var owner = CreateClockOwner(slots, secondHasDedicatedMemory: true);
-        await owner.StartAsync(CancellationToken.None); var dashboard = PublishClockCatalog(owner);
+        using var workspaceHolding = owner.Hold(); var dashboard = PublishClockCatalog(owner);
         var bindings = dashboard.Current!.FieldBindings.Values.Where(binding => IntervalCodes.Contains(binding.Field.Code)).ToArray();
         Assert.Equal(12, bindings.Length); Assert.All(bindings, binding => Assert.Equal("intel.igcl", binding.SourceId));
         var gpuIdentity = RecordedGpuIdentities().Single(static gpu => gpu.DisplayIndex == 9).ExactIdentityKey;
@@ -122,6 +122,7 @@ public sealed partial class IntelGpuInformationCollectorTests
             }
             while (tracker.CaptureManagedSourceState() != (0, 0)) await Task.Delay(20, timeout.Token);
             await gate.WaitAsync(timeout.Token); gate.Release();
+            await WaitForEmptyCounterDemandAsync(sampler, owner, timeout.Token);
             var afterFetch = Volatile.Read(ref sdk.TelemetryCalls);
             await Task.Delay(200, timeout.Token); Assert.Equal(afterFetch, Volatile.Read(ref sdk.TelemetryCalls));
             Assert.Equal(0, sdk.PciCalls); Assert.Equal(0, sdk.PciPropertiesCalls);

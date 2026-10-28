@@ -86,14 +86,14 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             writerStarted = true;
             fixture.DebugLogWriter.AttachForwardingWriter(evidenceWriter);
             forwardingWriterAttached = true;
-            host = BuildHostedScoreOnlyTestHost(fixture.Coordinator);
+            host = BuildHostedScoreOnlyTestHost(fixture);
 
             source.Enqueue(permits[0]);
             hostStartRequestedAtQpcTicks = Stopwatch.GetTimestamp();
             using (var startCancellation =
                    new CancellationTokenSource(TimeSpan.FromSeconds(10)))
             {
-                await host.StartAsync(startCancellation.Token);
+                await StartHostedScoreOnlyTestHostAsync(host, startCancellation.Token);
             }
             hostStartReturnedAtQpcTicks = Stopwatch.GetTimestamp();
             Assert.Equal(

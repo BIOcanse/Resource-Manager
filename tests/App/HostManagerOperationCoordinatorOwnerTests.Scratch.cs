@@ -23,7 +23,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class HostManagerOperationCoordinatorOwnerTests
 {
     [Fact]
-    public async Task RealOperationStopInUseRetainsWorkspaceStoreAndClosesOnExplicitRetry()
+    public async Task WorkerStopRetainsScratchAndFinalDisposeInUseClosesOnExplicitRetry()
     {
         using var ledger = new ResourceManagerLedgerOwner();
         ResourceManagerLedgerOwner.ComputeScratch? resource = null;
@@ -34,8 +34,13 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
         var lease = resource!.Acquire();
         try
         {
+            await fixture.Owner.StopAsync(CancellationToken.None);
+            Assert.True(fixture.Owner.GetHealth().Ready);
+            Assert.False(OwnerField<bool>(fixture.Owner, "retiring"));
+            Assert.Same(workspace, OwnerField<object>(fixture.Owner, "workspace"));
+            Assert.Same(store, OwnerField<object>(fixture.Owner, "store"));
             var error = await Assert.ThrowsAsync<LedgerException>(
-                () => fixture.Owner.StopAsync(CancellationToken.None));
+                () => fixture.Owner.DisposeAsync().AsTask());
             Assert.Equal(LedgerStatus.InUse, error.Status);
             Assert.Same(workspace, OwnerField<object>(fixture.Owner, "workspace"));
             Assert.Same(store, OwnerField<object>(fixture.Owner, "store"));
@@ -48,7 +53,7 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
             });
         }
         finally { lease.Dispose(); }
-        await fixture.Owner.StopAsync(CancellationToken.None);
+        await fixture.Owner.DisposeAsync();
         Assert.Null(OwnerField<object>(fixture.Owner, "workspace"));
         Assert.Null(OwnerField<object>(fixture.Owner, "store"));
         Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
@@ -111,6 +116,9 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
             held!.Dispose();
             held = null;
             await fixture.Owner.StopAsync(CancellationToken.None);
+            Assert.Same(pending, OwnerField<object>(fixture.Owner, "pendingWorkspaceClose"));
+            Assert.Same(old, OwnerField<object>(fixture.Owner, "workspace"));
+            await fixture.Owner.DisposeAsync();
             Assert.Null(OwnerField<object>(fixture.Owner, "pendingWorkspaceClose"));
             Assert.Null(OwnerField<object>(fixture.Owner, "workspace"));
             Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
@@ -165,6 +173,9 @@ public sealed partial class HostManagerOperationCoordinatorOwnerTests
         }
         finally { held?.Dispose(); }
         await fixture.Owner.StopAsync(CancellationToken.None);
+        Assert.Same(old, OwnerField<object>(fixture.Owner, "pendingWorkspaceClose"));
+        Assert.NotNull(OwnerField<object>(fixture.Owner, "workspace"));
+        await fixture.Owner.DisposeAsync();
         Assert.Null(OwnerField<object>(fixture.Owner, "pendingWorkspaceClose"));
         Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
     }

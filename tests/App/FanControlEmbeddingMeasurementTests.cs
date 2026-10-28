@@ -22,7 +22,8 @@ public sealed class FanControlEmbeddingMeasurementTests(ITestOutputHelper output
         var heapBefore = GC.GetTotalMemory(false);
         var watch = Stopwatch.StartNew();
         await using var client = CreateClient();
-        var fans = await Task.Run(client.Describe);
+        await client.StartSession();
+        var fans = client.Describe();
         watch.Stop();
         Assert.Single(fans);
         GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();

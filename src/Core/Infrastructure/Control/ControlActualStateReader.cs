@@ -15,8 +15,8 @@ namespace ResourceManager.App.Infrastructure.Control;
 /// 这一份和统一写入层是**分开**的两条路：写走写入层，读走这里再进统一订阅源。
 /// 分开之后，两边各按各的节奏跑，不会因为共用一个对象而互相等锁。
 ///
-/// 订阅持有需求租约时，采样在后台按固定间隔做，新结果先完整读出来再原子替换。
-/// 没有订阅就停止采样并保留当前值。读取端只拿当前值，
+/// 订阅表发布是否在用，父决策节点决定本块启停。运行时按固定间隔采样，
+/// 新结果先完整读出来再原子替换；停止后保留当前值。读取端只拿当前值，
 /// 不触发采样也不等待 —— 订阅者再多，硬件那一侧也只有这一条采样路。
 /// </summary>
 public sealed class ControlActualStateReader(
@@ -42,10 +42,8 @@ public sealed class ControlActualStateReader(
     private readonly IReadOnlyList<IControlWriter> writers = writers.ToArray();
     private readonly TimeProvider clock = TimeProvider.System;
     private readonly object subscriptionGate = new();
-    private readonly SemaphoreSlim demandChanged = new(0, 1);
-    private CancellationTokenSource? demand;
     private int leases;
-    private bool stopped;
+    private bool actualControlValuesInUse;
     private int disposed;
     private volatile ControlActualState current = ControlActualState.Empty;
     private readonly SamplingPublicationSignal publications = new();
@@ -58,6 +56,9 @@ public sealed class ControlActualStateReader(
     }
 
     public ControlActualState Current => current;
+
+    internal bool ActualControlValuesInUse => Volatile.Read(ref actualControlValuesInUse);
+    internal event Action? SubscriptionsChanged;
 
     public Task<ControlActualState?> FetchOnceAsync(string holder, CancellationToken cancellationToken)
         => SubscriptionSingleFetch.ReadAsync(SubscribeOnceAsync(holder, cancellationToken),
@@ -83,104 +84,54 @@ public sealed class ControlActualStateReader(
 
     public IDisposable AcquireSubscription()
     {
-        lock (subscriptionGate)
-        {
-            ObjectDisposedException.ThrowIf(stopped || Volatile.Read(ref disposed) != 0, this);
-            if (leases++ == 0)
-            {
-                demand = new CancellationTokenSource();
-                if (demandChanged.CurrentCount == 0) demandChanged.Release();
-            }
-            return new SubscriptionLease(this, demand!);
-        }
-    }
-
-    private void ReleaseSubscription(CancellationTokenSource leaseDemand)
-    {
-        lock (subscriptionGate)
-        {
-            if (ReferenceEquals(demand, leaseDemand) && --leases == 0) CancelDemand();
-        }
-    }
-
-    // Called under subscriptionGate. The worker takes the token while holding the same gate.
-    private void CancelDemand()
-    {
-        demand?.Cancel();
-        demand?.Dispose();
-        demand = null;
-        leases = 0;
-    }
-
-    public override Task StartAsync(CancellationToken cancellationToken)
-    {
+        bool changed;
         lock (subscriptionGate)
         {
             ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
-            stopped = false;
+            changed = leases++ == 0;
+            Volatile.Write(ref actualControlValuesInUse, true);
         }
-        return base.StartAsync(cancellationToken);
+        if (changed) SubscriptionsChanged?.Invoke();
+        return new SubscriptionLease(this);
+    }
+
+    private void ReleaseSubscription()
+    {
+        bool changed;
+        lock (subscriptionGate)
+        {
+            if (leases == 0) return;
+            changed = --leases == 0;
+            Volatile.Write(ref actualControlValuesInUse, leases != 0);
+        }
+        if (changed) SubscriptionsChanged?.Invoke();
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
         {
-            while (!stoppingToken.IsCancellationRequested)
+            await Task.Delay(StartupDelay, clock, stoppingToken).ConfigureAwait(false);
+            using var timer = new PeriodicTimer(Interval, clock);
+            do
             {
-                await demandChanged.WaitAsync(stoppingToken).ConfigureAwait(false);
-                CancellationToken demandToken;
+                stoppingToken.ThrowIfCancellationRequested();
+                var next = await ReadOnceAsync(stoppingToken).ConfigureAwait(false);
                 lock (subscriptionGate)
                 {
-                    if (demand is null) continue;
-                    demandToken = demand.Token;
-                }
-                using var sampling = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, demandToken);
-                try
-                {
-                    await Task.Delay(StartupDelay, clock, sampling.Token).ConfigureAwait(false);
-                    using var timer = new PeriodicTimer(Interval, clock);
-                    do
+                    if (!stoppingToken.IsCancellationRequested)
                     {
-                        sampling.Token.ThrowIfCancellationRequested();
-                        var next = await ReadOnceAsync(sampling.Token).ConfigureAwait(false);
-                        lock (subscriptionGate)
-                        {
-                            // An obsolete read must not replace the value after the last lease exits.
-                            if (!sampling.IsCancellationRequested)
-                            {
-                                current = next;
-                                publications.Publish([ActualDataset]);
-                            }
-                        }
+                        current = next;
+                        publications.Publish([ActualDataset]);
                     }
-                    while (await timer.WaitForNextTickAsync(sampling.Token).ConfigureAwait(false));
                 }
-                catch (OperationCanceledException) when (sampling.IsCancellationRequested) { }
             }
+            while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false));
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
             // 正常收摊。
         }
-        finally
-        {
-            lock (subscriptionGate)
-            {
-                stopped = true;
-                CancelDemand();
-            }
-        }
-    }
-
-    public override Task StopAsync(CancellationToken cancellationToken)
-    {
-        lock (subscriptionGate)
-        {
-            stopped = true;
-            CancelDemand();
-        }
-        return base.StopAsync(cancellationToken);
     }
 
     public override void Dispose()
@@ -189,15 +140,20 @@ public sealed class ControlActualStateReader(
         try { StopAsync(CancellationToken.None).GetAwaiter().GetResult(); }
         finally
         {
-            demandChanged.Dispose();
+            lock (subscriptionGate)
+            {
+                leases = 0;
+                Volatile.Write(ref actualControlValuesInUse, false);
+            }
+            SubscriptionsChanged?.Invoke();
             base.Dispose();
         }
     }
 
-    private sealed class SubscriptionLease(ControlActualStateReader owner, CancellationTokenSource demand) : IDisposable
+    private sealed class SubscriptionLease(ControlActualStateReader owner) : IDisposable
     {
         private ControlActualStateReader? current = owner;
-        public void Dispose() => Interlocked.Exchange(ref current, null)?.ReleaseSubscription(demand);
+        public void Dispose() => Interlocked.Exchange(ref current, null)?.ReleaseSubscription();
     }
 
     private async Task<ControlActualState> ReadOnceAsync(CancellationToken cancellationToken)

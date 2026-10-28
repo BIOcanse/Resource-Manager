@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using ResourceManager.Shared.BusinessBlocks;
+using ResourceManager.Shared.BusinessBlocks.State;
 using BackendBlocks = ResourceManager.App.StateItems.BlockUids;
 using BackendRegistry = ResourceManager.App.StateItems.StateRegistry;
 
@@ -36,33 +37,35 @@ public sealed class NativeControlAdapterLifecycleTests
     {
         await using var control = new NativeControl(HostUids(), Options() with { HistoryCapacity = 0 }, NullLogger.Instance);
         var authority = control.CreateAuthority(BackendRegistry.Items, BackendRegistry.Blocks);
+        await InitializeOtherPermits(authority, control);
         await using var scheduler = new ResourceManager.Shared.BusinessBlocks.BusinessBlockScheduler(control, authority, _ => new HoldingBlock());
-        var target = BackendBlocks.ControlActualStateReader;
+        var target = BackendBlocks.TrustedAccessInvocationHostedService;
         var why = new BusinessBlockReason(BusinessBlockRequestKind.User, "operator", "observe", 19);
-        await scheduler.SetDemandAsync("observe", target, why);
+        var permit = authority.ClaimCell<bool>(new(BackendItems.HostStartPermitted, target));
+        await permit.PublishAsync(true, why);
         await BusinessBlockTestSupport.Until(() => scheduler.ReadState(target) == BusinessBlockState.Running);
         var snapshot = scheduler.Read();
         Assert.Empty(snapshot.History);
         Assert.Empty(snapshot.Decisions);
-        var current = Assert.Single(snapshot.CurrentDecisions, value => value.ParentId == BackendBlocks.HardwareControl);
+        var current = Assert.Single(snapshot.CurrentDecisions, value => value.ParentId == BackendBlocks.TrustedAccess);
         Assert.Contains(target, current.ShouldRun);
-        var currentItem = Assert.Single(snapshot.Items, value => value.ItemUid == BackendItems.BlockDemand && value.BlockUid == target);
-        var capturedItem = Assert.Single(current.Items, value => value.ItemUid == BackendItems.BlockDemand && value.BlockUid == target);
+        var currentItem = Assert.Single(snapshot.Items, value => value.ItemUid == BackendItems.HostStartPermitted && value.BlockUid == target);
+        var capturedItem = Assert.Single(current.Items, value => value.ItemUid == BackendItems.HostStartPermitted && value.BlockUid == target);
         Assert.True(currentItem.Value is true);
         Assert.True(capturedItem.Value is true);
 #if RM_STATE_NAMES
         var expectedBlockName = ResourceManager.App.StateItems.StateNames.Name(target);
-        Assert.Equal("ControlActualStateReader", expectedBlockName);
+        Assert.Equal("TrustedAccessInvocationHostedService", expectedBlockName);
         Assert.Equal(expectedBlockName, currentItem.BlockName);
         Assert.Equal(expectedBlockName, capturedItem.BlockName);
 #else
         Assert.Null(currentItem.BlockName);
         Assert.Null(capturedItem.BlockName);
 #endif
-        await scheduler.SetDemandAsync("observe", null, why);
+        await permit.PublishAsync(false, why);
         await BusinessBlockTestSupport.Until(() => scheduler.ReadState(target) == BusinessBlockState.Stopped);
         Assert.DoesNotContain(target, Assert.Single(scheduler.Read().CurrentDecisions,
-            value => value.ParentId == BackendBlocks.HardwareControl).ShouldRun);
+            value => value.ParentId == BackendBlocks.TrustedAccess).ShouldRun);
     }
 
     [Fact]
@@ -70,17 +73,19 @@ public sealed class NativeControlAdapterLifecycleTests
     {
         await using var control = new NativeControl(HostUids(), Options(), NullLogger.Instance);
         var authority = control.CreateAuthority(BackendRegistry.Items, BackendRegistry.Blocks);
+        await InitializeOtherPermits(authority, control);
         var block = new GatedStopCallbackBlock();
-        var target = BackendBlocks.ControlActualStateReader;
+        var target = BackendBlocks.TrustedAccessInvocationHostedService;
         await using var scheduler = new ResourceManager.Shared.BusinessBlocks.BusinessBlockScheduler(
             control, authority, uid => uid == target ? block : new HoldingBlock());
         var why = new BusinessBlockReason(BusinessBlockRequestKind.User, "operator", "cancel-delivery", 19);
-        await scheduler.SetDemandAsync("cancel-delivery", target, why);
+        var permit = authority.ClaimCell<bool>(new(BackendItems.HostStartPermitted, target));
+        await permit.PublishAsync(true, why);
         await BusinessBlockTestSupport.Until(() => scheduler.ReadState(target) == BusinessBlockState.Running);
 
         try
         {
-            var withdrawal = scheduler.SetDemandAsync("cancel-delivery", null, why);
+            var withdrawal = permit.PublishAsync(false, why);
             await block.StopCallbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
             await withdrawal.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.True(block.StopToken.IsCancellationRequested);
@@ -115,10 +120,10 @@ public sealed class NativeControlAdapterLifecycleTests
         await using var control = new NativeControl(HostUids(), Options(), NullLogger.Instance);
         var authority = control.CreateAuthority(BackendRegistry.Items, BackendRegistry.Blocks);
         var rows = authority.ReadAll(static _ => null);
-        var demands = rows.Where(row => row.ItemUid == BackendItems.BlockDemand).ToArray();
-        Assert.Equal(control.Graph.BlockIds.Count + 1, demands.Length);
-        Assert.DoesNotContain(demands, row => row.BlockUid == BackendBlocks.AutomaticProductUpdateService);
-        Assert.Throws<KeyNotFoundException>(() => authority.Read<bool>(new(BackendItems.BlockDemand,
+        var permits = rows.Where(row => row.ItemUid == BackendItems.HostStartPermitted).ToArray();
+        Assert.Equal(control.Graph.BlockIds.Count + 1, permits.Length);
+        Assert.DoesNotContain(permits, row => row.BlockUid == BackendBlocks.AutomaticProductUpdateService);
+        Assert.Throws<KeyNotFoundException>(() => authority.Read<bool>(new(BackendItems.HostStartPermitted,
             BackendBlocks.AutomaticProductUpdateService)));
     }
 
@@ -157,8 +162,14 @@ public sealed class NativeControlAdapterLifecycleTests
 
     private static int[] HostUids() => BackendRegistry.Blocks.Where(uid => uid != BackendBlocks.Program
         && uid != BackendBlocks.AutomaticProductUpdateService).ToArray();
+    private static async Task InitializeOtherPermits(StateAuthority authority, NativeControl control)
+    {
+        var why = new BusinessBlockReason(BusinessBlockRequestKind.Configuration, "adapter-fixture", "host-permits", 0);
+        foreach (var uid in control.Graph.BlockIds.Where(uid => uid != BackendBlocks.TrustedAccessInvocationHostedService))
+            await authority.ClaimCell<bool>(new(BackendItems.HostStartPermitted, uid)).PublishAsync(true, why);
+    }
     private static NativeControlOptions Options() => new()
     {
-        Profile = 1, DemandItemUid = BackendItems.BlockDemand, ShutdownItemUid = BackendItems.ProgramShuttingDown
+        Profile = 1, ShutdownItemUid = BackendItems.ProgramShuttingDown
     };
 }

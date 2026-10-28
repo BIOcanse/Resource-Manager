@@ -33,8 +33,13 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             "process" => new RuntimeCpuLeaseTarget(ProcessId: pid, ProcessStartKey: birth),
             _ => new RuntimeCpuLeaseTarget(ExecutablePath: facts.Processes[0].ExecutablePath)
         };
+        var leaseChanges = 0;
+        fixture.CpuLeases.ActiveCpuLeasesChanged += () => leaseChanges++;
+        Assert.False(fixture.CpuLeases.ActiveCpuLeasesExist);
         var lease = fixture.CpuLeases.CreateCpuLease(new(target, ["core:0"], true, true), "fixture-holder");
         Assert.Equal("pending", lease.State);
+        Assert.True(fixture.CpuLeases.ActiveCpuLeasesExist);
+        Assert.Equal(1, leaseChanges);
         for (var cycle = 0; cycle < 12; cycle++)
         {
             if (cycle != 0) fixture.PublishNextHostedCpuObservation();
@@ -52,6 +57,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Contains(observed.Effects, effect => effect.ProcessId == other && effect.Role == "avoidance" && effect.State == "observed");
         var ended = fixture.CpuLeases.WaitForCpuLeaseEndAsync(lease.LeaseId, default);
         Assert.True(fixture.CpuLeases.DeleteCpuLease(lease.LeaseId));
+        Assert.False(fixture.CpuLeases.ActiveCpuLeasesExist);
+        Assert.Equal(2, leaseChanges);
+        Assert.False(fixture.CpuLeases.DeleteCpuLease(lease.LeaseId));
+        Assert.Equal(2, leaseChanges);
         await ended.WaitAsync(TimeSpan.FromSeconds(5));
         for (var cycle = 0; cycle < 12 && fixture.StateStore.Current.AppliedPlacements.Count != 0; cycle++)
         { fixture.PublishNextHostedCpuObservation(); await fixture.RunRealtimeCycleAsync(); }
@@ -86,6 +95,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal("failed", failed.State);
         Assert.Equal("cpu-placement-write-failed", failed.ReasonCode);
         Assert.Equal(5, failed.NativeErrorCode);
+        Assert.True(fixture.CpuLeases.ActiveCpuLeasesExist);
     }
 
     [Fact]

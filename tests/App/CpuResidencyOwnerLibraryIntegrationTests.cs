@@ -323,32 +323,34 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         Assert.False(capture.Collect(permit, (_, _) => committed = true));
         Assert.False(committed);
         Assert.Same(published, capture.Read());
-        Assert.False(capture.HasSessionLease);
-        Assert.Equal(1, broker.Releases);
+        Assert.Equal(pause, capture.HasSessionLease);
+        Assert.Equal(pause ? 0 : 1, broker.Releases);
         if (pause) capture.SetCaptureEnabled(true);
         capture.EnsureStarted();
-        Assert.Equal(2, broker.Acquires);
+        Assert.Equal(pause ? 1 : 2, broker.Acquires);
         Assert.Same(published, capture.Read());
         Assert.True(capture.Collect()); // restarted capture is warming, with no old closed window
         Assert.Null(capture.Read());
     }
 
     [Fact]
-    public void ExternalFreezeDuringLeaseCreationRejectsLateAcceptanceAndResumesWithANewWindow()
+    public void ExternalFreezeDuringLeaseCreationRetainsTheRunHolderAndResumesWithANewWindow()
     {
         var broker = new Broker(); using var capture = Capture(broker);
         broker.BeforeLeaseReturn = () => capture.SetCaptureEnabled(false);
         capture.EnsureStarted();
-        Assert.Equal(1, broker.Acquires); Assert.Equal(1, broker.Releases); Assert.False(capture.HasSessionLease);
+        Assert.Equal(1, broker.Acquires); Assert.Equal(0, broker.Releases); Assert.True(capture.HasSessionLease);
+        Assert.False(capture.IsWindowActive);
         capture.EnsureStarted(); Assert.Equal(1, broker.Acquires); Assert.Null(capture.Read());
         broker.BeforeLeaseReturn = null; capture.SetCaptureEnabled(true); capture.EnsureStarted();
-        Assert.Equal(2, broker.Acquires); Assert.True(capture.HasSessionLease); Assert.Null(capture.Read());
+        Assert.Equal(1, broker.Acquires); Assert.True(capture.HasSessionLease); Assert.True(capture.IsWindowActive); Assert.Null(capture.Read());
     }
 
     [Fact]
-    public async Task CanonicalDefaultUsesSameCurrentAndBorrowOnlyRetractsItsOwnCpuDemand()
+    public async Task CanonicalDefaultUsesSameCurrentAndSubscriptionWithdrawalKeepsHostCpuHolder()
     {
         var broker = new Broker(); using var owner = Owner(broker);
+        owner.StartCpuResidencyCapture();
         var warming = await owner.CollectAsync([Name]);
         Assert.Equal(2, warming.Processes.Count); Assert.All(warming.Processes, row => Assert.Null(row.Values.Single().NumericValue));
         Assert.All(owner.Backend.Catalog.Fields, field => Assert.Equal(Name, field.Definition.Name));
@@ -356,13 +358,13 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         using var a = owner.BorrowSubscriptionCapture(); using var b = owner.BorrowSubscriptionCapture();
         a.Bind(references); b.Bind(references); a.SynchronizeDemand(references); b.SynchronizeDemand(references);
         a.Dispose(); b.SynchronizeDemand([]);
-        Assert.Equal(0, broker.Releases); // direct demand owns its lease independently
+        Assert.Equal(0, broker.Releases); // the host run owns its lease independently
         Assert.All(owner.ReadCachedSnapshot()!.Processes, row => Assert.Null(row.Values.Single().NumericValue));
         owner.Dispose(); Assert.Equal(1, broker.Releases);
     }
 
     [Fact]
-    public async Task LastSubscriptionDemandStopsCpuAndTheNextDemandRestartsAFullWindow()
+    public async Task OnlyExplicitCpuRunEntryAndExitAcquireAndReleaseTheHolder()
     {
         var broker = new Broker(); using var owner = Owner(broker);
         var initial = WindowsCpuResidencyProcessFields.Project([Name], CurrentInventory(), Scopes(), CurrentWindow());
@@ -371,12 +373,41 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         using var a = owner.BorrowSubscriptionCapture(); using var b = owner.BorrowSubscriptionCapture();
         a.Bind(refs); b.Bind(refs); a.SynchronizeDemand(refs); b.SynchronizeDemand(refs);
         await a.CollectAsync(refs, new Permit());
+        await owner.CollectAsync([Name]);
+        Assert.Equal(0, broker.Acquires);
+        owner.StartCpuResidencyCapture();
+        owner.StartCpuResidencyCapture();
+        await a.CollectAsync(refs, new Permit());
         Assert.Equal(1, broker.Acquires);
         a.Dispose(); Assert.Equal(0, broker.Releases);
-        b.SynchronizeDemand([]); Assert.Equal(1, broker.Releases);
-        b.SynchronizeDemand(refs); var restarted = await b.CollectAsync(refs, new Permit());
+        b.SynchronizeDemand([]); Assert.Equal(0, broker.Releases);
+        b.SynchronizeDemand(refs); await b.CollectAsync(refs, new Permit());
+        Assert.Equal(1, broker.Acquires);
+        owner.StopCpuResidencyCapture();
+        owner.StopCpuResidencyCapture();
+        Assert.Equal(1, broker.Releases);
+        await b.CollectAsync(refs, new Permit());
+        await owner.CollectAsync([Name]);
+        Assert.Equal(1, broker.Acquires);
+        owner.StartCpuResidencyCapture();
+        var restarted = await b.CollectAsync(refs, new Permit());
         Assert.Equal(2, broker.Acquires); Assert.All(restarted.Readings, reading => Assert.Null(reading.Value));
-        b.Dispose(); Assert.Equal(2, broker.Releases);
+        b.Dispose(); Assert.Equal(1, broker.Releases);
+        owner.StopCpuResidencyCapture(); Assert.Equal(2, broker.Releases);
+    }
+
+    [Fact]
+    public void HostedCurrentOnlyOwnerRejectsStandaloneCpuCaptureAndDisposedOwnerRejectsEntry()
+    {
+        using var hosted = new WindowsProcessFieldOwner(new ProcessFieldCurrentState());
+        Assert.Throws<InvalidOperationException>(hosted.StartCpuResidencyCapture);
+        Assert.Throws<InvalidOperationException>(hosted.StopCpuResidencyCapture);
+        var broker = new Broker();
+        var owner = Owner(broker);
+        owner.Dispose();
+        Assert.Throws<ObjectDisposedException>(owner.StartCpuResidencyCapture);
+        Assert.Throws<ObjectDisposedException>(owner.StopCpuResidencyCapture);
+        Assert.Equal(0, broker.Acquires);
     }
 
     [Fact]
@@ -425,7 +456,7 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
     }
 
     [Fact]
-    public async Task ExternalNativeCompositionPublishesFromTheSameCurrentAndDrainsItsOwnCpuLease()
+    public async Task ExternalNativeCompositionPublishesFromTheSameCurrentWhileHostOwnsCpuLease()
     {
         var broker = new Broker(); using var owner = Owner(broker);
         owner.Current.SetPart(ProcessMetricDatasetIds.ObservedCpuResidency,
@@ -434,8 +465,9 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         var configuration = DefaultFieldSubscriptionCompositionTests.Configuration();
         await using var subscriptions = new NativeFieldSubscriptionComposition(owner.BorrowSubscriptionCapture(),
             DefaultFieldSubscriptionCompositionTests.Settings(), in configuration,
-            failure => throw new InvalidOperationException("Unexpected recorded worker failure.", failure.Error), TimeSpan.Zero);
+            failure => throw new InvalidOperationException("Unexpected recorded worker failure.", failure.Error));
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        owner.StartCpuResidencyCapture();
         await subscriptions.StartAsync(timeout.Token);
         try
         {
@@ -446,6 +478,8 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
             Assert.Equal(1, broker.Acquires);
         }
         finally { await subscriptions.StopAsync().WaitAsync(TimeSpan.FromSeconds(5)); }
+        Assert.Equal(0, broker.Releases);
+        owner.StopCpuResidencyCapture();
         Assert.Equal(1, broker.Releases);
         Assert.NotNull(owner.ReadCachedSnapshot());
     }

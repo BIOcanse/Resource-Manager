@@ -14,11 +14,8 @@ public sealed record NativeControlOptions
 {
     public required uint Profile { get; init; }
     public required int ShutdownItemUid { get; init; }
-    public int? DemandItemUid { get; init; }
     public int WorkerCount { get; init; } = 4;
     public int HistoryCapacity { get; init; } = 128;
-    public int DemandCapacity { get; init; } = 64;
-    public int DemandBytes { get; init; } = 8192;
     public int CompletionCapacity { get; init; } = 128;
     public int ReaderCapacity { get; init; } = 16;
     public int ReaderBytes { get; init; } = 4096;
@@ -41,11 +38,12 @@ public sealed partial class NativeControl : IBusinessBlockRuntime, IDisposable
     private readonly object schedulerShutdownSync = new();
     private readonly object disposeSync = new();
     private readonly Dictionary<ulong, Func<BusinessBlockReason, Task>> readers = new();
+    private readonly List<GCHandle> readFunctions = new();
     private Task? schedulerShutdownTask;
     private Task? disposeTask;
     private Func<int, IBusinessBlock>? create;
     private Func<long> planVersion = static () => 0;
-    private long nextToken, nextDependency;
+    private long nextToken;
     private int disposed;
     private bool activated;
     private StateAuthority? authority;
@@ -58,7 +56,7 @@ public sealed partial class NativeControl : IBusinessBlockRuntime, IDisposable
     /// <summary>Reads the native tree's exact runnable UID list before creating its controller.</summary>
     public static unsafe int[] GetProfileHostBlockUids(uint profile)
     {
-        if (AbiVersion() != 0x0001_0000) throw new InvalidOperationException("The native controller ABI version does not match.");
+        if (AbiVersion() != 0x0002_0000) throw new InvalidOperationException("The native controller ABI version does not match.");
         var result = ProfileHostBlocksNative(profile, null, 0, out var needed);
         if (result != 5) Check(result); // BufferTooSmall is the size-query result.
         var nativeUids = new uint[checked((int)needed)];
@@ -78,7 +76,7 @@ public sealed partial class NativeControl : IBusinessBlockRuntime, IDisposable
         ArgumentOutOfRangeException.ThrowIfLessThan(options.ReasonTextCapacity, MinimumReasonTextCapacity, nameof(options.ReasonTextCapacity));
         this.options = options;
         this.logger = logger;
-        if (AbiVersion() != 0x0001_0000) throw new InvalidOperationException("The native controller ABI version does not match.");
+        if (AbiVersion() != 0x0002_0000) throw new InvalidOperationException("The native controller ABI version does not match.");
         var ids = hostUids.Select(id => checked((uint)id)).ToArray();
         context = GCHandle.Alloc(this);
         try
@@ -90,11 +88,9 @@ public sealed partial class NativeControl : IBusinessBlockRuntime, IDisposable
                 {
                     StructSize = (uint)sizeof(Config), Profile = options.Profile,
                     WorkerCount = checked((uint)options.WorkerCount), HistoryCapacity = checked((uint)options.HistoryCapacity),
-                    DemandCapacity = checked((uint)options.DemandCapacity), DemandBytes = checked((uint)options.DemandBytes),
                     CompletionCapacity = checked((uint)options.CompletionCapacity), ReaderCapacity = checked((uint)options.ReaderCapacity),
                     ReaderBytes = checked((uint)options.ReaderBytes), WorkerArenaBytes = checked((uint)options.WorkerArenaBytes),
                     ReasonTextCapacity = checked((uint)options.ReasonTextCapacity),
-                    DemandItemUid = options.DemandItemUid is { } demand ? checked((uint)demand) : uint.MaxValue,
                     ShutdownItemUid = checked((uint)options.ShutdownItemUid), HostBlocks = blocks, HostBlockCount = (uint)ids.Length
                 };
                 Check(Create(in config, in callbacks, out var raw));
@@ -166,31 +162,37 @@ public sealed partial class NativeControl : IBusinessBlockRuntime, IDisposable
             _ => throw new InvalidOperationException("The native controller returned an invalid Boolean publication.")
         };
     }
+    internal unsafe nint ClaimReadFunction(StateItemKey key, Func<StateRead<bool>> read)
+    {
+        ThrowIfDisposed();
+        var callback = GCHandle.Alloc(read);
+        try
+        {
+            var function = new ReadFunction { Context = GCHandle.ToIntPtr(callback), Read = &OnReadFunction };
+            Check(ClaimReadFunctionNative(handle, Key(key), in function, out var claim));
+            lock (readFunctions) readFunctions.Add(callback);
+            return claim;
+        }
+        catch { callback.Free(); throw; }
+    }
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void OnReadFunction(nint context, FunctionRead* output)
+    {
+        try
+        {
+            var read = ((Func<StateRead<bool>>)GCHandle.FromIntPtr(context).Target!)();
+            *output = new() { Kind = read.HasValue ? 3u : (uint)read.NoValueReason!.Value, Value = read.HasValue && read.Value ? 1u : 0u };
+        }
+        catch { *output = new() { Kind = 2 }; }
+    }
+    internal unsafe Task NotifyChanged(nint claim, BusinessBlockReason reason)
+        => Wake(reason, (h, why, token) => NotifyChangedNative(h, claim, why, token));
     internal unsafe Task PublishBool(nint claim, StateRead<bool> value, BusinessBlockReason why)
         => Wake(why, (h, reason, token) => Publish(h, claim, value.HasValue ? value.Value ? 4u : 3u : (uint)value.NoValueReason!.Value, reason, token));
     internal unsafe Task PublishPresence(nint claim, NoValueReason? absence, BusinessBlockReason why)
         => Wake(why, (h, reason, token) => PublishPresenceNative(h, claim, absence is null ? 0u : (uint)absence.Value + 1, reason, token));
     internal unsafe Task Bind(nint claim, BusinessBlockReason why) => Wake(why, (h, reason, token) => BindNative(h, claim, reason, token));
     internal unsafe Task Unbind(nint claim, BusinessBlockReason why) => Wake(why, (h, reason, token) => UnbindNative(h, claim, reason, token));
-    public StateItemKey DemandKey(int blockUid) => options.DemandItemUid is { } item ? new(item, blockUid) : throw new NotSupportedException("This process has no demand item declaration.");
-    public unsafe Task SetDemandAsync(string key, int? blockId, BusinessBlockReason why, CancellationToken cancellation = default)
-    {
-        ThrowIfDisposed(); ArgumentException.ThrowIfNullOrWhiteSpace(key);
-        if (blockId is { } requested) _ = Graph.Get(requested);
-        _ = DemandKey(blockId ?? Graph.Program);
-        var bytes = Encoding.UTF8.GetBytes(key);
-        return Wake(why, (h, reason, token) =>
-        {
-            fixed (byte* text = bytes) return blockId is { } block
-                ? SetDemand(h, text, checked((uint)bytes.Length), checked((uint)block), reason, token)
-                : ClearDemand(h, text, checked((uint)bytes.Length), reason, token);
-        });
-    }
-    public IBusinessBlockDependency AcquireDependency(int id, BusinessBlockReason why)
-    {
-        var key = "dependency:" + Interlocked.Increment(ref nextDependency);
-        return new BusinessBlockDemandLease(this, key, why) { Ready = SetDemandAsync(key, id, why) };
-    }
     public unsafe Task ShutdownAsync(BusinessBlockReason why) => Wake(why, static (h, reason, token) => Shutdown(h, reason, token));
     internal Task RequestSchedulerShutdownAsync()
     {

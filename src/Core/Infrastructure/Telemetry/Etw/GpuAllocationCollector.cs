@@ -1,4 +1,4 @@
-using System.Diagnostics.Tracing;
+﻿using System.Diagnostics.Tracing;
 using Microsoft.Extensions.Configuration;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
@@ -37,31 +37,15 @@ public sealed partial class GpuAllocationCollector : IBusinessBlock
         };
     }
 
-    internal async Task CaptureAsync(IReadOnlyDictionary<int, long> currentProcesses, CancellationToken cancellationToken)
+    internal async Task CaptureAsync(IReadOnlyDictionary<int, long> currentProcesses, TimeSpan refreshInterval, CancellationToken cancellationToken)
     {
-        Lease[] subscriptions;
-        lock (lifecycle)
-        {
-            subscriptions = ActiveSubscriptionsLocked();
-            if (subscriptions.Length == 0) return;
-        }
-
-        try { await Task.WhenAll(subscriptions.Select(static lease => lease.AwaitCaptureReadyAsync(lease.Dependency.Ready))).WaitAsync(cancellationToken).ConfigureAwait(false); }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception error)
-        {
-            logger.LogWarning(error, "GPU allocation dependency did not become ready; publishing an empty due value.");
-            PublishEmpty(cancellationToken);
-            return;
-        }
-
+        if (refreshInterval <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(refreshInterval));
         Run? run;
         CancellationToken admissionToken = default;
         lock (lifecycle)
         {
-            if (ActiveSubscriptionsLocked().Length == 0) return;
             // A due capture only uses the actual current run. The parent may
-            // intentionally leave the producer stopped while demand is held.
+            // intentionally leave the producer stopped while sampling fields are in use.
             if (activeRun is not { } currentRun || Volatile.Read(ref currentRun.Failed)
                 || currentRun.StopNotification.IsCancellationRequested || currentRun.CaptureAdmission.IsCancellationRequested)
             {
@@ -84,13 +68,7 @@ public sealed partial class GpuAllocationCollector : IBusinessBlock
         {
         using var captureStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, admissionToken);
         var captureToken = captureStop.Token;
-        try
-        {
-            await Task.WhenAll(subscriptions.Select(lease => lease.AwaitCaptureReadyAsync(run.Started.Task)))
-                .WaitAsync(captureToken).ConfigureAwait(false);
-            // Every captured subscription may have withdrawn before startup.
-            if (!run.Started.Task.IsCompletedSuccessfully) return;
-        }
+        try { await run.Started.Task.WaitAsync(captureToken).ConfigureAwait(false); }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception error)
         {
@@ -110,10 +88,9 @@ public sealed partial class GpuAllocationCollector : IBusinessBlock
             enteredCaptureGate = true;
             lock (lifecycle)
             {
-                var activeSubscriptions = ActiveSubscriptionsLocked();
-                if (activeSubscriptions.Length == 0 || !ReferenceEquals(activeRun, run)
+                if (!ReferenceEquals(activeRun, run)
                     || run.CaptureAdmission.IsCancellationRequested) return;
-                keepLive = plan.UseLive(activeSubscriptions.Min(static lease => lease.Interval));
+                keepLive = plan.UseLive(refreshInterval);
                 captureAdmitted = true;
                 if (!SessionControl(run, () => session?.IsProcessing == true))
                 {
@@ -202,7 +179,7 @@ public sealed partial class GpuAllocationCollector : IBusinessBlock
                 }
                 var dueSessionEnded = !run.StopNotification.IsCancellationRequested
                     && run.ProcessingCompletion.Task.IsCompletedSuccessfully;
-                if (captureAdmitted && ActiveSubscriptionsLocked().Length > 0
+                if (captureAdmitted
                     && (!captureToken.IsCancellationRequested || dueSessionEnded))
                 {
                     if (!ReferenceEquals(current, session)) value = null;
@@ -226,7 +203,7 @@ public sealed partial class GpuAllocationCollector : IBusinessBlock
     {
         lock (lifecycle)
         {
-            if (ActiveSubscriptionsLocked().Length == 0 || cancellationToken.IsCancellationRequested) return;
+            if (cancellationToken.IsCancellationRequested) return;
             Volatile.Write(ref published, null);
         }
     }

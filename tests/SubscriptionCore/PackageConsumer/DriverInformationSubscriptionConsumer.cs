@@ -30,7 +30,7 @@ internal static class DriverInformationSubscriptionConsumer
             ActiveTtlMilliseconds = 3000, MaximumFutureSkewMilliseconds = 1000
         };
         await using var composition = new NativeFieldSubscriptionComposition(owner.BorrowSubscriptionCapture(), settings, in configuration,
-            failure => Console.WriteLine($"Driver worker failure: {failure.Stage}; {failure.Error.Message}"), TimeSpan.FromMilliseconds(250));
+            failure => Console.WriteLine($"Driver worker failure: {failure.Stage}; {failure.Error.Message}"));
         await composition.StartAsync(timeout.Token);
         await using var stream = composition.SubscribeAsync("device-driver", [field.Value], TimeSpan.FromSeconds(1), timeout.Token).GetAsyncEnumerator();
         if (!await stream.MoveNextAsync()) throw new InvalidDataException("Driver subscription ended without observation.");

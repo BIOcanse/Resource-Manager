@@ -66,7 +66,7 @@ internal static class DefaultOwnerSubscriptionConsumer
             ActiveTtlMilliseconds = 3000, MaximumFutureSkewMilliseconds = 1000
         };
         await using var subscriptions = new NativeFieldSubscriptionComposition(borrow, settings, in configuration,
-            failure => Console.WriteLine($"{name} worker failure: {failure.Stage}; {failure.Error.Message}"), TimeSpan.FromMilliseconds(250));
+            failure => Console.WriteLine($"{name} worker failure: {failure.Stage}; {failure.Error.Message}"));
         await subscriptions.StartAsync(cancellationToken);
         var publicFields = new FieldSubscriptionCore(core, subscriptions);
         await using (var stream = publicFields.SubscribeAsync(name, fields, TimeSpan.FromMilliseconds(250), cancellationToken)
@@ -130,7 +130,7 @@ internal static class DefaultOwnerSubscriptionConsumer
             DefaultIntervalMilliseconds = 1000, MinimumIntervalMilliseconds = 1,
             ActiveTtlMilliseconds = 3000, MaximumFutureSkewMilliseconds = 1000 };
         await using (var composition = new NativeFieldSubscriptionComposition(owner.BorrowSubscriptionCapture(),
-            settings, in configuration, failure => failures.Enqueue(failure), TimeSpan.FromMilliseconds(250)))
+            settings, in configuration, failure => failures.Enqueue(failure)))
         {
             await composition.StartAsync(timeout.Token);
             var subscriptions = new FieldSubscriptionCore(core, composition);

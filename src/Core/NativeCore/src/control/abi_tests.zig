@@ -20,12 +20,14 @@ const reason = abi.ReasonView{
 test "C ABI layout and state tags are stable" {
     const profile_signature: *const fn (u32, ?[*]u32, usize, ?*usize) callconv(.c) i32 = &abi.rm_control_profile_host_blocks;
     _ = profile_signature;
-    try std.testing.expectEqual(@as(usize, 72), @sizeOf(abi.Config));
-    try std.testing.expectEqual(@as(usize, 56), @offsetOf(abi.Config, "host_blocks"));
-    try std.testing.expectEqual(@as(usize, 64), @offsetOf(abi.Config, "host_block_count"));
+    try std.testing.expectEqual(@as(usize, 56), @sizeOf(abi.Config));
+    try std.testing.expectEqual(@as(usize, 40), @offsetOf(abi.Config, "host_blocks"));
+    try std.testing.expectEqual(@as(usize, 48), @offsetOf(abi.Config, "host_block_count"));
     try std.testing.expectEqual(@as(usize, 48), @sizeOf(abi.HostCallbacks));
     try std.testing.expectEqual(@as(usize, 8), @sizeOf(abi.ItemKeyView));
     try std.testing.expectEqual(@as(usize, 48), @sizeOf(abi.ReasonView));
+    try std.testing.expectEqual(@as(usize, 8), @sizeOf(abi.FunctionRead));
+    try std.testing.expectEqual(@as(usize, 16), @sizeOf(abi.ReadFunction));
 
     try std.testing.expectEqual(@as(u32, 0), @intFromEnum(abi.ReadView.not_published));
     try std.testing.expectEqual(@as(u32, 1), @intFromEnum(abi.ReadView.owner_stopped));
@@ -43,7 +45,51 @@ test "C ABI layout and state tags are stable" {
     try std.testing.expectEqual(@as(u32, 1), @intFromEnum(abi.Profile.full));
     try std.testing.expectEqual(@as(u32, 2), @intFromEnum(abi.Profile.windows_service));
     try std.testing.expectEqual(@as(u32, 3), @intFromEnum(abi.Profile.normal_read_only));
-    try std.testing.expectEqual(@as(u32, 0x0001_0000), abi.rm_control_abi_version());
+    try std.testing.expectEqual(@as(u32, 0x0002_0000), abi.rm_control_abi_version());
+}
+
+test "C read functions return current owner values outside controller locks and unbind suppresses reads" {
+    const config = makeConfig(.full);
+    const callbacks = testCallbacks();
+    var handle: ?*anyopaque = null;
+    try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_control_create(&config, &callbacks, &handle));
+    defer closeHandle(&handle);
+    var context = FunctionContext{ .handle = handle };
+    const function = abi.ReadFunction{ .context = &context, .read = functionRead };
+    const key = abi.ItemKeyView{ .item = declarations.ItemUids.PresentUnfrozen, .block = 0 };
+    var claim: ?*anyopaque = null;
+    try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_control_claim_read_function(handle, &key, &function, &claim));
+    var value: u32 = 99;
+    try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_control_read(handle, &key, &value));
+    try std.testing.expectEqual(@intFromEnum(abi.ReadView.false_value), value);
+    context.value = true;
+    try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_control_notify_changed(handle, claim, &reason, 0));
+    try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_control_read(handle, &key, &value));
+    try std.testing.expectEqual(@intFromEnum(abi.ReadView.true_value), value);
+    try std.testing.expectEqual(@intFromEnum(ResultCode.ok), context.reentry_code);
+    try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_control_unbind(handle, claim, &reason, 0));
+    const unbound_calls = context.calls;
+    try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_control_read(handle, &key, &value));
+    try std.testing.expectEqual(@intFromEnum(abi.ReadView.owner_stopped), value);
+    try std.testing.expectEqual(unbound_calls, context.calls);
+    try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_control_bind(handle, claim, &reason, 0));
+    try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_control_read(handle, &key, &value));
+    try std.testing.expectEqual(@intFromEnum(abi.ReadView.true_value), value);
+}
+
+const FunctionContext = struct {
+    handle: ?*anyopaque,
+    value: bool = false,
+    calls: usize = 0,
+    reentry_code: i32 = -1,
+};
+
+fn functionRead(raw: ?*anyopaque, output: *abi.FunctionRead) callconv(.c) void {
+    const context: *FunctionContext = @ptrCast(@alignCast(raw orelse unreachable));
+    var state: u32 = 99;
+    context.reentry_code = abi.rm_control_read_state(context.handle, B.Backend, &state);
+    context.calls += 1;
+    output.* = .{ .kind = 3, .value = @intFromBool(context.value) };
 }
 
 test "profile host UID export reports exact lists and validates caller buffers" {
@@ -75,9 +121,9 @@ test "profile host UID export reports exact lists and validates caller buffers" 
 
 test "production profiles have one backend root and preserve domain ownership and data edges" {
     const profiles = [_]struct { topology: control.tree.Tree, blocks: usize, inputs: usize, backend_children: usize }{
-        .{ .topology = backend_tree.topology, .blocks = 48, .inputs = 51, .backend_children = 10 },
-        .{ .topology = backend_tree.service_topology, .blocks = 49, .inputs = 52, .backend_children = 10 },
-        .{ .topology = backend_tree.normal_readonly_topology, .blocks = 32, .inputs = 28, .backend_children = 5 },
+        .{ .topology = backend_tree.topology, .blocks = backend_tree.full_host_block_uids.len + 1, .inputs = 41, .backend_children = 10 },
+        .{ .topology = backend_tree.service_topology, .blocks = backend_tree.service_host_block_uids.len + 1, .inputs = 42, .backend_children = 10 },
+        .{ .topology = backend_tree.normal_readonly_topology, .blocks = backend_tree.normal_readonly_host_block_uids.len + 1, .inputs = 19, .backend_children = 4 },
     };
     for (profiles) |profile| {
         try std.testing.expectEqual(profile.blocks, profile.topology.blocks.len);
@@ -103,7 +149,7 @@ test "production profiles have one backend root and preserve domain ownership an
     }
 }
 
-test "full profile exposes claims, typed reads, demand, readers and bounded snapshots" {
+test "full profile exposes claims, typed reads, read functions, readers and bounded snapshots" {
     const config = makeConfig(.full);
     const callbacks = testCallbacks();
     var handle: ?*anyopaque = null;
@@ -159,21 +205,6 @@ test "full profile exposes claims, typed reads, demand, readers and bounded snap
     try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_control_read_presence(handle, &host_key, &value));
     try std.testing.expectEqual(@intFromEnum(abi.PresenceView.present), value);
 
-    const block_demand = declarations.ItemUids.BlockDemand;
-    const block_key = "abi-demand";
-    const demand_block = backend_tree.full_host_block_uids[0];
-    try std.testing.expectEqual(
-        @intFromEnum(ResultCode.ok),
-        abi.rm_control_set_demand(handle, block_key.ptr, block_key.len, demand_block, &reason, 0),
-    );
-    try std.testing.expectEqual(
-        @intFromEnum(ResultCode.ok),
-        abi.rm_control_clear_demand(handle, block_key.ptr, block_key.len, &reason, 0),
-    );
-    const demand_key = abi.ItemKeyView{ .item = block_demand, .block = demand_block };
-    try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_control_read(handle, &demand_key, &value));
-    try std.testing.expectEqual(@intFromEnum(abi.ReadView.false_value), value);
-
     var required_length: usize = 0;
     try std.testing.expectEqual(
         @intFromEnum(ResultCode.buffer_too_small),
@@ -221,30 +252,18 @@ test "Windows Service profile selects the additional update-service block" {
 }
 
 test "NormalReadOnly profile selects its exact filtered host block set" {
-    const expected_host_blocks = [_]u32{
-        B.NativeEtwLifetimeService,         B.TrustedAccessRequestOwner,            B.TrustedAccessInvocationHostedService,
-        B.RuntimeSpecializationCoordinator, B.HostManagerSamplingSubscriptionOwner, B.HostManagerMetricSnapshotOwner,
-        B.HostManagerSoftwareIdentityOwner, B.HostManagerFileQueryOwner,            B.HostManagerDisplayCoordinatorOwner,
-        B.ServiceAutoStartSettings,         B.ServiceRecoverySettings,              B.FanControlCoreLifetimeService,
-        B.KernelEtwSessionBroker,           B.EtwPhysicalDiskIoAttributionReader,   B.EtwNetworkTcpIpAttributionReader,
-        B.PresentFrameEtwSource,            B.GpuAllocationCollector,               B.DxgkrnlVidMmEtwTelemetryZone,
-        B.DeviceTopologySnapshotProvider,   B.GpuTelemetryWorkerSupervisor,         B.WindowsHardwareMetricSampler,
-        B.CpuTopologySnapshotProvider,      B.EtwCpuCoreResidencyReader,            B.EtwSystemInterruptSnapshotSource,
-        B.WindowsResourceBreakdownSampler,  B.Backend,                              B.ServiceHost,
-        B.Monitoring,                       B.HardwareControl,                      B.SoftwareManagement,
-        B.TrustedAccess,
-    };
+    const expected_host_blocks = backend_tree.normal_readonly_host_block_uids;
     try std.testing.expectEqualSlices(
         u32,
         expected_host_blocks[0..],
         backend_tree.normal_readonly_host_block_uids[0..],
     );
-    try std.testing.expectEqual(@as(usize, 32), backend_tree.normal_readonly_registry.blocks.len);
+    try std.testing.expectEqual(expected_host_blocks.len + 1, backend_tree.normal_readonly_registry.blocks.len);
     var normal_readonly_input_edges: usize = 0;
     for (backend_tree.normal_readonly_topology.blocks) |block| {
         normal_readonly_input_edges += block.inputs.len;
     }
-    try std.testing.expectEqual(@as(usize, 28), normal_readonly_input_edges);
+    try std.testing.expectEqual(@as(usize, 19), normal_readonly_input_edges);
 
     var config = makeConfig(.normal_read_only);
     const callbacks = testCallbacks();
@@ -279,39 +298,38 @@ test "NormalReadOnly profile selects its exact filtered host block set" {
 
 test "runtime and completion callbacks reenter the C ABI, and destroy refuses active runs" {
     var context = CallbackContext{};
-    var config = makeConfig(.full);
+    const config = makeConfig(.full);
     const callbacks = callbacksFor(&context);
     var handle: ?*anyopaque = null;
     try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_control_create(&config, &callbacks, &handle));
     defer cleanupCallbackHandle(&handle, &context);
     context.handle = handle;
 
-    const block_uid = declarations.BlockUids.TrustedAccessRequestOwner;
-    context.demand_key = .{ .item = declarations.ItemUids.BlockDemand, .block = block_uid };
+    const block_uid = declarations.BlockUids.TrustedAccessInvocationHostedService;
+    context.permit_key = .{ .item = declarations.ItemUids.HostStartPermitted, .block = block_uid };
     const holder = "abi-reentrant-reader";
     var reader_id: u64 = 0;
     try std.testing.expectEqual(
         @intFromEnum(ResultCode.ok),
-        abi.rm_control_register_reader(handle, &context.demand_key, holder.ptr, holder.len, &reader_id),
+        abi.rm_control_register_reader(handle, &context.permit_key, holder.ptr, holder.len, &reader_id),
     );
+    for (backend_tree.full_host_block_uids) |uid| {
+        if (uid == block_uid) continue;
+        const permit = abi.ItemKeyView{ .item = declarations.ItemUids.HostStartPermitted, .block = uid };
+        var parent_claim: ?*anyopaque = null;
+        try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_control_claim_cell(handle, &permit, &parent_claim));
+        try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_control_publish(handle, parent_claim, @intFromEnum(abi.ReadView.true_value), &reason, 0));
+    }
     try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_control_activate(handle));
 
-    // The demand's reader must be active before this round-completion check.
+    // The parent branch is running before this round-completion check.
     try std.testing.expect(waitForBlockState(handle, B.TrustedAccess, .running));
 
-    const demand_key = "abi-reentrant-demand";
+    var claim: ?*anyopaque = null;
+    try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_control_claim_cell(handle, &context.permit_key, &claim));
     const completion_token: u64 = 91;
-    try std.testing.expectEqual(
-        @intFromEnum(ResultCode.ok),
-        abi.rm_control_set_demand(
-            handle,
-            demand_key.ptr,
-            demand_key.len,
-            block_uid,
-            &reason,
-            completion_token,
-        ),
-    );
+    try std.testing.expectEqual(@intFromEnum(ResultCode.ok),
+        abi.rm_control_publish(handle, claim, @intFromEnum(abi.ReadView.true_value), &reason, completion_token));
     try std.testing.expect(waitForU64(&context.completed_token, completion_token));
     try std.testing.expect(waitForI32(&context.start_report_code, @intFromEnum(ResultCode.ok)));
     try std.testing.expect(context.item_changed_calls.load(.acquire) > 0);
@@ -348,7 +366,7 @@ test "C ABI rejects invalid layout, profiles, tags, and null handles" {
     config.profile = 99;
     try std.testing.expectEqual(@intFromEnum(ResultCode.invalid_argument), abi.rm_control_create(&config, &callbacks, &handle));
 
-    const key = abi.ItemKeyView{ .item = declarations.ItemUids.BlockDemand, .block = backend_tree.full_host_block_uids[0] };
+    const key = abi.ItemKeyView{ .item = declarations.ItemUids.HostStartPermitted, .block = backend_tree.full_host_block_uids[0] };
     try std.testing.expectEqual(@intFromEnum(ResultCode.invalid_argument), abi.rm_control_read(null, &key, null));
     try std.testing.expectEqual(@intFromEnum(ResultCode.invalid_argument), abi.rm_control_publish(null, null, 99, null, 0));
 }
@@ -369,14 +387,11 @@ fn makeConfig(profile: abi.Profile) abi.Config {
         .profile = @intFromEnum(profile),
         .worker_count = 1,
         .history_capacity = 4,
-        .demand_capacity = 8,
-        .demand_bytes = 4096,
         .completion_capacity = 8,
         .reader_capacity = 8,
         .reader_bytes = 1024,
         .worker_arena_bytes = 1_048_576,
         .reason_text_capacity = 256,
-        .demand_item_uid = declarations.ItemUids.BlockDemand,
         .shutdown_item_uid = declarations.ItemUids.ProgramShuttingDown,
         .host_blocks = host_blocks,
         .host_block_count = @intCast(host_block_count),
@@ -396,7 +411,7 @@ fn testCallbacks() abi.HostCallbacks {
 
 const CallbackContext = struct {
     handle: ?*anyopaque = null,
-    demand_key: abi.ItemKeyView = .{ .item = 0, .block = 0 },
+    permit_key: abi.ItemKeyView = .{ .item = 0, .block = 0 },
     item_changed_calls: std.atomic.Value(u32) = .init(0),
     item_changed_code: std.atomic.Value(i32) = .init(-1),
     item_changed_value: std.atomic.Value(u32) = .init(99),
@@ -437,7 +452,7 @@ fn reentrantStop(raw: ?*anyopaque, block_uid: u32, run: u64) callconv(.c) void {
 fn reentrantComplete(raw: ?*anyopaque, token: u64) callconv(.c) void {
     const context = contextFrom(raw);
     var state: u32 = 99;
-    const result = abi.rm_control_read_state(context.handle, context.demand_key.block, &state);
+    const result = abi.rm_control_read_state(context.handle, context.permit_key.block, &state);
     context.completion_block_state.store(state, .release);
     context.completion_read_code.store(result, .release);
     context.completed_token.store(token, .release);

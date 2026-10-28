@@ -8,12 +8,12 @@ using SharedScheduler = ResourceManager.Shared.BusinessBlocks.BusinessBlockSched
 
 namespace Resource_Manager_APP.Tests;
 
-internal static class BusinessBlockTestDemands
+internal static class BusinessBlockTestFacts
 {
-    internal static Task StartAsync(this SharedScheduler scheduler, int id, BusinessBlockReason reason, CancellationToken cancellation = default)
-        => scheduler.SetDemandAsync("test:" + id, id, reason, cancellation);
-    internal static Task StopAsync(this SharedScheduler scheduler, int id, BusinessBlockReason reason, CancellationToken cancellation = default)
-        => scheduler.SetDemandAsync("test:" + id, null, reason, cancellation);
+    internal static Task StartAsync(this TestBlockScheduler scheduler, int id, BusinessBlockReason reason, CancellationToken cancellation = default)
+        => scheduler.PublishExecutionAsync(id, true, reason, cancellation);
+    internal static Task StopAsync(this TestBlockScheduler scheduler, int id, BusinessBlockReason reason, CancellationToken cancellation = default)
+        => scheduler.PublishExecutionAsync(id, false, reason, cancellation);
     internal static Task StopDependenciesAsync(this SharedScheduler scheduler, BusinessBlockReason reason, CancellationToken cancellation = default)
         => scheduler.ShutdownAsync(reason);
 }
@@ -29,25 +29,15 @@ internal static class BusinessBlockTestSupport
         var rows = registrations.ToArray();
         var graph = TestBlockScheduler.CreateGraph(rows);
         var authority = CreateAuthority(graph.BlockIds);
-        var rules = (decisions ?? []).ToDictionary(rule => rule.ParentId);
-        foreach (var parent in graph.BlockIds.Prepend(graph.Program))
-        {
-            var children = graph.Children(parent);
-            if (children.Count == 0 || rules.ContainsKey(parent)) continue;
-            // These fixture rules explicitly model configuration gating. Custom rules choose their own inputs.
-            rules.Add(parent, new(parent, children.SelectMany(id => new[] { DemandKey(id), GateKey(id) }).ToArray(),
-                input => children.Where(id => input.Read<bool>(DemandKey(id)).GetValueOrDefault(false)
-                    && input.Read<bool>(GateKey(id)).GetValueOrDefault(true)).ToArray()));
-        }
 #if RM_STATE_NAMES
         Func<int, string?> nameLookup = ResourceManager.App.StateItems.StateNames.Name;
 #else
         Func<int, string?> nameLookup = static _ => null;
 #endif
         return new(rows, authority, historyLimit, logger ?? NullLogger<SharedScheduler>.Instance,
-            decisions: rules.Values, nameLookup: nameLookup);
+            decisions: decisions, nameLookup: nameLookup);
     }
-    internal static StateItemKey DemandKey(int id) => new(BackendItems.BlockDemand, id);
+    internal static StateItemKey ExecutionKey(int id) => new(TestStateUids.ExecutionEnabled, id);
     internal static StateItemKey GateKey(int id) => new(TestStateUids.Unfrozen, id);
     internal static StateAuthority CreateAuthority(IEnumerable<int>? blocks = null)
         => new(ResourceManager.App.StateItems.StateRegistry.Items.Concat(TestStateUids.Declarations),

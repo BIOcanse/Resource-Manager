@@ -6,10 +6,186 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class KernelEtwSessionBrokerTests
 {
+    [Fact]
+    public async Task FailedAcquisitionRollsBackTheUndeliveredHolderBeforeAnotherAcquisition()
+    {
+        var factory = new FakeRuntimeFactory { AvailabilityFailure = new InvalidOperationException("fixture reconciliation failure") };
+        using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance,
+            TimeSpan.FromMilliseconds(10));
+
+        Assert.Throws<InvalidOperationException>(() => broker.Subscribe(
+            new("failed", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { })));
+        Assert.Equal(0, broker.GetSnapshot().SubscriptionCount);
+        Assert.Equal(1, factory.AvailabilityChecks);
+        await Task.Delay(75);
+        Assert.Equal(1, factory.AvailabilityChecks);
+
+        factory.AvailabilityFailure = null;
+        using var successful = broker.Subscribe(new("successful", KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
+        Assert.Equal(new[] { "successful" }, Assert.Single(factory.Calls).SubscriptionIds);
+        successful.Dispose();
+        Assert.Equal(0, broker.GetSnapshot().SubscriptionCount);
+        Assert.Equal("Idle", broker.GetSnapshot().State);
+    }
+
+    [Fact]
+    public void FailedAcquisitionDuringRuntimeDisposalRollsBackWithoutRetryingCleanup()
+    {
+        var factory = new FakeRuntimeFactory();
+        using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
+        using var held = broker.Subscribe(new("held", KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
+        var runtime = Assert.Single(factory.Calls).Runtime;
+        runtime.UpdateFailure = new InvalidOperationException("fixture update requires replacement");
+        runtime.DisposalFailure = new InvalidOperationException("fixture partial disposal failure");
+
+        Assert.Throws<InvalidOperationException>(() => broker.Subscribe(
+            new("failed", KernelTraceEventParser.Keywords.NetworkTCPIP, static (_, _) => { })));
+        Assert.Equal(1, broker.GetSnapshot().SubscriptionCount);
+        Assert.Equal(1, runtime.DisposalAttempts);
+        Assert.Equal("StopFailed", held.GetSnapshot().State);
+        Assert.Single(factory.Calls);
+
+        runtime.DisposalFailure = null;
+        broker.Owner.Reconcile();
+        Assert.True(runtime.DisposalCompleted);
+        Assert.Equal(2, runtime.DisposalAttempts);
+        Assert.Single(factory.Calls);
+        broker.Owner.Reconcile();
+        Assert.Equal(2, factory.Calls.Count);
+        Assert.Equal(new[] { "held" }, factory.Calls[1].SubscriptionIds);
+        Assert.True(held.GetSnapshot().IsRunning);
+    }
+
+    [Fact]
+    public void FailedInitialAcquisitionRetainsPartialCleanupWithoutLeavingAHolder()
+    {
+        var factory = new FakeRuntimeFactory
+        {
+            FirstRuntimeStartFailure = new InvalidOperationException("fixture start failure"),
+            FirstRuntimeDisposalFailure = new InvalidOperationException("fixture failed-start disposal failure")
+        };
+        using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
+        Assert.Throws<InvalidOperationException>(() => broker.Subscribe(
+            new("failed", KernelTraceEventParser.Keywords.Process, static (_, _) => { })));
+        var runtime = Assert.Single(factory.Calls).Runtime;
+        Assert.Equal(0, broker.GetSnapshot().SubscriptionCount);
+        Assert.Equal("StopFailed", broker.GetSnapshot().State);
+        Assert.Equal(1, runtime.DisposalAttempts);
+        runtime.DisposalFailure = null;
+        broker.Owner.Reconcile();
+        Assert.Equal(2, runtime.DisposalAttempts);
+        Assert.True(runtime.DisposalCompleted);
+        Assert.Equal("Idle", broker.GetSnapshot().State);
+        Assert.Single(factory.Calls);
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task ShutdownWaitsForConsumerDisposalAfterDeniedStopOrDrainTimeout(bool controlDenied)
+    public void FailedFinalDisposalRetainsItsCleanupObligationAndBlocksReplacement(bool shutdown)
+    {
+        var factory = new FakeRuntimeFactory();
+        using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
+        using var held = broker.Subscribe(new("held", KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
+        var runtime = Assert.Single(factory.Calls).Runtime;
+        runtime.DisposalFailure = new InvalidOperationException("fixture partial disposal failure");
+
+        Action release = shutdown ? broker.Dispose : held.Dispose;
+        Assert.Throws<InvalidOperationException>(release);
+        Assert.Equal("StopFailed", broker.GetSnapshot().State);
+        Assert.Equal(0, broker.GetSnapshot().SubscriptionCount);
+        Assert.Equal(1, runtime.DisposalAttempts);
+        Assert.False(runtime.DisposalCompleted);
+        IKernelEtwSubscription? next = null;
+        if (!shutdown)
+        {
+            next = broker.Subscribe(new("next", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
+            Assert.Equal("StopFailed", next.GetSnapshot().State);
+            Assert.Single(factory.Calls);
+            Assert.Equal(1, runtime.DisposalAttempts);
+        }
+
+        runtime.DisposalFailure = null;
+        if (shutdown) broker.Dispose();
+        else broker.Owner.Reconcile();
+        Assert.Equal(2, runtime.DisposalAttempts);
+        Assert.Equal(1, runtime.StopCount);
+        Assert.True(runtime.DisposalCompleted);
+        Assert.Equal(shutdown ? "Stopped" : "Idle", broker.GetSnapshot().State);
+        Assert.Single(factory.Calls);
+        if (next is not null)
+        {
+            broker.Owner.Reconcile();
+            Assert.Equal(2, factory.Calls.Count);
+            Assert.True(next.GetSnapshot().IsRunning);
+            next.Dispose();
+        }
+    }
+
+    [Fact]
+    public void RuntimeCleanupRetriesOnlyTheFailedPartsOnTheNextExplicitDisposal()
+    {
+        var cleanup = new KernelEtwSessionRuntimeCleanup();
+        var attempts = new int[4];
+        var failSource = true;
+        Action cancel = () => attempts[0]++;
+        Action source = () => { attempts[1]++; if (failSource) throw new InvalidOperationException("fixture source handle still held"); };
+        Action session = () => attempts[2]++;
+        Action join = () => attempts[3]++;
+
+        cleanup.CancelSubscriptions(cancel);
+        cleanup.DisposeSession(session);
+        cleanup.ConfirmProcessingJoined();
+        Assert.Throws<AggregateException>(() => cleanup.Dispose(cancel, source, session, join));
+        Assert.Equal(new[] { 1, 1, 1, 0 }, attempts);
+        failSource = false;
+        cleanup.Dispose(cancel, source, session, join);
+        cleanup.Dispose(cancel, source, session, join);
+        Assert.Equal(new[] { 1, 2, 1, 0 }, attempts);
+    }
+
+    [Fact]
+    public void RuntimeCleanupDoesNotRetryAFailedStopStepDuringTheSameRelease()
+    {
+        var cleanup = new KernelEtwSessionRuntimeCleanup();
+        var attempts = 0;
+        var failSession = true;
+        Action session = () => { attempts++; if (failSession) throw new InvalidOperationException("fixture session handle still held"); };
+        Assert.Throws<InvalidOperationException>(() => cleanup.DisposeSession(session));
+        Assert.Throws<AggregateException>(() => cleanup.Dispose(static () => { }, static () => { }, session, static () => { }));
+        Assert.Equal(1, attempts);
+        failSession = false;
+        cleanup.Dispose(static () => { }, static () => { }, session, static () => { });
+        Assert.Equal(2, attempts);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void RuntimeCleanupRetainsEachFailedStepAndDoesNotRepeatCompletedSteps(int failedStep)
+    {
+        var cleanup = new KernelEtwSessionRuntimeCleanup();
+        var attempts = new int[4];
+        var fail = true;
+        var actions = Enumerable.Range(0, 4).Select(index => (Action)(() =>
+        {
+            attempts[index]++;
+            if (index == failedStep && fail) throw new InvalidOperationException("fixture pending cleanup");
+        })).ToArray();
+        Assert.Throws<AggregateException>(() => cleanup.Dispose(actions[0], actions[1], actions[2], actions[3]));
+        Assert.Equal(new[] { 1, 1, 1, 1 }, attempts);
+        fail = false;
+        cleanup.Dispose(actions[0], actions[1], actions[2], actions[3]);
+        cleanup.Dispose(actions[0], actions[1], actions[2], actions[3]);
+        Assert.Equal(Enumerable.Range(0, 4).Select(index => index == failedStep ? 2 : 1), attempts);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task LastHolderReleaseWaitsForConsumerDisposalAfterDeniedStopOrDrainTimeout(bool controlDenied)
     {
         using var disposalRelease = new ManualResetEventSlim();
         var factory = new FakeRuntimeFactory
@@ -20,214 +196,109 @@ public sealed class KernelEtwSessionBrokerTests
                 : new(true, true, false, ["ConsumerThread: fixture drain timeout"])
         };
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
-        await broker.StartAsync(CancellationToken.None);
         using var subscription = broker.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
         var runtime = Assert.Single(factory.Calls).Runtime;
-        var stop = Task.Run(() => broker.StopAsync(CancellationToken.None));
+        var release = Task.Run(subscription.Dispose);
         try
         {
-            var reached = await Task.WhenAny(stop, runtime.DisposalEntered.Task).WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.Same(runtime.DisposalEntered.Task, reached);
-            Assert.False(stop.IsCompleted);
-            Assert.Equal("Stopping", broker.GetSnapshot().State);
+            await runtime.DisposalEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(release.IsCompleted);
             Assert.Equal(1, runtime.StopCount);
-            Assert.Throws<InvalidOperationException>(() => { _ = broker.StartAsync(CancellationToken.None); });
         }
         finally
         {
             disposalRelease.Set();
-            await stop.WaitAsync(TimeSpan.FromSeconds(5));
+            await release.WaitAsync(TimeSpan.FromSeconds(5));
         }
         Assert.True(runtime.DisposalCompleted);
         Assert.False(runtime.IsProcessing);
         Assert.Equal("StopFailed", broker.GetSnapshot().State);
-        Assert.Equal(1, runtime.StopCount);
+        Assert.Equal(0, broker.GetSnapshot().SubscriptionCount);
         Assert.Contains(controlDenied ? "fixture denied" : "fixture drain timeout", broker.GetSnapshot().Message);
+        using var next = broker.Subscribe(new("next", KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
+        broker.Owner.Reconcile();
+        Assert.Single(factory.Calls);
+        Assert.Equal("StopFailed", next.GetSnapshot().State);
     }
 
     [Fact]
-    public async Task SameBrokerRestartsRetainedSubscriptionsAndLateReleaseOnlyRemovesItsReader()
+    public void ReacquiringAfterLastReleaseCreatesANewRuntimeWithoutRevivingReleasedReaders()
     {
         var factory = new FakeRuntimeFactory();
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
-        await broker.StartAsync(CancellationToken.None);
+        Assert.Empty(factory.Calls);
         var received = 0;
         var oldLease = broker.Subscribe(new("first", KernelTraceEventParser.Keywords.ContextSwitch,
             (source, _) => source.ThreadCSwitch += _ => received++));
         var firstGeneration = oldLease.GetSnapshot().Generation;
-        await broker.StopAsync(CancellationToken.None);
+        oldLease.Dispose();
         var oldRuntime = Assert.Single(factory.Calls).Runtime;
         Assert.True(oldRuntime.DisposalCompleted);
+        Assert.Equal("Idle", broker.GetSnapshot().State);
+        using var nextLease = broker.Subscribe(new("second", KernelTraceEventParser.Keywords.DiskIO, static (_, _) => { }));
+        Assert.Equal(2, factory.Calls.Count);
+        var nextRuntime = factory.Calls[1].Runtime;
+        Assert.NotSame(oldRuntime, nextRuntime);
+        Assert.True(nextLease.GetSnapshot().IsRunning);
+        Assert.True(nextLease.GetSnapshot().Generation > firstGeneration);
+        Assert.Equal(new[] { "second" }, factory.Calls[1].SubscriptionIds);
+        oldLease.Dispose();
         Assert.Equal(1, broker.GetSnapshot().SubscriptionCount);
-
-        await broker.StartAsync(CancellationToken.None);
-        try
-        {
-            using var nextLease = broker.Subscribe(new("second", KernelTraceEventParser.Keywords.DiskIO, static (_, _) => { }));
-            Assert.Equal(2, factory.Calls.Count);
-            var nextRuntime = factory.Calls[1].Runtime;
-            Assert.NotSame(oldRuntime, nextRuntime);
-            Assert.True(oldLease.GetSnapshot().IsRunning);
-            Assert.True(nextLease.GetSnapshot().IsRunning);
-            Assert.True(oldLease.GetSnapshot().Generation > firstGeneration);
-            nextRuntime.EmitContextSwitch();
-            Assert.Equal(1, received);
-            oldLease.Dispose();
-            Assert.Equal(1, broker.GetSnapshot().SubscriptionCount);
-            Assert.Equal(0, nextRuntime.StopCount);
-            nextRuntime.EmitContextSwitch();
-            Assert.Equal(1, received);
-        }
-        finally
-        {
-            oldLease.Dispose();
-            await broker.StopAsync(CancellationToken.None);
-        }
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task ReleasedSubscriptionsAreNotRecreatedWhenBrokerRestarts(bool addWhileStopped)
-    {
-        var factory = new FakeRuntimeFactory();
-        using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
-        await broker.StartAsync(default);
-        using var removed = broker.Subscribe(new("removed", KernelTraceEventParser.Keywords.ContextSwitch,
-            static (_, _) => { }));
-        await broker.StopAsync(default);
-        removed.Dispose();
-        Assert.Equal(0, broker.GetSnapshot().SubscriptionCount);
-        Assert.Equal("Idle", removed.GetSnapshot().State);
-        using var added = addWhileStopped
-            ? broker.Subscribe(new("added", KernelTraceEventParser.Keywords.DiskIO, static (_, _) => { }))
-            : null;
-        Assert.Single(factory.Calls);
-        Assert.Equal("Stopped", broker.GetSnapshot().State);
-        await broker.StartAsync(default);
-        try
-        {
-            Assert.Equal(addWhileStopped ? 2 : 1, factory.Calls.Count);
-            Assert.Equal(addWhileStopped ? 1 : 0, broker.GetSnapshot().SubscriptionCount);
-            Assert.Equal("Idle", removed.GetSnapshot().State);
-            if (addWhileStopped)
-            {
-                Assert.Equal(new[] { "added" }, factory.Calls[1].SubscriptionIds);
-                Assert.True(added!.GetSnapshot().IsRunning);
-            }
-        }
-        finally { await broker.StopAsync(default); }
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task UnprovenShutdownReleaseStillBlocksReplacementAfterBrokerRestarts(bool controlDenied)
-    {
-        var factory = new FakeRuntimeFactory
-        {
-            RuntimeStopResult = controlDenied
-                ? new(false, false, false, ["SessionStop: fixture denied"]) { ControlDenied = true }
-                : new(true, true, false, ["ConsumerThread: fixture drain timeout"])
-        };
-        using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
-        await broker.StartAsync(default);
-        using var retained = broker.Subscribe(new("retained", KernelTraceEventParser.Keywords.Process,
-            static (_, _) => { }));
-        await broker.StopAsync(default);
-        Assert.True(Assert.Single(factory.Calls).Runtime.DisposalCompleted);
-        await broker.StartAsync(default);
-        try
-        {
-            broker.Owner.Reconcile();
-            Assert.Single(factory.Calls);
-            Assert.Equal("StopFailed", retained.GetSnapshot().State);
-            Assert.Equal(1, broker.GetSnapshot().SubscriptionCount);
-        }
-        finally { await broker.StopAsync(default); }
+        Assert.Equal(0, nextRuntime.StopCount);
+        nextRuntime.EmitContextSwitch();
+        Assert.Equal(0, received);
     }
 
     [Fact]
-    public async Task DisposedBrokerCannotStartAnotherRun()
+    public void DisposedBrokerCannotAcquireAnotherResourceAndLateLeaseReleaseIsIdempotent()
     {
         var factory = new FakeRuntimeFactory();
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
-        await broker.StartAsync(CancellationToken.None);
         using var subscription = broker.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
-        await broker.StopAsync(CancellationToken.None);
         broker.Dispose();
-
-        Assert.Throws<ObjectDisposedException>(() => { _ = broker.StartAsync(CancellationToken.None); });
+        subscription.Dispose();
+        broker.Dispose();
         Assert.Single(factory.Calls);
+        Assert.True(factory.Calls[0].Runtime.DisposalCompleted);
+        Assert.Equal(1, factory.Calls[0].Runtime.StopCount);
         Assert.Equal("Stopped", broker.GetSnapshot().State);
         Assert.Equal(0, broker.GetSnapshot().SubscriptionCount);
         Assert.Throws<ObjectDisposedException>(() => broker.Subscribe(
             new("late", KernelTraceEventParser.Keywords.Process, static (_, _) => { })));
     }
 
-    [Fact]
-    public async Task CanceledStartStillDrainsRetainedRuntimeBeforeStopReturnsAndDisposeDoesNotThrow()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task BrokerDisposalWaitsForTheRetainedConsumer(bool controlDenied)
     {
-        using var disposalRelease = new ManualResetEventSlim(initialState: true);
-        var factory = new FakeRuntimeFactory { RuntimeDisposalRelease = disposalRelease };
+        using var disposalRelease = new ManualResetEventSlim();
+        var factory = new FakeRuntimeFactory
+        {
+            RuntimeDisposalRelease = disposalRelease,
+            RuntimeStopResult = controlDenied
+                ? new(false, false, false, ["SessionStop: fixture denied"]) { ControlDenied = true }
+                : KernelEtwSessionStopResult.Released
+        };
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
-        await broker.StartAsync(default);
-        using var retained = broker.Subscribe(new("retained", KernelTraceEventParser.Keywords.Process,
-            static (_, _) => { }));
-        await broker.StopAsync(default);
-        using var canceledStart = new CancellationTokenSource();
-        canceledStart.Cancel();
-
-        await broker.StartAsync(canceledStart.Token);
-        var canceledExecution = broker.ExecuteTask!;
-        Assert.True(canceledExecution.IsCanceled);
-        var resumedRuntime = factory.Calls[1].Runtime;
-        Assert.True(resumedRuntime.IsProcessing);
-        disposalRelease.Reset();
-        var stop = Task.Run(() => broker.StopAsync(default));
+        using var subscription = broker.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
+        var runtime = Assert.Single(factory.Calls).Runtime;
+        var disposal = Task.Run(broker.Dispose);
         try
         {
-            await resumedRuntime.DisposalEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.False(stop.IsCompleted);
-            Assert.Throws<InvalidOperationException>(() => { _ = broker.StartAsync(default); });
+            await runtime.DisposalEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(disposal.IsCompleted);
+            Assert.Equal("Stopping", broker.GetSnapshot().State);
         }
         finally
         {
             disposalRelease.Set();
-            await stop.WaitAsync(TimeSpan.FromSeconds(5));
+            await disposal.WaitAsync(TimeSpan.FromSeconds(5));
         }
-
-        Assert.Same(canceledExecution, broker.ExecuteTask);
-        Assert.True(resumedRuntime.DisposalCompleted);
-        Assert.False(resumedRuntime.IsProcessing);
-        Assert.Equal("Stopped", retained.GetSnapshot().State);
-        Assert.Equal(1, broker.GetSnapshot().SubscriptionCount);
-        broker.Dispose();
+        Assert.True(runtime.DisposalCompleted);
+        Assert.False(runtime.IsProcessing);
+        Assert.Equal(controlDenied ? "StopFailed" : "Stopped", broker.GetSnapshot().State);
         Assert.Equal(0, broker.GetSnapshot().SubscriptionCount);
-    }
-
-    [Fact]
-    public async Task RestartDrainsCanceledPredecessorBeforeCreatingTheNextRuntime()
-    {
-        var factory = new FakeRuntimeFactory();
-        using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
-        using var retained = broker.Subscribe(new("retained", KernelTraceEventParser.Keywords.Process,
-            static (_, _) => { }));
-        using var canceledStart = new CancellationTokenSource();
-        canceledStart.Cancel();
-        await broker.StartAsync(canceledStart.Token);
-        Assert.True(broker.ExecuteTask!.IsCanceled);
-        var predecessor = Assert.Single(factory.Calls).Runtime;
-
-        await broker.StartAsync(default);
-        try
-        {
-            Assert.True(predecessor.DisposalCompleted);
-            Assert.False(predecessor.IsProcessing);
-            Assert.Equal(2, factory.Calls.Count);
-            Assert.True(retained.GetSnapshot().IsRunning);
-        }
-        finally { await broker.StopAsync(default); }
     }
 
     [Fact]
@@ -260,10 +331,8 @@ public sealed class KernelEtwSessionBrokerTests
         Assert.Equal(0, runtime.StopCount);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void DeniedStopRetriesLogErrorsOnlyWhenTheFailureChanges(bool restart)
+    [Fact]
+    public void DeniedRestartStopRetriesLogErrorsOnlyWhenTheFailureChanges()
     {
         var diagnostics = new List<KernelEtwDiagnostic>();
         var factory = new FakeRuntimeFactory();
@@ -271,11 +340,8 @@ public sealed class KernelEtwSessionBrokerTests
         using var cpu = owner.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
         var runtime = Assert.Single(factory.Calls).Runtime;
         runtime.StopResult = new(false, false, false, ["SessionStop: fixture denied"]) { ControlDenied = true };
-        if (restart) runtime.UpdateFailure = new InvalidOperationException("fixture update requires release");
-        using var disk = restart
-            ? owner.Subscribe(new("disk", KernelTraceEventParser.Keywords.DiskIO, static (_, _) => { }))
-            : null;
-        if (!restart) cpu.Dispose();
+        runtime.UpdateFailure = new InvalidOperationException("fixture update requires release");
+        using var disk = owner.Subscribe(new("disk", KernelTraceEventParser.Keywords.DiskIO, static (_, _) => { }));
         owner.Reconcile();
         owner.Reconcile();
 
@@ -294,7 +360,7 @@ public sealed class KernelEtwSessionBrokerTests
         runtime.UpdateFailure = null;
         runtime.StopResult = KernelEtwSessionStopResult.Released;
         owner.Reconcile();
-        Assert.Equal(restart ? "Running" : "Idle", owner.GetSnapshot().State);
+        Assert.Equal("Running", owner.GetSnapshot().State);
     }
 
     [Fact]
@@ -312,7 +378,9 @@ public sealed class KernelEtwSessionBrokerTests
         Assert.Equal("Idle", metadata.GetSnapshot().State);
         Assert.True(network.GetSnapshot().IsRunning);
         network.Dispose();
-        Assert.True(owner.GetSnapshot().IsRunning);
+        Assert.False(owner.GetSnapshot().IsRunning);
+        Assert.True(runtime.DisposalCompleted);
+        Assert.Equal("StopFailed", owner.GetSnapshot().State);
         Assert.Equal("Idle", network.GetSnapshot().State);
         runtime.StopResult = KernelEtwSessionStopResult.Released;
         owner.Reconcile();
@@ -359,37 +427,49 @@ public sealed class KernelEtwSessionBrokerTests
         Assert.Equal(0, original.StopCount);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void LastReleaseStillStopsAndDisposesWhenSubscriptionUnregisterFails(bool accessDenied)
+    {
+        var factory = new FakeRuntimeFactory();
+        using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
+        using var subscription = broker.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
+        var original = Assert.Single(factory.Calls).Runtime;
+        original.UpdateFailure = accessDenied
+            ? new UnauthorizedAccessException("fixture unregister denied")
+            : new InvalidOperationException("fixture unregister failed");
+        subscription.Dispose();
+        Assert.Equal(1, original.StopCount);
+        Assert.True(original.DisposalCompleted);
+        Assert.False(original.IsProcessing);
+        Assert.Equal("Idle", broker.GetSnapshot().State);
+        Assert.Equal(0, broker.GetSnapshot().SubscriptionCount);
+        using var replacement = broker.Subscribe(new("next", KernelTraceEventParser.Keywords.Process, static (_, _) => { }));
+        Assert.Equal(2, factory.Calls.Count);
+        Assert.True(replacement.GetSnapshot().IsRunning);
+    }
+
     [Fact]
-    public void DeniedLastStopKeepsOwnershipAndCanServeAgainBeforeStopRetrySucceeds()
+    public void DeniedLastStopDisposesLocalConsumerAndBlocksNativeReplacement()
     {
         var factory = new FakeRuntimeFactory();
         using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
         var first = broker.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
         var runtime = Assert.Single(factory.Calls).Runtime;
-        var before = broker.GetSnapshot();
-        runtime.StopResult = new(false, false, false, ["SessionStop: UnauthorizedAccessException: fixture denied"])
-        { ControlDenied = true };
+        runtime.StopResult = new(false, false, false, ["SessionStop: fixture denied"]) { ControlDenied = true };
         first.Dispose();
         broker.Owner.Reconcile();
-        Assert.True(runtime.IsProcessing);
-        Assert.True(broker.GetSnapshot().IsRunning);
-        Assert.Equal(before.EnabledKeywords, broker.GetSnapshot().EnabledKeywords);
-        Assert.Contains("fixture denied", broker.GetSnapshot().Message);
-        Assert.Equal(2, runtime.StopCount);
-
-        var received = 0;
-        var second = broker.Subscribe(new("cpu-2", KernelTraceEventParser.Keywords.ContextSwitch,
-            (source, _) => source.ThreadCSwitch += _ => received++));
-        runtime.EmitContextSwitch();
-        Assert.Equal(1, received);
-        Assert.Single(factory.Calls);
-        Assert.Equal(before.Generation, broker.GetSnapshot().Generation);
-        second.Dispose();
-        runtime.StopResult = KernelEtwSessionStopResult.Released;
-        broker.Owner.Reconcile();
         Assert.False(runtime.IsProcessing);
-        Assert.Equal("Idle", broker.GetSnapshot().State);
+        Assert.True(runtime.DisposalCompleted);
+        Assert.Equal("StopFailed", broker.GetSnapshot().State);
+        Assert.Equal(KernelTraceEventParser.Keywords.None, broker.GetSnapshot().EnabledKeywords);
+        Assert.Contains("fixture denied", broker.GetSnapshot().Message);
+        Assert.Equal(1, runtime.StopCount);
+        using var second = broker.Subscribe(new("cpu-2", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
+        broker.Owner.Reconcile();
         Assert.Single(factory.Calls);
+        Assert.False(second.GetSnapshot().IsRunning);
     }
 
     [Fact]
@@ -404,6 +484,7 @@ public sealed class KernelEtwSessionBrokerTests
         runtime.UpdateFailure = new System.ComponentModel.Win32Exception(5, "fixture disk control denied");
         using var disk = new ResourceManager.ReadWrite.Windows.Processes.EtwPhysicalDiskIoCaptureOwner(broker);
 
+        disk.Start();
         var denied = disk.Read();
         Assert.Equal(ResourceManager.App.Application.ResourceBreakdown.PhysicalDiskIoProviderStates.Unavailable, denied.ProviderState.State);
         Assert.Contains("fixture disk control denied", denied.ProviderState.Message);
@@ -555,6 +636,65 @@ public sealed class KernelEtwSessionBrokerTests
     }
 
     [Fact]
+    public async Task HeldResourceReconcilesProcessingFailureAndLastReleaseDrainsTheReplacement()
+    {
+        var factory = new FakeRuntimeFactory();
+        using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance,
+            TimeSpan.FromMilliseconds(10));
+        using var subscription = broker.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
+        var first = Assert.Single(factory.Calls);
+        first.Runtime.StopProcessingUnexpectedly();
+        await WaitUntilAsync(() => factory.Calls.Count == 2 && broker.GetSnapshot().IsRunning);
+        Assert.True(first.Runtime.DisposalCompleted);
+        var replacement = factory.Calls[1];
+        Assert.True(replacement.Context.Generation > first.Context.Generation);
+        Assert.Equal(new[] { "cpu" }, replacement.SubscriptionIds);
+        subscription.Dispose();
+        Assert.True(replacement.Runtime.DisposalCompleted);
+        Assert.False(replacement.Runtime.IsProcessing);
+        Assert.Equal("Idle", broker.GetSnapshot().State);
+        Assert.Equal(0, broker.GetSnapshot().SubscriptionCount);
+        await Task.Delay(75);
+        Assert.Equal(2, factory.Calls.Count);
+        Assert.Equal(1, replacement.Runtime.StopCount);
+    }
+
+    [Fact]
+    public async Task LastHolderReleaseWaitsForAnInFlightReconciliationBeforeDrainingItsRuntime()
+    {
+        using var startRelease = new ManualResetEventSlim();
+        var startEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var factory = new FakeRuntimeFactory
+        {
+            SecondRuntimeStartEntered = startEntered,
+            SecondRuntimeStartRelease = startRelease
+        };
+        using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance,
+            TimeSpan.FromMilliseconds(10));
+        using var subscription = broker.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
+        Assert.Single(factory.Calls).Runtime.StopProcessingUnexpectedly();
+        Task? release = null;
+        try
+        {
+            await startEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var releaseEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            release = Task.Run(() => { releaseEntered.SetResult(); subscription.Dispose(); });
+            await releaseEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(release.IsCompleted);
+        }
+        finally
+        {
+            startRelease.Set();
+            if (release is not null) await release.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        var replacement = factory.Calls[1].Runtime;
+        Assert.True(replacement.DisposalCompleted);
+        Assert.False(replacement.IsProcessing);
+        Assert.Equal("Idle", broker.GetSnapshot().State);
+        Assert.Equal(0, broker.GetSnapshot().SubscriptionCount);
+    }
+
+    [Fact]
     public async Task LostEventsPreserveTheRuntimeAndRemainVisibleToConsumers()
     {
         var factory = new FakeRuntimeFactory();
@@ -562,7 +702,6 @@ public sealed class KernelEtwSessionBrokerTests
             factory,
             NullLogger<KernelEtwSessionBroker>.Instance,
             TimeSpan.FromMilliseconds(10));
-        await broker.StartAsync(CancellationToken.None);
         try
         {
             using var subscription = broker.Subscribe(new KernelEtwSubscriptionRequest(
@@ -589,7 +728,7 @@ public sealed class KernelEtwSessionBrokerTests
         }
         finally
         {
-            await broker.StopAsync(CancellationToken.None);
+            broker.Dispose();
         }
     }
 
@@ -601,7 +740,6 @@ public sealed class KernelEtwSessionBrokerTests
             factory,
             NullLogger<KernelEtwSessionBroker>.Instance,
             TimeSpan.FromMilliseconds(10));
-        await broker.StartAsync(CancellationToken.None);
         try
         {
             using var subscription = broker.Subscribe(new KernelEtwSubscriptionRequest(
@@ -619,76 +757,25 @@ public sealed class KernelEtwSessionBrokerTests
         }
         finally
         {
-            await broker.StopAsync(CancellationToken.None);
+            broker.Dispose();
         }
     }
 
     [Fact]
-    public async Task StoppedBrokerRetainsRegistrationsAndAcceptsSubscriptionChangesWithoutStartingResources()
+    public void FailedRuntimeReleaseCannotBeReportedAsStopped()
     {
-        var factory = new FakeRuntimeFactory();
-        using var broker = new KernelEtwSessionBroker(
-            factory,
-            NullLogger<KernelEtwSessionBroker>.Instance,
-            TimeSpan.FromMilliseconds(10));
-        await broker.StartAsync(CancellationToken.None);
-        var subscription = broker.Subscribe(new KernelEtwSubscriptionRequest(
-            "cpu",
-            KernelTraceEventParser.Keywords.ContextSwitch,
-            static (_, _) => { }));
-
-        await broker.StopAsync(CancellationToken.None);
-
-        var stopped = broker.GetSnapshot();
-        Assert.Equal("Stopped", stopped.State);
-        Assert.Equal(1, stopped.SubscriptionCount);
-        Assert.Equal(KernelTraceEventParser.Keywords.None, stopped.EnabledKeywords);
-        Assert.Equal(1, Assert.Single(factory.Calls).Runtime.StopCount);
-
+        var factory = new FakeRuntimeFactory
+        {
+            RuntimeStopResult = new(false, true, true, ["SessionStop: fixture failure."])
+        };
+        using var broker = new KernelEtwSessionBroker(factory, NullLogger<KernelEtwSessionBroker>.Instance);
+        using var subscription = broker.Subscribe(new("cpu", KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
         subscription.Dispose();
-        var afterLateRelease = broker.GetSnapshot();
-        Assert.Equal("Stopped", afterLateRelease.State);
-        Assert.Equal(0, afterLateRelease.SubscriptionCount);
-        Assert.Single(factory.Calls);
-
-        using var late = broker.Subscribe(
-            new KernelEtwSubscriptionRequest(
-                "late",
-                KernelTraceEventParser.Keywords.Process,
-                static (_, _) => { }));
-        Assert.Equal("Stopped", broker.GetSnapshot().State);
-        Assert.Equal(1, broker.GetSnapshot().SubscriptionCount);
-        Assert.Single(factory.Calls);
-        late.Dispose();
+        Assert.Equal("StopFailed", broker.GetSnapshot().State);
+        Assert.Contains("fixture failure", broker.GetSnapshot().Message);
         Assert.Equal(0, broker.GetSnapshot().SubscriptionCount);
-    }
-
-    [Fact]
-    public async Task FailedRuntimeReleaseCannotBeReportedAsStopped()
-    {
-        var failedStop = new KernelEtwSessionStopResult(
-            SessionStopSucceeded: false,
-            SessionDisposeSucceeded: true,
-            ProcessingCompleted: true,
-            Failures: ["SessionStop: fixture failure."]);
-        var factory = new FakeRuntimeFactory { RuntimeStopResult = failedStop };
-        using var broker = new KernelEtwSessionBroker(
-            factory,
-            NullLogger<KernelEtwSessionBroker>.Instance,
-            TimeSpan.FromMilliseconds(10));
-        await broker.StartAsync(CancellationToken.None);
-        using var subscription = broker.Subscribe(new KernelEtwSubscriptionRequest(
-            "cpu",
-            KernelTraceEventParser.Keywords.ContextSwitch,
-            static (_, _) => { }));
-
-        await broker.StopAsync(CancellationToken.None);
-
-        var stopped = broker.GetSnapshot();
-        Assert.Equal("StopFailed", stopped.State);
-        Assert.Contains("fixture failure", stopped.Message, StringComparison.Ordinal);
-        Assert.Equal(1, stopped.SubscriptionCount);
         Assert.Equal(1, Assert.Single(factory.Calls).Runtime.StopCount);
+        Assert.True(factory.Calls[0].Runtime.DisposalCompleted);
     }
 
     [Fact]
@@ -704,7 +791,6 @@ public sealed class KernelEtwSessionBrokerTests
             factory,
             NullLogger<KernelEtwSessionBroker>.Instance,
             TimeSpan.FromMilliseconds(10));
-        await broker.StartAsync(CancellationToken.None);
         var firstSubscription = broker.Subscribe(new KernelEtwSubscriptionRequest(
             "cpu",
             KernelTraceEventParser.Keywords.ContextSwitch,
@@ -730,7 +816,7 @@ public sealed class KernelEtwSessionBrokerTests
         Assert.Single(factory.Calls);
         Assert.Equal(1, first.Runtime.StopCount);
         Assert.Equal("StopFailed", broker.GetSnapshot().State);
-        await broker.StopAsync(CancellationToken.None);
+        broker.Dispose();
     }
 
     [Fact]
@@ -750,7 +836,6 @@ public sealed class KernelEtwSessionBrokerTests
             factory,
             NullLogger<KernelEtwSessionBroker>.Instance,
             TimeSpan.FromMilliseconds(10));
-        await broker.StartAsync(CancellationToken.None);
         var firstSubscription = broker.Subscribe(new KernelEtwSubscriptionRequest(
             "cpu",
             KernelTraceEventParser.Keywords.ContextSwitch,
@@ -773,7 +858,7 @@ public sealed class KernelEtwSessionBrokerTests
         Assert.Single(factory.Calls);
         Assert.Equal(1, first.Runtime.StopCount);
         Assert.Equal("StopFailed", broker.GetSnapshot().State);
-        await broker.StopAsync(CancellationToken.None);
+        broker.Dispose();
     }
 
     [Fact]
@@ -790,7 +875,6 @@ public sealed class KernelEtwSessionBrokerTests
             factory,
             NullLogger<KernelEtwSessionBroker>.Instance,
             TimeSpan.FromMilliseconds(10));
-        await broker.StartAsync(CancellationToken.None);
         var firstSubscription = broker.Subscribe(new KernelEtwSubscriptionRequest(
             "cpu",
             KernelTraceEventParser.Keywords.ContextSwitch,
@@ -811,7 +895,7 @@ public sealed class KernelEtwSessionBrokerTests
 
         Assert.Equal(1, factory.CreateAttempts);
         Assert.Equal("StopFailed", broker.GetSnapshot().State);
-        await broker.StopAsync(CancellationToken.None);
+        broker.Dispose();
         Assert.Equal("StopFailed", broker.GetSnapshot().State);
     }
 
@@ -820,6 +904,9 @@ public sealed class KernelEtwSessionBrokerTests
         private readonly object gate = new();
         private readonly List<CreateCall> calls = [];
         private int createAttempts;
+        private int availabilityChecks;
+        public int AvailabilityChecks => Volatile.Read(ref availabilityChecks);
+        public Exception? AvailabilityFailure { get; set; }
         public IReadOnlyList<CreateCall> Calls
         {
             get
@@ -833,13 +920,18 @@ public sealed class KernelEtwSessionBrokerTests
         public int CreateAttempts => Volatile.Read(ref createAttempts);
         public int FirstRuntimeEventsLost { get; init; }
         public Exception? FirstRuntimeStartFailure { get; init; }
+        public Exception? FirstRuntimeDisposalFailure { get; init; }
         public Exception? FirstCreateFailure { get; init; }
         public KernelEtwSessionStopResult RuntimeStopResult { get; init; } =
             KernelEtwSessionStopResult.Released;
         public ManualResetEventSlim? RuntimeDisposalRelease { get; init; }
+        public TaskCompletionSource? SecondRuntimeStartEntered { get; init; }
+        public ManualResetEventSlim? SecondRuntimeStartRelease { get; init; }
 
         public bool TryGetAvailability(out string state, out string message)
         {
+            Interlocked.Increment(ref availabilityChecks);
+            if (AvailabilityFailure is not null) throw AvailabilityFailure;
             state = "Available";
             message = "available";
             return true;
@@ -863,8 +955,11 @@ public sealed class KernelEtwSessionBrokerTests
                 {
                     EventsLost = attempt == 1 ? FirstRuntimeEventsLost : 0,
                     StartFailure = attempt == 1 ? FirstRuntimeStartFailure : null,
+                    DisposalFailure = attempt == 1 ? FirstRuntimeDisposalFailure : null,
                     StopResult = RuntimeStopResult,
                     DisposalRelease = RuntimeDisposalRelease,
+                    StartEntered = attempt == 2 ? SecondRuntimeStartEntered : null,
+                    StartRelease = attempt == 2 ? SecondRuntimeStartRelease : null,
                 };
                 runtime.Dispatcher.InitializeSubscriptions(subscriptions, context);
                 calls.Add(new CreateCall(
@@ -896,11 +991,15 @@ public sealed class KernelEtwSessionBrokerTests
         }
         public int StopCount => Volatile.Read(ref stopCount);
         public Exception? StartFailure { get; init; }
+        public TaskCompletionSource? StartEntered { get; init; }
+        public ManualResetEventSlim? StartRelease { get; init; }
         public KernelEtwSessionStopResult StopResult { get; set; } =
             KernelEtwSessionStopResult.Released;
         public ManualResetEventSlim? DisposalRelease { get; init; }
         public TaskCompletionSource DisposalEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool DisposalCompleted { get; private set; }
+        public Exception? DisposalFailure { get; set; }
+        public int DisposalAttempts { get; private set; }
 
         public void UpdateSubscriptions(
             IReadOnlyList<KernelEtwSubscriptionRegistration> subscriptions,
@@ -923,6 +1022,8 @@ public sealed class KernelEtwSessionBrokerTests
             }
 
             Volatile.Write(ref isProcessing, 1);
+            StartEntered?.TrySetResult();
+            StartRelease?.Wait();
         }
 
         public void StopProcessingUnexpectedly() => Volatile.Write(ref isProcessing, 0);
@@ -943,6 +1044,7 @@ public sealed class KernelEtwSessionBrokerTests
 
         public void Dispose()
         {
+            DisposalAttempts++;
             DisposalEntered.TrySetResult();
             if (DisposalRelease is not null)
             {
@@ -950,6 +1052,7 @@ public sealed class KernelEtwSessionBrokerTests
             }
             Dispatcher.CancelAll();
             Volatile.Write(ref isProcessing, 0);
+            if (DisposalFailure is not null) throw DisposalFailure;
             DisposalCompleted = true;
         }
     }

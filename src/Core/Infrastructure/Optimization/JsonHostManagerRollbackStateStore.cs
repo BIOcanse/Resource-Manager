@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Infrastructure.NativeCore;
+using ResourceManager.App.Infrastructure.GpuPlacement;
 using ResourceManager.App.Infrastructure.Paths;
 
 namespace ResourceManager.App.Infrastructure.Optimization;
@@ -37,6 +38,24 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
     private bool canonicalAuthorityObserved;
     private bool dirty;
     private bool disposed;
+    private int ownedStatePending = -1;
+
+    internal bool? OwnedStatePendingPublication => Volatile.Read(ref ownedStatePending) switch
+    {
+        < 0 => null,
+        0 => false,
+        _ => true
+    };
+    internal bool OwnedStatePending => OwnedStatePendingPublication == true;
+    internal event Action? OwnedStateChanged;
+
+    private void PublishOwnedState(HostManagerRollbackStateDocument document)
+    {
+        var pending = GpuActionFacts.HasPlacementEffects(document.AppliedPlacements)
+            || GpuActionFacts.HasUnsettledActions(document.AppliedPlacements);
+        if (Interlocked.Exchange(ref ownedStatePending, pending ? 1 : 0) != (pending ? 1 : 0))
+            OwnedStateChanged?.Invoke();
+    }
 
     public JsonHostManagerRollbackStateStore(IHostEnvironment environment)
         : this(
@@ -184,6 +203,7 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
                 && HasSameCheckpointFields(persistedDocument, normalized))
             {
                 cachedDocument = normalized;
+                PublishOwnedState(normalized);
                 dirty = false;
                 return;
             }
@@ -197,6 +217,7 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
             }
 
             cachedDocument = normalized;
+            PublishOwnedState(normalized);
             dirty = true;
         }
         finally
@@ -291,6 +312,7 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
         }
 
         cachedDocument = document;
+        PublishOwnedState(document);
         persistedDocument = canonicalDocument;
         persistedRevision = persisted.Revision;
         persistedCanonicalSha256 = persisted.CanonicalSha256;
@@ -445,6 +467,7 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
             persistedCanonicalSha256 = null;
             canonicalAuthorityObserved = false;
             lastPersistedAt = now;
+            PublishOwnedState(cachedDocument);
             return;
         }
 
@@ -601,6 +624,7 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
         DateTimeOffset loadedAt)
     {
         cachedDocument = document;
+        PublishOwnedState(document);
         persistedDocument = SnapshotDocument(document);
         persistedRevision = revision;
         persistedCanonicalSha256 = SHA256.HashData(canonicalImage);
@@ -617,6 +641,8 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
         persistedRevision = 0;
         canonicalAuthorityObserved = false;
         dirty = false;
+        if (Interlocked.Exchange(ref ownedStatePending, -1) != -1)
+            OwnedStateChanged?.Invoke();
     }
 
     private void AcquireOwnerLease()

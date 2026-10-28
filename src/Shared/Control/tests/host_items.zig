@@ -36,9 +36,6 @@ const C = control.Controller(registry, tree);
 const Host = support.TestHost(C);
 fn config() types.Config {
     var cfg = support.config(16);
-    cfg.demand_item = null;
-    cfg.demand_capacity = 0;
-    cfg.demand_bytes = 0;
     cfg.host_blocks = &.{ 2, 3 };
     return cfg;
 }
@@ -55,6 +52,7 @@ test "host items: own presence has one owner and rejects boolean access" {
     var host: Host = .{};
     const controller = try C.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     controller.waitIdle();
     defer {
@@ -92,6 +90,7 @@ test "host items: reference bind and unbind notify named runtime readers" {
     var host: Host = .{ .user_context = &probe, .item_changed_hook = Probe.changed };
     const controller = try C.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     controller.waitIdle();
     defer {
@@ -127,6 +126,7 @@ test "host items: presence does not mark conditions and JSON exposes no host pay
     var host: Host = .{};
     const controller = try C.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     controller.waitIdle();
     defer {
@@ -209,6 +209,7 @@ test "host items: a held runtime reader does not delay declared-round completion
     var host: Host = .{ .user_context = &probe, .complete_hook = HeldMark.complete, .item_changed_hook = HeldMark.changed };
     const controller = try C.create(std.testing.allocator, config(), host.callbacks());
     host.controller = controller;
+    try support.initFacts(controller);
     controller.activate();
     controller.waitIdle();
     defer {

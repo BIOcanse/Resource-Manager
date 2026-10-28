@@ -28,6 +28,7 @@ public sealed class BusinessBlockHostedCancellationTests
         var block = host.Services.GetRequiredService<HostedBusinessBlockRegistry>().GetOrAdd(BackendUids.RuntimeSpecializationCoordinator, () => service);
         using var deadline = new CancellationTokenSource();
         await host.StartAsync().WaitAsync(BusinessBlockTestSupport.TestTimeout);
+        await BusinessBlockTestSupport.State(scheduler, BackendUids.RuntimeSpecializationCoordinator, BusinessBlockState.Running);
         Task? stopping = null;
         try
         {
@@ -59,7 +60,7 @@ public sealed class BusinessBlockHostedCancellationTests
     }
 
     [Fact]
-    public async Task LateObserverOfNormalMaintenanceCancellationDoesNotFaultAfterBlockHasStopped()
+    public async Task LateFailureObserverIgnoresNormalMaintenanceCancellationAndEndsWhenHostStops()
     {
         var maintenance = new Maintenance();
         var service = new SharedResourceSubscriptionMaintenanceService(maintenance,
@@ -75,20 +76,25 @@ public sealed class BusinessBlockHostedCancellationTests
         var alias = host.Services.GetServices<IHostedService>()
             .OfType<NonOwningHostedService<SharedResourceSubscriptionMaintenanceService>>().Single();
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
+        var activity = scheduler.Authority.ClaimCell<bool>(BackendItems.SharedResourceActivityExists);
+        await activity.PublishAsync(true, BusinessBlockTestSupport.Reason());
         try
         {
             await alias.StartAsync(CancellationToken.None).WaitAsync(BusinessBlockTestSupport.TestTimeout);
             await maintenance.Entered.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
-            await scheduler.SetDemandAsync("host:" + BackendUids.SharedResourceSubscriptionMaintenanceService,
-                null, BusinessBlockTestSupport.Reason());
+            await host.Services.GetRequiredService<BackendHostPermitFacts>().SetAsync(
+                BackendUids.SharedResourceSubscriptionMaintenanceService, false, BusinessBlockTestSupport.Reason());
             await BusinessBlockTestSupport.State(scheduler, BackendUids.SharedResourceSubscriptionMaintenanceService, BusinessBlockState.Stopped);
             Assert.True(service.ExecuteTask!.IsCanceled);
 
-            // Invoke the same observer after the wrapper's completion. This fixes the late
-            // continuation interleaving without depending on thread-pool continuation order.
+            // A normal stopped run is not a host failure. A late failure observer stays
+            // active across runs and finishes only when its own host token is canceled.
             var observer = typeof(NonOwningHostedService<SharedResourceSubscriptionMaintenanceService>)
                 .GetMethod("ExecuteAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
-            var observed = (Task)observer.Invoke(alias, [CancellationToken.None])!;
+            using var observationStop = new CancellationTokenSource();
+            var observed = (Task)observer.Invoke(alias, [observationStop.Token])!;
+            Assert.False(observed.IsCompleted);
+            observationStop.Cancel();
             await observed.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             Assert.False(host.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping.IsCancellationRequested);
         }

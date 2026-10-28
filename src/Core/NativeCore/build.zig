@@ -157,6 +157,15 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_smart_coordinator_tests.step);
     test_step.dependOn(&run_transaction_journal_tests.step);
 
+    // Named imported modules do not contribute their own test declarations to
+    // the ABI test roots. Run the production decision oracle and tray cases explicitly.
+    const backend_rule_tests = b.addTest(.{
+        .name = "backend-decision-rules",
+        .use_llvm = false,
+        .root_module = backend_tree_module,
+    });
+    const run_backend_rule_tests = b.addRunArtifact(backend_rule_tests);
+    test_step.dependOn(&run_backend_rule_tests.step);
     const kernel_etw_module = b.createModule(.{
         .root_source_file = b.path("src/kernel_etw_test_root.zig"),
         .target = target,

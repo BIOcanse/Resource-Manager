@@ -1,4 +1,4 @@
-using BlockUids = ResourceManager.App.StateItems.BlockUids;
+﻿using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using System.Collections.Concurrent;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.ReadWrite.Windows.Processes.Etw;
@@ -10,7 +10,6 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone
     private readonly object sessionGate = new();
     private VidMmRun? activeRun;
     private static Guid[] RequiredProviders => [PresentFrameEtwSource.GraphicsKernelProvider];
-    private TaskCompletionSource<VidMmRun> nextRun = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public Task RunAsync(BusinessBlockRunContext context)
     {
@@ -19,8 +18,6 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone
         {
             if (activeRun is not null) throw new InvalidOperationException("VidMm already has an active run.");
             activeRun = run = new(context.StopNotification);
-            nextRun.TrySetResult(run);
-            nextRun = new(TaskCreationOptions.RunContinuationsAsynchronously);
             diagnostics.BeginRun(BlockUids.DxgkrnlVidMmEtwTelemetryZone);
         }
         return RunSessionAsync(run, context);
@@ -122,30 +119,24 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone
 
     private void SignalFailure(Exception error)
     {
-        var run = Volatile.Read(ref activeRun);
-        if (run is null) return;
-        Interlocked.Exchange(ref run.Accepting, 0);
-        var firstFailure = run.Failure.TrySetResult(error);
-        ObserveSessionFailure(error);
-        if (firstFailure)
+        // A callback's temporary failure report must precede the run's final result.
+        lock (sessionGate)
         {
-            Volatile.Write(ref retainedEvidence, []);
-            diagnostics.ReportFailure(BlockUids.DxgkrnlVidMmEtwTelemetryZone, error, "vidmm-event");
+            var run = activeRun;
+            if (run is null) return;
+            Interlocked.Exchange(ref run.Accepting, 0);
+            var firstFailure = run.Failure.TrySetResult(error);
+            ObserveSessionFailure(error);
+            if (firstFailure)
+            {
+                Volatile.Write(ref retainedEvidence, []);
+                diagnostics.ReportFailure(BlockUids.DxgkrnlVidMmEtwTelemetryZone, error, "vidmm-event");
+            }
         }
     }
 
     private void ObserveSessionFailure(Exception error)
         => availability.ReportFailure(BlockUids.DxgkrnlVidMmEtwTelemetryZone, error, RequiredProviders);
-
-    private async Task AwaitReadyAsync(Task dispatch)
-    {
-        await dispatch.ConfigureAwait(false);
-        Task<VidMmRun> pending;
-        lock (sessionGate) pending = activeRun is { StopNotification.IsCancellationRequested: false } current
-            ? Task.FromResult(current) : nextRun.Task;
-        var run = await pending.ConfigureAwait(false);
-        await run.Started.Task.ConfigureAwait(false);
-    }
 
     private async Task AwaitReleasedAsync(Task dispatch)
     {
@@ -154,15 +145,6 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone
         lock (sessionGate) drain = activeRun is { StopNotification.IsCancellationRequested: true } current
             ? current.Completed.Task : Task.CompletedTask;
         await drain.ConfigureAwait(false);
-    }
-
-    private sealed class Subscription(DxgkrnlVidMmEtwTelemetryZone owner, IBusinessBlockDependency dependency) : IBusinessBlockDependency
-    {
-        private Task? released;
-        public Task Ready => owner.AwaitReadyAsync(dependency.Ready);
-        public Task Released => released ??= owner.AwaitReleasedAsync(dependency.Released);
-        public void Dispose() => dependency.Dispose();
-        public async ValueTask DisposeAsync() { Dispose(); await Released.ConfigureAwait(false); }
     }
 
     private sealed class VidMmRun(CancellationToken stopNotification)

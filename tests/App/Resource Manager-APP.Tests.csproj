@@ -113,5 +113,12 @@
   <ItemGroup><SessionAgentFile Include="$(SessionAgentOutputDirectory)*" /></ItemGroup>
   <Copy SourceFiles="@(SessionAgentFile)" DestinationFolder="$(TargetDir)ResourceManagerSessionAgent" />
 </Target>
-<Target Name="CopyFanControlCoreProbe" AfterTargets="Build"><ItemGroup><FanControlCoreProbeFile Include="$(MSBuildProjectDirectory)\..\FanControlCoreProbe\bin\$(Configuration)\net10.0\*" /></ItemGroup><Copy SourceFiles="@(FanControlCoreProbeFile)" DestinationFolder="$(TargetDir)FanControlCoreProbe" /></Target>
+<Target Name="CopyFanControlCoreProbe" AfterTargets="Build">
+  <MSBuild Projects="$(MSBuildProjectDirectory)\..\FanControlCoreProbe\FanControlCoreProbe.csproj" Targets="GetTargetPath" Properties="Configuration=$(Configuration)">
+    <Output TaskParameter="TargetOutputs" ItemName="FanControlCoreProbeTarget" />
+  </MSBuild>
+  <PropertyGroup><FanControlCoreProbeOutputDirectory>@(FanControlCoreProbeTarget->'%(RootDir)%(Directory)')</FanControlCoreProbeOutputDirectory></PropertyGroup>
+  <ItemGroup><FanControlCoreProbeFile Include="$(FanControlCoreProbeOutputDirectory)*" /></ItemGroup>
+  <Copy SourceFiles="@(FanControlCoreProbeFile)" DestinationFolder="$(TargetDir)FanControlCoreProbe" />
+</Target>
 </Project>

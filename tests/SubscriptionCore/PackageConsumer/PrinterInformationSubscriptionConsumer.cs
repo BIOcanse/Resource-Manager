@@ -35,7 +35,7 @@ internal static class PrinterInformationSubscriptionConsumer
         var configuration = Configuration();
         var failures = new ConcurrentQueue<string>();
         await using var composition = new NativeFieldSubscriptionComposition(borrow, settings, in configuration,
-            failure => failures.Enqueue($"{failure.Stage}: {failure.Error.Message}"), TimeSpan.FromMilliseconds(10));
+            failure => failures.Enqueue($"{failure.Stage}: {failure.Error.Message}"));
 
         await composition.StartAsync();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));

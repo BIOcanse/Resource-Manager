@@ -327,7 +327,7 @@ public sealed partial class WindowsInstalledSoftwareInventory : IInstalledSoftwa
         Dictionary<string, InstalledSoftwareEntry> records,
         CancellationToken cancellationToken)
     {
-        try
+        ReadInventoryRoot(root, () =>
         {
             using var baseKey = RegistryKey.OpenBaseKey(root.Hive, root.View);
             var uninstallPath = root.UserSid is null
@@ -363,8 +363,13 @@ public sealed partial class WindowsInstalledSoftwareInventory : IInstalledSoftwa
                     }
                 });
             }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        });
+    }
+
+    internal static void ReadInventoryRoot(RegistryInventoryRoot root, Action readRoot)
+    {
+        try { readRoot(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
         {
             System.Diagnostics.Trace.TraceWarning($"Cannot enumerate uninstall inventory root {root.Hive}/{root.View}/{root.UserSid}: {ex.Message}");
         }
@@ -373,7 +378,7 @@ public sealed partial class WindowsInstalledSoftwareInventory : IInstalledSoftwa
     internal static void ReadInventoryEntry(string name, Action<string> readEntry)
     {
         try { readEntry(name); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException)
         {
             System.Diagnostics.Trace.TraceWarning($"Cannot read uninstall inventory entry {name}: {error.Message}");
         }
