@@ -1,5 +1,15 @@
 import { cjkText } from "../../cjkSpacing.ts";
 export const zhRuntimeErrorsCopy = {
+  // 本地服务访问控制拒绝请求的原因，键是后端的错误码（src/presentation/accessRejection.ts）。
+  accessRejection: {
+    "keyless-request-required": "此操作不接受携带访问密钥的请求，操作未执行。",
+    "access-key-invalid": "访问密钥无效或已被撤销，操作未执行。",
+    "access-service-unavailable": "访问控制服务暂时不可用，操作未执行。请稍后重试。",
+    "access-scope-required": "当前访问密钥没有执行此操作所需的权限范围，操作未执行。",
+    "elevated-administrator-required": "此操作需要管理员授权，操作未执行。",
+    "local-windows-caller-required": "此操作只接受由本机 Windows 用户发起的请求，操作未执行。",
+    "access-key-required": "此操作需要访问密钥，操作未执行。"
+  },
   apiError: {
     readFailed: "读取数据失败，请稍后重试",
     saveSettingsFailed: "保存设置失败",

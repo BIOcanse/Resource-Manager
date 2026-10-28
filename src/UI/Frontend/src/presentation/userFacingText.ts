@@ -1,5 +1,6 @@
 import { currentLanguage, uiText } from "../text.ts";
 import { backendMessageCodeText, backendMessageDomains, renderBackendMessage } from "./backendMessage.ts";
+import { accessRejectionMessage } from "./accessRejection.ts";
 import type { BackendMessage } from "../types";
 
 const internalImplementationPattern = /\b(?:provider|shim|hook|loopback|jsonl|webview2|dxgkrnl|vidmm|fileio|diskio|ip helper|affinity|native ui|api|gc)\b|目标接收池|重算账本|运行中重建诱导|内部控制接口|热路径|闸门|软件级信封|调用栈|堆栈|exception|system\.[a-z]|at [a-z0-9_.]+\(/i;
@@ -54,6 +55,11 @@ const commonStateKeys: Record<string, UserStateKey> = {
 };
 
 export function userFacingErrorMessage(error: unknown, fallback: string) {
+  // 访问控制拒绝时写出拒绝的原因，不退回调用方的“操作失败”。
+  const rejection = accessRejectionMessage(error);
+  if (rejection !== null) {
+    return rejection;
+  }
   if (isApiRequestError(error) && error.kind === "http"
     && "status" in error && error.status === 403 && "payload" in error
     && error.payload && typeof error.payload === "object"

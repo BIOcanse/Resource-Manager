@@ -2443,6 +2443,16 @@ const koKrAppCopy: AppCopy = {
     optimizationScheduleRefreshFailed: "최적화 스케줄링 상태를 새로 고치지 못했습니다",
     metricCatalogRefreshFailed: "메트릭 카탈로그를 새로 고치지 못했습니다"
   },
+  // 本地服务访问控制拒绝请求的原因，键是后端的错误码（src/presentation/accessRejection.ts）。
+  accessRejection: {
+    "keyless-request-required": "이 작업은 액세스 키가 포함된 요청을 받지 않으므로 실행되지 않았습니다.",
+    "access-key-invalid": "액세스 키가 잘못되었거나 취소되어 작업이 실행되지 않았습니다.",
+    "access-service-unavailable": "액세스 제어 서비스를 일시적으로 사용할 수 없어 작업이 실행되지 않았습니다. 잠시 후 다시 시도하세요.",
+    "access-scope-required": "현재 액세스 키에 이 작업에 필요한 범위가 없어 실행되지 않았습니다.",
+    "elevated-administrator-required": "이 작업에는 관리자 승인이 필요하므로 실행되지 않았습니다.",
+    "local-windows-caller-required": "이 작업은 이 컴퓨터의 Windows 사용자가 시작한 요청만 받으므로 실행되지 않았습니다.",
+    "access-key-required": "이 작업에는 액세스 키가 필요하므로 실행되지 않았습니다."
+  },
   apiError: {
     readFailed: "데이터를 읽지 못했습니다. 잠시 후 다시 시도하세요",
     saveSettingsFailed: "설정을 저장하지 못했습니다",

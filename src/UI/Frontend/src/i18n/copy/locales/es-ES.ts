@@ -2444,6 +2444,16 @@ const esEsAppCopy: AppCopy = {
     optimizationScheduleRefreshFailed: "No se pudo actualizar el estado de la planificación de optimización",
     metricCatalogRefreshFailed: "No se pudo actualizar el catálogo de métricas"
   },
+  // 本地服务访问控制拒绝请求的原因，键是后端的错误码（src/presentation/accessRejection.ts）。
+  accessRejection: {
+    "keyless-request-required": "Esta acción no acepta solicitudes que incluyan una clave de acceso, por lo que no se realizó.",
+    "access-key-invalid": "La clave de acceso no es válida o se ha revocado, por lo que la acción no se realizó.",
+    "access-service-unavailable": "El servicio de control de acceso no está disponible temporalmente, por lo que la acción no se realizó. Inténtelo de nuevo más tarde.",
+    "access-scope-required": "La clave de acceso actual no tiene el ámbito que requiere esta acción, por lo que no se realizó.",
+    "elevated-administrator-required": "Esta acción requiere autorización de administrador, por lo que no se realizó.",
+    "local-windows-caller-required": "Esta acción solo acepta solicitudes iniciadas por un usuario de Windows de este equipo, por lo que no se realizó.",
+    "access-key-required": "Esta acción requiere una clave de acceso, por lo que no se realizó."
+  },
   apiError: {
     readFailed: "No se pudieron leer los datos, inténtalo de nuevo más tarde",
     saveSettingsFailed: "No se pudo guardar la configuración",

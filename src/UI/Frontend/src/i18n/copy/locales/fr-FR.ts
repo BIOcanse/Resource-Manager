@@ -2444,6 +2444,16 @@ const frFrAppCopy: AppCopy = {
     optimizationScheduleRefreshFailed: "Échec de l'actualisation de l'état de la planification d'optimisation",
     metricCatalogRefreshFailed: "Échec de l'actualisation du catalogue de métriques"
   },
+  // 本地服务访问控制拒绝请求的原因，键是后端的错误码（src/presentation/accessRejection.ts）。
+  accessRejection: {
+    "keyless-request-required": "Cette action n’accepte pas les requêtes contenant une clé d’accès ; elle n’a pas été effectuée.",
+    "access-key-invalid": "La clé d’accès est invalide ou a été révoquée ; l’action n’a pas été effectuée.",
+    "access-service-unavailable": "Le service de contrôle d’accès est temporairement indisponible ; l’action n’a pas été effectuée. Réessayez plus tard.",
+    "access-scope-required": "La clé d’accès actuelle n’a pas la portée requise par cette action ; elle n’a pas été effectuée.",
+    "elevated-administrator-required": "Cette action nécessite une autorisation d’administrateur ; elle n’a pas été effectuée.",
+    "local-windows-caller-required": "Cette action n’accepte que les requêtes lancées par un utilisateur Windows de cet ordinateur ; elle n’a pas été effectuée.",
+    "access-key-required": "Cette action nécessite une clé d’accès ; elle n’a pas été effectuée."
+  },
   apiError: {
     readFailed: "Échec de la lecture des données, réessayez plus tard",
     saveSettingsFailed: "Échec de l'enregistrement des paramètres",

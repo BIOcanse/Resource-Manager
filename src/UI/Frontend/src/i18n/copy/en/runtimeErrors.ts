@@ -2,8 +2,18 @@ import type { AppCopy } from "../zh/index.ts";
 
 export const enRuntimeErrorsCopy: Pick<
   AppCopy,
-  "apiError" | "session" | "request" | "operationRegistry" | "gpuTarget" | "softwareMetadata" | "workspace" | "appShellExtras" | "shellBridge" | "misc"
+  "accessRejection" | "apiError" | "session" | "request" | "operationRegistry" | "gpuTarget" | "softwareMetadata" | "workspace" | "appShellExtras" | "shellBridge" | "misc"
 > = {
+  // 本地服务访问控制拒绝请求的原因，键是后端的错误码（src/presentation/accessRejection.ts）。
+  accessRejection: {
+    "keyless-request-required": "This action does not accept requests that carry an access key, so it was not performed.",
+    "access-key-invalid": "The access key is invalid or has been revoked, so the action was not performed.",
+    "access-service-unavailable": "The access control service is temporarily unavailable, so the action was not performed. Try again later.",
+    "access-scope-required": "The current access key does not have the scope this action requires, so it was not performed.",
+    "elevated-administrator-required": "This action requires administrator authorization, so it was not performed.",
+    "local-windows-caller-required": "This action accepts only requests started by a Windows user on this computer, so it was not performed.",
+    "access-key-required": "This action requires an access key, so it was not performed."
+  },
   apiError: {
     readFailed: "Reading data failed, please try again later",
     saveSettingsFailed: "Saving the settings failed",

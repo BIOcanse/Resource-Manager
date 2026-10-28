@@ -2444,6 +2444,16 @@ const deDeAppCopy: AppCopy = {
     optimizationScheduleRefreshFailed: "Das Aktualisieren des Status der Optimierungsplanung ist fehlgeschlagen",
     metricCatalogRefreshFailed: "Das Aktualisieren des Metrikkatalogs ist fehlgeschlagen"
   },
+  // 本地服务访问控制拒绝请求的原因，键是后端的错误码（src/presentation/accessRejection.ts）。
+  accessRejection: {
+    "keyless-request-required": "Diese Aktion nimmt keine Anfragen mit Zugriffsschlüssel an und wurde daher nicht ausgeführt.",
+    "access-key-invalid": "Der Zugriffsschlüssel ist ungültig oder wurde widerrufen; die Aktion wurde nicht ausgeführt.",
+    "access-service-unavailable": "Der Zugriffssteuerungsdienst ist vorübergehend nicht verfügbar; die Aktion wurde nicht ausgeführt. Versuchen Sie es später erneut.",
+    "access-scope-required": "Dem aktuellen Zugriffsschlüssel fehlt der für diese Aktion erforderliche Bereich; sie wurde nicht ausgeführt.",
+    "elevated-administrator-required": "Diese Aktion erfordert eine Administratorautorisierung und wurde daher nicht ausgeführt.",
+    "local-windows-caller-required": "Diese Aktion nimmt nur Anfragen an, die ein Windows-Benutzer dieses Computers gestartet hat, und wurde daher nicht ausgeführt.",
+    "access-key-required": "Diese Aktion erfordert einen Zugriffsschlüssel und wurde daher nicht ausgeführt."
+  },
   apiError: {
     readFailed: "Das Lesen der Daten ist fehlgeschlagen, versuchen Sie es später erneut",
     saveSettingsFailed: "Das Speichern der Einstellungen ist fehlgeschlagen",

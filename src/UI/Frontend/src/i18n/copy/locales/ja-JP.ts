@@ -2444,6 +2444,16 @@ const jaJpAppCopy: AppCopy = {
     optimizationScheduleRefreshFailed: "最適化スケジューリングの状態の更新に失敗しました",
     metricCatalogRefreshFailed: "メトリック カタログの更新に失敗しました"
   },
+  // 本地服务访问控制拒绝请求的原因，键是后端的错误码（src/presentation/accessRejection.ts）。
+  accessRejection: {
+    "keyless-request-required": "この操作はアクセス キーを含む要求を受け付けないため、実行されませんでした。",
+    "access-key-invalid": "アクセス キーが無効か取り消されているため、操作は実行されませんでした。",
+    "access-service-unavailable": "アクセス制御サービスが一時的に利用できないため、操作は実行されませんでした。しばらくしてから再試行してください。",
+    "access-scope-required": "現在のアクセス キーにはこの操作に必要なスコープがないため、実行されませんでした。",
+    "elevated-administrator-required": "この操作には管理者の承認が必要なため、実行されませんでした。",
+    "local-windows-caller-required": "この操作はこのコンピューターの Windows ユーザーが開始した要求のみ受け付けるため、実行されませんでした。",
+    "access-key-required": "この操作にはアクセス キーが必要なため、実行されませんでした。"
+  },
   apiError: {
     readFailed: "データの読み取りに失敗しました。しばらくしてから再試行してください",
     saveSettingsFailed: "設定の保存に失敗しました",

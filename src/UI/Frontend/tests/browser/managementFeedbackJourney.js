@@ -79,7 +79,8 @@ export default async function managementFeedbackJourney(page, baseUrl) {
   });
   await page.route(`**/api/components/${bridgeId}/install`, route => {
     bridgeUpdateRequests.push(route.request().postDataJSON());
-    return route.fulfill({ status: 503, json: { error: "fixture missing-payload update request recorded" } });
+    // 已安装测试版 10-28 的真实回复：默认密钥没有这个操作需要的范围，访问控制拒绝。
+    return route.fulfill({ status: 403, json: { error: "access-scope-required" } });
   });
   await page.route("**/api/components", route => route.fulfill({ json: [
     componentFixture(runtimeId, { installerAvailable: true, installerPath: "C:/Fixture/MicrosoftEdgeWebview2Setup.exe" }),
@@ -262,6 +263,11 @@ export default async function managementFeedbackJourney(page, baseUrl) {
   assert.deepEqual(bridgeUpdateResponse.request().postDataJSON(), { acknowledgeExternalTerms: true, versionChoice: "verified" });
   assert.equal(bridgeUpdateRequests.length, 1, "Only explicit consent may submit the missing-payload update");
   assert.equal(bridgeVersionLookups, bridgeVersionLookupsBeforeSubmit, "Missing-payload updates must not fetch version choices");
+  // 被访问控制拒绝：对话框关掉后，错误提示写出拒绝的原因，不只是“操作失败”。
+  const bridgeRejectionToast = page.locator(".toast.error:not([data-exit-ghost])")
+    .filter({ hasText: finalApp.accessRejection["access-scope-required"] });
+  await bridgeRejectionToast.waitFor({ state: "visible" });
+  await bridgeRejectionToast.getByText(finalApp.feedback.error, { exact: true }).waitFor();
   assert.equal(deletes, 0, "Canceled registration removals must not write");
   assert.equal(verifications, languages.length, "Each language must invoke verification on the installed AMD payload once");
   assert.deepEqual(errors, []);

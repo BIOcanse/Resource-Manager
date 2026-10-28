@@ -1,5 +1,15 @@
 import { cjkText } from "../../cjkSpacing.ts";
 export const zhRuntimeErrorsCopy = {
+  // 本地服务访问控制拒绝请求的原因，键是后端的错误码（src/presentation/accessRejection.ts）。
+  accessRejection: {
+    "keyless-request-required": "此操作不接受攜帶存取金鑰的要求，操作未執行。",
+    "access-key-invalid": "存取金鑰無效或已被撤銷，操作未執行。",
+    "access-service-unavailable": "存取控制服務暫時無法使用，操作未執行。請稍後重試。",
+    "access-scope-required": "目前的存取金鑰沒有執行此操作所需的權限範圍，操作未執行。",
+    "elevated-administrator-required": "此操作需要系統管理員授權，操作未執行。",
+    "local-windows-caller-required": "此操作只接受由本機 Windows 使用者發起的要求，操作未執行。",
+    "access-key-required": "此操作需要存取金鑰，操作未執行。"
+  },
   apiError: {
     readFailed: "讀取資料失敗，請稍後重試",
     saveSettingsFailed: "儲存設定失敗",
