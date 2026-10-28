@@ -101,12 +101,12 @@ public static class OptionalDependencyCatalog
             // 而本程序是 Apache-2.0，直接引用会把整个程序传染成 GPL。
             // 顺带的好处是隔离 —— 碰内核的代码崩了不拖累主程序。
             ReleaseSource: new GitHubReleaseSource(
-                Owner: "BIOcanse", Repository: "Resource-Manager-HardwareBridge", VerifiedTag: "v0.2.1",
+                Owner: "BIOcanse", Repository: "Resource-Manager-HardwareBridge", VerifiedTag: "v0.2.2",
                 VerifiedAssetName: "ResourceManager.HardwareBridge-win-x64.zip", AssetPatterns: ["ResourceManager.HardwareBridge-win-x64.zip"]),
             PayloadSource: new DependencyPayloadSource(
                 Owner: "BIOcanse",
                 Repository: "Resource-Manager-HardwareBridge",
-                VerifiedTag: "v0.2.1",
+                VerifiedTag: "v0.2.2",
                 VerifiedAssetName: "ResourceManager.HardwareBridge-win-x64.zip",
                 FileNames: ["ResourceManager.HardwareBridge.exe", "LICENSE"], IncludeArchiveContents: true))
 
