@@ -184,9 +184,9 @@ public sealed class HostManagerPlanCompilerTests
         Assert.Equal("host-manager/transaction-journal/payloads", plan.HostRecreate.TransactionJournal.PayloadRelativeDirectory);
         Assert.Equal(16, plan.HostRecreate.ReportCoordinator.Capacity.MaximumSourceCount);
         Assert.Equal(64, plan.HostRecreate.ReportCoordinator.Capacity.MaximumRuleCount);
-        Assert.Equal(2048, plan.HostRecreate.ReportCoordinator.Capacity.MaximumObservationCount);
-        Assert.Equal(1024, plan.HostRecreate.ReportCoordinator.Capacity.MaximumReportCount);
-        Assert.Equal(32768, plan.HostRecreate.ReportCoordinator.Capacity.MaximumPersistenceOperationCount);
+        Assert.Equal(8192, plan.HostRecreate.ReportCoordinator.Capacity.MaximumObservationCount);
+        Assert.Equal(4096, plan.HostRecreate.ReportCoordinator.Capacity.MaximumReportCount);
+        Assert.Equal(131072, plan.HostRecreate.ReportCoordinator.Capacity.MaximumPersistenceOperationCount);
         Assert.Equal(
             (uint)(
                 NativePublicServiceTaskOutcomeMask.ProviderUnavailable
