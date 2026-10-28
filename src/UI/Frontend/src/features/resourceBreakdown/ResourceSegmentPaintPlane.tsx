@@ -69,6 +69,8 @@ export function ResourceSegmentPaintPlane(props: ResourceSegmentPaintPlaneProps)
   let lastGeometrySignature = "";
   let lastPresentation: ResourceBarPresentation | null = null;
   let lastDrawnSegments: ResourcePaintSegment[] = [];
+  // 画布样式跟外观走：外观（对象按内容比较，只在真变了时换新）不变就沿用，不随每次数据更新重读计算样式、重量字。
+  let paintStyle: { presentation: ResourceBarPresentation; style: CanvasPaintStyle } | null = null;
   // 按内容比较：属性被写成同样的值时（App 的外观副作用随自调度快照重跑，每次都会写）观察器也会通知，
   // 这时外观没变，不能当成变化去重画，否则正在走的过渡被直接画成末帧。
   const [presentation, setPresentation] = createSignal(readResourceBarPresentation(), { equals: samePresentation });
@@ -106,9 +108,10 @@ export function ResourceSegmentPaintPlane(props: ResourceSegmentPaintPlaneProps)
     const unchanged = signature === lastSignature
       && geometrySignature === lastGeometrySignature
       && currentPresentation === lastPresentation;
+    const sizeChanged = geometrySignature !== lastGeometrySignature;
     const shouldAnimate = Boolean(lastSignature)
       && signature !== lastSignature
-      && geometrySignature === lastGeometrySignature
+      && !sizeChanged
       && canAnimateResourceBar(currentPresentation.animations);
 
     lastSignature = signature;
@@ -118,22 +121,37 @@ export function ResourceSegmentPaintPlane(props: ResourceSegmentPaintPlaneProps)
     if (!element || geometry.width <= 0 || geometry.height <= 0) {
       return;
     }
-    // 要画的和正在过渡去的完全一样（别的依赖变了但段、尺寸、外观都没变）：让过渡走完，不跳到末帧。
-    if (unchanged && animationFrame !== 0) {
+    // 要画的和画布上已有的、或正在过渡去的完全一样（别的依赖变了但段、尺寸、外观都没变）：不重画；
+    // 正在走的过渡照常走完，不跳到末帧。
+    if (unchanged) {
       return;
     }
 
     cancelAnimationFrame(animationFrame);
     animationFrame = 0;
-    const paintStyle = createCanvasPaintStyle(element);
+    if (paintStyle?.presentation !== currentPresentation) {
+      paintStyle = { presentation: currentPresentation, style: createCanvasPaintStyle(element) };
+    }
+    const style = paintStyle.style;
 
-    if (!shouldAnimate || lastDrawnSegments.length === 0) {
-      drawSegments(element, targetSegments, geometry, currentPresentation, paintOptions, paintStyle);
+    // 尺寸变了（含第一次画）就当场画：布局已经换了尺寸，旧图会被拉伸着显示，要在这一帧画好。
+    if (sizeChanged) {
+      drawSegments(element, targetSegments, geometry, currentPresentation, paintOptions, style);
       lastDrawnSegments = targetSegments;
       return;
     }
+    // 尺寸没变时直接画到终态也在下一帧里画，不在数据到达的任务里画：画字（fillText）前浏览器要先把样式算好，
+    // 数据刚改过 DOM 时那就是一次强制的整页样式重算，会把到达任务拖过 50 ms；在帧里它本来就要算。
+    if (!shouldAnimate || lastDrawnSegments.length === 0) {
+      animationFrame = requestAnimationFrame(() => {
+        animationFrame = 0;
+        drawSegments(element, targetSegments, geometry, currentPresentation, paintOptions, style);
+        lastDrawnSegments = targetSegments;
+      });
+      return;
+    }
 
-    animateSegments(element, lastDrawnSegments, targetSegments, geometry, currentPresentation, paintOptions, paintStyle, (frame) => {
+    animateSegments(element, lastDrawnSegments, targetSegments, geometry, currentPresentation, paintOptions, style, (frame) => {
       animationFrame = frame;
     }, (drawn) => {
       lastDrawnSegments = drawn;
@@ -184,12 +202,15 @@ function animateSegments(
   const easeBar = readMotionEase(canvas, "--ease-bar");
   const startedAt = performance.now();
   const pixelWidth = paintPixelWidth(geometry);
-  // 每秒一次的小幅变化常常落在同样的像素上：这时中间帧与末帧逐像素相同，直接画末帧。
+  // 每秒一次的小幅变化常常落在同样的像素上：这时中间帧与末帧逐像素相同，下一帧直接画末帧。
   if (durationMs <= 0 || leaving.length === 0
     && segmentPixelKey(toSegments.map((target) => fromByKey.get(target.key) ?? target), pixelWidth)
       === segmentPixelKey(toSegments, pixelWidth)) {
-    drawSegments(canvas, toSegments, geometry, presentation, paintOptions, paintStyle);
-    setLastDrawnSegments(toSegments);
+    setAnimationFrame(requestAnimationFrame(() => {
+      drawSegments(canvas, toSegments, geometry, presentation, paintOptions, paintStyle);
+      setLastDrawnSegments(toSegments);
+      setAnimationFrame(0);
+    }));
     return;
   }
   let drawnPixelKey: string | null = null;
@@ -453,14 +474,18 @@ function shouldDrawDividers(
 }
 
 /**
- * 一次绘制（一次数据更新，或一段 360 ms 的过渡）内不变的画布样式：字体、CSS 变量解析出的颜色、文字宽度。
- * 每次更新新建一份，过渡中的每一帧复用，不再逐帧读计算样式（逐帧读会强制样式重算）。
+ * 外观内不变的画布样式：字体、CSS 变量解析出的颜色、量过的文字宽度。颜色令牌和字体只随界面风格、配色主题和系统深浅色变
+ * （都在外观里），所以外观不变就一直沿用，换了外观才新建一份。第一次用到时才读计算样式、才量字，之后不再读、不再量：
+ * 数据刚改过 DOM 时读计算样式会强制一次整页样式重算（实测每次到达 15–50 ms）。
+ * 颜色是有限的一组令牌和调色板色；文字是软件名、进程名和它们截短的前缀，随进程名增长，超过 maxMeasuredTexts 条就清空重量。
  */
 interface CanvasPaintStyle {
   font(): string;
   color(value: string): string;
   textWidth(context: CanvasRenderingContext2D, text: string): number;
 }
+
+const maxMeasuredTexts = 8192;
 
 function createCanvasPaintStyle(canvas: HTMLCanvasElement): CanvasPaintStyle {
   let computed: CSSStyleDeclaration | null = null;
@@ -481,6 +506,9 @@ function createCanvasPaintStyle(canvas: HTMLCanvasElement): CanvasPaintStyle {
     textWidth: (context, text) => {
       let width = widths.get(text);
       if (width === undefined) {
+        if (widths.size >= maxMeasuredTexts) {
+          widths.clear();
+        }
         width = context.measureText(text).width;
         widths.set(text, width);
       }

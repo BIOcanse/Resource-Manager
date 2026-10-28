@@ -55,10 +55,34 @@ export default async function keptPageJourney(page, baseUrl) {
   // 进入卡片编辑，不保存就离开：离开时放弃编辑，和卸下时一样。
   await editButton.click();
   assert.equal(await editButton.getAttribute("aria-label"), app.monitorPage.saveLayoutLabel);
+  // 离开时页里还有一段过渡在播（这里起一段 1 s 的）：隐藏时它暂停、回来接着播。隐藏的页不再算样式，
+  // 播完的过渡清不掉，会一直让主线程每个刷新周期出一帧空帧。
+  await page.evaluate(() => {
+    const target = document.querySelector("#monitorPage .monitor-toolbar h2");
+    // important：无动画、超高性能风格把所有过渡时长清零，这一段不受它影响。
+    target.style.setProperty("transition", "opacity 1000ms linear", "important");
+    getComputedStyle(target).opacity;
+    target.style.opacity = "0.5";
+    getComputedStyle(target).opacity;
+    window.__keptTransitionTarget = target;
+  });
   await primary("settings").click();
   visited.add("settings");
   await page.locator(".page-host[data-page-id='settings']:not([aria-hidden='true']) .settings-page").first().waitFor({ state: "visible" });
 
+  // 先看过渡，再做下面的聚焦、命中探测：探测要读隐藏页里元素的样式和布局，会让浏览器临时给它算一次样式。
+  // 只看过渡：卡在隐藏页里的是过渡；隐藏页里循环播放的等待读数呼吸（CSS 动画）实测不让主线程出帧。
+  const animations = await page.evaluate(() => {
+    const host = document.querySelector(".page-host[data-page-id='monitor']");
+    return {
+      playing: document.getAnimations().filter(animation => animation instanceof CSSTransition
+        && host.contains(animation.effect?.target ?? null) && animation.playState !== "paused")
+        .map(animation => `${animation.transitionProperty} ${animation.playState}`),
+      startedTransition: window.__keptTransitionTarget.getAnimations().map(animation => animation.playState)
+    };
+  });
+  assert.deepEqual(animations.playing, [], "the hidden monitor plays no transition and keeps no finished one");
+  assert.deepEqual(animations.startedTransition, ["paused"], "the transition in flight when the monitor was hidden is paused");
   const hidden = await page.evaluate(() => {
     const host = document.querySelector(".page-host[data-page-id='monitor']");
     const button = host.querySelector("[data-focus-key='monitor-dashboard-edit']");
@@ -95,9 +119,15 @@ export default async function keptPageJourney(page, baseUrl) {
     const host = document.querySelector(".page-host[data-page-id='monitor']");
     resolve({ sameNode: document.querySelector("#monitorPage") === window.__keptMonitorNode, ariaHidden: host.getAttribute("aria-hidden"),
       contentVisibility: getComputedStyle(host).contentVisibility,
-      cards: document.querySelectorAll("#monitorPage .card-slot").length });
+      cards: document.querySelectorAll("#monitorPage .card-slot").length,
+      resumedTransition: window.__keptTransitionTarget.getAnimations().map(animation => animation.playState) });
   })));
-  assert.deepEqual(shown, { sameNode: true, ariaHidden: null, contentVisibility: "visible", cards: shown.cards });
+  assert.deepEqual(shown, { sameNode: true, ariaHidden: null, contentVisibility: "visible", cards: shown.cards, resumedTransition: ["running"] },
+    "the monitor comes back as the same DOM and the paused transition plays on");
+  await page.evaluate(() => {
+    window.__keptTransitionTarget.style.removeProperty("transition");
+    window.__keptTransitionTarget.style.removeProperty("opacity");
+  });
   assert.ok(shown.cards > 0, "the first frame back shows the dashboard");
   assert.equal(await editButton.getAttribute("aria-label"), app.monitorPage.editLayoutLabel, "leaving discarded the unsaved edit");
   await waitTelemetry(baseUrl, t => t["/api/metrics/subscribe"]?.logicalInFlight > 0, "monitor acquires its metrics again");
