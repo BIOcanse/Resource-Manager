@@ -9,6 +9,7 @@ public sealed partial class HostMemoryProtectionService
     private readonly HashSet<Channel<HostMemoryProtectionPublication>> subscribers = [];
     private HostMemoryProtectionStatus? publishedStatus;
     private NormalRunningPoint? publishedPoint;
+    private IReadOnlyList<NormalRunningPoint> publishedPoints = [];
     private HostMemoryCommit? observedCommit;
     private DateTimeOffset observedAt;
 
@@ -22,7 +23,8 @@ public sealed partial class HostMemoryProtectionService
             { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
         lock (gate)
         {
-            channel.Writer.TryWrite(new(publishedStatus!, []) { NormalRunningPoint = publishedPoint, IsReplay = true });
+            channel.Writer.TryWrite(new(publishedStatus!, [])
+                { NormalRunningPoint = publishedPoint, NormalRunningPoints = PointList(publishedPoints, publishedPoint), IsReplay = true });
             subscribers.Add(channel);
         }
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -66,7 +68,8 @@ public sealed partial class HostMemoryProtectionService
             var next = BuildStatus(observedCommit);
             var previous = publishedStatus;
             var pointChanged = !ReferenceEquals(publishedPoint, point);
-            if (previous is not null && SameStatus(previous, next) && !pointChanged) return;
+            var pointsChanged = pointChanged || !ReferenceEquals(publishedPoints, points);
+            if (previous is not null && SameStatus(previous, next) && !pointsChanged) return;
             var events = new List<HostMemoryProtectionEvent>();
             if (previous is not null)
             {
@@ -92,9 +95,10 @@ public sealed partial class HostMemoryProtectionService
             }
             publishedStatus = next;
             publishedPoint = point;
+            publishedPoints = points;
             if (pointChanged) createdPoint = null;
             var value = new HostMemoryProtectionPublication(next, events)
-                { NormalRunningPoint = point, PointChanged = pointChanged };
+                { NormalRunningPoint = point, PointChanged = pointChanged, NormalRunningPoints = PointList(points, point), PointsChanged = pointsChanged };
             foreach (var subscriber in subscribers)
                 if (!subscriber.Writer.TryWrite(value))
                     subscriber.Writer.TryComplete(new IOException("memory-protection-subscriber-too-slow"));

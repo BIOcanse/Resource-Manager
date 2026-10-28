@@ -85,6 +85,7 @@ public sealed partial class HostMemoryProtectionTests
         Assert.False(replay.GetProperty("value").GetProperty("status").TryGetProperty("actions", out _));
         Assert.Equal("records", (await stream.ReadFrameAsync()).GetProperty("value").GetProperty("type").GetString());
         Assert.Equal("normalRunningPoint", (await stream.ReadFrameAsync()).GetProperty("value").GetProperty("type").GetString());
+        Assert.Equal("normalRunningPoints", (await stream.ReadFrameAsync()).GetProperty("value").GetProperty("type").GetString());
         var delivered = fixture.Source.Deliveries;
         fixture.Source.Publish(200, 20, []);
         await Until(() => fixture.Source.Deliveries > delivered);
@@ -148,6 +149,42 @@ public sealed partial class HostMemoryProtectionTests
     }
 
     [Fact]
+    public async Task PublicChannelPublishesSavedPointsOnSubscribeCreateAndDeletingAPointNotInEffect()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        using var lifetime = new CancellationTokenSource(TimeSpan.FromSeconds(25));
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
+        { Content = JsonContent.Create(new { version = 1, subscriptions = new[] { new { id = "points", path = "/api/memory-protection/subscribe" } } }) };
+        await using var stream = new ConditionSubscriptionTests.Stream(request,
+            fixture.Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, lifetime.Token), lifetime);
+        var replay = await Points();
+        Assert.Equal(JsonValueKind.Null, replay.GetProperty("activeId").ValueKind);
+        Assert.Equal(0, replay.GetProperty("points").GetArrayLength());
+        Assert.Equal(HostMemoryProtectionService.PointLimit, replay.GetProperty("limit").GetInt32());
+        var first = await fixture.CreatePoint(ensureReserve: false);
+        Assert.Equal(first.Id, (await Points()).GetProperty("activeId").GetString());
+        var second = await fixture.CreatePoint(ensureReserve: false);
+        var both = await Points();
+        Assert.Equal(second.Id, both.GetProperty("activeId").GetString());
+        Assert.Equal([first.Id, second.Id], both.GetProperty("points").EnumerateArray().Select(item => item.GetProperty("id").GetString()));
+        // Deleting a point that is not in effect leaves the point in effect alone and still reaches every page.
+        Assert.True(await fixture.Protection.DeletePointAsync(first.Id));
+        var remaining = await Points();
+        Assert.Equal(second.Id, remaining.GetProperty("activeId").GetString());
+        Assert.Equal([second.Id], remaining.GetProperty("points").EnumerateArray().Select(item => item.GetProperty("id").GetString()));
+
+        async Task<JsonElement> Points()
+        {
+            while (true)
+            {
+                var value = (await stream.ReadFrameAsync()).GetProperty("value");
+                if (value.TryGetProperty("type", out var type) && type.GetString() == "normalRunningPoints")
+                    return value.GetProperty("normalRunningPoints").Clone();
+            }
+        }
+    }
+
+    [Fact]
     public async Task PublicChannelReplaysRecordsOnceThenSendsOnlyNewRecordsAndLiveStatus()
     {
         await using var fixture = await Fixture.StartAsync();
@@ -168,6 +205,7 @@ public sealed partial class HostMemoryProtectionTests
         Assert.Equal(64, replay.GetProperty("limit").GetInt32());
         Assert.Equal(previous.ActionId, Assert.Single(replay.GetProperty("records").EnumerateArray()).GetProperty("actionId").GetString());
         Assert.Equal("normalRunningPoint", (await stream.ReadFrameAsync()).GetProperty("value").GetProperty("type").GetString());
+        Assert.Equal("normalRunningPoints", (await stream.ReadFrameAsync()).GetProperty("value").GetProperty("type").GetString());
         fixture.Source.Publish(970, 97, [Process(21, "300", 900)]);
         JsonElement record;
         while (true)

@@ -60,13 +60,22 @@ public sealed record HostMemoryProtectionPublication(HostMemoryProtectionStatus 
 {
     public NormalRunningPoint? NormalRunningPoint { get; init; }
     public bool PointChanged { get; init; }
+    public NormalRunningPointList? NormalRunningPoints { get; init; }
+    public bool PointsChanged { get; init; }
     public bool IsReplay { get; init; }
 }
 
-// ReadVolatility: EventDriven, change event: normal-running-point-changed (create, replace, clear).
+// ReadVolatility: EventDriven, change event: normal-running-point-changed (create, select, delete of the point in effect).
 public sealed record HostMemoryProtectionPointFrame(NormalRunningPoint? NormalRunningPoint)
 {
     public string Type => "normalRunningPoint";
+}
+
+// ReadVolatility: EventDriven. Sent on subscribe and whenever the saved points or the one in effect change,
+// so a point created or deleted elsewhere reaches every page without a GET.
+public sealed record HostMemoryProtectionPointsFrame(NormalRunningPointList NormalRunningPoints)
+{
+    public string Type => "normalRunningPoints";
 }
 
 // The selection service resolves settings for this action; the executor owns process effects.

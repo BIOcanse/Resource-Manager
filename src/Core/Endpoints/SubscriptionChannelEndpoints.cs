@@ -356,6 +356,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                                 value.Status.Actions, value.Status.ActionRecordLimit), token);
                         if (value.IsReplay || value.PointChanged)
                             await writer.WriteAsync(subscription.Id, new Application.MemoryProtection.HostMemoryProtectionPointFrame(value.NormalRunningPoint), token);
+                        if ((value.IsReplay || value.PointsChanged) && value.NormalRunningPoints is { } saved)
+                            await writer.WriteAsync(subscription.Id, new Application.MemoryProtection.HostMemoryProtectionPointsFrame(saved), token);
                         foreach (var change in value.Events)
                             if (change.Action is { } action)
                                 await writer.WriteAsync(subscription.Id, new Application.MemoryProtection.HostMemoryProtectionRecordFrame(action), token);

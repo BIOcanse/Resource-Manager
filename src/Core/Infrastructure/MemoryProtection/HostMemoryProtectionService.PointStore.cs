@@ -29,9 +29,11 @@ public sealed partial class HostMemoryProtectionService
 
     public NormalRunningPointList ListPoints()
     {
-        lock (gate)
-            return new(point?.Id, points.Select(item => new NormalRunningPointSummary(item.Id, item.At, item.ProcessCount, item.Commit)).ToArray(), PointLimit);
+        lock (gate) return PointList(points, point);
     }
+
+    private static NormalRunningPointList PointList(IReadOnlyList<NormalRunningPoint> saved, NormalRunningPoint? active)
+        => new(active?.Id, saved.Select(item => new NormalRunningPointSummary(item.Id, item.At, item.ProcessCount, item.Commit)).ToArray(), PointLimit);
 
     public async Task<NormalRunningPoint> CreatePointAsync(CancellationToken cancellationToken)
     {
