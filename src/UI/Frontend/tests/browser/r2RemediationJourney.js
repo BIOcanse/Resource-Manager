@@ -23,7 +23,8 @@ export default async function r2RemediationJourney(page, baseUrl = "http://127.0
   await setScenario({ capabilities: "ready", settings: "ready", resourceTableVariant: "many" });
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
 
-  const firstTrack = page.locator(".resource-bar-track").first();
+  // 加载中的条也是 .resource-bar-track（pending 占位，和加载后同大小），没有 data-metric-id：等到真正的条。
+  const firstTrack = page.locator(".resource-bar-track[data-metric-id]").first();
   await firstTrack.waitFor({ state: "visible", timeout: 7000 });
   const selectedSegment = page.locator(".resource-bar-track [role='option'][aria-selected='true']").first();
   assert(await selectedSegment.count() === 0, "A resource segment was selected before user interaction.");

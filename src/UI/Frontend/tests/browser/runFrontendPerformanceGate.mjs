@@ -712,7 +712,8 @@ async function readResourcePublicationCount(baseUrl, scope) {
 }
 
 async function activateResourceInteraction(page) {
-  const track = page.locator(".resource-bar-track").first();
+  // 只取已加载的条：加载占位也是 .resource-bar-track，但没有 data-metric-id。
+  const track = page.locator(".resource-bar-track[data-metric-id]").first();
   const box = await track.boundingBox();
   if (!box) throw new Error("Resource bar track has no interaction geometry.");
   await page.mouse.move(box.x + Math.max(2, box.width * 0.05), box.y + box.height / 2);
