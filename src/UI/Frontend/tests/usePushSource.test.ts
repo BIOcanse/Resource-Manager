@@ -2,16 +2,16 @@ import assert from "node:assert/strict";
 import { createRoot, createSignal } from "solid-js";
 import { usePushSource } from "../src/frontendRuntime/push/usePushSource.ts";
 import { BackendPushValueSourceFamily } from "../src/frontendRuntime/push/PushValueSourceFamily.ts";
-import type { BackendSubscriptionChannel } from "../src/frontendRuntime/push/BackendSubscriptionChannel.ts";
+import type { BackendSubscriptionChannel, SubscriptionAddress } from "../src/frontendRuntime/push/BackendSubscriptionChannel.ts";
 import { defineResponseDecoder } from "../src/frontendRuntime/request/ResponseDecoder.ts";
 import type { SourceSnapshot } from "../src/frontendRuntime/source/SourceSnapshot.ts";
 
 const listeners: { path: string; stopped: boolean; publish: (value: SourceSnapshot<number>) => void }[] = [];
 const channel = {
   backendEpoch: "one",
-  subscribe(_key: string, path: string, _decoder: unknown, publish: (value: SourceSnapshot<number>) => void) {
-    const entry = { path, publish, stopped: false }; listeners.push(entry);
-    return { updatePath(next: string) { entry.path = next; }, dispose() { entry.stopped = true; } };
+  subscribe(_key: string, address: SubscriptionAddress, _decoder: unknown, publish: (value: SourceSnapshot<number>) => void) {
+    const entry = { path: address.path, publish, stopped: false }; listeners.push(entry);
+    return { update(next: SubscriptionAddress) { entry.path = next.path; }, dispose() { entry.stopped = true; } };
   }
 } as unknown as BackendSubscriptionChannel;
 let canonicalizations = 0;

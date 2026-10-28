@@ -34,7 +34,6 @@ export const mobileDeviceAdapter: DeviceAdapter<MobileDeviceModel> = {
     const firmwareVersion = displayValue(smart?.firmwareVersion, uiText.deviceAdapters.deviceNotReported);
     const protocol = displayValue(smart?.protocol, mediaTransfer ? "MTP / PTP" : undefined);
     const transport = displayValue(smart?.transport, connection.currentLink);
-    const battery = typeof smart?.batteryPercent === "number" ? `${smart.batteryPercent}%` : uiText.deviceAdapters.deviceNotReported;
     const storages = smart?.storages ?? [];
     return {
       adapterId: "mobile-device",
@@ -54,7 +53,7 @@ export const mobileDeviceAdapter: DeviceAdapter<MobileDeviceModel> = {
       firmwareVersion,
       protocol,
       transport,
-      battery,
+      informationIdentity: context.port.informationIdentity ?? null,
       storages,
       summaryFields: summaryFields(
         [uiText.deviceAdapters.label.deviceType, deviceType],

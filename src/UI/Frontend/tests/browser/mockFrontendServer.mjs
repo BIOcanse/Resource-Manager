@@ -75,6 +75,12 @@ const defaultScenario = {
   deviceTopologyStorage: false,
   // 卷 F: 的可用空间，后端写无损十进制字符串；null 表示后端这一帧没有值。
   deviceTopologyVolumeFreeBytes: "250092956672",
+  // 接一部手机（端口带 smartDevice 和 informationIdentity）；电量和存储剩余是 Sampled，只经字段订阅发。
+  deviceTopologyMobile: false,
+  // 手机自报的电量百分比；null 表示没有值。
+  deviceTopologyMobileBatteryPercent: 76,
+  // 手机内部存储的剩余字节，后端写无损十进制字符串；null 表示没有值。
+  deviceTopologyMobileStorageFreeBytes: "48318382080",
   // 采集失败（state failed、failureCode 和一条诊断）；快照沿用最后一次成功提交的那份。
   deviceTopologyFailure: false,
   // 整机 BIOS 版本（snapshot.system.biosVersion）：只在整机图里显示，改它是一次不动清单和详情的结构变化。
@@ -3041,6 +3047,11 @@ function applyTopologyFactScenarios(state) {
     snapshot.ports = [...snapshot.ports, fixtureStorageVolumePort()];
     state.informationFields = fixtureVolumeInformation(state.lastSuccessAt ?? snapshot.capturedAt);
   }
+  if (scenario.deviceTopologyMobile) {
+    snapshot.ports = [...snapshot.ports, fixtureMobilePort()];
+    state.informationFields = { ...state.informationFields,
+      devices: [...(state.informationFields?.devices ?? []), fixtureMobileInformation()] };
+  }
   if (scenario.deviceTopologyWireless !== null)
     snapshot.ports = [...snapshot.ports, fixtureWirelessPort(scenario.deviceTopologyWireless)];
   if (scenario.deviceTopologyExternalMachine) {
@@ -3058,6 +3069,8 @@ function applyTopologyFactScenarios(state) {
           hardwareInterface: true, connectorPresent: null, wireless: null }
     }];
   }
+  // 后端每个端口都写 informationIdentity（没有信息对象时为 null）；录下来的旧状态和夹具端口没有这个键，按没有对象补上。
+  snapshot.ports = snapshot.ports.map(port => Object.hasOwn(port, "informationIdentity") ? port : { ...port, informationIdentity: null });
   return state;
 }
 
@@ -3106,6 +3119,34 @@ function fixtureVolumeInformation(observedAt) {
     { definition: definition("volume_all_free_bytes_actual", "unsigned-integer", "B", "volume.space.free_bytes_actual",
       "windows.volume-space", { kind: sampledVolatilityKind }), value: scenario.deviceTopologyVolumeFreeBytes }
   ] }] };
+}
+
+// 一部 USB 手机，形状同后端结构快照：smartDevice 里没有电量和存储剩余（DeviceTopologyStructure 去掉了），
+// 它们是端口信息对象（informationIdentity）上的两个 Sampled 字段。
+const fixtureMobileIdentity = String.raw`windows-pnp|USB\VID_18D1&PID_4EE1\FIXTURE0001`;
+function fixtureMobilePort() {
+  // 以数值 USB 夹具里的手机为底（MTP 接口），不是存储设备：外置存储适配器排在手机之前，大容量存储接口会被它认走。
+  const mobile = fixtureNumericUsbPorts().find(port => port.id === "fixture-usb-mobile");
+  return { ...mobile, id: "fixture-usb-phone", displayName: "Fixture phone", deviceId: String.raw`USB\VID_18D1&PID_4EE1\FIXTURE0001`,
+    informationIdentity: fixtureMobileIdentity, pnpClass: "WPD",
+    topologyPath: { domain: 5, code: 64, args: ["root/fixture-usb-phone"] },
+    usb: { ...mobile.usb, portNumber: 21, deviceAddress: 21, productName: "Fixture phone" },
+    smartDevice: { deviceType: "phone", manufacturer: "Frontend Harness", model: "Fixture Phone", serialNumber: null,
+      firmwareVersion: "14", protocol: "MTP", transport: "USB", source: { domain: 5, code: 59, args: [] },
+      storages: [{ name: "Internal shared storage", capacityBytes: 128_000_000_000, fileSystem: null }] } };
+}
+
+function fixtureMobileInformation() {
+  const definition = (name, valueKind, unit, quantity) =>
+    ({ name, resource: "mobile_device", vendor: "all", valueKind, unit, quantity, sourceId: "windows.device-topology.smart-device-storage",
+      volatility: { kind: sampledVolatilityKind } });
+  return { deviceIdentity: fixtureMobileIdentity, objectType: "mobile_device", fields: [
+    { definition: definition("mobile_all_battery_percent_reported", "number", "%", "mobile.topology.battery-percent-reported"),
+      value: scenario.deviceTopologyMobileBatteryPercent },
+    { definition: definition("mobile_all_storage_free_bytes_reported", "array", "storage[]",
+      "mobile.topology.smart-device-storage-name-and-free-bytes-reported-as-decimal-string-or-null"),
+      value: [{ name: "Internal shared storage", freeBytes: scenario.deviceTopologyMobileStorageFreeBytes }] }
+  ] };
 }
 
 function fixtureNumericUsbPorts() {
@@ -3351,7 +3392,7 @@ async function subscriptionChannelStream(request, response) {
     const memoryProtectionStatus = requestUrl.pathname === "/api/memory-protection/subscribe";
     const eventOnly = operation || managementInventoryRevision || productUpdateStatus || kernelLeakReport || memoryProtectionStatus;
     let createPayload;
-    try { createPayload = eventOnly ? null : subscriptionPayloadFactory(requestUrl); }
+    try { createPayload = eventOnly ? null : subscriptionPayloadFactory(requestUrl, item.fields); }
     catch { return json(response, 400, { error: "One or more subscription queries are invalid." }); }
     if (!eventOnly && createPayload === null) {
       return json(response, 400, { error: "unsupported subscription path" });
@@ -3667,7 +3708,32 @@ function pushOnChange(createPayload) {
   return createPayload;
 }
 
-function subscriptionPayloadFactory(url) {
+/*
+ * 选中的设备信息字段（后端 FieldSubscriptionCore.SubscribeInformationChangesAsync）：选择必须非空、每个字段只选一次、
+ * 都是当前声明过的字段，否则整个请求 400；帧只含选中的设备和字段，订阅时一帧当前值，之后只在内容变化时发
+ * （内容不含观测时间）。
+ */
+function selectedInformationFields(fields) {
+  if (!Array.isArray(fields) || fields.length === 0) throw new Error("Select at least one information field.");
+  const keys = fields.map(field => typeof field?.deviceIdentity === "string" && typeof field?.fieldName === "string"
+    && field.deviceIdentity && field.fieldName ? JSON.stringify([field.deviceIdentity, field.fieldName]) : null);
+  if (keys.includes(null) || new Set(keys).size !== keys.length) throw new Error("Select each declared field once.");
+  const selected = new Set(keys);
+  const project = (information) => (information?.devices ?? []).map(device => ({ ...device,
+    fields: device.fields.filter(field => selected.has(JSON.stringify([device.deviceIdentity, field.definition.name]))) }))
+    .filter(device => device.fields.length > 0);
+  const declared = project(fixtureDeviceTopologyState(now()).informationFields)
+    .reduce((count, device) => count + device.fields.length, 0);
+  if (declared !== selected.size) throw new Error("Select a declared information field.");
+  let current = null;
+  return pushOnChange((publishedAt) => {
+    const devices = project(fixtureDeviceTopologyState(publishedAt).informationFields);
+    if (current === null || JSON.stringify(current.devices) !== JSON.stringify(devices)) current = { observedAt: publishedAt, devices };
+    return current;
+  });
+}
+
+function subscriptionPayloadFactory(url, fields) {
   const showcaseFactory = scenario.readmeShowcase ? showcase.showcaseSubscription(url.pathname) : null;
   if (showcaseFactory) return showcaseFactory;
   switch (url.pathname) {
@@ -3726,8 +3792,9 @@ function subscriptionPayloadFactory(url) {
       // 结构与健康：每个推送周期是一次采集，只有提交了变化才出帧（observeDeviceTopology）。
       return pushOnChange((publishedAt) => observeDeviceTopology(publishedAt));
     case "/api/device-topology/fields/subscribe":
-      // 设备信息字段的当前值（含 Sampled 字段）：每次采样完成一帧，观测时间就是这次采样。
-      return (publishedAt) => ({ ...fixtureDeviceTopologyState(publishedAt).informationFields, observedAt: publishedAt });
+      // 不选字段：整份信息字段（含 Sampled 字段），每次采样完成一帧，观测时间就是这次采样。
+      if (fields === undefined) return (publishedAt) => ({ ...fixtureDeviceTopologyState(publishedAt).informationFields, observedAt: publishedAt });
+      return selectedInformationFields(fields);
     case "/api/cpu/topology/subscribe":
       return (publishedAt) => scenario.cpuTopologyEmpty ? null : fixtureCpuTopology(publishedAt);
     case "/api/cpu/residency/subscribe":

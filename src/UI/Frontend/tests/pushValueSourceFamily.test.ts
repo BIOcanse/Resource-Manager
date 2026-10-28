@@ -17,6 +17,7 @@ import type { MetricSnapshotQuery } from "../src/data/monitor/monitorSourcesApi.
 interface SubscriptionRequestItem {
   readonly id: string;
   readonly path: string;
+  readonly fields?: readonly { deviceIdentity: string; fieldName: string }[];
 }
 
 interface RecordedStream {
@@ -857,3 +858,55 @@ console.log("Push synchronous reads: pending, retained identity, no demand, quer
   } finally { releases.forEach(stop => stop()); channel.dispose(); owner.dispose(); }
 }
 console.log("Push item owner: overlapping reads, notifications, older frames, empty, pending and epoch fence passed.");
+{
+  // A field selection travels as the request item's fields next to the path; a family without buildFields sends no fields key.
+  const host = createHostTransport();
+  const owner = new BackendSessionOwner({ transport: host.transport });
+  host.publish(readyMessage("1", "field-selection"));
+  const harness = createStreamHarness();
+  const channel = new BackendSubscriptionChannel({ backendSession: owner, fetch: harness.fetch });
+  type Field = { deviceIdentity: string; fieldName: string };
+  const sorted = (fields: readonly Field[]) => [...fields].sort((left, right) =>
+    `${left.deviceIdentity}\u0000${left.fieldName}`.localeCompare(`${right.deviceIdentity}\u0000${right.fieldName}`));
+  const family = new BackendPushValueSourceFamily<readonly Field[], number>({
+    key: "test.field-selection",
+    channel,
+    buildUrl: (_fields, intervalMs) => `/api/device-topology/fields/subscribe?intervalMs=${intervalMs}`,
+    buildFields: sorted,
+    canonicalizeQuery: fields => JSON.stringify(sorted(fields)),
+    decoder: defineResponseDecoder("test.field-number", value => Number(value))
+  });
+  const plain = new BackendPushValueSource<number>({ key: "test.plain", channel,
+    buildUrl: () => "/api/plain/subscribe", decoder: defineResponseDecoder("test.plain-number", value => Number(value)) });
+  const a = { deviceIdentity: "volume|A", fieldName: "volume_all_free_bytes_actual" };
+  const b = { deviceIdentity: "volume|B", fieldName: "volume_all_free_bytes_actual" };
+  const seen: number[] = [];
+  const releasePlain = plain.subscribeSnapshot(1_000, () => undefined);
+  const releaseFirst = family.subscribeSnapshot([b, a], 1_000, value => value.data !== null ? seen.push(value.data) : undefined);
+  const releaseSame = family.subscribeSnapshot([a, b], 1_000, () => undefined);
+  try {
+    await waitFor(() => harness.streams.length >= 1 && harness.streams.at(-1)!.subscriptions.length === 2);
+    const items = harness.streams.at(-1)!.subscriptions;
+    const fieldItem = items.find(item => item.path.startsWith("/api/device-topology/"))!;
+    assert.deepEqual(fieldItem.fields, [a, b], "The selection is sent sorted, and one order shares the other's subscription");
+    assert.equal(Object.hasOwn(items.find(item => item.path === "/api/plain/subscribe")!, "fields"), false);
+    publish(harness.streams.at(-1)!, fieldItem.id, 7);
+    await flush();
+    assert.deepEqual(seen, [7]);
+
+    // Same path, other selection: its own logical subscription with its own fields.
+    const releaseOther = family.subscribeSnapshot([a], 1_000, () => undefined);
+    await waitFor(() => harness.streams.at(-1)!.subscriptions.length === 3);
+    const selections = harness.streams.at(-1)!.subscriptions.filter(item => item.fields !== undefined).map(item => item.fields);
+    assert.deepEqual(selections.sort((left, right) => left!.length - right!.length), [[a], [a, b]]);
+    releaseOther();
+    await waitFor(() => harness.streams.at(-1)!.subscriptions.length === 2);
+
+    // An interval change keeps the selection.
+    const releaseFast = family.subscribeSnapshot([a, b], 200, () => undefined);
+    await waitFor(() => harness.streams.at(-1)!.subscriptions.some(item => item.path.endsWith("intervalMs=200")));
+    assert.deepEqual(harness.streams.at(-1)!.subscriptions.find(item => item.path.endsWith("intervalMs=200"))!.fields, [a, b]);
+    releaseFast();
+  } finally { releaseFirst(); releaseSame(); releasePlain(); channel.dispose(); owner.dispose(); }
+}
+console.log("Push field selection: request fields, shared canonical selection, separate selections and interval updates passed.");

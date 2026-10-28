@@ -679,7 +679,7 @@ function showcasePort(id, extra) {
     id, isPhysicalConnector: true, displayName: id, connectorKind: "usb-a", busKind: "usb",
     transport: { code: "usb", reason: null, ruleId: "usb-hub-port", evidence: [] },
     hardwareKind: "USB Device", protocol: "USB 3.x", speed: null, physicalMaximumSpeed: null,
-    deviceId: `SHOWCASE\\${id.toUpperCase()}`, pnpClass: null, manufacturer: null, service: null, status: "OK",
+    deviceId: `SHOWCASE\\${id.toUpperCase()}`, informationIdentity: null, pnpClass: null, manufacturer: null, service: null, status: "OK",
     confidence: { domain: 5, code: 24, args: [] }, source: { domain: 5, code: 35, args: [] },
     upstreamDeviceId: null, upstreamDisplayName: null, topologyPath: { domain: 5, code: 64, args: [`root/${id}`] },
     nativeParentDeviceId: null, nativeParentDisplayName: null, locationInfo: null, locationPaths: [], classGuid: null,

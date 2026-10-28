@@ -1,6 +1,6 @@
 import { formatInterfaceNumber } from "../../../presentation/interfaceNumbers.ts";
 import { mountStateLabel } from "../deviceVocabulary.ts";
-import { For, Index, Match, Show, Switch } from "solid-js";
+import { createMemo, For, Index, Match, Show, Switch } from "solid-js";
 import type {
   AudioDeviceModel,
   CameraDeviceModel,
@@ -23,14 +23,24 @@ import type {
 import { formatBytes } from "../adapters/adapterEvidence";
 import "./specialized-device-details.css";
 import { uiText } from "../../../text.ts";
-import { currentVolumeFreeBytes } from "../deviceTopologyLiveInformation.ts";
+import {
+  currentMobileBatteryPercent,
+  currentMobileStorageFreeBytes,
+  currentVolumeFreeBytes,
+  mobileReadingsSelection,
+  volumeFreeSpaceSelection,
+  volumeInformationIdentity
+} from "../deviceTopologyLiveInformation.ts";
+import type { DeviceTopologyInformationSnapshot } from "../../../types.ts";
+import type { SubscriptionFieldReference } from "../../../frontendRuntime/push/BackendSubscriptionChannel.ts";
 import { usePushSource } from "../../../frontendRuntime/push/usePushSource.ts";
 import { useFrontendRuntime } from "../../../frontendRuntime/FrontendRuntimeContext";
 import { useFrontendReadIntervals } from "../../../app/FrontendReadIntervalsContext.tsx";
 import { useFrontendWork } from "../../../frontendWork/FrontendWorkContext";
 import { frontendWorkIds } from "../../../frontendWork/frontendWorkIds";
 
-export function DeviceSpecializedDetails(props: { model: SpecializedDeviceModel }) {
+/** structure：拓扑结构帧的 informationFields，只用来按挂载路径找到卷的设备地址（采样值另行订阅）。 */
+export function DeviceSpecializedDetails(props: { model: SpecializedDeviceModel; structure: DeviceTopologyInformationSnapshot }) {
   return (
     <section class={`device-specialized-details kind-${props.model.kind}`} aria-label={uiText.deviceSpecialized.sectionLabel(props.model.deviceTypeLabel)}>
       <Switch>
@@ -47,7 +57,7 @@ export function DeviceSpecializedDetails(props: { model: SpecializedDeviceModel 
           {(model) => <HubDetails model={model()} />}
         </Match>
         <Match when={asKind<ExternalStorageDeviceModel>(props.model, "external-storage")}>
-          {(model) => <StorageDetails model={model()} />}
+          {(model) => <StorageDetails model={model()} structure={props.structure} />}
         </Match>
         <Match when={asKind<KeyboardDeviceModel>(props.model, "keyboard")}>
           {(model) => <InputDetails model={model()} label={uiText.deviceSpecialized.keyboardInput} />}
@@ -149,17 +159,29 @@ function HubDetails(props: { model: DockDeviceModel | UsbHubDeviceModel }) {
   );
 }
 
-function StorageDetails(props: { model: ExternalStorageDeviceModel }) {
-  // 卷的可用空间是采样值，不在拓扑结构帧里：这一节显示期间自己持有设备信息字段订阅，
-  // 随拓扑视图的需求进出；退出只撤订阅，最后收到的值由数据来源保留。
+/**
+ * 选中的设备信息字段的当前值：显示期间按字段选择持有订阅，随拓扑视图的需求进出；退出只撤订阅，
+ * 最后收到的值由数据来源保留。没有要选的字段时不订阅（后端不接受空选择）。
+ */
+function useInformationFields(selection: () => readonly SubscriptionFieldReference[]) {
   const runtime = useFrontendRuntime();
   const readIntervals = useFrontendReadIntervals();
   const frontendWork = useFrontendWork();
-  const information = usePushSource(runtime.sources.deviceTopologyFields, () => ({
-    active: frontendWork.isNeeded(frontendWorkIds.detailsDeviceTopology),
+  const snapshot = usePushSource(runtime.sources.deviceTopologyFields, () => ({
+    query: selection(),
+    active: selection().length > 0 && frontendWork.isNeeded(frontendWorkIds.detailsDeviceTopology),
     intervalMs: readIntervals.current()?.monitor
   })).snapshot;
-  const freeBytes = (driveLetter: string | null | undefined) => currentVolumeFreeBytes(information().data ?? null, driveLetter);
+  return () => snapshot().data ?? null;
+}
+
+function StorageDetails(props: { model: ExternalStorageDeviceModel; structure: DeviceTopologyInformationSnapshot }) {
+  // 卷的可用空间是采样值，不在拓扑结构帧里：按结构帧里的挂载路径找到每个卷的地址，只订阅这些卷的可用空间。
+  const identity = (driveLetter: string | null | undefined) => volumeInformationIdentity(props.structure, driveLetter);
+  const selection = createMemo(() => volumeFreeSpaceSelection(props.model.partitions
+    .flatMap(partition => partition.volumes.map(volume => identity(volume.driveLetter)))));
+  const information = useInformationFields(selection);
+  const freeBytes = (driveLetter: string | null | undefined) => currentVolumeFreeBytes(information(), identity(driveLetter));
   return (
     <>
       <div class="device-storage-overview">
@@ -281,6 +303,14 @@ function CameraDetails(props: { model: CameraDeviceModel }) {
 }
 
 function MobileDetails(props: { model: MobileDeviceModel }) {
+  // 电量和存储剩余是采样值，不在拓扑结构帧里：按端口的设备信息地址订阅这两个字段。
+  const selection = createMemo(() => mobileReadingsSelection(props.model.informationIdentity));
+  const information = useInformationFields(selection);
+  const battery = () => {
+    const percent = currentMobileBatteryPercent(information(), props.model.informationIdentity);
+    return percent === null ? uiText.deviceAdapters.deviceNotReported : `${formatInterfaceNumber(percent)}%`;
+  };
+  const storageFree = (name: string) => currentMobileStorageFreeBytes(information(), props.model.informationIdentity, name);
   return (
     <>
       <FactRows fields={[
@@ -289,7 +319,7 @@ function MobileDetails(props: { model: MobileDeviceModel }) {
         [uiText.deviceSpecialized.deviceProtocol, props.model.protocol],
         [uiText.deviceSpecialized.connectionTransport, props.model.transport],
         [uiText.deviceSpecialized.firmwareVersion, props.model.firmwareVersion],
-        [uiText.deviceSpecialized.battery, props.model.battery]
+        [uiText.deviceSpecialized.battery, battery()]
       ]} />
       <StatusStrip values={[
         [uiText.deviceSpecialized.mediaTransfer, props.model.mediaTransfer],
@@ -302,7 +332,7 @@ function MobileDetails(props: { model: MobileDeviceModel }) {
             {(storage) => (
               <div>
                 <strong>{storage().name}</strong>
-                <span>{storage().fileSystem ?? uiText.deviceSpecialized.fileSystemNotReported} · {formatVolumeCapacity(storage().capacityBytes, storage().freeBytes)}</span>
+                <span>{storage().fileSystem ?? uiText.deviceSpecialized.fileSystemNotReported} · {formatVolumeCapacity(storage().capacityBytes, storageFree(storage().name))}</span>
               </div>
             )}
           </Index>

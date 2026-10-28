@@ -54,8 +54,8 @@ assert.match(sources, /localSystemStatus:\s*new BackendPushValueSource/);
 // 控制面的实际状态也走统一订阅源，和别的读数同一条通道。
 assert.match(sources, /controlActualState:\s*new BackendPushValueSource/);
 assert.match(sources, /deviceTopology:\s*new BackendPushValueSource/);
-// 卷可用空间等 Sampled 设备信息字段不在拓扑结构帧里，走自己的推送源（/api/device-topology/fields/subscribe）。
-assert.match(sources, /deviceTopologyFields:\s*new BackendPushValueSource<DeviceTopologyInformationSnapshot>\(\{[\s\S]*?buildUrl:\s*buildDeviceTopologyFieldsSubscriptionUrl,[\s\S]*?decoder:\s*deviceTopologyInformationDecoder/);
+// 卷可用空间、手机电量等 Sampled 设备信息字段不在拓扑结构帧里，按字段选择走自己的推送源（/api/device-topology/fields/subscribe 的订阅项带 fields）。
+assert.match(sources, /deviceTopologyFields:\s*new BackendPushValueSourceFamily<readonly SubscriptionFieldReference\[\], DeviceTopologyInformationSnapshot>\(\{[\s\S]*?buildUrl:\s*\(_fields, intervalMs\) => buildDeviceTopologyFieldsSubscriptionUrl\(intervalMs\),\s*buildFields:\s*normalizeInformationFieldSelection,[\s\S]*?decoder:\s*deviceTopologyInformationDecoder/);
 assert.match(sources, /cpuTopology:\s*new BackendPushValueSource/);
 assert.match(sources, /cpuResidency:\s*new BackendPushValueSource/);
 assert.match(sources, /smartCoordinatorState:\s*new BackendPushValueSource/);

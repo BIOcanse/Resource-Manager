@@ -2,9 +2,24 @@ import type { SourceSnapshot, SourceStatus } from "../source/SourceSnapshot.ts";
 import type { ResponseDecoder } from "../request/ResponseDecoder.ts";
 import type { BackendSessionOwner } from "../session/BackendSessionOwner.ts";
 
+/** 订阅项里的一个设备信息字段：设备地址（deviceIdentity）和字段名，与后端 FieldReference 同形。 */
+export interface SubscriptionFieldReference {
+  readonly deviceIdentity: string;
+  readonly fieldName: string;
+}
+
+/**
+ * 一个订阅项要什么：路径，和后端订阅项的字段选择 fields。fields 为 null 时请求里不写 fields，
+ * 后端按这个路径的整份内容发（例如 /api/device-topology/fields/subscribe 不选字段时发全部信息字段）。
+ */
+export interface SubscriptionAddress {
+  readonly path: string;
+  readonly fields: readonly SubscriptionFieldReference[] | null;
+}
+
 export interface BackendSubscriptionChannelLease {
   readonly id: string;
-  updatePath(path: string): void;
+  update(address: SubscriptionAddress): void;
   dispose(): void;
 }
 
@@ -16,7 +31,9 @@ export interface BackendSubscriptionChannelOptions {
 
 interface SubscriptionEntry {
   readonly id: string;
-  path: string;
+  address: SubscriptionAddress;
+  /** address 的内容比较键：同一个地址再写一次不算变化，在途的帧按它判断是否还属于这一项。 */
+  addressKey: string;
   readonly decode: (value: unknown) => unknown;
   readonly key: string;
   revision: number;
@@ -25,12 +42,13 @@ interface SubscriptionEntry {
 
 interface ActiveSubscription {
   readonly entry: SubscriptionEntry;
-  readonly path: string;
+  readonly addressKey: string;
 }
 
 interface SubscriptionRequestItem {
   readonly id: string;
   readonly path: string;
+  readonly fields?: readonly SubscriptionFieldReference[];
 }
 
 interface ConsumeOutcome {
@@ -87,7 +105,7 @@ export class BackendSubscriptionChannel {
 
   subscribe<TValue>(
     key: string,
-    path: string,
+    address: SubscriptionAddress,
     decoder: ResponseDecoder<TValue>,
     listener: (value: SourceSnapshot<TValue>) => void
   ): BackendSubscriptionChannelLease {
@@ -97,7 +115,8 @@ export class BackendSubscriptionChannel {
       id,
       key,
       revision: 0,
-      path,
+      address,
+      addressKey: subscriptionAddressKey(address),
       decode: (value) => decoder.decode(value),
       publish: (value) => listener(value as SourceSnapshot<TValue>)
     };
@@ -108,14 +127,16 @@ export class BackendSubscriptionChannel {
     let disposed = false;
     return {
       id,
-      updatePath: (nextPath) => {
+      update: (nextAddress) => {
         if (disposed || this.entries.get(id) !== entry) {
           return;
         }
-        if (entry.path === nextPath) {
+        const nextKey = subscriptionAddressKey(nextAddress);
+        if (entry.addressKey === nextKey) {
           return;
         }
-        entry.path = nextPath;
+        entry.address = nextAddress;
+        entry.addressKey = nextKey;
         this.scheduleSynchronization();
       },
       dispose: () => {
@@ -189,12 +210,7 @@ export class BackendSubscriptionChannel {
   }
 
   private async synchronizeOnce(): Promise<void> {
-    const items = [...this.entries.values()]
-      .map((entry): SubscriptionRequestItem => ({
-        id: entry.id,
-        path: entry.path
-      }))
-      .sort((left, right) => left.id.localeCompare(right.id));
+    const items = this.requestItems();
     const signature = JSON.stringify(items);
     const ready = this.backendSession.snapshot.status === "ready";
     const sessionSignal = ready ? this.backendSession.capture().signal : null;
@@ -213,20 +229,13 @@ export class BackendSubscriptionChannel {
     }
 
     const capture = this.backendSession.capture();
-    const currentItems = [...this.entries.values()]
-      .map((entry): SubscriptionRequestItem => ({
-        id: entry.id,
-        path: entry.path
-      }))
-      .sort((left, right) => left.id.localeCompare(right.id));
+    const currentItems = this.requestItems();
     const currentSignature = JSON.stringify(currentItems);
     const controller = new AbortController();
     const active = new Map<string, ActiveSubscription>();
     for (const item of currentItems) {
-      active.set(item.id, {
-        entry: this.entries.get(item.id)!,
-        path: item.path
-      });
+      const entry = this.entries.get(item.id)!;
+      active.set(item.id, { entry, addressKey: entry.addressKey });
     }
     this.activeController = controller;
     this.activeSessionSignal = capture.signal;
@@ -246,6 +255,15 @@ export class BackendSubscriptionChannel {
         }
       });
     this.activeTask = activeTask;
+  }
+
+  /** 请求体里的订阅项，按 id 排序；没有字段选择的项不写 fields。 */
+  private requestItems(): SubscriptionRequestItem[] {
+    return [...this.entries.values()]
+      .map((entry): SubscriptionRequestItem => entry.address.fields === null
+        ? { id: entry.id, path: entry.address.path }
+        : { id: entry.id, path: entry.address.path, fields: entry.address.fields })
+      .sort((left, right) => left.id.localeCompare(right.id));
   }
 
   private stopActiveStream(): void {
@@ -397,7 +415,7 @@ export class BackendSubscriptionChannel {
       if (!subscription
         || this.activeController !== controller
         || this.entries.get(frame.subscriptionId) !== subscription.entry
-        || subscription.entry.path !== subscription.path) {
+        || subscription.entry.addressKey !== subscription.addressKey) {
         continue;
       }
       try {
@@ -425,7 +443,7 @@ export class BackendSubscriptionChannel {
     for (const subscription of active.values()) {
       if (this.activeController === controller
         && this.entries.get(subscription.entry.id) === subscription.entry
-        && subscription.entry.path === subscription.path) {
+        && subscription.entry.addressKey === subscription.addressKey) {
         this.publishState(subscription.entry, "error", null, error);
       }
     }
@@ -483,6 +501,10 @@ function normalizeKey(value: string): string {
     throw new Error("A backend subscription key is required.");
   }
   return key;
+}
+
+function subscriptionAddressKey(address: SubscriptionAddress): string {
+  return JSON.stringify([address.path, address.fields?.map((field) => [field.deviceIdentity, field.fieldName]) ?? null]);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

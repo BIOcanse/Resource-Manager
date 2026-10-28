@@ -26,6 +26,7 @@
         "protocol": "HDMI 2.1",
         "speed": null,
         "deviceId": "DISPLAY\\FIXTURE_HDMI_1",
+        "informationIdentity": null,
         "pnpClass": null,
         "manufacturer": "Frontend Harness",
         "service": null,

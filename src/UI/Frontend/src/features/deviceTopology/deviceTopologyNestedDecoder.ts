@@ -76,6 +76,7 @@ export function decodePort(value: unknown, path: string): DeviceTopologyPort {
       record.physicalMaximumSpeed,
       `${path}.physicalMaximumSpeed`),
     deviceId: requireNonEmptyString(record.deviceId, `${path}.deviceId`),
+    informationIdentity: nullableString(record.informationIdentity, `${path}.informationIdentity`),
     pnpClass: nullableString(record.pnpClass, `${path}.pnpClass`),
     manufacturer: nullableString(record.manufacturer, `${path}.manufacturer`),
     service: nullableString(record.service, `${path}.service`),
@@ -438,7 +439,6 @@ function decodeSmartDeviceCapabilities(
     firmwareVersion: nullableString(record.firmwareVersion, `${path}.firmwareVersion`),
     protocol: nullableString(record.protocol, `${path}.protocol`),
     transport: nullableString(record.transport, `${path}.transport`),
-    batteryPercent: nullableInteger(record.batteryPercent, `${path}.batteryPercent`),
     storages: requireArray(record.storages, `${path}.storages`)
       .map((item, index) => decodeSmartDeviceStorage(item, `${path}.storages[${index}]`)),
     source: requireBackendMessage(record.source, `${path}.source`)
@@ -453,7 +453,6 @@ function decodeSmartDeviceStorage(
   return {
     name: requireString(record.name, `${path}.name`),
     capacityBytes: nullableInteger(record.capacityBytes, `${path}.capacityBytes`),
-    freeBytes: nullableInteger(record.freeBytes, `${path}.freeBytes`),
     fileSystem: nullableString(record.fileSystem, `${path}.fileSystem`)
   };
 }
@@ -511,7 +510,6 @@ function decodeStorageVolume(
     label: nullableString(record.label, `${path}.label`),
     fileSystem: nullableString(record.fileSystem, `${path}.fileSystem`),
     capacityBytes: nullableInteger(record.capacityBytes, `${path}.capacityBytes`),
-    freeBytes: nullableInteger(record.freeBytes, `${path}.freeBytes`),
     mountState: requireString(record.mountState, `${path}.mountState`),
     volumeSerialNumber: nullableString(
       record.volumeSerialNumber,

@@ -197,7 +197,8 @@ export interface MobileDeviceModel extends SpecializedDeviceBase {
   firmwareVersion: string;
   protocol: string;
   transport: string;
-  battery: string;
+  /** 端口的设备信息地址：电量和存储剩余是采样值，详情显示期间按这个地址订阅。 */
+  informationIdentity: string | null;
   storages: DeviceTopologySmartDeviceStorage[];
 }
 

@@ -3,7 +3,7 @@ import { createFrontendSources } from "../src/frontendRuntime/source/FrontendSou
 import { SourceRegistry } from "../src/frontendRuntime/source/SourceRegistry.ts";
 import { RequestClient } from "../src/frontendRuntime/request/RequestClient.ts";
 import { BackendSessionOwner } from "../src/frontendRuntime/session/BackendSessionOwner.ts";
-import type { BackendSubscriptionChannel } from "../src/frontendRuntime/push/BackendSubscriptionChannel.ts";
+import type { BackendSubscriptionChannel, SubscriptionAddress } from "../src/frontendRuntime/push/BackendSubscriptionChannel.ts";
 import type { ResponseDecoder } from "../src/frontendRuntime/request/ResponseDecoder.ts";
 import type { SourceSnapshot } from "../src/frontendRuntime/source/SourceSnapshot.ts";
 import { applyMemoryProtectionFrame } from "../src/data/memoryProtection/memoryProtectionSubscriptionSource.ts";
@@ -17,9 +17,9 @@ type Lease = { key: string; path: string; decoder: ResponseDecoder<unknown>; sto
 const leases: Lease[] = [];
 const fakeChannel = {
   backendEpoch: "epoch-1",
-  subscribe(key: string, path: string, decoder: ResponseDecoder<unknown>, publish: (value: SourceSnapshot<unknown>) => void) {
-    const lease: Lease = { key, path, decoder, publish, stopped: false }; leases.push(lease);
-    return { updatePath(next: string) { lease.path = next; }, dispose() { lease.stopped = true; } };
+  subscribe(key: string, address: SubscriptionAddress, decoder: ResponseDecoder<unknown>, publish: (value: SourceSnapshot<unknown>) => void) {
+    const lease: Lease = { key, path: address.path, decoder, publish, stopped: false }; leases.push(lease);
+    return { update(next: SubscriptionAddress) { lease.path = next.path; }, dispose() { lease.stopped = true; } };
   },
   dispose() {}
 };

@@ -33,8 +33,10 @@ import { localSystemStatusDecoder } from
   "../../data/localSystem/localSystemStatusDecoder.ts";
 import {
   buildDeviceTopologyFieldsSubscriptionUrl,
-  buildDeviceTopologyStateSubscriptionUrl
+  buildDeviceTopologyStateSubscriptionUrl,
+  normalizeInformationFieldSelection
 } from "../../features/deviceTopology/deviceTopologyApi.ts";
+import type { SubscriptionFieldReference } from "../push/BackendSubscriptionChannel.ts";
 import {
   deviceTopologyInformationDecoder,
   deviceTopologyStateDecoder
@@ -201,8 +203,11 @@ export interface FrontendSources {
   readonly controlActualState: PushValueSource<ControlActualState>;
   /** 设备拓扑的结构与健康：后端初次推当前值，之后只在变化时推；informationFields 只有 Fixed 与 EventDriven 字段。 */
   readonly deviceTopology: PushValueSource<DeviceTopologySnapshotState>;
-  /** 设备信息字段的当前值（含 Sampled 字段，例如卷可用空间）：每次采样推一帧。 */
-  readonly deviceTopologyFields: PushValueSource<DeviceTopologyInformationSnapshot>;
+  /**
+   * 选中的设备信息字段的当前值（含 Sampled 字段，例如卷可用空间、手机电量）：按字段选择订阅，
+   * 订阅时一帧当前值，之后只在值变化时推。选择不能为空。
+   */
+  readonly deviceTopologyFields: PushValueSourceFamily<readonly SubscriptionFieldReference[], DeviceTopologyInformationSnapshot>;
   readonly operations: CurrentValueSource<HostManagerOperationsState>;
   readonly managementInventoryRevision: CurrentValueSource<ManagementInventoryRevisionSnapshot>;
   readonly accessRequests: CurrentValueSource<AccessRequestPendingSnapshot>;
@@ -323,10 +328,12 @@ export function createFrontendSources(
       buildUrl: buildDeviceTopologyStateSubscriptionUrl,
       decoder: deviceTopologyStateDecoder
     }),
-    deviceTopologyFields: new BackendPushValueSource<DeviceTopologyInformationSnapshot>({
+    deviceTopologyFields: new BackendPushValueSourceFamily<readonly SubscriptionFieldReference[], DeviceTopologyInformationSnapshot>({
       key: "device-topology.fields",
       channel: subscriptionChannel,
-      buildUrl: buildDeviceTopologyFieldsSubscriptionUrl,
+      buildUrl: (_fields, intervalMs) => buildDeviceTopologyFieldsSubscriptionUrl(intervalMs),
+      buildFields: normalizeInformationFieldSelection,
+      canonicalizeQuery: (fields) => JSON.stringify(normalizeInformationFieldSelection(fields)),
       decoder: deviceTopologyInformationDecoder
     }),
     operations: new BackendCurrentValueSource<HostManagerOperationsState>({

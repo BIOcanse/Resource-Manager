@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { deviceTopologyInformationDecoder, deviceTopologyStateDecoder } from "../src/features/deviceTopology/deviceTopologyStateDecoder.ts";
 import { ResponseDecodeError } from "../src/frontendRuntime/request/ResponseDecoder.ts";
-import { currentVolumeFreeBytes } from "../src/features/deviceTopology/deviceTopologyLiveInformation.ts";
+import {
+  currentMobileBatteryPercent,
+  currentMobileStorageFreeBytes,
+  currentVolumeFreeBytes,
+  mobileReadingsSelection,
+  volumeFreeSpaceSelection,
+  volumeInformationIdentity
+} from "../src/features/deviceTopology/deviceTopologyLiveInformation.ts";
 
 const port = {
   transport: { code: null, reason: "not-queried", ruleId: null, evidence: [] },
@@ -16,6 +23,7 @@ const port = {
   speed: "40 Gbps",
   physicalMaximumSpeed: "40 Gbps",
   deviceId: "DEVICE\\PORT_1",
+  informationIdentity: "windows-pnp|DEVICE\\PORT_1",
   pnpClass: "USB",
   manufacturer: "Example",
   service: "usb4",
@@ -154,8 +162,7 @@ const port = {
     firmwareVersion: "1.0",
     protocol: "MTP",
     transport: "USB",
-    batteryPercent: 80,
-    storages: [{ name: "Internal", capacityBytes: 128_000_000_000, freeBytes: 64_000_000_000, fileSystem: null }],
+    storages: [{ name: "Internal", capacityBytes: 128_000_000_000, fileSystem: null }],
     source: { domain: 5, code: 63, args: [] }
   },
   storage: {
@@ -184,7 +191,6 @@ const port = {
         label: "Fixture",
         fileSystem: "NTFS",
         capacityBytes: 999_000_000_000,
-        freeBytes: 500_000_000_000,
         mountState: "mounted",
         volumeSerialNumber: null
       }]
@@ -268,6 +274,16 @@ for (const invalid of [
 assert.equal(decoded.schemaVersion, "4.0.0");
 assert.equal(decoded.snapshot?.ports[0].usb?.endpoints?.[0].theoreticalReportRateHz, 8000);
 assert.equal(decoded.snapshot?.ports[0].storage?.partitions[0].volumes[0].driveLetter, "E:");
+assert.equal(decoded.snapshot?.ports[0].informationIdentity, "windows-pnp|DEVICE\\PORT_1");
+assert.equal(deviceTopologyStateDecoder.decode({ ...source, snapshot: { ...source.snapshot,
+  ports: [{ ...port, informationIdentity: null }] } }).snapshot?.ports[0].informationIdentity, null);
+// 后端每个端口都写 informationIdentity；缺这个键是不符合合同的帧。
+assert.throws(() => deviceTopologyStateDecoder.decode({ ...source, snapshot: { ...source.snapshot,
+  ports: [Object.fromEntries(Object.entries(port).filter(([key]) => key !== "informationIdentity"))] } }), ResponseDecodeError);
+// 结构帧里没有采样值：电量和存储剩余不解出来，也不在类型里。
+assert.equal("batteryPercent" in decoded.snapshot!.ports[0].smartDevice!, false);
+assert.equal("freeBytes" in decoded.snapshot!.ports[0].smartDevice!.storages[0], false);
+assert.equal("freeBytes" in decoded.snapshot!.ports[0].storage!.partitions[0].volumes[0], false);
 assert.notEqual(decoded, source);
 assert.notEqual(decoded.snapshot, source.snapshot);
 assert.equal("ignored" in (decoded as unknown as Record<string, unknown>), false);
@@ -284,34 +300,59 @@ const structuralInformation = {
 };
 const structural = deviceTopologyStateDecoder.decode({ ...source, informationFields: structuralInformation });
 assert.deepEqual(structural.informationFields, structuralInformation);
-assert.equal(currentVolumeFreeBytes(structural.informationFields, "E:"), null, "the structural frame carries no free space");
 
-// 可用空间来自设备信息字段订阅的帧（裸 DeviceInformationSnapshot），每次采样一帧。
+// 卷的地址按结构帧里的挂载路径找：恰好一个卷挂在这个盘符上才算。
+assert.equal(volumeInformationIdentity(structural.informationFields, "e:"), "volume-guid-a");
+assert.equal(volumeInformationIdentity(structural.informationFields, "E:\\"), "volume-guid-a");
+assert.equal(volumeInformationIdentity(structural.informationFields, "F:"), null);
+assert.equal(volumeInformationIdentity(structural.informationFields, null), null);
+assert.equal(volumeInformationIdentity(null, "E:"), null);
+assert.equal(volumeInformationIdentity({ ...structuralInformation, devices: [
+  ...structuralInformation.devices, { ...structuralInformation.devices[0], deviceIdentity: "other-volume" }
+] }, "E:"), null, "two volumes on one mount are not an identity");
+assert.deepEqual(volumeFreeSpaceSelection(["volume-guid-a", null]),
+  [{ deviceIdentity: "volume-guid-a", fieldName: "volume_all_free_bytes_actual" }]);
+
+// 可用空间来自设备信息字段订阅的帧：只含选中的设备和字段，按地址读。
 const information = {
   observedAt: "2026-08-22T15:20:30.000Z",
   devices: [{ deviceIdentity: "volume-guid-a", objectType: "volume", fields: [
-    { definition: { name: "volume_all_mount_paths_reported" }, value: ["E:\\"] },
     { definition: { name: "volume_all_free_bytes_actual" }, value: "500" }
   ] }]
 };
 const current = deviceTopologyInformationDecoder.decode(structuredClone(information));
 assert.deepEqual(current, information);
-assert.equal(currentVolumeFreeBytes(current, "e:"), 500);
+assert.equal(currentVolumeFreeBytes(current, "volume-guid-a"), 500);
 const changedInformation = structuredClone(information);
-changedInformation.devices[0].fields[1].value = "450";
-assert.equal(currentVolumeFreeBytes(deviceTopologyInformationDecoder.decode(changedInformation), "E:\\"), 450);
-assert.equal(currentVolumeFreeBytes(null, "E:"), null, "no fields frame yet");
-assert.equal(currentVolumeFreeBytes({ ...current, observedAt: null }, "E:"), null);
-assert.equal(currentVolumeFreeBytes(current, "F:"), null);
+changedInformation.devices[0].fields[0].value = "450";
+assert.equal(currentVolumeFreeBytes(deviceTopologyInformationDecoder.decode(changedInformation), "volume-guid-a"), 450);
+assert.equal(currentVolumeFreeBytes(null, "volume-guid-a"), null, "no fields frame yet");
+assert.equal(currentVolumeFreeBytes({ ...current, observedAt: null }, "volume-guid-a"), null);
+assert.equal(currentVolumeFreeBytes(current, "other-volume"), null);
 assert.equal(currentVolumeFreeBytes(current, null), null);
-assert.equal(currentVolumeFreeBytes({ ...current, devices: [
-  ...current.devices, { ...current.devices[0], deviceIdentity: "other-volume" }
-] }, "E:"), null);
 for (const value of [null, "unavailable", "9007199254740993", -1]) {
   const unavailable = structuredClone(current);
-  unavailable.devices[0].fields[1].value = value;
-  assert.equal(currentVolumeFreeBytes(unavailable, "E:"), null);
+  unavailable.devices[0].fields[0].value = value;
+  assert.equal(currentVolumeFreeBytes(unavailable, "volume-guid-a"), null);
 }
+
+// 手机的电量和存储剩余：端口的 informationIdentity 上的两个 Sampled 字段，存储按自报名称对应。
+const phone = "windows-pnp|DEVICE\\PORT_1";
+assert.deepEqual(mobileReadingsSelection(phone), [
+  { deviceIdentity: phone, fieldName: "mobile_all_battery_percent_reported" },
+  { deviceIdentity: phone, fieldName: "mobile_all_storage_free_bytes_reported" }]);
+assert.deepEqual(mobileReadingsSelection(null), [], "a port without an information object selects nothing");
+const phoneInformation = deviceTopologyInformationDecoder.decode({ observedAt: "2026-08-22T15:20:30.000Z",
+  devices: [{ deviceIdentity: phone, objectType: "mobile_device", fields: [
+    { definition: { name: "mobile_all_battery_percent_reported" }, value: 76 },
+    { definition: { name: "mobile_all_storage_free_bytes_reported" }, value: [{ name: "Internal", freeBytes: "64000000000" },
+      { name: "SD card", freeBytes: null }] }] }] });
+assert.equal(currentMobileBatteryPercent(phoneInformation, phone), 76);
+assert.equal(currentMobileStorageFreeBytes(phoneInformation, phone, "Internal"), 64_000_000_000);
+assert.equal(currentMobileStorageFreeBytes(phoneInformation, phone, "SD card"), null, "a storage without a reading");
+assert.equal(currentMobileStorageFreeBytes(phoneInformation, phone, "Missing"), null);
+assert.equal(currentMobileBatteryPercent(phoneInformation, "other"), null);
+assert.equal(currentMobileBatteryPercent(null, phone), null);
 for (const [value, path] of [
   [[], "$"],
   [{ observedAt: "bad-time", devices: [] }, "$.observedAt"],

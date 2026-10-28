@@ -283,6 +283,8 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
   let backendCatalogRevision: string | null = null;
   // 目录订阅在当前这次订阅里收到过帧：指标目录只由订阅帧写，GET 结果和快照帧的修订号不再改它。订阅结束时清掉。
   let catalogFromPush = false;
+  // 当前指标目录内容所属的修订号：由订阅帧写入时就是那一帧的修订号；由 GET 写入时不知道，为 null。
+  let heldCatalogRevision: string | null = null;
 
   const activeCards = cards;
   const resourceBarEditing = createMemo(() => resourceBarEditMode());
@@ -495,15 +497,20 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
 
   /**
    * 目录订阅的一帧：指标目录与设备目录、修订号同帧生效，不等普通指标帧。
-   * 指标目录按内容替换：订阅帧之前目录可能由 GET 写入（快照帧带来新修订号时重取目录），
-   * 那份内容未必是这一帧的修订号，所以不只看修订号；
+   * 修订号覆盖目录的全部公开内容，同一修订号就是同一份内容：目录内容所属的修订号已知时只比修订号。
+   * 订阅帧之前目录由 GET 写入时（快照帧带来新修订号时重取目录），那份内容的修订号不知道，这一次按内容比较，
+   * 相同就不换，免得看板按同样的目录整块重建。
    * 修订号变化时，仍是出厂布局就重取看板设置（和快照帧的路径相同）。
    */
   function applyCatalogPush(push: MetricCatalogPush): void {
     catalogFromPush = true;
     // 订阅可能在 createEffect 里同步回调：读当前值不能让那个 effect 跟踪目录。
     untrack(() => {
-      if (JSON.stringify(catalog()) !== JSON.stringify(push.metrics)) setCatalog(push.metrics);
+      const unchanged = heldCatalogRevision === null
+        ? JSON.stringify(catalog()) === JSON.stringify(push.metrics)
+        : heldCatalogRevision === push.catalogRevision;
+      if (!unchanged) setCatalog(push.metrics);
+      heldCatalogRevision = push.catalogRevision;
       if (catalogObservation().status !== "ready") setCatalogObservation(readyObservation());
     });
     if (push.catalogRevision !== backendCatalogRevision) {
@@ -522,6 +529,7 @@ export function createMonitorStore(options: MonitorStoreOptions): MonitorStore {
       if (source.revision !== lastCatalogRevision) {
         const items = source.data;
         setCatalog(items);
+        heldCatalogRevision = null;
         lastCatalogRevision = source.revision;
       }
       if (source.status === "stale") {

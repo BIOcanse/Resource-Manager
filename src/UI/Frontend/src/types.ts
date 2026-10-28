@@ -1249,6 +1249,8 @@ export interface DeviceTopologyPort {
   speed: string | null;
   physicalMaximumSpeed?: string | null;
   deviceId: string;
+  /** 这个端口上的设备在设备信息字段里的地址（deviceIdentity）；端口没有信息对象时为 null。订阅它的采样字段用这个地址。 */
+  informationIdentity?: string | null;
   pnpClass?: string | null;
   manufacturer?: string | null;
   service?: string | null;
@@ -1530,15 +1532,15 @@ export interface DeviceTopologySmartDeviceCapabilities {
   firmwareVersion?: string | null;
   protocol?: string | null;
   transport?: string | null;
-  batteryPercent?: number | null;
+  /** 电量是采样值，不在结构帧里：按端口的 informationIdentity 订阅 mobile_all_battery_percent_reported。 */
   storages: DeviceTopologySmartDeviceStorage[];
   source: BackendMessage;
 }
 
+/** 剩余空间是采样值，不在结构帧里：按端口的 informationIdentity 订阅 mobile_all_storage_free_bytes_reported，按名称对应。 */
 export interface DeviceTopologySmartDeviceStorage {
   name: string;
   capacityBytes?: number | null;
-  freeBytes?: number | null;
   fileSystem?: string | null;
 }
 
@@ -1570,12 +1572,12 @@ export interface DeviceTopologyStoragePartition {
   volumes: DeviceTopologyStorageVolume[];
 }
 
+/** 可用空间是采样值，不在结构帧里：按卷的设备地址订阅 volume_all_free_bytes_actual（见 deviceTopologyLiveInformation.ts）。 */
 export interface DeviceTopologyStorageVolume {
   driveLetter?: string | null;
   label?: string | null;
   fileSystem?: string | null;
   capacityBytes?: number | null;
-  freeBytes?: number | null;
   mountState: string;
   volumeSerialNumber?: string | null;
 }

@@ -8,7 +8,7 @@ import { checkDeviceTopologyWireFacts } from "./deviceTopologyWireProbe.js";
 import { checkMachineIdentity } from "./deviceMachineIdentityProbe.js";
 import { checkNetworkConnectionStates } from "./deviceTopologyConnectionProbe.js";
 import { checkBadgesNotTruncated } from "./deviceBadgeProbe.js";
-import { checkVolumeFreeSpace } from "./deviceTopologyStorageProbe.js";
+import { checkMobileReadings, checkVolumeFreeSpace } from "./deviceTopologyStorageProbe.js";
 import { waitForCondition } from "./journeyWaits.js";
 import { observeSubscriptionFrames } from "./subscriptionFrameProbe.js";
 export default async function deviceTopologySourceJourney(page, baseUrl = "http://127.0.0.1:4177") {
@@ -160,6 +160,7 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
   const wireFacts = await checkDeviceTopologyWireFacts(page, app, "zh-CN", baseUrl);
   await checkNetworkConnectionStates(page, app, "zh-CN", baseUrl);
   const volumeFreeSpace = await checkVolumeFreeSpace(page, app, "zh-CN", baseUrl);
+  const mobileReadings = await checkMobileReadings(page, app, "zh-CN", baseUrl);
   const health = await checkHealthTransitions(page, topology, subscriptionPath);
   const beforeEdid = (await readTelemetry(page, subscriptionPath)).publications;
   await setScenario(page, { displayEdid: "ready" });
@@ -318,6 +319,7 @@ export default async function deviceTopologySourceJourney(page, baseUrl = "http:
     machineIdentity,
     wireFacts,
     volumeFreeSpace,
+    mobileReadings,
     health,
     badges,
     nullableProtocolAccepted: true,

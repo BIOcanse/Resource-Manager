@@ -4,7 +4,8 @@ import type { ResponseDecoder } from "../request/ResponseDecoder.ts";
 import { PushCurrentItems, type PushValueItemPolicy } from "./PushCurrentItems.ts";
 import {
   type BackendSubscriptionChannel,
-  type BackendSubscriptionChannelLease
+  type BackendSubscriptionChannelLease,
+  type SubscriptionFieldReference
 } from "./BackendSubscriptionChannel.ts";
 
 export interface PushValueSourceFamily<TQuery, TValue> {
@@ -35,6 +36,8 @@ export interface PushValueSourceFamilyOptions<TQuery, TValue> {
   readonly key: string;
   readonly channel: BackendSubscriptionChannel;
   readonly buildUrl: (query: TQuery, intervalMs: number) => string;
+  /** 这个查询在订阅项里的字段选择（后端订阅项的 fields）；不给时订阅项不带 fields。 */
+  readonly buildFields?: (query: TQuery) => readonly SubscriptionFieldReference[];
   readonly canonicalizeQuery?: (query: TQuery) => string;
   readonly decoder: ResponseDecoder<TValue>;
   readonly currentItems?: PushValueItemPolicy<TQuery, TValue>;
@@ -73,6 +76,7 @@ implements PushValueSourceFamily<TQuery, TValue> {
   readonly key: string;
   private readonly channel: BackendSubscriptionChannel;
   private readonly buildUrl: (query: TQuery, intervalMs: number) => string;
+  private readonly buildFields: ((query: TQuery) => readonly SubscriptionFieldReference[]) | null;
   private readonly canonicalizeQuery: (query: TQuery) => string;
   private readonly decoder: ResponseDecoder<TValue>;
   private readonly entries = new Map<string, PushEntry<TQuery, TValue>>();
@@ -86,6 +90,7 @@ implements PushValueSourceFamily<TQuery, TValue> {
     this.key = options.key;
     this.channel = options.channel;
     this.buildUrl = options.buildUrl;
+    this.buildFields = options.buildFields ?? null;
     this.canonicalizeQuery = options.canonicalizeQuery
       ?? ((query) => JSON.stringify(query));
     this.decoder = options.decoder;
@@ -184,13 +189,16 @@ implements PushValueSourceFamily<TQuery, TValue> {
     if (entry.effectiveIntervalMs !== intervalMs) {
       entry.effectiveIntervalMs = intervalMs;
     }
-    const path = this.buildUrl(entry.query, intervalMs);
+    const address = {
+      path: this.buildUrl(entry.query, intervalMs),
+      fields: this.buildFields?.(entry.query) ?? null
+    };
     if (entry.channelLease) {
-      entry.channelLease.updatePath(path);
+      entry.channelLease.update(address);
     } else {
       entry.channelLease = this.channel.subscribe(
         this.key,
-        path,
+        address,
         this.decoder,
         (value) => this.publish(entry, value));
     }

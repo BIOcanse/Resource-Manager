@@ -162,13 +162,15 @@ test("topology structure and the metric catalog push once, then only on change; 
     await stream.quiet("state", 500);
     assert.equal(stream.of("catalog").length, 1, "an unchanged catalog was resent");
 
-    // 结构帧：卷只带 EventDriven 的挂载路径，快照里卷的 freeBytes 为 null；可用空间只在字段帧里。
+    // 结构帧：卷只带 EventDriven 的挂载路径，快照里卷的 freeBytes 为 null，前端解码不读它；可用空间只在字段帧里。
     const [first] = stream.of("state");
     const decoded = deviceTopologyStateDecoder.decode(first);
     assert.deepEqual(first.informationFields.devices.map(device => device.fields.map(field => field.definition.name)),
       [["volume_all_mount_paths_reported"]]);
+    const wireVolume = first.snapshot.ports.find(port => port.id === "fixture-usb-storage-volumes").storage.partitions[0].volumes[0];
+    assert.equal(wireVolume.freeBytes, null);
     const volume = decoded.snapshot.ports.find(port => port.id === "fixture-usb-storage-volumes").storage.partitions[0].volumes[0];
-    assert.equal(volume.freeBytes, null);
+    assert.equal("freeBytes" in volume, false);
     const fields = stream.of("fields");
     assert.deepEqual(fields.at(-1).devices[0].fields.map(field => [field.definition.name, field.value]),
       [["volume_all_mount_paths_reported", ["F:\\"]], ["volume_all_free_bytes_actual", "250092956672"]]);
@@ -213,5 +215,38 @@ test("topology structure and the metric catalog push once, then only on change; 
   } finally {
     await stream.close();
     await server.json("/__test/scenario/reset", { method: "POST" });
+  }
+});
+
+test("a field selection pushes only the selected fields, once and then only on change", async () => {
+  await server.json("/__test/scenario/reset", { method: "POST" });
+  await server.scenario({ deviceTopologyStorage: true });
+  const { value: state } = await server.json("/api/device-topology/state");
+  const identity = state.informationFields.devices[0].deviceIdentity;
+  const stream = await openStream([{ id: "free", path: "/api/device-topology/fields/subscribe?intervalMs=100",
+    fields: [{ deviceIdentity: identity, fieldName: "volume_all_free_bytes_actual" }] }]);
+  try {
+    await stream.waitFor("the first selected frame", () => stream.of("free").length === 1);
+    const [first] = stream.of("free");
+    assert.deepEqual(first.devices.map(device => [device.deviceIdentity, device.fields.map(field => [field.definition.name, field.value])]),
+      [[identity, [["volume_all_free_bytes_actual", "250092956672"]]]]);
+    await stream.quiet("free", 400);
+    await server.scenario({ deviceTopologyVolumeFreeBytes: "200000000000" });
+    await stream.waitFor("the changed selected field", () => stream.of("free").length === 2);
+    assert.equal(stream.of("free")[1].devices[0].fields[0].value, "200000000000");
+    await stream.quiet("free", 300);
+  } finally {
+    await stream.close();
+    await server.json("/__test/scenario/reset", { method: "POST" });
+  }
+
+  // 空选择、重复字段和未声明的字段都让整个请求 400。
+  for (const fields of [[], [{ deviceIdentity: identity, fieldName: "volume_all_free_bytes_actual" },
+    { deviceIdentity: identity, fieldName: "volume_all_free_bytes_actual" }], [{ deviceIdentity: identity, fieldName: "unknown_field" }]]) {
+    const response = await fetch(`${server.baseUrl}/api/subscriptions/stream`, { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ version: 1,
+        subscriptions: [{ id: "free", path: "/api/device-topology/fields/subscribe?intervalMs=100", fields }] }) });
+    assert.equal(response.status, 400, JSON.stringify(fields));
+    await response.body?.cancel();
   }
 });
