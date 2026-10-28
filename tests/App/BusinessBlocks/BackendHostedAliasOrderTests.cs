@@ -99,9 +99,13 @@ public sealed class BackendHostedAliasOrderTests
             Assert.All(BackendExpectedProductionTree.Wrappers, uid => Assert.Contains(uid, scheduler.Graph.BlockIds));
             Assert.Equal(BlockUids.FanControlCoreLifetimeService,
                 scheduler.Graph.Nodes.Single(row => row.Id == BlockUids.FanCurveTemperatureFeed).ParentId);
-            // These fake services own the same exact fan-configuration fact as production.
-            await authority.ClaimCell<bool>(StateItemUids.SoftwareFanCurveEnabled).PublishAsync(true,
-                new(BusinessBlockRequestKind.Configuration, "fan-pair-fixture", "software-curve-enabled", 0));
+            // These fake services own the same exact pending-command fact as production.
+            await authority.ClaimCell<bool>(StateItemUids.FanCommandPending).PublishAsync(true,
+                new(BusinessBlockRequestKind.Configuration, "fan-pair-fixture", "fan-command-pending", 0));
+            await authority.ClaimCell<bool>(StateItemUids.FanCoreAvailable).PublishAsync(true,
+                BusinessBlockTestSupport.Reason());
+            await authority.ClaimCell<bool>(StateItemUids.SoftwareCurveRunNeeded).PublishAsync(true,
+                BusinessBlockTestSupport.Reason());
             using var startupLimit = new CancellationTokenSource(BusinessBlockTestSupport.TestTimeout);
             await host.StartAsync(startupLimit.Token).WaitAsync(BusinessBlockTestSupport.TestTimeout);
             await Task.WhenAll(core.Started.Task, feed.Started.Task).WaitAsync(BusinessBlockTestSupport.TestTimeout);

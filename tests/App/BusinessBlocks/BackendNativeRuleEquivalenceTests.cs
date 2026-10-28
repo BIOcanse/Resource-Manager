@@ -142,6 +142,7 @@ public sealed class BackendNativeRuleEquivalenceTests
         bool VidMm() => P(BackendUids.DxgkrnlVidMmEtwTelemetryZone) && T(BackendItems.VramResidualInUse)
             && T(BackendItems.VidMmNativeSessionAvailable) && M(BackendItems.VidMmUnfrozen);
         if (child == BackendUids.KernelLeakObservation) return T(BackendItems.KernelLeakObservationEnabled);
+        if (child == BackendUids.FanCurveTemperatureFeed) return T(BackendItems.SoftwareCurveRunNeeded);
         if (!P(child)) return false;
         return child switch
         {
@@ -164,8 +165,8 @@ public sealed class BackendNativeRuleEquivalenceTests
             BackendUids.DeviceTopologySnapshotProvider => T(BackendItems.SamplingDeviceTopologyInUse),
             BackendUids.EtwPhysicalDiskIoAttributionReader => T(BackendItems.DiskAttributionInUse),
             BackendUids.EtwNetworkTcpIpAttributionReader => T(BackendItems.NetworkAttributionInUse),
-            BackendUids.FanControlCoreLifetimeService => T(BackendItems.SoftwareFanCurveEnabled) || T(BackendItems.AppliedFanControlExists) || T(BackendItems.FanCommandPending) || T(BackendItems.FanReadingsInUse),
-            BackendUids.FanCurveTemperatureFeed => T(BackendItems.SoftwareFanCurveEnabled),
+            BackendUids.FanControlCoreLifetimeService => T(BackendItems.FanCoreAvailable) && (T(BackendItems.AppliedFanControlExists) || T(BackendItems.FanCommandPending) || T(BackendItems.FanReadingsInUse) || T(BackendItems.SoftwareCurveRunNeeded)),
+            BackendUids.FanCurveTemperatureFeed => T(BackendItems.SoftwareCurveRunNeeded),
             BackendUids.ControlDesiredStateReassertion => T(BackendItems.AppliedControlIntentsExist),
             BackendUids.ControlActualStateReader => T(BackendItems.ActualControlValuesInUse),
             BackendUids.HostManagerSmartCoordinator => T(BackendItems.OptimizationEnabled) || T(BackendItems.ActiveCpuLeasesExist) || T(BackendItems.SmartOwnedStatePending),

@@ -118,6 +118,7 @@ public sealed partial class FanControlCoreClient(
     private void ObserveDescription(JsonElement response)
     {
         if (!response.TryGetProperty("fans", out var fans) || fans.ValueKind != JsonValueKind.Array) return;
+        ObserveOpen(response);
         var backend = Text(response, "backend");
         if (Text(response, "reason") is { } detail) ReportDiagnostic(detail);
         foreach (var fan in fans.EnumerateArray())
@@ -214,71 +215,8 @@ public sealed partial class FanControlCoreClient(
         return points;
     }
 
-    /// <summary>
-    /// 只有本客户端已成功应用、尚未撤销的软件曲线需要温度；能力探测不是需求。
-    /// </summary>
-    public bool NeedsTemperatures()
-    {
-        lock (softwareCurveGate) return softwareCurves.Count > 0;
-    }
-
-    private readonly object softwareCurveGate = new();
-    private readonly HashSet<int> softwareCurves = [];
-    internal event Action? TemperatureDemandChanged;
-
-    private void UpdateSoftwareCurve(int fanIndex, bool active)
-    {
-        bool changed;
-        lock (softwareCurveGate)
-        {
-            var needed = softwareCurves.Count > 0;
-            if (active && !disposed && !sessionStopped) softwareCurves.Add(fanIndex);
-            else softwareCurves.Remove(fanIndex);
-            changed = needed != (softwareCurves.Count > 0);
-        }
-        if (changed) NotifyTemperatureDemandChanged();
-    }
-
-    private void ClearSoftwareCurves()
-    {
-        bool changed;
-        lock (softwareCurveGate)
-        {
-            changed = softwareCurves.Count > 0;
-            softwareCurves.Clear();
-        }
-        if (changed) NotifyTemperatureDemandChanged();
-    }
-
-    private void NotifyTemperatureDemandChanged()
-    {
-        foreach (var callback in TemperatureDemandChanged?.GetInvocationList() ?? [])
-        {
-            try { ((Action)callback)(); }
-            catch (Exception error) { logger?.LogWarning(error, "Fan temperature demand callback failed."); }
-        }
-    }
-
-    private void ObserveSoftwareCurveReceipt(string operation, IReadOnlyDictionary<string, object?>? arguments, JsonElement response)
-    {
-        if (arguments is null || !arguments.TryGetValue("fan", out var value) || value is not int fanIndex
-            || !Flag(response, "ok")) return;
-        if (operation == "setcurve" && ParseCurveReceipt(response) is not null
-            && Text(response, "execution") is ControlFanCurveExecutions.Software or ControlFanCurveExecutions.Firmware)
-        {
-            UpdateSoftwareCurve(fanIndex, Text(response, "execution") == ControlFanCurveExecutions.Software);
-        }
-        else if (operation is "set" or "boost"
-            || operation == "auto" && response.TryGetProperty("fans", out var fans) && fans.ValueKind == JsonValueKind.Array
-                && fans.EnumerateArray().Any(fan => Integer(fan, "index") == fanIndex && Flag(fan, "automaticControl")))
-        {
-            UpdateSoftwareCurve(fanIndex, false);
-        }
-        else if (operation == "curve" && Text(response, "execution") != ControlFanCurveExecutions.Software)
-        {
-            UpdateSoftwareCurve(fanIndex, false);
-        }
-    }
+    /// <summary>The current session has software plans or pending hand-back.</summary>
+    public bool NeedsTemperatures() => SoftwareCurveRunNeeded;
 
     /// <summary>
     /// 这条通道用不上时，核心给的那句具体原因。用得上就是 null。
@@ -286,7 +224,7 @@ public sealed partial class FanControlCoreClient(
     /// 和风扇清单同一次 describe 的结果 —— 清单是空的时候，
     /// **为什么空**就在这里。
     /// </summary>
-    public string? UnavailableReason => unavailableReason;
+    public string? UnavailableReason => IsAvailable ? unavailableReason : openFailureReason;
 
     private volatile string? unavailableReason;
 
@@ -354,6 +292,9 @@ public sealed partial class FanControlCoreClient(
 internal interface IFanControlCoreSession : IDisposable
 {
     JsonElement Handle(JsonElement request);
+    bool SoftwareCurveRunNeeded { get; }
+    event Action<bool>? SoftwareCurveRunNeededChanged;
+    Task RunSoftwareCurveAsync(CancellationToken stop);
     void SetDiagnosticSink(Action<string> sink) { }
     string? InFlightOperation => null;
 }

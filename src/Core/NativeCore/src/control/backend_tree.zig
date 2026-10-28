@@ -399,10 +399,11 @@ fn networkAttributionShouldRun(input: *control.Input) anyerror!bool {
     return anyFact(input, BlockUids.EtwNetworkTcpIpAttributionReader, &.{ItemUids.NetworkAttributionInUse});
 }
 fn fanCoreShouldRun(input: *control.Input) anyerror!bool {
-    return anyFact(input, BlockUids.FanControlCoreLifetimeService, &.{ ItemUids.SoftwareFanCurveEnabled, ItemUids.AppliedFanControlExists, ItemUids.FanCommandPending, ItemUids.FanReadingsInUse });
+    return try isTrue(input, ItemUids.FanCoreAvailable) and
+        try anyFact(input, BlockUids.FanControlCoreLifetimeService, &.{ ItemUids.AppliedFanControlExists, ItemUids.FanCommandPending, ItemUids.FanReadingsInUse, ItemUids.SoftwareCurveRunNeeded });
 }
 fn fanTemperatureShouldRun(input: *control.Input) anyerror!bool {
-    return anyFact(input, BlockUids.FanCurveTemperatureFeed, &.{ItemUids.SoftwareFanCurveEnabled});
+    return isTrue(input, ItemUids.SoftwareCurveRunNeeded);
 }
 fn controlReassertionShouldRun(input: *control.Input) anyerror!bool {
     return anyFact(input, BlockUids.ControlDesiredStateReassertion, &.{ItemUids.AppliedControlIntentsExist});
@@ -601,6 +602,7 @@ const RuleTestFacts = struct {
     }
     fn expected(self: *const @This()) bool {
         if (self.child == BlockUids.KernelLeakObservation) return self.truth(ItemUids.KernelLeakObservationEnabled);
+        if (self.child == BlockUids.FanCurveTemperatureFeed) return self.truth(ItemUids.SoftwareCurveRunNeeded);
         if (!self.permit(self.child)) return false;
         const I = ItemUids;
         return switch (self.child) {
@@ -623,8 +625,8 @@ const RuleTestFacts = struct {
             BlockUids.DeviceTopologySnapshotProvider => self.truth(I.SamplingDeviceTopologyInUse),
             BlockUids.EtwPhysicalDiskIoAttributionReader => self.truth(I.DiskAttributionInUse),
             BlockUids.EtwNetworkTcpIpAttributionReader => self.truth(I.NetworkAttributionInUse),
-            BlockUids.FanControlCoreLifetimeService => self.truth(I.SoftwareFanCurveEnabled) or self.truth(I.AppliedFanControlExists) or self.truth(I.FanCommandPending) or self.truth(I.FanReadingsInUse),
-            BlockUids.FanCurveTemperatureFeed => self.truth(I.SoftwareFanCurveEnabled),
+            BlockUids.FanControlCoreLifetimeService => self.truth(I.FanCoreAvailable) and (self.truth(I.AppliedFanControlExists) or self.truth(I.FanCommandPending) or self.truth(I.FanReadingsInUse) or self.truth(I.SoftwareCurveRunNeeded)),
+            BlockUids.FanCurveTemperatureFeed => self.truth(I.SoftwareCurveRunNeeded),
             BlockUids.ControlDesiredStateReassertion => self.truth(I.AppliedControlIntentsExist),
             BlockUids.ControlActualStateReader => self.truth(I.ActualControlValuesInUse),
             BlockUids.HostManagerSmartCoordinator => self.truth(I.OptimizationEnabled) or self.truth(I.ActiveCpuLeasesExist) or self.truth(I.SmartOwnedStatePending),

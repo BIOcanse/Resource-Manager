@@ -68,6 +68,7 @@ public sealed partial class FanControlCoreClient
         lock (sessionSync)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
+            if (!IsAvailable) return UnavailableCommand();
             if (skipIfBusy && (sessionStopped || pendingCommands != 0 || gate.CurrentCount == 0)) return null;
             ChangePending(1);
         }
@@ -128,10 +129,13 @@ public sealed partial class FanControlCoreClient
                 lock (sessionSync)
                 {
                     ObjectDisposedException.ThrowIf(disposed, this);
+                    if (pendingCommand && !IsAvailable) return UnavailableCommand();
                     if (!pendingCommand && (sessionStopped || !runReady.Task.IsCompletedSuccessfully)) return null;
                     ready = runReady;
                 }
-                var current = await ready.Task.WaitAsync(waiting).ConfigureAwait(false);
+                var current = pendingCommand
+                    ? await WaitForRunAsync(ready.Task, waiting).ConfigureAwait(false)
+                    : await ready.Task.WaitAsync(waiting).ConfigureAwait(false);
                 if (current is null) continue;
                 await gate.WaitAsync(waiting).ConfigureAwait(false);
                 var accepted = false;
@@ -169,8 +173,9 @@ public sealed partial class FanControlCoreClient
         catch (Exception error)
         {
             logger?.LogWarning(error, "Fan Control Core request failed ({Operation}).", operation);
+            if (!IsAvailable) return UnavailableCommand();
             unavailableReason = "fan-core-failed";
-            ClearSoftwareCurves();
+
             return null;
         }
         finally { if (pendingCommand) ChangePending(-1); }
@@ -187,7 +192,6 @@ public sealed partial class FanControlCoreClient
         if (response is { } result)
         {
             if (operation == "describe") ObserveDescription(result);
-            ObserveSoftwareCurveReceipt(operation, arguments, result);
         }
         return response;
     }
@@ -199,7 +203,7 @@ public sealed partial class FanControlCoreClient
         {
             logger?.LogWarning(error, "Fan Control Core request failed ({Operation}).", operation);
             unavailableReason = "fan-core-failed";
-            ClearSoftwareCurves();
+
             return null;
         }
     }
@@ -224,9 +228,10 @@ public sealed partial class FanControlCoreClient
                             ? factory(stateDirectory, ResolveLibreHardwareMonitorPath())
                             : new EmbeddedFanControlCoreSession(stateDirectory, ResolveLibreHardwareMonitorPath());
                         created.SetDiagnosticSink(ReportDiagnostic);
+                        lock (sessionSync) session = created;
+                        ObserveSession(created);
                         return created;
                     }).ConfigureAwait(false);
-                    lock (sessionSync) session = opened;
                 }
                 catch
                 {
@@ -252,14 +257,21 @@ public sealed partial class FanControlCoreClient
             await drain.ConfigureAwait(false);
             IFanControlCoreSession? closing;
             lock (sessionSync) { closing = session; session = null; closingSession = closing; }
-            try { await Task.Run(() => closing?.Dispose()).ConfigureAwait(false); }
+            try
+            {
+                await Task.Run(() =>
+                {
+                    ForgetSession(closing);
+                    closing?.Dispose();
+                }).ConfigureAwait(false);
+            }
             catch (Exception error)
             {
                 logger?.LogError(error, "Fan Control Core shutdown restoration failed; durable recovery remains for next startup.");
             }
             finally
             {
-                ClearSoftwareCurves();
+
                 lock (sessionSync) closingSession = null;
                 resourceIdle.TrySetResult();
             }
@@ -296,7 +308,13 @@ public sealed partial class FanControlCoreClient
             try
             {
                 if (!sessionStopped && !disposed && ReferenceEquals(ready, runReady))
-                    await Task.Run(() => ExecuteRequest(held, "describe", null)).ConfigureAwait(false);
+                {
+                    var description = await Task.Run(() => ExecuteRequest(held, "describe", null)).ConfigureAwait(false);
+                    if (description is not { } result || result.TryGetProperty("available", out var availableValue)
+                        && availableValue.ValueKind == JsonValueKind.False)
+                        throw new InvalidOperationException(openFailureReason ?? (description is { } failed ? Text(failed, "reason") : null)
+                            ?? "Fan core Open failed.");
+                }
             }
             finally { gate.Release(); }
             lock (sessionSync)

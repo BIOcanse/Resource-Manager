@@ -17,7 +17,8 @@ public sealed partial class ControlHelperLifecycleTests
         await using var client = new FanControlCoreClient(new FanTestEnvironment(), (_, _) =>
         {
             creates++;
-            return new DelegateFanSession(_ => throw new ApplicationException("injected fan failure"), () => closes++);
+            return new DelegateFanSession(request => request.GetProperty("op").GetString() == "describe"
+                ? FanOk : throw new ApplicationException("injected fan failure"), () => closes++);
         }, log);
         await client.StartSession();
         Assert.Null(await client.SendAsync("read", null, default));

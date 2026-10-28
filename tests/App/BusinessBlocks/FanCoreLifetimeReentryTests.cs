@@ -43,7 +43,6 @@ public sealed class FanCoreLifetimeReentryTests
                 NativeBackendBlockTestSupport.AddFullTreeHostFixture(services);
             }).Build();
         var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
-        await scheduler.Authority.ClaimCell<bool>(BackendItems.SoftwareFanCurveEnabled).PublishAsync(false, BusinessBlockTestSupport.Reason());
         await scheduler.Authority.ClaimCell<bool>(BackendItems.AppliedFanControlExists).PublishAsync(false, BusinessBlockTestSupport.Reason());
         await host.StartAsync();
         Assert.Equal(BusinessBlockState.Stopped, scheduler.ReadState(BackendUids.FanControlCoreLifetimeService));
@@ -57,7 +56,6 @@ public sealed class FanCoreLifetimeReentryTests
             await BusinessBlockTestSupport.State(scheduler, BackendUids.FanControlCoreLifetimeService, BusinessBlockState.Running);
             Assert.True(core.PendingCommands);
             Assert.True(scheduler.Authority.Read<bool>(BackendItems.FanCommandPending).Value);
-            Assert.False(scheduler.Authority.Read<bool>(BackendItems.SoftwareFanCurveEnabled).Value);
             Assert.False(scheduler.Authority.Read<bool>(BackendItems.AppliedFanControlExists).Value);
             Assert.Equal(1, opened);
             Assert.Equal(0, closed);

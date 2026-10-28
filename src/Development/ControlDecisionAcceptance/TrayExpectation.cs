@@ -30,7 +30,7 @@ internal static class TrayExpectation
     ];
     private static readonly int[] RequiredFalseFacts = [
         StateItemUids.DebugLoggingEnabled, StateItemUids.AutomaticUpdatesEnabled, StateItemUids.PublicServiceEnabled,
-        StateItemUids.SoftwareFanCurveEnabled, StateItemUids.AppliedFanControlExists,
+        StateItemUids.AppliedFanControlExists,
         StateItemUids.SamplingCpuTopologyInUse, StateItemUids.SamplingDeviceTopologyInUse,
         StateItemUids.SamplingGpuTelemetryInUse
     ];

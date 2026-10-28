@@ -90,8 +90,6 @@ public sealed partial class FanControlPlaneNativeLifetimeTests
 
         internal async Task StartAsync()
         {
-            await Scheduler.Authority.ClaimCell<bool>(BackendItems.SoftwareFanCurveEnabled)
-                .PublishAsync(false, BusinessBlockTestSupport.Reason());
             await host.StartAsync();
             Assert.False(Core.PendingCommands);
             Assert.False(Plane.AppliedFanControlExists);

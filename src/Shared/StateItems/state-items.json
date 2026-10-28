@@ -1347,26 +1347,11 @@
       "changeEvent": "RuntimePlanProvider.Published"
     },
     {
-      "uid": 119,
-      "kind": "item",
-      "process": "backend",
-      "name": "SoftwareFanCurveEnabled",
-      "comment": "Current authoritative SoftwareFanCurveEnabled fact; any no-value read is false.",
-      "storage": "reference",
-      "type": "bool",
-      "owner": {
-        "component": "JsonControlDesiredStateStore"
-      },
-      "perBlock": false,
-      "trigger": "event",
-      "changeEvent": "DesiredStateChanged"
-    },
-    {
       "uid": 120,
       "kind": "item",
       "process": "backend",
       "name": "AppliedFanControlExists",
-      "comment": "Current authoritative AppliedFanControlExists fact; any no-value read is false.",
+      "comment": "An applied OEM temporary manual duty or enabled full-speed override is kept effective by the open FanCore session. Software plans use SoftwareCurveRunNeeded; persistent firmware curves and automatic mode do not hold a session.",
       "storage": "reference",
       "type": "bool",
       "owner": {
@@ -1918,7 +1903,7 @@
       "kind": "condition",
       "process": "backend",
       "name": "FanCoreShouldRun",
-      "comment": "Runs the fan core while permitted and software fan curves, applied fan control, pending fan operations, or active fan-reading subscriptions require its held session.",
+      "comment": "Permit and availability gate temporary applied manual control, pending commands, active readings and existing session curve work. Existing work keeps the session running but cannot open it.",
       "perBlock": false,
       "node": 78,
       "items": [
@@ -1927,7 +1912,7 @@
           "block": 20
         },
         {
-          "item": 119
+          "item": 171
         },
         {
           "item": 120
@@ -1937,6 +1922,9 @@
         },
         {
           "item": 161
+        },
+        {
+          "item": 170
         }
       ],
       "conditions": [],
@@ -1948,16 +1936,12 @@
       "kind": "condition",
       "process": "backend",
       "name": "FanTemperatureShouldRun",
-      "comment": "Explicit host admission and precise business facts for FanCurveTemperatureFeed; absent ordinary facts are false.",
+      "comment": "Run temperature push and the software curve entry together only while the current session still has curve work.",
       "perBlock": false,
       "node": 20,
       "items": [
         {
-          "item": 8,
-          "block": 18
-        },
-        {
-          "item": 119
+          "item": 170
         }
       ],
       "conditions": [],
@@ -2330,6 +2314,36 @@
       "conditions": [],
       "children": [],
       "decides": 165
+    },
+    {
+      "uid": 170,
+      "kind": "item",
+      "process": "backend",
+      "name": "SoftwareCurveRunNeeded",
+      "comment": "The current fan session has recorded software plans or firmware hand-back still to retry; false without a session.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "FanControlCoreClient"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "SoftwareCurveRunNeededChanged"
+    },
+    {
+      "uid": 171,
+      "kind": "item",
+      "process": "backend",
+      "name": "FanCoreAvailable",
+      "comment": "Persistent fan owner availability: only recognised merged Open failures clear it; any successful Open restores it.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "FanControlCoreClient"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "AvailabilityChanged"
     }
   ]
 }

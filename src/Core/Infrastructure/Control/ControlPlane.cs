@@ -195,7 +195,7 @@ public sealed class ControlPlane(
     {
         var selected = targets.Where(target => objectId is null || target.ObjectId == objectId).ToArray();
         var fanScope = fan is not null && selected.Any(target =>
-            target.ObjectId.StartsWith("fan:", StringComparison.Ordinal) && target.Settings.Count > 0)
+            target.ObjectId.StartsWith(FanControlWriter.ObjectIdPrefix, StringComparison.Ordinal) && target.Settings.Count > 0)
             ? fan.AcquirePendingScope() : null;
         try { return new PendingScopes(fanScope, commands is not null && NeedsBridge(selected) ? commands.AcquirePendingScope() : null); }
         catch { fanScope?.Dispose(); throw; }
@@ -413,7 +413,11 @@ public sealed class ControlPlane(
         // A fan's successful release is published with its outcome, while the
         // shared pending scope owns the entire intervening native operation.
         if (updateFan) Volatile.Write(ref appliedFanControlExists,
-            applied.Any(outcome => outcome.ObjectId.StartsWith("fan:", StringComparison.Ordinal)));
+            applied.Any(outcome => outcome.ObjectId.StartsWith(FanControlWriter.ObjectIdPrefix, StringComparison.Ordinal)
+                && lastDesired.Objects.Any(target => target.ObjectId == outcome.ObjectId
+                    && target.Settings.Any(setting => setting.CapabilityId == outcome.CapabilityId
+                        && (setting.CapabilityId == "fan.duty"
+                            || setting.CapabilityId == "fan.lock-maximum" && setting.Toggle == true)))));
     }
 
 }

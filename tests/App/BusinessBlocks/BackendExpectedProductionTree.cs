@@ -5,6 +5,9 @@ namespace Resource_Manager_APP.Tests;
 /// <summary>Independent embedded expectations for the three production startup profiles.</summary>
 internal static class BackendExpectedProductionTree
 {
+    internal static readonly int[] FanCoreFacts = [BackendItems.HostStartPermitted, BackendItems.FanCoreAvailable,
+        BackendItems.AppliedFanControlExists, BackendItems.FanCommandPending,
+        BackendItems.FanReadingsInUse, BackendItems.SoftwareCurveRunNeeded];
     internal static readonly int[] Wrappers =
     [
         BlockUids.Backend, BlockUids.ServiceHost, BlockUids.Monitoring, BlockUids.HardwareControl,

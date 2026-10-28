@@ -95,41 +95,52 @@ public sealed class FanControlIsolationBoundaryTests
             ["fan"] = 0, ["execution"] = "software",
             ["curve"] = new[] { new { temperatureCelsius = 30, percent = 40 }, new { temperatureCelsius = 90, percent = 90 } }
         };
-        Assert.True((await client.SendAsync("setcurve", arguments, default))!.Value.GetProperty("ok").GetBoolean());
-        if (fault == "loop")
+        using var runStop = new CancellationTokenSource();
+        var run = client.RunSoftwareCurveAsync(runStop.Token);
+        try
         {
-            var second = new Dictionary<string, object?>(arguments) { ["fan"] = 1 };
-            Assert.True((await client.SendAsync("setcurve", second, default))!.Value.GetProperty("ok").GetBoolean());
-            Assert.True(SpinWait.SpinUntil(() => backend.Read().All(fan => !fan.AutomaticControl), 3000));
-            // 用库的回归注入点在 Tick 外抛错，证明整个循环的边界也会交还风扇。
-            var engine = typeof(FanCore).GetField("engine", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(libraryCore)!;
-            var hook = engine.GetType().GetProperty("BeforeIteration", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
-            hook.SetValue(engine, (Action)(() =>
-            {
-                hook.SetValue(engine, null);
-                throw new ApplicationException("injected background loop body");
-            }));
-        }
-        Assert.True(SpinWait.SpinUntil(() => log.Messages.Any(message => message.Contains("injected background"))
-            && libraryCore.ExecutionOf(0) is null && backend.Read().All(fan => fan.AutomaticControl), 3000));
-        var describe = (await client.SendAsync("describe", null, default))!.Value;
-        Assert.Contains(describe.GetProperty("diagnostics").EnumerateArray(), entry => entry.GetString()!.Contains("injected background"));
-        Assert.All(backend.Read(), fan => Assert.True(fan.AutomaticControl));
-        client.ResetDetection();
-        await client.DiscoverAsync(default);
-        Assert.Single(log.Messages, message => message.Contains("injected background"));
-        if (fault == "release")
-        {
-            Assert.Contains(describe.GetProperty("diagnostics").EnumerateArray(), entry => entry.GetString()!.Contains("Injected restoration exception"));
-            Assert.Single(log.Messages, message => message.Contains("Injected restoration exception"));
-        }
-        backend.ThrowDrive = false;
-        var next = (await client.SendAsync("setcurve", arguments, default))!.Value;
-        if (!next.GetProperty("ok").GetBoolean())
-        {
-            Assert.Contains("交还", next.GetProperty("error").GetString());
-            Assert.True((await client.SendAsync("auto", new Dictionary<string, object?> { ["fan"] = 0 }, default))!.Value.GetProperty("ok").GetBoolean());
             Assert.True((await client.SendAsync("setcurve", arguments, default))!.Value.GetProperty("ok").GetBoolean());
+            if (fault == "loop")
+            {
+                var second = new Dictionary<string, object?>(arguments) { ["fan"] = 1 };
+                Assert.True((await client.SendAsync("setcurve", second, default))!.Value.GetProperty("ok").GetBoolean());
+                Assert.True(SpinWait.SpinUntil(() => backend.Read().All(fan => !fan.AutomaticControl), 3000));
+                // 用库的回归注入点在 Tick 外抛错，证明整个循环的边界也会交还风扇。
+                var engine = typeof(FanCore).GetField("engine", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(libraryCore)!;
+                var hook = engine.GetType().GetProperty("BeforeIteration", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+                hook.SetValue(engine, (Action)(() =>
+                {
+                    hook.SetValue(engine, null);
+                    throw new ApplicationException("injected background loop body");
+                }));
+            }
+            Assert.True(SpinWait.SpinUntil(() => log.Messages.Any(message => message.Contains("injected background"))
+                && libraryCore.ExecutionOf(0) is null && backend.Read().All(fan => fan.AutomaticControl), 3000));
+            var describe = (await client.SendAsync("describe", null, default))!.Value;
+            Assert.Contains(describe.GetProperty("diagnostics").EnumerateArray(), entry => entry.GetString()!.Contains("injected background"));
+            Assert.All(backend.Read(), fan => Assert.True(fan.AutomaticControl));
+            client.ResetDetection();
+            await client.DiscoverAsync(default);
+            Assert.Single(log.Messages, message => message.Contains("injected background"));
+            if (fault == "release")
+            {
+                Assert.Contains(describe.GetProperty("diagnostics").EnumerateArray(), entry => entry.GetString()!.Contains("Injected restoration exception"));
+                Assert.Single(log.Messages, message => message.Contains("Injected restoration exception"));
+            }
+            backend.ThrowDrive = false;
+            var next = (await client.SendAsync("setcurve", arguments, default))!.Value;
+            if (!next.GetProperty("ok").GetBoolean())
+            {
+                Assert.Contains("交还", next.GetProperty("error").GetString());
+                Assert.True((await client.SendAsync("auto", new Dictionary<string, object?> { ["fan"] = 0 }, default))!.Value.GetProperty("ok").GetBoolean());
+                Assert.True((await client.SendAsync("setcurve", arguments, default))!.Value.GetProperty("ok").GetBoolean());
+            }
+        }
+        finally
+        {
+            runStop.Cancel();
+            try { await run; }
+            catch (ApplicationException) when (fault == "loop") { }
         }
     }
 
@@ -230,11 +241,11 @@ public sealed class FanControlIsolationBoundaryTests
             })), log);
         await client.StartSession();
         var observed = false;
-        client.TemperatureDemandChanged += () => throw new ApplicationException("injected callback");
-        client.TemperatureDemandChanged += () => observed = true;
+        client.SoftwareCurveRunNeededChanged += () => throw new ApplicationException("injected callback");
+        client.SoftwareCurveRunNeededChanged += () => observed = true;
         Assert.NotNull(await client.SendAsync("setcurve", new Dictionary<string, object?> { ["fan"] = 0 }, default));
         Assert.True(observed);
-        Assert.Contains(log.Messages, message => message.Contains("callback failed"));
+        Assert.Contains(log.Messages, message => message.Contains("fact observer failed"));
     }
 
     [Fact]

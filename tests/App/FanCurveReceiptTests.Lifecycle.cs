@@ -10,7 +10,7 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class FanCurveReceiptTests
 {
-    private const string SoftwareReceipt = "\"ok\":true,\"execution\":\"software\",\"curve\":" + CompleteCurve;
+    private const string SoftwareReceipt = "\"ok\":true,\"softwarePlanRecorded\":true,\"execution\":null,\"curve\":" + CompleteCurve;
     private const string AutomaticReceipt = "\"ok\":true,\"fans\":[{\"index\":0,\"automaticControl\":true},{\"index\":1,\"automaticControl\":true}]";
 
     [Fact]
@@ -160,7 +160,7 @@ public sealed partial class FanCurveReceiptTests
     }
 
     [Fact]
-    public async Task HelperFailureLeavesTemperatureLeaseForControllerStopWithoutAnotherHardwareRequest()
+    public async Task CommandFailureDoesNotGuessThatTheSdkDroppedItsPlan()
     {
         await using var helper = new CurveHelper(SoftwareReceipt);
         var metrics = new TemperatureSubscriptions();
@@ -171,7 +171,7 @@ public sealed partial class FanCurveReceiptTests
             new("fan.curve", Curve: [new(60, 35)], CurveExecution: ControlFanCurveExecutions.Software), default)).Status);
         await WaitForLeaseAsync(metrics);
         await helper.Client.SendAsync("exit-fixture", null, default);
-        Assert.False(helper.Client.NeedsTemperatures());
+        Assert.True(helper.Client.NeedsTemperatures());
         Assert.Equal(1, metrics.ActiveCount);
         var requests = File.ReadAllLines(helper.Operations);
         await feed.StopAsync(default);

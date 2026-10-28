@@ -88,6 +88,9 @@ public sealed partial class StateRegistryTests
         Assert.DoesNotContain(backend.Where(entry => entry.GetProperty("kind").GetString() == "block"),
             entry => removedResources.Contains(entry.GetProperty("name").GetString()));
         var permit = byUid[BackendItems.HostStartPermitted];
+        var fanCore = backend.Single(entry => entry.GetProperty("name").GetString() == "FanCoreShouldRun");
+        Assert.Equal(BackendExpectedProductionTree.FanCoreFacts.Order(), fanCore.GetProperty("items").EnumerateArray()
+            .Select(read => read.GetProperty("item").GetInt32()).Order());
         Assert.True(permit.GetProperty("perBlock").GetBoolean());
         Assert.Equal("BackendHostPermitFacts", permit.GetProperty("owner").GetProperty("component").GetString());
         foreach (var condition in backend.Where(entry => entry.GetProperty("kind").GetString() == "condition"))
@@ -99,6 +102,8 @@ public sealed partial class StateRegistryTests
                 Assert.False(perBlock);
                 Assert.Equal(BackendItems.KernelLeakObservationEnabled, Assert.Single(reads).GetProperty("item").GetInt32());
             }
+            else if (!perBlock && condition.GetProperty("decides").GetInt32() == BackendUids.FanCurveTemperatureFeed)
+                Assert.Equal(new[] { BackendItems.SoftwareCurveRunNeeded }, reads.Select(read => read.GetProperty("item").GetInt32()));
             else
                 Assert.Contains(reads, read => read.GetProperty("item").GetInt32() == BackendItems.HostStartPermitted
                     && (perBlock ? !read.TryGetProperty("block", out _)

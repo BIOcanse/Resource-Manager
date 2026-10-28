@@ -61,7 +61,7 @@ public sealed class BackendControlDecisionFactsTests
         Assert.False(plane.AppliedControlIntentsExist);
         Assert.False(plane.AppliedFanControlExists);
 
-        await plane.ApplyDesiredStateAsync(new([new("fan:0", [new("duty", 40)])]), default);
+        await plane.ApplyDesiredStateAsync(new([new("fan:oem0", [new("fan.duty", 40)])]), default);
         Assert.True(plane.AppliedControlIntentsExist);
         Assert.True(plane.AppliedFanControlExists);
 
@@ -75,7 +75,7 @@ public sealed class BackendControlDecisionFactsTests
 
         // A rejected edit keeps old receipts for other objects, including prior
         // successful releases. Those receipts cannot become live ownership.
-        await plane.SetObjectSettingsAsync("fan:1", [
+        await plane.SetObjectSettingsAsync("fan:oem1", [
             new("fan.duty", 40),
             new("fan.curve", Curve: [new(60, 40)], CurveExecution: ControlFanCurveExecutions.Firmware)
         ], default);
@@ -87,7 +87,7 @@ public sealed class BackendControlDecisionFactsTests
     public async Task FailedIntentCannotStartMaintenance()
     {
         var plane = new ControlPlane(new Store(), new Writer { Succeed = false });
-        await plane.ApplyDesiredStateAsync(new([new("fan:0", [new("duty", 40)])]), default);
+        await plane.ApplyDesiredStateAsync(new([new("fan:oem0", [new("fan.duty", 40)])]), default);
         Assert.False(plane.AppliedControlIntentsExist);
         Assert.False(plane.AppliedFanControlExists);
     }

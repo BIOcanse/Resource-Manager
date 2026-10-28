@@ -369,8 +369,9 @@ public sealed class FanControlWriter(
             return Failed(target, capability, "fan-core-rejected");
         }
 
-        var readBack = FanControlCoreClient.ParseCurveReceipt(result);
-        if (readBack is null)
+        // Software success is the recorded plan, independently of whether an
+        // execution or a subsequent curve read still exists at receipt time.
+        if (software ? !Flag(result, "softwarePlanRecorded") : FanControlCoreClient.ParseCurveReceipt(result) is null)
         {
             return Failed(target, capability, "control-readback-mismatch");
         }

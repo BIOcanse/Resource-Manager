@@ -18,7 +18,7 @@ namespace ResourceManager.App.Infrastructure.Control;
 /// <item><b>间隔 0.1 秒，而且必须这么小。</b> 温度能在一秒内冲上去十几度；
 ///   0.1 秒推送让核心及时看到最新读数，再按曲线目标和加速度调速。
 ///   核心不对温度做滤波；放大推送间隔只会增加读数等待，拖慢对温度上冲的响应。</item>
-/// <item><b>订阅随块的生命周期。</b> 父决策节点根据软件曲线设置决定本块启停，
+/// <item><b>订阅随块的生命周期。</b> 父决策节点根据会话还有没有曲线工作决定本块启停，
 ///   运行入口打开温度订阅，停止时释放。</item>
 /// <item><b>推送停了要能被发现。</b> 推的是"现在多少"，核心那边带时效：
 ///   连续几秒收不到就把风扇交还固件。所以这里**不补推历史、不排队**，
@@ -70,24 +70,60 @@ public sealed class FanCurveTemperatureFeed(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         lock (subscriptionGate) finished = false;
+        using var run = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
         try
         {
             catalog.Changed += UpdateSubscription;
             UpdateSubscription();
-            using var timer = new PeriodicTimer(Interval);
-            while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
+            var temperatures = PushAsync(run.Token);
+            var curve = core.RunSoftwareCurveAsync(run.Token);
+            try { await await Task.WhenAny(temperatures, curve).ConfigureAwait(false); }
+            finally
+            {
+                run.Cancel();
+                // The entry's completion includes firmware hand-back. Join it
+                // before releasing subscriptions or allowing the parent to stop.
+                await Task.WhenAll(temperatures, curve).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // 关机，正常路径。
+        }
+        finally
+        {
+            ReleaseSubscription();
+        }
+    }
+
+    private void ReleaseSubscription()
+    {
+        catalog.Changed -= UpdateSubscription;
+        lock (subscriptionGate)
+        {
+            finished = true;
+            try { lease?.Dispose(); }
+            catch (Exception error) { logger?.LogWarning(error, "Fan temperature subscription release failed."); }
+            lease = null;
+            request = null;
+        }
+    }
+
+    private async Task PushAsync(CancellationToken stop)
+    {
+        using var timer = new PeriodicTimer(Interval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(stop).ConfigureAwait(false))
             {
                 MetricSampleRequest? currentRequest;
                 lock (subscriptionGate) currentRequest = request;
                 if (currentRequest is null) continue;
                 try
                 {
-                    // ReadLatest only reads; sampling belongs to the subscription.
                     if (metrics.ReadLatest(currentRequest) is { } snapshot
                         && Collect(snapshot, DateTimeOffset.UtcNow) is { Count: > 0 } samples)
-                    {
-                        await core.PushTemperaturesAsync(samples, stoppingToken).ConfigureAwait(false);
-                    }
+                        await core.PushTemperaturesAsync(samples, stop).ConfigureAwait(false);
                 }
                 catch (Exception error) when (error is not OperationCanceledException)
                 {
@@ -95,26 +131,7 @@ public sealed class FanCurveTemperatureFeed(
                 }
             }
         }
-        catch (OperationCanceledException)
-        {
-            // 关机，正常路径。
-        }
-        catch (Exception error)
-        {
-            logger?.LogError(error, "Fan temperature feed stopped after a failure; curves will release on stale input.");
-        }
-        finally
-        {
-            catalog.Changed -= UpdateSubscription;
-            lock (subscriptionGate)
-            {
-                finished = true;
-                try { lease?.Dispose(); }
-                catch (Exception error) { logger?.LogWarning(error, "Fan temperature subscription release failed."); }
-                lease = null;
-                request = null;
-            }
-        }
+        finally { ReleaseSubscription(); }
     }
 
     /// <summary>

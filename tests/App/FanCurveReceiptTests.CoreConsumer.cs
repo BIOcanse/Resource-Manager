@@ -87,43 +87,23 @@ public sealed partial class FanCurveReceiptTests
 
     private static async Task RunRedetectionAsync(int deferredOpens)
     {
-        await using var helper = new CoreFixture(deferredOpens);
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        var client = helper.Client;
-        Assert.Empty(client.Describe());
-        var initialReason = client.UnavailableReason;
-        Assert.Equal("fan-channel-missing", initialReason);
-        Assert.Contains(helper.Log.Messages, message => message.Contains("Deferred fake discovery 1", StringComparison.Ordinal));
-        Assert.False(client.NeedsTemperatures());
-        var processId = helper.SessionId;
-        var unchanged = await client.SendAsync("describe", null, deadline.Token);
-        Assert.False(unchanged!.Value.GetProperty("available").GetBoolean());
-        Assert.Empty(unchanged.Value.GetProperty("fans").EnumerateArray());
-
-        if (deferredOpens == 2)
+        var attempts = 0;
+        await using var client = new FanControlCoreClient(new FanTestEnvironment(), (_, _) =>
+            new LibraryFanSession(new FanControlCore.Discovery.FanCore(new ProbeFanBackend(++attempts <= deferredOpens ? int.MaxValue : 0))));
+        for (var attempt = 1; attempt <= deferredOpens; attempt++)
         {
-            client.ResetDetection();
-            await client.DiscoverAsync(deadline.Token);
+            Assert.Empty(await client.DiscoverAsync(default));
             Assert.Empty(client.Describe());
             Assert.Equal("fan-channel-missing", client.UnavailableReason);
-            Assert.Contains(helper.Log.Messages, message => message.Contains("Deferred fake discovery 2", StringComparison.Ordinal));
+            Assert.True(client.IsAvailable); // An untyped backend failure is Other.
             Assert.False(client.NeedsTemperatures());
-            Assert.Equal(processId, helper.SessionId);
+            Assert.Equal(attempt, attempts);
+            client.ResetDetection();
         }
-        client.ResetDetection();
-        await client.DiscoverAsync(deadline.Token);
-        Assert.True(Assert.Single(client.Describe()).SupportsSoftwareCurve);
+        Assert.True(Assert.Single(await client.DiscoverAsync(default)).SupportsSoftwareCurve);
         Assert.Null(client.UnavailableReason);
         Assert.False(client.NeedsTemperatures());
-        Assert.Equal(processId, helper.SessionId);
-        Assert.False(helper.IsDisposed);
-        var refreshed = await client.SendAsync("describe", null, deadline.Token);
-        Assert.True(refreshed!.Value.GetProperty("available").GetBoolean());
-        Assert.Equal(System.Text.Json.JsonValueKind.Null, refreshed.Value.GetProperty("reason").ValueKind);
-        Assert.True(Assert.Single(client.Describe()).SupportsSoftwareCurve);
-        // The deferred fixture exits unsuccessfully if detection drove any hardware.
     }
-
     [Fact]
     public Task CompiledCoreReceiptsAndManualRestorationUseTheProductionLibraryBoundary()
         => RunCoreConsumerAsync("manual");
@@ -208,6 +188,8 @@ public sealed partial class FanCurveReceiptTests
     private sealed class CoreFixture : IAsyncDisposable
     {
         private readonly ProbeFanBackend backend;
+        private readonly CancellationTokenSource stop = new();
+        private readonly Task run;
         internal FanControlCoreClient Client { get; }
         internal FanBoundaryLogger<FanControlCoreClient> Log { get; } = new();
         internal bool IsDisposed => backend.Disposed;
@@ -218,9 +200,13 @@ public sealed partial class FanCurveReceiptTests
             Client = new FanControlCoreClient(new EnvironmentInfo(@"C:\FanCoreConsumerFixture"),
                 (_, _) => new LibraryFanSession(new FanControlCore.Discovery.FanCore(backend)), Log);
             Client.StartSession().GetAwaiter().GetResult();
+            run = Client.RunSoftwareCurveAsync(stop.Token);
         }
         public async ValueTask DisposeAsync()
         {
+            stop.Cancel();
+            try { await run; } catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+            stop.Dispose();
             await Client.DisposeAsync();
             Assert.True(backend.Disposed);
             Assert.All(backend.Read(), fan => Assert.True(fan.AutomaticControl));

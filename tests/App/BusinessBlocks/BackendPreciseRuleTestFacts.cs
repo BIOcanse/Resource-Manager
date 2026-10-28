@@ -27,7 +27,7 @@ internal sealed class BackendPreciseRuleTestFacts
     internal async Task InitializeAsync(bool facts = false)
     {
         foreach (var (key, cell) in cells)
-            await cell.PublishAsync(key.ItemUid == BackendItems.HostStartPermitted || facts, BusinessBlockTestSupport.Reason());
+            await cell.PublishAsync(key.ItemUid is BackendItems.HostStartPermitted or BackendItems.FanCoreAvailable || facts, BusinessBlockTestSupport.Reason());
     }
     internal Task PublishAsync(int uid, bool value)
         => cells[new(uid)].PublishAsync(value, BusinessBlockTestSupport.Reason());

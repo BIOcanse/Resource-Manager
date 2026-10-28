@@ -39,12 +39,6 @@ internal sealed class BackendDecisionStateBindings(IServiceProvider services,
         Plan(StateItemUids.KernelLeakObservationEnabled, () => plans.DecisionFacts.KernelLeakObservationEnabled);
         Plan(StateItemUids.PublicServiceEnabled, () => plans.DecisionFacts.PublicServiceEnabled);
 
-        if (services.GetService<IControlDesiredStateStore>() is JsonControlDesiredStateStore desired)
-        {
-            await desired.LoadAsync(cancellationToken).ConfigureAwait(false);
-            Bind(StateItemUids.SoftwareFanCurveEnabled, () => desired.SoftwareFanCurveEnabled,
-                callback => desired.DesiredStateChanged += callback, callback => desired.DesiredStateChanged -= callback);
-        }
         if (services.GetService<IControlPlane>() is ControlPlane plane)
         {
             Bind(StateItemUids.AppliedFanControlExists, () => plane.AppliedFanControlExists,
@@ -53,8 +47,14 @@ internal sealed class BackendDecisionStateBindings(IServiceProvider services,
                 callback => plane.AppliedIntentsChanged += callback, callback => plane.AppliedIntentsChanged -= callback);
         }
         if (services.GetService<FanControlCoreClient>() is { } fan)
+        {
             Bind(StateItemUids.FanCommandPending, () => fan.PendingCommands,
                 callback => fan.PendingCommandsChanged += callback, callback => fan.PendingCommandsChanged -= callback);
+            Bind(StateItemUids.SoftwareCurveRunNeeded, () => fan.SoftwareCurveRunNeeded,
+                callback => fan.SoftwareCurveRunNeededChanged += callback, callback => fan.SoftwareCurveRunNeededChanged -= callback);
+            Bind(StateItemUids.FanCoreAvailable, () => fan.IsAvailable,
+                callback => fan.AvailabilityChanged += callback, callback => fan.AvailabilityChanged -= callback);
+        }
         if (services.GetService<ControlActualStateReader>() is { } actual)
         {
             Bind(StateItemUids.ActualControlValuesInUse, () => actual.ActualControlValuesInUse,

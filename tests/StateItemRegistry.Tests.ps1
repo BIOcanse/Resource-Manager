@@ -257,9 +257,9 @@ $volume = @($production.entries | Where-Object name -CEQ 'DeviceTopologyVolumeFr
 Assert-True ($volume.Count -eq 1) 'The independent volume free-space current is registered.'
 Assert-True ($volume[0].kind -ceq 'item' -and $volume[0].owner.block -eq 33 -and $volume[0].trigger -ceq 'event') 'Volume free-space current belongs to the topology owner and publishes change events.'
 # Catalog counts retain all dev desktop/window entries and include the replayed no-demand facts.
-Assert-True ($production.entries.Count -eq 169) 'Production catalog contains 63 blocks, 66 items and 40 conditions.'
+Assert-True ($production.entries.Count -eq 170) 'Production catalog contains 63 blocks, 67 items and 40 conditions.'
 Assert-True (@($production.entries | Where-Object kind -CEQ 'block').Count -eq 63) 'Production catalog contains 63 blocks.'
-Assert-True (@($production.entries | Where-Object kind -CEQ 'item').Count -eq 66) 'Production catalog contains 66 items.'
+Assert-True (@($production.entries | Where-Object kind -CEQ 'item').Count -eq 67) 'Production catalog contains 67 items.'
 Assert-True (@($production.entries | Where-Object kind -CEQ 'condition').Count -eq 40) 'Production catalog contains 40 conditions.'
 Assert-True (($production.entries | Where-Object uid -EQ 41).name -ceq 'MainFrontend') 'MainRoot is renamed without changing UID 41.'
 Assert-True (($production.entries | Where-Object uid -EQ 42).name -ceq 'Tray') 'TrayRoot is renamed without changing UID 42.'

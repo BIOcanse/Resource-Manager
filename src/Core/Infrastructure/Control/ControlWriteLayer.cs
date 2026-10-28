@@ -45,6 +45,7 @@ public sealed class ControlWriteLayer(
     {
         ArgumentNullException.ThrowIfNull(desired);
         cancellationToken.ThrowIfCancellationRequested();
+        if (desired.Objects.Count == 0) return ControlApplyReport.Empty;
         var objects = capabilities is not null && !capabilities.Allows(StartupCapability.RuntimeEffectOwners)
             ? new ControlObjectCatalog([], DateTimeOffset.UtcNow)
             : await catalog.ReadObjectsAsync(cancellationToken).ConfigureAwait(false);

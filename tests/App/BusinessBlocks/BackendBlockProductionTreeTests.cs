@@ -49,7 +49,8 @@ public sealed class BackendBlockProductionTreeTests
         {
             var facts = new BackendPreciseRuleTestFacts(fixture.Authority, fixture.Native);
             await facts.InitializeAsync();
-            await facts.PublishAsync(BackendItems.SoftwareFanCurveEnabled, true);
+            await facts.PublishAsync(BackendItems.FanCommandPending, true);
+            await facts.PublishAsync(BackendItems.SoftwareCurveRunNeeded, true);
             await curve.Started.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             await fixture.Scheduler.ShutdownAsync(reason);
             await curve.StopNotified.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);

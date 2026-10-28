@@ -7,7 +7,38 @@ namespace Resource_Manager_APP.Tests;
 
 internal sealed class DelegateFanSession(Func<JsonElement, JsonElement> handle, Action? dispose = null) : IFanControlCoreSession
 {
-    public JsonElement Handle(JsonElement request) => handle(request);
+    private readonly HashSet<int> plans = [];
+    public bool SoftwareCurveRunNeeded { get; private set; }
+    public event Action<bool>? SoftwareCurveRunNeededChanged;
+    public JsonElement Handle(JsonElement request)
+    {
+        var response = handle(request);
+        if (request.TryGetProperty("fan", out var fan) && response.TryGetProperty("ok", out var ok)
+            && ok.ValueKind == JsonValueKind.True)
+        {
+            var op = request.GetProperty("op").GetString();
+            if (op == "setcurve")
+            {
+                if (response.TryGetProperty("softwarePlanRecorded", out var recorded) && recorded.ValueKind == JsonValueKind.True)
+                    plans.Add(fan.GetInt32());
+                else if (FanControlCoreClient.ParseCurveReceipt(response) is not null)
+                {
+                    if (response.TryGetProperty("execution", out var execution) && execution.GetString() == "software")
+                        plans.Add(fan.GetInt32());
+                    else plans.Remove(fan.GetInt32());
+                }
+            }
+            else if (op is "set" or "boost" or "auto") plans.Remove(fan.GetInt32());
+            var needed = plans.Count != 0;
+            if (SoftwareCurveRunNeeded != needed)
+            {
+                SoftwareCurveRunNeeded = needed;
+                SoftwareCurveRunNeededChanged?.Invoke(needed);
+            }
+        }
+        return response;
+    }
+    public Task RunSoftwareCurveAsync(CancellationToken stop) => Task.Delay(Timeout.Infinite, stop);
     public void Dispose() => dispose?.Invoke();
 }
 
@@ -24,6 +55,13 @@ internal sealed class LibraryFanSession : IFanControlCoreSession
     private readonly FanControlCore.FanControlSession session;
     internal LibraryFanSession(FanControlCore.Discovery.FanCore core) => session = new(core);
     public JsonElement Handle(JsonElement request) => session.Handle(request);
+    public bool SoftwareCurveRunNeeded => session.SoftwareCurveRunNeeded;
+    public event Action<bool>? SoftwareCurveRunNeededChanged
+    {
+        add => session.SoftwareCurveRunNeededChanged += value;
+        remove => session.SoftwareCurveRunNeededChanged -= value;
+    }
+    public Task RunSoftwareCurveAsync(CancellationToken stop) => session.RunSoftwareCurveAsync(stop);
     public void SetDiagnosticSink(Action<string> sink) => session.SetDiagnosticSink(sink);
     public string? InFlightOperation => session.InFlightOperation;
     public void Dispose() => session.Dispose();
@@ -38,6 +76,7 @@ internal sealed class ProbeFanBackend(int deferredOpens = 0, bool restoreFault =
     private int opens, restorationAttempts;
     public int RestoreFailures { get; set; }
     public bool ThrowDrive { get; set; }
+    public int DriveFailures { get; set; }
     public bool ThrowFirstRelease { get; set; }
     public bool Disposed { get; private set; }
     public string Name => "rm-in-memory-core";
@@ -61,6 +100,7 @@ internal sealed class ProbeFanBackend(int deferredOpens = 0, bool restoreFault =
     public bool TryDriveDuty(int fan, double percent, out string? reason)
     {
         if (ThrowDrive) throw new ApplicationException("injected background curve tick");
+        if (DriveFailures-- > 0) { reason = "Injected drive failure"; return false; }
         if (restoreFault && fan == 0) { lock (sync) duties[fan] = percent; reason = "Injected drive failure"; return false; }
         return TrySetDuty(fan, percent, out reason);
     }

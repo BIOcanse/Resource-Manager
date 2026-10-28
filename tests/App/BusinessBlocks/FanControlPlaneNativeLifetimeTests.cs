@@ -186,7 +186,6 @@ public sealed partial class FanControlPlaneNativeLifetimeTests
         {
             await fixture.WaitRunningAsync();
             Assert.True(fixture.Scheduler.Authority.Read<bool>(BackendItems.FanReadingsInUse).Value);
-            Assert.False(fixture.Scheduler.Authority.Read<bool>(BackendItems.SoftwareFanCurveEnabled).Value);
             Assert.False(fixture.Plane.AppliedFanControlExists);
             var startup = await fixture.Clock.NextTimerAsync();
             startup.Fire();

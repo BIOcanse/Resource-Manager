@@ -1,13 +1,13 @@
 {
   "schema": "rm/fan-control-core-sdk-dependency/v1",
-  "managedVersion": "0.1.0-dev.4",
+  "managedVersion": "0.1.0-dev.5",
   "managedPackage": {
-    "sha256": "DEE90BCD5BE71C595120868A31DE376309CB7119EC15CFFF8E95EFAC62C2844B",
-    "path": "packages/FanControlCore.Library.0.1.0-dev.4.nupkg",
-    "source": "https://github.com/BIOcanse/Fan-Control-Core-Library (main, artifacts/packages)",
-    "length": 60360
+    "sha256": "0031D2F3243359BC3E6BA4DD74CCAE9C18BF16C0303B5BFF6A76F90FFCC90238",
+    "path": "packages/FanControlCore.Library.0.1.0-dev.5.nupkg",
+    "source": "Fan-Control-Core-Library branch codex/curve-run-entry",
+    "length": 64948
   },
-  "sourceCommit": "65064e119c5c705b1d7ce76a49cc0836fcb5d945",
-  "status": "source published in Fan-Control-Core-Library; package served from this local feed, not nuget.org",
+  "sourceCommit": "40eb063d92c02e72cd16eb2ea405eb931ec6502d",
+  "status": "source on branch codex/curve-run-entry; not yet published; package served from this local feed",
   "license": "Apache-2.0"
 }

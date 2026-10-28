@@ -68,7 +68,7 @@ public sealed partial class FanCurveReceiptTests
     [Fact]
     public async Task SoftwareWriteReceiptDoesNotOutliveTheCoresActivePlan()
     {
-        await using var helper = new CurveHelper($"\"ok\":true,\"execution\":\"software\",\"curve\":{CompleteCurve}",
+        await using var helper = new CurveHelper($"\"ok\":true,\"softwarePlanRecorded\":true,\"execution\":null,\"curve\":{CompleteCurve}",
             "\"ok\":true,\"execution\":null,\"curve\":null");
         var result = await new FanControlWriter(helper.Client).WriteAsync(Target,
             new("fan.curve", ControlValueKinds.Curve, true),
@@ -76,6 +76,16 @@ public sealed partial class FanCurveReceiptTests
         Assert.Equal(ControlApplyStatuses.Applied, result.Status);
         Assert.Null(await helper.Client.ReadCurveAsync(0, default));
         Assert.Contains("curve", File.ReadAllLines(helper.Operations));
+    }
+
+    [Fact]
+    public async Task RecordedSoftwarePlanIsAppliedWithoutAnExecutionOrCurveReadback()
+    {
+        await using var helper = new CurveHelper("\"ok\":true,\"softwarePlanRecorded\":true,\"execution\":null,\"curve\":null");
+        var result = await new FanControlWriter(helper.Client).WriteAsync(Target,
+            new("fan.curve", ControlValueKinds.Curve, true),
+            new("fan.curve", Curve: [new(60, 35)], CurveExecution: ControlFanCurveExecutions.Software), default);
+        Assert.Equal(ControlApplyStatuses.Applied, result.Status);
     }
 
     [Fact]

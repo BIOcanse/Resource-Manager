@@ -111,6 +111,9 @@ internal static class EffectBoundaries
 
     private sealed class EmptyFanSession : IFanControlCoreSession
     {
+        public bool SoftwareCurveRunNeeded => false;
+        public event Action<bool>? SoftwareCurveRunNeededChanged { add { } remove { } }
+        public Task RunSoftwareCurveAsync(CancellationToken stop) => Task.Delay(Timeout.Infinite, stop);
         public JsonElement Handle(JsonElement request) => JsonSerializer.SerializeToElement(new
             { available = false, reason = Reason, fans = Array.Empty<object>() });
         public void Dispose() { }
