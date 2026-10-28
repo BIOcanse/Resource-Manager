@@ -128,6 +128,9 @@ public sealed class TargetedRecordingService(
     public Task<bool> DeleteAsync(string id, CancellationToken cancellationToken)
         => store.DeleteAsync(id, cancellationToken);
 
+    public Task<int> ClearHistoryAsync(CancellationToken cancellationToken)
+        => store.ClearHistoryAsync(cancellationToken);
+
     private async Task RunAsync(ActiveRecording current)
     {
         var id = current.Header.Id;

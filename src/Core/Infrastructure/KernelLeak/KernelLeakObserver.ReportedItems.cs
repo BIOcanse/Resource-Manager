@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ResourceManager.App.Application.KernelLeak;
 using ResourceManager.App.Domain.KernelLeak;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.Paths;
@@ -17,6 +18,23 @@ public sealed partial class KernelLeakObserver
     private static (int Pid, string Start, KernelLeakResourceKind Kind) Key(KernelLeakSuspect item)
         => (item.Holder.ProcessId, item.Holder.StartKey, item.ResourceKind);
 
+    public int ClearHistory()
+    {
+        lock (gate)
+        {
+            RestoreItemsOnce();
+            var active = reportedItems.Where(item => item.State == KernelLeakItemState.Active).ToArray();
+            var removed = reportedItems.Count - active.Length;
+            if (removed > 0)
+            {
+                SaveItems(active);
+                reportedItems = active;
+            }
+            SetReport(current);
+            return removed;
+        }
+    }
+
     // Caller holds gate. Restore and every committed change belong to the observer, never to a block run.
     private void RestoreItemsOnce()
     {
@@ -27,7 +45,7 @@ public sealed partial class KernelLeakObserver
         {
             using var stream = WindowsNativeAtomicFileCommitter.OpenCommittedRead(ItemsPath);
             var stored = JsonSerializer.Deserialize<StoredItems>(stream, ItemJsonOptions);
-            if (stored?.Version != 1 || stored.Items is null || stored.Items.Count > 4096
+            if (stored?.Version != 1 || stored.Items is null || stored.Items.Count > KernelLeakOptions.MaximumReportedItemCapacity
                 || stored.Items.Any(item => !ValidItem(item))
                 || stored.Items.Select(Key).Distinct().Count() != stored.Items.Count)
                 throw new InvalidDataException("The stored kernel leak reported items are incomplete or inconsistent.");

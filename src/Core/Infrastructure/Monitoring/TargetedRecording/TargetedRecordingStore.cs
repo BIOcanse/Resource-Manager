@@ -199,6 +199,15 @@ public sealed class TargetedRecordingStore(ResourceManagerDatabase database)
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
 
+    public async Task<int> ClearHistoryAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await database.OpenConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        // The same cascading foreign keys as single deletion remove intervals and resource samples.
+        command.CommandText = "DELETE FROM targeted_recordings WHERE status = 'completed';";
+        return await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     private static TargetedRecordingHeader ReadHeader(SqliteDataReader reader) => new(
         reader.GetString(0), reader.GetString(1), reader.GetString(2),
         new DateTimeOffset(reader.GetInt64(3), TimeSpan.Zero),

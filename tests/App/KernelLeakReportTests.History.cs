@@ -130,11 +130,12 @@ public sealed partial class KernelLeakReportTests
     public void ReportedItemCapacityIsCompiledAndBoundsAreRejected()
     {
         var changed = HostManagerTestPlanFactory.CreatePlan(editFreedomPoints: root =>
-            FreedomPointTestFactory.Point(root, "resource-manager/backend/monitoring/build/complex/0")["value"]!["reported_item_capacity"] = 4096);
-        Assert.Equal(4096, changed.KernelLeak!.ReportedItemCapacity);
+            FreedomPointTestFactory.Point(root, "resource-manager/backend/monitoring/build/complex/0")["value"]!["reported_item_capacity"] = 16384);
+        Assert.Equal(16384, changed.KernelLeak!.ReportedItemCapacity);
         Assert.NotEqual(HostManagerTestPlanFactory.CreatePlan().BuildSha256, changed.BuildSha256);
         Assert.Throws<InvalidDataException>(() => (Fast with { ReportedItemCapacity = 0 }).Validate());
-        Assert.Throws<InvalidDataException>(() => (Fast with { ReportedItemCapacity = 4097 }).Validate());
+        Assert.Equal(16384, (Fast with { ReportedItemCapacity = 16384 }).Validate().ReportedItemCapacity);
+        Assert.Throws<InvalidDataException>(() => (Fast with { ReportedItemCapacity = 16385 }).Validate());
     }
 
     [Theory]

@@ -38,6 +38,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     [JsonSerializable(typeof(global::ResourceManager.App.Application.MemoryProtection.NormalRunningPointList))]
     [JsonSerializable(typeof(global::ResourceManager.App.Application.MemoryProtection.NormalRunningPointSelection))]
     [JsonSerializable(typeof(global::ResourceManager.App.Domain.KernelLeak.KernelLeakReport))]
+    [JsonSerializable(typeof(ClearReportHistoryResponse))]
     [JsonSerializable(typeof(global::ResourceManager.App.Domain.KernelLeak.KernelLeakDebugSnapshot))]
     [JsonSerializable(typeof(FrontendSubscriptionChannelFrame<global::ResourceManager.App.Domain.KernelLeak.KernelLeakReport>))]
     [JsonSerializable(typeof(EndpointErrorPayload))]

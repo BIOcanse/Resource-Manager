@@ -202,6 +202,8 @@ internal static class TrustedAccessHttpPolicy
         // nothing on the machine, so the user does it from the bundled UI without elevation (user 10-28).
         Add(Protected(AccessKeyScopes.Session),
             "DELETE /api/targeted-recordings/{id}",
+            "POST /api/kernel-leaks/history/clear",
+            "POST /api/targeted-recordings/history/clear",
             "POST /api/memory-protection/normal-running-point",
             "PUT /api/memory-protection/normal-running-points/active",
             "DELETE /api/memory-protection/normal-running-points/{id}",

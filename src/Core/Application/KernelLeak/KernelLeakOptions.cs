@@ -15,12 +15,14 @@ public sealed record KernelLeakOptions(
     [property: JsonPropertyName("enabled")] bool Enabled,
     [property: JsonPropertyName("reported_item_capacity")] int ReportedItemCapacity)
 {
+    public const int MaximumReportedItemCapacity = 16384;
+
     public KernelLeakOptions Validate()
     {
         if (IntervalMilliseconds < 1000 || SeriesCapacity is < 2 or > 1024 || MaximumHolders is < 1 or > 16384
             || MinimumSamples < 2 || MinimumSamples > SeriesCapacity || MinimumObservationSeconds < 1
             || HandleFloor < 0 || MinimumGrowth < 1 || EdgePercentage is < 1 or > 50
-            || ReportedItemCapacity is < 1 or > 4096
+            || ReportedItemCapacity is < 1 or > MaximumReportedItemCapacity
             || (long)SeriesCapacity * MaximumHolders > 524288
             || (long)(SeriesCapacity - 1) * IntervalMilliseconds < (long)MinimumObservationSeconds * 1000)
             throw new InvalidDataException("Invalid kernel leak observation limits.");

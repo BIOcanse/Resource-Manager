@@ -222,7 +222,7 @@ public sealed partial class KernelLeakReportTests
     public void KernelLeakFreedomPointDefaultsAreCompiledAndInvalidBoundsAreRejected()
     {
         var baseline = HostManagerTestPlanFactory.CreatePlan();
-        Assert.Equal(new KernelLeakOptions(30000, 32, 4096, 8, 600, 1024, 128, 25, true, 256), baseline.KernelLeak);
+        Assert.Equal(new KernelLeakOptions(30000, 32, 4096, 8, 600, 1024, 128, 25, true, 4096), baseline.KernelLeak);
         var changed = HostManagerTestPlanFactory.CreatePlan(editFreedomPoints: root =>
             FreedomPointTestFactory.Point(root, "resource-manager/backend/monitoring/build/complex/0")["value"]!["handle_floor"] = 2000);
         Assert.Equal(2000, changed.KernelLeak!.HandleFloor);

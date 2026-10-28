@@ -1,7 +1,9 @@
 using ResourceManager.ReadWrite.Windows.Frames;
 using System.Text;
 using System.Text.Json;
+using System.Net;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Http.Metadata;
@@ -19,11 +21,48 @@ using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Infrastructure.Monitoring.TargetedRecording;
 using ResourceManager.App.Infrastructure.Persistence;
+using ResourceManager.Shared.Runtime.TrustedAccess;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed class TargetedRecordingEndpointTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ClearHistoryEndpointUsesSessionReturnsCountAndKeepsRecording(bool allowed)
+    {
+        await using var fixture = await RecordingEndpointFixture.CreateAsync(allowed ? AccessKeyScopes.Session : AccessKeyScopes.ProcessesRead);
+        var service = fixture.App.Services.GetRequiredService<TargetedRecordingService>();
+        var first = await service.BeginAsync("software", 600, CancellationToken.None);
+        await service.FinishAsync(first.Id, CancellationToken.None);
+        var active = await service.BeginAsync("software", 600, CancellationToken.None);
+        await fixture.App.StartAsync();
+        using var client = TrustedAccessEndpointTestAuthentication.Client(fixture.App);
+        using var response = await client.PostAsync("/api/targeted-recordings/history/clear", null);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        if (allowed)
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Single(document.RootElement.EnumerateObject());
+            Assert.Equal(1, document.RootElement.GetProperty("removedCount").GetInt32());
+            Assert.Null(await service.GetAsync(first.Id, CancellationToken.None));
+            using var repeated = await client.PostAsync("/api/targeted-recordings/history/clear", null);
+            using var repeatedDocument = JsonDocument.Parse(await repeated.Content.ReadAsStringAsync());
+            Assert.Equal(0, repeatedDocument.RootElement.GetProperty("removedCount").GetInt32());
+        }
+        else
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+            Assert.Equal("access-scope-required", document.RootElement.GetProperty("error").GetString());
+            Assert.Equal([AccessKeyScopes.Session], document.RootElement.GetProperty("missingScopes").EnumerateArray().Select(item => item.GetString()));
+            Assert.NotNull(await service.GetAsync(first.Id, CancellationToken.None));
+        }
+        Assert.Equal("recording", (await service.GetAsync(active.Id, CancellationToken.None))!.Recording.Status);
+        var stopped = await service.FinishAsync(active.Id, CancellationToken.None);
+        Assert.Equal("completed", stopped!.Status);
+    }
+
     [Fact]
     public async Task StartDefaultsToTenMinutesAndStopCompletesTheActiveRecording()
     {
@@ -165,6 +204,7 @@ public sealed class TargetedRecordingEndpointTests
         Assert.Contains(routes, item => item.Path == "/api/targeted-recordings/{id}/stop" && item.Methods?.Contains("POST") == true);
         Assert.Contains(routes, item => item.Path == "/api/targeted-recordings/{id}" && item.Methods?.Contains("GET") == true);
         Assert.Contains(routes, item => item.Path == "/api/targeted-recordings/{id}" && item.Methods?.Contains("DELETE") == true);
+        Assert.Contains(routes, item => item.Path == "/api/targeted-recordings/history/clear" && item.Methods?.Contains("POST") == true);
         Assert.Contains(routes, item => item.Path == "/api/targeted-recordings/{id}/export" && item.Methods?.Contains("GET") == true);
     }
 
@@ -204,7 +244,7 @@ public sealed class TargetedRecordingEndpointTests
     {
         public WebApplication App { get; } = app;
 
-        public static async Task<RecordingEndpointFixture> CreateAsync()
+        public static async Task<RecordingEndpointFixture> CreateAsync(string? scope = null)
         {
             var root = Path.Combine(Path.GetTempPath(), $"rm-targeted-endpoints-{Guid.NewGuid():N}");
             var database = new ResourceManagerDatabase(new TestHostEnvironment(root));
@@ -214,8 +254,15 @@ public sealed class TargetedRecordingEndpointTests
             var service = new TargetedRecordingService(store, observations, observations, observations, observations,
                 NullLogger<TargetedRecordingService>.Instance);
             var builder = WebApplication.CreateBuilder();
+            if (scope is not null)
+            {
+                builder.WebHost.UseUrls("http://127.0.0.1:0");
+                TrustedAccessEndpointTestAuthentication.Add(builder.Services, scope);
+            }
+            builder.Services.ConfigureHttpJsonOptions(options =>
+                ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options.SerializerOptions));
             builder.Services.AddSingleton(service);
-            var app = builder.Build();
+            var app = scope is null ? builder.Build() : TrustedAccessEndpointTestAuthentication.Build(builder);
             app.MapTargetedRecordingEndpoints();
             await service.StartAsync(CancellationToken.None);
             return new RecordingEndpointFixture(root, service, app);

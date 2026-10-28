@@ -56,6 +56,10 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             await recordings.DeleteAsync(id, cancellationToken)
                 ? Results.NoContent() : Results.NotFound());
 
+        app.MapPost("/api/targeted-recordings/history/clear", async (
+            TargetedRecordingService recordings, CancellationToken cancellationToken) =>
+            Results.Ok(new ClearReportHistoryResponse(await recordings.ClearHistoryAsync(cancellationToken))));
+
         app.MapGet("/api/targeted-recordings/{id}/export", async (
             string id, string? format, TargetedRecordingService recordings,
             CancellationToken cancellationToken) =>

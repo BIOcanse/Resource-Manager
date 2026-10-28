@@ -113,6 +113,37 @@ public sealed class TargetedRecordingStoreTests : IDisposable
         Assert.Equal(list, await store.ListAsync(CancellationToken.None));
     }
 
+    [Fact]
+    public async Task ClearHistoryDeletesCompletedRecordingsAndCascadesSamplesWhileKeepingActiveRecording()
+    {
+        var database = CreateDatabase();
+        var store = new TargetedRecordingStore(database);
+        var at = DateTimeOffset.UnixEpoch;
+        foreach (var id in new[] { "completed-1", "completed-2", "active" })
+        {
+            await store.CreateAsync(Header(id, at), CancellationToken.None);
+            await store.AppendAsync(id, [new FrameIntervalSample(101, 9876, FramePresentSource.Dxgi, 1, at, 10)],
+                new(at, new Dictionary<string, double?> { ["cpu.usage"] = 40 }, new Dictionary<string, double?>(), []), CancellationToken.None);
+            if (id != "active") await store.FinishAsync(id, "user", false, CancellationToken.None);
+        }
+        Assert.Equal(2, await store.ClearHistoryAsync(CancellationToken.None));
+        Assert.Null(await store.GetAsync("completed-1", CancellationToken.None));
+        Assert.Null(await store.GetAsync("completed-2", CancellationToken.None));
+        var active = Assert.IsType<TargetedRecordingReport>(await store.GetAsync("active", CancellationToken.None));
+        Assert.Equal("recording", active.Recording.Status);
+        Assert.Single(active.FrameIntervals);
+        Assert.Equal(40, Assert.Single(active.ResourceSamples).Software["cpu.usage"]);
+        Assert.Single(await store.ListAsync(CancellationToken.None));
+        Assert.True(File.Exists(database.DatabasePath));
+        await using var connection = await database.OpenConnectionAsync(CancellationToken.None);
+        await using var count = connection.CreateCommand();
+        count.CommandText = "SELECT COUNT(*) FROM targeted_frame_interval_chunks;";
+        Assert.Equal(1L, Convert.ToInt64(await count.ExecuteScalarAsync()));
+        count.CommandText = "SELECT COUNT(*) FROM targeted_resource_samples;";
+        Assert.Equal(1L, Convert.ToInt64(await count.ExecuteScalarAsync()));
+        Assert.Equal(0, await new TargetedRecordingStore(database).ClearHistoryAsync(CancellationToken.None));
+    }
+
     private ResourceManagerDatabase CreateDatabase()
         => new(new TestHostEnvironment(Path.Combine(root, "Resource Manager-APP")));
 
