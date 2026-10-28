@@ -29,11 +29,14 @@ $output = Join-Path $WorkRoot 'desktop-points'
 $queue = 'D:\Code\CommonAssets\Tools\JobQueue\JobQueue.ps1'
 if (-not $GeneratorPath) {
     $artifacts = Join-Path $output 'build'
-    & $queue -Action Run -Label 'desktop freedom-point generator build' -FilePath dotnet -WorkingDirectory $repository -ArgumentList @(@(
+    $build = @(
         'build', (Join-Path $repository 'src/Development/DesktopBuild/ResourceManager.DesktopBuild.csproj'),
         '-c', 'Release', '--disable-build-servers', '-maxcpucount:1', '-p:BuildInParallel=false',
         "-p:ArtifactsPath=$artifacts", "-p:RestorePackagesPath=$WorkRoot/nuget-packages"
-    ) + $BuildProperties)
+    ) + $BuildProperties
+    # Inside a JobQueue job the build is already serialized, and queueing again would wait for this job to end.
+    if ($env:JOBQUEUE_JOB_ID) { & dotnet @build }
+    else { & $queue -Action Run -Label 'desktop freedom-point generator build' -FilePath dotnet -WorkingDirectory $repository -ArgumentList $build }
     if ($LASTEXITCODE -ne 0) { throw "Desktop generator build failed: $LASTEXITCODE" }
     $GeneratorPath = Join-Path $artifacts 'bin/ResourceManager.DesktopBuild/release/ResourceManager.DesktopBuild.dll'
 }
