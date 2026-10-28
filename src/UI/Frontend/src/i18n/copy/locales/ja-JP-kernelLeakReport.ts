@@ -8,6 +8,10 @@ export const kernelLeakReport: AppCopy["kernelLeakReport"] = {
   readFailed: "カーネル リーク レポートを読み込めませんでした",
   capturedAt: "取得日時",
   suspectedItems: "疑いのある項目",
+  historyItems: "履歴の項目",
+  unrecordedItems: "上限のため未記録",
+  items: "レポート項目",
+  historyEntry: "履歴",
   notObservedTitle: "カーネル リークを観察していません",
   notObservedDetail: "カーネル リークの観察は現在実行されていません。オフになっている、観察計画がまだ公開されていない、または停止した可能性があります。実行されるまでサンプリングもレポートの作成も行いません。",
   observingTitle: "観察中",
@@ -56,7 +60,9 @@ export const kernelLeakReport: AppCopy["kernelLeakReport"] = {
     growth: "観察期間中の増加",
     growthPerSecond: "増加率",
     observationTime: "観察時間",
-    sampleCount: "サンプル数"
+    sampleCount: "サンプル数",
+    firstObserved: "初回検出",
+    lastObserved: "最終検出"
   },
   ratePerSecond: (value: string) => `${value}/秒`,
   actions: {

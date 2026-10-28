@@ -41,7 +41,7 @@ try {
     getOptimizationReports(client),
     (error: unknown) => error instanceof RequestProblem
       && error.kind === "invalid-response"
-      && error.attempt.decoderId === "optimization.reports.overview.v2");
+      && error.attempt.decoderId === "optimization.reports.overview.v3");
 } finally {
   owner.dispose();
   globalThis.fetch = originalFetch;
@@ -62,6 +62,7 @@ function optimizationOverview() {
       configuredRuleCount: 7,
       availableRuleCount: 6,
       activeReportCount: 0,
+      unrecordedReportCount: 0,
       trustedCount: 0,
       protectedCount: 0,
       sampleIntervalSeconds: 10

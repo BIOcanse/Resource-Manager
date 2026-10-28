@@ -33,6 +33,8 @@ export const zhOptimizationCopy = {
     noSearchResults: "沒有匹配結果。",
     empty: "暫時沒有需要處理的報告。",
     trusted: "已信任",
+    historyEntry: "歷史",
+    unrecordedReports: (count: string) => `報告項目已達到上限，未記錄的目前問題：${count}`,
     viewSoftware: "檢視軟體",
     viewDevice: "檢視裝置",
     details: "詳細資訊",

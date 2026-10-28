@@ -10,6 +10,10 @@ export const zhKernelLeakReportCopy = {
     readFailed: "内核泄漏报告读取失败",
     capturedAt: "采集时间",
     suspectedItems: "疑似项",
+    historyItems: "历史项",
+    unrecordedItems: "因达到上限未记录",
+    items: "报告条目",
+    historyEntry: "历史",
     notObservedTitle: "未在观察内核泄漏",
     notObservedDetail: "内核泄漏观察目前没有运行：可能已关闭、观察计划尚未发布，或已停止。运行之前不进行采样，也不生成报告。",
     observingTitle: "正在观察",
@@ -58,7 +62,9 @@ export const zhKernelLeakReportCopy = {
       growth: "观察期间增长",
       growthPerSecond: "增长速率",
       observationTime: "观察时长",
-      sampleCount: "样本数"
+      sampleCount: "样本数",
+      firstObserved: "首次发现",
+      lastObserved: "最近发现"
     },
     ratePerSecond: (value: string) => `${value}/秒`,
     actions: {

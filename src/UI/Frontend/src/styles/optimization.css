@@ -159,6 +159,23 @@
   background: var(--danger-soft);
 }
 
+.optimization-unrecorded {
+  margin: 0 0 8px;
+  color: var(--warn);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+/* 历史条目：条件已结束，不再按严重程度着色，标题退到次要。 */
+.optimization-report.history {
+  border-color: var(--hairline);
+  background: var(--surface-soft);
+}
+
+.optimization-report.history .optimization-report-main strong {
+  color: var(--muted);
+}
+
 .optimization-report-main {
   min-width: 0;
   display: grid;

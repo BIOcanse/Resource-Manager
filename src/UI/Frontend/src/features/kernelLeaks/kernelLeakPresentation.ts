@@ -22,14 +22,14 @@ import type { ContentStateKind } from "../../ui/patterns/ContentState.tsx";
  * 映像和服务信息的状态不是 Current 时，对应各处都写该状态本身（无法读取／进程已结束）。
  */
 
-/** 没有疑似项列表可显示时的内容状态：读取中、读取失败、观察已关闭、正在观察、未发现疑似项、本轮观察失败。 */
+/** 本轮观察的内容状态：读取中、读取失败、未在观察、正在观察、未发现疑似项、本轮观察失败。条目列表另外显示，和这里无关。 */
 export interface KernelLeakStateView {
   readonly kind: ContentStateKind;
   readonly title: string;
   readonly detail?: string;
 }
 
-/** 报告是 Suspected 时返回 null（显示疑似项列表），其余情况返回要显示的内容状态。 */
+/** 报告是 Suspected 时返回 null（活动条目就是本轮结果），其余情况返回要显示的内容状态。 */
 export function kernelLeakStateView(snapshot: SourceSnapshot<KernelLeakReport>): KernelLeakStateView | null {
   const copy = uiText.kernelLeakReport;
   const report = snapshot.data;
@@ -126,7 +126,7 @@ function formatUnitValue(value: number, unit: KernelLeakUnit, signed: boolean, f
   return unitFormats[unit](value, signed, fractionDigits);
 }
 
-/** 增长证据，顺序固定：当前值、观察期间增长、增长速率、观察时长、样本数。数值按该项的单位写。 */
+/** 增长证据，顺序固定：当前值、观察期间增长、增长速率、观察时长、样本数、首次和最近判出时间。数值按该项的单位写。 */
 export function kernelLeakEvidence(item: KernelLeakItem): readonly KernelLeakLabelledValue[] {
   const copy = uiText.kernelLeakReport;
   return [
@@ -134,7 +134,9 @@ export function kernelLeakEvidence(item: KernelLeakItem): readonly KernelLeakLab
     { label: copy.evidence.growth, value: formatUnitValue(item.growth, item.unit, true) },
     { label: copy.evidence.growthPerSecond, value: copy.ratePerSecond(formatUnitValue(item.growthPerSecond, item.unit, true, 2)) },
     { label: copy.evidence.observationTime, value: formatElapsedDuration(item.observationSeconds) },
-    { label: copy.evidence.sampleCount, value: formatInterfaceNumber(item.sampleCount) }
+    { label: copy.evidence.sampleCount, value: formatInterfaceNumber(item.sampleCount) },
+    { label: copy.evidence.firstObserved, value: userFacingDateTime(item.firstObservedAt) },
+    { label: copy.evidence.lastObserved, value: userFacingDateTime(item.lastObservedAt) }
   ];
 }
 
@@ -166,7 +168,18 @@ export function kernelLeakActionReasons(item: KernelLeakItem): readonly string[]
   return [...new Set(item.actions.map((action) => renderBackendMessage(action.disabledReason)))];
 }
 
-/** 同一份报告里一个持有者的同一种资源只出现一次；PID 加启动键区分 PID 复用。 */
-export function kernelLeakItemKey(item: KernelLeakItem): string {
-  return `${item.resourceKind}:${item.holder.processId}:${item.holder.startKey}`;
+/** 显示顺序：活动条目在前，历史条目在后；各自保持后端的顺序（首次判出时间升序）。 */
+export function kernelLeakItemsInDisplayOrder(items: readonly KernelLeakItem[]): readonly KernelLeakItem[] {
+  return [...items.filter((item) => item.state === "active"), ...items.filter((item) => item.state === "history")];
+}
+
+/** 条目数：活动、历史，以及容量已满没有记录的。 */
+export function kernelLeakItemCounts(report: KernelLeakReport): readonly KernelLeakLabelledValue[] {
+  const copy = uiText.kernelLeakReport;
+  const active = report.items.filter((item) => item.state === "active").length;
+  return [
+    { label: copy.suspectedItems, value: formatInterfaceNumber(active) },
+    { label: copy.historyItems, value: formatInterfaceNumber(report.items.length - active) },
+    ...(report.unrecordedItemCount > 0 ? [{ label: copy.unrecordedItems, value: formatInterfaceNumber(report.unrecordedItemCount) }] : [])
+  ];
 }

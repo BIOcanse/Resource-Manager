@@ -1056,6 +1056,8 @@ const frFrAppCopy: AppCopy = {
     noSearchResults: "Aucun résultat correspondant.",
     empty: "Rien ne nécessite votre attention pour l'instant.",
     trusted: "Approuvé",
+    historyEntry: "Historique",
+    unrecordedReports: (count: string) => `La limite d’entrées du rapport est atteinte. Problèmes actuels non enregistrés : ${count}`,
     viewSoftware: "Voir le logiciel",
     viewDevice: "Voir l'appareil",
     details: "Détails",

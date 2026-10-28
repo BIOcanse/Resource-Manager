@@ -1056,6 +1056,8 @@ const jaJpAppCopy: AppCopy = {
     noSearchResults: "一致する結果はありません。",
     empty: "今のところ対応が必要な項目はありません。",
     trusted: "信頼済み",
+    historyEntry: "履歴",
+    unrecordedReports: (count: string) => `レポート項目が上限に達しました。記録されていない現在の問題：${count}`,
     viewSoftware: "ソフトウェアを表示",
     viewDevice: "デバイスを表示",
     details: "詳細",

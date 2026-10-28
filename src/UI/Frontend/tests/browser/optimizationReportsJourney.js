@@ -212,7 +212,7 @@ export default async function optimizationReportsJourney(page, baseUrl) {
   const strayTarget = { targetType: "process_instance", targetKey: "process:424242:134000000000000000", name: "pwsh",
     softwareId: "tool", softwareName: "PowerShell", softwareKind: "other", displayKind: "other", processNames: ["pwsh"], processIds: [424242], driveLetter: null };
   const strayTrust = { ...identity, id: "hm-trust-stray", ...strayTarget, reportType: "suspected_stray_process", createdFromReportId: "stray-report" };
-  const strayReport = { id: "stray-report", type: "suspected_stray_process", state: "active", severity: "info", confidence: "high",
+  const strayReport = { id: "stray-report", type: "suspected_stray_process", state: "active", trusted: false, severity: "info", confidence: "high",
     createdAt: overview.capturedAt, updatedAt: overview.capturedAt, firstObservedAt: overview.capturedAt, lastObservedAt: overview.capturedAt,
     title: "BACKEND_PROSE", message: "BACKEND_PROSE", target: strayTarget, suggestedActions: [],
     context: { contextKind: "normal", foregroundProcessId: null, foregroundProcessName: null, foregroundExecutablePath: null,
@@ -222,9 +222,12 @@ export default async function optimizationReportsJourney(page, baseUrl) {
       process: { processId: 424242, processStartKey: "134000000000000000", name: "pwsh", memoryBytes: 52428800,
         idleDurationSeconds: 900, commandLine: 'pwsh -File "stray-check.ps1"' } } };
   let strayEvaluationFailed = false;
+  // 报告生命周期（docs/report_lifecycle_2026-10-28.md）：进程退出后条目留下来改为 history；容量满时给出未记录的数量。
+  let strayState = "active";
+  let unrecordedReportCount = 0;
   const fulfillStray = route => route.fulfill({ json: { ...overview,
-    reports: [{ ...strayReport, state: strayTrusted ? "trusted_suppressed" : "active" }], trustedTargets: strayTrusted ? [strayTrust] : [],
-    status: { ...overview.status, activeReportCount: 1, trustedCount: strayTrusted ? 1 : 0,
+    reports: [{ ...strayReport, state: strayState, trusted: strayTrusted }], trustedTargets: strayTrusted ? [strayTrust] : [],
+    status: { ...overview.status, activeReportCount: strayState === "active" ? 1 : 0, unrecordedReportCount, trustedCount: strayTrusted ? 1 : 0,
       evaluationState: strayEvaluationFailed ? "failed" : "completed",
       evaluationFailureReason: strayEvaluationFailed ? "IOException: fixture failure" : null } } });
   await page.route("**/api/optimization/reports", fulfillStray);
@@ -248,6 +251,28 @@ export default async function optimizationReportsJourney(page, baseUrl) {
   strayEvaluationFailed = false;
   await page.getByRole("button", { name: "刷新", exact: true }).click();
   await page.getByText("无法完成报告评估。", { exact: true }).waitFor({ state: "detached" });
+  assert(await strayCard.locator(".optimization-report-state").count() === 0, "An active untrusted report carries no state tag");
+  assert(!(await strayCard.evaluate(node => node.classList.contains("history"))), "An active report is not drawn as history");
+  // 进程退出：条目留在列表里，带“历史”标记，不再按严重程度着色；当前问题数为 0 也不显示空状态。
+  strayState = "history";
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await strayCard.locator(".optimization-report-state").getByText("历史", { exact: true }).waitFor({ timeout: 5000 });
+  assert(await strayCard.evaluate(node => node.classList.contains("history")), "A history report is drawn as history");
+  const historyColors = await strayCard.evaluate(node => ({
+    title: getComputedStyle(node.querySelector(".optimization-report-main strong")).color,
+    muted: getComputedStyle(node.querySelector(".optimization-report-main span")).color
+  }));
+  assert(historyColors.title === historyColors.muted, `A history report title uses the muted color: ${JSON.stringify(historyColors)}`);
+  assert(await page.locator(".optimization-empty").count() === 0, "A history entry is still listed, not replaced by the empty state");
+  // 容量已满：列表上方给出未记录的当前问题数。
+  unrecordedReportCount = 2;
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await page.locator(".optimization-unrecorded").getByText("报告条目已达到上限，未记录的当前问题：2", { exact: true }).waitFor({ timeout: 5000 });
+  unrecordedReportCount = 0;
+  strayState = "active";
+  await page.getByRole("button", { name: "刷新", exact: true }).click();
+  await page.locator(".optimization-unrecorded").waitFor({ state: "detached", timeout: 5000 });
+  await strayCard.locator(".optimization-report-state").waitFor({ state: "detached", timeout: 5000 });
   await strayCard.getByRole("button", { name: "详细信息", exact: true }).click();
   const detail = page.getByRole("dialog");
   await detail.getByText('pwsh -File "stray-check.ps1"', { exact: true }).waitFor();

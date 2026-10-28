@@ -35,6 +35,8 @@ export const enOptimizationCopy: Pick<AppCopy, "optimization" | "optimizationRep
     noSearchResults: "No matching results.",
     empty: "Nothing needs attention right now.",
     trusted: "Trusted",
+    historyEntry: "History",
+    unrecordedReports: (count: string) => `The report entry limit has been reached. Current issues not recorded: ${count}`,
     viewSoftware: "View software",
     viewDevice: "View device",
     details: "Details",

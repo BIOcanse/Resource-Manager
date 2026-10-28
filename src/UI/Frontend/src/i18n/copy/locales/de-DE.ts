@@ -1056,6 +1056,8 @@ const deDeAppCopy: AppCopy = {
     noSearchResults: "Keine passenden Ergebnisse.",
     empty: "Derzeit erfordert nichts Ihre Aufmerksamkeit.",
     trusted: "Vertrauenswürdig",
+    historyEntry: "Verlauf",
+    unrecordedReports: (count: string) => `Die Grenze für Berichtseinträge ist erreicht. Nicht erfasste aktuelle Probleme: ${count}`,
     viewSoftware: "Software anzeigen",
     viewDevice: "Gerät anzeigen",
     details: "Details",

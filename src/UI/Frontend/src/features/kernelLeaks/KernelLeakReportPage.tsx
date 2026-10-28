@@ -1,5 +1,5 @@
 import { createMemo, For, Show } from "solid-js";
-import type { KernelLeakItem } from "../../data/kernelLeaks/kernelLeakReport.ts";
+import { kernelLeakItemKey, type KernelLeakItem } from "../../data/kernelLeaks/kernelLeakReport.ts";
 import { useFrontendRuntime } from "../../frontendRuntime/FrontendRuntimeContext";
 import { usePushSource } from "../../frontendRuntime/push/usePushSource.ts";
 import { sourceCanRender } from "../../frontendRuntime/source/SourceSnapshot";
@@ -8,7 +8,6 @@ import { useFrontendVisibilityDemand } from "../../frontendWork/useFrontendVisib
 import { useFrontendWork } from "../../frontendWork/FrontendWorkContext";
 import { frontendWorkIds } from "../../frontendWork/frontendWorkIds";
 import { CurrentPageHeading, useCurrentPageName } from "../../app/navigation/currentPageName.tsx";
-import { formatInterfaceNumber } from "../../presentation/interfaceNumbers.ts";
 import { ContentState } from "../../ui/patterns/ContentState.tsx";
 import { HelpHint } from "../../ui/primitives/HelpHint.tsx";
 import { uiText } from "../../text.ts";
@@ -19,7 +18,8 @@ import {
   kernelLeakEvidence,
   kernelLeakHolderTitle,
   kernelLeakImagePath,
-  kernelLeakItemKey,
+  kernelLeakItemCounts,
+  kernelLeakItemsInDisplayOrder,
   kernelLeakObservationProgress,
   kernelLeakPreviousRunFailure,
   kernelLeakProductName,
@@ -48,12 +48,9 @@ export function KernelLeakReportPage() {
     const snapshot = source();
     return sourceCanRender(snapshot) ? snapshot.data : null;
   });
-  // 有疑似项时显示列表，其余情况显示一个内容状态。
+  // 本轮观察的内容状态（Suspected 时没有，活动条目就是结果）；条目列表在它下面，任何状态下有条目就显示。
   const stateView = createMemo(() => kernelLeakStateView(source()));
-  const items = createMemo(() => {
-    const current = report();
-    return current?.status === "Suspected" ? current.items : [];
-  });
+  const items = createMemo(() => kernelLeakItemsInDisplayOrder(report()?.items ?? []));
   const copy = () => uiText.kernelLeakReport;
 
   return (
@@ -70,8 +67,8 @@ export function KernelLeakReportPage() {
             <Show when={kernelLeakCapturedAt(current())}>
               {(time) => <div><dt>{copy().capturedAt}</dt><dd>{time()}</dd></div>}
             </Show>
-            <Show when={current().status === "Suspected"}>
-              <div><dt>{copy().suspectedItems}</dt><dd>{formatInterfaceNumber(items().length)}</dd></div>
+            <Show when={current().items.length > 0 || current().unrecordedItemCount > 0}>
+              <For each={kernelLeakItemCounts(current())}>{(entry) => <div><dt>{entry.label}</dt><dd>{entry.value}</dd></div>}</For>
             </Show>
           </dl>
         )}
@@ -99,12 +96,13 @@ export function KernelLeakReportPage() {
       <Show when={(report()?.unavailableHolderCount ?? 0) > 0}>
         <p class="kernel-leak-note warning" role="status">{copy().unavailableHolders(report()!.unavailableHolderCount)}</p>
       </Show>
-      <Show when={stateView()} fallback={
-        <ul class="kernel-leak-items" role="list" aria-label={copy().suspectedItems}>
+      <Show when={stateView()}>
+        {(view) => <ContentState kind={view().kind} title={view().title} detail={view().detail} />}
+      </Show>
+      <Show when={items().length > 0}>
+        <ul class="kernel-leak-items" role="list" aria-label={copy().items}>
           <For each={items()}>{(item) => <KernelLeakItemCard item={item} />}</For>
         </ul>
-      }>
-        {(view) => <ContentState kind={view().kind} title={view().title} detail={view().detail} />}
       </Show>
     </section>
   );
@@ -115,13 +113,18 @@ function KernelLeakItemCard(props: { readonly item: KernelLeakItem }) {
   const holder = () => props.item.holder;
   const services = () => kernelLeakServices(holder().services);
   return (
-    <li class="kernel-leak-item" data-kernel-leak-item={kernelLeakItemKey(props.item)}>
+    <li class="kernel-leak-item" classList={{ history: props.item.state === "history" }} data-kernel-leak-item={kernelLeakItemKey(props.item)}>
       <header class="kernel-leak-item-header">
         <div class="kernel-leak-item-title">
           <strong classList={{ "metadata-state": holder().image.status !== "Current" }}>{kernelLeakHolderTitle(holder().image)}</strong>
           <span>{copy().holder.processId} {holder().processId}</span>
         </div>
-        <span class="kernel-leak-kind">{copy().resourceKind[props.item.resourceKind]}</span>
+        <span class="kernel-leak-item-tags">
+          <Show when={props.item.state === "history"}>
+            <span class="kernel-leak-history">{copy().historyEntry}</span>
+          </Show>
+          <span class="kernel-leak-kind">{copy().resourceKind[props.item.resourceKind]}</span>
+        </span>
       </header>
       <dl class="kernel-leak-holder">
         <div>

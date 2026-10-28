@@ -591,6 +591,7 @@ async function handleApi(request, response, url) {
         configuredRuleCount: 7,
         availableRuleCount: scenario.optimizationReports === "partial" ? 6 : 7,
         activeReportCount: 0,
+        unrecordedReportCount: 0,
         trustedCount: 0,
         protectedCount: 0,
         sampleIntervalSeconds: 10

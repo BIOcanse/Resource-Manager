@@ -8,6 +8,10 @@ export const kernelLeakReport: AppCopy["kernelLeakReport"] = {
   readFailed: "Не удалось прочитать отчёт об утечках ядра.",
   capturedAt: "Время сбора",
   suspectedItems: "Подозрительные элементы",
+  historyItems: "Записи истории",
+  unrecordedItems: "Не записано (достигнут предел)",
+  items: "Записи отчёта",
+  historyEntry: "История",
   notObservedTitle: "Утечки ядра не наблюдаются",
   notObservedDetail: "Наблюдение за утечками ядра сейчас не выполняется: возможно, оно отключено, план наблюдения ещё не опубликован или наблюдение остановлено. Пока оно не запущено, выборки не собираются и отчёт не создаётся.",
   observingTitle: "Идёт наблюдение",
@@ -61,7 +65,9 @@ export const kernelLeakReport: AppCopy["kernelLeakReport"] = {
     growth: "Рост за время наблюдения",
     growthPerSecond: "Скорость роста",
     observationTime: "Время наблюдения",
-    sampleCount: "Число выборок"
+    sampleCount: "Число выборок",
+    firstObserved: "Впервые обнаружено",
+    lastObserved: "Последнее обнаружение"
   },
   ratePerSecond: (value: string) => `${value}/с`,
   actions: {

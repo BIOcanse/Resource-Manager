@@ -1893,7 +1893,10 @@ export interface OptimizationRecorderStatus {
   lastObservedAt?: string | null;
   configuredRuleCount: number;
   availableRuleCount: number;
+  /** 状态为 active 的条目数（历史条目不算）。 */
   activeReportCount: number;
+  /** 当前成立、但因条目容量已满没有记录的候选数。 */
+  unrecordedReportCount: number;
   trustedCount: number;
   protectedCount: number;
   sampleIntervalSeconds: number;
@@ -1950,10 +1953,15 @@ export interface OptimizationActivityContext {
   evidence: readonly string[];
 }
 
+/** 报告条目的生命周期（docs/report_lifecycle_2026-10-28.md）：条件成立时是 active，条件结束后保留为 history，不会被删除。 */
+export type ReportEntryState = "active" | "history";
+
 export interface OptimizationReportItem {
   id: string;
   type: string;
-  state: string;
+  state: ReportEntryState;
+  /** 用户信任了这个目标；信任和生命周期无关，活动和历史条目都可能是已信任的。 */
+  trusted: boolean;
   severity: "info" | "warning" | "critical" | string;
   confidence: "low" | "medium" | "high" | string;
   createdAt?: string;

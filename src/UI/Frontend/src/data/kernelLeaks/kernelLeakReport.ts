@@ -16,14 +16,17 @@ import {
 import type { BackendMessage } from "../../types.ts";
 
 /*
- * 内核泄漏报告，合同 v2（后端 KernelLeakReport，订阅 /api/kernel-leaks/subscribe，设计见 docs/kernel_leak_report_feature_2026-10-27.md）。
- * 观察是后端的一个业务块；订阅只决定界面收不收报告。边界上一次解码成按状态区分的类型，界面拿到后直接显示：
+ * 内核泄漏报告，合同 v3（后端 KernelLeakReport，订阅 /api/kernel-leaks/subscribe，设计见 docs/kernel_leak_report_feature_2026-10-27.md，
+ * 条目生命周期见 docs/report_lifecycle_2026-10-28.md）。
+ * 观察是后端的一个业务块；订阅只决定界面收不收报告。status 只描述本轮观察，边界上一次解码成按状态区分的类型：
  * - NotObserved：观察块没有运行（自由点 enabled 关闭、观察计划未发布或已停止；服务启动后块运行之前也是它）；
  * - Observing：本轮观察时长或样本数还不够判定，进度在 observation 里；
- * - Empty：本轮观察已足够，没有疑似项；
- * - Suspected：至少一项疑似持续增长的资源；
+ * - Empty：本轮观察已足够，没有活动条目（可以有历史条目）；
+ * - Suspected：本轮判定至少一条活动条目；
  * - Unavailable：本轮观察失败，带原因；下一个采样间隔自动开始新一轮（restartPolicy）。
  * 每份报告都带同一形状的观察进度；上一轮失败（只保留一条）在新一轮里继续带着。
+ * items 是后端保存的全部条目，任何 status 下都可以有，按首次判出时间升序：判出疑似时是 active，之后判定不再成立或进程已退出时
+ * 留下来改为 history，不会被删除；同一 (PID, 启动键, 资源种类) 只有一条。容量满时新出现的不记录，只给出 unrecordedItemCount。
  * 持有者的映像信息和服务信息各有状态，只有 Current 时带值。每项带单位和两个保留的处理操作（是否可用、原因和风险都是后端消息码）。
  * 未知枚举、缺字段、状态与内容不一致都是解码错误，按订阅通道的现有方式进入错误状态。
  */
@@ -43,6 +46,7 @@ export const kernelLeakMetadataStatuses = ["Current", "Unavailable", "ProcessEnd
 export const kernelLeakRestartPolicies = ["NextInterval"] as const;
 export const kernelLeakActionKinds = ["RestartHolder", "ForceReleaseHandles"] as const;
 export const kernelLeakRiskLevels = ["Warning", "High"] as const;
+export const kernelLeakItemStates = ["active", "history"] as const;
 
 export type KernelLeakFailure = typeof kernelLeakFailures[number];
 export type KernelLeakResourceKind = typeof kernelLeakResourceKinds[number];
@@ -50,6 +54,7 @@ export type KernelLeakUnit = typeof kernelLeakUnits[number];
 export type KernelLeakRestartPolicy = typeof kernelLeakRestartPolicies[number];
 export type KernelLeakActionKind = typeof kernelLeakActionKinds[number];
 export type KernelLeakRiskLevel = typeof kernelLeakRiskLevels[number];
+export type KernelLeakItemState = typeof kernelLeakItemStates[number];
 
 /** 映像信息：Current 时名称和路径必有；文件没有产品名时 productName 为 null（读取失败时整个映像是 Unavailable）。 */
 export type KernelLeakImage =
@@ -82,6 +87,10 @@ export interface KernelLeakAction {
 }
 
 export interface KernelLeakItem {
+  readonly state: KernelLeakItemState;
+  /** 第一次和最近一次判出疑似的时间；条目转为 history 后不再更新。 */
+  readonly firstObservedAt: string;
+  readonly lastObservedAt: string;
   readonly resourceKind: KernelLeakResourceKind;
   readonly unit: KernelLeakUnit;
   readonly currentValue: number;
@@ -115,16 +124,19 @@ interface KernelLeakReportCommon {
   readonly observation: KernelLeakObservation;
   /** 本帧里读不到资源值的持有者数；它们没有参与判定，已观察到的持有者照常判定。 */
   readonly unavailableHolderCount: number;
+  readonly items: readonly KernelLeakItem[];
+  /** 条目容量已满时，判出疑似但没有记录的条目数。 */
+  readonly unrecordedItemCount: number;
 }
 
 export type KernelLeakReport =
   | KernelLeakReportCommon & { readonly status: "NotObserved" | "Observing"; readonly capturedAt: string | null }
   | KernelLeakReportCommon & { readonly status: "Empty"; readonly capturedAt: string }
-  | KernelLeakReportCommon & { readonly status: "Suspected"; readonly capturedAt: string; readonly items: readonly KernelLeakItem[] }
+  | KernelLeakReportCommon & { readonly status: "Suspected"; readonly capturedAt: string }
   | KernelLeakReportCommon & { readonly status: "Unavailable"; readonly capturedAt: string | null; readonly failure: KernelLeakFailure };
 
 export const kernelLeakReportDecoder = defineResponseDecoder<KernelLeakReport>(
-  "kernel-leak-report.v2",
+  "kernel-leak-report.v3",
   (value) => {
     const record = requireRecord(value);
     const status = requireOneOf(record.status, "$.status", kernelLeakReportStatuses);
@@ -132,23 +144,21 @@ export const kernelLeakReportDecoder = defineResponseDecoder<KernelLeakReport>(
     const capturedAt = requireNullable(record.capturedAt, "$.capturedAt", requireTimestamp);
     const observation = decodeObservation(record.observation, "$.observation");
     const unavailableHolderCount = requireNonNegativeSafeInteger(record.unavailableHolderCount, "$.unavailableHolderCount");
-    const items = requireArray(record.items, "$.items").map((item, index) => decodeItem(item, `$.items[${index}]`));
-    const common = { observation, unavailableHolderCount };
+    const items = decodeItems(record.items, "$.items");
+    const unrecordedItemCount = requireNonNegativeSafeInteger(record.unrecordedItemCount, "$.unrecordedItemCount");
+    const common = { observation, unavailableHolderCount, items, unrecordedItemCount };
 
     if (status === "Unavailable") {
       if (failure === "None") throw new ResponseDecodeError("$.failure", "a failure reason when status is 'Unavailable'");
-      if (items.length > 0) throw new ResponseDecodeError("$.items", "no items when status is 'Unavailable'");
       return { ...common, status, capturedAt, failure };
     }
     if (failure !== "None") throw new ResponseDecodeError("$.failure", `'None' when status is '${status}'`);
-    if (status === "Suspected") {
-      if (items.length === 0) throw new ResponseDecodeError("$.items", "at least one item when status is 'Suspected'");
-    } else if (items.length > 0) {
-      throw new ResponseDecodeError("$.items", `no items when status is '${status}'`);
-    }
+    const hasActive = items.some((item) => item.state === "active");
+    if (status === "Suspected" && !hasActive) throw new ResponseDecodeError("$.items", "at least one active item when status is 'Suspected'");
+    if (status === "Empty" && hasActive) throw new ResponseDecodeError("$.items", "no active item when status is 'Empty'");
     if (status === "NotObserved" || status === "Observing") return { ...common, status, capturedAt };
     if (capturedAt === null) throw new ResponseDecodeError("$.capturedAt", `a capture time when status is '${status}'`);
-    return status === "Empty" ? { ...common, status, capturedAt } : { ...common, status, capturedAt, items };
+    return { ...common, status, capturedAt };
   });
 
 function decodeObservation(value: unknown, path: string): KernelLeakObservation {
@@ -171,6 +181,26 @@ function decodeObservation(value: unknown, path: string): KernelLeakObservation 
   };
 }
 
+/** 条目身份：一个持有者进程（PID 加启动键区分 PID 复用）的一种资源。 */
+export function kernelLeakItemKey(item: Pick<KernelLeakItem, "resourceKind" | "holder">): string {
+  return `${item.resourceKind}:${item.holder.processId}:${item.holder.startKey}`;
+}
+
+/** 全部条目：每个 (资源种类, PID, 启动键) 只有一条，按首次判出时间升序。 */
+function decodeItems(value: unknown, path: string): readonly KernelLeakItem[] {
+  const items = requireArray(value, path).map((item, index) => decodeItem(item, `${path}[${index}]`));
+  const keys = new Set<string>();
+  for (const [index, item] of items.entries()) {
+    const key = kernelLeakItemKey(item);
+    if (keys.has(key)) throw new ResponseDecodeError(`${path}[${index}]`, "one item per holder process and resource kind");
+    keys.add(key);
+    if (index > 0 && Date.parse(item.firstObservedAt) < Date.parse(items[index - 1]!.firstObservedAt)) {
+      throw new ResponseDecodeError(`${path}[${index}].firstObservedAt`, "items in ascending firstObservedAt order");
+    }
+  }
+  return items;
+}
+
 function decodeItem(value: unknown, path: string): KernelLeakItem {
   const record = requireRecord(value, path);
   const actions = requireArray(record.actions, `${path}.actions`).map((item, index) => decodeAction(item, `${path}.actions[${index}]`));
@@ -179,7 +209,15 @@ function decodeItem(value: unknown, path: string): KernelLeakItem {
     if (kinds.has(action.action)) throw new ResponseDecodeError(`${path}.actions[${index}].action`, "each action at most once per item");
     kinds.add(action.action);
   }
+  const firstObservedAt = requireTimestamp(record.firstObservedAt, `${path}.firstObservedAt`);
+  const lastObservedAt = requireTimestamp(record.lastObservedAt, `${path}.lastObservedAt`);
+  if (Date.parse(lastObservedAt) < Date.parse(firstObservedAt)) {
+    throw new ResponseDecodeError(`${path}.lastObservedAt`, "a time not earlier than firstObservedAt");
+  }
   return {
+    state: requireOneOf(record.state, `${path}.state`, kernelLeakItemStates),
+    firstObservedAt,
+    lastObservedAt,
     resourceKind: requireOneOf(record.resourceKind, `${path}.resourceKind`, kernelLeakResourceKinds),
     unit: requireOneOf(record.unit, `${path}.unit`, kernelLeakUnits),
     currentValue: requireNonNegativeSafeInteger(record.currentValue, `${path}.currentValue`),

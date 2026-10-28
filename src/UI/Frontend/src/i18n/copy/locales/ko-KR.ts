@@ -1055,6 +1055,8 @@ const koKrAppCopy: AppCopy = {
     noSearchResults: "일치하는 결과가 없습니다.",
     empty: "지금은 주의가 필요한 항목이 없습니다.",
     trusted: "신뢰함",
+    historyEntry: "기록",
+    unrecordedReports: (count: string) => `보고서 항목이 한도에 도달했습니다. 기록되지 않은 현재 문제: ${count}`,
     viewSoftware: "소프트웨어 보기",
     viewDevice: "장치 보기",
     details: "자세히",

@@ -1056,6 +1056,8 @@ const ruRuAppCopy: AppCopy = {
     noSearchResults: "Подходящих результатов нет.",
     empty: "Сейчас ничего не требует внимания.",
     trusted: "Доверенное",
+    historyEntry: "История",
+    unrecordedReports: (count: string) => `Достигнут предел записей отчёта. Не записано текущих проблем: ${count}`,
     viewSoftware: "Показать программу",
     viewDevice: "Показать устройство",
     details: "Сведения",

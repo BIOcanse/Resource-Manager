@@ -1056,6 +1056,8 @@ const esEsAppCopy: AppCopy = {
     noSearchResults: "No hay resultados coincidentes.",
     empty: "Ahora mismo no hay nada que requiera atención.",
     trusted: "Confiable",
+    historyEntry: "Historial",
+    unrecordedReports: (count: string) => `Se alcanzó el límite de entradas del informe. Problemas actuales no registrados: ${count}`,
     viewSoftware: "Ver el software",
     viewDevice: "Ver el dispositivo",
     details: "Detalles",

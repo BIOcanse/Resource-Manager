@@ -87,7 +87,11 @@ export function OptimizationPage(props: OptimizationPageProps) {
   const [searchQuery, setSearchQuery] = createSignal("");
   const [detailReport, setDetailReport] = createSignal<OptimizationReportItem | null>(null);
   const [exclusionsOpen, setExclusionsOpen] = createSignal(false);
-  const allReports = () => props.overview?.reports ?? [];
+  // 活动条目在前、历史条目在后，各自保持后端顺序；历史条目不会被删除，放后面避免盖住当前问题。
+  const allReports = createMemo(() => {
+    const entries = props.overview?.reports ?? [];
+    return [...entries.filter((report) => report.state === "active"), ...entries.filter((report) => report.state === "history")];
+  });
   const trustedTargets = () => props.overview?.trustedTargets ?? [];
   const untrustedReports = () => allReports().filter((report) => !isTrustedReport(report));
   const reports = () => {
@@ -295,6 +299,11 @@ export function OptimizationPage(props: OptimizationPageProps) {
               </For>
             </div>
           </Show>
+          <Show when={(props.overview?.status.unrecordedReportCount ?? 0) > 0}>
+            <p class="optimization-unrecorded" role="status">
+              {uiText.optimization.unrecordedReports(formatInterfaceNumber(props.overview!.status.unrecordedReportCount))}
+            </p>
+          </Show>
           <Show
             when={visibleReports().length > 0}
             fallback={<Show when={props.reportsObservation.status === "ready" && (reportFilter() === "untrusted" || !(props.overview?.trustedTargets.length))}><div class="optimization-empty">{reports().length > 0 ? uiText.optimization.noSearchResults : uiText.optimization.empty}</div></Show>}
@@ -309,6 +318,7 @@ export function OptimizationPage(props: OptimizationPageProps) {
                   <article
                     {...frontendVisibilitySurface(`visible.${demandId}.surface`, [demandId])}
                     class={`optimization-report severity-${report.severity}`}
+                    classList={{ history: report.state === "history" }}
                   >
                     <FrontendVisibilityDemandBinding
                       demandId={demandId}
@@ -319,6 +329,9 @@ export function OptimizationPage(props: OptimizationPageProps) {
                       <span>{presentation().summary}</span>
                     </div>
                     <div class="optimization-report-actions">
+                      <Show when={report.state === "history"}>
+                        <span class="optimization-report-state">{uiText.optimization.historyEntry}</span>
+                      </Show>
                       <Show when={isTrustedReport(report)}>
                         <span class="optimization-report-state">{uiText.optimization.trusted}</span>
                       </Show>
@@ -388,7 +401,7 @@ export function OptimizationPage(props: OptimizationPageProps) {
 }
 
 function isTrustedReport(report: OptimizationReportItem) {
-  return report.state === "trusted_suppressed";
+  return report.trusted;
 }
 
 function findTrustedTarget(

@@ -8,6 +8,10 @@ export const kernelLeakReport: AppCopy["kernelLeakReport"] = {
   readFailed: "No se pudo leer el informe de fugas del kernel.",
   capturedAt: "Capturado el",
   suspectedItems: "Elementos sospechosos",
+  historyItems: "Entradas del historial",
+  unrecordedItems: "No registradas (límite alcanzado)",
+  items: "Entradas del informe",
+  historyEntry: "Historial",
   notObservedTitle: "No se están observando fugas del kernel",
   notObservedDetail: "La observación de fugas del kernel no se está ejecutando: puede estar desactivada, su plan de observación puede no haberse publicado todavía o se ha detenido. Mientras no se ejecute, no se toman muestras ni se genera ningún informe.",
   observingTitle: "Observación en curso",
@@ -60,7 +64,9 @@ export const kernelLeakReport: AppCopy["kernelLeakReport"] = {
     growth: "Aumento durante la observación",
     growthPerSecond: "Tasa de aumento",
     observationTime: "Tiempo de observación",
-    sampleCount: "Muestras"
+    sampleCount: "Muestras",
+    firstObserved: "Primera detección",
+    lastObserved: "Última detección"
   },
   ratePerSecond: (value: string) => `${value}/s`,
   actions: {

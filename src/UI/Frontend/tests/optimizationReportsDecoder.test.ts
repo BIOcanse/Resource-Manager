@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
-  optimizationReportsDecoder
+  optimizationReportsDecoder,
+  reportEntryStates
 } from "../src/data/optimization/optimizationReportsDecoder.ts";
 import {
   ResponseDecodeError
@@ -22,7 +24,23 @@ for (const evaluationState of ["completed", "failed", "notEvaluated"] as const) 
   assert.deepEqual(status.unavailableRules, ["cpu_throttle_temperature"]);
 }
 
+// 报告生命周期（docs/report_lifecycle_2026-10-28.md）：条目是 active 或 history，信任是单独的布尔；activeReportCount 只数 active。
+const lifecycle = {
+  ...source,
+  reports: [report("report-active", "active", false), report("report-history", "history", true)],
+  status: { ...source.status, activeReportCount: 1, unrecordedReportCount: 3 }
+};
+const decodedLifecycle = optimizationReportsDecoder.decode(lifecycle);
+assert.deepEqual(decodedLifecycle.reports.map(item => [item.id, item.state, item.trusted]),
+  [["report-active", "active", false], ["report-history", "history", true]]);
+assert.equal(decodedLifecycle.status.unrecordedReportCount, 3);
+
 const invalidCases: Array<[unknown, string]> = [
+  [{ ...lifecycle, reports: [{ ...lifecycle.reports[0], state: "trusted_suppressed" }, lifecycle.reports[1]] }, "$.reports[0].state"],
+  [{ ...lifecycle, reports: [{ ...lifecycle.reports[0], trusted: undefined }, lifecycle.reports[1]] }, "$.reports[0].trusted"],
+  [{ ...lifecycle, status: { ...lifecycle.status, activeReportCount: 2 } }, "$.status.activeReportCount"],
+  [{ ...lifecycle, status: { ...lifecycle.status, unrecordedReportCount: undefined } }, "$.status.unrecordedReportCount"],
+  [{ ...lifecycle, status: { ...lifecycle.status, unrecordedReportCount: -1 } }, "$.status.unrecordedReportCount"],
   [null, "$"],
   [{ ...source, status: { ...source.status, unavailableRules: [] } }, "$.status.unavailableRules"],
   [{ ...source, status: { ...source.status, evaluationState: "ready" } }, "$.status.evaluationState"],
@@ -42,6 +60,7 @@ const invalidCases: Array<[unknown, string]> = [
       lastObservedAt: null,
       observedTargetCount: 6,
       activeReportCount: 0,
+      unrecordedReportCount: 0,
       trustedCount: 0,
       protectedCount: 0,
       recorderRunning: true,
@@ -55,6 +74,21 @@ for (const [value, expectedPath] of invalidCases) {
     () => optimizationReportsDecoder.decode(value),
     (error: unknown) => error instanceof ResponseDecodeError
       && error.path === expectedPath);
+}
+
+function report(id: string, state: string, trusted: boolean) {
+  const at = "2026-08-26T07:50:00.000Z";
+  return {
+    id, type: "suspected_stray_process", state, trusted, severity: "info", confidence: "high",
+    createdAt: at, updatedAt: at, firstObservedAt: at, lastObservedAt: at,
+    context: { contextKind: "normal", foregroundProcessId: null, foregroundProcessName: null, foregroundExecutablePath: null,
+      foregroundSoftwareId: null, foregroundSoftwareName: null, confidence: "high", evidence: [] },
+    target: { targetType: "process_instance", targetKey: `process:${id}`, name: "pwsh", softwareId: null, softwareName: null,
+      softwareKind: null, displayKind: null, processNames: ["pwsh"], processIds: [424242], driveLetter: null },
+    evidence: { process: null, resourceKind: "memory", averageValue: 1, peakValue: 1, currentValue: 1, valueUnit: "B",
+      activeSampleCount: 1, sampleCount: 1, durationSeconds: 0 },
+    suggestedActions: []
+  };
 }
 
 function optimizationOverview() {
@@ -72,9 +106,17 @@ function optimizationOverview() {
       configuredRuleCount: 7,
       availableRuleCount: 6,
       activeReportCount: 0,
+      unrecordedReportCount: 0,
       trustedCount: 0,
       protectedCount: 0,
       sampleIntervalSeconds: 10
     }
   };
 }
+
+// state 的取值与后端 OptimizationReportStates 的常量逐个相等。
+const backendStates = readFileSync(new URL("../../../Core/Domain/Optimization/OptimizationReportItem.cs", import.meta.url), "utf8");
+const statesBody = /public static class OptimizationReportStates\s*\{([^}]*)\}/.exec(backendStates)?.[1];
+assert.ok(statesBody !== undefined, "backend OptimizationReportStates exists");
+assert.deepEqual([...reportEntryStates], [...statesBody.matchAll(/const string \w+ = "([^"]+)"/g)].map(match => match[1]),
+  "report entry states match the backend");

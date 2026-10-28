@@ -24,8 +24,11 @@ import {
   ResponseDecodeError
 } from "../../frontendRuntime/request/ResponseDecoder.ts";
 
+// 与后端 OptimizationReportStates 逐个相等（测试读后端常量）。
+export const reportEntryStates = ["active", "history"] as const;
+
 export const optimizationReportsDecoder = defineResponseDecoder<OptimizationReportOverview>(
-  "optimization.reports.overview.v2",
+  "optimization.reports.overview.v3",
   (value) => {
     const record = requireRecord(value);
     const reports = decodeArray(record.reports, "$.reports", decodeReport);
@@ -41,10 +44,10 @@ export const optimizationReportsDecoder = defineResponseDecoder<OptimizationRepo
     assertUniqueIds(reports, "$.reports");
     assertUniqueIds(trustedTargets, "$.trustedTargets");
     assertUniqueIds(protectedTargets, "$.protectedTargets");
-    if (status.activeReportCount !== reports.length) {
+    if (status.activeReportCount !== reports.filter((report) => report.state === "active").length) {
       throw new ResponseDecodeError(
         "$.status.activeReportCount",
-        "count equal to $.reports.length");
+        "count equal to the active entries in $.reports");
     }
     if (status.trustedCount !== trustedTargets.length) {
       throw new ResponseDecodeError(
@@ -108,6 +111,9 @@ function decodeStatus(value: unknown, path: string): OptimizationRecorderStatus 
     activeReportCount: requireNonNegativeSafeInteger(
       record.activeReportCount,
       `${path}.activeReportCount`),
+    unrecordedReportCount: requireNonNegativeSafeInteger(
+      record.unrecordedReportCount,
+      `${path}.unrecordedReportCount`),
     trustedCount: requireNonNegativeSafeInteger(
       record.trustedCount,
       `${path}.trustedCount`),
@@ -123,7 +129,8 @@ function decodeReport(value: unknown, path: string): OptimizationReportItem {
   return Object.freeze({
     id: requireNonEmptyString(record.id, `${path}.id`),
     type: requireNonEmptyString(record.type, `${path}.type`),
-    state: requireNonEmptyString(record.state, `${path}.state`),
+    state: requireOneOf(record.state, `${path}.state`, reportEntryStates),
+    trusted: requireBoolean(record.trusted, `${path}.trusted`),
     severity: requireNonEmptyString(record.severity, `${path}.severity`),
     confidence: requireNonEmptyString(record.confidence, `${path}.confidence`),
     createdAt: requireTimestamp(record.createdAt, `${path}.createdAt`),

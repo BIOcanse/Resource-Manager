@@ -357,7 +357,7 @@ export function showcaseOptimizationReports(capturedAt) {
       processIds: [6100 + index * 12], driveLetter: null, ...extra };
   };
   const report = (id, type, severity, firstMinutes, target, evidence) => ({
-    id, type, state: "active", severity, confidence: "high",
+    id, type, state: "active", trusted: false, severity, confidence: "high",
     createdAt: minutesAgo(firstMinutes), updatedAt: capturedAt, firstObservedAt: minutesAgo(firstMinutes), lastObservedAt: capturedAt,
     title: "", message: "", target, suggestedActions: [], context,
     evidence: { process: null, details: [], ...evidence }
@@ -378,7 +378,7 @@ export function showcaseOptimizationReports(capturedAt) {
   return {
     capturedAt, reports, trustedTargets: [], protectedTargets: [],
     status: { lastEvaluationAt: capturedAt, lastObservedAt: capturedAt, evaluationState: "completed", evaluationFailureReason: null,
-      unavailableRules: [], configuredRuleCount: 7, availableRuleCount: 7, activeReportCount: reports.length, trustedCount: 0,
+      unavailableRules: [], configuredRuleCount: 7, availableRuleCount: 7, activeReportCount: reports.length, unrecordedReportCount: 0, trustedCount: 0,
       protectedCount: 0, sampleIntervalSeconds: 10 }
   };
 }

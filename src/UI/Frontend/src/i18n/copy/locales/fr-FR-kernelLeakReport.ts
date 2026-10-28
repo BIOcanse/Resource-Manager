@@ -8,6 +8,10 @@ export const kernelLeakReport: AppCopy["kernelLeakReport"] = {
   readFailed: "Impossible de lire le rapport sur les fuites du noyau.",
   capturedAt: "Capturé le",
   suspectedItems: "Éléments suspects",
+  historyItems: "Entrées historiques",
+  unrecordedItems: "Non enregistrées (limite atteinte)",
+  items: "Entrées du rapport",
+  historyEntry: "Historique",
   notObservedTitle: "Les fuites du noyau ne sont pas observées",
   notObservedDetail: "L’observation des fuites du noyau n’est pas en cours : elle est peut-être désactivée, son plan d’observation n’est peut-être pas encore publié, ou elle s’est arrêtée. Tant qu’elle ne s’exécute pas, aucun échantillon n’est prélevé et aucun rapport n’est produit.",
   observingTitle: "Observation en cours",
@@ -60,7 +64,9 @@ export const kernelLeakReport: AppCopy["kernelLeakReport"] = {
     growth: "Augmentation pendant l’observation",
     growthPerSecond: "Taux d’augmentation",
     observationTime: "Durée d’observation",
-    sampleCount: "Échantillons"
+    sampleCount: "Échantillons",
+    firstObserved: "Première détection",
+    lastObserved: "Dernière détection"
   },
   ratePerSecond: (value: string) => `${value}/s`,
   actions: {

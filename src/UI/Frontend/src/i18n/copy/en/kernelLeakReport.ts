@@ -9,6 +9,10 @@ export const enKernelLeakReportCopy: Pick<AppCopy, "kernelLeakReport"> = {
     readFailed: "The kernel leak report could not be read.",
     capturedAt: "Captured at",
     suspectedItems: "Suspected items",
+    historyItems: "History entries",
+    unrecordedItems: "Not recorded (limit reached)",
+    items: "Report entries",
+    historyEntry: "History",
     notObservedTitle: "Kernel leaks are not being observed",
     notObservedDetail: "Kernel leak observation is not running: it may be turned off, its observation plan may not be published yet, or it has stopped. Until it runs, no samples are taken and no report is produced.",
     observingTitle: "Observing",
@@ -60,7 +64,9 @@ export const enKernelLeakReportCopy: Pick<AppCopy, "kernelLeakReport"> = {
       growth: "Growth during observation",
       growthPerSecond: "Growth rate",
       observationTime: "Observation time",
-      sampleCount: "Samples"
+      sampleCount: "Samples",
+      firstObserved: "First detected",
+      lastObserved: "Last detected"
     },
     ratePerSecond: (value: string) => `${value}/s`,
     actions: {

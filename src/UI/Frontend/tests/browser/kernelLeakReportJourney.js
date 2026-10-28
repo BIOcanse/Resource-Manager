@@ -5,10 +5,11 @@ import { kernelLeakReportFrames } from "../fixtures/kernelLeakReports.js";
 import { writeFrontendPreferences } from "./frontendPreferencesFixture.js";
 
 /*
- * 详细信息 → 内核泄漏报告（docs/kernel_leak_report_feature_2026-10-27.md，合同 v2）。
+ * 详细信息 → 内核泄漏报告（docs/kernel_leak_report_feature_2026-10-27.md，合同 v3：条目生命周期见 docs/report_lifecycle_2026-10-28.md）。
  * 1. 每个模拟场景（tests/fixtures/kernelLeakReports.js）按后端发来的内容显示：状态（关闭、观察中、未发现、疑似、本轮失败）、
  *    原因、本轮观察进度（照发来的数写已达到多少、需要多少）、上一轮失败及其起止时间、下一轮何时开始、读不到的持有者数、
- *    每项的资源种类、持有者（映像和服务各按自己的状态）、按单位写的增长证据、采集时间；不合合同的帧按读取失败显示。
+ *    每项的资源种类、持有者（映像和服务各按自己的状态）、按单位写的增长证据、首次和最近判出时间、采集时间；不合合同的帧按读取失败显示。
+ *    条目任何状态下都显示（本轮状态在上、条目在下）：活动条目在前、历史条目在后，历史条目带“历史”标记；摘要写活动、历史和因容量未记录的条目数。
  * 2. 每项两个处理操作：按钮不可用，名称来自文案；各自后面的问号里是风险等级和后端风险消息的译文；不可用的原因直接写在旁边。
  * 3. 订阅只在分页可见时存在：切到别的分页或别的页面后在可见性冷却期内退订，回来重新订阅（观察本身在后端，不随订阅重来）。
  * 4. 九种语言在最小窗口 760×520 和 1280×800 下：文字来自该语言的文案，面板和每一项都不横向溢出。
@@ -117,7 +118,11 @@ async function checkScenario(page, report, app, language, name, { hints = false 
     state,
     summary: !decodes ? [] : [
       ...(frame.capturedAt ? [`${copy.capturedAt}=${localTime(frame.capturedAt)}`] : []),
-      ...(frame.status === "Suspected" ? [`${copy.suspectedItems}=${number(frame.items.length)}`] : [])
+      ...(frame.items.length > 0 || frame.unrecordedItemCount > 0 ? [
+        `${copy.suspectedItems}=${number(frame.items.filter(item => item.state === "active").length)}`,
+        `${copy.historyItems}=${number(frame.items.filter(item => item.state === "history").length)}`,
+        ...(frame.unrecordedItemCount > 0 ? [`${copy.unrecordedItems}=${number(frame.unrecordedItemCount)}`] : [])
+      ] : [])
     ],
     observation: !decodes || frame.status === "NotObserved" ? [] : [
       `${copy.observation.startedAt}=${observation.startedAt ? localTime(observation.startedAt) : copy.observation.notStarted}`,
@@ -134,7 +139,7 @@ async function checkScenario(page, report, app, language, name, { hints = false 
     },
     restart: decodes && (frame.status === "Unavailable" || previous) ? copy.restartPolicy[observation.restartPolicy] : null,
     notice: decodes && frame.unavailableHolderCount > 0 ? copy.unavailableHolders(frame.unavailableHolderCount) : null,
-    items: decodes && frame.status === "Suspected" ? frame.items.length : 0
+    items: decodes ? frame.items.length : 0
   };
   const read = () => report.evaluate(root => {
     const text = element => element?.textContent.trim() ?? null;
@@ -160,9 +165,11 @@ async function checkScenario(page, report, app, language, name, { hints = false 
   }
   assert.deepEqual(shown, expected, `${language} ${name}: report state`);
   if (expected.items > 0) {
+    assert.equal(await report.locator(".kernel-leak-items").getAttribute("aria-label"), copy.items, `${language} ${name}: list name`);
     const items = report.locator(".kernel-leak-item");
-    for (const [index, wire] of frame.items.entries()) {
-      await checkItem(page, items.nth(index), wire, app, number, `${language} ${name}[${index}]`, hints && index === 0);
+    const ordered = [...frame.items.filter(item => item.state === "active"), ...frame.items.filter(item => item.state === "history")];
+    for (const [index, wire] of ordered.entries()) {
+      await checkItem(page, items.nth(index), wire, app, number, localTime, `${language} ${name}[${index}]`, hints && index === 0);
     }
   }
   return expected.state?.title ?? `Suspected:${expected.items}`;
@@ -174,7 +181,7 @@ function duration(value) {
   return `${Math.floor(seconds / 3600)}:${pad(Math.floor(seconds / 60) % 60)}:${pad(seconds % 60)}`;
 }
 
-async function checkItem(page, item, wire, app, number, label, hints) {
+async function checkItem(page, item, wire, app, number, localTime, label, hints) {
   const copy = app.kernelLeakReport;
   const holder = wire.holder;
   const image = holder.image;
@@ -184,6 +191,19 @@ async function checkItem(page, item, wire, app, number, label, hints) {
   assert.equal(title, imageCurrent ? image.name : metadata(image.status), `${label} title`);
   assert.equal((await item.locator(".kernel-leak-item-title span").textContent())?.trim(), `${copy.holder.processId} ${holder.processId}`, `${label} PID`);
   assert.equal((await item.locator(".kernel-leak-kind").textContent())?.trim(), copy.resourceKind[wire.resourceKind], `${label} kind`);
+  // 历史条目带标记，底色和标题退到次要；活动条目没有标记。
+  const history = wire.state === "history";
+  assert.equal(await item.evaluate(node => node.classList.contains("history")), history, `${label} history class`);
+  assert.deepEqual((await item.locator(".kernel-leak-history").allTextContents()).map(text => text.trim()), history ? [copy.historyEntry] : [], `${label} history tag`);
+  if (history) {
+    const colors = await item.evaluate(node => ({
+      title: getComputedStyle(node.querySelector(".kernel-leak-item-title strong")).color,
+      muted: getComputedStyle(node.querySelector(".kernel-leak-item-title span")).color,
+      background: getComputedStyle(node).backgroundColor
+    }));
+    assert.equal(colors.title, colors.muted, `${label}: a history title uses the muted color`);
+    assert.equal(colors.background, "rgba(0, 0, 0, 0)", `${label}: a history entry has no surface fill`);
+  }
 
   const facts = Object.fromEntries(await item.locator(".kernel-leak-holder > div").evaluateAll(rows =>
     rows.map(row => [row.querySelector("dt").textContent.trim(), row.querySelector("dd").textContent.trim()])));
@@ -208,7 +228,9 @@ async function checkItem(page, item, wire, app, number, label, hints) {
     [copy.evidence.growth, number(wire.growth, { signDisplay: "exceptZero" })],
     [copy.evidence.growthPerSecond, copy.ratePerSecond(number(wire.growthPerSecond, { maximumFractionDigits: 2, signDisplay: "exceptZero" }))],
     [copy.evidence.observationTime, duration(wire.observationSeconds)],
-    [copy.evidence.sampleCount, number(wire.sampleCount)]
+    [copy.evidence.sampleCount, number(wire.sampleCount)],
+    [copy.evidence.firstObserved, localTime(wire.firstObservedAt)],
+    [copy.evidence.lastObserved, localTime(wire.lastObservedAt)]
   ], `${label} evidence`);
 
   // 处理操作：按发来的顺序，每个是一个不可用的按钮，后面紧跟它的风险问号；不可用的原因（相同的只写一次）直接写在后面。

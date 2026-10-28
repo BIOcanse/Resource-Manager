@@ -8,6 +8,10 @@ export const kernelLeakReport: AppCopy["kernelLeakReport"] = {
   readFailed: "Der Bericht zu Kernel-Lecks konnte nicht gelesen werden.",
   capturedAt: "Erfasst am",
   suspectedItems: "Verdachtsfälle",
+  historyItems: "Verlaufseinträge",
+  unrecordedItems: "Nicht erfasst (Grenze erreicht)",
+  items: "Berichtseinträge",
+  historyEntry: "Verlauf",
   notObservedTitle: "Kernel-Lecks werden nicht beobachtet",
   notObservedDetail: "Die Beobachtung von Kernel-Lecks läuft derzeit nicht: Sie ist möglicherweise ausgeschaltet, ihr Beobachtungsplan ist noch nicht veröffentlicht, oder sie wurde beendet. Solange sie nicht läuft, werden keine Stichproben erfasst und kein Bericht erstellt.",
   observingTitle: "Beobachtung läuft",
@@ -59,7 +63,9 @@ export const kernelLeakReport: AppCopy["kernelLeakReport"] = {
     growth: "Zunahme im Beobachtungszeitraum",
     growthPerSecond: "Zuwachsrate",
     observationTime: "Beobachtungsdauer",
-    sampleCount: "Stichproben"
+    sampleCount: "Stichproben",
+    firstObserved: "Erstmals erkannt",
+    lastObserved: "Zuletzt erkannt"
   },
   ratePerSecond: (value: string) => `${value}/s`,
   actions: {

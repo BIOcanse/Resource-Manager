@@ -9,6 +9,10 @@ export const zhTwKernelLeakReportCopy: Pick<AppCopy, "kernelLeakReport"> = {
     readFailed: "核心洩漏報告讀取失敗",
     capturedAt: "擷取時間",
     suspectedItems: "疑似項目",
+    historyItems: "歷史項目",
+    unrecordedItems: "因達到上限未記錄",
+    items: "報告項目",
+    historyEntry: "歷史",
     notObservedTitle: "未在觀察核心洩漏",
     notObservedDetail: "核心洩漏觀察目前沒有執行：可能已關閉、觀察計畫尚未發布，或已停止。執行之前不會取樣，也不會產生報告。",
     observingTitle: "正在觀察",
@@ -57,7 +61,9 @@ export const zhTwKernelLeakReportCopy: Pick<AppCopy, "kernelLeakReport"> = {
       growth: "觀察期間增長",
       growthPerSecond: "增長速率",
       observationTime: "觀察時長",
-      sampleCount: "樣本數"
+      sampleCount: "樣本數",
+      firstObserved: "首次發現",
+      lastObserved: "最近發現"
     },
     ratePerSecond: (value: string) => `${value}/秒`,
     actions: {

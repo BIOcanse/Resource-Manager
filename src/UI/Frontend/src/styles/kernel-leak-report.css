@@ -171,6 +171,23 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* 历史条目（判定已不成立或进程已退出）：底色和标题退到次要，证据照常可读。 */
+.kernel-leak-item.history {
+  background: transparent;
+}
+
+.kernel-leak-item.history .kernel-leak-item-title strong {
+  color: var(--muted);
+}
+
+.kernel-leak-item-tags {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.kernel-leak-history,
 .kernel-leak-kind {
   flex: none;
   min-height: 24px;

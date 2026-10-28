@@ -7,6 +7,10 @@ export const kernelLeakReport: AppCopy["kernelLeakReport"] = {
   readFailed: "커널 누수 보고서를 읽지 못했습니다",
   capturedAt: "수집 시각",
   suspectedItems: "의심 항목",
+  historyItems: "기록 항목",
+  unrecordedItems: "한도 도달로 기록되지 않음",
+  items: "보고서 항목",
+  historyEntry: "기록",
   notObservedTitle: "커널 누수를 관찰하고 있지 않습니다",
   notObservedDetail: "커널 누수 관찰이 현재 실행되고 있지 않습니다. 꺼져 있거나, 관찰 계획이 아직 게시되지 않았거나, 중지되었을 수 있습니다. 실행되기 전에는 샘플을 수집하지 않으며 보고서도 생성하지 않습니다.",
   observingTitle: "관찰 중",
@@ -55,7 +59,9 @@ export const kernelLeakReport: AppCopy["kernelLeakReport"] = {
     growth: "관찰 기간 중 증가",
     growthPerSecond: "증가율",
     observationTime: "관찰 시간",
-    sampleCount: "샘플 수"
+    sampleCount: "샘플 수",
+    firstObserved: "처음 감지",
+    lastObserved: "마지막 감지"
   },
   ratePerSecond: (value: string) => `${value}/초`,
   actions: {
