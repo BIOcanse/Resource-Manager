@@ -4,7 +4,8 @@ import { loadAppCopy } from "../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../src/i18n/settingsLoader.ts";
 import { languageOptions } from "../src/i18n/settingsLanguages.ts";
 import { softwareDescription, softwareSourceLabels, softwareUninstallDescription, softwareRecordName } from "../src/presentation/softwareFacts.ts";
-import { decodeSoftwareRecord } from "../src/features/management/softwareRecordDecoder.ts";
+import { readFileSync } from "node:fs";
+import { decodeSoftwareRecord, softwareKinds, sourceKinds, uninstallConstraints } from "../src/features/management/softwareRecordDecoder.ts";
 import type { SoftwareRecord } from "../src/types.ts";
 
 const expectedEndpoint = {
@@ -82,4 +83,25 @@ for (const [invalid, location] of [
 ] as const) {
   assert.throws(() => decodeSoftwareRecord({ ...base, issues: [invalid] }), location);
 }
-console.log("Software facts render in every selectable language and reject presentation wire fields.");
+// 软件列表的枚举和后端常量逐个相等：后端多出一个值（例如 10-28 的 steam_library）而前端没跟上时，
+// 整份 /api/software 解码失败，组件页和录制报告页一起报错。这里直接读后端常量表，差一个就失败。
+const registry = readFileSync(new URL("../../../../src/Core/Domain/Software/SoftwareRegistry.cs", import.meta.url), "utf8");
+function backendConstants(className: string): string[] {
+  const start = registry.indexOf(`public static class ${className}`);
+  assert.ok(start >= 0, `backend class ${className} exists`);
+  const body = registry.slice(start, registry.indexOf("\n}", start));
+  return [...body.matchAll(/public const string \w+ = "([^"]+)";/g)].map((match) => match[1]!).sort();
+}
+assert.deepEqual([...softwareKinds].sort(), backendConstants("SoftwareKinds"), "software kinds match SoftwareKinds");
+assert.deepEqual([...sourceKinds].sort(), backendConstants("SoftwareSourceKinds"), "source kinds match SoftwareSourceKinds");
+assert.deepEqual([...uninstallConstraints].sort(), backendConstants("SoftwareUninstallConstraints"), "uninstall constraints match SoftwareUninstallConstraints");
+for (const language of languageOptions) {
+  if (language.id === "system") continue;
+  applyLanguage(language.id);
+  await Promise.all([loadAppCopy(language.id), loadSettingsText(language.id)]);
+  assert.deepEqual(Object.keys(uiText.softwareFacts.source).sort(), [...sourceKinds].sort(), `${language.id}: every source kind has a name`);
+}
+const steamGame = decodeSoftwareRecord({ ...base, kind: "game", sourceFacts: [{ kind: "steam_library" }] });
+assert.deepEqual(steamGame.sourceFacts, [{ kind: "steam_library", catalogVersion: undefined, catalogSource: undefined, policyGroupId: undefined, policyGroupName: undefined }]);
+
+console.log("Software facts render in every selectable language, match the backend enums and reject presentation wire fields.");

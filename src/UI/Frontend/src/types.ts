@@ -898,7 +898,7 @@ export interface SoftwareRecord {
 }
 
 export interface SoftwareSourceFact {
-  kind: "dependency" | "windows_registry" | "self" | "adapter" | "controlled" | "portable" | "manual" | "identity_catalog" | "policy" | "runtime";
+  kind: "dependency" | "windows_registry" | "steam_library" | "self" | "adapter" | "controlled" | "portable" | "manual" | "identity_catalog" | "policy" | "runtime";
   catalogVersion?: string | null;
   catalogSource?: string | null;
   policyGroupId?: string | null;

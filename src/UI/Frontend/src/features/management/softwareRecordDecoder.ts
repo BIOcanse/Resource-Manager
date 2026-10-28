@@ -6,10 +6,10 @@ import {
   requireNonNegativeSafeInteger, requireOneOf, requireNullable, ResponseDecodeError
 } from "../../frontendRuntime/request/ResponseDecoder.ts";
 
-const sourceKinds = ["dependency", "windows_registry", "self", "adapter", "controlled", "portable", "manual", "identity_catalog", "policy", "runtime"] as const;
+export const sourceKinds = ["dependency", "windows_registry", "steam_library", "self", "adapter", "controlled", "portable", "manual", "identity_catalog", "policy", "runtime"] as const;
 const registrationKinds = ["self", "adapter", "controlled", "portable", "manual"] as const;
-const uninstallConstraints = ["none", "empty_managed_root", "missing_uninstall_entry", "manual_registration", "missing_strategy", "self", "portable"] as const;
-const softwareKinds = ["adapted", "controlled", "managed", "game", "high_performance", "other", "windows_system", "windows_component", "windows_service", "runtime_package", "runtime_product", "runtime_root", "unattributed"] as const;
+export const uninstallConstraints = ["none", "empty_managed_root", "missing_uninstall_entry", "manual_registration", "missing_strategy", "self", "portable"] as const;
+export const softwareKinds = ["adapted", "controlled", "managed", "game", "high_performance", "other", "windows_system", "windows_component", "windows_service", "runtime_package", "runtime_product", "runtime_root", "unattributed"] as const;
 
 function optionalString(value: unknown, path: string) {
   return value === undefined ? undefined : requireNullable(value, path, requireString);

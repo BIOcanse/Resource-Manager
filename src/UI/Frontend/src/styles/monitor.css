@@ -126,9 +126,10 @@ body.reordering * {
   font-size: 14px;
 }
 
+/* 标签用正文色，下面的设备名（.metric-device）是灰色小字：两者一眼分得出主次（用户 10-28）。 */
 .metric-label {
   min-width: 0;
-  color: var(--muted);
+  color: var(--text);
   font-size: 13px;
   line-height: 1.25;
 }
