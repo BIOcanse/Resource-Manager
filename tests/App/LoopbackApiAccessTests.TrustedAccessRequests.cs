@@ -100,6 +100,22 @@ public sealed partial class LoopbackApiAccessTests
     }
 
     [Fact]
+    public async Task KeyManagementRejectionNamesTheMissingScope()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        var readKey = await fixture.Keys.CreateAsync(new("ordinary read", AccessKeyPurposes.Control,
+            [AccessKeyScopes.Read]), CancellationToken.None);
+        using var request = new HttpRequestMessage(HttpMethod.Get, TrustedAccessApiContract.AccessKeysPath);
+        request.Headers.Add(TrustedAccessHeaders.KeyHeader, readKey.ApiKey);
+        using var response = await fixture.Client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("access-scope-required", body.RootElement.GetProperty("error").GetString());
+        Assert.Equal(new[] { AccessKeyScopes.KeysManage },
+            body.RootElement.GetProperty("missingScopes").EnumerateArray().Select(scope => scope.GetString()!));
+    }
+
+    [Fact]
     public async Task UnknownSelectorIsRejectedByIdWhileResourceFactsSubscriptionStillPublishes()
     {
         await using var fixture = await Fixture.StartAsync();

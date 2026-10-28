@@ -456,6 +456,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     [JsonSerializable(typeof(Microsoft.AspNetCore.Mvc.ValidationProblemDetails))]
     [JsonSerializable(typeof(FrontendSubscriptionChannelFrame<ResourceManager.App.Infrastructure.Optimization.HostManagerDecisionDiagnosticsSnapshot>))]
     [JsonSerializable(typeof(ResourceManager.App.Infrastructure.Security.LoopbackApiErrorPayload))]
+    [JsonSerializable(typeof(ResourceManager.App.Infrastructure.Security.LoopbackApiScopeErrorPayload))]
     [JsonSerializable(typeof(ResourceManager.App.Domain.RuntimeSpecialization.RuntimePolicySaveResult<ResourceManager.App.Domain.CpuTopology.CpuCorePerformanceOverrideResult>))]
     [JsonSerializable(typeof(ResourceManager.App.Domain.RuntimeSpecialization.RuntimePolicySaveResult<ResourceManager.App.Domain.Optimization.GpuPerformanceScoreOverrideResult>))]
     [JsonSerializable(typeof(ResourceManager.App.Domain.RuntimeSpecialization.RuntimePolicySaveResult<ResourceManager.App.Domain.GpuPlacement.GpuPlacementSoftwarePolicy>))]

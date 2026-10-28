@@ -20,7 +20,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             if (authorization is null)
                 return Results.Unauthorized();
             if (!CanManageKeys(authorization))
-                return Results.Json(new EndpointErrorPayload("access-scope-required"),
+                return Results.Json(KeysManageRequired,
                     statusCode: StatusCodes.Status403Forbidden);
             var credentials = await keys.ListAsync(cancellationToken);
             var defaultKey = credentials.SingleOrDefault(static key =>
@@ -49,7 +49,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             if (authorization is null)
                 return Results.Unauthorized();
             if (!CanManageKeys(authorization))
-                return Results.Json(new EndpointErrorPayload("access-scope-required"),
+                return Results.Json(KeysManageRequired,
                     statusCode: StatusCodes.Status403Forbidden);
             if (!CanGrantScopes(authorization, scopes))
                 return Results.Json(new EndpointErrorPayload("access-scope-escalation-denied"),
@@ -74,7 +74,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             if (authorization is null)
                 return Results.Unauthorized();
             if (!CanManageKeys(authorization))
-                return Results.Json(new EndpointErrorPayload("access-scope-required"),
+                return Results.Json(KeysManageRequired,
                     statusCode: StatusCodes.Status403Forbidden);
             var credentials = await keys.ListAsync(cancellationToken);
             var target = credentials.SingleOrDefault(key => StringComparer.Ordinal.Equals(key.Id, id));
@@ -101,7 +101,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             if (authorization is null)
                 return Results.Unauthorized();
             if (!CanManageKeys(authorization))
-                return Results.Json(new EndpointErrorPayload("access-scope-required"),
+                return Results.Json(KeysManageRequired,
                     statusCode: StatusCodes.Status403Forbidden);
             var credentials = await keys.ListAsync(cancellationToken);
             var target = credentials.SingleOrDefault(key => StringComparer.Ordinal.Equals(key.Id, id));
@@ -138,7 +138,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             if (authorization is null)
                 return Results.Unauthorized();
             if (!CanManageKeys(authorization))
-                return Results.Json(new EndpointErrorPayload("access-scope-required"),
+                return Results.Json(KeysManageRequired,
                     statusCode: StatusCodes.Status403Forbidden);
             if (!authorization.IsAdministrator
                 && !ContainsAll(authorization.EffectiveScopes, TrustedAccessScopeCatalog.DefaultScopes))
@@ -257,7 +257,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             if (authorization is null)
                 return Results.Unauthorized();
             if (!CanManageKeys(authorization))
-                return Results.Json(new EndpointErrorPayload("access-scope-required"),
+                return Results.Json(KeysManageRequired,
                     statusCode: StatusCodes.Status403Forbidden);
 
             var result = await requestOwner.ApproveAsync(
@@ -304,7 +304,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             if (authorization is null)
                 return Results.Unauthorized();
             if (!CanManageKeys(authorization))
-                return Results.Json(new EndpointErrorPayload("access-scope-required"),
+                return Results.Json(KeysManageRequired,
                     statusCode: StatusCodes.Status403Forbidden);
             if (!TryParseDenialReason(request?.ReasonCode, out var reason))
                 return Results.BadRequest(new EndpointErrorPayload("denial-reason-invalid"));
@@ -345,6 +345,9 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         => context.Items.TryGetValue(typeof(TrustedAccessAuthorizationContext), out var value)
             ? value as TrustedAccessAuthorizationContext
             : null;
+
+    private static readonly LoopbackApiScopeErrorPayload KeysManageRequired =
+        new("access-scope-required", [AccessKeyScopes.KeysManage]);
 
     private static bool CanManageKeys(TrustedAccessAuthorizationContext? authorization)
         => authorization is not null

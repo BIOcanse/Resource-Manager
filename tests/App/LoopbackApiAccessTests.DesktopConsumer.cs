@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using ResourceManager.App.Domain.TrustedAccess;
 using ResourceManager.App.Infrastructure.ResourceBreakdown;
 using ResourceManager.Shared.Runtime;
@@ -69,7 +70,10 @@ public sealed partial class LoopbackApiAccessTests
         denied.Headers.Add(TrustedAccessHeaders.KeyHeader, readOnly.ApiKey);
         using var response = await fixture.Client.SendAsync(denied);
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-        Assert.Contains("access-scope-required", await response.Content.ReadAsStringAsync());
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("access-scope-required", body.RootElement.GetProperty("error").GetString());
+        Assert.Equal(new[] { AccessKeyScopes.DesktopPublish },
+            body.RootElement.GetProperty("missingScopes").EnumerateArray().Select(scope => scope.GetString()!));
         Assert.Equal(0, fixture.Administrator.Calls);
     }
 

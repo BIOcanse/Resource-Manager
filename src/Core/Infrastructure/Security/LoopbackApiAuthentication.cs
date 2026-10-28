@@ -184,9 +184,13 @@ public sealed class LoopbackApiAuthenticationMiddleware(
         {
             LogAuthorization(context, decision, $"denied:{decision.ErrorCode}");
             context.Response.StatusCode = decision.StatusCode;
-            await context.Response.WriteAsJsonAsync(
-                new LoopbackApiErrorPayload(decision.ErrorCode),
-                context.RequestAborted);
+            await (decision.MissingScopes.Count > 0
+                ? context.Response.WriteAsJsonAsync(
+                    new LoopbackApiScopeErrorPayload(decision.ErrorCode, decision.MissingScopes),
+                    context.RequestAborted)
+                : context.Response.WriteAsJsonAsync(
+                    new LoopbackApiErrorPayload(decision.ErrorCode),
+                    context.RequestAborted));
             return;
         }
         LogAuthorization(context, decision, "allowed");
@@ -320,3 +324,6 @@ public sealed class LoopbackApiAuthenticationMiddleware(
 }
 
 internal sealed record LoopbackApiErrorPayload(string error);
+
+// access-scope-required names the scopes the key lacks, as backend scope ids.
+internal sealed record LoopbackApiScopeErrorPayload(string error, IReadOnlyList<string> missingScopes);

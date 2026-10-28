@@ -44,6 +44,9 @@ internal sealed record TrustedAccessAuthorizationDecision(
     TrustedAccessAuthorizationContext? Context,
     string? AccessKeyId = null)
 {
+    // The route's scopes that the key lacks; set only with access-scope-required.
+    public IReadOnlyList<string> MissingScopes { get; init; } = [];
+
     public static TrustedAccessAuthorizationDecision Allow(
         TrustedAccessAuthorizationContext context)
         => new(true, StatusCodes.Status200OK, string.Empty, context, context.Key?.Id);
@@ -485,7 +488,11 @@ internal static class TrustedAccessHttpPolicy
                 return TrustedAccessAuthorizationDecision.Reject(
                     StatusCodes.Status403Forbidden,
                     "access-scope-required",
-                    key.Id);
+                    key.Id) with
+                {
+                    MissingScopes = requiredScopes
+                        .Where(scope => !key.Scopes.Contains(scope, StringComparer.Ordinal)).ToArray()
+                };
 
             var requiresElevation = false;
             for (var index = 0; index < requiredScopes.Count; index++)
