@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Reflection;
+using ResourceManager.Subscription.Native;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Infrastructure.CpuTopology;
@@ -151,20 +152,27 @@ public sealed class EtwCpuResidencyWindowDemandTests
         var broker = new Broker();
         using var reader = new EtwCpuCoreResidencyReader(broker, sampling.Provider, sampling.Owner,
             NullLogger<EtwCpuCoreResidencyReader>.Instance, static (_, _) => { });
-        using var slow = reader.AcquireSubscription("test.slow", TimeSpan.FromSeconds(30));
+        var slowInterval = TimeSpan.FromSeconds(30);
+        using var slow = reader.AcquireSubscription("test.slow", slowInterval);
         using var fast = reader.AcquireSubscription("test.fast", TimeSpan.FromMilliseconds(100));
         await reader.StartAsync(CancellationToken.None);
         try
         {
             await UntilAsync(() => IsWindowActive(reader));
-            FeedWindow(reader, sampling);
+            var capture = CaptureOwner(reader)!;
+            var initialSession = typeof(EtwCpuResidencyCaptureOwner)
+                .GetField("activeSession", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(capture)!;
+            var initialWindow = initialSession.GetType().GetProperty("Window")!.GetValue(initialSession)!;
+            var previousWindowEnd = FeedWindow(reader, sampling);
             await UntilAsync(() => reader.Read() is not null);
             await Task.Delay(250);
             Assert.Equal(1, broker.SubscribeCount);
             Assert.True(IsWindowActive(reader));
             Assert.Equal(HeldKeywords, broker.Keywords);
+            var previousPlanEpoch = ReadWindowPlan(sampling).Header.LastPlanEpoch;
             fast.Dispose();
-            await UntilAsync(() => !IsWindowActive(reader));
+            await AcknowledgeSlowWindowAsync(reader, sampling, slowInterval, previousPlanEpoch,
+                initialWindow, previousWindowEnd);
             Assert.Equal(HeldKeywords, broker.Keywords);
             Assert.Equal(1, broker.ActiveCount);
             Assert.Equal(1, broker.SessionStarts);
@@ -182,6 +190,62 @@ public sealed class EtwCpuResidencyWindowDemandTests
     private static EtwCpuResidencyCaptureOwner? CaptureOwner(EtwCpuCoreResidencyReader reader)
         => (EtwCpuResidencyCaptureOwner?)typeof(EtwCpuCoreResidencyReader)
             .GetField("captureOwner", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(reader);
+
+    private static async Task AcknowledgeSlowWindowAsync(EtwCpuCoreResidencyReader reader,
+        HostManagerSamplingSubscriptionTestFixture sampling, TimeSpan slowInterval, ulong previousPlanEpoch,
+        object lastFedWindow, long previousWindowEnd)
+    {
+        var capture = CaptureOwner(reader)!;
+        var captureGate = typeof(EtwCpuResidencyCaptureOwner)
+            .GetField("subscriptionGate", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(capture)!;
+        var intervalField = typeof(EtwCpuCoreResidencyReader)
+            .GetField("captureInterval", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        await UntilAsync(() =>
+        {
+            // Read the native owner outside the capture gate: production publication
+            // can acquire those owners in the opposite order.
+            var plan = ReadWindowPlan(sampling);
+            lock (captureGate)
+            {
+                if (capture.IsWindowActive)
+                {
+                    var session = typeof(EtwCpuResidencyCaptureOwner)
+                        .GetField("activeSession", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(capture)!;
+                    var window = session.GetType().GetProperty("Window")!.GetValue(session)!;
+                    if (!ReferenceEquals(window, lastFedWindow))
+                    {
+                        previousWindowEnd = FeedWindow(reader, sampling, previousWindowEnd);
+                        lastFedWindow = window;
+                    }
+                }
+                // An already-overdue fast query remains due after withdrawal.
+                // Settle that real replacement window before observing retained current.
+                return (TimeSpan)intervalField.GetValue(reader)! == slowInterval
+                    && plan.Header.LastPlanEpoch > previousPlanEpoch
+                    && plan.Header.ActiveSourceCount == 1
+                    && plan.Item.EffectiveIntervalMilliseconds == checked((ulong)slowInterval.TotalMilliseconds)
+                    && plan.Item.LastPlannedEpoch == 0
+                    && plan.Item.ScheduledDueMilliseconds > plan.Header.LastCommandAtMilliseconds
+                    && !capture.IsWindowActive;
+            }
+        });
+    }
+
+    private static (NativeSamplingSubscriptionSnapshotHeader Header, NativeSamplingSubscriptionItemState Item)
+        ReadWindowPlan(HostManagerSamplingSubscriptionTestFixture sampling)
+    {
+        using var role = sampling.Owner.Acquire(6);
+        var capacity = role.Session.Capacity;
+        var header = new NativeSamplingSubscriptionSnapshotHeader
+        {
+            AbiVersion = NativeSamplingSubscriptionAbi.Version,
+            StructSize = (uint)System.Runtime.CompilerServices.Unsafe.SizeOf<NativeSamplingSubscriptionSnapshotHeader>()
+        };
+        var items = new NativeSamplingSubscriptionItemState[checked((int)capacity.SnapshotItemCapacity)];
+        Assert.Equal(NativeSamplingSubscriptionStatus.Ok, role.Session.Snapshot(ref header,
+            new NativeSamplingSubscriptionSourceView[checked((int)capacity.SnapshotSourceCapacity)], items));
+        return (header, Assert.Single(items.Take(checked((int)header.ItemOutputCount))));
+    }
 
     private static bool IsWindowActive(EtwCpuCoreResidencyReader reader)
     {

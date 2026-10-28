@@ -2,6 +2,7 @@ using ResourceManager.App.Application.Control;
 using ResourceManager.App.Domain.Control;
 using ResourceManager.App.Hosting.StartupCapabilities;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using ResourceManager.App.Infrastructure.Control.Writers;
 
 namespace ResourceManager.App.Infrastructure.Control;
 
@@ -16,7 +17,8 @@ public sealed class ControlPlane(
     IControlDesiredStateStore store,
     IControlWriteLayer writeLayer,
     StartupCapabilitySet? capabilities = null,
-    HardwareMetricCatalogState? catalog = null) : IControlPlane
+    HardwareMetricCatalogState? catalog = null,
+    FanControlCoreClient? fan = null) : IControlPlane
 {
     private readonly object gate = new();
     private readonly SemaphoreSlim operations = new(1, 1);
@@ -156,6 +158,7 @@ public sealed class ControlPlane(
     {
         var invalid = InvalidFanModes(next, objectId);
         if (invalid.Length > 0) return new(current, RejectFanModes(invalid, objectId));
+        using var fanCommands = HoldFanCommands(current.Objects.Concat(current.PendingReleases).Concat(next.Objects), objectId);
         var pending = current.PendingReleases.Concat(current.Objects)
             .GroupBy(target => target.ObjectId, StringComparer.Ordinal)
             .Select(group => new ControlObjectDesiredState(group.Key, group.SelectMany(target => target.Settings)
@@ -185,11 +188,17 @@ public sealed class ControlPlane(
     private static bool SameOwnership(ControlSetting left, ControlSetting right)
         => left.CapabilityId == right.CapabilityId && left.CurveExecution == right.CurveExecution;
 
+    private IDisposable? HoldFanCommands(IEnumerable<ControlObjectDesiredState> targets, string? objectId = null)
+        => fan is not null && targets.Any(target => (objectId is null || target.ObjectId == objectId)
+            && target.ObjectId.StartsWith("fan:", StringComparison.Ordinal) && target.Settings.Count > 0)
+            ? fan.AcquirePendingScope() : null;
+
     private async Task<ControlStateView> ApplyStoredAsync(
         ControlDesiredState next, CancellationToken cancellationToken, string? objectId = null, bool retryOnly = false)
     {
         var invalid = InvalidFanModes(next, objectId);
         if (invalid.Length > 0) return new(next, RejectFanModes(invalid, objectId));
+        using var fanCommands = HoldFanCommands(next.Objects.Concat(next.PendingReleases), objectId);
         var releases = next.PendingReleases.Where(target => objectId is null || target.ObjectId == objectId).ToArray();
         var releaseReport = releases.Length == 0
             ? ControlApplyReport.Empty
@@ -244,6 +253,7 @@ public sealed class ControlPlane(
                     && outcome.CapabilityId == setting.CapabilityId && outcome.Status == ControlApplyStatuses.Applied)).ToArray()))
                 .Where(target => target.Settings.Count > 0).ToArray());
             if (selected.Objects.Count == 0) return previous;
+            using var fanCommands = HoldFanCommands(selected.Objects);
             var report = await writeLayer.WriteAsync(selected, cancellationToken).ConfigureAwait(false);
             var updated = new ControlApplyReport(previous.Outcomes.Where(old => !report.Outcomes.Any(next =>
                 next.ObjectId == old.ObjectId && next.CapabilityId == old.CapabilityId)).Concat(report.Outcomes).ToArray(), DateTimeOffset.UtcNow);

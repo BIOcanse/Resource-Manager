@@ -59,6 +59,12 @@ public sealed class NonOwningHostedServiceTests
             await worker.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
             await host.StopAsync();
             Assert.True(worker.ExecuteTask!.IsCompleted);
+            Assert.True(worker.ExecuteTask.IsCanceled);
+            // Original service cleanup precedes the controller's returned-entry acknowledgement.
+            var scheduler = host.Services.GetRequiredService<BusinessBlockScheduler>();
+            using var returnedDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            while (scheduler.ReadState(BackendUids.RuntimeSpecializationCoordinator) != BusinessBlockState.Stopped)
+                await Task.Delay(1, returnedDeadline.Token);
             var facts = Assert.Single(host.Services.GetRequiredService<IBusinessBlockQuery>().Read().Blocks,
                 block => block.Id == BackendUids.RuntimeSpecializationCoordinator);
             Assert.Equal(BusinessBlockState.Stopped, facts.State);

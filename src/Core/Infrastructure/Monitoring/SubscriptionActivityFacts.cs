@@ -85,8 +85,6 @@ internal sealed class SubscriptionActivityFacts(
 
         internal async Task NotifyAsync()
         {
-            // Leave the source's mutation gate before evaluating any control node.
-            await Task.Yield();
             lock (notificationGate)
             {
                 var current = read();
@@ -94,6 +92,10 @@ internal sealed class SubscriptionActivityFacts(
                     && (current.HasValue ? current.Value == previous.Value : current.NoValueReason == previous.NoValueReason)) return;
                 lastNotified = current; // Notification metadata only; authority reads always call the owner.
             }
+            // Observe the source edge before deferring; a renewal can otherwise
+            // turn false back to true before either continuation reads it.
+            // Leave the source's mutation gate before evaluating any control node.
+            await Task.Yield();
             await notify();
         }
     }

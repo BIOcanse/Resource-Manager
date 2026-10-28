@@ -271,17 +271,8 @@ internal sealed class TraceEventSessionProcessingRuntime(
             {
                 // TraceEvent.Stop marks itself stopped even when ControlTrace is denied.
                 // Use the owned native controller so a later reconcile really retries.
-                if (keywordControl is not null)
-                {
-                    keywordControl.StopSession();
-                    session.StopOnDispose = false;
-                    sessionStopSucceeded = true;
-                }
-                else sessionStopSucceeded = session.Stop(noThrow: false);
-                if (!sessionStopSucceeded)
-                {
-                    failures.Add("SessionStop: the ETW controller did not confirm stop.");
-                }
+                cleanup.StopSession(StopSession);
+                sessionStopSucceeded = true;
             }
             catch (Exception ex) when (KernelEtwSessionKeywordControl.IsAccessDenied(ex))
             {
@@ -298,7 +289,7 @@ internal sealed class TraceEventSessionProcessingRuntime(
             cleanup.CancelSubscriptions(() => dispatcher?.CancelAll());
             try
             {
-                source?.StopProcessing();
+                cleanup.StopProcessing(() => source?.StopProcessing());
             }
             catch (Exception ex)
             {
@@ -320,14 +311,16 @@ internal sealed class TraceEventSessionProcessingRuntime(
                 failures.Add($"SessionDispose: {ex.GetType().Name}: {ex.Message}");
             }
 
-            var processingCompleted = processingTask is null;
+            var processingCompleted = false;
             var drainStarted = System.Diagnostics.Stopwatch.GetTimestamp();
             try
             {
-                processingCompleted = processingTask?.Wait(waitTimeout) ?? true;
+                processingCompleted = failures.Count == 0 && (processingTask?.Wait(waitTimeout) ?? true);
                 if (!processingCompleted)
                 {
-                    failures.Add($"ProcessingTask: did not exit within {waitTimeout}.");
+                    failures.Add(failures.Count > 0
+                        ? "ProcessingTask: cleanup failed; drain was not attempted."
+                        : $"ProcessingTask: did not exit within {waitTimeout}.");
                 }
             }
             catch (Exception ex)
@@ -337,7 +330,7 @@ internal sealed class TraceEventSessionProcessingRuntime(
 
             // Completion records Process() and observer cleanup. Join the original
             // thread too, using only the remainder of the same drain budget.
-            if (consumerThread is { } thread)
+            if (failures.Count == 0 && consumerThread is { } thread)
             {
                 var unlimited = waitTimeout == Timeout.InfiniteTimeSpan;
                 var remaining = unlimited ? Timeout.InfiniteTimeSpan
@@ -350,13 +343,24 @@ internal sealed class TraceEventSessionProcessingRuntime(
 
             if (processingCompleted) cleanup.ConfirmProcessingJoined();
 
-            stopResult = new KernelEtwSessionStopResult(
+            var result = new KernelEtwSessionStopResult(
                 sessionStopSucceeded,
                 sessionDisposeSucceeded,
                 processingCompleted,
                 failures.ToArray());
-            return stopResult;
+            // Only completed release is terminal. A failed explicit Stop may be
+            // tried again without repeating the steps already confirmed complete.
+            if (result.IsReleased) stopResult = result;
+            return result;
         }
+    }
+
+    private void StopSession()
+    {
+        if (keywordControl is not null) keywordControl.StopSession();
+        else if (!session.Stop(noThrow: false))
+            throw new InvalidOperationException("The ETW controller did not confirm stop.");
+        session.StopOnDispose = false;
     }
 
     internal void JoinProcessing()
@@ -384,7 +388,9 @@ internal sealed class TraceEventSessionProcessingRuntime(
             try
             {
                 cleanup.Dispose(
+                    StopSession,
                     () => dispatcher?.CancelAll(),
+                    () => source?.StopProcessing(),
                     () => source?.Dispose(),
                     () => { session.StopOnDispose = false; session.Dispose(); },
                     JoinProcessing);
@@ -400,38 +406,61 @@ internal sealed class TraceEventSessionProcessingRuntime(
 /// <summary>Each local cleanup step is retained until it returns successfully.</summary>
 internal sealed class KernelEtwSessionRuntimeCleanup
 {
+    private bool sessionStopped;
     private bool subscriptionsCanceled;
+    private bool processingStopped;
     private bool sourceDisposed;
     private bool sessionDisposed;
     private bool processingJoined;
     private Exception? subscriptionStopFailure;
-    private Exception? sessionStopFailure;
+    private Exception? processingStopFailure;
+    private Exception? sessionDisposeStopFailure;
+    private Exception? nativeStopFailure;
 
     internal void ConfirmProcessingJoined() => processingJoined = true;
+
+    internal void StopSession(Action stop)
+    {
+        if (sessionStopped) return;
+        try { stop(); sessionStopped = true; nativeStopFailure = null; }
+        catch (Exception failure) { nativeStopFailure = failure; throw; }
+    }
+
+    internal void StopProcessing(Action stop)
+    {
+        if (processingStopped) return;
+        try { stop(); processingStopped = true; processingStopFailure = null; }
+        catch (Exception failure) { processingStopFailure = failure; throw; }
+    }
 
     internal void CancelSubscriptions(Action cancel)
     {
         if (subscriptionsCanceled) return;
-        try { cancel(); subscriptionsCanceled = true; }
+        try { cancel(); subscriptionsCanceled = true; subscriptionStopFailure = null; }
         catch (Exception failure) { subscriptionStopFailure = failure; throw; }
     }
 
     internal void DisposeSession(Action dispose)
     {
         if (sessionDisposed) return;
-        try { dispose(); sessionDisposed = true; }
-        catch (Exception failure) { sessionStopFailure = failure; throw; }
+        try { dispose(); sessionDisposed = true; sessionDisposeStopFailure = null; }
+        catch (Exception failure) { sessionDisposeStopFailure = failure; throw; }
     }
 
-    internal void Dispose(Action cancel, Action disposeSource, Action disposeSession, Action join)
+    internal void Dispose(Action stopSession, Action cancel, Action stop,
+        Action disposeSource, Action disposeSession, Action join)
     {
         var failures = new List<Exception>();
         // Stop and terminal disposal are one release attempt. A step that failed
         // during Stop is retained for the next explicit Dispose, not retried here.
+        CompleteAfterStop(ref sessionStopped, ref nativeStopFailure, stopSession, failures);
         CompleteAfterStop(ref subscriptionsCanceled, ref subscriptionStopFailure, cancel, failures);
+        CompleteAfterStop(ref processingStopped, ref processingStopFailure, stop, failures);
+        // Closing the trace handle remains an unblock attempt even if stopping
+        // failed. A failed step keeps this attempt from entering an unbounded join.
         TryComplete(ref sourceDisposed, disposeSource, failures);
-        CompleteAfterStop(ref sessionDisposed, ref sessionStopFailure, disposeSession, failures);
-        TryComplete(ref processingJoined, join, failures);
+        CompleteAfterStop(ref sessionDisposed, ref sessionDisposeStopFailure, disposeSession, failures);
+        if (failures.Count == 0) TryComplete(ref processingJoined, join, failures);
         if (failures.Count > 0)
             throw new AggregateException("Kernel ETW local cleanup remains incomplete.", failures);
     }

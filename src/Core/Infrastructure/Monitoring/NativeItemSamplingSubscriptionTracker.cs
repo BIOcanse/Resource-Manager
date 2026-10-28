@@ -2,7 +2,7 @@ using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
-// Product construction only. The demand table, native planning, settlement and
+// Product construction only. The subscription-source table, native planning, settlement and
 // workspace replay are the single implementation in SubscriptionCore.
 internal sealed class NativeItemSamplingSubscriptionTracker<TRequest> :
     ResourceManager.Subscription.NativeItemSamplingSubscriptionTracker<TRequest, SamplingOwnerToken>

@@ -258,13 +258,13 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
     {
         using var sampling = new HostManagerSamplingSubscriptionTestFixture();
         var broker = new CrossThreadBindingBroker();
-        using var entered = new ManualResetEventSlim();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var release = new ManualResetEventSlim();
         using var reader = new EtwCpuCoreResidencyReader(broker, sampling.Provider, sampling.Owner,
             NullLogger<EtwCpuCoreResidencyReader>.Instance, static (_, _) => { });
         broker.BeforeLeaseReturn = () =>
         {
-            entered.Set();
+            entered.TrySetResult();
             Assert.True(release.Wait(TimeSpan.FromSeconds(10)));
         };
         using var demand = reader.AcquireSubscription("test.stop-pending", TimeSpan.FromSeconds(1));
@@ -272,7 +272,13 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
         Task stopping = Task.CompletedTask;
         try
         {
-            Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
+            var entry = await Task.WhenAny(entered.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+            Assert.True(ReferenceEquals(entry, entered.Task),
+                $"Broker entry was not reached within 5 seconds: subscriptions={broker.SubscribeCount}, releases={broker.DisposeCount}, "
+                + $"binding={broker.LastBinding?.Status}, bindingError={broker.LastBinding?.Exception}, "
+                + $"bindingCompleted={broker.BindingCompleted.Task.Status}, "
+                + $"bindingResult={(broker.BindingCompleted.Task.IsCompletedSuccessfully ? broker.BindingCompleted.Task.Result.ToString() : "pending")}, "
+                + $"worker={reader.ExecuteTask?.Status}, workerError={reader.ExecuteTask?.Exception}.");
             if (dispose) stopping = Task.Run(reader.Dispose);
             else stopping = reader.StopAsync(CancellationToken.None);
             Assert.False(stopping.IsCompleted);
@@ -466,6 +472,7 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
         public int SubscribeCount => Volatile.Read(ref subscribeCount);
         public int DisposeCount => Volatile.Read(ref disposed);
         public TaskCompletionSource<bool> BindingCompleted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task? LastBinding { get; private set; }
         public Action? BeforeLeaseReturn { get; set; }
         private KernelTraceEventParser.Keywords requestedKeywords;
         public KernelTraceEventParser.Keywords Keywords => SubscribeCount > DisposeCount
@@ -476,7 +483,12 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
             Interlocked.Increment(ref subscribeCount);
             requestedKeywords = request.Keywords;
             var source = new KernelEtwEventSource();
-            var binding = Task.Run(() => request.Bind(source, new(37, DateTimeOffset.UnixEpoch)));
+            var subscriberThread = Environment.CurrentManagedThreadId;
+            var binding = LastBinding = Task.Factory.StartNew(() =>
+            {
+                Assert.NotEqual(subscriberThread, Environment.CurrentManagedThreadId);
+                request.Bind(source, new(37, DateTimeOffset.UnixEpoch));
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
             var completed = binding.Wait(TimeSpan.FromSeconds(1));
             if (!completed)
             {

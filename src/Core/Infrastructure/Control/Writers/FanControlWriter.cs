@@ -399,7 +399,7 @@ public sealed class FanControlWriter(
         }
 
         var fanIndex = FanIndexOf(target);
-        var reading = await core.SendAsync("read", null, cancellationToken).ConfigureAwait(false);
+        var reading = await core.ReadAsync(cancellationToken).ConfigureAwait(false);
         if (reading is not { } result
             || !Flag(result, "ok")
             || FanAt(result, fanIndex) is not { } fan)

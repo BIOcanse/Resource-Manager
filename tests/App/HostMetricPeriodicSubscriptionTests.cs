@@ -21,6 +21,7 @@ public sealed partial class MetricCatalogueSubscriptionTests
     {
         using var harness = new RecordedHostMetricFieldHarness(() => Memory(345));
         var backend = new ProducerSubscriptionCurrentBackend(harness.Backend);
+        var originalSource = harness.Backend.ReadCached(harness.Field).SourceId;
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await using var snapshots = harness.Sampler.SubscribeAsync("snapshot-held-through-fault",
             MetricSampleRequest.ForIds([harness.RequestAddress]), TimeSpan.FromMilliseconds(100), timeout.Token)
@@ -40,7 +41,22 @@ public sealed partial class MetricCatalogueSubscriptionTests
         Assert.True(await pending.WaitAsync(timeout.Token));
         Assert.True(await pendingSnapshot.WaitAsync(timeout.Token));
         Assert.NotNull(snapshots.Current);
-        Assert.Equal(345d, Assert.Single(stream.Current).Value?.Number);
+        var recovered = Assert.Single(stream.Current);
+        while (recovered.Status != FieldObservationStatus.Current)
+        {
+            Assert.Contains(recovered.Status, new[] { FieldObservationStatus.Warming, FieldObservationStatus.Unavailable });
+            Assert.Equal(harness.Field, recovered.Field);
+            Assert.Equal(originalSource, recovered.SourceId);
+            Assert.Null(recovered.Value);
+            Assert.Null(recovered.ObservedAt);
+            Assert.True(await stream.MoveNextAsync().AsTask().WaitAsync(timeout.Token));
+            recovered = Assert.Single(stream.Current);
+        }
+        Assert.Equal(FieldObservationStatus.Current, recovered.Status);
+        Assert.Equal(harness.Field, recovered.Field);
+        Assert.Equal(originalSource, recovered.SourceId);
+        Assert.Equal(345d, recovered.Value?.Number);
+        FieldReadingAssert.CurrentOrNewer(recovered, harness.Backend.ReadCached(harness.Field));
         Assert.True(harness.MemoryReads >= 1); // Shared delivery may reuse original current before the next source query is due.
     }
 

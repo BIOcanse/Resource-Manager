@@ -365,27 +365,8 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
     [Fact]
     public async Task DuplicateStartIsIdempotentAndStoppedInstanceCanRestart()
     {
-        using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
-        using var sampler = new WindowsHardwareMetricSampler(
-            null!,
-            null!,
-            null!,
-            null!,
-            null!,
-            null!,
-            null!,
-            null!,
-            null!,
-            null!,
-            null!,
-            new AmdIntegratedGpuSensorRoute(),
-            null!,
-            null!,
-            null!,
-            new MonitoringSourceZoneRegistry([]),
-            subscriptions.Owner,
-            subscriptions.Provider,
-            NullLogger<WindowsHardwareMetricSampler>.Instance);
+        using var fixture = new MetricSnapshotOwnerTestFixture.Fixture(MetricSnapshotOwnerTestFixture.Topology([]));
+        using var sampler = CreateSampler(fixture.Slots, fixture.Catalog, fixture.Owner);
 
         await sampler.StartAsync(CancellationToken.None);
         var worker = typeof(WindowsHardwareMetricSampler).GetField("samplingWorker", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(sampler)!;
@@ -394,9 +375,11 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
             sampler.CaptureSamplingWorkerTask());
 
         await sampler.StartAsync(CancellationToken.None);
+        if (first.IsFaulted) await first; // Preserve the actual worker exception in the test receipt.
         Assert.Same(first, sampler.CaptureSamplingWorkerTask());
 
         await sampler.StopAsync(CancellationToken.None);
+        if (first.IsFaulted) await first;
         Assert.Null(sampler.CaptureSamplingWorkerTask());
 
         await sampler.StartAsync(CancellationToken.None);
@@ -405,6 +388,7 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
         Assert.NotSame(first, restarted);
 
         await sampler.StopAsync(CancellationToken.None);
+        if (restarted.IsFaulted) await restarted;
         Assert.Null(sampler.CaptureSamplingWorkerTask());
     }
 
@@ -438,6 +422,74 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
         Assert.True(await reader.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2)));
         Assert.Equal("fresh-engine-27.5", Assert.Single(reader.Current).Value!.Text);
         Assert.Equal(ResourceManager.ReadWrite.FieldObservationStatus.Current, Assert.Single(reader.Current).Status);
+    }
+
+    [Fact]
+    public async Task FinalDisposeClearsOutstandingRegistrationsClosesStreamsAndIgnoresLateLeaseReturns()
+    {
+        using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
+        using var sampler = CreateSampler(subscriptions, AllMetricSubscriptionTestData.RecordedCatalog());
+        var request = MetricSampleRequest.All;
+        using var lease = sampler.AcquireSubscription("dispose-outstanding", request, TimeSpan.FromSeconds(1));
+        await using var stream = sampler.SubscribeAsync("dispose-stream", request, TimeSpan.FromSeconds(1),
+            CancellationToken.None).GetAsyncEnumerator();
+        var pending = stream.MoveNextAsync().AsTask();
+        var tracker = Assert.IsType<NativeItemSamplingSubscriptionTracker<MetricSampleRequest>>(
+            typeof(WindowsHardwareMetricSampler).GetField("subscriptions", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(sampler));
+        Assert.Equal((2, 2), tracker.CaptureManagedSourceState());
+        Assert.True(subscriptions.Owner.Activity.HasInUseSubscriptions(1));
+
+        sampler.Dispose();
+
+        Assert.Equal((0, 0), tracker.CaptureManagedSourceState());
+        Assert.False(subscriptions.Owner.Activity.HasInUseSubscriptions(1));
+        Assert.Equal(0U, subscriptions.Owner.Execute(1, session =>
+        {
+            var capacity = session.Capacity;
+            var header = new NativeSamplingSubscriptionSnapshotHeader
+            {
+                AbiVersion = NativeSamplingSubscriptionAbi.Version,
+                StructSize = (uint)System.Runtime.CompilerServices.Unsafe.SizeOf<NativeSamplingSubscriptionSnapshotHeader>()
+            };
+            Assert.Equal(NativeSamplingSubscriptionStatus.Ok, session.Snapshot(ref header,
+                new NativeSamplingSubscriptionSourceView[checked((int)capacity.SnapshotSourceCapacity)],
+                new NativeSamplingSubscriptionItemState[checked((int)capacity.SnapshotItemCapacity)]));
+            return header.ActiveSourceCount;
+        }));
+        Assert.False(await pending.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Null(Record.Exception(lease.Dispose));
+        Assert.Null(Record.Exception(lease.Dispose));
+        Assert.Null(Record.Exception(sampler.Dispose));
+        Assert.Equal((0, 0), tracker.CaptureManagedSourceState());
+    }
+
+    [Fact]
+    public void FinalDisposeRetriesSubscriptionClearBeforeClosingRemainingStorage()
+    {
+        using var subscriptions = new HostManagerSamplingSubscriptionTestFixture();
+        using var sampler = CreateSampler(subscriptions, AllMetricSubscriptionTestData.RecordedCatalog());
+        using var lease = sampler.AcquireSubscription("clear-pending", MetricSampleRequest.All, TimeSpan.FromSeconds(1));
+        var tracker = Assert.IsType<NativeItemSamplingSubscriptionTracker<MetricSampleRequest>>(
+            typeof(WindowsHardwareMetricSampler).GetField("subscriptions", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(sampler));
+        var plan = tracker.CreatePlan(DateTimeOffset.UtcNow);
+        Assert.NotNull(plan.Request);
+        try
+        {
+            Assert.Throws<InvalidOperationException>(sampler.Dispose);
+            Assert.Equal(0, typeof(WindowsHardwareMetricSampler)
+                .GetField("ownedResourcesDisposed", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(sampler));
+            var gate = Assert.IsType<SemaphoreSlim>(typeof(WindowsHardwareMetricSampler)
+                .GetField("sampleGate", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(sampler));
+            Assert.True(gate.Wait(0)); // A failed clear must not close later storage.
+            gate.Release();
+        }
+        finally { tracker.MarkSampled(plan.Request!, DateTimeOffset.UtcNow); }
+
+        sampler.Dispose();
+        Assert.Equal((0, 0), tracker.CaptureManagedSourceState());
+        Assert.False(subscriptions.Owner.Activity.HasInUseSubscriptions(1));
+        Assert.Null(Record.Exception(lease.Dispose));
+        Assert.Null(Record.Exception(sampler.Dispose));
     }
 
     internal static WindowsHardwareMetricSampler CreateSampler(

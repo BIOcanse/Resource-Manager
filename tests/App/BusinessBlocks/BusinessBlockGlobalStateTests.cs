@@ -362,9 +362,10 @@ public sealed class BusinessBlockGlobalStateTests
             return code.Contains("CancellationTokenSource", StringComparison.Ordinal)
                 || System.Text.RegularExpressions.Regex.IsMatch(code, @"\.\s*Cancel(?:Async|After)?\s*\(");
         }).Select(Path.GetFileName).ToHashSet(StringComparer.Ordinal);
-        Assert.True(new[] { "BusinessBlockController.cs", "NativeControl.Callbacks.cs" }
+        Assert.True(new[] { "BusinessBlockController.cs", "NativeControl.Callbacks.cs", "HostedBusinessBlock.cs" }
             .ToHashSet(StringComparer.Ordinal).SetEquals(cancellationOwners));
         // Managed block control and native host callbacks own their run cancellation tokens.
+        // The hosted wrapper only links their stop notification with host startup cancellation.
         // Every other generic lifecycle layer must remain free of cancellation policy.
         var genericLayers = Directory.EnumerateFiles(Path.Combine(core, "Infrastructure", "RuntimeSpecialization", "BusinessBlocks"), "*.cs")
             .Concat(Directory.EnumerateFiles(shared, "*.cs"))
@@ -373,7 +374,13 @@ public sealed class BusinessBlockGlobalStateTests
         foreach (var file in genericLayers)
         {
             var code = File.ReadAllText(file);
-            Assert.DoesNotContain("CancellationTokenSource", code);
+            if (Path.GetFileName(file) == "HostedBusinessBlock.cs")
+            {
+                Assert.Equal(1, System.Text.RegularExpressions.Regex.Matches(code, @"\bCancellationTokenSource\b").Count);
+                Assert.Matches(@"CancellationTokenSource\.CreateLinkedTokenSource\(\s*session\.StartCancellation,\s*context\.StopNotification\)", code);
+                Assert.Contains("await session.Service.StartAsync(startCancellation.Token)", code);
+            }
+            else Assert.DoesNotContain("CancellationTokenSource", code);
             Assert.DoesNotMatch(@"\.\s*Cancel(?:Async|After)?\s*\(", code);
         }
 

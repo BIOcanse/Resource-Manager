@@ -385,7 +385,7 @@ fn networkAttributionShouldRun(input: *control.Input) anyerror!bool {
     return anyFact(input, BlockUids.EtwNetworkTcpIpAttributionReader, &.{ItemUids.NetworkAttributionInUse});
 }
 fn fanCoreShouldRun(input: *control.Input) anyerror!bool {
-    return anyFact(input, BlockUids.FanControlCoreLifetimeService, &.{ ItemUids.SoftwareFanCurveEnabled, ItemUids.AppliedFanControlExists, ItemUids.FanCommandPending });
+    return anyFact(input, BlockUids.FanControlCoreLifetimeService, &.{ ItemUids.SoftwareFanCurveEnabled, ItemUids.AppliedFanControlExists, ItemUids.FanCommandPending, ItemUids.FanReadingsInUse });
 }
 fn fanTemperatureShouldRun(input: *control.Input) anyerror!bool {
     return anyFact(input, BlockUids.FanCurveTemperatureFeed, &.{ItemUids.SoftwareFanCurveEnabled});
@@ -604,7 +604,7 @@ const RuleTestFacts = struct {
             BlockUids.DeviceTopologySnapshotProvider => self.truth(I.SamplingDeviceTopologyInUse),
             BlockUids.EtwPhysicalDiskIoAttributionReader => self.truth(I.DiskAttributionInUse),
             BlockUids.EtwNetworkTcpIpAttributionReader => self.truth(I.NetworkAttributionInUse),
-            BlockUids.FanControlCoreLifetimeService => self.truth(I.SoftwareFanCurveEnabled) or self.truth(I.AppliedFanControlExists) or self.truth(I.FanCommandPending),
+            BlockUids.FanControlCoreLifetimeService => self.truth(I.SoftwareFanCurveEnabled) or self.truth(I.AppliedFanControlExists) or self.truth(I.FanCommandPending) or self.truth(I.FanReadingsInUse),
             BlockUids.FanCurveTemperatureFeed => self.truth(I.SoftwareFanCurveEnabled),
             BlockUids.ControlDesiredStateReassertion => self.truth(I.AppliedControlIntentsExist),
             BlockUids.ControlActualStateReader => self.truth(I.ActualControlValuesInUse),

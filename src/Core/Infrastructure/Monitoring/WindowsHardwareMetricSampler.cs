@@ -574,6 +574,7 @@ public sealed partial class WindowsHardwareMetricSampler :
         lock (lifecycleGate)
         {
             if (Volatile.Read(ref ownedResourcesDisposed) != 0) return;
+            subscriptions.Clear(DateTimeOffset.UtcNow);
             subscriptions.CloseOutputScratch();
             var cts = samplingCts;
             samplingCts = null;

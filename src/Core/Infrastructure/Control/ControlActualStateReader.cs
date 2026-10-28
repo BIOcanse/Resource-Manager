@@ -44,6 +44,7 @@ public sealed class ControlActualStateReader(
     private readonly object subscriptionGate = new();
     private int leases;
     private bool actualControlValuesInUse;
+    private bool fanReadingsInUse;
     private int disposed;
     private volatile ControlActualState current = ControlActualState.Empty;
     private readonly SamplingPublicationSignal publications = new();
@@ -59,6 +60,8 @@ public sealed class ControlActualStateReader(
 
     internal bool ActualControlValuesInUse => Volatile.Read(ref actualControlValuesInUse);
     internal event Action? SubscriptionsChanged;
+    internal bool FanReadingsInUse => Volatile.Read(ref fanReadingsInUse);
+    internal event Action? FanReadingsChanged;
 
     public Task<ControlActualState?> FetchOnceAsync(string holder, CancellationToken cancellationToken)
         => SubscriptionSingleFetch.ReadAsync(SubscribeOnceAsync(holder, cancellationToken),
@@ -85,26 +88,42 @@ public sealed class ControlActualStateReader(
     public IDisposable AcquireSubscription()
     {
         bool changed;
+        bool fanChanged;
         lock (subscriptionGate)
         {
             ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
             changed = leases++ == 0;
             Volatile.Write(ref actualControlValuesInUse, true);
+            fanChanged = RefreshFanReadingsLocked();
         }
         if (changed) SubscriptionsChanged?.Invoke();
+        if (fanChanged) FanReadingsChanged?.Invoke();
         return new SubscriptionLease(this);
     }
 
     private void ReleaseSubscription()
     {
         bool changed;
+        bool fanChanged;
         lock (subscriptionGate)
         {
             if (leases == 0) return;
             changed = --leases == 0;
             Volatile.Write(ref actualControlValuesInUse, leases != 0);
+            fanChanged = RefreshFanReadingsLocked();
         }
         if (changed) SubscriptionsChanged?.Invoke();
+        if (fanChanged) FanReadingsChanged?.Invoke();
+    }
+
+    // Called only when the subscription owner changes or refreshes its declarations.
+    // State-authority reads load the published Boolean and never call the catalog.
+    private bool RefreshFanReadingsLocked()
+    {
+        var next = leases != 0 && catalog.ActualReadingsUseFanCore;
+        if (fanReadingsInUse == next) return false;
+        Volatile.Write(ref fanReadingsInUse, next);
+        return true;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -140,12 +159,15 @@ public sealed class ControlActualStateReader(
         try { StopAsync(CancellationToken.None).GetAwaiter().GetResult(); }
         finally
         {
+            bool fanChanged;
             lock (subscriptionGate)
             {
                 leases = 0;
                 Volatile.Write(ref actualControlValuesInUse, false);
+                fanChanged = RefreshFanReadingsLocked();
             }
             SubscriptionsChanged?.Invoke();
+            if (fanChanged) FanReadingsChanged?.Invoke();
             base.Dispose();
         }
     }
@@ -161,7 +183,11 @@ public sealed class ControlActualStateReader(
         var values = new List<ControlActualValue>();
         try
         {
-            foreach (var controlObject in (await catalog.ReadObjectsAsync(cancellationToken).ConfigureAwait(false)).Objects)
+            var declared = await catalog.ReadObjectsAsync(cancellationToken).ConfigureAwait(false);
+            bool fanChanged;
+            lock (subscriptionGate) fanChanged = RefreshFanReadingsLocked();
+            if (fanChanged) FanReadingsChanged?.Invoke();
+            foreach (var controlObject in declared.Objects)
             {
                 foreach (var capability in controlObject.Capabilities)
                 {

@@ -136,11 +136,11 @@ public sealed class KernelEtwSessionBrokerTests
         cleanup.CancelSubscriptions(cancel);
         cleanup.DisposeSession(session);
         cleanup.ConfirmProcessingJoined();
-        Assert.Throws<AggregateException>(() => cleanup.Dispose(cancel, source, session, join));
+        Assert.Throws<AggregateException>(() => cleanup.Dispose(static () => { }, cancel, static () => { }, source, session, join));
         Assert.Equal(new[] { 1, 1, 1, 0 }, attempts);
         failSource = false;
-        cleanup.Dispose(cancel, source, session, join);
-        cleanup.Dispose(cancel, source, session, join);
+        cleanup.Dispose(static () => { }, cancel, static () => { }, source, session, join);
+        cleanup.Dispose(static () => { }, cancel, static () => { }, source, session, join);
         Assert.Equal(new[] { 1, 2, 1, 0 }, attempts);
     }
 
@@ -152,10 +152,11 @@ public sealed class KernelEtwSessionBrokerTests
         var failSession = true;
         Action session = () => { attempts++; if (failSession) throw new InvalidOperationException("fixture session handle still held"); };
         Assert.Throws<InvalidOperationException>(() => cleanup.DisposeSession(session));
-        Assert.Throws<AggregateException>(() => cleanup.Dispose(static () => { }, static () => { }, session, static () => { }));
+        Assert.Throws<AggregateException>(() => cleanup.Dispose(static () => { }, static () => { }, static () => { },
+            static () => { }, session, static () => { }));
         Assert.Equal(1, attempts);
         failSession = false;
-        cleanup.Dispose(static () => { }, static () => { }, session, static () => { });
+        cleanup.Dispose(static () => { }, static () => { }, static () => { }, static () => { }, session, static () => { });
         Assert.Equal(2, attempts);
     }
 
@@ -174,12 +175,122 @@ public sealed class KernelEtwSessionBrokerTests
             attempts[index]++;
             if (index == failedStep && fail) throw new InvalidOperationException("fixture pending cleanup");
         })).ToArray();
-        Assert.Throws<AggregateException>(() => cleanup.Dispose(actions[0], actions[1], actions[2], actions[3]));
-        Assert.Equal(new[] { 1, 1, 1, 1 }, attempts);
+        Assert.Throws<AggregateException>(() => cleanup.Dispose(static () => { }, actions[0], static () => { }, actions[1], actions[2], actions[3]));
+        Assert.Equal(new[] { 1, 1, 1, failedStep == 3 ? 1 : 0 }, attempts);
         fail = false;
-        cleanup.Dispose(actions[0], actions[1], actions[2], actions[3]);
-        cleanup.Dispose(actions[0], actions[1], actions[2], actions[3]);
+        cleanup.Dispose(static () => { }, actions[0], static () => { }, actions[1], actions[2], actions[3]);
+        cleanup.Dispose(static () => { }, actions[0], static () => { }, actions[1], actions[2], actions[3]);
         Assert.Equal(Enumerable.Range(0, 4).Select(index => index == failedStep ? 2 : 1), attempts);
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public void FailedStopDoesNotJoinAndNextExplicitCleanupRetriesStopBeforeJoining(bool nativeStop, bool failedDuringStop)
+    {
+        var cleanup = new KernelEtwSessionRuntimeCleanup();
+        var order = new List<string>();
+        var stopAttempts = 0;
+        var joins = 0;
+        var fail = true;
+        Action stop = () =>
+        {
+            order.Add("stop");
+            stopAttempts++;
+            if (fail) throw new InvalidOperationException("fixture unblock failed");
+        };
+        Action join = () => { order.Add("join"); joins++; };
+        Action noOp = static () => { };
+        Action source = () => order.Add("source");
+        Action session = () => order.Add("session");
+        if (failedDuringStop)
+            Assert.Throws<InvalidOperationException>(() =>
+            {
+                if (nativeStop) cleanup.StopSession(stop);
+                else cleanup.StopProcessing(stop);
+            });
+
+        Assert.Throws<AggregateException>(() => cleanup.Dispose(nativeStop ? stop : noOp, noOp,
+            nativeStop ? noOp : stop, source, session, join));
+        Assert.Equal(1, stopAttempts);
+        Assert.Equal(0, joins);
+        Assert.Equal(new[] { "stop", "source", "session" }, order);
+
+        fail = false;
+        cleanup.Dispose(nativeStop ? stop : noOp, noOp, nativeStop ? noOp : stop, source, session, join);
+        cleanup.Dispose(nativeStop ? stop : noOp, noOp, nativeStop ? noOp : stop, source, session, join);
+        Assert.Equal(2, stopAttempts);
+        Assert.Equal(1, joins);
+        Assert.Equal(new[] { "stop", "source", "session", "stop", "join" }, order);
+    }
+
+    [Fact]
+    public void FailedSourceDisposalDoesNotJoinUntilNextExplicitCleanupClosesIt()
+    {
+        var cleanup = new KernelEtwSessionRuntimeCleanup();
+        var order = new List<string>();
+        var fail = true;
+        Action stop = () => order.Add("stop");
+        Action source = () =>
+        {
+            order.Add("source");
+            if (fail) throw new InvalidOperationException("fixture trace handle remains open");
+        };
+        Action join = () => order.Add("join");
+        Action noOp = static () => { };
+
+        Assert.Throws<AggregateException>(() => cleanup.Dispose(noOp, noOp, stop, source, noOp, join));
+        Assert.Equal(new[] { "stop", "source" }, order);
+        fail = false;
+        cleanup.Dispose(noOp, noOp, stop, source, noOp, join);
+        cleanup.Dispose(noOp, noOp, stop, source, noOp, join);
+        Assert.Equal(new[] { "stop", "source", "source", "join" }, order);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void FailedNativeStopRemainsPendingUntilTheNextExplicitRuntimeDisposal(bool denied)
+    {
+        var native = new CleanupNativeControl
+        {
+            Failure = denied ? new UnauthorizedAccessException("fixture native stop denied")
+                : new InvalidOperationException("fixture native stop failed")
+        };
+        using var session = new Microsoft.Diagnostics.Tracing.Session.TraceEventSession(native.Identity.Name)
+        { StopOnDispose = false };
+        // No source or native session is started; the injected controller owns all
+        // native calls, while this exercises the actual runtime cleanup path.
+        var runtime = new TraceEventSessionProcessingRuntime(session,
+            new KernelEtwSessionKeywordControl(native.Identity.Name, native));
+        var result = runtime.Stop(TimeSpan.Zero);
+        Assert.False(result.IsReleased);
+        Assert.Equal(denied, result.ControlDenied);
+        Assert.Throws<AggregateException>(runtime.Dispose);
+        Assert.Equal(1, native.StopAttempts);
+
+        native.Failure = null;
+        runtime.Dispose();
+        runtime.Dispose();
+        Assert.Equal(2, native.StopAttempts);
+    }
+
+    [Fact]
+    public void FailedRuntimeStopDoesNotCacheItsFailureAcrossExplicitRetries()
+    {
+        var native = new CleanupNativeControl { Failure = new InvalidOperationException("fixture native stop failed") };
+        using var session = new Microsoft.Diagnostics.Tracing.Session.TraceEventSession(native.Identity.Name)
+        { StopOnDispose = false };
+        var runtime = new TraceEventSessionProcessingRuntime(session,
+            new KernelEtwSessionKeywordControl(native.Identity.Name, native));
+        Assert.False(runtime.Stop(TimeSpan.Zero).IsReleased);
+        native.Failure = null;
+        Assert.True(runtime.Stop(TimeSpan.Zero).IsReleased);
+        Assert.True(runtime.Stop(TimeSpan.Zero).IsReleased);
+        runtime.Dispose();
+        Assert.Equal(2, native.StopAttempts);
     }
 
     [Theory]
@@ -678,7 +789,11 @@ public sealed class KernelEtwSessionBrokerTests
         {
             await startEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
             var releaseEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            release = Task.Run(() => { releaseEntered.SetResult(); subscription.Dispose(); });
+            // This action deliberately blocks behind the timer's reconciliation.
+            // Give it its own thread so its entry signal does not depend on the
+            // same worker pool occupied by the blocked reconciliation callbacks.
+            release = Task.Factory.StartNew(() => { releaseEntered.SetResult(); subscription.Dispose(); },
+                CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
             await releaseEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.False(release.IsCompleted);
         }
@@ -897,6 +1012,22 @@ public sealed class KernelEtwSessionBrokerTests
         Assert.Equal("StopFailed", broker.GetSnapshot().State);
         broker.Dispose();
         Assert.Equal("StopFailed", broker.GetSnapshot().State);
+    }
+
+    private sealed class CleanupNativeControl : IKernelEtwNativeSessionControl
+    {
+        internal KernelEtwNativeSessionIdentity Identity { get; } = new(
+            ResourceManagerEtwSessionNames.KernelSessionName, 1, Guid.NewGuid(),
+            KernelEtwSessionKeywordControl.RealTimeMode | KernelEtwSessionKeywordControl.SystemLoggerMode);
+        internal Exception? Failure { get; set; }
+        internal int StopAttempts { get; private set; }
+        public KernelEtwNativeSessionIdentity Query(string sessionName) => Identity;
+        public void SetSystemTraceFlags(ulong sessionHandle, ulong flags) => throw new InvalidOperationException("No keywords expected.");
+        public void StopSession(ulong sessionHandle, string sessionName)
+        {
+            StopAttempts++;
+            if (Failure is not null) throw Failure;
+        }
     }
 
     private sealed class FakeRuntimeFactory : IKernelEtwSessionRuntimeFactory

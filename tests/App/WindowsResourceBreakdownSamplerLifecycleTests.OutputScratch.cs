@@ -135,6 +135,11 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             {
                 Assert.Equal(0, store.LiveLeases);
                 Assert.True(releasePlan.IsSet); // Plan/collection has drained before the worker returns its own output.
+                if (store.CloseCalls > 1)
+                {
+                    Assert.Equal((0U, 0U), ReadResourceSubscriptionCounts(subscriptions.Owner));
+                    Assert.False(subscriptions.Owner.Activity.HasInUseSubscriptions(3));
+                }
             };
         });
         sampler = new WindowsResourceBreakdownSampler(new StaticMetricSampler(CreateMemorySnapshot()),
@@ -143,6 +148,10 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             new DelegateWindowsProcessInventoryReader(static () => []), createOutputScratch: factory);
         try
         {
+            using var lease = sampler.AcquireSubscription("close-outstanding",
+                ResourceManager.App.Domain.ResourceBreakdown.ResourceBreakdownSampleRequest.ForResourceTable(
+                    [ResourceManager.App.Domain.ResourceBreakdown.ResourceBreakdownMetricIds.MemoryUsage],
+                    new Dictionary<string, string>()), TimeSpan.FromSeconds(1));
             await sampler.StartAsync(CancellationToken.None);
             Assert.True(planEntered.Wait(TimeSpan.FromSeconds(5)));
             using var disposalStarted = new ManualResetEventSlim(false);
@@ -158,10 +167,17 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             var store = Assert.Single(stores);
             Assert.False(store.Closed);
             Assert.Equal(1, store.CloseCalls);
+            // This first failure is the original run's output return. Final
+            // subscription clearing is retried after that run has fully joined.
+            Assert.True(ReadResourceSubscriptionCounts(subscriptions.Owner).ActiveSourceCount > 0);
+            Assert.True(subscriptions.Owner.Activity.HasInUseSubscriptions(3));
             Assert.Throws<ObjectDisposedException>(() => { _ = sampler.StartAsync(CancellationToken.None); });
             sampler.Dispose(); // Admission remains closed, but the same real close obligation is retried.
             Assert.True(store.Closed);
             Assert.Equal(2, store.CloseCalls);
+            Assert.Equal((0U, 0U), ReadResourceSubscriptionCounts(subscriptions.Owner));
+            Assert.False(subscriptions.Owner.Activity.HasInUseSubscriptions(3));
+            Assert.Null(Record.Exception(lease.Dispose));
             sampler.Dispose();
             Assert.Equal(2, store.CloseCalls); // Already released native/resource state is not closed twice.
         }

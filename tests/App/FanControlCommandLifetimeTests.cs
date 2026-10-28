@@ -1,5 +1,6 @@
 using System.Text.Json;
 using ResourceManager.App.Infrastructure.Control.Writers;
+using ResourceManager.App.Domain.Control;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -8,6 +9,74 @@ public sealed class FanControlCommandLifetimeTests
     private static JsonElement Description => JsonSerializer.SerializeToElement(new {
         ok = true, available = true, backend = "fixture", fans = new[] { new { index = 0, writable = true } }
     });
+
+    [Fact]
+    public async Task PeriodicReadingUsesOnlyTheCurrentRunAndNeverPublishesPending()
+    {
+        var opened = 0;
+        var closed = 0;
+        await using var core = new FanControlCoreClient(new FanTestEnvironment(), (_, _) =>
+        {
+            Interlocked.Increment(ref opened);
+            return new DelegateFanSession(request => request.GetProperty("op").GetString() == "describe" ? Description
+                : JsonSerializer.SerializeToElement(new { ok = true, fans = new[] { new { index = 0, rpm = 1800 } } }),
+                () => Interlocked.Increment(ref closed));
+        });
+        var edges = 0;
+        core.PendingCommandsChanged += () => Interlocked.Increment(ref edges);
+        Assert.Null(await core.ReadAsync(default));
+        var writer = new FanControlWriter(core);
+        var target = new ControlObject("fan:oem0", ControlObjectKinds.Fan, null,
+            new(ControlOperatingSystems.Windows, ControlVendors.Oem), []);
+        var capability = new ControlCapability("fan.rpm", ControlValueKinds.Number, false);
+        Assert.Null((await writer.ReadAsync(target, capability, default))!.Number);
+        Assert.Equal(0, opened);
+        await core.StartSession();
+        for (var reading = 0; reading < 3; reading++)
+            Assert.Equal(1800d, (await writer.ReadAsync(target, capability, default))!.Number);
+        Assert.False(core.PendingCommands);
+        Assert.Equal(0, edges);
+        Assert.Equal(1, opened);
+        Assert.Equal(0, closed);
+        await core.StopSessionAsync();
+        Assert.Equal(1, closed);
+        Assert.Null(await core.ReadAsync(default));
+        Assert.Equal(1, opened);
+    }
+
+    [Fact]
+    public async Task CancelledPeriodicNativeReadKeepsItsSessionUntilActualCompletionWithoutPublishingPending()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var release = new ManualResetEventSlim();
+        using var caller = new CancellationTokenSource();
+        var closed = 0;
+        await using var core = new FanControlCoreClient(new FanTestEnvironment(), (_, _) => new DelegateFanSession(request =>
+        {
+            if (request.GetProperty("op").GetString() == "read")
+            {
+                entered.TrySetResult();
+                Assert.True(release.Wait(TimeSpan.FromSeconds(10)));
+            }
+            return Description;
+        }, () => Interlocked.Increment(ref closed)));
+        await core.StartSession();
+        var reading = core.ReadAsync(caller.Token);
+        ValueTask stopping = default;
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            caller.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => reading.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.False(core.PendingCommands);
+            stopping = core.StopSessionAsync();
+            Assert.False(stopping.IsCompleted);
+            Assert.Equal(0, closed);
+        }
+        finally { release.Set(); }
+        await stopping;
+        Assert.Equal(1, closed);
+    }
 
     [Fact]
     public async Task CallerCancellationCannotDisposeItsLinkBeforeCancellingTheQueuedCommand()

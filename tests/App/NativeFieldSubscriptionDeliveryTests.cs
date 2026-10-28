@@ -126,16 +126,28 @@ public sealed class NativeFieldSubscriptionDeliveryTests
         Assert.True(result.Committed);
         Assert.Equal(new[] { QueryA, QueryB }, result.QueriedFields);
         Assert.Equal(3, result.Readings.Length);
-        var reader = registration.ReadAllAsync().GetAsyncEnumerator();
+        using var cancellation = new CancellationTokenSource();
+        var reader = registration.ReadAllAsync(cancellation.Token).GetAsyncEnumerator(cancellation.Token);
         ImmutableArray<FieldReading> delivered;
         await using (reader)
         {
-            delivery.Deliver(triggers.Take(1).ToImmutableArray(), result, freshOnly: true);
-            var pending = reader.MoveNextAsync().AsTask();
-            Assert.False(pending.IsCompleted);
-            delivery.Deliver(triggers.Skip(1).ToImmutableArray(), result, freshOnly: true);
-            Assert.True(await pending.WaitAsync(TimeSpan.FromSeconds(2)));
-            delivered = reader.Current;
+            Task<bool>? pending = null;
+            try
+            {
+                delivery.Deliver(triggers.Take(1).ToImmutableArray(), result, freshOnly: true);
+                pending = reader.MoveNextAsync().AsTask();
+                Assert.False(pending.IsCompleted);
+                delivery.Deliver(triggers.Skip(1).ToImmutableArray(), result, freshOnly: true);
+                Assert.True(await pending.WaitAsync(TimeSpan.FromSeconds(2)));
+                delivered = reader.Current;
+            }
+            finally
+            {
+                cancellation.Cancel();
+                if (pending is not null)
+                    try { await pending; }
+                    catch { /* The assertion/wait above owns the result; settle it before iterator disposal. */ }
+            }
         }
 
         Assert.Equal(new[] { QueryA, QueryB, Passive }, delivered.Select(static reading => reading.Field).ToArray());

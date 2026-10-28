@@ -239,8 +239,12 @@ public sealed partial class WindowsResourceBreakdownSampler(
         }
         var leaseId = Interlocked.Increment(ref nextObservationLeaseId);
         var sourceKey = $"lease:{leaseId}:{subscriptionId.Trim()}";
-        return AcquireHostedSubscription(sourceKey, subscriptionRequest, refreshInterval,
-            NativeSamplingSubscriptionSourceFlags.None, null);
+        lock (lifecycleGate)
+        {
+            ValidateFieldSubscriptionAdmission();
+            return AcquireHostedSubscription(sourceKey, subscriptionRequest, refreshInterval,
+                NativeSamplingSubscriptionSourceFlags.None, null);
+        }
     }
 
     public ResourceBreakdownSnapshot ReadLatest(
@@ -370,7 +374,11 @@ public sealed partial class WindowsResourceBreakdownSampler(
 
     private void ReleaseObservationLease(string sourceKey)
     {
-        subscriptions.Remove(sourceKey, DateTimeOffset.UtcNow);
+        lock (lifecycleGate)
+        {
+            if (Volatile.Read(ref disposed) != 0) return;
+            subscriptions.Remove(sourceKey, DateTimeOffset.UtcNow);
+        }
         SignalDemand();
     }
 
@@ -808,17 +816,19 @@ public sealed partial class WindowsResourceBreakdownSampler(
     {
         lock (lifecycleGate)
         {
+            if (Volatile.Read(ref ownedResourcesDisposed) != 0) return;
             // The worker is drained before this point. The tracker gate excludes
             // synchronous Plan, including projection and the exact output borrow.
             // On failure, disposed remains set but a later Dispose retries here.
+            subscriptions.Clear(DateTimeOffset.UtcNow);
             subscriptions.CloseOutputScratch();
-            if (Interlocked.Exchange(ref ownedResourcesDisposed, 1) != 0) return;
             var cts = samplingCts;
             samplingCts = null;
             cts?.Dispose();
             demandSignal.Dispose();
             processFieldOwner.Dispose();
             sampleGate.Dispose();
+            Volatile.Write(ref ownedResourcesDisposed, 1);
         }
     }
 

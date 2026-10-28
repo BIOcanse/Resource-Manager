@@ -42,6 +42,10 @@ public sealed class WindowsControlObjectCatalog(
 
     private readonly IReadOnlyList<IControlWriter> writers = writers.ToArray();
 
+    // Every entry in this cached description declares a FanCore-backed fan.
+    // Actual-value subscriptions currently select the whole catalog.
+    public bool ActualReadingsUseFanCore => fanCore.Describe().Count != 0;
+
     // Cached by design for the original sampler's capture/write callbacks.
     public ControlObjectCatalog ReadObjects()
     {

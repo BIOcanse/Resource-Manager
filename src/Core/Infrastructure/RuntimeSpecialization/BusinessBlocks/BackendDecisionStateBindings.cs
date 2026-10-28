@@ -55,8 +55,12 @@ internal sealed class BackendDecisionStateBindings(IServiceProvider services,
             Bind(StateItemUids.FanCommandPending, () => fan.PendingCommands,
                 callback => fan.PendingCommandsChanged += callback, callback => fan.PendingCommandsChanged -= callback);
         if (services.GetService<ControlActualStateReader>() is { } actual)
+        {
             Bind(StateItemUids.ActualControlValuesInUse, () => actual.ActualControlValuesInUse,
                 callback => actual.SubscriptionsChanged += callback, callback => actual.SubscriptionsChanged -= callback);
+            Bind(StateItemUids.FanReadingsInUse, () => actual.FanReadingsInUse,
+                callback => actual.FanReadingsChanged += callback, callback => actual.FanReadingsChanged -= callback);
+        }
         if (services.GetService<RuntimeCpuLeaseStore>() is { } leases)
             Bind(StateItemUids.ActiveCpuLeasesExist, () => leases.ActiveCpuLeasesExist,
                 callback => leases.ActiveCpuLeasesChanged += callback, callback => leases.ActiveCpuLeasesChanged -= callback);

@@ -10,6 +10,10 @@ namespace ResourceManager.App.Application.Control;
 /// </summary>
 public interface IControlObjectCatalog
 {
+    /// <summary>Whether the current all-object actual-value subscription includes
+    /// cached FanCore objects. Classification reads declarations only, never probes.</summary>
+    bool ActualReadingsUseFanCore => false;
+
     /// <summary>Projects the current snapshot inside an already-owned sampling
     /// operation. External one-shot consumers use ReadObjectsAsync.</summary>
     ControlObjectCatalog ReadObjects();

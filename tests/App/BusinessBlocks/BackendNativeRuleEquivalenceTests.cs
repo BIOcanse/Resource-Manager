@@ -134,7 +134,7 @@ public sealed class BackendNativeRuleEquivalenceTests
             BackendUids.DeviceTopologySnapshotProvider => T(BackendItems.SamplingDeviceTopologyInUse),
             BackendUids.EtwPhysicalDiskIoAttributionReader => T(BackendItems.DiskAttributionInUse),
             BackendUids.EtwNetworkTcpIpAttributionReader => T(BackendItems.NetworkAttributionInUse),
-            BackendUids.FanControlCoreLifetimeService => T(BackendItems.SoftwareFanCurveEnabled) || T(BackendItems.AppliedFanControlExists) || T(BackendItems.FanCommandPending),
+            BackendUids.FanControlCoreLifetimeService => T(BackendItems.SoftwareFanCurveEnabled) || T(BackendItems.AppliedFanControlExists) || T(BackendItems.FanCommandPending) || T(BackendItems.FanReadingsInUse),
             BackendUids.FanCurveTemperatureFeed => T(BackendItems.SoftwareFanCurveEnabled),
             BackendUids.ControlDesiredStateReassertion => T(BackendItems.AppliedControlIntentsExist),
             BackendUids.ControlActualStateReader => T(BackendItems.ActualControlValuesInUse),

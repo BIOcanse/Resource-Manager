@@ -19,6 +19,23 @@ public sealed partial class FanControlCoreClient
     internal bool PendingCommands => Volatile.Read(ref pendingCommands) != 0;
     internal event Action? PendingCommandsChanged;
 
+    /// <summary>Retains command admission until the control operation publishes its outcome.</summary>
+    internal IDisposable AcquirePendingScope()
+    {
+        lock (sessionSync)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            ChangePending(1);
+            return new PendingScope(this);
+        }
+    }
+
+    private sealed class PendingScope(FanControlCoreClient owner) : IDisposable
+    {
+        private FanControlCoreClient? current = owner;
+        public void Dispose() => Interlocked.Exchange(ref current, null)?.ChangePending(-1);
+    }
+
     private static TaskCompletionSource<IFanControlCoreSession?> NewRunSignal()
         => new(TaskCreationOptions.RunContinuationsAsynchronously);
     private static TaskCompletionSource CompletedSignal()
@@ -56,7 +73,7 @@ public sealed partial class FanControlCoreClient
         }
         using var waiting = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         waiting.CancelAfter(RequestTimeout);
-        var command = ExecuteQueuedAsync(operation, arguments, waiting.Token);
+        var command = ExecuteRunRequestAsync(operation, arguments, waiting.Token, pendingCommand: true);
         try { return await command.WaitAsync(RequestTimeout, cancellationToken).ConfigureAwait(false); }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -79,8 +96,29 @@ public sealed partial class FanControlCoreClient
         }
     }
 
-    private async Task<JsonElement?> ExecuteQueuedAsync(string operation,
-        IReadOnlyDictionary<string, object?>? arguments, CancellationToken waiting)
+    /// <summary>Periodic readings use the current run; they cannot admit or open a session.</summary>
+    public async Task<JsonElement?> ReadAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        using var waiting = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        waiting.CancelAfter(RequestTimeout);
+        var reading = ExecuteRunRequestAsync("read", null, waiting.Token, pendingCommand: false);
+        try { return await reading.WaitAsync(RequestTimeout, cancellationToken).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            waiting.Cancel();
+            throw;
+        }
+        catch (OperationCanceledException) when (waiting.IsCancellationRequested) { return null; }
+        catch (TimeoutException)
+        {
+            waiting.Cancel();
+            return null;
+        }
+    }
+
+    private async Task<JsonElement?> ExecuteRunRequestAsync(string operation,
+        IReadOnlyDictionary<string, object?>? arguments, CancellationToken waiting, bool pendingCommand)
     {
         try
         {
@@ -90,6 +128,7 @@ public sealed partial class FanControlCoreClient
                 lock (sessionSync)
                 {
                     ObjectDisposedException.ThrowIf(disposed, this);
+                    if (!pendingCommand && (sessionStopped || !runReady.Task.IsCompletedSuccessfully)) return null;
                     ready = runReady;
                 }
                 var current = await ready.Task.WaitAsync(waiting).ConfigureAwait(false);
@@ -102,7 +141,11 @@ public sealed partial class FanControlCoreClient
                     {
                         ObjectDisposedException.ThrowIf(disposed, this);
                         waiting.ThrowIfCancellationRequested();
-                        if (sessionStopped || !ReferenceEquals(ready, runReady)) continue;
+                        if (sessionStopped || !ReferenceEquals(ready, runReady))
+                        {
+                            if (!pendingCommand) return null;
+                            continue;
+                        }
                         if (activeCalls++ == 0) drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
                         commandOperation = operation;
                         accepted = true;
@@ -130,7 +173,7 @@ public sealed partial class FanControlCoreClient
             ClearSoftwareCurves();
             return null;
         }
-        finally { ChangePending(-1); }
+        finally { if (pendingCommand) ChangePending(-1); }
     }
 
     private JsonElement? ExecuteRequest(IFanControlCoreSession current, string operation,

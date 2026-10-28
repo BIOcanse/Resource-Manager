@@ -54,6 +54,9 @@ internal sealed class HostedBusinessBlock(int id, Func<IHostedService> resolve,
             session.StopNotification = context.StopNotification;
             diagnostics.BeginRun(id);
         }
+        // Startup remains owned by this run, including cancellation-driven cleanup.
+        using var startCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            session.StartCancellation, context.StopNotification);
         using var notification = context.StopNotification.Register(() =>
         {
             lock (sync) BeginStop(session);
@@ -67,7 +70,7 @@ internal sealed class HostedBusinessBlock(int id, Func<IHostedService> resolve,
             try
             {
                 session.Service = resolve();
-                await session.Service.StartAsync(session.StartCancellation).ConfigureAwait(false);
+                await session.Service.StartAsync(startCancellation.Token).ConfigureAwait(false);
             }
             finally
             {

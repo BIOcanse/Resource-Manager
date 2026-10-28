@@ -31,6 +31,7 @@ public sealed class HostDevicePeriodicSubscriptionTests
         await fixture.Provider.SampleNowAsync(CancellationToken.None);
         var field = fixture.Backend.Catalog.Fields.Single(static capability =>
             capability.Field.FieldName == "machine_all_manufacturer").Field;
+        var discovered = fixture.Backend.ReadCached(field);
         var failReads = 0;
         var backend = new InformationReadWriteBackend(() =>
         {
@@ -54,7 +55,23 @@ public sealed class HostDevicePeriodicSubscriptionTests
         await controller.AssertControllerRestartedAsync();
         Assert.Equal((1u, 1u), fixture.ReadDemand());
         Assert.True(await pending.WaitAsync(Deadline));
-        Assert.Equal(FieldObservationStatus.Current, Assert.Single(stream.Current).Status);
+        var recovered = Assert.Single(stream.Current);
+        // The original owner publishes a typed empty current when the injected
+        // commit fails. Shared triggers may deliver that current before the next query.
+        while (recovered.Status == FieldObservationStatus.Unavailable)
+        {
+            Assert.Equal(field, recovered.Field);
+            Assert.Equal(discovered.SourceId, recovered.SourceId);
+            Assert.Null(recovered.Value);
+            Assert.Null(recovered.ObservedAt);
+            Assert.True(await stream.MoveNextAsync().AsTask().WaitAsync(timeout.Token));
+            recovered = Assert.Single(stream.Current);
+        }
+        Assert.Equal(FieldObservationStatus.Current, recovered.Status);
+        Assert.Equal(field, recovered.Field);
+        Assert.Equal(discovered.SourceId, recovered.SourceId);
+        Assert.True(recovered.ObservedAt > discovered.ObservedAt);
+        FieldReadingAssert.CurrentOrNewer(recovered, fixture.Backend.ReadCached(field));
         Assert.True(fixture.Topology.ReadCount >= 3); // Discovery, failed run, restarted run.
     }
 

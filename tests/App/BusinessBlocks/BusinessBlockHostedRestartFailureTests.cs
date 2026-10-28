@@ -40,11 +40,14 @@ public sealed class BusinessBlockHostedRestartFailureTests
         {
             await Until(() => scheduler.ReadState(BackendUids.ControlActualStateReader) == BusinessBlockState.Running);
             Assert.Equal(1, service.StartCount);
+            Assert.True(service.FirstStartupToken.CanBeCanceled);
+            Assert.False(service.FirstStartupToken.IsCancellationRequested);
             Assert.False(alias.ExecuteTask!.IsCompleted);
 
             await activity.PublishAsync(false, Reason);
             await Until(() => scheduler.ReadState(BackendUids.ControlActualStateReader) == BusinessBlockState.Stopped);
             Assert.Equal(1, service.StopCount);
+            Assert.True(service.FirstStartupToken.IsCancellationRequested);
             Assert.False(alias.ExecuteTask.IsCompleted);
             var stopped = host.Services.GetRequiredService<BusinessBlockDiagnosticsRegistry>()
                 .Read(BackendUids.ControlActualStateReader).Result;
@@ -54,10 +57,12 @@ public sealed class BusinessBlockHostedRestartFailureTests
             await activity.PublishAsync(true, Reason);
             await Until(() => service.StartCount == 2
                 && scheduler.ReadState(BackendUids.ControlActualStateReader) == BusinessBlockState.Running);
+            Assert.True(service.SecondStartupToken.CanBeCanceled);
+            Assert.False(service.SecondStartupToken.IsCancellationRequested);
+            Assert.NotEqual(service.FirstStartupToken, service.SecondStartupToken);
             service.FailSecondRun.TrySetResult();
             var failure = await Assert.ThrowsAsync<IOException>(() => alias.ExecuteTask.WaitAsync(Timeout));
             Assert.Same(service.Failure, failure);
-            Assert.Equal(service.FirstStartupToken, service.SecondStartupToken);
             var failed = await resultLog.Failed.Task.WaitAsync(Timeout);
             Assert.Equal(BusinessBlockOutcome.Failed, failed!.Outcome);
             Assert.Equal(BusinessBlockFailureStage.Run, failed.FailureStage);

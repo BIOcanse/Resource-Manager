@@ -46,7 +46,7 @@ public sealed class HostProcessPeriodicSubscriptionTests
         Assert.True(await pending.WaitAsync(timeout.Token));
         Assert.True(await pendingSnapshot.WaitAsync(timeout.Token));
         Assert.Equal(MetricInteger.Parse("11"), Assert.Single(stream.Current).Value?.Integer);
-        Assert.True(fixture.Api.MemoryReads >= 3);
+        Assert.True(fixture.Api.MemoryReads >= 1); // Discovery supplies original current; shared delivery does not require a new query in each run.
     }
 
     [Fact]

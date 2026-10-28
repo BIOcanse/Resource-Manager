@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Domain.SoftwareDiscovery;
 using ResourceManager.App.Hosting;
@@ -113,6 +115,58 @@ public sealed partial class SqlitePersistenceTests
             catch (OperationCanceledException) { }
             if (read is not null) await read.WaitAsync(TimeSpan.FromSeconds(5));
             await registry.StopAsync(default).WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    [Fact]
+    public async Task HostedPortableRegistryStopCancelsPublishedPlanInitializationBlockedOnDatabase()
+    {
+        var deployment = new HostManagerDeploymentState();
+        var provider = new RuntimePlanProvider(deployment);
+        provider.Publish(CompiledRuntimePlan.Default with
+        { Version = 1, HostManager = HostManagerTestPlanFactory.CreatePlan() });
+        var database = CreateDatabase();
+        using var registry = new SqlitePortableSoftwareRegistry(database, provider,
+            new HostManagerPortableSoftwareRegistryRuntime(provider, deployment),
+            NullLogger<SqlitePortableSoftwareRegistry>.Instance, ledgerOwner);
+        var registration = new BusinessBlockRegistration(BlockUids.SqlitePortableSoftwareRegistry, _ => throw new NotSupportedException())
+        { HostedExecution = new(service => ((SqlitePortableSoftwareRegistry)service).ExecuteTask, true) };
+        var diagnostics = new BusinessBlockDiagnosticsRegistry([registration], NullLogger<BusinessBlockDiagnosticsRegistry>.Instance);
+        var wrappers = new HostedBusinessBlockRegistry(diagnostics, [registration]);
+        var block = wrappers.GetOrAdd(registration.Id, () => registry);
+        var session = block.PrepareStart(CancellationToken.None);
+        const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        var databaseGate = (SemaphoreSlim)database.GetType().GetField("initializationGate", flags)!.GetValue(database)!;
+        var operationGate = (SemaphoreSlim)registry.GetType().GetField("operationGate", flags)!.GetValue(registry)!;
+        await databaseGate.WaitAsync();
+        using var stop = new CancellationTokenSource();
+        var runningReports = 0;
+        var run = block.RunAsync(new(stop.Token, () => Interlocked.Increment(ref runningReports)));
+        try
+        {
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            while (operationGate.CurrentCount != 0) await Task.Delay(1, deadline.Token);
+            Assert.False(session.StartFinished.Task.IsCompleted);
+            Assert.False(session.Readiness.Task.IsCompleted);
+            Assert.NotNull(registry.ExecuteTask);
+            Assert.False(registry.ExecuteTask!.IsCompleted);
+            stop.Cancel();
+            await run.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.True(session.StartFinished.Task.IsCompletedSuccessfully);
+            Assert.True(session.StopCompleted.Task.IsCompletedSuccessfully);
+            Assert.True(session.Readiness.Task.IsCanceled);
+            Assert.True(registry.ExecuteTask!.IsCompletedSuccessfully);
+            Assert.Equal(0, runningReports);
+            Assert.False(block.ExecutionFailure.IsCompleted);
+            Assert.Equal(BusinessBlockOutcome.Stopped, diagnostics.Read(registration.Id).Result!.Outcome);
+            Assert.Empty(registry.GetSnapshot());
+            Assert.Null(database.InitializationState);
+        }
+        finally
+        {
+            stop.Cancel();
+            databaseGate.Release();
+            await run.WaitAsync(TimeSpan.FromSeconds(5));
         }
     }
 

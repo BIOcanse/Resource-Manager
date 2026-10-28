@@ -1918,7 +1918,7 @@
       "kind": "condition",
       "process": "backend",
       "name": "FanCoreShouldRun",
-      "comment": "Runs the fan core while software fan curves, applied fan control, or queued or executing fan commands require its held session.",
+      "comment": "Runs the fan core while permitted and software fan curves, applied fan control, pending fan operations, or active fan-reading subscriptions require its held session.",
       "perBlock": false,
       "node": 78,
       "items": [
@@ -1934,6 +1934,9 @@
         },
         {
           "item": 160
+        },
+        {
+          "item": 161
         }
       ],
       "conditions": [],
@@ -2185,7 +2188,7 @@
       "kind": "item",
       "process": "backend",
       "name": "FanCommandPending",
-      "comment": "Whether a fan command is queued or executing. The command entry publishes only changes between zero and nonzero pending commands.",
+      "comment": "Whether an accepted fan command or control-plane fan operation is queued, executing, or awaiting outcome publication. The owner publishes only changes between zero and nonzero pending work.",
       "storage": "reference",
       "type": "bool",
       "owner": {
@@ -2194,6 +2197,21 @@
       "perBlock": false,
       "trigger": "event",
       "changeEvent": "FanControlCoreClient pending command count crosses zero"
+    },
+    {
+      "uid": 161,
+      "kind": "item",
+      "process": "backend",
+      "name": "FanReadingsInUse",
+      "comment": "Whether an active actual-control-value subscription includes a fan whose readings use FanCore. The subscription table publishes only transitions between no readers and one or more readers.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "ControlActualStateReader"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "FanReadingsChanged"
     }
   ]
 }
