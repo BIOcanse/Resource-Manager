@@ -10,7 +10,7 @@ This inventory covers the resolved product, desktop, installer, uninstaller, ext
 | coverlet.collector/6.0.4 | tonerdo | MIT | tests/App |
 | Disk.ReadWrite/0.1.0 | BIOcanse | Not declared in package metadata | src/Core, tests/App |
 | DiskInfoToolkit/1.1.2 | DiskInfoToolkit | MPL-2.0 | src/Core, tests/App |
-| FanControlCore.Library/0.1.0-dev.4 | BIOcanse | Apache-2.0 | src/Core, tests/App |
+| FanControlCore.Library/0.1.0-dev.5 | BIOcanse | Apache-2.0 | src/Core, tests/App |
 | FreedomPoint.Core/0.1.0-dev.45 | BIOcanse | Apache-2.0 | src/Core, src/UI/Core, tests/App |
 | HidSharp/2.6.4 | James F. Bellinger | LICENSE.txt | src/Core, tests/App |
 | LibreHardwareMonitorLib/0.9.6 | LibreHardwareMonitorLib | MPL-2.0 | src/Core, tests/App |
