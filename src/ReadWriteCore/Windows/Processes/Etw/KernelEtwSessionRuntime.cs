@@ -198,6 +198,7 @@ internal sealed class TraceEventSessionProcessingRuntime(
     private bool stopAttempted;
     private bool disposed;
     private readonly KernelEtwSessionRuntimeCleanup cleanup = new();
+    private readonly EtwEventDropSession? eventDrops = dispatcher?.RegisterDiagnostics(session.SessionName, () => session.EventsLost);
 
     public bool IsProcessing => Volatile.Read(ref processing) != 0;
 
@@ -301,6 +302,7 @@ internal sealed class TraceEventSessionProcessingRuntime(
             {
                 cleanup.DisposeSession(() =>
                 {
+                    eventDrops?.Complete(refreshLoss: false);
                     session.StopOnDispose = false;
                     session.Dispose();
                 });
@@ -357,6 +359,7 @@ internal sealed class TraceEventSessionProcessingRuntime(
 
     private void StopSession()
     {
+        eventDrops?.SampleLoss();
         if (keywordControl is not null) keywordControl.StopSession();
         else if (!session.Stop(noThrow: false))
             throw new InvalidOperationException("The ETW controller did not confirm stop.");
@@ -392,7 +395,7 @@ internal sealed class TraceEventSessionProcessingRuntime(
                     () => dispatcher?.CancelAll(),
                     () => source?.StopProcessing(),
                     () => source?.Dispose(),
-                    () => { session.StopOnDispose = false; session.Dispose(); },
+                    () => { eventDrops?.Complete(refreshLoss: false); session.StopOnDispose = false; session.Dispose(); },
                     JoinProcessing);
             }
             catch (Exception ex) { failures.Add(ex); }

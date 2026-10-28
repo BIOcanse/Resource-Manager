@@ -232,27 +232,29 @@ public sealed partial class PresentFrameEtwSource(
         }
     }
 
-    private void OnEvent(TraceEvent data)
+    private bool OnEvent(TraceEvent data)
     {
         lock (gate)
         {
+            var used = false;
             try
             {
-                ApplyGraphicsApiEvent(data);
+                used = ApplyGraphicsApiEvent(data);
                 // An API-only lease uses the supplied process birth identity. It does not
                 // invoke the frame ledger's process-handle fallback for other processes.
                 if (Volatile.Read(ref frameLeases) > 0
-                    && data.TimeStamp.ToUniversalTime().Ticks >= lastLossUtcTicks) Apply(ledger, data);
+                    && data.TimeStamp.ToUniversalTime().Ticks >= lastLossUtcTicks) used |= Apply(ledger, data);
             }
             catch (Exception error)
             {
                 SignalFailure(error);
                 logger.LogWarning(error, "Present frame event {Provider}/{Event} could not be applied.", data.ProviderName, (int)data.ID);
             }
+            return used;
         }
     }
 
-    internal static void Apply(PresentFrameLedger target, TraceEvent data)
+    internal static bool Apply(PresentFrameLedger target, TraceEvent data)
     {
         var id = (int)data.ID;
         if (data.ProviderGuid == KernelProcessProvider)
@@ -261,13 +263,15 @@ public sealed partial class PresentFrameEtwSource(
             if (id == ProcessStart && data.PayloadByName("CreateTime") is DateTime created)
             {
                 target.ProcessStarted(processId, created.ToFileTimeUtc());
+                return true;
             }
             else if (id == ProcessStop)
             {
                 target.ProcessStopped(processId);
+                return true;
             }
 
-            return;
+            return false;
         }
 
         var timestamp = data.TimeStamp.ToUniversalTime().Ticks;
@@ -336,6 +340,7 @@ public sealed partial class PresentFrameEtwSource(
             var fenceId = ReadUInt64(data.PayloadByName("FlipFenceId"));
             var submitSequence = (uint)(fenceId >> 32);
             if (submitSequence != 0) target.VSyncDpc(submitSequence, timestamp, timestampQpc);
+            else return false;
         }
         else if (data.ProviderGuid == Win32kProvider && id == Win32kTokenCompositionSurfaceObject)
         {
@@ -352,6 +357,8 @@ public sealed partial class PresentFrameEtwSource(
                 ReadUInt64(data.PayloadByName("BindId")),
                 ReadUInt32(data.PayloadByName("NewState")), timestamp, timestampQpc);
         }
+        else return false;
+        return true;
     }
 
     private static bool ReadBoolean(object? value) => value switch

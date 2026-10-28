@@ -64,6 +64,7 @@ public sealed class LoopbackApiAuthenticationPolicyTests
 
     [Theory]
     [InlineData("GET", "/api/health", "Anonymous", "")]
+    [InlineData("GET", "/api/debug/event-drops", "Protected", "processes.read")]
     [InlineData("GET", "/api/public/v1/capabilities", "Anonymous", "")]
     [InlineData("GET", "/api/metrics/snapshot", "Protected", "metrics.read")]
     [InlineData("HEAD", "/api/metrics/snapshot", "Protected", "metrics.read")]

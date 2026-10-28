@@ -79,7 +79,7 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone(
             new(BusinessBlockRequestKind.Configuration, "compute-zone", MonitoringSourceZoneIds.EtwDxgkrnlVidMm, controller.CurrentPlanVersion));
         return mode == ResourceManagerComputeZoneMode.Freeze ? AwaitReleasedAsync(dispatch) : dispatch;
     }
-    private void OnDynamicEvent(TraceEvent data, ConcurrentDictionary<int, DxgkrnlVidMmEtwMemoryEvidence> currentEvidence)
+    private bool OnDynamicEvent(TraceEvent data, ConcurrentDictionary<int, DxgkrnlVidMmEtwMemoryEvidence> currentEvidence)
     {
         try
         {
@@ -89,15 +89,16 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone(
                 || processId <= 0
                 || !TryReadByteValue(data, out var valueBytes))
             {
-                return;
+                return false;
             }
 
-            ObserveProcessMemory(currentEvidence, processId, data.ProcessName, valueBytes,
+            return ObserveProcessMemory(currentEvidence, processId, data.ProcessName, valueBytes,
                 data.EventName, EtwNetworkTcpIpCaptureOwner.ToEventFileTime(data.TimeStamp), DateTimeOffset.UtcNow);
         }
         catch (Exception ex)
         {
             SignalFailure(ex);
+            return false;
         }
     }
 
@@ -106,11 +107,11 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone(
         => ObserveProcessMemory(Volatile.Read(ref evidenceByProcess), processId, processName,
             valueBytes, eventName, eventTime, observedAt);
 
-    private void ObserveProcessMemory(ConcurrentDictionary<int, DxgkrnlVidMmEtwMemoryEvidence> currentEvidence,
+    private bool ObserveProcessMemory(ConcurrentDictionary<int, DxgkrnlVidMmEtwMemoryEvidence> currentEvidence,
         int processId, string? processName, double valueBytes, string eventName, ulong? eventTime, DateTimeOffset observedAt)
     {
         var birth = ReadProcessBirth(processId);
-        if (birth is null || eventTime is null || eventTime.Value < birth.Value) return;
+        if (birth is null || eventTime is null || eventTime.Value < birth.Value) return false;
         // Retention is maintained only when producing evidence, never by an idle
         // checker or a current-value read. No events means no new retained entries.
         if (observedAt.UtcTicks >= Volatile.Read(ref nextPruneUtcTicks))
@@ -122,6 +123,7 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone(
         }
         currentEvidence[processId] = new(processId, NormalizeProcessName(processName, processId),
             valueBytes, eventName, observedAt) { ProcessStartKey = birth.Value };
+        return true;
     }
 
     private static string NormalizeProcessName(string? processName, int processId)

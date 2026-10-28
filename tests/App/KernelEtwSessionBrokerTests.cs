@@ -1112,7 +1112,7 @@ public sealed class KernelEtwSessionBrokerTests
         public List<KernelTraceEventParser.Keywords> Updates { get; } = [];
         public KernelEtwSubscriptionDispatcher Dispatcher { get; } = new();
         public void EmitContextSwitch() => Dispatcher.Dispatch<Microsoft.Diagnostics.Tracing.Parsers.Kernel.CSwitchTraceData>(
-            null!, static (source, data) => source.DeliverThreadCSwitch(data));
+            KernelEtwEventKind.ThreadCSwitch, null!, static (source, data) => source.DeliverThreadCSwitch(data));
         public Exception? UpdateFailure { get; set; }
         public bool IsProcessing => Volatile.Read(ref isProcessing) != 0;
         public int EventsLost

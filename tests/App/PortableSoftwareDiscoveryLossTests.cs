@@ -589,7 +589,7 @@ public sealed class PortableSoftwareDiscoveryLossTests
                 recordField.SetValue(data, Pointer.Box(record, recordField.FieldType));
                 typeof(TraceEvent).GetField("userData", fields)!.SetValue(data, (IntPtr)payload);
                 typeof(TraceEvent).GetField("traceEventSource", fields)!.SetValue(data, source);
-                Dispatcher.Dispatch(data, static (callbacks, item) => callbacks.DeliverProcessStartGroup(item));
+                Dispatcher.Dispatch(KernelEtwEventKind.ProcessStartGroup, data, static (callbacks, item) => callbacks.DeliverProcessStartGroup(item));
             }
             finally
             {

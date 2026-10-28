@@ -50,9 +50,10 @@ public sealed partial class PresentFrameEtwSource
                     observedEventsLost = 0;
                     foreach (var subscription in graphicsApiSubscriptions) subscription.Api = null;
                 }
-                current.Bind(data =>
+                current.BindUsage(data =>
                 {
-                    if (Volatile.Read(ref run.Accepting) != 0 && ReferenceEquals(Volatile.Read(ref activeRun), run)) OnEvent(data);
+                    return Volatile.Read(ref run.Accepting) != 0
+                        && ReferenceEquals(Volatile.Read(ref activeRun), run) && OnEvent(data);
                 });
                 Volatile.Write(ref frameLeases, frameSubscriptions.Count);
                 UpdateProviders(current, null);

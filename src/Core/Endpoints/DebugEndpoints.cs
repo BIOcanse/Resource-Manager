@@ -18,6 +18,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 {
     private static IEndpointRouteBuilder MapDebugEndpoints(this IEndpointRouteBuilder app)
     {
+        app.MapEventDropsDebugEndpoint();
         app.MapGet("/api/debug/kernel-leaks", (HttpResponse response, Application.KernelLeak.IKernelLeakReportSource reports) =>
         {
             response.Headers.CacheControl = "no-store";
@@ -136,6 +137,16 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             return Results.Ok(snapshot);
         }).AddEndpointFilter(SamplingCapacityFailure);
 
+        return app;
+    }
+
+    internal static IEndpointRouteBuilder MapEventDropsDebugEndpoint(this IEndpointRouteBuilder app)
+    {
+        app.MapGet("/api/debug/event-drops", (HttpResponse response) =>
+        {
+            response.Headers.CacheControl = "no-store";
+            return Results.Ok(Infrastructure.Telemetry.Etw.EtwEventDropDiagnostics.Read());
+        });
         return app;
     }
 

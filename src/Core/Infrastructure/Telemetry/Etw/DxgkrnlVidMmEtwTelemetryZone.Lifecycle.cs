@@ -50,9 +50,9 @@ public sealed partial class DxgkrnlVidMmEtwTelemetryZone
                 Volatile.Write(ref nextPruneUtcTicks, 0);
                 var current = createSession(SessionName);
                 run.Session = current;
-                current.Bind(data =>
+                current.BindUsage(data =>
                 {
-                    if (Volatile.Read(ref run.Accepting) != 0) OnDynamicEvent(data, evidence);
+                    return Volatile.Read(ref run.Accepting) != 0 && OnDynamicEvent(data, evidence);
                 });
                 run.Processing = DedicatedEtwConsumerThread.Start(BlockUids.DxgkrnlVidMmEtwTelemetryZone, SessionName, () =>
                 {

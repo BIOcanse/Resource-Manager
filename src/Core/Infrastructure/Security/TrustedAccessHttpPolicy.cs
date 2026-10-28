@@ -295,6 +295,7 @@ internal static class TrustedAccessHttpPolicy
             "GET /api/memory-protection/normal-running-points",
             "GET /api/cpu/residency",
             "GET /api/debug/frame-timing",
+            "GET /api/debug/event-drops",
             "GET /api/debug/thread-cpu",
             "GET /api/debug/gpu-renderers",
             "GET /api/debug/scheduling-inputs",

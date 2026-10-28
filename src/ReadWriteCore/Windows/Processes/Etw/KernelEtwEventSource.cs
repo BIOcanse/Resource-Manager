@@ -48,39 +48,45 @@ public sealed class KernelEtwEventSource
 
     internal void Cancel() => Interlocked.Exchange(ref state, -1);
 
-    internal void Dispatch<T>(T data, Action<KernelEtwEventSource, T> deliver)
+    internal bool Dispatch<T>(T data, Func<KernelEtwEventSource, T, bool> deliver)
     {
         // This read admits the synchronous delivery. Cancellation prevents later
         // admissions; a delivery already admitted may finish without a blocking wait.
-        if (IsActive) deliver(this, data);
+        return IsActive && deliver(this, data);
     }
 
-    internal void DeliverProcessStartGroup(ProcessTraceData data) => ProcessStartGroup?.Invoke(data);
-    internal void DeliverProcessEndGroup(ProcessTraceData data) => ProcessEndGroup?.Invoke(data);
-    internal void DeliverThreadStartGroup(ThreadTraceData data) => ThreadStartGroup?.Invoke(data);
-    internal void DeliverThreadEndGroup(ThreadTraceData data) => ThreadEndGroup?.Invoke(data);
-    internal void DeliverThreadCSwitch(CSwitchTraceData data) => ThreadCSwitch?.Invoke(data);
-    internal void DeliverDiskIORead(DiskIOTraceData data) => DiskIORead?.Invoke(data);
-    internal void DeliverDiskIOWrite(DiskIOTraceData data) => DiskIOWrite?.Invoke(data);
-    internal void DeliverFileIOCreate(FileIOCreateTraceData data) => FileIOCreate?.Invoke(data);
-    internal void DeliverFileIOFileCreate(FileIONameTraceData data) => FileIOFileCreate?.Invoke(data);
-    internal void DeliverFileIOFileDelete(FileIONameTraceData data) => FileIOFileDelete?.Invoke(data);
-    internal void DeliverFileIOWrite(FileIOReadWriteTraceData data) => FileIOWrite?.Invoke(data);
-    internal void DeliverFileIORename(FileIOInfoTraceData data) => FileIORename?.Invoke(data);
-    internal void DeliverFileIODelete(FileIOInfoTraceData data) => FileIODelete?.Invoke(data);
-    internal void DeliverTcpIpSend(TcpIpSendTraceData data) => TcpIpSend?.Invoke(data);
-    internal void DeliverTcpIpRecv(TcpIpTraceData data) => TcpIpRecv?.Invoke(data);
-    internal void DeliverTcpIpSendIPV6(TcpIpV6SendTraceData data) => TcpIpSendIPV6?.Invoke(data);
-    internal void DeliverTcpIpRecvIPV6(TcpIpV6TraceData data) => TcpIpRecvIPV6?.Invoke(data);
-    internal void DeliverUdpIpSend(UdpIpTraceData data) => UdpIpSend?.Invoke(data);
-    internal void DeliverUdpIpRecv(UdpIpTraceData data) => UdpIpRecv?.Invoke(data);
-    internal void DeliverUdpIpSendIPV6(UpdIpV6TraceData data) => UdpIpSendIPV6?.Invoke(data);
-    internal void DeliverUdpIpRecvIPV6(UpdIpV6TraceData data) => UdpIpRecvIPV6?.Invoke(data);
-    internal void DeliverImageDCStart(ImageLoadTraceData data) => ImageDCStart?.Invoke(data);
-    internal void DeliverImageLoad(ImageLoadTraceData data) => ImageLoad?.Invoke(data);
-    internal void DeliverImageUnload(ImageLoadTraceData data) => ImageUnload?.Invoke(data);
-    internal void DeliverPerfInfoISR(ISRTraceData data) => PerfInfoISR?.Invoke(data);
-    internal void DeliverPerfInfoDPC(DPCTraceData data) => PerfInfoDPC?.Invoke(data);
-    internal void DeliverPerfInfoThreadedDPC(DPCTraceData data) => PerfInfoThreadedDPC?.Invoke(data);
-    internal void DeliverPerfInfoTimerDPC(DPCTraceData data) => PerfInfoTimerDPC?.Invoke(data);
+    internal bool DeliverProcessStartGroup(ProcessTraceData data) => Deliver(ProcessStartGroup, data);
+    internal bool DeliverProcessEndGroup(ProcessTraceData data) => Deliver(ProcessEndGroup, data);
+    internal bool DeliverThreadStartGroup(ThreadTraceData data) => Deliver(ThreadStartGroup, data);
+    internal bool DeliverThreadEndGroup(ThreadTraceData data) => Deliver(ThreadEndGroup, data);
+    internal bool DeliverThreadCSwitch(CSwitchTraceData data) => Deliver(ThreadCSwitch, data);
+    internal bool DeliverDiskIORead(DiskIOTraceData data) => Deliver(DiskIORead, data);
+    internal bool DeliverDiskIOWrite(DiskIOTraceData data) => Deliver(DiskIOWrite, data);
+    internal bool DeliverFileIOCreate(FileIOCreateTraceData data) => Deliver(FileIOCreate, data);
+    internal bool DeliverFileIOFileCreate(FileIONameTraceData data) => Deliver(FileIOFileCreate, data);
+    internal bool DeliverFileIOFileDelete(FileIONameTraceData data) => Deliver(FileIOFileDelete, data);
+    internal bool DeliverFileIOWrite(FileIOReadWriteTraceData data) => Deliver(FileIOWrite, data);
+    internal bool DeliverFileIORename(FileIOInfoTraceData data) => Deliver(FileIORename, data);
+    internal bool DeliverFileIODelete(FileIOInfoTraceData data) => Deliver(FileIODelete, data);
+    internal bool DeliverTcpIpSend(TcpIpSendTraceData data) => Deliver(TcpIpSend, data);
+    internal bool DeliverTcpIpRecv(TcpIpTraceData data) => Deliver(TcpIpRecv, data);
+    internal bool DeliverTcpIpSendIPV6(TcpIpV6SendTraceData data) => Deliver(TcpIpSendIPV6, data);
+    internal bool DeliverTcpIpRecvIPV6(TcpIpV6TraceData data) => Deliver(TcpIpRecvIPV6, data);
+    internal bool DeliverUdpIpSend(UdpIpTraceData data) => Deliver(UdpIpSend, data);
+    internal bool DeliverUdpIpRecv(UdpIpTraceData data) => Deliver(UdpIpRecv, data);
+    internal bool DeliverUdpIpSendIPV6(UpdIpV6TraceData data) => Deliver(UdpIpSendIPV6, data);
+    internal bool DeliverUdpIpRecvIPV6(UpdIpV6TraceData data) => Deliver(UdpIpRecvIPV6, data);
+    internal bool DeliverImageDCStart(ImageLoadTraceData data) => Deliver(ImageDCStart, data);
+    internal bool DeliverImageLoad(ImageLoadTraceData data) => Deliver(ImageLoad, data);
+    internal bool DeliverImageUnload(ImageLoadTraceData data) => Deliver(ImageUnload, data);
+    internal bool DeliverPerfInfoISR(ISRTraceData data) => Deliver(PerfInfoISR, data);
+    internal bool DeliverPerfInfoDPC(DPCTraceData data) => Deliver(PerfInfoDPC, data);
+    internal bool DeliverPerfInfoThreadedDPC(DPCTraceData data) => Deliver(PerfInfoThreadedDPC, data);
+    internal bool DeliverPerfInfoTimerDPC(DPCTraceData data) => Deliver(PerfInfoTimerDPC, data);
+    private static bool Deliver<T>(Action<T>? handler, T data)
+    {
+        if (handler is null) return false;
+        handler(data);
+        return true;
+    }
 }

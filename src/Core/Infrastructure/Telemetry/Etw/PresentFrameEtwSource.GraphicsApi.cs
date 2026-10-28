@@ -28,45 +28,53 @@ public sealed partial class PresentFrameEtwSource : IPresentGraphicsApiObservati
             ? GpuGraphicsApi.D3D11 | GpuGraphicsApi.D3D12
             : provider == Direct3D9Provider && eventId is Direct3D9PresentStart or Direct3D9PresentStop ? GpuGraphicsApi.D3D9 : null;
 
-    private void ApplyGraphicsApiEvent(TraceEvent data)
+    private bool ApplyGraphicsApiEvent(TraceEvent data)
     {
-        if (graphicsApiSubscriptions.Count == 0) return;
+        if (graphicsApiSubscriptions.Count == 0) return false;
         if (data.ProviderGuid == KernelProcessProvider)
         {
             if ((int)data.ID == ProcessStart && data.PayloadByName("CreateTime") is DateTime created)
-                ObserveGraphicsApiProcessLifetime(Convert.ToInt32(data.PayloadByName("ProcessID")), created.ToFileTimeUtc());
+                return ObserveGraphicsApiProcessLifetime(Convert.ToInt32(data.PayloadByName("ProcessID")), created.ToFileTimeUtc());
             else if ((int)data.ID == ProcessStop)
-                ObserveGraphicsApiProcessLifetime(Convert.ToInt32(data.PayloadByName("ProcessID")), null);
-            return;
+                return ObserveGraphicsApiProcessLifetime(Convert.ToInt32(data.PayloadByName("ProcessID")), null);
+            return false;
         }
-        ObserveGraphicsApiPresent(data.ProviderGuid, (int)data.ID, data.ProcessID, data.TimeStamp.ToUniversalTime());
+        return ObserveGraphicsApiPresent(data.ProviderGuid, (int)data.ID, data.ProcessID, data.TimeStamp.ToUniversalTime());
     }
 
-    internal void ObserveGraphicsApiPresent(Guid provider, int eventId, int pid, DateTime timestampUtc)
+    internal bool ObserveGraphicsApiPresent(Guid provider, int eventId, int pid, DateTime timestampUtc)
     {
         var api = MapPresentGraphicsApi(provider, eventId);
-        if (api is null) return;
+        if (api is null) return false;
+        var used = false;
         lock (gate)
         {
             foreach (var subscription in graphicsApiSubscriptions)
                 if (subscription.Active && subscription.Process.ProcessId == pid
                     && timestampUtc.ToFileTimeUtc() >= (long)subscription.Process.ProcessStartKey)
+                {
                     subscription.Api ??= api;
+                    used = true;
+                }
         }
+        return used;
     }
 
-    internal void ObserveGraphicsApiProcessLifetime(int pid, long? startKey)
+    internal bool ObserveGraphicsApiProcessLifetime(int pid, long? startKey)
     {
+        var used = false;
         lock (gate)
         {
             foreach (var subscription in graphicsApiSubscriptions)
                 if (subscription.Process.ProcessId == pid
                     && startKey != (long)subscription.Process.ProcessStartKey)
                 {
+                    used = true;
                     subscription.Active = false;
                     subscription.Api = null;
                 }
         }
+        return used;
     }
 
     private sealed class GraphicsApiSubscription(PresentFrameEtwSource source, GpuPlacementProcessInstance process)
