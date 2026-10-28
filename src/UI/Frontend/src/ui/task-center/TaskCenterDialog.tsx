@@ -264,7 +264,7 @@ function TaskCenterList(props: {
                   <Ban aria-hidden="true" size={17} />
                 </button>
                 {/* 取消不了（正在取消、已结束、会话未同步……）：原因在按钮旁的问号里（禁用的按钮收不到指针）。 */}
-                <Show when={props.cancelingIds.has(itemId) ? uiText.taskCenter.canceling : item().actionBlockedReason}>
+                <Show when={props.cancelingIds.has(itemId) ? uiText.taskCenter.canceling : blockedReasonText(item())}>
                   {(reason) => <HelpHint>{reason()}</HelpHint>}
                 </Show>
               </div>
@@ -311,8 +311,12 @@ function taskKindLabel(item: TaskCenterItem): string {
 
 function taskTitle(item: TaskCenterItem): string {
   return item.source === "operation"
-    ? operationTitle({ kind: item.kind, subject: item.subject ?? null })
+    ? operationTitle({ kind: item.kind, subject: item.subject })
     : item.title;
+}
+
+function blockedReasonText(item: TaskCenterItem): string | null {
+  return item.actionBlockedReason ? uiText.taskCenter.blocked[item.actionBlockedReason] : null;
 }
 
 // An operation's domain key is the backend's internal deduplication key; its target is named from the subject.

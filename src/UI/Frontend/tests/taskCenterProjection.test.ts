@@ -97,7 +97,10 @@ const hiddenTaskKey = defineTaskKey<void>("ui.layout-transition");
     "transient");
   const projectedOperation = projection.snapshot.items.find((item) =>
     item.source === "operation")!;
-  assert.equal(projectedOperation.title,
+  // 操作的标题不在投影里定成文字（语言可在运行中切换），显示时由 kind 和 subject 现取。
+  assert.equal("title" in projectedOperation, false);
+  assert.equal(projectedOperation.source === "operation"
+    && operationTitle({ kind: projectedOperation.kind, subject: projectedOperation.subject }),
     `${uiText.taskCenter.operation.componentInstall}: ${uiText.status.component.nameFallback}`);
   assert.equal("title" in operation(), false);
   assert.equal(
@@ -306,6 +309,45 @@ for (const [status, expected] of [
   assert.equal(
     projection.snapshot.items.find((item) => item.source === "operation")?.backendDisconnected,
     true);
+  projection.dispose();
+  taskRegistry.dispose();
+}
+
+// 每次发布只投影变了的那一项：别的前端任务和没变的操作沿用上一次的同一个对象；
+// 登记表的会话状态变了，操作重新投影。不能取消的原因是代码，不是某种语言的文字。
+{
+  const taskRegistry = new TaskRegistry();
+  const operationSource = new FakeOperationSource();
+  const projection = new TaskCenterProjection(taskRegistry, operationSource);
+  const scope = taskRegistry.openScope("task-center-reuse");
+  const firstGate = deferred<void>();
+  const secondGate = deferred<void>();
+  const first = scope.run({ key: userTaskKey, title: "First", durability: "transient", visibility: "user", concurrency: "allow" },
+    () => firstGate.promise);
+  const byId = (id: string) => projection.snapshot.items.find((item) => item.id === id)!;
+  const firstItem = byId(`frontend:${first.id}`);
+  const operationItem = byId(`operation:${operation().id}`);
+  const second = scope.run({ key: userTaskKey, title: "Second", durability: "transient", visibility: "user", concurrency: "allow" },
+    () => secondGate.promise);
+  assert.equal(byId(`frontend:${first.id}`), firstItem, "an unchanged frontend task keeps its projected item");
+  assert.equal(byId(`operation:${operation().id}`), operationItem, "an unchanged operation keeps its projected item");
+
+  firstGate.resolve();
+  await first.completion;
+  const finished = byId(`frontend:${first.id}`);
+  assert.notEqual(finished, firstItem);
+  assert.equal(finished.actionBlockedReason, "taskFinished");
+  await assert.rejects(projection.cancel(finished.id), new RegExp(uiText.taskCenter.blocked.taskFinished));
+
+  operationSource.publish(operationRegistrySnapshot(2, operationSource.snapshot.operations, { actionsEnabled: false }));
+  const blocked = byId(`operation:${operation().id}`);
+  assert.notEqual(blocked, operationItem, "a change of the registry's session state projects the operation again");
+  assert.equal(blocked.cancelable, false);
+  assert.equal(blocked.actionBlockedReason, "operationCannotCancel");
+
+  secondGate.resolve();
+  await second.completion;
+  scope.close();
   projection.dispose();
   taskRegistry.dispose();
 }

@@ -26,14 +26,32 @@ export interface TaskCenterProgress {
   readonly total: number | string | null;
 }
 
-export interface TaskCenterItem {
+/** 不能取消的原因，显示时取当前语言的 uiText.taskCenter.blocked[原因]。 */
+export type TaskCenterBlockedReason = keyof typeof uiText.taskCenter.blocked;
+
+/**
+ * 投影里不放界面语言的文字：语言可以在运行中切换，而一项只在它的来源变了时才重新投影。
+ * 后端操作的标题和目标按 kind、subject 现取，不能取消的原因是 TaskCenterBlockedReason，都在显示时取当前语言的文案。
+ * 前端任务的标题由创建任务的一方给出。
+ */
+export type TaskCenterItem = TaskCenterFrontendItem | TaskCenterOperationItem;
+
+export interface TaskCenterFrontendItem extends TaskCenterItemFields {
+  readonly source: "frontend";
+  readonly title: string;
+}
+
+export interface TaskCenterOperationItem extends TaskCenterItemFields {
+  readonly source: "operation";
+  readonly subject: OperationSubject | null;
+}
+
+interface TaskCenterItemFields {
   readonly id: string;
   readonly ownerId: string;
   readonly source: TaskCenterItemSource;
-  readonly title: string;
   readonly kind: string;
   readonly domainKey: string | null;
-  readonly subject?: OperationSubject | null;
   readonly status: string;
   readonly active: boolean;
   readonly visibility: TaskCenterItemVisibility;
@@ -44,7 +62,7 @@ export interface TaskCenterItem {
   readonly completedAt: string | null;
   readonly progress: TaskCenterProgress | null;
   readonly cancelable: boolean;
-  readonly actionBlockedReason: string | null;
+  readonly actionBlockedReason: TaskCenterBlockedReason | null;
   readonly backendDisconnected: boolean;
   readonly stateUncertain: boolean;
   readonly resultCode: string | null;
@@ -78,10 +96,25 @@ export interface TaskCenterProjectionOptions {
 
 type TaskCenterListener = (snapshot: TaskCenterSnapshot) => void;
 
+/** 一项的投影和它的创建时间，随来源快照一起换；来源没换就沿用，每次发布只投影变了的那一项。 */
+interface ProjectedItem<Source> {
+  readonly source: Source;
+  readonly item: TaskCenterItem;
+  readonly createdAtMs: number;
+}
+
+/** 后端操作的投影还取决于登记表的会话状态，一起比较。 */
+interface OperationProjectionKey {
+  readonly operation: OperationSnapshot;
+  readonly actionsEnabled: boolean;
+  readonly disconnected: boolean;
+}
+
 export class TaskCenterProjection {
   private readonly taskSource: FrontendTaskSource;
   private readonly operationSource: OperationProjectionSource;
-  private readonly frontendTasks = new Map<string, TaskSnapshot>();
+  private readonly frontendTasks = new Map<string, ProjectedItem<TaskSnapshot>>();
+  private operationItems = new Map<string, ProjectedItem<OperationProjectionKey>>();
   private readonly listeners = new Set<TaskCenterListener>();
   private readonly publicationQueue: TaskCenterSnapshot[] = [];
   private readonly unsubscribeTasks: () => void;
@@ -102,7 +135,7 @@ export class TaskCenterProjection {
     this.onListenerError = options.onListenerError
       ?? ((error) => console.error("TaskCenterProjection listener failed.", error));
     for (const snapshot of taskSource.listSnapshots()) {
-      this.frontendTasks.set(snapshot.id, snapshot);
+      this.frontendTasks.set(snapshot.id, projectedFrontendTask(snapshot));
     }
     this.operationSnapshot = operationSource.snapshot;
     this.snapshotValue = this.buildSnapshot(0);
@@ -129,7 +162,7 @@ export class TaskCenterProjection {
       return false;
     }
     if (!item.cancelable) {
-      throw new Error(item.actionBlockedReason ?? uiText.taskCenter.blocked.cannotCancel);
+      throw new Error(uiText.taskCenter.blocked[item.actionBlockedReason ?? "cannotCancel"]);
     }
     if (item.source === "frontend") {
       return this.taskSource.cancel(
@@ -148,6 +181,7 @@ export class TaskCenterProjection {
     this.unsubscribeTasks();
     this.unsubscribeOperations();
     this.frontendTasks.clear();
+    this.operationItems.clear();
     this.listeners.clear();
     this.publicationQueue.length = 0;
   }
@@ -157,9 +191,9 @@ export class TaskCenterProjection {
       return;
     }
     if (change.kind === "upsert") {
-      const current = this.frontendTasks.get(change.snapshot.id);
+      const current = this.frontendTasks.get(change.snapshot.id)?.source;
       if (!current || change.snapshot.revision > current.revision) {
-        this.frontendTasks.set(change.snapshot.id, change.snapshot);
+        this.frontendTasks.set(change.snapshot.id, projectedFrontendTask(change.snapshot));
       } else if (change.snapshot.revision === current.revision
         && change.snapshot !== current) {
         throw new Error(
@@ -209,10 +243,20 @@ export class TaskCenterProjection {
   }
 
   private buildSnapshot(revision: number): TaskCenterSnapshot {
-    const frontend = [...this.frontendTasks.values()].map(projectFrontendTask);
-    const operations = this.operationSnapshot.operations.map((operation) =>
-      projectOperation(operation, this.operationSnapshot));
-    const items = Object.freeze(sortItems([...frontend, ...operations]));
+    const registry = this.operationSnapshot;
+    const disconnected = operationBackendDisconnected(registry);
+    const operationItems = new Map<string, ProjectedItem<OperationProjectionKey>>();
+    for (const operation of registry.operations) {
+      const current = this.operationItems.get(operation.id);
+      operationItems.set(operation.id, current
+        && current.source.operation === operation
+        && current.source.actionsEnabled === registry.actionsEnabled
+        && current.source.disconnected === disconnected
+        ? current
+        : projectedOperation({ operation, actionsEnabled: registry.actionsEnabled, disconnected }));
+    }
+    this.operationItems = operationItems;
+    const items = Object.freeze(sortItems([...this.frontendTasks.values(), ...operationItems.values()]));
     return Object.freeze({
       items,
       activeUserCount: items.filter((item) =>
@@ -229,7 +273,15 @@ export class TaskCenterProjection {
   }
 }
 
-function projectFrontendTask(snapshot: TaskSnapshot): TaskCenterItem {
+function projectedFrontendTask(snapshot: TaskSnapshot): ProjectedItem<TaskSnapshot> {
+  return { source: snapshot, item: projectFrontendTask(snapshot), createdAtMs: Date.parse(snapshot.createdAt) };
+}
+
+function projectedOperation(key: OperationProjectionKey): ProjectedItem<OperationProjectionKey> {
+  return { source: key, item: projectOperation(key), createdAtMs: Date.parse(key.operation.createdAt) };
+}
+
+function projectFrontendTask(snapshot: TaskSnapshot): TaskCenterFrontendItem {
   const active = !isTerminalTaskStatus(snapshot.status);
   const progress = snapshot.progress
     ? Object.freeze({
@@ -255,7 +307,7 @@ function projectFrontendTask(snapshot: TaskSnapshot): TaskCenterItem {
     completedAt: snapshot.completedAt,
     progress,
     cancelable: active,
-    actionBlockedReason: active ? null : uiText.taskCenter.blocked.taskFinished,
+    actionBlockedReason: active ? null : "taskFinished",
     backendDisconnected: false,
     resultCode: null, resultMessage: null, errorMessage: null,
     progressStage: null,
@@ -264,20 +316,17 @@ function projectFrontendTask(snapshot: TaskSnapshot): TaskCenterItem {
 }
 
 function projectOperation(
-  operation: OperationSnapshot,
-  registry: OperationRegistrySnapshot
-): TaskCenterItem {
+  { operation, actionsEnabled, disconnected }: OperationProjectionKey
+): TaskCenterOperationItem {
   const active = !isTerminalOperation(operation);
-  const disconnected = operationBackendDisconnected(registry);
   const cancelable = active
-    && registry.actionsEnabled
+    && actionsEnabled
     && !operation.cancelRequested
     && operation.state !== "cancelPending";
   return Object.freeze({
     id: `operation:${operation.id}`,
     ownerId: operation.id,
     source: "operation",
-    title: operationTitle(operation),
     kind: operation.kind,
     domainKey: operation.domainKey,
     subject: operation.subject,
@@ -300,12 +349,12 @@ function projectOperation(
     actionBlockedReason: cancelable
       ? null
       : disconnected
-        ? uiText.taskCenter.blocked.sessionNotSynced
+        ? "sessionNotSynced"
         : operation.cancelRequested || operation.state === "cancelPending"
-          ? uiText.taskCenter.blocked.cancelRequested
+          ? "cancelRequested"
           : active
-            ? uiText.taskCenter.blocked.operationCannotCancel
-            : uiText.taskCenter.blocked.operationFinished,
+            ? "operationCannotCancel"
+            : "operationFinished",
     backendDisconnected: disconnected,
     resultCode: operation.resultCode ?? null,
     resultMessage: operation.resultMessage ?? null,
@@ -387,10 +436,9 @@ function progressPercent(
   return Math.max(0, Math.min(100, completed / total * 100));
 }
 
-/** 新建的在前，同一时刻按 id。每项的时间只解析一次，不在比较里反复解析（每次发布都要排一百多项）。 */
-function sortItems(items: readonly TaskCenterItem[]): TaskCenterItem[] {
-  return items
-    .map((item) => ({ item, createdAt: Date.parse(item.createdAt) }))
-    .sort((left, right) => (right.createdAt - left.createdAt) || left.item.id.localeCompare(right.item.id))
+/** 新建的在前，同一时刻按 id。创建时间在投影时解析过一次，排序不再解析（每次发布都要排一百多项）。 */
+function sortItems(entries: readonly ProjectedItem<unknown>[]): TaskCenterItem[] {
+  return [...entries]
+    .sort((left, right) => (right.createdAtMs - left.createdAtMs) || left.item.id.localeCompare(right.item.id))
     .map((entry) => entry.item);
 }
