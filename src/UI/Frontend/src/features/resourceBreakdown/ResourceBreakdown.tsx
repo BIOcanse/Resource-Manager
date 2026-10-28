@@ -430,7 +430,8 @@ function ResourceBreakdownItem(props: {
   onMoveBefore: () => void;
   onMoveAfter: () => void;
 }) {
-  const selectable = () => resourceSelectableSoftwareSegments(props.bar);
+  // 布局、键盘移动、选中段和当前段都要用：每次数据到达只算一次。
+  const selectable = createMemo(() => resourceSelectableSoftwareSegments(props.bar));
   const label = () => props.bar.label;
   const denominator = () => resourceBarDenominator(props.bar);
   const layout = createMemo(() => resourceSegmentLayout(selectable(), denominator(), resourceBarLayoutOptions(props.bar)));
