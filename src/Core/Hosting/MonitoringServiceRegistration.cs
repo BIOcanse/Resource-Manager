@@ -116,8 +116,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetRequiredService<IntelGclMonitoringZone>(),
             new ResourceManager.ReadWrite.Windows.Metrics.Writes.WindowsMetricControlResources
             {
-                // Resolve only the resources consumed by capture. Enumerating all
-                // writers also constructs FanControlWriter, which consumes this sampler.
+                // Resolve only the resources consumed by capture.
                 IntelCpuControl = provider.GetRequiredService<IntelCpuControlWriter>().Resource,
                 AmdCpuControl = provider.GetRequiredService<AmdCpuControlWriter>().Resource,
                 AmdDesktopGpuControl = provider.GetRequiredService<AmdDesktopGpuControlWriter>().Resource,

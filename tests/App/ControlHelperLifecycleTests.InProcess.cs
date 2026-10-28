@@ -133,16 +133,12 @@ public sealed partial class ControlHelperLifecycleTests
                 {
                     readEntered.SetResult(); Assert.True(releaseRead.Wait(TimeSpan.FromSeconds(10)));
                 }
-                if (request.GetProperty("op").GetString() == "temp")
-                {
-                    tempEntered.SetResult(); Assert.True(releaseTemp.Wait(TimeSpan.FromSeconds(10)));
-                }
                 return FanOk;
-            }));
+            }, push: _ => { tempEntered.SetResult(); Assert.True(releaseTemp.Wait(TimeSpan.FromSeconds(10))); }));
         await client.StartSession();
         var read = client.SendAsync("read", null, default);
         await readEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        var samples = new Dictionary<string, FanTemperatureSample> { ["cpu"] = new(60, DateTime.UtcNow.Ticks) };
+        FanControlCore.FanTemperatureSample[] samples = [new("cpu", 60, DateTime.UtcNow.Ticks)];
         var temperature = client.PushTemperaturesAsync(samples, default);
         try
         {

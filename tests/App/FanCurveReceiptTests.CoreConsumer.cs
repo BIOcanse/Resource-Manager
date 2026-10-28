@@ -18,8 +18,7 @@ public sealed partial class FanCurveReceiptTests
         var capability = new ControlCapability("fan.curve", ControlValueKinds.Curve, true);
         var setting = new ControlSetting("fan.curve", Curve: [new(60, 40), new(95, 100)],
             CurveExecution: ControlFanCurveExecutions.Software);
-        await client.PushTemperaturesAsync(new Dictionary<string, FanTemperatureSample>
-            { ["cpu"] = new(60, DateTime.UtcNow.Ticks) }, deadline.Token);
+        await client.PushTemperaturesAsync([new("cpu", 60, DateTime.UtcNow.Ticks)], deadline.Token);
         var other = Target with { Id = "fan:oem1" };
         Assert.Equal(ControlApplyStatuses.Applied, (await writer.WriteAsync(Target, capability, setting, deadline.Token)).Status);
         Assert.Equal(ControlApplyStatuses.Applied, (await writer.WriteAsync(other, capability, setting, deadline.Token)).Status);
@@ -30,14 +29,12 @@ public sealed partial class FanCurveReceiptTests
             if (read[0].GetProperty("automaticControl").GetBoolean()
                 && !read[1].GetProperty("automaticControl").GetBoolean()) break;
             Assert.True(retry.Elapsed < TimeSpan.FromSeconds(3), "The release exception stopped the loop instead of retrying and continuing the other fan.");
-            await client.PushTemperaturesAsync(new Dictionary<string, FanTemperatureSample>
-                { ["cpu"] = new(60, DateTime.UtcNow.Ticks) }, deadline.Token);
+            await client.PushTemperaturesAsync([new("cpu", 60, DateTime.UtcNow.Ticks)], deadline.Token);
             await Task.Delay(100, deadline.Token);
         }
         Assert.Null(await client.ReadCurveAsync(0, deadline.Token));
         Assert.Equal(setting.Curve, await client.ReadCurveAsync(1, deadline.Token));
-        await client.PushTemperaturesAsync(new Dictionary<string, FanTemperatureSample>
-            { ["cpu"] = new(100, DateTime.UtcNow.Ticks) }, deadline.Token);
+        await client.PushTemperaturesAsync([new("cpu", 100, DateTime.UtcNow.Ticks)], deadline.Token);
         var nextWrite = Stopwatch.StartNew();
         while (true)
         {
@@ -66,7 +63,7 @@ public sealed partial class FanCurveReceiptTests
         Assert.True(core.TrySetDuty(1, 50, out _));
         if (mode == "--engine-stop-all-check")
         {
-            core.Temperatures.Push(new Dictionary<string, double> { ["cpu"] = 60 });
+            core.PushTemperatures([new("cpu", 60, DateTime.UtcNow.Ticks)]);
             Assert.True(core.TryWriteCurve(0, [new(60, 40)], "software", out _));
             Assert.True(core.TryWriteCurve(1, [new(60, 50)], "software", out _));
         }
@@ -124,10 +121,7 @@ public sealed partial class FanCurveReceiptTests
         var fan = Assert.Single(client.Describe());
         Assert.True(fan.SupportsSoftwareCurve);
         Assert.Null(fan.FirmwareCurve);
-        await client.PushTemperaturesAsync(new Dictionary<string, FanTemperatureSample>
-        {
-            ["cpu"] = new(60, DateTime.UtcNow.Ticks)
-        }, deadline.Token);
+        await client.PushTemperaturesAsync([new("cpu", 60, DateTime.UtcNow.Ticks)], deadline.Token);
         var setting = new ControlSetting("fan.curve", Curve: [new(60, 35), new(120, 100)],
             CurveExecution: ControlFanCurveExecutions.Software);
         var capability = new ControlCapability("fan.curve", ControlValueKinds.Curve, true);
@@ -143,10 +137,7 @@ public sealed partial class FanCurveReceiptTests
             var manual = await client.SendAsync("read", null, deadline.Token);
             if (!manual!.Value.GetProperty("fans")[0].GetProperty("automaticControl").GetBoolean()) break;
             Assert.True(firstDrive.Elapsed < TimeSpan.FromSeconds(5), "The actual engine never drove the injected backend.");
-            await client.PushTemperaturesAsync(new Dictionary<string, FanTemperatureSample>
-            {
-                ["cpu"] = new(60, DateTime.UtcNow.Ticks)
-            }, deadline.Token);
+            await client.PushTemperaturesAsync([new("cpu", 60, DateTime.UtcNow.Ticks)], deadline.Token);
             await Task.Delay(100, deadline.Token);
         }
         var sameOwner = helper.SessionId;

@@ -160,13 +160,12 @@ public sealed partial class FanCurveReceiptTests
         internal string Operations { get; }
         internal FanControlCoreClient Client { get; }
 
-        internal CurveHelper(string firstReceipt, string? laterReceipt = null, string? manualReceipt = null, bool requireSeed = false)
+        internal CurveHelper(string firstReceipt, string? laterReceipt = null, string? manualReceipt = null)
         {
             Directory.CreateDirectory(root);
             Operations = Path.Combine(root, "operations.txt");
             laterReceipt ??= $"\"ok\":true,\"execution\":\"firmware\",\"curve\":{CompleteCurve}";
             var count = 0;
-            var seeded = false;
             var sync = new object();
             Client = new FanControlCoreClient(new EnvironmentInfo(Path.Combine(root, "ResourceManager-APP")),
                 (_, _) => new DelegateFanSession(request =>
@@ -177,15 +176,7 @@ public sealed partial class FanCurveReceiptTests
                         File.AppendAllLines(Operations, [operation]);
                         string body;
                         if (operation == "exit-fixture") throw new IOException("Injected library failure");
-                        if (operation == "temp")
-                        {
-                            seeded = request.GetProperty("samples").TryGetProperty("cpu", out _)
-                                && request.GetProperty("observedAtUtcTicks").GetProperty("cpu").GetInt64() > 0;
-                            body = "\"ok\":true";
-                        }
-                        else if (operation == "setcurve" && requireSeed && !seeded)
-                            body = "\"ok\":false,\"error\":\"temperature required\"";
-                        else if (operation == "describe")
+                        if (operation == "describe")
                             body = """
                                 "ok":true,"available":true,"backend":"fixture","needsTemperatures":true,"fans":[{"index":0,"name":"Fixture","role":"cpu","writable":true,"supportsSoftwareCurve":true,"firmwareCurve":"xy","supportsFirmwareCurveReset":true},{"index":1,"name":"Other","role":"gpu","writable":true,"supportsSoftwareCurve":true,"firmwareCurve":"xy","supportsFirmwareCurveReset":true}]
                                 """;

@@ -38,7 +38,7 @@ public sealed class SubscriptionHolderFanCompositionTests
             Assert.True(Assert.Single(client.Describe()).SupportsSoftwareCurve);
             Assert.Equal(0u, fixture.ReadDemand().ActiveSourceCount);
             Assert.Equal(0, fixture.Reads);
-            var writer = new FanControlWriter(client, sampler: fixture.Sampler, catalog: fixture.Owner.Catalog);
+            var writer = new FanControlWriter(client);
             var target = new ControlObject("fan:oem0", ControlObjectKinds.Fan, "Fixture",
                 new(ControlOperatingSystems.Windows, ControlVendors.Oem), []);
             var capability = new ControlCapability("fan.curve", ControlValueKinds.Curve, true);
@@ -46,6 +46,7 @@ public sealed class SubscriptionHolderFanCompositionTests
                 CurveExecution: ControlFanCurveExecutions.Software);
             Assert.Equal(ControlApplyStatuses.Applied,
                 (await writer.WriteAsync(target, capability, setting, deadline.Token)).Status);
+            Assert.Equal(0, fixture.Reads); // dev.6 records before any temperature holder exists.
             // The parent node enters the feed only while software curves are enabled.
             await feed.StartAsync(deadline.Token);
 
@@ -67,7 +68,8 @@ public sealed class SubscriptionHolderFanCompositionTests
             Assert.True(await writer.RestoreAsync(target, capability, new HashSet<string>(), deadline.Token, setting));
             Assert.True(backend.Read()[0].AutomaticControl);
             Assert.False(client.NeedsTemperatures());
-            // Restoring settings changes the parent's fact; block exit releases its subscription.
+            // Empty recorded-plan kinds release the temperature hold inside the run.
+            Assert.Equal(0u, fixture.ReadDemand().ActiveSourceCount);
             await feed.StopAsync(deadline.Token);
             Assert.Equal(0u, fixture.ReadDemand().ActiveSourceCount);
             Assert.Equal(0u, fixture.ReadDemand().MembershipCount);

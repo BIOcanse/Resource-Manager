@@ -5,5 +5,5 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
-  <ItemGroup><PackageReference Include="FanControlCore.Library" Version="0.1.0-dev.5" /></ItemGroup>
+  <ItemGroup><PackageReference Include="FanControlCore.Library" Version="0.1.0-dev.6" /></ItemGroup>
 </Project>

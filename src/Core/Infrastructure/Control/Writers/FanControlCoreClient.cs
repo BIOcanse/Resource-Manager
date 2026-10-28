@@ -2,6 +2,7 @@ using ResourceManager.App.Application.Control;
 using ResourceManager.App.Domain.Control;
 using System.Text.Json;
 using ResourceManager.App.Infrastructure.Paths;
+using FanControlCore;
 
 namespace ResourceManager.App.Infrastructure.Control.Writers;
 
@@ -236,23 +237,13 @@ public sealed partial class FanControlCoreClient(
     /// 核心那边宁可短暂收不到（它有自己的时效兜底），也不该按着过期的数调速。
     /// </summary>
     public async Task<bool> PushTemperaturesAsync(
-        IReadOnlyDictionary<string, FanTemperatureSample> samples,
+        IReadOnlyList<FanTemperatureSample> samples,
         CancellationToken cancellationToken,
         bool skipIfBusy = true)
     {
         ArgumentNullException.ThrowIfNull(samples);
-        var arguments = new Dictionary<string, object?>
-        {
-            ["samples"] = samples.ToDictionary(pair => pair.Key, pair => pair.Value.Celsius),
-            ["observedAtUtcTicks"] = samples.ToDictionary(pair => pair.Key, pair => pair.Value.ObservedAtUtcTicks)
-        };
-        if (!skipIfBusy)
-        {
-            var response = await SendAsync("temp", arguments, cancellationToken).ConfigureAwait(false);
-            return response is { } result && Flag(result, "ok");
-        }
         // 温度只更新托管存储，仍像独立宿主一样与串行硬件命令分开，慢硬件不能挡住新温度。
-        if (!await temperatureGate.WaitAsync(0, cancellationToken).ConfigureAwait(false)) return false;
+        if (!await temperatureGate.WaitAsync(skipIfBusy ? 0 : Timeout.Infinite, cancellationToken).ConfigureAwait(false)) return false;
         IFanControlCoreSession? current;
         lock (sessionSync)
         {
@@ -268,11 +259,14 @@ public sealed partial class FanControlCoreClient(
         {
             try
             {
-                arguments["op"] = "temp";
-                arguments["notification"] = true;
-                var request = JsonSerializer.SerializeToElement(arguments);
-                var response = Handle(current, request, "temp");
-                return response is { } result && Flag(result, "ok");
+                current.PushTemperatures(samples);
+                return true;
+            }
+            catch (Exception error)
+            {
+                logger?.LogWarning(error, "Fan Control Core temperature push failed.");
+                unavailableReason = "fan-core-failed";
+                return false;
             }
             finally
             {
@@ -292,6 +286,9 @@ public sealed partial class FanControlCoreClient(
 internal interface IFanControlCoreSession : IDisposable
 {
     JsonElement Handle(JsonElement request);
+    void PushTemperatures(IReadOnlyList<FanTemperatureSample> samples);
+    IReadOnlyList<string> SoftwareCurveTemperatureKinds { get; }
+    event Action<IReadOnlyList<string>>? SoftwareCurveTemperatureKindsChanged;
     bool SoftwareCurveRunNeeded { get; }
     event Action<bool>? SoftwareCurveRunNeededChanged;
     Task RunSoftwareCurveAsync(CancellationToken stop);

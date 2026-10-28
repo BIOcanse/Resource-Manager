@@ -89,8 +89,7 @@ public sealed class FanControlIsolationBoundaryTests
         await using var client = new FanControlCoreClient(new FanTestEnvironment(),
             (_, _) => new LibraryFanSession(libraryCore), log);
         await client.StartSession();
-        await client.PushTemperaturesAsync(new Dictionary<string, FanTemperatureSample> {
-            ["cpu"] = new(60, DateTime.UtcNow.Ticks) }, default, skipIfBusy: false);
+        await client.PushTemperaturesAsync([new("cpu", 60, DateTime.UtcNow.Ticks)], default, skipIfBusy: false);
         var arguments = new Dictionary<string, object?> {
             ["fan"] = 0, ["execution"] = "software",
             ["curve"] = new[] { new { temperatureCelsius = 30, percent = 40 }, new { temperatureCelsius = 90, percent = 90 } }
@@ -257,12 +256,11 @@ public sealed class FanControlIsolationBoundaryTests
         var client = new FanControlCoreClient(new FanTestEnvironment(), (_, _) => new DelegateFanSession(
             request =>
             {
-                if (request.GetProperty("op").GetString() == "temp") { entered.TrySetResult(); release.Wait(); }
                 return JsonSerializer.SerializeToElement(new { ok = true });
-            }, () => closed = true));
+            }, () => closed = true, push: _ => { entered.TrySetResult(); release.Wait(); }));
         await client.StartSession();
         using var cancellation = new CancellationTokenSource();
-        var push = client.PushTemperaturesAsync(new Dictionary<string, FanTemperatureSample>(), cancellation.Token);
+        var push = client.PushTemperaturesAsync([], cancellation.Token);
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         try
         {

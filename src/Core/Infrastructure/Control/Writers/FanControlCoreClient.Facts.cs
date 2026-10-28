@@ -6,8 +6,8 @@ namespace ResourceManager.App.Infrastructure.Control.Writers;
 public sealed partial class FanControlCoreClient
 {
     private readonly object factSync = new();
-    // Notifications carry only the changed item: true = availability, false = run-needed.
-    private readonly Queue<bool> factChanges = new();
+    private enum Fact { Availability, RunNeeded, TemperatureKinds }
+    private readonly Queue<(Fact Item, IReadOnlyList<string>? Kinds)> factChanges = new();
     private bool publishingFacts;
     private volatile bool softwareCurveRunNeeded;
     private volatile bool available = true;
@@ -15,19 +15,25 @@ public sealed partial class FanControlCoreClient
     private IFanControlCoreSession? observedSession;
     private Action<bool>? runNeededObserver;
     private long runNeededNotifications;
+    private IReadOnlyList<string> softwareCurveTemperatureKinds = Array.Empty<string>();
+    private Action<IReadOnlyList<string>>? temperatureKindsObserver;
+    private long temperatureKindsNotifications;
 
     internal bool SoftwareCurveRunNeeded => softwareCurveRunNeeded;
     internal bool IsAvailable => available;
     internal event Action? SoftwareCurveRunNeededChanged;
     internal event Action? AvailabilityChanged;
+    internal IReadOnlyList<string> SoftwareCurveTemperatureKinds => Volatile.Read(ref softwareCurveTemperatureKinds);
+    internal event Action<IReadOnlyList<string>>? SoftwareCurveTemperatureKindsChanged;
 
     private void ObserveSession(IFanControlCoreSession opened)
     {
-        long initialVersion;
+        long initialVersion, initialKindsVersion;
         lock (factSync)
         {
             observedSession = opened;
             initialVersion = runNeededNotifications;
+            initialKindsVersion = temperatureKindsNotifications;
             runNeededObserver = value =>
             {
                 lock (factSync)
@@ -38,14 +44,29 @@ public sealed partial class FanControlCoreClient
                 }
                 PublishFactChanges();
             };
+            temperatureKindsObserver = value =>
+            {
+                lock (factSync)
+                {
+                    if (!ReferenceEquals(observedSession, opened)) return;
+                    temperatureKindsNotifications++;
+                    SetTemperatureKindsLocked(value);
+                }
+                PublishFactChanges();
+            };
         }
         opened.SoftwareCurveRunNeededChanged += runNeededObserver;
+        opened.SoftwareCurveTemperatureKindsChanged += temperatureKindsObserver;
         // Subscribe before reading. A concurrent notification takes precedence over
         // this initial snapshot, so initialization cannot overwrite a newer event.
         var initial = opened.SoftwareCurveRunNeeded;
         lock (factSync)
             if (ReferenceEquals(observedSession, opened) && initialVersion == runNeededNotifications)
                 SetRunNeededLocked(initial);
+        var initialKinds = opened.SoftwareCurveTemperatureKinds;
+        lock (factSync)
+            if (ReferenceEquals(observedSession, opened) && initialKindsVersion == temperatureKindsNotifications)
+                SetTemperatureKindsLocked(initialKinds);
         PublishFactChanges();
     }
 
@@ -55,9 +76,12 @@ public sealed partial class FanControlCoreClient
         {
             if (!ReferenceEquals(observedSession, closing)) return;
             if (closing is not null) closing.SoftwareCurveRunNeededChanged -= runNeededObserver;
+            if (closing is not null) closing.SoftwareCurveTemperatureKindsChanged -= temperatureKindsObserver;
             observedSession = null;
             runNeededObserver = null;
+            temperatureKindsObserver = null;
             SetRunNeededLocked(false);
+            SetTemperatureKindsLocked(Array.Empty<string>());
         }
         PublishFactChanges();
     }
@@ -66,7 +90,14 @@ public sealed partial class FanControlCoreClient
     {
         if (softwareCurveRunNeeded == value) return;
         softwareCurveRunNeeded = value;
-        factChanges.Enqueue(false);
+        factChanges.Enqueue((Fact.RunNeeded, null));
+    }
+
+    private void SetTemperatureKindsLocked(IReadOnlyList<string> value)
+    {
+        if (softwareCurveTemperatureKinds.SequenceEqual(value)) return;
+        Volatile.Write(ref softwareCurveTemperatureKinds, value);
+        factChanges.Enqueue((Fact.TemperatureKinds, value));
     }
 
     private void ObserveOpen(JsonElement description)
@@ -84,7 +115,7 @@ public sealed partial class FanControlCoreClient
             if (available != success)
             {
                 available = success;
-                factChanges.Enqueue(true);
+                factChanges.Enqueue((Fact.Availability, null));
             }
         }
         PublishFactChanges();
@@ -101,16 +132,26 @@ public sealed partial class FanControlCoreClient
         }
         while (true)
         {
-            bool availabilityChanged;
+            (Fact Item, IReadOnlyList<string>? Kinds) change;
             lock (factSync)
             {
                 if (factChanges.Count == 0) { publishingFacts = false; return; }
-                availabilityChanged = factChanges.Dequeue();
+                change = factChanges.Dequeue();
             }
-            var observers = availabilityChanged ? AvailabilityChanged : SoftwareCurveRunNeededChanged;
+            Delegate? observers = change.Item switch
+            {
+                Fact.Availability => AvailabilityChanged,
+                Fact.RunNeeded => SoftwareCurveRunNeededChanged,
+                _ => SoftwareCurveTemperatureKindsChanged
+            };
             foreach (var observer in observers?.GetInvocationList() ?? [])
             {
-                try { ((Action)observer)(); }
+                try
+                {
+                    if (change.Item == Fact.TemperatureKinds)
+                        ((Action<IReadOnlyList<string>>)observer)(change.Kinds!);
+                    else ((Action)observer)();
+                }
                 catch (Exception error) { logger?.LogWarning(error, "Fan owner fact observer failed."); }
             }
         }

@@ -14,24 +14,20 @@ public sealed partial class FanCurveReceiptTests
     private const string AutomaticReceipt = "\"ok\":true,\"fans\":[{\"index\":0,\"automaticControl\":true},{\"index\":1,\"automaticControl\":true}]";
 
     [Fact]
-    public async Task ExplicitSoftwareApplyBootstrapsAHelperThatRejectsPlansWithoutFreshTemperature()
+    public async Task ExplicitSoftwareApplyRecordsBeforeFeedAcquiresTemperatures()
     {
-        await using var helper = new CurveHelper(SoftwareReceipt, requireSeed: true);
+        await using var helper = new CurveHelper(SoftwareReceipt);
         var capability = new ControlCapability("fan.curve", ControlValueKinds.Curve, true);
         var setting = new ControlSetting("fan.curve", Curve: [new(60, 35)], CurveExecution: ControlFanCurveExecutions.Software);
         var metrics = new TemperatureSubscriptions();
         using var feed = new FanCurveTemperatureFeed(metrics, helper.Client, new HardwareMetricCatalogState());
         await feed.StartAsync(default);
-        var unseeded = await new FanControlWriter(helper.Client).WriteAsync(Target, capability, setting, default);
-        Assert.Equal(ControlApplyStatuses.Failed, unseeded.Status);
+        Assert.Equal(0, metrics.ActiveCount);
         Assert.False(helper.Client.NeedsTemperatures());
-        await WaitForLeaseAsync(metrics); // The parent already started this configured feed.
-
-        var sampler = new ApplyTemperatureSampler(0);
-        var outcome = await new FanControlWriter(helper.Client, sampler: sampler).WriteAsync(Target, capability, setting, default);
+        var outcome = await new FanControlWriter(helper.Client).WriteAsync(Target, capability, setting, default);
         Assert.Equal(ControlApplyStatuses.Applied, outcome.Status);
-        Assert.Equal(1, sampler.Captures);
-        Assert.Equal(["describe", "setcurve", "temp", "setcurve"], File.ReadAllLines(helper.Operations));
+        Assert.Equal(["describe", "setcurve"], File.ReadAllLines(helper.Operations));
+        Assert.True(helper.Client.NeedsTemperatures());
         await WaitForLeaseAsync(metrics);
         await feed.StopAsync(default);
         Assert.Equal(0, metrics.ActiveCount);
@@ -42,28 +38,29 @@ public sealed partial class FanCurveReceiptTests
     [InlineData(-10)]
     [InlineData(1)]
     [InlineData(null)]
-    public async Task SoftwareApplyWithoutConfirmedCurrentTemperatureNeverSubmitsAPlanOrStartsALease(int? sampleAgeSeconds)
+    public async Task SoftwareApplyRecordsWithStaleFutureOrAbsentTemperature(int? sampleAgeSeconds)
     {
-        await using var helper = new CurveHelper(SoftwareReceipt, requireSeed: true);
-        var sampler = new ApplyTemperatureSampler(sampleAgeSeconds);
-        var outcome = await new FanControlWriter(helper.Client, sampler: sampler).WriteAsync(Target,
+        await using var helper = new CurveHelper(SoftwareReceipt);
+        var now = DateTimeOffset.UtcNow;
+        if (sampleAgeSeconds is { } offset)
+            await helper.Client.PushTemperaturesAsync([new("cpu", 60, now.AddSeconds(offset).UtcTicks)], default);
+        var outcome = await new FanControlWriter(helper.Client).WriteAsync(Target,
             new("fan.curve", ControlValueKinds.Curve, true),
             new("fan.curve", Curve: [new(60, 35)], CurveExecution: ControlFanCurveExecutions.Software), default);
-        Assert.Equal(ControlApplyStatuses.Failed, outcome.Status);
-        Assert.Equal(1, sampler.Captures);
-        Assert.Equal(["describe"], File.ReadAllLines(helper.Operations));
-        Assert.False(helper.Client.NeedsTemperatures());
+        Assert.Equal(ControlApplyStatuses.Applied, outcome.Status);
+        Assert.Equal(["describe", "setcurve"], File.ReadAllLines(helper.Operations));
+        Assert.True(helper.Client.NeedsTemperatures());
     }
 
     [Fact]
-    public async Task FailedApplyAfterTemperatureBootstrapDoesNotRequireOngoingTemperatures()
+    public async Task FailedApplyDoesNotBootstrapOrRequireOngoingTemperatures()
     {
-        await using var helper = new CurveHelper("\"ok\":false", requireSeed: true);
-        var outcome = await new FanControlWriter(helper.Client, sampler: new ApplyTemperatureSampler(0)).WriteAsync(Target,
+        await using var helper = new CurveHelper("\"ok\":false");
+        var outcome = await new FanControlWriter(helper.Client).WriteAsync(Target,
             new("fan.curve", ControlValueKinds.Curve, true),
             new("fan.curve", Curve: [new(60, 35)], CurveExecution: ControlFanCurveExecutions.Software), default);
         Assert.Equal(ControlApplyStatuses.Failed, outcome.Status);
-        Assert.Equal(["describe", "temp", "setcurve"], File.ReadAllLines(helper.Operations));
+        Assert.Equal(["describe", "setcurve"], File.ReadAllLines(helper.Operations));
         Assert.False(helper.Client.NeedsTemperatures());
     }
 
@@ -96,7 +93,7 @@ public sealed partial class FanCurveReceiptTests
         Assert.False(helper.Client.NeedsTemperatures());
         Assert.Equal(0, metrics.ActiveCount);
         await feed.StartAsync(default);
-        await WaitForLeaseAsync(metrics);
+        Assert.Equal(0, metrics.ActiveCount);
         var writer = new FanControlWriter(helper.Client);
         var capability = new ControlCapability("fan.curve", ControlValueKinds.Curve, true);
         var setting = new ControlSetting("fan.curve", Curve: [new(60, 35), new(120, 100)],
@@ -113,7 +110,7 @@ public sealed partial class FanCurveReceiptTests
         Assert.Equal(1, metrics.ActiveCount);
         Assert.True(await writer.RestoreAsync(other, capability, new HashSet<string>(), default, setting));
         Assert.False(helper.Client.NeedsTemperatures());
-        Assert.Equal(1, metrics.ActiveCount); // Application receipts do not stop the feed.
+        Assert.Equal(0, metrics.ActiveCount); // Empty SDK kinds release while the feed is still running.
         await feed.StopAsync(default);
         Assert.Equal(0, metrics.ActiveCount);
     }
@@ -122,7 +119,7 @@ public sealed partial class FanCurveReceiptTests
     [InlineData("firmware")]
     [InlineData("duty")]
     [InlineData("boost")]
-    public async Task EndingSoftwareExecutionLeavesTemperatureLeaseUntilControllerStopsFeed(string action)
+    public async Task EndingSoftwareExecutionReleasesTemperatureLeaseInsideRunningFeed(string action)
     {
         await using var helper = new CurveHelper(SoftwareReceipt,
             $"\"ok\":true,\"execution\":\"firmware\",\"curve\":{CompleteCurve}", AutomaticReceipt);
@@ -141,7 +138,7 @@ public sealed partial class FanCurveReceiptTests
         // a successful helper boost nevertheless ends the previous software plan.
         await writer.WriteAsync(Target, capability with { Id = id }, next, default);
         Assert.False(helper.Client.NeedsTemperatures());
-        Assert.Equal(1, metrics.ActiveCount);
+        Assert.Equal(0, metrics.ActiveCount);
         await feed.StopAsync(default);
         Assert.Equal(0, metrics.ActiveCount);
     }
@@ -213,25 +210,4 @@ public sealed partial class FanCurveReceiptTests
         }
     }
 
-    private sealed class ApplyTemperatureSampler(int? sampleAgeSeconds) : IMetricSampler
-    {
-        internal int Captures { get; private set; }
-        public Task<HardwareMetricSnapshot> GetSnapshotAsync(CancellationToken token) => throw new NotSupportedException();
-        public Task<HardwareMetricSnapshot> CaptureSnapshotAsync(MetricSampleRequest request, CancellationToken token) => throw new NotSupportedException("Fan apply must use subscription single fetch.");
-        public Task<HardwareMetricSnapshot> GetSnapshotAsync(MetricSampleRequest request, CancellationToken token)
-        {
-            Captures++;
-            Assert.Equal(["cpu.temperature"], request.Ids);
-            var now = DateTimeOffset.UtcNow;
-            var items = new Dictionary<string, MetricReadingValue>();
-            var datasets = new Dictionary<string, HardwareMetricDatasetObservation>();
-            if (sampleAgeSeconds is { } offset)
-            {
-                items["cpu.temperature"] = new(Id: "cpu.temperature", NumericValue: 60d, Unit: "°C", Percent: null);
-                datasets["cpu.temperature"] = new("cpu.temperature", SamplingObservationStatus.Current, 1,
-                    now.AddSeconds(offset).UtcTicks, 1, 1, 1, 1);
-            }
-            return Task.FromResult(new HardwareMetricSnapshot(now, HardwareMetricTestData.EmptyCpu, HardwareMetricTestData.EmptyMemory, HardwareMetricTestData.EmptyVirtualMemory, [], HardwareMetricTestData.EmptyGpuInventory, items) { Datasets = datasets });
-        }
-    }
 }

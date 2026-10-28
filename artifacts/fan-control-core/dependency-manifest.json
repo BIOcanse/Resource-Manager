@@ -1,13 +1,13 @@
 {
   "schema": "rm/fan-control-core-sdk-dependency/v1",
-  "managedVersion": "0.1.0-dev.5",
+  "managedVersion": "0.1.0-dev.6",
   "managedPackage": {
-    "sha256": "9F772518CCE4B87EA16B8968C8D39269C566FCB852955E5B170F8945672911C8",
-    "path": "packages/FanControlCore.Library.0.1.0-dev.5.nupkg",
+    "sha256": "816F545D063B15F8A01971E9F7BF7828FB3FE267DF2B2D2A87E5222414364A27",
+    "path": "packages/FanControlCore.Library.0.1.0-dev.6.nupkg",
     "source": "https://github.com/BIOcanse/Fan-Control-Core-Library (main, artifacts/packages)",
-    "length": 64928
+    "length": 66265
   },
-  "sourceCommit": "40eb063d92c02e72cd16eb2ea405eb931ec6502d",
+  "sourceCommit": "9d07509d062cc0097667f83d65609abdaf613fb3",
   "status": "source published in Fan-Control-Core-Library; package served from this local feed, not nuget.org",
   "license": "Apache-2.0"
 }

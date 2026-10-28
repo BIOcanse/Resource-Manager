@@ -2,14 +2,19 @@ using System.Text.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.FileProviders;
 using ResourceManager.App.Infrastructure.Control.Writers;
+using FanControlCore;
 
 namespace Resource_Manager_APP.Tests;
 
-internal sealed class DelegateFanSession(Func<JsonElement, JsonElement> handle, Action? dispose = null) : IFanControlCoreSession
+internal sealed class DelegateFanSession(Func<JsonElement, JsonElement> handle, Action? dispose = null,
+    Action<IReadOnlyList<FanTemperatureSample>>? push = null) : IFanControlCoreSession
 {
     private readonly HashSet<int> plans = [];
     public bool SoftwareCurveRunNeeded { get; private set; }
     public event Action<bool>? SoftwareCurveRunNeededChanged;
+    public IReadOnlyList<string> SoftwareCurveTemperatureKinds { get; private set; } = Array.Empty<string>();
+    public event Action<IReadOnlyList<string>>? SoftwareCurveTemperatureKindsChanged;
+    public void PushTemperatures(IReadOnlyList<FanTemperatureSample> samples) => push?.Invoke(samples);
     public JsonElement Handle(JsonElement request)
     {
         var response = handle(request);
@@ -30,6 +35,12 @@ internal sealed class DelegateFanSession(Func<JsonElement, JsonElement> handle, 
             }
             else if (op is "set" or "boost" or "auto") plans.Remove(fan.GetInt32());
             var needed = plans.Count != 0;
+            IReadOnlyList<string> kinds = needed ? ["cpu"] : Array.Empty<string>();
+            if (!SoftwareCurveTemperatureKinds.SequenceEqual(kinds))
+            {
+                SoftwareCurveTemperatureKinds = kinds;
+                SoftwareCurveTemperatureKindsChanged?.Invoke(kinds);
+            }
             if (SoftwareCurveRunNeeded != needed)
             {
                 SoftwareCurveRunNeeded = needed;
@@ -55,6 +66,13 @@ internal sealed class LibraryFanSession : IFanControlCoreSession
     private readonly FanControlCore.FanControlSession session;
     internal LibraryFanSession(FanControlCore.Discovery.FanCore core) => session = new(core);
     public JsonElement Handle(JsonElement request) => session.Handle(request);
+    public void PushTemperatures(IReadOnlyList<FanTemperatureSample> samples) => session.PushTemperatures(samples);
+    public IReadOnlyList<string> SoftwareCurveTemperatureKinds => session.SoftwareCurveTemperatureKinds;
+    public event Action<IReadOnlyList<string>>? SoftwareCurveTemperatureKindsChanged
+    {
+        add => session.SoftwareCurveTemperatureKindsChanged += value;
+        remove => session.SoftwareCurveTemperatureKindsChanged -= value;
+    }
     public bool SoftwareCurveRunNeeded => session.SoftwareCurveRunNeeded;
     public event Action<bool>? SoftwareCurveRunNeededChanged
     {

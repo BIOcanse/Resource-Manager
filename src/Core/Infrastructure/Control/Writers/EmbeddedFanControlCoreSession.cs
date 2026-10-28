@@ -7,6 +7,13 @@ internal sealed class EmbeddedFanControlCoreSession(string stateDirectory, strin
 {
     private readonly FanControlSession session = new(new FanCoreOptions(stateDirectory, libraryPath));
     public JsonElement Handle(JsonElement request) => session.Handle(request);
+    public void PushTemperatures(IReadOnlyList<FanTemperatureSample> samples) => session.PushTemperatures(samples);
+    public IReadOnlyList<string> SoftwareCurveTemperatureKinds => session.SoftwareCurveTemperatureKinds;
+    public event Action<IReadOnlyList<string>>? SoftwareCurveTemperatureKindsChanged
+    {
+        add => session.SoftwareCurveTemperatureKindsChanged += value;
+        remove => session.SoftwareCurveTemperatureKindsChanged -= value;
+    }
     public bool SoftwareCurveRunNeeded => session.SoftwareCurveRunNeeded;
     public event Action<bool>? SoftwareCurveRunNeededChanged
     {

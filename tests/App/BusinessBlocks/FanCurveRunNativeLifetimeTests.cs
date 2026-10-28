@@ -5,6 +5,7 @@ using ResourceManager.App.Application.Control;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Domain.Control;
 using ResourceManager.App.Domain.Metrics;
+using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.App.Hosting;
 using ResourceManager.App.Infrastructure.Control;
 using ResourceManager.App.Infrastructure.Control.Writers;
@@ -42,7 +43,7 @@ public sealed class FanCurveRunNativeLifetimeTests
             backends.Add(backend);
             return new LibraryFanSession(new FanControlCore.Discovery.FanCore(backend));
         });
-        var metrics = new EmptyTemperatures();
+        var metrics = new Temperatures();
         var plane = new ControlPlane(new Store(), new Layer(core), fan: core);
         using var feed = new FanCurveTemperatureFeed(metrics, core, new HardwareMetricCatalogState());
         using var host = Host.CreateDefaultBuilder().ConfigureLogging(log => log.ClearProviders())
@@ -111,8 +112,6 @@ public sealed class FanCurveRunNativeLifetimeTests
             foreach (var target in desired.Objects)
                 foreach (var setting in target.Settings)
                 {
-                    await core.PushTemperaturesAsync(new Dictionary<string, FanTemperatureSample> {
-                        ["cpu"] = new(60, DateTime.UtcNow.Ticks) }, token, skipIfBusy: false);
                     outcomes.Add(await new FanControlWriter(core).WriteAsync(new(target.ObjectId, ControlObjectKinds.Fan,
                         null, new(ControlOperatingSystems.Windows, ControlVendors.Oem), []),
                         new("fan.curve", ControlValueKinds.Curve, true), setting, token));
@@ -126,11 +125,19 @@ public sealed class FanCurveRunNativeLifetimeTests
         public Task<ControlDesiredState> LoadAsync(CancellationToken token) => Task.FromResult(current);
         public Task SaveAsync(ControlDesiredState value, CancellationToken token) { current = value; return Task.CompletedTask; }
     }
-    private sealed class EmptyTemperatures : IMetricSnapshotObservationSource
+    private sealed class Temperatures : IMetricSnapshotObservationSource
     {
         internal int Active;
         public IDisposable AcquireSubscription(string id, MetricSampleRequest request, TimeSpan interval) { Active++; return new Lease(this); }
-        public HardwareMetricSnapshot? ReadLatest(MetricSampleRequest request) => null;
-        private sealed class Lease(EmptyTemperatures owner) : IDisposable { public void Dispose() => owner.Active--; }
+        public HardwareMetricSnapshot? ReadLatest(MetricSampleRequest request)
+        {
+            var now = DateTimeOffset.UtcNow;
+            return new(now, HardwareMetricTestData.EmptyCpu, HardwareMetricTestData.EmptyMemory,
+                HardwareMetricTestData.EmptyVirtualMemory, [], HardwareMetricTestData.EmptyGpuInventory,
+                new Dictionary<string, MetricReadingValue> { ["cpu.temperature"] = new("cpu.temperature", NumericValue: 60, Unit: "°C", Percent: null) })
+            { Datasets = new Dictionary<string, HardwareMetricDatasetObservation> {
+                ["cpu.temperature"] = new("cpu.temperature", SamplingObservationStatus.Current, 1, now.UtcTicks, 1, 1, 1, 1) } };
+        }
+        private sealed class Lease(Temperatures owner) : IDisposable { public void Dispose() => owner.Active--; }
     }
 }

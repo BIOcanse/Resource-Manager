@@ -1,8 +1,6 @@
 using System.Text.Json;
 using ResourceManager.App.Application.Control;
-using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Domain.Control;
-using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 namespace ResourceManager.App.Infrastructure.Control.Writers;
 
@@ -16,9 +14,7 @@ namespace ResourceManager.App.Infrastructure.Control.Writers;
 /// </summary>
 public sealed class FanControlWriter(
     FanControlCoreClient core,
-    ILogger<FanControlWriter>? logger = null,
-    IMetricSampler? sampler = null,
-    HardwareMetricCatalogState? catalog = null) : IControlWriter
+    ILogger<FanControlWriter>? logger = null) : IControlWriter
 {
     internal const string LockMaximumCapabilityId = "fan.lock-maximum";
     internal const string CurveCapabilityId = "fan.curve";
@@ -321,28 +317,6 @@ public sealed class FanControlWriter(
         var fanIndex = description.Index;
         var software = setting.CurveExecution == ControlFanCurveExecutions.Software
             || setting.CurveExecution is null && description.FirmwareCurve is null;
-        if (software && sampler is not null)
-        {
-            // Explicit Apply is a one-shot consumer. Seed the helper before asking it
-            // to accept a software plan; only a successful plan starts the ongoing lease.
-            try
-            {
-                var snapshot = await sampler.GetSnapshotAsync(
-                    FanCurveTemperatureFeed.TemperatureRequest(catalog?.Current), cancellationToken).ConfigureAwait(false);
-                var samples = FanCurveTemperatureFeed.Collect(snapshot, DateTimeOffset.UtcNow);
-                var hasRequiredTemperature = description.Role == ControlFanRoles.Gpu
-                    ? samples.Keys.Any(name => name.StartsWith("gpu", StringComparison.OrdinalIgnoreCase))
-                    : samples.ContainsKey("cpu");
-                if (!hasRequiredTemperature
-                    || !await core.PushTemperaturesAsync(samples, cancellationToken, skipIfBusy: false).ConfigureAwait(false))
-                    return Failed(target, capability, "fan-temperature-missing");
-            }
-            catch (Exception error) when (error is not OperationCanceledException)
-            {
-                logger?.LogWarning(error, "软件风扇曲线启动前读取温度失败。");
-                return Failed(target, capability, "fan-temperature-missing");
-            }
-        }
 
         var response = await core.SendAsync(
             "setcurve",

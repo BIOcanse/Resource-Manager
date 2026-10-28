@@ -2,6 +2,7 @@ using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.Control.Writers;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using FanControlCore;
 
 namespace ResourceManager.App.Infrastructure.Control;
 
@@ -19,7 +20,7 @@ namespace ResourceManager.App.Infrastructure.Control;
 ///   0.1 秒推送让核心及时看到最新读数，再按曲线目标和加速度调速。
 ///   核心不对温度做滤波；放大推送间隔只会增加读数等待，拖慢对温度上冲的响应。</item>
 /// <item><b>订阅随块的生命周期。</b> 父决策节点根据会话还有没有曲线工作决定本块启停，
-///   运行入口打开温度订阅，停止时释放。</item>
+///   运行期间只订阅已记录计划需要的温度类别，类别为空或停止时释放。</item>
 /// <item><b>推送停了要能被发现。</b> 推的是"现在多少"，核心那边带时效：
 ///   连续几秒收不到就把风扇交还固件。所以这里**不补推历史、不排队**，
 ///   赶不上的那一拍直接丢掉 —— 迟到的温度比没有温度更糟。</item>
@@ -44,12 +45,19 @@ public sealed class FanCurveTemperatureFeed(
     private MetricSampleRequest? request;
     private bool finished;
 
+    private void TemperatureKindsChanged(IReadOnlyList<string> _) => UpdateSubscription();
+
     private void UpdateSubscription()
     {
         try { UpdateSubscriptionCore(); }
         catch (Exception error)
         {
-            lock (subscriptionGate) request = null;
+            lock (subscriptionGate)
+            {
+                request = null;
+                lease?.Dispose();
+                lease = null;
+            }
             logger?.LogWarning(error, "Fan temperature subscription callback failed; curves will release on stale input.");
         }
     }
@@ -58,12 +66,17 @@ public sealed class FanCurveTemperatureFeed(
     {
         lock (subscriptionGate)
         {
+            if (finished) return;
+            // event: SDK kinds and catalog determine the exact held fields.
+            var next = TemperatureRequest(catalog.Current, core.SoftwareCurveTemperatureKinds);
+            if (request is not null && request.Ids.Count == next.Ids.Count
+                && request.Ids.All(next.Includes)) return;
             lease?.Dispose();
             lease = null;
             request = null;
-            if (finished) return;
-            request = TemperatureRequest(catalog.Current);
-            lease = metrics.AcquireSubscription(SubscriptionId, request, Interval);
+            if (next.IsEmpty) return;
+            lease = metrics.AcquireSubscription(SubscriptionId, next, Interval);
+            request = next;
         }
     }
 
@@ -74,6 +87,7 @@ public sealed class FanCurveTemperatureFeed(
         try
         {
             catalog.Changed += UpdateSubscription;
+            core.SoftwareCurveTemperatureKindsChanged += TemperatureKindsChanged;
             UpdateSubscription();
             var temperatures = PushAsync(run.Token);
             var curve = core.RunSoftwareCurveAsync(run.Token);
@@ -99,6 +113,7 @@ public sealed class FanCurveTemperatureFeed(
     private void ReleaseSubscription()
     {
         catalog.Changed -= UpdateSubscription;
+        core.SoftwareCurveTemperatureKindsChanged -= TemperatureKindsChanged;
         lock (subscriptionGate)
         {
             finished = true;
@@ -116,14 +131,16 @@ public sealed class FanCurveTemperatureFeed(
         {
             while (await timer.WaitForNextTickAsync(stop).ConfigureAwait(false))
             {
-                MetricSampleRequest? currentRequest;
-                lock (subscriptionGate) currentRequest = request;
-                if (currentRequest is null) continue;
                 try
                 {
-                    if (metrics.ReadLatest(currentRequest) is { } snapshot
-                        && Collect(snapshot, DateTimeOffset.UtcNow) is { Count: > 0 } samples)
-                        await core.PushTemperaturesAsync(samples, stop).ConfigureAwait(false);
+                    Task<bool>? push = null;
+                    lock (subscriptionGate)
+                    {
+                        // live: one snapshot supplies the entire current-kind batch.
+                        if (request is { } currentRequest && metrics.ReadLatest(currentRequest) is { } snapshot)
+                            push = core.PushTemperaturesAsync(Collect(snapshot, currentRequest, DateTimeOffset.UtcNow), stop);
+                    }
+                    if (push is not null) await push.ConfigureAwait(false);
                 }
                 catch (Exception error) when (error is not OperationCanceledException)
                 {
@@ -142,17 +159,22 @@ public sealed class FanCurveTemperatureFeed(
     ///
     /// **读不到就不放进去**，不要填 0 —— 那会让曲线以为现在很凉。
     /// </summary>
-    internal static MetricSampleRequest TemperatureRequest(HardwareMetricSnapshot? snapshot)
+    internal static MetricSampleRequest TemperatureRequest(HardwareMetricSnapshot? snapshot, IReadOnlyList<string> kinds)
     {
-        return MetricSampleRequest.ForIds(CpuTemperatureMetricIds.Concat(
-            snapshot?.Items.Keys.Where(id => id.StartsWith("gpu.", StringComparison.OrdinalIgnoreCase)
-                && id.EndsWith(".temperature", StringComparison.OrdinalIgnoreCase)) ?? []));
+        var cpu = kinds.Contains(FanTemperatureKinds.Cpu) || kinds.Contains(FanTemperatureKinds.Any);
+        var gpu = kinds.Contains(FanTemperatureKinds.Gpu) || kinds.Contains(FanTemperatureKinds.Any);
+        return MetricSampleRequest.ForIds((cpu ? CpuTemperatureMetricIds : []).Concat(gpu
+            ? snapshot?.Items.Keys.Where(IsGpuTemperature) ?? [] : []));
     }
 
-    internal static Dictionary<string, FanTemperatureSample> Collect(HardwareMetricSnapshot snapshot, DateTimeOffset now)
+    private static bool IsGpuTemperature(string id)
+        => id.StartsWith("gpu.", StringComparison.OrdinalIgnoreCase)
+            && id.EndsWith(".temperature", StringComparison.OrdinalIgnoreCase);
+
+    internal static List<FanTemperatureSample> Collect(HardwareMetricSnapshot snapshot, MetricSampleRequest request, DateTimeOffset now)
     {
-        var samples = new Dictionary<string, FanTemperatureSample>(StringComparer.OrdinalIgnoreCase);
-        foreach (var id in TemperatureRequest(snapshot).Ids)
+        var samples = new List<FanTemperatureSample>(request.Ids.Count);
+        foreach (var id in request.Ids)
         {
             if (!snapshot.TryGetCurrentDataset(id, out var observation)
                 || observation.ObservedAtUtcTicks <= 0 || observation.ObservedAtUtcTicks > now.UtcTicks
@@ -160,16 +182,14 @@ public sealed class FanCurveTemperatureFeed(
                 || !snapshot.Items.TryGetValue(id, out var item)
                 || item.NumericValue is not { } celsius || !double.IsFinite(celsius)) continue;
             if (id.Equals("cpu.temperature", StringComparison.OrdinalIgnoreCase))
-                samples["cpu"] = new(celsius, observation.ObservedAtUtcTicks);
+                samples.Add(new("cpu", celsius, observation.ObservedAtUtcTicks));
             else
             {
                 var parts = id.Split('.');
                 if (parts.Length == 3 && int.TryParse(parts[1], out var index) && index >= 0)
-                    samples[$"gpu{index}"] = new(celsius, observation.ObservedAtUtcTicks);
+                    samples.Add(new($"gpu{index}", celsius, observation.ObservedAtUtcTicks));
             }
         }
         return samples;
     }
 }
-
-public sealed record FanTemperatureSample(double Celsius, long ObservedAtUtcTicks);
