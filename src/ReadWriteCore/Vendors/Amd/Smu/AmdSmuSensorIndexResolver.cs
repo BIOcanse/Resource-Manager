@@ -47,12 +47,15 @@ public sealed record AmdSmuSensorLayout(
         CpuVoltageStart: 105,
         IsHawkPointVoltageLayout: true);
 
+    // Measured on an 8940HX (table 0x00540208, 10-28, 12 samples under a 75 W load): [9] follows the core rail's
+    // power / voltage ([20] / [18]) within 2 %, limit [8] = 125 A; [63] swings 58-95 A and never falls below [9],
+    // limit [62] = 176 A, so it is the EDC peak. [64] stays near 49 A, mostly below [9], and is not EDC.
     public static AmdSmuSensorLayout DragonRange { get; } = new(
         StapmPower: 1,
         ActualPower: 3,
         AveragePower: 5,
         TdcCurrent: 9,
-        EdcCurrent: 64,
+        EdcCurrent: 63,
         CpuTemperature: 11,
         SocPower: 21,
         SocVoltage: 53,

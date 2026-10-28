@@ -42,6 +42,17 @@ public sealed class AmdSmuLibraryIntegrationTests
     }
 
     [Fact]
+    public void DragonRangeCurrentsComeFromTheTdcAndEdcPeakSlots()
+    {
+        // One real 0x00540208 sample: TDC 125 A limit / 56.6 A, EDC 176 A limit / 83.0 A peak, [64] 49.1 A.
+        var session = new RecordedSession { Values = { [8] = 125, [9] = 56.6f, [62] = 176, [63] = 83.0f, [64] = 49.1f } };
+        using var reader = new AmdSmuCpuSensorReader(() => session, 16, TimeSpan.Zero, TimeProvider.System);
+        var value = reader.Read(None with { IncludeTdcCurrent = true, IncludeEdcCurrent = true });
+        Assert.Equal(56.6, value.TdcCurrentAmps!.Value, 3);
+        Assert.Equal(83.0, value.EdcCurrentAmps!.Value, 3);
+    }
+
+    [Fact]
     public void UnknownTableVersionDoesNotBorrowAnotherGenerationLayout()
     {
         var session = new RecordedSession { TableVersion = 123 };
@@ -91,12 +102,14 @@ public sealed class AmdSmuLibraryIntegrationTests
         public uint TableVersion { get; set; } = 0x00540208;
         internal int Reads, Disposals;
         internal bool Fail;
+        internal Dictionary<int, float> Values { get; } = [];
         public float[] UpdateAndReadPmTable()
         {
             Reads++;
             if (Fail) throw new IOException("Recorded failure");
             var table = new float[1024]; table[3] = 42; table[11] = 75;
             table[314] = 1.1f; table[346] = 4.25f;
+            foreach (var (index, value) in Values) table[index] = value;
             return table;
         }
         public void Dispose() => Disposals++;
