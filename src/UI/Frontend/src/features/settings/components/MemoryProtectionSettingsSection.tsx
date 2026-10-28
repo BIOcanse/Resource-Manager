@@ -112,6 +112,8 @@ export function MemoryProtectionSettingsSection(props: MemoryProtectionSettingsS
   };
 
   const notProvided = () => copy().valueNotProvided;
+  // 正常运行点那一格由一句话盖住三项结构：状态已到但没有运行点，或状态读不到。
+  const pointSlotCovered = () => Boolean(view()) || unavailable();
 
   return (
     <div class="settings-section-panel memory-protection-settings" {...frontendVisibilitySurface(workId, [workId])}>
@@ -263,24 +265,37 @@ export function MemoryProtectionSettingsSection(props: MemoryProtectionSettingsS
               <div class="settings-row-copy">
                 <strong>{copy().pointTitle}</strong>
                 <span>{copy().pointDescription}</span>
-                <Show
-                  when={view()}
-                  fallback={<span role="status">{unavailable() ? copy().statusUnavailable : copy().statusLoading}</span>}
-                >
-                  {(currentView) => (
-                    <Show when={currentView().normalRunningPoint} fallback={<span class="memory-protection-point-none">{copy().pointNone}</span>}>
-                      {(current) => (
-                        <dl class="memory-protection-facts memory-protection-point">
-                          <Fact label={copy().pointAt}>{userFacingDateTime(current().at)}</Fact>
-                          <Fact label={copy().pointProcessCount}>{formatInterfaceNumber(current().processCount)}</Fact>
-                          <Fact label={copy().pointCommit}>
-                            {formatBytePair(current().commit.currentBytes, current().commit.limitBytes, "memory")}
-                          </Fact>
+                {/* 这一格总按三项读数的结构占位：读取中写“--”（正在读取由分区顶部读给读屏），没有运行点或读不到时
+                    那句话叠在同一格里，三项结构隐藏但仍占位。几种状态一样高，下面的行不被推动
+                    （用户 10-27：「让占位和加载后状态的逻辑占位大小相等」）。 */}
+                <div class="memory-protection-point-slot">
+                  <Show
+                    when={view()?.normalRunningPoint}
+                    fallback={
+                      <>
+                        <dl class="memory-protection-facts" classList={{ "slot-hidden": pointSlotCovered() }}
+                          aria-hidden={pointSlotCovered() ? "true" : undefined}>
+                          <Fact label={copy().pointAt}>--</Fact>
+                          <Fact label={copy().pointProcessCount}>--</Fact>
+                          <Fact label={copy().pointCommit}>--</Fact>
                         </dl>
-                      )}
-                    </Show>
-                  )}
-                </Show>
+                        <Show when={view()} fallback={<Show when={unavailable()}><span role="status">{copy().statusUnavailable}</span></Show>}>
+                          <span class="memory-protection-point-none">{copy().pointNone}</span>
+                        </Show>
+                      </>
+                    }
+                  >
+                    {(current) => (
+                      <dl class="memory-protection-facts memory-protection-point">
+                        <Fact label={copy().pointAt}>{userFacingDateTime(current().at)}</Fact>
+                        <Fact label={copy().pointProcessCount}>{formatInterfaceNumber(current().processCount)}</Fact>
+                        <Fact label={copy().pointCommit}>
+                          {formatBytePair(current().commit.currentBytes, current().commit.limitBytes, "memory")}
+                        </Fact>
+                      </dl>
+                    )}
+                  </Show>
+                </div>
                 <Show when={pointMessage()}>
                   {(message) => <span role={message().kind}>{message().text()}</span>}
                 </Show>

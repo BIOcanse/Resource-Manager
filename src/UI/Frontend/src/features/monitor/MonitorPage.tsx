@@ -104,122 +104,130 @@ export function MonitorPage(props: MonitorPageProps) {
         presentation="blocking-only"
         onRetry={() => void monitor.refreshCatalog()}
       />
-          <MonitorWorkRegion
+      {/* 卡片、资源条和表列都来自看板布局；布局读回之前不知道有几张卡片、几条资源条、哪些列，下面三个区都不摆，
+          只把正在加载读给读屏。布局到时三个区一起出现，已经显示的东西（上面的工具栏）不被推动
+          （用户 10-27：「让占位和加载后状态的逻辑占位大小相等」）。读不到布局时照常显示三个区和各自的状态。 */}
+      <Show
+        when={monitor.dashboardSettingsState() !== "loading"}
+        fallback={<p class="sr-only" role="status">{uiText.observationNotice.loading(uiText.monitorPage.liveMetrics)}</p>}
+      >
+        <MonitorWorkRegion
+          label={uiText.monitorPage.liveMetrics}
+          workId="monitor.metrics"
+        >
+          <ObservationStateBoundary
+            state={monitor.snapshotObservation()}
             label={uiText.monitorPage.liveMetrics}
-            workId="monitor.metrics"
+            presentation="blocking-only"
+            renderWhenUnavailable
           >
-            <ObservationStateBoundary
-              state={monitor.snapshotObservation()}
-              label={uiText.monitorPage.liveMetrics}
+            {/* 设备字段那一路单独提示：只影响用设备字段的卡片，那些卡片写“读取失败”，其他卡片照常。推送源自己重连，没有手动重试。 */}
+            <ObservationStateNotice
+              state={monitor.fieldObservation()}
+              label={uiText.monitorPage.deviceFieldReadings}
               presentation="blocking-only"
-              renderWhenUnavailable
+            />
+            <div
+              ref={dashboardEditorRegion}
+              role={monitor.editMode() ? "group" : undefined}
+              aria-label={monitor.editMode() ? uiText.monitorPage.layoutEditor : undefined}
             >
-              {/* 设备字段那一路单独提示：只影响用设备字段的卡片，那些卡片写“读取失败”，其他卡片照常。推送源自己重连，没有手动重试。 */}
-              <ObservationStateNotice
-                state={monitor.fieldObservation()}
-                label={uiText.monitorPage.deviceFieldReadings}
-                presentation="blocking-only"
+              <Dashboard
+                cards={monitor.activeCards()}
+                catalog={monitor.cardCatalog()}
+                gpuNames={monitor.gpuNames()}
+                snapshot={monitor.cardSnapshot()}
+                pendingMetricIds={monitor.cardPendingMetricIds()}
+                failedMetricIds={monitor.cardFailedMetricIds()}
+                trends={monitor.cardTrends()}
+                editMode={monitor.editMode()}
+                metricSelectionAvailable={metricSelectionAvailable()}
+                onOpenMetricModal={monitor.openMetricModal}
+                onClearSlot={monitor.clearMetricSlot}
+                onResizeSlot={monitor.resizeMetricSlot}
+                onMoveCard={monitor.moveDashboardCard}
+                onMoveMetricSlot={monitor.moveDashboardMetricSlot}
               />
-              <div
-                ref={dashboardEditorRegion}
-                role={monitor.editMode() ? "group" : undefined}
-                aria-label={monitor.editMode() ? uiText.monitorPage.layoutEditor : undefined}
-              >
-                <Dashboard
-                  cards={monitor.activeCards()}
-                  catalog={monitor.cardCatalog()}
-                  gpuNames={monitor.gpuNames()}
-                  snapshot={monitor.cardSnapshot()}
-                  pendingMetricIds={monitor.cardPendingMetricIds()}
-                  failedMetricIds={monitor.cardFailedMetricIds()}
-                  trends={monitor.cardTrends()}
-                  editMode={monitor.editMode()}
-                  metricSelectionAvailable={metricSelectionAvailable()}
-                  onOpenMetricModal={monitor.openMetricModal}
-                  onClearSlot={monitor.clearMetricSlot}
-                  onResizeSlot={monitor.resizeMetricSlot}
-                  onMoveCard={monitor.moveDashboardCard}
-                  onMoveMetricSlot={monitor.moveDashboardMetricSlot}
-                />
-              </div>
-            </ObservationStateBoundary>
-          </MonitorWorkRegion>
-          <MonitorWorkRegion
+            </div>
+          </ObservationStateBoundary>
+        </MonitorWorkRegion>
+        <MonitorWorkRegion
+          label={uiText.monitorPage.resourceUsage}
+          workId="monitor.bars"
+        >
+          <ObservationStateBoundary
+            state={monitor.resourceBarsObservation()}
             label={uiText.monitorPage.resourceUsage}
-            workId="monitor.bars"
+            presentation="blocking-only"
+            renderWhenUnavailable
           >
-            <ObservationStateBoundary
-              state={monitor.resourceBarsObservation()}
-              label={uiText.monitorPage.resourceUsage}
-              presentation="blocking-only"
-              renderWhenUnavailable
-            >
-              <ResourceBreakdown
-                animationStyle={props.animationStyle}
-                catalog={monitor.catalog()}
-                gpuNames={monitor.gpuNames()}
-                editMode={monitor.resourceBarEditing()}
-                editingAvailable={dashboardAvailable()}
-                bars={monitor.activeResourceBars()}
-                snapshotBars={monitor.orderedSnapshotBars()}
-                processFields={monitor.processFields()}
-                observation={monitor.resourceBarsObservation()}
-                processDetails={monitor.resourceProcessDetails()}
-                processDetailsObservation={monitor.resourceProcessDetailsObservation()}
-                selection={monitor.resourceSelection()}
-                saveState={monitor.resourceBarSaveState()}
-                onToggleEdit={monitor.toggleResourceBarEditMode}
-                onCancelEdit={monitor.cancelResourceBarEdit}
-                onToggleBar={monitor.toggleResourceBar}
-                onScaleModeChange={monitor.updateResourceBarScale}
-                onSourceChange={monitor.changeResourceBarSource}
-                onSelect={monitor.selectResourceSegment}
-                onToggle={monitor.toggleResourceSegment}
-                onReorderBar={monitor.reorderResourceBars}
-              />
-            </ObservationStateBoundary>
-          </MonitorWorkRegion>
-          <MonitorWorkRegion
+            <ResourceBreakdown
+              animationStyle={props.animationStyle}
+              catalog={monitor.catalog()}
+              gpuNames={monitor.gpuNames()}
+              editMode={monitor.resourceBarEditing()}
+              editingAvailable={dashboardAvailable()}
+              bars={monitor.activeResourceBars()}
+              snapshotBars={monitor.orderedSnapshotBars()}
+              processFields={monitor.processFields()}
+              observation={monitor.resourceBarsObservation()}
+              processDetails={monitor.resourceProcessDetails()}
+              processDetailsObservation={monitor.resourceProcessDetailsObservation()}
+              selection={monitor.resourceSelection()}
+              saveState={monitor.resourceBarSaveState()}
+              onToggleEdit={monitor.toggleResourceBarEditMode}
+              onCancelEdit={monitor.cancelResourceBarEdit}
+              onToggleBar={monitor.toggleResourceBar}
+              onScaleModeChange={monitor.updateResourceBarScale}
+              onSourceChange={monitor.changeResourceBarSource}
+              onSelect={monitor.selectResourceSegment}
+              onToggle={monitor.toggleResourceSegment}
+              onReorderBar={monitor.reorderResourceBars}
+            />
+          </ObservationStateBoundary>
+        </MonitorWorkRegion>
+        <MonitorWorkRegion
+          label={uiText.monitorPage.resourceList}
+          workId="monitor.table"
+        >
+          <ObservationStateBoundary
+            state={activeResourceTableObservation()}
             label={uiText.monitorPage.resourceList}
-            workId="monitor.table"
+            presentation="blocking-only"
+            renderWhenUnavailable
           >
-            <ObservationStateBoundary
-              state={activeResourceTableObservation()}
-              label={uiText.monitorPage.resourceList}
-              presentation="blocking-only"
-              renderWhenUnavailable
-            >
-              <ResourceTable
-                editMode={monitor.resourceTableEditing()}
-                editingAvailable={dashboardAvailable()}
-                mode={monitor.resourceTableMode()}
-                catalog={monitor.catalog()}
-                metricSnapshot={monitor.snapshot()}
-                metricObservation={monitor.snapshotObservation()}
-                columnSettings={monitor.activeResourceTableColumns()}
-                snapshot={monitor.resourceTableSnapshot()}
-                observation={activeResourceTableObservation()}
-                gpuNames={monitor.gpuNames()}
-                sortColumnId={monitor.resourceTableSort().columnId}
-                sortDirection={monitor.resourceTableSort().direction}
-                expandedSoftwareIds={monitor.expandedResourceTableRows()}
-                highlightedSoftwareId={props.highlightedSoftwareId()}
-                saveState={monitor.resourceTableSaveState()}
-                onModeChange={monitor.changeResourceTableMode}
-                onToggleEdit={monitor.toggleResourceTableEditMode}
-                onCancelEdit={monitor.cancelResourceTableEdit}
-                onSortColumn={monitor.cycleResourceTableSort}
-                onToggleColumn={monitor.toggleResourceTableColumn}
-                processFields={monitor.processFields()}
-                onColumnSourceChange={monitor.changeResourceTableColumnSource}
-                onColumnWidthChange={monitor.updateResourceTableColumnWidth}
-                onToggleExpand={monitor.toggleResourceTableExpand}
-                onSoftwareContextMenu={props.onResourceTableSoftwareContextMenu}
-                contextMenuOpen={props.contextMenuOpen}
-                onReorderColumn={monitor.reorderResourceTableColumns}
-              />
-            </ObservationStateBoundary>
-          </MonitorWorkRegion>
+            <ResourceTable
+              editMode={monitor.resourceTableEditing()}
+              editingAvailable={dashboardAvailable()}
+              mode={monitor.resourceTableMode()}
+              catalog={monitor.catalog()}
+              metricSnapshot={monitor.snapshot()}
+              metricObservation={monitor.snapshotObservation()}
+              columnSettings={monitor.activeResourceTableColumns()}
+              snapshot={monitor.resourceTableSnapshot()}
+              observation={activeResourceTableObservation()}
+              gpuNames={monitor.gpuNames()}
+              sortColumnId={monitor.resourceTableSort().columnId}
+              sortDirection={monitor.resourceTableSort().direction}
+              expandedSoftwareIds={monitor.expandedResourceTableRows()}
+              highlightedSoftwareId={props.highlightedSoftwareId()}
+              saveState={monitor.resourceTableSaveState()}
+              onModeChange={monitor.changeResourceTableMode}
+              onToggleEdit={monitor.toggleResourceTableEditMode}
+              onCancelEdit={monitor.cancelResourceTableEdit}
+              onSortColumn={monitor.cycleResourceTableSort}
+              onToggleColumn={monitor.toggleResourceTableColumn}
+              processFields={monitor.processFields()}
+              onColumnSourceChange={monitor.changeResourceTableColumnSource}
+              onColumnWidthChange={monitor.updateResourceTableColumnWidth}
+              onToggleExpand={monitor.toggleResourceTableExpand}
+              onSoftwareContextMenu={props.onResourceTableSoftwareContextMenu}
+              contextMenuOpen={props.contextMenuOpen}
+              onReorderColumn={monitor.reorderResourceTableColumns}
+            />
+          </ObservationStateBoundary>
+        </MonitorWorkRegion>
+      </Show>
     </section>
   );
 }

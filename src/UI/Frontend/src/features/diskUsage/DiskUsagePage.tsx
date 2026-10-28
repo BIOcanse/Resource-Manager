@@ -155,8 +155,21 @@ export function DiskUsagePage(props: {
               <h2>{uiText.diskUsage.volumeColumnLabel}</h2>
             </div>
           </div>
+          {/* 磁盘列表读回之前不知道有几块盘：按至少一块占一张卷卡片的位置（列表至少一行高），读数写“--”，
+              正在加载读给读屏；一行放得下的盘数以内，列表到时下面的扫描按钮和结果不被推动
+              （用户 10-27：「让占位和加载后状态的逻辑占位大小相等」）。 */}
           <Show when={props.volumesReadState === "loading" && props.volumes.length === 0}>
-            <ContentState kind="waiting" title={uiText.observationNotice.loading(uiText.diskUsage.volumeColumnLabel)} />
+            <p class="sr-only" role="status">{uiText.observationNotice.loading(uiText.diskUsage.volumeColumnLabel)}</p>
+            <ul class="disk-usage-volume-list" aria-hidden="true">
+              <li>
+                <div class="disk-usage-volume pending">
+                  <span class="disk-usage-volume-name">--</span>
+                  <span class="disk-usage-volume-meta">--</span>
+                  <span class="disk-usage-volume-size">--</span>
+                  <span class="disk-usage-volume-bar" />
+                </div>
+              </li>
+            </ul>
           </Show>
           <Show when={props.volumesReadState === "error"}>
             <div role="alert">

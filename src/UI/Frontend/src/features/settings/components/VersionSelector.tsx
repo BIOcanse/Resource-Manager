@@ -84,17 +84,6 @@ export function VersionSelector(props: {
     </label>;
   }
 
-  // 固定项没有对应版本时，在它的位置上显示空状态。
-  function emptySlot(label: string, message: string) {
-    return <div class="version-selector-item version-selector-empty">
-      <span class="version-selector-radio-space" aria-hidden="true" />
-      <span class="version-selector-item-text">
-        <strong>{label}</strong>
-        <small>{message}</small>
-      </span>
-    </div>;
-  }
-
   return <div class="version-selector">
     <Show when={notes().length > 0}>
       <ul class="version-selector-notes">
@@ -102,10 +91,10 @@ export function VersionSelector(props: {
       </ul>
     </Show>
     <div class="version-selector-pinned">
-      <Show when={latest()} fallback={emptySlot(text().latest, text().noLatest)}>
+      <Show when={latest()} fallback={pinnedEmptySlot(text().latest, text().noLatest)}>
         {(option) => row(option(), text().latest)}
       </Show>
-      <Show when={stable()} fallback={emptySlot(text().latestStable, text().noStable)}>
+      <Show when={stable()} fallback={pinnedEmptySlot(text().latestStable, text().noStable)}>
         {(option) => row(option(), text().latestStable)}
       </Show>
       <Show when={verified()}>{(option) => row(option(), text().verified)}</Show>
@@ -128,5 +117,29 @@ export function VersionSelector(props: {
         </Show>}</For>
       </div>
     </Show>
+  </div>;
+}
+
+// 固定项没有对应版本时，在它的位置上显示空状态。
+function pinnedEmptySlot(label: string, message: string) {
+  return <div class="version-selector-item version-selector-empty">
+    <span class="version-selector-radio-space" aria-hidden="true" />
+    <span class="version-selector-item-text">
+      <strong>{label}</strong>
+      <small>{message}</small>
+    </span>
+  </div>;
+}
+
+/**
+ * 版本列表读回之前：只摆一定会有的固定两项（最新、最新稳定），读数写“--”，和有数据时同样的盒子；
+ * 已验证一项和各系列分组取决于数据，到时接在后面（用户 10-27：「让占位和加载后状态的逻辑占位大小相等」）。
+ */
+export function VersionSelectorPlaceholder(props: { text: UpdatesCopy }) {
+  return <div class="version-selector" aria-hidden="true">
+    <div class="version-selector-pinned">
+      {pinnedEmptySlot(props.text.latest, "--")}
+      {pinnedEmptySlot(props.text.latestStable, "--")}
+    </div>
   </div>;
 }

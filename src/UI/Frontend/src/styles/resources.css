@@ -959,7 +959,8 @@
 }
 
 .resource-bar-track.unavailable,
-.resource-bar-track.pending {
+.resource-bar-track.pending,
+.resource-process-track.pending {
   cursor: default;
   background: var(--surface-soft);
 }

@@ -758,7 +758,7 @@ function ResourceProcessPanel(props: {
       </div>
       <div
         class="resource-process-track"
-        classList={{ empty: !hasProcesses() }}
+        classList={{ empty: !hasProcesses(), pending: props.processes === null && props.observation.status === "loading" }}
         ref={trackGeometry.observeTrack}
         tabIndex={hasProcesses() ? 0 : -1}
         role={hasProcesses() ? "listbox" : undefined}
@@ -789,7 +789,8 @@ function ResourceProcessPanel(props: {
       >
         <Show
           when={hasProcesses()}
-          fallback={<Show when={props.processes !== null} fallback={<ObservationStateNotice
+          // 明细到之前轨道照常是一条空轨道（高度固定），正在加载只读给读屏，不在轨道里摆提示框。
+          fallback={<Show when={props.processes !== null} fallback={<ObservationStateNotice presentation="announce-loading"
             state={props.observation} label={uiText.resourceBreakdownView.processUsage(softwareDisplayName(props.software, props.bar.metricId))} />}>
             <div class="resource-process-empty">{uiText.resourceBreakdown.noAttributableProcess}</div>
           </Show>}

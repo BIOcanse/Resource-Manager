@@ -9,7 +9,7 @@ import {
   DialogRoot
 } from "../../../ui/primitives/Dialog";
 import { currentSettingsText, uiText } from "../../../text.ts";
-import { VersionSelector } from "../../settings/components/VersionSelector";
+import { VersionSelector, VersionSelectorPlaceholder } from "../../settings/components/VersionSelector";
 import type { ComponentVersionOption, ManagedComponent } from "../../../types";
 
 /**
@@ -134,7 +134,13 @@ export function ComponentAcquisitionDialog(props: {
               <Show when={!request.manual && !isUpdate(request)}>
                 <Show
                   when={!request.loading}
-                  fallback={<p>{uiText.componentAcquisition.loadingVersions}</p>}
+                  fallback={
+                    <fieldset class="component-acquisition-versions">
+                      <legend>{uiText.componentAcquisition.versionLegend}</legend>
+                      <p class="sr-only" role="status">{uiText.componentAcquisition.loadingVersions}</p>
+                      <VersionSelectorPlaceholder text={currentSettingsText().updates} />
+                    </fieldset>
+                  }
                 >
                   <Show when={request.versions.length > 0}>
                     <fieldset class="component-acquisition-versions">

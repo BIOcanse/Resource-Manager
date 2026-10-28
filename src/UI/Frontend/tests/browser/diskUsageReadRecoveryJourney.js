@@ -47,7 +47,9 @@ export default async function diskUsageReadRecoveryJourney(page, baseUrl) {
     if (releaseInitialReads) {
       try {
         await workspace.locator(".disk-usage-result .content-state.waiting").waitFor({ state: "visible" });
-        await workspace.locator(".disk-usage-volumes .content-state.waiting").waitFor({ state: "visible" });
+        // 磁盘列表读回之前占一张卷卡片（和读回后同一个盒子），正在加载读给读屏。
+        await workspace.locator(".disk-usage-volumes .disk-usage-volume.pending").waitFor({ state: "visible" });
+        await workspace.locator(".disk-usage-volumes [role=status]").getByText(copy.observationNotice.loading(copy.diskUsage.volumeColumnLabel), { exact: true }).waitFor({ state: "attached" });
         pendingResultHeight = await workspace.locator(".disk-usage-result").evaluate(node => node.getBoundingClientRect().height);
         assert(await workspace.getByText(copy.diskUsage.emptyTitle, { exact: true }).count() === 0, "Unread disk result cannot show the accepted-empty prompt");
         assert(await workspace.getByText(copy.diskUsage.noVolumes, { exact: true }).count() === 0, "Unread volume list cannot claim zero volumes");

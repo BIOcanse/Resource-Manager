@@ -76,6 +76,13 @@
   color: var(--muted);
 }
 
+/* 读回之前的那张占位卡片：和卷卡片同一个盒子，不可点，底色同资源条的加载占位。 */
+.disk-usage-volume.pending {
+  background: var(--surface-soft);
+  box-shadow: none;
+  color: var(--muted);
+}
+
 .disk-usage-volume-name {
   font-size: 15px;
   font-weight: 700;

@@ -283,8 +283,9 @@ export function SoftwareDetailModal(props: SoftwareDetailModalProps) {
                       <button type="button" class="secondary" onClick={props.onRetryMetadata}>{uiText.managementFeedback.retry}</button>
                     </div>
                   </Show>
+                  {/* 读完以后这一行不在了，所以读取中也不占位置，只读给读屏：下面的路径和操作两节不因它先下后上。 */}
                   <Show when={model().metadataStatus === "loading" || model().metadataStatus === "refreshing"}>
-                    <p role="status">{uiText.managementFeedback.metadataLoading}</p>
+                    <p class="sr-only" role="status">{uiText.managementFeedback.metadataLoading}</p>
                   </Show>
                   <DetailSection title={uiText.softwareDetail.section.metadata} rows={model().metadataRows} onOpenPath={props.runtimeEffectsEnabled ? props.onOpenPath : undefined} />
                   <DetailSection title={uiText.softwareDetail.section.paths} rows={model().pathRows} onOpenPath={props.runtimeEffectsEnabled ? props.onOpenPath : undefined} />
