@@ -46,10 +46,18 @@ export interface HostMemoryProcess {
   executablePath: string | null;
   parentProcessId: number | null;
 }
-export interface NormalRunningPointSummary { at: string; processCount: number; }
+/** One saved normal running point without its processes; the id names it for selecting and deleting. */
+export interface NormalRunningPointSummary { id: string; at: string; processCount: number; commit: HostMemoryCommit; }
 export interface NormalRunningPoint extends NormalRunningPointSummary {
-  commit: HostMemoryCommit;
   processes: HostMemoryProcess[];
+}
+/** GET /api/memory-protection/normal-running-points: the saved points, oldest first, and the one in effect. */
+export interface NormalRunningPointList {
+  /** Null when no point is in effect (protection inactive with no-normal-running-point). */
+  activeId: string | null;
+  points: NormalRunningPointSummary[];
+  /** Creation past this many saved points is refused with normal-running-point-limit. */
+  limit: number;
 }
 export interface HostMemoryReserveEntryStatus {
   location: string;
@@ -138,6 +146,6 @@ export interface HostMemoryProtectionView {
   /** Newest first, at most recordLimit. */
   records: HostMemoryActionRecord[];
   recordLimit: number;
-  /** Null when no point exists (never created or cleared). */
+  /** The point in effect; null when none is in effect (none saved, or the one in effect was deleted). */
   normalRunningPoint: NormalRunningPoint | null;
 }

@@ -3,7 +3,7 @@ import { before, after, test } from "node:test";
 import { startMockServer } from "./mockServerFixture.mjs";
 import { memoryProtectionScenarios } from "../memoryProtectionFixture.mjs";
 import {
-  memoryProtectionFrameDecoder, memoryProtectionStatusDecoder, normalRunningPointDecoder
+  memoryProtectionFrameDecoder, memoryProtectionStatusDecoder, normalRunningPointDecoder, normalRunningPointListDecoder
 } from "../../../src/data/memoryProtection/memoryProtectionDecoders.ts";
 import { appSettingsResultDecoder } from "../../../src/data/appSettings/appSettingsResultDecoder.ts";
 import { softwarePolicyDecoder } from "../../../src/data/softwarePolicy/softwarePolicyDecoder.ts";
@@ -197,16 +197,59 @@ test("the subscription replays status, records and point, then sends one frame p
   const events = server.frames(protection, frames => frames.filter(frame => frame.value.type === "normalRunningPoint").length >= 2);
   await new Promise(resolve => setTimeout(resolve, 200));
   await server.scenario({ memoryProtectionRecords: [{ actionId: "1".repeat(32), processId: 61, outcome: "terminated-without-dump",
-    reason: "terminate-only" }], memoryProtectionClearPoint: true });
+    reason: "terminate-only" }] });
+  const { activeId } = (await server.json("/api/memory-protection/normal-running-points")).value;
+  assert.equal((await fetch(`${server.baseUrl}/api/memory-protection/normal-running-points/${activeId}`, { method: "DELETE" })).status, 204);
   const tail = (await events).map(frame => frame.value).slice(3);
   assert.deepEqual(tail.map(frame => frame.type), ["record", "status", "normalRunningPoint"]);
   assert.equal(tail[0].record.processId, 61); memoryProtectionFrameDecoder.decode(tail[0]);
   assert.equal(tail[1].status.inactiveReason, "no-normal-running-point");
-  assert.equal(tail[2].normalRunningPoint, null, "a cleared point is null");
+  assert.equal(tail[2].normalRunningPoint, null, "deleting the point in effect leaves none in effect");
   const created = server.frames(protection, frames => frames.filter(frame => frame.value.type === "normalRunningPoint").length >= 2);
   await new Promise(resolve => setTimeout(resolve, 200));
   const point = (await server.json("/api/memory-protection/normal-running-point", { method: "POST" })).value;
   assert.deepEqual((await created).at(-1).value, { type: "normalRunningPoint", normalRunningPoint: point }, "creation sends the full point");
+});
+// HostMemoryProtectionService.PointStore: saved points oldest first, a new point takes effect and earlier ones stay,
+// selecting and deleting answer 404 for an unknown id, creation past the limit answers 409, and the point frame is sent
+// only when the point in effect changes.
+test("saved normal running points: list, create, select, delete and the limit", async () => {
+  await server.scenario({ memoryProtection: "no-point" });
+  const list = async () => normalRunningPointListDecoder.decode((await server.json("/api/memory-protection/normal-running-points")).value);
+  assert.deepEqual(await list(), { activeId: null, points: [], limit: 32 });
+  const first = (await server.json("/api/memory-protection/normal-running-point", { method: "POST" })).value;
+  const second = (await server.json("/api/memory-protection/normal-running-point", { method: "POST" })).value;
+  let current = await list();
+  assert.deepEqual(current.points.map(point => point.id), [first.id, second.id], "oldest first, earlier points stay");
+  assert.equal(current.activeId, second.id, "the new point takes effect");
+  assert.deepEqual(current.points[0], { id: first.id, at: first.at, processCount: first.processCount, commit: first.commit });
+  assert.deepEqual(memoryProtectionStatusDecoder.decode((await server.json("/api/memory-protection")).value).normalRunningPoint,
+    current.points[1], "the status summary is the point in effect");
+
+  const selectedFrame = server.frames(protection, frames => frames.filter(frame => frame.value.type === "normalRunningPoint").length >= 2);
+  await new Promise(resolve => setTimeout(resolve, 200));
+  const selected = await server.json("/api/memory-protection/normal-running-points/active", body("PUT", { id: first.id }));
+  assert.equal(selected.status, 200); assert.deepEqual(normalRunningPointDecoder.decode(selected.value), first);
+  assert.equal((await selectedFrame).at(-1).value.normalRunningPoint.id, first.id, "selecting sends the point in effect");
+  assert.equal((await list()).activeId, first.id);
+  assert.deepEqual((await server.json("/api/memory-protection/normal-running-points/active", body("PUT", { id: "missing" }))),
+    { status: 404, value: { error: "normal-running-point-not-found" } });
+
+  const remove = id => fetch(`${server.baseUrl}/api/memory-protection/normal-running-points/${id}`, { method: "DELETE" });
+  assert.equal((await remove(second.id)).status, 204, "deleting a point not in effect");
+  current = await list();
+  assert.deepEqual(current.points.map(point => point.id), [first.id]); assert.equal(current.activeId, first.id);
+  const missing = await remove(second.id);
+  assert.equal(missing.status, 404); assert.deepEqual(await missing.json(), { error: "normal-running-point-not-found" });
+  assert.equal((await remove(first.id)).status, 204, "deleting the point in effect");
+  assert.deepEqual(await list(), { activeId: null, points: [], limit: 32 });
+  assert.equal((await server.json("/api/memory-protection")).value.inactiveReason, "no-normal-running-point");
+
+  await server.scenario({ memoryProtection: "no-point", memoryProtectionPointLimit: 1 });
+  assert.equal((await server.json("/api/memory-protection/normal-running-point", { method: "POST" })).status, 200);
+  assert.deepEqual(await server.json("/api/memory-protection/normal-running-point", { method: "POST" }),
+    { status: 409, value: { error: "normal-running-point-limit" } }, "creation past the limit is refused, nothing evicted");
+  assert.equal((await list()).points.length, 1);
 });
 test("record frames upsert by action and process identity and the replay honours the limit", async () => {
   await server.scenario({ memoryProtection: "active", memoryProtectionRecordLimit: 2 });

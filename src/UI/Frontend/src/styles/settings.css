@@ -1593,6 +1593,8 @@
 .memory-protection-point-slot { min-width: 0; display: grid; }
 .memory-protection-point-slot > * { grid-area: 1 / 1; min-width: 0; align-self: start; }
 .memory-protection-point-slot > .slot-hidden { visibility: hidden; }
+/* 已保存的正常运行点：生效的那张卡片用强调色边框，一眼看得出是哪一个（按钮写“生效中”且不可按）。 */
+.memory-protection-saved-point.in-effect { border-color: var(--accent); }
 /* 最小进程增长量：字节数框和更新间隔的数字框同宽，右侧是同一数值的可读写法，底边对齐。 */
 .memory-protection-byte-control { min-width: 0; display: flex; align-items: end; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .memory-protection-byte-control .settings-number-field { width: var(--settings-number-width); }

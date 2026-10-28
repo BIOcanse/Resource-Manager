@@ -7,7 +7,8 @@ import * as f from "./fixtures/memoryProtection.ts";
 for (const [decode, value] of [
   [d.decodeHostMemoryProtectionSettings, f.memorySettings], [d.decodeHostMemoryCommit, f.memoryCommit],
   [d.decodeHostMemoryProcess, f.memoryProcess], [d.decodeNormalRunningPointSummary, f.memoryStatus.normalRunningPoint],
-  [d.decodeNormalRunningPoint, f.memoryPoint], [d.decodeHostMemoryReserveEntryStatus, f.memoryReserveEntry],
+  [d.decodeNormalRunningPoint, f.memoryPoint], [d.decodeNormalRunningPointList, f.memoryPointList],
+  [d.decodeHostMemoryReserveEntryStatus, f.memoryReserveEntry],
   [d.decodeHostMemoryReserveStatus, f.memoryReserve], [d.decodeHostMemoryActionRecord, f.memoryAction],
   [d.decodeHostMemoryActionRecord, f.memoryTreeChild], [d.decodeHostMemoryActionRecord, f.memoryTreeRootRecord],
   [d.decodeHostMemoryTreeRoot, f.memoryTreeRoot],
@@ -133,6 +134,14 @@ assert.equal(d.decodeHostMemoryProtectionStatus({ ...f.memoryStatus, inactiveRea
   reserve: { ...f.memoryReserve, built: false, reason: nativeReason } }).inactiveReason, nativeReason);
 assert.deepEqual(d.normalRunningPointDecoder.decode(f.memoryPoint), f.memoryPoint);
 assert.throws(() => d.normalRunningPointDecoder.decode(null));
+// Saved points: none in effect is null; ids are unique, the id in effect is a saved point, and every id is non-empty.
+assert.deepEqual(d.normalRunningPointListDecoder.decode({ activeId: null, points: [], limit: 32 }), { activeId: null, points: [], limit: 32 });
+assert.equal(d.normalRunningPointListDecoder.decode({ ...f.memoryPointList, activeId: null }).activeId, null);
+assert.throws(() => d.normalRunningPointListDecoder.decode({ ...f.memoryPointList, activeId: "missing" }), /saved point/);
+assert.throws(() => d.normalRunningPointListDecoder.decode({ ...f.memoryPointList,
+  points: [f.memoryPointSummary, f.memoryPointSummary] }), /unique/);
+assert.throws(() => d.decodeNormalRunningPointSummary({ ...f.memoryPointSummary, id: "" }));
+assert.throws(() => d.normalRunningPointListDecoder.decode({ ...f.memoryPointList, limit: -1 }));
 assert.deepEqual(d.decodeHostMemoryProcess({ ...f.memoryProcess, privateCommitBytes: null, softwareId: null, executablePath: null, parentProcessId: null }),
   { ...f.memoryProcess, privateCommitBytes: null, softwareId: null, executablePath: null, parentProcessId: null });
 assert.equal(d.decodeHostMemoryProtectionSettings({ ...f.memorySettings, reserves: null }).reserves, null);

@@ -38,6 +38,8 @@ const recordedDeclarationStates = Object.fromEntries(await Promise.all(Object.en
 }).map(async ([name, file]) => [name, JSON.parse(await readFile(new URL(`../fixtures/${file}`, import.meta.url), "utf8"))])));
 const defaultScenario = {
   memoryProtection: "no-point",
+  // 新建、切换、删除正常运行点的响应延迟，用来看按钮的进行中状态。
+  memoryProtectionPointChangeDelayMs: 0,
   slice: null,
   generatedData: null,
   capabilities: "ready",
@@ -241,7 +243,7 @@ const subscriptionChannelResponses = new Set();
 const productUpdateStatusSubscribers = new Set();
 const kernelLeakReportSubscribers = new Set();
 // /api/memory-protection/subscribe：和后端一样按 type 分帧。订阅时依次重放 status、records、normalRunningPoint；
-// 之后状态每次变化发 status，每条新增或更新的记录发一个 record，正常运行点创建、替换、清除时发 normalRunningPoint。
+// 之后状态每次变化发 status，每条新增或更新的记录发一个 record，生效的正常运行点换了（新建、切换、删除生效的点）时发 normalRunningPoint。
 const memoryProtectionSubscribers = new Set();
 // 后端帧的真实形状（codex/update-notice，与 GET /api/updates/product/status 相同）。
 const defaultProductUpdateStatus = Object.freeze({
@@ -760,10 +762,35 @@ async function handleApi(request, response, url) {
   }
   if (path === "/api/memory-protection/normal-running-point" && ["GET", "POST"].includes(request.method)) {
     if (request.method === "GET") return json(response, 200, memoryProtection.readPoint());
+    await delay(normalizeDelay(scenario.memoryProtectionPointChangeDelayMs));
     const created = memoryProtection.createPoint();
+    if (created === null) return json(response, 409, { error: "normal-running-point-limit" });
     publishMemoryProtectionStatus();
     publishMemoryProtectionPoint();
     return json(response, 200, created);
+  }
+  if (path === "/api/memory-protection/normal-running-points" && request.method === "GET") {
+    return json(response, 200, memoryProtection.listPoints());
+  }
+  if (path === "/api/memory-protection/normal-running-points/active" && request.method === "PUT") {
+    const body = JSON.parse(await readBody(request));
+    await delay(normalizeDelay(scenario.memoryProtectionPointChangeDelayMs));
+    const before = memoryProtection.readPoint()?.id ?? null;
+    const selected = memoryProtection.selectPoint(body?.id);
+    if (selected === null) return json(response, 404, { error: "normal-running-point-not-found" });
+    publishMemoryProtectionStatus();
+    if (before !== selected.id) publishMemoryProtectionPoint();
+    return json(response, 200, selected);
+  }
+  const savedPoint = /^\/api\/memory-protection\/normal-running-points\/([^/]+)$/.exec(path);
+  if (savedPoint && savedPoint[1] !== "active" && request.method === "DELETE") {
+    await delay(normalizeDelay(scenario.memoryProtectionPointChangeDelayMs));
+    const before = memoryProtection.readPoint()?.id ?? null;
+    if (!memoryProtection.deletePoint(decodeURIComponent(savedPoint[1]))) return json(response, 404, { error: "normal-running-point-not-found" });
+    publishMemoryProtectionStatus();
+    if ((memoryProtection.readPoint()?.id ?? null) !== before) publishMemoryProtectionPoint();
+    response.writeHead(204);
+    return response.end();
   }
   if (path === "/api/memory-protection/reserve/rebuild" && request.method === "POST") {
     const status = memoryProtection.rebuild();
@@ -1609,12 +1636,8 @@ function applyScenarioPatch(patch) {
     const record = memoryProtection.upsertRecord(fields);
     publishMemoryProtectionFrame({ type: "record", record });
   }
-  // 测试用：清除正常运行点（HostMemoryProtectionService.ClearPointAsync），发布 null 和新的状态。
-  if (patch.memoryProtectionClearPoint === true) {
-    memoryProtection.clearPoint();
-    publishMemoryProtectionStatus();
-    publishMemoryProtectionPoint();
-  }
+  // 测试用：正常运行点的上限（后端是常量 32），列表照此报告、新建照此拒绝。
+  if (Object.hasOwn(patch, "memoryProtectionPointLimit")) memoryProtection.setPointLimit(patch.memoryProtectionPointLimit);
   // 启动模块登记的起始值（[{ softwareId, moduleIds }]），和界面经原生桥保存的登记同一份。
   for (const selection of patch.startupModuleSelections ?? []) {
     startupModuleSelections.set(selection.softwareId.toLowerCase(), { softwareId: selection.softwareId, moduleIds: [...selection.moduleIds].sort() });

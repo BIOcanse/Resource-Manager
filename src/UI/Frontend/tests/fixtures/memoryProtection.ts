@@ -5,7 +5,13 @@ export const memorySettings = { enabled: false, thresholdPercent: 95, checkInter
 export const memoryCommit = { currentBytes: 200, limitBytes: 1000, percent: 20 };
 export const memoryProcess = { processId: 20, processStartKey: "18446744073709551615", name: "example",
   privateCommitBytes: 100, softwareId: "example-software", executablePath: "C:\\fixture\\example.exe", parentProcessId: 17 };
-export const memoryPoint = { at: "2026-10-27T05:00:00+00:00", commit: memoryCommit, processes: [memoryProcess], processCount: 1 };
+export const memoryPoint = { id: "0f9e8d7c6b5a49382716051f2e3d4c5b", at: "2026-10-27T05:00:00+00:00", commit: memoryCommit,
+  processes: [memoryProcess], processCount: 1 };
+export const memoryPointSummary = { id: memoryPoint.id, at: memoryPoint.at, processCount: 1, commit: memoryCommit };
+// GET /api/memory-protection/normal-running-points: oldest first, the second one in effect.
+export const memoryPointList = { activeId: memoryPoint.id, limit: 32, points: [
+  { id: "00000000000000000000000000000001", at: "2026-10-27T04:00:00+00:00", processCount: 3, commit: { currentBytes: 100, limitBytes: 1000, percent: 10 } },
+  memoryPointSummary] };
 export const memoryReserveEntry = { location: "F:\\reserve", configuredSizeBytes: 67108864,
   built: true, reason: null, remainingBytes: 33554432, clusterBytes: 4096 };
 export const memoryReserve = { entries: [memoryReserveEntry], configuredSizeBytes: 67108864,
@@ -32,7 +38,7 @@ export const memoryLiveStatus = { enabled: false, thresholdPercent: 95, checkInt
   reserve: memoryReserve, triggerBytes: 950, remainingBytes: 750, currentCommit: memoryCommit,
   inactiveReason: "disabled", excludedCandidates: [], actionMode: "dumpThenTerminate", active: false, atOrAboveThreshold: false,
   currentActionId: null, minimumProcessGrowthBytes: 1073741824, protectedProcesses: ["explorer.exe"], decisionReason: null };
-export const memoryStatus = { ...memoryLiveStatus, normalRunningPoint: { at: memoryPoint.at, processCount: 1 },
+export const memoryStatus = { ...memoryLiveStatus, normalRunningPoint: memoryPointSummary,
   actionRecordLimit: 64, actions: [memoryAction] };
 export const memorySettingsResult = { settings: { version: "1.0.37", memoryProtection: memorySettings }, revision: "revision-a",
   serviceRecovery: null, updatedAt: memoryPoint.at, storagePath: "settings.json", runtimeApplicationDisposition: "committedAndApplied", runtimeFailureCode: null };

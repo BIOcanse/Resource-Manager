@@ -7,7 +7,8 @@ import type {
   HostMemoryActionOutcome, HostMemoryActionReason, HostMemoryActionRecord, HostMemoryActionTargetKind, HostMemoryCommit,
   HostMemoryExclusion, HostMemoryExclusionReason, HostMemoryProcess, HostMemoryProtectionFrame,
   HostMemoryProtectionLiveStatus, HostMemoryProtectionSettings, HostMemoryProtectionStatus, HostMemoryReserveEntryStatus,
-  HostMemoryReserveStatus, HostMemorySelectionBasis, HostMemoryTreeRoot, NormalRunningPoint, NormalRunningPointSummary
+  HostMemoryReserveStatus, HostMemorySelectionBasis, HostMemoryTreeRoot, NormalRunningPoint, NormalRunningPointList,
+  NormalRunningPointSummary
 } from "./memoryProtectionTypes.ts";
 
 export const memoryProtectionActionModes = ["dumpThenTerminate", "terminateOnly"] as const;
@@ -97,13 +98,24 @@ export function decodeHostMemoryProcess(value: unknown, path = "$"): HostMemoryP
 }
 export function decodeNormalRunningPointSummary(value: unknown, path = "$"): NormalRunningPointSummary {
   const row = requireRecord(value, path);
-  return { at: timestamp(row.at, `${path}.at`), processCount: requireNonNegativeSafeInteger(row.processCount, `${path}.processCount`) };
+  return { id: requireNonEmptyString(row.id, `${path}.id`), at: timestamp(row.at, `${path}.at`),
+    processCount: requireNonNegativeSafeInteger(row.processCount, `${path}.processCount`),
+    commit: decodeHostMemoryCommit(row.commit, `${path}.commit`) };
 }
 export function decodeNormalRunningPoint(value: unknown, path = "$"): NormalRunningPoint {
   const row = requireRecord(value, path);
   return { ...decodeNormalRunningPointSummary(row, path),
-    commit: decodeHostMemoryCommit(row.commit, `${path}.commit`),
     processes: rows(row.processes, `${path}.processes`, decodeHostMemoryProcess) };
+}
+// HostMemoryProtectionService.ListPoints: ids are unique and the id in effect, when there is one, is a saved point.
+export function decodeNormalRunningPointList(value: unknown, path = "$"): NormalRunningPointList {
+  const row = requireRecord(value, path);
+  const points = rows(row.points, `${path}.points`, decodeNormalRunningPointSummary);
+  const ids = new Set(points.map(point => point.id));
+  if (ids.size !== points.length) throw new ResponseDecodeError(`${path}.points`, "unique point ids");
+  const activeId = requireNullable(row.activeId, `${path}.activeId`, requireNonEmptyString);
+  if (activeId !== null && !ids.has(activeId)) throw new ResponseDecodeError(`${path}.activeId`, "the id of a saved point");
+  return { activeId, points, limit: requireNonNegativeSafeInteger(row.limit, `${path}.limit`) };
 }
 export function decodeHostMemoryReserveEntryStatus(value: unknown, path = "$"): HostMemoryReserveEntryStatus {
   const row = requireRecord(value, path);
@@ -256,6 +268,7 @@ export function decodeHostMemoryProtectionFrame(value: unknown, path = "$"): Hos
 }
 export const memoryProtectionSettingsDecoder = defineResponseDecoder("memory-protection.settings.v1", decodeHostMemoryProtectionSettings);
 // The reserve rebuild response is the full status; the subscription sends frames.
-export const memoryProtectionStatusDecoder = defineResponseDecoder("memory-protection.status.v3", decodeHostMemoryProtectionStatus);
-export const memoryProtectionFrameDecoder = defineResponseDecoder("memory-protection.frame.v1", decodeHostMemoryProtectionFrame);
-export const normalRunningPointDecoder = defineResponseDecoder("memory-protection.normal-running-point.v1", decodeNormalRunningPoint);
+export const memoryProtectionStatusDecoder = defineResponseDecoder("memory-protection.status.v4", decodeHostMemoryProtectionStatus);
+export const memoryProtectionFrameDecoder = defineResponseDecoder("memory-protection.frame.v2", decodeHostMemoryProtectionFrame);
+export const normalRunningPointDecoder = defineResponseDecoder("memory-protection.normal-running-point.v2", decodeNormalRunningPoint);
+export const normalRunningPointListDecoder = defineResponseDecoder("memory-protection.normal-running-points.v1", decodeNormalRunningPointList);

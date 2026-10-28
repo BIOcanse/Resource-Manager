@@ -231,10 +231,11 @@ export default async function memoryProtectionEventsJourney(page, baseUrl) {
     [third, copy.recordProcess("third", 63), "terminated-without-dump"]]);
   assert.equal(await records.locator(".memory-protection-action").count(), 1, "both records belong to one action group");
 
-  // 7. 清除正常运行点：后端发 null，界面写明没有，保护随状态帧变为未生效；重新创建后完整的点由帧送达，不读 GET。
+  // 7. 别处删除了生效的正常运行点：后端发 null，界面写明没有，保护随状态帧变为未生效；重新创建后完整的点由帧送达，不读 GET。
   const pointRow = panel().locator(".settings-row").filter({ has: page.getByText(copy.pointTitle, { exact: true }) });
   await pointRow.locator(".memory-protection-point").waitFor();
-  await scenario({ memoryProtectionClearPoint: true });
+  const { activeId } = await (await fetch(`${baseUrl}/api/memory-protection/normal-running-points`)).json();
+  assert.equal((await fetch(`${baseUrl}/api/memory-protection/normal-running-points/${activeId}`, { method: "DELETE" })).status, 204);
   await waitText(pointRow, copy.pointNone);
   await waitText(state(), copy.inactive(copy.reasons["no-normal-running-point"]));
   await pointRow.getByRole("button", { name: copy.createPoint, exact: true }).click();

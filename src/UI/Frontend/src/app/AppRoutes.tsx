@@ -130,6 +130,7 @@ export function AppRoutes(props: AppRoutesProps) {
             runtimeCapabilities={props.runtimeCapabilities}
             softwareDetailOpen={props.softwareDetailOpen}
             onOpenSoftwareOverlay={props.onOpenSoftwareOverlay}
+            confirmDialog={props.confirmDialog}
           />
         </PageBoundary>
       </PageHost>

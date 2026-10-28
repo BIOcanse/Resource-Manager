@@ -1,11 +1,16 @@
-import { createSignal, For, Index, Show, type JSX } from "solid-js";
+import { createEffect, createSignal, For, Index, Show, type JSX } from "solid-js";
 import { useFrontendRuntime } from "../../../frontendRuntime/FrontendRuntimeContext.tsx";
 import { usePushSource } from "../../../frontendRuntime/push/usePushSource.ts";
+import { useSource } from "../../../frontendRuntime/source/useSource.ts";
+import { sourceCanRender } from "../../../frontendRuntime/source/SourceSnapshot.ts";
+import type { ConfirmDialogRequest } from "../../../ui/patterns/ConfirmDialog.tsx";
 import { useFrontendWork } from "../../../frontendWork/FrontendWorkContext.tsx";
 import { useFrontendVisibilityDemand } from "../../../frontendWork/useFrontendVisibilityDemand";
 import { frontendVisibilitySurface } from "../../../frontendWork/frontendVisibilitySurface";
 import { frontendWorkIds } from "../../../frontendWork/frontendWorkIds";
-import { createNormalRunningPoint, rebuildMemoryProtectionReserve } from "../../../data/memoryProtection/memoryProtectionApi.ts";
+import {
+  createNormalRunningPoint, deleteNormalRunningPoint, rebuildMemoryProtectionReserve, selectNormalRunningPoint
+} from "../../../data/memoryProtection/memoryProtectionApi.ts";
 import type {
   HostMemoryActionRecord,
   HostMemoryProtectionActionMode,
@@ -13,7 +18,8 @@ import type {
   HostMemoryProtectionSettings,
   HostMemoryReserveSettings,
   HostMemorySelectionBasis,
-  HostMemoryTreeRoot
+  HostMemoryTreeRoot,
+  NormalRunningPointSummary
 } from "../../../data/memoryProtection/memoryProtectionTypes.ts";
 import { formatBytePair, formatBytes } from "../../../presentation/byteUnits.ts";
 import { formatInterfaceNumber, formatTrimmedDigits } from "../../../presentation/interfaceNumbers.ts";
@@ -42,14 +48,19 @@ interface MemoryProtectionSettingsSectionProps {
   committed: HostMemoryProtectionSettings | null | undefined;
   runtimeFailureCode: string | null;
   onChange: (settings: HostMemoryProtectionSettings) => void;
+  /** 删除已保存的正常运行点前的确认：删除不能撤销，删掉生效的点后保护不再生效。 */
+  confirmDialog: (request: ConfirmDialogRequest) => Promise<boolean>;
 }
 
 type ActionMessage = { kind: "status" | "alert"; text: () => string };
+/** 同一时间只做一件事：新建运行点、重建保留区，或对某个已保存的点切换生效、删除。 */
+type Busy = "point" | "rebuild" | `select:${string}` | `delete:${string}`;
 
 // 主机内存保护分区（docs/host_memory_protection_2026-10-26.md）。可编辑的设置走设置页草稿；
-// 状态、处理记录和正常运行点都来自订阅 /api/memory-protection/subscribe，由 runtime.sources.memoryProtection
-// 一个来源合成当前值（memoryProtectionSubscriptionSource），这里只读，不重读、不合并帧。数值照原样显示，
-// 触发点、剩余量、是否达到阈值、合计都不在前端计算。
+// 状态、处理记录和生效的正常运行点都来自订阅 /api/memory-protection/subscribe，由 runtime.sources.memoryProtection
+// 一个来源合成当前值（memoryProtectionSubscriptionSource），这里只读，不重读、不合并帧。已保存的点和生效的是哪一个
+// 来自 GET /api/memory-protection/normal-running-points（runtime.sources.memoryProtectionPoints），分区可见时读。
+// 数值照原样显示，触发点、剩余量、是否达到阈值、合计都不在前端计算；已保存的点也不在前端增删或改选，操作后重读。
 export function MemoryProtectionSettingsSection(props: MemoryProtectionSettingsSectionProps) {
   const copy = () => uiText.memoryProtection;
   const runtime = useFrontendRuntime();
@@ -61,8 +72,21 @@ export function MemoryProtectionSettingsSection(props: MemoryProtectionSettingsS
   const view = () => protection.snapshot().data;
   const statusData = () => view()?.status ?? null;
   const unavailable = () => protection.snapshot().status === "error" || protection.snapshot().status === "unavailable";
-  const [busy, setBusy] = createSignal<"point" | "rebuild" | null>(null);
+  const points = useSource(runtime.sources.memoryProtectionPoints, () => ({ active: work.isNeeded(workId) }));
+  const pointList = () => sourceCanRender(points.snapshot()) ? points.snapshot().data : null;
+  const [busy, setBusy] = createSignal<Busy | null>(null);
   const [pointMessage, setPointMessage] = createSignal<ActionMessage | null>(null);
+  const [savedPointMessage, setSavedPointMessage] = createSignal<ActionMessage | null>(null);
+  // 已保存的点没有推送；生效的点有（订阅的 normalRunningPoint 帧）。生效的点换了（别处新建、切换或删除了生效的点）
+  // 就重读一次列表，让“生效中”和上面那一格一致。只比较订阅已到之后的变化，第一帧不算。
+  let shownActiveId: string | null | undefined;
+  createEffect(() => {
+    const current = view();
+    if (!current) return;
+    const activeId = current.normalRunningPoint?.id ?? null;
+    if (shownActiveId !== undefined && activeId !== shownActiveId) void points.refresh({ afterCurrent: true }).catch(() => undefined);
+    shownActiveId = activeId;
+  });
   const [rebuildMessage, setRebuildMessage] = createSignal<ActionMessage | null>(null);
 
   const unsaved = () => JSON.stringify(props.settings ?? null) !== JSON.stringify(props.committed ?? null);
@@ -86,13 +110,53 @@ export function MemoryProtectionSettingsSection(props: MemoryProtectionSettingsS
     setBusy("point");
     setPointMessage(null);
     try {
-      await createNormalRunningPoint(runtime.requestClient);
-      setPointMessage({ kind: "status", text: () => copy().pointCreated });
+      const result = await createNormalRunningPoint(runtime.requestClient);
+      setPointMessage(result.status === "done"
+        ? { kind: "status", text: () => copy().pointCreated }
+        : { kind: "alert", text: () => copy().failedBecause(copy().createPointFailed, memoryProtectionReasonText(result.reason)) });
+      await points.refresh({ afterCurrent: true }).catch(() => undefined);
     } catch (error) {
       setPointMessage({ kind: "alert", text: () => userFacingErrorMessage(error, copy().createPointFailed) });
     } finally {
       setBusy(null);
     }
+  };
+  // 切换生效和删除都以后端为准：成功或被拒（点已不存在）后都重读列表，不在前端改列表。
+  const changeSavedPoint = async (
+    next: Busy,
+    change: () => Promise<{ status: "done" } | { status: "refused"; reason: string }>,
+    done: () => string,
+    failed: () => string
+  ) => {
+    if (busy()) return;
+    setBusy(next);
+    setSavedPointMessage(null);
+    try {
+      const result = await change();
+      setSavedPointMessage(result.status === "done"
+        ? { kind: "status", text: done }
+        : { kind: "alert", text: () => copy().failedBecause(failed(), memoryProtectionReasonText(result.reason)) });
+      await points.refresh({ afterCurrent: true }).catch(() => undefined);
+    } catch (error) {
+      setSavedPointMessage({ kind: "alert", text: () => userFacingErrorMessage(error, failed()) });
+    } finally {
+      setBusy(null);
+    }
+  };
+  const selectPoint = (point: NormalRunningPointSummary) => changeSavedPoint(`select:${point.id}`,
+    () => selectNormalRunningPoint(runtime.requestClient, point.id), () => copy().pointSelected, () => copy().selectPointFailed);
+  const deletePoint = async (point: NormalRunningPointSummary, inEffect: boolean) => {
+    if (busy()) return;
+    const confirmed = await props.confirmDialog({
+      title: copy().confirmDeletePoint,
+      message: copy().pointItemLabel(userFacingDateTime(point.at)),
+      details: [inEffect ? copy().deleteActivePointDetail : copy().deletePointDetail],
+      tone: "warning",
+      confirmLabel: copy().deletePoint
+    });
+    if (!confirmed) return;
+    await changeSavedPoint(`delete:${point.id}`,
+      () => deleteNormalRunningPoint(runtime.requestClient, point.id), () => copy().pointDeleted, () => copy().deletePointFailed);
   };
   const rebuild = async () => {
     if (busy()) return;
@@ -303,6 +367,79 @@ export function MemoryProtectionSettingsSection(props: MemoryProtectionSettingsS
               <button type="button" class="secondary" disabled={busy() !== null} onClick={() => void createPoint()}>
                 <StableLabel labels={{ idle: copy().createPoint, busy: copy().creatingPoint }} current={busy() === "point" ? "busy" : "idle"} />
               </button>
+            </div>
+
+            {/* 已保存的点按后端顺序（从旧到新）列出，生效的那个标“生效中”，其余可以设为生效；每个都可以删除。
+                列表读到之前只占一行（和没有已保存的点时同高），正在读取读给读屏。 */}
+            <div class="settings-row settings-row-block memory-protection-saved-points">
+              <div class="settings-row-copy">
+                <strong>{copy().savedPointsTitle}</strong>
+                <span>{copy().savedPointsDescription}</span>
+                <dl class="memory-protection-facts">
+                  <Fact label={copy().savedPointsCount}>
+                    {pointList() ? `${formatInterfaceNumber(pointList()!.points.length)} / ${formatInterfaceNumber(pointList()!.limit)}` : "--"}
+                  </Fact>
+                </dl>
+              </div>
+              <Show
+                when={pointList()}
+                fallback={
+                  <Show
+                    when={points.snapshot().status === "error" || points.snapshot().status === "unavailable"}
+                    fallback={
+                      <>
+                        <p class="sr-only" role="status">{copy().savedPointsLoading}</p>
+                        <p class="memory-protection-empty" aria-hidden="true">--</p>
+                      </>
+                    }
+                  >
+                    <p class="memory-protection-empty" role="status">{copy().savedPointsUnavailable}</p>
+                  </Show>
+                }
+              >
+                {(list) => (
+                  <Show when={list().points.length > 0} fallback={<p class="memory-protection-empty">{copy().savedPointsEmpty}</p>}>
+                    <ol class="memory-protection-list">
+                      <For each={list().points}>
+                        {(point) => {
+                          const inEffect = () => point.id === list().activeId;
+                          const label = () => copy().pointItemLabel(userFacingDateTime(point.at));
+                          return (
+                            <li class="memory-protection-item memory-protection-saved-point" classList={{ "in-effect": inEffect() }}
+                              aria-current={inEffect() ? "true" : undefined}>
+                              <dl class="memory-protection-facts">
+                                <Fact label={copy().pointAt}>{userFacingDateTime(point.at)}</Fact>
+                                <Fact label={copy().pointProcessCount}>{formatInterfaceNumber(point.processCount)}</Fact>
+                                <Fact label={copy().pointCommit}>
+                                  {formatBytePair(point.commit.currentBytes, point.commit.limitBytes, "memory")}
+                                </Fact>
+                              </dl>
+                              <div class="memory-protection-actions">
+                                {/* 生效的点和其余的点同一个按钮位：生效的写“生效中”且不可按，宽度按最长的文字留好。 */}
+                                <button type="button" class="secondary" disabled={inEffect() || busy() !== null}
+                                  aria-label={`${label()} · ${inEffect() ? copy().pointInEffect : copy().selectPoint}`}
+                                  onClick={() => void selectPoint(point)}>
+                                  <StableLabel labels={{ idle: copy().selectPoint, busy: copy().selectingPoint, inEffect: copy().pointInEffect }}
+                                    current={inEffect() ? "inEffect" : busy() === `select:${point.id}` ? "busy" : "idle"} />
+                                </button>
+                                <button type="button" class="secondary" disabled={busy() !== null}
+                                  aria-label={`${label()} · ${copy().deletePoint}`}
+                                  onClick={() => void deletePoint(point, inEffect())}>
+                                  <StableLabel labels={{ idle: copy().deletePoint, busy: copy().deletingPoint }}
+                                    current={busy() === `delete:${point.id}` ? "busy" : "idle"} />
+                                </button>
+                              </div>
+                            </li>
+                          );
+                        }}
+                      </For>
+                    </ol>
+                  </Show>
+                )}
+              </Show>
+              <Show when={savedPointMessage()}>
+                {(message) => <span class="memory-protection-message" role={message().kind}>{message().text()}</span>}
+              </Show>
             </div>
 
             <div class="settings-row settings-row-block">

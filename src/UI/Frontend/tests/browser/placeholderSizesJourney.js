@@ -103,7 +103,7 @@ const sites = [
   {
     // 没有正常运行点时，那句话叠在三项结构的同一格里，和读取中的占位一样高。
     name: "memory-protection-no-point",
-    scenario: { memoryProtectionClearPoint: true },
+    scenario: { memoryProtection: "no-point" },
     request: streamCarrying("/api/memory-protection/subscribe"),
     async open(page, baseUrl, app, settings) {
       await page.goto(baseUrl, { waitUntil: "domcontentloaded" });

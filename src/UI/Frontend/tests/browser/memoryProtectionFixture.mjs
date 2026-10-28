@@ -1,6 +1,8 @@
 // A stateful backend fixture: all arithmetic here models backend responses, never frontend UI logic.
 // GET /api/memory-protection serves the full status (HostMemoryProtectionStatus) for scripts; the subscription
-// sends the frames of HostMemoryProtectionFrames: liveStatus(), records(), and the full point (readPoint()).
+// sends the frames of HostMemoryProtectionFrames: liveStatus(), records(), and the full point in effect (readPoint()).
+// Saved points mirror HostMemoryProtectionService.PointStore: oldest first, one in effect or none, creation past the
+// limit refused with normal-running-point-limit, a new point takes effect, deleting the one in effect leaves none.
 export const memoryProtectionScenarios = ["no-point", "no-reserve", "disabled-ready", "active", "terminate-only",
   "reserve-building", "reserve-failed", "reserve-partial-cluster", "reserve-incomplete", "reserve-consumed",
   "commit-unavailable", "all-outcomes", "exclusions", "tree-actions", "action-in-progress"];
@@ -52,8 +54,12 @@ function invalidProtectedProcesses(entries) {
   return false;
 }
 
+export const normalRunningPointLimit = 32;
+
 export function createMemoryProtectionFixture(getSettings) {
-  let point = null;
+  let points = [];
+  let activeId = null;
+  let pointLimit = normalRunningPointLimit;
   let entries = [];
   let currentCommit = commit();
   let actions = [];
@@ -65,6 +71,8 @@ export function createMemoryProtectionFixture(getSettings) {
   let recordLimit = 64;
   let sequence = 0;
   const at = () => new Date(Date.UTC(2026, 9, 27, 5, 0, sequence++)).toISOString();
+  const active = () => points.find(item => item.id === activeId) ?? null;
+  const summary = item => ({ id: item.id, at: item.at, processCount: item.processCount, commit: structuredClone(item.commit) });
   const reserve = () => {
     const value = { entries: structuredClone(entries),
       configuredSizeBytes: entries.reduce((sum, entry) => sum + entry.configuredSizeBytes, 0),
@@ -95,7 +103,7 @@ export function createMemoryProtectionFixture(getSettings) {
   function liveStatus() {
     const settings = getSettings();
     const triggerBytes = currentCommit === null ? null : currentCommit.limitBytes * settings.thresholdPercent / 100;
-    const inactiveReason = !point ? "no-normal-running-point" : !settings.enabled ? "disabled" : unavailable(settings);
+    const inactiveReason = !active() ? "no-normal-running-point" : !settings.enabled ? "disabled" : unavailable(settings);
     return { enabled: settings.enabled, thresholdPercent: settings.thresholdPercent, checkIntervalSeconds: settings.checkIntervalSeconds,
       reserve: reserve(), triggerBytes,
       remainingBytes: triggerBytes === null ? null : triggerBytes - currentCommit.currentBytes,
@@ -107,18 +115,37 @@ export function createMemoryProtectionFixture(getSettings) {
       protectedProcesses: structuredClone(settings.protectedProcesses), decisionReason };
   }
   function status() {
-    return { ...liveStatus(), normalRunningPoint: point ? { at: point.at, processCount: point.processCount } : null,
+    return { ...liveStatus(), normalRunningPoint: active() ? summary(active()) : null,
       actionRecordLimit: recordLimit, actions: structuredClone(actions) };
   }
   const records = () => ({ records: structuredClone(actions), limit: recordLimit });
+  // Null when the saved points are at the limit (the endpoint answers 409 normal-running-point-limit).
   function createPoint() {
-    point = { at: at(), commit: commit(), processes: [{ processId: 20, processStartKey: "18446744073709551615",
+    if (points.length >= pointLimit) return null;
+    const point = { id: (sequence + 1).toString(16).padStart(32, "0"), at: at(), commit: commit(), processes: [{ processId: 20, processStartKey: "18446744073709551615",
       name: "example", privateCommitBytes: 100, softwareId: "frontend-harness.software",
       executablePath: "C:\\Fixture\\example.exe", parentProcessId: 17 },
     { processId: 21, processStartKey: "123", name: "unavailable", privateCommitBytes: null, softwareId: null,
       executablePath: null, parentProcessId: null }], processCount: 2 };
+    points = [...points, point];
+    activeId = point.id;
     excludedCandidates = [];
     return structuredClone(point);
+  }
+  const listPoints = () => ({ activeId, points: points.map(summary), limit: pointLimit });
+  // Null when no saved point has this id (404 normal-running-point-not-found).
+  function selectPoint(id) {
+    const selected = points.find(item => item.id === id);
+    if (!selected) return null;
+    if (activeId !== id) excludedCandidates = [];
+    activeId = id;
+    return structuredClone(selected);
+  }
+  function deletePoint(id) {
+    if (!points.some(item => item.id === id)) return false;
+    points = points.filter(item => item.id !== id);
+    if (activeId === id) { activeId = null; excludedCandidates = []; }
+    return true;
   }
   function validate(settings) {
     if (!["dumpThenTerminate", "terminateOnly"].includes(settings.actionMode)) return "invalid-action-mode";
@@ -137,7 +164,7 @@ export function createMemoryProtectionFixture(getSettings) {
       const size = cluster(entry.location);
       if (entry.sizeBytes % size !== 0) return `reserve-size-must-be-whole-clusters:cluster-bytes=${size}`;
     }
-    if (settings.enabled && !point) return "no-normal-running-point";
+    if (settings.enabled && !active()) return "no-normal-running-point";
     return settings.enabled ? unavailable(settings) : null;
   }
   // HostMemoryProtectionService: a single-process action ranks by the process's growth, a tree action by its root's
@@ -170,7 +197,7 @@ export function createMemoryProtectionFixture(getSettings) {
   }
   function scenario(name) {
     if (!memoryProtectionScenarios.includes(name)) throw new Error(`Unknown memoryProtection scenario: ${name}`);
-    point = null; entries = []; currentCommit = commit(); actions = []; excludedCandidates = []; buildFailure = null;
+    points = []; activeId = null; pointLimit = normalRunningPointLimit; entries = []; currentCommit = commit(); actions = []; excludedCandidates = []; buildFailure = null;
     reserveRuntimeError = null; currentActionId = null; decisionReason = null; recordLimit = 64;
     Object.assign(getSettings(), defaultMemoryProtectionSettings());
     if (name === "no-point") return;
@@ -253,12 +280,13 @@ export function createMemoryProtectionFixture(getSettings) {
     actions = actions.slice(0, recordLimit);
     return structuredClone(value);
   }
-  // Test-only: HostMemoryProtectionService.ClearPointAsync.
-  function clearPoint() {
-    point = null;
+  // Test-only: the limit the list reports and creation checks (the backend's is the constant 32).
+  function setPointLimit(limit) {
+    if (!Number.isSafeInteger(limit) || limit < 0) throw new Error(`Invalid normal running point limit: ${limit}`);
+    pointLimit = limit;
   }
-  return { status, liveStatus, records, createPoint, readPoint: () => structuredClone(point), validate, prepare, scenario, publishDecision,
-    setRecordLimit, upsertRecord, clearPoint,
+  return { status, liveStatus, records, createPoint, listPoints, selectPoint, deletePoint, setPointLimit,
+    readPoint: () => structuredClone(active()), validate, prepare, scenario, publishDecision, setRecordLimit, upsertRecord,
     rebuild: () => { if (["reserve-building", "reserve-build-incomplete; request an explicit rebuild"].includes(buildFailure)) buildFailure = null;
       prepare(true); return status(); } };
 }

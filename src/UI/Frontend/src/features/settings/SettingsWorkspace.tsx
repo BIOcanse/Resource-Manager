@@ -4,6 +4,7 @@ import type { SettingsStore } from "../../stores/settingsStore";
 import type { RuntimeCapabilitiesStore } from "../../stores/runtimeCapabilitiesStore";
 import type { ProductUpdateStore } from "../../stores/productUpdateStore";
 import type { SoftwareRecord } from "../../types";
+import type { ConfirmDialogRequest } from "../../components/AppFeedback";
 
 interface SettingsWorkspaceProps {
   settings: SettingsStore;
@@ -12,6 +13,7 @@ interface SettingsWorkspaceProps {
   runtimeCapabilities: RuntimeCapabilitiesStore;
   softwareDetailOpen: boolean;
   onOpenSoftwareOverlay: (software: SoftwareRecord) => void;
+  confirmDialog: (request: ConfirmDialogRequest) => Promise<boolean>;
 }
 
 export function SettingsWorkspace(props: SettingsWorkspaceProps) {
@@ -41,6 +43,7 @@ export function SettingsWorkspace(props: SettingsWorkspaceProps) {
         onReportsChange={settings.updateReports}
         onMemoryProtectionChange={settings.updateMemoryProtection}
         committedMemoryProtection={settings.settings().memoryProtection}
+        confirmDialog={props.confirmDialog}
         onControlChange={settings.updateControl}
         onPreciseGpuPlacementChange={settings.updatePreciseGpuPlacement}
         onAutomaticMemoryCleanupLinesChange={settings.updateAutomaticMemoryCleanupLines}

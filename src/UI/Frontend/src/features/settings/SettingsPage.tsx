@@ -3,6 +3,7 @@ import { HelpHint } from "../../ui/primitives/HelpHint.tsx";
 import { For, Show } from "solid-js";
 import { ReportRuleSettings } from "./components/ReportRuleSettings";
 import { MemoryProtectionSettingsSection } from "./components/MemoryProtectionSettingsSection";
+import type { ConfirmDialogRequest } from "../../components/AppFeedback";
 import { HardwareControlSettings } from "./components/HardwareControlSettings";
 import { AppearanceSettingsSection } from "./components/AppearanceSettingsSection";
 import { CreditsSettingsSection } from "./components/CreditsSettingsSection";
@@ -50,6 +51,8 @@ interface SettingsPageProps {
   runtimeFailurePath: string | null;
   onReportsChange: (reports: NonNullable<AppSettings["reports"]>) => void;
   onMemoryProtectionChange: (memoryProtection: NonNullable<AppSettings["memoryProtection"]>) => void;
+  /** 删除已保存的正常运行点前的确认（删除不能撤销）。 */
+  confirmDialog: (request: ConfirmDialogRequest) => Promise<boolean>;
   /** 已保存的内存保护设置：分区据此判断有没有未保存的更改，保存提交后重新读后端状态。 */
   committedMemoryProtection: AppSettings["memoryProtection"];
   preciseGpuPlacementAvailable: boolean;
@@ -339,6 +342,7 @@ export function SettingsPage(props: SettingsPageProps) {
               committed={props.committedMemoryProtection}
               runtimeFailureCode={props.runtimeFailureCode}
               onChange={props.onMemoryProtectionChange}
+              confirmDialog={props.confirmDialog}
             />
           </Show>
           <Show when={props.activeSection === "hardwareControl"}>
