@@ -90,7 +90,7 @@ public sealed partial class KernelLeakReportTests
         await DeliverWithoutReader(fixture, 10, 1500);
         Assert.Equal(1, fixture.Reports.Read().Observation.SampleCount);
         Assert.Null(fixture.Reports.Read().Observation.PreviousRunFailure);
-        Assert.Empty(fixture.Reports.Read().Items);
+        Assert.Equal(KernelLeakItemState.Active, Assert.Single(fixture.Reports.Read().Items).State);
     }
 
     [Fact]

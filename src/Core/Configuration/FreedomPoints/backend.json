@@ -26,6 +26,7 @@
                   "interval_milliseconds": 30000,
                   "minimum_observation_seconds": 600,
                   "maximum_holders": 4096,
+                  "reported_item_capacity": 256,
                   "minimum_growth": 128,
                   "edge_percentage": 25,
                   "enabled": true

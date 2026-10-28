@@ -11,7 +11,7 @@ internal sealed class KernelLeakSeries(KernelLeakOptions options)
     internal long Bytes => (long)Count * options.SeriesCapacity * 16;
     internal long PeakBytes { get; private set; }
     internal void Clear() => holders.Clear();
-    internal IReadOnlyList<KernelLeakSuspect> Observe(KernelLeakSampleFrame frame)
+    internal KernelLeakJudgment Observe(KernelLeakSampleFrame frame)
     {
         if (frame.Samples.Count > options.MaximumHolders) throw new OverflowException("Kernel leak holder capacity exceeded.");
         var live = new HashSet<(int, string, KernelLeakSampleKind)>();
@@ -25,6 +25,7 @@ internal sealed class KernelLeakSeries(KernelLeakOptions options)
         }
         foreach (var key in holders.Keys.ToArray()) if (!live.Contains(key)) holders.Remove(key);
         var suspects = new List<KernelLeakSuspect>();
+        var judged = new HashSet<(int, string, KernelLeakResourceKind)>();
         foreach (var sample in frame.Samples)
         {
             if (sample.ResourceKind != KernelLeakSampleKind.ProcessHandles) continue;
@@ -35,11 +36,13 @@ internal sealed class KernelLeakSeries(KernelLeakOptions options)
                 holders.Add(key, ring = new(options.SeriesCapacity));
             }
             ring.Add(frame.CapturedAt.UtcTicks, sample.Value);
-            if (ring.Count < options.MinimumSamples || sample.Value <= (ulong)options.HandleFloor) continue;
+            if (ring.Count < options.MinimumSamples) continue;
             var first = ring.At(0);
             var last = ring.At(ring.Count - 1);
             var seconds = (last.Ticks - first.Ticks) / (double)TimeSpan.TicksPerSecond;
             if (seconds < options.MinimumObservationSeconds) continue;
+            judged.Add((sample.ProcessId, sample.StartKey, KernelLeakResourceKind.ProcessHandles));
+            if (sample.Value <= (ulong)options.HandleFloor) continue;
             // Compare conservative edge levels, allowing ordinary-handle noise between them.
             // Integer division floors the percentage; disjoint edges always contain at least one sample.
             var edgeCount = Math.Max(1, ring.Count * options.EdgePercentage / 100);
@@ -57,7 +60,7 @@ internal sealed class KernelLeakSeries(KernelLeakOptions options)
                 KernelLeakHolder.Unknown(sample.ProcessId, sample.StartKey)));
         }
         PeakBytes = Math.Max(PeakBytes, Bytes);
-        return suspects.ToArray();
+        return new(suspects.ToArray(), judged);
     }
     private sealed class Ring(int capacity)
     {
@@ -72,3 +75,6 @@ internal sealed class KernelLeakSeries(KernelLeakOptions options)
         }
     }
 }
+
+internal sealed record KernelLeakJudgment(IReadOnlyList<KernelLeakSuspect> Suspects,
+    IReadOnlySet<(int Pid, string Start, KernelLeakResourceKind Kind)> Judged);

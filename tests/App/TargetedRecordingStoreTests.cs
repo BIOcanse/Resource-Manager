@@ -66,7 +66,7 @@ public sealed class TargetedRecordingStoreTests : IDisposable
     }
 
     [Fact]
-    public async Task InterruptedRecordingIsRecoveredAndRetentionKeepsLastFiftyCompleted()
+    public async Task CompletionKeepsEveryRecordingBeyondFiftyAndManualDeleteRemainsAvailable()
     {
         var store = new TargetedRecordingStore(CreateDatabase());
         var started = DateTimeOffset.UtcNow.AddMinutes(-60);
@@ -83,9 +83,34 @@ public sealed class TargetedRecordingStoreTests : IDisposable
             await store.FinishAsync(header.Id, "user", false, CancellationToken.None);
         }
         var list = await store.ListAsync(CancellationToken.None);
-        Assert.Equal(TargetedRecordingStore.CompletedRetention, list.Count);
-        Assert.DoesNotContain(list, item => item.Id is "interrupted" or "recording-0");
+        Assert.Equal(52, list.Count);
+        Assert.Contains(list, item => item.Id == "interrupted");
+        Assert.Contains(list, item => item.Id == "recording-0");
         Assert.Contains(list, item => item.Id == "recording-50");
+        Assert.True(await store.DeleteAsync("recording-0", CancellationToken.None));
+        Assert.Equal(51, (await store.ListAsync(CancellationToken.None)).Count);
+    }
+
+    [Fact]
+    public async Task StartupRecoveryKeepsEveryInterruptedRecordingBeyondFifty()
+    {
+        var database = CreateDatabase();
+        var store = new TargetedRecordingStore(database);
+        for (var index = 0; index < 55; index++)
+            await store.CreateAsync(Header($"recording-{index}", DateTimeOffset.UnixEpoch.AddMinutes(index)), CancellationToken.None);
+        // The real service startup calls this store operation on the reopened database.
+        store = new TargetedRecordingStore(database);
+        await store.RecoverInterruptedAsync(CancellationToken.None);
+        var list = await store.ListAsync(CancellationToken.None);
+        Assert.Equal(55, list.Count);
+        Assert.All(list, item =>
+        {
+            Assert.Equal("completed", item.Status);
+            Assert.True(item.Incomplete);
+            Assert.Equal("interrupted", item.StopReason);
+        });
+        await store.RecoverInterruptedAsync(CancellationToken.None);
+        Assert.Equal(list, await store.ListAsync(CancellationToken.None));
     }
 
     private ResourceManagerDatabase CreateDatabase()

@@ -7,8 +7,6 @@ namespace ResourceManager.App.Infrastructure.Monitoring.TargetedRecording;
 
 public sealed class TargetedRecordingStore(ResourceManagerDatabase database)
 {
-    public const int CompletedRetention = 50;
-
     public async Task RecoverInterruptedAsync(CancellationToken cancellationToken)
     {
         await using var connection = await database.OpenConnectionAsync(cancellationToken);
@@ -18,14 +16,8 @@ public sealed class TargetedRecordingStore(ResourceManagerDatabase database)
             SET status = 'completed', stop_reason = 'interrupted', incomplete = 1,
                 ended_utc_ticks = $now
             WHERE status = 'recording';
-            DELETE FROM targeted_recordings
-            WHERE id IN (
-                SELECT id FROM targeted_recordings WHERE status = 'completed'
-                ORDER BY started_utc_ticks DESC LIMIT -1 OFFSET $retain
-            );
             """;
         command.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.UtcTicks);
-        command.Parameters.AddWithValue("$retain", CompletedRetention);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -113,19 +105,6 @@ public sealed class TargetedRecordingStore(ResourceManagerDatabase database)
             await finish.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        await using (var prune = connection.CreateCommand())
-        {
-            prune.Transaction = transaction;
-            prune.CommandText = """
-                DELETE FROM targeted_recordings
-                WHERE id IN (
-                    SELECT id FROM targeted_recordings WHERE status = 'completed'
-                    ORDER BY started_utc_ticks DESC LIMIT -1 OFFSET $retain
-                );
-                """;
-            prune.Parameters.AddWithValue("$retain", CompletedRetention);
-            await prune.ExecuteNonQueryAsync(cancellationToken);
-        }
         await transaction.CommitAsync(cancellationToken);
     }
 

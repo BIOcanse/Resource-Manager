@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using ResourceManager.App.Application.KernelLeak;
 using ResourceManager.App.Application.ResourceBreakdown;
 using ResourceManager.App.Domain.KernelLeak;
@@ -22,7 +23,7 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class KernelLeakReportTests
 {
-    private static readonly KernelLeakOptions Fast = new(1000, 4, 8, 3, 2, 1000, 100, 25, true);
+    private static readonly KernelLeakOptions Fast = new(1000, 4, 8, 3, 2, 1000, 100, 25, true, 256);
     [Theory]
     [InlineData(1000, 1100, 1200, true)]
     [InlineData(1200, 1400, 1200, false)]
@@ -65,10 +66,10 @@ public sealed partial class KernelLeakReportTests
         await fixture.Deliver(subscription, 2, 1200);
         Assert.Equal(1, fixture.Reports.ReadDiagnostics().HolderCount);
         var ended = await fixture.Deliver(subscription, 3, null);
-        Assert.Empty(ended.Items);
+        Assert.Equal(KernelLeakItemState.History, Assert.Single(ended.Items).State);
         Assert.Equal(0, fixture.Reports.ReadDiagnostics().HolderCount);
         await fixture.Deliver(subscription, 4, 1600, "43");
-        Assert.Empty(subscription.Current.Items);
+        Assert.Equal(KernelLeakItemState.History, Assert.Single(subscription.Current.Items).State);
         Assert.Equal(1, fixture.Reports.ReadDiagnostics().HolderCount);
         Assert.Equal("kernel-leak-observer", fixture.Processes.Holder);
         Assert.Equal(TimeSpan.FromSeconds(1), fixture.Processes.Interval);
@@ -100,7 +101,7 @@ public sealed partial class KernelLeakReportTests
         Assert.Equal(1, fixture.Processes.Active);
     }
     [Fact]
-    public async Task FailedSourceClearsEvidenceRatherThanKeepingLastSuspect()
+    public async Task FailedSourceClearsSeriesAndKeepsReportedSuspect()
     {
         using var fixture = new Fixture();
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -112,9 +113,9 @@ public sealed partial class KernelLeakReportTests
         fixture.Processes.Push(new(DateTimeOffset.UnixEpoch.AddSeconds(3), []));
         Assert.True(await subscription.MoveNextAsync());
         Assert.Equal(KernelLeakReportStatus.Unavailable, subscription.Current.Status);
-        Assert.Empty(subscription.Current.Items);
+        Assert.Equal(KernelLeakItemState.Active, Assert.Single(subscription.Current.Items).State);
         Assert.Equal(0, fixture.Reports.ReadDiagnostics().HolderCount);
-        Assert.Empty((await fixture.Deliver(subscription, 4, 1400)).Items);
+        Assert.Equal(1200UL, Assert.Single((await fixture.Deliver(subscription, 4, 1400)).Items).CurrentValue);
     }
     [Fact]
     public async Task CacheLikeQuantitiesAreExcludedAndOverflowIsExplicit()
@@ -147,7 +148,7 @@ public sealed partial class KernelLeakReportTests
         {
             var result = series.Observe(new(DateTimeOffset.UnixEpoch.AddSeconds(index), true,
                 [new(7, "42", KernelLeakSampleKind.ProcessHandles, values[index])]));
-            Assert.Equal(index == 4 ? 1 : 0, result.Count);
+            Assert.Equal(index == 4 ? 1 : 0, result.Suspects.Count);
         }
         Assert.Equal(64, series.Bytes);
     }
@@ -221,7 +222,7 @@ public sealed partial class KernelLeakReportTests
     public void KernelLeakFreedomPointDefaultsAreCompiledAndInvalidBoundsAreRejected()
     {
         var baseline = HostManagerTestPlanFactory.CreatePlan();
-        Assert.Equal(new KernelLeakOptions(30000, 32, 4096, 8, 600, 1024, 128, 25, true), baseline.KernelLeak);
+        Assert.Equal(new KernelLeakOptions(30000, 32, 4096, 8, 600, 1024, 128, 25, true, 256), baseline.KernelLeak);
         var changed = HostManagerTestPlanFactory.CreatePlan(editFreedomPoints: root =>
             FreedomPointTestFactory.Point(root, "resource-manager/backend/monitoring/build/complex/0")["value"]!["handle_floor"] = 2000);
         Assert.Equal(2000, changed.KernelLeak!.HandleFloor);
@@ -312,7 +313,7 @@ public sealed partial class KernelLeakReportTests
             IReadOnlyList<KernelLeakSuspect> items = [];
             var values = new ulong[] { 1000, 1030, 1250, 1300, 1250, 1290, 1400, 1450 };
             for (var index = 0; index < values.Length; index++)
-                items = series.Observe(new(DateTimeOffset.UnixEpoch.AddSeconds(index), true, [new(7, "42", KernelLeakSampleKind.ProcessHandles, values[index])]));
+                items = series.Observe(new(DateTimeOffset.UnixEpoch.AddSeconds(index), true, [new(7, "42", KernelLeakSampleKind.ProcessHandles, values[index])])).Suspects;
             Assert.Equal(percentage == 25 ? 1 : 0, items.Count);
         }
     }
@@ -353,9 +354,14 @@ public sealed partial class KernelLeakReportTests
         }
         internal Fixture(bool rawSamples = false, bool failedAttribution = false, KernelLeakOptions? options = null,
             IKernelLeakAttributionReader? attribution = null, bool publishAfterHostStart = false,
-            IKernelLeakSampleSource? sampleSource = null, bool deferPublication = false)
+            IKernelLeakSampleSource? sampleSource = null, bool deferPublication = false,
+            string? packageRoot = null, bool mutablePersistence = false,
+            ILogger<KernelLeakObserver>? logger = null)
         {
             var collection = new ServiceCollection(); collection.AddLogging();
+            collection.AddSingleton<Microsoft.Extensions.Hosting.IHostEnvironment>(new KernelLeakTestEnvironment(packageRoot ?? Path.GetTempPath()));
+            collection.AddSingleton(new ResourceManager.App.Application.RuntimeSpecialization.RuntimePersistenceCapabilityPolicy(mutablePersistence));
+            if (logger is not null) collection.AddSingleton(logger);
             var plans = new RuntimePlanProvider(new HostManagerDeploymentState());
             Plans = plans;
             var configured = options ?? Fast;
@@ -371,6 +377,7 @@ public sealed partial class KernelLeakReportTests
                 value["minimum_growth"] = configured.MinimumGrowth;
                 value["edge_percentage"] = configured.EdgePercentage;
                 value["enabled"] = configured.Enabled;
+                value["reported_item_capacity"] = configured.ReportedItemCapacity;
             });
             Plan = CompiledRuntimePlan.Default with { Version = 1, HostManager = plan };
             if (!publishAfterHostStart && !deferPublication) plans.Publish(Plan);

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using ResourceManager.App.Application.KernelLeak;
+using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Domain.KernelLeak;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
@@ -10,8 +11,9 @@ using ResourceManager.Shared.BusinessBlocks;
 namespace ResourceManager.App.Infrastructure.KernelLeak;
 
 // The persistent object owns publications and readers; its block entry owns observation subscription.
-public sealed class KernelLeakObserver(IKernelLeakSampleSource source, IKernelLeakAttributionReader attribution,
-    RuntimePlanProvider plans, ILogger<KernelLeakObserver> logger)
+public sealed partial class KernelLeakObserver(IKernelLeakSampleSource source, IKernelLeakAttributionReader attribution,
+    RuntimePlanProvider plans, ILogger<KernelLeakObserver> logger, IHostEnvironment environment,
+    RuntimePersistenceCapabilityPolicy persistence)
     : IKernelLeakReportSource, IBusinessBlock, IHostedService, IDisposable
 {
     private const int MaximumSubscribers = 64;
@@ -29,6 +31,7 @@ public sealed class KernelLeakObserver(IKernelLeakSampleSource source, IKernelLe
         lock (gate)
         {
             if (started) return Task.CompletedTask;
+            RestoreItemsOnce();
             started = true;
             plans.Published += UpdateNotObserved;
             UpdateNotObserved(plans.Current);
@@ -129,7 +132,8 @@ public sealed class KernelLeakObserver(IKernelLeakSampleSource source, IKernelLe
                         {
                             var timer = Stopwatch.StartNew();
                             if (frame.CapturedAt < began) throw new InvalidDataException("Kernel leak sample precedes the observation run.");
-                            var suspects = series.Observe(frame);
+                            var result = series.Observe(frame);
+                            var suspects = result.Suspects;
                             var judgment = timer.Elapsed.TotalMilliseconds;
                             elapsed = (frame.CapturedAt - began).TotalSeconds;
                             samples = checked(samples + 1);
@@ -153,7 +157,8 @@ public sealed class KernelLeakObserver(IKernelLeakSampleSource source, IKernelLe
                                 : samples < options.MinimumSamples || elapsed < options.MinimumObservationSeconds
                                     ? KernelLeakReportStatus.Observing : KernelLeakReportStatus.Empty;
                             Publish(new(status, frame.CapturedAt, items, KernelLeakFailure.None, Progress())
-                                { UnavailableHolderCount = frame.UnavailableHolderCount }, series, judgment, timer.Elapsed.TotalMilliseconds);
+                                { UnavailableHolderCount = frame.UnavailableHolderCount }, series, judgment, timer.Elapsed.TotalMilliseconds,
+                                result with { Suspects = items }, frame, options.ReportedItemCapacity);
                         }
                         catch (Exception error) when (IsObservationFailure(error))
                         {
@@ -192,15 +197,24 @@ public sealed class KernelLeakObserver(IKernelLeakSampleSource source, IKernelLe
     // Caller holds gate, so registering a reader and replaying the current report stay atomic.
     private void SetReport(KernelLeakReport report)
     {
-        current = report;
-        foreach (var reader in readers) reader.Writer.TryWrite(report);
+        RestoreItemsOnce();
+        current = report with { Items = reportedItems };
+        foreach (var reader in readers) reader.Writer.TryWrite(current);
     }
     private static KernelLeakFailure Classify(Exception error) => error is OverflowException ? KernelLeakFailure.CapacityExceeded
         : error is InvalidDataException ? KernelLeakFailure.InvalidObservation : KernelLeakFailure.SourceUnavailable;
-    private void Publish(KernelLeakReport report, KernelLeakSeries series, double judgement, double attributionCost)
+    private void Publish(KernelLeakReport report, KernelLeakSeries series, double judgement, double attributionCost,
+        KernelLeakJudgment? result = null, KernelLeakSampleFrame? frame = null, int capacity = 0)
     {
         lock (gate)
         {
+            if (result is not null)
+            {
+                report = report with { UnrecordedItemCount = ApplyJudgment(result, frame!, capacity) };
+                if (report.Status == KernelLeakReportStatus.Suspected
+                    && !result.Suspects.Any(suspect => reportedItems.Any(item => Key(item) == Key(suspect))))
+                    report = report with { Status = KernelLeakReportStatus.Empty };
+            }
             diagnostics = new(series.Count, series.Bytes, Math.Max(diagnostics.PeakSeriesBytes, series.PeakBytes),
                 diagnostics.ObservedFrames + 1, judgement, attributionCost);
             SetReport(report);

@@ -49,6 +49,40 @@ public sealed class TargetedRecordingServiceTests : IDisposable
     private readonly string root = Path.Combine(Path.GetTempPath(), $"rm-targeted-service-{Guid.NewGuid():N}");
 
     [Fact]
+    public async Task ServiceStartupAndCompletionPreserveMoreThanFiftyReports()
+    {
+        var (service, store, frames, breakdown, metrics) = CreateService();
+        for (var index = 0; index < 55; index++)
+        {
+            var header = new TargetedRecordingHeader($"saved-{index}", "software", "Example",
+                DateTimeOffset.UnixEpoch.AddMinutes(index), null, 600, "recording", null, false);
+            await store.CreateAsync(header, CancellationToken.None);
+            if (index < 54) await store.FinishAsync(header.Id, "user", false, CancellationToken.None);
+        }
+        await service.StartAsync(CancellationToken.None);
+        try
+        {
+            var recovered = (await service.ListAsync(CancellationToken.None)).Single(item => item.Id == "saved-54");
+            Assert.Equal("interrupted", recovered.StopReason);
+            Assert.True(recovered.Incomplete);
+            Assert.Equal(55, (await service.ListAsync(CancellationToken.None)).Count);
+            var recording = await service.BeginAsync("software", 600, CancellationToken.None);
+            Assert.False(await service.DeleteAsync(recording.Id, CancellationToken.None));
+            var completed = await service.FinishAsync(recording.Id, CancellationToken.None);
+            Assert.Equal("completed", completed!.Status);
+            var all = await service.ListAsync(CancellationToken.None);
+            Assert.Equal(56, all.Count);
+            Assert.Contains(all, item => item.Id == "saved-0");
+            Assert.True(await service.DeleteAsync("saved-0", CancellationToken.None));
+            Assert.Equal(55, (await service.ListAsync(CancellationToken.None)).Count);
+            Assert.Equal(0, frames.ActiveLeases);
+            Assert.Equal(0, breakdown.ActiveLeases);
+            Assert.Equal(0, metrics.ActiveLeases);
+        }
+        finally { await service.StopAsync(CancellationToken.None); }
+    }
+
+    [Fact]
     public async Task ManualStopCompletesTheRecordingAndReleasesObservationLeases()
     {
         var (service, store, frames, breakdown, metrics) = CreateService();

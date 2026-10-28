@@ -28,17 +28,23 @@ public sealed class KernelLeakProcessSampleSource(IResourceBreakdownPushSource p
             if (fields.Processes.Count > 16384) throw new OverflowException("Kernel leak input capacity exceeded.");
             var samples = new List<KernelLeakSample>(fields.Processes.Count);
             var unavailable = 0;
+            var unavailableHolders = new List<KernelLeakUnavailableHolder>();
             foreach (var process in fields.Processes)
             {
                 var value = process.Values.FirstOrDefault(value => value.Field == HandleField)?.IntegerValue;
                 if (process.ProcessId <= 0) continue;
-                if (!ulong.TryParse(process.CreationWindowsFileTime100Ns, NumberStyles.None, CultureInfo.InvariantCulture, out var birth)
-                    || birth == 0 || value is not { Negative: false, HighBits: 0 } count)
-                { unavailable++; continue; }
+                var hasIdentity = ulong.TryParse(process.CreationWindowsFileTime100Ns, NumberStyles.None, CultureInfo.InvariantCulture, out var birth) && birth != 0;
+                if (!hasIdentity || value is not { Negative: false, HighBits: 0 } count)
+                {
+                    unavailable++;
+                    unavailableHolders.Add(new(process.ProcessId, hasIdentity ? birth.ToString(CultureInfo.InvariantCulture) : null));
+                    continue;
+                }
                 samples.Add(new(process.ProcessId, birth.ToString(CultureInfo.InvariantCulture), KernelLeakSampleKind.ProcessHandles, count.LowBits));
             }
             // Missing counts break only that holder's series. Missing identity cannot create a false holder.
-            yield return new(captured, samples.Count > 0 || unavailable == 0, samples) { UnavailableHolderCount = unavailable };
+            yield return new(captured, samples.Count > 0 || unavailable == 0, samples)
+                { UnavailableHolderCount = unavailable, UnavailableHolders = unavailableHolders.ToArray() };
         }
     }
 }

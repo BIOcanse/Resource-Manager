@@ -10,6 +10,12 @@ public enum KernelLeakResourceKind { ProcessHandles }
 public enum KernelLeakUnit { [JsonStringEnumMemberName("count")] Count }
 [JsonConverter(typeof(JsonStringEnumConverter<KernelLeakReportStatus>))]
 public enum KernelLeakReportStatus { NotObserved, Observing, Empty, Suspected, Unavailable }
+[JsonConverter(typeof(JsonStringEnumConverter<KernelLeakItemState>))]
+public enum KernelLeakItemState
+{
+    [JsonStringEnumMemberName("active")] Active,
+    [JsonStringEnumMemberName("history")] History
+}
 [JsonConverter(typeof(JsonStringEnumConverter<KernelLeakFailure>))]
 public enum KernelLeakFailure { None, SourceUnavailable, CapacityExceeded, InvalidObservation }
 [JsonConverter(typeof(JsonStringEnumConverter<KernelLeakMetadataStatus>))]
@@ -28,7 +34,8 @@ public sealed record KernelLeakImage
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Name { get; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Path { get; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? ProductName { get; }
-    private KernelLeakImage(KernelLeakMetadataStatus status, string? name = null, string? path = null, string? productName = null)
+    [JsonConstructor]
+    internal KernelLeakImage(KernelLeakMetadataStatus status, string? name = null, string? path = null, string? productName = null)
         => (Status, Name, Path, ProductName) = (status, name, path, productName);
     public static KernelLeakImage Current(string name, string path, string? productName) => new(KernelLeakMetadataStatus.Current, name, path, productName);
     public static KernelLeakImage Unavailable { get; } = new(KernelLeakMetadataStatus.Unavailable);
@@ -46,6 +53,9 @@ public sealed record KernelLeakSuspect(KernelLeakResourceKind ResourceKind, ulon
     double GrowthPerSecond, double ObservationSeconds, int SampleCount, ulong Growth,
     KernelLeakHolder Holder)
 {
+    [JsonRequired] public KernelLeakItemState State { get; init; }
+    [JsonRequired] public DateTimeOffset FirstObservedAt { get; init; }
+    [JsonRequired] public DateTimeOffset LastObservedAt { get; init; }
     public KernelLeakUnit Unit => KernelLeakUnit.Count;
     // Contract only: phase 1 provides no command for either action. Target identity is Holder's PID + start key.
     public IReadOnlyList<KernelLeakAction> Actions => ReservedActions;
@@ -68,13 +78,21 @@ public sealed record KernelLeakObservation(DateTimeOffset? StartedAt, double Ela
 }
 public sealed record KernelLeakReport(KernelLeakReportStatus Status, DateTimeOffset? CapturedAt,
     IReadOnlyList<KernelLeakSuspect> Items, KernelLeakFailure Failure, KernelLeakObservation Observation)
-{ public int UnavailableHolderCount { get; init; } }
+{
+    public int UnavailableHolderCount { get; init; }
+    public int UnrecordedItemCount { get; init; }
+}
 
 // Sampling input is separate from the HTTP report; cache-like inputs are testable exclusions.
 public enum KernelLeakSampleKind { ProcessHandles, FileCachePoolBytes }
 public sealed record KernelLeakSample(int ProcessId, string StartKey, KernelLeakSampleKind ResourceKind, ulong Value);
 public sealed record KernelLeakSampleFrame(DateTimeOffset CapturedAt, bool Available, IReadOnlyList<KernelLeakSample> Samples)
-{ public int UnavailableHolderCount { get; init; } }
+{
+    public int UnavailableHolderCount { get; init; }
+    // A missing count is not an absent process. A missing start key cannot prove that PID's old instance ended.
+    public IReadOnlyList<KernelLeakUnavailableHolder> UnavailableHolders { get; init; } = [];
+}
+public sealed record KernelLeakUnavailableHolder(int ProcessId, string? StartKey);
 public sealed record KernelLeakDiagnostics(int HolderCount, long SeriesBytes, long PeakSeriesBytes,
     long ObservedFrames, double LastJudgementMilliseconds, double LastAttributionMilliseconds);
 public sealed record KernelLeakDebugSnapshot(KernelLeakReport Report, KernelLeakDiagnostics Diagnostics);
