@@ -3,6 +3,7 @@ param(
     [Parameter(Mandatory)][string]$OutPath,
     [string]$InstallRoot = 'C:\Program Files\ResourceManager Beta',
     [int]$DebugPort = 9333,
+    [int]$ServicePort = 9321,
     [switch]$NoUiRestart
 )
 $ErrorActionPreference = 'Stop'
@@ -20,7 +21,7 @@ $identity = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
 if (-not $identity.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     # Start-Process joins arguments with spaces and does not quote them, so paths are quoted here.
     $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Package `"$Package`" " +
-        "-OutPath `"$OutPath`" -InstallRoot `"$InstallRoot`" -DebugPort $DebugPort -NoUiRestart"
+        "-OutPath `"$OutPath`" -InstallRoot `"$InstallRoot`" -DebugPort $DebugPort -ServicePort $ServicePort -NoUiRestart"
     $child = Start-Process (Get-Process -Id $PID).Path -Verb RunAs -WindowStyle Hidden -Wait -PassThru -ArgumentList $arguments
     if (Test-Path -LiteralPath $OutPath) { Get-Content -LiteralPath $OutPath }
     if ($child.ExitCode -ne 0) { exit $child.ExitCode }
@@ -69,6 +70,18 @@ try {
     Log ("uninstall DisplayVersion=$($uninstall.DisplayVersion) Quiet=$($uninstall.QuietUninstallString)")
     Log ('installed manager matches package: ' + ((Get-FileHash -LiteralPath $expected).Hash -eq (Get-FileHash -LiteralPath $manager).Hash))
     Log ('service ' + (Get-Service ResourceManager.Service).Status)
+    # The normal running point lives only for one service run, so the restart switched host memory protection off
+    # (10-28: four installs left it at no-normal-running-point). Re-create it here, elevated, when protection is
+    # enabled; the route needs machine.write from an elevated caller, which the bundled UI is not.
+    $status = $null; $deadline = (Get-Date).AddMinutes(2)
+    while ((Get-Date) -lt $deadline -and -not $status) {
+        try { $status = Invoke-RestMethod -Uri "http://127.0.0.1:$ServicePort/api/memory-protection" -UseDefaultCredentials -AllowUnencryptedAuthentication -TimeoutSec 10 } catch { Start-Sleep -Seconds 3 }
+    }
+    if ($status -and $status.enabled) {
+        Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:$ServicePort/api/memory-protection/normal-running-point" -UseDefaultCredentials -AllowUnencryptedAuthentication -TimeoutSec 60 | Out-Null
+        $status = Invoke-RestMethod -Uri "http://127.0.0.1:$ServicePort/api/memory-protection" -UseDefaultCredentials -AllowUnencryptedAuthentication -TimeoutSec 10
+        Log "memory protection active=$($status.active) inactiveReason=$($status.inactiveReason)"
+    } else { Log "memory protection enabled=$($status.enabled); running point not created" }
     Log 'done'
 }
 catch {
