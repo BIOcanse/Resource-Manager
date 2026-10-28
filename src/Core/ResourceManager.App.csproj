@@ -233,7 +233,7 @@
           Inputs="@(NativeCoreSource)"
           Outputs="$(NativeCoreOutput)"
           Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipNativeCoreBuild)' != 'true'">
-    <Exec WorkingDirectory="$(NativeCoreRoot)" Command="&quot;$(NativeCoreZigExecutable)&quot; build -j1 --prefix &quot;$(NativeCoreInstallRoot)&quot; $(NativeCoreTargetArgument) -Doptimize=$(NativeCoreOptimize) $(NativeCoreStateNamesArgument)" />
+    <Exec WorkingDirectory="$(NativeCoreRoot)" Command="&quot;$(NativeCoreZigExecutable)&quot; build -j$(ResourceManagerZigJobs) --prefix &quot;$(NativeCoreInstallRoot)&quot; $(NativeCoreTargetArgument) -Doptimize=$(NativeCoreOptimize) $(NativeCoreStateNamesArgument)" />
   </Target>
   <Target Name="BuildGpuWindowAction"
           BeforeTargets="PrepareForBuild"

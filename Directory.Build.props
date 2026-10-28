@@ -4,6 +4,11 @@
     <ResourceManagerStateNames Condition="'$(ResourceManagerStateNames)' == ''">true</ResourceManagerStateNames>
   </PropertyGroup>
   <PropertyGroup>
+    <!-- Parallel jobs of the zig builds nested in MSBuild (NativeCore, shared memory adapter). 1 keeps a nested build
+         inside the memory ceiling of test and worker runs; pass -p:ResourceManagerZigJobs=N to change it. -->
+    <ResourceManagerZigJobs Condition="'$(ResourceManagerZigJobs)' == ''">1</ResourceManagerZigJobs>
+  </PropertyGroup>
+  <PropertyGroup>
     <!-- Explicit MSBuild ownership also takes precedence over a shared NUGET_PACKAGES environment. -->
     <RestorePackagesPath Condition="'$(RestorePackagesPath)' == ''">$(MSBuildThisFileDirectory)sdk/freedom-point/restored-packages</RestorePackagesPath>
   </PropertyGroup>

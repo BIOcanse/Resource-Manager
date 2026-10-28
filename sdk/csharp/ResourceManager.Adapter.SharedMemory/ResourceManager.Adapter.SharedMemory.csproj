@@ -32,6 +32,6 @@
           Outputs="$(AdapterNativeOutput)"
           Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipAdapterNativeBuild)' != 'true'">
     <Exec WorkingDirectory="$(AdapterNativeRoot)"
-          Command="&quot;$(AdapterNativeZigExecutable)&quot; build --prefix &quot;$(AdapterNativeInstallRoot)&quot; -Doptimize=$(AdapterNativeOptimize)" />
+          Command="&quot;$(AdapterNativeZigExecutable)&quot; build -j$(ResourceManagerZigJobs) --prefix &quot;$(AdapterNativeInstallRoot)&quot; -Doptimize=$(AdapterNativeOptimize)" />
   </Target>
 </Project>
