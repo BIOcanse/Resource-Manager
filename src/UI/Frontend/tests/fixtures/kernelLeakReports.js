@@ -108,8 +108,8 @@ export const kernelLeakRecordedFrames = Object.freeze({
     },
     unavailableHolderCount: 0
   },
-  disabled: {
-    status: "Disabled",
+  notObserved: {
+    status: "NotObserved",
     capturedAt: null,
     items: [],
     failure: "None",
@@ -220,10 +220,15 @@ const capacityFailure = { startedAt: "2026-10-27T10:20:00+00:00", failedAt: "202
 
 /** 场景名 → 后端帧。名字即 mock 场景 kernelLeakReport 的取值。 */
 export const kernelLeakReportFrames = Object.freeze({
-  // 配置关闭了观察：没有采集时间，进度为零。
-  disabled: report("Disabled", {
+  // 观察块没有运行（关闭、已停止）：没有采集时间，进度为零，要求取计划值。
+  notObserved: report("NotObserved", {
     capturedAt: null,
     observation: observation({ startedAt: null, elapsedSeconds: 0, sampleCount: 0 })
+  }),
+  // 观察计划还没发布（服务刚启动、块还没运行）：要求也是 0。
+  notObservedBeforePlan: report("NotObserved", {
+    capturedAt: null,
+    observation: observation({ startedAt: null, elapsedSeconds: 0, sampleCount: 0, requiredSeconds: 0, requiredSampleCount: 0 })
   }),
   // 本轮观察 2 分 30 秒、6 个样本，还不够判定。
   observing: report("Observing", {

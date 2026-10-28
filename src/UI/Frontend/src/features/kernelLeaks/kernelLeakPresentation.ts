@@ -38,7 +38,7 @@ export function kernelLeakStateView(snapshot: SourceSnapshot<KernelLeakReport>):
   }
   if (!report) return { kind: "waiting", title: copy.loading };
   switch (report.status) {
-    case "Disabled": return { kind: "unavailable", title: copy.disabledTitle, detail: copy.disabledDetail };
+    case "NotObserved": return { kind: "unavailable", title: copy.notObservedTitle, detail: copy.notObservedDetail };
     case "Observing": return { kind: "waiting", title: copy.observingTitle, detail: copy.observingDetail };
     case "Empty": return { kind: "empty", title: copy.emptyTitle, detail: copy.emptyDetail };
     case "Suspected": return null;
@@ -55,9 +55,9 @@ export interface KernelLeakLabelledValue {
   readonly value: string;
 }
 
-/** 本轮观察进度：开始时间、观察时长和样本数（各自写已达到多少、需要多少）。观察关闭时没有进度可写，返回 null。 */
+/** 本轮观察进度：开始时间、观察时长和样本数（各自写已达到多少、需要多少）。没有在观察时没有进度可写，返回 null。 */
 export function kernelLeakObservationProgress(report: KernelLeakReport): readonly KernelLeakLabelledValue[] | null {
-  if (report.status === "Disabled") return null;
+  if (report.status === "NotObserved") return null;
   const copy = uiText.kernelLeakReport.observation;
   const observation: KernelLeakObservation = report.observation;
   return [
@@ -85,7 +85,7 @@ export function kernelLeakPreviousRunFailure(failure: KernelLeakRunFailure): rea
 
 /** 失败后何时开始新一轮：本轮失败或带着上一轮失败时写出后端声明的重新开始方式。 */
 export function kernelLeakRestartNote(report: KernelLeakReport): string | null {
-  if (report.status === "Disabled") return null;
+  if (report.status === "NotObserved") return null;
   if (report.status !== "Unavailable" && report.observation.previousRunFailure === null) return null;
   return uiText.kernelLeakReport.restartPolicy[report.observation.restartPolicy];
 }

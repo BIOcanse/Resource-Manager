@@ -100,7 +100,7 @@ async function checkScenario(page, report, app, language, name, { hints = false 
   const number = (value, options = {}) => new Intl.NumberFormat(language, options).format(value);
   const decodes = name !== "invalid";
   const states = {
-    Disabled: { title: copy.disabledTitle, detail: copy.disabledDetail },
+    NotObserved: { title: copy.notObservedTitle, detail: copy.notObservedDetail },
     Observing: { title: copy.observingTitle, detail: copy.observingDetail },
     Empty: { title: copy.emptyTitle, detail: copy.emptyDetail },
     Suspected: null,
@@ -119,7 +119,7 @@ async function checkScenario(page, report, app, language, name, { hints = false 
       ...(frame.capturedAt ? [`${copy.capturedAt}=${localTime(frame.capturedAt)}`] : []),
       ...(frame.status === "Suspected" ? [`${copy.suspectedItems}=${number(frame.items.length)}`] : [])
     ],
-    observation: !decodes || frame.status === "Disabled" ? [] : [
+    observation: !decodes || frame.status === "NotObserved" ? [] : [
       `${copy.observation.startedAt}=${observation.startedAt ? localTime(observation.startedAt) : copy.observation.notStarted}`,
       `${copy.observation.elapsed}=${copy.observation.reachedOfRequired(duration(observation.elapsedSeconds), duration(observation.requiredSeconds))}`,
       `${copy.observation.samples}=${copy.observation.reachedOfRequired(number(observation.sampleCount), number(observation.requiredSampleCount))}`

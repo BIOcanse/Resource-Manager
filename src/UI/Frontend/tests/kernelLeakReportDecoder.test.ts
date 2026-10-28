@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { kernelLeakReportDecoder, type KernelLeakReport } from "../src/data/kernelLeaks/kernelLeakReport.ts";
+import { readFileSync } from "node:fs";
+import {
+  kernelLeakActionKinds, kernelLeakFailures, kernelLeakMetadataStatuses, kernelLeakReportDecoder, kernelLeakReportStatuses,
+  kernelLeakResourceKinds, kernelLeakRestartPolicies, kernelLeakRiskLevels, kernelLeakUnits, type KernelLeakReport
+} from "../src/data/kernelLeaks/kernelLeakReport.ts";
 import { ResponseDecodeError } from "../src/frontendRuntime/request/ResponseDecoder.ts";
 import { kernelLeakRecordedFrames, kernelLeakReportFrames } from "./fixtures/kernelLeakReports.js";
 
@@ -47,8 +51,8 @@ assert.deepEqual(kernelLeakReportDecoder.decode(kernelLeakRecordedFrames.nextRun
   unavailableHolderCount: 0
 } satisfies KernelLeakReport);
 
-assert.deepEqual(kernelLeakReportDecoder.decode(kernelLeakRecordedFrames.disabled), {
-  status: "Disabled", capturedAt: null,
+assert.deepEqual(kernelLeakReportDecoder.decode(kernelLeakRecordedFrames.notObserved), {
+  status: "NotObserved", capturedAt: null,
   observation: { ...recordedObservation, startedAt: null, elapsedSeconds: 0, sampleCount: 0 },
   unavailableHolderCount: 0
 } satisfies KernelLeakReport);
@@ -144,7 +148,8 @@ const invalidCases: Array<[string, Mutation, string]> = [
   ["empty without a time", frame => { frame.status = "Empty"; frame.items = []; frame.capturedAt = null; }, "$.capturedAt"],
   ["observing with items", frame => { frame.status = "Observing"; }, "$.items"],
   ["observing with a failure", frame => { frame.status = "Observing"; frame.items = []; frame.failure = "CapacityExceeded"; }, "$.failure"],
-  ["disabled with a failure", frame => { frame.status = "Disabled"; frame.items = []; frame.failure = "SourceUnavailable"; }, "$.failure"],
+  ["not observed with a failure", frame => { frame.status = "NotObserved"; frame.items = []; frame.failure = "SourceUnavailable"; }, "$.failure"],
+  ["the removed status Disabled", frame => { frame.status = "Disabled"; frame.items = []; }, "$.status"],
   ["unavailable without a reason", frame => { frame.status = "Unavailable"; frame.items = []; }, "$.failure"],
   ["unavailable with items", frame => { frame.status = "Unavailable"; frame.failure = "CapacityExceeded"; }, "$.items"]
 ];
@@ -157,5 +162,22 @@ for (const [name, mutate, expectedPath] of invalidCases) {
 }
 assert.throws(() => kernelLeakReportDecoder.decode(null), ResponseDecodeError);
 assert.throws(() => kernelLeakReportDecoder.decode([]), ResponseDecodeError);
+
+// 报告里的每个枚举和后端 KernelLeakReport.cs 的枚举逐个相等（10-28 Disabled 改成 NotObserved 时前端没跟上，整份报告会解码失败）。
+// 线上名是成员名，带 JsonStringEnumMemberName 的取它的值；failure 的 None 由解码器单独处理（只在不是 Unavailable 时出现）。
+const backendSource = readFileSync(new URL("../../../Core/Domain/KernelLeak/KernelLeakReport.cs", import.meta.url), "utf8");
+const backendEnum = (name: string): string[] => {
+  const body = new RegExp(`public enum ${name} \\{([^}]*)\\}`).exec(backendSource)?.[1];
+  assert.ok(body !== undefined, `backend enum ${name} exists`);
+  return body.split(",").map(member => /JsonStringEnumMemberName\("([^"]+)"\)/.exec(member)?.[1] ?? member.trim()).filter(Boolean);
+};
+for (const [name, frontend] of [["KernelLeakReportStatus", kernelLeakReportStatuses], ["KernelLeakResourceKind", kernelLeakResourceKinds],
+  ["KernelLeakUnit", kernelLeakUnits], ["KernelLeakMetadataStatus", kernelLeakMetadataStatuses], ["KernelLeakRestartPolicy", kernelLeakRestartPolicies],
+  ["KernelLeakActionKind", kernelLeakActionKinds], ["KernelLeakRiskLevel", kernelLeakRiskLevels]] as const) {
+  assert.deepEqual([...frontend], backendEnum(name), `${name} matches the backend`);
+}
+assert.deepEqual(["None", ...kernelLeakFailures], backendEnum("KernelLeakFailure"), "KernelLeakFailure matches the backend");
+// 观察计划还没发布时 NotObserved 的要求是 0。
+assert.equal(kernelLeakReportDecoder.decode(kernelLeakReportFrames.notObservedBeforePlan).observation.requiredSampleCount, 0);
 
 console.log(`PASS kernel leak report decoder: ${Object.keys(kernelLeakRecordedFrames).length} recorded frames, ${Object.keys(kernelLeakReportFrames).length} scenario frames, ${invalidCases.length} contract violations`);

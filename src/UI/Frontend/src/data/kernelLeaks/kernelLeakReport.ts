@@ -17,8 +17,8 @@ import type { BackendMessage } from "../../types.ts";
 
 /*
  * 内核泄漏报告，合同 v2（后端 KernelLeakReport，订阅 /api/kernel-leaks/subscribe，设计见 docs/kernel_leak_report_feature_2026-10-27.md）。
- * 观察在后端整个运行期间进行（可关闭）；订阅只决定界面收不收报告。边界上一次解码成按状态区分的类型，界面拿到后直接显示：
- * - Disabled：配置关闭了观察；
+ * 观察是后端的一个业务块；订阅只决定界面收不收报告。边界上一次解码成按状态区分的类型，界面拿到后直接显示：
+ * - NotObserved：观察块没有运行（自由点 enabled 关闭、观察计划未发布或已停止；服务启动后块运行之前也是它）；
  * - Observing：本轮观察时长或样本数还不够判定，进度在 observation 里；
  * - Empty：本轮观察已足够，没有疑似项；
  * - Suspected：至少一项疑似持续增长的资源；
@@ -33,7 +33,8 @@ export function buildKernelLeakReportSubscriptionUrl(): string {
   return "/api/kernel-leaks/subscribe";
 }
 
-export const kernelLeakReportStatuses = ["Disabled", "Observing", "Empty", "Suspected", "Unavailable"] as const;
+// 与后端 KernelLeakReportStatus 逐个相等（测试读后端枚举）：多出一个值整份报告解码失败。
+export const kernelLeakReportStatuses = ["NotObserved", "Observing", "Empty", "Suspected", "Unavailable"] as const;
 export const kernelLeakFailures = ["SourceUnavailable", "CapacityExceeded", "InvalidObservation"] as const;
 /** 后端对外发布的资源种类。内部样本种类 FileCachePoolBytes 只用于判据排除，出现在报告里就是解码错误。 */
 export const kernelLeakResourceKinds = ["ProcessHandles"] as const;
@@ -117,7 +118,7 @@ interface KernelLeakReportCommon {
 }
 
 export type KernelLeakReport =
-  | KernelLeakReportCommon & { readonly status: "Disabled" | "Observing"; readonly capturedAt: string | null }
+  | KernelLeakReportCommon & { readonly status: "NotObserved" | "Observing"; readonly capturedAt: string | null }
   | KernelLeakReportCommon & { readonly status: "Empty"; readonly capturedAt: string }
   | KernelLeakReportCommon & { readonly status: "Suspected"; readonly capturedAt: string; readonly items: readonly KernelLeakItem[] }
   | KernelLeakReportCommon & { readonly status: "Unavailable"; readonly capturedAt: string | null; readonly failure: KernelLeakFailure };
@@ -145,7 +146,7 @@ export const kernelLeakReportDecoder = defineResponseDecoder<KernelLeakReport>(
     } else if (items.length > 0) {
       throw new ResponseDecodeError("$.items", `no items when status is '${status}'`);
     }
-    if (status === "Disabled" || status === "Observing") return { ...common, status, capturedAt };
+    if (status === "NotObserved" || status === "Observing") return { ...common, status, capturedAt };
     if (capturedAt === null) throw new ResponseDecodeError("$.capturedAt", `a capture time when status is '${status}'`);
     return status === "Empty" ? { ...common, status, capturedAt } : { ...common, status, capturedAt, items };
   });
