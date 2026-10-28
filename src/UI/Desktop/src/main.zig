@@ -550,13 +550,10 @@ const Host = struct {
         self.engine = try topology.Engine.create(allocator.allocator(), .{
             .worker_count = points.controller_workers,
             .history_capacity = points.history_capacity,
-            .demand_capacity = 16,
-            .demand_bytes = 2048,
             .completion_capacity = 32,
             .reader_capacity = 16,
             .reader_bytes = 2048,
             .worker_arena_bytes = points.worker_arena_bytes,
-            .demand_item = null,
             .shutdown_item = I.ProgramShuttingDown,
             .host_blocks = &topology.host_blocks,
         }, .{ .context = self, .start = startCallback, .stop = stopCallback, .complete = completeCallback, .log = logCallback, .item_changed = itemCallback });

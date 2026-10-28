@@ -86,13 +86,10 @@ const Host = struct {
         self.engine = try topology.Engine.create(std.testing.allocator, .{
             .worker_count = 2,
             .history_capacity = 128,
-            .demand_capacity = 8,
-            .demand_bytes = 1024,
             .completion_capacity = 8,
             .reader_capacity = 8,
             .reader_bytes = 1024,
             .worker_arena_bytes = 128 * 1024,
-            .demand_item = null,
             .shutdown_item = I.ProgramShuttingDown,
             .host_blocks = &topology.host_blocks,
         }, .{ .context = self, .start = startCallback, .stop = stopCallback, .complete = complete, .log = log, .item_changed = changed });
