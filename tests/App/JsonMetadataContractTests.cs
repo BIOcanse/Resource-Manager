@@ -89,7 +89,7 @@ public sealed partial class JsonMetadataContractTests
             {"status":"Observing","capturedAt":"1970-01-01T00:00:02+00:00","items":[],"failure":"None",
             "observation":{"startedAt":"1970-01-01T00:00:02+00:00","elapsedSeconds":0,"sampleCount":1,
             "requiredSeconds":600,"requiredSampleCount":8,"previousRunFailure":{"startedAt":"1970-01-01T00:00:00+00:00",
-            "failedAt":"1970-01-01T00:00:01+00:00","failure":"SourceUnavailable"},"restartPolicy":"NextInterval"},"unavailableHolderCount":0}
+            "failedAt":"1970-01-01T00:00:01+00:00","failure":"SourceUnavailable"},"restartPolicy":"NextInterval"},"unavailableHolderCount":0,"unrecordedItemCount":0}
             """;
         var options = new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions;
         ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
