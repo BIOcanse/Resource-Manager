@@ -35,7 +35,7 @@ internal static class BackendExpectedProductionTree
             BlockUids.WindowsResourceBreakdownSampler, BlockUids.DeviceTopologySnapshotProvider);
         Group(BlockUids.NativeEtwLifetimeService, BlockUids.PresentFrameEtwSource,
             BlockUids.GpuAllocationCollector, BlockUids.DxgkrnlVidMmEtwTelemetryZone);
-        Group(BlockUids.HardwareControl, BlockUids.FanControlCoreLifetimeService);
+        Group(BlockUids.HardwareControl, BlockUids.FanControlCoreLifetimeService, BlockUids.HardwareBridgeProcessOwner);
         Group(BlockUids.TrustedAccess, BlockUids.TrustedAccessRequestOwner, BlockUids.TrustedAccessInvocationHostedService);
         if (profile != 3)
         {

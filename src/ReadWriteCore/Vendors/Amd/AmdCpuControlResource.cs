@@ -13,35 +13,27 @@ public sealed class AmdCpuControlResource : IDisposable
     private readonly AmdCpuControlOptions options;
     private readonly Func<AmdCpuControlMessage, IReadOnlyList<object?>, string>? describe;
     private readonly Action<Exception?, AmdCpuControlMessage, IReadOnlyList<object?>>? warning;
-    private readonly bool ownsBridge;
     private int disposed;
     public AmdCpuControlResource(IHardwareBridgeProcessClient bridge, AmdCpuControlOptions options,
         Func<AmdCpuControlMessage, IReadOnlyList<object?>, string>? describe = null,
         Action<Exception?, AmdCpuControlMessage, IReadOnlyList<object?>>? warning = null)
-        : this(bridge, options, describe, warning, false) { }
-    private AmdCpuControlResource(IHardwareBridgeProcessClient bridge, AmdCpuControlOptions options,
-        Func<AmdCpuControlMessage, IReadOnlyList<object?>, string>? describe,
-        Action<Exception?, AmdCpuControlMessage, IReadOnlyList<object?>>? warning, bool ownsBridge)
     {
         ArgumentNullException.ThrowIfNull(bridge); ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(options.BaselinePath);
-        this.bridge = bridge; this.options = options; this.describe = describe; this.warning = warning; this.ownsBridge = ownsBridge;
+        this.bridge = bridge; this.options = options; this.describe = describe; this.warning = warning;
     }
-    /// <summary>Constructs the actual existing process client; no helper starts until an explicit operation.</summary>
-    public static AmdCpuControlResource Create(string executablePath, HardwareBridgeProcessOptions helperOptions, AmdCpuControlOptions options)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);
-        var path = Path.GetFullPath(executablePath);
-        return new(new HardwareBridgeProcessClient(() => File.Exists(path) ? path : null, helperOptions), options, null, null, true);
-    }
+    /// <summary>Borrows a caller-owned client. The caller explicitly runs and joins its process owner.</summary>
+    public static AmdCpuControlResource Create(IHardwareBridgeProcessClient bridge, AmdCpuControlOptions options)
+        => new(bridge, options);
     private string Describe(AmdCpuControlMessage code, params object?[] arguments)
         => describe?.Invoke(code, arguments) ?? "amd-cpu-control-" + code + (arguments.Length == 0 ? "" : ": " + string.Join(", ", arguments));
     private void Warn(Exception? error, AmdCpuControlMessage code, params object?[] arguments) => warning?.Invoke(error, code, arguments);
     private void CheckLifetime() => ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
-    public void Dispose() { if (Interlocked.Exchange(ref disposed, 1) == 0 && ownsBridge) bridge.Dispose(); }
+    public void Dispose() => Interlocked.Exchange(ref disposed, 1);
     public async Task<bool> RestoreAsync(AmdCpuControlTarget target, AmdCpuControlCapability capability, CancellationToken token = default)
     {
         CheckLifetime();
+        token.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(capability);
         if (!IsMine(target, capability.Id) || WritableOf(capability.Id) is not { } writable || writable.Unverified is not null) return false;
@@ -193,6 +185,7 @@ public sealed class AmdCpuControlResource : IDisposable
         CancellationToken cancellationToken = default)
     {
         CheckLifetime();
+        cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(capability);
         ArgumentNullException.ThrowIfNull(setting);
@@ -212,6 +205,7 @@ public sealed class AmdCpuControlResource : IDisposable
         await writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (!TryReadBaseline(target, writable, out var baseline))
                 return Failed(target, capability, Describe(AmdCpuControlMessage.BaselineUnavailable));
             if (baseline is null)
@@ -219,13 +213,12 @@ public sealed class AmdCpuControlResource : IDisposable
                 // Capability-only files cannot prove which CPU or explicit operation they belonged to.
                 if (File.Exists(options.BaselinePath(writable.BaselineFileName)))
                     return Failed(target, capability, Describe(AmdCpuControlMessage.BaselineUnavailable));
-                var reading = writable.ReadingField is null ? null
-                    : await bridge.SendAsync("read", null, cancellationToken).ConfigureAwait(false);
-                var original = writable.ReadingField is { } field && reading is { } confirmed && IsUsableReading(confirmed, field)
-                    ? Number(confirmed, field)
+                var original = writable.ReadingField is { } field
+                    ? bridge.ReadCurrentReadings()?.GetReading(field).Value
                     : writable.ReadingField is null ? 1d : null;
                 if (original is not { } before || !double.IsFinite(before))
                     return Failed(target, capability, Describe(AmdCpuControlMessage.BaselineUnavailable));
+                cancellationToken.ThrowIfCancellationRequested();
                 if (!WritePersisted(target, writable, before))
                     return Failed(target, capability, Describe(AmdCpuControlMessage.BaselineUnavailable));
             }
@@ -297,6 +290,7 @@ public sealed class AmdCpuControlResource : IDisposable
         CancellationToken cancellationToken = default)
     {
         CheckLifetime();
+        cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(capability);
 
@@ -315,9 +309,8 @@ public sealed class AmdCpuControlResource : IDisposable
         var description = await bridge.SendAsync("describe", null, cancellationToken).ConfigureAwait(false);
         if (description is not { } facts || !Flag(facts, "available") || !Flag(facts, writable.DescribeFlag))
             return new(target.Id, capability.Id, UnreadableReason: Text(description, "reason") ?? bridge.UnavailableReason ?? BridgeSilent);
-        var reading = await bridge.SendAsync("read", null, cancellationToken)
-            .ConfigureAwait(false);
-        if (reading is not { } result || !Flag(result, "ok"))
+        var reading = bridge.ReadCurrentReadings();
+        if (reading is null)
         {
             return new AmdCpuControlValue(
                 target.Id,
@@ -325,7 +318,7 @@ public sealed class AmdCpuControlResource : IDisposable
                 UnreadableReason: BridgeSilent);
         }
 
-        return Number(result, field) is { } value
+        return reading.Value.GetReading(field).Value is { } value
             ? new AmdCpuControlValue(
                 target.Id,
                 capability.Id,

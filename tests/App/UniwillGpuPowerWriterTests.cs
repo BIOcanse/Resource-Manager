@@ -12,6 +12,41 @@ public sealed class UniwillGpuPowerWriterTests
         GpuAttachment: ControlGpuAttachments.Discrete) { AdapterKey = 123 };
 
     [Theory]
+    [InlineData(false, 1)]
+    [InlineData(false, 5)]
+    [InlineData(true, 1)]
+    public async Task CancellationDuringRegisterProbePreventsBaselineAndSetter(bool restore, int cancelAtRead)
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "rm-uniwill-cancel-" + Guid.NewGuid().ToString("N"));
+        var baseline = Path.Combine(folder, "baseline.json");
+        var hardware = new FakeHardware();
+        using var writer = new UniwillGpuPowerWriter(hardware, baseline);
+        try
+        {
+            if (restore) await writer.WriteAsync(Target, Capability(), new(Offset, Number: 25), default);
+            var original = File.Exists(baseline) ? File.ReadAllText(baseline) : null;
+            var writes = hardware.Writes.Count;
+            var reads = hardware.Reads;
+            using var cancellation = new CancellationTokenSource();
+            hardware.OnRead = () => { if (hardware.Reads == reads + cancelAtRead) cancellation.Cancel(); };
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            {
+                if (restore) await writer.RestoreAsync(Target, Capability(), new HashSet<string>(), cancellation.Token);
+                else await writer.WriteAsync(Target, Capability(), new(Offset, Number: 25), cancellation.Token);
+            });
+
+            Assert.Equal(writes, hardware.Writes.Count);
+            Assert.Equal(original, File.Exists(baseline) ? File.ReadAllText(baseline) : null);
+        }
+        finally
+        {
+            if (File.Exists(baseline)) File.Delete(baseline);
+            if (Directory.Exists(folder)) Directory.Delete(folder);
+        }
+    }
+
+    [Theory]
     [InlineData(45, 50)]
     [InlineData(65, 50)]
     [InlineData(25, 12)]
@@ -353,8 +388,9 @@ public sealed class UniwillGpuPowerWriterTests
         public bool MissingOriginal { get; init; }
         public bool RejectEnable { get; init; }
         public int Reads { get; private set; }
+        public Action? OnRead;
         public List<(ushort Address, byte Value)> Writes { get; } = [];
-        public byte? Read(ushort address) { Reads++; return address switch { 0x0743 => Enable, 0x0744 => MissingOriginal ? null : Ctgp, 0x0746 => DynamicBoost, _ => null }; }
+        public byte? Read(ushort address) { Reads++; OnRead?.Invoke(); return address switch { 0x0743 => Enable, 0x0744 => MissingOriginal ? null : Ctgp, 0x0746 => DynamicBoost, _ => null }; }
         public NvidiaPowerLimitWatts? ReadPowerLimit(int adapterIndex) => MissingBudget ? null : new(0, Maximum, 50, 115);
         public byte? WriteReadingBack(ushort address, byte value)
         {

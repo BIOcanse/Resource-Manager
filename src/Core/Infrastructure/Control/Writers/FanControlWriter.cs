@@ -56,6 +56,7 @@ public sealed class FanControlWriter(
         ControlObject target,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(target);
         return IsMine(target, CurveCapabilityId)
             ? core.ReadCurveAsync(FanIndexOf(target), cancellationToken)
@@ -204,6 +205,7 @@ public sealed class FanControlWriter(
         IReadOnlySet<string> stillConfigured,
         CancellationToken cancellationToken, ControlSetting? previousSetting = null)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (capability.Id != CurveCapabilityId
             && stillConfigured.Any(id => id is DutyCapabilityId or CurveCapabilityId or LockMaximumCapabilityId))
         {
@@ -234,6 +236,7 @@ public sealed class FanControlWriter(
         ControlSetting setting,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(capability);
         ArgumentNullException.ThrowIfNull(setting);
@@ -390,6 +393,7 @@ public sealed class FanControlWriter(
         ControlCapability capability,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(capability);
 

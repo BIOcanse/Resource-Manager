@@ -37,6 +37,8 @@ public sealed class ControlWriteLayer(
 
     private readonly IReadOnlyList<IControlWriter> writers = writers.ToArray();
 
+    public bool UsesHardwareBridge(string objectId, string capabilityId)
+        => catalog.UsesHardwareBridge(objectId, capabilityId);
     public async Task<ControlApplyReport> WriteAsync(
         ControlDesiredState desired,
         CancellationToken cancellationToken)

@@ -63,7 +63,7 @@ public sealed class IntegratedGpuControlWriter : IControlWriter, IDisposable
         return v is null ? null:new(t.Id,cap.Id,Number:v.Number,Unit:v.Unit,UnreadableReason:Reason(v.UnreadableReason));
     }
     public Task<bool> RestoreAsync(ControlObject t,ControlCapability cap,IReadOnlySet<string> configured,CancellationToken token,ControlSetting? previousSetting=null)
-        => IntegratedGpuControlFormatter.Field(cap.Id) is { } f ? resource.RestoreAsync(Target(t),new(f,Range(cap.Range)),token):Task.FromResult(false);
+    { token.ThrowIfCancellationRequested(); return IntegratedGpuControlFormatter.Field(cap.Id) is { } f ? resource.RestoreAsync(Target(t),new(f,Range(cap.Range)),token):Task.FromResult(false); }
     public void Dispose()=>resource.Dispose();
     private ControlApplyReason? Reason(string? value)
     {

@@ -53,17 +53,20 @@ public sealed class AmdDesktopGpuControlResource : IDisposable
         cancellationToken.ThrowIfCancellationRequested();
         lock (gate)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             CheckLifetime();
             if (!IsAdmitted(target, field)) return Task.FromResult(new AmdDesktopGpuControlOutcome(AmdDesktopGpuControlStatus.Unsupported, AmdDesktopGpuControlMessage.RouteRejected));
             try
             {
                 var before = ReadHardware(target, field);
+                cancellationToken.ThrowIfCancellationRequested();
                 var requested = field == AmdDesktopGpuControlField.FanZeroRpm
                     ? setting.Toggle is { } enabled ? enabled ? 1d : 0d : (double?)null : setting.Number;
                 if (requested is not { } number || !double.IsFinite(number) || number != Math.Truncate(number)
                     || number < before.Minimum || number > before.Maximum || (number - before.Minimum) % before.Step != 0)
                     return Task.FromResult(new AmdDesktopGpuControlOutcome(AmdDesktopGpuControlStatus.Failed, AmdDesktopGpuControlMessage.InvalidRangeOrStep));
-                CaptureBaseline(before.Pnp, (int)field, before.Current);
+                CaptureBaseline(before.Pnp, (int)field, before.Current, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
                 hardware.Write(before.Pnp, (int)field, (int)number);
                 var after = ReadHardware(target, field);
                 var applied = after.Pnp == before.Pnp && after.Current == (int)number;
@@ -80,6 +83,7 @@ public sealed class AmdDesktopGpuControlResource : IDisposable
         cancellationToken.ThrowIfCancellationRequested();
         lock (gate)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             CheckLifetime();
             if (!IsAdmitted(target, field)) return Task.FromResult<AmdDesktopGpuControlValue?>(null);
             try
@@ -98,28 +102,33 @@ public sealed class AmdDesktopGpuControlResource : IDisposable
         cancellationToken.ThrowIfCancellationRequested();
         lock (gate)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             CheckLifetime();
             if (!IsAdmitted(target, field)) return Task.FromResult(false);
             try
             {
                 LoadBaselines();
                 var current = ReadHardware(target, field);
+                cancellationToken.ThrowIfCancellationRequested();
                 if (!baselines!.TryGetValue(Key(current.Pnp, (int)field), out var baseline)) return Task.FromResult(false);
                 if (field == AmdDesktopGpuControlField.CoreClockMinimum && current.GfxMode == AdlxGfxMode.Unknown) return Task.FromResult(false);
                 if (field is AmdDesktopGpuControlField.CoreClockMinimum or AmdDesktopGpuControlField.CoreClockMaximum && current.GfxMode == AdlxGfxMode.Absolute)
                 {
                     var siblingField = field == AmdDesktopGpuControlField.CoreClockMinimum ? AmdDesktopGpuControlField.CoreClockMaximum : AmdDesktopGpuControlField.CoreClockMinimum;
                     var sibling = ReadHardware(target, siblingField);
+                    cancellationToken.ThrowIfCancellationRequested();
                     if (sibling.Pnp != current.Pnp) return Task.FromResult(false);
                     if (field == AmdDesktopGpuControlField.CoreClockMinimum ? baseline > sibling.Current : baseline < sibling.Current)
                     {
                         if (stillConfigured.Contains(siblingField) || !baselines.TryGetValue(Key(current.Pnp, (int)siblingField), out var siblingBaseline)) return Task.FromResult(false);
                         // Restore the blocking sibling first, retaining its baseline for its own verified release.
+                        cancellationToken.ThrowIfCancellationRequested();
                         hardware.Write(current.Pnp, (int)siblingField, siblingBaseline);
                         var verifiedSibling = ReadHardware(target, siblingField);
                         if (verifiedSibling.Pnp != current.Pnp || verifiedSibling.Current != siblingBaseline) return Task.FromResult(false);
                     }
                 }
+                cancellationToken.ThrowIfCancellationRequested();
                 hardware.Write(current.Pnp, (int)field, baseline);
                 var after = ReadHardware(target, field);
                 var restored = after.Pnp == current.Pnp && after.Current == baseline;
@@ -127,6 +136,7 @@ public sealed class AmdDesktopGpuControlResource : IDisposable
                 {
                     var next = new Dictionary<string, int>(baselines!);
                     next.Remove(Key(current.Pnp, (int)field));
+                    cancellationToken.ThrowIfCancellationRequested();
                     SaveBaselines(next);
                 }
                 return Task.FromResult(restored);
@@ -145,11 +155,12 @@ public sealed class AmdDesktopGpuControlResource : IDisposable
     private static string Key(string pnp, int field) => $"{pnp.ToUpperInvariant()}\n{field}";
     private void LoadBaselines() => baselines ??= File.Exists(baselinePath)
         ? JsonSerializer.Deserialize<Dictionary<string, int>>(File.ReadAllText(baselinePath)) ?? [] : [];
-    private void CaptureBaseline(string pnp, int field, int value)
+    private void CaptureBaseline(string pnp, int field, int value, CancellationToken cancellationToken)
     {
         LoadBaselines();
         var key = Key(pnp, field);
         if (baselines!.ContainsKey(key)) return;
+        cancellationToken.ThrowIfCancellationRequested();
         SaveBaselines(new Dictionary<string, int>(baselines) { [key] = value });
     }
     private void SaveBaselines(Dictionary<string, int> next)

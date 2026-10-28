@@ -7,6 +7,7 @@ internal static class ControlWriterRestoration
     internal static async Task<bool> RestoreDefaultAsync(
         IControlWriter writer, ControlObject target, ControlCapability capability, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (capability.Range?.DefaultValue is not { } value) return false;
         var result = await writer.WriteAsync(target, capability,
             new ControlSetting(capability.Id, Number: value, Unit: capability.Range.Unit), cancellationToken)

@@ -8,6 +8,15 @@ namespace ResourceManager.App.Infrastructure.RuntimeSpecialization;
 
 public sealed partial class HostManagerPlanCompiler
 {
+    internal static TimeSpan CompileHardwareBridgeAvailabilityCheckInterval(FreedomPointCompilation freedom)
+    {
+        var milliseconds = freedom.Consume<int>(BackendFreedomPointPaths.HardwareBridgeAvailabilityCheckInterval,
+            "HostManagerPlanCompiler.CompileHardwareBridgeAvailabilityCheckInterval");
+        if (milliseconds < 0)
+            throw new InvalidDataException("The hardware helper availability check interval must be nonnegative.");
+        return TimeSpan.FromMilliseconds(milliseconds);
+    }
+
     private static Application.KernelLeak.KernelLeakOptions CompileKernelLeak(FreedomPointCompilation freedom)
         => freedom.Consume<Application.KernelLeak.KernelLeakOptions>(BackendFreedomPointPaths.KernelLeak,
             "HostManagerPlanCompiler.CompileKernelLeak").Validate();

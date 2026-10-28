@@ -524,9 +524,20 @@ public sealed class CanonicalMetricControlBindingTests
         internal double Stapm = 45, Slow = 55, Fast = 65, CpuCounts = -5, GpuCounts = 8;
         internal bool OmitGpuWriteReadback = false;
         internal const double ActualPower = 7;
+        public HardwareBridgeReadingsSnapshot? ReadCurrentReadings()
+        {
+            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            HardwareBridgeReading Reading(double? value, string unit) => new(value, unit,
+                value is null ? HardwareBridgeReadingStatus.Missing : HardwareBridgeReadingStatus.Valid, timestamp);
+            return new(Reading(Stapm,"W"), Reading(ActualPower,"W"), Reading(Fast,"W"), Reading(Slow,"W"),
+                Reading(null,"A"), Reading(null,"A"), Reading(CpuCounts,"档"), Reading(GpuCounts,"档"), Reading(null,"MHz"));
+        }
+        public IDisposable SubscribeReadings() => new ReadingSubscription();
+        private sealed class ReadingSubscription : IDisposable { public void Dispose() { } }
         public Task<JsonElement?> SendAsync(string operation, IReadOnlyDictionary<string, object?>? arguments, CancellationToken token)
         {
             token.ThrowIfCancellationRequested(); Calls++;
+            if (operation == "read") throw new InvalidOperationException("Current readings must come from the typed snapshot.");
             if (operation.StartsWith("set-", StringComparison.Ordinal)) Settings++;
             if (operation == "set-power-limit")
             {

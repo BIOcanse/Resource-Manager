@@ -180,6 +180,12 @@ public static partial class ResourceManagerServiceCollectionExtensions
         // 处理器和核显的写入都经过辅助进程：它链接 GPL 的 ZenStates-Core，
         // 单独一个程序、单独一个许可证，主程序只跟它说话。
         services.AddSingleton<HardwareBridgeClient>();
+        services.AddSingleton<HardwareCommandQueue>(provider => new(
+            provider.GetRequiredService<ResourceManager.Shared.BusinessBlocks.State.StateAuthority>(),
+            provider.GetRequiredService<HardwareBridgeClient>().Owner));
+        services.AddSingleton(new Infrastructure.RuntimeSpecialization.BusinessBlocks.BusinessBlockRegistration(
+            BlockUids.HardwareBridgeProcessOwner, provider => new HardwareBridgeRunningBlock(
+                provider.GetRequiredService<HardwareBridgeClient>(), provider.GetRequiredService<HardwareCommandQueue>())));
         services.AddSingleton<AmdCpuControlWriter>();
         services.AddSingleton<IControlWriter>(static provider => provider.GetRequiredService<AmdCpuControlWriter>());
         services.AddSingleton<IntelCpuControlWriter>();

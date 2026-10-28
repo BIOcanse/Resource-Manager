@@ -99,18 +99,15 @@ public sealed class IntegratedGpuControlOwnerLibraryIntegrationTests : IDisposab
     [InlineData("{\"ok\":true,\"accepted\":true}",true)]
     public async Task OriginalAmdIgpuAcceptedAndOptionalReadbackEnvelopeIsPreserved(string response,bool applied)
     {
-        var helper=new RecordedControlHelper {Override=(operation,_)=>operation=="read"
-            ? RecordedControlHelper.Envelope(new {ok=true,integratedGpuCurveOptimizerCounts=8})
-            : JsonSerializer.Deserialize<JsonElement>(response)};using var owner=Owner(helper,new());
+        var helper=new RecordedControlHelper {Override=(_,_)=>JsonSerializer.Deserialize<JsonElement>(response)};using var owner=Owner(helper,new());
         Assert.Equal(applied?IntegratedGpuControlStatus.Applied:IntegratedGpuControlStatus.Failed,(await owner.WriteAsync(Amd(),Co,new(Co.Field,-10),default)).Status);
     }
     [Fact]
     public async Task ExplicitWritePersistsTargetOriginalBeforeSetterAndMissingReadingCannotBecomeZero()
     {
-        var helper = new RecordedControlHelper();
+        var helper = new RecordedControlHelper { GpuCounts = 7 };
         helper.Override = (operation,_) =>
         {
-            if (operation == "read") return RecordedControlHelper.Envelope(new {ok=true,integratedGpuCurveOptimizerCounts=7});
             Assert.Equal("set-igpu-curve-optimizer",operation);
             var saved = JsonSerializer.Deserialize<Dictionary<string,double>>(File.ReadAllText(Baseline))!;
             Assert.Equal(7,saved[Amd().Id]);
@@ -118,7 +115,8 @@ public sealed class IntegratedGpuControlOwnerLibraryIntegrationTests : IDisposab
         };
         using var gpu = Owner(helper,new());
         Assert.Equal(IntegratedGpuControlStatus.Applied,(await gpu.WriteAsync(Amd(),Co,new(Co.Field,-10))).Status);
-        helper.Override = (_,_)=>RecordedControlHelper.Envelope(new {ok=true});
+        helper.Override = null;
+        helper.ReadingsOverride = () => RecordedControlHelper.Readings();
         helper.Calls.Clear();
         Assert.Equal(IntegratedGpuControlStatus.Failed,(await gpu.WriteAsync(Amd("gpu:B"),Co,new(Co.Field,-10))).Status);
         Assert.DoesNotContain(helper.Calls,call=>call.Operation.StartsWith("set-",StringComparison.Ordinal));
@@ -158,18 +156,108 @@ public sealed class IntegratedGpuControlOwnerLibraryIntegrationTests : IDisposab
         helper.Restart(); helper.GpuCounts=-6;
         Assert.Equal(-6,(await gpu.ReadAsync(Amd(),Co))!.Number);
         Assert.True(gpu.Probe(Amd(),Co).CanWrite);
-        Assert.Equal(new[] { "describe", "read", "describe", "read" }, helper.Requests);
-        helper.Override=(_,_)=>RecordedControlHelper.Envelope(new {ok=false});
+        Assert.Equal(new[] { "describe", "describe" }, helper.Requests);
+        Assert.Equal(2,helper.ReadingReads);
+        helper.ReadingsOverride=()=>RecordedControlHelper.Readings(emptyStatus:HardwareBridgeReadingStatus.Failed);
         Assert.Null((await gpu.ReadAsync(Amd(),Co))!.Number);
     }
     [Fact]
     public void RealFactoryIsPassiveAndBorrowedLifetimeDoesNotCloseHelperOrIntelHardware()
     {
-        var options=new HardwareBridgeProcessOptions(TimeSpan.FromSeconds(90),TimeSpan.FromSeconds(1),new(128,1024,1024,".NET","10","missing","failed"));
-        using(var factory=IntegratedGpuControlResource.Create(Path.Combine(directory,"missing.exe"),options,new(Baseline,_=>Task.FromResult(false)))) { }
+        var shared = new RecordedControlHelper();
+        using(var factory=IntegratedGpuControlResource.Create(shared,new(Baseline,_=>Task.FromResult(false)))) { }
+        Assert.Equal(0, shared.Disposals);
+        Assert.Empty(shared.Calls);
         Assert.False(Directory.Exists(directory));var helper=new RecordedControlHelper();var intel=new RecordedIntegratedIntelHardware();var owner=Owner(helper,intel);
         owner.Dispose();Assert.Equal(0,helper.Disposals);Assert.Equal(0,intel.Disposals);Assert.Empty(helper.Calls);
         Assert.Throws<ObjectDisposedException>(()=>owner.Probe(Amd(),Co));
+    }
+    [Fact]
+    public void FactoryRequiresCallerOwnedClientInsteadOfHidingANeverRunOwner()
+    {
+        Assert.NotNull(typeof(IntegratedGpuControlResource).GetMethod("Create", [typeof(IHardwareBridgeProcessClient), typeof(IntegratedGpuControlOptions)]));
+        Assert.DoesNotContain(typeof(IntegratedGpuControlResource).GetMethods(), method => method.Name == "Create"
+            && method.GetParameters().Any(parameter => parameter.ParameterType == typeof(string)));
+    }
+    [Fact]
+    public async Task CancelledReadWriteAndRestoreNeverReachHardwareOrBaseline()
+    {
+        var helper = new RecordedControlHelper();
+        var intel = new RecordedIntegratedIntelHardware();
+        using var resource = Owner(helper, intel);
+        using var stop = new CancellationTokenSource();
+        stop.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => resource.ReadAsync(Amd(), Co, stop.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => resource.WriteAsync(Amd(), Co, new(Co.Field, -10), stop.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => resource.RestoreAsync(Amd(), Co, stop.Token));
+        Assert.Empty(helper.Calls);
+        Assert.Empty(intel.Calls);
+        Assert.False(Directory.Exists(directory));
+    }
+    [Fact]
+    public async Task CancellationDuringAcceptedIntelSetterStillReturnsVerifiedAppliedReceipt()
+    {
+        using var stop = new CancellationTokenSource();
+        var helper = new RecordedControlHelper();
+        var intel = new RecordedIntegratedIntelHardware { AfterWrite = stop.Cancel };
+        using var resource = Owner(helper, intel);
+        var target = new IntegratedGpuControlTarget("gpu:intel", IntegratedGpuControlRoute.IntelIntegrated, 0x800000001);
+        var capability = new IntegratedGpuControlCapability(IntegratedGpuControlField.CoreClockOffset);
+
+        var outcome = await resource.WriteAsync(target, capability, new(capability.Field, 45), stop.Token);
+
+        Assert.True(stop.IsCancellationRequested);
+        Assert.Equal(IntegratedGpuControlStatus.Applied, outcome.Status);
+        Assert.True(outcome.ReadbackVerified);
+        Assert.Equal(45, intel.Offset);
+        Assert.Equal(["waiver:22", "write:22", "read:22"], intel.Calls);
+        Assert.Empty(helper.Calls);
+    }
+
+    [Fact]
+    public async Task CancellationDuringAmdPrewriteReadingDoesNotPersistBaselineOrMutate()
+    {
+        using var stop = new CancellationTokenSource();
+        var helper = new RecordedControlHelper
+        {
+            ReadingsOverride = () => { stop.Cancel(); return RecordedControlHelper.Readings(gpuCounts: 8); }
+        };
+        using var resource = Owner(helper, new());
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => resource.WriteAsync(Amd(), Co, new(Co.Field, -10), stop.Token));
+
+        Assert.False(File.Exists(Baseline));
+        Assert.DoesNotContain(helper.Calls, call => call.Operation.StartsWith("set-", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task IntelConsentReceivesOperationTokenAndCancellationPreventsWaiverAndSetter()
+    {
+        var helper = new RecordedControlHelper();
+        var intel = new RecordedIntegratedIntelHardware();
+        var waiting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var accepted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var stop = new CancellationTokenSource();
+        CancellationToken received = default;
+        using var resource = new IntegratedGpuControlResource(helper, intel, new(Baseline, async token =>
+        {
+            received = token;
+            waiting.TrySetResult();
+            return await accepted.Task.WaitAsync(token);
+        }));
+        var target = new IntegratedGpuControlTarget("gpu:intel", IntegratedGpuControlRoute.IntelIntegrated, 0x800000001);
+        var capability = new IntegratedGpuControlCapability(IntegratedGpuControlField.CoreClockOffset, new(-200, 200, 1, "MHz"));
+        var write = resource.WriteAsync(target, capability, new(capability.Field, 45), stop.Token);
+        try
+        {
+            await waiting.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            stop.Cancel();
+            accepted.TrySetResult(true); // Even a consent provider that completes concurrently cannot allow a cancelled write.
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => write);
+            Assert.Equal(stop.Token, received);
+            Assert.Empty(intel.Calls);
+        }
+        finally { stop.Cancel(); accepted.TrySetResult(true); await write.ContinueWith(_ => { }); }
     }
     public void Dispose(){if (Directory.Exists(directory))
         {

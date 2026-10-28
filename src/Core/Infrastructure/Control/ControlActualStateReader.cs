@@ -3,6 +3,7 @@ using ResourceManager.App.Domain.Control;
 using System.Runtime.CompilerServices;
 using ResourceManager.ReadWrite.Publications;
 using ResourceManager.Subscription;
+using ResourceManager.App.Infrastructure.Control.Writers;
 
 namespace ResourceManager.App.Infrastructure.Control;
 
@@ -22,7 +23,8 @@ namespace ResourceManager.App.Infrastructure.Control;
 public sealed class ControlActualStateReader(
     IControlObjectCatalog catalog,
     IEnumerable<IControlWriter> writers,
-    ILogger<ControlActualStateReader>? logger = null)
+    ILogger<ControlActualStateReader>? logger = null,
+    HardwareBridgeClient? bridge = null)
     : BackgroundService, IControlActualStateOwner
 {
     /// <summary>
@@ -42,6 +44,7 @@ public sealed class ControlActualStateReader(
     private readonly IReadOnlyList<IControlWriter> writers = writers.ToArray();
     private readonly TimeProvider clock = TimeProvider.System;
     private readonly object subscriptionGate = new();
+    private IDisposable? bridgeReadings;
     private int leases;
     private bool actualControlValuesInUse;
     private bool fanReadingsInUse;
@@ -51,7 +54,7 @@ public sealed class ControlActualStateReader(
     private const string ActualDataset = "control.actual";
 
     internal ControlActualStateReader(IControlObjectCatalog catalog, IEnumerable<IControlWriter> writers,
-        TimeProvider clock) : this(catalog, writers)
+        TimeProvider clock, HardwareBridgeClient? bridge = null) : this(catalog, writers, bridge: bridge)
     {
         this.clock = clock ?? throw new ArgumentNullException(nameof(clock));
     }
@@ -94,7 +97,7 @@ public sealed class ControlActualStateReader(
             ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
             changed = leases++ == 0;
             Volatile.Write(ref actualControlValuesInUse, true);
-            fanChanged = RefreshFanReadingsLocked();
+            fanChanged = RefreshReadingSubscriptionsLocked();
         }
         if (changed) SubscriptionsChanged?.Invoke();
         if (fanChanged) FanReadingsChanged?.Invoke();
@@ -110,7 +113,7 @@ public sealed class ControlActualStateReader(
             if (leases == 0) return;
             changed = --leases == 0;
             Volatile.Write(ref actualControlValuesInUse, leases != 0);
-            fanChanged = RefreshFanReadingsLocked();
+            fanChanged = RefreshReadingSubscriptionsLocked();
         }
         if (changed) SubscriptionsChanged?.Invoke();
         if (fanChanged) FanReadingsChanged?.Invoke();
@@ -118,8 +121,15 @@ public sealed class ControlActualStateReader(
 
     // Called only when the subscription owner changes or refreshes its declarations.
     // State-authority reads load the published Boolean and never call the catalog.
-    private bool RefreshFanReadingsLocked()
+    private bool RefreshReadingSubscriptionsLocked()
     {
+        if (leases != 0 && catalog.ActualReadingsUseHardwareBridge)
+            bridgeReadings ??= bridge?.SubscribeReadings();
+        else
+        {
+            bridgeReadings?.Dispose();
+            bridgeReadings = null;
+        }
         var next = leases != 0 && catalog.ActualReadingsUseFanCore;
         if (fanReadingsInUse == next) return false;
         Volatile.Write(ref fanReadingsInUse, next);
@@ -164,7 +174,7 @@ public sealed class ControlActualStateReader(
             {
                 leases = 0;
                 Volatile.Write(ref actualControlValuesInUse, false);
-                fanChanged = RefreshFanReadingsLocked();
+                fanChanged = RefreshReadingSubscriptionsLocked();
             }
             SubscriptionsChanged?.Invoke();
             if (fanChanged) FanReadingsChanged?.Invoke();
@@ -185,7 +195,7 @@ public sealed class ControlActualStateReader(
         {
             var declared = await catalog.ReadObjectsAsync(cancellationToken).ConfigureAwait(false);
             bool fanChanged;
-            lock (subscriptionGate) fanChanged = RefreshFanReadingsLocked();
+            lock (subscriptionGate) fanChanged = RefreshReadingSubscriptionsLocked();
             if (fanChanged) FanReadingsChanged?.Invoke();
             foreach (var controlObject in declared.Objects)
             {
@@ -241,4 +251,5 @@ public sealed class ControlActualStateReader(
         }
         return null;
     }
+
 }

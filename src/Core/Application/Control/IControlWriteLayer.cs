@@ -18,6 +18,8 @@ namespace ResourceManager.App.Application.Control;
 /// </summary>
 public interface IControlWriteLayer
 {
+    /// <summary>Only declaration facts; never probes a writer or starts hardware.</summary>
+    bool UsesHardwareBridge(string objectId, string capabilityId) => false;
     Task<ControlApplyReport> ReleaseAsync(
         ControlDesiredState removed,
         ControlDesiredState remaining,

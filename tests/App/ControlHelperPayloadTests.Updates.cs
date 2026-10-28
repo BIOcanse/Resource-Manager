@@ -194,7 +194,7 @@ public sealed partial class ControlHelperPayloadTests
     }
 
     [Fact]
-    public async Task UpdatingHeldBridgeDrainsOnlyItsOwnedSessionAndNextRequestRestartsIt()
+    public async Task UpdatingHeldBridgeDrainsOnlyItsOwnedSessionAndNextEntryStartsFresh()
     {
         const string id = "hardware-bridge";
         var definition = OptionalDependencyCatalog.Find(id)!;
@@ -207,18 +207,9 @@ public sealed partial class ControlHelperPayloadTests
         Process? Start(ProcessStartInfo start)
         {
             Assert.Equal(executable, start.FileName);
-            var script = $$"""
-                $held=[IO.File]::Open('{{executable}}',[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
-                while ($null -ne ($line=[Console]::In.ReadLine())) {
-                    [Console]::Out.WriteLine('{"ok":true}')
-                    [Console]::Out.Flush()
-                }
-                $held.Dispose()
-                """;
-            var info = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"))
+            var info = new ProcessStartInfo(HardwareBridgeSessionTests.Fixture)
                 { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true };
-            info.ArgumentList.Add("-NoProfile"); info.ArgumentList.Add("-NonInteractive"); info.ArgumentList.Add("-EncodedCommand");
-            info.ArgumentList.Add(Convert.ToBase64String(Encoding.Unicode.GetBytes(script)));
+            info.Environment["RM_BRIDGE_FIXTURE_HOLD_FILE"] = executable;
             var running = Process.Start(info)!;
             var observer = Process.GetProcessById(running.Id);
             _ = observer.SafeHandle;
@@ -228,8 +219,12 @@ public sealed partial class ControlHelperPayloadTests
         }
         var environment = new TestEnvironment(root);
         using var bridge = new HardwareBridgeClient(environment, Start);
+        using var stop = new CancellationTokenSource();
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var run = bridge.Owner.RunAsync(stop.Token, () => ready.SetResult());
         try
         {
+            await ready.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.NotNull(await bridge.SendAsync("describe", null, default));
             Assert.Throws<IOException>(() => File.WriteAllText(executable, "must be held"));
             using var client = new HttpClient(new ArchiveHandler(BuildArchive(definition.PayloadSource.FileNames)));
@@ -241,11 +236,19 @@ public sealed partial class ControlHelperPayloadTests
             Assert.True(observers[0].HasExited);
             Assert.Equal("owned fake payload", File.ReadAllText(executable));
             Assert.Equal(1, starts);
+            await run.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Null(await bridge.SendAsync("describe", null, default));
+            Assert.Equal(1, starts);
+            ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            run = bridge.Owner.RunAsync(stop.Token, () => ready.SetResult());
+            await ready.Task.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.NotNull(await bridge.SendAsync("describe", null, default));
             Assert.Equal(2, starts);
         }
         finally
         {
+            stop.Cancel();
+            await run.WaitAsync(TimeSpan.FromSeconds(5));
             bridge.Dispose();
             foreach (var observer in observers)
             {

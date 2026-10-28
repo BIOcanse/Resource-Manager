@@ -1,5 +1,5 @@
 using System.Diagnostics;
-using System.Text;
+using System.Globalization;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using ResourceManager.App.Application.Control;
@@ -23,6 +23,7 @@ public sealed class AmdIntegratedGpuBaselineTests
         {
             await using (var first = new Helper(root, 8))
             {
+                await first.StartAsync();
                 var range = Assert.IsType<ControlNumberRange>(first.Writer.Probe(Target("gpu:A"), Capability).Range);
                 Assert.Null(range.DefaultValue);
                 Assert.Equal(ControlApplyStatuses.Applied,
@@ -31,6 +32,7 @@ public sealed class AmdIntegratedGpuBaselineTests
             }
             await using (var restarted = new Helper(root, -20))
             {
+                await restarted.StartAsync();
                 var original = Capability with { Range = restarted.Writer.Probe(Target("gpu:A"), Capability).Range };
                 Assert.Equal(8, original.Range!.DefaultValue);
                 Assert.True(await ((IControlWriter)restarted.Writer).RestoreAsync(Target("gpu:A"), original, new HashSet<string>(), default));
@@ -38,6 +40,7 @@ public sealed class AmdIntegratedGpuBaselineTests
             }
             await using (var changed = new Helper(root, -4))
             {
+                await changed.StartAsync();
                 var own = Capability with { Range = changed.Writer.Probe(Target("gpu:B"), Capability).Range };
                 Assert.Null(own.Range!.DefaultValue);
                 await changed.Writer.WriteAsync(Target("gpu:B"), own, new(Capability.Id, Number: -20), default);
@@ -58,6 +61,7 @@ public sealed class AmdIntegratedGpuBaselineTests
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllText(path, "8");
             await using var helper = new Helper(root, -20);
+            await helper.StartAsync();
             var availability = helper.Writer.Probe(Target("gpu:B"), Capability);
             Assert.False(availability.CanWrite);
             Assert.True(availability.CanRead);
@@ -71,30 +75,18 @@ public sealed class AmdIntegratedGpuBaselineTests
     private sealed class Helper : IAsyncDisposable
     {
         private readonly HardwareBridgeClient bridge;
+        private readonly CancellationTokenSource stop = new();
+        private Task? run;
         private Process? observer;
         internal IntegratedGpuControlWriter Writer { get; }
         internal Helper(string root, int initial)
         {
             var directory = Directory.CreateDirectory(Path.Combine(root, "Dependencies", "hardware-bridge")).FullName;
             File.WriteAllText(Path.Combine(directory, "ResourceManager.HardwareBridge.exe"), "factory placeholder, never executed");
-            var script = $$"""
-                $ErrorActionPreference='Stop'
-                $counts={{initial}}
-                $iterations=0
-                while ($null -ne ($line=[Console]::In.ReadLine()) -and $iterations -lt 100) {
-                    $iterations++
-                    $request=$line | ConvertFrom-Json
-                    if ($request.op -eq 'set-igpu-curve-optimizer') { $counts=$request.value }
-                    [Console]::Out.WriteLine((@{id=$request.id;ok=$true;available=$true;integratedGpuCurveOptimizer=$true;accepted=$true;integratedGpuCurveOptimizerCounts=$counts} | ConvertTo-Json -Compress))
-                    [Console]::Out.Flush()
-                }
-                """;
-            Process? Start(ProcessStartInfo ignored)
+            Process? Start(ProcessStartInfo info)
             {
-                var info = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"))
-                { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true };
-                foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-EncodedCommand", Convert.ToBase64String(Encoding.Unicode.GetBytes(script)) })
-                    info.ArgumentList.Add(argument);
+                info.FileName = HardwareBridgeSessionTests.Fixture;
+                info.Environment["RM_BRIDGE_FIXTURE_IGPU_COUNTS"] = initial.ToString(CultureInfo.InvariantCulture);
                 var process = Process.Start(info)!;
                 observer = Process.GetProcessById(process.Id);
                 _ = observer.SafeHandle;
@@ -104,9 +96,17 @@ public sealed class AmdIntegratedGpuBaselineTests
             bridge = new HardwareBridgeClient(environment, Start);
             Writer = new IntegratedGpuControlWriter(bridge, new Consent(), environment);
         }
+        internal async Task StartAsync()
+        {
+            var ready = BusinessBlockTestSupport.Signal();
+            run = bridge.Owner.RunAsync(stop.Token, () => ready.TrySetResult());
+            await ready.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
+        }
         public async ValueTask DisposeAsync()
         {
-            bridge.Dispose();
+            stop.Cancel();
+            try { if (run is not null) await run.WaitAsync(BusinessBlockTestSupport.TestTimeout); }
+            finally { Writer.Dispose(); bridge.Dispose(); stop.Dispose(); }
             if (observer is null) return;
             try
             {

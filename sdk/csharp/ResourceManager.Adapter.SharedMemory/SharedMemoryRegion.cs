@@ -62,6 +62,7 @@ internal sealed unsafe class SharedMemoryRegion : IDisposable
         bool writable)
     {
         ValidateArguments(mappingName, capacity);
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Named shared memory requires Windows.");
         var mapping = MemoryMappedFile.OpenExisting(
             mappingName,
             writable ? MemoryMappedFileRights.ReadWrite : MemoryMappedFileRights.Read);

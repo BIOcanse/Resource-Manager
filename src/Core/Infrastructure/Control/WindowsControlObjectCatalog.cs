@@ -46,6 +46,10 @@ public sealed class WindowsControlObjectCatalog(
     // Actual-value subscriptions currently select the whole catalog.
     public bool ActualReadingsUseFanCore => fanCore.Describe().Count != 0;
 
+    public bool ActualReadingsUseHardwareBridge => catalogState.Catalog?.FieldBindings.Values.Any(binding =>
+        binding.ControlTarget is not null && WindowsMetricControlBindings.TryFind(binding)?
+            .ReadDependencies.Contains("hardware-bridge") == true) == true;
+
     // Cached by design for the original sampler's capture/write callbacks.
     public ControlObjectCatalog ReadObjects()
     {
@@ -53,6 +57,13 @@ public sealed class WindowsControlObjectCatalog(
         return declared with { Objects = declared.Objects.Select(ResolveAvailability).ToArray() };
     }
 
+    // The already-published bindings carry the admitted raw object identity and
+    // the original writer dependencies. Decision publication never probes WMI,
+    // NVML, writer support, or a fresh catalog merely to classify a target.
+    public bool UsesHardwareBridge(string objectId, string capabilityId)
+        => catalogState.Catalog?.FieldBindings.Values.Any(binding => binding.ControlTarget?.RawObjectId == objectId
+            && WindowsMetricControlBindings.TryFind(binding) is { } contract
+            && contract.RawCapability == capabilityId && contract.WriteDependencies.Contains("hardware-bridge")) == true;
     public async Task<ControlObjectCatalog> ReadObjectsAsync(CancellationToken cancellationToken)
     {
         // The published catalog contains declaration facts only. Reuse those

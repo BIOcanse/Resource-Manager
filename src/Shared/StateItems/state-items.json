@@ -2251,6 +2251,85 @@
       "conditions": [],
       "children": [],
       "decides": 163
+    },
+    {
+      "uid": 165,
+      "kind": "block",
+      "process": "backend",
+      "name": "HardwareBridgeProcessOwner",
+      "comment": "Owns the GPL hardware helper process and its per-run readings section."
+    },
+    {
+      "uid": 166,
+      "kind": "item",
+      "process": "backend",
+      "name": "HardwareCommandPending",
+      "comment": "Bridge-backed commands accepted, queued, executing or awaiting control-plane outcome publication; a multi-command write holds one continuous pending scope.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "HardwareCommandQueue"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "PendingChanged"
+    },
+    {
+      "uid": 167,
+      "kind": "item",
+      "process": "backend",
+      "name": "HardwareBridgeReadingsInUse",
+      "comment": "Bridge-sourced reading subscription items have a live consumer; periodic reading is not a command.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "HardwareBridgeReadingSubscriptions"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "ReadingsInUseChanged"
+    },
+    {
+      "uid": 168,
+      "kind": "item",
+      "process": "backend",
+      "name": "HardwareBridgeAvailable",
+      "comment": "Resident process owner reports whether a bridge run can currently be attempted; only recognized unavailable failures change this fact.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "HardwareBridgeProcessOwner"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "AvailabilityChanged"
+    },
+    {
+      "uid": 169,
+      "kind": "condition",
+      "process": "backend",
+      "name": "HardwareBridgeShouldRun",
+      "comment": "HardwareControl runs the host-permitted, available helper only for accepted bridge commands through outcome publication or bridge readings in use; applied settings alone do not hold it. No-value is false.",
+      "perBlock": false,
+      "node": 78,
+      "items": [
+        {
+          "item": 8,
+          "block": 165
+        },
+        {
+          "item": 166
+        },
+        {
+          "item": 167
+        },
+        {
+          "item": 168
+        }
+      ],
+      "conditions": [],
+      "children": [],
+      "decides": 165
     }
   ]
 }

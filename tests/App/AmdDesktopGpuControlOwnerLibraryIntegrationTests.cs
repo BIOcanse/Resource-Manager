@@ -10,6 +10,30 @@ public sealed class AmdDesktopGpuControlOwnerLibraryIntegrationTests : IDisposab
     private static AmdDesktopGpuControlTarget Gpu => new(1, AmdDesktopGpuControlRoute.WindowsAmdFixedDiscrete);
     private static AmdDesktopGpuControlTarget Fan => Gpu with { Kind = AmdDesktopGpuControlObjectKind.Fan };
     private AmdDesktopGpuControlResource Owner(RecordedHardware io, string? path = null) => new(io, new(path ?? Baseline));
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CancellationDuringNativeReadPreventsBaselineAndSetter(bool restore)
+    {
+        var io = new RecordedHardware();
+        using var owner = Owner(io);
+        if (restore)
+            await owner.WriteAsync(Gpu, AmdDesktopGpuControlField.PowerLimitOffset, new(Number: 6));
+        var original = File.Exists(Baseline) ? File.ReadAllText(Baseline) : null;
+        var writes = io.Writes;
+        using var cancellation = new CancellationTokenSource();
+        io.BeforeRead = cancellation.Cancel;
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        {
+            if (restore) await owner.RestoreAsync(Gpu, AmdDesktopGpuControlField.PowerLimitOffset,
+                new HashSet<AmdDesktopGpuControlField>(), cancellation.Token);
+            else await owner.WriteAsync(Gpu, AmdDesktopGpuControlField.PowerLimitOffset, new(Number: 6), cancellation.Token);
+        });
+
+        Assert.Equal(writes, io.Writes);
+        Assert.Equal(original, File.Exists(Baseline) ? File.ReadAllText(Baseline) : null);
+    }
     [Fact]
     public async Task ConstructionAdmissionAndBorrowedLifetimeNeverSetOrDisposeHardware()
     {

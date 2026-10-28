@@ -229,7 +229,9 @@ public sealed partial class ControlHelperPayloadTests
         using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
             foreach (var name in files)
             {
-                using var writer = new StreamWriter(archive.CreateEntry(name).Open());
+                var entry = archive.CreateEntry(name);
+                entry.LastWriteTime = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+                using var writer = new StreamWriter(entry.Open());
                 writer.Write("owned fake payload");
             }
         return buffer.ToArray();

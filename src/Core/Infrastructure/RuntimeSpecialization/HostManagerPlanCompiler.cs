@@ -60,6 +60,7 @@ public sealed partial class HostManagerPlanCompiler
         var schedulerSamplingInterval = CompileSchedulerSamplingInterval(freedom);
         var serviceRecoveryReset = CompileServiceRecovery(freedom);
         var trustedAccessRequestLifetime = CompileTrustedAccessRequestLifetime(freedom);
+        var hardwareBridgeAvailabilityCheckInterval = CompileHardwareBridgeAvailabilityCheckInterval(freedom);
         var backendControlSettings = BackendControlSettings.Compile(freedom);
 
         var buildSpecialize = CompileBuildSpecialize(
@@ -582,6 +583,7 @@ public sealed partial class HostManagerPlanCompiler
             KernelLeak = kernelLeak,
             CpuScoring = compiledCpuScoring,
             SchedulerSamplingInterval = schedulerSamplingInterval,
+            HardwareBridgeAvailabilityCheckInterval = hardwareBridgeAvailabilityCheckInterval,
             ServiceRecoveryResetPeriodSeconds = serviceRecoveryReset,
             TrustedAccessRequestLifetimeMilliseconds = trustedAccessRequestLifetime,
             BackendControlSettings = backendControlSettings,

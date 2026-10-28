@@ -474,6 +474,25 @@
               }
             ]
           }
+        },
+        {
+          "id": "hardware_bridge",
+          "description": "Optional hardware helper availability; checks never start the helper.",
+          "build": {
+            "simple": [
+              {
+                "index": 0,
+                "id": "availability_check_interval_ms",
+                "description": "Check changeable prerequisites only while unavailable. Zero disables polling; installation events still update availability.",
+                "value_type": "nonnegative_int32",
+                "update_class": "rebuild_backend",
+                "status": "active",
+                "value_source": "registry",
+                "value": 30000,
+                "consumers": ["HostManagerPlanCompiler.CompileHardwareBridgeAvailabilityCheckInterval"]
+              }
+            ]
+          }
         }
       ]
     }

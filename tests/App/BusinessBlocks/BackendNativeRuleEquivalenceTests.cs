@@ -145,6 +145,8 @@ public sealed class BackendNativeRuleEquivalenceTests
         if (!P(child)) return false;
         return child switch
         {
+            BlockUids.HardwareBridgeProcessOwner => T(StateItemUids.HardwareBridgeAvailable)
+                && (T(StateItemUids.HardwareCommandPending) || T(StateItemUids.HardwareBridgeReadingsInUse)),
             BackendUids.PresentFrameEtwSource => Present(),
             BackendUids.GpuAllocationCollector => Allocation(),
             BackendUids.DxgkrnlVidMmEtwTelemetryZone => VidMm(),

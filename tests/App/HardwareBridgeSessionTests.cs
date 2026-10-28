@@ -1,166 +1,128 @@
 using System.Diagnostics;
-using System.Text;
 using ResourceManager.ReadWrite.Helpers;
-using ResourceManager.ReadWrite.Vendors.Amd;
-using ResourceManager.ReadWrite.Windows.Gpu.Control;
 
 namespace Resource_Manager_APP.Tests;
 
 public sealed class HardwareBridgeSessionTests
 {
-    [Fact]
-    public async Task CancellationDuringInternalDescribeDoesNotStartRequestedWriteOrDiscardCompletedFacts()
+    internal static string Fixture => Path.Combine(AppContext.BaseDirectory, "HardwareBridgeProcessFixture", "HardwareBridgeProcessFixture.exe");
+    internal static HardwareBridgeProcessOptions Options => new(TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(1),
+        new(128, 1024, 1024, ".NET", "10", "missing", "failed")) { StopTimeout = TimeSpan.FromMilliseconds(500) };
+
+    public static IEnumerable<object[]> InvalidOptions()
     {
-        var directory = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(),"rm-session-cancel-"+Guid.NewGuid().ToString("N"))).FullName;
-        var started = Path.Combine(directory,"describe-started");
-        var release = Path.Combine(directory,"release");
-        var setter = Path.Combine(directory,"setter");
-        var executable = Path.Combine(Environment.SystemDirectory,"WindowsPowerShell","v1.0","powershell.exe");
+        yield return [Options with { ErrorOutput = null! }];
+        yield return [Options with { ErrorOutput = Options.ErrorOutput with { ReadBufferSize = 0 } }];
+        yield return [Options with { ErrorOutput = Options.ErrorOutput with { FirstCharacterLimit = -1 } }];
+        yield return [Options with { ErrorOutput = Options.ErrorOutput with { TailCharacterLimit = -1 } }];
+        yield return [Options with { ErrorOutput = Options.ErrorOutput with { RuntimeName = null! } }];
+        yield return [Options with { ErrorOutput = Options.ErrorOutput with { RuntimeVersionMarker = null! } }];
+        yield return [Options with { ErrorOutput = Options.ErrorOutput with { MissingRuntimeReason = null! } }];
+        yield return [Options with { ErrorOutput = Options.ErrorOutput with { StartupFailedReason = null! } }];
+        yield return [Options with { RequestTimeout = TimeSpan.MaxValue }];
+        yield return [Options with { StopTimeout = TimeSpan.MaxValue }];
+        yield return [Options with { DiagnosticDrainTimeout = TimeSpan.MaxValue }];
+        yield return [Options with { AvailabilityCheckInterval = TimeSpan.FromMilliseconds(-1) }];
+        yield return [Options with { AvailabilityCheckInterval = TimeSpan.MaxValue }];
+    }
+
+    [Theory]
+    [MemberData(nameof(InvalidOptions))]
+    public void InvalidOptionsAreRejectedBeforeAnyChildCanStart(HardwareBridgeProcessOptions options)
+    {
         var launches = 0;
-        Process? observer = null;
-        Process? Start(ProcessStartInfo ignored)
-        {
-            launches++;
-            var script = $$"""
-                $ErrorActionPreference='Stop'
-                $description=[Console]::In.ReadLine() | ConvertFrom-Json
-                if ($description.op -ne 'describe') { throw 'Expected initial describe' }
-                [IO.File]::WriteAllText('{{started}}','describe accepted')
-                $deadline=[DateTime]::UtcNow.AddSeconds(20)
-                while (-not [IO.File]::Exists('{{release}}') -and [DateTime]::UtcNow -lt $deadline) { [Threading.Thread]::Sleep(10) }
-                [Console]::Out.WriteLine('{"available":true}')
-                [Console]::Out.Flush()
-                $requests=0
-                while ($null -ne ($line=[Console]::In.ReadLine()) -and $requests -lt 10) {
-                    $request=$line | ConvertFrom-Json
-                    $requests++
-                    if ($request.op -like 'set-*') { [IO.File]::WriteAllText('{{setter}}','unexpected setter') }
-                    [Console]::Out.WriteLine((@{op=$request.op;requests=$requests} | ConvertTo-Json -Compress))
-                    [Console]::Out.Flush()
-                }
-                """;
-            var info = new ProcessStartInfo(executable)
-            { UseShellExecute=false,CreateNoWindow=true,RedirectStandardInput=true,RedirectStandardOutput=true,RedirectStandardError=true };
-            foreach (var argument in new[] {"-NoProfile","-NonInteractive","-EncodedCommand",Convert.ToBase64String(Encoding.Unicode.GetBytes(script))})
-                info.ArgumentList.Add(argument);
-            var process=Process.Start(info)!;
-            observer=Process.GetProcessById(process.Id);
-            _=observer.SafeHandle;
-            return process;
-        }
-        using var bridge = new HardwareBridgeProcessClient(() => executable,
-            new(TimeSpan.FromSeconds(20),TimeSpan.FromSeconds(1),new(128,1024,1024,".NET","10","missing","failed")),startFactory:Start);
-        using var cancellation = new CancellationTokenSource();
-        Task<System.Text.Json.JsonElement?>? pending = null;
-        try
-        {
-            pending=bridge.SendAsync("set-owned-test",null,cancellation.Token);
-            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            while (!File.Exists(started)) await Task.Delay(10,deadline.Token);
-            cancellation.Cancel();
-            File.WriteAllText(release,"release");
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(()=>pending);
-            Assert.False(File.Exists(setter));
-            var status=(await bridge.SendAsync("status",null,default))!.Value;
-            Assert.Equal("status",status.GetProperty("op").GetString());
-            Assert.Equal(1,status.GetProperty("requests").GetInt32());
-            Assert.Equal(1,launches);
-        }
-        finally
-        {
-            File.WriteAllText(release,"release");
-            if (pending is not null)
-            {
-                try { await pending.WaitAsync(TimeSpan.FromSeconds(10)); }
-                catch (OperationCanceledException) { }
-            }
-            bridge.Dispose();
-            if (observer is not null)
-            {
-                await observer.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
-                observer.Dispose();
-            }
-            foreach (var path in new[] {started,release,setter}) File.Delete(path);
-            Directory.Delete(directory);
-        }
+        Assert.ThrowsAny<ArgumentException>(() => new HardwareBridgeProcessOwner(() => Fixture, options,
+            startFactory: _ => { launches++; throw new Exception("Invalid options started a child"); }));
+        Assert.Equal(0, launches);
     }
 
     [Fact]
-    public async Task SharedOwnersDescribeOnceAndFirstReadAfterExitDescribesNewSession()
+    public async Task StoppedFacadeNeverStartsForDescriptionsReadsOrCommands()
     {
-        var observers = new List<Process>();
         var launches = 0;
-        var executable = Path.Combine(Environment.SystemDirectory,"WindowsPowerShell","v1.0","powershell.exe");
-        Process? Start(ProcessStartInfo ignored)
-        {
-            var session = ++launches;
-            var script = $$"""
-                $ErrorActionPreference='Stop'
-                $requests=0; $describes=0; $reads=0
-                while ($null -ne ($line=[Console]::In.ReadLine()) -and $requests -lt 100) {
-                    $request=$line | ConvertFrom-Json
-                    $requests++
-                    if ($request.op -eq 'describe') { $describes++ }
-                    if ($request.op -eq 'read') { $reads++ }
-                    [Console]::Out.WriteLine((@{ok=$true;available=$true;powerTable=$true;integratedGpuCurveOptimizer=$true;requests=$requests;describes=$describes;reads=$reads;session={{session}};stapmLimitWatts={{40+session}};integratedGpuCurveOptimizerCounts={{session}}} | ConvertTo-Json -Compress))
-                    [Console]::Out.Flush()
-                    if ($request.op -eq 'finish') { break }
-                }
-                """;
-            var info = new ProcessStartInfo(executable)
-            { UseShellExecute=false,CreateNoWindow=true,RedirectStandardInput=true,RedirectStandardOutput=true,RedirectStandardError=true };
-            foreach (var argument in new[] {"-NoProfile","-NonInteractive","-EncodedCommand",Convert.ToBase64String(Encoding.Unicode.GetBytes(script))})
-                info.ArgumentList.Add(argument);
-            var process = Process.Start(info)!;
-            var observer = Process.GetProcessById(process.Id);
-            _ = observer.SafeHandle;
-            observers.Add(observer);
-            return process;
-        }
-        using var bridge = new HardwareBridgeProcessClient(() => executable,
-            new(TimeSpan.FromSeconds(20),TimeSpan.FromSeconds(1),new(128,1024,1024,".NET","10","missing","failed")),startFactory:Start);
-        // Probe never creates either baseline path.
-        var directory = Path.Combine(Path.GetTempPath(),"rm-session-"+Guid.NewGuid().ToString("N"));
-        using var cpu = new AmdCpuControlResource(bridge,AmdCpuControlOptions.InDirectory(directory));
-        using var gpu = new IntegratedGpuControlResource(bridge,new RecordedIntegratedIntelHardware(),new(Path.Combine(directory,"igpu.json"),_=>Task.FromResult(false)));
-        var cpuTarget = new AmdCpuControlTarget("cpu:0",true);
-        var power = new AmdCpuControlCapability(AmdCpuControlField.PowerLimit);
-        var gpuTarget = new IntegratedGpuControlTarget("gpu:0",IntegratedGpuControlRoute.AmdIntegrated);
-        var co = new IntegratedGpuControlCapability(IntegratedGpuControlField.CurveOptimizer);
+        using var client = new HardwareBridgeProcessClient(() => Fixture, Options,
+            startFactory: _ => { launches++; throw new Exception("Unexpected process start"); });
+        Assert.Null(await client.SendAsync("describe", null, default));
+        Assert.Null(await client.SendAsync("set-test", null, default));
+        Assert.Null(client.ReadCurrentReadings());
+        using (client.SubscribeReadings()) Assert.True(client.Owner.ReadingsInUse);
+        Assert.False(client.Owner.ReadingsInUse);
+        Assert.Equal(0, launches);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StopJoinsRealJobBoundChildClosesSectionAndWithdrawsValues(bool ignoresEof)
+    {
+        using var client = new HardwareBridgeProcessClient(() => Fixture, Options);
+        using var stop = new CancellationTokenSource();
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var run = client.Owner.RunAsync(stop.Token, () => ready.SetResult());
         try
         {
-            // No Probe warm-up: the first read must establish the session facts itself.
-            Assert.Equal(41,(await cpu.ReadAsync(cpuTarget,power))!.Number);
-            for (var round=0;round<20;round++)
-            {
-                Assert.True(cpu.Probe(cpuTarget,power).CanWrite);
-                Assert.True(gpu.Probe(gpuTarget,co).CanWrite);
-            }
-            Assert.Equal(1,(await gpu.ReadAsync(gpuTarget,co))!.Number);
-            var status = (await bridge.SendAsync("finish",null,default))!.Value;
-            Assert.Equal(4,status.GetProperty("requests").GetInt32());
-            Assert.Equal(1,status.GetProperty("describes").GetInt32());
-            Assert.Equal(2,status.GetProperty("reads").GetInt32());
-            await observers[0].WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.Equal(2,(await gpu.ReadAsync(gpuTarget,co))!.Number);
-            Assert.Equal(42,(await cpu.ReadAsync(cpuTarget,power))!.Number);
-            status = (await bridge.SendAsync("describe",null,default))!.Value;
-            Assert.Equal(2,status.GetProperty("session").GetInt32());
-            Assert.Equal(1,status.GetProperty("requests").GetInt32());
-            var second = (await bridge.SendAsync("status",null,default))!.Value;
-            Assert.Equal(4,second.GetProperty("requests").GetInt32());
-            Assert.Equal(1,second.GetProperty("describes").GetInt32());
-            Assert.Equal(2,second.GetProperty("reads").GetInt32());
-            Assert.False(Directory.Exists(directory));
+            await ready.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(45, client.ReadCurrentReadings()!.Value.StapmLimitWatts);
+            var status = (await client.SendAsync(ignoresEof ? "ignore-eof" : "status", null, default))!.Value;
+            Assert.True(status.GetProperty("inJob").GetBoolean());
+            var name = status.GetProperty("sectionName").GetString()!;
+            using var observer = Process.GetProcessById(status.GetProperty("pid").GetInt32());
+            _ = observer.SafeHandle;
+            var timer = Stopwatch.StartNew();
+            stop.Cancel();
+            await run.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.True(observer.HasExited);
+            Assert.True(timer.Elapsed < TimeSpan.FromSeconds(4));
+            Assert.Null(client.ReadCurrentReadings());
+            Assert.Null(await client.SendAsync("describe", null, default));
+            Assert.Throws<FileNotFoundException>(() => HardwareBridgeReadingsSection.OpenReader(name));
         }
-        finally
+        finally { stop.Cancel(); await run.WaitAsync(TimeSpan.FromSeconds(5)); }
+    }
+
+    [Fact]
+    public async Task StopCancelsInFlightCommandAndTerminatesHungChild()
+    {
+        using var client = new HardwareBridgeProcessClient(() => Fixture, Options);
+        using var stop = new CancellationTokenSource();
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var run = client.Owner.RunAsync(stop.Token, () => ready.SetResult());
+        try
         {
-            bridge.Dispose();
-            foreach (var observer in observers)
-            {
-                await observer.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
-                observer.Dispose();
-            }
+            await ready.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            var pending = client.SendAsync("hang", null, default);
+            stop.Cancel();
+            await run.WaitAsync(TimeSpan.FromSeconds(5));
+            try { Assert.Null(await pending.WaitAsync(TimeSpan.FromSeconds(2))); }
+            catch (OperationCanceledException) { }
+            Assert.Null(client.ReadCurrentReadings());
         }
+        finally { stop.Cancel(); await run.WaitAsync(TimeSpan.FromSeconds(5)); }
+    }
+
+    [Fact]
+    public async Task CrashFailsEntryAndRequestsNeverRestartItNextEntryIsFresh()
+    {
+        using var client = new HardwareBridgeProcessClient(() => Fixture, Options);
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var run = client.Owner.RunAsync(default, () => ready.SetResult());
+        await ready.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var status = (await client.SendAsync("status", null, default))!.Value;
+        var first = status.GetProperty("sectionName").GetString();
+        Assert.Null(await client.SendAsync("crash", null, default));
+        await Assert.ThrowsAsync<IOException>(() => run.WaitAsync(TimeSpan.FromSeconds(5)));
+        for (var i=0;i<3;i++) Assert.Null(await client.SendAsync("describe", null, default));
+        Assert.Null(client.ReadCurrentReadings());
+        Assert.True(client.Owner.IsAvailable);
+        using var stop = new CancellationTokenSource();
+        ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        run = client.Owner.RunAsync(stop.Token, () => ready.SetResult());
+        try
+        {
+            await ready.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            status = (await client.SendAsync("status", null, default))!.Value;
+            Assert.NotEqual(first, status.GetProperty("sectionName").GetString());
+        }
+        finally { stop.Cancel(); await run.WaitAsync(TimeSpan.FromSeconds(5)); }
     }
 }

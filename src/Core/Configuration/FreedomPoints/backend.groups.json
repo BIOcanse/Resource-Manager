@@ -1,5 +1,5 @@
 {
-  "contractFingerprint": "601EEA74429BF2FB64839B08BA4CF228931F5306BA2A4576162852437AAE5966",
+  "contractFingerprint": "3C399E0C18DBD2EC0DFEB7511DBA41019A3188233B0A924806DDA0DD2544C6B1",
   "groups": [
     {
       "key": "resource-manager/backend",
@@ -129,6 +129,16 @@
         "0001000200280004",
         "0001000200280005",
         "0001000200280006"
+      ]
+    },
+    {
+      "key": "resource-manager/backend/hardware_bridge",
+      "parent": "resource-manager/backend",
+      "name": "hardware_bridge",
+      "description": "Optional hardware helper availability; checks never start the helper.",
+      "order": 6,
+      "points": [
+        "00010002002C0000"
       ]
     }
   ]

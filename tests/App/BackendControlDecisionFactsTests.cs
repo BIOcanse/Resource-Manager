@@ -56,8 +56,8 @@ public sealed class BackendControlDecisionFactsTests
         var store = new Store();
         var writer = new Writer();
         var plane = new ControlPlane(store, writer);
-        var changes = 0;
-        plane.AppliedIntentsChanged += () => changes++;
+        var changes = new List<(bool Applied, bool Fan)>();
+        plane.AppliedIntentsChanged += () => changes.Add((plane.AppliedControlIntentsExist, plane.AppliedFanControlExists));
         Assert.False(plane.AppliedControlIntentsExist);
         Assert.False(plane.AppliedFanControlExists);
 
@@ -71,7 +71,7 @@ public sealed class BackendControlDecisionFactsTests
         await plane.ApplyDesiredStateAsync(ControlDesiredState.Empty, default);
         Assert.False(plane.AppliedControlIntentsExist);
         Assert.False(plane.AppliedFanControlExists);
-        Assert.Equal(3, changes);
+        Assert.Equal([(true, true), (false, true), (true, false), (false, false), (false, false)], changes);
 
         // A rejected edit keeps old receipts for other objects, including prior
         // successful releases. Those receipts cannot become live ownership.

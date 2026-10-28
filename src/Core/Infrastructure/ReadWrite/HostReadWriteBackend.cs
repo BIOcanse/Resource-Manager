@@ -6,6 +6,7 @@ using ResourceManager.App.Domain.Control;
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.Monitoring;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
+using ResourceManager.App.Infrastructure.Control;
 using ResourceManager.ReadWrite;
 using ResourceManager.ReadWrite.Fields;
 
@@ -17,15 +18,18 @@ public sealed class HostReadWriteBackend : IReadWriteBackend
     private readonly MetricReadWriteBackend backend;
     private readonly IControlObjectCatalog controlCatalog;
     private readonly IControlWriteLayer writeLayer;
+    private readonly HardwareCommandQueue? commands;
     private ControlObjectCatalog? discoveredControls;
     private readonly WindowsHardwareMetricSampler? controlSampler;
 
     public HostReadWriteBackend(IMetricSampler sampler, IMetricSnapshotObservationSource observations,
-        HardwareMetricCatalogState catalogState, IControlObjectCatalog controlCatalog, IControlWriteLayer writeLayer)
+        HardwareMetricCatalogState catalogState, IControlObjectCatalog controlCatalog, IControlWriteLayer writeLayer,
+        HardwareCommandQueue? commands = null)
     {
         controlSampler = sampler as WindowsHardwareMetricSampler;
         this.controlCatalog = controlCatalog;
         this.writeLayer = writeLayer;
+        this.commands = commands;
         backend = new(() => catalogState.Catalog, request => observations.ReadLatest(request),
             (request, token) => new(sampler.CaptureSnapshotAsync(request, token)),
             snapshot =>
@@ -76,7 +80,12 @@ public sealed class HostReadWriteBackend : IReadWriteBackend
     public ValueTask<FieldWriteResult> WriteAsync(FieldReference field, FieldValue value, CancellationToken token)
         => backend.WriteAsync(field, value, token);
 
-    private async ValueTask<FieldWriteResult> WriteFieldAsync(FieldReference field, MetricDeviceFieldBinding binding,
+    private ValueTask<FieldWriteResult> WriteFieldAsync(FieldReference field, MetricDeviceFieldBinding binding,
+        FieldValue value, CancellationToken token)
+        => commands is null || WindowsMetricControlBindings.TryFind(binding)?.WriteDependencies.Contains("hardware-bridge") != true ? WriteFieldCoreAsync(field, binding, value, token)
+            : new(commands.ExecuteAsync(active => WriteFieldCoreAsync(field, binding, value, active).AsTask(), token));
+
+    private async ValueTask<FieldWriteResult> WriteFieldCoreAsync(FieldReference field, MetricDeviceFieldBinding binding,
         FieldValue value, CancellationToken token)
     {
         if (WindowsMetricControlBindings.TryFind(binding) is { } contract)

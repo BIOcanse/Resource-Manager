@@ -301,9 +301,9 @@ public sealed class BusinessBlockGlobalStateTests
     }
 
     [Theory]
-    [InlineData("full", false, 43)]
-    [InlineData("full", true, 44)]
-    [InlineData("normal-read-only", false, 27)]
+    [InlineData("full", false, 44)]
+    [InlineData("full", true, 45)]
+    [InlineData("normal-read-only", false, 28)]
     public async Task ProductionGraphIsClosedForEachStartupProfile(string profile, bool windowsService, int expectedCount)
     {
         var services = new ServiceCollection();

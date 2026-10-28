@@ -28,7 +28,6 @@ public interface IControlWriter
     /// 用户最想知道链路的，恰恰是那些锁着的项。
     /// </summary>
     string? ChannelOf(ControlObject target, string capabilityId) => null;
-
     /// <summary>Validate related requested settings before either is written. Does not access hardware.</summary>
     IReadOnlyDictionary<string, ControlApplyReason> ValidateSettings(ControlObject target, IReadOnlyList<ControlSetting> settings)
         => new Dictionary<string, ControlApplyReason>();
@@ -51,7 +50,10 @@ public interface IControlWriter
     Task<IReadOnlyList<ControlCurvePoint>?> ReadCurveAsync(
         ControlObject target,
         CancellationToken cancellationToken)
-        => Task.FromResult<IReadOnlyList<ControlCurvePoint>?>(null);
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult<IReadOnlyList<ControlCurvePoint>?>(null);
+    }
 
     /// <summary>
     /// 这个写入器能不能写这一项。

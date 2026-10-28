@@ -97,7 +97,7 @@ public sealed partial class ControlHelperPayloadTests
             }
             else
             {
-                Assert.True(File.Exists(module));
+                Assert.True(File.Exists(module), result.State + ": " + result.Message);
                 Assert.True((await dependencies.GetStatusAsync(id, default))!.PayloadFilesPresent);
                 Assert.Equal("installed", (await dependencies.GetStatusAsync(id, default))!.State);
                 Assert.Equal(active ? ComponentStatusStates.Active : ComponentStatusStates.Installed, result.Status!.State);

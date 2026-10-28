@@ -14,6 +14,13 @@ public interface IControlObjectCatalog
     /// cached FanCore objects. Classification reads declarations only, never probes.</summary>
     bool ActualReadingsUseFanCore => false;
 
+    /// <summary>Whether the current all-object actual-value subscription includes
+    /// bridge-backed fields. Classification reads declarations only, never probes.</summary>
+    bool ActualReadingsUseHardwareBridge => false;
+
+    /// <summary>Pure declared write dependencies for an admitted target; never probes hardware.</summary>
+    bool UsesHardwareBridge(string objectId, string capabilityId) => false;
+
     /// <summary>Projects the current snapshot inside an already-owned sampling
     /// operation. External one-shot consumers use ReadObjectsAsync.</summary>
     ControlObjectCatalog ReadObjects();

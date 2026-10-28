@@ -192,7 +192,7 @@ public sealed class NvidiaGpuControlResource : IDisposable
         ArgumentNullException.ThrowIfNull(setting);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var result = Write(target, capability, setting);
+        var result = Write(target, capability, setting, cancellationToken);
         return Task.FromResult(result with
         {
             Requested = setting.Number is { } number && double.IsFinite(number) ? number : null,
@@ -203,7 +203,8 @@ public sealed class NvidiaGpuControlResource : IDisposable
     private NvidiaControlApplyOutcome Write(
         NvidiaControlObject target,
         NvidiaControlCapability capability,
-        NvidiaControlSetting setting)
+        NvidiaControlSetting setting,
+        CancellationToken cancellationToken)
     {
         if (target.AdapterIndex is not { } adapterIndex)
         {
@@ -212,6 +213,7 @@ public sealed class NvidiaGpuControlResource : IDisposable
         var handle = target.Inventory is { } inventory && target.AdapterKey is { } key
             ? bridge.FindHandleByIdentity(inventory, key) ?? IntPtr.Zero
             : bridge.FindHandleByAdapterIndex(adapterIndex) ?? IntPtr.Zero;
+        cancellationToken.ThrowIfCancellationRequested();
         if (setting.Number is not { } value || !double.IsFinite(value))
         {
             return Failed(target, capability, Describe(NvidiaControlMessage.M9));
@@ -227,19 +229,20 @@ public sealed class NvidiaGpuControlResource : IDisposable
         // 温度阈值各走各的一条：一次调用只动一档，三档互不影响。
         if (ThresholdOf(capability.Id) is { } thresholdType)
         {
-            return WriteTemperature(target, capability, adapterIndex, thresholdType, value);
+            return WriteTemperature(target, capability, adapterIndex, thresholdType, value, cancellationToken);
         }
 
         // 时钟锁反过来：两项合成一次调用，所以要先把另一头配上。
         if (ClockLockOf(capability.Id) is { } clockLock)
         {
-            return WriteClockLock(target, capability, adapterIndex, clockLock, value);
+            return WriteClockLock(target, capability, adapterIndex, clockLock, value, cancellationToken);
         }
 
         var powerLimitCode = 0;
+        cancellationToken.ThrowIfCancellationRequested();
         var written = capability.Id switch
         {
-            PowerLimitCapabilityId => WritePowerLimit(target, adapterIndex, value, out powerLimitCode),
+            PowerLimitCapabilityId => WritePowerLimit(target, adapterIndex, value, out powerLimitCode, cancellationToken),
             CoreClockOffsetCapabilityId => bridge.TryWriteClockOffsetMhz(
                 handle,
                 NvidiaNvapiControlBridge.GraphicsClockDomain,
@@ -387,13 +390,15 @@ public sealed class NvidiaGpuControlResource : IDisposable
         => target.Inventory is { } inventory && target.AdapterKey is { } key
             ? powerBridge.FindHandleByIdentity(inventory, key)
             : powerBridge.FindHandleByAdapterIndex(adapterIndex);
-    private bool WritePowerLimit(NvidiaControlObject target, int adapterIndex, double watts, out int code)
+    private bool WritePowerLimit(NvidiaControlObject target, int adapterIndex, double watts, out int code,
+        CancellationToken cancellationToken)
     {
         if (FindPowerHandle(target, adapterIndex) is not { } device)
         {
             code = 0;
             return false;
         }
+        cancellationToken.ThrowIfCancellationRequested();
         code = powerBridge.WritePowerLimitWatts(device, watts);
         return code == 0;
     }
@@ -431,7 +436,8 @@ public sealed class NvidiaGpuControlResource : IDisposable
         NvidiaControlCapability capability,
         int adapterIndex,
         (uint ClockType, bool IsMinimum) clockLock,
-        double mhz)
+        double mhz,
+        CancellationToken cancellationToken)
     {
         if (powerBridge.FindHandleByAdapterIndex(adapterIndex) is not { } device)
         {
@@ -443,12 +449,13 @@ public sealed class NvidiaGpuControlResource : IDisposable
         }
 
         var wanted = (uint)Math.Clamp(Math.Round(mhz), 0, deviceMaximum);
+        cancellationToken.ThrowIfCancellationRequested();
         uint minimum;
         uint maximum;
         var code = WriteClockRange(adapterIndex, clockLock.ClockType, clockLock.IsMinimum, wanted,
             (uint)Math.Round(deviceMaximum),
             (min, max) => powerBridge.WriteLockedClocks(device, clockLock.ClockType, min, max),
-            out minimum, out maximum);
+            out minimum, out maximum, cancellationToken);
         if (code != 0)
         {
             RecordWriteResult(target.Id, capability.Id, code);
@@ -470,10 +477,12 @@ public sealed class NvidiaGpuControlResource : IDisposable
     }
 
     internal int WriteClockRange(int adapterIndex, uint clockType, bool isMinimum, uint wanted,
-        uint deviceMaximum, Func<uint, uint, int> write, out uint minimum, out uint maximum)
+        uint deviceMaximum, Func<uint, uint, int> write, out uint minimum, out uint maximum,
+        CancellationToken cancellationToken = default)
     {
         lock (clockGate)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var key = (adapterIndex, clockType);
             var pair = clockRange.GetValueOrDefault(key, (0u, deviceMaximum));
             minimum = isMinimum ? wanted : pair.Item1;
@@ -525,6 +534,7 @@ public sealed class NvidiaGpuControlResource : IDisposable
         {
             return Task.FromResult(false);
         }
+        cancellationToken.ThrowIfCancellationRequested();
 
         /*
          * **同伴还在就不解锁。**
@@ -537,9 +547,11 @@ public sealed class NvidiaGpuControlResource : IDisposable
         {
             lock (clockGate)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 if (clockRange.TryGetValue((adapterIndex, clockLock.ClockType), out var previous))
                 {
                     var maximum = powerBridge.ReadMaximumClockMhz(device, clockLock.ClockType);
+                    cancellationToken.ThrowIfCancellationRequested();
                     if (!clockLock.IsMinimum && maximum is null)
                         return Task.FromResult(false);
                     clockRange[(adapterIndex, clockLock.ClockType)] = clockLock.IsMinimum
@@ -550,6 +562,7 @@ public sealed class NvidiaGpuControlResource : IDisposable
             return Task.FromResult(true);
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         if (powerBridge.ResetLockedClocks(device, clockLock.ClockType) != 0)
             return Task.FromResult(false);
         lock (clockGate)
@@ -572,7 +585,8 @@ public sealed class NvidiaGpuControlResource : IDisposable
         NvidiaControlCapability capability,
         int adapterIndex,
         uint thresholdType,
-        double celsius)
+        double celsius,
+        CancellationToken cancellationToken)
     {
         if (powerBridge.FindHandleByAdapterIndex(adapterIndex) is not { } device)
         {
@@ -580,6 +594,7 @@ public sealed class NvidiaGpuControlResource : IDisposable
         }
 
         var wanted = (int)Math.Round(celsius);
+        cancellationToken.ThrowIfCancellationRequested();
         var code = powerBridge.WriteTemperatureThreshold(device, thresholdType, wanted);
         if (code != 0)
         {

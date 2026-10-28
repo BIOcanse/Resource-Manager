@@ -13,6 +13,7 @@
     <Authors>BIOcanse</Authors>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../sdk/csharp/ResourceManager.Adapter.SharedMemory/SharedMemoryRegion.cs" Link="Helpers/SharedMemoryRegion.cs" />
     <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.6" />
     <PackageReference Include="System.Management" Version="10.0.2" />
     <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.2.4" />

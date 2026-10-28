@@ -20,7 +20,10 @@ public sealed class PdhHelperLibraryIntegrationTests
         using var helper = new HardwareBridgeProcessClient(() => { paths++; return null; },
             new(TimeSpan.FromSeconds(2), TimeSpan.Zero, new(16, 32, 64, "runtime", "version", "missing", "failed")),
             startFactory: _ => { starts++; throw new InvalidOperationException(); });
-        Assert.Equal(0, paths); Assert.False(helper.IsInstalled); Assert.Equal(1, paths);
+        // Availability initialization resolves once; a path query resolves once
+        // more. Neither operation may invoke this client's start factory.
+        Assert.Equal(1, paths); Assert.Equal(0, starts);
+        Assert.False(helper.IsInstalled); Assert.Equal(2, paths);
         Assert.Null(await helper.SendAsync("recorded", null, default));
         Assert.Equal(0, starts); Assert.Equal(2, paths);
     }

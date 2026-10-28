@@ -38,7 +38,7 @@ public sealed partial class UniwillGpuPowerWriter
     }
 
     [RuntimeRead(ReadVolatilityKind.EventDriven, "Uniwill GPU power control takeover requested")]
-    private bool CaptureBaseline(ControlObject target, byte enable)
+    private bool CaptureBaseline(ControlObject target, byte enable, CancellationToken cancellationToken)
     {
         LoadBaselines();
         if (baselines!.ContainsKey(target.Id)) return true;
@@ -48,21 +48,22 @@ public sealed partial class UniwillGpuPowerWriter
         {
             [target.Id] = new(ctgp, dynamicBoost, (enable & UniwillEcRegisters.CtgpDbEnableDynamicBoostBit) != 0)
         };
-        SaveBaselines(next);
+        SaveBaselines(next, cancellationToken);
         return true;
     }
 
-    private void RemoveBaseline(ControlObject target)
+    private void RemoveBaseline(ControlObject target, CancellationToken cancellationToken)
     {
         LoadBaselines();
         if (!baselines!.ContainsKey(target.Id)) return;
         var next = new Dictionary<string, BudgetBaseline>(baselines);
         next.Remove(target.Id);
-        SaveBaselines(next);
+        SaveBaselines(next, cancellationToken);
     }
 
-    private void SaveBaselines(Dictionary<string, BudgetBaseline> next)
+    private void SaveBaselines(Dictionary<string, BudgetBaseline> next, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         // Only the injected hardware test constructor uses an in-memory baseline.
         if (baselinePath is not null)
         {

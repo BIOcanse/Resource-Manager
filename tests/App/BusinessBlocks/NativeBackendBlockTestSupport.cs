@@ -110,11 +110,14 @@ internal sealed class NativeBackendBlockFixture(
     internal async Task InitializeHostPermitsAsync()
     {
         foreach (var registration in Registrations)
-        {
-            if (!hostPermits.TryGetValue(registration.Id, out var cell))
-                hostPermits.Add(registration.Id, cell = Authority.ClaimCell<bool>(new(StateItemUids.HostStartPermitted, registration.Id)));
-            await cell.PublishAsync(true, Reason("host-start-permitted"));
-        }
+            await SetHostPermitAsync(registration.Id, true);
+    }
+
+    internal Task SetHostPermitAsync(int block, bool permitted)
+    {
+        if (!hostPermits.TryGetValue(block, out var cell))
+            hostPermits.Add(block, cell = Authority.ClaimCell<bool>(new(StateItemUids.HostStartPermitted, block)));
+        return cell.PublishAsync(permitted, Reason("host-start-permitted"));
     }
 
     internal Task SetNativeSubscriptionInUseAsync(int block, bool inUse)

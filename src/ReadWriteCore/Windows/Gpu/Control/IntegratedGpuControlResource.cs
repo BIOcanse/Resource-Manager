@@ -15,39 +15,35 @@ public sealed class IntegratedGpuControlResource : IDisposable
     private readonly Func<IntegratedGpuControlMessage,IReadOnlyList<object?>,string>? describe;
     private readonly Action<Exception?,IntegratedGpuControlMessage,IReadOnlyList<object?>>? warning;
     private readonly IntegratedGpuControlBaselineStore amdBaseline;
-    private readonly bool ownsBridge;
     private readonly SemaphoreSlim writeGate = new(1, 1);
     private int disposed;
     /// <summary>Borrow the same helper as AMD CPU. Intel hardware remains borrowed; consent is explicit read-only state.</summary>
     public IntegratedGpuControlResource(IHardwareBridgeProcessClient? bridge, IIntelGraphicsControlHardware intel, IntegratedGpuControlOptions options,
         Func<IntegratedGpuControlMessage,IReadOnlyList<object?>,string>? describe = null,
         Action<Exception?,IntegratedGpuControlMessage,IReadOnlyList<object?>>? warning = null)
-        : this(bridge,intel,options,describe,warning,false) { }
-    private IntegratedGpuControlResource(IHardwareBridgeProcessClient? bridge,IIntelGraphicsControlHardware intel,IntegratedGpuControlOptions options,
-        Func<IntegratedGpuControlMessage,IReadOnlyList<object?>,string>? describe,
-        Action<Exception?,IntegratedGpuControlMessage,IReadOnlyList<object?>>? warning,bool ownsBridge)
     {
         ArgumentNullException.ThrowIfNull(intel); ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(options.IsOverclockAccepted);
         ArgumentException.ThrowIfNullOrWhiteSpace(options.AmdBaselinePath);
         this.bridge=bridge;this.intel=intel;this.isOverclockAccepted=options.IsOverclockAccepted;
-        this.describe=describe;this.warning=warning;this.ownsBridge=ownsBridge;
+        this.describe=describe;this.warning=warning;
         amdBaseline=new(Path.GetFullPath(options.AmdBaselinePath));
     }
-    /// <summary>Real process client/IGCL construction only; no process starts or driver is probed here.</summary>
-    public static IntegratedGpuControlResource Create(string executablePath,HardwareBridgeProcessOptions helperOptions,IntegratedGpuControlOptions options)
+    /// <summary>Borrows a caller-owned client. The caller explicitly runs and joins its process owner.</summary>
+    public static IntegratedGpuControlResource Create(IHardwareBridgeProcessClient bridge, IntegratedGpuControlOptions options)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);var path=Path.GetFullPath(executablePath);
-        return new(new HardwareBridgeProcessClient(() => File.Exists(path) ? path : null,helperOptions),new IntelGraphicsControlBridge(),options,null,null,true);
+        ArgumentNullException.ThrowIfNull(bridge);
+        return new(bridge, new IntelGraphicsControlBridge(), options);
     }
     private string Describe(IntegratedGpuControlMessage code,params object?[] args)
         => describe?.Invoke(code,args) ?? "integrated-gpu-control-"+code+(args.Length == 0 ? "" : ": "+string.Join(", ",args));
     private void Warn(Exception? error,IntegratedGpuControlMessage code,params object?[] args) => warning?.Invoke(error,code,args);
     private void CheckLifetime() => ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0,this);
-    public void Dispose() { if (Interlocked.Exchange(ref disposed,1) == 0 && ownsBridge) bridge?.Dispose(); }
+    public void Dispose() => Interlocked.Exchange(ref disposed, 1);
     public async Task<bool> RestoreAsync(IntegratedGpuControlTarget target,IntegratedGpuControlCapability capability,CancellationToken token=default)
     {
         CheckLifetime();
+        token.ThrowIfCancellationRequested();
         double? original;
         if (target.Route == IntegratedGpuControlRoute.AmdIntegrated)
         {
@@ -146,21 +142,21 @@ public sealed class IntegratedGpuControlResource : IDisposable
         // Intel 那条的单位是 MHz，不是档位 —— 别把它当整数档位取整。
         if (target.Route == IntegratedGpuControlRoute.IntelIntegrated)
         {
-            return await WriteIntelAsync(target, capability, wanted).ConfigureAwait(false);
+            return await WriteIntelAsync(target, capability, wanted, cancellationToken).ConfigureAwait(false);
         }
 
         await writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             try
             {
                 if (!amdBaseline.TryRead(target.Id, out var baseline))
                     return Failed(target, capability, Describe(IntegratedGpuControlMessage.BaselineUnavailable));
                 if (baseline is null)
                 {
-                    var before = await SendAsync("read", null, cancellationToken).ConfigureAwait(false);
-                    var current = before is { } reading && Flag(reading, "ok")
-                        ? Number(reading, "integratedGpuCurveOptimizerCounts") : null;
+                    var current = bridge?.ReadCurrentReadings()?.IntegratedGpuCurveOptimizerCounts;
+                    cancellationToken.ThrowIfCancellationRequested();
                     if (amdBaseline.Capture(target.Id, current) is null)
                         return Failed(target, capability, Describe(IntegratedGpuControlMessage.BaselineUnavailable));
                 }
@@ -229,16 +225,15 @@ public sealed class IntegratedGpuControlResource : IDisposable
         var description = await SendAsync("describe", null, cancellationToken).ConfigureAwait(false);
         if (description is not { } facts || !Flag(facts, "available") || !Flag(facts, "integratedGpuCurveOptimizer"))
             return new(target.Id, capability.Id, UnreadableReason: Text(description, "reason") ?? bridge?.UnavailableReason ?? BridgeSilent);
-        var reading = await SendAsync("read", null, cancellationToken)
-            .ConfigureAwait(false);
-        if (reading is not { } result || !Flag(result, "ok"))
+        var reading = bridge?.ReadCurrentReadings();
+        if (reading is null)
         {
             return new IntegratedGpuControlValue(
                 target.Id,
                 capability.Id,
                 UnreadableReason: BridgeSilent);
         }
-        return Number(result, "integratedGpuCurveOptimizerCounts") is { } value
+        return reading.Value.IntegratedGpuCurveOptimizerCounts is { } value
             ? new IntegratedGpuControlValue(
                 target.Id,
                 capability.Id,
@@ -271,13 +266,15 @@ public sealed class IntegratedGpuControlResource : IDisposable
     private async Task<IntegratedGpuControlOutcome> WriteIntelAsync(
         IntegratedGpuControlTarget target,
         IntegratedGpuControlCapability capability,
-        double offsetMhz)
+        double offsetMhz, CancellationToken cancellationToken)
     {
         if (intel.FindIntegratedDevice(target.AdapterKey) is not { } device)
         {
             return Failed(target, capability, intel.IsAvailable ? IntelTargetMissing : IntelDriverMissing);
         }
-        if (!await isOverclockAccepted(CancellationToken.None).ConfigureAwait(false))
+        var accepted = await isOverclockAccepted(cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!accepted)
         {
             return Failed(target, capability, OverclockNotAccepted);
         }
@@ -286,7 +283,9 @@ public sealed class IntegratedGpuControlResource : IDisposable
             return Failed(target, capability, Describe(IntegratedGpuControlMessage.WaiverRejected));
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         var result = intel.WriteFrequencyOffsetMhz(device, offsetMhz);
+        // Once the setter has run, return its verified receipt even if the caller cancels.
         if (result != 0)
         {
             Warn(null,IntegratedGpuControlMessage.IntelRejectedWarning,

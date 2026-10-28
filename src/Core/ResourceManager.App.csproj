@@ -140,7 +140,8 @@
     <None Include="$(GpuPlacementPreparationRoot)\bin\win-x64\ResourceManager.GpuPlacementPreparation.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="GpuPlacementShim\ResourceManager.GpuPlacementPreparation.exe" ExcludeFromSingleFile="true" />
     <None Include="$(GpuPlacementShimRoot)\third_party\minhook\LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="ThirdPartyNotices\MinHook.LICENSE.txt" />
     <None Include="$(GpuPlacementShimRoot)\third_party\detours\LICENSE.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="ThirdPartyNotices\MicrosoftDetours.LICENSE.md" />
-    <None Include="$(NativeCoreOutput)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="ResourceManager.NativeCore.dll" ExcludeFromSingleFile="true" Visible="false" />
+    <!-- The selected names/optimization artifact can be older than another configuration's output. -->
+    <None Include="$(NativeCoreOutput)" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always" TargetPath="ResourceManager.NativeCore.dll" ExcludeFromSingleFile="true" Visible="false" />
     <Content Update="Infrastructure\Resources\NetworkProxySignatures\proxy-signatures.v1.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Update="Infrastructure\Resources\SoftwareIdentity\software-identities.v1.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Update="Infrastructure\Resources\SoftwareIssues\software-issues.v1.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

@@ -13,6 +13,19 @@ public sealed class IntelCpuControlWriterTests : IDisposable
     private static ControlCapability Cap(string id) => new(id, ControlValueKinds.Number, false,
         Range: id.Contains("voltage") ? new(-250, 100, 1, "mV") : new(1, 300, 1, id.EndsWith("window") ? "s" : "W"));
     [Fact]
+    public async Task CancellationDuringProbePreventsBaselineCaptureAndHardwareWrite()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var io = new Hardware { DuringRead = cancellation.Cancel };
+        using var writer = new IntelCpuControlWriter(() => io, Baseline);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => writer.WriteAsync(Cpu(),
+            Cap("cpu.power-limit"), new("cpu.power-limit", Number: 45), cancellation.Token));
+
+        Assert.Equal(0, io.SettingWrites);
+        Assert.False(File.Exists(Baseline));
+    }
+    [Fact]
     public void ProbeDoesNotWriteSettingsOrCreateBaselineAndWrongVendorDoesNotOpen()
     {
         var io = new Hardware();
@@ -122,7 +135,8 @@ public sealed class IntelCpuControlWriterTests : IDisposable
         public uint[] Voltage = new uint[4];
         public int Reads, SettingWrites;
         public bool IgnoreWrites;
-        public ulong ReadMsr(uint register) { Reads++; return register switch { 0x606 => Units, 0x610 => Limits, 0x150 => Mailbox, _ => throw new IOException() }; }
+        public Action? DuringRead;
+        public ulong ReadMsr(uint register) { Reads++; DuringRead?.Invoke(); return register switch { 0x606 => Units, 0x610 => Limits, 0x150 => Mailbox, _ => throw new IOException() }; }
         public void WriteMsr(uint register, ulong value)
         {
             if (register == 0x610) { SettingWrites++; if (!IgnoreWrites) Limits = value; return; }

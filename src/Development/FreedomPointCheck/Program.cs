@@ -95,7 +95,8 @@ try
         // Compile items, without scanning its task's tools, logs or caches.
         additionalRoots.Add(new("ledger-generated", ledgerRoots[0], ["."], ImmutableHashSet<string>.Empty));
     }
-    var scan = new SourceScanOptions(root, ["src/Core", "src/FreedomPointContracts", "src/ReadWriteCore", "src/SubscriptionCore"],
+    var scan = new SourceScanOptions(root, ["src/Core", "src/FreedomPointContracts", "src/ReadWriteCore", "src/SubscriptionCore",
+        "sdk/csharp/ResourceManager.Adapter.SharedMemory"],
         ImmutableHashSet.Create(StringComparer.OrdinalIgnoreCase, "bin", "obj", "third_party", "node_modules", ".zig-cache", "zig-out", "Config", "UserData"),
         MaximumFiles: 20_000, MaximumFileBytes: 32 * 1024 * 1024)
     {

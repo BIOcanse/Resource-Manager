@@ -12,13 +12,35 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class HostManagerFreedomPointPlanTests
 {
+    [Theory]
+    [InlineData(0)]
+    [InlineData(7500)]
+    public void HardwareBridgeAvailabilityIntervalCompilesIntoTheProductPlan(int milliseconds)
+    {
+        var baseline = HostManagerTestPlanFactory.CreatePlan();
+        var changed = HostManagerTestPlanFactory.CreatePlan(editFreedomPoints: root =>
+            FreedomPointTestFactory.Point(root,
+                "resource-manager/backend/hardware_bridge/build/simple/0")["value"] = milliseconds);
+
+        Assert.Equal(TimeSpan.FromSeconds(30), baseline.HardwareBridgeAvailabilityCheckInterval);
+        Assert.Equal(TimeSpan.FromMilliseconds(milliseconds), changed.HardwareBridgeAvailabilityCheckInterval);
+        Assert.NotEqual(baseline.BuildSha256, changed.BuildSha256);
+        Assert.True(changed.IsPublished);
+    }
+
+    [Fact]
+    public void HardwareBridgeAvailabilityIntervalRejectsNegativeValues()
+        => Assert.Throws<InvalidDataException>(() => HostManagerTestPlanFactory.CreatePlan(editFreedomPoints: root =>
+            FreedomPointTestFactory.Point(root,
+                "resource-manager/backend/hardware_bridge/build/simple/0")["value"] = -1));
+
     [Fact]
     public void CurrentTreePublishesPhysicalCpuScoringWithoutActivatingPendingHistoryAlgorithms()
     {
         var plan = HostManagerTestPlanFactory.CreatePlan();
         var points = plan.FreedomPoints.EnumeratePoints().ToArray();
-        Assert.Equal(32, points.Length);
-        Assert.Equal(26, points.Count(point => point.Status == "active"));
+        Assert.Equal(33, points.Length);
+        Assert.Equal(27, points.Count(point => point.Status == "active"));
         Assert.Equal(6, points.Count(point => point.Status == "pending"));
         Assert.Equal(new CompiledGpuOverflowPolicy(95, 80), plan.HotPublish.PlacementCoordinator.GpuOverflow);
         Assert.DoesNotContain(points, point => point.Address == "resource-manager/backend/scheduling/placement/runtime/complex/1");

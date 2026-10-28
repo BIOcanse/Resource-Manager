@@ -86,6 +86,19 @@ public sealed partial class FanControlPlaneNativeLifetimeTests
         await using var fixture = new Fixture();
         await fixture.StartAsync();
         fixture.FailWrites = true;
+        var openedBeforePublication = 0;
+        var closedBeforePublication = 0;
+        fixture.Layer.AfterWrite = () =>
+        {
+            openedBeforePublication = fixture.Opened;
+            closedBeforePublication = fixture.Closed;
+            Assert.True(fixture.Core.PendingCommands);
+            // Inventory may finish before the run takes its holder. During
+            // publication exactly the current run's session must remain open.
+            Assert.InRange(openedBeforePublication, 1, 2);
+            Assert.Equal(openedBeforePublication - 1, closedBeforePublication);
+            return Task.CompletedTask;
+        };
         var publicationObserved = false;
         fixture.Plane.AppliedIntentsChanged += () => publicationObserved = true;
         var outcomeWasPublishedAtZero = false;
@@ -100,8 +113,8 @@ public sealed partial class FanControlPlaneNativeLifetimeTests
         Assert.False(fixture.Plane.AppliedFanControlExists);
         Assert.False(fixture.Core.PendingCommands);
         await fixture.WaitStoppedAsync();
-        Assert.Equal(1, fixture.Opened);
-        Assert.Equal(1, fixture.Closed);
+        Assert.Equal(openedBeforePublication, fixture.Opened);
+        Assert.Equal(closedBeforePublication + 1, fixture.Closed);
     }
 
     [Fact]
@@ -136,6 +149,9 @@ public sealed partial class FanControlPlaneNativeLifetimeTests
         await using var fixture = new Fixture();
         await fixture.StartAsync();
         await fixture.Plane.SetObjectSettingsAsync("fan:oem0", [Duty(45)], default);
+        // Finite inventory discovery may close before the run takes its first
+        // session holder. Only closure after this applied write could undo it.
+        var closedBeforeReassertion = fixture.Closed;
         fixture.FailWrites = true;
         var completed = BusinessBlockTestSupport.Signal();
         var publish = BusinessBlockTestSupport.Signal();
@@ -146,14 +162,15 @@ public sealed partial class FanControlPlaneNativeLifetimeTests
             await completed.Task.WaitAsync(BusinessBlockTestSupport.TestTimeout);
             Assert.True(fixture.Core.PendingCommands);
             Assert.True(fixture.Plane.AppliedFanControlExists);
-            Assert.Equal(0, fixture.Closed);
+            Assert.Equal(closedBeforeReassertion, fixture.Closed);
+            Assert.Equal(45, fixture.Duties[0]);
         }
         finally { publish.TrySetResult(); }
         Assert.Equal(ControlApplyStatuses.Failed, Assert.Single((await reassertion).Outcomes).Status);
         Assert.False(fixture.Plane.AppliedFanControlExists);
         Assert.False(fixture.Core.PendingCommands);
         await fixture.WaitStoppedAsync();
-        Assert.Equal(1, fixture.Closed);
+        Assert.Equal(closedBeforeReassertion + 1, fixture.Closed);
     }
 
     [Fact]

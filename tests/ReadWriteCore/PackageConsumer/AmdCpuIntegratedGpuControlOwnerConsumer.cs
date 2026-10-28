@@ -13,9 +13,9 @@ internal static class AmdCpuIntegratedGpuControlOwnerConsumer
         var baseline=Path.Combine(directory,"igpu.json");var helper=new RecordedHelper();var intel=new RecordedIntel();
         try
         {
-            var helperOptions=new HardwareBridgeProcessOptions(TimeSpan.FromSeconds(90),TimeSpan.FromSeconds(1),new(128,1024,1024,".NET","10","missing","failed"));
-            using(var actualCpu=AmdCpuControlResource.Create(Path.Combine(directory,"missing.exe"),helperOptions,AmdCpuControlOptions.InDirectory(directory))) { }
-            using(var actualGpu=IntegratedGpuControlResource.Create(Path.Combine(directory,"missing.exe"),helperOptions,new(baseline,_=>Task.FromResult(false)))) { }
+            using(var actualCpu=AmdCpuControlResource.Create(helper,AmdCpuControlOptions.InDirectory(directory))) { }
+            using(var actualGpu=IntegratedGpuControlResource.Create(helper,new(baseline,_=>Task.FromResult(false)))) { }
+            Require(helper.Disposals==0 && helper.Calls==0,"Factory owns or invokes caller-owned helper.");
             Require(!Directory.Exists(directory),"Actual factories performed IO or started helper.");
             var target=new AmdCpuControlTarget("cpu:package",true);var power=new AmdCpuControlCapability(AmdCpuControlField.PowerLimit,new(0,100,1,"W"));
             var gpuTarget=new IntegratedGpuControlTarget("gpu:A",IntegratedGpuControlRoute.AmdIntegrated);
@@ -51,15 +51,17 @@ internal static class AmdCpuIntegratedGpuControlOwnerConsumer
             {
                 Require(cpu.Probe(target,power).CanWrite && warnings==0,"CPU Probe attempted to capture a restore baseline.");
                 var count=helper.Calls;
+                var readings=helper.ReadingReads;
                 Require((await cpu.WriteAsync(target,power,new(power.Field,25),default)).Status==AmdCpuControlStatus.Failed && warnings>0,"CPU write proceeded without a durable restore baseline.");
-                Require(helper.Calls==count+1,"CPU persistence failure reached the setter.");
+                Require(helper.Calls==count && helper.ReadingReads==readings+1,"CPU persistence failure reached the setter or did not read the current snapshot.");
             }
             using(var gpu=new IntegratedGpuControlResource(helper,intel,new(Path.Combine(occupied,"gpu.json"),_=>Task.FromResult(false))))
             {
                 Require(gpu.Probe(gpuTarget,co).CanWrite,"iGPU Probe tried to capture a restore baseline.");
                 var count=helper.Calls;
+                var readings=helper.ReadingReads;
                 Require((await gpu.WriteAsync(gpuTarget,co,new(co.Field,-10),default)).Status==IntegratedGpuControlStatus.Failed,"iGPU write proceeded without a durable restore baseline.");
-                Require(helper.Calls==count+1,"iGPU persistence failure reached the setter.");
+                Require(helper.Calls==count && helper.ReadingReads==readings+1,"iGPU persistence failure reached the setter or did not read the current snapshot.");
             }
             Require(helper.Disposals==0,"Shared helper disposed by resource.");
             Console.WriteLine("AMD CPU and integrated GPU control owners passed recorded shared-transport/table/unit/baseline/restart/unsupported and Intel identity/waiver/fractional MHz contracts; actual factories passive, no helper process/driver or hardware setter executed.");
@@ -76,10 +78,23 @@ internal static class AmdCpuIntegratedGpuControlOwnerConsumer
     private sealed class RecordedHelper : IHardwareBridgeProcessClient
     {
         public bool IsInstalled=>true;public string? UnavailableReason=>null;public int Calls,Disposals;
+        public int ReadingReads;
         public double Power=45,GpuCounts=8;public string? LastUnit,LastWhich,LastGpuUnit;
+        public HardwareBridgeReadingsSnapshot? ReadCurrentReadings()
+        {
+            ReadingReads++;
+            var timestamp=DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            HardwareBridgeReading Reading(double? value,string unit)=>new(value,unit,
+                value is null?HardwareBridgeReadingStatus.Missing:HardwareBridgeReadingStatus.Valid,timestamp);
+            return new(Reading(Power,"W"),Reading(null,"W"),Reading(null,"W"),Reading(null,"W"),
+                Reading(null,"A"),Reading(null,"A"),Reading(null,"档"),Reading(GpuCounts,"档"),Reading(null,"MHz"));
+        }
+        public IDisposable SubscribeReadings()=>new ReadingSubscription();
+        private sealed class ReadingSubscription:IDisposable {public void Dispose() { }}
         public Task<JsonElement?> SendAsync(string operation,IReadOnlyDictionary<string,object?>? arguments,CancellationToken token)
         {
             token.ThrowIfCancellationRequested();Calls++;
+            if(operation=="read")throw new InvalidOperationException("Current readings must come from the typed snapshot.");
             if(operation=="set-power-limit"){Power=Convert.ToDouble(arguments!["value"]);LastUnit=(string?)arguments["unit"];LastWhich=(string?)arguments["which"];}
             if(operation=="set-igpu-curve-optimizer"){GpuCounts=Convert.ToDouble(arguments!["value"]);LastGpuUnit=(string?)arguments["unit"];}
             return Task.FromResult<JsonElement?>(JsonSerializer.SerializeToElement(new{ok=true,available=true,powerTable=true,curveOptimizer=true,

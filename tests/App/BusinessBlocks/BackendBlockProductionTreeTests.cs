@@ -21,7 +21,7 @@ public sealed class BackendBlockProductionTreeTests
         BackendUids.SqlitePortableSoftwareRegistry,
         BackendUids.ServiceAutoStartSettings, BackendUids.ServiceRecoverySettings, BackendUids.ControlDesiredStateReassertion, BackendUids.FanCurveTemperatureFeed,
         BackendUids.ControlActualStateReader, BackendUids.GpuTelemetryWorkerSupervisor, BackendUids.WindowsHardwareMetricSampler, BackendUids.CpuTopologySnapshotProvider,
-        BackendUids.FanControlCoreLifetimeService, BackendUids.PortableSoftwareDiscoveryService, BackendUids.EtwCpuCoreResidencyReader,
+        BackendUids.FanControlCoreLifetimeService, BlockUids.HardwareBridgeProcessOwner, BackendUids.PortableSoftwareDiscoveryService, BackendUids.EtwCpuCoreResidencyReader,
         BackendUids.EtwSystemInterruptSnapshotSource, BackendUids.EtwPhysicalDiskIoAttributionReader, BackendUids.EtwNetworkTcpIpAttributionReader,
         BackendUids.WindowsResourceBreakdownSampler, BackendUids.GpuPlacementProcessHistoryObserver,
         BackendUids.SharedResourceSubscriptionMaintenanceService, BackendUids.JsonDebugDiagnosticLogWriter,
@@ -119,8 +119,8 @@ public sealed class BackendBlockProductionTreeTests
     }
 
     [Theory]
-    [InlineData(false, 43, 42)]
-    [InlineData(true, 44, 43)]
+    [InlineData(false, 44, 42)]
+    [InlineData(true, 45, 43)]
     public async Task ProductionTreeContainsConcurrentFlowsAndDrainsChildrenBeforeTheirOwners(bool windowsService, int expectedCount, int expectedDataEdges)
     {
         var services = new ServiceCollection();
@@ -343,7 +343,7 @@ public sealed class BackendBlockProductionTreeTests
         Assert.True(readOnlyIds.SetEquals(graph.BlockIds));
         Assert.DoesNotContain(graph.BlockIds, id => id == graph.Program);
         var readOnlyNodes = graph.Nodes;
-        Assert.Equal(27, readOnlyNodes.Count);
+        Assert.Equal(28, readOnlyNodes.Count);
         Assert.Equal(20, readOnlyNodes.Sum(node => node.Inputs.Count));
         Assert.Equal([BackendUids.Backend], graph.Children(BackendUids.Program));
         Assert.True(SamplingLifetimeConsumers.ToHashSet().SetEquals(readOnlyNodes

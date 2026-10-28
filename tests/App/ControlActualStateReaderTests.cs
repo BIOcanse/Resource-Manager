@@ -5,7 +5,7 @@ using ResourceManager.App.Infrastructure.Control;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class ControlActualStateReaderTests
+public sealed partial class ControlActualStateReaderTests
 {
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(5);
 
@@ -269,6 +269,8 @@ public sealed class ControlActualStateReaderTests
     private sealed class Catalog : IControlObjectCatalog
     {
         public int Reads;
+        public bool HasBridge;
+        public bool ActualReadingsUseHardwareBridge => HasBridge;
         public ControlObjectCatalog ReadObjects()
         {
             Interlocked.Increment(ref Reads);

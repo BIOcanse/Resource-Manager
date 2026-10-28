@@ -1,8 +1,6 @@
 using System.Diagnostics;
 using System.IO.Compression;
 using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Application.Components;
@@ -26,7 +24,8 @@ public sealed partial class ControlHelperPayloadTests
     public async Task FailedStagingExtractionOrSuspensionPreservesWorkingPayloadAndRecord(string failure)
     {
         await using var fixture = new PayloadSafetyFixture(corruptArchive: failure == "corrupt-entry");
-        Assert.Equal("old release stable", (await fixture.Bridge.SendAsync("read", null, default))!.Value.GetProperty("version").GetString());
+        await fixture.StartAsync();
+        Assert.Equal("old release stable", (await fixture.Bridge.SendAsync("status", null, default))!.Value.GetProperty("version").GetString());
         var oldRecord = File.ReadAllBytes(DependencyReleaseRecordStore.InstalledPath(fixture.Live));
         var suspensionCalls = 0;
         var acquisition = new DependencyPayloadAcquisition(fixture.Client, fixture.Environment, fixture.Bridge)
@@ -48,7 +47,7 @@ public sealed partial class ControlHelperPayloadTests
         Assert.Equal("0", revisions.Current.ComponentRevision);
         Assert.Equal(oldRecord, File.ReadAllBytes(DependencyReleaseRecordStore.InstalledPath(fixture.Live)));
         Assert.All(fixture.Files, name => Assert.Equal("old release stable", File.ReadAllText(Path.Combine(fixture.Live, name))));
-        Assert.Equal("old release stable", (await fixture.Bridge.SendAsync("read", null, default))!.Value.GetProperty("version").GetString());
+        Assert.Equal("old release stable", (await fixture.Bridge.SendAsync("status", null, default))!.Value.GetProperty("version").GetString());
         Assert.Equal(1, fixture.Starts);
         Assert.Empty(Directory.EnumerateDirectories(Path.GetDirectoryName(fixture.Live)!, ".hardware-bridge.stage-*"));
         Assert.Equal(ComponentStatusStates.UpdateAvailable, (await manager.GetStatusAsync("hardware-bridge", default))!.State);
@@ -56,10 +55,11 @@ public sealed partial class ControlHelperPayloadTests
     }
 
     [Fact]
-    public async Task CanceledOwnedSuspensionAfterEofRestartsTheUnchangedInstallation()
+    public async Task CanceledOwnedSuspensionAfterEofAllowsExplicitRestartOfTheUnchangedInstallation()
     {
         await using var fixture = new PayloadSafetyFixture(waitAfterEof: true);
-        Assert.NotNull(await fixture.Bridge.SendAsync("read", null, default));
+        await fixture.StartAsync();
+        Assert.NotNull(await fixture.Bridge.SendAsync("status", null, default));
         var record = File.ReadAllBytes(DependencyReleaseRecordStore.InstalledPath(fixture.Live));
         var acquisition = new DependencyPayloadAcquisition(fixture.Client, fixture.Environment, fixture.Bridge)
         {
@@ -78,11 +78,15 @@ public sealed partial class ControlHelperPayloadTests
         Assert.Equal("runtimeFilesUnavailable", result.State);
         Assert.Equal(record, File.ReadAllBytes(DependencyReleaseRecordStore.InstalledPath(fixture.Live)));
         Assert.All(fixture.Files, file => Assert.Equal("old release stable", File.ReadAllText(Path.Combine(fixture.Live, file))));
-        Assert.Null(await fixture.Bridge.SendAsync("read", null, default));
+        Assert.Null(await fixture.Bridge.SendAsync("status", null, default));
+        Assert.Null(fixture.Bridge.ReadCurrentReadings());
         Assert.Equal(1, fixture.Starts);
         File.WriteAllText(fixture.ReleaseOld, "release");
         await fixture.WaitForFirstExit();
-        Assert.Equal("old release stable", (await fixture.Bridge.SendAsync("read", null, default))!.Value.GetProperty("version").GetString());
+        Assert.Null(await fixture.Bridge.SendAsync("status", null, default));
+        Assert.Equal(1, fixture.Starts);
+        await fixture.StartAsync();
+        Assert.Equal("old release stable", (await fixture.Bridge.SendAsync("status", null, default))!.Value.GetProperty("version").GetString());
         Assert.Equal(2, fixture.Starts);
     }
 
@@ -95,7 +99,8 @@ public sealed partial class ControlHelperPayloadTests
         var time = File.GetLastWriteTimeUtc(executable);
         var record = File.ReadAllBytes(DependencyReleaseRecordStore.InstalledPath(fixture.Live));
         File.Delete(Path.Combine(fixture.Live, "LICENSE"));
-        Assert.NotNull(await fixture.Bridge.SendAsync("read", null, default));
+        await fixture.StartAsync();
+        Assert.NotNull(await fixture.Bridge.SendAsync("status", null, default));
         var acquisition = new DependencyPayloadAcquisition(fixture.Client, fixture.Environment, fixture.Bridge)
             { SuspendHelper = _ => throw new InvalidOperationException("LICENSE repair must not suspend a healthy helper.") };
         var manager = fixture.Manager(acquisition, new ManagementInventoryRevisionOwner());
@@ -106,7 +111,7 @@ public sealed partial class ControlHelperPayloadTests
         Assert.Equal("old release stable", File.ReadAllText(executable));
         Assert.Equal("old release stable", File.ReadAllText(Path.Combine(fixture.Live, "LICENSE")));
         Assert.Equal(1, fixture.Starts);
-        Assert.NotNull(await fixture.Bridge.SendAsync("read", null, default));
+        Assert.NotNull(await fixture.Bridge.SendAsync("status", null, default));
     }
 
     [Fact]
@@ -257,6 +262,8 @@ public sealed partial class ControlHelperPayloadTests
     public async Task PostPublishStatusFailureStillPublishesExactlyOneContentRevision()
     {
         await using var fixture = new PayloadSafetyFixture();
+        await fixture.StartAsync();
+        Assert.Equal("old release stable", (await fixture.Bridge.SendAsync("status", null, default))!.Value.GetProperty("version").GetString());
         var revisions = new ManagementInventoryRevisionOwner();
         var manager = new ComponentManager(fixture.Dependencies(), new FailingStatusSampler(), new ProviderProbe(),
             new DependencyPayloadAcquisition(fixture.Client, fixture.Environment, fixture.Bridge), revisions);
@@ -266,6 +273,12 @@ public sealed partial class ControlHelperPayloadTests
         Assert.Equal(ComponentStatusStates.Installed, (await manager.GetStatusAsync("hardware-bridge", default))!.State);
         Assert.Equal("1", revisions.Current.ComponentRevision);
         Assert.All(fixture.Files, file => Assert.Equal("new release stable", File.ReadAllText(Path.Combine(fixture.Live, file))));
+        Assert.Null(await fixture.Bridge.SendAsync("status", null, default));
+        Assert.Null(fixture.Bridge.ReadCurrentReadings());
+        Assert.Equal(1, fixture.Starts);
+        await fixture.StartAsync();
+        Assert.Equal("new release stable", (await fixture.Bridge.SendAsync("status", null, default))!.Value.GetProperty("version").GetString());
+        Assert.Equal(2, fixture.Starts);
     }
 
     [Fact]
@@ -307,6 +320,8 @@ public sealed partial class ControlHelperPayloadTests
         internal string ReleaseOld => Path.Combine(Root, "release-old");
         private readonly List<Process> observers = [];
         private readonly bool waitAfterEof;
+        private CancellationTokenSource? stop;
+        private Task? run;
         internal int Starts;
 
         internal PayloadSafetyFixture(bool current = false, bool corruptArchive = false, bool nestedArchive = false, bool waitAfterEof = false)
@@ -336,27 +351,35 @@ public sealed partial class ControlHelperPayloadTests
         internal ComponentManager Manager(IDependencyPayloadAcquisition acquisition, ManagementInventoryRevisionOwner? revisions = null)
             => new(Dependencies(), new Sampler(), new ProviderProbe(), acquisition, revisions);
 
+        internal async Task StartAsync()
+        {
+            if (run is not null) await run.WaitAsync(TimeSpan.FromSeconds(10));
+            stop?.Dispose();
+            stop = new CancellationTokenSource();
+            var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            run = Bridge.Owner.RunAsync(stop.Token, () => ready.TrySetResult());
+            var completed = await Task.WhenAny(run, ready.Task).WaitAsync(TimeSpan.FromSeconds(10));
+            if (completed == run)
+            {
+                await run;
+                throw new IOException("Offline payload helper exited before reporting running.");
+            }
+            await ready.Task;
+        }
+
         private Process? Start(ProcessStartInfo start)
         {
             var wait = waitAfterEof && Starts == 0;
-            var script = $$"""
-                $version=[IO.File]::ReadAllText('{{start.FileName}}')
-                $held=[IO.File]::Open('{{start.FileName}}',[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
-                while ($null -ne [Console]::In.ReadLine()) {
-                    [Console]::Out.WriteLine((@{ok=$true; version=$version} | ConvertTo-Json -Compress))
-                    [Console]::Out.Flush()
-                }
-                $held.Dispose()
-                if (${{wait.ToString().ToLowerInvariant()}}) {
-                    [IO.File]::WriteAllText('{{EofObserved}}','eof')
-                    $deadline=[DateTime]::UtcNow.AddSeconds(10)
-                    while (-not [IO.File]::Exists('{{ReleaseOld}}') -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 10 }
-                }
-                """;
-            var info = new ProcessStartInfo(Path.Combine(System.Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"))
-                { UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true };
-            foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-EncodedCommand", Convert.ToBase64String(Encoding.Unicode.GetBytes(script)) }) info.ArgumentList.Add(argument);
-            var process = Process.Start(info)!;
+            var payload = start.FileName;
+            start.Environment["RM_BRIDGE_FIXTURE_VERSION"] = File.ReadAllText(payload);
+            start.Environment["RM_BRIDGE_FIXTURE_HOLD_FILE"] = payload;
+            if (wait)
+            {
+                start.Environment["RM_BRIDGE_FIXTURE_EOF_OBSERVED"] = EofObserved;
+                start.Environment["RM_BRIDGE_FIXTURE_EOF_RELEASE"] = ReleaseOld;
+            }
+            start.FileName = HardwareBridgeSessionTests.Fixture;
+            var process = Process.Start(start)!;
             var observer = Process.GetProcessById(process.Id);
             _ = observer.SafeHandle;
             observers.Add(observer);
@@ -367,14 +390,23 @@ public sealed partial class ControlHelperPayloadTests
         public async ValueTask DisposeAsync()
         {
             File.WriteAllText(ReleaseOld, "release");
-            Bridge.Dispose();
-            foreach (var observer in observers)
+            try
             {
-                await observer.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
-                observer.Dispose();
+                stop?.Cancel();
+                if (run is not null) await run.WaitAsync(TimeSpan.FromSeconds(10));
             }
-            Client.Dispose();
-            DependencyInstallPaths.DeleteOwnedTree(Root);
+            finally
+            {
+                Bridge.Dispose();
+                stop?.Dispose();
+                foreach (var observer in observers)
+                {
+                    try { await observer.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10)); }
+                    finally { observer.Dispose(); }
+                }
+                Client.Dispose();
+                DependencyInstallPaths.DeleteOwnedTree(Root);
+            }
         }
 
         internal Task WaitForFirstExit() => observers[0].WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));

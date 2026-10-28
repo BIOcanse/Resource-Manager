@@ -146,11 +146,12 @@ public sealed partial class UniwillGpuPowerWriter : IControlWriter, IDisposable
 
         lock (baselineGate)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             try
             {
                 return Task.FromResult(string.Equals(capability.Id, DynamicBoostEnabledCapabilityId, StringComparison.Ordinal)
-                    ? WriteDynamicBoostEnabled(target, capability, setting)
-                    : WriteOffset(target, capability, setting));
+                    ? WriteDynamicBoostEnabled(target, capability, setting, cancellationToken)
+                    : WriteOffset(target, capability, setting, cancellationToken));
             }
             catch (Exception error) when (IsBaselineError(error))
             {
@@ -175,17 +176,19 @@ public sealed partial class UniwillGpuPowerWriter : IControlWriter, IDisposable
         }
         lock (baselineGate)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             try
             {
                 if (bridge.Read(UniwillEcRegisters.CtgpDbEnable) is not { } current) return Task.FromResult(false);
+                cancellationToken.ThrowIfCancellationRequested();
                 var retained = stillConfigured.Any(id => id is CtgpOffsetCapabilityId
                     or DynamicBoostEnabledCapabilityId or DynamicBoostOffsetCapabilityId);
                 if (!retained)
                 {
                     var automatic = (byte)(current & ~TakeoverBits);
                     var restored = current == automatic
-                        || bridge.WriteReadingBack(UniwillEcRegisters.CtgpDbEnable, automatic) == automatic;
-                    if (restored) RemoveBaseline(target);
+                        || WriteReadingBack(UniwillEcRegisters.CtgpDbEnable, automatic, cancellationToken) == automatic;
+                    if (restored) RemoveBaseline(target, cancellationToken);
                     return Task.FromResult(restored);
                 }
                 LoadBaselines();
@@ -195,11 +198,11 @@ public sealed partial class UniwillGpuPowerWriter : IControlWriter, IDisposable
                     var restored = (byte)((current & ~UniwillEcRegisters.CtgpDbEnableDynamicBoostBit)
                         | (baseline.DynamicBoostEnabled ? UniwillEcRegisters.CtgpDbEnableDynamicBoostBit : 0));
                     return Task.FromResult(current == restored
-                        || bridge.WriteReadingBack(UniwillEcRegisters.CtgpDbEnable, restored) == restored);
+                        || WriteReadingBack(UniwillEcRegisters.CtgpDbEnable, restored, cancellationToken) == restored);
                 }
                 var original = capability.Id == CtgpOffsetCapabilityId ? baseline.Ctgp : baseline.DynamicBoost;
                 return Task.FromResult(bridge.Read(AddressOf(capability.Id)) == original
-                    || bridge.WriteReadingBack(AddressOf(capability.Id), original) == original);
+                    || WriteReadingBack(AddressOf(capability.Id), original, cancellationToken) == original);
             }
             catch (Exception error) when (IsBaselineError(error))
             {
@@ -212,7 +215,8 @@ public sealed partial class UniwillGpuPowerWriter : IControlWriter, IDisposable
     private ControlApplyOutcome WriteDynamicBoostEnabled(
         ControlObject target,
         ControlCapability capability,
-        ControlSetting setting)
+        ControlSetting setting,
+        CancellationToken cancellationToken)
     {
         if (setting.Toggle is not { } wanted || setting.Number is not null)
         {
@@ -223,13 +227,15 @@ public sealed partial class UniwillGpuPowerWriter : IControlWriter, IDisposable
             return Failed(target, capability, BudgetUnknown);
         }
 
-        if (!CaptureBaseline(target, current)) return Failed(target, capability, BaselineUnavailable);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!CaptureBaseline(target, current, cancellationToken)) return Failed(target, capability, BaselineUnavailable);
 
         var next = (byte)(wanted
             ? current | TakeoverBits | UniwillEcRegisters.CtgpDbEnableDynamicBoostBit
             : (current | TakeoverBits) & ~UniwillEcRegisters.CtgpDbEnableDynamicBoostBit);
 
-        return current == next || bridge.WriteReadingBack(UniwillEcRegisters.CtgpDbEnable, next) == next
+        cancellationToken.ThrowIfCancellationRequested();
+        return current == next || WriteReadingBack(UniwillEcRegisters.CtgpDbEnable, next, cancellationToken) == next
             ? Applied(target, capability)
             : Failed(target, capability, EnableRefused);
     }
@@ -238,7 +244,8 @@ public sealed partial class UniwillGpuPowerWriter : IControlWriter, IDisposable
     private ControlApplyOutcome WriteOffset(
         ControlObject target,
         ControlCapability capability,
-        ControlSetting setting)
+        ControlSetting setting,
+        CancellationToken cancellationToken)
     {
         if (setting.Number is not { } value || !double.IsFinite(value)
             || value < 0 || value > byte.MaxValue || value != Math.Truncate(value) || setting.Toggle is not null)
@@ -249,21 +256,25 @@ public sealed partial class UniwillGpuPowerWriter : IControlWriter, IDisposable
         {
             return Failed(target, capability, BudgetUnknown);
         }
+        cancellationToken.ThrowIfCancellationRequested();
         if (value > RequestMaximum(budget, capability.Id))
         {
             return Failed(target, capability, new("control-out-of-range",
                 new(Minimum: 0, Maximum: RequestMaximum(budget, capability.Id), Unit: ControlUnits.Watt, Requested: value)));
         }
-        if (bridge.Read(UniwillEcRegisters.CtgpDbEnable) is not { } enable || !CaptureBaseline(target, enable))
+        if (bridge.Read(UniwillEcRegisters.CtgpDbEnable) is not { } enable)
             return Failed(target, capability, BaselineUnavailable);
-        if (!EnsureTakeover())
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!CaptureBaseline(target, enable, cancellationToken))
+            return Failed(target, capability, BaselineUnavailable);
+        if (!EnsureTakeover(cancellationToken))
         {
             return Failed(target, capability, EnableRefused);
         }
 
         // 上界和 Probe 报出去的量程取同一个数，免得界面能拉到的值这里又夹一次。
         var wanted = checked((byte)value);
-        if (bridge.WriteReadingBack(AddressOf(capability.Id), wanted) is not { } effective)
+        if (WriteReadingBack(AddressOf(capability.Id), wanted, cancellationToken) is not { } effective)
         {
             logger?.LogWarning(
                 "写 Uniwill 功率额度失败：{Capability} = {Watts} W。",
@@ -287,14 +298,22 @@ public sealed partial class UniwillGpuPowerWriter : IControlWriter, IDisposable
     }
 
     [RuntimeRead(ReadVolatilityKind.EventDriven, "Uniwill GPU power control takeover requested")]
-    private bool EnsureTakeover()
+    private bool EnsureTakeover(CancellationToken cancellationToken)
     {
         if (bridge.Read(UniwillEcRegisters.CtgpDbEnable) is not { } current)
         {
             return false;
         }
         var wanted = (byte)(current | TakeoverBits);
-        return current == wanted || bridge.WriteReadingBack(UniwillEcRegisters.CtgpDbEnable, wanted) == wanted;
+        cancellationToken.ThrowIfCancellationRequested();
+        return current == wanted || WriteReadingBack(UniwillEcRegisters.CtgpDbEnable, wanted, cancellationToken) == wanted;
+    }
+
+    [RuntimeRead(ReadVolatilityKind.EventDriven, "Uniwill GPU register write completed and readback requested")]
+    private byte? WriteReadingBack(ushort address, byte value, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return bridge.WriteReadingBack(address, value);
     }
 
     [RuntimeRead(ReadVolatilityKind.Sampled)]

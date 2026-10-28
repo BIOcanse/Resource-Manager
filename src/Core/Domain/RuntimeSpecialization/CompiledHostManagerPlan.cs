@@ -45,6 +45,9 @@ public sealed record CompiledHostManagerPlan(
     [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.SubscriptionIntervalMs)]
     public TimeSpan SchedulerSamplingInterval { get; init; }
 
+    [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.AvailabilityCheckIntervalMs)]
+    public TimeSpan HardwareBridgeAvailabilityCheckInterval { get; init; }
+
     [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.CrashCounterResetSeconds)]
     public int ServiceRecoveryResetPeriodSeconds { get; init; }
 
@@ -68,6 +71,7 @@ public sealed record CompiledHostManagerPlan(
         && BackendControlSettings.IsPublished
         && CpuScoring is not null
         && SchedulerSamplingInterval > TimeSpan.Zero
+        && HardwareBridgeAvailabilityCheckInterval >= TimeSpan.Zero
         && TrustedAccessRequestLifetimeMilliseconds > 0
         && BindingProvenance.IsPublished
         && DeploymentDigests.IsPublished

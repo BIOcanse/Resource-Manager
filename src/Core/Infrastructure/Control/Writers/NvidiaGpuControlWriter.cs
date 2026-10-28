@@ -79,6 +79,7 @@ public sealed class NvidiaGpuControlWriter : IControlWriter, IControlDetectionCa
     }
     public async Task<ControlApplyOutcome> WriteAsync(ControlObject target, ControlCapability capability, ControlSetting setting, CancellationToken token)
     {
+        token.ThrowIfCancellationRequested();
         var executionTarget = Target(target);
         if (target.AdapterKey is > 0 && capability.Id == PowerLimitCapabilityId)
             executionTarget = executionTarget with { Inventory = adapterReader.ReadInventory() };
@@ -92,12 +93,14 @@ public sealed class NvidiaGpuControlWriter : IControlWriter, IControlDetectionCa
     }
     public async Task<ControlActualValue?> ReadAsync(ControlObject target, ControlCapability capability, CancellationToken token)
     {
+        token.ThrowIfCancellationRequested();
         var value = await Resource.ReadAsync(Target(target), Capability(capability), token);
         return value is null ? null : new(value.ObjectId, value.CapabilityId, Number: value.Number, Unit: value.Unit, UnreadableReason: value.UnreadableReason);
     }
     public Task<bool> RestoreAsync(ControlObject target, ControlCapability capability, IReadOnlySet<string> configured,
         CancellationToken token, ControlSetting? previousSetting = null)
     {
+        token.ThrowIfCancellationRequested();
         var executionTarget = Target(target);
         if (target.AdapterKey is > 0 && capability.Id == PowerLimitCapabilityId)
             executionTarget = executionTarget with { Inventory = adapterReader.ReadInventory() };

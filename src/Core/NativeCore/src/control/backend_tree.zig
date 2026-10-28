@@ -95,6 +95,7 @@ fn normalReadOnlyMember(uid: d.BlockUid) bool {
         BlockUids.ServiceAutoStartSettings,
         BlockUids.ServiceRecoverySettings,
         BlockUids.FanControlCoreLifetimeService,
+        BlockUids.HardwareBridgeProcessOwner,
         BlockUids.EtwPhysicalDiskIoAttributionReader,
         BlockUids.EtwNetworkTcpIpAttributionReader,
         BlockUids.PresentFrameEtwSource,
@@ -179,6 +180,7 @@ const all_tree_blocks = [_]tree.Block{
     .{ .uid = BlockUids.ControlDesiredStateReassertion, .parent = BlockUids.HardwareControl, .inputs = &.{BlockUids.RuntimeSpecializationCoordinator} },
     .{ .uid = BlockUids.FanCurveTemperatureFeed, .parent = BlockUids.FanControlCoreLifetimeService, .inputs = &.{BlockUids.WindowsHardwareMetricSampler} },
     .{ .uid = BlockUids.ControlActualStateReader, .parent = BlockUids.HardwareControl },
+    .{ .uid = BlockUids.HardwareBridgeProcessOwner, .parent = BlockUids.HardwareControl },
     .{ .uid = BlockUids.GpuTelemetryWorkerSupervisor, .parent = BlockUids.HostManagerSamplingSubscriptionOwner, .inputs = &.{BlockUids.HostManagerSamplingSubscriptionOwner} },
     .{ .uid = BlockUids.WindowsHardwareMetricSampler, .parent = BlockUids.HostManagerSamplingSubscriptionOwner, .inputs = &.{
         BlockUids.RuntimeSpecializationCoordinator,
@@ -344,6 +346,13 @@ fn nativeEtwGroupShouldRun(input: *control.Input) anyerror!bool {
     return try hostPermitted(input, BlockUids.NativeEtwLifetimeService) and
         (try presentEtwChildShouldRun(input) or try gpuAllocationEtwChildShouldRun(input) or try vidMmEtwChildShouldRun(input));
 }
+// HardwareControl decides its direct bridge child from resident owner facts.
+fn hardwareBridgeShouldRun(input: *control.Input) anyerror!bool {
+    if (!try isTrue(input, ItemUids.HardwareBridgeAvailable)) return false;
+    return anyFact(input, BlockUids.HardwareBridgeProcessOwner, &.{
+        ItemUids.HardwareCommandPending, ItemUids.HardwareBridgeReadingsInUse,
+    });
+}
 fn hostMemoryProtectionReady(input: *control.Input) anyerror!bool {
     return try hostPermitted(input, BlockUids.HostMemoryProtection) and
         try isTrue(input, ItemUids.HostMemoryProtectionEnabled) and
@@ -426,6 +435,7 @@ fn operationsShouldRun(input: *control.Input) anyerror!bool {
     return anyFact(input, BlockUids.HostManagerOperationCoordinatorOwner, &.{ItemUids.OperationsPending});
 }
 const compute_functions = [_]control.types.Compute{
+    .{ .condition = ConditionUids.HardwareBridgeShouldRun, .function = hardwareBridgeShouldRun },
     .{ .condition = ConditionUids.AlwaysWanted, .function = alwaysWanted },
     .{ .condition = ConditionUids.HostMemoryProtectionReady, .function = hostMemoryProtectionReady },
     .{ .condition = ConditionUids.KernelLeakObservationShouldRun, .function = kernelLeakObservationShouldRun },
@@ -594,6 +604,8 @@ const RuleTestFacts = struct {
         if (!self.permit(self.child)) return false;
         const I = ItemUids;
         return switch (self.child) {
+            BlockUids.HardwareBridgeProcessOwner => self.truth(I.HardwareBridgeAvailable) and
+            (self.truth(I.HardwareCommandPending) or self.truth(I.HardwareBridgeReadingsInUse)),
             BlockUids.PresentFrameEtwSource => self.present(),
             BlockUids.GpuAllocationCollector => self.allocation(),
             BlockUids.DxgkrnlVidMmEtwTelemetryZone => self.vidmm(),

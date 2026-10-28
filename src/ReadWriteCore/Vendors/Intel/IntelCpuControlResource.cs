@@ -87,10 +87,12 @@ public sealed class IntelCpuControlResource : IDisposable
         CheckLifetime();
         lock (gate)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             CheckLifetime();
             try
             {
                 var availability = Probe(target, capability);
+                cancellationToken.ThrowIfCancellationRequested();
                 if (!availability.CanWrite) return Task.FromResult(Result(target, capability, "unsupported", availability.Reason));
                 if (setting.Number is not { } number || !double.IsFinite(number)) return Task.FromResult(Result(target, capability, "failed", Describe(IntelCpuControlMessage.NumberRequired)));
                 if (availability.Range is { } range && (number < range.Minimum || number > range.Maximum)) return Task.FromResult(Result(target, capability, "failed", Describe(IntelCpuControlMessage.OutOfRange)));
@@ -100,7 +102,9 @@ public sealed class IntelCpuControlResource : IDisposable
                     var before = IntelOcMailbox.Read(io, plane);
                     // Change the offset field only; preserve the domain's voltage target/mode.
                     var encoded = (before & 0x1fffffU) | IntelOcMailbox.Encode(number);
+                    cancellationToken.ThrowIfCancellationRequested();
                     CaptureBaseline(target, capability.Id, before);
+                    cancellationToken.ThrowIfCancellationRequested();
                     IntelOcMailbox.Write(io, plane, encoded);
                     var after = IntelOcMailbox.Read(io, plane);
                     return Task.FromResult(Result(target, capability, after == encoded ? "applied" : "failed",
@@ -113,8 +117,10 @@ public sealed class IntelCpuControlResource : IDisposable
                 var shortTerm = ShortTerm(capability.Id);
                 var window = IsWindow(capability.Id);
                 var mask = IntelRaplEncoding.FieldMask(window, shortTerm);
+                cancellationToken.ThrowIfCancellationRequested();
                 CaptureBaseline(target, capability.Id, original & mask);
                 var next = window ? IntelRaplEncoding.SetWindow(original, units, shortTerm, number) : IntelRaplEncoding.SetPower(original, units, shortTerm, number);
+                cancellationToken.ThrowIfCancellationRequested();
                 io.WriteMsr(IntelRaplEncoding.LimitRegister, next);
                 var readback = io.ReadMsr(IntelRaplEncoding.LimitRegister);
                 var actual = window ? IntelRaplEncoding.ReadWindow(readback, units, shortTerm) : IntelRaplEncoding.ReadPower(readback, units, shortTerm);
@@ -136,6 +142,7 @@ public sealed class IntelCpuControlResource : IDisposable
         if (!IsRapl(capability.Id) && VoltagePlane(capability.Id) is null) return Task.FromResult<IntelCpuControlActualValue?>(null);
         lock (gate)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             CheckLifetime();
             try
             {
@@ -158,6 +165,7 @@ public sealed class IntelCpuControlResource : IDisposable
         if (!IsMine(target, capability.Id)) return Task.FromResult(false);
         lock (gate)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             CheckLifetime();
             try
             {
@@ -168,6 +176,7 @@ public sealed class IntelCpuControlResource : IDisposable
                 {
                     var currentDomain = IntelOcMailbox.Read(io, plane);
                     var restoredDomain = (currentDomain & 0x1fffffU) | ((uint)baseline & ~0x1fffffU);
+                    cancellationToken.ThrowIfCancellationRequested();
                     IntelOcMailbox.Write(io, plane, restoredDomain);
                     var restored = IntelOcMailbox.Read(io, plane) == restoredDomain;
                     if (restored) RemoveBaseline(target, capability.Id);
@@ -177,6 +186,7 @@ public sealed class IntelCpuControlResource : IDisposable
                 var current = io.ReadMsr(IntelRaplEncoding.LimitRegister);
                 if ((current & (1UL << 63)) != 0) return Task.FromResult(false);
                 var mask = IntelRaplEncoding.FieldMask(IsWindow(capability.Id), ShortTerm(capability.Id));
+                cancellationToken.ThrowIfCancellationRequested();
                 io.WriteMsr(IntelRaplEncoding.LimitRegister, (current & ~mask) | (baseline & mask));
                 var verified = (io.ReadMsr(IntelRaplEncoding.LimitRegister) & mask) == (baseline & mask);
                 if (verified) RemoveBaseline(target, capability.Id);
