@@ -2,7 +2,7 @@
 
 We thank every author and contributor listed below. Microsoft has not signed, certified or endorsed Resource Manager.
 
-This inventory covers the resolved product, desktop, installer, uninstaller, external WinUI manager, test and Adapter SDK graphs. Names, authors and license declarations come from NuGet package metadata. FreedomPoint dev.45 declares Apache-2.0 and BIOcanse. The currently pinned Ledger and Disk packages do not declare a license in their nuspec or include a license file; this inventory records that absence without assigning a license. Runtime/reference packs and publish tools are identified separately from shipped application code. Existing upstream license files are preserved alongside this inventory.
+This inventory covers the resolved product, desktop, installer, uninstaller, external WinUI manager, test and Adapter SDK graphs. Names, authors and license declarations come from NuGet package metadata. FreedomPoint dev.46 declares Apache-2.0 and BIOcanse. The currently pinned Ledger and Disk packages do not declare a license in their nuspec or include a license file; this inventory records that absence without assigning a license. Runtime/reference packs and publish tools are identified separately from shipped application code. Existing upstream license files are preserved alongside this inventory.
 
 | Package/version | Package authors | Declared license | Resolved project(s) |
 | --- | --- | --- | --- |
@@ -11,7 +11,7 @@ This inventory covers the resolved product, desktop, installer, uninstaller, ext
 | Disk.ReadWrite/0.1.0 | BIOcanse | Not declared in package metadata | src/Core, tests/App |
 | DiskInfoToolkit/1.1.2 | DiskInfoToolkit | MPL-2.0 | src/Core, tests/App |
 | FanControlCore.Library/0.1.0-dev.6 | BIOcanse | Apache-2.0 | src/Core, tests/App |
-| FreedomPoint.Core/0.1.0-dev.45 | BIOcanse | Apache-2.0 | src/Core, src/UI/Core, tests/App |
+| FreedomPoint.Core/0.1.0-dev.46 | BIOcanse | Apache-2.0 | src/Core, src/UI/Core, tests/App |
 | HidSharp/2.6.4 | James F. Bellinger | LICENSE.txt | src/Core, tests/App |
 | LibreHardwareMonitorLib/0.9.6 | LibreHardwareMonitorLib | MPL-2.0 | src/Core, tests/App |
 | Microsoft.AspNetCore.App.Runtime.win-x64/10.0.8 | Microsoft | MIT | src/Uninstaller runtime/reference pack, src/Updater/WinUI runtime/reference pack |

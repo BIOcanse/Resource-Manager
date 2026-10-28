@@ -96,7 +96,7 @@ internal static class Program
             projection.ContentKey, sourceSeal, toolSeal,
             structureModule = "desktop_points_structure", valuesModule = "desktop_points_values"
         }, json));
-        Console.WriteLine($"Generated {points.Count} desktop freedom points with FreedomPoint dev.45: {output}");
+        Console.WriteLine($"Generated {points.Count} desktop freedom points with FreedomPoint dev.46: {output}");
     }
 
     private static void Write(string path, string text)

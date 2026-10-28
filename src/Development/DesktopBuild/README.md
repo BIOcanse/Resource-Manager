@@ -2,7 +2,7 @@
 
 `desktop.points.json` declares the independent desktop tree's eleven build-time
 choices and their defaults. Fixed state-item limits remain structural facts in
-their owning modules. This tool uses the published FreedomPoint dev.45
+their owning modules. This tool uses the published FreedomPoint dev.46
 `TypedProjection.Emit` Zig backend; it does not implement a second emitter.
 
 Run `scripts/build/Generate-DesktopPoints.ps1 -WorkRoot <running registered workspace>`

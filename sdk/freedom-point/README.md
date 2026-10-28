@@ -2,13 +2,13 @@
 
 ## 适用包
 
-本目录仅保留当前实际使用的正式包，原始字节不重打包。`materials.json` 记录长度、SHA-256、原 NuSpec 摘要、依赖及交付回执；当前 RM pin 为 dev.45。
+本目录仅保留当前实际使用的正式包，原始字节不重打包。`materials.json` 记录长度、SHA-256、原 NuSpec 摘要、依赖及交付回执；当前 RM pin 为 dev.46。
 
 | 版本 | 包 | 实际用途 |
 |---|---|---|
-| 0.1.0-dev.45 | FreedomPoint.Core | 后端与 native 前端产品依赖 |
-| 0.1.0-dev.45 | FreedomPoint.SourceTracking | 后端、前端开发期源码检查 |
-| 0.1.0-dev.45 | FreedomPoint.Generators | 前端 TS 与 C# 正式投影 |
+| 0.1.0-dev.46 | FreedomPoint.Core | 后端与 native 前端产品依赖 |
+| 0.1.0-dev.46 | FreedomPoint.SourceTracking | 后端、前端开发期源码检查 |
+| 0.1.0-dev.46 | FreedomPoint.Generators | 前端 TS 与 C# 正式投影 |
 | 0.1.0-dev.39 | FreedomPoint.Core | Ledger dev.2 构建时依赖 |
 | 0.1.0-dev.39 | FreedomPoint.Generators | Ledger dev.2 构建时生成器；依赖同版 Core |
 
@@ -18,7 +18,7 @@ RM 构建和测试直接调用已引用包的 SDK API，不运行 FreedomPoint.B
 
 ## 第一方许可
 
-权利人 BIOcanse 确认 FreedomPoint 第一方代码采用 **Apache-2.0**。dev.45 的真实 NuSpec 也声明 Apache-2.0 与 BIOcanse；本目录 `LICENSE`、`NOTICE` 和包内原始许可文本一并保留。`authorization.json` 绑定实际包摘要。
+权利人 BIOcanse 确认 FreedomPoint 第一方代码采用 **Apache-2.0**。dev.46 的真实 NuSpec 也声明 Apache-2.0 与 BIOcanse；本目录 `LICENSE`、`NOTICE` 和包内原始许可文本一并保留。`authorization.json` 绑定实际包摘要。
 
 旧包 NuSpec 没有许可字段这一事实保持；补充附件不改写旧包、不重发版本。Apache-2.0 只适用于 FreedomPoint 第一方内容，不将 Roslyn 或其他第三方内容重新许可。
 

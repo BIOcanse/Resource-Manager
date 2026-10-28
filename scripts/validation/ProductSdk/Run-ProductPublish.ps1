@@ -169,14 +169,14 @@ if($Stage -eq 'ProductBackend') {
     $properties=Get-Content (Join-Path $evidence 'ResourceManager.App.properties.txt')
     $assetsPath=($properties|Where-Object {$_ -like 'ProjectAssetsFile=*'}).Substring('ProjectAssetsFile='.Length)
     $assets=Get-Content $assetsPath -Raw|ConvertFrom-Json
-    $requiredDependencies=@('FreedomPoint.Core/0.1.0-dev.45','ResourceManager.Ledger/0.1.0-dev.2')
+    $requiredDependencies=@('FreedomPoint.Core/0.1.0-dev.46','ResourceManager.Ledger/0.1.0-dev.2')
     if($diskInputs){$requiredDependencies+='Disk.ReadWrite/0.1.0'}
     foreach($dependency in $requiredDependencies) {
         if(-not $assets.libraries.PSObject.Properties[$dependency]){throw "Missing actual dependency: $dependency"}
     }
     Copy-Item -LiteralPath $assetsPath -Destination (Join-Path $RunDirectory 'backend-project.assets.json')
     $packagePairs=[Collections.Generic.List[object]]::new()
-    $formalPairs=@(@{package='sdk/freedom-point/packages/FreedomPoint.Core.0.1.0-dev.45.nupkg';assembly='FreedomPoint.Core.dll'},@{package='artifacts/sdk/packages/ResourceManager.Ledger.0.1.0-dev.2.nupkg';assembly='ResourceManager.Ledger.dll'})
+    $formalPairs=@(@{package='sdk/freedom-point/packages/FreedomPoint.Core.0.1.0-dev.46.nupkg';assembly='FreedomPoint.Core.dll'},@{package='artifacts/sdk/packages/ResourceManager.Ledger.0.1.0-dev.2.nupkg';assembly='ResourceManager.Ledger.dll'})
     if($diskInputs){
         $diskPackage='artifacts/disk-sdk/packages/'+[IO.Path]::GetFileName($diskInputs.profile.managedPackage.path)
         $mirror=Get-Item -LiteralPath (Join-Path $repo $diskPackage)
