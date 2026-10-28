@@ -9,7 +9,7 @@ public sealed class NativePublicServiceCoordinatorAbiTests
     [Fact]
     public void AbiUsesPublishedVersionSizesAndOffsets()
     {
-        Assert.Equal(0x0004_0000U, NativePublicServiceCoordinatorAbi.Version);
+        Assert.Equal(0x0005_0000U, NativePublicServiceCoordinatorAbi.Version);
         Assert.Equal(224, Unsafe.SizeOf<NativePublicServiceCoordinatorConfiguration>());
         Assert.Equal(112, Unsafe.SizeOf<NativePublicServiceCoordinatorCapacity>());
         Assert.Equal(32, Unsafe.SizeOf<NativePublicServiceCapabilityInput>());
@@ -87,6 +87,12 @@ public sealed class NativePublicServiceCoordinatorAbiTests
         AssertOffset<NativePublicServiceTaskOutput>(
             nameof(NativePublicServiceTaskOutput.BaseScore),
             40);
+        AssertOffset<NativePublicServiceTaskOutput>(
+            nameof(NativePublicServiceTaskOutput.AdmissionReason),
+            76);
+        AssertOffset<NativePublicServiceModelResolveInput>(
+            nameof(NativePublicServiceModelResolveInput.Flags),
+            4);
         AssertOffset<NativePublicServiceTaskCompletionInput>(
             nameof(NativePublicServiceTaskCompletionInput.Attempt),
             32);

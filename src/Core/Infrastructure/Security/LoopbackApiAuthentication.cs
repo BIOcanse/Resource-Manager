@@ -300,6 +300,11 @@ public sealed class LoopbackApiAuthenticationMiddleware(
         if (!decision.Allowed)
         {
             context.Response.StatusCode = decision.StatusCode;
+            if (decision.StatusCode == StatusCodes.Status404NotFound
+                && decision.Reason == "service-disabled")
+            {
+                return;
+            }
             await context.Response.WriteAsJsonAsync(
                 new LoopbackApiErrorPayload(decision.Reason),
                 context.RequestAborted);

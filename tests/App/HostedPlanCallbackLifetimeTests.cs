@@ -72,7 +72,8 @@ public sealed class HostedPlanCallbackLifetimeTests
             NullLogger<HostManagerPublicServiceCoordinatorOwner>.Instance, memory);
         await AssertCapturedHostedCallbackMatchesLifetimeAsync(owner, provider,
             () => deployment.Snapshot.PublicServiceCoordinator, Replacement(enabled),
-            disposeAfterStop ? owner.Dispose : null);
+            disposeAfterStop ? owner.Dispose : null,
+            useAfterStop: disposeAfterStop ? null : () => owner.GetCatalogAsync(CancellationToken.None));
     }
 
     private static RuntimePlanProvider CreateProvider(HostManagerDeploymentState deployment,
@@ -94,7 +95,7 @@ public sealed class HostedPlanCallbackLifetimeTests
 
     private static async Task AssertCapturedHostedCallbackMatchesLifetimeAsync(IHostedService owner,
         RuntimePlanProvider provider, Func<HostManagerModuleDeploymentSnapshot> readModule,
-        CompiledHostManagerPlan replacement, Action? afterStop = null)
+        CompiledHostManagerPlan replacement, Action? afterStop = null, Func<Task>? useAfterStop = null)
     {
         using var release = new ManualResetEventSlim();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -120,6 +121,14 @@ public sealed class HostedPlanCallbackLifetimeTests
             release.Set();
             var delivered = await publication.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.Empty(delivered.DeliveryFailures);
+            if (useAfterStop is not null)
+            {
+                // A stopped public owner records configuration until a finite call needs it.
+                var idle = readModule();
+                Assert.Equal(before.LastSettledAttemptId, idle.LastSettledAttemptId);
+                Assert.Equal(before.AppliedPublicationSequence, idle.AppliedPublicationSequence);
+                await useAfterStop();
+            }
             var after = readModule();
             if (afterStop is not null)
             {

@@ -81,7 +81,7 @@ public sealed record CompiledHostManagerPublicServiceCoordinatorBuildPlan(
     string NativeBinarySha256,
     CompiledHostManagerPublicServiceCoordinatorCapacityPlan CapacityLimits)
 {
-    public bool IsPublished => AbiVersion == 0x0004_0000U
+    public bool IsPublished => AbiVersion == 0x0005_0000U
         && string.Equals(NativeModule, "public_service_coordinator", StringComparison.Ordinal)
         && !string.IsNullOrWhiteSpace(NativeBinaryFileName)
         && NativeBinarySha256.Length == 64

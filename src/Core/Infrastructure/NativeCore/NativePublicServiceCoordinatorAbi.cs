@@ -4,7 +4,7 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal static class NativePublicServiceCoordinatorAbi
 {
-    public const uint Version = 0x0004_0000;
+    public const uint Version = 0x0005_0000;
 }
 
 internal enum NativePublicServiceCoordinatorStatus : int
@@ -122,7 +122,16 @@ internal enum NativePublicServiceModelResolveStatus : uint
     Invalid = 0,
     Matched = 1,
     NotFound = 2,
-    CatalogUnavailable = 3
+    CatalogUnavailable = 3,
+    ServiceDisabled = 4
+}
+
+[Flags]
+internal enum NativePublicServiceModelResolveFlags : uint
+{
+    None = 0,
+    TaskAdmission = 1U << 0,
+    Known = TaskAdmission
 }
 
 internal enum NativePublicServiceModelAcquisitionPlanStatus : uint
@@ -471,7 +480,7 @@ internal unsafe struct NativePublicServiceRequestCompleteOutput
 internal unsafe struct NativePublicServiceModelResolveInput
 {
     public uint StructSize;
-    public uint ReservedU32;
+    public uint Flags;
     public ulong CommandEpoch;
     public ulong CommandMonotonicMilliseconds;
     public NativePublicServiceTextSpan Alias;
@@ -598,7 +607,7 @@ internal unsafe struct NativePublicServiceTaskOutput
     public uint Kind;
     public uint State;
     public uint Attempt;
-    public uint ReservedU32;
+    public uint AdmissionReason;
     public fixed ulong Reserved[2];
 }
 

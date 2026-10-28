@@ -624,12 +624,15 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwnerTests
             while (CatalogCallCount < count) await Task.Delay(10, timeout.Token);
         }
         private int loadCallCount;
+        private int unloadCallCount;
         private int remainingLoadFailures = loadFailures;
         private string? lastLoadedModel;
 
         internal int CatalogCallCount => Volatile.Read(ref catalogCallCount);
 
         internal int LoadCallCount => Volatile.Read(ref loadCallCount);
+
+        internal int UnloadCallCount => Volatile.Read(ref unloadCallCount);
 
         internal string? LastLoadedModel => Volatile.Read(ref lastLoadedModel);
 
@@ -675,7 +678,7 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwnerTests
                     "1B",
                     4096,
                     [],
-                    [])
+                    [new AiModelLoadedInstance("open-model-instance", 4096)])
             ]);
         }
 
@@ -715,7 +718,10 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwnerTests
         public Task<AiModelUnloadResult> UnloadAsync(
             AiModelUnloadRequest request,
             CancellationToken cancellationToken)
-            => Task.FromResult(new AiModelUnloadResult(request.InstanceId));
+        {
+            Interlocked.Increment(ref unloadCallCount);
+            return Task.FromResult(new AiModelUnloadResult(request.InstanceId));
+        }
 
         public Task ForwardAsync(
             HttpContext context,

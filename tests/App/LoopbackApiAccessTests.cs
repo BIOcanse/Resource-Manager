@@ -28,6 +28,7 @@ using ResourceManager.App.Domain.RuntimeSpecialization.FreedomPoints;
 using ResourceManager.App.Domain.PublicServices.AiModels;
 using ResourceManager.App.Domain.PublicServices;
 using ResourceManager.App.Domain.PublicServices.AiGateway;
+using ResourceManager.App.Domain.TrustedAccess;
 using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Endpoints;
 using ResourceManager.App.Hosting;
@@ -47,6 +48,23 @@ namespace Resource_Manager_APP.Tests;
 public sealed partial class LoopbackApiAccessTests
 {
     private const string Scope = "/api/optimization/smart/validation/process-effect-scope";
+
+    internal static async Task WithPublicAiModelClientAsync(
+        ILocalAiModelService models,
+        ILocalPublicServiceAccessPolicy? publicAccess,
+        Func<HttpClient, Task> action)
+    {
+        await using var fixture = await Fixture.StartAsync(models: models, publicAccess: publicAccess);
+        fixture.Administrator.Allowed = true;
+        var key = await fixture.Keys.CreateAsync(new AccessKeyCreateRequest(
+            "model mutation fixture", AccessKeyPurposes.Control, [AccessKeyScopes.MachineWrite]), CancellationToken.None);
+        fixture.Client.DefaultRequestHeaders.Add(TrustedAccessHeaders.KeyHeader, key.ApiKey);
+        try { await action(fixture.Client); }
+        catch (Exception error) when (fixture.LastRequestError is not null)
+        {
+            throw new Xunit.Sdk.XunitException($"{error.Message}\nServer request failed: {fixture.LastRequestError}");
+        }
+    }
 
     [Fact]
     public async Task FreedomPointsReadsTheCurrentCompiledTreeWithoutSamplingOrCompiling()
@@ -285,10 +303,11 @@ public sealed partial class LoopbackApiAccessTests
     }
 
     [Theory]
+    [InlineData(404, "service-disabled")]
     [InlineData(503, "service-disabled")]
     [InlineData(403, "loopback-only")]
     [InlineData(429, "rate-limited")]
-    public async Task PublicAccessRejectionDoesNotEnterAiHandler(int status, string reason)
+    public async Task PublicServiceAccessRejectionDoesNotEnterAiHandler(int status, string reason)
     {
         await using var fixture = await Fixture.StartAsync();
         var key = await fixture.Credentials.CreateAsync(new("client", "openai"), CancellationToken.None);
@@ -296,10 +315,51 @@ public sealed partial class LoopbackApiAccessTests
         using var response = await fixture.Client.SendAsync(CreateAiRequest("POST",
             "/api/public/v1/ai/compat/openai/v1/chat/completions", "openai", key.ApiKey));
         Assert.Equal(status, (int)response.StatusCode);
-        Assert.Contains(reason, await response.Content.ReadAsStringAsync());
+        if (status == 404 && reason == "service-disabled")
+        {
+            Assert.Empty(await response.Content.ReadAsByteArrayAsync());
+        }
+        else
+        {
+            using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.Equal(reason, body.RootElement.GetProperty("error").GetString());
+        }
         Assert.Equal(0, fixture.Models.ForwardCalls);
         Assert.Equal(1, fixture.PublicAccess.Evaluations);
         Assert.Equal(0, fixture.PublicAccess.Completions);
+    }
+
+    [Theory]
+    [InlineData("/api/public/v1")]
+    [InlineData("/api/public/v1/index/status")]
+    [InlineData("/api/public/v1/ai/status")]
+    public async Task PublicServiceDisabledReadsReturnEmpty404(string path)
+    {
+        await using var fixture = await Fixture.StartAsync();
+        fixture.Client.DefaultRequestHeaders.Add(TrustedAccessHeaders.KeyHeader, fixture.Key);
+        fixture.PublicAccess.Rejection = new(false, 404, "service-disabled", 0);
+        using var response = await fixture.Client.GetAsync(path);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Empty(await response.Content.ReadAsByteArrayAsync());
+        Assert.Equal(1, fixture.PublicAccess.Evaluations);
+        Assert.Equal(0, fixture.PublicAccess.Completions);
+    }
+
+    [Fact]
+    public async Task PublicServiceModelMutationWithMissingScopeKeepsJsonBody()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        var key = await fixture.Keys.CreateAsync(new AccessKeyCreateRequest(
+            "read only", AccessKeyPurposes.Control, [AccessKeyScopes.Read]), CancellationToken.None);
+        fixture.Client.DefaultRequestHeaders.Add(TrustedAccessHeaders.KeyHeader, key.ApiKey);
+        using var response = await fixture.Client.PostAsJsonAsync(
+            "/api/public/v1/ai/models/load", new AiModelLoadRequest("test-model", null, null, null, null));
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("access-scope-required", body.RootElement.GetProperty("error").GetString());
+        Assert.Equal(new[] { AccessKeyScopes.MachineWrite },
+            body.RootElement.GetProperty("missingScopes").EnumerateArray().Select(scope => scope.GetString()!));
+        Assert.Equal(0, fixture.PublicAccess.Evaluations);
     }
 
     [Fact]
@@ -569,7 +629,9 @@ public sealed partial class LoopbackApiAccessTests
 
         public static async Task<Fixture> StartAsync(ICpuTopologyReader? topology = null, ISoftwareFileIndex? fileIndex = null,
             bool actualSessionCredentials = false,
-            ResourceManager.App.Infrastructure.Optimization.HostManagerSmartCoordinator? decisionCoordinator = null)
+            ResourceManager.App.Infrastructure.Optimization.HostManagerSmartCoordinator? decisionCoordinator = null,
+            ILocalAiModelService? models = null,
+            ILocalPublicServiceAccessPolicy? publicAccess = null)
         {
             Assert.True(string.IsNullOrEmpty(Environment.GetEnvironmentVariable("RESOURCE_MANAGER_PACKAGE_ROOT")));
             var fixture = new Fixture();
@@ -612,10 +674,10 @@ public sealed partial class LoopbackApiAccessTests
                 builder.Services.AddSingleton<IHostManagerMemoryCleanupValidationEvidenceControl>(fixture.Effects);
                 builder.Services.AddSingleton<IMetricSampler>(fixture.Sampler);
                 builder.Services.AddSingleton<IMetricSnapshotPushSource>(fixture.Sampler);
-                builder.Services.AddSingleton<ILocalAiModelService>(fixture.Models);
+                builder.Services.AddSingleton<ILocalAiModelService>(models ?? fixture.Models);
                 builder.Services.AddSingleton<IAiGatewayLocalModelPolicy, AiModelPolicy>();
                 builder.Services.AddSingleton<IAiGatewayCredentialService>(fixture.Credentials);
-                builder.Services.AddSingleton<ILocalPublicServiceAccessPolicy>(fixture.PublicAccess);
+                builder.Services.AddSingleton<ILocalPublicServiceAccessPolicy>(publicAccess ?? fixture.PublicAccess);
                 if (topology is not null)
                     builder.Services.AddSingleton(topology);
                 if (fileIndex is not null)

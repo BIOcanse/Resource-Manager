@@ -253,17 +253,16 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwnerTests
     }
 
     [Fact]
-    public async Task DisabledStoppedPublicLoadTransfersRequestHoldThroughNativeTaskSettlement()
+    public async Task AdmittedStoppedPublicLoadTransfersRequestHoldThroughNativeTaskSettlementAfterDisable()
     {
         await using var fixture = await Fixture.CreateAsync(holdFirstLoadIgnoringCancellation: true);
         await WaitForCatalogAsync(fixture.Owner);
         var admitted = await AdmitIndexAsync(fixture);
         var workspace = fixture.Lifetimes.LastCreated;
-        fixture.PublishPlan(_ => { }, enabled: false);
         await fixture.Owner.StopAsync(CancellationToken.None).WaitAsync(PublicHoldBound);
-        // The admitted request legitimately retains the usable native catalog;
-        // a cold, stopped catalog still follows its existing lazy-demand contract.
+        // Admit while enabled, then retain this task and its workspace across disable.
         var load = fixture.Owner.LoadAsync(NewLoadRequest(), CancellationToken.None);
+        fixture.PublishPlan(_ => { }, enabled: false);
         await fixture.Owner.CompleteAsync(admitted.CompletionHandle, CancellationToken.None);
         Assert.Equal(1, fixture.Lifetimes.Active);
         Assert.Equal(1U, workspace.ReadSnapshot().QueuedTaskCount);
@@ -290,10 +289,10 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwnerTests
         await WaitForCatalogAsync(fixture.Owner);
         var admitted = await AdmitIndexAsync(fixture);
         var workspace = fixture.Lifetimes.LastCreated;
-        fixture.PublishPlan(_ => { }, enabled: false);
         await fixture.Owner.StopAsync(CancellationToken.None).WaitAsync(PublicHoldBound);
         using var waiterCancellation = new CancellationTokenSource();
         var waiter = fixture.Owner.LoadAsync(NewLoadRequest(), waiterCancellation.Token);
+        fixture.PublishPlan(_ => { }, enabled: false);
         waiterCancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiter);
         await fixture.Owner.CompleteAsync(admitted.CompletionHandle, CancellationToken.None);
@@ -324,9 +323,9 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwnerTests
         await WaitForCatalogAsync(fixture.Owner);
         var admitted = await AdmitIndexAsync(fixture);
         var workspace = fixture.Lifetimes.LastCreated;
-        fixture.PublishPlan(_ => { }, enabled: false);
         await fixture.Owner.StopAsync(CancellationToken.None).WaitAsync(PublicHoldBound);
         var load = fixture.Owner.LoadAsync(NewLoadRequest(), CancellationToken.None);
+        fixture.PublishPlan(_ => { }, enabled: false);
         await fixture.Owner.CompleteAsync(admitted.CompletionHandle, CancellationToken.None);
         Assert.Equal(1U, workspace.ReadSnapshot().QueuedTaskCount);
         Assert.True(fixture.Owner.HasPendingTasks);

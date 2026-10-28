@@ -663,6 +663,7 @@ test {
     _ = portable_software_registry;
     _ = report_coordinator;
     _ = file_query;
+    _ = public_service_coordinator;
     _ = display_coordinator;
     _ = operation_coordinator;
 }

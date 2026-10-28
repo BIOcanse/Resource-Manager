@@ -2,6 +2,7 @@ using ResourceManager.App.Infrastructure.Adaptation;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.PublicServices;
 using ResourceManager.App.Domain.PublicServices.AiModels;
+using ResourceManager.App.Domain.Settings;
 using ResourceManager.Ledger;
 
 namespace Resource_Manager_APP.Tests;
@@ -19,7 +20,8 @@ public sealed class PublicServiceLedgerScratchTests
         using var ledger = new ResourceManagerLedgerOwner();
         var plan = HostManagerTestPlanFactory.CreatePlan(root =>
             root["host_recreate"]!["public_service_coordinator"]![
-                "model_catalog_acquisition_interval_ms"] = 1).PublicServiceCoordinator;
+                "model_catalog_acquisition_interval_ms"] = 1,
+            publicService: new AppLocalPublicServiceSettings(true, true, true, true)).PublicServiceCoordinator;
         FailingScratch? scratch = null;
         using var workspace = new NativePublicServiceCoordinatorWorkspace(plan, 1, 1, 1,
             length => scratch = new FailingScratch(ledger.CreateScratch(length)));

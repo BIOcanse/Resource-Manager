@@ -4,6 +4,7 @@ using System.Text;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.NativeCore;
 using ResourceManager.App.Infrastructure.Adaptation;
+using ResourceManager.App.Application.PublicServices.AiModels;
 
 namespace ResourceManager.App.Infrastructure.PublicServices;
 
@@ -339,7 +340,9 @@ internal sealed class NativePublicServiceCoordinatorWorkspace : IDisposable
         }
     }
 
-    internal NativePublicServiceModelResolveOutput ResolveModel(string alias)
+    internal NativePublicServiceModelResolveOutput ResolveModel(
+        string alias,
+        NativePublicServiceModelResolveFlags flags = NativePublicServiceModelResolveFlags.None)
     {
         var aliasBytes = StrictUtf8.GetBytes(alias);
         lock (commandGate)
@@ -349,6 +352,7 @@ internal sealed class NativePublicServiceCoordinatorWorkspace : IDisposable
             var input = new NativePublicServiceModelResolveInput
             {
                 StructSize = SizeOf<NativePublicServiceModelResolveInput>(),
+                Flags = (uint)flags,
                 CommandEpoch = command.Epoch,
                 CommandMonotonicMilliseconds = command.MonotonicMilliseconds,
                 Alias = new NativePublicServiceTextSpan
@@ -387,6 +391,15 @@ internal sealed class NativePublicServiceCoordinatorWorkspace : IDisposable
                 Kind = (uint)kind
             };
             RequireOk(session.EnqueueTask(in input, out var output), "enqueue task");
+            if (output.AdmissionReason == (uint)NativePublicServiceAccessReason.ServiceDisabled)
+            {
+                throw new AiModelServiceDisabledException();
+            }
+            if (output.AdmissionReason != (uint)NativePublicServiceAccessReason.Allowed)
+            {
+                throw new InvalidOperationException(
+                    $"Unknown native task admission reason {output.AdmissionReason}.");
+            }
             return output;
         }
     }

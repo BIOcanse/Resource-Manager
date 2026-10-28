@@ -55,6 +55,8 @@ comptime {
     assertOffset(protocol.SubscriptionUpsertInput, "base_score", 48);
     assertOffset(protocol.TaskOutput, "base_score", 40);
     assertOffset(protocol.TaskOutput, "kind", 64);
+    assertOffset(protocol.TaskOutput, "admission_reason", 76);
+    assertOffset(protocol.ModelResolveInput, "flags", 4);
     assertOffset(protocol.TaskCompletionInput, "attempt", 32);
     assertOffset(protocol.TaskCompletionInput, "http_status_code", 36);
     assertOffset(protocol.TaskCompletionOutput, "next_wake_monotonic_milliseconds", 24);

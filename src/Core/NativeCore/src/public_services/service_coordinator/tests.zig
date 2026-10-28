@@ -97,6 +97,79 @@ test "module local C ABI carries one opaque session through routing lifecycle" {
     try std.testing.expectEqual(@as(u32, 0), snapshot.request_count);
 }
 
+test "disabled public service refuses load and unload without creating tasks" {
+    var session = try session_module.Session.create(std.testing.allocator, testConfig());
+    defer session.destroy();
+    var scratch = try TestModelScratch.init(session);
+    defer scratch.deinit();
+    try installModels(session, 1, 10);
+    try session.replaceCatalog(catalogHeader(3, 12, 1, 0, 0, 0, false), &.{}, &.{}, "");
+
+    var input = taskInput(4, 13, 3, 41, 501, 500, .load);
+    var denied = std.mem.zeroes(protocol.TaskOutput);
+    try std.testing.expectEqual(@intFromEnum(ResultCode.ok), abi.rm_public_service_coordinator_enqueue_task(
+        @ptrCast(session),
+        &input,
+        &denied,
+    ));
+    try std.testing.expectEqual(@intFromEnum(protocol.AccessReason.service_disabled), denied.admission_reason);
+    try std.testing.expectEqual(@as(u64, 0), denied.task_handle);
+    try std.testing.expectEqual(@as(u64, 0), denied.payload_handle);
+    try std.testing.expectEqual(@intFromEnum(protocol.TaskState.empty), denied.state);
+
+    const unload = try session.enqueueTask(taskInput(5, 14, 3, 41, 502, 500, .unload));
+    try std.testing.expectEqual(@intFromEnum(protocol.AccessReason.service_disabled), unload.admission_reason);
+    try std.testing.expectEqual(@as(u64, 0), unload.task_handle);
+    try std.testing.expectEqual(@as(u32, 0), session.snapshot().queued_task_count);
+    try std.testing.expectEqual(@as(u32, 0), session.snapshot().running_task_count);
+    var planned: [2]protocol.TaskOutput = undefined;
+    const plan = try session.planTasks(taskPlan(6, 15, 2), &planned);
+    try std.testing.expectEqual(@as(u32, 0), plan.output_count);
+
+    try session.replaceCatalog(catalogHeader(7, 16, 2, 0, 0, 0, true), &.{}, &.{}, "");
+    const accepted = try session.enqueueTask(taskInput(8, 17, 3, 41, 503, 500, .load));
+    try std.testing.expectEqual(@intFromEnum(protocol.AccessReason.allowed), accepted.admission_reason);
+    try std.testing.expectEqual(@as(u64, 1), accepted.task_handle);
+    try std.testing.expectEqual(@intFromEnum(protocol.TaskState.queued), accepted.state);
+}
+
+test "admitted load and unload settle after the public service is disabled" {
+    var session = try session_module.Session.create(std.testing.allocator, testConfig());
+    defer session.destroy();
+    var scratch = try TestModelScratch.init(session);
+    defer scratch.deinit();
+    try installModels(session, 1, 10);
+    const load = try session.enqueueTask(taskInput(3, 12, 3, 41, 501, 500, .load));
+    const unload = try session.enqueueTask(taskInput(4, 13, 3, 42, 502, 500, .unload));
+    try std.testing.expectEqual(@intFromEnum(protocol.AccessReason.allowed), unload.admission_reason);
+    try session.replaceCatalog(catalogHeader(5, 14, 1, 0, 0, 0, false), &.{}, &.{}, "");
+    var planned: [2]protocol.TaskOutput = undefined;
+    const plan = try session.planTasks(taskPlan(6, 15, 2), &planned);
+    try std.testing.expectEqual(@as(u32, 2), plan.output_count);
+    try std.testing.expectEqual(load.task_handle, planned[0].task_handle);
+    try std.testing.expectEqual(unload.task_handle, planned[1].task_handle);
+    const load_result = try session.completeTask(taskComplete(7, 16, load.task_handle, planned[0].attempt, .succeeded));
+    const unload_result = try session.completeTask(taskComplete(8, 17, unload.task_handle, planned[1].attempt, .succeeded));
+    try std.testing.expectEqual(@intFromEnum(protocol.TaskCompletionDisposition.succeeded), load_result.disposition);
+    try std.testing.expectEqual(@intFromEnum(protocol.TaskCompletionDisposition.succeeded), unload_result.disposition);
+    try std.testing.expectEqual(@as(u32, 0), session.snapshot().queued_task_count);
+    try std.testing.expectEqual(@as(u32, 0), session.snapshot().running_task_count);
+}
+
+test "task model resolution checks admission before a cold catalog without changing ordinary resolution" {
+    var session = try session_module.Session.create(std.testing.allocator, testConfig());
+    defer session.destroy();
+    var scratch = try TestModelScratch.init(session);
+    defer scratch.deinit();
+    var input = modelResolve(1, 10, "open-model");
+    input.flags = protocol.ModelResolveFlags.task_admission;
+    const disabled = try session.resolveModel(input, "open-model");
+    try std.testing.expectEqual(@intFromEnum(protocol.ModelResolveStatus.service_disabled), disabled.status);
+    const ordinary = try session.resolveModel(modelResolve(2, 11, "open-model"), "open-model");
+    try std.testing.expectEqual(@intFromEnum(protocol.ModelResolveStatus.catalog_unavailable), ordinary.status);
+    try std.testing.expectEqual(@as(u64, 0), session.runtime.model_acquisition_attempt_handle);
+}
+
 test "module local C ABI fails cleanly without output pollution" {
     var invalid_config = testConfig();
     invalid_config.resident_byte_budget = 1;
@@ -1361,6 +1434,8 @@ fn requestComplete(epoch: u64, now: u64, handle: u64) protocol.RequestCompleteIn
 }
 
 fn installModels(session: *session_module.Session, epoch: u64, now: u64) !void {
+    // Model-task fixtures admit work while the public service is enabled.
+    session.active_catalog.service_enabled = true;
     const text = "open-modelsecond-modelopen-model-loaded";
     const models = [_]protocol.ModelInput{
         model(41, 1, 101),
@@ -1471,7 +1546,7 @@ fn modelAcquisitionCompletion(
 fn modelResolve(epoch: u64, now: u64, value: []const u8) protocol.ModelResolveInput {
     return .{
         .struct_size = @sizeOf(protocol.ModelResolveInput),
-        .reserved_u32 = 0,
+        .flags = 0,
         .command_epoch = epoch,
         .command_monotonic_milliseconds = now,
         .alias = .{ .offset = 0, .length = @intCast(value.len) },

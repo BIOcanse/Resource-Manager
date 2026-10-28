@@ -526,9 +526,17 @@ pub const RuntimeState = struct {
 
     pub fn enqueueTask(
         self: *RuntimeState,
+        active_catalog: *const catalog.CatalogBank,
         models: *const catalog.ModelBank,
         input: protocol.TaskEnqueueInput,
     ) Error!protocol.TaskOutput {
+        const reason = taskAdmissionReason(active_catalog);
+        if (reason != .allowed) {
+            var output = std.mem.zeroes(protocol.TaskOutput);
+            output.struct_size = @sizeOf(protocol.TaskOutput);
+            output.admission_reason = @intFromEnum(reason);
+            return output;
+        }
         const kind: protocol.TaskKind = @enumFromInt(input.kind);
         if (kind == .invalid or
             input.flags & ~protocol.TaskFlags.known != 0 or
@@ -555,12 +563,16 @@ pub const RuntimeState = struct {
             .kind = input.kind,
             .state = @intFromEnum(protocol.TaskState.queued),
             .attempt = 0,
-            .reserved_u32 = 0,
+            .admission_reason = @intFromEnum(protocol.AccessReason.allowed),
             .reserved = .{ 0, 0 },
         };
         self.tasks[slot] = .{ .active = true, .row = row };
         self.task_count += 1;
         return row;
+    }
+
+    pub fn taskAdmissionReason(active_catalog: *const catalog.CatalogBank) protocol.AccessReason {
+        return if (active_catalog.service_enabled) .allowed else .service_disabled;
     }
 
     pub fn planTasks(

@@ -24,3 +24,6 @@ public interface ILocalAiModelService
 
 public sealed class AiModelRuntimeUnavailableException(string message, Exception? innerException = null)
     : Exception(message, innerException);
+
+public sealed class AiModelServiceDisabledException()
+    : Exception("The public service is disabled.");

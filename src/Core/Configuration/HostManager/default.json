@@ -20,7 +20,7 @@
     "software_identity_resolution_abi_version": 65536,
     "report_coordinator_abi_version": 524288,
     "file_query_abi_version": 196608,
-    "public_service_coordinator_abi_version": 262144,
+    "public_service_coordinator_abi_version": 327680,
     "display_coordinator_abi_version": 196608,
     "operation_coordinator_abi_version": 131072,
     "metric_snapshot_abi_version": 851968,

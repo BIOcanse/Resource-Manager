@@ -221,6 +221,10 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             return Results.Ok(await action());
         }
+        catch (AiModelServiceDisabledException)
+        {
+            return Results.StatusCode(StatusCodes.Status404NotFound);
+        }
         catch (ArgumentException exception)
         {
             return Results.BadRequest(new EndpointErrorMessagePayload("invalid-ai-model-request", exception.Message));

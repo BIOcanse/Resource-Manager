@@ -273,7 +273,7 @@ pub const Session = struct {
     ) Error!protocol.ModelResolveOutput {
         try self.requireModelScratch();
         if (input.struct_size != @sizeOf(protocol.ModelResolveInput) or
-            input.reserved_u32 != 0 or
+            input.flags & ~protocol.ModelResolveFlags.known != 0 or
             input.alias.offset != 0 or
             input.alias.length != alias.len or
             !protocol.allZero([3]u64, input.reserved) or
@@ -286,6 +286,12 @@ pub const Session = struct {
         var output = std.mem.zeroes(protocol.ModelResolveOutput);
         output.struct_size = @sizeOf(protocol.ModelResolveOutput);
         output.model_generation = self.active_models.generation;
+        if (input.flags & protocol.ModelResolveFlags.task_admission != 0 and
+            state.RuntimeState.taskAdmissionReason(&self.active_catalog) == .service_disabled)
+        {
+            output.status = @intFromEnum(protocol.ModelResolveStatus.service_disabled);
+            return output;
+        }
         if (self.active_models.generation == 0 or
             !self.runtime.modelCatalogUsable(input.command_monotonic_milliseconds))
         {
@@ -369,7 +375,7 @@ pub const Session = struct {
             return error.InvalidArgument;
         }
         try self.beginCommand(input.command_epoch, input.command_monotonic_milliseconds);
-        return self.runtime.enqueueTask(&self.active_models, input);
+        return self.runtime.enqueueTask(&self.active_catalog, &self.active_models, input);
     }
 
     pub fn planTasks(

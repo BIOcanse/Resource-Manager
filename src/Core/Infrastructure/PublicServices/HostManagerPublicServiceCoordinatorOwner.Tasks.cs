@@ -65,8 +65,14 @@ public sealed partial class HostManagerPublicServiceCoordinatorOwner
             holder = AcquireCurrentLocked();
             lock (holder.ModelGate)
             {
-                var resolved = holder.Workspace.ResolveModel(alias);
+                var resolved = holder.Workspace.ResolveModel(
+                    alias,
+                    NativePublicServiceModelResolveFlags.TaskAdmission);
                 var status = (NativePublicServiceModelResolveStatus)resolved.Status;
+                if (status == NativePublicServiceModelResolveStatus.ServiceDisabled)
+                {
+                    throw new AiModelServiceDisabledException();
+                }
                 if (status == NativePublicServiceModelResolveStatus.CatalogUnavailable)
                 {
                     QueueModelRefresh();

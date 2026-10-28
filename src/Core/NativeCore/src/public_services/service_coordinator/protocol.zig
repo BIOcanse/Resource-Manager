@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const abi_version: u32 = 0x0004_0000;
+pub const abi_version: u32 = 0x0005_0000;
 
 pub const ConfigFlags = struct {
     pub const loopback_only: u64 = 1 << 0;
@@ -115,6 +115,12 @@ pub const ModelResolveStatus = enum(u32) {
     matched = 1,
     not_found = 2,
     catalog_unavailable = 3,
+    service_disabled = 4,
+};
+
+pub const ModelResolveFlags = struct {
+    pub const task_admission: u32 = 1 << 0;
+    pub const known: u32 = task_admission;
 };
 
 pub const TaskKind = enum(u32) {
@@ -394,7 +400,7 @@ pub const RequestCompleteOutput = extern struct {
 
 pub const ModelResolveInput = extern struct {
     struct_size: u32,
-    reserved_u32: u32,
+    flags: u32,
     command_epoch: u64,
     command_monotonic_milliseconds: u64,
     alias: TextSpan,
@@ -503,7 +509,7 @@ pub const TaskOutput = extern struct {
     kind: u32,
     state: u32,
     attempt: u32,
-    reserved_u32: u32,
+    admission_reason: u32,
     reserved: [2]u64,
 };
 
