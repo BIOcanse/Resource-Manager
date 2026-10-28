@@ -12,7 +12,8 @@ export const enRuntimeErrorsCopy: Pick<
     "access-scope-required": "The current access key does not have the scope this action requires, so it was not performed.",
     "elevated-administrator-required": "This action requires administrator authorization, so it was not performed.",
     "local-windows-caller-required": "This action accepts only requests started by a Windows user on this computer, so it was not performed.",
-    "access-key-required": "This action requires an access key, so it was not performed."
+    "access-key-required": "This action requires an access key, so it was not performed.",
+    missingScopes: (scopes: readonly string[]) => `The current access key lacks the ${new Intl.ListFormat("en-US").format(scopes.map((scope) => `“${scope}”`))} ${scopes.length > 1 ? "scopes" : "scope"}, so the action was not performed.`
   },
   apiError: {
     readFailed: "Reading data failed, please try again later",

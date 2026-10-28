@@ -2454,7 +2454,8 @@ const deDeAppCopy: AppCopy = {
     "access-scope-required": "Dem aktuellen Zugriffsschlüssel fehlt der für diese Aktion erforderliche Bereich; sie wurde nicht ausgeführt.",
     "elevated-administrator-required": "Diese Aktion erfordert eine Administratorautorisierung und wurde daher nicht ausgeführt.",
     "local-windows-caller-required": "Diese Aktion nimmt nur Anfragen an, die ein Windows-Benutzer dieses Computers gestartet hat, und wurde daher nicht ausgeführt.",
-    "access-key-required": "Diese Aktion erfordert einen Zugriffsschlüssel und wurde daher nicht ausgeführt."
+    "access-key-required": "Diese Aktion erfordert einen Zugriffsschlüssel und wurde daher nicht ausgeführt.",
+    missingScopes: (scopes: readonly string[]) => `Dem aktuellen Zugriffsschlüssel ${scopes.length > 1 ? "fehlen die Bereiche" : "fehlt der Bereich"} ${new Intl.ListFormat("de-DE").format(scopes.map((scope) => `„${scope}“`))}; die Aktion wurde nicht ausgeführt.`
   },
   apiError: {
     readFailed: "Das Lesen der Daten ist fehlgeschlagen, versuchen Sie es später erneut",

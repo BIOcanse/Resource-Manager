@@ -2454,7 +2454,8 @@ const jaJpAppCopy: AppCopy = {
     "access-scope-required": "現在のアクセス キーにはこの操作に必要なスコープがないため、実行されませんでした。",
     "elevated-administrator-required": "この操作には管理者の承認が必要なため、実行されませんでした。",
     "local-windows-caller-required": "この操作はこのコンピューターの Windows ユーザーが開始した要求のみ受け付けるため、実行されませんでした。",
-    "access-key-required": "この操作にはアクセス キーが必要なため、実行されませんでした。"
+    "access-key-required": "この操作にはアクセス キーが必要なため、実行されませんでした。",
+    missingScopes: (scopes: readonly string[]) => cjkText`現在のアクセス キーには${scopes.map((scope) => `「${scope}」`).join("、")}のスコープがないため、操作は実行されませんでした。`
   },
   apiError: {
     readFailed: "データの読み取りに失敗しました。しばらくしてから再試行してください",

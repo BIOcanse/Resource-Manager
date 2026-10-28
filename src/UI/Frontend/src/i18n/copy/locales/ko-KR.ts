@@ -2453,7 +2453,8 @@ const koKrAppCopy: AppCopy = {
     "access-scope-required": "현재 액세스 키에 이 작업에 필요한 범위가 없어 실행되지 않았습니다.",
     "elevated-administrator-required": "이 작업에는 관리자 승인이 필요하므로 실행되지 않았습니다.",
     "local-windows-caller-required": "이 작업은 이 컴퓨터의 Windows 사용자가 시작한 요청만 받으므로 실행되지 않았습니다.",
-    "access-key-required": "이 작업에는 액세스 키가 필요하므로 실행되지 않았습니다."
+    "access-key-required": "이 작업에는 액세스 키가 필요하므로 실행되지 않았습니다.",
+    missingScopes: (scopes: readonly string[]) => `현재 액세스 키에 ${scopes.map((scope) => `‘${scope}’`).join(", ")} 범위가 없어 작업이 실행되지 않았습니다.`
   },
   apiError: {
     readFailed: "데이터를 읽지 못했습니다. 잠시 후 다시 시도하세요",

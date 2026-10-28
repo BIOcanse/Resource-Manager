@@ -2454,7 +2454,8 @@ const frFrAppCopy: AppCopy = {
     "access-scope-required": "La clé d’accès actuelle n’a pas la portée requise par cette action ; elle n’a pas été effectuée.",
     "elevated-administrator-required": "Cette action nécessite une autorisation d’administrateur ; elle n’a pas été effectuée.",
     "local-windows-caller-required": "Cette action n’accepte que les requêtes lancées par un utilisateur Windows de cet ordinateur ; elle n’a pas été effectuée.",
-    "access-key-required": "Cette action nécessite une clé d’accès ; elle n’a pas été effectuée."
+    "access-key-required": "Cette action nécessite une clé d’accès ; elle n’a pas été effectuée.",
+    missingScopes: (scopes: readonly string[]) => `La clé d’accès actuelle n’a pas ${scopes.length > 1 ? "les portées" : "la portée"} ${new Intl.ListFormat("fr-FR").format(scopes.map((scope) => `« ${scope} »`))} ; l’action n’a pas été effectuée.`
   },
   apiError: {
     readFailed: "Échec de la lecture des données, réessayez plus tard",

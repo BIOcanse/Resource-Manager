@@ -2454,7 +2454,8 @@ const esEsAppCopy: AppCopy = {
     "access-scope-required": "La clave de acceso actual no tiene el ámbito que requiere esta acción, por lo que no se realizó.",
     "elevated-administrator-required": "Esta acción requiere autorización de administrador, por lo que no se realizó.",
     "local-windows-caller-required": "Esta acción solo acepta solicitudes iniciadas por un usuario de Windows de este equipo, por lo que no se realizó.",
-    "access-key-required": "Esta acción requiere una clave de acceso, por lo que no se realizó."
+    "access-key-required": "Esta acción requiere una clave de acceso, por lo que no se realizó.",
+    missingScopes: (scopes: readonly string[]) => `La clave de acceso actual no tiene ${scopes.length > 1 ? "los ámbitos" : "el ámbito"} ${new Intl.ListFormat("es-ES").format(scopes.map((scope) => `«${scope}»`))}, por lo que la acción no se realizó.`
   },
   apiError: {
     readFailed: "No se pudieron leer los datos, inténtalo de nuevo más tarde",

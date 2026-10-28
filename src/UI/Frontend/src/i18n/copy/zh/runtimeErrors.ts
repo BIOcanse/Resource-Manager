@@ -8,7 +8,8 @@ export const zhRuntimeErrorsCopy = {
     "access-scope-required": "当前访问密钥没有执行此操作所需的权限范围，操作未执行。",
     "elevated-administrator-required": "此操作需要管理员授权，操作未执行。",
     "local-windows-caller-required": "此操作只接受由本机 Windows 用户发起的请求，操作未执行。",
-    "access-key-required": "此操作需要访问密钥，操作未执行。"
+    "access-key-required": "此操作需要访问密钥，操作未执行。",
+    missingScopes: (scopes: readonly string[]) => cjkText`当前访问密钥缺少${scopes.map((scope) => `“${scope}”`).join("、")}范围，操作未执行。`
   },
   apiError: {
     readFailed: "读取数据失败，请稍后重试",
