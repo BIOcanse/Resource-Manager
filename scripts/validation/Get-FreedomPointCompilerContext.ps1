@@ -11,7 +11,7 @@ $ErrorActionPreference='Stop'
 $taskProjects=@()
 foreach($taskRelative in $ProjectRelativePaths) {
     $taskArguments=@('msbuild',(Join-Path $RepositoryRoot $taskRelative),
-        '-target:ResolveReferences,GenerateGlobalUsings,GenerateAssemblyInfo,GenerateTargetFrameworkMonikerAttribute',
+        '-target:FreedomPointCompilerInputs',
         '-getProperty:DefineConstants,Configuration,TargetFramework,AssemblyName,LangVersion,OutputType,Nullable,AllowUnsafeBlocks,CompilerGeneratedFilesOutputPath,IntermediateOutputPath,ResourceManagerLedgerOutputRoot',
         '-getItem:ReferencePath,Compile,ProjectReference','-nologo','-verbosity:quiet','-nodeReuse:false','-p:UseSharedCompilation=false')+$BuildProperties
     $taskContext=(& $Dotnet @taskArguments) -join [Environment]::NewLine

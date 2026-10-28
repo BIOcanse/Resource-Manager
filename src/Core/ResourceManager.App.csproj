@@ -7,7 +7,7 @@
     <Exec Command="pwsh -NoProfile -File &quot;$(MSBuildProjectDirectory)/../../scripts/build/Generate-StateItems.ps1&quot; -Registry &quot;$(MSBuildProjectDirectory)/../Shared/StateItems/state-items.json&quot; -Process backend -Namespace ResourceManager.App.StateItems -Output &quot;$(IntermediateOutputPath)StateItems.g.cs&quot;" />
   </Target>
   <!-- Always include the output, including when the incremental generation target is skipped. -->
-  <Target Name="IncludeStateItems" BeforeTargets="CoreCompile" DependsOnTargets="GenerateStateItems" Condition="'$(DesignTimeBuild)' != 'true'">
+  <Target Name="IncludeStateItems" BeforeTargets="CoreCompile;FreedomPointCompilerInputs" DependsOnTargets="GenerateStateItems" Condition="'$(DesignTimeBuild)' != 'true'">
     <ItemGroup>
       <Compile Include="$(IntermediateOutputPath)StateItems.g.cs" />
     </ItemGroup>
