@@ -108,6 +108,9 @@ public sealed class FanCurveRunNativeLifetimeTests
             => Task.FromResult(ControlApplyReport.Empty);
         public async Task<ControlApplyReport> WriteAsync(ControlDesiredState desired, CancellationToken token)
         {
+            // The production write layer discovers through its catalog before
+            // invoking writers; Describe() only reads that discovered inventory.
+            await core.DiscoverAsync(token);
             var outcomes = new List<ControlApplyOutcome>();
             foreach (var target in desired.Objects)
                 foreach (var setting in target.Settings)
