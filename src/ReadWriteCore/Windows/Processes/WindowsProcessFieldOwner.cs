@@ -97,6 +97,24 @@ public sealed partial class WindowsProcessFieldOwner : IDisposable
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
         (residency ?? throw new InvalidOperationException("This owner uses the hosted shared CPU residency reader and has no standalone CPU residency capture.")).Stop();
     }
+
+    /// <summary>The single-method standalone run owns its bucket storage locally.
+    /// Continuous closed history is needed until this run returns, including cancellation.</summary>
+    public async Task RunCpuResidencyCaptureAsync(Func<CancellationToken, Task> run,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
+        var capture = residency ?? throw new InvalidOperationException("This owner uses the hosted shared CPU residency reader and has no standalone CPU residency capture.");
+        using var storage = new CaptureBucketStorage();
+        try
+        {
+            capture.SetBucketStorage(storage);
+            StartCpuResidencyCapture();
+            await run(cancellationToken).ConfigureAwait(false);
+        }
+        finally { capture.Stop(); }
+    }
     public IReadWriteBackend Backend
     {
         get { lock (Current.Gate) return backend ??= new(Current.ReadParts, Current.ReadPart,

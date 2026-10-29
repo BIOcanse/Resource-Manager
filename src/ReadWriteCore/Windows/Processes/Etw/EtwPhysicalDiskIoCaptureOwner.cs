@@ -29,7 +29,7 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
     private readonly Dictionary<uint, long> disks = [];
     private readonly Dictionary<int, ulong?> processBirths = [];
     private readonly int bucketWidthMilliseconds, bucketCount, maximumActivePairs;
-    private readonly Func<int, CaptureBucketMemory> allocateBuckets;
+    private CaptureBucketStorage bucketStorage;
     private long lastPrunedBucket = long.MinValue;
 
     private IKernelEtwSubscription? subscription;
@@ -61,7 +61,17 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
         this.broker = broker; this.diagnostics = diagnostics; this.clock = clock; this.openProcess = openProcess;
         this.bucketWidthMilliseconds = bucketWidthMilliseconds; this.maximumActivePairs = maximumActivePairs;
         bucketCount = checked((int)((WindowMilliseconds + bucketWidthMilliseconds - 1) / bucketWidthMilliseconds) + 2);
-        this.allocateBuckets = allocateBuckets ?? CaptureBucketMemory.AllocateManaged;
+        bucketStorage = new(allocateBuckets);
+    }
+
+    internal void SetBucketStorage(CaptureBucketStorage storage)
+    {
+        ArgumentNullException.ThrowIfNull(storage);
+        lock (eventGate)
+        {
+            ClearTotals();
+            bucketStorage = storage;
+        }
     }
 
     public PhysicalDiskIoAttributionSnapshot Read(bool includeObservedTraffic = false)
@@ -220,13 +230,18 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
             {
                 var oldest = pairs.MinBy(pair => pair.Value.LastTick);
                 incompleteThroughTick = Math.Max(incompleteThroughTick, oldest.Value.LastTick);
-                oldest.Value.Memory.Dispose(); pairs.Remove(oldest.Key);
+                bucketStorage.Release(oldest.Value.Position); pairs.Remove(oldest.Key);
             }
-            totals = new(allocateBuckets(checked(bucketCount * Marshal.SizeOf<DiskBucket>())));
-            pairs.Add(key, totals);
+            var position = bucketStorage.Allocate(checked(bucketCount * Marshal.SizeOf<DiskBucket>()));
+            try
+            {
+                totals = new(position);
+                pairs.Add(key, totals);
+            }
+            catch { bucketStorage.Release(position); throw; }
         }
         var id = tick / bucketWidthMilliseconds;
-        ref var bucket = ref totals.Cells[(int)(id % bucketCount)];
+        ref var bucket = ref Cells(totals)[(int)(id % bucketCount)];
         if (bucket.Id != id || bucket.Count == 0) bucket = new() { Id = id, FirstTick = tick, LastTick = tick };
         bucket.FirstTick = Math.Min(bucket.FirstTick, tick); bucket.LastTick = Math.Max(bucket.LastTick, tick);
         try { bucket.Bytes = checked(bucket.Bytes + bytes); bucket.Count = checked(bucket.Count + 1); }
@@ -243,7 +258,7 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
         lastPrunedBucket = bucket;
         foreach (var pair in pairs)
             if (pair.Value.LastTick < now - WindowMilliseconds - bucketWidthMilliseconds)
-            { pair.Value.Memory.Dispose(); pairs.Remove(pair.Key); }
+            { bucketStorage.Release(pair.Value.Position); pairs.Remove(pair.Key); }
         foreach (var disk in disks)
             if (disk.Value < now - RetentionMilliseconds) disks.Remove(disk.Key);
         var activePids = new HashSet<int>();
@@ -264,7 +279,7 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
             foreach (var pair in pairs)
             {
                 ulong bytes = 0; int count = 0; bool invalid = false;
-                foreach (ref var bucket in pair.Value.Cells)
+                foreach (ref var bucket in Cells(pair.Value))
                 {
                     // Keep exact byte integers. A partial edge bucket is omitted instead of prorating its traffic.
                     if (bucket.Count == 0 || bucket.FirstTick < cutoff || bucket.LastTick > now) continue;
@@ -280,7 +295,7 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
     }
     private void ClearTotals()
     {
-        foreach (var pair in pairs) { pair.Value.Memory.Dispose(); pairs.Remove(pair.Key); }
+        foreach (var pair in pairs) { bucketStorage.Release(pair.Value.Position); pairs.Remove(pair.Key); }
         pairs.TrimExcess(); disks.Clear(); disks.TrimExcess(); processBirths.Clear(); processBirths.TrimExcess(); lastPrunedBucket = long.MinValue;
     }
     internal (IReadOnlyDictionary<int, PhysicalDiskProcessAttribution> Processes, bool Complete) ReadWindow(long now)
@@ -357,12 +372,17 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
     {
         IKernelEtwSubscription? retired;
         lock (subscriptionGate) { retired = subscription; subscription = null; Volatile.Write(ref generation, 0); }
-        retired?.Dispose();
-        lock (subscriptionGate)
+        try { retired?.Dispose(); }
+        finally
         {
-            if (subscription is not null) return;
-            lock (eventGate) { ClearTotals(); startedTick = long.MinValue; incompleteThroughTick = long.MinValue; processRevision++; }
-            state = PhysicalDiskIoProviderStates.Idle; message = idleMessage;
+            lock (subscriptionGate)
+            {
+                if (subscription is null)
+                {
+                    lock (eventGate) { ClearTotals(); startedTick = long.MinValue; incompleteThroughTick = long.MinValue; processRevision++; }
+                    state = PhysicalDiskIoProviderStates.Idle; message = idleMessage;
+                }
+            }
         }
     }
     public void Dispose()
@@ -380,10 +400,10 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
         internal int Count;
         internal bool Invalid;
     }
-    private sealed class DiskTotals(CaptureBucketMemory memory)
+    private Span<DiskBucket> Cells(DiskTotals totals) => MemoryMarshal.Cast<byte, DiskBucket>(bucketStorage.Bytes(totals.Position));
+    private sealed class DiskTotals(CaptureBucketStorage.Position position)
     {
-        internal CaptureBucketMemory Memory { get; } = memory;
+        internal CaptureBucketStorage.Position Position { get; } = position;
         internal long LastTick = long.MinValue;
-        internal Span<DiskBucket> Cells => MemoryMarshal.Cast<byte, DiskBucket>(Memory.Bytes);
     }
 }

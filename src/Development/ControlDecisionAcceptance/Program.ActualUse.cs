@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -293,6 +292,7 @@ internal static partial class Program
                     var subscribedAt = DateTimeOffset.UtcNow;
                     residencyLease = residency.AcquireSubscription("actual-use:30s", residencyInterval);
                     var publications = new List<object>();
+                    var idleBucketSamples = new List<(DateTimeOffset At, long RetainedBucketBytes, int ActivePairCount)>();
                     var lastRevision = residency.CanonicalRevision;
                     try
                     {
@@ -322,16 +322,29 @@ internal static partial class Program
                         }
                         active |= samples.Any(value => value.Phase == "b-residency" && value.WindowActive);
                         idle |= !capture.IsWindowActive;
-                        if (windows.Count >= 3 && active && idle) break;
+                        var diagnostics = residency.GetDiagnostics();
+                        if (diagnostics.State == "Idle")
+                        {
+                            // Aggregation is internal to the independent capture library.
+                            var aggregation = diagnostics.GetType().GetProperty("Aggregation")!.GetValue(diagnostics)
+                                ?? throw new InvalidDataException("Idle residency lost its run identity buffer.");
+                            idleBucketSamples.Add((DateTimeOffset.UtcNow,
+                                (long)aggregation.GetType().GetProperty("RetainedBucketBytes")!.GetValue(aggregation)!,
+                                (int)aggregation.GetType().GetProperty("ActivePairCount")!.GetValue(aggregation)!));
+                        }
+                        if (windows.Count >= 3 && active && idle && diagnostics.State == "Idle") break;
                     }
                     const double cadenceToleranceMilliseconds = 500;
                     await SaveAsync(evidence, "b-publications.json", new { windows, active, idle,
+                        idleBucketSamples = idleBucketSamples.Select(value => new { value.At, value.RetainedBucketBytes, value.ActivePairCount }).ToArray(),
                         requestedIntervalMilliseconds = 30000, cadenceToleranceMilliseconds,
                         coldStartBudget = residencyColdBudget, steadyWindowBudget = residencySteadyBudget,
                         measurementBudget = residencyMeasurementBudget, observationWindow = residencyWindow, deliveryGrace = residencyGrace,
                         diagnostics = residency.GetDiagnostics(),
                         coldStart = "The first due can fail warming/continuity. One cold cadence and complete window, followed by two steady periods; no additional retry allowance." });
                     if (windows.Count < 3) throw new InvalidDataException("Did not observe cold start plus two steady-state residency windows.");
+                    if (idleBucketSamples.Any(value => value.RetainedBucketBytes != 0 || value.ActivePairCount != 0))
+                        throw new InvalidDataException("Idle residency retained pair or bucket storage.");
                     if (windows[0].SessionGeneration <= 0 || windows.Any(value => value.SessionGeneration != windows[0].SessionGeneration))
                         throw new InvalidDataException("Residency keyword window updates restarted the held kernel session.");
                     for (var index = 1; index < windows.Count; index++)
@@ -339,6 +352,8 @@ internal static partial class Program
                         var previous = windows[index - 1];
                         var current = windows[index];
                         var spacing = (current.MeasuredThrough - previous.MeasuredThrough).TotalMilliseconds;
+                        if (!idleBucketSamples.Any(value => value.At > previous.MeasuredThrough && value.At < current.MeasuredFrom))
+                            throw new InvalidDataException("No zero-bucket idle evidence between residency windows.");
                         bool Active(ResidencyWindowEvidence window) => samples.Any(value => value.Phase == "b-residency"
                             && value.WindowActive && value.At >= window.MeasuredFrom && value.At <= window.MeasuredThrough
                             && (value.Native.Flags & (uint)KernelTraceEventParser.Keywords.ContextSwitch) != 0);
@@ -470,8 +485,9 @@ internal static partial class Program
                         Mark("frozen-observation");
                         await Observe("d-interrupt-frozen", interruptObservation, false, token, requireMetadata: true);
                         var frozenNative = QueryOwnedKernel(names[0]);
+                        var frozenModules = ReadInterruptModules(interrupts);
                         if ((frozenNative.Flags & (uint)KernelTraceEventParser.Keywords.ImageLoad) == 0
-                            || !ReferenceEquals(modules, ReadInterruptModules(interrupts)) || modules.Count == 0
+                            || !ReferenceEquals(modules.Map, frozenModules.Map) || frozenModules.Count == 0
                             || !interrupts.Read().ProviderState.State.Equals("frozen", StringComparison.OrdinalIgnoreCase))
                             throw new InvalidDataException("Freeze lost module metadata or ImageLoad ownership.");
                         interrupts.ApplyMode(ResourceManagerComputeZoneMode.Normal);
@@ -490,7 +506,7 @@ internal static partial class Program
                         }, token);
                         Mark("resumed-observation");
                         await Observe("d-interrupt-resumed", interruptObservation, true, token, requireMetadata: true);
-                        if (broker.GetSnapshot().Generation != generation || !ReferenceEquals(modules, ReadInterruptModules(interrupts)))
+                        if (broker.GetSnapshot().Generation != generation || !ReferenceEquals(modules.Map, ReadInterruptModules(interrupts).Map))
                             throw new InvalidDataException("Freeze/resume replaced the held metadata session.");
                         Mark("complete");
                     }
@@ -548,13 +564,18 @@ internal static partial class Program
         return cases.All(value => value.Status == "passed") ? 0 : 1;
     }
 
-    private static IDictionary ReadInterruptModules(EtwSystemInterruptSnapshotSource source)
+    // Map is the session's KernelModuleAddressMap, which freeze keeps; it replaces its sorted
+    // table whole on every change, so Count is read from the table each call.
+    private static (object Map, int Count) ReadInterruptModules(EtwSystemInterruptSnapshotSource source)
     {
         var session = source.GetType().GetField("currentSession", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(source)
             ?? throw new InvalidDataException("No real interrupt session.");
         var window = session.GetType().GetProperty("Window")!.GetValue(session)!;
-        var modules = window.GetType().GetProperty("Modules")!.GetValue(window)!;
-        return (IDictionary)modules.GetType().GetField("modules", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(modules)!;
+        var map = window.GetType().GetProperty("Modules")!.GetValue(window)!;
+        var table = map.GetType().GetField("table", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(map)
+            ?? throw new InvalidDataException("The kernel module map has no table.");
+        var ranges = (Array)table.GetType().GetProperty("Ranges")!.GetValue(table)!;
+        return (map, ranges.Length);
     }
 
     private sealed record OwnedSessionQuery(string Name, int ExitCode, string Output, string Error);

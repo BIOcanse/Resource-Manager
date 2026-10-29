@@ -26,6 +26,8 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
     private readonly Action<CpuResidencyAggregationBuffer.InventorySeed, Func<bool>> seedProcessInventory;
     private readonly Action? published;
     private readonly Func<int, CaptureBucketMemory>? allocateBuckets;
+    // Borrowed from the enclosing window/run. Contains positions, never leases.
+    private CaptureBucketStorage? bucketStorage;
     private readonly object subscriptionGate = new(), snapshotGate = new();
     public SamplingPublicationSignal Publications { get; } = new();
     private IKernelEtwSubscription? kernelSubscription;
@@ -112,7 +114,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
     }
 
     /// <summary>Pauses execution-window intake without releasing the run's kernel resource or published value.</summary>
-    public void SetCaptureEnabled(bool enabled, string idleMessage = "CPU residency capture is paused by its composition.")
+    public void SetCaptureEnabled(bool enabled, string idleMessage = "CPU residency capture is paused by its composition.", bool beginWindow = true)
     {
         IKernelEtwSubscription? held = null;
         lock (subscriptionGate)
@@ -125,10 +127,11 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
                 PauseWindowCore(idleMessage);
                 held = DetachContextSwitchCore();
             }
-            else BeginWindowCore();
+            else if (beginWindow) BeginWindowCore();
+            else PauseWindowCore("CPU residency is waiting for its next finite observation window.");
         }
         held?.Dispose();
-        if (enabled) EnsureContextSwitchHeld();
+        if (enabled && beginWindow) EnsureContextSwitchHeld();
     }
 
     public bool IsWindowActive
@@ -141,6 +144,28 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
     {
         lock (subscriptionGate) BeginWindowCore();
         EnsureContextSwitchHeld();
+    }
+
+    internal void SetBucketStorage(CaptureBucketStorage storage)
+    {
+        lock (subscriptionGate)
+        {
+            activeSession?.Buffer.SetBucketStorage(storage);
+            bucketStorage = storage;
+        }
+    }
+
+    // This is the finite window method: skipped waits, cancellation, publication
+    // and exceptions all return its storage and window-only event hold.
+    internal async Task<T> RunWindowAsync<T>(CaptureBucketStorage storage, Func<Task<T>> sample)
+    {
+        try
+        {
+            SetBucketStorage(storage);
+            BeginWindow();
+            return await sample().ConfigureAwait(false);
+        }
+        finally { PauseWindow("CPU residency window has returned; aggregation is paused until the next window."); }
     }
 
     private void EnsureContextSwitchHeld()
@@ -232,6 +257,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         {
             session.WindowActive = false;
             session.Window.Invalidate();
+            session.Buffer.ReleaseWindowBuckets();
         }
         state = "Idle";
         message = idleMessage;
@@ -350,6 +376,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
             if (previous is not null) retiredBuffers.Add(previous.Buffer);
             Volatile.Write(ref activeSession, null);
             ClearRetiredBuffersCore();
+            if (bucketStorage is { } storage) session.Buffer.SetBucketStorage(storage);
             session.WindowActive = !paused && (previous?.WindowActive ?? true);
             Volatile.Write(ref activeSession, session);
             state = paused ? "Idle" : "Warming";
@@ -1251,6 +1278,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         var session = Volatile.Read(ref activeSession);
         if (session is not null) { session.Window.Invalidate(); retiredBuffers.Add(session.Buffer); }
         Volatile.Write(ref activeSession, null);
+        bucketStorage = null;
         return (subscription, session);
     }
 

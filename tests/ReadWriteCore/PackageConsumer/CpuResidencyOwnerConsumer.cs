@@ -47,8 +47,7 @@ internal static class CpuResidencyOwnerConsumer
         { Console.WriteLine("CPU residency real Windows ETW consumer not requested; no native availability claimed."); return; }
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         using var owner = WindowsProcessFieldOwner.CreateDefault();
-        owner.StartCpuResidencyCapture();
-        try
+        await owner.RunCpuResidencyCaptureAsync(async _ =>
         {
             await owner.CollectAsync([Name], timeout.Token); // selected-only: no thread-count snapshot, network or disk lease
             var fields = owner.Backend.Catalog.Fields.Where(field => field.Definition.Name == Name
@@ -65,8 +64,7 @@ internal static class CpuResidencyOwnerConsumer
                     throw new InvalidDataException("Actual residency observation omitted its closed window.");
             }
             Console.WriteLine($"CPU residency actual default Windows canonical consumer completed: selected={current.Length}, current={current.Count(reading => reading.Status == FieldObservationStatus.Current)}; unavailable entries are not inferred zeros.");
-            }
-        finally { owner.StopCpuResidencyCapture(); }
+        }, timeout.Token);
     }
 
     private sealed class PassiveBroker : IKernelEtwSessionBroker

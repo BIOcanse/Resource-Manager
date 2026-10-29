@@ -1,4 +1,4 @@
-﻿using ResourceManager.Adapter;
+using ResourceManager.Adapter;
 using ResourceManager.App.Infrastructure.Adaptation;
 using ResourceManager.App.Application.Adaptation;
 using ResourceManager.App.Application.Monitoring;
@@ -17,6 +17,8 @@ public sealed class EtwPhysicalDiskIoAttributionReader : BackgroundService, IPhy
 {
     private static readonly ulong ZoneObjectKey = AdapterResourceKey.FromString($"resource-manager:zone:{MonitoringSourceZoneIds.EtwFileIoDisk}");
     private readonly EtwPhysicalDiskIoCaptureOwner capture;
+    private readonly Func<Func<Func<int, CaptureBucketMemory>, Task>, Task> runBucketScope =
+        static body => body(CaptureBucketMemory.AllocateManaged);
     private readonly object captureLifetimeGate = new();
     private bool runActive;
     private bool disposed;
@@ -32,10 +34,12 @@ public sealed class EtwPhysicalDiskIoAttributionReader : BackgroundService, IPhy
         ResourceManagerLedgerOwner ledgerOwner) : this(broker, logger)
     {
         capture = new(broker, new KernelEtwDiagnostics(item => logger.LogWarning(item.Exception, "{Message}", item.MessageTemplate)),
-            static () => Environment.TickCount64, WindowsNetworkEndpointProcessLease.Open,
-            allocateBuckets: length => LedgerCaptureBucketMemory.Create(ledgerOwner, length));
+            static () => Environment.TickCount64, WindowsNetworkEndpointProcessLease.Open);
+        runBucketScope = body => LedgerCaptureBucketStorage.RunAsync(ledgerOwner, body);
     }
     internal EtwPhysicalDiskIoAttributionReader(EtwPhysicalDiskIoCaptureOwner capture) => this.capture = capture;
+    internal EtwPhysicalDiskIoAttributionReader(EtwPhysicalDiskIoCaptureOwner capture, ResourceManagerLedgerOwner ledgerOwner)
+        : this(capture) => runBucketScope = body => LedgerCaptureBucketStorage.RunAsync(ledgerOwner, body);
     public ulong ZoneKey => ZoneObjectKey;
     public string DisplayName => MonitoringSourceZoneIds.EtwFileIoDisk;
     public ResourceManagerComputeZoneMode CurrentMode => currentComputeMode;
@@ -59,24 +63,36 @@ public sealed class EtwPhysicalDiskIoAttributionReader : BackgroundService, IPhy
         try
         {
             stoppingToken.ThrowIfCancellationRequested();
+            await RunCaptureHoldAsync(() => Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken));
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+    }
+    // Closed DiskIO history is needed by later reads while this run captures.
+    // Stop or freeze returns every chunk immediately; no frozen metadata is consumed.
+    internal Task RunCaptureHoldAsync(Func<Task> hold) => runBucketScope(async allocate =>
+    {
+        using var storage = new CaptureBucketStorage(allocate);
+        try
+        {
             lock (captureLifetimeGate)
             {
                 if (disposed) return;
+                capture.SetBucketStorage(storage);
                 runActive = true;
                 SynchronizeCapture();
             }
-            await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
+            await hold();
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
         finally
         {
             lock (captureLifetimeGate)
             {
                 runActive = false;
-                capture.Stop("ETW DiskIO 物理磁盘归因正在随程序停止。");
+                try { capture.Stop("ETW DiskIO 物理磁盘归因正在随程序停止。"); }
+                finally { capture.SetBucketStorage(new()); }
             }
         }
-    }
+    });
     public void ApplyMode(ResourceManagerComputeZoneMode mode)
     {
         lock (captureLifetimeGate)
@@ -110,4 +126,3 @@ public sealed class EtwPhysicalDiskIoAttributionReader : BackgroundService, IPhy
     internal int RetainedPairCount => capture.RetainedPairCount;
     internal (IReadOnlyDictionary<int, PhysicalDiskProcessAttribution> Processes, bool Complete) ReadWindow(long now) => capture.ReadWindow(now);
 }
-

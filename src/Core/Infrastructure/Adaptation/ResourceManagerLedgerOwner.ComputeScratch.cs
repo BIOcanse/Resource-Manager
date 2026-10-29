@@ -12,6 +12,25 @@ public sealed partial class ResourceManagerLedgerOwner
 
     internal ulong NativePageSize => owner.NativePageSize;
 
+    internal (int AcquiredLeaseCount, ulong CommittedBucketBytes) ReadCaptureBucketDiagnostics()
+    {
+        lock (operationGate)
+        {
+            ThrowIfDisposed();
+            var acquired = 0;
+            ulong bytes = 0;
+            foreach (var scratch in computeScratch)
+            {
+                if (scratch.WorkArea != "capture-buckets") continue;
+                acquired = checked(acquired + scratch.Active);
+                // Set from a successful native acquire; the resource remains in
+                // this set until native close succeeds, including failed closes.
+                bytes = checked(bytes + scratch.CaptureBucketCommittedBytes);
+            }
+            return (acquired, bytes);
+        }
+    }
+
     internal ComputeScratch CreateScratch(ulong length)
     {
         lock (operationGate)
@@ -115,6 +134,7 @@ public sealed partial class ResourceManagerLedgerOwner
         internal int Active;
         internal bool Retiring;
         internal bool Closed;
+        internal ulong CaptureBucketCommittedBytes;
         internal string WorkArea = "compute-scratch";
         internal string Rows = "unspecified";
         internal void DescribeGrowth(string area, string oldRows, string rows, ulong oldBytes)

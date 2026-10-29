@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Reflection;
+using System.Text.Json;
+using Xunit.Abstractions;
 using ResourceManager.Subscription.Native;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -8,7 +10,7 @@ using ResourceManager.App.Infrastructure.Telemetry.Etw;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class EtwCpuResidencyWindowDemandTests
+public sealed class EtwCpuResidencyWindowDemandTests(ITestOutputHelper testOutput)
 {
     private const KernelTraceEventParser.Keywords MetadataKeywords = KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread;
     private const KernelTraceEventParser.Keywords HeldKeywords = KernelTraceEventParser.Keywords.Process
@@ -160,6 +162,7 @@ public sealed class EtwCpuResidencyWindowDemandTests
         var next = output.MoveNextAsync().AsTask();
         var publications = new List<long>();
         var measuredThrough = new List<DateTimeOffset>();
+        var memoryTrace = new List<object>();
         await reader.StartAsync(cancellation.Token);
         try
         {
@@ -167,12 +170,23 @@ public sealed class EtwCpuResidencyWindowDemandTests
             {
                 await UntilAsync(() => IsWindowActive(reader) && broker.Keywords == HeldKeywords,
                     TimeSpan.FromSeconds(35));
-                await FeedElapsedWindowAsync(reader, sampling, cancellation.Token);
+                await FeedElapsedWindowAsync(reader, sampling, cancellation.Token, diagnostics =>
+                {
+                    Assert.True(diagnostics.RetainedBucketBytes > 0);
+                    Assert.True(diagnostics.ActivePairCount > 0);
+                    memoryTrace.Add(new { phase = "window", index, at = DateTimeOffset.UtcNow,
+                        qpc = Stopwatch.GetTimestamp(), diagnostics });
+                });
                 Assert.True(await next.WaitAsync(TimeSpan.FromSeconds(5), cancellation.Token));
                 var snapshot = Assert.IsType<ResourceManager.App.Domain.CpuTopology.CpuCoreResidencySnapshot>(output.Current);
                 publications.Add(Stopwatch.GetTimestamp());
                 measuredThrough.Add(snapshot.MeasuredThrough);
                 await UntilAsync(() => !IsWindowActive(reader) && broker.Keywords == MetadataKeywords);
+                var idleMemory = CaptureOwner(reader)!.GetDiagnostics().Aggregation!.Value;
+                Assert.Equal(0, idleMemory.RetainedBucketBytes);
+                Assert.Equal(0, idleMemory.ActivePairCount);
+                memoryTrace.Add(new { phase = "idle", index, at = DateTimeOffset.UtcNow,
+                    qpc = Stopwatch.GetTimestamp(), diagnostics = idleMemory });
                 Assert.Equal(1, broker.ActiveCount);
                 if (index < 2) next = output.MoveNextAsync().AsTask();
             }
@@ -186,7 +200,12 @@ public sealed class EtwCpuResidencyWindowDemandTests
                 Assert.True(coverage >= TimeSpan.FromMilliseconds(29500), $"Recorded coverage spacing {index}: {coverage}.");
             }
         }
-        finally { cancellation.Cancel(); await reader.StopAsync(CancellationToken.None); }
+        finally
+        {
+            testOutput.WriteLine(JsonSerializer.Serialize(memoryTrace));
+            cancellation.Cancel();
+            await reader.StopAsync(CancellationToken.None);
+        }
         Assert.Equal(KernelTraceEventParser.Keywords.None, broker.Keywords);
         Assert.Equal(0, broker.ActiveCount);
     }
@@ -332,7 +351,8 @@ public sealed class EtwCpuResidencyWindowDemandTests
     }
 
     private static async Task FeedElapsedWindowAsync(EtwCpuCoreResidencyReader reader,
-        HostManagerSamplingSubscriptionTestFixture sampling, CancellationToken cancellationToken)
+        HostManagerSamplingSubscriptionTestFixture sampling, CancellationToken cancellationToken,
+        Action<CpuResidencyAggregationDiagnostics>? beforeCompletion = null)
     {
         var owner = Assert.IsType<EtwCpuResidencyCaptureOwner>(CaptureOwner(reader));
         var session = typeof(EtwCpuResidencyCaptureOwner).GetField("activeSession", BindingFlags.Instance | BindingFlags.NonPublic)!
@@ -357,6 +377,7 @@ public sealed class EtwCpuResidencyWindowDemandTests
         foreach (var processor in processors)
         {
             buffer.ObserveContextSwitch(end, at + plan.ObservationWindow, processor, 100, 100 + processor, 0, null, 0);
+            if (processor == processors[^1]) beforeCompletion?.Invoke(buffer.GetDiagnostics());
             completion.Observe(processor, end);
         }
     }

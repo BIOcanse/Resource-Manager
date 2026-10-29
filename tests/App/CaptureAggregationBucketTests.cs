@@ -168,19 +168,23 @@ public sealed class CaptureAggregationBucketTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void PageSizedHistoryUsesRealLedgerStorageUntilItExpires()
+    public async Task PageSizedHistoryUsesRealLedgerStorageUntilItExpires()
     {
         using var ledger = new ResourceManagerLedgerOwner();
-        var buffer = new CpuResidencyAggregationBuffer(1000, 1000, 8, 1, length => LedgerCaptureBucketMemory.Create(ledger, length));
-        buffer.SeedProcess(1, 1, "P"); buffer.SeedThread(1, 1); Switch(buffer, 0, 0, 0, 1); Switch(buffer, 1000, 0, 1, 0);
-        Assert.True(buffer.Snapshot([0]).IsComplete);
-        Assert.True(ledger.ReadTable().RegisteredBytes >= 1002UL * 24);
-        Assert.Equal(0UL, ledger.Tick().Released); // History is canonical and cannot be reconstructed after eviction.
-        Switch(buffer, 2100, 0, 0, 0); buffer.Snapshot([0]);
-        Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
-        buffer.Clear();
-        using var small = LedgerCaptureBucketMemory.Create(ledger, 100);
-        Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
+        await LedgerCaptureBucketStorage.RunAsync(ledger, allocate =>
+        {
+            var buffer = new CpuResidencyAggregationBuffer(1000, 1000, 8, 1, length => allocate(length));
+            buffer.SeedProcess(1, 1, "P"); buffer.SeedThread(1, 1); Switch(buffer, 0, 0, 0, 1); Switch(buffer, 1000, 0, 1, 0);
+            Assert.True(buffer.Snapshot([0]).IsComplete);
+            Assert.True(ledger.ReadTable().RegisteredBytes >= 1002UL * 24);
+            Assert.Equal(0UL, ledger.Tick().Released); // History is canonical and cannot be reconstructed after eviction.
+            Switch(buffer, 2100, 0, 0, 0); buffer.Snapshot([0]);
+            Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
+            buffer.Clear();
+            using var small = allocate(100);
+            Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
+            return Task.CompletedTask;
+        });
     }
 
     [Fact]
@@ -281,47 +285,55 @@ public sealed class CaptureAggregationBucketTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void DiskOwnerKeepsFailedLedgerCloseUntilDisposeRetry()
+    public async Task DiskOwnerKeepsFailedLedgerCloseUntilDisposeRetry()
     {
         using var ledger = new ResourceManagerLedgerOwner();
-        var disk = new EtwPhysicalDiskIoCaptureOwner(new Broker(), new(), static () => 0, pid => new ProcessLease(pid, 100),
-            bucketWidthMilliseconds: 1, allocateBuckets: length => new FailCloseOnce(LedgerCaptureBucketMemory.Create(ledger, length)));
-        disk.ObserveDiskTransfer(1, 7UL, false, 1000, 0, 101);
-        Assert.Throws<IOException>(disk.Dispose);
-        Assert.True(ledger.ReadTable().RegisteredBytes > 0);
-        Assert.Equal(0UL, ledger.Tick().Released);
-        Assert.Throws<ObjectDisposedException>(() => disk.Read());
-        disk.Dispose(); disk.Dispose();
-        Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
+        await LedgerCaptureBucketStorage.RunAsync(ledger, allocate =>
+        {
+            var disk = new EtwPhysicalDiskIoCaptureOwner(new Broker(), new(), static () => 0, pid => new ProcessLease(pid, 100),
+                bucketWidthMilliseconds: 1, allocateBuckets: length => new FailCloseOnce(allocate(length)));
+            disk.ObserveDiskTransfer(1, 7UL, false, 1000, 0, 101);
+            Assert.Throws<IOException>(disk.Dispose);
+            Assert.True(ledger.ReadTable().RegisteredBytes > 0);
+            Assert.Equal(0UL, ledger.Tick().Released);
+            Assert.Throws<ObjectDisposedException>(() => disk.Read());
+            disk.Dispose(); disk.Dispose();
+            Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
+            return Task.CompletedTask;
+        });
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void CpuOwnerKeepsFailedLedgerCloseAcrossStopOrBrokerRebind(bool rebind)
+    public async Task CpuOwnerKeepsFailedLedgerCloseAcrossStopOrBrokerRebind(bool rebind)
     {
         using var ledger = new ResourceManagerLedgerOwner();
-        var broker = new RebindingBroker();
-        using var cpu = new EtwCpuResidencyCaptureOwner(broker,
-            () => new(1000, 8, new Dictionary<int, CpuResidencyCoreAccounting> { [0] = new("core:0", "", 1, 1) }.ToFrozenDictionary(), "recorded", 1),
-            new(), static (_, _) => { }, allocateBuckets: length => new FailCloseOnce(LedgerCaptureBucketMemory.Create(ledger, length)));
-        cpu.EnsureStarted();
-        cpu.BeginWindow();
-        // Feed the actual active buffer without synthesizing OS TraceEvent objects or starting ETW.
-        var session = typeof(EtwCpuResidencyCaptureOwner).GetField("activeSession", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(cpu)!;
-        var buffer = (CpuResidencyAggregationBuffer)session.GetType().GetProperty("Buffer")!.GetValue(session)!;
-        buffer.SeedProcess(1, 1, "P"); buffer.SeedThread(1, 1);
-        Switch(buffer, 0, 0, 0, 1); Switch(buffer, Stopwatch.Frequency, 0, 1, 0);
-        Assert.True(ledger.ReadTable().RegisteredBytes > 0);
-        if (rebind) Assert.Throws<IOException>(broker.Rebind);
-        else Assert.Throws<IOException>(() => cpu.Stop());
-        Assert.True(cpu.HasSessionLease);
-        Assert.True(ledger.ReadTable().RegisteredBytes > 0);
-        Assert.Equal(0UL, ledger.Tick().Released);
-        if (rebind) broker.Rebind(); else cpu.Stop();
-        Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
-        cpu.Dispose(); cpu.Dispose();
-        Assert.Equal(2, broker.Releases);
+        await LedgerCaptureBucketStorage.RunAsync(ledger, allocate =>
+        {
+            var broker = new RebindingBroker();
+            using var cpu = new EtwCpuResidencyCaptureOwner(broker,
+                () => new(1000, 8, new Dictionary<int, CpuResidencyCoreAccounting> { [0] = new("core:0", "", 1, 1) }.ToFrozenDictionary(), "recorded", 1),
+                new(), static (_, _) => { }, allocateBuckets: length => new FailCloseOnce(allocate(length)));
+            cpu.EnsureStarted();
+            cpu.BeginWindow();
+            // Feed the actual active buffer without synthesizing OS TraceEvent objects or starting ETW.
+            var session = typeof(EtwCpuResidencyCaptureOwner).GetField("activeSession", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(cpu)!;
+            var buffer = (CpuResidencyAggregationBuffer)session.GetType().GetProperty("Buffer")!.GetValue(session)!;
+            buffer.SeedProcess(1, 1, "P"); buffer.SeedThread(1, 1);
+            Switch(buffer, 0, 0, 0, 1); Switch(buffer, Stopwatch.Frequency, 0, 1, 0);
+            Assert.True(ledger.ReadTable().RegisteredBytes > 0);
+            if (rebind) Assert.Throws<IOException>(broker.Rebind);
+            else Assert.Throws<IOException>(() => cpu.Stop());
+            Assert.True(cpu.HasSessionLease);
+            Assert.True(ledger.ReadTable().RegisteredBytes > 0);
+            Assert.Equal(0UL, ledger.Tick().Released);
+            if (rebind) broker.Rebind(); else cpu.Stop();
+            Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
+            cpu.Dispose(); cpu.Dispose();
+            Assert.Equal(2, broker.Releases);
+            return Task.CompletedTask;
+        });
     }
 
     private sealed class FailCloseOnce(CaptureBucketMemory inner) : CaptureBucketMemory
@@ -387,20 +399,24 @@ public sealed class CaptureAggregationBucketTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void CpuResizeRetainsBothFailedLedgerCloseObligations()
+    public async Task CpuResizeRetainsBothFailedLedgerCloseObligations()
     {
         using var ledger = new ResourceManagerLedgerOwner();
-        var buffer = new CpuResidencyAggregationBuffer(1000, 1000, 8, 1,
-            length => new FailCloseOnce(LedgerCaptureBucketMemory.Create(ledger, length)));
-        buffer.SeedProcess(1, 1, "P"); buffer.SeedThread(1, 1);
-        Switch(buffer, 0, 0, 0, 1); Switch(buffer, 0, 1, 0, 0);
-        Switch(buffer, 1000, 1, 0, 0);
-        Assert.Throws<IOException>(() => Switch(buffer, 2000, 0, 1, 0));
-        Assert.False(buffer.Snapshot([0, 1]).IsComplete);
-        Assert.True(ledger.ReadTable().RegisteredBytes > 0);
-        Assert.Equal(0UL, ledger.Tick().Released);
-        buffer.Clear();
-        Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
+        await LedgerCaptureBucketStorage.RunAsync(ledger, allocate =>
+        {
+            var buffer = new CpuResidencyAggregationBuffer(1000, 1000, 8, 1,
+                length => new FailCloseOnce(allocate(length)));
+            buffer.SeedProcess(1, 1, "P"); buffer.SeedThread(1, 1);
+            Switch(buffer, 0, 0, 0, 1); Switch(buffer, 0, 1, 0, 0);
+            Switch(buffer, 1000, 1, 0, 0);
+            Assert.Throws<IOException>(() => Switch(buffer, 2000, 0, 1, 0));
+            Assert.False(buffer.Snapshot([0, 1]).IsComplete);
+            Assert.True(ledger.ReadTable().RegisteredBytes > 0);
+            Assert.Equal(0UL, ledger.Tick().Released);
+            buffer.Clear();
+            Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
+            return Task.CompletedTask;
+        });
     }
 
     private static void Switch(CpuResidencyAggregationBuffer buffer, long tick, int core, int old, int next)

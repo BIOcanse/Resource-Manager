@@ -59,6 +59,9 @@ internal static partial class Program
             ?? new Dictionary<string, long>(StringComparer.Ordinal);
         using var self = Process.GetCurrentProcess();
         var processes = new Dictionary<int, long> { [self.Id] = self.StartTime.ToUniversalTime().ToFileTimeUtc() };
+        // The live ledger turns active at its EndScan event, before the capture that built it
+        // disables the boundary provider and publishes. Steady state starts at that publication.
+        var phaseStartPublication = collector.ReadCurrent(processes)?.Generation ?? 0;
         IDisposable? lease = null;
         Exception? failure = null;
         try
@@ -108,7 +111,8 @@ internal static partial class Program
                     // the whole ten-second profile plus filter-only variants.
                 }
                 var ready = source.InUse && source.HolderIds.Any(value => value.Contains("actual-use:gpu-allocation-filter", StringComparison.Ordinal))
-                    && use.LiveLedgerActive && native.Exists && current is not null && drops is not null;
+                    && use.LiveLedgerActive && native.Exists && current is not null
+                    && current.Generation > phaseStartPublication && drops is not null;
                 if (!stable && ready)
                 {
                     stable = true;

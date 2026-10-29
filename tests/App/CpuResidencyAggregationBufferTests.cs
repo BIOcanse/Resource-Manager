@@ -758,6 +758,10 @@ public sealed class CpuResidencyAggregationBufferTests
         Switch(buffer, 2000, 0, 100, 10, 0, 0);
         Assert.True(buffer.Snapshot([0]).IsComplete);
         Assert.Equal(failure, property.GetValue(buffer.GetDiagnostics()));
+        buffer.ReleaseWindowBuckets();
+        Assert.Equal(0, buffer.GetDiagnostics().RetainedBucketBytes);
+        Assert.Equal(0, buffer.GetDiagnostics().ActivePairCount);
+        Assert.Equal(failure, property.GetValue(buffer.GetDiagnostics()));
     }
 
     [Fact]
