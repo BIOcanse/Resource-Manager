@@ -10,19 +10,27 @@ public sealed class WindowsGpuAdapterOrderReader
     private const ulong IntegratedDedicatedMemoryThresholdBytes = 1024UL * 1024UL * 1024UL;
     private const int DxgiErrorNotFound = unchecked((int)0x887A0002);
     private const uint DxgiAdapterFlagSoftware = 2;
-    private const uint MaximumKmtAdapterCount = 128;
     private static readonly Guid IdxgiFactory1Id = new("770aae78-f26f-4dba-a829-253c83d1b387");
     private readonly WindowsGpuIdentityBridge identityBridge = new();
     private readonly WindowsGpuTopologyGenerationTracker topologyGeneration =
         new();
+    // Null in production, which reads DXGI and the identity bridge. Tests supply a recorded enumeration and identity step.
+    private readonly Func<WindowsGpuAdapterEnumeration>? enumerate;
+    private readonly Func<WindowsGpuAdapter, WindowsGpuAdapter>? identify;
+
+    public WindowsGpuAdapterOrderReader() { }
+
+    internal WindowsGpuAdapterOrderReader(
+        Func<WindowsGpuAdapterEnumeration> enumerate,
+        Func<WindowsGpuAdapter, WindowsGpuAdapter> identify)
+        => (this.enumerate, this.identify) = (enumerate, identify);
 
     public WindowsGpuAdapterInventoryRead ReadInventory()
     {
         var observedAtUtcTicks = DateTimeOffset.UtcNow.UtcTicks;
-        if (!OperatingSystem.IsWindows())
-            return new(SamplingObservationStatus.Unsupported, topologyGeneration.Current,
-                observedAtUtcTicks, 0, 0, 0, 0, []);
-        var dxgi = ReadDxgiAdapters();
+        var dxgi = enumerate is not null ? enumerate()
+            : OperatingSystem.IsWindows() ? ReadDxgiAdapters()
+            : new WindowsGpuAdapterEnumeration(SamplingObservationStatus.Unsupported, 0, []);
         if (dxgi.Status != SamplingObservationStatus.Current)
         {
             return new WindowsGpuAdapterInventoryRead(
@@ -36,33 +44,20 @@ public sealed class WindowsGpuAdapterOrderReader
                 []);
         }
 
+        // GPU n is the n-th hardware adapter of this DXGI enumeration (user ruling 2026-10-27). Software adapters
+        // take no number, no other program's numbering is imitated, and an adapter dropped below for an unusable
+        // LUID leaves its number unused, so no other adapter moves into it.
         var hardwareAdapters = dxgi.Adapters
             .Where(static adapter => !adapter.IsSoftware)
+            .Select(static (adapter, index) => adapter with { Index = index })
             .ToArray();
         var stableAdapters = hardwareAdapters
             .GroupBy(static adapter => WindowsGpuAdapterIdentity.Pack(adapter.Luid))
             .Where(static group => group.Key != 0 && group.Count() == 1)
             .SelectMany(static group => group)
             .ToArray();
-        var publicAdapters = ApplyPublicAdapterOrder(
-            stableAdapters,
-            ReadTaskManagerAdapterOrder());
-        var adapters = publicAdapters
-            .Select(adapter =>
-            {
-                var identity = identityBridge.Read(
-                    adapter.Luid,
-                    adapter.VendorId,
-                    adapter.DeviceId,
-                    maximumPhysicalAdapterCount: 16);
-                return adapter with
-                {
-                    PhysicalIdentityStatus = identity.Status,
-                    PhysicalIdentities = identity.Identities,
-                    PhysicalIdentityNativeStatus = identity.NativeStatus,
-                    AdapterTypeFlags = identity.AdapterTypeFlags
-                };
-            })
+        var adapters = stableAdapters
+            .Select(adapter => identify is not null ? identify(adapter) : Identify(adapter))
             .ToArray();
         var skippedCount = checked(
             dxgi.SkippedCount
@@ -82,109 +77,20 @@ public sealed class WindowsGpuAdapterOrderReader
             adapters);
     }
 
-    public static IReadOnlyList<WindowsGpuAdapter> ApplyPublicAdapterOrder(
-        IReadOnlyList<WindowsGpuAdapter> adapters,
-        IReadOnlyDictionary<ulong, int>? taskManagerOrder)
+    private WindowsGpuAdapter Identify(WindowsGpuAdapter adapter)
     {
-        if (taskManagerOrder is null
-            || taskManagerOrder.Count == 0
-            || adapters.Any(adapter =>
-                !taskManagerOrder.ContainsKey(WindowsGpuAdapterIdentity.Pack(adapter.Luid))))
+        var identity = identityBridge.Read(
+            adapter.Luid,
+            adapter.VendorId,
+            adapter.DeviceId,
+            maximumPhysicalAdapterCount: 16);
+        return adapter with
         {
-            return adapters
-                .Select((adapter, index) => adapter with
-                {
-                    Index = index,
-                    PublicIndexSource = WindowsGpuPublicIndexSource.DxgiFallback
-                })
-                .ToArray();
-        }
-
-        var ordered = adapters
-            .Select(adapter => adapter with
-            {
-                Index = taskManagerOrder[WindowsGpuAdapterIdentity.Pack(adapter.Luid)],
-                PublicIndexSource = WindowsGpuPublicIndexSource.TaskManagerKmt
-            })
-            .OrderBy(static adapter => adapter.Index)
-            .ToArray();
-        return ordered.Select(static adapter => adapter.Index).Distinct().Count() == ordered.Length
-            ? ordered
-            : adapters
-                .Select((adapter, index) => adapter with
-                {
-                    Index = index,
-                    PublicIndexSource = WindowsGpuPublicIndexSource.DxgiFallback
-                })
-                .ToArray();
-    }
-
-    private static IReadOnlyDictionary<ulong, int>? ReadTaskManagerAdapterOrder()
-    {
-        try
-        {
-            return ReadTaskManagerAdapterOrderCore();
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static IReadOnlyDictionary<ulong, int>? ReadTaskManagerAdapterOrderCore()
-    {
-        var enumeration = new D3dkmtEnumAdapters2();
-        var status = NativeMethods.EnumAdapters2(ref enumeration);
-        if (status != 0
-            || enumeration.NumberOfAdapters == 0
-            || enumeration.NumberOfAdapters > MaximumKmtAdapterCount)
-        {
-            return null;
-        }
-
-        var adapterSize = Marshal.SizeOf<D3dkmtAdapterInfo>();
-        var capacity = enumeration.NumberOfAdapters;
-        var byteCount = checked((int)capacity * adapterSize);
-        var buffer = Marshal.AllocHGlobal(byteCount);
-        var handles = new uint[capacity];
-        try
-        {
-            Marshal.Copy(new byte[byteCount], 0, buffer, byteCount);
-            enumeration.AdapterPointer = buffer;
-            status = NativeMethods.EnumAdapters2(ref enumeration);
-            if (status != 0 || enumeration.NumberOfAdapters > capacity)
-            {
-                return null;
-            }
-
-            var order = new Dictionary<ulong, int>(checked((int)enumeration.NumberOfAdapters));
-            for (var index = 0; index < enumeration.NumberOfAdapters; index++)
-            {
-                var adapter = Marshal.PtrToStructure<D3dkmtAdapterInfo>(
-                    IntPtr.Add(buffer, checked((int)index * adapterSize)));
-                handles[index] = adapter.AdapterHandle;
-                var luid = WindowsGpuAdapterIdentity.Pack(adapter.AdapterLuid);
-                if (luid == 0 || !order.TryAdd(luid, checked((int)index)))
-                {
-                    return null;
-                }
-            }
-            return order;
-        }
-        finally
-        {
-            foreach (var handle in handles)
-            {
-                if (handle == 0)
-                {
-                    continue;
-                }
-
-                var close = new D3dkmtCloseAdapter { AdapterHandle = handle };
-                _ = NativeMethods.CloseAdapter(ref close);
-            }
-            Marshal.FreeHGlobal(buffer);
-        }
+            PhysicalIdentityStatus = identity.Status,
+            PhysicalIdentities = identity.Identities,
+            PhysicalIdentityNativeStatus = identity.NativeStatus,
+            AdapterTypeFlags = identity.AdapterTypeFlags
+        };
     }
 
     [SupportedOSPlatform("windows")]
@@ -317,12 +223,6 @@ public sealed class WindowsGpuAdapterOrderReader
     {
         [DllImport("dxgi.dll")]
         internal static extern int CreateDXGIFactory1(ref Guid riid, out IDXGIFactory1 ppFactory);
-
-        [DllImport("gdi32.dll", EntryPoint = "D3DKMTEnumAdapters2")]
-        internal static extern int EnumAdapters2(ref D3dkmtEnumAdapters2 enumeration);
-
-        [DllImport("gdi32.dll", EntryPoint = "D3DKMTCloseAdapter")]
-        internal static extern int CloseAdapter(ref D3dkmtCloseAdapter close);
     }
 
     [ComImport]
@@ -424,28 +324,6 @@ public sealed class WindowsGpuAdapterOrderReader
         public AdapterLuid AdapterLuid;
         public uint Flags;
     }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct D3dkmtEnumAdapters2
-    {
-        public uint NumberOfAdapters;
-        public IntPtr AdapterPointer;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct D3dkmtAdapterInfo
-    {
-        public uint AdapterHandle;
-        public AdapterLuid AdapterLuid;
-        public uint NumberOfSources;
-        public int PrecisePresentRegionsPreferred;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct D3dkmtCloseAdapter
-    {
-        public uint AdapterHandle;
-    }
 }
 
 public sealed class WindowsGpuTopologyGenerationTracker
@@ -486,12 +364,6 @@ public sealed class WindowsGpuTopologyGenerationTracker
     }
 }
 
-public enum WindowsGpuPublicIndexSource
-{
-    DxgiFallback,
-    TaskManagerKmt
-}
-
 [StructLayout(LayoutKind.Sequential)]
 public struct AdapterLuid
 {
@@ -515,9 +387,6 @@ public sealed record WindowsGpuAdapter(
     public bool? IsDetachable => AdapterTypeFlags is { } flags ? (flags & (1u << 10)) != 0 : null;
     public string? AttachmentKind => IsDetachable == true ? "graphics_dock" : null;
     public string? AttachmentEvidenceSource => AdapterTypeFlags.HasValue ? "d3dkmt-adapter-type" : null;
-
-    public WindowsGpuPublicIndexSource PublicIndexSource { get; init; } =
-        WindowsGpuPublicIndexSource.DxgiFallback;
 
     public SamplingObservationStatus PhysicalIdentityStatus { get; init; } =
         SamplingObservationStatus.Unavailable;
