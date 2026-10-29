@@ -2318,7 +2318,10 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 Version = 2,
                 OptimizationMode = CompiledOptimizationModePlan.Compile(AppOptimizationModes.Smart)
             });
-            while (fixture.ProcessFacts.ActiveSubscriptionCount != 1)
+            // The handoff admits the new demand before it retires the old one (make-before-break),
+            // so the old metric lease is released only after the new process lease exists.
+            while (fixture.ProcessFacts.ActiveSubscriptionCount != 1
+                || fixture.MetricSampler.ActiveSubscriptionCount != 1)
             {
                 await Task.Delay(10, timeout.Token);
             }
@@ -2330,7 +2333,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
 
             fixture.RuntimePlanProvider.Publish(fixture.RuntimePlan with { Version = 3 });
             await fixture.Coordinator.RunOnceAsync(CancellationToken.None);
-            while (fixture.ProcessFacts.ActiveSubscriptionCount != 0)
+            while (fixture.ProcessFacts.ActiveSubscriptionCount != 0
+                || fixture.MetricSampler.ActiveSubscriptionCount != 1)
             {
                 await Task.Delay(10, timeout.Token);
             }
