@@ -12,6 +12,22 @@ namespace Resource_Manager_APP.Tests;
 public sealed class FreedomPointSdkIntegrationTests
 {
     [Fact]
+    public void BackendGroupingDataNamesTheCurrentDeclarationContractAndGroupsTheReportPoints()
+    {
+        var registry = FreedomPointRegistry.LoadEmbedded().Sdk.Registry;
+        var groups = JsonNode.Parse(File.ReadAllText(Path.Combine(RepositoryRoot(), "src", "Core", "Configuration", "FreedomPoints",
+            "backend.groups.json")))!;
+        // The frontend generator refuses a stale grouping contract, so the declaration owner keeps it current.
+        Assert.Equal(registry.ContractFingerprint, groups["contractFingerprint"]!.GetValue<string>());
+        var monitoring = groups["groups"]!.AsArray().Single(group => group!["key"]!.GetValue<string>() == "resource-manager/backend/monitoring");
+        Assert.Equal(["0001000200050000", "0001000200050001", "0001000200050002"],
+            monitoring!["points"]!.AsArray().Select(point => point!.GetValue<string>()));
+    }
+
+    private static string RepositoryRoot([System.Runtime.CompilerServices.CallerFilePath] string sourceFilePath = "")
+        => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(sourceFilePath)!, "..", ".."));
+
+    [Fact]
     public void ActualCompiledMembersBindEveryActivePositionAndNoPendingPosition()
     {
         var host = FreedomPointRegistry.LoadEmbedded();
@@ -21,8 +37,8 @@ public sealed class FreedomPointSdkIntegrationTests
             .SelectMany(static type => type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static))
             .SelectMany(static member => member.GetCustomAttributes<FreedomPointBindingAttribute>().Select(attribute => (Member: member, Path: PointPath.FromRaw(attribute.Path))))
             .ToArray();
-        Assert.Equal(27, members.Length);
-        Assert.Equal(27, members.Select(static m => m.Path).Distinct().Count());
+        Assert.Equal(29, members.Length);
+        Assert.Equal(29, members.Select(static m => m.Path).Distinct().Count());
         Assert.All(registry.Points, point =>
         {
             if (point.Status == DeclarationStatus.Active)
@@ -69,7 +85,7 @@ public sealed class FreedomPointSdkIntegrationTests
         var host = FreedomPointRegistry.LoadEmbedded();
         var cpu = new CompiledCpuScoringPlan(1.25, CompiledCpuCoreWeights.Empty);
         var compilation = host.BeginCompilation(Profile(), cpu);
-        Assert.Equal(27, compilation.Facts.Items.Length);
+        Assert.Equal(29, compilation.Facts.Items.Length);
         var ratio = host.Sdk.RequirePath(BackendFreedomPointPaths.CpuBaselineRatio);
         Assert.Equal(1.25, compilation.Facts.Require(ratio).Value.Slots[0].Decimal);
         Assert.Equal(1.25, compilation.Consume<double>(BackendFreedomPointPaths.CpuBaselineRatio, "HostManagerPlanCompiler.CompileCpuScoring"));

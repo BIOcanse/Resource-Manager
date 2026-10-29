@@ -33,6 +33,36 @@
                 },
                 "status": "active",
                 "update_class": "rebuild_backend"
+              },
+              {
+                "value_source": "registry",
+                "index": 1,
+                "consumers": [
+                  "HostManagerPlanCompiler.CompileNotifications"
+                ],
+                "description": "Backend notification owner. retained_count defaults to 64 and accepts 1-1024 notifications; a new notification beyond it evicts the oldest. Notifications only deliver; the event itself stays in its report or page.",
+                "id": "notifications",
+                "value_type": "object",
+                "value": {
+                  "retained_count": 64
+                },
+                "status": "active",
+                "update_class": "rebuild_backend"
+              },
+              {
+                "value_source": "registry",
+                "index": 2,
+                "consumers": [
+                  "HostManagerPlanCompiler.CompileHostMemoryProtectionRecords"
+                ],
+                "description": "Host memory protection action records. record_capacity defaults to 4096 and accepts 1-16384 records; a full report never evicts, counts what it could not record, and clearing history frees capacity.",
+                "id": "memory_protection",
+                "value_type": "object",
+                "value": {
+                  "record_capacity": 4096
+                },
+                "status": "active",
+                "update_class": "rebuild_backend"
               }
             ]
           },

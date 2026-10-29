@@ -3,6 +3,8 @@ using ResourceManager.Shared.BusinessBlocks.State;
 using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using ResourceManager.App.Application.MemoryProtection;
 using ResourceManager.App.Application.GpuPlacement;
+using ResourceManager.App.Application.Notifications;
+using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Infrastructure.Paths;
@@ -12,16 +14,15 @@ namespace ResourceManager.App.Infrastructure.MemoryProtection;
 
 public sealed partial class HostMemoryProtectionService(IHostMemoryProtectionSource source,
     IHostMemoryProtectionExecutor executor, IHostMemoryProtectionReserve reserve, BusinessBlockScheduler scheduler, IHostEnvironment environment,
-    ILogger<HostMemoryProtectionService> logger, IGpuPlacementPolicyStore softwarePolicies) : IBusinessBlock
+    ILogger<HostMemoryProtectionService> logger, IGpuPlacementPolicyStore softwarePolicies, IRuntimePlanProvider plans,
+    RuntimePersistenceCapabilityPolicy persistence, INotificationOwner notifications) : IBusinessBlock
 {
     private readonly StateCell<bool> enabled = scheduler.Authority.ClaimCell<bool>(StateItemUids.HostMemoryProtectionEnabled);
     private readonly StateCell<bool> pointExists = scheduler.Authority.ClaimCell<bool>(StateItemUids.MemoryProtectionNormalRunningPointExists);
     private readonly StateCell<bool> reserveBuilt = scheduler.Authority.ClaimCell<bool>(StateItemUids.MemoryProtectionReserveBuilt);
-    public const int RecordLimit = 64;
     private readonly object gate = new();
     private readonly SemaphoreSlim pointCreation = new(1, 1);
     private readonly SemaphoreSlim configuration = new(1, 1);
-    private readonly Queue<HostMemoryActionRecord> actions = new();
     private readonly Dictionary<(int, string), HostMemoryExclusion> cannotOpen = new();
     private IReadOnlyList<HostMemoryExclusion> exclusions = [];
     private NormalRunningPoint? point;
@@ -146,13 +147,15 @@ public sealed partial class HostMemoryProtectionService(IHostMemoryProtectionSou
         var currentReserve = reserve.ReadStatus();
         lock (gate)
         {
+            RestoreRecordsOnce();
             decimal? trigger = commit is null ? null : (decimal)commit.LimitBytes * (decimal)settings.ThresholdPercent / 100m;
             return new(settings.Enabled, settings.ThresholdPercent, settings.CheckIntervalSeconds, currentReserve,
                 trigger, trigger - commit?.CurrentBytes, commit,
                 point is null ? null : new(point.Id, point.At, point.ProcessCount, point.Commit),
                 point is null ? "no-normal-running-point" : !settings.Enabled ? "disabled" : reserveAccepted ? null : ReserveUnavailableReason(settings, currentReserve),
-                exclusions.ToArray(), RecordLimit, actions.Reverse().ToArray())
+                exclusions.ToArray(), RecordCapacity, records)
             {
+                UnrecordedRecordCount = unrecordedRecordCount,
                 ActionMode = settings.ActionMode,
                 AtOrAboveThreshold = commit is null ? null : commit.Percent >= settings.ThresholdPercent,
                 CurrentActionId = currentActionId,
@@ -239,8 +242,8 @@ public sealed partial class HostMemoryProtectionService(IHostMemoryProtectionSou
                 { ProtectedProcesses = current.ProtectedProcesses });
             actionFinishedAt = DateTimeOffset.UtcNow;
             if (result.Outcome == "excluded") AddExclusion(candidate.Process, result.Reason ?? "cannot-open", persist: true);
-            else Record(candidate.Process, result, actionId, null,
-                new("process-growth-at-least-minimum", candidate.Growth, null, current.MinimumProcessGrowthBytes));
+            else CompleteAction(actionId, null, [Record(candidate.Process, result, actionId, null,
+                new("process-growth-at-least-minimum", candidate.Growth, null, current.MinimumProcessGrowthBytes))]);
             lock (gate) currentActionId = null;
             if (result.Outcome != "excluded" && !result.SuspendFailed) { Finish("process-handled"); return; }
             PublishStatus();
@@ -253,6 +256,7 @@ public sealed partial class HostMemoryProtectionService(IHostMemoryProtectionSou
             if (!tree.LeavesFirst.Any(process => CommonExclusion(process) is null)) continue;
             var actionId = Begin();
             var acted = false;
+            var written = new List<HostMemoryActionRecord>(tree.LeavesFirst.Count);
             foreach (var process in tree.LeavesFirst)
             {
                 HostMemoryActionResult result;
@@ -267,10 +271,11 @@ public sealed partial class HostMemoryProtectionService(IHostMemoryProtectionSou
                 }
                 if (result.Outcome == "excluded") AddExclusion(process, result.Reason ?? "cannot-open");
                 else acted = true;
-                Record(process, result, actionId, tree.Root,
-                    new("largest-direct-children-memory-growth", null, tree.GrowthBytes, current.MinimumProcessGrowthBytes));
+                written.Add(Record(process, result, actionId, tree.Root,
+                    new("largest-direct-children-memory-growth", null, tree.GrowthBytes, current.MinimumProcessGrowthBytes)));
             }
             actionFinishedAt = DateTimeOffset.UtcNow;
+            CompleteAction(actionId, tree.Root, written);
             lock (gate) currentActionId = null;
             if (acted) { Finish("process-tree-handled"); return; }
             PublishStatus();
@@ -308,7 +313,8 @@ public sealed partial class HostMemoryProtectionService(IHostMemoryProtectionSou
             }
             PublishStatus();
         }
-        void Record(HostMemoryProcess process, HostMemoryActionResult result, string id, HostMemoryTreeRoot? root, HostMemorySelectionBasis basis)
+        HostMemoryActionRecord Record(HostMemoryProcess process, HostMemoryActionResult result, string id, HostMemoryTreeRoot? root,
+            HostMemorySelectionBasis basis)
         {
             var bytes = before.TryGetValue((process.ProcessId, process.ProcessStartKey), out var old) ? old.PrivateCommitBytes : 0;
             var record = new HostMemoryActionRecord(DateTimeOffset.UtcNow, process.ProcessId, process.ProcessStartKey, process.Name,
@@ -316,14 +322,9 @@ public sealed partial class HostMemoryProtectionService(IHostMemoryProtectionSou
                 result.DumpPaths, result.BytesWritten, result.Outcome, result.Reason, basis)
                 { ActionId = id, TargetKind = root is null ? "process" : "processTree", TreeRoot = root,
                     Detail = result.Detail };
-            lock (gate)
-            {
-                if (ReferenceEquals(point, baseline)) exclusions = excluded.ToArray();
-                actions.Enqueue(record);
-                while (actions.Count > RecordLimit) actions.Dequeue();
-            }
+            lock (gate) if (ReferenceEquals(point, baseline)) exclusions = excluded.ToArray();
             logger.LogInformation("Host memory protection action: {@Action}", record);
-            PublishStatus();
+            return record;
         }
     }
 

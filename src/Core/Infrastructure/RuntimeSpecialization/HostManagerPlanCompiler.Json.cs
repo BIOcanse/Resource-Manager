@@ -23,5 +23,7 @@ public sealed partial class HostManagerPlanCompiler
     [JsonSerializable(typeof(int))]
     [JsonSerializable(typeof(SoftwareWelfareDeclaration))]
     [JsonSerializable(typeof(Application.KernelLeak.KernelLeakOptions))]
+    [JsonSerializable(typeof(Application.Notifications.NotificationOptions))]
+    [JsonSerializable(typeof(Application.MemoryProtection.HostMemoryProtectionRecordOptions))]
     private partial class FreedomPointJsonContext : JsonSerializerContext;
 }

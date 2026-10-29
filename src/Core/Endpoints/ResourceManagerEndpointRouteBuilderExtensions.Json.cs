@@ -42,6 +42,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     [JsonSerializable(typeof(ClearReportHistoryResponse))]
     [JsonSerializable(typeof(global::ResourceManager.App.Domain.KernelLeak.KernelLeakDebugSnapshot))]
     [JsonSerializable(typeof(FrontendSubscriptionChannelFrame<global::ResourceManager.App.Domain.KernelLeak.KernelLeakReport>))]
+    [JsonSerializable(typeof(global::ResourceManager.App.Application.Notifications.NotificationList))]
+    [JsonSerializable(typeof(FrontendSubscriptionChannelFrame<global::ResourceManager.App.Application.Notifications.NotificationList>))]
     [JsonSerializable(typeof(EndpointErrorPayload))]
     [JsonSerializable(typeof(FrontendSubscriptionChannelFrame<SubscriptionChannelRejection>))]
     [JsonSerializable(typeof(Transport.MonitoringHookFrame<SubscriptionChannelRejection>))]

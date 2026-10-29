@@ -17,6 +17,7 @@ using Microsoft.Extensions.Logging;
 using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Application.MemoryProtection;
+using ResourceManager.App.Application.Notifications;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Application.Settings;
@@ -421,16 +422,19 @@ public sealed partial class HostMemoryProtectionTests
     }
 
     [Fact]
-    public async Task EachDeliveryComparesThresholdAndRecordsHaveAnUpperBound()
+    public async Task EachDeliveryComparesThresholdAndAFullReportKeepsActingNotifyingAndCounting()
     {
         await using var fixture = await Fixture.StartAsync();
+        fixture.Executor.SliceBytes = 4096;
         await fixture.CreatePoint();
         using var enabled = await fixture.Patch(new { enabled = true });
         await Until(() => fixture.Source.Active == 1);
+        // After the last settings commit, which compiles the default capacity again.
+        fixture.UseRecordCapacity(3);
         fixture.Source.Publish(940, 94, [Process(10, "1", 9999)]);
         await Until(() => fixture.Source.Deliveries >= 3);
         Assert.Empty(fixture.Executor.Executed);
-        for (var index = 0; index < HostMemoryProtectionService.RecordLimit + 2; index++)
+        for (var index = 0; index < 5; index++)
         {
             fixture.Source.Publish(950, 95, [Process(100 + index, "1", (ulong)(index + 1))]);
             var count = index + 1;
@@ -438,13 +442,54 @@ public sealed partial class HostMemoryProtectionTests
             {
                 var current = await fixture.Protection.ReadStatusAsync(CancellationToken.None);
                 return fixture.Executor.Executed.Count == count && current.CurrentActionId is null
-                    && current.Actions.Count == Math.Min(count, HostMemoryProtectionService.RecordLimit);
+                    && fixture.ActionNotifications().Length == count;
             });
         }
-        var status = (await fixture.Protection.ReadStatusAsync(CancellationToken.None));
-        Assert.Equal(HostMemoryProtectionService.RecordLimit, status.Actions.Count);
-        Assert.Equal(165, status.Actions[0].ProcessId);
-        Assert.Equal(102, status.Actions[^1].ProcessId);
+        // Full: nothing is evicted, the two newest records are counted, and every action still notified.
+        var status = await fixture.Protection.ReadStatusAsync(CancellationToken.None);
+        Assert.Equal([102, 101, 100], status.Actions.Select(item => item.ProcessId));
+        Assert.Equal(3, status.RecordCapacity);
+        Assert.Equal(2, status.UnrecordedRecordCount);
+        Assert.All(status.Actions, item => Assert.Equal(HostMemoryActionRecordState.History, item.State));
+        var notified = fixture.ActionNotifications();
+        Assert.Equal([100, 101, 102, 103, 104], notified.Select(item => item.GetProperty("processId").GetInt32()));
+        Assert.All(notified, item =>
+        {
+            Assert.Equal("process", item.GetProperty("targetKind").GetString());
+            Assert.Equal(1, item.GetProperty("recordCount").GetInt32());
+            Assert.Equal(4096UL, item.GetProperty("bytesWritten").GetUInt64());
+        });
+        Assert.Equal(status.Actions[2].ActionId, notified[0].GetProperty("actionId").GetString());
+        Assert.Equal("fake-100", notified[0].GetProperty("name").GetString());
+        using (var wire = JsonDocument.Parse(await fixture.Client.GetStringAsync("/api/memory-protection")))
+        {
+            Assert.Equal(3, wire.RootElement.GetProperty("recordCapacity").GetInt32());
+            Assert.Equal(2, wire.RootElement.GetProperty("unrecordedRecordCount").GetInt32());
+            Assert.False(wire.RootElement.TryGetProperty("actionRecordLimit", out _));
+            Assert.Equal("history", wire.RootElement.GetProperty("actions")[0].GetProperty("state").GetString());
+        }
+
+        // Clearing history removes every record and the count, keeps the slices, and frees capacity.
+        var slices = status.Actions.SelectMany(item => item.DumpPaths).ToArray();
+        Assert.NotEmpty(slices);
+        using (var cleared = await fixture.Client.PostAsync("/api/memory-protection/records/history/clear", null))
+        {
+            cleared.EnsureSuccessStatusCode();
+            using var reply = JsonDocument.Parse(await cleared.Content.ReadAsStringAsync());
+            Assert.Equal(3, reply.RootElement.GetProperty("removedCount").GetInt32());
+        }
+        status = await fixture.Protection.ReadStatusAsync(CancellationToken.None);
+        Assert.Empty(status.Actions);
+        Assert.Equal(0, status.UnrecordedRecordCount);
+        Assert.All(slices, path => Assert.True(File.Exists(path), path));
+        using (var stored = JsonDocument.Parse(File.ReadAllText(fixture.RecordsPath)))
+        {
+            Assert.Equal(1, stored.RootElement.GetProperty("version").GetInt32());
+            Assert.Equal(0, stored.RootElement.GetProperty("records").GetArrayLength());
+        }
+        fixture.Source.Publish(950, 95, [Process(105, "1", 6)]);
+        await Until(async () => (await fixture.Protection.ReadStatusAsync(CancellationToken.None)).Actions.Count == 1);
+        Assert.Equal(105, Assert.Single((await fixture.Protection.ReadStatusAsync(CancellationToken.None)).Actions).ProcessId);
     }
 
     [Theory]
@@ -544,6 +589,21 @@ public sealed partial class HostMemoryProtectionTests
         public FakeSource Source => source;
         public string Root => root;
         public string PointsPath => Path.Combine(root, "UserData", "MemoryProtection", "normal-running-points.json");
+        public string RecordsPath => Path.Combine(root, "UserData", "MemoryProtection", "action-records.json");
+        public INotificationOwner Notifications => app.Services.GetRequiredService<INotificationOwner>();
+        public JsonElement[] ActionNotifications() => Notifications.Read().Notifications
+            .Where(item => item.Kind == NotificationKinds.MemoryProtectionAction.Name).Select(item => item.Facts).ToArray();
+        // Republishes the current plan with a different memory_protection.record_capacity; a settings commit compiles it again.
+        public void UseRecordCapacity(int capacity)
+        {
+            var plans = app.Services.GetRequiredService<IRuntimePlanProvider>();
+            Assert.False(plans.Publish(plans.Current with
+            {
+                Version = plans.Current.Version + 1,
+                FreedomPointPreview = null,
+                HostManager = plans.Current.HostManager with { HostMemoryProtectionRecords = new(capacity) }
+            }).HasDeliveryFailures);
+        }
         // Set when a later fixture restarts the service on the same content root and cleans it up.
         public bool KeepRoot { get; set; }
         public FakeExecutor Executor => executor;
@@ -604,7 +664,8 @@ public sealed partial class HostMemoryProtectionTests
             await app.StopAsync(); await app.DisposeAsync();
             if (KeepRoot) return;
             // All handles have closed. These are the only flat directories this fixture creates.
-            foreach (var name in new[] { "Config", "Slices", "SlicesSecond", Path.Combine("UserData", "MemoryProtection") })
+            foreach (var name in new[] { "Config", "Slices", "SlicesSecond", Path.Combine("UserData", "MemoryProtection"),
+                Path.Combine("UserData", "Notifications") })
             {
                 var directory = Path.Combine(root, name);
                 if (!Directory.Exists(directory)) continue;

@@ -19,8 +19,10 @@ public sealed record HostMemoryProtectionStatusFrame(HostMemoryProtectionLiveSta
     public string Type => "status";
 }
 
-// ReadVolatility: EventDriven, change event: action. Replay is newest first, matching GET.
-public sealed record HostMemoryProtectionRecordsFrame(IReadOnlyList<HostMemoryActionRecord> Records, int Limit)
+// ReadVolatility: EventDriven, sent on subscribe, after history is cleared and when the unrecorded count changes;
+// each appended record is its own record frame. All records, newest first, matching GET. Limit is the record capacity.
+public sealed record HostMemoryProtectionRecordsFrame(IReadOnlyList<HostMemoryActionRecord> Records, int Limit,
+    int UnrecordedRecordCount)
 {
     public string Type => "records";
 }

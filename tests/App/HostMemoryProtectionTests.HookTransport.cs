@@ -1,6 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using ResourceManager.App.Application.MemoryProtection;
+using ResourceManager.App.Endpoints;
+using ResourceManager.App.Endpoints.Transport;
 using ResourceManager.Shared.Runtime.TrustedAccess;
 
 namespace Resource_Manager_APP.Tests;
@@ -68,5 +71,30 @@ public sealed partial class HostMemoryProtectionTests
         fixture.Source.Publish(980, 98, [Process(22, "400", 600)]);
         await Until(async () => (await fixture.Status()).Actions.Count == 2);
         Assert.Equal(new[] { 20, 22 }, fixture.Executor.Executed.ToArray());
+    }
+
+    [Fact]
+    public void EventHookSizeDoesNotGrowWithTheRecordList()
+    {
+        var options = new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions;
+        ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
+        var record = new HostMemoryActionRecord(DateTimeOffset.UnixEpoch, 20, "200", "fixture.exe", 100, 900, 800,
+            [@"C:\fixture\dump.dmp"], 1024, "terminated", null, new HostMemorySelectionBasis("process-growth", 800, null, 1000))
+        { ActionId = "action-1" };
+        var status = new HostMemoryProtectionStatus(true, 90, 1, new HostMemoryReserveStatus([], 0, false, null, 0), 900, 0,
+            new HostMemoryCommit(960, 1000, 96), null, null, [], 16384, []) { AtOrAboveThreshold = true };
+        var change = new HostMemoryProtectionEvent("action", Action: record);
+        // A status holding the largest record capacity serializes to the same event as one holding no records.
+        var empty = Serialize(status);
+        var full = Serialize(status with { Actions = Enumerable.Repeat(record, 16384).ToArray() });
+        Assert.Equal(empty, full);
+        using var document = JsonDocument.Parse(full);
+        var value = document.RootElement.GetProperty("value");
+        Assert.False(value.GetProperty("status").TryGetProperty("actions", out _));
+        Assert.True(value.GetProperty("status").GetProperty("atOrAboveThreshold").GetBoolean());
+        Assert.Equal("action-1", value.GetProperty("event").GetProperty("action").GetProperty("actionId").GetString());
+
+        string Serialize(HostMemoryProtectionStatus current) => JsonSerializer.Serialize(new MonitoringHookFrame<MonitoringEventHookEvent>(
+            "hook", new("met", change, HostMemoryProtectionLiveStatus.From(current))), options);
     }
 }

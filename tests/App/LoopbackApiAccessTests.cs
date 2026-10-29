@@ -725,6 +725,14 @@ public sealed partial class LoopbackApiAccessTests
                     Directory.Delete(Path.Combine(root, "Config", "Runtime"));
                 }
                 if (Directory.Exists(Path.Combine(root, "Config"))) Directory.Delete(Path.Combine(root, "Config"));
+                // Access requests post notifications, which this full-capability host persists.
+                var notifications = Path.Combine(root, "UserData", "Notifications");
+                if (Directory.Exists(notifications))
+                {
+                    foreach (var path in Directory.EnumerateFiles(notifications)) File.Delete(path);
+                    Directory.Delete(notifications);
+                }
+                if (Directory.Exists(Path.Combine(root, "UserData"))) Directory.Delete(Path.Combine(root, "UserData"));
                 Directory.Delete(root);
             }
         }

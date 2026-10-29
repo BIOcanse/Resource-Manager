@@ -9,6 +9,8 @@ internal sealed record MonitoringHookOwner(string Name, int ProcessId, double Re
 internal sealed record MonitoringHookFrame<T>(string? HookId, T Value);
 internal sealed record MonitoringHookExpansion(string State, ExpandedMonitoringHook Hook);
 internal sealed record MonitoringHookWaitResult(string? HookId, ExpandedMonitoringHook Hook, object Value);
+// The status is the channel's sampled status frame: records and the normal running point have their own frames,
+// and an action event already carries the record it appended.
 internal sealed record MonitoringEventHookEvent(string State,
     ResourceManager.App.Application.MemoryProtection.HostMemoryProtectionEvent Event,
-    ResourceManager.App.Application.MemoryProtection.HostMemoryProtectionStatus Status);
+    ResourceManager.App.Application.MemoryProtection.HostMemoryProtectionLiveStatus Status);

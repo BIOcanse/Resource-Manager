@@ -54,6 +54,10 @@ public static partial class ResourceManagerServiceCollectionExtensions
         services.AddHttpClient(ProductUpdateSource.HttpClientName)
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
         services.AddSingleton(TimeProvider.System);
+        // One notification owner for every producer; the subscription channel and GET read it.
+        services.AddSingleton<ResourceManager.App.Infrastructure.Notifications.NotificationOwner>();
+        services.AddSingleton<ResourceManager.App.Application.Notifications.INotificationOwner>(provider =>
+            provider.GetRequiredService<ResourceManager.App.Infrastructure.Notifications.NotificationOwner>());
         services.AddSingleton<ProductVersionCatalogService>();
         services.AddSingleton<ProductUpdateCoordinator>();
         if (hostEnvironment.IsWindowsService && startupCapabilities.Allows(StartupCapability.MutablePersistence))

@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
+using ResourceManager.App.Application.Notifications;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.TrustedAccess;
 using ResourceManager.App.Domain.TrustedAccess;
@@ -11,7 +12,8 @@ namespace ResourceManager.App.Infrastructure.Security;
 public sealed class TrustedAccessRequestOwner(
     ITrustedAccessKeyService keyService,
     IRuntimePlanProvider runtimePlanProvider,
-    TimeProvider timeProvider) : ITrustedAccessRequestOwner, IHostedService
+    TimeProvider timeProvider,
+    INotificationOwner notifications) : ITrustedAccessRequestOwner, IHostedService
 {
     private const int MaximumRequestRecords = 128;
     private const int MaximumRequestsPerMinute = 8;
@@ -101,6 +103,9 @@ public sealed class TrustedAccessRequestOwner(
             SignalChangedUnderLock();
         }
 
+        // Entering pending is the only notification of a request; approval, denial and expiry stay on its page.
+        notifications.Post(NotificationKinds.AccessRequest.Name, NotificationFacts.Of(
+            new AccessRequestNotificationFacts(requestId, request.Name, request.ObservedExecutablePath)));
         return new(requestId, deliverySecret, request.ExpiresAt, null);
     }
 

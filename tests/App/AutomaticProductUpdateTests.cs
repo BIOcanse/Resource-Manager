@@ -633,6 +633,8 @@ public sealed partial class AutomaticProductUpdateTests
         public Func<ProductVersionOption, Exception?>? PreparationErrorForOption { get; set; }
         public Func<ProductVersionOption, CancellationToken, Task<PreparedProductUpdate>>? PrepareOverride { get; set; }
         public ProductVersionCatalog Listing { get; set; } = Catalog("0.2.4", Option("0.3.0", "stable"));
+        // In memory unless a test replaces it with a persistent owner under Root.
+        public ResourceManager.App.Infrastructure.Notifications.NotificationOwner Notifications { get; set; } = NotificationTestSupport.Create();
 
         public Fixture()
         {
@@ -652,7 +654,8 @@ public sealed partial class AutomaticProductUpdateTests
                 return (PreparationErrorForOption?.Invoke(option) ?? PreparationError) is { } error ? Task.FromException<PreparedProductUpdate>(error)
                     : Task.FromResult(new PreparedProductUpdate(option.Version, Workspace, Path.Combine(Workspace, "package")));
             },
-            (_, _) => { Launches++; Launched.TrySetResult(); return Task.CompletedTask; }, Store, Clock, NullLogger<ProductUpdateCoordinator>.Instance);
+            (_, _) => { Launches++; Launched.TrySetResult(); return Task.CompletedTask; }, Store, Clock, NullLogger<ProductUpdateCoordinator>.Instance,
+            Notifications);
 
         public void PublishSettings() => Assert.False(Plans.Publish(
             Plans.Current with

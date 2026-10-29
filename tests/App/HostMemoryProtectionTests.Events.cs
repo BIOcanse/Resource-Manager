@@ -44,6 +44,12 @@ public sealed partial class HostMemoryProtectionTests
         Assert.Equal("action", value.GetProperty("event").GetProperty("kind").GetString());
         Assert.Equal(action.Events.Single(item => item.Kind == "action").Action!.ActionId,
             value.GetProperty("event").GetProperty("action").GetProperty("actionId").GetString());
+        // The event carries the sampled status frame: the record list stays with the records frames and GET.
+        Assert.NotEmpty(action.Status.Actions);
+        var hookStatus = value.GetProperty("status");
+        Assert.True(hookStatus.GetProperty("atOrAboveThreshold").GetBoolean());
+        Assert.All(new[] { "actions", "recordCapacity", "unrecordedRecordCount", "normalRunningPoint" },
+            name => Assert.False(hookStatus.TryGetProperty(name, out _), name));
         Assert.Equal("processes.read", Assert.Single(response.Headers.GetValues("X-Resource-Manager-Required-Scopes")));
         fixture.Source.Publish(200, 20, []);
         Assert.False((await ReadEvent("below-threshold")).Status.AtOrAboveThreshold);
@@ -202,8 +208,11 @@ public sealed partial class HostMemoryProtectionTests
         AssertLive((await stream.ReadFrameAsync()).GetProperty("value"));
         var replay = (await stream.ReadFrameAsync()).GetProperty("value");
         Assert.Equal("records", replay.GetProperty("type").GetString());
-        Assert.Equal(64, replay.GetProperty("limit").GetInt32());
-        Assert.Equal(previous.ActionId, Assert.Single(replay.GetProperty("records").EnumerateArray()).GetProperty("actionId").GetString());
+        Assert.Equal(4096, replay.GetProperty("limit").GetInt32());
+        Assert.Equal(0, replay.GetProperty("unrecordedRecordCount").GetInt32());
+        var replayed = Assert.Single(replay.GetProperty("records").EnumerateArray());
+        Assert.Equal(previous.ActionId, replayed.GetProperty("actionId").GetString());
+        Assert.Equal("history", replayed.GetProperty("state").GetString());
         Assert.Equal("normalRunningPoint", (await stream.ReadFrameAsync()).GetProperty("value").GetProperty("type").GetString());
         Assert.Equal("normalRunningPoints", (await stream.ReadFrameAsync()).GetProperty("value").GetProperty("type").GetString());
         fixture.Source.Publish(970, 97, [Process(21, "300", 900)]);
@@ -222,6 +231,22 @@ public sealed partial class HostMemoryProtectionTests
             var value = (await stream.ReadFrameAsync()).GetProperty("value");
             AssertLive(value);
             if (value.GetProperty("status").GetProperty("currentCommit").GetProperty("currentBytes").GetUInt64() == 250) break;
+        }
+        // Clearing history is written first and then reaches every page as a new records frame.
+        using (var cleared = await fixture.Client.PostAsync("/api/memory-protection/records/history/clear", null))
+        {
+            cleared.EnsureSuccessStatusCode();
+            using var reply = JsonDocument.Parse(await cleared.Content.ReadAsStringAsync());
+            Assert.Equal(2, reply.RootElement.GetProperty("removedCount").GetInt32());
+        }
+        while (true)
+        {
+            var value = (await stream.ReadFrameAsync()).GetProperty("value");
+            if (value.GetProperty("type").GetString() != "records") { AssertLive(value); continue; }
+            Assert.Equal(0, value.GetProperty("records").GetArrayLength());
+            Assert.Equal(4096, value.GetProperty("limit").GetInt32());
+            Assert.Equal(0, value.GetProperty("unrecordedRecordCount").GetInt32());
+            break;
         }
 
         static void AssertLive(JsonElement value)

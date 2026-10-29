@@ -35,6 +35,10 @@ internal sealed record TrustedAccessAuthorizationContext(
         ?? (IsKeylessLocalCaller
             ? TrustedAccessScopeCatalog.LocalReadScopes
             : []);
+
+    // A keyless elevated administrator is admitted to every route, so it holds every scope.
+    public bool Holds(string scope)
+        => IsAdministrator || EffectiveScopes.Contains(scope, StringComparer.Ordinal);
 }
 
 internal sealed record TrustedAccessAuthorizationDecision(
@@ -188,6 +192,7 @@ internal static class TrustedAccessHttpPolicy
             "POST /api/memory-protection/normal-running-point",
             "PUT /api/memory-protection/normal-running-points/active",
             "DELETE /api/memory-protection/normal-running-points/{id}",
+            "POST /api/memory-protection/records/history/clear",
             "POST /api/operations/{id}/cancel",
             "POST /api/system/open-path",
             "POST /api/system/open-properties",
@@ -237,6 +242,7 @@ internal static class TrustedAccessHttpPolicy
             "GET /api/index/files/search",
             "GET /api/index/software/{softwareId}",
             "GET /api/local-system/status",
+            "GET /api/notifications",
             "GET /api/operations",
             "GET /api/operations/{id}",
             "GET /api/optimization/protection",
@@ -410,6 +416,7 @@ internal static class TrustedAccessHttpPolicy
             "/api/management/inventory-revisions/subscribe" => [AccessKeyScopes.Read],
             "/api/updates/product/status/subscribe" => [AccessKeyScopes.Read],
             "/api/access-requests/subscribe" => [AccessKeyScopes.KeysManage],
+            "/api/notifications/subscribe" => [AccessKeyScopes.Read],
             _ => null
         };
         requiredScopes = scopes ?? [];

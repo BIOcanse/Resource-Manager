@@ -172,6 +172,37 @@ public sealed partial class AutomaticProductUpdateTests
     }
 
     [Fact]
+    public async Task EachAvailableVersionPostsOneNotificationAlsoAcrossRestarts()
+    {
+        using var fixture = new Fixture { Mode = "notify" };
+        fixture.Notifications = NotificationTestSupport.Create(fixture.Root, persist: true);
+        var coordinator = fixture.Coordinator();
+        await coordinator.CheckCatalogAsync(default);
+        await coordinator.CheckCatalogAsync(default);
+        Assert.True(await coordinator.CheckAutomaticAsync(default, prepareUpdate: false));
+        string[] Versions() => fixture.Notifications.Read().Notifications
+            .Where(item => item.Kind == ResourceManager.App.Application.Notifications.NotificationKinds.UpdateAvailable.Name)
+            .Select(item => item.Facts.GetProperty("version").GetString()!).ToArray();
+        Assert.Equal(["0.3.0"], Versions());
+        Assert.Equal(["version"], fixture.Notifications.Read().Notifications[0].Facts.EnumerateObject().Select(property => property.Name));
+
+        // A restarted service reads the latest update-available notification, so the same version stays one notification.
+        fixture.Notifications = NotificationTestSupport.Create(fixture.Root, persist: true);
+        var restarted = fixture.Coordinator();
+        await restarted.CheckCatalogAsync(default);
+        Assert.True(await restarted.CheckAutomaticAsync(default, prepareUpdate: false));
+        Assert.Equal(["0.3.0"], Versions());
+
+        fixture.Listing = Catalog("0.2.4", Option("0.3.1", "stable"));
+        await restarted.CheckCatalogAsync(default);
+        fixture.Listing = Catalog("0.2.4");
+        await restarted.CheckCatalogAsync(default);
+        fixture.Listing = fixture.Listing with { Status = "unavailable", Complete = false };
+        await restarted.CheckCatalogAsync(default);
+        Assert.Equal(["0.3.0", "0.3.1"], Versions());
+    }
+
+    [Fact]
     public void OlderStateWithoutAvailableVersionLoadsAndWireTimesAreUtc()
     {
         using var fixture = new Fixture();

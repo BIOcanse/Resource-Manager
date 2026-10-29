@@ -37,6 +37,10 @@ public sealed record CompiledHostManagerPlan(
 {
     [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.KernelLeakObservation)]
     public Application.KernelLeak.KernelLeakOptions? KernelLeak { get; init; }
+    [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.Notifications)]
+    public Application.Notifications.NotificationOptions? Notifications { get; init; }
+    [global::FreedomPoint.FreedomPointBinding(BackendFreedomPointPositions.MemoryProtection)]
+    public Application.MemoryProtection.HostMemoryProtectionRecordOptions? HostMemoryProtectionRecords { get; init; }
     public CompiledDataHistoryPlan DataHistory { get; init; } = CompiledDataHistoryPlan.Empty;
     public CompiledFreedomPointTree FreedomPoints { get; init; } = CompiledFreedomPointTree.Empty;
     public CompiledCpuCoreResidencyPlan CpuCoreResidency { get; init; } = CompiledCpuCoreResidencyPlan.Unpublished;

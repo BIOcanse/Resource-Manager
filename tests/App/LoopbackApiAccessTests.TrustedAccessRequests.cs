@@ -475,7 +475,9 @@ public sealed partial class LoopbackApiAccessTests
         {
             HostManager = CompiledHostManagerPlan.Unpublished with
             {
-                TrustedAccessRequestLifetimeMilliseconds = milliseconds
+                TrustedAccessRequestLifetimeMilliseconds = milliseconds,
+                // Entering pending posts an access-request notification, which needs the retained count.
+                Notifications = new(64)
             }
         });
 

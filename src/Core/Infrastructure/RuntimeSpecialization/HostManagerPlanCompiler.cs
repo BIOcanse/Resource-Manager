@@ -57,6 +57,8 @@ public sealed partial class HostManagerPlanCompiler
         var compiledCpuScoring = CompileCpuScoring(freedom);
         var cpuCoreResidency = CompileCpuCoreResidency(freedom, cpuTopology);
         var kernelLeak = CompileKernelLeak(freedom);
+        var notifications = CompileNotifications(freedom);
+        var memoryProtectionRecords = CompileHostMemoryProtectionRecords(freedom);
         var schedulerSamplingInterval = CompileSchedulerSamplingInterval(freedom);
         var serviceRecoveryReset = CompileServiceRecovery(freedom);
         var trustedAccessRequestLifetime = CompileTrustedAccessRequestLifetime(freedom);
@@ -581,6 +583,8 @@ public sealed partial class HostManagerPlanCompiler
             DataHistory = dataHistory,
             CpuCoreResidency = cpuCoreResidency,
             KernelLeak = kernelLeak,
+            Notifications = notifications,
+            HostMemoryProtectionRecords = memoryProtectionRecords,
             CpuScoring = compiledCpuScoring,
             SchedulerSamplingInterval = schedulerSamplingInterval,
             HardwareBridgeAvailabilityCheckInterval = hardwareBridgeAvailabilityCheckInterval,

@@ -21,6 +21,16 @@ public sealed partial class HostManagerPlanCompiler
         => freedom.Consume<Application.KernelLeak.KernelLeakOptions>(BackendFreedomPointPaths.KernelLeak,
             "HostManagerPlanCompiler.CompileKernelLeak").Validate();
 
+    private static Application.Notifications.NotificationOptions CompileNotifications(FreedomPointCompilation freedom)
+        => freedom.Consume<Application.Notifications.NotificationOptions>(BackendFreedomPointPaths.Notifications,
+            "HostManagerPlanCompiler.CompileNotifications").Validate();
+
+    private static Application.MemoryProtection.HostMemoryProtectionRecordOptions CompileHostMemoryProtectionRecords(
+        FreedomPointCompilation freedom)
+        => freedom.Consume<Application.MemoryProtection.HostMemoryProtectionRecordOptions>(
+            BackendFreedomPointPaths.HostMemoryProtectionRecords,
+            "HostManagerPlanCompiler.CompileHostMemoryProtectionRecords").Validate();
+
     private static int CompileServiceRecovery(FreedomPointCompilation freedom)
         => freedom.Consume<int>(BackendFreedomPointPaths.ServiceRecoveryCounterReset,
             "HostManagerPlanCompiler.CompileServiceRecovery");

@@ -29,7 +29,7 @@ public sealed class ProductUpdateSubscriptionTests
                     ProductVersionEligibility.Eligible)], null)),
             (_, _) => throw new InvalidOperationException("Notify must not prepare."),
             (_, _) => throw new InvalidOperationException("Notify must not launch."),
-            new(root), TimeProvider.System, NullLogger<ProductUpdateCoordinator>.Instance);
+            new(root), TimeProvider.System, NullLogger<ProductUpdateCoordinator>.Instance, NotificationTestSupport.Create());
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.ClearProviders();

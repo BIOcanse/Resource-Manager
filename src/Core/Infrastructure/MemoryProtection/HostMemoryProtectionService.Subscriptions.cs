@@ -83,7 +83,8 @@ public sealed partial class HostMemoryProtectionService
                     events.Add(new(above ? "threshold-reached" : "below-threshold"));
                 if (previous.CurrentActionId != next.CurrentActionId && next.CurrentActionId is not null)
                     events.Add(new("action-started"));
-                foreach (var action in next.Actions.Reverse().Where(action => !previous.Actions.Contains(action)))
+                // Written records are the action events, oldest first; a record a full report could not write is none.
+                foreach (var action in appendedRecords)
                     events.Add(new("action", action.Reason, action));
                 if (previous.Reserve.RemainingBytes != next.Reserve.RemainingBytes
                     || !previous.Reserve.Entries.Select(item => (item.Location, item.RemainingBytes))
@@ -93,12 +94,16 @@ public sealed partial class HostMemoryProtectionService
                     || !previous.Reserve.Entries.SequenceEqual(next.Reserve.Entries)))
                     events.Add(new("reserve-error", reason));
             }
+            var recordsChanged = recordsReplaced || previous is not null && previous.UnrecordedRecordCount != next.UnrecordedRecordCount;
+            appendedRecords.Clear();
+            recordsReplaced = false;
             publishedStatus = next;
             publishedPoint = point;
             publishedPoints = points;
             if (pointChanged) createdPoint = null;
             var value = new HostMemoryProtectionPublication(next, events)
-                { NormalRunningPoint = point, PointChanged = pointChanged, NormalRunningPoints = PointList(points, point), PointsChanged = pointsChanged };
+                { NormalRunningPoint = point, PointChanged = pointChanged, NormalRunningPoints = PointList(points, point), PointsChanged = pointsChanged,
+                    RecordsChanged = recordsChanged };
             foreach (var subscriber in subscribers)
                 if (!subscriber.Writer.TryWrite(value))
                     subscriber.Writer.TryComplete(new IOException("memory-protection-subscriber-too-slow"));
@@ -117,5 +122,7 @@ public sealed partial class HostMemoryProtectionService
             && left.Reserve.RemainingBytes == right.Reserve.RemainingBytes
             && left.Reserve.Entries.SequenceEqual(right.Reserve.Entries)
             && left.ExcludedCandidates.SequenceEqual(right.ExcludedCandidates)
-            && left.Actions.SequenceEqual(right.Actions);
+            // Records are replaced as a whole on every change, so the list itself is the identity.
+            && ReferenceEquals(left.Actions, right.Actions) && left.RecordCapacity == right.RecordCapacity
+            && left.UnrecordedRecordCount == right.UnrecordedRecordCount;
 }

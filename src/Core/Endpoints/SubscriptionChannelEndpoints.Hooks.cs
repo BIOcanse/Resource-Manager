@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using ResourceManager.App.Application.MemoryProtection;
 using ResourceManager.App.Application.Metrics;
 using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Application.ResourceBreakdown;
@@ -134,9 +135,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             {
                 var owner = services.GetRequiredService<ResourceManager.App.Infrastructure.MemoryProtection.HostMemoryProtectionService>();
                 await foreach (var publication in owner.SubscribeAsync(token))
+                {
+                    HostMemoryProtectionLiveStatus? status = null;
                     foreach (var change in publication.Events.Where(change => "memory-protection." + change.Kind == eventName))
                         await writer.WriteHookAsync(new MonitoringHookFrame<MonitoringEventHookEvent>(request.Id,
-                            new("met", change, publication.Status)), token);
+                            new("met", change, status ??= HostMemoryProtectionLiveStatus.From(publication.Status))), token);
+                }
             });
         var rule = request.Rule!;
         var target = rule.Target;

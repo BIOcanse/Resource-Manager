@@ -245,17 +245,44 @@ public sealed partial class JsonMetadataContractTests
             "baselineBytes":0,"currentBytes":800,"growthBytes":800,"dumpPaths":[],"bytesWritten":0,
             "outcome":"terminated-without-dump","reason":"reserve-error","actionId":"test-action","targetKind":"{{{{kind}}}}","treeRoot":{{{{treeRoot}}}},
             "detail":"volume release failed","selectionBasis":{"rule":"{{{{rule}}}}","processGrowthBytes":{{{{growth}}}},
-            "directChildrenMemoryGrowthBytes":{{{{children}}}},"minimumProcessGrowthBytes":800}}}
+            "directChildrenMemoryGrowthBytes":{{{{children}}}},"minimumProcessGrowthBytes":800},"state":"history"}}
             """;
         var options = new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions;
         ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
         var value = JsonSerializer.Deserialize<ResourceManager.App.Application.MemoryProtection.HostMemoryProtectionRecordFrame>(fixture, options)!;
         Assert.True(JsonNode.DeepEquals(JsonNode.Parse(fixture), JsonSerializer.SerializeToNode(value, options)));
-        var replay = new ResourceManager.App.Application.MemoryProtection.HostMemoryProtectionRecordsFrame([value.Record], 64);
+        Assert.Equal(ResourceManager.App.Application.MemoryProtection.HostMemoryActionRecordState.History, value.Record.State);
+        var replay = new ResourceManager.App.Application.MemoryProtection.HostMemoryProtectionRecordsFrame([value.Record], 4096, 2);
         var replayWire = JsonSerializer.SerializeToElement(replay, options);
         Assert.Equal("records", replayWire.GetProperty("type").GetString());
-        Assert.Equal(64, replayWire.GetProperty("limit").GetInt32());
+        Assert.Equal(4096, replayWire.GetProperty("limit").GetInt32());
+        Assert.Equal(2, replayWire.GetProperty("unrecordedRecordCount").GetInt32());
         Assert.True(JsonNode.DeepEquals(JsonNode.Parse(fixture)!["record"], JsonNode.Parse(replayWire.GetProperty("records")[0].GetRawText())));
+    }
+
+    [Fact]
+    public void NotificationListWireCarriesSequenceKindUtcTimeAndFactsWithProductionMetadata()
+    {
+        var at = new DateTimeOffset(2026, 10, 29, 8, 0, 0, TimeSpan.Zero);
+        var list = new ResourceManager.App.Application.Notifications.NotificationList(
+        [
+            new(7, "memory-protection.action", at, ResourceManager.App.Application.Notifications.NotificationFacts.Of(
+                new ResourceManager.App.Application.Notifications.MemoryProtectionActionNotificationFacts(
+                    "5f0c", "processTree", "launcher.exe", 4120, 3, 0))),
+            new(8, "update-available", at, ResourceManager.App.Application.Notifications.NotificationFacts.Of(
+                new ResourceManager.App.Application.Notifications.UpdateAvailableNotificationFacts("0.3.0"))),
+            new(9, "access-request", at, ResourceManager.App.Application.Notifications.NotificationFacts.Of(
+                new ResourceManager.App.Application.Notifications.AccessRequestNotificationFacts("9a1e", "Desktop helper", @"C:\Tools\helper.exe")))
+        ]);
+        var options = new Microsoft.AspNetCore.Http.Json.JsonOptions().SerializerOptions;
+        ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options);
+        Assert.Equal("""
+            {"notifications":[{"sequence":7,"kind":"memory-protection.action","occurredAt":"2026-10-29T08:00:00+00:00","facts":{"actionId":"5f0c","targetKind":"processTree","name":"launcher.exe","processId":4120,"recordCount":3,"bytesWritten":0}},{"sequence":8,"kind":"update-available","occurredAt":"2026-10-29T08:00:00+00:00","facts":{"version":"0.3.0"}},{"sequence":9,"kind":"access-request","occurredAt":"2026-10-29T08:00:00+00:00","facts":{"requestId":"9a1e","name":"Desktop helper","observedExecutablePath":"C:\\Tools\\helper.exe"}}]}
+            """, JsonSerializer.Serialize(list, options));
+        var roundTrip = JsonSerializer.Deserialize<ResourceManager.App.Application.Notifications.NotificationList>(
+            JsonSerializer.Serialize(list, options), options)!;
+        Assert.Equal(list.Notifications.Select(item => (item.Sequence, item.Kind, item.OccurredAt, item.Facts.GetRawText())),
+            roundTrip.Notifications.Select(item => (item.Sequence, item.Kind, item.OccurredAt, item.Facts.GetRawText())));
     }
 
     [Theory]

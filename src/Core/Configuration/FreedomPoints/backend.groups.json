@@ -1,5 +1,5 @@
 {
-  "contractFingerprint": "4A852C54D251E10236C4D93CD262A922441190EEAF3704F014EC4A09D2C34ECE",
+  "contractFingerprint": "D0CA4559559C09631896B62FFC5A6E33C702A6ACAEB051BE0EBD10A8DF7E13FB",
   "groups": [
     {
       "key": "resource-manager/backend",
@@ -16,7 +16,9 @@
       "description": "Backend subscriptions publish current values; readers do not sample.",
       "order": 0,
       "points": [
-        "0001000200050000"
+        "0001000200050000",
+        "0001000200050001",
+        "0001000200050002"
       ]
     },
     {

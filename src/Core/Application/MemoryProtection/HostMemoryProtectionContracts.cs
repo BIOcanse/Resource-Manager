@@ -36,14 +36,24 @@ public sealed record HostMemoryActionRecord(DateTimeOffset At, int ProcessId, st
     public string TargetKind { get; init; } = "process";
     public HostMemoryTreeRoot? TreeRoot { get; init; }
     public string? Detail { get; init; }
+    // A record is written once its process is handled, so it is a history report entry from the start
+    // (docs/report_lifecycle_2026-10-28.md); an action in progress is the status currentActionId.
+    public HostMemoryActionRecordState State { get; init; } = HostMemoryActionRecordState.History;
+}
+[System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter<HostMemoryActionRecordState>))]
+public enum HostMemoryActionRecordState
+{
+    [System.Text.Json.Serialization.JsonStringEnumMemberName("history")] History
 }
 public sealed record HostMemorySelectionBasis(string Rule, decimal? ProcessGrowthBytes,
     decimal? DirectChildrenMemoryGrowthBytes, long MinimumProcessGrowthBytes);
 public sealed record HostMemoryProtectionStatus(bool Enabled, double ThresholdPercent, double CheckIntervalSeconds,
     HostMemoryReserveStatus Reserve, decimal? TriggerBytes, decimal? RemainingBytes, HostMemoryCommit? CurrentCommit,
     NormalRunningPointSummary? NormalRunningPoint, string? InactiveReason,
-    IReadOnlyList<HostMemoryExclusion> ExcludedCandidates, int ActionRecordLimit, IReadOnlyList<HostMemoryActionRecord> Actions)
+    IReadOnlyList<HostMemoryExclusion> ExcludedCandidates, int RecordCapacity, IReadOnlyList<HostMemoryActionRecord> Actions)
 {
+    // Records a full report could not write; clearing history resets it with the records it frees room for.
+    public int UnrecordedRecordCount { get; init; }
     public string ActionMode { get; init; } = HostMemoryProtectionActionModes.DumpThenTerminate;
     public bool Active => InactiveReason is null;
     public bool? AtOrAboveThreshold { get; init; }
@@ -62,6 +72,8 @@ public sealed record HostMemoryProtectionPublication(HostMemoryProtectionStatus 
     public bool PointChanged { get; init; }
     public NormalRunningPointList? NormalRunningPoints { get; init; }
     public bool PointsChanged { get; init; }
+    // The record list was replaced (history cleared) or its unrecorded count changed; appended records are events.
+    public bool RecordsChanged { get; init; }
     public bool IsReplay { get; init; }
 }
 

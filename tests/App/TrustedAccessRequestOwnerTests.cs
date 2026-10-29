@@ -1,3 +1,4 @@
+using ResourceManager.App.Application.Notifications;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.TrustedAccess;
 using ResourceManager.App.Domain.RuntimeSpecialization;
@@ -32,6 +33,33 @@ public sealed class TrustedAccessRequestOwnerTests
         Assert.Empty(subscription.Current);
         Assert.False(owner.HasPendingRequests);
         Assert.Equal(new[] { true, false }, changes);
+    }
+
+    [Fact]
+    public async Task EnteringPendingPostsOneAccessRequestNotificationAndDecisionsPostNone()
+    {
+        var clock = new ManualTimeProvider(InitialTime);
+        var notifications = NotificationTestSupport.Create();
+        var owner = CreateOwner(TrustedAccessTestFactory.Create().Owner, clock, 1_000, notifications);
+        var approved = await owner.CreateAsync(new TrustedAccessRequestCreateCommand(
+            "  Desktop helper ", ["read"], @"C:\Tools\helper.exe", 1234), CancellationToken.None);
+        var denied = await owner.CreateAsync(new TrustedAccessRequestCreateCommand(
+            "Second helper", ["read"], @"C:\Tools\second.exe", 1235), CancellationToken.None);
+        var expired = await owner.CreateAsync(new TrustedAccessRequestCreateCommand(
+            "Third helper", ["read"], @"C:\Tools\third.exe", 1236), CancellationToken.None);
+        await owner.ApproveAsync(approved.RequestId!, ["read"], ["read"], approverIsAdministrator: false, CancellationToken.None);
+        await owner.DenyAsync(denied.RequestId!, TrustedAccessRequestDenialReason.Unsupported, CancellationToken.None);
+        clock.Advance(TimeSpan.FromMilliseconds(1_001));
+        Assert.Equal(TrustedAccessRequestStatus.Expired,
+            (await owner.WaitAsync(expired.RequestId!, expired.DeliverySecret!, CancellationToken.None)).Status);
+        var posted = notifications.Read().Notifications;
+        Assert.Equal(3, posted.Count);
+        Assert.All(posted, item => Assert.Equal(NotificationKinds.AccessRequest.Name, item.Kind));
+        Assert.Equal([approved.RequestId, denied.RequestId, expired.RequestId],
+            posted.Select(item => item.Facts.GetProperty("requestId").GetString()));
+        Assert.Equal("Desktop helper", posted[0].Facts.GetProperty("name").GetString());
+        Assert.Equal(@"C:\Tools\helper.exe", posted[0].Facts.GetProperty("observedExecutablePath").GetString());
+        Assert.Equal(["requestId", "name", "observedExecutablePath"], posted[0].Facts.EnumerateObject().Select(property => property.Name));
     }
 
     [Fact]
@@ -141,7 +169,8 @@ public sealed class TrustedAccessRequestOwnerTests
     private static TrustedAccessRequestOwner CreateOwner(
         ITrustedAccessKeyService keys,
         TimeProvider timeProvider,
-        int lifetimeMilliseconds)
+        int lifetimeMilliseconds,
+        INotificationOwner? notifications = null)
     {
         var runtimePlan = CompiledRuntimePlan.Default with
         {
@@ -150,7 +179,8 @@ public sealed class TrustedAccessRequestOwnerTests
                 TrustedAccessRequestLifetimeMilliseconds = lifetimeMilliseconds
             }
         };
-        return new TrustedAccessRequestOwner(keys, new StaticRuntimePlanProvider(runtimePlan), timeProvider);
+        return new TrustedAccessRequestOwner(keys, new StaticRuntimePlanProvider(runtimePlan), timeProvider,
+            notifications ?? NotificationTestSupport.Create());
     }
 
     private sealed class StaticRuntimePlanProvider(CompiledRuntimePlan plan) : IRuntimePlanProvider

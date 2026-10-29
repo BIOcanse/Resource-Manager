@@ -139,6 +139,8 @@ internal sealed class FreedomPointSdkAdapter
         var (scope, symbol) = point.Path.Raw switch
         {
             BackendFreedomPointPositions.KernelLeakObservation => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "KernelLeak"),
+            BackendFreedomPointPositions.Notifications => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "Notifications"),
+            BackendFreedomPointPositions.MemoryProtection => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledHostManagerPlan", "HostMemoryProtectionRecords"),
             BackendFreedomPointPositions.MachineBaselineRatio => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledCpuScoringPlan", "BaselineRatio"),
             BackendFreedomPointPositions.CorePerformanceWeights => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledCpuScoringPlan", "CoreWeights"),
             BackendFreedomPointPositions.ObservationWindowMs => ("ResourceManager.App.Domain.RuntimeSpecialization.CompiledCpuCoreResidencyPlan", "ObservationWindowMilliseconds"),

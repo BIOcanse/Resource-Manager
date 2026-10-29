@@ -260,6 +260,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         }
         var hooks = await DecodeMonitoringHooksAsync(request.Hooks, hookRejections,
             httpContext.RequestServices, httpContext.RequestAborted);
+        // A source that filters by caller (notifications by kind) compiles with the access its selector was admitted with.
+        var admitted = new Dictionary<ParsedFrontendSubscription, TrustedAccessAuthorizationContext?>(ReferenceEqualityComparer.Instance);
         foreach (var descriptor in descriptors.Concat(hooks.Select(hook =>
             new ParsedFrontendSubscription(hook.Id, hook.AuthorizationSelector, QueryCollection.Empty))))
         {
@@ -290,13 +292,14 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 decision.Allowed ? "allowed" : $"denied:{decision.ErrorCode}");
             if (!decision.Allowed)
                 return Failed(decision.StatusCode, decision.ErrorCode);
+            admitted[descriptor] = decision.Context;
         }
 
         try
         {
             var subscriptions = descriptors
                 .Select(descriptor => CompileFrontendSubscription(
-                    descriptor,
+                    descriptor with { Access = admitted.GetValueOrDefault(descriptor) },
                     httpContext.RequestServices))
                 .ToList();
             var expansions = new List<MonitoringHookFrame<MonitoringHookExpansion>>();
@@ -351,9 +354,9 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     {
                         await writer.WriteAsync(subscription.Id, new Application.MemoryProtection.HostMemoryProtectionStatusFrame(
                             Application.MemoryProtection.HostMemoryProtectionLiveStatus.From(value.Status)), token);
-                        if (value.IsReplay)
+                        if (value.IsReplay || value.RecordsChanged)
                             await writer.WriteAsync(subscription.Id, new Application.MemoryProtection.HostMemoryProtectionRecordsFrame(
-                                value.Status.Actions, value.Status.ActionRecordLimit), token);
+                                value.Status.Actions, value.Status.RecordCapacity, value.Status.UnrecordedRecordCount), token);
                         if (value.IsReplay || value.PointChanged)
                             await writer.WriteAsync(subscription.Id, new Application.MemoryProtection.HostMemoryProtectionPointFrame(value.NormalRunningPoint), token);
                         if ((value.IsReplay || value.PointsChanged) && value.NormalRunningPoints is { } saved)
@@ -471,7 +474,12 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             ["/api/access-requests/subscribe"] = new((subscription, services, _) =>
                 CompileAccessRequestSubscription(
                     subscription,
-                    services.GetRequiredService<ITrustedAccessRequestOwner>()))
+                    services.GetRequiredService<ITrustedAccessRequestOwner>())),
+            // EventDriven: the current list on subscribe, then the whole list after every change, filtered per caller.
+            ["/api/notifications/subscribe"] = new((subscription, services, _) =>
+                CompileNotificationSubscription(
+                    subscription,
+                    services.GetRequiredService<Application.Notifications.INotificationOwner>()))
         };
 
     internal static IEnumerable<string> SubscriptionSelectors => SubscriptionSourceRoutes.Keys;
@@ -937,6 +945,9 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         IQueryCollection Query,
         IReadOnlyList<FieldReference>? Fields = null)
     {
+        // The access this selector was admitted with; null when the selector needed no authorization.
+        public TrustedAccessAuthorizationContext? Access { get; init; }
+
         public CompiledFrontendSubscription Compile(
             Func<FrontendSubscriptionChannelWriter, CancellationToken, Task> runAsync)
             => new(Id, Selector, runAsync);

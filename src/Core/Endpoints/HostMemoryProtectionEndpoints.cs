@@ -30,6 +30,9 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 : Results.NotFound(new EndpointErrorPayload("normal-running-point-not-found")));
         app.MapGet("/api/memory-protection", async (HostMemoryProtectionService protection, CancellationToken token)
             => Results.Ok(await protection.ReadStatusAsync(token)));
+        // Every action record is history. Clearing removes the records only; slice files stay for the user.
+        app.MapPost("/api/memory-protection/records/history/clear", (HostMemoryProtectionService protection)
+            => Results.Ok(new ClearReportHistoryResponse(protection.ClearHistory())));
         if (capabilities.Allows(StartupCapability.MutablePersistence))
         app.MapPost("/api/memory-protection/reserve/rebuild", async (HostMemoryProtectionService protection, CancellationToken token) =>
         {

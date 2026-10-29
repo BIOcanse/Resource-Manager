@@ -8,6 +8,7 @@ using System.Threading.Channels;
 using System.Text.Json;
 using Microsoft.Win32;
 using Microsoft.Data.Sqlite;
+using ResourceManager.App.Application.Notifications;
 using ResourceManager.App.Domain.Updates;
 using ResourceManager.App.Infrastructure.Paths;
 using ResourceManager.Shared.Packages;
@@ -47,6 +48,8 @@ public sealed class ProductUpdateCoordinator
     private readonly ProductUpdateStateStore store;
     private readonly TimeProvider clock;
     private readonly ILogger<ProductUpdateCoordinator> logger;
+    private readonly INotificationOwner notifications;
+    private readonly object announcement = new();
     private ProductUpdateState state;
 
     internal event Action? Changed;
@@ -119,10 +122,11 @@ public sealed class ProductUpdateCoordinator
     }
 
     public ProductUpdateCoordinator(ProductVersionCatalogService catalog, IHttpClientFactory httpClientFactory,
-        IHostEnvironment environment, TimeProvider clock, ILogger<ProductUpdateCoordinator> logger)
+        IHostEnvironment environment, TimeProvider clock, ILogger<ProductUpdateCoordinator> logger, INotificationOwner notifications)
     {
         this.clock = clock;
         this.logger = logger;
+        this.notifications = notifications;
         var root = PackagePathResolver.ResolvePackageRoot(environment.ContentRootPath);
         store = new ProductUpdateStateStore(root);
         readCatalog = catalog.ReadAsync;
@@ -135,7 +139,7 @@ public sealed class ProductUpdateCoordinator
     internal ProductUpdateCoordinator(Func<CancellationToken, Task<ProductVersionCatalog>> readCatalog,
         Func<ProductVersionOption, CancellationToken, Task<PreparedProductUpdate>> prepare,
         Func<PreparedProductUpdate, CancellationToken, Task> launch,
-        ProductUpdateStateStore store, TimeProvider clock, ILogger<ProductUpdateCoordinator> logger)
+        ProductUpdateStateStore store, TimeProvider clock, ILogger<ProductUpdateCoordinator> logger, INotificationOwner notifications)
     {
         this.readCatalog = readCatalog;
         this.prepare = prepare;
@@ -143,6 +147,7 @@ public sealed class ProductUpdateCoordinator
         this.store = store;
         this.clock = clock;
         this.logger = logger;
+        this.notifications = notifications;
         state = Restore();
     }
 
@@ -217,7 +222,22 @@ public sealed class ProductUpdateCoordinator
             CheckResult = success ? "checked" : "failed",
             AvailableVersion = success ? targets!.FirstOrDefault()?.Version : current.AvailableVersion
         });
+        if (success) AnnounceAvailable(targets!.FirstOrDefault()?.Version);
         return listing;
+    }
+
+    // Seeing an available version posts one update-available notification. The latest such notification in the
+    // owner's list is the only memory, so the same version is not posted again, also not after a restart.
+    private void AnnounceAvailable(string? version)
+    {
+        if (string.IsNullOrWhiteSpace(version)) return;
+        lock (announcement)
+        {
+            var latest = notifications.Read().Notifications.LastOrDefault(item => item.Kind == NotificationKinds.UpdateAvailable.Name);
+            if (latest is not null && VersionIdentity(NotificationFacts.ReadUpdateAvailable(latest.Facts)?.Version) == VersionIdentity(version))
+                return;
+            notifications.Post(NotificationKinds.UpdateAvailable.Name, NotificationFacts.Of(new UpdateAvailableNotificationFacts(version)));
+        }
     }
 
     public ProductUpdateState Submit(string choice)
@@ -279,6 +299,7 @@ public sealed class ProductUpdateCoordinator
     {
         if (!await operation.WaitAsync(0, token)) return false;
         var previousResult = Status.CheckResult;
+        string? available = null;
         try
         {
             if (Status.Stage is "checking" or "downloading" or "verifying" or "waitingForExit") return false;
@@ -304,6 +325,7 @@ public sealed class ProductUpdateCoordinator
             Save(Status with { LastCheckedAt = clock.GetUtcNow().ToUniversalTime(), CheckResult = targets.Length == 0 ? "noUpdate" : "available",
                 AvailableVersion = targets.FirstOrDefault()?.Version,
                 CheckedInstalledVersion = installed, IncompatibleVersions = incompatible.ToArray() });
+            available = targets.FirstOrDefault()?.Version;
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
@@ -318,6 +340,7 @@ public sealed class ProductUpdateCoordinator
             return true;
         }
         finally { operation.Release(); }
+        AnnounceAvailable(available);
         if (prepareUpdate) await PrepareAutomaticAsync(token);
         return true;
     }
