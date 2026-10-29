@@ -58,34 +58,14 @@ internal sealed record TrustedAccessAuthorizationDecision(
         => new(false, statusCode, errorCode, null, accessKeyId);
 }
 
+// Views of the scope table in AccessKeyScopes; no scope list is declared here.
 internal static class TrustedAccessScopeCatalog
 {
-    public static IReadOnlyList<string> LocalReadScopes { get; } =
-    [
-        AccessKeyScopes.Read,
-        AccessKeyScopes.MetricsRead,
-        AccessKeyScopes.ProcessesRead
-    ];
+    public static IReadOnlyList<string> LocalReadScopes => AccessKeyScopes.KeylessLocal;
 
-    public static IReadOnlyList<string> All { get; } =
-    [
-        AccessKeyScopes.Read,
-        AccessKeyScopes.MetricsRead,
-        AccessKeyScopes.ProcessesRead,
-        AccessKeyScopes.Session,
-        AccessKeyScopes.AdaptersRegisterSelf,
-        AccessKeyScopes.DesktopPublish,
-        AccessKeyScopes.GpuResolve,
-        AccessKeyScopes.GpuReport,
-        AccessKeyScopes.KeysManage,
-        AccessKeyScopes.MachineWrite,
-        AccessKeyScopes.InjectionConfigure
-    ];
+    public static IReadOnlyList<string> All => AccessKeyScopes.All;
 
-    public static IReadOnlyList<string> DefaultScopes { get; } = All
-        .Where(static scope => scope is not AccessKeyScopes.MachineWrite
-            and not AccessKeyScopes.InjectionConfigure)
-        .ToArray();
+    public static IReadOnlyList<string> DefaultScopes { get; } = Array.AsReadOnly(AccessKeyScopes.Default);
 }
 
 internal static class TrustedAccessHttpPolicy
@@ -157,7 +137,6 @@ internal static class TrustedAccessHttpPolicy
             "DELETE /api/cpu/baseline-ratio",
             "DELETE /api/cpu/topology/performance-overrides",
             "DELETE /api/gpu/performance-overrides",
-            "DELETE /api/optimization/trust/{id}",
             "DELETE /api/software/manual/{id}",
             "PATCH /api/settings/app",
             "PATCH /api/memory-protection",
@@ -166,7 +145,6 @@ internal static class TrustedAccessHttpPolicy
             "POST /api/control/instances/refresh",
             "POST /api/control/redetect",
             "POST /api/control/state/{objectId}/retry",
-            "POST /api/optimization/reports/{id}/dismiss",
             "POST /api/optimization/smart/mode",
             "POST /api/optimization/smart/run-once",
             "POST /api/optimization/smart/validation/process-effect-scope/close",
@@ -200,7 +178,10 @@ internal static class TrustedAccessHttpPolicy
             "PUT /api/settings/dashboard");
         // Creating, selecting and deleting normal running points only records or picks the baseline; it changes
         // nothing on the machine, so the user does it from the bundled UI without elevation (user 10-28).
+        // Dismissing an optimization report and removing a trust entry are session actions too (user 10-29).
         Add(Protected(AccessKeyScopes.Session),
+            "POST /api/optimization/reports/{id}/dismiss",
+            "DELETE /api/optimization/trust/{id}",
             "POST /api/optimization/reports/history/clear",
             "DELETE /api/targeted-recordings/{id}",
             "POST /api/kernel-leaks/history/clear",
@@ -487,6 +468,16 @@ internal static class TrustedAccessHttpPolicy
             if (key is null)
                 return TrustedAccessAuthorizationDecision.Reject(StatusCodes.Status401Unauthorized, "access-key-invalid");
 
+            // The holder rule looks at what the key carries, not at what this request needs: a key with a scope
+            // whose holder must be an elevated administrator is unusable from any other process (user 10-29).
+            var holderMustBeAdministrator = AccessKeyScopes.RequiresAdministratorHolder(key.Scopes);
+            var administrator = holderMustBeAdministrator && administratorReader.IsAdministrator(context);
+            if (holderMustBeAdministrator && !administrator)
+                return TrustedAccessAuthorizationDecision.Reject(
+                    StatusCodes.Status403Forbidden,
+                    "elevated-administrator-required",
+                    key.Id);
+
             if (!ContainsAll(key.Scopes, requiredScopes))
                 return TrustedAccessAuthorizationDecision.Reject(
                     StatusCodes.Status403Forbidden,
@@ -496,25 +487,6 @@ internal static class TrustedAccessHttpPolicy
                     MissingScopes = requiredScopes
                         .Where(scope => !key.Scopes.Contains(scope, StringComparer.Ordinal)).ToArray()
                 };
-
-            var requiresElevation = false;
-            for (var index = 0; index < requiredScopes.Count; index++)
-            {
-                if (requiredScopes[index] is AccessKeyScopes.MachineWrite or AccessKeyScopes.InjectionConfigure)
-                {
-                    requiresElevation = true;
-                    break;
-                }
-            }
-            var administrator = requiresElevation && administratorReader.IsAdministrator(context);
-            if (requiresElevation)
-            {
-                if (!administrator)
-                    return TrustedAccessAuthorizationDecision.Reject(
-                        StatusCodes.Status403Forbidden,
-                        "elevated-administrator-required",
-                        key.Id);
-            }
 
             var authorization = new TrustedAccessAuthorizationContext(key, null, administrator, false);
             context.Items[typeof(TrustedAccessAuthorizationContext)] = authorization;

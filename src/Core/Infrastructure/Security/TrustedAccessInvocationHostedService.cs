@@ -189,6 +189,14 @@ public sealed class TrustedAccessInvocationHostedService(
             {
                 return new(TrustedAccessInvocationContract.Unauthorized, null);
             }
+            // Same holder rule as HTTP: a key carrying a scope whose holder must be an elevated administrator is
+            // refused from any other caller (docs/trusted_access_scopes_2026-10-29.md). Keyed calls arrive without
+            // the administrator fact, so it is read here only for such keys.
+            if (AccessKeyScopes.RequiresAdministratorHolder(credential.Scopes)
+                && !verifiedAdministrator && !IsVerifiedAdministrator(caller))
+            {
+                return new(TrustedAccessInvocationContract.Forbidden, null);
+            }
             authorizationAccepted(credential.Id);
 
             var requiredScope = request.Operation switch

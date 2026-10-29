@@ -201,7 +201,8 @@ public sealed class LoopbackApiAuthenticationPolicyTests
             Assert.False(decision.Allowed);
             Assert.Equal(StatusCodes.Status403Forbidden, decision.StatusCode);
             Assert.Equal("access-scope-required", decision.ErrorCode);
-            Assert.Equal(0, administratorReader.CallCount);
+            // The key carries machine.write, so the holder rule reads the administrator fact before the scopes.
+            Assert.Equal(1, administratorReader.CallCount);
         }
     }
 
@@ -360,6 +361,68 @@ public sealed class LoopbackApiAuthenticationPolicyTests
         Assert.Equal("elevated-administrator-required", decision.ErrorCode);
         Assert.Equal(1, administratorReader.CallCount);
     }
+
+    [Theory]
+    [InlineData(AccessKeyScopes.MachineWrite)]
+    [InlineData(AccessKeyScopes.InjectionConfigure)]
+    public async Task KeyCarryingAnAdministratorHolderScopeIsRefusedEvenForReadsFromOtherProcesses(string scope)
+    {
+        var administratorReader = new TestAdministratorReader(isAdministrator: false);
+
+        var decision = await TrustedAccessHttpPolicy.AuthorizeAsync(
+            RequestWithKey("valid-key"),
+            new TestKeyService(Key([AccessKeyScopes.Read, scope])),
+            administratorReader,
+            [AccessKeyScopes.Read],
+            allowKeylessLocalWindowsCaller: true,
+            requireKeyless: false,
+            cancellationToken: CancellationToken.None);
+
+        Assert.False(decision.Allowed);
+        Assert.Equal(StatusCodes.Status403Forbidden, decision.StatusCode);
+        Assert.Equal("elevated-administrator-required", decision.ErrorCode);
+        Assert.Equal(1, administratorReader.CallCount);
+    }
+
+    [Fact]
+    public async Task KeyCarryingAnAdministratorHolderScopeReadsFromAnElevatedAdministrator()
+    {
+        var decision = await TrustedAccessHttpPolicy.AuthorizeAsync(
+            RequestWithKey("valid-key"),
+            new TestKeyService(Key([AccessKeyScopes.Read, AccessKeyScopes.MachineWrite])),
+            new TestAdministratorReader(isAdministrator: true),
+            [AccessKeyScopes.Read],
+            allowKeylessLocalWindowsCaller: false,
+            requireKeyless: false,
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(decision.Allowed);
+        Assert.True(decision.Context!.IsAdministrator);
+    }
+
+    [Fact]
+    public void ScopeTableKeepsAdministratorHolderScopesOutOfTheDefaultKey()
+    {
+        // The bundled UI holds the default key and runs unelevated.
+        Assert.DoesNotContain(AccessKeyScopes.Definitions,
+            static scope => scope.InDefaultKey && scope.RequiresAdministratorHolder);
+        Assert.False(AccessKeyScopes.RequiresAdministratorHolder(AccessKeyScopes.Default));
+        Assert.Equal(AccessKeyScopes.Definitions.Select(static scope => scope.Name), AccessKeyScopes.All);
+        Assert.Equal(AccessKeyScopes.Definitions.Count, AccessKeyScopes.All.Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal([AccessKeyScopes.MachineWrite, AccessKeyScopes.InjectionConfigure],
+            AccessKeyScopes.Definitions.Where(static scope => scope.RequiresAdministratorHolder)
+                .Select(static scope => scope.Name));
+        Assert.Equal(TrustedAccessScopeCatalog.LocalReadScopes,
+            AccessKeyScopes.Definitions.Where(static scope => scope.KeylessLocal).Select(static scope => scope.Name));
+        Assert.Equal(TrustedAccessScopeCatalog.DefaultScopes, AccessKeyScopes.Default);
+    }
+
+    [Theory]
+    [InlineData("POST", "/api/optimization/reports/{id}/dismiss")]
+    [InlineData("DELETE", "/api/optimization/trust/{id}")]
+    public void DismissingAReportAndRemovingTrustAreSessionActions(string method, string path)
+        => Assert.Equal([AccessKeyScopes.Session],
+            TrustedAccessHttpPolicy.GetRequirement(MethodRequest(method, path, method).Request).RequiredScopes);
 
     [Fact]
     public void AccessRequestCreateAndWaitMustBeKeyless()
