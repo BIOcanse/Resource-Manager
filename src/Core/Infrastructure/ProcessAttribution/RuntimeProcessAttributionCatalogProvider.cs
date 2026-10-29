@@ -20,9 +20,8 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
     ISoftwareIdentityCatalog softwareIdentityCatalog,
     HostManagerSoftwareIdentityOwner softwareIdentityOwner,
     IWindowsGameListSource windowsGameListSource,
-    IManagementInventoryRevisionOwner? inventoryRevisionOwner = null, TimeProvider? clock = null) : IRuntimeProcessAttributionCatalogProvider, IDisposable
+    IManagementInventoryRevisionOwner? inventoryRevisionOwner = null) : IRuntimeProcessAttributionCatalogProvider, IDisposable
 {
-    private static readonly TimeSpan IdleScopeLifetime = TimeSpan.FromSeconds(8);
     private readonly SemaphoreSlim refreshGate = new(1, 1);
     private readonly object lifecycleGate = new();
     private readonly Dictionary<string, CatalogScopeState> scopes = new(StringComparer.Ordinal);
@@ -42,7 +41,6 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
         var adaptedVersion = RuntimeProcessAttributionCatalogVersionFactory.CreateAdaptedVersion(adapted);
         var controlledVersion = RuntimeProcessAttributionCatalogVersionFactory.CreateControlledVersion(controlled);
         var software = await GetSoftwareAsync(scope, adaptedVersion, controlledVersion, cancellationToken);
-        var retired = new List<CatalogHolder>();
         RuntimeProcessAttributionCatalogLease result;
         lock (lifecycleGate)
         {
@@ -61,7 +59,8 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
                 systemProcessClassifier,
                 softwareIdentityCatalog,
                 softwareIdentityOwner,
-                software.WindowsGamePaths);
+                software.WindowsGamePaths,
+                state.LastRevision);
             if (cancellationToken.IsCancellationRequested)
             {
                 if (!ReferenceEquals(previous, next)) next.Dispose();
@@ -74,7 +73,7 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
                 CatalogHolder holder;
                 try
                 {
-                    holder = new CatalogHolder(next);
+                    holder = new CatalogHolder(this, scope, next);
                     result = holder.Acquire();
                 }
                 catch
@@ -82,28 +81,11 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
                     next.Dispose();
                     throw;
                 }
-                if (state.Current is { } old) retired.Add(old);
                 state.Current = holder;
-            }
-            state.LastAcquiredAt = (clock ?? TimeProvider.System).GetUtcNow();
-            // Idle owner catalogs do not accumulate for the lifetime of the service.
-            foreach (var idle in scopes.Where(pair => pair.Key != scope
-                && state.LastAcquiredAt - pair.Value.LastAcquiredAt >= IdleScopeLifetime).ToArray())
-            {
-                if (idle.Value.Current is { } holder) retired.Add(holder);
-                scopes.Remove(idle.Key);
+                state.LastRevision = next.Revision;
             }
         }
-        try
-        {
-            foreach (var holder in retired) holder.Retire();
-            return result;
-        }
-        catch
-        {
-            result.Dispose();
-            throw;
-        }
+        return result;
     }
 
     public async Task InvalidateSoftwareSnapshotAsync()
@@ -130,7 +112,6 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
 
     public void Dispose()
     {
-        CatalogHolder[] retired;
         lock (lifecycleGate)
         {
             if (disposed)
@@ -138,10 +119,8 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
                 return;
             }
             disposed = true;
-            retired = scopes.Values.Where(state => state.Current is not null).Select(state => state.Current!).ToArray();
             scopes.Clear();
         }
-        foreach (var holder in retired) holder.Retire();
     }
 
     [ResourceManager.ReadWrite.RuntimeReadCache]
@@ -231,34 +210,33 @@ public sealed class RuntimeProcessAttributionCatalogProvider(
         internal CatalogHolder? Current;
         internal SoftwareSnapshot? CachedSoftware;
         internal string? CachedSoftwareRevision;
-        internal DateTimeOffset LastAcquiredAt;
+        internal RuntimeProcessAttributionCatalogRevision? LastRevision;
     }
 
-    // Acquire is only called under lifecycleGate while this is the current holder.
-    // Releases never acquire lifecycleGate; Native disposal occurs after retirement
-    // and the last reader, outside the provider's publication lock.
-    private sealed class CatalogHolder(RuntimeProcessAttributionCatalog catalog)
+    // Only readers own the native pipeline. Publication and the last-reader detach
+    // share one lock; native destruction happens outside that lock.
+    private sealed class CatalogHolder(RuntimeProcessAttributionCatalogProvider owner, string scope,
+        RuntimeProcessAttributionCatalog catalog)
     {
-        private int references = 1;
-        private int retired;
+        private int references;
         internal RuntimeProcessAttributionCatalog Catalog { get; } = catalog;
 
         internal RuntimeProcessAttributionCatalogLease Acquire()
         {
-            ObjectDisposedException.ThrowIf(Volatile.Read(ref retired) != 0, this);
             var lease = new RuntimeProcessAttributionCatalogLease(Catalog, Release);
-            Interlocked.Increment(ref references);
+            references++;
             return lease;
-        }
-
-        internal void Retire()
-        {
-            if (Interlocked.Exchange(ref retired, 1) == 0) Release();
         }
 
         private void Release()
         {
-            if (Interlocked.Decrement(ref references) == 0) Catalog.Dispose();
+            lock (owner.lifecycleGate)
+            {
+                if (--references != 0) return;
+                if (owner.scopes.TryGetValue(scope, out var state) && ReferenceEquals(state.Current, this))
+                    state.Current = null;
+            }
+            Catalog.Dispose();
         }
     }
 }

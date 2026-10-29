@@ -22,6 +22,9 @@ public readonly record struct RuntimeProcessAttributionCatalogVersion(
     string ResolutionConfigurationSha256,
     RuntimeProcessAttributionSourceVersion WindowsGames = default);
 
+public readonly record struct RuntimeProcessAttributionCatalogRevision(
+    long Generation, RuntimeProcessAttributionCatalogVersion Version, string BundledCatalogVersion);
+
 public sealed class RuntimeProcessAttributionCatalog : IDisposable
 {
     private readonly IRuntimePackageIdentityResolver packageIdentityResolver;
@@ -70,6 +73,8 @@ public sealed class RuntimeProcessAttributionCatalog : IDisposable
 
     public RuntimeProcessAttributionCatalogVersion Version { get; }
 
+    internal RuntimeProcessAttributionCatalogRevision Revision => new(Generation, Version, bundledCatalogVersion);
+
     internal string BundledCatalogVersion => bundledCatalogVersion;
 
     public RuntimeProcessAttributionPipeline Pipeline { get; }
@@ -100,7 +105,8 @@ public sealed class RuntimeProcessAttributionCatalog : IDisposable
         IRuntimeSystemProcessClassifier systemClassifier,
         ISoftwareIdentityCatalog softwareIdentityCatalog,
         HostManagerSoftwareIdentityOwner softwareIdentityOwner,
-        IReadOnlySet<string>? windowsGamePaths = null)
+        IReadOnlySet<string>? windowsGamePaths = null,
+        RuntimeProcessAttributionCatalogRevision? previousRevision = null)
     {
         using var lease = softwareIdentityOwner.Acquire();
         var bundledCatalogVersion = softwareIdentityCatalog.Version;
@@ -125,7 +131,10 @@ public sealed class RuntimeProcessAttributionCatalog : IDisposable
             return current;
         }
 
-        var generation = current is null ? 1 : checked(current.Generation + 1);
+        var generation = current is not null ? checked(current.Generation + 1)
+            : previousRevision is not { } revision ? 1
+            : revision.Version == version && revision.BundledCatalogVersion == bundledCatalogVersion
+                ? revision.Generation : checked(revision.Generation + 1);
         var pipeline = new RuntimeProcessAttributionPipeline(
             softwareRecords,
             adapterRegistrations,

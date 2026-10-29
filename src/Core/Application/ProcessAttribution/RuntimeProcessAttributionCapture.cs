@@ -29,7 +29,8 @@ internal static class RuntimeProcessAttributionCapture
             RuntimeProcessAttributionDirectMatch?>? getCachedDirectMatch = null,
         Action<RuntimeProcessIdentity, string, RuntimeProcessAttributionCatalog,
             RuntimeProcessAttributionDirectMatch>? cacheDirectMatch = null,
-        Func<RuntimeProcessIdentity, RuntimeProcessAttributionFixedInputs?>? getCachedFixedInputs = null)
+        Func<RuntimeProcessIdentity, RuntimeProcessAttributionFixedInputs?>? getCachedFixedInputs = null,
+        IDictionary<string, RuntimeProcessAttributionCatalogLease>? retainedCatalogs = null)
     {
         var catalogs = new Dictionary<string, RuntimeProcessAttributionCatalogLease>(StringComparer.Ordinal);
         var scopeByPid = new Dictionary<int, string>();
@@ -43,7 +44,20 @@ internal static class RuntimeProcessAttributionCapture
                 var scope = CatalogScope(process.UserSid);
                 scopeByPid.Add(process.ProcessId, scope);
                 if (!catalogs.ContainsKey(scope))
-                    catalogs.Add(scope, await provider.AcquireCatalogAsync(scope, cancellationToken));
+                {
+                    // Acquire keeps the existing source-revision check. A running
+                    // owner keeps the catalog alive between rounds, so unchanged
+                    // inputs reuse its native pipeline rather than rebuilding it.
+                    var next = await provider.AcquireCatalogAsync(scope, cancellationToken);
+                    if (retainedCatalogs is not null)
+                    {
+                        retainedCatalogs.TryGetValue(scope, out var previous);
+                        try { retainedCatalogs[scope] = next; }
+                        catch { next.Dispose(); throw; }
+                        previous?.Dispose();
+                    }
+                    catalogs.Add(scope, next);
+                }
             }
             Dictionary<int, RuntimeProcessAttributionDirectMatch>? cachedDirectMatches = null;
             if (getCachedDirectMatch is not null)
@@ -86,7 +100,8 @@ internal static class RuntimeProcessAttributionCapture
         }
         finally
         {
-            foreach (var catalog in catalogs.Values) catalog.Dispose();
+            if (retainedCatalogs is null)
+                foreach (var catalog in catalogs.Values) catalog.Dispose();
         }
     }
 }

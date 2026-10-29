@@ -563,6 +563,14 @@ public sealed partial class WindowsResourceBreakdownSampler(
         var ownerRevoked = false;
         IDisposable? hardwareSubscription = null;
         string? hardwareSubscriptionKey = null;
+        // These readers belong to this active sampling run, never to a field.
+        Dictionary<string, RuntimeProcessAttributionCatalogLease>? attributionCatalogs = null;
+        void ReleaseAttributionCatalogs()
+        {
+            if (attributionCatalogs is null) return;
+            foreach (var reader in attributionCatalogs.Values) reader.Dispose();
+            attributionCatalogs = null;
+        }
         var worker = new NativeSamplingSubscriptionWorker<ResourceBreakdownSampleRequest, SamplingOwnerToken>(
             subscriptions, demandSignal, static _ => { }, failure =>
             {
@@ -579,9 +587,15 @@ public sealed partial class WindowsResourceBreakdownSampler(
             });
         try
         {
-            await worker.RunAsync((plan, token) => CollectAndPublishAsync(ownerToken, plan, token),
+            await worker.RunAsync((plan, token) => CollectAndPublishAsync(ownerToken, plan, token, attributionCatalogs),
                 cancellationToken, planCreated: plan =>
                 {
+                    if (plan.SourceViews.Any(static source => GetSubscriptionDatasetIds(source.Request)
+                            .Contains(SamplingDatasetIds.ProcessAttribution)))
+                        attributionCatalogs ??= new(StringComparer.Ordinal);
+                    else
+                        // The worker can wait for demand without returning from RunAsync.
+                        ReleaseAttributionCatalogs();
                     gpuAllocations?.SynchronizeCaptureInterval(plan.SourceViews
                         .Where(static source => NeedsGpuAllocations(source.Request))
                         .Select(static source => (TimeSpan?)source.Interval).Min(), cancellationToken);
@@ -630,14 +644,18 @@ public sealed partial class WindowsResourceBreakdownSampler(
         catch (Exception) when (ownerRevoked && !subscriptions.HasOutstandingOutputResources) { }
         finally
         {
-            pendingFieldCollectionResult = null;
-            fieldSubscriptionDelivery.DiscardRunRounds();
-            snapshotSubscriptionDelivery.DiscardRunRounds();
-            try { gpuAllocations?.SynchronizeCaptureInterval(null); }
+            try { ReleaseAttributionCatalogs(); }
             finally
             {
-                try { hardwareSubscription?.Dispose(); }
-                finally { await processFieldOwner.ReleaseProcessInventoryBufferAsync(CancellationToken.None); }
+                pendingFieldCollectionResult = null;
+                fieldSubscriptionDelivery.DiscardRunRounds();
+                snapshotSubscriptionDelivery.DiscardRunRounds();
+                try { gpuAllocations?.SynchronizeCaptureInterval(null); }
+                finally
+                {
+                    try { hardwareSubscription?.Dispose(); }
+                    finally { await processFieldOwner.ReleaseProcessInventoryBufferAsync(CancellationToken.None); }
+                }
             }
         }
     }
@@ -645,12 +663,13 @@ public sealed partial class WindowsResourceBreakdownSampler(
     private async Task<SubscriptionSampleCompletion> CollectAndPublishAsync(
         HostedResourcePublicationOwnerToken ownerToken,
         NativeItemSamplingSubscriptionPlan<ResourceBreakdownSampleRequest, SamplingOwnerToken> plan,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IDictionary<string, RuntimeProcessAttributionCatalogLease>? retainedCatalogs)
     {
         var request = plan.Request!;
         var gpuInterval = plan.SourceViews.Where(static source => NeedsGpuAllocations(source.Request))
             .Select(static source => source.Interval).DefaultIfEmpty(plan.Schedule.DefaultInterval).Min();
-        var attempt = await TryRefreshCacheAsync(request, cancellationToken, gpuInterval);
+        var attempt = await TryRefreshCacheAsync(request, cancellationToken, gpuInterval, retainedCatalogs);
         cancellationToken.ThrowIfCancellationRequested();
         if (attempt.Completion == ResourceBreakdownSampleCompletion.Sampled)
         {
@@ -740,7 +759,8 @@ public sealed partial class WindowsResourceBreakdownSampler(
 
     private async Task<ResourceBreakdownSampleAttempt> TryRefreshCacheAsync(
         ResourceBreakdownSampleRequest request,
-        CancellationToken cancellationToken, TimeSpan gpuAllocationInterval)
+        CancellationToken cancellationToken, TimeSpan gpuAllocationInterval,
+        IDictionary<string, RuntimeProcessAttributionCatalogLease>? retainedCatalogs)
     {
         bool entered;
         try
@@ -774,7 +794,7 @@ public sealed partial class WindowsResourceBreakdownSampler(
                 request,
                 hostedProcessCpuDeltaTracker,
                 cancellationToken,
-                requireHostedHardwareObservation: true, gpuAllocationInterval);
+                requireHostedHardwareObservation: true, gpuAllocationInterval, retainedCatalogs);
             cancellationToken.ThrowIfCancellationRequested();
             return new ResourceBreakdownSampleAttempt(
                 ResourceBreakdownSampleCompletion.Sampled,
@@ -848,7 +868,8 @@ public sealed partial class WindowsResourceBreakdownSampler(
         ResourceBreakdownSampleRequest request,
         ProcessCpuDeltaTracker cpuDeltaTracker,
         CancellationToken cancellationToken,
-        bool requireHostedHardwareObservation, TimeSpan? gpuAllocationInterval = null)
+        bool requireHostedHardwareObservation, TimeSpan? gpuAllocationInterval = null,
+        IDictionary<string, RuntimeProcessAttributionCatalogLease>? retainedCatalogs = null)
     {
         var cleanMetricIds = request.MetricIds
             .Where(IsSupportedMetric)
@@ -940,7 +961,7 @@ public sealed partial class WindowsResourceBreakdownSampler(
         ProcessAttributionSnapshot? processAttribution = null;
         if (cleanMetricIds.Any(IsSupportedBarMetric) || RequiresProcessAttribution(request))
         {
-            processAttribution = await CreateProcessAttributionSnapshotAsync(processSamples, cancellationToken);
+            processAttribution = await CreateProcessAttributionSnapshotAsync(processSamples, cancellationToken, retainedCatalogs);
         }
         var hardwareRequest = CreateHardwareRequest(request with { MetricIds = cleanMetricIds });
         HardwareMetricSnapshot? hardwareSnapshot = null;

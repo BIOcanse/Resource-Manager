@@ -13,7 +13,8 @@ public sealed partial class WindowsResourceBreakdownSampler
 {
     private async Task<ProcessAttributionSnapshot> CreateProcessAttributionSnapshotAsync(
         IReadOnlyList<ProcessResourceSample> processSamples,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IDictionary<string, RuntimeProcessAttributionCatalogLease>? retainedCatalogs = null)
     {
         var processById = processSamples.ToDictionary(static process => process.ProcessId);
         var baseScorePlan = runtimePlanProvider.Current.BaseScore;
@@ -21,7 +22,7 @@ public sealed partial class WindowsResourceBreakdownSampler
         var capture = await RuntimeProcessAttributionCapture.CaptureAsync(processAttributionCatalogProvider,
             processSamples.Select(process => CreateRuntimeIdentity(process, textSharing)).ToArray(), baseScorePlan, cancellationToken,
             TryGetCachedDirectMatch,
-            CacheDirectMatch, TryGetCachedFixedInputs);
+            CacheDirectMatch, TryGetCachedFixedInputs, retainedCatalogs);
         var batch = capture.Batch;
         if (batch.Failures.Count != 0)
             logger?.LogWarning("Process attribution could not observe these processes: {FailedProcesses}.",

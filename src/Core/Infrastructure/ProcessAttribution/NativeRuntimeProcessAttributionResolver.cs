@@ -379,7 +379,13 @@ internal sealed class NativeRuntimeProcessAttributionResolver : IDisposable
 
     internal static bool AreExternalInputsCurrent(RuntimeAttributionInputVersions current,
         RuntimeProcessAttributionExternalInputs? inputs)
-        => ReferenceEquals(inputs?.Versions, current);
+        // The grouping object belongs to one resolver lifetime. Source publication
+        // identities remain valid when the next reader creates a fresh resolver.
+        => inputs?.Versions is { } previous
+            && ReferenceEquals(previous.Package, current.Package)
+            && ReferenceEquals(previous.Service, current.Service)
+            && ReferenceEquals(previous.Root, current.Root)
+            && ReferenceEquals(previous.System, current.System);
 
     internal static bool HasStablePathInput(RuntimeProcessIdentity process)
         => process.ExecutablePath is not { } path

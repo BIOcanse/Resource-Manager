@@ -10,8 +10,6 @@ pub const Session = struct {
     mutex: std.atomic.Mutex = .unlocked,
     config: protocol.Config,
     active: Bank,
-    staging: Bank,
-    sort_indices: []u32,
     resident_byte_count: u64,
     import_generation: u64 = 0,
     state_revision: u64 = 1,
@@ -25,41 +23,36 @@ pub const Session = struct {
     committed_mutation_version: u64 = 0,
 
     pub fn create(config: *const protocol.Config) !*Session {
+        return createWithAllocator(config, std.heap.page_allocator);
+    }
+
+    pub fn createWithAllocator(config: *const protocol.Config, allocator: std.mem.Allocator) !*Session {
         if (!protocol.validConfig(config)) return error.InvalidConfiguration;
         const resident_byte_count = residentByteCount(config) catch return error.InvalidConfiguration;
         if (resident_byte_count > config.resident_byte_budget) return error.InvalidConfiguration;
-        const allocator = std.heap.page_allocator;
         const self = try allocator.create(Session);
         errdefer allocator.destroy(self);
         var active = try Bank.init(allocator, config);
         errdefer active.deinit(allocator);
-        var staging = try Bank.init(allocator, config);
-        errdefer staging.deinit(allocator);
-        const sort_indices = try allocator.alloc(u32, config.maximum_path_count);
-        errdefer allocator.free(sort_indices);
-        @memset(sort_indices, 0);
         self.* = .{
             .allocator = allocator,
             .config = config.*,
             .active = active,
-            .staging = staging,
-            .sort_indices = sort_indices,
             .resident_byte_count = resident_byte_count,
         };
         return self;
     }
 
     fn allocatedByteCount(self: *const Session) u64 {
-        const reserved_text = @as(u64, self.config.maximum_path_count) *
-            (@as(u64, self.config.maximum_executable_path_byte_count) + self.config.maximum_root_path_byte_count) * 2;
-        return self.resident_byte_count - reserved_text +
-            self.active.pathTextByteCount() + self.staging.pathTextByteCount();
+        return @sizeOf(Session) +
+            self.active.registrations.len * @sizeOf(bank_module.RegistrationSlot) +
+            self.active.paths.len * @sizeOf(bank_module.PathSlot) +
+            (self.active.registration_index.len + self.active.path_index.len) * @sizeOf(u32) +
+            self.active.pathTextByteCount();
     }
 
     pub fn destroy(self: *Session) void {
         const allocator = self.allocator;
-        allocator.free(self.sort_indices);
-        self.staging.deinit(allocator);
         self.active.deinit(allocator);
         allocator.destroy(self);
     }
@@ -109,16 +102,15 @@ pub const Session = struct {
         if (input.import_generation <= self.import_generation or input.operation_epoch <= self.last_operation_epoch) {
             return .stale_frame;
         }
-        const result = self.staging.loadPersisted(&self.config, input, rows, key_bytes);
-        if (result != .ok) {
-            self.staging.clear();
-            return result;
-        }
+        // The import owns its replacement bank until the atomic swap. On success
+        // this defer destroys the old active bank; on failure it destroys partial input.
+        var staging = Bank.init(self.allocator, &self.config) catch return .out_of_memory;
+        defer staging.deinit(self.allocator);
+        const result = staging.loadPersisted(&self.config, input, rows, key_bytes);
+        if (result != .ok) return result;
         const previous = self.active;
-        self.active = self.staging;
-        self.staging = previous;
-        // The old bank is no longer authoritative after the atomic swap.
-        self.staging.clear();
+        self.active = staging;
+        staging = previous;
         self.import_generation = input.import_generation;
         self.last_operation_epoch = input.operation_epoch;
         self.last_command_utc_ms = input.command_utc_ms;
@@ -353,9 +345,11 @@ pub const Session = struct {
             if (!protocol.emptyPersistenceOperation(operation)) return .abi_mismatch;
         }
 
-        const dirty_count = self.collectDirtyPaths();
+        const sort_indices = self.allocator.alloc(u32, self.active.path_count) catch return .out_of_memory;
+        defer self.allocator.free(sort_indices);
+        const dirty_count = self.collectDirtyPaths(sort_indices);
         const output_count: u32 = @min(dirty_count, input.maximum_operation_count);
-        for (self.sort_indices[0..output_count], 0..) |path_slot, output_index| {
+        for (sort_indices[0..output_count], 0..) |path_slot, output_index| {
             const path = &self.active.paths[path_slot];
             const registration = &self.active.registrations[path.registration_index];
             var flags: u32 = 0;
@@ -530,23 +524,23 @@ pub const Session = struct {
         self.committed_mutation_version = @max(self.committed_mutation_version, settled_through);
     }
 
-    fn collectDirtyPaths(self: *Session) u32 {
+    fn collectDirtyPaths(self: *Session, sort_indices: []u32) u32 {
         var count: u32 = 0;
         for (self.active.paths, 0..) |path, index| {
             if (!path.occupied or !path.dirty) continue;
-            self.sort_indices[count] = @intCast(index);
+            sort_indices[count] = @intCast(index);
             count += 1;
         }
         var outer: usize = 1;
         while (outer < count) : (outer += 1) {
-            const value = self.sort_indices[outer];
+            const value = sort_indices[outer];
             const mutation = self.active.paths[value].mutation_version;
             var inner = outer;
-            while (inner > 0 and self.active.paths[self.sort_indices[inner - 1]].mutation_version > mutation) {
-                self.sort_indices[inner] = self.sort_indices[inner - 1];
+            while (inner > 0 and self.active.paths[sort_indices[inner - 1]].mutation_version > mutation) {
+                sort_indices[inner] = sort_indices[inner - 1];
                 inner -= 1;
             }
-            self.sort_indices[inner] = value;
+            sort_indices[inner] = value;
         }
         return count;
     }

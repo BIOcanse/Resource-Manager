@@ -74,7 +74,8 @@ test "command wall clock rollback preserves registry mutations and epoch protect
 
 test "persisted import swaps atomically and rejects duplicate or drifted rows" {
     var config = explicitConfig();
-    const session = try state.Session.create(&config);
+    var tracking = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const session = try state.Session.createWithAllocator(&config, tracking.allocator());
     defer session.destroy();
 
     const first_executable = "c:/portable/tool/a.exe";
@@ -105,6 +106,8 @@ test "persisted import swaps atomically and rejects duplicate or drifted rows" {
     };
     var input = importInput(&config, 1, 1, 1_000, rows.len, keys.len);
     try std.testing.expectEqual(ResultCode.ok, session.importPersisted(&input, &rows, keys));
+    // Only the authoritative bank and occupied text remain after returning.
+    try std.testing.expectEqual(session.capacity().resident_byte_count, tracking.allocated_bytes - tracking.freed_bytes);
     const snapshot = try captureSnapshot(session, &config, 1);
     try std.testing.expectEqual(@as(u32, 1), snapshot.output.registration_count);
     try std.testing.expectEqual(@as(u32, 2), snapshot.output.path_count);
@@ -122,6 +125,7 @@ test "persisted import swaps atomically and rejects duplicate or drifted rows" {
     input.import_generation = 2;
     input.operation_epoch = 2;
     try std.testing.expectEqual(ResultCode.invalid_argument, session.importPersisted(&input, &rows, keys));
+    try std.testing.expectEqual(session.capacity().resident_byte_count, tracking.allocated_bytes - tracking.freed_bytes);
     const after_failure = try captureSnapshot(session, &config, 2);
     try std.testing.expectEqual(@as(u32, 2), after_failure.output.path_count);
     try std.testing.expectEqual(@as(u64, 1), after_failure.output.import_generation);
@@ -738,7 +742,6 @@ test "unused portable path limits allocate no text and canonical text dies with 
     defer session.destroy();
     const empty_bytes = session.capacity().resident_byte_count;
     try std.testing.expectEqual(@as(u64, 0), session.active.pathTextByteCount());
-    try std.testing.expectEqual(@as(u64, 0), session.staging.pathTextByteCount());
     const executable = "c:/portable/tool/a.exe";
     const root = "c:/portable/tool";
     var observation = observeInput(&config, 1, 1000, 100, 10, 100, 1000, 1001, 101, 201, executable.len, root.len, 0);
@@ -765,7 +768,71 @@ test "unused portable path limits allocate no text and canonical text dies with 
     var import = importInput(&config, 1, 5, 1000, 0, 0);
     try std.testing.expectEqual(ResultCode.ok, session.importPersisted(&import, &.{}, &.{}));
     try std.testing.expectEqual(empty_bytes, session.capacity().resident_byte_count);
-    try std.testing.expectEqual(@as(u64, 0), session.staging.pathTextByteCount());
+}
+
+test "import releases every partial allocation and can retry the same epoch" {
+    var config = explicitConfig();
+    const executable = "c:/portable/tool/a.exe";
+    const root = "c:/portable/tool";
+    const row = persistedRow(10, 100, 1000, 1001, 1, 101, 201, 1000, 0, executable.len, executable.len, root.len, 0);
+    var fail_offset: usize = 0;
+    while (fail_offset < 5) : (fail_offset += 1) {
+        var tracking = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+        const session = try state.Session.createWithAllocator(&config, tracking.allocator());
+        defer session.destroy();
+        try expectObserve(session, &config, 1, 20, 200, 2000, 2001, 1, 102, 202, "c:/old/a.exe", "c:/old", 100, 0, .ok);
+        const before = session.capacity().resident_byte_count;
+        tracking.fail_index = tracking.alloc_index + fail_offset;
+        var input = importInput(&config, 1, 2, 1000, 1, executable.len + root.len);
+        try std.testing.expectEqual(ResultCode.out_of_memory, session.importPersisted(&input, &.{row}, executable ++ root));
+        try std.testing.expectEqual(before, tracking.allocated_bytes - tracking.freed_bytes);
+        try std.testing.expectEqual(@as(u64, 0), session.import_generation);
+        try std.testing.expectEqual(@as(u64, 1), session.last_operation_epoch);
+        try std.testing.expect(session.active.findPath(102) != null);
+        tracking.fail_index = std.math.maxInt(usize);
+        try std.testing.expectEqual(ResultCode.ok, session.importPersisted(&input, &.{row}, executable ++ root));
+        try std.testing.expectEqual(session.capacity().resident_byte_count, tracking.allocated_bytes - tracking.freed_bytes);
+        try std.testing.expect(session.active.findPath(102) == null);
+        const slot = session.active.findPath(101).?;
+        try std.testing.expectEqualStrings(executable, session.active.executablePath(slot));
+    }
+}
+
+test "persistence enumeration releases all ordering capacity before return including allocation failure" {
+    var config = explicitConfig();
+    var tracking = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const session = try state.Session.createWithAllocator(&config, tracking.allocator());
+    defer session.destroy();
+    const empty_bytes = session.capacity().resident_byte_count;
+    // Creation owns one bank, with zero spare bank or sorting capacity.
+    try std.testing.expectEqual(empty_bytes, tracking.allocated_bytes - tracking.freed_bytes);
+    const empty_plan = try capturePlan(session, &config, 1, 4);
+    try std.testing.expectEqual(@as(u32, 0), empty_plan.output.operation_count);
+    try std.testing.expectEqual(empty_bytes, tracking.allocated_bytes - tracking.freed_bytes);
+    try expectObserve(session, &config, 1, 10, 100, 1000, 1001, 1, 101, 201, "c:/portable/a.exe", "c:/portable", 100, 0, .ok);
+    try expectObserve(session, &config, 2, 10, 100, 1000, 1001, 1, 102, 202, "c:/portable/b.exe", "c:/portable", 100, 0, .ok);
+    const before = session.capacity().resident_byte_count;
+    var input = planInput(&config, 2, 1);
+    var operations: OperationBuffer = std.mem.zeroes(OperationBuffer);
+    var output: protocol.PersistencePlanOutput = std.mem.zeroes(protocol.PersistencePlanOutput);
+    const revision = session.state_revision;
+    tracking.fail_index = tracking.alloc_index;
+    try std.testing.expectEqual(ResultCode.out_of_memory, session.planPersistence(&input, &operations, &output));
+    try std.testing.expectEqual(revision, session.state_revision);
+    try std.testing.expectEqual(@as(u64, 1), session.last_plan_epoch);
+    try std.testing.expectEqual(@as(u32, 0), output.operation_count);
+    try std.testing.expectEqual(before, tracking.allocated_bytes - tracking.freed_bytes);
+    tracking.fail_index = std.math.maxInt(usize);
+    try std.testing.expectEqual(ResultCode.ok, session.planPersistence(&input, &operations, &output));
+    try std.testing.expectEqual(before, tracking.allocated_bytes - tracking.freed_bytes);
+    try std.testing.expectEqual(@as(u32, 1), output.operation_count);
+    try std.testing.expectEqual(@as(u64, 101), operations[0].path_handle);
+    // A second enumeration uses fresh ordering storage; copied output stays valid.
+    const next = try capturePlan(session, &config, 3, 4);
+    try std.testing.expectEqual(@as(u32, 2), next.output.operation_count);
+    try std.testing.expectEqual(before, tracking.allocated_bytes - tracking.freed_bytes);
+    try std.testing.expectEqual(@as(u64, 101), operations[0].path_handle);
+    try std.testing.expect(next.operations[0].mutation_version < next.operations[1].mutation_version);
 }
 
 test "portable path text allocation failure preserves registration and operation state" {
