@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Security;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.Win32;
 using ResourceManager.NativeUi.SystemIntegration;
 
 namespace ResourceManager.NativeUi;
@@ -17,17 +16,15 @@ public sealed partial class MainForm
         string? error = null;
         try
         {
-            var owner = new LoginStartupRegistration(Environment.ProcessPath
-                ?? throw new InvalidOperationException("The frontend executable path is unavailable."));
-            using var currentUser = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64);
+            var owner = LoginStartupRegistration.ForCurrentProcess();
             if (update)
             {
                 if (!message.TryGetProperty("enabled", out var value)
                     || value.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
                     throw new InvalidDataException("A boolean startup value is required.");
-                enabled = owner.Set(currentUser, value.GetBoolean());
+                enabled = owner.Set(value.GetBoolean());
             }
-            else enabled = owner.Read(currentUser);
+            else enabled = owner.Read();
         }
         catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or SecurityException
             or InvalidOperationException or ArgumentException or InvalidDataException)

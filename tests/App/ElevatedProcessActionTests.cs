@@ -111,6 +111,12 @@ public sealed class ElevatedProcessActionTests
         var start = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true };
         start.ArgumentList.Add(ElevatedProcessActionRequest.Argument);
         start.ArgumentList.Add(Request.Encode());
+        // The interface manifest requires an elevated administrator: an unelevated runner cannot even create it.
+        if (!NativeUiTestExecutableLocator.RunnerIsElevatedAdministrator())
+        {
+            Assert.Equal(740, Assert.Throws<System.ComponentModel.Win32Exception>(() => Process.Start(start)).NativeErrorCode);
+            return;
+        }
         using var helper = Process.Start(start)!;
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await helper.WaitForExitAsync(deadline.Token);

@@ -19,7 +19,6 @@ public static class TrustedAccessInvocationContract
     public const string PipeName = "ResourceManager.TrustedAccess.Invoke.v1";
     public const string GpuResolveOperation = "gpu.resolve";
     public const string GpuReportOperation = "gpu.report";
-    public const string SessionLaunchOperation = "session.launch";
     public const string Success = "ok";
     public const string Unauthorized = "unauthorized";
     public const string Forbidden = "forbidden";

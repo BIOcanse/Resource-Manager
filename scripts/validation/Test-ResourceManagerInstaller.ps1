@@ -38,6 +38,10 @@ Assert ($script:removed.Count -eq 1) 'Unexpected task was removed.'
 $script:tasks = @([pscustomobject]@{ TaskName = 'OtherSoftware'; Actions = @($action) })
 Remove-ResourceManagerLegacyStartupTask
 Assert ($script:removed.Count -eq 1) 'Unrelated task was changed.'
+# The current per-user frontend logon task has the same action but is the user's choice, not legacy state.
+$script:tasks = @([pscustomobject]@{ TaskName = 'ResourceManager.FrontendLogon.S-1-5-21-100-200-300-1001'; Actions = @($action) })
+Remove-ResourceManagerLegacyStartupTask
+Assert ($script:removed.Count -eq 1) 'Legacy cleanup removed the current frontend logon task.'
 
 # Real registry operations, isolated below a unique HKCU test key, never HKLM.
 $testKey = 'Software\ResourceManagerInstallerTests\' + [Guid]::NewGuid().ToString('N')

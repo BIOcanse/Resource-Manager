@@ -78,6 +78,9 @@ public sealed class WindowsUninstallationRuntime : IUninstallationRuntime
             throw new IOException($"Launch interception cleanup failed ({process.ExitCode}); installation files have been retained.");
     }
 
+    public void RemoveFrontendLogonTasks(UninstallationPlan plan)
+        => _ = FrontendLogonTask.RemoveAllFor(new WindowsTaskSchedulerRootFolder(), ReleasePackageLayout.ForRoot(plan.Root, "").NativeUi);
+
     public void RemoveRegistration(UninstallationPlan plan)
     {
         using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);

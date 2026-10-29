@@ -317,7 +317,7 @@ function Assert-Release([string]$TaskRoot, [hashtable]$StageRuns, [string]$Confi
     $nativeUiLog = Read-Json (Join-Path ([string]$StageRuns.ProductImage) 'native-ui-manifest.log')
     Require ($buildLog.Published -and [IO.Path]::GetFullPath([string]$buildLog.OutputDirectory) -ieq [IO.Path]::GetFullPath([string]$image.imageDirectory)) 'Final-image build log has no matching Published result.'
     Require ($validateLog.Valid -and [IO.Path]::GetFullPath([string]$validateLog.RootDirectory) -ieq [IO.Path]::GetFullPath([string]$image.imageDirectory)) 'Final-image validator has no matching Valid result.'
-    Require ($nativeUiLog.Valid -and $nativeUiLog.RequestedExecutionLevel -ceq 'asInvoker' -and $nativeUiLog.UiAccess -ceq 'false' -and -not $nativeUiLog.AutoElevateDeclared) 'Native UI executable manifest validation did not pass the expected contract.'
+    Require ($nativeUiLog.Valid -and $nativeUiLog.RequestedExecutionLevel -ceq 'requireAdministrator' -and $nativeUiLog.UiAccess -ceq 'false' -and -not $nativeUiLog.AutoElevateDeclared) 'Native UI executable manifest validation did not pass the expected contract.'
     $nativeUiRow = @($finalRows | Where-Object relativePath -CEQ 'ResourceManagerNativeUi/ResourceManager.NativeUi.exe')
     Require ($nativeUiRow.Count -eq 1 -and [string]$nativeUiLog.ExecutableSha256 -ieq [string]$nativeUiRow[0].sha256) 'Native UI manifest log is not bound to the composed executable.'
 }

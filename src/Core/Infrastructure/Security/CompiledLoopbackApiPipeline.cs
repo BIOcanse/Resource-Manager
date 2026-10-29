@@ -1,7 +1,6 @@
 using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using System.Security.Principal;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using ResourceManager.App.Infrastructure.ServiceHosting;
 using ResourceManager.App.Application.TrustedAccess;
 using ResourceManager.App.Infrastructure.Security.TrustedAccess;
 
@@ -75,7 +74,6 @@ public static class LoopbackApiPipelineConfigurator
         Hosting.NonOwningHostedServiceRegistration.AddHostedServiceAlias<TrustedAccessRequestOwner>(services,
             BlockUids.TrustedAccessRequestOwner);
         services.AddSingleton<ILoopbackApiAdministratorReader, WindowsLoopbackApiAdministratorReader>();
-        services.TryAddSingleton<IInteractiveUserSessionBroker, WindowsInteractiveUserSessionBroker>();
         Hosting.ResourceManagerServiceCollectionExtensions.AddBusinessBlockHostedService<TrustedAccessInvocationHostedService>(services,
             BlockUids.TrustedAccessInvocationHostedService);
     }

@@ -18,29 +18,31 @@ public sealed class LauncherWorkflowTests
         LauncherWorkflow.Start(elevated, false, Backend, () => state,
             () => { steps.Add("direct"); state = state with { State = 4 }; },
             () => { steps.Add("elevated"); state = state with { State = 4 }; },
-            () => { Assert.True(state.Running); steps.Add("direct-ui"); },
-            requestInterface: () => { Assert.True(state.Running); steps.Add("session-ui"); });
-        Assert.Equal([elevated ? "direct" : "elevated", elevated ? "session-ui" : "direct-ui"], steps);
+            () => { Assert.True(state.Running); steps.Add("ui"); });
+        // One interface launch for both: the interface requires elevation, so an elevated launcher starts it
+        // with its own token and an unelevated one gets the UAC consent prompt from ShellExecute.
+        Assert.Equal([elevated ? "direct" : "elevated", "ui"], steps);
     }
 
-    [Fact]
-    public void AlreadyElevatedStartCannotFallBackToAnElevatedUi()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void RunningServiceLaunchesTheInterfaceWithoutAnyServiceAction(bool elevated)
     {
-        var launched = false;
-        Assert.Throws<InvalidOperationException>(() => LauncherWorkflow.Start(true, false, Backend,
-            () => new(4, 3, Backend, "LocalSystem"), () => { }, () => { }, () => launched = true));
-        Assert.False(launched);
+        var steps = new List<string>();
+        LauncherWorkflow.Start(elevated, false, Backend, () => new(4, 3, Backend, "LocalSystem"),
+            () => steps.Add("direct"), () => steps.Add("elevated"), () => steps.Add("ui"));
+        Assert.Equal(["ui"], steps);
     }
 
-    [Fact]
-    public void ServiceOpeningFailureKeepsItsReasonWithoutDirectUiFallback()
+    [Theory]
+    [InlineData(1223)]
+    [InlineData(740)]
+    public void InterfaceLaunchFailureKeepsItsReason(int error)
     {
-        var launched = false;
         var failure = Assert.Throws<Win32Exception>(() => LauncherWorkflow.Start(true, false, Backend,
-            () => new(4, 3, Backend, "LocalSystem"), () => { }, () => { }, () => launched = true,
-            requestInterface: () => throw new Win32Exception(5)));
-        Assert.Equal(5, failure.NativeErrorCode);
-        Assert.False(launched);
+            () => new(4, 3, Backend, "LocalSystem"), () => { }, () => { }, () => throw new Win32Exception(error)));
+        Assert.Equal(error, failure.NativeErrorCode);
     }
 
     [Theory]

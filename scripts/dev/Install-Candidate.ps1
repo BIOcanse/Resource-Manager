@@ -12,7 +12,8 @@ $ErrorActionPreference = 'Stop'
 # cannot copy the new files wrongly. Before applying, it closes only this install's NativeUi; afterwards
 # it logs the result, the registered manager, the uninstall entry and the service state, and restarts the
 # UI with WebView2 remote debugging on -DebugPort for read-only checks. A non-elevated call re-runs this
-# script elevated and waits.
+# script elevated and waits. The UI requires an elevated administrator and environment variables do not
+# cross a UAC prompt, so the elevated run starts it: the debugging port reaches the UI only from there.
 
 $Package = [IO.Path]::GetFullPath($Package)
 $OutPath = [IO.Path]::GetFullPath($OutPath)
@@ -21,17 +22,13 @@ $identity = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
 if (-not $identity.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     # Start-Process joins arguments with spaces and does not quote them, so paths are quoted here.
     $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Package `"$Package`" " +
-        "-OutPath `"$OutPath`" -InstallRoot `"$InstallRoot`" -DebugPort $DebugPort -ServicePort $ServicePort -NoUiRestart"
-    $child = Start-Process (Get-Process -Id $PID).Path -Verb RunAs -WindowStyle Hidden -Wait -PassThru -ArgumentList $arguments
+        "-OutPath `"$OutPath`" -InstallRoot `"$InstallRoot`" -DebugPort $DebugPort -ServicePort $ServicePort"
+    if ($NoUiRestart) { $arguments += ' -NoUiRestart' }
+    $child = Start-Process (Get-Process -Id $PID).Path -Verb RunAs -WindowStyle Hidden -PassThru -ArgumentList $arguments
+    # Only the elevated script itself is awaited: Start-Process -Wait would also wait for the UI it starts.
+    $child.WaitForExit()
     if (Test-Path -LiteralPath $OutPath) { Get-Content -LiteralPath $OutPath }
-    if ($child.ExitCode -ne 0) { exit $child.ExitCode }
-    # The UI belongs to the signed-in user, so it is started from the non-elevated caller.
-    if (-not $NoUiRestart) {
-        $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$DebugPort"
-        Start-Process (Join-Path $InstallRoot 'Start.exe')
-        "ui started with debugging port $DebugPort"
-    }
-    exit 0
+    exit $child.ExitCode
 }
 
 function Log([string]$text) { ((Get-Date -Format o) + ' ' + $text) | Add-Content -LiteralPath $OutPath }
@@ -78,6 +75,13 @@ try {
         try { $status = Invoke-RestMethod -Uri "http://127.0.0.1:$ServicePort/api/memory-protection" -UseDefaultCredentials -AllowUnencryptedAuthentication -TimeoutSec 10 } catch { Start-Sleep -Seconds 3 }
     }
     Log "memory protection enabled=$($status.enabled) active=$($status.active) inactiveReason=$($status.inactiveReason) point=$($status.normalRunningPoint.at)"
+    if (-not $NoUiRestart) {
+        # Started from this elevated process, the launcher starts the UI with its own (elevated) token, so the
+        # UI inherits this variable. Through a UAC prompt it would not.
+        $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$DebugPort"
+        Start-Process (Join-Path $InstallRoot 'Start.exe')
+        Log "ui started with debugging port $DebugPort"
+    }
     Log 'done'
 }
 catch {

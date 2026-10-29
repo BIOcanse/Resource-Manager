@@ -274,14 +274,14 @@ if ($Target -eq "All") {
             "-RootDirectory", $FinalOutput
         ) `
         $RepositoryRoot
-    Write-Step "验证最终映像 Native UI 的标准用户 manifest。"
+    Write-Step "验证最终映像 Native UI 的提权管理员 manifest（requireAdministrator）。"
     Invoke-CheckedCommand `
         "powershell.exe" `
         @(
             "-NoProfile", "-ExecutionPolicy", "Bypass",
             "-File", $ExecutableManifestValidator,
             "-ExecutablePath", (Join-Path $FinalOutput "ResourceManagerNativeUi\ResourceManager.NativeUi.exe"),
-            "-ExpectedExecutionLevel", "asInvoker"
+            "-ExpectedExecutionLevel", "requireAdministrator"
         ) `
         $RepositoryRoot
 }

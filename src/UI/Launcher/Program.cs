@@ -4,7 +4,6 @@ using Microsoft.Win32;
 using ResourceManager.Shared.ServiceHosting;
 using ResourceManager.Shared.Localization;
 using ResourceManager.Shared.Packages;
-using ResourceManager.Shared.Runtime.TrustedAccess;
 using ResourceManager.Updater;
 
 namespace ResourceManager.Launcher;
@@ -59,17 +58,14 @@ internal static class Program
                 () => ServiceActionResult.RunElevatedAsync(installation.Launcher, restart, text).GetAwaiter().GetResult(),
                 () =>
                 {
+                    // requireAdministrator: unelevated, ShellExecute asks for UAC consent; elevated, it inherits this token.
                     using var frontend = Process.Start(new ProcessStartInfo(installation.NativeUi)
                     {
                         UseShellExecute = true,
                         Arguments = background ? "--background-startup" : "--show-existing",
                         WorkingDirectory = Path.GetDirectoryName(installation.NativeUi)!
                     }) ?? throw new InvalidOperationException(text.LauncherUiStartFailed);
-                }, text.LauncherServiceStartFailed,
-                () => TrustedSessionLaunchClient.LaunchAsync(installation.Backend,
-                    new SessionLaunchRequest(installation.NativeUi, background ? "--background-startup" : "--show-existing"),
-                    string.Empty, text.LauncherUiStartFailed, CancellationToken.None)
-                    .GetAwaiter().GetResult());
+                }, text.LauncherServiceStartFailed);
             return 0;
         }
         catch (Exception exception)

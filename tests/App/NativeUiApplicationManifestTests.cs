@@ -7,7 +7,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed class NativeUiApplicationManifestTests
 {
     [Fact]
-    public void SourceManifestRunsAsInvokerWithoutUiAccessOrAutoElevation()
+    public void SourceManifestRequiresAnElevatedAdministratorWithoutUiAccessOrAutoElevation()
     {
         var manifestPath = Path.Combine(FindNativeUiRoot(), "app.manifest");
         var document = XDocument.Load(manifestPath);
@@ -15,7 +15,7 @@ public sealed class NativeUiApplicationManifestTests
             document.Descendants(),
             element => element.Name.LocalName == "requestedExecutionLevel");
 
-        Assert.Equal("asInvoker", (string?)requestedLevel.Attribute("level"));
+        Assert.Equal("requireAdministrator", (string?)requestedLevel.Attribute("level"));
         Assert.Equal("false", (string?)requestedLevel.Attribute("uiAccess"));
         Assert.DoesNotContain(
             document.Descendants(),
@@ -23,7 +23,7 @@ public sealed class NativeUiApplicationManifestTests
     }
 
     [Fact]
-    public async Task BuiltAppHostEmbedsAsInvokerManifest()
+    public async Task BuiltAppHostEmbedsRequireAdministratorManifest()
     {
         var appRoot = FindAppRoot();
 #if DEBUG
@@ -65,7 +65,7 @@ public sealed class NativeUiApplicationManifestTests
             "-ExecutablePath",
             executablePath,
             "-ExpectedExecutionLevel",
-            "asInvoker"
+            "requireAdministrator"
         })
         {
             startInfo.ArgumentList.Add(argument);
@@ -96,7 +96,7 @@ public sealed class NativeUiApplicationManifestTests
             $"Manifest validator failed with {process.ExitCode}. stdout={output} stderr={error}");
         using var result = JsonDocument.Parse(output);
         Assert.Equal(
-            "asInvoker",
+            "requireAdministrator",
             result.RootElement.GetProperty("RequestedExecutionLevel").GetString());
         Assert.True(result.RootElement.GetProperty("Valid").GetBoolean());
     }

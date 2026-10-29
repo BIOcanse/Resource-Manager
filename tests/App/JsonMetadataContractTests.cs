@@ -329,15 +329,6 @@ public sealed partial class JsonMetadataContractTests
     [Fact]
     public void GenericSessionConsumersUseTheProductionGeneratedWire()
     {
-        var launch = new ResourceManager.Shared.Runtime.TrustedAccess.SessionLaunchRequest(
-            Path.Combine(AppContext.BaseDirectory, "consumer.exe"), "--example");
-        var wire = ResourceManager.Shared.Runtime.TrustedAccess.SessionLaunchContract.Encode(launch);
-        using var json = JsonDocument.Parse(wire);
-        Assert.Equal(launch.ExecutablePath, json.RootElement.GetProperty("executablePath").GetString());
-        Assert.Equal(launch, ResourceManager.Shared.Runtime.TrustedAccess.SessionLaunchContract.Decode(wire));
-        Assert.Equal(123u, ResourceManager.Shared.Runtime.TrustedAccess.SessionLaunchContract.DecodeResult(
-            ResourceManager.Shared.Runtime.TrustedAccess.SessionLaunchContract.EncodeResult(123)).ProcessId);
-
         var shell = new ResourceManager.Shared.Runtime.UserShellExecuteRequest(
             "https://example.invalid/", "", WaitForExit: true);
         Assert.Equal(shell, ResourceManager.Shared.Runtime.UserShellExecuteRequest.Decode(shell.Encode()));
@@ -392,7 +383,7 @@ public sealed partial class JsonMetadataContractTests
         foreach (var assembly in new[] { App, ReadWrite, typeof(ResourceManager.Shared.Runtime.BackendRuntimeIdentityContract).Assembly,
             typeof(ResourceManager.NativeUi.BackendServiceSession).Assembly })
         foreach (var name in new[] { "ManagementInventoryJsonContext", "SoftwareContentJsonContext", "TrustedAccessInvocationJsonContext",
-            "SessionLaunchJsonContext", "UserShellExecuteJsonContext", "LoginStartupJsonContext",
+            "UserShellExecuteJsonContext", "LoginStartupJsonContext",
             "PackageRuntimeCatalogJson", "StartupModuleStorageJson", "OverlayStartupModulesJson",
             "ElevatedBackendRequestJsonContext", "ElevatedBackendBridgeJsonContext",
             "NativeBackendProbeJsonContext", "DeviceFingerprintJsonContext", "MetricCatalogJsonContext", "ExternalGpuPlacementJsonContext" })
@@ -461,7 +452,7 @@ public sealed partial class JsonMetadataContractTests
         var plain = owner is "host-profile" or "metric-profile" or "freedom-point" or "freedom-declarations" or "software-profile"
             or "plan-identity" or "MetricCatalogJsonContext" or "ManagementInventoryJsonContext"
             or "SoftwareContentJsonContext" or "TrustedAccessInvocationJsonContext" or "NativeBackendProbeJsonContext"
-            or "SessionLaunchJsonContext" or "UserShellExecuteJsonContext" or "LoginStartupJsonContext"
+            or "UserShellExecuteJsonContext" or "LoginStartupJsonContext"
             or "PackageRuntimeCatalogJson" or "StartupModuleStorageJson" or "OverlayStartupModulesJson"
             or "ElevatedBackendRequestJsonContext" or "ElevatedBackendBridgeJsonContext"
             or "DeviceFingerprintJsonContext" or "ExternalGpuPlacementJsonContext"

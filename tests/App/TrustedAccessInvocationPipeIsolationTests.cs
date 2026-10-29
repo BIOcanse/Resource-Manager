@@ -47,7 +47,7 @@ public sealed class TrustedAccessInvocationPipeIsolationTests
     }
 
     private static TrustedAccessInvocationHostedService Create(string name) =>
-        new(null!, null!, null!, null!, new HostManagerRuntimeIdentity(), NullLogger<TrustedAccessInvocationHostedService>.Instance, name);
+        new(null!, null!, null!, new HostManagerRuntimeIdentity(), NullLogger<TrustedAccessInvocationHostedService>.Instance, name);
 }
 
 

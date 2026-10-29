@@ -8,21 +8,19 @@ using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Infrastructure.Adaptation.Transport;
 using ResourceManager.App.Infrastructure.GpuPlacement;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
-using ResourceManager.App.Infrastructure.ServiceHosting;
 using ResourceManager.Shared.Runtime;
 using ResourceManager.Shared.Runtime.TrustedAccess;
 
 namespace ResourceManager.App.Infrastructure.Security;
 
 /// <summary>
-/// Serves native GPU and interactive-session operations. Bearer keys
+/// Serves the native GPU launch operations. Bearer keys
 /// carry purpose and scope; keyless calls require a separately verified Windows administrator.
 /// </summary>
 public sealed class TrustedAccessInvocationHostedService(
     ITrustedAccessKeyService keys,
     IGpuStartupPlacementResolver resolver,
     IGpuLaunchExecutionReportStore reports,
-    IInteractiveUserSessionBroker sessions,
     HostManagerRuntimeIdentity runtime,
     ILogger<TrustedAccessInvocationHostedService> logger,
     string pipeName = TrustedAccessInvocationContract.PipeName) : BackgroundService
@@ -76,14 +74,11 @@ public sealed class TrustedAccessInvocationHostedService(
                 runtime.InstanceId,
                 checked((ulong)Interlocked.Increment(ref nextConnection)));
             var request = await TrustedAccessInvocationContract.ReadRequestAsync(pipe, deadline.Token);
-            var verifiedAdministrator = (request.Key.Length == 0
-                || request.Operation == TrustedAccessInvocationContract.SessionLaunchOperation)
-                && IsVerifiedAdministrator(caller);
+            var verifiedAdministrator = request.Key.Length == 0 && IsVerifiedAdministrator(caller);
             operation = request.Operation switch
             {
                 TrustedAccessInvocationContract.GpuResolveOperation => TrustedAccessInvocationContract.GpuResolveOperation,
                 TrustedAccessInvocationContract.GpuReportOperation => TrustedAccessInvocationContract.GpuReportOperation,
-                TrustedAccessInvocationContract.SessionLaunchOperation => TrustedAccessInvocationContract.SessionLaunchOperation,
                 _ => "unknown"
             };
             var response = await InvokeAsync(request, caller, verifiedAdministrator, deadline.Token,
@@ -150,8 +145,7 @@ public sealed class TrustedAccessInvocationHostedService(
         Action<string> authorizationAccepted)
     {
         if (request.Operation is not (TrustedAccessInvocationContract.GpuResolveOperation
-            or TrustedAccessInvocationContract.GpuReportOperation
-            or TrustedAccessInvocationContract.SessionLaunchOperation)
+            or TrustedAccessInvocationContract.GpuReportOperation)
             || request.Payload.Length > MaximumPayloadCharacters)
         {
             return new(TrustedAccessInvocationContract.InvalidRequest, null);
@@ -201,12 +195,9 @@ public sealed class TrustedAccessInvocationHostedService(
                 return new(TrustedAccessInvocationContract.Forbidden, null);
             }
 
-            var requiredScope = request.Operation switch
-            {
-                TrustedAccessInvocationContract.GpuResolveOperation => AccessKeyScopes.GpuResolve,
-                TrustedAccessInvocationContract.SessionLaunchOperation => AccessKeyScopes.Session,
-                _ => AccessKeyScopes.GpuReport
-            };
+            var requiredScope = request.Operation == TrustedAccessInvocationContract.GpuResolveOperation
+                ? AccessKeyScopes.GpuResolve
+                : AccessKeyScopes.GpuReport;
             if (!credential.Scopes.Contains(requiredScope, StringComparer.Ordinal))
             {
                 return new(TrustedAccessInvocationContract.Forbidden, null);
@@ -234,15 +225,6 @@ public sealed class TrustedAccessInvocationHostedService(
         using var operationCancellation = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, revoked);
         try
         {
-            if (request.Operation == TrustedAccessInvocationContract.SessionLaunchOperation)
-            {
-                var command = SessionLaunchContract.Decode(request.Payload);
-                operationCancellation.Token.ThrowIfCancellationRequested();
-                var processId = SessionLaunchExecutor.Launch(sessions, caller, verifiedAdministrator, command);
-                // An accepted launch is already committed; cancellation does not pretend to undo it.
-                return new(TrustedAccessInvocationContract.Success, SessionLaunchContract.EncodeResult(processId));
-            }
-
             if (request.Operation == TrustedAccessInvocationContract.GpuResolveOperation)
             {
                 if (string.IsNullOrWhiteSpace(request.Payload) || request.Payload.Length > 32_767)
@@ -274,15 +256,6 @@ public sealed class TrustedAccessInvocationHostedService(
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
             throw;
-        }
-        catch (Exception error) when (request.Operation == TrustedAccessInvocationContract.SessionLaunchOperation
-            && error is (InvalidDataException or JsonException or ArgumentException))
-        {
-            return new(TrustedAccessInvocationContract.InvalidRequest, null);
-        }
-        catch (UnauthorizedAccessException) when (request.Operation == TrustedAccessInvocationContract.SessionLaunchOperation)
-        {
-            return new(TrustedAccessInvocationContract.Forbidden, null);
         }
         catch (Exception error)
         {

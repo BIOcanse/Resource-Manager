@@ -79,7 +79,6 @@ internal static class EffectBoundaries
             provider.GetRequiredService<ITrustedAccessKeyService>(),
             provider.GetRequiredService<IGpuStartupPlacementResolver>(),
             provider.GetRequiredService<IGpuLaunchExecutionReportStore>(),
-            provider.GetRequiredService<IInteractiveUserSessionBroker>(),
             provider.GetRequiredService<HostManagerRuntimeIdentity>(),
             provider.GetRequiredService<ILogger<TrustedAccessInvocationHostedService>>(), pipeName)));
     }

@@ -30,6 +30,7 @@ public sealed class UninstallArchiveRetryTests
         public void RequireOwned(UninstallationPlan plan) { }
         public void StopProduct(UninstallationPlan plan) { }
         public void RemoveLaunchInterception(UninstallationPlan plan) { }
+        public void RemoveFrontendLogonTasks(UninstallationPlan plan) { }
         public void RemoveService(UninstallationPlan plan) { }
         public void RemoveRegistration(UninstallationPlan plan) { }
         public void ProtectArchive(string archive) { }

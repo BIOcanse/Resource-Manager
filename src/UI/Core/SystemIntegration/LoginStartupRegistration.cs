@@ -1,47 +1,56 @@
-using Microsoft.Win32;
+using ResourceManager.Shared.Desktop;
 
 namespace ResourceManager.NativeUi.SystemIntegration;
 
-// The current user's Run value is the single persisted truth for frontend logon startup.
+// The current user's Task Scheduler logon task is the single persisted truth for frontend logon startup.
+// The frontend manifest requires an elevated administrator, and Windows does not start such a program
+// from a Run value; the task starts it with the user's elevated token.
 internal sealed class LoginStartupRegistration
 {
-    internal const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    internal const string ValueName = "ResourceManager.Desktop";
-    private readonly string command;
-    private readonly string runKey;
+    private readonly string executablePath;
+    private readonly string userSid;
+    private readonly ITaskSchedulerRootFolder tasks;
 
-    // runKey is relative to the key passed to Read and Set. Tests use their own path because some security
-    // products silently revert deletion of any key ending in CurrentVersion\Run, so cleanup never finishes.
-    internal LoginStartupRegistration(string executablePath, string runKey = RunKey)
+    internal LoginStartupRegistration(string executablePath, string userSid, ITaskSchedulerRootFolder tasks)
     {
-        var path = Path.GetFullPath(executablePath);
-        if (path.Contains('"')) throw new ArgumentException("Invalid startup executable path.");
-        command = $"\"{path}\" --background-startup";
-        this.runKey = runKey;
+        if (string.IsNullOrWhiteSpace(executablePath) || executablePath.Contains('"'))
+            throw new ArgumentException("Invalid startup executable path.");
+        this.executablePath = Path.GetFullPath(executablePath);
+        this.userSid = userSid;
+        this.tasks = tasks;
+        TaskName = FrontendLogonTask.NameFor(userSid);
     }
 
-    internal bool Read(RegistryKey currentUser)
+    internal string TaskName { get; }
+
+    internal static LoginStartupRegistration ForCurrentProcess()
     {
-        using var key = currentUser.OpenSubKey(runKey);
-        return ReadValue(key);
+        using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+        return new(Environment.ProcessPath
+                ?? throw new InvalidOperationException("The frontend executable path is unavailable."),
+            identity.User?.Value ?? throw new InvalidOperationException("The frontend user has no SID."),
+            new WindowsTaskSchedulerRootFolder());
     }
 
-    internal bool Set(RegistryKey currentUser, bool enabled)
+    internal bool Read() => ReadState() == FrontendLogonTaskState.Active;
+
+    internal bool Set(bool enabled)
     {
-        using var key = currentUser.CreateSubKey(runKey, writable: true);
-        _ = ReadValue(key); // A value owned by another executable is never overwritten or deleted.
-        if (enabled) key.SetValue(ValueName, command, RegistryValueKind.String);
-        else key.DeleteValue(ValueName, throwOnMissingValue: false);
-        var actual = ReadValue(key);
+        _ = ReadState(); // A task owned by another executable is never overwritten or deleted.
+        if (enabled) tasks.Register(TaskName, FrontendLogonTask.BuildDefinition(executablePath, userSid));
+        else tasks.Delete(TaskName);
+        var actual = Read();
         if (actual != enabled) throw new IOException("Startup registration did not retain the requested value.");
         return actual;
     }
 
-    private bool ReadValue(RegistryKey? key)
+    private FrontendLogonTaskState? ReadState()
     {
-        var value = key?.GetValue(ValueName, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
-        if (value is null) return false;
-        if (value is string actual && actual.Equals(command, StringComparison.OrdinalIgnoreCase)) return true;
-        throw new InvalidDataException("The frontend startup registration belongs to another executable.");
+        var definition = tasks.ReadDefinition(TaskName);
+        if (definition is null) return null;
+        var state = FrontendLogonTask.Inspect(definition, executablePath);
+        return state == FrontendLogonTaskState.Foreign
+            ? throw new InvalidDataException("The frontend logon task belongs to another executable.")
+            : state;
     }
 }

@@ -592,6 +592,11 @@ function Start-ResourceManager {
     if (-not (Test-Path -LiteralPath $NativeUiExe)) {
         throw "未找到主窗口可执行文件：$NativeUiExe"
     }
+    # The UI manifest requires an elevated administrator. Started through a UAC prompt it would not inherit
+    # RESOURCE_MANAGER_PACKAGE_ROOT or the debugging port set below, so only an elevated runner starts it.
+    if (-not (Test-IsElevated)) {
+        throw "主窗口要求提权管理员；经 UAC 启动时拿不到本脚本设置的包根和调试端口环境变量。请去掉 -NoSelfElevate，或在提权终端中运行。"
+    }
 
     Invoke-CheckedCommand $BackendExe @("--prepare-package-use-guard", $SoftwareRoot) $Root
 

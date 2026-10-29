@@ -14,9 +14,30 @@ public sealed class UninstallWorkspaceCleanupTests
         var runtime = new Runtime { FailLaunchCleanup = true };
         Assert.Throws<IOException>(() => UninstallationWorkflow.Run(fixture.Plan, keepData, runtime));
         Assert.True(runtime.Stopped);
+        Assert.False(runtime.FrontendLogonTasksRemoved);
         Assert.False(runtime.ServiceRemoved);
         Assert.False(runtime.RegistrationRemoved);
         Assert.True(File.Exists(Path.Combine(fixture.Root, "Start.exe")));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void FrontendLogonTasksGoBeforeDataAndTheirFailureRetainsPayloadAndRegistrations(bool keepData)
+    {
+        using var fixture = new Fixture();
+        var completed = new Runtime();
+        _ = UninstallationWorkflow.Run(fixture.Plan, keepData: true, completed);
+        Assert.True(completed.FrontendLogonTasksRemoved);
+        Assert.True(completed.ServiceRemoved && completed.RegistrationRemoved);
+
+        using var retained = new Fixture();
+        var runtime = new Runtime { FailFrontendLogonTasks = true };
+        Assert.Throws<IOException>(() => UninstallationWorkflow.Run(retained.Plan, keepData, runtime));
+        Assert.False(runtime.ServiceRemoved);
+        Assert.False(runtime.RegistrationRemoved);
+        Assert.True(File.Exists(Path.Combine(retained.Root, "Start.exe")));
+        Assert.Equal("original", File.ReadAllText(Path.Combine(retained.Root, "UserData", "profile")));
     }
 
     [Fact]
@@ -88,11 +109,20 @@ public sealed class UninstallWorkspaceCleanupTests
     {
         public bool Stopped;
         public bool FailLaunchCleanup;
+        public bool FailFrontendLogonTasks;
+        public bool FrontendLogonTasksRemoved;
         public bool ServiceRemoved;
         public bool RegistrationRemoved;
         public void RequireOwned(UninstallationPlan plan) { }
         public void StopProduct(UninstallationPlan plan) => Stopped = true;
         public void RemoveLaunchInterception(UninstallationPlan plan) { if (FailLaunchCleanup) throw new IOException("cleanup denied"); Assert.True(File.Exists(Path.Combine(plan.Root, "Start.exe"))); }
+        public void RemoveFrontendLogonTasks(UninstallationPlan plan)
+        {
+            if (FailFrontendLogonTasks) throw new IOException("Task Scheduler denied");
+            // Called while the payload is still in place; data handling and service removal come after it.
+            Assert.True(File.Exists(Path.Combine(plan.Root, "Start.exe")));
+            FrontendLogonTasksRemoved = true;
+        }
         public void RemoveService(UninstallationPlan plan) => ServiceRemoved = true;
         public void RemoveRegistration(UninstallationPlan plan) => RegistrationRemoved = true;
         public void ProtectArchive(string archive) { }

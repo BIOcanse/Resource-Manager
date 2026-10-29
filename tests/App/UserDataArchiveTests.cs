@@ -395,6 +395,7 @@ public sealed class UserDataArchiveTests
         public void RequireOwned(UninstallationPlan plan) => Record("owned");
         public void StopProduct(UninstallationPlan plan) => Record("stop");
         public void RemoveLaunchInterception(UninstallationPlan plan) { }
+        public void RemoveFrontendLogonTasks(UninstallationPlan plan) { }
         public void RemoveService(UninstallationPlan plan) => Record("service");
         public void RemoveRegistration(UninstallationPlan plan) => Record("registration");
         public void ProtectArchive(string path) => Record("protect");

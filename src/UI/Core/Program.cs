@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using ResourceManager.NativeUi.StateItems;
+using ResourceManager.NativeUi.SystemIntegration;
 
 namespace ResourceManager.NativeUi;
 
@@ -52,6 +53,8 @@ internal static class Program
             return signaled ? 0 : 2;
         }
 
+        // Upgrade step: an earlier version's Run value becomes this user's logon task (see the adapter).
+        LegacyLoginStartupRunValue.MigrateCurrentUser();
         using var context = new ResourceManagerApplicationContext(
             singleInstance,
             options.StartInBackground);

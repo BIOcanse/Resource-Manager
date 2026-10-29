@@ -276,7 +276,7 @@ if($Stage -eq 'ProductBackend') {
         if ($copies.Count -ne 1 -or $copies[0].sha256 -ine $item.sha256) { throw "Frontend native module input mismatch: $($item.path)" }
     }
     & (Join-Path $repo 'scripts/validation/Test-ResourceManagerFinalImage.ps1') -RootDirectory $image *> (Join-Path $RunDirectory 'final-image-validation.log')
-    & (Join-Path $repo 'scripts/validation/Test-WindowsExecutableManifest.ps1') -ExecutablePath (Join-Path $image 'ResourceManagerNativeUi/ResourceManager.NativeUi.exe') -ExpectedExecutionLevel asInvoker *> (Join-Path $RunDirectory 'native-ui-manifest.log')
+    & (Join-Path $repo 'scripts/validation/Test-WindowsExecutableManifest.ps1') -ExecutablePath (Join-Path $image 'ResourceManagerNativeUi/ResourceManager.NativeUi.exe') -ExpectedExecutionLevel requireAdministrator *> (Join-Path $RunDirectory 'native-ui-manifest.log')
     Save-Json @(Get-TreeManifest $image) (Join-Path $RunDirectory 'final-image-output.json')
     Save-Json @{accepted=$true;runDirectory=$RunDirectory;imageDirectory=$image;backendRun=$product.backendRun;shellRun=$product.shellRun;installedProductModified=$false;formalRelease=$false} (Join-Path $TaskRoot 'product-image-context.json')
 }

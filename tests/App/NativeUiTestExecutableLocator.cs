@@ -7,6 +7,14 @@ internal static class NativeUiTestExecutableLocator
 {
     private const string ArtifactsPathMetadataKey = "ResourceManagerTestArtifactsPath";
 
+    // Whether this runner can create the interface process at all (its manifest requires an elevated administrator).
+    internal static bool RunnerIsElevatedAdministrator()
+    {
+        using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+        return new System.Security.Principal.WindowsPrincipal(identity)
+            .IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+    }
+
     internal static string GetPath([CallerFilePath] string testSourcePath = "")
     {
         var assembly = typeof(NativeUiTestExecutableLocator).Assembly;

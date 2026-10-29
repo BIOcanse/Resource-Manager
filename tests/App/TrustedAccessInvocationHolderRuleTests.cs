@@ -16,7 +16,7 @@ public sealed class TrustedAccessInvocationHolderRuleTests
     {
         var fixture = TrustedAccessTestFactory.Create();
         var resolver = new Resolver();
-        using var host = new TrustedAccessInvocationHostedService(fixture.Owner, resolver, resolver, null!,
+        using var host = new TrustedAccessInvocationHostedService(fixture.Owner, resolver, resolver,
             new HostManagerRuntimeIdentity(), NullLogger<TrustedAccessInvocationHostedService>.Instance,
             "ResourceManager.Tests.HolderRule." + Guid.NewGuid().ToString("N"));
         var holderScopes = AccessKeyScopes.Definitions

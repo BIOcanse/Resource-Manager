@@ -819,7 +819,7 @@ function Invoke-ResourceManagerMachineInstallCore {
     $null = & $Plan.FinalImageValidatorPath -RootDirectory $Plan.SourceImageRoot
     $null = & $Plan.ExecutableManifestValidatorPath `
         -ExecutablePath $Plan.SourceNativeUiPath `
-        -ExpectedExecutionLevel asInvoker
+        -ExpectedExecutionLevel requireAdministrator
 
     $install = [System.IO.Path]::GetFullPath([string]$Plan.InstallRoot).TrimEnd('\', '/')
     $parent = [System.IO.Path]::GetDirectoryName($install)
@@ -852,7 +852,7 @@ function Invoke-ResourceManagerMachineInstallCore {
         $null = & $Plan.FinalImageValidatorPath -RootDirectory (Join-Path $staging 'Current')
         $null = & $Plan.ExecutableManifestValidatorPath `
             -ExecutablePath (Join-Path $staging 'Current\ResourceManagerNativeUi\ResourceManager.NativeUi.exe') `
-            -ExpectedExecutionLevel asInvoker
+            -ExpectedExecutionLevel requireAdministrator
         $null = Assert-ResourceManagerInstallationMarker `
             -Plan $Plan `
             -MarkerRoot $staging `

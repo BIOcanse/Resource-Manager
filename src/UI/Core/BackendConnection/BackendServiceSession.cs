@@ -48,7 +48,7 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
     {
         endpoint = new Uri(baseAddress);
         BackendPath = ResolveBackendPath();
-        readApiKey = apiKeyReader ?? new NativeTrustedAccessKeyReader(NativeUiPaths.PackageRoot).Read;
+        readApiKey = apiKeyReader ?? NativeUiBackendCredential.ForCurrentProcess(NativeUiPaths.PackageRoot);
         captureIdentity = identityReader ?? (() => BackendProcessConnection.CaptureInstalledServiceIdentity(BackendPath));
         HttpMessageHandler CreateHandler() => handlerFactory?.Invoke()
             ?? BackendProcessConnection.CreateHandler(() => backendProcessIdentity);

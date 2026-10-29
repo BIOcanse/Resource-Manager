@@ -7,6 +7,8 @@ public interface IUninstallationRuntime
     void RequireOwned(UninstallationPlan plan);
     void StopProduct(UninstallationPlan plan);
     void RemoveLaunchInterception(UninstallationPlan plan);
+    /// <summary>Deletes every user's frontend logon task that starts this installation's interface.</summary>
+    void RemoveFrontendLogonTasks(UninstallationPlan plan);
     void RemoveService(UninstallationPlan plan);
     void RemoveRegistration(UninstallationPlan plan);
     void ProtectArchive(string archive);
@@ -28,6 +30,7 @@ public static class UninstallationWorkflow
         var workspaces = UninstallationWorkspaces.Read(plan);
         runtime.StopProduct(plan);
         runtime.RemoveLaunchInterception(plan);
+        runtime.RemoveFrontendLogonTasks(plan);
         string? archive = null;
         if (keepData)
         {

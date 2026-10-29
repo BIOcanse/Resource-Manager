@@ -88,7 +88,7 @@ if ($LASTEXITCODE -ne 0) { throw "Native start entry publication failed: $LASTEX
     -BackendPublishRoot (Join-Path $OutputRoot 'backend') -NativeUiPublishRoot (Join-Path $OutputRoot 'ui') `
     -LauncherPublishRoot (Join-Path $OutputRoot 'launcher') -SessionAgentPublishRoot (Join-Path $OutputRoot 'session-agent') | Out-Null
 & (Join-Path $scriptsRoot 'validation\Test-WindowsExecutableManifest.ps1') `
-    -ExecutablePath (Join-Path $OutputRoot 'ui\ResourceManager.NativeUi.exe') -ExpectedExecutionLevel asInvoker | Out-Null
+    -ExecutablePath (Join-Path $OutputRoot 'ui\ResourceManager.NativeUi.exe') -ExpectedExecutionLevel requireAdministrator | Out-Null
 & (Join-Path $scriptsRoot 'validation\Test-WindowsExecutableManifest.ps1') `
     -ExecutablePath (Join-Path $OutputRoot 'session-agent\ResourceManager.SessionAgent.exe') -ExpectedExecutionLevel asInvoker | Out-Null
 & (Join-Path $scriptsRoot 'validation\Test-WindowsExecutableManifest.ps1') `

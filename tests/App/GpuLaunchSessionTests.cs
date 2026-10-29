@@ -8,7 +8,6 @@ using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.TrustedAccess;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.Security;
-using ResourceManager.App.Infrastructure.ServiceHosting;
 using ResourceManager.Shared.Runtime.TrustedAccess;
 
 namespace Resource_Manager_APP.Tests;
@@ -263,8 +262,8 @@ public sealed partial class GpuLaunchSessionTests
 
     private static TrustedAccessInvocationHostedService CreateHost(
         ITrustedAccessKeyService keys,
-        LaunchServices services, IInteractiveUserSessionBroker? sessions = null)
-        => new(keys, services, services, sessions ?? new WindowsInteractiveUserSessionBroker(), new HostManagerRuntimeIdentity(),
+        LaunchServices services)
+        => new(keys, services, services, new HostManagerRuntimeIdentity(),
             NullLogger<TrustedAccessInvocationHostedService>.Instance);
 
     private static async Task<TrustedAccessInvocationResponse> InvokeAsync(
