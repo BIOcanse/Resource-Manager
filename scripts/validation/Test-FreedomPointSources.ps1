@@ -43,11 +43,10 @@ try {
     $taskProject = Join-Path $taskRoot 'src\Development\FreedomPointCheck\ResourceManager.FreedomPointCheck.csproj'
     if ($CreatePartition -and $RefreshPartitionContract) { throw 'Choose one explicit partition operation.' }
     $taskArtifacts = Join-Path $taskOutput 'artifacts'
+    # No native build is skipped: the App copies every native output into the consumer build, so a skipped
+    # build fails with MSB3030 in a checkout that has not built them yet. The native targets are incremental
+    # and do nothing once their outputs are current.
     $taskBuildProperties = @('-p:BuildInParallel=false','-maxcpucount:1',
-        '-p:SkipPerformanceOverlayNativeBuild=true','-p:SkipGpuPlacementNativeBuild=true',
-        '-p:SkipGpuPlacementPreparationNativeBuild=true','-p:SkipGpuLaunchBrokerNativeBuild=true',
-        '-p:SkipAdlxBridgeBuild=true',
-        '-p:SkipGpuWindowActionNativeBuild=true','-p:SkipGpuPlacementExternalNativeBuild=true',
         '-p:SkipClientAppBuild=true',('-p:ArtifactsPath='+$taskArtifacts),
         ('-p:CustomAfterMicrosoftCommonTargets='+(Join-Path $PSScriptRoot 'FreedomPointCompilerCapture.targets'))) + $AdditionalBuildProperties
     & dotnet build $taskProject @taskBuildProperties --disable-build-servers --verbosity minimal
