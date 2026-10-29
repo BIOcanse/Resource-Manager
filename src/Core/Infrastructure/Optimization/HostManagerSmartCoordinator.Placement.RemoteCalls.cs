@@ -95,7 +95,8 @@ public sealed partial class HostManagerSmartCoordinator
         var matches = placement.Records.Count(item => item.Kind == record.Kind && item.RecordId == record.RecordId);
         if (matches != (add ? 0 : 1)) throw new InvalidDataException("The remote call must keep its single original ledger record.");
         var records = add ? [.. placement.Records, record]
-            : placement.Records.Select(item => item.Kind == record.Kind && item.RecordId == record.RecordId ? record : item).ToArray();
+            : placement.Records.Select(item => item.Kind == record.Kind && item.RecordId == record.RecordId
+                ? record with { Sequence = item.Sequence, RecordedAt = item.RecordedAt } : item).ToArray();
         return PersistGpuActionCheckpointAsync(ReplaceWindowPlacement(state, placement, records),
             "Host Manager retained the original GPU remote call and its actual resource state.", CancellationToken.None);
     }

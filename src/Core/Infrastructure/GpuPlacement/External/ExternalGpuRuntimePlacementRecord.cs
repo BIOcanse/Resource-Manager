@@ -9,6 +9,7 @@ internal static class ExternalGpuRuntimePlacementRecord
 {
     internal const string ResultKey = "runtimeActionResult";
     internal const string SettledKey = "runtimeActionSettled";
+    internal const string RestoreResultKey = "runtimeActionRestoreResult";
     private const string VersionKey = "externalRuntimeVersion";
     private const string IdPrefix = "external-runtime:";
 
@@ -33,7 +34,7 @@ internal static class ExternalGpuRuntimePlacementRecord
             && record.RecordId == IdPrefix + pid + ":" + birth;
 
     internal static bool IsMutableResultField(string key)
-        => key is ResultKey or SettledKey;
+        => key is ResultKey or SettledKey or RestoreResultKey;
 
     internal static bool TryReadResult(HostManagerAppliedRecord record,
         out RunningGpuPlacementActionResult? result)

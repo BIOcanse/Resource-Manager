@@ -99,7 +99,10 @@ public sealed record AppPerformanceSettings(
     byte VirtualMemoryOptimizationTargetUsagePercent,
     string RealtimeActionBudgetMode,
     int RealtimeActionBudgetCount,
-    int RealtimeActionBudgetPercent);
+    int RealtimeActionBudgetPercent)
+{
+    public bool KeepSmartRecordHistory { get; init; } = false;
+}
 
 public sealed record AppSystemIntegrationSettings(
     bool TaskManagerShortcutReplacementEnabled,

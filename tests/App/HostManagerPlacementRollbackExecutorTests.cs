@@ -368,6 +368,7 @@ public sealed partial class HostManagerPlacementRollbackExecutorTests
             = RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>.Unavailable(50, "not scripted");
         public int IdealWrites { get; private set; }
         public bool IgnoreIdealWrite { get; init; }
+        public RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>? IdealAfterWrite { get; init; }
         public RecoveryReadResult<ThreadIdealProcessorPolicySnapshot> ReadThreadIdealProcessor(int processId, ulong processStartKey, int threadId)
             => IdealRead;
         public ProcessResourcePolicyWriteResult TrySetThreadIdealProcessor(ThreadIdealProcessorPolicySnapshot expected, ThreadIdealProcessor desired)
@@ -375,6 +376,7 @@ public sealed partial class HostManagerPlacementRollbackExecutorTests
             IdealWrites++;
             Assert.Equal(IdealRead.Value, expected);
             if (!IgnoreIdealWrite) IdealRead = RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>.Found(expected with { IdealProcessor = desired });
+            if (IdealAfterWrite is { } after) IdealRead = after;
             return new(!IgnoreIdealWrite, "recording writer");
         }
 
@@ -390,7 +392,10 @@ public sealed partial class HostManagerPlacementRollbackExecutorTests
         public RecoveryReadResult<ThreadCpuSetPolicySnapshot> ReadThreadPlacementStateForRecovery(
             int processId,
             int threadId)
-            => RecoveryReadResult<ThreadCpuSetPolicySnapshot>.Unavailable(0, "not scripted");
+            => ThreadReads.Count == 0 ? RecoveryReadResult<ThreadCpuSetPolicySnapshot>.Unavailable(0, "not scripted")
+                : ThreadReads.Dequeue();
+
+        public Queue<RecoveryReadResult<ThreadCpuSetPolicySnapshot>> ThreadReads { get; } = new();
 
         public ProcessResourcePolicySnapshot? TryReadProcess(int processId) => null;
 

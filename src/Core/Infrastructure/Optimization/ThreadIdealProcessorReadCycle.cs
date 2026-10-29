@@ -34,13 +34,13 @@ internal sealed class ThreadIdealProcessorReadCycle(
             return RecoveryReadResult<IReadOnlyList<ThreadIdealProcessorPolicySnapshot>>.Unavailable(87, "Invalid thread enumeration boundary.");
         var parent = ReadParent(processId, processStartKey);
         if (parent.Status != RecoveryReadStatus.Found)
-            return new(parent.Status, null, parent.NativeErrorCode, parent.Message);
+            return new(parent.Status, null, parent.NativeErrorCode, parent.Message) { AbsenceReason = parent.AbsenceReason };
         inventory ??= readInventory();
         var snapshot = inventory.Value;
         if (snapshot.Status != RecoveryReadStatus.Found || snapshot.Value is null)
-            return new(snapshot.Status, null, snapshot.NativeErrorCode, snapshot.Message);
+            return new(snapshot.Status, null, snapshot.NativeErrorCode, snapshot.Message) { AbsenceReason = snapshot.AbsenceReason };
         if (!snapshot.Value.TryGetValue(processId, out var threads))
-            return RecoveryReadResult<IReadOnlyList<ThreadIdealProcessorPolicySnapshot>>.NotFoundOrExited(0, "Process is absent from the thread inventory.");
+            return RecoveryReadResult<IReadOnlyList<ThreadIdealProcessorPolicySnapshot>>.Exited(0, "Process is absent from the thread inventory.");
         if (threads.Count > maximumThreadCount)
             return RecoveryReadResult<IReadOnlyList<ThreadIdealProcessorPolicySnapshot>>.Unavailable(122, "Thread enumeration exceeds the placement capacity.");
         var results = new List<ThreadIdealProcessorPolicySnapshot>(threads.Count);
@@ -60,7 +60,7 @@ internal sealed class ThreadIdealProcessorReadCycle(
         var parent = ReadParent(processId, processStartKey);
         return parent.Status == RecoveryReadStatus.Found
             ? ReadVerifiedThread(processId, processStartKey, threadId)
-            : new(parent.Status, null, parent.NativeErrorCode, parent.Message);
+            : new(parent.Status, null, parent.NativeErrorCode, parent.Message) { AbsenceReason = parent.AbsenceReason };
     }
 
     private RecoveryReadResult<ProcessInstanceRecoverySnapshot> ReadParent(int processId, ulong expectedStart)
@@ -75,7 +75,8 @@ internal sealed class ThreadIdealProcessorReadCycle(
         var key = (processId, processStartKey, threadId);
         if (threads.TryGetValue(key, out var current)) return current;
         var thread = api.OpenThread(threadId, write: false);
-        if (thread == IntPtr.Zero) current = WindowsProcessResourcePolicyWriter.IdealReadFailure(api.LastError);
+        if (thread == IntPtr.Zero) current = WindowsProcessResourcePolicyWriter.IdealReadFailure(api.LastError,
+            RecoveryReadAbsenceReason.TargetExited);
         else
         {
             try { current = WindowsProcessResourcePolicyWriter.ReadIdealOnVerifiedHandle(api, thread, processId, processStartKey, threadId); }

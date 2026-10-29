@@ -7,6 +7,20 @@ namespace Resource_Manager_APP.Tests;
 public sealed class AppSettingsPatchTests
 {
     [Fact]
+    public void SmartRecordHistoryDefaultsOffAndCanBeToggledByNormalPatch()
+    {
+        var defaults = AppSettingsDefaults.Create();
+        Assert.False(defaults.Performance.KeepSmartRecordHistory);
+        using var enable = JsonDocument.Parse("""{"performance":{"keepSmartRecordHistory":true}}""");
+        using var disable = JsonDocument.Parse("""{"performance":{"keepSmartRecordHistory":false}}""");
+        var enabled = AppSettingsPatchApplier.Apply(defaults, enable.RootElement);
+        Assert.True(enabled.Performance.KeepSmartRecordHistory);
+        Assert.True(AppSettingsNormalizer.Normalize(enabled).Performance.KeepSmartRecordHistory);
+        Assert.False(AppSettingsPatchApplier.Apply(enabled, disable.RootElement).Performance.KeepSmartRecordHistory);
+        Assert.Equal(defaults.Performance.OptimizationMode, enabled.Performance.OptimizationMode);
+    }
+
+    [Fact]
     public void Apply_RoundTripsRealtimeActionBudgetAndPreservesBothValuesWhenSwitchingMode()
     {
         var current = AppSettingsDefaults.Create();

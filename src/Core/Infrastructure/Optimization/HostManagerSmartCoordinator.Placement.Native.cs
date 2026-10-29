@@ -164,8 +164,10 @@ public sealed partial class HostManagerSmartCoordinator
     private IReadOnlyList<HostManagerAppliedPlacementReceipt> RestoreAppliedPlacementsThroughNative(
         HostManagerCycleEffectPermit permit,
         IReadOnlyList<HostManagerAppliedPlacementReceipt> placements,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        out IReadOnlyDictionary<long, string> restoreResults)
     {
+        restoreResults = new Dictionary<long, string>();
         permit.Require(HostManagerCycleEffectKind.LegacyPlacementRestore);
         if (placements.Count == 0)
         {
@@ -263,6 +265,13 @@ public sealed partial class HostManagerSmartCoordinator
             ObservePlacementFeedback(workspace, checked((int)cycle.ActionCount));
         }
         var remaining = RebuildRemainingPlacements(placements, settlements);
+        restoreResults = placements.SelectMany(placement => placement.Records
+            .Where(record => record.Sequence.HasValue)
+            .Select(record => (Record: record, Settlement: settlements.GetValueOrDefault(
+                HostManagerPlacementCoordinatorProjection.CreateIdentity(placement, record)))))
+            .Where(item => item.Settlement is not null)
+            .ToDictionary(item => item.Record.Sequence!.Value,
+                item => HistoryResultFromSettlement(item.Settlement!));
         operation.Complete();
         return remaining;
     }

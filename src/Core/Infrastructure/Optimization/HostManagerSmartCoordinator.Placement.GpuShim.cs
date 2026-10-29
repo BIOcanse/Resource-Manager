@@ -205,7 +205,7 @@ public sealed partial class HostManagerSmartCoordinator
         };
     }
 
-    private async Task<bool> SaveAutomaticGpuPreparationAsync(
+    private async Task<(HostManagerRollbackStateDocument State, bool Completed)> SaveAutomaticGpuPreparationAsync(
         HostManagerRollbackStateDocument state, HostManagerPlacementProjectedDesired desired,
         ulong deadline, CancellationToken cancellationToken)
     {
@@ -217,14 +217,15 @@ public sealed partial class HostManagerSmartCoordinator
         try
         {
             var remaining = RemainingGpuActionTime(deadline);
-            if (remaining <= TimeSpan.Zero) return false;
+            if (remaining <= TimeSpan.Zero) return (state, false);
             await saving.WaitAsync(remaining, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception error) when (error is TimeoutException or OperationCanceledException)
         {
-            return false;
+            return (state, false);
         }
-        return await ObserveGpuActionCheckpointAsync(checkpoint).ConfigureAwait(false);
+        var completed = await ObserveGpuActionCheckpointAsync(checkpoint).ConfigureAwait(false);
+        return (completed ? await saving.ConfigureAwait(false) : state, completed);
     }
 
     private async Task<(HostManagerRollbackStateDocument State, bool CanContinue, bool ReleaseRecord,
@@ -343,7 +344,7 @@ public sealed partial class HostManagerSmartCoordinator
         return saving;
     }
 
-    private static HostManagerAppliedRecord WithRuntimeActionResult(
+    internal static HostManagerAppliedRecord WithRuntimeActionResult(
         HostManagerAppliedRecord record, RunningGpuPlacementActionResult result)
     {
         var metadata = new Dictionary<string, string>(record.Metadata!, StringComparer.Ordinal)
@@ -351,7 +352,11 @@ public sealed partial class HostManagerSmartCoordinator
             [ExternalGpuRuntimePlacementRecord.ResultKey] = JsonSerializer.Serialize(result)
         };
         if (ExternalGpuRuntimePlacementRecord.IsRecord(record))
+        {
             metadata[ExternalGpuRuntimePlacementRecord.SettledKey] = "true";
+            metadata[ExternalGpuRuntimePlacementRecord.RestoreResultKey] = ExternalGpuRuntimePlacementRecord.IsConfirmed(result)
+                ? HostManagerSmartRecordRestoreResults.Restored : HistoryResultFromExternalAction(result);
+        }
         return record with { Metadata = metadata };
     }
 }

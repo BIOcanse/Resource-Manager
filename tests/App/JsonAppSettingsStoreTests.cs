@@ -79,6 +79,31 @@ public sealed class JsonAppSettingsStoreTests : IDisposable
         "resource-manager-app-settings-tests",
         Guid.NewGuid().ToString("N"));
 
+    [Fact]
+    public async Task SmartRecordHistoryPatchPublishesImmediatelyAndPersistsAcrossReload()
+    {
+        var appRoot = Directory.CreateDirectory(Path.Combine(testRoot, "Resource Manager-APP")).FullName;
+        var environment = new TestHostEnvironment(appRoot);
+        var store = new JsonAppSettingsStore(new BackendStateItems().Authority, environment);
+        var loaded = await store.LoadAsync(default);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var changes = store.SubscribeAsync("smart-record-history-test", timeout.Token).GetAsyncEnumerator();
+        Assert.True(await changes.MoveNextAsync());
+        Assert.False(changes.Current.Performance.KeepSmartRecordHistory);
+        using var enable = JsonDocument.Parse("""{"performance":{"keepSmartRecordHistory":true}}""");
+        await store.SaveAsync(AppSettingsPatchApplier.Apply(loaded.Settings, enable.RootElement), timeout.Token);
+        Assert.True(await changes.MoveNextAsync());
+        Assert.True(changes.Current.Performance.KeepSmartRecordHistory);
+        var reloaded = await new JsonAppSettingsStore(new BackendStateItems().Authority, environment).LoadAsync(timeout.Token);
+        Assert.True(reloaded.Settings.Performance.KeepSmartRecordHistory);
+        using var disable = JsonDocument.Parse("""{"performance":{"keepSmartRecordHistory":false}}""");
+        await store.SaveAsync(AppSettingsPatchApplier.Apply(reloaded.Settings, disable.RootElement), timeout.Token);
+        Assert.True(await changes.MoveNextAsync());
+        Assert.False(changes.Current.Performance.KeepSmartRecordHistory);
+        var disabled = await new JsonAppSettingsStore(new BackendStateItems().Authority, environment).LoadAsync(timeout.Token);
+        Assert.False(disabled.Settings.Performance.KeepSmartRecordHistory);
+    }
+
     [Theory]
     [InlineData("dumpThenTerminate")]
     [InlineData("terminateOnly")]

@@ -119,6 +119,9 @@ public sealed record RunningGpuPlacementActionResult(
     string Message,
     string Status)
 {
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? HistoryRestoreResult { get; init; }
+
     public IReadOnlyList<RunningGpuPlacementProcessResult> Processes { get; init; } = [];
 
     public bool Triggered => Records.Count > 0

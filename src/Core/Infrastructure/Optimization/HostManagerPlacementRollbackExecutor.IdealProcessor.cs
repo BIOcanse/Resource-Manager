@@ -12,6 +12,8 @@ internal sealed partial class HostManagerPlacementRollbackExecutor
         var before = processPolicyWriter.ReadThreadIdealProcessor(value.ProcessId, value.ProcessStartKey, value.ThreadId);
         if (before.Status == RecoveryReadStatus.Unavailable)
             return FromUnavailable(record, before.NativeErrorCode, before.Message);
+        if (before.Status == RecoveryReadStatus.NotFoundOrExited)
+            return FromAbsent(record, before);
         if (before.Status != RecoveryReadStatus.Found || before.Value is not { } current || !value.Matches(current))
             return Settlement(record, HostManagerPlacementSettlementKind.OwnershipLost, "Thread creation identity no longer matches.");
         if (current.IdealProcessor == value.Previous)
@@ -23,6 +25,8 @@ internal sealed partial class HostManagerPlacementRollbackExecutor
         var write = processPolicyWriter.TrySetThreadIdealProcessor(current, value.Previous);
         var after = processPolicyWriter.ReadThreadIdealProcessor(value.ProcessId, value.ProcessStartKey, value.ThreadId);
         if (after.Status == RecoveryReadStatus.Unavailable) return FromUnavailable(record, after.NativeErrorCode, after.Message);
+        if (after.Status == RecoveryReadStatus.NotFoundOrExited)
+            return FromAbsent(record, after);
         if (after.Status != RecoveryReadStatus.Found || after.Value is not { } observed || !value.Matches(observed))
             return Settlement(record, HostManagerPlacementSettlementKind.OwnershipLost, "Thread disappeared during restoration.");
         if (observed.IdealProcessor == value.Previous)

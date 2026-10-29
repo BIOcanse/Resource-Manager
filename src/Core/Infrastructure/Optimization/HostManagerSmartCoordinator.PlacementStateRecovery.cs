@@ -20,7 +20,8 @@ public sealed partial class HostManagerSmartCoordinator
         var remainingPlacements = RestoreAppliedPlacementsThroughNative(
             permit,
             eligiblePlacements,
-            cancellationToken);
+            cancellationToken,
+            out var restoreResults);
         if (!gpuControlAvailable)
             remainingPlacements = [.. remainingPlacements,
                 .. source.AppliedPlacements.Where(item => string.Equals(item.ResourceKind,
@@ -34,9 +35,9 @@ public sealed partial class HostManagerSmartCoordinator
         var checkpoint = source with
         {
             LastRestoreAt = attemptedAt,
+            RestoreResults = restoreResults,
             AppliedPlacements = remainingPlacements
         };
-        await SaveRollbackStateAsync(checkpoint, CancellationToken.None);
-        return checkpoint;
+        return await SaveRollbackStateAsync(checkpoint, CancellationToken.None);
     }
 }

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace ResourceManager.App.Domain.Optimization;
 
 public enum HostManagerPlacementSettlementKind : byte
@@ -16,6 +18,9 @@ public sealed record HostManagerPlacementRecordSettlement(
     int NativeErrorCode,
     string Message)
 {
+    [JsonIgnore]
+    public string? HistoryRestoreResult { get; init; }
+
     public bool CanRemoveReceipt => Kind is
         HostManagerPlacementSettlementKind.Restored
         or HostManagerPlacementSettlementKind.AlreadyRestored

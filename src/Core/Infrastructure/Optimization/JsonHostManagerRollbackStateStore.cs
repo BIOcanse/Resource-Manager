@@ -166,6 +166,8 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
         {
             ThrowIfDisposed();
             await EnsureLoadedAsync(cancellationToken);
+            await EnsureHistoryReadyAsync(cancellationToken);
+            await RefreshHistoryRetentionAsync(cancellationToken);
             return cachedDocument!;
         }
         finally
@@ -174,7 +176,10 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
         }
     }
 
-    public async Task SaveAsync(
+    public Task SaveAsync(HostManagerRollbackStateDocument document, CancellationToken cancellationToken)
+        => SaveAndReadAsync(document, cancellationToken);
+
+    public async Task<HostManagerRollbackStateDocument> SaveAndReadAsync(
         HostManagerRollbackStateDocument document,
         CancellationToken cancellationToken)
     {
@@ -184,6 +189,9 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
         {
             ThrowIfDisposed();
             await EnsureLoadedAsync(cancellationToken);
+            await EnsureHistoryReadyAsync(cancellationToken);
+            if (historySettings is not null)
+                retainHistory = (await historySettings.LoadAsync(cancellationToken)).Settings.Performance.KeepSmartRecordHistory;
             var normalized = NormalizeDocument(document);
             if (normalized.NativeHostSessionIncarnation
                 != cachedDocument!.NativeHostSessionIncarnation)
@@ -192,6 +200,7 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
                     "Native Host session incarnation can only change through an atomic reservation.");
             }
             var now = timeProvider.GetUtcNow();
+            normalized = await PrepareHistoryAsync(normalized, now, cancellationToken);
             var baseline = persistedDocument ?? HostManagerRollbackStateDocument.Empty;
             var materialChanged = !HasSameRecoveryState(baseline, normalized);
             var recoveryCompleted = baseline.LastRestoreAt != normalized.LastRestoreAt;
@@ -202,10 +211,10 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
                 && canonicalAuthorityObserved && persistedDocument is not null
                 && HasSameCheckpointFields(persistedDocument, normalized))
             {
-                cachedDocument = normalized;
+                cachedDocument = normalized with { RestoreResults = null, RecordRestoreResults = null };
                 PublishOwnedState(normalized);
                 dirty = false;
-                return;
+                return cachedDocument;
             }
 
             if (materialChanged
@@ -213,12 +222,13 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
                 || now - lastPersistedAt >= checkpointInterval)
             {
                 await PersistAndPublishAsync(normalized, now, cancellationToken);
-                return;
+                return cachedDocument!;
             }
 
-            cachedDocument = normalized;
+            cachedDocument = normalized with { RestoreResults = null, RecordRestoreResults = null };
             PublishOwnedState(normalized);
             dirty = true;
+            return cachedDocument;
         }
         finally
         {
@@ -296,13 +306,16 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
         // Snapshot before encoding/awaiting IO. A caller can retain mutable metadata,
         // but it must never mutate the baseline used to suppress a later write.
         var canonicalDocument = SnapshotDocument(document);
+        var previousDocument = cachedDocument ?? HostManagerRollbackStateDocument.Empty;
         HostManagerRollbackStatePersistedImage persisted;
         try
         {
+            await StageHistoryRemovalsAsync(previousDocument, canonicalDocument, persistedAt, cancellationToken);
             persisted = await PersistAsync(
                 canonicalDocument,
                 checked(persistedRevision + 1),
                 cancellationToken);
+            await CompleteHistoryAsync(previousDocument, canonicalDocument, persistedAt, cancellationToken);
         }
         catch (HostManagerRollbackStateCommitException exception) when (
             exception.Outcome == HostManagerRollbackStateCommitOutcome.CommitAmbiguous)
@@ -310,10 +323,20 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
             InvalidateCachedAuthority();
             throw;
         }
+        catch
+        {
+            // The ledger may already be durable. Reload it before any later publication.
+            if (historyStore is not null)
+            {
+                InvalidateCachedAuthority();
+                historyReady = false;
+            }
+            throw;
+        }
 
-        cachedDocument = document;
+        cachedDocument = document with { RestoreResults = null, RecordRestoreResults = null };
         PublishOwnedState(document);
-        persistedDocument = canonicalDocument;
+        persistedDocument = canonicalDocument with { RestoreResults = null, RecordRestoreResults = null };
         persistedRevision = persisted.Revision;
         persistedCanonicalSha256 = persisted.CanonicalSha256;
         canonicalAuthorityObserved = true;
@@ -635,6 +658,7 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
 
     private void InvalidateCachedAuthority()
     {
+        historyReady = false;
         cachedDocument = null;
         persistedDocument = null;
         persistedCanonicalSha256 = null;
@@ -792,6 +816,10 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
     private static HostManagerRollbackStateDocument SnapshotDocument(HostManagerRollbackStateDocument document)
         => document with
         {
+            RestoreResults = document.RestoreResults is null ? null
+                : new Dictionary<long, string>(document.RestoreResults),
+            RecordRestoreResults = document.RecordRestoreResults is null ? null
+                : new Dictionary<HostManagerRecordHistoryKey, string>(document.RecordRestoreResults),
             AppliedPlacements = document.AppliedPlacements.Select(placement => placement with
             {
                 Records = placement.Records.Select(record => record with
@@ -841,6 +869,8 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
             var leftItem = left[index];
             var rightItem = right[index];
             if (!string.Equals(leftItem.Kind, rightItem.Kind, StringComparison.OrdinalIgnoreCase)
+                || leftItem.Sequence != rightItem.Sequence
+                || leftItem.RecordedAt != rightItem.RecordedAt
                 || !string.Equals(leftItem.RecordId, rightItem.RecordId, StringComparison.OrdinalIgnoreCase)
                 || !MetadataEqual(leftItem.Metadata, rightItem.Metadata))
             {
@@ -897,6 +927,8 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
             NormalizePlacements(document.AppliedPlacements ?? []))
         {
             NativeHostSessionIncarnation = document.NativeHostSessionIncarnation,
+            RestoreResults = document.RestoreResults,
+            RecordRestoreResults = document.RecordRestoreResults,
             Coordinator = document.Coordinator
         };
     }
@@ -925,6 +957,7 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
         IReadOnlyList<HostManagerAppliedPlacementReceipt> placements)
     {
         var normalized = new Dictionary<HostManagerPlacementReceiptKey, HostManagerAppliedPlacementReceipt>();
+        var sequences = new HashSet<long>();
         foreach (var placement in placements)
         {
             if (string.IsNullOrWhiteSpace(placement.TargetId)
@@ -938,6 +971,10 @@ public sealed partial class JsonHostManagerRollbackStateStore : IHostManagerRoll
             var records = new Dictionary<(string Kind, string RecordId), HostManagerAppliedRecord>();
             foreach (var record in placement.Records)
             {
+                if (record.Sequence is <= 0
+                    || (record.Sequence is { } sequence && !sequences.Add(sequence))
+                    || (record.Sequence.HasValue != record.RecordedAt.HasValue))
+                    throw new InvalidDataException("Host Manager record history identity is invalid.");
                 if (string.IsNullOrWhiteSpace(record.Kind)
                     || string.IsNullOrWhiteSpace(record.RecordId))
                 {

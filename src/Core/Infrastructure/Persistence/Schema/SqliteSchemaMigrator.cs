@@ -20,7 +20,8 @@ internal static class SqliteSchemaMigrator
         new NormalizePortableSoftwareObservationPrecisionMigration(),
         new TargetedRecordingMigration(),
         new HostManagerReportTargetIdentityMigration(),
-        new HostManagerReportProcessEvidenceMigration()
+        new HostManagerReportProcessEvidenceMigration(),
+        new HostManagerSmartRecordHistoryMigration()
     ];
 
     public static async Task MigrateAsync(

@@ -15,4 +15,11 @@ public interface IHostManagerRollbackStateStore
     Task SaveAsync(
         HostManagerRollbackStateDocument document,
         CancellationToken cancellationToken);
+
+    async Task<HostManagerRollbackStateDocument> SaveAndReadAsync(
+        HostManagerRollbackStateDocument document, CancellationToken cancellationToken)
+    {
+        await SaveAsync(document, cancellationToken);
+        return document;
+    }
 }

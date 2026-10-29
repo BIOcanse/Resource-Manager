@@ -149,7 +149,7 @@ internal sealed partial class HostManagerPlacementRollbackExecutor(
         }
         if (initial.Status == RecoveryReadStatus.NotFoundOrExited)
         {
-            return Settlement(record, HostManagerPlacementSettlementKind.OwnershipLost, initial.Message, initial.NativeErrorCode);
+            return FromAbsent(record, initial);
         }
 
         var current = initial.Value!;
@@ -446,7 +446,7 @@ internal sealed partial class HostManagerPlacementRollbackExecutor(
         }
         if (read.Status == RecoveryReadStatus.NotFoundOrExited)
         {
-            return Settlement(record, HostManagerPlacementSettlementKind.OwnershipLost, read.Message, read.NativeErrorCode);
+            return FromAbsent(record, read);
         }
         if (read.Value is null
             || (exactStartIdentity
@@ -471,8 +471,9 @@ internal sealed partial class HostManagerPlacementRollbackExecutor(
         {
             return FromUnavailable(record, read.NativeErrorCode, read.Message);
         }
-        if (read.Status == RecoveryReadStatus.NotFoundOrExited
-            || read.Value is null
+        if (read.Status == RecoveryReadStatus.NotFoundOrExited)
+            return FromAbsent(record, read);
+        if (read.Value is null
             || read.Value.CreatedAt.ToUnixTimeMilliseconds() != expectedCreatedAtMilliseconds)
         {
             return Settlement(record, HostManagerPlacementSettlementKind.OwnershipLost, read.Message, read.NativeErrorCode);
@@ -531,15 +532,30 @@ internal sealed partial class HostManagerPlacementRollbackExecutor(
         ProcessResourcePolicyWriteResult result)
         => new(field, result.Succeeded, result.Message);
 
-    private static HostManagerPlacementRecordSettlement SettleRuntimeRebuildRecord(HostManagerAppliedRecord record)
+    internal static HostManagerPlacementRecordSettlement SettleRuntimeRebuildRecord(HostManagerAppliedRecord record)
     {
         if (GpuWindowActionRecord.IsActionFact(record))
             return Settlement(record, HostManagerPlacementSettlementKind.RetainedActionFact,
                 "A recorded window action is not a repeatable restore command; its facts remain owned.");
-        return record.Metadata is not null
-            && !string.IsNullOrWhiteSpace(ReadMetadata(record, "assignedPositionId"))
-            ? Settlement(record, HostManagerPlacementSettlementKind.AlreadyRestored, "GPU runtime rebuild trigger 没有持久可逆 OS 值。")
-            : Settlement(record, HostManagerPlacementSettlementKind.InvalidReceipt, "GPU runtime rebuild trigger receipt metadata 无效。");
+        if (record.Metadata is null || string.IsNullOrWhiteSpace(ReadMetadata(record, "assignedPositionId")))
+            return Settlement(record, HostManagerPlacementSettlementKind.InvalidReceipt, "GPU runtime rebuild trigger receipt metadata 无效。");
+        if (ResourceManager.App.Infrastructure.GpuPlacement.External.ExternalGpuRuntimePlacementRecord.IsRecord(record))
+        {
+            var outcome = ReadMetadata(record,
+                ResourceManager.App.Infrastructure.GpuPlacement.External.ExternalGpuRuntimePlacementRecord.RestoreResultKey);
+            if (!HostManagerSmartRecordRestoreResults.IsSupported(outcome))
+            {
+                outcome = HostManagerSmartRecordRestoreResults.Unknown;
+                if (ResourceManager.App.Infrastructure.GpuPlacement.External.ExternalGpuRuntimePlacementRecord.TryReadResult(record, out var result)
+                    && result is not null)
+                    outcome = ResourceManager.App.Infrastructure.GpuPlacement.External.ExternalGpuRuntimePlacementRecord.IsConfirmed(result)
+                        ? HostManagerSmartRecordRestoreResults.Restored : HostManagerSmartCoordinator.HistoryResultFromExternalAction(result);
+            }
+            return Settlement(record, HostManagerPlacementSettlementKind.AlreadyRestored,
+                "The external action has no repeatable restore command; its recorded outcome is retained.")
+                with { HistoryRestoreResult = outcome };
+        }
+        return Settlement(record, HostManagerPlacementSettlementKind.AlreadyRestored, "GPU runtime rebuild trigger 没有持久可逆 OS 值。");
     }
 
     private static bool TryReadProcessIdentity(
@@ -691,6 +707,18 @@ internal sealed partial class HostManagerPlacementRollbackExecutor(
             HostManagerPlacementSettlementKind.RetryableFailure,
             message,
             nativeErrorCode);
+
+    private static HostManagerPlacementRecordSettlement FromAbsent<T>(
+        HostManagerAppliedRecord record, RecoveryReadResult<T> read)
+        => Settlement(record, HostManagerPlacementSettlementKind.OwnershipLost, read.Message, read.NativeErrorCode) with
+        {
+            HistoryRestoreResult = read.AbsenceReason switch
+            {
+                RecoveryReadAbsenceReason.TargetExited => HostManagerSmartRecordRestoreResults.TargetExited,
+                RecoveryReadAbsenceReason.IdentityChanged => HostManagerSmartRecordRestoreResults.OwnershipLost,
+                _ => HostManagerSmartRecordRestoreResults.Unknown
+            }
+        };
 
     private static HostManagerPlacementRecordSettlement Settlement(
         HostManagerAppliedRecord record,

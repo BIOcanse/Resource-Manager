@@ -16,10 +16,10 @@ public sealed partial class HostManagerSmartCoordinator
         return stateStore.LoadAsync(cancellationToken);
     }
 
-    private Task SaveRollbackStateAsync(HostManagerRollbackStateDocument state, CancellationToken cancellationToken)
+    private Task<HostManagerRollbackStateDocument> SaveRollbackStateAsync(HostManagerRollbackStateDocument state, CancellationToken cancellationToken)
     {
         RequireNoGpuWindowOwnerWork();
-        return stateStore.SaveAsync(state, cancellationToken);
+        return stateStore.SaveAndReadAsync(state, cancellationToken);
     }
 
     private Task<HostManagerRollbackStateDocument> ReserveRollbackSessionAsync(CancellationToken cancellationToken)

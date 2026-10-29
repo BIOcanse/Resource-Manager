@@ -49,7 +49,10 @@ public static class AppSettingsNormalizer
             Math.Clamp(
                 performance?.RealtimeActionBudgetPercent ?? AppSettingsDefaults.RealtimeActionBudgetPercent,
                 AppSettingsDefaults.MinRealtimeActionBudgetPercent,
-                AppSettingsDefaults.MaxRealtimeActionBudgetPercent));
+                AppSettingsDefaults.MaxRealtimeActionBudgetPercent))
+        {
+            KeepSmartRecordHistory = performance?.KeepSmartRecordHistory ?? false
+        };
     }
 
     private static AppSystemIntegrationSettings NormalizeSystemIntegration(AppSystemIntegrationSettings? systemIntegration)

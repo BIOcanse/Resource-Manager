@@ -1,4 +1,5 @@
 using ResourceManager.App.Application.Monitoring;
+using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.Settings;
@@ -20,6 +21,7 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
     private readonly ILogger<RuntimeSpecializationCoordinator> logger;
     private readonly LegacyDashboardFileMigration? legacySettingsMigration;
     private readonly ResourceManager.App.Infrastructure.MemoryProtection.HostMemoryProtectionService? memoryProtection;
+    private readonly IHostManagerRollbackStateStore? smartRollbackStateStore;
     private CancellationTokenSource? changedWorkerCancellation;
     private Task? changedWorker;
     private long changedSequence;
@@ -44,7 +46,8 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
         IMonitoringSourceZoneRegistry monitoringSourceZoneRegistry,
         ILogger<RuntimeSpecializationCoordinator> logger,
         LegacyDashboardFileMigration? legacySettingsMigration = null,
-        ResourceManager.App.Infrastructure.MemoryProtection.HostMemoryProtectionService? memoryProtection = null)
+        ResourceManager.App.Infrastructure.MemoryProtection.HostMemoryProtectionService? memoryProtection = null,
+        IHostManagerRollbackStateStore? smartRollbackStateStore = null)
     {
         this.compiler = compiler;
         this.settingsStore = settingsStore;
@@ -54,6 +57,7 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
         this.logger = logger;
         this.legacySettingsMigration = legacySettingsMigration;
         this.memoryProtection = memoryProtection;
+        this.smartRollbackStateStore = smartRollbackStateStore;
     }
 
     public async Task<AppSettingsUpdateResult> ApplyAppSettingsAsync(
@@ -204,6 +208,20 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
 
         try
         {
+            await SynchronizeSmartRecordHistorySettingAsync(CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "Settings committed, but smart record history could not be persisted.");
+            return RecordSettingsApplication(committed with
+            {
+                RuntimeApplicationDisposition = "savedNotApplied",
+                RuntimeFailureCode = "smart-record-history-persistence-failed"
+            });
+        }
+
+        try
+        {
             var publication = await PublishAsync(candidatePlan);
             return RecordSettingsApplication(committed with
             {
@@ -240,6 +258,7 @@ public sealed partial class RuntimeSpecializationCoordinator : IHostedService, I
         await gate.WaitAsync(cancellationToken);
         try
         {
+            await SynchronizeSmartRecordHistorySettingAsync(cancellationToken);
             return await CompileAndPublishAsync(reason, cancellationToken);
         }
         finally

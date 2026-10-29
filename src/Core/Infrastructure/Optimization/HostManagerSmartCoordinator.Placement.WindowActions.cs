@@ -50,7 +50,8 @@ public sealed partial class HostManagerSmartCoordinator
             var state = await preparation.Completion.ConfigureAwait(false);
             var placement = state.AppliedPlacements.Single(item => HostManagerPlacementReceiptKey.Create(item) == key);
             var next = ReplaceWindowPlacement(state, placement,
-                placement.Records.Select(item => item == preparation.Record ? completed : item).ToArray());
+                placement.Records.Select(item => item.Kind == preparation.Record.Kind && item.RecordId == preparation.Record.RecordId
+                    ? completed with { Sequence = item.Sequence, RecordedAt = item.RecordedAt } : item).ToArray());
             return await PersistGpuActionCheckpointAsync(next,
                 "Host Manager recorded the actual window execution result.", cancellationToken).ConfigureAwait(false);
         });
@@ -63,8 +64,7 @@ public sealed partial class HostManagerSmartCoordinator
     {
         logger.LogDebug("{Checkpoint}", message);
         var checkpoint = state with { LastRunAt = durableTimeSource.NextUtc() };
-        await stateStore.SaveAsync(checkpoint, cancellationToken).ConfigureAwait(false);
-        return checkpoint;
+        return await stateStore.SaveAndReadAsync(checkpoint, cancellationToken).ConfigureAwait(false);
     }
 
     private Task<bool> TrySettleGpuActionCheckpointAsync()

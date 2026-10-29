@@ -36,7 +36,7 @@ public sealed partial class WindowsProcessResourcePolicyWriter
         if (processId <= 4 || processStartKey == 0 || threadId <= 0)
             return RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>.Unavailable(87, "Invalid thread identity.");
         var thread = idealApi.OpenThread(threadId, write: false);
-        if (thread == IntPtr.Zero) return IdealReadFailure(idealApi.LastError);
+        if (thread == IntPtr.Zero) return IdealReadFailure(idealApi.LastError, RecoveryReadAbsenceReason.TargetExited);
         try { return ReadIdealOnHandle(thread, processId, processStartKey, threadId); }
         finally { idealApi.CloseThread(thread); }
     }
@@ -68,10 +68,10 @@ public sealed partial class WindowsProcessResourcePolicyWriter
         IntPtr thread, int processId, ulong processStartKey, int threadId)
     {
         if (idealApi.ReadProcessId(thread) != checked((uint)processId))
-            return RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>.NotFoundOrExited(0, "Thread belongs to another process.");
+            return RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>.IdentityChanged(0, "Thread belongs to another process.");
         var parent = VerifyIdealParent(readIdealParent(processId), processId, processStartKey);
         if (parent.Status != RecoveryReadStatus.Found || parent.Value is null)
-            return new(parent.Status, null, parent.NativeErrorCode, parent.Message);
+            return new(parent.Status, null, parent.NativeErrorCode, parent.Message) { AbsenceReason = parent.AbsenceReason };
         return ReadIdealOnVerifiedHandle(idealApi, thread, processId, processStartKey, threadId, ownerVerified: true);
     }
 
@@ -82,7 +82,7 @@ public sealed partial class WindowsProcessResourcePolicyWriter
         if (parent.Value is null)
             return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Unavailable(0, "Process creation identity could not be read.");
         if (parent.Value.ProcessId != processId || checked((ulong)parent.Value.StartedAt.ToFileTime()) != processStartKey)
-            return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.NotFoundOrExited(0, "Process creation identity changed.");
+            return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.IdentityChanged(0, "Process creation identity changed.");
         return parent;
     }
 
@@ -91,13 +91,13 @@ public sealed partial class WindowsProcessResourcePolicyWriter
         bool ownerVerified = false)
     {
         if (!ownerVerified && api.ReadProcessId(thread) != checked((uint)processId))
-            return RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>.NotFoundOrExited(0, "Thread belongs to another process.");
+            return RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>.IdentityChanged(0, "Thread belongs to another process.");
         if (!api.TryReadTimes(thread, out var creation, out var exit))
             return IdealReadFailure(api.LastError);
         if (creation < processStartKey)
-            return RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>.NotFoundOrExited(0, "Process creation identity changed.");
+            return RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>.IdentityChanged(0, "Process creation identity changed.");
         if (exit != 0)
-            return RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>.NotFoundOrExited(0, "Thread exited.");
+            return RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>.Exited(0, "Thread exited.");
         if (!api.TryReadIdeal(thread, out var ideal) || !api.TryReadAffinity(thread, out var group, out var mask))
             return IdealReadFailure(api.LastError);
         IReadOnlyList<uint> selected = [];
@@ -112,9 +112,10 @@ public sealed partial class WindowsProcessResourcePolicyWriter
             creation, ideal, group, mask, selected));
     }
 
-    internal static RecoveryReadResult<ThreadIdealProcessorPolicySnapshot> IdealReadFailure(int error)
+    internal static RecoveryReadResult<ThreadIdealProcessorPolicySnapshot> IdealReadFailure(int error,
+        RecoveryReadAbsenceReason absenceReason = RecoveryReadAbsenceReason.Unspecified)
         => error is 87 or 1168
-            ? RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>.NotFoundOrExited(error, new Win32Exception(error).Message)
+            ? RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>.NotFoundOrExited(error, new Win32Exception(error).Message, absenceReason)
             : RecoveryReadResult<ThreadIdealProcessorPolicySnapshot>.Unavailable(error, new Win32Exception(error).Message);
 
     [StructLayout(LayoutKind.Sequential)]

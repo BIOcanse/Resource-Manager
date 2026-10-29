@@ -150,8 +150,8 @@ public sealed partial class HostManagerSmartCoordinator
             ?? throw new InvalidOperationException("The Host Manager placement coordinator plan is unavailable.");
         fullDesired = fullDesired.Where(item => !GpuActionFacts.BlocksEffect(state.AppliedPlacements, item.Placement, item.Record)).ToArray();
         var observations = CapturePlacementObservations(placementEffects, idealReads);
-        // A confirmed exited thread has no policy left to restore. Settle
-        // its durable receipt before limiting actual restore writes by budget.
+        // A retired thread identity has no policy left to restore. Keep its
+        // typed absence reason when retiring the individual durable receipt.
         var exitedCpuRecords = placementEffects.SelectMany(placement => placement.Records
             .Where(record => record.Kind == HostManagerAppliedRecordKinds.CpuThreadIdealProcessor)
             .Select(record => HostManagerPlacementCoordinatorProjection.CreateIdentity(placement, record)))
@@ -159,16 +159,10 @@ public sealed partial class HostManagerSmartCoordinator
             .ToHashSet();
         if (exitedCpuRecords.Count != 0)
         {
-            state = state with
-            {
-                AppliedPlacements = state.AppliedPlacements.Select(placement => placement with
-                {
-                    Records = placement.Records.Where(record => !exitedCpuRecords.Contains(
-                        HostManagerPlacementCoordinatorProjection.CreateIdentity(placement, record))).ToArray()
-                }).Where(placement => placement.Records.Count != 0).ToArray()
-            };
-            await SavePlacementCheckpointAsync(state,
-                "Host Manager settled CPU placement receipts for confirmed exited identities.", CancellationToken.None);
+            state = RemovePlacementRecords(state, exitedCpuRecords.ToDictionary(identity => identity,
+                identity => HistoryResultFromAbsence(observations[identity].AbsenceReason)));
+            state = await SavePlacementCheckpointAsync(state,
+                "Host Manager settled CPU placement receipts for retired identities.", CancellationToken.None);
             placementEffects = placementEffects.Select(placement => placement with
             {
                 Records = placement.Records.Where(record => !exitedCpuRecords.Contains(
@@ -261,8 +255,9 @@ public sealed partial class HostManagerSmartCoordinator
                     var settlement = RestorePlacementRecord(projected.Record);
                     if (settlement.CanRemoveReceipt)
                     {
-                        state = RemovePlacementRecord(state, projected.Identity);
-                        await SavePlacementCheckpointAsync(
+                        state = RemovePlacementRecord(state, projected.Identity,
+                            HistoryResultFromSettlement(settlement));
+                        state = await SavePlacementCheckpointAsync(
                             state,
                             "Host Manager settled an automatic placement restore.",
                             CancellationToken.None);
@@ -869,12 +864,12 @@ public sealed partial class HostManagerSmartCoordinator
         {
             return HostManagerPlacementObservation.Unavailable(read.NativeErrorCode);
         }
-        if (read.Status != RecoveryReadStatus.Found
-            || read.Value is null
-            || !MatchesReceiptProcessIdentity(record, processStartKey, read.Value))
+        if (read.Status != RecoveryReadStatus.Found || read.Value is null)
         {
-            return HostManagerPlacementObservation.NotFound(read.NativeErrorCode);
+            return HostManagerPlacementObservation.NotFound(read.NativeErrorCode, read.AbsenceReason);
         }
+        if (!MatchesReceiptProcessIdentity(record, processStartKey, read.Value))
+            return HostManagerPlacementObservation.NotFound(read.NativeErrorCode, RecoveryReadAbsenceReason.IdentityChanged);
 
         if (usesCpuSets)
         {
@@ -1025,11 +1020,13 @@ public sealed partial class HostManagerSmartCoordinator
             state = AddAutomaticPlacementRecord(state, desired);
             if (gpu)
             {
-                if (!await SaveAutomaticGpuPreparationAsync(state, desired, action.DeadlineMilliseconds, cancellationToken))
+                var prepared = await SaveAutomaticGpuPreparationAsync(state, desired, action.DeadlineMilliseconds, cancellationToken);
+                state = prepared.State;
+                if (!prepared.Completed)
                     return new(state, CreateAutomaticPlacementFeedback(action, NativePlacementFeedbackStatus.RetryableFailure, 1460, 0), false);
             }
             else
-                await SavePlacementCheckpointAsync(state, "Host Manager prepared an automatic placement write.", cancellationToken);
+                state = await SavePlacementCheckpointAsync(state, "Host Manager prepared an automatic placement write.", cancellationToken);
 
             if (gpu)
             {
@@ -1038,8 +1035,13 @@ public sealed partial class HostManagerSmartCoordinator
                     return new(state, CreateAutomaticPlacementFeedback(action, NativePlacementFeedbackStatus.RetryableFailure, 1460, 0), false);
                 if (!processIdentity.Matches)
                 {
-                    state = RemovePlacementRecord(state, desired.Identity);
-                    await SavePlacementCheckpointAsync(
+                    state = RemovePlacementRecord(state, desired.Identity,
+                        processIdentity.Status == RecoveryReadStatus.Unavailable
+                            ? HostManagerSmartRecordRestoreResults.Failed
+                            : processIdentity.Status == RecoveryReadStatus.Found
+                                ? HostManagerSmartRecordRestoreResults.OwnershipLost
+                                : HistoryResultFromAbsence(processIdentity.AbsenceReason));
+                    state = await SavePlacementCheckpointAsync(
                         state,
                         "Host Manager rejected an automatic GPU preference write because the exact process identity was unavailable.",
                         CancellationToken.None);
@@ -1063,8 +1065,9 @@ public sealed partial class HostManagerSmartCoordinator
             }
             if (before.Relation != HostManagerPlacementValueRelation.Previous)
             {
-                state = RemovePlacementRecord(state, desired.Identity);
-                await SavePlacementCheckpointAsync(
+                state = RemovePlacementRecord(state, desired.Identity,
+                    HistoryResultFromRejectedBaseline(before.Relation, before.AbsenceReason));
+                state = await SavePlacementCheckpointAsync(
                     state,
                     "Host Manager rejected an automatic placement write because its baseline changed.",
                     CancellationToken.None);
@@ -1085,8 +1088,8 @@ public sealed partial class HostManagerSmartCoordinator
                 state = externalState;
                 if (releaseRecord)
                 {
-                    state = RemovePlacementRecord(state, desired.Identity);
-                    await SavePlacementCheckpointAsync(state,
+                    state = RemovePlacementRecord(state, desired.Identity, HistoryResultFromExternalAction(result));
+                    state = await SavePlacementCheckpointAsync(state,
                         "Host Manager settled an external GPU action without a confirmed transfer.", CancellationToken.None);
                 }
                 var confirmed = ExternalGpuRuntimePlacementRecord.IsConfirmed(result)
@@ -1114,8 +1117,9 @@ public sealed partial class HostManagerSmartCoordinator
                         var restored = gpuShimRuntime.RestorePolicyRecord(desired.Record);
                         if (restored.CanRemoveReceipt)
                         {
-                            state = RemovePlacementRecord(state, desired.Identity);
-                            await SavePlacementCheckpointAsync(state,
+                            state = RemovePlacementRecord(state, desired.Identity,
+                                HistoryResultFromSettlement(restored));
+                            state = await SavePlacementCheckpointAsync(state,
                                 "Host Manager released a settled GPU action policy without confirmed placement.", CancellationToken.None);
                         }
                         feedback = CreateAutomaticPlacementFeedback(action,
@@ -1133,8 +1137,9 @@ public sealed partial class HostManagerSmartCoordinator
             if (after.Relation is HostManagerPlacementValueRelation.Previous
                 or HostManagerPlacementValueRelation.NotFound)
             {
-                state = RemovePlacementRecord(state, desired.Identity);
-                await SavePlacementCheckpointAsync(
+                state = RemovePlacementRecord(state, desired.Identity,
+                    HistoryResultFromWriteReadBack(after.Relation, after.AbsenceReason));
+                state = await SavePlacementCheckpointAsync(
                     state,
                     "Host Manager observed no automatic placement write and removed its prepared receipt.",
                     CancellationToken.None);
@@ -1150,8 +1155,8 @@ public sealed partial class HostManagerSmartCoordinator
             }
             if (after.Relation == HostManagerPlacementValueRelation.Foreign)
             {
-                state = RemovePlacementRecord(state, desired.Identity);
-                await SavePlacementCheckpointAsync(
+                state = RemovePlacementRecord(state, desired.Identity, HostManagerSmartRecordRestoreResults.OwnershipLost);
+                state = await SavePlacementCheckpointAsync(
                     state,
                     "Host Manager released automatic placement ownership after a foreign write.",
                     CancellationToken.None);
@@ -1270,7 +1275,7 @@ public sealed partial class HostManagerSmartCoordinator
             NativePlacementObservationStatus.Found => HostManagerPlacementValueRelation.Foreign,
             _ => HostManagerPlacementValueRelation.Unavailable
         };
-        return new HostManagerPlacementValueObservation(relation, observation.NativeErrorCode);
+        return new HostManagerPlacementValueObservation(relation, observation.NativeErrorCode, observation.AbsenceReason);
     }
 
     private HostManagerPlacementObservation ObserveExternalGpuRuntimePlacement(
@@ -1279,7 +1284,8 @@ public sealed partial class HostManagerSmartCoordinator
         var identity = ReadAutomaticPlacementProcessIdentity(record);
         if (identity.Status == RecoveryReadStatus.Unavailable)
             return HostManagerPlacementObservation.Unavailable(identity.NativeErrorCode);
-        if (!identity.Matches) return HostManagerPlacementObservation.NotFound(identity.NativeErrorCode);
+        if (!identity.Matches) return HostManagerPlacementObservation.NotFound(identity.NativeErrorCode,
+            identity.Status == RecoveryReadStatus.Found ? RecoveryReadAbsenceReason.IdentityChanged : identity.AbsenceReason);
         if (record.Metadata?.GetValueOrDefault(ExternalGpuRuntimePlacementRecord.SettledKey) == "false")
             return HostManagerPlacementObservation.FoundPrevious(previousDigest);
         if (!ExternalGpuRuntimePlacementRecord.TryReadResult(record, out var result) || result is null)
@@ -1315,7 +1321,8 @@ public sealed partial class HostManagerSmartCoordinator
                 new HostManagerPlacementProcessIdentityObservation(
                     false,
                     read.Status,
-                    read.NativeErrorCode),
+                    read.NativeErrorCode,
+                    read.AbsenceReason),
             RecoveryReadStatus.Unavailable when read.Value is null =>
                 new HostManagerPlacementProcessIdentityObservation(
                     false,
@@ -1326,13 +1333,13 @@ public sealed partial class HostManagerSmartCoordinator
         };
     }
 
-    private async Task SavePlacementCheckpointAsync(
+    private async Task<HostManagerRollbackStateDocument> SavePlacementCheckpointAsync(
         HostManagerRollbackStateDocument state,
         string message,
         CancellationToken cancellationToken)
     {
         logger.LogDebug("{Checkpoint}", message);
-        await SaveRollbackStateAsync(
+        return await SaveRollbackStateAsync(
             state with
             {
                 LastRunAt = durableTimeSource.NextUtc()
@@ -1342,22 +1349,39 @@ public sealed partial class HostManagerSmartCoordinator
 
     private static HostManagerRollbackStateDocument RemovePlacementRecord(
         HostManagerRollbackStateDocument state,
-        HostManagerPlacementNativeIdentity identity)
+        HostManagerPlacementNativeIdentity identity,
+        string restoreResult = HostManagerSmartRecordRestoreResults.Unknown)
+        => RemovePlacementRecords(state, new Dictionary<HostManagerPlacementNativeIdentity, string> { [identity] = restoreResult });
+
+    internal static HostManagerRollbackStateDocument RemovePlacementRecords(
+        HostManagerRollbackStateDocument state,
+        IReadOnlyDictionary<HostManagerPlacementNativeIdentity, string> removals)
     {
+        var restoreResults = state.RestoreResults is null ? new Dictionary<long, string>()
+            : new Dictionary<long, string>(state.RestoreResults);
+        var recordRestoreResults = state.RecordRestoreResults is null
+            ? new Dictionary<HostManagerRecordHistoryKey, string>()
+            : new Dictionary<HostManagerRecordHistoryKey, string>(state.RecordRestoreResults);
         var remaining = new List<HostManagerAppliedPlacementReceipt>();
         foreach (var placement in state.AppliedPlacements)
         {
-            var records = placement.Records
-                .Where(record => HostManagerPlacementCoordinatorProjection.CreateIdentity(
-                        placement,
-                        record) != identity)
-                .ToArray();
-            if (records.Length != 0)
+            var records = new List<HostManagerAppliedRecord>(placement.Records.Count);
+            foreach (var record in placement.Records)
             {
-                remaining.Add(placement with { Records = records });
+                if (removals.TryGetValue(HostManagerPlacementCoordinatorProjection.CreateIdentity(placement, record), out var result))
+                {
+                    if (record.Sequence is { } sequence) restoreResults[sequence] = result;
+                    recordRestoreResults[HostManagerRecordHistoryKey.Create(placement, record)] = result;
+                }
+                else records.Add(record);
+            }
+            if (records.Count != 0)
+            {
+                remaining.Add(placement with { Records = records.ToArray() });
             }
         }
-        return state with { AppliedPlacements = remaining };
+        return state with { AppliedPlacements = remaining, RestoreResults = restoreResults,
+            RecordRestoreResults = recordRestoreResults };
     }
 
     private static void ValidateAutomaticPlacementAction(
@@ -1649,7 +1673,7 @@ public sealed partial class HostManagerSmartCoordinator
         NativePlacementFeedback Feedback,
         bool CanContinue = true);
 
-    private enum HostManagerPlacementValueRelation : byte
+    internal enum HostManagerPlacementValueRelation : byte
     {
         Applied = 1,
         Previous = 2,
@@ -1660,18 +1684,21 @@ public sealed partial class HostManagerSmartCoordinator
 
     private readonly record struct HostManagerPlacementValueObservation(
         HostManagerPlacementValueRelation Relation,
-        int NativeErrorCode);
+        int NativeErrorCode,
+        RecoveryReadAbsenceReason AbsenceReason = RecoveryReadAbsenceReason.Unspecified);
 
     private readonly record struct HostManagerPlacementProcessIdentityObservation(
         bool Matches,
         RecoveryReadStatus Status,
-        int NativeErrorCode);
+        int NativeErrorCode,
+        RecoveryReadAbsenceReason AbsenceReason = RecoveryReadAbsenceReason.Unspecified);
 
     private readonly record struct HostManagerPlacementObservation(
         NativePlacementObservationStatus Status,
         ulong CurrentDigest,
         bool ReceiptMatches,
-        int NativeErrorCode)
+        int NativeErrorCode,
+        RecoveryReadAbsenceReason AbsenceReason = RecoveryReadAbsenceReason.Unspecified)
     {
         internal static HostManagerPlacementObservation Unchecked { get; } = new(
             NativePlacementObservationStatus.Unchecked,
@@ -1688,8 +1715,9 @@ public sealed partial class HostManagerSmartCoordinator
         internal static HostManagerPlacementObservation FoundForeign(ulong digest)
             => new(NativePlacementObservationStatus.Found, digest, false, 0);
 
-        internal static HostManagerPlacementObservation NotFound(int nativeErrorCode)
-            => new(NativePlacementObservationStatus.NotFoundOrExited, 0, false, nativeErrorCode);
+        internal static HostManagerPlacementObservation NotFound(int nativeErrorCode,
+            RecoveryReadAbsenceReason reason = RecoveryReadAbsenceReason.Unspecified)
+            => new(NativePlacementObservationStatus.NotFoundOrExited, 0, false, nativeErrorCode, reason);
 
         internal static HostManagerPlacementObservation Unavailable(int nativeErrorCode)
             => new(NativePlacementObservationStatus.Unavailable, 0, false, nativeErrorCode);

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace ResourceManager.App.Application.Optimization;
 
 public enum RecoveryReadStatus : byte
@@ -7,17 +9,34 @@ public enum RecoveryReadStatus : byte
     Unavailable = 3
 }
 
+public enum RecoveryReadAbsenceReason : byte
+{
+    Unspecified = 0,
+    TargetExited = 1,
+    IdentityChanged = 2
+}
+
 public readonly record struct RecoveryReadResult<T>(
     RecoveryReadStatus Status,
     T? Value,
     int NativeErrorCode,
     string Message)
 {
+    [JsonIgnore]
+    public RecoveryReadAbsenceReason AbsenceReason { get; init; }
+
     public static RecoveryReadResult<T> Found(T value)
         => new(RecoveryReadStatus.Found, value, 0, string.Empty);
 
-    public static RecoveryReadResult<T> NotFoundOrExited(int nativeErrorCode, string message)
-        => new(RecoveryReadStatus.NotFoundOrExited, default, nativeErrorCode, message);
+    public static RecoveryReadResult<T> NotFoundOrExited(int nativeErrorCode, string message,
+        RecoveryReadAbsenceReason absenceReason = RecoveryReadAbsenceReason.Unspecified)
+        => new(RecoveryReadStatus.NotFoundOrExited, default, nativeErrorCode, message) { AbsenceReason = absenceReason };
+
+    public static RecoveryReadResult<T> Exited(int nativeErrorCode, string message)
+        => NotFoundOrExited(nativeErrorCode, message, RecoveryReadAbsenceReason.TargetExited);
+
+    public static RecoveryReadResult<T> IdentityChanged(int nativeErrorCode, string message)
+        => NotFoundOrExited(nativeErrorCode, message, RecoveryReadAbsenceReason.IdentityChanged);
 
     public static RecoveryReadResult<T> Unavailable(int nativeErrorCode, string message)
         => new(RecoveryReadStatus.Unavailable, default, nativeErrorCode, message);

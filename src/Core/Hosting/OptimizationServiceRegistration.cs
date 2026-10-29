@@ -46,6 +46,9 @@ public static partial class ResourceManagerServiceCollectionExtensions
         }
 
         services.AddSingleton<IOptimizationProtectionStore, JsonOptimizationProtectionStore>();
+        services.AddSingleton<SqliteHostManagerSmartRecordHistoryStore>();
+        services.AddSingleton<IHostManagerSmartRecordHistoryStore>(static provider =>
+            provider.GetRequiredService<SqliteHostManagerSmartRecordHistoryStore>());
         services.AddSingleton<IHostManagerRollbackStateStore, JsonHostManagerRollbackStateStore>();
         services.AddSingleton<HostManagerSchedulingAuthority>();
         services.AddSingleton<IHostManagerSchedulingAuthoritySource>(static provider =>

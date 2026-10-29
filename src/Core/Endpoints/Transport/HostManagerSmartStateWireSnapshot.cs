@@ -22,7 +22,12 @@ internal sealed record HostManagerPlacementWireSnapshot(
     string? ProcessStartKey,
     string? ProcessName);
 
-internal sealed record HostManagerAppliedRecordWireSnapshot(string Kind, string RecordId);
+internal sealed record HostManagerAppliedRecordWireSnapshot(
+    string Kind,
+    string RecordId,
+    long? Sequence,
+    string? State,
+    DateTimeOffset? RecordedAt);
 
 internal static class HostManagerSmartStateWireProjection
 {
@@ -34,7 +39,9 @@ internal static class HostManagerSmartStateWireProjection
         => new(state.Version, state.LastRunAt, state.LastRestoreAt,
             state.AppliedPlacements.Select(placement => new HostManagerPlacementWireSnapshot(
                 placement.TargetId, placement.SoftwareId, placement.ResourceKind,
-                placement.Records.Select(record => new HostManagerAppliedRecordWireSnapshot(record.Kind, record.RecordId)).ToArray(),
+                placement.Records.Select(record => new HostManagerAppliedRecordWireSnapshot(
+                    record.Kind, record.RecordId, record.Sequence,
+                    record.Sequence.HasValue ? "active" : null, record.RecordedAt)).ToArray(),
                 placement.AppliedAt, placement.UpdatedAt, placement.ProcessId, placement.ProcessStartKey, placement.ProcessName)).ToArray(),
             state.Coordinator, state.NativeHostSessionIncarnation);
 }

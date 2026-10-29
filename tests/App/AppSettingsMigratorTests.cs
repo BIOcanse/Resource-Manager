@@ -8,6 +8,33 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class AppSettingsMigratorTests
 {
+    [Theory]
+    [InlineData("true", true, false)]
+    [InlineData("false", false, false)]
+    [InlineData("null", false, true)]
+    [InlineData("\"true\"", false, true)]
+    public void SmartRecordHistoryMigratesAndValidatesBoolean(string json, bool expected, bool rewrite)
+    {
+        var root = JsonNode.Parse(CurrentShapeJson)!;
+        root["performance"]!["keepSmartRecordHistory"] = JsonNode.Parse(json);
+        using var document = JsonDocument.Parse(root.ToJsonString());
+        Assert.Equal(expected, AppSettingsMigrator.MigrateForRead(document.RootElement).Performance.KeepSmartRecordHistory);
+        Assert.Equal(rewrite, AppSettingsMigrator.RequiresRewrite(document.RootElement));
+    }
+
+    [Fact]
+    public void MissingSmartRecordHistoryDefaultsOffAndRewritesWithoutLosingOtherChoices()
+    {
+        var root = JsonNode.Parse(CurrentShapeJson)!;
+        root["performance"]!.AsObject().Remove("keepSmartRecordHistory");
+        root["performance"]!["preciseGpuPlacementEnabled"] = true;
+        using var document = JsonDocument.Parse(root.ToJsonString());
+        var settings = AppSettingsMigrator.MigrateForRead(document.RootElement);
+        Assert.False(settings.Performance.KeepSmartRecordHistory);
+        Assert.True(settings.Performance.PreciseGpuPlacementEnabled);
+        Assert.True(AppSettingsMigrator.RequiresRewrite(document.RootElement));
+    }
+
     [Fact]
     public void ReserveSchemaUpgradeDefaultsToDumpAndPreservesExplicitActionMode()
     {
@@ -548,7 +575,8 @@ public sealed class AppSettingsMigratorTests
             "gpuOverflowDedicatedMemoryPercent": 80,
             "realtimeActionBudgetMode": "fixed",
             "realtimeActionBudgetCount": 32,
-            "realtimeActionBudgetPercent": 5
+            "realtimeActionBudgetPercent": 5,
+            "keepSmartRecordHistory": false
           },
           "systemIntegration": {
             "restartAfterCrashEnabled": true,

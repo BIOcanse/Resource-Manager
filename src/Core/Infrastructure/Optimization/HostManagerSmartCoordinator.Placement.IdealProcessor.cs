@@ -151,8 +151,10 @@ public sealed partial class HostManagerSmartCoordinator
             ? processPolicyWriter.ReadThreadIdealProcessor(value.ProcessId, value.ProcessStartKey, value.ThreadId)
             : idealReads.ReadThread(value.ProcessId, value.ProcessStartKey, value.ThreadId);
         if (read.Status == RecoveryReadStatus.Unavailable) return HostManagerPlacementObservation.Unavailable(read.NativeErrorCode);
-        if (read.Status != RecoveryReadStatus.Found || read.Value is not { } current || !value.Matches(current))
-            return HostManagerPlacementObservation.NotFound(read.NativeErrorCode);
+        if (read.Status != RecoveryReadStatus.Found || read.Value is not { } current)
+            return HostManagerPlacementObservation.NotFound(read.NativeErrorCode, read.AbsenceReason);
+        if (!value.Matches(current))
+            return HostManagerPlacementObservation.NotFound(read.NativeErrorCode, RecoveryReadAbsenceReason.IdentityChanged);
         if (current.IdealProcessor == value.Applied) return HostManagerPlacementObservation.FoundReceipt(receiptDigest);
         if (current.IdealProcessor == value.Previous) return HostManagerPlacementObservation.FoundPrevious(previousDigest);
         return HostManagerPlacementObservation.FoundForeign(CreateForeignPlacementDigest(placement, record,

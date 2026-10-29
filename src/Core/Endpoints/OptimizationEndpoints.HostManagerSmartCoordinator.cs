@@ -41,6 +41,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             return Results.Ok(await coordinator.SetModeAsync(request.Mode, cancellationToken));
         });
 
+        app.MapHostManagerSmartRecordHistoryEndpoints();
+
         app.MapPost("/api/optimization/smart/run-once", async (
             IHostManagerSmartCoordinator coordinator,
             CancellationToken cancellationToken) =>

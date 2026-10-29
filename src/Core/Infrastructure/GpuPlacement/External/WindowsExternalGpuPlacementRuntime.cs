@@ -242,9 +242,14 @@ public sealed partial class WindowsExternalGpuPlacementRuntime(
         WindowsExternalGpuControllerProcess controllerProcess;
         lock (gate)
         {
-            if (HasUnreleasedControl || HasFailedAttempt(evidenceRoot, expected.Root)
-                || ReadPlan(expected.GpuProcess) != expected)
+            if (HasUnreleasedControl)
+                return new([], "External GPU process identity or control ownership changed.", RunningGpuPlacementActionStatuses.Skipped)
+                { HistoryRestoreResult = Domain.Optimization.HostManagerSmartRecordRestoreResults.OwnershipLost };
+            if (HasFailedAttempt(evidenceRoot, expected.Root))
                 return new([], "External GPU process identity or control ownership changed.", RunningGpuPlacementActionStatuses.Skipped);
+            if (ReadPlan(expected.GpuProcess) != expected)
+                return new([], "External GPU process identity or control ownership changed.", RunningGpuPlacementActionStatuses.Skipped)
+                { HistoryRestoreResult = Domain.Optimization.HostManagerSmartRecordRestoreResults.OwnershipLost };
             before = observations.Read(expected.GpuProcess);
             if (before is null || before.Adapters.Count == 0)
                 return new([], "No current resident-memory snapshot for this GPU process.", RunningGpuPlacementActionStatuses.Skipped);

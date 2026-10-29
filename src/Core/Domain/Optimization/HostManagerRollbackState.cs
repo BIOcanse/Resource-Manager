@@ -60,6 +60,12 @@ public sealed record HostManagerRollbackStateDocument(
 
     public ulong NativeHostSessionIncarnation { get; init; }
 
+    [JsonIgnore]
+    public IReadOnlyDictionary<long, string>? RestoreResults { get; init; }
+
+    [JsonIgnore]
+    public IReadOnlyDictionary<HostManagerRecordHistoryKey, string>? RecordRestoreResults { get; init; }
+
     public static HostManagerRollbackStateDocument Empty { get; } = new(
         CurrentVersion,
         null,
@@ -70,7 +76,13 @@ public sealed record HostManagerRollbackStateDocument(
 public sealed record HostManagerAppliedRecord(
     string Kind,
     string RecordId,
-    IReadOnlyDictionary<string, string>? Metadata = null);
+    IReadOnlyDictionary<string, string>? Metadata = null)
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public long? Sequence { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DateTimeOffset? RecordedAt { get; init; }
+}
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record HostManagerAppliedPlacementReceipt(

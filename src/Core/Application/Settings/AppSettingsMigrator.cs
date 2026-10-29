@@ -67,7 +67,10 @@ public static class AppSettingsMigrator
                 ReadByte(root, "performance", "virtualMemoryOptimizationTargetUsagePercent", defaults.Performance.VirtualMemoryOptimizationTargetUsagePercent),
                 ReadString(root, "performance", "realtimeActionBudgetMode", defaults.Performance.RealtimeActionBudgetMode),
                 ReadInt32(root, "performance", "realtimeActionBudgetCount", defaults.Performance.RealtimeActionBudgetCount),
-                ReadInt32(root, "performance", "realtimeActionBudgetPercent", defaults.Performance.RealtimeActionBudgetPercent)),
+                ReadInt32(root, "performance", "realtimeActionBudgetPercent", defaults.Performance.RealtimeActionBudgetPercent))
+            {
+                KeepSmartRecordHistory = ReadBoolean(root, "performance", "keepSmartRecordHistory", false)
+            },
             new AppSystemIntegrationSettings(
                 ReadBoolean(root, "systemIntegration", "taskManagerShortcutReplacementEnabled", defaults.SystemIntegration.TaskManagerShortcutReplacementEnabled),
                 ReadEditableHotkeys(root, defaults.SystemIntegration.Hotkeys),
@@ -194,7 +197,8 @@ public static class AppSettingsMigrator
             || performance.TryGetProperty("localSystemRefreshIntervalMs", out _)
             || !performance.TryGetProperty("realtimeActionBudgetMode", out var realtimeActionBudgetMode)
             || !performance.TryGetProperty("realtimeActionBudgetCount", out var realtimeActionBudgetCount)
-            || !performance.TryGetProperty("realtimeActionBudgetPercent", out var realtimeActionBudgetPercent))
+            || !performance.TryGetProperty("realtimeActionBudgetPercent", out var realtimeActionBudgetPercent)
+            || !performance.TryGetProperty("keepSmartRecordHistory", out var keepSmartRecordHistory))
         {
             return true;
         }
@@ -220,6 +224,7 @@ public static class AppSettingsMigrator
             || !AppRealtimeActionBudgetModes.IsSupported(realtimeActionBudgetMode.GetString())
             || !IsSupportedRealtimeActionBudgetCount(realtimeActionBudgetCount)
             || !IsSupportedRealtimeActionBudgetPercent(realtimeActionBudgetPercent)
+            || !IsBoolean(keepSmartRecordHistory)
             || !IsBoolean(debugModeEnabled)
             || !IsBoolean(debugLogEnabled)
             || !IsBoolean(hostManagerSmartCoordinatorScoreOnlyEnabled)

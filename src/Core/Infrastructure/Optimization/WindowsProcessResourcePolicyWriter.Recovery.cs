@@ -54,7 +54,7 @@ public sealed partial class WindowsProcessResourcePolicyWriter
         }
         if (exitCode != StillActive)
         {
-            return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.NotFoundOrExited(
+            return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Exited(
                 0,
                 "进程已经退出。");
         }
@@ -69,7 +69,7 @@ public sealed partial class WindowsProcessResourcePolicyWriter
         // STILL_ACTIVE is also a possible exit code; use the same handle's exit time.
         if (exitedAt.ToUInt64() != 0)
         {
-            return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.NotFoundOrExited(
+            return RecoveryReadResult<ProcessInstanceRecoverySnapshot>.Exited(
                 0,
                 "进程已经退出。");
         }
@@ -108,10 +108,16 @@ public sealed partial class WindowsProcessResourcePolicyWriter
 
         try
         {
-            using var process = Process.GetProcessById(processId);
+            Process process;
+            try { process = Process.GetProcessById(processId); }
+            catch (ArgumentException exception)
+            {
+                return RecoveryReadResult<ProcessPlacementRecoverySnapshot>.Exited(exception.HResult, exception.Message);
+            }
+            using var processLease = process;
             if (process.HasExited)
             {
-                return RecoveryReadResult<ProcessPlacementRecoverySnapshot>.NotFoundOrExited(
+                return RecoveryReadResult<ProcessPlacementRecoverySnapshot>.Exited(
                     0,
                     "进程已经退出。");
             }
@@ -142,7 +148,7 @@ public sealed partial class WindowsProcessResourcePolicyWriter
                         cpuSets.Status,
                         null,
                         cpuSets.NativeErrorCode,
-                        cpuSets.Message);
+                        cpuSets.Message) { AbsenceReason = cpuSets.AbsenceReason };
                 }
                 defaultCpuSetIds = cpuSets.Value!;
             }
@@ -166,7 +172,7 @@ public sealed partial class WindowsProcessResourcePolicyWriter
                 if (memoryPriority is null)
                 {
                     return process.HasExited
-                        ? RecoveryReadResult<ProcessPlacementRecoverySnapshot>.NotFoundOrExited(0, "进程已经退出。")
+                        ? RecoveryReadResult<ProcessPlacementRecoverySnapshot>.Exited(0, "进程已经退出。")
                         : RecoveryReadResult<ProcessPlacementRecoverySnapshot>.Unavailable(0, "进程内存优先级当前不可读。");
                 }
             }
@@ -207,14 +213,15 @@ public sealed partial class WindowsProcessResourcePolicyWriter
             checked((uint)threadId));
         if (handle == IntPtr.Zero)
         {
-            return ClassifyWin32RecoveryFailure<ThreadCpuSetPolicySnapshot>(Marshal.GetLastWin32Error());
+            return ClassifyWin32RecoveryFailure<ThreadCpuSetPolicySnapshot>(Marshal.GetLastWin32Error(),
+                RecoveryReadAbsenceReason.TargetExited);
         }
 
         try
         {
             if (NativeMethods.GetProcessIdOfThread(handle) != checked((uint)processId))
             {
-                return RecoveryReadResult<ThreadCpuSetPolicySnapshot>.NotFoundOrExited(
+                return RecoveryReadResult<ThreadCpuSetPolicySnapshot>.IdentityChanged(
                     0,
                     "线程不再属于记录中的进程。");
             }
@@ -269,7 +276,8 @@ public sealed partial class WindowsProcessResourcePolicyWriter
         var handle = NativeMethods.OpenProcess(NativeMethods.ProcessQueryLimitedInformation, false, processId);
         if (handle == IntPtr.Zero)
         {
-            return ClassifyWin32RecoveryFailure<IReadOnlyList<uint>>(Marshal.GetLastWin32Error());
+            return ClassifyWin32RecoveryFailure<IReadOnlyList<uint>>(Marshal.GetLastWin32Error(),
+                RecoveryReadAbsenceReason.TargetExited);
         }
 
         try
@@ -322,19 +330,21 @@ public sealed partial class WindowsProcessResourcePolicyWriter
         return RecoveryReadResult<T>.Unavailable(exception.HResult, exception.Message);
     }
 
-    private static RecoveryReadResult<T> ClassifyWin32RecoveryFailure<T>(int nativeErrorCode)
+    private static RecoveryReadResult<T> ClassifyWin32RecoveryFailure<T>(int nativeErrorCode,
+        RecoveryReadAbsenceReason absenceReason = RecoveryReadAbsenceReason.Unspecified)
     {
         const int errorInvalidParameter = 87;
         const int errorNotFound = 1168;
         var message = new Win32Exception(nativeErrorCode).Message;
         return nativeErrorCode is errorInvalidParameter or errorNotFound
-            ? RecoveryReadResult<T>.NotFoundOrExited(nativeErrorCode, message)
+            ? RecoveryReadResult<T>.NotFoundOrExited(nativeErrorCode, message, absenceReason)
             : RecoveryReadResult<T>.Unavailable(nativeErrorCode, message);
     }
 
     private static RecoveryReadResult<ProcessInstanceRecoverySnapshot> ClassifyProcessInstanceOpenFailure(
         int nativeErrorCode)
-        => ClassifyWin32RecoveryFailure<ProcessInstanceRecoverySnapshot>(nativeErrorCode);
+        => ClassifyWin32RecoveryFailure<ProcessInstanceRecoverySnapshot>(nativeErrorCode,
+            RecoveryReadAbsenceReason.TargetExited);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
