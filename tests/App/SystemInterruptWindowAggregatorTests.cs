@@ -103,6 +103,66 @@ public sealed class SystemInterruptWindowAggregatorTests
         Assert.Equal(KernelModuleAddressMap.UnknownModuleName, unknown.Name);
     }
 
+    [Fact]
+    public void KernelModuleMap_ResolvesUnorderedLoadsReplacementsAndRemovals()
+    {
+        const ulong kernelBase = 0xFFFF_F800_0000_0000UL;
+        var modules = new KernelModuleAddressMap();
+        var order = Enumerable.Range(0, 300).OrderBy(index => (index * 7919) % 300).ToArray();
+        foreach (var index in order)
+        {
+            modules.Upsert(kernelBase + (ulong)index * 0x10000, 0x8000, $@"C:\Windows\System32\drivers\d{index:000}.sys");
+        }
+
+        foreach (var index in order)
+        {
+            var start = kernelBase + (ulong)index * 0x10000;
+            Assert.Equal($"d{index:000}.sys", modules.Resolve(start).Name);
+            Assert.Equal($"d{index:000}.sys", modules.Resolve(start + 0x7FFF).Name);
+            Assert.Equal(KernelModuleAddressMap.UnknownModuleName, modules.Resolve(start + 0x8000).Name);
+        }
+
+        modules.Upsert(kernelBase + 50 * 0x10000, 0x8000, @"C:\Windows\System32\drivers\replaced.sys");
+        modules.Remove(kernelBase + 100 * 0x10000);
+        modules.Remove(kernelBase + 0x1234);
+        Assert.Equal("replaced.sys", modules.Resolve(kernelBase + 50 * 0x10000 + 0x10).Name);
+        Assert.Equal(KernelModuleAddressMap.UnknownModuleName, modules.Resolve(kernelBase + 100 * 0x10000 + 0x10).Name);
+        Assert.Equal("d101.sys", modules.Resolve(kernelBase + 101 * 0x10000 + 0x10).Name);
+        Assert.Equal(KernelModuleAddressMap.UnknownModuleName, modules.Resolve(kernelBase - 1).Name);
+        Assert.Equal(KernelModuleAddressMap.UnknownModuleName, modules.Resolve(0).Name);
+
+        modules.Clear();
+        Assert.Equal(KernelModuleAddressMap.UnknownModuleName, modules.Resolve(kernelBase + 0x10).Name);
+    }
+
+    [Fact]
+    public void KernelModuleMap_WalksPastNestedImagesOnlyWhileAnEarlierImageReaches()
+    {
+        var modules = new KernelModuleAddressMap();
+        modules.Upsert(0x1000, 0x2000, @"C:\Windows\System32\drivers\outer.sys");
+        modules.Upsert(0x1800, 0x100, @"C:\Windows\System32\drivers\inner.sys");
+        modules.Upsert(0x4000, 0x1000, @"C:\Windows\System32\drivers\next.sys");
+
+        Assert.Equal("outer.sys", modules.Resolve(0x2000).Name);
+        Assert.Equal(KernelModuleAddressMap.UnknownModuleName, modules.Resolve(0x3500).Name);
+        Assert.Equal("next.sys", modules.Resolve(0x4FFF).Name);
+        Assert.Equal(KernelModuleAddressMap.UnknownModuleName, modules.Resolve(0x5000).Name);
+        Assert.True(KernelModuleAddressMap.IsKernelAddress(0xFFFF_8000_0000_0000UL));
+        Assert.False(KernelModuleAddressMap.IsKernelAddress(0x7FFF_FFFF_FFFFUL));
+    }
+
+    [Fact]
+    public void KernelModuleMap_ImageReachingTheTopOfTheAddressSpaceCoversItsLastAddress()
+    {
+        var modules = new KernelModuleAddressMap();
+        modules.Upsert(ulong.MaxValue - 3, 10, @"C:\Windows\System32\drivers\last.sys");
+        modules.Upsert(ulong.MaxValue - 1, 1, @"C:\Windows\System32\drivers\inner.sys");
+
+        Assert.Equal("inner.sys", modules.Resolve(ulong.MaxValue - 1).Name);
+        Assert.Equal("last.sys", modules.Resolve(ulong.MaxValue).Name);
+        Assert.Equal(KernelModuleAddressMap.UnknownModuleName, modules.Resolve(ulong.MaxValue - 4).Name);
+    }
+
     private static SystemInterruptEventSample Event(
         DateTimeOffset observedAt,
         string kind,

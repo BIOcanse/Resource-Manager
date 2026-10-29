@@ -500,6 +500,8 @@ public sealed class EtwSystemInterruptSnapshotSource(
             counter.Drop();
             source.RecordConsumerRejection(kind, reason);
         }
+        // ImageLoad also reports user-mode DLLs, which cannot own an ISR/DPC routine.
+        if (!KernelModuleAddressMap.IsKernelAddress(imageBase)) { Reject("user-mode-image"); return; }
         // Keep image ownership current while ISR/DPC intake is paused, just as CPU
         // residency retains process/thread metadata on its held kernel session.
         if (!source.IsActive) { Reject("inactive-binding"); return; }

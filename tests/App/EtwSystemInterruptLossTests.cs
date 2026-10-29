@@ -45,6 +45,36 @@ public sealed class EtwSystemInterruptLossTests
     }
 
     [Fact]
+    public void UserModeImagesAreRejectedAndKernelImagesStillOwnRoutines()
+    {
+        using var fixture = new HostManagerSamplingSubscriptionTestFixture();
+        var broker = new Broker();
+        var now = Start;
+        using var source = NewSource(broker, fixture, () => now);
+        Invoke(source, "EnsureStarted");
+        var binding = Capture(source, broker);
+        Invoke(source, "ObserveBoundImage", binding.Source, binding.Context, binding.Session,
+            0x7FF6_0000_0000UL, 0x10_0000, "user.dll", false, now.ToUnixTimeMilliseconds());
+        Invoke(source, "ObserveBoundImage", binding.Source, binding.Context, binding.Session,
+            0x7FF6_0000_0000UL, 0x10_0000, "user.dll", true, now.ToUnixTimeMilliseconds());
+        Image(source, binding, "driver.sys", now);
+        Interrupt(source, binding, Start.AddSeconds(1), 3);
+        now = Start.AddSeconds(11);
+
+        Assert.True(Publish(source, now));
+        Assert.Equal("driver.sys", Assert.Single(source.Read().Drivers).ModuleName);
+        var session = Assert.Single(EtwEventDropDiagnostics.Read().Sessions.Where(value => value.Name == broker.DiagnosticName));
+        foreach (var (kind, received) in new[] { ("ImageLoadOrRundown", 2L), ("ImageUnload", 1L) })
+        {
+            var prefix = "holder/system-interrupts/" + kind;
+            var total = Assert.Single(session.Kinds.Where(value => value.Kind == prefix));
+            Assert.Equal((received, 1L), (total.Received, total.Dropped));
+            var rejected = Assert.Single(session.Kinds.Where(value => value.Kind == prefix + "/rejected:user-mode-image"));
+            Assert.Equal((1L, 1L), (rejected.Received, rejected.Dropped));
+        }
+    }
+
+    [Fact]
     public void UtcStepsDoNotChangeCoverageAdmissionOrEventExpiry()
     {
         using var fixture = new HostManagerSamplingSubscriptionTestFixture();
@@ -97,7 +127,7 @@ public sealed class EtwSystemInterruptLossTests
             now = now.AddSeconds(20);
             if (cycle == 1)
                 Invoke(source, "ObserveBoundImage", binding.Source, binding.Context, binding.Session,
-                    0x1000UL, 0x100, "frozen-driver.sys", true, now.ToUnixTimeMilliseconds());
+                    0xFFFF_F800_0000_1000UL, 0x100, "frozen-driver.sys", true, now.ToUnixTimeMilliseconds());
             else
                 Image(source, binding, "frozen-driver.sys", now);
             Interrupt(source, binding, now, 50);
@@ -380,12 +410,12 @@ public sealed class EtwSystemInterruptLossTests
     private static void Image(EtwSystemInterruptSnapshotSource source, Binding binding,
         string name, DateTimeOffset at)
         => Invoke(source, "ObserveBoundImage", binding.Source, binding.Context, binding.Session,
-            0x1000UL, 0x100, name, false, at.ToUnixTimeMilliseconds());
+            0xFFFF_F800_0000_1000UL, 0x100, name, false, at.ToUnixTimeMilliseconds());
 
     private static void Interrupt(EtwSystemInterruptSnapshotSource source, Binding binding,
         DateTimeOffset at, double duration)
         => Invoke(source, "ObserveBoundInterrupt", binding.Source, binding.Context,
-            binding.Session, SystemInterruptEventKinds.Dpc, duration, 0x1010UL, at.ToUnixTimeMilliseconds());
+            binding.Session, SystemInterruptEventKinds.Dpc, duration, 0xFFFF_F800_0000_1010UL, at.ToUnixTimeMilliseconds());
 
     private static object Field(EtwSystemInterruptSnapshotSource source, string name)
         => typeof(EtwSystemInterruptSnapshotSource).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!
