@@ -29,6 +29,12 @@ pub const Config = struct {
 
 const Message = struct { bytes: [protocol.max_line]u8 = undefined, len: usize = 0 };
 const queue_capacity = 16;
+// Zig on Windows commits the whole requested stack when the thread starts (the default
+// is 16 MiB), so each pipe thread asks for what its frames need plus headroom.
+// writerMain holds one Message (16 KiB); readerMain holds line, incoming and the parse
+// arena (about 116 KiB) and calls the host callback, which only copies into its queue.
+const writer_stack_size = 64 * 1024;
+const reader_stack_size = 256 * 1024;
 
 /// One instance belongs to one host block. All send methods are thread safe and
 /// copy their input into a fixed queue. run owns and joins every native resource.
@@ -145,8 +151,8 @@ pub const Client = struct {
         try self.showWindow(config.show);
         // Publish complete startup facts before permitting the child's root to run.
         try self.enqueue("{\"type\":\"parent-wants-me-running\",\"running\":true}\n");
-        const writer = try std.Thread.spawn(.{}, writerMain, .{self});
-        const reader = std.Thread.spawn(.{}, readerMain, .{self}) catch |err| {
+        const writer = try std.Thread.spawn(.{ .stack_size = writer_stack_size }, writerMain, .{self});
+        const reader = std.Thread.spawn(.{ .stack_size = reader_stack_size }, readerMain, .{self}) catch |err| {
             self.finishWriter();
             // No reader exists, so startup cannot continue. Revoke the child
             // before joining the writer rather than waiting for cooperation.
