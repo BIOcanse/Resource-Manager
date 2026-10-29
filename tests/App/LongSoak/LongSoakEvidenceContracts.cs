@@ -14,15 +14,15 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     private const string LongSoakPlanContract =
         "non-adapted-score-only-long-soak-plan-v1";
     private const string LongSoakSampleContract =
-        "non-adapted-score-only-long-soak-sample-v2";
+        "non-adapted-score-only-long-soak-sample-v3";
     private const string LongSoakShardIndexContract =
         "non-adapted-score-only-long-soak-shard-index-v1";
     private const string LongSoakAssessmentContract =
         "non-adapted-score-only-long-soak-assessment-v1";
     private const string LongSoakLoopReceiptContract =
-        "non-adapted-score-only-long-soak-loop-receipt-v2";
+        "non-adapted-score-only-long-soak-loop-receipt-v3";
     private const string LongSoakMeasurementBoundary =
-        "production-scheduled-cycle-profiler-followed-by-test-only-early-and-late-trend-window-start-blocking-compacting-full-gc-finalizer-drain-second-full-gc-and-synchronous-bounded-shard-flush";
+        "production-scheduled-cycle-profiler-followed-by-test-only-early-and-late-trend-window-start-blocking-compacting-full-gc-finalizer-drain-second-full-gc-and-synchronous-bounded-shard-flush-subscription-publication-due-cadence-excludes-post-profiler-test-observation";
     private const int LongSoakMaximumProcesses = 256;
     private const int LongSoakMaximumLineBytes = 16 * 1024;
     private const long LongSoakMaximumTotalSampleBytes = 4L * 1024 * 1024;

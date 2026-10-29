@@ -1240,7 +1240,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         => Convert.ToHexString(SHA256.HashData(
             JsonSerializer.SerializeToUtf8Bytes(value, ScoreOnlyPerformanceJsonOptions)));
 
-    private sealed class HostedResidencyOutput(Func<CpuCoreResidencySnapshot?> read, TimeProvider clock, bool controlled = false)
+    private sealed class HostedResidencyOutput(Func<CpuCoreResidencySnapshot?> read, TimeProvider clock,
+        bool controlled = false, Action<long>? publicationObserver = null)
         : ResourceManager.App.Application.CpuTopology.ICpuCoreResidencyReader
     {
         private long nextPublicationAt;
@@ -1290,9 +1291,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                         yield return ReadObservation();
                         continue;
                     }
-                    Interlocked.Exchange(ref nextPublicationAt, clock.GetTimestamp()
+                    var publishedAt = clock.GetTimestamp();
+                    var dueAt = Interlocked.Exchange(ref nextPublicationAt, publishedAt
                         + checked((long)(((Int128)interval.Ticks * clock.TimestampFrequency
                             + TimeSpan.TicksPerSecond - 1) / TimeSpan.TicksPerSecond)));
+                    publicationObserver?.Invoke(dueAt == 0 ? publishedAt : dueAt);
                     yield return ReadObservation();
                     await Task.Delay(interval, clock, cancellationToken);
                 }

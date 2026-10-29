@@ -58,7 +58,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         var profile = ResolveLongSoakProfile(plan.Profile);
         var permits = CreateLongSoakCyclePermits(plan);
         var source = new LongSoakBoundedSnapshotSource(profile, permits);
-        var residencyOutput = new HostedResidencyOutput(source.ReadCpuCoreResidency, TimeProvider.System);
+        var residencyOutput = new HostedResidencyOutput(source.ReadCpuCoreResidency, TimeProvider.System,
+            publicationObserver: source.ObservePublication);
         try
         {
             await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
@@ -100,7 +101,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             var outerLoopTrace = profile.IsFormal
                 ? null
                 : new LongSoakOuterLoopTrace(profile.MaximumCycleCount);
-            var completedRounds = new LongSoakRoundCompletionProbe(outerLoopTrace);
+            var completedRounds = new LongSoakRoundCompletionProbe(outerLoopTrace, source);
             fixture.Coordinator.OuterLoopProbe = completedRounds;
 
             var startedClock = CaptureLongSoakClock();
@@ -366,12 +367,12 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                         }
                         // Existing TRX captures this output; no extra evidence-root member.
                         output.WriteLine("LONG_SOAK_OUTER_LOOP_DIAGNOSTIC "
-                            + outerLoopTrace.CreateReport());
+                            + outerLoopTrace.CreateReport(source));
                         outerLoopTrace.ThrowIfOverflow();
                     }
                     catch (Exception diagnosticFailure) when (primaryFailure is not null)
                     {
-                        // Preserve the original grid/stop failure as the test failure.
+                        // Preserve the original opportunity/stop failure as the test failure.
                         output.WriteLine("Long-soak diagnostic export failed: "
                             + diagnosticFailure);
                     }
@@ -725,6 +726,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             throw new InvalidDataException("The long-soak sample/opportunity corpus is empty or split.");
         }
         var gapValues = new List<double>(Math.Max(0, opportunities.Count - 1));
+        var schedulingGaps = new List<double>(Math.Max(0, opportunities.Count - 1));
+        var observationPauses = samples.Select(CreateLongSoakObservationPause).ToArray();
         for (var index = 0; index < opportunities.Count; index++)
         {
             var opportunity = opportunities[index];
@@ -753,15 +756,18 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 gapValues.Add(
                     (opportunity.Clock.ActiveTime100Nanoseconds
                      - previous.Clock.ActiveTime100Nanoseconds) / 10_000D);
+                schedulingGaps.Add(LongSoakSchedulingMilliseconds(
+                    previous.Clock.ActiveTime100Nanoseconds,
+                    opportunity.Clock.ActiveTime100Nanoseconds, observationPauses));
             }
         }
 
         var minimumGap = gapValues.Count == 0 ? 0D : gapValues.Min();
-        var maximumGap = gapValues.Count == 0 ? 0D : gapValues.Max();
+        var maximumGap = schedulingGaps.Count == 0 ? 0D : schedulingGaps.Max();
         var maximumLateness = opportunities.Max(static value => value.LatenessMilliseconds);
-        var finalTail =
-            (completed.ActiveTime100Nanoseconds
-             - opportunities[^1].Clock.ActiveTime100Nanoseconds) / 10_000D;
+        var finalTail = LongSoakSchedulingMilliseconds(
+            opportunities[^1].Clock.ActiveTime100Nanoseconds,
+            completed.ActiveTime100Nanoseconds, observationPauses);
         var trendWindow = profile.TrendWindowSize;
         if (samples.Count < checked(2 * trendWindow))
         {
@@ -944,7 +950,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     private readonly record struct LongSoakPublicationSchedule(
         int CompletedRounds, bool HasNextPublication, long NextPublicationAt);
 
-    private sealed class LongSoakRoundCompletionProbe(LongSoakOuterLoopTrace? trace)
+    private sealed class LongSoakRoundCompletionProbe(
+        LongSoakOuterLoopTrace? trace, LongSoakBoundedSnapshotSource source)
         : IHostManagerSmartCoordinatorOuterLoopProbe
     {
         private int completed;
@@ -952,6 +959,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         public void Observe(in HostManagerSmartCoordinatorOuterLoopEvent value)
         {
             trace?.Observe(in value);
+            if (value.Phase == HostManagerSmartCoordinatorOuterLoopPhase.GateWaitStarted)
+                source.BindRoundPublication();
             if (value.Phase == HostManagerSmartCoordinatorOuterLoopPhase.GateReleased)
                 Interlocked.Increment(ref completed);
         }
@@ -1229,6 +1238,108 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             });
     }
 
+    private readonly record struct LongSoakPublication(
+        int Sequence, LongSoakClockReading Clock, long DueQpcTicks,
+        ulong DueActiveTime100Nanoseconds);
+
+    private readonly record struct LongSoakObservationPause(ulong Started, ulong Completed);
+
+    // These endpoints are already in every hash-bound sample. Exclude only the
+    // synchronous test observation after the production profiler stopped, through
+    // the resource snapshot clock. Product work and arbitrary host stalls still count.
+    private static LongSoakObservationPause CreateLongSoakObservationPause(
+        long completedQpc, LongSoakClockReading sampledClock, ulong opportunityActive)
+    {
+        if (sampledClock.QpcTicks < completedQpc)
+            throw new InvalidDataException("The long-soak observation precedes profiler completion.");
+        var ticks = checked((ulong)((Int128)(sampledClock.QpcTicks - completedQpc)
+            * 10_000_000 / Stopwatch.Frequency));
+        if (ticks > sampledClock.ActiveTime100Nanoseconds
+            || sampledClock.ActiveTime100Nanoseconds - ticks < opportunityActive)
+            throw new InvalidDataException("The long-soak observation pause overlaps production sampling.");
+        return new(sampledClock.ActiveTime100Nanoseconds - ticks,
+            sampledClock.ActiveTime100Nanoseconds);
+    }
+
+    private static LongSoakObservationPause CreateLongSoakObservationPause(LongSoakCompactSample sample)
+        => CreateLongSoakObservationPause(sample.CycleCompletedAtQpcTicks,
+            new(sample.ActiveTime100Nanoseconds, sample.SampledAtQpcTicks, sample.SampledAtUtcTicks),
+            sample.OpportunityActiveTime100Nanoseconds);
+
+    private static double LongSoakSchedulingMilliseconds(ulong from, ulong to,
+        IEnumerable<LongSoakObservationPause> pauses)
+    {
+        if (to <= from) return 0D;
+        var elapsed = to - from;
+        ulong previousEnd = 0;
+        using var iterator = pauses.GetEnumerator();
+        while (iterator.MoveNext())
+        {
+            var pause = iterator.Current;
+            if (pause.Completed < pause.Started || pause.Started < previousEnd)
+                throw new InvalidDataException("The long-soak observation pauses overlap or reverse.");
+            previousEnd = pause.Completed;
+            var start = Math.Max(from, pause.Started);
+            var end = Math.Min(to, pause.Completed);
+            if (end > start) elapsed = checked(elapsed - (end - start));
+        }
+        return elapsed / 10_000D;
+    }
+
+    [Fact]
+    public void LongSoakSchedulingExcludesOnlyPostProfilerObservationOverlap()
+    {
+        var sampledClock = new LongSoakClockReading(20_000_000UL, 2 * Stopwatch.Frequency, 0);
+        Assert.Equal(new LongSoakObservationPause(5_000_000UL, 20_000_000UL),
+            CreateLongSoakObservationPause(Stopwatch.Frequency / 2, sampledClock, 4_000_000UL));
+        Assert.Throws<InvalidDataException>(() => CreateLongSoakObservationPause(
+            Stopwatch.Frequency / 2, sampledClock, 6_000_000UL));
+        LongSoakObservationPause[] pauses = [new(3_000_000UL, 18_000_000UL)];
+        Assert.Equal(500D, LongSoakSchedulingMilliseconds(0, 20_000_000UL, pauses));
+        Assert.Equal(100D, LongSoakSchedulingMilliseconds(2_000_000UL, 4_000_000UL, pauses));
+        Assert.Equal(0D, LongSoakSchedulingMilliseconds(4_000_000UL, 17_000_000UL, pauses));
+        Assert.Equal(1_500D, LongSoakSchedulingMilliseconds(20_000_000UL, 35_000_000UL, pauses));
+        Assert.Throws<InvalidDataException>(() => LongSoakSchedulingMilliseconds(0, 20_000_000UL,
+            new LongSoakObservationPause[] { new(3_000_000UL, 18_000_000UL), new(4_000_000UL, 5_000_000UL) }));
+    }
+
+    // The fixture publishes immediately on subscription, then delays from its last
+    // publication. Host construction is not a scheduling opportunity. Timer jitter
+    // and skipped producer slots must not accumulate against a fictitious start grid.
+    private static ulong PlanLongSoakPublication(
+        LongSoakClockReading? previous, LongSoakClockReading current, int intervalMilliseconds)
+        => previous is { } prior
+            ? checked(prior.ActiveTime100Nanoseconds + (ulong)intervalMilliseconds * 10_000UL)
+            : current.ActiveTime100Nanoseconds;
+
+    [Fact]
+    public void LongSoakPublicationDueTimeExcludesStartupAndDoesNotAccumulateTimerJitter()
+    {
+        var current = new LongSoakClockReading(20_000_000UL, 20_000_000L, 20_000_000L);
+        Assert.Equal(current.ActiveTime100Nanoseconds,
+            PlanLongSoakPublication(null, current, 250));
+        var first = current;
+        var sequence = 1;
+        while (sequence < 16)
+        {
+            var previous = current;
+            current = new LongSoakClockReading(
+                previous.ActiveTime100Nanoseconds + 3_250_000UL,
+                previous.QpcTicks + 3_250_000L, previous.UtcTicks + 3_250_000L);
+            Assert.Equal(75D, (current.ActiveTime100Nanoseconds
+                - PlanLongSoakPublication(previous, current, 250)) / 10_000D);
+            sequence++;
+        }
+        Assert.True((current.ActiveTime100Nanoseconds
+            - first.ActiveTime100Nanoseconds - 15UL * 2_500_000UL) / 10_000D > 1_000D);
+        // A real single-publication stall remains visible, rather than resetting at capture.
+        var stalled = new LongSoakClockReading(
+            current.ActiveTime100Nanoseconds + 15_000_000UL,
+            current.QpcTicks + 15_000_000L, current.UtcTicks + 15_000_000L);
+        Assert.Equal(1_250D, (stalled.ActiveTime100Nanoseconds
+            - PlanLongSoakPublication(current, stalled, 250)) / 10_000D);
+    }
+
     private sealed class LongSoakBoundedSnapshotSource(
         LongSoakProfileDefinition profile,
         LongSoakCyclePermit[] permits)
@@ -1241,11 +1352,92 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         private readonly HostedHardwareObservationCache hardwareCache = new();
         private readonly LongSoakOpportunity?[] opportunities =
             new LongSoakOpportunity?[permits.Length];
+        private readonly LongSoakPublication?[] roundPublications =
+            new LongSoakPublication?[permits.Length];
+        private readonly LongSoakObservationPause?[] observationPauses =
+            new LongSoakObservationPause?[permits.Length];
+        private LongSoakPublication? latestPublication;
+        private LongSoakPublication? roundPublication;
         private LongSoakClockReading started;
         private string? ledgerId;
         private int completedCount;
         private int pendingSequence;
         private Exception? failure;
+
+        internal void RecordObservationPause(int sequence, long completedQpc,
+            LongSoakClockReading sampledClock, ulong opportunityActive)
+        {
+            lock (sync)
+            {
+                if (sequence != completedCount || observationPauses[sequence - 1] is not null)
+                    throw new InvalidDataException("The long-soak observation pause is duplicate or unpaired.");
+                observationPauses[sequence - 1] = CreateLongSoakObservationPause(
+                    completedQpc, sampledClock, opportunityActive);
+            }
+        }
+
+        internal void ObservePublication(long dueQpcTicks)
+        {
+            lock (sync)
+            {
+                var clock = CaptureLongSoakClock();
+                latestPublication = new LongSoakPublication(
+                    checked((latestPublication?.Sequence ?? 0) + 1), clock, dueQpcTicks,
+                    PlanLongSoakPublication(latestPublication?.Clock, clock,
+                        profile.NormalIntervalMilliseconds));
+            }
+        }
+
+        internal void BindRoundPublication()
+        {
+            lock (sync)
+            {
+                if (latestPublication is not { } publication
+                    || (roundPublication is { } previous && publication.Sequence <= previous.Sequence))
+                {
+                    failure ??= new InvalidDataException("A long-soak round has no new subscription publication.");
+                    throw failure;
+                }
+                roundPublication = publication;
+            }
+        }
+
+        internal object[] CaptureTimings()
+        {
+            lock (sync)
+            {
+                return opportunities.Select((opportunity, index) => (opportunity, index))
+                    .Where(static item => item.opportunity is not null)
+                    .Select(item =>
+                    {
+                        var opportunity = item.opportunity!;
+                        var publication = roundPublications[item.index]!.Value;
+                        return (object)new
+                        {
+                            opportunity.Sequence,
+                            postProfilerObservationPause = observationPauses[item.index],
+                            publicationSequence = publication.Sequence,
+                            publication.DueQpcTicks,
+                            publishedQpcTicks = publication.Clock.QpcTicks,
+                            observedQpcTicks = opportunity.Clock.QpcTicks,
+                            rawGapMilliseconds = item.index == 0 ? (double?)null
+                                : (opportunity.Clock.QpcTicks - opportunities[item.index - 1]!.Clock.QpcTicks)
+                                    * 1_000D / Stopwatch.Frequency,
+                            opportunity.LatenessMilliseconds,
+                            rawLatenessMilliseconds = Math.Max(0D,
+                                (opportunity.Clock.ActiveTime100Nanoseconds
+                                    - (double)publication.DueActiveTime100Nanoseconds) / 10_000D),
+                            publicationDelayMilliseconds = (publication.Clock.ActiveTime100Nanoseconds
+                                - (double)publication.DueActiveTime100Nanoseconds) / 10_000D,
+                            publicationToCaptureMilliseconds = (opportunity.Clock.QpcTicks
+                                - publication.Clock.QpcTicks) * 1_000D / Stopwatch.Frequency,
+                            legacyGridLatenessMilliseconds = (opportunity.Clock.ActiveTime100Nanoseconds
+                                - (double)started.ActiveTime100Nanoseconds) / 10_000D
+                                - (opportunity.Sequence - 1) * profile.NormalIntervalMilliseconds
+                        };
+                    }).ToArray();
+            }
+        }
 
         internal void ConfigureHistory(CompiledDataHistoryPlan history)
             => hardwareCache.Configure(history);
@@ -1389,32 +1581,29 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     }
                     var sequence = completedCount + 1;
                     var clock = CaptureLongSoakClock();
-                    var planned = checked(
-                        started.ActiveTime100Nanoseconds
-                        + checked((ulong)(sequence - 1)
-                            * (ulong)profile.NormalIntervalMilliseconds
-                            * 10_000UL));
+                    var publication = roundPublication
+                        ?? throw new InvalidDataException("The long-soak opportunity has no bound publication.");
+                    var planned = publication.DueActiveTime100Nanoseconds;
                     if (clock.ActiveTime100Nanoseconds + 250_000UL < planned)
                     {
                         throw new InvalidDataException(
-                            "The production scheduled loop entered before its fixed opportunity grid.");
+                            "The production scheduled loop entered before its subscription publication was due.");
                     }
-                    var lateness = clock.ActiveTime100Nanoseconds <= planned
-                        ? 0D
-                        : (clock.ActiveTime100Nanoseconds - planned) / 10_000D;
-                    if (lateness > profile.MaximumOpportunityLatenessMilliseconds)
-                    {
-                        var gridDueQpc = checked(started.QpcTicks + (long)(
-                            (Int128)(sequence - 1) * profile.NormalIntervalMilliseconds
-                            * Stopwatch.Frequency / 1_000));
-                        throw new InvalidDataException(FormattableString.Invariant(
-                            $"The production scheduled loop exceeded its opportunity lateness bound. sequence={sequence}; gridDueQpc={gridDueQpc}; observedQpc={clock.QpcTicks}; qpcFrequency={Stopwatch.Frequency}; plannedActive100ns={planned}; observedActive100ns={clock.ActiveTime100Nanoseconds}; latenessMs={lateness:R}; maximumLatenessMs={profile.MaximumOpportunityLatenessMilliseconds}."));
-                    }
+                    var lateness = LongSoakSchedulingMilliseconds(planned,
+                        clock.ActiveTime100Nanoseconds,
+                        observationPauses.Where(static pause => pause.HasValue)
+                            .Select(static pause => pause!.Value));
+                    roundPublications[sequence - 1] = publication;
                     opportunities[sequence - 1] = new LongSoakOpportunity(
                         sequence,
                         clock,
                         planned,
                         lateness);
+                    if (lateness > profile.MaximumOpportunityLatenessMilliseconds)
+                    {
+                        throw new InvalidDataException(FormattableString.Invariant(
+                            $"The production scheduled loop exceeded its publication opportunity lateness bound. sequence={sequence}; publicationSequence={publication.Sequence}; dueQpc={publication.DueQpcTicks}; publishedQpc={publication.Clock.QpcTicks}; observedQpc={clock.QpcTicks}; qpcFrequency={Stopwatch.Frequency}; plannedActive100ns={planned}; observedActive100ns={clock.ActiveTime100Nanoseconds}; latenessMs={lateness:R}; maximumLatenessMs={profile.MaximumOpportunityLatenessMilliseconds}."));
+                    }
                     pendingSequence = sequence;
                     HardwareCaptureCount++;
                     return hardwareCache.Publish(
@@ -1624,6 +1813,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                         StabilizeLongSoakResourceSnapshot();
                     }
                     var sampledClock = CaptureLongSoakClock();
+                    source.RecordObservationPause(sequence, completedQpc, sampledClock,
+                        opportunity.Clock.ActiveTime100Nanoseconds);
                     process.Refresh();
                     var gcInfo = GC.GetGCMemoryInfo();
                     var sample = new LongSoakCompactSample(
@@ -1773,7 +1964,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         }
 
         // Called only after the existing Host closed boundary, including failure cleanup.
-        internal string CreateReport()
+        internal string CreateReport(LongSoakBoundedSnapshotSource source)
         {
             HostManagerSmartCoordinatorOuterLoopEvent[] captured;
             bool wasOverflowed;
@@ -1814,6 +2005,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                     {
                         group.Key,
                         dispatchSequence = values.Max(static value => value.DispatchSequence),
+                        cycleMilliseconds = Duration(values,
+                            HostManagerSmartCoordinatorOuterLoopPhase.GateAcquired,
+                            HostManagerSmartCoordinatorOuterLoopPhase.GateReleased),
                         consumedWake = consumed,
                         consumedTimerPublicationMatches = consumedPublicationMatches,
                         wakeOverrunMilliseconds,
@@ -1842,7 +2036,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 }).ToArray();
             var json = JsonSerializer.Serialize(new
             {
-                schema = "rm/long-soak-outer-loop-diagnostic/v2",
+                schema = "rm/long-soak-outer-loop-diagnostic/v3",
                 roundTrigger = "residency-publication",
                 diagnosticOnly = true,
                 profile = "contract-smoke",
@@ -1851,7 +2045,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
                 eventCount = captured.Length,
                 overflow = wasOverflowed,
                 events = captured,
-                attempts
+                attempts,
+                opportunitySchedule = "subscription-publication-due-time",
+                opportunities = source.CaptureTimings()
             }, LongSoakCompactJsonOptions);
             if (Encoding.UTF8.GetByteCount(json) > 1_048_576)
             {
