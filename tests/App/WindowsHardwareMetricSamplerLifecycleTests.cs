@@ -313,6 +313,7 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
             Assert.False(next.IsCompleted);
             owner.Publish(frame, MetricSampleRequest.ForIds([published]));
             sampler.PublishCompletedDatasets([published]);
+            Assert.Equal(0, owner.ComposedViewBuildCount);
             Assert.False(next.IsCompleted); // A dataset completion is not a subscription deadline.
             var tracker = Assert.IsType<NativeItemSamplingSubscriptionTracker<MetricSampleRequest>>(
                 typeof(WindowsHardwareMetricSampler).GetField("subscriptions", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(sampler));
@@ -324,6 +325,8 @@ public sealed class WindowsHardwareMetricSamplerLifecycleTests
             delivery.Deliver(plan.Triggers);
             Assert.True(await next.WaitAsync(timeout.Token));
             Assert.Equal(512d, stream.Current.Items[subscribed].NumericValue);
+            Assert.Equal(0, owner.ComposedViewBuildCount);
+            Assert.Equal(1, owner.ProjectionBuildCount);
             Assert.Equal(512d, owner.Read()!.Items[canonical].NumericValue);
         }
     }

@@ -181,11 +181,59 @@ internal sealed partial class WindowsHardwareMetricCapture
                 if (prepared is not null) snapshot = WindowsMetricControlFields.ApplyPreparedFields(snapshot, prepared);
                 snapshot = ProjectGpuEngineFields(snapshot, request, fieldCatalog, pdhGpuEngineUsage);
                 snapshot = ProjectNpuDeviceBusyFields(snapshot, request);
+                snapshot = ApplySourceInvalidations(snapshot, catalog, committedCompletions);
                 snapshot = readingSources.ApplyProjectedFields(snapshot);
                 onCommitted?.Invoke(snapshot);
                 published = snapshot;
             })) return null;
         return published;
+    }
+
+    private static HardwareMetricSnapshot ApplySourceInvalidations(HardwareMetricSnapshot snapshot,
+        NativeMetricSnapshotCatalogProjection catalog, IReadOnlyList<NativeMetricSnapshotSourceCompletion> completions)
+    {
+        var index = 0;
+        while (index < completions.Count)
+        {
+            if (completions[index++].InvalidatesLastGood)
+                return BuildSourceInvalidation(snapshot, catalog, completions);
+        }
+        return snapshot;
+    }
+
+    private static HardwareMetricSnapshot BuildSourceInvalidation(HardwareMetricSnapshot snapshot,
+        NativeMetricSnapshotCatalogProjection catalog, IReadOnlyList<NativeMetricSnapshotSourceCompletion> completions)
+    {
+        var sources = completions.Where(static completion => completion.InvalidatesLastGood)
+            .Select(completion => catalog.SourceIds[completion.SourceHandle]).ToHashSet(StringComparer.Ordinal);
+        var datasets = snapshot.Datasets.ToDictionary(StringComparer.OrdinalIgnoreCase);
+        var items = snapshot.Items.ToDictionary(StringComparer.OrdinalIgnoreCase);
+        var invalidated = ImmutableHashSet.CreateBuilder<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var binding in snapshot.FieldBindings.Values)
+        {
+            if (!sources.Contains(binding.SourceId)) continue;
+            Invalidate(binding.RequestAddress);
+            foreach (var alias in binding.RequestAliases) Invalidate(alias);
+        }
+        return snapshot with { Items = items, Datasets = datasets, InvalidatedDatasetIds = invalidated.ToImmutable() };
+
+        void Invalidate(string address)
+        {
+            items.Remove(address);
+            var id = MetricDatasetIds.ForSystemMetric(address);
+            invalidated.Add(id);
+            var observation = datasets.GetValueOrDefault(id) ?? new(id,
+                SamplingObservationStatus.Unavailable, 0, 0, snapshot.WorkspaceIdentity,
+                snapshot.ConfigurationGeneration, snapshot.CatalogGeneration, snapshot.CommittedGeneration);
+            datasets[id] = observation with
+            {
+                Status = SamplingObservationStatus.Unavailable,
+                ObservedAtUtcTicks = 0,
+                LastSuccessAtUtcTicks = 0,
+                LastAttemptAtUtcTicks = snapshot.CapturedAt.UtcTicks,
+                FailureCode = "source-identity-invalidated"
+            };
+        }
     }
 
     internal static bool CanUseMinimalControlPreparation(

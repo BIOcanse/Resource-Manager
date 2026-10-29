@@ -33,6 +33,7 @@ public sealed class WindowsHardwareMetricGpuTopologyIsolationTests
             TimeSpan.Zero, new AmdIntegratedGpuSensorRoute(), fixture.Owner.RequestTopologyRefresh);
         using (var initial = fixture.Owner.Acquire())
         {
+            HardwareMetricSnapshot? previousGood = null;
             for (var phase = 0; phase < 3; phase++)
             {
                 recording.Failure = phase == 1 ? failure : null;
@@ -54,7 +55,9 @@ public sealed class WindowsHardwareMetricGpuTopologyIsolationTests
                     lease.Topology, commit => lease.TryPublish(_ => { commit(); return true; }, out _), default,
                     onCommitted: completed => current.Publish(completed, request));
                 Assert.NotNull(snapshot);
-                AssertPublished(current.Read()!, request, recording.Value, phase == 1);
+                var published = current.Read()!;
+                AssertPublished(published, request, recording.Value, phase == 1, previousGood);
+                if (phase != 1) previousGood = published;
             }
         }
     }
@@ -63,19 +66,22 @@ public sealed class WindowsHardwareMetricGpuTopologyIsolationTests
     [InlineData("inventory")]
     [InlineData("identity")]
     [InlineData("exception")]
-    public async Task StandaloneRefreshEmptiesGpuWithoutBlockingOtherValuesAndRecovers(string failure)
+    public async Task StandaloneRefreshRetainsGpuWithoutBlockingOtherValuesAndRecovers(string failure)
     {
         var recording = new Recording();
         using var owner = new WindowsHardwareMetricOwner(WindowsMetricConfiguration.Default, recording.Resources(), new(),
             unavailableCooldown: TimeSpan.Zero);
         var request = Request(WindowsMetricCatalogTopologyPublication.ProjectCatalog(
             WindowsMetricConfiguration.Default.CatalogConfiguration, recording.Topology().Capture(), NativeMetricSnapshotCatalogHandleMap.Empty));
+        HardwareMetricSnapshot? previousGood = null;
         for (var phase = 0; phase < 3; phase++)
         {
             recording.Failure = phase == 1 ? failure : null;
             recording.Value = 30 + phase * 10;
             await owner.CaptureAsync(request);
-            AssertPublished(owner.ReadCachedSnapshot()!, request, recording.Value, phase == 1);
+            var published = owner.ReadCachedSnapshot()!;
+            AssertPublished(published, request, recording.Value, phase == 1, previousGood);
+            if (phase != 1) previousGood = published;
         }
     }
 
@@ -121,7 +127,8 @@ public sealed class WindowsHardwareMetricGpuTopologyIsolationTests
             .Select(static binding => binding.MetricId)
             .Concat([MetricDatasetIds.StorageInventory, MetricDatasetIds.FanInventory, MetricDatasetIds.BatteryInventory])).WithCatalog();
 
-    private static void AssertPublished(HardwareMetricSnapshot snapshot, MetricSampleRequest request, int value, bool failed)
+    private static void AssertPublished(HardwareMetricSnapshot snapshot, MetricSampleRequest request, int value, bool failed,
+        HardwareMetricSnapshot? previousGood = null)
     {
         foreach (var code in new[] { MetricFieldCode.DiskTemperature, MetricFieldCode.FanRpm, MetricFieldCode.BatteryChargePercent })
         {
@@ -134,7 +141,15 @@ public sealed class WindowsHardwareMetricGpuTopologyIsolationTests
         foreach (var binding in gpu)
         {
             Assert.Equal(failed ? SamplingObservationStatus.Unavailable : SamplingObservationStatus.Current, snapshot.Datasets[binding.RequestAddress].Status);
-            Assert.Equal(failed ? null : (double?)value, snapshot.Items.GetValueOrDefault(binding.RequestAddress)?.NumericValue);
+            var previousItem = previousGood?.Items.GetValueOrDefault(binding.RequestAddress);
+            Assert.Equal(failed ? previousItem?.NumericValue : (double?)value, snapshot.Items.GetValueOrDefault(binding.RequestAddress)?.NumericValue);
+            if (failed && previousItem is not null)
+            {
+                Assert.Same(previousItem, snapshot.Items[binding.RequestAddress]);
+                var previousObservation = previousGood!.Datasets[binding.RequestAddress];
+                Assert.Equal(previousObservation.ObservedAtUtcTicks, snapshot.Datasets[binding.RequestAddress].ObservedAtUtcTicks);
+                Assert.Equal(previousObservation.LastSuccessAtUtcTicks, snapshot.Datasets[binding.RequestAddress].LastSuccessAtUtcTicks);
+            }
             if (failed)
             {
                 var field = Assert.Single(Assert.Single(MetricDeviceFields.Read(snapshot, binding.DeviceIdentity,

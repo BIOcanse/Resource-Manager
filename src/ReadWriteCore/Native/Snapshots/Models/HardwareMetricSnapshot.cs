@@ -12,6 +12,9 @@ public sealed record HardwareMetricSnapshot(
     SchedulingGpuInventorySnapshot GpuInventory,
     IReadOnlyDictionary<string, MetricReadingValue> Items)
 {
+    // Collection-to-current commands; ordinary reads/failures never populate this.
+    internal ImmutableHashSet<string> InvalidatedDatasetIds { get; init; } = ImmutableHashSet<string>.Empty;
+
     public IReadOnlyDictionary<string, MetricDeviceFieldBinding> FieldBindings { get; init; } =
         new Dictionary<string, MetricDeviceFieldBinding>();
     [System.Text.Json.Serialization.JsonIgnore]

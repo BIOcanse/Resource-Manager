@@ -54,7 +54,7 @@ public sealed class NpuMemoryOwnerContractTests
     [Theory]
     [InlineData(1)]
     [InlineData(64)]
-    public async Task OwnerPassesCompiledCapacityAndUnavailablePreservesDefinitionsButClearsCurrent(int capacity)
+    public async Task OwnerPassesCompiledCapacityAndUnavailablePreservesDefinitionsAndCurrentValue(int capacity)
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var rows = Rows(capacity);
@@ -86,7 +86,7 @@ public sealed class NpuMemoryOwnerContractTests
         Assert.All(bindings, binding =>
         {
             Assert.Contains(binding.MetricId, unavailable.FieldBindings.Keys);
-            Assert.DoesNotContain(binding.MetricId, unavailable.Items.Keys);
+            Assert.Equal(MetricInteger.Parse("9007199254740993"), unavailable.Items[binding.MetricId].IntegerValue);
             Assert.Equal(SamplingObservationStatus.Unavailable, unavailable.Datasets[binding.MetricId].Status);
         });
         Assert.Single(queryBounds);

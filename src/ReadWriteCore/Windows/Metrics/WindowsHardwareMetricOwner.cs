@@ -198,9 +198,14 @@ public sealed partial class WindowsHardwareMetricOwner : IDisposable
     }
 
     private static IEnumerable<string> PublicationKeys(MetricSampleRequest request, HardwareMetricSnapshot? snapshot)
-        => MetricDatasetIds.ExpandBoundSystemDatasets(
+    {
+        var keys = MetricDatasetIds.ExpandBoundSystemDatasets(
             MetricDatasetIds.ResolveSystemDatasets(request, snapshot?.Datasets.Keys ?? []),
             snapshot?.FieldBindings.Values ?? []);
+        if (snapshot is not null && !snapshot.InvalidatedDatasetIds.IsEmpty)
+            keys.UnionWith(snapshot.InvalidatedDatasetIds);
+        return keys;
+    }
 
     private async ValueTask<FieldWriteResult> WriteAsync(FieldReference field, MetricDeviceFieldBinding binding,
         FieldValue value, CancellationToken cancellationToken)

@@ -1,6 +1,7 @@
 using ResourceManager.ReadWrite.Windows.Metrics.Writes;
 using ResourceManager.App.Domain.Monitoring;
 using ResourceManager.ReadWrite.Native.Pdh;
+using System.Collections.Immutable;
 
 namespace ResourceManager.App.Domain.Metrics;
 
@@ -10,9 +11,11 @@ public sealed record MetricDeviceFieldBinding(
     string RequestAddress,
     string SourceId)
 {
-    public IReadOnlyList<string> RequestAliases { get; init; } = [];
+    private readonly IReadOnlyList<string> requestAliases = ImmutableArray<string>.Empty;
+    public IReadOnlyList<string> RequestAliases { get => requestAliases; init => requestAliases = value.ToImmutableArray(); }
+    private readonly IReadOnlyList<string> selectedRequestAliases = ImmutableArray<string>.Empty;
     [System.Text.Json.Serialization.JsonIgnore]
-    public IReadOnlyList<string> SelectedRequestAliases { get; init; } = [];
+    public IReadOnlyList<string> SelectedRequestAliases { get => selectedRequestAliases; init => selectedRequestAliases = value.ToImmutableArray(); }
     // Some public fields are projections of a source-planner trigger. The
     // trigger is not a public value address and must remain out of payloads.
     [System.Text.Json.Serialization.JsonIgnore]

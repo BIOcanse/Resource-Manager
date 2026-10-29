@@ -39,6 +39,10 @@ internal sealed partial class WindowsHardwareMetricCapture
                 ? Sample(binding)?.RunningTimeMicroseconds : null,
             timedCounterValue: binding => binding.FieldCode == MetricFieldCode.NpuEngineReportedRunningTimeRatioPercent
                 && Sample(binding) is { } sample
-                    ? new NativeMetricSnapshotTimedCounter(sample.RunningTimeMicroseconds, sample.QueryReturnTicks, sample.TicksPerSecond) : null);
+                    ? new NativeMetricSnapshotTimedCounter(sample.RunningTimeMicroseconds, sample.QueryReturnTicks, sample.TicksPerSecond) : null)
+        with
+        {
+            InvalidatesLastGood = values.Any(static value => value.RequiresTopologyRefresh)
+        };
     }
 }

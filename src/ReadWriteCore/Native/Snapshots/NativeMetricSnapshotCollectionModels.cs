@@ -35,6 +35,9 @@ public sealed record NativeMetricSnapshotSourceCompletion(
     uint ExpectedGpuInventoryCount,
     uint OverflowCount)
 {
+    // An observed identity change clears this source's last-good values only
+    // after the collection passes the normal publication/cancellation boundary.
+    internal bool InvalidatesLastGood { get; init; }
     public PdhGpuEngineUsageRead? PdhGpuEngineUsage { get; init; }
     // Positive sensor-presence facts are independent of a numeric value this frame.
     public ImmutableArray<ulong> SupportedMetricHandles { get; init; } = [];

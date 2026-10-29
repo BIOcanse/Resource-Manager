@@ -1,5 +1,6 @@
 using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.Monitoring;
+using System.Collections.Immutable;
 
 namespace ResourceManager.App.Infrastructure.Monitoring;
 
@@ -12,8 +13,6 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(providerName);
         this.providerName = providerName;
-        createCurrentSession = static () => ResourceManager.ReadWrite.Native.NativeMetricSnapshotSession.CreateCurrent(
-            ResourceManager.ReadWrite.Windows.Metrics.Configuration.WindowsMetricConfiguration.Default.Configuration);
     }
     private ulong nextHostedRunId;
     private ulong activeHostedRunId;
@@ -91,10 +90,10 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
     public HardwareMetricSnapshot? Read(DateTimeOffset now)
     {
         _ = now;
-        lock (sync) return ReadState().Snapshot;
+        lock (sync) return ReadSnapshot(ReadState());
     }
 
-    // Direct SDK publications use the same native authority as hosted rounds.
+    // Direct SDK publications use the same managed current as hosted rounds.
     public void Publish(HardwareMetricSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -108,7 +107,7 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
             WriteState(new PublicationState(
                     new Dictionary<string, DatasetPublication>(
                         StringComparer.OrdinalIgnoreCase),
-                    snapshot));
+                    Freeze(snapshot), historyView, direct: true));
         }
     }
 
@@ -142,13 +141,15 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
             ? GetRequestedDatasets(snapshot, request)
             : MetricDatasetIds.ExpandBoundSystemDatasets(
                 requestedDatasetIds, snapshot.FieldBindings.Values);
+        // A source invalidation retires all of its bound slots, including those
+        // outside this read request. Ordinary unavailable observations do not.
+        if (!snapshot.InvalidatedDatasetIds.IsEmpty) requested.UnionWith(snapshot.InvalidatedDatasetIds);
         lock (sync)
         {
             var state = ReadState();
-            var datasets = new Dictionary<string, DatasetPublication>(
-                state.Datasets,
-                StringComparer.OrdinalIgnoreCase);
-            if (state.Snapshot is { } prior)
+            snapshot = Freeze(snapshot, requested);
+            var datasets = state.Datasets.ToBuilder();
+            if (state.Context is { } prior)
             {
                 // Independent slots survive a workspace replacement. Retire only
                 // addresses whose physical device or field contract disappeared;
@@ -177,25 +178,29 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
             var reasons = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var datasetId in requested.Order(StringComparer.OrdinalIgnoreCase))
             {
+                var invalidated = !snapshot.InvalidatedDatasetIds.IsEmpty && snapshot.InvalidatedDatasetIds.Contains(datasetId);
+                var datasetSnapshot = Slice(snapshot, datasetId);
                 if (!snapshot.Datasets.TryGetValue(datasetId, out var observation))
                 {
+                    datasets.TryGetValue(datasetId, out var previous);
+                    if (invalidated) previous = null;
                     datasets[datasetId] = new DatasetPublication(
                         datasetId,
-                        CreateFailureObservation(
+                        RetainSuccessfulObservation(CreateFailureObservation(
                             datasetId,
                             snapshot.CapturedAt,
                             "hardware-dataset-missing",
                             snapshot,
-                            workspaceOwnerToken),
-                        null,
-                        snapshot,
+                            workspaceOwnerToken), previous),
+                        previous?.PayloadSnapshot,
+                        datasetSnapshot,
                         snapshot.CapturedAt);
                     rejected.Add(datasetId);
                     reasons.Add(datasetId, "hardware-dataset-missing");
                     continue;
                 }
 
-                if (IsPublishable(observation.Status))
+                if (IsPublishable(observation.Status) && !invalidated)
                 {
                     var committedObservation = observation with
                     {
@@ -220,13 +225,15 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
                     datasets[datasetId] = new DatasetPublication(
                         datasetId,
                         committedObservation,
-                        snapshot,
-                        snapshot,
+                        datasetSnapshot,
+                        datasetSnapshot,
                         new DateTimeOffset(committedObservation.LastAttemptAtUtcTicks, TimeSpan.Zero));
                     committed.Add(datasetId);
                 }
                 else
                 {
+                    datasets.TryGetValue(datasetId, out var previous);
+                    if (invalidated) previous = null;
                     var failedObservation = CreateFailureObservation(
                         datasetId,
                         snapshot.CapturedAt,
@@ -234,18 +241,18 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
                         snapshot,
                         workspaceOwnerToken) with
                     {
-                        // A retained candidate is rejected by the current-value
-                        // contract; the public slot contains no last-good value.
-                        Status = observation.Status == SamplingObservationStatus.RetainedLastGood
+                        // A failed candidate cannot introduce a value. The owner
+                        // retains only its own previously successful slot.
+                        Status = invalidated || observation.Status == SamplingObservationStatus.RetainedLastGood
                             ? SamplingObservationStatus.Unavailable : observation.Status,
                         LastAttemptAtUtcTicks = observation.LastAttemptAtUtcTicks > 0
                             ? observation.LastAttemptAtUtcTicks : snapshot.CapturedAt.UtcTicks
                     };
                     datasets[datasetId] = new DatasetPublication(
                         datasetId,
-                        failedObservation,
-                        null,
-                        snapshot,
+                        RetainSuccessfulObservation(failedObservation, previous),
+                        previous?.PayloadSnapshot,
+                        datasetSnapshot,
                         new DateTimeOffset(failedObservation.LastAttemptAtUtcTicks, TimeSpan.Zero));
                     rejected.Add(datasetId);
                     reasons.Add(datasetId, observation.FailureCode ?? FailureCodeForStatus(observation.Status));
@@ -254,9 +261,9 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
 
             if (requested.Count != 0)
             {
-                var composed = Compose(datasets, snapshot);
-                WriteState(new PublicationState(datasets, composed));
-                _ = PublishHistory(composed, datasets, requested);
+                PublishHistory(datasets, requested);
+                WriteState(new PublicationState(datasets.ToImmutable(),
+                    snapshot, historyView));
             }
 
             var successful = requested.Count != 0 && rejected.Count == 0;
@@ -414,9 +421,7 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
         lock (sync)
         {
             var state = ReadState();
-            var datasets = new Dictionary<string, DatasetPublication>(
-                state.Datasets,
-                StringComparer.OrdinalIgnoreCase);
+            var datasets = state.Datasets.ToBuilder();
             var requested = requestedDatasetIds is not null
                 ? requestedDatasetIds.ToHashSet(StringComparer.OrdinalIgnoreCase)
                 : createMissingDatasets
@@ -427,7 +432,7 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
                         request,
                         datasets.Keys);
             // Hosted failures use only bindings from their own workspace.
-            var boundSnapshot = state.Snapshot;
+            var boundSnapshot = state.Context;
             var canUseBindings = boundSnapshot is not null && (workspaceOwnerToken is null
                 || boundSnapshot.WorkspaceIdentity == workspaceOwnerToken.WorkspaceIncarnation
                     && boundSnapshot.ConfigurationGeneration == workspaceOwnerToken.ConfigurationGeneration);
@@ -443,19 +448,20 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
                 requested,
                 failureCode,
                 workspaceOwnerToken,
-                state.Snapshot);
+                state.Context);
             var changed = false;
             foreach (var datasetId in requested)
             {
+                datasets.TryGetValue(datasetId, out var previous);
                 datasets[datasetId] = new DatasetPublication(
                     datasetId,
-                    CreateFailureObservation(
+                    RetainSuccessfulObservation(CreateFailureObservation(
                         datasetId,
                         attemptedAt,
                         failureCode,
                         attemptSnapshot,
-                        workspaceOwnerToken),
-                    null,
+                        workspaceOwnerToken), previous),
+                    previous?.PayloadSnapshot,
                     attemptSnapshot,
                     attemptedAt);
                 changed = true;
@@ -465,15 +471,25 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
             {
                 // No native frame completed, so no catalog was published by this
                 // failure. Keep the admitted publication's catalog identity.
-                var composed = Compose(datasets, state.Snapshot ?? attemptSnapshot);
-                WriteState(new PublicationState(datasets, composed));
-                _ = PublishHistory(composed, datasets, requested);
+                PublishHistory(datasets, requested);
+                WriteState(new PublicationState(datasets.ToImmutable(),
+                    state.Context ?? Freeze(attemptSnapshot), historyView));
             }
         }
     }
 
     private static bool IsPublishable(SamplingObservationStatus status)
         => status == SamplingObservationStatus.Current;
+
+    private static HardwareMetricDatasetObservation RetainSuccessfulObservation(
+        HardwareMetricDatasetObservation failure, DatasetPublication? previous)
+        => previous?.PayloadSnapshot is null ? failure : previous.Observation with
+        {
+            Status = failure.Status,
+            LastAttemptAtUtcTicks = failure.LastAttemptAtUtcTicks,
+            ReadyUntilUtcTicks = 0,
+            FailureCode = failure.FailureCode
+        };
 
     private HardwareMetricSnapshot CreateFailureAttemptSnapshot(
         DateTimeOffset attemptedAt,
@@ -700,11 +716,11 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
             cpu,
             memory,
             virtualMemory,
-            gpus,
-            inventory,
-            items)
+            gpus.ToImmutableArray(),
+            inventory with { Adapters = inventory.Adapters.ToImmutableArray() },
+            items.ToImmutableDictionary(StringComparer.OrdinalIgnoreCase))
         {
-            Datasets = observations,
+            Datasets = observations.ToImmutableDictionary(StringComparer.OrdinalIgnoreCase),
             WorkspaceIdentity = catalogPublication.WorkspaceIdentity,
             ConfigurationGeneration = catalogPublication.ConfigurationGeneration,
             CatalogGeneration = catalogPublication.CatalogGeneration,
@@ -996,15 +1012,6 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
         HardwareMetricSnapshot AttemptSnapshot,
         DateTimeOffset LastAttemptAt);
 
-    private sealed record PublicationState(
-        IReadOnlyDictionary<string, DatasetPublication> Datasets,
-        HardwareMetricSnapshot? Snapshot)
-    {
-        internal static PublicationState Empty { get; } = new(
-            new Dictionary<string, DatasetPublication>(
-                StringComparer.OrdinalIgnoreCase),
-            null);
-    }
 }
 
 public readonly record struct HardwareMetricHostedPublicationTicket(

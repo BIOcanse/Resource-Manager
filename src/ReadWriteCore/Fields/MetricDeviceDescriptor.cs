@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using System.Collections.Immutable;
 
 namespace ResourceManager.App.Domain.Metrics;
 
@@ -18,9 +19,11 @@ public sealed record MetricDeviceAddress
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public byte? GroupRelativeIndex { get; init; }
 
+    private readonly IReadOnlyList<MetricProcessorAddress>? processorAddresses;
     [JsonPropertyName("processorAddresses")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public IReadOnlyList<MetricProcessorAddress>? ProcessorAddresses { get; init; }
+    public IReadOnlyList<MetricProcessorAddress>? ProcessorAddresses
+    { get => processorAddresses; init => processorAddresses = value?.ToImmutableArray(); }
 
     [JsonPropertyName("coreId")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -42,9 +45,11 @@ public sealed record MetricDeviceAddress
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? PnpInstanceId { get; init; }
 
+    private readonly IReadOnlyList<string>? pnpInstanceIds;
     [JsonPropertyName("pnpInstanceIds")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public IReadOnlyList<string>? PnpInstanceIds { get; init; }
+    public IReadOnlyList<string>? PnpInstanceIds
+    { get => pnpInstanceIds; init => pnpInstanceIds = value?.ToImmutableArray(); }
 
     [JsonPropertyName("physicalAdapterIndex")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

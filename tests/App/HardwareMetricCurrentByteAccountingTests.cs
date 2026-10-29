@@ -59,9 +59,10 @@ public sealed class HardwareMetricCurrentByteAccountingTests
         var before = Graph(new object[] { oldCaptures, composed });
         var after = Graph(owner);
         Assert.Equal(5408, before.OfType<BaselineValue>().Count());
-        Assert.DoesNotContain(after, static value => value is HardwareMetricSnapshot or MetricReadingValue);
+        Assert.Equal(5, after.OfType<HardwareMetricSnapshot>().Count());
+        Assert.Equal(4, after.OfType<MetricReadingValue>().Count());
         Assert.Equal(1352, after.OfType<MetricDeviceFieldBinding>().Count());
-        Assert.Equal(4, after.Count(static value => value.GetType().Name == "ItemDeclaration"));
+        Assert.Equal(0, after.Count(static value => value.GetType().Name == "ItemDeclaration"));
         Assert.Equal(4, owner.Read()!.Datasets.Count);
         var baselineSize = AllocationSize(() => Baseline(fields[0], 1) with { DisplayValue = "", IntegerValue = null });
         var result = new
@@ -78,8 +79,9 @@ public sealed class HardwareMetricCurrentByteAccountingTests
             BaselineValueX64AlignedBytes = baselineSize,
             BaselineValueObjectBytesEstimate = baselineSize * 5408,
             ManagedItemDeclarationX64AlignedBytesEstimate = 72,
-            AfterItemDeclarationObjectBytesEstimate = 72 * 4,
-            Exclusions = "Interned static strings are excluded by reference identity; shared dynamic metadata counted once. Containers and other objects are counted by type but not included in value-object byte subtotal. Native current allocation, runtime/static catalogs, transient read projections and history are excluded."
+            AfterItemDeclarationObjectBytesEstimate = 0,
+            AfterManagedCurrentReadingObjects = 4,
+            Exclusions = "Interned static strings are excluded by reference identity; shared dynamic metadata counted once. Containers and current reading objects are counted by type but not included in the baseline value-object byte subtotal. This owner has no native current allocation. Runtime/static catalogs, version-cached projections and history are excluded."
         };
         var output = Environment.GetEnvironmentVariable("RM_CURRENT_BYTES_OUTPUT");
         if (output is not null) File.WriteAllText(output, JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true }));

@@ -248,12 +248,14 @@ public sealed partial class IntelFanOwnerHostIntegrationTests
     {
         internal IntPtr[] Fans = [new(11), new(12)];
         internal int Closes, Operations;
-        internal readonly List<IntPtr> Reads = [];
+        // The sampler reads on its own thread while the test inspects the reads.
+        private readonly List<IntPtr> reads = [];
+        internal IntPtr[] Reads { get { lock (reads) return [.. reads]; } }
         public bool TryGetDevices(out IntPtr[] devices, CancellationToken token) { Operations++; devices = [new(1)]; return true; }
         public bool TryGetIdentity(IntPtr device, out IntelGclIdentity identity) { Operations++; identity = new(7, 0x8086, 0x56A0); return true; }
         public bool TryGetFans(IntPtr device, uint maximum, out IntPtr[] fans, CancellationToken token)
         { Operations++; fans = Fans.ToArray(); return fans.Length <= maximum; }
-        public bool TryReadFanRpm(IntPtr fan, out int rpm) { Operations++; Reads.Add(fan); rpm = fan == new IntPtr(11) ? 0 : 1450; return true; }
+        public bool TryReadFanRpm(IntPtr fan, out int rpm) { Operations++; lock (reads) reads.Add(fan); rpm = fan == new IntPtr(11) ? 0 : 1450; return true; }
         public bool TryReadTelemetry(IntPtr device, out IntelGclPowerTelemetry value) { value = default; return false; }
         public bool TryReadPciState(IntPtr device, out IntelGclPciState value) { value = default; return false; }
         public bool TryReadPciProperties(IntPtr device, out IntelGclPciProperties value) { value = default; return false; }

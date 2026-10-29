@@ -89,7 +89,7 @@ public sealed class HardwareMetricNativeCurrentRetentionTests
     }
 
     [Fact]
-    public void ManyCapturesWithoutAReaderKeepNoManagedCaptureOrValueObjects()
+    public void ManyCapturesWithoutAReaderKeepOnlyThePublishedDatasetValues()
     {
         using var owner = new LastSuccessfulHardwareMetricSnapshot();
         var run = owner.OpenHostedRun();
@@ -99,12 +99,14 @@ public sealed class HardwareMetricNativeCurrentRetentionTests
         for (var round = 1; round <= 80; round++) PublishRound(owner, ticket, round, captures, readings);
         GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
         Assert.All(captures, static value => Assert.False(value.IsAlive));
-        Assert.All(readings, static value => Assert.False(value.IsAlive));
+        Assert.Equal(1, readings.Count(static value => value.IsAlive));
 
         // Count the actual retained graph, not allocation totals and not just
         // fields named "snapshot". Traversal is iterative and bounded.
         var graph = OwnedObjects(owner);
-        Assert.DoesNotContain(graph, static value => value is HardwareMetricSnapshot or MetricReadingValue or MetricValue);
+        Assert.Equal(5, graph.OfType<HardwareMetricSnapshot>().Count()); // four slots and one catalog context
+        Assert.Equal(4, graph.OfType<MetricReadingValue>().Count());
+        Assert.DoesNotContain(graph, static value => value is MetricValue);
         Assert.Equal(1352, graph.OfType<MetricDeviceFieldBinding>().Count());
         Assert.Equal(4, owner.Read()!.Datasets.Count);
         Assert.Equal(4, owner.Read()!.Items.Count);
@@ -124,7 +126,7 @@ public sealed class HardwareMetricNativeCurrentRetentionTests
         Assert.Equal(first.Items["gpu.0.vram"], current.Items["gpu.0.vram"]);
         Assert.Equal(new MetricInteger(ulong.MaxValue, ulong.MaxValue), current.Items["gpu.0.vram"].IntegerValue);
         Assert.Equal(first.Items["gpu.0.usage"].ObservedAt, current.Items["gpu.0.usage"].ObservedAt);
-        Assert.DoesNotContain("memory.usage", current.Items.Keys);
+        Assert.Equal(first.Items["memory.usage"], current.Items["memory.usage"]);
         Assert.Equal(SamplingObservationStatus.Unavailable, current.Datasets["memory.usage"].Status);
         Assert.Equal(changed.CapturedAt.AddTicks(7).UtcTicks, current.Datasets["memory.usage"].LastAttemptAtUtcTicks);
         Assert.Equal(first.Datasets["gpu.0.vram"], current.Datasets["gpu.0.vram"]);
@@ -216,9 +218,8 @@ public sealed class HardwareMetricNativeCurrentRetentionTests
         owner.RecordFailure(MetricSampleRequest.ForIds(["memory.usage"]), second.CapturedAt, "recorded-failure");
         expected = expected with
         {
-            Items = expected.Items.Where(static pair => pair.Key != "memory.usage").ToDictionary(),
             Datasets = expected.Datasets.ToDictionary(static pair => pair.Key, pair => pair.Key != "memory.usage"
-                ? pair.Value : pair.Value with { Status = SamplingObservationStatus.Unavailable, ObservedAtUtcTicks = 0 })
+                ? pair.Value : pair.Value with { Status = SamplingObservationStatus.Unavailable })
         };
         AssertWire(expected);
 

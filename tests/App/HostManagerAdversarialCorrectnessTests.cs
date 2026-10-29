@@ -138,7 +138,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     }
 
     [Fact]
-    public void FailedAttemptAtomicallyReplacesCurrentSlotWithEmptyValue()
+    public void FailedAttemptRetainsSuccessfulValueAndChangesOnlyHealth()
     {
         using var state = new LastSuccessfulHardwareMetricSnapshot();
         var current = CreateDatasetHardwareSnapshot(
@@ -160,13 +160,13 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
         var published = Assert.IsType<HardwareMetricSnapshot>(state.Read());
         var observation = published.Datasets[SamplingDatasetIds.SystemMemoryUsage];
 
-        Assert.Equal(0UL, published.Memory.UsedBytes);
+        Assert.Equal(2_000UL, published.Memory.UsedBytes);
         Assert.Equal(SamplingObservationStatus.Unavailable, observation.Status);
-        Assert.Equal(0UL, observation.SourceGeneration);
-        Assert.Equal(0, observation.ObservedAtUtcTicks);
+        Assert.Equal(1UL, observation.SourceGeneration);
+        Assert.Equal(current.Datasets[SamplingDatasetIds.SystemMemoryUsage].ObservedAtUtcTicks, observation.ObservedAtUtcTicks);
         Assert.Equal(attemptedAt.UtcTicks, observation.LastAttemptAtUtcTicks);
         Assert.Equal("fixture-failure", observation.FailureCode);
-        Assert.Equal(DateTimeOffset.UnixEpoch, published.CapturedAt);
+        Assert.Equal(current.CapturedAt, published.CapturedAt);
         Assert.False(published.TryGetCurrentDataset(
             SamplingDatasetIds.SystemMemoryUsage,
             out _));
@@ -194,7 +194,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     }
 
     [Fact]
-    public void RequestedMetricMissingFromAttemptReplacesOnlyThatSlotWithEmptyValue()
+    public void RequestedMetricMissingFromAttemptRetainsOnlyItsSuccessfulSlot()
     {
         using var state = new LastSuccessfulHardwareMetricSnapshot();
         var current = CreateDatasetHardwareSnapshot(
@@ -222,8 +222,8 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
         var published = Assert.IsType<HardwareMetricSnapshot>(state.Read());
         var observation = published.Datasets[SamplingDatasetIds.SystemCpuUsage];
         Assert.False(result.IsSuccessful);
-        Assert.Equal(0, published.Cpu.UsagePercent);
-        Assert.Equal(DateTimeOffset.UnixEpoch, published.CapturedAt);
+        Assert.Equal(23, published.Cpu.UsagePercent);
+        Assert.Equal(current.CapturedAt, published.CapturedAt);
         Assert.Equal(SamplingObservationStatus.Unavailable, observation.Status);
         Assert.Equal(missingAttempt.CapturedAt.UtcTicks, observation.LastAttemptAtUtcTicks);
         Assert.Equal("hardware-dataset-missing", observation.FailureCode);
@@ -454,7 +454,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     }
 
     [Fact]
-    public void RetainedCandidateIsAnEmptyCompletionForItsExactSlot()
+    public void RetainedCandidateCannotReplaceTheOwnersSuccessfulSlot()
     {
         using var state = new LastSuccessfulHardwareMetricSnapshot();
         var current = CreateDatasetHardwareSnapshot(
@@ -492,8 +492,8 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
         var published = Assert.IsType<HardwareMetricSnapshot>(state.Read());
 
         Assert.False(result.IsSuccessful);
-        Assert.Equal(0, published.Cpu.UsagePercent);
-        Assert.Equal(0UL, published.Datasets[
+        Assert.Equal(25, published.Cpu.UsagePercent);
+        Assert.Equal(1UL, published.Datasets[
             SamplingDatasetIds.SystemCpuUsage].SourceGeneration);
         Assert.Equal(
             SamplingObservationStatus.Unavailable,

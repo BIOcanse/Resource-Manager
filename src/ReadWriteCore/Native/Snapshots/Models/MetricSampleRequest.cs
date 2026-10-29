@@ -1,3 +1,5 @@
+using System.Collections.Immutable;
+
 namespace ResourceManager.App.Domain.Metrics;
 
 public sealed class MetricSampleRequest
@@ -5,6 +7,9 @@ public sealed class MetricSampleRequest
     private readonly HashSet<string>? metricIds;
     private readonly bool includesCatalog;
     private readonly bool includesAllGpuCoreMetrics;
+    private readonly IReadOnlyCollection<string> ids;
+    private string? cacheKey;
+    private string? publicationCacheKey;
 
     private MetricSampleRequest(
         HashSet<string>? metricIds,
@@ -14,6 +19,7 @@ public sealed class MetricSampleRequest
         this.metricIds = metricIds;
         this.includesCatalog = includesCatalog;
         this.includesAllGpuCoreMetrics = includesAllGpuCoreMetrics;
+        ids = metricIds is null ? ImmutableArray<string>.Empty : metricIds.ToImmutableArray();
     }
 
     public static MetricSampleRequest All { get; } = new(null);
@@ -30,12 +36,28 @@ public sealed class MetricSampleRequest
 
     public bool IncludesAllGpuCoreMetrics => IsAll || includesAllGpuCoreMetrics;
 
-    public IReadOnlyCollection<string> Ids => metricIds ?? [];
+    public IReadOnlyCollection<string> Ids => ids;
 
     public string CacheKey
+        => cacheKey ??= CreateCacheKey();
+
+    // The legacy display/planner key has reserved-word collisions (for
+    // example CatalogProbe and the literal field "catalog"). Published view
+    // identity includes flags and length-delimited IDs without changing it.
+    internal string PublicationCacheKey => publicationCacheKey ??= CreatePublicationCacheKey();
+
+    private string CreatePublicationCacheKey()
     {
-        get
-        {
+        if (IsAll) return "*";
+        var key = new System.Text.StringBuilder();
+        key.Append(includesCatalog ? '1' : '0').Append(includesAllGpuCoreMetrics ? '1' : '0');
+        foreach (var id in metricIds!.Order(StringComparer.OrdinalIgnoreCase))
+            key.Append(id.Length).Append(':').Append(id);
+        return key.ToString();
+    }
+
+    private string CreateCacheKey()
+    {
             if (IsAll)
             {
                 return "*";
@@ -49,7 +71,6 @@ public sealed class MetricSampleRequest
             var prefix = (includesCatalog ? "catalog\n" : string.Empty)
                 + (includesAllGpuCoreMetrics ? "gpu-core:*\n" : string.Empty);
             return prefix + string.Join('\n', metricIds!.OrderBy(static id => id, StringComparer.OrdinalIgnoreCase));
-        }
     }
 
     public static MetricSampleRequest ForIds(IEnumerable<string> ids)

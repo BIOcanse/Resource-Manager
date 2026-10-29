@@ -41,37 +41,34 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
                 {
                     existing = new DataHistoryBuffer<HardwareMetricHistorySample>(rounds);
                     histories.Add(item, existing);
-                    if (state.Snapshot is { } snapshot
-                        && TryReadCompletedHistorySample(snapshot, state.Datasets, item, out var sample))
+                    if (TryReadCompletedHistorySample(state.Datasets, item, out var sample))
                     {
                         existing.Append(sample);
                     }
                 }
                 historyView = historyView.SetItem(item, existing.Read());
             }
+            WriteState(new PublicationState(state.Datasets, state.Context, historyView, state.Direct));
         }
     }
 
-    private HardwareMetricSnapshot PublishHistory(
-        HardwareMetricSnapshot snapshot,
+    private void PublishHistory(
         IReadOnlyDictionary<string, DatasetPublication> datasets,
         IReadOnlySet<string> completedItems)
     {
         foreach (var (item, history) in histories)
         {
             if (!completedItems.Contains(item)
-                || !TryReadCompletedHistorySample(snapshot, datasets, item, out var sample))
+                || !TryReadCompletedHistorySample(datasets, item, out var sample))
             {
                 continue;
             }
             history.Append(sample);
             historyView = historyView.SetItem(item, history.Read());
         }
-        return snapshot with { History = historyView };
     }
 
     private static bool TryReadCompletedHistorySample(
-        HardwareMetricSnapshot snapshot,
         IReadOnlyDictionary<string, DatasetPublication> datasets,
         string item,
         out HardwareMetricHistorySample sample)
@@ -81,7 +78,8 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
             sample = default;
             return false;
         }
-        var value = publication.PayloadSnapshot?.Items.GetValueOrDefault(item);
+        var payload = publication.Observation.Status == SamplingObservationStatus.Current ? publication.PayloadSnapshot : null;
+        var value = payload?.Items.GetValueOrDefault(item);
         double? numericValue = value?.NumericValue;
         if (numericValue is null && value?.IntegerValue is { } integer)
             numericValue = integer.Negative
@@ -89,7 +87,7 @@ public sealed partial class LastSuccessfulHardwareMetricSnapshot
                 : (double)(((UInt128)integer.HighBits << 64) | integer.LowBits);
         if (item.Equals(MetricDatasetIds.SystemCpuUsage, StringComparison.OrdinalIgnoreCase))
         {
-            numericValue = publication.PayloadSnapshot?.Cpu is { IsUsageAvailable: true } cpu
+            numericValue = payload?.Cpu is { IsUsageAvailable: true } cpu
                 ? cpu.UsagePercent
                 : null;
         }

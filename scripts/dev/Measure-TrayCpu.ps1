@@ -10,7 +10,9 @@ param(
     [Parameter(Mandatory)][string]$OutDir,
     [int]$SettleSeconds = 240,
     [int]$Seconds = 60,
-    [string]$ServiceProcessName = 'ResourceManager'
+    [string]$ServiceProcessName = 'ResourceManager',
+    [ValidateRange(0,2147483647)][int]$ServiceProcessId = 0,
+    [ValidateRange(0,2147483647)][int]$UiProcessId = 0
 )
 $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force $OutDir | Out-Null
@@ -21,7 +23,10 @@ Add-Type -Namespace RmTray -Name Native -MemberDefinition @'
 [DllImport("kernel32.dll")] public static extern int GetThreadDescription(IntPtr h, out IntPtr desc);
 [DllImport("kernel32.dll")] public static extern IntPtr LocalFree(IntPtr p);
 '@
-foreach ($ui in @(Get-Process -Name ResourceManager.NativeUi -ErrorAction SilentlyContinue | Where-Object MainWindowHandle -ne 0)) {
+$targetUis = if ($UiProcessId -gt 0) { @(Get-Process -Id $UiProcessId) }
+    elseif ($ServiceProcessId -gt 0) { @() }
+    else { @(Get-Process -Name ResourceManager.NativeUi -ErrorAction SilentlyContinue) }
+foreach ($ui in @($targetUis | Where-Object MainWindowHandle -ne 0)) {
     [void][RmTray.Native]::PostMessage($ui.MainWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
 }
 function Get-ThreadName([int]$id) {
@@ -36,7 +41,8 @@ function Get-ThreadName([int]$id) {
     } finally { [void][RmTray.Native]::CloseHandle($h) }
 }
 Start-Sleep -Seconds $SettleSeconds
-$service = Get-Process -Name $ServiceProcessName | Sort-Object StartTime -Descending | Select-Object -First 1
+$service = if ($ServiceProcessId -gt 0) { Get-Process -Id $ServiceProcessId }
+    else { Get-Process -Name $ServiceProcessName | Sort-Object StartTime -Descending | Select-Object -First 1 }
 $cpu0 = (Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor -Filter "Name='_Total'").PercentProcessorTime
 $user0 = @{}; $kernel0 = @{}
 foreach ($t in $service.Threads) { $user0[$t.Id] = $t.UserProcessorTime.TotalMilliseconds; $kernel0[$t.Id] = $t.PrivilegedProcessorTime.TotalMilliseconds }

@@ -159,7 +159,7 @@ public sealed partial class WindowsHardwareMetricSampler :
         this.intelGclZone = intelGclZone ?? new IntelGclMonitoringZone();
         this.batteryZone = batteryZone ?? new WindowsBatteryMonitoringZone();
         this.metricSnapshotOwner = metricSnapshotOwner;
-        publishedSnapshot = new("metric_snapshot", () => this.metricSnapshotOwner.CreateCurrentSession());
+        publishedSnapshot = new("metric_snapshot");
         this.metricCatalog = metricCatalog;
         var resources = borrowedResources ?? CreateBorrowedResources(borrowedControls);
         controlFields = new WindowsMetricControlFields(resources.Controls!, resources.ReadGpuInventory, sourceId =>
@@ -301,8 +301,8 @@ public sealed partial class WindowsHardwareMetricSampler :
             PublishCompletedDatasets(GetPublicationItemIds(sampledRequest));
             // Capture preparation is not a second read authority. Return the
             // admitted public slots, including unchanged independent slots.
-            return publishedSnapshot.Read() is { } current
-                ? ProjectSnapshot(current, request)
+            return publishedSnapshot.Read(request) is { } current
+                ? current
                 : CreateWarmingSnapshot(request);
         }
         finally
@@ -343,10 +343,7 @@ public sealed partial class WindowsHardwareMetricSampler :
     public HardwareMetricSnapshot? ReadLatest(MetricSampleRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var snapshot = publishedSnapshot.Read(request);
-        return snapshot is null
-            ? null
-            : ProjectSnapshot(snapshot, request);
+        return publishedSnapshot.Read(request);
     }
 
     public IReadOnlyDictionary<string, MetricReadingValue> ReadItems(ImmutableArray<string> ids)
@@ -887,7 +884,7 @@ public sealed partial class WindowsHardwareMetricSampler :
 
     internal void PublishCompletedDatasets(IEnumerable<string> datasetIds)
     {
-        var snapshot = ReadCachedSnapshot();
+        var snapshot = publishedSnapshot.ReadPublicationContext();
         var metadataChanged = snapshot is not null && metricCatalog.PublishReadingMetadata(snapshot);
         publicationSignal.Publish(MetricDatasetIds.ExpandBoundSystemDatasets(
             metadataChanged ? datasetIds.Append(MetricDatasetIds.SystemMetricCatalog) : datasetIds,
@@ -911,9 +908,6 @@ public sealed partial class WindowsHardwareMetricSampler :
         var request = MetricSampleRequest.ForIds(metricIds);
         return dueCatalog ? request.WithCatalog() : request;
     }
-
-    private HardwareMetricSnapshot? ReadCachedSnapshot()
-        => publishedSnapshot.Read();
 
     private HardwareMetricSnapshot CreateWarmingSnapshot(
         MetricSampleRequest request)
@@ -1006,57 +1000,6 @@ public sealed partial class WindowsHardwareMetricSampler :
             Datasets = datasets,
             FieldBindings = metricCatalog.Current?.FieldBindings
                 ?? new Dictionary<string, MetricDeviceFieldBinding>()
-        };
-    }
-
-    private static HardwareMetricSnapshot ProjectSnapshot(
-        HardwareMetricSnapshot snapshot,
-        MetricSampleRequest request)
-    {
-        if (request.IsAll || request.IsCatalogProbe)
-        {
-            return snapshot;
-        }
-
-        // Capacity fields intentionally have no legacy value alias in native
-        // current. An explicit alias request still owns and receives that same
-        // canonical field; do not discard it while projecting the request.
-        var missingAliases = request.Ids.Where(id => !snapshot.Items.ContainsKey(id))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var requestedAddresses = snapshot.FieldBindings.Values
-            .Where(binding => missingAliases.Count > 0
-                && binding.RequestAliases.Any(missingAliases.Contains))
-            .Select(static binding => binding.RequestAddress)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var items = snapshot.Items
-            .Where(pair => request.Includes(pair.Key) || requestedAddresses.Contains(pair.Key))
-            .ToDictionary(
-                static pair => pair.Key,
-                static pair => pair.Value,
-                StringComparer.OrdinalIgnoreCase);
-        var requestedDatasets = SamplingDatasetIds.ResolveSystemDatasets(
-            request,
-            snapshot.Datasets.Keys);
-        var datasets = requestedDatasets.ToDictionary(
-            static datasetId => datasetId,
-            datasetId => snapshot.Datasets.TryGetValue(
-                    datasetId,
-                    out var observation)
-                ? observation
-                : new HardwareMetricDatasetObservation(
-                    datasetId,
-                    SamplingObservationStatus.Warming,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0),
-            StringComparer.OrdinalIgnoreCase);
-        return snapshot with
-        {
-            Items = items,
-            Datasets = datasets
         };
     }
 

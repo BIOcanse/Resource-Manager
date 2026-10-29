@@ -9,7 +9,10 @@ public sealed record MetricReadingValue(string Id, double? NumericValue, string 
     public string? FieldName { get; init; }
     public string? DeviceIdentity { get; init; }
     public MetricInteger? IntegerValue { get; init; }
-    public byte[]? BytesValue { get; init; }
+    private readonly byte[]? bytesValue;
+    // The public byte-array wire/SDK contract stays intact. Neither a producer
+    // nor a reader can mutate this value's privately owned bytes.
+    public byte[]? BytesValue { get => bytesValue?.ToArray(); init => bytesValue = value?.ToArray(); }
     public bool? BooleanValue { get; init; }
     public string? ValueKind { get; init; }
     public string? SourceId { get; init; }

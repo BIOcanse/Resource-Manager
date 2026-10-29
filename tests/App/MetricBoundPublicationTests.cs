@@ -34,8 +34,8 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
             }
             owner.RecordFailure(MetricSampleRequest.ForIds([requestId]), DateTimeOffset.UnixEpoch.AddSeconds(10), "source-failed");
             Assert.Null(BoundRead(backend).Value);
-            Assert.False(owner.Read()!.Items.ContainsKey("memory.usage"));
-            Assert.False(owner.Read()!.Items.ContainsKey(BoundUsed));
+            Assert.Equal(0d, owner.Read()!.Items["memory.usage"].NumericValue);
+            Assert.Equal(0d, owner.Read()!.Items[BoundUsed].NumericValue);
             Assert.Equal(SamplingObservationStatus.Unavailable, owner.Read()!.Datasets["memory.usage"].Status);
             Assert.Equal(SamplingObservationStatus.Unavailable, owner.Read()!.Datasets[BoundUsed].Status);
             Assert.Equal(SamplingObservationStatus.Current, owner.Read()!.Datasets[BoundTotal].Status);
@@ -61,7 +61,7 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
             Assert.True(owner.TryRecordHostedFailure(ticket, MetricSampleRequest.All,
                 [requestId], DateTimeOffset.UnixEpoch.AddSeconds(10), "hosted-source-failed"));
             Assert.Null(BoundRead(BoundBackend(owner)).Value);
-            Assert.False(owner.Read()!.Items.ContainsKey("memory.usage"));
+            Assert.Equal(512d, owner.Read()!.Items["memory.usage"].NumericValue);
             Assert.Equal(SamplingObservationStatus.Unavailable, owner.Read()!.Datasets[BoundUsed].Status);
             Assert.Equal(SamplingObservationStatus.Current, owner.Read()!.Datasets[BoundTotal].Status);
             Assert.Equal(1024d, owner.Read()!.Items[BoundTotal].NumericValue);

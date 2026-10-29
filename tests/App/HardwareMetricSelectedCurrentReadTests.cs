@@ -18,16 +18,17 @@ public sealed class HardwareMetricSelectedCurrentReadTests(ITestOutputHelper out
         var ids = Enumerable.Range(0, 100).Select(static index => $"recorded.{index}").ToImmutableArray();
         // Warm JIT and both read paths before measuring this thread's allocations.
         _ = small.ReadItems(ids); _ = large.ReadItems(ids); _ = large.Read();
-        var smallBytes = Allocated(() => Assert.Equal(100, small.ReadItems(ids).Count));
-        var selectedBytes = Allocated(() => Assert.Equal(100, large.ReadItems(ids).Count));
-        var wholeBytes = Allocated(() => Assert.Equal(1352, large.Read()!.Items.Count));
-        // Before this change delivery performed this same complete reconstruction
-        // once per selected field. Multiplication avoids deliberately allocating
-        // one hundred unused full snapshots just to reproduce the old algorithm.
-        var beforeDeliveryBytes = checked(wholeBytes * 100);
-        output.WriteLine($"100-field delivery: before={beforeDeliveryBytes} allocated bytes (100 full reconstructions); after={selectedBytes}; selected100/catalog100={smallBytes}; full1352={wholeBytes}.");
-        Assert.InRange(selectedBytes, 1, smallBytes + 4096);
-        Assert.True(selectedBytes < beforeDeliveryBytes / 20);
+        Assert.Equal(100, small.ReadItems(ids).Count);
+        Assert.Equal(100, large.ReadItems(ids).Count);
+        Assert.Equal(1352, large.Read()!.Items.Count);
+        var smallBytes = Allocated(() => small.ReadItems(ids));
+        var selectedBytes = Allocated(() => large.ReadItems(ids));
+        var wholeBytes = Allocated(() => large.Read());
+        output.WriteLine($"Cached reads: selected100/catalog1352={selectedBytes}; selected100/catalog100={smallBytes}; full1352={wholeBytes}.");
+        Assert.Equal(0, smallBytes);
+        Assert.Equal(0, selectedBytes);
+        Assert.Equal(0, wholeBytes);
+        Assert.Same(large.ReadItems(ids), large.ReadItems(ids));
         var values = large.ReadItems(ids);
         Assert.Equal(99, values["recorded.99"].NumericValue);
         Assert.Equal(DateTimeOffset.UnixEpoch.AddSeconds(1).AddTicks(73), values["recorded.99"].ObservedAt);
@@ -49,11 +50,12 @@ public sealed class HardwareMetricSelectedCurrentReadTests(ITestOutputHelper out
         var selected = owner.Read(MetricSampleRequest.ForIds(["recorded.0", "recorded.1"]))!;
         Assert.Equal(2, selected.Datasets.Count);
         Assert.Equal(SamplingObservationStatus.Unavailable, selected.Datasets["recorded.1"].Status);
-        Assert.Single(selected.Items);
+        Assert.Equal(2, selected.Items.Count);
+        Assert.Equal(1, selected.Items["recorded.1"].NumericValue);
         Assert.Equal(0, selected.Items["recorded.0"].NumericValue);
         Assert.Equal(2, owner.ReadItems(["recorded.0", "recorded.1"]).Count);
         Assert.Equal(SamplingObservationStatus.Unavailable, owner.ReadItems(["recorded.1"])["recorded.1"].Status);
-        Assert.Equal(2, owner.Read()!.Items.Count);
+        Assert.Equal(3, owner.Read()!.Items.Count);
     }
 
     private static long Allocated(Action action)
