@@ -85,7 +85,10 @@ public sealed partial class WindowsProcessFieldOwner : IDisposable
     public void StartCpuResidencyCapture()
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
-        (residency ?? throw new InvalidOperationException("This owner uses the hosted shared CPU residency reader and has no standalone CPU residency capture.")).EnsureStarted();
+        var capture = residency ?? throw new InvalidOperationException("This owner uses the hosted shared CPU residency reader and has no standalone CPU residency capture.");
+        capture.EnsureStarted();
+        // An explicit standalone run captures continuously until its host stops it.
+        capture.BeginWindow();
     }
     /// <summary>Called when the SDK host's run returns to release its CPU residency capture.
     /// Field collection and subscription changes never release the run's holder.</summary>
@@ -253,4 +256,3 @@ public sealed partial class WindowsProcessFieldOwner : IDisposable
         }
     }
 }
-

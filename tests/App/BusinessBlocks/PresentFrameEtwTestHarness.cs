@@ -223,7 +223,7 @@ internal sealed class PresentFrameEtwRecordingSession(string name) : IPresentFra
     {
         lock (sync) operations.Add(new("enable", provider, level, keywords, eventIds.ToArray()));
         ThrowIfRequested("enable", provider);
-        lock (sync) enabled.Add(provider);
+        lock (sync) if (!enabled.Contains(provider)) enabled.Add(provider);
         AfterEnable?.Invoke(provider);
     }
 

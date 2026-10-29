@@ -16,7 +16,7 @@ public sealed class PresentFrameEtwProviderDemandTests
         new(73, (ulong)DateTime.UnixEpoch.ToFileTimeUtc(), "recorded", "C:\\recorded.exe");
 
     [Fact]
-    public async Task ApiOnlyEnablesOnlyItsThreeProvidersAndReadsDoNotReenableThem()
+    public async Task ApiOnlyEnablesOnlyPendingKindsAndReleasesBeforeTheCachedAnswerIsRead()
     {
         await using var fixture = PresentFrameEtwTestHarness.Create();
         var api = fixture.Source.AcquireGraphicsApiSubscription(Process);
@@ -25,16 +25,84 @@ public sealed class PresentFrameEtwProviderDemandTests
         Assert.Equal(ApiProviders, session.Enabled);
         Assert.Collection(session.Operations,
             item => AssertEnable(item, ApiProviders[0], TraceEventLevel.Informational, 0x10, [1, 2]),
-            item => AssertEnable(item, ApiProviders[1], TraceEventLevel.Verbose, 2, [42, 43, 55, 56]),
-            item => AssertEnable(item, ApiProviders[2], TraceEventLevel.Verbose, 2, [1, 2]));
+            item => AssertEnable(item, ApiProviders[1], TraceEventLevel.Verbose, 2, [42, 55]),
+            item => AssertEnable(item, ApiProviders[2], TraceEventLevel.Verbose, 2, [1]));
 
         fixture.Source.ObserveGraphicsApiPresent(PresentFrameEtwSource.DxgiProvider, 42,
             Process.ProcessId, DateTime.FromFileTimeUtc((long)Process.ProcessStartKey));
+        await EtwTestRunRecorder.UntilAsync(() => session.Stops == 1);
+        Assert.False(fixture.Source.HasActiveSubscriptions);
+        Assert.Empty(session.Enabled);
+        var retained = Assert.Single(fixture.Source.ReadHolders());
+        Assert.False(retained.NeedsEvents);
+        Assert.True(retained.HasCurrent);
         Assert.Equal(GpuGraphicsApi.D3D11 | GpuGraphicsApi.D3D12, api.Read());
-        Assert.Equal(3, session.Operations.Length);
+        Assert.Equal(6, session.Operations.Length);
         Assert.Equal(0, session.EventsLostReads);
         await fixture.ReleaseAsync(api);
         Assert.Equal(1, session.Stops);
+    }
+
+    [Fact]
+    public async Task PendingApiUseShrinksAndCompletedLeasesNeverRestartTheSession()
+    {
+        await using var fixture = PresentFrameEtwTestHarness.Create();
+        var transitions = new List<PresentFrameEtwSource.PresentHolder[]>();
+        fixture.Source.HoldersChanged += () => transitions.Add(fixture.Source.ReadHolders());
+        var first = fixture.Source.AcquireGraphicsApiSubscription(Process);
+        var secondProcess = Process with { ProcessId = 74 };
+        var second = fixture.Source.AcquireGraphicsApiSubscription(secondProcess);
+        await fixture.WaitRunningAsync();
+        var session = Assert.Single(fixture.Sessions.Snapshot());
+        Assert.Equal(new[] { 73, 74 }, fixture.Source.ReadHolders().Where(holder => holder.NeedsEvents)
+            .Select(holder => holder.ProcessId!.Value).Order());
+
+        Assert.True(fixture.Source.ObserveGraphicsApiPresent(ApiProviders[1], 42, 73,
+            DateTime.FromFileTimeUtc((long)Process.ProcessStartKey)));
+        Assert.True(fixture.Source.HasActiveSubscriptions);
+        Assert.Equal(74, Assert.Single(fixture.Source.ReadHolders().Where(holder => holder.NeedsEvents)).ProcessId);
+        Assert.Equal(3, session.Operations.Length);
+        Assert.False(fixture.Source.ObserveGraphicsApiPresent(ApiProviders[1], 43, 74,
+            DateTime.FromFileTimeUtc((long)Process.ProcessStartKey)));
+        Assert.False(fixture.Source.ObserveGraphicsApiPresent(ApiProviders[1], 42, 73,
+            DateTime.FromFileTimeUtc((long)Process.ProcessStartKey)));
+        Assert.True(fixture.Source.ObserveGraphicsApiPresent(ApiProviders[2], 1, 74,
+            DateTime.FromFileTimeUtc((long)Process.ProcessStartKey)));
+        await EtwTestRunRecorder.UntilAsync(() => session.Stops == 1);
+        Assert.False(fixture.Source.HasActiveSubscriptions);
+        Assert.All(fixture.Source.ReadHolders(), holder => { Assert.False(holder.NeedsEvents); Assert.True(holder.HasCurrent); });
+        Assert.Equal(GpuGraphicsApi.D3D9, second.Read());
+        Assert.Equal(GpuGraphicsApi.D3D11 | GpuGraphicsApi.D3D12, first.Read());
+
+        var third = fixture.Source.AcquireGraphicsApiSubscription(Process with { ProcessId = 75 });
+        await fixture.WaitRunningAsync();
+        Assert.Equal(2, fixture.Sessions.Attempts);
+        Assert.Equal(GpuGraphicsApi.D3D9, second.Read());
+        await fixture.ReleaseAsync(third);
+        Assert.Equal(2, fixture.Sessions.Attempts);
+        await fixture.ReleaseAsync(first);
+        await fixture.ReleaseAsync(second);
+        Assert.Empty(fixture.Source.ReadHolders());
+        Assert.Contains(transitions, holders => holders.Count(holder => holder.NeedsEvents) == 2);
+        Assert.Contains(transitions, holders => holders.Length == 2 && holders.All(holder => !holder.NeedsEvents));
+    }
+
+    [Fact]
+    public async Task InvalidatedProcessReleasesItsHoldBeforeTheCallerDisposesTheLease()
+    {
+        await using var fixture = PresentFrameEtwTestHarness.Create();
+        var api = fixture.Source.AcquireGraphicsApiSubscription(Process);
+        await fixture.WaitRunningAsync();
+        var session = Assert.Single(fixture.Sessions.Snapshot());
+        Assert.True(fixture.Source.ObserveGraphicsApiProcessLifetime(Process.ProcessId, null));
+        await EtwTestRunRecorder.UntilAsync(() => session.Stops == 1);
+        Assert.False(fixture.Source.HasActiveSubscriptions);
+        Assert.False(Assert.Single(fixture.Source.ReadHolders()).NeedsEvents);
+        Assert.Null(api.Read());
+        Assert.False(fixture.Source.ObserveGraphicsApiPresent(ApiProviders[1], 42, Process.ProcessId,
+            DateTime.FromFileTimeUtc((long)Process.ProcessStartKey)));
+        Assert.Single(fixture.Sessions.Snapshot());
+        await fixture.ReleaseAsync(api);
     }
 
     [Fact]
@@ -52,7 +120,7 @@ public sealed class PresentFrameEtwProviderDemandTests
         await fixture.WaitRunningAsync();
         Assert.True(fixture.Source.HasActiveSubscriptions);
         Assert.Equal(ApiProviders.Concat(DisplayProviders), session.Enabled);
-        Assert.Collection(session.Operations.Skip(3),
+        Assert.Collection(session.Operations.Skip(5),
             item => AssertEnable(item, DisplayProviders[0], TraceEventLevel.Verbose,
                 0x4000000008000001, [184, 168, 252, 178, 116, 17]),
             item => AssertEnable(item, DisplayProviders[1], TraceEventLevel.Verbose,
@@ -64,13 +132,13 @@ public sealed class PresentFrameEtwProviderDemandTests
         clock.Advance(TimeSpan.FromSeconds(1) + TimeSpan.FromTicks(1));
         Assert.True(fixture.Source.Read(TimeSpan.FromSeconds(1))!.Complete);
         await fixture.ReleaseAsync(first);
-        Assert.Equal(5, session.Operations.Length);
+        Assert.Equal(7, session.Operations.Length);
         Assert.True(fixture.Source.HasActiveSubscriptions);
         await fixture.ReleaseAsync(second);
         Assert.Equal(ApiProviders, session.Enabled);
         Assert.True(fixture.Source.HasActiveSubscriptions);
         Assert.Equal(DisplayProviders.Select(provider => new PresentEtwProviderOperation("disable", provider)),
-            session.Operations.Skip(5));
+            session.Operations.Skip(9));
         Assert.Equal(0, session.Stops);
 
         // A new frame observation cannot inherit the completed window from before the gap.

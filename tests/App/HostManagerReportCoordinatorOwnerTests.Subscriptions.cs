@@ -215,7 +215,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         provider.Publish(CompiledRuntimePlan.Default with { Version = 1, HostManager = plan });
         return new HostManagerReportCoordinatorOwner(provider, new HostManagerReportCoordinatorRuntime(deployment),
             new HostManagerRuntimeIdentity(), new NativeReportCoordinatorPersistenceStore(new ResourceManager.App.Infrastructure.Persistence.ResourceManagerDatabase(
-                new TestHostEnvironment(Directory.CreateDirectory(Path.Combine(testRoot, $"demand-{Guid.NewGuid():N}")).FullName))), sources, sources, sources,
+                new TestHostEnvironment(Directory.CreateDirectory(Path.Combine(testRoot, $"demand-{Guid.NewGuid():N}")).FullName))), sources, sources, sources.InterruptSource ?? sources,
             new EmptyProtectionService(), NullLogger<HostManagerReportCoordinatorOwner>.Instance, OperationScratchFixture.Create,
             sources, new RegisteredSoftware());
     }
@@ -233,6 +233,7 @@ public sealed partial class HostManagerReportCoordinatorOwnerTests
         internal SchedulingProcessMetricMask ProcessMask { get; private set; }
         internal SchedulingProcessFactSnapshot? ProcessSnapshot { get; set; }
         internal Action? BeforeMetricAcquire;
+        internal ISystemInterruptSnapshotSource? InterruptSource;
         private IDisposable Acquire(int index, TimeSpan interval)
         {
             counts[index]++;

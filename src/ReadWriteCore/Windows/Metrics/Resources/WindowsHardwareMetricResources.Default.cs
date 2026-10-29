@@ -189,6 +189,7 @@ public sealed partial class WindowsHardwareMetricResources
         result.owned.Add(ccd);
         result.owned.Add(nvidiaControl);
         result.owned.Add(nvapi);
+        result.owned.Add(nvml);
         result.owned.Add(frequency);
         result.owned.Add(pdh);
         result.owned.Add(mechrevo);

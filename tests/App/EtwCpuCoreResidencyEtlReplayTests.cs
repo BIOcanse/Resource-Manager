@@ -90,7 +90,10 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
             Assert.All(physicalCores, static core => Assert.InRange(core.UsagePercent, 0, 100));
             Assert.All(physicalCores.GroupBy(static core => core.PhysicalCoreId), static group =>
                 Assert.InRange(Math.Round(group.Sum(static core => core.UsagePercent), 9), 0, 100));
-            Assert.Equal(1, broker.SubscribeCount);
+            Assert.Equal(2, broker.SubscribeCount);
+            Assert.Equal(1, broker.MetadataBindingCount);
+            Assert.Equal(1, broker.WindowHoldCount);
+            Assert.Equal(73, complete.SessionGeneration);
             Assert.True(broker.BoundKeywords.HasFlag(KernelTraceEventParser.Keywords.ContextSwitch));
             Assert.True(broker.BoundKeywords.HasFlag(KernelTraceEventParser.Keywords.Process));
             Assert.True(broker.BoundKeywords.HasFlag(KernelTraceEventParser.Keywords.Thread));
@@ -328,6 +331,11 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
     {
         private readonly object sync = new();
         private readonly ETWTraceEventSource source;
+        private readonly KernelEtwSubscriptionDispatcher dispatcher = new();
+        private readonly List<(long LeaseId, KernelEtwSubscriptionRequest Request)> subscriptions = [];
+        private readonly KernelEtwSessionContext context = new(73, DateTimeOffset.UnixEpoch);
+        private long nextLeaseId;
+        private bool initialized;
         private Task? processing;
         private Exception? processingFailure;
         private bool running;
@@ -338,11 +346,20 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
             source = new ETWTraceEventSource(path);
             ProcessorCount = source.NumberOfProcessors;
             QpcFrequency = ReadQpcFrequency(source);
+            var parser = new KernelTraceEventParser(source);
+            parser.ThreadCSwitch += _ =>
+            {
+                var count = Interlocked.Increment(ref contextSwitchCount);
+                if ((count & 4095) == 0) Thread.Sleep(1);
+            };
+            dispatcher.AttachParser(parser);
         }
 
         public int ProcessorCount { get; }
         public long QpcFrequency { get; }
         public int SubscribeCount { get; private set; }
+        public int MetadataBindingCount { get; private set; }
+        public int WindowHoldCount { get; private set; }
         public KernelTraceEventParser.Keywords BoundKeywords { get; private set; }
         public long ContextSwitchCount => Interlocked.Read(ref contextSwitchCount);
         public bool IsRunning
@@ -362,44 +379,54 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
             lock (sync)
             {
                 ObjectDisposedException.ThrowIf(disposed, this);
-                if (processing is not null)
+                if (subscriptions.Count == 0 && initialized)
                 {
-                    throw new InvalidOperationException("The ETL replay broker accepts one production reader binding.");
+                    throw new InvalidOperationException("The ETL replay broker accepts one production reader session.");
                 }
 
                 SubscribeCount++;
-                BoundKeywords = request.Keywords;
+                if (request.Keywords.HasFlag(KernelTraceEventParser.Keywords.ContextSwitch)) WindowHoldCount++;
+                var leaseId = ++nextLeaseId;
+                subscriptions.Add((leaseId, request));
                 running = true;
-                var parser = new KernelTraceEventParser(source);
-                parser.ThreadCSwitch += _ =>
+                UpdateBindings();
+                // Metadata must be bound before replay, but the file cannot be
+                // consumed until the first real observation window holds CSwitch.
+                if (processing is null && request.Keywords.HasFlag(KernelTraceEventParser.Keywords.ContextSwitch))
                 {
-                    var count = Interlocked.Increment(ref contextSwitchCount);
-                    if ((count & 4095) == 0)
+                    processing = Task.Run(() =>
                     {
-                        Thread.Sleep(1);
-                    }
-                };
-                var dispatcher = new KernelEtwSubscriptionDispatcher();
-                dispatcher.AttachParser(parser);
-                dispatcher.InitializeSubscriptions(
-                    [new(1, request.Id, request.Keywords, request.Bind)],
-                    new KernelEtwSessionContext(73, DateTimeOffset.UnixEpoch));
-                processing = Task.Run(() =>
-                {
-                    try
-                    {
-                        source.Process();
-                    }
-                    catch (Exception ex)
-                    {
-                        lock (sync)
+                        try { source.Process(); }
+                        catch (Exception ex)
                         {
-                            processingFailure = ex;
+                            lock (sync) processingFailure = ex;
                         }
-                    }
-                });
-                return new ReplayLease(this);
+                    });
+                }
+                return new ReplayLease(this, leaseId);
             }
+        }
+
+        // Keep existing callback sources by lease ID, exactly as the live
+        // dispatcher does when keyword holders change without a session restart.
+        private void UpdateBindings()
+        {
+            var registrations = subscriptions.Select(subscription =>
+                new KernelEtwSubscriptionRegistration(subscription.LeaseId, subscription.Request.Id,
+                    subscription.Request.Keywords, (callbacks, session) =>
+                    {
+                        if (subscription.Request.Keywords.HasFlag(KernelTraceEventParser.Keywords.Process)) MetadataBindingCount++;
+                        subscription.Request.Bind(callbacks, session);
+                    })).ToArray();
+            var keywords = subscriptions.Aggregate(KernelTraceEventParser.Keywords.None,
+                (value, subscription) => value | subscription.Request.Keywords);
+            if (!initialized)
+            {
+                dispatcher.InitializeSubscriptions(registrations, context);
+                initialized = true;
+            }
+            else dispatcher.UpdateSubscriptions(registrations, context, static _ => { });
+            BoundKeywords = keywords;
         }
 
         public KernelEtwSessionSnapshot GetSnapshot()
@@ -412,7 +439,7 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
                     running ? 73 : 0,
                     running ? DateTimeOffset.UnixEpoch : DateTimeOffset.MinValue,
                     running ? BoundKeywords : KernelTraceEventParser.Keywords.None,
-                    running ? 1 : 0,
+                    subscriptions.Count,
                     0);
             }
         }
@@ -452,6 +479,8 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
 
                 disposed = true;
                 running = false;
+                dispatcher.CancelAll();
+                subscriptions.Clear();
                 task = processing;
             }
 
@@ -460,16 +489,20 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
             source.Dispose();
         }
 
-        private void Release()
+        private void Release(long leaseId)
         {
+            bool stop;
             lock (sync)
             {
-                running = false;
+                subscriptions.RemoveAll(subscription => subscription.LeaseId == leaseId);
+                UpdateBindings();
+                stop = subscriptions.Count == 0;
+                if (stop) running = false;
             }
-            source.StopProcessing();
+            if (stop) source.StopProcessing();
         }
 
-        private sealed class ReplayLease(ReplayKernelEtwBroker owner) : IKernelEtwSubscription
+        private sealed class ReplayLease(ReplayKernelEtwBroker owner, long leaseId) : IKernelEtwSubscription
         {
             public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
 
@@ -479,7 +512,7 @@ public sealed class EtwCpuCoreResidencyEtlReplayTests
             {
                 if (Interlocked.Exchange(ref disposed, 1) == 0)
                 {
-                    owner.Release();
+                    owner.Release(leaseId);
                 }
             }
         }

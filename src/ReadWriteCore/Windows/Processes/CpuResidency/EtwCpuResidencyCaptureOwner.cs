@@ -16,7 +16,9 @@ internal sealed record CpuResidencyOwnerDiagnostics(string State, string Message
 /// No worker or global broker. EnsureStarted/Collect/Stop are explicit; borrowed broker is never disposed.</summary>
 public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
 {
-    private const KernelTraceEventParser.Keywords RequiredKeywords = KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread | KernelTraceEventParser.Keywords.ContextSwitch;
+    // Lifecycle callbacks maintain process/thread identities between windows, so the
+    // next context-switch boundary can be attributed without reseeding stale PIDs/TIDs.
+    private const KernelTraceEventParser.Keywords RequiredKeywords = KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread;
 
     private readonly IKernelEtwSessionBroker kernelEtwBroker;
     private readonly Func<CpuResidencyCaptureConfiguration> readConfiguration;
@@ -27,6 +29,9 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
     private readonly object subscriptionGate = new(), snapshotGate = new();
     public SamplingPublicationSignal Publications { get; } = new();
     private IKernelEtwSubscription? kernelSubscription;
+    private IKernelEtwSubscription? contextSwitchSubscription;
+    private long contextSwitchEpoch;
+    private bool acquiringContextSwitch;
     private ResidencySessionState? activeSession;
     private readonly HashSet<CpuResidencyAggregationBuffer> retiredBuffers = [];
     private long bindingEpoch;
@@ -99,7 +104,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
                 return false;
             }
 
-            var broker = (Volatile.Read(ref kernelSubscription)?.GetSnapshot() ?? kernelEtwBroker.GetSnapshot());
+            var broker = CaptureBrokerSnapshot();
             return broker.IsRunning
                 && broker.Generation == session.Generation
                 && broker.EventsLost == Volatile.Read(ref session.EventsLost);
@@ -109,6 +114,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
     /// <summary>Pauses execution-window intake without releasing the run's kernel resource or published value.</summary>
     public void SetCaptureEnabled(bool enabled, string idleMessage = "CPU residency capture is paused by its composition.")
     {
+        IKernelEtwSubscription? held = null;
         lock (subscriptionGate)
         {
             if (stopped) return;
@@ -117,9 +123,12 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
             if (paused)
             {
                 PauseWindowCore(idleMessage);
+                held = DetachContextSwitchCore();
             }
             else BeginWindowCore();
         }
+        held?.Dispose();
+        if (enabled) EnsureContextSwitchHeld();
     }
 
     public bool IsWindowActive
@@ -127,10 +136,68 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         get { lock (subscriptionGate) return !paused && activeSession is { WindowActive: true }; }
     }
 
-    /// <summary>Starts fresh finite boundary coverage on the held session; never acquires an ETW resource.</summary>
+    /// <summary>Starts fresh boundary coverage and holds context switches while the window needs them.</summary>
     public void BeginWindow()
     {
         lock (subscriptionGate) BeginWindowCore();
+        EnsureContextSwitchHeld();
+    }
+
+    private void EnsureContextSwitchHeld()
+    {
+        long epoch;
+        lock (subscriptionGate)
+        {
+            if (stopped || paused || kernelSubscription is null
+                || activeSession is not { WindowActive: true }
+                || contextSwitchSubscription is not null || acquiringContextSwitch) return;
+            acquiringContextSwitch = true;
+            epoch = ++contextSwitchEpoch;
+        }
+        IKernelEtwSubscription? created = null;
+        try
+        {
+            // Reconciliation may bind the metadata holder on another thread.
+            created = kernelEtwBroker.Subscribe(new("cpu-core-residency-window",
+                KernelTraceEventParser.Keywords.ContextSwitch, static (_, _) => { }));
+            lock (subscriptionGate)
+            {
+                if (contextSwitchEpoch == epoch && !stopped && !paused
+                    && activeSession is { WindowActive: true })
+                {
+                    contextSwitchSubscription = created;
+                    created = null;
+                }
+            }
+        }
+        catch (Exception error)
+        {
+            logger.LogWarning(error, "Failed to hold ETW CPU context-switch keywords.");
+        }
+        finally
+        {
+            lock (subscriptionGate)
+                if (contextSwitchEpoch == epoch) acquiringContextSwitch = false;
+            created?.Dispose();
+        }
+    }
+
+    private IKernelEtwSubscription? DetachContextSwitchCore()
+    {
+        ++contextSwitchEpoch;
+        acquiringContextSwitch = false;
+        var held = contextSwitchSubscription;
+        contextSwitchSubscription = null;
+        return held;
+    }
+
+    private KernelEtwSessionSnapshot CaptureBrokerSnapshot()
+    {
+        var switches = Volatile.Read(ref contextSwitchSubscription)?.GetSnapshot();
+        var metadata = Volatile.Read(ref kernelSubscription)?.GetSnapshot() ?? kernelEtwBroker.GetSnapshot();
+        if (!metadata.IsRunning || Volatile.Read(ref activeSession) is not { WindowActive: true } || Volatile.Read(ref paused)) return metadata;
+        return switches
+            ?? metadata with { State = "Unavailable", Message = "CPU residency context-switch keywords are unavailable." };
     }
 
     private void BeginWindowCore()
@@ -149,7 +216,13 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
     /// <summary>Stops finite CSwitch aggregation; process/thread metadata and the resource holder remain live.</summary>
     public void PauseWindow(string idleMessage = "CPU residency is waiting for its next finite observation window.")
     {
-        lock (subscriptionGate) PauseWindowCore(idleMessage);
+        IKernelEtwSubscription? held;
+        lock (subscriptionGate)
+        {
+            PauseWindowCore(idleMessage);
+            held = DetachContextSwitchCore();
+        }
+        held?.Dispose();
     }
 
     private void PauseWindowCore(string idleMessage)
@@ -252,6 +325,8 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
             expectedBindingEpoch,
             plan,
             CreateAggregationBuffer(plan, Stopwatch.Frequency, allocateBuckets));
+        session.EventSource = kernel;
+        session.ContextSwitchCounter = kernel.ConsumerCounter("ThreadCSwitch");
         var processorIds = plan.PhysicalCoreByLogicalProcessor.Keys.Order().ToArray();
         BindKernelEventCallbacks(
             kernel,
@@ -289,7 +364,15 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
     {
         lock (subscriptionGate)
         {
-            if (!IsCurrentSessionCore(session) || paused || !session.WindowActive || qpc < session.WindowStartQpc) return;
+            string? rejection = !IsCurrentSessionCore(session) ? "generation-mismatch"
+                : paused ? "frozen" : !session.WindowActive ? "outside-window"
+                : qpc < session.WindowStartQpc ? "before-window" : null;
+            if (rejection is not null)
+            {
+                session.ContextSwitchCounter?.Drop();
+                session.EventSource?.RecordConsumerRejection("ThreadCSwitch", rejection);
+                return;
+            }
             session.Buffer.ObserveContextSwitch(qpc, time, processor, oldPid, oldTid, newPid, name, newTid);
             session.Window.Observe(processor, qpc);
         }
@@ -389,10 +472,18 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         ArgumentNullException.ThrowIfNull(buffer);
         ArgumentNullException.ThrowIfNull(shouldObserve);
         ArgumentNullException.ThrowIfNull(readProcessStartKey);
+        var processStart = kernel.ConsumerCounter("ProcessStartGroup");
+        var processEnd = kernel.ConsumerCounter("ProcessEndGroup");
+        var threadStart = kernel.ConsumerCounter("ThreadStartGroup");
+        var threadEnd = kernel.ConsumerCounter("ThreadEndGroup");
+        var contextSwitch = kernel.ConsumerCounter("ThreadCSwitch");
         kernel.ProcessStartGroup += data =>
         {
+            processStart.Receive();
             if (!shouldObserve())
             {
+                processStart.Drop();
+                kernel.RecordConsumerRejection("ProcessStartGroup", "generation-mismatch");
                 return;
             }
 
@@ -406,8 +497,11 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         };
         kernel.ProcessEndGroup += data =>
         {
+            processEnd.Receive();
             if (!shouldObserve())
             {
+                processEnd.Drop();
+                kernel.RecordConsumerRejection("ProcessEndGroup", "generation-mismatch");
                 return;
             }
 
@@ -419,6 +513,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         };
         kernel.ThreadStartGroup += data =>
         {
+            threadStart.Receive();
             if (shouldObserve())
             {
                 buffer.ObserveThreadStart(
@@ -427,9 +522,15 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
                     data.ProcessID,
                     data.ThreadID);
             }
+            else
+            {
+                threadStart.Drop();
+                kernel.RecordConsumerRejection("ThreadStartGroup", "generation-mismatch");
+            }
         };
         kernel.ThreadEndGroup += data =>
         {
+            threadEnd.Receive();
             if (shouldObserve())
             {
                 buffer.ObserveThreadEnd(
@@ -438,11 +539,23 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
                     data.ProcessID,
                     data.ThreadID);
             }
+            else
+            {
+                threadEnd.Drop();
+                kernel.RecordConsumerRejection("ThreadEndGroup", "generation-mismatch");
+            }
         };
         kernel.ThreadCSwitch += data =>
         {
+            contextSwitch.Receive();
+            if (!shouldObserve())
+            {
+                contextSwitch.Drop();
+                kernel.RecordConsumerRejection("ThreadCSwitch", "generation-mismatch");
+                return;
+            }
             var processorId = resolveProcessorId is null ? data.ProcessorNumber : resolveProcessorId(data.ProcessorNumber);
-            if (shouldObserve() && processorId is { } logicalProcessorId)
+            if (processorId is { } logicalProcessorId)
             {
                 // A composition may serialize and gate finite CSwitch intake while keeping metadata live.
                 if (observeContextSwitch is not null)
@@ -462,6 +575,11 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
                     data.NewThreadID);
                 boundaryObserved?.Invoke(logicalProcessorId, data.TimeStampQPC);
             }
+            else
+            {
+                contextSwitch.Drop();
+                kernel.RecordConsumerRejection("ThreadCSwitch", "unmapped-processor");
+            }
         };
 
     }
@@ -475,7 +593,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
 
     private void RefreshBrokerState(ResidencySessionState? expectedSession = null)
     {
-        var broker = (Volatile.Read(ref kernelSubscription)?.GetSnapshot() ?? kernelEtwBroker.GetSnapshot());
+        var broker = CaptureBrokerSnapshot();
         var session = Volatile.Read(ref activeSession);
         if (session is not null) RefreshEventLoss(session, broker);
         if (session is not null
@@ -524,7 +642,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         try
         {
             var now = DateTimeOffset.UtcNow;
-            var brokerBefore = (Volatile.Read(ref kernelSubscription)?.GetSnapshot() ?? kernelEtwBroker.GetSnapshot());
+            var brokerBefore = CaptureBrokerSnapshot();
             if (observedSession is not null) RefreshEventLoss(observedSession, brokerBefore);
             CpuCoreResidencySnapshot? snapshot;
             string nextState;
@@ -546,7 +664,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
                     ?? throw new InvalidOperationException("The running ETW session state is missing.");
                 var aggregate = currentSession.Buffer.Snapshot(
                     currentSession.Plan.PhysicalCoreByLogicalProcessor.Keys);
-                var brokerAfter = (Volatile.Read(ref kernelSubscription)?.GetSnapshot() ?? kernelEtwBroker.GetSnapshot());
+                var brokerAfter = CaptureBrokerSnapshot();
                 if (!brokerAfter.IsRunning
                     || brokerAfter.Generation != currentSession.Generation
                     || brokerAfter.EventsLost != brokerBefore.EventsLost
@@ -666,7 +784,7 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
 
                 if (expectedSession is not null)
                 {
-                    var broker = (Volatile.Read(ref kernelSubscription)?.GetSnapshot() ?? kernelEtwBroker.GetSnapshot());
+                    var broker = CaptureBrokerSnapshot();
                     if (!broker.IsRunning
                         || broker.Generation != expectedSession.Generation
                         || broker.EventsLost != expectedEventsLost
@@ -1108,17 +1226,19 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
     public void Stop(string idleMessage = "ETW CPU attribution stopped after its demand was withdrawn.")
     {
         IKernelEtwSubscription? subscriptionToRelease = null;
+        IKernelEtwSubscription? windowToRelease;
         ResidencySessionState? sessionToClear = null;
         lock (subscriptionGate)
         {
             if (stopped) { ClearRetiredBuffersCore(); return; }
 
+            windowToRelease = DetachContextSwitchCore();
             (subscriptionToRelease, sessionToClear) = DetachSessionCore();
             state = "Idle";
             message = idleMessage;
         }
 
-        try { subscriptionToRelease?.Dispose(); }
+        try { try { windowToRelease?.Dispose(); } finally { subscriptionToRelease?.Dispose(); } }
         finally { ClearRetiredBuffers(); }
     }
 
@@ -1265,6 +1385,8 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
         public long BindingEpoch { get; } = bindingEpoch;
         public CpuResidencyCaptureConfiguration Plan { get; } = plan;
         public CpuResidencyAggregationBuffer Buffer { get; } = buffer;
+        public KernelEtwEventSource? EventSource;
+        public EtwEventDropCounter? ContextSwitchCounter;
         public CpuResidencyWindowCompletion Window { get; set; } = new(plan.PhysicalCoreByLogicalProcessor.Keys,
             checked(Stopwatch.Frequency * (long)plan.ObservationWindowMilliseconds / 1000));
         public CpuResidencyWindowCompletion CreateWindow() => new(Plan.PhysicalCoreByLogicalProcessor.Keys,
@@ -1310,12 +1432,13 @@ public sealed partial class EtwCpuResidencyCaptureOwner : IDisposable
     public void Dispose()
     {
         IKernelEtwSubscription? lease; ResidencySessionState? session;
+        IKernelEtwSubscription? window;
         lock (subscriptionGate)
         {
             if (stopped) { ClearRetiredBuffersCore(); return; }
-            stopped = true; DisposeDiagnosticRequests(); (lease, session) = DetachSessionCore(); state = "Stopped";
+            stopped = true; DisposeDiagnosticRequests(); window = DetachContextSwitchCore(); (lease, session) = DetachSessionCore(); state = "Stopped";
         }
-        try { lease?.Dispose(); } finally { ClearRetiredBuffers(); }
+        try { try { window?.Dispose(); } finally { lease?.Dispose(); } } finally { ClearRetiredBuffers(); }
     }
 }
 #pragma warning restore CS0618

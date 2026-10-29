@@ -13,6 +13,9 @@ public sealed partial class EtwNetworkTcpIpAttributionReader : BackgroundService
 {
     private readonly EtwNetworkTcpIpMonitoringZone sourceZone;
     private readonly EtwNetworkTcpIpCaptureOwner owner;
+    private readonly object captureLifetimeGate = new();
+    private bool runActive;
+    private bool disposed;
     internal const int MaximumRetainedEvents = EtwNetworkTcpIpCaptureOwner.MaximumRetainedEvents;
     public EtwNetworkTcpIpAttributionReader(EtwNetworkTcpIpMonitoringZone sourceZone,
         IKernelEtwSessionBroker broker, ILogger<EtwNetworkTcpIpAttributionReader> logger)
@@ -63,16 +66,49 @@ public sealed partial class EtwNetworkTcpIpAttributionReader : BackgroundService
         try
         {
             stoppingToken.ThrowIfCancellationRequested();
-            owner.Start();
+            lock (captureLifetimeGate)
+            {
+                if (disposed) return;
+                runActive = true;
+                sourceZone.ModeChanged += SynchronizeCapture;
+                SynchronizeCapture();
+            }
             await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
-        finally { owner.Stop("ETW 网络事件归因正在随程序停止。"); }
+        finally
+        {
+            lock (captureLifetimeGate)
+            {
+                runActive = false;
+                sourceZone.ModeChanged -= SynchronizeCapture;
+                owner.Stop("ETW 网络事件归因正在随程序停止。");
+            }
+        }
+    }
+
+    private void SynchronizeCapture()
+    {
+        lock (captureLifetimeGate)
+        {
+            if (!runActive) return;
+            if (sourceZone.CanRead) owner.Start();
+            else owner.Stop("ETW 网络事件归因当前处于功能区冻结。");
+        }
     }
 
     public override void Dispose()
     {
-        try { owner.Dispose("ETW 网络事件归因正在随程序停止。"); }
+        try
+        {
+            lock (captureLifetimeGate)
+            {
+                disposed = true;
+                runActive = false;
+                sourceZone.ModeChanged -= SynchronizeCapture;
+                owner.Dispose("ETW 网络事件归因正在随程序停止。");
+            }
+        }
         finally { base.Dispose(); }
     }
 

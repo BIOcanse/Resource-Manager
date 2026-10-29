@@ -67,7 +67,7 @@
                     "value_source": "registry",
                     "value": {
                       "kind": "kernel_etw_context_switch_qpc_closed_intervals_v1",
-                      "maximum_active_pairs": 16384,
+                      "maximum_active_pairs": 65536,
                         "bucket_width_ms": 50
                     },
                     "consumers": [

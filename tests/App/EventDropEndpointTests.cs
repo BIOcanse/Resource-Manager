@@ -81,6 +81,31 @@ public sealed class EventDropEndpointTests
     }
 
     [Fact]
+    public void OnlyConfirmedNativeReleaseClearsProvidersAndPreservesTheRecordedKinds()
+    {
+        var provider = Guid.NewGuid();
+        var run = EtwEventDropDiagnostics.Start("event-drop-native-release-" + Guid.NewGuid(), () => 5);
+        run.EnableProvider(provider.ToString("D"), 0x10);
+        var kind = run.Kind(provider, 42, 1);
+        kind.Receive();
+        kind.Drop();
+
+        // A detached counter/loss reader does not prove that native cleanup
+        // succeeded. Keep ownership visible when no release receipt is supplied.
+        run.Complete();
+        Assert.Single(run.Read().EnabledProviders);
+        run.ConfirmNativeRelease();
+        var released = run.Read();
+        Assert.Empty(released.EnabledProviders);
+        Assert.Equal(5, released.EventsLost);
+        var retained = Assert.Single(released.Kinds);
+        Assert.Equal((1L, 1L), (retained.Received, retained.Dropped));
+        run.ConfirmNativeRelease();
+        Assert.Empty(run.Read().EnabledProviders);
+        Assert.Single(run.Read().Kinds);
+    }
+
+    [Fact]
     public void FailedLossQueriesPreserveTheLastCountAndCannotPreventCleanup()
     {
         var fail = false;

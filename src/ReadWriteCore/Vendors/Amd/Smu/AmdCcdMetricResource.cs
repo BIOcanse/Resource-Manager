@@ -123,6 +123,16 @@ public sealed class AmdCcdMetricResource : IDisposable
         owned?.Dispose();
     }
 
+    /// <summary>Releases hardware access while preserving the current discovered identities.</summary>
+    public void ReleaseSession()
+    {
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            reader?.ReleaseSession();
+        }
+    }
+
     public void Dispose()
     {
         lock (gate)

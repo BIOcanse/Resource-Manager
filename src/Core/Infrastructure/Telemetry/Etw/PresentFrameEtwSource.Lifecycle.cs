@@ -41,6 +41,12 @@ public sealed partial class PresentFrameEtwSource
                 using var measurement = diagnostics.MeasureSegment(BlockUids.PresentFrameEtwSource);
                 ObjectDisposedException.ThrowIf(disposed, this);
                 stopNotification.ThrowIfCancellationRequested();
+                if (!HasActiveSubscriptions)
+                {
+                    context.ReportRunning();
+                    run.Started.TrySetResult();
+                    return;
+                }
                 var name = ResourceManagerEtwSessionNames.Create(
                     ResourceManagerEtwSessionNames.PresentFramesPrefix, ResourceManagerEtwSessionNames.CurrentOwner);
                 var current = createSession(name);
@@ -48,7 +54,6 @@ public sealed partial class PresentFrameEtwSource
                 lock (gate)
                 {
                     observedEventsLost = 0;
-                    foreach (var subscription in graphicsApiSubscriptions) subscription.Api = null;
                 }
                 current.BindUsage(data =>
                 {
@@ -224,10 +229,12 @@ public sealed partial class PresentFrameEtwSource
         internal ITimer? FlushTimer;
         internal Task? Processing;
         internal Thread? ConsumerThread;
+        internal Dictionary<Guid, ProviderSelection> Providers { get; } = [];
     }
 
-    private sealed class FrameSubscription(PresentFrameEtwSource source) : IDisposable
+    private sealed class FrameSubscription(PresentFrameEtwSource source, long id) : IDisposable
     {
+        internal string Id { get; } = $"present-frame:{id}";
         private PresentFrameEtwSource? owner = source;
         public void Dispose() => Interlocked.Exchange(ref owner, null)?.Release(this);
     }

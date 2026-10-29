@@ -49,11 +49,12 @@ public sealed class ThreadCpuDiagnosticsTests
             Assert.Equal(process.Id, result.Process.ProcessId);
             Assert.Equal(NamedThread.Description, Assert.Single(result.Process.Threads).Diagnostic!.Description);
             Assert.Equal(0, Owner(reader).DiagnosticRequestCount);
-            Assert.Equal(1, broker.Acquires);
-            Assert.Equal(0, broker.Releases);
+            await Until(() => !Owner(reader).IsWindowActive);
+            Assert.Equal(3, broker.Acquires);
+            Assert.Equal(2, broker.Releases);
         }
         finally { await reader.StopAsync(default); }
-        Assert.Equal(1, broker.Releases);
+        Assert.Equal(3, broker.Releases);
     }
 
     [Theory]
@@ -110,13 +111,14 @@ public sealed class ThreadCpuDiagnosticsTests
             Assert.True(counters.ReadThrough >= counters.ReadFrom);
             Assert.False(target.IsAlive);
             await Until(() => Owner(reader).DiagnosticRequestCount == 0);
-            Assert.Equal(1, broker.Acquires);
-            Assert.Equal(0, broker.Releases);
+            if (initiallyPaused) await Until(() => !Owner(reader).IsWindowActive);
+            Assert.Equal(initiallyPaused ? 3 : 2, broker.Acquires);
+            Assert.Equal(initiallyPaused ? 2 : 0, broker.Releases);
             var evidence = Environment.GetEnvironmentVariable("RM_THREAD_CPU_EXAMPLE_PATH");
             if (!string.IsNullOrWhiteSpace(evidence)) await File.WriteAllTextAsync(evidence, json);
         }
         finally { await reader.StopAsync(default); }
-        Assert.Equal(1, broker.Releases);
+        Assert.Equal(initiallyPaused ? 3 : 2, broker.Releases);
     }
 
     [Fact]
@@ -156,11 +158,12 @@ public sealed class ThreadCpuDiagnosticsTests
             Assert.True(wait.GetProperty("hasSessionLease").GetBoolean());
             Assert.Equal("Running", wait.GetProperty("residency").GetProperty("state").GetString());
             Assert.Equal(0, Owner(reader).DiagnosticRequestCount);
-            Assert.Equal(1, broker.Acquires);
-            Assert.Equal(0, broker.Releases);
+            await Until(() => !Owner(reader).IsWindowActive);
+            Assert.Equal(3, broker.Acquires);
+            Assert.Equal(2, broker.Releases);
         }
         finally { await reader.StopAsync(default); }
-        Assert.Equal(1, broker.Releases);
+        Assert.Equal(3, broker.Releases);
     }
 
     private static WebApplication BuildDebugApp(EtwCpuCoreResidencyReader reader)
@@ -303,6 +306,8 @@ public sealed class ThreadCpuDiagnosticsTests
         {
             var owner = Owner(reader);
             if (owner is null || !owner.IsWindowActive) return false;
+            if (typeof(EtwCpuResidencyCaptureOwner).GetField("contextSwitchSubscription",
+                BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner) is null) return false;
             var session = typeof(EtwCpuResidencyCaptureOwner)
                 .GetField("activeSession", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner)!;
             window = session.GetType().GetProperty("Window")!.GetValue(session)!;
@@ -352,25 +357,42 @@ public sealed class ThreadCpuDiagnosticsTests
     {
         public bool Running = true;
         public int Acquires, Releases;
+        private readonly object gate = new();
+        private readonly List<Lease> leases = [];
+        private KernelEtwEventSource? metadataSource;
         public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
         {
             if (!Running) throw new ObjectDisposedException(nameof(Broker));
-            Acquires++;
-            var source = new KernelEtwEventSource();
+            var metadata = request.Keywords.HasFlag(KernelTraceEventParser.Keywords.Process);
+            var source = metadata ? new KernelEtwEventSource() : metadataSource!;
+            var lease = new Lease(this, metadata ? source : null, request.Keywords);
+            lock (gate)
+            {
+                leases.Add(lease);
+                if (metadata) metadataSource = source;
+            }
+            Interlocked.Increment(ref Acquires);
             request.Bind(source, new(7, DateTimeOffset.UtcNow));
-            source.Activate();
-            return new Lease(this, source);
+            if (metadata) source.Activate();
+            return lease;
         }
-        public KernelEtwSessionSnapshot GetSnapshot() => new(Running ? "Running" : "Stopped", "recorded", 7,
-            DateTimeOffset.UtcNow, KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread | KernelTraceEventParser.Keywords.ContextSwitch, 1, 0);
-        private sealed class Lease(Broker owner, KernelEtwEventSource source) : IKernelEtwSubscription
+        public KernelEtwSessionSnapshot GetSnapshot()
         {
+            lock (gate) return new(Running ? "Running" : "Stopped", "recorded", 7,
+                DateTimeOffset.UtcNow, leases.Aggregate(KernelTraceEventParser.Keywords.None,
+                    (keywords, lease) => keywords | lease.Keywords), leases.Count, 0);
+        }
+        private sealed class Lease(Broker owner, KernelEtwEventSource? source,
+            KernelTraceEventParser.Keywords keywords) : IKernelEtwSubscription
+        {
+            internal KernelTraceEventParser.Keywords Keywords { get; } = keywords;
             public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
             private int disposed;
             public void Dispose()
             {
                 if (Interlocked.Exchange(ref disposed, 1) != 0) return;
-                source.Cancel();
+                lock (owner.gate) owner.leases.Remove(this);
+                source?.Cancel();
                 Interlocked.Increment(ref owner.Releases);
             }
         }

@@ -10,7 +10,7 @@ namespace Resource_Manager_APP.Tests;
 public sealed class EtwCpuCoreResidencySubscriptionTests
 {
     private const KernelTraceEventParser.Keywords HeldKeywords = KernelTraceEventParser.Keywords.Process
-        | KernelTraceEventParser.Keywords.Thread | KernelTraceEventParser.Keywords.ContextSwitch;
+        | KernelTraceEventParser.Keywords.Thread;
 
     [Fact]
     public async Task SameReaderCanRestartAndBindFreshSubscriptionAfterStop()
@@ -24,7 +24,7 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
         // Finish this fixture's initial boundaries during each run-entry bind,
         // before the fast worker can legitimately publish a warming value.
         broker.BeforeLeaseReturn = () => previousWindowEnd = FeedCpuWindow(
-            reader, sampling, broker.SubscribeCount * 100, previousWindowEnd);
+            reader, sampling, broker.MetadataSubscribeCount * 100, previousWindowEnd);
         ResourceManager.App.Domain.CpuTopology.CpuCoreResidencySnapshot firstValue;
         await using (var firstRun = reader.SubscribeAsync("first-run", TimeSpan.FromMilliseconds(100), timeout.Token)
             .GetAsyncEnumerator(timeout.Token))
@@ -39,14 +39,14 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
             Assert.Contains(firstValue.Processes, process => process.ProcessId == 100);
             await reader.StopAsync(default);
         }
-        Assert.Equal(1, broker.DisposeCount);
+        Assert.Equal(2, broker.DisposeCount);
         await reader.StartAsync(default);
         try
         {
             await using var secondRun = reader.SubscribeAsync("second-run", TimeSpan.FromMilliseconds(100), timeout.Token)
                 .GetAsyncEnumerator(timeout.Token);
             var next = secondRun.MoveNextAsync().AsTask();
-            await WaitUntilAsync(() => broker.SubscribeCount == 2 && reader.GetDiagnostics().SessionGeneration == 37);
+            await WaitUntilAsync(() => broker.SubscribeCount == 4 && reader.GetDiagnostics().SessionGeneration == 37);
             Assert.Equal(37, reader.GetDiagnostics().SessionGeneration);
             await WaitUntilAsync(() => IsWindowActive(reader));
             Assert.True(await next.WaitAsync(TimeSpan.FromSeconds(5)));
@@ -57,7 +57,7 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
             Assert.Same(secondValue, reader.Read());
         }
         finally { await reader.StopAsync(default); }
-        Assert.Equal(2, broker.DisposeCount);
+        Assert.Equal(4, broker.DisposeCount);
     }
 
     private static bool IsWindowActive(EtwCpuCoreResidencyReader reader)
@@ -151,7 +151,7 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
             await recovered.Task.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.Equal(2, Volatile.Read(ref count));
             Assert.Equal(0, Volatile.Read(ref overlap));
-            Assert.Equal(1, broker.SubscribeCount);
+            Assert.Equal(2, broker.SubscribeCount);
             Assert.Equal(1, reader.GetDiagnostics().Aggregation!.Value.CurrentProcessCount);
         }
         finally
@@ -193,7 +193,7 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
             Assert.True(reader.GetDiagnostics().Aggregation!.Value.ContinuityEpoch > before);
             await Task.Delay(250);
             Assert.Equal(2, Volatile.Read(ref seedCount));
-            Assert.Equal(1, broker.SubscribeCount);
+            Assert.Equal(2, broker.SubscribeCount);
             Assert.Null(reader.Read()); // No context switches were supplied by this fixture.
         }
         finally { await reader.StopAsync(CancellationToken.None); }
@@ -248,7 +248,7 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
         {
             await reader.StopAsync(CancellationToken.None);
         }
-        Assert.Equal(1, broker.DisposeCount);
+        Assert.Equal(broker.SubscribeCount, broker.DisposeCount);
     }
 
     [Theory]
@@ -281,6 +281,9 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
                 + $"worker={reader.ExecuteTask?.Status}, workerError={reader.ExecuteTask?.Exception}.");
             if (dispose) stopping = Task.Run(reader.Dispose);
             else stopping = reader.StopAsync(CancellationToken.None);
+            // Task.Run disposal must actually enter BeginStop before the pending bind is released.
+            await WaitUntilAsync(() => (bool)typeof(EtwCpuCoreResidencyReader)
+                .GetField("stopped", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(reader)!);
             Assert.False(stopping.IsCompleted);
             Assert.Equal(0, broker.DisposeCount);
         }
@@ -474,15 +477,17 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
         public TaskCompletionSource<bool> BindingCompleted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Task? LastBinding { get; private set; }
         public Action? BeforeLeaseReturn { get; set; }
-        private KernelTraceEventParser.Keywords requestedKeywords;
-        public KernelTraceEventParser.Keywords Keywords => SubscribeCount > DisposeCount
-            ? requestedKeywords : KernelTraceEventParser.Keywords.None;
+        private readonly object holdsGate = new();
+        private readonly Dictionary<KernelEtwEventSource, KernelTraceEventParser.Keywords> holds = [];
+        public int MetadataSubscribeCount { get; private set; }
+        public KernelTraceEventParser.Keywords Keywords { get { lock (holdsGate) return holds.Values.Aggregate(KernelTraceEventParser.Keywords.None, (all, value) => all | value); } }
 
         public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
         {
             Interlocked.Increment(ref subscribeCount);
-            requestedKeywords = request.Keywords;
             var source = new KernelEtwEventSource();
+            lock (holdsGate) holds.Add(source, request.Keywords);
+            if (request.Keywords.HasFlag(KernelTraceEventParser.Keywords.Process)) MetadataSubscribeCount++;
             var subscriberThread = Environment.CurrentManagedThreadId;
             var binding = LastBinding = Task.Factory.StartNew(() =>
             {
@@ -496,7 +501,7 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
                 throw new TimeoutException("The reader held its lock across broker subscription.");
             }
             source.Activate();
-            BeforeLeaseReturn?.Invoke();
+            if (request.Keywords.HasFlag(KernelTraceEventParser.Keywords.Process)) BeforeLeaseReturn?.Invoke();
             BindingCompleted.TrySetResult(true);
             return new Lease(this, source);
         }
@@ -514,6 +519,7 @@ public sealed class EtwCpuCoreResidencySubscriptionTests
             {
                 if (Interlocked.Exchange(ref released, 1) != 0) return;
                 source.Cancel();
+                lock (owner.holdsGate) owner.holds.Remove(source);
                 Interlocked.Increment(ref owner.disposed);
             }
         }

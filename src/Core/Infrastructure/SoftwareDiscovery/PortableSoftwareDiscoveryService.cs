@@ -76,6 +76,7 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
     public Task StartAsync(CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed) != 0, this);
+        cancellationToken.ThrowIfCancellationRequested();
         if (workerTask is { IsCompleted: false })
             throw new InvalidOperationException("The preceding portable discovery run has not drained.");
         workerCts?.Dispose();
@@ -87,15 +88,31 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
             processSubscription = kernelEtwSessionBroker.Subscribe(new KernelEtwSubscriptionRequest(
                 "portable-software-discovery",
                 KernelTraceEventParser.Keywords.Process,
-                (kernel, _) => kernel.ProcessStartGroup += data =>
+                (kernel, _) =>
                 {
-                    if (!kernel.IsActive || workerToken.IsCancellationRequested || data.ProcessID <= 4) return;
-                    runStarts.Writer.TryWrite(new PortableProcessCandidate(
-                        data.ProcessID,
-                        data.ParentID > 0 ? data.ParentID : null,
-                        data.ProcessName,
-                        SelectEventPath(data.ImageFileName, data.KernelImageFileName),
-                        StartedNoLaterThan: data.TimeStamp.ToFileTimeUtc()));
+                    var counter = kernel.ConsumerCounter("process-start");
+                    kernel.ProcessStartGroup += data =>
+                    {
+                        counter.Receive();
+                        var rejection = !kernel.IsActive || workerToken.IsCancellationRequested ? "stopped"
+                            : data.ProcessID <= 4 ? "system-process" : null;
+                        if (rejection is not null)
+                        {
+                            counter.Drop();
+                            kernel.RecordConsumerRejection("process-start", rejection);
+                            return;
+                        }
+                        if (!runStarts.Writer.TryWrite(new PortableProcessCandidate(
+                            data.ProcessID,
+                            data.ParentID > 0 ? data.ParentID : null,
+                            data.ProcessName,
+                            SelectEventPath(data.ImageFileName, data.KernelImageFileName),
+                            StartedNoLaterThan: data.TimeStamp.ToFileTimeUtc())))
+                        {
+                            counter.Drop();
+                            kernel.RecordConsumerRejection("process-start", "closed-queue");
+                        }
+                    };
                 }));
             inventorySnapshot = kernelEtwSessionBroker.GetSnapshot();
             EnqueueCurrentProcesses(runStarts);
@@ -122,7 +139,9 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
         }
         finally
         {
-            if (workerTask is { } task)
+            // A cleared CTS means this run was already joined. Keep its task
+            // for diagnostics without replaying a reported cleanup failure.
+            if (cts is not null && workerTask is { } task)
             {
                 try { await task.WaitAsync(cancellationToken); }
                 catch (OperationCanceledException) when (task.IsCompleted) { }
@@ -202,6 +221,12 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
         {
             blockDiagnostics?.ReportFailure(BlockUids.PortableSoftwareDiscoveryService, ex, "portable-discovery-loop");
             logger.LogError(ex, "Portable software process discovery worker stopped unexpectedly; discovery is unavailable for this service lifetime.");
+        }
+        finally
+        {
+            // Process events are used only while this worker can consume them.
+            // A failed or cancelled run releases its own hold even before StopAsync.
+            Interlocked.Exchange(ref processSubscription, null)?.Dispose();
         }
     }
 

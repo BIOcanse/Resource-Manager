@@ -126,6 +126,16 @@ public sealed class AmdSmuCpuSensorReader : IDisposable
         }
     }
 
+    /// <summary>Releases this reader's native session without retiring the reader or its failure cache.</summary>
+    public void ReleaseSession()
+    {
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            ResetSession();
+        }
+    }
+
     public void Dispose()
     {
         lock (gate)

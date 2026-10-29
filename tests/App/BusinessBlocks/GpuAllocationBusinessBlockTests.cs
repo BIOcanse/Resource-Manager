@@ -1,4 +1,3 @@
-using System.Diagnostics.Tracing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
@@ -31,19 +30,18 @@ public sealed class GpuAllocationBusinessBlockTests
 
         await harness.SetInUseAsync(true);
         await harness.WaitRunningAsync();
-        Assert.Equal(1, factory.Attempts);
-        Assert.Equal(0, factory.Current.Captures);
-        Assert.Contains(BoundaryProvider(), factory.Current.Enabled);
-        Assert.DoesNotContain(GpuAllocationCollector.Provider, factory.Current.Enabled);
+        Assert.Equal(0, factory.Attempts);
+        Assert.Empty(factory.Sessions);
         await harness.SetInUseAsync(true);
         await harness.WaitRunningAsync();
-        Assert.Equal(1, factory.Attempts);
+        Assert.Equal(0, factory.Attempts);
 
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(30), default);
         Assert.Equal(1, factory.Current.Captures);
         var published = collector.ReadCurrent(GpuAllocationTestSession.Processes);
         Assert.NotNull(published);
-        Assert.Equal(0, factory.Current.Stops);
+        Assert.Equal(1, factory.Current.Stops);
+        Assert.True(factory.Current.Joined);
         Assert.Same(published, collector.ReadCurrent(GpuAllocationTestSession.Processes));
         await harness.StopAsync();
         Assert.Equal(1, factory.Current.Stops);
@@ -63,7 +61,7 @@ public sealed class GpuAllocationBusinessBlockTests
         var collector = harness.Collector;
         await harness.SetInUseAsync(true);
         await harness.WaitRunningAsync();
-        await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(30), default);
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(1), default);
         var published = collector.ReadCurrent(GpuAllocationTestSession.Processes);
         var old = factory.Current;
         old.End(fail ? new IOException("injected GPU consumer failure") : null);
@@ -71,7 +69,8 @@ public sealed class GpuAllocationBusinessBlockTests
         Assert.Equal(fail ? BusinessBlockOutcome.Failed : BusinessBlockOutcome.Done, result.Outcome);
         Assert.Equal(1, old.Stops);
         Assert.Same(published, collector.ReadCurrent(GpuAllocationTestSession.Processes));
-        await EtwTestRunRecorder.UntilAsync(() => factory.Attempts == 2);
+        await harness.WaitRestartedAsync();
+        Assert.Equal(1, factory.Attempts);
         await harness.WaitRunningAsync();
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(30), default);
         Assert.NotNull(collector.ReadCurrent(GpuAllocationTestSession.Processes));
@@ -106,7 +105,7 @@ public sealed class GpuAllocationBusinessBlockTests
         var collector = harness.Collector;
         await harness.SetInUseAsync(true);
         await harness.WaitRunningAsync();
-        await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(30), default);
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(1), default);
         Assert.NotNull(collector.ReadCurrent(GpuAllocationTestSession.Processes));
         var old = factory.Current;
         old.FailDisable = disableFailure;
@@ -117,12 +116,12 @@ public sealed class GpuAllocationBusinessBlockTests
         Assert.Equal(BusinessBlockFailureStage.Run, result.FailureStage);
         Assert.Null(collector.ReadCurrent(GpuAllocationTestSession.Processes));
         Assert.Equal(1, old.Stops);
-        await EtwTestRunRecorder.UntilAsync(() => factory.Attempts == 2);
+        await harness.WaitRestartedAsync();
+        Assert.Equal(1, factory.Attempts);
         await harness.WaitRunningAsync();
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(30), default);
         Assert.NotNull(collector.ReadCurrent(GpuAllocationTestSession.Processes));
         await harness.StopAsync();
     }
 
-    private static Guid BoundaryProvider() => EventSource.GetGuid(typeof(GpuAllocationBoundary));
 }

@@ -49,7 +49,7 @@ public sealed class HostManagerFreedomPointPlanTests
         Assert.Equal(
             CpuExecutionTimeSourceKinds.KernelEtwContextSwitchClosedIntervals,
             plan.CpuCoreResidency.ExecutionTimeSource.Kind);
-        Assert.Equal(16384, plan.CpuCoreResidency.ExecutionTimeSource.MaximumActivePairs);
+        Assert.Equal(65536, plan.CpuCoreResidency.ExecutionTimeSource.MaximumActivePairs);
         Assert.Equal(50, plan.CpuCoreResidency.ExecutionTimeSource.BucketWidthMilliseconds);
         Assert.Equal(CpuSmtAccounting.FixedLogicalProcessorShare, plan.CpuCoreResidency.SmtAccounting);
         foreach (var address in new[]

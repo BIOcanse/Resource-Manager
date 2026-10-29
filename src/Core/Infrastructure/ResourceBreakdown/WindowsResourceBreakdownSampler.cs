@@ -582,6 +582,9 @@ public sealed partial class WindowsResourceBreakdownSampler(
             await worker.RunAsync((plan, token) => CollectAndPublishAsync(ownerToken, plan, token),
                 cancellationToken, planCreated: plan =>
                 {
+                    gpuAllocations?.SynchronizeCaptureInterval(plan.SourceViews
+                        .Where(static source => NeedsGpuAllocations(source.Request))
+                        .Select(static source => (TimeSpan?)source.Interval).Min(), cancellationToken);
                     var hardwareRequest = MetricSampleRequest.Merge(plan.SourceViews.Select(static source => CreateHardwareRequest(source.Request)));
                     var hardwareInterval = plan.SourceViews.Count == 0 ? plan.Schedule.DefaultInterval
                         : plan.SourceViews.Min(static source => source.Interval);
@@ -630,8 +633,12 @@ public sealed partial class WindowsResourceBreakdownSampler(
             pendingFieldCollectionResult = null;
             fieldSubscriptionDelivery.DiscardRunRounds();
             snapshotSubscriptionDelivery.DiscardRunRounds();
-            try { hardwareSubscription?.Dispose(); }
-            finally { await processFieldOwner.ReleaseProcessInventoryBufferAsync(CancellationToken.None); }
+            try { gpuAllocations?.SynchronizeCaptureInterval(null); }
+            finally
+            {
+                try { hardwareSubscription?.Dispose(); }
+                finally { await processFieldOwner.ReleaseProcessInventoryBufferAsync(CancellationToken.None); }
+            }
         }
     }
 

@@ -6991,11 +6991,13 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         }
 
         internal bool PolicyExecutionEnabled { get; set; }
+        internal bool HardwarePlacementEnabled { get; set; } = true;
 
         public bool CanRun(string zoneId)
-            => PolicyExecutionEnabled || !zoneId.Equals(
-                HostManagerSmartControlZoneIds.PolicyExecution,
-                StringComparison.Ordinal);
+            => zoneId.Equals(HostManagerSmartControlZoneIds.HardwarePlacement, StringComparison.Ordinal)
+                ? HardwarePlacementEnabled
+                : PolicyExecutionEnabled || !zoneId.Equals(
+                    HostManagerSmartControlZoneIds.PolicyExecution, StringComparison.Ordinal);
         public bool IsLowPower(string zoneId) => false;
         public bool HasAnyLowPowerZone() => false;
         public ResourceManagerComputeZoneMode GetMode(string zoneId)

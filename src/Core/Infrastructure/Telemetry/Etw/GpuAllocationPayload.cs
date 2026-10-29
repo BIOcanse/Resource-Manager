@@ -16,12 +16,14 @@ internal enum GpuAllocationField
 internal interface IGpuAllocationPayload
 {
     object Get(GpuAllocationField field);
+    EtwEventDropCounter? DropCounter => null;
 }
 
-internal readonly struct GpuAllocationNamedPayload(Func<string, object> read) : IGpuAllocationPayload
+internal readonly struct GpuAllocationNamedPayload(Func<string, object> read, EtwEventDropCounter? dropCounter = null) : IGpuAllocationPayload
 {
     internal static readonly string[] Names = Enum.GetNames<GpuAllocationField>();
     public object Get(GpuAllocationField field) => read(Names[(int)field]);
+    public EtwEventDropCounter? DropCounter => dropCounter;
 }
 
 // One reader per serialized ETW consumer; reused for every callback. The cache
@@ -31,9 +33,11 @@ internal sealed class GpuAllocationIndexedPayload : IGpuAllocationPayload
     private readonly Dictionary<(Guid Provider, int Id, int Version), int[]> layouts = [];
     private TraceEvent current = null!;
     private int[] indices = null!;
+    public EtwEventDropCounter? DropCounter { get; private set; }
 
-    internal void SetEvent(TraceEvent data)
+    internal void SetEvent(TraceEvent data, EtwEventDropCounter? dropCounter = null)
     {
+        DropCounter = dropCounter;
         current = data;
         var key = (data.ProviderGuid, (int)data.ID, (int)data.Version);
         if (!layouts.TryGetValue(key, out var layout))

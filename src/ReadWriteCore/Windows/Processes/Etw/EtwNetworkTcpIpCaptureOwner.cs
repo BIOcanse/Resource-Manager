@@ -195,14 +195,15 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
         }
         state = NetworkAttributionProviderStates.Running;
         message = "ETW 网络事件归因正在采集进程收发事件。";
-        kernel.TcpIpSend += data => ObserveBoundNetworkTransfer(kernel, context, destination, data.ProcessID, data.size, true, false, data.daddr, readTickMilliseconds(), ToEventFileTime(data.TimeStamp));
-        kernel.TcpIpSendIPV6 += data => ObserveBoundNetworkTransfer(kernel, context, destination, data.ProcessID, data.size, true, false, data.daddr, readTickMilliseconds(), ToEventFileTime(data.TimeStamp));
-        kernel.TcpIpRecv += data => ObserveBoundNetworkTransfer(kernel, context, destination, data.ProcessID, data.size, false, false, data.saddr, readTickMilliseconds(), ToEventFileTime(data.TimeStamp));
-        kernel.TcpIpRecvIPV6 += data => ObserveBoundNetworkTransfer(kernel, context, destination, data.ProcessID, data.size, false, false, data.saddr, readTickMilliseconds(), ToEventFileTime(data.TimeStamp));
-        kernel.UdpIpSend += data => ObserveBoundNetworkTransfer(kernel, context, destination, data.ProcessID, data.size, true, true, data.daddr, readTickMilliseconds(), ToEventFileTime(data.TimeStamp));
-        kernel.UdpIpSendIPV6 += data => ObserveBoundNetworkTransfer(kernel, context, destination, data.ProcessID, data.size, true, true, data.daddr, readTickMilliseconds(), ToEventFileTime(data.TimeStamp));
-        kernel.UdpIpRecv += data => ObserveBoundNetworkTransfer(kernel, context, destination, data.ProcessID, data.size, false, true, data.saddr, readTickMilliseconds(), ToEventFileTime(data.TimeStamp));
-        kernel.UdpIpRecvIPV6 += data => ObserveBoundNetworkTransfer(kernel, context, destination, data.ProcessID, data.size, false, true, data.saddr, readTickMilliseconds(), ToEventFileTime(data.TimeStamp));
+        var counter = kernel.ConsumerCounter("network-transfer");
+        kernel.TcpIpSend += data => ObserveBoundNetworkTransfer(kernel, context, destination, data.ProcessID, data.size, true, false, data.daddr, readTickMilliseconds(), ToEventFileTime(data.TimeStamp), counter);
+        kernel.TcpIpSendIPV6 += data => ObserveBoundNetworkTransfer(kernel, context, destination, data.ProcessID, data.size, true, false, data.daddr, readTickMilliseconds(), ToEventFileTime(data.TimeStamp), counter);
+        kernel.TcpIpRecv += data => ObserveBoundNetworkTransfer(kernel, context, destination, data.ProcessID, data.size, false, false, data.saddr, readTickMilliseconds(), ToEventFileTime(data.TimeStamp), counter);
+        kernel.TcpIpRecvIPV6 += data => ObserveBoundNetworkTransfer(kernel, context, destination, data.ProcessID, data.size, false, false, data.saddr, readTickMilliseconds(), ToEventFileTime(data.TimeStamp), counter);
+        kernel.UdpIpSend += data => ObserveBoundNetworkTransfer(kernel, context, destination, data.ProcessID, data.size, true, true, data.daddr, readTickMilliseconds(), ToEventFileTime(data.TimeStamp), counter);
+        kernel.UdpIpSendIPV6 += data => ObserveBoundNetworkTransfer(kernel, context, destination, data.ProcessID, data.size, true, true, data.daddr, readTickMilliseconds(), ToEventFileTime(data.TimeStamp), counter);
+        kernel.UdpIpRecv += data => ObserveBoundNetworkTransfer(kernel, context, destination, data.ProcessID, data.size, false, true, data.saddr, readTickMilliseconds(), ToEventFileTime(data.TimeStamp), counter);
+        kernel.UdpIpRecvIPV6 += data => ObserveBoundNetworkTransfer(kernel, context, destination, data.ProcessID, data.size, false, true, data.saddr, readTickMilliseconds(), ToEventFileTime(data.TimeStamp), counter);
     }
 
     private void RefreshBrokerState(KernelEtwSessionSnapshot? observedSnapshot = null)
@@ -241,29 +242,39 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
         int size,
         bool isSend,
         bool isUdp,
-        IPAddress? remoteAddress, long observedTick, ulong? eventFileTime)
+        IPAddress? remoteAddress, long observedTick, ulong? eventFileTime, EtwEventDropCounter counter)
     {
+        counter.Receive();
+        void Reject(string reason)
+        {
+            counter.Drop();
+            source.RecordConsumerRejection("network-transfer", reason);
+        }
         var byteCount = unchecked((uint)size); // TraceEvent exposes the provider's ULONG as Int32.
         if (processId <= 0 || byteCount == 0)
         {
+            Reject("invalid-payload");
             return;
         }
 
         lock (eventGate)
         {
             if (!source.IsActive || context.Generation != Volatile.Read(ref sessionGeneration)
-                || !ReferenceEquals(destination, Volatile.Read(ref events))
-                || observedTick <= incompleteThroughTick) return;
+                || !ReferenceEquals(destination, Volatile.Read(ref events)))
+            { Reject("stale-binding"); return; }
+            if (observedTick <= incompleteThroughTick) { Reject("incomplete-window"); return; }
             if (!canRead())
             {
                 ClearEventsCore(destination);
                 incompleteThroughTick = observedTick;
+                Reject("frozen");
                 return;
             }
             if (retainedEventCount >= MaximumRetainedEvents)
             {
                 ClearEventsCore(destination);
                 incompleteThroughTick = observedTick;
+                Reject("capacity");
                 return;
             }
             destination.Enqueue(new NetworkTransferEvent(
@@ -282,7 +293,8 @@ public sealed partial class EtwNetworkTcpIpCaptureOwner : IDisposable
         int processId, int size, bool isSend, bool isUdp, IPAddress? remoteAddress, long observedTick,
         ulong? eventFileTime = null)
         => ObserveBoundNetworkTransfer(source, context, Volatile.Read(ref events),
-            processId, size, isSend, isUdp, remoteAddress, observedTick, eventFileTime);
+            processId, size, isSend, isUdp, remoteAddress, observedTick, eventFileTime,
+            source.ConsumerCounter("network-transfer"));
 
     private ProcessSnapshots BuildProcessSnapshots(long nowTickMilliseconds)
     {

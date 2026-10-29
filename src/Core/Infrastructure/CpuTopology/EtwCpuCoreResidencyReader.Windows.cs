@@ -24,33 +24,14 @@ public sealed partial class EtwCpuCoreResidencyReader
         }
     }
 
-    private async Task WaitForNextWindowPlanAsync(TimeSpan delay, CancellationToken cancellationToken)
-    {
-        var startedAt = System.Diagnostics.Stopwatch.GetTimestamp();
-        if (!WindowedCapture)
-        {
-            await demandSignal.WaitAsync(delay, cancellationToken);
-            return;
-        }
-        // The native tracker still owns the due time. Only its observation window is prepared ahead of it.
-        // A timer can return just before the native due time. Retain the same
-        // unpublished window across that final wait rather than opening it twice.
-        if (!Capture.IsWindowActive)
-        {
-            var idle = delay - ObservationWindow;
-            if (idle > TimeSpan.Zero && await demandSignal.WaitAsync(RoundUpTimerDelay(idle), cancellationToken)) return;
-            Capture.BeginWindow();
-        }
-        if (await WaitForWindowOrDemandAsync(cancellationToken)) return;
-        // A failed or already-ready preparation must not spin/retry before the native due time.
-        var remaining = delay - System.Diagnostics.Stopwatch.GetElapsedTime(startedAt);
-        if (remaining > TimeSpan.Zero) await demandSignal.WaitAsync(RoundUpTimerDelay(remaining), cancellationToken);
-    }
+    // The native due time starts a sample; its finite observation window is
+    // collected by that sample. Preparing before due shortened the first
+    // cold-to-steady publication interval by one whole observation window.
+    // Delivery-only wakes likewise must not start context-switch capture.
+    private Task WaitForNextWindowPlanAsync(TimeSpan delay, CancellationToken cancellationToken)
+        => demandSignal.WaitAsync(delay, cancellationToken);
 
-    private static TimeSpan RoundUpTimerDelay(TimeSpan delay)
-        => TimeSpan.FromMilliseconds(Math.Ceiling(delay.TotalMilliseconds));
-
-    // A demand change interrupts preparation, so removal/frequency changes do not wait for an old window.
+    // A demand change interrupts the window, so removal/frequency changes do not wait for old coverage.
     private async Task<bool> WaitForWindowOrDemandAsync(CancellationToken cancellationToken)
     {
         using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

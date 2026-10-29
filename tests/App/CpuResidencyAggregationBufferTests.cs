@@ -664,6 +664,103 @@ public sealed class CpuResidencyAggregationBufferTests
     }
 
     [Fact]
+    public void DefaultCapacityPublishesACompleteWindowForRecordedThreadCountAcrossTwoProcessors()
+    {
+        // Copy 006 retained 13,165 thread identities. Each recorded thread runs
+        // once on each CPU, serially, so no thread executes concurrently.
+        const int threadCount = 13165;
+        var plan = HostManagerTestPlanFactory.CreatePlan(cpuTopology: HostManagerTestPlanFactory.CreateCpuTopology(1, 1))
+            .CpuCoreResidency;
+        var buffer = ReplayRecordedThreadMigration(plan.ExecutionTimeSource.MaximumActivePairs,
+            plan.ObservationWindowMilliseconds, plan.ExecutionTimeSource.BucketWidthMilliseconds);
+
+        var diagnostics = buffer.GetDiagnostics();
+        Assert.Equal(0, diagnostics.CapacityResetCount);
+        var aggregate = buffer.Snapshot([0, 1]);
+        Assert.True(aggregate.IsComplete);
+        Assert.Equal(threadCount * 2, aggregate.Records.Count);
+        var published = EtwCpuCoreResidencyReader.BuildProcessSnapshot(plan, 7, aggregate);
+        var process = Assert.Single(published);
+        Assert.Equal(threadCount, process.ThreadCount);
+        Assert.Equal(2, process.LogicalProcessors.Count);
+    }
+
+    [Fact]
+    public void FormerDefaultNamesThePairLimitForRecordedThreadMigration()
+    {
+        var buffer = ReplayRecordedThreadMigration(16384, 5000, 50);
+        var diagnostics = buffer.GetDiagnostics();
+        Assert.Equal(1, diagnostics.CapacityResetCount);
+        Assert.False(buffer.Snapshot([0, 1]).IsComplete);
+        var failure = Assert.IsType<CpuResidencyCapacityResetDiagnostics>(diagnostics.LastCapacityReset);
+        Assert.Equal("active-pair-limit", failure.Reason);
+        Assert.Equal(16384, failure.ActivePairCount);
+        Assert.Equal(failure.MaximumBucketSlots, failure.RetainedBucketSlots);
+        Assert.Equal(13165, failure.CurrentThreadCount);
+        Assert.Equal(102, failure.RequiredBucketCount);
+    }
+
+    [Theory]
+    [InlineData(1, 1030, "bucket-resize-limit", 102, 103)]
+    [InlineData(2, 1040, "bucket-storage-limit", 103, 102)]
+    [InlineData(4, 2050, "bucket-retention-span", 102, 205)]
+    public void CapacityFailureNamesTheBucketLimitInsteadOfAnIdentityLimit(
+        int maximumPairs, int failedAt, string reason, int retainedSlots, int requiredBuckets)
+    {
+        var buffer = CreateBuffer(windowMilliseconds: 1000, maximumActivePairs: maximumPairs);
+        StartProcess(buffer, 0, 100, 1000, "A", 10);
+        StartProcess(buffer, 0, 200, 2000, "B", 20);
+        Switch(buffer, 0, 0, 0, 0, 100, 10);
+        Switch(buffer, 0, 1, 0, 0, 0, 0); // This real closed boundary pins retention.
+        if (reason == "bucket-storage-limit")
+        {
+            Switch(buffer, 1000, 0, 100, 10, 100, 10);
+            Switch(buffer, 1030, 0, 100, 10, 200, 20);
+            Switch(buffer, failedAt, 0, 200, 20, 0, 0);
+        }
+        else Switch(buffer, failedAt, 0, 100, 10, 0, 0);
+
+        var diagnostics = buffer.GetDiagnostics();
+        Assert.Equal(1, diagnostics.CapacityResetCount);
+        var failure = Assert.IsType<CpuResidencyCapacityResetDiagnostics>(diagnostics.LastCapacityReset);
+        Assert.Equal(reason, failure.Reason);
+        Assert.Equal(failedAt, failure.EventQpc);
+        Assert.Equal(1, failure.ActivePairCount);
+        Assert.Equal(retainedSlots, failure.RetainedBucketSlots);
+        Assert.Equal(requiredBuckets, failure.RequiredBucketCount);
+        Assert.Equal(2, failure.CurrentThreadCount);
+        Assert.False(buffer.Snapshot([0, 1]).IsComplete);
+    }
+
+    [Fact]
+    public void CapacityFailureRetainsItsCauseAndPreResetCountsAfterRewarming()
+    {
+        var buffer = CreateBuffer(windowMilliseconds: 1000, maximumActivePairs: 1);
+        StartProcess(buffer, 0, 100, 1000, "A", 10);
+        StartProcess(buffer, 0, 200, 2000, "B", 20);
+        Switch(buffer, 0, 0, 0, 0, 100, 10);
+        Switch(buffer, 500, 0, 100, 10, 200, 20);
+        Switch(buffer, 1000, 0, 200, 20, 100, 10);
+
+        var afterReset = buffer.GetDiagnostics();
+        Assert.Equal(1, afterReset.CapacityResetCount);
+        Assert.Equal(0, afterReset.ActivePairCount);
+        // Read the diagnostic boundary reflectively so the red test compiles
+        // against the former snapshot that erased all pre-reset evidence.
+        var property = afterReset.GetType().GetProperty("LastCapacityReset");
+        Assert.NotNull(property);
+        var failure = property.GetValue(afterReset);
+        Assert.NotNull(failure);
+        Assert.Equal("active-pair-limit", failure.GetType().GetProperty("Reason")!.GetValue(failure));
+        Assert.Equal(1, failure.GetType().GetProperty("ActivePairCount")!.GetValue(failure));
+        Assert.Equal(1000L, failure.GetType().GetProperty("EventQpc")!.GetValue(failure));
+
+        Switch(buffer, 2000, 0, 100, 10, 0, 0);
+        Assert.True(buffer.Snapshot([0]).IsComplete);
+        Assert.Equal(failure, property.GetValue(buffer.GetDiagnostics()));
+    }
+
+    [Fact]
     public void CapacityEvictsExpiredPairsBeforeRejectingAnAppend()
     {
         var buffer = CreateBuffer(windowMilliseconds: 1000, maximumActivePairs: 2);
@@ -889,6 +986,34 @@ public sealed class CpuResidencyAggregationBufferTests
         Assert.True(final.IsComplete);
         Assert.Equal(1000, final.Records.Sum(static row => row.ExecutionTimeQpc));
         Assert.Equal(0, buffer.GetDiagnostics().CapacityResetCount);
+    }
+
+    private static CpuResidencyAggregationBuffer ReplayRecordedThreadMigration(
+        int maximumPairs, int windowMilliseconds, int bucketWidthMilliseconds)
+    {
+        const int threadCount = 13165;
+        const long frequency = 10000;
+        var buffer = new CpuResidencyAggregationBuffer(frequency, windowMilliseconds, maximumPairs, bucketWidthMilliseconds);
+        buffer.ObserveProcessStart(0, DateTimeOffset.UnixEpoch, 100, 11, 1000, "recorded-two-cpu-migration");
+        for (var thread = 1; thread <= threadCount; thread++)
+            buffer.ObserveThreadStart(0, DateTimeOffset.UnixEpoch, 100, thread);
+        void RecordedSwitch(long qpc, int cpu, int oldThread, int newThread)
+            => buffer.ObserveContextSwitch(qpc, DateTimeOffset.UnixEpoch.AddTicks(qpc * TimeSpan.TicksPerSecond / frequency),
+                cpu, oldThread == 0 ? 0 : 100, oldThread, newThread == 0 ? 0 : 100, null, newThread);
+
+        RecordedSwitch(0, 0, 0, 1);
+        RecordedSwitch(0, 1, 0, 0);
+        long at = 0;
+        for (var thread = 1; thread <= threadCount; thread++)
+            RecordedSwitch(++at, 0, thread, thread == threadCount ? 0 : thread + 1);
+        RecordedSwitch(at, 1, 0, 1);
+        for (var thread = 1; thread <= threadCount; thread++)
+            RecordedSwitch(++at, 1, thread, thread == threadCount ? 0 : thread + 1);
+        var through = frequency * windowMilliseconds / 1000;
+        Assert.True(at < through); // Every pair fits inside the same five-second window.
+        RecordedSwitch(through, 0, 0, 0);
+        RecordedSwitch(through, 1, 0, 0);
+        return buffer;
     }
 
     private static CpuResidencyAggregationBuffer CreateBuffer(

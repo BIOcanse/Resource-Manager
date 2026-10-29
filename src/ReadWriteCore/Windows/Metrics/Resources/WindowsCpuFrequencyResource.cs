@@ -74,9 +74,9 @@ var processorCount = Environment.ProcessorCount;
             boost > 0 ? "Windows power info / SMU 加速上限" : "Windows power info");
     }
 
-    public void Dispose()
-    {
-        reader.Dispose();
-    }
+    /// <summary>Closes the owned PDH query; the reader preserves its existing failure state and reopens on a later read.</summary>
+    public void ReleaseSession() => reader.Dispose();
+
+    public void Dispose() => ReleaseSession();
 }
 

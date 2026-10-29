@@ -267,10 +267,21 @@ internal sealed class RendererAbsenceCache : IDisposable
 
     private void OnProcessChanged(Binding binding, int processId)
     {
-        if (processId <= 0) return;
+        binding.Counter.Receive();
+        if (processId <= 0)
+        {
+            binding.Counter.Drop();
+            binding.Source.RecordConsumerRejection("renderer-invalidation", "invalid-process");
+            return;
+        }
         lock (gate)
         {
-            if (disposed || !ReferenceEquals(currentBinding, binding) || !binding.Source.IsActive) return;
+            if (disposed || !ReferenceEquals(currentBinding, binding) || !binding.Source.IsActive)
+            {
+                binding.Counter.Drop();
+                binding.Source.RecordConsumerRejection("renderer-invalidation", "stale-binding");
+                return;
+            }
 
             var revisionSlot = GetRevisionSlot(processId);
             if (pidRevisions[revisionSlot] == long.MaxValue)
@@ -342,6 +353,7 @@ internal sealed class RendererAbsenceCache : IDisposable
             Id = id;
             Source = source;
             Context = context;
+            Counter = source.ConsumerCounter("renderer-invalidation");
             ProcessStarted = data => owner.OnProcessChanged(this, data.ProcessID);
             ProcessEnded = data => owner.OnProcessChanged(this, data.ProcessID);
             ImageChanged = data => owner.OnProcessChanged(this, data.ProcessID);
@@ -350,6 +362,7 @@ internal sealed class RendererAbsenceCache : IDisposable
         internal long Id { get; }
         internal KernelEtwEventSource Source { get; }
         internal KernelEtwSessionContext Context { get; }
+        internal EtwEventDropCounter Counter { get; }
         internal Action<ProcessTraceData> ProcessStarted { get; }
         internal Action<ProcessTraceData> ProcessEnded { get; }
         internal Action<ImageLoadTraceData> ImageChanged { get; }

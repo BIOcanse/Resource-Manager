@@ -18,8 +18,8 @@ public sealed class EtwSystemInterruptSnapshotSource(
     HostManagerSamplingSubscriptionOwner subscriptionOwner,
     ILogger<EtwSystemInterruptSnapshotSource> logger) : BackgroundService, ISystemInterruptSnapshotSource, IResourceManagerSelfComputeZone
 {
-    private const KernelTraceEventParser.Keywords RequiredKeywords = KernelTraceEventParser.Keywords.Interrupt
-        | KernelTraceEventParser.Keywords.DeferedProcedureCalls | KernelTraceEventParser.Keywords.ImageLoad;
+    private const KernelTraceEventParser.Keywords EventKeywords = KernelTraceEventParser.Keywords.Interrupt
+        | KernelTraceEventParser.Keywords.DeferedProcedureCalls;
 
     private const string InterruptItemId = "system-interrupts";
     private static readonly ulong ZoneObjectKey = AdapterResourceKey.FromString($"resource-manager:zone:{MonitoringSourceZoneIds.EtwSystemInterrupts}");
@@ -34,6 +34,9 @@ public sealed class EtwSystemInterruptSnapshotSource(
     private readonly NativeItemSamplingSubscriptionTracker<InterruptSampleRequest> subscriptions =
         CreateSubscriptions(subscriptionOwner, null);
     private IKernelEtwSubscription? kernelSubscription;
+    private IKernelEtwSubscription? interruptSubscription;
+    private long interruptEpoch;
+    private bool acquiringInterrupts;
     private bool disposed;
     private bool ownedResourcesDisposed;
     private long nextLeaseId;
@@ -104,6 +107,7 @@ public sealed class EtwSystemInterruptSnapshotSource(
 
     public void ApplyMode(ResourceManagerComputeZoneMode mode)
     {
+        IKernelEtwSubscription? held = null;
         lock (subscriptionGate)
         {
             if (disposed || currentComputeMode == mode) return;
@@ -114,9 +118,14 @@ public sealed class EtwSystemInterruptSnapshotSource(
                     session.ResetWindow(readTickMilliseconds(), session.Window.EventsLost, preserveModules: true);
                 currentComputeMode = mode;
                 if (mode == ResourceManagerComputeZoneMode.Freeze)
+                {
                     PublishFrozen();
+                    held = DetachInterruptsCore();
+                }
             }
         }
+        held?.Dispose();
+        if (mode != ResourceManagerComputeZoneMode.Freeze) EnsureInterruptsHeld();
         SignalDemand();
     }
 
@@ -219,7 +228,8 @@ public sealed class EtwSystemInterruptSnapshotSource(
             {
                 kernelSubscription = kernelEtwBroker.Subscribe(new KernelEtwSubscriptionRequest(
                     "system-interrupts",
-                    RequiredKeywords,
+                    // Load/unload callbacks keep routine ownership current even while ISR/DPC is frozen.
+                    KernelTraceEventParser.Keywords.ImageLoad,
                     BindKernelEvents));
             }
             catch (Exception ex)
@@ -235,8 +245,60 @@ public sealed class EtwSystemInterruptSnapshotSource(
                 logger.LogWarning(ex, "Failed to start ETW system interrupt source.");
             }
 
-            RefreshBrokerState();
         }
+        EnsureInterruptsHeld();
+        lock (subscriptionGate) RefreshBrokerState();
+    }
+
+    private void EnsureInterruptsHeld()
+    {
+        long epoch;
+        lock (subscriptionGate)
+        {
+            if (disposed || kernelSubscription is null || currentComputeMode == ResourceManagerComputeZoneMode.Freeze
+                || interruptSubscription is not null || acquiringInterrupts) return;
+            acquiringInterrupts = true;
+            epoch = ++interruptEpoch;
+        }
+        IKernelEtwSubscription? created = null;
+        try
+        {
+            created = kernelEtwBroker.Subscribe(new("system-interrupts-events", EventKeywords, static (_, _) => { }));
+            lock (subscriptionGate)
+            {
+                if (interruptEpoch == epoch && !disposed && kernelSubscription is not null
+                    && currentComputeMode != ResourceManagerComputeZoneMode.Freeze)
+                {
+                    interruptSubscription = created;
+                    created = null;
+                }
+            }
+        }
+        catch (Exception error) { logger.LogWarning(error, "Failed to hold ETW interrupt keywords."); }
+        finally
+        {
+            lock (subscriptionGate)
+                if (interruptEpoch == epoch) acquiringInterrupts = false;
+            created?.Dispose();
+        }
+    }
+
+    private IKernelEtwSubscription? DetachInterruptsCore()
+    {
+        ++interruptEpoch;
+        acquiringInterrupts = false;
+        var held = interruptSubscription;
+        interruptSubscription = null;
+        return held;
+    }
+
+    private KernelEtwSessionSnapshot CaptureBrokerSnapshot()
+    {
+        var events = Volatile.Read(ref interruptSubscription)?.GetSnapshot();
+        var metadata = Volatile.Read(ref kernelSubscription)?.GetSnapshot() ?? kernelEtwBroker.GetSnapshot();
+        if (!metadata.IsRunning) return metadata;
+        return events
+            ?? metadata with { State = "Unavailable", Message = "ETW interrupt keywords are unavailable." };
     }
 
     private void BindKernelEvents(
@@ -287,7 +349,7 @@ public sealed class EtwSystemInterruptSnapshotSource(
     private void RefreshBrokerState(KernelEtwSessionSnapshot? observedSnapshot = null)
     {
         if (currentComputeMode == ResourceManagerComputeZoneMode.Freeze) return;
-        var snapshot = (observedSnapshot ?? (Volatile.Read(ref kernelSubscription)?.GetSnapshot() ?? kernelEtwBroker.GetSnapshot()));
+        var snapshot = observedSnapshot ?? CaptureBrokerSnapshot();
         var session = Volatile.Read(ref currentSession);
         if (snapshot.IsRunning
             && session is not null
@@ -329,7 +391,7 @@ public sealed class EtwSystemInterruptSnapshotSource(
         lock (subscriptionGate)
         {
             if (currentComputeMode == ResourceManagerComputeZoneMode.Freeze) return false;
-            var brokerSnapshot = (Volatile.Read(ref kernelSubscription)?.GetSnapshot() ?? kernelEtwBroker.GetSnapshot());
+            var brokerSnapshot = CaptureBrokerSnapshot();
             RefreshBrokerState(brokerSnapshot);
             var session = Volatile.Read(ref currentSession);
             if (kernelSubscription is null
@@ -357,7 +419,7 @@ public sealed class EtwSystemInterruptSnapshotSource(
                     message,
                     brokerSnapshot.EventsLost));
             // Never call the broker from inside eventGate: binding may need that lock.
-            var after = (Volatile.Read(ref kernelSubscription)?.GetSnapshot() ?? kernelEtwBroker.GetSnapshot());
+            var after = CaptureBrokerSnapshot();
             if (!after.IsRunning || after.Generation != session.Generation
                 || after.EventsLost != brokerSnapshot.EventsLost)
             {
@@ -402,16 +464,25 @@ public sealed class EtwSystemInterruptSnapshotSource(
         InterruptSessionState session,
         string kind, double durationMilliseconds, ulong routineAddress, long observedTick)
     {
+        var counter = source.ConsumerCounter(kind);
+        counter.Receive();
+        void Reject(string reason)
+        {
+            counter.Drop();
+            source.RecordConsumerRejection(kind, reason);
+        }
         if (!double.IsFinite(durationMilliseconds) || durationMilliseconds <= 0)
         {
+            Reject("invalid-duration");
             return;
         }
 
-        if (currentComputeMode == ResourceManagerComputeZoneMode.Freeze
-            || !source.IsActive || context.Generation != session.Generation
-            || !ReferenceEquals(session, Volatile.Read(ref currentSession))) return;
+        if (currentComputeMode == ResourceManagerComputeZoneMode.Freeze) { Reject("frozen"); return; }
+        if (!source.IsActive) { Reject("inactive-binding"); return; }
+        if (context.Generation != session.Generation
+            || !ReferenceEquals(session, Volatile.Read(ref currentSession))) { Reject("generation-mismatch"); return; }
         var window = session.Window;
-        if (observedTick < window.StartedTick) return;
+        if (observedTick < window.StartedTick) { Reject("before-window"); return; }
         var module = window.Modules.Resolve(routineAddress);
         window.Aggregator.Observe(new SystemInterruptEventSample(
             observedTick - window.StartedTick, kind, durationMilliseconds, routineAddress, module.Name, module.Path));
@@ -421,12 +492,21 @@ public sealed class EtwSystemInterruptSnapshotSource(
         InterruptSessionState session, ulong imageBase, int imageSize,
         string? fileName, bool unload, long observedTick)
     {
+        var kind = unload ? "ImageUnload" : "ImageLoadOrRundown";
+        var counter = source.ConsumerCounter(kind);
+        counter.Receive();
+        void Reject(string reason)
+        {
+            counter.Drop();
+            source.RecordConsumerRejection(kind, reason);
+        }
         // Keep image ownership current while ISR/DPC intake is paused, just as CPU
         // residency retains process/thread metadata on its held kernel session.
-        if (!source.IsActive || context.Generation != session.Generation
-            || !ReferenceEquals(session, Volatile.Read(ref currentSession))) return;
+        if (!source.IsActive) { Reject("inactive-binding"); return; }
+        if (context.Generation != session.Generation
+            || !ReferenceEquals(session, Volatile.Read(ref currentSession))) { Reject("generation-mismatch"); return; }
         var window = session.Window;
-        if (observedTick < window.StartedTick) return;
+        if (observedTick < window.StartedTick) { Reject("before-window"); return; }
         if (unload) window.Modules.Remove(imageBase);
         else window.Modules.Upsert(imageBase, imageSize, fileName);
     }
@@ -434,9 +514,11 @@ public sealed class EtwSystemInterruptSnapshotSource(
     private void StopSession(string idleMessage, string idleState = SystemInterruptProviderStates.Idle, bool publishStoppedValue = true)
     {
         IKernelEtwSubscription? subscriptionToRelease;
+        IKernelEtwSubscription? eventsToRelease;
         lock (subscriptionGate)
         {
             subscriptionToRelease = kernelSubscription;
+            eventsToRelease = DetachInterruptsCore();
             kernelSubscription = null;
             lock (eventGate)
             {
@@ -444,7 +526,8 @@ public sealed class EtwSystemInterruptSnapshotSource(
             }
         }
 
-        subscriptionToRelease?.Dispose();
+        try { eventsToRelease?.Dispose(); }
+        finally { subscriptionToRelease?.Dispose(); }
         lock (subscriptionGate)
         {
             if (kernelSubscription is not null) return;

@@ -50,6 +50,15 @@ internal sealed class AmdSmuCcdBinding(
         componentRevision = revision;
     }
 
+    internal void ReleaseSession()
+    {
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            resource?.ReleaseSession();
+        }
+    }
+
     public void Dispose()
     {
         lock (gate)

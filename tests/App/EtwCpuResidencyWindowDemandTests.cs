@@ -10,6 +10,7 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class EtwCpuResidencyWindowDemandTests
 {
+    private const KernelTraceEventParser.Keywords MetadataKeywords = KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread;
     private const KernelTraceEventParser.Keywords HeldKeywords = KernelTraceEventParser.Keywords.Process
         | KernelTraceEventParser.Keywords.Thread | KernelTraceEventParser.Keywords.ContextSwitch;
 
@@ -62,10 +63,10 @@ public sealed class EtwCpuResidencyWindowDemandTests
             Assert.Equal("cpu-residency-window-warming",
                 Assert.IsType<ResourceManager.App.Domain.CpuTopology.CpuCoreResidencyUnavailable>(output.Current).ReasonCode);
             Assert.Equal(1, reader.CanonicalRevision);
-            await UntilAsync(() => !IsWindowActive(reader));
+            await UntilAsync(() => !IsWindowActive(reader) && broker.Keywords == MetadataKeywords);
             await Task.Delay(150, cancellation.Token);
-            Assert.Equal(HeldKeywords, broker.Keywords);
-            Assert.Equal(1, broker.SubscribeCount);
+            Assert.Equal(MetadataKeywords, broker.Keywords);
+            Assert.Equal(2, broker.SubscribeCount);
             Assert.Equal(1, broker.ActiveCount);
             Assert.Equal(1, reader.CanonicalRevision);
         }
@@ -88,10 +89,10 @@ public sealed class EtwCpuResidencyWindowDemandTests
             await UntilAsync(() => reader.Read() is not null);
             var current = reader.Read();
             reader.ApplyMode(ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Freeze);
-            await UntilAsync(() => !IsWindowActive(reader));
+            await UntilAsync(() => !IsWindowActive(reader) && broker.Keywords == MetadataKeywords);
             await Task.Delay(150);
-            Assert.Equal(HeldKeywords, broker.Keywords);
-            Assert.Equal(1, broker.SubscribeCount);
+            Assert.Equal(MetadataKeywords, broker.Keywords);
+            Assert.Equal(2, broker.SubscribeCount);
             Assert.Equal(1, broker.ActiveCount);
             Assert.Equal(1, broker.SessionStarts);
             Assert.Same(current, reader.Read());
@@ -119,9 +120,9 @@ public sealed class EtwCpuResidencyWindowDemandTests
             var previousWindowEnd = FeedWindow(reader, sampling);
             Assert.True(await first.WaitAsync(TimeSpan.FromSeconds(5)));
             var current = Assert.IsType<ResourceManager.App.Domain.CpuTopology.CpuCoreResidencySnapshot>(output.Current);
-            await UntilAsync(() => !IsWindowActive(reader));
-            Assert.Equal(HeldKeywords, broker.Keywords);
-            Assert.Equal(1, broker.SubscribeCount);
+            await UntilAsync(() => !IsWindowActive(reader) && broker.Keywords == MetadataKeywords);
+            Assert.Equal(MetadataKeywords, broker.Keywords);
+            Assert.Equal(2, broker.SubscribeCount);
             Assert.Equal(1, broker.ActiveCount);
             Assert.Equal(1, reader.CanonicalRevision);
             var second = output.MoveNextAsync().AsTask();
@@ -134,8 +135,9 @@ public sealed class EtwCpuResidencyWindowDemandTests
             Assert.True(await second.WaitAsync(TimeSpan.FromSeconds(35)));
             Assert.Equal(2, reader.CanonicalRevision);
             Assert.NotSame(current, reader.Read());
-            Assert.Equal(HeldKeywords, broker.Keywords);
-            Assert.Equal(1, broker.SubscribeCount);
+            await UntilAsync(() => !IsWindowActive(reader) && broker.Keywords == MetadataKeywords);
+            Assert.Equal(MetadataKeywords, broker.Keywords);
+            Assert.Equal(3, broker.SubscribeCount);
             Assert.Equal(1, broker.ActiveCount);
             Assert.Equal(1, broker.SessionStarts);
             Assert.All(broker.Generations, generation => Assert.Equal(7, generation));
@@ -143,6 +145,50 @@ public sealed class EtwCpuResidencyWindowDemandTests
         finally { cancellation.Cancel(); await reader.StopAsync(CancellationToken.None); }
         Assert.Equal(KernelTraceEventParser.Keywords.None, broker.Keywords);
         Assert.NotNull(reader.Read()); // Stopping demand does not erase current.
+    }
+
+    [Fact]
+    public async Task ThirtySecondDemandPublishesColdAndSteadyWindowsThirtySecondsApart()
+    {
+        using var sampling = new HostManagerSamplingSubscriptionTestFixture();
+        var broker = new Broker();
+        using var reader = new EtwCpuCoreResidencyReader(broker, sampling.Provider, sampling.Owner,
+            NullLogger<EtwCpuCoreResidencyReader>.Instance, static (_, _) => { });
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(85));
+        await using var output = reader.SubscribeAsync("test.recorded-cadence", TimeSpan.FromSeconds(30), cancellation.Token)
+            .GetAsyncEnumerator(cancellation.Token);
+        var next = output.MoveNextAsync().AsTask();
+        var publications = new List<long>();
+        var measuredThrough = new List<DateTimeOffset>();
+        await reader.StartAsync(cancellation.Token);
+        try
+        {
+            for (var index = 0; index < 3; index++)
+            {
+                await UntilAsync(() => IsWindowActive(reader) && broker.Keywords == HeldKeywords,
+                    TimeSpan.FromSeconds(35));
+                await FeedElapsedWindowAsync(reader, sampling, cancellation.Token);
+                Assert.True(await next.WaitAsync(TimeSpan.FromSeconds(5), cancellation.Token));
+                var snapshot = Assert.IsType<ResourceManager.App.Domain.CpuTopology.CpuCoreResidencySnapshot>(output.Current);
+                publications.Add(Stopwatch.GetTimestamp());
+                measuredThrough.Add(snapshot.MeasuredThrough);
+                await UntilAsync(() => !IsWindowActive(reader) && broker.Keywords == MetadataKeywords);
+                Assert.Equal(1, broker.ActiveCount);
+                if (index < 2) next = output.MoveNextAsync().AsTask();
+            }
+            // Include the cold-to-steady transition: preparing at due-window
+            // shortened that first real publication interval to 25 seconds.
+            for (var index = 1; index < publications.Count; index++)
+            {
+                var actual = Stopwatch.GetElapsedTime(publications[index - 1], publications[index]);
+                var coverage = measuredThrough[index] - measuredThrough[index - 1];
+                Assert.True(actual >= TimeSpan.FromMilliseconds(29500), $"Publication spacing {index}: {actual}.");
+                Assert.True(coverage >= TimeSpan.FromMilliseconds(29500), $"Recorded coverage spacing {index}: {coverage}.");
+            }
+        }
+        finally { cancellation.Cancel(); await reader.StopAsync(CancellationToken.None); }
+        Assert.Equal(KernelTraceEventParser.Keywords.None, broker.Keywords);
+        Assert.Equal(0, broker.ActiveCount);
     }
 
     [Fact]
@@ -166,20 +212,22 @@ public sealed class EtwCpuResidencyWindowDemandTests
             var previousWindowEnd = FeedWindow(reader, sampling);
             await UntilAsync(() => reader.Read() is not null);
             await Task.Delay(250);
-            Assert.Equal(1, broker.SubscribeCount);
+            Assert.Equal(2, broker.SubscribeCount);
             Assert.True(IsWindowActive(reader));
             Assert.Equal(HeldKeywords, broker.Keywords);
             var previousPlanEpoch = ReadWindowPlan(sampling).Header.LastPlanEpoch;
             fast.Dispose();
             await AcknowledgeSlowWindowAsync(reader, sampling, slowInterval, previousPlanEpoch,
                 initialWindow, previousWindowEnd);
-            Assert.Equal(HeldKeywords, broker.Keywords);
+            await UntilAsync(() => broker.Keywords == MetadataKeywords);
+            Assert.Equal(MetadataKeywords, broker.Keywords);
             Assert.Equal(1, broker.ActiveCount);
             Assert.Equal(1, broker.SessionStarts);
             Assert.NotNull(reader.Read());
             slow.Dispose();
             Assert.False(sampling.Owner.Activity.HasInUseSubscriptions(6));
-            Assert.Equal(HeldKeywords, broker.Keywords);
+            await UntilAsync(() => broker.Keywords == MetadataKeywords);
+            Assert.Equal(MetadataKeywords, broker.Keywords);
             Assert.Equal(1, broker.ActiveCount);
             await reader.StopAsync(CancellationToken.None);
             await UntilAsync(() => broker.Keywords == KernelTraceEventParser.Keywords.None);
@@ -281,6 +329,36 @@ public sealed class EtwCpuResidencyWindowDemandTests
             completion.Observe(processor, end);
         }
         return end;
+    }
+
+    private static async Task FeedElapsedWindowAsync(EtwCpuCoreResidencyReader reader,
+        HostManagerSamplingSubscriptionTestFixture sampling, CancellationToken cancellationToken)
+    {
+        var owner = Assert.IsType<EtwCpuResidencyCaptureOwner>(CaptureOwner(reader));
+        var session = typeof(EtwCpuResidencyCaptureOwner).GetField("activeSession", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(owner)!;
+        var buffer = (CpuResidencyAggregationBuffer)session.GetType().GetProperty("Buffer")!.GetValue(session)!;
+        var completion = (CpuResidencyWindowCompletion)session.GetType().GetProperty("Window")!.GetValue(session)!;
+        var plan = sampling.Provider.Current.HostManager.CpuCoreResidency;
+        var processors = plan.PhysicalCoreByLogicalProcessor.Keys.Order().ToArray();
+        var start = Stopwatch.GetTimestamp();
+        var at = DateTimeOffset.UtcNow;
+        buffer.ObserveProcessStart(start, at, 100, 11, 1000, "recorded");
+        foreach (var processor in processors)
+        {
+            buffer.ObserveThreadStart(start, at, 100, 100 + processor);
+            buffer.ObserveContextSwitch(start, at, processor, 0, 0, 100, "recorded", 100 + processor);
+            completion.Observe(processor, start);
+        }
+        // Real elapsed time is deliberate: the native planner and this reader
+        // use the production monotonic clock, with only the ETW input replayed.
+        await Task.Delay(plan.ObservationWindow, cancellationToken);
+        var end = start + Stopwatch.Frequency * plan.ObservationWindowMilliseconds / 1000;
+        foreach (var processor in processors)
+        {
+            buffer.ObserveContextSwitch(end, at + plan.ObservationWindow, processor, 100, 100 + processor, 0, null, 0);
+            completion.Observe(processor, end);
+        }
     }
 
     private static async Task UntilAsync(Func<bool> condition, TimeSpan? timeout = null)

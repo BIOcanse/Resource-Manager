@@ -11,7 +11,9 @@ namespace ResourceManager.ReadWrite.Windows.Processes;
 /// No worker, second window or physical-device resolver is installed.</summary>
 public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
 {
-    private const KernelTraceEventParser.Keywords RequiredKeywords = KernelTraceEventParser.Keywords.DiskIO | KernelTraceEventParser.Keywords.DiskIOInit | KernelTraceEventParser.Keywords.Process;
+    // Completion payloads carry the issuing thread for TraceEvent's PID fixup;
+    // initiation events are not consumed by this byte-attribution window.
+    private const KernelTraceEventParser.Keywords RequiredKeywords = KernelTraceEventParser.Keywords.DiskIO | KernelTraceEventParser.Keywords.Process;
 
     private const long WindowMilliseconds = 2000;
     private const long RetentionMilliseconds = 8000;
@@ -124,15 +126,24 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
             ClearTotals(); observedLoss = 0; generation = context.Generation;
             incompleteThroughTick = long.MinValue; startedTick = clock(); processRevision++;
         }
+        var transferCounter = source.ConsumerCounter("disk-transfer");
+        var identityCounter = source.ConsumerCounter("process-identity");
         source.DiskIORead += data => ObserveBoundDiskTransfer(source, context, data.ProcessID,
-            unchecked((uint)data.TransferSize), false, clock(), data.DiskNumber < 0 ? null : (uint)data.DiskNumber, ToFileTime(data.TimeStamp));
+            unchecked((uint)data.TransferSize), false, clock(), data.DiskNumber < 0 ? null : (uint)data.DiskNumber, ToFileTime(data.TimeStamp), transferCounter);
         source.DiskIOWrite += data => ObserveBoundDiskTransfer(source, context, data.ProcessID,
-            unchecked((uint)data.TransferSize), true, clock(), data.DiskNumber < 0 ? null : (uint)data.DiskNumber, ToFileTime(data.TimeStamp));
-        source.ProcessStartGroup += data => ProcessIdentityChanged(source, context, data.ProcessID);
-        source.ProcessEndGroup += data => ProcessIdentityChanged(source, context, data.ProcessID);
+            unchecked((uint)data.TransferSize), true, clock(), data.DiskNumber < 0 ? null : (uint)data.DiskNumber, ToFileTime(data.TimeStamp), transferCounter);
+        source.ProcessStartGroup += data => ProcessIdentityChanged(source, context, data.ProcessID, identityCounter);
+        source.ProcessEndGroup += data => ProcessIdentityChanged(source, context, data.ProcessID, identityCounter);
     }
-    private void ProcessIdentityChanged(KernelEtwEventSource source, KernelEtwSessionContext context, int pid)
-    { lock (eventGate) { if (source.IsActive && context.Generation == generation) InvalidateProcessCore(pid); } }
+    private void ProcessIdentityChanged(KernelEtwEventSource source, KernelEtwSessionContext context, int pid, EtwEventDropCounter counter)
+    {
+        counter.Receive();
+        lock (eventGate)
+        {
+            if (source.IsActive && context.Generation == generation) InvalidateProcessCore(pid);
+            else { counter.Drop(); source.RecordConsumerRejection("process-identity", "stale-binding"); }
+        }
+    }
     private void InvalidateProcessCore(int pid) { processRevision++; processBirths.Remove(pid); }
     internal void ObserveProcessIdentityChange(int pid) { lock (eventGate) InvalidateProcessCore(pid); }
 
@@ -156,17 +167,28 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
         int pid, long bytes, bool write, long tick)
     { if (bytes > 0) ObserveBoundDiskTransfer(source, context, pid, (ulong)bytes, write, tick, null, null); }
     internal void ObserveBoundDiskTransfer(KernelEtwEventSource source, KernelEtwSessionContext context,
-        int pid, ulong bytes, bool write, long tick, uint? disk, ulong? eventTime)
+        int pid, ulong bytes, bool write, long tick, uint? disk, ulong? eventTime, EtwEventDropCounter? counter = null)
     {
-        if (bytes == 0) return;
-        lock (eventGate) { if (source.IsActive && context.Generation == generation) RecordTransfer(pid, bytes, write, tick, disk, eventTime); }
+        counter ??= source.ConsumerCounter("disk-transfer");
+        counter.Receive();
+        void Reject(string reason)
+        {
+            counter.Drop();
+            source.RecordConsumerRejection("disk-transfer", reason);
+        }
+        if (bytes == 0) { Reject("invalid-payload"); return; }
+        lock (eventGate)
+        {
+            if (!source.IsActive || context.Generation != generation) { Reject("stale-binding"); return; }
+            if (!RecordTransfer(pid, bytes, write, tick, disk, eventTime)) Reject("before-process-birth");
+        }
     }
-    private void RecordTransfer(int pid, ulong bytes, bool write, long tick, uint? disk, ulong? eventTime)
+    private bool RecordTransfer(int pid, ulong bytes, bool write, long tick, uint? disk, ulong? eventTime)
     {
-        try { Enqueue(pid, bytes, write, tick, disk, eventTime); }
+        try { return Enqueue(pid, bytes, write, tick, disk, eventTime); }
         catch { incompleteThroughTick = Math.Max(incompleteThroughTick, tick); throw; }
     }
-    private void Enqueue(int pid, ulong bytes, bool write, long tick, uint? disk, ulong? eventTime)
+    private bool Enqueue(int pid, ulong bytes, bool write, long tick, uint? disk, ulong? eventTime)
     {
         Prune(tick);
         if (disk is { } number)
@@ -191,7 +213,7 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
         }
         // An unknown event timestamp makes that PID's selected attribution unavailable, as before.
         var key = new DiskPair(pid, disk, write, eventTime is null ? null : birth);
-        if (birth is { } knownBirth && eventTime is { } timestamp && timestamp < knownBirth) return;
+        if (birth is { } knownBirth && eventTime is { } timestamp && timestamp < knownBirth) return false;
         if (!pairs.TryGetValue(key, out var totals))
         {
             if (pairs.Count >= maximumActivePairs)
@@ -210,7 +232,7 @@ public sealed class EtwPhysicalDiskIoCaptureOwner : IDisposable
         try { bucket.Bytes = checked(bucket.Bytes + bytes); bucket.Count = checked(bucket.Count + 1); }
         catch (OverflowException) { bucket.Invalid = true; }
         totals.LastTick = Math.Max(totals.LastTick, tick);
-
+        return true;
     }
     internal int RetainedPairCount { get { lock (eventGate) return pairs.Count; } }
     internal long RetainedBucketBytes { get { lock (eventGate) return (long)pairs.Count * bucketCount * Marshal.SizeOf<DiskBucket>(); } }

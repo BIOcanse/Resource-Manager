@@ -1,4 +1,5 @@
 using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
+using System.Collections.Concurrent;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
@@ -7,6 +8,34 @@ namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 /// </summary>
 public sealed class KernelEtwEventSource
 {
+    private readonly string holder = "unbound";
+    private readonly Func<string, EtwEventDropCounter> createCounter = static name => new(name);
+    private readonly ConcurrentDictionary<(string Kind, string? Reason), EtwEventDropCounter> consumerCounters = new();
+
+    public KernelEtwEventSource() { }
+
+    internal KernelEtwEventSource(string holder, Func<string, EtwEventDropCounter> createCounter)
+    {
+        this.holder = holder;
+        this.createCounter = createCounter;
+    }
+
+    /// <summary>Callback-level use, separate from the dispatcher's physical delivery totals.</summary>
+    public EtwEventDropCounter ConsumerCounter(string kind)
+        => Counter(kind, null);
+
+    /// <summary>Records why a holder rejected an admitted callback, without changing physical totals.</summary>
+    public void RecordConsumerRejection(string kind, string reason)
+    {
+        var counter = Counter(kind, reason);
+        counter.Receive();
+        counter.Drop();
+    }
+
+    private EtwEventDropCounter Counter(string kind, string? reason)
+        => consumerCounters.GetOrAdd((kind, reason), static (key, source) => source.createCounter(
+            $"holder/{source.holder}/{key.Kind}" + (key.Reason is null ? "" : $"/rejected:{key.Reason}")), this);
+
     // Building callbacks are unpublished; a cancelled source is never activated again.
     private int state;
     public bool IsActive => Volatile.Read(ref state) == 1;

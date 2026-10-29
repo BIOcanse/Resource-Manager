@@ -306,6 +306,7 @@ public sealed class CaptureAggregationBucketTests(ITestOutputHelper output)
             () => new(1000, 8, new Dictionary<int, CpuResidencyCoreAccounting> { [0] = new("core:0", "", 1, 1) }.ToFrozenDictionary(), "recorded", 1),
             new(), static (_, _) => { }, allocateBuckets: length => new FailCloseOnce(LedgerCaptureBucketMemory.Create(ledger, length)));
         cpu.EnsureStarted();
+        cpu.BeginWindow();
         // Feed the actual active buffer without synthesizing OS TraceEvent objects or starting ETW.
         var session = typeof(EtwCpuResidencyCaptureOwner).GetField("activeSession", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(cpu)!;
         var buffer = (CpuResidencyAggregationBuffer)session.GetType().GetProperty("Buffer")!.GetValue(session)!;
@@ -320,7 +321,7 @@ public sealed class CaptureAggregationBucketTests(ITestOutputHelper output)
         if (rebind) broker.Rebind(); else cpu.Stop();
         Assert.Equal(0UL, ledger.ReadTable().RegisteredBytes);
         cpu.Dispose(); cpu.Dispose();
-        Assert.Equal(1, broker.Releases);
+        Assert.Equal(2, broker.Releases);
     }
 
     private sealed class FailCloseOnce(CaptureBucketMemory inner) : CaptureBucketMemory
@@ -337,15 +338,36 @@ public sealed class CaptureAggregationBucketTests(ITestOutputHelper output)
     {
         private KernelEtwSubscriptionRequest? request;
         private KernelEtwEventSource? source;
+        private readonly List<Lease> leases = [];
         internal int Releases;
-        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest next) { request = next; Rebind(); return new Lease(this); }
+        public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest next)
+        {
+            var metadata = next.Keywords.HasFlag(Microsoft.Diagnostics.Tracing.Parsers.KernelTraceEventParser.Keywords.Process);
+            var lease = new Lease(this, next.Keywords, metadata);
+            leases.Add(lease);
+            if (metadata) { request = next; Rebind(); }
+            else next.Bind(source!, new(7, Time));
+            return lease;
+        }
         internal void Rebind()
         { source?.Cancel(); source = new(); request!.Bind(source, new(7, Time)); source.Activate(); }
-        public KernelEtwSessionSnapshot GetSnapshot() => new("Running", "recorded", 7, Time, request!.Keywords, 1 - Releases, 0);
-        private sealed class Lease(RebindingBroker owner) : IKernelEtwSubscription
+        public KernelEtwSessionSnapshot GetSnapshot() => new("Running", "recorded", 7, Time,
+            leases.Aggregate(Microsoft.Diagnostics.Tracing.Parsers.KernelTraceEventParser.Keywords.None,
+                (keywords, lease) => keywords | lease.Keywords), leases.Count, 0);
+        private sealed class Lease(RebindingBroker owner,
+            Microsoft.Diagnostics.Tracing.Parsers.KernelTraceEventParser.Keywords keywords, bool metadata) : IKernelEtwSubscription
         {
+            internal Microsoft.Diagnostics.Tracing.Parsers.KernelTraceEventParser.Keywords Keywords { get; } = keywords;
+            private bool released;
             public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
-            public void Dispose() { owner.source?.Cancel(); owner.Releases++; }
+            public void Dispose()
+            {
+                if (released) return;
+                released = true;
+                owner.leases.Remove(this);
+                if (metadata) owner.source?.Cancel();
+                owner.Releases++;
+            }
         }
     }
 

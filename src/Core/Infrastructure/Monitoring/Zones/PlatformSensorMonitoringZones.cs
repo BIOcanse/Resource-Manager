@@ -15,11 +15,26 @@ public sealed partial class WindowsStorageSensorsMonitoringZone : MonitoringSour
 
 public sealed partial class HardwareMonitorWmiMonitoringZone : MonitoringSourceZone, IDisposable
 {
-    private readonly ResourceManager.ReadWrite.Windows.Platform.HardwareMonitorCoreReader coreReader = new();
-    public void Dispose() => coreReader.Dispose();
+    private readonly object gate = new();
+    private readonly ResourceManager.ReadWrite.Windows.Platform.HardwareMonitorCoreReader coreReader;
+    public void Dispose()
+    {
+        lock (gate) coreReader.Dispose();
+    }
     public HardwareMonitorWmiMonitoringZone()
+        : this(new ResourceManager.ReadWrite.Windows.Platform.HardwareMonitorCoreReader()) { }
+    internal HardwareMonitorWmiMonitoringZone(ResourceManager.ReadWrite.Windows.Platform.HardwareMonitorCoreReader coreReader)
         : base(MonitoringSourceZoneIds.HardwareMonitorWmi)
     {
+        this.coreReader = coreReader ?? throw new ArgumentNullException(nameof(coreReader));
+    }
+    public override void ApplyMode(ResourceManagerComputeZoneMode mode)
+    {
+        lock (gate)
+        {
+            base.ApplyMode(mode);
+            if (mode == ResourceManagerComputeZoneMode.Freeze) coreReader.ReleaseSession();
+        }
     }
 }
 
@@ -94,8 +109,16 @@ public sealed partial class IpHelperNetworkMonitoringZone : MonitoringSourceZone
 
 public sealed class EtwNetworkTcpIpMonitoringZone : MonitoringSourceZone
 {
+    internal event Action? ModeChanged;
+
     public EtwNetworkTcpIpMonitoringZone()
         : base(MonitoringSourceZoneIds.EtwNetworkTcpIp)
     {
+    }
+
+    public override void ApplyMode(ResourceManagerComputeZoneMode mode)
+    {
+        base.ApplyMode(mode);
+        ModeChanged?.Invoke();
     }
 }

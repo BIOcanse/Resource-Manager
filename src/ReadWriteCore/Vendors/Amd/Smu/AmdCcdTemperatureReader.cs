@@ -80,6 +80,17 @@ public sealed class AmdCcdTemperatureReader : IDisposable
         }
     }
 
+    /// <summary>Releases the native session; the selected CPU layout remains available for subsequent reads.</summary>
+    public void ReleaseSession()
+    {
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            session?.Dispose();
+            session = null;
+        }
+    }
+
     public void Dispose()
     {
         lock (gate)

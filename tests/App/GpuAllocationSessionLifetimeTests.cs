@@ -41,6 +41,8 @@ public sealed class GpuAllocationSessionLifetimeTests
         };
         await using var harness = factory.Harness();
         await harness.SetInUseAsync(true);
+        await harness.WaitRunningAsync();
+        await harness.Collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(1), default);
         var result = await harness.NextResultAsync();
         Assert.Equal(BusinessBlockOutcome.Failed, result.Outcome);
         Assert.Equal(typeof(UnauthorizedAccessException).FullName, result.FailureType);
@@ -68,6 +70,7 @@ public sealed class GpuAllocationSessionLifetimeTests
         await using var harness = factory.Harness();
         await harness.SetInUseAsync(true);
         await harness.WaitRunningAsync();
+        await harness.Collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(1), default);
         var session = factory.Current;
         var error = new UnauthorizedAccessException("injected running " + operation + " permission failure");
         if (operation == "consumer") session.End(error);
@@ -92,6 +95,7 @@ public sealed class GpuAllocationSessionLifetimeTests
         Assert.False(session.HasBoundHandler);
         Assert.False(Assert.IsType<bool>(Assert.Single(harness.Controller.Read().Items, fact => fact.ItemUid == BackendItems.GpuAllocationNativeSessionAvailable).Value));
         Assert.True(harness.Fixture.Authority.Read<bool>(ResourceManager.App.StateItems.StateItemUids.ProcessDedicatedGpuMemoryInUse).Value);
+        await harness.Collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(30), default);
         Assert.Null(harness.Collector.ReadCurrent(GpuAllocationTestSession.Processes));
         await harness.StopAsync();
     }
@@ -104,9 +108,10 @@ public sealed class GpuAllocationSessionLifetimeTests
         var factory = new GpuAllocationTestSessionFactory { PartialCleanupFailure = creationCleanupFailure };
         await using var harness = factory.Harness();
         await harness.SetInUseAsync(true);
+        await harness.WaitRunningAsync();
+        await harness.Collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(1), default);
         if (!creationCleanupFailure)
         {
-            await harness.WaitRunningAsync();
             factory.Current.StopResult = new(true, false, true, ["injected unconfirmed release"]);
             factory.Current.End();
         }
@@ -131,6 +136,8 @@ public sealed class GpuAllocationSessionLifetimeTests
         else factory.CreateFailure = error;
         await using var harness = factory.Harness();
         await harness.SetInUseAsync(true);
+        await harness.WaitRunningAsync();
+        await harness.Collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(1), default);
         Assert.Equal(BusinessBlockOutcome.Failed, (await harness.NextResultAsync()).Outcome);
         await EtwTestRunRecorder.UntilAsync(() => harness.Controller.ReadState(BackendUids.GpuAllocationCollector) == BusinessBlockState.Stopped);
         Assert.NotNull(harness.Availability.ReadFailure(BackendUids.GpuAllocationCollector));
@@ -158,13 +165,16 @@ public sealed class GpuAllocationSessionLifetimeTests
         var factory = new GpuAllocationTestSessionFactory { Failures = 1 };
         await using var harness = factory.Harness();
         await harness.SetInUseAsync(true);
+        await harness.WaitRunningAsync();
+        await harness.Collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(1), default);
         var failure = await harness.NextResultAsync();
         Assert.Equal(BusinessBlockOutcome.Failed, failure.Outcome);
         Assert.Equal(BusinessBlockFailureStage.Start, failure.FailureStage);
-        await EtwTestRunRecorder.UntilAsync(() => factory.Attempts == 2);
+        await harness.WaitRestartedAsync();
         await harness.WaitRunningAsync();
-        Assert.Equal(0, factory.Current.Captures);
+        Assert.Equal(1, factory.Attempts);
         await harness.Collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(30), default);
+        Assert.Equal(2, factory.Attempts);
         Assert.NotNull(harness.Collector.ReadCurrent(GpuAllocationTestSession.Processes));
         await harness.StopAsync();
     }
@@ -176,6 +186,7 @@ public sealed class GpuAllocationSessionLifetimeTests
         await using var harness = factory.Harness();
         await harness.SetInUseAsync(true);
         await harness.WaitRunningAsync();
+        await harness.Collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(1), default);
         var session = factory.Current;
         session.StopResult = new(false, false, false, ["native control denied"]) { ControlDenied = true };
         session.HoldProcessingAfterStop = true;
@@ -208,13 +219,13 @@ public sealed class GpuAllocationSessionLifetimeTests
         var collector = harness.Collector;
         await harness.SetInUseAsync(true);
         await harness.WaitRunningAsync();
-        await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(30), default);
+        await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(1), default);
         var old = factory.Current;
         old.End(new IOException("injected consumer failure"));
         Assert.Equal(BusinessBlockOutcome.Failed, (await harness.NextResultAsync()).Outcome);
         Assert.Equal(1, old.Stops);
         Assert.Equal(Timeout.InfiniteTimeSpan, old.StopTimeout);
-        await EtwTestRunRecorder.UntilAsync(() => factory.Attempts == 2);
+        await harness.WaitRestartedAsync();
         await harness.WaitRunningAsync();
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(30), default);
         var current = collector.ReadCurrent(GpuAllocationTestSession.Processes);
@@ -232,7 +243,12 @@ public sealed class GpuAllocationSessionLifetimeTests
         await using var harness = factory.Harness();
         await harness.SetInUseAsync(true);
         await harness.WaitRunningAsync();
+        // Exercise a genuinely held provider: idle startup no longer retains
+        // the boundary provider merely to make session creation observable.
+        await harness.Collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(1), default);
         var session = factory.Current;
+        Assert.NotNull(harness.Collector.ReadCurrent(GpuAllocationTestSession.Processes));
+        Assert.Equal(GpuAllocationCollector.Provider, Assert.Single(session.Enabled));
         session.StopResult = new(true, false, true, ["fake disposal failure"]);
         session.End();
         var failure = await harness.NextResultAsync();
@@ -241,7 +257,7 @@ public sealed class GpuAllocationSessionLifetimeTests
         await harness.StopAsync();
         Assert.Equal(1, factory.Attempts);
         Assert.Equal(1, session.Stops);
-        Assert.NotEmpty(session.Enabled);
+        Assert.Equal(GpuAllocationCollector.Provider, Assert.Single(session.Enabled));
 
         await harness.SetInUseAsync(true);
         await Task.Delay(TimeSpan.FromMilliseconds(100));
@@ -258,6 +274,8 @@ public sealed class GpuAllocationSessionLifetimeTests
         var factory = new GpuAllocationTestSessionFactory { PartialCleanupFailure = true };
         await using var harness = factory.Harness();
         await harness.SetInUseAsync(true);
+        await harness.WaitRunningAsync();
+        await harness.Collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(1), default);
         var failure = await harness.NextResultAsync();
         Assert.Equal(BusinessBlockOutcome.Failed, failure.Outcome);
         Assert.Equal(BusinessBlockFailureStage.Start, failure.FailureStage);

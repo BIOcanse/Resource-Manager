@@ -70,6 +70,7 @@ internal sealed class TraceEventPresentFrameEtwSession(string name) : IPresentFr
             drops?.Complete();
             var release = (cleanup ??= new(session, blockId: BlockUids.PresentFrameEtwSource)).Stop(Timeout.InfiniteTimeSpan);
             if (!release.IsReleased) throw new IOException("Present session release was not confirmed: " + string.Join(" | ", release.Failures));
+            drops?.ConfirmNativeRelease();
         }
     }
 }

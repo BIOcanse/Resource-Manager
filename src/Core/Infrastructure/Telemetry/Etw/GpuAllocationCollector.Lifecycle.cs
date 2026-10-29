@@ -1,4 +1,4 @@
-﻿using BlockUids = ResourceManager.App.StateItems.BlockUids;
+using BlockUids = ResourceManager.App.StateItems.BlockUids;
 using Microsoft.Extensions.Configuration;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
@@ -71,7 +71,6 @@ public sealed partial class GpuAllocationCollector
         try
         {
             stopNotification.ThrowIfCancellationRequested();
-            using (diagnostics.MeasureSegment(BlockUids.GpuAllocationCollector)) StartSession(run);
             started = true;
             context.ReportRunning();
             run.Started.TrySetResult();
@@ -79,7 +78,7 @@ public sealed partial class GpuAllocationCollector
             await Task.WhenAny(run.ProcessingCompletion.Task, stopSignal.Task).ConfigureAwait(false);
             if (run.ProcessingCompletion.Task.IsCompletedSuccessfully && run.ProcessingCompletion.Task.Result is { } failure)
             {
-                result = BusinessBlockResult.Failed(failure);
+                result = BusinessBlockResult.Failed(failure, run.FailureStage);
             }
             else if (stopNotification.IsCancellationRequested)
             {
@@ -111,18 +110,13 @@ public sealed partial class GpuAllocationCollector
                 lock (lifecycle) captureRequests = run.CaptureRequestsDrained;
                 await captureRequests.ConfigureAwait(false);
                 using (diagnostics.MeasureSegment(BlockUids.GpuAllocationCollector)) cleanupFailure = StopSession(run);
-                // Stop can be denied while its native consumer is still alive.
-                // A failed native release never excuses leaving owned work running.
-                try { run.Session?.JoinProcessing(); }
-                catch (Exception error) { ObserveSessionFailure(run, error); cleanupFailure ??= error; }
             }
             finally
             {
                 captureGate.Release();
                 lock (lifecycle)
                 {
-                    if (ReferenceEquals(session, run.Session)) { session = null; sessionName = null; }
-                    run.Session = null;
+                    // A failed release remains owned; do not lose its only reference.
                     if (ReferenceEquals(activeRun, run)) activeRun = null;
                 }
                 run.CaptureAdmission.Dispose();
@@ -134,6 +128,26 @@ public sealed partial class GpuAllocationCollector
             : BusinessBlockResult.Failed(cleanupFailure, BusinessBlockFailureStage.Stop);
         diagnostics.RecordResult(BlockUids.GpuAllocationCollector, finalResult);
         run.Completed.TrySetResult();
+    }
+
+    // The original source planner calls this on membership/cadence changes,
+    // including plans with no due capture. It never opens a session.
+    internal void SynchronizeCaptureInterval(TimeSpan? refreshInterval, CancellationToken cancellationToken = default)
+    {
+        if (refreshInterval is { } interval)
+        {
+            if (interval <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(refreshInterval));
+            if (plan.UseLive(interval)) return;
+        }
+        captureGate.Wait(cancellationToken);
+        try
+        {
+            Run? run;
+            lock (lifecycle) run = activeRun;
+            if (run is null || Volatile.Read(ref run.Failed)) return;
+            StopSession(run);
+        }
+        finally { captureGate.Release(); }
     }
 
     private void ObserveSessionFailure(Run run, Exception? error)
@@ -153,6 +167,9 @@ public sealed partial class GpuAllocationCollector
 
     private void StartSession(Run run)
     {
+        lock (lifecycle)
+            if (session is not null)
+                throw new InvalidOperationException("The prior GPU allocation session has not been released.");
         var name = ResourceManagerEtwSessionNames.Create(ResourceManagerEtwSessionNames.GpuAllocationsPrefix,
             ResourceManagerEtwSessionNames.CurrentOwner);
         var current = sessionFactory.Create(name);
@@ -166,6 +183,9 @@ public sealed partial class GpuAllocationCollector
 
         current.Bind((provider, id, payload, timestamp) =>
         {
+            var accepted = false;
+            try
+            {
             lock (gate)
             {
                 if (!ReferenceEquals(Volatile.Read(ref session), current)) return;
@@ -183,6 +203,7 @@ public sealed partial class GpuAllocationCollector
                         {
                             pending.Candidate = new();
                             pending.EventsLost = Convert.ToInt64(payload.Get(GpuAllocationField.eventsLost));
+                            accepted = true;
                         }
                         else if (id == 3 && pending.Candidate is { } candidate)
                         {
@@ -191,12 +212,17 @@ public sealed partial class GpuAllocationCollector
                             if (pending.KeepLive) { liveLedger = candidate; liveEventsLost = pending.EventsLost; }
                             pending.Candidate = null;
                             pending.Completion.TrySetResult(candidate);
+                            accepted = true;
                         }
                         return;
                     }
                     if (provider != Provider || !EventIds.Contains(id)) return;
                     var target = scan?.Candidate ?? (liveFailure is null ? liveLedger : null);
-                    if (target is not null) GpuAllocationEventDecoder.Apply(target, id, payload, timestamp);
+                    if (target is not null)
+                    {
+                        GpuAllocationEventDecoder.Apply(target, id, payload, timestamp);
+                        accepted = true;
+                    }
                 }
                 catch (Exception error)
                 {
@@ -208,10 +234,18 @@ public sealed partial class GpuAllocationCollector
                     else if (liveLedger is not null) liveFailure = error;
                 }
             }
+            }
+            finally
+            {
+                // The native dispatcher already counted this delivery. Attribute
+                // rejection to that exact provider/ID/opcode on the same session.
+                if (!accepted) payload.DropCounter?.Drop();
+                GpuAllocationObservation.RecordDelivery(name, provider, id, timestamp, accepted);
+            }
         });
 
-        // Enabling one provider forces ETW session creation before the first due capture.
-        // GPU allocation providers remain disabled until CaptureAsync is admitted.
+        // Creation occurs only for an admitted capture. This provider starts
+        // the native session and is consumed by that capture's rundown.
         current.EnableProvider(BoundaryProvider);
         current.StartProcessing(error => OnSessionCompleted(run, current, error));
         if (!current.IsProcessing && !run.ProcessingCompletion.Task.IsCompleted)
@@ -221,6 +255,7 @@ public sealed partial class GpuAllocationCollector
     private void OnSessionCompleted(Run run, IGpuAllocationSession current, Exception? error)
     {
         if (!ReferenceEquals(Volatile.Read(ref session), current)) return;
+        if (error is null && ReferenceEquals(Volatile.Read(ref run.ClosingSession), current)) return;
         if (run.StopNotification.IsCancellationRequested)
         {
             if (error is null) run.ProcessingCompletion.TrySetResult(null);
@@ -244,11 +279,14 @@ public sealed partial class GpuAllocationCollector
             logger.LogWarning(error, "GPU allocation event processing failed; releasing the owned session.");
     }
 
+    // captureGate owns native lifetime. Neither Stop nor Join runs under a
+    // callback/publication lock, and an intentional finite close is not a run exit.
     private Exception? StopSession(Run run)
     {
+        if (run.CleanupFailure is { } previousFailure) return previousFailure;
         lock (gate)
         {
-            scan?.Completion.TrySetException(new OperationCanceledException("GPU allocation block is stopping."));
+            scan?.Completion.TrySetException(new OperationCanceledException("GPU allocation session is closing."));
             scan = null;
             liveLedger = null;
             liveFailure = null;
@@ -259,47 +297,60 @@ public sealed partial class GpuAllocationCollector
         {
             current = run.Session;
             if (current is null) return null;
+            run.ClosingSession = current;
         }
 
-        KernelEtwSessionStopResult released;
-        try { released = current.Stop(Timeout.InfiniteTimeSpan); }
+        Exception? failure = null;
+        try
+        {
+            var released = current.Stop(Timeout.InfiniteTimeSpan);
+            if (!released.IsReleased)
+                failure = new IOException("GPU allocation session release was not confirmed: " + string.Join(" | ", released.Failures));
+        }
+        catch (Exception error) { failure = error; }
+        // Publish failed release before joining, so unavailable state cannot
+        // be mistaken for an available session while its consumer is draining.
+        if (failure is not null) ReportReleaseFailure(run, failure);
+        try { current.JoinProcessing(); }
         catch (Exception error)
         {
-            availability.Report(BlockUids.GpuAllocationCollector, NativeEtwSessionUnavailableCause.ReleaseUnconfirmed, error);
-            ObserveSessionFailure(run, error);
-            logger.LogError(error, "GPU allocation session release failed.");
-            return error;
+            if (failure is null) { failure = error; ReportReleaseFailure(run, failure); }
         }
-
-        if (!released.IsReleased)
-        {
-            var error = new IOException("GPU allocation session release was not confirmed: " + string.Join(" | ", released.Failures));
-            availability.Report(BlockUids.GpuAllocationCollector, NativeEtwSessionUnavailableCause.ReleaseUnconfirmed, error);
-            ObserveSessionFailure(run, error);
-            logger.LogError(error, "GPU allocation session release failed.");
-            return error;
-        }
+        // Retain this exact failed owner; outer cleanup reports the same
+        // obligation without a second native stop or a replacement session.
+        if (failure is not null) return failure;
 
         lock (lifecycle)
         {
-            if (ReferenceEquals(session, current))
-            {
-                session = null;
-                sessionName = null;
-            }
+            if (ReferenceEquals(session, current)) { session = null; sessionName = null; }
+            if (ReferenceEquals(run.Session, current)) run.Session = null;
+            run.ClosingSession = null;
         }
         return null;
+    }
+
+    private void ReportReleaseFailure(Run run, Exception failure)
+    {
+        run.CleanupFailure = failure;
+        Volatile.Write(ref run.Failed, true);
+        run.ProcessingCompletion.TrySetResult(failure);
+        availability.Report(BlockUids.GpuAllocationCollector, NativeEtwSessionUnavailableCause.ReleaseUnconfirmed, failure);
+        ObserveSessionFailure(run, failure);
+        logger.LogError(failure, "GPU allocation session release failed.");
     }
 
     private sealed class Run(CancellationToken stopNotification)
     {
         internal bool Failed;
+        internal BusinessBlockFailureStage FailureStage = BusinessBlockFailureStage.Run;
         internal TaskCompletionSource Completed { get; } = NewSignal();
         internal CancellationToken StopNotification { get; } = stopNotification;
         internal CancellationTokenSource CaptureAdmission { get; } = new();
         internal TaskCompletionSource Started { get; } = NewSignal();
         internal TaskCompletionSource<Exception?> ProcessingCompletion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal IGpuAllocationSession? Session;
+        internal IGpuAllocationSession? ClosingSession;
+        internal Exception? CleanupFailure;
         private int captureRequests;
         private TaskCompletionSource? captureRequestsDrained;
 

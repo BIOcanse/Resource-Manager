@@ -32,6 +32,7 @@ public sealed class EtwEventDropSession
     private readonly object gate = new();
     private readonly Dictionary<string, ulong> providers = [];
     private readonly ConcurrentDictionary<(Guid Provider, int Id, int Opcode), EtwEventDropCounter> dynamicKinds = new();
+    private readonly ConcurrentDictionary<string, EtwEventDropCounter> namedKinds = new(StringComparer.Ordinal);
     private readonly IReadOnlyList<EtwEventDropCounter> fixedKinds;
     private Func<int>? readEventsLost;
     private long eventsLost;
@@ -65,6 +66,14 @@ public sealed class EtwEventDropSession
         counter.Drop();
     }
 
+    // Consumer counters are separate from physical delivery totals. Stable holder/event
+    // names keep repeated acquisitions from growing diagnostic history without bound.
+    public EtwEventDropCounter NamedKind(string kind)
+        => namedKinds.GetOrAdd(kind, static name => new(name));
+
+    internal void RegisterCounter(string kind, EtwEventDropCounter counter)
+        => namedKinds.TryAdd(kind, counter);
+
     public void EnableProvider(string provider, ulong keywords)
     {
         lock (gate) providers[provider] = keywords;
@@ -72,6 +81,12 @@ public sealed class EtwEventDropSession
     public void DisableProvider(string provider)
     {
         lock (gate) providers.Remove(provider);
+    }
+    // Complete only detaches the loss reader. A failed native release still
+    // owns its last enabled providers; clear them only after confirmed release.
+    public void ConfirmNativeRelease()
+    {
+        lock (gate) providers.Clear();
     }
     // Detach before disposal so reads cannot touch a disposed controller.
     public void Complete(bool refreshLoss = true)
@@ -107,7 +122,7 @@ public sealed class EtwEventDropSession
             RefreshLoss();
             return new(Name, Generation, startedAt,
                 providers.Select(pair => new EtwEnabledProvider(pair.Key, pair.Value)).ToArray(), eventsLost,
-                fixedKinds.Concat(dynamicKinds.Values).Select(counter => counter.Read()).ToArray(), eventsLostError);
+                fixedKinds.Concat(dynamicKinds.Values).Concat(namedKinds.Values).Select(counter => counter.Read()).ToArray(), eventsLostError);
         }
     }
 }

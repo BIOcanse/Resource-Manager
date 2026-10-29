@@ -31,10 +31,10 @@ public sealed class GpuAllocationFrequencyTests
         var next = collector.ReadCurrent(GpuAllocationTestSession.Processes)!;
         Assert.Equal(live ? 2048 : 1024, next.Adapters[23][41].PrivateBytes);
         Assert.Equal(1024, prior.Adapters[23][41].PrivateBytes);
-        Assert.Equal(live ? 1 : 2, factory.Current.Captures);
+        Assert.Equal(live ? 1 : 2, factory.Sessions.Sum(session => session.Captures));
         Assert.Equal(prior.Generation + 1, next.Generation);
         Assert.Equal(live, factory.Current.Enabled.Contains(GpuAllocationCollector.Provider));
-        Assert.Single(factory.Sessions);
+        Assert.Equal(live ? 1 : 2, factory.Sessions.Count);
     }
 
     [Fact]
@@ -45,22 +45,23 @@ public sealed class GpuAllocationFrequencyTests
         var collector = harness.Collector;
         await harness.SetInUseAsync(true);
         await harness.WaitRunningAsync();
-        Assert.Equal(1, factory.Current.ManifestEvents); // Session creation enables the boundary provider.
+        Assert.Empty(factory.Sessions); // A ready block owns no native session before its first due capture.
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(30), default);
         var first = collector.ReadCurrent(GpuAllocationTestSession.Processes);
         Assert.NotNull(first);
         Assert.Equal(1024, first.Adapters[23][41].PrivateBytes);
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(30), default);
 
-        Assert.Equal(3, factory.Current.ManifestEvents); // Startup plus one enable per due capture.
-        Assert.Equal(2, factory.Current.Captures);
+        Assert.Equal(4, factory.Sessions.Sum(session => session.ManifestEvents)); // Each finite session enables startup and scan boundary events.
+        Assert.Equal(2, factory.Sessions.Sum(session => session.Captures));
+        Assert.All(factory.Sessions, session => { Assert.Equal(1, session.Stops); Assert.True(session.Joined); });
         var value = collector.ReadCurrent(GpuAllocationTestSession.Processes);
         Assert.NotNull(value);
         Assert.Equal(1024, value.Adapters[23][41].PrivateBytes);
     }
 
     [Fact]
-    public async Task CadenceChangesSwitchTheMechanismOnlyAtTheNextDueCapture()
+    public async Task CadenceChangesReleaseLiveHoldsBeforeTheNextDueCapture()
     {
         var factory = new GpuAllocationTestSessionFactory();
         await using var harness = factory.Harness(timeProvider: new NoTimers());
@@ -72,15 +73,21 @@ public sealed class GpuAllocationFrequencyTests
         Assert.Equal(1, factory.Current.Captures);
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(1), default);
         Assert.Contains(GpuAllocationCollector.Provider, factory.Current.Enabled);
-        Assert.Equal(2, factory.Current.Captures);
+        Assert.Equal(2, factory.Sessions.Sum(session => session.Captures));
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(1), default);
-        Assert.Equal(2, factory.Current.Captures);
+        Assert.Equal(2, factory.Sessions.Sum(session => session.Captures));
         Assert.Contains(GpuAllocationCollector.Provider, factory.Current.Enabled);
+        var prior = collector.ReadCurrent(GpuAllocationTestSession.Processes);
+        collector.SynchronizeCaptureInterval(TimeSpan.FromSeconds(30));
+        Assert.Equal(1, factory.Current.Stops);
+        Assert.True(factory.Current.Joined);
+        Assert.Same(prior, collector.ReadCurrent(GpuAllocationTestSession.Processes));
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(30), default);
-        Assert.Equal(3, factory.Current.Captures);
+        Assert.Equal(3, factory.Sessions.Sum(session => session.Captures));
         Assert.Empty(factory.Current.Enabled);
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(1), default);
-        Assert.Equal(4, factory.Current.Captures);
+        Assert.Equal(4, factory.Sessions.Sum(session => session.Captures));
+        Assert.Equal(4, factory.Attempts);
         Assert.Contains(GpuAllocationCollector.Provider, factory.Current.Enabled);
     }
 
@@ -106,10 +113,10 @@ public sealed class GpuAllocationFrequencyTests
         Assert.Contains(log.Errors, error => error.Contains(malformed ? "decoding failed" : "events were lost"));
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(1), default);
         Assert.NotNull(collector.ReadCurrent(GpuAllocationTestSession.Processes));
-        Assert.Equal(2, factory.Current.Captures);
+        Assert.Equal(2, factory.Sessions.Sum(session => session.Captures));
         Assert.Contains(GpuAllocationCollector.Provider, factory.Current.Enabled);
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(1), default);
-        Assert.Equal(2, factory.Current.Captures);
+        Assert.Equal(2, factory.Sessions.Sum(session => session.Captures));
     }
 
     [Theory]
@@ -130,7 +137,7 @@ public sealed class GpuAllocationFrequencyTests
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(seconds), default);
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(seconds), default);
         Assert.Equal(live, factory.Current.Enabled.Contains(GpuAllocationCollector.Provider));
-        Assert.Equal(live ? 1 : 2, factory.Current.Captures);
+        Assert.Equal(live ? 1 : 2, factory.Sessions.Sum(session => session.Captures));
     }
 
     [Theory]

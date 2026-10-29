@@ -118,12 +118,26 @@ public sealed class HardwareMonitorCoreReader : IDisposable
     {
         lock (gate)
         {
-            if (disposed) return;
             disposed = true;
-            var owned = computer;
-            computer = null;
-            owned?.Close();
+            ReleaseSessionCore();
         }
+    }
+
+    /// <summary>Closes owned hardware access while retaining the original open-failure cache.</summary>
+    public void ReleaseSession()
+    {
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            ReleaseSessionCore();
+        }
+    }
+
+    private void ReleaseSessionCore()
+    {
+        // A failed close must remain owned so this same reader can explicitly retry cleanup.
+        computer?.Close();
+        computer = null;
     }
 
     private sealed record Rows(IReadOnlyList<Dictionary<string, object?>> Sensors,

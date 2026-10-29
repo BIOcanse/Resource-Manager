@@ -20,7 +20,7 @@ internal interface IGpuAllocationSession
     void DisableProvider(Guid provider);
     void BeginScan(string sessionName, long scan, long eventsLost);
     void EndScan(string sessionName, long scan);
-    void CaptureState(Guid provider, ulong keywords);
+    void CaptureState(Guid provider, ulong keywords, int[]? eventIds = null);
     void Flush();
     KernelEtwSessionStopResult Stop(TimeSpan timeout);
     void JoinProcessing();
@@ -68,8 +68,14 @@ internal sealed class TraceEventGpuAllocationSession(
         consumerThreadObserver: consumerThreadObserver,
         blockId: BlockUids.GpuAllocationCollector);
     private Action<TraceEvent>? eventHandler;
+    private Action<TraceEvent>? unhandledHandler;
     private EtwEventDropSession? drops;
     private EtwEventDropSession Drops => drops ??= EtwEventDropDiagnostics.Start(session.SessionName, () => session.EventsLost);
+    private GpuAllocationProviderControl? providerControl;
+    private GpuAllocationProviderControl Providers => providerControl ??= new(Drops,
+        (provider, keywords, options) => session.EnableProvider(provider, TraceEventLevel.Verbose, keywords, options),
+        session.DisableProvider,
+        (provider, keywords, filterType, data) => session.CaptureState(provider, keywords, filterType, data), session.SessionName);
     public bool IsProcessing => processing.IsProcessing;
     public int EventsLost => processing.EventsLost;
     public void Bind(Action<Guid, int, IGpuAllocationPayload, DateTime> handler)
@@ -80,26 +86,25 @@ internal sealed class TraceEventGpuAllocationSession(
         {
             var counter = run.Kind(data.ProviderGuid, (int)data.ID, (int)data.Opcode);
             counter.Receive();
-            payload.SetEvent(data);
+            payload.SetEvent(data, counter);
             handler(data.ProviderGuid, (int)data.ID, payload, data.TimeStamp.ToUniversalTime());
         };
         session.Source.Dynamic.All += eventHandler;
-        session.Source.UnhandledEvents += run.RecordUnhandled;
+        unhandledHandler = data =>
+        {
+            run.RecordUnhandled(data);
+            GpuAllocationObservation.RecordDelivery(session.SessionName, data.ProviderGuid, (int)data.ID,
+                data.TimeStamp.ToUniversalTime(), false);
+        };
+        session.Source.UnhandledEvents += unhandledHandler;
     }
     public void StartProcessing(Action<Exception?> completed) => processing.StartProcessing(completed);
     public void EnableProvider(Guid provider, ulong keywords = 0, int[]? eventIds = null)
-    {
-        if (eventIds is null) session.EnableProvider(provider, TraceEventLevel.Verbose, keywords);
-        else session.EnableProvider(provider, TraceEventLevel.Verbose, keywords,
-            new TraceEventProviderOptions { EventIDsToEnable = eventIds });
-        Drops.EnableProvider(provider.ToString("D"), keywords);
-    }
-    public void CaptureState(Guid provider, ulong keywords) => session.CaptureState(provider, keywords);
+        => Providers.Enable(provider, keywords, eventIds);
+    public void CaptureState(Guid provider, ulong keywords, int[]? eventIds = null)
+        => Providers.CaptureState(provider, keywords, eventIds);
     public void DisableProvider(Guid provider)
-    {
-        session.DisableProvider(provider);
-        Drops.DisableProvider(provider.ToString("D"));
-    }
+        => Providers.Disable(provider);
     public void BeginScan(string sessionName, long scan, long eventsLost)
         => GpuAllocationBoundary.Instance.BeginScan(sessionName, scan, eventsLost);
     public void EndScan(string sessionName, long scan) => GpuAllocationBoundary.Instance.EndScan(sessionName, scan);
@@ -110,13 +115,15 @@ internal sealed class TraceEventGpuAllocationSession(
         try
         {
             if (eventHandler is { } handler) session.Source.Dynamic.All -= handler;
-            if (drops is { } run) session.Source.UnhandledEvents -= run.RecordUnhandled;
+            if (unhandledHandler is { } unhandled) session.Source.UnhandledEvents -= unhandled;
             eventHandler = null;
+            unhandledHandler = null;
         }
         finally
         {
             drops?.Complete();
             release = processing.Stop(timeout);
+            if (release.IsReleased) providerControl?.RecordSessionReleased();
         }
         return release;
     }

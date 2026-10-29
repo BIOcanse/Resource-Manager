@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading.Channels;
+using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Domain.CpuTopology;
@@ -39,6 +40,7 @@ public sealed partial class CpuTopologyEndpointTests
         Assert.Equal(CpuCoreResidencyUnavailableReasons.NotRequested,
             Assert.IsType<CpuCoreResidencyUnavailable>(reader.ReadObservation()).ReasonCode);
         capture.EnsureStarted();
+        capture.BeginWindow();
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
         {
@@ -143,25 +145,45 @@ public sealed partial class CpuTopologyEndpointTests
     private sealed class PublicationBroker : IKernelEtwSessionBroker
     {
         private KernelEtwSubscriptionRequest? request;
+        private KernelEtwEventSource? source;
+        private readonly List<Lease> leases = [];
         private long generation = 1;
         internal int EventsLost;
         internal bool Running = true, ThrowSnapshot;
         public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest value)
         {
-            request = value;
-            Bind();
-            return new Lease(this);
+            var metadata = value.Keywords.HasFlag(KernelTraceEventParser.Keywords.Process);
+            var lease = new Lease(this, value.Keywords, metadata);
+            leases.Add(lease);
+            if (metadata) { request = value; Bind(); }
+            else value.Bind(source!, new(generation, DateTimeOffset.UtcNow));
+            return lease;
         }
-        private void Bind() => request!.Bind(new KernelEtwEventSource(), new(generation, DateTimeOffset.UtcNow));
+        private void Bind()
+        {
+            source?.Cancel();
+            source = new KernelEtwEventSource();
+            request!.Bind(source, new(generation, DateTimeOffset.UtcNow));
+            source.Activate();
+        }
         internal void Rebind() { generation++; Bind(); }
         public KernelEtwSessionSnapshot GetSnapshot()
             => ThrowSnapshot ? throw new InvalidOperationException("recorded failure")
                 : new(Running ? "Running" : "Unavailable", "recorded", generation, DateTimeOffset.UnixEpoch,
-                    request?.Keywords ?? 0, 1, EventsLost);
-        private sealed class Lease(PublicationBroker broker) : IKernelEtwSubscription
+                    leases.Aggregate(KernelTraceEventParser.Keywords.None, (keywords, lease) => keywords | lease.Keywords),
+                    leases.Count, EventsLost);
+        private sealed class Lease(PublicationBroker broker, KernelTraceEventParser.Keywords keywords, bool metadata) : IKernelEtwSubscription
         {
+            internal KernelTraceEventParser.Keywords Keywords { get; } = keywords;
+            private bool released;
             public KernelEtwSessionSnapshot GetSnapshot() => broker.GetSnapshot();
-            public void Dispose() { }
+            public void Dispose()
+            {
+                if (released) return;
+                released = true;
+                broker.leases.Remove(this);
+                if (metadata) broker.source?.Cancel();
+            }
         }
     }
 }

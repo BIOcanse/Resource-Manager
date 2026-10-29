@@ -35,6 +35,7 @@ internal sealed class TraceEventVidMmSession : IVidMmEtwSession
             var release = cleanup.Stop(Timeout.InfiniteTimeSpan);
             if (!release.IsReleased) throw new KernelEtwSessionCreationCleanupException(error,
                 new IOException(string.Join(" | ", release.Failures)));
+            drops.ConfirmNativeRelease();
             throw;
         }
     }
@@ -66,6 +67,7 @@ internal sealed class TraceEventVidMmSession : IVidMmEtwSession
             drops.Complete();
             var release = cleanup.Stop(Timeout.InfiniteTimeSpan);
             if (!release.IsReleased) throw new IOException("VidMm session release was not confirmed: " + string.Join(" | ", release.Failures));
+            drops.ConfirmNativeRelease();
         }
     }
 }

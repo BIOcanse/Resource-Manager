@@ -21,12 +21,17 @@ public sealed partial class HardwareMonitorWmiMonitoringZone
     }
 
     internal NativeMetricSnapshotOrdinalTopologyRead ReadFanCatalog(ulong generation)
-        => WindowsNotebookFanProjection.CreateFanCatalog(
-            CanRead ? coreReader.ReadFanIdentities(TimeSpan.FromSeconds(2)) : new(false, []),
-            enableMechrevo: false, generation);
+    {
+        lock (gate)
+            return WindowsNotebookFanProjection.CreateFanCatalog(
+                CanRead ? coreReader.ReadFanIdentities(TimeSpan.FromSeconds(2)) : new(false, []),
+                enableMechrevo: false, generation);
+    }
 
     internal HardwareMonitorSensorSnapshot ReadSensors()
-        => CanRead ? coreReader.Read(TimeSpan.FromSeconds(2)) : HardwareMonitorSensorsFrozen();
+    {
+        lock (gate) return CanRead ? coreReader.Read(TimeSpan.FromSeconds(2)) : HardwareMonitorSensorsFrozen();
+    }
 
     private static HardwareMonitorSensorSnapshot HardwareMonitorSensorsFrozen()
         => new(new HardwareSensorProviderState("LibreHardwareMonitor Core", HardwareSensorProviderStates.Frozen,

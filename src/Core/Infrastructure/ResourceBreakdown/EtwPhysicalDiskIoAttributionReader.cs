@@ -17,6 +17,8 @@ public sealed class EtwPhysicalDiskIoAttributionReader : BackgroundService, IPhy
 {
     private static readonly ulong ZoneObjectKey = AdapterResourceKey.FromString($"resource-manager:zone:{MonitoringSourceZoneIds.EtwFileIoDisk}");
     private readonly EtwPhysicalDiskIoCaptureOwner capture;
+    private readonly object captureLifetimeGate = new();
+    private bool runActive;
     private bool disposed;
     private ResourceManagerComputeZoneMode currentComputeMode = ResourceManagerComputeZoneMode.Normal;
     internal const int MaximumActivePairs = EtwPhysicalDiskIoCaptureOwner.MaximumActivePairs;
@@ -57,14 +59,51 @@ public sealed class EtwPhysicalDiskIoAttributionReader : BackgroundService, IPhy
         try
         {
             stoppingToken.ThrowIfCancellationRequested();
-            capture.Start();
+            lock (captureLifetimeGate)
+            {
+                if (disposed) return;
+                runActive = true;
+                SynchronizeCapture();
+            }
             await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
-        finally { capture.Stop("ETW DiskIO 物理磁盘归因正在随程序停止。"); }
+        finally
+        {
+            lock (captureLifetimeGate)
+            {
+                runActive = false;
+                capture.Stop("ETW DiskIO 物理磁盘归因正在随程序停止。");
+            }
+        }
     }
-    public void ApplyMode(ResourceManagerComputeZoneMode mode) => currentComputeMode = mode;
-    public override void Dispose() { disposed = true; try { capture.Dispose(); } finally { base.Dispose(); } }
+    public void ApplyMode(ResourceManagerComputeZoneMode mode)
+    {
+        lock (captureLifetimeGate)
+        {
+            currentComputeMode = mode;
+            SynchronizeCapture();
+        }
+    }
+    private void SynchronizeCapture()
+    {
+        if (!runActive) return;
+        if (currentComputeMode != ResourceManagerComputeZoneMode.Freeze) capture.Start();
+        else capture.Stop("ETW DiskIO 物理磁盘归因当前处于功能区冻结。");
+    }
+    public override void Dispose()
+    {
+        try
+        {
+            lock (captureLifetimeGate)
+            {
+                disposed = true;
+                runActive = false;
+                capture.Dispose();
+            }
+        }
+        finally { base.Dispose(); }
+    }
     internal void ObserveDiskTransfer(int pid, long bytes, bool write, long tick) => capture.ObserveDiskTransfer(pid, bytes, write, tick);
     internal void ObserveBoundDiskTransfer(KernelEtwEventSource source, KernelEtwSessionContext context, int pid, long bytes, bool write, long tick)
         => capture.ObserveBoundDiskTransfer(source, context, pid, bytes, write, tick);

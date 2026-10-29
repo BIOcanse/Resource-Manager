@@ -39,6 +39,8 @@ internal static partial class Program
 
     private static async Task<int> RunAsync(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--actual-use") return await RunActualUseAsync(args[1..]);
+        if (args.Length > 0 && args[0] == "--gpu-filter-only") return await RunGpuFilterOnlyAsync(args[1..]);
 #if !RM_STATE_NAMES
         throw new InvalidOperationException("This development-only acceptance executable requires ResourceManagerStateNames=true.");
 #else

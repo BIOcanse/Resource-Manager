@@ -37,7 +37,23 @@ internal readonly record struct CpuResidencyAggregationDiagnostics(
     int RetainedProcessIdentityCount,
     int RetainedThreadIdentityCount,
     long ContinuityEpoch,
-    long CapacityResetCount);
+    long CapacityResetCount)
+{
+    public CpuResidencyCapacityResetDiagnostics? LastCapacityReset { get; init; }
+}
+
+internal sealed record CpuResidencyCapacityResetDiagnostics(
+    string Reason,
+    long EventQpc,
+    long? RetainedWindowStartQpc,
+    int ActivePairCount,
+    int MaximumActivePairs,
+    long RetainedBucketSlots,
+    long MaximumBucketSlots,
+    long RequiredBucketCount,
+    int MaximumBucketCount,
+    int CurrentProcessCount,
+    int CurrentThreadCount);
 
 internal sealed class CpuResidencyAggregationBuffer
 {
@@ -58,6 +74,7 @@ internal sealed class CpuResidencyAggregationBuffer
     private long retainedWindowStartQpc = long.MinValue;
     private long lastPrunedBucket = -1, lastRetentionAttemptBucket = -1, latestEventQpc = -1;
     private long nextProcessInstanceId, nextThreadInstanceId, continuityEpoch, inventoryVersion, capacityResetCount;
+    private CpuResidencyCapacityResetDiagnostics? lastCapacityReset;
 
     public CpuResidencyAggregationBuffer(long qpcFrequency, int observationWindowMilliseconds,
         int maximumActivePairs, int bucketWidthMilliseconds = 50,
@@ -534,7 +551,8 @@ internal sealed class CpuResidencyAggregationBuffer
                 retainedProcesses.Count,
                 retainedThreads.Count,
                 continuityEpoch,
-                capacityResetCount);
+                capacityResetCount)
+            { LastCapacityReset = lastCapacityReset };
         }
     }
 
@@ -622,7 +640,10 @@ internal sealed class CpuResidencyAggregationBuffer
             var key = new AggregateKey(thread.InstanceId, logicalProcessorId);
             if (!pairs.TryGetValue(key, out totals))
             {
-                if (pairs.Count >= maximumActivePairs || retainedBucketSlots + bucketCount > maximumBucketSlots) return false;
+                if (pairs.Count >= maximumActivePairs)
+                    return RejectCapacityCore("active-pair-limit", prospectiveBoundaryQpc, bucketCount);
+                if (retainedBucketSlots + bucketCount > maximumBucketSlots)
+                    return RejectCapacityCore("bucket-storage-limit", prospectiveBoundaryQpc, bucketCount);
                 totals = new PairTotals(previous.Process!, thread, logicalProcessorId, allocateBuckets(checked(bucketCount * Marshal.SizeOf<BucketTotal>())));
                 pairs.Add(key, totals);
                 retainedBucketSlots += bucketCount;
@@ -633,8 +654,10 @@ internal sealed class CpuResidencyAggregationBuffer
         var lastId = (prospectiveBoundaryQpc - 1) / bucketWidthQpc;
         var retainedId = Math.Max(0, retainedWindowStartQpc) / bucketWidthQpc;
         var required = lastId - retainedId + 1;
-        if (required > maximumBucketCount) return false;
-        if (required > totals.CellCount && !ResizeTotalsCore(totals, (int)required, retainedId)) return false;
+        if (required > maximumBucketCount)
+            return RejectCapacityCore("bucket-retention-span", prospectiveBoundaryQpc, required);
+        if (required > totals.CellCount && !ResizeTotalsCore(totals, (int)required, retainedId))
+            return RejectCapacityCore("bucket-resize-limit", prospectiveBoundaryQpc, required);
         var cells = totals.Cells;
         for (var id = firstId; id <= lastId; id++)
         {
@@ -642,7 +665,8 @@ internal sealed class CpuResidencyAggregationBuffer
             if (cell.Id != id)
             {
                 // A lagging processor can hold the common boundary back. Never overwrite still-needed totals.
-                if (cell.Duration != 0 && cell.Id >= Math.Max(0, retainedWindowStartQpc) / bucketWidthQpc) return false;
+                if (cell.Duration != 0 && cell.Id >= Math.Max(0, retainedWindowStartQpc) / bucketWidthQpc)
+                    return RejectCapacityCore("bucket-collision", prospectiveBoundaryQpc, required);
                 cell = new BucketTotal { Id = id };
             }
             var bucketStart = id * bucketWidthQpc;
@@ -653,6 +677,18 @@ internal sealed class CpuResidencyAggregationBuffer
         }
         totals.LastEndQpc = prospectiveBoundaryQpc;
         return true;
+    }
+
+    private bool RejectCapacityCore(string reason, long eventQpc, long requiredBucketCount)
+    {
+        // Keep one bounded failure snapshot before ResetContinuityCore clears
+        // the pairs and buckets. Post-reset counts cannot identify which limit
+        // rejected the closed interval.
+        lastCapacityReset = new(reason, eventQpc,
+            retainedWindowStartQpc == long.MinValue ? null : retainedWindowStartQpc,
+            pairs.Count, maximumActivePairs, retainedBucketSlots, maximumBucketSlots,
+            requiredBucketCount, maximumBucketCount, currentProcesses.Count, currentThreads.Count);
+        return false;
     }
 
     private bool ResizeTotalsCore(PairTotals totals, int count, long retainedId)

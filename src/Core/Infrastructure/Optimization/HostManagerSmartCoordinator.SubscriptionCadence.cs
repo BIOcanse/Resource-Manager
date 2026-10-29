@@ -2,18 +2,28 @@ using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.Settings;
 using ResourceManager.App.Domain.RuntimeSpecialization;
+using ResourceManager.App.Application.Optimization.SmartControl;
 
 namespace ResourceManager.App.Infrastructure.Optimization;
 
 public sealed partial class HostManagerSmartCoordinator
 {
     private HostManagerSchedulingSubscriptions? smartSubscriptions;
+    private IDisposable? rendererObservation;
 
     private Task SynchronizeSmartSubscriptionsAsync(CancellationToken cancellationToken)
     {
         if (smartSubscriptions is null) return Task.CompletedTask;
         var plan = runtimePlanProvider.Current;
         var mode = plan.OptimizationMode;
+        // Cached negative qualifications need continuous lifecycle/image
+        // invalidation between rounds, but only while this run can use them.
+        var observeRenderers = mode.GpuPlacementEnabled
+            && plan.GpuPlacement.GlobalPreciseProviderEnabled
+            && !plan.Diagnostics.HostManagerSmartCoordinatorScoreOnlyEnabled
+            && hostManagerSmartControlZones.CanRun(HostManagerSmartControlZoneIds.HardwarePlacement);
+        if (observeRenderers) rendererObservation ??= runningGpuPlacementActions.AcquireRendererObservation();
+        else Interlocked.Exchange(ref rendererObservation, null)?.Dispose();
         var smart = plan.HostManager.RequirePublished().SmartCoordinator.HotPublish;
         var interval = TimeSpan.FromMilliseconds(nativeWorkspace?.Snapshot.EventBoostRoundsRemaining > 0
             ? smart.EventIntervalMilliseconds : smart.NormalIntervalMilliseconds);

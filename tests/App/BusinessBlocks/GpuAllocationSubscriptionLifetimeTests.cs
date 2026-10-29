@@ -22,7 +22,7 @@ public sealed class GpuAllocationSubscriptionLifetimeTests
         if (operation != "create")
         {
             await harness.WaitRunningAsync();
-            await harness.Collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(30), default);
+            await harness.Collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(1), default);
             Assert.NotNull(harness.Collector.ReadCurrent(GpuAllocationTestSession.Processes));
             var session = factory.Current;
             if (operation == "consumer") session.End(denial);
@@ -33,6 +33,11 @@ public sealed class GpuAllocationSubscriptionLifetimeTests
                 else session.DisableFailure = denial;
                 await harness.Collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(30), default);
             }
+        }
+        else
+        {
+            await harness.WaitRunningAsync();
+            await harness.Collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(1), default);
         }
 
         Assert.Equal(BusinessBlockOutcome.Failed, (await harness.NextResultAsync()).Outcome);
@@ -59,7 +64,7 @@ public sealed class GpuAllocationSubscriptionLifetimeTests
         await using var harness = factory.Harness();
         await harness.SetInUseAsync(true);
         await harness.WaitRunningAsync();
-        await harness.Collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(30), default);
+        await harness.Collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(1), default);
         Assert.NotNull(harness.Collector.ReadCurrent(GpuAllocationTestSession.Processes));
         var session = factory.Current;
         using var joinGate = new ManualResetEventSlim();

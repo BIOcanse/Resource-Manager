@@ -18,6 +18,7 @@ public sealed class CpuResidencyHeldResourceWindowTests
         var broker = new Broker();
         using var owner = new EtwCpuResidencyCaptureOwner(broker, Configuration, new(), static (_, _) => { });
         owner.EnsureStarted();
+        owner.BeginWindow();
         var session = Session(owner);
         var start = Floor(session) + 1;
         var at = DateTimeOffset.UtcNow;
@@ -35,8 +36,8 @@ public sealed class CpuResidencyHeldResourceWindowTests
         }
         Assert.False(await waiting.WaitAsync(TimeSpan.FromSeconds(2)));
         Assert.False(Window(session).Complete.IsCompleted);
-        Assert.Equal(1, broker.Acquires);
-        Assert.Equal(0, broker.Releases);
+        Assert.Equal(3, broker.Acquires);
+        Assert.Equal(1, broker.Releases);
     }
 
     [Theory]
@@ -47,15 +48,16 @@ public sealed class CpuResidencyHeldResourceWindowTests
         var broker = new Broker();
         using var owner = new EtwCpuResidencyCaptureOwner(broker, Configuration, new(), static (_, _) => { });
         owner.EnsureStarted();
+        owner.BeginWindow();
         if (freeze) owner.SetCaptureEnabled(false); else owner.PauseWindow();
         broker.Rebind();
         Assert.True(owner.HasSessionLease);
         Assert.False(owner.IsWindowActive);
-        Assert.Equal(1, broker.Acquires);
-        Assert.Equal(0, broker.Releases);
+        Assert.Equal(2, broker.Acquires);
+        Assert.Equal(1, broker.Releases);
         if (freeze) owner.SetCaptureEnabled(true); else owner.BeginWindow();
         Assert.True(owner.IsWindowActive);
-        Assert.Equal(1, broker.Acquires);
+        Assert.Equal(3, broker.Acquires);
     }
 
     [Theory]
@@ -66,6 +68,7 @@ public sealed class CpuResidencyHeldResourceWindowTests
         var broker = new Broker();
         using var owner = new EtwCpuResidencyCaptureOwner(broker, Configuration, new(), static (_, _) => { });
         owner.EnsureStarted();
+        owner.BeginWindow();
         var session = Session(owner);
         var buffer = (CpuResidencyAggregationBuffer)session.GetType().GetProperty("Buffer")!.GetValue(session)!;
         var start = Floor(session) + 1;
@@ -116,12 +119,12 @@ public sealed class CpuResidencyHeldResourceWindowTests
         var next = Assert.IsType<ResourceManager.App.Domain.CpuTopology.CpuCoreResidencySnapshot>(owner.Read());
         Assert.NotSame(first, next);
         Assert.Equal(TimeSpan.FromSeconds(1), next.Window);
-        Assert.Equal(1, broker.Acquires);
-        Assert.Equal(0, broker.Releases);
+        Assert.Equal(3, broker.Acquires);
+        Assert.Equal(1, broker.Releases);
         owner.Stop();
         Observe(owner, session, nextStart + Stopwatch.Frequency + 1, at.AddSeconds(3), 0, 0, 0, 100, 10);
         Assert.Equal(0, buffer.GetDiagnostics().ActivePairCount);
-        Assert.Equal(1, broker.Releases);
+        Assert.Equal(3, broker.Releases);
     }
 
     private static CpuResidencyCaptureConfiguration Configuration() => new(1000, 1024,
@@ -160,12 +163,16 @@ public sealed class CpuResidencyHeldResourceWindowTests
         private int generation = 7;
         private KernelEtwSubscriptionRequest? request;
         private KernelEtwEventSource? source;
+        private readonly List<Lease> leases = [];
         public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
         {
             Acquires++;
-            this.request = request;
-            Bind();
-            return new Lease(this);
+            var metadata = request.Keywords.HasFlag(KernelTraceEventParser.Keywords.Process);
+            var lease = new Lease(this, request.Keywords, metadata);
+            leases.Add(lease);
+            if (metadata) { this.request = request; Bind(); }
+            else request.Bind(source!, new(generation, DateTimeOffset.UtcNow));
+            return lease;
         }
         internal void Rebind() { source!.Cancel(); generation++; Bind(); }
         private void Bind()
@@ -175,13 +182,21 @@ public sealed class CpuResidencyHeldResourceWindowTests
             source.Activate();
         }
         public KernelEtwSessionSnapshot GetSnapshot() => new("Running", "recorded", generation, DateTimeOffset.UnixEpoch,
-            KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread | KernelTraceEventParser.Keywords.ContextSwitch,
+            leases.Aggregate(KernelTraceEventParser.Keywords.None, (keywords, lease) => keywords | lease.Keywords),
             Acquires - Releases, 0);
-        private sealed class Lease(Broker owner) : IKernelEtwSubscription
+        private sealed class Lease(Broker owner, KernelTraceEventParser.Keywords keywords, bool metadata) : IKernelEtwSubscription
         {
+            internal KernelTraceEventParser.Keywords Keywords { get; } = keywords;
             private bool released;
             public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
-            public void Dispose() { if (released) return; released = true; owner.source!.Cancel(); owner.Releases++; }
+            public void Dispose()
+            {
+                if (released) return;
+                released = true;
+                owner.leases.Remove(this);
+                if (metadata) owner.source!.Cancel();
+                owner.Releases++;
+            }
         }
     }
 }

@@ -39,6 +39,7 @@ internal static class EffectBoundaries
         "IRunningGpuPlacementActionService: no preparation/application; optional renderer observation unavailable",
         "IWindowsGraphicsPreferenceStore: no registry read/write",
         "FanControlCoreClient: existing session factory with empty managed session",
+        "HardwareBridgeClient: explicit unavailable executable resolver; no helper process, driver or availability polling",
         "WindowsGpuWindowActionRuntime/WindowsGpuCallbackPreparationRuntime: missing private executable paths",
         "TrustedAccessInvocationHostedService: unique private pipe",
         "IInteractiveUserSessionBroker: real read-only session facts; no process launching"
@@ -50,6 +51,15 @@ internal static class EffectBoundaries
             new ReadOnlyPolicyWriter(new WindowsProcessResourcePolicyWriter(
                 new NativeProcessPolicyBatchExecutor(provider.GetRequiredService<HostManagerProcessPolicyExecutorRuntime>())))));
         DriverFreeMetrics.Apply(services);
+        // The copied image must remain driver-free even if a hardware-bridge
+        // dependency is later copied beside it or a control-field reader enters.
+        // Bind the original availability facts; do not rely on missing files.
+        services.Replace(ServiceDescriptor.Singleton<HardwareBridgeClient>(provider => new(
+            static () => null,
+            new ResourceManager.ReadWrite.Helpers.HardwareBridgeProcessOptions(
+                TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1), ControlHelperErrorOutput.ProductOptions),
+            provider.GetRequiredService<ResourceManager.Shared.BusinessBlocks.State.StateAuthority>(),
+            provider.GetRequiredService<ILogger<HardwareBridgeClient>>())));
         services.Replace(ServiceDescriptor.Singleton<IControlWriteLayer, DeniedControlWrites>());
         services.Replace(ServiceDescriptor.Singleton<IControlObjectCatalog, DeniedControlCatalog>());
         services.Replace(ServiceDescriptor.Singleton<IHostMemoryProtectionExecutor, ExcludedMemoryExecutor>());
@@ -111,6 +121,9 @@ internal static class EffectBoundaries
 
     private sealed class EmptyFanSession : IFanControlCoreSession
     {
+        public void PushTemperatures(IReadOnlyList<FanControlCore.FanTemperatureSample> samples) { }
+        public IReadOnlyList<string> SoftwareCurveTemperatureKinds => [];
+        public event Action<IReadOnlyList<string>>? SoftwareCurveTemperatureKindsChanged { add { } remove { } }
         public bool SoftwareCurveRunNeeded => false;
         public event Action<bool>? SoftwareCurveRunNeededChanged { add { } remove { } }
         public Task RunSoftwareCurveAsync(CancellationToken stop) => Task.Delay(Timeout.Infinite, stop);

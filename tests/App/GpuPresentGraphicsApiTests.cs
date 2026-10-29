@@ -20,19 +20,19 @@ namespace Resource_Manager_APP.Tests;
 public sealed class GpuPresentGraphicsApiTests
 {
     [Theory]
-    [InlineData(42)]
-    [InlineData(43)]
-    [InlineData(55)]
-    [InlineData(56)]
-    public void DxgiPresentIdentifiesOnlyTheCombinedRoute(int eventId)
-        => Assert.Equal(GpuGraphicsApi.D3D11 | GpuGraphicsApi.D3D12,
+    [InlineData(42, true)]
+    [InlineData(43, false)]
+    [InlineData(55, true)]
+    [InlineData(56, false)]
+    public void OnlyDxgiPresentStartsIdentifyTheCombinedRoute(int eventId, bool identifies)
+        => Assert.Equal(identifies ? GpuGraphicsApi.D3D11 | GpuGraphicsApi.D3D12 : (GpuGraphicsApi?)null,
             PresentFrameEtwSource.MapPresentGraphicsApi(PresentFrameEtwSource.DxgiProvider, eventId));
 
     [Theory]
-    [InlineData(1)]
-    [InlineData(2)]
-    public void D3d9PresentIdentifiesD3d9(int eventId)
-        => Assert.Equal(GpuGraphicsApi.D3D9,
+    [InlineData(1, true)]
+    [InlineData(2, false)]
+    public void OnlyD3d9PresentStartIdentifiesD3d9(int eventId, bool identifies)
+        => Assert.Equal(identifies ? GpuGraphicsApi.D3D9 : (GpuGraphicsApi?)null,
             PresentFrameEtwSource.MapPresentGraphicsApi(PresentFrameEtwSource.Direct3D9Provider, eventId));
 
     [Fact]
@@ -40,6 +40,9 @@ public sealed class GpuPresentGraphicsApiTests
     {
         Assert.Null(PresentFrameEtwSource.MapPresentGraphicsApi(PresentFrameEtwSource.GraphicsKernelProvider, 184));
         Assert.Null(PresentFrameEtwSource.MapPresentGraphicsApi(PresentFrameEtwSource.DxgiProvider, 1));
+        Assert.Null(PresentFrameEtwSource.MapPresentGraphicsApi(PresentFrameEtwSource.DxgiProvider, 43));
+        Assert.Null(PresentFrameEtwSource.MapPresentGraphicsApi(PresentFrameEtwSource.DxgiProvider, 56));
+        Assert.Null(PresentFrameEtwSource.MapPresentGraphicsApi(PresentFrameEtwSource.Direct3D9Provider, 2));
         Assert.Null(PresentFrameEtwSource.MapPresentGraphicsApi(Guid.NewGuid(), 42));
         await using var harness = PresentFrameEtwTestHarness.Create();
         var source = harness.Source;
@@ -62,7 +65,7 @@ public sealed class GpuPresentGraphicsApiTests
         source.ObserveGraphicsApiPresent(PresentFrameEtwSource.DxgiProvider, 42, instance.ProcessId, birth.AddTicks(-1));
         source.ObserveGraphicsApiPresent(PresentFrameEtwSource.DxgiProvider, 42, instance.ProcessId + 1, birth);
         Assert.Null(lease.Read());
-        source.ObserveGraphicsApiPresent(PresentFrameEtwSource.DxgiProvider, 43, instance.ProcessId, birth);
+        source.ObserveGraphicsApiPresent(PresentFrameEtwSource.DxgiProvider, 42, instance.ProcessId, birth);
         Assert.Equal(GpuGraphicsApi.D3D11 | GpuGraphicsApi.D3D12, lease.Read());
         source.ObserveGraphicsApiProcessLifetime(instance.ProcessId, (long)instance.ProcessStartKey + 1);
         Assert.Null(lease.Read());
@@ -177,6 +180,37 @@ public sealed class GpuPresentGraphicsApiTests
         Assert.Equal(2, source.Leases.Count);
         await owner.ReconcileAsync(Snapshot(), Registered, 42 * TimeProvider.System.TimestampFrequency, default);
         Assert.All(source.Leases, lease => Assert.True(lease.Disposed));
+    }
+
+    [Fact]
+    public async Task MissingRuntimeRowsDoNotEraseAnAttemptWhileItsInventoryInstanceIsStillAlive()
+    {
+        using var files = new Files();
+        var source = new Presents();
+        using var owner = Owner(files, new JsonGpuPlacementProcessHistoryStore(files), source);
+        var process = Process(files);
+        var current = Snapshot(process);
+        await owner.ReconcileAsync(current, Registered, 0, default);
+        await owner.ReconcileAsync(current, Registered, 31 * TimeProvider.System.TimestampFrequency, default);
+        Assert.True(Assert.Single(source.Leases).Disposed);
+
+        // RuntimeState is momentarily absent, but the separate current inventory
+        // still contains the exact live PID/birth. The old code treated this as exit.
+        var missingRuntime = Snapshot() with
+        {
+            EnumeratedCount = 1, SkippedCount = 1,
+            HasSeparateFoundationPayloads = true, InventoryProcesses = [process]
+        };
+        Assert.True(missingRuntime.IsInventoryCurrentComplete());
+        await owner.ReconcileAsync(missingRuntime, Registered, 35 * TimeProvider.System.TimestampFrequency, default);
+        await owner.ReconcileAsync(current, Registered, 40 * TimeProvider.System.TimestampFrequency, default);
+        Assert.Single(source.Leases);
+
+        // Only an actual complete inventory absence ends this process's attempt.
+        await owner.ReconcileAsync(Snapshot() with { CurrentMetricMask = SchedulingProcessMetricMask.None },
+            Registered, 45 * TimeProvider.System.TimestampFrequency, default);
+        await owner.ReconcileAsync(current, Registered, 50 * TimeProvider.System.TimestampFrequency, default);
+        Assert.Equal(2, source.Leases.Count);
     }
 
     [Fact]

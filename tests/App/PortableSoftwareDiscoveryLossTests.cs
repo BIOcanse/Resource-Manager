@@ -271,6 +271,9 @@ public sealed class PortableSoftwareDiscoveryLossTests
         await service.StartAsync(CancellationToken.None);
         var reported = await diagnostics.FailureObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await Worker(service).WaitAsync(TimeSpan.FromSeconds(5));
+        // The worker has returned: no process event consumer remains, even
+        // though the hosted service has not yet received its StopAsync call.
+        Assert.Equal(1, broker.ReleaseCount);
         await service.StopAsync(CancellationToken.None);
 
         Assert.Equal(BackendUids.PortableSoftwareDiscoveryService, reported.BlockId);
@@ -422,20 +425,30 @@ public sealed class PortableSoftwareDiscoveryLossTests
         Assert.Equal(1, provider.ReturnedLeases);
     }
 
-    [Fact]
-    public async Task IdleWorkerDetectsNewLossAndStopStillCancelsItWhenLeaseReleaseFails()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task IdleWorkerDetectsNewLossAndStopStillCancelsItWhenLeaseReleaseFails(bool workerReleases)
     {
         var broker = new Broker();
         var scans = 0;
         using var service = new PortableSoftwareDiscoveryService(broker, null!, null!, null!,
             NullLogger<PortableSoftwareDiscoveryService>.Instance, () => { Interlocked.Increment(ref scans); return []; });
-        await service.StartAsync(CancellationToken.None);
+        using var runCancellation = new CancellationTokenSource();
+        await service.StartAsync(runCancellation.Token);
         Assert.Equal(1, Volatile.Read(ref scans));
         broker.EventsLost = 1;
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         while (Volatile.Read(ref scans) < 2) await Task.Delay(20, timeout.Token);
         Assert.Equal(2, Volatile.Read(ref scans));
         broker.FailRelease = true;
+        if (workerReleases)
+        {
+            // Force the worker's own finally to win release ownership, rather
+            // than relying on its race with StopAsync after cancellation.
+            runCancellation.Cancel();
+            await Assert.ThrowsAsync<IOException>(() => Worker(service).WaitAsync(timeout.Token));
+        }
 
         await Assert.ThrowsAsync<IOException>(() => service.StopAsync(timeout.Token));
 
@@ -445,6 +458,9 @@ public sealed class PortableSoftwareDiscoveryLossTests
         Assert.Equal(1, broker.SubscribeCount);
         service.RefreshInventoryAfterLoss(Snapshot(1, 2));
         Assert.Equal(2, Volatile.Read(ref scans));
+        await service.StopAsync(timeout.Token);
+        service.Dispose();
+        Assert.Equal(1, broker.ReleaseCount);
     }
 
     [Fact]

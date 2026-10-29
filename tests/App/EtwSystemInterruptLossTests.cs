@@ -14,6 +14,37 @@ namespace Resource_Manager_APP.Tests;
 public sealed class EtwSystemInterruptLossTests
 {
     [Fact]
+    public void InternalInterruptRejectionsAreVisibleInThePhysicalSessionDiagnostics()
+    {
+        using var fixture = new HostManagerSamplingSubscriptionTestFixture();
+        var broker = new Broker();
+        var now = Start;
+        using var source = NewSource(broker, fixture, () => now);
+        Invoke(source, "EnsureStarted");
+        var binding = Capture(source, broker);
+        Interrupt(source, binding, Start.AddSeconds(1), 2);
+        source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
+        Interrupt(source, binding, Start.AddSeconds(2), 2);
+        now = Start.AddSeconds(5);
+        source.ApplyMode(ResourceManagerComputeZoneMode.Normal);
+        Interrupt(source, binding, Start.AddSeconds(4), 2);
+        Interrupt(source, binding with { Context = binding.Context with { Generation = 999 } }, now, 2);
+        Interrupt(source, binding, now, double.NaN);
+        binding.Source.Cancel();
+        Interrupt(source, binding, now, 2);
+
+        var session = Assert.Single(EtwEventDropDiagnostics.Read().Sessions.Where(value => value.Name == broker.DiagnosticName));
+        var prefix = "holder/system-interrupts/" + SystemInterruptEventKinds.Dpc;
+        var total = Assert.Single(session.Kinds.Where(value => value.Kind == prefix));
+        Assert.Equal((6L, 5L), (total.Received, total.Dropped));
+        foreach (var reason in new[] { "frozen", "before-window", "generation-mismatch", "invalid-duration", "inactive-binding" })
+        {
+            var rejected = Assert.Single(session.Kinds.Where(value => value.Kind == prefix + "/rejected:" + reason));
+            Assert.Equal((1L, 1L), (rejected.Received, rejected.Dropped));
+        }
+    }
+
+    [Fact]
     public void UtcStepsDoNotChangeCoverageAdmissionOrEventExpiry()
     {
         using var fixture = new HostManagerSamplingSubscriptionTestFixture();
@@ -50,7 +81,7 @@ public sealed class EtwSystemInterruptLossTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void FreezePausesIntakeAndResumeSamplesFreshWindowsOnTheSameHolder(bool initiallyFrozen)
+    public void FreezeReleasesInterruptIntakeAndResumeSamplesFreshWindowsWithTheSameMetadataHolder(bool initiallyFrozen)
     {
         using var fixture = new HostManagerSamplingSubscriptionTestFixture();
         var broker = new Broker();
@@ -72,10 +103,17 @@ public sealed class EtwSystemInterruptLossTests
             Interrupt(source, binding, now, 50);
             Assert.False(Publish(source, now));
             Assert.Same(frozen, source.Read());
-            Assert.Equal(1, broker.SubscribeCount);
-            Assert.Equal(0, broker.DisposeCount);
+            Assert.Equal((initiallyFrozen ? 1 : 2) + cycle, broker.SubscribeCount);
+            Assert.Equal((initiallyFrozen ? 0 : 1) + cycle, broker.DisposeCount);
+            Assert.Equal(KernelTraceEventParser.Keywords.ImageLoad, broker.ActiveKeywords);
+            Assert.True(binding.Source.IsActive);
 
             source.ApplyMode(ResourceManagerComputeZoneMode.Normal);
+            Assert.Equal((initiallyFrozen ? 2 : 3) + cycle, broker.SubscribeCount);
+            Assert.Equal((initiallyFrozen ? 0 : 1) + cycle, broker.DisposeCount);
+            Assert.Equal(KernelTraceEventParser.Keywords.ImageLoad
+                | KernelTraceEventParser.Keywords.Interrupt | KernelTraceEventParser.Keywords.DeferedProcedureCalls,
+                broker.ActiveKeywords);
             Assert.True(Publish(source, now));
             Assert.False(source.Read().Available);
             Assert.Equal(TimeSpan.Zero, source.Read().Window);
@@ -90,7 +128,8 @@ public sealed class EtwSystemInterruptLossTests
                 Assert.Single(source.Read().Drivers).ModuleName);
         }
         source.Dispose();
-        Assert.Equal(1, broker.DisposeCount);
+        Assert.Equal(initiallyFrozen ? 4 : 5, broker.DisposeCount);
+        Assert.Equal(KernelTraceEventParser.Keywords.None, broker.ActiveKeywords);
     }
 
     [Fact]
@@ -102,6 +141,8 @@ public sealed class EtwSystemInterruptLossTests
         Invoke(source, "EnsureStarted");
         Assert.True(broker.Request!.Keywords.HasFlag(KernelTraceEventParser.Keywords.Interrupt));
         Assert.True(broker.Request.Keywords.HasFlag(KernelTraceEventParser.Keywords.DeferedProcedureCalls));
+        Assert.Equal(KernelTraceEventParser.Keywords.ImageLoad, broker.MetadataRequest!.Keywords);
+        Assert.Equal(2, broker.SubscribeCount);
         source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
     }
 
@@ -148,7 +189,7 @@ public sealed class EtwSystemInterruptLossTests
         now = Start.AddSeconds(24);
         Assert.True(Publish(source, now));
         Assert.Equal(2, source.Read().EventCount);
-        Assert.Equal(1, broker.SubscribeCount);
+        Assert.Equal(2, broker.SubscribeCount);
         now = Start.AddSeconds(73);
         Assert.True(Publish(source, now));
         var rules = HostManagerTestPlanFactory.CreatePlan().ReportCoordinator.Recreate.Rules
@@ -177,7 +218,7 @@ public sealed class EtwSystemInterruptLossTests
         Assert.True(source.Read().Available);
         Assert.Equal(1, source.Read().EventCount);
         Assert.Equal(8, source.Read().ProviderState.EventsLost);
-        Assert.Equal(1, broker.SubscribeCount);
+        Assert.Equal(2, broker.SubscribeCount);
         source.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
     }
 
@@ -316,12 +357,13 @@ public sealed class EtwSystemInterruptLossTests
         source.Dispose();
         source.Dispose();
 
-        Assert.Equal(1, broker.DisposeCount);
+        Assert.Equal(2, broker.DisposeCount);
+        Assert.Equal(KernelTraceEventParser.Keywords.None, broker.ActiveKeywords);
         Assert.False(broker.Source.IsActive);
         Assert.Equal(SystemInterruptProviderStates.Idle, source.Read().ProviderState.State);
         Assert.Throws<ObjectDisposedException>(() => source.AcquireSubscription("late", TimeSpan.FromSeconds(10)));
         Invoke(source, "EnsureStarted");
-        Assert.Equal(1, broker.SubscribeCount);
+        Assert.Equal(2, broker.SubscribeCount);
         Assert.Null(Record.Exception(demand.Dispose));
     }
 
@@ -357,7 +399,13 @@ public sealed class EtwSystemInterruptLossTests
 
     private sealed class Broker : IKernelEtwSessionBroker
     {
+        internal string DiagnosticName { get; } = "interrupt-rejections-" + Guid.NewGuid().ToString("N");
+        private EtwEventDropSession? drops;
         internal KernelEtwSubscriptionRequest? Request;
+        internal KernelEtwSubscriptionRequest? MetadataRequest;
+        private readonly List<Lease> leases = [];
+        internal KernelTraceEventParser.Keywords ActiveKeywords => leases.Aggregate(
+            KernelTraceEventParser.Keywords.None, (keywords, lease) => keywords | lease.Keywords);
         internal KernelEtwSessionContext Context { get; } = new(73, DateTimeOffset.UnixEpoch);
         internal KernelEtwEventSource Source { get; private set; } = new();
         internal int EventsLost;
@@ -369,28 +417,38 @@ public sealed class EtwSystemInterruptLossTests
         {
             Request = request;
             SubscribeCount++;
-            Rebind();
-            return new Lease(this);
+            var metadata = request.Keywords.HasFlag(KernelTraceEventParser.Keywords.ImageLoad);
+            if (metadata)
+            {
+                MetadataRequest = request;
+                Rebind();
+            }
+            else request.Bind(Source, Context);
+            var lease = new Lease(this, request.Keywords, metadata);
+            leases.Add(lease);
+            return lease;
         }
 
         internal void Rebind()
         {
-            Source = new KernelEtwEventSource();
-            Request!.Bind(Source, Context);
+            drops ??= EtwEventDropDiagnostics.Start(DiagnosticName, () => EventsLost);
+            Source = new KernelEtwEventSource("system-interrupts", drops.NamedKind);
+            MetadataRequest!.Bind(Source, Context);
             Source.Activate();
         }
 
         public KernelEtwSessionSnapshot GetSnapshot()
         {
             var snapshot = new KernelEtwSessionSnapshot("Running", "fixture", Context.Generation,
-                Context.StartedAt, Request?.Keywords ?? KernelTraceEventParser.Keywords.None,
-                1, EventsLost);
+                Context.StartedAt, ActiveKeywords,
+                leases.Count, EventsLost);
             AfterSnapshot?.Invoke(++SnapshotCount);
             return snapshot;
         }
 
-        private sealed class Lease(Broker broker) : IKernelEtwSubscription
+        private sealed class Lease(Broker broker, KernelTraceEventParser.Keywords keywords, bool metadata) : IKernelEtwSubscription
         {
+            internal KernelTraceEventParser.Keywords Keywords { get; } = keywords;
             public KernelEtwSessionSnapshot GetSnapshot() => broker.GetSnapshot();
 
             private bool disposed;
@@ -399,7 +457,8 @@ public sealed class EtwSystemInterruptLossTests
                 if (disposed) return;
                 disposed = true;
                 broker.DisposeCount++;
-                broker.Source.Cancel();
+                broker.leases.Remove(this);
+                if (metadata) broker.Source.Cancel();
             }
         }
     }

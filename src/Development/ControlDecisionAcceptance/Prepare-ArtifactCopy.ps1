@@ -2,11 +2,13 @@
 param(
     [Parameter(Mandatory)][string]$BuiltRoot,
     [Parameter(Mandatory)][string]$AcceptedSourceManifest,
-    [Parameter(Mandatory)][string]$CopyRoot
+    [Parameter(Mandatory)][string]$CopyRoot,
+    [Parameter(Mandatory)][string]$RegisteredWorkspaceRoot
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$registeredRoot = [IO.Path]::GetFullPath('F:\code\Resource-Manager-Development\ledger-no-demand\real-copy').TrimEnd('\') + '\'
+$registeredRoot = [IO.Path]::GetFullPath($RegisteredWorkspaceRoot).TrimEnd('\') + '\'
+if (-not [IO.File]::Exists((Join-Path $RegisteredWorkspaceRoot '.generated-workspace.json'))) { throw 'The copy owner must be a registered generated workspace.' }
 $buildPath = [IO.Path]::GetFullPath($BuiltRoot).TrimEnd('\')
 $copyPath = [IO.Path]::GetFullPath($CopyRoot).TrimEnd('\')
 if (-not $buildPath.StartsWith($registeredRoot, [StringComparison]::OrdinalIgnoreCase) -or

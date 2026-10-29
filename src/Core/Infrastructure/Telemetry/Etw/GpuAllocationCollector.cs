@@ -1,4 +1,4 @@
-﻿using System.Diagnostics.Tracing;
+using System.Diagnostics.Tracing;
 using Microsoft.Extensions.Configuration;
 using ResourceManager.App.Application.RuntimeSpecialization.BusinessBlocks;
 using ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks;
@@ -92,12 +92,33 @@ public sealed partial class GpuAllocationCollector : IBusinessBlock
                     || run.CaptureAdmission.IsCancellationRequested) return;
                 keepLive = plan.UseLive(refreshInterval);
                 captureAdmitted = true;
-                if (!SessionControl(run, () => session?.IsProcessing == true))
+            }
+            // An outer run is ready without retaining a native session. A due
+            // capture owns creation, and only real live tracking retains it.
+            if (Volatile.Read(ref session) is null)
+            {
+                try { StartSession(run); }
+                catch (Exception error)
+                {
+                    run.FailureStage = BusinessBlockFailureStage.Start;
+                    ReportSessionFailure(run, error);
+                    throw;
+                }
+            }
+            lock (lifecycle)
+            {
+                current = session ?? throw new IOException("GPU allocation session creation did not produce an owned session.");
+                // A native failure can synchronously make availability stop
+                // this run during StartProcessing. It is an empty failed due,
+                // while cancellation explicitly requested by the caller throws.
+                cancellationToken.ThrowIfCancellationRequested();
+                if (Volatile.Read(ref run.Failed)) return;
+                captureToken.ThrowIfCancellationRequested();
+                if (!SessionControl(run, () => current?.IsProcessing == true))
                 {
                     run.ProcessingCompletion.TrySetResult(null);
                     return;
                 }
-                current = session!;
                 lock (gate)
                 {
                     if (liveLedger is not null)
@@ -125,7 +146,10 @@ public sealed partial class GpuAllocationCollector : IBusinessBlock
                     SessionControl(run, () => current.EnableProvider(Provider, 0x41, EventIds));
                     var eventsLost = SessionControl(run, () => current.EventsLost);
                     SessionControl(run, () => current.BeginScan(sessionName!, pending.Id, eventsLost));
-                    SessionControl(run, () => current.CaptureState(Provider, 0x41));
+                    SessionControl(run, () => current.CaptureState(Provider, 0x41, EventIds));
+                    // DxgKrnl broadens steady delivery after CaptureState even
+                    // with its descriptor. Restore the exact read-ID enable filter.
+                    SessionControl(run, () => current.EnableProvider(Provider, 0x41, EventIds));
                     SessionControl(run, () => current.EndScan(sessionName!, pending.Id));
                     SessionControl(run, current.Flush);
                 }
@@ -155,42 +179,58 @@ public sealed partial class GpuAllocationCollector : IBusinessBlock
         }
         finally
         {
-            lock (lifecycle)
+            if (enteredCaptureGate)
             {
-                lock (gate)
+            var closeSession = !keepLive || value is null || captureToken.IsCancellationRequested;
+            try
+            {
+                lock (lifecycle)
                 {
-                    if (scan == pending) scan = null;
-                    if (!keepLive || value is null || captureToken.IsCancellationRequested)
+                    current ??= run.Session; // Includes a partially initialized native session.
+                    lock (gate)
                     {
-                        liveLedger = null;
-                        liveFailure = null;
+                        if (scan == pending) scan = null;
+                        if (closeSession) { liveLedger = null; liveFailure = null; }
+                    }
+                    if (current is not null && ReferenceEquals(current, session))
+                    {
+                        try
+                        {
+                            if (pending is not null) current.DisableProvider(BoundaryProvider);
+                            if (closeSession) current.DisableProvider(Provider);
+                        }
+                        catch (Exception error)
+                        {
+                            closeSession = true;
+                            value = null;
+                            logger.LogWarning(error, "GPU allocation provider could not be paused; reporting the owned session failure and publishing empty.");
+                            ReportSessionFailure(run, error);
+                        }
                     }
                 }
-                if (current is not null && ReferenceEquals(current, session)
-                    && (!keepLive || value is null || captureToken.IsCancellationRequested))
+                // Stop and Join may need callbacks to drain. Keep both locks free.
+                if (closeSession && current is not null && StopSession(run) is not null) value = null;
+                lock (lifecycle)
                 {
-                    try { current.DisableProvider(Provider); current.DisableProvider(BoundaryProvider); }
-                    catch (Exception error)
+                    var dueSessionEnded = !run.StopNotification.IsCancellationRequested
+                        && run.ProcessingCompletion.Task.IsCompletedSuccessfully;
+                    if (captureAdmitted && !cancellationToken.IsCancellationRequested
+                        && (!captureToken.IsCancellationRequested || Volatile.Read(ref run.Failed) || dueSessionEnded))
                     {
-                        value = null;
-                        logger.LogWarning(error, "GPU allocation provider could not be paused; reporting the owned session failure and publishing empty.");
-                        ReportSessionFailure(run, error);
+                        if (Volatile.Read(ref run.Failed) || run.ProcessingCompletion.Task.IsCompleted) value = null;
+                        if (value is not null) value = value with
+                        {
+                            Generation = ++publicationRevision, ObservedAtUtcTicks = timeProvider.GetUtcNow().UtcTicks
+                        };
+                        Volatile.Write(ref published, value is null ? null : new Published(value, new Dictionary<int, long>(currentProcesses)));
                     }
-                }
-                var dueSessionEnded = !run.StopNotification.IsCancellationRequested
-                    && run.ProcessingCompletion.Task.IsCompletedSuccessfully;
-                if (captureAdmitted
-                    && (!captureToken.IsCancellationRequested || dueSessionEnded))
-                {
-                    if (!ReferenceEquals(current, session)) value = null;
-                    if (value is not null) value = value with
-                    {
-                        Generation = ++publicationRevision, ObservedAtUtcTicks = timeProvider.GetUtcNow().UtcTicks
-                    };
-                    Volatile.Write(ref published, value is null ? null : new Published(value, new Dictionary<int, long>(currentProcesses)));
                 }
             }
-            if (enteredCaptureGate) captureGate.Release();
+            finally
+            {
+                captureGate.Release();
+            }
+            }
         }
         }
         finally

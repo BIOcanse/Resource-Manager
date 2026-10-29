@@ -111,10 +111,13 @@ public sealed class PhysicalDiskIoWindowTests
     }
 
     [Fact]
-    public void FrozenReadsDoNotReleaseOrReacquireTheExplicitlyHeldCapture()
+    public async Task FrozenHostedCaptureReleasesEventsAndResumesWithANewWindow()
     {
         var broker = new Broker();
-        using var reader = NewReader(broker);
+        var capture = new EtwPhysicalDiskIoCaptureOwner(broker, new(), () => Environment.TickCount64, pid => new ProcessLease(pid));
+        using var reader = new EtwPhysicalDiskIoAttributionReader(capture);
+        await reader.StartAsync(CancellationToken.None);
+        Assert.True(SpinWait.SpinUntil(() => broker.Request is not null, TimeSpan.FromSeconds(5)));
         var request = broker.Request;
         var released = 0;
         broker.OnRelease = () => released++;
@@ -123,13 +126,15 @@ public sealed class PhysicalDiskIoWindowTests
         Assert.Equal(PhysicalDiskIoProviderStates.Frozen, frozen.ProviderState.State);
         Assert.Empty(frozen.Processes);
         Assert.Same(request, broker.Request);
-        Assert.Equal(0, released);
+        Assert.Equal(1, released);
+        broker.OnRelease = () => released++;
         reader.ApplyMode(ResourceManager.App.Domain.Adaptation.ResourceManagerComputeZoneMode.Normal);
         reader.Read();
-        Assert.Same(request, broker.Request);
-        Assert.Equal(0, released);
-        reader.Dispose();
+        Assert.NotSame(request, broker.Request);
         Assert.Equal(1, released);
+        await reader.StopAsync(CancellationToken.None);
+        reader.Dispose();
+        Assert.Equal(2, released);
     }
 
     [Fact]
@@ -167,8 +172,8 @@ public sealed class PhysicalDiskIoWindowTests
         var broker = new Broker();
         using var reader = NewReader(broker);
         reader.Read();
-        Assert.True(broker.Request!.Keywords.HasFlag(KernelTraceEventParser.Keywords.DiskIO));
-        Assert.True(broker.Request.Keywords.HasFlag(KernelTraceEventParser.Keywords.DiskIOInit));
+        Assert.Equal(KernelTraceEventParser.Keywords.DiskIO | KernelTraceEventParser.Keywords.Process, broker.Request!.Keywords);
+        Assert.False(broker.Request.Keywords.HasFlag(KernelTraceEventParser.Keywords.DiskIOInit));
         Assert.False(broker.Request.Keywords.HasFlag(KernelTraceEventParser.Keywords.FileIO));
         Assert.False(broker.Request.Keywords.HasFlag(KernelTraceEventParser.Keywords.FileIOInit));
     }

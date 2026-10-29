@@ -126,7 +126,14 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         await AwaitGpuAsync(() => collector.ReadCurrent(identities)?.Generation >= 3);
         Assert.Equal(1, factory.Current.Captures);
         Assert.Contains(ResourceManager.App.Infrastructure.Telemetry.Etw.GpuAllocationCollector.Provider, factory.Current.Enabled);
+        var retained = collector.ReadCurrent(identities);
         ui.Dispose();
+        // Re-planning the remaining slow source releases live resources now,
+        // rather than waiting for its next 30-second due time.
+        await AwaitGpuAsync(() => factory.Current.Stops == 1);
+        Assert.True(factory.Current.Joined);
+        Assert.Same(retained, collector.ReadCurrent(identities));
+        Assert.Equal(1, factory.Attempts);
         var afterRelease = factory.Current.Captures;
         await Task.Delay(1200);
         Assert.Equal(afterRelease, factory.Current.Captures);

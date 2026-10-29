@@ -73,6 +73,9 @@ internal sealed class GpuAllocationTestHarness : IAsyncDisposable
         => Fixture.SetNativeSubscriptionInUseAsync(BackendUids.GpuAllocationCollector, inUse);
     internal Task WaitRunningAsync()
         => Fixture.WaitForStateAsync(BackendUids.GpuAllocationCollector, BusinessBlockState.Running);
+    internal Task WaitRestartedAsync()
+        => EtwTestRunRecorder.UntilAsync(() => Diagnostics.Read(BackendUids.GpuAllocationCollector).Result is null
+            && Controller.ReadState(BackendUids.GpuAllocationCollector) == BusinessBlockState.Running);
     internal async Task StopAsync()
     {
         await SetInUseAsync(false);
@@ -90,16 +93,21 @@ internal sealed class GpuAllocationTestHarness : IAsyncDisposable
 
 internal sealed class GpuAllocationTestSession(string name) : IGpuAllocationSession
 {
+    internal string Name => name;
+    internal Action<Guid, int, IGpuAllocationPayload, DateTime> BoundHandler => handler!;
     internal static readonly IReadOnlyDictionary<int, long> Processes = new Dictionary<int, long> { [41] = 100 };
     private Action<Guid, int, IGpuAllocationPayload, DateTime>? handler;
     private Action<Exception?>? completed;
     private readonly object processingGate = new();
     private int completionCallbacks;
     private TaskCompletionSource? completionCallbacksDrained;
-    private (string Name, long Scan)? end;
+    private (string Name, long Scan, Action<Guid, int, IGpuAllocationPayload, DateTime> Handler)? end;
     private readonly TaskCompletionSource firstEndScanQueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal Task FirstEndScanQueued => firstEndScanQueued.Task;
     internal readonly HashSet<Guid> Enabled = [];
+    internal readonly List<(Guid Provider, ulong Keywords, int[]? EventIds)> EnableHistory = [];
+    internal readonly List<(Guid Provider, ulong Keywords, int[]? EventIds)> CaptureHistory = [];
+    internal readonly List<(string Operation, Guid Provider, ulong Keywords, int[]? EventIds)> ProviderCommands = [];
     internal int Captures;
     internal int ManifestEvents;
     internal int Stops;
@@ -137,6 +145,8 @@ internal sealed class GpuAllocationTestSession(string name) : IGpuAllocationSess
     public void EnableProvider(Guid provider, ulong keywords = 0, int[]? eventIds = null)
     {
         if (EnableFailure is { } error) throw error;
+        ProviderCommands.Add(("enable", provider, keywords, eventIds?.ToArray()));
+        EnableHistory.Add((provider, keywords, eventIds?.ToArray()));
         Enabled.Add(provider);
         // Like the real EventSource, the boundary provider writes its self-describing manifest (event 65534),
         // which has none of the boundary fields, each time a session enables it.
@@ -155,7 +165,8 @@ internal sealed class GpuAllocationTestSession(string name) : IGpuAllocationSess
         => Boundary(2, sessionName, scan, eventsLost);
     public void EndScan(string sessionName, long scan)
     {
-        end = (sessionName, scan);
+        ProviderCommands.Add(("end-scan", Guid.Empty, 0, null));
+        end = (sessionName, scan, handler!);
         firstEndScanQueued.TrySetResult();
     }
     public void Flush() { if (!HoldEnd) DeliverEnd(); }
@@ -163,15 +174,18 @@ internal sealed class GpuAllocationTestSession(string name) : IGpuAllocationSess
     {
         if (end is not { } boundary) return;
         end = null;
-        Boundary(3, boundary.Name, boundary.Scan, 0);
+        Boundary(3, boundary.Name, boundary.Scan, 0, boundary.Handler);
     }
-    private void Boundary(int id, string sessionName, long scan, long loss)
+    private void Boundary(int id, string sessionName, long scan, long loss,
+        Action<Guid, int, IGpuAllocationPayload, DateTime>? delivery = null)
     {
         var payload = new Dictionary<string, object> { ["session"] = sessionName, ["scan"] = scan, ["eventsLost"] = loss };
-        handler!(EventSource.GetGuid(typeof(GpuAllocationBoundary)), id, new GpuAllocationNamedPayload(key => payload[key]), DateTime.UtcNow);
+        (delivery ?? handler)!(EventSource.GetGuid(typeof(GpuAllocationBoundary)), id, new GpuAllocationNamedPayload(key => payload[key]), DateTime.UtcNow);
     }
-    public void CaptureState(Guid provider, ulong keywords)
+    public void CaptureState(Guid provider, ulong keywords, int[]? eventIds = null)
     {
+        ProviderCommands.Add(("capture-enter", provider, keywords, eventIds?.ToArray()));
+        CaptureHistory.Add((provider, keywords, eventIds?.ToArray()));
         Assert.Equal(GpuAllocationCollector.Provider, provider);
         Assert.Equal(0x41UL, keywords);
         Assert.Contains(provider, Enabled);
@@ -186,6 +200,7 @@ internal sealed class GpuAllocationTestSession(string name) : IGpuAllocationSess
         if (Malformed) handler!(provider, 35, new GpuAllocationNamedPayload(_ => throw new InvalidDataException("fake malformed event")), DateTime.UtcNow);
         DuringCapture?.Invoke();
         if (LoseEvents) EventsLost++;
+        ProviderCommands.Add(("capture-return", provider, keywords, eventIds?.ToArray()));
     }
     internal void Emit(int id, params (string Key, object Value)[] fields)
     {
@@ -216,7 +231,7 @@ internal sealed class GpuAllocationTestSession(string name) : IGpuAllocationSess
         handler = null;
         Stops++;
         StopTimeout = timeout;
-        if (!HoldProcessingAfterStop) IsProcessing = false;
+        if (!HoldProcessingAfterStop) End();
         if (StopResult.IsReleased) Enabled.Clear();
         return StopResult;
     }

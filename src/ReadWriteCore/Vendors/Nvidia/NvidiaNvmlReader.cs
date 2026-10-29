@@ -4,19 +4,24 @@ using ResourceManager.App.Domain.Metrics;
 
 namespace ResourceManager.ReadWrite.Vendors.Nvidia;
 
-public sealed partial class NvidiaNvmlReader
+public sealed partial class NvidiaNvmlReader : IDisposable
 {
     private const int NvmlSuccess = 0;
     private readonly object gate = new();
     private readonly WindowsGpuAdapterOrderReader windowsAdapterReader = new();
     private readonly Func<int> initialize;
+    private readonly Func<int> shutdown;
     private bool initialized;
+    private bool disposed;
 
     private readonly Func<string, string, string?>? describeProviderMessage;
-    public NvidiaNvmlReader(Func<string, string, string?>? describeProviderMessage = null) : this(NativeMethods.nvmlInit, describeProviderMessage) { }
-    internal NvidiaNvmlReader(Func<int> initialize) : this(initialize, null) { }
-    private NvidiaNvmlReader(Func<int> initialize, Func<string, string, string?>? describeProviderMessage)
-        => (this.initialize, this.describeProviderMessage) = (initialize, describeProviderMessage);
+    public NvidiaNvmlReader(Func<string, string, string?>? describeProviderMessage = null)
+        : this(NativeMethods.nvmlInit, NativeMethods.nvmlShutdown, describeProviderMessage) { }
+    internal NvidiaNvmlReader(Func<int> initialize) : this(initialize, NativeMethods.nvmlShutdown, null) { }
+    internal NvidiaNvmlReader(Func<int> initialize, Func<int> shutdown)
+        : this(initialize, shutdown, null) { }
+    private NvidiaNvmlReader(Func<int> initialize, Func<int> shutdown, Func<string, string, string?>? describeProviderMessage)
+        => (this.initialize, this.shutdown, this.describeProviderMessage) = (initialize, shutdown, describeProviderMessage);
 
     [ResourceManager.ReadWrite.RuntimeReadTransport]
 
@@ -32,14 +37,11 @@ public sealed partial class NvidiaNvmlReader
         WindowsGpuAdapterInventoryRead? windowsInventory,
         CancellationToken cancellationToken)
     {
-        if (!EnsureInitialized())
-        {
-            return Task.FromResult<IReadOnlyList<GpuMetrics>>([]);
-        }
-
         lock (gate)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (!EnsureInitialized())
+                return Task.FromResult<IReadOnlyList<GpuMetrics>>([]);
 
             if (NativeMethods.nvmlDeviceGetCount(out var count) != NvmlSuccess || count == 0)
             {
@@ -86,6 +88,7 @@ public sealed partial class NvidiaNvmlReader
     {
         lock (gate)
         {
+            ObjectDisposedException.ThrowIf(disposed, this);
             if (initialized)
             {
                 return initialized;
@@ -105,6 +108,34 @@ public sealed partial class NvidiaNvmlReader
             }
 
             return initialized;
+        }
+    }
+
+    /// <summary>Returns this reader's initialization reference. A failed shutdown remains owned for explicit retry.</summary>
+    public void ReleaseSession()
+    {
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            ReleaseSessionCore();
+        }
+    }
+
+    private void ReleaseSessionCore()
+    {
+        if (!initialized) return;
+        var result = shutdown();
+        if (result != NvmlSuccess)
+            throw new InvalidOperationException($"NVML shutdown failed ({result}); initialization remains owned for cleanup.");
+        initialized = false;
+    }
+
+    public void Dispose()
+    {
+        lock (gate)
+        {
+            disposed = true;
+            ReleaseSessionCore();
         }
     }
 }

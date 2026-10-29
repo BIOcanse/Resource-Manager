@@ -69,6 +69,7 @@ public sealed partial class PresentFrameEtwSource(
         ComputeZoneModeCell.ClaimUnfrozen(controller.Authority, ResourceManager.App.StateItems.StateItemUids.PresentUnfrozen);
     private readonly HashSet<FrameSubscription> frameSubscriptions = [];
     private int frameLeases;
+    private long nextHolderId;
     private bool hasActiveSubscriptions;
     private bool disposed;
     private bool hasFrameCurrent;
@@ -100,7 +101,7 @@ public sealed partial class PresentFrameEtwSource(
             ObjectDisposedException.ThrowIf(disposed, this);
             var wasActive = HasActiveSubscriptions;
             var previousFrameLeases = frameLeases;
-            var subscription = new FrameSubscription(this);
+            var subscription = new FrameSubscription(this, ++nextHolderId);
             frameSubscriptions.Add(subscription);
             Volatile.Write(ref frameLeases, frameSubscriptions.Count);
             UpdateOutputProviders(previousFrameLeases);
@@ -111,10 +112,13 @@ public sealed partial class PresentFrameEtwSource(
 
     public bool HasActiveSubscriptions => Volatile.Read(ref hasActiveSubscriptions);
     public event Action? SubscriptionsChanged;
+    internal event Action? HoldersChanged;
     private void PublishSubscriptionActivity(bool wasActive)
     {
-        var active = frameSubscriptions.Count != 0 || graphicsApiSubscriptions.Count != 0;
+        bool active;
+        lock (gate) active = frameSubscriptions.Count != 0 || graphicsApiSubscriptions.Any(item => item.NeedsEvents);
         Volatile.Write(ref hasActiveSubscriptions, active);
+        HoldersChanged?.Invoke();
         if (wasActive != active) SubscriptionsChanged?.Invoke();
     }
 
@@ -169,22 +173,43 @@ public sealed partial class PresentFrameEtwSource(
 
     private void UpdateProviders(IPresentFrameEtwSession current, int? previousFrameLeases)
     {
-        if (previousFrameLeases is null)
+        var run = activeRun!;
+        bool pending;
+        lock (gate) pending = graphicsApiSubscriptions.Any(item => item.NeedsEvents);
+        var frames = frameLeases > 0;
+        var desired = new List<ProviderSelection>();
+        if (frames || pending)
         {
-            current.EnableProvider(KernelProcessProvider, TraceEventLevel.Informational, KernelProcessKeyword,
-                [ProcessStart, ProcessStop]);
-            current.EnableProvider(DxgiProvider, TraceEventLevel.Verbose, RuntimeEventsKeyword,
-                [DxgiPresentStart, DxgiPresentStop, DxgiMultiplaneOverlayPresentStart, DxgiMultiplaneOverlayPresentStop]);
-            current.EnableProvider(Direct3D9Provider, TraceEventLevel.Verbose, RuntimeEventsKeyword,
-                [Direct3D9PresentStart, Direct3D9PresentStop]);
+            // Process lifetime is read until identification, to reject PID reuse.
+            desired.Add(new(KernelProcessProvider, TraceEventLevel.Informational, KernelProcessKeyword,
+                [ProcessStart, ProcessStop]));
+            desired.Add(new(DxgiProvider, TraceEventLevel.Verbose, RuntimeEventsKeyword,
+                frames ? [DxgiPresentStart, DxgiPresentStop, DxgiMultiplaneOverlayPresentStart, DxgiMultiplaneOverlayPresentStop]
+                    : [DxgiPresentStart, DxgiMultiplaneOverlayPresentStart]));
+            desired.Add(new(Direct3D9Provider, TraceEventLevel.Verbose, RuntimeEventsKeyword,
+                frames ? [Direct3D9PresentStart, Direct3D9PresentStop] : [Direct3D9PresentStart]));
+        }
+        if (frames)
+        {
+            desired.Add(new(GraphicsKernelProvider, TraceEventLevel.Verbose, GraphicsKernelDisplayKeyword,
+                [GraphicsKernelPresent, GraphicsKernelFlip, GraphicsKernelFlipMultiPlaneOverlay,
+                    GraphicsKernelQueuePacketStart, GraphicsKernelMmioFlip, GraphicsKernelVSyncDpc]));
+            desired.Add(new(Win32kProvider, TraceEventLevel.Verbose, Win32kDisplayKeyword,
+                [Win32kTokenCompositionSurfaceObject, Win32kTokenStateChanged]));
+        }
+        foreach (var selection in desired)
+        {
+            if (run.Providers.TryGetValue(selection.Provider, out var old) && old.SameFilter(selection)) continue;
+            current.EnableProvider(selection.Provider, selection.Level, selection.Keywords, selection.EventIds);
+            run.Providers[selection.Provider] = selection;
+        }
+        foreach (var provider in run.Providers.Keys.Where(provider => !desired.Any(item => item.Provider == provider)).ToArray())
+        {
+            current.DisableProvider(provider);
+            run.Providers.Remove(provider);
         }
         if (frameLeases > 0 && (previousFrameLeases is null or 0))
         {
-            current.EnableProvider(GraphicsKernelProvider, TraceEventLevel.Verbose, GraphicsKernelDisplayKeyword,
-                [GraphicsKernelPresent, GraphicsKernelFlip, GraphicsKernelFlipMultiPlaneOverlay,
-                    GraphicsKernelQueuePacketStart, GraphicsKernelMmioFlip, GraphicsKernelVSyncDpc]);
-            current.EnableProvider(Win32kProvider, TraceEventLevel.Verbose, Win32kDisplayKeyword,
-                [Win32kTokenCompositionSurfaceObject, Win32kTokenStateChanged]);
             lock (gate)
             {
                 // Events buffered before both providers were enabled cannot fill this window.
@@ -196,8 +221,6 @@ public sealed partial class PresentFrameEtwSource(
         }
         else if (frameLeases == 0 && previousFrameLeases > 0)
         {
-            current.DisableProvider(GraphicsKernelProvider);
-            current.DisableProvider(Win32kProvider);
             lock (gate)
             {
                 frameStoppedAt = timeProvider.GetUtcNow().UtcTicks;
@@ -234,12 +257,14 @@ public sealed partial class PresentFrameEtwSource(
 
     private bool OnEvent(TraceEvent data)
     {
+        bool used;
+        var graphicsApiUseChanged = false;
         lock (gate)
         {
-            var used = false;
+            used = false;
             try
             {
-                used = ApplyGraphicsApiEvent(data);
+                graphicsApiUseChanged = used = ApplyGraphicsApiEvent(data);
                 // An API-only lease uses the supplied process birth identity. It does not
                 // invoke the frame ledger's process-handle fallback for other processes.
                 if (Volatile.Read(ref frameLeases) > 0
@@ -250,8 +275,17 @@ public sealed partial class PresentFrameEtwSource(
                 SignalFailure(error);
                 logger.LogWarning(error, "Present frame event {Provider}/{Event} could not be applied.", data.ProviderName, (int)data.ID);
             }
-            return used;
         }
+        // Provider mutation/authority notification must leave the aggregation
+        // gate first: a control callback can bind or drain on another thread.
+        if (graphicsApiUseChanged) SynchronizeGraphicsApiUse();
+        return used;
+    }
+
+    private sealed record ProviderSelection(Guid Provider, TraceEventLevel Level, ulong Keywords, int[] EventIds)
+    {
+        internal bool SameFilter(ProviderSelection other) => Level == other.Level && Keywords == other.Keywords
+            && EventIds.SequenceEqual(other.EventIds);
     }
 
     internal static bool Apply(PresentFrameLedger target, TraceEvent data)

@@ -1,4 +1,5 @@
 using Microsoft.Diagnostics.Tracing.Parsers;
+using System.Collections.Concurrent;
 
 namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 
@@ -8,6 +9,7 @@ internal sealed class KernelEtwSubscriptionDispatcher
     internal readonly EtwEventDropCounter[] Counters = Enum.GetNames<KernelEtwEventKind>().Select(name => new EtwEventDropCounter(name)).ToArray();
     private KernelEtwSessionContext? runContext;
     private EtwEventDropSession? eventDrops;
+    private readonly ConcurrentDictionary<string, EtwEventDropCounter> consumerCounters = new(StringComparer.Ordinal);
     private bool initialized;
     private KernelTraceEventParser.Keywords keywords;
 
@@ -119,7 +121,7 @@ internal sealed class KernelEtwSubscriptionDispatcher
                 next.Add(existing);
                 continue;
             }
-            var source = new KernelEtwEventSource();
+            var source = new KernelEtwEventSource(subscription.Id, ConsumerCounter);
             subscription.Bind(source, context);
             next.Add(new(subscription.LeaseId, source));
             added.Add(source);
@@ -149,9 +151,17 @@ internal sealed class KernelEtwSubscriptionDispatcher
     internal EtwEventDropSession RegisterDiagnostics(string name, Func<int> eventsLost)
     {
         eventDrops = EtwEventDropDiagnostics.Start(name, eventsLost, Counters, runContext?.Generation, runContext?.StartedAt);
+        foreach (var counter in consumerCounters) eventDrops.RegisterCounter(counter.Key, counter.Value);
         eventDrops.EnableProvider("Windows Kernel Trace", keywords == KernelTraceEventParser.Keywords.None
             ? 0 : KernelEtwSessionKeywordControl.CompileSystemTraceFlags(keywords));
         return eventDrops;
+    }
+
+    private EtwEventDropCounter ConsumerCounter(string name)
+    {
+        var counter = consumerCounters.GetOrAdd(name, static kind => new(kind));
+        eventDrops?.RegisterCounter(name, counter);
+        return counter;
     }
 
     private sealed record BoundSubscription(long LeaseId, KernelEtwEventSource Source);

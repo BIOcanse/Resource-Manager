@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics.Tracing;
 using System.Runtime.InteropServices;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Extensions.Configuration;
@@ -26,13 +27,19 @@ public sealed class NativeEtwSessionAvailabilityTests
     {
         await using var rig = new Rig(block, failure);
         await rig.ActivateAsync();
+        if (rig.Gpu is { } gpu)
+        {
+            // GPU collection creates its session on the first due capture, after the block is Running.
+            await rig.WaitRunningAsync();
+            await gpu.CaptureAsync(new Dictionary<int, long>(), TimeSpan.FromSeconds(1), default);
+        }
         if (failure == Failure.Release)
         {
-            await rig.WaitRunningAsync();
+            if (rig.Gpu is null) await rig.WaitRunningAsync();
             rig.Session.Complete(new IOException("run failed before release"));
         }
-        // Failed startup is synchronized by its recorded result, since the
-        // block can return without ever reporting Running.
+        // Run-entry failures are synchronized by their recorded result since the
+        // block may never report Running; GPU failure cases are triggered by the due above.
         var result = await rig.Recorder.NextResultAsync();
         Assert.Equal(BusinessBlockOutcome.Failed, result.Outcome);
         await EtwTestRunRecorder.UntilAsync(() => rig.Controller.ReadState(block) == BusinessBlockState.Stopped);
@@ -68,9 +75,13 @@ public sealed class NativeEtwSessionAvailabilityTests
         await using var rig = new Rig(BlockUids.GpuAllocationCollector, null);
         await rig.ActivateAsync();
         await rig.WaitRunningAsync();
+        await rig.Gpu!.CaptureAsync(new Dictionary<int, long>(), TimeSpan.FromSeconds(1), default);
         rig.Session.ProviderFailure = permission ? new UnauthorizedAccessException("runtime enable")
             : new InvalidOperationException("runtime wrapper", new COMException("capacity", unchecked((int)0x800705AA)));
-        await rig.Gpu!.CaptureAsync(new Dictionary<int, long>(), TimeSpan.FromSeconds(1), default);
+        rig.Session.ProviderFailureProvider = GpuAllocationCollector.Provider;
+        // A live refresh only reads the retained ledger. A finite due performs the provider enable
+        // against the existing session and exercises the runtime failure path.
+        await rig.Gpu.CaptureAsync(new Dictionary<int, long>(), TimeSpan.FromSeconds(30), default);
         await rig.Recorder.NextResultAsync();
         await EtwTestRunRecorder.UntilAsync(() => rig.Controller.ReadState(rig.Block) == BusinessBlockState.Stopped);
         var enables = rig.Session.Enables;
@@ -78,6 +89,8 @@ public sealed class NativeEtwSessionAvailabilityTests
         Assert.Equal(enables, rig.Session.Enables);
         Assert.Null(rig.Gpu.ReadCurrent(new Dictionary<int, long>()));
         Assert.False(rig.Authority.Read<bool>(rig.AvailabilityUid).Value);
+        Assert.Equal(permission ? NativeEtwSessionUnavailableCause.NoPermission : NativeEtwSessionUnavailableCause.Capacity,
+            rig.Availability.ReadFailure(rig.Block)!.Cause);
         Assert.Equal(1, rig.Attempts);
         await rig.DeactivateAsync();
     }
@@ -276,13 +289,15 @@ public sealed class NativeEtwSessionAvailabilityTests
     {
         private readonly TaskCompletionSource<Exception?> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private Action<Exception?>? completed;
+        private Action<Guid, int, IGpuAllocationPayload, DateTime>? gpuHandler;
         internal Exception? DisposeFailure;
         internal Exception? ProviderFailure;
+        internal Guid? ProviderFailureProvider;
         internal int Enables;
         public bool IsProcessing { get; private set; }
         public int EventsLost => 0;
         public void Bind(Action<TraceEvent> handler) { }
-        public void Bind(Action<Guid, int, IGpuAllocationPayload, DateTime> handler) { }
+        public void Bind(Action<Guid, int, IGpuAllocationPayload, DateTime> handler) => gpuHandler = handler;
         public void Process()
         {
             var error = completion.Task.GetAwaiter().GetResult();
@@ -299,13 +314,27 @@ public sealed class NativeEtwSessionAvailabilityTests
         public void EnableProvider(Guid provider, ulong keywords = 0, int[]? eventIds = null)
         {
             Interlocked.Increment(ref Enables);
-            if (ProviderFailure is { } error) throw error;
+            if (ProviderFailure is { } error && (ProviderFailureProvider is null || ProviderFailureProvider == provider)) throw error;
+            if (provider == EventSource.GetGuid(typeof(GpuAllocationBoundary)))
+                gpuHandler?.Invoke(provider, 65534,
+                    new GpuAllocationNamedPayload(key => throw new InvalidDataException($"GPU manifest has no {key} field.")), DateTime.UtcNow);
         }
         public void DisableProvider(Guid provider) { }
         public void Flush() { }
-        public void CaptureState(Guid provider, ulong keywords) { }
-        public void BeginScan(string sessionName, long scan, long eventsLost) { }
-        public void EndScan(string sessionName, long scan) { }
+        public void CaptureState(Guid provider, ulong keywords, int[]? eventIds = null) { }
+        public void BeginScan(string sessionName, long scan, long eventsLost)
+            => EmitBoundary(2, sessionName, scan, eventsLost);
+        public void EndScan(string sessionName, long scan)
+            => EmitBoundary(3, sessionName, scan, EventsLost);
+        private void EmitBoundary(int id, string sessionName, long scan, long eventsLost)
+        {
+            var payload = new Dictionary<string, object>
+            {
+                ["session"] = sessionName, ["scan"] = scan, ["eventsLost"] = eventsLost
+            };
+            gpuHandler?.Invoke(EventSource.GetGuid(typeof(GpuAllocationBoundary)), id,
+                new GpuAllocationNamedPayload(key => payload[key]), DateTime.UtcNow);
+        }
         public void Dispose() { Complete(null); if (DisposeFailure is { } error) throw error; }
         public KernelEtwSessionStopResult Stop(TimeSpan timeout)
         {

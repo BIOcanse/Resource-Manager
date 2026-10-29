@@ -16,8 +16,7 @@ public sealed class GpuAllocationRescanTests
         Assert.Empty(factory.Current.Enabled);
         factory.Current.Emit(34, ("pDxgAdapter", 1UL), ("hVidMmGlobalAlloc", 2UL));
         Assert.Same(old, collector.ReadCurrent(GpuAllocationTestSession.Processes));
-        factory.Current.Bytes = 2048;
-        factory.Current.HoldEnd = true;
+        factory.Configure = session => { session.Bytes = 2048; session.HoldEnd = true; };
         var capture = collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(30), default);
         Assert.False(capture.IsCompleted);
         Assert.Same(old, collector.ReadCurrent(GpuAllocationTestSession.Processes));
@@ -27,7 +26,8 @@ public sealed class GpuAllocationRescanTests
         Assert.Equal(2048, next.Adapters[23][41].PrivateBytes);
         Assert.Equal(1024, old.Adapters[23][41].PrivateBytes);
         Assert.Empty(factory.Current.Enabled);
-        Assert.Equal(2, factory.Current.Captures);
+        Assert.Equal(2, factory.Sessions.Sum(session => session.Captures));
+        Assert.All(factory.Sessions, session => Assert.True(session.Joined));
     }
 
     [Theory]
@@ -43,18 +43,22 @@ public sealed class GpuAllocationRescanTests
         await harness.SetInUseAsync(true);
         await harness.WaitRunningAsync();
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(30), default);
-        var session = factory.Current;
-        session.LoseEvents = failure == "loss";
-        session.FailCapture = failure == "capture";
-        session.Malformed = failure == "malformed";
-        session.Incomplete = failure == "incomplete";
-        session.HoldEnd = failure == "timeout";
+        factory.Configure = session =>
+        {
+            session.LoseEvents = failure == "loss";
+            session.Malformed = failure == "malformed";
+            session.Incomplete = failure == "incomplete";
+            session.HoldEnd = failure == "timeout";
+        };
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(30), default);
+        var session = factory.Current;
         Assert.Null(collector.ReadCurrent(GpuAllocationTestSession.Processes));
         Assert.Empty(session.Enabled);
-        Assert.Equal(2, session.Captures);
+        Assert.Equal(1, session.Captures);
+        Assert.True(session.Joined);
+        Assert.Equal(2, factory.Sessions.Sum(value => value.Captures));
         session.DeliverEnd(); // A late end cannot publish or complete the next capture.
-        session.LoseEvents = session.FailCapture = session.Malformed = session.Incomplete = session.HoldEnd = false;
+        factory.Configure = null;
         await collector.CaptureAsync(GpuAllocationTestSession.Processes, TimeSpan.FromSeconds(30), default);
         Assert.NotNull(collector.ReadCurrent(GpuAllocationTestSession.Processes));
         Assert.Empty(factory.Current.Enabled);

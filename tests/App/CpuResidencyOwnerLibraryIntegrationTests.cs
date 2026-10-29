@@ -252,14 +252,17 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         var broker = new Broker();
         using var capture = Capture(broker);
         Assert.Null(capture.Read()); Assert.False(capture.HasSessionLease); Assert.Equal(0, broker.Acquires);
-        capture.EnsureStarted(); capture.Collect();
+        capture.EnsureStarted();
         Assert.Equal(1, broker.Acquires);
+        Assert.Equal(KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread, broker.Keywords);
+        capture.BeginWindow(); capture.Collect();
+        Assert.Equal(2, broker.Acquires);
         Assert.Equal(KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread |
             KernelTraceEventParser.Keywords.ContextSwitch, broker.Keywords);
         Assert.Null(capture.Read()); // no closed interval is manufactured by elapsed wall clock
-        capture.Stop(); Assert.Equal(1, broker.Releases); Assert.False(capture.HasSessionLease);
-        capture.EnsureStarted(); Assert.Equal(2, broker.Acquires); Assert.Null(capture.Read());
-        capture.Dispose(); Assert.Equal(2, broker.Releases);
+        capture.Stop(); Assert.Equal(2, broker.Releases); Assert.False(capture.HasSessionLease);
+        capture.EnsureStarted(); Assert.Equal(3, broker.Acquires); Assert.Null(capture.Read());
+        capture.Dispose(); Assert.Equal(3, broker.Releases);
     }
 
     [Fact]
@@ -273,12 +276,12 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
             inventory.SeedProcess(100, 1000, "recorded")!.SeedThread(10);
             if (Interlocked.Increment(ref attempts) == 1) seeded.TrySetResult(); else reseeded.TrySetResult();
         });
-        capture.EnsureStarted(); await seeded.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        capture.EnsureStarted(); capture.BeginWindow(); await seeded.Task.WaitAsync(TimeSpan.FromSeconds(5));
         var initial = capture.GetDiagnostics().Aggregation!.Value.ContinuityEpoch;
         Volatile.Write(ref broker.EventsLost, 1); capture.Collect();
         await reseeded.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True(capture.GetDiagnostics().Aggregation!.Value.ContinuityEpoch > initial);
-        Assert.Equal(1, broker.Acquires); Assert.Equal(2, attempts); Assert.Null(capture.Read());
+        Assert.Equal(2, broker.Acquires); Assert.Equal(2, attempts); Assert.Null(capture.Read());
         Assert.Equal("Warming", capture.State);
         var buffer = EtwCpuResidencyCaptureOwner.CreateAggregationBuffer(Configuration(), 1000);
         buffer.SeedProcess(100, 1000, "old"); buffer.SeedThread(100, 10);
@@ -298,6 +301,7 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
     {
         var broker = new Broker(); using var capture = Capture(broker);
         capture.EnsureStarted();
+        capture.BeginWindow();
         // Feed the existing owner buffer without introducing a production capture/test API.
         var session = typeof(EtwCpuResidencyCaptureOwner)
             .GetField("activeSession", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
@@ -324,10 +328,11 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         Assert.False(committed);
         Assert.Same(published, capture.Read());
         Assert.Equal(pause, capture.HasSessionLease);
-        Assert.Equal(pause ? 0 : 1, broker.Releases);
+        Assert.Equal(pause ? 1 : 2, broker.Releases);
         if (pause) capture.SetCaptureEnabled(true);
         capture.EnsureStarted();
-        Assert.Equal(pause ? 1 : 2, broker.Acquires);
+        capture.BeginWindow();
+        Assert.Equal(pause ? 3 : 4, broker.Acquires);
         Assert.Same(published, capture.Read());
         Assert.True(capture.Collect()); // restarted capture is warming, with no old closed window
         Assert.Null(capture.Read());
@@ -343,7 +348,7 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         Assert.False(capture.IsWindowActive);
         capture.EnsureStarted(); Assert.Equal(1, broker.Acquires); Assert.Null(capture.Read());
         broker.BeforeLeaseReturn = null; capture.SetCaptureEnabled(true); capture.EnsureStarted();
-        Assert.Equal(1, broker.Acquires); Assert.True(capture.HasSessionLease); Assert.True(capture.IsWindowActive); Assert.Null(capture.Read());
+        Assert.Equal(2, broker.Acquires); Assert.True(capture.HasSessionLease); Assert.True(capture.IsWindowActive); Assert.Null(capture.Read());
     }
 
     [Fact]
@@ -360,7 +365,7 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         a.Dispose(); b.SynchronizeDemand([]);
         Assert.Equal(0, broker.Releases); // the host run owns its lease independently
         Assert.All(owner.ReadCachedSnapshot()!.Processes, row => Assert.Null(row.Values.Single().NumericValue));
-        owner.Dispose(); Assert.Equal(1, broker.Releases);
+        owner.Dispose(); Assert.Equal(2, broker.Releases);
     }
 
     [Fact]
@@ -378,22 +383,22 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         owner.StartCpuResidencyCapture();
         owner.StartCpuResidencyCapture();
         await a.CollectAsync(refs, new Permit());
-        Assert.Equal(1, broker.Acquires);
+        Assert.Equal(2, broker.Acquires);
         a.Dispose(); Assert.Equal(0, broker.Releases);
         b.SynchronizeDemand([]); Assert.Equal(0, broker.Releases);
         b.SynchronizeDemand(refs); await b.CollectAsync(refs, new Permit());
-        Assert.Equal(1, broker.Acquires);
+        Assert.Equal(2, broker.Acquires);
         owner.StopCpuResidencyCapture();
         owner.StopCpuResidencyCapture();
-        Assert.Equal(1, broker.Releases);
+        Assert.Equal(2, broker.Releases);
         await b.CollectAsync(refs, new Permit());
         await owner.CollectAsync([Name]);
-        Assert.Equal(1, broker.Acquires);
+        Assert.Equal(2, broker.Acquires);
         owner.StartCpuResidencyCapture();
         var restarted = await b.CollectAsync(refs, new Permit());
-        Assert.Equal(2, broker.Acquires); Assert.All(restarted.Readings, reading => Assert.Null(reading.Value));
-        b.Dispose(); Assert.Equal(1, broker.Releases);
-        owner.StopCpuResidencyCapture(); Assert.Equal(2, broker.Releases);
+        Assert.Equal(4, broker.Acquires); Assert.All(restarted.Readings, reading => Assert.Null(reading.Value));
+        b.Dispose(); Assert.Equal(2, broker.Releases);
+        owner.StopCpuResidencyCapture(); Assert.Equal(4, broker.Releases);
     }
 
     [Fact]
@@ -446,13 +451,14 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         {
             var discovery = backend.DiscoverAsync(timeout.Token).AsTask();
             await broker.Bound.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            await EtwTestRunRecorder.UntilAsync(() => Volatile.Read(ref broker.Acquires) == 2);
             Assert.False(discovery.IsCompleted); // warming cannot end the only demand before its window forms
             await timeout.CancelAsync();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => discovery);
-            Assert.Equal(1, broker.Acquires); Assert.Null(reader.Read()); Assert.Empty(backend.Catalog.Fields);
+            Assert.Equal(2, broker.Acquires); Assert.Null(reader.Read()); Assert.Empty(backend.Catalog.Fields);
         }
         finally { await reader.StopAsync(CancellationToken.None); }
-        Assert.Equal(1, broker.Releases);
+        Assert.Equal(2, broker.Releases);
     }
 
     [Fact]
@@ -475,12 +481,12 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
             Assert.True(await stream.MoveNextAsync());
             Assert.All(stream.Current, reading => FieldReadingAssert.CurrentOrNewer(reading, owner.Backend.ReadCached(reading.Field)));
             Assert.All(stream.Current, reading => Assert.Null(reading.Value)); // real owner has no fabricated closed interval
-            Assert.Equal(1, broker.Acquires);
+            Assert.Equal(2, broker.Acquires);
         }
         finally { await subscriptions.StopAsync().WaitAsync(TimeSpan.FromSeconds(5)); }
         Assert.Equal(0, broker.Releases);
         owner.StopCpuResidencyCapture();
-        Assert.Equal(1, broker.Releases);
+        Assert.Equal(2, broker.Releases);
         Assert.NotNull(owner.ReadCachedSnapshot());
     }
 
@@ -532,18 +538,43 @@ public sealed class CpuResidencyOwnerLibraryIntegrationTests
         public int Acquires, Releases, EventsLost;
         public Action? BeforeLeaseReturn;
         public TaskCompletionSource Bound { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public KernelTraceEventParser.Keywords Keywords;
+        private readonly object gate = new();
+        private readonly List<Lease> leases = [];
+        private KernelEtwEventSource? metadataSource;
+        public KernelTraceEventParser.Keywords Keywords
+        {
+            get { lock (gate) return leases.Aggregate(KernelTraceEventParser.Keywords.None, (value, lease) => value | lease.Keywords); }
+        }
         public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
         {
-            Acquires++; Keywords = request.Keywords;
-            var source = new KernelEtwEventSource(); request.Bind(source, new(7, At)); source.Activate();
-            Bound.TrySetResult(); BeforeLeaseReturn?.Invoke(); return new Lease(this, source);
+            var metadata = request.Keywords.HasFlag(KernelTraceEventParser.Keywords.Process);
+            var source = metadata ? new KernelEtwEventSource() : metadataSource!;
+            var lease = new Lease(this, metadata ? source : null, request.Keywords);
+            lock (gate) leases.Add(lease);
+            Interlocked.Increment(ref Acquires);
+            if (metadata) metadataSource = source;
+            request.Bind(source, new(7, At));
+            if (metadata)
+            {
+                source.Activate();
+                Bound.TrySetResult();
+                BeforeLeaseReturn?.Invoke();
+            }
+            return lease;
         }
         public KernelEtwSessionSnapshot GetSnapshot() => new("Running", "recorded", 7, At, Keywords, Acquires - Releases, Volatile.Read(ref EventsLost));
-        private sealed class Lease(Broker broker, KernelEtwEventSource source) : IKernelEtwSubscription
+        private sealed class Lease(Broker broker, KernelEtwEventSource? source, KernelTraceEventParser.Keywords keywords) : IKernelEtwSubscription
         {
+            internal KernelTraceEventParser.Keywords Keywords { get; } = keywords;
             public KernelEtwSessionSnapshot GetSnapshot() => broker.GetSnapshot();
-            private int disposed; public void Dispose() { if (Interlocked.Exchange(ref disposed, 1) == 0) { source.Cancel(); broker.Releases++; } }
+            private int disposed;
+            public void Dispose()
+            {
+                if (Interlocked.Exchange(ref disposed, 1) != 0) return;
+                lock (broker.gate) broker.leases.Remove(this);
+                source?.Cancel();
+                Interlocked.Increment(ref broker.Releases);
+            }
         }
     }
 }

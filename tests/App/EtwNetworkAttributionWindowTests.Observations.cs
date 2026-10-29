@@ -314,7 +314,7 @@ public sealed partial class EtwNetworkAttributionWindowTests
     }
 
     [Fact]
-    public async Task ExplicitHostedStartRetainsItsLeaseWhileReadsAreFrozen()
+    public async Task ExplicitHostedStartDoesNotAcquireEventsWhileFrozen()
     {
         var broker = new Broker();
         var zone = new EtwNetworkTcpIpMonitoringZone();
@@ -322,15 +322,15 @@ public sealed partial class EtwNetworkAttributionWindowTests
         using var reader = new EtwNetworkTcpIpAttributionReader(zone, broker,
             NullLogger<EtwNetworkTcpIpAttributionReader>.Instance, () => 1000,
             _ => throw new InvalidOperationException("Frozen reads cannot query process identity."));
-        StartReader(reader, broker);
+        await reader.StartAsync(CancellationToken.None);
         try
         {
             Assert.Equal(NetworkAttributionProviderStates.Frozen, reader.Read(true).ProviderState.State);
-            Assert.Equal(1, broker.SubscribeCount);
+            Assert.Equal(0, broker.SubscribeCount);
             Assert.Equal(0, broker.DisposeCount);
         }
         finally { await reader.StopAsync(CancellationToken.None); }
-        Assert.Equal(1, broker.DisposeCount);
+        Assert.Equal(0, broker.DisposeCount);
     }
 
     [Fact]
@@ -368,9 +368,12 @@ public sealed partial class EtwNetworkAttributionWindowTests
         StartReader(reader, broker);
         reader.Read(includeObservedTraffic: true);
         Transfer(reader, broker, 41, 5000, true, false, IPAddress.Loopback, 1000, 100);
+        tick = 2100;
         zone.ApplyMode(ResourceManagerComputeZoneMode.Freeze);
+        Assert.Equal(1, broker.DisposeCount);
         Transfer(reader, broker, 41, 7000, true, false, IPAddress.Loopback, 2100, 100);
         zone.ApplyMode(ResourceManagerComputeZoneMode.Normal);
+        Assert.Equal(2, broker.SubscribeCount);
         tick = 2101;
         Assert.Null(reader.Read(includeObservedTraffic: true).ObservedTraffic);
         Transfer(reader, broker, 41, 3, true, true, IPAddress.Loopback, 4100, 100);

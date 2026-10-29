@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Diagnostics.Tracing.Parsers;
 using ResourceManager.App.Application.CpuTopology;
 using ResourceManager.App.Application.Control;
 using ResourceManager.App.Application.Metrics;
@@ -206,8 +207,18 @@ public sealed class SamplingOutputLedgerProvidersTests
         Assert.Equal(0, cpuSampler.CaptureCount);
         Assert.Equal(0, deviceReader.ReadCount);
         Assert.Equal(0, store.SaveCount);
-        Assert.Equal(2, etwBroker.SubscribeCount); // Interrupts and CPU residency each hold their resource on entry.
+        // Interrupts hold image metadata and ISR/DPC separately; residency has
+        // only its process/thread metadata until an observation window is used.
+        Assert.Equal(3, etwBroker.SubscribeCount);
+        Assert.Single(etwBroker.Requests, request => request.Keywords == KernelTraceEventParser.Keywords.ImageLoad);
+        Assert.Single(etwBroker.Requests, request => request.Keywords ==
+            (KernelTraceEventParser.Keywords.Interrupt | KernelTraceEventParser.Keywords.DeferedProcedureCalls));
+        Assert.Single(etwBroker.Requests, request => request.Keywords ==
+            (KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread));
+        Assert.DoesNotContain(etwBroker.Requests,
+            request => request.Keywords.HasFlag(KernelTraceEventParser.Keywords.ContextSwitch));
         Assert.Equal(etwBroker.SubscribeCount, etwBroker.ReleaseCount);
+        Assert.Equal(KernelTraceEventParser.Keywords.None, etwBroker.GetSnapshot().EnabledKeywords);
 
         metric.Dispose();
         expectedBytes -= roleBytes[1];
@@ -366,23 +377,45 @@ public sealed class SamplingOutputLedgerProvidersTests
 
     private sealed class NoCaptureKernelEtwBroker : IKernelEtwSessionBroker
     {
+        private readonly object gate = new();
+        private readonly List<KernelEtwSubscriptionRequest> requests = [];
+        private readonly List<Lease> leases = [];
         private int subscribeCount;
         private int releaseCount;
         internal int SubscribeCount => Volatile.Read(ref subscribeCount);
         internal int ReleaseCount => Volatile.Read(ref releaseCount);
+        internal KernelEtwSubscriptionRequest[] Requests
+        {
+            get { lock (gate) return requests.ToArray(); }
+        }
         public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
         {
+            var lease = new Lease(this, request.Keywords);
+            lock (gate)
+            {
+                requests.Add(request);
+                leases.Add(lease);
+            }
             Interlocked.Increment(ref subscribeCount);
-            return new Lease(this);
+            return lease;
         }
         public KernelEtwSessionSnapshot GetSnapshot()
-            => new("Unavailable", "Recorded idle resource; no native event stream is started.", 0,
-                DateTimeOffset.MinValue, 0, SubscribeCount - ReleaseCount, 0);
-        private sealed class Lease(NoCaptureKernelEtwBroker owner) : IKernelEtwSubscription
         {
+            lock (gate) return new("Unavailable", "Recorded idle resource; no native event stream is started.", 0,
+                DateTimeOffset.MinValue, leases.Aggregate(KernelTraceEventParser.Keywords.None,
+                    (keywords, lease) => keywords | lease.Keywords), leases.Count, 0);
+        }
+        private sealed class Lease(NoCaptureKernelEtwBroker owner, KernelTraceEventParser.Keywords keywords) : IKernelEtwSubscription
+        {
+            internal KernelTraceEventParser.Keywords Keywords { get; } = keywords;
             private int disposed;
             public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
-            public void Dispose() { if (Interlocked.Exchange(ref disposed, 1) == 0) Interlocked.Increment(ref owner.releaseCount); }
+            public void Dispose()
+            {
+                if (Interlocked.Exchange(ref disposed, 1) != 0) return;
+                lock (owner.gate) owner.leases.Remove(this);
+                Interlocked.Increment(ref owner.releaseCount);
+            }
         }
     }
 }

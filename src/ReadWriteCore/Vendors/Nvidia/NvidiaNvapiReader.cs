@@ -15,11 +15,15 @@ public sealed partial class NvidiaNvapiReader : IDisposable
     private bool initialized;
     private NativeBindings bindings = NativeBindings.Unavailable;
     private INvidiaNvapiDrsApi? drsApi;
+    private readonly Func<INvidiaNvapiDrsApi>? createDrsApi;
     private nint pendingSession;
     private bool disposed;
 
     internal NvidiaNvapiReader(INvidiaNvapiDrsApi api)
-        => drsApi = api ?? throw new ArgumentNullException(nameof(api));
+        : this(() => api) => ArgumentNullException.ThrowIfNull(api);
+
+    internal NvidiaNvapiReader(Func<INvidiaNvapiDrsApi> createDrsApi)
+        => this.createDrsApi = createDrsApi ?? throw new ArgumentNullException(nameof(createDrsApi));
 
     public Task<IReadOnlyList<NvidiaNvapiGpuSensor>> ReadAsync(
         NvidiaNvapiReadRequest request,
@@ -88,8 +92,12 @@ public sealed partial class NvidiaNvapiReader : IDisposable
         initAttempted = true;
         if (drsApi is null)
         {
-            if (!TryLoadBindings(out bindings)) return false;
-            drsApi = new NativeDrsApi(bindings);
+            if (createDrsApi is not null) drsApi = createDrsApi();
+            else
+            {
+                if (!TryLoadBindings(out bindings)) return false;
+                drsApi = new NativeDrsApi(bindings);
+            }
         }
         try
         {
@@ -127,19 +135,36 @@ public sealed partial class NvidiaNvapiReader : IDisposable
         lock (gate)
         {
             disposed = true;
-            if (!TryCleanupPendingSession())
-                throw new InvalidOperationException("NVAPI DRS session cleanup is still pending; retain and retry this reader.");
-            if (drsApi is null) return;
-            if (initialized)
-            {
-                if (drsApi.Unload() != NvapiOk)
-                    throw new InvalidOperationException("NVAPI unload failed; initialization and module are retained for cleanup.");
-                initialized = false;
-            }
-            drsApi.FreeLibrary();
-            drsApi = null;
-            bindings = NativeBindings.Unavailable;
+            ReleaseSessionCore();
         }
+    }
+
+    /// <summary>Returns this reader's native state without retiring it. Failed cleanup stays owned for explicit retry.</summary>
+    public void ReleaseSession()
+    {
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            ReleaseSessionCore();
+        }
+    }
+
+    private void ReleaseSessionCore()
+    {
+        if (!TryCleanupPendingSession())
+            throw new InvalidOperationException("NVAPI DRS session cleanup is still pending; retain and retry this reader.");
+        // No successful owned session was released: retain the original initialization failure cache.
+        if (drsApi is null) return;
+        if (initialized)
+        {
+            if (drsApi.Unload() != NvapiOk)
+                throw new InvalidOperationException("NVAPI unload failed; initialization and module are retained for cleanup.");
+            initialized = false;
+        }
+        drsApi.FreeLibrary();
+        drsApi = null;
+        bindings = NativeBindings.Unavailable;
+        initAttempted = false;
     }
 
 }

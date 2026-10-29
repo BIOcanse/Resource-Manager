@@ -11,6 +11,9 @@ public sealed partial class NvidiaNvmlReader
         [DllImport("nvml.dll", EntryPoint = "nvmlInit_v2")]
         internal static extern int nvmlInit();
 
+        [DllImport("nvml.dll", EntryPoint = "nvmlShutdown")]
+        internal static extern int nvmlShutdown();
+
         [DllImport("nvml.dll", EntryPoint = "nvmlDeviceGetCount_v2")]
         internal static extern int nvmlDeviceGetCount(out uint deviceCount);
 

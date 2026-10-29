@@ -60,9 +60,20 @@ public sealed class GpuPlacementProcessHistoryObserver(
             ? snapshot.Processes.Where(process => process.ProcessId > 4 && process.ProcessStartKey is > 0 and <= long.MaxValue
                 && !string.IsNullOrWhiteSpace(process.ExecutablePath) && Path.IsPathFullyQualified(process.ExecutablePath))
                 .ToDictionary(process => (process.ProcessId, process.ProcessStartKey)) : null;
+        // Processes is a metric projection, not the inventory. A missing runtime
+        // row must not erase a completed attempt and reopen Present on its return.
+        var knownLiveInstances = snapshot?.IsInventoryCurrentComplete() == true
+            ? snapshot.CurrentInventoryProcesses.Select(process => (process.ProcessId, process.ProcessStartKey)).ToHashSet()
+            : null;
 
         foreach (var (key, attempt) in attempts.ToArray())
         {
+            if (knownLiveInstances is not null && !knownLiveInstances.Contains(key))
+            {
+                attempt.Release();
+                attempts.Remove(key);
+                continue;
+            }
             if (current is not null && (!current.TryGetValue(key, out var process)
                 || !registered.Contains(process.SoftwareId) || Excluded(process)
                 || !string.Equals(attempt.SoftwareId, process.SoftwareId, StringComparison.OrdinalIgnoreCase)
@@ -71,7 +82,6 @@ public sealed class GpuPlacementProcessHistoryObserver(
                 attempt.Release();
                 // Keep a completed attempt until exit, including policy changes; no repeating
                 // short sessions for the same unidentified process on every polling cycle.
-                if (!current.ContainsKey(key)) attempts.Remove(key);
                 continue;
             }
             if (TimeProvider.System.GetElapsedTime(attempt.Started, timestamp) >= ObservationWindow)

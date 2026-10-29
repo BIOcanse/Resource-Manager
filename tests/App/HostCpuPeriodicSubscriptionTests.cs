@@ -74,8 +74,10 @@ public sealed class HostCpuPeriodicSubscriptionTests
         await controller.AssertControllerRestartedAsync();
         Assert.True(await pending.WaitAsync(Deadline));
         Assert.Equal(37.5, Assert.Single(stream.Current).Value?.Number);
-        Assert.Equal(2, broker.SubscribeCount);
-        Assert.Equal(1, broker.DisposeCount);
+        // Retained current may be delivered before the restarted worker opens its next capture window.
+        while (broker.SubscribeCount < 4) await Task.Delay(5, timeout.Token);
+        Assert.Equal(4, broker.SubscribeCount);
+        Assert.Equal(2, broker.DisposeCount);
     }
 
     [Fact]
@@ -288,12 +290,12 @@ public sealed class HostCpuPeriodicSubscriptionTests
         Assert.Null(reading.ObservedAt);
         Assert.Equal("windows.etw.cpu-residency", reading.SourceId);
         Assert.Equal("Warming", reader.GetDiagnostics().State);
-        Assert.Equal(1, broker.SubscribeCount);
+        Assert.Equal(2, broker.SubscribeCount);
         Assert.True(backend.CachedReadCount > 0); // A cached control value is not evidence of a closed ETW window.
 
         await cancellation.CancelAsync();
         await Task.Delay(250, CancellationToken.None);
-        Assert.Equal(1, broker.SubscribeCount);
+        Assert.Equal(2, broker.SubscribeCount);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
             await stream.MoveNextAsync().AsTask());
         Assert.Equal(0u, sampling.Owner.Execute(6, session =>
@@ -309,7 +311,7 @@ public sealed class HostCpuPeriodicSubscriptionTests
             return header.ActiveSourceCount;
         }));
         await reader.StopAsync(CancellationToken.None);
-        Assert.Equal(1, broker.DisposeCount);
+        Assert.Equal(2, broker.DisposeCount);
     }
 
     private static InformationReadWriteBackend CreateTopologyBackend(CpuTopologySnapshotProvider reader)
@@ -421,6 +423,9 @@ public sealed class HostCpuPeriodicSubscriptionTests
 
     private sealed class WarmingBroker : IKernelEtwSessionBroker
     {
+        private readonly object gate = new();
+        private readonly List<RecordedLease> leases = [];
+        private KernelEtwEventSource? metadataSource;
         private int subscribeCount;
         private int disposeCount;
         internal int SubscribeCount => Volatile.Read(ref subscribeCount);
@@ -428,23 +433,34 @@ public sealed class HostCpuPeriodicSubscriptionTests
 
         public IKernelEtwSubscription Subscribe(KernelEtwSubscriptionRequest request)
         {
+            var metadata = request.Keywords.HasFlag(KernelTraceEventParser.Keywords.Process);
+            var source = metadata ? new KernelEtwEventSource() : metadataSource!;
+            var lease = new RecordedLease(this, metadata ? source : null, request.Keywords);
+            lock (gate)
+            {
+                leases.Add(lease);
+                if (metadata) metadataSource = source;
+            }
             Interlocked.Increment(ref subscribeCount);
-            var source = new KernelEtwEventSource();
             Task.Run(() => request.Bind(source, new(37, DateTimeOffset.UnixEpoch)))
                 .GetAwaiter().GetResult();
-            source.Activate();
-            return new RecordedLease(this, source);
+            if (metadata) source.Activate();
+            return lease;
         }
 
         public KernelEtwSessionSnapshot GetSnapshot()
-            => new(SubscribeCount > DisposeCount ? "Running" : "Unavailable",
-                "Recorded fixture: no context-switch events were supplied.", 37, DateTimeOffset.UnixEpoch,
-                KernelTraceEventParser.Keywords.Process | KernelTraceEventParser.Keywords.Thread
-                    | KernelTraceEventParser.Keywords.ContextSwitch,
-                SubscribeCount - DisposeCount, 0);
-
-        private sealed class RecordedLease(WarmingBroker owner, KernelEtwEventSource source) : IKernelEtwSubscription
         {
+            lock (gate)
+                return new(leases.Count > 0 ? "Running" : "Unavailable",
+                    "Recorded fixture: no context-switch events were supplied.", 37, DateTimeOffset.UnixEpoch,
+                    leases.Aggregate(KernelTraceEventParser.Keywords.None, (keywords, lease) => keywords | lease.Keywords),
+                    leases.Count, 0);
+        }
+
+        private sealed class RecordedLease(WarmingBroker owner, KernelEtwEventSource? source,
+            KernelTraceEventParser.Keywords keywords) : IKernelEtwSubscription
+        {
+            internal KernelTraceEventParser.Keywords Keywords { get; } = keywords;
             public KernelEtwSessionSnapshot GetSnapshot() => owner.GetSnapshot();
 
             private int disposed;
@@ -452,7 +468,8 @@ public sealed class HostCpuPeriodicSubscriptionTests
             public void Dispose()
             {
                 if (Interlocked.Exchange(ref disposed, 1) != 0) return;
-                source.Cancel();
+                lock (owner.gate) owner.leases.Remove(this);
+                source?.Cancel();
                 Interlocked.Increment(ref owner.disposeCount);
             }
         }

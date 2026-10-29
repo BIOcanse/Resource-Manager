@@ -16,17 +16,18 @@ public sealed partial class PresentFrameEtwSource : IPresentGraphicsApiObservati
         {
             ObjectDisposedException.ThrowIf(disposed, this);
             var wasActive = HasActiveSubscriptions;
-            var subscription = new GraphicsApiSubscription(this, process);
+            var subscription = new GraphicsApiSubscription(this, process, ++nextHolderId);
             lock (gate) graphicsApiSubscriptions.Add(subscription);
+            UpdateOutputProviders(frameLeases);
             PublishSubscriptionActivity(wasActive);
             return subscription;
         }
     }
 
     internal static GpuGraphicsApi? MapPresentGraphicsApi(Guid provider, int eventId)
-        => provider == DxgiProvider && eventId is DxgiPresentStart or DxgiPresentStop or DxgiMultiplaneOverlayPresentStart or DxgiMultiplaneOverlayPresentStop
+        => provider == DxgiProvider && eventId is DxgiPresentStart or DxgiMultiplaneOverlayPresentStart
             ? GpuGraphicsApi.D3D11 | GpuGraphicsApi.D3D12
-            : provider == Direct3D9Provider && eventId is Direct3D9PresentStart or Direct3D9PresentStop ? GpuGraphicsApi.D3D9 : null;
+            : provider == Direct3D9Provider && eventId == Direct3D9PresentStart ? GpuGraphicsApi.D3D9 : null;
 
     private bool ApplyGraphicsApiEvent(TraceEvent data)
     {
@@ -34,15 +35,23 @@ public sealed partial class PresentFrameEtwSource : IPresentGraphicsApiObservati
         if (data.ProviderGuid == KernelProcessProvider)
         {
             if ((int)data.ID == ProcessStart && data.PayloadByName("CreateTime") is DateTime created)
-                return ObserveGraphicsApiProcessLifetime(Convert.ToInt32(data.PayloadByName("ProcessID")), created.ToFileTimeUtc());
+                return ObserveGraphicsApiProcessLifetimeCore(Convert.ToInt32(data.PayloadByName("ProcessID")), created.ToFileTimeUtc());
             else if ((int)data.ID == ProcessStop)
-                return ObserveGraphicsApiProcessLifetime(Convert.ToInt32(data.PayloadByName("ProcessID")), null);
+                return ObserveGraphicsApiProcessLifetimeCore(Convert.ToInt32(data.PayloadByName("ProcessID")), null);
             return false;
         }
-        return ObserveGraphicsApiPresent(data.ProviderGuid, (int)data.ID, data.ProcessID, data.TimeStamp.ToUniversalTime());
+        return ObserveGraphicsApiPresentCore(data.ProviderGuid, (int)data.ID, data.ProcessID, data.TimeStamp.ToUniversalTime());
     }
 
     internal bool ObserveGraphicsApiPresent(Guid provider, int eventId, int pid, DateTime timestampUtc)
+    {
+        bool used;
+        lock (gate) used = ObserveGraphicsApiPresentCore(provider, eventId, pid, timestampUtc);
+        if (used) SynchronizeGraphicsApiUse();
+        return used;
+    }
+
+    private bool ObserveGraphicsApiPresentCore(Guid provider, int eventId, int pid, DateTime timestampUtc)
     {
         var api = MapPresentGraphicsApi(provider, eventId);
         if (api is null) return false;
@@ -50,10 +59,10 @@ public sealed partial class PresentFrameEtwSource : IPresentGraphicsApiObservati
         lock (gate)
         {
             foreach (var subscription in graphicsApiSubscriptions)
-                if (subscription.Active && subscription.Process.ProcessId == pid
+                if (subscription.NeedsEvents && subscription.Process.ProcessId == pid
                     && timestampUtc.ToFileTimeUtc() >= (long)subscription.Process.ProcessStartKey)
                 {
-                    subscription.Api ??= api;
+                    subscription.Api = api;
                     used = true;
                 }
         }
@@ -62,11 +71,19 @@ public sealed partial class PresentFrameEtwSource : IPresentGraphicsApiObservati
 
     internal bool ObserveGraphicsApiProcessLifetime(int pid, long? startKey)
     {
+        bool used;
+        lock (gate) used = ObserveGraphicsApiProcessLifetimeCore(pid, startKey);
+        if (used) SynchronizeGraphicsApiUse();
+        return used;
+    }
+
+    private bool ObserveGraphicsApiProcessLifetimeCore(int pid, long? startKey)
+    {
         var used = false;
         lock (gate)
         {
             foreach (var subscription in graphicsApiSubscriptions)
-                if (subscription.Process.ProcessId == pid
+                if (subscription.Active && subscription.Process.ProcessId == pid
                     && startKey != (long)subscription.Process.ProcessStartKey)
                 {
                     used = true;
@@ -77,13 +94,37 @@ public sealed partial class PresentFrameEtwSource : IPresentGraphicsApiObservati
         return used;
     }
 
-    private sealed class GraphicsApiSubscription(PresentFrameEtwSource source, GpuPlacementProcessInstance process)
+    private void SynchronizeGraphicsApiUse()
+    {
+        lock (lifecycle)
+        {
+            var wasActive = HasActiveSubscriptions;
+            UpdateOutputProviders(frameLeases);
+            PublishSubscriptionActivity(wasActive);
+        }
+    }
+
+    internal PresentHolder[] ReadHolders()
+    {
+        lock (lifecycle)
+        lock (gate)
+            return [.. frameSubscriptions.Select(item => new PresentHolder(item.Id, "frames", null, null, null, true, hasFrameCurrent)),
+                .. graphicsApiSubscriptions.Select(item => new PresentHolder(item.Id, "graphics-api-history",
+                    item.Process.ProcessId, item.Process.ProcessStartKey, item.Process.ExecutablePath, item.NeedsEvents, item.Active && item.Api is not null))];
+    }
+
+    internal sealed record PresentHolder(string Id, string Kind, int? ProcessId, ulong? ProcessStartKey,
+        string? ExecutablePath, bool NeedsEvents, bool HasCurrent);
+
+    private sealed class GraphicsApiSubscription(PresentFrameEtwSource source, GpuPlacementProcessInstance process, long id)
         : IPresentGraphicsApiSubscription
     {
         private PresentFrameEtwSource? owner = source;
         internal GpuPlacementProcessInstance Process { get; } = process;
+        internal string Id { get; } = $"gpu-placement-api-history:{id}";
         internal bool Active { get; set; } = true;
         internal GpuGraphicsApi? Api { get; set; }
+        internal bool NeedsEvents => Active && Api is null;
         public GpuGraphicsApi? Read()
         {
             var current = Volatile.Read(ref owner);
@@ -98,6 +139,7 @@ public sealed partial class PresentFrameEtwSource : IPresentGraphicsApiObservati
             {
                 var wasActive = current.HasActiveSubscriptions;
                 lock (current.gate) current.graphicsApiSubscriptions.Remove(this);
+                current.UpdateOutputProviders(current.frameLeases);
                 current.PublishSubscriptionActivity(wasActive);
             }
         }

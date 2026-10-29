@@ -303,7 +303,6 @@ public sealed partial class HostManagerSmartCoordinator(
         {
             await Task.Yield();
             stoppingToken.ThrowIfCancellationRequested();
-            using var rendererObservation = runningGpuPlacementActions.AcquireRendererObservation();
             await gate.WaitAsync(stoppingToken);
             try { await SynchronizeSmartSubscriptionsAsync(stoppingToken); }
             finally { gate.Release(); }
@@ -380,8 +379,12 @@ public sealed partial class HostManagerSmartCoordinator(
         finally
         {
             schedulerRunning = false;
-            await smartSubscriptions.DisposeAsync();
-            smartSubscriptions = null;
+            try { Interlocked.Exchange(ref rendererObservation, null)?.Dispose(); }
+            finally
+            {
+                await smartSubscriptions.DisposeAsync();
+                smartSubscriptions = null;
+            }
         }
     }
 
