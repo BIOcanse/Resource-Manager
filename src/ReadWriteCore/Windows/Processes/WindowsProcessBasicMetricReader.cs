@@ -89,10 +89,6 @@ public sealed class WindowsProcessBasicMetricReader
     /// <summary>Reads a complete selected batch with at most one process snapshot. Handles and
     /// observations belong only to this call; no directory, baseline or current is retained.</summary>
     public IReadOnlyList<ProcessBasicMetricObservation> ReadBatch(IReadOnlyList<ProcessBasicMetricRequest> requests)
-        => ReadBatch(requests, null);
-
-    internal IReadOnlyList<ProcessBasicMetricObservation> ReadBatch(IReadOnlyList<ProcessBasicMetricRequest> requests,
-        IReadOnlyDictionary<ProcessInstanceKey, uint?>? capturedThreadCounts)
     {
         ArgumentNullException.ThrowIfNull(requests);
         var prepared = new Prepared[requests.Count];
@@ -113,23 +109,13 @@ public sealed class WindowsProcessBasicMetricReader
                 catch (Exception error) when (IsSourceFailure(error)) { }
             }
             IReadOnlyDictionary<int, uint?> threads = new Dictionary<int, uint?>();
-            if (capturedThreadCounts is not null)
+            var threadHandles = prepared.Where(item => item.Valid && item.Request.Mask.HasFlag(ProcessMetricReadMask.ThreadCount))
+                .GroupBy(item => item.Request.ProcessId).Where(group => group.Count() == 1)
+                .ToDictionary(group => group.Key, group => group.Single().Handle);
+            if (threadHandles.Count != 0)
             {
-                threads = prepared.Where(item => item.Valid && item.Request.Mask.HasFlag(ProcessMetricReadMask.ThreadCount))
-                    .GroupBy(item => item.Request.ProcessId).Where(group => group.Count() == 1)
-                    .ToDictionary(group => group.Key, group => capturedThreadCounts.GetValueOrDefault(
-                        new(group.Key, group.Single().Request.CreationFileTime100Ns)));
-            }
-            else
-            {
-                var threadHandles = prepared.Where(item => item.Valid && item.Request.Mask.HasFlag(ProcessMetricReadMask.ThreadCount))
-                    .GroupBy(item => item.Request.ProcessId).Where(group => group.Count() == 1)
-                    .ToDictionary(group => group.Key, group => group.Single().Handle);
-                if (threadHandles.Count != 0)
-                {
-                    try { threads = api.ThreadCounts(threadHandles); }
-                    catch (Exception error) when (IsSourceFailure(error)) { }
-                }
+                try { threads = api.ThreadCounts(threadHandles); }
+                catch (Exception error) when (IsSourceFailure(error)) { }
             }
             for (var i = 0; i < prepared.Length; i++)
             {
@@ -138,7 +124,7 @@ public sealed class WindowsProcessBasicMetricReader
                 try
                 {
                     result[i] = ReadSelected(item.Handle, request.ProcessId, request.CreationFileTime100Ns, request.Mask,
-                        item.Created, item.Kernel, item.User, threads.GetValueOrDefault(request.ProcessId));
+                        item.Kernel, item.User, threads.GetValueOrDefault(request.ProcessId));
                 }
                 catch (Exception error) when (IsSourceFailure(error)) { }
             }
@@ -164,7 +150,7 @@ public sealed class WindowsProcessBasicMetricReader
         {
             handle = api.Open(processId, mask);
             if (ValidHandle(handle) && api.Times(handle, out var created, out var kernel, out var user) && created == (ulong)creationFileTime)
-                value = ReadSelected(handle, processId, creationFileTime, mask, created, kernel, user, null);
+                value = ReadSelected(handle, processId, creationFileTime, mask, kernel, user, null);
         }
         catch (Exception error) when (IsSourceFailure(error)) { }
         finally
@@ -178,18 +164,18 @@ public sealed class WindowsProcessBasicMetricReader
         return released ? value : ProcessBasicMetricObservation.Unavailable;
     }
     private ProcessBasicMetricObservation ReadSelected(IntPtr handle, int processId, long creationFileTime,
-        ProcessMetricReadMask mask, ulong created, ulong kernel, ulong user, uint? threadCount)
+        ProcessMetricReadMask mask, ulong kernel, ulong user, uint? threadCount)
     {
         var memory = mask.HasFlag(ProcessMetricReadMask.Memory) || mask.HasFlag(ProcessMetricReadMask.PrivateWorkingSet)
-            ? ReadCategory(() => api.Memory(handle, mask.HasFlag(ProcessMetricReadMask.PrivateWorkingSet))) : null;
-        if (memory is { PrivateWorkingSet: { } resident } && resident > memory.WorkingSet) memory = memory with { PrivateWorkingSet = null };
+            ? Consistent(ReadCategory(() => api.Memory(handle, mask.HasFlag(ProcessMetricReadMask.PrivateWorkingSet)))) : null;
         var io = mask.HasFlag(ProcessMetricReadMask.Io) ? ReadCategory(() => ReadIo(handle)) : null;
         var handles = mask.HasFlag(ProcessMetricReadMask.HandleCount) ? ReadHandleCount(handle) : null;
         var image = mask.HasFlag(ProcessMetricReadMask.ImagePath) ? ReadCategory(() => api.ImagePath(handle)) : null;
         var sid = mask.HasFlag(ProcessMetricReadMask.UserSid) ? ReadCategory(() => api.UserSid(handle)) : null;
         var commandLine = mask.HasFlag(ProcessMetricReadMask.CommandLine) ? ReadCategory(() => api.CommandLine(handle)) : null;
         var parent = mask.HasFlag(ProcessMetricReadMask.ParentPid) ? ReadParentPid(handle) : null;
-        if (!api.Times(handle, out var after, out _, out _) || after != created) return ProcessBasicMetricObservation.Unavailable;
+        // No second creation check: the open handle pins the process object, so its PID cannot be reused and
+        // its creation time cannot change after the check before these reads.
         if (mask.HasFlag(ProcessMetricReadMask.ThreadCount))
         {
             try { if (!api.ThreadCountLive(handle, processId)) threadCount = null; }
@@ -213,6 +199,10 @@ public sealed class WindowsProcessBasicMetricReader
         return value is null ? null : value with { Timing = frequency > 0 && frequency == clock.TimestampFrequency
             && start >= 0 && end >= start ? new(start, end, frequency) : null };
     }
+
+    /// <summary>A private working set above the working set is not a valid reading of either source.</summary>
+    internal static ProcessMemoryObservation? Consistent(ProcessMemoryObservation? memory)
+        => memory is { PrivateWorkingSet: { } resident } && resident > memory.WorkingSet ? memory with { PrivateWorkingSet = null } : memory;
 
     private static bool ValidHandle(IntPtr handle) => handle != IntPtr.Zero && handle != new IntPtr(-1);
     private sealed class Prepared(ProcessBasicMetricRequest request)

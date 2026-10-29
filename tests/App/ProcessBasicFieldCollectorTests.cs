@@ -38,7 +38,7 @@ public sealed partial class ProcessBasicFieldCollectorTests
         Assert.Equal(MetricInteger.Parse("9007199254740993"), Value(sample, Names[5]).IntegerValue); Assert.Equal(MetricInteger.Parse("0"), Value(sample, Names[6]).IntegerValue);
         Assert.Equal(MetricInteger.Parse("18446744073709551615"), Value(sample, Names[7]).IntegerValue); Assert.Equal(MetricInteger.Parse("55340232221128654845"), Value(sample, Names[8]).IntegerValue);
         Assert.Equal(MetricInteger.Parse("0"), Value(sample, Names[9]).IntegerValue); Assert.Empty(sample.Bars);
-        Assert.Equal(1, api.Opens); Assert.Equal(2, api.TimeCalls); Assert.Equal(1, api.MemoryCalls); Assert.Equal(1, api.IoCalls); Assert.Equal(1, api.HandleCalls); Assert.Equal(1, api.Closes);
+        Assert.Equal(1, api.Opens); Assert.Equal(1, api.TimeCalls); Assert.Equal(1, api.MemoryCalls); Assert.Equal(1, api.IoCalls); Assert.Equal(1, api.HandleCalls); Assert.Equal(1, api.Closes);
         var source = Assert.Single(sample.ProcessFields.Sources); Assert.Equal("windows.process.query", source.SourceId); Assert.Null(source.WindowMilliseconds);
         Assert.Equal(sample.ProcessFields.CapturedAt, source.CapturedAt); Assert.Equal(Birth.ToString(), Assert.Single(sample.ProcessFields.Processes).CreationWindowsFileTime100Ns);
     }
@@ -60,8 +60,8 @@ public sealed partial class ProcessBasicFieldCollectorTests
     }
 
     [Theory]
-    [InlineData("open")] [InlineData("invalid-handle")] [InlineData("times-before")] [InlineData("times-after")]
-    [InlineData("identity-before")] [InlineData("identity-after")] [InlineData("close")] [InlineData("throw-close")]
+    [InlineData("open")] [InlineData("invalid-handle")] [InlineData("times-before")]
+    [InlineData("identity-before")] [InlineData("close")] [InlineData("throw-close")]
     public async Task IdentityTimesOrHandleFailureEmptiesOnlyThisProcessValuesAndReleasesAcquiredHandle(string fault)
     {
         var api = new Api { Fault = fault }; using var fixture = Fixture(api);

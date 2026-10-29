@@ -10,7 +10,8 @@ public sealed record ProcessMetricFieldValue(string Field, MetricInteger? Intege
     public string? StringValue { get; init; }
 }
 
-/// <summary>Two accepted GetProcessIoCounters query-return reference points for this exact process creation.</summary>
+/// <summary>Two accepted IO query-return reference points for this exact process creation: the return of the
+/// kernel process table query that carried its record, or of its GetProcessIoCounters call.</summary>
 public sealed record ProcessIoInterval(
     [property: JsonNumberHandling(JsonNumberHandling.WriteAsString | JsonNumberHandling.AllowReadingFromString)] long BeginCounter,
     [property: JsonNumberHandling(JsonNumberHandling.WriteAsString | JsonNumberHandling.AllowReadingFromString)] long EndCounter,

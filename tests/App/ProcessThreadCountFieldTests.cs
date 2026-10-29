@@ -19,7 +19,7 @@ public sealed class ProcessThreadCountFieldTests
     {
         var api = new Api(); api.Calls.Count = count;
         var actual = new WindowsProcessBasicMetricReader(api).Read(Environment.ProcessId, (long)Basic.Birth, ProcessMetricReadMask.ThreadCount);
-        Assert.Equal(count, actual.ThreadCount); Assert.Equal(2, api.Basic.TimeCalls); Assert.Equal(1, api.Basic.Closes);
+        Assert.Equal(count, actual.ThreadCount); Assert.Equal(1, api.Basic.TimeCalls); Assert.Equal(1, api.Basic.Closes);
         Assert.Equal(new[] { 0x101000U }, api.OpenRights); Assert.Equal(1, api.Calls.Snapshots); Assert.Equal(1, api.Calls.Closes);
         Assert.Equal(0, api.Basic.MemoryCalls + api.Basic.IoCalls + api.Basic.HandleCalls + api.Basic.ImageCalls + api.Basic.SidCalls + api.Basic.ParentCalls);
         var field = ProcessMetricFieldRegistry.Find("process_all_thread_count_actual")!;
@@ -63,7 +63,7 @@ public sealed class ProcessThreadCountFieldTests
     }
 
     [Theory]
-    [InlineData("identity-before")] [InlineData("identity-after")] [InlineData("close")]
+    [InlineData("identity-before")] [InlineData("close")]
     public void OriginalCreationAndCloseFailuresDoNotPublishThreadCount(string failure)
     {
         var api = new Api(); api.Basic.Fault = failure;
@@ -134,11 +134,11 @@ public sealed class ProcessThreadCountFieldTests
         Assert.Equal(6, api.Opened.Count); Assert.Equal(6, api.Closed.Count);
         Assert.Equal(11U, rows[0].ThreadCount); Assert.Equal("image-1", rows[0].ImagePath);
         Assert.Null(rows[1].ThreadCount); Assert.Null(rows[1].CpuTime100Ns); Assert.Null(rows[1].ImagePath); // Incorrect initial birth.
-        Assert.Null(rows[2].ThreadCount); Assert.Null(rows[2].CpuTime100Ns); Assert.Null(rows[2].ImagePath); // Incorrect final birth.
+        Assert.Equal(13U, rows[2].ThreadCount); Assert.Equal((UInt128)12, rows[2].CpuTime100Ns); Assert.Equal("image-3", rows[2].ImagePath); // Verified once; no final re-read.
         Assert.Null(rows[3].ThreadCount); Assert.Equal((UInt128)12, rows[3].CpuTime100Ns); Assert.Equal("image-4", rows[3].ImagePath); // SYNCHRONIZE denied.
         Assert.Null(rows[4].ThreadCount); Assert.Equal((UInt128)12, rows[4].CpuTime100Ns); Assert.Equal("image-5", rows[4].ImagePath); // Retired after snapshot.
         Assert.Equal(16U, rows[5].ThreadCount); Assert.Equal("image-6", rows[5].ImagePath);
-        Assert.All(api.TimeCalls, pair => Assert.Equal(pair.Key == 2 ? 1 : 2, pair.Value));
+        Assert.All(api.TimeCalls, pair => Assert.Equal(1, pair.Value));
     }
 
     [Fact]
@@ -201,7 +201,7 @@ public sealed class ProcessThreadCountFieldTests
         public bool Times(IntPtr handle, out ulong creation, out ulong kernel, out ulong user)
         {
             var pid = handle.ToInt32(); var count = TimeCalls.GetValueOrDefault(pid) + 1; TimeCalls[pid] = count;
-            creation = (ulong)(100 + pid + (pid == 2 || pid == 3 && count == 2 ? 1 : 0)); kernel = 5; user = 7; return true;
+            creation = (ulong)(100 + pid + (pid == 2 ? 1 : 0)); kernel = 5; user = 7; return true;
         }
         public ProcessMemoryObservation? Memory(IntPtr handle, bool privateWorkingSet) => throw new InvalidOperationException("Not selected");
         public ProcessIoObservation? Io(IntPtr handle) => throw new InvalidOperationException("Not selected");

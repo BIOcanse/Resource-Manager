@@ -55,10 +55,11 @@ public sealed partial class ProcessBasicFieldCollectorTests
         }
         public bool Times(IntPtr handle, out ulong creation, out ulong kernel, out ulong user)
         {
-            Assert.Equal(new IntPtr(42), handle); var call = Interlocked.Increment(ref TimeCalls);
-            creation = Fault == "identity-before" || Fault == "identity-after" && call % 2 == 0 ? Birth + 1 : Birth;
+            // One creation check per handle read; the reader no longer re-reads times after its queries.
+            Assert.Equal(new IntPtr(42), handle); Interlocked.Increment(ref TimeCalls);
+            creation = Fault == "identity-before" ? Birth + 1 : Birth;
             kernel = Kernel; user = User;
-            return Fault != "times-before" && (Fault != "times-after" || call % 2 == 1);
+            return Fault != "times-before";
         }
         public ProcessMemoryObservation? Memory(IntPtr handle, bool privateWorkingSet)
         {

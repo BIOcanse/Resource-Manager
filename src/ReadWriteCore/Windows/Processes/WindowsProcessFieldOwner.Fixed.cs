@@ -21,6 +21,19 @@ public sealed partial class WindowsProcessFieldOwner
         return (missing & FixedMask) != 0 ? missing | ProcessMetricReadMask.StartTime : missing;
     }
 
+    /// <summary>Reads one inventory entry. A kernel-table entry answers its dynamic categories from its own record
+    /// in this capture's table; its handle is opened only for fixed facts this instance has not attempted.
+    /// An entry without table counters reads every requested category through its handle.</summary>
+    [RuntimeReadCache]
+    internal ProcessBasicMetricObservation ReadBasic(WindowsProcessInventoryEntry process, ProcessMetricReadMask requested)
+    {
+        var birth = process.Creation.Creation ?? 0;
+        if (process.Counters is not { } counters) return ReadBasic(process.Id, birth, requested);
+        var handleFields = requested & ~WindowsProcessTableCounters.Fields;
+        return counters.Fill(requested, handleFields == ProcessMetricReadMask.None
+            ? ProcessBasicMetricObservation.Unavailable : ReadBasic(process.Id, birth, handleFields));
+    }
+
     /// <summary>Original read-once boundary for PID/birth facts; dynamic categories still query every frame.</summary>
     [RuntimeReadCache]
     internal ProcessBasicMetricObservation ReadBasic(int pid, long birth, ProcessMetricReadMask requested)

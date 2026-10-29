@@ -139,7 +139,7 @@ public sealed partial class WindowsResourceBreakdownSampler
             var queryMask = basicMask;
             if (preserveProductIdentity && cachedIdentity is null) queryMask |= ProcessMetricReadMask.ImagePath;
             if (preserveProductIdentity) queryMask |= ProcessMetricReadMask.UserSid;
-            var basic = prepared?.Basic ?? processFieldOwner.ReadBasic(processId, startKey ?? 0, queryMask);
+            var basic = prepared?.Basic ?? processFieldOwner.ReadBasic(process, queryMask);
             if (processInstanceKey is { } textKey && textSharing is not null) basic = textSharing.Share(textKey, basic);
             // Scheduling keeps the original cache; its path now comes from the same verified SDK query.
             if (preserveProductIdentity && cachedIdentity is null && processInstanceKey is { } cacheKey)

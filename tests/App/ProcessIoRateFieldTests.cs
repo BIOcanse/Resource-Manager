@@ -73,8 +73,7 @@ public sealed class ProcessIoRateFieldTests
 
     [Theory]
     [InlineData("io")] [InlineData("throw-io")] [InlineData("times-before")]
-    [InlineData("times-after")] [InlineData("identity-before")] [InlineData("identity-after")]
-    [InlineData("close")] [InlineData("throw-close")]
+    [InlineData("identity-before")] [InlineData("close")] [InlineData("throw-close")]
     public async Task AcceptedFailureBreaksHistoryAndRecoveryRequiresTwoSuccessfulActualQueries(string fault)
     {
         var api = new Basic.Api { IoValue = Counts(100) }; var clock = new Clock();

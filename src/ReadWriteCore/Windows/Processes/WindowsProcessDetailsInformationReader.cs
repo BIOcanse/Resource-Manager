@@ -216,8 +216,10 @@ internal sealed class WindowsProcessDetailsInformationReader : IWindowsProcessDe
 /// <summary>Bounds and validates the documented variable-length process/thread table.</summary>
 internal static class WindowsProcessSystemThreadParser
 {
+    /// <summary>Each entry carries its record's dynamic counters. <paramref name="tableTiming"/> is the
+    /// query bracket of the one call that produced <paramref name="data"/>; it times the IO counters.</summary>
     internal static unsafe bool TryParseInventory(ReadOnlySpan<byte> data, WindowsProcessDetailsOptions options,
-        out WindowsProcessInventoryEntry[] processes)
+        ProcessIoQueryTiming? tableTiming, out WindowsProcessInventoryEntry[] processes)
     {
         processes = [];
         if (!TryParseCreations(data, options, out var creations)) return false;
@@ -245,9 +247,17 @@ internal static class WindowsProcessSystemThreadParser
                     }
                 }
                 var creation = header.CreationTime;
+                var counters = new WindowsProcessTableCounters(
+                    unchecked((ulong)header.KernelTime), unchecked((ulong)header.UserTime),
+                    header.WorkingSetSize.ToUInt64(), header.PagefileUsage.ToUInt64(), header.PeakPagefileUsage.ToUInt64(),
+                    unchecked((ulong)header.WorkingSetPrivateSize),
+                    unchecked((ulong)header.ReadOperationCount), unchecked((ulong)header.WriteOperationCount),
+                    unchecked((ulong)header.OtherOperationCount), unchecked((ulong)header.ReadTransferCount),
+                    unchecked((ulong)header.WriteTransferCount), unchecked((ulong)header.OtherTransferCount),
+                    header.HandleCount, header.NumberOfThreads <= options.MaximumThreadsPerProcess ? header.NumberOfThreads : null,
+                    tableTiming);
                 rows.Add(new(pid, new(creation > 0 ? ProcessReadStatus.Current : ProcessReadStatus.Unavailable,
-                    creation > 0 ? creation : null) { HandleCount = header.HandleCount }, parent <= int.MaxValue ? (int)parent : 0, name,
-                    ThreadCount: header.NumberOfThreads <= options.MaximumThreadsPerProcess ? header.NumberOfThreads : null));
+                    creation > 0 ? creation : null), parent <= int.MaxValue ? (int)parent : 0, name, Counters: counters));
                 if (header.NextEntryOffset == 0) break;
                 offset += (int)header.NextEntryOffset;
             }
@@ -361,6 +371,11 @@ internal static class WindowsProcessSystemThreadParser
         internal IntPtr Buffer;
     }
 
+    // SYSTEM_PROCESS_INFORMATION. winternl.h documents the record with Reserved1[48] and Reserved7[6];
+    // the fields read here are named after the NT native headers (phnt ntexapi.h, _SYSTEM_PROCESS_INFORMATION:
+    // https://github.com/winsiderss/phnt/blob/master/ntexapi.h), x64 offsets WorkingSetPrivateSize 0x08,
+    // CreateTime 0x20, UserTime 0x28, KernelTime 0x30, PagefileUsage 0xB8, ReadOperationCount 0xD0.
+    // Reserved7 is the process IO_COUNTERS block in the order of winnt.h IO_COUNTERS.
     [StructLayout(LayoutKind.Sequential)]
     internal struct SystemProcessInformationHeader
     {
@@ -368,7 +383,8 @@ internal static class WindowsProcessSystemThreadParser
         internal uint NumberOfThreads;
         // Inline reserved bytes allow reading directly from the bounded native
         // byte table without boxed structs or unused managed reserved arrays.
-        internal long Reserved1a, Reserved1b, Reserved1c, CreationTime, Reserved1e, Reserved1f;
+        // Reserved1b holds HardFaultCount and NumberOfThreadsHighWatermark; Reserved1c is CycleTime.
+        internal long WorkingSetPrivateSize, Reserved1b, Reserved1c, CreationTime, UserTime, KernelTime;
         internal UnicodeString ImageName;
         internal int BasePriority;
         internal IntPtr UniqueProcessId;
@@ -388,7 +404,8 @@ internal static class WindowsProcessSystemThreadParser
         internal UIntPtr PagefileUsage;
         internal UIntPtr PeakPagefileUsage;
         internal UIntPtr PrivatePageCount;
-        internal long Reserved7a, Reserved7b, Reserved7c, Reserved7d, Reserved7e, Reserved7f;
+        internal long ReadOperationCount, WriteOperationCount, OtherOperationCount,
+            ReadTransferCount, WriteTransferCount, OtherTransferCount;
     }
 
     [StructLayout(LayoutKind.Sequential)]

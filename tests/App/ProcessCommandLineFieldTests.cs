@@ -67,7 +67,7 @@ public sealed class ProcessCommandLineFieldTests
         Assert.Equal(2, calls.Queries); Assert.Equal(1, calls.Allocations); Assert.Equal(1, calls.Frees);
     }
     [Theory]
-    [InlineData("open")] [InlineData("identity-before")] [InlineData("identity-after")] [InlineData("close")]
+    [InlineData("open")] [InlineData("identity-before")] [InlineData("close")]
     public void OriginalHandleIdentityOrCloseGateMakesCommandLineUnavailable(string fault)
     {
         var api = new Api(); api.Basic.Fault = fault;
@@ -80,7 +80,7 @@ public sealed class ProcessCommandLineFieldTests
     {
         var api = new Api(); var reader = new WindowsProcessBasicMetricReader(api);
         var value = reader.Read(Environment.ProcessId, (long)Basic.Birth, ProcessMetricReadMask.CommandLine);
-        Assert.Equal(api.Raw.Text, value.CommandLine); Assert.Equal(2, api.Basic.TimeCalls); Assert.Equal(1, api.Basic.Closes);
+        Assert.Equal(api.Raw.Text, value.CommandLine); Assert.Equal(1, api.Basic.TimeCalls); Assert.Equal(1, api.Basic.Closes);
         Assert.Equal(0, api.Basic.MemoryCalls + api.Basic.IoCalls + api.Basic.HandleCalls + api.Basic.ImageCalls + api.Basic.SidCalls + api.Basic.ParentCalls);
         Assert.Equal(1, api.CommandCalls);
         api.Raw.Fault = "denied";

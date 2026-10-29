@@ -214,9 +214,9 @@ public sealed partial class KernelLeakReportTests
         var header = new WindowsProcessSystemThreadParser.SystemProcessInformationHeader
             { UniqueProcessId = new(7), CreationTime = 42, HandleCount = 1234 };
         MemoryMarshal.Write(bytes, in header);
-        Assert.True(WindowsProcessSystemThreadParser.TryParseInventory(bytes, WindowsProcessDetailsOptions.Default, out var rows));
+        Assert.True(WindowsProcessSystemThreadParser.TryParseInventory(bytes, WindowsProcessDetailsOptions.Default, null, out var rows));
         var row = Assert.Single(rows);
-        Assert.Equal(42, row.Creation.Creation); Assert.Equal(1234u, row.Creation.HandleCount);
+        Assert.Equal(42, row.Creation.Creation); Assert.Equal(1234u, row.Counters!.Value.HandleCount);
     }
     [Fact]
     public void KernelLeakFreedomPointDefaultsAreCompiledAndInvalidBoundsAreRejected()

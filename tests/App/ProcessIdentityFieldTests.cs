@@ -36,7 +36,7 @@ public sealed class ProcessIdentityFieldTests
         var request = Basic.Request(Names[selected]);
         var sample = await fixture.Sampler.CaptureSnapshotAsync(request, default);
         var value = Basic.Value(sample, Names[selected]);
-        Assert.Equal(1, api.Opens); Assert.Equal(2, api.TimeCalls); Assert.Equal(1, api.Closes);
+        Assert.Equal(1, api.Opens); Assert.Equal(1, api.TimeCalls); Assert.Equal(1, api.Closes);
         Assert.Equal(selected == 1 ? 1 : 0, api.ImageCalls); Assert.Equal(selected == 2 ? 1 : 0, api.ParentCalls);
         Assert.Equal(selected == 3 ? 1 : 0, api.SidCalls); Assert.Equal(0, api.MemoryCalls + api.IoCalls + api.HandleCalls);
         Assert.Empty(sample.Bars); Assert.False(WindowsResourceBreakdownSampler.RequiresProcessAttribution(request));
@@ -48,8 +48,8 @@ public sealed class ProcessIdentityFieldTests
     }
 
     [Theory]
-    [InlineData("open")] [InlineData("identity-before")] [InlineData("identity-after")]
-    [InlineData("times-before")] [InlineData("times-after")] [InlineData("close")] [InlineData("throw-close")]
+    [InlineData("open")] [InlineData("identity-before")]
+    [InlineData("times-before")] [InlineData("close")] [InlineData("throw-close")]
     public async Task FailedIdentityOrReleaseCannotPublishPathSidParentOrStartTime(string fault)
     {
         var api = new Basic.Api { Fault = fault }; using var fixture = Basic.Fixture(api);
@@ -76,7 +76,7 @@ public sealed class ProcessIdentityFieldTests
         Assert.NotNull(Basic.Value(sample, Names[0]).StringValue);
         if (empty != 1) Assert.Equal(api.Image, Basic.Value(sample, Names[1]).StringValue);
         if (empty != 3) Assert.Equal(api.Sid, Basic.Value(sample, Names[3]).StringValue);
-        Assert.Equal(1, api.Opens); Assert.Equal(2, api.TimeCalls);
+        Assert.Equal(1, api.Opens); Assert.Equal(1, api.TimeCalls);
     }
 
     [Fact]
@@ -127,7 +127,7 @@ public sealed class ProcessIdentityFieldTests
             await Task.Delay(TimeSpan.FromMilliseconds(1_100));
             Assert.Equal(opensAtCancellation, api.Opens);
 
-            api.Fault = "identity-after";
+            api.Fault = "identity-before";
             var retained = await backend.CollectAsync(references, timeout.Token);
             // These fixed facts are already established; this frame performs no failing query.
             Assert.All(retained, reading => { Assert.Equal(FieldObservationStatus.Current, reading.Status); Assert.NotNull(reading.Value); });
@@ -157,7 +157,7 @@ public sealed class ProcessIdentityFieldTests
         Assert.Equal(0, Basic.Value(sample, "process_all_cpu_usage_actual").NumericValue);
         Assert.NotNull(sample.ProcessFields!.Select(new HashSet<string> { "process_all_cpu_usage_actual" }).WindowMilliseconds);
         Assert.Null(sample.ProcessFields.Select(Names.ToHashSet()).WindowMilliseconds);
-        Assert.Equal(2, api.Opens); Assert.Equal(4, api.TimeCalls); Assert.Equal(1, api.ImageCalls); // fixed image is read once; CPU counters are read twice
+        Assert.Equal(2, api.Opens); Assert.Equal(2, api.TimeCalls); Assert.Equal(1, api.ImageCalls); // fixed image is read once; CPU counters are read twice
         Assert.Equal(0, api.MemoryCalls + api.IoCalls + api.HandleCalls);
     }
 }

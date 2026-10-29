@@ -12,8 +12,7 @@ public sealed class ProcessCpuUsageFieldTests
     private const string Usage = "process_all_cpu_usage_actual";
 
     [Theory]
-    [InlineData("times-before")] [InlineData("times-after")]
-    [InlineData("identity-before")] [InlineData("identity-after")]
+    [InlineData("times-before")] [InlineData("identity-before")]
     public async Task UnverifiedRawTimeClearsPercentAndRecoveryNeedsAnotherActualCapture(string fault)
     {
         var api = new Basic.Api(); using var fixture = Basic.Fixture(api); var request = Basic.Request(Usage);
@@ -40,7 +39,7 @@ public sealed class ProcessCpuUsageFieldTests
         var second = await fixture.Sampler.CaptureSnapshotAsync(request, default);
         Assert.Equal(0, Basic.Value(second, Usage).NumericValue);
         Assert.NotNull(Assert.Single(second.ProcessFields!.Sources).WindowMilliseconds);
-        Assert.Empty(second.Bars); Assert.Equal(2, api.Opens); Assert.Equal(4, api.TimeCalls); Assert.Equal(2, api.Closes);
+        Assert.Empty(second.Bars); Assert.Equal(2, api.Opens); Assert.Equal(2, api.TimeCalls); Assert.Equal(2, api.Closes);
         Assert.Equal(0, api.MemoryCalls + api.IoCalls + api.HandleCalls);
         Assert.False(WindowsResourceBreakdownSampler.RequiresProcessAttribution(request));
         Assert.Equal(new[] { SamplingDatasetIds.ProcessBasicMetrics, SamplingDatasetIds.ProcessInventory }.Order(),

@@ -15,6 +15,7 @@ internal sealed class WindowsProcessInventoryBuffer : IDisposable
 {
     private readonly WindowsProcessDetailsOptions options;
     private readonly IWindowsProcessInventoryBufferApi api;
+    private readonly TimeProvider clock;
     private IntPtr buffer;
     private bool disposed;
     internal const int LowUsageReadsBeforeShrink = 8;
@@ -23,16 +24,22 @@ internal sealed class WindowsProcessInventoryBuffer : IDisposable
     internal int CapacityBytes { get; private set; }
 
     internal WindowsProcessInventoryBuffer(WindowsProcessDetailsOptions? options = null,
-        IWindowsProcessInventoryBufferApi? api = null)
+        IWindowsProcessInventoryBufferApi? api = null, TimeProvider? clock = null)
     {
         this.options = options ?? WindowsProcessDetailsOptions.Default;
         this.api = api ?? NativeApi.Instance;
+        this.clock = clock ?? TimeProvider.System;
     }
 
-    internal unsafe bool TryRead(out ReadOnlySpan<byte> data)
+    /// <summary><paramref name="queryTiming"/> brackets the one successful query that produced
+    /// <paramref name="data"/>; it is null when the clock was not continuous across that call.
+    /// It is a value so that the query itself stays free of managed allocation.</summary>
+    internal unsafe bool TryRead(out ReadOnlySpan<byte> data,
+        out (long QueryStartTicks, long QueryReturnTicks, long TicksPerSecond)? queryTiming)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
         data = default;
+        queryTiming = null;
         // Resize before querying: the kernel table contains absolute pointers, so
         // moving a successful table would invalidate its embedded string pointers.
         if (lowUsageReads >= LowUsageReadsBeforeShrink)
@@ -40,7 +47,10 @@ internal sealed class WindowsProcessInventoryBuffer : IDisposable
         if (CapacityBytes == 0) Resize(options.InitialSystemInformationBufferBytes);
         for (var attempt = 0; attempt < options.MaximumSystemInformationAttempts; attempt++)
         {
+            var frequency = clock.TimestampFrequency;
+            var start = clock.GetTimestamp();
             var status = api.Query(buffer, checked((uint)CapacityBytes), out var returned);
+            var end = clock.GetTimestamp();
             if (status == 0)
             {
                 if (returned == 0 || returned > CapacityBytes) { ResetLowUsage(); return false; }
@@ -51,6 +61,10 @@ internal sealed class WindowsProcessInventoryBuffer : IDisposable
                 }
                 else ResetLowUsage();
                 data = new ReadOnlySpan<byte>(buffer.ToPointer(), checked((int)returned));
+                // The query return is the per-process IO reference point, as one handle query's return was;
+                // the bracket only proves the clock was continuous across the call.
+                queryTiming = frequency > 0 && frequency == clock.TimestampFrequency && start >= 0 && end >= start
+                    ? (start, end, frequency) : null;
                 return true;
             }
             ResetLowUsage();

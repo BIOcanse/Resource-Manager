@@ -78,6 +78,9 @@ public sealed partial class WindowsProcessFieldOwner
         { HasUnidentifiedProcesses = unidentified };
     }
     internal sealed record CapturedProcessBasic(long? Creation, ProcessBasicMetricObservation Basic);
+    /// <summary>Reads a whole inventory with one handle batch. Kernel-table entries take their dynamic categories
+    /// from their own records, so the batch opens handles only for their unattempted fixed facts; entries without
+    /// table counters read every requested category, thread counts included, through the batch.</summary>
     [RuntimeReadCache]
     internal IReadOnlyDictionary<WindowsProcessInventoryEntry, CapturedProcessBasic> ReadBasicBatch(WindowsProcessInventoryEntry[] processes,
         Func<WindowsProcessInventoryEntry, long?, ProcessMetricReadMask> selectMask, ProcessInstanceTextSharing? textSharing = null)
@@ -90,21 +93,16 @@ public sealed partial class WindowsProcessFieldOwner
                 if (process.Id <= 0) continue;
                 var creation = process.Creation.Creation;
                 var requestMask = selectMask(process, creation);
-                if (process.Source is null && process.Creation.HandleCount is not null) requestMask &= ~ProcessMetricReadMask.HandleCount;
-                selected.Add((process, creation, requestMask, new(process.Id, creation ?? 0, SelectUncachedFields(process.Id, creation ?? 0, requestMask))));
+                var handleMask = process.Counters is null ? requestMask : requestMask & ~WindowsProcessTableCounters.Fields;
+                selected.Add((process, creation, requestMask, new(process.Id, creation ?? 0, SelectUncachedFields(process.Id, creation ?? 0, handleMask))));
             }
             catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException) { }
         }
-        var threadCounts = selected.Any(static row => row.Request.Mask.HasFlag(ProcessMetricReadMask.ThreadCount))
-            && processes.All(static process => process.Source is null)
-            ? processes.Where(static process => process.Creation.Creation is > 0)
-                .ToDictionary(static process => new ProcessInstanceKey(process.Id, process.Creation.Creation!.Value), static process => process.ThreadCount)
-            : null;
-        var readings = BasicReader.ReadBatch(selected.Select(row => row.Request).ToArray(), threadCounts);
+        var readings = BasicReader.ReadBatch(selected.Select(row => row.Request).ToArray());
         return selected.Select((row, index) =>
         {
             var basic = ReuseFixedFields(row.Process.Id, row.Creation ?? 0, row.Requested, row.Request.Mask, readings[index]);
-            if (row.Process.Source is null && row.Process.Creation.HandleCount is { } nativeHandles) basic = basic with { HandleCount = nativeHandles };
+            if (row.Process.Counters is { } counters) basic = counters.Fill(row.Requested, basic);
             if (row.Creation is { } birth && textSharing is not null) basic = textSharing.Share(new(row.Process.Id, birth), basic);
             return (row.Process, Value: new CapturedProcessBasic(row.Creation, basic));
         })
@@ -123,10 +121,7 @@ public sealed partial class WindowsProcessFieldOwner
             var captured = prepared?.GetValueOrDefault(process);
             var creation = captured is null ? creationRead.Creation : captured.Creation;
             key = creation is { } birth ? new(pid, birth) : null;
-            var basic = prepared is null ? ReadBasic(pid, creation ?? 0, process.Source is null && creationRead.HandleCount is not null ? mask & ~ProcessMetricReadMask.HandleCount : mask)
-                : captured?.Basic ?? ProcessBasicMetricObservation.Unavailable;
-            if (process.Source is null && mask.HasFlag(ProcessMetricReadMask.HandleCount) && creationRead.HandleCount is { } nativeHandles)
-                basic = basic with { HandleCount = nativeHandles };
+            var basic = prepared is null ? ReadBasic(process, mask) : captured?.Basic ?? ProcessBasicMetricObservation.Unavailable;
             if (key is { } textKey && textSharing is not null) basic = textSharing.Share(textKey, basic);
             var hasCpu = includeCpu && basic.CpuTime100Ns is { } ticks && ticks <= (UInt128)long.MaxValue;
             cpu = hasCpu ? TimeSpan.FromTicks((long)basic.CpuTime100Ns!.Value) : TimeSpan.Zero;
