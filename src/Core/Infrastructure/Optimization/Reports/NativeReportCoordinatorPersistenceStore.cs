@@ -133,7 +133,7 @@ internal sealed class NativeReportCoordinatorPersistenceStore(
     private static async Task PersistTargetsAsync(SqliteConnection connection, SqliteTransaction transaction,
         IReadOnlyDictionary<ulong, HostManagerReportTargetDescriptor>? targets, CancellationToken cancellationToken)
     {
-        // Native rows own retention; this table only describes their live targets.
+        // Native rows own retention; this table describes the target of every retained row.
         var retained = new HashSet<ulong>();
         await using (var read = connection.CreateCommand())
         {
