@@ -198,9 +198,9 @@ export default async function memoryProtectionEventsJourney(page, baseUrl) {
   await openSettings("active");
   assert.equal(await factText(state(), copy.thresholdState), copy.thresholdStateBelow);
 
-  // 6. 记录帧：上限为 2 时，新记录排在最前并截断；同一处理编号和进程身份的记录原位更新；同一处理的另一个进程是新记录。
-  //    原因是码，诊断原文在详情里（结束失败的 Win32 错误照文案写出）。
-  await scenario({ memoryProtectionRecordLimit: 2 });
+  // 6. 记录帧：容量为 2 时，新记录排在最前；满了以后新处理不再记下（不淘汰旧记录），界面照后端的未记下条数显示；
+  //    同一处理编号和进程身份的记录原位更新。原因是码，诊断原文在详情里（结束失败的 Win32 错误照文案写出）。
+  await scenario({ memoryProtectionRecordCapacity: 2 });
   const records = panel().locator(".memory-protection-records");
   await waitText(records, copy.recordsDescription(2));
   await waitText(records, copy.recordsEmpty);
@@ -216,20 +216,26 @@ export default async function memoryProtectionEventsJourney(page, baseUrl) {
   const [first, second, third] = ["1".repeat(32), "2".repeat(32), "3".repeat(32)];
   await scenario({ memoryProtectionRecords: [{ actionId: first, processId: 61, name: "first" }] });
   await scenario({ memoryProtectionRecords: [{ actionId: second, processId: 62, name: "second" }] });
+  await waitRecords([[second, copy.recordProcess("second", 62), "terminated-without-dump"],
+    [first, copy.recordProcess("first", 61), "terminated-without-dump"]]);
+  assert.equal(await records.getByText(copy.recordsUnrecorded(1), { exact: true }).count(), 0, "nothing unrecorded yet");
   await scenario({ memoryProtectionRecords: [{ actionId: third, processId: 63, name: "third" }] });
-  await waitRecords([[third, copy.recordProcess("third", 63), "terminated-without-dump"],
-    [second, copy.recordProcess("second", 62), "terminated-without-dump"]]);
+  await waitText(records, copy.recordsUnrecorded(1));
+  await waitRecords([[second, copy.recordProcess("second", 62), "terminated-without-dump"],
+    [first, copy.recordProcess("first", 61), "terminated-without-dump"]]);
   await scenario({ memoryProtectionRecords: [{ actionId: second, processId: 62, name: "second", outcome: "termination-failed",
     reason: "termination-failed", detail: "terminate-failed-5" }] });
-  await waitRecords([[third, copy.recordProcess("third", 63), "terminated-without-dump"],
-    [second, copy.recordProcess("second", 62), "termination-failed"]]);
+  await waitRecords([[second, copy.recordProcess("second", 62), "termination-failed"],
+    [first, copy.recordProcess("first", 61), "terminated-without-dump"]]);
   const updated = records.locator(".memory-protection-record[data-outcome='termination-failed']");
   assert.equal(await factText(updated, copy.recordReason), copy.reasons["termination-failed"]);
   assert.equal(await factText(updated, copy.recordDetail), copy.terminateFailed("5"));
-  await scenario({ memoryProtectionRecords: [{ actionId: third, processId: 64, name: "third-child" }] });
-  await waitRecords([[third, copy.recordProcess("third-child", 64), "terminated-without-dump"],
-    [third, copy.recordProcess("third", 63), "terminated-without-dump"]]);
-  assert.equal(await records.locator(".memory-protection-action").count(), 1, "both records belong to one action group");
+  await scenario({ memoryProtectionRecordCapacity: 4 });
+  await scenario({ memoryProtectionRecords: [{ actionId: first, processId: 64, name: "first-child" }] });
+  await waitRecords([[first, copy.recordProcess("first-child", 64), "terminated-without-dump"],
+    [first, copy.recordProcess("first", 61), "terminated-without-dump"],
+    [second, copy.recordProcess("second", 62), "termination-failed"]]);
+  assert.equal(await records.locator(".memory-protection-action").count(), 2, "both records of the first action form one group");
 
   // 7. 别处删除了生效的正常运行点：后端发 null，界面写明没有，保护随状态帧变为未生效；重新创建后完整的点由帧送达，不读 GET。
   const pointRow = panel().locator(".settings-row").filter({ has: page.getByText(copy.pointTitle, { exact: true }) });

@@ -2366,12 +2366,14 @@ const deDeAppCopy: AppCopy = {
     confirmMessage: {
       optimizationReports: (count: string) => `Berichte im Verlauf, die gelöscht werden: ${count}. Aktive Berichte bleiben erhalten.`,
       kernelLeaks: (count: string) => `Verlaufseinträge, die gelöscht werden: ${count}. Aktive Einträge bleiben erhalten.`,
+      memoryProtection: (count: string) => `Behandlungseinträge des Speicherschutzes, die gelöscht werden: ${count}.`,
       targetedRecordings: (count: string) => `Abgeschlossene Aufzeichnungsberichte, die gelöscht werden: ${count}. Eine laufende Aufzeichnung bleibt erhalten.`,
       smartRecords: "Alle Verlaufseinträge der intelligenten Planung werden gelöscht. Einträge, die noch wiederhergestellt werden, bleiben erhalten."
     },
     details: {
       optimizationReports: ["Dieser Vorgang kann nicht rückgängig gemacht werden. Tritt dasselbe Problem erneut auf, wird es erneut erfasst.", "Vertrauenswürdige Software und Geräte bleiben vertrauenswürdig."],
       kernelLeaks: ["Dieser Vorgang kann nicht rückgängig gemacht werden. Tritt dasselbe Problem erneut auf, wird es erneut erfasst."],
+      memoryProtection: ["Dieser Vorgang kann nicht rückgängig gemacht werden.", "Die Speicherabbilddateien werden nicht gelöscht; sie bleiben auf dem Datenträger der Datenträgerreserve, bis Sie sie selbst entfernen."],
       targetedRecordings: ["Diese Berichte werden mit ihren Bildintervallen und Ressourcendaten endgültig gelöscht. Dieser Vorgang kann nicht rückgängig gemacht werden."],
       smartRecords: ["Dieser Vorgang kann nicht rückgängig gemacht werden. Die Laufnummern der Einträge beginnen nicht von vorn."]
     },

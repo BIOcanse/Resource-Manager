@@ -23,13 +23,13 @@ export const memoryTreeBasis = { rule: "largest-direct-children-memory-growth", 
 export const memoryAction = { at: memoryPoint.at, processId: 20, processStartKey: memoryProcess.processStartKey, name: "example",
   baselineBytes: 100, currentBytes: 800, growthBytes: 700, dumpPaths: ["F:\\reserve\\example.dmp", "G:\\reserve\\example.part0002.dmp"],
   bytesWritten: 900, outcome: "completed", reason: null, detail: null, selectionBasis: memoryProcessBasis,
-  actionId: "5fb774b0d85b49259ad57b3280d2fa51", targetKind: "process", treeRoot: null };
+  actionId: "5fb774b0d85b49259ad57b3280d2fa51", targetKind: "process", treeRoot: null, state: "history" };
 export const memoryTreeRoot = { processId: 82148, processStartKey: "134375874274860391", name: "powershell" };
 // Native tree response fragments from the handoff: a terminated child and the protected root of the same action.
 export const memoryTreeChild = { at: "2026-10-27T15:10:28.0733919+00:00", processId: 10048, processStartKey: "134375874278245164",
   name: "ping", baselineBytes: 0, currentBytes: 10, growthBytes: 10, dumpPaths: [], bytesWritten: 0, outcome: "terminated-without-dump",
   reason: "process-tree", detail: null, selectionBasis: memoryTreeBasis, actionId: "8703199381c14eaea137231376bb4def",
-  targetKind: "processTree", treeRoot: memoryTreeRoot };
+  targetKind: "processTree", treeRoot: memoryTreeRoot, state: "history" };
 export const memoryTreeRootRecord = { ...memoryTreeChild, at: "2026-10-27T15:10:28.0734311+00:00", processId: 82148,
   processStartKey: "134375874274860391", name: "powershell", baselineBytes: 100, currentBytes: 100, growthBytes: 0,
   outcome: "excluded", reason: "protected-process" };
@@ -39,7 +39,7 @@ export const memoryLiveStatus = { enabled: false, thresholdPercent: 95, checkInt
   inactiveReason: "disabled", excludedCandidates: [], actionMode: "dumpThenTerminate", active: false, atOrAboveThreshold: false,
   currentActionId: null, minimumProcessGrowthBytes: 1073741824, protectedProcesses: ["explorer.exe"], decisionReason: null };
 export const memoryStatus = { ...memoryLiveStatus, normalRunningPoint: memoryPointSummary,
-  actionRecordLimit: 64, actions: [memoryAction] };
+  recordCapacity: 4096, unrecordedRecordCount: 0, actions: [memoryAction] };
 export const memorySettingsResult = { settings: { version: "1.0.37", memoryProtection: memorySettings }, revision: "revision-a",
   serviceRecovery: null, updatedAt: memoryPoint.at, storagePath: "settings.json", runtimeApplicationDisposition: "committedAndApplied", runtimeFailureCode: null };
 export const softwarePolicy = { softwareId: "example-software", softwareName: "Example", allowedProviders: ["windows-graphics-preference"],

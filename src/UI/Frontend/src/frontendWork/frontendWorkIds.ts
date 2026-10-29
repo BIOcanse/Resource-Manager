@@ -12,6 +12,7 @@ export const frontendWorkIds = {
   detailsGpuModel: "details.gpu-model",
   detailsSmartReport: "details.smart-report",
   detailsKernelLeaks: "details.kernel-leaks",
+  detailsMemoryProtection: "details.memory-protection",
   targetedReportsPage: "targeted-reports.page",
   diskUsagePage: "disk-usage.page",
   // 设置页里读后端数据的分区：每个分区一项，可见区域是分区本身（同一时刻只建着当前分区）。

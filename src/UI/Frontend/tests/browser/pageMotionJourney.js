@@ -139,7 +139,7 @@ async function pageMotionJourney(page, baseUrl, style) {
   // 二级分页的名字也是树里的名字。
   await primary("details").click();
   const detailsTabs = (await groupOf("details").getByRole("tab").allTextContents()).map((text) => text.trim());
-  const expectedDetails = [app.misc.detailsTab.device, app.misc.detailsTab.gpu, app.misc.detailsTab.cpu, app.misc.detailsTab.report, app.targetedReport.tab, app.kernelLeakReport.tab];
+  const expectedDetails = [app.misc.detailsTab.device, app.misc.detailsTab.gpu, app.misc.detailsTab.cpu, app.misc.detailsTab.report, app.targetedReport.tab, app.kernelLeakReport.tab, app.memoryProtection.reportTab];
   if (detailsTabs.some((name) => !expectedDetails.includes(name)) || detailsTabs.slice(0, 3).join() !== expectedDetails.slice(0, 3).join()) {
     fail(`details tabs ${JSON.stringify(detailsTabs)} are not the tree ${JSON.stringify(expectedDetails)}`);
   }

@@ -1,6 +1,24 @@
 import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 
 export default createSettingsLocale("ja-JP", {
+  "notifications": {
+    "intro": "通知の種類ごとに、表示するかどうかと表示する経路を設定します。Windows 通知はトレイが表示し、アプリ内通知は画面の表示中に表示されます。",
+    "kinds": {
+      "memoryProtection": { "title": "ホスト メモリ保護", "description": "ホスト メモリ保護がプロセスまたはプロセス ツリーを終了したときに通知し、対象、プロセス数、ダンプ量を示します。" },
+      "update": { "title": "新しいバージョン", "description": "新しいバージョンが利用可能になったときに通知します。" },
+      "accessRequest": { "title": "アクセス要求", "description": "承認待ちの新しい信頼済みアクセス要求があるときに通知し、要求元の名前とプログラムを示します。" }
+    },
+    "notifyTitle": "通知を表示",
+    "notifyDescription": "オフにすると、この種類の通知はどの経路でも表示されません。両方の経路の選択は保持されます。",
+    "systemTitle": "Windows 通知",
+    "systemDescription": "トレイが Windows のシステム通知を表示します。メイン ウィンドウが閉じているときも表示され、クリックすると Resource Manager が開きます。",
+    "inAppTitle": "アプリ内通知",
+    "inAppDescription": "画面の表示中に画面内に表示します。画面が閉じている間に届いた通知は後から表示しません。",
+    "switchLabel": (kind: string, option: string) => `${kind}: ${option}`,
+    "accessRequestNoticeTitle": "承認待ちの新しいアクセス要求",
+    "accessRequestNoticeMessage": (name: string, program: string) => `${name} (${program}) が信頼済みアクセスを要求しています。`,
+    "accessRequestNoticeOpen": "アクセス要求を表示"
+  },
   "updates": {
     "modeTitle": "更新方式",
     "modeDescription": "オフでは自動確認を行いません。手動確認と手動でのバージョン選択はどの方式でも使えます。",
@@ -11,12 +29,6 @@ export default createSettingsLocale("ja-JP", {
     "offReason": "更新方式がオフのため自動確認は行われず、この 2 項目は効きません。値は保持されます。",
     "intervalTitle": "確認間隔（時間）",
     "intervalLabel": (minimum: number, maximum: number) => `間隔（時間、${minimum}–${maximum}）`,
-    "inAppNoticeTitle": "画面内で新バージョンを通知",
-    "inAppNoticeDescription": "画面の実行中に新しいバージョンが見つかると 1 回通知します。同じバージョンは再通知しません。",
-    "accessRequestNoticeTitle": "新しいアクセス要求のシステム通知",
-    "accessRequestNoticeDescription": "画面が表示されていないときに、承認待ちの新しい信頼済みアクセス要求を受信すると Windows 通知を表示します。",
-    "systemNoticeTitle": "Windows のシステム通知",
-    "systemNoticeDescription": "アプリが表示されていないときにシステム通知を 1 回送ります。このスイッチは設定を保存するだけで、実行はデスクトップシェル（トレイ）が行います。",
     "manualCheckNote": "手動確認はインターネットを待たずにすぐ実行され、どの方式でも使えます。",
     "waitingForInternet": "インターネット接続を待っています。接続されるとすぐ確認します。",
     "availableVersion": "見つかった新しいバージョン：",
@@ -79,6 +91,7 @@ export default createSettingsLocale("ja-JP", {
     "systemIntegration": "システム統合",
     "publicServices": "共通サービス",
     "trustedAccess": "信頼済みアクセス",
+    "notifications": "通知",
     "updates": "更新とバージョン",
     "debug": "デバッグ",
     "credits": "クレジット"

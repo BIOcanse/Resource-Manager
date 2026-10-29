@@ -2,6 +2,24 @@ import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 import { plural } from "../plural.ts";
 
 export default createSettingsLocale("fr-FR", {
+  "notifications": {
+    "intro": "Choisissez pour chaque type de notification s’il s’affiche et par quelles voies. Les notifications Windows proviennent de la zone de notification ; les avis dans l’application apparaissent lorsque l’interface est affichée.",
+    "kinds": {
+      "memoryProtection": { "title": "Protection de la mémoire de l’hôte", "description": "Notifie lorsque la protection de la mémoire de l’hôte arrête un processus ou une arborescence de processus, en indiquant la cible, le nombre de processus et la taille du vidage." },
+      "update": { "title": "Nouvelle version", "description": "Notifie lorsqu’une nouvelle version est disponible." },
+      "accessRequest": { "title": "Demandes d’accès", "description": "Notifie lorsqu’une nouvelle demande d’accès approuvé attend une validation, en indiquant le nom et le programme du demandeur." }
+    },
+    "notifyTitle": "Afficher les notifications",
+    "notifyDescription": "Désactivé, ce type de notification ne s’affiche par aucune voie ; le choix des deux voies est conservé.",
+    "systemTitle": "Notification Windows",
+    "systemDescription": "La zone de notification affiche une notification système Windows, y compris lorsque la fenêtre principale est fermée ; un clic ouvre Resource Manager.",
+    "inAppTitle": "Avis dans l’application",
+    "inAppDescription": "S’affiche dans l’interface lorsqu’elle est affichée ; les notifications reçues pendant qu’elle est fermée ne sont pas affichées ensuite.",
+    "switchLabel": (kind: string, option: string) => `${kind} : ${option}`,
+    "accessRequestNoticeTitle": "Nouvelle demande d’accès en attente de validation",
+    "accessRequestNoticeMessage": (name: string, program: string) => `${name} (${program}) demande un accès approuvé.`,
+    "accessRequestNoticeOpen": "Voir les demandes d’accès"
+  },
   "updates": {
     "modeTitle": "Mode de mise à jour",
     "modeDescription": "Désactivé : aucune vérification automatique. La vérification et le choix manuels de version restent disponibles dans tous les modes.",
@@ -12,12 +30,6 @@ export default createSettingsLocale("fr-FR", {
     "offReason": "Le mode est Désactivé : aucune vérification automatique, ces deux réglages sont sans effet ; leurs valeurs sont conservées.",
     "intervalTitle": "Intervalle de vérification (heures)",
     "intervalLabel": (minimum: number, maximum: number) => `Intervalle (heures, ${minimum}–${maximum})`,
-    "inAppNoticeTitle": "Avis de nouvelle version dans l’interface",
-    "inAppNoticeDescription": "Pendant que l’interface tourne, une nouvelle version est signalée une fois ; la même version n’est plus signalée.",
-    "accessRequestNoticeTitle": "Notification système des nouvelles demandes d’accès",
-    "accessRequestNoticeDescription": "Affiche une notification Windows lorsqu’une nouvelle demande d’accès de confiance attend une approbation et que l’interface n’est pas visible.",
-    "systemNoticeTitle": "Notification système Windows",
-    "systemNoticeDescription": "Envoie une notification système quand l’application n’est pas visible. Ce réglage ne fait qu’enregistrer la préférence ; le shell de bureau (zone de notification) l’applique.",
     "manualCheckNote": "Une vérification manuelle s’exécute tout de suite, sans attendre Internet, dans tous les modes.",
     "waitingForInternet": "En attente d’Internet ; la vérification démarre dès la connexion.",
     "availableVersion": "Nouvelle version trouvée : ",
@@ -80,6 +92,7 @@ export default createSettingsLocale("fr-FR", {
     "systemIntegration": "Intégration système",
     "publicServices": "Services partagés",
     "trustedAccess": "Accès approuvé",
+    "notifications": "Notifications",
     "updates": "Mises à jour et versions",
     "debug": "Débogage",
     "credits": "Crédits"

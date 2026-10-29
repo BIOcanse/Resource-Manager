@@ -29,6 +29,7 @@
 @import "./styles/control.css";
 @import "./styles/targeted-report.css";
 @import "./styles/kernel-leak-report.css";
+@import "./styles/memory-protection-report.css";
 @import "./styles/ui-styles/standard.css";
 @import "./styles/ui-styles/soft.css";
 @import "./styles/ui-styles/outline.css";

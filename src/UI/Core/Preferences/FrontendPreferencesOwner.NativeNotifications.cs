@@ -1,76 +1,57 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace ResourceManager.NativeUi.Preferences;
 
 internal sealed partial class FrontendPreferencesOwner
 {
-    internal const int MaximumAccessRequestNotificationIds = 128;
     // Native-only state: web saves and preference resets never own this file.
     private string NativeNotificationPath => cachePath + ".native-notifications.json";
 
-    internal string? ReadSystemUpdateNotifiedVersion()
+    /// <summary>
+    /// The last backend notification sequence the tray handled (docs/notifications_2026-10-29.md, 托盘);
+    /// null until the tray has received its first list.
+    /// </summary>
+    internal long? ReadLastHandledNotificationSequence()
     {
-        lock (gate)
-        {
-            return ReadNativeNotificationState().UpdateSystemNotifiedVersion;
-        }
+        lock (gate) return ReadNativeNotificationState().LastHandledSequence;
     }
 
-    internal void RecordSystemUpdateNotifiedVersion(string value)
+    internal void RecordLastHandledNotificationSequence(long value)
     {
+        if (value < 0) throw new InvalidDataException("Native notification sequence must not be negative.");
         lock (gate)
-            WriteAtomic(NativeNotificationPath,
-                JsonSerializer.SerializeToUtf8Bytes(ReadNativeNotificationState() with { UpdateSystemNotifiedVersion = value }, Json));
-    }
-
-    internal string[] ReadSystemAccessRequestNotifiedIds()
-    {
-        lock (gate) return ReadNativeNotificationState().AccessRequestNotifiedIds.ToArray();
-    }
-
-    internal HashSet<string> PruneSystemAccessRequestNotifiedIds(IReadOnlySet<string> pendingIds)
-    {
-        lock (gate)
-        {
-            var current = ReadNativeNotificationState();
-            var retained = current.AccessRequestNotifiedIds.Where(pendingIds.Contains).ToArray();
-            if (retained.Length != current.AccessRequestNotifiedIds.Length)
-                WriteAtomic(NativeNotificationPath, JsonSerializer.SerializeToUtf8Bytes(
-                    current with { AccessRequestNotifiedIds = retained }, Json));
-            return retained.ToHashSet(StringComparer.Ordinal);
-        }
-    }
-
-    internal void RecordSystemAccessRequestNotifiedId(string id)
-    {
-        lock (gate)
-        {
-            var current = ReadNativeNotificationState();
-            if (current.AccessRequestNotifiedIds.Contains(id, StringComparer.Ordinal)) return;
-            if (string.IsNullOrWhiteSpace(id) || current.AccessRequestNotifiedIds.Length >= MaximumAccessRequestNotificationIds)
-                throw new InvalidDataException("Native access request notification state exceeds its bound or has an invalid id.");
             WriteAtomic(NativeNotificationPath, JsonSerializer.SerializeToUtf8Bytes(
-                current with { AccessRequestNotifiedIds = [.. current.AccessRequestNotifiedIds, id] }, Json));
-        }
+                new NativeNotificationState { LastHandledSequence = value }, Json));
     }
 
     private NativeNotificationState ReadNativeNotificationState()
     {
         if (!File.Exists(NativeNotificationPath)) return new();
-        using var stream = Configuration.SettingsFileReader.Open(NativeNotificationPath);
-        var state = JsonSerializer.Deserialize<NativeNotificationState>(stream, Json)
+        JsonNode? root;
+        using (var stream = Configuration.SettingsFileReader.Open(NativeNotificationPath))
+            root = JsonNode.Parse(stream);
+        if (root is not JsonObject state) throw new InvalidDataException("Native notification state is not an object.");
+        MigrateNativeNotificationFields(state);
+        var value = state.Deserialize<NativeNotificationState>(Json)
             ?? throw new InvalidDataException("Native notification state is empty.");
-        if (state.AccessRequestNotifiedIds is null || state.AccessRequestNotifiedIds.Length > MaximumAccessRequestNotificationIds
-            || state.AccessRequestNotifiedIds.Any(string.IsNullOrWhiteSpace)
-            || state.AccessRequestNotifiedIds.Distinct(StringComparer.Ordinal).Count() != state.AccessRequestNotifiedIds.Length)
-            throw new InvalidDataException("Native access request notification state is invalid.");
-        return state;
+        if (value.LastHandledSequence is < 0) throw new InvalidDataException("Native notification sequence is invalid.");
+        return value;
+    }
+
+    // Migration native-notifications-sequence-v1: before 2026-10-29 the update and access request notices kept
+    // updateSystemNotifiedVersion and accessRequestNotifiedIds here. The tray now follows the backend notification
+    // sequence (docs/notifications_2026-10-29.md), so both are dropped on read and the next write leaves them out; such
+    // a file has no sequence yet, so its first list only records, as on a fresh install. Delete once every supported
+    // upgrade starts after the 2026-10-29 release.
+    private static void MigrateNativeNotificationFields(JsonObject state)
+    {
+        state.Remove("updateSystemNotifiedVersion");
+        state.Remove("accessRequestNotifiedIds");
     }
 
     private sealed record NativeNotificationState
     {
-        public NativeNotificationState() { }
-        public string? UpdateSystemNotifiedVersion { get; init; }
-        public string[] AccessRequestNotifiedIds { get; init; } = [];
+        public long? LastHandledSequence { get; init; }
     }
 }

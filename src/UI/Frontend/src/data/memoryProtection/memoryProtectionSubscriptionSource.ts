@@ -14,7 +14,8 @@ import type {
 export interface MemoryProtectionFrameState {
   readonly status?: HostMemoryProtectionLiveStatus;
   readonly records?: readonly HostMemoryActionRecord[];
-  readonly recordLimit?: number;
+  readonly recordCapacity?: number;
+  readonly unrecordedRecordCount?: number;
   readonly normalRunningPoint?: NormalRunningPoint | null;
   readonly normalRunningPoints?: NormalRunningPointList;
 }
@@ -23,8 +24,10 @@ const sameRecord = (left: HostMemoryActionRecord, right: HostMemoryActionRecord)
   && left.processId === right.processId && left.processStartKey === right.processStartKey;
 
 /**
- * Applies one frame. status, normalRunningPoint and normalRunningPoints replace their part; records replaces the list and limit;
- * record upserts by actionId plus process identity (in place, or as the newest), then keeps the newest limit.
+ * Applies one frame. status, normalRunningPoint and normalRunningPoints replace their part; records replaces the list,
+ * the capacity and the unrecorded count (sent on subscribe, after history is cleared and when the count changes);
+ * record upserts by actionId plus process identity (in place, or as the newest). Nothing is truncated: the backend
+ * writes no record past its capacity (docs/report_lifecycle_2026-10-28.md, full lists do not evict).
  * A record before the records replay has no list to join and is dropped; the replay that follows carries it.
  */
 export function applyMemoryProtectionFrame(state: MemoryProtectionFrameState, frame: HostMemoryProtectionFrame): MemoryProtectionFrameState {
@@ -32,14 +35,15 @@ export function applyMemoryProtectionFrame(state: MemoryProtectionFrameState, fr
     case "status":
       return { ...state, status: frame.status };
     case "records":
-      return { ...state, records: frame.records.slice(0, frame.limit), recordLimit: frame.limit };
+      return { ...state, records: frame.records, recordCapacity: frame.limit,
+        unrecordedRecordCount: frame.unrecordedRecordCount };
     case "record": {
-      if (state.records === undefined || state.recordLimit === undefined) return state;
+      if (state.records === undefined) return state;
       const index = state.records.findIndex(record => sameRecord(record, frame.record));
       const records = index >= 0
         ? state.records.map((record, position) => position === index ? frame.record : record)
         : [frame.record, ...state.records];
-      return { ...state, records: records.slice(0, state.recordLimit) };
+      return { ...state, records };
     }
     case "normalRunningPoint":
       return { ...state, normalRunningPoint: frame.normalRunningPoint };
@@ -50,9 +54,11 @@ export function applyMemoryProtectionFrame(state: MemoryProtectionFrameState, fr
 
 /** The view is complete once status, records, the point (possibly null) and the saved points have all arrived. */
 export function memoryProtectionViewOf(state: MemoryProtectionFrameState): HostMemoryProtectionView | null {
-  return state.status !== undefined && state.records !== undefined && state.recordLimit !== undefined
+  return state.status !== undefined && state.records !== undefined && state.recordCapacity !== undefined
+    && state.unrecordedRecordCount !== undefined
     && state.normalRunningPoint !== undefined && state.normalRunningPoints !== undefined
-    ? Object.freeze({ status: state.status, records: [...state.records], recordLimit: state.recordLimit,
+    ? Object.freeze({ status: state.status, records: [...state.records], recordCapacity: state.recordCapacity,
+      unrecordedRecordCount: state.unrecordedRecordCount,
       normalRunningPoint: state.normalRunningPoint, normalRunningPoints: state.normalRunningPoints })
     : null;
 }

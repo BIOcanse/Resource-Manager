@@ -15,6 +15,10 @@ internal sealed record NativeText
     public required string UpdateAvailableMessageFormat { get; init; }
     public required string AccessRequestTitle { get; init; }
     public required string AccessRequestMessageFormat { get; init; }
+    // 主机内存保护的托盘通知：进程是 {0} 名称、{1} PID、{2} 转储量；进程树是 {0} 树根名称、{1} 树根 PID、{2} 进程数、{3} 转储量。
+    public required string MemoryProtectionTitle { get; init; }
+    public required string MemoryProtectionProcessMessageFormat { get; init; }
+    public required string MemoryProtectionTreeMessageFormat { get; init; }
 
     // 可用性面板
     public required string AvailabilityPanelName { get; init; }

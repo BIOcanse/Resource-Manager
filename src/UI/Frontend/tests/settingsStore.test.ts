@@ -703,7 +703,9 @@ await new Promise<void>((resolve, reject) => {
       store.updateCheckInterval(6); assert.equal(store.draftSettings().update!.checkIntervalHours, 24, "the backend minimum is one day");
       store.updateNotificationSwitch("updateSystem", false);
       store.updateNotificationSwitch("accessRequestSystem", false);
-      assert.deepEqual(store.draftSettings().notifications, { updateInApp: "on", updateSystem: "off", accessRequestSystem: "off" });
+      assert.deepEqual(store.draftSettings().notifications, { updateNotify: "on", updateInApp: "on", updateSystem: "off",
+        accessRequestNotify: "on", accessRequestInApp: "on", accessRequestSystem: "off",
+        memoryProtectionNotify: "on", memoryProtectionInApp: "on", memoryProtectionSystem: "on" });
       dispose(); resolve();
     })().catch(error => { dispose(); reject(error); });
   });

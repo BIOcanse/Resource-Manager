@@ -1548,6 +1548,10 @@
 }
 
 /* Report rules use the settings row, input, button and feedback tokens. */
+/* 设置页“通知”：每类一组，组之间用细线分开，标题和说明在三项开关之上。 */
+.notification-kind-settings { min-width: 0; display: grid; gap: 10px; border-top: 1px solid var(--divider-soft); padding-top: 10px; }
+.notification-kind-settings h3 { margin: 0; font-size: 14px; }
+.notification-kind-settings > p { margin: 0; color: var(--muted); font-size: 13px; }
 .report-rule-group, .report-rule { min-width: 0; display: grid; gap: 10px; }
 .report-rule-group h3 { margin: 8px 0 0; font-size: 14px; }
 .report-rule { border-top: 1px solid var(--divider-soft); padding-top: 10px; }

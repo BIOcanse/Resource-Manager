@@ -68,7 +68,9 @@ export function createMemoryProtectionFixture(getSettings) {
   let reserveRuntimeError = null;
   let currentActionId = null;
   let decisionReason = null;
-  let recordLimit = 64;
+  // memory_protection.record_capacity (backend default 4,096); a full list writes no new record and counts it.
+  let recordCapacity = 4096;
+  let unrecordedRecordCount = 0;
   let sequence = 0;
   const at = () => new Date(Date.UTC(2026, 9, 27, 5, 0, sequence++)).toISOString();
   const active = () => points.find(item => item.id === activeId) ?? null;
@@ -116,9 +118,10 @@ export function createMemoryProtectionFixture(getSettings) {
   }
   function status() {
     return { ...liveStatus(), normalRunningPoint: active() ? summary(active()) : null,
-      actionRecordLimit: recordLimit, actions: structuredClone(actions) };
+      recordCapacity, unrecordedRecordCount, actions: structuredClone(actions) };
   }
-  const records = () => ({ records: structuredClone(actions), limit: recordLimit });
+  // HostMemoryProtectionRecordsFrame: all records newest first; limit is the record capacity.
+  const records = () => ({ records: structuredClone(actions), limit: recordCapacity, unrecordedRecordCount });
   // Null when the saved points are at the limit (the endpoint answers 409 normal-running-point-limit).
   function createPoint() {
     if (points.length >= pointLimit) return null;
@@ -175,7 +178,7 @@ export function createMemoryProtectionFixture(getSettings) {
     directChildrenMemoryGrowthBytes: growth, minimumProcessGrowthBytes: getSettings().minimumProcessGrowthBytes });
   const record = (fields) => ({ at: at(), processStartKey: `${fields.processId}0`, baselineBytes: 100, currentBytes: 800, growthBytes: 700,
     dumpPaths: [], bytesWritten: 0, reason: null, detail: null, targetKind: "process", treeRoot: null,
-    selectionBasis: processBasis(fields.growthBytes ?? 700), ...fields });
+    selectionBasis: processBasis(fields.growthBytes ?? 700), state: "history", ...fields });
   function treeActions() {
     // One tree action, newest first like the backend list: the protected root (handled last) comes first, then the
     // children in reverse leaves-first order; one child is skipped by its software policy and has no readable memory.
@@ -198,7 +201,7 @@ export function createMemoryProtectionFixture(getSettings) {
   function scenario(name) {
     if (!memoryProtectionScenarios.includes(name)) throw new Error(`Unknown memoryProtection scenario: ${name}`);
     points = []; activeId = null; pointLimit = normalRunningPointLimit; entries = []; currentCommit = commit(); actions = []; excludedCandidates = []; buildFailure = null;
-    reserveRuntimeError = null; currentActionId = null; decisionReason = null; recordLimit = 64;
+    reserveRuntimeError = null; currentActionId = null; decisionReason = null; recordCapacity = 4096; unrecordedRecordCount = 0;
     Object.assign(getSettings(), defaultMemoryProtectionSettings());
     if (name === "no-point") return;
     createPoint();
@@ -236,7 +239,8 @@ export function createMemoryProtectionFixture(getSettings) {
         dumpPaths: ["completed", "completed-with-release-limit", "slice-incomplete"].includes(outcome)
           ? ["F:\\MockReserve\\example.dmp", "G:\\MockReserve\\example.part0002.dmp"] : [],
         bytesWritten: ["completed", "completed-with-release-limit", "slice-incomplete"].includes(outcome) ? 16384 : 0, outcome, reason, detail,
-        actionId: `${index}`.padStart(32, "a"), targetKind: "process", treeRoot: null, selectionBasis: processBasis(700) })).reverse();
+        actionId: `${index}`.padStart(32, "a"), targetKind: "process", treeRoot: null, selectionBasis: processBasis(700),
+        state: "history" })).reverse();
       decisionReason = "process-handled";
     }
     if (name === "tree-actions") {
@@ -262,23 +266,30 @@ export function createMemoryProtectionFixture(getSettings) {
     }
     if (Object.hasOwn(fields, "currentActionId")) currentActionId = fields.currentActionId;
   }
-  // Test-only: the record limit the next records replay carries.
-  function setRecordLimit(limit) {
-    if (!Number.isSafeInteger(limit) || limit < 0) throw new Error(`Invalid memory protection record limit: ${limit}`);
-    recordLimit = limit;
-    actions = actions.slice(0, recordLimit);
+  // Test-only: the record capacity the next records replay carries (the backend reads it from its freedom point).
+  function setRecordCapacity(capacity) {
+    if (!Number.isSafeInteger(capacity) || capacity < 1) throw new Error(`Invalid memory protection record capacity: ${capacity}`);
+    recordCapacity = capacity;
   }
   // Test-only: one new or updated record, as the action event publishes it. A record with the same actionId and
-  // process identity replaces the earlier one in place; a new one is the newest. The list keeps the newest limit.
+  // process identity replaces the earlier one in place; a new one is the newest. A full list does not evict: the new
+  // record is not written, the unrecorded count grows and null is returned (the backend then publishes a records frame).
   function upsertRecord(fields) {
     const value = record({ actionId: "f".repeat(32), processId: 50, name: "growing", outcome: "terminated-without-dump",
       reason: "terminate-only", ...fields });
     const index = actions.findIndex(item => item.actionId === value.actionId && item.processId === value.processId
       && item.processStartKey === value.processStartKey);
     if (index >= 0) actions[index] = value;
+    else if (actions.length >= recordCapacity) { unrecordedRecordCount += 1; return null; }
     else actions.unshift(value);
-    actions = actions.slice(0, recordLimit);
     return structuredClone(value);
+  }
+  // POST /api/memory-protection/records/history/clear: every record is history; slices stay on disk.
+  function clearRecordHistory() {
+    const removedCount = actions.length;
+    actions = [];
+    unrecordedRecordCount = 0;
+    return removedCount;
   }
   // Test-only: the limit the list reports and creation checks (the backend's is the constant 32).
   function setPointLimit(limit) {
@@ -286,7 +297,8 @@ export function createMemoryProtectionFixture(getSettings) {
     pointLimit = limit;
   }
   return { status, liveStatus, records, createPoint, listPoints, selectPoint, deletePoint, setPointLimit,
-    readPoint: () => structuredClone(active()), validate, prepare, scenario, publishDecision, setRecordLimit, upsertRecord,
+    readPoint: () => structuredClone(active()), validate, prepare, scenario, publishDecision, setRecordCapacity, upsertRecord,
+    clearRecordHistory,
     rebuild: () => { if (["reserve-building", "reserve-build-incomplete; request an explicit rebuild"].includes(buildFailure)) buildFailure = null;
       prepare(true); return status(); } };
 }

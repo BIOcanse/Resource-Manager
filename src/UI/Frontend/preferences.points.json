@@ -74,6 +74,12 @@
     {"group":3,"name":"dashboard-layout_limits","symbol":"DashboardLayoutLimits","type":"dashboardLimits","value":{"smallMetricLimit":6,"cardUnits":6,"minimumColumnWidth":56,"maximumColumnWidth":520,"defaultColumnWidth":100}},
     {"group":4,"name":"notification-update_in_app","symbol":"UpdateInApp","type":"choice","options":["on","off"],"value":"on"},
     {"group":4,"name":"notification-update_system","symbol":"UpdateSystem","type":"choice","options":["on","off"],"value":"on"},
-    {"group":4,"name":"notification-access_request_system","symbol":"AccessRequestSystem","type":"choice","options":["on","off"],"value":"on"}
+    {"group":4,"name":"notification-access_request_system","symbol":"AccessRequestSystem","type":"choice","options":["on","off"],"value":"on"},
+    {"group":4,"name":"notification-memory_protection_system","symbol":"MemoryProtectionSystem","type":"choice","options":["on","off"],"value":"on"},
+    {"group":4,"name":"notification-update_notify","symbol":"UpdateNotify","type":"choice","options":["on","off"],"value":"on"},
+    {"group":4,"name":"notification-access_request_notify","symbol":"AccessRequestNotify","type":"choice","options":["on","off"],"value":"on"},
+    {"group":4,"name":"notification-access_request_in_app","symbol":"AccessRequestInApp","type":"choice","options":["on","off"],"value":"on"},
+    {"group":4,"name":"notification-memory_protection_notify","symbol":"MemoryProtectionNotify","type":"choice","options":["on","off"],"value":"on"},
+    {"group":4,"name":"notification-memory_protection_in_app","symbol":"MemoryProtectionInApp","type":"choice","options":["on","off"],"value":"on"}
   ]
 }

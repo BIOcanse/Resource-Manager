@@ -4,6 +4,24 @@ import { plural } from "./plural.ts";
 
 const zhCnSettingsCopy: SettingsCopy = {
   updates: zhCnUpdatesCopy,
+  notifications: {
+    intro: "按类别设置通知是否弹出、经哪些途径弹出。Windows 通知由托盘发出，软件内提示在界面显示时出现。",
+    kinds: {
+      memoryProtection: { title: "主机内存保护", description: "主机内存保护结束一个进程或一棵进程树后通知，写明处理对象、进程数和转储量。" },
+      update: { title: "新版本", description: "发现可用的新版本后通知。" },
+      accessRequest: { title: "访问请求", description: "有新的可信访问请求等待批准时通知，写明请求方的名称和程序。" }
+    },
+    notifyTitle: "弹出通知",
+    notifyDescription: "关闭后这一类通知不经任何途径弹出；两条途径各自的选择保留。",
+    systemTitle: "Windows 通知",
+    systemDescription: "由托盘发出 Windows 系统通知，主窗口关闭时也会弹出；点击通知打开资源管理器。",
+    inAppTitle: "软件内提示",
+    inAppDescription: "界面显示时在界面内提示；界面关闭期间的通知不补显示。",
+    switchLabel: (kind: string, option: string) => `${kind}：${option}`,
+    accessRequestNoticeTitle: "新的访问请求待批准",
+    accessRequestNoticeMessage: (name: string, program: string) => `${name}（${program}）请求可信访问。`,
+    accessRequestNoticeOpen: "查看访问请求"
+  },
   navigationLabel: "设置分区",
   sections: {
     runtimePolicy: "运行策略",
@@ -16,6 +34,7 @@ const zhCnSettingsCopy: SettingsCopy = {
     systemIntegration: "系统集成",
     publicServices: "公共服务",
     trustedAccess: "可信访问",
+    notifications: "通知",
     updates: "更新与版本",
     debug: "调试",
     credits: "致谢"
@@ -422,6 +441,24 @@ const zhCnSettingsCopy: SettingsCopy = {
 
 const enSettingsCopy: SettingsCopy = {
   updates: enUpdatesCopy,
+  notifications: {
+    intro: "Choose for each kind of notification whether it appears and through which channels. Windows notifications come from the tray; in-app notices appear while the interface is shown.",
+    kinds: {
+      memoryProtection: { title: "Host memory protection", description: "Notifies after host memory protection ends a process or a process tree, stating the target, the number of processes and the amount dumped." },
+      update: { title: "New version", description: "Notifies when a new version is available." },
+      accessRequest: { title: "Access requests", description: "Notifies when a new trusted-access request awaits approval, stating the requester's name and program." }
+    },
+    notifyTitle: "Show notifications",
+    notifyDescription: "When off, this kind of notification appears through no channel; the choices for both channels are kept.",
+    systemTitle: "Windows notification",
+    systemDescription: "The tray shows a Windows system notification, also while the main window is closed; clicking it opens Resource Manager.",
+    inAppTitle: "In-app notice",
+    inAppDescription: "Shown inside the interface while it is displayed; notifications that arrive while it is closed are not shown later.",
+    switchLabel: (kind: string, option: string) => `${kind}: ${option}`,
+    accessRequestNoticeTitle: "New access request awaiting approval",
+    accessRequestNoticeMessage: (name: string, program: string) => `${name} (${program}) requests trusted access.`,
+    accessRequestNoticeOpen: "View access requests"
+  },
   navigationLabel: "Settings sections",
   sections: {
     runtimePolicy: "Runtime Policy",
@@ -434,6 +471,7 @@ const enSettingsCopy: SettingsCopy = {
     systemIntegration: "System Integration",
     publicServices: "Public Services",
     trustedAccess: "Trusted Access",
+    notifications: "Notifications",
     updates: "Updates & Versions",
     debug: "Debug",
     credits: "Credits"

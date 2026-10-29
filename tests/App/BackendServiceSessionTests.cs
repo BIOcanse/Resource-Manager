@@ -65,22 +65,25 @@ public sealed class BackendServiceSessionTests
     }
 
     [Fact]
-    public async Task TrayStreamRequestsUpdateAndAccessSelectorsTogetherUsingCurrentCredentials()
+    public async Task TrayStreamRequestsOnlyTheNotificationSelectorUsingCurrentCredentials()
     {
         await using var backend = await Backend.StartAsync(enabled: true);
         using var session = backend.Session();
         await session.EnsureConnectedAsync(default);
         using (var response = await session.OpenTrayNotificationStreamAsync(default))
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        using (var body = JsonDocument.Parse(Assert.Single(backend.SubscriptionBodies)))
+        var requestBody = Assert.Single(backend.SubscriptionBodies);
+        using (var body = JsonDocument.Parse(requestBody))
         {
             Assert.Equal(1, body.RootElement.GetProperty("version").GetInt32());
-            var subscriptions = body.RootElement.GetProperty("subscriptions").EnumerateArray().ToArray();
-            Assert.Equal(2, subscriptions.Length);
-            Assert.Equal("/api/updates/product/status/subscribe", subscriptions.Single(item => item.GetProperty("id").GetString() == "updates").GetProperty("path").GetString());
-            Assert.Equal(TrustedAccessApiContract.AccessRequestsSubscriptionPath,
-                subscriptions.Single(item => item.GetProperty("id").GetString() == "access-requests").GetProperty("path").GetString());
+            var subscription = Assert.Single(body.RootElement.GetProperty("subscriptions").EnumerateArray());
+            Assert.Equal("notifications", subscription.GetProperty("id").GetString());
+            Assert.Equal("/api/notifications/subscribe", subscription.GetProperty("path").GetString());
         }
+        // The two domain streams the old tray notices subscribed are no longer part of the tray request.
+        Assert.DoesNotContain("updates", requestBody);
+        Assert.DoesNotContain("access-requests", requestBody);
+        Assert.DoesNotContain(TrustedAccessApiContract.AccessRequestsSubscriptionPath, requestBody);
         Assert.Equal(backend.CurrentKey, backend.Requests.Last(item => item.Path == "/api/subscriptions/stream").Key);
         await backend.SetDefaultAsync(false);
         var denied = await Assert.ThrowsAsync<HttpRequestException>(() => session.OpenTrayNotificationStreamAsync(default));

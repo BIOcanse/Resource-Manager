@@ -313,6 +313,19 @@ export default async function localizationJourney(page, baseUrl, options = {}) {
     stage = "idle";
     errorCode = null;
     await publishUpdateStatus();
+    // 通知分区：每类一组三项，开关的名称带上种类。
+    await page.getByRole("button", { name: settings.sections.notifications, exact: true }).click();
+    const notificationText = settings.notifications;
+    await liveText(page, notificationText.intro).waitFor();
+    for (const kind of ["memoryProtection", "update", "accessRequest"]) {
+      const group = page.getByRole("region", { name: notificationText.kinds[kind].title, exact: true });
+      await group.getByText(notificationText.kinds[kind].description, { exact: true }).waitFor();
+      for (const option of ["notify", "system", "inApp"]) {
+        await group.getByRole("checkbox", { name: notificationText.switchLabel(notificationText.kinds[kind].title,
+          notificationText[`${option}Title`]), exact: true }).waitFor();
+        await group.getByText(notificationText[`${option}Description`], { exact: true }).waitFor();
+      }
+    }
     await page.getByRole("button", { name: settings.sections.updates, exact: true }).click();
     const modeGroup = page.getByRole("radiogroup", { name: settings.updates.modeTitle, exact: true });
     for (const mode of settings.updates.modeOptions) await modeGroup.getByRole("radio", { name: mode.label, exact: true }).waitFor();
@@ -320,11 +333,6 @@ export default async function localizationJourney(page, baseUrl, options = {}) {
     await liveText(page, settings.updates.intervalLabel(24, 168)).waitFor();
     await liveText(page, settings.updates.internetNote).waitFor();
     await liveText(page, settings.updates.manualCheckNote).waitFor();
-    await page.getByRole("checkbox", { name: settings.updates.inAppNoticeTitle, exact: true }).waitFor();
-    await page.getByRole("checkbox", { name: settings.updates.systemNoticeTitle, exact: true }).waitFor();
-    await liveText(page, settings.updates.systemNoticeDescription).waitFor();
-    await page.getByRole("checkbox", { name: settings.updates.accessRequestNoticeTitle, exact: true }).waitFor();
-    await liveText(page, settings.updates.accessRequestNoticeDescription).waitFor();
     await liveText(page, `${settings.updates.nextCheck}2026-10-27 08:00 UTC`).waitFor();
     await liveText(page, `${settings.updates.connectedElapsed}0:01:01`).waitFor();
     await liveText(page, `${settings.updates.lastChecked}2026-10-01 12:00 UTC`).waitFor();

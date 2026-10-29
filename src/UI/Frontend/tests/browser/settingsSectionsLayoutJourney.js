@@ -10,7 +10,7 @@ import { NOT_GHOST } from "./liveLocator.js";
 import { waitForContentSettled } from "./contentSettled.js";
 
 const sectionOrder = ["runtimePolicy", "memory", "memoryProtection", "hardwareControl", "reportRules", "appearance", "performanceOverlay",
-  "systemIntegration", "publicServices", "trustedAccess", "updates", "debug", "credits"];
+  "systemIntegration", "publicServices", "trustedAccess", "notifications", "updates", "debug", "credits"];
 const newSections = ["runtimePolicy", "memory", "hardwareControl", "reportRules", "publicServices", "trustedAccess"];
 const readOnlySections = new Set(["performanceOverlay", "trustedAccess", "credits"]);
 const sizes = [{ width: 1280, height: 800 }, { width: 800, height: 600 }];

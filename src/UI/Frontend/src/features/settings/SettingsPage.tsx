@@ -16,6 +16,7 @@ import { RuntimePolicySettingsSection } from "./components/RuntimePolicySettings
 import { SystemIntegrationSettingsSection } from "./components/SystemIntegrationSettingsSection";
 import { TrustedAccessManager } from "./components/TrustedAccessManager";
 import { UpdatesSettingsSection } from "./components/UpdatesSettingsSection";
+import { NotificationsSettingsSection } from "./components/NotificationsSettingsSection";
 import { uiText, currentSettingsText, isRightToLeftLanguage } from "../../text.ts";
 import { useSelectionIndicator } from "../../interactions/solid/selectionIndicator.ts";
 import { useContentTransition } from "../../interactions/solid/contentTransition.ts";
@@ -116,7 +117,7 @@ interface SettingsPageProps {
 
 const settingSections: SettingsSection[] = [
   "runtimePolicy", "memory", "memoryProtection", "hardwareControl", "reportRules", "appearance", "performanceOverlay",
-  "systemIntegration", "publicServices", "trustedAccess", "updates", "debug", "credits"
+  "systemIntegration", "publicServices", "trustedAccess", "notifications", "updates", "debug", "credits"
 ];
 // 只读的分区（性能浮层总览、可信访问、致谢）不改设置草稿，没有重新加载、恢复为默认和保存；
 // 可信访问的改动在它自己的控件里立即生效。
@@ -427,17 +428,19 @@ export function SettingsPage(props: SettingsPageProps) {
               onHostManagerSmartCoordinatorPerformanceLogChange={props.onHostManagerSmartCoordinatorPerformanceLogChange}
             />
           </Show>
+          <Show when={props.activeSection === "notifications"}>
+            <NotificationsSettingsSection notifications={props.settings.notifications} text={text()}
+              onSwitchChange={props.onNotificationSwitchChange} />
+          </Show>
           <Show when={props.activeSection === "updates"}>
             <UpdatesSettingsSection
               settings={props.settings.update}
               committedSettings={props.committedUpdateSettings}
-              notifications={props.settings.notifications}
               productUpdates={props.productUpdates}
               text={text()}
               onModeChange={props.onUpdateModeChange}
               onPeriodicCheckChange={props.onPeriodicUpdateCheckChange}
               onCheckIntervalChange={props.onCheckIntervalChange}
-              onNotificationSwitchChange={props.onNotificationSwitchChange}
             />
           </Show>
           <Show when={props.activeSection === "credits"}>

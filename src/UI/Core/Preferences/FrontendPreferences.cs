@@ -101,21 +101,24 @@ internal sealed record FrontendOverlayPresentation
         MetricSources.TryGetValue(metricId, out var source) ? source : null;
 }
 
-// 更新与访问请求的通知开关，以及界面内更新提示已提示过的版本。
-// 已提示版本只由网页前端写入；原生壳校验、保存并读取系统通知开关。
+// 每类通知三项（docs/notifications_2026-10-29.md“设置在前端”）：是否弹（Notify）、Windows 通知（System，托盘读）、
+// 软件内提示（InApp，网页前端读）。总开关关掉时两条渠道都不弹，两条渠道各自的选择保留。
 internal sealed record FrontendNotifications
 {
+    public string UpdateNotify { get; init; } = FrontendPoints.UpdateNotify;
     public string UpdateInApp { get; init; } = FrontendPoints.UpdateInApp;
     public string UpdateSystem { get; init; } = FrontendPoints.UpdateSystem;
+    public string AccessRequestNotify { get; init; } = FrontendPoints.AccessRequestNotify;
+    public string AccessRequestInApp { get; init; } = FrontendPoints.AccessRequestInApp;
     public string AccessRequestSystem { get; init; } = FrontendPoints.AccessRequestSystem;
-    public string? UpdateInAppNotifiedVersion { get; init; }
+    public string MemoryProtectionNotify { get; init; } = FrontendPoints.MemoryProtectionNotify;
+    public string MemoryProtectionInApp { get; init; } = FrontendPoints.MemoryProtectionInApp;
+    public string MemoryProtectionSystem { get; init; } = FrontendPoints.MemoryProtectionSystem;
 
     internal void Validate()
     {
-        if (UpdateInApp is not ("on" or "off") || UpdateSystem is not ("on" or "off")
-            || AccessRequestSystem is not ("on" or "off")
-            || UpdateInAppNotifiedVersion is not null
-                && (string.IsNullOrWhiteSpace(UpdateInAppNotifiedVersion) || UpdateInAppNotifiedVersion.Length > 64))
+        if (new[] { UpdateNotify, UpdateInApp, UpdateSystem, AccessRequestNotify, AccessRequestInApp, AccessRequestSystem,
+                MemoryProtectionNotify, MemoryProtectionInApp, MemoryProtectionSystem }.Any(value => value is not ("on" or "off")))
             throw new InvalidDataException("Invalid frontend notification cache.");
     }
 }

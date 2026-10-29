@@ -2366,12 +2366,14 @@ const frFrAppCopy: AppCopy = {
     confirmMessage: {
       optimizationReports: (count: string) => `Rapports historiques qui seront supprimés : ${count}. Les rapports actifs sont conservés.`,
       kernelLeaks: (count: string) => `Entrées historiques qui seront supprimées : ${count}. Les entrées actives sont conservées.`,
+      memoryProtection: (count: string) => `Entrées de la protection de la mémoire à supprimer : ${count}.`,
       targetedRecordings: (count: string) => `Rapports d’enregistrement terminés qui seront supprimés : ${count}. Un enregistrement en cours est conservé.`,
       smartRecords: "Tous les enregistrements historiques de la planification intelligente seront supprimés. Les enregistrements en attente de restauration sont conservés."
     },
     details: {
       optimizationReports: ["Cette action est irréversible. Si le même problème se reproduit, il sera de nouveau enregistré.", "Les logiciels et appareils approuvés restent approuvés."],
       kernelLeaks: ["Cette action est irréversible. Si le même problème se reproduit, il sera de nouveau enregistré."],
+      memoryProtection: ["Cette opération est irréversible.", "Les fichiers de tranche ne sont pas supprimés ; ils restent sur le disque de la réserve disque jusqu’à ce que vous les supprimiez."],
       targetedRecordings: ["Ces rapports, ainsi que leurs intervalles d’images et leurs données de ressources, seront supprimés définitivement. Cette action est irréversible."],
       smartRecords: ["Cette action est irréversible. Les numéros de séquence des enregistrements ne recommencent pas."]
     },

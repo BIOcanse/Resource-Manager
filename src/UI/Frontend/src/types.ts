@@ -100,7 +100,7 @@ export type AppLogicRefreshIntervalKey =
 /** 软件详细信息对话框的分页。 */
 export type SoftwareDetailTabId = "overview" | "policy" | "processes" | "overlay";
 
-export type SettingsSection = "runtimePolicy" | "memory" | "memoryProtection" | "hardwareControl" | "reportRules" | "appearance" | "performanceOverlay" | "systemIntegration" | "publicServices" | "trustedAccess" | "updates" | "debug" | "credits";
+export type SettingsSection = "runtimePolicy" | "memory" | "memoryProtection" | "hardwareControl" | "reportRules" | "appearance" | "performanceOverlay" | "systemIntegration" | "publicServices" | "trustedAccess" | "notifications" | "updates" | "debug" | "credits";
 
 /** Frontend view model; backend wire facts are declared in data/monitor/metricWire.ts. */
 export interface MetricDefinition {
@@ -326,11 +326,20 @@ export interface AppUpdateSettings {
   periodicCheckEnabled: boolean;
   checkIntervalHours: number;
 }
-/** 新版本提示途径的开关：界面内提示由网页前端执行，Windows 系统通知由原生壳执行。 */
+/**
+ * 每类通知三项（docs/notifications_2026-10-29.md“设置在前端”）：Notify 是否弹（总开关）、System 走 Windows 通知（托盘执行）、
+ * InApp 走软件内提示（网页前端执行）。总开关关掉时两条途径都不弹，两条途径各自的选择保留。
+ */
 export interface AppNotificationSettings {
+  updateNotify: "on" | "off";
   updateInApp: "on" | "off";
   updateSystem: "on" | "off";
+  accessRequestNotify: "on" | "off";
+  accessRequestInApp: "on" | "off";
   accessRequestSystem: "on" | "off";
+  memoryProtectionNotify: "on" | "off";
+  memoryProtectionInApp: "on" | "off";
+  memoryProtectionSystem: "on" | "off";
 }
 
 export interface AppPerformanceSettings {

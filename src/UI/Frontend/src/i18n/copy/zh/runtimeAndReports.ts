@@ -83,12 +83,14 @@ export const zhRuntimeAndReportsCopy = {
     confirmMessage: {
       optimizationReports: (count: string) => cjkText`将删除${count}条历史报告，活动报告保留。`,
       kernelLeaks: (count: string) => cjkText`将删除${count}条历史条目，活动条目保留。`,
+      memoryProtection: (count: string) => cjkText`将删除${count}条内存保护处理记录。`,
       targetedRecordings: (count: string) => cjkText`将删除${count}份已完成的录制报告，正在进行的录制保留。`,
       smartRecords: "将删除全部智能调度历史记录，待恢复的记录保留。"
     },
     details: {
       optimizationReports: ["删除后无法恢复；同一问题以后再次出现时会重新记录。", "已信任的软件和设备仍保持信任。"],
       kernelLeaks: ["删除后无法恢复；同一问题以后再次出现时会重新记录。"],
+      memoryProtection: ["删除后无法恢复。", "转储的切片文件不会删除，仍留在磁盘保留区所在的磁盘上，需要时自行处理。"],
       targetedRecordings: ["这些报告及其帧间隔和资源数据将被永久删除，无法恢复。"],
       smartRecords: ["删除后无法恢复；记录序号不会重新开始。"]
     },

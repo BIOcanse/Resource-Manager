@@ -131,7 +131,9 @@ test("every recorded outcome and direct-action reason is available; exclusions a
     "a stable code per outcome, diagnostic text only in detail");
   assert(status.actions.every(row => row.selectionBasis.rule === "process-growth-at-least-minimum"
     && row.selectionBasis.processGrowthBytes === 700 && row.selectionBasis.directChildrenMemoryGrowthBytes === null));
-  assert.equal(status.excludedCandidates.length, 10); assert.equal(status.actionRecordLimit, 64);
+  assert.equal(status.excludedCandidates.length, 10);
+  assert.deepEqual([status.recordCapacity, status.unrecordedRecordCount], [4096, 0]);
+  assert(status.actions.every(row => row.state === "history"), "a record is history from the start");
   assert.equal(new Set(status.actions.map(row => row.actionId)).size, status.actions.length, "each single-process action has its own id");
   for (const action of status.actions.filter(row => row.outcome === "terminated-without-dump")) {
     assert.deepEqual(action.dumpPaths, []); assert.equal(action.bytesWritten, 0);
@@ -168,9 +170,9 @@ test("the subscription replays status, records, point and saved points, then sen
   const replay = (await server.frames(protection, frames => frames.length >= 4)).map(frame => frame.value);
   assert.deepEqual(replay.map(frame => frame.type), ["status", "records", "normalRunningPoint", "normalRunningPoints"], "replay order");
   for (const frame of replay) assert.deepEqual(memoryProtectionFrameDecoder.decode(frame), frame);
-  const { normalRunningPoint, actionRecordLimit, actions, ...live } = expected;
+  const { normalRunningPoint, recordCapacity, unrecordedRecordCount, actions, ...live } = expected;
   assert.deepEqual(replay[0].status, live, "the status frame carries no records and no point");
-  assert.deepEqual(replay[1], { type: "records", records: actions, limit: actionRecordLimit });
+  assert.deepEqual(replay[1], { type: "records", records: actions, limit: recordCapacity, unrecordedRecordCount });
   assert.deepEqual(replay[2].normalRunningPoint, (await server.json("/api/memory-protection/normal-running-point")).value);
   assert.equal(replay[2].normalRunningPoint.processCount, normalRunningPoint.processCount);
   assert.deepEqual(replay[3].normalRunningPoints, (await server.json("/api/memory-protection/normal-running-points")).value);
@@ -258,16 +260,21 @@ test("saved normal running points: list, create, select, delete and the limit", 
     { status: 409, value: { error: "normal-running-point-limit" } }, "creation past the limit is refused, nothing evicted");
   assert.equal((await list()).points.length, 1);
 });
-test("record frames upsert by action and process identity and the replay honours the limit", async () => {
-  await server.scenario({ memoryProtection: "active", memoryProtectionRecordLimit: 2 });
+test("record frames upsert by action and process identity; a full list counts instead of evicting; clearing frees it", async () => {
+  await server.scenario({ memoryProtection: "active", memoryProtectionRecordCapacity: 2 });
   await server.scenario({ memoryProtectionRecords: [{ actionId: "a".repeat(32), processId: 1 }, { actionId: "b".repeat(32), processId: 2 },
     { actionId: "c".repeat(32), processId: 3 }, { actionId: "b".repeat(32), processId: 2, outcome: "termination-failed",
       reason: "termination-failed", detail: "terminate-failed-5" }] });
-  const { actions, actionRecordLimit } = (await server.json("/api/memory-protection")).value;
-  assert.equal(actionRecordLimit, 2);
-  assert.deepEqual(actions.map(row => [row.processId, row.outcome]), [[3, "terminated-without-dump"], [2, "termination-failed"]]);
+  const { actions, recordCapacity, unrecordedRecordCount } = (await server.json("/api/memory-protection")).value;
+  assert.deepEqual([recordCapacity, unrecordedRecordCount], [2, 1], "the third action was not recorded");
+  assert.deepEqual(actions.map(row => [row.processId, row.outcome]), [[2, "termination-failed"], [1, "terminated-without-dump"]],
+    "nothing is evicted; an existing record still updates in place");
   const replay = (await server.frames(protection, frames => frames.length >= 3)).map(frame => frame.value);
-  assert.deepEqual(replay[1], { type: "records", records: actions, limit: 2 });
+  assert.deepEqual(replay[1], { type: "records", records: actions, limit: 2, unrecordedRecordCount: 1 });
+  const cleared = await server.json("/api/memory-protection/records/history/clear", body("POST", {}));
+  assert.deepEqual([cleared.status, cleared.value], [200, { removedCount: 2 }]);
+  const after = (await server.json("/api/memory-protection")).value;
+  assert.deepEqual([after.actions, after.unrecordedRecordCount], [[], 0], "clearing removes every record and resets the count");
 });
 test("the minimum growth and whitelist settings save as sent and reject with the backend codes", async () => {
   await server.scenario({ memoryProtection: "disabled-ready", settingsRuntimeDisposition: "committedAndApplied" });

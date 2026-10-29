@@ -16,7 +16,7 @@ for (const [decode, value] of [
   [d.decodeHostMemoryExclusion, { processId: 1, processStartKey: "0", name: "system", reason: "critical-process" }],
   [d.decodeHostMemoryProtectionStatus, f.memoryStatus], [d.decodeHostMemoryProtectionLiveStatus, f.memoryLiveStatus],
   [d.decodeHostMemoryProtectionFrame, { type: "status", status: f.memoryLiveStatus }],
-  [d.decodeHostMemoryProtectionFrame, { type: "records", records: [f.memoryAction, f.memoryTreeChild], limit: 64 }],
+  [d.decodeHostMemoryProtectionFrame, { type: "records", records: [f.memoryAction, f.memoryTreeChild], limit: 64, unrecordedRecordCount: 0 }],
   [d.decodeHostMemoryProtectionFrame, { type: "record", record: f.memoryTreeRootRecord }],
   [d.decodeHostMemoryProtectionFrame, { type: "normalRunningPoint", normalRunningPoint: f.memoryPoint }],
   [d.decodeHostMemoryProtectionFrame, { type: "normalRunningPoints", normalRunningPoints: f.memoryPointList }]
@@ -72,9 +72,14 @@ for (const [record, selectionBasis] of [
 }
 // Frames dispatch on type; the status frame has no records or point, a cleared point is null.
 assert.equal(d.memoryProtectionFrameDecoder.decode({ type: "normalRunningPoint", normalRunningPoint: null }).type, "normalRunningPoint");
-assert.deepEqual(d.memoryProtectionFrameDecoder.decode({ type: "records", records: [], limit: 0 }), { type: "records", records: [], limit: 0 });
+assert.deepEqual(d.memoryProtectionFrameDecoder.decode({ type: "records", records: [], limit: 1, unrecordedRecordCount: 5 }),
+  { type: "records", records: [], limit: 1, unrecordedRecordCount: 5 });
+assert.throws(() => d.decodeHostMemoryActionRecord({ ...f.memoryAction, state: "active" }), "records are always history");
+assert.throws(() => d.decodeHostMemoryActionRecord({ ...f.memoryAction, state: undefined }));
+assert.throws(() => d.decodeHostMemoryProtectionStatus({ ...f.memoryStatus, unrecordedRecordCount: -1 }));
 for (const invalid of [{ type: "status" }, { type: "unknown" }, { status: f.memoryLiveStatus },
-  { type: "records", records: [], limit: -1 }, { type: "records", records: [] }, { type: "record", record: null },
+  { type: "records", records: [], limit: -1, unrecordedRecordCount: 0 }, { type: "records", records: [], unrecordedRecordCount: 0 },
+  { type: "records", records: [], limit: 1 }, { type: "record", record: null },
   { type: "normalRunningPoint" }, { type: "normalRunningPoint", normalRunningPoint: { at: f.memoryPoint.at } }]) {
   assert.throws(() => d.memoryProtectionFrameDecoder.decode(invalid), JSON.stringify(invalid).slice(0, 80));
 }

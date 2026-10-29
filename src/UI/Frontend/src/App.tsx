@@ -39,12 +39,12 @@ import { createRuntimeCapabilitiesStore } from "./stores/runtimeCapabilitiesStor
 import { AccessRequestSnapshotProvider } from "./features/trustedAccess/AccessRequestSnapshotContext.tsx";
 import { TrustedAccessPendingBanner } from "./features/settings/components/TrustedAccessPendingBanner.tsx";
 import { createProductUpdateStore } from "./stores/productUpdateStore";
-import { bindProductUpdateNotice } from "./stores/productUpdateNotice.ts";
 import { productUpdateCopy } from "./features/settings/productUpdatePresentation.ts";
 import { resolveLanguageMode } from "./i18n/settingsLanguages";
 import { applyLanguage, currentSettingsText, uiText } from "./text.ts";
 import { LanguageLoadNotice } from "./i18n/LanguageLoadNotice";
-import { applyByteUnitMode } from "./presentation/byteUnits.ts";
+import { applyByteUnitMode, formatBytes } from "./presentation/byteUnits.ts";
+import { bindBackendNotificationToasts } from "./features/notifications/backendNotificationToasts.ts";
 import type {
   MetricDefinition,
   PageId
@@ -87,30 +87,6 @@ export default function App() {
   const productUpdates = createProductUpdateStore({
     source: frontendRuntime.sources.productUpdateStatus,
     active: frontendWork.frontendVisible
-  });
-  // 发现新版本时界面内提示一次（docs: update-notice 合同“提示一次”）；入口跳到更新与版本，待应用时可立即应用。
-  bindProductUpdateNotice({
-    status: productUpdates.status,
-    notifications: settings.frontendNotifications,
-    record: settings.recordUpdateInAppNotified,
-    show: (state) => {
-      const text = currentSettingsText();
-      const ready = state.stage === "pendingApply" && state.targetVersion === state.availableVersion;
-      showToast({
-        tone: "info",
-        title: text.updates.noticeTitle,
-        message: ready ? text.updates.noticeReadyMessage(state.availableVersion) : text.updates.noticeMessage(state.availableVersion),
-        durationMs: null,
-        actions: [
-          { label: text.updates.noticeOpenUpdates, onSelect: () => {
-            settings.setActiveSection("updates");
-            setActivePage("settings");
-          } },
-          ...ready ? [{ label: productUpdateCopy(text.language).apply, onSelect: () => void productUpdates.apply(
-            (version) => window.confirm(currentSettingsText().updates.confirmPrepare(version)), currentSettingsText().language) }] : []
-        ]
-      });
-    }
   });
   useShellResizeBinding();
   const readContext = useRuntimeReadContext({
@@ -185,6 +161,69 @@ export default function App() {
   const detailsNavigation = createDetailsNavigation({
     optimizationEnabled: runtimeCapabilities.optimizationEnabled,
     mutablePersistenceEnabled: runtimeCapabilities.mutablePersistenceEnabled
+  });
+  // 后端通知（docs/notifications_2026-10-29.md“前端”）：界面可见时订阅，新通知按种类用界面提示显示；
+  // Windows 通知由托盘发。入口跳到详细信息的内存保护记录。
+  // 后端通知的界面提示（docs/notifications_2026-10-29.md“前端”）：界面打开时订阅，按种类和这一类的设置提示。
+  const openSettingsSection = (section: "updates" | "trustedAccess") => {
+    settings.setActiveSection(section);
+    setActivePage("settings");
+  };
+  bindBackendNotificationToasts({
+    source: frontendRuntime.sources.backendNotifications,
+    active: frontendWork.frontendVisible,
+    settings: settings.frontendNotifications,
+    show: (notification) => {
+      switch (notification.kind) {
+        case "memory-protection.action": {
+          const copy = uiText.memoryProtection;
+          const target = copy.recordProcess(notification.name, notification.processId);
+          const size = formatBytes(notification.bytesWritten, "storage");
+          showToast({
+            tone: "warning",
+            title: copy.noticeTitle,
+            message: notification.targetKind === "process"
+              ? copy.noticeProcess(target, size)
+              : copy.noticeTree(target, notification.recordCount, size),
+            actions: [{ label: copy.noticeOpenRecords, onSelect: () => {
+              detailsNavigation.select("memoryProtection");
+              setActivePage("details");
+            } }]
+          });
+          return;
+        }
+        case "update-available": {
+          // 待应用的正是这个版本时（按此刻的更新状态），提示写“已就绪”并给出立即应用。
+          const text = currentSettingsText();
+          const state = productUpdates.status();
+          const ready = state?.stage === "pendingApply" && state.targetVersion === notification.version;
+          showToast({
+            tone: "info",
+            title: text.updates.noticeTitle,
+            message: ready ? text.updates.noticeReadyMessage(notification.version) : text.updates.noticeMessage(notification.version),
+            durationMs: null,
+            actions: [
+              { label: text.updates.noticeOpenUpdates, onSelect: () => openSettingsSection("updates") },
+              ...ready ? [{ label: productUpdateCopy(text.language).apply, onSelect: () => void productUpdates.apply(
+                (version) => window.confirm(currentSettingsText().updates.confirmPrepare(version)), currentSettingsText().language) }] : []
+            ]
+          });
+          return;
+        }
+        case "access-request": {
+          const text = currentSettingsText().notifications;
+          const program = notification.observedExecutablePath.split(/[\\/]/).pop() || notification.observedExecutablePath;
+          showToast({
+            tone: "info",
+            title: text.accessRequestNoticeTitle,
+            message: text.accessRequestNoticeMessage(notification.name, program),
+            durationMs: null,
+            actions: [{ label: text.accessRequestNoticeOpen, onSelect: () => openSettingsSection("trustedAccess") }]
+          });
+          return;
+        }
+      }
+    }
   });
   const navigation = createNavigationTree({
     optimizationVisible: runtimeCapabilities.optimizationEnabled,

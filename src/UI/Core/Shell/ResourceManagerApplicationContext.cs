@@ -25,9 +25,7 @@ public sealed partial class ResourceManagerApplicationContext : ApplicationConte
     private readonly INativeUiHotkeys hotkeys;
     private ContextMenuStrip trayMenu = null!;
     private NotifyIcon trayIcon = null!;
-    private TrayUpdateNotice updateNotice = null!;
-    private TrayAccessRequestNotice accessRequestNotice = null!;
-    private Action<Action> dispatchTrayNotice = null!;
+    private TrayBackendNotifications backendNotifications = null!;
     private ToolStripMenuItem? backendStatusMenuItem;
     private ToolStripMenuItem? retryBackendMenuItem;
     private ToolStripMenuItem? openMenuItem;

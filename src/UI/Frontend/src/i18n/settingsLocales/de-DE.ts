@@ -2,6 +2,24 @@ import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 import { plural } from "../plural.ts";
 
 export default createSettingsLocale("de-DE", {
+  "notifications": {
+    "intro": "Legen Sie für jede Art von Benachrichtigung fest, ob sie erscheint und über welche Wege. Windows-Benachrichtigungen kommen aus dem Infobereich; Hinweise in der App erscheinen, während die Oberfläche angezeigt wird.",
+    "kinds": {
+      "memoryProtection": { "title": "Speicherschutz des Hosts", "description": "Benachrichtigt, nachdem der Speicherschutz des Hosts einen Prozess oder einen Prozessbaum beendet hat, mit Ziel, Anzahl der Prozesse und Abbildgröße." },
+      "update": { "title": "Neue Version", "description": "Benachrichtigt, wenn eine neue Version verfügbar ist." },
+      "accessRequest": { "title": "Zugriffsanfragen", "description": "Benachrichtigt, wenn eine neue Anfrage für vertrauenswürdigen Zugriff auf Genehmigung wartet, mit Name und Programm der anfragenden Seite." }
+    },
+    "notifyTitle": "Benachrichtigungen anzeigen",
+    "notifyDescription": "Wenn ausgeschaltet, erscheint diese Art von Benachrichtigung über keinen Weg; die Auswahl für beide Wege bleibt erhalten.",
+    "systemTitle": "Windows-Benachrichtigung",
+    "systemDescription": "Der Infobereich zeigt eine Windows-Systembenachrichtigung an, auch wenn das Hauptfenster geschlossen ist; ein Klick darauf öffnet Resource Manager.",
+    "inAppTitle": "Hinweis in der App",
+    "inAppDescription": "Erscheint in der Oberfläche, während sie angezeigt wird; Benachrichtigungen, die eintreffen, während sie geschlossen ist, werden nicht nachträglich angezeigt.",
+    "switchLabel": (kind: string, option: string) => `${kind}: ${option}`,
+    "accessRequestNoticeTitle": "Neue Zugriffsanfrage wartet auf Genehmigung",
+    "accessRequestNoticeMessage": (name: string, program: string) => `${name} (${program}) fordert vertrauenswürdigen Zugriff an.`,
+    "accessRequestNoticeOpen": "Zugriffsanfragen anzeigen"
+  },
   "updates": {
     "modeTitle": "Update-Modus",
     "modeDescription": "Aus: keine automatischen Prüfungen. Manuelle Prüfung und manuelle Versionswahl funktionieren in jedem Modus.",
@@ -12,12 +30,6 @@ export default createSettingsLocale("de-DE", {
     "offReason": "Der Modus ist Aus: Es laufen keine automatischen Prüfungen, diese beiden Einstellungen wirken nicht; ihre Werte bleiben erhalten.",
     "intervalTitle": "Prüfintervall (Stunden)",
     "intervalLabel": (minimum: number, maximum: number) => `Intervall (Stunden, ${minimum}–${maximum})`,
-    "inAppNoticeTitle": "Hinweis auf neue Version in der Oberfläche",
-    "inAppNoticeDescription": "Während die Oberfläche läuft, wird eine neue Version einmal gemeldet; dieselbe Version nicht erneut.",
-    "accessRequestNoticeTitle": "Systembenachrichtigung bei neuen Zugriffsanfragen",
-    "accessRequestNoticeDescription": "Zeigt eine Windows-Benachrichtigung an, wenn bei nicht sichtbarer Oberfläche eine neue vertrauenswürdige Zugriffsanfrage auf Genehmigung wartet.",
-    "systemNoticeTitle": "Windows-Systembenachrichtigung",
-    "systemNoticeDescription": "Sendet eine Systembenachrichtigung, wenn die App nicht sichtbar ist. Dieser Schalter speichert nur die Einstellung; die Desktop-Shell (Infobereich) führt sie aus.",
     "manualCheckNote": "Eine manuelle Prüfung läuft sofort, ohne auf das Internet zu warten, in jedem Modus.",
     "waitingForInternet": "Warten auf Internet; die Prüfung startet, sobald es erreichbar ist.",
     "availableVersion": "Gefundene neue Version: ",
@@ -80,6 +92,7 @@ export default createSettingsLocale("de-DE", {
     "systemIntegration": "Systemintegration",
     "publicServices": "Gemeinsame Dienste",
     "trustedAccess": "Vertrauenswürdiger Zugriff",
+    "notifications": "Benachrichtigungen",
     "updates": "Updates und Versionen",
     "debug": "Debug",
     "credits": "Danksagung"

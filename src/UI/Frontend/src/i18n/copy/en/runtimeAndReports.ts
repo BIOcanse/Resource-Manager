@@ -85,12 +85,14 @@ export const enRuntimeAndReportsCopy: Pick<AppCopy, "smartReport" | "reportHisto
     confirmMessage: {
       optimizationReports: (count: string) => `History reports to delete: ${count}. Active reports are kept.`,
       kernelLeaks: (count: string) => `History entries to delete: ${count}. Active entries are kept.`,
+      memoryProtection: (count: string) => `Memory protection action records to delete: ${count}.`,
       targetedRecordings: (count: string) => `Completed recording reports to delete: ${count}. A recording in progress is kept.`,
       smartRecords: "All smart scheduling history records will be deleted. Records waiting to be restored are kept."
     },
     details: {
       optimizationReports: ["This cannot be undone. If the same issue occurs again, it will be recorded again.", "Trusted software and devices remain trusted."],
       kernelLeaks: ["This cannot be undone. If the same issue occurs again, it will be recorded again."],
+      memoryProtection: ["This cannot be undone.", "Slice files are not deleted; they stay on the disk of the disk reserve until you remove them."],
       targetedRecordings: ["These reports and their frame intervals and resource data will be permanently deleted. This cannot be undone."],
       smartRecords: ["This cannot be undone. Record sequence numbers do not start over."]
     },

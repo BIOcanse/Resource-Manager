@@ -2,6 +2,24 @@ import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 import { plural } from "../plural.ts";
 
 export default createSettingsLocale("es-ES", {
+  "notifications": {
+    "intro": "Elige para cada tipo de notificación si se muestra y por qué vías. Las notificaciones de Windows las muestra la bandeja; los avisos en la aplicación aparecen mientras la interfaz está visible.",
+    "kinds": {
+      "memoryProtection": { "title": "Protección de memoria del equipo", "description": "Notifica cuando la protección de memoria del equipo termina un proceso o un árbol de procesos, con el objetivo, el número de procesos y el tamaño del volcado." },
+      "update": { "title": "Nueva versión", "description": "Notifica cuando hay una nueva versión disponible." },
+      "accessRequest": { "title": "Solicitudes de acceso", "description": "Notifica cuando una nueva solicitud de acceso de confianza espera aprobación, con el nombre y el programa del solicitante." }
+    },
+    "notifyTitle": "Mostrar notificaciones",
+    "notifyDescription": "Si está desactivado, este tipo de notificación no se muestra por ninguna vía; se conserva la elección de ambas vías.",
+    "systemTitle": "Notificación de Windows",
+    "systemDescription": "La bandeja muestra una notificación del sistema de Windows, también con la ventana principal cerrada; al hacer clic se abre Resource Manager.",
+    "inAppTitle": "Aviso en la aplicación",
+    "inAppDescription": "Aparece dentro de la interfaz mientras está visible; las notificaciones que llegan con la interfaz cerrada no se muestran después.",
+    "switchLabel": (kind: string, option: string) => `${kind}: ${option}`,
+    "accessRequestNoticeTitle": "Nueva solicitud de acceso pendiente de aprobación",
+    "accessRequestNoticeMessage": (name: string, program: string) => `${name} (${program}) solicita acceso de confianza.`,
+    "accessRequestNoticeOpen": "Ver solicitudes de acceso"
+  },
   "updates": {
     "modeTitle": "Modo de actualización",
     "modeDescription": "Desactivado no hace comprobaciones automáticas. La comprobación y la elección manual de versión funcionan en todos los modos.",
@@ -12,12 +30,6 @@ export default createSettingsLocale("es-ES", {
     "offReason": "El modo está Desactivado: no hay comprobaciones automáticas y estos dos ajustes no tienen efecto; sus valores se conservan.",
     "intervalTitle": "Intervalo de comprobación (horas)",
     "intervalLabel": (minimum: number, maximum: number) => `Intervalo (horas, ${minimum}–${maximum})`,
-    "inAppNoticeTitle": "Aviso de versión nueva en la interfaz",
-    "inAppNoticeDescription": "Mientras la interfaz está abierta, una versión nueva se avisa una vez; la misma versión no se vuelve a avisar.",
-    "accessRequestNoticeTitle": "Notificación del sistema de nuevas solicitudes de acceso",
-    "accessRequestNoticeDescription": "Muestra una notificación de Windows cuando llega una nueva solicitud de acceso de confianza pendiente de aprobación y la interfaz no está visible.",
-    "systemNoticeTitle": "Notificación del sistema de Windows",
-    "systemNoticeDescription": "Envía una notificación del sistema cuando la aplicación no está visible. Este interruptor solo guarda la preferencia; la ejecuta el shell de escritorio (bandeja).",
     "manualCheckNote": "La comprobación manual se ejecuta al momento, sin esperar a Internet, en todos los modos.",
     "waitingForInternet": "Esperando a Internet; la comprobación se hará en cuanto haya conexión.",
     "availableVersion": "Versión nueva encontrada: ",
@@ -80,6 +92,7 @@ export default createSettingsLocale("es-ES", {
     "systemIntegration": "Integración del sistema",
     "publicServices": "Servicios compartidos",
     "trustedAccess": "Acceso de confianza",
+    "notifications": "Notificaciones",
     "updates": "Actualizaciones y versiones",
     "debug": "Depuración",
     "credits": "Créditos"

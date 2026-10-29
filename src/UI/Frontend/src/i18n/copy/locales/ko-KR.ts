@@ -2365,12 +2365,14 @@ const koKrAppCopy: AppCopy = {
     confirmMessage: {
       optimizationReports: (count: string) => `삭제될 기록 보고서: ${count}. 활성 보고서는 유지됩니다.`,
       kernelLeaks: (count: string) => `삭제될 기록 항목: ${count}. 활성 항목은 유지됩니다.`,
+      memoryProtection: (count: string) => `메모리 보호 처리 기록 ${count}개를 삭제합니다.`,
       targetedRecordings: (count: string) => `삭제될 완료된 녹화 보고서: ${count}. 진행 중인 녹화는 유지됩니다.`,
       smartRecords: "스마트 스케줄링 기록의 모든 내역이 삭제됩니다. 복원 대기 중인 기록은 유지됩니다."
     },
     details: {
       optimizationReports: ["삭제하면 되돌릴 수 없습니다. 같은 문제가 다시 발생하면 다시 기록됩니다.", "신뢰한 소프트웨어와 장치는 계속 신뢰됩니다."],
       kernelLeaks: ["삭제하면 되돌릴 수 없습니다. 같은 문제가 다시 발생하면 다시 기록됩니다."],
+      memoryProtection: ["삭제하면 되돌릴 수 없습니다.", "슬라이스 파일은 삭제되지 않고 디스크 예약 영역이 있는 디스크에 남습니다. 필요하면 직접 처리하세요."],
       targetedRecordings: ["이 보고서와 프레임 간격 및 리소스 데이터가 영구적으로 삭제되며 되돌릴 수 없습니다."],
       smartRecords: ["삭제하면 되돌릴 수 없습니다. 기록의 일련번호는 처음부터 다시 시작하지 않습니다."]
     },

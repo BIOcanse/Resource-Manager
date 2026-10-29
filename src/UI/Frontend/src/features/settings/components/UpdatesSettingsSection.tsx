@@ -11,7 +11,7 @@ import { sourceCanRender } from "../../../frontendRuntime/source/SourceSnapshot.
 import type { ProductVersionCatalog } from "../../../data/settingsReadSources.ts";
 import { ObservationStateNotice } from "../../../components/ObservationStateNotice";
 import { failedObservation, loadingObservation } from "../../../observation/observationState";
-import type { AppNotificationSettings, AppUpdateMode, AppUpdateSettings } from "../../../types";
+import type { AppUpdateMode, AppUpdateSettings } from "../../../types";
 import type { SettingsTextBundle } from "../../../i18n/settingsTypes.ts";
 import { VersionSelector } from "./VersionSelector";
 import { isUpdateBusy, productUpdateCopy, updateFailure, type ProductUpdateState } from "../productUpdatePresentation.ts";
@@ -26,13 +26,11 @@ export function UpdatesSettingsSection(props: {
   settings: AppUpdateSettings | undefined;
   /** 已保存的更新设置；“下次检查”一行按它判断间隔检查是否开着。 */
   committedSettings: AppUpdateSettings | undefined;
-  notifications: AppNotificationSettings | undefined;
   productUpdates: ProductUpdateStore;
   text: SettingsTextBundle;
   onModeChange: (mode: AppUpdateMode) => void;
   onPeriodicCheckChange: (enabled: boolean) => void;
   onCheckIntervalChange: (hours: number) => void;
-  onNotificationSwitchChange: (path: keyof AppNotificationSettings, enabled: boolean) => void;
 }) {
   const runtime = useFrontendRuntime();
   const frontendWork = useFrontendWork();
@@ -85,16 +83,6 @@ export function UpdatesSettingsSection(props: {
     } finally { setPreparePending(false); }
   }
 
-  const notificationSwitch = (path: keyof AppNotificationSettings, title: string, description: string) =>
-    <div class="settings-row">
-      <div class="settings-row-copy">
-        <strong>{title}</strong>
-        <span>{description}</span>
-      </div>
-      <SwitchControl ariaLabel={title} checked={(props.notifications?.[path] ?? "on") === "on"}
-        onChange={(checked) => props.onNotificationSwitchChange(path, checked)} />
-    </div>;
-
   return <div class="settings-section-panel" {...frontendVisibilitySurface(workId, [workId])}>
     <div class="settings-row">
       <div class="settings-row-copy">
@@ -122,9 +110,6 @@ export function UpdatesSettingsSection(props: {
           disabled={automaticOff()} onChange={props.onCheckIntervalChange} />
       </div>
     </div>
-    {notificationSwitch("updateInApp", text().inAppNoticeTitle, text().inAppNoticeDescription)}
-    {notificationSwitch("updateSystem", text().systemNoticeTitle, text().systemNoticeDescription)}
-    {notificationSwitch("accessRequestSystem", text().accessRequestNoticeTitle, text().accessRequestNoticeDescription)}
     <div class="settings-row">
       <div class="settings-row-copy">
         <strong>{text().installedVersionTitle}</strong>

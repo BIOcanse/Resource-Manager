@@ -2366,12 +2366,14 @@ const jaJpAppCopy: AppCopy = {
     confirmMessage: {
       optimizationReports: (count: string) => `削除される履歴のレポート：${count}。アクティブなレポートは残ります。`,
       kernelLeaks: (count: string) => `削除される履歴の項目：${count}。アクティブな項目は残ります。`,
+      memoryProtection: (count: string) => cjkText`メモリ保護の処理記録を${count}件削除します。`,
       targetedRecordings: (count: string) => `削除される完了済みの記録レポート：${count}。記録中のものは残ります。`,
       smartRecords: "スマートスケジューリングの履歴の記録をすべて削除します。復元待ちの記録は残ります。"
     },
     details: {
       optimizationReports: ["削除すると元に戻せません。同じ問題が再び発生した場合は、もう一度記録されます。", "信頼済みのソフトウェアとデバイスは引き続き信頼されます。"],
       kernelLeaks: ["削除すると元に戻せません。同じ問題が再び発生した場合は、もう一度記録されます。"],
+      memoryProtection: ["削除すると元に戻せません。", "スライス ファイルは削除されず、ディスク予約領域のディスクに残ります。必要に応じてご自身で処理してください。"],
       targetedRecordings: ["これらのレポートとそのフレーム間隔およびリソースデータは完全に削除され、元に戻すことはできません。"],
       smartRecords: ["削除すると元に戻せません。記録の通し番号は最初からやり直しになりません。"]
     },

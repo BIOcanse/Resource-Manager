@@ -202,7 +202,8 @@ export function decodeHostMemoryActionRecord(value: unknown, path = "$"): HostMe
     dumpPaths: requireStringArray(row.dumpPaths, `${path}.dumpPaths`),
     bytesWritten: requireWireUInt64(row.bytesWritten, `${path}.bytesWritten`), outcome, reason, detail,
     selectionBasis: decodeSelectionBasis(row.selectionBasis, `${path}.selectionBasis`, targetKind),
-    actionId: requireNonEmptyString(row.actionId, `${path}.actionId`), targetKind, treeRoot
+    actionId: requireNonEmptyString(row.actionId, `${path}.actionId`), targetKind, treeRoot,
+    state: requireOneOf(row.state, `${path}.state`, ["history"] as const)
   };
 }
 // HostMemoryProtectionStatus.Active is "InactiveReason is null" on the backend; both are sent and must agree.
@@ -244,7 +245,8 @@ export function decodeHostMemoryProtectionStatus(value: unknown, path = "$"): Ho
   return {
     ...decodeHostMemoryProtectionLiveStatus(row, path),
     normalRunningPoint: requireNullable(row.normalRunningPoint, `${path}.normalRunningPoint`, decodeNormalRunningPointSummary),
-    actionRecordLimit: requireNonNegativeSafeInteger(row.actionRecordLimit, `${path}.actionRecordLimit`),
+    recordCapacity: requireNonNegativeSafeInteger(row.recordCapacity, `${path}.recordCapacity`),
+    unrecordedRecordCount: requireNonNegativeSafeInteger(row.unrecordedRecordCount, `${path}.unrecordedRecordCount`),
     actions: rows(row.actions, `${path}.actions`, decodeHostMemoryActionRecord)
   };
 }
@@ -258,8 +260,10 @@ export function decodeHostMemoryProtectionFrame(value: unknown, path = "$"): Hos
     case "status":
       return { type, status: decodeHostMemoryProtectionLiveStatus(row.status, `${path}.status`) };
     case "records":
+      // HostMemoryProtectionRecordsFrame: limit is the record capacity.
       return { type, records: rows(row.records, `${path}.records`, decodeHostMemoryActionRecord),
-        limit: requireNonNegativeSafeInteger(row.limit, `${path}.limit`) };
+        limit: requireNonNegativeSafeInteger(row.limit, `${path}.limit`),
+        unrecordedRecordCount: requireNonNegativeSafeInteger(row.unrecordedRecordCount, `${path}.unrecordedRecordCount`) };
     case "record":
       return { type, record: decodeHostMemoryActionRecord(row.record, `${path}.record`) };
     case "normalRunningPoint":
@@ -271,6 +275,6 @@ export function decodeHostMemoryProtectionFrame(value: unknown, path = "$"): Hos
 }
 export const memoryProtectionSettingsDecoder = defineResponseDecoder("memory-protection.settings.v1", decodeHostMemoryProtectionSettings);
 // The reserve rebuild response is the full status; the subscription sends frames.
-export const memoryProtectionStatusDecoder = defineResponseDecoder("memory-protection.status.v4", decodeHostMemoryProtectionStatus);
-export const memoryProtectionFrameDecoder = defineResponseDecoder("memory-protection.frame.v3", decodeHostMemoryProtectionFrame);
+export const memoryProtectionStatusDecoder = defineResponseDecoder("memory-protection.status.v5", decodeHostMemoryProtectionStatus);
+export const memoryProtectionFrameDecoder = defineResponseDecoder("memory-protection.frame.v4", decodeHostMemoryProtectionFrame);
 export const normalRunningPointDecoder = defineResponseDecoder("memory-protection.normal-running-point.v2", decodeNormalRunningPoint);

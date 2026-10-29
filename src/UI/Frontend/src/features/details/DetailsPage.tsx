@@ -8,6 +8,7 @@ import { GpuSchedulingModel } from "../gpuScheduling/GpuSchedulingModel";
 import { HostManagerSmartCoordinatorDetailsReport } from "./HostManagerSmartCoordinatorDetailsReport";
 import { TargetedReportsPage } from "../targetedReport/TargetedReportsPage.tsx";
 import { KernelLeakReportPage } from "../kernelLeaks/KernelLeakReportPage.tsx";
+import { MemoryProtectionReportPage } from "../memoryProtection/MemoryProtectionReportPage.tsx";
 import type { SoftwareRecord } from "../../types.ts";
 import type { ReportHistoryClearFeedback } from "../reportHistory/useReportHistoryClear.ts";
 
@@ -58,6 +59,9 @@ export function DetailsPage(props: DetailsPageProps) {
           </Match>
           <Match when={props.activeTab === "kernelLeaks"}>
             <div class="details-resource-region"><KernelLeakReportPage {...reportFeedback(props)} /></div>
+          </Match>
+          <Match when={props.activeTab === "memoryProtection"}>
+            <div class="details-resource-region"><MemoryProtectionReportPage {...reportFeedback(props)} /></div>
           </Match>
         </Switch>
       </div>

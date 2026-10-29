@@ -39,15 +39,15 @@ export default async function productUpdatesJourney(page, baseUrl) {
   await page.getByRole("button", { name: "设置", exact: true }).click();
   await page.getByRole("button", { name: "更新与版本", exact: true }).click();
   await page.getByRole("alert").filter({ hasText: copy.unavailable }).waitFor();
-  // 更新区自己的“立即应用”；同一版本的界面内提示也带一个，由 update-notice 旅程覆盖。
+  // 更新区自己的“立即应用”。界面内的新版本提示来自通知流（docs/notifications_2026-10-29.md），由 update-notice 旅程覆盖；
+  // 这里只推更新状态，不出提示。
   const region = page.locator(".settings-content");
   assert.equal(await region.getByRole("button", { name: copy.apply, exact: true }).count(), 0);
   await publish(ready);
   const apply = region.getByRole("button", { name: copy.apply, exact: true });
   await apply.waitFor({ timeout: 7000 });
-  // 1.1.0 是新版本，界面内提示一直显示到用户关闭；它停在页面右上角，先关掉再操作设置页头部的保存。
-  const notice = page.locator(".toast:not([data-exit-ghost])").filter({ hasText: text.noticeTitle });
-  await notice.getByRole("button", { name: "关闭", exact: true }).click();
+  assert.equal(await page.locator(".toast:not([data-exit-ghost])").filter({ hasText: text.noticeTitle }).count(), 0,
+    "the update status alone is not a notice");
   await page.getByText("已选择目标版本：1.1.0", { exact: true }).waitFor();
   const versionList = [await checkVersionList(page, region, text, "desktop")];
   await setAnimation(page, "none");

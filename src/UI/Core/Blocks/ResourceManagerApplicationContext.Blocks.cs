@@ -84,21 +84,10 @@ public sealed partial class ResourceManagerApplicationContext
         };
         trayIcon.BalloonTipClicked += (_, _) =>
             ObserveUiCommand(ShowMainWindowAsync(startFrontend: true, activate: true));
-        bool InterfaceVisible() => mainForm is { IsDisposed: false, Visible: true,
-            WindowState: not FormWindowState.Minimized };
+        // A balloon click opens the main window (BalloonTipClicked above), whichever kind it shows.
         void ShowNotice(string title, string message) => trayIcon.ShowBalloonTip(6000, title, message, ToolTipIcon.Info);
-        dispatchTrayNotice = action =>
-        {
-            if (context.StopNotification.IsCancellationRequested || exiting) return;
-            uiDispatcher.BeginInvoke(new Action(() =>
-            {
-                if (!context.StopNotification.IsCancellationRequested && !exiting) action();
-            }));
-        };
-        updateNotice = new TrayUpdateNotice(services.Preferences ?? Preferences.FrontendPreferencesOwner.Current,
-            InterfaceVisible, ShowNotice, dispatchTrayNotice);
-        accessRequestNotice = new TrayAccessRequestNotice(services.Preferences ?? Preferences.FrontendPreferencesOwner.Current,
-            InterfaceVisible, ShowNotice, dispatchTrayNotice);
+        backendNotifications = new TrayBackendNotifications(
+            services.Preferences ?? Preferences.FrontendPreferencesOwner.Current, ShowNotice);
         UpdateShellStatus();
         context.ReportRunning();
         try { await UntilStoppedAsync(context.StopNotification); }
@@ -218,12 +207,7 @@ public sealed partial class ResourceManagerApplicationContext
         var session = hold.Session;
         var callbacks = NewCallbacks();
         var run = services.ObserveTray is { } observe ? observe(session, context.StopNotification)
-            : TrayNotificationStream.RunAsync(session.OpenTrayNotificationStreamAsync,
-            new Dictionary<string, Action<System.Text.Json.JsonElement>>
-            {
-                ["updates"] = updateNotice.ObserveFrame,
-                [TrayAccessRequestNotice.SubscriptionId] = accessRequestNotice.ObserveFrame
-            }, callbacks.Post, context.StopNotification);
+            : backendNotifications.RunAsync(session.OpenTrayNotificationStreamAsync, callbacks.Post, context.StopNotification);
         context.ReportRunning();
         try { await run; }
         finally

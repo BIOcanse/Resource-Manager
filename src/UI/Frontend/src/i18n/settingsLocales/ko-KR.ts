@@ -1,6 +1,24 @@
 import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 
 export default createSettingsLocale("ko-KR", {
+  "notifications": {
+    "intro": "알림 종류별로 표시 여부와 표시 경로를 설정합니다. Windows 알림은 트레이가 표시하고, 앱 내 알림은 화면이 표시되는 동안 나타납니다.",
+    "kinds": {
+      "memoryProtection": { "title": "호스트 메모리 보호", "description": "호스트 메모리 보호가 프로세스 또는 프로세스 트리를 종료하면 대상, 프로세스 수, 덤프 크기와 함께 알립니다." },
+      "update": { "title": "새 버전", "description": "새 버전을 사용할 수 있으면 알립니다." },
+      "accessRequest": { "title": "액세스 요청", "description": "승인을 기다리는 새 신뢰된 액세스 요청이 있으면 요청자의 이름 및 프로그램과 함께 알립니다." }
+    },
+    "notifyTitle": "알림 표시",
+    "notifyDescription": "끄면 이 종류의 알림은 어떤 경로로도 표시되지 않으며, 두 경로의 선택은 유지됩니다.",
+    "systemTitle": "Windows 알림",
+    "systemDescription": "트레이가 Windows 시스템 알림을 표시하며, 기본 창이 닫혀 있을 때도 표시됩니다. 클릭하면 Resource Manager가 열립니다.",
+    "inAppTitle": "앱 내 알림",
+    "inAppDescription": "화면이 표시되는 동안 화면 안에 표시합니다. 화면이 닫혀 있는 동안 도착한 알림은 나중에 표시하지 않습니다.",
+    "switchLabel": (kind: string, option: string) => `${kind}: ${option}`,
+    "accessRequestNoticeTitle": "승인 대기 중인 새 액세스 요청",
+    "accessRequestNoticeMessage": (name: string, program: string) => `${name}(${program})이(가) 신뢰된 액세스를 요청했습니다.`,
+    "accessRequestNoticeOpen": "액세스 요청 보기"
+  },
   "updates": {
     "modeTitle": "업데이트 방식",
     "modeDescription": "끄기에서는 자동 확인을 하지 않습니다. 수동 확인과 수동 버전 선택은 모든 방식에서 사용할 수 있습니다.",
@@ -11,12 +29,6 @@ export default createSettingsLocale("ko-KR", {
     "offReason": "업데이트 방식이 끄기이므로 자동 확인을 하지 않고 이 두 항목은 적용되지 않습니다. 값은 유지됩니다.",
     "intervalTitle": "확인 간격(시간)",
     "intervalLabel": (minimum: number, maximum: number) => `간격(시간, ${minimum}–${maximum})`,
-    "inAppNoticeTitle": "화면 내 새 버전 알림",
-    "inAppNoticeDescription": "화면이 실행 중일 때 새 버전을 한 번 알립니다. 같은 버전은 다시 알리지 않습니다.",
-    "accessRequestNoticeTitle": "새 액세스 요청 시스템 알림",
-    "accessRequestNoticeDescription": "화면이 보이지 않을 때 승인을 기다리는 새 신뢰 액세스 요청이 도착하면 Windows 알림을 표시합니다.",
-    "systemNoticeTitle": "Windows 시스템 알림",
-    "systemNoticeDescription": "앱이 보이지 않을 때 시스템 알림을 한 번 보냅니다. 이 스위치는 설정만 저장하며 실행은 데스크톱 셸(트레이)이 합니다.",
     "manualCheckNote": "수동 확인은 인터넷을 기다리지 않고 바로 실행되며 모든 방식에서 사용할 수 있습니다.",
     "waitingForInternet": "인터넷 연결을 기다리는 중입니다. 연결되면 바로 확인합니다.",
     "availableVersion": "발견된 새 버전: ",
@@ -79,6 +91,7 @@ export default createSettingsLocale("ko-KR", {
     "systemIntegration": "시스템 통합",
     "publicServices": "공용 서비스",
     "trustedAccess": "신뢰된 액세스",
+    "notifications": "알림",
     "updates": "업데이트 및 버전",
     "debug": "디버그",
     "credits": "감사의 글"

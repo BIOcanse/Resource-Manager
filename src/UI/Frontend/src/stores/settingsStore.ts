@@ -66,7 +66,7 @@ import { RequestProblem } from "../frontendRuntime/request/RequestProblem.ts";
 import { ResourceManager } from "../preferences/generated/frontendPoints.values.ts";
 import {
   applyFrontendPreferences, backendSettings, frontendPreferencesClient, pointPreferences,
-  preferencesFromSettings, resolveFrontendRefresh, type FrontendNotifications, type FrontendPreferencesCache, type FrontendPreferencesClient
+  preferencesFromSettings, resolveFrontendRefresh, type FrontendPreferencesCache, type FrontendPreferencesClient
 } from "../preferences/frontendPreferences.ts";
 
 export const logicRefreshIntervalKeys: AppLogicRefreshIntervalKey[] = [
@@ -130,9 +130,8 @@ export interface SettingsStore {
   updatePeriodicUpdateCheck: (enabled: boolean) => void;
   updateCheckInterval: (hours: number) => void;
   updateNotificationSwitch: (path: keyof AppNotificationSettings, enabled: boolean) => void;
-  /** 偏好缓存里已保存的提示分区（开关与界面内提示已提示过的版本）；缓存读到之前为 undefined。 */
-  frontendNotifications: Accessor<FrontendNotifications | undefined>;
-  recordUpdateInAppNotified: (version: string) => Promise<void>;
+  /** 偏好缓存里已保存的通知分区（不是设置页草稿）；缓存读到之前为 undefined。 */
+  frontendNotifications: Accessor<AppNotificationSettings | undefined>;
   updateEditableHotkey: (hotkey: AppEditableHotkeySettings) => void;
   updateLocalPublicService: (enabled: boolean) => void;
   updatePublicFileIndex: (enabled: boolean) => void;
@@ -161,7 +160,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
   // 偏好缓存的写入按顺序执行，每次都从上一次写入的结果出发，
   // 设置页的保存和界面内提示记下的版本不会互相用旧值覆盖。
   let pendingPreferenceWrite: Promise<unknown> | null = null;
-  const [frontendNotifications, setFrontendNotifications] = createSignal<FrontendNotifications | undefined>(undefined);
+  const [frontendNotifications, setFrontendNotifications] = createSignal<AppNotificationSettings | undefined>(undefined);
   function writePreferences(build: (current: FrontendPreferencesCache) => FrontendPreferencesCache) {
     const run = async () => {
       preferences = await preferenceOwner.save(build(preferences), "global");
@@ -499,10 +498,6 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     activeSection,
     setActiveSection,
     frontendNotifications,
-    recordUpdateInAppNotified: async (version) => {
-      await writePreferences(current => ({ ...current,
-        notifications: { ...current.notifications, updateInAppNotifiedVersion: version } }));
-    },
     refresh,
     saveDraft,
     reapply,
@@ -763,7 +758,8 @@ export function applySectionDefaults(section: SettingsSection, draft: AppSetting
     case "systemIntegration": return { ...draft, systemIntegration: structuredClone(defaults.systemIntegration) };
     case "publicServices": return { ...draft, publicService: structuredClone(defaults.publicService),
       aiModelService: structuredClone(defaults.aiModelService) };
-    case "updates": return { ...draft, update: structuredClone(defaults.update), notifications: structuredClone(defaults.notifications) };
+    case "notifications": return { ...draft, notifications: structuredClone(defaults.notifications) };
+    case "updates": return { ...draft, update: structuredClone(defaults.update) };
     case "debug": return { ...draft, debug: structuredClone(defaults.debug) };
     case "performanceOverlay":
     case "trustedAccess":
@@ -891,8 +887,9 @@ const updateModes: readonly AppUpdateMode[] = ["off", "notify", "automatic"];
 export const updateCheckIntervalHours = { minimum: 24, maximum: 168, defaultValue: 24 } as const;
 
 function notificationSwitches(value: AppNotificationSettings): AppNotificationSettings {
-  return { updateInApp: value.updateInApp === "off" ? "off" : "on", updateSystem: value.updateSystem === "off" ? "off" : "on",
-    accessRequestSystem: value.accessRequestSystem === "off" ? "off" : "on" };
+  return { updateNotify: value.updateNotify === "off" ? "off" : "on", updateInApp: value.updateInApp === "off" ? "off" : "on", updateSystem: value.updateSystem === "off" ? "off" : "on",
+    accessRequestNotify: value.accessRequestNotify === "off" ? "off" : "on", accessRequestInApp: value.accessRequestInApp === "off" ? "off" : "on", accessRequestSystem: value.accessRequestSystem === "off" ? "off" : "on",
+    memoryProtectionNotify: value.memoryProtectionNotify === "off" ? "off" : "on", memoryProtectionInApp: value.memoryProtectionInApp === "off" ? "off" : "on", memoryProtectionSystem: value.memoryProtectionSystem === "off" ? "off" : "on" };
 }
 
 function normalizeLmStudioEndpoint(endpoint?: string | null): string {

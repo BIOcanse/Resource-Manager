@@ -140,11 +140,9 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
             new[] { new { id = "updates", path = "/api/updates/product/status/subscribe" } }, cancellationToken);
 
     internal Task<HttpResponseMessage> OpenTrayNotificationStreamAsync(CancellationToken cancellationToken)
-        => OpenSubscriptionStreamAsync(new[]
-        {
-            new { id = "updates", path = "/api/updates/product/status/subscribe" },
-            new { id = TrayAccessRequestNotice.SubscriptionId, path = TrustedAccessApiContract.AccessRequestsSubscriptionPath }
-        }, cancellationToken);
+        => OpenSubscriptionStreamAsync(
+            new[] { new { id = TrayBackendNotifications.SubscriptionId, path = TrayBackendNotifications.SubscriptionPath } },
+            cancellationToken);
 
     private async Task<HttpResponseMessage> OpenSubscriptionStreamAsync<T>(T subscriptions,
         CancellationToken cancellationToken)

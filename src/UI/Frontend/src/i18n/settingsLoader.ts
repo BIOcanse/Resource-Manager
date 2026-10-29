@@ -49,9 +49,13 @@ const localeLoaders = {
 
 export const loadingSettingsText: SettingsTextBundle = {
   updates: loadingUpdatesCopy,
+  notifications: { intro: "", kinds: { memoryProtection: { title: "", description: "" }, update: { title: "", description: "" },
+    accessRequest: { title: "", description: "" } }, notifyTitle: "", notifyDescription: "", systemTitle: "", systemDescription: "",
+    inAppTitle: "", inAppDescription: "", switchLabel: () => "", accessRequestNoticeTitle: "",
+    accessRequestNoticeMessage: () => "", accessRequestNoticeOpen: "" },
   language: "zh-CN",
   navigationLabel: "",
-  sections: { runtimePolicy: "", memory: "", memoryProtection: "", hardwareControl: "", reportRules: "", appearance: "", performanceOverlay: "", systemIntegration: "", publicServices: "", trustedAccess: "", updates: "", debug: "", credits: "" },
+  sections: { runtimePolicy: "", memory: "", memoryProtection: "", hardwareControl: "", reportRules: "", appearance: "", performanceOverlay: "", systemIntegration: "", publicServices: "", trustedAccess: "", notifications: "", updates: "", debug: "", credits: "" },
   saveState: { saving: "", saved: "", constrained: "", partial: "", error: "", dirty: "", conflict: "", invalidValueType: "" },
   loadState: {
     loading: "",

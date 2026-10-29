@@ -59,8 +59,29 @@ export interface CreditCatalogItem {
   }>;
 }
 
+/** 设置页“通知”列出的种类。 */
+export type NotificationKindKey = "memoryProtection" | "update" | "accessRequest";
+
+export interface NotificationsSettingsCopy {
+  intro: string;
+  kinds: Record<NotificationKindKey, { title: string; description: string }>;
+  notifyTitle: string;
+  notifyDescription: string;
+  systemTitle: string;
+  systemDescription: string;
+  inAppTitle: string;
+  inAppDescription: string;
+  /** 开关的无障碍名称：种类和那一项，三类的同名开关要分得开。 */
+  switchLabel: (kind: string, option: string) => string;
+  /** 新访问请求的界面提示；program 是后端观察到的可执行文件的文件名。 */
+  accessRequestNoticeTitle: string;
+  accessRequestNoticeMessage: (name: string, program: string) => string;
+  accessRequestNoticeOpen: string;
+}
+
 export interface SettingsCopy {
   updates: UpdatesCopy;
+  notifications: NotificationsSettingsCopy;
   navigationLabel: string;
   sections: Record<SettingsSection, string>;
   saveState: {
@@ -406,12 +427,6 @@ export interface UpdatesCopy {
   offReason: string;
   intervalTitle: string;
   intervalLabel: (minimum: number, maximum: number) => string;
-  inAppNoticeTitle: string;
-  inAppNoticeDescription: string;
-  systemNoticeTitle: string;
-  systemNoticeDescription: string;
-  accessRequestNoticeTitle: string;
-  accessRequestNoticeDescription: string;
   manualCheckNote: string;
   waitingForInternet: string;
   availableVersion: string;

@@ -83,12 +83,14 @@ export const zhRuntimeAndReportsCopy = {
     confirmMessage: {
       optimizationReports: (count: string) => cjkText`將刪除${count}筆歷史報告，作用中的報告保留。`,
       kernelLeaks: (count: string) => cjkText`將刪除${count}筆歷史項目，作用中的項目保留。`,
+      memoryProtection: (count: string) => cjkText`將刪除${count}筆記憶體保護處理記錄。`,
       targetedRecordings: (count: string) => cjkText`將刪除${count}份已完成的錄製報告，進行中的錄製保留。`,
       smartRecords: "將刪除全部智慧排程歷史記錄，待還原的記錄保留。"
     },
     details: {
       optimizationReports: ["刪除後無法復原；同一問題日後再次出現時會重新記錄。", "已信任的軟體和裝置仍維持信任。"],
       kernelLeaks: ["刪除後無法復原；同一問題日後再次出現時會重新記錄。"],
+      memoryProtection: ["刪除後無法復原。", "轉儲的切片檔案不會刪除，仍留在磁碟保留區所在的磁碟上，需要時請自行處理。"],
       targetedRecordings: ["這些報告及其影格間隔與資源資料將被永久刪除，無法復原。"],
       smartRecords: ["刪除後無法復原；記錄序號不會重新開始。"]
     },

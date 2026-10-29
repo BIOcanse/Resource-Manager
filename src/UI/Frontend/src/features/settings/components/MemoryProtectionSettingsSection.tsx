@@ -1,4 +1,4 @@
-import { createSignal, For, Index, Show, type JSX } from "solid-js";
+import { createSignal, For, Index, Show } from "solid-js";
 import { useFrontendRuntime } from "../../../frontendRuntime/FrontendRuntimeContext.tsx";
 import { usePushSource } from "../../../frontendRuntime/push/usePushSource.ts";
 import type { ConfirmDialogRequest } from "../../../ui/patterns/ConfirmDialog.tsx";
@@ -10,13 +10,10 @@ import {
   createNormalRunningPoint, deleteNormalRunningPoint, rebuildMemoryProtectionReserve, selectNormalRunningPoint
 } from "../../../data/memoryProtection/memoryProtectionApi.ts";
 import type {
-  HostMemoryActionRecord,
   HostMemoryProtectionActionMode,
   HostMemoryProtectionLiveStatus,
   HostMemoryProtectionSettings,
   HostMemoryReserveSettings,
-  HostMemorySelectionBasis,
-  HostMemoryTreeRoot,
   NormalRunningPointSummary
 } from "../../../data/memoryProtection/memoryProtectionTypes.ts";
 import { formatBytePair, formatBytes } from "../../../presentation/byteUnits.ts";
@@ -30,14 +27,12 @@ import { uiText } from "../../../text.ts";
 import {
   bytesAsSent,
   exactByteCount,
-  groupMemoryProtectionActions,
   memoryProtectionDecisionText,
   memoryProtectionExclusionText,
-  memoryProtectionOutcomeText,
-  memoryProtectionReasonText,
-  memoryProtectionRecordReasonText
+  memoryProtectionReasonText
 } from "../memoryProtectionPresentation.ts";
 import { NumberField, SegmentedControl } from "./SettingsControls";
+import { MemoryProtectionActionList, MemoryProtectionFact as Fact } from "../../memoryProtection/MemoryProtectionRecordList.tsx";
 
 interface MemoryProtectionSettingsSectionProps {
   /** 草稿里的内存保护设置：开关、阈值、间隔、处理方式、最小进程增长量、进程白名单和保留区列表在这里编辑，随设置页一起保存。 */
@@ -509,14 +504,13 @@ export function MemoryProtectionSettingsSection(props: MemoryProtectionSettingsS
                   <div class="settings-row settings-row-block memory-protection-records">
                     <div class="settings-row-copy">
                       <strong>{copy().recordsTitle}</strong>
-                      <span>{copy().recordsDescription(currentView().recordLimit)}</span>
+                      <span>{copy().recordsDescription(currentView().recordCapacity)}</span>
+                      <Show when={currentView().unrecordedRecordCount > 0}>
+                        <span role="status">{copy().recordsUnrecorded(currentView().unrecordedRecordCount)}</span>
+                      </Show>
                     </div>
                     <Show when={currentView().records.length > 0} fallback={<p class="memory-protection-empty">{copy().recordsEmpty}</p>}>
-                      <ol class="memory-protection-list">
-                        <For each={groupMemoryProtectionActions(currentView().records)}>
-                          {(group) => <ActionGroup actionId={group.actionId} records={group.records} />}
-                        </For>
-                      </ol>
+                      <MemoryProtectionActionList records={currentView().records} />
                     </Show>
                   </div>
 
@@ -615,107 +609,6 @@ function ProtectionStateValues(props: { status: HostMemoryProtectionLiveStatus }
         </Fact>
       </dl>
     </>
-  );
-}
-
-// 一次处理（同一个 actionId）一组：单个进程一组只有一条记录；进程树一组是树里每个进程一条，
-// 包括被跳过的进程（结果为“已跳过”，原因是排除原因）。记录保持后端发来的顺序。
-// 选择依据每组显示一次：同一次处理的记录（包括被跳过的成员）带的是同一个依据。
-function ActionGroup(props: { actionId: string; records: readonly HostMemoryActionRecord[] }) {
-  const copy = () => uiText.memoryProtection;
-  const first = () => props.records[0]!;
-  const rootName = (root: HostMemoryTreeRoot) => copy().recordProcess(root.name ?? copy().treeRootNameUnknown, root.processId);
-  return (
-    <li class="memory-protection-item memory-protection-action" data-target-kind={first().targetKind} data-action-id={props.actionId}>
-      <div class="memory-protection-item-head">
-        <strong class="memory-protection-action-title">{copy().targetKinds[first().targetKind]}</strong>
-      </div>
-      <dl class="memory-protection-facts">
-        <Fact label={copy().actionId}><code class="memory-protection-path">{props.actionId}</code></Fact>
-        <Show when={first().treeRoot}>
-          {(root) => (
-            <>
-              <Fact label={copy().treeRoot}><span class="memory-protection-tree-root">{rootName(root())}</span></Fact>
-              <Fact label={copy().treeRootStartKey}>{root().processStartKey ?? copy().valueNotProvided}</Fact>
-            </>
-          )}
-        </Show>
-        <SelectionBasis basis={first().selectionBasis} />
-      </dl>
-      <ol class="memory-protection-list">
-        <For each={props.records}>{(record) => <ActionRecord record={record} />}</For>
-      </ol>
-    </li>
-  );
-}
-
-function ActionRecord(props: { record: HostMemoryActionRecord }) {
-  const copy = () => uiText.memoryProtection;
-  const record = () => props.record;
-  const memory = (bytes: number | null) => bytes === null ? copy().valueNotProvided : formatBytes(bytes, "memory");
-  return (
-    <li class="memory-protection-item memory-protection-record" data-outcome={record().outcome}>
-      <div class="memory-protection-item-head">
-        <strong>{copy().recordProcess(record().name, record().processId)}</strong>
-        <span class="memory-protection-outcome">{memoryProtectionOutcomeText(record().outcome)}</span>
-      </div>
-      <dl class="memory-protection-facts">
-        <Fact label={copy().recordAt}>{userFacingDateTime(record().at)}</Fact>
-        <Fact label={copy().recordStartKey}>{record().processStartKey}</Fact>
-        <Fact label={copy().recordBaseline}>{memory(record().baselineBytes)}</Fact>
-        <Fact label={copy().recordCurrent}>{memory(record().currentBytes)}</Fact>
-        <Fact label={copy().recordGrowth}>{record().growthBytes === null ? copy().valueNotProvided : bytesAsSent(record().growthBytes!)}</Fact>
-        <Fact label={copy().recordBytesWritten}>{formatBytes(record().bytesWritten, "storage")}</Fact>
-        <Show when={record().reason}>
-          <Fact label={copy().recordReason} wide fullContent={record().reason!}>
-            <span class="memory-protection-reason" data-reason={record().reason!}>{memoryProtectionRecordReasonText(record())}</span>
-          </Fact>
-        </Show>
-        <Show when={record().detail}>
-          {(detail) => (
-            <Fact label={copy().recordDetail} wide fullContent={detail()}>
-              <span class="memory-protection-detail">{memoryProtectionReasonText(detail())}</span>
-            </Fact>
-          )}
-        </Show>
-        <Fact label={copy().recordDumpPaths} wide>
-          <Show when={record().dumpPaths.length > 0} fallback={copy().recordNoDumpPaths}>
-            <ol class="memory-protection-paths">
-              <For each={record().dumpPaths}>{(path) => <li><code class="memory-protection-path">{path}</code></li>}</For>
-            </ol>
-          </Show>
-        </Fact>
-      </dl>
-    </li>
-  );
-}
-
-// 依据照后端给的值显示：规则用的排序值（单个进程的增长量或直接子进程内存增量）和这次比较用的最小进程增长量。
-function SelectionBasis(props: { basis: HostMemorySelectionBasis }) {
-  const copy = () => uiText.memoryProtection;
-  return (
-    <>
-      <Fact label={copy().selectionRule} wide>
-        <span class="memory-protection-selection-rule" data-rule={props.basis.rule}>{copy().selectionRules[props.basis.rule]}</span>
-      </Fact>
-      <Show when={props.basis.processGrowthBytes !== null}>
-        <Fact label={copy().selectionProcessGrowth}>{bytesAsSent(props.basis.processGrowthBytes!)}</Fact>
-      </Show>
-      <Show when={props.basis.directChildrenMemoryGrowthBytes !== null}>
-        <Fact label={copy().selectionChildrenGrowth}>{bytesAsSent(props.basis.directChildrenMemoryGrowthBytes!)}</Fact>
-      </Show>
-      <Fact label={copy().selectionMinimum}>{formatBytes(props.basis.minimumProcessGrowthBytes, "memory")}</Fact>
-    </>
-  );
-}
-
-/** 一项记录。fullContent：悬停这一项的值看的完整内容（例如翻译前的原始原因码）。 */
-function Fact(props: { label: string; wide?: boolean; fullContent?: string; children: JSX.Element }) {
-  return (
-    <div class="memory-protection-fact" classList={{ wide: props.wide === true }}>
-      <dt>{props.label}</dt>
-      <dd data-full-content={props.fullContent}>{props.children}</dd>
-    </div>
   );
 }
 

@@ -103,6 +103,9 @@ export interface HostMemoryActionRecord {
   targetKind: HostMemoryActionTargetKind;
   /** Non-null exactly for processTree records. */
   treeRoot: HostMemoryTreeRoot | null;
+  /** A record is written once its process is handled, so it is always a history report entry
+   * (docs/report_lifecycle_2026-10-28.md); the action in progress is status.currentActionId. */
+  state: "history";
 }
 /** The sampled status frame of the subscription; records and the point have their own frames. */
 export interface HostMemoryProtectionLiveStatus {
@@ -130,23 +133,27 @@ export interface HostMemoryProtectionLiveStatus {
 /** GET /api/memory-protection/status and the reserve rebuild response. */
 export interface HostMemoryProtectionStatus extends HostMemoryProtectionLiveStatus {
   normalRunningPoint: NormalRunningPointSummary | null;
-  actionRecordLimit: number;
-  /** Newest first, as sent. */
+  /** The record capacity (freedom point memory_protection.record_capacity); a full list writes no new records. */
+  recordCapacity: number;
+  /** Records not written because the list was full; clearing history resets it. */
+  unrecordedRecordCount: number;
+  /** All records, newest first, as sent. */
   actions: HostMemoryActionRecord[];
 }
 /** One value of /api/memory-protection/subscribe, dispatched on type. */
 export type HostMemoryProtectionFrame =
   | { type: "status"; status: HostMemoryProtectionLiveStatus }
-  | { type: "records"; records: HostMemoryActionRecord[]; limit: number }
+  | { type: "records"; records: HostMemoryActionRecord[]; /** The record capacity. */ limit: number; unrecordedRecordCount: number }
   | { type: "record"; record: HostMemoryActionRecord }
   | { type: "normalRunningPoint"; normalRunningPoint: NormalRunningPoint | null }
   | { type: "normalRunningPoints"; normalRunningPoints: NormalRunningPointList };
 /** What the subscription owner folds its frames into; ready only once status, records, the point and the saved points have all arrived. */
 export interface HostMemoryProtectionView {
   status: HostMemoryProtectionLiveStatus;
-  /** Newest first, at most recordLimit. */
+  /** All records, newest first. The backend writes none past recordCapacity and counts them in unrecordedRecordCount. */
   records: HostMemoryActionRecord[];
-  recordLimit: number;
+  recordCapacity: number;
+  unrecordedRecordCount: number;
   /** The point in effect; null when none is in effect (none saved, or the one in effect was deleted). */
   normalRunningPoint: NormalRunningPoint | null;
   /** Every saved point and the id in effect; sent on subscribe and whenever a point is created, selected or deleted. */

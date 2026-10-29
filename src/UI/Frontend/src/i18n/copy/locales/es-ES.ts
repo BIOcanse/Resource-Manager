@@ -2366,12 +2366,14 @@ const esEsAppCopy: AppCopy = {
     confirmMessage: {
       optimizationReports: (count: string) => `Informes del historial que se eliminarán: ${count}. Los informes activos se conservan.`,
       kernelLeaks: (count: string) => `Entradas del historial que se eliminarán: ${count}. Las entradas activas se conservan.`,
+      memoryProtection: (count: string) => `Registros de actuación de la protección de memoria que se eliminarán: ${count}.`,
       targetedRecordings: (count: string) => `Informes de grabación completados que se eliminarán: ${count}. Una grabación en curso se conserva.`,
       smartRecords: "Se eliminarán todos los registros del historial de la programación inteligente. Los registros pendientes de restaurar se conservan."
     },
     details: {
       optimizationReports: ["Esta acción no se puede deshacer. Si el mismo problema vuelve a producirse, se registrará de nuevo.", "El software y los dispositivos de confianza siguen siendo de confianza."],
       kernelLeaks: ["Esta acción no se puede deshacer. Si el mismo problema vuelve a producirse, se registrará de nuevo."],
+      memoryProtection: ["Esta acción no se puede deshacer.", "Los archivos de fragmento no se eliminan; permanecen en el disco de la reserva de disco hasta que los elimines."],
       targetedRecordings: ["Estos informes y sus intervalos de fotogramas y datos de recursos se eliminarán de forma permanente. Esta acción no se puede deshacer."],
       smartRecords: ["Esta acción no se puede deshacer. Los números de secuencia de los registros no vuelven a empezar."]
     },

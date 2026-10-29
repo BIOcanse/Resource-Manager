@@ -9,6 +9,7 @@ const appearanceSettings = readSource("../src/features/settings/components/Appea
 const refreshCadenceSetting = readSource("../src/features/settings/components/RefreshCadenceSetting.tsx");
 const settingsControls = readSource("../src/features/settings/components/SettingsControls.tsx");
 const updatesSettings = readSource("../src/features/settings/components/UpdatesSettingsSection.tsx");
+const notificationsSettings = readSource("../src/features/settings/components/NotificationsSettingsSection.tsx");
 const trustedAccessManager = readSource("../src/features/settings/components/TrustedAccessManager.tsx");
 const trustedAccessApi = readSource("../src/features/trustedAccess/trustedAccessApi.ts");
 const accessRequestSnapshotContext = readSource("../src/features/trustedAccess/AccessRequestSnapshotContext.tsx");
@@ -34,7 +35,10 @@ assert.match(settingsLocaleFactory, /type: \{ label: "类型固定色"/);
 assert.match(settingsLocaleFactory, /distinct: \{ label: "异色区分"/);
 assert.match(settingsLocaleFactory, /whole interface/);
 assert.match(settingsLoader, /settingsLanguageDescription: ""/);
-assert.match(updatesSettings, /notificationSwitch\("accessRequestSystem", text\(\)\.accessRequestNoticeTitle, text\(\)\.accessRequestNoticeDescription\)/);
+// Notification switches live in the notifications section (docs/notifications_2026-10-29.md), labelled per kind.
+assert.doesNotMatch(updatesSettings, /notifications|SwitchControl ariaLabel=\{title\}/);
+assert.match(notificationsSettings, /ariaLabel=\{text\(\)\.switchLabel\(kind\(\)\.title, title\(\)\)\}/);
+assert.match(notificationsSettings, /text\(\)\.kinds\[entry\.kind\]/);
 
 // Trusted-access requests use the shared backend subscription source; the caller facts are informational,
 // scopes shown for approval come only from the request, and the default secret has no frontend read path.

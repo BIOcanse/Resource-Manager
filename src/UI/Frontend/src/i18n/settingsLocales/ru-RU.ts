@@ -2,6 +2,24 @@ import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 import { plural } from "../plural.ts";
 
 export default createSettingsLocale("ru-RU", {
+  "notifications": {
+    "intro": "Для каждого вида уведомлений выберите, показывать ли его и какими способами. Уведомления Windows показывает трей; уведомления в приложении появляются, пока открыт интерфейс.",
+    "kinds": {
+      "memoryProtection": { "title": "Защита памяти компьютера", "description": "Уведомляет, когда защита памяти компьютера завершает процесс или дерево процессов, с указанием цели, числа процессов и объёма дампа." },
+      "update": { "title": "Новая версия", "description": "Уведомляет, когда доступна новая версия." },
+      "accessRequest": { "title": "Запросы доступа", "description": "Уведомляет, когда новый запрос доверенного доступа ожидает одобрения, с указанием имени и программы запрашивающей стороны." }
+    },
+    "notifyTitle": "Показывать уведомления",
+    "notifyDescription": "Если выключено, уведомления этого вида не показываются никаким способом; выбор для обоих способов сохраняется.",
+    "systemTitle": "Уведомление Windows",
+    "systemDescription": "Трей показывает системное уведомление Windows, в том числе при закрытом главном окне; щелчок по нему открывает Resource Manager.",
+    "inAppTitle": "Уведомление в приложении",
+    "inAppDescription": "Показывается внутри интерфейса, пока он открыт; уведомления, пришедшие при закрытом интерфейсе, позже не показываются.",
+    "switchLabel": (kind: string, option: string) => `${kind}: ${option}`,
+    "accessRequestNoticeTitle": "Новый запрос доступа ожидает одобрения",
+    "accessRequestNoticeMessage": (name: string, program: string) => `${name} (${program}) запрашивает доверенный доступ.`,
+    "accessRequestNoticeOpen": "Открыть запросы доступа"
+  },
   "updates": {
     "modeTitle": "Режим обновления",
     "modeDescription": "В режиме «Выкл.» автоматических проверок нет. Ручная проверка и ручной выбор версии доступны в любом режиме.",
@@ -12,12 +30,6 @@ export default createSettingsLocale("ru-RU", {
     "offReason": "Режим «Выкл.»: автоматических проверок нет, эти два параметра не действуют; их значения сохраняются.",
     "intervalTitle": "Интервал проверки (часы)",
     "intervalLabel": (minimum: number, maximum: number) => `Интервал (часы, ${minimum}–${maximum})`,
-    "inAppNoticeTitle": "Уведомление о новой версии в интерфейсе",
-    "inAppNoticeDescription": "Пока интерфейс открыт, о новой версии сообщается один раз; о той же версии повторно не сообщается.",
-    "accessRequestNoticeTitle": "Системное уведомление о новом запросе доступа",
-    "accessRequestNoticeDescription": "Показывает уведомление Windows, когда при скрытом интерфейсе поступает новый запрос доверенного доступа, ожидающий одобрения.",
-    "systemNoticeTitle": "Системное уведомление Windows",
-    "systemNoticeDescription": "Отправляет одно системное уведомление, когда приложение не видно. Переключатель только сохраняет настройку; выполняет её оболочка рабочего стола (трей).",
     "manualCheckNote": "Ручная проверка выполняется сразу, не дожидаясь интернета, в любом режиме.",
     "waitingForInternet": "Ожидание интернета; проверка начнётся, как только он станет доступен.",
     "availableVersion": "Найдена новая версия: ",
@@ -80,6 +92,7 @@ export default createSettingsLocale("ru-RU", {
     "systemIntegration": "Интеграция с системой",
     "publicServices": "Общие службы",
     "trustedAccess": "Доверенный доступ",
+    "notifications": "Уведомления",
     "updates": "Обновления и версии",
     "debug": "Отладка",
     "credits": "Благодарности"

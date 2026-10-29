@@ -128,14 +128,7 @@ internal sealed partial class FrontendPreferencesOwner
             var choices = current.Overlays.ToDictionary(static pair => pair.Key,
                 static pair => new FrontendOverlayPresentation { Enabled = pair.Value.Enabled, Mode = pair.Value.Mode },
                 StringComparer.OrdinalIgnoreCase);
-            // 已提示版本是“提示过哪个版本”的记录，不是偏好：重置偏好点时保留它，同一版本不会再提示。
-            var notified = current.Notifications.UpdateInAppNotifiedVersion;
-            if (choices.Count != 0 || notified is not null)
-                return Save(pointValues with
-                {
-                    Overlays = choices,
-                    Notifications = pointValues.Notifications with { UpdateInAppNotifiedVersion = notified }
-                });
+            if (choices.Count != 0) return Save(pointValues with { Overlays = choices });
             WriteImportMarker();
             WriteDashboardImportMarker();
             File.Delete(cachePath);
@@ -168,6 +161,10 @@ internal sealed partial class FrontendPreferencesOwner
     //   upgrade starts after this release.
     // - frontend-preferences-animation-style-v1: see MigrateAnimationAppearance.
     // - frontend-preferences-nvml-fb-used-v1: see MigrateNvmlFbUsedField.
+    // - frontend-preferences-notified-version-v1: notifications.updateInAppNotifiedVersion recorded which version the
+    //   in-app update notice had shown; since 2026-10-29 both channels follow the notification sequence
+    //   (docs/notifications_2026-10-29.md), so the record is dropped. Delete once every supported upgrade starts after
+    //   that release.
     private bool cacheFieldsMigrated;
 
     private void MigrateCacheFields()
@@ -190,6 +187,7 @@ internal sealed partial class FrontendPreferencesOwner
                 changed |= MigrateAnimationAppearance(appearance);
             }
             changed |= MigrateNvmlFbUsedField(root);
+            changed |= root?["notifications"] is JsonObject notifications && notifications.Remove("updateInAppNotifiedVersion");
             if (changed) WriteAtomic(cachePath, JsonSerializer.SerializeToUtf8Bytes(root, Json));
         }
         cacheFieldsMigrated = true;

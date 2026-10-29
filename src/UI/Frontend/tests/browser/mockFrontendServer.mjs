@@ -243,6 +243,12 @@ const operationSubscribers = new Set();
 const managementInventoryRevisionSubscribers = new Set();
 const subscriptionChannelResponses = new Set();
 const productUpdateStatusSubscribers = new Set();
+// /api/notifications/subscribe：订阅时一次当前列表，之后每次变化一次整份列表。
+const backendNotificationSubscribers = new Set();
+let backendNotificationList = [];
+function publishBackendNotifications(subscriber) {
+  subscriber.write({ notifications: structuredClone(backendNotificationList) });
+}
 const kernelLeakReportSubscribers = new Set();
 // POST /api/kernel-leaks/history/clear 之后，当前场景的帧不再带历史条目（后端删除后发布新帧）；换场景或重置时恢复。
 let kernelLeakHistoryCleared = false;
@@ -885,6 +891,14 @@ async function handleApi(request, response, url) {
     kernelLeakHistoryCleared = true;
     for (const subscriber of [...kernelLeakReportSubscribers]) publishKernelLeakReportValue(subscriber);
     return json(response, 200, { removedCount });
+  }
+  if (path === "/api/memory-protection/records/history/clear" && request.method === "POST") {
+    const removedCount = memoryProtection.clearRecordHistory();
+    publishMemoryProtectionFrame({ type: "records", ...memoryProtection.records() });
+    return json(response, 200, { removedCount });
+  }
+  if (path === "/api/notifications" && request.method === "GET") {
+    return json(response, 200, { notifications: structuredClone(backendNotificationList) });
   }
   if (path === "/api/targeted-recordings/history/clear" && request.method === "POST") {
     let removedCount = 0;
@@ -1648,19 +1662,25 @@ function applyScenarioPatch(patch) {
   if (patch.displayEdid === "typex" && !recordedTypeXState) throw new Error("TypeX requires real RM_EDID_UI_TYPEX_STATE_JSON output; no fallback");
   Object.assign(scenario, patch);
   if (Object.hasOwn(patch, "memoryProtection")) memoryProtection.scenario(patch.memoryProtection);
-  // 测试用：下一次重放带的记录上限（换场景后恢复 64）。
-  if (Object.hasOwn(patch, "memoryProtectionRecordLimit")) memoryProtection.setRecordLimit(patch.memoryProtectionRecordLimit);
-  // 换场景、改上限相当于后端重启后重新订阅：已有订阅收到完整重放。
-  if (Object.hasOwn(patch, "memoryProtection") || Object.hasOwn(patch, "memoryProtectionRecordLimit")) replayMemoryProtection();
+  // 测试用：下一次重放带的记录容量（换场景后恢复后端默认 4096）。
+  if (Object.hasOwn(patch, "memoryProtectionRecordCapacity")) memoryProtection.setRecordCapacity(patch.memoryProtectionRecordCapacity);
+  // 换场景、改容量相当于后端重启后重新订阅：已有订阅收到完整重放。
+  if (Object.hasOwn(patch, "memoryProtection") || Object.hasOwn(patch, "memoryProtectionRecordCapacity")) replayMemoryProtection();
   // 测试用：照后端 Begin/Finish 的方式发布当前处理编号和最近一次判断（{ decisionReason?, currentActionId? }）。
   if (Object.hasOwn(patch, "memoryProtectionDecision")) {
     memoryProtection.publishDecision(patch.memoryProtectionDecision);
     publishMemoryProtectionStatus();
   }
   // 测试用：按处理事件发布新增或更新的记录（字段缺省见 memoryProtectionFixture 的 upsertRecord），一条一帧。
+  // 容量满了没记下时，未记下条数变了，后端发 records 帧。
   for (const fields of patch.memoryProtectionRecords ?? []) {
     const record = memoryProtection.upsertRecord(fields);
-    publishMemoryProtectionFrame({ type: "record", record });
+    publishMemoryProtectionFrame(record === null ? { type: "records", ...memoryProtection.records() } : { type: "record", record });
+  }
+  // 测试用：通知所有者的整份列表（docs/notifications_2026-10-29.md，从旧到新，序号由测试给），订阅随即收到整份列表。
+  if (Object.hasOwn(patch, "backendNotifications")) {
+    backendNotificationList = structuredClone(patch.backendNotifications);
+    for (const subscriber of [...backendNotificationSubscribers]) publishBackendNotifications(subscriber);
   }
   // 测试用：正常运行点的上限（后端是常量 32），列表照此报告、新建照此拒绝。
   if (Object.hasOwn(patch, "memoryProtectionPointLimit")) {
@@ -1858,6 +1878,7 @@ function resetScenario() {
   Object.assign(appSettings, structuredClone(defaultAppSettings));
   memoryProtection.scenario("no-point");
   replayMemoryProtection();
+  backendNotificationList = [];
   softwarePolicies.clear();
   appSettingsRuntimeDisposition = "committedAndApplied";
   for (const key of Object.keys(requestTelemetry)) {
@@ -3458,7 +3479,9 @@ async function subscriptionChannelStream(request, response) {
     const productUpdateStatus = requestUrl.pathname === "/api/updates/product/status/subscribe";
     const kernelLeakReport = requestUrl.pathname === "/api/kernel-leaks/subscribe";
     const memoryProtectionStatus = requestUrl.pathname === "/api/memory-protection/subscribe";
-    const eventOnly = operation || managementInventoryRevision || productUpdateStatus || kernelLeakReport || memoryProtectionStatus;
+    const backendNotifications = requestUrl.pathname === "/api/notifications/subscribe";
+    const eventOnly = operation || managementInventoryRevision || productUpdateStatus || kernelLeakReport || memoryProtectionStatus
+      || backendNotifications;
     let createPayload;
     try { createPayload = eventOnly ? null : subscriptionPayloadFactory(requestUrl, item.fields); }
     catch { return json(response, 400, { error: "One or more subscription queries are invalid." }); }
@@ -3473,6 +3496,7 @@ async function subscriptionChannelStream(request, response) {
       productUpdateStatus,
       kernelLeakReport,
       memoryProtectionStatus,
+      backendNotifications,
       createPayload
     });
   }
@@ -3529,6 +3553,21 @@ async function subscriptionChannelStream(request, response) {
       replayMemoryProtectionTo(subscriber);
       releases.push(() => {
         memoryProtectionSubscribers.delete(subscriber);
+        releaseTelemetry();
+      });
+      continue;
+    }
+
+    if (subscription.backendNotifications) {
+      const subscriber = {
+        response,
+        requestUrl: subscription.requestUrl,
+        write: (value) => writeSubscriptionChannelFrame(response, subscription.id, value)
+      };
+      backendNotificationSubscribers.add(subscriber);
+      publishBackendNotifications(subscriber);
+      releases.push(() => {
+        backendNotificationSubscribers.delete(subscriber);
         releaseTelemetry();
       });
       continue;
@@ -3652,7 +3691,8 @@ const subscriptionChannelSelectors = new Set([
   "/api/access-requests/subscribe",
   "/api/updates/product/status/subscribe",
   "/api/kernel-leaks/subscribe",
-  "/api/memory-protection/subscribe"
+  "/api/memory-protection/subscribe",
+  "/api/notifications/subscribe"
 ]);
 
 // 调度段的 failure 与事实排除，形状同后端 tests/App/Fixtures/Optimization/smart-status.json 的三例

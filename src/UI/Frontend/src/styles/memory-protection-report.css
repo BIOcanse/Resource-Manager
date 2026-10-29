@@ -1,0 +1,39 @@
+/* 详细信息 → 内存保护记录。与其他报告分页（kernel-leak-report.css、targeted-report.css）同一种面板；
+   记录列表本身的样式和设置页分区共用（settings.css 的 .memory-protection-*）。
+   这里不写 transition/animation，动效统一在 motion.css。 */
+.memory-protection-report {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--elev-1), var(--edge-highlight);
+}
+
+/* 页面标题只给读屏（分页条已显示页名），动作区靠右，与内核泄漏报告的标题栏一致。 */
+.memory-protection-report-header {
+  margin: 0;
+  padding: 0;
+}
+
+.memory-protection-report-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.memory-protection-report-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.memory-protection-report-note.warning {
+  color: var(--warn);
+}

@@ -1,5 +1,23 @@
 import { createSettingsLocale } from "../settingsLocaleFactory.ts";
 export default createSettingsLocale("zh-TW", {
+  "notifications": {
+    "intro": "依類別設定通知是否彈出、經由哪些途徑彈出。Windows 通知由工作列通知區發出，軟體內提示在介面顯示時出現。",
+    "kinds": {
+      "memoryProtection": { "title": "主機記憶體保護", "description": "主機記憶體保護結束一個處理程序或一棵處理程序樹後通知，寫明處理對象、處理程序數和轉儲量。" },
+      "update": { "title": "新版本", "description": "發現可用的新版本後通知。" },
+      "accessRequest": { "title": "存取請求", "description": "有新的可信存取請求等待核准時通知，寫明請求方的名稱和程式。" }
+    },
+    "notifyTitle": "彈出通知",
+    "notifyDescription": "關閉後這一類通知不經任何途徑彈出；兩條途徑各自的選擇會保留。",
+    "systemTitle": "Windows 通知",
+    "systemDescription": "由工作列通知區發出 Windows 系統通知，主視窗關閉時也會彈出；點擊通知開啟資源管理器。",
+    "inAppTitle": "軟體內提示",
+    "inAppDescription": "介面顯示時在介面內提示；介面關閉期間的通知不補顯示。",
+    "switchLabel": (kind: string, option: string) => `${kind}：${option}`,
+    "accessRequestNoticeTitle": "新的存取請求待核准",
+    "accessRequestNoticeMessage": (name: string, program: string) => `${name}（${program}）請求可信存取。`,
+    "accessRequestNoticeOpen": "檢視存取請求"
+  },
   "updates": {
     "modeTitle": "更新方式",
     "modeDescription": "關閉時不做任何自動檢查；手動檢查和手動選擇版本在三檔下都可用。",
@@ -10,12 +28,6 @@ export default createSettingsLocale("zh-TW", {
     "offReason": "更新方式為「關閉」時不做自動檢查，間隔檢查和間隔不起作用；設定值會保留。",
     "intervalTitle": "檢查間隔（小時）",
     "intervalLabel": (minimum: number, maximum: number) => `間隔（小時，${minimum}–${maximum}）`,
-    "inAppNoticeTitle": "介面內提示新版本",
-    "inAppNoticeDescription": "介面執行時發現新版本，在介面內提示一次；同一版本不再提示。",
-    "accessRequestNoticeTitle": "新存取請求的系統通知",
-    "accessRequestNoticeDescription": "介面不可見時，收到新的待核准信任存取請求會顯示 Windows 通知。",
-    "systemNoticeTitle": "Windows 系統通知",
-    "systemNoticeDescription": "軟體不可見時發一次系統通知。此開關只儲存偏好，由桌面外殼（工作列通知區）執行。",
     "manualCheckNote": "手動檢查立即進行，不等連網；三檔下都可用。",
     "waitingForInternet": "正在等待連網；連網後立即檢查。",
     "availableVersion": "發現的新版本：",
@@ -78,6 +90,7 @@ export default createSettingsLocale("zh-TW", {
     "systemIntegration": "系統整合",
     "publicServices": "公共服務",
     "trustedAccess": "可信存取",
+    "notifications": "通知",
     "updates": "更新與版本",
     "debug": "偵錯",
     "credits": "致謝"

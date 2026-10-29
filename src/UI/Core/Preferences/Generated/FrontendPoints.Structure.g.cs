@@ -81,6 +81,18 @@ public static class @FrontendPoints
     public static readonly string @UpdateSystem = @FrontendPointsValues.@__fpValue_UpdateSystem;
     [global::FreedomPoint.FreedomPointBinding(0x0001000200410002UL)]
     public static readonly string @AccessRequestSystem = @FrontendPointsValues.@__fpValue_AccessRequestSystem;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200410003UL)]
+    public static readonly string @MemoryProtectionSystem = @FrontendPointsValues.@__fpValue_MemoryProtectionSystem;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200410004UL)]
+    public static readonly string @UpdateNotify = @FrontendPointsValues.@__fpValue_UpdateNotify;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200410005UL)]
+    public static readonly string @AccessRequestNotify = @FrontendPointsValues.@__fpValue_AccessRequestNotify;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200410006UL)]
+    public static readonly string @AccessRequestInApp = @FrontendPointsValues.@__fpValue_AccessRequestInApp;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200410007UL)]
+    public static readonly string @MemoryProtectionNotify = @FrontendPointsValues.@__fpValue_MemoryProtectionNotify;
+    [global::FreedomPoint.FreedomPointBinding(0x0001000200410008UL)]
+    public static readonly string @MemoryProtectionInApp = @FrontendPointsValues.@__fpValue_MemoryProtectionInApp;
 }
 public sealed class @FrontendPointsRuntime
 {

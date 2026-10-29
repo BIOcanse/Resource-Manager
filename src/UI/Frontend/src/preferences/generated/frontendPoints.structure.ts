@@ -60,6 +60,12 @@ export namespace ResourceManager {
       readonly UpdateInApp: __fpDeepReadonly<"on" | "off">;
       readonly UpdateSystem: __fpDeepReadonly<"on" | "off">;
       readonly AccessRequestSystem: __fpDeepReadonly<"on" | "off">;
+      readonly MemoryProtectionSystem: __fpDeepReadonly<"on" | "off">;
+      readonly UpdateNotify: __fpDeepReadonly<"on" | "off">;
+      readonly AccessRequestNotify: __fpDeepReadonly<"on" | "off">;
+      readonly AccessRequestInApp: __fpDeepReadonly<"on" | "off">;
+      readonly MemoryProtectionNotify: __fpDeepReadonly<"on" | "off">;
+      readonly MemoryProtectionInApp: __fpDeepReadonly<"on" | "off">;
     }
     export interface __fpRuntimeInitialValues {
     }

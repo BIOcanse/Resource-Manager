@@ -18,15 +18,11 @@ export type FrontendRefresh = {
   localSystem: AppPresetNumericSetting;
 };
 export type OverlayPresentation = Omit<PerformanceOverlaySettings, "softwareId" | "injectionModules">;
-/** 通知开关（设置页草稿可改）和界面内更新提示已提示过的版本（只由界面内提示写入）。 */
-export interface FrontendNotifications extends AppNotificationSettings {
-  updateInAppNotifiedVersion: string | null;
-}
 export interface FrontendPreferencesCache {
   overlaySelectionVersion?: 1;
   appearance: AppAppearanceSettings;
   refresh: FrontendRefresh;
-  notifications: FrontendNotifications;
+  notifications: AppNotificationSettings;
   overlays: Record<string, OverlayPresentation>;
   dashboard?: DashboardSettings | null;
 }
@@ -53,7 +49,10 @@ export function pointPreferences(): FrontendPreferencesCache {
       monitor: { ...points.Monitor },
       resourceTable: { ...points.ResourceTable }, localSystem: { ...points.LocalSystem }
     },
-    notifications: { updateInApp: points.UpdateInApp, updateSystem: points.UpdateSystem, accessRequestSystem: points.AccessRequestSystem, updateInAppNotifiedVersion: null },
+    notifications: { updateNotify: points.UpdateNotify, updateInApp: points.UpdateInApp, updateSystem: points.UpdateSystem,
+      accessRequestNotify: points.AccessRequestNotify, accessRequestInApp: points.AccessRequestInApp,
+      accessRequestSystem: points.AccessRequestSystem, memoryProtectionNotify: points.MemoryProtectionNotify,
+      memoryProtectionInApp: points.MemoryProtectionInApp, memoryProtectionSystem: points.MemoryProtectionSystem },
     overlays: {}, dashboard: null
   };
 }
@@ -133,8 +132,7 @@ export function resolveFrontendRefresh(refresh: FrontendRefresh): FrontendRefres
 export function applyFrontendPreferences(settings: Omit<AppSettings, "appearance" | "performance" | "notifications"> & { performance?: Partial<AppPerformanceSettings> }, preferences: FrontendPreferencesCache): AppSettings {
   return {
     ...settings, appearance: structuredClone(preferences.appearance),
-    notifications: { updateInApp: preferences.notifications.updateInApp, updateSystem: preferences.notifications.updateSystem,
-      accessRequestSystem: preferences.notifications.accessRequestSystem },
+    notifications: { ...preferences.notifications },
     performance: settings.performance ? { ...settings.performance,
       monitorRefreshIntervalMs: { ...preferences.refresh.monitor },
       resourceTableRefreshIntervalMs: { ...preferences.refresh.resourceTable },
@@ -149,7 +147,7 @@ export function preferencesFromSettings(value: AppSettings, existing: FrontendPr
     refresh: {
       monitor: { ...performance.monitorRefreshIntervalMs }, resourceTable: { ...performance.resourceTableRefreshIntervalMs },
       localSystem: { ...performance.localSystemRefreshIntervalMs } },
-    notifications: { ...value.notifications!, updateInAppNotifiedVersion: existing.notifications.updateInAppNotifiedVersion },
+    notifications: { ...value.notifications! },
     overlays: existing.overlays, dashboard: existing.dashboard
   };
 }
@@ -197,12 +195,16 @@ export function createFrontendPreferencesClient(storage?: Pick<Storage, "getItem
     const text = browserStorage?.getItem(key);
     if (text == null) return pointPreferences();
     const value = JSON.parse(text) as FrontendPreferencesCache;
-    // 与原生壳相同：旧缓存缺少的通知字段按本次构建的点值读取，保留已有选择和记录；旧的动画两项按迁移换成动画风格。
+    // 与原生壳相同：旧缓存缺少的通知字段按本次构建的点值读取，保留已有选择；旧的动画两项按迁移换成动画风格。
     const appearance = value.appearance ? migrateAnimationAppearance(value.appearance) : undefined;
     // 2026-10-26 删除读数来源设置；旧缓存只丢弃这一项，后续保存不再写回。
     if (appearance) delete (appearance as AppAppearanceSettings & { readingSourceMode?: unknown }).readingSourceMode;
+    // Migration frontend-preferences-notified-version-v1（与原生壳 FrontendPreferencesOwner 同名迁移相同）：界面内更新提示
+    // 2026-10-29 起跟随通知序号，旧缓存的已提示版本记录丢弃。删除条件：下一个不再读旧版本缓存的发行。
+    const { updateInAppNotifiedVersion: _notified, ...notifications } =
+      (value.notifications ?? {}) as Partial<AppNotificationSettings> & { updateInAppNotifiedVersion?: unknown };
     return { ...migrateNvmlFbUsedField(value), ...(appearance ? { appearance } : {}),
-      notifications: { ...pointPreferences().notifications, ...value.notifications } };
+      notifications: { ...pointPreferences().notifications, ...notifications } };
   };
   let writes = Promise.resolve();
   const save = (value: FrontendPreferencesCache, scope?: "global" | "dashboard" | { overlay: string }) => {
@@ -233,10 +235,7 @@ export function createFrontendPreferencesClient(storage?: Pick<Storage, "getItem
     const value = pointPreferences();
     value.overlays = Object.fromEntries(Object.entries(current.overlays).map(([id, overlay]) =>
       [id, { ...pointOverlayPresentation(), enabled: overlay.enabled ?? false, mode: overlay.mode ?? "external" }]));
-    // 与原生壳相同：已提示版本是“提示过哪个版本”的记录，不是偏好，重置偏好点时保留。
-    value.notifications.updateInAppNotifiedVersion = current.notifications.updateInAppNotifiedVersion;
-    if (Object.keys(value.overlays).length || value.notifications.updateInAppNotifiedVersion !== null)
-      browserStorage.setItem(key, JSON.stringify(value));
+    if (Object.keys(value.overlays).length) browserStorage.setItem(key, JSON.stringify(value));
     else browserStorage.removeItem(key);
     notifyReset();
     return value;
