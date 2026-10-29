@@ -4,7 +4,7 @@
 
 ## 交给 Claude 管理会话的事项
 
-Codex 线程无法直接给 Claude Code 会话投递消息。需要 Claude 处理的事项（提交、推送、入库清单、请它核对的结果）写进 `docs/claude_inbox.md`：在文件末尾追加一节，标题写 UTC 时间、线程 ID 和事由，正文写清要做什么、相关文件路径和当前状态。Claude 会在后台监视这个文件，处理完后通过 CTA 回复对应线程。
+Codex 线程无法直接给 Claude Code 会话投递消息。需要 Claude 处理的事项（提交、推送、入库清单、请它核对的结果）写进主开发检出（`git worktree list` 列出的第一项）的 `docs/claude_inbox.md`：在文件末尾追加一节，标题写 UTC 时间、线程 ID 和事由，正文写清要做什么、相关文件路径和当前状态。在 worktree 里工作时，收件箱和要写的文档一律写主开发检出的 `docs/`，用它的绝对路径，不写 worktree 里的相对 `docs/`：`docs/` 不进 git，worktree 里的副本没人看，回收时会丢。Claude 会在后台监视这个文件，处理完后通过 CTA 回复对应线程。
 
 ## 任务与验证目录
 
