@@ -7,7 +7,6 @@ import type { RequestClient } from "../request/RequestClient.ts";
 import type { CurrentValueSource } from "../push/PushValueSourceFamily.ts";
 import type { SourceSnapshot } from "../source/SourceSnapshot.ts";
 import { isTerminalOperation } from "./operationMerge.ts";
-import { sendElevatedBackendJson } from "../../api/elevatedBackendRequest.ts";
 import { uiText } from "../../text.ts";
 
 export type OperationRegistryStatus =
@@ -47,13 +46,8 @@ interface OperationCommandFields {
   readonly fallbackError: string;
 }
 
-/**
- * 一条操作命令。elevated 是修改机器的操作（后端要求 machine.write 和提权的管理员）：经宿主的提权后端客户端发出，
- * Windows 先请求管理员确认；提权通道不能中途取消，所以这类命令没有 signal。省略 elevated 时用普通请求客户端。
- */
-export type OperationCommandDescriptor = OperationCommandFields & (
-  | { readonly elevated?: undefined; readonly signal?: AbortSignal }
-  | { readonly elevated: true; readonly signal?: undefined });
+/** 一条操作命令，经普通请求客户端发出。 */
+export type OperationCommandDescriptor = OperationCommandFields & { readonly signal?: AbortSignal };
 
 export interface OperationRegistryOptions {
   readonly active?: boolean;
@@ -158,10 +152,6 @@ export class OperationRegistry {
     this.throwIfDisposed();
     if (!this.snapshotValue.actionsEnabled) {
       throw new Error(uiText.operationRegistry.noCurrentValue);
-    }
-    if (descriptor.elevated) {
-      return operationSnapshotDecoder.decode(
-        await sendElevatedBackendJson<unknown>("POST", descriptor.url, descriptor.body, descriptor.fallbackError));
     }
     const outcome = await this.requestClient.execute({
       key: descriptor.key,

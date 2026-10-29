@@ -107,8 +107,6 @@ internal sealed class NativeWindowApplicationContext : ApplicationContext
         var window = form = new MainForm(
             _ => Send("preferences-changed", "scope", "backend"),
             () => Send("preferences-changed", "scope", "backend"), host,
-            batch => WithTransportAsync(session => session.ExecuteElevatedProcessActionAsync(batch, stopping.Token)),
-            mutation => WithTransportAsync(session => session.ExecuteElevatedBackendRequestAsync(mutation, stopping.Token)),
             services.WebViewStartupFailurePath);
         void LanguageChanged(object? _, EventArgs __)
         {
@@ -207,12 +205,6 @@ internal sealed class NativeWindowApplicationContext : ApplicationContext
     private async Task RetireTransportAsync()
     {
         if (Interlocked.Exchange(ref transport, null) is { } previous) await previous.DisposeAsync();
-    }
-    private async Task<T> WithTransportAsync<T>(Func<BackendServiceSession, Task<T>> action)
-    {
-        using var hold = Volatile.Read(ref transport)?.TryAcquire()
-            ?? throw new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady);
-        return await action(hold.Session);
     }
     private async Task<System.Net.Http.HttpResponseMessage> SendFrontendRequestAsync(System.Net.Http.HttpRequestMessage request, CancellationToken token)
     {

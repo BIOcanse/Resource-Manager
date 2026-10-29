@@ -12,9 +12,7 @@ export function componentInstallCommand(
     key: `component.install:${id}`,
     url: `/api/components/${encodeURIComponent(id)}/install`,
     body: { acknowledgeExternalTerms, versionChoice: versionChoice ?? null },
-    fallbackError: uiText.misc.installStartFailed,
-    // 安装和更新组件改动机器（后端要求 machine.write 和提权的管理员），自带界面的默认密钥按设计不含这个范围。
-    elevated: true
+    fallbackError: uiText.misc.installStartFailed
   };
 }
 

@@ -2,11 +2,10 @@ import assert from "node:assert/strict";
 import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
-import { installElevatedBackendBridge } from "./elevatedBackendBridge.js";
 
 // 可信访问的失败与恢复，全部由模拟后端的显式 trustedAccess 场景驱动：
-// 密钥列表读取失败、关闭默认密钥后后端对界面的每个请求返回 401、以管理员身份重新启用；
-// 最后在九种语言下渲染可信访问区和关闭确认框。
+// 密钥列表读取失败；关闭默认密钥（界面以管理员身份运行、不带密钥，照常可用）后重新启用；
+// 后端不接受界面的密钥时（401）写明原因；并在九种语言下渲染可信访问区和关闭确认框。
 export default async function trustedAccessRecoveryJourney(page, baseUrl) {
   const errors = [];
   const defaultKeyWrites = [];
@@ -44,8 +43,8 @@ export default async function trustedAccessRecoveryJourney(page, baseUrl) {
   await loadFailure.filter({ hasText: copy.loadFailed }).waitFor();
   assert.equal(await loadFailure.getAttribute("role"), "alert");
   await panel.getByRole("region", { name: copy.requestsTitle, exact: true }).getByText(copy.requestsEmpty, { exact: true }).waitFor();
-  assert.equal(await panel.getByRole("button", { name: copy.enableDefaultElevated, exact: true }).count(), 0,
-    "an ordinary read failure does not offer the default-key recovery");
+  assert.equal(await panel.getByRole("button", { name: copy.enableDefault, exact: true }).count(), 0,
+    "a read failure does not offer to re-enable the default key");
   assert.deepEqual(errors, [], "a failed key read must not throw into the page boundary");
   assert.equal((await patchScenario({ trustedAccess: "ready" })).ok, true);
   await loadFailure.getByRole("button", { name: copy.retry, exact: true }).click();
@@ -93,7 +92,6 @@ export default async function trustedAccessRecoveryJourney(page, baseUrl) {
     previous = option.id;
   }
   // H2：关闭默认密钥前必须确认；取消不发请求。
-  await installElevatedBackendBridge(page);
   const confirmDisable = page.getByRole("dialog", { name: copy.confirmDisableTitle, exact: true });
   await panel.getByRole("button", { name: copy.disableDefault, exact: true }).click();
   await confirmDisable.getByText(copy.confirmDisableMessage, { exact: true }).waitFor();
@@ -106,39 +104,40 @@ export default async function trustedAccessRecoveryJourney(page, baseUrl) {
   await panel.getByText(copy.defaultDisabled, { exact: true }).waitFor();
   assert.deepEqual(defaultKeyWrites, [{ enabled: false, rotate: false }]);
   assert.equal((await scenario()).trustedAccess, "default-key-off");
-  assert.equal(await page.evaluate(async () => (await fetch("/api/access-keys", { cache: "no-store" })).status), 401,
-    "after the default key is turned off the backend rejects the interface");
+  assert.equal(await page.evaluate(async () => (await fetch("/api/access-keys", { cache: "no-store" })).status), 200,
+    "the interface sends no key, so turning the default key off does not cut it off");
 
-  // 关闭后不再显示走普通通道的启用按钮：只给出恢复说明和显式的管理员恢复入口，焦点在恢复入口上。
+  // 关闭后显示说明和重新启用按钮，焦点在按钮上；请求区照常（界面的订阅流不用默认密钥）。
   const defaultSection = panel.locator(".trusted-access-default");
   await defaultSection.getByText(copy.defaultDisabledRecovery, { exact: true }).waitFor();
   const defaultButtons = await defaultSection.getByRole("button").allTextContents();
-  assert.deepEqual(defaultButtons.map(text => text.trim()), [copy.enableDefaultElevated]);
-  await page.waitForFunction(label => document.activeElement?.textContent?.trim() === label, copy.enableDefaultElevated);
-  // 后端结束了旧密钥的订阅流，重连得到 401：请求区显示读取失败，不保留旧列表。
+  assert.deepEqual(defaultButtons.map(text => text.trim()), [copy.enableDefault]);
+  await page.waitForFunction(label => document.activeElement?.textContent?.trim() === label, copy.enableDefault);
   await panel.getByRole("region", { name: copy.requestsTitle, exact: true })
-    .getByRole("alert").filter({ hasText: copy.requestsLoadFailed }).waitFor({ timeout: 15_000 });
+    .getByText(copy.requestsEmpty, { exact: true }).waitFor();
 
-  // 重新进入这一节：密钥列表读取得到 401，显示对应原因、重试和管理员恢复入口。
+  // 重新进入这一节：列表照常读出，默认密钥仍是关闭的；在这里重新启用走普通请求。
+  await openTrustedAccess(settingsText);
+  await defaultSection.getByText(copy.defaultDisabledRecovery, { exact: true }).waitFor();
+  await defaultSection.getByRole("button", { name: copy.enableDefault, exact: true }).click();
+  await panel.getByText(copy.defaultEnabled, { exact: true }).waitFor();
+  await page.waitForFunction(() => document.activeElement?.id === "trustedAccessDefaultTitle");
+  assert.deepEqual(defaultKeyWrites, [{ enabled: false, rotate: false }, { enabled: true, rotate: false }]);
+  assert.equal((await scenario()).trustedAccess, "ready");
+  await panel.getByRole("region", { name: copy.requestsTitle, exact: true })
+    .getByText(copy.requestsEmpty, { exact: true }).waitFor({ timeout: 10_000 });
+
+  // H3：后端不接受界面带的密钥（未提权、用默认密钥连接的界面在默认密钥关闭后）：读取得到 401，写明原因并给出重试；
+  // 这样的界面没有管理员身份，也就不提供重新启用。
+  assert.equal((await patchScenario({ trustedAccess: "key-rejected" })).ok, true);
   await openTrustedAccess(settingsText);
   await loadFailure.filter({ hasText: copy.failureReasons.unauthorized }).waitFor();
   assert.deepEqual(errors, [], "a 401 key read must not throw into the page boundary");
-  await loadFailure.getByRole("button", { name: copy.retry, exact: true }).waitFor();
-  const elevatedSent = page.waitForRequest(request => request.url().endsWith("/__test/elevated-backend-request"));
-  await loadFailure.getByRole("button", { name: copy.enableDefaultElevated, exact: true }).click();
-  const command = (await elevatedSent).postDataJSON();
-  assert.equal(command.type, "backend.elevatedRequest");
-  assert.equal(command.method, "POST");
-  assert.equal(command.path, "/api/access-keys/default");
-  assert.deepEqual(JSON.parse(command.body), { enabled: true, rotate: false });
-  assert.equal(Object.keys(command).some(key => /key|token|secret|authorization/i.test(key)), false);
+  assert.equal(await loadFailure.getByRole("button", { name: copy.enableDefault, exact: true }).count(), 0,
+    "a rejected key cannot re-enable the default key");
+  assert.equal((await patchScenario({ trustedAccess: "ready" })).ok, true);
+  await loadFailure.getByRole("button", { name: copy.retry, exact: true }).click();
   await panel.getByText(copy.defaultEnabled, { exact: true }).waitFor();
-  await page.waitForFunction(() => document.activeElement?.id === "trustedAccessDefaultTitle");
-  assert.equal(defaultKeyWrites.length, 1, "re-enabling never uses the ordinary request channel");
-  assert.equal((await scenario()).trustedAccess, "ready");
-  // 401 对订阅是终止性失败、不自己重试；启用成功后界面按当前订阅显式重连：不离开这一页，请求区就恢复。
-  await panel.getByRole("region", { name: copy.requestsTitle, exact: true })
-    .getByText(copy.requestsEmpty, { exact: true }).waitFor({ timeout: 10_000 });
 
   assert.equal(rendered.length, 9);
   assert.deepEqual(errors, []);
@@ -146,9 +145,9 @@ export default async function trustedAccessRecoveryJourney(page, baseUrl) {
     unknownScenarioRejected: true,
     readFailureVisible: true,
     disableConfirmed: true,
-    rejectedAfterDisable: 401,
-    subscriptionFailureVisible: true,
-    elevatedRecovery: command.method,
+    interfaceUnaffectedByDisable: true,
+    reenabled: true,
+    rejectedKeyVisible: 401,
     languages: rendered
   };
 }

@@ -328,7 +328,7 @@ export interface TrustedAccessCopy {
   defaultAccessLossWarning: string;
   /** 默认密钥关闭后显示的恢复说明。 */
   defaultDisabledRecovery: string;
-  enableDefaultElevated: string;
+  enableDefault: string;
   disableDefault: string;
   regenerateDefault: string;
   confirmDisableTitle: string;

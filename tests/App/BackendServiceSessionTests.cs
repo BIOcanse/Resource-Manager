@@ -26,6 +26,44 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class BackendServiceSessionTests
 {
+    [Theory]
+    [InlineData("elevated-administrator-required")]
+    [InlineData("access-scope-required")]
+    public async Task TerminationReportsBackendDenialAfterOneOrdinaryRequest(string error)
+    {
+        var requests = 0;
+        using var session = new BackendServiceSession("http://127.0.0.1:1/", () => string.Empty,
+            () => new(1, 1, "unused-test-backend.exe"),
+            handlerFactory: () => new DeniedTerminationHandler(async request =>
+            {
+                requests++;
+                Assert.Equal(HttpMethod.Post, request.Method);
+                Assert.Equal("/api/system/processes/terminate", request.RequestUri!.AbsolutePath);
+                Assert.False(request.Headers.Contains(TrustedAccessHeaders.KeyHeader));
+                using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
+                var target = Assert.Single(body.RootElement.GetProperty("targets").EnumerateArray());
+                Assert.Equal(71, target.GetProperty("processId").GetInt32());
+                Assert.Equal("132537599910000000", target.GetProperty("processStartKey").GetString());
+                return new HttpResponseMessage(HttpStatusCode.Forbidden)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(new { error, message = "denied" }),
+                        Encoding.UTF8, "application/json")
+                };
+            }));
+        session.PrepareWindowTransport();
+        var failure = await Assert.ThrowsAsync<InvalidOperationException>(() => session.TerminateProcessesAsync(
+            [new(71, "132537599910000000")], default));
+        Assert.Equal("denied", failure.Message);
+        Assert.Equal(1, requests);
+    }
+
+    private sealed class DeniedTerminationHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> send)
+        : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => send(request);
+    }
+
     [Fact]
     public async Task TrayStreamRequestsUpdateAndAccessSelectorsTogetherUsingCurrentCredentials()
     {
@@ -86,7 +124,7 @@ public sealed class BackendServiceSessionTests
     }
 
     [Fact]
-    public async Task EmptyDefaultColdStartIsReadyAndProtectedProxyKeepsTheBackendDenialAndElevationEntry()
+    public async Task EmptyDefaultColdStartIsReadyAndProtectedProxyKeepsTheBackendDenial()
     {
         await using var backend = await Backend.StartAsync(enabled: false);
         using var session = backend.Session();
@@ -104,13 +142,6 @@ public sealed class BackendServiceSessionTests
         Assert.Equal("access-key-required", body.RootElement.GetProperty("error").GetString());
         Assert.True(backend.Requests.Last(item => item.Path == "/api/access-keys").Key is null);
 
-        // Reach the existing broker entry without spawning an elevated process or
-        // requiring the installed SCM service. The complete WebView chain is a machine gate.
-        using var canceled = new CancellationTokenSource();
-        canceled.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => session.ExecuteElevatedBackendRequestAsync(
-            new ElevatedBackendMutation("POST", "/api/access-keys/default", "{\"enabled\":true,\"rotate\":false}"),
-            canceled.Token));
         Assert.Equal(1, backend.KeyReads);
     }
 

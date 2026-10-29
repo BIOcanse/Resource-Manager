@@ -23,20 +23,14 @@ public sealed partial class MainForm : Form
     // Omitted, startup failures go to the package's per-user diagnostics file.
     private readonly string? startupFailurePath;
     private FrontendBackendSessionProjection? backendSessionProjection;
-    private readonly Func<ResourceManager.Shared.Runtime.ProcessActionBatch, Task<string>>? elevatedProcessAction;
-    private readonly Func<ResourceManager.Shared.Runtime.ElevatedBackendMutation,
-        Task<ResourceManager.Shared.Runtime.ElevatedBackendResponse>>? elevatedBackendRequest;
 
     internal MainForm(
         Action<bool> taskManagerShortcutReplacementChanged,
         Action editableHotkeysChanged,
         WebView2HostConfiguration hostConfiguration,
-        Func<ResourceManager.Shared.Runtime.ProcessActionBatch, Task<string>>? elevatedProcessAction = null,
-        Func<ResourceManager.Shared.Runtime.ElevatedBackendMutation,
-            Task<ResourceManager.Shared.Runtime.ElevatedBackendResponse>>? elevatedBackendRequest = null,
         string? startupFailurePath = null)
         : this(taskManagerShortcutReplacementChanged, editableHotkeysChanged,
-            new WebView2FrontendHost(hostConfiguration), elevatedProcessAction, elevatedBackendRequest,
+            new WebView2FrontendHost(hostConfiguration),
             startupFailurePath)
     {
     }
@@ -45,16 +39,11 @@ public sealed partial class MainForm : Form
         Action<bool> taskManagerShortcutReplacementChanged,
         Action editableHotkeysChanged,
         IFrontendHost frontendHost,
-        Func<ResourceManager.Shared.Runtime.ProcessActionBatch, Task<string>>? elevatedProcessAction = null,
-        Func<ResourceManager.Shared.Runtime.ElevatedBackendMutation,
-            Task<ResourceManager.Shared.Runtime.ElevatedBackendResponse>>? elevatedBackendRequest = null,
         string? startupFailurePath = null)
     {
         this.startupFailurePath = startupFailurePath;
         this.taskManagerShortcutReplacementChanged = taskManagerShortcutReplacementChanged;
         this.editableHotkeysChanged = editableHotkeysChanged;
-        this.elevatedProcessAction = elevatedProcessAction;
-        this.elevatedBackendRequest = elevatedBackendRequest;
         this.frontendHost = frontendHost;
         frontendHost.MessageReceived += HandleFrontendMessageReceived;
         frontendHost.NavigationCompleted += HandleFrontendNavigationCompleted;

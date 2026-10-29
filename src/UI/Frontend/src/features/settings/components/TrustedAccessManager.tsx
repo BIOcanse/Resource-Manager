@@ -19,7 +19,6 @@ import {
   approveAccessRequest,
   createAccessKey,
   denyAccessRequest,
-  enableDefaultAccessKeyElevated,
   revokeAccessKey,
   rotateAccessKey,
   setDefaultAccessKey,
@@ -265,7 +264,7 @@ export function TrustedAccessManager(props: {
       tone: "error"
     })) return;
     if (!await runAction("default", props.copy.actionFailed, async () => {
-      // 关闭后界面已没有可用的密钥，不再读取列表；按返回结果更新。
+      // 按返回结果更新列表（默认密钥那一行已撤销），不再读取一次。
       await acceptKeyCommand(() => setDefaultAccessKey("disable", props.copy.actionFailed), (current) => ({
         ...current,
         defaultEnabled: false,
@@ -274,7 +273,7 @@ export function TrustedAccessManager(props: {
       }));
       setCreated(null);
     })) return;
-    // 关闭按钮已经消失：焦点交给恢复入口。
+    // 关闭按钮已经消失：焦点交给重新启用按钮。
     enableDefaultButton?.focus();
   };
   const regenerateDefault = async () => {
@@ -288,7 +287,7 @@ export function TrustedAccessManager(props: {
       await refreshAccessKeysAfterCommand(runtime.sources.settingsReads.accessKeys, async () => {
         await setDefaultAccessKey("rotate", props.copy.actionFailed);
         setCreated(null);
-        // 界面用的就是默认密钥：旧密钥上的推送流已被后端结束，按新密钥重连。
+        // 用默认密钥连接的界面（未提权运行时）旧密钥上的推送流已被后端结束：按新密钥重连。
         runtime.reconnectSubscriptions();
       });
     });
@@ -296,12 +295,12 @@ export function TrustedAccessManager(props: {
   const enableDefault = async () => {
     if (!await runAction("default", props.copy.actionFailed, async () => {
       await refreshAccessKeysAfterCommand(runtime.sources.settingsReads.accessKeys, async () => {
-        await enableDefaultAccessKeyElevated(props.copy.actionFailed);
-        // 关闭期间推送流收到 401 已终止，集合没变也要重连。
+        await setDefaultAccessKey("enable", props.copy.actionFailed);
+        // 用默认密钥连接的界面在关闭期间推送流收到 401 已终止，集合没变也要重连。
         runtime.reconnectSubscriptions();
       });
     })) return;
-    // 恢复入口已经消失：焦点交给默认密钥区的标题（读取失败时交给整个区）。
+    // 重新启用按钮已经消失：焦点交给默认密钥区的标题（读取失败时交给整个区）。
     (defaultHeading?.isConnected ? defaultHeading : managerRegion)?.focus();
   };
   const decide = (request: AccessRequestPending, action: "approve" | "deny") =>
@@ -341,7 +340,7 @@ export function TrustedAccessManager(props: {
   const enableDefaultAction = () => (
     <button type="button" ref={(element) => { enableDefaultButton = element; }} disabled={busy()}
       onClick={() => void enableDefault()}>
-      <ShieldCheck size={16} /> {pending() === "default" ? props.copy.working : props.copy.enableDefaultElevated}
+      <ShieldCheck size={16} /> {pending() === "default" ? props.copy.working : props.copy.enableDefault}
     </button>
   );
 
@@ -368,7 +367,6 @@ export function TrustedAccessManager(props: {
               }}>
                 {props.copy.retry}
               </button>
-              <Show when={failure().reason === "unauthorized"}>{enableDefaultAction()}</Show>
             </div>
           </div>
         )}

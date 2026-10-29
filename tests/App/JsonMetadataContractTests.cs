@@ -385,7 +385,6 @@ public sealed partial class JsonMetadataContractTests
         foreach (var name in new[] { "ManagementInventoryJsonContext", "SoftwareContentJsonContext", "TrustedAccessInvocationJsonContext",
             "UserShellExecuteJsonContext", "LoginStartupJsonContext",
             "PackageRuntimeCatalogJson", "StartupModuleStorageJson", "OverlayStartupModulesJson",
-            "ElevatedBackendRequestJsonContext", "ElevatedBackendBridgeJsonContext",
             "NativeBackendProbeJsonContext", "DeviceFingerprintJsonContext", "MetricCatalogJsonContext", "ExternalGpuPlacementJsonContext" })
         {
             var type = assembly.GetTypes().FirstOrDefault(t => t.Name == name);
@@ -454,7 +453,6 @@ public sealed partial class JsonMetadataContractTests
             or "SoftwareContentJsonContext" or "TrustedAccessInvocationJsonContext" or "NativeBackendProbeJsonContext"
             or "UserShellExecuteJsonContext" or "LoginStartupJsonContext"
             or "PackageRuntimeCatalogJson" or "StartupModuleStorageJson" or "OverlayStartupModulesJson"
-            or "ElevatedBackendRequestJsonContext" or "ElevatedBackendBridgeJsonContext"
             or "DeviceFingerprintJsonContext" or "ExternalGpuPlacementJsonContext"
             || owner.EndsWith("ResourceManagerSelfSchedulingControl", StringComparison.Ordinal);
         var options = new JsonSerializerOptions(plain ? JsonSerializerDefaults.General : JsonSerializerDefaults.Web)
@@ -462,8 +460,8 @@ public sealed partial class JsonMetadataContractTests
         if (owner is "host-profile" or "metric-profile" or "freedom-point" or "freedom-declarations")
             options.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
         if (owner is "plan-identity" or "MetricCatalogJsonContext" or "LoginStartupJsonContext"
-            or "PackageRuntimeCatalogJson" or "StartupModuleStorageJson" or "OverlayStartupModulesJson"
-            or "ElevatedBackendBridgeJsonContext") options.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+            or "PackageRuntimeCatalogJson" or "StartupModuleStorageJson" or "OverlayStartupModulesJson")
+            options.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
         if (owner == "StartupModuleStorageJson") options.WriteIndented = true;
         if (owner == "software-profile") options.PropertyNameCaseInsensitive = true;
         if (owner.EndsWith("JsonManualSoftwareRegistry", StringComparison.Ordinal))

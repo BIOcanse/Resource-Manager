@@ -1,6 +1,4 @@
 using System.Drawing;
-using System.Reflection;
-using System.Text.Json;
 using System.Windows.Forms;
 using ResourceManager.NativeUi;
 using ResourceManager.NativeUi.WebView;
@@ -74,35 +72,6 @@ public sealed class NativeUiFrontendLifetimeTests
         form.CompleteClose();
         Assert.True(form.IsDisposed);
         Assert.Equal(1, requests);
-    });
-
-    [Fact]
-    public Task WindowStopJoinsAcceptedBackendRequestWithoutCancelingIt() => OnStaAsync(async () =>
-    {
-        using var host = new ControlledHost();
-        host.Initialized.SetResult();
-        host.BrowserExited.SetResult();
-        var accepted = Gate();
-        var backendResult = new TaskCompletionSource<ResourceManager.Shared.Runtime.ElevatedBackendResponse>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        using var form = new MainForm(_ => { }, () => { }, host,
-            elevatedBackendRequest: _ => { accepted.SetResult(); return backendResult.Task; });
-        form.ShowBackendReady(FrontendBackendSessionProjection.CreateReady(1));
-        var json = JsonSerializer.Serialize(new
-        {
-            type = "backend.elevatedRequest", requestId = Guid.NewGuid().ToString(),
-            method = "POST", path = "/api/access-keys/default", body = "{\"enabled\":true,\"rotate\":false}"
-        });
-        typeof(MainForm).GetMethod("HandleWebMessage", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(form, [json]);
-        await accepted.Task;
-        var stopping = form.StopFrontendAsync();
-        Assert.False(stopping.IsCompleted);
-        Assert.False(backendResult.Task.IsCanceled);
-        backendResult.SetException(new IOException("backend result"));
-        await stopping;
-        Assert.True(backendResult.Task.IsFaulted);
-        form.CompleteClose();
     });
 
     private static TaskCompletionSource Gate() => new(TaskCreationOptions.RunContinuationsAsynchronously);

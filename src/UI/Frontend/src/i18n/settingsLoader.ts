@@ -238,7 +238,7 @@ export const loadingSettingsText: SettingsTextBundle = {
       defaultSecretLocalOnly: "",
       defaultAccessLossWarning: "",
       defaultDisabledRecovery: "",
-      enableDefaultElevated: "",
+      enableDefault: "",
       disableDefault: "",
       regenerateDefault: "",
       confirmDisableTitle: "",

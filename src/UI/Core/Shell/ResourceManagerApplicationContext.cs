@@ -264,13 +264,6 @@ public sealed partial class ResourceManagerApplicationContext : ApplicationConte
                 new WebView2HostConfiguration(
                     services.WebViewUserDataFolder ?? NativeUiPaths.WebViewUserDataFolder,
                     services.FrontendPreferencesPath ?? NativeUiPaths.FrontendPreferencesPath, frontendProxy!)),
-            batch => backendReady && backendSession is { } session
-                ? session.ExecuteElevatedProcessActionAsync(batch, shutdown.Token)
-                : Task.FromException<string>(new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady)),
-            mutation => backendReady && backendSession is { } current
-                ? current.ExecuteElevatedBackendRequestAsync(mutation, shutdown.Token)
-                : Task.FromException<ResourceManager.Shared.Runtime.ElevatedBackendResponse>(
-                    new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady)),
             services.WebViewStartupFailurePath);
         form.BackendRetryRequested += OnBackendRetryRequested;
         form.FrontendConnectionStateChanged += OnFrontendConnectionStateChanged;
@@ -368,9 +361,6 @@ public sealed partial class ResourceManagerApplicationContext : ApplicationConte
 
             var message = await session.TerminateProcessesAsync(targets.Targets, shutdown.Token);
             ShowForceTerminateHotkeyStatus(message, ToolTipIcon.Info);
-        }
-        catch (UacApprovalCanceledException)
-        {
         }
         catch (OperationCanceledException) when (shutdown.IsCancellationRequested) { }
         catch (Exception ex)

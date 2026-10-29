@@ -1,5 +1,4 @@
 import { readDashboardPreferences, saveDashboardPreferences } from "./preferences/dashboardPreferences.ts";
-import { sendElevatedBackendJson } from "./api/elevatedBackendRequest.ts";
 import {
   expectedOverlayInjectionModules,
   overlayInjectionModules,
@@ -33,7 +32,6 @@ import type {
   ResourceBarSettings,
   AppOptimizationMode,
   SystemProcessIdentity,
-  SystemProcessOperationResult,
   TrustedOptimizationTarget
 } from "./types";
 import {
@@ -51,7 +49,7 @@ import { cpuTopologyDecoder, cpuResidencyDecoder, cpuExclusiveBindingsDecoder } 
 import { decodeRuntimePolicySaveResult } from "./api/runtimePolicySaveResultDecoder.ts";
 import { decodeSoftwarePolicy } from "./data/softwarePolicy/softwarePolicyDecoder.ts";
 import { uiText } from "./text.ts";
-import { withProcessActionElevation } from "./processes/elevatedProcessAction.ts";
+import { exactProcessActionResult } from "./processes/processActionResult.ts";
 
 export async function getJson<T>(
   url: string,
@@ -147,7 +145,7 @@ export async function savePerformanceOverlaySettings(settings: PerformanceOverla
     const unrelated = current.moduleIds.filter(id => !overlayIds.includes(id));
     const moduleIds = [...unrelated, ...(expected === "complete" ? overlayStartupModuleIds : [])];
     if (JSON.stringify([...current.moduleIds].sort()) !== JSON.stringify([...moduleIds].sort())) {
-      await sendElevatedBackendJson<StartupModuleSelection>("PUT", path, { softwareId, moduleIds }, uiText.apiError.saveGpuSoftwarePolicyFailed);
+      await putJson<StartupModuleSelection>(path, { softwareId, moduleIds }, uiText.apiError.saveGpuSoftwarePolicyFailed);
       modulesChanged = true;
     }
     injectionModules = expected;
@@ -287,14 +285,14 @@ export async function openProperties(path: string) {
 }
 
 export async function terminateProcesses(targets: SystemProcessIdentity[]) {
-  return withProcessActionElevation("terminate", targets,
-    () => postJson<SystemProcessOperationResult>("/api/system/processes/terminate", { targets }, uiText.apiError.terminateFailed),
+  return exactProcessActionResult("terminate", targets,
+    await postJson<unknown>("/api/system/processes/terminate", { targets }, uiText.apiError.terminateFailed),
     uiText.apiError.terminateFailed);
 }
 
 export async function createProcessDumps(targets: SystemProcessIdentity[]) {
-  return withProcessActionElevation("dump", targets,
-    () => postJson<SystemProcessOperationResult>("/api/system/processes/dump", { targets }, uiText.apiError.dumpFailed),
+  return exactProcessActionResult("dump", targets,
+    await postJson<unknown>("/api/system/processes/dump", { targets }, uiText.apiError.dumpFailed),
     uiText.apiError.dumpFailed);
 }
 

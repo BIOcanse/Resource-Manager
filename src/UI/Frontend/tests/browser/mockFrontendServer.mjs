@@ -51,7 +51,6 @@ const defaultScenario = {
   settingsRevision: "frontend-harness-r1",
   overlaySaveDelayMs: 0,
   overlaySaveFailure: false,
-  overlayElevationOutcome: null,
   diskUsageVolumesFailure: false,
   diskUsageVolumesEmpty: false,
   diskUsageResultFailure: false,
@@ -180,7 +179,8 @@ const defaultScenario = {
   gpuOverflowThresholdsMissing: false,
   accessRequests: [],
   // 可信访问密钥的后端状态：ready 正常；read-failure 读取密钥列表返回 503；
-  // default-key-off 默认密钥已关闭，界面的每个 /api 请求都返回 401（后端不再接受界面的密钥）。
+  // default-key-off 默认密钥已关闭（界面以管理员身份运行、不带密钥，照常访问，只是列表里没有默认密钥）；
+  // key-rejected 后端不接受界面带的密钥，每个 /api 请求都返回 401（用默认密钥连接的未提权界面在默认密钥关闭后的样子）。
   trustedAccess: "ready",
   pausedSubscriptionPaths: [],
   // 这些订阅路径不按自己的间隔发帧，只在 POST /__test/subscriptions/publish 时发一帧（按真机抓到的间隔回放用）。
@@ -198,7 +198,7 @@ const defaultScenario = {
   // README 截图的虚构整机（readmeShowcaseFixture.js）：打开后各页改用那里的值；只给 captureReadmeScreenshots.mjs 用。
   readmeShowcase: false
 };
-const trustedAccessScenarios = new Set(["ready", "read-failure", "default-key-off"]);
+const trustedAccessScenarios = new Set(["ready", "read-failure", "default-key-off", "key-rejected"]);
 const trustedAccessDefaultScopes = ["read", "metrics.read", "processes.read", "session", "adapters.register.self",
   "desktop.publish", "gpu.resolve", "gpu.report", "keys.manage"];
 const trustedAccessAvailableScopes = [...trustedAccessDefaultScopes, "machine.write", "injection.configure"];
@@ -430,27 +430,6 @@ const server = createServer(async (request, response) => {
       }
       return json(response, 200, { publications: queries.length, queries });
     }
-    if (url.pathname === "/__test/elevated-backend-request" && request.method === "POST") {
-      const command = JSON.parse(await readBody(request));
-      const result = { type: "backend.elevatedRequest.result", requestId: command.requestId, statusCode: null, body: null, error: null };
-      const match = typeof command.path === "string" && /^\/api\/startup-modules\/software\/([^/?#\\]+)$/.exec(command.path);
-      const defaultKey = command.method === "POST" && command.path === "/api/access-keys/default";
-      if (command.type !== "backend.elevatedRequest" || typeof command.requestId !== "string" || !command.requestId
-        || !((command.method === "PUT" && match) || defaultKey)
-        || typeof command.body !== "string" || Buffer.byteLength(command.body) > 128 * 1024) {
-        return json(response, 200, { ...result, error: "unavailable" });
-      }
-      if (scenario.overlayElevationOutcome) return json(response, 200, { ...result, error: scenario.overlayElevationOutcome });
-      let settings;
-      try { settings = JSON.parse(command.body); } catch { return json(response, 200, { ...result, error: "unavailable" }); }
-      if (defaultKey) {
-        // 管理员身份的后端客户端没有密钥，后端按管理员授权它修改默认密钥。
-        const saved = setTrustedAccessDefault(settings);
-        return json(response, 200, { ...result, statusCode: saved.statusCode, body: JSON.stringify(saved.body) });
-      }
-      const saved = await saveStartupModuleSelection(decodeURIComponent(match[1]), settings);
-      return json(response, 200, { ...result, statusCode: saved.statusCode, body: saved.body === null ? "" : JSON.stringify(saved.body) });
-    }
     if (url.pathname === "/__test/targeted-recordings/complete-pending" && request.method === "POST") {
       // 立即做 15 s 计时器本来要做的事：以「达到最长时长」结束计时器等待的那条录制。
       // 旅程用它代替真等 15 s；没有等待中的计时器时返回 409，不猜要结束哪条。
@@ -510,7 +489,7 @@ async function handleApi(request, response, url) {
     return response.end(replayed.encoding === "text" ? String(replayed.body)
       : replayed.encoding === "json" || replayed.contentType?.toLowerCase().includes("json") ? JSON.stringify(replayed.body) : String(replayed.body));
   }
-  if (scenario.trustedAccess === "default-key-off") {
+  if (scenario.trustedAccess === "key-rejected") {
     return json(response, 401, { error: "access-key-invalid" });
   }
   if (scenario.readmeShowcase) {
@@ -620,7 +599,9 @@ async function handleApi(request, response, url) {
     if (!id) return json(response, 400, { error: "Software ID is required." });
     if (request.method === "GET") return json(response, 200, startupModuleSelections.get(id.toLowerCase()) ?? { softwareId: id, moduleIds: [] });
     if (request.method === "PUT") {
-      return json(response, 403, { error: "access-scope-required" });
+      // 界面以管理员身份运行、不带密钥：后端按管理员授权修改启动模块。
+      const saved = await saveStartupModuleSelection(id, JSON.parse(await readBody(request)));
+      return saved.body === null ? json(response, saved.statusCode, {}) : json(response, saved.statusCode, saved.body);
     }
   }
   if (path === "/api/disk-usage/volumes" && request.method === "GET") {
@@ -1600,21 +1581,22 @@ function normalizeDelay(value) {
 }
 
 function trustedAccessSnapshot() {
-  const defaultKeyId = `default-${trustedAccessDefaultSerial}`;
+  const enabled = scenario.trustedAccess !== "default-key-off";
+  const defaultKeyId = enabled ? `default-${trustedAccessDefaultSerial}` : null;
   return {
-    keys: [{
+    keys: enabled ? [{
       id: defaultKeyId, name: "Native default", purpose: "control", scopes: trustedAccessDefaultScopes,
       createdAt: "2026-10-25T08:00:00.000Z", isDefault: true
-    }],
-    defaultEnabled: true,
+    }] : [],
+    defaultEnabled: enabled,
     defaultKeyId,
     availableScopes: trustedAccessAvailableScopes,
     administratorHolderScopes: ["machine.write", "injection.configure"]
   };
 }
 
-// 和后端 POST /api/access-keys/default 一样：关闭时撤销默认密钥，之后界面的请求被拒绝，
-// 已打开的订阅流随之结束；启用或轮换时生成新的默认密钥。
+// 和后端 POST /api/access-keys/default 一样：关闭时撤销默认密钥，启用或轮换时生成新的默认密钥。
+// 界面以管理员身份运行、不带密钥，它的请求和订阅流不受默认密钥影响。
 function setTrustedAccessDefault(body) {
   if (!body || typeof body.enabled !== "boolean" || typeof body.rotate !== "boolean"
     || Object.keys(body).some(key => key !== "enabled" && key !== "rotate") || (!body.enabled && body.rotate)) {
@@ -1622,7 +1604,6 @@ function setTrustedAccessDefault(body) {
   }
   if (!body.enabled) {
     scenario.trustedAccess = "default-key-off";
-    for (const stream of [...subscriptionChannelResponses]) stream.end();
     return { statusCode: 200, body: { defaultEnabled: false, defaultKeyId: null } };
   }
   if (scenario.trustedAccess === "default-key-off" || body.rotate) trustedAccessDefaultSerial += 1;

@@ -199,10 +199,6 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
         var payload = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            if (response.StatusCode == HttpStatusCode.Forbidden && RequiresProcessElevation(payload))
-                return SummarizeTermination(await ExecuteElevatedProcessActionAsync(new("terminate",
-                    targets.Select(target => new ProcessActionTarget(target.ProcessId, target.ProcessStartKey)).ToArray()),
-                    cancellationToken), NativeUiText.Current);
             throw new InvalidOperationException(ReadMessage(payload) ?? string.Format(NativeUiText.Current.BackendHttpErrorFormat, (int)response.StatusCode));
         }
         return SummarizeTermination(payload, NativeUiText.Current);
@@ -230,35 +226,6 @@ internal sealed class BackendServiceSession : IBackendServiceAvailabilitySource,
             if (outcome == "Terminated") succeeded++;
         }
         return string.Format(text.TerminateResultFormat, succeeded, items.GetArrayLength());
-    }
-
-    internal Task<string> ExecuteElevatedProcessActionAsync(ProcessActionBatch batch, CancellationToken cancellationToken)
-    {
-        ObjectDisposedException.ThrowIf(disposed, this);
-        var backend = backendProcessIdentity ?? throw new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady);
-        return ElevatedProcessActionBroker.ExecuteAsync(batch, backend, cancellationToken);
-    }
-
-    internal Task<ElevatedBackendResponse> ExecuteElevatedBackendRequestAsync(ElevatedBackendMutation mutation,
-        CancellationToken cancellationToken)
-    {
-        ObjectDisposedException.ThrowIf(disposed, this);
-        var backend = backendProcessIdentity ?? throw new InvalidOperationException(NativeUiText.Current.BackendPipelineNotReady);
-        return ElevatedProcessActionBroker.ExecuteBackendRequestAsync(mutation, backend, cancellationToken);
-    }
-
-    internal static bool RequiresProcessElevation(string payload)
-    {
-        try
-        {
-            using var json = JsonDocument.Parse(payload);
-            var root = json.RootElement;
-            var value = root.TryGetProperty("error", out var error)
-                ? error.GetString()
-                : root.TryGetProperty("code", out var code) ? code.GetString() : null;
-            return value is "access-scope-required" or "elevated-administrator-required" or "ProcessActionRequiresElevation";
-        }
-        catch (JsonException) { return false; }
     }
 
     internal async Task PublishDesktopAsync(InteractiveDesktopObservation observation, CancellationToken cancellationToken)

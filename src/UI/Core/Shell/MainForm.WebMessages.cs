@@ -93,12 +93,6 @@ public sealed partial class MainForm
             case "shell.loginStartup.set":
                 HandleLoginStartupRequest(message, typeProperty.GetString() == "shell.loginStartup.set");
                 break;
-            case "shell.processAction":
-                TrackFrontendRequest(HandleProcessActionRequestAsync(message.Clone()));
-                break;
-            case "backend.elevatedRequest":
-                TrackFrontendRequest(HandleElevatedBackendRequestAsync(message.Clone()));
-                break;
             case "shell.language":
                 Localization.NativeUiText.Apply(
                     message.TryGetProperty("language", out var languageProperty)

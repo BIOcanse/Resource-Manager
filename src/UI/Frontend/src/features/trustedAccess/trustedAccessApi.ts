@@ -1,6 +1,5 @@
 import { ApiRequestError, requestJson, requestNoContent } from "../../api/httpTransport.ts";
 import { RequestProblem } from "../../frontendRuntime/request/RequestProblem.ts";
-import { sendElevatedBackendJson } from "../../api/elevatedBackendRequest.ts";
 import type { ResponseDecoder } from "../../frontendRuntime/request/ResponseDecoder.ts";
 import {
   accessKeyCreatedDecoder,
@@ -91,27 +90,20 @@ export async function revokeAccessKey(id: string, fallbackError: string): Promis
   }));
 }
 
-/** 关闭默认密钥，或轮换已启用的默认密钥。走界面自己的密钥。 */
+/**
+ * 启用、关闭或轮换默认密钥。界面以管理员身份运行、请求不带密钥，后端按管理员授权，
+ * 所以默认密钥关闭后照样能在这里重新启用。
+ */
 export async function setDefaultAccessKey(
-  change: "disable" | "rotate",
+  change: "enable" | "disable" | "rotate",
   fallbackError: string
 ): Promise<DefaultAccessKeyState> {
-  const enabled = change === "rotate";
+  const enabled = change !== "disable";
   return classified(async () => requireDefaultState(await post(
     "/api/access-keys/default",
-    { enabled, rotate: enabled },
+    { enabled, rotate: change === "rotate" },
     defaultAccessKeyStateDecoder,
     fallbackError), enabled));
-}
-
-/**
- * 重新启用默认密钥。默认密钥关闭后界面已没有可用的密钥，所以只走原生壳的显式提升通道
- * （管理员身份的后端客户端），由 Windows 请求用户授权。
- */
-export async function enableDefaultAccessKeyElevated(fallbackError: string): Promise<DefaultAccessKeyState> {
-  return classified(async () => requireDefaultState(decode(defaultAccessKeyStateDecoder,
-    await sendElevatedBackendJson<unknown>("POST", "/api/access-keys/default", { enabled: true, rotate: false }, fallbackError)),
-  true));
 }
 
 function requireDefaultState(result: DefaultAccessKeyState, enabled: boolean): DefaultAccessKeyState {

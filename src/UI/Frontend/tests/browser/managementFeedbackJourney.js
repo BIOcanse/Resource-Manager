@@ -4,7 +4,6 @@ import { loadAppCopy } from "../../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../../src/i18n/settingsLoader.ts";
 import { languageOptions } from "../../src/i18n/settingsLanguages.ts";
 import { componentFixture, componentVersionFixture } from "./componentFixtures.js";
-import { installElevatedBackendBridge } from "./elevatedBackendBridge.js";
 
 export default async function managementFeedbackJourney(page, baseUrl) {
   const errors = [];
@@ -47,7 +46,7 @@ export default async function managementFeedbackJourney(page, baseUrl) {
   let bridgeVersionLookups = 0;
   const updateRequests = [];
   const bridgeUpdateRequests = [];
-  const plainInstallRequests = [];
+  const otherInstallRequests = [];
   const runtimeFilesUnavailableOperation = {
     id: "000000000000000000000000000000a3",
     kind: "component.install",
@@ -76,24 +75,20 @@ export default async function managementFeedbackJourney(page, baseUrl) {
     bridgeVersionLookups++;
     return route.fulfill({ json: componentVersionFixture(bridgeId) });
   });
-  // 安装和更新组件改动机器（后端要求 machine.write 和提权的管理员）：不走普通客户端，经宿主的提权通道发出。
-  // 这里替宿主回结果：Intel 更新返回一个失败的操作；硬件写入辅助进程的更新在 Windows 管理员确认里被取消。
+  // 安装和更新组件走普通请求（界面以管理员身份运行、不带密钥，后端按管理员授权）。
+  // 这里替后端回结果：Intel 更新返回一个失败的操作；硬件写入辅助进程的更新被访问控制拒绝（调用方不是管理员时的回复）。
   await page.route(`**/api/components/*/install`, route => {
-    plainInstallRequests.push(route.request().url());
-    return route.fulfill({ status: 403, json: { error: "access-scope-required", missingScopes: ["machine.write"] } });
-  });
-  await page.route("**/__test/elevated-backend-request", route => {
-    const command = route.request().postDataJSON();
-    const result = { type: "backend.elevatedRequest.result", requestId: command.requestId, statusCode: null, body: null, error: null };
-    if (command.method === "POST" && command.path === `/api/components/${updateId}/install`) {
-      updateRequests.push(JSON.parse(command.body));
-      return route.fulfill({ json: { ...result, statusCode: 202, body: JSON.stringify(runtimeFilesUnavailableOperation) } });
+    const request = route.request();
+    if (request.url().endsWith(`/api/components/${updateId}/install`)) {
+      updateRequests.push(request.postDataJSON());
+      return route.fulfill({ status: 202, json: runtimeFilesUnavailableOperation });
     }
-    if (command.method === "POST" && command.path === `/api/components/${bridgeId}/install`) {
-      bridgeUpdateRequests.push(JSON.parse(command.body));
-      return route.fulfill({ json: { ...result, error: "canceled" } });
+    if (request.url().endsWith(`/api/components/${bridgeId}/install`)) {
+      bridgeUpdateRequests.push(request.postDataJSON());
+      return route.fulfill({ status: 403, json: { error: "elevated-administrator-required" } });
     }
-    return route.fulfill({ json: { ...result, error: "unavailable" } });
+    otherInstallRequests.push(request.url());
+    return route.fulfill({ status: 404, json: { error: "fixture install route not configured" } });
   });
   await page.route("**/api/components", route => route.fulfill({ json: [
     componentFixture(runtimeId, { installerAvailable: true, installerPath: "C:/Fixture/MicrosoftEdgeWebview2Setup.exe" }),
@@ -129,7 +124,6 @@ export default async function managementFeedbackJourney(page, baseUrl) {
   });
 
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
-  await installElevatedBackendBridge(page);
   await page.getByRole("button", { name: "组件与软件", exact: true }).click();
   await page.locator("#managementTab-Dependency").click();
   const initialApp = await loadAppCopy("zh-CN");
@@ -246,10 +240,11 @@ export default async function managementFeedbackJourney(page, baseUrl) {
   const updateTarget = page.locator(`.component-item${NOT_GHOST}`).filter({ hasText: finalApp.status.component.names.intelMsrPawnIo });
   await updateTarget.getByRole("button", { name: finalApp.componentCatalog.update, exact: true }).click();
   const finalUpdateDialog = page.getByRole("dialog", { name: finalApp.status.component.names.intelMsrPawnIo, exact: true });
+  const updateAnswered = page.waitForResponse(response => response.url().endsWith(`/api/components/${updateId}/install`));
   await finalUpdateDialog.getByRole("button", { name: finalApp.componentAcquisition.agreeAndUpdate, exact: true }).click();
-  await page.waitForFunction(() => window.__elevatedBackendRequests.length === 1);
+  await updateAnswered;
   assert.deepEqual(updateRequests, [{ acknowledgeExternalTerms: true, versionChoice: "verified" }],
-    "The confirmed update goes through the elevated host channel with the acknowledged terms");
+    "The confirmed update sends the acknowledged terms");
   assert.equal(updateRequests.length, 1, "Only the explicit update confirmation may submit an update");
   assert.equal(updateVersionLookups, 0, "Updates must not fetch version choices");
   const updateFailureToast = page.locator(".toast.error:not([data-exit-ghost])")
@@ -267,16 +262,18 @@ export default async function managementFeedbackJourney(page, baseUrl) {
   const bridgeVersionLookupsBeforeSubmit = bridgeVersionLookups;
   await bridgeUpdateTarget.getByRole("button", { name: finalApp.componentCatalog.update, exact: true }).click();
   const finalBridgeUpdateDialog = page.getByRole("dialog", { name: finalApp.status.component.names.hardwareBridge, exact: true });
+  const bridgeAnswered = page.waitForResponse(response => response.url().endsWith(`/api/components/${bridgeId}/install`));
   await finalBridgeUpdateDialog.getByRole("button", { name: finalApp.componentCatalog.update, exact: true }).click();
-  await page.waitForFunction(() => window.__elevatedBackendRequests.length === 2);
+  await bridgeAnswered;
   assert.deepEqual(bridgeUpdateRequests, [{ acknowledgeExternalTerms: true, versionChoice: "verified" }],
-    "The hardware bridge update goes through the elevated host channel");
+    "The hardware bridge update sends the acknowledged terms");
   assert.equal(bridgeUpdateRequests.length, 1, "Only explicit consent may submit the missing-payload update");
   assert.equal(bridgeVersionLookups, bridgeVersionLookupsBeforeSubmit, "Missing-payload updates must not fetch version choices");
-  // 用户在 Windows 管理员确认里取消：对话框关掉后，提示写出是取消了，不是笼统的“操作失败”。
-  const bridgeCanceledToast = page.locator(".toast:not([data-exit-ghost])").filter({ hasText: finalApp.misc.transportCanceled });
-  await bridgeCanceledToast.waitFor({ state: "visible" });
-  assert.deepEqual(plainInstallRequests, [], "Component installs never use the ordinary client, whose default key lacks machine.write");
+  // 访问控制拒绝：对话框关掉后，提示写出拒绝的原因，不是笼统的“操作失败”。
+  const bridgeRejectedToast = page.locator(".toast:not([data-exit-ghost])")
+    .filter({ hasText: finalApp.accessRejection["elevated-administrator-required"] });
+  await bridgeRejectedToast.waitFor({ state: "visible" });
+  assert.deepEqual(otherInstallRequests, [], "Only the confirmed updates submit an install");
   assert.equal(deletes, 0, "Canceled registration removals must not write");
   assert.equal(verifications, languages.length, "Each language must invoke verification on the installed AMD payload once");
   assert.deepEqual(errors, []);

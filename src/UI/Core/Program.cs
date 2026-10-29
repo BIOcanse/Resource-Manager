@@ -11,8 +11,6 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        if (ElevatedProcessActionBroker.TryExecuteBackendRequest(args) is { } backendExitCode) return backendExitCode;
-        if (ElevatedProcessActionBroker.TryExecute(args) is { } processExitCode) return processExitCode;
         new NativeUiTraceLogger<ResourceManagerApplicationContext>().LogInformation("State registry version {RegistryVersion}.", StateRegistry.Version);
         using var packageUse = new NativeUiPackageUseLifetime();
         var options = NativeUiLaunchOptions.Parse(args);
