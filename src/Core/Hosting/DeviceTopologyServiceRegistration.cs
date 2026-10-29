@@ -10,6 +10,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
     private static IServiceCollection AddResourceManagerDeviceTopology(this IServiceCollection services)
     {
         services.AddSingleton<DeviceIdCatalog>();
+        services.AddSingleton<DeviceTopologyMachineClassifierOwner>();
         services.AddSingleton<IDeviceTopologyReader, WindowsDeviceTopologyReader>();
         services.AddSingleton<IAcpiFirmwareTableReader>(static provider =>
         {
@@ -30,7 +31,8 @@ public static partial class ResourceManagerServiceCollectionExtensions
             provider.GetService<ResourceManager.ReadWrite.Windows.Services.WindowsServiceInformationOwner>(),
             provider.GetService<ResourceManager.ReadWrite.Windows.SystemInformation.WindowsOperatingSystemInformationOwner>(),
             provider.GetService<ResourceManager.App.Infrastructure.Monitoring.NvidiaNvapiMonitoringZone>(),
-            stateAuthority: provider.GetRequiredService<ResourceManager.Shared.BusinessBlocks.State.StateAuthority>()));
+            stateAuthority: provider.GetRequiredService<ResourceManager.Shared.BusinessBlocks.State.StateAuthority>(),
+            machineClassifier: provider.GetRequiredService<DeviceTopologyMachineClassifierOwner>()));
         services.AddSingleton<IDeviceTopologySnapshotProvider>(static provider =>
             provider.GetRequiredService<DeviceTopologySnapshotProvider>());
         services.AddHostedServiceAlias<DeviceTopologySnapshotProvider>(static service => service.CaptureSamplingWorkerTask(),

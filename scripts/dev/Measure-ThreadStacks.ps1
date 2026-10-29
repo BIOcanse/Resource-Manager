@@ -2,7 +2,8 @@
 param(
     [Parameter(Mandatory)][string]$OutDir,
     [string]$ProcessName = 'ResourceManager',
-    [int]$Seconds = 30,
+    # The CPU window is the trace window minus 4 s, so it needs at least 5.
+    [ValidateRange(5, [int]::MaxValue)][int]$Seconds = 30,
     [int]$Top = 8,
     # Omitted: dotnet-trace from PATH, else the global tool under the user profile.
     [string]$DotnetTrace
@@ -35,9 +36,12 @@ if (-not $identity.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrat
 
 $process = Get-Process -Name $ProcessName | Select-Object -First 1
 $trace = Join-Path $OutDir 'service.nettrace'
+# dotnet-trace reads --duration as dd:hh:mm:ss, so every field is carried, not only the seconds.
+$span = [TimeSpan]::FromSeconds($Seconds)
+$duration = '{0:D2}:{1:D2}:{2:D2}:{3:D2}' -f $span.Days, $span.Hours, $span.Minutes, $span.Seconds
 $tracer = Start-Process -FilePath $DotnetTrace -PassThru -WindowStyle Hidden `
     -RedirectStandardOutput (Join-Path $OutDir 'dotnet-trace.out') -RedirectStandardError (Join-Path $OutDir 'dotnet-trace.err') `
-    -ArgumentList @('collect', '-p', $process.Id, '--duration', ('00:00:00:{0:D2}' -f $Seconds), '--format', 'Speedscope', '-o', $trace)
+    -ArgumentList @('collect', '-p', $process.Id, '--duration', $duration, '--format', 'Speedscope', '-o', $trace)
 # The CPU window sits inside the trace window so that every measured span also has samples.
 Start-Sleep -Seconds 2
 $window = $Seconds - 4

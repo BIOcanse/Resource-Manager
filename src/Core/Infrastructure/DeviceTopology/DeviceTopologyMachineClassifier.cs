@@ -5,9 +5,51 @@ using ResourceManager.App.Domain.DeviceTopology;
 
 namespace ResourceManager.App.Infrastructure.DeviceTopology;
 
+/// <summary>The machine classifier of the device topology block (33). Its rules and compiled NonBacktracking automata
+/// (several MiB once matched) exist only while that block's sampling run lasts: the run opens this owner when it starts
+/// and closes it when it returns, the first classification inside the run builds the classifier, and later topology
+/// reads in the same run reuse it. A stopped block holds none. A topology read outside a run (an explicit field
+/// capture while the block is stopped) builds a classifier for that one read.</summary>
+public sealed class DeviceTopologyMachineClassifierOwner
+{
+    private readonly object gate = new();
+    private int openRuns;
+    private DeviceTopologyMachineClassifier? runClassifier;
+
+    internal IDisposable OpenRun()
+    {
+        lock (gate) openRuns++;
+        return new RunLease(this);
+    }
+
+    internal bool HoldsClassifier { get { lock (gate) return runClassifier is not null; } }
+
+    internal DeviceTopologyMachineIdentity Classify(DeviceTopologyMachineEvidence evidence)
+    {
+        DeviceTopologyMachineClassifier? classifier = null;
+        lock (gate)
+            if (openRuns > 0) classifier = runClassifier ??= DeviceTopologyMachineClassifier.Load();
+        return (classifier ?? DeviceTopologyMachineClassifier.Load()).Classify(evidence);
+    }
+
+    private void CloseRun()
+    {
+        lock (gate)
+            if (--openRuns == 0) runClassifier = null;
+    }
+
+    private sealed class RunLease(DeviceTopologyMachineClassifierOwner owner) : IDisposable
+    {
+        private int disposed;
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref disposed, 1) == 0) owner.CloseRun();
+        }
+    }
+}
+
 internal sealed partial class DeviceTopologyMachineClassifier
 {
-    internal static DeviceTopologyMachineClassifier Default { get; } = Load();
     private readonly Rules rules;
     private readonly (ComponentRule Rule, Regex Pattern)[] matches;
 
@@ -21,7 +63,8 @@ internal sealed partial class DeviceTopologyMachineClassifier
             Regex.InfiniteMatchTimeout))).ToArray();
     }
 
-    private static DeviceTopologyMachineClassifier Load()
+    // Builds a new instance; DeviceTopologyMachineClassifierOwner decides how long one lives.
+    internal static DeviceTopologyMachineClassifier Load()
     {
         using var stream = typeof(DeviceTopologyMachineClassifier).Assembly.GetManifestResourceStream(
             "ResourceManager.Configuration.DeviceTopology.form-factor-rules.json")

@@ -12,6 +12,9 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class DeviceTopologyMachineIdentityTests(ITestOutputHelper output)
 {
+    // One instance for the fixture's many cases; production instances are owned by DeviceTopologyMachineClassifierOwner.
+    internal static readonly DeviceTopologyMachineClassifier Classifier = DeviceTopologyMachineClassifier.Load();
+
     [Theory]
     [InlineData(8)] [InlineData(9)] [InlineData(10)] [InlineData(11)]
     [InlineData(14)] [InlineData(30)] [InlineData(31)] [InlineData(32)]
@@ -80,7 +83,7 @@ public sealed class DeviceTopologyMachineIdentityTests(ITestOutputHelper output)
         var evidence = Resolve([10], true, gpus: [model]).Evidence with {
             GpuAttachments = new([new(model, detachable, detachable.HasValue ? detachable.Value ? 0x400u : 0u : null)], null)
         };
-        var identity = DeviceTopologyMachineClassifier.Default.Classify(evidence);
+        var identity = Classifier.Classify(evidence);
         Assert.Equal(expected, identity.FormFactor);
         var gpu = Assert.Single(identity.Evidence.GpuAttachments.Value!);
         Assert.Equal(detachable == true ? "graphics_dock" : null, gpu.AttachmentKind);
@@ -177,9 +180,35 @@ public sealed class DeviceTopologyMachineIdentityTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void ClassifierExistsOnlyWhileARunUsesItAndNoStaticInstanceSurvives()
+    {
+        const System.Reflection.BindingFlags statics = System.Reflection.BindingFlags.Static
+            | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic;
+        Assert.DoesNotContain(typeof(DeviceTopologyMachineClassifier).GetFields(statics),
+            static field => field.FieldType == typeof(DeviceTopologyMachineClassifier));
+        Assert.Empty(typeof(DeviceTopologyMachineClassifierOwner).GetFields(statics));
+        var owner = new DeviceTopologyMachineClassifierOwner();
+        var evidence = Resolve([7], false, ["Intel Xeon W-2495X"]).Evidence;
+        // Outside a run one read builds and drops its own instance.
+        Assert.Equal("workstation", owner.Classify(evidence).FormFactor);
+        Assert.False(owner.HoldsClassifier);
+        var run = owner.OpenRun();
+        // Opening the run allocates nothing; the first classification in it does.
+        Assert.False(owner.HoldsClassifier);
+        Assert.Equal("workstation", owner.Classify(evidence).FormFactor);
+        Assert.True(owner.HoldsClassifier);
+        Assert.Equal("workstation", owner.Classify(evidence).FormFactor);
+        run.Dispose();
+        Assert.False(owner.HoldsClassifier);
+        run.Dispose();
+        Assert.Equal("workstation", owner.Classify(evidence).FormFactor);
+        Assert.False(owner.HoldsClassifier);
+    }
+
+    [Fact]
     public void RealMachineSmokePrintsProductionIdentityAndRawEvidence()
     {
-        var identity = WindowsDeviceTopologyReader.ReadMachineIdentity(SmbiosFirmwareInformationReader.Read(),
+        var identity = WindowsDeviceTopologyReader.ReadMachineIdentity(new DeviceTopologyMachineClassifierOwner(), SmbiosFirmwareInformationReader.Read(),
             new WindowsBatteryReader().ReadIdentities(includeDeclarations: true),
             new WindowsGpuAdapterOrderReader().ReadInventory());
         var json = JsonSerializer.Serialize(identity, new JsonSerializerOptions(JsonSerializerDefaults.Web));
@@ -197,7 +226,7 @@ public sealed class DeviceTopologyMachineIdentityTests(ITestOutputHelper output)
         var inventory = new WindowsGpuAdapterInventoryRead(SamplingObservationStatus.Current,
             1, DateTimeOffset.UtcNow.UtcTicks, 1, 0, 0, 1, [adapter]);
         Assert.Null(WindowsGpuInformationProjection.Create(inventory));
-        var identity = WindowsDeviceTopologyReader.ReadMachineIdentity(null,
+        var identity = WindowsDeviceTopologyReader.ReadMachineIdentity(new DeviceTopologyMachineClassifierOwner(), null,
             new(NativeMetricSnapshotCatalogTopologyStatus.Complete, []), inventory);
         Assert.Equal("workstation", identity.FormFactor);
         Assert.Contains(new DeviceTopologyWorkstationComponent("gpu", adapter.Name, "nvidia-rtx-pro"),
@@ -209,7 +238,7 @@ public sealed class DeviceTopologyMachineIdentityTests(ITestOutputHelper output)
     }
 
     internal static DeviceTopologyMachineIdentity Resolve(byte[]? chassis, bool? battery,
-        string[]? cpus = null, string[]? gpus = null) => DeviceTopologyMachineClassifier.Default.Classify(new(
+        string[]? cpus = null, string[]? gpus = null) => Classifier.Classify(new(
             new(chassis, chassis is null ? "source-unavailable" : null),
             new(battery, battery is null ? "source-unavailable" : null),
             new(cpus, cpus is null ? "source-unavailable" : null),

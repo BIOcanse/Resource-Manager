@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using ResourceManager.App.Application.DeviceTopology;
 using ResourceManager.App.Domain.DeviceTopology;
 using ResourceManager.App.Domain.Messages;
+using ResourceManager.App.Infrastructure.DeviceTopology;
 using ResourceManager.App.Infrastructure.DeviceTopology.Snapshots;
 using Resource_Manager_APP.Tests;
 
@@ -409,6 +410,34 @@ public sealed class DeviceTopologySnapshotProviderTests
     }
 
     [Fact]
+    public async Task MachineClassifierIsHeldByTheRunningBlockAndReleasedWhenItStops()
+    {
+        var owner = new DeviceTopologyMachineClassifierOwner();
+        var reader = new ClassifyingReader(owner, CreateSnapshot(DateTimeOffset.UtcNow));
+        using var fixture = CreateProvider(reader, new FakeStore(), machineClassifier: owner);
+        Assert.False(owner.HoldsClassifier);
+        await fixture.Provider.StartAsync(CancellationToken.None);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var subscription = fixture.Provider.SubscribeAsync("test.classifier-run", TimeSpan.FromSeconds(1), cancellation.Token)
+            .GetAsyncEnumerator();
+        try
+        {
+            Assert.True(await subscription.MoveNextAsync());
+            await reader.Classified.Task.WaitAsync(cancellation.Token);
+            // The read inside the run built the classifier and the run keeps it for its next reads.
+            Assert.True(owner.HoldsClassifier);
+        }
+        finally
+        {
+            await cancellation.CancelAsync();
+            await subscription.DisposeAsync();
+            await fixture.Provider.StopAsync(CancellationToken.None);
+        }
+        // The stopped block holds no classifier.
+        Assert.False(owner.HoldsClassifier);
+    }
+
+    [Fact]
     public async Task CanceledSampleBeforeGateEntryReturnsCanceledCompletion()
     {
         using var fixture = CreateProvider(
@@ -425,7 +454,8 @@ public sealed class DeviceTopologySnapshotProviderTests
     private static ProviderFixture CreateProvider(
         IDeviceTopologyReader reader,
         IDeviceTopologySnapshotStore store,
-        DeviceTopologySemanticComparer? semanticComparer = null)
+        DeviceTopologySemanticComparer? semanticComparer = null,
+        DeviceTopologyMachineClassifierOwner? machineClassifier = null)
     {
         var sampling = new HostManagerSamplingSubscriptionTestFixture();
         var provider = new DeviceTopologySnapshotProvider(
@@ -434,7 +464,8 @@ public sealed class DeviceTopologySnapshotProviderTests
             semanticComparer ?? new DeviceTopologySemanticComparer(),
             sampling.Owner,
             NullLogger<DeviceTopologySnapshotProvider>.Instance,
-            new WindowsAcpiFirmwareTableReader());
+            new WindowsAcpiFirmwareTableReader(),
+            machineClassifier: machineClassifier);
         return new ProviderFixture(sampling, provider);
     }
 
@@ -470,6 +501,21 @@ public sealed class DeviceTopologySnapshotProviderTests
                 Exception exception => throw exception,
                 _ => throw new InvalidOperationException("Unsupported fake result.")
             };
+        }
+    }
+
+    // Classifies through the block's owner the way WindowsDeviceTopologyReader does.
+    private sealed class ClassifyingReader(DeviceTopologyMachineClassifierOwner owner, DeviceTopologySnapshot snapshot)
+        : IDeviceTopologyReader
+    {
+        private readonly DeviceTopologyMachineEvidence evidence = DeviceTopologyMachineIdentityTests.Resolve([10], true).Evidence;
+        public TaskCompletionSource Classified { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public DeviceTopologySnapshot ReadSnapshot()
+        {
+            var identity = owner.Classify(evidence);
+            Classified.TrySetResult();
+            return snapshot with { MachineIdentity = identity };
         }
     }
 

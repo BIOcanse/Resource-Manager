@@ -219,6 +219,7 @@ internal static class TrustedAccessHttpPolicy
             "GET /api/debug/gpu-control",
             "GET /api/debug/history/requirements",
             "GET /api/debug/logs",
+            "GET /api/debug/native-memory",
             "GET /api/dependencies",
             "GET /api/device-topology/acpi/fields",
             "GET /api/device-topology/fields",

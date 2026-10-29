@@ -31,7 +31,8 @@ public sealed partial class DeviceTopologySnapshotProvider(
     NvidiaNvapiMonitoringZone? nvidiaDrsZone = null,
     WindowsNetworkEndpointInformationReader? networkEndpoints = null,
     WindowsVolumeSpaceInformationReader? volumeSpace = null,
-    ResourceManager.Shared.BusinessBlocks.State.StateAuthority? stateAuthority = null)
+    ResourceManager.Shared.BusinessBlocks.State.StateAuthority? stateAuthority = null,
+    DeviceTopologyMachineClassifierOwner? machineClassifier = null)
     : IDeviceTopologySnapshotProvider, IHostedService, IDisposable
 {
     internal const string NetworkEndpointsItemId = "deviceTopology.network-endpoints";
@@ -97,9 +98,11 @@ public sealed partial class DeviceTopologySnapshotProvider(
         NvidiaNvapiMonitoringZone? nvidiaDrsZone = null,
         WindowsNetworkEndpointInformationReader? networkEndpoints = null,
         WindowsVolumeSpaceInformationReader? volumeSpace = null,
-        ResourceManager.Shared.BusinessBlocks.State.StateAuthority? stateAuthority = null)
+        ResourceManager.Shared.BusinessBlocks.State.StateAuthority? stateAuthority = null,
+        DeviceTopologyMachineClassifierOwner? machineClassifier = null)
         : this(reader, store, semanticComparer, samplingSubscriptionOwner, logger, acpiReader,
-            softwareInventory, serviceInventory, operatingSystemInventory, nvidiaDrsZone, networkEndpoints, volumeSpace, stateAuthority)
+            softwareInventory, serviceInventory, operatingSystemInventory, nvidiaDrsZone, networkEndpoints, volumeSpace, stateAuthority,
+            machineClassifier)
     {
         ArgumentNullException.ThrowIfNull(ledgerOwner);
         subscriptions = CreateSubscriptions(samplingSubscriptionOwner,
@@ -268,6 +271,8 @@ public sealed partial class DeviceTopologySnapshotProvider(
 
     private async Task RunSamplingLoopAsync(CancellationToken cancellationToken)
     {
+        // This run owns the machine classifier: its topology reads share one, and it is released when the run returns.
+        using var classifierRun = machineClassifier?.OpenRun();
         FieldCollectionResult? pendingFieldResult = null;
         var worker = new NativeSamplingSubscriptionWorker<DeviceTopologySampleRequest, SamplingOwnerToken>(
             subscriptions, demandSignal, static _ => { },

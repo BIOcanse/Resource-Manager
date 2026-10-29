@@ -169,10 +169,7 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
                 MaxDegreeOfParallelism = 4
             },
             async (candidate, token) =>
-            {
-                using var segment = blockDiagnostics?.MeasureSegment(BlockUids.PortableSoftwareDiscoveryService);
-                await ObserveCandidateAsync(candidate, catalog.Catalog.Pipeline, token).ConfigureAwait(false);
-            });
+                await ObserveCandidateAsync(candidate, catalog.Catalog.Pipeline, token).ConfigureAwait(false));
     }
 
     public void Dispose()
@@ -210,7 +207,6 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
                 }
                 nextCandidate = runStarts.Reader.WaitToReadAsync(cancellationToken).AsTask();
                 using var catalog = await attributionCatalogProvider.AcquireCatalogAsync(cancellationToken);
-                using var segment = blockDiagnostics?.MeasureSegment(BlockUids.PortableSoftwareDiscoveryService);
                 await ObserveCandidateAsync(candidate, catalog.Catalog.Pipeline, cancellationToken).ConfigureAwait(false);
             }
         }
@@ -237,8 +233,19 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
         if (candidate.ProcessId <= 4 || candidate.HasExited) return;
         try
         {
-            if (!await ObserveAsync(candidate, pipeline, cancellationToken).ConfigureAwait(false) && !candidate.HasExited)
-                LogCandidateFailure(candidate, new IOException("Process identity could not be read."));
+            bool identityRead;
+            PortableSoftwareObservation? observation;
+            // A synchronous measurement must end on the thread that started it, so it covers only the identity
+            // read and matching. The registry write is awaited after it and may resume on another thread.
+            using (blockDiagnostics?.MeasureSegment(BlockUids.PortableSoftwareDiscoveryService))
+                identityRead = TryCreateObservation(candidate, pipeline, out observation);
+            if (!identityRead)
+            {
+                if (!candidate.HasExited) LogCandidateFailure(candidate, new IOException("Process identity could not be read."));
+                return;
+            }
+            if (observation is not null)
+                await portableSoftwareRegistry.ObserveAsync(observation, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException error) when (!cancellationToken.IsCancellationRequested)
         {
@@ -264,11 +271,13 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
             candidate.ProcessId, kind);
     }
 
-    private async Task<bool> ObserveAsync(
+    // False when the process identity could not be read; otherwise the observation to record, if any.
+    private bool TryCreateObservation(
         PortableProcessCandidate candidate,
         RuntimeProcessAttributionPipeline attributionPipeline,
-        CancellationToken cancellationToken)
+        out PortableSoftwareObservation? observation)
     {
+        observation = null;
         var identity = readIdentity(candidate);
         if (identity is null)
         {
@@ -289,15 +298,10 @@ public sealed class PortableSoftwareDiscoveryService : IPortableSoftwareDiscover
             return true;
         }
 
-        var observation = PortableSoftwareObservationFactory.TryCreate(
+        observation = PortableSoftwareObservationFactory.TryCreate(
             identity,
             attribution,
             identityMatch.Confidence == PortableSoftwareIdentityConfidence.Confirmed);
-        if (observation is not null)
-        {
-            await portableSoftwareRegistry.ObserveAsync(observation, cancellationToken).ConfigureAwait(false);
-        }
-
         return true;
     }
 

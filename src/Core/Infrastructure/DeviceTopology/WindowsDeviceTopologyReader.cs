@@ -39,6 +39,7 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
     private readonly WindowsVolumeSpaceInformationReader volumeSpaceReader = new();
     private readonly WindowsDiskLayoutInformationReader diskLayoutReader = new();
     private readonly WindowsPageFileInformationReader pageFileReader = new();
+    private readonly DeviceTopologyMachineClassifierOwner machineClassifier;
 
     public WindowsDeviceTopologyReader(
         DeviceIdCatalog deviceIdCatalog,
@@ -47,8 +48,10 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
         WindowsStorageSensorsMonitoringZone storageZone,
         NvidiaNvmlMonitoringZone nvidiaZone,
         WindowsGpuAdapterOrderMonitoringZone gpuInventoryZone,
-        AmdAdlxMonitoringZone amdZone)
+        AmdAdlxMonitoringZone amdZone,
+        DeviceTopologyMachineClassifierOwner machineClassifier)
     {
+        this.machineClassifier = machineClassifier;
         this.deviceIdCatalog = deviceIdCatalog;
         this.displayCoordinator = displayCoordinator;
         this.batteryZone = batteryZone;
@@ -225,7 +228,7 @@ public sealed partial class WindowsDeviceTopologyReader : IDeviceTopologyReader
             notes)
         {
             SourceDiagnostics = diagnostics.ToArray(),
-            MachineIdentity = ReadMachineIdentity(firmware, batteryRead, gpu.Inventory),
+            MachineIdentity = ReadMachineIdentity(machineClassifier, firmware, batteryRead, gpu.Inventory),
             ExternalMachines = DeviceTopologyExternalMachineProjector.Project(nativeDevices, networkAdapters),
             MemoryModules = firmware?.Modules ?? [],
             FirmwareDeclarations = firmware?.Declarations,

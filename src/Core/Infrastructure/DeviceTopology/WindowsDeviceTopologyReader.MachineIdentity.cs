@@ -8,12 +8,12 @@ namespace ResourceManager.App.Infrastructure.DeviceTopology;
 
 public sealed partial class WindowsDeviceTopologyReader
 {
-    internal static DeviceTopologyMachineIdentity ReadMachineIdentity(SmbiosFirmwareCapture? firmware,
-        BatteryTopologyRead batteries, WindowsGpuAdapterInventoryRead? gpuInventory)
+    internal static DeviceTopologyMachineIdentity ReadMachineIdentity(DeviceTopologyMachineClassifierOwner classifier,
+        SmbiosFirmwareCapture? firmware, BatteryTopologyRead batteries, WindowsGpuAdapterInventoryRead? gpuInventory)
     {
         // Reuse the CPU topology's brand source; no WMI query, fallback model or periodic sampler.
         var brand = CpuIdentityInformationReader.Read([])?.Brand;
-        return DeviceTopologyMachineClassifier.Default.Classify(new(
+        return classifier.Classify(new(
             new(firmware?.ChassisTypes, firmware is null ? "source-unavailable"
                 : firmware.ChassisTypes is null ? "no-record" : null),
             SystemBatteryEvidence(batteries),

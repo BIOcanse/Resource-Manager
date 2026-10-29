@@ -285,6 +285,48 @@ public sealed class PortableSoftwareDiscoveryLossTests
         Assert.Equal(1, broker.ReleaseCount);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RegistryWriteResumingOnAnotherThreadDoesNotEndTheMeasuredDiscovery(bool explicitScan)
+    {
+        // Installed 0.3.7-beta.20261028.6: the worker held a synchronous measurement scope across the registry
+        // write; when the write resumed on another thread, the scope threw and discovery stopped while block 22
+        // stayed running with a reported InvalidOperationException.
+        using var catalog = RuntimeProcessAttributionCatalog.CreateOrReuse(null, [], [], [],
+            new CandidateResolver(), new NullResolvers(), new NullResolvers(), new NullResolvers(),
+            SoftwareIdentityCatalogTestData.Empty, SoftwareIdentityCatalogTestData.Owner);
+        var diagnostics = new ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks.BusinessBlockDiagnosticsRegistry(
+            [], NullLogger<ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks.BusinessBlockDiagnosticsRegistry>.Instance,
+            [new ResourceManager.App.Infrastructure.RuntimeSpecialization.BusinessBlocks.BusinessBlockDiagnosticRegistration(
+                BackendUids.PortableSoftwareDiscoveryService)]);
+        var registry = new RecordingRegistry { ResumeOnAnotherThread = true };
+        var logger = new RecordingLogger();
+        var broker = new Broker();
+        using var service = new PortableSoftwareDiscoveryService(broker, new CatalogProvider(catalog),
+            new MatchingCatalog(), registry, logger, () => [new(Environment.ProcessId, 2)], ReadFixtureIdentity, diagnostics);
+        if (explicitScan)
+        {
+            await service.ScanRunningProcessesAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(1, registry.Observations);
+        }
+        else
+        {
+            await service.StartAsync(CancellationToken.None);
+            try
+            {
+                Assert.True(await registry.Observed.Reader.WaitToReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10)));
+                await Task.Delay(100);
+                Assert.False(Worker(service).IsCompleted);
+            }
+            finally { await service.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5)); }
+            Assert.True(Worker(service).IsCompletedSuccessfully);
+        }
+        Assert.NotEqual(0, registry.ResumedOnThread);
+        Assert.Null(diagnostics.Read(BackendUids.PortableSoftwareDiscoveryService).Result);
+        Assert.Empty(logger.Errors);
+    }
+
     private static Task Worker(PortableSoftwareDiscoveryService service) => (Task)typeof(PortableSoftwareDiscoveryService)
         .GetField("workerTask", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(service)!;
 
@@ -365,6 +407,8 @@ public sealed class PortableSoftwareDiscoveryLossTests
     {
         internal int Observations;
         internal bool BlockAdmission;
+        internal bool ResumeOnAnotherThread;
+        internal int ResumedOnThread;
         internal TaskCompletionSource AdmissionStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal Channel<bool> Observed { get; } = Channel.CreateUnbounded<bool>();
         public async Task ObserveAsync(ResourceManager.App.Domain.SoftwareDiscovery.PortableSoftwareObservation observation, CancellationToken cancellationToken)
@@ -373,6 +417,14 @@ public sealed class PortableSoftwareDiscoveryLossTests
             {
                 AdmissionStarted.TrySetResult();
                 await Task.Delay(Timeout.Infinite, cancellationToken);
+            }
+            if (ResumeOnAnotherThread)
+            {
+                // Completing from a new thread runs the awaiting callers inline there, as an I/O completion can.
+                var resumed = new TaskCompletionSource();
+                new Thread(() => { Thread.Sleep(100); resumed.SetResult(); }) { IsBackground = true }.Start();
+                await resumed.Task;
+                ResumedOnThread = Environment.CurrentManagedThreadId;
             }
             Interlocked.Increment(ref Observations);
             Observed.Writer.TryWrite(true);

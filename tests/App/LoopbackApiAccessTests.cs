@@ -478,6 +478,7 @@ public sealed partial class LoopbackApiAccessTests
     [InlineData("GET", "/api/debug/history/requirements")]
     [InlineData("GET", "/api/debug/freedom-points")]
     [InlineData("GET", "/api/debug/business-blocks")]
+    [InlineData("GET", "/api/debug/native-memory")]
     [InlineData("GET", "/api/index/files/search?query=private")]
     [InlineData("GET", "/api/index/software/test")]
     [InlineData("GET", "/api/public/v1/index/files/search?query=private")]

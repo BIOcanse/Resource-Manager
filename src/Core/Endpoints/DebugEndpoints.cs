@@ -19,6 +19,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     private static IEndpointRouteBuilder MapDebugEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapEventDropsDebugEndpoint();
+        app.MapNativeMemoryDebugEndpoint();
         app.MapGet("/api/debug/kernel-leaks", (HttpResponse response, Application.KernelLeak.IKernelLeakReportSource reports) =>
         {
             response.Headers.CacheControl = "no-store";
@@ -146,6 +147,21 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         {
             response.Headers.CacheControl = "no-store";
             return Results.Ok(Infrastructure.Telemetry.Etw.EtwEventDropDiagnostics.Read());
+        });
+        return app;
+    }
+
+    // The product Ledger's table and every registered workspace's capacity, read at request time. The read takes
+    // no lease, allocates no workspace and starts nothing.
+    internal static IEndpointRouteBuilder MapNativeMemoryDebugEndpoint(this IEndpointRouteBuilder app)
+    {
+        app.MapGet("/api/debug/native-memory", (HttpResponse response,
+            [Microsoft.AspNetCore.Mvc.FromServices] Infrastructure.Adaptation.ResourceManagerLedgerOwner ledger) =>
+        {
+            response.Headers.CacheControl = "no-store";
+            var table = ledger.ReadTable();
+            return Results.Ok(new NativeMemoryDebugPayload(
+                new(table.RegisteredBytes, table.SystemPageBytes), ledger.ReadWorkspaceCapacities()));
         });
         return app;
     }

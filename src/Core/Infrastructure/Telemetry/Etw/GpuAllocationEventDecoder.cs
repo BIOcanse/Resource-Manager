@@ -3,10 +3,10 @@ namespace ResourceManager.App.Infrastructure.Telemetry.Etw;
 internal static class GpuAllocationEventDecoder
 {
     // Named access is the recorded-payload oracle; production supplies the cached indexed reader.
-    internal static void Apply(GpuAllocationLedger ledger, int eventId, Func<string, object> payload, DateTime timestampUtc)
+    internal static void Apply(IGpuAllocationLedgerUpdates ledger, int eventId, Func<string, object> payload, DateTime timestampUtc)
         => Apply(ledger, eventId, new GpuAllocationNamedPayload(payload), timestampUtc);
 
-    internal static void Apply<TPayload>(GpuAllocationLedger ledger, int eventId, TPayload payload, DateTime timestampUtc)
+    internal static void Apply<TPayload>(IGpuAllocationLedgerUpdates ledger, int eventId, TPayload payload, DateTime timestampUtc)
         where TPayload : IGpuAllocationPayload
     {
         static ulong Unsigned(object value) => value switch

@@ -44,6 +44,21 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         bool ok,
         global::System.Collections.Generic.IReadOnlyList<string> lines);
 
+    // GET /api/debug/native-memory. Ledger: bytes registered in the product Ledger's tables and the system pages
+    // behind them. Workspaces: each registered compute scratch (inLedger true when its region lives in the Ledger)
+    // and NativeCore workspace (inLedger false) with its capacity rows and bytes. A workspace grows to the largest
+    // demand it has seen and does not shrink while registered, so its capacity is also its peak.
+    private sealed record NativeMemoryDebugPayload(
+        NativeMemoryLedgerTablePayload Ledger,
+        global::System.Collections.Generic.IReadOnlyList<global::ResourceManager.App.Infrastructure.Adaptation.ResourceManagerWorkspaceCapacity> Workspaces)
+    {
+        public global::ResourceManager.ReadWrite.ReadVolatility Volatility => global::ResourceManager.ReadWrite.ReadVolatility.Sampled;
+    }
+
+    private sealed record NativeMemoryLedgerTablePayload(
+        ulong RegisteredBytes,
+        ulong SystemPageBytes);
+
     private sealed record DebugSchedulingPayload(
         global::ResourceManager.App.Domain.Metrics.SchedulingGpuInventorySnapshot? gpuInventory,
         global::ResourceManager.App.Domain.ResourceBreakdown.SchedulingProcessFactSnapshot? processFacts,

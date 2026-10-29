@@ -58,7 +58,7 @@ public sealed partial class BackendFrontendWireAcceptanceTests
             { AdapterTypeFlags = 0x400 };
         var state = DeviceTopologySnapshotState.Warming with { State = DeviceTopologySnapshotStatus.Ready,
             Snapshot = DeviceInformationTestData.Snapshot() with {
-                MachineIdentity = DeviceTopologyMachineClassifier.Default.Classify(evidence), GpuInformation = [gpu]
+                MachineIdentity = DeviceTopologyMachineIdentityTests.Classifier.Classify(evidence), GpuInformation = [gpu]
             } };
         var decoded = (await DecodeAsync("device-topology", ProductionTopologyWire(state))).GetProperty("topologySnapshot");
         Assert.Equal("laptop", decoded.GetProperty("machineIdentity").GetProperty("formFactor").GetString());
