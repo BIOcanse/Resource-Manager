@@ -3,7 +3,10 @@ param(
     [ValidateSet('ESLint','Knip','Cppcheck','PowerShell','Zig','CodeQL')][string[]]$Tools = @('ESLint','Knip','Cppcheck','PowerShell','Zig','CodeQL'),
     [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$')][string]$RunName = 'static-analysis-web-queued',
     [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$')][string]$CodeQLRunName = 'static-analysis-web-codeql-queued',
-    [string]$CodeQL = 'D:/Code/CommonAssets/Tools/CodeQL/2.27.2/codeql/codeql.exe',
+    # Defaults to <ToolsRoot>/CodeQL/2.27.2/codeql/codeql.exe (scripts/dev/MachineRoots.psm1).
+    [string]$CodeQL,
+    # Defaults to <ToolsRoot>/JobQueue/JobQueue.ps1.
+    [string]$Queue,
     [switch]$KeepOpen
 )
 Set-StrictMode -Version Latest
@@ -12,7 +15,12 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 Set-Location -LiteralPath $repo
 $policy = Join-Path $PSScriptRoot 'workspace-policy.json'
-$queue = 'D:/Code/CommonAssets/Tools/JobQueue/JobQueue.ps1'
+if (-not $CodeQL -or -not $Queue) {
+    Import-Module (Join-Path $PSScriptRoot '../dev/MachineRoots.psm1') -DisableNameChecking
+    $tools = Get-MachineRoot -Name ToolsRoot
+    if (-not $CodeQL) { $CodeQL = Join-Path $tools 'CodeQL/2.27.2/codeql/codeql.exe' }
+    if (-not $Queue) { $Queue = Join-Path $tools 'JobQueue/JobQueue.ps1' }
+}
 $pwsh = (Get-Command pwsh -CommandType Application).Source
 $node = (Get-Command node -CommandType Application).Source
 $manager = Join-Path $repo 'scripts/maintenance/Manage-GeneratedWorkspace.ps1'

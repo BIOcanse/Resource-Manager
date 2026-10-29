@@ -9,8 +9,12 @@ $ErrorActionPreference='Stop'
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 if($References.Count -gt 750000){throw 'Lifecycle reference input exceeds the 750000-entry bound.'}
 $rootSet=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+Import-Module (Join-Path $PSScriptRoot '../dev/MachineRoots.psm1') -DisableNameChecking
 foreach($configured in @($Policy.roots)) {
-    $root=[IO.Path]::GetFullPath(([string]$configured.path).Replace('{RepositoryRoot}',$repo))
+    # A root under an unconfigured {WorkRoot} is inactive on this machine.
+    $resolved=Resolve-MachinePathTokens -Path ([string]$configured.path) -RepositoryRoot $repo
+    if($null -eq $resolved){continue}
+    $root=[IO.Path]::GetFullPath($resolved)
     [void]$rootSet.Add($root.TrimEnd('\'))
 }
 foreach($configured in $ReferenceRoots) {

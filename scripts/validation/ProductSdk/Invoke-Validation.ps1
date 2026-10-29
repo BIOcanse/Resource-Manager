@@ -12,7 +12,7 @@ param([Parameter(Mandatory)][ValidateSet('Build','Tests','Sources','Incomplete',
     [ValidateSet('DOTNET_gcServer=0')][string]$CompilerEnvironment)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
-$taskRepo='D:\Code\Resource-Manager-Development'
+$taskRepo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 $taskRoot=[IO.Path]::GetFullPath($TaskRoot)
 $taskWorkspace=[IO.Path]::GetFullPath($WorkspaceRoot)
 if(-not [IO.File]::Exists((Join-Path $taskRoot 'NuGet.official.config'))) {
@@ -211,7 +211,7 @@ $taskInputs+=@(Get-ChildItem (Join-Path $taskRepo 'sdk/freedom-point/packages') 
 if($Stage -in @('Sources','Pack','Consumers')) {
     $taskCompileBuildContext=Get-Content -LiteralPath (Join-Path $taskRoot 'build-context.json') -Raw|ConvertFrom-Json
     $taskCompileArtifacts=[IO.Path]::GetFullPath([string]$taskCompileBuildContext.artifacts)
-    $taskCompilePowerShell='C:\Users\kings\.cache\codex-runtimes\codex-primary-runtime\dependencies\native\powershell\pwsh.exe'
+    $taskCompilePowerShell=[Environment]::ProcessPath
     $taskCompileProperties=@(
         ('-p:ArtifactsPath='+$taskCompileArtifacts),'-p:Configuration=Debug','-p:BuildInParallel=false','-maxcpucount:1','-nodeReuse:false',
         '-p:UseSharedCompilation=false','-p:NuGetAudit=false','-p:SkipPerformanceOverlayNativeBuild=true','-p:SkipGpuPlacementNativeBuild=true',
@@ -227,7 +227,7 @@ if($Stage -in @('Sources','Pack','Consumers')) {
         ('-p:RestorePackagesPath='+(Join-Path $taskCompileArtifacts 'packages'))
     )
     if([string]::IsNullOrWhiteSpace($NativeContextPath)) {
-        $taskCompileProperties+='-p:NativeCoreInstallRoot=D:\Code\Resource-Manager-Development\.local\review-repairs-third-20261009\native-prefix'
+        $taskCompileProperties+=('-p:NativeCoreInstallRoot='+(Join-Path $taskRepo '.local\review-repairs-third-20261009\native-prefix'))
     } else {
         $taskCompileNativeContext=Get-Content -LiteralPath $NativeContextPath -Raw|ConvertFrom-Json
         $taskCompileAllowedNativeProperties=@('NativeCoreOutput','AdapterNativeRoot','AdapterNativeOutput','AdlxBridgeRoot',
@@ -297,7 +297,7 @@ $taskPartitionBefore=Get-Content -LiteralPath (Join-Path $taskRepo 'src/Core/Con
     $taskPlan=[ordered]@{
         executionHoldPath=$taskHold;faultReviewPath=$taskPreflight.faultReviewPath;headroomPath=$taskPreflight.headroomPath
         allowedReceiptRoot=$taskRun;runDirectory=(Join-Path $taskRun 'job')
-        executable='C:\Users\kings\.cache\codex-runtimes\codex-primary-runtime\dependencies\native\powershell\pwsh.exe'
+        executable=[Environment]::ProcessPath
         arguments=@('-NoLogo','-NoProfile','-NonInteractive','-File',(Join-Path $PSScriptRoot 'Run-Stage.ps1'),'-Stage',$Stage,'-RunDirectory',$taskRun,'-TaskRoot',$taskRoot)
         workingDirectory=$taskRepo;jobMemoryLimitBytes=$JobMemoryLimitBytes;activeProcessLimit=32;cpuRate=2500
         commitReserveBytes=$taskPreflight.commitReserveBytes;physicalReserveBytes=$taskPreflight.physicalReserveBytes

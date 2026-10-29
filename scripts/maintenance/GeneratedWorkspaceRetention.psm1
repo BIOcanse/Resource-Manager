@@ -1,4 +1,6 @@
 Set-StrictMode -Version Latest
+# Policy root paths may use {RepositoryRoot} and {WorkRoot}; MachineRoots resolves them.
+Import-Module (Join-Path $PSScriptRoot '..\dev\MachineRoots.psm1') -DisableNameChecking
 
 $script:GeneratedWorkspaceMarkerName = '.generated-workspace.json'
 $script:GeneratedWorkspaceMarkerMaxBytes = 1048576
@@ -164,11 +166,19 @@ function Get-GWRepositoryRoot {
 }
 
 function Resolve-GWConfiguredPath {
+    <# Returns $null for a root under {WorkRoot} when this machine has not configured WorkRoot. #>
     param([Parameter(Mandatory)][string]$Path)
 
-    $repositoryRoot = Get-GWRepositoryRoot
-    $resolved = $Path.Replace('{RepositoryRoot}', $repositoryRoot)
+    $resolved = Resolve-MachinePathTokens -Path $Path -RepositoryRoot (Get-GWRepositoryRoot)
+    if ($null -eq $resolved) { return $null }
     return [System.IO.Path]::GetFullPath($resolved)
+}
+
+function Resolve-GeneratedWorkspacePolicyPath {
+    <# Full path of a configured policy path, or $null when it needs a machine root that is not configured. #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path)
+    return Resolve-GWConfiguredPath -Path $Path
 }
 
 function Get-GeneratedWorkspacePolicy {
@@ -180,6 +190,13 @@ function Get-GeneratedWorkspacePolicy {
     if ([int](Get-GWProperty $policy 'schemaVersion' 0) -ne 1) { throw 'Unsupported generated-workspace policy schema.' }
     if ($null -eq (Get-GWProperty $policy 'defaults')) { throw 'Retention policy has no defaults object.' }
     if (@(Get-GWProperty $policy 'roots' @()).Count -eq 0) { throw 'Retention policy has no managed roots.' }
+    $unconfigured = @(foreach ($root in @(Get-GWProperty $policy 'roots' @())) {
+        $configuredPath = [string](Get-GWProperty $root 'path' '')
+        if (-not [string]::IsNullOrWhiteSpace($configuredPath) -and $null -eq (Resolve-GWConfiguredPath -Path $configuredPath)) { [string](Get-GWProperty $root 'id' '') }
+    })
+    if ($unconfigured.Count -gt 0) {
+        Write-Warning "Retention roots under {WorkRoot} are inactive because WorkRoot is not configured on this machine (set RM_WORK_ROOT or git config rm.workRoot): $($unconfigured -join ', ')"
+    }
     return $policy
 }
 
@@ -190,7 +207,9 @@ function Get-GWPolicyRoot {
     foreach ($root in @(Get-GWProperty $Policy 'roots' @())) {
         $configuredPath = [string](Get-GWProperty $root 'path' '')
         if ([string]::IsNullOrWhiteSpace($configuredPath)) { continue }
-        $configuredFull = ConvertTo-GWFullPath -Path (Resolve-GWConfiguredPath -Path $configuredPath) -ParameterName 'policy root'
+        $resolvedPath = Resolve-GWConfiguredPath -Path $configuredPath
+        if ($null -eq $resolvedPath) { continue }
+        $configuredFull = ConvertTo-GWFullPath -Path $resolvedPath -ParameterName 'policy root'
         if ([string]::Equals($rootFull, $configuredFull, [System.StringComparison]::OrdinalIgnoreCase)) { return $root }
     }
     throw "RootPath is not listed in the retention policy: $rootFull"
@@ -204,9 +223,13 @@ function Get-GeneratedWorkspaceRoot {
         if ([string]::Equals([string](Get-GWProperty $root 'id' ''), $RootId, [System.StringComparison]::OrdinalIgnoreCase)) {
             $configuredPath = [string](Get-GWProperty $root 'path' '')
             if ([string]::IsNullOrWhiteSpace($configuredPath)) { throw "Managed root has no path: $RootId" }
+            $resolvedPath = Resolve-GWConfiguredPath -Path $configuredPath
+            if ($null -eq $resolvedPath) {
+                throw "Managed root $RootId is under {WorkRoot}, which this machine has not configured. Set RM_WORK_ROOT, or run: git config --global rm.workRoot <folder>"
+            }
             return [pscustomobject]@{
                 RootId = $RootId
-                Path = Resolve-GWConfiguredPath -Path $configuredPath
+                Path = $resolvedPath
                 ExcludedNames = @((Get-GWProperty $root 'excludedNames' @()))
             }
         }
@@ -1890,6 +1913,7 @@ function Invoke-GeneratedWorkspaceRetention {
 Export-ModuleMember -Function @(
     'Get-GeneratedWorkspacePolicy',
     'Get-GeneratedWorkspaceRoot',
+    'Resolve-GeneratedWorkspacePolicyPath',
     'Get-GeneratedWorkspaceState',
     'New-GeneratedWorkspace',
     'Adopt-GeneratedWorkspace',

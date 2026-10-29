@@ -35,7 +35,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     {
         const int pid = 53042, otherPid = 53043;
         const ulong birth = 133900000000000042;
-        const string root = @"F:\code\UnboundWebView\chromium_git\chromium\src\out\Release_GN_x64";
+        const string root = @"X:\Builds\Browser\out\Release_GN_x64";
         var topology = CreateAutomaticPlacementTopology();
         var facts = CreateCompleteProcessFacts((pid, birth, "not-attributed-yet", 80d, 20d, 5d),
             (otherPid, birth + 1, "background", 20d, 20d, 5d));

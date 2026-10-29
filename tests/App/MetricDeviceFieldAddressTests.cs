@@ -258,9 +258,9 @@ public sealed class MetricDeviceFieldAddressTests
     public void PnpAddressesUseTheDeviceTopologySpellingWithoutAnEndpointTopologyCache()
     {
         // Real Radeon 610M: DXGI/SetupAPI reports a lowercase instance part; device topology port DeviceId is upper invariant.
-        const string reported = @" PCI\VEN_1002&DEV_164E&SUBSYS_50051D05&REV_D8\4&b799193&0&0041 ";
-        const string topology = @"PCI\VEN_1002&DEV_164E&SUBSYS_50051D05&REV_D8\4&B799193&0&0041";
-        const string secondReported = @"PCI\VEN_1002&DEV_164E\4&b799193&0&0042";
+        const string reported = @" PCI\VEN_1002&DEV_164E&SUBSYS_12345678&REV_D8\4&1a2b3c4d&0&0041 ";
+        const string topology = @"PCI\VEN_1002&DEV_164E&SUBSYS_12345678&REV_D8\4&1A2B3C4D&0&0041";
+        const string secondReported = @"PCI\VEN_1002&DEV_164E\4&1a2b3c4d&0&0042";
         var adapter = MetricDeviceAddress.GpuAdapter(0x10B0C, [reported]);
         Assert.Equal(topology, adapter.PnpInstanceId);
         Assert.Equal(topology, MetricDeviceAddress.GpuEngine(adapter, 0x10B0C, 0, 1, 0).PnpInstanceId);
@@ -268,13 +268,13 @@ public sealed class MetricDeviceFieldAddressTests
             MetricDeviceAddress.GpuAdapter(0x10B0C, [reported, secondReported]).PnpInstanceIds!));
         Assert.Equal(topology, MetricDeviceAddress.GpuFanTuningGroup(0x10B0C, [reported]).PnpInstanceId);
         Assert.Equal(topology, MetricDeviceAddress.GpuFan(reported, 0).PnpInstanceId);
-        Assert.Equal(@"ACPI\NPU_MIXED\4&B799193", MetricDeviceAddress.Npu(@"ACPI\Npu_Mixed\4&b799193").PnpInstanceId);
-        Assert.Equal(@"ACPI\NPU_MIXED\4&B799193", MetricDeviceAddress.NpuEngine(@"ACPI\Npu_Mixed\4&b799193", 0, 1).PnpInstanceId);
+        Assert.Equal(@"ACPI\NPU_MIXED\4&1A2B3C4D", MetricDeviceAddress.Npu(@"ACPI\Npu_Mixed\4&1a2b3c4d").PnpInstanceId);
+        Assert.Equal(@"ACPI\NPU_MIXED\4&1A2B3C4D", MetricDeviceAddress.NpuEngine(@"ACPI\Npu_Mixed\4&1a2b3c4d", 0, 1).PnpInstanceId);
 
         var plan = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;
         var gpu = new NativeMetricSnapshotGpuCatalogIdentity(0, "AMD Radeon(TM) 610M", "opaque-radeon", 0x10B0C, 1, 2, false)
         { PhysicalPnpInstanceIds = [reported] };
-        var npu = new NpuMemoryCatalogIdentity(@"ACPI\Npu_Mixed\4&b799193");
+        var npu = new NpuMemoryCatalogIdentity(@"ACPI\Npu_Mixed\4&1a2b3c4d");
         var catalog = NativeMetricSnapshotHostConfiguration.CreateCatalogProjection(plan, [gpu], [], [],
             NativeMetricSnapshotCatalogHandleMap.Empty, npuMemoryIdentities: [npu]);
         var gpuBindings = catalog.RuleBindings.Values.Where(row => row.DeviceIdentity == gpu.ExactIdentityKey).ToArray();
@@ -282,7 +282,7 @@ public sealed class MetricDeviceFieldAddressTests
         Assert.All(gpuBindings, row => Assert.Equal(topology, row.Device.Address!.PnpInstanceId));
         var npuBindings = catalog.RuleBindings.Values.Where(row => row.DeviceIdentity == npu.ExactIdentityKey).ToArray();
         Assert.NotEmpty(npuBindings);
-        Assert.All(npuBindings, row => Assert.Equal(@"ACPI\NPU_MIXED\4&B799193", row.Device.Address!.PnpInstanceId));
+        Assert.All(npuBindings, row => Assert.Equal(@"ACPI\NPU_MIXED\4&1A2B3C4D", row.Device.Address!.PnpInstanceId));
     }
 
     [Fact]

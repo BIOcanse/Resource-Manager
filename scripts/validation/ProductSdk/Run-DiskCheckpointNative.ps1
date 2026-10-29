@@ -15,7 +15,8 @@ $ownerMarkerPath=Join-Path $profile.nativeOwner '.generated-workspace.json';$own
 $ownerArchive=Join-Path $run 'native-owner-marker-at-build.json';[IO.File]::Copy($ownerMarkerPath,$ownerArchive,$false);$ownerArchiveRow=Row $ownerArchive
 if($ownerAtBuild.sha256 -ine $ownerArchiveRow.sha256 -or $ownerAtBuild.length -ne $ownerArchiveRow.length){throw 'Native owner marker snapshot differs.'}
 $contextSources=@($inputs.sourceInputs|Where-Object {$_.path -ine $ownerMarkerPath})+@($ownerArchiveRow)
-$zig='D:\Code\CommonAssets\Tools\Zig\zig-0.16.0\zig.exe';$version=@(& $zig version);$versionCode=$LASTEXITCODE
+Import-Module (Join-Path $PSScriptRoot '..\..\dev\MachineRoots.psm1') -DisableNameChecking
+$zig=Join-Path (Get-MachineRoot -Name ToolsRoot) 'Zig\zig-0.16.0\zig.exe';$version=@(& $zig version);$versionCode=$LASTEXITCODE
 Save (Join-Path $run 'disk-zig-version.json') @{executable=(Row $zig);exitCode=$versionCode;version=($version-join[Environment]::NewLine)}
 if($versionCode-ne0-or$version.Count-ne1-or$version[0]-notmatch'^0\.16\.0(?:[-+].*)?$'){throw 'The official builder default Zig0.16 tool is not verified.'}
 $arguments=@{DeclarationJson=[string]$profile.declaration;SdkRoot=[string]$profile.sdkRoot;ArtifactRoot=$artifact;EvidenceRoot=$evidence;ProjectRoot=[string]$profile.projectRoot;WorksetRoot=[string]$profile.worksetRoot;Jobs=1;Backend='llvm'}

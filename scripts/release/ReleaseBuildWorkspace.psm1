@@ -61,14 +61,15 @@ function New-ReleaseBuildWorkspace {
     # The sole deletion target is this producer's new build directory. Formal
     # stages/packages are neither registered nor selected for retention.
     $root=[pscustomobject]@{id='release-build-temporaries';path=$paths.OutputRoot;excludedNames=@();maxRecentCompleted=0;maxBytes=8589934592}
-    $otherRoots=@($policy.roots|Where-Object {([IO.Path]::GetFullPath(([string]$_.path).Replace('{RepositoryRoot}',$script:ReleaseBuildRepository))).TrimEnd('\') -ine $paths.OutputRoot})
+    # A root under an unconfigured {WorkRoot} resolves to $null: it is not this OutputRoot and protects nothing here.
+    $otherRoots=@($policy.roots|Where-Object {$resolved=Resolve-GeneratedWorkspacePolicyPath -Path ([string]$_.path); $null -eq $resolved -or $resolved.TrimEnd('\') -ine $paths.OutputRoot})
     $policy.roots=@($root)+$otherRoots
     $policy.enabled=$true
     $referenceRoots=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     foreach($candidate in @($policy.roots.path)+@($policy.referenceRoots)) {
         if(-not [string]::IsNullOrWhiteSpace([string]$candidate)) {
-            $path=[IO.Path]::GetFullPath(([string]$candidate).Replace('{RepositoryRoot}',$script:ReleaseBuildRepository))
-            if([IO.Directory]::Exists($path)){[void]$referenceRoots.Add($path)}
+            $path=Resolve-GeneratedWorkspacePolicyPath -Path ([string]$candidate)
+            if($null -ne $path -and [IO.Directory]::Exists($path)){[void]$referenceRoots.Add($path)}
         }
     }
     [void][IO.Directory]::CreateDirectory($paths.OutputRoot)

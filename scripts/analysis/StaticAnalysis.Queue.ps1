@@ -6,7 +6,8 @@ function Invoke-StaticAnalysisQueued {
         [Parameter(Mandatory)][string]$Label,
         [Parameter(Mandatory)][string]$Repository
     )
-    $queueEntry = 'D:\Code\CommonAssets\Tools\JobQueue\JobQueue.ps1'
+    Import-Module (Join-Path $PSScriptRoot '../dev/MachineRoots.psm1') -DisableNameChecking
+    $queueEntry = Join-Path (Get-MachineRoot -Name ToolsRoot) 'JobQueue\JobQueue.ps1'
     if (-not (Test-Path -LiteralPath $queueEntry)) { throw "Required build queue is unavailable: $queueEntry" }
     & $queueEntry -Action Run -Label $Label -FilePath $FilePath -ArgumentList $Arguments `
         -WorkingDirectory $Repository -MemoryLimitGiB 4 -TimeoutMinutes 120 *> "$Log.queue.log"

@@ -28,12 +28,12 @@ Program → Frontend 使用固定条件 ProgramActive，只读 ProgramStarted。
 在仓库根目录、已登记 running 的输出目录下，通过 JobQueue 构建：
 
 ```powershell
-$work = 'F:\code\Resource-Manager-Development\desktop-resident'
+$work = '<workset-root>\desktop-resident'
 & scripts/build/Generate-DesktopPoints.ps1 -WorkRoot $work
 & scripts/build/Generate-DesktopText.ps1
 $env:ZIG_GLOBAL_CACHE_DIR = "$work\zig-global-cache"
-& D:\Code\CommonAssets\Tools\JobQueue\JobQueue.ps1 -Action Run -Label 'desktop Debug' `
-  -FilePath D:\Code\CommonAssets\Tools\Zig\zig-0.16.0\zig.exe `
+& <tools>\JobQueue\JobQueue.ps1 -Action Run -Label 'desktop Debug' `
+  -FilePath <tools>\Zig\zig-0.16.0\zig.exe `
   -ArgumentList @('build', '-Doptimize=Debug', "-Dpoints-root=$work/desktop-points", '--cache-dir', "$work\zig-cache", '--prefix', "$work\debug", '-j1') `
   -WorkingDirectory "$PWD\src\UI\Desktop"
 ```
@@ -44,7 +44,7 @@ $env:ZIG_GLOBAL_CACHE_DIR = "$work\zig-global-cache"
 
 在同一个已登记输出目录内通过 JobQueue 运行 `zig build export-tree -j1 --cache-dir <缓存目录>`，stdout 是单进程 JSON。窗口进程提供真实导出后，可将两份输出交给 `scripts/tools/Export-ControlTree.ps1 -TreeJson <desktop.json>,<window.json>` 拼接；共享脚本会明确拒绝缺少被启动进程的输入。`zig build test-export -j1` 导出真实根声明，并校验根、Frontend 和唯一的 window 启动块；默认 `zig build test -j1` 包含这一检查。测试不启动常驻进程或窗口进程。
 
-普通交互身份的文件夹具验收独立为 `test-key-fixture`：先由维护会话用既有 Initialize-BackendKeyFixture.ps1 准备，再运行该入口，原 owner/ACL/重复读取/取消断言不变。`check-key-fixture` 只编译此入口；默认 `test` 不访问该真实夹具。`-Dpipe-filter=<名称子串>` 可只补失败的管道测试。
+普通交互身份的文件夹具验收独立为 `test-key-fixture`：先由维护会话用既有 Initialize-BackendKeyFixture.ps1 准备，再以 `-Dkey-fixture-work-root=<同一 WorkRoot>` 运行该入口（未给出时跳过），原 owner/ACL/重复读取/取消断言不变。`check-key-fixture` 只编译此入口；默认 `test` 不访问该真实夹具。`-Dpipe-filter=<名称子串>` 可只补失败的管道测试。
 
 十一个可调默认值只在 `src/Development/DesktopBuild/desktop.points.json` 声明，通过 FreedomPoint SDK 生成 Zig 值。窗口停止期限和超期策略归窗口包装块；策略为正式枚举 `terminate`（默认强制结束）或 `wait`（继续等待）。固定队列、缓冲区和表容量属于结构上限，耗尽时明确失败。
 

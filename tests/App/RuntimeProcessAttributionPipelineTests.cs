@@ -329,14 +329,14 @@ public sealed partial class RuntimeProcessAttributionPipelineTests
     }
 
     [Theory]
-    [InlineData(@"F:\SteamLibrary\steamapps\common\Battlefield 6\bf6.exe", SoftwareKinds.Game)]
-    [InlineData(@"f:/STEAMLIBRARY/steamapps/common/Battlefield 6/bin/../BF6.EXE", SoftwareKinds.Game)]
+    [InlineData(@"E:\Library\SteamLibrary\steamapps\common\Battlefield 6\bf6.exe", SoftwareKinds.Game)]
+    [InlineData(@"e:/LIBRARY/STEAMLIBRARY/steamapps/common/Battlefield 6/bin/../BF6.EXE", SoftwareKinds.Game)]
     [InlineData(@"D:\Other\bf6.exe", SoftwareKinds.RuntimeProduct)]
-    [InlineData(@"F:\SteamLibrary\steamapps\common\Battlefield 6\helper.exe", SoftwareKinds.RuntimeProduct)]
+    [InlineData(@"E:\Library\SteamLibrary\steamapps\common\Battlefield 6\helper.exe", SoftwareKinds.RuntimeProduct)]
     public void Match_WindowsGameListChangesOnlyCategoryForExactNormalizedPath(string path, string kind)
     {
         using var pipeline = CreatePipeline([], windowsGamePaths: new HashSet<string>
-            { @"F:\SteamLibrary\steamapps\common\Battlefield 6\bf6.exe" });
+            { @"E:\Library\SteamLibrary\steamapps\common\Battlefield 6\bf6.exe" });
         var result = pipeline.Match(new(46200, null, "bf6", path, false,
             ProductName: "Battlefield 6", CompanyName: "EA Digital Illusions CE AB"));
 
@@ -436,18 +436,18 @@ public sealed partial class RuntimeProcessAttributionPipelineTests
             "app-wps-office", "WPS Office", SoftwareKinds.Other, "test",
             ExecutableNames: ["wps.exe"]));
         var software = CreateSoftware("catalog:app-wps-office", "WPS Office",
-            confirmedRoot ? [@"D:\Software\WPS Office"] : []) with
+            confirmedRoot ? [@"E:\Apps\Office"] : []) with
         {
             Kind = kind
         };
         using var pipeline = CreatePipeline([software], identityCatalog: catalog);
         var result = pipeline.Match(new RuntimeProcessIdentity(
-            46101, null, "wps", @"D:\Software\WPS Office\12.1\office6\wps.exe",
+            46101, null, "wps", @"E:\Apps\Office\12.1\office6\wps.exe",
             false, ProductName: "WPS Office"));
         Assert.Equal(software.Id, result.Id);
         Assert.Equal(software.Name, result.Name);
         Assert.Equal(SoftwareKinds.Other, result.Kind);
-        Assert.Equal(confirmedRoot ? ["d:/software/wps office"] : Array.Empty<string>(), result.RootPaths);
+        Assert.Equal(confirmedRoot ? ["e:/apps/office"] : Array.Empty<string>(), result.RootPaths);
     }
 
     [Fact]
@@ -548,13 +548,13 @@ public sealed partial class RuntimeProcessAttributionPipelineTests
     public void Match_ClassifiesLauncherManagedGameWhenOnlyLauncherIsInstalled()
     {
         using var pipeline = CreatePipeline([
-            CreateSoftware("windows-installed:hoyoplay", "米哈游启动器", [@"D:\Games\miHoYo Launcher"])
+            CreateSoftware("windows-installed:hoyoplay", "米哈游启动器", [@"E:\Launchers\HoYo"])
         ]);
         var process = new RuntimeProcessIdentity(
             108,
             null,
             "StarRail",
-            @"D:\Games\miHoYo Launcher\Games\Star Rail Game\StarRail.exe",
+            @"E:\Launchers\HoYo\Games\Star Rail Game\StarRail.exe",
             false,
             FileDescription: "崩坏: 星穹铁道",
             ProductName: "崩坏: 星穹铁道",
@@ -569,7 +569,7 @@ public sealed partial class RuntimeProcessAttributionPipelineTests
         Assert.Equal(SoftwareKinds.Game, attribution.Kind);
         Assert.Equal(SoftwareDisplayKinds.Game, attribution.DisplayKind);
         Assert.Equal(
-            "d:/games/mihoyo launcher/games/star rail game",
+            "e:/launchers/hoyo/games/star rail game",
             Assert.Single(attribution.RootPaths));
     }
 
@@ -577,20 +577,20 @@ public sealed partial class RuntimeProcessAttributionPipelineTests
     public void Match_GroupsLauncherManagedGameHelpersByGameDirectory()
     {
         using var pipeline = CreatePipeline([
-            CreateSoftware("windows-installed:hoyoplay", "米哈游启动器", [@"D:\Games\miHoYo Launcher"])
+            CreateSoftware("windows-installed:hoyoplay", "米哈游启动器", [@"E:\Launchers\HoYo"])
         ]);
         var game = new RuntimeProcessIdentity(
             109,
             null,
             "StarRail",
-            @"D:\Games\miHoYo Launcher\Games\Star Rail Game\StarRail.exe",
+            @"E:\Launchers\HoYo\Games\Star Rail Game\StarRail.exe",
             false,
             ProductName: "崩坏: 星穹铁道");
         var helper = new RuntimeProcessIdentity(
             110,
             109,
             "UnityCrashHandler64",
-            @"D:\Games\miHoYo Launcher\Games\Star Rail Game\UnityCrashHandler64.exe",
+            @"E:\Launchers\HoYo\Games\Star Rail Game\UnityCrashHandler64.exe",
             false,
             ProductName: "Unity Crash Handler");
 

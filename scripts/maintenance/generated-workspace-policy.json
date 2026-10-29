@@ -21,61 +21,61 @@
     },
     {
       "id": "rm-product-workspaces",
-      "path": "F:\\code\\Resource-Manager-Development",
+      "path": "{WorkRoot}\\Resource-Manager-Development",
       "excludedNames": []
     },
     {
       "id": "rm-validation-batches",
-      "path": "F:\\code\\Resource-Manager-Development\\.validation\\batches",
+      "path": "{WorkRoot}\\Resource-Manager-Development\\.validation\\batches",
       "excludedNames": [
         "shared-artifacts"
       ]
     },
     {
       "id": "freedompoint-validation-batches",
-      "path": "F:\\code\\FreedomPoint\\.validation\\batches",
+      "path": "{WorkRoot}\\FreedomPoint\\.validation\\batches",
       "excludedNames": [
         "shared-artifacts"
       ]
     },
     {
       "id": "rm-product-validation-batches",
-      "path": "F:\\code\\Resource-Manager-Development\\product-validation\\.validation\\batches",
+      "path": "{WorkRoot}\\Resource-Manager-Development\\product-validation\\.validation\\batches",
       "excludedNames": []
     },
     {
       "id": "rm-product-sdk38-batches",
-      "path": "F:\\code\\Resource-Manager-Development\\product-sdk38-validation\\.validation\\batches",
+      "path": "{WorkRoot}\\Resource-Manager-Development\\product-sdk38-validation\\.validation\\batches",
       "excludedNames": []
     },
     {
       "id": "rm-product-sdk40-batches",
-      "path": "F:\\code\\Resource-Manager-Development\\product-sdk40-validation\\.validation\\batches",
+      "path": "{WorkRoot}\\Resource-Manager-Development\\product-sdk40-validation\\.validation\\batches",
       "excludedNames": []
     },
     {
       "id": "rm-npu-device-batches",
-      "path": "F:\\code\\Resource-Manager-Development\\npu-device-validation\\.validation\\batches",
+      "path": "{WorkRoot}\\Resource-Manager-Development\\npu-device-validation\\.validation\\batches",
       "excludedNames": []
     },
     {
       "id": "rm-nvidia-fan-batches",
-      "path": "F:\\code\\Resource-Manager-Development\\nvidia-fan-validation\\.validation\\batches",
+      "path": "{WorkRoot}\\Resource-Manager-Development\\nvidia-fan-validation\\.validation\\batches",
       "excludedNames": []
     },
     {
       "id": "rm-product-composition-batches",
-      "path": "F:\\code\\Resource-Manager-Development\\product-composition-validation\\.validation\\batches",
+      "path": "{WorkRoot}\\Resource-Manager-Development\\product-composition-validation\\.validation\\batches",
       "excludedNames": []
     },
     {
       "id": "rm-intel-psys-batches",
-      "path": "F:\\code\\Resource-Manager-Development\\intel-psys-validation\\.validation\\batches",
+      "path": "{WorkRoot}\\Resource-Manager-Development\\intel-psys-validation\\.validation\\batches",
       "excludedNames": []
     },
     {
       "id": "rm-full-app-batches",
-      "path": "F:\\code\\Resource-Manager-Development\\full-app-validation\\.validation\\batches",
+      "path": "{WorkRoot}\\Resource-Manager-Development\\full-app-validation\\.validation\\batches",
       "excludedNames": []
     }
   ]

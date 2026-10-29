@@ -9,7 +9,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 if([string]::IsNullOrWhiteSpace($env:RM_REVIEW_SCRATCH) -or
     [IO.Path]::GetFullPath($env:RM_REVIEW_SCRATCH) -ine [IO.Path]::GetFullPath($ScratchRoot)){throw 'Use the bounded entry.'}
-$repo='D:\Code\Resource-Manager-Development'
+$repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 $dotnet='C:\Program Files\dotnet\dotnet.exe'
 $packageProfile=Get-Content (Join-Path $TaskRoot 'package-prerequisites.json') -Raw|ConvertFrom-Json
 if($packageProfile.schema -cne 'resource-manager/package-prerequisites/v1'){throw 'Unknown package validation profile'}

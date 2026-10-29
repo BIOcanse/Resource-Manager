@@ -109,14 +109,23 @@ test("selector matching ignores interval and only permits explicit ids/items sub
 });
 
 test("slice paths accept a raw slice directory or file and reject paths outside the raw root", async () => {
-  const stamp = "20261026T220000Z";
-  const directory = resolve(rawSliceRoot, stamp);
-  const file = resolve(directory, "slice.json");
-  assert.equal(resolveSliceFilePath(directory), file);
-  assert.equal(resolveSliceFilePath(file), file);
-  assert.doesNotThrow(() => assertRawSlicePath(file));
-  assert.throws(() => assertRawSlicePath(resolve(directory, "other.json")), /real-slices/);
-  await assert.rejects(readSlice(resolve("outside-slice.json")), /real-slices/);
+  const previousRoot = process.env.RM_REAL_SLICE_ROOT;
+  try {
+    delete process.env.RM_REAL_SLICE_ROOT;
+    assert.throws(() => rawSliceRoot(), /RM_REAL_SLICE_ROOT/);
+    process.env.RM_REAL_SLICE_ROOT = resolve("example-workset", "real-slices");
+    const stamp = "20261026T220000Z";
+    const directory = resolve(rawSliceRoot(), stamp);
+    const file = resolve(directory, "slice.json");
+    assert.equal(resolveSliceFilePath(directory), file);
+    assert.equal(resolveSliceFilePath(file), file);
+    assert.doesNotThrow(() => assertRawSlicePath(file));
+    assert.throws(() => assertRawSlicePath(resolve(directory, "other.json")), /real-slices/);
+    await assert.rejects(readSlice(resolve("outside-slice.json")), /real-slices/);
+  } finally {
+    if (previousRoot === undefined) delete process.env.RM_REAL_SLICE_ROOT;
+    else process.env.RM_REAL_SLICE_ROOT = previousRoot;
+  }
 });
 
 test("slice validation retains timestamped raw response and frame events", () => {

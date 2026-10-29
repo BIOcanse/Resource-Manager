@@ -31,7 +31,7 @@ public sealed partial class NvidiaFanHttpIntegrationTests
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         // The live GPU check uses the topology owner's physical identity projection, so the recorded
         // catalog is derived from the same inventory instead of a hand-written identity.
-        const string pnp = @"PCI\VEN_1002&DEV_164E&SUBSYS_50051D05&REV_D8\4&b799193&0&0041";
+        const string pnp = @"PCI\VEN_1002&DEV_164E&SUBSYS_12345678&REV_D8\4&1a2b3c4d&0&0041";
         var inventoryRead = new WindowsGpuAdapterInventoryRead(
             SamplingObservationStatus.Current, 1, DateTimeOffset.UtcNow.UtcTicks, 1, 0, 0, 1,
             [new WindowsGpuAdapter(0, "Recorded GPU", 0x1002, 0x164E, 0, new AdapterLuid { LowPart = (uint)luid }, false, 0,

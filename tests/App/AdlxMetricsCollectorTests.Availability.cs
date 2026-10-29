@@ -19,12 +19,12 @@ public sealed partial class AdlxMetricsCollectorTests
     [Fact]
     public async Task IntegratedAdapterReadsSupportedAdlxSensorsThroughOriginalWorkspaceAndSelection()
     {
-        const string apuPnp = @"PCI\VEN_1002&DEV_164E&SUBSYS_50051D05&REV_D8\RECORDED_610M";
+        const string apuPnp = @"PCI\VEN_1002&DEV_164E&SUBSYS_12345678&REV_D8\RECORDED_610M";
         var inventory = Inventory() with { Adapters = Inventory().Adapters.Where(adapter => adapter.Index == 9)
             .Select(adapter => adapter with { Kind = WindowsGpuAdapterKind.Integrated, DedicatedVideoMemoryBytes = 0,
-                DeviceId = 0x164E, SubSystemId = 0x50051D05,
+                DeviceId = 0x164E, SubSystemId = 0x12345678,
                 PhysicalIdentities = adapter.PhysicalIdentities.Select(identity => identity with
-                    { PnpInstanceId = apuPnp, DeviceId = 0x164E, SubVendorId = 0x1D05, SubsystemId = 0x5005,
+                    { PnpInstanceId = apuPnp, DeviceId = 0x164E, SubVendorId = 0x5678, SubsystemId = 0x1234,
                         RevisionId = 0xD8 }).ToArray() }).ToArray(),
             ObservedCount = 1 };
         var compiled = HostManagerTestPlanFactory.CreatePlan().MetricSnapshot;

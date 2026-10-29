@@ -19,8 +19,8 @@ public sealed partial class SqlitePersistenceTests
     [Fact]
     public async Task PortableCatalogGameKeepsGameKindInSchedulingAndIsExcludedFromMemoryReports()
     {
-        const string executable = @"F:\Genshin Impact Game\YuanShen.exe";
-        const string root = @"F:\Genshin Impact Game";
+        const string executable = @"E:\Games\Genshin\YuanShen.exe";
+        const string root = @"E:\Games\Genshin";
         var database = CreateDatabase();
         using var registry = CreatePortableRegistry(database);
         await registry.StartAsync(CancellationToken.None);

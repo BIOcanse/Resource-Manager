@@ -44,19 +44,20 @@ internal static partial class Program
 #if !RM_STATE_NAMES
         throw new InvalidOperationException("This development-only acceptance executable requires ResourceManagerStateNames=true.");
 #else
-        if (args.Length != 6 || args[0] != "--runtime-root" || args[2] != "--artifact-manifest" || args[4] != "--source-manifest")
-            throw new ArgumentException("Usage: --runtime-root <new private absolute root> --artifact-manifest <accepted copied output manifest> --source-manifest <bound source input manifest>");
+        if (args.Length != 8 || args[0] != "--registered-root" || args[2] != "--runtime-root" || args[4] != "--artifact-manifest" || args[6] != "--source-manifest")
+            throw new ArgumentException("Usage: --registered-root <registered real-copy task> --runtime-root <new private absolute root> --artifact-manifest <accepted copied output manifest> --source-manifest <bound source input manifest>");
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
         WindowsNativeLaunchErrorPolicy.InitializeForCurrentProcess();
         var image = Path.GetFullPath(AppContext.BaseDirectory);
-        var root = Path.GetFullPath(args[1]);
-        const string registeredRoot = @"F:\code\Resource-Manager-Development\ledger-no-demand\real-copy\";
-        if (!Path.IsPathFullyQualified(args[1]) || !root.StartsWith(registeredRoot, StringComparison.OrdinalIgnoreCase)
+        var root = Path.GetFullPath(args[3]);
+        var registeredRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(args[1])) + Path.DirectorySeparatorChar;
+        if (!Path.IsPathFullyQualified(args[1]) || !File.Exists(Path.Combine(registeredRoot, ".generated-workspace.json"))
+            || !Path.IsPathFullyQualified(args[3]) || !root.StartsWith(registeredRoot, StringComparison.OrdinalIgnoreCase)
             || !image.StartsWith(registeredRoot, StringComparison.OrdinalIgnoreCase)
             || root.StartsWith(image, StringComparison.OrdinalIgnoreCase)
             || Directory.Exists(root))
             throw new InvalidDataException("Run only a verified copied image with a new separate private runtime child under the registered real-copy task.");
-        var artifacts = CopiedArtifact.Verify(args[3], args[5]);
+        var artifacts = CopiedArtifact.Verify(args[5], args[7]);
         Directory.CreateDirectory(root);
         var evidence = Path.Combine(root, "evidence");
         Directory.CreateDirectory(evidence);

@@ -10,7 +10,7 @@ public sealed class BrowserRuntimeSelectionTests
     [InlineData(@"C:\Apps\Arc\Arc.exe", "arc", true)]
     [InlineData("ArcGIS Pro", "arc", false)]
     [InlineData(@"C:\Apps\360Chrome\Chrome\Application\360chrome.exe", "360chrome", true)]
-    [InlineData(@"D:\Software\Quark\quark.exe", "quark", true)]
+    [InlineData(@"E:\Apps\Browser\quark.exe", "quark", true)]
     public void BrowserEvidence_RequiresTokenBoundaries(
         string evidence,
         string token,

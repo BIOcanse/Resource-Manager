@@ -11,7 +11,7 @@ The main task's accepted build recipe supplies the paired Ledger output, NativeC
 After source review, invoke the copied DLL using dotnet:
 
 ```text
-dotnet <real-copy>/copy/ResourceManager.ControlDecisionAcceptance.dll --runtime-root <real-copy>/data/new-run --artifact-manifest <real-copy>/copy/artifact-manifest.json --source-manifest <real-copy>/copy/source-input-manifest.json
+dotnet <real-copy>/copy/ResourceManager.ControlDecisionAcceptance.dll --registered-root <real-copy> --runtime-root <real-copy>/data/new-run --artifact-manifest <real-copy>/copy/artifact-manifest.json --source-manifest <real-copy>/copy/source-input-manifest.json
 ```
 
 The executable rejects source-tree execution, old runtime roots and output mutation. It maps one read-only development HTTP route and produces controller, HMP, settings and real topology evidence beneath the private run root. The process is bounded by a two-minute work cancellation and a twenty-second host shutdown deadline; its supervising JobQueue remains responsible for process ownership.

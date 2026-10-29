@@ -173,7 +173,7 @@ public sealed partial class SqlitePersistenceTests : IDisposable
         var database = CreateDatabase();
         var observedAt = DateTimeOffset.FromUnixTimeMilliseconds(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
         await InsertPortableRowAsync(database, "catalog:legacy", "legacy", "Legacy", storedKind,
-            "f:/genshin impact game/yuanshen.exe", "f:/genshin impact game", observedAt.UtcTicks, 1, 1);
+            "e:/games/genshin/yuanshen.exe", "e:/games/genshin", observedAt.UtcTicks, 1, 1);
         using var registry = CreatePortableRegistry(database);
         await registry.StartAsync(CancellationToken.None);
         try
@@ -195,7 +195,7 @@ public sealed partial class SqlitePersistenceTests : IDisposable
     {
         var database = CreateDatabase();
         await InsertPortableRowAsync(database, "catalog:legacy", "legacy", "Legacy", "not_a_kind",
-            "f:/genshin impact game/yuanshen.exe", "f:/genshin impact game", 0, 1, 1);
+            "e:/games/genshin/yuanshen.exe", "e:/games/genshin", 0, 1, 1);
         using var registry = CreatePortableRegistry(database);
         var failure = await Assert.ThrowsAsync<InvalidDataException>(() => registry.StartAsync(CancellationToken.None));
         var execution = registry.ExecuteTask;

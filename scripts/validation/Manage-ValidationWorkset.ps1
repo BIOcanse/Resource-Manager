@@ -3,8 +3,13 @@ param(
     [ValidateSet('Inspect', 'Prepare', 'Prune', 'Complete')]
     [string]$Mode = 'Inspect',
 
+    # Defaults to <WorkRoot>\Resource-Manager-Development (scripts/dev/MachineRoots.psm1).
     [Alias('ProjectRoot')]
-    [string]$WorkspaceRoot = 'F:\code\Resource-Manager-Development',
+    [string]$WorkspaceRoot,
+
+    # FreedomPoint's artifacts/sdk feed that ledger-owner-a1 IndependentSource evidence restored packages from;
+    # only that evidence reads it.
+    [string]$FreedomPointSdkFeed,
 
     [string]$BatchId,
     [string]$ConsumerId,
@@ -34,6 +39,8 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot '..\dev\MachineRoots.psm1') -DisableNameChecking
+if (-not $WorkspaceRoot) { $WorkspaceRoot = Join-Path (Get-MachineRoot -Name WorkRoot) 'Resource-Manager-Development' }
 
 function Write-JsonResult {
     param([Parameter(Mandatory)][object]$Value)
@@ -1758,10 +1765,12 @@ function Get-IndependentSourceEvidence {
         throw 'IndependentSource outer receipt does not bind its hash-pinned ExecutionJob evidence.'
     }
 
+    if (-not $FreedomPointSdkFeed) { throw 'IndependentSource evidence needs -FreedomPointSdkFeed: the FreedomPoint artifacts/sdk folder its packages came from.' }
+    $toolsRoot = Get-MachineRoot -Name ToolsRoot
     $inputRoots = @(
         $repositoryRoot, $validationRootFull,
-        'D:\Code\CommonAssets\Tools\Zig\zig-0.16.0',
-        'D:\Code\FreedomPoint\artifacts\sdk',
+        (Join-Path $toolsRoot 'Zig\zig-0.16.0'),
+        $FreedomPointSdkFeed,
         'C:\Program Files\dotnet',
         [System.IO.Path]::GetDirectoryName([string]$jobManifest.executable)
     ) | ForEach-Object { [System.IO.Path]::GetFullPath([string]$_).TrimEnd('\') } | Sort-Object Length -Descending
@@ -1955,7 +1964,7 @@ function Get-IndependentSourceEvidence {
     }
     if ($commands.Count -ne 30) { throw 'IndependentSource commands.jsonl must contain exactly thirty logged processes.' }
     $commandNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
-    $zigPath = 'D:\Code\CommonAssets\Tools\Zig\zig-0.16.0\zig.exe'
+    $zigPath = Join-Path $toolsRoot 'Zig\zig-0.16.0\zig.exe'
     $zigLib = Join-Path (Split-Path $zigPath -Parent) 'lib'
     $rootModule = Join-Path $repositoryRoot '.local\ledger-owner-implementation\independent-source-probe\ProbeMain.zig'
     $structureModule = Join-Path $repositoryRoot 'sdk\zig\src\local_resource_manager\generated\ledger_structure.zig'

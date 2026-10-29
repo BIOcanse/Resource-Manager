@@ -99,7 +99,7 @@
   "extensionsSource": {
     "url": "https://raw.githubusercontent.com/microsoft/win32metadata/28f487f630b0b9233bb2aad4fd29f5a94c3cc41d/generation/WinSDK/RecompiledIdlHeaders/um/iwscapi.h",
     "header": {
-      "path": "D:\\Code\\Resource-Manager-Development\\.local\\software-product-completion\\next-backend-source-review\\security-product-primary-iwscapi.h",
+      "path": "Resource-Manager-Development:.local/software-product-completion/next-backend-source-review/security-product-primary-iwscapi.h",
       "length": 45029,
       "sha256": "D3DFA9ACFFA907D1F22BD27BD02971A638F7E9FCE14AC2B379F23AC1B7E3B6AC"
     }

@@ -25,7 +25,7 @@ Existing registered workspace root whose lifecycle state is running.
 .EXAMPLE
 ./scripts/sdk/Pack-ResourceManagerLedger.ps1 -Version 0.1.0-dev.1 `
   -FreedomPointSdkVersion 0.1.0-dev.39 `
-  -FreedomPointFeed D:/Code/FreedomPoint/artifacts/sdk `
+  -FreedomPointFeed <FreedomPoint checkout>/artifacts/sdk `
   -NativeHeaderPath .local/ledger-owner-implementation/foundation/sdk-native/ledger_native.h `
   -WorkRoot .local/ledger-owner-implementation
 #>
@@ -372,11 +372,18 @@ This tool manifest pins `ledger-build` and `ledger-configuration` to the candida
 '@
 [System.IO.File]::WriteAllText((Join-Path $toolsDirectory 'README.md'), $toolsReadme + "`n", [System.Text.UTF8Encoding]::new($false))
 
+# Published packages carry no machine path: the compiler maps the stage (obj, generated sources) to /_build/ and the
+# checkout to /_/, in the DLL's PDB path, the PDB documents and the SourceLink map. The stage is listed first because
+# a WorkRoot may sit inside the checkout. MSBuild reads a comma in -p as a property separator, hence %2C.
+$pathMap = (Join-Path $stageRoot '') + '=/_build/%2C' + (Join-Path $repositoryRoot '') + '=/_/'
 $baseProperties = @(
     "PackageVersion=$Version",
     'IsPackable=true',
     ('PackageOutputPath=' + $packageDirectory),
-    'Authors=BIOcanse'
+    'Authors=BIOcanse',
+    'ContinuousIntegrationBuild=true',
+    'Deterministic=true',
+    "PathMap=$pathMap"
 )
 $previousNugetPackages = $env:NUGET_PACKAGES
 $previousDotnetCliHome = $env:DOTNET_CLI_HOME

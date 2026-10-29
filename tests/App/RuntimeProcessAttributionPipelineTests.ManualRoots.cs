@@ -8,7 +8,7 @@ public sealed partial class RuntimeProcessAttributionPipelineTests
     [Fact]
     public void ExplicitManualRootOwnsUnrelatedNamedImagesAtFirstObservation()
     {
-        var manual = CreateSoftware("manual:probe", "Unbound frame rate evidence", [@"F:\code\UnboundWebView\evidence", @"F:\code\UnboundWebView\chromium_git\chromium\src\out\Release_GN_x64"]) with
+        var manual = CreateSoftware("manual:probe", "Unbound frame rate evidence", [@"X:\Evidence", @"X:\Builds\Browser\out\Release_GN_x64"]) with
         {
             Kind = SoftwareKinds.HighPerformance, HasExplicitKind = true,
             SourceFacts = [new(SoftwareSourceKinds.Manual)]

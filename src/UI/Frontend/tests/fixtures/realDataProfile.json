@@ -24,7 +24,7 @@
         "details": "The existing many resource-table variant defaults to 80 rows and accepts up to 1000 rows; this is a test fixture capacity, not a measured workload."
       },
       {
-        "source": "D:/Code/Resource-Manager-Development/docs/development_progress.md",
+        "source": "Resource-Manager-Development:docs/development_progress.md",
         "status": "checked-unmatched",
         "details": "No 33-row / 27.4-GiB workload entry was found. The file's 27.4 matches are CPU percentages, so those values are not used as memory evidence."
       }

@@ -2,14 +2,20 @@
 [CmdletBinding()]
 param(
     [string]$RepoRoot = (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent),
-    [Parameter(Mandatory)][string]$OutputRoot
+    [Parameter(Mandatory)][string]$OutputRoot,
+    # Defaults to <ToolsRoot>\Cppcheck\2.22.0\PFiles\Cppcheck\cppcheck.exe (scripts/dev/MachineRoots.psm1).
+    [string]$Cppcheck
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 try {
     $RepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
     $OutputRoot = [IO.Path]::GetFullPath($OutputRoot)
-    $exe = 'D:\Code\CommonAssets\Tools\Cppcheck\2.22.0\PFiles\Cppcheck\cppcheck.exe'
+    if (-not $Cppcheck) {
+        Import-Module (Join-Path $PSScriptRoot '../dev/MachineRoots.psm1') -DisableNameChecking
+        $Cppcheck = Join-Path (Get-MachineRoot -Name ToolsRoot) 'Cppcheck\2.22.0\PFiles\Cppcheck\cppcheck.exe'
+    }
+    $exe = $Cppcheck
     if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Pinned cppcheck executable is missing: $exe" }
     (Get-Process -Id $PID).PriorityClass = 'BelowNormal'
     $version = (& $exe --version | Out-String).Trim()

@@ -3,7 +3,9 @@ param(
     [Parameter(Mandatory)][string]$WorkRoot,
     [string]$Profile = 'default',
     [string]$GeneratorPath,
-    [string[]]$BuildProperties = @()
+    [string[]]$BuildProperties = @(),
+    # Outside a JobQueue job the generator build is queued; defaults to <ToolsRoot>\JobQueue\JobQueue.ps1 (scripts/dev/MachineRoots.psm1).
+    [string]$Queue
 )
 $ErrorActionPreference = 'Stop'
 [Diagnostics.Process]::GetCurrentProcess().PriorityClass = 'BelowNormal'
@@ -26,7 +28,6 @@ while ($cursor) {
 }
 if (-not $registered) { throw 'Register WorkRoot through Manage-GeneratedWorkspace.ps1 New first.' }
 $output = Join-Path $WorkRoot 'desktop-points'
-$queue = 'D:\Code\CommonAssets\Tools\JobQueue\JobQueue.ps1'
 if (-not $GeneratorPath) {
     $artifacts = Join-Path $output 'build'
     $build = @(
@@ -36,7 +37,13 @@ if (-not $GeneratorPath) {
     ) + $BuildProperties
     # Inside a JobQueue job the build is already serialized, and queueing again would wait for this job to end.
     if ($env:JOBQUEUE_JOB_ID) { & dotnet @build }
-    else { & $queue -Action Run -Label 'desktop freedom-point generator build' -FilePath dotnet -WorkingDirectory $repository -ArgumentList $build }
+    else {
+        if (-not $Queue) {
+            Import-Module (Join-Path $PSScriptRoot '../dev/MachineRoots.psm1') -DisableNameChecking
+            $Queue = Join-Path (Get-MachineRoot -Name ToolsRoot) 'JobQueue\JobQueue.ps1'
+        }
+        & $Queue -Action Run -Label 'desktop freedom-point generator build' -FilePath dotnet -WorkingDirectory $repository -ArgumentList $build
+    }
     if ($LASTEXITCODE -ne 0) { throw "Desktop generator build failed: $LASTEXITCODE" }
     $GeneratorPath = Join-Path $artifacts 'bin/ResourceManager.DesktopBuild/release/ResourceManager.DesktopBuild.dll'
 }

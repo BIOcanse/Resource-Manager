@@ -36,7 +36,8 @@ function Invoke-ProcessExport([hashtable]$Process, [string]$Scratch) {
         return
     }
     $zig = (Get-Command zig -CommandType Application -ErrorAction Stop).Source
-    $queue = 'D:\Code\CommonAssets\Tools\JobQueue\JobQueue.ps1'
+    Import-Module (Join-Path $PSScriptRoot '../dev/MachineRoots.psm1') -DisableNameChecking
+    $queue = Join-Path (Get-MachineRoot -Name ToolsRoot) 'JobQueue\JobQueue.ps1'
     if (-not (Test-Path -LiteralPath $queue)) { throw "JobQueue is required for builds: $queue" }
     $args = @('build', 'export-tree', '-j1', '--cache-dir', (Join-Path $Scratch "$($Process.Name)-cache"),
         '--global-cache-dir', (Join-Path $Scratch 'global-cache'))

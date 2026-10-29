@@ -72,7 +72,7 @@ public sealed partial class JsonMetadataContractTests
 
         public SchedulingProcessFactSnapshot? ReadLatest(SchedulingProcessFactRequest request)
             => new(SamplingObservationStatus.Current, 1, DateTimeOffset.UtcNow.UtcTicks, 1, 1, 0, 0, request.RequestedMetricMask, SchedulingProcessMetricMask.CpuUsage,
-                [new(78776, 10, "cs2", @"D:\Games\Steam\cs2.exe", "catalog:game-counter-strike-2", "CS2", "game", "game", 95, SchedulingProcessMetricMask.CpuUsage, 17, 0, 1, [])]);
+                [new(78776, 10, "cs2", @"E:\Library\Steam\cs2.exe", "catalog:game-counter-strike-2", "CS2", "game", "game", 95, SchedulingProcessMetricMask.CpuUsage, 17, 0, 1, [])]);
 
         public IDisposable AcquireSubscription(string subscriptionId, SchedulingProcessMetricMask metricMask, TimeSpan refreshInterval)
             => throw new InvalidOperationException("The endpoint must use the push source's owned single fetch.");

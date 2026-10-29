@@ -1,6 +1,6 @@
 # 真实数据切片测试
 
-本地测试直接使用真实数据，不匿名化，也不限制为画像。原始切片不入库，保存在 `F:/code/Resource-Manager-Development/real-slices/<UTC stamp>/slice.json`。对外发布的图片使用现有 `readmeShowcase` 虚构场景。录制由 Claude 在授权后端会话中执行；工具线程不连接安装版。
+本地测试直接使用真实数据，不匿名化，也不限制为画像。原始切片不入库，保存在仓库外由 `RM_REAL_SLICE_ROOT` 指定的目录：`<RM_REAL_SLICE_ROOT>/<UTC stamp>/slice.json`；该变量没有默认值，未设置时录制和读取切片都会拒绝。对外发布的图片使用现有 `readmeShowcase` 虚构场景。录制由 Claude 在授权后端会话中执行；工具线程不连接安装版。
 
 录制器从生产 data 层及 FrontendSources 引用的 API 模块发现显式 GET 描述和订阅 URL 构造器。普通指标由生产默认看板槽位选择并排除设备字段，资源表只选默认可见列的事实和身份池，资源条按默认项目/来源/缩放；字段使用默认槽位及CPU、设备详情页的生产字段集合，GPU专用计数器使用生产构造器。它不再把目录中的全部指标ID或可选来源拼成请求。目录帧通过生产decoder解码，字段与指标使用同帧catalogRevision的内容。发送前严格匹配方法、路径和订阅正文，唯一允许的 POST 是统一订阅通道，拒绝重定向和控制、设置、草稿写入。BackendSessionOwner 的 epoch 是取消旧请求的会话标记，不是 HTTP 凭据；独立 Node 工具需要维护者明确提供授权 base URL 和可信访问凭据输入，不能自行读取安装配置。
 
@@ -28,7 +28,7 @@ npm run test:real-data
 
 `$sliceFile` 是上述原始数据根内新 UTC 目录的 `slice.json`；`$sliceDir` 是其目录；`$batchDir` 是已登记的验证任务内输出目录。learner 原子替换输出画像；生成器输出 JSON 可直接 POST 给 mock。
 
-mock 的 `/__test/scenario` 接受 `{"preset":"realistic","seed":17}`、`{"preset":{"mode":"realistic-extreme","multiplier":3},"seed":17}` 或 `{"slice":"F:/code/Resource-Manager-Development/real-slices/<stamp>"}`。设置 `RM_REAL_SLICE` 后使用原浏览器门入口运行任何旅程；未给路径时不开启真实数据。
+mock 的 `/__test/scenario` 接受 `{"preset":"realistic","seed":17}`、`{"preset":{"mode":"realistic-extreme","multiplier":3},"seed":17}` 或 `{"slice":"<RM_REAL_SLICE_ROOT>/<stamp>"}`。设置 `RM_REAL_SLICE` 后使用原浏览器门入口运行任何旅程；未给路径时不开启真实数据。
 
 录制计划静态扫描生产 `.ts/.tsx` 的 GET 描述和 JSON 读取调用，订阅构造器来自 FrontendSources 可达的数据/API 模块。带身份参数的动态详情 GET 和原始二进制磁盘树不猜参数，也不发起扫描写操作；回放这些未覆盖部分时继续用旅程夹具。
 

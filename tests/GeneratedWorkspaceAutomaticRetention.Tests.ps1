@@ -1,5 +1,6 @@
 [CmdletBinding()]
-param([string]$WorkRoot='F:\code\Resource-Manager-Development\d-space-recovery')
+# WorkRoot: a registered running workspace that holds the disposable fixture folders.
+param([Parameter(Mandatory)][string]$WorkRoot)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $repo=Split-Path -Parent $PSScriptRoot

@@ -59,7 +59,7 @@ function dependencyRenderers(): Record<number, Renderer> {
  *
  * **状态已经由按钮说了**（"已安装" / "一键卸载"）。卡片上再挂一句
  * "已安装在 Dependencies 软件根目录。"、"可从官方来源下载安装器。"、
- * "检测到系统已有安装，直接复用：D:\Software\LatencyMon"，
+ * "检测到系统已有安装，直接复用：E:\Tools\LatencyMon"，
  * 既没告诉用户任何要做的事，也没告诉他任何按钮没说的事 ——
  * 十几张卡片叠起来就是一屏废话。安装路径要看的时候在详情里。
  *

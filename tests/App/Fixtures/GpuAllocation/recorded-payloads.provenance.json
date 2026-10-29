@@ -1,7 +1,7 @@
 {
   "events": 1061,
   "rawFile": "recorded-payloads.etl.bin",
-  "source": "D:\\Code\\Resource-Manager-Public\\.codex\\local-runs\\external-gpu-enum-20260920-v1\\qt-d3d12-allocation-stacks-20260923-1\\qt-device-lifetime.etl",
+  "source": "Resource-Manager-Public:.codex/local-runs/external-gpu-enum-20260920-v1/qt-d3d12-allocation-stacks-20260923-1/qt-device-lifetime.etl",
   "sha256": "4A9AA3420C98A6EA1F43C56DC79DA590A916A04D114DB21B2CAD57416E787386",
   "recordedFields": "recorded-payloads.jsonl.gz",
   "schemas": 18,

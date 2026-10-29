@@ -22,7 +22,7 @@ const hubPath = String.raw`\\?\usb#vid_1a40&pid_0101#hub`;
 
 const keyboardHost = usbPort({
   id: "kbd-host", connectorKind: "usb-a", hubPath: rootHub, portNumber: 1, connected: true,
-  productName: "HERO 99 HE", speed: "USB Full-Speed / 12Mbps",
+  productName: "Example 75 Keyboard", speed: "USB Full-Speed / 12Mbps",
   interfaces: [{ interfaceNumber: 0, alternateSetting: 0, classCode: 0x03, subClassCode: 0x01, protocolCode: 0x01 }],
   hid: { hidType: "keyboard", hidSpecification: "HID 1.11", inputPollingIntervalMicroseconds: 1_000, theoreticalReportRateHz: 1_000,
     standardCapabilitySource: { domain: 5, code: 60, args: [] } }
@@ -71,7 +71,7 @@ const section = (node: DeviceTopologyListNode, title: string) => sections(node).
 const t = uiText.deviceTopology;
 
 // 键盘：「输入协议 键盘」已经写过，「设备类型 键盘」不再重复；连接到照常列出。
-const keyboard = nodeTitled("HERO 99 HE", "attached-device");
+const keyboard = nodeTitled("Example 75 Keyboard", "attached-device");
 assert.equal(values(keyboard).filter((value) => value === uiText.deviceAdapters.keyboard).length, 1,
   `the keyboard's type is shown once: ${rows(keyboard).join("\n")}`);
 assert.ok(section(keyboard, t.section.overview)?.items.some((item) => item.label === t.label.connectedTo),
@@ -160,13 +160,13 @@ assert.ok(internalItems(internalStorage).some(item => item.label === uiText.devi
   "reported storage bus remains separate from unavailable transport");
 
 // 弹窗标题：名称和后缀之间有分隔，其他语言保持原有语序。
-assert.equal(t.detailTitle("HERO 99 HE"), "详细信息：HERO 99 HE");
-for (const [language, expected] of [["zh-TW", "詳細資訊：HERO 99 HE"], ["en-US", "HERO 99 HE details"], ["zh-CN", "详细信息：HERO 99 HE"]] as const) {
+assert.equal(t.detailTitle("Example 75 Keyboard"), "详细信息：Example 75 Keyboard");
+for (const [language, expected] of [["zh-TW", "詳細資訊：Example 75 Keyboard"], ["en-US", "Example 75 Keyboard details"], ["zh-CN", "详细信息：Example 75 Keyboard"]] as const) {
   applyLanguage(language);
   for (let attempt = 0; currentLanguage() !== language && attempt < 100; attempt++) {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  assert.equal(uiText.deviceTopology.detailTitle("HERO 99 HE"), expected);
+  assert.equal(uiText.deviceTopology.detailTitle("Example 75 Keyboard"), expected);
   assert.ok(internalItems(unknownInternal).some(item => item.label === uiText.deviceAdapters.label.internalTransport
     && item.value === `${uiText.deviceTopology.deviceCategory.unknown} (parent-chain-incomplete)`), language);
   if (language === "en-US") {

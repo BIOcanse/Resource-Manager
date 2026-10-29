@@ -2,12 +2,17 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$Output,
-    [string]$CodeQL = 'D:\Code\CommonAssets\Tools\CodeQL\2.27.2\codeql\codeql.exe',
+    # Defaults to <ToolsRoot>\CodeQL\2.27.2\codeql\codeql.exe (scripts/dev/MachineRoots.psm1).
+    [string]$CodeQL,
     [Parameter(Mandatory)][string]$PolicyPath
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+if (-not $CodeQL) {
+    Import-Module (Join-Path $PSScriptRoot '../dev/MachineRoots.psm1') -DisableNameChecking
+    $CodeQL = Join-Path (Get-MachineRoot -Name ToolsRoot) 'CodeQL\2.27.2\codeql\codeql.exe'
+}
 
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 . (Join-Path $PSScriptRoot 'StaticAnalysis.Queue.ps1')

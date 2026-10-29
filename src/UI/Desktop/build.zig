@@ -91,6 +91,9 @@ pub fn build(b: *std.Build) void {
     b.step("test-blocks", "Run resident declarations and block unit tests").dependOn(&run.step);
     const key_fixture = b.createModule(.{ .root_source_file = b.path("src/backend/key_fixture_test.zig"), .target = target, .optimize = optimize });
     configure(key_fixture, control);
+    const key_fixture_options = b.addOptions();
+    key_fixture_options.addOption([]const u8, "work_root", b.option([]const u8, "key-fixture-work-root", "WorkRoot given to Initialize-BackendKeyFixture.ps1; unset skips test-key-fixture") orelse "");
+    key_fixture.addOptions("key_fixture_options", key_fixture_options);
     const key_fixture_tests = b.addTest(.{ .root_module = key_fixture, .filters = &.{"prepared trusted"} });
     const key_fixture_run = b.addRunArtifact(key_fixture_tests);
     b.step("check-key-fixture", "Compile protected key acceptance without running it").dependOn(&key_fixture_tests.step);

@@ -37,6 +37,8 @@ try {
     $policy = Get-GeneratedWorkspacePolicy -Path $PolicyPath
     $referenceRootPaths = [System.Collections.Generic.List[string]]::new()
     foreach ($rootEntry in @($policy.roots)) {
+        # A root under an unconfigured {WorkRoot} is inactive on this machine (Get-GeneratedWorkspacePolicy warns once).
+        if ($null -eq (Resolve-GeneratedWorkspacePolicyPath -Path ([string]$rootEntry.path))) { continue }
         $configuredReferenceRoot = Get-GeneratedWorkspaceRoot -Policy $policy -RootId ([string]$rootEntry.id)
         if (Test-Path -LiteralPath $configuredReferenceRoot.Path -PathType Container) {
             $referenceRootPaths.Add([string]$configuredReferenceRoot.Path)

@@ -10,7 +10,7 @@ param([Parameter(Mandatory)][ValidateSet('Build','Tests','Sources','Incomplete',
     [string]$NativeContextPath)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
-$taskRepo='D:\Code\Resource-Manager-Development'
+$taskRepo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 $taskRoot=[IO.Path]::GetFullPath($TaskRoot)
 $taskExplicitTestProject=-not [string]::IsNullOrWhiteSpace($TestProject)
 if($taskExplicitTestProject -and $Stage -notin @('Build','Tests')){throw 'TestProject applies only to Build and Tests.'}
@@ -179,7 +179,7 @@ $taskProperties=@(('-p:ArtifactsPath='+$taskArtifacts),'-p:BuildInParallel=false
  '-p:SkipAdlxBridgeBuild=true','-p:SkipNativeCoreBuild=true','-p:SkipGpuWindowActionNativeBuild=true','-p:SkipGpuPlacementExternalNativeBuild=true','-p:SkipAdapterNativeBuild=true','-p:SkipClientAppBuild=true',
  '-p:NativeCoreOptimize=ReleaseFast')
 if([string]::IsNullOrWhiteSpace($NativeContextPath)) {
-    $taskProperties+='-p:NativeCoreInstallRoot=D:\Code\Resource-Manager-Development\.local\review-repairs-third-20261009\native-prefix'
+    $taskProperties+=('-p:NativeCoreInstallRoot='+(Join-Path $taskRepo '.local\review-repairs-third-20261009\native-prefix'))
 } else {
     $taskNativeContext=Get-Content -LiteralPath $NativeContextPath -Raw|ConvertFrom-Json
     if(-not $taskNativeContext.accepted -or @($taskNativeContext.outputs).Count -eq 0){throw 'Native context must contain accepted outputs.'}
@@ -210,9 +210,9 @@ if($taskPartition) {
         ('-p:RMAppTestPartitionProject='+$taskProject),('-p:RMAppTestPartitionSources='+(Join-Path $RunDirectory 'requested-sources.txt')),
         ('-p:RMAppTestPartitionEvidence='+$taskCompileEvidence),'-p:BuildProjectReferences=true')
 } else {
-    $taskProperties+= '-p:CustomAfterMicrosoftCommonTargets=D:\Code\Resource-Manager-Development\scripts\validation\FreedomPointCompilerCapture.targets'
+    $taskProperties+= ('-p:CustomAfterMicrosoftCommonTargets='+(Join-Path $taskRepo 'scripts\validation\FreedomPointCompilerCapture.targets'))
 }
-$taskProperties+= '-p:CompilerResponseFile=D:\Code\Resource-Manager-Development\scripts\validation\ProductSdk\serial-compiler.rsp'
+$taskProperties+= ('-p:CompilerResponseFile='+(Join-Path $taskRepo 'scripts\validation\ProductSdk\serial-compiler.rsp'))
 $taskProperties+= @(('-p:ResourceManagerLedgerWorkRoot='+(Join-Path $taskRoot 'ledger-native')),
     ('-p:ResourceManagerLedgerPowerShell='+[Environment]::ProcessPath),
     ('-p:DiskCheckpointPowerShell='+[Environment]::ProcessPath))

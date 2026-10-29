@@ -567,7 +567,7 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
     [Fact]
     public async Task WindowsGameListRefreshesWithSoftwareSnapshotAndPreservesLeasedFacts()
     {
-        const string path = @"F:\SteamLibrary\steamapps\common\Battlefield 6\bf6.exe";
+        const string path = @"E:\Library\SteamLibrary\steamapps\common\Battlefield 6\bf6.exe";
         var games = new FakeWindowsGameListSource();
         using var provider = CreateProvider(new MutableSoftwareRegistryView([]), windowsGameListSource: games);
         var process = new RuntimeProcessIdentity(46210, null, "bf6", path, false, ProductName: "Battlefield 6");

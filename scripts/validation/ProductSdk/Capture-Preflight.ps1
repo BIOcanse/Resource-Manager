@@ -5,7 +5,7 @@ param(
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$faultTaskRoot = 'D:\Code\Resource-Manager-Development\.local\subscription-core-stage-20261007'
+$faultTaskRoot = Join-Path ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))) '.local\subscription-core-stage-20261007'
 $faultEvidence = [IO.Path]::GetFullPath((Join-Path $faultTaskRoot '../20261007-freeze-owner-evidence.json'))
 $faultReview = [IO.Path]::GetFullPath((Join-Path $faultTaskRoot '../20261007-freeze-owner-response.md'))
 if (-not (Test-Path -LiteralPath $faultEvidence -PathType Leaf) -or

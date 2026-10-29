@@ -4,7 +4,7 @@
   "version": "0.1.0-dev.2",
   "target": "win-x64",
   "candidateManifest": {
-    "path": "F:\\code\\Resource-Manager-Development\\.validation\\batches\\ledger-owner-a1\\ledger-sdk-candidates\\0.1.0-dev.2-57c8350c85454d8fabc8aabd1c58df60\\manifest.json",
+    "path": "validation-batches:ledger-owner-a1/ledger-sdk-candidates/0.1.0-dev.2-57c8350c85454d8fabc8aabd1c58df60/manifest.json",
     "sha256": "41c02944c7bcb3841a7a27b50082b39006776b32bbc47170873e50f6ff3039c0"
   },
   "packages": [
@@ -34,14 +34,14 @@
     {
       "id": "FreedomPoint.Core",
       "version": "0.1.0-dev.39",
-      "feedPath": "D:\\Code\\FreedomPoint\\artifacts\\sdk\\FreedomPoint.Core.0.1.0-dev.39.nupkg",
+      "feedPath": "FreedomPoint:artifacts/sdk/FreedomPoint.Core.0.1.0-dev.39.nupkg",
       "length": 66137,
       "sha256": "6e914dd4aee911b26850a79156dce3cdd68467a2bb910f15445689dd5739cbd7"
     },
     {
       "id": "FreedomPoint.Generators",
       "version": "0.1.0-dev.39",
-      "feedPath": "D:\\Code\\FreedomPoint\\artifacts\\sdk\\FreedomPoint.Generators.0.1.0-dev.39.nupkg",
+      "feedPath": "FreedomPoint:artifacts/sdk/FreedomPoint.Generators.0.1.0-dev.39.nupkg",
       "length": 28880,
       "sha256": "5b48217611a902f877e4cc3dcf7f8dc5642f4bd6c91a242d4b595012599296c1"
     }
@@ -62,24 +62,24 @@
       "scope": "Small serial WSL2 fixture only; excludes Linux C#, Android, product migration and full-capacity performance.",
       "matchedSdkSourceCount": 22,
       "fixtureManifest": {
-        "path": "F:\\code\\Resource-Manager-Development\\.validation\\batches\\ledger-owner-a1\\scratch\\PageBackend-a2\\linux-fixture.json",
+        "path": "validation-batches:ledger-owner-a1/scratch/PageBackend-a2/linux-fixture.json",
         "sha256": "4af7072255529654fc6716bf080fc78093d119fcb73a402fe96601f899aee347"
       },
       "runtimeResult": {
-        "path": "D:\\Code\\通信协议\\artifacts\\ledger-sdk-20261014\\linux-a2-01\\result.json",
+        "path": "通信协议:artifacts/ledger-sdk-20261014/linux-a2-01/result.json",
         "sha256": "d25533a6f3b1f779d50d043e1340e30641fd883ae630dd374f9d287f7ccb90d1"
       },
       "logs": [
         {
-          "path": "D:\\Code\\通信协议\\artifacts\\ledger-sdk-20261014\\linux-a2-01\\linux-resource-tests.stderr.log",
+          "path": "通信协议:artifacts/ledger-sdk-20261014/linux-a2-01/linux-resource-tests.stderr.log",
           "sha256": "8bd0e15b0e47ed7fd6f8bc6094aad7aa0b2e8bbd53b0a6cb744a695dd3a47843"
         },
         {
-          "path": "D:\\Code\\通信协议\\artifacts\\ledger-sdk-20261014\\linux-a2-01\\linux-native-u128.stderr.log",
+          "path": "通信协议:artifacts/ledger-sdk-20261014/linux-a2-01/linux-native-u128.stderr.log",
           "sha256": "1a112ff1358ab1205272e0c6a7e2e3800d0d894a4aa3f772e088f8b8c672281e"
         },
         {
-          "path": "D:\\Code\\通信协议\\artifacts\\ledger-sdk-20261014\\linux-a2-01\\linux-native-u256.stderr.log",
+          "path": "通信协议:artifacts/ledger-sdk-20261014/linux-a2-01/linux-native-u256.stderr.log",
           "sha256": "e703b9e3b26a0bc6791a4d675cfc24b978a9aa8a0ce87a2220fbda0b956935a7"
         }
       ]
@@ -90,13 +90,13 @@
     "sha256": "5eca2d13154280cdeb835fa6838dcbaad864cfc6d46bc82f88af8a9ddbb582f9"
   },
   "consumer": {
-    "receiptPath": "F:\\code\\Resource-Manager-Development\\.validation\\batches\\ledger-owner-a1\\sdk-package-consumer-0.1.0-dev.2-175e9c3aa3da45ce96a752e8ae5e0cd7\\consumer-receipt.json",
+    "receiptPath": "validation-batches:ledger-owner-a1/sdk-package-consumer-0.1.0-dev.2-175e9c3aa3da45ce96a752e8ae5e0cd7/consumer-receipt.json",
     "receiptSha256": "8776a71b313502ab8ca78fa659ae028a1adaf2a84041a5ffc4c02bb4e42f7bfa",
-    "resultPath": "F:\\code\\Resource-Manager-Development\\.validation\\batches\\ledger-owner-a1\\sdk-package-consumer-0.1.0-dev.2-175e9c3aa3da45ce96a752e8ae5e0cd7\\consumer-result.json",
+    "resultPath": "validation-batches:ledger-owner-a1/sdk-package-consumer-0.1.0-dev.2-175e9c3aa3da45ce96a752e8ae5e0cd7/consumer-result.json",
     "resultSha256": "3f484b499a153e120aeb1977756c857a4d5a724a10ecc3987b02628fbc34f314",
-    "nativeBuildResultPath": "F:\\code\\Resource-Manager-Development\\.validation\\batches\\ledger-owner-a1\\sdk-package-consumer-0.1.0-dev.2-175e9c3aa3da45ce96a752e8ae5e0cd7\\profiles\\u128\\native-output\\native-build-result.json",
+    "nativeBuildResultPath": "validation-batches:ledger-owner-a1/sdk-package-consumer-0.1.0-dev.2-175e9c3aa3da45ce96a752e8ae5e0cd7/profiles/u128/native-output/native-build-result.json",
     "nativeBuildResultSha256": "36c356e8f10ccd5542bf14d6d38963030429252caeb231bdc58a7e85d9ae774a",
-    "nativeDllPath": "F:\\code\\Resource-Manager-Development\\.validation\\batches\\ledger-owner-a1\\sdk-package-consumer-0.1.0-dev.2-175e9c3aa3da45ce96a752e8ae5e0cd7\\profiles\\u128\\native-output\\ResourceManager.Ledger.Native.u128.dll",
+    "nativeDllPath": "validation-batches:ledger-owner-a1/sdk-package-consumer-0.1.0-dev.2-175e9c3aa3da45ce96a752e8ae5e0cd7/profiles/u128/native-output/ResourceManager.Ledger.Native.u128.dll",
     "nativeDllSha256": "88e064f159eb4394c7544a3d74d1f3c37b6d82ec7bcdd45999fa1c9cdb018aa4"
   },
   "publishedAtUtc": "2026-10-15T04:49:50.4848294Z"

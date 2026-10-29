@@ -1,11 +1,17 @@
 import { readFile, realpath, stat } from "node:fs/promises";
 import { basename, relative, isAbsolute, resolve, sep } from "node:path";
 
-export const rawSliceRoot = "F:/code/Resource-Manager-Development/real-slices";
 const deniedPath = /credentials?|access-keys?|access-requests?|draft|refresh|reapply|secrets?|tokens?/i;
 
+// Raw slices stay outside the repository, in <RM_REAL_SLICE_ROOT>/<UTC stamp>/slice.json; there is no default root.
+export function rawSliceRoot() {
+  const root = process.env.RM_REAL_SLICE_ROOT;
+  if (!root || !isAbsolute(root)) throw new Error("Set RM_REAL_SLICE_ROOT to the absolute real-slices folder outside the repository");
+  return resolve(root);
+}
+
 export function assertRawSlicePath(path) {
-  const rel = relative(resolve(rawSliceRoot), resolve(path));
+  const rel = relative(rawSliceRoot(), resolve(path));
   const segments = rel.split(sep);
   if (rel.startsWith("..") || isAbsolute(rel) || segments.length !== 2
     || !/^\d{8}T\d{6}Z$/.test(segments[0]) || segments[1] !== "slice.json") {

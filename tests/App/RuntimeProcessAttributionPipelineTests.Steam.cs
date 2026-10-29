@@ -10,10 +10,10 @@ public sealed partial class RuntimeProcessAttributionPipelineTests
     public void SteamLibraryFolderAloneDoesNotPromoteUnknownExecutablesToGames()
     {
         using var pipeline = CreatePipeline([CreateSoftware(
-            "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-steam", "Steam", [@"D:\Games\Steam"])],
+            "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-steam", "Steam", [@"E:\Library\Steam"])],
             identityCatalog: SoftwareIdentityCatalogTestData.Create(new SoftwareIdentityCatalogEntry(
                 "game-counter-strike-2", "Counter-Strike 2", SoftwareKinds.Game, "test", ExecutableNames: ["cs2.exe"])));
-        var unknown = pipeline.Match(new(78776, null, "cs2-copy", @"D:\Games\Steam\steamapps\common\Fixture\cs2-copy.exe", false));
+        var unknown = pipeline.Match(new(78776, null, "cs2-copy", @"E:\Library\Steam\steamapps\common\Fixture\cs2-copy.exe", false));
         Assert.Equal(RuntimeAttributionIds.Unattributed, unknown.Id);
         Assert.Equal(SoftwareKinds.Unattributed, unknown.Kind);
     }
@@ -21,9 +21,9 @@ public sealed partial class RuntimeProcessAttributionPipelineTests
     [Fact]
     public void SteamManifestGameRootOwnsGenericExecutablesAndItsHelpers()
     {
-        const string root = @"D:\Games\Steam\steamapps\common\Counter-Strike Global Offensive";
+        const string root = @"E:\Library\Steam\steamapps\common\Counter-Strike Global Offensive";
         using var pipeline = CreatePipeline([
-            CreateSoftware("windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-steam", "Steam", [@"D:\Games\Steam"]),
+            CreateSoftware("windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-steam", "Steam", [@"E:\Library\Steam"]),
             CreateSoftware("steam-app-730", "Counter-Strike 2", [root]) with { Kind = SoftwareKinds.Game, SoftwareIdentityId = "game-counter-strike-2" }
         ]);
         var batch = pipeline.MatchBatch([
@@ -34,16 +34,16 @@ public sealed partial class RuntimeProcessAttributionPipelineTests
     }
 
     [Theory]
-    [InlineData("cs2", @"D:\Games\Steam\steamapps\common\Counter-Strike Global Offensive\game\bin\win64\cs2.exe", "catalog:game-counter-strike-2")]
-    [InlineData("steamwebhelper", @"D:\Games\Steam\bin\cef\cef.win64\steamwebhelper.exe", "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-steam")]
+    [InlineData("cs2", @"E:\Library\Steam\steamapps\common\Counter-Strike Global Offensive\game\bin\win64\cs2.exe", "catalog:game-counter-strike-2")]
+    [InlineData("steamwebhelper", @"E:\Library\Steam\bin\cef\cef.win64\steamwebhelper.exe", "windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-steam")]
     public void SteamSharedRootDoesNotHideExactGameOrClientHelper(string name, string path, string expected)
     {
         var catalog = SoftwareIdentityCatalogTestData.Create(new SoftwareIdentityCatalogEntry(
             "game-counter-strike-2", "Counter-Strike 2", SoftwareKinds.Game, "test", SteamAppIds: [730], ExecutableNames: ["cs2.exe"]));
         using var pipeline = CreatePipeline([
-            CreateSoftware("windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-steam", "Steam", [@"D:\Games\Steam"]),
-            CreateSoftware("windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-steam-app-2807960", "战地风云™ 6", [@"D:\Games\Steam"]) with { Kind = SoftwareKinds.Game },
-            CreateSoftware("windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-steam-app-3132990", "黑神话：悟空 性能测试工具", [@"F:\SteamLibrary\steamapps\common\Black Myth Wukong Benchmark Tool", @"D:\Games\Steam"])
+            CreateSoftware("windows-installed:localmachine-registry32-software-microsoft-windows-currentversion-uninstall-steam", "Steam", [@"E:\Library\Steam"]),
+            CreateSoftware("windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-steam-app-2807960", "战地风云™ 6", [@"E:\Library\Steam"]) with { Kind = SoftwareKinds.Game },
+            CreateSoftware("windows-installed:localmachine-registry64-software-microsoft-windows-currentversion-uninstall-steam-app-3132990", "黑神话：悟空 性能测试工具", [@"E:\Library\SteamLibrary\steamapps\common\Black Myth Wukong Benchmark Tool", @"E:\Library\Steam"])
         ], identityCatalog: catalog);
         var result = pipeline.Match(new(78776, null, name, path, false, StartKey: 10));
         Assert.Equal(expected, result.Id);

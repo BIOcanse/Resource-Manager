@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import { learnProfileFromSlices, parseLearnerArgs, writeProfileAtomically } from "./learnProfile.mjs";
@@ -10,7 +11,7 @@ const fixture = path => JSON.parse(readFileSync(new URL(`../fixtures/${path}`, i
 const bootstrapProfile = fixture("realDataProfile.json");
 const unicodeLength = value => [...value].length;
 const outputRoot = resolve(process.env.RM_REAL_DATA_TEST_OUTPUT
-  ?? "F:/code/Resource-Manager-Development/real-slices-tooling/profile-test-output");
+  ?? join(tmpdir(), "rm-real-data-profile-test-output"));
 
 async function createRunDirectory(prefix) {
   await mkdir(outputRoot, { recursive: true });

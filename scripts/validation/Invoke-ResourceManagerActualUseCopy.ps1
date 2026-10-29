@@ -6,7 +6,7 @@ param(
     [string]$BuildDirectoryName = 'actual-use-build',
     [string]$RuntimeDirectoryName = 'actual-use-run-001',
     [switch]$FilterOnly,
-    [string]$MemoryLimitScript = 'D:\Code\Resource-Manager-Development\scripts\dev\Invoke-WithMemoryLimit.ps1'
+    [string]$MemoryLimitScript = (Join-Path $PSScriptRoot '..\dev\Invoke-WithMemoryLimit.ps1')
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'

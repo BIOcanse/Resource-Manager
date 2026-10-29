@@ -51,7 +51,7 @@ public sealed partial class JsonMetadataContractTests
         var ticks = DateTimeOffset.UtcNow.UtcTicks;
         var mask = SchedulingProcessMetricMask.CpuUsage;
         var facts = new SchedulingProcessFactSnapshot(SamplingObservationStatus.Current, 1, ticks, 1, 1, 0, 0, mask, mask,
-            [new(42, 10, "cs2", @"D:\Games\Steam\cs2.exe", "catalog:game-counter-strike-2", "CS2", "game", "game", 95, mask, 17, 0, 1, [])])
+            [new(42, 10, "cs2", @"E:\Library\Steam\cs2.exe", "catalog:game-counter-strike-2", "CS2", "game", "game", 95, mask, 17, 0, 1, [])])
         {
             DatasetObservations = new Dictionary<SchedulingProcessMetricMask, SchedulingProcessDatasetObservation>
             { [mask] = SchedulingProcessDatasetObservation.CreateCurrent(mask, 1, ticks, 1, ticks) }

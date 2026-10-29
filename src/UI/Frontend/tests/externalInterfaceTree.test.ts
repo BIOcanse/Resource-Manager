@@ -189,12 +189,12 @@ assert.deepEqual(monitorSummary, [
 const classifiedTree = buildExternalInterfaceTree([
   usbPort({
     id: "keyboard-port",
-    name: "HERO 99 HE",
+    name: "Example 75 Keyboard",
     connectorKind: "usb-a",
     hubPath: rootHubPath,
     portNumber: 5,
     connected: true,
-    productName: "HERO 99 HE",
+    productName: "Example 75 Keyboard",
     interfaces: [
       { interfaceNumber: 0, alternateSetting: 0, classCode: 0x03, subClassCode: 0x01, protocolCode: 0x01 },
       { interfaceNumber: 1, alternateSetting: 0, classCode: 0x03, subClassCode: 0x00, protocolCode: 0x00 }
@@ -209,12 +209,12 @@ const classifiedTree = buildExternalInterfaceTree([
   }),
   usbPort({
     id: "camera-port",
-    name: "HIK 2K Camera",
+    name: "Example 2K Camera",
     connectorKind: "usb-a",
     hubPath: rootHubPath,
     portNumber: 6,
     connected: true,
-    productName: "HIK 2K Camera",
+    productName: "Example 2K Camera",
     interfaces: [
       { interfaceNumber: 0, alternateSetting: 0, classCode: 0x0e, subClassCode: 0x01, protocolCode: 0x00 },
       { interfaceNumber: 1, alternateSetting: 0, classCode: 0x0e, subClassCode: 0x02, protocolCode: 0x00 },
@@ -246,12 +246,12 @@ const classifiedTree = buildExternalInterfaceTree([
   }),
   usbPort({
     id: "mobile-port",
-    name: "SAMSUNG_Android",
+    name: "Example_Android",
     connectorKind: "usb-c",
     hubPath: rootHubPath,
     portNumber: 8,
     connected: true,
-    productName: "SAMSUNG_Android",
+    productName: "Example_Android",
     interfaces: [
       { interfaceNumber: 0, alternateSetting: 0, classCode: 0x06, subClassCode: 0x01, protocolCode: 0x01 },
       { interfaceNumber: 1, alternateSetting: 0, classCode: 0x02, subClassCode: 0x02, protocolCode: 0x01 },
@@ -259,8 +259,8 @@ const classifiedTree = buildExternalInterfaceTree([
     ],
     smartDevice: {
       deviceType: "phone",
-      manufacturer: "Samsung",
-      model: "SM-N981U",
+      manufacturer: "Example Vendor",
+      model: "XX-0000",
       protocol: "MTP",
       transport: "USB",
       storages: [],
@@ -292,16 +292,16 @@ const classifiedTree = buildExternalInterfaceTree([
   })
 ]);
 
-assert.equal(deviceKind(classifiedTree, "HERO 99 HE"), "keyboard");
-assert.equal(deviceKind(classifiedTree, "HIK 2K Camera"), "camera");
+assert.equal(deviceKind(classifiedTree, "Example 75 Keyboard"), "keyboard");
+assert.equal(deviceKind(classifiedTree, "Example 2K Camera"), "camera");
 assert.equal(deviceKind(classifiedTree, "USB Audio Device"), "audio-device");
-assert.equal(deviceKind(classifiedTree, "SAMSUNG_Android"), "mobile-device");
+assert.equal(deviceKind(classifiedTree, "Example_Android"), "mobile-device");
 assert.equal(deviceKind(classifiedTree, "USB 2.0 Hub"), "usb-hub");
 assert.equal(deviceKind(classifiedTree, "USB Light"), "generic-device");
-const camera = classifiedTree.nodes.find((node) => node.title === "HIK 2K Camera");
+const camera = classifiedTree.nodes.find((node) => node.title === "Example 2K Camera");
 assert.equal(camera?.specializedDevice?.summaryFields[0]?.value, "2560 x 1440 @ 30 fps · MJPEG");
-const mobile = classifiedTree.nodes.find((node) => node.title === "SAMSUNG_Android");
-assert.equal(mobile?.specializedDevice?.summaryFields[1]?.value, "Samsung · SM-N981U");
+const mobile = classifiedTree.nodes.find((node) => node.title === "Example_Android");
+assert.equal(mobile?.specializedDevice?.summaryFields[1]?.value, "Example Vendor · XX-0000");
 assert.ok(classifiedTree.nodes.every((node) => node.specializedDevice?.kind !== "external-gpu-dock"));
 assert.ok(classifiedTree.nodes.every((node) => node.specializedDevice?.kind !== "power-input"));
 

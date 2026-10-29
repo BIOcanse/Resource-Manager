@@ -22,14 +22,14 @@ public sealed class SoftwareRegistryViewTests
     [Fact]
     public async Task SteamManifestInventoryUsesAppIdForCatalogClassWithoutUninstallRegistration()
     {
-        const string root = @"F:\SteamLibrary\steamapps\common\Counter-Strike Global Offensive";
+        const string root = @"E:\Library\SteamLibrary\steamapps\common\Counter-Strike Global Offensive";
         var catalog = SoftwareIdentityCatalogTestData.Create(new SoftwareIdentityCatalogEntry(
             "game-counter-strike-2", "Counter-Strike 2", SoftwareKinds.Game, "test", SteamAppIds: [730]));
         var view = new SoftwareRegistryView(new StaticAdapterSoftwareRegistry([]), new InMemoryControlledSoftwareRegistry(),
             new EmptyDependencyManager(), new EmptyManualSoftwareRegistry(),
             new StaticSoftwarePolicyProfileProvider(new SoftwarePolicyProfile(new Dictionary<string, SoftwarePolicyGroup>(), new Dictionary<string, SoftwarePolicyAssignment>())),
             new StaticInstalledSoftwareInventory([new("steam-app-730", "Localized manifest label", null, null, root, [root], null,
-                @"F:\SteamLibrary\steamapps\appmanifest_730.acf")]), catalog, new StaticPortableSoftwareRegistry([]));
+                @"E:\Library\SteamLibrary\steamapps\appmanifest_730.acf")]), catalog, new StaticPortableSoftwareRegistry([]));
         var software = Assert.Single(await view.GetSoftwareAsync(default), item => item.Id == "steam-app-730");
         Assert.Equal(SoftwareKinds.Game, software.Kind);
         Assert.Equal("game-counter-strike-2", software.SoftwareIdentityId);
@@ -305,7 +305,7 @@ public sealed class SoftwareRegistryViewTests
                         chroniconId,
                         "Chronicon - 英雄旧忆",
                         "targets.games",
-                        [@"D:\Games\Steam\steamapps\common\Chronicon", @"D:\Games\Steam"])
+                        [@"E:\Library\Steam\steamapps\common\Chronicon", @"E:\Library\Steam"])
                 })),
             new StaticInstalledSoftwareInventory([
                 new InstalledSoftwareEntry(
@@ -313,8 +313,8 @@ public sealed class SoftwareRegistryViewTests
                     "Chronicon - 英雄旧忆",
                     null,
                     "Steam",
-                    @"D:\Games\Steam",
-                    [@"D:\Games\Steam\steamapps\common\Chronicon", @"D:\Games\Steam"],
+                    @"E:\Library\Steam",
+                    [@"E:\Library\Steam\steamapps\common\Chronicon", @"E:\Library\Steam"],
                     null,
                     @"HKLM\...\steam-app-375480"),
                 new InstalledSoftwareEntry(
@@ -322,8 +322,8 @@ public sealed class SoftwareRegistryViewTests
                     "Steam",
                     null,
                     "Valve",
-                    @"D:\Games\Steam",
-                    [@"D:\Games\Steam"],
+                    @"E:\Library\Steam",
+                    [@"E:\Library\Steam"],
                     null,
                     @"HKLM\...\Steam")
             ]),
@@ -336,7 +336,7 @@ public sealed class SoftwareRegistryViewTests
         Assert.Equal(SoftwareKinds.Game, chronicon.Kind);
         Assert.True(chronicon.HasExplicitKind);
         Assert.Contains(chronicon.SourceFacts, source => source.Kind == SoftwareSourceKinds.Policy);
-        Assert.Equal([@"D:\Games\Steam\steamapps\common\Chronicon"], chronicon.RootPaths);
+        Assert.Equal([@"E:\Library\Steam\steamapps\common\Chronicon"], chronicon.RootPaths);
 
         var steam = Assert.Single(records, record => record.Id == "windows-installed:steam");
         Assert.Equal(SoftwareKinds.Other, steam.Kind);

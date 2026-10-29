@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
     [string]$RepoRoot = (Join-Path $PSScriptRoot '../..'),
-    [Parameter(Mandatory)][string]$OutputRoot
+    [Parameter(Mandatory)][string]$OutputRoot,
+    # Defaults to <ToolsRoot>\PowerShellModules\PSScriptAnalyzer\1.24.0\PSScriptAnalyzer.psd1 (scripts/dev/MachineRoots.psm1).
+    [string]$AnalyzerModulePath
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -9,7 +11,11 @@ try {
     (Get-Process -Id $PID).PriorityClass = 'BelowNormal'
     $repo = [IO.Path]::GetFullPath($RepoRoot).TrimEnd([IO.Path]::DirectorySeparatorChar)
     $output = [IO.Path]::GetFullPath($OutputRoot)
-    $modulePath = 'D:/Code/CommonAssets/Tools/PowerShellModules/PSScriptAnalyzer/1.24.0/PSScriptAnalyzer.psd1'
+    if (-not $AnalyzerModulePath) {
+        Import-Module (Join-Path $PSScriptRoot '../dev/MachineRoots.psm1') -DisableNameChecking
+        $AnalyzerModulePath = Join-Path (Get-MachineRoot -Name ToolsRoot) 'PowerShellModules\PSScriptAnalyzer\1.24.0\PSScriptAnalyzer.psd1'
+    }
+    $modulePath = $AnalyzerModulePath
     $module = Import-Module -Name $modulePath -PassThru -Force
     if ($module.Version -ne [version]'1.24.0') { throw 'PSScriptAnalyzer 1.24.0 is required.' }
     [void][IO.Directory]::CreateDirectory($output)

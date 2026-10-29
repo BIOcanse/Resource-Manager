@@ -214,6 +214,34 @@ if (-not [string]::IsNullOrWhiteSpace($LinuxFixtureManifestPath)) {
     $linuxQualification = & (Join-Path $PSScriptRoot 'Test-LedgerLinuxQualification.ps1') -CandidateManifestPath $candidateManifestPath -LinuxFixtureManifestPath $LinuxFixtureManifestPath -LinuxRuntimeResultPath $LinuxRuntimeResultPath
 }
 
+# The accepted manifests are tracked and published, so they name evidence without this machine's folders: a file
+# under the WorkRoot's managed root as <rootId>:<path below that root>, any other file (the FreedomPoint feed, a
+# Linux run in another checkout) by its file name. The hashes stay the binding.
+$workRootRecord = Get-Content -LiteralPath (Join-Path $workRootFull '.generated-workspace.json') -Raw | ConvertFrom-Json -Depth 16
+$managedRootPath = [System.IO.Path]::GetFullPath([string]$workRootRecord.rootPath)
+function ConvertTo-RecordedPath {
+    param([Parameter(Mandatory = $true)][string] $Path)
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    $relativePath = [System.IO.Path]::GetRelativePath($managedRootPath, $fullPath)
+    if ([System.IO.Path]::IsPathRooted($relativePath) -or $relativePath -eq '..' -or
+        $relativePath.StartsWith('..' + [System.IO.Path]::DirectorySeparatorChar)) {
+        return [System.IO.Path]::GetFileName($fullPath)
+    }
+    return "$([string]$workRootRecord.rootId):$($relativePath.Replace('\', '/'))"
+}
+$recordedDependencies = @(
+    foreach ($dependency in $dependencies) {
+        $recorded = $dependency.PSObject.Copy()
+        $recorded.feedPath = [System.IO.Path]::GetFileName([string]$dependency.feedPath)
+        $recorded
+    }
+)
+if ($null -ne $linuxQualification) {
+    $linuxQualification.fixtureManifest.path = ConvertTo-RecordedPath -Path ([string]$linuxQualification.fixtureManifest.path)
+    $linuxQualification.runtimeResult.path = ConvertTo-RecordedPath -Path ([string]$linuxQualification.runtimeResult.path)
+    foreach ($log in @($linuxQualification.logs)) { $log.path = ConvertTo-RecordedPath -Path ([string]$log.path) }
+}
+
 $sdkRoot = Join-Path $repositoryRoot 'artifacts\sdk'
 $packagesRoot = Join-Path $sdkRoot 'packages'
 $toolsVersionRoot = Join-Path (Join-Path $sdkRoot 'tools') $version
@@ -252,13 +280,13 @@ $nativeAcceptedManifest = [pscustomobject]@{
         sha256 = Get-Sha256 -Path $archivePath
     }
     consumerReceipt = [pscustomobject]@{
-        path = $receiptPath
+        path = ConvertTo-RecordedPath -Path $receiptPath
         sha256 = Get-Sha256 -Path $receiptPath
-        resultPath = $consumerResultPath
+        resultPath = ConvertTo-RecordedPath -Path $consumerResultPath
         resultSha256 = [string]$receipt.consumerResultSha256
-        nativeBuildResultPath = $nativeBuildResultPath
+        nativeBuildResultPath = ConvertTo-RecordedPath -Path $nativeBuildResultPath
         nativeBuildResultSha256 = [string]$receipt.nativeBuildResultSha256
-        nativeDllPath = $nativeDllPath
+        nativeDllPath = ConvertTo-RecordedPath -Path $nativeDllPath
         nativeDllSha256 = [string]$receipt.nativeDllSha256
     }
 }
@@ -272,7 +300,7 @@ $acceptedManifest = [pscustomobject]@{
     status = 'accepted-package-consumer'
     version = $version
     target = [string]$candidateManifest.target
-    candidateManifest = [pscustomobject]@{ path = $candidateManifestPath; sha256 = $candidateManifestHash }
+    candidateManifest = [pscustomobject]@{ path = (ConvertTo-RecordedPath -Path $candidateManifestPath); sha256 = $candidateManifestHash }
     packages = @(
         foreach ($package in $packageRows) {
             [pscustomobject]@{
@@ -284,7 +312,7 @@ $acceptedManifest = [pscustomobject]@{
             }
         }
     )
-    freedomPointDependencies = @($candidateManifest.freedomPointDependencies)
+    freedomPointDependencies = $recordedDependencies
     nativeSource = [pscustomobject]@{
         file = "native/$version/$([System.IO.Path]::GetFileName($archivePath))"
         sha256 = [string]$candidateManifest.nativeSource.sha256
@@ -295,13 +323,13 @@ $acceptedManifest = [pscustomobject]@{
         sha256 = Get-Sha256 -Path (Join-Path $stageToolConfig 'dotnet-tools.json')
     }
     consumer = [pscustomobject]@{
-        receiptPath = $receiptPath
+        receiptPath = ConvertTo-RecordedPath -Path $receiptPath
         receiptSha256 = Get-Sha256 -Path $receiptPath
-        resultPath = $consumerResultPath
+        resultPath = ConvertTo-RecordedPath -Path $consumerResultPath
         resultSha256 = [string]$receipt.consumerResultSha256
-        nativeBuildResultPath = $nativeBuildResultPath
+        nativeBuildResultPath = ConvertTo-RecordedPath -Path $nativeBuildResultPath
         nativeBuildResultSha256 = [string]$receipt.nativeBuildResultSha256
-        nativeDllPath = $nativeDllPath
+        nativeDllPath = ConvertTo-RecordedPath -Path $nativeDllPath
         nativeDllSha256 = [string]$receipt.nativeDllSha256
     }
     publishedAtUtc = [DateTime]::UtcNow.ToString('O')

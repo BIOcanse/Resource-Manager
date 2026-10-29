@@ -3,7 +3,8 @@
 param(
     [ValidatePattern('^[a-zA-Z0-9-]+$')][string]$RunName = ('static-analysis-dotnet-' + [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss')),
     [string]$PackageRoot = (Join-Path $env:USERPROFILE '.nuget/packages'),
-    [string]$CodeQL = 'D:\Code\CommonAssets\Tools\CodeQL\2.27.2\codeql\codeql.exe',
+    # Empty: Invoke-CodeQL.ps1 uses <ToolsRoot>\CodeQL\2.27.2\codeql\codeql.exe.
+    [string]$CodeQL,
     [switch]$Resume,
     [switch]$RoslynOnly,
     [switch]$CodeQLOnly,

@@ -2,7 +2,9 @@
 param(
     [Parameter(Mandatory)][string]$RegisteredWorkspaceRoot,
     [string]$BuildDirectoryName = 'actual-use-build',
-    [string[]]$AdditionalBuildProperties = @()
+    [string[]]$AdditionalBuildProperties = @(),
+    # NuGet package folder the offline restore reads; the default is NuGet's per-user folder.
+    [string]$PackageRoot = (Join-Path $env:USERPROFILE '.nuget\packages')
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -21,7 +23,7 @@ $policy | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $policyPath -Encodi
 & (Join-Path $repo 'scripts/maintenance/Manage-GeneratedWorkspace.ps1') -Action New -RootId 'actual-use-runs' -WorkspacePath $build -Purpose 'Source-bound copied-image residency/interrupt actual-use acceptance' -PolicyPath $policyPath | Out-Null
 if (-not [IO.File]::Exists((Join-Path $build '.generated-workspace.json'))) { throw 'Build lifecycle registration failed.' }
 $artifacts = Join-Path $build 'artifacts'
-$env:RestorePackagesPath = 'C:\Users\kings\.nuget\packages'
+$env:RestorePackagesPath = $PackageRoot
 $env:RestoreIgnoreFailedSources = 'true'
 $env:NuGetAudit = 'false'
 $properties = @(
@@ -29,7 +31,7 @@ $properties = @(
     '-p:ResourceManagerZigJobs=1',
     ('-p:ArtifactsPath=' + $artifacts),
     ('-p:ResourceManagerLedgerWorkRoot=' + (Join-Path $build 'ledger')),
-    '-p:RestorePackagesPath=C:\Users\kings\.nuget\packages', '-p:RestoreIgnoreFailedSources=true', '-p:NuGetAudit=false',
+    ('-p:RestorePackagesPath=' + $PackageRoot), '-p:RestoreIgnoreFailedSources=true', '-p:NuGetAudit=false',
     '-p:SkipAdapterNativeBuild=true', '-p:AdapterNativeOptimize=ReleaseFast',
     '-p:SkipPerformanceOverlayNativeBuild=true', '-p:SkipGpuPlacementNativeBuild=true',
     '-p:SkipGpuPlacementPreparationNativeBuild=true', '-p:SkipGpuLaunchBrokerNativeBuild=true',

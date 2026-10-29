@@ -114,7 +114,7 @@ scripts/tools/Export-ControlTree.ps1 -TreeJson desktop.json,window.json -From wi
 scripts/tools/Export-ControlTree.ps1 -TreeJson desktop.json,window.json -From desktop:42 -Profile normal -Format json
 scripts/tools/Export-ControlTree.ps1 -TreeJson backend.json,desktop.json,window.json -CompareWith target.md
 # Automatic discovery; builds go through foreground JobQueue, caches to ledger:
-scripts/tools/Export-ControlTree.ps1 -WorkRoot F:/code/Resource-Manager-Development/ledger-control-tree-export
+scripts/tools/Export-ControlTree.ps1 -WorkRoot <workset-root>/ledger-control-tree-export
 ```
 
 `-TreeJson` accepts 1–64 per-process files. Omit it to run the `export-tree`
@@ -222,8 +222,8 @@ Tables and histories are allocated once with fixed sizes. Decision reasons and r
 Run from this directory under pwsh 7 through the foreground JobQueue:
 
 ```powershell
-$env:ZIG_GLOBAL_CACHE_DIR = 'F:\code\Resource-Manager-Development\ledger-state-items-5b\zig-global-cache'
-& 'D:\Code\CommonAssets\Tools\JobQueue\JobQueue.ps1' -Action Run -Label 'claude: zig-control' -FilePath zig -ArgumentList @('build','test','-j1','--summary','all') -WorkingDirectory 'F:\code\Resource-Manager-Worktrees\zig-control\src\Shared\Control' -MemoryLimitGiB 4 -TimeoutMinutes 30
+$env:ZIG_GLOBAL_CACHE_DIR = '<workset-root>\<registered ledger>\zig-global-cache'
+& '<tools>\JobQueue\JobQueue.ps1' -Action Run -Label 'zig-control' -FilePath zig -ArgumentList @('build','test','-j1','--summary','all') -WorkingDirectory '<checkout>\src\Shared\Control' -MemoryLimitGiB 4 -TimeoutMinutes 30
 ```
 
 The test step runs controller scenarios, conditions, item and reader storage, host presence, runtime-reader delivery, JSON tests and diagnostic-matching compile fixtures. Tests use `std.testing.allocator`. Product hosts and C ABI exports belong to 5c/5d.

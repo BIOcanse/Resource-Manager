@@ -17,12 +17,17 @@ param(
     # exhausted LLVM before analyzer execution. The process tree remains bounded.
     [ValidateRange(1, 8)][int]$MemoryLimitGiB = 8,
     [string]$ReportDirectory = (Join-Path $PSScriptRoot '../../.local/reports'),
-    [string]$Queue = 'D:\Code\CommonAssets\Tools\JobQueue\JobQueue.ps1'
+    # Defaults to <ToolsRoot>\JobQueue\JobQueue.ps1 (scripts/dev/MachineRoots.psm1).
+    [string]$Queue
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 try {
+    if (-not $Queue) {
+        Import-Module (Join-Path $PSScriptRoot '../dev/MachineRoots.psm1') -DisableNameChecking
+        $Queue = Join-Path (Get-MachineRoot -Name ToolsRoot) 'JobQueue\JobQueue.ps1'
+    }
     $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
     $reports = (Resolve-Path -LiteralPath $ReportDirectory).Path
     $ledger = (Resolve-Path -LiteralPath $LedgerWorkRoot).Path

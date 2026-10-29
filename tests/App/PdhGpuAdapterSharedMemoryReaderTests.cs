@@ -322,7 +322,7 @@ public sealed class PdhGpuAdapterSharedMemoryReaderTests
 
     private static WindowsGpuAdapterInventoryRead RecordedInventory(uint luid)
     {
-        const string pnp = @"PCI\VEN_1002&DEV_164E&SUBSYS_50051D05&REV_D8\4&b799193&0&0041";
+        const string pnp = @"PCI\VEN_1002&DEV_164E&SUBSYS_12345678&REV_D8\4&1a2b3c4d&0&0041";
         var adapter = new WindowsGpuAdapter(0, "Recorded integrated GPU", 0x1002, 0x164E, 0,
             new AdapterLuid { LowPart = luid }, false, 0, WindowsGpuAdapterKind.Integrated)
         {

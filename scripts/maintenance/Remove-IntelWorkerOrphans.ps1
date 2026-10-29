@@ -1,11 +1,15 @@
 #requires -Version 7.0
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
-param([switch]$Apply)
+param(
+    # The user TEMP root the stale worker set below was inventoried in; the run stops when the user TEMP differs.
+    [Parameter(Mandatory)][string]$InventoriedTempRoot,
+    [switch]$Apply
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$scriptExpectedTempRoot = 'D:\Code\CommonAssets\Tools\Caches\Temp'
+$scriptExpectedTempRoot = $InventoriedTempRoot
 $scriptExpectedStaleCount = 466
 $scriptExpectedStaleBytes = [long]37678198
 $scriptExpectedAbiVersions = [uint32[]]@(262144, 327680, 393216, 458752, 524288)
