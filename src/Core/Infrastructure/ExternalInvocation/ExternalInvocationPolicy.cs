@@ -13,6 +13,16 @@ public sealed class ExternalInvocationPolicy : IExternalInvocationPolicy
         ArgumentNullException.ThrowIfNull(caller);
         ArgumentNullException.ThrowIfNull(operation);
 
+        // Same holder rule as HTTP and the invocation pipe: a caller holding a scope whose holder must be an
+        // elevated administrator is refused unless it is one, whatever the operation needs and before the scope
+        // check (docs/trusted_access_scopes_2026-10-29.md).
+        if (!caller.IsAdministrator && AccessKeyScopes.RequiresAdministratorHolder([.. caller.GrantedScopes]))
+        {
+            return ExternalInvocationPolicyDecision.Reject(
+                ExternalInvocationStatus.Forbidden,
+                "elevated-administrator-required");
+        }
+
         if (operation.AccessClass == ExternalInvocationAccessClass.Open)
         {
             return operation.RequiredScopes.Count == 0
@@ -42,15 +52,6 @@ public sealed class ExternalInvocationPolicy : IExternalInvocationPolicy
                 caller.AccessKeyId is null && caller.WindowsSid is null
                     ? "local-windows-caller-required"
                     : "access-scope-required");
-        }
-
-        if ((operation.RequiredScopes.Contains(AccessKeyScopes.MachineWrite, StringComparer.Ordinal)
-                || operation.RequiredScopes.Contains(AccessKeyScopes.InjectionConfigure, StringComparer.Ordinal))
-            && !caller.IsAdministrator)
-        {
-            return ExternalInvocationPolicyDecision.Reject(
-                ExternalInvocationStatus.Forbidden,
-                "elevated-administrator-required");
         }
 
         return ExternalInvocationPolicyDecision.Allow;

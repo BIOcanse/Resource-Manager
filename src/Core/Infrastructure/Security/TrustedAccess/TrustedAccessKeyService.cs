@@ -753,18 +753,6 @@ public sealed class TrustedAccessKeyService(
         }
     }
 
-    private static TrustedAccessKeyStoreState DisableDefaultSnapshot(TrustedAccessKeyStoreState state)
-    {
-        var defaultId = state.DefaultCredentialId;
-        return new TrustedAccessKeyStoreState(
-            defaultId is null
-                ? CloneKeys(state.Keys)
-                : state.Keys.Where(item => !item.Id.Equals(defaultId, StringComparison.Ordinal)).ToArray(),
-            false,
-            null,
-            state.LegacyAiMigrationCompleted);
-    }
-
     private static TrustedAccessKeyStoreState CopyState(
         TrustedAccessKeyStoreState state,
         IReadOnlyList<StoredTrustedAccessKey> keys) =>

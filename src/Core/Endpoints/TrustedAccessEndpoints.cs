@@ -33,7 +33,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 defaultKey?.Id,
                 (authorization.IsAdministrator
                     ? TrustedAccessScopeCatalog.All
-                    : authorization.EffectiveScopes).ToArray()));
+                    : authorization.EffectiveScopes).ToArray(),
+                AccessKeyScopes.AdministratorHolder.ToArray()));
         }).AllowAnonymous();
 
         app.MapPost(TrustedAccessApiContract.AccessKeysPath, async (
@@ -420,7 +421,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         out string[] scopes)
     {
         scopes = input?.ToArray() ?? [];
-        return scopes.Length is > 0 and <= 11
+        return scopes.Length > 0 && scopes.Length <= TrustedAccessScopeCatalog.All.Count
             && scopes.All(static scope => TrustedAccessScopeCatalog.All.Contains(scope, StringComparer.Ordinal))
             && scopes.Distinct(StringComparer.Ordinal).Count() == scopes.Length;
     }

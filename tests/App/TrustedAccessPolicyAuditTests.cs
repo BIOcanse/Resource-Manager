@@ -62,6 +62,75 @@ public sealed class TrustedAccessPolicyAuditTests
     }
 
     [Fact]
+    public async Task EveryRouteAndSelectorTakesItsKeylessPermissionFromTheScopeTable()
+    {
+        var keylessLocal = AccessKeyScopes.Definitions.Where(static scope => scope.KeylessLocal)
+            .Select(static scope => scope.Name).ToHashSet(StringComparer.Ordinal);
+        var holder = AccessKeyScopes.Definitions.Where(static scope => scope.RequiresAdministratorHolder)
+            .Select(static scope => scope.Name).ToHashSet(StringComparer.Ordinal);
+        var checkedRoutes = 0;
+        foreach (var (operation, requirement) in await ProtectedProductionRequirementsAsync())
+        {
+            checkedRoutes++;
+            if (requirement.RequiredScopes.Count == 0)
+                // Keyless access requests, and the subscription envelope that authorizes each selector itself.
+                Assert.True(requirement.AllowKeylessLocalWindowsCaller == requirement.RequireKeyless, operation);
+            else
+                Assert.True(requirement.AllowKeylessLocalWindowsCaller
+                    == requirement.RequiredScopes.All(keylessLocal.Contains), operation);
+            if (requirement.AllowKeylessLocalWindowsCaller)
+                Assert.False(requirement.RequiredScopes.Any(holder.Contains), operation);
+        }
+        Assert.True(checkedRoutes > 0);
+
+        foreach (var selector in ResourceManagerEndpointRouteBuilderExtensions.SubscriptionSelectors)
+        {
+            Assert.True(TrustedAccessHttpPolicy.TryGetRequiredScopesForSubscription(selector, out var scopes), selector);
+            var keyless = TrustedAccessHttpPolicy.AllowsKeylessSubscription(selector);
+            Assert.True(keyless == scopes.All(keylessLocal.Contains), selector);
+            if (keyless)
+                Assert.False(scopes.Any(holder.Contains), selector);
+        }
+    }
+
+    [Fact]
+    public async Task KeylessLocalRoutesAreTheGroupsMarkedByHandBeforeTheTableDroveThem()
+    {
+        // Pins the 10-29 change that derives the flag from the table: no route changed. A deliberate change of the
+        // table's keyless-local column updates this list with it.
+        string[] earlierKeylessGroups = [AccessKeyScopes.Read, AccessKeyScopes.ProcessesRead, AccessKeyScopes.MetricsRead];
+        foreach (var (operation, requirement) in await ProtectedProductionRequirementsAsync())
+            Assert.True(requirement.AllowKeylessLocalWindowsCaller == (requirement.RequireKeyless
+                || requirement.RequiredScopes is [var only] && earlierKeylessGroups.Contains(only)), operation);
+    }
+
+    private static async Task<List<(string Operation, TrustedAccessHttpRequirement Requirement)>>
+        ProtectedProductionRequirementsAsync()
+    {
+        var builder = WebApplication.CreateBuilder();
+        LoopbackApiPipelineConfigurator.Compile(false).ConfigureServices(builder.Services);
+        builder.Services.AddResourceManagerApp(["--no-native-ui"], StartupCapabilitySet.Full);
+        await using var app = builder.Build();
+        app.MapResourceManagerEndpoints(LoopbackApiPipelineMode.Administrator, StartupCapabilitySet.Full);
+        var requirements = new List<(string Operation, TrustedAccessHttpRequirement Requirement)>();
+        foreach (var endpoint in ((IEndpointRouteBuilder)app).DataSources
+            .SelectMany(static source => source.Endpoints).OfType<RouteEndpoint>())
+        {
+            foreach (var method in endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods
+                ?? Array.Empty<string>())
+            {
+                var context = new DefaultHttpContext();
+                context.SetEndpoint(endpoint);
+                context.Request.Method = method;
+                if (TrustedAccessHttpPolicy.TryGetRequirement(context.Request, out var requirement)
+                    && requirement.Mode == TrustedAccessHttpAuthorizationMode.Protected)
+                    requirements.Add(($"{method} {endpoint.RoutePattern.RawText}", requirement));
+            }
+        }
+        return requirements;
+    }
+
+    [Fact]
     public void ProductUpdateStatusSubscriptionRequiresTheSameScopesAsStatusRead()
     {
         var context = new DefaultHttpContext();

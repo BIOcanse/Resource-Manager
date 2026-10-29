@@ -92,6 +92,45 @@ public sealed class ExternalInvokerTests
     }
 
     [Fact]
+    public async Task HolderScopeCallerMustBeAnElevatedAdministratorBeforeTheScopeCheck()
+    {
+        var calls = 0;
+        var invoker = CreateInvoker(
+            CreateModule(ExternalInvocationAccessClass.Authenticated, (_, _) =>
+            {
+                calls++;
+                return ValueTask.FromResult("called");
+            }),
+            ExternalInvocationRuntimePlan.Default,
+            new RecordingAuditSink());
+        var holderScopes = AccessKeyScopes.Definitions
+            .Where(static scope => scope.RequiresAdministratorHolder)
+            .Select(static scope => scope.Name)
+            .ToArray();
+        Assert.NotEmpty(holderScopes);
+
+        foreach (var holderScope in holderScopes)
+        {
+            // The operation needs only read; carrying the holder scope is what requires the administrator.
+            var fromUser = await invoker.InvokeAsync(CreateRequest(
+                grantedScopes: [AccessKeyScopes.Read, holderScope], accessKeyId: "holder-key"), CancellationToken.None);
+            Assert.Equal(ExternalInvocationStatus.Forbidden, fromUser.Status);
+            Assert.Equal("elevated-administrator-required", fromUser.ErrorCode);
+
+            // Holder first, then scope: an unelevated holder lacking read still hears the holder reason.
+            var withoutRead = await invoker.InvokeAsync(CreateRequest(
+                grantedScopes: [holderScope], accessKeyId: "holder-key"), CancellationToken.None);
+            Assert.Equal("elevated-administrator-required", withoutRead.ErrorCode);
+
+            var fromAdministrator = await invoker.InvokeAsync(CreateRequest(
+                grantedScopes: [AccessKeyScopes.Read, holderScope], administrator: true, accessKeyId: "holder-key"),
+                CancellationToken.None);
+            Assert.True(fromAdministrator.Succeeded);
+        }
+        Assert.Equal(holderScopes.Length, calls);
+    }
+
+    [Fact]
     public async Task OpenOperation_DoesNotRequireCallerIdentity()
     {
         var invoker = CreateInvoker(

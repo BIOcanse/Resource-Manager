@@ -116,6 +116,163 @@ public sealed partial class LoopbackApiAccessTests
     }
 
     [Fact]
+    public async Task KeySnapshotNamesTheScopeTableAdministratorHolderScopesForEveryCaller()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        var tableColumn = AccessKeyScopes.Definitions
+            .Where(static scope => scope.RequiresAdministratorHolder)
+            .Select(static scope => scope.Name)
+            .ToArray();
+        Assert.NotEmpty(tableColumn);
+
+        // The default key holder (unelevated) cannot grant these scopes, yet the snapshot still names them.
+        using (var request = new HttpRequestMessage(HttpMethod.Get, TrustedAccessApiContract.AccessKeysPath))
+        {
+            request.Headers.Add(TrustedAccessHeaders.KeyHeader, fixture.Key);
+            using var response = await fixture.Client.SendAsync(request);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.Equal(tableColumn, Strings(body.RootElement.GetProperty("administratorHolderScopes")));
+            Assert.Empty(Strings(body.RootElement.GetProperty("availableScopes")).Intersect(tableColumn));
+        }
+
+        // A keyless elevated administrator may grant every scope; the administrator-holder list is unchanged.
+        fixture.Administrator.Allowed = true;
+        using (var response = await fixture.Client.GetAsync(TrustedAccessApiContract.AccessKeysPath))
+        {
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            Assert.Equal(tableColumn, Strings(body.RootElement.GetProperty("administratorHolderScopes")));
+            Assert.Equal(AccessKeyScopes.All, Strings(body.RootElement.GetProperty("availableScopes")));
+        }
+
+        static string[] Strings(JsonElement array)
+            => array.EnumerateArray().Select(static value => value.GetString()!).ToArray();
+    }
+
+    [Fact]
+    public async Task ElevatedAdministratorHoldingAKeyGrantsAndManagesOnlyWithinThatKey()
+    {
+        // Review M1: an elevated administrator presenting K = [keys.manage, machine.write] is bounded by K on
+        // key management, as before the holder rule; without the key header the same administrator is not.
+        await using var fixture = await Fixture.StartAsync();
+        fixture.Administrator.Allowed = true;
+        string[] held = [AccessKeyScopes.KeysManage, AccessKeyScopes.MachineWrite];
+        var k = await fixture.Keys.CreateAsync(new("bounded administrator", AccessKeyPurposes.Control, held),
+            CancellationToken.None);
+        var outside = await fixture.Keys.CreateAsync(new("outside K", AccessKeyPurposes.Control,
+            [AccessKeyScopes.InjectionConfigure]), CancellationToken.None);
+
+        using (var escalation = await SendAsync(fixture, HttpMethod.Post, TrustedAccessApiContract.AccessKeysPath,
+            k.ApiKey, new { name = "escalated", purpose = AccessKeyPurposes.Control,
+                scopes = new[] { AccessKeyScopes.MachineWrite, AccessKeyScopes.InjectionConfigure } }))
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, escalation.StatusCode);
+            Assert.Equal("access-scope-escalation-denied", await ErrorAsync(escalation));
+        }
+        using (var within = await SendAsync(fixture, HttpMethod.Post, TrustedAccessApiContract.AccessKeysPath,
+            k.ApiKey, new { name = "within K", purpose = AccessKeyPurposes.Control,
+                scopes = new[] { AccessKeyScopes.MachineWrite } }))
+            Assert.Equal(HttpStatusCode.OK, within.StatusCode);
+        using (var revoke = await SendAsync(fixture, HttpMethod.Delete,
+            $"{TrustedAccessApiContract.AccessKeysPath}/{outside.Credential.Id}", k.ApiKey))
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, revoke.StatusCode);
+            Assert.Equal("access-key-management-scope-exceeded", await ErrorAsync(revoke));
+        }
+        Assert.Contains(await fixture.Keys.ListAsync(CancellationToken.None),
+            key => key.Id == outside.Credential.Id);
+        using (var snapshot = await SendAsync(fixture, HttpMethod.Get, TrustedAccessApiContract.AccessKeysPath, k.ApiKey))
+        {
+            Assert.Equal(HttpStatusCode.OK, snapshot.StatusCode);
+            using var body = JsonDocument.Parse(await snapshot.Content.ReadAsStringAsync());
+            Assert.True(body.RootElement.GetProperty("availableScopes").EnumerateArray()
+                .Select(static value => value.GetString()!).ToHashSet(StringComparer.Ordinal).SetEquals(held));
+        }
+        using (var keyless = await SendAsync(fixture, HttpMethod.Post, TrustedAccessApiContract.AccessKeysPath,
+            apiKey: null, new { name = "keyless administrator grant", purpose = AccessKeyPurposes.Control,
+                scopes = new[] { AccessKeyScopes.MachineWrite, AccessKeyScopes.InjectionConfigure } }))
+            Assert.Equal(HttpStatusCode.OK, keyless.StatusCode);
+    }
+
+    [Fact]
+    public async Task KeylessAdministratorCreatesAKeyCarryingEveryTableScope()
+    {
+        // Review L3: the scope-count bound is the table's length, so a key with every scope is accepted.
+        await using var fixture = await Fixture.StartAsync();
+        fixture.Administrator.Allowed = true;
+        using var created = await SendAsync(fixture, HttpMethod.Post, TrustedAccessApiContract.AccessKeysPath,
+            apiKey: null, new { name = "every scope", purpose = AccessKeyPurposes.Control,
+                scopes = AccessKeyScopes.Definitions.Select(static scope => scope.Name).ToArray() });
+        Assert.Equal(HttpStatusCode.OK, created.StatusCode);
+        using var body = JsonDocument.Parse(await created.Content.ReadAsStringAsync());
+        Assert.Equal(AccessKeyScopes.Definitions.Count,
+            body.RootElement.GetProperty("key").GetProperty("scopes").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task UnelevatedCallerWithAnAdministratorHolderKeyCannotOpenASubscriptionStream()
+    {
+        await using var fixture = await Fixture.StartAsync();
+        foreach (var holderScope in AccessKeyScopes.Definitions.Where(static scope => scope.RequiresAdministratorHolder))
+        {
+            var key = await fixture.Keys.CreateAsync(new("metrics with " + holderScope.Name, AccessKeyPurposes.Control,
+                [AccessKeyScopes.MetricsRead, holderScope.Name]), CancellationToken.None);
+            using var response = await SendAsync(fixture, HttpMethod.Post, "/api/subscriptions/stream", key.ApiKey,
+                new
+                {
+                    version = TrustedAccessApiContract.Version,
+                    subscriptions = new[] { new { id = "metrics", path = "/api/metrics/subscribe" } }
+                });
+
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+            Assert.Equal("elevated-administrator-required", await ErrorAsync(response));
+        }
+        // The stream never opened: no sampler subscription and no capture.
+        Assert.Equal(0, fixture.Sampler.SingleFetches);
+        Assert.Equal(0, fixture.Sampler.Captures);
+    }
+
+    [Theory]
+    [InlineData("/api/metrics/snapshot")]
+    [InlineData("/api/health")]
+    public async Task UnelevatedHolderKeyRefusalBodyNamesOnlyTheReason(string path)
+    {
+        // A protected read route and an anonymous route that receives the key header (review I1) answer alike.
+        await using var fixture = await Fixture.StartAsync();
+        foreach (var holderScope in AccessKeyScopes.Definitions.Where(static scope => scope.RequiresAdministratorHolder))
+        {
+            var key = await fixture.Keys.CreateAsync(new("metrics with " + holderScope.Name, AccessKeyPurposes.Control,
+                [AccessKeyScopes.MetricsRead, holderScope.Name]), CancellationToken.None);
+            using var response = await SendAsync(fixture, HttpMethod.Get, path, key.ApiKey);
+
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+            using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var property = Assert.Single(body.RootElement.EnumerateObject());
+            Assert.Equal("error", property.Name);
+            Assert.Equal("elevated-administrator-required", property.Value.GetString());
+        }
+        Assert.Equal(0, fixture.Sampler.Captures);
+    }
+
+    private static async Task<HttpResponseMessage> SendAsync(
+        Fixture fixture, HttpMethod method, string path, string? apiKey, object? body = null)
+    {
+        using var request = new HttpRequestMessage(method, path);
+        if (body is not null)
+            request.Content = JsonContent.Create(body);
+        if (apiKey is not null)
+            request.Headers.Add(TrustedAccessHeaders.KeyHeader, apiKey);
+        return await fixture.Client.SendAsync(request);
+    }
+
+    private static async Task<string> ErrorAsync(HttpResponseMessage response)
+    {
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return body.RootElement.GetProperty("error").GetString()!;
+    }
+
+    [Fact]
     public async Task UnknownSelectorIsRejectedByIdWhileResourceFactsSubscriptionStillPublishes()
     {
         await using var fixture = await Fixture.StartAsync();

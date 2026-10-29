@@ -362,9 +362,16 @@ public sealed class LoopbackApiAuthenticationPolicyTests
         Assert.Equal(1, administratorReader.CallCount);
     }
 
+    public static TheoryData<string> AdministratorHolderScopes()
+    {
+        var scopes = new TheoryData<string>();
+        foreach (var scope in AccessKeyScopes.Definitions.Where(static scope => scope.RequiresAdministratorHolder))
+            scopes.Add(scope.Name);
+        return scopes;
+    }
+
     [Theory]
-    [InlineData(AccessKeyScopes.MachineWrite)]
-    [InlineData(AccessKeyScopes.InjectionConfigure)]
+    [MemberData(nameof(AdministratorHolderScopes))]
     public async Task KeyCarryingAnAdministratorHolderScopeIsRefusedEvenForReadsFromOtherProcesses(string scope)
     {
         var administratorReader = new TestAdministratorReader(isAdministrator: false);
@@ -397,30 +404,78 @@ public sealed class LoopbackApiAuthenticationPolicyTests
             cancellationToken: CancellationToken.None);
 
         Assert.True(decision.Allowed);
+        // The read route needs no administrator holder, so the verified administrator is not carried into the
+        // context: granting and managing keys stay bounded by this key's scopes (review M1).
+        Assert.False(decision.Context!.IsAdministrator);
+    }
+
+    [Fact]
+    public async Task AdministratorHolderRouteCarriesTheVerifiedAdministratorIntoTheContext()
+    {
+        var decision = await TrustedAccessHttpPolicy.AuthorizeAsync(
+            RequestWithKey("valid-key"),
+            new TestKeyService(Key([AccessKeyScopes.MachineWrite])),
+            new TestAdministratorReader(isAdministrator: true),
+            [AccessKeyScopes.MachineWrite],
+            allowKeylessLocalWindowsCaller: false,
+            requireKeyless: false,
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(decision.Allowed);
         Assert.True(decision.Context!.IsAdministrator);
     }
 
     [Fact]
-    public void ScopeTableKeepsAdministratorHolderScopesOutOfTheDefaultKey()
+    public async Task KeyHoldingOnlyInjectionConfigureIsRefusedAsAHolderBeforeTheScopeCheck()
     {
-        // The bundled UI holds the default key and runs unelevated.
+        var context = new DefaultHttpContext();
+        context.Request.Method = "PUT";
+        context.Request.Path = "/api/gpu-placement/process-policy";
+        var requiredScopes = TrustedAccessHttpPolicy.GetRequirement(context.Request).RequiredScopes;
+        var key = new TestKeyService(Key([AccessKeyScopes.InjectionConfigure]));
+
+        var fromUser = await TrustedAccessHttpPolicy.AuthorizeAsync(RequestWithKey("valid-key"), key,
+            new TestAdministratorReader(isAdministrator: false), requiredScopes,
+            allowKeylessLocalWindowsCaller: false, requireKeyless: false, cancellationToken: CancellationToken.None);
+        var fromAdministrator = await TrustedAccessHttpPolicy.AuthorizeAsync(RequestWithKey("valid-key"), key,
+            new TestAdministratorReader(isAdministrator: true), requiredScopes,
+            allowKeylessLocalWindowsCaller: false, requireKeyless: false, cancellationToken: CancellationToken.None);
+
+        // Review I2: an unelevated holder learns only that it must be an administrator, not which scope is missing.
+        Assert.Equal(StatusCodes.Status403Forbidden, fromUser.StatusCode);
+        Assert.Equal("elevated-administrator-required", fromUser.ErrorCode);
+        Assert.Empty(fromUser.MissingScopes);
+        Assert.Equal(StatusCodes.Status403Forbidden, fromAdministrator.StatusCode);
+        Assert.Equal("access-scope-required", fromAdministrator.ErrorCode);
+        Assert.Equal([AccessKeyScopes.MachineWrite], fromAdministrator.MissingScopes);
+    }
+
+    [Fact]
+    public void ScopeTableKeepsAdministratorHolderScopesFromUnelevatedHolders()
+    {
+        // The bundled UI holds the default key and runs unelevated; keyless local callers are unelevated too.
         Assert.DoesNotContain(AccessKeyScopes.Definitions,
-            static scope => scope.InDefaultKey && scope.RequiresAdministratorHolder);
+            static scope => scope.RequiresAdministratorHolder && (scope.InDefaultKey || scope.KeylessLocal));
         Assert.False(AccessKeyScopes.RequiresAdministratorHolder(AccessKeyScopes.Default));
-        Assert.Equal(AccessKeyScopes.Definitions.Select(static scope => scope.Name), AccessKeyScopes.All);
-        Assert.Equal(AccessKeyScopes.Definitions.Count, AccessKeyScopes.All.Distinct(StringComparer.Ordinal).Count());
-        Assert.Equal([AccessKeyScopes.MachineWrite, AccessKeyScopes.InjectionConfigure],
-            AccessKeyScopes.Definitions.Where(static scope => scope.RequiresAdministratorHolder)
-                .Select(static scope => scope.Name));
-        Assert.Equal(TrustedAccessScopeCatalog.LocalReadScopes,
-            AccessKeyScopes.Definitions.Where(static scope => scope.KeylessLocal).Select(static scope => scope.Name));
-        Assert.Equal(TrustedAccessScopeCatalog.DefaultScopes, AccessKeyScopes.Default);
+        Assert.False(AccessKeyScopes.RequiresAdministratorHolder(TrustedAccessScopeCatalog.LocalReadScopes));
+        Assert.Equal(AccessKeyScopes.Definitions.Count,
+            AccessKeyScopes.Definitions.Select(static scope => scope.Name).Distinct(StringComparer.Ordinal).Count());
+        // The holder check answers each row's column, so changing the column alone changes the rule.
+        foreach (var scope in AccessKeyScopes.Definitions)
+            Assert.True(AccessKeyScopes.RequiresAdministratorHolder([scope.Name]) == scope.RequiresAdministratorHolder,
+                scope.Name);
     }
 
     [Theory]
     [InlineData("POST", "/api/optimization/reports/{id}/dismiss")]
     [InlineData("DELETE", "/api/optimization/trust/{id}")]
-    public void DismissingAReportAndRemovingTrustAreSessionActions(string method, string path)
+    [InlineData("PUT", "/api/control/presets/{objectId}/{name}")]
+    [InlineData("DELETE", "/api/control/presets/{presetId}")]
+    [InlineData("DELETE", "/api/control/instances/{instanceId}")]
+    [InlineData("POST", "/api/software/manual")]
+    [InlineData("DELETE", "/api/software/manual/{id}")]
+    [InlineData("POST", "/api/software/portable/root")]
+    public void RecordOnlyActionsAreSessionActions(string method, string path)
         => Assert.Equal([AccessKeyScopes.Session],
             TrustedAccessHttpPolicy.GetRequirement(MethodRequest(method, path, method).Request).RequiredScopes);
 

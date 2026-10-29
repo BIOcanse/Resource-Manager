@@ -53,6 +53,9 @@ public static class AccessKeyScopes
 
     public static IReadOnlyList<string> KeylessLocal { get; } = Array.AsReadOnly(Names(static scope => scope.KeylessLocal));
 
+    public static IReadOnlyList<string> AdministratorHolder { get; } =
+        Array.AsReadOnly(Names(static scope => scope.RequiresAdministratorHolder));
+
     public static string[] Default => [.. defaultScopes];
 
     public static bool IsSupported(string? value) =>

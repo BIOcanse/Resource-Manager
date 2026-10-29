@@ -60,6 +60,56 @@ public sealed class OptimizationTrustEndpointTests
     }
 
     [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task DismissingAReportAndRemovingTrustRequireOnlySessionScope(bool session)
+    {
+        var reports = new Reports();
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Logging.ClearProviders();
+        TrustedAccessEndpointTestAuthentication.Add(builder.Services, session ? AccessKeyScopes.Session : AccessKeyScopes.ProcessesRead);
+        builder.Services.ConfigureHttpJsonOptions(options =>
+            ResourceManagerEndpointRouteBuilderExtensions.ConfigureJsonSerializerOptions(options.SerializerOptions));
+        builder.Services.AddSingleton<IHostManagerReportService>(reports);
+        builder.Services.AddSingleton<IOptimizationProtectionService>(_ => throw new InvalidOperationException("unused"));
+        builder.Services.AddSingleton<IHostManagerSmartCoordinator>(_ => throw new InvalidOperationException("unused"));
+        await using var app = TrustedAccessEndpointTestAuthentication.Build(builder);
+        typeof(ResourceManagerEndpointRouteBuilderExtensions)
+            .GetMethod("MapOptimizationEndpoints", BindingFlags.Static | BindingFlags.NonPublic)!
+            .Invoke(null, [app, LoopbackApiPipelineMode.StandardUser]);
+        await app.StartAsync();
+        using var client = TrustedAccessEndpointTestAuthentication.Client(app);
+
+        using var dismissed = await client.PostAsync("/api/optimization/reports/report%3Aapp/dismiss", null);
+        using var removed = await client.DeleteAsync("/api/optimization/trust/trust%3Aapp");
+
+        if (session)
+        {
+            Assert.Equal(HttpStatusCode.OK, dismissed.StatusCode);
+            using var trust = JsonDocument.Parse(await dismissed.Content.ReadAsStringAsync());
+            Assert.Equal("trust:app", trust.RootElement.GetProperty("id").GetString());
+            Assert.Equal(HttpStatusCode.NoContent, removed.StatusCode);
+            Assert.Equal(["report:app"], reports.Dismissed);
+            Assert.Equal(["trust:app"], reports.Removed);
+        }
+        else
+        {
+            foreach (var response in new[] { dismissed, removed })
+            {
+                Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+                using var wire = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                Assert.Equal("access-scope-required", wire.RootElement.GetProperty("error").GetString());
+                Assert.Equal(AccessKeyScopes.Session,
+                    Assert.Single(wire.RootElement.GetProperty("missingScopes").EnumerateArray()).GetString());
+            }
+            Assert.Empty(reports.Dismissed);
+            Assert.Empty(reports.Removed);
+        }
+        await app.StopAsync();
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task ReportOverviewWireIncludesHistoryIndependentTrustAndUnrecordedCount(bool refresh)
@@ -161,6 +211,7 @@ public sealed class OptimizationTrustEndpointTests
     private sealed class Reports : IHostManagerReportService
     {
         internal List<string> Removed { get; } = [];
+        internal List<string> Dismissed { get; } = [];
         internal OptimizationReportOverview? Overview { get; init; }
         internal int HistoryRemovedCount { get; init; }
         internal int ClearHistoryCalls { get; private set; }
@@ -182,7 +233,15 @@ public sealed class OptimizationTrustEndpointTests
             => Task.FromResult(Overview ?? throw new NotSupportedException());
         public Task<OptimizationReportOverview> RefreshReportsAsync(CancellationToken cancellationToken) => GetReportsAsync(cancellationToken);
         public Task<OptimizationReportItem?> GetReportAsync(string reportId, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<TrustedOptimizationTarget?> DismissReportAsync(string reportId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<TrustedOptimizationTarget?> DismissReportAsync(string reportId, CancellationToken cancellationToken)
+        {
+            if (reportId != "report:app") return Task.FromResult<TrustedOptimizationTarget?>(null);
+            Dismissed.Add(reportId);
+            return Task.FromResult<TrustedOptimizationTarget?>(new TrustedOptimizationTarget("trust:app",
+                OptimizationReportTargetTypes.Software, "software:fixture", "Fixture",
+                OptimizationReportTypes.BackgroundHighUsage, OptimizationResourceKinds.Memory,
+                DateTimeOffset.UnixEpoch, reportId, null, "active"));
+        }
         public Task<TrustedOptimizationTarget?> TrustReportAsync(string reportId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<TrustedOptimizationTarget>> GetTrustedTargetsAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<TrustedOptimizationTarget>> RefreshTrustedTargetsAsync(CancellationToken cancellationToken) => throw new NotSupportedException();

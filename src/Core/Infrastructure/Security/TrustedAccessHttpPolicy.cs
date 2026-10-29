@@ -70,19 +70,14 @@ internal static class TrustedAccessScopeCatalog
 
 internal static class TrustedAccessHttpPolicy
 {
-    private static readonly FrozenDictionary<(string Scope, bool AllowKeyless), TrustedAccessHttpRequirement>
-        SingleScopeRequirements = TrustedAccessScopeCatalog.All
-            .SelectMany(static scope => new[] { false, true }.Select(allowKeyless => new
-            {
-                Key = (scope, allowKeyless),
-                Value = new TrustedAccessHttpRequirement(TrustedAccessHttpAuthorizationMode.Protected,
-                    Array.AsReadOnly(new[] { scope }), allowKeyless)
-            }))
-            .ToFrozenDictionary(static item => item.Key, static item => item.Value);
+    private static readonly FrozenDictionary<string, TrustedAccessHttpRequirement> SingleScopeRequirements =
+        TrustedAccessScopeCatalog.All.ToFrozenDictionary(
+            static scope => scope,
+            static scope => ScopeRequirement([scope]),
+            StringComparer.Ordinal);
 
-    private static readonly TrustedAccessHttpRequirement InjectionConfigurationRequirement = new(
-        TrustedAccessHttpAuthorizationMode.Protected,
-        Array.AsReadOnly(new[] { AccessKeyScopes.MachineWrite, AccessKeyScopes.InjectionConfigure }), false);
+    private static readonly TrustedAccessHttpRequirement InjectionConfigurationRequirement =
+        ScopeRequirement([AccessKeyScopes.MachineWrite, AccessKeyScopes.InjectionConfigure]);
 
     private static readonly TrustedAccessHttpRequirement KeylessRequestRequirement = new(
         TrustedAccessHttpAuthorizationMode.Protected, [], true, RequireKeyless: true);
@@ -131,13 +126,10 @@ internal static class TrustedAccessHttpPolicy
             "GET /api/cpu/leases/{leaseId}",
             "DELETE /api/cpu/leases/{leaseId}",
             "DELETE /api/adapters/{id}",
-            "DELETE /api/control/instances/{instanceId}",
-            "DELETE /api/control/presets/{presetId}",
             "DELETE /api/controlled/{id:guid}",
             "DELETE /api/cpu/baseline-ratio",
             "DELETE /api/cpu/topology/performance-overrides",
             "DELETE /api/gpu/performance-overrides",
-            "DELETE /api/software/manual/{id}",
             "PATCH /api/settings/app",
             "PATCH /api/memory-protection",
             "POST /api/memory-protection/reserve/rebuild",
@@ -155,8 +147,6 @@ internal static class TrustedAccessHttpPolicy
             "POST /api/public/v1/sqlite/databases/{databaseId}/checkpoint",
             "POST /api/public/v1/sqlite/databases/{databaseId}/execute",
             "POST /api/settings/app/reapply",
-            "POST /api/software/manual",
-            "POST /api/software/portable/root",
             "POST /api/software/uninstall",
             "POST /api/system/processes/dump",
             "POST /api/system/processes/terminate",
@@ -165,7 +155,6 @@ internal static class TrustedAccessHttpPolicy
             "PUT /api/control/access-level",
             "PUT /api/control/notice",
             "PUT /api/control/overclock-consent",
-            "PUT /api/control/presets/{objectId}/{name}",
             "PUT /api/control/state",
             "PUT /api/control/state/{objectId}",
             "PUT /api/cpu/baseline-ratio",
@@ -179,9 +168,17 @@ internal static class TrustedAccessHttpPolicy
         // Creating, selecting and deleting normal running points only records or picks the baseline; it changes
         // nothing on the machine, so the user does it from the bundled UI without elevation (user 10-28).
         // Dismissing an optimization report and removing a trust entry are session actions too (user 10-29).
+        // Saving or deleting a control preset, forgetting a control instance, registering or deleting manual
+        // software and confirming a portable root only record or drop an entry (user 10-29).
         Add(Protected(AccessKeyScopes.Session),
             "POST /api/optimization/reports/{id}/dismiss",
             "DELETE /api/optimization/trust/{id}",
+            "PUT /api/control/presets/{objectId}/{name}",
+            "DELETE /api/control/presets/{presetId}",
+            "DELETE /api/control/instances/{instanceId}",
+            "POST /api/software/manual",
+            "DELETE /api/software/manual/{id}",
+            "POST /api/software/portable/root",
             "POST /api/optimization/reports/history/clear",
             "DELETE /api/targeted-recordings/{id}",
             "POST /api/kernel-leaks/history/clear",
@@ -195,7 +192,7 @@ internal static class TrustedAccessHttpPolicy
             "POST /api/system/search-online",
             "POST /api/targeted-recordings",
             "POST /api/targeted-recordings/{id}/stop");
-        Add(Protected(AccessKeyScopes.Read, allowKeylessLocal: true),
+        Add(Protected(AccessKeyScopes.Read),
             "GET /api/adapters",
             "GET /api/browser-runtimes",
             "GET /api/components",
@@ -276,7 +273,7 @@ internal static class TrustedAccessHttpPolicy
             "POST /api/adapters/register",
             "POST /api/adapters/resource-manager/scheduling",
             "POST /api/controlled/register");
-        Add(Protected(AccessKeyScopes.ProcessesRead, allowKeylessLocal: true),
+        Add(Protected(AccessKeyScopes.ProcessesRead),
             "GET /api/memory-protection",
             "GET /api/memory-protection/normal-running-point",
             "GET /api/memory-protection/normal-running-points",
@@ -315,7 +312,7 @@ internal static class TrustedAccessHttpPolicy
             "POST /api/public/v1/ai/compat/openai/v1/chat/completions",
             "POST /api/public/v1/ai/compat/openai/v1/embeddings",
             "POST /api/public/v1/ai/compat/openai/v1/responses");
-        Add(Protected(AccessKeyScopes.MetricsRead, allowKeylessLocal: true),
+        Add(Protected(AccessKeyScopes.MetricsRead),
             "GET /api/debug/metrics/capture",
             "GET /api/metrics/fields/snapshot",
             "GET /api/metrics/gpu-specialized",
@@ -418,7 +415,7 @@ internal static class TrustedAccessHttpPolicy
 
     public static bool AllowsKeylessSubscription(string selector)
         => TryGetRequiredScopesForSubscription(selector, out var scopes)
-            && scopes.All(TrustedAccessScopeCatalog.LocalReadScopes.Contains);
+            && KeylessLocalCallerHolds(scopes);
 
     public static bool IsStreamingRequest(HttpRequest request)
     {
@@ -488,7 +485,11 @@ internal static class TrustedAccessHttpPolicy
                         .Where(scope => !key.Scopes.Contains(scope, StringComparer.Ordinal)).ToArray()
                 };
 
-            var authorization = new TrustedAccessAuthorizationContext(key, null, administrator, false);
+            // The holder check above does not widen what the key may do: the context names the caller an
+            // administrator only on a route that itself needs an administrator holder, so granting and managing
+            // keys stay bounded by the key's own scopes, as before the holder rule.
+            var authorization = new TrustedAccessAuthorizationContext(key, null,
+                administrator && AccessKeyScopes.RequiresAdministratorHolder(requiredScopes), false);
             context.Items[typeof(TrustedAccessAuthorizationContext)] = authorization;
             return TrustedAccessAuthorizationDecision.Allow(authorization);
         }
@@ -514,10 +515,16 @@ internal static class TrustedAccessHttpPolicy
             connectedCaller is null ? "local-windows-caller-required" : "access-key-required");
     }
 
-    private static TrustedAccessHttpRequirement Protected(
-        string scope,
-        bool allowKeylessLocal = false)
-        => SingleScopeRequirements[(scope, allowKeylessLocal)];
+    private static TrustedAccessHttpRequirement Protected(string scope)
+        => SingleScopeRequirements[scope];
+
+    // A route admits a keyless local Windows caller exactly when the scope table gives such callers every scope
+    // the route requires; no route marks this by hand.
+    private static TrustedAccessHttpRequirement ScopeRequirement(string[] scopes)
+        => new(TrustedAccessHttpAuthorizationMode.Protected, Array.AsReadOnly(scopes), KeylessLocalCallerHolds(scopes));
+
+    private static bool KeylessLocalCallerHolds(IReadOnlyList<string> scopes)
+        => scopes.All(TrustedAccessScopeCatalog.LocalReadScopes.Contains);
 
     private static bool ContainsAll(IReadOnlyList<string> granted, IReadOnlyList<string> required)
     {

@@ -18,11 +18,14 @@ public sealed record TrustedAccessKeyWireSummary(
     DateTimeOffset CreatedAt,
     bool IsDefault);
 
+// AdministratorHolderScopes: the scope table's scopes whose holder must be an elevated administrator
+// (AccessKeyScopes.AdministratorHolder); the same for every caller, unlike AvailableScopes.
 public sealed record TrustedAccessKeysSnapshotWireResponse(
     TrustedAccessKeyWireSummary[] Keys,
     bool DefaultEnabled,
     string? DefaultKeyId,
-    string[] AvailableScopes);
+    string[] AvailableScopes,
+    string[] AdministratorHolderScopes);
 
 public sealed record TrustedAccessKeyCreateWireRequest(
     string? Name,
