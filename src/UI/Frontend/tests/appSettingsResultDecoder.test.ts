@@ -49,8 +49,11 @@ for (const [value, expectedPath] of [
   [{ ...source, settings: { ...source.settings, appearance: [] } }, "$.settings"],
   [{ ...source, runtimeApplicationDisposition: "committedAndPublished" }, "$.runtimeApplicationDisposition"],
   [{ ...source, runtimeApplicationDisposition: "maybe" }, "$.runtimeApplicationDisposition"],
-  [{ ...source, settings: { ...source.settings, control: { reassertionIntervalSeconds: 0 } } }, "$.settings.control.reassertionIntervalSeconds"],
-  [{ ...source, settings: { ...source.settings, control: { reassertionIntervalSeconds: 86401 } } }, "$.settings.control.reassertionIntervalSeconds"],
+  [{ ...source, settings: { ...source.settings, control: { keepAlive: false, reassertionIntervalSeconds: 0 } } }, "$.settings.control.reassertionIntervalSeconds"],
+  [{ ...source, settings: { ...source.settings, control: { keepAlive: false, reassertionIntervalSeconds: 86401 } } }, "$.settings.control.reassertionIntervalSeconds"],
+  // 保活维持设置是必有的布尔（后端读旧设置文件时补成 false 再发出来）。
+  [{ ...source, settings: { ...source.settings, control: { reassertionIntervalSeconds: 120 } } }, "$.settings.control.keepAlive"],
+  [{ ...source, settings: { ...source.settings, control: { keepAlive: "on", reassertionIntervalSeconds: 120 } } }, "$.settings.control.keepAlive"],
   [{ ...source, runtimeDeliveryFailureCount: -1 }, "$.runtimeDeliveryFailureCount"]
 ] as const) {
   assert.throws(
@@ -60,8 +63,8 @@ for (const [value, expectedPath] of [
 }
 
 assert.deepEqual(appSettingsResultDecoder.decode({ ...source, settings: { ...source.settings,
-  control: { reassertionIntervalSeconds: 337 } } }).settings.control,
-  { reassertionIntervalSeconds: 337 });
+  control: { keepAlive: true, reassertionIntervalSeconds: 337 } } }).settings.control,
+  { keepAlive: true, reassertionIntervalSeconds: 337 });
 
 assert.equal("frontendRefreshIntervals" in decoded, false);
 for (const value of [

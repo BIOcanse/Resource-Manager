@@ -239,6 +239,8 @@ export interface SettingsCopy {
   };
   /** 设置 → 硬件控制：重新应用间隔这一行。 */
   hardwareControl: {
+    keepAliveTitle: string;
+    keepAliveDescription: string;
     reassertionTitle: string;
     reassertionDescription: string;
   };

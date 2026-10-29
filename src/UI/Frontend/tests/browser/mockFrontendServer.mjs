@@ -274,6 +274,7 @@ const defaultAppSettings = {
   memoryProtection: defaultMemoryProtectionSettings(),
   performance: { gpuOverflowUsagePercent: 95, gpuOverflowDedicatedMemoryPercent: 80, realtimeActionBudgetMode: "fixed", realtimeActionBudgetCount: 32, realtimeActionBudgetPercent: 5, keepSmartRecordHistory: false },
   reports: { ruleOverrides: [] },
+  control: { keepAlive: false, reassertionIntervalSeconds: 120 },
   debug: {
     debugModeEnabled: scenario.debugMode
   },

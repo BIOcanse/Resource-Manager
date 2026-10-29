@@ -485,8 +485,10 @@ export default createSettingsLocale("ko-KR", {
     "hostManagerSmartCoordinatorPerformanceLogDescription": "스케줄링 시간과 부하를 기록하여 Resource Manager 자체의 오버헤드를 조사합니다."
   },
   "hardwareControl": {
-    "reassertionTitle": "주기적으로 다시 적용",
-    "reassertionDescription": "Resource Manager가 [제어] 페이지에서 적용에 성공한 설정을 이 간격마다 다시 기록하여 Windows, 드라이버 또는 다른 프로그램이 바꾼 상태로 남지 않게 합니다."
+    "keepAliveTitle": "설정 유지",
+    "keepAliveDescription": "끄면 [제어] 페이지에 저장한 설정을 Resource Manager가 시작될 때 한 번만 적용합니다. 켜면 아래 간격마다 다시 적용하여 Windows, 드라이버 또는 다른 프로그램이 바꾼 상태로 남지 않게 합니다.",
+    "reassertionTitle": "다시 적용 간격",
+    "reassertionDescription": "[설정 유지]가 켜져 있는 동안 이 간격마다 설정을 다시 적용합니다."
   },
   "performanceOverlay": {
     "intro": "오버레이가 켜진 소프트웨어를 나열합니다. 표시되는 내용은 저장된 설정이며, 오버레이가 현재 표시되고 있는지는 나타내지 않습니다.",

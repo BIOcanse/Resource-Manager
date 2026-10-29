@@ -91,6 +91,9 @@ export default async function controlAuditJourney(page, baseUrl) {
   const interval = page.getByRole("textbox", { name: "重新应用间隔（秒）", exact: true });
   await interval.waitFor();
   assert.equal(await interval.inputValue(), "120");
+  // 间隔只在保活维持设置打开时有意义：关着时显示数值但不可编辑，打开后才能改。
+  assert.equal(await interval.isDisabled(), true, "The interval follows the keep-alive switch");
+  await page.getByRole("checkbox", { name: "保活维持设置", exact: true }).check();
   await interval.fill("337");
   await interval.press("Tab");
   assert.equal(await interval.inputValue(), "337", "The interval is an editable Settings value");

@@ -776,7 +776,7 @@ export function defaultAppSettings(): AppSettings {
     version: "1.0.37",
     memoryProtection: { enabled: false, thresholdPercent: 95, checkIntervalSeconds: 1, reserves: [], actionMode: "dumpThenTerminate",
       minimumProcessGrowthBytes: 1073741824, protectedProcesses: ["explorer.exe"] },
-    control: { reassertionIntervalSeconds: 120 },
+    control: { keepAlive: false, reassertionIntervalSeconds: 120 },
     reports: { ruleOverrides: [] },
     performance: {
       optimizationMode: "normal",
@@ -832,6 +832,8 @@ export function normalizeAppSettings(settings?: AppSettings | null): AppSettings
     version: "1.0.37",
     memoryProtection: structuredClone(settings?.memoryProtection === undefined ? defaults.memoryProtection : settings.memoryProtection),
     control: {
+      // 保活维持设置：只认布尔，缺省为关（和后端读旧设置文件的规则相同）。
+      keepAlive: typeof settings?.control?.keepAlive === "boolean" ? settings.control.keepAlive : defaults.control!.keepAlive,
       reassertionIntervalSeconds: normalizeInteger(settings?.control?.reassertionIntervalSeconds, 1, 86400, defaults.control!.reassertionIntervalSeconds)
     },
     reports: normalizeReportSettings(settings?.reports),

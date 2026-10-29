@@ -485,8 +485,10 @@ export default createSettingsLocale("ja-JP", {
     "hostManagerSmartCoordinatorPerformanceLogDescription": "スケジューリング時間と負荷を記録し、Resource Manager 自身の処理負荷を調べます。"
   },
   "hardwareControl": {
-    "reassertionTitle": "定期的に再適用",
-    "reassertionDescription": "[制御] ページで適用に成功した設定を、Resource Manager がこの間隔で再度書き込みます。Windows、ドライバー、他のプログラムによって変更されたままになるのを防ぎます。"
+    "keepAliveTitle": "設定を維持",
+    "keepAliveDescription": "オフのときは、[制御] ページで保存した設定を Resource Manager の起動時に 1 回だけ適用します。オンにすると、下の間隔で繰り返し再適用し、Windows、ドライバー、他のプログラムによって変更されたままにならないようにします。",
+    "reassertionTitle": "再適用の間隔",
+    "reassertionDescription": "[設定を維持] がオンのあいだ、この間隔ごとに設定を再適用します。"
   },
   "performanceOverlay": {
     "intro": "オーバーレイが有効なソフトウェアを一覧表示します。表示されるのは保存済みの設定で、オーバーレイが現在表示されているかどうかではありません。",

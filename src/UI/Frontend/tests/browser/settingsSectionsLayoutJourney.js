@@ -71,7 +71,7 @@ export default async function settingsSectionsLayoutJourney(page, baseUrl) {
   await contains("memory", [settings.performance.automaticMemoryCleanupTitle, settings.performance.memoryOptimizationTargetTitle],
     [settings.performance.gpuOverflowTitle]);
   await contains("memoryProtection", [app.memoryProtection.intro], [settings.performance.automaticMemoryCleanupTitle]);
-  await contains("hardwareControl", [settings.hardwareControl.reassertionTitle, app.control.reassertionInterval, app.control.accessLevel.title]);
+  await contains("hardwareControl", [settings.hardwareControl.keepAliveTitle, settings.hardwareControl.reassertionTitle, app.control.reassertionInterval, app.control.accessLevel.title]);
   await contains("reportRules", [app.reportRules.note]);
   await contains("appearance", [settings.appearance.uiStyleTitle, settings.performance.refreshCadenceTitle]);
   await contains("systemIntegration", [settings.systemIntegration.autoStartTitle, settings.systemIntegration.taskManagerTitle],
@@ -105,6 +105,7 @@ export default async function settingsSectionsLayoutJourney(page, baseUrl) {
   await cleanup.fill("20"); await cleanup.blur();
   await openSection(settings, "hardwareControl");
   const interval = page.getByRole("textbox", { name: app.control.reassertionInterval, exact: true });
+  await page.getByRole("checkbox", { name: settings.hardwareControl.keepAliveTitle, exact: true }).check();
   await interval.fill("337"); await interval.press("Enter");
   await openSection(settings, "memory");
   await page.locator(".settings-header-actions").getByRole("button", { name: settings.actions.restoreDefaults, exact: true }).click();

@@ -486,8 +486,10 @@ export default createSettingsLocale("de-DE", {
     "hostManagerSmartCoordinatorPerformanceLogDescription": "Planungsdauer und Last protokollieren, um den Eigenaufwand von Resource Manager zu untersuchen."
   },
   "hardwareControl": {
-    "reassertionTitle": "Regelmäßig erneut anwenden",
-    "reassertionDescription": "Resource Manager schreibt die auf der Seite „Steuerung“ erfolgreich angewendeten Einstellungen in diesem Intervall erneut, damit Windows, Treiber oder andere Programme sie nicht verändert lassen."
+    "keepAliveTitle": "Einstellungen aktiv halten",
+    "keepAliveDescription": "Ist dies ausgeschaltet, werden die auf der Seite „Steuerung“ gespeicherten Einstellungen nur einmal beim Start von Resource Manager angewendet. Ist es eingeschaltet, werden sie im unten angegebenen Intervall erneut angewendet, damit Windows, Treiber oder andere Programme sie nicht verändert lassen.",
+    "reassertionTitle": "Intervall für erneutes Anwenden",
+    "reassertionDescription": "Solange „Einstellungen aktiv halten“ eingeschaltet ist, werden die Einstellungen nach jedem Intervall erneut angewendet."
   },
   "performanceOverlay": {
     "intro": "Listet die Software auf, für die ein Overlay aktiviert ist. Angezeigt werden die gespeicherten Einstellungen, nicht ob ein Overlay gerade sichtbar ist.",

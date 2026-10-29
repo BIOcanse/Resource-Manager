@@ -484,8 +484,10 @@ export default createSettingsLocale("zh-TW", {
     "hostManagerSmartCoordinatorPerformanceLogDescription": "記錄排程耗時與負載，用於排查 Resource Manager 自身開銷。"
   },
   "hardwareControl": {
-    "reassertionTitle": "定期重新套用",
-    "reassertionDescription": "Resource Manager 依此間隔將「控制面」頁中已成功套用的設定重新寫入一次，以免被系統、驅動程式或其他程式改回。"
+    "keepAliveTitle": "保活維持設定",
+    "keepAliveDescription": "關閉時，「控制面」頁中儲存的設定只在資源管理器啟動時套用一次。開啟後依下方的間隔反覆重新套用，使這些值保持正確，不被系統、驅動程式或其他程式改回。",
+    "reassertionTitle": "重新套用間隔",
+    "reassertionDescription": "保活維持設定開啟時，每隔這段時間重新套用一次。"
   },
   "performanceOverlay": {
     "intro": "列出已啟用浮層的軟體。此處顯示的是已儲存的設定，不代表浮層目前已經顯示。",

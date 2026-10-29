@@ -326,7 +326,7 @@ export const loadingSettingsText: SettingsTextBundle = {
     hostManagerSmartCoordinatorPerformanceLogTitle: "",
     hostManagerSmartCoordinatorPerformanceLogDescription: ""
   },
-  hardwareControl: { reassertionTitle: "", reassertionDescription: "" },
+  hardwareControl: { keepAliveTitle: "", keepAliveDescription: "", reassertionTitle: "", reassertionDescription: "" },
   performanceOverlay: {
     intro: "",
     loading: "",

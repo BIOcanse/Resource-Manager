@@ -347,8 +347,10 @@ const zhCnSettingsCopy: SettingsCopy = {
     hostManagerSmartCoordinatorPerformanceLogDescription: "记录调度耗时和负载，用于排查资源管理器自身开销。"
   },
   hardwareControl: {
-    reassertionTitle: "定期重新应用",
-    reassertionDescription: "资源管理器按此间隔把“控制面”页中已成功应用的设定重新写入一次，以免被系统、驱动或其他程序改回。"
+    keepAliveTitle: "保活维持设置",
+    keepAliveDescription: "关闭时，“控制面”页中保存的设定只在资源管理器启动时应用一次。打开后按下面的间隔反复重新应用，使这些值保持正确，不被系统、驱动或其他程序改回。",
+    reassertionTitle: "重新应用间隔",
+    reassertionDescription: "保活维持设置打开时，每隔这段时间重新应用一次。"
   },
   performanceOverlay: {
     intro: "列出已启用浮层的软件。此处显示的是已保存的设置，不表示浮层当前已经显示。",
@@ -763,8 +765,10 @@ const enSettingsCopy: SettingsCopy = {
     hostManagerSmartCoordinatorPerformanceLogDescription: "Record scheduling duration and load to investigate Resource Manager's own overhead."
   },
   hardwareControl: {
-    reassertionTitle: "Reapply periodically",
-    reassertionDescription: "At this interval, Resource Manager writes the settings applied successfully on the Control page again, so that Windows, drivers or other programs do not leave them changed."
+    keepAliveTitle: "Keep settings applied",
+    keepAliveDescription: "When off, the settings saved on the Control page are applied once, when Resource Manager starts. When on, they are applied again at the interval below, so that Windows, drivers or other programs cannot leave them changed.",
+    reassertionTitle: "Reapply interval",
+    reassertionDescription: "While Keep settings applied is on, the settings are applied again after each interval."
   },
   performanceOverlay: {
     intro: "Lists the software that has an overlay turned on. This shows the saved settings, not whether an overlay is currently displayed.",

@@ -79,13 +79,13 @@ await new Promise<void>((resolve, reject) => {
 });
 }
 
-assert.deepEqual(canonicalDefaults.control, { reassertionIntervalSeconds: 120 });
+assert.deepEqual(canonicalDefaults.control, { keepAlive: false, reassertionIntervalSeconds: 120 });
 
 // 每个分区的「恢复为默认」只恢复这个分区自己的字段，其他分区的草稿原样保留。
 {
   const defaults = defaultAppSettings();
   const edited = normalizeAppSettings({
-    control: { reassertionIntervalSeconds: 337 },
+    control: { keepAlive: true, reassertionIntervalSeconds: 337 },
     reports: { ruleOverrides: [{ rule: "stray_process_idle", activationThreshold: null, clearThreshold: null, requiredConsecutiveHits: null,
       requiredConsecutiveMisses: null, zeroActivityThreshold: null, executableNames: ["a.exe"] }] },
     performance: { ...defaults.performance!, optimizationMode: "limited", preciseGpuPlacementEnabled: true,
@@ -107,11 +107,14 @@ assert.deepEqual(canonicalDefaults.control, { reassertionIntervalSeconds: 120 })
   assert.equal(runtimePolicy.performance!.monitorRefreshIntervalMs.customValue, 1750, "Runtime policy reset kept refresh cadence");
   assert.equal(runtimePolicy.performance!.optimizationMode, "limited", "No section owns the optimization mode");
   assert.equal(runtimePolicy.control!.reassertionIntervalSeconds, 337);
+  // 规范化保留保活维持设置：先前前端只保留认识的字段，保存一次就会把它写回 false。
+  assert.equal(runtimePolicy.control!.keepAlive, true);
   const memory = applySectionDefaults("memory", edited, defaults);
   assert.equal(memory.performance!.physicalMemoryAutomaticCleanupPercent, defaults.performance!.physicalMemoryAutomaticCleanupPercent);
   assert.equal(memory.performance!.virtualMemoryOptimizationTargetUsagePercent, defaults.performance!.virtualMemoryOptimizationTargetUsagePercent);
   assert.equal(memory.performance!.preciseGpuPlacementEnabled, true, "Memory reset kept runtime policy");
   assert.equal(applySectionDefaults("hardwareControl", edited, defaults).control!.reassertionIntervalSeconds, 120);
+  assert.equal(applySectionDefaults("hardwareControl", edited, defaults).control!.keepAlive, false);
   assert.deepEqual(applySectionDefaults("reportRules", edited, defaults).reports, { ruleOverrides: [] });
   const appearance = applySectionDefaults("appearance", edited, defaults);
   assert.equal(appearance.appearance!.theme, defaults.appearance!.theme);
@@ -128,8 +131,10 @@ assert.deepEqual(canonicalDefaults.control, { reassertionIntervalSeconds: 120 })
     assert.equal(applySectionDefaults(section, edited, defaults), edited, `${section} has no fields to reset`);
   }
 }
-assert.deepEqual(normalizeAppSettings({ control: { reassertionIntervalSeconds: 0 } }).control,
-  { reassertionIntervalSeconds: 1 });
+assert.deepEqual(normalizeAppSettings({ control: { reassertionIntervalSeconds: 0 } } as never).control,
+  { keepAlive: false, reassertionIntervalSeconds: 1 });
+assert.equal(normalizeAppSettings({ control: { keepAlive: true, reassertionIntervalSeconds: 60 } }).control!.keepAlive, true);
+assert.equal(normalizeAppSettings({ control: { keepAlive: "yes", reassertionIntervalSeconds: 60 } } as never).control!.keepAlive, false);
 assert.equal(normalizeAppSettings({ control: { reassertionIntervalSeconds: 999999 } }).control!.reassertionIntervalSeconds, 86400);
 assert.equal(normalizeAppSettings({ control: { reassertionIntervalSeconds: NaN } }).control!.reassertionIntervalSeconds, 120);
 

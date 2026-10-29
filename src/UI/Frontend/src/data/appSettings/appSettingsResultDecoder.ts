@@ -72,6 +72,7 @@ export const appSettingsResultDecoder =
 
       if (settingsRecord.control !== undefined) {
         const control = requireRecord(settingsRecord.control, "$.settings.control");
+        requireBoolean(control.keepAlive, "$.settings.control.keepAlive");
         const interval = requireSafeInteger(control.reassertionIntervalSeconds, "$.settings.control.reassertionIntervalSeconds");
         if (interval < 1 || interval > 86400) {
           throw new ResponseDecodeError("$.settings.control.reassertionIntervalSeconds", "Expected 1–86400 seconds");

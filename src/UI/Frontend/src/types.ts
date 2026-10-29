@@ -280,7 +280,8 @@ export interface AppSettings {
   memoryProtection?: import("./data/memoryProtection/memoryProtectionTypes.ts").HostMemoryProtectionSettings | null;
   reports?: AppReportSettings;
   version?: string;
-  control?: { reassertionIntervalSeconds: number };
+  /** keepAlive 关时保存的控制设定只在启动时下发一次；开时按 reassertionIntervalSeconds 反复下发（用户 10-29）。 */
+  control?: { keepAlive: boolean; reassertionIntervalSeconds: number };
   performance?: AppPerformanceSettings;
   appearance?: AppAppearanceSettings;
   systemIntegration?: AppSystemIntegrationSettings;

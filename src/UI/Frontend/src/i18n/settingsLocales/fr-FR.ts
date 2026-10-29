@@ -486,8 +486,10 @@ export default createSettingsLocale("fr-FR", {
     "hostManagerSmartCoordinatorPerformanceLogDescription": "Enregistrer les durées et la charge de planification pour analyser le coût propre à Resource Manager."
   },
   "hardwareControl": {
-    "reassertionTitle": "Réappliquer régulièrement",
-    "reassertionDescription": "À cet intervalle, Resource Manager réécrit les réglages appliqués avec succès sur la page Réglages, afin que Windows, les pilotes ou d’autres programmes ne les laissent pas modifiés."
+    "keepAliveTitle": "Maintenir les réglages appliqués",
+    "keepAliveDescription": "Désactivé, les réglages enregistrés sur la page Contrôle ne sont appliqués qu’une fois, au démarrage de Resource Manager. Activé, ils sont réappliqués selon l’intervalle ci-dessous, afin que Windows, les pilotes ou d’autres programmes ne les laissent pas modifiés.",
+    "reassertionTitle": "Intervalle de réapplication",
+    "reassertionDescription": "Tant que « Maintenir les réglages appliqués » est activé, les réglages sont réappliqués après chaque intervalle."
   },
   "performanceOverlay": {
     "intro": "Liste les logiciels dont la superposition est activée. Les paramètres enregistrés sont affichés, et non l’état d’affichage actuel de la superposition.",

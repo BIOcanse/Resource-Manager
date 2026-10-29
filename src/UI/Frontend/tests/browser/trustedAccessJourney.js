@@ -252,10 +252,16 @@ export default async function trustedAccessJourney(page, baseUrl) {
   assert.equal(await approvedKeyRow.getByText(copy.scopeLabels["read"], { exact: true }).count(), 1,
     "approval adds the granted key to the visible key list");
 
-  pendingRequests = [makeRequest("req-expired", "Expired helper", ["read"])];
+  // 申请里带持有者须为管理员的范围时，批准选项同样在名字下写明（捆绑界面提权后可授予全部范围）。
+  const expiredScopes = ["read", ...administratorHolderScopes];
+  pendingRequests = [makeRequest("req-expired", "Expired helper", expiredScopes)];
   await publishPendingRequests(pendingRequests);
   const expiredRequest = panel.locator(".trusted-access-request").filter({ hasText: "Expired helper" });
   await expiredRequest.waitFor();
+  const approvalOptionText = await expiredRequest.getByRole("group", { name: copy.requestScopesLabel })
+    .locator(".trusted-access-scope-option").evaluateAll(options => options.map(option => option.textContent.trim()));
+  assert.deepEqual(approvalOptionText, expiredScopes.map(scope => `${copy.scopeLabels[scope] ?? scope}${
+    administratorHolderScopes.includes(scope) ? copy.administratorHolderScope : ""}`), "administrator-holder scopes are marked in approval options");
   await expiredRequest.getByRole("button", { name: copy.approve, exact: true }).click();
   await panel.locator(".trusted-access-outcome.expired")
     .filter({ hasText: copy.requestExpired }).waitFor();
