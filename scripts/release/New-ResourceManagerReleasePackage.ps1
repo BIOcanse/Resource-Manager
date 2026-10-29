@@ -119,7 +119,7 @@ try {
     } |
         ConvertTo-Json -Depth 4 |
         ForEach-Object {
-            # The installer's JSON reader rejects a byte order mark, and Windows PowerShell 5.1 (Release.cmd) writes
+            # The installer's JSON reader rejects a byte order mark, and Windows PowerShell 5.1 writes
             # one for -Encoding utf8, so write UTF-8 without a BOM on either host.
             [IO.File]::WriteAllText((Join-Path $stage 'release-manifest.json'), $_, [Text.UTF8Encoding]::new($false))
         }
