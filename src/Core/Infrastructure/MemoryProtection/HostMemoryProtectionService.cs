@@ -196,14 +196,12 @@ public sealed partial class HostMemoryProtectionService(IHostMemoryProtectionSou
     private async Task ProcessDeliveryAsync(HostMemoryReading reading, HostMemoryProtectionSettings current, CancellationToken stop)
     {
         NormalRunningPoint baseline;
-        Dictionary<(int, string), HostMemoryProcess> before;
         Dictionary<(int, string), HostMemoryExclusion> blocked;
         lock (gate)
         {
             if (point is null) return;
             current = settings;
             baseline = point;
-            before = baseline.Processes.ToDictionary(item => (item.ProcessId, item.ProcessStartKey));
             blocked = new(cannotOpen);
         }
         PublishStatus(reading.Commit, useReading: true, reading.At);
@@ -215,6 +213,7 @@ public sealed partial class HostMemoryProtectionService(IHostMemoryProtectionSou
             Finish(reading.Commit is null ? "commit-unavailable" : "below-threshold");
             return;
         }
+        var before = baseline.Processes.ToDictionary(item => (item.ProcessId, item.ProcessStartKey));
         var policies = (await softwarePolicies.GetAsync(stop)).SoftwarePolicies;
         var neverTerminate = policies.Where(item => item.HostMemoryProtectionNeverTerminate).Select(item => item.SoftwareId).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var noDump = policies.Where(item => item.HostMemoryProtectionNoDump).Select(item => item.SoftwareId).ToHashSet(StringComparer.OrdinalIgnoreCase);

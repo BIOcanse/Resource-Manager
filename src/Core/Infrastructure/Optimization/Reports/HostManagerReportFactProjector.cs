@@ -58,16 +58,14 @@ internal static class HostManagerReportFactProjector
         SchedulingProcessFactSnapshot? processes = null)
     {
         var targets = new Dictionary<ulong, HostManagerReportTargetDescriptor>();
-        var sources = plan.Recreate.Rules
-            .GroupBy(static rule => (rule.SourceHandle, rule.CoverageScopeHandle))
-            .OrderBy(static group => group.Key.SourceHandle)
-            .Where(group => includeSoftware || group.All(rule =>
+        var sources = plan.SourceRuleGroups
+            .Where(group => includeSoftware || group.Rules.All(rule =>
                 !HostManagerSoftwareMemoryReportFactProjector.Supports(
                     rule.FactKind)))
             .Select(group => ProjectSource(
-                group.Key.SourceHandle,
-                group.Key.CoverageScopeHandle,
-                [.. group],
+                group.SourceHandle,
+                group.CoverageScopeHandle,
+                group.Rules,
                 hardware,
                 interrupts,
                 resources,

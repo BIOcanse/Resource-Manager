@@ -7,6 +7,18 @@ namespace Resource_Manager_APP.Tests;
 public sealed class HostManagerReportCoordinatorConfigurationTests
 {
     [Fact]
+    public void ProjectionGroupsDoNotChangeSerializedPlanOrConfigurationDigest()
+    {
+        var plan = HostManagerTestPlanFactory.CreatePlan().ReportCoordinator;
+        Assert.NotEmpty(plan.SourceRuleGroups);
+        Assert.Equal(
+            System.Text.Json.JsonSerializer.Serialize(plan with { SourceRuleGroups = [] }),
+            System.Text.Json.JsonSerializer.Serialize(plan));
+        Assert.Equal(plan.ConfigurationSha256, HostManagerPlanIdentity.ComputeDigest(
+            new ReportCoordinatorConfigurationDigestInput(plan.Build.AbiVersion, plan.Recreate, plan.HotPublish)));
+    }
+
+    [Fact]
     public void DefaultProfilePublishesExactReportCoordinatorPlan()
     {
         var hostPlan = HostManagerTestPlanFactory.CreatePlan();

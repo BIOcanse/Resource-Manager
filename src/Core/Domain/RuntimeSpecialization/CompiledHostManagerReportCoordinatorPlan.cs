@@ -188,6 +188,9 @@ public sealed record CompiledHostManagerReportCoordinatorPlan(
     ulong ConfigurationGeneration,
     string ConfigurationSha256)
 {
+    // Derived projection data, excluded from the serialized plan and its digests.
+    internal ImmutableArray<CompiledHostManagerReportSourceRuleGroup> SourceRuleGroups { get; init; } = [];
+
     // What the settings page may edit for each named rule. Not part of the native plan or its digests.
     public ImmutableArray<CompiledHostManagerReportRuleSetting> RuleSettings { get; init; } = [];
 
@@ -206,6 +209,11 @@ public sealed record CompiledHostManagerReportCoordinatorPlan(
         0,
         string.Empty);
 }
+
+internal sealed record CompiledHostManagerReportSourceRuleGroup(
+    ulong SourceHandle,
+    ulong CoverageScopeHandle,
+    ImmutableArray<CompiledHostManagerReportCoordinatorRulePlan> Rules);
 
 // One named rule as the settings page sees it. Ranges are in the rule's stored unit;
 // stored value = displayed value x Scale; Step is in display units.

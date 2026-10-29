@@ -12,6 +12,34 @@ namespace Resource_Manager_APP.Tests;
 public sealed class HostManagerReportFactProjectorTests
 {
     [Fact]
+    public void CompiledGroupsKeepStableSourceScopeAndRuleOrderAcrossProjections()
+    {
+        var plan = HostManagerTestPlanFactory.CreatePlan(root =>
+        {
+            var rules = root["host_recreate"]!["report_coordinator"]!["rules"]!.AsArray();
+            for (var index = 0; index < 5; index++)
+            {
+                rules[index]!["source_handle"] = index == 1 ? 10 : 30;
+                rules[index]!["coverage_scope_handle"] = index == 1 ? 7 : index < 3 ? 9 : 5;
+            }
+        }).ReportCoordinator;
+        var at = DateTimeOffset.UtcNow;
+        var hardware = CreateHardware(at, CpuMetricObservationStatus.Complete, sourceGeneration: 7);
+        var interrupts = CreateInterrupts(at, available: true, sourceGeneration: 9);
+
+        var first = HostManagerReportFactProjector.Project(plan, hardware, interrupts);
+        var second = HostManagerReportFactProjector.Project(plan, hardware, interrupts);
+
+        Assert.Equal(new[] { (10UL, 7UL), (30UL, 9UL), (30UL, 5UL) },
+            first.Select(source => (source.SourceHandle, source.CoverageScopeHandle)));
+        Assert.Equal(new[] { plan.Recreate.Rules[0], plan.Recreate.Rules[2] },
+            first[1].Facts.Select(fact => fact.Rule));
+        Assert.Equal(new[] { plan.Recreate.Rules[3], plan.Recreate.Rules[4] },
+            first[2].Facts.Select(fact => fact.Rule));
+        Assert.Equal(first.SelectMany(source => source.Facts), second.SelectMany(source => source.Facts));
+    }
+
+    [Fact]
     public void CompleteCpuAndInterruptSnapshotsProjectOnlyConfiguredFacts()
     {
         var plan = HostManagerTestPlanFactory.CreatePlan().ReportCoordinator;

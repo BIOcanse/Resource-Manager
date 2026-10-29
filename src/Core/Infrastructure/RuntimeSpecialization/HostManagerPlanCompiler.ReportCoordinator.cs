@@ -125,7 +125,15 @@ public sealed partial class HostManagerPlanCompiler
             hotPublish.ConfigurationGeneration,
             configurationSha256)
         {
-            RuleSettings = ruleSettings
+            RuleSettings = ruleSettings,
+            SourceRuleGroups = recreate.Rules
+                .GroupBy(static rule => (rule.SourceHandle, rule.CoverageScopeHandle))
+                .OrderBy(static group => group.Key.SourceHandle)
+                .Select(static group => new CompiledHostManagerReportSourceRuleGroup(
+                    group.Key.SourceHandle,
+                    group.Key.CoverageScopeHandle,
+                    [.. group]))
+                .ToImmutableArray()
         };
     }
 

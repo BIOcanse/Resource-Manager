@@ -133,10 +133,10 @@ internal static partial class HostManagerAutomaticPlacementPlanner
         {
             if (process.Policy.CpuManualLockedPositionIds.Count != 0) continue;
             var excluded = reservations?.ExcludedFor(process.SoftwareId, process.TargetId);
-            var availableCores = topology.PhysicalCores.Where(core => excluded?.Contains(core.Id) != true).ToArray();
             var singleCcd = ccds.Length > 1 && reservations?.IsOwner(process.SoftwareId, process.TargetId) != true
                 && process.Policy.CpuMaximumOccupancyMode.Equals(CpuMaximumOccupancyModes.SingleCcd, StringComparison.OrdinalIgnoreCase);
             if (!singleCcd && excluded is not { Count: > 0 }) continue;
+            var availableCores = topology.PhysicalCores.Where(core => excluded?.Contains(core.Id) != true).ToArray();
             var selected = singleCcd ? ccds
                 .Where(state => availableCores.Any(core => core.CcdId.Equals(state.Ccd.Id, StringComparison.OrdinalIgnoreCase)))
                 .OrderBy(static state => state.AssignedScore / state.Capacity)
@@ -185,6 +185,11 @@ internal static partial class HostManagerAutomaticPlacementPlanner
             return [];
         }
 
+        if (!runtimeGpuShimEnabled)
+        {
+            return [];
+        }
+
         var adapters = hardware.GpuInventory.Adapters
             .Select(observation =>
             {
@@ -209,7 +214,7 @@ internal static partial class HostManagerAutomaticPlacementPlanner
             .Where(static process => process.ExecutablePath is not null)
             .Where(static process => process.CanMigrateGpu)
             .Where(static process => process.CanonicalGpuScores.Count != 0)
-            .Where(process => runtimeGpuShimEnabled && process.Policy.AcceptsExternalRuntimeGpuScheduling())
+            .Where(static process => process.Policy.AcceptsExternalRuntimeGpuScheduling())
             .Select(static process => new GpuCandidate(
                 process,
                 process.CanonicalGpuScores.Values.Max()))
@@ -247,7 +252,6 @@ internal static partial class HostManagerAutomaticPlacementPlanner
         foreach (var source in ordered.Where(a => a.IsOverflowing(overflow)))
         {
             foreach (var item in automatic.Where(x => !migratedProcesses.Contains(x.Candidate.Process.ProcessId)
-                    && x.Candidate.Process.CanMigrateGpu
                     && source.ContributesToOverflow(x.Candidate.Process, overflow))
                 .OrderBy(x => x.Candidate.CanonicalScore).ThenBy(x => x.Candidate.Process.ProcessId))
             {
@@ -263,7 +267,7 @@ internal static partial class HostManagerAutomaticPlacementPlanner
             }
         }
         foreach (var item in automatic.Where(x => !migratedProcesses.Contains(x.Candidate.Process.ProcessId)
-                && x.Candidate.Process.CanMigrateGpu && !x.Current.IsOverflowing(overflow)))
+                && !x.Current.IsOverflowing(overflow)))
         {
             var destination = ordered.FirstOrDefault(a => a.PerformanceCapacity > item.Current.PerformanceCapacity
                 && !destinations.Contains(a.AdapterKey) && a.CanReceive(item.Candidate.Process, item.Current, overflow));

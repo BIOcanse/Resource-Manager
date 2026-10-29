@@ -10,6 +10,33 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed partial class HostManagerAutomaticPlacementPlannerTests
 {
+    [Theory]
+    [InlineData("topology")]
+    [InlineData("hardware")]
+    [InlineData("hardwareScores")]
+    [InlineData("processes")]
+    [InlineData("capacity")]
+    public void DisabledRuntimeGpuPlacementStillChecksEveryRequiredArgument(string argument)
+    {
+        var error = Assert.Throws<ArgumentNullException>(() => HostManagerAutomaticPlacementPlanner.Plan(
+            argument == "topology" ? null : CreateTwoCcdTopology(),
+            argument == "hardware" ? null! : CreateHardware(),
+            argument == "hardwareScores" ? null! : CreateHardwareScores(),
+            argument == "processes" ? null! : [],
+            argument == "capacity" ? null! : CreateCapacity(),
+            runtimeGpuShimEnabled: false, gpuOverflow: new(95, 80)));
+        Assert.Equal(argument, error.ParamName);
+    }
+
+    [Fact]
+    public void DisabledRuntimeGpuPlacementStillRejectsInvalidCapacity()
+    {
+        var error = Assert.Throws<InvalidDataException>(() => HostManagerAutomaticPlacementPlanner.Plan(
+            CreateTwoCcdTopology(), CreateHardware(), CreateHardwareScores(), [],
+            CreateCapacity() with { CoreCapacity = 0 }, runtimeGpuShimEnabled: false, gpuOverflow: new(95, 80)));
+        Assert.Equal("Automatic placement inputs exceed the compiled placement capacity.", error.Message);
+    }
+
     [Fact]
     public void UnavailableGpuOverridesSuppressOnlyGpuPlacement()
     {
