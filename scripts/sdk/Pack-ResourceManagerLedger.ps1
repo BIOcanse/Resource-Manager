@@ -388,9 +388,12 @@ $baseProperties = @(
 $previousNugetPackages = $env:NUGET_PACKAGES
 $previousDotnetCliHome = $env:DOTNET_CLI_HOME
 $previousWorkloadNotify = $env:DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE
+$previousAddToolsToPath = $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH
 try {
     $env:NUGET_PACKAGES = $restorePackagesDirectory
     $env:DOTNET_CLI_HOME = $dotnetCliHome
+    # The staged CLI home's first run would otherwise add <home>\.dotnet\tools to the user PATH.
+    $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = '0'
     # The staged CLI home is new each run; skip its workload advertising download.
     $env:DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE = 'true'
     Invoke-DotNetPack -ProjectPath $runtimeProject -Properties ($baseProperties + @(
@@ -415,6 +418,7 @@ try {
     if ($null -eq $previousNugetPackages) { Remove-Item Env:NUGET_PACKAGES -ErrorAction SilentlyContinue } else { $env:NUGET_PACKAGES = $previousNugetPackages }
     if ($null -eq $previousDotnetCliHome) { Remove-Item Env:DOTNET_CLI_HOME -ErrorAction SilentlyContinue } else { $env:DOTNET_CLI_HOME = $previousDotnetCliHome }
     if ($null -eq $previousWorkloadNotify) { Remove-Item Env:DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE -ErrorAction SilentlyContinue } else { $env:DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE = $previousWorkloadNotify }
+    if ($null -eq $previousAddToolsToPath) { Remove-Item Env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH -ErrorAction SilentlyContinue } else { $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = $previousAddToolsToPath }
 }
 
 $expectedPackages = @(

@@ -23,7 +23,7 @@ $versions = Get-Content (Join-Path $PSScriptRoot 'analyzers.json') -Raw | Conver
 . (Join-Path $PSScriptRoot 'StaticAnalysis.Queue.ps1')
 . (Join-Path $PSScriptRoot 'StaticAnalysis.Packages.ps1')
 $oldEnvironment = @{}
-foreach ($key in @('RM_LEDGER_WORK_ROOT','DOTNET_CLI_HOME','DOTNET_NOLOGO','VSLANG','DOTNET_CLI_UI_LANGUAGE','RestorePackagesPath','NuGetAudit')) {
+foreach ($key in @('RM_LEDGER_WORK_ROOT','DOTNET_CLI_HOME','DOTNET_ADD_GLOBAL_TOOLS_TO_PATH','DOTNET_NOLOGO','VSLANG','DOTNET_CLI_UI_LANGUAGE','RestorePackagesPath','NuGetAudit')) {
     $oldEnvironment[$key] = [Environment]::GetEnvironmentVariable($key, 'Process')
 }
 $failure = $null
@@ -59,6 +59,8 @@ try {
     $env:DOTNET_CLI_UI_LANGUAGE = 'en'
     $env:VSLANG = '1033'
     $env:DOTNET_CLI_HOME = Join-Path $env:LOCALAPPDATA 'ResourceManagerStaticAnalysis/dotnet'
+    # The CLI home's first run would otherwise add <home>\.dotnet\tools to the user PATH.
+    $env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH = '0'
     # Exec-launched frontend builds are independent MSBuild invocations. Carry
     # the same package cache explicitly through that process boundary as well.
     $env:RestorePackagesPath = [IO.Path]::GetFullPath($PackageRoot)

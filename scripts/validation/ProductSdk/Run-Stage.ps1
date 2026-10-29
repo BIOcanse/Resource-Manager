@@ -51,6 +51,8 @@ $env:MSBUILDNODEENABLENODEREUSE='false'
 $env:DOTNET_CLI_TELEMETRY_OPTOUT='1'
 $env:DOTNET_GENERATE_ASPNET_CERTIFICATE='0'
 $env:DOTNET_CLI_HOME=Join-Path $taskScratch 'dotnet-home'
+# A fresh CLI home's first run would otherwise add <home>\.dotnet\tools to the user PATH.
+$env:DOTNET_ADD_GLOBAL_TOOLS_TO_PATH='0'
 # A fresh CLI home would otherwise download workload advertising manifests on every stage.
 $env:DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE='true'
 [void][IO.Directory]::CreateDirectory($env:DOTNET_CLI_HOME)
