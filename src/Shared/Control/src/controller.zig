@@ -6,6 +6,14 @@ const state = @import("state.zig");
 const sync = @import("sync.zig");
 const reader_storage = @import("readers.zig");
 
+/// Initial stack commit for each worker thread. On Windows, std.Thread passes stack_size to
+/// NtCreateThreadEx as the commit size and leaves the reserve at the host image's default
+/// (1.5 MiB for the service), so the stack still grows on demand up to that reserve. The std
+/// default of 16 MiB committed every byte up front; the installed service's workers wrote about
+/// 30 KiB of theirs. 64 KiB is the smallest commit std.Thread passes on Windows. Elsewhere the
+/// same field is the fixed pthread stack size, mapped lazily, so the std default stays.
+pub const worker_stack_commit_bytes = if (@import("builtin").os.tag == .windows) 64 * 1024 else std.Thread.SpawnConfig.default_stack_size;
+
 pub fn Controller(comptime registry: d.Registry, comptime topology: tr.Tree) type {
     @setEvalBranchQuota(10_000_000);
     comptime tr.validate(registry, topology);
@@ -249,7 +257,7 @@ pub fn Controller(comptime registry: d.Registry, comptime topology: tr.Tree) typ
                 for (workers[0..started]) |w| w.thread.?.join();
             }
             for (workers, 0..) |*w, index| {
-                w.thread = try std.Thread.spawn(.{}, workerMain, .{ self, index });
+                w.thread = try std.Thread.spawn(.{ .stack_size = worker_stack_commit_bytes }, workerMain, .{ self, index });
                 started += 1;
             }
             return self;
