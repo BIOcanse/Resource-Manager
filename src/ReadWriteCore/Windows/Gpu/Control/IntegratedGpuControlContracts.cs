@@ -3,7 +3,7 @@ public enum IntegratedGpuControlRoute { Rejected, AmdIntegrated, IntelIntegrated
 public enum IntegratedGpuControlField { CurveOptimizer, CoreClockOffset }
 public enum IntegratedGpuControlStatus { Applied, Failed }
 public enum IntegratedGpuControlUnavailableKind { Platform, Component, Prerequisite }
-public enum IntegratedGpuControlMessage { BridgeMissing, BridgeSilent, NotSupported, NotEffective, IntelDriverMissing, IntelTargetMissing, OverclockNotAccepted, BaselineUnavailable, NumberRequired, SmuRejected, ReadingMissing, WaiverRejected, DriverRejected, BaselineWarning, SmuRejectedWarning, IntelRejectedWarning }
+public enum IntegratedGpuControlMessage { BridgeMissing, BridgeSilent, NotSupported, NotEffective, IntelDriverMissing, IntelTargetMissing, OverclockNotAccepted, BaselineUnavailable, NumberRequired, SmuRejected, ReadingMissing, WaiverRejected, DriverRejected, BaselineWarning, SmuRejectedWarning, IntelRejectedWarning, IntelReleaseWarning }
 public sealed record IntegratedGpuControlTarget(string Id, IntegratedGpuControlRoute Route, ulong? AdapterKey = null);
 public sealed record IntegratedGpuControlRange(double Minimum,double Maximum,double Step,string Unit,double? DefaultValue=null);
 public sealed record IntegratedGpuControlCapability(IntegratedGpuControlField Field,IntegratedGpuControlRange? Range=null)

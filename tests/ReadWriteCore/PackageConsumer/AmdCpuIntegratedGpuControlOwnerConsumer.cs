@@ -49,13 +49,29 @@ internal static class AmdCpuIntegratedGpuControlOwnerConsumer
                 intel.ReleaseErrorCode = -17;
                 var releaseWarnings = new List<Exception?>();
                 using var releaseOwner = new IntegratedGpuControlResource(helper, intel, new(baseline, _ => Task.FromResult(true)),
-                    warning: (error, _, _) => releaseWarnings.Add(error));
+                    warning: (error, code, _) =>
+                    {
+                        Require(code == IntegratedGpuControlMessage.IntelReleaseWarning, "Release warning reused a rejection code.");
+                        releaseWarnings.Add(error);
+                    });
                 var releasedWrite = await releaseOwner.WriteAsync(intelTarget, offset, new(offset.Field, 55.5));
                 Require(releasedWrite.Status == IntegratedGpuControlStatus.Applied && releasedWrite.ReadbackVerified && intel.Offset == 55.5,
                     "Release error hid an applied, verified Intel write.");
                 Require(releaseWarnings.Count == 1 && releaseWarnings[0] is ExternalException { ErrorCode: -17 },
                     "Release error was not reported exactly once through the public result contract.");
-                Console.WriteLine("[IGCL-RELEASE-RECEIPT] applied=verified; release=-17; warnings=1; recorded.");
+                var releasedRead = await releaseOwner.ReadAsync(intelTarget, offset);
+                Require(releasedRead is { Number: 55.5, UnreadableReason: null } && releaseWarnings.Count == 2,
+                    "Release error hid a successful Intel read or escaped the log-only path.");
+                intel.IsAvailable = false;
+                var missing = releaseOwner.Probe(intelTarget, offset);
+                Require(!missing.CanWrite && missing.UnavailableKind == IntegratedGpuControlUnavailableKind.Component,
+                    "Missing driver was not a component failure.");
+                Require((await releaseOwner.ReadAsync(intelTarget, offset))?.UnreadableReason?.Contains("IntelDriverMissing") == true,
+                    "Read DriverMissing mapping was lost.");
+                Require((await releaseOwner.WriteAsync(intelTarget, offset, new(offset.Field, 1))).Message?.Contains("IntelDriverMissing") == true,
+                    "Write DriverMissing mapping was lost.");
+                intel.IsAvailable = true;
+                Console.WriteLine("[IGCL-RELEASE-RECEIPT] applied=verified; read=55.5; release=-17; write-warnings=1; read-warnings=1; driver-missing=component; recorded.");
             }
             var occupied=Path.Combine(directory,"occupied");File.WriteAllText(occupied,"file");var warnings=0;
             using(var cpu=new AmdCpuControlResource(helper,AmdCpuControlOptions.InDirectory(occupied),warning:(_,_,_)=>warnings++))
@@ -115,19 +131,22 @@ internal static class AmdCpuIntegratedGpuControlOwnerConsumer
     }
     private sealed class RecordedIntel : IIntelGraphicsControlHardware
     {
-        public bool IsAvailable=>true;public List<string> Calls=[];public double Offset=15;
+        public bool IsAvailable = true;public List<string> Calls=[];public double Offset=15;
         public int? ReleaseErrorCode;
-        public IntelGraphicsControlProbe Probe(ulong? key, CancellationToken token = default)
-            => !IsAvailable ? IntelGraphicsControlProbe.DriverMissing : FindIntegratedDevice(key) is null ? IntelGraphicsControlProbe.TargetMissing : IntelGraphicsControlProbe.Ready;
+        public bool IsDriverAvailable => IsAvailable;
+        public IntelGraphicsControlProbeResult Probe(ulong? key, CancellationToken token = default)
+            => new(!IsAvailable ? IntelGraphicsControlProbe.DriverMissing : FindIntegratedDevice(key) is null ? IntelGraphicsControlProbe.TargetMissing : IntelGraphicsControlProbe.Ready);
         public IntelGraphicsControlRead ReadFrequencyOffsetMhz(ulong? key, CancellationToken token = default)
         {
             token.ThrowIfCancellationRequested();
+            if (!IsAvailable) return new(null, IntelGraphicsControlUnreadable.DriverMissing);
             if (FindIntegratedDevice(key) is not { } device) return new(null, IntelGraphicsControlUnreadable.TargetMissing);
-            return ReadFrequencyOffsetMhz(device) is { } value ? new(value) : new(null, IntelGraphicsControlUnreadable.ReadingMissing);
+            return ReadFrequencyOffsetMhz(device) is { } value ? new(value, ReleaseErrorCode: ReleaseErrorCode) : new(null, IntelGraphicsControlUnreadable.ReadingMissing, ReleaseErrorCode);
         }
         public IntelGraphicsControlWrite WriteFrequencyOffsetMhz(ulong? key, double value, CancellationToken token = default)
         {
             token.ThrowIfCancellationRequested();
+            if (!IsAvailable) return new(-1, null, IntelGraphicsControlWriteFailure.DriverMissing);
             if (FindIntegratedDevice(key) is not { } device) return new(-1, null, IntelGraphicsControlWriteFailure.TargetMissing);
             if (!TryAcceptOverclockWaiver(device)) return new(-1, null, IntelGraphicsControlWriteFailure.WaiverRejected);
             token.ThrowIfCancellationRequested();

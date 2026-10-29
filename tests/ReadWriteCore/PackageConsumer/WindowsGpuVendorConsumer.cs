@@ -11,7 +11,7 @@ using ResourceManager.ReadWrite.Windows.Gpu;
 static class WindowsGpuVendorConsumer
 {
     internal static void VerifyMissingIntelControlIdentity()
-        => Require(new IntelGraphicsControlBridge().Probe(null) == IntelGraphicsControlProbe.TargetMissing,
+        => Require(new IntelGraphicsControlBridge().Probe(null).Status == IntelGraphicsControlProbe.TargetMissing,
             "missing write identity does not initialize hardware");
 
     public static void Run()

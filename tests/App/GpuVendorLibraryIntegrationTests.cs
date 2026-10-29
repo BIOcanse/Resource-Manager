@@ -30,7 +30,7 @@ public sealed class GpuVendorLibraryIntegrationTests
         _ = new NvidiaNvmlReader(() => { initializations++; return 1; });
         _ = new NvidiaNvmlControlBridge();
         _ = new NvidiaNvapiControlBridge();
-        Assert.Equal(IntelGraphicsControlProbe.TargetMissing, new IntelGraphicsControlBridge().Probe(null));
+        Assert.Equal(IntelGraphicsControlProbe.TargetMissing, new IntelGraphicsControlBridge().Probe(null).Status);
         Assert.Equal(0, initializations);
         var inventory = new WindowsGpuAdapterInventoryRead(SamplingObservationStatus.Current, 1, 1, 0, 0, 0, 1, []);
         Assert.Empty(await new NvidiaNvapiReader().ReadAsync(new(null, false, false, false), inventory, CancellationToken.None));

@@ -68,8 +68,9 @@ internal sealed class RecordedIntegratedIntelHardware : IIntelGraphicsControlHar
     public double? OverrideReadback; public bool UseOverrideReadback;
     public Action? AfterWrite;
     public List<string> Calls = [];
-        public IntelGraphicsControlProbe Probe(ulong? key, CancellationToken token = default)
-            => !IsAvailable ? IntelGraphicsControlProbe.DriverMissing : FindIntegratedDevice(key) is null ? IntelGraphicsControlProbe.TargetMissing : IntelGraphicsControlProbe.Ready;
+        public bool IsDriverAvailable => IsAvailable;
+        public IntelGraphicsControlProbeResult Probe(ulong? key, CancellationToken token = default)
+            => new(!IsAvailable ? IntelGraphicsControlProbe.DriverMissing : FindIntegratedDevice(key) is null ? IntelGraphicsControlProbe.TargetMissing : IntelGraphicsControlProbe.Ready);
         public IntelGraphicsControlRead ReadFrequencyOffsetMhz(ulong? key, CancellationToken token = default)
         {
             token.ThrowIfCancellationRequested();

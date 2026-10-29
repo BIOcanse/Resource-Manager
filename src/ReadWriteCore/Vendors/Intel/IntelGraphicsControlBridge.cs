@@ -5,29 +5,41 @@ public sealed class IntelGraphicsControlBridge : IIntelGraphicsControlHardware
 {
     // Control keeps API 1.1 and requests Level Zero (flags 1), as Intel's overclock sample does.
     private readonly Func<IntelGclNativeSession?> open;
-    public IntelGraphicsControlBridge() : this(() => IntelGclNativeSession.Create(1, (1U << 16) | 1U)) { }
+    private readonly Func<bool> driverAvailable;
+    internal const string ReleaseFailureKey = "IntelGclReleaseFailure";
+    public IntelGraphicsControlBridge() : this(() => IntelGclNativeSession.Create(1, (1U << 16) | 1U),
+        () => IntelGclNativeSession.IsDriverAvailable) { }
     internal IntelGraphicsControlBridge(IntelGclNativeFunctions functions)
-        : this(() => IntelGclNativeSession.Open(functions, 1, (1U << 16) | 1U)) { }
-    private IntelGraphicsControlBridge(Func<IntelGclNativeSession?> open) => this.open = open;
+        : this(() => IntelGclNativeSession.Open(functions, 1, (1U << 16) | 1U), () => true) { }
+    internal IntelGraphicsControlBridge(Func<IntelGclNativeSession?> open, Func<bool> driverAvailable)
+        => (this.open, this.driverAvailable) = (open, driverAvailable);
 
-    public IntelGraphicsControlProbe Probe(ulong? adapterKey, CancellationToken token = default)
+    public bool IsDriverAvailable => driverAvailable();
+
+    public IntelGraphicsControlProbeResult Probe(ulong? adapterKey, CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
-        if (adapterKey is null or 0) return IntelGraphicsControlProbe.TargetMissing;
-        using var session = open();
-        if (session is null) return IntelGraphicsControlProbe.DriverMissing;
-        return Find(session, adapterKey.Value, token) is null ? IntelGraphicsControlProbe.TargetMissing : IntelGraphicsControlProbe.Ready;
+        if (adapterKey is null or 0) return new(IntelGraphicsControlProbe.TargetMissing);
+        var session = open();
+        if (session is null) return new(IntelGraphicsControlProbe.DriverMissing);
+        return Complete(session, () => new IntelGraphicsControlProbeResult(
+            Find(session, adapterKey.Value, token) is null ? IntelGraphicsControlProbe.TargetMissing
+            : !session.SupportsControl ? IntelGraphicsControlProbe.NotSupported : IntelGraphicsControlProbe.Ready),
+            (result, release) => result with { ReleaseErrorCode = release });
     }
 
     public IntelGraphicsControlRead ReadFrequencyOffsetMhz(ulong? adapterKey, CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
         if (adapterKey is null or 0) return new(null, IntelGraphicsControlUnreadable.TargetMissing);
-        using var session = open();
+        var session = open();
         if (session is null) return new(null, IntelGraphicsControlUnreadable.DriverMissing);
-        if (Find(session, adapterKey.Value, token) is not { } device) return new(null, IntelGraphicsControlUnreadable.TargetMissing);
-        token.ThrowIfCancellationRequested();
-        return session.ReadFrequencyOffset(device) is { } value ? new(value) : new(null, IntelGraphicsControlUnreadable.ReadingMissing);
+        return Complete<IntelGraphicsControlRead>(session, () =>
+        {
+            if (Find(session, adapterKey.Value, token) is not { } device) return new IntelGraphicsControlRead(null, IntelGraphicsControlUnreadable.TargetMissing);
+            token.ThrowIfCancellationRequested();
+            return session.ReadFrequencyOffset(device) is { } value ? new(value) : new(null, IntelGraphicsControlUnreadable.ReadingMissing);
+        }, (result, release) => result with { ReleaseErrorCode = release });
     }
 
     public IntelGraphicsControlWrite WriteFrequencyOffsetMhz(ulong? adapterKey, double offsetMhz, CancellationToken token = default)
@@ -36,17 +48,29 @@ public sealed class IntelGraphicsControlBridge : IIntelGraphicsControlHardware
         if (adapterKey is null or 0) return new(-1, null, IntelGraphicsControlWriteFailure.TargetMissing);
         var session = open();
         if (session is null) return new(-1, null, IntelGraphicsControlWriteFailure.DriverMissing);
-        try
+        return Complete(session, () => Write(session, adapterKey.Value, offsetMhz, token),
+            (result, release) => result with { ReleaseErrorCode = release });
+    }
+
+    private static T Complete<T>(IntelGclNativeSession session, Func<T> work, Func<T, int?, T> receipt)
+    {
+        T result;
+        try { result = work(); }
+        catch (Exception error)
         {
-            var result = Write(session, adapterKey.Value, offsetMhz, token);
-            return result with { ReleaseErrorCode = session.Close() };
+            if (Close(session) is { } release)
+                error.Data[ReleaseFailureKey] = new System.Runtime.InteropServices.ExternalException("IGCL could not close the API session.", release);
+            throw;
         }
-        finally
-        {
-            // Completed work already closed the session. If work threw, retain the normal
-            // exceptional cleanup path. Neither path attempts ctlClose more than once.
-            session.Dispose();
-        }
+        return receipt(result, Close(session));
+    }
+
+    private static int? Close(IntelGclNativeSession session)
+    {
+        try { return session.Close(); }
+        catch (Exception error) when (error is System.Runtime.InteropServices.ExternalException
+            or DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        { return error.HResult; }
     }
 
     private static IntelGraphicsControlWrite Write(IntelGclNativeSession session, ulong adapterKey, double offsetMhz, CancellationToken token)

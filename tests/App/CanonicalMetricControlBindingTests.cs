@@ -562,7 +562,8 @@ public sealed class CanonicalMetricControlBindingTests
     }
     private sealed class IntelGraphicsHardware : IIntelGraphicsControlHardware
     {
-        public IntelGraphicsControlProbe Probe(ulong? key, CancellationToken token = default) => IntelGraphicsControlProbe.DriverMissing;
+        public bool IsDriverAvailable => false;
+        public IntelGraphicsControlProbeResult Probe(ulong? key, CancellationToken token = default) => new(IntelGraphicsControlProbe.DriverMissing);
         public IntelGraphicsControlRead ReadFrequencyOffsetMhz(ulong? key, CancellationToken token = default) => throw new InvalidOperationException();
         public IntelGraphicsControlWrite WriteFrequencyOffsetMhz(ulong? key, double value, CancellationToken token = default) => throw new InvalidOperationException("unselected setter");
     }

@@ -118,8 +118,9 @@ public sealed class IntelIntegratedGpuIdentityTests
         public double Offset { get; private set; } = 15;
         public bool OverrideReadback { get; init; }
         public double? Readback { get; init; }
-        public IntelGraphicsControlProbe Probe(ulong? key, CancellationToken token = default)
-            => !IsAvailable ? IntelGraphicsControlProbe.DriverMissing : FindIntegratedDevice(key) is null ? IntelGraphicsControlProbe.TargetMissing : IntelGraphicsControlProbe.Ready;
+        public bool IsDriverAvailable => IsAvailable;
+        public IntelGraphicsControlProbeResult Probe(ulong? key, CancellationToken token = default)
+            => new(!IsAvailable ? IntelGraphicsControlProbe.DriverMissing : FindIntegratedDevice(key) is null ? IntelGraphicsControlProbe.TargetMissing : IntelGraphicsControlProbe.Ready);
         public IntelGraphicsControlRead ReadFrequencyOffsetMhz(ulong? key, CancellationToken token = default)
         {
             token.ThrowIfCancellationRequested();

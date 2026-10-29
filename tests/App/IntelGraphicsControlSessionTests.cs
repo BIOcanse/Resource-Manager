@@ -4,7 +4,7 @@ using ResourceManager.ReadWrite.Windows.Gpu.Control;
 
 namespace Resource_Manager_APP.Tests;
 
-public sealed class IntelGraphicsControlSessionTests
+public sealed partial class IntelGraphicsControlSessionTests
 {
     private const ulong Key = 0x800000001;
     private static readonly IntegratedGpuControlTarget Target = new("intel", IntegratedGpuControlRoute.IntelIntegrated, Key);
@@ -19,7 +19,7 @@ public sealed class IntelGraphicsControlSessionTests
         var sdk = new Sdk();
         var bridge = new IntelGraphicsControlBridge(sdk.Functions);
         using (Resource(sdk)) { }
-        Assert.Equal(IntelGraphicsControlProbe.TargetMissing, bridge.Probe(null));
+        Assert.Equal(IntelGraphicsControlProbe.TargetMissing, bridge.Probe(null).Status);
         Assert.Equal(IntelGraphicsControlUnreadable.TargetMissing, bridge.ReadFrequencyOffsetMhz(0).Unreadable);
         Assert.Equal(IntelGraphicsControlWriteFailure.TargetMissing, bridge.WriteFrequencyOffsetMhz(null, 20).Failure);
         Assert.Empty(sdk.Events);
@@ -34,7 +34,7 @@ public sealed class IntelGraphicsControlSessionTests
         var bridge = new IntelGraphicsControlBridge(sdk.Functions);
         switch (operation)
         {
-            case "probe": Assert.Equal(IntelGraphicsControlProbe.Ready, bridge.Probe(Key)); break;
+            case "probe": Assert.Equal(IntelGraphicsControlProbe.Ready, bridge.Probe(Key).Status); break;
             case "read": Assert.Equal(new IntelGraphicsControlRead(15), bridge.ReadFrequencyOffsetMhz(Key)); break;
             case "write": Assert.Equal(new IntelGraphicsControlWrite(0, 45.5), bridge.WriteFrequencyOffsetMhz(Key, 45.5)); break;
         }
@@ -66,7 +66,7 @@ public sealed class IntelGraphicsControlSessionTests
             "init" => IntelGraphicsControlProbe.DriverMissing,
             "target" => IntelGraphicsControlProbe.TargetMissing,
             _ => IntelGraphicsControlProbe.Ready
-        }, bridge.Probe(Key));
+        }, bridge.Probe(Key).Status);
         Assert.Equal(failure switch
         {
             "init" => IntelGraphicsControlUnreadable.DriverMissing,
@@ -131,14 +131,15 @@ public sealed class IntelGraphicsControlSessionTests
     }
 
     [Fact]
-    public async Task ReleaseFailureDuringCancellationIsReportedRatherThanHiddenByCancellation()
+    public async Task ReleaseFailureDuringCancellationIsLoggedAndCancellationSurvives()
     {
         using var stop = new CancellationTokenSource();
         var sdk = new Sdk { AfterWaiver = stop.Cancel, CloseResult = -17 };
         Exception? warning = null;
-        using var resource = Resource(sdk, (error, _, _) => warning = error);
-        var outcome = await resource.WriteAsync(Target, Capability, new(Capability.Field, 45), stop.Token);
-        Assert.Equal(IntegratedGpuControlStatus.Failed, outcome.Status);
+        using var resource = Resource(sdk, (error, code, _) =>
+        { Assert.Equal(IntegratedGpuControlMessage.IntelReleaseWarning, code); warning = error; });
+        var cancellation = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => resource.WriteAsync(Target, Capability, new(Capability.Field, 45), stop.Token));
+        Assert.Equal(stop.Token, cancellation.CancellationToken);
         Assert.Equal(-17, Assert.IsType<ExternalException>(warning).ErrorCode);
         Assert.DoesNotContain("set", sdk.Events); Assert.Equal(1, sdk.Closes);
     }
@@ -156,20 +157,20 @@ public sealed class IntelGraphicsControlSessionTests
 
     [Theory]
     [InlineData("probe")] [InlineData("read")] [InlineData("write")]
-    public async Task ReleaseFailureWarnsWithoutHidingASuccessfulWrite(string operation)
+    public async Task ReleaseFailureWarnsWithoutHidingAnyOperationResult(string operation)
     {
         var sdk = new Sdk { CloseResult = -17 };
         var warnings = new List<Exception?>();
         using var resource = Resource(sdk, (error, message, _) =>
-        { Assert.Equal(IntegratedGpuControlMessage.IntelRejectedWarning, message); warnings.Add(error); });
+        { Assert.Equal(IntegratedGpuControlMessage.IntelReleaseWarning, message); warnings.Add(error); });
         switch (operation)
         {
             case "probe":
-                var probe = resource.Probe(Target, Capability); Assert.False(probe.CanWrite);
-                Assert.Contains("DriverRejected", probe.Reason); break;
+                var probe = resource.Probe(Target, Capability); Assert.True(probe.CanWrite);
+                Assert.Null(probe.Reason); break;
             case "read":
-                var read = await resource.ReadAsync(Target, Capability); Assert.Null(read!.Number);
-                Assert.Contains("ReadingMissing", read.UnreadableReason); break;
+                var read = await resource.ReadAsync(Target, Capability); Assert.Equal(15, read!.Number);
+                Assert.Null(read.UnreadableReason); break;
             case "write":
                 var write = await resource.WriteAsync(Target, Capability, new(Capability.Field, 45));
                 Assert.Equal(IntegratedGpuControlStatus.Applied, write.Status); Assert.True(write.ReadbackVerified);
@@ -234,17 +235,18 @@ public sealed class IntelGraphicsControlSessionTests
             Assert.Equal(0, sdk.Active); Assert.Equal(sdk.Opens, sdk.Closes);
             write = resource.WriteAsync(Target, Capability, new(Capability.Field, 45));
             Assert.Equal(IntegratedGpuControlStatus.Applied, (await write.WaitAsync(TimeSpan.FromSeconds(5))).Status);
-            Assert.False(probe.IsCompleted); Assert.Equal(2, sdk.Opens); Assert.Equal(sdk.Opens, sdk.Closes);
+            Assert.False(probe.IsCompleted); Assert.Equal(1, sdk.Opens); Assert.Equal(sdk.Opens, sdk.Closes);
             release.TrySetResult(); Assert.True((await probe.WaitAsync(TimeSpan.FromSeconds(5))).CanWrite);
         }
         finally { release.TrySetResult(); await probe; if (write is not null) await write; }
     }
 
     [Theory]
-    [InlineData("init", false, IntegratedGpuControlMessage.IntelDriverMissing, 0)]
+    [InlineData("init", false, IntegratedGpuControlMessage.OverclockNotAccepted, 1)]
+    [InlineData("init", true, IntegratedGpuControlMessage.IntelDriverMissing, 1)]
     [InlineData("target", false, IntegratedGpuControlMessage.OverclockNotAccepted, 1)]
     [InlineData("target", true, IntegratedGpuControlMessage.IntelTargetMissing, 1)]
-    public void ProbeKeepsDriverConsentTargetOrderAfterClosingTheSession(string failure, bool accepted, IntegratedGpuControlMessage message, int expectedConsentCalls)
+    public void ProbeChecksConsentBeforeOpeningTheTargetSession(string failure, bool accepted, IntegratedGpuControlMessage message, int expectedConsentCalls)
     {
         var sdk = new Sdk { Failure = failure }; var consentCalls = 0;
         using var resource = new IntegratedGpuControlResource(null, new IntelGraphicsControlBridge(sdk.Functions),
@@ -256,6 +258,7 @@ public sealed class IntelGraphicsControlSessionTests
         var result = resource.Probe(Target, Capability);
         Assert.False(result.CanWrite); Assert.Contains(message.ToString(), result.Reason);
         Assert.Equal(expectedConsentCalls, consentCalls);
+        Assert.Equal(accepted ? 1 : 0, sdk.InitAttempts);
     }
 
     [Fact]
@@ -286,7 +289,7 @@ public sealed class IntelGraphicsControlSessionTests
         public int InitAttempts, Opens, Closes, Active, CloseResult;
         public string Failure = "";
         public double Offset = 15;
-        public Action? AfterWaiver, AfterSet;
+        public Action? AfterWaiver, AfterSet, AfterCount;
         public IntelGclNativeFunctions Functions => new(Init, Close, Enumerate, Properties, Telemetry,
             OverclockWaiver: Waiver, FrequencyOffsetGet: Read, FrequencyOffsetSet: Set);
         private int Init(ref IntelGclInitArgs args, out IntPtr api)
@@ -304,6 +307,7 @@ public sealed class IntelGraphicsControlSessionTests
             Assert.Equal(1, Active);
             Events.Enqueue(devices is null ? "count" : "devices"); count = 1;
             if (devices is not null) devices[0] = new(22);
+            else AfterCount?.Invoke();
             return 0;
         }
         private int Properties(IntPtr device, ref IntelGclDeviceProperties properties)

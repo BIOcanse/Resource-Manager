@@ -291,7 +291,7 @@ public sealed class WindowsMetricControlFields(WindowsMetricControlResources res
         var known = Find(binding);
         if (known is null || !known.Entry.Implemented
             || !ResolveFresh(binding, known.Entry, CaptureFacts(), out var adapter)) return false;
-        var fresh = Probe(binding, known.Entry, adapter);
+        var fresh = Probe(binding, known.Entry, adapter, token);
         if (!fresh.CanWrite) return false;
         var entry = known.Entry;
         var rawId = binding.ControlTarget!.RawObjectId!;
@@ -324,7 +324,7 @@ public sealed class WindowsMetricControlFields(WindowsMetricControlResources res
         if (!value.Matches(binding.Field.ValueKind)) return (null, null, null, new(field, "failed", "control-field-payload-invalid"));
         if (!ResolveFresh(binding, known.Entry, CaptureFacts(), out var adapter))
             return (null, null, null, new(field, "failed", "control-field-identity-changed-or-ambiguous"));
-        var fresh = Probe(binding, known.Entry, adapter);
+        var fresh = Probe(binding, known.Entry, adapter, token);
         if (!fresh.CanWrite) return (null, null, null, new(field, "unsupported", fresh.Reason));
         var numeric = Numeric(value);
         var contract = fresh.Contract;
@@ -337,7 +337,7 @@ public sealed class WindowsMetricControlFields(WindowsMetricControlResources res
         return (fresh, adapter, contract, null);
     }
 
-    private Declaration Probe(MetricDeviceFieldBinding binding, WindowsMetricControlBinding entry, WindowsGpuAdapter? adapter)
+    private Declaration Probe(MetricDeviceFieldBinding binding, WindowsMetricControlBinding entry, WindowsGpuAdapter? adapter, CancellationToken token = default)
     {
         if (!entry.Implemented) return new(binding, entry, false, false, "control-field-not-implemented", entry.DeclaredRange);
         if (Frozen(entry)) return new(binding, entry, false, false, "source-frozen-by-caller", entry.DeclaredRange);
@@ -362,7 +362,7 @@ public sealed class WindowsMetricControlFields(WindowsMetricControlResources res
                         g.Range is { } gr ? WithRange(entry, gr.Minimum, gr.Maximum, gr.Step, null) : entry.DeclaredRange);
                 case WindowsMetricControlFamily.IntelIntegratedGpu or WindowsMetricControlFamily.AmdIntegratedGpu
                     when resources.IntegratedGpuControl is { } integrated:
-                    var v = integrated.Probe(IntegratedTarget(binding, entry), IntegratedCapability(entry, entry.DeclaredRange));
+                    var v = integrated.Probe(IntegratedTarget(binding, entry), IntegratedCapability(entry, entry.DeclaredRange), token);
                     return new(binding, entry, v.CanWrite || v.CanRead, v.CanWrite, v.Reason,
                         v.Range is { } vr ? WithRange(entry, vr.Minimum, vr.Maximum, vr.Step, vr.DefaultValue) : entry.DeclaredRange);
                 default: return new(binding, entry, false, false, "control-resource-not-supplied", entry.DeclaredRange);

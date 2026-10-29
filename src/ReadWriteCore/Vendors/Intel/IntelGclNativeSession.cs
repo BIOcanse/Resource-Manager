@@ -8,6 +8,7 @@ internal sealed class IntelGclNativeSession : IIntelGclSession
 {
     internal const int MaximumDeviceCount = 256;
     private static readonly object libraryGate = new();
+    private static readonly object sessionGate = new();
     private static IntelGclNativeFunctions? processFunctions;
     private readonly IntelGclNativeFunctions functions;
     private IntPtr api;
@@ -16,9 +17,20 @@ internal sealed class IntelGclNativeSession : IIntelGclSession
         => (this.functions, this.api) = (functions, api);
 
     internal static IntelGclNativeSession? Create()
-        => Create(1 /* Level Zero telemetry */, 1U << 16);
+        => Create(1 /* Level Zero telemetry */, 1U << 16, requireTelemetry: true);
 
-    internal static IntelGclNativeSession? Create(uint flags, uint appVersion)
+    internal static IntelGclNativeSession? Create(uint flags, uint appVersion, bool requireTelemetry = false)
+    {
+        var functions = GetFunctions();
+        // Like a CLR P/Invoke module, one process reference keeps SDK callbacks mapped.
+        // ctlClose may report another caller still open; it does not permit DLL unload then.
+        // Each operation or fan-directory lease owns its API session and closes it on exit.
+        return functions is null ? null : Open(functions, flags, appVersion, requireTelemetry);
+    }
+
+    internal static bool IsDriverAvailable => GetFunctions() is not null;
+
+    private static IntelGclNativeFunctions? GetFunctions()
     {
         if (!OperatingSystem.IsWindows() || !Environment.Is64BitProcess) return null;
         IntelGclNativeFunctions? functions;
@@ -26,10 +38,7 @@ internal sealed class IntelGclNativeSession : IIntelGclSession
         {
             functions = processFunctions ??= LoadFunctions();
         }
-        // Like a CLR P/Invoke module, one process reference keeps SDK callbacks mapped.
-        // ctlClose may report another caller still open; it does not permit DLL unload then.
-        // API sessions are owned by this sample and closed at its end, including failures.
-        return functions is null ? null : Open(functions, flags, appVersion);
+        return functions;
     }
 
     private static IntelGclNativeFunctions? LoadFunctions()
@@ -55,7 +64,7 @@ internal sealed class IntelGclNativeSession : IIntelGclSession
                 ? Marshal.GetDelegateForFunctionPointer<IntelGclFanStateGet>(fanStateEntry) : null;
             functions = new IntelGclNativeFunctions(Export<IntelGclInit>("ctlInit"), Export<IntelGclClose>("ctlClose"),
                 Export<IntelGclEnumerate>("ctlEnumerateDevices"), Export<IntelGclProperties>("ctlGetDeviceProperties"),
-                Export<IntelGclTelemetry>("ctlPowerTelemetryGet"), pciState, pciProperties, fans, fanState,
+                Optional<IntelGclTelemetry>("ctlPowerTelemetryGet"), pciState, pciProperties, fans, fanState,
                 Optional<IntelGclOverclockWaiver>("ctlOverclockWaiverSet"),
                 Optional<IntelGclFrequencyOffsetGet>("ctlOverclockGpuFrequencyOffsetGet"),
                 Optional<IntelGclFrequencyOffsetSet>("ctlOverclockGpuFrequencyOffsetSet"));
@@ -69,11 +78,18 @@ internal sealed class IntelGclNativeSession : IIntelGclSession
     }
 
     // The same native boundary is used by pure managed SDK substitutes.
-    internal static IntelGclNativeSession? Open(IntelGclNativeFunctions functions, uint flags = 1, uint appVersion = 1U << 16)
+    internal static IntelGclNativeSession? Open(IntelGclNativeFunctions functions, uint flags = 1, uint appVersion = 1U << 16, bool requireTelemetry = false)
     {
+        if (requireTelemetry && functions.Telemetry is null) return null;
         var args = new IntelGclInitArgs { Size = 36, AppVersion = appVersion, Flags = flags };
-        return functions.Init(ref args, out var api) == 0 && api != IntPtr.Zero ? new(functions, api) : null;
+        int result;
+        IntPtr api;
+        lock (sessionGate) result = functions.Init(ref args, out api);
+        return result == 0 && api != IntPtr.Zero ? new(functions, api) : null;
     }
+
+    internal bool SupportsControl => functions.OverclockWaiver is not null
+        && functions.FrequencyOffsetGet is not null && functions.FrequencyOffsetSet is not null;
 
     internal unsafe IntelGraphicsControlBridge.DeviceIdentity? ReadControlIdentity(IntPtr device)
     {
@@ -123,7 +139,7 @@ internal sealed class IntelGclNativeSession : IIntelGclSession
     public bool TryReadTelemetry(IntPtr device, out IntelGclPowerTelemetry telemetry)
     {
         telemetry = new() { Size = 1024 };
-        if (api != IntPtr.Zero && device != IntPtr.Zero && functions.Telemetry(device, ref telemetry) == 0
+        if (api != IntPtr.Zero && device != IntPtr.Zero && functions.Telemetry is { } read && read(device, ref telemetry) == 0
             && telemetry.Size == 1024 && telemetry.Version == 0) return true;
         telemetry = default;
         return false;
@@ -184,14 +200,15 @@ internal sealed class IntelGclNativeSession : IIntelGclSession
     {
         var handle = Interlocked.Exchange(ref api, IntPtr.Zero);
         if (handle == IntPtr.Zero) return null;
-        var result = functions.Close(handle);
+        int result;
+        lock (sessionGate) result = functions.Close(handle);
         return result is 0 or 1 /* SUCCESS_STILL_OPEN_BY_ANOTHER_CALLER */ ? null : result;
     }
 
     public void Dispose()
     {
         if (Close() is { } result)
-            throw new ExternalException("IGCL could not close the sample API session.", result);
+            throw new ExternalException("IGCL could not close the API session.", result);
     }
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
@@ -199,7 +216,7 @@ internal sealed class IntelGclNativeSession : IIntelGclSession
 }
 
 internal sealed record IntelGclNativeFunctions(IntelGclInit Init, IntelGclClose Close, IntelGclEnumerate Enumerate,
-    IntelGclProperties Properties, IntelGclTelemetry Telemetry, IntelGclPciStateGet? PciState = null, IntelGclPciPropertiesGet? PciProperties = null,
+    IntelGclProperties Properties, IntelGclTelemetry? Telemetry, IntelGclPciStateGet? PciState = null, IntelGclPciPropertiesGet? PciProperties = null,
     IntelGclEnumerate? Fans = null, IntelGclFanStateGet? FanState = null,
     IntelGclOverclockWaiver? OverclockWaiver = null, IntelGclFrequencyOffsetGet? FrequencyOffsetGet = null,
     IntelGclFrequencyOffsetSet? FrequencyOffsetSet = null);
