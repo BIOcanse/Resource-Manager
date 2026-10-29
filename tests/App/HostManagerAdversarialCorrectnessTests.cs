@@ -733,6 +733,32 @@ public sealed partial class HostManagerAdversarialCorrectnessTests
     }
 
     [Fact]
+    public void MetricDemandWakeOnAPendingWakeThrowsNothing()
+    {
+        using var signal = new SemaphoreSlim(1, 1);
+        var thread = Environment.CurrentManagedThreadId;
+        var thrown = 0;
+        void Observe(object? sender, System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs args)
+        {
+            if (args.Exception is SemaphoreFullException && Environment.CurrentManagedThreadId == thread) thrown++;
+        }
+
+        AppDomain.CurrentDomain.FirstChanceException += Observe;
+        try
+        {
+            WindowsHardwareMetricSampler.SignalDemand(signal);
+            ResourceManager.App.Infrastructure.ResourceBreakdown.WindowsResourceBreakdownSampler.ReleaseDemandSignal(signal);
+        }
+        finally
+        {
+            AppDomain.CurrentDomain.FirstChanceException -= Observe;
+        }
+
+        Assert.Equal(0, thrown);
+        Assert.Equal(1, signal.CurrentCount);
+    }
+
+    [Fact]
     public void MetricDemandWakeIgnoresDisposedSignalDuringOwnerTeardown()
     {
         var signal = new SemaphoreSlim(0, 1);

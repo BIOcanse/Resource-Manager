@@ -201,6 +201,11 @@ public sealed partial class CpuTopologySnapshotProvider(
 
     private void SignalDemand()
     {
+        if (demandSignal.CurrentCount != 0)
+        {
+            return;
+        }
+
         try
         {
             demandSignal.Release();

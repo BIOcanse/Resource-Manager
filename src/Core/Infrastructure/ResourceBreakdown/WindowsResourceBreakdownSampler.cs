@@ -721,6 +721,11 @@ public sealed partial class WindowsResourceBreakdownSampler(
     internal static void ReleaseDemandSignal(SemaphoreSlim signal)
     {
         ArgumentNullException.ThrowIfNull(signal);
+        if (signal.CurrentCount != 0)
+        {
+            return;
+        }
+
         try
         {
             signal.Release();

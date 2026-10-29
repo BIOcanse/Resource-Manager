@@ -42,6 +42,9 @@ public sealed class NativeSamplingSubscriptionWorker<TRequest, TContext>
     public static void SignalDemand(SemaphoreSlim signal)
     {
         ArgumentNullException.ThrowIfNull(signal);
+        // Demand signals are (0, 1) wakes: a pending wake already covers this one, and releasing it again only
+        // throws (about 0.55 SemaphoreFullException/s on the installed service from lease disposal).
+        if (signal.CurrentCount != 0) return;
         try { signal.Release(); }
         catch (SemaphoreFullException) { /* One pending wake covers all observed demand. */ }
         catch (ObjectDisposedException) { }
