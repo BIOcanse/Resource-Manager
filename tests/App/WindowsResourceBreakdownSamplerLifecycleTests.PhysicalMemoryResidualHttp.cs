@@ -44,11 +44,14 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
         using var sampler = new WindowsResourceBreakdownSampler(hardware, catalog, residuals, null!, null!,
             fixture.Slots.Provider, fixture.Slots.Owner, new PdhProcessGpuReader());
         var walks = 0;
+        PhysicalMemoryResidualFrame? walked = null;
         var pfn = new WindowsPhysicalMemoryPfnReader();
         sampler.PhysicalMemoryPfnCapture = (attributed, token) =>
         {
             Interlocked.Increment(ref walks);
-            return pfn.Capture(attributed, token);
+            var frame = pfn.Capture(attributed, token);
+            Volatile.Write(ref walked, frame);
+            return frame;
         };
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = Environments.Production });
         builder.WebHost.UseUrls("http://127.0.0.1:0");
@@ -110,11 +113,6 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             Assert.True(Volatile.Read(ref counterCaptures) > firstCounters);
             var publishedWalks = Volatile.Read(ref walks);
             Assert.True(publishedWalks >= firstWalks);
-            // Explicit cache inspection reuses the independent PFN publication without walking.
-            var cached = sampler.ReadLatest(ResourceBreakdownSampleRequest.ForResourceTable(
-                [metric, PhysicalMemoryResidualFrame.MetricId], new Dictionary<string, string>()));
-            Assert.Equal(pfnAt, cached.PhysicalMemoryResidual!.CapturedAt);
-            Assert.Equal(publishedWalks, Volatile.Read(ref walks));
 
             // HTTP snapshots now own a single fetch and must wait for a genuinely newer PFN sample.
             var nextStarted = DateTimeOffset.UtcNow;
@@ -128,12 +126,30 @@ public sealed partial class WindowsResourceBreakdownSamplerLifecycleTests
             Assert.True(nextPfnAt > pfnAt);
             Assert.True(Volatile.Read(ref walks) > publishedWalks);
             Assert.True(Volatile.Read(ref counterCaptures) > streamedCounters);
-            var refreshedWalks = Volatile.Read(ref walks);
+
+            // The held stream keeps walking on its own ten-second PFN schedule, and the single fetch
+            // above returns on its own trigger, so the stream's next walk may follow at once. Release
+            // the stream, then wait until the native session has no holder and no item in a plan:
+            // every plan issued while details demand was held has settled. No walk is allowed after.
+            response.Dispose();
+            while (ReadResourceSubscriptionCounts(fixture.Slots.Owner) != (0U, 0U))
+                await Task.Delay(10, deadline.Token);
+            var releasedWalks = Volatile.Read(ref walks);
+            var releasedCounters = Volatile.Read(ref counterCaptures);
+
+            // Explicit cache inspection reuses the independent PFN publication without walking.
+            var cached = sampler.ReadLatest(ResourceBreakdownSampleRequest.ForResourceTable(
+                [metric, PhysicalMemoryResidualFrame.MetricId], new Dictionary<string, string>()));
+            Assert.Equal(Volatile.Read(ref walked)!.CapturedAt, cached.PhysicalMemoryResidual!.CapturedAt);
+            Assert.Equal(releasedWalks, Volatile.Read(ref walks));
+
+            // An unrelated metric with the residual selector requests neither PFNs nor counters.
             using var unrelated = JsonDocument.Parse(await client.GetStringAsync(
                 "/api/resource-monitor/snapshot?scope=details&ids=cpu.usage&residualDetails=memory.usage", deadline.Token));
             Assert.False(unrelated.RootElement.TryGetProperty("physicalMemoryResidual", out _));
             Assert.DoesNotContain("system-memory/", unrelated.RootElement.GetRawText());
-            Assert.Equal(refreshedWalks, Volatile.Read(ref walks));
+            Assert.Equal(releasedWalks, Volatile.Read(ref walks));
+            Assert.Equal(releasedCounters, Volatile.Read(ref counterCaptures));
         }
         finally { await app.StopAsync(CancellationToken.None); }
     }

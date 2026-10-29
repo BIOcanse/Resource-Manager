@@ -1101,6 +1101,31 @@ test "adding another same interval subscriber does not reset or duplicate the it
     try std.testing.expectEqual(@as(u64, 10), due.result.due[0].item_handle);
 }
 
+test "a holder joining while the last holder's query is in flight schedules from that query's completion" {
+    var config = testConfig();
+    const session = try session_module.Session.create(&config);
+    defer session.destroy();
+    const explicit = protocol.SourceFlags.persistent | protocol.SourceFlags.explicit_interval;
+    try std.testing.expectEqual(ResultCode.ok, track(session, 1, 1_000, 1_000, 100, explicit, 10_000, &.{10}));
+    _ = runPlan(session, 2, 1, 1_000);
+    try std.testing.expectEqual(ResultCode.ok, complete(session, 3, 1, 2_300, 2_300, .sampled, &.{10}).code);
+    const in_flight = runPlan(session, 4, 2, 11_000);
+    try std.testing.expectEqual(@as(u32, 1), in_flight.result.header.due_item_count);
+    // The only holder leaves and another joins at the same interval before that query settles.
+    try std.testing.expectEqual(ResultCode.ok, remove(session, 5, 11_010, 100));
+    try std.testing.expectEqual(ResultCode.ok, track(session, 6, 11_020, 11_020, 200, explicit, 10_000, &.{10}));
+    // A query shorter than the first one must not leave the first query's deadline behind.
+    const settled = complete(session, 7, 2, 12_000, 12_000, .sampled, &.{10});
+    try std.testing.expectEqual(ResultCode.ok, settled.code);
+    try std.testing.expectEqual(@as(u64, 22_000), settled.output.next_wake_milliseconds);
+    const early = runPlan(session, 8, 3, 12_300);
+    try std.testing.expectEqual(@as(u32, 0), early.result.header.due_item_count);
+    try std.testing.expectEqual(@as(u64, 22_000), early.result.header.next_wake_milliseconds);
+    const due = runPlan(session, 9, 4, 22_000);
+    try std.testing.expectEqual(@as(u32, 1), due.result.header.due_item_count);
+    try std.testing.expectEqual(@as(u64, 22_000), due.result.due[0].scheduled_due_milliseconds);
+}
+
 test "fresh periodic memberships query once per due period and settle overdue periods separately" {
     var config = testConfig();
     const session = try session_module.Session.create(&config);

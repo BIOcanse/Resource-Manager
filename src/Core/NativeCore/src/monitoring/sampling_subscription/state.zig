@@ -468,6 +468,10 @@ pub const Session = struct {
                 if (item.last_planned_epoch == 0) item.scheduled_due_milliseconds = 0;
                 continue;
             }
+            // The item lost its sampling demand while its plan was in flight and has demand again.
+            // That plan's completion is the item's next own completion; leaving the deadline unset
+            // lets completion schedule from it instead of from the sample it is replacing.
+            if (item.scheduled_due_milliseconds == 0 and item.last_planned_epoch != 0) continue;
             const next_due = alignment.nextDue(
                 item.last_sampled_milliseconds,
                 interval,
