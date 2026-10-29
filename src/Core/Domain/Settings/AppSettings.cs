@@ -57,7 +57,7 @@ public static class HostMemoryProtectionActionModes
 
 public sealed record HostMemoryReserveSettings(string Location, ulong SizeBytes);
 
-public sealed record AppHardwareControlSettings(int ReassertionIntervalSeconds = 120);
+public sealed record AppHardwareControlSettings(int ReassertionIntervalSeconds = 120, bool KeepAlive = false);
 
 // 用户对报告规则判定值的修改，按规则的稳定名字（default.json 的 name）对应。
 // 字段为 null 表示沿用默认值；数值按规则自身的单位（°C、%、ms、字节）。

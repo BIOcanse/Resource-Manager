@@ -17,6 +17,41 @@ public sealed class BackendNativeRuleEquivalenceTests
     [Theory]
     [InlineData(1u)]
     [InlineData(2u)]
+    public async Task ControlReassertionRequiresEveryCombinationOfHostKeepAliveAndAppliedFacts(uint profile)
+    {
+        await using var native = new NativeControl(BackendExpectedProductionTree.Parents(profile).Keys,
+            new NativeControlOptions { Profile = profile, ShutdownItemUid = BackendItems.ProgramShuttingDown },
+            NullLogger<NativeControl>.Instance);
+        var authority = NativeBackendBlockTestSupport.CreateAuthority(native);
+        var facts = new BackendPreciseRuleTestFacts(authority, native, nativeFacts: true);
+        await facts.InitializeAsync();
+        native.Activate(_ => new HoldingBlock());
+        await BusinessBlockTestSupport.Until(() => native.ReadState(BlockUids.HardwareControl) == BusinessBlockState.Running);
+        // Revisit true after every combination, so every false input must also stop an active block.
+        foreach (var host in new[] { false, true })
+        foreach (var keepAlive in new[] { false, true })
+        foreach (var applied in new[] { false, true })
+        {
+            await Set(true, true, true);
+            await Set(host, keepAlive, applied);
+        }
+        await native.ShutdownAsync(Reason);
+
+        async Task Set(bool host, bool keepAlive, bool applied)
+        {
+            await facts[new(BackendItems.HostStartPermitted, BackendUids.ControlDesiredStateReassertion)].PublishAsync(host, Reason);
+            await facts.PublishAsync(StateItemUids.ControlKeepAliveEnabled, keepAlive);
+            await facts.PublishAsync(BackendItems.AppliedControlIntentsExist, applied);
+            var expected = host && keepAlive && applied;
+            await BusinessBlockTestSupport.Until(() => native.ReadState(BackendUids.ControlDesiredStateReassertion)
+                == (expected ? BusinessBlockState.Running : BusinessBlockState.Stopped));
+            AssertCondition(native, BlockUids.HardwareControl, ConditionUids.ControlReassertionShouldRun, null, expected);
+        }
+    }
+
+    [Theory]
+    [InlineData(1u)]
+    [InlineData(2u)]
     [InlineData(3u)]
     public async Task EveryDeclaredFactAndNoValueReachesItsPreciseProductionCondition(uint profile)
     {
@@ -167,7 +202,7 @@ public sealed class BackendNativeRuleEquivalenceTests
             BackendUids.EtwNetworkTcpIpAttributionReader => T(BackendItems.NetworkAttributionInUse),
             BackendUids.FanControlCoreLifetimeService => T(BackendItems.FanCoreAvailable) && (T(BackendItems.AppliedFanControlExists) || T(BackendItems.FanCommandPending) || T(BackendItems.FanReadingsInUse) || T(BackendItems.SoftwareCurveRunNeeded)),
             BackendUids.FanCurveTemperatureFeed => T(BackendItems.SoftwareCurveRunNeeded),
-            BackendUids.ControlDesiredStateReassertion => T(BackendItems.AppliedControlIntentsExist),
+            BackendUids.ControlDesiredStateReassertion => T(StateItemUids.ControlKeepAliveEnabled) && T(BackendItems.AppliedControlIntentsExist),
             BackendUids.ControlActualStateReader => T(BackendItems.ActualControlValuesInUse),
             BackendUids.HostManagerSmartCoordinator => T(BackendItems.OptimizationEnabled) || T(BackendItems.ActiveCpuLeasesExist) || T(BackendItems.SmartOwnedStatePending),
             BackendUids.GpuPlacementProcessHistoryObserver => T(BackendItems.GpuApiHistoryEnabled),

@@ -11,5 +11,6 @@ partial class JsonAppSettingsStore
 {
     [System.Text.Json.Serialization.JsonSourceGenerationOptions(GenerationMode = System.Text.Json.Serialization.JsonSourceGenerationMode.Metadata)]
     [System.Text.Json.Serialization.JsonSerializable(typeof(AppSettings))]
+    [System.Text.Json.Serialization.JsonSerializable(typeof(AppHardwareControlSettings))]
     private partial class JsonAppSettingsStoreJsonContext : System.Text.Json.Serialization.JsonSerializerContext;
 }

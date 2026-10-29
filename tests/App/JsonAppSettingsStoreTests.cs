@@ -11,6 +11,69 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class JsonAppSettingsStoreTests : IDisposable
 {
+    [Fact]
+    public async Task ControlKeepAliveFactPublishesInitiallyAndOnlyWhenItsSettingChanges()
+    {
+        var authority = new BackendStateItems().Authority;
+        var appRoot = Directory.CreateDirectory(Path.Combine(testRoot, "Resource Manager-APP")).FullName;
+        var store = new JsonAppSettingsStore(authority, new TestHostEnvironment(appRoot));
+        var values = new List<bool>();
+        using var subscription = authority.Subscribe(ResourceManager.App.StateItems.StateItemUids.ControlKeepAliveEnabled,
+            "test.control.keep-alive", _ =>
+            {
+                values.Add(authority.Read<bool>(ResourceManager.App.StateItems.StateItemUids.ControlKeepAliveEnabled).Value);
+                return Task.CompletedTask;
+            });
+        var initial = (await store.LoadAsync(default)).Settings;
+        Assert.Equal([false], values);
+        await store.LoadAsync(default);
+        await store.LoadReadOnlyAsync(default);
+        await store.SaveAsync(initial with { Control = new(17, false) }, default);
+        Assert.Equal([false], values);
+        var enabled = initial with { Control = new(17, true) };
+        await store.SaveAsync(enabled, default);
+        Assert.True(authority.Read<AppSettings>(ResourceManager.App.StateItems.StateItemUids.AppSettingsCurrent).Value.Control!.KeepAlive);
+        Assert.Equal([false, true], values);
+        await store.SaveAsync(enabled, default);
+        await store.SaveAsync(enabled with { Control = new(31, true), Debug = enabled.Debug with { DebugLogEnabled = true } }, default);
+        Assert.Equal([false, true], values);
+        await store.SaveAsync(initial, default);
+        Assert.Equal([false, true, false], values);
+    }
+
+    [Theory]
+    [InlineData(false, 1)]
+    [InlineData(true, 17)]
+    [InlineData(true, 86400)]
+    public async Task ControlKeepAliveAndIntervalSurviveIndependentReload(bool keepAlive, int interval)
+    {
+        var appRoot = Directory.CreateDirectory(Path.Combine(testRoot, "Resource Manager-APP")).FullName;
+        var environment = new TestHostEnvironment(appRoot);
+        var store = new JsonAppSettingsStore(new BackendStateItems().Authority, environment);
+        var initial = await store.LoadAsync(default);
+        var expected = new AppHardwareControlSettings(interval, keepAlive);
+        var saved = await store.SaveAsync(initial.Settings with { Control = expected }, default);
+        using var wire = JsonDocument.Parse(await File.ReadAllTextAsync(saved.StoragePath));
+        Assert.Equal(keepAlive, wire.RootElement.GetProperty("control").GetProperty("keepAlive").GetBoolean());
+        var reloadedAuthority = new BackendStateItems().Authority;
+        var loaded = await new JsonAppSettingsStore(reloadedAuthority, environment).LoadAsync(default);
+        Assert.Equal(expected, loaded.Settings.Control);
+        Assert.Equal(keepAlive, reloadedAuthority.Read<bool>(ResourceManager.App.StateItems.StateItemUids.ControlKeepAliveEnabled).Value);
+    }
+
+    [Fact]
+    public async Task OldControlSettingsWithoutKeepAliveLoadDisabled()
+    {
+        var appRoot = Directory.CreateDirectory(Path.Combine(testRoot, "Resource Manager-APP")).FullName;
+        var config = Directory.CreateDirectory(Path.Combine(testRoot, "Config")).FullName;
+        var source = JsonSerializer.SerializeToNode(AppSettingsDefaults.Create(), JsonSerializerOptions.Web)!;
+        source["control"]!.AsObject().Remove("keepAlive");
+        source["control"]!["reassertionIntervalSeconds"] = 31;
+        await File.WriteAllTextAsync(Path.Combine(config, "app-settings.json"), source.ToJsonString());
+        var loaded = await new JsonAppSettingsStore(new BackendStateItems().Authority, new TestHostEnvironment(appRoot)).LoadAsync(default);
+        Assert.Equal(new AppHardwareControlSettings(31, false), loaded.Settings.Control);
+    }
+
     private readonly string testRoot = Path.Combine(
         Path.GetTempPath(),
         "resource-manager-app-settings-tests",

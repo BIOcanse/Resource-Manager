@@ -406,7 +406,9 @@ fn fanTemperatureShouldRun(input: *control.Input) anyerror!bool {
     return isTrue(input, ItemUids.SoftwareCurveRunNeeded);
 }
 fn controlReassertionShouldRun(input: *control.Input) anyerror!bool {
-    return anyFact(input, BlockUids.ControlDesiredStateReassertion, &.{ItemUids.AppliedControlIntentsExist});
+    return try hostPermitted(input, BlockUids.ControlDesiredStateReassertion) and
+        try isTrue(input, ItemUids.ControlKeepAliveEnabled) and
+        try isTrue(input, ItemUids.AppliedControlIntentsExist);
 }
 fn actualControlShouldRun(input: *control.Input) anyerror!bool {
     return anyFact(input, BlockUids.ControlActualStateReader, &.{ItemUids.ActualControlValuesInUse});
@@ -627,7 +629,7 @@ const RuleTestFacts = struct {
             BlockUids.EtwNetworkTcpIpAttributionReader => self.truth(I.NetworkAttributionInUse),
             BlockUids.FanControlCoreLifetimeService => self.truth(I.FanCoreAvailable) and (self.truth(I.AppliedFanControlExists) or self.truth(I.FanCommandPending) or self.truth(I.FanReadingsInUse) or self.truth(I.SoftwareCurveRunNeeded)),
             BlockUids.FanCurveTemperatureFeed => self.truth(I.SoftwareCurveRunNeeded),
-            BlockUids.ControlDesiredStateReassertion => self.truth(I.AppliedControlIntentsExist),
+            BlockUids.ControlDesiredStateReassertion => self.truth(I.ControlKeepAliveEnabled) and self.truth(I.AppliedControlIntentsExist),
             BlockUids.ControlActualStateReader => self.truth(I.ActualControlValuesInUse),
             BlockUids.HostManagerSmartCoordinator => self.truth(I.OptimizationEnabled) or self.truth(I.ActiveCpuLeasesExist) or self.truth(I.SmartOwnedStatePending),
             BlockUids.GpuPlacementProcessHistoryObserver => self.truth(I.GpuApiHistoryEnabled),

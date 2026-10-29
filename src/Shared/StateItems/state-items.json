@@ -1963,6 +1963,9 @@
         },
         {
           "item": 121
+        },
+        {
+          "item": 172
         }
       ],
       "conditions": [],
@@ -2344,6 +2347,21 @@
       "perBlock": false,
       "trigger": "event",
       "changeEvent": "AvailabilityChanged"
+    },
+    {
+      "uid": 172,
+      "kind": "item",
+      "process": "backend",
+      "name": "ControlKeepAliveEnabled",
+      "comment": "The settings owner's current control.keepAlive choice; initially published from AppSettingsCurrent and republished only when that choice changes.",
+      "storage": "reference",
+      "type": "bool",
+      "owner": {
+        "component": "JsonAppSettingsStore"
+      },
+      "perBlock": false,
+      "trigger": "event",
+      "changeEvent": "JsonAppSettingsStore initial AppSettingsCurrent publication or control.keepAlive change"
     }
   ]
 }

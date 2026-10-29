@@ -25,6 +25,7 @@ public sealed partial class JsonAppSettingsStore : IAppSettingsStore, IAppSettin
     private DateTimeOffset cachedUpdatedAt;
     private AppSettingsSourceMetadata? cachedSource;
     private readonly StateCell<AppSettings> current;
+    private readonly StateCell<bool> controlKeepAliveEnabled;
     private readonly StateAuthority authority;
 
     public JsonAppSettingsStore(
@@ -37,6 +38,7 @@ public sealed partial class JsonAppSettingsStore : IAppSettingsStore, IAppSettin
         this.logger = logger;
         this.authority = authority;
         current = authority.ClaimCell<AppSettings>(StateItemUids.AppSettingsCurrent);
+        controlKeepAliveEnabled = authority.ClaimCell<bool>(StateItemUids.ControlKeepAliveEnabled);
     }
 
     public async Task<AppSettingsUpdateResult> LoadAsync(CancellationToken cancellationToken)
@@ -171,6 +173,12 @@ public sealed partial class JsonAppSettingsStore : IAppSettingsStore, IAppSettin
         var previous = authority.Read<AppSettings>(StateItemUids.AppSettingsCurrent);
         if (previous.HasValue && ComputeEffectiveDigest(previous.Value) == digest) return previous.Value;
         await current.PublishAsync(settings, SettingsChanged);
+        // Event: project the authoritative settings publication, without polling or
+        // waking the control rule for unrelated settings/interval changes.
+        var keepAlive = authority.Read<AppSettings>(StateItemUids.AppSettingsCurrent).Value.Control?.KeepAlive ?? false;
+        var published = authority.Read<bool>(StateItemUids.ControlKeepAliveEnabled);
+        if (!published.HasValue || published.Value != keepAlive)
+            await controlKeepAliveEnabled.PublishAsync(keepAlive, SettingsChanged);
         return settings;
     }
 

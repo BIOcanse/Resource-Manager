@@ -179,7 +179,7 @@ public sealed class HardwareControlBehaviorTests
     {
         public int Interval = 120;
         public Task<AppSettingsUpdateResult> LoadReadOnlyAsync(CancellationToken token) => Task.FromResult(new AppSettingsUpdateResult(
-            AppSettingsDefaults.Create() with { Control = new(Interval) }, DateTimeOffset.UtcNow, "fake",
+            AppSettingsDefaults.Create() with { Control = new(Interval, KeepAlive: true) }, DateTimeOffset.UtcNow, "fake",
             new(AppSettingsSourceKind.TestFixture, "test", "", "", false)));
         public Task<AppSettingsUpdateResult> LoadAsync(CancellationToken token) => LoadReadOnlyAsync(token);
         public Task<AppSettingsUpdateResult> SaveAsync(AppSettings settings, CancellationToken token) => throw new NotSupportedException();

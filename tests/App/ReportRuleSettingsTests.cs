@@ -26,11 +26,29 @@ namespace Resource_Manager_APP.Tests;
 // 设置页「报告判定」：default.json 给出规则名和默认值，用户值逐项覆盖，编译器统一校验。
 public sealed class ReportRuleSettingsTests
 {
+    [Fact]
+    public async Task ControlKeepAliveTravelsThroughGetPatchAndPut()
+    {
+        await using var fixture = await SettingsFixture.StartAsync();
+        var before = (await fixture.Client.GetFromJsonAsync<AppSettingsUpdateResult>("/api/settings/app"))!;
+        Assert.Equal(new AppHardwareControlSettings(120, false), before.Settings.Control);
+        using var patched = await fixture.PatchAsync("""{"control":{"keepAlive":true,"reassertionIntervalSeconds":17}}""");
+        Assert.Equal(HttpStatusCode.OK, patched.StatusCode);
+        var after = (await fixture.Client.GetFromJsonAsync<AppSettingsUpdateResult>("/api/settings/app"))!;
+        Assert.Equal(new AppHardwareControlSettings(17, true), after.Settings.Control);
+        using var put = await fixture.Client.PutAsJsonAsync("/api/settings/app", after.Settings with { Control = new(31, false) });
+        Assert.Equal(HttpStatusCode.OK, put.StatusCode);
+        var disabled = (await fixture.Client.GetFromJsonAsync<AppSettingsUpdateResult>("/api/settings/app"))!;
+        Assert.Equal(new AppHardwareControlSettings(31, false), disabled.Settings.Control);
+    }
+
     [Theory]
     [InlineData("{\"debug\":{\"debugLogEnabled\":\"yes\"}}", "$.debug.debugLogEnabled")]
     [InlineData("{\"debug\":[]}", "$.debug")]
     [InlineData("{\"debug\":{\"debugLogEnabled\":{}}}", "$.debug.debugLogEnabled")]
     [InlineData("{\"debug\":null}", "$.debug")]
+    [InlineData("{\"control\":{\"keepAlive\":\"yes\"}}", "$.control.keepAlive")]
+    [InlineData("{\"control\":{\"keepAlive\":null}}", "$.control.keepAlive")]
     // appearance is a retired section: an unknown path is rejected at the first name the settings do not have.
     [InlineData("{\"appearance\":{\"theme\":\"dark\"}}", "$.appearance")]
     [InlineData("{\"reports\":{\"ruleOverrides\":[{\"rule\":12}]}}", "$.reports.ruleOverrides[0].rule")]

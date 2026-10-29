@@ -21,7 +21,8 @@ public static class AppSettingsNormalizer
             new AppUpdateSettings(AppUpdateModes.Normalize(settings.Update?.Mode),
                 settings.Update?.PeriodicCheckEnabled ?? false,
                 Math.Clamp(settings.Update?.CheckIntervalHours ?? 24, 24, 168)),
-            new AppHardwareControlSettings(Math.Clamp(settings.Control?.ReassertionIntervalSeconds ?? 120, 1, 86_400)),
+            new AppHardwareControlSettings(Math.Clamp(settings.Control?.ReassertionIntervalSeconds ?? 120, 1, 86_400),
+                settings.Control?.KeepAlive ?? false),
             // Rule values are validated against the rule profile by the runtime plan compiler, not rewritten here.
             new AppReportSettings(settings.Reports?.RuleOverrides ?? []),
             (settings.MemoryProtection ?? new HostMemoryProtectionSettings()) with

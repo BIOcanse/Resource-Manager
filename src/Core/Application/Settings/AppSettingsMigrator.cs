@@ -95,7 +95,8 @@ public static class AppSettingsMigrator
                 ReadBoolean(root, "update", "periodicCheckEnabled", ReadBoolean(root, "update", "autoUpdateEnabled", false)),
                 ReadInt32(root, "update", "checkIntervalHours", 24)),
             new AppHardwareControlSettings(
-                ReadInt32(root, "control", "reassertionIntervalSeconds", 120)),
+                ReadInt32(root, "control", "reassertionIntervalSeconds", 120),
+                ReadBoolean(root, "control", "keepAlive", false)),
             ReadReports(root),
             ReadMemoryProtection(root));
 
