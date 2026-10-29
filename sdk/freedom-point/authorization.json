@@ -30,25 +30,25 @@
       "sha256": "5B48217611A902F877E4CC3DCF7F8DC5642F4BD6C91A242D4B595012599296C1"
     },
     {
-      "version": "0.1.0-dev.46",
-      "fileName": "FreedomPoint.Core.0.1.0-dev.46.nupkg",
-      "bytes": 94507,
+      "version": "0.1.0-dev.47",
+      "fileName": "FreedomPoint.Core.0.1.0-dev.47.nupkg",
+      "bytes": 102190,
       "id": "FreedomPoint.Core",
-      "sha256": "5E6684BB6C0470DF5BE9B2F8DE5420A19C426CA9B857E8F5CBB8119147027A14"
+      "sha256": "B21C69EA9D0CCEDEB0B82B90ADCEEFB17CA27B618CFBCEF77D2019EE7A5FBD5B"
     },
     {
-      "version": "0.1.0-dev.46",
-      "fileName": "FreedomPoint.Generators.0.1.0-dev.46.nupkg",
-      "bytes": 41628,
+      "version": "0.1.0-dev.47",
+      "fileName": "FreedomPoint.Generators.0.1.0-dev.47.nupkg",
+      "bytes": 42322,
       "id": "FreedomPoint.Generators",
-      "sha256": "74CA18B44DD1378B9ACC059B572B63F49489724E813D5750100ECDDC0D56AEFC"
+      "sha256": "2DC9CFE9B624F2509697C5AAD8AD6F598B1490328D0F2703DE6030F15EE6AE9F"
     },
     {
-      "version": "0.1.0-dev.46",
-      "fileName": "FreedomPoint.SourceTracking.0.1.0-dev.46.nupkg",
-      "bytes": 12179592,
+      "version": "0.1.0-dev.47",
+      "fileName": "FreedomPoint.SourceTracking.0.1.0-dev.47.nupkg",
+      "bytes": 12179596,
       "id": "FreedomPoint.SourceTracking",
-      "sha256": "A24DB5426A6FBBEED57B9984D0FFED1209FCF3577CE4A9290B7929D4DF58CCD1"
+      "sha256": "AF661429B1174586DC4DF0A8C2C8947B06932CAF9FC37EF7F4ACEECAA85C5630"
     }
   ],
   "firstPartyPublicLicensePending": false,
