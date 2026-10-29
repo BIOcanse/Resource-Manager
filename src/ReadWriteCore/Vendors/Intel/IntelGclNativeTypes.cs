@@ -18,7 +18,7 @@ internal struct IntelGclInitArgs
 }
 
 [StructLayout(LayoutKind.Explicit, Size = 320)]
-internal struct IntelGclDeviceProperties
+internal unsafe struct IntelGclDeviceProperties
 {
     [FieldOffset(0)] public uint Size;
     [FieldOffset(4)] public byte Version;
@@ -27,6 +27,8 @@ internal struct IntelGclDeviceProperties
     [FieldOffset(20)] public int DeviceType;
     [FieldOffset(64)] public uint VendorId;
     [FieldOffset(68)] public uint DevicePciId;
+    [FieldOffset(188)] public uint GraphicsAdapterProperties;
+    [FieldOffset(208)] public fixed byte Reserved[108];
 }
 
 [StructLayout(LayoutKind.Explicit, Size = 24)]

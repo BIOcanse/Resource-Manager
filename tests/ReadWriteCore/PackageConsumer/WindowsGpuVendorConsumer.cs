@@ -10,6 +10,10 @@ using ResourceManager.ReadWrite.Windows.Gpu;
 
 static class WindowsGpuVendorConsumer
 {
+    internal static void VerifyMissingIntelControlIdentity()
+        => Require(new IntelGraphicsControlBridge().Probe(null) == IntelGraphicsControlProbe.TargetMissing,
+            "missing write identity does not initialize hardware");
+
     public static void Run()
     {
         var owner = typeof(ReadWriteCore).Assembly;
@@ -30,7 +34,7 @@ static class WindowsGpuVendorConsumer
             && !GpuAdapterNameClassifier.IsLikelyIntegratedGpuName("NVIDIA GeForce RTX 4090"), "original classification is independent of scores");
         _ = new NvidiaNvmlControlBridge();
         _ = new NvidiaNvapiControlBridge();
-        Require(new IntelGraphicsControlBridge().FindIntegratedDevice(null) is null, "missing write identity does not initialize hardware");
+        VerifyMissingIntelControlIdentity();
 
         var nativePath = Path.Combine(AppContext.BaseDirectory, "runtimes", "win-x64", "native", "ResourceManager.AdlxBridge.dll");
         var library = NativeLibrary.Load(nativePath);

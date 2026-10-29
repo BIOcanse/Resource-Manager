@@ -68,9 +68,26 @@ internal sealed class RecordedIntegratedIntelHardware : IIntelGraphicsControlHar
     public double? OverrideReadback; public bool UseOverrideReadback;
     public Action? AfterWrite;
     public List<string> Calls = [];
-    public IntPtr? FindIntegratedDevice(ulong? key) => key == 0x800000001 ? new IntPtr(22) : null;
-    public bool TryAcceptOverclockWaiver(IntPtr device) { Calls.Add("waiver:"+device); return WaiverAccepted; }
-    public double? ReadFrequencyOffsetMhz(IntPtr device) { Calls.Add("read:"+device); return UseOverrideReadback ? OverrideReadback : Offset; }
-    public int WriteFrequencyOffsetMhz(IntPtr device,double value) { Calls.Add("write:"+device); Offset=value; AfterWrite?.Invoke(); return WriteResult; }
+        public IntelGraphicsControlProbe Probe(ulong? key, CancellationToken token = default)
+            => !IsAvailable ? IntelGraphicsControlProbe.DriverMissing : FindIntegratedDevice(key) is null ? IntelGraphicsControlProbe.TargetMissing : IntelGraphicsControlProbe.Ready;
+        public IntelGraphicsControlRead ReadFrequencyOffsetMhz(ulong? key, CancellationToken token = default)
+        {
+            token.ThrowIfCancellationRequested();
+            if (FindIntegratedDevice(key) is not { } device) return new(null, IntelGraphicsControlUnreadable.TargetMissing);
+            return ReadFrequencyOffsetMhz(device) is { } value ? new(value) : new(null, IntelGraphicsControlUnreadable.ReadingMissing);
+        }
+        public IntelGraphicsControlWrite WriteFrequencyOffsetMhz(ulong? key, double value, CancellationToken token = default)
+        {
+            token.ThrowIfCancellationRequested();
+            if (FindIntegratedDevice(key) is not { } device) return new(-1, null, IntelGraphicsControlWriteFailure.TargetMissing);
+            if (!TryAcceptOverclockWaiver(device)) return new(-1, null, IntelGraphicsControlWriteFailure.WaiverRejected);
+            token.ThrowIfCancellationRequested();
+            var code = WriteFrequencyOffsetMhz(device, value);
+            return code != 0 ? new(code, null, IntelGraphicsControlWriteFailure.DriverRejected) : new(code, ReadFrequencyOffsetMhz(device));
+        }
+    private IntPtr? FindIntegratedDevice(ulong? key) => key == 0x800000001 ? new IntPtr(22) : null;
+    private bool TryAcceptOverclockWaiver(IntPtr device) { Calls.Add("waiver:"+device); return WaiverAccepted; }
+    private double? ReadFrequencyOffsetMhz(IntPtr device) { Calls.Add("read:"+device); return UseOverrideReadback ? OverrideReadback : Offset; }
+    private int WriteFrequencyOffsetMhz(IntPtr device,double value) { Calls.Add("write:"+device); Offset=value; AfterWrite?.Invoke(); return WriteResult; }
     public int Disposals; public void Dispose()=>Disposals++;
 }

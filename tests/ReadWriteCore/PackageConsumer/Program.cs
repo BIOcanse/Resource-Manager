@@ -7,6 +7,13 @@ using ResourceManager.ReadWrite.Publications;
 using ResourceManager.ReadWrite.Windows;
 
 // This package consumer intentionally references no Resource Manager host assembly.
+if (args.Contains("--intel-igcl-control-recorded-only", StringComparer.Ordinal))
+{
+    WindowsGpuVendorConsumer.VerifyMissingIntelControlIdentity();
+    await AmdCpuIntegratedGpuControlOwnerConsumer.RunAsync();
+    await CanonicalControlFieldConsumer.RunAsync();
+    return;
+}
 if (args.Contains("--amd-control-recorded-only", StringComparer.Ordinal))
 {
     await AmdCpuIntegratedGpuControlOwnerConsumer.RunAsync();

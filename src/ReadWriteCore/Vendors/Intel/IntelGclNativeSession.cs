@@ -16,6 +16,9 @@ internal sealed class IntelGclNativeSession : IIntelGclSession
         => (this.functions, this.api) = (functions, api);
 
     internal static IntelGclNativeSession? Create()
+        => Create(1 /* Level Zero telemetry */, 1U << 16);
+
+    internal static IntelGclNativeSession? Create(uint flags, uint appVersion)
     {
         if (!OperatingSystem.IsWindows() || !Environment.Is64BitProcess) return null;
         IntelGclNativeFunctions? functions;
@@ -26,7 +29,7 @@ internal sealed class IntelGclNativeSession : IIntelGclSession
         // Like a CLR P/Invoke module, one process reference keeps SDK callbacks mapped.
         // ctlClose may report another caller still open; it does not permit DLL unload then.
         // API sessions are owned by this sample and closed at its end, including failures.
-        return functions is null ? null : Open(functions);
+        return functions is null ? null : Open(functions, flags, appVersion);
     }
 
     private static IntelGclNativeFunctions? LoadFunctions()
@@ -39,6 +42,9 @@ internal sealed class IntelGclNativeSession : IIntelGclSession
         {
             T Export<T>(string name) where T : Delegate
                 => Marshal.GetDelegateForFunctionPointer<T>(NativeLibrary.GetExport(library, name));
+            T? Optional<T>(string name) where T : Delegate
+                => NativeLibrary.TryGetExport(library, name, out var entry)
+                    ? Marshal.GetDelegateForFunctionPointer<T>(entry) : null;
             var pciState = NativeLibrary.TryGetExport(library, "ctlPciGetState", out var pciEntry)
                 ? Marshal.GetDelegateForFunctionPointer<IntelGclPciStateGet>(pciEntry) : null;
             var pciProperties = NativeLibrary.TryGetExport(library, "ctlPciGetProperties", out var pciPropertiesEntry)
@@ -49,7 +55,10 @@ internal sealed class IntelGclNativeSession : IIntelGclSession
                 ? Marshal.GetDelegateForFunctionPointer<IntelGclFanStateGet>(fanStateEntry) : null;
             functions = new IntelGclNativeFunctions(Export<IntelGclInit>("ctlInit"), Export<IntelGclClose>("ctlClose"),
                 Export<IntelGclEnumerate>("ctlEnumerateDevices"), Export<IntelGclProperties>("ctlGetDeviceProperties"),
-                Export<IntelGclTelemetry>("ctlPowerTelemetryGet"), pciState, pciProperties, fans, fanState);
+                Export<IntelGclTelemetry>("ctlPowerTelemetryGet"), pciState, pciProperties, fans, fanState,
+                Optional<IntelGclOverclockWaiver>("ctlOverclockWaiverSet"),
+                Optional<IntelGclFrequencyOffsetGet>("ctlOverclockGpuFrequencyOffsetGet"),
+                Optional<IntelGclFrequencyOffsetSet>("ctlOverclockGpuFrequencyOffsetSet"));
         }
         catch
         {
@@ -60,11 +69,25 @@ internal sealed class IntelGclNativeSession : IIntelGclSession
     }
 
     // The same native boundary is used by pure managed SDK substitutes.
-    internal static IntelGclNativeSession? Open(IntelGclNativeFunctions functions)
+    internal static IntelGclNativeSession? Open(IntelGclNativeFunctions functions, uint flags = 1, uint appVersion = 1U << 16)
     {
-        var args = new IntelGclInitArgs { Size = 36, AppVersion = 1U << 16, Flags = 1 /* Level Zero */ };
+        var args = new IntelGclInitArgs { Size = 36, AppVersion = appVersion, Flags = flags };
         return functions.Init(ref args, out var api) == 0 && api != IntPtr.Zero ? new(functions, api) : null;
     }
+
+    internal unsafe IntelGraphicsControlBridge.DeviceIdentity? ReadControlIdentity(IntPtr device)
+    {
+        ulong luid = 0;
+        var properties = new IntelGclDeviceProperties { Size = 320, DeviceId = (IntPtr)(&luid), DeviceIdSize = 8 };
+        return functions.Properties(device, ref properties) == 0 && properties.Size == 320 && properties.Version == 0
+            && properties.DeviceId == (IntPtr)(&luid) && properties.DeviceIdSize == 8 && luid != 0
+            ? new(device, luid, properties.VendorId, properties.DeviceType, properties.GraphicsAdapterProperties) : null;
+    }
+
+    internal int AcceptOverclockWaiver(IntPtr device) => functions.OverclockWaiver?.Invoke(device) ?? -1;
+    internal double? ReadFrequencyOffset(IntPtr device)
+        => functions.FrequencyOffsetGet is { } read && read(device, out var offset) == 0 && double.IsFinite(offset) ? offset : null;
+    internal int WriteFrequencyOffset(IntPtr device, double offset) => functions.FrequencyOffsetSet?.Invoke(device, offset) ?? -1;
 
     public bool TryGetDevices(out IntPtr[] devices, CancellationToken cancellationToken)
     {
@@ -157,12 +180,17 @@ internal sealed class IntelGclNativeSession : IIntelGclSession
         return true;
     }
 
-    public void Dispose()
+    internal int? Close()
     {
         var handle = Interlocked.Exchange(ref api, IntPtr.Zero);
-        if (handle == IntPtr.Zero) return;
+        if (handle == IntPtr.Zero) return null;
         var result = functions.Close(handle);
-        if (result is not (0 or 1 /* SUCCESS_STILL_OPEN_BY_ANOTHER_CALLER */))
+        return result is 0 or 1 /* SUCCESS_STILL_OPEN_BY_ANOTHER_CALLER */ ? null : result;
+    }
+
+    public void Dispose()
+    {
+        if (Close() is { } result)
             throw new ExternalException("IGCL could not close the sample API session.", result);
     }
 
@@ -172,7 +200,9 @@ internal sealed class IntelGclNativeSession : IIntelGclSession
 
 internal sealed record IntelGclNativeFunctions(IntelGclInit Init, IntelGclClose Close, IntelGclEnumerate Enumerate,
     IntelGclProperties Properties, IntelGclTelemetry Telemetry, IntelGclPciStateGet? PciState = null, IntelGclPciPropertiesGet? PciProperties = null,
-    IntelGclEnumerate? Fans = null, IntelGclFanStateGet? FanState = null);
+    IntelGclEnumerate? Fans = null, IntelGclFanStateGet? FanState = null,
+    IntelGclOverclockWaiver? OverclockWaiver = null, IntelGclFrequencyOffsetGet? FrequencyOffsetGet = null,
+    IntelGclFrequencyOffsetSet? FrequencyOffsetSet = null);
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
 internal delegate int IntelGclInit(ref IntelGclInitArgs args, out IntPtr api);
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -190,3 +220,10 @@ internal delegate int IntelGclPciPropertiesGet(IntPtr device, ref IntelGclPciPro
 
 [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
 internal delegate int IntelGclFanStateGet(IntPtr fan, uint units, out int rpm);
+
+[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+internal delegate int IntelGclOverclockWaiver(IntPtr device);
+[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+internal delegate int IntelGclFrequencyOffsetGet(IntPtr device, out double offset);
+[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+internal delegate int IntelGclFrequencyOffsetSet(IntPtr device, double offset);

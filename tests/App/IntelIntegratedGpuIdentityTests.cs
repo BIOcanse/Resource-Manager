@@ -8,7 +8,7 @@ using ResourceManager.App.Domain.Metrics;
 using ResourceManager.App.Infrastructure.Control;
 using ResourceManager.App.Infrastructure.Control.Writers;
 using Device = ResourceManager.ReadWrite.Vendors.Intel.IntelGraphicsControlBridge.DeviceIdentity;
-using Properties = ResourceManager.ReadWrite.Vendors.Intel.IntelGraphicsControlBridge.CtlDeviceAdapterProperties;
+using Properties = ResourceManager.ReadWrite.Vendors.Intel.IntelGclDeviceProperties;
 
 namespace Resource_Manager_APP.Tests;
 
@@ -28,7 +28,7 @@ public sealed class IntelIntegratedGpuIdentityTests
         Assert.Equal(8, IntPtr.Size);
         Assert.Equal(320, Marshal.SizeOf<Properties>());
         foreach (var (field, expected) in new[] { (nameof(Properties.DeviceId), 8), (nameof(Properties.DeviceIdSize), 16),
-                     (nameof(Properties.DeviceType), 20), (nameof(Properties.PciVendorId), 64),
+                     (nameof(Properties.DeviceType), 20), (nameof(Properties.VendorId), 64),
                      (nameof(Properties.GraphicsAdapterProperties), 188), (nameof(Properties.Reserved), 208) })
             Assert.Equal(expected, Marshal.OffsetOf<Properties>(field).ToInt32());
     }
@@ -118,10 +118,27 @@ public sealed class IntelIntegratedGpuIdentityTests
         public double Offset { get; private set; } = 15;
         public bool OverrideReadback { get; init; }
         public double? Readback { get; init; }
-        public IntPtr? FindIntegratedDevice(ulong? key) => IntelGraphicsControlBridge.SelectIntegratedDevice(key ?? 0, devices);
-        public bool TryAcceptOverclockWaiver(IntPtr device) { Calls.Add($"waiver:{device}"); return true; }
-        public double? ReadFrequencyOffsetMhz(IntPtr device) { Calls.Add($"read:{device}"); return OverrideReadback ? Readback : Offset; }
-        public int WriteFrequencyOffsetMhz(IntPtr device, double offset) { Calls.Add($"write:{device}"); Offset = offset; return 0; }
+        public IntelGraphicsControlProbe Probe(ulong? key, CancellationToken token = default)
+            => !IsAvailable ? IntelGraphicsControlProbe.DriverMissing : FindIntegratedDevice(key) is null ? IntelGraphicsControlProbe.TargetMissing : IntelGraphicsControlProbe.Ready;
+        public IntelGraphicsControlRead ReadFrequencyOffsetMhz(ulong? key, CancellationToken token = default)
+        {
+            token.ThrowIfCancellationRequested();
+            if (FindIntegratedDevice(key) is not { } device) return new(null, IntelGraphicsControlUnreadable.TargetMissing);
+            return ReadFrequencyOffsetMhz(device) is { } value ? new(value) : new(null, IntelGraphicsControlUnreadable.ReadingMissing);
+        }
+        public IntelGraphicsControlWrite WriteFrequencyOffsetMhz(ulong? key, double value, CancellationToken token = default)
+        {
+            token.ThrowIfCancellationRequested();
+            if (FindIntegratedDevice(key) is not { } device) return new(-1, null, IntelGraphicsControlWriteFailure.TargetMissing);
+            if (!TryAcceptOverclockWaiver(device)) return new(-1, null, IntelGraphicsControlWriteFailure.WaiverRejected);
+            token.ThrowIfCancellationRequested();
+            var code = WriteFrequencyOffsetMhz(device, value);
+            return code != 0 ? new(code, null, IntelGraphicsControlWriteFailure.DriverRejected) : new(code, ReadFrequencyOffsetMhz(device));
+        }
+        private IntPtr? FindIntegratedDevice(ulong? key) => IntelGraphicsControlBridge.SelectIntegratedDevice(key ?? 0, devices);
+        private bool TryAcceptOverclockWaiver(IntPtr device) { Calls.Add($"waiver:{device}"); return true; }
+        private double? ReadFrequencyOffsetMhz(IntPtr device) { Calls.Add($"read:{device}"); return OverrideReadback ? Readback : Offset; }
+        private int WriteFrequencyOffsetMhz(IntPtr device, double offset) { Calls.Add($"write:{device}"); Offset = offset; return 0; }
     }
 
     private sealed class Consent(bool accepted) : IControlOverclockConsent

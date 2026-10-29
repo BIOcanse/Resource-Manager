@@ -562,11 +562,9 @@ public sealed class CanonicalMetricControlBindingTests
     }
     private sealed class IntelGraphicsHardware : IIntelGraphicsControlHardware
     {
-        public bool IsAvailable => false;
-        public IntPtr? FindIntegratedDevice(ulong? key) => null;
-        public bool TryAcceptOverclockWaiver(IntPtr device) => throw new InvalidOperationException("unselected waiver");
-        public double? ReadFrequencyOffsetMhz(IntPtr device) => throw new InvalidOperationException();
-        public int WriteFrequencyOffsetMhz(IntPtr device, double value) => throw new InvalidOperationException("unselected setter");
+        public IntelGraphicsControlProbe Probe(ulong? key, CancellationToken token = default) => IntelGraphicsControlProbe.DriverMissing;
+        public IntelGraphicsControlRead ReadFrequencyOffsetMhz(ulong? key, CancellationToken token = default) => throw new InvalidOperationException();
+        public IntelGraphicsControlWrite WriteFrequencyOffsetMhz(ulong? key, double value, CancellationToken token = default) => throw new InvalidOperationException("unselected setter");
     }
     private sealed class AdlxHardware : IAdlxTuningHardware
     {

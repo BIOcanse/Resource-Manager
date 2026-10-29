@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Runtime.InteropServices;
 using ResourceManager.ReadWrite.Helpers;
 using ResourceManager.ReadWrite.Vendors.Amd;
 using ResourceManager.ReadWrite.Vendors.Intel;
@@ -45,6 +46,16 @@ internal static class AmdCpuIntegratedGpuControlOwnerConsumer
                 Require(gpu.Probe(intelTarget,offset).CanWrite && intel.Calls.Count==0,"Intel Probe submitted waiver or setting.");
                 Require((await gpu.WriteAsync(intelTarget,offset,new(offset.Field,45.5),default)).Status==IntegratedGpuControlStatus.Applied,"Intel fractional MHz failed.");
                 Require(intel.Calls.SequenceEqual(new[]{"waiver:22","write:22","read:22"}),"Selected Intel device/waiver/write/read order changed.");
+                intel.ReleaseErrorCode = -17;
+                var releaseWarnings = new List<Exception?>();
+                using var releaseOwner = new IntegratedGpuControlResource(helper, intel, new(baseline, _ => Task.FromResult(true)),
+                    warning: (error, _, _) => releaseWarnings.Add(error));
+                var releasedWrite = await releaseOwner.WriteAsync(intelTarget, offset, new(offset.Field, 55.5));
+                Require(releasedWrite.Status == IntegratedGpuControlStatus.Applied && releasedWrite.ReadbackVerified && intel.Offset == 55.5,
+                    "Release error hid an applied, verified Intel write.");
+                Require(releaseWarnings.Count == 1 && releaseWarnings[0] is ExternalException { ErrorCode: -17 },
+                    "Release error was not reported exactly once through the public result contract.");
+                Console.WriteLine("[IGCL-RELEASE-RECEIPT] applied=verified; release=-17; warnings=1; recorded.");
             }
             var occupied=Path.Combine(directory,"occupied");File.WriteAllText(occupied,"file");var warnings=0;
             using(var cpu=new AmdCpuControlResource(helper,AmdCpuControlOptions.InDirectory(occupied),warning:(_,_,_)=>warnings++))
@@ -105,9 +116,28 @@ internal static class AmdCpuIntegratedGpuControlOwnerConsumer
     private sealed class RecordedIntel : IIntelGraphicsControlHardware
     {
         public bool IsAvailable=>true;public List<string> Calls=[];public double Offset=15;
-        public IntPtr? FindIntegratedDevice(ulong? key)=>key==0x800000001 ? new IntPtr(22):null;
-        public bool TryAcceptOverclockWaiver(IntPtr device){Calls.Add("waiver:"+device);return true;}
-        public double? ReadFrequencyOffsetMhz(IntPtr device){Calls.Add("read:"+device);return Offset;}
-        public int WriteFrequencyOffsetMhz(IntPtr device,double value){Calls.Add("write:"+device);Offset=value;return 0;}
+        public int? ReleaseErrorCode;
+        public IntelGraphicsControlProbe Probe(ulong? key, CancellationToken token = default)
+            => !IsAvailable ? IntelGraphicsControlProbe.DriverMissing : FindIntegratedDevice(key) is null ? IntelGraphicsControlProbe.TargetMissing : IntelGraphicsControlProbe.Ready;
+        public IntelGraphicsControlRead ReadFrequencyOffsetMhz(ulong? key, CancellationToken token = default)
+        {
+            token.ThrowIfCancellationRequested();
+            if (FindIntegratedDevice(key) is not { } device) return new(null, IntelGraphicsControlUnreadable.TargetMissing);
+            return ReadFrequencyOffsetMhz(device) is { } value ? new(value) : new(null, IntelGraphicsControlUnreadable.ReadingMissing);
+        }
+        public IntelGraphicsControlWrite WriteFrequencyOffsetMhz(ulong? key, double value, CancellationToken token = default)
+        {
+            token.ThrowIfCancellationRequested();
+            if (FindIntegratedDevice(key) is not { } device) return new(-1, null, IntelGraphicsControlWriteFailure.TargetMissing);
+            if (!TryAcceptOverclockWaiver(device)) return new(-1, null, IntelGraphicsControlWriteFailure.WaiverRejected);
+            token.ThrowIfCancellationRequested();
+            var code = WriteFrequencyOffsetMhz(device, value);
+            return code != 0 ? new(code, null, IntelGraphicsControlWriteFailure.DriverRejected, ReleaseErrorCode)
+                : new(code, ReadFrequencyOffsetMhz(device), ReleaseErrorCode: ReleaseErrorCode);
+        }
+        private IntPtr? FindIntegratedDevice(ulong? key)=>key==0x800000001 ? new IntPtr(22):null;
+        private bool TryAcceptOverclockWaiver(IntPtr device){Calls.Add("waiver:"+device);return true;}
+        private double? ReadFrequencyOffsetMhz(IntPtr device){Calls.Add("read:"+device);return Offset;}
+        private int WriteFrequencyOffsetMhz(IntPtr device,double value){Calls.Add("write:"+device);Offset=value;return 0;}
     }
 }

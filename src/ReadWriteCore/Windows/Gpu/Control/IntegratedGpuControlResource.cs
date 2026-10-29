@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Runtime.InteropServices;
 using ResourceManager.ReadWrite.Helpers;
 using ResourceManager.ReadWrite.Vendors.Intel;
 
@@ -139,16 +140,12 @@ public sealed class IntegratedGpuControlResource : IDisposable
             ? value
             : Math.Clamp(value, bounds.Minimum, bounds.Maximum);
 
-        // Intel 那条的单位是 MHz，不是档位 —— 别把它当整数档位取整。
-        if (target.Route == IntegratedGpuControlRoute.IntelIntegrated)
-        {
-            return await WriteIntelAsync(target, capability, wanted, cancellationToken).ConfigureAwait(false);
-        }
-
         await writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (target.Route == IntegratedGpuControlRoute.IntelIntegrated)
+                return await WriteIntelAsync(target, capability, wanted, cancellationToken).ConfigureAwait(false);
             try
             {
                 if (!amdBaseline.TryRead(target.Id, out var baseline))
@@ -209,17 +206,25 @@ public sealed class IntegratedGpuControlResource : IDisposable
         // Intel 那条走 IGCL，和辅助进程没关系。
         if (target.Route == IntegratedGpuControlRoute.IntelIntegrated)
         {
-            return intel.FindIntegratedDevice(target.AdapterKey) is { } device
-                && intel.ReadFrequencyOffsetMhz(device) is { } offset
-                    ? new IntegratedGpuControlValue(
-                        target.Id,
-                        capability.Id,
-                        Number: offset,
-                        Unit: "MHz")
-                    : new IntegratedGpuControlValue(
-                        target.Id,
-                        capability.Id,
-                        UnreadableReason: intel.IsAvailable ? IntelTargetMissing : IntelDriverMissing);
+            await writeGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                var intelReading = intel.ReadFrequencyOffsetMhz(target.AdapterKey, cancellationToken);
+                return intelReading.OffsetMhz is { } offset && intelReading.Unreadable is null
+                    ? new(target.Id, capability.Id, Number: offset, Unit: "MHz")
+                    : new(target.Id, capability.Id, UnreadableReason: intelReading.Unreadable switch
+                    {
+                        IntelGraphicsControlUnreadable.DriverMissing => IntelDriverMissing,
+                        IntelGraphicsControlUnreadable.TargetMissing => IntelTargetMissing,
+                        _ => Describe(IntegratedGpuControlMessage.ReadingMissing)
+                    });
+            }
+            catch (Exception error) when (IsNativeFailure(error))
+            {
+                WarnNativeFailure(error);
+                return new(target.Id, capability.Id, UnreadableReason: Describe(IntegratedGpuControlMessage.ReadingMissing));
+            }
+            finally { writeGate.Release(); }
         }
 
         var description = await SendAsync("describe", null, cancellationToken).ConfigureAwait(false);
@@ -244,67 +249,71 @@ public sealed class IntegratedGpuControlResource : IDisposable
                 capability.Id,
                 UnreadableReason: Describe(IntegratedGpuControlMessage.ReadingMissing));
     }
+    // Use the existing gate for the whole Intel operation, including close. Reads and
+    // probes cannot observe a write between waiver/set/readback. No second lock order.
     private IntegratedGpuControlAvailability ProbeIntel(IntegratedGpuControlTarget target)
     {
-        if (!intel.IsAvailable)
+        try
         {
-            return IntegratedGpuControlAvailability.No(IntelDriverMissing, kind: IntegratedGpuControlUnavailableKind.Component);
+            IntelGraphicsControlProbe probe;
+            writeGate.Wait();
+            try { probe = intel.Probe(target.AdapterKey); }
+            finally { writeGate.Release(); }
+            // Consent owns no IGCL session and must not block other operations on the gate.
+            if (probe == IntelGraphicsControlProbe.DriverMissing)
+                return IntegratedGpuControlAvailability.No(IntelDriverMissing, kind: IntegratedGpuControlUnavailableKind.Component);
+            if (!isOverclockAccepted(CancellationToken.None).GetAwaiter().GetResult())
+                return IntegratedGpuControlAvailability.No(OverclockNotAccepted, kind: IntegratedGpuControlUnavailableKind.Prerequisite);
+            return probe == IntelGraphicsControlProbe.TargetMissing
+                ? IntegratedGpuControlAvailability.No(IntelTargetMissing) : IntegratedGpuControlAvailability.Yes();
         }
-        if (!isOverclockAccepted(CancellationToken.None).GetAwaiter().GetResult())
+        catch (Exception error) when (IsNativeFailure(error))
         {
-            return IntegratedGpuControlAvailability.No(OverclockNotAccepted, kind: IntegratedGpuControlUnavailableKind.Prerequisite);
+            WarnNativeFailure(error);
+            return IntegratedGpuControlAvailability.No(Describe(IntegratedGpuControlMessage.DriverRejected));
         }
-        if (intel.FindIntegratedDevice(target.AdapterKey) is null)
-        {
-            return IntegratedGpuControlAvailability.No(IntelTargetMissing);
-        }
-
-        // Driver consent is submitted only by the explicit write operation.
-        return IntegratedGpuControlAvailability.Yes();
     }
 
     private async Task<IntegratedGpuControlOutcome> WriteIntelAsync(
-        IntegratedGpuControlTarget target,
-        IntegratedGpuControlCapability capability,
+        IntegratedGpuControlTarget target, IntegratedGpuControlCapability capability,
         double offsetMhz, CancellationToken cancellationToken)
     {
-        if (intel.FindIntegratedDevice(target.AdapterKey) is not { } device)
-        {
-            return Failed(target, capability, intel.IsAvailable ? IntelTargetMissing : IntelDriverMissing);
-        }
         var accepted = await isOverclockAccepted(cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
-        if (!accepted)
+        if (!accepted) return Failed(target, capability, OverclockNotAccepted);
+        try
         {
-            return Failed(target, capability, OverclockNotAccepted);
+            var result = intel.WriteFrequencyOffsetMhz(target.AdapterKey, offsetMhz, cancellationToken);
+            if (result.ReleaseErrorCode is { } releaseError)
+                WarnNativeFailure(new ExternalException("IGCL could not close the write API session.", releaseError));
+            if (result.Failure is { } failure)
+            {
+                if (failure == IntelGraphicsControlWriteFailure.DriverRejected)
+                    Warn(null, IntegratedGpuControlMessage.IntelRejectedWarning, offsetMhz, result.DriverResult);
+                return Failed(target, capability, failure switch
+                {
+                    IntelGraphicsControlWriteFailure.DriverMissing => IntelDriverMissing,
+                    IntelGraphicsControlWriteFailure.TargetMissing => IntelTargetMissing,
+                    IntelGraphicsControlWriteFailure.WaiverRejected => Describe(IntegratedGpuControlMessage.WaiverRejected),
+                    _ => Describe(IntegratedGpuControlMessage.DriverRejected)
+                });
+            }
+            return result.DriverResult != 0 || result.ReadbackMhz is not { } applied || !double.IsFinite(applied) || Math.Abs(applied - offsetMhz) > 1
+                ? Failed(target, capability, NotEffective)
+                : new(target.Id, capability.Id, IntegratedGpuControlStatus.Applied, null) { ReadbackVerified = true };
         }
-        if (!intel.TryAcceptOverclockWaiver(device))
+        catch (Exception error) when (IsNativeFailure(error))
         {
-            return Failed(target, capability, Describe(IntegratedGpuControlMessage.WaiverRejected));
-        }
-
-        cancellationToken.ThrowIfCancellationRequested();
-        var result = intel.WriteFrequencyOffsetMhz(device, offsetMhz);
-        // Once the setter has run, return its verified receipt even if the caller cancels.
-        if (result != 0)
-        {
-            Warn(null,IntegratedGpuControlMessage.IntelRejectedWarning,
-                offsetMhz,
-                result);
+            // Work did not produce a receipt. Completed writes report release failures as data above.
+            WarnNativeFailure(error);
             return Failed(target, capability, Describe(IntegratedGpuControlMessage.DriverRejected));
         }
-
-        // 回读核对。驱动会按硬件余量夹值，夹过之后就不是用户要的那个数了。
-        var readBack = intel.ReadFrequencyOffsetMhz(device);
-        return readBack is not { } applied || !double.IsFinite(applied) || Math.Abs(applied - offsetMhz) > 1
-            ? Failed(target, capability, NotEffective)
-            : new IntegratedGpuControlOutcome(
-                target.Id,
-                capability.Id,
-                IntegratedGpuControlStatus.Applied,
-                null) { ReadbackVerified = true };
     }
 
+    private static bool IsNativeFailure(Exception error)
+        => error is ExternalException or DllNotFoundException or EntryPointNotFoundException or BadImageFormatException;
+    private void WarnNativeFailure(Exception error)
+        => Warn(error, IntegratedGpuControlMessage.IntelRejectedWarning, "IGCL operation/release", error.HResult);
     private Task<JsonElement?> SendAsync(string operation,IReadOnlyDictionary<string,object?>? arguments,CancellationToken token)
         => bridge is null ? Task.FromResult<JsonElement?>(null) : bridge.SendAsync(operation,arguments,token);
     private JsonElement? Ask(string operation)
