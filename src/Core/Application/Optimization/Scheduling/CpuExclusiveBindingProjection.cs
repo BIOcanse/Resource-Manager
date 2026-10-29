@@ -32,7 +32,7 @@ public static class CpuExclusiveBindingProjection
                     topology),
                 CpuMaximumOccupancyModes.Normalize(policy.CpuMaximumOccupancyMode),
                 policy.UpdatedAt))
-            .OrderBy(static binding => binding.SoftwareName, StringComparer.CurrentCultureIgnoreCase)
+            .OrderBy(static binding => binding.SoftwareName, StringComparer.OrdinalIgnoreCase)
             .ThenBy(static binding => binding.SoftwareId, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UseSharedCompilation>false</UseSharedCompilation>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Exercise the actual language/resource paths without starting any product service or device reader. -->
+    <Compile Include="../../../src/Shared/Localization/AppLanguage.cs" Link="AppLanguage.cs" />
+    <Compile Include="../../../src/Shared/Localization/ToolText.cs" Link="ToolText.cs" />
+    <Compile Include="../../../src/Shared/Packages/ReleaseVersion.cs" Link="ReleaseVersion.cs" />
+    <Compile Include="../../../src/ReadWriteCore/Windows/Gpu/GpuAdapterNameClassifier.cs" Link="GpuAdapterNameClassifier.cs" />
+    <Compile Include="../../../src/UI/Core/WebView/TrustedFrontendDocumentPolicy.cs" Link="TrustedFrontendDocumentPolicy.cs" />
+    <EmbeddedResource Include="../../../src/Shared/Localization/ToolLocales/*.json"
+                      LogicalName="ResourceManager.Shared.Localization.ToolLocales.%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

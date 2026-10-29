@@ -8,6 +8,16 @@ namespace Resource_Manager_APP.Tests;
 public sealed class GpuPerformanceScorePresetResolverTests
 {
     [Fact]
+    public void CompatibilityCharactersKeepIntegratedGpuClassificationAndScore()
+    {
+        var expected = GpuPerformanceScorePresetResolver.Resolve("AMD Radeon 890M", 0, 0);
+        var actual = GpuPerformanceScorePresetResolver.Resolve("ＡＭＤ ＲＡＤＥＯＮ ８９０Ｍ", 0, 0);
+
+        Assert.True(actual.IsIntegrated);
+        Assert.Equal(expected.Score, actual.Score);
+    }
+
+    [Fact]
     public void Resolve_OrdersDesktopNvidiaAndAmdByAbsoluteHierarchyScore()
     {
         var rtx5090 = GpuPerformanceScorePresetResolver.Resolve("NVIDIA GeForce RTX 5090", 32UL << 30, 2400);

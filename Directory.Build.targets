@@ -1,4 +1,8 @@
 <Project>
+  <!-- Evaluate after project properties, so project-local overrides work as well as -p. -->
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'ResourceManager.App' or '$(MSBuildProjectName)' == 'ResourceManager.NativeUi'">
+    <RuntimeHostConfigurationOption Include="System.Globalization.UseNls" Value="$(ResourceManagerUseNls)" />
+  </ItemGroup>
   <PropertyGroup Condition="'$(MSBuildProjectName)' == 'ResourceManager.App' or '$(MSBuildProjectName)' == 'ResourceManager.ReadWriteCore' or '$(MSBuildProjectName)' == 'ResourceManager.Shared'">
     <RuntimeReadStrict Condition="'$(RuntimeReadStrict)' == ''">false</RuntimeReadStrict>
     <!-- Findings remain visible when the project treats its other warnings as errors. -->

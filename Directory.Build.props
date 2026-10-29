@@ -1,4 +1,10 @@
 <Project>
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'ResourceManager.App' or '$(MSBuildProjectName)' == 'ResourceManager.NativeUi'">
+    <!-- Windows NLS retains named cultures and OS language selection without loading .NET's ICU data.
+         Restore ICU with -p:ResourceManagerUseNls=false; invariant mode is a separate explicit opt-in. -->
+    <ResourceManagerUseNls Condition="'$(ResourceManagerUseNls)' == ''">true</ResourceManagerUseNls>
+    <InvariantGlobalization Condition="'$(InvariantGlobalization)' == ''">false</InvariantGlobalization>
+  </PropertyGroup>
   <PropertyGroup>
     <!-- This custom property must be known while native artifact paths are evaluated. -->
     <ResourceManagerStateNames Condition="'$(ResourceManagerStateNames)' == ''">true</ResourceManagerStateNames>

@@ -6,6 +6,37 @@ namespace ResourceManager.App.Tests;
 
 public sealed class CpuExclusiveBindingProjectionTests
 {
+    [Theory]
+    [InlineData("en-US")]
+    [InlineData("tr-TR")]
+    [InlineData("sv-SE")]
+    public void CreateOrdersSoftwareNamesOrdinallyRegardlessOfCurrentCulture(string culture)
+    {
+        var previous = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.GetCultureInfo(culture);
+            var policies = new[]
+            {
+                CreatePolicy("software:z", "ä", DateTimeOffset.UnixEpoch, ["core:0"]),
+                CreatePolicy("software:b", "a", DateTimeOffset.UnixEpoch, ["core:0"]),
+                CreatePolicy("software:a", "A", DateTimeOffset.UnixEpoch, ["core:0"]),
+                CreatePolicy("software:i", "I", DateTimeOffset.UnixEpoch, ["core:0"]),
+                CreatePolicy("software:i-lower", "i", DateTimeOffset.UnixEpoch, ["core:0"])
+            };
+            var snapshot = CpuExclusiveBindingProjection.Create(CreateTopology(),
+                new GpuPlacementPolicyDocument(GpuPlacementPolicyDocumentVersions.Current, policies, [], DateTimeOffset.UnixEpoch),
+                DateTimeOffset.UnixEpoch);
+
+            Assert.Equal(["software:a", "software:b", "software:i", "software:i-lower", "software:z"],
+                snapshot.Bindings.Select(binding => binding.SoftwareId));
+        }
+        finally
+        {
+            System.Globalization.CultureInfo.CurrentCulture = previous;
+        }
+    }
+
     [Fact]
     public void CreateExpandsCcdAndMultiCoreBindingsWithoutChangingSoftwareScope()
     {
