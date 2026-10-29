@@ -2262,7 +2262,7 @@
         "semantic_fingerprint": 20075
       },
       {
-        "template_id": "gpu_nvidia_fb_used_including_reserved_bytes.optional",
+        "template_id": "gpu_nvidia_fb_used_excluding_reserved_bytes.optional",
         "metric_id_template": "gpu.{gpu}.nvmlFbUsedBytes",
         "source_id": "nvidia.nvml",
         "scope_expansion": "gpu_adapter",

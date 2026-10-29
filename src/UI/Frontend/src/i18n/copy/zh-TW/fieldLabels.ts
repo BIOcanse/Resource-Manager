@@ -283,7 +283,7 @@ export const zhTwFieldLabelsCopy: Pick<AppCopy, "fieldLabel" | "fieldValueLabel"
     gpu_nvidia_pcie_maximum_generation: { label: "PCIe 最高世代（NVML）", hint: "支援的最高 PCIe 世代（NVML）。" },
     gpu_nvidia_pcie_maximum_width_lanes: { label: "PCIe 最大通道數（NVML）", hint: "支援的最大 PCIe 通道數（NVML）。" },
     gpu_nvidia_fb_reserved_bytes: { label: "視訊記憶體保留（NVML）", hint: "為驅動程式和系統保留的視訊記憶體（NVML）。" },
-    gpu_nvidia_fb_used_including_reserved_bytes: { label: "視訊記憶體已用含保留（NVML）", hint: "包含保留部分在內的已用視訊記憶體（NVML）。" },
+    gpu_nvidia_fb_used_excluding_reserved_bytes: { label: "視訊記憶體已用不含保留（NVML）", hint: "不含保留部分的已用視訊記憶體（NVML）。" },
     gpu_nvidia_fb_free_bytes: { label: "視訊記憶體閒置（NVML）", hint: "未使用的視訊記憶體（NVML）。" },
     gpu_nvidia_memory_transfer_busy_percent: { label: "視訊記憶體控制器忙碌率（NVML）", hint: "最近一個取樣週期內視訊記憶體處於讀寫狀態的時間百分比（NVML）。" },
     gpu_nvidia_encoder_busy_percent: { label: "編碼器忙碌率（NVML）", hint: "視訊編碼器的忙碌百分比（NVML）。" },

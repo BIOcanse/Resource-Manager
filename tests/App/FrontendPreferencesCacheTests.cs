@@ -533,6 +533,36 @@ public sealed class FrontendPreferencesCacheTests : IDisposable
         Assert.Empty(Owner().Overlay("old").MetricSources);
     }
 
+    [Fact]
+    public void RenamedNvmlFbUsedFieldIsMigratedInCardSlotsAndOverlaySources()
+    {
+        // Migration frontend-preferences-nvml-fb-used-v1: only the retired v2 name changes; the v1 field,
+        // metric ids and every other value are left as they were.
+        const string v1 = "gpu_nvidia_fb_used_v1_including_reserved_bytes";
+        static string Preferences(string field) => """
+            {"dashboard":{"version":17,"cards":[{"id":"gpu-card","slots":[
+              {"metricId":"<field>@gpu:a","size":"medium","binding":{"scopeKind":"device-field","scopeKey":"gpu:a"}},
+              {"metricId":"<v1>@gpu:a","size":"small","binding":{"scopeKind":"device-field","scopeKey":"gpu:a"}},
+              {"metricId":"gpu.0.nvmlFbUsedBytes","size":"small","binding":{"scopeKind":"gpu","scopeKey":"gpu:a"}}]}],
+              "resourceBars":[{"id":"gpu-bar","metricId":"gpu.0.vram","scaleMode":"capacity"}]},
+             "overlays":{"game":{"enabled":true,"metrics":["gpu.vram","gpu.vramV1"],"metricSources":{
+              "gpu.vram":{"fieldName":"<field>","deviceIdentity":"gpu:a"},
+              "gpu.vramV1":{"fieldName":"<v1>","deviceIdentity":"gpu:a"}}}}}
+            """.Replace("<field>", field).Replace("<v1>", v1);
+        File.WriteAllText(Cache, Preferences(FrontendPreferencesOwner.RetiredNvmlFbUsedField));
+        var expectedPath = Path.Combine(root, "expected.json");
+        File.WriteAllText(expectedPath, Preferences(FrontendPreferencesOwner.NvmlFbUsedField));
+        var expected = Serialize(new FrontendPreferencesOwner(expectedPath).Read());
+
+        var loaded = Owner().Read();
+        Assert.Equal(expected, Serialize(loaded));
+        Assert.Equal(FrontendPreferencesOwner.NvmlFbUsedField, loaded.Overlays["game"].SourceFor("gpu.vram")!.FieldName);
+        var written = File.ReadAllText(Cache);
+        Assert.DoesNotContain(FrontendPreferencesOwner.RetiredNvmlFbUsedField, written);
+        Assert.Contains(v1, written);
+        Assert.Equal(expected, Serialize(Owner().Read()));
+    }
+
     private FrontendPreferencesOwner Owner() => new(Cache, App, Overlay);
     private static string Serialize(FrontendPreferences value) => JsonSerializer.Serialize(value, FrontendPreferencesOwner.Json);
 

@@ -77,6 +77,35 @@ export function migrateAnimationAppearance(appearance: AppAppearanceSettings): A
   return { ...rest, animationStyle: feelStyle, autoDisableAnimations: animations !== "normal" };
 }
 
+/**
+ * Migration frontend-preferences-nvml-fb-used-v1：2026-10-29 后端把 NVML v2 已用显存字段 gpu_nvidia_fb_used_including_reserved_bytes
+ * 改名为 gpu_nvidia_fb_used_excluding_reserved_bytes（这个值本来就不含保留部分）。之前保存的卡片槽位（「字段名@设备身份」）
+ * 和浮窗来源（fieldName）读入时换成新名字，其他不动。原生壳的 FrontendPreferencesOwner 对它的缓存文件做同一份迁移。
+ * 迁移在校验之前运行：只改形状对的值，其他原样交给后面的校验（例如 dashboardPreferences.ts 只拒绝坏的监视台段）。
+ * 删除条件：下一个不再读旧版本缓存的发行。
+ */
+const retiredNvmlFbUsedField = "gpu_nvidia_fb_used_including_reserved_bytes";
+const nvmlFbUsedField = "gpu_nvidia_fb_used_excluding_reserved_bytes";
+export function migrateNvmlFbUsedField(value: FrontendPreferencesCache): FrontendPreferencesCache {
+  const isObject = (item: unknown): item is Record<string, unknown> => typeof item === "object" && item !== null && !Array.isArray(item);
+  const retiredSlot = (slot: unknown) => isObject(slot) && typeof slot.metricId === "string" && slot.metricId.startsWith(`${retiredNvmlFbUsedField}@`);
+  const retiredSource = (source: unknown) => isObject(source) && source.fieldName === retiredNvmlFbUsedField;
+  const result = { ...value };
+  const cards: unknown = isObject(value.dashboard) ? value.dashboard.cards : undefined;
+  if (value.dashboard && Array.isArray(cards) && cards.some(card => isObject(card) && Array.isArray(card.slots) && card.slots.some(retiredSlot))) {
+    result.dashboard = { ...value.dashboard, cards: cards.map(card => !isObject(card) || !Array.isArray(card.slots) ? card : { ...card,
+      slots: card.slots.map(slot => !retiredSlot(slot) ? slot
+        : { ...slot, metricId: nvmlFbUsedField + slot.metricId.slice(retiredNvmlFbUsedField.length) }) }) };
+  }
+  if (isObject(value.overlays)) {
+    result.overlays = Object.fromEntries(Object.entries(value.overlays).map(([id, overlay]) => [id,
+      !isObject(overlay) || !isObject(overlay.metricSources) || !Object.values(overlay.metricSources).some(retiredSource) ? overlay
+        : { ...overlay, metricSources: Object.fromEntries(Object.entries(overlay.metricSources).map(([metric, source]) => [metric,
+          retiredSource(source) ? { ...source, fieldName: nvmlFbUsedField } : source])) }]));
+  }
+  return result;
+}
+
 export function pointOverlayPresentation(): OverlayPresentation {
   return {
     enabled: false, mode: "external", metrics: [...points.MetricOrder], metricSources: {}, fontSizePx: points.FontSizePx, sizeMode: points.SizeMode,
@@ -172,7 +201,7 @@ export function createFrontendPreferencesClient(storage?: Pick<Storage, "getItem
     const appearance = value.appearance ? migrateAnimationAppearance(value.appearance) : undefined;
     // 2026-10-26 删除读数来源设置；旧缓存只丢弃这一项，后续保存不再写回。
     if (appearance) delete (appearance as AppAppearanceSettings & { readingSourceMode?: unknown }).readingSourceMode;
-    return { ...value, ...(appearance ? { appearance } : {}),
+    return { ...migrateNvmlFbUsedField(value), ...(appearance ? { appearance } : {}),
       notifications: { ...pointPreferences().notifications, ...value.notifications } };
   };
   let writes = Promise.resolve();

@@ -167,6 +167,7 @@ internal sealed partial class FrontendPreferencesOwner
     //   strict reader rejects. Delete together with frontend-preferences-v1 once every supported
     //   upgrade starts after this release.
     // - frontend-preferences-animation-style-v1: see MigrateAnimationAppearance.
+    // - frontend-preferences-nvml-fb-used-v1: see MigrateNvmlFbUsedField.
     private bool cacheFieldsMigrated;
 
     private void MigrateCacheFields()
@@ -188,6 +189,7 @@ internal sealed partial class FrontendPreferencesOwner
                 changed |= appearance.Remove("readingSourceMode");
                 changed |= MigrateAnimationAppearance(appearance);
             }
+            changed |= MigrateNvmlFbUsedField(root);
             if (changed) WriteAtomic(cachePath, JsonSerializer.SerializeToUtf8Bytes(root, Json));
         }
         cacheFieldsMigrated = true;
@@ -218,6 +220,44 @@ internal sealed partial class FrontendPreferencesOwner
         appearance["animationStyle"] = feel == "smooth" ? "smooth" : "desktop";
         appearance["autoDisableAnimations"] = animations != "normal";
         return true;
+    }
+
+    // Migration frontend-preferences-nvml-fb-used-v1. On 2026-10-29 the backend renamed the NVML v2
+    // used framebuffer field gpu_nvidia_fb_used_including_reserved_bytes to
+    // gpu_nvidia_fb_used_excluding_reserved_bytes: the value never included the reserved part.
+    // Dashboard card slots ("<field>@<device identity>") and overlay metric sources (fieldName)
+    // saved before that carry the old name and take the new one; nothing else changes. The
+    // frontend's browser-storage reader applies the same rename. Delete with the next release
+    // that no longer reads caches older than this one.
+    internal const string RetiredNvmlFbUsedField = "gpu_nvidia_fb_used_including_reserved_bytes";
+    internal const string NvmlFbUsedField = "gpu_nvidia_fb_used_excluding_reserved_bytes";
+
+    private static bool MigrateNvmlFbUsedField(JsonNode? root)
+    {
+        var changed = false;
+        if (root?["dashboard"]?["cards"] is JsonArray cards)
+        {
+            foreach (var slot in cards.OfType<JsonObject>().Select(static card => card["slots"]).OfType<JsonArray>()
+                .SelectMany(static slots => slots).OfType<JsonObject>())
+            {
+                if (slot["metricId"] is not JsonValue id || !id.TryGetValue<string>(out var metricId)
+                    || !metricId.StartsWith(RetiredNvmlFbUsedField + "@", StringComparison.Ordinal)) continue;
+                slot["metricId"] = NvmlFbUsedField + metricId[RetiredNvmlFbUsedField.Length..];
+                changed = true;
+            }
+        }
+        if (root?["overlays"] is JsonObject overlays)
+        {
+            foreach (var source in overlays.Select(static pair => pair.Value?["metricSources"]).OfType<JsonObject>()
+                .SelectMany(static sources => sources).Select(static pair => pair.Value).OfType<JsonObject>())
+            {
+                if (source["fieldName"] is not JsonValue name || !name.TryGetValue<string>(out var fieldName)
+                    || fieldName != RetiredNvmlFbUsedField) continue;
+                source["fieldName"] = NvmlFbUsedField;
+                changed = true;
+            }
+        }
+        return changed;
     }
 
     // Migration frontend-preferences-v1 (frontend half). Delete only when every supported

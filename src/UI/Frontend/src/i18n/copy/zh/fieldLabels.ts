@@ -283,7 +283,7 @@ export const zhFieldLabelsCopy = {
     gpu_nvidia_pcie_maximum_generation: { label: "PCIe 最高代数（NVML）", hint: "支持的最高 PCIe 代数（NVML）。" },
     gpu_nvidia_pcie_maximum_width_lanes: { label: "PCIe 最大通道数（NVML）", hint: "支持的最大 PCIe 通道数（NVML）。" },
     gpu_nvidia_fb_reserved_bytes: { label: "显存保留（NVML）", hint: "为驱动和系统保留的显存（NVML）。" },
-    gpu_nvidia_fb_used_including_reserved_bytes: { label: "显存已用含保留（NVML）", hint: "包含保留部分在内的已用显存（NVML）。" },
+    gpu_nvidia_fb_used_excluding_reserved_bytes: { label: "显存已用不含保留（NVML）", hint: "不含保留部分的已用显存（NVML）。" },
     gpu_nvidia_fb_free_bytes: { label: "显存空闲（NVML）", hint: "未使用的显存（NVML）。" },
     gpu_nvidia_memory_transfer_busy_percent: { label: "显存控制器忙碌率（NVML）", hint: "最近一个采样周期内显存处于读写状态的时间百分比（NVML）。" },
     gpu_nvidia_encoder_busy_percent: { label: "编码器忙碌率（NVML）", hint: "视频编码器的忙碌百分比（NVML）。" },

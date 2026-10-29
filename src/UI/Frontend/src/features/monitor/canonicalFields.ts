@@ -286,7 +286,7 @@ export const canonicalFieldNames: readonly string[] = Object.freeze([
   "gpu_nvidia_pcie_maximum_generation",
   "gpu_nvidia_pcie_maximum_width_lanes",
   "gpu_nvidia_fb_reserved_bytes",
-  "gpu_nvidia_fb_used_including_reserved_bytes",
+  "gpu_nvidia_fb_used_excluding_reserved_bytes",
   "gpu_nvidia_fb_free_bytes",
   "gpu_nvidia_memory_transfer_busy_percent",
   "gpu_nvidia_encoder_busy_percent",

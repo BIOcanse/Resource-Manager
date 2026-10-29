@@ -282,7 +282,7 @@ export const fieldLabel: AppCopy["fieldLabel"] = {
   gpu_nvidia_pcie_maximum_generation: { label: "Generación PCIe máxima (NVML)", hint: "Generación PCIe más alta admitida, según NVML." },
   gpu_nvidia_pcie_maximum_width_lanes: { label: "Carriles PCIe máximos (NVML)", hint: "Número más alto de carriles PCIe admitido, según NVML." },
   gpu_nvidia_fb_reserved_bytes: { label: "VRAM reservada (NVML)", hint: "Memoria de vídeo reservada para el controlador y el sistema, según NVML." },
-  gpu_nvidia_fb_used_including_reserved_bytes: { label: "VRAM en uso con reservada (NVML)", hint: "Memoria de vídeo en uso, incluida la parte reservada, según NVML." },
+  gpu_nvidia_fb_used_excluding_reserved_bytes: { label: "VRAM en uso sin reservada (NVML)", hint: "Memoria de vídeo en uso, sin incluir la parte reservada, según NVML." },
   gpu_nvidia_fb_free_bytes: { label: "VRAM libre (NVML)", hint: "Memoria de vídeo sin usar, según NVML." },
   gpu_nvidia_memory_transfer_busy_percent: { label: "Ocupación del controlador de memoria (NVML)", hint: "Porcentaje del último periodo de muestreo durante el cual se estaba leyendo o escribiendo la memoria de vídeo (NVML)." },
   gpu_nvidia_encoder_busy_percent: { label: "Ocupación del codificador de vídeo (NVML)", hint: "Porcentaje de ocupación del codificador de vídeo, según NVML." },

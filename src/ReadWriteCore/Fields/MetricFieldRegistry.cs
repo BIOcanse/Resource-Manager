@@ -526,7 +526,7 @@ public static partial class MetricFieldRegistry
         new(MetricFieldCode.PcieMaximumGeneration, "gpu_nvidia_pcie_maximum_generation", MetricResource.Gpu, MetricVendor.Nvidia, "generation", "gpu.{gpu}.pcieMaximumGeneration", Volatility: ReadVolatility.Fixed),
         new(MetricFieldCode.PcieMaximumWidth, "gpu_nvidia_pcie_maximum_width_lanes", MetricResource.Gpu, MetricVendor.Nvidia, "lanes", "gpu.{gpu}.pcieMaximumWidth", Volatility: ReadVolatility.Fixed),
         new(MetricFieldCode.NvmlFbReserved, "gpu_nvidia_fb_reserved_bytes", MetricResource.Gpu, MetricVendor.Nvidia, "B", "gpu.{gpu}.nvmlFbReservedBytes", Volatility: ReadVolatility.Sampled),
-        new(MetricFieldCode.NvmlFbUsed, "gpu_nvidia_fb_used_including_reserved_bytes", MetricResource.Gpu, MetricVendor.Nvidia, "B", "gpu.{gpu}.nvmlFbUsedBytes", Volatility: ReadVolatility.Sampled),
+        new(MetricFieldCode.NvmlFbUsed, "gpu_nvidia_fb_used_excluding_reserved_bytes", MetricResource.Gpu, MetricVendor.Nvidia, "B", "gpu.{gpu}.nvmlFbUsedBytes", Volatility: ReadVolatility.Sampled),
         new(MetricFieldCode.NvmlFbFree, "gpu_nvidia_fb_free_bytes", MetricResource.Gpu, MetricVendor.Nvidia, "B", "gpu.{gpu}.nvmlFbFreeBytes", Volatility: ReadVolatility.Sampled),
         new(MetricFieldCode.NvmlMemoryUtilization, "gpu_nvidia_memory_transfer_busy_percent", MetricResource.Gpu, MetricVendor.Nvidia, "%", "gpu.{gpu}.memoryControllerUtilizationPercent", Volatility: ReadVolatility.Sampled),
         new(MetricFieldCode.NvmlEncoderUtilization, "gpu_nvidia_encoder_busy_percent", MetricResource.Gpu, MetricVendor.Nvidia, "%", "gpu.{gpu}.encoderUtilizationPercent", Volatility: ReadVolatility.Sampled),

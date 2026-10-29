@@ -282,7 +282,7 @@ export const fieldLabel: AppCopy["fieldLabel"] = {
   gpu_nvidia_pcie_maximum_generation: { label: "PCIe 최대 세대 (NVML)", hint: "지원되는 가장 높은 PCIe 세대(NVML)입니다." },
   gpu_nvidia_pcie_maximum_width_lanes: { label: "PCIe 최대 레인 (NVML)", hint: "지원되는 가장 많은 PCIe 레인 수(NVML)입니다." },
   gpu_nvidia_fb_reserved_bytes: { label: "VRAM 예약 (NVML)", hint: "드라이버와 시스템용으로 예약된 비디오 메모리(NVML)입니다." },
-  gpu_nvidia_fb_used_including_reserved_bytes: { label: "VRAM 사용량, 예약 포함 (NVML)", hint: "예약된 부분을 포함한 사용 중인 비디오 메모리(NVML)입니다." },
+  gpu_nvidia_fb_used_excluding_reserved_bytes: { label: "VRAM 사용량, 예약 제외 (NVML)", hint: "예약된 부분을 제외한 사용 중인 비디오 메모리(NVML)입니다." },
   gpu_nvidia_fb_free_bytes: { label: "VRAM 여유 (NVML)", hint: "사용되지 않은 비디오 메모리(NVML)입니다." },
   gpu_nvidia_memory_transfer_busy_percent: { label: "메모리 컨트롤러 사용률 (NVML)", hint: "직전 샘플 기간 중 비디오 메모리를 읽거나 쓰던 시간의 백분율(NVML)입니다." },
   gpu_nvidia_encoder_busy_percent: { label: "비디오 인코더 사용률 (NVML)", hint: "NVML이 보고한 비디오 인코더의 사용률입니다." },

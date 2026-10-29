@@ -283,7 +283,7 @@ export const enFieldLabelsCopy: Pick<AppCopy, "fieldLabel" | "fieldValueLabel"> 
     gpu_nvidia_pcie_maximum_generation: { label: "PCIe max generation (NVML)", hint: "Highest PCIe generation supported, from NVML." },
     gpu_nvidia_pcie_maximum_width_lanes: { label: "PCIe max lanes (NVML)", hint: "Highest number of PCIe lanes supported, from NVML." },
     gpu_nvidia_fb_reserved_bytes: { label: "VRAM reserved (NVML)", hint: "Video memory reserved for the driver and system, from NVML." },
-    gpu_nvidia_fb_used_including_reserved_bytes: { label: "VRAM used incl. reserved (NVML)", hint: "Video memory in use including the reserved part, from NVML." },
+    gpu_nvidia_fb_used_excluding_reserved_bytes: { label: "VRAM used excl. reserved (NVML)", hint: "Video memory in use, not counting the reserved part, from NVML." },
     gpu_nvidia_fb_free_bytes: { label: "VRAM free (NVML)", hint: "Unused video memory, from NVML." },
     gpu_nvidia_memory_transfer_busy_percent: { label: "Memory controller busy (NVML)", hint: "Percentage of the last sample period during which video memory was being read or written (NVML)." },
     gpu_nvidia_encoder_busy_percent: { label: "Video encoder busy (NVML)", hint: "Busy percentage of the video encoder, from NVML." },
