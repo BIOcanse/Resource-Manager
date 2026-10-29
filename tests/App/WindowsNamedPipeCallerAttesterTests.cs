@@ -21,14 +21,12 @@ public sealed class WindowsNamedPipeCallerAttesterTests
             Assert.True(WindowsAdapterTransportNativeMethods.TryQueryProcessPath(process, out _));
         Assert.True(WindowsAdapterTransportNativeMethods.TryQueryProcessPath(process, out var first));
         const int iterations = 128;
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var iteration = 0; iteration < iterations; iteration++)
-        {
-            if (!WindowsAdapterTransportNativeMethods.TryQueryProcessPath(process, out var path)
-                || !string.Equals(first, path, StringComparison.Ordinal))
-                throw new InvalidOperationException("Current process image changed during the test.");
-        }
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        // Compare the allocation floor of three warm batches. A one-off runtime
+        // allocation on this thread during a loaded full run must not read as a
+        // per-read cost; a per-read buffer still appears in every batch.
+        var allocated = long.MaxValue;
+        for (var batch = 0; batch < 3; batch++)
+            allocated = Math.Min(allocated, ReadAllocations());
         // The independent exact-length result string is required; a 64 KiB
         // StringBuilder or marshalling buffer on each read is not.
         Assert.InRange(allocated, 0, iterations * (first.Length * 2L + 64));
@@ -37,6 +35,18 @@ public sealed class WindowsNamedPipeCallerAttesterTests
         Assert.False(WindowsAdapterTransportNativeMethods.TryQueryProcessPath(invalid, out var missing));
         Assert.Empty(missing);
         Assert.Equal(Path.GetFullPath(Environment.ProcessPath!), first);
+
+        long ReadAllocations()
+        {
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            for (var iteration = 0; iteration < iterations; iteration++)
+            {
+                if (!WindowsAdapterTransportNativeMethods.TryQueryProcessPath(process, out var path)
+                    || !string.Equals(first, path, StringComparison.Ordinal))
+                    throw new InvalidOperationException("Current process image changed during the test.");
+            }
+            return GC.GetAllocatedBytesForCurrentThread() - before;
+        }
     }
 
     [Fact]

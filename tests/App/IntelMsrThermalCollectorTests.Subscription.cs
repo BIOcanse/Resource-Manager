@@ -87,6 +87,9 @@ public sealed partial class IntelMsrThermalCollectorTests
             {
                 await AssertNewInterval(observed);
             }
+            // Releasing the lease only signals the worker; it can still be adding
+            // to the fixture's read list. Stop joins it before the list is enumerated.
+            await sampler.StopAsync(CancellationToken.None);
             Assert.All(hardware.Reads, read => Assert.Equal(target.Processor, read.Address)); Assert.Equal(0, hardware.Writes);
         }
         finally { await sampler.StopAsync(CancellationToken.None); }
