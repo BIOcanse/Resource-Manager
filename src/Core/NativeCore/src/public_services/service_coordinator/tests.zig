@@ -1,5 +1,4 @@
 const std = @import("std");
-const builtin = @import("builtin");
 const abi = @import("abi.zig");
 const index = @import("index.zig");
 const protocol = @import("protocol.zig");
@@ -1160,9 +1159,9 @@ test "model scratch binding is explicit and capacity excludes borrowed bytes" {
     try std.testing.expectEqual(@as(u64, 0), session.snapshot().last_command_epoch);
     @memset(backing, 0xa5);
     try session.bindModelScratch(backing[0..@intCast(bytes)], 0, &.{}, &.{}, &.{});
-    // Binding leaves unused scratch bytes untouched. Debug allocators fill new memory with 0xAA,
-    // so only release builds can show it.
-    if (builtin.mode != .Debug) {
+    // Binding leaves unused scratch bytes untouched. With runtime safety (Debug and ReleaseSafe)
+    // Zig writes 0xAA wherever the session assigns undefined, so only builds without it can show it.
+    if (!std.debug.runtime_safety) {
         try std.testing.expectEqual(@as(u8, 0xa5), session.staging_models.text[0]);
         try std.testing.expectEqual(@as(u8, 0xa5), session.active_models.text[0]);
     }
@@ -1246,7 +1245,7 @@ test "model scratch can be discarded and rebuilt without losing runtime ownershi
         try std.testing.expectEqual(@as(usize, 0), session.active_models.models.len);
         try session.bindModelScratch(replacement, 1, &models, &aliases, text);
         defer session.unbindModelScratch();
-        if (builtin.mode != .Debug) {
+        if (!std.debug.runtime_safety) {
             try std.testing.expectEqual(@as(u8, 0xa5), session.active_models.text[text.len]);
             try std.testing.expectEqual(@as(u8, 0xa5), session.staging_models.text[0]);
         }
