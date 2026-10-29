@@ -27,7 +27,7 @@ const client = new RequestClient(session, { transport: async (url, options) => {
 const sources = createSettingsReadSources(registry, client);
 const key = (id: string): AccessKeySummary => ({ id, name: id, purpose: "control", scopes: ["read"],
   createdAt: "2026-10-27T00:00:00Z", isDefault: false });
-const keys = { keys: [key("one")], defaultEnabled: false, defaultKeyId: null, availableScopes: ["read"] };
+const keys = { keys: [key("one")], defaultEnabled: false, defaultKeyId: null, availableScopes: ["read"], administratorHolderScopes: ["machine.write", "injection.configure"] };
 const versions = { installedVersion: "1", status: "loaded", complete: true, checkedAt: "2026-10-27T00:00:00Z",
   options: [{ choice: "latest", version: "2", assetName: "fixture", downloadUrl: "https://example.invalid/fixture",
     checksumUrl: "https://example.invalid/checksum", selectable: true, eligibility: "eligible" }] };

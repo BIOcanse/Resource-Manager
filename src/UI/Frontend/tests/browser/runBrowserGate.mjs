@@ -167,6 +167,7 @@ const allJourneys = [
   ["gpu-dedicated-memory-states", async (...args) => (await import("./gpuDedicatedMemoryStatesJourney.js")).default(...args)],
   ["smart-details-placement-facts", smartDetailsPlacementFactsJourney],
   ["smart-details-all-records", smartDetailsAllRecordsJourney],
+  ["smart-details-history", async (...args) => (await import("./smartDetailsHistoryJourney.js")).default(...args)],
   ["software-participation", softwareParticipationJourney],
   ["memory-protection-settings", async (...args) => (await import("./memoryProtectionSettingsJourney.js")).default(...args)],
   ["memory-protection-no-dump", async (...args) => (await import("./memoryProtectionNoDumpJourney.js")).default(...args)],

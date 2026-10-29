@@ -85,6 +85,12 @@ export const loadingSettingsText: SettingsTextBundle = {
     realtimeActionBudgetModeOptions: [],
     realtimeActionBudgetCountLabel: "",
     realtimeActionBudgetPercentLabel: "",
+    keepSmartRecordHistoryTitle: "",
+    keepSmartRecordHistoryDescription: "",
+    keepSmartRecordHistoryOptions: {
+      on: { label: "", description: "" },
+      off: { label: "", description: "" }
+    },
     refreshCadenceTitle: "",
     refreshCadenceDescription: "",
     presetNumericModeOptions: [],
@@ -283,6 +289,7 @@ export const loadingSettingsText: SettingsTextBundle = {
       observedCallerIsInformational: "",
       requestScopesLabel: "",
       requestUnavailableScopeHelp: "",
+      administratorHolderScope: "",
       approve: "",
       deny: "",
       denyReasonLabel: "",

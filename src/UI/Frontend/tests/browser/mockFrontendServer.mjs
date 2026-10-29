@@ -110,6 +110,8 @@ const defaultScenario = {
   optimizationRuntime: false,
   optimizationReports: "ready",
   smartPlacements: [],
+  // 智能调度历史（GET /api/optimization/smart/records/history）：后端历史表里的条目，序号从新到旧。
+  smartRecordHistory: [],
   // 软件列表里示例软件之外的软件（{ id, name }），设置 → 性能浮层的多软件情形用。
   extraSoftware: [],
   // 后端调度状态（GET /api/optimization/smart/status 与它的推送订阅同源）；只写与默认值不同的字段。
@@ -242,6 +244,8 @@ const managementInventoryRevisionSubscribers = new Set();
 const subscriptionChannelResponses = new Set();
 const productUpdateStatusSubscribers = new Set();
 const kernelLeakReportSubscribers = new Set();
+// POST /api/kernel-leaks/history/clear 之后，当前场景的帧不再带历史条目（后端删除后发布新帧）；换场景或重置时恢复。
+let kernelLeakHistoryCleared = false;
 // /api/memory-protection/subscribe：和后端一样按 type 分帧。订阅时依次重放 status、records、normalRunningPoint；
 // 之后状态每次变化发 status，每条新增或更新的记录发一个 record，生效的正常运行点换了（新建、切换、删除生效的点）时发 normalRunningPoint，
 // 已保存的点或生效的点一变就发 normalRunningPoints。
@@ -268,7 +272,7 @@ const targetedRecordings = new Map();
 const defaultAppSettings = {
   version: "1.0.37",
   memoryProtection: defaultMemoryProtectionSettings(),
-  performance: { gpuOverflowUsagePercent: 95, gpuOverflowDedicatedMemoryPercent: 80, realtimeActionBudgetMode: "fixed", realtimeActionBudgetCount: 32, realtimeActionBudgetPercent: 5 },
+  performance: { gpuOverflowUsagePercent: 95, gpuOverflowDedicatedMemoryPercent: 80, realtimeActionBudgetMode: "fixed", realtimeActionBudgetCount: 32, realtimeActionBudgetPercent: 5, keepSmartRecordHistory: false },
   reports: { ruleOverrides: [] },
   debug: {
     debugModeEnabled: scenario.debugMode
@@ -873,6 +877,41 @@ async function handleApi(request, response, url) {
     if (scenario.settingsRuntimeDisposition === "savedNotApplied") return json(response, 500, { error: "runtime-plan-publication-failed" });
     appSettingsRuntimeDisposition = scenario.settingsRuntimeDisposition;
     return json(response, settingsResultStatus(appSettingsRuntimeDisposition), appSettingsResult());
+  }
+  // 清空历史（docs/report_lifecycle_2026-10-28.md）：回复删除的条数；mock 的优化报告集是空的，删 0 条。
+  if (path === "/api/optimization/reports/history/clear" && request.method === "POST") {
+    return json(response, 200, { removedCount: 0 });
+  }
+  if (path === "/api/optimization/smart/records/history" && request.method === "GET") {
+    const limit = Number(url.searchParams.get("limit"));
+    const before = url.searchParams.has("beforeSequence") ? Number(url.searchParams.get("beforeSequence")) : null;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 500 || (before !== null && !Number.isInteger(before))) {
+      return json(response, 400, { error: "invalid history query" });
+    }
+    const older = scenario.smartRecordHistory.filter((entry) => before === null || entry.sequence < before);
+    const records = older.slice(0, limit);
+    return json(response, 200, { records, nextBeforeSequence: older.length > limit ? records.at(-1).sequence : null });
+  }
+  if (path === "/api/optimization/smart/records/history/clear" && request.method === "POST") {
+    const removedCount = scenario.smartRecordHistory.length;
+    scenario.smartRecordHistory = [];
+    return json(response, 200, { removedCount });
+  }
+  if (path === "/api/kernel-leaks/history/clear" && request.method === "POST") {
+    const items = currentKernelLeakReportFrame()?.items;
+    const removedCount = Array.isArray(items) ? items.filter((item) => item.state === "history").length : 0;
+    kernelLeakHistoryCleared = true;
+    for (const subscriber of [...kernelLeakReportSubscribers]) publishKernelLeakReportValue(subscriber);
+    return json(response, 200, { removedCount });
+  }
+  if (path === "/api/targeted-recordings/history/clear" && request.method === "POST") {
+    let removedCount = 0;
+    for (const [id, entry] of [...targetedRecordings]) {
+      if (entry.header.status !== "completed") continue;
+      targetedRecordings.delete(id);
+      removedCount += 1;
+    }
+    return json(response, 200, { removedCount });
   }
   if (path === "/api/targeted-recordings" && request.method === "GET") {
     return json(response, 200, [...targetedRecordings.values()].map((entry) => entry.header));
@@ -1568,7 +1607,8 @@ function trustedAccessSnapshot() {
     }],
     defaultEnabled: true,
     defaultKeyId,
-    availableScopes: trustedAccessAvailableScopes
+    availableScopes: trustedAccessAvailableScopes,
+    administratorHolderScopes: ["machine.write", "injection.configure"]
   };
 }
 
@@ -1672,6 +1712,7 @@ function applyScenarioPatch(patch) {
   }
   if (Object.hasOwn(patch, "productUpdateStatus")) publishProductUpdateStatus();
   if (Object.hasOwn(patch, "kernelLeakReport")) {
+    kernelLeakHistoryCleared = false;
     for (const subscriber of [...kernelLeakReportSubscribers]) publishKernelLeakReportValue(subscriber);
   }
   if (["metricFieldDevices", "metricCatalogAddresses", "metricCatalogExtra", "gpuPressureFixture", "gpuDedicatedMemoryMetrics", "metricCatalogComponent"]
@@ -1781,8 +1822,16 @@ function publishProductUpdateStatus() {
 function publishKernelLeakReportValue(subscriber) {
   const { response, requestUrl, write } = subscriber;
   if (response.destroyed || response.writableEnded) return;
-  write(structuredClone(kernelLeakReportFrames[scenario.kernelLeakReport]));
+  write(currentKernelLeakReportFrame());
   recordLogicalPublication(requestUrl);
+}
+
+function currentKernelLeakReportFrame() {
+  const frame = structuredClone(kernelLeakReportFrames[scenario.kernelLeakReport]);
+  if (kernelLeakHistoryCleared && Array.isArray(frame?.items)) {
+    frame.items = frame.items.filter((item) => item.state !== "history");
+  }
+  return frame;
 }
 
 function publishProductUpdateStatusValue(subscriber) {
@@ -1819,6 +1868,7 @@ function resetScenario() {
     delete scenario[key];
   }
   Object.assign(scenario, structuredClone(defaultScenario));
+  kernelLeakHistoryCleared = false;
   rescheduleAllNdjsonPublishers();
   for (const key of Object.keys(appSettings)) {
     delete appSettings[key];
@@ -3861,7 +3911,11 @@ function subscriptionPayloadFactory(url, fields) {
         lastRunAt: null,
         lastRestoreAt: null,
         coordinator: null,
-        appliedPlacements: scenario.smartPlacements
+        // 后端每条记录都带 sequence、state、recordedAt（没写进历史表时全为 null）；旅程只写有值的那几条。
+        appliedPlacements: scenario.smartPlacements.map((placement) => ({
+          ...placement,
+          records: placement.records.map((record) => ({ sequence: null, state: null, recordedAt: null, ...record }))
+        }))
       });
     case "/api/optimization/smart/status/subscribe":
       return () => smartCoordinatorStatus();

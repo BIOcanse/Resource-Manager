@@ -67,6 +67,19 @@ export const zhKernelLeakReportCopy = {
       lastObserved: "最近发现"
     },
     ratePerSecond: (value: string) => `${value}/秒`,
+    details: {
+      button: "详细信息",
+      back: "返回报告列表",
+      title: (name: string) => cjkText`${name}详细信息`,
+      holderSection: "持有进程",
+      evidenceSection: "判定依据",
+      state: "状态",
+      active: "活动",
+      resourceKind: "资源类型",
+      processName: "进程名称",
+      startKey: "进程启动键",
+      unavailableReason: "暂不可用的原因"
+    },
     actions: {
       title: "处理操作",
       name: {

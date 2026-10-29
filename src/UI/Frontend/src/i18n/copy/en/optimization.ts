@@ -45,7 +45,11 @@ export const enOptimizationCopy: Pick<AppCopy, "optimization" | "optimizationRep
     detailTitle: "Optimization details"
   },
   optimizationReport: {
-    currentTarget: "this item",
+    unrecordedName: {
+      software: "Software with no recorded name",
+      process: "Process with no recorded name",
+      other: "Item with no recorded name"
+    },
     severityCritical: "Handle soon",
     severityWarning: "Worth watching",
     severityInfo: "Notice",

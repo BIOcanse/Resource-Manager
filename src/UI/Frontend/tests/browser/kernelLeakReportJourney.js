@@ -13,6 +13,8 @@ import { writeFrontendPreferences } from "./frontendPreferencesFixture.js";
  * 2. 每项两个处理操作：按钮不可用，名称来自文案；各自后面的问号里是风险等级和后端风险消息的译文；不可用的原因直接写在旁边。
  * 3. 订阅只在分页可见时存在：切到别的分页或别的页面后在可见性冷却期内退订，回来重新订阅（观察本身在后端，不随订阅重来）。
  * 4. 九种语言在最小窗口 760×520 和 1280×800 下：文字来自该语言的文案，面板和每一项都不横向溢出。
+ * 5. 清空历史（docs/report_lifecycle_2026-10-28.md）：没有历史条目时按钮不可用；确认框写明要删的条数和保留什么，取消不发请求；
+ *    确认后提示后端回复的删除条数，后端发来的新帧里只剩活动条目。
  */
 const subscriptionPath = "/api/kernel-leaks/subscribe";
 
@@ -34,6 +36,36 @@ export default async function kernelLeakReportJourney(page, baseUrl) {
     await setScenario(baseUrl, { kernelLeakReport: name });
     scenarios[name] = await checkScenario(page, report, zh, "zh-CN", name, { hints: name === "suspected" });
   }
+
+  // 清空历史：疑似场景有 6 条，其中 1 条历史。
+  const clearHistory = report.getByRole("button", { name: zh.reportHistory.clear, exact: true });
+  await setScenario(baseUrl, { kernelLeakReport: "empty" });
+  await report.locator(".kernel-leak-item").first().waitFor({ state: "detached" });
+  assert.equal(await clearHistory.isDisabled(), true, "clear history is unavailable without history entries");
+  await setScenario(baseUrl, { kernelLeakReport: "suspected" });
+  await report.locator(".kernel-leak-item.history").waitFor();
+  const clearRequests = [];
+  const recordClear = request => {
+    if (new URL(request.url()).pathname === "/api/kernel-leaks/history/clear") clearRequests.push(request.method());
+  };
+  page.on("request", recordClear);
+  const confirmClear = page.getByRole("dialog", { name: zh.reportHistory.confirmTitle, exact: true });
+  await clearHistory.click();
+  const confirmText = await confirmClear.textContent();
+  assert(confirmText.includes(zh.reportHistory.confirmMessage.kernelLeaks("1"))
+    && zh.reportHistory.details.kernelLeaks.every(line => confirmText.includes(line)),
+    `clear confirmation gives the count and what is kept: ${confirmText}`);
+  await confirmClear.getByRole("button", { name: zh.feedback.cancel, exact: true }).click();
+  await confirmClear.waitFor({ state: "detached" });
+  assert.deepEqual(clearRequests, [], "cancelling the clear confirmation sends nothing");
+  await clearHistory.click();
+  await confirmClear.getByRole("button", { name: zh.reportHistory.confirm, exact: true }).click();
+  await page.locator(".toast.success:not([data-exit-ghost])").filter({ hasText: zh.reportHistory.cleared("1") }).waitFor();
+  await report.locator(".kernel-leak-item.history").waitFor({ state: "detached" });
+  assert.equal(await report.locator(".kernel-leak-item:not([data-exit-ghost])").count(), 5, "the active entries stay after clearing");
+  assert.deepEqual(clearRequests, ["POST"], "clear history posts once");
+  assert.equal(await clearHistory.isDisabled(), true, "clear history is unavailable once the history is gone");
+  page.off("request", recordClear);
 
   // 可见性：同一页面里换分页、换到别的页面，都在冷却期后退订；回来重新订阅并收到当前帧。
   const tabs = page.getByRole("tablist", { name: zh.misc.detailsTab.tabsLabel, exact: true });
@@ -72,6 +104,7 @@ export default async function kernelLeakReportJourney(page, baseUrl) {
       for (const name of ["suspected", "unavailable-after-failure"]) {
         await setScenario(baseUrl, { kernelLeakReport: name });
         await checkScenario(page, localized, app, language, name, { hints: name === "suspected" && size.width === 760 });
+        if (name === "suspected") await checkDetails(page, localized, app, language, `${language} ${size.width}×${size.height}`);
         const overflow = await overflowAt(localized);
         assert.deepEqual(overflow, [], `${language} ${size.width}×${size.height} ${name} overflows: ${JSON.stringify(overflow)}`);
         layouts.push(`${language}@${size.width}x${size.height}:${name}`);
@@ -79,7 +112,7 @@ export default async function kernelLeakReportJourney(page, baseUrl) {
     }
   }
   assert.deepEqual(errors, []);
-  return { scenarios, layouts: layouts.length, subscriptions: lifecycle.logicalStarted };
+  return { scenarios, layouts: layouts.length, subscriptions: lifecycle.logicalStarted, historyCleared: true };
 }
 
 async function openReport(page, app) {
@@ -258,7 +291,9 @@ async function checkItem(page, item, wire, app, number, localTime, label, hints)
   })), `${label} actions`);
   assert.deepEqual((await item.locator(".kernel-leak-action-reason").allTextContents()).map(text => text.trim()),
     [messages.actionNotProvided], `${label} disabled reason is shown once, visibly`);
-  assert.equal(await item.locator("button").count(), wire.actions.length * 2, `${label}: only the action buttons and their question marks`);
+  assert.equal(await item.locator("button").count(), wire.actions.length * 2 + 1,
+    `${label}: only the details button, the action buttons and their question marks`);
+  assert.equal((await item.locator(".kernel-leak-item-tags .details-button").textContent())?.trim(), copy.details.button, `${label} details button`);
   if (!hints) return;
   // 问号里的说明：风险等级加后端风险消息的译文（焦点打开，Esc 关上）。
   for (const [index, action] of wire.actions.entries()) {
@@ -270,6 +305,78 @@ async function checkItem(page, item, wire, app, number, localTime, label, hints)
       copy.actions.riskText(copy.actions.riskLevel[action.riskLevel], riskMessages[action.risk.code]), `${label} ${action.action} risk`);
     await page.keyboard.press("Escape");
     await popover.waitFor({ state: "detached" });
+  }
+}
+
+/**
+ * 条目的“详细信息”：第一个活动条目和第一个历史条目各打开一次。本分页里换成这一条的详细信息页，焦点到页标题；
+ * 页上列出这个条目发来的全部内容（持有进程含启动键，判定依据含状态和资源类型，每个操作的风险说明和暂不可用的原因），
+ * 不横向溢出；返回列表后焦点回到这一条的按钮。
+ */
+async function checkDetails(page, report, app, language, label) {
+  const copy = app.kernelLeakReport;
+  const frame = kernelLeakReportFrames.suspected;
+  const messages = app.backendMessage.kernelLeak;
+  const riskMessages = { 2: messages.restartHolderRisk, 3: messages.forceReleaseHandlesRisk };
+  const number = (value, options = {}) => new Intl.NumberFormat(language, options).format(value);
+  const metadata = status => status === "ProcessEnded" ? copy.holder.processEnded : copy.holder.unavailable;
+  const ordered = [...frame.items.filter(item => item.state === "active"), ...frame.items.filter(item => item.state === "history")];
+  for (const index of [0, ordered.findIndex(item => item.state === "history")]) {
+    const wire = ordered[index];
+    const holder = wire.holder;
+    const image = holder.image;
+    const imageCurrent = image.status === "Current";
+    const name = imageCurrent ? image.name : metadata(image.status);
+    const item = report.locator(".kernel-leak-item").nth(index);
+    const cardEvidence = await item.locator(".kernel-leak-evidence > div").evaluateAll(rows =>
+      rows.map(row => [row.querySelector("dt").textContent.trim(), row.querySelector("dd").textContent.trim()]));
+    const button = item.locator(".kernel-leak-item-tags .details-button");
+    await button.click();
+    const detailsPage = report.getByRole("article", { name: copy.details.title(name), exact: true });
+    await detailsPage.waitFor();
+    assert.equal(await report.evaluate(root => [...root.querySelectorAll(".kernel-leak-items")].filter(list => !list.closest("[data-exit-ghost]")).length), 0,
+      `${label}: the details page replaces the list`);
+    await page.waitForFunction(() => document.activeElement?.classList.contains("kernel-leak-item-page-title"));
+    const sections = await detailsPage.locator(".user-details-section").evaluateAll(nodes => nodes.map(node => ({
+      title: node.querySelector("h4")?.textContent.trim() ?? null,
+      rows: [...node.querySelectorAll(".user-details-row")].map(row => [row.querySelector("dt").textContent.trim(), row.querySelector("dd").textContent.trim()])
+    })));
+    const services = holder.services.status !== "Current" ? metadata(holder.services.status)
+      : holder.services.names.length > 0 ? new Intl.ListFormat(language, { type: "conjunction" }).format(holder.services.names)
+        : copy.holder.noServices;
+    assert.deepEqual(sections, [
+      { title: copy.details.holderSection, rows: [
+        [copy.details.processName, name],
+        [copy.holder.processId, String(holder.processId)],
+        [copy.details.startKey, holder.startKey],
+        [copy.holder.productName, imageCurrent ? image.productName ?? copy.holder.noProductName : metadata(image.status)],
+        [copy.holder.services, services],
+        [copy.holder.imagePath, imageCurrent ? image.path : metadata(image.status)]
+      ] },
+      { title: copy.details.evidenceSection, rows: [
+        [copy.details.state, wire.state === "history" ? copy.historyEntry : copy.details.active],
+        [copy.details.resourceKind, copy.resourceKind[wire.resourceKind]],
+        ...cardEvidence
+      ] },
+      { title: copy.actions.title, rows: [
+        ...wire.actions.map(action => [copy.actions.name[action.action],
+          copy.actions.riskText(copy.actions.riskLevel[action.riskLevel], riskMessages[action.risk.code])]),
+        [copy.details.unavailableReason, messages.actionNotProvided]
+      ] }
+    ], `${label} details of ${wire.state} item ${number(index)}`);
+    // 只给读屏器的文字（.sr-only）本来就裁在 1px 里，不算溢出。
+    const overflow = await detailsPage.evaluate(root => [...root.querySelectorAll("*")].filter(element =>
+      !element.closest(".sr-only")
+        && element.getBoundingClientRect().width > 0 && element.scrollWidth > element.clientWidth + 1
+        && getComputedStyle(element).overflowX !== "visible" && getComputedStyle(element).overflowX !== "auto")
+      .map(element => element.className || element.tagName).slice(0, 5));
+    assert.deepEqual(overflow, [], `${label}: the details page overflows`);
+    await detailsPage.getByRole("button", { name: copy.details.back, exact: true }).click();
+    // 活动条目和历史各是一个列表；回到列表时等第一个出现。
+    await report.locator(".kernel-leak-items").first().waitFor();
+    await page.waitForFunction(key => document.activeElement?.classList.contains("details-button")
+      && document.activeElement.closest("[data-kernel-leak-item]")?.getAttribute("data-kernel-leak-item") === key,
+      `${wire.resourceKind}:${holder.processId}:${holder.startKey}`);
   }
 }
 

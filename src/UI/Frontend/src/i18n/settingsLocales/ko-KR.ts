@@ -137,6 +137,12 @@ export default createSettingsLocale("ko-KR", {
     "realtimeActionBudgetModeOptions": [{"id":"fixed","label":"고정 개수"},{"id":"percent","label":"프로세스 비율"}],
     "realtimeActionBudgetCountLabel": "고정 작업 수",
     "realtimeActionBudgetPercentLabel": "모든 프로세스 대비 비율 %",
+    "keepSmartRecordHistoryTitle": "스마트 스케줄링 기록 보관",
+    "keepSmartRecordHistoryDescription": "켜면 스마트 스케줄링의 각 기록이 복원된 뒤에도 세부 정보의 보고서 탭에 일련번호 순으로 제한 없이 남습니다. 끄면 새 기록은 복원된 뒤 보관되지 않으며, 이미 보관된 기록에는 영향이 없습니다.",
+    "keepSmartRecordHistoryOptions": {
+      "on": { "label": "켜기", "description": "복원된 기록을 내역으로 보관합니다." },
+      "off": { "label": "끄기", "description": "복원된 기록을 보관하지 않습니다." }
+    },
     "refreshCadenceTitle": "정보 갱신 빈도",
     "refreshCadenceDescription": "모니터링 정보와 상태의 갱신 속도를 설정합니다. 빠르게 갱신할수록 리소스를 조금 더 사용합니다.",
     "presetNumericModeOptions": [
@@ -436,6 +442,7 @@ export default createSettingsLocale("ko-KR", {
       "observedCallerIsInformational": "관측된 경로와 PID는 참고 정보이며 권한 부여 대상의 신원이 아닙니다.",
       "requestScopesLabel": "요청된 범위",
       "requestUnavailableScopeHelp": "현재 권한 범위를 벗어난 요청 범위는 선택할 수 없습니다. 승인 시 요청에 포함되고 현재 부여할 수 있는 범위만 제출됩니다.",
+      "administratorHolderScope": "이 키를 사용하는 프로그램은 관리자 권한으로 실행해야 합니다",
       "approve": "선택한 범위 승인",
       "deny": "거부",
       "denyReasonLabel": "거부 사유",

@@ -225,13 +225,21 @@ export default async function optimizationReportsJourney(page, baseUrl) {
   // 报告生命周期（docs/report_lifecycle_2026-10-28.md）：进程退出后条目留下来改为 history；容量满时给出未记录的数量。
   let strayState = "active";
   let unrecordedReportCount = 0;
+  // 清空历史（同一文档）：后端删除全部 history 条目后，报告集里不再有它。
+  let strayCleared = false;
   const fulfillStray = route => route.fulfill({ json: { ...overview,
-    reports: [{ ...strayReport, state: strayState, trusted: strayTrusted }], trustedTargets: strayTrusted ? [strayTrust] : [],
+    reports: strayCleared ? [] : [{ ...strayReport, state: strayState, trusted: strayTrusted }], trustedTargets: strayTrusted ? [strayTrust] : [],
     status: { ...overview.status, activeReportCount: strayState === "active" ? 1 : 0, unrecordedReportCount, trustedCount: strayTrusted ? 1 : 0,
       evaluationState: strayEvaluationFailed ? "failed" : "completed",
       evaluationFailureReason: strayEvaluationFailed ? "IOException: fixture failure" : null } } });
   await page.route("**/api/optimization/reports", fulfillStray);
   await page.route("**/api/optimization/reports/refresh", fulfillStray);
+  const clearRequests = [];
+  await page.route("**/api/optimization/reports/history/clear", async route => {
+    clearRequests.push(route.request().method());
+    strayCleared = true;
+    await route.fulfill({ json: { removedCount: 1 } });
+  });
   await page.route("**/api/optimization/reports/stray-report/dismiss", async route => {
     assert(route.request().method() === "POST", "Stray trust must use report dismiss");
     strayTrusted = true; await route.fulfill({ json: strayTrust });
@@ -269,9 +277,31 @@ export default async function optimizationReportsJourney(page, baseUrl) {
   await page.getByRole("button", { name: "刷新", exact: true }).click();
   await page.locator(".optimization-unrecorded").getByText("报告条目已达到上限，未记录的当前问题：2", { exact: true }).waitFor({ timeout: 5000 });
   unrecordedReportCount = 0;
+  // 清空历史：只有活动条目时按钮不可用；有历史条目时确认框写明要删的条数、活动条目和信任保留；
+  // 取消不发请求，确认后发一次 POST，提示写后端回复的删除条数，列表随报告集更新。
+  const zhApp = await loadAppCopy("zh-CN");
+  const clearHistory = page.getByRole("button", { name: zhApp.reportHistory.clear, exact: true });
+  assert(await clearHistory.isEnabled(), "Clear history is available while a history report is listed");
+  const confirmClear = page.getByRole("dialog", { name: zhApp.reportHistory.confirmTitle, exact: true });
+  await clearHistory.click();
+  const clearText = await confirmClear.textContent();
+  assert(clearText.includes(zhApp.reportHistory.confirmMessage.optimizationReports("1"))
+    && zhApp.reportHistory.details.optimizationReports.every((line) => clearText.includes(line)),
+    `The clear confirmation names the count, what is kept and the trust: ${clearText}`);
+  await confirmClear.getByRole("button", { name: zhApp.feedback.cancel, exact: true }).click();
+  await confirmClear.waitFor({ state: "detached" });
+  assert(clearRequests.length === 0 && await strayCard.isVisible(), "Cancelling the clear confirmation sent nothing");
+  await clearHistory.click();
+  await confirmClear.getByRole("button", { name: zhApp.reportHistory.confirm, exact: true }).click();
+  await page.locator(".toast.success:not([data-exit-ghost])").filter({ hasText: zhApp.reportHistory.cleared("1") }).waitFor({ timeout: 5000 });
+  await strayCard.waitFor({ state: "detached", timeout: 5000 });
+  assert(clearRequests.length === 1 && clearRequests[0] === "POST", `Clear history posts once: ${JSON.stringify(clearRequests)}`);
+  assert(!(await clearHistory.isEnabled()), "Clear history is unavailable when no history report is left");
+  strayCleared = false;
   strayState = "active";
   await page.getByRole("button", { name: "刷新", exact: true }).click();
   await page.locator(".optimization-unrecorded").waitFor({ state: "detached", timeout: 5000 });
+  assert(!(await clearHistory.isEnabled()), "Clear history is unavailable while only active reports are listed");
   await strayCard.locator(".optimization-report-state").waitFor({ state: "detached", timeout: 5000 });
   await strayCard.getByRole("button", { name: "详细信息", exact: true }).click();
   const detail = page.getByRole("dialog");
@@ -284,6 +314,7 @@ export default async function optimizationReportsJourney(page, baseUrl) {
   assert(strayTrusted, "Stray process target was not trusted");
   await page.unroute("**/api/optimization/reports");
   await page.unroute("**/api/optimization/reports/refresh");
+  await page.unroute("**/api/optimization/reports/history/clear");
   const availabilityLanguages = [];
   for (const option of languageOptions.filter(option => option.id !== "system")) {
     const app = await loadAppCopy(option.id);
@@ -318,6 +349,7 @@ export default async function optimizationReportsJourney(page, baseUrl) {
     failedRefreshPreservedLastGood: true,
     retiredRecorderStateAbsent: true,
     strayStructuredEvidenceAndInstanceTrust: true,
+    historyClearedAfterConfirmation: true,
     pageErrors: failures
   };
 }

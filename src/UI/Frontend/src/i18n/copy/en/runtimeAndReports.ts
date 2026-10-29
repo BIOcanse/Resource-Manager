@@ -1,7 +1,7 @@
 import type { AppCopy } from "../zh/index.ts";
 import { plural } from "../../plural.ts";
 
-export const enRuntimeAndReportsCopy: Pick<AppCopy, "smartReport" | "browserRuntime"> = {
+export const enRuntimeAndReportsCopy: Pick<AppCopy, "smartReport" | "reportHistory" | "browserRuntime"> = {
   smartReport: {
     processTarget: (name: string, pid: number) => `${name} (process ${pid})`,
     loading: "Loading",
@@ -43,6 +43,29 @@ export const enRuntimeAndReportsCopy: Pick<AppCopy, "smartReport" | "browserRunt
       resourceOptimization: "Resource optimization",
       schedulingAdjustment: "Scheduling adjustment"
     },
+    // 智能调度历史（docs/report_lifecycle_2026-10-28.md“智能调度记录”）。
+    history: {
+      title: "History",
+      loading: "Reading history",
+      readFailed: "Could not read the smart scheduling history",
+      empty: "No history records.",
+      retentionOff: "Keeping smart scheduling history is off, so records are not kept after they are restored. You can turn it on in Settings → Runtime Policy.",
+      loadMore: "Load earlier records",
+      field: {
+        sequence: "Sequence",
+        recordedAt: "Recorded",
+        appliedAt: "Applied",
+        restoredAt: "Restored",
+        restoreResult: "Restore result"
+      },
+      restoreResult: {
+        restored: "Restored",
+        targetExited: "Target exited",
+        ownershipLost: "Changed by another program; no longer restored",
+        failed: "Restore failed",
+        unknown: "Result not recorded"
+      }
+    },
     resource: {
       cpu: "Processor",
       gpu: "Graphics processor",
@@ -52,6 +75,28 @@ export const enRuntimeAndReportsCopy: Pick<AppCopy, "smartReport" | "browserRunt
       network: "Network",
       software: "Software resources"
     }
+  },
+  // 报告页的“清空历史”：一次删除这类报告的全部历史条目，活动条目保留（src/features/reportHistory）。
+  reportHistory: {
+    clear: "Clear history",
+    clearing: "Clearing",
+    confirmTitle: "Clear history entries?",
+    confirm: "Clear",
+    confirmMessage: {
+      optimizationReports: (count: string) => `History reports to delete: ${count}. Active reports are kept.`,
+      kernelLeaks: (count: string) => `History entries to delete: ${count}. Active entries are kept.`,
+      targetedRecordings: (count: string) => `Completed recording reports to delete: ${count}. A recording in progress is kept.`,
+      smartRecords: "All smart scheduling history records will be deleted. Records waiting to be restored are kept."
+    },
+    details: {
+      optimizationReports: ["This cannot be undone. If the same issue occurs again, it will be recorded again.", "Trusted software and devices remain trusted."],
+      kernelLeaks: ["This cannot be undone. If the same issue occurs again, it will be recorded again."],
+      targetedRecordings: ["These reports and their frame intervals and resource data will be permanently deleted. This cannot be undone."],
+      smartRecords: ["This cannot be undone. Record sequence numbers do not start over."]
+    },
+    clearedTitle: "History cleared",
+    cleared: (count: string) => `History entries deleted: ${count}.`,
+    failed: "Could not clear the history."
   },
   browserRuntime: {
     description: "Review the web interface runtime and the browsers installed on this PC.",

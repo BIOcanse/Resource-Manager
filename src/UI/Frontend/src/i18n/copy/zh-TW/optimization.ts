@@ -43,7 +43,11 @@ export const zhOptimizationCopy = {
     detailTitle: "最佳化詳情"
   },
   optimizationReport: {
-    currentTarget: "當前物件",
+    unrecordedName: {
+      software: "未記錄名稱的軟體",
+      process: "未記錄名稱的處理程序",
+      other: "未記錄名稱的項目"
+    },
     severityCritical: "需要儘快處理",
     severityWarning: "建議關注",
     severityInfo: "提示",

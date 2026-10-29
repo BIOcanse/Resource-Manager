@@ -11,6 +11,38 @@
   box-shadow: var(--elev-1), var(--edge-highlight);
 }
 
+/* 列表和条目详细信息页轮流放在这里，切换时由内容过渡接管画面。 */
+.kernel-leak-stage,
+.kernel-leak-item-page {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+
+/* 详细信息页的标题栏：返回在前，标题跟在后面，长名字换行。 */
+.panel-header.kernel-leak-item-page-header {
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.kernel-leak-item-page-title {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.kernel-leak-item-page-title:focus {
+  outline: none;
+}
+
+.kernel-leak-item-page .user-details-section h4 {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .kernel-leak-note {
   margin: 0;
   color: var(--muted);
@@ -232,6 +264,21 @@
 }
 
 /* 映像或服务信息读不到、进程已结束：显示状态本身，用次要文字色和普通字体区分于真实值。 */
+/* 页面标题只给读屏（分页条已显示页名），动作区靠右，与定向报告页的标题栏一致。 */
+.kernel-leak-header {
+  margin: 0;
+  padding: 0;
+}
+
+.kernel-leak-header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
 .kernel-leak-report .metadata-state {
   color: var(--muted);
   font-family: inherit;

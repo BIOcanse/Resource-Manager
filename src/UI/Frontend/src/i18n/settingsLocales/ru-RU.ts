@@ -138,6 +138,12 @@ export default createSettingsLocale("ru-RU", {
     "realtimeActionBudgetModeOptions": [{"id":"fixed","label":"Фиксированное число"},{"id":"percent","label":"Процент процессов"}],
     "realtimeActionBudgetCountLabel": "Фиксированное число действий",
     "realtimeActionBudgetPercentLabel": "Доля всех процессов %",
+    "keepSmartRecordHistoryTitle": "Хранить историю интеллектуального планирования",
+    "keepSmartRecordHistoryDescription": "Если включено, каждая запись интеллектуального планирования после восстановления остаётся на вкладке «Отчёт» в разделе «Подробности», по порядковым номерам и без ограничения. Если выключено, новые записи после восстановления не сохраняются; уже сохранённая история не затрагивается.",
+    "keepSmartRecordHistoryOptions": {
+      "on": { "label": "Вкл.", "description": "Сохранять записи в истории после восстановления." },
+      "off": { "label": "Выкл.", "description": "Не сохранять записи после восстановления." }
+    },
     "refreshCadenceTitle": "Частота обновления информации",
     "refreshCadenceDescription": "Задаёт скорость обновления данных мониторинга и состояния. Более частое обновление немного увеличивает расход ресурсов.",
     "presetNumericModeOptions": [
@@ -437,6 +443,7 @@ export default createSettingsLocale("ru-RU", {
       "observedCallerIsInformational": "Наблюдаемые путь и PID приведены для справки и не определяют личность, которой выдаётся разрешение.",
       "requestScopesLabel": "Запрошенные области доступа",
       "requestUnavailableScopeHelp": "Области за пределами ваших текущих прав нельзя выбрать. Будут отправлены только запрошенные области, которые вы можете предоставить.",
+      "administratorHolderScope": "Программы с этим ключом должны запускаться от имени администратора",
       "approve": "Разрешить выбранные области",
       "deny": "Отклонить",
       "denyReasonLabel": "Причина отказа",

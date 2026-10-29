@@ -9,16 +9,16 @@ import { HostManagerSmartCoordinatorDetailsReport } from "./HostManagerSmartCoor
 import { TargetedReportsPage } from "../targetedReport/TargetedReportsPage.tsx";
 import { KernelLeakReportPage } from "../kernelLeaks/KernelLeakReportPage.tsx";
 import type { SoftwareRecord } from "../../types.ts";
-import type { ConfirmDialogRequest } from "../../components/AppFeedback";
+import type { ReportHistoryClearFeedback } from "../reportHistory/useReportHistoryClear.ts";
 
-interface DetailsPageProps {
+interface DetailsPageProps extends ReportHistoryClearFeedback {
   /** 选中的二级分页（分页树，app/navigation/detailsNavigation.ts）；分页条由外壳画。 */
   activeTab: DetailsTab;
   software: readonly SoftwareRecord[];
   runtimeCapabilities: RuntimeCapabilitiesStore;
   onOpenSoftwareSettings: (softwareId: string, softwareName: string) => void;
-  /** 应用统一的确认对话框；定向报告删除录制时用它确认。 */
-  confirmDialog: (request: ConfirmDialogRequest) => Promise<boolean>;
+  /** 已保存的设置 performance.keepSmartRecordHistory：报告分页据此说明恢复后的记录是否保留。 */
+  keepSmartRecordHistory: boolean;
 }
 
 export function DetailsPage(props: DetailsPageProps) {
@@ -49,17 +49,27 @@ export function DetailsPage(props: DetailsPageProps) {
           </Match>
           <Match when={props.activeTab === "report"}>
             <div class="details-resource-region">
-              <HostManagerSmartCoordinatorDetailsReport software={props.software} />
+              <HostManagerSmartCoordinatorDetailsReport software={props.software}
+                keepHistory={props.keepSmartRecordHistory} {...reportFeedback(props)} />
             </div>
           </Match>
           <Match when={props.activeTab === "targeted"}>
-            <div class="details-resource-region"><TargetedReportsPage confirmDialog={props.confirmDialog} /></div>
+            <div class="details-resource-region"><TargetedReportsPage {...reportFeedback(props)} /></div>
           </Match>
           <Match when={props.activeTab === "kernelLeaks"}>
-            <div class="details-resource-region"><KernelLeakReportPage /></div>
+            <div class="details-resource-region"><KernelLeakReportPage {...reportFeedback(props)} /></div>
           </Match>
         </Switch>
       </div>
     </section>
   );
+}
+
+/** 报告分页用的确认和结果提示（删除录制、清空历史）。 */
+function reportFeedback(props: ReportHistoryClearFeedback): ReportHistoryClearFeedback {
+  return {
+    confirmDialog: (request) => props.confirmDialog(request),
+    onActionSucceeded: (title, message) => props.onActionSucceeded(title, message),
+    onActionError: (error, fallback) => props.onActionError(error, fallback)
+  };
 }

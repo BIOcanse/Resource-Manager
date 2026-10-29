@@ -70,6 +70,19 @@ export const kernelLeakReport: AppCopy["kernelLeakReport"] = {
     lastObserved: "Последнее обнаружение"
   },
   ratePerSecond: (value: string) => `${value}/с`,
+  details: {
+    button: "Сведения",
+    back: "Назад к списку отчёта",
+    title: (name: string) => `Сведения: ${name}`,
+    holderSection: "Процесс-владелец",
+    evidenceSection: "Основания",
+    state: "Состояние",
+    active: "Активно",
+    resourceKind: "Тип ресурса",
+    processName: "Имя процесса",
+    startKey: "Ключ запуска процесса",
+    unavailableReason: "Причина недоступности"
+  },
   actions: {
     title: "Действия",
     name: {

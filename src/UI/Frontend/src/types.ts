@@ -344,6 +344,8 @@ export interface AppPerformanceSettings {
   virtualMemoryAutomaticCleanupPercent: number;
   physicalMemoryOptimizationTargetUsagePercent: number;
   virtualMemoryOptimizationTargetUsagePercent: number;
+  /** 智能调度记录恢复后是否保留为历史（docs/report_lifecycle_2026-10-28.md），默认不保留。 */
+  keepSmartRecordHistory: boolean;
   monitorRefreshIntervalMs: AppPresetNumericSetting;
   resourceTableRefreshIntervalMs: AppPresetNumericSetting;
   localSystemRefreshIntervalMs: AppPresetNumericSetting;
@@ -427,6 +429,40 @@ export interface HostManagerAppliedPlacementReceipt {
 export interface HostManagerAppliedRecord {
   kind: string;
   recordId: string;
+  /**
+   * 智能调度记录的历史身份（docs/report_lifecycle_2026-10-28.md“智能调度记录”）：记录写进历史表时取得的递增序号、
+   * 状态（账本里的记录只会是 active）和取得序号的时间；没写进历史表（保留开关关着时进来的）三项都是 null。
+   */
+  sequence: number | null;
+  state: "active" | null;
+  recordedAt: string | null;
+}
+
+/** 智能调度记录恢复的结果（后端 restoreResult）。 */
+export type SmartRecordRestoreResult = "restored" | "targetExited" | "ownershipLost" | "failed" | "unknown";
+
+/** 智能调度历史里的一条记录：记录本身、所属放置的上下文，以及恢复的时间和结果。 */
+export interface SmartRecordHistoryEntry {
+  sequence: number;
+  state: "history";
+  kind: string;
+  recordId: string;
+  targetId: string;
+  softwareId: string | null;
+  resourceKind: string;
+  appliedAt: string;
+  processId: number | null;
+  processStartKey: string | null;
+  processName: string | null;
+  recordedAt: string;
+  restoredAt: string;
+  restoreResult: SmartRecordRestoreResult;
+}
+
+/** GET /api/optimization/smart/records/history 的一页：按序号从新到旧，nextBeforeSequence 为 null 时没有更早的。 */
+export interface SmartRecordHistoryPage {
+  records: SmartRecordHistoryEntry[];
+  nextBeforeSequence: number | null;
 }
 
 export interface HostManagerCoordinatorFacts {

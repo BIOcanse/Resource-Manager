@@ -79,6 +79,9 @@ export default async function targetedRecordingsJourney(page, baseUrl) {
     assert((await recordingStatus.textContent()).endsWith(` · ${copy.recording}`),
       `${language}: list row did not show the recording status`);
     await panel.locator(".targeted-report-detail:not([data-exit-ghost])").waitFor();
+    // Clear history removes completed recordings only, so it is unavailable while the only recording is running.
+    const clearHistory = panel.getByRole("button", { name: app.reportHistory.clear, exact: true });
+    assert(await clearHistory.isDisabled(), `${language}: clear history was available with only a running recording`);
     // The page must expose stop without reopening the software details.
     await row.getByRole("button", { name: copy.stop, exact: true }).click();
     await panel.locator(".targeted-report-detail:not([data-exit-ghost])").getByText(new RegExp(copy.stopReasons.user)).waitFor();
@@ -131,23 +134,39 @@ export default async function targetedRecordingsJourney(page, baseUrl) {
       assert(await visibleTarget() === targetName, "Retry changed the visible recording target");
     }
     // Deletion is confirmed in the app's own confirm dialog (title, recording, consequence), not a browser dialog.
+    // zh-CN deletes the one recording from its row; the other languages clear the history, which removes every completed
+    // recording (docs/report_lifecycle_2026-10-28.md), confirmed with the count and what is kept, and reports the removed count.
     const confirmDelete = page.getByRole("dialog", { name: copy.confirmDelete, exact: true });
+    const confirmClear = page.getByRole("dialog", { name: app.reportHistory.confirmTitle, exact: true });
+    assert(await clearHistory.isEnabled(), `${language}: clear history was unavailable with a completed recording`);
     if (language === "zh-CN") {
+      await clearHistory.click();
+      await confirmClear.getByRole("button", { name: app.feedback.cancel, exact: true }).click();
+      await confirmClear.waitFor({ state: "detached" });
       await row.getByRole("button", { name: copy.delete, exact: true }).click();
       await confirmDelete.getByRole("button", { name: app.feedback.cancel, exact: true }).click();
       await confirmDelete.waitFor({ state: "detached" });
-      assert(await row.count() === 1, "Cancelling the delete confirmation removed the recording");
+      assert(await row.count() === 1, "Cancelling a confirmation removed the recording");
+      await row.getByRole("button", { name: copy.delete, exact: true }).click();
+      const confirmText = await confirmDelete.textContent();
+      assert(confirmText.includes("示例软件") && confirmText.includes(copy.deleteDetail),
+        `${language}: delete confirmation does not name the recording and its consequence`);
+      await confirmDelete.getByRole("button", { name: copy.delete, exact: true }).click();
+    } else {
+      await clearHistory.click();
+      const confirmText = await confirmClear.textContent();
+      assert(confirmText.includes(app.reportHistory.confirmMessage.targetedRecordings("1"))
+        && app.reportHistory.details.targetedRecordings.every((line) => confirmText.includes(line)),
+        `${language}: clear confirmation does not give the count and its consequence: ${confirmText}`);
+      await confirmClear.getByRole("button", { name: app.reportHistory.confirm, exact: true }).click();
+      await page.locator(".toast.success:not([data-exit-ghost])").filter({ hasText: app.reportHistory.cleared("1") }).waitFor();
     }
-    await row.getByRole("button", { name: copy.delete, exact: true }).click();
-    const confirmText = await confirmDelete.textContent();
-    assert(confirmText.includes("示例软件") && confirmText.includes(copy.deleteDetail),
-      `${language}: delete confirmation does not name the recording and its consequence`);
-    await confirmDelete.getByRole("button", { name: copy.delete, exact: true }).click();
     await panel.getByText(copy.empty, { exact: true }).waitFor();
+    assert(await clearHistory.isDisabled(), `${language}: clear history stayed available with no completed recording`);
     assert(await panel.locator(".targeted-report-detail:not([data-exit-ghost])").count() === 0, `${language}: deleted report remained visible`);
     checked.push(language);
     previous = language;
   }
   assert(failures.length === 0, JSON.stringify(failures));
-  return { languages: checked, startRunningStopReport: true, charts: true, exports: true, deletion: true, listRecovery: true };
+  return { languages: checked, startRunningStopReport: true, charts: true, exports: true, deletion: true, historyClear: true, listRecovery: true };
 }

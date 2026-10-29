@@ -43,6 +43,7 @@ export const accessKeySnapshotDecoder = defineResponseDecoder<AccessKeySnapshot>
       ? null
       : requireNonEmptyString(row.defaultKeyId, "$.defaultKeyId");
     const availableScopes = uniqueStrings(row.availableScopes, "$.availableScopes");
+    const administratorHolderScopes = uniqueStrings(row.administratorHolderScopes, "$.administratorHolderScopes");
     const defaultRows = keys.filter((key) => key.isDefault);
     if (defaultEnabled !== (defaultKeyId !== null)
       || (defaultEnabled
@@ -50,7 +51,7 @@ export const accessKeySnapshotDecoder = defineResponseDecoder<AccessKeySnapshot>
         : defaultRows.length !== 0)) {
       throw new ResponseDecodeError("$.defaultKeyId", "consistent enabled default key metadata");
     }
-    return { keys, defaultEnabled, defaultKeyId, availableScopes };
+    return { keys, defaultEnabled, defaultKeyId, availableScopes, administratorHolderScopes };
   });
 
 export const accessKeyCreatedDecoder = defineResponseDecoder<AccessKeyCreated>(

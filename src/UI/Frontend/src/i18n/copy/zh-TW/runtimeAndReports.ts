@@ -41,6 +41,29 @@ export const zhRuntimeAndReportsCopy = {
       resourceOptimization: "資源最佳化",
       schedulingAdjustment: "排程調整"
     },
+    // 智能调度历史（docs/report_lifecycle_2026-10-28.md“智能调度记录”）。
+    history: {
+      title: "歷史記錄",
+      loading: "正在讀取歷史記錄",
+      readFailed: "智慧排程歷史讀取失敗",
+      empty: "暫無歷史記錄。",
+      retentionOff: "保留智慧排程歷史已關閉，記錄還原後不再保留。可在「設定 → 執行策略」中開啟。",
+      loadMore: "載入更早的記錄",
+      field: {
+        sequence: "序號",
+        recordedAt: "記錄時間",
+        appliedAt: "套用時間",
+        restoredAt: "還原時間",
+        restoreResult: "還原結果"
+      },
+      restoreResult: {
+        restored: "已還原",
+        targetExited: "目標已結束",
+        ownershipLost: "已被其他程式修改，不再還原",
+        failed: "還原失敗",
+        unknown: "結果未記錄"
+      }
+    },
     resource: {
       cpu: "處理器",
       gpu: "圖形處理器",
@@ -50,6 +73,28 @@ export const zhRuntimeAndReportsCopy = {
       network: "網路",
       software: "軟體資源"
     }
+  },
+  // 报告页的“清空历史”：一次删除这类报告的全部历史条目，活动条目保留（src/features/reportHistory）。
+  reportHistory: {
+    clear: "清除歷史",
+    clearing: "正在清除",
+    confirmTitle: "清除歷史項目？",
+    confirm: "清除",
+    confirmMessage: {
+      optimizationReports: (count: string) => cjkText`將刪除${count}筆歷史報告，作用中的報告保留。`,
+      kernelLeaks: (count: string) => cjkText`將刪除${count}筆歷史項目，作用中的項目保留。`,
+      targetedRecordings: (count: string) => cjkText`將刪除${count}份已完成的錄製報告，進行中的錄製保留。`,
+      smartRecords: "將刪除全部智慧排程歷史記錄，待還原的記錄保留。"
+    },
+    details: {
+      optimizationReports: ["刪除後無法復原；同一問題日後再次出現時會重新記錄。", "已信任的軟體和裝置仍維持信任。"],
+      kernelLeaks: ["刪除後無法復原；同一問題日後再次出現時會重新記錄。"],
+      targetedRecordings: ["這些報告及其影格間隔與資源資料將被永久刪除，無法復原。"],
+      smartRecords: ["刪除後無法復原；記錄序號不會重新開始。"]
+    },
+    clearedTitle: "已清除歷史",
+    cleared: (count: string) => cjkText`已刪除${count}筆歷史項目。`,
+    failed: "清除歷史失敗。"
   },
   browserRuntime: {
     description: "檢視 Web 介面執行環境和已安裝的瀏覽器。",

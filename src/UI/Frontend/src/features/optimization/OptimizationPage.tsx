@@ -42,6 +42,7 @@ import { SegmentedControl } from "../../ui/primitives/SegmentedControl.tsx";
 import { HelpHint } from "../../ui/primitives/HelpHint.tsx";
 import { formatInterfaceNumber } from "../../presentation/interfaceNumbers.ts";
 import { uiText } from "../../text.ts";
+import { reportHistoryClearActionId } from "../reportHistory/confirmReportHistoryClear.ts";
 import { optimizationEvidenceValue, optimizationTargetName } from "./optimizationPresentation";
 import {
   optimizationModeHasDomain,
@@ -66,6 +67,8 @@ interface OptimizationPageProps {
   onDismiss: (report: OptimizationReportItem) => void;
   onInspect: (report: OptimizationReportItem) => void;
   onRemoveTrust: (target: TrustedOptimizationTarget) => void;
+  /** 清空历史报告：确认、请求和结果提示都由调用方负责。 */
+  onClearHistory: () => void;
 }
 
 export function OptimizationPage(props: OptimizationPageProps) {
@@ -93,6 +96,8 @@ export function OptimizationPage(props: OptimizationPageProps) {
     return [...entries.filter((report) => report.state === "active"), ...entries.filter((report) => report.state === "history")];
   });
   const trustedTargets = () => props.overview?.trustedTargets ?? [];
+  // 清空历史删的是全部 history 条目（含已信任的），按钮按这个数决定能不能按，与当前筛选无关。
+  const historyReportCount = () => (props.overview?.reports ?? []).filter((report) => report.state === "history").length;
   const untrustedReports = () => allReports().filter((report) => !isTrustedReport(report));
   const reports = () => {
     const filter = reportFilter();
@@ -265,6 +270,12 @@ export function OptimizationPage(props: OptimizationPageProps) {
               class="optimization-report-filter"
               onChange={setReportFilter}
             />
+            <button class="secondary" type="button"
+              disabled={!reportActionsAvailable() || historyReportCount() === 0 || props.actionId !== null}
+              onClick={() => props.onClearHistory()}>
+              <StableLabel labels={{ idle: uiText.reportHistory.clear, busy: uiText.reportHistory.clearing }}
+                current={props.actionId === reportHistoryClearActionId ? "busy" : "idle"} />
+            </button>
             <button class="secondary" type="button" disabled={props.loading} onClick={() => {
               props.onRefresh();
               void gpuScores.refresh();

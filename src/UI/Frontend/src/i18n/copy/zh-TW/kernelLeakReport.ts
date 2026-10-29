@@ -66,6 +66,19 @@ export const zhTwKernelLeakReportCopy: Pick<AppCopy, "kernelLeakReport"> = {
       lastObserved: "最近發現"
     },
     ratePerSecond: (value: string) => `${value}/秒`,
+    details: {
+      button: "詳細資訊",
+      back: "返回報告清單",
+      title: (name: string) => cjkText`${name}詳細資訊`,
+      holderSection: "持有處理程序",
+      evidenceSection: "判定依據",
+      state: "狀態",
+      active: "作用中",
+      resourceKind: "資源類型",
+      processName: "處理程序名稱",
+      startKey: "處理程序啟動鍵",
+      unavailableReason: "暫不可用的原因"
+    },
     actions: {
       title: "處理操作",
       name: {

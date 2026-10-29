@@ -79,8 +79,10 @@ export default async function trustedAccessRecoveryJourney(page, baseUrl) {
       await localizedPanel.getByText(value, { exact: true }).first().waitFor();
     }
     const scopeGroup = localizedPanel.getByRole("group", { name: localized.createScopesLabel, exact: true });
-    for (const label of Object.values(localized.scopeLabels)) {
-      await scopeGroup.getByText(label, { exact: true }).waitFor();
+    // 持有者须为管理员的范围（模拟后端发的 administratorHolderScopes）在名字后写明，每种语言都核对。
+    for (const [scope, label] of Object.entries(localized.scopeLabels)) {
+      const text = ["machine.write", "injection.configure"].includes(scope) ? `${label}${localized.administratorHolderScope}` : label;
+      await scopeGroup.getByText(text, { exact: true }).waitFor();
     }
     await localizedPanel.getByRole("button", { name: localized.disableDefault, exact: true }).click();
     const dialog = page.getByRole("dialog", { name: localized.confirmDisableTitle, exact: true });

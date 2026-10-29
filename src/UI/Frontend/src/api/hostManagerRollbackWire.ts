@@ -45,9 +45,24 @@ function decodePlacement(
 
 function decodeRecord(value: unknown, index: number): HostManagerAppliedRecord {
   const record = requireObject(value, `records[${index}]`);
+  // 序号、状态、记录时间同有同无：记录在历史表里有行才有（docs/report_lifecycle_2026-10-28.md）。
+  const identified = record.sequence !== null;
+  const sequence = identified ? requireInteger(record.sequence, "sequence") : null;
+  if (sequence !== null && sequence < 1) {
+    throw new Error("Invalid sequence");
+  }
+  if (identified ? record.state !== "active" : record.state !== null) {
+    throw new Error("Invalid state");
+  }
+  if (identified ? typeof record.recordedAt !== "string" : record.recordedAt !== null) {
+    throw new Error("Invalid recordedAt");
+  }
   return {
     kind: requireString(record.kind, "kind"),
-    recordId: requireString(record.recordId, "recordId")
+    recordId: requireString(record.recordId, "recordId"),
+    sequence,
+    state: identified ? "active" : null,
+    recordedAt: identified ? record.recordedAt as string : null
   };
 }
 

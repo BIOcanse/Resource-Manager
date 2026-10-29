@@ -137,6 +137,12 @@ export default createSettingsLocale("ja-JP", {
     "realtimeActionBudgetModeOptions": [{"id":"fixed","label":"固定数"},{"id":"percent","label":"プロセスの割合"}],
     "realtimeActionBudgetCountLabel": "固定の操作数",
     "realtimeActionBudgetPercentLabel": "全プロセスに対する割合 %",
+    "keepSmartRecordHistoryTitle": "スマートスケジューリングの履歴を保持",
+    "keepSmartRecordHistoryDescription": "オンにすると、スマートスケジューリングの各記録は復元後も詳細の「レポート」タブに通し番号順で残り、上限はありません。オフにすると、新しい記録は復元後に保持されません。すでに保持された履歴には影響しません。",
+    "keepSmartRecordHistoryOptions": {
+      "on": { "label": "オン", "description": "復元後も記録を履歴として保持します。" },
+      "off": { "label": "オフ", "description": "復元後は記録を保持しません。" }
+    },
     "refreshCadenceTitle": "情報の更新頻度",
     "refreshCadenceDescription": "監視情報と状態の更新速度を設定します。速くするとリソース使用量が少し増えます。",
     "presetNumericModeOptions": [
@@ -436,6 +442,7 @@ export default createSettingsLocale("ja-JP", {
       "observedCallerIsInformational": "観測されたパスと PID は参考情報であり、認可する相手の識別には使われません。",
       "requestScopesLabel": "要求されたスコープ",
       "requestUnavailableScopeHelp": "現在の許可範囲外のスコープは選択できません。許可時に送信されるのは、リクエストに含まれ、現在許可できるスコープだけです。",
+      "administratorHolderScope": "このキーを使うプログラムは管理者として実行する必要があります",
       "approve": "選択したスコープを許可",
       "deny": "拒否",
       "denyReasonLabel": "拒否理由",

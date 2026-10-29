@@ -14,6 +14,8 @@ export interface AccessKeySnapshot {
   readonly defaultEnabled: boolean;
   readonly defaultKeyId: string | null;
   readonly availableScopes: readonly string[];
+  /** 持有者必须是提权管理员的范围：带着其中任何一个的密钥，未提权的进程拿去用，每个请求都会被拒绝。对所有调用方相同。 */
+  readonly administratorHolderScopes: readonly string[];
 }
 
 export interface AccessKeyCreated {

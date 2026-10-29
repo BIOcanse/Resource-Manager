@@ -68,6 +68,7 @@ interface SettingsPageProps {
   onResetFrontendPreferences: () => void;
   onControlChange: (control: NonNullable<AppSettings["control"]>) => void;
   onPreciseGpuPlacementChange: (enabled: boolean) => void;
+  onKeepSmartRecordHistoryChange: (enabled: boolean) => void;
   onAutomaticMemoryCleanupLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   onMemoryOptimizationTargetLinesChange: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   onGpuOverflowThresholdsChange: (gpuUsagePercent: number, dedicatedMemoryPercent: number) => void;
@@ -324,6 +325,7 @@ export function SettingsPage(props: SettingsPageProps) {
               text={text()}
               preciseGpuPlacementAvailable={props.preciseGpuPlacementAvailable}
               onPreciseGpuPlacementChange={props.onPreciseGpuPlacementChange}
+              onKeepSmartRecordHistoryChange={props.onKeepSmartRecordHistoryChange}
               onGpuOverflowThresholdsChange={props.onGpuOverflowThresholdsChange}
               onRealtimeActionBudgetChange={props.onRealtimeActionBudgetChange}
             />

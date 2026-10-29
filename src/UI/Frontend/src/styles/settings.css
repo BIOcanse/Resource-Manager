@@ -1353,6 +1353,13 @@
   outline-offset: 2px;
 }
 
+/* 持有者须为管理员的范围：在范围名下另起一行写明，次要色。 */
+.trusted-access-scope-holder {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .trusted-access-scope-option input:disabled,
 .trusted-access-scope-option input:disabled + span {
   cursor: not-allowed;

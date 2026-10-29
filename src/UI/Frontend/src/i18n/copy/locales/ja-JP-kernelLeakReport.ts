@@ -65,6 +65,19 @@ export const kernelLeakReport: AppCopy["kernelLeakReport"] = {
     lastObserved: "最終検出"
   },
   ratePerSecond: (value: string) => `${value}/秒`,
+  details: {
+    button: "詳細情報",
+    back: "レポート一覧に戻る",
+    title: (name: string) => cjkText`${name} の詳細`,
+    holderSection: "保持プロセス",
+    evidenceSection: "判定根拠",
+    state: "状態",
+    active: "アクティブ",
+    resourceKind: "リソースの種類",
+    processName: "プロセス名",
+    startKey: "プロセス開始キー",
+    unavailableReason: "利用できない理由"
+  },
   actions: {
     title: "対処",
     name: {

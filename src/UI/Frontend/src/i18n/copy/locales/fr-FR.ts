@@ -1066,7 +1066,11 @@ const frFrAppCopy: AppCopy = {
     detailTitle: "Détails de l'optimisation"
   },
   optimizationReport: {
-    currentTarget: "cet élément",
+    unrecordedName: {
+      software: "Logiciel sans nom enregistré",
+      process: "Processus sans nom enregistré",
+      other: "Élément sans nom enregistré"
+    },
     severityCritical: "À traiter rapidement",
     severityWarning: "À surveiller",
     severityInfo: "Information",
@@ -2320,6 +2324,29 @@ const frFrAppCopy: AppCopy = {
       resourceOptimization: "Optimisation des ressources",
       schedulingAdjustment: "Ajustement de la planification"
     },
+    // 智能调度历史（docs/report_lifecycle_2026-10-28.md“智能调度记录”）。
+    history: {
+      title: "Historique",
+      loading: "Lecture de l’historique",
+      readFailed: "Impossible de lire l’historique de la planification intelligente",
+      empty: "Aucun enregistrement historique.",
+      retentionOff: "La conservation de l’historique de la planification intelligente est désactivée : les enregistrements ne sont pas conservés après leur restauration. Vous pouvez l’activer dans Paramètres → Stratégie d’exécution.",
+      loadMore: "Charger des enregistrements plus anciens",
+      field: {
+        sequence: "Séquence",
+        recordedAt: "Enregistré",
+        appliedAt: "Appliqué",
+        restoredAt: "Restauré",
+        restoreResult: "Résultat de la restauration"
+      },
+      restoreResult: {
+        restored: "Restauré",
+        targetExited: "La cible s’est fermée",
+        ownershipLost: "Modifié par un autre programme ; n’est plus restauré",
+        failed: "Échec de la restauration",
+        unknown: "Résultat non enregistré"
+      }
+    },
     resource: {
       cpu: "Processeur",
       gpu: "Processeur graphique",
@@ -2329,6 +2356,28 @@ const frFrAppCopy: AppCopy = {
       network: "Réseau",
       software: "Ressources logicielles"
     }
+  },
+  // 报告页的“清空历史”：一次删除这类报告的全部历史条目，活动条目保留（src/features/reportHistory）。
+  reportHistory: {
+    clear: "Effacer l’historique",
+    clearing: "Effacement",
+    confirmTitle: "Effacer les entrées historiques ?",
+    confirm: "Effacer",
+    confirmMessage: {
+      optimizationReports: (count: string) => `Rapports historiques qui seront supprimés : ${count}. Les rapports actifs sont conservés.`,
+      kernelLeaks: (count: string) => `Entrées historiques qui seront supprimées : ${count}. Les entrées actives sont conservées.`,
+      targetedRecordings: (count: string) => `Rapports d’enregistrement terminés qui seront supprimés : ${count}. Un enregistrement en cours est conservé.`,
+      smartRecords: "Tous les enregistrements historiques de la planification intelligente seront supprimés. Les enregistrements en attente de restauration sont conservés."
+    },
+    details: {
+      optimizationReports: ["Cette action est irréversible. Si le même problème se reproduit, il sera de nouveau enregistré.", "Les logiciels et appareils approuvés restent approuvés."],
+      kernelLeaks: ["Cette action est irréversible. Si le même problème se reproduit, il sera de nouveau enregistré."],
+      targetedRecordings: ["Ces rapports, ainsi que leurs intervalles d’images et leurs données de ressources, seront supprimés définitivement. Cette action est irréversible."],
+      smartRecords: ["Cette action est irréversible. Les numéros de séquence des enregistrements ne recommencent pas."]
+    },
+    clearedTitle: "Historique effacé",
+    cleared: (count: string) => `Entrées historiques supprimées : ${count}.`,
+    failed: "Impossible d’effacer l’historique."
   },
   browserRuntime: {
     description: "Examinez le runtime de l'interface web et les navigateurs installés sur ce PC.",

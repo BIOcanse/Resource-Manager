@@ -136,6 +136,12 @@ export default createSettingsLocale("zh-TW", {
     "realtimeActionBudgetModeOptions": [{"id":"fixed","label":"固定數量"},{"id":"percent","label":"處理程序百分比"}],
     "realtimeActionBudgetCountLabel": "固定動作數量",
     "realtimeActionBudgetPercentLabel": "全部處理程序百分比 %",
+    "keepSmartRecordHistoryTitle": "保留智慧排程歷史",
+    "keepSmartRecordHistoryDescription": "開啟後，智慧排程的每筆記錄在還原後仍保留在詳細資訊的「報告」分頁，依序號排列，不設上限。關閉後新的記錄還原後不保留，已保留的歷史不受影響。",
+    "keepSmartRecordHistoryOptions": {
+      "on": { "label": "開啟", "description": "記錄還原後保留為歷史。" },
+      "off": { "label": "關閉", "description": "記錄還原後不保留。" }
+    },
     "refreshCadenceTitle": "資訊更新頻率",
     "refreshCadenceDescription": "越快越費資源。",
     "presetNumericModeOptions": [
@@ -435,6 +441,7 @@ export default createSettingsLocale("zh-TW", {
       "observedCallerIsInformational": "觀測到的路徑與 PID 僅供參考，不是授權身分。",
       "requestScopesLabel": "申請範圍",
       "requestUnavailableScopeHelp": "申請範圍中超出目前授權範圍的項目無法勾選；核准只會提交目前可授予且包含在請求中的範圍。",
+      "administratorHolderScope": "使用此金鑰的程式須以系統管理員身分執行",
       "approve": "核准所選範圍",
       "deny": "拒絕",
       "denyReasonLabel": "拒絕原因",

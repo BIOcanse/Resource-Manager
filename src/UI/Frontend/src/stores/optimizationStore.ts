@@ -9,6 +9,12 @@ import {
 } from "../api";
 import { refreshOptimizationReports } from
   "../data/optimization/optimizationReportsApi.ts";
+import { clearReportHistory } from "../data/reportHistory/reportHistoryClear.ts";
+import {
+  confirmReportHistoryClear,
+  reportHistoryClearActionId,
+  reportHistoryClearedMessage
+} from "../features/reportHistory/confirmReportHistoryClear.ts";
 import type { RequestClient } from
   "../frontendRuntime/request/RequestClient.ts";
 import { useSource, type SourceView } from "../frontendRuntime/source/useSource.ts";
@@ -20,7 +26,7 @@ import {
   sourceCanRender,
   type SourceSnapshot
 } from "../frontendRuntime/source/SourceSnapshot.ts";
-import type { ToastInput } from "../components/AppFeedback";
+import type { ConfirmDialogRequest, ToastInput } from "../components/AppFeedback";
 import { uiText } from "../text.ts";
 import { userFacingErrorMessage } from "../presentation/userFacingText";
 import {
@@ -53,6 +59,8 @@ export interface OptimizationStoreOptions {
   /** 报告列表在页面上可见。 */
   reportsActive: Accessor<boolean>;
   requestClient: Pick<RequestClient, "request">;
+  /** 应用统一的确认对话框；清空历史报告前用它确认。 */
+  confirmDialog: (request: ConfirmDialogRequest) => Promise<boolean>;
 }
 
 export interface OptimizationStore {
@@ -70,6 +78,7 @@ export interface OptimizationStore {
   refreshHostManagerStatus: () => Promise<void>;
   dismissReport: (report: OptimizationReportItem) => Promise<void>;
   removeTrustedTarget: (target: TrustedOptimizationTarget) => Promise<void>;
+  clearReportHistory: () => Promise<void>;
   dispose: () => void;
 }
 
@@ -263,6 +272,27 @@ export function createOptimizationStore(options: OptimizationStoreOptions): Opti
     });
   }
 
+  // 清空历史（docs/report_lifecycle_2026-10-28.md）：确认后后端删除全部 history 报告，active 和信任都不动；
+  // 提示写后端回复的删除条数，然后重读报告集。
+  async function clearHistoryReports() {
+    const historyCount = overview()?.reports.filter((report) => report.state === "history").length ?? 0;
+    if (!options.enabled() || actionId() || historyCount === 0) {
+      return;
+    }
+    if (!await confirmReportHistoryClear(options.confirmDialog, "optimizationReports", historyCount)) {
+      return;
+    }
+    await runReportAction(reportHistoryClearActionId, async () => {
+      const removedCount = await clearReportHistory(options.requestClient, "optimizationReports");
+      options.showToast({
+        tone: "success",
+        title: uiText.reportHistory.clearedTitle,
+        message: reportHistoryClearedMessage(removedCount)
+      });
+      await refreshReports(false);
+    });
+  }
+
   async function runReportAction(targetId: string, action: () => Promise<void>) {
     if (!options.enabled() || actionId()) {
       return;
@@ -305,6 +335,7 @@ export function createOptimizationStore(options: OptimizationStoreOptions): Opti
     refreshHostManagerStatus,
     dismissReport,
     removeTrustedTarget,
+    clearReportHistory: clearHistoryReports,
     dispose
   };
 }

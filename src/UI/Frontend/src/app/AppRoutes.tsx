@@ -70,6 +70,8 @@ interface AppRoutesProps {
   onNotice: (message: string) => void;
   /** 页面动作失败时的错误提示。 */
   onActionError: (error: unknown, fallback: string) => void;
+  /** 页面动作完成时的结果提示（例如清空历史删了几条）。 */
+  onActionSucceeded: (title: string, message: string) => void;
   /** 应用统一的确认对话框（useGlobalFeedback）；页面里不可撤销的操作用它确认。 */
   confirmDialog: (request: ConfirmDialogRequest) => Promise<boolean>;
 }
@@ -118,6 +120,9 @@ export function AppRoutes(props: AppRoutesProps) {
             runtimeCapabilities={props.runtimeCapabilities}
             onOpenSoftwareSettings={props.onOpenSoftwareSettingsById}
             confirmDialog={props.confirmDialog}
+            onActionSucceeded={props.onActionSucceeded}
+            onActionError={props.onActionError}
+            keepSmartRecordHistory={props.settings.settings().performance?.keepSmartRecordHistory === true}
           />
         </PageBoundary>
       </PageHost>

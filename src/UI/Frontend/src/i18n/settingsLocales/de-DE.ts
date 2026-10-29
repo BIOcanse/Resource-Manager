@@ -138,6 +138,12 @@ export default createSettingsLocale("de-DE", {
     "realtimeActionBudgetModeOptions": [{"id":"fixed","label":"Feste Anzahl"},{"id":"percent","label":"Prozessanteil"}],
     "realtimeActionBudgetCountLabel": "Feste Aktionsanzahl",
     "realtimeActionBudgetPercentLabel": "Anteil aller Prozesse %",
+    "keepSmartRecordHistoryTitle": "Verlauf der intelligenten Planung aufbewahren",
+    "keepSmartRecordHistoryDescription": "Wenn eingeschaltet, bleibt jeder Eintrag der intelligenten Planung nach der Wiederherstellung auf der Registerkarte „Bericht“ unter Details, nach Laufnummer sortiert und ohne Grenze. Wenn ausgeschaltet, werden neue Einträge nach der Wiederherstellung nicht aufbewahrt; bereits aufbewahrter Verlauf bleibt erhalten.",
+    "keepSmartRecordHistoryOptions": {
+      "on": { "label": "Ein", "description": "Einträge nach der Wiederherstellung als Verlauf aufbewahren." },
+      "off": { "label": "Aus", "description": "Einträge nach der Wiederherstellung nicht aufbewahren." }
+    },
     "refreshCadenceTitle": "Häufigkeit der Informationsaktualisierung",
     "refreshCadenceDescription": "Legt fest, wie schnell Messwerte und Status aktualisiert werden. Häufigere Aktualisierungen benötigen etwas mehr Ressourcen.",
     "presetNumericModeOptions": [
@@ -437,6 +443,7 @@ export default createSettingsLocale("de-DE", {
       "observedCallerIsInformational": "Beobachteter Pfad und PID dienen nur zur Information und sind keine Autorisierungsidentität.",
       "requestScopesLabel": "Angeforderte Bereiche",
       "requestUnavailableScopeHelp": "Bereiche außerhalb Ihrer aktuellen Berechtigung können nicht ausgewählt werden. Gesendet werden nur angeforderte Bereiche, die Sie gewähren dürfen.",
+      "administratorHolderScope": "Programme mit diesem Schlüssel müssen als Administrator ausgeführt werden",
       "approve": "Ausgewählte Bereiche genehmigen",
       "deny": "Ablehnen",
       "denyReasonLabel": "Ablehnungsgrund",

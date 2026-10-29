@@ -138,6 +138,12 @@ export default createSettingsLocale("es-ES", {
     "realtimeActionBudgetModeOptions": [{"id":"fixed","label":"Cantidad fija"},{"id":"percent","label":"Porcentaje de procesos"}],
     "realtimeActionBudgetCountLabel": "Cantidad fija de acciones",
     "realtimeActionBudgetPercentLabel": "Todos los procesos %",
+    "keepSmartRecordHistoryTitle": "Conservar el historial de la programación inteligente",
+    "keepSmartRecordHistoryDescription": "Si está activado, cada registro de la programación inteligente permanece en la pestaña Informe de Detalles después de restaurarse, ordenado por número de secuencia y sin límite. Si está desactivado, los registros nuevos no se conservan después de restaurarse; el historial ya conservado no se ve afectado.",
+    "keepSmartRecordHistoryOptions": {
+      "on": { "label": "Activado", "description": "Conservar los registros como historial después de restaurarse." },
+      "off": { "label": "Desactivado", "description": "No conservar los registros después de restaurarse." }
+    },
     "refreshCadenceTitle": "Frecuencia de actualización",
     "refreshCadenceDescription": "Controla la frecuencia de actualización de las mediciones y los estados. Una frecuencia mayor usa algo más de recursos.",
     "presetNumericModeOptions": [
@@ -437,6 +443,7 @@ export default createSettingsLocale("es-ES", {
       "observedCallerIsInformational": "La ruta y el PID observados son informativos y no identifican a quién se autoriza.",
       "requestScopesLabel": "Ámbitos solicitados",
       "requestUnavailableScopeHelp": "No se pueden seleccionar ámbitos fuera de tus permisos actuales. Solo se enviarán ámbitos solicitados que puedas conceder.",
+      "administratorHolderScope": "Los programas que usen esta clave deben ejecutarse como administrador",
       "approve": "Aprobar ámbitos seleccionados",
       "deny": "Denegar",
       "denyReasonLabel": "Motivo de denegación",

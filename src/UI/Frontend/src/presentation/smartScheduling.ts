@@ -1,7 +1,10 @@
 import type { HostManagerAppliedPlacementReceipt } from "../types.ts";
 import { uiText } from "../text.ts";
 
-export function smartPlacementTarget(placement: HostManagerAppliedPlacementReceipt, softwareName?: string): string {
+export function smartPlacementTarget(
+  placement: Pick<HostManagerAppliedPlacementReceipt, "processName" | "processId">,
+  softwareName?: string
+): string {
   const processName = placement.processName || "";
   const name = softwareName && processName && softwareName.toLocaleLowerCase() !== processName.toLocaleLowerCase()
     ? `${softwareName} / ${processName}` : processName || softwareName || uiText.smartReport.fallbackTarget;

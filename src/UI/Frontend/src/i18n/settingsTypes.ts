@@ -115,6 +115,12 @@ export interface SettingsCopy {
     realtimeActionBudgetModeOptions: Array<{ id: "fixed" | "percent"; label: string }>;
     realtimeActionBudgetCountLabel: string;
     realtimeActionBudgetPercentLabel: string;
+    keepSmartRecordHistoryTitle: string;
+    keepSmartRecordHistoryDescription: string;
+    keepSmartRecordHistoryOptions: {
+      on: { label: string; description: string };
+      off: { label: string; description: string };
+    };
     refreshCadenceTitle: string;
     refreshCadenceDescription: string;
     presetNumericModeOptions: Array<{ id: AppPresetNumericSettingMode; label: string; description: string }>;
@@ -372,6 +378,7 @@ export interface TrustedAccessCopy {
   observedCallerIsInformational: string;
   requestScopesLabel: string;
   requestUnavailableScopeHelp: string;
+  administratorHolderScope: string;
   approve: string;
   deny: string;
   denyReasonLabel: string;

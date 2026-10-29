@@ -1066,7 +1066,11 @@ const jaJpAppCopy: AppCopy = {
     detailTitle: "最適化の詳細"
   },
   optimizationReport: {
-    currentTarget: "この項目",
+    unrecordedName: {
+      software: "名前が記録されていないソフトウェア",
+      process: "名前が記録されていないプロセス",
+      other: "名前が記録されていない項目"
+    },
     severityCritical: "早めの対応が必要",
     severityWarning: "注視が必要",
     severityInfo: "お知らせ",
@@ -2320,6 +2324,29 @@ const jaJpAppCopy: AppCopy = {
       resourceOptimization: "リソースの最適化",
       schedulingAdjustment: "スケジューリングの調整"
     },
+    // 智能调度历史（docs/report_lifecycle_2026-10-28.md“智能调度记录”）。
+    history: {
+      title: "履歴",
+      loading: "履歴を読み込み中",
+      readFailed: "スマートスケジューリングの履歴を読み込めませんでした",
+      empty: "履歴の記録はありません。",
+      retentionOff: "スマートスケジューリングの履歴の保持はオフのため、記録は復元後に保持されません。「設定 → 実行ポリシー」でオンにできます。",
+      loadMore: "以前の記録を読み込む",
+      field: {
+        sequence: "通し番号",
+        recordedAt: "記録日時",
+        appliedAt: "適用日時",
+        restoredAt: "復元日時",
+        restoreResult: "復元の結果"
+      },
+      restoreResult: {
+        restored: "復元済み",
+        targetExited: "対象が終了しました",
+        ownershipLost: "他のプログラムが変更したため、復元しません",
+        failed: "復元に失敗しました",
+        unknown: "結果は記録されていません"
+      }
+    },
     resource: {
       cpu: "プロセッサ",
       gpu: "グラフィックス プロセッサ",
@@ -2329,6 +2356,28 @@ const jaJpAppCopy: AppCopy = {
       network: "ネットワーク",
       software: "ソフトウェア リソース"
     }
+  },
+  // 报告页的“清空历史”：一次删除这类报告的全部历史条目，活动条目保留（src/features/reportHistory）。
+  reportHistory: {
+    clear: "履歴を消去",
+    clearing: "消去中",
+    confirmTitle: "履歴の項目を消去しますか？",
+    confirm: "消去",
+    confirmMessage: {
+      optimizationReports: (count: string) => `削除される履歴のレポート：${count}。アクティブなレポートは残ります。`,
+      kernelLeaks: (count: string) => `削除される履歴の項目：${count}。アクティブな項目は残ります。`,
+      targetedRecordings: (count: string) => `削除される完了済みの記録レポート：${count}。記録中のものは残ります。`,
+      smartRecords: "スマートスケジューリングの履歴の記録をすべて削除します。復元待ちの記録は残ります。"
+    },
+    details: {
+      optimizationReports: ["削除すると元に戻せません。同じ問題が再び発生した場合は、もう一度記録されます。", "信頼済みのソフトウェアとデバイスは引き続き信頼されます。"],
+      kernelLeaks: ["削除すると元に戻せません。同じ問題が再び発生した場合は、もう一度記録されます。"],
+      targetedRecordings: ["これらのレポートとそのフレーム間隔およびリソースデータは完全に削除され、元に戻すことはできません。"],
+      smartRecords: ["削除すると元に戻せません。記録の通し番号は最初からやり直しになりません。"]
+    },
+    clearedTitle: "履歴を消去しました",
+    cleared: (count: string) => `削除した履歴の項目：${count}。`,
+    failed: "履歴を消去できませんでした。"
   },
   browserRuntime: {
     description: "Web インターフェイスのランタイムと、この PC にインストールされたブラウザーを確認します。",

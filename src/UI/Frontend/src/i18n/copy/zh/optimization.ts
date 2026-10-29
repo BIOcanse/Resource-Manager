@@ -43,7 +43,11 @@ export const zhOptimizationCopy = {
     detailTitle: "优化详情"
   },
   optimizationReport: {
-    currentTarget: "当前对象",
+    unrecordedName: {
+      software: "未记录名称的软件",
+      process: "未记录名称的进程",
+      other: "未记录名称的对象"
+    },
     severityCritical: "需要尽快处理",
     severityWarning: "建议关注",
     severityInfo: "提示",

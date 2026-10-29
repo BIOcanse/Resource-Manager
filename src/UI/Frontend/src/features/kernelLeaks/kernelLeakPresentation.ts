@@ -13,7 +13,8 @@ import { renderBackendMessage } from "../../presentation/backendMessage.ts";
 import { formatElapsedDuration } from "../../presentation/elapsedDuration.ts";
 import { formatInterfaceNumber } from "../../presentation/interfaceNumbers.ts";
 import { userFacingDateTime } from "../../presentation/userFacingText.ts";
-import { uiText } from "../../text.ts";
+import { compactUserDetailSections, userDetailItem, userDetailSection, type UserDetailSection } from "../../presentation/userDetails.ts";
+import { currentLanguage, uiText } from "../../text.ts";
 import type { ContentStateKind } from "../../ui/patterns/ContentState.tsx";
 
 /*
@@ -112,6 +113,42 @@ export function kernelLeakImagePath(image: KernelLeakImage): string {
 export function kernelLeakServices(services: KernelLeakServices): { readonly names: readonly string[] } | { readonly text: string } {
   if (services.status !== "Current") return { text: metadataStatusText(services.status) };
   return services.names.length > 0 ? { names: services.names } : { text: uiText.kernelLeakReport.holder.noServices };
+}
+
+/**
+ * 一个条目的详细信息（条目上的“详细信息”按钮打开）：后端为这个条目发来的全部内容，一处看全。
+ * 持有进程（含卡片上不显示的启动键）、判定依据（含状态和资源类型）、每个保留操作的风险说明和暂不可用的原因。
+ */
+export function kernelLeakItemDetails(item: KernelLeakItem): { readonly title: string; readonly sections: UserDetailSection[] } {
+  const copy = uiText.kernelLeakReport;
+  const holder = item.holder;
+  const services = kernelLeakServices(holder.services);
+  const serviceText = "names" in services
+    ? new Intl.ListFormat(currentLanguage(), { type: "conjunction" }).format(services.names)
+    : services.text;
+  const actions = kernelLeakActionViews(item);
+  return {
+    title: copy.details.title(kernelLeakHolderTitle(holder.image)),
+    sections: compactUserDetailSections([
+      userDetailSection(copy.details.holderSection, [
+        userDetailItem(copy.details.processName, kernelLeakHolderTitle(holder.image)),
+        userDetailItem(copy.holder.processId, formatInterfaceNumber(holder.processId, { useGrouping: false })),
+        userDetailItem(copy.details.startKey, holder.startKey),
+        userDetailItem(copy.holder.productName, kernelLeakProductName(holder.image)),
+        userDetailItem(copy.holder.services, serviceText),
+        userDetailItem(copy.holder.imagePath, kernelLeakImagePath(holder.image))
+      ]),
+      userDetailSection(copy.details.evidenceSection, [
+        userDetailItem(copy.details.state, item.state === "history" ? copy.historyEntry : copy.details.active),
+        userDetailItem(copy.details.resourceKind, copy.resourceKind[item.resourceKind]),
+        ...kernelLeakEvidence(item).map((entry) => userDetailItem(entry.label, entry.value))
+      ]),
+      userDetailSection(copy.actions.title, [
+        ...actions.map((action) => userDetailItem(action.name, action.riskText)),
+        userDetailItem(copy.details.unavailableReason, kernelLeakActionReasons(item).join(" "))
+      ])
+    ])
+  };
 }
 
 /** 每个单位一种写法；合同加单位时这里必须跟着加。当前只有个数（count）。 */

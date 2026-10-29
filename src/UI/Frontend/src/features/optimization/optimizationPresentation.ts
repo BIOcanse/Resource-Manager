@@ -5,10 +5,19 @@ import { compactUserDetailSections, userDetailItem, userDetailSection } from "..
 import { uiText } from "../../text.ts";
 import { formatBytes } from "../../presentation/byteUnits.ts";
 
+/**
+ * 报告目标的显示名。CPU 封装和系统中断按设计不带名字，用资源名；其他目标名字为空表示名字没有记录
+ * （10-24 之前的旧报告，docs/report_lifecycle_2026-10-28.md），如实显示“未记录名称”。
+ */
 export function optimizationTargetName(target: { name: string; targetType: string }): string {
-  return target.name || (target.targetType === "cpu_package" ? uiText.smartReport.resource.cpu
-    : target.targetType === "system" ? uiText.optimizationReport.resource.systemInterrupt
-      : uiText.optimizationReport.currentTarget);
+  if (target.name) return target.name;
+  switch (target.targetType) {
+    case "cpu_package": return uiText.smartReport.resource.cpu;
+    case "system": return uiText.optimizationReport.resource.systemInterrupt;
+    case "software": return uiText.optimizationReport.unrecordedName.software;
+    case "process_instance": return uiText.optimizationReport.unrecordedName.process;
+    default: return uiText.optimizationReport.unrecordedName.other;
+  }
 }
 
 export interface OptimizationReportPresentation {

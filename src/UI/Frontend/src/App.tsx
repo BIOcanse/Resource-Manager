@@ -142,7 +142,8 @@ export default function App() {
     statusActive: () => frontendWork.isNeeded(frontendWorkIds.optimizationSmartStatus),
     statusIntervalMs: () => readContext.cpuRuntimePlan()?.monitor ?? null,
     reportsActive: () => frontendWork.isNeeded(frontendWorkIds.optimizationReports),
-    requestClient: frontendRuntime.requestClient
+    requestClient: frontendRuntime.requestClient,
+    confirmDialog
   });
   const metricSnapshotIntervalMs = createMemo(() =>
     readContext.cpuRuntimePlan()?.monitor ?? null);
@@ -420,6 +421,7 @@ export default function App() {
         })}
         onInspectOptimizationTarget={(report) => void softwareActions.inspectOptimizationTarget(report)}
         onActionError={showErrorToast}
+        onActionSucceeded={(title, message) => showToast({ tone: "success", title, message })}
         confirmDialog={confirmDialog}
         />
       </AppShell>

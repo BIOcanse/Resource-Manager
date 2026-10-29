@@ -23,17 +23,16 @@ import { CurrentPageHeading, useCurrentPageName } from "../../app/navigation/cur
 import { TargetedRecordingControl } from "./TargetedRecordingControl.tsx";
 import { StandardSelect, type StandardSelectOption } from "../../components/StandardSelect.tsx";
 import { ContentState } from "../../ui/patterns/ContentState.tsx";
-import type { ConfirmDialogRequest } from "../../components/AppFeedback";
+import { StableLabel } from "../../ui/primitives/StableLabel.tsx";
+import { useReportHistoryClear, type ReportHistoryClearFeedback } from "../reportHistory/useReportHistoryClear.ts";
 import { exitOnUnmount } from "../../presentation/nodeAnimation.ts";
 
 interface ResourceCurve { scope: "software" | "system"; metric: string }
 
 const activeRecordingRefreshIntervalMs = 2_000;
 
-export function TargetedReportsPage(props: {
-  /** 应用统一的确认对话框（由路由层经详细信息页传入）。 */
-  confirmDialog: (request: ConfirmDialogRequest) => Promise<boolean>;
-}) {
+/** 确认对话框和结果提示由路由层经详细信息页传入（删除录制、清空历史）。 */
+export function TargetedReportsPage(props: ReportHistoryClearFeedback) {
   const runtime = useFrontendRuntime();
   const frontendWork = useFrontendWork();
   const demandId = "targeted-reports.page";
@@ -201,6 +200,22 @@ export function TargetedReportsPage(props: {
     }
   };
 
+  // 清空历史删除全部已完成的录制（docs/report_lifecycle_2026-10-28.md“定向录制报告”），正在录制的不动。
+  const completedCount = () => recordings().filter((item) => item.status === "completed").length;
+  const history = useReportHistoryClear({
+    ...props,
+    kind: "targetedRecordings",
+    historyCount: completedCount,
+    afterClear: async () => {
+      if (recordings().find((item) => item.id === selectedId())?.status === "completed") {
+        setSelectedId(null);
+        setReportLoading(false);
+      }
+      recordingsSource.acceptAuthoritative(recordings().filter((item) => item.status === "recording"));
+      await recordingsSource.refresh().catch(() => undefined);
+    }
+  });
+
   const stop = async (id: string) => {
     if (stoppingId()) return;
     setStoppingId(id);
@@ -260,6 +275,11 @@ export function TargetedReportsPage(props: {
         <CurrentPageHeading />
         <div class="targeted-report-header-actions">
           <span class="targeted-report-busy" role="status">{loading() ? uiText.targetedReport.loading : ""}</span>
+          <button class="secondary panel-refresh-button" type="button"
+            disabled={completedCount() === 0 || history.clearing()} onClick={() => void history.clear()}>
+            <StableLabel labels={{ idle: uiText.reportHistory.clear, busy: uiText.reportHistory.clearing }}
+              current={history.clearing() ? "busy" : "idle"} />
+          </button>
           <button class="secondary panel-refresh-button" type="button" onClick={() => void refresh()}>{uiText.targetedReport.refresh}</button>
         </div>
       </div>

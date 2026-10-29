@@ -46,6 +46,7 @@ export function SettingsWorkspace(props: SettingsWorkspaceProps) {
         confirmDialog={props.confirmDialog}
         onControlChange={settings.updateControl}
         onPreciseGpuPlacementChange={settings.updatePreciseGpuPlacement}
+        onKeepSmartRecordHistoryChange={settings.updateKeepSmartRecordHistory}
         onAutomaticMemoryCleanupLinesChange={settings.updateAutomaticMemoryCleanupLines}
         onMemoryOptimizationTargetLinesChange={settings.updateMemoryOptimizationTargetLines}
         onGpuOverflowThresholdsChange={settings.updateGpuOverflowThresholds}

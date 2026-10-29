@@ -68,6 +68,12 @@ const zhCnSettingsCopy: SettingsCopy = {
     realtimeActionBudgetModeOptions: [{"id":"fixed","label":"固定数量"},{"id":"percent","label":"进程百分比"}],
     realtimeActionBudgetCountLabel: "固定动作数量",
     realtimeActionBudgetPercentLabel: "全部进程百分比 %",
+    keepSmartRecordHistoryTitle: "保留智能调度历史",
+    keepSmartRecordHistoryDescription: "开启后，智能调度的每条记录在恢复后仍保留在详细信息的“报告”分页，按序号排列，不设上限。关闭后新的记录恢复后不保留，已保留的历史不受影响。",
+    keepSmartRecordHistoryOptions: {
+      on: { label: "开启", description: "记录恢复后保留为历史。" },
+      off: { label: "关闭", description: "记录恢复后不保留。" }
+    },
     refreshCadenceTitle: "信息更新频率",
     refreshCadenceDescription: "越快越费资源。",
     presetNumericModeOptions: [
@@ -298,6 +304,7 @@ const zhCnSettingsCopy: SettingsCopy = {
         observedCallerIsInformational: "程序路径和 PID 是本机观测信息，仅供参考，不作为授权身份。",
         requestScopesLabel: "申请的范围",
         requestUnavailableScopeHelp: "申请范围中超出当前授权范围的项目不可勾选；批准时只会提交当前可授予且在请求中的范围。",
+        administratorHolderScope: "使用该密钥的程序须以管理员身份运行",
         approve: "批准所选范围",
         deny: "拒绝",
         denyReasonLabel: "拒绝原因",
@@ -477,6 +484,12 @@ const enSettingsCopy: SettingsCopy = {
     realtimeActionBudgetModeOptions: [{"id":"fixed","label":"Fixed count"},{"id":"percent","label":"Process percentage"}],
     realtimeActionBudgetCountLabel: "Fixed action count",
     realtimeActionBudgetPercentLabel: "All processes %",
+    keepSmartRecordHistoryTitle: "Keep smart scheduling history",
+    keepSmartRecordHistoryDescription: "When on, every smart scheduling record stays on the Report tab in Details after it is restored, ordered by sequence number, with no limit. When off, new records are not kept after they are restored; history already kept is not affected.",
+    keepSmartRecordHistoryOptions: {
+      on: { label: "On", description: "Keep records as history after they are restored." },
+      off: { label: "Off", description: "Do not keep records after they are restored." }
+    },
     refreshCadenceTitle: "Information update frequency",
     refreshCadenceDescription: "Control how quickly monitoring information and status are updated. Faster updates use slightly more resources.",
     presetNumericModeOptions: [
@@ -707,6 +720,7 @@ const enSettingsCopy: SettingsCopy = {
         observedCallerIsInformational: "The observed path and PID are informational and are not authorization identity.",
         requestScopesLabel: "Requested scopes",
         requestUnavailableScopeHelp: "Requested scopes outside your current grant cannot be selected. Approval submits only scopes you can grant that were included in the request.",
+        administratorHolderScope: "Programs using this key must run as administrator",
         approve: "Approve selected scopes",
         deny: "Deny",
         denyReasonLabel: "Denial reason",

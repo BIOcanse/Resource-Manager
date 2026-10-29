@@ -1065,7 +1065,11 @@ const koKrAppCopy: AppCopy = {
     detailTitle: "최적화 세부 정보"
   },
   optimizationReport: {
-    currentTarget: "이 항목",
+    unrecordedName: {
+      software: "이름이 기록되지 않은 소프트웨어",
+      process: "이름이 기록되지 않은 프로세스",
+      other: "이름이 기록되지 않은 항목"
+    },
     severityCritical: "곧 처리 필요",
     severityWarning: "지켜볼 필요 있음",
     severityInfo: "알림",
@@ -2319,6 +2323,29 @@ const koKrAppCopy: AppCopy = {
       resourceOptimization: "리소스 최적화",
       schedulingAdjustment: "스케줄링 조정"
     },
+    // 智能调度历史（docs/report_lifecycle_2026-10-28.md“智能调度记录”）。
+    history: {
+      title: "기록",
+      loading: "기록을 읽는 중",
+      readFailed: "스마트 스케줄링 기록을 읽지 못했습니다",
+      empty: "기록이 없습니다.",
+      retentionOff: "스마트 스케줄링 기록 보관이 꺼져 있어 복원된 기록은 보관되지 않습니다. 설정 → 실행 정책에서 켤 수 있습니다.",
+      loadMore: "이전 기록 불러오기",
+      field: {
+        sequence: "일련번호",
+        recordedAt: "기록 시간",
+        appliedAt: "적용 시간",
+        restoredAt: "복원 시간",
+        restoreResult: "복원 결과"
+      },
+      restoreResult: {
+        restored: "복원됨",
+        targetExited: "대상이 종료됨",
+        ownershipLost: "다른 프로그램이 변경하여 더 이상 복원하지 않음",
+        failed: "복원 실패",
+        unknown: "결과가 기록되지 않음"
+      }
+    },
     resource: {
       cpu: "프로세서",
       gpu: "그래픽 프로세서",
@@ -2328,6 +2355,28 @@ const koKrAppCopy: AppCopy = {
       network: "네트워크",
       software: "소프트웨어 리소스"
     }
+  },
+  // 报告页的“清空历史”：一次删除这类报告的全部历史条目，活动条目保留（src/features/reportHistory）。
+  reportHistory: {
+    clear: "기록 지우기",
+    clearing: "지우는 중",
+    confirmTitle: "기록 항목을 지우시겠습니까?",
+    confirm: "지우기",
+    confirmMessage: {
+      optimizationReports: (count: string) => `삭제될 기록 보고서: ${count}. 활성 보고서는 유지됩니다.`,
+      kernelLeaks: (count: string) => `삭제될 기록 항목: ${count}. 활성 항목은 유지됩니다.`,
+      targetedRecordings: (count: string) => `삭제될 완료된 녹화 보고서: ${count}. 진행 중인 녹화는 유지됩니다.`,
+      smartRecords: "스마트 스케줄링 기록의 모든 내역이 삭제됩니다. 복원 대기 중인 기록은 유지됩니다."
+    },
+    details: {
+      optimizationReports: ["삭제하면 되돌릴 수 없습니다. 같은 문제가 다시 발생하면 다시 기록됩니다.", "신뢰한 소프트웨어와 장치는 계속 신뢰됩니다."],
+      kernelLeaks: ["삭제하면 되돌릴 수 없습니다. 같은 문제가 다시 발생하면 다시 기록됩니다."],
+      targetedRecordings: ["이 보고서와 프레임 간격 및 리소스 데이터가 영구적으로 삭제되며 되돌릴 수 없습니다."],
+      smartRecords: ["삭제하면 되돌릴 수 없습니다. 기록의 일련번호는 처음부터 다시 시작하지 않습니다."]
+    },
+    clearedTitle: "기록을 지웠습니다",
+    cleared: (count: string) => `삭제한 기록 항목: ${count}.`,
+    failed: "기록을 지우지 못했습니다."
   },
   browserRuntime: {
     description: "웹 인터페이스 런타임과 이 PC에 설치된 브라우저를 확인합니다.",

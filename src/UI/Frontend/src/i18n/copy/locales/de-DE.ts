@@ -1066,7 +1066,11 @@ const deDeAppCopy: AppCopy = {
     detailTitle: "Details der Optimierung"
   },
   optimizationReport: {
-    currentTarget: "dieser Eintrag",
+    unrecordedName: {
+      software: "Software ohne gespeicherten Namen",
+      process: "Prozess ohne gespeicherten Namen",
+      other: "Eintrag ohne gespeicherten Namen"
+    },
     severityCritical: "Bald bearbeiten",
     severityWarning: "Beobachtenswert",
     severityInfo: "Hinweis",
@@ -2320,6 +2324,29 @@ const deDeAppCopy: AppCopy = {
       resourceOptimization: "Ressourcenoptimierung",
       schedulingAdjustment: "Anpassung der Planung"
     },
+    // 智能调度历史（docs/report_lifecycle_2026-10-28.md“智能调度记录”）。
+    history: {
+      title: "Verlauf",
+      loading: "Verlauf wird gelesen",
+      readFailed: "Der Verlauf der intelligenten Planung konnte nicht gelesen werden",
+      empty: "Keine Verlaufseinträge.",
+      retentionOff: "Das Aufbewahren des Planungsverlaufs ist ausgeschaltet; Einträge werden nach der Wiederherstellung nicht aufbewahrt. Sie können es unter Einstellungen → Laufzeitrichtlinie einschalten.",
+      loadMore: "Ältere Einträge laden",
+      field: {
+        sequence: "Laufnummer",
+        recordedAt: "Erfasst",
+        appliedAt: "Angewendet",
+        restoredAt: "Wiederhergestellt",
+        restoreResult: "Ergebnis der Wiederherstellung"
+      },
+      restoreResult: {
+        restored: "Wiederhergestellt",
+        targetExited: "Ziel beendet",
+        ownershipLost: "Von einem anderen Programm geändert; wird nicht mehr wiederhergestellt",
+        failed: "Wiederherstellung fehlgeschlagen",
+        unknown: "Ergebnis nicht erfasst"
+      }
+    },
     resource: {
       cpu: "Prozessor",
       gpu: "Grafikprozessor",
@@ -2329,6 +2356,28 @@ const deDeAppCopy: AppCopy = {
       network: "Netzwerk",
       software: "Softwareressourcen"
     }
+  },
+  // 报告页的“清空历史”：一次删除这类报告的全部历史条目，活动条目保留（src/features/reportHistory）。
+  reportHistory: {
+    clear: "Verlauf löschen",
+    clearing: "Wird gelöscht",
+    confirmTitle: "Verlaufseinträge löschen?",
+    confirm: "Löschen",
+    confirmMessage: {
+      optimizationReports: (count: string) => `Berichte im Verlauf, die gelöscht werden: ${count}. Aktive Berichte bleiben erhalten.`,
+      kernelLeaks: (count: string) => `Verlaufseinträge, die gelöscht werden: ${count}. Aktive Einträge bleiben erhalten.`,
+      targetedRecordings: (count: string) => `Abgeschlossene Aufzeichnungsberichte, die gelöscht werden: ${count}. Eine laufende Aufzeichnung bleibt erhalten.`,
+      smartRecords: "Alle Verlaufseinträge der intelligenten Planung werden gelöscht. Einträge, die noch wiederhergestellt werden, bleiben erhalten."
+    },
+    details: {
+      optimizationReports: ["Dieser Vorgang kann nicht rückgängig gemacht werden. Tritt dasselbe Problem erneut auf, wird es erneut erfasst.", "Vertrauenswürdige Software und Geräte bleiben vertrauenswürdig."],
+      kernelLeaks: ["Dieser Vorgang kann nicht rückgängig gemacht werden. Tritt dasselbe Problem erneut auf, wird es erneut erfasst."],
+      targetedRecordings: ["Diese Berichte werden mit ihren Bildintervallen und Ressourcendaten endgültig gelöscht. Dieser Vorgang kann nicht rückgängig gemacht werden."],
+      smartRecords: ["Dieser Vorgang kann nicht rückgängig gemacht werden. Die Laufnummern der Einträge beginnen nicht von vorn."]
+    },
+    clearedTitle: "Verlauf gelöscht",
+    cleared: (count: string) => `Gelöschte Verlaufseinträge: ${count}.`,
+    failed: "Der Verlauf konnte nicht gelöscht werden."
   },
   browserRuntime: {
     description: "Prüfen Sie die Runtime der Weboberfläche und die auf diesem PC installierten Browser.",

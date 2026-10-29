@@ -6,7 +6,7 @@ import { loadAppCopy } from "../src/i18n/copy/appCopyLoader.ts";
 import { loadSettingsText } from "../src/i18n/settingsLoader.ts";
 import { languageOptions } from "../src/i18n/settingsLanguages.ts";
 import { presentOptimizationReport } from "../src/features/optimization/optimizationPresentation.ts";
-import { optimizationResourceLabel, optimizationSeverityLabel } from "../src/features/optimization/optimizationPresentation.ts";
+import { optimizationResourceLabel, optimizationSeverityLabel, optimizationTargetName } from "../src/features/optimization/optimizationPresentation.ts";
 import { browserRuntimeKindLabel, browserRuntimeSourceLabel } from "../src/features/browserRuntimes/browserRuntimePresentation.ts";
 import { cpuMaximumOccupancyOptions, runtimeSwitchMethodOptions } from "../src/components/softwarePlacementOptions.ts";
 import { startupTargetGpuOptionsForSoftwarePolicy } from "../src/components/gpuPlacementTargetOptions.ts";
@@ -127,6 +127,19 @@ for (const language of languageOptions) {
   assert(!strayPresentation.summary.includes("BACKEND_PROSE"));
   const unavailable = presentOptimizationReport({ ...stray, evidence: { ...stray.evidence, process: null } });
   assert(!unavailable.summary.includes("undefined") && !unavailable.summary.includes("null"));
+  // 名字没有记录的旧目标（名字空、softwareId 为 null）如实显示“未记录名称”。
+  const unrecorded = { software: uiText.optimizationReport.unrecordedName.software,
+    process_instance: uiText.optimizationReport.unrecordedName.process, volume: uiText.optimizationReport.unrecordedName.other };
+  for (const [targetType, expected] of Object.entries(unrecorded)) {
+    assert.equal(optimizationTargetName({ targetType, name: "" }), expected, `${language.id}: unrecorded ${targetType} name`);
+  }
+  const nameless = presentOptimizationReport({ ...report, type: "background_high_usage", context: null,
+    target: { ...report.target, targetType: "software", targetKey: "software-handle:c98e5ff9c38d12c7", name: "", softwareId: null },
+    evidence: { ...report.evidence, resourceKind: "cpu" } } as OptimizationReportItem);
+  assert.equal(nameless.title, uiText.optimizationReport.title.backgroundHighUsage(unrecorded.software, uiText.optimizationReport.resource.cpu));
+  assert(JSON.stringify(nameless.details).includes(unrecorded.software), `${language.id}: unrecorded name in details`);
+  assert.equal(optimizationTargetName({ targetType: "cpu_package", name: "" }), uiText.smartReport.resource.cpu);
+  assert.equal(optimizationTargetName({ targetType: "system", name: "" }), uiText.optimizationReport.resource.systemInterrupt);
   if (!["zh-CN", "zh-TW"].includes(language.id)) assert(!(label + message + softwareIssueMessage(catalog)).includes("内存占用异常"), language.id);
   console.log(`PASS software issue and interrupt report presentation ${language.id}`);
 }

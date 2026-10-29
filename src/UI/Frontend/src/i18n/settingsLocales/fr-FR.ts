@@ -138,6 +138,12 @@ export default createSettingsLocale("fr-FR", {
     "realtimeActionBudgetModeOptions": [{"id":"fixed","label":"Nombre fixe"},{"id":"percent","label":"Pourcentage des processus"}],
     "realtimeActionBudgetCountLabel": "Nombre fixe d’actions",
     "realtimeActionBudgetPercentLabel": "Tous les processus %",
+    "keepSmartRecordHistoryTitle": "Conserver l’historique de la planification intelligente",
+    "keepSmartRecordHistoryDescription": "Lorsque cette option est activée, chaque enregistrement de la planification intelligente reste dans l’onglet Rapport des Détails après sa restauration, trié par numéro de séquence, sans limite. Lorsqu’elle est désactivée, les nouveaux enregistrements ne sont pas conservés après leur restauration ; l’historique déjà conservé n’est pas affecté.",
+    "keepSmartRecordHistoryOptions": {
+      "on": { "label": "Activé", "description": "Conserver les enregistrements dans l’historique après leur restauration." },
+      "off": { "label": "Désactivé", "description": "Ne pas conserver les enregistrements après leur restauration." }
+    },
     "refreshCadenceTitle": "Fréquence d’actualisation",
     "refreshCadenceDescription": "Définissez la vitesse de mise à jour des mesures et états. Une fréquence élevée consomme un peu plus de ressources.",
     "presetNumericModeOptions": [
@@ -437,6 +443,7 @@ export default createSettingsLocale("fr-FR", {
       "observedCallerIsInformational": "Le chemin et le PID observés sont des informations indicatives, pas l’identité autorisée.",
       "requestScopesLabel": "Portées demandées",
       "requestUnavailableScopeHelp": "Les portées hors de vos droits actuels ne sont pas sélectionnables. Seules les portées demandées que vous pouvez accorder seront soumises.",
+      "administratorHolderScope": "Les programmes utilisant cette clé doivent s’exécuter en tant qu’administrateur",
       "approve": "Approuver les portées sélectionnées",
       "deny": "Refuser",
       "denyReasonLabel": "Motif du refus",

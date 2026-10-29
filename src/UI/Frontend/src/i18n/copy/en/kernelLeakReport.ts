@@ -69,6 +69,19 @@ export const enKernelLeakReportCopy: Pick<AppCopy, "kernelLeakReport"> = {
       lastObserved: "Last detected"
     },
     ratePerSecond: (value: string) => `${value}/s`,
+    details: {
+      button: "Details",
+      back: "Back to report list",
+      title: (name: string) => `${name} details`,
+      holderSection: "Holder process",
+      evidenceSection: "Evidence",
+      state: "State",
+      active: "Active",
+      resourceKind: "Resource type",
+      processName: "Process name",
+      startKey: "Process start key",
+      unavailableReason: "Reason unavailable"
+    },
     actions: {
       title: "Actions",
       name: {

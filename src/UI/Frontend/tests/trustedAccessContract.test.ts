@@ -48,22 +48,31 @@ assert.deepEqual(accessKeySnapshotDecoder.decode({
   keys: [defaultKey, independentKey],
   defaultEnabled: true,
   defaultKeyId: defaultKey.id,
-  availableScopes: [...defaultScopes, "machine.write", "injection.configure"]
+  availableScopes: [...defaultScopes, "machine.write", "injection.configure"],
+  administratorHolderScopes: ["machine.write", "injection.configure"]
 }).keys.map((key) => key.name), ["Native default", "Local report script"]);
+// 持有者须为管理员的范围是必有字段：缺了或重复都按不合合同拒绝。
+for (const administratorHolderScopes of [undefined, ["machine.write", "machine.write"], [7]]) {
+  assert.throws(() => accessKeySnapshotDecoder.decode({ keys: [], defaultEnabled: false, defaultKeyId: null,
+    availableScopes: defaultScopes, administratorHolderScopes }), ResponseDecodeError);
+}
 assert.throws(() => accessKeySnapshotDecoder.decode({
   keys: [{ ...defaultKey, apiKey: "default-secret" }],
   defaultEnabled: true,
   defaultKeyId: defaultKey.id,
-  availableScopes: defaultScopes
+  availableScopes: defaultScopes,
+  administratorHolderScopes: ["machine.write", "injection.configure"]
 }), /absent from metadata responses/);
 assert.throws(() => accessKeySnapshotDecoder.decode({
   keys: [{ ...defaultKey, purpose: "openai" }],
   defaultEnabled: true,
   defaultKeyId: defaultKey.id,
-  availableScopes: defaultScopes
+  availableScopes: defaultScopes,
+  administratorHolderScopes: ["machine.write", "injection.configure"]
 }), /control-purpose keys only/);
 assert.throws(() => accessKeySnapshotDecoder.decode({
-  keys: [], defaultEnabled: true, defaultKeyId: "missing", availableScopes: defaultScopes
+  keys: [], defaultEnabled: true, defaultKeyId: "missing", availableScopes: defaultScopes,
+  administratorHolderScopes: ["machine.write", "injection.configure"]
 }), /consistent enabled default key metadata/);
 assert.throws(() => defaultAccessKeyStateDecoder.decode({
   defaultEnabled: true, defaultKeyId: defaultKey.id, apiKey: "default-secret"
@@ -140,7 +149,8 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       keys: [defaultKey, independentKey],
       defaultEnabled: true,
       defaultKeyId: defaultKey.id,
-      availableScopes: defaultScopes
+      availableScopes: defaultScopes,
+      administratorHolderScopes: ["machine.write", "injection.configure"]
     });
   }
   if (url.pathname === "/api/access-keys" && method === "POST") {

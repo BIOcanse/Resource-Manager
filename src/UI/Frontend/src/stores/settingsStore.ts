@@ -107,6 +107,7 @@ export interface SettingsStore {
   updateMemoryProtection: (memoryProtection: NonNullable<AppSettings["memoryProtection"]>) => void;
   updateControl: (control: NonNullable<AppSettings["control"]>) => void;
   updatePreciseGpuPlacement: (enabled: boolean) => void;
+  updateKeepSmartRecordHistory: (enabled: boolean) => void;
   updateAutomaticMemoryCleanupLines: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   updateMemoryOptimizationTargetLines: (physicalMemoryPercent: number, virtualMemoryPercent: number) => void;
   updateGpuOverflowThresholds: (gpuUsagePercent: number, dedicatedMemoryPercent: number) => void;
@@ -514,6 +515,10 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
       ...performance,
       preciseGpuPlacementEnabled: enabled
     })),
+    updateKeepSmartRecordHistory: (enabled) => updatePerformance((performance) => ({
+      ...performance,
+      keepSmartRecordHistory: enabled
+    })),
     updateAutomaticMemoryCleanupLines: (physicalMemoryPercent, virtualMemoryPercent) => updatePerformance((performance) => ({
       ...performance,
       physicalMemoryAutomaticCleanupPercent: normalizeDangerPercent(physicalMemoryPercent, 6),
@@ -732,7 +737,7 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
 /** 运行策略、内存、外观（信息更新频率）分区各自拥有的 performance 字段；optimizationMode 由优化页设置，不属于任何设置分区。 */
 const sectionPerformanceFields = {
   runtimePolicy: ["preciseGpuPlacementEnabled", "gpuOverflowUsagePercent", "gpuOverflowDedicatedMemoryPercent",
-    "realtimeActionBudgetMode", "realtimeActionBudgetCount", "realtimeActionBudgetPercent"],
+    "realtimeActionBudgetMode", "realtimeActionBudgetCount", "realtimeActionBudgetPercent", "keepSmartRecordHistory"],
   memory: ["physicalMemoryAutomaticCleanupPercent", "virtualMemoryAutomaticCleanupPercent",
     "physicalMemoryOptimizationTargetUsagePercent", "virtualMemoryOptimizationTargetUsagePercent"],
   appearance: ["monitorRefreshIntervalMs", "resourceTableRefreshIntervalMs", "localSystemRefreshIntervalMs"]
@@ -785,6 +790,7 @@ export function defaultAppSettings(): AppSettings {
       virtualMemoryAutomaticCleanupPercent: 8,
       physicalMemoryOptimizationTargetUsagePercent: 70,
       virtualMemoryOptimizationTargetUsagePercent: 70,
+      keepSmartRecordHistory: false,
       monitorRefreshIntervalMs: defaultLogicRefreshIntervalSetting("monitor"),
       resourceTableRefreshIntervalMs: defaultLogicRefreshIntervalSetting("resourceTable"),
       localSystemRefreshIntervalMs: defaultLogicRefreshIntervalSetting("localSystem")
@@ -842,6 +848,7 @@ export function normalizeAppSettings(settings?: AppSettings | null): AppSettings
       virtualMemoryAutomaticCleanupPercent: normalizeDangerPercent(settings?.performance?.virtualMemoryAutomaticCleanupPercent, defaults.performance!.virtualMemoryAutomaticCleanupPercent),
       physicalMemoryOptimizationTargetUsagePercent: normalizeTargetUsagePercent(settings?.performance?.physicalMemoryOptimizationTargetUsagePercent, defaults.performance!.physicalMemoryOptimizationTargetUsagePercent),
       virtualMemoryOptimizationTargetUsagePercent: normalizeTargetUsagePercent(settings?.performance?.virtualMemoryOptimizationTargetUsagePercent, defaults.performance!.virtualMemoryOptimizationTargetUsagePercent),
+      keepSmartRecordHistory: settings?.performance?.keepSmartRecordHistory ?? defaults.performance!.keepSmartRecordHistory,
       monitorRefreshIntervalMs: normalizeLogicRefreshIntervalSetting("monitor", settings?.performance?.monitorRefreshIntervalMs),
       resourceTableRefreshIntervalMs: normalizeLogicRefreshIntervalSetting("resourceTable", settings?.performance?.resourceTableRefreshIntervalMs),
       localSystemRefreshIntervalMs: normalizeLogicRefreshIntervalSetting("localSystem", settings?.performance?.localSystemRefreshIntervalMs)

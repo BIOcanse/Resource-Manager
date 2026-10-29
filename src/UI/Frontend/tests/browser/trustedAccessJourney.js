@@ -8,6 +8,7 @@ const defaultScopes = [
   "desktop.publish", "gpu.resolve", "gpu.report", "keys.manage"
 ];
 const allScopes = [...defaultScopes, "machine.write", "injection.configure"];
+const administratorHolderScopes = ["machine.write", "injection.configure"];
 const iso = (offsetMs = 0) => new Date(Date.now() + offsetMs).toISOString();
 
 export default async function trustedAccessJourney(page, baseUrl) {
@@ -46,7 +47,8 @@ export default async function trustedAccessJourney(page, baseUrl) {
     keys,
     defaultEnabled,
     defaultKeyId,
-    availableScopes: allScopes
+    availableScopes: allScopes,
+    administratorHolderScopes
   });
   const publishPendingRequests = async requests => {
     const response = await fetch(`${baseUrl}/__test/scenario`, {
@@ -278,6 +280,11 @@ export default async function trustedAccessJourney(page, baseUrl) {
   const createPanel = panel.locator(".trusted-access-create");
   await createPanel.getByRole("textbox", { name: copy.nameLabel }).fill("Read-only report");
   const createScopeGroup = createPanel.getByRole("group", { name: copy.createScopesLabel });
+  // 持有者须为管理员的范围在名字下写明，其余范围不写。
+  const createOptionText = await createScopeGroup.locator(".trusted-access-scope-option").evaluateAll(options =>
+    options.map(option => option.textContent.trim()));
+  assert.deepEqual(createOptionText, allScopes.map(scope => `${copy.scopeLabels[scope] ?? scope}${
+    administratorHolderScopes.includes(scope) ? copy.administratorHolderScope : ""}`), "administrator-holder scopes are marked");
   for (const scope of allScopes) {
     const checkbox = createScopeGroup.getByLabel(copy.scopeLabels[scope] ?? scope);
     if (scope === "read") await checkbox.check();

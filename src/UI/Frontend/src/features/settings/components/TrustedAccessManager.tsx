@@ -166,6 +166,8 @@ export function TrustedAccessManager(props: {
   /** 本版本认识、且后端当前允许授予的范围才能勾选。 */
   const grantable = (scope: string) => isKnownAccessScope(scope) && availableScopes().includes(scope);
   const createOptions = () => availableScopes().filter(isKnownAccessScope);
+  // 持有者必须是提权管理员的范围在选项旁标出（用户 10-29「那就做」）：勾选它的密钥只能给以管理员身份运行的程序用。
+  const administratorHolder = (scope: string) => ready()?.administratorHolderScopes.includes(scope) ?? false;
   // 用户裁定（2026-10-25）：新建密钥默认只勾选“读取接口”；批准请求默认勾选请求申请的全部范围。
   const createScopes = () => selectedCreateScopes() ?? (createOptions().includes("read") ? ["read"] : []);
   const setCreateScope = (scope: string, checked: boolean) => {
@@ -439,7 +441,9 @@ export function TrustedAccessManager(props: {
                   <label class="trusted-access-scope-option">
                     <input type="checkbox" checked={createScopes().includes(scope)} disabled={busy()}
                       onChange={(event) => setCreateScope(scope, event.currentTarget.checked)} />
-                    <span>{scopeLabel(scope)}</span>
+                    <span>{scopeLabel(scope)}<Show when={administratorHolder(scope)}>
+                      <small class="trusted-access-scope-holder">{props.copy.administratorHolderScope}</small>
+                    </Show></span>
                   </label>
                 )}</For>
                 <Show when={createOptions().length === 0}>
@@ -557,7 +561,9 @@ export function TrustedAccessManager(props: {
                     <input type="checkbox" checked={requestScopes(request()).includes(scope)}
                       disabled={busy() || !grantable(scope)}
                       onChange={(event) => setRequestScope(request(), scope, event.currentTarget.checked)} />
-                    <span>{scopeLabel(scope)}</span>
+                    <span>{scopeLabel(scope)}<Show when={administratorHolder(scope)}>
+                      <small class="trusted-access-scope-holder">{props.copy.administratorHolderScope}</small>
+                    </Show></span>
                   </label>
                 )}</For>
               </fieldset>

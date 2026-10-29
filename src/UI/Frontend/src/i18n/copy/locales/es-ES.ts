@@ -1066,7 +1066,11 @@ const esEsAppCopy: AppCopy = {
     detailTitle: "Detalles de la optimización"
   },
   optimizationReport: {
-    currentTarget: "este elemento",
+    unrecordedName: {
+      software: "Software sin nombre registrado",
+      process: "Proceso sin nombre registrado",
+      other: "Elemento sin nombre registrado"
+    },
     severityCritical: "Atender pronto",
     severityWarning: "Conviene vigilarlo",
     severityInfo: "Aviso",
@@ -2320,6 +2324,29 @@ const esEsAppCopy: AppCopy = {
       resourceOptimization: "Optimización de recursos",
       schedulingAdjustment: "Ajuste de la planificación"
     },
+    // 智能调度历史（docs/report_lifecycle_2026-10-28.md“智能调度记录”）。
+    history: {
+      title: "Historial",
+      loading: "Leyendo el historial",
+      readFailed: "No se pudo leer el historial de la programación inteligente",
+      empty: "No hay registros en el historial.",
+      retentionOff: "Conservar el historial de la programación inteligente está desactivado, así que los registros no se conservan después de restaurarse. Puede activarlo en Configuración → Directiva de ejecución.",
+      loadMore: "Cargar registros anteriores",
+      field: {
+        sequence: "Secuencia",
+        recordedAt: "Registrado",
+        appliedAt: "Aplicado",
+        restoredAt: "Restaurado",
+        restoreResult: "Resultado de la restauración"
+      },
+      restoreResult: {
+        restored: "Restaurado",
+        targetExited: "El destino se cerró",
+        ownershipLost: "Modificado por otro programa; ya no se restaura",
+        failed: "Error al restaurar",
+        unknown: "Resultado no registrado"
+      }
+    },
     resource: {
       cpu: "Procesador",
       gpu: "Procesador gráfico",
@@ -2329,6 +2356,28 @@ const esEsAppCopy: AppCopy = {
       network: "Red",
       software: "Recursos del software"
     }
+  },
+  // 报告页的“清空历史”：一次删除这类报告的全部历史条目，活动条目保留（src/features/reportHistory）。
+  reportHistory: {
+    clear: "Borrar historial",
+    clearing: "Borrando",
+    confirmTitle: "¿Borrar las entradas del historial?",
+    confirm: "Borrar",
+    confirmMessage: {
+      optimizationReports: (count: string) => `Informes del historial que se eliminarán: ${count}. Los informes activos se conservan.`,
+      kernelLeaks: (count: string) => `Entradas del historial que se eliminarán: ${count}. Las entradas activas se conservan.`,
+      targetedRecordings: (count: string) => `Informes de grabación completados que se eliminarán: ${count}. Una grabación en curso se conserva.`,
+      smartRecords: "Se eliminarán todos los registros del historial de la programación inteligente. Los registros pendientes de restaurar se conservan."
+    },
+    details: {
+      optimizationReports: ["Esta acción no se puede deshacer. Si el mismo problema vuelve a producirse, se registrará de nuevo.", "El software y los dispositivos de confianza siguen siendo de confianza."],
+      kernelLeaks: ["Esta acción no se puede deshacer. Si el mismo problema vuelve a producirse, se registrará de nuevo."],
+      targetedRecordings: ["Estos informes y sus intervalos de fotogramas y datos de recursos se eliminarán de forma permanente. Esta acción no se puede deshacer."],
+      smartRecords: ["Esta acción no se puede deshacer. Los números de secuencia de los registros no vuelven a empezar."]
+    },
+    clearedTitle: "Historial borrado",
+    cleared: (count: string) => `Entradas del historial eliminadas: ${count}.`,
+    failed: "No se pudo borrar el historial."
   },
   browserRuntime: {
     description: "Revisa el entorno de ejecución de la interfaz web y los navegadores instalados en este equipo.",

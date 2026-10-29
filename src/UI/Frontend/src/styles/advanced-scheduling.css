@@ -65,7 +65,8 @@
 }
 
 /* 列表下方的“显示全部／只显示最近”按钮：靠起始边，不拉满整行。 */
-.smart-details-records-toggle {
+.smart-details-records-toggle,
+.smart-details-history-more {
   justify-self: start;
 }
 
@@ -129,6 +130,54 @@
 .smart-details-record-metrics span.danger {
   border-color: color-mix(in oklab, var(--danger) 62%, var(--line));
   color: var(--danger);
+}
+
+/* 记录序号（docs/report_lifecycle_2026-10-28.md）：等宽数字，不随位数改变其他标签的位置。 */
+.smart-details-record-metrics span.smart-details-sequence {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 智能调度历史：标题和“清空历史”一行，下面是说明、读取状态和历史记录列表。 */
+.smart-details-history {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.smart-details-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.smart-details-history-header h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.smart-details-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.smart-details-note.error {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--danger);
+}
+
+/* 历史记录不填底色、标题用次要文字色，和其他报告的历史条目一致。 */
+.smart-details-record.history {
+  background: transparent;
+}
+
+.smart-details-record.history .smart-details-record-main strong {
+  color: var(--muted);
 }
 
 .cpu-topology-actions {

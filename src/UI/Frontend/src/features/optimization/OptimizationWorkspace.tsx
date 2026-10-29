@@ -28,6 +28,7 @@ export function OptimizationWorkspace(props: OptimizationWorkspaceProps) {
         onDismiss={(report) => void optimization.dismissReport(report)}
         onInspect={(report) => void props.onInspectOptimizationTarget(report)}
         onRemoveTrust={(target) => void optimization.removeTrustedTarget(target)}
+        onClearHistory={() => void optimization.clearReportHistory()}
     />
   );
 }

@@ -14,9 +14,13 @@ interface RuntimePolicySettingsSectionProps {
   onPreciseGpuPlacementChange: (enabled: boolean) => void;
   onGpuOverflowThresholdsChange: (gpuUsagePercent: number, dedicatedMemoryPercent: number) => void;
   onRealtimeActionBudgetChange: (mode: AppPerformanceSettings["realtimeActionBudgetMode"], count: number, percent: number) => void;
+  onKeepSmartRecordHistoryChange: (enabled: boolean) => void;
 }
 
-/** 设置 → 运行策略：调度怎么选卡、什么时候溢出到集显、每轮实时动作的上限。值存在设置的 performance 里。 */
+/**
+ * 设置 → 运行策略：调度怎么选卡、什么时候溢出到集显、每轮实时动作的上限、智能调度记录恢复后要不要保留为历史。
+ * 值存在设置的 performance 里。
+ */
 export function RuntimePolicySettingsSection(props: RuntimePolicySettingsSectionProps) {
   // 占位值与「恢复为默认」同源，不另写一份默认值。
   const performance = (): AppPerformanceSettings => props.settings ?? defaultAppSettings().performance!;
@@ -105,6 +109,22 @@ export function RuntimePolicySettingsSection(props: RuntimePolicySettingsSection
               onChange={(event) => props.onRealtimeActionBudgetChange(performance().realtimeActionBudgetMode, performance().realtimeActionBudgetCount, Number(event.currentTarget.value))} />
           </label>
         </div>
+      </div>
+      {/* 智能调度记录的历史（docs/report_lifecycle_2026-10-28.md）：默认不保留；关掉不删已保留的历史。 */}
+      <div class="settings-row">
+        <div class="settings-row-copy">
+          <strong>{props.text.performance.keepSmartRecordHistoryTitle}</strong>
+          <span>{props.text.performance.keepSmartRecordHistoryDescription}</span>
+        </div>
+        <SegmentedControl<"on" | "off">
+          value={performance().keepSmartRecordHistory ? "on" : "off"}
+          options={[
+            { id: "on", ...props.text.performance.keepSmartRecordHistoryOptions.on },
+            { id: "off", ...props.text.performance.keepSmartRecordHistoryOptions.off }
+          ]}
+          ariaLabel={props.text.performance.keepSmartRecordHistoryTitle}
+          onChange={(value) => props.onKeepSmartRecordHistoryChange(value === "on")}
+        />
       </div>
     </div>
   );
