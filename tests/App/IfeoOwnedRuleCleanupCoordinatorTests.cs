@@ -279,7 +279,7 @@ public sealed class IfeoOwnedRuleCleanupCoordinatorTests
         return new IfeoImageSnapshot(imageName, true, true, rules);
     }
 
-    private sealed class FakeOwnedRuleStore : IIfeoOwnedRuleStore
+    internal sealed class FakeOwnedRuleStore : IIfeoOwnedRuleStore
     {
         private readonly Dictionary<(RegistryView View, string ImageName), IfeoImageSnapshot> images = new();
         private readonly HashSet<(RegistryView View, string ImageName)> protectedWrites = new();

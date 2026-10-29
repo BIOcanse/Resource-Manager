@@ -14,6 +14,7 @@ using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Endpoints;
 using ResourceManager.App.Infrastructure.GpuPlacement;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.Security;
 using Microsoft.AspNetCore.Http;
 
@@ -37,7 +38,8 @@ public sealed class PerformanceOverlayEndpointTests
         builder.Services.AddSingleton<IStartupModuleSettingsStore>(store);
         builder.Services.AddSingleton<ISoftwareRegistryView>(software);
         builder.Services.AddSingleton(new GpuLaunchInterceptionReconciler(new EmptyGpuPolicyStore(), store,
-            files.Catalog, software, registry, new UnavailableGpuScheduling(), NullLogger<GpuLaunchInterceptionReconciler>.Instance));
+            files.Catalog, software, registry, new UnavailableGpuScheduling(), NullLogger<GpuLaunchInterceptionReconciler>.Instance,
+            new RuntimePlanProvider(new HostManagerDeploymentState())));
         await using var app = TrustedAccessEndpointTestAuthentication.Build(builder);
         typeof(ResourceManagerEndpointRouteBuilderExtensions).GetMethod("MapStartupModuleEndpoints", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null,
             [app, ResourceManager.App.Hosting.StartupCapabilities.StartupCapabilitySet.Full]);

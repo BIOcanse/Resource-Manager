@@ -8,6 +8,7 @@ using ResourceManager.App.Domain.GpuPlacement;
 using ResourceManager.App.Domain.Software;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.GpuPlacement;
+using ResourceManager.App.Infrastructure.RuntimeSpecialization;
 using ResourceManager.Shared.Packages;
 
 namespace Resource_Manager_APP.Tests;
@@ -60,22 +61,30 @@ public sealed class OverlayLaunchWiringTests
         var reconciler = new GpuLaunchInterceptionReconciler(new StaticGpuPolicyStore(Document(Process("gpu.exe", true))),
             new MemoryModuleStore(new(1, [new("software", ["fixture-module"])])), files.Catalog,
             new StaticSoftwareView([Software(files.Image)]), registry,
-            new StaticGpuSchedulingAvailability(available, failure), NullLogger<GpuLaunchInterceptionReconciler>.Instance);
+            new StaticGpuSchedulingAvailability(available, failure), NullLogger<GpuLaunchInterceptionReconciler>.Instance,
+            new RuntimePlanProvider(new HostManagerDeploymentState()));
+        if (failure)
+        {
+            await Assert.ThrowsAsync<IOException>(() => reconciler.ReconcileAsync(default));
+            Assert.Null(registry.GpuDocument);
+            return;
+        }
         await reconciler.ReconcileAsync(default);
         Assert.Equal([files.Image], registry.ModulePaths);
-        Assert.Equal(available && !failure ? 1 : 0, registry.GpuDocument!.ProcessPolicies.Count);
+        Assert.Equal(available ? 1 : 0, registry.GpuDocument!.ProcessPolicies.Count);
     }
 
     [Fact]
-    public async Task StartupAwaitsItsSingleReconciliationBeforeReturning()
+    public async Task ExplicitReconciliationAwaitsSelectionBeforeReturning()
     {
         using var files = new StartupModuleTestCatalog();
         var registry = new CapturingRegistry();
         var availability = new GatedGpuSchedulingAvailability();
         var reconciler = new GpuLaunchInterceptionReconciler(new StaticGpuPolicyStore(Document()),
             new MemoryModuleStore(new(1, [])), files.Catalog, new StaticSoftwareView([]), registry,
-            availability, NullLogger<GpuLaunchInterceptionReconciler>.Instance);
-        var startup = reconciler.StartAsync(default);
+            availability, NullLogger<GpuLaunchInterceptionReconciler>.Instance,
+            new RuntimePlanProvider(new HostManagerDeploymentState()));
+        var startup = reconciler.ReconcileAsync(default);
         try
         {
             await availability.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -85,7 +94,6 @@ public sealed class OverlayLaunchWiringTests
         finally { availability.Release.TrySetResult(); }
         await startup.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.NotNull(registry.GpuDocument);
-        await reconciler.StopAsync(default);
     }
 
     [Fact]

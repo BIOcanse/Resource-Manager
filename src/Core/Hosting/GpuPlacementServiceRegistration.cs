@@ -53,7 +53,7 @@ public static partial class ResourceManagerServiceCollectionExtensions
                 new BusinessBlockFailureLogger<GpuLaunchInterceptionReconciler>(
                     provider.GetRequiredService<ILoggerFactory>().CreateLogger<GpuLaunchInterceptionReconciler>(),
                     provider.GetRequiredService<IBusinessBlockDiagnostics>(), BlockUids.Program));
-            // Reconciliation is serial program work, so its diagnostics belong to the program root.
+            // The serial host turn owns a publication subscription; it does not reconcile before publication.
             services.AddSingleton(new BusinessBlockDiagnosticRegistration(BlockUids.Program));
             services.AddSerialHostedServiceAlias<GpuLaunchInterceptionReconciler>();
         }
