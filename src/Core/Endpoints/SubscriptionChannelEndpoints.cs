@@ -233,11 +233,14 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             }
             if (item.Fields is not null && selector != "/api/device-topology/fields/subscribe")
                 return Failed(statusCode, "Field selection is supported by the device information subscription.");
+            if (item.Items.ValueKind != JsonValueKind.Undefined && selector != "/api/performance-overlay/subscribe")
+                return Failed(statusCode, "Item selection in the body is supported by the performance overlay subscription.");
             descriptors.Add(new ParsedFrontendSubscription(
                 item.Id!,
                 selector,
                 query,
-                item.Fields));
+                item.Fields,
+                item.Items));
         }
 
         var keyService = httpContext.RequestServices.GetRequiredService<ITrustedAccessKeyService>();
@@ -937,7 +940,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         string Id,
         string Selector,
         IQueryCollection Query,
-        IReadOnlyList<FieldReference>? Fields = null)
+        IReadOnlyList<FieldReference>? Fields = null,
+        JsonElement Items = default)
     {
         // The access this selector was admitted with; null when the selector needed no authorization.
         public TrustedAccessAuthorizationContext? Access { get; init; }
@@ -1026,7 +1030,10 @@ internal sealed record FrontendSubscriptionChannelRequestItem(
     string? Id,
     string? Path,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    IReadOnlyList<FieldReference>? Fields = null);
+    IReadOnlyList<FieldReference>? Fields = null,
+    // Overlay items as a JSON array in the body, the same shape as the overlay's items= query value.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    JsonElement Items = default);
 
 internal sealed record FrontendSubscriptionChannelFrame<T>(
     string SubscriptionId,

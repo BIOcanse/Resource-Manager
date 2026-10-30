@@ -298,6 +298,59 @@ public sealed class PerformanceOverlaySubscriptionTests
         Assert.Equal(0, rig.Resources.IdentityActiveCount);
     }
 
+    [Fact]
+    public async Task OverlayItemsInTheBodyReadLikeTheQueryValue()
+    {
+        await using var rig = await OverlayItemRig.StartAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        using var body = JsonDocument.Parse(OverlayItems);
+        using var response = await rig.SubscribeAsync("intervalMs=100&softwareId=game", body.RootElement, timeout.Token);
+        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+        using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(timeout.Token));
+
+        var items = await ReadItemsAsync(reader, timeout.Token);
+        Assert.Equal(new[] { "metric", "frames", "software" }, items.Select(static item => item.GetProperty("kind").GetString()));
+        Assert.Equal(new[] { 200, 100, 300 }, items.Select(static item => item.GetProperty("intervalMs").GetInt32()));
+        Assert.Equal(new[] { "high", "mid", "low" }, items.Select(static item => item.GetProperty("syncPrecision").GetString()));
+        await timeout.CancelAsync();
+    }
+
+    [Theory]
+    [InlineData("""null""")]
+    [InlineData("""{"kind":"metric","id":"cpu.usage"}""")]
+    [InlineData("""[{"kind":"metric","id":"nope"}]""")]
+    public async Task OverlayRejectsBodyItemsTheRecordingContractRejects(string items)
+    {
+        await using var rig = await OverlayItemRig.StartAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        using var body = JsonDocument.Parse(items);
+        using var response = await rig.SubscribeAsync("intervalMs=100&softwareId=game", body.RootElement, timeout.Token);
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(0, rig.Resources.IdentityActiveCount);
+    }
+
+    [Fact]
+    public async Task OverlayRejectsItemsInBothTheBodyAndTheQuery()
+    {
+        await using var rig = await OverlayItemRig.StartAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        using var body = JsonDocument.Parse(OverlayItems);
+        using var response = await rig.SubscribeAsync(
+            "intervalMs=100&softwareId=game&items=" + Uri.EscapeDataString(OverlayItems), body.RootElement, timeout.Token);
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task BodyItemsOnAnotherSubscriptionRejectTheChannel()
+    {
+        await using var rig = await OverlayItemRig.StartAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        using var body = JsonDocument.Parse(OverlayItems);
+        using var response = await rig.SubscribeAsync("intervalMs=100&softwareId=game", body.RootElement, timeout.Token,
+            path: "/api/metrics/subscribe?");
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     private static async Task<JsonElement[]> ReadItemsAsync(StreamReader reader, CancellationToken cancellationToken)
     {
         using var document = JsonDocument.Parse((await reader.ReadLineAsync(cancellationToken))!);
@@ -354,6 +407,17 @@ public sealed class PerformanceOverlaySubscriptionTests
                 {
                     version = 1,
                     subscriptions = new[] { new { id = "overlay", path = "/api/performance-overlay/subscribe?" + query } }
+                })
+            }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+        public Task<HttpResponseMessage> SubscribeAsync(string query, JsonElement items, CancellationToken cancellationToken,
+            string path = "/api/performance-overlay/subscribe?")
+            => client.SendAsync(new HttpRequestMessage(HttpMethod.Post, "/api/subscriptions/stream")
+            {
+                Content = JsonContent.Create(new
+                {
+                    version = 1,
+                    subscriptions = new[] { new { id = "overlay", path = path + query, items } }
                 })
             }, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 

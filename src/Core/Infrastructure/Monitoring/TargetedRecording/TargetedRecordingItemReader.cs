@@ -105,10 +105,16 @@ public static class TargetedRecordingItemReader
     public static IReadOnlyList<TargetedRecordingItem> ParseItems(string json)
     {
         using var document = JsonDocument.Parse(json);
-        if (document.RootElement.ValueKind != JsonValueKind.Array)
+        return ParseItems(document.RootElement);
+    }
+
+    /// <summary>The same array already parsed, as a request body carries it.</summary>
+    public static IReadOnlyList<TargetedRecordingItem> ParseItems(JsonElement array)
+    {
+        if (array.ValueKind != JsonValueKind.Array)
             throw new FormatException("targeted-recording-item-invalid-kind");
         var items = new List<TargetedRecordingItem>();
-        foreach (var element in document.RootElement.EnumerateArray())
+        foreach (var element in array.EnumerateArray())
         {
             if (element.ValueKind != JsonValueKind.Object) throw new FormatException("targeted-recording-item-invalid-kind");
             items.Add(new TargetedRecordingItem(

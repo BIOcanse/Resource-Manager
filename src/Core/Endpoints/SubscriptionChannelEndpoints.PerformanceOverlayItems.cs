@@ -41,13 +41,17 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     private static IReadOnlyList<PerformanceOverlayItemPlan> ParsePerformanceOverlayItems(
         ParsedFrontendSubscription subscription, IServiceProvider services, TimeSpan interval)
     {
-        if (!subscription.Query.TryGetValue("items", out var values)) return [];
-        if (values.Count != 1 || string.IsNullOrWhiteSpace(values[0]))
+        // Items come from the body's items array or from the items= query value, never both.
+        var inQuery = subscription.Query.TryGetValue("items", out var values);
+        var inBody = subscription.Items.ValueKind != JsonValueKind.Undefined;
+        if (!inQuery && !inBody) return [];
+        if (inQuery && inBody || inQuery && (values.Count != 1 || string.IsNullOrWhiteSpace(values[0])))
             throw new ArgumentException("targeted-recording-item-invalid-kind");
         IReadOnlyList<TargetedRecordingItem> items;
         try
         {
-            items = TargetedRecordingItemReader.ParseItems(values[0]!);
+            items = inBody ? TargetedRecordingItemReader.ParseItems(subscription.Items)
+                : TargetedRecordingItemReader.ParseItems(values[0]!);
         }
         catch (FormatException error)
         {
