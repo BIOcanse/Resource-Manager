@@ -43,12 +43,17 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
         var metricSource = services.GetRequiredService<IMetricSnapshotObservationSource>();
         var frameSource = services.GetRequiredService<IFrameTimingObservationSource>();
         var frameWindow = ResourceManager.App.Infrastructure.Monitoring.MonitoringSettings.ProductDefaults.OverlayFrameWindow;
+        var softwareRegistry = services.GetRequiredService<ResourceManager.App.Application.Software.ISoftwareRegistryView>();
         return subscription.Compile(async (writer, cancellationToken) =>
         {
             IDisposable? identityLease = null, processLease = null, resourceLease = null, metricLease = null, frameLease = null;
             string? resourceKey = null, metricKey = null;
             // Without items the loop is the single-interval loop. With items it ticks at the shortest item
             // interval; the id/field part still runs on its own interval and items not due echo their last read.
+            // The target is the requested record and every record naming the same software, resolved the way a
+            // targeted recording resolves it, so processes attributed to an equivalent record are the target too.
+            var targetIds = ResourceManager.App.Infrastructure.Monitoring.TargetedRecording.TargetedRecordingTargets
+                .EquivalentIds(softwareId, await softwareRegistry.GetSoftwareAsync(cancellationToken)).ToArray();
             var tick = itemPlans.Count == 0 ? interval
                 : TimeSpan.FromMilliseconds(Math.Min(interval.TotalMilliseconds, itemPlans.Min(static plan => plan.IntervalMs)));
             var slack = tick / 2;
@@ -73,7 +78,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                             SamplingObservationStatus.NotRequested, 0, 0, 0, 0, 0, 0, []);
                         var processes = identityLease is null ? null : processSource.ReadLatest(new(
                             SchedulingProcessMetricMask.None, inventory));
-                        var running = PerformanceOverlayProjection.SelectTargets([softwareId], processes);
+                        var running = PerformanceOverlayProjection.SelectTargets(targetIds, processes);
                         var hasTargets = running.Count > 0;
                         if (hasTargets && processMask != SchedulingProcessMetricMask.None && processLease is null)
                             processLease = processSource.AcquireSubscription(
@@ -118,7 +123,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                         else if (!hasTargets || !needsFrames) { frameLease?.Dispose(); frameLease = null; }
                         var frames = frameLease is null ? null : frameSource.Read(frameWindow);
                         var snapshot = PerformanceOverlayProjection.Create(
-                            [softwareId], ids, processes, breakdown, hardware, frames, DateTimeOffset.UtcNow);
+                            targetIds, ids, processes, breakdown, hardware, frames, DateTimeOffset.UtcNow);
                         if (hasTargets && useFields && hardware is not null)
                             snapshot = snapshot with { Fields = ReadMetricFields(hardware, selections, services) };
                         current = snapshot;
@@ -128,7 +133,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     if (itemPlans.Count > 0)
                         current = current! with
                         {
-                            Items = UpdatePerformanceOverlayItems(itemPlans, subscription.Id, softwareId, currentTargets,
+                            Items = UpdatePerformanceOverlayItems(itemPlans, subscription.Id, targetIds, currentTargets,
                                 metricSource, resourceSource, frameSource, frameWindow, now, slack, out itemsDue)
                         };
                     if (legacyRuns || itemsDue) await writer.WriteAsync(subscription.Id, current!, cancellationToken);

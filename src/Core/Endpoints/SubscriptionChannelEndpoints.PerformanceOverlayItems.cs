@@ -38,7 +38,7 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
 
     /// <summary>Parses and validates the items query. No items query means no items (the single-interval
     /// request is unchanged). A malformed or invalid list rejects the subscription with the reason code.</summary>
-    internal static IReadOnlyList<PerformanceOverlayItemPlan> ParsePerformanceOverlayItems(
+    private static IReadOnlyList<PerformanceOverlayItemPlan> ParsePerformanceOverlayItems(
         ParsedFrontendSubscription subscription, IServiceProvider services, TimeSpan interval)
     {
         if (!subscription.Query.TryGetValue("items", out var values)) return [];
@@ -73,14 +73,14 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     /// due, and returns the current values (items not due echo their last read). due is true when any item
     /// was read on this tick.</summary>
     internal static IReadOnlyList<PerformanceOverlayItemValue> UpdatePerformanceOverlayItems(
-        IReadOnlyList<PerformanceOverlayItemPlan> plans, string subscriptionId, string softwareId,
+        IReadOnlyList<PerformanceOverlayItemPlan> plans, string subscriptionId, IReadOnlyList<string> targetSoftwareIds,
         IReadOnlyList<SchedulingProcessFact> running, IMetricSnapshotObservationSource metrics,
         IResourceBreakdownObservationSource breakdown, IFrameTimingObservationSource frames, TimeSpan frameWindow,
         DateTimeOffset now, TimeSpan slack, out bool due)
     {
         due = false;
         var hasTargets = running.Count > 0;
-        var softwareIds = new HashSet<string>([softwareId], StringComparer.OrdinalIgnoreCase);
+        var softwareIds = new HashSet<string>(targetSoftwareIds, StringComparer.OrdinalIgnoreCase);
         var targetKeys = running.Select(static process => (process.ProcessId, (long)process.ProcessStartKey)).ToHashSet();
         FrameTimingSnapshot? frameSnapshot = null;
         var frameRead = false;
