@@ -122,6 +122,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
     [JsonSerializable(typeof(global::ResourceManager.App.Domain.GpuPlacement.GpuPlacementSoftwarePolicy))]
     [JsonSerializable(typeof(global::ResourceManager.App.Domain.GpuPlacement.GpuPlacementSoftwareProcessHistory))]
     [JsonSerializable(typeof(global::ResourceManager.App.Domain.GpuPlacement.GpuPlacementSoftwareSettingsSnapshot))]
+    [JsonSerializable(typeof(global::ResourceManager.App.Domain.RuntimeSpecialization.BaseScoreResolution))]
+    [JsonSerializable(typeof(global::ResourceManager.App.Domain.RuntimeSpecialization.BaseScoreLayer))]
     [JsonSerializable(typeof(global::ResourceManager.App.Domain.Indexing.SoftwareFileIndexSnapshot))]
     [JsonSerializable(typeof(global::ResourceManager.App.Domain.Indexing.SoftwareFileIndexStatistics))]
     [JsonSerializable(typeof(global::ResourceManager.App.Domain.LocalSystem.LocalOnlineSearchRequest))]

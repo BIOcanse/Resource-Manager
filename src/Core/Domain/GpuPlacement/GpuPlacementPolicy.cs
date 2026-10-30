@@ -241,7 +241,12 @@ public sealed record GpuPlacementSoftwareSettingsSnapshot(
     GpuPlacementSoftwareProcessHistory ProcessHistory,
     IReadOnlyList<GpuLaunchInterceptionStatus>? StartupInterceptions = null,
     GpuPlacementTargetInventory? TargetInventory = null,
-    IReadOnlyList<GpuPlacementProcessCapabilities>? ProcessCapabilities = null);
+    IReadOnlyList<GpuPlacementProcessCapabilities>? ProcessCapabilities = null)
+{
+    public ResourceManager.App.Domain.RuntimeSpecialization.BaseScoreResolution? BaseScore { get; init; }
+    public IReadOnlyDictionary<string, ResourceManager.App.Domain.RuntimeSpecialization.BaseScoreResolution> ProcessBaseScores { get; init; }
+        = new Dictionary<string, ResourceManager.App.Domain.RuntimeSpecialization.BaseScoreResolution>();
+}
 
 public static class GpuPlacementCapabilityStates
 {

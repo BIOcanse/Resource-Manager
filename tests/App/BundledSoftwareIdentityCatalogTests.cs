@@ -80,13 +80,13 @@ public sealed class BundledSoftwareIdentityCatalogTests
         {
             var match = catalog.MatchProcess(Process(executable));
             Assert.Equal(SoftwareKinds.WindowsService, match?.Kind);
-            Assert.Equal(90, OptimizationRuntimeScoringDefaults.BaseScoreForKind(match!.Kind));
+            Assert.Equal(60, OptimizationRuntimeScoringDefaults.BaseScoreForKind(match!.Kind));
         }
         foreach (var executable in new[] { "CrossDeviceService.exe", "WidgetBoard.exe", "MicrosoftStartFeedProvider.exe" })
         {
             var match = catalog.MatchProcess(Process(executable));
             Assert.Equal(SoftwareKinds.WindowsComponent, match?.Kind);
-            Assert.Equal(90, OptimizationRuntimeScoringDefaults.BaseScoreForKind(match!.Kind));
+            Assert.Equal(60, OptimizationRuntimeScoringDefaults.BaseScoreForKind(match!.Kind));
         }
     }
 

@@ -4,7 +4,7 @@ namespace ResourceManager.App.Infrastructure.NativeCore;
 
 internal static class NativeSmartCoordinatorAbi
 {
-    public const uint Version = 0x000c_0001;
+    public const uint Version = 0x000c_0002;
     public const int RuntimeStateCount = 7;
 }
 
@@ -270,7 +270,6 @@ internal enum NativeSmartCoordinatorReason : ulong
     MiddleTierBlocksFreeze = 1UL << 11,
     LowTierBlocksEnhancement = 1UL << 12,
     ProtectionLevel1ClampsFreeze = 1UL << 13,
-    ProtectionLevel2BlocksOptimization = 1UL << 14,
     ReservedProcessReason15 = 1UL << 15,
     ReservedProcessReason16 = 1UL << 16,
     FreezeGroupBlocked = 1UL << 17,
@@ -290,7 +289,7 @@ internal enum NativeSmartCoordinatorReason : ulong
     DuplicateCycle = 1UL << 34,
     AtomicGroupCompensation = 1UL << 35,
     ReservationTimedOut = 1UL << 37,
-    Known = ((1UL << 38) - 1) & ~((7UL << 20) | (1UL << 5) | (1UL << 15) | (1UL << 16) | (1UL << 36))
+    Known = ((1UL << 38) - 1) & ~((7UL << 20) | (1UL << 5) | (1UL << 14) | (1UL << 15) | (1UL << 16) | (1UL << 36))
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 8, Size = 264)]

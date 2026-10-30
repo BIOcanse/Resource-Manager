@@ -113,7 +113,8 @@ test "reconfigure applies changed content at the same generation and accepts rol
     try std.testing.expectEqual(original.normal_interval_ms, session.config.normal_interval_ms);
 }
 
-test "ABI layout is frozen for version 12.1" {
+test "ABI layout is frozen for version 12.2" {
+    try std.testing.expectEqual(@as(u32, 0x000c_0002), protocol.abi_version);
     try std.testing.expectEqual(@as(usize, 264), @sizeOf(protocol.Config));
     try std.testing.expectEqual(@as(usize, 88), @sizeOf(protocol.Capacity));
     try std.testing.expectEqual(@as(usize, 80), @sizeOf(protocol.CycleInput));
@@ -168,6 +169,9 @@ test "strict config and capacity query have no defaults" {
     config.field_mask &= ~protocol.ConfigFields.timing;
     try std.testing.expect(!protocol.isValidConfig(&config));
     try std.testing.expectEqual(protocol.Status.invalid_argument, coordinator.capacityForConfig(&config, &capacity));
+    config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
+    config.abi_version = 0x000c_0001;
+    try std.testing.expectEqual(protocol.Status.abi_mismatch, coordinator.capacityForConfig(&config, &capacity));
     config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
     config.abi_version +%= 1;
     try std.testing.expectEqual(protocol.Status.abi_mismatch, coordinator.capacityForConfig(&config, &capacity));
@@ -248,7 +252,7 @@ test "retired config score-only bit and required per-cycle fields are rejected" 
 }
 
 test "ABI enum and validity bit assignments are frozen" {
-    try std.testing.expectEqual(@as(u32, 0x000c_0001), protocol.abi_version);
+    try std.testing.expectEqual(@as(u32, 0x000c_0002), protocol.abi_version);
     try std.testing.expectEqual(@as(i32, 0), @intFromEnum(protocol.Status.ok));
     try std.testing.expectEqual(@as(i32, 11), @intFromEnum(protocol.Status.recreate_required));
     try std.testing.expectEqual(@as(u64, 0x09), protocol.FeatureFlags.known);
@@ -264,7 +268,7 @@ test "ABI enum and validity bit assignments are frozen" {
     try std.testing.expectEqual(@as(u32, 0x1f), protocol.SnapshotFlags.known);
     try std.testing.expectEqual(
         ((@as(u64, 1) << 38) - 1) &
-            ~((@as(u64, 7) << 20) | (@as(u64, 1) << 5) | (@as(u64, 1) << 15) |
+            ~((@as(u64, 7) << 20) | (@as(u64, 1) << 5) | (@as(u64, 1) << 14) | (@as(u64, 1) << 15) |
                 (@as(u64, 1) << 16) | (@as(u64, 1) << 36)),
         protocol.Reason.known,
     );
@@ -1334,6 +1338,64 @@ test "feedback batches validate transactionally before advancing any action" {
     try std.testing.expectEqual(@as(u32, 0), session.inflightCount());
 }
 
+test "protection rejects retired and unknown levels before native facts are staged" {
+    var base = corpus.processFact(0, 14_001, 140_001, 141, 1_411, 20, .general_application, 0, protocol.ProcessGrade.normal, 0);
+    for ([_]u8{ 0, 1 }) |level| {
+        base.protection_level = level;
+        try std.testing.expectEqual(protocol.Status.ok, protocol.validateInputRow(&base, 0));
+    }
+    for ([_]u8{ 2, 255 }) |level| {
+        base.protection_level = level;
+        try std.testing.expectEqual(protocol.Status.invalid_argument, protocol.validateInputRow(&base, 0));
+        const config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
+        const session = try coordinator.create(&config);
+        defer coordinator.destroy(session);
+        var rows = [_]protocol.InputRow{ base, corpus.metricFact(base, 1, .cpu_usage_percent, 50, 0) };
+        var input = corpus.cycle(&config, 1, 1_000, rows.len, true);
+        var actions: ActionBuffer = undefined;
+        var snapshot: protocol.Snapshot = undefined;
+        try std.testing.expectEqual(protocol.Status.ok, corpus.plan(session, &input, &rows, rows.len, &actions, actions.len, &snapshot));
+        try std.testing.expect(snapshot.invalid_fact_count >= 2);
+        const slot = session.findProcess(base.target_key, base.process_id, base.process_start_key) orelse return error.MissingIdentityObservation;
+        const process = session.processes[slot];
+        try std.testing.expectEqual(@as(u8, 0), process.protection_level);
+        try std.testing.expectEqual(@as(u64, 0), process.valid_mask & protocol.InputValidity.protection);
+        try std.testing.expect(!process.candidate_valid);
+        try std.testing.expectEqual(@as(u32, 1), snapshot.action_count);
+        try std.testing.expectEqual(@as(u32, 0), actions[0].flags & protocol.ActionFlags.requires_feedback);
+    }
+    try std.testing.expectEqual(@as(u64, 0), protocol.Reason.known & (@as(u64, 1) << 14));
+}
+
+test "no freeze protection still dispatches level one through three optimization" {
+    const cases = [_]struct { base: f64, surface: u64, usage: f64, grade: i8 }{
+        .{ .base = 20, .surface = 0, .usage = 50, .grade = protocol.ProcessGrade.level3 },
+        .{ .base = 80, .surface = 0, .usage = 100, .grade = protocol.ProcessGrade.level2 },
+        .{ .base = 40, .surface = protocol.InputFlags.foreground_focused, .usage = 100, .grade = protocol.ProcessGrade.level1 },
+    };
+    for ([_]protocol.SoftwareKind{ .general_application, .adapted }) |kind| {
+        for (cases) |case| {
+            var config = corpus.explicitConfig(protocol.FeatureFlags.process_policy);
+            config.required_consecutive_decisions = 1;
+            const session = try coordinator.create(&config);
+            defer coordinator.destroy(session);
+            var base = corpus.processFact(0, 14_001, 140_001, 141, 1_411, case.base, kind, case.surface, protocol.ProcessGrade.normal, 0);
+            base.protection_level = 1;
+            var rows = [_]protocol.InputRow{ base, corpus.metricFact(base, 1, .cpu_usage_percent, case.usage, 0) };
+            var input = corpus.cycle(&config, 1, 1_000, rows.len, true);
+            var actions: ActionBuffer = undefined;
+            var snapshot: protocol.Snapshot = undefined;
+            try std.testing.expectEqual(protocol.Status.ok, corpus.plan(session, &input, &rows, rows.len, &actions, actions.len, &snapshot));
+            try std.testing.expectEqual(@as(u32, 1), snapshot.action_count);
+            try std.testing.expectEqual(case.grade, actions[0].to_process_grade);
+            try std.testing.expect((actions[0].flags & protocol.ActionFlags.requires_feedback) != 0);
+            if (case.grade == protocol.ProcessGrade.level3) {
+                try std.testing.expect((actions[0].reason_mask & protocol.Reason.protection_level1_clamps_freeze) != 0);
+            }
+        }
+    }
+}
+
 test "process grade boundary corpus uses only direct CPU occupancy scores" {
     try expectFirstRoundDesiredGrade(20, 0, 50, 0, protocol.ProcessGrade.level4);
     try expectFirstRoundDesiredGrade(21, 0, 50, 0, protocol.ProcessGrade.level3);
@@ -1344,7 +1406,6 @@ test "process grade boundary corpus uses only direct CPU occupancy scores" {
     try expectFirstRoundDesiredGrade(90, protocol.InputFlags.foreground_focused, 100, 0, protocol.ProcessGrade.a1);
     try expectFirstRoundDesiredGrade(80, protocol.InputFlags.foreground_focused, 100, 0, protocol.ProcessGrade.normal);
     try expectFirstRoundDesiredGrade(20, 0, 50, 1, protocol.ProcessGrade.level3);
-    try expectFirstRoundDesiredGrade(20, 0, 50, 2, protocol.ProcessGrade.normal);
 }
 
 test "process CPU score remains stable across cycles" {
@@ -1485,7 +1546,7 @@ test "adapted software preserves strongest member protection independent of inpu
         defer coordinator.destroy(session);
         const first = corpus.processFact(0, 16_003, 160_003, 163, 1_613, 80, .adapted, 0, protocol.ProcessGrade.normal, 0);
         var second = corpus.processFact(1, 16_004, 160_003, 164, 1_614, 80, .adapted, 0, protocol.ProcessGrade.normal, 0);
-        second.protection_level = 2;
+        second.protection_level = 1;
         var rows = if (reverse) [_]protocol.InputRow{ second, first } else [_]protocol.InputRow{ first, second };
         for (&rows, 0..) |*row, index| row.source_index = @intCast(index);
         var input = corpus.cycle(&config, 1, 1_000, rows.len, true);
@@ -1493,13 +1554,13 @@ test "adapted software preserves strongest member protection independent of inpu
         var snapshot: protocol.Snapshot = undefined;
         try std.testing.expectEqual(protocol.Status.ok, corpus.plan(session, &input, rows[0..].ptr, rows.len, actions[0..].ptr, actions.len, &snapshot));
         const software = session.softwares[session.findSoftware(160_003) orelse return error.MissingSoftwareSnapshot];
-        try std.testing.expectEqual(@as(u8, 2), software.protection_level);
+        try std.testing.expectEqual(@as(u8, 1), software.protection_level);
         try std.testing.expect((software.valid_mask & protocol.InputValidity.protection) != 0);
         var snapshot_rows: [3]protocol.SnapshotRow = undefined;
         try std.testing.expectEqual(protocol.Status.ok, coordinator.getSnapshot(session, &snapshot, snapshot_rows[0..].ptr, snapshot_rows.len));
         for (snapshot_rows) |row| {
             if (row.row_kind != @intFromEnum(protocol.SnapshotRowKind.software)) continue;
-            try std.testing.expectEqual(@as(u8, 2), row.protection_level);
+            try std.testing.expectEqual(@as(u8, 1), row.protection_level);
             try std.testing.expect((row.valid_mask & protocol.InputValidity.protection) != 0);
         }
     }

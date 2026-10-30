@@ -224,8 +224,7 @@ public sealed partial class HostManagerSmartCoordinator
                         desired.RuntimePlan.HostManager.CpuScoring!,
                         desired.RuntimePlan.OptimizationMode,
                         binding,
-                        capturedSample,
-                        await ResolveNativeProtectionLevelsAsync(cancellationToken));
+                        capturedSample);
                     cycleDiagnostics?.CaptureScoring(scoring);
                 }
                 else
@@ -390,14 +389,13 @@ public sealed partial class HostManagerSmartCoordinator
         }
         cycleDiagnostics?.CaptureSample(sample);
         cycleDiagnostics?.Mark("sampling");
-        var protectionLevels = await ResolveNativeProtectionLevelsAsync(cancellationToken);
+        var protection = await ResolveNativeProtectionAsync(cancellationToken);
         var computeScoring = RunSchedulingAuthority(
             desired.SmartCoordinator,
             desired.RuntimePlan.HostManager.CpuScoring!,
             modePlan,
             schedulingPlanBinding,
-            sample,
-            protectionLevels);
+            sample);
         cycleDiagnostics?.CaptureScoring(computeScoring);
         var cpuPlacementEnabled = (modePlan.CpuPlacementEnabled || runtimeCpuLeases.HasLeases)
             && desired.RuntimePlan.CpuPlacementTopology is not null;
@@ -487,7 +485,7 @@ public sealed partial class HostManagerSmartCoordinator
                             sample,
                             computeScoring,
                             CreateAppliedOwnershipFactIndex(ownershipSnapshot),
-                            protectionLevels,
+                            protection,
                             cpuPlacementEnabled,
                             gpuPlacementEnabled,
                             executionAdmission,
@@ -1080,7 +1078,7 @@ public sealed partial class HostManagerSmartCoordinator
                 || !Enum.IsDefined(row.RowKind)
                 || !Enum.IsDefined(row.SoftwareKind)
                 || !Enum.IsDefined(row.RuntimeState)
-                || row.ProtectionLevel > 2
+                || row.ProtectionLevel > 1
                 || !Enum.IsDefined(row.DesiredProcessGrade)
                 || !Enum.IsDefined(row.AppliedProcessGrade)
                 || !Enum.IsDefined(row.PendingProcessGrade)

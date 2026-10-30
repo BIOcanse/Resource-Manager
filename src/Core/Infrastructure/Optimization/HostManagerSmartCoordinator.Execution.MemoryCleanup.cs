@@ -341,7 +341,8 @@ public sealed partial class HostManagerSmartCoordinator
                 current,
                 maximumBaseScore,
                 current.RuntimeState,
-                gpuPlacementPlan.Resolve(current.SoftwareId, null, null, null).MemorySchedulingExcluded);
+                gpuPlacementPlan.Resolve(current.SoftwareId, null, null, null).MemorySchedulingExcluded,
+                cleanupPlan.HighTierMinimumBaseScore);
             if (admission == HostManagerMemoryCleanupCandidateAdmissionStatus.Eligible)
             {
                 admission = HostManagerMemoryCleanupPrePonrAdmission.EvaluateLiveIdentity(

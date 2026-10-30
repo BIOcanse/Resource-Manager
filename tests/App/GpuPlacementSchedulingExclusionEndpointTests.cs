@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ResourceManager.App.Application.GpuPlacement;
 using ResourceManager.App.Application.Metrics;
+using ResourceManager.App.Application.ProcessAttribution;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.Settings;
 using ResourceManager.App.Domain.CpuTopology;
@@ -42,7 +43,8 @@ public sealed class GpuPlacementSchedulingExclusionEndpointTests
         {
             typeof(IGpuPlacementProcessHistoryStore), typeof(IGpuLaunchInterceptionRegistry),
             typeof(IGpuLaunchExecutionReportStore), typeof(IGpuPlacementCapabilityReader),
-            typeof(IMetricSampler), typeof(GpuLaunchInterceptionReconciler), typeof(IGpuStartupPlacementResolver)
+            typeof(IMetricSampler), typeof(GpuLaunchInterceptionReconciler), typeof(IGpuStartupPlacementResolver),
+            typeof(IRuntimePlanProvider), typeof(IRuntimeSoftwareObservationSource)
         })
         {
             builder.Services.AddSingleton(unused, _ => throw new InvalidOperationException($"{unused.Name} is outside the policy route."));

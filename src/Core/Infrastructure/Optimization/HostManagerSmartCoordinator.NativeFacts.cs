@@ -13,34 +13,13 @@ namespace ResourceManager.App.Infrastructure.Optimization;
 
 public sealed partial class HostManagerSmartCoordinator
 {
-    private async Task<IReadOnlyDictionary<string, int>> ResolveNativeProtectionLevelsAsync(
+    // The protection list holds one effective entry per target (the user's when changed, else the default). The table
+    // resolves each target by process, software, hosted services and kind (scheduling_protection_2026-10-29 §3.2), so
+    // catalog process entries, the system defaults and shared-service members reach native like any user entry.
+    private async Task<OptimizationProtectionTable> ResolveNativeProtectionAsync(
         CancellationToken cancellationToken)
-    {
-        var levels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        var protectedTargets =
-            await protectionService.GetProtectedTargetsAsync(cancellationToken);
-        foreach (var target in protectedTargets)
-        {
-            if (target.State != OptimizationProtectionStates.Active)
-            {
-                continue;
-            }
-
-            var level = OptimizationProtectionLevels.Normalize(target.ProtectionLevel);
-            Add(target.TargetKey);
-            Add(target.SoftwareId);
-
-            void Add(string? key)
-            {
-                if (!string.IsNullOrWhiteSpace(key))
-                {
-                    levels[key] = Math.Max(level, levels.GetValueOrDefault(key));
-                }
-            }
-        }
-
-        return levels;
-    }
+        => OptimizationProtectionTable.Create(
+            await protectionService.GetProtectedTargetsAsync(cancellationToken));
 
     private static uint CountNativeFactRows(HostManagerSample sample, NativeAppliedOwnershipFactIndex ownership)
     {
@@ -73,7 +52,7 @@ public sealed partial class HostManagerSmartCoordinator
         NativeSmartCoordinatorWorkspace workspace,
         HostManagerSample sample,
         NativeAppliedOwnershipFactIndex ownership,
-        IReadOnlyDictionary<string, int> protectionLevels,
+        OptimizationProtectionTable protection,
         CompiledOptimizationModePlan modePlan,
         bool cpuPlacementEnabled,
         HostManagerComputeScoringCycleResult? computeScoring)
@@ -130,9 +109,8 @@ public sealed partial class HostManagerSmartCoordinator
             var targetKey = NativeStableIdentity.CreateCaseInsensitiveKey(target.TargetId);
             var attributedSoftwareKey =
                 NativeStableIdentity.CreateCaseInsensitiveKey(target.SoftwareId);
-            var protectionLevel = protectionLevels.GetValueOrDefault(
-                target.TargetId,
-                protectionLevels.GetValueOrDefault(target.SoftwareId));
+            var protectionLevel = protection.Resolve(target.SoftwareId, target.SoftwareKind,
+                target.ProcessNames, target.ExecutablePaths, target.ServiceNames).ProtectionLevel;
 
             foreach (var processId in target.ProcessIds)
             {
@@ -463,7 +441,7 @@ public sealed partial class HostManagerSmartCoordinator
             StructSize = checked((uint)NativeSmartCoordinatorSession.SizeOf<NativeSmartCoordinatorInputRow>()),
             MetricKind = NativeSmartCoordinatorMetricKind.None,
             SoftwareKind = ToNativeSoftwareKind(target.SoftwareKind),
-            ProtectionLevel = protectionLevel,
+            ProtectionLevel = checked((byte)OptimizationProtectionLevels.Normalize(protectionLevel)),
             ValidMask = NativeSmartCoordinatorInputValidity.ProcessIdentity
                 | NativeSmartCoordinatorInputValidity.SoftwareIdentity
                 | NativeSmartCoordinatorInputValidity.SoftwareKind

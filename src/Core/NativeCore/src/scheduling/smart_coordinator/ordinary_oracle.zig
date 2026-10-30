@@ -9,7 +9,7 @@ test "ordinary process behavior projection oracle" {
     const cases = [_]struct { base: f64, usage: f64, protection: u8 }{
         .{ .base = 20, .usage = 0, .protection = 0 },
         .{ .base = 20, .usage = 50, .protection = 1 },
-        .{ .base = 20, .usage = 50, .protection = 2 },
+        .{ .base = 20, .usage = 50, .protection = 0 },
         .{ .base = 40, .usage = 100, .protection = 0 },
         .{ .base = 90, .usage = 100, .protection = 0 },
     };

@@ -2,7 +2,7 @@ const growth = @import("../../common/workspace_growth.zig");
 const std = @import("std");
 const base_score_tier = @import("../base_score_tier.zig");
 
-pub const abi_version: u32 = 0x000c_0001;
+pub const abi_version: u32 = 0x000c_0002;
 
 /// Actual canonical storage, separate from configured Capacity ceilings.
 pub const WorkspaceCapacity = extern struct {
@@ -239,7 +239,6 @@ pub const Reason = struct {
     pub const middle_tier_blocks_freeze: u64 = 1 << 11;
     pub const low_tier_blocks_enhancement: u64 = 1 << 12;
     pub const protection_level1_clamps_freeze: u64 = 1 << 13;
-    pub const protection_level2_blocks_optimization: u64 = 1 << 14;
     pub const reserved_process_reason15: u64 = 1 << 15;
     pub const reserved_process_reason16: u64 = 1 << 16;
     pub const freeze_group_blocked: u64 = 1 << 17;
@@ -260,7 +259,7 @@ pub const Reason = struct {
     pub const atomic_group_compensation: u64 = 1 << 35;
     pub const reservation_timed_out: u64 = 1 << 37;
     pub const known: u64 = ((@as(u64, 1) << 38) - 1) &
-        ~(@as(u64, reserved_process_reason5) | reserved_process_reason15 | (@as(u64, 7) << 20) |
+        ~(@as(u64, reserved_process_reason5) | (@as(u64, 1) << 14) | reserved_process_reason15 | (@as(u64, 7) << 20) |
             reserved_process_reason16 | (@as(u64, 1) << 36));
 };
 
@@ -561,7 +560,7 @@ pub fn validateInputRow(row: *const InputRow, expected_source_index: u32) Status
     }
     if (row.source_index != expected_source_index or (row.valid_mask & ~InputValidity.known) != 0 or
         (row.flags & ~InputFlags.known) != 0 or row.metric_kind > @intFromEnum(MetricKind.vram_usage_percent) or
-        row.software_kind > @intFromEnum(SoftwareKind.general_application) or row.protection_level > 2)
+        row.software_kind > @intFromEnum(SoftwareKind.general_application) or row.protection_level > 1)
     {
         return .invalid_argument;
     }

@@ -27,9 +27,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             memoryModePolicyEnabled: true,
             automaticMemoryCleanupEnabled: false,
             failFastEffects: true);
-        fixture.ProtectionService.Targets = [CreateMemoryProtection(
-            processProtection ? HostManagerTargetIdentity.CreateProcessTargetId(pid, startKey) : software,
-            state, level)];
+        fixture.ProtectionService.Targets = [processProtection
+            ? CreateProcessProtection(pid, state, level)
+            : CreateSoftwareProtection(software, state, level)];
 
         _ = await fixture.RunRealtimeCycleAsync();
 
@@ -82,9 +82,8 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal([3U], writes);
         Assert.Single((await fixture.NativeTransactions.AppliedOwnership.ReadSnapshotAsync(
             CancellationToken.None)).Records);
-        fixture.ProtectionService.Targets = [CreateMemoryProtection(
-            HostManagerTargetIdentity.CreateProcessTargetId(pid, startKey),
-            OptimizationProtectionStates.Active, OptimizationProtectionLevels.NoFreeze)];
+        fixture.ProtectionService.Targets = [CreateProcessProtection(
+            pid, OptimizationProtectionStates.Active, OptimizationProtectionLevels.NoFreeze)];
 
         _ = await fixture.RunRealtimeCycleAsync();
 
@@ -94,9 +93,59 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             CancellationToken.None)).Records);
     }
 
-    private static ProtectedOptimizationTarget CreateMemoryProtection(
-        string key, string state, int level)
-        => new("protection:memory", "Process", key, null, null, null,
-            DateTimeOffset.UtcNow, "test", "report:memory", DateTimeOffset.UtcNow,
+    [Theory]
+    [InlineData(80, false)]
+    [InlineData(81, true)]
+    [InlineData(90, true)]
+    public async Task EffectiveHighTierOmitsMemoryPriorityDirectiveWithoutProtection(double score, bool blocked)
+    {
+        const int pid = 24059;
+        const ulong startKey = 132_537_599_910_000_000;
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(
+            warm: true,
+            processFactsSnapshot: CreateCompleteProcessFacts(pid, startKey, "software:high-score-memory", score, 1, 25),
+            memoryModePolicyEnabled: true,
+            automaticMemoryCleanupEnabled: false,
+            failFastEffects: true);
+        _ = await fixture.RunRealtimeCycleAsync();
+        Assert.Equal(HostManagerSchedulingAuthorityAvailability.Ready, fixture.Coordinator.SchedulingAuthority.Availability);
+        var projection = fixture.Coordinator.NonAdaptedMemoryModeProjection!;
+        if (blocked) Assert.Empty(projection.Processes);
+        else Assert.Single(projection.Processes);
+        Assert.Equal(0, fixture.ProcessPolicyWriter.BatchCalls);
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(-1)]
+    [InlineData(255)]
+    public async Task StoredLegacyOrUnknownProtectionIsNormalizedBeforeNative(int storedLevel)
+    {
+        const int pid = 24060;
+        const ulong startKey = 132_537_599_910_000_000;
+        const string software = "software:legacy-protection";
+        await using var fixture = await ScoreOnlyCoordinatorFixture.CreateAsync(warm: true,
+            processFactsSnapshot: CreateCompleteProcessFacts(pid, startKey, software, 20, 1, 25));
+        fixture.ProtectionService.Targets = [CreateSoftwareProtection(software, OptimizationProtectionStates.Active, storedLevel)];
+        var rows = await CaptureIdentityRowsAsync(fixture);
+        Assert.All(rows.Where(row => row.ProcessId == pid), row => Assert.Equal(1, row.ProtectionLevel));
+        Assert.Contains(rows, row => row.ProcessId == pid && row.ProtectionLevel == 1);
+    }
+
+    // Entries as the protection list holds them: a software identity, or every process with an image name
+    // (CreateCompleteProcessFacts names process <pid> "cycle-budget-<pid>").
+    private static ProtectedOptimizationTarget CreateSoftwareProtection(
+        string software, string state, int level)
+        => new("protection:memory", OptimizationProtectionTargetTypes.Software, "software:" + software, software,
+            null, null, DateTimeOffset.UtcNow, "test", "report:memory", DateTimeOffset.UtcNow,
             state, AllowsPlacementAvoidance: true, ProtectionLevel: level);
+
+    private static ProtectedOptimizationTarget CreateProcessProtection(
+        int pid, string state, int level)
+        => new("protection:memory", OptimizationProtectionTargetTypes.Process, $"process-name:cycle-budget-{pid}", null,
+            null, null, DateTimeOffset.UtcNow, "test", "report:memory", DateTimeOffset.UtcNow,
+            state, AllowsPlacementAvoidance: true, ProtectionLevel: level)
+        {
+            ProcessName = $"cycle-budget-{pid}"
+        };
 }

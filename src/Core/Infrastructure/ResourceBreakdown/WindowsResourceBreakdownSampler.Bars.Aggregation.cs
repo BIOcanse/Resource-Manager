@@ -194,7 +194,7 @@ public sealed partial class WindowsResourceBreakdownSampler
         var baseScore = baseScorePlan.ResolveBaseScore(
             software.Id,
             software.Kind,
-            processKey);
+            processKey, process.Name, process.ExecutablePath, software.ServiceNames);
         var systemPercent = capacityValue > 0 ? value * 100 / capacityValue : 0;
         return new AttributedProcess(
             software,

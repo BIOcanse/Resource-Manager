@@ -91,7 +91,6 @@ internal static class HostManagerDecisionDiagnosticTokens
             NativeSmartCoordinatorReason.MiddleTierBlocksFreeze => "middle_tier_blocks_freeze",
             NativeSmartCoordinatorReason.LowTierBlocksEnhancement => "low_tier_blocks_enhancement",
             NativeSmartCoordinatorReason.ProtectionLevel1ClampsFreeze => "protection_level1_clamps_freeze",
-            NativeSmartCoordinatorReason.ProtectionLevel2BlocksOptimization => "protection_level2_blocks_optimization",
             NativeSmartCoordinatorReason.ReservedProcessReason15 => "reserved_process_reason15",
             NativeSmartCoordinatorReason.ReservedProcessReason16 => "reserved_process_reason16",
             NativeSmartCoordinatorReason.FreezeGroupBlocked => "freeze_group_blocked",

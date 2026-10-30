@@ -101,7 +101,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
     [Fact]
     public async Task MemorySkipDiagnosticsExplainANormalDirectiveWithoutOwnedConstraints()
     {
-        await using var fixture = await CreateMemorySkipFixtureAsync(baseScore: 100);
+        // Half the memory free is the Normal band for this middle-tier target; a high-tier target would get no
+        // directive at all (performance_importance_scoring_model.md §5).
+        await using var fixture = await CreateMemorySkipFixtureAsync(run: false);
+        fixture.MetricSampler.SetSnapshot(CreateHardwareSnapshot(memoryUsagePercent: 50, cpuUsagePercent: 1));
+        await fixture.RunRealtimeCycleAsync();
         Assert.Equal(HostManagerNonAdaptedMemoryProcessAction.RestoreOwnedConstraints,
             Assert.Single(fixture.Coordinator.NonAdaptedMemoryModeProjection!.Processes).Action);
 

@@ -1,4 +1,5 @@
 using ResourceManager.App.Domain.RuntimeSpecialization;
+using ResourceManager.App.Application.ProcessAttribution;
 using ResourceManager.App.Application.Adaptation;
 using ResourceManager.App.Application.Components;
 using ResourceManager.App.Application.Controlled;
@@ -43,6 +44,8 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
             IGpuLaunchExecutionReportStore launchExecutionReportStore,
             IGpuPlacementCapabilityReader capabilityReader,
             IMetricSampler metricSampler,
+            IRuntimePlanProvider runtimePlanProvider,
+            IRuntimeSoftwareObservationSource runtimeSoftware,
             CancellationToken cancellationToken) =>
         {
             try
@@ -103,6 +106,16 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                 var targetInventory = GpuPlacementTargetInventoryProjection.Create(
                     hardware,
                     new[] { softwarePolicy.StartupTargetGpu });
+                var scorePlan = runtimePlanProvider.Current.BaseScore;
+                var attribution = runtimeSoftware.ReadLatestSoftware().FirstOrDefault(item =>
+                    item.Id.Equals(softwarePolicy.SoftwareId, StringComparison.OrdinalIgnoreCase));
+                var kind = attribution?.Kind ?? softwareKind;
+                var processScores = processHistory.Processes.Select(process => (process.ProcessKey, process.ProcessName, process.ExecutablePath))
+                    .Concat(processPolicies.Select(process => (process.ProcessKey, process.ProcessName, process.ExecutablePath)))
+                    .DistinctBy(static process => process.ProcessKey, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(static process => process.ProcessKey, process => scorePlan.Resolve(softwarePolicy.SoftwareId,
+                        kind, process.ProcessKey, process.ProcessName, process.ExecutablePath, attribution?.ServiceNames),
+                        StringComparer.OrdinalIgnoreCase);
                 return Results.Ok(new GpuPlacementSoftwareSettingsSnapshot(
                     softwarePolicy.SoftwareId,
                     softwarePolicy.SoftwareName,
@@ -111,7 +124,11 @@ public static partial class ResourceManagerEndpointRouteBuilderExtensions
                     processHistory,
                     startupInterceptions,
                     targetInventory,
-                    capabilityInputs));
+                    capabilityInputs)
+                {
+                    BaseScore = scorePlan.Resolve(softwarePolicy.SoftwareId, kind, serviceNames: attribution?.ServiceNames),
+                    ProcessBaseScores = processScores
+                });
             }
             catch (InvalidOperationException ex)
             {

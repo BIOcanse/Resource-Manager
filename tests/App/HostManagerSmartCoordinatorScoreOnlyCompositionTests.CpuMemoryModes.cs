@@ -18,10 +18,11 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         const int pid = 4243;
         const ulong start = 132_537_599_900_000_000;
         const string software = "software:physical-memory-mode";
+        // Middle-tier scores: a high-tier process gets no memory directive (performance_importance_scoring_model.md §5).
         var facts = CreateCompleteProcessFacts(
             (pid, start, software, 30, 99, 25),
-            (pid + 1, start + 1, software, 100, 99, 10),
-            (pid + 2, start + 2, "software:other-memory-mode", 100, 99, 10));
+            (pid + 1, start + 1, software, 80, 99, 10),
+            (pid + 2, start + 2, "software:other-memory-mode", 80, 99, 10));
         if (removeScalarCpu) facts = WithoutScalarCpu(facts);
         var observed = new List<CpuProcessCoreResidency>();
         observed.Add(CpuCoreResidencyTestValues.Process(pid, start, ("core:0", 50)));
@@ -68,7 +69,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Equal(2, modes.Software.Length);
         var softwareMode = Assert.Single(modes.Software,
             row => row.SoftwareKey == NativeStableIdentity.CreateCaseInsensitiveKey(software));
-        Assert.Equal(100, softwareMode.BaseScore);
+        Assert.Equal(80, softwareMode.BaseScore);
         Assert.Contains(modes.Software, row => row.SoftwareKey ==
             NativeStableIdentity.CreateCaseInsensitiveKey("software:other-memory-mode"));
         var projection = Assert.IsType<HostManagerNonAdaptedMemoryModeProjectionSnapshot>(

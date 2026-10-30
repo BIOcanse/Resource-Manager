@@ -81,7 +81,7 @@ public sealed class WindowsServiceIdentityResolver : IRuntimeServiceIdentityReso
                 string.IsNullOrWhiteSpace(service.DisplayName) ? service.ServiceName : service.DisplayName,
                 SoftwareKinds.WindowsService,
                 SoftwareDisplayKinds.WindowsService,
-                []));
+                []) { ServiceNames = [service.ServiceName] });
         }
 
         return RuntimeAttributionObservation.Matched(new RuntimeSoftwareAttribution(
@@ -90,7 +90,7 @@ public sealed class WindowsServiceIdentityResolver : IRuntimeServiceIdentityReso
             string.Empty,
             SoftwareKinds.WindowsService,
             SoftwareDisplayKinds.WindowsService,
-            []));
+            []) { ServiceNames = orderedServices.Select(static service => service.ServiceName).ToArray() });
     }
 
     [ResourceManager.ReadWrite.RuntimeRead(ResourceManager.ReadWrite.ReadVolatilityKind.Sampled)]
@@ -120,7 +120,9 @@ public sealed class WindowsServiceIdentityResolver : IRuntimeServiceIdentityReso
             if (!current.ServicesByProcess.TryGetValue(pid, out var next) || service.StartKey != next.StartKey
                 || service.Observation.Status != next.Observation.Status
                 || service.Observation.Attribution?.Id != next.Observation.Attribution?.Id
-                || service.Observation.Attribution?.Name != next.Observation.Attribution?.Name) return false;
+                || service.Observation.Attribution?.Name != next.Observation.Attribution?.Name
+                || !(service.Observation.Attribution?.ServiceNames ?? []).SequenceEqual(
+                    next.Observation.Attribution?.ServiceNames ?? [], StringComparer.OrdinalIgnoreCase)) return false;
         }
         // CreateObservation owns all other service payload fields as constants.
         return true;

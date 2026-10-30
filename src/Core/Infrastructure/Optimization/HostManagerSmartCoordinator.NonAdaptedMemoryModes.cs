@@ -15,8 +15,7 @@ public sealed partial class HostManagerSmartCoordinator
         HostManagerComputeScoringCycleResult compute,
         HostManagerMemoryModeDesiredSnapshot memoryModes,
         HostManagerSample sample,
-        HostManagerMemoryModePolicy policy,
-        IReadOnlyDictionary<string, int> protectionLevels)
+        HostManagerMemoryModePolicy policy)
     {
         var members = compute.Cpu!.Scores
             .Where(static score => score.Kind == NativeComputeScoringOutputKind.ProcessCpu)
@@ -42,15 +41,13 @@ public sealed partial class HostManagerSmartCoordinator
                 continue;
             }
 
-            var protectionLevel = protectionLevels.GetValueOrDefault(
-                target.TargetId,
-                protectionLevels.GetValueOrDefault(target.SoftwareId));
             // Omission also restores an already-owned priority through the existing projection-gap transaction.
             capabilities.Add(new(
                 processId,
                 processStartKey,
                 target.SoftwareId,
                 target.CanApplyAutomaticPolicy
+                    && target.BaseScore < policy.Configuration.HighTierMinimumBaseScore
                     && !target.GpuPlacementPolicy.MemorySchedulingExcluded));
         }
 

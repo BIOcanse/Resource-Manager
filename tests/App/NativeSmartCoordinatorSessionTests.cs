@@ -46,6 +46,18 @@ public sealed class NativeSmartCoordinatorSessionTests
 
 
     [Fact]
+    public void PreviousProtectionSemanticsAbiIsRejected()
+    {
+        var configuration = CreateConfiguration();
+        configuration.AbiVersion = 0x000c_0001;
+
+        var result = NativeSmartCoordinatorSession.CapacityForConfiguration(in configuration, out var capacity);
+
+        Assert.Equal(NativeSmartCoordinatorStatus.AbiMismatch, result);
+        Assert.Equal(0u, capacity.AbiVersion);
+    }
+
+    [Fact]
     public void RetiredStaticScoreOnlyFeatureBitIsRejected()
     {
         var configuration = CreateConfiguration();
@@ -416,6 +428,60 @@ public sealed class NativeSmartCoordinatorSessionTests
 
 
 
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(255)]
+    public void RetiredOrUnknownProtectionCannotBecomeNativePlanningFacts(byte protectionLevel)
+    {
+        var configuration = CreateProcessPolicyConfiguration();
+        using var workspace = new NativeSmartCoordinatorWorkspace(in configuration, OperationScratchFixture.Create);
+        workspace.EnsureRows(2);
+        using var operation = workspace.BeginOperation();
+        using var buffers = workspace.CreateScratchView();
+        var process = CreateProcessFact();
+        process.ProtectionLevel = protectionLevel;
+        buffers.Inputs[0] = process;
+        buffers.Inputs[1] = CreateMetricFact(in process, 1, NativeSmartCoordinatorMetricKind.CpuUsagePercent, 50);
+        var input = CreateEmptyCycleInput(configuration.Generation, workspace.Capacity.ActionCapacity, 1, authoritative: true);
+        input.InputCount = 2;
+
+        Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.PlanCurrent(in input));
+        Assert.True(workspace.Snapshot.InvalidFactCount >= 2);
+        Assert.Equal(1u, workspace.PlannedActionCount);
+        Assert.Equal(NativeSmartCoordinatorActionFlags.None,
+            buffers.Actions[0].Flags & NativeSmartCoordinatorActionFlags.RequiresFeedback);
+        Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.RefreshSnapshot());
+        Assert.True(TryFindProcessSnapshot(workspace.CurrentSnapshotRows, process.TargetKey, out var row));
+        Assert.Equal(0, row.ProtectionLevel);
+        Assert.Equal(NativeSmartCoordinatorInputValidity.None, row.ValidMask & NativeSmartCoordinatorInputValidity.Protection);
+    }
+
+    [Theory]
+    [InlineData(0, -4)]
+    [InlineData(1, -3)]
+    public void NoFreezeProtectionKeepsLowScoreOptimizationEligible(byte protectionLevel, sbyte expectedGrade)
+    {
+        var configuration = CreateProcessPolicyConfiguration();
+        configuration.RequiredConsecutiveDecisions = 1;
+        using var workspace = new NativeSmartCoordinatorWorkspace(in configuration, OperationScratchFixture.Create);
+        workspace.EnsureRows(2);
+        using var operation = workspace.BeginOperation();
+        using var buffers = workspace.CreateScratchView();
+        var process = CreateProcessFact();
+        process.ProtectionLevel = protectionLevel;
+        buffers.Inputs[0] = process;
+        buffers.Inputs[1] = CreateMetricFact(in process, 1, NativeSmartCoordinatorMetricKind.CpuUsagePercent, 50);
+        var input = CreateEmptyCycleInput(configuration.Generation, workspace.Capacity.ActionCapacity, 1, authoritative: true);
+        input.InputCount = 2;
+
+        Assert.Equal(NativeSmartCoordinatorStatus.Ok, workspace.PlanCurrent(in input));
+        Assert.Equal(1u, HostManagerSmartCoordinator.ValidateNativeActionBatch(workspace));
+        Assert.True(TryFindProcessAction(buffers.Actions[..checked((int)workspace.PlannedActionCount)], process.TargetKey, out var action));
+        Assert.Equal((NativeSmartCoordinatorProcessGrade)expectedGrade, action.ToProcessGrade);
+        Assert.Equal(protectionLevel == 1,
+            action.ReasonMask.HasFlag(NativeSmartCoordinatorReason.ProtectionLevel1ClampsFreeze));
+    }
 
     [Theory]
     [InlineData(false)]

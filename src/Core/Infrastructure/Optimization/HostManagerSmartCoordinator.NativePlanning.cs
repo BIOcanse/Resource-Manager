@@ -1,3 +1,4 @@
+using ResourceManager.App.Domain.Optimization;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Domain.RuntimeSpecialization;
 using ResourceManager.App.Infrastructure.NativeCore;
@@ -15,7 +16,7 @@ public sealed partial class HostManagerSmartCoordinator
         HostManagerSample sample,
         HostManagerComputeScoringCycleResult? computeScoring,
         NativeAppliedOwnershipFactIndex ownership,
-        IReadOnlyDictionary<string, int> protectionLevels,
+        OptimizationProtectionTable protection,
         bool cpuPlacementEnabled,
         bool gpuPlacementEnabled,
         HostManagerTransactionJournalAdmission? executionAdmission,
@@ -35,7 +36,7 @@ public sealed partial class HostManagerSmartCoordinator
             workspace,
             sample,
             ownership,
-            protectionLevels,
+            protection,
             modePlan,
             cpuPlacementEnabled,
             computeScoring);

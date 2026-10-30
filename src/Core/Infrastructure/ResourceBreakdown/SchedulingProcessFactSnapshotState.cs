@@ -424,7 +424,7 @@ internal sealed class SchedulingProcessFactSnapshotState
                         group.Key, selected.SoftwareName, selected.SoftwareKind, selected.SoftwareDisplayKind,
                         group.SelectMany(static process => process.SoftwareRootPaths)
                             .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToArray(),
-                        selected.SoftwareCategorySource);
+                        selected.SoftwareCategorySource) { ServiceNames = selected.ServiceNames };
                 })
                 .OrderBy(static software => software.Id, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
@@ -573,6 +573,7 @@ internal sealed class SchedulingProcessFactSnapshotState
             SoftwareRootPaths = inventoryProcess.SoftwareRootPaths.SequenceEqual(attributionProcess.SoftwareRootPaths, StringComparer.Ordinal)
                 ? inventoryProcess.SoftwareRootPaths : attributionProcess.SoftwareRootPaths,
             SoftwareCategorySource = ReuseText(inventoryProcess.SoftwareCategorySource, attributionProcess.SoftwareCategorySource),
+            ServiceNames = attributionProcess.ServiceNames,
             BaseScore = attributionProcess.BaseScore
         };
 
@@ -609,7 +610,7 @@ internal sealed class SchedulingProcessFactSnapshotState
                 {
                     SoftwareId = string.Empty, SoftwareName = string.Empty,
                     SoftwareKind = string.Empty, SoftwareDisplayKind = string.Empty,
-                    SoftwareRootPaths = [], SoftwareCategorySource = null, BaseScore = 0
+                    SoftwareRootPaths = [], SoftwareCategorySource = null, ServiceNames = [], BaseScore = 0
                 } };
             StoreOrRemove(key, row);
         }
@@ -752,6 +753,7 @@ internal sealed class SchedulingProcessFactSnapshotState
             SoftwareDisplayKind = string.Empty,
             SoftwareRootPaths = [],
             SoftwareCategorySource = null,
+            ServiceNames = [],
             BaseScore = 0,
             ValidMetricMask = SchedulingProcessMetricMask.None,
             CpuUsagePercent = 0,

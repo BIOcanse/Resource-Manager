@@ -5,6 +5,8 @@ using ResourceManager.App.Application.Monitoring;
 using ResourceManager.App.Application.Optimization.Scheduling;
 using ResourceManager.App.Application.RuntimeSpecialization;
 using ResourceManager.App.Application.Settings;
+using ResourceManager.App.Application.Software;
+using ResourceManager.App.Application.Optimization.Scoring;
 using ResourceManager.App.Domain.Adaptation;
 using ResourceManager.App.Domain.Adaptation.Scheduling;
 using ResourceManager.App.Domain.CpuTopology;
@@ -34,6 +36,7 @@ public sealed class RuntimePlanCompiler(
     HostManagerPlanCompiler hostManagerPlanCompiler,
     RuntimeExecutionCapabilityPolicy executionCapabilities,
     RuntimePersistenceCapabilityPolicy persistenceCapabilities,
+    ISoftwarePolicyProfileProvider softwarePolicyProfileProvider,
     ILogger<RuntimePlanCompiler>? logger = null)
 {
     public async Task<CompiledRuntimePlan> CompileAsync(
@@ -75,6 +78,8 @@ public sealed class RuntimePlanCompiler(
             cpuTopology,
             cpuScoring);
         var gpuPolicyDocument = await gpuPlacementPolicyStore.GetAsync(cancellationToken);
+        // Event-driven: loaded with the immutable runtime plan, never on a scheduling read.
+        var catalog = await softwarePolicyProfileProvider.GetProfileAsync(cancellationToken);
         var registeredSourceZoneIds = monitoringSourceZoneRegistry.GetSourceIds();
         var firmwareProviderPlan = firmwareProviderPlanCompiler.Compile();
         var hardwareScores = CompileHardwareScores(
@@ -91,7 +96,7 @@ public sealed class RuntimePlanCompiler(
                 settings.Performance.PreciseGpuPlacementEnabled,
                 gpuPolicyDocument,
                 cpuTopology),
-            CompileBaseScorePlan(gpuPolicyDocument),
+            OptimizationBaseScorePolicyResolver.Compile(gpuPolicyDocument, catalog),
             hardwareScores,
             CompiledOptimizationModePlan.Compile(settings.Performance.OptimizationMode),
             CompileDiagnosticsPlan(settings.Debug),
@@ -183,56 +188,6 @@ public sealed class RuntimePlanCompiler(
                 policy.CpuManualLockedPositionIds,
                 cpuTopology)
         };
-    }
-
-    private static CompiledBaseScorePlan CompileBaseScorePlan(GpuPlacementPolicyDocument gpuPolicyDocument)
-    {
-        var softwarePolicies = (gpuPolicyDocument.SoftwarePolicies ?? [])
-            .Where(static policy => !string.IsNullOrWhiteSpace(policy.SoftwareId))
-            .GroupBy(static policy => policy.SoftwareId, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(
-                static group => group.Key,
-                static group => group.OrderByDescending(policy => policy.UpdatedAt).First(),
-                StringComparer.OrdinalIgnoreCase);
-        var softwareScores = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-        foreach (var policy in softwarePolicies.Values)
-        {
-            var score = SanitizeBaseScore(policy.BaseScoreOverride);
-            if (score.HasValue)
-            {
-                softwareScores[policy.SoftwareId] = score.Value;
-            }
-        }
-
-        var processScores = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-        foreach (var processPolicy in gpuPolicyDocument.ProcessPolicies ?? [])
-        {
-            if (string.IsNullOrWhiteSpace(processPolicy.SoftwareId)
-                || string.IsNullOrWhiteSpace(processPolicy.ProcessKey)
-                || processPolicy.Inherit
-                || !softwarePolicies.TryGetValue(processPolicy.SoftwareId, out var softwarePolicy)
-                || !softwarePolicy.ProcessOverrideAllowed)
-            {
-                continue;
-            }
-
-            var score = SanitizeBaseScore(processPolicy.BaseScoreOverride);
-            if (score.HasValue)
-            {
-                processScores[CompiledBaseScorePlan.CreateProcessPolicyKey(
-                    processPolicy.SoftwareId,
-                    processPolicy.ProcessKey)] = score.Value;
-            }
-        }
-
-        return new CompiledBaseScorePlan(softwareScores, processScores);
-    }
-
-    private static double? SanitizeBaseScore(double? value)
-    {
-        return value.HasValue && double.IsFinite(value.Value)
-            ? Math.Round(Math.Clamp(value.Value, 0, 100), 2)
-            : null;
     }
 
     internal static CompiledDiagnosticsPlan CompileDiagnosticsPlan(AppDebugSettings debug)

@@ -1005,9 +1005,6 @@ fn clampProcessByBaseAndProtection(session: *const state.Session, process: *stat
         if (process.protection_level == 1 and grade == protocol.ProcessGrade.level4) {
             grade = protocol.ProcessGrade.level3;
             process.reason_mask |= protocol.Reason.protection_level1_clamps_freeze;
-        } else if (process.protection_level >= 2 and isOptimizationGrade(grade)) {
-            grade = protocol.ProcessGrade.normal;
-            process.reason_mask |= protocol.Reason.protection_level2_blocks_optimization;
         }
     }
     return grade;

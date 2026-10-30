@@ -19,8 +19,7 @@ public sealed partial class HostManagerSmartCoordinator
         CompiledCpuScoringPlan cpuScoring,
         CompiledOptimizationModePlan mode,
         HostManagerSchedulingPlanBinding planBinding,
-        HostManagerSample sample,
-        IReadOnlyDictionary<string, int> protectionLevels)
+        HostManagerSample sample)
     {
         var capturedRound = sample.RoundNumber;
         HostManagerComputeScoringCycleResult? result;
@@ -154,8 +153,7 @@ public sealed partial class HostManagerSmartCoordinator
                 result,
                 desired,
                 sample,
-                policy,
-                protectionLevels);
+                policy);
             schedulingAuthorityOwner.PublishReady(
                 result,
                 desired,

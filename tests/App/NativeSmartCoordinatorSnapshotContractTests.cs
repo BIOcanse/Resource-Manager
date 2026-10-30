@@ -122,6 +122,7 @@ public sealed class NativeSmartCoordinatorSnapshotContractTests
     }
 
     [Theory]
+    [InlineData(1UL << 14)]
     [InlineData((ulong)NativeSmartCoordinatorReason.ReservedProcessReason5)]
     [InlineData((ulong)NativeSmartCoordinatorReason.ReservedProcessReason15)]
     public void ValidateNativeSnapshot_RejectsReservedReasonBits(
@@ -181,6 +182,7 @@ public sealed class NativeSmartCoordinatorSnapshotContractTests
 
 
     [Theory]
+    [InlineData(1UL << 14)]
     [InlineData((ulong)NativeSmartCoordinatorReason.ReservedProcessReason5)]
     [InlineData((ulong)NativeSmartCoordinatorReason.ReservedProcessReason15)]
     public void ValidateNativeSnapshotRows_RejectsReservedReasonBits(
@@ -197,7 +199,6 @@ public sealed class NativeSmartCoordinatorSnapshotContractTests
     [Theory]
     [InlineData(0)]
     [InlineData(1)]
-    [InlineData(2)]
     public void ValidateNativeSnapshotRows_AcceptsSoftwareProtectionFact(byte protectionLevel)
     {
         var snapshot = CreateSoftwareRowSnapshot();
@@ -209,6 +210,7 @@ public sealed class NativeSmartCoordinatorSnapshotContractTests
     }
 
     [Theory]
+    [InlineData(2, true)]
     [InlineData(2, false)]
     [InlineData(3, true)]
     public void ValidateNativeSnapshotRows_RejectsInvalidSoftwareProtectionFact(

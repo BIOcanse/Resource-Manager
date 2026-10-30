@@ -9,6 +9,7 @@ public sealed class NativeSmartCoordinatorAbiTests
     [Fact]
     public void AbiUsesPublishedVersionAndFixedPodLayouts()
     {
+        Assert.Equal(0x000c_0002u, NativeSmartCoordinatorAbi.Version);
         Assert.Equal(NativeSmartCoordinatorAbi.Version, NativeSmartCoordinatorSession.GetAbiVersion());
         Assert.Equal(264, Unsafe.SizeOf<NativeSmartCoordinatorConfiguration>());
         Assert.Equal(88, Unsafe.SizeOf<NativeSmartCoordinatorCapacity>());
@@ -120,7 +121,7 @@ public sealed class NativeSmartCoordinatorAbiTests
         Assert.Equal(0x06FFUL, (ulong)NativeSmartCoordinatorInputFlags.Known);
         Assert.Equal(0x67UL, (ulong)NativeSmartCoordinatorActionValidity.Known);
         Assert.Equal(
-            ((1UL << 38) - 1) & ~((7UL << 20) | (1UL << 5) | (1UL << 15) | (1UL << 16) | (1UL << 36)),
+            ((1UL << 38) - 1) & ~((7UL << 20) | (1UL << 5) | (1UL << 14) | (1UL << 15) | (1UL << 16) | (1UL << 36)),
             (ulong)NativeSmartCoordinatorReason.Known);
         Assert.Equal(11, (int)NativeSmartCoordinatorStatus.RecreateRequired);
     }

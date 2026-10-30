@@ -340,13 +340,16 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         const int processId = 4_242;
         const ulong processStartKey = 132_537_599_910_000_000;
         const string softwareId = "software:paired-kind";
-        var cases = new[]
+        // The default game score is high tier, which is never optimized (performance_importance_scoring_model.md §5):
+        // it gets no memory directive at all.
+        var cases = new (string Kind, NativeSmartCoordinatorSoftwareKind NativeKind, double BaseScore,
+            NativeMemoryMode? MemoryMode)[]
         {
             (
                 SoftwareKinds.Game,
                 NativeSmartCoordinatorSoftwareKind.Game,
                 95D,
-                NativeMemoryMode.Normal),
+                null),
             (
                 SoftwareKinds.Other,
                 NativeSmartCoordinatorSoftwareKind.GeneralApplication,
@@ -412,10 +415,17 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
             Assert.Equal(expectedNativeKind, process.SoftwareKind);
             Assert.Equal(expectedBaseScore, process.BaseScore);
             Assert.NotEqual(NativeSmartCoordinatorProcessGrade.Level4, process.DesiredProcessGrade);
-            var directive = Assert.Single(
-                fixture.Coordinator.NonAdaptedMemoryModeProjection!.Processes);
-            Assert.Equal(expectedMemoryMode, directive.Mode);
-            Assert.NotEqual(NativeMemoryMode.PagedFrozen, directive.Mode);
+            var directives = fixture.Coordinator.NonAdaptedMemoryModeProjection!.Processes;
+            if (expectedMemoryMode is null)
+            {
+                Assert.Empty(directives);
+            }
+            else
+            {
+                var directive = Assert.Single(directives);
+                Assert.Equal(expectedMemoryMode.Value, directive.Mode);
+                Assert.NotEqual(NativeMemoryMode.PagedFrozen, directive.Mode);
+            }
             Assert.Equal(0U, fixture.Workspace.Snapshot.ActionCount);
             Assert.Equal(durableBefore, CaptureDurableFiles(fixture.Root));
             fixture.AssertNoEffectCollaboratorCalls();
@@ -1284,7 +1294,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         if (transition == "process-exited") return;
         var candidate = Assert.Single(fixture.MemoryCleanupPlanner.LastRequest!.Candidates);
         Assert.Equal(transition == "high-base-score" ? 81 : 20, candidate.BaseScore);
-        Assert.Equal(transition != "adapted", candidate.CanApply);
+        // High tier is never optimized (performance_importance_scoring_model.md §5), so final admission withholds it
+        // from the captured facts just as it withholds the adapted one.
+        Assert.False(candidate.CanApply);
     }
 
     [Fact]

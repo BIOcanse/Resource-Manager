@@ -10,6 +10,22 @@ namespace Resource_Manager_APP.Tests;
 
 public sealed class HostManagerMemoryCleanupPrePonrAdmissionTests
 {
+    [Theory]
+    [InlineData(80, 81, 1)]
+    [InlineData(81, 81, 2)]
+    [InlineData(90, 81, 2)]
+    [InlineData(85, 90, 1)]
+    public void EffectiveHighTierBlocksCleanupEvenWithoutProtection(double score, double highMinimum,
+        int expected)
+    {
+        var fixture = CreateFixture();
+        var result = HostManagerMemoryCleanupPrePonrAdmission.EvaluateCurrentFact(
+            fixture.Candidate with { BaseScore = score }, fixture.Score,
+            fixture.Current with { BaseScore = score }, score,
+            HostManagerRuntimeStates.BackgroundProcess, false, highMinimum);
+        Assert.Equal((HostManagerMemoryCleanupCandidateAdmissionStatus)expected, result);
+    }
+
     [Fact]
     public void EvaluateCurrentFact_AcceptsExactBackgroundCandidate()
     {

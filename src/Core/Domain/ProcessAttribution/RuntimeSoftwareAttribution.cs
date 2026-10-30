@@ -18,6 +18,8 @@ public sealed record RuntimeSoftwareAttribution(
     IReadOnlyList<string> RootPaths,
     string? CategorySource = null)
 {
+    public IReadOnlyList<string> ServiceNames { get; init; } = [];
+
     public static RuntimeSoftwareAttribution Unattributed { get; } = new(
         RuntimeAttributionIds.Unattributed,
         // 名字为空表示「没有可显示的软件名」，前端按 Kind 出「未归属进程」。

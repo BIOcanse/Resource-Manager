@@ -1,5 +1,6 @@
 using ResourceManager.App.Application.Optimization;
 using ResourceManager.App.Domain.Optimization;
+using ResourceManager.App.Domain.Optimization.Scoring;
 using ResourceManager.App.Domain.Optimization.MemoryCleanup;
 using ResourceManager.App.Domain.ResourceBreakdown;
 using ResourceManager.App.Infrastructure.NativeCore;
@@ -21,7 +22,8 @@ internal static class HostManagerMemoryCleanupPrePonrAdmission
         SchedulingProcessFact current,
         double currentMaximumBaseScore,
         string currentRuntimeState,
-        bool memorySchedulingExcluded)
+        bool memorySchedulingExcluded,
+        double highTierMinimumBaseScore = OptimizationRuntimeScoringDefaults.HighTierMinimumBaseScore)
     {
         ArgumentNullException.ThrowIfNull(baseline);
         ArgumentNullException.ThrowIfNull(baselineScore);
@@ -42,6 +44,7 @@ internal static class HostManagerMemoryCleanupPrePonrAdmission
             || !double.IsFinite(currentMaximumBaseScore)
             || currentMaximumBaseScore < 0
             || currentMaximumBaseScore != baseline.BaseScore
+            || currentMaximumBaseScore >= highTierMinimumBaseScore
             || !HostManagerTargetCapabilityClassifier.CanWriteProcessPolicy(
                 current.SoftwareId,
                 current.SoftwareKind)

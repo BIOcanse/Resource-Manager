@@ -138,9 +138,8 @@ internal sealed class NativeSoftwareIdentityPayloadCatalog
             && left.Name.Equals(right.Name, StringComparison.Ordinal)
             && left.Kind.Equals(right.Kind, StringComparison.Ordinal)
             && left.DisplayKind.Equals(right.DisplayKind, StringComparison.Ordinal)
-            && left.RootPaths.SequenceEqual(
-                right.RootPaths,
-                StringComparer.OrdinalIgnoreCase);
+            && left.RootPaths.SequenceEqual(right.RootPaths, StringComparer.OrdinalIgnoreCase)
+            && left.ServiceNames.SequenceEqual(right.ServiceNames, StringComparer.OrdinalIgnoreCase);
 
     private readonly record struct PayloadKey(string Scope, string Value);
 }

@@ -307,7 +307,9 @@ public sealed partial class WindowsResourceBreakdownSampler
             SoftwareDisplayKind = software.DisplayKind,
             SoftwareRootPaths = software.RootPaths,
             SoftwareCategorySource = software.CategorySource,
-            BaseScore = baseScorePlan.ResolveBaseScore(software.Id, software.Kind, processKey)
+            ServiceNames = software.ServiceNames,
+            BaseScore = baseScorePlan.ResolveBaseScore(software.Id, software.Kind, processKey,
+                inventoryFact.ProcessName, inventoryFact.ExecutablePath, software.ServiceNames)
         };
 
     private static IReadOnlyDictionary<

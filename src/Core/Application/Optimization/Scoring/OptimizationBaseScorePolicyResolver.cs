@@ -1,55 +1,88 @@
 using System.Security.Cryptography;
 using System.Text;
 using ResourceManager.App.Domain.GpuPlacement;
-using ResourceManager.App.Domain.Optimization.Scoring;
+using ResourceManager.App.Domain.RuntimeSpecialization;
+using ResourceManager.App.Application.Software;
 
 namespace ResourceManager.App.Application.Optimization.Scoring;
 
-public sealed class OptimizationBaseScorePolicyResolver(GpuPlacementPolicyDocument document)
+public sealed class OptimizationBaseScorePolicyResolver(GpuPlacementPolicyDocument document, SoftwarePolicyProfile? catalog = null)
 {
-    private readonly IReadOnlyDictionary<string, GpuPlacementSoftwarePolicy> softwarePolicies =
-        (document.SoftwarePolicies ?? [])
-        .Where(static policy => !string.IsNullOrWhiteSpace(policy.SoftwareId))
-        .GroupBy(static policy => policy.SoftwareId, StringComparer.OrdinalIgnoreCase)
-        .ToDictionary(
-            static group => group.Key,
-            static group => group.OrderByDescending(policy => policy.UpdatedAt).First(),
-            StringComparer.OrdinalIgnoreCase);
+    private readonly CompiledBaseScorePlan plan = Compile(document, catalog);
 
-    private readonly IReadOnlyDictionary<string, GpuPlacementProcessPolicy> processPolicies =
-        (document.ProcessPolicies ?? [])
-        .Where(static policy => !string.IsNullOrWhiteSpace(policy.SoftwareId)
-            && !string.IsNullOrWhiteSpace(policy.ProcessKey))
-        .GroupBy(static policy => $"{policy.SoftwareId}\n{policy.ProcessKey}", StringComparer.OrdinalIgnoreCase)
-        .ToDictionary(
-            static group => group.Key,
-            static group => group.OrderByDescending(policy => policy.UpdatedAt).First(),
-            StringComparer.OrdinalIgnoreCase);
+    public double ResolveBaseScore(string softwareId, string softwareKind, string processName,
+        string? executablePath, IReadOnlyList<string>? serviceNames = null)
+        => plan.ResolveBaseScore(softwareId, softwareKind, CreateProcessKey(processName, executablePath),
+            processName, executablePath, serviceNames);
 
-    public double ResolveBaseScore(
-        string softwareId,
-        string softwareKind,
-        string processName,
-        string? executablePath)
+    public static CompiledBaseScorePlan Compile(GpuPlacementPolicyDocument gpuPolicyDocument, SoftwarePolicyProfile? catalog = null)
     {
-        var defaultBaseScore = OptimizationRuntimeScoringDefaults.BaseScoreForKind(softwareKind);
-        if (string.IsNullOrWhiteSpace(softwareId))
+        var softwarePolicies = (gpuPolicyDocument.SoftwarePolicies ?? [])
+            .Where(static policy => !string.IsNullOrWhiteSpace(policy.SoftwareId))
+            .GroupBy(static policy => policy.SoftwareId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                static group => group.Key,
+                static group => group.OrderByDescending(policy => policy.UpdatedAt).First(),
+                StringComparer.OrdinalIgnoreCase);
+        var softwareScores = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        foreach (var policy in softwarePolicies.Values)
         {
-            return defaultBaseScore;
+            var score = SanitizeBaseScore(policy.BaseScoreOverride);
+            if (score.HasValue)
+            {
+                softwareScores[policy.SoftwareId] = score.Value;
+            }
         }
 
-        softwarePolicies.TryGetValue(softwareId, out var softwarePolicy);
-        var softwareBaseScore = SanitizeBaseScore(softwarePolicy?.BaseScoreOverride) ?? defaultBaseScore;
-        if (softwarePolicy is null || !softwarePolicy.ProcessOverrideAllowed)
+        var processScores = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        foreach (var processPolicy in (gpuPolicyDocument.ProcessPolicies ?? [])
+            .GroupBy(static policy => CompiledBaseScorePlan.CreateProcessPolicyKey(policy.SoftwareId, policy.ProcessKey), StringComparer.OrdinalIgnoreCase)
+            .Select(static group => group.OrderByDescending(policy => policy.UpdatedAt).First()))
         {
-            return softwareBaseScore;
+            if (string.IsNullOrWhiteSpace(processPolicy.SoftwareId)
+                || string.IsNullOrWhiteSpace(processPolicy.ProcessKey)
+                || processPolicy.Inherit
+                || !softwarePolicies.TryGetValue(processPolicy.SoftwareId, out var softwarePolicy)
+                || !softwarePolicy.ProcessOverrideAllowed)
+            {
+                continue;
+            }
+
+            var score = SanitizeBaseScore(processPolicy.BaseScoreOverride);
+            if (score.HasValue)
+            {
+                processScores[CompiledBaseScorePlan.CreateProcessPolicyKey(
+                    processPolicy.SoftwareId,
+                    processPolicy.ProcessKey)] = score.Value;
+            }
         }
 
-        var processKey = CreateProcessKey(processName, executablePath);
-        return processPolicies.TryGetValue($"{softwareId}\n{processKey}", out var processPolicy)
-            && !processPolicy.Inherit
-            ? SanitizeBaseScore(processPolicy.BaseScoreOverride) ?? softwareBaseScore
-            : softwareBaseScore;
+        catalog ??= SoftwarePolicyProfile.Empty;
+        var groups = new Dictionary<string, BaseScoreLayer>(StringComparer.OrdinalIgnoreCase);
+        foreach (var assignment in catalog.Assignments.Values)
+        {
+            if (catalog.Groups.TryGetValue(assignment.AssignedGroupId, out var group) && group.BaseScore is { } value)
+                groups[assignment.SoftwareId] = new("catalog_group", value, group.GroupId);
+        }
+        var entries = new List<CompiledCatalogProcessBaseScore>();
+        foreach (var entry in catalog.ProcessAssignments)
+        {
+            var value = entry.BaseScore ?? (entry.AssignedGroupId is { } id
+                && catalog.Groups.TryGetValue(id, out var group) ? group.BaseScore : null);
+            if (value is { } score) entries.Add(new(entry.Key, entry.ProcessName, entry.MatchExecutablePath, entry.ServiceName, score));
+        }
+        return new CompiledBaseScorePlan(softwareScores, processScores)
+        {
+            CatalogSoftwareScores = groups,
+            CatalogProcessScores = entries
+        };
+    }
+
+    private static double? SanitizeBaseScore(double? value)
+    {
+        return value.HasValue && double.IsFinite(value.Value)
+            ? Math.Round(Math.Clamp(value.Value, 0, 100), 2)
+            : null;
     }
 
     public static string CreateProcessKey(
@@ -64,16 +97,6 @@ public sealed class OptimizationBaseScorePolicyResolver(GpuPlacementPolicyDocume
 
         var name = CleanText(processName) ?? "unknown";
         return $"name:{ShortHash(name)}";
-    }
-
-    private static double? SanitizeBaseScore(double? value)
-    {
-        if (value is null || !double.IsFinite(value.Value))
-        {
-            return null;
-        }
-
-        return Math.Round(Math.Clamp(value.Value, 0, 100), 2);
     }
 
     private static string ShortHash(string value)

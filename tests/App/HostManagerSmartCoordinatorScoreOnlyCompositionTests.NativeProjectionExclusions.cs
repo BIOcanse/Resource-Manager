@@ -205,7 +205,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         using (BeginNativeFactProjection(fixture, sample, ownership))
         {
             projection = typeof(HostManagerSmartCoordinator).GetMethod("ProjectNativeFacts", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .Invoke(fixture.Coordinator, [fixture.Workspace, sample, ownership, new Dictionary<string, int>(),
+                .Invoke(fixture.Coordinator, [fixture.Workspace, sample, ownership, OptimizationProtectionTable.Create([]),
                     fixture.RuntimePlan.OptimizationMode, false, fixture.Coordinator.SchedulingAuthority.Compute])!;
         }
         Assert.Equal(NativeSmartCoordinatorInputValidity.ProcessIdentity,
@@ -287,7 +287,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         using (BeginNativeFactProjection(fixture, sample, ownership))
         {
             projection = typeof(HostManagerSmartCoordinator).GetMethod("ProjectNativeFacts", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .Invoke(fixture.Coordinator, [fixture.Workspace, sample, ownership, new Dictionary<string, int>(),
+                .Invoke(fixture.Coordinator, [fixture.Workspace, sample, ownership, OptimizationProtectionTable.Create([]),
                     fixture.RuntimePlan.OptimizationMode, false, compute])!;
         }
         Assert.True((bool)projection.GetType().GetProperty("FullProcessSnapshot")!.GetValue(projection)!);
@@ -363,7 +363,7 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         using (BeginNativeFactProjection(fixture, sample, ownership))
         {
             typeof(HostManagerSmartCoordinator).GetMethod("ProjectNativeFacts", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .Invoke(fixture.Coordinator, [fixture.Workspace, sample, ownership, new Dictionary<string, int>(),
+                .Invoke(fixture.Coordinator, [fixture.Workspace, sample, ownership, OptimizationProtectionTable.Create([]),
                     fixture.RuntimePlan.OptimizationMode, false, compute]);
         }
 

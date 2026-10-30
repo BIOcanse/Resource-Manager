@@ -40,6 +40,7 @@ public sealed partial class HostManagerSmartCoordinator
     {
         private readonly HashSet<string> processNames = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> executablePaths = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> serviceNames = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<int> processIds = [];
         private readonly Dictionary<int, ulong> processStartKeys = [];
         private readonly Dictionary<ulong, MutableHostManagerGpuTargetInfo> gpus = new();
@@ -86,6 +87,14 @@ public sealed partial class HostManagerSmartCoordinator
             if (!string.IsNullOrWhiteSpace(process.ProcessName))
             {
                 processNames.Add(process.ProcessName);
+            }
+
+            foreach (var serviceName in process.ServiceNames)
+            {
+                if (!string.IsNullOrWhiteSpace(serviceName))
+                {
+                    serviceNames.Add(serviceName);
+                }
             }
 
             if (process.ValidMetricMask.HasFlag(SchedulingProcessMetricMask.CpuUsage))
@@ -174,7 +183,8 @@ public sealed partial class HostManagerSmartCoordinator
                 processIds.Order().ToArray(),
                 new Dictionary<int, ulong>(processStartKeys),
                 processNames.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
-                executablePaths.Order(StringComparer.OrdinalIgnoreCase).ToArray());
+                executablePaths.Order(StringComparer.OrdinalIgnoreCase).ToArray(),
+                serviceNames.Order(StringComparer.OrdinalIgnoreCase).ToArray());
         }
 
         private void SetRuntimeState(string runtimeState)
@@ -265,7 +275,8 @@ public sealed partial class HostManagerSmartCoordinator
         IReadOnlyList<int> ProcessIds,
         IReadOnlyDictionary<int, ulong> ProcessStartKeys,
         IReadOnlyList<string> ProcessNames,
-        IReadOnlyList<string> ExecutablePaths);
+        IReadOnlyList<string> ExecutablePaths,
+        IReadOnlyList<string> ServiceNames);
 
     private sealed record HostManagerGpuTargetInfo(
         int GpuIndex,

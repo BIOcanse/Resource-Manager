@@ -15,7 +15,7 @@ public static class OptimizationRuntimeScoringDefaults
         {
             SoftwareKinds.Game => 95,
             SoftwareKinds.HighPerformance => 85,
-            SoftwareKinds.WindowsSystem or SoftwareKinds.WindowsComponent or SoftwareKinds.WindowsService => 90,
+            SoftwareKinds.WindowsSystem or SoftwareKinds.WindowsComponent or SoftwareKinds.WindowsService => 60,
             SoftwareKinds.Adapted => 80,
             SoftwareKinds.Controlled => 45,
             SoftwareKinds.Managed => 42,

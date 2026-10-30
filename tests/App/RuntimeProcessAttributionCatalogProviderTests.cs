@@ -703,6 +703,23 @@ public sealed class RuntimeProcessAttributionCatalogProviderTests
     }
 
     [Fact]
+    public async Task SoftwareBaseScorePublicationUsesCatalogThenUserSoftwareOverride()
+    {
+        var rm = CreateSoftware(RuntimeAttributionIds.ResourceManagerSelf, "RM", @"D:\Apps\RM") with { Kind = SoftwareKinds.Adapted };
+        using var provider = CreateProvider(new MutableSoftwareRegistryView([rm]));
+        using var catalog = await provider.AcquireCatalogAsync(CancellationToken.None);
+        var profile = await new ResourceManager.App.Infrastructure.Software.JsonSoftwarePolicyProfileProvider()
+            .GetProfileAsync(CancellationToken.None);
+        var plan = ResourceManager.App.Application.Optimization.Scoring.OptimizationBaseScorePolicyResolver.Compile(
+            ResourceManager.App.Domain.GpuPlacement.GpuPlacementPolicyDocument.Empty, profile);
+        Assert.Equal(90, Assert.Single(catalog.Catalog.GetSoftwareBaseScores(plan)).BaseScore);
+        Assert.Equal(73, Assert.Single(catalog.Catalog.GetSoftwareBaseScores(plan with
+        {
+            SoftwareBaseScoresBySoftwareId = new Dictionary<string, double> { [rm.Id] = 73 }
+        })).BaseScore);
+    }
+
+    [Fact]
     public async Task SoftwareBaseScoresIncludeTheCatalogOnceWithoutProcessOverridesOrRunningState()
     {
         var first = CreateSoftware("software:one", "One", @"D:\Apps\One");

@@ -62,7 +62,9 @@ public sealed partial class HostManagerSmartCoordinatorScoreOnlyCompositionTests
         Assert.Empty((await fixture.NativeTransactions.AppliedOwnership.ReadSnapshotAsync(CancellationToken.None)).Records);
         Assert.Equal(0, fullReads);
         var restored = await fixture.Coordinator.GetDecisionDiagnosticsAsync(CancellationToken.None);
-        Assert.True(Assert.Single(restored.NonAdaptedMemoryDecisions).TransactionPrepared);
+        // High tier is never optimized (performance_importance_scoring_model.md §5): the process gets no directive,
+        // and the owned priority comes back through the projection-gap restore asserted above.
+        Assert.Empty(restored.NonAdaptedMemoryDecisions);
         Assert.Empty(restored.NonAdaptedMemorySkipCounts);
     }
 }

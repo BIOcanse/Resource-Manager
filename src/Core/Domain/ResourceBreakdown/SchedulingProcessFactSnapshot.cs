@@ -145,6 +145,7 @@ public sealed record SchedulingProcessFact(
     public string? Architecture { get; init; }
     public IReadOnlyList<string> SoftwareRootPaths { get; init; } = [];
     public string? SoftwareCategorySource { get; init; }
+    public IReadOnlyList<string> ServiceNames { get; init; } = [];
 
     public string RuntimeState { get; init; } =
         HostManagerRuntimeStates.Unknown;
