@@ -19,13 +19,22 @@ param(
     [Parameter(ParameterSetName = 'Prepare')][string]$BeforeSourceRoot,
     [Parameter(ParameterSetName = 'Prepare')][string]$BeforeReaderOverlay,
     [Parameter(ParameterSetName = 'Prepare')][string]$BeforeImage,
-    [Parameter(ParameterSetName = 'Prepare')][string]$LedgerWorkRoot = 'F:\code\Resource-Manager-Development\ledger-control-actual-first-round',
-    [string]$JobQueueScript = 'D:\Code\CommonAssets\Tools\JobQueue\JobQueue.ps1',
+    # Defaults to <WorkRoot>\Resource-Manager-Development\ledger-control-actual-first-round (scripts/dev/MachineRoots.psm1).
+    [Parameter(ParameterSetName = 'Prepare')][string]$LedgerWorkRoot,
+    # Defaults to <ToolsRoot>\JobQueue\JobQueue.ps1 (scripts/dev/MachineRoots.psm1).
+    [string]$JobQueueScript,
     [string]$MemoryLimitScript = (Join-Path (Split-Path -Parent $PSScriptRoot) 'dev/Invoke-WithMemoryLimit.ps1'),
     [ValidatePattern('^[a-zA-Z0-9][a-zA-Z0-9._-]{0,60}$')][string]$Name = 'actual-timing'
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+if (-not $JobQueueScript -or ($Prepare -and -not $LedgerWorkRoot)) {
+    Import-Module (Join-Path $PSScriptRoot '..\dev\MachineRoots.psm1') -DisableNameChecking
+    if (-not $JobQueueScript) { $JobQueueScript = Join-Path (Get-MachineRoot -Name ToolsRoot) 'JobQueue\JobQueue.ps1' }
+    if ($Prepare -and -not $LedgerWorkRoot) {
+        $LedgerWorkRoot = Join-Path (Get-MachineRoot -Name WorkRoot) 'Resource-Manager-Development\ledger-control-actual-first-round'
+    }
+}
 $owner = [IO.Path]::GetFullPath($RegisteredWorkspaceRoot).TrimEnd('\')
 if (-not [IO.File]::Exists((Join-Path $owner '.generated-workspace.json'))) { throw 'Supply an existing registered task; this tool does not close that task.' }
 $ownerState = Get-Content -LiteralPath (Join-Path $owner '.generated-workspace.json') -Raw | ConvertFrom-Json

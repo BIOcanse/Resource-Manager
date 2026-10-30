@@ -6,11 +6,24 @@ param(
     [Parameter(Mandatory)][string]$Ledger,
     [Parameter(Mandatory)][string]$Output,
     [ValidateSet('true','false')][string]$StateNames = 'true',
-    [string]$BaselineTrx
+    [string]$BaselineTrx,
+    # Defaults to .local\wrapup-fixes-20261023\review-scratch in the checkout of codex/development-mainline.
+    [string]$ReviewScratch
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $Root = (Resolve-Path -LiteralPath $Root).Path
+Import-Module (Join-Path $PSScriptRoot '..\dev\MachineRoots.psm1') -DisableNameChecking
+$tools = Get-MachineRoot -Name ToolsRoot
+if (-not $ReviewScratch) {
+    $worktree = $null
+    $dev = @(foreach ($line in @(git -C $Root worktree list --porcelain)) {
+        if ($line -like 'worktree *') { $worktree = $line.Substring(9) }
+        elseif ($line -eq 'branch refs/heads/codex/development-mainline') { [IO.Path]::GetFullPath($worktree) }
+    }) | Select-Object -First 1
+    if (-not $dev) { throw 'No checkout of codex/development-mainline is registered; pass -ReviewScratch.' }
+    $ReviewScratch = Join-Path $dev '.local\wrapup-fixes-20261023\review-scratch'
+}
 $Ledger = (Resolve-Path -LiteralPath $Ledger).Path
 $Output = [IO.Path]::GetFullPath($Output)
 if (-not (Test-Path -LiteralPath (Join-Path $Ledger '.generated-workspace.json'))) { throw 'Use the registered ledger.' }
@@ -19,11 +32,11 @@ if (-not $Output.StartsWith((Join-Path $Root '.local\reports\'), [StringComparis
 }
 [void][IO.Directory]::CreateDirectory($Output)
 (Get-Process -Id $PID).PriorityClass = 'BelowNormal'
-$env:PATH = 'C:\Program Files\dotnet;D:\Code\CommonAssets\Tools\PowerShell\7.6.5;D:\Code\CommonAssets\Tools\Zig\zig-0.16.0;' +
-    'D:\Code\CommonAssets\Tools\WinGetPackages\BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\mingw64\bin;' +
+$env:PATH = "C:\Program Files\dotnet;$tools\PowerShell\7.6.5;$tools\Zig\zig-0.16.0;" +
+    "$tools\WinGetPackages\BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\mingw64\bin;" +
     'C:\Program Files\nodejs;C:\Program Files\Git\cmd;C:\Windows\System32;C:\Windows;C:\Windows\System32\WindowsPowerShell\v1.0'
 $env:NuGetAudit = 'false'
-$env:RM_REVIEW_SCRATCH = 'D:\Code\Resource-Manager-Development\.local\wrapup-fixes-20261023\review-scratch'
+$env:RM_REVIEW_SCRATCH = $ReviewScratch
 Set-Location -LiteralPath $Root
 $log = Join-Path $Output ($Mode + '.log')
 $properties = @('-p:BuildInParallel=false', '-p:UseSharedCompilation=false', '-p:ResourceManagerZigJobs=1',
